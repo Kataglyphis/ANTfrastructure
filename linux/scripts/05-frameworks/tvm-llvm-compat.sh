@@ -35,7 +35,7 @@ _detect_gcc_cxxabi_header() {
   if [ -z "$gcc_major" ] && [ -n "${GCC_VERSION:-}" ]; then
     gcc_major="${GCC_VERSION%%.*}"
   fi
-  # Last-resort safety net (matches versions.env GCC_VERSION=16.1.0).
+  # Last-resort safety net (matches versions.env GCC_VERSION major).
   [ -n "$gcc_major" ] || gcc_major="16"
 
   local real_cxx_path="${real_cxx}"

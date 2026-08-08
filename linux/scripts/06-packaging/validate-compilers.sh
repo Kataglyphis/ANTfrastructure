@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # validate-compilers.sh
-# Unified compiler chain validation for GCC 16.1.0 and Clang 22.1.8.
+# Unified compiler chain validation for the pinned GCC (versions.env GCC_VERSION) and Clang 22.1.8.
 # Called from Dockerfile.package (artifact-source, package, and wrapper-smoke targets).
 #
 # Modes:

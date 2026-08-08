@@ -52,6 +52,7 @@ _verify_link() {
       else
         warn "[verify] ${label}: STALE — child built FROM ${recorded##*@}, parent now ${parent_digest##*@}"
         warn "[verify] ${label}:   rebuild from stage '${label%%->*}' (or later ancestors stay stale)"
+        _CHAIN_VERIFY_STALE_COUNT=$(( ${_CHAIN_VERIFY_STALE_COUNT:-0} + 1 ))
       fi
       return 0
     fi
@@ -90,6 +91,7 @@ _verify_link() {
 verify_cross_chain_staleness() {
   local arches_csv="$1"
   local stage parent parent_tag child_tag arch label
+  _CHAIN_VERIFY_STALE_COUNT=0
 
   log "[verify] checking cross-chain freshness for arches: ${arches_csv}"
 
@@ -118,7 +120,11 @@ verify_cross_chain_staleness() {
     fi
   done
 
-  log "[verify] chain check complete"
+  if [ "${_CHAIN_VERIFY_STALE_COUNT:-0}" -gt 0 ]; then
+    warn "[verify] chain check complete: ${_CHAIN_VERIFY_STALE_COUNT} STALE link(s)"
+    return 1
+  fi
+  log "[verify] chain check complete: all links fresh (or pre-annotation)"
 }
 
 # ==============================================================================

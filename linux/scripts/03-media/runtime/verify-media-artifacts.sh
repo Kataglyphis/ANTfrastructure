@@ -117,11 +117,35 @@ verify_shared_lib_optional() {
   local found=""
   found="$(find "${dir}" -maxdepth 2 -name "${glob_pattern}" -type f 2>/dev/null | head -1 || true)"
   if [ -z "${found}" ]; then
-    echo "INFO [LITERT]: ${label} (${glob_pattern}) not found — may be a static-only build" >&2
+    echo "INFO [${STAGE}]: ${label} (${glob_pattern}) not found — may be a static-only build" >&2
     return 0
   fi
   pass_check "${label}: ${found}"
   return 0
+}
+
+# Side-effect-free probe: succeeds if <dir> contains a file matching <pattern>.
+# Use for one-of/fallback logic — the verify_* helpers above increment FAILURES
+# BEFORE returning 1, so `verify_x A || verify_x B` counts a failure even when
+# B passes (that broken idiom is why this exists).
+probe_lib() {
+  local dir="$1" glob_pattern="$2"
+  [ -n "$(find "${dir}" -maxdepth 2 -name "${glob_pattern}" -type f 2>/dev/null | head -1 || true)" ]
+}
+
+# Exactly one verdict for "at least one of these dir:pattern pairs must match".
+verify_any_lib() {
+  local label="$1"; shift
+  local pair dir pattern
+  for pair in "$@"; do
+    dir="${pair%%:*}"; pattern="${pair#*:}"
+    if probe_lib "${dir}" "${pattern}"; then
+      pass_check "${label}: $(find "${dir}" -maxdepth 2 -name "${pattern}" -type f 2>/dev/null | head -1 || true)"
+      return 0
+    fi
+  done
+  fail_check "${label}: none of the expected libraries found ($*)"
+  return 1
 }
 
 case "${STAGE}" in
@@ -139,7 +163,22 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: BUILD_GENAI is not true"
       exit 0
     fi
-    verify_dir_not_empty "${PREFIX}" "ONNX Runtime GenAI output dir"
+    # 60-build-genai.sh legitimately skips on cross builds (exit 0 after
+    # pre-creating an EMPTY output tree via ensure_onnx_output_tree) — mirror
+    # that skip here instead of "verifying" the pre-created empty dirs.
+    _vma_host="$(uname -m)"
+    case "${_vma_host}" in x86_64) _vma_host=amd64 ;; aarch64) _vma_host=arm64 ;; esac
+    if [ "${BUILD_MODE:-native}" = "cross" ] \
+       && [ "${TARGET_ARCH:-${TARGETARCH:-${_vma_host}}}" != "${_vma_host}" ]; then
+      echo "SKIP [${STAGE}]: GenAI does not cross-build (producer skips too)"
+      exit 0
+    fi
+    # A dir that exists is no evidence — the producer mkdir -p's lib/ include/
+    # wheels/ on every path. Require an actual artifact.
+    verify_any_lib "ONNX Runtime GenAI artifact" \
+      "${PREFIX}/lib:libonnxruntime-genai*.so*" \
+      "${PREFIX}/lib:libonnxruntime_genai*.so*" \
+      "${PREFIX}/wheels:*.whl"
     ;;
 
   onnxruntime-gpu)
@@ -158,23 +197,44 @@ case "${STAGE}" in
 
   litert)
     PREFIX="${PREFIX:-/usr/local}"
-    verify_dir_not_empty "${PREFIX}/include" "LiteRT include dir"
-    verify_dir_not_empty "${PREFIX}/lib" "LiteRT lib dir"
-    # LiteRT may produce shared or static libs depending on build revision
-    verify_shared_lib_optional "${PREFIX}/lib" "libtensorflow-lite*.so*" "libtensorflow-lite.so"
-    verify_shared_lib_optional "${PREFIX}/lib" "libtflite*.so*" "LiteRT shared lib"
+    # NOT ${PREFIX}/include|lib generically: the base image already fills
+    # /usr/local (from-source CPython), so those checks were unconditionally
+    # true even when build-litert.sh installed nothing. Require LiteRT's OWN
+    # evidence: its header tree plus at least one lib (shared or static).
+    if [ ! -d "${PREFIX}/include/tensorflow/lite" ] && [ ! -d "${PREFIX}/include/tflite" ]; then
+      fail_check "no LiteRT header tree under ${PREFIX}/include (tensorflow/lite or tflite)"
+    else
+      pass_check "LiteRT header tree present"
+    fi
+    verify_any_lib "LiteRT library (shared or static)" \
+      "${PREFIX}/lib:libtensorflow-lite*.so*" \
+      "${PREFIX}/lib:libtflite*.so*" \
+      "${PREFIX}/lib:libtensorflow-lite*.a" \
+      "${PREFIX}/lib:libtflite*.a"
     ;;
 
   litert-headers)
     PREFIX="${PREFIX:-/usr/local}"
-    verify_dir_not_empty "${PREFIX}/include/tensorflow/lite" "TFLite headers" || \
-    verify_dir_not_empty "${PREFIX}/include/tflite" "LiteRT headers"
+    # One verdict for the one-of check (the old `verify_A || verify_B` idiom
+    # counted A's failure even when B passed — fail_check increments first).
+    if [ -d "${PREFIX}/include/tensorflow/lite" ] \
+       && [ -n "$(ls -A "${PREFIX}/include/tensorflow/lite" 2>/dev/null || true)" ]; then
+      pass_check "TFLite headers: ${PREFIX}/include/tensorflow/lite"
+    elif [ -d "${PREFIX}/include/tflite" ] \
+       && [ -n "$(ls -A "${PREFIX}/include/tflite" 2>/dev/null || true)" ]; then
+      pass_check "LiteRT headers: ${PREFIX}/include/tflite"
+    else
+      fail_check "no non-empty LiteRT header dir under ${PREFIX}/include"
+    fi
     ;;
 
   opencv-core)
     PREFIX="${PREFIX:-/opt/opencv5}"
-    verify_shared_lib_optional "${PREFIX}/lib" "libopencv_core.so*" "libopencv_core.so"
-    verify_shared_lib_optional "${PREFIX}/lib64" "libopencv_core.so*" "libopencv_core.so"
+    # Was two verify_shared_lib_optional calls — INFO-only, could never fail,
+    # so a build that produced no libopencv_core at all passed. One-of, hard.
+    verify_any_lib "libopencv_core.so" \
+      "${PREFIX}/lib:libopencv_core.so*" \
+      "${PREFIX}/lib64:libopencv_core.so*"
     ;;
 
   opencv)
@@ -227,7 +287,18 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: not riscv64"
       exit 0
     fi
-    verify_dir_not_empty "${PREFIX}" "app wheelhouse"
+    # "not empty" was vacuous: the Dockerfile touches a .placeholder whenever
+    # the wheelhouse build failed, so this gate passed on exactly the failures
+    # it exists to catch. riscv64 has NO PyPI wheels — require a real .whl.
+    # ALLOW_EMPTY_APP_WHEELS=1 is the explicit escape hatch for a deliberate
+    # wheel-less image (same pattern as ALLOW_IREE_BUILD_FAIL).
+    if probe_lib "${PREFIX}" "*.whl"; then
+      pass_check "app wheelhouse contains wheels"
+    elif [ "${ALLOW_EMPTY_APP_WHEELS:-0}" = "1" ]; then
+      echo "INFO [${STAGE}]: wheelhouse empty but ALLOW_EMPTY_APP_WHEELS=1" >&2
+    else
+      fail_check "no *.whl in ${PREFIX} (riscv64 has no PyPI wheels; a placeholder-only wheelhouse ships a torch-less image). Set ALLOW_EMPTY_APP_WHEELS=1 only for a deliberate wheel-less image."
+    fi
     ;;
 
   armnn)

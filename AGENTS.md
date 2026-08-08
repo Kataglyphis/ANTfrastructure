@@ -108,8 +108,9 @@ bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,ri
 # Cheap packaging validation before publish (see docs/linux-cross-builds.md)
 # Uses the `wrapper-smoke` target in Dockerfile.package
 
-# Reinstall QEMU/binfmt after host reboot
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
+# Reinstall QEMU/binfmt after host reboot OR containerd restart (rootless:
+# the tonistiigi/binfmt --install container does NOT work — wrong namespace)
+linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
 ```
 
 > **See also:** [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
@@ -594,11 +595,18 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
 ### Prerequisites
 
 - **nerdctl** with BuildKit backend
-- **QEMU/binfmt** for foreign-architecture runtime builds. **Required before EVERY build** (registration is lost after host reboot):
+- **QEMU/binfmt** for foreign-architecture runtime builds. Registration is lost
+  on host reboot **and on `systemctl --user restart containerd`** (it lives in the
+  rootlesskit namespace — that's how it silently vanished on 2026-08-08 after the
+  shim-failure restart). On this rootless host the privileged
+  `tonistiigi/binfmt --install` container does NOT work (wrong namespace); use:
   ```bash
-  nerdctl run --rm --privileged tonistiigi/binfmt --install all
+  linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
   ```
-  Without this, riscv64 and arm64 builds under QEMU will fail with `exec format error` or silent exit code 1.
+  `--install-service` installs a systemd --user unit so re-registration is
+  automatic. Without registration, foreign-arch execs fail with `exec format
+  error` — including wrong-arch NATIVE tool sub-builds inside "no-emulation"
+  cross stages (the IREE tblgen failure mode).
 - **Registry access** (GHCR) for pushing intermediate and final images
 - **Disk space**: ~50GB+ for full cross chain with all architectures
 - **Python 3** for digest resolution (`registry-digest.py`)
@@ -660,7 +668,26 @@ Beyond `linux/scripts/`:
 ```
 linux/scripts/lib/       consumer-facing bash libraries: agentic-loop.sh,
                          app-runner.sh (generic app launcher: arg parse, exe
-                         discovery, LD_LIBRARY_PATH, per-profile hooks)
+                         discovery, LD_LIBRARY_PATH, per-profile hooks),
+                         cmake-build.sh, code-quality.sh, coverage.sh,
+                         slang-compile.sh, wasm-opt.sh, ctest-run.sh (ctest
+                         runner + perf-baseline comparator), docs-build.sh
+                         (Sphinx build helper), rust-toolchain.sh — the last
+                         three had NO doc entry anywhere until the 2026-08-08
+                         orphan sweep; nothing in-repo invokes lib/, it is a
+                         consumer surface shipped into the images
+linux/scripts/02-toolchain/rust/   cargo_* helpers (test/bench/fmt+clippy/
+                         security/coverage/release/update/doc via
+                         _cargo_wrapper.sh) — consumer surface COPY'd into the
+                         toolchain/sdk/package images; nothing in-repo calls
+                         them (the redundant zero-ref Build-Linux.sh duplicate
+                         was deleted 2026-08-08)
+linux/scripts/02-toolchain/python/ci_*.sh   Python CI helpers (tests, static
+                         analysis, packaging, docs) — same consumer-surface
+                         status as rust/
+linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
+                         nerdctl/buildkit prerequisites); intentionally not
+                         wired into CI or builds
 windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
                          cargo-retry.cmd (transient file-lock retry wrapper),
                          certificates/ (MSIX cert generation + WebDAV
@@ -704,7 +731,10 @@ lint-gates class 3. When writing or reviewing bash in this repo:
 3. **Split comma lists with `IFS=',' read -r -a arr <<< "$list"`** — never
    `${list//,/ }` or `$(... tr ',' ' ')`: under a script's `IFS=$'\n\t'` those
    do not split and the loop runs once with the whole list as one bogus item.
-   Sourced 01-core functions run under the CALLER's IFS.
+   Sourced 01-core functions run under the CALLER's IFS. The two list helpers
+   (`arch_list_to_words`, `smoke_arch_words`) emit NEWLINE-separated words
+   since 2026-08-08 precisely so `for x in $(...)` splits under any IFS —
+   keep that property if you touch them (test-smoke-arch-parity.sh pins it).
 4. **Source vendor scripts (SDK setup-env, venv activate) with nounset
    suspended** — `case $- in *u*) …; set +u;; esac` … `set -u` after. LunarG's
    setup-env.sh reads `$1` unguarded.
@@ -714,19 +744,25 @@ lint-gates class 3. When writing or reviewing bash in this repo:
 
 ## Caching discipline (do not regress)
 
-Full map: `docs/linux-build-basics.md` § Caching Layers. The rules an agent
-must never violate:
+Full map: `docs/linux-build-basics.md` § Caching Layers. Toggles: `USE_CCACHE`,
+`USE_SCCACHE`, `USE_LLD` accept `0/false/no/off` to disable (since 2026-08-08 —
+previously ONLY the literal `false` worked and `USE_CCACHE=0` was silently
+ignored); `ENABLE_SCCACHE_RUST`/`ENABLE_SCCACHE_CUDA` are strict `0/1`.
+The rules an agent must never violate:
 
 1. **Closure freeze between runs that should cache-hit.** Editing ANY file in
-   the base/toolchain closure (all of `01-core/` and `02-toolchain/` — worse
-   than the bundle COPY: **`Dockerfile.base` bind-mounts BOTH whole directories
-   into six RUNs**, so any of ~120 files, including host-only orchestrator
-   modules, busts BASE and cascades to the entire chain; narrowing this to the
-   ~14-file real closure is backlog item A1 and the planned enabler — plus
-   `versions.env`, `python/build_python.sh`, the three bundled
-   `06-packaging/smoke-*` scripts, `Dockerfile.base`, `Dockerfile.toolchain`)
-   changes the compiler image digest and forces sdk/media/android to rebuild
-   from scratch on the next run. Batch such edits; apply them in ONE commit at
+   the base/toolchain closure changes the compiler image digest and forces
+   sdk/media/android to rebuild from scratch on the next run. Since 2026-08-08
+   (A1 applied, commit 5d7a318) **`Dockerfile.base` mounts a traced 15-file
+   closure**, not whole directories — the closure is now: those 15 files
+   (13× `01-core` + `cmake.sh` + `packaging-deps.sh`; the lists live in
+   Dockerfile.base itself), `versions.env`, `python/build_python.sh`, the
+   three bundled `06-packaging/smoke-*` scripts, `Dockerfile.base`,
+   `Dockerfile.toolchain`. Editing 01-core files OUTSIDE those lists no longer
+   busts base — but a file NEWLY needed by a base RUN must be ADDED to the
+   per-file mount lists (closure = source edges + **exec/`bash` edges**; the
+   A1 validation build caught exactly such a miss). Batch closure edits;
+   apply them in ONE commit at
    a planned rebuild boundary. Files in a not-yet-started stage's closure are
    free to fix until that stage begins (each `nerdctl build` snapshots its
    context at stage start).

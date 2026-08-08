@@ -47,7 +47,7 @@ for name in "${DOCKERFILES[@]}"; do
       [ "$v" = "$var" ] && { found=1; break; }
     done
     if [ "$found" -eq 0 ]; then
-      echo "WARN: ${df} ARG '${var}' consumes a versions.env value that is not forwarded (marked # noforward?)"
+      echo "WARNING: ${df} ARG '${var}' consumes a versions.env value that is not forwarded (marked # noforward?)"
       MISSING=$((MISSING + 1))
     fi
   done < <(grep -oP '^\s*ARG\s+\K[A-Z_]+=("[^"]*"|\S+)' "$df_path" || true)

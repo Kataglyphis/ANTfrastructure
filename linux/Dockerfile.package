@@ -301,7 +301,11 @@ RUN set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}}" \
     bash /opt/scripts/packaging/validate-compilers.sh smoke && \
     bash /opt/scripts/packaging/smoke-media.sh && \
-    bash /opt/scripts/packaging/smoke-torch-venv.sh && \
+    # STV_REQUIRE_VENV=1: in THIS image a venv is mandatory (even the
+    # torch-less case ships /opt/venv with a .torch-missing sentinel inside).
+    # Without it the smoke SKIPped+passed exactly when setup-torch-venv
+    # failed hardest — no /opt/venv at all.
+    STV_REQUIRE_VENV=1 bash /opt/scripts/packaging/smoke-torch-venv.sh && \
     GCC_VERSION="${GCC_VERSION}" \
     bash /opt/scripts/packaging/smoke-cross-all-arches.sh "${TARGET_ARCH}"
 # NOTE: smoke-vulkan is intentionally NOT wired into any build stage. It probes

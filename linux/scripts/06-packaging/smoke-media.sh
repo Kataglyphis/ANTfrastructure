@@ -38,7 +38,13 @@ if 'CPUExecutionProvider' not in providers:
       fail "onnxruntime CPUExecutionProvider not available (get_available_providers failed or lacks CPU EP)"
     fi
   else
-    pass "onnxruntime library present at ${_ort_lib_dir} (import failed in build sandbox — will work at runtime)"
+    # Import can legitimately fail in the build sandbox — but then at least
+    # PROVE the library exists (the old branch claimed "present" unchecked).
+    if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
+      echo "  INFO: onnxruntime present but import fails in build sandbox — functional gate is the runtime smoke"
+    else
+      fail "onnxruntime import fails AND no libonnxruntime.so under ${_ort_lib_dir}"
+    fi
   fi
 fi
 
@@ -47,8 +53,10 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- ONNX Runtime GenAI ---"
 if cross_build_is_active 2>/dev/null; then
-  if [ -d "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" ] || \
-     find /usr/local/lib -name "libonnxruntime_genai*" -type f 2>/dev/null | grep -q .; then
+  # NOT a bare `[ -d ]`: the producer mkdir -p's its output tree on every
+  # path, so an existing-but-empty dir is no evidence. Require a real file.
+  if find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
+       -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
     pass "onnxruntime_genai library present (cross build — import skipped)"
   else
     echo "  INFO: onnxruntime_genai not built for this target (optional)"
@@ -56,6 +64,11 @@ if cross_build_is_active 2>/dev/null; then
 elif command -v python3 >/dev/null 2>&1; then
   if python3 -c "import onnxruntime_genai" 2>/dev/null; then
     pass "onnxruntime_genai Python module imports"
+  elif find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
+         -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
+    # Shipped-but-unimportable is a defect, not an optional absence — the old
+    # branch downgraded BOTH cases to INFO (smoke-depth R13).
+    fail "onnxruntime_genai library SHIPPED but the Python module does not import"
   else
     echo "  INFO: onnxruntime_genai not installed (optional)"
   fi
@@ -76,6 +89,15 @@ for candidate in \
 done
 if [ -n "${lite_lib}" ]; then
   pass "LiteRT shared library found: ${lite_lib}"
+  # Symbol depth (smoke-depth R7): `[ -f ]` passes on a 12-byte stub. `nm -D`
+  # reads foreign-arch ELF fine, so this works on the cross branch too.
+  if command -v nm >/dev/null 2>&1; then
+    if nm -D --defined-only "${lite_lib}" 2>/dev/null | grep -q 'TfLiteInterpreterCreate\|TfLiteModelCreate'; then
+      pass "LiteRT C API symbols exported (TfLiteInterpreterCreate/TfLiteModelCreate)"
+    else
+      fail "LiteRT lib ${lite_lib} exports no TfLite C API symbols (stub/misbuilt)"
+    fi
+  fi
 else
   echo "  INFO: LiteRT shared library not found (C API may be header-only in this build)"
 fi
@@ -179,6 +201,31 @@ gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 assert gray.shape == (64, 64), f'unexpected shape {gray.shape}'
 " 2>/dev/null; then
         pass "opencv functional: cvtColor+BGR2GRAY roundtrip OK"
+      else
+        # import succeeded, so execution demonstrably works here — a failing
+        # roundtrip is a real defect, not a sandbox artifact.
+        fail "opencv functional: cvtColor+BGR2GRAY roundtrip FAILED (import works, so this is real)"
+      fi
+      # imencode/imdecode + videoio (smoke-depth R9): videoio has the worst
+      # silent-breakage record of any OpenCV module and had ZERO coverage at
+      # any layer on Linux.
+      if PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
+import cv2, numpy as np, tempfile, os
+img = np.random.randint(0, 255, (32, 32, 3), dtype=np.uint8)
+ok, buf = cv2.imencode('.png', img); assert ok
+assert (cv2.imdecode(buf, cv2.IMREAD_COLOR) == img).all(), 'png roundtrip mismatch'
+ok, buf = cv2.imencode('.jpg', img); assert ok and cv2.imdecode(buf, 1).shape == img.shape
+d = tempfile.mkdtemp(); p = os.path.join(d, 't.avi')
+w = cv2.VideoWriter(p, cv2.VideoWriter_fourcc(*'MJPG'), 10, (32, 32))
+assert w.isOpened(), 'VideoWriter would not open (videoio backend missing)'
+for _ in range(4): w.write(img)
+w.release()
+c = cv2.VideoCapture(p); assert c.isOpened(), 'VideoCapture would not open'
+r, f = c.read(); assert r and f.shape == (32, 32, 3)
+" 2>/dev/null; then
+        pass "opencv imencode/imdecode + videoio (MJPG write/read) roundtrip OK"
+      else
+        fail "opencv imencode/videoio roundtrip FAILED (import works, so this is real)"
       fi
     else
       pass "opencv Python bindings present at ${cv2_pkg} (import failed in build sandbox — will work at runtime)"
@@ -208,15 +255,50 @@ if [ -n "${_gst_inspect}" ]; then
     pass "gst-inspect-1.0 functional: ${gst_ver}"
   else
     # Binary exists but can't execute — likely missing GLIBCXX from source-built GCC
-    # in the BuildKit sandbox. This is expected during Docker build; the binary will
-    # work in the final container where ldconfig + ENV are properly set.
-    pass "gst-inspect-1.0 binary present at ${_gst_inspect} (execution failed in build sandbox — will work at runtime)"
+    # in the BuildKit sandbox. Expected during Docker build (ldconfig + ENV land in
+    # configure-runtime.sh) — but a broken binary must not count as a PASS: INFO,
+    # plus an ELF-magic assertion so corrupt/wrong-format binaries still fail.
+    if [ "$(head -c4 "${_gst_inspect}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then
+      echo "  INFO: gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
+    else
+      fail "gst-inspect-1.0 at ${_gst_inspect} is not an ELF binary"
+    fi
   fi
   if ! cross_build_is_active 2>/dev/null && "${_gst_inspect}" --version >/dev/null 2>&1; then
     _gst_launch="$(command -v gst-launch-1.0 2>/dev/null || echo "${_gst_bin}/gst-launch-1.0")"
     if "${_gst_launch}" videotestsrc num-buffers=1 ! fakesink 2>/dev/null; then
       pass "GStreamer pipeline: videotestsrc ! fakesink OK"
+    else
+      # gst-inspect --version already executed fine in this environment, so a
+      # failing pipeline is a real defect (missing coreelements etc.), not a
+      # sandbox artifact.
+      fail "GStreamer pipeline videotestsrc ! fakesink FAILED (gst-inspect executes, so this is real)"
     fi
+    # Mandatory-plugin gate (smoke-depth R1): meson `enabled` guards CONFIGURE,
+    # but a plugin that ships and then fails to dlopen was only a WARN-count.
+    # A present-but-unloadable plugin is exactly the observed class
+    # (webrtcbin2→librice-proto, gtk4→vkCreateWaylandSurfaceKHR).
+    _gst_missing=""
+    for _p in libav opencv onnx tflite; do
+      "${_gst_inspect}" "${_p}" >/dev/null 2>&1 || _gst_missing="${_gst_missing} ${_p}"
+    done
+    if [ -z "${_gst_missing}" ]; then
+      pass "GStreamer mandatory plugin set loads (libav opencv onnx tflite)"
+    else
+      fail "GStreamer mandatory plugins MISSING/unloadable:${_gst_missing}"
+    fi
+    # Data roundtrip (R2): negotiation + a real encoder + non-empty output —
+    # `videotestsrc ! fakesink` proves the registry, not that a buffer with
+    # real caps survives convert→encode.
+    _gst_tmp="$(mktemp -d)"
+    if "${_gst_launch}" -q videotestsrc num-buffers=4 ! video/x-raw,width=64,height=64,framerate=10/1 \
+         ! videoconvert ! jpegenc ! multifilesink location="${_gst_tmp}/f%d.jpg" 2>/dev/null \
+       && [ "$(find "${_gst_tmp}" -name 'f*.jpg' -size +0c 2>/dev/null | wc -l)" -eq 4 ]; then
+      pass "GStreamer data roundtrip: 4 real JPEG frames out of videoconvert!jpegenc"
+    else
+      fail "GStreamer data roundtrip FAILED (caps negotiation or jpegenc broken)"
+    fi
+    rm -rf "${_gst_tmp}"
   fi
 else
   fail "gst-inspect-1.0 not found (checked PATH and ${_gst_bin})"
@@ -235,7 +317,15 @@ if [ -x "${_ffmpeg_bin}" ]; then
     if [ "${ffmpeg_ver}" != "?" ]; then
       pass "ffmpeg functional: ${ffmpeg_ver}"
     else
-      pass "ffmpeg binary present at ${_ffmpeg_bin} (execution failed in build sandbox — will work at runtime)"
+      # Execution can legitimately fail here (ldconfig/ENV land later in
+      # configure-runtime.sh) — but a broken binary must not count as a PASS.
+      # Downgrade to INFO and at least assert it is a real ELF, so a
+      # zero-byte/corrupt/wrong-format ffmpeg still fails the smoke.
+      if [ "$(head -c4 "${_ffmpeg_bin}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then
+        echo "  INFO: ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
+      else
+        fail "ffmpeg at ${_ffmpeg_bin} is not an ELF binary"
+      fi
     fi
     tmpdir="$(mktemp -d)"
     if "${_ffmpeg_bin}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=1" \
@@ -247,8 +337,44 @@ if [ -x "${_ffmpeg_bin}" ]; then
       else
         fail "ffmpeg H.264 decode failed"
       fi
+    elif [ "${ffmpeg_ver}" != "?" ] \
+         && "${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null | grep -q libx264; then
+      # ffmpeg executes AND advertises libx264 — a failed encode is real.
+      fail "ffmpeg H.264 encode FAILED (binary executes and libx264 encoder is advertised)"
     else
-      echo "  INFO: ffmpeg encode test skipped (libx264 may not be available)"
+      echo "  INFO: ffmpeg encode test skipped (binary not executable here, or libx264 not built)"
+    fi
+    # Codec depth beyond H.264 (smoke-depth R4) — only when the binary
+    # demonstrably executes. build-ffmpeg.sh probe-gates every --enable-*: a
+    # probe that silently misses DROPS the codec and the build stays green,
+    # so buildconf-vs-registration consistency is the cheap honest gate...
+    if [ "${ffmpeg_ver}" != "?" ]; then
+      _ff_bc="$("${_ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
+      for _c in libx265 libdav1d libsvtav1 libvpx libopus; do
+        case "${_ff_bc}" in
+          *"--enable-${_c}"*)
+            if "${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null | grep -q "${_c#lib}" \
+               || "${_ffmpeg_bin}" -hide_banner -decoders 2>/dev/null | grep -q "${_c#lib}"; then
+              pass "ffmpeg ${_c}: enabled in buildconf and registered"
+            else
+              fail "ffmpeg buildconf claims --enable-${_c} but no matching codec registered"
+            fi ;;
+        esac
+      done
+      # ...and a real per-codec encode+decode roundtrip (32x32, 2 frames —
+      # sub-second each) proves the codepath, not just the registry.
+      for _spec in libx265 libvpx-vp9; do
+        "${_ffmpeg_bin}" -hide_banner -h "encoder=${_spec}" >/dev/null 2>&1 || continue
+        _ff_tmp="$(mktemp -d)"
+        if "${_ffmpeg_bin}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=2" \
+             -c:v "${_spec}" "${_ff_tmp}/s.mkv" 2>/dev/null \
+           && "${_ffmpeg_bin}" -y -i "${_ff_tmp}/s.mkv" -f null /dev/null 2>/dev/null; then
+          pass "ffmpeg ${_spec} encode+decode roundtrip OK"
+        else
+          fail "ffmpeg ${_spec} is advertised but the encode/decode roundtrip FAILED"
+        fi
+        rm -rf "${_ff_tmp}"
+      done
     fi
     rm -rf "${tmpdir}"
   fi
@@ -315,15 +441,40 @@ echo "--- CUDA (optional) ---"
 if command -v nvcc >/dev/null 2>&1; then
   cuda_ver="$(nvcc --version 2>/dev/null | grep "release" | head -1 || echo '?')"
   pass "nvcc functional: ${cuda_ver}"
+  # Device-less kernel compile (smoke-depth R11): version output proves the
+  # frontend runs; compiling a __global__ kernel proves the full toolchain
+  # (cudafe, ptxas, host compiler handshake) — no GPU needed.
+  _cu_tmp="$(mktemp -d)"
+  printf '__global__ void k(int*o){*o=42;}\nint main(){return 0;}\n' > "${_cu_tmp}/t.cu"
+  if nvcc -std=c++17 -c "${_cu_tmp}/t.cu" -o "${_cu_tmp}/t.o" 2>"${_cu_tmp}/e"; then
+    pass "nvcc compiles a __global__ kernel (device-less)"
+  else
+    fail "nvcc present but cannot compile a trivial kernel: $(tail -1 "${_cu_tmp}/e" 2>/dev/null || true)"
+  fi
+  rm -rf "${_cu_tmp}"
+elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
+  # The old check was fail-open: a GPU image that LOST nvcc passed silently.
+  fail "ENABLE_NVIDIA=true but nvcc is not on PATH"
 fi
 
 # ---------------------------------------------------------------------------
 # Torch
 # ---------------------------------------------------------------------------
 echo "--- Torch ---"
-# Torch is only installed in the final wrapper stage (:latest-cross-<arch>),
-# not in the media stage. This is expected — skip silently.
-echo "  INFO: torch not installed (only in :latest-cross-<arch> wrappers)"
+# In the MEDIA stage torch is genuinely absent (installed later) — but this
+# script ALSO runs in the package wrapper-smoke, where /opt/venv is mandatory.
+# The old hardcoded "not installed" INFO was false there (smoke-depth R16b).
+if [ -x /opt/venv/bin/python ]; then
+  if /opt/venv/bin/python -c "import torch" 2>/dev/null; then
+    pass "torch imports from /opt/venv ($(/opt/venv/bin/python -c 'import torch; print(torch.__version__)' 2>/dev/null || echo '?'))"
+  elif [ -f /opt/venv/.torch-missing ]; then
+    echo "  INFO: torch-less venv (documented .torch-missing sentinel present)"
+  else
+    fail "/opt/venv exists but torch does not import and no .torch-missing sentinel"
+  fi
+else
+  echo "  INFO: torch not installed (only in :latest-cross-<arch> wrappers)"
+fi
 
 echo ""
 smoke_summary

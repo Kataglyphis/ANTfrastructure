@@ -62,11 +62,21 @@ _sccache_available() {
   command -v sccache >/dev/null 2>&1
 }
 
+# Boolean-off check for the cache/linker toggles: accept the fleet's BOTH
+# truthiness spellings (0/false/no/off, any case) — "USE_CCACHE=0" used to be
+# silently ignored because only the literal string "false" disabled anything.
+_flag_disabled() {
+  case "${1:-}" in
+    0|false|FALSE|False|no|NO|off|OFF) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 # Setup ccache for C/C++ compilation
 # Sets CMAKE_*_COMPILER_LAUNCHER environment variables for CMake builds
 setup_ccache() {
-  if [ "${USE_CCACHE}" = "false" ]; then
-    _cc_info "ccache disabled via USE_CCACHE=false"
+  if _flag_disabled "${USE_CCACHE}"; then
+    _cc_info "ccache disabled via USE_CCACHE=${USE_CCACHE}"
     return 0
   fi
 
@@ -112,8 +122,8 @@ setup_ccache() {
 # Setup sccache for Rust and C/C++ compilation
 # Sets RUSTC_WRAPPER and CMAKE_*_COMPILER_LAUNCHER environment variables
 setup_sccache() {
-  if [ "${USE_SCCACHE}" = "false" ]; then
-    _cc_info "sccache disabled via USE_SCCACHE=false"
+  if _flag_disabled "${USE_SCCACHE}"; then
+    _cc_info "sccache disabled via USE_SCCACHE=${USE_SCCACHE}"
     return 0
   fi
 
@@ -149,7 +159,7 @@ setup_sccache() {
 # Setup lld as the default linker
 # Sets LDFLAGS and provides CMAKE flags
 setup_lld_linker() {
-  if [ "${USE_LLD}" = "false" ]; then
+  if _flag_disabled "${USE_LLD}"; then
     # Strip any -fuse-ld=lld previously added to environment variables.
     # Earlier callers (e.g. media_common_init) may have populated these before
     # USE_LLD was set to false, and Meson/CMake will inherit the stale flags.

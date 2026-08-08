@@ -1,5 +1,285 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: smoke-depth round (audit round 3, lens 2)
+
+A capability×depth audit of every smoke layer found the deepest ML coverage
+living in an EXTERNAL repo's app smoke — torch, torchvision, onnxruntime
+inference and OpenCV imencode had zero in-repo functional coverage, and
+several capabilities had none anywhere. Presence checks upgraded to real
+execution (all device-less, no network, seconds each):
+
+- **GStreamer mandatory plugins** (libav/opencv/onnx/tflite) now GATE in the
+  runtime smoke on the real target arch under qemu, and in smoke-media's
+  native branch — a present-but-unloadable plugin (the observed
+  webrtcbin2/gtk4 class) was previously only a WARN-count. Plus a data
+  roundtrip (videoconvert!jpegenc → 4 real JPEG frames) beyond the
+  registry-only fakesink pipeline.
+- **Python stdlib battery** (ssl/sqlite3/lzma/bz2/zlib/hashlib/ctypes,
+  exercised not just imported) in smoke-toolchain — the textbook from-source
+  CPython failure; `_sqlite3` was checked NOWHERE in linux/ and joins
+  build_python.sh's staging warn-list too.
+- **torch forward+backward, torchvision nms/._C + v2.Resize, and a real
+  onnxruntime InferenceSession** (model generated in-process via
+  torch.onnx.export — no fabricated bytes) in smoke-torch-venv, gated
+  STV_COMPUTE=1 (default on).
+- **ffmpeg codec depth**: buildconf-vs-registration consistency for
+  x265/dav1d/svtav1/vpx/opus (build-ffmpeg probe-gates --enable-*, so a
+  silently-missed probe DROPS a codec while the build stays green) + real
+  encode/decode roundtrips for libx265/libvpx-vp9 — all inside the
+  binary-executes guard.
+- **Cross-compiler loader assertion**: the emitted ELF's PT_INTERP must
+  request the TARGET's dynamic loader (wrong-sysroot links succeed and only
+  die on target); opportunistic static-binary qemu-run (exit-42 proof) when
+  qemu-user is present.
+- **Rust**: version pinned against RUST_VERSION (the old check asserted
+  "rustc" appears in `rustc --version` — could never fail), host
+  compile+RUN, and per-target emit-obj (rustup lists targets whose std rlibs
+  are missing). **node/npm**: first coverage at all (version pin + JS
+  execution) — the LiteRT-web WASM gate silently self-disables without node.
+- **LiteRT**: `nm -D` symbol check (TfLiteInterpreterCreate/TfLiteModelCreate)
+  — works on foreign-arch ELF, so the cross branch gets it too; a 12-byte
+  stub used to pass `[ -f ]`. **nvcc**: device-less __global__ kernel
+  compile + the fail-open hole closed (ENABLE_NVIDIA=true with no nvcc now
+  fails). **GenAI**: shipped-but-unimportable is now FAIL, absent stays INFO.
+  **Vulkan runtime**: real vkEnumerateInstanceVersion call (works with zero
+  ICDs; a healthy loader cannot fail it). **Android NDK**: the compile smoke
+  its header promised since creation (per-target object + ELF-machine
+  assertion; the NDK clang is a host binary, runs on every branch).
+- Fail-open holes closed: absent cross-Python staging dir now FAILS for
+  requested foreign arches (ran zero checks before); smoke-media's hardcoded
+  "torch not installed" INFO replaced with a real venv probe (it was false in
+  the package image); smoke-vulkan's `vkvia | head` rc swallow fixed.
+
+## 2026-08-08 (night) — Linux lane: orphan sweep (audit round 3, lens 1)
+
+A dedicated dead-weight audit (things wired to nothing), with every dynamic
+script-dispatch mechanism enumerated first so glob/variable-built paths could
+not produce false orphans:
+
+- **Real arm64 bug**: `wasm-opt.sh` built the aarch64 binaryen asset name but
+  versions.env pinned no `BINARYEN_LINUX_AARCH64_SHA256` — the download died
+  "No pinned SHA256" on any arm64 host. Pinned (sha computed from the
+  upstream `version_131` tarball, gzip verified).
+- **Dead legacy alias** `TVM_VULKAN_KEEP_SDK_LIBS` removed from vulkan.sh
+  (sole occurrence repo-wide; the canonical knob is VULKAN_KEEP_SDK_LIBS).
+- **Legacy flutter shims** (`setup-flutter-{arm64,x86-64}.sh`, kept for
+  external ExternalLib consumers) no longer carry a hardcoded `3.44.8`
+  fallback that had already drifted from the 3.44.9 pin — they now require
+  the versions.env value they load anyway.
+- **Deleted**: `02-toolchain/rust/Build-Linux.sh` (zero references AND a
+  duplicate re-implementation of its five cargo_* siblings) and
+  `06-packaging/package_archive.sh` (zero references, zero docs; its Windows
+  "twin" is equally unreferenced, so no parity obligation).
+- **Documented as consumer surface** (shipped into images, invoked by
+  external repos, previously invisible): `lib/{ctest-run,docs-build,
+  rust-toolchain}.sh` (now in the AGENTS.md + linux-build-basics.md
+  inventories alongside their already-documented siblings),
+  `02-toolchain/rust/cargo_*`, `02-toolchain/python/ci_*.sh`,
+  `01-core/setup-host-deps.sh`.
+- `make lint-workflows` target added (preflight ran it; the Makefile only
+  exposed lint-dockerfiles).
+- Clean bill elsewhere: zero dead Dockerfile ARG/ENVs, zero unreferenced
+  patches/data files (verify-patch-integrity already gates patches), zero
+  dead Makefile targets/workflow steps.
+
+## 2026-08-08 (night) — Linux lane: audit round 2 leftovers cleared
+
+The verified-but-queued remainder of the four audit reports:
+
+- **Orphan verify branches wired** (Dockerfile.media): `onnxruntime-gpu` runs
+  after the GPU EP build (GPU-enabled images had NO gate on those artifacts)
+  and `armnn` runs after the arm64 ACL/ArmNN build (a failed build left empty
+  /opt/armnn + /opt/acl shipping unexamined). Both branches had existed
+  caller-less since creation.
+- **`make verify-chain` can now fail**: STALE links are counted and the
+  explicit `--verify-chain` path exits 2 when any exist — it used to warn and
+  exit 0, an explicit verification that could not fail. The automatic
+  partial-run protection (_chain_assert_ancestry, hard-fail) is unchanged.
+  Makefile help text updated.
+- **verify-parity.sh judges by rc, not sentinel**: `|| echo "FAILED"`
+  appended AFTER the captured traceback, so the first-word parse read
+  "Traceback" and an ImportError could never increment failures.
+- **Runtime Vulkan check three-way**: ctypes.CDLL of the loader does NOT need
+  an ICD/GPU — a load failure means the library is missing/broken, and the
+  runtime image always ships the Vulkan runtime files. Missing/unloadable is
+  now a FAIL; only container-infra errors stay WARN.
+
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse C — test gaps closed
+
+- **Zero-assertion suites now FAIL**: `t_summary` treats `_T_RUN=0` as a
+  failure (a gutted suite used to print "0 assertion(s) passed" and stay
+  green), and run-tests.sh aggregates the per-suite counts — the final line
+  now reads "N suites, M assertions", so a coverage collapse is visible in
+  every log.
+- **Four new/extended suites** (7→11 suites, 68→120 assertions):
+  - `test-parallelism.sh` — pins mem_capped_jobs' RAM/cores formula, the ≥1
+    floor, and the new PARALLEL_JOBS validation (**fix included**: the
+    override was emitted unvalidated — `PARALLEL_JOBS=0` went straight into
+    `ninja -j0`; now rejected with a warning).
+  - `test-cli-parsers.sh` — pins the new central two-arg value guard (**fix
+    included** in dispatch_parsed_args: a trailing `--target-arches` or one
+    that swallowed the next flag used to assign ""/"--push" silently and fall
+    through to CROSS_DEFAULT_ARCHES — building all three arches).
+  - `test-stage-defs.sh` — the REAL cross_stage_tag/cross_build_mem_divisor/
+    graph-validation (test-disk-guard/test-ancestry stub these; until now no
+    test executed the real ones). Also asserts the Klasse-B ENABLE_NVIDIA
+    forwarding.
+  - `test-smoke-arch-parity.sh` — asserts smoke-common.sh's inline fallback
+    maps agree with the canonical platform.sh/arch-mapping.sh for all three
+    arches (this file had already caused two silent-skip bugs).
+  - Extended: riscv64→RISCV LLVM backend assert (a tempting "consistency
+    rename" would break the compiler stage), runtime_artifact_platform/
+    _image_ref (wrong-arch artifact COPY class), version-forwarding negative
+    asserts (an unset var must NOT become `--build-arg FOO=` overriding the
+    Dockerfile default with empty; `# noforward` must hold).
+- **IFS bug class killed by construction**: `arch_list_to_words` and
+  `smoke_arch_words` now emit NEWLINE-separated words — `for x in $(...)`
+  splits under both the default and the strict `IFS=$'\n\t'`, retiring the 16
+  latent for-loop sites the audit found (all consumers verified compatible:
+  for-loops, `wc -w`, unquoted argv). Parity suite pins the property.
+- **Gates that could not fail, now real**: smoke-torch-venv fails when
+  `STV_REQUIRE_VENV=1` and /opt/venv is absent (the package wrapper-smoke
+  sets it — the venv gate used to SKIP+pass exactly when setup-torch-venv
+  failed hardest); the SDK image asserts a non-empty /opt/vulkan and (except
+  riscv64) an executable /opt/flutter/bin/flutter (both shipped with ZERO
+  verification); smoke-torch-venv reports TVM presence/version per-arch with
+  EXP_TVM as opt-in hard pin (Dockerfile.media's comment claimed an
+  `import tvm` runtime gate that never existed — comment corrected);
+  `cross_stage_validate_graph` (pure, sub-second) now runs in preflight
+  (slug `stage-graph`) instead of only at build kickoff.
+
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse D — convention bugs
+
+- **`USE_CCACHE`/`USE_SCCACHE`/`USE_LLD` now accept both truthiness
+  spellings** (0/false/no/off, any case). Previously only the literal string
+  `"false"` disabled them — `USE_CCACHE=0`, the convention half the fleet
+  uses (and what `ENABLE_SCCACHE_*` expects), was silently ignored. Fixed in
+  compiler-cache.sh (+ shared `_flag_disabled` helper), cmake-cache-linker.sh,
+  build-ffmpeg.sh, onnxruntime lib/common.sh, ffmpeg-probe-framework.sh
+  (inline case in the standalone-bundled files, per bundling policy).
+  Verified live: `USE_CCACHE=0` now prints "ccache disabled".
+- **Bare `sudo` in the ONNX AMD/NVIDIA steps** (30-build-native-amd.sh,
+  30-build-native-nvidia.sh) replaced with the CPU sibling's guarded pattern
+  (command -v probe + SKIP_DEP_INSTALL honor) — they died rc 127 on images
+  without sudo while the CPU step degraded gracefully.
+- **common.sh's sudo fallback now sets `SUDO_WRAP` too** (it set only `SUDO`;
+  a `${SUDO_WRAP}` consumer reaching that path aborted under `set -u`).
+- verify-arg-consistency.sh no longer mixes `WARN:` and `WARNING:` prefixes.
+
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse B — contract drift
+
+- **`CUDA_ARCHITECTURES` carried literal quote characters into CMake**: the
+  only quoted value in versions.env, and `load_versions_env` exports values
+  verbatim — CMake received `"80` and `90"`, and the documented Hopper
+  `90→90a` suffix transform was a silent no-op (the string ends in `"`).
+  Value dequoted in versions.env (the file format is unquoted inert data, as
+  the loader header documents) AND the loader now strips one pair of
+  surrounding quotes — defense in depth for the class. Verified live: the
+  transform now yields `…;90a`.
+- **Android OpenCV built a different OpenCV than the chain**:
+  `OPENCV_VERSION="${1:-5.x}"` — the dispatcher passes no arguments and the
+  env was ignored, so every android image cloned the MOVING 5.x branch while
+  the chain ships tag 5.0.0. Now env-first with the 5.0.0 inline default
+  (sibling pattern), and Dockerfile.media's final stage exports
+  `ENV OPENCV_VERSION` so the android stages inherit the pin the same way
+  they already inherit GSTREAMER_VERSION.
+- **`Dockerfile.media` still fell back to `/opt/gcc-16.1.0`** in three
+  places — a path that no longer exists since the 16.2.0 bump (every
+  script-side fallback had been bumped; the Dockerfile inlines were invisible
+  to verify-arg-consistency, which only parses `ARG NAME=` lines).
+- **Stale nested fallbacks** (all invisible to the checker's `$`-containing
+  literal guard): GenAI `v0.15.0`→`v0.15.2`, VVdec `v3.1.0`→`v3.2.0`,
+  Python `3.14.6`→`3.14.7` ×2 (build_python.sh would have died on the 3.14.7
+  checksum with a misleading error) + the same stale 3.14.6 on the Windows
+  side (build-opencv-from-source.ps1).
+- **`ENABLE_NVIDIA`/`ENABLE_AMD` now reach the cross lane**: the runtime lane
+  honored them, `cross_stage_build_args` dropped them — a GPU-configured
+  runtime could sit on CPU-only media artifacts with no warning. Forwarded
+  (only when set) for the media stage.
+- **`install_vulkan_sdk` zero-arg call aborted "unbound variable"**: the
+  fallback referenced setup-dependencies.sh's flag-local
+  `VULKAN_VERSION_DEFAULT`; the chain now ends in the canonical
+  `VULKAN_VERSION` pin.
+- Four comments whose stated contract had drifted from the code they sit on
+  (abseil default, three GCC-16.1.0 claims) corrected.
+
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse A — error-path masking
+
+Four-perspective audit (error paths, contracts, tests, conventions); this
+entry is the error-path class. Every fix below closes a path where a real
+failure was reported as success:
+
+- **ELF wrong-arch gate was dead code** (`validate-media-runtime.sh`): the
+  clean-scan `exit 0` sat BEFORE the ELF architecture validation; NEEDED
+  sonames resolve by name, so a wrong-arch binary scanned clean and the gate
+  never ran. Now an `else` branch — ELF validation runs on every path.
+- **Stale-rootfs export on failed builds**: `_build_one_artifact`
+  (build-runtime-artifacts.sh) and `_sdk_arch_build` (build-sdk-artifacts.sh)
+  ran under `if !`-suppressed errexit with no `|| return 1` — a failed
+  `runtime_build_chain`/`cross_stage_run` fell through to
+  `export_rootfs_from_image`, which exported the previous run's tag and
+  reported green. Guards added.
+- **parallel-loop lost workers that die via `exit`**: `err()` terminates the
+  background subshell before `|| touch failed-flag` runs, and the join
+  discarded `wait`'s rc — a dead lane read as green under PARALLEL_ARCHS=1.
+  A nested `( )` layer now absorbs the exit into a return code.
+- **app-wheels gate was vacuous**: the Dockerfile's `.placeholder` (written
+  exactly when the wheelhouse build failed) satisfied "dir not empty". The
+  riscv64 verify now requires a real `*.whl`; `ALLOW_EMPTY_APP_WHEELS=1` is
+  the explicit escape hatch.
+- **verify-media-artifacts could not fail for litert / genai / opencv-core**:
+  litert checked `/usr/local/{include,lib}` (already filled by base's
+  CPython); genai checked dirs its own producer `mkdir -p`'s on every skip
+  path; opencv-core used INFO-only optional checks. All three now require
+  stage-specific artifacts (new side-effect-free `probe_lib`/`verify_any_lib`
+  helpers also fix the `verify_A || verify_B` idiom that counted A's failure
+  even when B passed). genai verify mirrors its producer's legitimate
+  cross-build skip instead of "verifying" pre-created empty dirs.
+- **smoke-media masking**: a non-executable ffmpeg/gst-inspect was a PASS
+  ("will work at runtime") — now INFO + ELF-magic assertion, with the
+  functional gate named; the OpenCV cvtColor roundtrip and GStreamer pipeline
+  checks had no else-branch (could not fail) — now fail when execution
+  demonstrably works; ffmpeg encode failure fails when the binary executes
+  and advertises libx264; onnxruntime import-failure now proves the library
+  exists instead of claiming presence unchecked.
+- **verify-cuda-stack.sh rewritten**: ` || true)` pasted inside three command
+  substitutions made the "not found" branches unreachable and hard-failed
+  healthy images under `set -e`. Now honest warn-only (stderr, no `-e`) with
+  `CUDA_STACK_STRICT=1` as the real gate for complete-stack images.
+- **base-image bootstrap fails fast**: the apt-update retry loop `break`ed
+  away its terminal failure and continued; ca-certificates install failure
+  was a log line. A broken mirror/CA store now aborts the bootstrap with the
+  culprit named instead of surfacing hours later as an opaque TLS error.
+
+## 2026-08-08 (evening) — Linux lane: IREE tblgen Exec-format failure, and the binfmt registration that silently died
+
+### media-arm64 failed: IREE's NATIVE tblgen was cross-compiled
+
+The app-wheelhouse IREE cross build died with `Exec format error` on
+`llvm-project/NATIVE/bin/llvm-min-tblgen`: LLVM's CrossCompile.cmake defaults
+the NATIVE sub-build's compilers to the **outer cross compilers**, so the
+tblgen that must run on the amd64 build host was built for arm64. Fix:
+`build-app-wheelhouse.sh` now passes `-DCROSS_TOOLCHAIN_FLAGS_NATIVE` pinning
+the true host compilers (+ ccache launchers — closing the nested-sub-build
+caching item from the backlog in the same stroke). riscv64 never hit this only
+because qemu binfmt silently emulated the wrong-arch tblgen — slowly.
+
+### Which exposed: binfmt registrations die on containerd restart
+
+The morning's shim-failure `systemctl --user restart containerd` silently wiped
+the rootlesskit-namespace qemu registrations (they are namespace-lifetime, not
+host-lifetime). Re-registered for arm64+riscv64 and installed the
+`rootless-binfmt.service` --user unit so login/boot re-registers automatically.
+Two bugs fixed in `setup-rootless-binfmt.sh` itself along the way: it claimed
+"pulling" but never pulled (image save fails "not found" on a fresh host), and
+its blob-detection pipeline `tar -tf | grep -q` self-destructed under pipefail
+(SIGPIPE — shell bug class 2) so extraction skipped every blob. AGENTS.md's two
+stale recommendations of the non-working rootless
+`tonistiigi/binfmt --install` container corrected to the helper script.
+
+The foreign chain marked arm64 failed and moved on to media-riscv64 (by
+design); media-arm64 + android-arm64 re-run after the chain with the fix.
+
 ## 2026-08-08 (evening) — Linux lane: structural round 1 (cache-key closure + drift bugs + dead code)
 
 ### Dockerfile.base no longer cache-keys on ~120 files (A1)

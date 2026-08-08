@@ -82,6 +82,24 @@ check_ndk() {
         local cc="${toolchain_dir}/bin/${target_arch}-linux-android${ANDROID_API_LEVEL}-clang"
         if [ -x "${cc}" ]; then
           pass "NDK clang for ${target_arch}: ${cc}"
+          # This file's own header (line 9) has promised a compile smoke since
+          # its creation; until 2026-08-08 it did not exist — everything above
+          # is presence-only. The NDK clang is an x86_64 HOST binary, so it
+          # executes on every branch; the emitted object is target-arch.
+          local ndk_tmp ndk_machine
+          ndk_tmp="$(mktemp -d)"
+          if printf 'int f(void){return 1;}\n' | "${cc}" -x c - -c -o "${ndk_tmp}/a.o" 2>/dev/null; then
+            ndk_machine="$(readelf -h "${ndk_tmp}/a.o" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
+            case "${target_arch}:${ndk_machine}" in
+              aarch64:*AArch64*|x86_64:*X86-64*|riscv64:*RISC-V*)
+                pass "NDK clang ${target_arch}: compiles, object ELF machine=${ndk_machine}" ;;
+              *)
+                fail "NDK clang ${target_arch}: object ELF machine '${ndk_machine}' does not match target" ;;
+            esac
+          else
+            fail "NDK clang for ${target_arch} exists but cannot compile a trivial object"
+          fi
+          rm -rf "${ndk_tmp}"
         fi
       done
     else

@@ -368,21 +368,23 @@ check_imports() {
     py_cmd="import ${mod}; print(\"${mod} ok:\", ${mod}.__version__ if hasattr(${mod}, \"__version__\") else \"loaded\")"
 
     # No `bash -lc` prefix — container_exec already wraps (see check_python).
+    # Judge by RC, not by a sentinel word: the old `|| echo "FAILED"` appended
+    # AFTER the captured traceback (the in-container 2>&1 puts it on stdout),
+    # so `${out%% *}` parsed "Traceback", never "FAILED" — an ImportError
+    # could not increment failures (audit round 2, failure-path F21).
+    local native_rc=0 cross_rc=0
     native_out="$(container_exec_strip "${NATIVE_IMAGE}" \
-      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
+      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null)" || native_rc=$?
 
     cross_out="$(container_exec_strip "${CROSS_IMAGE}" \
-      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null || echo "FAILED")"
+      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null)" || cross_rc=$?
 
-    local native_status="${native_out%% *}"
-    local cross_status="${cross_out%% *}"
-
-    if [ "${native_status}" = "FAILED" ]; then
-      printf '  NATIVE %-15s FAILED: %s\n' "${mod}" "${native_out}"
+    if [ "${native_rc}" -ne 0 ]; then
+      printf '  NATIVE %-15s FAILED (rc=%s): %s\n' "${mod}" "${native_rc}" "$(printf '%s' "${native_out}" | tail -1)"
       ((failures++)) || true
     fi
-    if [ "${cross_status}" = "FAILED" ]; then
-      printf '  CROSS  %-15s FAILED: %s\n' "${mod}" "${cross_out}"
+    if [ "${cross_rc}" -ne 0 ]; then
+      printf '  CROSS  %-15s FAILED (rc=%s): %s\n' "${mod}" "${cross_rc}" "$(printf '%s' "${cross_out}" | tail -1)"
       ((failures++)) || true
     fi
   done

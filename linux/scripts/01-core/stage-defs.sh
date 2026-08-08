@@ -263,6 +263,13 @@ cross_stage_build_args() {
       ;;
     media)
       append_cross_per_arch_build_args _csba_out "${arch}"
+      # Accelerator toggles: the runtime lane honors env ENABLE_NVIDIA/AMD
+      # (append_runtime_accelerator_build_args), but the cross lane silently
+      # dropped them — ENABLE_NVIDIA=true on build-cross-chain.sh built a
+      # CPU-only media stage under a GPU-configured runtime, no warning.
+      # Forward only when set, so the Dockerfile defaults stay authoritative.
+      append_optional_build_arg _csba_out ENABLE_NVIDIA "${ENABLE_NVIDIA:-}"
+      append_optional_build_arg _csba_out ENABLE_AMD "${ENABLE_AMD:-}"
       ;;
     android)
       append_cross_per_arch_build_args _csba_out "${arch}"

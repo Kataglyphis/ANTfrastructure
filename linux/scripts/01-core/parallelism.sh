@@ -201,10 +201,21 @@ mem_capped_jobs() {
   # Usage: mem_capped_jobs <peak_mb> [requested]
   local peak_mb="$1" requested="${2:-}"
 
-  # Hard override wins over everything.
+  # Hard override wins over everything — but only a VALID one. The raw
+  # passthrough this replaces emitted the value unvalidated and unclamped:
+  # PARALLEL_JOBS=0 (or a non-numeric leftover from a stale env) went
+  # straight into `make -j0`/`ninja -j0`, bypassing the >=1 floor below.
   if [ -n "${PARALLEL_JOBS:-}" ]; then
-    printf '%s\n' "${PARALLEL_JOBS}"
-    return 0
+    case "${PARALLEL_JOBS}" in
+      *[!0-9]*)
+        printf 'WARNING: ignoring non-numeric PARALLEL_JOBS=%s\n' "${PARALLEL_JOBS}" >&2 ;;
+      *)
+        if [ "${PARALLEL_JOBS}" -ge 1 ] 2>/dev/null; then
+          printf '%s\n' "${PARALLEL_JOBS}"
+          return 0
+        fi
+        printf 'WARNING: ignoring PARALLEL_JOBS=%s (< 1)\n' "${PARALLEL_JOBS}" >&2 ;;
+    esac
   fi
 
   local jobs avail_mb cap

@@ -124,7 +124,16 @@ info "cuDNN header: ${CUDNN_H}"
 # --------------------------------------------------------------------------
 # Install Python build dependencies
 # --------------------------------------------------------------------------
-sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
+if [ "${SKIP_DEP_INSTALL:-false}" != "true" ]; then
+    # Guarded like the CPU step (30-build-native.sh): the media stage runs as
+    # root in images where sudo is not necessarily installed — bare `sudo`
+    # died rc 127 there while the CPU sibling degraded gracefully.
+    if command -v sudo >/dev/null 2>&1; then
+        sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
+    else
+        apt-get update -qq && apt-get install -y --no-install-recommends libgcc-s1
+    fi
+fi
 
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 setup_host_python_environment

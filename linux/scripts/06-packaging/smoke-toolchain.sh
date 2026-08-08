@@ -3,7 +3,7 @@ set -euo pipefail
 
 # smoke-toolchain.sh
 # Validates the compiler toolchain inside the cross-compiler image:
-#   - GCC 16.1.0 for all cross targets
+#   - GCC ${GCC_VERSION} (versions.env pin) for all cross targets
 #   - LLVM/Clang 22.1.8
 #   - Rust/Cargo
 #   - Python 3.14
@@ -33,7 +33,7 @@ done
 unset _sve _vef
 : "${GCC_VERSION:=16.2.0}"
 : "${LLVM_RELEASE:=22.1.8}"
-: "${PYTHON_VERSION:=3.14.6}"
+: "${PYTHON_VERSION:=3.14.7}"
 : "${PYTHON_MAJOR_MINOR:=3.14}"
 : "${GCC_PREFIX:=/opt/gcc-${GCC_VERSION}}"
 
@@ -106,8 +106,20 @@ check_rust() {
 
   # Rust
   echo "--- Rust/Cargo ---"
-  check_version "rustc --version" "rustc" "rustc"
+  # Pin against the versions.env value, not the literal "rustc" — asserting
+  # that `rustc --version` contains "rustc" could never fail (smoke-depth R10).
+  check_version "rustc --version" "${RUST_VERSION:-rustc}" "rustc"
   check_version "cargo --version" "cargo" "cargo"
+  # Host compile+RUN: the version banner proves the driver starts, nothing
+  # more. A miscompiled/rlib-broken toolchain still prints a version.
+  local _rs_tmp
+  _rs_tmp="$(mktemp -d)"
+  printf 'fn main(){assert_eq!(2+2,4);}\n' > "${_rs_tmp}/m.rs"
+  if rustc -O "${_rs_tmp}/m.rs" -o "${_rs_tmp}/m" 2>/dev/null && "${_rs_tmp}/m"; then
+    pass "rustc compiles and RUNS a host binary"
+  else
+    fail "rustc host compile/run FAILED"
+  fi
   for target in $(smoke_arch_words "${target_arches}"); do
     local rust_target
     rust_target="$(smoke_rust_target "${target}" 2>/dev/null || true)"
@@ -116,11 +128,46 @@ check_rust() {
     if [ -z "${rust_target}" ]; then
       fail "Rust target unknown for arch ${target} (no triple mapping)"
     elif rustup target list --installed 2>/dev/null | grep -q "${rust_target}"; then
-      pass "Rust target ${rust_target} installed"
+      # `--installed` lists a target even when its std rlibs are missing —
+      # emit-obj is the cheapest proof the target std is genuinely usable
+      # (no execution, so it works for every arch).
+      printf 'pub fn f(x:i32)->i32{x*2}\n' > "${_rs_tmp}/l.rs"
+      if rustc --target "${rust_target}" --crate-type=lib --emit=obj \
+           "${_rs_tmp}/l.rs" -o "${_rs_tmp}/l.o" 2>/dev/null; then
+        pass "Rust target ${rust_target} installed and usable (emit-obj OK)"
+      else
+        fail "Rust target ${rust_target} LISTED but cannot emit an object (std rlibs missing/broken)"
+      fi
     else
       fail "Rust target ${rust_target} not installed"
     fi
   done
+  rm -rf "${_rs_tmp}"
+  echo ""
+}
+
+check_node() {
+  echo "--- Node.js ---"
+  # node had ZERO smoke coverage (smoke-depth R15) although the WASM gate in
+  # smoke-media silently self-disables when node is absent.
+  if ! command -v node >/dev/null 2>&1; then
+    fail "node not on PATH (the LiteRT-web WASM gate silently self-disables without it)"
+    echo ""
+    return 0
+  fi
+  if [ -n "${NODE_VERSION:-}" ]; then
+    if node --version 2>/dev/null | grep -q "^v${NODE_VERSION}"; then
+      pass "node version matches pin (v${NODE_VERSION})"
+    else
+      fail "node $(node --version 2>/dev/null || echo '?') != pinned v${NODE_VERSION}"
+    fi
+  fi
+  if node -e 'const a=require("assert");a.strictEqual(JSON.parse(JSON.stringify({x:1})).x,1);a.ok(require("crypto").createHash("sha256").update("x").digest("hex").length===64);' 2>/dev/null; then
+    pass "node executes JS (JSON + crypto OK)"
+  else
+    fail "node present but cannot execute a trivial script"
+  fi
+  command -v npm >/dev/null 2>&1 && pass "npm present alongside node" || fail "npm missing alongside node"
   echo ""
 }
 
@@ -137,10 +184,39 @@ check_python() {
   else
     fail "python${PYTHON_MAJOR_MINOR} sys.version: ${py_sysver:-MISSING} (expected ${PYTHON_VERSION})"
   fi
+  # Stdlib extension-module battery (smoke-depth R3): this is a FROM-SOURCE
+  # CPython — silently dropping _ssl/_sqlite3/_lzma when a dev header is
+  # missing at configure time is the textbook failure, and no ssl means every
+  # HTTPS/pip call dies at runtime. Exercise, don't just import.
+  if /usr/local/bin/python${PYTHON_MAJOR_MINOR} -c "
+import ssl, sqlite3, lzma, bz2, zlib, hashlib, ctypes, decimal, uuid
+ssl.create_default_context()
+c = sqlite3.connect(':memory:'); c.execute('create table t(x int)')
+c.execute('insert into t values(1)')
+assert c.execute('select x from t').fetchone() == (1,)
+assert lzma.decompress(lzma.compress(b'k'*100)) == b'k'*100
+assert bz2.decompress(bz2.compress(b'k'*100)) == b'k'*100
+assert hashlib.sha256(b'x').hexdigest().startswith('2d711642')
+" 2>/dev/null; then
+    pass "python stdlib battery (ssl/sqlite3/lzma/bz2/zlib/hashlib/ctypes) OK"
+  else
+    fail "python stdlib battery FAILED — from-source CPython is missing/mis-built an extension module (ssl? sqlite3? lzma?)"
+  fi
+  local host_arch_py
+  host_arch_py="$(smoke_host_arch)"
   for cross_arch in $(smoke_arch_words "${target_arches}"); do
     local py_root="/opt/python-cross/${cross_arch}"
     # A staged dir that is missing its .pc or binary is a broken staging —
     # fail explicitly instead of only pass-ing on the happy path.
+    # And a WHOLLY ABSENT staging dir for a requested foreign arch is the
+    # worst case, not a skip (smoke-depth R16a: the old `if [ -d ]` wrapper
+    # ran ZERO checks then).
+    if [ ! -d "${py_root}" ]; then
+      if [ "${cross_arch}" != "${host_arch_py}" ]; then
+        fail "cross-Python staging entirely ABSENT for ${cross_arch} (expected ${py_root})"
+      fi
+      continue
+    fi
     if [ -d "${py_root}" ]; then
       if [ -f "${py_root}/usr/local/lib/pkgconfig/python-${PYTHON_MAJOR_MINOR}.pc" ]; then
         pass "Python ${PYTHON_MAJOR_MINOR} pkg-config exists for ${cross_arch}"
@@ -177,6 +253,7 @@ main() {
   check_host_gcc
   check_llvm_clang
   check_rust "${target_arches}"
+  check_node
   check_python "${target_arches}"
   run_cross_targets "${target_arches}" "${host_arch}"
 

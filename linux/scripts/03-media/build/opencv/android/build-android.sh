@@ -5,7 +5,12 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 android_build_preamble_init "Android OpenCV build" "${ANDROID_API_LEVEL:-34}"
 
-OPENCV_VERSION="${1:-5.x}"
+# Env-first like the litert/iree/onnxruntime siblings (android-dispatch.sh
+# passes no arguments, so `${1:-...}` alone always took the literal). Inline
+# default mirrors versions.env OPENCV_VERSION — the released 5.0.0 TAG, not
+# the moving 5.x branch (which made the android OpenCV non-reproducible and
+# of different provenance than the chain's /opt/opencv5).
+OPENCV_VERSION="${OPENCV_VERSION:-${1:-5.0.0}}"
 INSTALL_DIR="${OPENCV_ROOT_ANDROID:-/opt/android/opencv}"
 
 apt-get update && apt-get install -y --no-install-recommends \

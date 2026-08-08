@@ -105,7 +105,13 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
 
 # 6. VERIFICATION
 RUN set -euo pipefail; \
-    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify
+    bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${TARGET_ARCH}" verify; \
+    # Vulkan SDK gate (audit round 2: the verify above checks compilers only —
+    # the SDK install had no assertion at all; verify.sh's contribution was
+    # literally a "Reminder: source setup-env.sh" log line). The install root
+    # must exist and be non-empty for the arch this SDK image targets.
+    test -d /opt/vulkan || { echo "ERROR: /opt/vulkan missing after Vulkan SDK install" >&2; exit 1; }; \
+    [ -n "$(ls -A /opt/vulkan 2>/dev/null)" ] || { echo "ERROR: /opt/vulkan is empty after Vulkan SDK install" >&2; exit 1; }
 
 # ==============================================================================
 # Frameworks; TVM
@@ -157,6 +163,12 @@ RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGETARCH},
           --version "${FLUTTER_VERSION}" \
           --dir /opt; \
         cp -an /opt/flutter/. /var/cache/flutter/ 2>/dev/null || true; \
+    fi; \
+    # Real gate (audit round 2: Flutter shipped with zero verification — a
+    # failed install was only discovered by a user). riscv64 is the documented
+    # skip; every other arch must end this RUN with a working flutter binary.
+    if [ "${TARGET_ARCH:-amd64}" != "riscv64" ]; then \
+        test -x /opt/flutter/bin/flutter || { echo "ERROR: /opt/flutter/bin/flutter missing/not executable after install" >&2; exit 1; }; \
     fi
 
 LABEL org.opencontainers.image.title="Kataglyphis SDK" \

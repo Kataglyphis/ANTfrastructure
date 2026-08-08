@@ -147,7 +147,19 @@ dispatch_parsed_args() {
   "$@" || _dp_rc=$?
   case $_dp_rc in
     1) _DP_SHIFT=1; return 0 ;;
-    2) _DP_SHIFT=2; return 0 ;;
+    2)
+      # Two-arg flag consumed. By contract the parser was invoked as
+      # `parse_fn NAMEREFS... <flag> <value>` — reject an empty or flag-like
+      # value here, centrally: a trailing `--target-arches` (or a typo that
+      # made it swallow the NEXT flag as its value) used to assign "" /
+      # "--push" silently, and an empty arch list falls through to
+      # CROSS_DEFAULT_ARCHES — building all three arches instead of erroring.
+      local _dp_val="${*: -1}" _dp_flag="${*: -2:1}"
+      if [ -z "${_dp_val}" ] || [ "${_dp_val#--}" != "${_dp_val}" ]; then
+        echo "ERROR: ${_dp_flag} requires a value (got '${_dp_val}')" >&2
+        return 1
+      fi
+      _DP_SHIFT=2; return 0 ;;
     *) return "$_dp_rc" ;;
   esac
 }

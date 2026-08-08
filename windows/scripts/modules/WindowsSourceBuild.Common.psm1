@@ -175,25 +175,24 @@ function Invoke-CmakeConfigure {
             if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
             $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            # CUDA launcher added 2026-08-08. Until then only C/CXX were wired,
-            # so every .cu translation unit went through nvcc UNCACHED -- and
-            # build-onnx-from-source.ps1 records that as "~1h CUDA/TensorRT
-            # kernel compiles", plausibly the largest single time sink in the
-            # chain, re-paid on every run.
+            # CUDA launcher: this is what caches the ~1h of CUDA/TensorRT kernel
+            # compiles that build-onnx-from-source.ps1 records, previously
+            # re-paid in full on every run.
             #
-            # sccache supports nvcc explicitly (its README lists NVCC among
-            # gcc/clang/MSVC/rustc/NVC++/hipcc), so this is a supported path,
-            # not a trick. Set UNCONDITIONALLY: CMake ignores the variable when
-            # CUDA is not an enabled language, so a CPU-only configure is
-            # unaffected and no CUDA-detection guard is needed here.
+            # It REQUIRES the source-built sccache. With the released 0.17.0 it
+            # does not merely miss the cache, it fails the build:
+            #   fatbinary fatal : Could not open input file '<tu>.compute_80.cubin'
+            # because sccache parses `nvcc --dryrun` positionally and CUDA
+            # 13.3.33 moved `--simt-only` after the input file, mis-grouping the
+            # cicc/ptxas device steps so the per-arch .cubin files are never
+            # produced (measured here 2026-08-08; upstream mozilla/sccache#2722,
+            # merged five days after v0.17.0 shipped). setup-rust-toolchain.ps1
+            # builds that commit and verify-toolchain.ps1 asserts the cargo-built
+            # binary is the one on PATH — so by the time this line runs, an
+            # sccache that cannot do this has already failed the base build.
             #
-            # Watch on the first CUDA run (see the backlog entry): nvcc's host
-            # compiler in this image is cl.exe -- the same host-flag path that
-            # already needs ocv_cuda_filter_options to strip clang-cl-only flags
-            # (D8021) -- and ONNX compiles four -gencode arches in one
-            # invocation, where sccache's SCCACHE_CACHE_MULTIARCH semantics are
-            # documented in a single clause. If nvcc invocations start failing,
-            # THIS line is the first thing to revert.
+            # Set unconditionally: CMake ignores it when CUDA is not an enabled
+            # language, so CPU-only configures are unaffected.
             $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX/CUDA launchers)"
         }

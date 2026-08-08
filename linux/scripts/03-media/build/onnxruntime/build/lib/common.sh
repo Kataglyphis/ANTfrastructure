@@ -85,7 +85,7 @@ init_defaults() {
   BUILD_XNNPACK_EP="${BUILD_XNNPACK_EP:-true}"
 
   BUILD_GENAI="${BUILD_GENAI:-true}"
-  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.15.0}}"
+  GENAI_VERSION="${GENAI_VERSION:-${ONNXRUNTIME_GENAI_VERSION:-v0.15.2}}"
   GENAI_REPO="${GENAI_REPO:-https://github.com/microsoft/onnxruntime-genai.git}"
   GENAI_SRC_DIR="${GENAI_SRC_DIR:-${ORT_SRC_DIR}-genai}"
   GENAI_BUILD_DIR="${GENAI_BUILD_DIR:-${GENAI_SRC_DIR}/build}"
@@ -505,7 +505,7 @@ append_onnx_ccache_build_args() {
   # shellcheck disable=SC2178
   local -n build_args_ref="${build_args_name}"
 
-  if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+  if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
       build_args_ref+=(
         --cmake_extra_defines

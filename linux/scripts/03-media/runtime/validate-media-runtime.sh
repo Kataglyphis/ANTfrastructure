@@ -177,8 +177,11 @@ mapfile -t UNIQ_MISSING < <(printf '%s\n' "${ALL_MISSING[@]}" | uniq_nonempty_li
 
 if [ ${#UNIQ_MISSING[@]} -eq 0 ]; then
   echo "All artifacts have their runtime dependencies satisfied."
-  exit 0
-fi
+  # Deliberately NO exit here. The ELF architecture gate below must run on
+  # clean scans too: NEEDED sonames resolve by NAME, so a wrong-arch ffmpeg
+  # scans perfectly clean — the early `exit 0` this replaced made the
+  # wrong-arch check dead code on every healthy build.
+else
 
 echo ""
 echo "=== Resolving ${#UNIQ_MISSING[@]} missing dependencies ==="
@@ -247,6 +250,8 @@ if [ ${#STILL_MISSING[@]} -gt 0 ]; then
   printf '  %s\n' "${STILL_MISSING[@]}"
   echo "Add entries to so-package-map.txt (next to validate-media-runtime.sh)."
 fi
+
+fi  # end of the dirty-scan resolution branch — ELF validation runs either way
 
 # ---------------------------------------------------------------------------
 # ELF architecture validation — verify key binaries match the target arch

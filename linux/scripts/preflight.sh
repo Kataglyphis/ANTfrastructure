@@ -165,6 +165,18 @@ run_check android-parity "android stage parity" bash linux/scripts/01-core/verif
 # 11. Unit tests for the tag/build-arg/disk-guard logic in linux/scripts.
 run_check script-tests "linux script unit tests" bash linux/scripts/tests/run-tests.sh
 
+# 12. Stage-graph self-consistency (parent refs, dockerfiles, tags, cycles).
+# Pure and sub-second — it used to run only at build kickoff
+# (build-cross-chain.sh), so a malformed graph escaped this fast gate and was
+# discovered by the orchestrator instead.
+run_check stage-graph "cross stage graph validation" bash -c '
+  source linux/scripts/01-core/modules.sh 2>/dev/null || true
+  source linux/scripts/01-core/build-helpers.sh
+  source linux/scripts/01-core/platform.sh
+  source linux/scripts/01-core/tag-naming.sh
+  source linux/scripts/01-core/stage-defs.sh
+  IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
+
 printf "\n${BOLD}=== preflight summary ===${NC}\n"
 if [ "${#FAILED[@]}" -eq 0 ]; then
   printf "${GREEN}All preflight checks passed.${NC} Safe to start the cross rebuild.\n"

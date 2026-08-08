@@ -9,7 +9,7 @@
 #   make preflight       fast, no-build gate (shellcheck + verify-* suite)
 #   make cross-build     full base -> :latest-cross for ARCHES
 #   make cross-stage     rebuild one STAGE for ARCHES
-#   make verify-chain    resolve digests, warn on stale downstream images
+#   make verify-chain    resolve digests; exit 2 if any downstream image is STALE
 #   make lint            shellcheck the tree at -S error
 #
 # Common variables (override on the command line, e.g. `make cross-build ARCHES=arm64`):
@@ -41,7 +41,7 @@ SCRIPTS := linux/scripts
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight lint lint-dockerfiles test-linux-scripts cross-build cross-stage verify-chain describe-chain smoke
+.PHONY: help preflight lint lint-dockerfiles lint-workflows test-linux-scripts cross-build cross-stage verify-chain describe-chain smoke
 
 help: ## List available targets
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -58,6 +58,9 @@ lint: ## shellcheck the whole tree at -S error
 lint-dockerfiles: ## hadolint all Dockerfiles (policy: .hadolint.yaml)
 	bash $(SCRIPTS)/lint-dockerfiles.sh
 
+lint-workflows: ## Lint GitHub workflows (actionlint)
+	bash $(SCRIPTS)/lint-workflows.sh
+
 test-linux-scripts: ## Unit tests for linux/scripts (tag naming, forwarding, disk guard)
 	bash $(SCRIPTS)/tests/run-tests.sh
 
@@ -67,7 +70,7 @@ cross-build: ## Full base -> :latest-cross for ARCHES
 cross-stage: ## Rebuild a single STAGE for ARCHES
 	bash $(SCRIPTS)/build-cross-chain.sh --only $(STAGE) --target-arches $(ARCHES) --log-dir $(LOG_DIR)
 
-verify-chain: ## Resolve upstream digests, warn on stale downstream images
+verify-chain: ## Resolve upstream digests; exit 2 on stale downstream images
 	bash $(SCRIPTS)/build-cross-chain.sh --verify-chain --target-arches $(ARCHES)
 
 describe-chain: ## Print the full stage graph with tag names (no builds)

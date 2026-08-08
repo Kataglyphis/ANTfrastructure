@@ -7,7 +7,7 @@ _BUILD_HELPERS_LOADED=1
 # Provides:
 #   _bool_truthy()                — test a value for boolean truthiness
 #   is_dry_run()                  — return 0 if DRY_RUN is set to a truthy value
-#   arch_list_to_words()          — convert comma-separated arch list to space-separated
+#   arch_list_to_words()          — convert comma-separated arch list to newline-separated (IFS-safe)
 #   trap_push()                   — push an EXIT trap handler (preserves existing handlers)
 #   run()                         — echo + execute (DO NOT use for secret-bearing args)
 #   (run_quiet removed 2026-08-08: zero callers; recover from git history)
@@ -44,15 +44,16 @@ is_dry_run() {
   _bool_truthy "${DRY_RUN:-0}"
 }
 
-# Convert a comma-separated architecture list to space-separated words.
+# Convert a comma/space-separated architecture list to NEWLINE-separated words.
 #
-# CAUTION: `for arch in $(arch_list_to_words ...)` relies on IFS containing a
-# space — it silently stops splitting in scripts that set IFS=$'\n\t' (most
-# 02/03 build scripts do). In any context that may run under a modified IFS,
-# split with the builtin-scoped idiom instead:
-#   IFS=',' read -r -a arches <<< "${TARGET_ARCHES}"
+# Newlines on purpose: the old space-separated output made every
+# `for arch in $(arch_list_to_words ...)` silently stop splitting in scripts
+# that set IFS=$'\n\t' (16 call sites carried that latent bug). Both the
+# default IFS and the strict $'\n\t' contain \n, so newline output splits
+# correctly under either — the bug class is now impossible by construction.
+# (`wc -w` and unquoted argv expansion are unaffected.)
 arch_list_to_words() {
-  printf '%s' "${1:-}" | tr ',' ' '
+  printf '%s\n' "${1:-}" | tr ', ' '\n\n'
 }
 
 # ── EXIT trap stack ───────────────────────────────────────────────────────────

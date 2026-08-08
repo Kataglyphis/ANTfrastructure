@@ -54,11 +54,15 @@ EOF
 _build_one_artifact() {
   local _arch="$1"
   local tag
+  # `|| return 1` on every chain call is load-bearing: run_parallel_arch_loop
+  # calls this via `if ! fn`, which suppresses errexit for the whole call tree
+  # — without the guards, a failed build falls through to the export below,
+  # which exports the STALE tag left by a previous run and reports green.
   if runtime_use_local_stage_context_outputs; then
-    runtime_build_chain "${_arch}" "${OUTPUT_ROOT}/${_arch}/rootfs"
-    runtime_write_artifact_metadata "${_arch}" "${OUTPUT_ROOT}/${_arch}"
+    runtime_build_chain "${_arch}" "${OUTPUT_ROOT}/${_arch}/rootfs" || return 1
+    runtime_write_artifact_metadata "${_arch}" "${OUTPUT_ROOT}/${_arch}" || return 1
   else
-    runtime_build_chain "${_arch}"
+    runtime_build_chain "${_arch}" || return 1
     tag="$(runtime_wrapper_tag "${_arch}")"
     export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${_arch}" \
       "TARGET_ARCH=${_arch}" \

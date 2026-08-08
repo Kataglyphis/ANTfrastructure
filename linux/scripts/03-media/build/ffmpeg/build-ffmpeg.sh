@@ -356,7 +356,7 @@ _ffmpeg_linker_ccache_args() {
     fi
 
     # Use ccache if available
-    if command -v ccache >/dev/null 2>&1 && [ "${USE_CCACHE:-true}" != "false" ]; then
+    if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
         if cross_build_is_active; then
             _fflc_out+=("--cc=ccache ${CC}")
             _fflc_out+=("--cxx=ccache ${CXX}")

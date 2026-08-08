@@ -445,7 +445,19 @@ The new end-goal path keeps the existing QEMU lane for compatibility while addin
 
 ### Host prerequisite: QEMU/binfmt for the emulated runtime legs
 
-The `sdk`/`media`/`android` stages cross-compile *on amd64* and need no emulation.
+The `sdk`/`media`/`android` stages cross-compile *on amd64* and need no emulation
+by design — but note the registration is load-bearing even there: nested NATIVE
+tool sub-builds (e.g. IREE's bundled-LLVM tblgen) historically only survived
+because qemu silently executed a wrong-arch binary. That specific case is fixed
+at the source (`CROSS_TOOLCHAIN_FLAGS_NATIVE` pins the host compilers), but keep
+binfmt registered — it is the safety net for the whole class.
+
+**Lifetime:** the registration lives in the rootlesskit namespace and dies on
+host reboot **and on `systemctl --user restart containerd`** (this bit the
+2026-08-08 foreign chain: the shim-failure restart earlier that day had silently
+wiped it, and media-arm64's IREE build failed with `Exec format error`).
+`--install-service` below installs a systemd --user unit so it re-registers
+automatically.
 The **runtime** stage is different: `build-runtime-manifest.sh` builds the per-arch
 `base → package → torch` wrappers **on the real target platform**
 (`nerdctl build --platform linux/arm64|riscv64`). For foreign architectures those

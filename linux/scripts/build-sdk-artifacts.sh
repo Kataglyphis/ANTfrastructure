@@ -81,7 +81,11 @@ main() {
 _sdk_arch_build() {
   local arch="$1" tag
   tag="$(cross_sdk_tag "${arch}")"
-  cross_stage_run "sdk" "${arch}" "${PUSH_IMAGES}"
+  # `|| return 1` is load-bearing: run_parallel_arch_loop calls this via
+  # `if ! fn`, which suppresses errexit for the whole call tree — without the
+  # guard, a failed build falls through to export_rootfs_from_image, which
+  # happily exports the STALE tag left by a previous run and reports green.
+  cross_stage_run "sdk" "${arch}" "${PUSH_IMAGES}" || return 1
   export_rootfs_from_image "${NERDCTL_BIN}" "${tag}" "${OUTPUT_ROOT}/${arch}" \
     "TARGET_ARCH=${arch}" \
     "SOURCE_IMAGE=${tag}" \

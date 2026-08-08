@@ -101,7 +101,7 @@ filter_colon_list_excluding_prefix() {
 sanitize_vulkan_sdk_env() {
   local prefix="${1:-/opt/vulkan/}"
 
-  if [ "${VULKAN_KEEP_SDK_LIBS:-${TVM_VULKAN_KEEP_SDK_LIBS:-0}}" = "1" ]; then
+  if [ "${VULKAN_KEEP_SDK_LIBS:-0}" = "1" ]; then
     return 0
   fi
 
@@ -523,7 +523,11 @@ _build_vulkan_targets() {
 }
 
 install_vulkan_sdk() {
-  local version="${1:-$VULKAN_VERSION_DEFAULT}"
+  # Fallback chain ends in the CANONICAL pin name. VULKAN_VERSION_DEFAULT is a
+  # setup-dependencies.sh-local override that exists only when --vulkan-version
+  # was passed — a zero-arg call used to abort "unbound variable" instead of
+  # falling back to the versions.env pin it was named after.
+  local version="${1:-${VULKAN_VERSION_DEFAULT:-${VULKAN_VERSION:?VULKAN_VERSION (or an explicit argument) required}}}"
   log "Installing Vulkan SDK ${version} via tarball"
   install_vulkan_prereqs
 

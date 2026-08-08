@@ -38,7 +38,7 @@ ARG GSTREAMER_VERSION="1.29.2"
 # Build Acceleration Arguments
 # Set AGGRESSIVE_PARALLELISM=true for faster builds on high-memory machines (16GB+)
 # Set USE_LLD=false to disable lld linker
-# Set USE_CCACHE=false to disable ccache
+# Set USE_CCACHE=0 (or false/no/off) to disable ccache
 ARG AGGRESSIVE_PARALLELISM=false
 ARG USE_LLD=true
 ARG USE_CCACHE=true
@@ -172,8 +172,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 ENV NVIDIA_CODEC_HEADERS=auto \
     UV_PYTHON="/opt/python/.venv/bin/python" \
     VIRTUAL_ENV="/opt/python/.venv" \
-    CC=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/gcc \
-    CXX=/opt/gcc-${GCC_VERSION:-16.1.0}/bin/g++
+    CC=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/gcc \
+    CXX=/opt/gcc-${GCC_VERSION:-16.2.0}/bin/g++
 
 # ==============================================================================
 # ONNX Runtime stage
@@ -246,6 +246,10 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     set -euo pipefail; \
     if [ "${ENABLE_NVIDIA}" = "true" ] || [ "${ENABLE_AMD}" = "true" ]; then \
         bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step gpu; \
+        # Wire the verify that existed as a caller-less branch since its
+        # creation (audit round 2, F11): GPU-enabled images had NO gate on
+        # the GPU EP artifacts actually existing.
+        bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-gpu; \
     else \
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
     fi
@@ -392,7 +396,11 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
     # the ELF must be the target arch, which the cross toolchain handles).
     # BEST-EFFORT on EVERY arch: a build failure ships the media image without TVM
     # python (WARN) exactly as before — it can never break the media build. The cross
-    # path is newly exercised here; the runtime smoke's `import tvm` gates it per-arch.
+    # path is newly exercised here. Visibility (NOT a gate — TVM stays best-effort):
+    # smoke-torch-venv.sh reports tvm presence/version per-arch, and EXP_TVM=<ver>
+    # turns that report into a hard assertion for images that must ship TVM.
+    # (An earlier revision of this comment claimed a runtime `import tvm` gate
+    # that never existed — audit round 2 finding.)
     echo "TVM build: target=${TARGET_ARCH:-amd64} BUILD_MODE=${BUILD_MODE:-native}"; \
     if bash /opt/scripts/05-frameworks/tvm.sh --ref "${TVM_REF}" --prefix /opt/tvm --workdir /tmp/tvm-src; then \
         echo "TVM build OK; wheel(s):"; ls -1 /opt/tvm/wheels/ 2>/dev/null || true; \
@@ -515,7 +523,11 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
     case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
         arm64|aarch64) \
             bash /opt/scripts/03-media/build/armnn/build-arm-compute-library.sh && \
-            bash /opt/scripts/03-media/build/armnn/build-armnn.sh ;; \
+            bash /opt/scripts/03-media/build/armnn/build-armnn.sh && \
+            # Wire the verify that existed as a caller-less branch since its
+            # creation (audit round 2, F11): a failed ACL/ArmNN build left
+            # empty /opt/armnn + /opt/acl dirs that shipped unexamined.
+            bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh armnn ;; \
         *) \
             echo "Skipping Arm NN build (arm64 only, got ${TARGET_ARCH:-${TARGETARCH:-}})"; \
             mkdir -p /opt/armnn /opt/acl ;; \
@@ -691,6 +703,11 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM media-inputs AS final
 
 ARG GSTREAMER_VERSION
+# OPENCV_VERSION rides the same ENV channel as GSTREAMER_VERSION below: the
+# android stages (FROM this image) mount no versions.env, so inherited ENV is
+# their only version source — without it, opencv/android/build-android.sh
+# fell back to the moving `5.x` branch while the chain ships tag 5.0.0.
+ARG OPENCV_VERSION
 ARG OPENCV_OUTPUT_DIR=/opt/opencv5
 ARG ONNXRUNTIME_OUTPUT_DIR=/usr/local/lib/onnxruntime-cpu
 ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
@@ -705,13 +722,14 @@ ARG PYTHON_VERSION=3.14.7
 ARG PYTHON_MAJOR_MINOR=${PYTHON_VERSION%.*}
 
 ENV GSTREAMER_VERSION=${GSTREAMER_VERSION} \
+    OPENCV_VERSION=${OPENCV_VERSION} \
     GSTREAMER_PREFIX=${GSTREAMER_PREFIX} \
     GST_PLUGIN_PATH="" \
     GI_TYPELIB_PATH="" \
     OPENCV_PREFIX=${OPENCV_OUTPUT_DIR} \
     FFMPEG_PREFIX=/opt/ffmpeg \
     LIBCAMERA_PREFIX=/opt/libcamera \
-    GCC_VERSION=${GCC_VERSION:-16.1.0} \
+    GCC_VERSION=${GCC_VERSION:-16.2.0} \
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR:-3.14} \
     PYTHONPATH="${OPENCV_OUTPUT_DIR}/lib/python${PYTHON_MAJOR_MINOR:-3.14}/site-packages:${PYTHONPATH}"
 

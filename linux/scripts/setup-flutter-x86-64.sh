@@ -12,7 +12,7 @@ if [ -z "${FLUTTER_VERSION:-}" ] && [ -f "${SCRIPT_DIR}/01-core/versions.env" ];
   load_versions_env "${SCRIPT_DIR}/01-core/versions.env"
 fi
 
-FLUTTER_VERSION="${1:-${FLUTTER_VERSION:-3.44.8}}"
+FLUTTER_VERSION="${1:-${FLUTTER_VERSION:?FLUTTER_VERSION required (versions.env is loaded above; pass explicitly if absent)}}"
 INSTALL_DIR="${2:-/opt}"
 exec "${SCRIPT_DIR}/05-frameworks/flutter/setup-flutter.sh" \
   --arch x64 --version "${FLUTTER_VERSION}" --dir "${INSTALL_DIR}"

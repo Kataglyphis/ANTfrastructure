@@ -94,11 +94,17 @@ extract_emulators() {
   fi
   echo "[extract] pulling + unpacking ${BINFMT_IMAGE} (amd64) to ${QDIR}"
   local tmp; tmp="$(mktemp -d)"
+  # `image save` only reads the LOCAL store — pull first or a fresh host dies
+  # with 'image not found' (bit us 2026-08-08 after image GC).
+  "${NERDCTL}" image inspect "${BINFMT_IMAGE}" >/dev/null 2>&1 \
+    || "${NERDCTL}" pull --platform linux/amd64 "${BINFMT_IMAGE}"
   "${NERDCTL}" image save --platform linux/amd64 "${BINFMT_IMAGE}" -o "${tmp}/img.tar"
   mkdir -p "${tmp}/img"; tar -xf "${tmp}/img.tar" -C "${tmp}/img"
   local blob
   for blob in "${tmp}"/img/blobs/sha256/*; do
-    tar -tf "${blob}" 2>/dev/null | grep -q 'usr/bin/qemu-' || continue
+    # grep (not -q) drains the listing fully — `grep -q` exits at first match,
+    # tar dies of SIGPIPE (141) and pipefail turns the match into a skip.
+    tar -tf "${blob}" 2>/dev/null | grep 'usr/bin/qemu-' >/dev/null || continue
     # extract every qemu-* plus the binfmt helper, flattening usr/bin/
     tar -xf "${blob}" -C "${QDIR}" --strip-components=2 --wildcards \
       'usr/bin/qemu-*' 'usr/bin/binfmt' 2>/dev/null || true

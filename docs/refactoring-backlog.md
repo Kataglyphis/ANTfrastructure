@@ -1550,3 +1550,104 @@ bugs closed, one 459-line function decomposed, future 01-core edits ~free.
 **B5** (smoke-runtime-image main() decomposition), **B7** (micro). All three
 substantives touch files the running foreign chain bind-mounts mid-flight —
 deliberately deferred to the post-chain closure batch.
+
+## 2026-08-08 (night) — audit round 2 applied (4 perspectives, 4 commits)
+
+A four-agent audit with lenses ORTHOGONAL to the structural map (error-path
+masking / contract drift / test gaps / convention drift) — every top finding
+re-verified against the code before fixing (several agent claims in round 1
+had not survived that step; these did). Applied in commits b814899 (Klasse A,
+9 error-masking paths), 23aca68 (Klasse B, 9 contract-drift gaps), 9e1e466
+(Klasse D, truthiness + sudo), and the Klasse-C test commit (11 suites / 120
+assertions, zero-assertion suites fail, IFS list helpers newline-safe by
+construction). Full mechanisms in CHANGELOG's four "audit round 2" entries.
+
+Deliberately NOT changed (agents confirmed intentional): package-stage
+vulkan-symlink `|| true` (runtime-only image, documented), media TVM
+best-effort contract (now visible via smoke-torch-venv + EXP_TVM, still
+non-gating), retry() on long compiles (cost issue, tracked separately),
+`set -uo pipefail` without `-e` in the lint lane (they accumulate findings by
+design). Known-open from the audit reports: smoke-runtime-image Vulkan
+INFO-only block, verify-media-artifacts armnn/onnxruntime-gpu orphan
+branches, verify-parity.sh zero callers + its dead FAILED sentinel,
+Dockerfile.media:772 cross wheel-install tolerance, chain-verify STALE→rc0
+contract — all queued with the post-chain closure batch.
+
+## 2026-08-08 (cont) — harvested from the from-base chain (run e)
+
+Answering "are you tracking what could be refactored, detected during the
+build?" — honestly, not systematically since the restarts. This is the sweep.
+
+### 🔴 `nv/target.h` stub SHADOWS the real `nv/target` (setup-cuda.ps1)
+
+Three log lines from the sdk stage that only mean something together:
+
+```text
+CCCL headers verified present (cub/cub.cuh found).
+Using installer-provided: …\CUDA\v13.3\include\nv\target      <- real file, present
+Created stub:             …\CUDA\v13.3\include\nv\target.h    <- host-only stub
+```
+
+CUDA 13.3 ships `nv/target` (extensionless) and no `nv/target.h`. The script's
+`foreach` over `@('target.h', 'target')` therefore finds one and stubs the
+other — and the stub is not neutral. It hardcodes
+
+```c
+#define NV_IS_DEVICE 0
+#define NV_IS_HOST   1
+#define NV_IF_TARGET(arch, ...) _NV_IF_TARGET_HOST(__VA_ARGS__)
+#define NV_PROVIDES_SM_70 0   /* …80, 90, 61 likewise */
+```
+
+so ANY translation unit that includes `<nv/target.h>` gets "we are on the host,
+no SM is available" — **including device compilation**, where the script's own
+comment says the installer version "selects device branch when `__CUDA_ARCH__`
+is defined". CCCL (CUB/Thrust/libcudacxx) uses `NV_IF_TARGET` heavily, and ONNX
+and OpenCV both compile CUDA kernels against it.
+
+Nothing has failed loudly, which is exactly the concern: a wrong `NV_IF_TARGET`
+branch degrades or miscompiles device paths, it does not error. Unverified so
+far whether anything in this chain actually includes the `.h` spelling — that is
+the first thing to check, not an assumption to rest on.
+
+Fix direction: when the extensionless `nv/target` exists, `target.h` must
+FORWARD to it (`#pragma once` + `#include <nv/target>`), never re-declare a
+host-only view of the world. Keep the standalone stub only for the case where
+NEITHER exists. Same one-line change makes the log line honest too.
+
+### ⚠️ rustup honours a PRE-EXISTING settings.toml (setup-rust-toolchain.ps1)
+
+```text
+warn: It looks like you have an existing rustup settings file at:
+warn: C:\Users\ContainerAdministrator\.rustup\settings.toml
+warn: Rustup will install the default toolchain as specified in the settings
+warn: file, instead of the one inferred from the default host triple.
+```
+
+This run resolved to `stable-x86_64-pc-windows-msvc` / 1.97.1, i.e. exactly
+`RUST_VERSION` — so the outcome is right TODAY. The trap is that a settings file
+already present in the layer, not the script's intent, is what decided it. On a
+base whose settings.toml names something else, the chain would silently install
+a different default toolchain and this warning would be the only trace, buried
+in a stderr log tail.
+
+Worth: assert the resolved toolchain after install (`rustup show active-toolchain`
+against `RUST_VERSION`) the same way clang-cl/ninja/nasm/sccache are asserted —
+this is the one toolchain component in the base with no post-install assert.
+Cheap, and it turns an advisory warning into a gate.
+
+### Noise, triaged as harmless (do not chase)
+
+- `[10] OverwriteTargetDirectory : Warning : … existing, non-empty directory` —
+  installer re-running over its own target; expected on a rebuilt layer.
+- `[1844] Warning: QFont::setPixelSize: Pixel size <= 0 (-1)` — Qt chatter from
+  the cppcheck GUI's installer, headless container, no consumer.
+- `scoop bucket add main -- already present, skipped` — idempotence working.
+
+### Process note for the next reader
+
+Disk fell 109 → 87 → 64 GB across three aborted runs of the SAME chain: every
+abort leaves partial snapshots that no gate reclaims. `buildctl prune` after an
+abort is part of aborting, not a separate chore. Confirmed safe mid-build twice
+today (44.8 GB and 43.9 GB freed with a solve running, no disturbance) — the
+2026-08-07 note that prune does not disturb an active solve holds.
