@@ -38,6 +38,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity 
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
+  local -a _items=()
   IFS=',' read -ra _items <<< "${csv}"
   for item in "${_items[@]}"; do [ "${item}" = "${needle}" ] && return 0; done
   return 1
@@ -79,7 +80,10 @@ run_check() {
 #    the containers ("$'\r': command not found") long before any build runs.
 check_crlf_guard() {
   local offenders
-  offenders="$(git ls-files --eol -- '*.sh' | awk -F'\t' '$1 ~ /w\/crlf/ {print $2}')"
+  # `|| echo FAIL...`: if git itself fails here (not a work tree, broken index)
+  # the check must FAIL LOUDLY, not pass on an empty result.
+  offenders="$(git ls-files --eol -- '*.sh' 2>/dev/null | awk -F'\t' '$1 ~ /w\/crlf/ {print $2}' \
+    || echo "__git-ls-files-FAILED__")"
   if [ -n "${offenders}" ]; then
     printf 'CRLF working-tree line endings detected in tracked *.sh file(s):\n'
     printf '  %s\n' ${offenders}

@@ -14,7 +14,7 @@ _trt_ok=0
 if [ -f /tmp/tensorrt-local-repo.deb ]; then
     echo "TensorRT: installing local repo deb..."
     dpkg -i /tmp/tensorrt-local-repo.deb 2>/dev/null || true
-    _trt_key="$(find /var -name 'nv-tensorrt-local-*-keyring.gpg' 2>/dev/null | head -1)"
+    _trt_key="$(find /var -name 'nv-tensorrt-local-*-keyring.gpg' 2>/dev/null | head -1 || true)"
     if [ -n "${_trt_key}" ]; then
         cp "${_trt_key}" /usr/share/keyrings/ 2>/dev/null || true
     fi

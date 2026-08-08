@@ -488,8 +488,7 @@ main() {
   for check_name in "${CHECK_LIST[@]}"; do
     check_name="$(trim "${check_name}")"
     if [ -z "${KNOWN_CHECKS[${check_name}]:-}" ]; then
-      err "Unknown check: ${check_name}"
-      continue
+      err "Unknown check: ${check_name}"   # err exits; no continue needed
     fi
     ((total++)) || true
     "check_${check_name}" && ((passed++)) || true

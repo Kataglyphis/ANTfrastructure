@@ -109,8 +109,10 @@ if [ "${#FILES[@]}" -eq 0 ]; then
 fi
 
 # Keep only existing .sh files (a staged list may include deletions / non-sh).
+# ${FILES[@]+...}: an empty find result leaves FILES unset, and expanding an
+# unset array trips `set -u` on bash < 4.4 (harmless on 5.x, cheap to guard).
 CHECK=()
-for f in "${FILES[@]}"; do
+for f in ${FILES[@]+"${FILES[@]}"}; do
   case "${f}" in *.sh) [ -f "${f}" ] && CHECK+=("${f}") ;; esac
 done
 
