@@ -318,7 +318,7 @@ if ($Stages -contains 'sdk') {
             CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
             CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
             CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
-            TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
+            TENSORRT_WINDOWS_VERSION = Get-Ver 'TENSORRT_WINDOWS_VERSION'
             CUDA_INSTALLER_SHA256    = Get-Ver 'CUDA_INSTALLER_SHA256'
             CUDNN_ZIP_SHA256         = Get-Ver 'CUDNN_ZIP_SHA256'
             TENSORRT_ZIP_SHA256      = Get-Ver 'TENSORRT_ZIP_SHA256'
