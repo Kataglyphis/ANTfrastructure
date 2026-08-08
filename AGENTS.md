@@ -108,8 +108,9 @@ bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,ri
 # Cheap packaging validation before publish (see docs/linux-cross-builds.md)
 # Uses the `wrapper-smoke` target in Dockerfile.package
 
-# Reinstall QEMU/binfmt after host reboot
-nerdctl run --rm --privileged tonistiigi/binfmt --install all
+# Reinstall QEMU/binfmt after host reboot OR containerd restart (rootless:
+# the tonistiigi/binfmt --install container does NOT work — wrong namespace)
+linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
 ```
 
 > **See also:** [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
@@ -594,11 +595,18 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
 ### Prerequisites
 
 - **nerdctl** with BuildKit backend
-- **QEMU/binfmt** for foreign-architecture runtime builds. **Required before EVERY build** (registration is lost after host reboot):
+- **QEMU/binfmt** for foreign-architecture runtime builds. Registration is lost
+  on host reboot **and on `systemctl --user restart containerd`** (it lives in the
+  rootlesskit namespace — that's how it silently vanished on 2026-08-08 after the
+  shim-failure restart). On this rootless host the privileged
+  `tonistiigi/binfmt --install` container does NOT work (wrong namespace); use:
   ```bash
-  nerdctl run --rm --privileged tonistiigi/binfmt --install all
+  linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
   ```
-  Without this, riscv64 and arm64 builds under QEMU will fail with `exec format error` or silent exit code 1.
+  `--install-service` installs a systemd --user unit so re-registration is
+  automatic. Without registration, foreign-arch execs fail with `exec format
+  error` — including wrong-arch NATIVE tool sub-builds inside "no-emulation"
+  cross stages (the IREE tblgen failure mode).
 - **Registry access** (GHCR) for pushing intermediate and final images
 - **Disk space**: ~50GB+ for full cross chain with all architectures
 - **Python 3** for digest resolution (`registry-digest.py`)

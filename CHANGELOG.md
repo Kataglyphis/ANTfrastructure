@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-08-08 (evening) — Linux lane: IREE tblgen Exec-format failure, and the binfmt registration that silently died
+
+### media-arm64 failed: IREE's NATIVE tblgen was cross-compiled
+
+The app-wheelhouse IREE cross build died with `Exec format error` on
+`llvm-project/NATIVE/bin/llvm-min-tblgen`: LLVM's CrossCompile.cmake defaults
+the NATIVE sub-build's compilers to the **outer cross compilers**, so the
+tblgen that must run on the amd64 build host was built for arm64. Fix:
+`build-app-wheelhouse.sh` now passes `-DCROSS_TOOLCHAIN_FLAGS_NATIVE` pinning
+the true host compilers (+ ccache launchers — closing the nested-sub-build
+caching item from the backlog in the same stroke). riscv64 never hit this only
+because qemu binfmt silently emulated the wrong-arch tblgen — slowly.
+
+### Which exposed: binfmt registrations die on containerd restart
+
+The morning's shim-failure `systemctl --user restart containerd` silently wiped
+the rootlesskit-namespace qemu registrations (they are namespace-lifetime, not
+host-lifetime). Re-registered for arm64+riscv64 and installed the
+`rootless-binfmt.service` --user unit so login/boot re-registers automatically.
+Two bugs fixed in `setup-rootless-binfmt.sh` itself along the way: it claimed
+"pulling" but never pulled (image save fails "not found" on a fresh host), and
+its blob-detection pipeline `tar -tf | grep -q` self-destructed under pipefail
+(SIGPIPE — shell bug class 2) so extraction skipped every blob. AGENTS.md's two
+stale recommendations of the non-working rootless
+`tonistiigi/binfmt --install` container corrected to the helper script.
+
+The foreign chain marked arm64 failed and moved on to media-riscv64 (by
+design); media-arm64 + android-arm64 re-run after the chain with the fix.
+
 ## 2026-08-08 (evening) — Linux lane: structural round 1 (cache-key closure + drift bugs + dead code)
 
 ### Dockerfile.base no longer cache-keys on ~120 files (A1)

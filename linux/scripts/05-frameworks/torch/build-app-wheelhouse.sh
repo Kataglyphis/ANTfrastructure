@@ -947,11 +947,26 @@ build_iree_wheels() {
     iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
     if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
 
+    # The bundled LLVM spawns a NATIVE sub-build (llvm-project/NATIVE) for the
+    # tblgen family, and LLVM's CrossCompile.cmake DEFAULTS that sub-build's
+    # compilers to the outer (CROSS) CMAKE_C(XX)_COMPILER — so llvm-min-tblgen
+    # came out arm64 and died "Exec format error" on the amd64 build host
+    # (media-arm64, 2026-08-08; riscv64 only ever survived this because host
+    # qemu binfmt silently emulated the wrong-arch tblgen — slowly). Pin the
+    # NATIVE sub-build to the true host compilers, with ccache so its objects
+    # cache like everything else. (';' is CMake's list separator — the whole
+    # value is ONE shell word.)
+    local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
+    if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
+        native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=ccache;-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+    fi
+
     rm -rf "${target_build}"
     if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
             -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
             "${cmake_args[@]}" \
             "${ccache_cmake_args[@]}" \
+            -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
             -DIREE_HOST_BIN_DIR="${host_install}/bin" \
             -DIREE_BUILD_COMPILER=ON \
             -DIREE_BUILD_PYTHON_BINDINGS=ON \
