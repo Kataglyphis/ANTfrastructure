@@ -185,7 +185,13 @@ Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setup
 # on this AVX2-only host (ORT 1.28; ctypes/pybind load both die). The MLAS
 # arch-specific TUs that REQUIRE those features get them per-TU via the
 # build.ninja add-pass after configure — they are runtime-dispatched and safe.
-$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization"
+# /clang:-Wno-unused-value: ORT's own stream_handles.h / execution_provider.h
+# use comma-expression macros whose result is discarded, ~2 460 lines of pure
+# upstream noise per chain. Targeted at ONE diagnostic, not a blanket /w -- our
+# own diagnostics must stay visible. /WX- above already rules out warnings-as-
+# errors, so even an unrecognised -Wno- could not break this build.
+# Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
+$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization /clang:-Wno-unused-value"
 
 # -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
 # ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the ~1h CUDA/TensorRT kernel compiles) so the DirectML

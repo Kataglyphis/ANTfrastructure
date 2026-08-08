@@ -2,12 +2,13 @@
 # pre-commit — run CI-consistent checks before each commit.
 # Activate with: git config core.hooksPath .githooks
 #
-# Windows note: the preflight subset below runs Python-based checks with
-# plain `python3`, which on Windows hosts is often the Microsoft Store stub
-# (prints an install hint and exits non-zero under Git Bash). Point
-# PREFLIGHT_PYTHON at a real interpreter if needed, e.g.:
-#   PREFLIGHT_PYTHON="$HOME/.local/bin/python3.14.exe" git commit ...
-# or export it from your shell profile (see linux/scripts/preflight.sh).
+# Windows note (resolved 2026-08-08): the Python-based checks used to run under
+# plain `python3`, which on Windows hosts is usually the Microsoft Store stub —
+# it prints an install hint and exits non-zero under Git Bash, so those checks
+# failed for reasons unrelated to the commit. That is precisely why this hook
+# was never activated on the primary dev clone, and why an unresolved merge
+# conflict reached main. preflight.sh now PROBES for an interpreter that can
+# actually run code and skips the stub; PREFLIGHT_PYTHON still overrides.
 set -euo pipefail
 
 GREEN='\033[0;32m'

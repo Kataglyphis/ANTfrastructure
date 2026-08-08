@@ -142,7 +142,21 @@ $cmakeExtra = @(
     '-DCMAKE_CXX_STANDARD=17',
     # /FI<cstring> fixes clang-cl -include cstring ambiguity (file vs header)
     "-DCMAKE_C_FLAGS:STRING=$simdFlags",
-    "-DCMAKE_CXX_FLAGS:STRING=/FIcstring $simdFlags",
+    # -Wno-deprecated-copy: core/matx.hpp declares a user-provided copy CTOR for
+    # every Matx<> specialisation, so clang deprecates each implicit copy
+    # ASSIGNMENT operator. matx.hpp is included by nearly every OpenCV TU, which
+    # made this ~7 700 lines -- the single largest warning flood in the chain
+    # (16 % of a 459 061-line build log was upstream warnings). It is noise from
+    # upstream's own header, not from anything this repo writes.
+    # The parent group is used deliberately, not the narrower
+    # -Wdeprecated-copy-with-user-provided-copy: the parent has existed far
+    # longer, and an unknown -Wno- is only a warning to clang, never an error.
+    # Safe for the CUDA path: ocv_cuda_filter_options strips /clang:*, /FI*,
+    # -Xclang, -fopenmp AND -W* from CMAKE_CXX_FLAGS before handing them to
+    # nvcc's cl.exe host compiler (patches/opencv/001-cmake-clang-cl-compat.patch)
+    # -- cl.exe would reject a GNU-style -W flag with D8021.
+    # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
+    "-DCMAKE_CXX_FLAGS:STRING=/FIcstring -Wno-deprecated-copy $simdFlags",
     '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF',
                          # BUILD_opencv_world=OFF: avoids FFmpeg/ONNX importing issues
                          '-DBUILD_opencv_world=OFF',

@@ -85,7 +85,13 @@ $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
-    '-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes'   # :STRING= + no embedded quotes (matches onnx/opencv/genai; bare quotes leaked into the flag value)
+    # :STRING= + no embedded quotes (matches onnx/opencv/genai; bare quotes leaked into the flag value)
+    # -Wno-documentation-unknown-command: tvm/ffi/reflection/accessor.h uses
+    # doxygen tags clang's -Wdocumentation does not know (~900 lines/chain).
+    # Upstream's own header comments -- nothing here can fix them, and they say
+    # nothing about the correctness of this build.
+    # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
+    '-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes -Wno-documentation-unknown-command'
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"

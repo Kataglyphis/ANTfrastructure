@@ -1163,3 +1163,101 @@ path against `*.*`, which matched `.githooks/pre-commit` on the dot in the
   on purpose: it is the gate that has not yet run green end-to-end with the new
   plugin assertions, and splitting a test file before you have seen it pass
   removes the baseline you would compare against.
+
+## 2026-08-08 (cont) — the four remaining backlog items, closed
+
+Cleared before restarting the chain, so the run happens against a tree with no
+known open work. Two of them turned out to be blocked only by a third.
+
+### ✅ P8b — the warning floods
+
+Targeted suppressions, one per identified upstream construct, never a blanket `-w`:
+
+| family | lever | where |
+|---|---|---|
+| `-Wdeprecated-copy` (~7 700) | `-Wno-deprecated-copy` in `CMAKE_CXX_FLAGS` | `build-opencv-from-source.ps1` |
+| `-Wunused-value` (~2 460) | `/clang:-Wno-unused-value` | `build-onnx-from-source.ps1` |
+| `-Wdocumentation-unknown-command` (~900) | `-Wno-documentation-unknown-command` | `build-tvm-from-source.ps1` |
+| `STL4037` (657) | `_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING` | `patches/iree/enable-ehsc.cmake` |
+
+Three points decided the shape:
+
+- **IREE gets a define, not a flag.** STL4037 comes from the MSVC STL headers
+  themselves via a deprecation attribute, so no clang warning group can switch it
+  off. The STL names its own escape macro in the diagnostic text, so this is not
+  guesswork. It goes in the `CMAKE_PROJECT_INCLUDE` file at directory scope,
+  which survives LLVM's `HandleLLVMOptions` stripping of `CMAKE_CXX_FLAGS` and
+  never reaches the custom commands that cross-compile ukernel bitcode with a
+  plain `clang.exe` — the same reasoning that already put `/EHsc` there.
+- **OpenCV's is safe for the CUDA path**, which was the live risk: nvcc's Windows
+  host compiler is `cl.exe` and rejects GNU-style flags with D8021. Read the
+  patch rather than trusting the comment above it — `ocv_cuda_filter_options`
+  strips `/clang:*`, `/FI*`, `-Xclang`, `-fopenmp` **and** `-W*` from
+  `CMAKE_CXX_FLAGS` before the `-Xcompiler` block.
+- **Parent group, not the narrow one.** clang reports
+  `-Wdeprecated-copy-with-user-provided-copy`; the parent `-Wdeprecated-copy` has
+  existed far longer. An unrecognised `-Wno-` is only a warning to clang, never
+  an error, and ONNX passes `/WX-` anyway — so a wrong spelling could cost
+  effectiveness, never a build.
+
+New: `windows\scripts\Measure-BuildWarnings.ps1` counts warnings per diagnostic
+family in a build log; `-Baseline` prints each known flood against its
+pre-suppression count with a verdict. The backlog asked that every suppression
+"carry the count it removes" — this is how the next run proves it, instead of the
+flags becoming folklore nobody dares remove. The classifier is unit-tested
+(`MeasureBuildWarnings.Tests.ps1`), including that bracket-less warnings are
+grouped rather than dropped: otherwise a new flood could grow unseen precisely
+because it carries no `-W` group.
+
+**Run after the chain:**
+`.\windows\scripts\Measure-BuildWarnings.ps1 -LogPath <chain log> -Baseline`
+
+### ✅ Smoke-test split
+
+`smoke-test-container.ps1` 1 573 -> 1 386 lines; the ~210-line assertion harness
+is now `modules\WindowsSmokeTest.Common.psm1`. The 22 test SECTIONS deliberately
+stay in the script — they are a linear probe run against a built image and gain
+nothing from modularisation.
+
+No Dockerfile change was needed: `windows/Dockerfile` already COPYs the whole
+`windows\scripts\modules` directory into the final image, in the cheapest layer.
+
+The extraction had exactly one hazard, and both halves of it fail SILENTLY:
+
+1. `Assert-Test` read `$ExitOnFirstFailure` — a *parameter of the calling script*
+   — through dynamic scoping. A module has its own session state and sees
+   nothing; the lookup yields `$null`, which is falsy, so the switch would simply
+   have stopped working with no error anywhere. It is module state now, set via
+   `Initialize-SmokeTestRun`, with a regression test.
+2. The SUMMARY block read `$script:passed`. Across a module boundary that
+   resolves to an unset variable in the *script*, so the run would have reported
+   0 passed / 0 failed and exited 0 regardless of what happened. It reads
+   `Get-SmokeTestSummary` now.
+
+Verified without a container: both files parse, every command the script invokes
+still resolves, and an AST inventory of every `Assert-*` / `Skip-Test` /
+`Write-TestHeader` call site is **194 before, 194 after** (script + module) —
+identical as a set. 11 new unit tests; suite at 412.
+
+The earlier objection — "do not refactor the gate before you have seen it pass" —
+is answered by that inventory plus the tests, not overruled. The gate itself
+still has to run green against the image this next chain produces.
+
+### ✅ Hooks are enabled, and the reason they were not is fixed
+
+`git config core.hooksPath .githooks` is set. It had been left off because the
+Python-based preflight checks ran `python3`, which on this host is the Microsoft
+Store stub — every commit would have failed for a reason unrelated to the commit.
+`preflight.sh` now PROBES candidates and takes the first that can actually
+execute code (the stub fails `-c pass`), so the hook runs green with no
+environment setup at all. `PREFLIGHT_PYTHON` still overrides.
+
+### ✅ Submodule ARG staleness
+
+`external/Kataglyphis-DocumANTation` pinned `UV_VERSION=0.12.1` against
+versions.env's `0.12.3` (Pandoc already matched), which kept the version-snapshot
+check red and therefore blocked enabling the hooks. `sync_versions.py` includes
+that Dockerfile deliberately — the doc image is meant to follow this repo's pins.
+Committed **in the submodule** (`b0bffd5`); it still needs a push to that
+repository and a pointer bump here. That is a change to a different repo, so it
+is left explicit rather than done silently.
