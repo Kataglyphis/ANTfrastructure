@@ -43,6 +43,28 @@ fast (no-build) check in seconds/minutes so whole failure classes are caught
 before a multi-hour QEMU rebuild. All checks run even if one fails; the script
 exits non-zero if any did.
 
+Since 2026-08-08 preflight also validates the stage graph itself (slug
+`stage-graph` — parent refs, dockerfile existence, tag resolution, cycles);
+previously that ran only at build kickoff. The script-tests slug now prints an
+assertion aggregate ("11 suites, 120 assertions") — a sudden drop in that
+number is the alarm it looks like: the harness fails suites that run zero
+assertions, and the aggregate makes shrinking coverage visible.
+
+### In-image verification gates & their escape hatches (audit round 2)
+
+The 2026-08-08 audit closed a set of gates that previously could not fail.
+Each hard gate has ONE explicit, documented escape hatch — set it only for a
+deliberately reduced image, never to "get the build green":
+
+| Gate | Where it runs | Escape hatch / opt-in |
+|------|---------------|----------------------|
+| riscv64 app-wheelhouse must contain real `*.whl` (a `.placeholder`-only dir fails) | `verify-media-artifacts.sh app-wheels` (Dockerfile.media) | `ALLOW_EMPTY_APP_WHEELS=1` |
+| `/opt/venv` must exist in the package wrapper image (even torch-less images ship a venv with a `.torch-missing` sentinel) | `smoke-torch-venv.sh` via wrapper-smoke | unset `STV_REQUIRE_VENV` (only stages that legitimately ship no venv) |
+| CUDA/cuDNN/TensorRT/NCCL completeness | `verify-cuda-stack.sh` (Dockerfile.nvidia) | default is warn-only; `CUDA_STACK_STRICT=1` is the OPT-IN hard gate for images that claim a complete stack |
+| TVM presence/version per arch | `smoke-torch-venv.sh` (report only — TVM is best-effort by design) | `EXP_TVM=<version>` turns the report into a hard pin assertion |
+| ELF architecture of shipped binaries | `validate-media-runtime.sh` — runs on EVERY scan since 2026-08-08 (a clean dependency scan used to `exit 0` before it) | `MEDIA_ELF_MISMATCH_FATAL=0` downgrades to warning |
+| litert / genai / opencv-core produce real artifacts | `verify-media-artifacts.sh` | none — these verify stage-specific files now; genai mirrors its producer's legitimate cross-build skip |
+
 | Check | Script | Catches (class) |
 |-------|--------|-----------------|
 | shellcheck gate | `lint-shell.sh` | 6, 7 |

@@ -725,19 +725,25 @@ lint-gates class 3. When writing or reviewing bash in this repo:
 
 ## Caching discipline (do not regress)
 
-Full map: `docs/linux-build-basics.md` § Caching Layers. The rules an agent
-must never violate:
+Full map: `docs/linux-build-basics.md` § Caching Layers. Toggles: `USE_CCACHE`,
+`USE_SCCACHE`, `USE_LLD` accept `0/false/no/off` to disable (since 2026-08-08 —
+previously ONLY the literal `false` worked and `USE_CCACHE=0` was silently
+ignored); `ENABLE_SCCACHE_RUST`/`ENABLE_SCCACHE_CUDA` are strict `0/1`.
+The rules an agent must never violate:
 
 1. **Closure freeze between runs that should cache-hit.** Editing ANY file in
-   the base/toolchain closure (all of `01-core/` and `02-toolchain/` — worse
-   than the bundle COPY: **`Dockerfile.base` bind-mounts BOTH whole directories
-   into six RUNs**, so any of ~120 files, including host-only orchestrator
-   modules, busts BASE and cascades to the entire chain; narrowing this to the
-   ~14-file real closure is backlog item A1 and the planned enabler — plus
-   `versions.env`, `python/build_python.sh`, the three bundled
-   `06-packaging/smoke-*` scripts, `Dockerfile.base`, `Dockerfile.toolchain`)
-   changes the compiler image digest and forces sdk/media/android to rebuild
-   from scratch on the next run. Batch such edits; apply them in ONE commit at
+   the base/toolchain closure changes the compiler image digest and forces
+   sdk/media/android to rebuild from scratch on the next run. Since 2026-08-08
+   (A1 applied, commit 5d7a318) **`Dockerfile.base` mounts a traced 15-file
+   closure**, not whole directories — the closure is now: those 15 files
+   (13× `01-core` + `cmake.sh` + `packaging-deps.sh`; the lists live in
+   Dockerfile.base itself), `versions.env`, `python/build_python.sh`, the
+   three bundled `06-packaging/smoke-*` scripts, `Dockerfile.base`,
+   `Dockerfile.toolchain`. Editing 01-core files OUTSIDE those lists no longer
+   busts base — but a file NEWLY needed by a base RUN must be ADDED to the
+   per-file mount lists (closure = source edges + **exec/`bash` edges**; the
+   A1 validation build caught exactly such a miss). Batch closure edits;
+   apply them in ONE commit at
    a planned rebuild boundary. Files in a not-yet-started stage's closure are
    free to fix until that stage begins (each `nerdctl build` snapshots its
    context at stage start).
