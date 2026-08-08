@@ -67,6 +67,10 @@ ARG BUILDARCH
 ARG BUILDPLATFORM
 ARG ENABLE_NVIDIA=false
 ARG ENABLE_AMD=false
+# Rust compile caching via sccache (media rust builds: gst-plugins-rs,
+# cargo-c consumers, the riscv64 wheelhouse). Default OFF pending a controlled
+# cross-arch validation — see 03-media/core/common.sh for the full story.
+ARG ENABLE_SCCACHE_RUST=0
 ARG AGGRESSIVE_PARALLELISM
 ARG USE_LLD
 ARG USE_CCACHE
@@ -78,6 +82,7 @@ ARG UBUNTU_CODENAME=resolute
 
 ENV ENABLE_NVIDIA=${ENABLE_NVIDIA} \
     ENABLE_AMD=${ENABLE_AMD} \
+    ENABLE_SCCACHE_RUST=${ENABLE_SCCACHE_RUST} \
     BUILD_MODE=${BUILD_MODE} \
     BUILD_MEM_DIVISOR=${BUILD_MEM_DIVISOR} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \

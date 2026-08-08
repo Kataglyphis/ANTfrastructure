@@ -131,6 +131,21 @@ media_common_init() {
   source_module cross-apt.sh         || true
   source_module downloads.sh         || true
   source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
+  # Rust compile caching (sccache) — GATED, default OFF. setup_sccache's own
+  # doc says "sccache for Rust, ccache for C/C++ is the recommended setup",
+  # but it was never invoked here, and Dockerfile.toolchain defensively clears
+  # RUSTC_WRAPPER for cross builds (bf1fb22, 2026-05-10, reason undocumented).
+  # ENABLE_SCCACHE_RUST=1 activates the wiring for a CONTROLLED validation
+  # build; flip the Dockerfile.media default only after a green cross-arch
+  # media run. Ordering matters: setup_ccache above already owns the CMAKE
+  # launchers, so setup_sccache's launcher fallback stays inert (by design).
+  # Stats go to STDERR — the stream buildkit's 2MiB step-log clip never cuts.
+  if [ "${ENABLE_SCCACHE_RUST:-0}" = "1" ]; then
+    if declare -F setup_sccache >/dev/null 2>&1; then
+      setup_sccache || true
+      { sccache --show-stats 2>/dev/null | head -6 || true; } >&2
+    fi
+  fi
   source_module compiler-resolution.sh || true
   source_module python-host.sh       || true
   source_module cmake-cache-linker.sh || true
