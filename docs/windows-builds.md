@@ -635,13 +635,22 @@ Housekeeping and sharing:
   free space than the disk physically has.** It cannot over-delete: `Shared`
   records stay pinned regardless (next bullet), so an absurd target is safe.
 
-- **When the store sits just BELOW `reservedSpace`, NO prune lever works and
-  `du` reports `Reclaimable: 0B` (measured 2026-08-08).** GC never prunes the
-  cache below `reservedSpace` — that is the knob's whole purpose — and buildkit
-  marks every record non-reclaimable while the store is under it. With the
-  store at 207.63 GB against `reservedSpace = 200GB` (= **214.75 GB**; the toml
-  takes GiB), all 37 records read `Reclaimable: false` and **every** lever
-  returned `Total: 0B`:
+- **A store that no prune lever can touch, with `du` reporting
+  `Reclaimable: 0B` (measured 2026-08-08).** Store at 207.63 GB against
+  `reservedSpace = 200GB` (= **214.75 GB**; the toml takes GiB); all 37 records
+  read `Reclaimable: false` and **every** lever returned `Total: 0B`:
+
+  > **The mechanism below is NOT settled — read this first.** The obvious
+  > reading is "GC never prunes below `reservedSpace`, so everything under it
+  > is marked unreclaimable". Lowering the reserve to 150GB and restarting
+  > buildkitd DID unblock it (98.83 GB freed immediately, C: 85.1 → 139.1 GB),
+  > so the ACTION is right. But a later measurement the same day contradicts
+  > that explanation: store 145.35 GB against the new 161.06 GB reserve —
+  > again below it — reported `Reclaimable: 145.35GB`, i.e. everything
+  > reclaimable. Between the two, `nerdctl rmi` had removed eight stage tags
+  > and buildkitd had restarted. So the reserve is at most part of it, and
+  > tag-pinning (`Shared` records) or a restart-cleared lease is likely the
+  > other part. Treat the recipe as verified and the causal story as open.
 
   ```text
   buildctl prune                                        Total: 0B
