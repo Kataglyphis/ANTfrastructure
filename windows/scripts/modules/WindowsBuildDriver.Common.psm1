@@ -691,10 +691,16 @@ function Get-StageDiskFloorGb {
         'media-core-built-onnx'     { return 55 }   # the 25 GB image, the one that really needs room
         'media-core-built-opencv'   { return 45 }
         'media-core-built-ffmpeg'   { return 40 }
+        'media-core-built$'         { return 40 }   # BK: the GenAI tail solve only
         'media-litert'              { return 45 }
         'media-tvm'                 { return 40 }
         'media-merge|merge'         { return 45 }   # mounts three branch trees at once
-        'media-core|media-builder'  { return 40 }   # GenAI tail + classic-lane labels
+        # CLASSIC lane: its media-core is ONE run+commit doing the WHOLE chain
+        # (ONNX -> OpenCV -> FFmpeg -> GenAI), so it needs the heaviest floor,
+        # not the lightest. Caught by the cross-lane parity test — the first
+        # refinement gave it 40 and would have under-protected the lane that has
+        # no per-solve checkpoints to fall back on.
+        'media-core|media-builder'  { return 55 }
         'toolchain'                 { return 40 }
         default                     { return 40 }
     }
