@@ -165,16 +165,29 @@ install_tvm_deps_phase() {
 # submodules on a fresh clone or when the checkout moved.
 fetch_tvm_source() {
   local _tvm_cloned=0
+  # TVM_COMMIT (versions.env, opt-in) beats the tag: tags are MOVABLE refs and
+  # TVM is a COMPILER whose output ships in the images (supply-chain audit,
+  # class b). Also clone SHALLOW AT THE REF now — the old bare
+  # `git clone --recursive` first pulled the whole default branch + all
+  # submodules unpinned before the checkout ever ran.
+  local _tvm_want="${TVM_COMMIT:-$ref}"
   if [ ! -d "$tvm_dir/.git" ]; then
-    log "Cloning TVM into $tvm_dir"
-    git clone --recursive https://github.com/apache/tvm.git "$tvm_dir"
-    _tvm_cloned=1
+    log "Cloning TVM into $tvm_dir at ${_tvm_want}"
+    if git clone --depth 1 --branch "${ref}" --recursive https://github.com/apache/tvm.git "$tvm_dir" 2>/dev/null \
+       && [ -z "${TVM_COMMIT:-}" ]; then
+      _tvm_cloned=1
+    else
+      # commit pin, or the tag-clone failed: full-init then pin below
+      rm -rf "$tvm_dir"
+      git clone https://github.com/apache/tvm.git "$tvm_dir"
+      _tvm_cloned=1
+    fi
   fi
 
   local _curr_ref; _curr_ref="$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)"
-  log "Fetching + checking out ref: $ref"
-  git -C "$tvm_dir" fetch --depth 1 origin "${ref}" 2>/dev/null || git -C "$tvm_dir" fetch --depth 1 --tags 2>/dev/null || true
-  git -C "$tvm_dir" checkout "${ref}"
+  log "Fetching + checking out ref: ${_tvm_want}"
+  git -C "$tvm_dir" fetch --depth 1 origin "${_tvm_want}" 2>/dev/null || git -C "$tvm_dir" fetch --depth 1 --tags 2>/dev/null || true
+  git -C "$tvm_dir" checkout "${_tvm_want}"
   if [ "$_tvm_cloned" -eq 0 ] || [ "$_curr_ref" != "$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)" ]; then
     git -C "$tvm_dir" submodule update --init --recursive
   fi

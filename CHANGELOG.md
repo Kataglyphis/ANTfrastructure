@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: complexity F-G + TVM shallow/commit-pin clone
+
+- **setup-package-image's 102-line dual-purpose function split** (audit F-G):
+  select_dev_packages / install_dev_packages / clang_embedded_deb_version
+  (the previously function-nested, globally-leaking `_clang_ver`) /
+  pin_clang_alternatives — the old name remains as its caller's 4-line
+  sequence. All load-bearing comments preserved.
+- **TVM clone hardened**: shallow `--depth 1 --branch <tag>` instead of the
+  old bare recursive clone (which pulled the whole default branch + all
+  submodules unpinned before ever checking out), plus a `TVM_COMMIT` opt-in
+  pin (commit beats tag; v0.25.0's commit recorded in versions.env) —
+  completing the `*_COMMIT` convention for the second compiler-class clone.
+- Repo hygiene sweep came back clean: no build artifacts tracked,
+  .gitignore already covers resource-monitor outputs and out/.
+
 ## 2026-08-08 (night) — Linux lane: supply-chain round 3 — build executors frozen
 
 - **Round-3 completion**: Vulkan SDK and GStreamer-Android-universal tarball

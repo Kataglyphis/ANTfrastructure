@@ -85,8 +85,14 @@ install_staged_target_python() {
 
 # Choose the dev/runtime apt packages (python-dev, matching gcc/g++, llvm/clang
 # extras) based on what's available, then install them.
-select_and_install_dev_packages() {
-    local python_mm="$1" gcc_major="$2"
+# (Complexity audit F-G: this function used to weld two unrelated jobs —
+# package selection/install AND clang toolchain pinning — into 102 lines with
+# a nested function leaking globally. Split into select_dev_packages /
+# install_dev_packages / clang_embedded_deb_version / pin_clang_alternatives;
+# the wrapper keeps the old name for its single caller.)
+select_dev_packages() {
+    local -n _sdp_out=$1
+    local python_mm="$2" gcc_major="$3"
     # NOTE: `cargo`/`rustc` here are Ubuntu's debs, and the deb set ships NO
     # rustup. That matters because wire_cargo_symlinks() below links whatever
     # `command -v` happens to find into ${CARGO_HOME}/bin — so when this stage's
@@ -97,21 +103,21 @@ select_and_install_dev_packages() {
     # at the end of main() now prints which one actually won.
     # (Nothing is added to this list here - see the note below the
     # append_available_packages call about gstreamer/gtk4 dev packages.)
-    local -a packages=(libtbb-dev python3-venv python3-pip cargo rustc)
+    _sdp_out=(libtbb-dev python3-venv python3-pip cargo rustc)
 
     if [ ! -x "/usr/local/bin/python${python_mm}" ]; then
         if apt_package_exists "python${python_mm}-dev"; then
-            packages+=("python${python_mm}-dev")
+            _sdp_out+=("python${python_mm}-dev")
         elif apt_package_exists python3-dev; then
-            packages+=(python3-dev)
+            _sdp_out+=(python3-dev)
         fi
     fi
 
     if apt_package_exists "gcc-${gcc_major}" && apt_package_exists "g++-${gcc_major}"; then
-        packages+=("gcc-${gcc_major}" "g++-${gcc_major}")
+        _sdp_out+=("gcc-${gcc_major}" "g++-${gcc_major}")
     fi
 
-    append_available_packages packages clang-22 lld-22 llvm-22 llvm-22-dev \
+    append_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
 
     # DO NOT add libgstreamer*-dev or libgtk-4-dev here. Both look like the
@@ -126,8 +132,32 @@ select_and_install_dev_packages() {
     #     chain, which pulls target-side Python and breaks cross builds on
     #     python3-minimal's postinst.
     # libssl-dev already arrives via package-lists.sh.
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${packages[@]}"
+}
 
+install_dev_packages() {
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
+}
+
+# Read a clang binary's version from its embedded DEB metadata, --version
+# fallback. (Bundled sibling of validate-compilers.sh's _vc_clang_embedded_version.)
+clang_embedded_deb_version() {
+    local _bin="$1" _ver=""
+    # The binary's --version reports the RUNTIME libclang-cpp version, not
+    # the binary's own built-in version. The apt clang-<major> package ships
+    # libclang-cpp.so at /usr/lib which shadows the source-built lib at the
+    # toolchain's own lib/ dir.  Read the version from the binary's embedded
+    # DEB package metadata instead — it reflects the source-built version.
+    _ver="$( strings "${_bin}" 2>/dev/null \
+        | grep -o '"version":"[^"]*"' \
+        | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
+    [ -n "${_ver}" ] && printf '%s' "${_ver}" && return 0
+    _ver="$( "${_bin}" --version 2>/dev/null \
+        | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 )"
+    printf '%s' "${_ver}"
+}
+
+pin_clang_alternatives() {
     # The shipped clang{,++} MUST equal LLVM_RELEASE (asserted by the runtime
     # clang-version smoke). Two candidate toolchains can provide it:
     #   1. /usr/local/llvm-target  — the source-built target clang. For arm64/riscv64
@@ -148,27 +178,10 @@ select_and_install_dev_packages() {
         _want_llvm="$( . /opt/scripts/core/versions.env 2>/dev/null; printf '%s' "${LLVM_RELEASE:-}" )"
     fi
     _llvm_major="${_want_llvm%%.*}"
-    _clang_ver() {
-        local _bin="$1" _ver=""
-        # The binary's --version reports the RUNTIME libclang-cpp version, not
-        # the binary's own built-in version. The apt clang-<major> package ships
-        # libclang-cpp.so at /usr/lib which shadows the source-built lib at the
-        # toolchain's own lib/ dir.  Read the version from the binary's embedded
-        # DEB package metadata instead — it reflects the source-built version.
-        _ver="$( strings "${_bin}" 2>/dev/null \
-            | grep -o '"version":"[^"]*"' \
-            | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
-        [ -n "${_ver}" ] && printf '%s' "${_ver}" && return 0
-        # Fallback: try --version with LD_LIBRARY_PATH if strings found nothing.
-        _ver="$( "${_bin}" --version 2>/dev/null \
-            | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
-            | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 )"
-        printf '%s' "${_ver}"
-    }
     for _cand in /usr/local/llvm-target "/usr/lib/llvm-${_llvm_major}"; do
         [ -x "${_cand}/bin/clang" ] || continue
         [ -n "${_chosen}" ] || _chosen="${_cand}"   # fallback = first present (source preferred)
-        if [ -n "${_want_llvm}" ] && [ "$(_clang_ver "${_cand}/bin/clang")" = "${_want_llvm}" ]; then
+        if [ -n "${_want_llvm}" ] && [ "$(clang_embedded_deb_version "${_cand}/bin/clang")" = "${_want_llvm}" ]; then
             _chosen="${_cand}"; break
         fi
     done
@@ -280,7 +293,7 @@ create_runtime_venv() {
 # "Permission denied".
 #
 # Only things the image genuinely promises are checked. GTK4 dev is absent BY
-# DESIGN (see select_and_install_dev_packages), so it is reported, not enforced
+# DESIGN (see select_dev_packages), so it is reported, not enforced
 # - asserting it would turn a deliberate policy into a build failure.
 verify_consumer_dev_surface() {
     local missing=() mod
@@ -367,7 +380,10 @@ main() {
     apt-get update
 
     install_staged_target_python "${python_mm}"
-    select_and_install_dev_packages "${python_mm}" "${gcc_major}"
+    local -a _dev_packages=()
+    select_dev_packages _dev_packages "${python_mm}" "${gcc_major}"
+    install_dev_packages "${_dev_packages[@]}"
+    pin_clang_alternatives
     wire_python_symlinks "${python_mm}"
     preserve_custom_gcc "${GCC_VERSION}"
     wire_cargo_symlinks
