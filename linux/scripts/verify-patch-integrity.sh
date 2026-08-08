@@ -55,8 +55,12 @@ for _p in "${_patches[@]}"; do
     fail "not a valid unified diff (missing ---/+++/@@): ${_rel}"
   fi
 
-  # 2. Referenced by some build script (by basename), excluding the patch itself.
-  if grep -rlF "${_base}" "${SCRIPTS_DIR}" --include='*.sh' | grep -qv "^${_p}$"; then
+  # 2. Referenced by some build script (by basename). The old
+  # `| grep -qv "^${_p}$"` self-exclusion was a no-op — an --include='*.sh'
+  # search can never emit the .patch path itself — and, worse, `grep -qv`
+  # answers "is there ANY non-matching line", which is not the intended set
+  # subtraction anyway. A plain -q match is the honest form.
+  if grep -rlF "${_base}" "${SCRIPTS_DIR}" --include='*.sh' | grep -q .; then
     # 2b. Advisory: does any referencing site route through apply-patch.sh?
     if grep -rlF "${_base}" "${SCRIPTS_DIR}" --include='*.sh' \
          | xargs grep -lE 'apply-patch\.sh|android_apply_patch' 2>/dev/null | grep -q .; then

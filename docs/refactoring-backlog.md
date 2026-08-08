@@ -1058,6 +1058,14 @@ ref is overridden with the local content; delete the layout after the child
 consumes it. Until then: --no-push documented as single-stage-only (usage text,
 AGENTS quick-ref, cross-builds doc all updated); a warn fires at parse time.
 
+- 2026-08-08: buildkit's 2MiB per-step log clip blinds monitoring during the
+  long GCC/LLVM RUNs (the tee'd stage log freezes mid-step while the build
+  continues — twice mistaken for a hang today). Raise via
+  BUILDKIT_STEP_LOG_MAX_SIZE env on the buildkitd unit at the next restart
+  window. Also still open: base cache-missed after the buildkitd restart with
+  the new toml despite unchanged mounts and a surviving 119G store — root
+  cause unknown, investigate before relying on cross-restart layer reuse.
+
 ## 2026-08-08 — Windows lane: refactors landed in the pin-bump window
 
 Context worth recording, because it decided the *order* of this batch: another

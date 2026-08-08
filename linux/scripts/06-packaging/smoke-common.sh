@@ -183,7 +183,10 @@ validate_compiler_for_target() {
   local mode="${4:-native}"
   local expected_pattern expected_machine cc_dump cc_machine tmpdir cc_obj
 
-  expected_pattern="$(smoke_uname_name "${target_arch}")"
+  # `|| true` so the guard below is REACHABLE: smoke_uname_name returns 1 on an
+  # unknown arch, and under set -e the bare substitution killed the script
+  # before the intended "Unknown arch" fail could fire.
+  expected_pattern="$(smoke_uname_name "${target_arch}" 2>/dev/null || true)"
   expected_machine="$(smoke_elf_machine_grep "${target_arch}" 2>/dev/null || true)"
 
   [ -n "${expected_pattern}" ] || { fail "Unknown arch: ${target_arch}"; return 1; }

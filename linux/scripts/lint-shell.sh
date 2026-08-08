@@ -118,8 +118,11 @@ fi
 # shebang test is what keeps this from sweeping in READMEs and binaries.
 # Note this only affects EXPLICITLY passed files — the default sweep above still
 # discovers *.sh only, so the gate's default scope is unchanged.
+#
+# ${FILES[@]+...}: an empty find result leaves FILES unset, and expanding an
+# unset array trips `set -u` on bash < 4.4 (harmless on 5.x, cheap to guard).
 CHECK=()
-for f in "${FILES[@]}"; do
+for f in ${FILES[@]+"${FILES[@]}"}; do
   [ -f "${f}" ] || continue
   # Test the BASENAME, not the path: a directory component may carry a dot
   # (".githooks/pre-commit" matched the "has an extension" arm otherwise).

@@ -58,7 +58,7 @@ main() {
   # 3. Test cross-compilers for each target arch
   for arch in $(smoke_arch_words "${target_arches}"); do
     [ "${arch}" = "${host_arch}" ] && continue
-    local triplet cross_gcc
+    local triplet cross_gcc cross_gpp
     triplet="$(smoke_deb_triplet "${arch}" 2>/dev/null || true)"
     [ -n "${triplet}" ] || { fail "Cannot determine triplet for ${arch}"; continue; }
 
