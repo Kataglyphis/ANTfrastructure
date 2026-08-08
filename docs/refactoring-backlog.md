@@ -1269,3 +1269,54 @@ that Dockerfile deliberately — the doc image is meant to follow this repo's pi
 Committed **in the submodule** (`b0bffd5`); it still needs a push to that
 repository and a pointer bump here. That is a change to a different repo, so it
 is left explicit rather than done silently.
+
+## 2026-08-08 — deep forensic audit of the live cross-build logs (2-agent sweep + verification)
+
+Fixed immediately (land in the foreign arches' media/runtime stages + the amd64 refresh):
+- assemble-torch-app.sh: the app uv.lock (v0.0.27 → genai 0.14.0) beat the
+  chain's freshly built onnxruntime-genai 0.15.2 wheel; now pre-installed with
+  --no-install-package like the other locked wheels.
+- validate-media-runtime.sh: LIB_DIRS lacked the lib/<multiarch> dirs meson
+  installs into → the validator declared the build's own libcamera "missing"
+  and apt-installed Ubuntu's 0.7.0 as a shadow copy (false-positive repair).
+
+Verified-corrected agent findings (do NOT chase):
+- "NVENC/ffnvcodec missing" is ENABLE_NVIDIA-gated by design in the CPU lane.
+- runtime Python 3.14.4 is Ubuntu's DISTRO CPython (venv base), not a stale
+  layer; decide deliberately: use the staged 3.14.7 or pin-assert the distro one.
+- "is not a commit!" clone warnings = annotated-tag peeling, cosmetic.
+
+Open findings, prioritized (closure batch unless noted):
+1. ccache launcher missing in LLVM's NESTED sub-builds (llvm-cross.sh:232
+   CROSS_TOOLCHAIN_FLAGS_NATIVE lacks *_COMPILER_LAUNCHER) — measured 0% gain
+   on 189 identical objects built twice. + emit `ccache -z/-s` to STDERR per
+   RUN (stderr survives the 2MiB clip; stdout does not — logging.sh routes
+   info() to stdout, warn/err to stderr, so [WARN]/[ERROR] streams are
+   complete evidence even in clipped steps).
+2. TVM ships broken (libtvm_runtime undefined symbol; built against DISTRO
+   llvm-config-22 = 22.1.2 not the pinned 22.1.8) + dual-LLVM in the image;
+   the "wanted 22.1.8, got 22.1.2" line prints at INFO. Promote + fix TVM's
+   LLVM selection.
+3. App-smoke inner warnings (pyav absent though PYAV_VERSION pinned; TVM
+   import failure) do not reach the outer PASS/FAIL. Propagate; also delete
+   the three "(import failed in build sandbox — will work at runtime)"
+   assertion-free PASSes and the stale "libx264 may not be available" skip
+   (x264 IS in the build).
+4. FFmpeg DNN backends: TF-C SDK download failed silently (TENSORFLOW_C pin
+   dead), OpenVINO pkg-config never resolvable (pin dead) — decide: make
+   fatal, fix source, or drop the pins.
+5. OpenCV configures at step #33 against DISTRO GStreamer 1.28.2/FFmpeg 62.x
+   because /opt/gstreamer + /opt/ffmpeg build at #48/#68 — stage-order or
+   PKG_CONFIG_PATH decision. Also OpenCV tree is "5.0.0-dirty" (patches) —
+   note for reproducibility; ONNX/VA/AVIF off in OpenCV's own config.
+6. GCC prereq inconsistency: passes 3+5 pull in-tree gmp/mpfr/mpc/isl (2×
+   download+build), passes 1/2/4 use system libs; cache sha512.sum/.sig next
+   to the tarball (5× refetch each, caused 3 of 4 transient retries);
+   LIBRARY_PATH leaks into NATIVE sub-build links; verify step never
+   exercises C/ASM cross paths; #12-vs-#15 duplicate-compile overlap worth
+   measuring once ccache stats exist.
+7. onnxruntime venv carries BOTH 1.28 (dnnl wheel) and 1.27.0 (PyPI) — dedupe;
+   [DONE 2026-08-08: onnxruntime-genai added to the smoke-torch-venv pin
+   assertion] python-version assertion still pending the distro-vs-staged
+   CPython decision;
+   APP_REF v0.0.27 reports stale __version__ 0.0.22 (upstream issue).

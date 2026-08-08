@@ -1,5 +1,84 @@
 # Changelog
 
+## 2026-08-08 (afternoon) — Linux lane: the --no-push hole, and a forensic audit of "green"
+
+### `--no-push` full-chain handoffs never worked on this host
+
+The BuildKit **OCI worker keeps its own image store**: `nerdctl build -t`
+loads results into containerd, which the next build's `FROM` never consults —
+the mutable parent tag resolves against the **registry**. Every downstream
+stage of a `--no-push` chain silently built on the last PUSHED parent. Proof:
+a freshly built compiler shipped `/opt/gcc-16.2.0` while the sdk built "from"
+it contained `/opt/gcc-16.1.0` (a months-old ghcr image); `FROM
+repo@<containerd-digest>` errors "not found". Two full validation runs were
+lost to this before the digest trail exposed it. Interim: push mode is the
+only correct full-chain flow (docs updated, a warning fires at `--no-push`
+parse time); real fix (OCI-layout build-context handoff, the runtime lane's
+existing mechanism) is specced in the backlog. The manifest is protected by
+running `--to-stage android` + the runtime lane with `--skip-manifest` until
+all arches exist.
+
+### A fifth shell bug class, found by auditing the helper scripts
+
+Functions whose **last statement** is `[ cond ] && action` return 1 in the
+healthy case; under `set -e` the guard tool kills itself. The flagship victim:
+`verify-critical-fixes.sh` — the script guarding the Five Critical Fixes —
+aborted after fix 1 **whenever the fixes were actually present**, silently
+skipping fixes 2–9 and the summary. It only ever looked green because hosts
+don't carry the staged payloads. Fixed there, in `smoke-common.sh` (the
+"Unknown arch" guard was unreachable), and lint/preflight/NVIDIA-lane guards
+in the same sweep.
+
+### Forensic audit of the build logs: what "21/21 PASS" was hiding
+
+Two-agent sweep over ~12 MB of logs, each claim re-verified:
+
+- **Built 0.15.2, shipped 0.14.0**: the app's `uv.lock` outvoted the chain's
+  freshly built `onnxruntime-genai` wheel (`--find-links` only OFFERS).
+  Fixed (pre-install + `--no-install-package`), and genai added to the
+  version-pin smoke so this class cannot recur unnoticed.
+- **The libcamera pin was undercut at the finish line**: the media validator
+  did not know meson's `lib/<multiarch>` install dirs, declared the build's
+  own libs missing, and apt-installed Ubuntu's older libcamera as a shadow
+  copy — a false-positive "repair". Fixed (multiarch dirs in the scan path).
+- **ccache delivers zero in LLVM's nested sub-builds** (189 identical objects
+  compiled twice, second pass 1.9% slower): `CROSS_TOOLCHAIN_FLAGS_NATIVE`
+  forwards no compiler launcher. Plus: no ccache statistics are emitted
+  anywhere — and the 2MiB step-log clip truncates **stdout only**, so stats
+  (and anything that must survive) belong on stderr. Both queued.
+- Still open, prioritized in the backlog: TVM ships import-broken (built
+  against distro LLVM 22.1.2, not the pinned 22.1.8 — the telltale line
+  prints at INFO), pyav is pinned but never installed, FFmpeg's TF/OpenVINO
+  DNN backends died silently, OpenCV links distro GStreamer/FFmpeg due to
+  stage ordering, three assertion-free fallback-PASSes, inner smoke warnings
+  invisible to the outer verdict.
+- Verified NON-issues (do not chase): "missing NVENC" is `ENABLE_NVIDIA`-gated
+  by design; runtime Python 3.14.4 is Ubuntu's distro CPython as venv base
+  (a decision, not a stale layer); "is not a commit!" clone warnings are
+  annotated-tag peeling.
+
+### Also
+
+- Owner priorities codified: AGENTS.md § Project priorities (speed AND
+  stability AND tests, docs always in the same work unit), README
+  § Engineering principles.
+- buildkitd GC budget pinned (`~/.config/buildkit/buildkitd.toml`,
+  gckeepstorage 500GB) + step-log-size drop-in (both effective at the next
+  between-runs restart). Unexplained: base cache-missed after the first
+  restart despite unchanged mounts and a surviving store — under
+  investigation before cross-restart layer reuse is trusted.
+- versions.env: 11 bumps (checksums from official sources), libcamera pinned
+  for the first time (`v0.7.2` — the only media library that tracked master),
+  OpenCV moved to the immutable `5.0.0` tag; ROCm deliberately HELD (new
+  "TheRock" releases 404 on the old apt path); LiteRT-LM 0.15.0 verified to
+  keep the protobuf 6.31.1 coupling.
+- `latest-cross-amd64` shipped: full from-base chain in push mode with
+  digest-pinned handoffs + live ancestry annotations; runtime smoke 21/21
+  after a host containerd-shim failure was diagnosed (every `nerdctl run`
+  died; builds unaffected) and the services restarted. The ancestry guard and
+  the annotation-based `--verify-chain` verdicts had their first real-world
+  successes the same day.
+
 ## 2026-08-08 — Windows lane: backlog cleared before the from-toolchain rebuild
 
 The remaining four items, closed so the chain restarts against a tree with no

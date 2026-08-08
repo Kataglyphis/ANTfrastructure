@@ -4,6 +4,32 @@ Agent context file. Build commands live in `README.md`; deep architecture in
 `docs/`. This file captures the **guardrails** an LLM agent must follow to avoid
 regressing the build.
 
+## Project priorities (owner directive — optimize for ALL THREE, always)
+
+1. **Fastest possible build.** Cache-first engineering: BuildKit layer cache
+   with narrow per-file closures, local cache exports, ccache wired end-to-end
+   (and MEASURED — emit stats to stderr, the stream the 2MiB step-log clip
+   never truncates), pinned buildkitd GC budget, parallelism levers
+   (`GCC_PARALLEL_TARGETS`, `--parallel-archs`) taken when proven safe. The
+   resource monitor showed peak CPU at 42% — idle cores are the standing
+   wall-clock reserve. Speed that risks a silently wrong image is not speed
+   (the `--no-push` handoff lesson): correctness bounds every shortcut.
+2. **Maximum stability.** Digest-pinned handoffs, machine-checked ancestry,
+   verified version pins (checksums from official sources), the five shell
+   bug classes (§ Shell safety conventions) never reintroduced, and gates
+   that FAIL LOUDLY — an assertion-free PASS ("will work at runtime") or an
+   inner warning swallowed by an outer green is a defect, not a success.
+3. **Many tests.** Every fix ships with a regression test where testable:
+   unit suites under `linux/scripts/tests/` (auto-discovered by the
+   pre-commit `script-tests` gate), lint gates (shellcheck, IFS-safety,
+   hadolint, actionlint), preflight checks, and smoke assertions that assert
+   real behavior against `versions.env` pins.
+4. **Docs always follow the change — in the same work unit.** Any behavior,
+   flag, workflow, or invariant change updates AGENTS.md (rules/quick-ref),
+   README.md (user-facing pointers), the relevant `docs/` page, and
+   `CHANGELOG.md` before the work is called done. A mechanism that only the
+   git history knows about does not exist for the next session.
+
 ## Container Architecture
 
 Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
