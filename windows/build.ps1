@@ -747,7 +747,7 @@ try {
                 CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
                 CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
                 CUDNN_VERSION            = Get-Ver 'CUDNN_VERSION'
-                TENSORRT_WINDOWS_VERSION = Get-Ver 'TENSORRT_WINDOWS_VERSION'
+                TENSORRT_VERSION         = Get-Ver 'TENSORRT_VERSION'
                 # Hashes as ARGs: the base image's baked versions.env is stale
                 # right after a bump — these must move WITH the version pins.
                 CUDA_INSTALLER_SHA256    = Get-Ver 'CUDA_INSTALLER_SHA256'
