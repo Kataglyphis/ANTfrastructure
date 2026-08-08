@@ -1269,3 +1269,197 @@ that Dockerfile deliberately — the doc image is meant to follow this repo's pi
 Committed **in the submodule** (`b0bffd5`); it still needs a push to that
 repository and a pointer bump here. That is a change to a different repo, so it
 is left explicit rather than done silently.
+
+## 2026-08-08 — deep forensic audit of the live cross-build logs (2-agent sweep + verification)
+
+Fixed immediately (land in the foreign arches' media/runtime stages + the amd64 refresh):
+- assemble-torch-app.sh: the app uv.lock (v0.0.27 → genai 0.14.0) beat the
+  chain's freshly built onnxruntime-genai 0.15.2 wheel; now pre-installed with
+  --no-install-package like the other locked wheels.
+- validate-media-runtime.sh: LIB_DIRS lacked the lib/<multiarch> dirs meson
+  installs into → the validator declared the build's own libcamera "missing"
+  and apt-installed Ubuntu's 0.7.0 as a shadow copy (false-positive repair).
+
+Verified-corrected agent findings (do NOT chase):
+- "NVENC/ffnvcodec missing" is ENABLE_NVIDIA-gated by design in the CPU lane.
+- runtime Python 3.14.4 is Ubuntu's DISTRO CPython (venv base), not a stale
+  layer; decide deliberately: use the staged 3.14.7 or pin-assert the distro one.
+- "is not a commit!" clone warnings = annotated-tag peeling, cosmetic.
+
+Open findings, prioritized (closure batch unless noted):
+1. ccache launcher missing in LLVM's NESTED sub-builds (llvm-cross.sh:232
+   CROSS_TOOLCHAIN_FLAGS_NATIVE lacks *_COMPILER_LAUNCHER) — measured 0% gain
+   on 189 identical objects built twice. + emit `ccache -z/-s` to STDERR per
+   RUN (stderr survives the 2MiB clip; stdout does not — logging.sh routes
+   info() to stdout, warn/err to stderr, so [WARN]/[ERROR] streams are
+   complete evidence even in clipped steps).
+2. TVM ships broken (libtvm_runtime undefined symbol; built against DISTRO
+   llvm-config-22 = 22.1.2 not the pinned 22.1.8) + dual-LLVM in the image;
+   the "wanted 22.1.8, got 22.1.2" line prints at INFO. Promote + fix TVM's
+   LLVM selection.
+3. App-smoke inner warnings (pyav absent though PYAV_VERSION pinned; TVM
+   import failure) do not reach the outer PASS/FAIL. Propagate; also delete
+   the three "(import failed in build sandbox — will work at runtime)"
+   assertion-free PASSes and the stale "libx264 may not be available" skip
+   (x264 IS in the build).
+4. FFmpeg DNN backends: TF-C SDK download failed silently (TENSORFLOW_C pin
+   dead), OpenVINO pkg-config never resolvable (pin dead) — decide: make
+   fatal, fix source, or drop the pins.
+5. OpenCV configures at step #33 against DISTRO GStreamer 1.28.2/FFmpeg 62.x
+   because /opt/gstreamer + /opt/ffmpeg build at #48/#68 — stage-order or
+   PKG_CONFIG_PATH decision. Also OpenCV tree is "5.0.0-dirty" (patches) —
+   note for reproducibility; ONNX/VA/AVIF off in OpenCV's own config.
+6. GCC prereq inconsistency: passes 3+5 pull in-tree gmp/mpfr/mpc/isl (2×
+   download+build), passes 1/2/4 use system libs; cache sha512.sum/.sig next
+   to the tarball (5× refetch each, caused 3 of 4 transient retries);
+   LIBRARY_PATH leaks into NATIVE sub-build links; verify step never
+   exercises C/ASM cross paths; #12-vs-#15 duplicate-compile overlap worth
+   measuring once ccache stats exist.
+7. onnxruntime venv carries BOTH 1.28 (dnnl wheel) and 1.27.0 (PyPI) — dedupe;
+   [DONE 2026-08-08: onnxruntime-genai added to the smoke-torch-venv pin
+   assertion] python-version assertion still pending the distro-vs-staged
+   CPython decision;
+   APP_REF v0.0.27 reports stale __version__ 0.0.22 (upstream issue).
+
+### 2026-08-08 (cont) — sccache multi-tier: VERIFIED, and a correction of my own claim
+
+I told the owner that a two-tier sccache "isn't available — sccache has one
+backend, remote wins over local, you'd need a caching HTTP proxy". **That was
+wrong.** Checked against mozilla/sccache's own `docs/Configuration.md`:
+multi-level caching exists, is read-through/write-through with automatic
+backfill, and is selected with `SCCACHE_MULTILEVEL_CHAIN` ("Order matters:
+left-to-right is fast-to-slow"). Valid backend strings include `disk` and
+`webdav`.
+
+What WAS right is that the repo's own note was incomplete: setting `SCCACHE_DIR`
+next to a configured remote does nothing on its own, because without the chain
+variable sccache stays in single-level legacy mode. Both the note and my claim
+are corrected in `docs/windows-builds.md` § BuildKit lane.
+
+Verified availability, not assumed:
+
+| fact | evidence |
+|---|---|
+| multi-tier implemented | 2026-04-17, PR #2581 (commit on `docs/Configuration.md`) |
+| released in | **v0.16.0**, 2026-06-19 (GitHub releases API) |
+| latest upstream | v0.17.0, 2026-07-29 |
+| version this image installs | **0.17.0** — read out of the 2026-08-08 chain's own base log |
+
+So the lever is available on this host today.
+
+**Consequence worth deciding deliberately:** sccache currently sits in
+`setup-scoop-tools.ps1`'s FLOATING block, justified as "the build only invokes
+them". Wiring the chain changes that — the L1 tier would exist or not depending
+on the installed sccache VERSION, and on an older one the variable is ignored
+**silently**, so the cache degrades with no error anywhere. That is exactly the
+failure shape this repo spent the week eliminating. Pin sccache with
+llvm/ninja/nasm in the same change, or accept a speed feature that can vanish
+without a signal.
+
+### 2026-08-08 — periphery audit (workflows/Makefile/py-tools/hooks/services)
+
+Fixed immediately (all host/CI-side, zero build-closure impact): pre-commit
+sphinx root (broke EVERY commit on hook-enabled clones, error swallowed);
+deps.json libcamera now bound to LIBCAMERA_VERSION (license pages published
+"git master"); install-deps cargo dirname-of-empty put "." on GITHUB_PATH;
+build-viewer sh -euc + results-glob guard (failed npm build reported success);
+flutter smoke's three probe substitutions guarded (FAIL branches were
+unreachable); permissions: contents: read on ubuntu24.04 + build-docs;
+free-disk-space + checkout SHA-pinned; hook: --diff-filter=ACMR (renames
+bypassed all gates), git-grep rc>1 fails the conflict gate loudly;
+generate-website-licenses: unknown var raises, flagless default is CHECK.
+
+Deferred to the batch / follow-ups:
+- versions.env: renovate hints for LIBCAMERA_VERSION + FLATPAK_RUNTIME_VERSION
+  (closure file — batch); both currently have NO automated update path.
+- preflight [ -f ] guards: a renamed target silently vanishes from the gate;
+  fail when a PREFLIGHT_ONLY selection ran zero checks.
+- hook shebang probe reads the WORKTREE not the staged blob (git show ":$f").
+- bump_versions.py: failures counted but exit 0; write_env_values drops
+  no-matching-line keys silently + unescaped re.sub template.
+- actions: registry password via env not interpolation; clone-into-short-path
+  leaves a token in global gitconfig on self-hosted runners; workspace-path
+  quoting in run-in-linux-container.
+- llm-stack: node:20-alpine vs NODE_VERSION=26.7.0 drift (unreachable by
+  sync_versions — Dockerfile-ARG-only); ollama empty-SHA downgrade needs an
+  explicit ALLOW_UNVERIFIED=1; ghcr-cleanup delete failures are warnings.
+
+## 2026-08-08 — sccache multi-tier design (Linux) + bash simplification plan
+
+Owner asked (a) whether the Windows lane's sccache multi-tier should come to
+Linux, (b) for bash simplification/dedup. Both are CLOSURE work → batch with
+task "apply the batched closure refactor". Design decided now:
+
+### Multi-tier compile caching (Linux) — differentiated, not a wholesale switch
+- C/C++: KEEP ccache (wired + populating since today; better direct-mode hit
+  rates than sccache for GCC). Add the REMOTE tier via ccache's own
+  `remote_storage` (>=4.4; Ubuntu resolute's ccache qualifies) pointed at a
+  host-local redis/http endpoint → survives buildkit cache-mount loss (see the
+  unexplained base cache-miss), shareable across runs/hosts.
+- Rust: THE gap. sccache is already INSTALLED in the images and
+  compiler-cache.sh::setup_sccache exists — but Dockerfile.toolchain:58 and
+  Dockerfile.package:157 hard-disable it (`RUSTC_WRAPPER=""`). gst-plugins-rs
+  + cargo-c + rust builds get zero compile caching today. Batch: find out WHY
+  it was disabled (git blame first), then enable RUSTC_WRAPPER=sccache with
+  SCCACHE_DIR on the existing mounts; optional SCCACHE_REDIS for the shared
+  tier. Same backend host can serve the Windows lane's sccache (no cross-OS
+  hits, shared infra).
+- Wire `ccache -z`/`-s` + `sccache --show-stats` to STDERR per RUN (survives
+  the log clip) so every tier's effectiveness is measured, not assumed.
+
+### Bash simplification (accidental complexity only; protected repetition stays)
+1. Named guard helpers in 01-core (bundling): `first_match` (find|head||true
+   — ~426 sites use the raw idiom), `probe` (cmd||true with comment-free
+   intent), `source_vendor` (the nounset-suspend window — 3 call sites),
+   `csv_each` (IFS-safe split). Migrate hot files; new code uses helpers.
+2. Unify the two parallel-loop implementations (gcc.sh's driver →
+   run_parallel_arch_loop; costs one mount-list line, batch anyway).
+3. cross-stage-build.sh push/local dual path collapses once the OCI-layout
+   local handoff lands — the single biggest orchestrator simplification;
+   design both together.
+4. chain-verify.sh's manual-inspection fallback shrinks to a stub once all
+   published images carry ancestry annotations.
+5. Explicit NON-goals: splitting the big build scripts without functional
+   cause; touching the protected repetition.
+### 2026-08-08 (cont) — 🔴 ONNX's CUDA kernels are NOT cached, and never were
+
+Raised by the owner as "with the sccache change ONNX's CUDA code should be
+fully cached now". It is not, and the sccache change is not why.
+
+**`CMAKE_CUDA_COMPILER_LAUNCHER` appears nowhere in this repo.** Only the C and
+CXX launchers are wired, at three sites (`WindowsBuild.Common.psm1:631-632`,
+`WindowsCMake.Common.psm1:289-290`, `WindowsSourceBuild.Common.psm1:176-177`).
+So every `.cu` translation unit goes through nvcc uncached — before the
+two-tier change and after it. The two-tier wiring only accelerates what was
+already cacheable: the C/C++ TUs.
+
+Scale, from this repo's own source (`build-onnx-from-source.ps1:197`):
+
+> ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the **~1h CUDA/TensorRT kernel
+> compiles**)
+
+That is very likely the single largest time sink in the chain, entirely
+uncached, every run.
+
+**Fixable — sccache supports nvcc.** Verified against mozilla/sccache's README:
+"sccache includes support for caching the compilation of Assembler, C/C++ code,
+Rust, as well as NVIDIA's CUDA using nvcc", with NVCC listed among the
+supported compilers alongside gcc/clang/MSVC/rustc/NVC++/hipcc.
+
+**Two risks to settle before wiring, both on the most fragile path here:**
+
+1. nvcc's host compiler in this image is `cl.exe`, and the repo already carries
+   a patch that strips clang-cl-only flags out of the `-Xcompiler` block
+   (`ocv_cuda_filter_options`; cl.exe rejects them with D8021). Inserting
+   sccache between CMake and nvcc adds a layer exactly there.
+2. `SCCACHE_CACHE_MULTIARCH` — ONNX builds `CUDA_ARCHITECTURES=80;86;89;90`,
+   i.e. several `-gencode` in one invocation. sccache's Configuration.md
+   mentions the variable in a single clause ("disable caching of multi
+   architecture builds") with no semantics, no default stated, and nothing
+   about correctness across multiple gencodes. Measure; do not assume.
+
+Deliberately NOT wired during the 2026-08-08 proof chain: that run exists to
+green the FFmpeg .pc gate, the four mandatory GStreamer plugins and the warning
+suppressions, and a CUDA-path failure would cost the media stage ~1h in and
+take the proof with it. Wire it immediately after, with sccache stats read
+before and after so the win is a number rather than a claim.

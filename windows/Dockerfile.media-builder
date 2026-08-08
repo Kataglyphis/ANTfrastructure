@@ -29,8 +29,30 @@ FROM ${BASE_IMAGE} AS common
 ARG MEMORY_LIMIT_GB=""
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 
+# sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
+# every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
+#
+# SCCACHE_DIR ALONE DOES NOTHING. With a remote configured, sccache runs in
+# single-level *legacy* mode and the disk backend is not in the chain at all --
+# this repo's own note claimed the opposite until it was checked against
+# mozilla/sccache's docs/Configuration.md. The chain variable is what selects
+# the hierarchy: "Order matters: left-to-right is fast-to-slow (L0, L1, ...)",
+# read-through / write-through with automatic backfill.
+#
+# Requires sccache >= v0.16.0 (2026-06-19). Older versions ignore the variable
+# SILENTLY, which is why sccache is now PINNED in versions.env and asserted by
+# verify-toolchain.ps1 -- a speed feature that can vanish without a signal is
+# worse than no feature at all.
+#
+# SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule caps
+# type==exec.cachemount at 20GB/168h (windows/buildkitd.toml), so an unbounded
+# L0 would be evicted between chains and quietly buy nothing. Raise BOTH
+# together or neither.
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
-    SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"
+    SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
+    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
+    SCCACHE_DIR="C:\sccache" `
+    SCCACHE_CACHE_SIZE="15G"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
@@ -234,7 +256,8 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # former `media-core-bk` ENV twin (and the sync_versions.py bookkeeping it
 # required) is gone; see media-core-env above.
 FROM media-core-env AS media-core-built-onnx
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
@@ -242,7 +265,8 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
@@ -251,7 +275,8 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
@@ -259,7 +284,8 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
-RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
@@ -267,7 +293,8 @@ RUN --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
-RUN --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
@@ -280,7 +307,8 @@ RUN --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmn
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
-RUN --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+    --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `

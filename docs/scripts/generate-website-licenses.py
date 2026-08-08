@@ -80,7 +80,14 @@ def parse_versions_env() -> dict[str, str]:
 
 def resolve_version(entry: dict, versions: dict[str, str]) -> str:
     var = entry.get("var")
-    if var and var in versions:
+    if var:
+        if var not in versions:
+            # Loud failure: a renamed/removed versions.env key used to degrade
+            # silently to version_fixed or an em-dash on the PUBLISHED pages.
+            raise KeyError(
+                f"deps.json entry {entry.get('name')!r}: var {var!r} "
+                f"not found in versions.env"
+            )
         return versions[var]
     fixed = entry.get("version_fixed")
     if fixed:
@@ -178,7 +185,9 @@ def main() -> int:
     versions = parse_versions_env()
     en_content, de_content = generate_content(versions)
 
-    if args.check:
+    # Default is CHECK (matching sync_versions.py): a flagless invocation used
+    # to fall through to the WRITE branch and rewrite tracked files.
+    if not args.write:
         if check_current(en_content, de_content):
             print("Website license files are up to date.")
             return 0

@@ -46,7 +46,9 @@ while IFS= read -r -d '' f; do
   case "${f##*/}" in
     Dockerfile*) STAGED_DF+=("$f") ;;
   esac
-done < <(git diff --cached --name-only --diff-filter=ACM -z)
+# ACMR: rename detection is on by default, and a rename-with-edits (R<100)
+# previously bypassed every gate (--name-only lists the destination path).
+done < <(git diff --cached --name-only --diff-filter=ACMR -z)
 
 # 0. Unresolved merge-conflict markers in the STAGED content.
 #    Added 2026-08-08 after docs/refactoring-backlog.md was committed with a
@@ -61,7 +63,13 @@ done < <(git diff --cached --name-only --diff-filter=ACM -z)
 #    not the working tree. -I skips binaries.
 echo "=== merge-conflict markers (staged content) ==="
 if [ "${#STAGED_ALL[@]}" -gt 0 ]; then
-  if CONFLICTED=$(git grep --cached -lIE '^(<{7}|>{7}) ' -- "${STAGED_ALL[@]}" 2>/dev/null) && [ -n "$CONFLICTED" ]; then
+  # `|| _cm_rc=$?`: rc=1 (no match) is the healthy case and must not trip the
+  # hook's set -e; rc>1 is a real git failure and fails the gate loudly below.
+  _cm_rc=0
+  CONFLICTED=$(git grep --cached -lIE '^(<{7}|>{7}) ' -- "${STAGED_ALL[@]}" 2>/dev/null) || _cm_rc=$?
+  if [ "${_cm_rc}" -gt 1 ]; then
+    fail "git grep failed (rc=${_cm_rc}) — conflict-marker gate could not run"
+  elif [ "${_cm_rc}" -eq 0 ] && [ -n "$CONFLICTED" ]; then
     echo "$CONFLICTED" | sed 's/^/  /'
     fail "unresolved merge-conflict markers in staged files (listed above)"
   else
@@ -111,7 +119,10 @@ if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
   . "${REPO_ROOT}/.venv/bin/activate"
   if python -c "import sphinx_kataglyphis" 2>/dev/null; then
     cd "${REPO_ROOT}/docs"
-    python -m sphinx -W -E -b html source _build/html > /dev/null 2>&1 \
+    # Sphinx root is docs/ ITSELF (docs/conf.py; docs/Makefile SOURCEDIR=.) —
+    # there is no docs/source/, so the old "source" arg failed on every commit
+    # of a hook-enabled clone, with the real error swallowed by >/dev/null.
+    python -m sphinx -W -E -b html . _build/html > /dev/null 2>&1 \
       && pass "sphinx docs build" \
       || fail "sphinx build failed (run 'make html' in docs/)"
   else

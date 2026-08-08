@@ -38,7 +38,29 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # only, and the final image's whole-modules COPY comes one stage too late.
 COPY windows\scripts\modules\WindowsNative.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\assemble-torch-app.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
+# Wheel download cache (added 2026-08-08). Neither UV_CACHE_DIR nor
+# PIP_CACHE_DIR existed anywhere in the Windows lane, so this stage re-downloaded
+# its whole wheel set on every run -- and with PYTORCH_EXTRA=pytorch-cu130 that
+# is multiple GB of CUDA-flavoured torch over the network, for bytes that never
+# change between runs. The comment below already calls this step "minutes-long,
+# network-bound"; this is the cache that makes it stop being network-bound.
+#
+# Low risk by construction, unlike a source-tree cache: uv treats its cache as
+# pure content-addressed scratch, so BuildKit cloning the mount under lock (the
+# documented caveat) costs at worst a cold re-download, and nothing here renames
+# a directory on the mount.
+#
+# Sized 10G against the tier-0 GC cap for type==exec.cachemount (20GB/168h in
+# windows/buildkitd.toml), which the 15G sccache L0 already shares. If either
+# grows, raise the cap in the same change or both start getting evicted between
+# chains and quietly buy nothing.
+# Set INSIDE the RUN, not as ENV: an ENV would bake UV_CACHE_DIR into the
+# shipped image, pointing every runtime `uv`/`pip` invocation at a build-only
+# mount path that does not exist there. Build-time state belongs in the build
+# step, not in the artifact.
+RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
+    $env:UV_CACHE_DIR = 'C:\uvcache'; $env:PIP_CACHE_DIR = 'C:\uvcache\pip'; `
+    & 'C:\temp\scripts\assemble-torch-app.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 
 ENV TORCH_APP_DIR="C:\opt\Kataglyphis-Orchestr-ANT-ion"
 

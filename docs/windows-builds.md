@@ -425,7 +425,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    > it compares subnets of whichever file it finds and passed green throughout.
    > Different failure, different check. **When you edit one file, edit both.**
 
-   ```jsonc
+   ```javascript
    // C:\Program Files\containerd\cni\conf\0-containerd-nat.conflist
    {
        "cniVersion": "0.3.0",
@@ -592,7 +592,12 @@ Housekeeping and sharing:
   that is what protects the ~35GB VS-class layers; v0.32 key names are
   `reservedSpace`/`maxUsedSpace`/`minFreeSpace`, NOT the legacy
   `gckeepstorage`). Deploy/refresh it with
-  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an ADMIN shell — it
+  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an admin **pwsh 7**
+  shell (`pwsh -File …`; the script carries `#requires -Version 7.0`, and
+  under Windows PowerShell 5.1 it refuses with a `#requires` message that is
+  easy to read as "it ran and did nothing" — cost a round trip 2026-08-08,
+  and matches the repo-wide rule that 5.1 appears only in the base bootstrap
+  RUN) — it
   copies the toml to `C:\ProgramData\buildkitd\`, re-registers the service
   with `--config` (keeping `--debug`) and restarts buildkitd, so NEVER run it
   while a build is solving (it refuses when it sees a live buildctl unless
@@ -629,6 +634,57 @@ Housekeeping and sharing:
   target, not a ceiling. **Rule: to drain everything unpinned, ask for more
   free space than the disk physically has.** It cannot over-delete: `Shared`
   records stay pinned regardless (next bullet), so an absurd target is safe.
+
+- **A store that no prune lever can touch, with `du` reporting
+  `Reclaimable: 0B` (measured 2026-08-08).** Store at 207.63 GB against
+  `reservedSpace = 200GB` (= **214.75 GB**; the toml takes GiB); all 37 records
+  read `Reclaimable: false` and **every** lever returned `Total: 0B`:
+
+  > **The mechanism below is NOT settled — read this first.** The obvious
+  > reading is "GC never prunes below `reservedSpace`, so everything under it
+  > is marked unreclaimable". Lowering the reserve to 150GB and restarting
+  > buildkitd DID unblock it (98.83 GB freed immediately, C: 85.1 → 139.1 GB),
+  > so the ACTION is right. But a later measurement the same day contradicts
+  > that explanation: store 145.35 GB against the new 161.06 GB reserve —
+  > again below it — reported `Reclaimable: 145.35GB`, i.e. everything
+  > reclaimable. Between the two, `nerdctl rmi` had removed eight stage tags
+  > and buildkitd had restarted. So the reserve is at most part of it, and
+  > tag-pinning (`Shared` records) or a restart-cleared lease is likely the
+  > other part. Treat the recipe as verified and the causal story as open.
+
+  ```text
+  buildctl prune                                        Total: 0B
+  buildctl prune --free-storage 950000                  Total: 0B   # > disk size
+  buildctl prune --all --keep-storage-min 0 ...         Total: 0B
+  buildctl prune-histories                              Total: 0B   # listed, freed nothing
+  ```
+
+  None of those is broken; the reserve simply forbade the work. **Check
+  `reservedSpace` against `du`'s Total BEFORE reaching for a prune flag** —
+  if Total < reservedSpace there is nothing any flag can do, and the only
+  levers are `nerdctl rmi` (frees the containerd image store, a *separate*
+  store — it took 66.5 → 85.0 GB here while buildkit's 207.63 GB did not
+  move by a byte) or editing the policy and restarting buildkitd.
+
+- **Size `reservedSpace` against FREE space, not total disk (2026-08-08).**
+  The "~20-25 % of the disk" rule of thumb assumes the disk is mostly
+  buildkit's. On a host where it is not, it produces an arithmetically
+  unsatisfiable policy:
+
+  ```text
+  disk 930.8 GB - non-buildkit content ~637 GB = ~294 GB available to buildkit
+  reservedSpace 214.75 GB                      =>  ~79 GB of working room
+  highest stage disk floor (sdk)                    60 GB
+  a heavy media layer's scratch, which GC may not touch   6-10 GB
+  ```
+
+  So the chain consumed room, GC was structurally unable to give any back, and
+  the stage gate refused at 53.5 GB mid-media — read at the time as a disk
+  problem, actually a policy one. `reservedSpace` is **150GB** now (the floor
+  this file and `buildkitd.toml` already prescribed), which still exceeds the
+  ~120-150 GB fresh chain spine it exists to protect and leaves ~144 GB of
+  working room. Note the invariant: **`reservedSpace` + the highest stage disk
+  floor must fit in the space actually available to buildkit.**
 
 - **Prune can only ever take the `Private` slice — `Shared` is pinned by the
   image tags.** Same run: 445.61 GB → 371.77 GB, i.e. **exactly the 73.84 GB
@@ -869,10 +925,35 @@ steps; the remaining work is the Dockerfile surgery):
   client credential store).
 - **`RUN --mount=type=cache` for a local sccache dir** (WebDAV stays as the
   cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
-  Probed working; wiring = set SCCACHE_DIR to the cache mount in the `*-built`
-  RUNs. CAUTION (2026-08-04): cache mounts get CLONED whenever the record is
-  locked — fine for an L1 compile cache (worst case: cold clone, WebDAV L2
-  still hits), but never rely on two solves seeing the same instance.
+  Probed working. CAUTION (2026-08-04): cache mounts get CLONED whenever the
+  record is locked — fine for an L1 compile cache (worst case: cold clone,
+  WebDAV L2 still hits), but never rely on two solves seeing the same instance.
+
+  **CORRECTED 2026-08-08 — the wiring is NOT just `SCCACHE_DIR`.** This entry
+  used to say "wiring = set SCCACHE_DIR to the cache mount", which alone does
+  nothing: with a remote configured sccache runs in single-level *legacy* mode
+  and the disk backend is simply not in the chain. Two tiers need the explicit
+  chain variable (verified against mozilla/sccache `docs/Configuration.md`):
+
+  ```text
+  SCCACHE_MULTILEVEL_CHAIN = disk,webdav      # left-to-right = fast-to-slow
+  SCCACHE_DIR              = <the cache mount target>
+  SCCACHE_CACHE_SIZE       = <cap for the L0 disk tier>
+  SCCACHE_WEBDAV_ENDPOINT  = <unchanged>
+  ```
+
+  Read-through/write-through with automatic backfill; each level keeps its own
+  variables. `SCCACHE_MULTILEVEL_WRITE_ERROR_POLICY` defaults to `l0` (a write
+  failure on the local tier fails; remote-tier write errors are tolerated).
+
+  **Version dependency this creates:** multi-tier landed in sccache **v0.16.0**
+  (2026-06-19; implemented 2026-04-17, PR #2581). The image installs sccache
+  from the FLOATING scoop block — measured **0.17.0** in the 2026-08-08 chain,
+  so it works today. But the moment this wiring lands, sccache stops being a
+  tool the build merely invokes and becomes one whose VERSION gates a feature:
+  on an older sccache the chain variable is ignored and the L1 silently does
+  nothing, with no error. Pin `sccache` alongside llvm/ninja/nasm if this is
+  wired — the same argument that pinned those three.
 - **sccache for the merge/GStreamer builder**: DONE 2026-08-04 —
   build-gstreamer-from-source.ps1 sets `CC/CXX='sccache clang-cl'` for meson
   when the remote backend is configured (this build previously ran fully
@@ -1600,7 +1681,7 @@ After building, run the container smoke test to verify all components:
   pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
 ```
 
-The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
+The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. **This number is known-stale and WILL rise:** the mandatory-plugin assertions (2026-08-07) and the `SCOOP_GLOBAL_SHIMS` checks (2026-08-08) were added after it, and no full run has been made since. Record the new figure here from the next green run rather than treating a higher count as a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
 
 ### What is verified: native vs. Python
 

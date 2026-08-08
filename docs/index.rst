@@ -108,6 +108,21 @@ Common development targets:
    windows-host-setup
    windows-container-build-performance
    github-cli-pipeline-monitoring
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Operations & Reference:
+
+   cross-build-verification
+   build-parallelism-memory-tuning
+   build-resource-monitoring
+   code-quality-tooling
+   adopting-in-a-new-project
+   agentic-loop-build-matrix
+   windows-agentic-loop
+   refactoring-backlog
+   upstream-libstdcxx-c++23-nostdinc++
+   upstream/hcsshim-lost-shutdown-notification-issue
    ci-build-triggers
    rancher-desktop-linux-containers
    project-info

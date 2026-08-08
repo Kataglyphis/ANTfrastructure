@@ -64,7 +64,7 @@ runs:
   steps:
     - name: Free disk space on host
       if: inputs.free-disk-space == 'true'
-      uses: jlumbroso/free-disk-space@main
+      uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # main 2026-08-08
       with:
         tool-cache: true
         android: true
@@ -78,7 +78,7 @@ runs:
 
     - name: Checkout
       if: inputs.checkout == 'true'
-      uses: actions/checkout@v7.0.1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: ${{ inputs.fetch-depth }}
         submodules: ${{ inputs.submodules }}

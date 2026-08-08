@@ -48,7 +48,7 @@
             {"name": "VVdeC (VVC/H.266 decoder)", "var": "VVDEC_VERSION", "url": "https://github.com/fraunhoferhhi/vvdec", "license": "BSD-3-Clause-Clear"},
             {"name": "ArmNN (arm64)", "var": "ARMNN_VERSION", "url": "https://github.com/ARM-software/armnn", "license": "MIT"},
             {"name": "Arm Compute Library (arm64)", "var": "ACL_VERSION", "url": "https://github.com/ARM-software/ComputeLibrary", "license": "MIT"},
-            {"name": "libcamera", "var": null, "url": "https://libcamera.org/", "license": "LGPLv2.1+", "version_fixed": "git master"},
+            {"name": "libcamera", "var": "LIBCAMERA_VERSION", "url": "https://libcamera.org/", "license": "LGPLv2.1+"},
             {"name": "Abseil", "var": "ABSEIL_VERSION", "url": "https://github.com/abseil/abseil-cpp", "license": "Apache 2.0"},
             {"name": "FreeType", "var": "FREETYPE_VERSION", "url": "https://freetype.org/", "license": "GPLv2 / FTL"},
             {"name": "nv-codec-headers", "var": "NV_CODEC_HEADERS_REF", "url": "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git", "license": "MIT"},

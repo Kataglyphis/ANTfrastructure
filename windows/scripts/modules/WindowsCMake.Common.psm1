@@ -199,6 +199,11 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "DEBUG: ========== DISABLING SCCACHE =========="
     $env:CMAKE_C_COMPILER_LAUNCHER = ""
     $env:CMAKE_CXX_COMPILER_LAUNCHER = ""
+    # Must be cleared alongside the other two (added with it 2026-08-08):
+    # -DisableSccache exists to take sccache OUT of the picture, and a leftover
+    # CUDA launcher would leave nvcc still wrapped -- the exact half-disabled
+    # state the switch is meant to rule out, and invisible in a build log.
+    $env:CMAKE_CUDA_COMPILER_LAUNCHER = ""
     $env:RUSTC_WRAPPER = ""
     $env:CC_WRAPPER = ""
     $env:CXX_WRAPPER = ""
@@ -288,6 +293,10 @@ function Invoke-CmakeConfigureAndBuild {
       Write-BuildLog -Context $Context -Message "DEBUG: Enabling sccache wrappers using: $sccacheExe"
       $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
       $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
+      # CUDA added 2026-08-08: .cu files went through nvcc uncached until then.
+      # CMake ignores it when CUDA is not an enabled language. See the longer
+      # note in WindowsSourceBuild.Common.psm1's Invoke-CmakeConfigure.
+      $env:CMAKE_CUDA_COMPILER_LAUNCHER = $sccacheExe
       $env:RUSTC_WRAPPER = $sccacheExe
       $env:CC_WRAPPER = $sccacheExe
       $env:CXX_WRAPPER = $sccacheExe
@@ -304,6 +313,7 @@ function Invoke-CmakeConfigureAndBuild {
       'SCCACHE_RECACHE', 'SCCACHE_SERVER_PORT', 'SCCACHE_NO_DAEMON',
       'SCCACHE_DIRECT', 'SCCACHE_BUCKET', 'SCCACHE_REDIS',
       'CMAKE_C_COMPILER_LAUNCHER', 'CMAKE_CXX_COMPILER_LAUNCHER',
+      'CMAKE_CUDA_COMPILER_LAUNCHER', 'SCCACHE_MULTILEVEL_CHAIN',
       'RUSTC_WRAPPER', 'CC_WRAPPER', 'CXX_WRAPPER'
     )
     foreach ($var in $sccacheEnvVars) {

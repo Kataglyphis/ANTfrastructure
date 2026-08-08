@@ -31,21 +31,30 @@ $CMD run --rm \
   -v "$REPO_ROOT:$SRC_DIR" \
   -w "$VIEWER_DIR" \
   "$NODE_IMAGE" \
-  sh -c "
-    npm install && \
-    npm run build && \
+  sh -euc "
+    npm install
+    npm run build
     echo ''
     echo '✓ Build complete. Files in dist/:'
     ls -lh dist/
   "
+# -euc above: the old &&-chain ended at the first echo, so with a STALE dist/
+# from an earlier run a failed npm build still exited 0 (the container's status
+# was ls's) and this script printed the success banner over a broken build.
 
 # Copy benchmark results into dist/ so the viewer can load them
 # (avoids needing multiple volume mounts at serve time)
 echo ""
 echo "  Copying benchmark_results/ into dist/ …"
 mkdir -p dist/benchmark_results
-cp -r ../benchmark_results/*.json dist/benchmark_results/
-echo "  ✓ benchmark_results copied"
+# Guarded: zero results is a fresh checkout, not a build failure — the bare
+# glob aborted under set -e right AFTER a successful viewer build.
+if compgen -G "../benchmark_results/*.json" > /dev/null; then
+  cp -r ../benchmark_results/*.json dist/benchmark_results/
+  echo "  ✓ benchmark_results copied"
+else
+  echo "  (no benchmark_results/*.json yet — viewer built without data)"
+fi
 ls -lh dist/benchmark_results/
 
 echo ""

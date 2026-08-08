@@ -102,6 +102,7 @@ assert_pinned_versions() {
       EXP_TORCHVISION="$(_stv_vpin "${versions_env}" TORCHVISION_VERSION)" \
       EXP_ONNX="$(_stv_vpin "${versions_env}" ONNXRUNTIME_VERSION)" \
       EXP_LITERT="$(_stv_vpin "${versions_env}" LITERT_VERSION)" \
+      EXP_GENAI="$(_stv_vpin "${versions_env}" ONNXRUNTIME_GENAI_VERSION)" \
       EXP_OPENCV_MAJOR="${opencv_major}" \
       UVLOCK="${uvlock}" \
       PYTORCH_EXTRA="${PYTORCH_EXTRA:-}" \
@@ -149,6 +150,10 @@ SPECS = [
     ("PIL",            "pillow",         "",                                    False),
     ("contourpy",      "contourpy",      "",                                    False),
     ("ai_edge_litert", "ai-edge-litert", os.environ.get("EXP_LITERT", ""),      False),
+    # genai was the coverage hole the 2026-08-08 forensic audit found: the
+    # chain built 0.15.2, the app lock shipped PyPI 0.14.0, and NOTHING here
+    # noticed — genai was absent from this list, so the pin assertion passed.
+    ("onnxruntime_genai", "onnxruntime-genai", os.environ.get("EXP_GENAI", ""), False),
 ]
 
 extra = os.environ.get("PYTORCH_EXTRA", "")

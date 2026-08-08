@@ -50,6 +50,14 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
+# HIP compile caching (sccache) — same gated pattern as the CUDA/Rust wiring;
+# sccache wraps hipcc/clang-hip, ccache does not. Validate with
+# ENABLE_SCCACHE_CUDA=1 (one gate for both GPU compiler families), then flip.
+if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ] && command -v sccache >/dev/null 2>&1; then
+  info "sccache: wrapping HIP via CMAKE_HIP_COMPILER_LAUNCHER"
+  BUILD_ARGS+=(--cmake_extra_defines "CMAKE_HIP_COMPILER_LAUNCHER=sccache")
+fi
+
 BUILD_ARGS+=(
   --use_migraphx
   --migraphx_home "${MIGRAPHX_HOME}"

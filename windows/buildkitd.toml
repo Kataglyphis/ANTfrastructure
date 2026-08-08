@@ -56,16 +56,48 @@
   # Tier 0: local sources, git checkouts and cache mounts (C:\bkhandoff etc).
   # The default caps these at 512MB/48h — far too small for a week of chain
   # iterations over multi-GB handoffs.
+  #
+  # 20GB -> 40GB (2026-08-08). This tier stopped being scratch on that date: the
+  # Windows chain gained real, load-bearing cache mounts, and they SHARE this
+  # one budget with local sources and git checkouts —
+  #   sccache L0  (id=sccache-winamd64)   SCCACHE_CACHE_SIZE = 15G
+  #   uv/pip      (id=uv-wheels-winamd64)                    ~10G
+  # which alone is 25G against the old 20GB cap. Left at 20GB the two caches
+  # would have evicted each other between chains and bought nothing, while every
+  # log still reported a cache hit rate — the silent-degradation shape this repo
+  # keeps designing against. Whoever grows either cache raises this number in
+  # the SAME change: the sizes and this cap are one decision, not two.
   [[worker.containerd.gcpolicy]]
     filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
     keepDuration = "168h"
-    maxUsedSpace = "20GB"
+    maxUsedSpace = "40GB"
 
   # Tier 1: anything unused for >30 days goes first.
   [[worker.containerd.gcpolicy]]
     keepDuration  = "720h"
-    reservedSpace = "200GB"
-    maxUsedSpace  = "300GB"
+    # 200GB -> 150GB (2026-08-08). 200 GiB = 214.75 GB was ARITHMETICALLY
+    # UNSATISFIABLE on this host, and it deadlocked a rebuild:
+    #
+    #   disk 930.8 GB - non-buildkit content ~637 GB = ~294 GB for buildkit
+    #   reservedSpace 214.75 GB  =>  ~79 GB of working room
+    #   highest stage disk floor (sdk) = 60 GB, and a heavy media layer eats
+    #   6-10 GB of scratch that GC may not touch
+    #
+    # GC never prunes below reservedSpace, so with the store at 207.63 GB --
+    # just UNDER the reserve -- `du` reported "Reclaimable: 0B" for all 37
+    # records and EVERY lever returned "Total: 0B": plain prune,
+    # --free-storage 950000, --all --keep-storage-min 0, and prune-histories.
+    # Not a bug in any of them; the reserve simply forbade it. The chain then
+    # ran out of room mid-media and the stage gate refused at 53.5 GB.
+    #
+    # 150GB is the floor this file's own sizing note gives, and still exceeds
+    # the ~120-150 GB fresh chain spine it exists to protect (base incl. VS +
+    # sdk + toolchain + branch images). Working room becomes ~144 GB.
+    # The "~20-25% of the disk" rule of thumb does NOT apply here: it assumes
+    # the disk is mostly buildkit's, and on this host ~68 % is other content.
+    # Size against FREE space, not total.
+    reservedSpace = "150GB"
+    maxUsedSpace  = "225GB"   # ~reservedSpace * 1.5, per the note above
     # 30GB -> 60GB (2026-08-07): 30 GB left GC no runway and forced two manual
     # prunes mid-chain. Still far below reservedSpace, so the VS-class spine
     # this tier protects is untouched by the change.
@@ -74,6 +106,6 @@
   # Tier 2: hard ceiling.
   [[worker.containerd.gcpolicy]]
     all = true
-    reservedSpace = "200GB"
-    maxUsedSpace  = "320GB"
+    reservedSpace = "150GB"   # keep in step with tier 1 (see its note)
+    maxUsedSpace  = "240GB"
     minFreeSpace  = "25GB"
