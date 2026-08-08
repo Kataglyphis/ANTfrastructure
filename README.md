@@ -80,6 +80,13 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh`; for the other orchestrators, pipe output through `2>&1 | tee ./out/build-logs/<name>.log`.
 See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
+Caching is layered end-to-end (BuildKit layers, per-stage local cache exports,
+ccache for GCC/LLVM/media, apt/cargo/uv mounts, shared source caches, and a
+pinned buildkitd GC budget) — see
+[`docs/linux-build-basics.md` § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where)
+for the full map and the one process rule that matters: freeze the toolchain
+closures between a `--no-push` validation run and its push run.
+
 ## Reinstall QEMU/binfmt After a Host Reboot
 
 If foreign-architecture builds fail with `exec format error`, run `nerdctl run --rm --privileged tonistiigi/binfmt --install all` (see [`docs/linux-build-basics.md`](docs/linux-build-basics.md)).

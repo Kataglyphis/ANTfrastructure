@@ -1011,7 +1011,9 @@ untouched NVIDIA lane — fold into the post-push closure batch:
 ### 2026-08-08 — caching-coverage review (answering "cachen wir überall?")
 
 Two real gaps found, both safe to close only between runs:
-- **buildkitd runs with NO config file** (systemd unit passes only CLI flags) →
+- **DONE 2026-08-08 (restart pending):** buildkitd config written to
+  ~/.config/buildkit/buildkitd.toml (gckeepstorage=500GB). Activate BETWEEN
+  runs: `systemctl --user restart buildkit`. Original finding: →
   DEFAULT GC policy governs the layer store. Nothing pins how much of the
   multi-hour GCC/LLVM/media layer cache survives between runs; an eviction
   between the validation run and the push run would silently cost hours. Add
@@ -1025,3 +1027,20 @@ Two real gaps found, both safe to close only between runs:
   Version-keyed cache mounts (id=<lib>-src-${VERSION}) would make
   rebuild-after-bust skip the multi-GB fetches. Clones are minutes vs ccache's
   hours, so this is the smaller lever — batch it with the closure work.
+
+### 2026-08-08 — --no-push chain handoff is broken on OCI-worker hosts [FINDING]
+
+The BuildKit OCI worker (this host: oci-worker=true, containerd-worker=false)
+keeps its OWN image store. `nerdctl build -t` loads into containerd, which the
+next build's FROM never consults — the mutable parent tag resolves against the
+REGISTRY. Every downstream stage of a --no-push chain therefore builds on the
+last PUSHED parent (proved: fresh compiler shipped /opt/gcc-16.2.0, the sdk
+built "from" it contained /opt/gcc-16.1.0 + the old alternatives; probe
+`FROM repo@<containerd-digest>` errors "not found").
+
+Fix direction (mirrors the runtime lane's existing local handoff): in
+cross_stage_run's push=0 path, export the stage as an OCI layout and hand the
+child `--build-context <parent_tag>=oci-layout://<dir>@<digest>` so the FROM
+ref is overridden with the local content; delete the layout after the child
+consumes it. Until then: --no-push documented as single-stage-only (usage text,
+AGENTS quick-ref, cross-builds doc all updated); a warn fires at parse time.

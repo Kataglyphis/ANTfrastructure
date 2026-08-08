@@ -298,7 +298,12 @@ copy_onnx_headers_to_output() {
     [ -d "${search_dir}/include" ] || continue
     while read -r header_path; do
       cp "${header_path}" "${output_dir}/include/" 2>/dev/null || true
-    done < <(find "${search_dir}/include" -name "onnxruntime*.h" -type f 2>/dev/null || true)
+    done < <(find "${search_dir}/include" \( -name "onnxruntime*.h" -o -name "onnxruntime*.inc" \) -type f 2>/dev/null || true)
+    # `.inc` included too: onnxruntime_experimental_c_api.h (new in the ORT
+    # 1.28 header set, pulled in by GenAI >= 0.15.2) does a RELATIVE
+    # `#include "onnxruntime_experimental_c_api.inc"` — flattening only the .h
+    # left that include dangling at the top level and GenAI died with
+    # "onnxruntime_experimental_c_api.inc: No such file or directory".
   done
 }
 
