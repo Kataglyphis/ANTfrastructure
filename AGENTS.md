@@ -786,32 +786,45 @@ The rules an agent must never violate:
    corrupt the in-flight process. Sourced library files are safe to edit for
    FUTURE runs (the running process holds them in memory) but see rule 1.
 5. **The WINDOWS chain caches differently — do not assume rules 1-4 apply.**
-   Measured 2026-08-08: `grep -c mount=type=cache` over
-   `windows/Dockerfile.{media-builder,toolchain-builder,media-merge-builder}`
-   returns **0, 0, 0**, against 77 in `linux/Dockerfile.media` alone. What the
-   Windows lane relies on instead is (a) deliberate layer ORDERING —
-   `setup-vs.ps1` sits ABOVE the `versions.env` COPY in `Dockerfile.base` so a
-   pin bump cannot re-pay VS Build Tools (confirmed live: 4 of 16 base steps
-   CACHED through a PYTHON_VERSION bump, and they were the expensive ones), (b)
-   a five-file in-container module closure so host-only module edits cannot
-   bust a compile layer, and (c) sccache against a WebDAV remote. **Preserve
-   (a) and (b) in any Dockerfile edit** — moving a COPY above the VS layer, or
-   widening the module COPY, costs hours per bump.
+   It relies on (a) deliberate layer ORDERING — `setup-vs.ps1` sits ABOVE the
+   `versions.env` COPY in `Dockerfile.base` so a pin bump cannot re-pay VS
+   Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
+   PYTHON_VERSION bump, and they were the expensive ones), (b) a five-file
+   in-container module closure so host-only module edits cannot bust a compile
+   layer, and (c) sccache. **Preserve (a) and (b) in any Dockerfile edit** —
+   moving a COPY above the VS layer, or widening the module COPY, costs hours
+   per bump.
 
-   Two levers are documented, verified available, and NOT wired (see
-   `docs/windows-builds.md` § BuildKit lane and the backlog). If you wire them,
-   both preconditions are load-bearing:
-   - **sccache multi-tier** (`SCCACHE_MULTILEVEL_CHAIN=disk,webdav` + a cache
-     mount for `SCCACHE_DIR`) requires sccache **>= v0.16.0**; on an older one
-     the chain variable is ignored **silently** and the local tier simply does
-     not exist. sccache currently sits in the FLOATING scoop block — pin it in
-     the same change. NB `SCCACHE_DIR` ALONE does nothing: without the chain
-     variable sccache stays in single-level legacy mode.
-   - **Source-fetch mounts** must cache the ARCHIVES/CLONES only, never the
-     working tree: directory RENAMES fail on cache mounts, and
-     `build-gstreamer-from-source.ps1` moves the extracted tree. Also raise the
-     tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` (20GB/168h
-     today) or the mounts get evicted between chains and buy nothing.
+   **Wired 2026-08-08** (this list said "not wired" the same morning — it is
+   current as of that afternoon):
+   - **sccache two-tier**, `SCCACHE_MULTILEVEL_CHAIN=disk,webdav` + a
+     `type=cache` mount for `SCCACHE_DIR`, on all seven compile RUNs
+     (`Dockerfile.media-builder` `common` stage + the merge builder, which is
+     not a descendant so the ENV is repeated). `SCCACHE_DIR` ALONE DOES
+     NOTHING — without the chain variable sccache stays in single-level legacy
+     mode and the disk backend is not in the chain at all.
+   - **sccache is BUILT FROM SOURCE** at `SCCACHE_GIT_REV`, not installed from
+     scoop, and this is load-bearing: released sccache cannot wrap nvcc on CUDA
+     13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved `--simt-only`
+     after the input file, and the build DIES with `fatbinary fatal: Could not
+     open input file '<tu>.compute_80.cubin'` (mozilla/sccache#2722, merged
+     2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
+     asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell
+     the fixed and broken builds apart — main still reports 0.17.0.
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** on the back of that, which is what makes
+     ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable at all.
+   - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
+     would bake a build-only mount path into the shipped image).
+
+   Still NOT wired, with a measured reason: **source-fetch mounts.** The clones
+   are shallow (`Invoke-GitClone` passes `--depth`), so they cost minutes
+   against compiles that cost hours. If you do it, cache the ARCHIVES/CLONES
+   only, never the working tree — directory RENAMES fail on cache mounts and
+   `build-gstreamer-from-source.ps1` moves the extracted tree. Also raise the
+   tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
+   **shared** by every cache mount plus local sources and git checkouts, and
+   the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
+   sizes and that cap are ONE decision, not two.
 
 ## Code Organization (key shared utilities)
 
@@ -976,7 +989,7 @@ base ─┬─ onnxruntime ───────┐
 | Rust smoke test fails: "rustup could not choose a version of cargo/rustc" | A **toolchain-less** rustup (proxy shims in `CARGO_BIN` that resolve no toolchain) — e.g. `rustup-init --default-toolchain none`, or an image from before the Cargokit fix | rustup WITH a stable default toolchain IS the sole provider (`setup-rust-toolchain.ps1`); `CARGO_BIN` on the rustup path is by design. Fix with `rustup default stable`; never add a second provider (no scoop rust) (§ Windows Build Invariants). |
 | BK lane: `failed to reimport snapshot` / `failed to write compressed diff` at finalize/export | hcs-temp flake family (2026-08-05): realtime scanner racing `C:\WINDOWS\SystemTemp\hcs*` scratch, and/or low disk (<~25 GB free makes hcsshim "weird" before disk-full) | Auto-retried by the BK driver's transient pattern. Root remedies (applied 2026-08-05): Defender exclusions for buildkitd/containerd + their ProgramData dirs; keep ≥40 GB free; gcpolicy active. ALWAYS check free disk first — disk-full mimics the same message. |
 | BK lane: `hcsshim::ImportLayer failed ... (0xb7) "already exists"` on the SAME chain-IDs across retries | Persistent snapshotter debris from an earlier low-disk finalize failure — NOT transient, `buildctl prune` cannot reach it (0B reclaimable) | Non-admin sidestep: cache-bust the layer above (any content change to the COPY'd/mounted file → new chain-IDs; live example in `setup-scoop-tools.ps1`'s 2026-08-05 header). Admin fix: prune/GC under the active gcpolicy. |
-| BK cache huge but `buildctl du` shows `Reclaimable: 0B` | **CHECK FIRST: `du`'s Total vs `reservedSpace`** (`buildctl debug workers -v`). Measured 2026-08-08: a 207.63 GB store against a 214.75 GB reserve had all 37 records `Reclaimable: false`, and plain `prune`, `--free-storage 950000` (above disk size), `--all --keep-storage-min 0` and `prune-histories` ALL returned `Total: 0B`. Lowering the reserve + restarting buildkitd unblocked it immediately (98.83 GB, C: 85.1 → 139.1 GB). **The fix is verified; the CAUSAL story is not** — later the same day a 145.35 GB store under a 161.06 GB reserve reported everything reclaimable, so "below the reserve ⇒ unreclaimable" cannot be the whole mechanism (tag-pinned `Shared` records and a restart-cleared lease are the other candidates; eight stage tags had been `rmi`'d in between). Do not treat the explanation as settled. Otherwise: refs pinned by BUILD HISTORY (every record incl. failed attempts pins its refs indefinitely — 2026-08-05: 414 GB store, 0B reclaimable, ~10 grind-run histories) and/or by named `bk-*` image generations | If Total < reservedSpace, the ONLY levers are (a) admin `nerdctl --namespace buildkit rmi` on dead stage tags — that frees the **containerd image store**, a SEPARATE store (measured: 66.5 → 85.0 GB while buildkit's 207.63 GB did not move a byte), or (b) lower `reservedSpace` in `windows/buildkitd.toml` and re-apply with an admin **pwsh 7** `apply-buildkitd-gcpolicy.ps1` (it `#requires -Version 7.0` and refuses silently-looking under 5.1). Size the reserve against space actually AVAILABLE to buildkit, not total disk: `reservedSpace` + the highest stage disk floor (60 GB) must fit, or the chain starves with GC unable to help — that is what made a run die at 53.5 GB mid-media and read as a disk problem. Otherwise (non-admin, safe while a build runs): `buildctl prune --free-storage <MB>` — the lever that works WHEN the store is above the reserve; released 63.8 GB mid-build on 2026-08-07 without disturbing the running solve. **`prune-histories` is NOT a reliable first step any more:** on 2026-08-07 it aborted with `error: lease "ref_...": not found` and freed 0 bytes, against the 289 GB it released on 2026-08-05 — a stale lease from a killed run poisons it. Try it second, not first, and never rely on it while the disk is already critical. Both leave pinned fresh images + active-solve leases alone. Obsolete named generations additionally need an ADMIN shell: `nerdctl --namespace buildkit rmi docker.io/local/kataglyphis:bk-<old>`. Durable fix: the `[history] maxAge/maxEntries` section in windows/buildkitd.toml (active after the next service restart). The classic docker lane is separate (`docker rmi` works non-admin; verify a registry copy exists before deleting tagged finals). **`--free-storage` is a MINIMUM-FREE TARGET, not an amount** (2026-08-06/07): the daemon prunes until the host has that many MB free and stops, so on a disk already above the target it deletes nothing — measured 77 MB at `200000` with 198.5 GB free and 150.5 GB Private, vs the full 150.48 GB at `900000`. To drain everything unpinned, ask for more free space than the disk physically has; it cannot over-delete, `Shared` stays pinned. **A SUPERSEDED lineage is the big hidden reclaim:** after a cache-bust rebuilds base/sdk/toolchain, the old downstream stage tags still pin a FULL copy of every layer beneath them — measured 3× `setup-cuda` (109.5 GB), 3× `setup-scoop-tools` (88.5 GB), 2× `setup-vs` (69.1 GB), i.e. 267 GB of a 384 GB store. Spot it with `buildctl du -v` grouped by the script in `Description`, reading `Last used` (superseded records predate the current chain's rebuild); kill by lineage not by age, admin `rmi` the dead stage tags, wait ~30 s for the containerd GC, then prune. Full sequence and numbers (266 GB, C: 4.8 → 271.3 GB) in `docs/windows-builds.md` § Store GC. |
+| `buildctl prune` returns `Total: 0B` no matter what you pass | **CHECK `du -v` FOR `Shared: true` FIRST — that is almost always the answer.** `Shared` records are pinned by containerd IMAGE TAGS and NO prune flag can take them; prune only ever gets the `Private` slice. Measured 2026-08-08: a 109.06 GB store reporting `Reclaimable: 109.06GB` under a 42.95 GB reserve — i.e. well ABOVE the reserve, everything nominally reclaimable — still pruned **0 B**, because every record was `Shared: true`. `Reclaimable` describes the LEASE state, not what prune will hand back. Earlier the same day I twice blamed `reservedSpace` for this and twice wrote it into the docs; both times the real holder was tag-pinning. **`reservedSpace` is a red herring for this symptom.** The lever for `Shared` is an admin `nerdctl --namespace buildkit rmi` (or `image prune -f` for untagged generations) — and note that freeing it means deleting stage images you may want, so decide deliberately rather than reflexively. Otherwise: refs pinned by BUILD HISTORY (every record incl. failed attempts pins its refs indefinitely — 2026-08-05: 414 GB store, 0B reclaimable, ~10 grind-run histories) and/or by named `bk-*` image generations | If Total < reservedSpace, the ONLY levers are (a) admin `nerdctl --namespace buildkit rmi` on dead stage tags — that frees the **containerd image store**, a SEPARATE store (measured: 66.5 → 85.0 GB while buildkit's 207.63 GB did not move a byte), or (b) lower `reservedSpace` in `windows/buildkitd.toml` and re-apply with an admin **pwsh 7** `apply-buildkitd-gcpolicy.ps1` (it `#requires -Version 7.0` and refuses silently-looking under 5.1). Size the reserve against space actually AVAILABLE to buildkit, not total disk: `reservedSpace` + the highest stage disk floor (60 GB) must fit, or the chain starves with GC unable to help — that is what made a run die at 53.5 GB mid-media and read as a disk problem. Otherwise (non-admin, safe while a build runs): `buildctl prune --free-storage <MB>` — the lever that works WHEN the store is above the reserve; released 63.8 GB mid-build on 2026-08-07 without disturbing the running solve. **`prune-histories` is NOT a reliable first step any more:** on 2026-08-07 it aborted with `error: lease "ref_...": not found` and freed 0 bytes, against the 289 GB it released on 2026-08-05 — a stale lease from a killed run poisons it. Try it second, not first, and never rely on it while the disk is already critical. Both leave pinned fresh images + active-solve leases alone. Obsolete named generations additionally need an ADMIN shell: `nerdctl --namespace buildkit rmi docker.io/local/kataglyphis:bk-<old>`. Durable fix: the `[history] maxAge/maxEntries` section in windows/buildkitd.toml (active after the next service restart). The classic docker lane is separate (`docker rmi` works non-admin; verify a registry copy exists before deleting tagged finals). **`--free-storage` is a MINIMUM-FREE TARGET, not an amount** (2026-08-06/07): the daemon prunes until the host has that many MB free and stops, so on a disk already above the target it deletes nothing — measured 77 MB at `200000` with 198.5 GB free and 150.5 GB Private, vs the full 150.48 GB at `900000`. To drain everything unpinned, ask for more free space than the disk physically has; it cannot over-delete, `Shared` stays pinned. **A SUPERSEDED lineage is the big hidden reclaim:** after a cache-bust rebuilds base/sdk/toolchain, the old downstream stage tags still pin a FULL copy of every layer beneath them — measured 3× `setup-cuda` (109.5 GB), 3× `setup-scoop-tools` (88.5 GB), 2× `setup-vs` (69.1 GB), i.e. 267 GB of a 384 GB store. Spot it with `buildctl du -v` grouped by the script in `Description`, reading `Last used` (superseded records predate the current chain's rebuild); kill by lineage not by age, admin `rmi` the dead stage tags, wait ~30 s for the containerd GC, then prune. Full sequence and numbers (266 GB, C: 4.8 → 271.3 GB) in `docs/windows-builds.md` § Store GC. |
 
 ---
 
