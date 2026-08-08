@@ -156,6 +156,7 @@ SPECS = [
     ("onnxruntime_genai", "onnxruntime-genai", os.environ.get("EXP_GENAI", ""), False),
 ]
 
+
 extra = os.environ.get("PYTORCH_EXTRA", "")
 want_variant = {"pytorch-cpu": "cpu", "pytorch-cu130": "cu130",
                 "pytorch-rocm71": "rocm7.1"}.get(extra, "")
@@ -212,6 +213,25 @@ for import_name, dist_name, build_pin, torchlike in SPECS:
         elif lv == want_variant:
             print("  OK  %-16s build variant +%s (matches %s)" % (dist_name, lv, extra))
 
+
+# TVM is BEST-EFFORT in the media stage (a failed build ships without it, by
+# design), so it must not join the hard-required SPECS — but before this
+# probe existed there was NO tvm visibility anywhere in the smoke set, and a
+# Dockerfile.media comment claimed a runtime `import tvm` gate that did not
+# exist. Report presence/version; only fail when EXP_TVM explicitly pins it.
+try:
+    import tvm as _tvm
+    _tvm_v = getattr(_tvm, "__version__", "?")
+    print("  ok  %-16s %s (best-effort component)" % ("tvm", _tvm_v))
+    _exp_tvm = os.environ.get("EXP_TVM", "")
+    if _exp_tvm and not str(_tvm_v).startswith(_exp_tvm.lstrip("v")):
+        fails.append("tvm %s != expected %s" % (_tvm_v, _exp_tvm))
+except Exception:
+    if os.environ.get("EXP_TVM", ""):
+        fails.append("tvm NOT IMPORTABLE but EXP_TVM set")
+    else:
+        print("  --  %-16s not importable (best-effort; media build shipped without it)" % "tvm")
+
 cv_major = os.environ.get("EXP_OPENCV_MAJOR", "")
 cv_required = os.environ.get("STV_CV2_REQUIRED", "1") == "1"
 try:
@@ -248,6 +268,14 @@ PYEOF
 main() {
   echo "=== smoke: torch venv integrity (${VENV}) ==="
   if [ ! -x "${PY}" ]; then
+    # The skip exists for images that legitimately ship no venv (toolchain,
+    # media). Stages where the venv is MANDATORY set STV_REQUIRE_VENV=1 —
+    # without it, the package-stage gate passed precisely when setup-torch-venv
+    # failed hardest (no /opt/venv at all → SKIP → exit 0 → green).
+    if [ "${STV_REQUIRE_VENV:-0}" = "1" ]; then
+      echo "  FAIL venv interpreter missing at ${PY} but STV_REQUIRE_VENV=1 (venv is mandatory in this image)" >&2
+      exit 1
+    fi
     echo "  SKIP no venv interpreter at ${PY} (nothing to check in this image)"
     exit 0
   fi

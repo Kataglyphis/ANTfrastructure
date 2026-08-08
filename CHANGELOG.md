@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-08-08 (night) — Linux lane: audit round 2, Klasse C — test gaps closed
+
+- **Zero-assertion suites now FAIL**: `t_summary` treats `_T_RUN=0` as a
+  failure (a gutted suite used to print "0 assertion(s) passed" and stay
+  green), and run-tests.sh aggregates the per-suite counts — the final line
+  now reads "N suites, M assertions", so a coverage collapse is visible in
+  every log.
+- **Four new/extended suites** (7→11 suites, 68→120 assertions):
+  - `test-parallelism.sh` — pins mem_capped_jobs' RAM/cores formula, the ≥1
+    floor, and the new PARALLEL_JOBS validation (**fix included**: the
+    override was emitted unvalidated — `PARALLEL_JOBS=0` went straight into
+    `ninja -j0`; now rejected with a warning).
+  - `test-cli-parsers.sh` — pins the new central two-arg value guard (**fix
+    included** in dispatch_parsed_args: a trailing `--target-arches` or one
+    that swallowed the next flag used to assign ""/"--push" silently and fall
+    through to CROSS_DEFAULT_ARCHES — building all three arches).
+  - `test-stage-defs.sh` — the REAL cross_stage_tag/cross_build_mem_divisor/
+    graph-validation (test-disk-guard/test-ancestry stub these; until now no
+    test executed the real ones). Also asserts the Klasse-B ENABLE_NVIDIA
+    forwarding.
+  - `test-smoke-arch-parity.sh` — asserts smoke-common.sh's inline fallback
+    maps agree with the canonical platform.sh/arch-mapping.sh for all three
+    arches (this file had already caused two silent-skip bugs).
+  - Extended: riscv64→RISCV LLVM backend assert (a tempting "consistency
+    rename" would break the compiler stage), runtime_artifact_platform/
+    _image_ref (wrong-arch artifact COPY class), version-forwarding negative
+    asserts (an unset var must NOT become `--build-arg FOO=` overriding the
+    Dockerfile default with empty; `# noforward` must hold).
+- **IFS bug class killed by construction**: `arch_list_to_words` and
+  `smoke_arch_words` now emit NEWLINE-separated words — `for x in $(...)`
+  splits under both the default and the strict `IFS=$'\n\t'`, retiring the 16
+  latent for-loop sites the audit found (all consumers verified compatible:
+  for-loops, `wc -w`, unquoted argv). Parity suite pins the property.
+- **Gates that could not fail, now real**: smoke-torch-venv fails when
+  `STV_REQUIRE_VENV=1` and /opt/venv is absent (the package wrapper-smoke
+  sets it — the venv gate used to SKIP+pass exactly when setup-torch-venv
+  failed hardest); the SDK image asserts a non-empty /opt/vulkan and (except
+  riscv64) an executable /opt/flutter/bin/flutter (both shipped with ZERO
+  verification); smoke-torch-venv reports TVM presence/version per-arch with
+  EXP_TVM as opt-in hard pin (Dockerfile.media's comment claimed an
+  `import tvm` runtime gate that never existed — comment corrected);
+  `cross_stage_validate_graph` (pure, sub-second) now runs in preflight
+  (slug `stage-graph`) instead of only at build kickoff.
+
 ## 2026-08-08 (night) — Linux lane: audit round 2, Klasse D — convention bugs
 
 - **`USE_CCACHE`/`USE_SCCACHE`/`USE_LLD` now accept both truthiness

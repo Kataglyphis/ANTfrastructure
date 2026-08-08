@@ -1551,6 +1551,28 @@ bugs closed, one 459-line function decomposed, future 01-core edits ~free.
 substantives touch files the running foreign chain bind-mounts mid-flight —
 deliberately deferred to the post-chain closure batch.
 
+## 2026-08-08 (night) — audit round 2 applied (4 perspectives, 4 commits)
+
+A four-agent audit with lenses ORTHOGONAL to the structural map (error-path
+masking / contract drift / test gaps / convention drift) — every top finding
+re-verified against the code before fixing (several agent claims in round 1
+had not survived that step; these did). Applied in commits b814899 (Klasse A,
+9 error-masking paths), 23aca68 (Klasse B, 9 contract-drift gaps), 9e1e466
+(Klasse D, truthiness + sudo), and the Klasse-C test commit (11 suites / 120
+assertions, zero-assertion suites fail, IFS list helpers newline-safe by
+construction). Full mechanisms in CHANGELOG's four "audit round 2" entries.
+
+Deliberately NOT changed (agents confirmed intentional): package-stage
+vulkan-symlink `|| true` (runtime-only image, documented), media TVM
+best-effort contract (now visible via smoke-torch-venv + EXP_TVM, still
+non-gating), retry() on long compiles (cost issue, tracked separately),
+`set -uo pipefail` without `-e` in the lint lane (they accumulate findings by
+design). Known-open from the audit reports: smoke-runtime-image Vulkan
+INFO-only block, verify-media-artifacts armnn/onnxruntime-gpu orphan
+branches, verify-parity.sh zero callers + its dead FAILED sentinel,
+Dockerfile.media:772 cross wheel-install tolerance, chain-verify STALE→rc0
+contract — all queued with the post-chain closure batch.
+
 ## 2026-08-08 (cont) — harvested from the from-base chain (run e)
 
 Answering "are you tracking what could be refactored, detected during the

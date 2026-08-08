@@ -21,5 +21,6 @@ t_assert_fails arch_to_elf_machine mips64
 t_case "arch_to_llvm_target maps backends"
 t_assert_eq "X86"     "$(arch_to_llvm_target amd64)"
 t_assert_eq "AArch64" "$(arch_to_llvm_target arm64)"
+t_assert_eq "RISCV"   "$(arch_to_llvm_target riscv64)" "LLVM backend dir is RISCV — a 'consistency' rename to RISCV64 breaks the compiler stage"
 
 t_summary

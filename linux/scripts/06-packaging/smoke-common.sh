@@ -253,6 +253,9 @@ validate_compiler_for_target() {
 # 01-core/build-helpers.sh being sourced. They previously called that file's
 # arch_list_to_words unqualified — undefined here, so the cross-compiler loops
 # silently produced an empty list ("0 failures" with nothing actually tested).
+# NEWLINE-separated on purpose (mirrors build-helpers.sh arch_list_to_words):
+# space-separated output silently stops splitting in `for` loops under
+# IFS=$'\n\t'; newlines split under both the default and the strict IFS.
 smoke_arch_words() {
-  printf '%s' "${1:-}" | tr ',' ' '
+  printf '%s\n' "${1:-}" | tr ', ' '\n\n'
 }

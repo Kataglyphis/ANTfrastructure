@@ -712,7 +712,10 @@ lint-gates class 3. When writing or reviewing bash in this repo:
 3. **Split comma lists with `IFS=',' read -r -a arr <<< "$list"`** — never
    `${list//,/ }` or `$(... tr ',' ' ')`: under a script's `IFS=$'\n\t'` those
    do not split and the loop runs once with the whole list as one bogus item.
-   Sourced 01-core functions run under the CALLER's IFS.
+   Sourced 01-core functions run under the CALLER's IFS. The two list helpers
+   (`arch_list_to_words`, `smoke_arch_words`) emit NEWLINE-separated words
+   since 2026-08-08 precisely so `for x in $(...)` splits under any IFS —
+   keep that property if you touch them (test-smoke-arch-parity.sh pins it).
 4. **Source vendor scripts (SDK setup-env, venv activate) with nounset
    suspended** — `case $- in *u*) …; set +u;; esac` … `set -u` after. LunarG's
    setup-env.sh reads `$1` unguarded.

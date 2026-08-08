@@ -30,4 +30,25 @@ CMAKE_VERSION="9.9.9" append_version_build_args build_cmd
 joined="${build_cmd[*]}"
 t_assert_contains "${joined}" "CMAKE_VERSION=9.9.9" "a set forwarded var must be emitted"
 
+t_case "an UNSET forwarded var is omitted (the 'only' half)"
+build_cmd=()
+# CMAKE_VERSION deliberately unset in this subshell-free context:
+_saved="${CMAKE_VERSION:-}"; unset CMAKE_VERSION
+append_version_build_args build_cmd
+joined="${build_cmd[*]}"
+case "${joined}" in
+  *"CMAKE_VERSION="*) t_assert_eq "omitted" "emitted" "unset var became --build-arg CMAKE_VERSION= and would OVERRIDE the Dockerfile ARG default with empty" ;;
+  *) t_assert_eq "ok" "ok" ;;
+esac
+[ -n "${_saved}" ] && export CMAKE_VERSION="${_saved}"
+
+t_case "a # noforward var is never emitted even when set"
+build_cmd=()
+VENV_PATH="/opt/venv" append_version_build_args build_cmd
+joined="${build_cmd[*]}"
+case "${joined}" in
+  *"VENV_PATH="*) t_assert_eq "omitted" "emitted" "noforward marker must keep VENV_PATH out of build args" ;;
+  *) t_assert_eq "ok" "ok" ;;
+esac
+
 t_summary

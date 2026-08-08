@@ -55,6 +55,13 @@ t_summary() {
     printf '  %d/%d assertion(s) FAILED\n' "${_T_FAILED}" "${_T_RUN}" >&2
     exit 1
   fi
+  # Zero assertions is a FAILURE, not a pass: a gutted suite (commented-out
+  # asserts, an early-return source guard) used to print "0 assertion(s)
+  # passed" and stay green — coverage silently dropping to nothing.
+  if [ "${_T_RUN}" -eq 0 ]; then
+    printf '  SUITE RAN ZERO ASSERTIONS — treating as failure\n' >&2
+    exit 1
+  fi
   printf '  %d assertion(s) passed\n' "${_T_RUN}"
   exit 0
 }
