@@ -36,6 +36,26 @@ validate_resolve_arch() {
   canonical_target_arch "${1:-${TARGET_ARCH:-}}"
 }
 
+
+# Read a clang binary's version from its embedded DEB package metadata
+# (avoids the runtime-lib resolution issue where apt's libclang-cpp shadows
+# the source-built one), with a --version regex fallback for binaries without
+# the metadata. Complexity audit F-B: this file carried TWO drifted inline
+# copies of the strings-pipeline; the copy without the fallback turned an
+# empty `strings` result into a false "version MISSING" failure.
+_vc_clang_embedded_version() {
+  local _bin="$1" _ver
+  _ver="$( strings "${_bin}" 2>/dev/null \
+      | grep -o '"version":"[^"]*"' \
+      | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
+  if [ -z "${_ver}" ]; then
+    _ver="$( "${_bin}" --version 2>/dev/null \
+        | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true )"
+  fi
+  printf '%s' "${_ver}"
+}
+
 validate_fail() {
   echo "COMPILER FAIL [$1]: $2" >&2
   _VALIDATE_ERRORS=$((_VALIDATE_ERRORS + 1))
@@ -165,9 +185,7 @@ _artifact_source_check_llvm() {
     local clang_ver clang_major_minor
     # Read version from binary's embedded DEB metadata (avoids runtime lib
     # resolution issue where apt's libclang-cpp shadows the source-built one).
-    clang_ver="$(strings "${llvm_target}" 2>/dev/null \
-      | grep -o '"version":"[^"]*"' \
-      | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
+    clang_ver="$(_vc_clang_embedded_version "${llvm_target}")"
     if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.8}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
@@ -466,9 +484,7 @@ _smoke_compiler_versions() {
 
   # --- clang version ---
   _clang_real="$(readlink -f "$(command -v clang)" 2>/dev/null)"
-  clang_ver_out="$(strings "${_clang_real}" 2>/dev/null \
-    | grep -o '"version":"[^"]*"' \
-    | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
+  clang_ver_out="$(_vc_clang_embedded_version "${_clang_real}")"
   if echo "${clang_ver_out}" | grep -q "${llvm_ver}"; then
     echo "SMOKE OK: clang reports ${clang_ver_out}"
   else

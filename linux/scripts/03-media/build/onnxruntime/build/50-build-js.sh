@@ -96,24 +96,30 @@ if [ ! -f "${ORT_SRC_DIR}/js/web/dist/ort-wasm-simd-threaded.jspi.mjs" ] || \
 fi
 
 cd "${ORT_SRC_DIR}/js"
-if ! npm ci 2>/dev/null; then
-  warn "npm ci failed, trying npm install"
-  npm install || err "npm install failed in js/"
-fi
+# npm ci ONLY (supply-chain audit #19): the old `|| npm install` fallback
+# IGNORED package-lock.json's pinned versions+integrity hashes and
+# re-resolved semver ranges on any transient failure — the shipped web
+# bundle was then built against unpinned deps. Retry ci, fail loudly.
+npm ci || { warn "npm ci failed in js/ — retrying once"; sleep 5; npm ci; } \
+  || err "npm ci failed twice in js/ (lockfile-exact install is mandatory)"
 
 cd "${ORT_SRC_DIR}/js/common"
-if ! npm ci 2>/dev/null; then
-  warn "npm ci failed in common/, trying npm install"
-  npm install || err "npm install failed in js/common/"
-fi
+# npm ci ONLY (supply-chain audit #19): the old `|| npm install` fallback
+# IGNORED package-lock.json's pinned versions+integrity hashes and
+# re-resolved semver ranges on any transient failure — the shipped web
+# bundle was then built against unpinned deps. Retry ci, fail loudly.
+npm ci || { warn "npm ci failed in js/common/ — retrying once"; sleep 5; npm ci; } \
+  || err "npm ci failed twice in js/common/ (lockfile-exact install is mandatory)"
 
 patch_web_build_targets "${skip_webgpu}" "${skip_jspi}"
 
 cd "${ORT_SRC_DIR}/js/web"
-if ! npm ci 2>/dev/null; then
-  warn "npm ci failed in web/, trying npm install"
-  npm install || err "npm install failed in js/web/"
-fi
+# npm ci ONLY (supply-chain audit #19): the old `|| npm install` fallback
+# IGNORED package-lock.json's pinned versions+integrity hashes and
+# re-resolved semver ranges on any transient failure — the shipped web
+# bundle was then built against unpinned deps. Retry ci, fail loudly.
+npm ci || { warn "npm ci failed in js/web/ — retrying once"; sleep 5; npm ci; } \
+  || err "npm ci failed twice in js/web/ (lockfile-exact install is mandatory)"
 npm run build || err "npm run build failed in js/web/"
 
 # Validate JS build produced output

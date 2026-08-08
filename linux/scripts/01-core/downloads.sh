@@ -31,11 +31,15 @@ download_file() {
     local -a curl_opts=()
     [ -n "${connect_timeout}" ] && curl_opts+=(--connect-timeout "${connect_timeout}")
     [ -n "${max_time}" ] && curl_opts+=(--max-time "${max_time}")
-    curl --proto '=https' --tlsv1.2 -fsSL --retry "${retries}" --retry-delay 2 ${curl_opts[@]+"${curl_opts[@]}"} -o "$dest" "$url"
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry "${retries}" --retry-delay 2 ${curl_opts[@]+"${curl_opts[@]}"} -o "$dest" "$url"
   elif command -v wget >/dev/null 2>&1; then
     local -a wget_opts=()
     [ -n "${connect_timeout}" ] && wget_opts+=(--timeout="${connect_timeout}")
-    wget -q --tries="${retries}" ${wget_opts[@]+"${wget_opts[@]}"} -O "$dest" "$url"
+    # Same TLS guarantees as the curl branch (supply-chain audit: the shared
+    # helper was WEAKER than the bespoke wget calls it replaced — build-gcc.sh
+    # passes --https-only itself). curl side additionally forbids https→http
+    # redirects via --proto-redir.
+    wget -q --https-only --secure-protocol=TLSv1_2 --tries="${retries}" ${wget_opts[@]+"${wget_opts[@]}"} -O "$dest" "$url"
   else
     die "Neither curl nor wget is available for downloads"
   fi

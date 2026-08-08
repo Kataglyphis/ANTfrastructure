@@ -31,8 +31,20 @@
 # fallbacks are defined here so the library also works standalone.
 
 # ---------------------------------------------------------------------------
-# Logging fallbacks (only defined when the caller has not provided them)
+# Bootstrap — brought in line with the 6 sibling libs (complexity audit F-A):
+# this file was the drifted copy with NO re-source guard and NO attempt to
+# load the real 01-core/logging.sh, so standalone consumers silently got the
+# minimal fallbacks (no log/die, divergent formatting) forever.
 # ---------------------------------------------------------------------------
+[ -n "${_APP_RUNNER_LIB_LOADED:-}" ] && return 0
+_APP_RUNNER_LIB_LOADED=1
+_APP_RUNNER_CORE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core"
+if ! declare -F info >/dev/null 2>&1; then
+  if [[ -f "${_APP_RUNNER_CORE_DIR}/logging.sh" ]]; then
+    # shellcheck source=../01-core/logging.sh
+    source "${_APP_RUNNER_CORE_DIR}/logging.sh"
+  fi
+fi
 if ! declare -F info >/dev/null 2>&1; then
   info() { printf '\033[1;34m[INFO]\033[0m %s\n' "$*"; }
 fi

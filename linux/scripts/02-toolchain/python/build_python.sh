@@ -458,8 +458,12 @@ fi
 if [ -n "${PYTHON_TGZ_SHA256:-}" ]; then
   download_verified_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TGZ_SHA256}" "${PYTHON_TARBALL}"
 else
-  echo "WARNING: PYTHON_TGZ_SHA256 unset — downloading Python source UNVERIFIED" >&2
-  download_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TARBALL}" 5 30
+  # FAIL CLOSED (supply-chain audit): the interpreter that runs half the build
+  # is not something to fetch unverified. A PYTHON_VERSION bump that forgets
+  # the hash must break loudly here, not silently degrade.
+  echo "ERROR: PYTHON_TGZ_SHA256 unset — refusing to download the CPython source unverified." >&2
+  echo "       Bump PYTHON_TGZ_SHA256 in versions.env together with PYTHON_VERSION." >&2
+  exit 1
 fi
 tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 

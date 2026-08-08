@@ -52,20 +52,24 @@ install_base_packages() {
   sudo apt-get install -y --no-install-recommends python3-pip
 }
 
+# Load the VERIFIED repo helpers (repos.sh pins the Kitware and apt.llvm.org
+# key sha256s via download_verified_file). The old inline wget|gpg|tee blocks
+# here fetched the SAME keys unverified — supply-chain audit findings #5/#6:
+# one repo, two call sites, one verified and one not.
+_shd_source_repo_helpers() {
+  local dir
+  dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "${dir}/common.sh"
+  # shellcheck disable=SC1091
+  source "${dir}/repos.sh"
+}
+
 setup_kitware_repo() {
-  CODENAME=$(lsb_release -cs 2>/dev/null || echo "noble")
-  echo "Installing latest CMake via Kitware repo for codename: ${CODENAME}"
-
+  echo "Installing latest CMake via the VERIFIED Kitware repo helper"
   sudo apt-get purge --auto-remove -y cmake || true
-  sudo apt-get install -y --no-install-recommends wget gpg lsb-release ca-certificates
-
-  wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
-    | gpg --dearmor \
-    | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
-
-  echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ ${CODENAME} main" \
-    | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
-
+  _shd_source_repo_helpers
+  add_kitware_repo
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends cmake
   cmake --version
@@ -109,9 +113,15 @@ _register_alternative() {
 
 install_llvm_and_alternatives() {
   sudo apt-get install -y --no-install-recommends wget gnupg lsb-release ca-certificates
-  wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- "${LLVM_WANTED}" all
-  # llvm.sh adds new repos; refresh package lists for subsequent installs
+  # add_llvm_repo (repos.sh) replaces the old `wget llvm.sh | sudo bash`: the
+  # remote script was unpinned root execution AND skipped the apt pin to
+  # ${LLVM_RELEASE}* that the helper applies (supply-chain audit finding #5).
+  _shd_source_repo_helpers
+  add_llvm_repo
   sudo apt-get update -qq
+  sudo apt-get install -y --no-install-recommends \
+    "clang-${LLVM_WANTED}" "clang-tidy-${LLVM_WANTED}" "clang-format-${LLVM_WANTED}" \
+    "llvm-${LLVM_WANTED}" "lld-${LLVM_WANTED}" "lldb-${LLVM_WANTED}"
 
   # Registers clang and, as slaves-by-name, clang-tidy/clang-format/llvm-profdata/
   # llvm-cov (each --installed when its versioned binary exists).

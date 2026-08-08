@@ -28,32 +28,30 @@ if [ "${SKIP_DEP_INSTALL}" != "true" ]; then
 
   install_target_packages libprotobuf-dev
 
-  # Node.js: different for RISC-V vs. other architectures
+  # Node.js. PREFER the base image's sha-pinned install (base-image.sh ships
+  # NODE_VERSION per-arch, checksum-verified) — the old NodeSource path here
+  # (a) piped a MUTABLE remote script into root bash (the pattern
+  # install-rust.sh explicitly bans) and (b) installed Node 24.x BESIDE the
+  # pinned 26.x from base. Supply-chain audit finding #3.
   ARCH="$(arch_oci 2>/dev/null || dpkg --print-architecture 2>/dev/null || uname -m)"
-  if [ "$ARCH" = "riscv64" ]; then
+  if command -v node >/dev/null 2>&1; then
+    info "node already present ($(node -v 2>/dev/null || echo '?')) — using the sha-pinned base-image install"
+  elif [ "$ARCH" = "riscv64" ]; then
     info "RISC-V detected: Installing Node.js from default apt repo"
     apt-get install -y --no-install-recommends nodejs npm || {
       warn "npm not found after installing nodejs"
     }
   else
-    info "Non-RISC-V architecture: Installing Node.js from NodeSource"
-    if [ ! -f /tmp/nodesource/.setup_done ]; then
-      curl -sL https://deb.nodesource.com/setup_24.x | bash -
-      mkdir -p /tmp/nodesource
-      touch /tmp/nodesource/.setup_done
-    fi
-    apt-get update -qq
-    apt-get install -y --no-install-recommends nodejs
+    err "node missing on ${ARCH} — the base image should ship the pinned Node ${NODE_VERSION:-26.x}; refusing the unpinned NodeSource fallback (supply-chain policy)"
   fi
 else
   info "Skipping apt deps install (SKIP_DEP_INSTALL=true)"
 fi
 
-# Verify npm exists; if not, install npm via official npm installer
+# npm must ride along with whichever node we have — no curl|sh fallback (the
+# old one executed an UNVERSIONED always-latest remote script as root).
 if ! command -v npm >/dev/null 2>&1; then
-  warn "npm not found after installing nodejs. Installing npm via official installer..."
-  curl -qL https://www.npmjs.com/install.sh | sh
-  command -v npm >/dev/null 2>&1 || err "npm install fallback failed — npm not available. Consider installing node via NodeSource or nvm."
+  err "npm not available alongside node — fix the node provisioning (base image ships npm with the pinned Node; riscv64 apt installs the npm package)"
 fi
 
 info "node: $(node -v || true), npm: $(npm -v || true)"

@@ -97,6 +97,14 @@ _gst_monorepo_env_setup() {
   # function still leaks — acceptable for a guarded fallback.
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
     cross_build_is_active() {
+      # Delegate to the authoritative predicate when available — this branch
+      # was MISSING from this copy only (the 01-core and 03-media/core
+      # siblings both have it; complexity audit F-C found the structural
+      # drift survived the earlier arch-normalization re-sync).
+      if command -v cross_build_enabled >/dev/null 2>&1; then
+        cross_build_enabled
+        return $?
+      fi
       [ "${BUILD_MODE:-native}" = "cross" ] || return 1
       local _t _b
       _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
@@ -492,7 +500,12 @@ _gst_monorepo_meson_setup_run() {
 
   if [ ! -f builddir/.subprojects_updated ]; then
     echo "Updating subprojects..."
-    uv run meson subprojects update > /dev/null 2>&1 || true
+    # NO blanket `meson subprojects update` here any more (supply-chain audit
+    # #21): it moved git-backed wraps to their wrap `revision`, which for
+    # several GStreamer wraps is a BRANCH — quietly advancing pinned sources,
+    # with all output suppressed. The wraps checked out by the pinned
+    # ${GSTREAMER_VERSION} tag are already the intended set; tarball wraps
+    # stay protected by upstream's source_hash either way.
     touch builddir/.subprojects_updated
   fi
   if command -v patch_gstreamer_sources >/dev/null 2>&1; then
