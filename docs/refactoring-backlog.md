@@ -1320,3 +1320,38 @@ Open findings, prioritized (closure batch unless noted):
    assertion] python-version assertion still pending the distro-vs-staged
    CPython decision;
    APP_REF v0.0.27 reports stale __version__ 0.0.22 (upstream issue).
+
+### 2026-08-08 (cont) — sccache multi-tier: VERIFIED, and a correction of my own claim
+
+I told the owner that a two-tier sccache "isn't available — sccache has one
+backend, remote wins over local, you'd need a caching HTTP proxy". **That was
+wrong.** Checked against mozilla/sccache's own `docs/Configuration.md`:
+multi-level caching exists, is read-through/write-through with automatic
+backfill, and is selected with `SCCACHE_MULTILEVEL_CHAIN` ("Order matters:
+left-to-right is fast-to-slow"). Valid backend strings include `disk` and
+`webdav`.
+
+What WAS right is that the repo's own note was incomplete: setting `SCCACHE_DIR`
+next to a configured remote does nothing on its own, because without the chain
+variable sccache stays in single-level legacy mode. Both the note and my claim
+are corrected in `docs/windows-builds.md` § BuildKit lane.
+
+Verified availability, not assumed:
+
+| fact | evidence |
+|---|---|
+| multi-tier implemented | 2026-04-17, PR #2581 (commit on `docs/Configuration.md`) |
+| released in | **v0.16.0**, 2026-06-19 (GitHub releases API) |
+| latest upstream | v0.17.0, 2026-07-29 |
+| version this image installs | **0.17.0** — read out of the 2026-08-08 chain's own base log |
+
+So the lever is available on this host today.
+
+**Consequence worth deciding deliberately:** sccache currently sits in
+`setup-scoop-tools.ps1`'s FLOATING block, justified as "the build only invokes
+them". Wiring the chain changes that — the L1 tier would exist or not depending
+on the installed sccache VERSION, and on an older one the variable is ignored
+**silently**, so the cache degrades with no error anywhere. That is exactly the
+failure shape this repo spent the week eliminating. Pin sccache with
+llvm/ninja/nasm in the same change, or accept a speed feature that can vanish
+without a signal.

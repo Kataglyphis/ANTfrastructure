@@ -916,10 +916,35 @@ steps; the remaining work is the Dockerfile surgery):
   client credential store).
 - **`RUN --mount=type=cache` for a local sccache dir** (WebDAV stays as the
   cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
-  Probed working; wiring = set SCCACHE_DIR to the cache mount in the `*-built`
-  RUNs. CAUTION (2026-08-04): cache mounts get CLONED whenever the record is
-  locked — fine for an L1 compile cache (worst case: cold clone, WebDAV L2
-  still hits), but never rely on two solves seeing the same instance.
+  Probed working. CAUTION (2026-08-04): cache mounts get CLONED whenever the
+  record is locked — fine for an L1 compile cache (worst case: cold clone,
+  WebDAV L2 still hits), but never rely on two solves seeing the same instance.
+
+  **CORRECTED 2026-08-08 — the wiring is NOT just `SCCACHE_DIR`.** This entry
+  used to say "wiring = set SCCACHE_DIR to the cache mount", which alone does
+  nothing: with a remote configured sccache runs in single-level *legacy* mode
+  and the disk backend is simply not in the chain. Two tiers need the explicit
+  chain variable (verified against mozilla/sccache `docs/Configuration.md`):
+
+  ```text
+  SCCACHE_MULTILEVEL_CHAIN = disk,webdav      # left-to-right = fast-to-slow
+  SCCACHE_DIR              = <the cache mount target>
+  SCCACHE_CACHE_SIZE       = <cap for the L0 disk tier>
+  SCCACHE_WEBDAV_ENDPOINT  = <unchanged>
+  ```
+
+  Read-through/write-through with automatic backfill; each level keeps its own
+  variables. `SCCACHE_MULTILEVEL_WRITE_ERROR_POLICY` defaults to `l0` (a write
+  failure on the local tier fails; remote-tier write errors are tolerated).
+
+  **Version dependency this creates:** multi-tier landed in sccache **v0.16.0**
+  (2026-06-19; implemented 2026-04-17, PR #2581). The image installs sccache
+  from the FLOATING scoop block — measured **0.17.0** in the 2026-08-08 chain,
+  so it works today. But the moment this wiring lands, sccache stops being a
+  tool the build merely invokes and becomes one whose VERSION gates a feature:
+  on an older sccache the chain variable is ignored and the L1 silently does
+  nothing, with no error. Pin `sccache` alongside llvm/ninja/nasm if this is
+  wired — the same argument that pinned those three.
 - **sccache for the merge/GStreamer builder**: DONE 2026-08-04 —
   build-gstreamer-from-source.ps1 sets `CC/CXX='sccache clang-cl'` for meson
   when the remote backend is configured (this build previously ran fully
