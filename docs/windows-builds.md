@@ -592,7 +592,12 @@ Housekeeping and sharing:
   that is what protects the ~35GB VS-class layers; v0.32 key names are
   `reservedSpace`/`maxUsedSpace`/`minFreeSpace`, NOT the legacy
   `gckeepstorage`). Deploy/refresh it with
-  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an ADMIN shell — it
+  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an admin **pwsh 7**
+  shell (`pwsh -File …`; the script carries `#requires -Version 7.0`, and
+  under Windows PowerShell 5.1 it refuses with a `#requires` message that is
+  easy to read as "it ran and did nothing" — cost a round trip 2026-08-08,
+  and matches the repo-wide rule that 5.1 appears only in the base bootstrap
+  RUN) — it
   copies the toml to `C:\ProgramData\buildkitd\`, re-registers the service
   with `--config` (keeping `--debug`) and restarts buildkitd, so NEVER run it
   while a build is solving (it refuses when it sees a live buildctl unless
