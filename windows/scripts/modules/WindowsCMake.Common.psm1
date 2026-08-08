@@ -199,10 +199,10 @@ function Invoke-CmakeConfigureAndBuild {
     Write-BuildLog -Context $Context -Message "DEBUG: ========== DISABLING SCCACHE =========="
     $env:CMAKE_C_COMPILER_LAUNCHER = ""
     $env:CMAKE_CXX_COMPILER_LAUNCHER = ""
-    # Must be cleared alongside the other two (added with it 2026-08-08):
-    # -DisableSccache exists to take sccache OUT of the picture, and a leftover
-    # CUDA launcher would leave nvcc still wrapped -- the exact half-disabled
-    # state the switch is meant to rule out, and invisible in a build log.
+    # Kept even though this repo no longer SETS a CUDA launcher (see the
+    # 2026-08-08 note below): the variable can arrive from the environment, and
+    # a wrapped nvcc breaks multi-arch builds outright. Clearing it here means
+    # -DisableSccache genuinely takes sccache out of the picture.
     $env:CMAKE_CUDA_COMPILER_LAUNCHER = ""
     $env:RUSTC_WRAPPER = ""
     $env:CC_WRAPPER = ""
@@ -293,10 +293,10 @@ function Invoke-CmakeConfigureAndBuild {
       Write-BuildLog -Context $Context -Message "DEBUG: Enabling sccache wrappers using: $sccacheExe"
       $env:CMAKE_C_COMPILER_LAUNCHER = $sccacheExe
       $env:CMAKE_CXX_COMPILER_LAUNCHER = $sccacheExe
-      # CUDA added 2026-08-08: .cu files went through nvcc uncached until then.
-      # CMake ignores it when CUDA is not an enabled language. See the longer
-      # note in WindowsSourceBuild.Common.psm1's Invoke-CmakeConfigure.
-      $env:CMAKE_CUDA_COMPILER_LAUNCHER = $sccacheExe
+      # NO CMAKE_CUDA_COMPILER_LAUNCHER: tried and reverted 2026-08-08 —
+      # sccache-wrapped nvcc loses its per-arch intermediate .cubin files before
+      # `fatbinary` combines them, and ONNX builds four -gencode arches per TU.
+      # Full diagnosis in WindowsSourceBuild.Common.psm1.
       $env:RUSTC_WRAPPER = $sccacheExe
       $env:CC_WRAPPER = $sccacheExe
       $env:CXX_WRAPPER = $sccacheExe
