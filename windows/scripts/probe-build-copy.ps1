@@ -4,8 +4,10 @@
 # The 3-layer Windows-container build probe: FROM servercore:ltsc2025 + a RUN
 # + a COPY. A healthy host commits BOTH layers; a host with the build-COPY
 # defect (hcsshim::ActivateLayer 0x20 on buildkit / mkdir Volume\C:. on the
-# docker legacy builder - see AGENTS.md Common Failure Modes "AMD RDNA3.5/RDNA4
-# GPU host") commits the RUN layer and fails on the COPY. 30 seconds, no admin,
+# docker legacy builder - see AGENTS.md Common Failure Modes "AMD Radeon host -
+# faulty Adrenaline install"; root-caused 2026-08-09 to a bad AMD Adrenaline
+# install, NOT the RDNA GPU) commits the RUN layer and fails on the COPY.
+# 30 seconds, no admin,
 # needs only a runnable buildkitd/buildctl. Docs reference this probe as "the
 # 3-layer RUN+COPY probe" - run IT before trusting a new Windows host.
 #

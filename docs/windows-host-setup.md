@@ -72,26 +72,26 @@ Phases:
 > The rest of A5/C below is what the script does by hand — read it to
 > understand, run the script to execute.
 
-> **⚠️ HARDWARE gate — AMD RDNA3.5/RDNA4 GPU breaks Windows-container layer
-> commits (measured 2026-08-09; upstream microsoft/Windows-Containers#623).**
-> On a host with an AMD Radeon **RDNA3.5/RDNA4** GPU (e.g. RX 9060/9070 XT,
-> Radeon 8060, Strix Point-class iGPU), `COPY`-into-layer fails in *both*
-> engines: buildkitd dies `hcsshim::ActivateLayer 0x20` ("file used by another
-> process") at every `COPY`-commit — identical snapshot IDs across fresh
-> solves, survives `-NoCache`, service restarts, Defender exclusions, a full
-> store reset and a reboot — while `FROM`+`RUN` layers commit fine (minimal
-> 3-layer probe); docker-classic dies `mkdir \\?\Volume{<GUID>}\C:.` ("Der
-> Verzeichnisname ist ungültig"). The AMD driver's filter/volume interplay
-> sabotages hcsshim layer VHD mounting. The issue's tested matrix: RDNA3.5/
-> RDNA4 → error; RDNA1/RDNA2 iGPU/Intel → fine. **Fix (reproducer-verified):
-> disable the AMD GPU in Device Manager** (right-click the discrete/iGPU
-> Radeon → Disable device; RDP survives via the Microsoft Remote Display
-> Adapter) — or use a host without an RDNA3.5/4 GPU active. NOT an ISO/OS
-> problem: `sfc`/`DISM` report 0 components corrupt on an affected box. The
-> Linux cross lane and all repo gates are unaffected. **Run the committed
-> 3-layer probe FIRST on any new host: `pwsh -File
-> windows\scripts\probe-build-copy.ps1`** (assets in
-> `windows/diagnostics/probe-build-copy/`; it was how this was isolated). NOTE (2026-08-09): on the discovered host this was NOT cured by GPU-disable either - the AMD issue is real upstream but persists here; treat GPU-disable as one more thing to rule out, not the answer. Diagnostics: `docker run` + `docker commit` still succeeds (CommitLayer OK) -> only build-COPY/ApplyDiff is broken; the classic lane's run+commit stages stay viable once a FROM image exists, but full bootstrap needs a healthy host (every Dockerfile has a COPY).
+> **⚠️ FIRST CHECK on any Windows host doing container builds.**
+> The build-`COPY`-commit failure `hcsshim::ActivateLayer 0x20` (buildkit) /
+> `mkdir \\?\Volume{<GUID>}\C:.` — "Der Verzeichnisname ist ungültig" (docker
+> legacy) hits BOTH engines, deterministically, and survives `-NoCache`,
+> service restarts, Defender exclusions, a full store reset and a reboot.
+> **Root cause (corrected 2026-08-09): a FAULTY AMD ADRENALINE installation**
+> — a clean reinstall fixed it, while GPU-disable never did. The earlier
+> suspicion of an AMD RDNA3.5/RDNA4 / upstream microsoft/Windows-Containers
+> #623 hardware defect was a MISDIAGNOSIS. Probe and repair order:
+> **(1)** `pwsh -File windows\scripts\probe-build-copy.ps1` (the committed
+> 3-layer RUN+COPY probe; assets in `windows/diagnostics/probe-build-copy/`
+> — run it before trusting a new host), then **(2)** **repair/reinstall AMD
+> Adrenaline** and probe again. Do NOT disable the GPU.
+> `toggle-rdna4-gpu.ps1` is obsolete as a fix. NOT an ISO/OS problem: on an
+> affected box `sfc`/`DISM` report 0 components corrupt. The Linux cross lane
+> and all repo gates are unaffected. Remaining-valid diagnostics: while
+> build-COPY fails in both engines (ApplyDiff), `docker run` + `docker commit`
+> still works (CommitLayer OK) — so the classic lane's run+commit stages stay
+> viable once a FROM image exists; full bootstrap still needs a healthy host
+> (every Dockerfile has a COPY).
 
 ---
 

@@ -1,9 +1,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Enable/disable the AMD Radeon RX 9070 XT (RDNA4) - the Windows-Containers
-# ActivateLayer-0x20 suspect (upstream microsoft/Windows-Containers#623).
-# The dedicated GPU was disabled during diagnosis; this restores it.
+# Enable/disable the AMD Radeon RX 9070 XT (RDNA4) in Device Manager.
+# OBSOLETE as a fix since 2026-08-09: the build-COPY (ActivateLayer 0x20)
+# failure it targeted was a FAULTY AMD ADRENALINE installation, cured by
+# reinstall, not by GPU-disable. Kept for historical diagnostics; harmless.
 # Leaves the RDNA2 iGPU alone (it is not implicated). ELEVATED.
 #
 #   pwsh -File windows\scripts\toggle-rdna4-gpu.ps1            # default: enable

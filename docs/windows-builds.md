@@ -1283,8 +1283,10 @@ IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 drop-in replacement for the old single-Dockerfile output.
 
 **Diagnostic / partial-alternative on hosts where build-`COPY` is broken.**
-Measured 2026-08-09 (see AGENTS.md Common Failure Modes "AMD RDNA3.5/RDNA4 GPU"
-row): on a host where *every* `docker build`/`buildctl build` `COPY` commits fail
+Measured 2026-08-09 — root cause, since corrected, was a FAULTY AMD
+ADRENALINE installation (see AGENTS.md Common Failure Modes "AMD Radeon host —
+faulty Adrenaline install" row; a reinstall fixes it, GPU-disable does not):
+on a host where *every* `docker build`/`buildctl build` `COPY` commits fail
 (`hcsshim::ActivateLayer 0x20` on buildkit, `mkdir \\?\Volume{<GUID>}\C:.` on the
 docker legacy builder — while `FROM`+`RUN` layers commit fine), the **`CommitLayer`
 path via `docker run` + `docker commit` still works** and is a 30-second probe:
