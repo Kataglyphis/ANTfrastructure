@@ -49,6 +49,47 @@ Phases:
 - **D** — per-boot / per-run checks
 - **E** — first build + verification
 
+> **Fast path for Phase A5 + C: `setup-new-host.ps1`.** Once the interactive
+> steps are done (A1 Stevedore+reboot, A2 docker-users + a new shell, A3
+> services, B0 Git/B1 repo), a single elevated run of
+> `windows\scripts\setup-new-host.ps1` does the *entire* scriptable half — CNI
+> `.conflist` authored from the **live** `vEthernet (nat)` subnet (magic
+> constants removed: it derives `network/prefix` + gateway at runtime), then
+> `apply-containerd-config.ps1` (debug flags, teardown env var, Defender
+> exclusions, `.conf` derive), `apply-buildkitd-gcpolicy.ps1` + the step-log
+> env var, the patched runhcs shim (built from hcsshim source if no `-ShimPath`
+> is given — Go installed via scoop as needed — then deployed), and dufs
+> (scooped if missing, started serving the cache dir, ONLOGON task registered,
+> machine `SCCACHE_WEBDAV_ENDPOINT` set to the host's LAN IP).
+>
+> ```pwsh
+> pwsh -File windows\scripts\setup-new-host.ps1 -ReportOnly   # plan first (safe, non-admin)
+> pwsh -File windows\scripts\setup-new-host.ps1               # admin - bring the host to green
+> pwsh -File windows\scripts\setup-new-host.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
+> ```
+>
+> It is idempotent and refuses to run while a build is live (unless `-Force`).
+> The rest of A5/C below is what the script does by hand — read it to
+> understand, run the script to execute.
+
+> **⚠️ OS gate — Windows 11 **build 26200** (25H2 line): `COPY`-into-layer fails
+> in *both* engines on SOME 26200 installs (measured 2026-08-09; the reference
+> host's proven lane runs 24H2/25H2 (26100), and a same-build 26200 machine has
+> been observed building fine — so this is NOT a blanket build-line break).
+> Symptoms on an affected host: buildkitd dies `hcsshim::ActivateLayer 0x20`
+> ("file used by another process") at every `COPY`-commit — identical snapshot
+> IDs across fresh solves, survives `-NoCache`, service restarts, Defender
+> exclusions, a full store reset and a reboot — while `FROM`+`RUN` layers
+> commit fine (minimal 3-layer probe); docker-classic dies
+> `mkdir \\?\Volume{<GUID>}\C:.` — "Der Verzeichnisname ist ungültig". A
+> host-level correlate found: **`Get-WindowsOptionalFeature` errors "Klasse
+> nicht registriert" (broken DISM COM API) — i.e. a damaged Windows install,
+> the same class as the documented "public 26200 ISO missing identity
+> components" problem.** Repair path: `DISM /Online /Cleanup-Image
+> /RestoreHealth` + `sfc /scannow` (elevated), re-test the 3-layer probe, and
+> if it still fails, reinstall Windows from a good ISO. The Linux cross lane
+> and all repo gates are unaffected.
+
 ---
 
 ## Phase A — One-time host provisioning [admin]
@@ -134,14 +175,28 @@ new subnet (the driver's preflight fail-fasts on drift with the exact fix).
             "type": "nat",
             "master": "Ethernet",
             "ipam": {
-                "subnet": "172.31.32.0/20",           // MUST match vEthernet (nat)
-                "routes": [ { "GW": "172.31.32.1" } ]
+                "subnet": "<subnet of the vEthernet (nat) adapter>",   // DERIVE, don't copy: see below
+                "routes": [ { "GW": "<the adapter's own IP>" } ]
             },
             "capabilities": { "portMappings": true, "dns": true }
         }
     ]
 }
 ```
+
+**No magic subnets — derive them.** Every example number shipped in these docs
+(`172.31.32.0/20`, etc.) was a snapshot of ONE host and went stale; the only
+correct values are the live adapter's. `setup-new-host.ps1` derives them
+automatically; to do it by hand:
+
+```pwsh
+$n = Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -eq 'vEthernet (nat)' }
+$n.IPAddress, $n.PrefixLength     # adapter IP + prefix -> GW + subnet (e.g. 172.21.32.1 / 20 -> subnet 172.21.32.0/20)
+```
+
+The `ipam.subnet`/`GW` MUST match that live `vEthernet (nat)` adapter
+(`ipconfig`), and dockerd restarts can silently re-create that network on a
+new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 
 **Install BOTH forms — conf AND conflist (corrected 2026-08-07, same day, after
 the conflist-only state cost a launched chain).** Same content, two filenames:
@@ -440,8 +495,10 @@ Get-MpPreference | Select-Object -Expand ExclusionProcess
 This server is load-bearing twice: it is the compile cache (sccache WebDAV
 backend) AND the transport for the warm/materialize handoff tars (the
 `bkhandoff/` subdir) that neutralize the `ExportLayer 0x3` snapshotter defect
-— **without it the BK media solves fail fast**. Setup (non-admin, except the
-machine-env line):
+— **without it the BK media solves fail fast**. `setup-new-host.ps1` automates
+all of it (scoop install if missing, cache dir, start, ONLOGON task,
+machine-level endpoint env with the host's LAN IP — never localhost). By hand
+(non-admin, except the machine-env line):
 
 ```pwsh
 scoop install dufs

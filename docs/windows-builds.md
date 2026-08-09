@@ -435,14 +435,21 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
                "type": "nat",
                "master": "Ethernet",
                "ipam": {
-                   "subnet": "<subnet of the vEthernet (nat) adapter>",   // e.g. 172.31.32.0/20
-                   "routes": [ { "GW": "<that adapter's IPv4>" } ]        // e.g. 172.31.32.1
+                   "subnet": "<subnet of the vEthernet (nat) adapter>",   // DERIVE, don't copy (see below)
+                   "routes": [ { "GW": "<that adapter's IPv4>" } ]
                },
                "capabilities": { "portMappings": true, "dns": true }
            }
        ]
    }
    ```
+
+   **No magic subnets.** `setup-new-host.ps1` authors this file from the live
+   `vEthernet (nat)` adapter (derived network/prefix + gateway) — the literals in
+   older copies of these docs (`172.31.32.0/20` etc.) were snapshots of one host
+   and are stale on any other. To derive by hand:
+   `Get-NetIPAddress | ? InterfaceAlias -eq 'vEthernet (nat)'` → adapter IP is
+   the GW, and `subnet` = network/prefix of that address.
 
    After writing it, verify with BOTH clients — a BuildKit RUN step that fetches
    something, and `nerdctl --namespace buildkit run --rm --network nat
@@ -453,7 +460,8 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    subnet on service restarts, silently orphaning this conf (containers then get
    unroutable IPs). `build-buildkit.ps1` fail-fasts on the mismatch at preflight
    with the exact fix; re-sync the conf to `ipconfig`'s `vEthernet (nat)` values
-   and `Restart-Service buildkitd -Force` (plain `Restart-Service` refuses when
+   (`setup-new-host.ps1 -ReportOnly` re-derives and shows any drift) and
+   `Restart-Service buildkitd -Force` (plain `Restart-Service` refuses when
    dependent services exist).
 3. **Windows Defender exclusions** for `C:\ProgramData\containerd` (and the
    buildkit state dir) — layer extraction races the scanner otherwise.

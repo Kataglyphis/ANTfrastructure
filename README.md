@@ -193,7 +193,7 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
 full host CPUs, real layer caching — one-time setup in
 [Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane;
-**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)**):
+**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\setup-new-host.ps1`; `-ReportOnly` first):
 
 ```pwsh
 # BUILD (non-admin shell; buildctl against buildkitd):

@@ -209,7 +209,14 @@ if (-not (Test-Path $shim)) {
     }
 }
 
-$cEnv = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue).Environment
+# Safe property reads: a registry value that does not EXIST (e.g. the
+# Environment value on a host that never ran apply-containerd-config) throws
+# PropertyNotFound on member access, which under Set-StrictMode surfaces later
+# as an unset-variable error and CRASHED this script mid-run (2026-08-09),
+# silently skipping the two checks below. .PSObject.Properties.Name -contains
+# avoids the throw entirely and turns "absent" into the honest WARN.
+$cProps = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue
+$cEnv = if ($cProps -and $cProps.PSObject.Properties.Name -contains 'Environment') { @($cProps.Environment) } else { @() }
 if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=') {
     Write-Check PASS 'containerd service carries the shim teardown env var'
 } else {
@@ -218,7 +225,7 @@ if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIME
         'pwsh -File windows\scripts\apply-containerd-config.ps1  (admin)'
 }
 
-$cImage = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue).ImagePath
+$cImage = if ($cProps) { [string]$cProps.ImagePath } else { '' }
 if ($cImage -match '--log-level\s+debug') { Write-Check PASS 'containerd debug logging on (owner policy)' }
 else { Write-Check WARN 'containerd debug logging OFF' 'the next snapshotter incident will carry no evidence' 'pwsh -File windows\scripts\apply-containerd-config.ps1  (admin)' }
 
