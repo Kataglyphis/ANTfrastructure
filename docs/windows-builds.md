@@ -1282,6 +1282,26 @@ IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 `docker commit` preserves the builder image's ENV, so each result image is a
 drop-in replacement for the old single-Dockerfile output.
 
+**Diagnostic / partial-alternative on hosts where build-`COPY` is broken.**
+Measured 2026-08-09 (see AGENTS.md Common Failure Modes "AMD RDNA3.5/RDNA4 GPU"
+row): on a host where *every* `docker build`/`buildctl build` `COPY` commits fail
+(`hcsshim::ActivateLayer 0x20` on buildkit, `mkdir \\?\Volume{<GUID>}\C:.` on the
+docker legacy builder — while `FROM`+`RUN` layers commit fine), the **`CommitLayer`
+path via `docker run` + `docker commit` still works** and is a 30-second probe:
+
+```pwsh
+docker run --name probe-rc mcr.microsoft.com/windows/servercore:ltsc2025 cmd /c echo hi
+docker commit probe-rc local/test:probe-rc      # rc 0 = CommitLayer OK; only ApplyDiff (build COPY) is broken
+docker rm -f probe-rc
+```
+
+So the classic lane's **CPU-bound run+commit stages remain viable** on such a host.
+Caveat: the chain cannot bootstrap end-to-end there, because the FROM images
+(base/sdk/merge fan-in) themselves contain `COPY` steps that still break — every
+repo Dockerfile has at least one `COPY`. Use the healthiest host for a full chain;
+the run+commit path only rescues the heavy compile stages once a starting image
+exists.
+
 The `litert`/`tvm` aux branches **also** run+commit at `-MediaCoreCpus` cores (via
 their `Dockerfile.media-builder` targets): media-core is already committed when they
 run, so the whole CPU/RAM budget is free — e.g. `~j19` at 32 CPU / 39 g on this host

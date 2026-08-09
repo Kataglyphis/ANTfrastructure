@@ -88,7 +88,7 @@ Phases:
 > Radeon → Disable device; RDP survives via the Microsoft Remote Display
 > Adapter) — or use a host without an RDNA3.5/4 GPU active. NOT an ISO/OS
 > problem: `sfc`/`DISM` report 0 components corrupt on an affected box. The
-> Linux cross lane and all repo gates are unaffected. NOTE (2026-08-09): on the discovered host this was NOT cured by GPU-disable either - the AMD issue is real upstream but persists here; treat GPU-disable as one more thing to rule out, not the answer.
+> Linux cross lane and all repo gates are unaffected. NOTE (2026-08-09): on the discovered host this was NOT cured by GPU-disable either - the AMD issue is real upstream but persists here; treat GPU-disable as one more thing to rule out, not the answer. Diagnostics: `docker run` + `docker commit` still succeeds (CommitLayer OK) -> only build-COPY/ApplyDiff is broken; the classic lane's run+commit stages stay viable once a FROM image exists, but full bootstrap needs a healthy host (every Dockerfile has a COPY).
 
 ---
 
