@@ -133,6 +133,14 @@ If foreign-architecture builds fail with `exec format error`:
 
 Details: [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Host prerequisite.
 
+## LLM Stack
+
+An Ollama + Open WebUI serving stack lives in
+[`linux/llm-stack/`](linux/llm-stack/README.md) — CPU-only by default, with an
+opt-in GPU override (`docker-compose.gpu.yml`) for NVIDIA machines. Docs
+include a VRAM/context sizing table so a 256K-listed model is only configured
+at a context the GPUs can actually hold.
+
 ## CI
 
 | Workflow | Purpose |
