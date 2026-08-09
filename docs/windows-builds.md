@@ -1295,6 +1295,10 @@ docker commit probe-rc local/test:probe-rc      # rc 0 = CommitLayer OK; only Ap
 docker rm -f probe-rc
 ```
 
+Committed version of the 3-layer build-`COPY` probe: `pwsh -File
+windows\scripts\probe-build-copy.ps1` (assets in
+`windows/diagnostics/probe-build-copy/`).
+
 So the classic lane's **CPU-bound run+commit stages remain viable** on such a host.
 Caveat: the chain cannot bootstrap end-to-end there, because the FROM images
 (base/sdk/merge fan-in) themselves contain `COPY` steps that still break — every
