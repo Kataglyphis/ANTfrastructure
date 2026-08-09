@@ -1,0 +1,16 @@
+# GPU override: gives the Ollama service access to all NVIDIA GPUs and raises
+# the default context window. CPU-only default stays in docker-compose.yml.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# Requires the nvidia-container-toolkit + nvidia runtime on the host.
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      OLLAMA_CONTEXT_LENGTH: "65536"

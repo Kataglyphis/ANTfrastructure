@@ -192,6 +192,17 @@ erdctl.exe"
   uses a different tag, reproducing a CI failure proves nothing. Neither tag is
   digest-pinned, so both still float.
 
+### LLM Stack (Ollama + Open WebUI)
+
+A standalone serving stack lives in `linux/llm-stack/` (docs in its own
+README). CPU-only is the compose default; an opt-in GPU override
+(`linux/llm-stack/docker-compose.gpu.yml`, `docker compose -f docker-compose.yml
+-f docker-compose.gpu.yml up -d`) grants the Ollama service all NVIDIA GPUs and
+raises `OLLAMA_CONTEXT_LENGTH`. **VRAM caveat:** the context Ollama lists is the
+model's max, not what fits — ~19 GB of weights + ~104 KB/token q8_0 KV means a
+28 GB stack (e.g. 12 GB + 16 GB GPUs) caps at ~64K, and 256K needs >45 GB VRAM.
+Requires the nvidia-container-toolkit on any host that wants GPU mode.
+
 ### Triggering the opt-in CI lanes
 
 The Linux x86 lane runs on every push; **Windows and ARM are opt-in per commit**.

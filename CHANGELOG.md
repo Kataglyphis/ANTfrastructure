@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-08-09 - LLM stack: GPU mode override + Qwen3-Coder deploy
+
+- **NEW `linux/llm-stack/docker-compose.gpu.yml`** — a compose overlay that
+  gives the Ollama service all NVIDIA GPUs
+  (`deploy.resources.reservations.devices`, driver `nvidia`) and raises the
+  default context via `OLLAMA_CONTEXT_LENGTH`. The base `docker-compose.yml`
+  stays CPU-only; GPU hosts run
+  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d` after
+  installing the `nvidia-container-toolkit` (install commands in the llm-stack
+  README). `OLLAMA_KV_CACHE_TYPE=q8_0` and flash attention remain the defaults.
+- **Deployed `qwen3-coder:30b` (30.5B A3B MoE, Q4_K_M, ~18 GB) on a 2× NVIDIA
+  host (12 GB + 16 GB)**: 100 % GPU placement (9.9 GB / 12.4 GB per card),
+  warm decode ~137 tok/s, ~47 s cold load, context tuned to 64K. Perf measured
+  via the `/api/generate` metrics.
+- **Docs:** `linux/llm-stack/README.md` gained a GPU-mode section (toolkit
+  install + override usage + `ollama ps` GPU check) and a VRAM/context sizing
+  table (~104 KB/token q8_0 KV ⇒ 28 GB total = ~64K cap; 256K needs >45 GB).
+  The "CPU-only inference" architecture note is now "CPU-only by default, GPU
+  optional". Repo `README.md` and `AGENTS.md` Quick Reference now point to the
+  LLM stack (previously undiscoverable from either).
+
 ## 2026-08-09 (night) - Windows lane on a 25H2 host: platform COPY regression found; sccache source build proven host-side
 
 The base->final GPU verification run that motivated the sccache source build hit
