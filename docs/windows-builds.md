@@ -1308,6 +1308,21 @@ repo Dockerfile has at least one `COPY`. Use the healthiest host for a full chai
 the run+commit path only rescues the heavy compile stages once a starting image
 exists.
 
+**2026-08-09 follow-up (this exact failure, cracked on the discovered host):**
+- A **faulty AMD Adrenaline installation** (GPU + chipset) caused the general
+  `0x20` family; **reinstalling Adrenaline** (not GPU-disable) fixed that.
+- The buildkit-snapshotter residual — "any layer writing into an existing
+  parent dir" refused, identical on buildkit 0.32.0 and 0.32.2, on all
+  snapshotter names (`windows`/`native`/`windows-uvm`; see the
+  `[worker.containerd]` note in `windows/buildkitd.toml`) — was cleared by a
+  **Windows in-place repair upgrade** (official ISO, same build, keep
+  files+apps): after it every layer commits.
+- Residual on that host: only the **final export** (reimport of the committed
+  snapshot) still trips `0x20`, where the Defender engine (`MsMpEng`) is
+  unkillable by design and the identical Stevedore+OS stack builds the BK lane
+  fine on the working machine. ⇒ host-residual; use the classic lane there or
+  the healthy host.
+
 The `litert`/`tvm` aux branches **also** run+commit at `-MediaCoreCpus` cores (via
 their `Dockerfile.media-builder` targets): media-core is already committed when they
 run, so the whole CPU/RAM budget is free — e.g. `~j19` at 32 CPU / 39 g on this host

@@ -218,6 +218,15 @@ Fallback (docker classic, Hyper-V run+commit — for hosts without the BuildKit
 setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
 § Build Commands.
 
+> **Host with a broken BK lane (`hcsshim::ActivateLayer 0x20` on `COPY`/layer
+> commit, both engines)?** Run the committed 3-layer probe first
+> (`windows\scripts\probe-build-copy.ps1`), then **reinstall a faulty AMD
+> Adrenaline install** (GPU+chipset; GPU-disable is NOT the fix), and if
+> multi-layer commits still fail, do a **Windows in-place repair upgrade**
+> (official ISO, same build, keep files+apps). Residual export-time 0x20 on a
+> single host = host-residual: use the classic lane there or the healthy host.
+> Full evidence: AGENTS.md Common Failure Modes.
+
 ### Clone The Repository
 
 ```bash

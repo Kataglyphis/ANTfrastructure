@@ -92,6 +92,22 @@ Phases:
 > still works (CommitLayer OK) — so the classic lane's run+commit stages stay
 > viable once a FROM image exists; full bootstrap still needs a healthy host
 > (every Dockerfile has a COPY).
+>
+> **Latest state (2026-08-09, end of session — the deeper story the Adrenaline
+> fix opened):** with Adrenaline fixed + pristine Stevedore the buildkit lane
+> on the discovered host STILL refused multi-level commits (any layer writing
+> into an existing parent dir: `ActivateLayer 0x20` at snapshotter reimport,
+> identical on buildkit 0.32.0 and 0.32.2, on `windowcon`/`native`/`windowssvm`
+> snapshotter names). It was only cleared by a **Windows in-place repair
+> upgrade** (official ISO, same build 26200/25H2, "keep files and apps") —
+> after it **every layer commits**, including writes into existing dirs. Only
+> the FINAL export (reimport of the committed snapshot) still trips 0x20 on
+> that host, where Defender's engine (`MsMpEng`) is unkillable by design and
+> the identical Stevedore+OS stack builds the BK lane fine on the working
+> machine. Order on a host with this symptom: probe → reinstall AMD Adrenaline
+> → probe → if commits still fail, **in-place-repair Windows → probe** → BK
+> lane commits; residual export 0x20 = host-residual (classic lane or the
+> healthy host).
 
 ---
 
