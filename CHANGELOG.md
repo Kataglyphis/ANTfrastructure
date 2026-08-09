@@ -6,22 +6,7 @@ The base->final GPU verification run that motivated the sccache source build hit
 a wall that turned out to be the HOST OS, not the repo.
 
 - **Windows 11 build 26200 (25H2 line) `COPY`-into-layer failure — isolated to a
-  HOST-SPECIFIC damaged-install class, NOT a blanket build break (corrected
-  same day).** buildkitd: `failed to reimport snapshot: hcsshim::ActivateLayer
-  0x20` ("file used by another process"), deterministic across fresh chain-IDs,
-  survives `-NoCache`, service restarts, vmwp kills, Defender exclusions, a
-  full store reset AND a reboot. docker-classic fallback: `mkdir
-  \\?\Volume{<GUID>}\C:.` invalid directory name, under process AND Hyper-V
-  isolation. A minimal 3-layer probe isolates it: `FROM servercore` + `RUN`
-  commits fine, the first `COPY` layer never does. NOT Defender, not a poisoned
-  snapshot, not storage. However, 26200 is a retail-serviced line (the same
-  cumulative KBs serve 26200.xxxx and 26100.xxxx, e.g. KB5094126) and a
-  same-build 26200 machine was observed building fine - and the affected box's
-  own `Get-WindowsOptionalFeature` errors "Klasse nicht registriert" (broken
-  DISM COM API = damaged Windows component store, the same class as the
-  documented "public 26200 ISO missing identity components" problem). Repair
-  path documented: `DISM /Online /Cleanup-Image /RestoreHealth` + `sfc
-  /scannow`, re-test the 3-layer probe, reinstall from a good ISO if needed.
+  AMD RDNA3.5/RDNA4 GPU defect (upstream microsoft/Windows-Containers#623), NOT a blanket build break and NOT the ISO (corrected 2026-08-09).** buildkitd: `failed to reimport snapshot: hcsshim::ActivateLayer 0x20` (`file used by another process`), deterministic across fresh chain-IDs, survives `-NoCache`, service restarts, vmwp kills, Defender exclusions, a full store reset AND a reboot. docker-classic fallback: mkdir \\?\Volume{<GUID>}\C:. invalid directory name, under process AND Hyper-V isolation. A minimal 3-layer probe isolates it: `FROM servercore` + `RUN` commits fine, the first `COPY` layer never does. Root cause is the AMD GPU: on this box (Ryzen 9 9950X + Radeon RX 9070 XT, RDNA4) hcsshim layer VHD mounting breaks at COPY commit; the upstream issue's own matrix proves RDNA3.5/RDNA4 = broken while RDNA1/RDNA2 iGPU/Intel = fine. NOT the OS: a same-build 26200 machine builds fine, `sfc`/`DISM` report 0 components corrupt, and even projfs.sys is absent on the working machine too. Fix (reproducer-verified): disable the AMD GPU in Device Manager (RDP survives via the Remote Display Adapter). On the discovered host (2026-08-09) GPU-disable did NOT cure it - real upstream, persisted here; root cause on that box remains undetermined. 
   Docs updated: `docs/windows-host-setup.md` OS gate + AGENTS.md Common Failure
   Modes carry the corrected row. The Linux cross lane and all repo gates are
   unaffected.

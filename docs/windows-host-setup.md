@@ -72,23 +72,23 @@ Phases:
 > The rest of A5/C below is what the script does by hand — read it to
 > understand, run the script to execute.
 
-> **⚠️ OS gate — Windows 11 **build 26200** (25H2 line): `COPY`-into-layer fails
-> in *both* engines on SOME 26200 installs (measured 2026-08-09; the reference
-> host's proven lane runs 24H2/25H2 (26100), and a same-build 26200 machine has
-> been observed building fine — so this is NOT a blanket build-line break).
-> Symptoms on an affected host: buildkitd dies `hcsshim::ActivateLayer 0x20`
-> ("file used by another process") at every `COPY`-commit — identical snapshot
-> IDs across fresh solves, survives `-NoCache`, service restarts, Defender
-> exclusions, a full store reset and a reboot — while `FROM`+`RUN` layers
-> commit fine (minimal 3-layer probe); docker-classic dies
-> `mkdir \\?\Volume{<GUID>}\C:.` — "Der Verzeichnisname ist ungültig". A
-> host-level correlate found: **`Get-WindowsOptionalFeature` errors "Klasse
-> nicht registriert" (broken DISM COM API) — i.e. a damaged Windows install,
-> the same class as the documented "public 26200 ISO missing identity
-> components" problem.** Repair path: `DISM /Online /Cleanup-Image
-> /RestoreHealth` + `sfc /scannow` (elevated), re-test the 3-layer probe, and
-> if it still fails, reinstall Windows from a good ISO. The Linux cross lane
-> and all repo gates are unaffected.
+> **⚠️ HARDWARE gate — AMD RDNA3.5/RDNA4 GPU breaks Windows-container layer
+> commits (measured 2026-08-09; upstream microsoft/Windows-Containers#623).**
+> On a host with an AMD Radeon **RDNA3.5/RDNA4** GPU (e.g. RX 9060/9070 XT,
+> Radeon 8060, Strix Point-class iGPU), `COPY`-into-layer fails in *both*
+> engines: buildkitd dies `hcsshim::ActivateLayer 0x20` ("file used by another
+> process") at every `COPY`-commit — identical snapshot IDs across fresh
+> solves, survives `-NoCache`, service restarts, Defender exclusions, a full
+> store reset and a reboot — while `FROM`+`RUN` layers commit fine (minimal
+> 3-layer probe); docker-classic dies `mkdir \\?\Volume{<GUID>}\C:.` ("Der
+> Verzeichnisname ist ungültig"). The AMD driver's filter/volume interplay
+> sabotages hcsshim layer VHD mounting. The issue's tested matrix: RDNA3.5/
+> RDNA4 → error; RDNA1/RDNA2 iGPU/Intel → fine. **Fix (reproducer-verified):
+> disable the AMD GPU in Device Manager** (right-click the discrete/iGPU
+> Radeon → Disable device; RDP survives via the Microsoft Remote Display
+> Adapter) — or use a host without an RDNA3.5/4 GPU active. NOT an ISO/OS
+> problem: `sfc`/`DISM` report 0 components corrupt on an affected box. The
+> Linux cross lane and all repo gates are unaffected. NOTE (2026-08-09): on the discovered host this was NOT cured by GPU-disable either - the AMD issue is real upstream but persists here; treat GPU-disable as one more thing to rule out, not the answer.
 
 ---
 
