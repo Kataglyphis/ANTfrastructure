@@ -46,4 +46,27 @@ else
   t_assert_eq "1" "1" "profile helper absent; skipping relative check"
 fi
 
+# ---------------------------------------------------------------------------
+t_case "BUILD_MEM_DIVISOR=3 yields exactly 1/3 of the divisor=1 jobs"
+# The divisor is applied inside the REAL _usable_mem_mb (parallelism.sh
+# ~173-184: usable = avail / BUILD_MEM_DIVISOR), which this file's stub above
+# bypasses — so run the case in a fresh child bash and stub one level LOWER
+# (_mem_available_mb, the raw probe). Math with avail=24000, peak=1000,
+# cores=64:  divisor=1 -> min(64, 24000/1000) = 24;  divisor=3 ->
+# min(64, 8000/1000) = 8;  an invalid divisor must fall back to 1 -> 24.
+_div_out="$(bash -c '
+  set -u
+  source "'"${TESTS_DIR}"'/../01-core/parallelism.sh"
+  _mem_available_mb() { printf "24000"; }
+  detect_available_cores() { printf "64"; }
+  compute_jobs() { printf "%s" "${1:-64}"; }
+  unset PARALLEL_JOBS 2>/dev/null || true
+  printf "%s;%s;%s" \
+    "$(BUILD_MEM_DIVISOR=1 mem_capped_jobs 1000 64)" \
+    "$(BUILD_MEM_DIVISOR=3 mem_capped_jobs 1000 64)" \
+    "$(BUILD_MEM_DIVISOR=bogus mem_capped_jobs 1000 64)"
+')"
+t_assert_eq "24;8;24" "${_div_out}" \
+  "divisor must divide usable RAM (3x concurrency -> 1/3 jobs each; invalid divisor -> 1)"
+
 t_summary

@@ -42,6 +42,40 @@ top to bottom; each batch is independently shippable.
 - T2 test-pipefail-safety.sh + tree lint                         [S·★★★]
 - T3 ffmpeg TF extra-flags contract test                         [S·★★]
 
+**EXECUTION STATUS (2026-08-10 evening, while the latest-cross chain ran):**
+✅ DONE Batch 0: C5 (slug + zero-checks-ran guard + test-preflight-slugs.sh),
+T4 (+19 arch/wheel-tag assertions), T5 (test-pkgconfig-file.sh, 16), T6
+(divisor + parallel-harvest cases), A5 (test-layer-order.sh, 29 — platform.sh
+is actually L0; cross-env.sh gets a documented aggregator exception), A2
+(test-lib-smoke.sh, 33 — complements test-lib-modules.sh), D1 (_rt_run, 18
+sites collapsed), hook staged-blob shebang probe (proven: old code MISSED a
+staged-only shebang), bump_versions.py lookup-failure rc (all 3 return paths),
+SUDO-bare-flag + uv-venv--python lints (test-invocation-lints.sh).
+✅ DONE Batch 1 COMPLETE: T1 (22 asserts; 3 contract surprises documented
+below), T2 (9; SIGPIPE=141 proven; offender allowlist ships EMPTY), T3
+(test-ffmpeg-dnn-contract.sh, 14; both probe paths; regression-catch proven).
+Tree after: 21 suites / 306 assertions, full preflight green.
+✅ DONE W1: windows/scripts/tests/SourceBuild.PinParity.Tests.ps1 — 13 pin
+sites AST-scanned, all currently in sync; unknown-site + twin-pair +
+scanner-rot guards. NOT yet executed (no pwsh on this host) — watch the first
+Invoke-Tests.ps1 run on Windows. Corrections vs the W1 write-up: the "18.0.0"
+site is PYAV_VERSION (no LLVM site exists); TVM's key is TVM_REF.
+**NEW → W1b (Batch 4):** the scan surfaced LIVE drift in the ADJACENT helper
+`Resolve-ContainerImageValue` (out of W1 scope): setup-scoop-tools.ps1:105
+GIT_VERSION '2.54.0' vs pin 2.55.0; setup-scoop-tools.ps1:128 +
+verify-toolchain.ps1:122 WIX_UI_EXT_VERSION '4.0.4' vs pin 4.0.6. Fix the 3
+defaults + extend the parity suite to Resolve-ContainerImageValue sites in the
+next Windows rebuild window (lane rule: script edits ride pin-bump rebuilds).
+⏸ DEFERRED while the chain runs (unlock post-chain): S1 + kata-cache cap +
+CCACHE_MAXSIZE (cross-stage-build/01-core = mount closure), O3 (edits the
+RUNNING orchestrator), buildkitd toml pair (gckeepstorage REGRESSION +
+max-parallelism — daemon restart), BUILDKIT_STEP_LOG_MAX_SIZE (unit restart),
+B5 main() split (publish gate — don't refactor mid-run), agentic-loop jq [M].
+T1's contract surprises (fold into Batch 2): cross_package_files_present
+checks dpkg ${Status} NOT files (name + caller comment stale);
+_CROSS_ENV_APT_UPDATED read unguarded under set -u (standalone sourcing
+crashes); per-package retry discards individual apt rc's (diagnosability).
+
 **Batch 2 — the 01-core / in-container closure batch (ONE rebuild window;
 run Batch 1 first so the refactors land guarded):**
 - D2 retag_directory_wheels promotion (guarded by T4)            [M·★★]

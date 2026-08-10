@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Slug-registry completeness for preflight.sh (backlog 2026-08-10 C5).
+# The KNOWN_SLUGS validator exists to keep PREFLIGHT_ONLY/PREFLIGHT_SKIP
+# subsets honest — but nothing kept KNOWN_SLUGS itself honest: check #15
+# (stage-graph) was registered via run_check yet missing from the array, so
+# PREFLIGHT_ONLY=stage-graph exited 2 "Unknown slug" — the exact drop-out the
+# validator's header claims to prevent. Assert set-equality in BOTH directions
+# so neither a new run_check nor a new KNOWN_SLUGS entry can drift alone.
+set -u
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${TESTS_DIR}/test-harness.sh"
+PREFLIGHT="${TESTS_DIR}/../preflight.sh"
+
+t_case "preflight.sh exists and parses"
+t_assert_ok bash -n "${PREFLIGHT}"
+
+# KNOWN_SLUGS: evaluate ONLY the array-assignment lines (multi-line, backslash
+# continued) in an isolated bash — no other preflight code runs.
+_known="$(bash -c "
+  $(sed -n '/^KNOWN_SLUGS=(/,/)/p' "${PREFLIGHT}")
+  printf '%s\n' \"\${KNOWN_SLUGS[@]}\"
+" | sort)"
+
+# Registered: every `run_check <slug> ...` call site (first arg), definition
+# line excluded (it takes "$1").
+_registered="$(grep -E '^\s*run_check [a-z0-9-]+ ' "${PREFLIGHT}" \
+  | awk '{print $2}' | sort -u)"
+
+t_case "KNOWN_SLUGS is non-empty and run_check sites were found"
+t_assert_ok test -n "${_known}"
+t_assert_ok test -n "${_registered}"
+
+t_case "every registered run_check slug is in KNOWN_SLUGS"
+_missing="$(comm -13 <(printf '%s\n' "${_known}") <(printf '%s\n' "${_registered}"))"
+t_assert_eq "" "${_missing}" "registered but not in KNOWN_SLUGS (the stage-graph class):${_missing:+ }${_missing}"
+
+t_case "every KNOWN_SLUGS entry has a run_check registration"
+_orphan="$(comm -23 <(printf '%s\n' "${_known}") <(printf '%s\n' "${_registered}"))"
+t_assert_eq "" "${_orphan}" "in KNOWN_SLUGS but never registered (zero-ran no-op class):${_orphan:+ }${_orphan}"
+
+t_summary

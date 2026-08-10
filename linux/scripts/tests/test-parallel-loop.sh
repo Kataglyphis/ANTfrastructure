@@ -75,4 +75,33 @@ PARALLEL_ARCHS=0
 t_assert_fails run_parallel_arch_loop worker_fail "${workdir}/f2" 4 amd64 arm64
 t_assert_ok    run_parallel_arch_loop worker_fail "${workdir}/f3" 4 amd64
 
+# ---------------------------------------------------------------------------
+# PARALLEL-path failure harvest: workers run as background subshells; a failed
+# lane is persisted as a failed-<arch> flag file and harvested after the join
+# into a nonzero return, while sibling lanes still complete their work. Safe
+# to assert from this process: cleanup is explicit at the single exit point
+# (see the no-RETURN-trap contract at the top of parallel-loop.sh), so no
+# trap is left armed to corrupt our own returns.
+t_case "parallel path: one failing arch -> nonzero return, sibling lane completed"
+worker_par() {
+  if [ "$1" = "amd64" ]; then
+    touch "${workdir}/par-done-amd64"
+    return 0
+  fi
+  return 1   # arm64 lane fails
+}
+rm -f "${workdir}/par-done-amd64"
+PARALLEL_ARCHS=1   # truthy per _bool_truthy (1|true|yes|on)
+t_assert_fails run_parallel_arch_loop worker_par "${workdir}/f4" 4 amd64 arm64
+t_assert_ok test -f "${workdir}/par-done-amd64"
+
+t_case "parallel path: all lanes green -> rc 0, work done, flag dir cleaned"
+worker_ok_par() { touch "${workdir}/par-ok-$1"; }
+t_assert_ok run_parallel_arch_loop worker_ok_par "${workdir}/f5" 4 amd64 arm64
+t_assert_ok test -f "${workdir}/par-ok-amd64"
+t_assert_ok test -f "${workdir}/par-ok-arm64"
+t_assert_eq "0" "$(find "${workdir}" -maxdepth 1 \( -name 'f4.*' -o -name 'f5.*' \) | wc -l | tr -d ' ')" \
+  "parallel runs must not leak their flag dirs"
+PARALLEL_ARCHS=0
+
 t_summary
