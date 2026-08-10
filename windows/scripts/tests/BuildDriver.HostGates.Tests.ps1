@@ -286,3 +286,54 @@ Describe 'Get-StageDiskFloorGb per SUB-stage (refined after a 1.5 GB false refus
         Assert-Equal 45 (Get-StageDiskFloorGb -Label 'Dockerfile.media-merge-builder:built')
     }
 }
+
+Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
+
+    # Fake PnP device rows: the gate must judge from FriendlyName + Status
+    # alone, so tests never depend on this host's real GPUs.
+    $rdna4On   = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'OK' }
+    $rdna4Off  = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'Error' }
+    $igpu      = [pscustomobject]@{ FriendlyName = 'AMD Radeon(TM) Graphics'; Status = 'OK' }
+    $nvidia    = [pscustomobject]@{ FriendlyName = 'NVIDIA GeForce RTX 4090'; Status = 'OK' }
+
+    It 'refuses to start when an RDNA4 dGPU is enabled' {
+        Assert-Throws -MessagePattern 'ActivateLayer 0x20' -Body {
+            Assert-NoActiveRdna4Gpu -Devices @($rdna4On, $igpu)
+        } -Message 'an enabled RX 9070 XT must fail the preflight loudly'
+    }
+
+    It 'names the toggle recipe in the refusal' {
+        Assert-Throws -MessagePattern 'toggle-rdna4-gpu' -Body {
+            Assert-NoActiveRdna4Gpu -Devices @($rdna4On)
+        }
+    }
+
+    It 'interpolates the device name into the refusal (no literal {0})' {
+        # Regression pin: -f binds tighter than +, so an unparenthesized
+        # string concat left a literal {0} in the user-facing message.
+        Assert-Throws -MessagePattern 'RX 9070 XT' -Body {
+            Assert-NoActiveRdna4Gpu -Devices @($rdna4On)
+        } -Message 'the refusal must name the actual device'
+    }
+
+    It 'passes when the RDNA4 dGPU is disabled (the build window)' {
+        Assert-NoActiveRdna4Gpu -Devices @($rdna4Off, $igpu)
+    }
+
+    It 'ignores hosts with no RDNA4 hardware (iGPU / NVIDIA / none)' {
+        Assert-NoActiveRdna4Gpu -Devices @($igpu, $nvidia)
+        Assert-NoActiveRdna4Gpu -Devices @()
+    }
+
+    It '-Force downgrades the refusal to a warning (SkipHostChecks path)' {
+        Assert-NoActiveRdna4Gpu -Devices @($rdna4On) -Force -WarningAction SilentlyContinue
+    }
+
+    It 'catches other RDNA4 SKUs via the pattern (RX 9060, AI PRO R9700)' {
+        foreach ($name in @('AMD Radeon RX 9060 XT', 'AMD Radeon AI PRO R9700')) {
+            Assert-Throws -Body {
+                Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $name; Status = 'OK' })
+            } -Message "$name must be treated as a hazard"
+        }
+    }
+}

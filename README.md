@@ -218,14 +218,20 @@ Fallback (docker classic, Hyper-V run+commit — for hosts without the BuildKit
 setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
 § Build Commands.
 
-> **Host with a broken BK lane (`hcsshim::ActivateLayer 0x20` on `COPY`/layer
-> commit, both engines)?** Run the committed 3-layer probe first
-> (`windows\scripts\probe-build-copy.ps1`), then **reinstall a faulty AMD
-> Adrenaline install** (GPU+chipset; GPU-disable is NOT the fix), and if
-> multi-layer commits still fail, do a **Windows in-place repair upgrade**
-> (official ISO, same build, keep files+apps). Residual export-time 0x20 on a
-> single host = host-residual: use the classic lane there or the healthy host.
-> Full evidence: AGENTS.md Common Failure Modes.
+> **Host with a broken BK lane (`hcsshim::ActivateLayer 0x20` on layer
+> commit/finalize)?** Run the committed probe first —
+> `windows\scripts\probe-build-copy.ps1 -Heavy` — and trust only a
+> `-Heavy`-green verdict: the light lanes (BK lane exports
+> `type=image,...,unpack=true`, the same path the real build uses; exit code
+> names each failing lane) can be green while heavyweight RUN-layer finalize
+> still dies. **On AMD RDNA4-GPU hosts that failure is the enabled dGPU
+> itself** (docker/for-win#14977; A/B-proven 2026-08-10, superseding the
+> earlier Adrenaline-reinstall / in-place-repair advice) — build with the
+> dGPU disabled via `windows\scripts\toggle-rdna4-gpu.ps1`
+> (build-buildkit.ps1's preflight enforces this; details in
+> docs/windows-host-setup.md). A host can also be lane-asymmetric
+> (BK green, docker-classic `COPY` broken) — prefer the lane that probes
+> green. Full evidence: AGENTS.md Common Failure Modes.
 
 ### Clone The Repository
 

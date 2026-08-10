@@ -77,21 +77,26 @@ Phases:
 > `mkdir \\?\Volume{<GUID>}\C:.` — "Der Verzeichnisname ist ungültig" (docker
 > legacy) hits BOTH engines, deterministically, and survives `-NoCache`,
 > service restarts, Defender exclusions, a full store reset and a reboot.
-> **Root cause (corrected 2026-08-09): a FAULTY AMD ADRENALINE installation**
-> — a clean reinstall fixed it, while GPU-disable never did. The earlier
-> suspicion of an AMD RDNA3.5/RDNA4 / upstream microsoft/Windows-Containers
-> #623 hardware defect was a MISDIAGNOSIS. Probe and repair order:
-> **(1)** `pwsh -File windows\scripts\probe-build-copy.ps1` (the committed
-> 3-layer RUN+COPY probe; assets in `windows/diagnostics/probe-build-copy/`
-> — run it before trusting a new host), then **(2)** **repair/reinstall AMD
-> Adrenaline** and probe again. Do NOT disable the GPU.
-> `toggle-rdna4-gpu.ps1` is obsolete as a fix. NOT an ISO/OS problem: on an
-> affected box `sfc`/`DISM` report 0 components corrupt. The Linux cross lane
-> and all repo gates are unaffected. Remaining-valid diagnostics: while
-> build-COPY fails in both engines (ApplyDiff), `docker run` + `docker commit`
-> still works (CommitLayer OK) — so the classic lane's run+commit stages stay
-> viable once a FROM image exists; full bootstrap still needs a healthy host
-> (every Dockerfile has a COPY).
+> **Root cause (RESOLVED 2026-08-10, superseding the 2026-08-09 "faulty
+> Adrenaline install" verdict): an ENABLED AMD RDNA4 dGPU + Adrenalin driver
+> locks freshly-written container layers** (upstream docker/for-win#14977;
+> A/B-proven on the RX 9070 XT host — dGPU off → green, on → red, same
+> boot). Probe and repair order: **(1)**
+> `pwsh -File windows\scripts\probe-build-copy.ps1 -Heavy` (the committed
+> probe; only a `-Heavy`-green verdict counts — light lanes can be green
+> while RUN-layer finalize is broken), then **(2)** on RDNA4 hosts:
+> elevated `toggle-rdna4-gpu.ps1 -Disable` → re-probe `-Heavy` → build →
+> re-enable (the `Assert-NoActiveRdna4Gpu` preflight enforces this), and
+> **(3)** after ANY red finalize: REBOOT before further experiments —
+> failed finalizes wedge hcs state and falsify every later A/B. NOT an
+> ISO/OS-corruption problem: `sfc`/`DISM` report 0 components corrupt, but
+> the severity DOES move with Windows updates (post-KB5101684 even tiny RUN
+> layers trip). The Linux cross lane and all repo gates are unaffected.
+> Remaining-valid diagnostics: while build-COPY fails in both engines
+> (ApplyDiff), `docker run` + `docker commit` still works (CommitLayer OK) —
+> so the classic lane's run+commit stages stay viable once a FROM image
+> exists; full bootstrap still needs a working BK lane (every Dockerfile has
+> a COPY).
 >
 > **Latest state (2026-08-09, end of session — the deeper story the Adrenaline
 > fix opened):** with Adrenaline fixed + pristine Stevedore the buildkit lane
@@ -108,6 +113,41 @@ Phases:
 > → probe → if commits still fail, **in-place-repair Windows → probe** → BK
 > lane commits; residual export 0x20 = host-residual (classic lane or the
 > healthy host).
+>
+> **Update (2026-08-10):** the 2026-08-09 export-residual verdict was polluted
+> by two bugs in the probe itself (unquoted `dest=$outDir` sent buildctl a
+> literal `$outDir`; the `-Docker` lane crashed on a `$docker`/`[switch]$Docker`
+> collision — AGENTS.md § Windows Build Invariants, ArgQuoting traps). With the
+> fixed probe (now exporting `type=image,...,unpack=true`, the same output path
+> `build-buildkit.ps1` uses, and exiting non-zero per failing lane), the
+> discovered host's LIGHT probe lanes are green on buildkit (commit + export +
+> unpack) — **but a light-green probe is NOT chain-green**: the real chain's
+> first COPY after the heavy pwsh-install RUN still died deterministically
+> (`ActivateLayer 0x20` at child-snapshot finalize/reimport, FRESH snapshot IDs
+> under `-NoCache`, so not poisoned cache). Minimal repro, now committed as the
+> probe's **`-Heavy` lane** (`Dockerfile.heavy`): `RUN` writing 2×100 MB, then
+> a one-file `COPY` — the COPY's finalize fails while the fresh heavy parent
+> layer is still held. **RESOLVED the same day by a same-boot A/B: the holder
+> is the ENABLED RDNA4 dGPU (RX 9070 XT + Adrenalin) — disable it and both
+> tiny and heavy RUN-layer finalize go green on the first try** (upstream:
+> docker/for-win#14977, RDNA3.5/4, open). Severity tracks the Windows patch
+> level: pre-KB5101684 only heavyweight RUN layers tripped; after it, even
+> 10-byte RUN layers. COPY-only layers are safe either way. Falsified on the
+> way (all still-red at the time): Defender exclusions/toggles, WSearch/
+> SysMain, daemon bounces, a vmcompute restart, minifilter detaches (no
+> third-party filters exist), `--no-cache`, settle delays, reboots, a
+> nanoserver base and split solves. Failed finalizes additionally WEDGE hcs
+> state — after one, even tiny RUN layers fail until a reboot, which is why
+> earlier A/B rounds contradicted each other. **Build workflow on RDNA4
+> hosts:** elevated `toggle-rdna4-gpu.ps1 -Disable` → build (display falls
+> back to the iGPU; DirectML-on-host is unavailable during the window) →
+> re-enable. `build-buildkit.ps1` refuses to start while the dGPU is enabled
+> (`Assert-NoActiveRdna4Gpu`; `-SkipHostChecks` overrides). The 2026-08-09
+> Adrenaline-reinstall / in-place-repair root-cause claims are SUPERSEDED —
+> they coincided with patch/reboot changes that moved the trigger threshold.
+> Also: never judge a host by a `type=local` export of a Windows image — the
+> local exporter itself dies mid-receive (`error from receiver: ... file
+> already closed`) even on a healthy host.
 
 ---
 

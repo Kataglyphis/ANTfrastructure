@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6cf4ab5..860a4cb 100644
+index d6812aa..8d6ec9d 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -25,11 +25,11 @@ if(POLICY CMP0091)
@@ -15,7 +15,7 @@ index 6cf4ab5..860a4cb 100644
 +  cmake_policy(SET CMP0148 NEW)  # CMake 3.27+: use CMake FindPythonInterp and FindPythonLib if available.
  endif()
  
- if(POLICY CMP0218)
+ #
 diff --git a/cmake/FindONNX.cmake b/cmake/FindONNX.cmake
 index e162cde..2a1937b 100644
 --- a/cmake/FindONNX.cmake

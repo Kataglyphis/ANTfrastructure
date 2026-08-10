@@ -59,7 +59,9 @@ Every inline substitution in a build script carries a `# Inline patch (kept inli
 | ONNX Runtime | `001-softmax-clangcl-keywords.patch` | `core/providers/cuda/math/softmax.cc` | Change the one real ISO-646 `or` → `\|\|` on the dispatch `if` (clang-cl in MS-compat mode treats `or` as an identifier); comments left as upstream |
 | ONNX Runtime | `002-disable-cuda-pch.patch` | `cmake/onnxruntime_providers_cuda.cmake` | Disable CUDA EP `target_precompile_headers` (CUDA 13.x CCCL broken with clang-cl) |
 | ONNX Runtime | `003-dml-clangcl-compat.patch` | DirectML EP (5 files under `core/providers/dml/`) | clang-cl + `USE_DML=ON`: out-of-line `AbstractOperatorDesc` members past `OperatorField` (incomplete-type), drop the `.##Z` token-paste, widen `Dispatch<uint32_t>` → `size_t` |
-| OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` | CMP0146/CMP0148 OLD→NEW + clang-cl/CUDA detection compat |
+| ONNX Runtime | `004-tunable-severity-macro-collision.patch` | `core/framework/tunable.h` | ORT 1.28.0 + CUDA 13.3: `wingdi.h`'s `#define ERROR 0` (reached despite `-DNOGDI` when a header includes wingdi directly — `triton_kernel.h`'s chain does) pre-expands through the `LOGS_DEFAULT` forwarding macro into the nonexistent `Severity::k0` (nvcc: `enum ... has no member "k0"` at the `LOGS_DEFAULT(ERROR)` line, first TU `triton_kernel.cu`); guarded `#undef ERROR` + `#undef VERBOSE` after the includes. Diagnosis trap: the error line number points at whatever `LOGS_DEFAULT(...)` use sits there — read the LINE, not the macro argument you expect |
+| ONNX Runtime | `005-xqa-host-stub-sccache.patch` | `contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh` | ORT 1.28.0 XQA (paged-attention) kernels: the host-pass include guard keys on the cmake define `HAS_SM80_OR_LATER`, and sccache's nvcc decomposition (`CMAKE_CUDA_COMPILER_LAUNCHER`) can drop target `-D` defines in the host sub-step → `x_?.cudafe1.stub.c` `C2039/C2065` (`smemSize`/`kernelType`/`cacheVTileSeqLen` missing from `H*::grp*_*`; the synthetic `x_?.cu` TU name is the sccache fingerprint). We pin sm80+ archs, so the patch makes the host stub unconditional. NOT upstreamable as-is (pre-sm80-only builds would regress) |
+| OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` | CMP0146/CMP0148 OLD→NEW + clang-cl/CUDA detection compat. REGENERATED against 5.0.0 on 2026-08-10 (5.0.0 dropped the `CMP0218` block the old hunk context named; the patch is applied with NO fallback, so drift here throws an hour into media-core — run `Test-PatchesApplyClean.ps1` after every pin bump) |
 | OpenCV (contrib) | `001-cudev-windows-llp64.patch` | `cudev/.../common.hpp` | Add `ulong`/`longlong`/`ulonglong` typedefs for Windows LLP64 |
 
 `ffmpeg/makedef` is **not** a patch — it is a whole-file replacement script staged over FFmpeg's `makedef` (a byte swap, not a diff), so it is not in the table above.
@@ -516,6 +518,21 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 .\windows\build-buildkit.ps1 -Stages toolchain           # one stage
 .\windows\build-buildkit.ps1 -Gpu -FinalTar out\bk-winamd64.tar  # + docker-loadable export
 ```
+
+> **AMD RDNA4-GPU host (RX 9xxx)?** An ENABLED RDNA4 dGPU makes every
+> process-isolated RUN-layer finalize fail with `hcsshim::ActivateLayer 0x20`
+> (docker/for-win#14977; A/B-proven 2026-08-10 — see
+> `docs/windows-host-setup.md` and AGENTS.md Common Failure Modes). The
+> preflight gate `Assert-NoActiveRdna4Gpu` refuses to start while it is
+> enabled. Build window: elevated
+> `pwsh -File windows\scripts\toggle-rdna4-gpu.ps1 -Disable` → build (display
+> falls back to the iGPU) → re-enable with the same script (default action).
+> Two extra facts that save hours: failed finalizes WEDGE hcs state until a
+> reboot (don't A/B anything on a wedged host), and the severity moved with
+> Windows updates (post-KB5101684 even tiny RUN layers trip — expect patch
+> days to change behavior). After every Adrenalin/Windows update, re-check in
+> ~2 min with `windows\diagnostics\test-rdna4-layer-lock.ps1` (elevated) —
+> its GONE verdict is the signal the workaround can be retired.
 
 Remaining gotchas (why the classic lane still exists): images land in the
 CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
@@ -1283,9 +1300,11 @@ IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 drop-in replacement for the old single-Dockerfile output.
 
 **Diagnostic / partial-alternative on hosts where build-`COPY` is broken.**
-Measured 2026-08-09 — root cause, since corrected, was a FAULTY AMD
-ADRENALINE installation (see AGENTS.md Common Failure Modes "AMD Radeon host —
-faulty Adrenaline install" row; a reinstall fixes it, GPU-disable does not):
+Measured 2026-08-09 — root cause RESOLVED 2026-08-10: the ENABLED AMD RDNA4
+dGPU locks fresh container layers (see AGENTS.md Common Failure Modes "AMD
+Radeon host" row; build with the dGPU disabled via `toggle-rdna4-gpu.ps1` —
+the earlier "Adrenaline reinstall fixes it, GPU-disable does not" verdict is
+SUPERSEDED):
 on a host where *every* `docker build`/`buildctl build` `COPY` commits fail
 (`hcsshim::ActivateLayer 0x20` on buildkit, `mkdir \\?\Volume{<GUID>}\C:.` on the
 docker legacy builder — while `FROM`+`RUN` layers commit fine), the **`CommitLayer`
@@ -1297,9 +1316,11 @@ docker commit probe-rc local/test:probe-rc      # rc 0 = CommitLayer OK; only Ap
 docker rm -f probe-rc
 ```
 
-Committed version of the 3-layer build-`COPY` probe: `pwsh -File
-windows\scripts\probe-build-copy.ps1` (assets in
-`windows/diagnostics/probe-build-copy/`).
+Committed version of the build probe: `pwsh -File
+windows\scripts\probe-build-copy.ps1 -Heavy` (assets in
+`windows/diagnostics/probe-build-copy/`; only a `-Heavy`-green verdict counts
+— the light lanes stay green on hosts whose heavyweight RUN-layer finalize is
+broken).
 
 So the classic lane's **CPU-bound run+commit stages remain viable** on such a host.
 Caveat: the chain cannot bootstrap end-to-end there, because the FROM images
@@ -1308,9 +1329,12 @@ repo Dockerfile has at least one `COPY`. Use the healthiest host for a full chai
 the run+commit path only rescues the heavy compile stages once a starting image
 exists.
 
-**2026-08-09 follow-up (this exact failure, cracked on the discovered host):**
-- A **faulty AMD Adrenaline installation** (GPU + chipset) caused the general
-  `0x20` family; **reinstalling Adrenaline** (not GPU-disable) fixed that.
+**2026-08-09 follow-up (SUPERSEDED 2026-08-10 — kept as history; the same-boot
+A/B proved the enabled RDNA4 dGPU is the holder and the "cures" below
+coincided with patch/reboot changes):**
+- A **faulty AMD Adrenaline installation** (GPU + chipset) was blamed for the
+  general `0x20` family; **reinstalling Adrenaline** (not GPU-disable)
+  appeared to fix it.
 - The buildkit-snapshotter residual — "any layer writing into an existing
   parent dir" refused, identical on buildkit 0.32.0 and 0.32.2, on all
   snapshotter names (`windows`/`native`/`windows-uvm`; see the

@@ -186,6 +186,7 @@ Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoScca
 # buildctl streams the local context from here on every solve.
 Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
 Assert-ShimPatch -Force:$SkipHostChecks
+Assert-NoActiveRdna4Gpu -Force:$SkipHostChecks
 
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the
 # classic docker lane's local/kataglyphis:windows-* tags can never collide ---

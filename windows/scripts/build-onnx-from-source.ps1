@@ -217,6 +217,39 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
         Invoke-InlineRegexPatch -Path $pch -Pattern 'target_precompile_headers\([^)]+\)' `
             -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch." | Out-Null
     }
+    # ORT 1.28.0 + CUDA 13.3: Windows headers in the CUDA include set define ERROR
+    # (wingdi.h's `#define ERROR 0`, reached despite -DNOGDI) and can define VERBOSE;
+    # either pre-expands through the LOGS_DEFAULT forwarding macro and token-pastes
+    # into the nonexistent Severity::k0 inside tunable.h (nvcc: `enum
+    # "onnxruntime::logging::Severity" has no member "k0"` at the LOGS_DEFAULT(ERROR)
+    # line; first TU: triton_kernel.cu). Reviewable .patch first; inline #undef
+    # insertion after the last tunable.h include as the context-drift fallback.
+    try {
+        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir -IgnoreWhitespace
+    } catch {
+        Write-Host "004-tunable-severity-macro-collision.patch did not apply cleanly -- falling back to inline #undef insertion"
+        $tunable = Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h'
+        Invoke-InlineRegexPatch -Path $tunable -Pattern '(#include "core/framework/tuning_context\.h")' `
+            -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
+            -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $tunable." | Out-Null
+    }
+
+    # ORT 1.28.0 XQA kernels: the host-pass include guard in xqa_impl_gen.cuh keys on the
+    # cmake-provided HAS_SM80_OR_LATER define, and sccache's nvcc decomposition
+    # (CMAKE_CUDA_COMPILER_LAUNCHER) can drop target -D defines in the host sub-step -
+    # the stub then fails with C2039/C2065 (`smemSize`/`kernelType`/`cacheVTileSeqLen`
+    # missing from `H*::grp*_*` in x_?.cudafe1.stub.c). We always target sm80+
+    # (CUDA_ARCHITECTURES 80;86;89;90), so the patch makes the host stub unconditional.
+    try {
+        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir -IgnoreWhitespace
+    } catch {
+        Write-Host "005-xqa-host-stub-sccache.patch did not apply cleanly -- falling back to inline guard rewrite"
+        $xqaGen = Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh'
+        Invoke-InlineRegexPatch -Path $xqaGen -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
+            -Replacement '#else' `
+            -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen." | Out-Null
+    }
+
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
         # to the generic Edit-CppKeywordAlternatives helper against the two softmax source files.

@@ -1,0 +1,26 @@
+diff --git a/onnxruntime/core/framework/tunable.h b/onnxruntime/core/framework/tunable.h
+index 6d2dd64..b0a79ea 100644
+--- a/onnxruntime/core/framework/tunable.h
++++ b/onnxruntime/core/framework/tunable.h
+@@ -27,6 +27,21 @@
+ #include "core/framework/stream_handles.h"
+ #include "core/framework/tuning_context.h"
+ 
++// Windows headers reached through the CUDA provider include set define ERROR
++// (wingdi.h's region constant 0 - pulled in despite -DNOGDI by headers that
++// include wingdi.h directly) and can define VERBOSE as bare integers; either
++// pre-expands through the LOGS_DEFAULT forwarding layer and token-pastes into
++// the nonexistent Severity::k0. Neutralize both before the LOGS_DEFAULT uses
++// below. Symptom: nvcc "enum onnxruntime::logging::Severity has no member
++// k0" at the LOGS_DEFAULT(ERROR) line (first seen: ORT v1.28.0 + CUDA 13.3,
++// triton_kernel.cu).
++#ifdef ERROR
++#undef ERROR
++#endif
++#ifdef VERBOSE
++#undef VERBOSE
++#endif
++
+ namespace onnxruntime {
+ 
+ template <typename TuningContextT, typename NativeStreamT>

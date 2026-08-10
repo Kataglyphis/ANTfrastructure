@@ -24,9 +24,12 @@ $windowsDir = Split-Path -Parent $scriptsDir                        # windows
 $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
 
 # Collect every script/module except the archived (dead) tree.
+# windows\diagnostics joined the scope 2026-08-10 - its scripts (GPU probes,
+# isolation probes, the RDNA4 layer-lock A/B) had silently never been linted.
 $targets = @(
     Get-ChildItem -Path $windowsDir -Filter '*.ps1' -File                                  # build.ps1 + siblings
     Get-ChildItem -Path $scriptsDir -Recurse -Include '*.ps1', '*.psm1' -File
+    Get-ChildItem -Path (Join-Path $windowsDir 'diagnostics') -Recurse -Include '*.ps1', '*.psm1' -File -ErrorAction SilentlyContinue
 ) | Where-Object { $_.FullName -notmatch '\\archive\\' } | Sort-Object FullName -Unique
 
 Write-Host "== Lint gate: $($targets.Count) files ==" -ForegroundColor Cyan

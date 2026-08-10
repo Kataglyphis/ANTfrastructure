@@ -736,6 +736,54 @@ function Assert-StageDiskHeadroom {
     throw "REFUSING to start: $msg"
 }
 
+function Assert-NoActiveRdna4Gpu {
+    # Host gate (2026-08-10, A/B-proven on the RX 9070 XT host): an ENABLED AMD
+    # RDNA4 dGPU + Adrenalin driver locks freshly-written container layer files,
+    # so EVERY process-isolated RUN-layer finalize dies with
+    # `hcsshim::ActivateLayer 0x20 "file is being used by another process"` at
+    # `failed to reimport snapshot` (upstream: docker/for-win#14977 — RDNA3.5/4,
+    # open; severity shifts with the Windows patch level: pre-KB5101684 only
+    # heavyweight layers tripped, post-KB5101684 even 10-byte RUN layers do).
+    # COPY-only layers are unaffected — which is why light probes can look green
+    # while the chain dies on its first RUN finalize. Same-boot A/B: disable the
+    # dGPU -> tiny AND heavy finalize green; enable -> red. Defender exclusions,
+    # daemon bounces, vmcompute restarts, store state, cache state and settle
+    # delays were all falsified first.
+    #
+    # The build window is: disable the dGPU (display falls back to the iGPU),
+    # build, re-enable. `windows\scripts\toggle-rdna4-gpu.ps1` (elevated) does
+    # the toggle. This gate refuses to START a chain that would die on its
+    # first RUN finalize hours before anyone looks.
+    param(
+        # Injectable for tests. Default: live display-class PnP devices.
+        [object[]]$Devices = $null,
+        # RDNA4 discrete cards (RX 9xxx / AI PRO R9700). Extend as SKUs appear.
+        [string]$HazardPattern = 'Radeon\s+(AI\s+PRO\s+)?(RX\s+|R)?9\d{3}',
+        [switch]$Force
+    )
+    if ($null -eq $Devices) {
+        $Devices = @(Get-PnpDevice -Class Display -ErrorAction SilentlyContinue)
+    }
+    $hazards = @($Devices | Where-Object { $_.FriendlyName -match $HazardPattern })
+    if ($hazards.Count -eq 0) { return }
+
+    $active = @($hazards | Where-Object { $_.Status -eq 'OK' })
+    if ($active.Count -eq 0) {
+        # NOTE: -f binds TIGHTER than + (probed live 2026-08-10: an unwrapped
+        # concat printed a literal {0}); keep the concat parenthesized.
+        Write-Host (("RDNA4 gate: {0} present but DISABLED - RUN-layer finalize is safe; re-enable after the " +
+            "build with windows\scripts\toggle-rdna4-gpu.ps1 (elevated).") -f $hazards[0].FriendlyName) -ForegroundColor Cyan
+        return
+    }
+    $msg = (("'{0}' is ENABLED. On this host family an active RDNA4 dGPU makes EVERY process-isolated RUN-layer " +
+        "finalize fail with hcsshim::ActivateLayer 0x20 (docker/for-win#14977; A/B-proven here 2026-08-10) - the " +
+        "chain would die on its first RUN commit. Disable it for the build window (display falls back to the " +
+        "iGPU): elevated pwsh -File windows\scripts\toggle-rdna4-gpu.ps1 -Disable, build, then re-enable with " +
+        "the same script (default action). Verify first with probe-build-copy.ps1 -Heavy.") -f $active[0].FriendlyName)
+    if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
+    throw "REFUSING to start: $msg Pass -SkipHostChecks to override."
+}
+
 function Get-MediaMemoryBudget {
     # MEMORY_LIMIT_GB auto-detect shared by both lanes: host RAM minus reserve,
     # floor 8 GB; an explicit request always wins.
@@ -755,4 +803,4 @@ Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsol
     Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
     Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon,
     Get-ShimPatchStatePath, Write-ShimPatchState,
-    Get-StageDiskFloorGb, Assert-StageDiskHeadroom
+    Get-StageDiskFloorGb, Assert-StageDiskHeadroom, Assert-NoActiveRdna4Gpu

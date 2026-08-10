@@ -1,0 +1,3 @@
+FROM mcr.microsoft.com/windows/servercore:ltsc2025
+RUN fsutil file createnew C:\big1.bin 104857600 && fsutil file createnew C:\big2.bin 104857600
+COPY hello.txt C:\temp\scripts\modules\

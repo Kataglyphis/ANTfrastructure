@@ -2,9 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Enable/disable the AMD Radeon RX 9070 XT (RDNA4) in Device Manager.
-# OBSOLETE as a fix since 2026-08-09: the build-COPY (ActivateLayer 0x20)
-# failure it targeted was a FAULTY AMD ADRENALINE installation, cured by
-# reinstall, not by GPU-disable. Kept for historical diagnostics; harmless.
+# RE-INSTATED as the build-window workaround 2026-08-10 (the 2026-08-09
+# "obsolete" verdict is SUPERSEDED): a same-boot A/B proved an ENABLED RDNA4
+# dGPU makes every process-isolated RUN-layer finalize fail with
+# hcsshim::ActivateLayer 0x20 (upstream docker/for-win#14977; severity shifts
+# with the Windows patch level - post-KB5101684 even 10-byte RUN layers trip).
+# Workflow: -Disable, build the chain (display falls back to the iGPU),
+# re-enable (default action). build-buildkit.ps1's Assert-NoActiveRdna4Gpu
+# preflight refuses to start while the dGPU is enabled.
 # Leaves the RDNA2 iGPU alone (it is not implicated). ELEVATED.
 #
 #   pwsh -File windows\scripts\toggle-rdna4-gpu.ps1            # default: enable

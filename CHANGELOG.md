@@ -1,6 +1,124 @@
 # Changelog
 
-## 2026-08-09 (resolution) - Windows COPY-commit failure: root cause was a faulty AMD Adrenaline install, NOT the RDNA GPU
+## 2026-08-10 (resolution) - RUN-layer finalize 0x20: root cause is the ENABLED RDNA4 dGPU; build with it disabled
+
+- **Same-boot A/B on the RX 9070 XT host: disable the dGPU → tiny AND heavy
+  RUN-layer finalize green on the first try; enable → red** (upstream
+  docker/for-win#14977 — AMD RDNA3.5/4 + Adrenalin lock freshly-written
+  container layer files on process-isolated layer ops; issue open). Severity
+  tracks the Windows patch level: pre-KB5101684 only heavyweight RUN layers
+  tripped (light probes green — the host looked healthy while the chain died);
+  post-KB5101684 (installed 2026-08-10) even 10-byte RUN layers fail.
+  COPY-only layers are unaffected (no container involved). The full falsified
+  list from the hunt: Defender (exclusions verified live; realtime-off blocked
+  by tamper protection), WSearch/SysMain, daemon bounces, vmcompute restart,
+  minifilter detaches (zero third-party filters on C:), `--no-cache` fresh
+  IDs, settle delays, reboots, nanoserver base, split solves.
+- **Failed finalizes WEDGE hcs state**: after one, even tiny RUN layers fail
+  until a reboot (survives service restarts and vmcompute) — this cascade is
+  why every earlier debugging round produced contradictory verdicts, and why
+  the old probe (which crashed its own export on every run) kept hosts
+  looking broken. The 2026-08-09 "Adrenaline reinstall fixed it" and
+  "in-place repair fixed it" root-cause claims are SUPERSEDED: they coincided
+  with patch-level/reboot changes that moved the trigger threshold.
+- **Lint-scope gap closed**: `Invoke-Lint.ps1` never covered
+  `windows\diagnostics\` — its scripts (GPU/isolation probes, now the RDNA4
+  A/B) were silently unlinted. Added recursively; 136 files, all clean.
+- **NEW diagnostic `windows/diagnostics/test-rdna4-layer-lock.ps1`**
+  (elevated): the RDNA4 A/B as a durable ~2-min tool — probes RUN-layer
+  finalize with the dGPU enabled then disabled (finally-guarded re-enable),
+  verdicts GONE / PRESENT / INCONCLUSIVE. Re-run after every
+  Adrenalin/Windows update; GONE = retire the toggle workflow + gate.
+- **NEW preflight gate `Assert-NoActiveRdna4Gpu`** (WindowsBuildDriver.Common,
+  wired into `build-buildkit.ps1` after `Assert-ShimPatch`; `-SkipHostChecks`
+  overrides; 7 tests in BuildDriver.HostGates): refuses to start a chain that
+  would die on its first RUN commit while an RDNA4 dGPU is enabled, and names
+  the workflow — elevated `toggle-rdna4-gpu.ps1 -Disable` → build (display
+  falls back to the iGPU; DirectML-on-host unavailable during the window) →
+  re-enable. `toggle-rdna4-gpu.ps1`'s "obsolete" header is retracted.
+- Chain relaunched with the dGPU disabled: base stage committed the
+  previously-failing COPY and the VS Build Tools layer on the first attempt.
+- **NEW `patches/onnxruntime/005-xqa-host-stub-sccache.patch`** — ORT 1.28.0's
+  XQA (paged-attention) kernels are the only ORT sources with host/device-
+  divergent include guards (host pass keys on the cmake define
+  `HAS_SM80_OR_LATER`); sccache's nvcc decomposition can drop target `-D`
+  defines in the host sub-step, so the host namespace lacks
+  `smemSize`/`kernelType`/`cacheVTileSeqLen` and the generated stub dies with
+  C2039/C2065 in `x_?.cudafe1.stub.c` (the synthetic `x_?.cu` name is the
+  sccache fingerprint). Since this build pins `CUDA_ARCHITECTURES=80;86;89;90`,
+  the patch emits the host stub unconditionally (documented as
+  not-upstreamable-as-is). Found at ~1295 s of run 3 — one whack-a-mole past
+  the tunable.h fix, which run 3 proved good (triton_kernel.cu compiled).
+- **Two media-lane source patches for the 2026-08-03 version bumps** (first
+  Windows build attempt since): **NEW
+  `patches/onnxruntime/004-tunable-severity-macro-collision.patch`** — ORT
+  v1.28.0 + CUDA 13.3: `wingdi.h`'s classic `#define ERROR 0` (reached
+  despite `-DNOGDI` when a header in `triton_kernel.h`'s chain includes
+  wingdi directly) pre-expands through the `LOGS_DEFAULT` forwarding macro
+  into the nonexistent `Severity::k0` in `tunable.h` (nvcc: `enum ... has no
+  member "k0"` at the `LOGS_DEFAULT(ERROR)` line, first TU
+  `triton_kernel.cu`); fixed with guarded `#undef ERROR`/`#undef VERBOSE`
+  after the header's includes, applied in `build-onnx-from-source.ps1`'s CUDA
+  branch with an inline-regex fallback. (First fix attempt undef'd only
+  VERBOSE — a summarizer misreported which `LOGS_DEFAULT(...)` sat on the
+  error line; the moved-but-identical error exposed it. Read the line, not
+  the expectation.) **REGENERATED
+  `patches/opencv/001-cmake-clang-cl-compat.patch` against OpenCV 5.0.0** —
+  the old hunk context still named the `CMP0218` policy block that 5.0.0
+  removed, so the patch (applied with NO fallback) would have thrown an hour
+  into media-core. `Test-PatchesApplyClean.ps1` (which reads pins from
+  versions.env): all 8 patches OK.
+
+## 2026-08-10 - build probe was lying: two pwsh bugs fixed (probe verdicts trustworthy again; the same day's RESOLUTION entry above tells where "green" actually ended)
+
+- **`probe-build-copy.ps1` carried two bugs since its introduction that made a
+  healthy BuildKit lane read as broken.** (1) The unquoted
+  `--output type=local,dest=$outDir` reached buildctl as VERBATIM SOURCE TEXT —
+  pwsh passes a bareword comma-attribute argument to native commands with no
+  variable expansion (measured on pwsh 7.6.4) — so the export wrote into a
+  directory literally named `$outDir` and then died in the receiver. (2) The
+  docker-classic lane assigned `$docker = "...\docker.exe"`, which IS the
+  `[switch]$Docker` parameter variable (names are case-insensitive), throwing
+  `Cannot convert ... String to ... SwitchParameter` — that lane had never
+  executed at all.
+- **The probe's BK lane now exports `type=image,name=docker.io/local/
+  kataglyphis:probe-build-copy,unpack=true`** — the same output path
+  `build-buildkit.ps1` uses — so a green probe covers layer commit AND the
+  finalize/export/unpack reimport. It also exits non-zero naming each failing
+  lane (previously it could end green-looking with a failed lane). Never use a
+  `type=local` export of a Windows image as a health signal: the local
+  exporter dies client-side (`error from receiver: write ...\Boot\Fonts\
+  <font>.ttf: file already closed`) even on a healthy host — new
+  AGENTS.md Common Failure Modes row.
+- **Verdict with the fixed probe on the discovered host (RX 9070 XT/26200):
+  light lanes green on buildkit (commit + export + unpack) — but NOT
+  chain-green.** The real chain's first COPY after the heavy pwsh-install RUN
+  dies deterministically (`ActivateLayer 0x20` at child finalize/reimport,
+  FRESH snapshot IDs under `-NoCache` — not poisoned cache). Minimal repro
+  isolated and committed as the probe's **new `-Heavy` lane**
+  (`Dockerfile.heavy`: RUN writing 2×100 MB, then a one-file COPY — fails in
+  ~1 min while a plain nested multi-file COPY on servercore commits fine): the
+  child's finalize fails while the fresh heavy parent layer stays held.
+  Ruled out live: Defender (full exclusion set verified, incl. MsMpEng),
+  daemon state (elevated containerd+buildkitd bounce), poisoned cache (fresh
+  IDs under `--no-cache`), and time (a 90 s settle layer's own commit fails
+  identically) — host-level hcs/filter hold. Next levers: reboot → `-Heavy`
+  re-probe → clean Adrenaline reinstall → shim A/B → healthy host
+  (`Dockerfile.heavy` doubles as a 60 s upstream repro).
+  docker-classic legacy `COPY` still fails there
+  (`mkdir \\?\Volume{...}\C:.`). Chain launches also fail-fast at preflight
+  when the dufs sccache endpoint is down — its ONLOGON task does not re-fire
+  after repair reboots; `Start-ScheduledTask dufs-sccache` cures it (done
+  today). README / host-setup / AGENTS.md updated.
+- **NEW `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`** (8 tests, in the
+  pre-build gate): AST sweep of every `windows/` script for both trap classes —
+  bareword comma-attribute args referencing variables, and non-boolean
+  assignments to `[switch]` parameter variables in their own scope — plus
+  positive controls pinning the detectors themselves. Both sweeps are clean
+  repo-wide after the probe fix. New AGENTS.md § Windows Build Invariants
+  bullet documents the traps.
+
+## 2026-08-09 (resolution) - Windows COPY-commit failure: root cause was a faulty AMD Adrenaline install, NOT the RDNA GPU — **SUPERSEDED by the 2026-08-10 resolution above (the enabled RDNA4 dGPU IS the holder; this entry is kept as history)**
 
 - **The 'AMD RDNA3.5/RDNA4 GPU breaks Windows-container layer commits'
   hypothesis (upstream microsoft/Windows-Containers#623) is RETRACTED as a
