@@ -2226,6 +2226,17 @@ guards the context; the ENV/ARG mirrors are the documented deliberate ones.
     per-TU-class peaks, then split into heavy/light ninja job pools or
     per-stage MemGBPerJob. Potentially the single largest wall-clock win
     left in the chain.
+    *(MEASURED 2026-08-10 night, run 12, 1453 samples @15 s
+    (`out\build-logs\onnx-tu-memory-samples-20260810.csv`): peak per-TU
+    WorkingSet cicc 951 MB / clang-cl 893 MB / ptxas 827 MB — nowhere near
+    4 GB; peak CONCURRENT fleet total 3.9 GB across 20 processes at `-j9`.
+    If that holds for the full vertex, MemGBPerJob≈1-2 is safe → 19-32
+    jobs instead of 9, plausibly ONNX 76 min → half. CAVEAT before
+    shipping: the window covered only the LAST ~26 min of the ONNX compile
+    (sampler armed mid-run) — the early flash-attention/fused_moe region is
+    unsampled. Next step: arm the sampler at chain launch for one full
+    vertex, confirm the peak class, then lower MemGBPerJob for the ONNX
+    call site only.)*
 29. *(DONE 2026-08-10 night: the tag-minting diagnostics now share the
     `diag-` prefix (`diag-probe-build-copy[-heavy]`, docker lane
     `local/test:diag-probe-build-copy`; the A/B mints nothing since the #5
