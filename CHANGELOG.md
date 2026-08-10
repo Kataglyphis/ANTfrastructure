@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-08-10 (night, review round 2) - two-agent audit over the night's diff: 1 confirmed design flaw + 3 plausible bugs fixed, 2 doc/config gaps closed
+
+- **CUDA launcher flipped to OPT-IN at the wiring site** (confirmed find:
+  build-onnx's process-wide `SCCACHE_NO_CUDA_LAUNCHER=1` leaked into later
+  same-process stages on the classic lane while the BK lane kept wrapping
+  OpenCV/GenAI CUDA through the miscompile-disqualified path - the lanes
+  disagreed). `Invoke-CmakeConfigure` now adds the CUDA launcher only under
+  `SCCACHE_CUDA_LAUNCHER=1` (three-canary bar in the comment); the
+  per-script opt-out env var is gone. Landed BEFORE run 13's OpenCV solve,
+  so its CUDA compiles run bare too.
+- **cachetest.ps1 per-run nonce**: byte-identical source false-failed the
+  `writes>=1` assertion on the second-ever run against a warm WebDAV L2
+  (first compile = L2 hit, nothing stored). **onnx-ninja.log rotation** now
+  Copy+Remove instead of Move-Item (cache mount is rename-hostile - probed
+  for dirs, same wcifs family for files). **A/B layer-lock**: `$disabled`
+  set when the disable is ISSUED, not after the 2 s post-state check - a
+  slow driver teardown could previously strand the host dGPU-off with the
+  finally-guard skipped.
+- Doc/config gaps from the consistency agent: pending-cleanup tag list now
+  names the orphaned pre-rename `probe-build-copy[-heavy]` tags (the
+  `findstr diag-` one-liner cannot find them); new backlog item 33
+  (Test-PatchesApplyClean silently SKIPs patch dirs without a repo
+  mapping); windows/buildkitd.toml comment updated for the `-2` mount id
+  incl. the transient 168h over-budget window of the orphaned `-1` mount.
+- Verified-clean list from the agents (for the record): $LASTEXITCODE
+  through all new Tee pipelines, every new export/caller contract, StrictMode
+  hardening, stall-guard job mechanics, patch-ladder idempotency, CI
+  patch-drift trigger paths. Gates after fixes: lint 141 0/0 + AST traps
+  clean, tests 457/457.
+
 ## 2026-08-10/11 - Linux lane: media 3/3 GREEN after 5 chain fixes; backlog program (6 sweep rounds, ~50 items executed); 2 new gates
 
 - **base->latest-cross chain rebuilt to media-3/3-pinned** (amd64+arm64+riscv64

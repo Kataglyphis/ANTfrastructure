@@ -23,7 +23,13 @@ $env:INCLUDE = $msvcRoot + '\include;' + $sdkInc + '\ucrt;' + $sdkInc + '\shared
 & $scc --start-server
 & $scc -z | Out-Null
 
-Set-Content -Path C:\cachetest.cu -Value '__global__ void k(float* p){ p[threadIdx.x] *= 2.0f; }'
+# Per-run nonce (review find #2): a byte-identical source false-fails the
+# `Cache writes >= 1` assertion on the SECOND-ever run against a warm
+# WebDAV L2 - the first compile is already an L2 hit and nothing is ever
+# stored. The nonce makes compile #1 a guaranteed miss (=> write) while
+# compile #2 still proves the hit path within the same run.
+$nonce = [guid]::NewGuid().ToString('N')
+Set-Content -Path C:\cachetest.cu -Value ("// nonce: $nonce`n" + '__global__ void k(float* p){ p[threadIdx.x] *= 2.0f; }')
 & $scc $nvcc ('-ccbin=' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t1.obj
 if ($LASTEXITCODE -ne 0) { throw ('first compile failed: ' + $LASTEXITCODE) }
 & $scc $nvcc ('-ccbin=' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t2.obj

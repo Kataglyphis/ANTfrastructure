@@ -175,38 +175,31 @@ function Invoke-CmakeConfigure {
             if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
             $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            # CUDA launcher: this is what caches the ~1h of CUDA/TensorRT kernel
-            # compiles that build-onnx-from-source.ps1 records, previously
-            # re-paid in full on every run.
-            #
-            # It REQUIRES the source-built sccache. With the released 0.17.0 it
-            # does not merely miss the cache, it fails the build:
-            #   fatbinary fatal : Could not open input file '<tu>.compute_80.cubin'
-            # because sccache parses `nvcc --dryrun` positionally and CUDA
-            # 13.3.33 moved `--simt-only` after the input file, mis-grouping the
-            # cicc/ptxas device steps so the per-arch .cubin files are never
-            # produced (measured here 2026-08-08; upstream mozilla/sccache#2722,
-            # merged five days after v0.17.0 shipped). setup-rust-toolchain.ps1
-            # builds that commit and verify-toolchain.ps1 asserts the cargo-built
-            # binary is the one on PATH — so by the time this line runs, an
-            # sccache that cannot do this has already failed the base build.
-            #
-            # Set unconditionally: CMake ignores it when CUDA is not an enabled
-            # language, so CPU-only configures are unaffected.
-            #
-            # SCCACHE_NO_CUDA_LAUNCHER=1 opts a build out of the CUDA launcher
-            # ONLY (C/CXX caching stays). It is a MANUAL EMERGENCY ESCAPE that
-            # no build sets by default: the shipped mitigations for the
-            # 2026-08-10 nvcc-decomposition failures are ORT patch 006 (bare
-            # nvcc scoped to the crash-source cuda_llm target) plus the
-            # Start-SccacheStallGuard watchdog + full-speed retry ladder in
-            # Invoke-NinjaBuildWithRetry (the deadlock manifestation: server +
-            # clients at 0% CPU, zero backend connections, dufs healthy).
-            if ($env:SCCACHE_NO_CUDA_LAUNCHER -eq '1') {
-                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend; C/CXX launchers only - CUDA launcher opted out via SCCACHE_NO_CUDA_LAUNCHER)"
-            } else {
+            # CUDA launcher: OPT-IN ONLY since 2026-08-10 night (flipped from
+            # opt-out the same night, review find #1: build-onnx's
+            # process-wide opt-out env var leaked into later stages of a
+            # same-process classic-lane chain while the BK lane kept
+            # wrapping OpenCV/GenAI CUDA - the two lanes disagreed, and one
+            # of them still ran the disqualified path). The pinned sccache's
+            # nvcc decomposition is disqualified for ALL CUDA targets on
+            # this pin: deterministic server crash (fused_moe launchers,
+            # os error 10054, runs 6+7 at ~4910 s) AND silently dropped
+            # arch/define-guarded instantiations (runs 10/11 wrapped failed
+            # the link identically, runs 5/12 bare linked green; poisoning
+            # excluded on both cache levels). Wrapping CUDA again requires
+            # exporting SCCACHE_CUDA_LAUNCHER=1 - and doing that is only
+            # legitimate after a candidate sccache passes ALL THREE
+            # canaries: verify-cuda-cache.ps1, a fused_moe compile, and a
+            # full providers_cuda LINK (the miscompile is invisible until
+            # link). C/CXX launchers stay on unconditionally - that path is
+            # proven safe (the CUDA-13.3 dryrun-parser fix #2722 that our
+            # pinned source build carries is still required for the day the
+            # opt-in returns).
+            if ($env:SCCACHE_CUDA_LAUNCHER -eq '1') {
                 $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX/CUDA launchers)"
+                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers + CUDA OPT-IN ACTIVE - three-canary bar applies)"
+            } else {
+                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers; CUDA stays bare - miscompile verdict 2026-08-10)"
             }
         }
     } else {
