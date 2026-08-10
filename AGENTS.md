@@ -506,7 +506,7 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 
 TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
 
-1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-11.1.0.106.Windows10.x86_64.cuda-13.3.zip`)
+1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-11.2.1.2.Windows10.x86_64.cuda-13.3.zip`)
 2. Place the zip in `windows/downloads/`
 3. It will be auto-detected during the `Dockerfile.nvidia` build
 
@@ -899,7 +899,7 @@ The rules an agent must never violate:
 ### Module Loading Order
 
 `artifact-common.sh` sources 01-core modules in dependency order:
-1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh`.
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `abseil-headers.sh` 16. `path-helpers.sh`.
 
 `runtime-flow-common.sh` is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`).
 

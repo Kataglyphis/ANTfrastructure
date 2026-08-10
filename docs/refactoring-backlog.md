@@ -9,6 +9,164 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ (nice) … ★★★ (h
 
 ---
 
+## EXECUTION ROADMAP (2026-08-10) — how to actually work this file down
+
+Item IDs reference the 2026-08-10 sections (rounds 1-3 + harvest). The core
+insight from three sweep rounds: most items are cheap — what's expensive is
+REBUILDS, so the batching below groups by blast radius, not by theme. Work
+top to bottom; each batch is independently shippable.
+
+**Batch 0 — free now (host-side only, zero cache impact, no rebuild):**
+- C5 preflight stage-graph slug + slug-registry unit test        [S·★]
+- W1 Windows shadow-pin parity Pester suite                      [S·★★]
+- T4 arch-table/wheel-tag tests (unblocks D2)                    [S·★★]
+- T5 generate_pkgconfig_file stray-brace test                    [S·★]
+- T6 BUILD_MEM_DIVISOR + parallel-harvest suite additions        [S·★★★]
+- A5 layer-order freeze test                                     [S·★★]
+- A2 lib/ per-file source-smoke harness                          [S·★]
+- D1 smoke-runtime-image _rt_run wrapper (runs host-side)        [S·★]
+- S1 salvage-cache-export on stage failure (cross-stage-build
+  is host-side orchestration)                                    [M·★★★]
+- O3 chain-status.json (pure host-side addition)                 [S·★★]
+- P1 buildkitd max-parallelism in buildkitd.toml (host config;
+  do carefully while no chain is running)                        [S·★★★]
+
+**Batch 1 — test harness for the guarded refactors (before touching code):**
+- T1 test-cross-apt.sh (the 3-path state machine)                [M·★★★]
+- T2 test-pipefail-safety.sh + tree lint                         [S·★★★]
+- T3 ffmpeg TF extra-flags contract test                         [S·★★]
+
+**Batch 2 — the 01-core / in-container closure batch (ONE rebuild window;
+run Batch 1 first so the refactors land guarded):**
+- D2 retag_directory_wheels promotion (guarded by T4)            [M·★★]
+- D4 elf_needed_sonames primitive + 3-site collapse              [M·★★]
+- R3 clone_or_update_repo no-HEAD severity split                 [S·★★]
+- R1 TF SDK extraction failure = loud failure                    [S·★★]
+- R2 TF bundle post-assert                                       [S·★★]
+- R4 torch/vision toolchain-file guard (mirror IREE)             [S·★★]
+- R5 opencv install stderr capture                               [S·★]
+- A1 delete ARCHITECTURES + UBUNTU_PORTS_MIRROR_URL aliases;
+  knob-registry gate can land host-side earlier                  [S/M·★★]
+- A3 drop abseil-headers from the aggregator loop                [S·★]
+- S4 per-file deps mounts for ffmpeg/opencv/gstreamer/libcamera  [M·★★]
+- D3 smoke-media gate scaffold + P5 SMOKE_ENV (together)         [M·★★]
+- C1 Cerbero apt || true removal                                 [S·★★]
+- C2 android-sdk success-detection fixes                         [S·★★]
+
+**Batch 3 — versions.env riders (next planned pin bump; NEVER alone —
+versions.env invalidates the whole media chain, see 2026-08-07 P1):**
+- DOC1 toggle-comment corrections in versions.env                [S·★]
+- S2 FFMPEG_ENABLE_TF gate (default off; drops ~500 MB amd64)    [S·★★★]
+- C3 android inline-fallback removal (:?must be set)             [S·★★]
+- W3 sha-pins for vcpkg/get-pip (adds *_SHA256 keys)             [S·★★]
+
+**Batch 4 — Windows rebuild-window riders (their own recorded rule):**
+- W2 -Require classification for load-bearing inline patches     [M·★★★]
+- W4 ShieldedNative migration continuation                       [M·★]
+
+**Batch 5 — orchestrator lifecycle feature (one coherent PR: O1+O2+O3
+foundation, O4/O5 riders):**
+- O1 TERM/INT trap + child reaping + stop-cross-chain.sh         [M·★★★]
+- O2 run-id generation + pidfile + eager log archiving           [M·★★★]
+- O4 PARALLEL_LOOP_FAIL_FAST toggle                              [S·★★]
+- O5 per-script flag allowlist (kills inert --push class)        [S·★]
+
+**Batch 6 — CI/infra ramps (independent, start anytime, finish slowly):**
+- C4 python-lint preflight slug (advisory-first) + llm-stack
+  pytest CI step                                                 [M·★★]
+- S3 per-stage registry cache refs (needs blob-size testing)     [M·★★]
+- S5 shared cargo cache ids                                      [S·★]
+- DOC2/DOC3/DOC4 the three missing-doc items                     [S·★]
+- A4 write the dual-loader rule (3 lines in AGENTS.md)           [S·★]
+
+**Standing rules (from 3 rounds of sweeps — read before ANY batch):**
+1. Never edit versions.env or 01-core outside Batch 2/3 windows.
+2. "Guard with tests first" is literal: Batch 1 before Batch 2.
+3. Respect the protected lists (deliberate dedup, standalone bundling,
+   load-bearing case arms, ARG sprawl) — 3 sweep rounds re-verified them.
+4. After an aborted chain: `buildctl prune` is part of aborting.
+5. The LiteRT-LM patch stack and the Windows lane's structure are AUDITED
+   CLEAN — do not "improve" them.
+
+### Currency layer (audit 2026-08-10) — status of every PRE-2026-08-10 item
+
+Two verify agents checked every un-✅'d legacy item against the tree + git
+history. This section IS the verification — do not re-verify before a batch;
+the old sections below remain as journal, but THIS is their current status.
+
+**⚠ 1 REGRESSION:** buildkitd `gckeepstorage=500GB`, recorded DONE 2026-08-08,
+is GONE from `~/.config/buildkit/buildkitd.toml` (only the registry mirror
+remains, 7 lines). Re-do together with the Batch-0 max-parallelism toml edit.
+
+**36 legacy items are DONE-BUT-UNMARKED — treat as closed.** Biggest clusters:
+via 4aed84d (uv-pip executor pins ×8, verify-parity main() decomposition — the
+T5 queue entry citing it is STALE, abseil immutable+sha, Vulkan/GStreamer-
+android SHA pins); 9df9414 (BUILD_MEM_DIVISOR wiring — the old
+"--parallel-archs unusable" blocker); d4feb03 (LiteRT pywrap rename);
+d3815e7+9d793d1+d7c3fb1 (the whole GStreamer ship-but-can't-load class:
+rice-proto, missing apt libs, mandatory-plugin gate); 709756e (LICENSE);
+b6ad4c4+2c950f8 (Windows ONNX CUDA launcher + cache verify). Also closed:
+★★★ stale-log core (`.run` marker, cross-stage-build.sh:42 — the residual
+run-dir namespacing is MERGED INTO O2, track only there); verify-runtime-paths
+advisory contract; PYTORCH_EXTRA sentinel guards ×all consumers; ffmpeg
+runtime-lib manifest primacy + fail-loud ldd gate; resource-monitor run-id CSV;
+download_file retries; install_optional per-package pre-filter; torch
+fail-loud import gates; NV_CODEC_HEADERS n13.1.15.0 alignment; Windows P1
+versions.env decouple ("NO versions.env COPY HERE", media-builder:67);
+chain-verify STALE→rc1; smoke-runtime-image Vulkan three-way verdict;
+disk-guard + RUNTIME_CONTEXT_ROOT preflight; rustup deliberate-unpin decision;
+smoke-common source guard; preflight sentinel fixes; --from-stage fast-path
+docs; Windows P5/P6 notes.
+
+**6 OBSOLETE** (mechanism gone or superseded): parallelism.sh bind-mount item
+(→ new whole-dir mounts = S4's problem now); procctl/pkill self-match (watch-pid
+design removed all pkill sites); nerdctl rmi teardown (code deleted); 07-19
+Dawn-fails finding (→ 07-20 fix, WebGPU live); P5 degraded-plugin re-verify
+(→ gst-inspect health gate); parallelism core-divisor (→ driver JOBS split).
+
+**~52 legacy items STILL OPEN — hereby folded into the batches:**
+- **→ Batch 0 (+11):** gckeepstorage REGRESSION re-do; BUILDKIT_STEP_LOG_MAX_SIZE
+  on the buildkit systemd unit; kata-buildcache size cap; CCACHE_MAXSIZE
+  concurrent-arch sizing; **B5 smoke-runtime-image main() split (runs
+  host-side!)** [M·★★]; SUDO-idiom + uv-venv lint rules; agentic-loop jq
+  consolidation; pre-commit hook staged-blob shebang probe; bump_versions.py
+  unconditional rc0; preflight zero-checks-ran guard.
+- **→ Batch 1 (+2):** P3 cross-wheel SOABI/default-triple assert; forensic#3
+  smoke inner-warning propagation.
+- **→ Batch 2 (+22 — the big window):** named guard helpers FIRST (other
+  refactors depend on them); media source-cache mounts (R3 rides it); NDK
+  shared download cache; TVM arm64/riscv64 cross [L] + forensic#2 llvm-config
+  pin; forensic#1 LLVM nested ccache launcher; forensic#5 opencv-vs-own-ffmpeg
+  stage order [M/L]; forensic#6 gcc prereq inconsistency; forensic#7 ort
+  1.28-vs-1.27 dedupe; riscv64 ffmpeg TLS-via-openssl + codec skips; opencv
+  all-optional cross packages; codec runtime-list + so-package-map convergence;
+  wheel-family classifier (rides D2/T4); csound-sys patch-retry; cerbero
+  checksums.env class fix (rides C1/C2); soundtouch TOFU re-hash; litert-web
+  npm integrity; setup_gi_cross_wrappers decomposition (dedicated sub-pass per
+  its own plan); base/toolchain noise riders (man-skip, MAKEINFO); GCC_PARALLEL_
+  TARGETS validation; T1-T4 complexity-queue survivors (tvm-config 15-positional
+  table, vulkan/llvm-cross stanzas, _cross_stage_build_impl, build_iree_wheels,
+  parse_options 116-liner, modules.sh dir-walker); NVIDIA-lane helper sweep
+  (install-tensorrt find|head etc.); verify-media-artifacts orphan branches.
+- **→ Batch 3 (+5):** pyav dead pin removal; LLVM_COMMIT opt-in key;
+  setup-package-image bare cmake/numpy pins; ffmpeg-DNN SHA keys (rides #4);
+  renovate/ollama/ghcr peripheral pins.
+- **→ Batch 4 (+2):** 🔴 nv/target.h host-only stub (setup-cuda.ps1:103-122
+  still writes NV_IS_HOST=1 over a real extensionless nv/target);
+  Test-CniHealth check-fn unification.
+- **→ Batch 5 (+3):** stage-barrier fail-fast interplay (with O4); --no-push
+  OCI-layout handoff + dual-path collapse (couple them); O2 absorbs the ★★★
+  residual.
+- **→ Batch 6 (+6):** AGENTS.md Windows-table dedup (row-by-row); overview.md
+  third script-tree copy; ccache remote_storage tier; Rust sccache unblock
+  (RUSTC_WRAPPER="" sites Dockerfile.toolchain:58/package:157); verify-parity
+  zero-callers decision; llm-stack node:20-alpine vs NODE_VERSION.
+- **Standalone (not batchable):** riscv64 isa-spec on-device smoke (needs real
+  hardware); WEBUI_SECRET_KEY rotation (server-side user action);
+  DocumANTation submodule push (user).
+
+---
+
 ## Build efficiency / speed
 
 - **onnxruntime WebAssembly target — RESOLVED (commit 63fd9d3): now build-once,
@@ -2049,3 +2207,130 @@ cross-build-verification.md:82-111 lists the suites but not that the media-
 sandbox run now DEFERS genai-import and (ffmpeg-conditional) gst-libav gates
 to the packaging stage — a coverage auditor would over-credit the media gate.
 Fold into the P5 SMOKE_ENV refactor or document as-is.
+
+## 2026-08-10 — sweep round 3: windows-lane / CI-android-python / architecture
+
+Third 3-agent sweep, covering the never-swept territories. Same dedup
+discipline as rounds 1-2. Same-day fixes already applied: TensorRT 11.1.0.106 →
+11.2.1.2 in 3 more docs (windows-builds, AGENTS example filename, project-info
+incl. its cuDNN 9.23), AGENTS.md module-list 14 → 16 entries.
+
+### Windows lane (W) — VERDICT: materially better shape than Linux pre-audit
+
+The premise "never swept" was wrong: pinned CI lint gate (parse + PSSA 1.25.0 +
+Pester ≥5.7), 42 Pester suites incl. twin-parity + patches-apply-clean,
+preamble dedup complete (Initialize-SourceBuildScript), retry/resume engine,
+SHA-capable download helper. The LiteRT-LM patch stack SURVIVES audit: every
+bridge function is condition-gated on its breakage signature, self-retiring,
+endgame hard-gated — leave it alone. Residuals:
+
+**W1 — no automated parity guard on the -DefaultValue shadow pins [free].**
+build-litert-from-source.ps1:22 and litert-lm-export-bridge.ps1:135 BOTH
+hardcode 'v2.1.6' under a "update BOTH defaults" comment; ~14 more DefaultValue
+literals mirror versions.env keys (all currently in sync — verified). One
+Pester suite: AST the Get-SourceBuildVersion call sites, assert each default ==
+the versions.env pin. Test-only file, zero rebuild blast radius.
+
+**W2 — 37 inline-patch sites warn-and-continue on pattern miss; 0 pass
+-Require, 25 discard the success boolean via [void].** Patches.psm1:161-167
+warns + returns $false; .patch-file application by contrast hard-throws. The
+scripts' own comments record two "cost one container run" incidents of exactly
+this class. Classify sites load-bearing vs opportunistic; load-bearing get
+-Require. BATCH with the next pin-bump rebuild (touched scripts invalidate
+their COPY layers — the lane's own recorded rule).
+
+**W3 — SHA/signature hardening exists but thin: 4/26 call sites pass a sha,
+6/26 a signature.** Invoke-DownloadWithRetry is the full download_verified_file
+twin. Bare: setup-vcpkg.ps1:37 (tag zip, sha-pinnable), setup-rust-
+toolchain.ps1:120 (floating rustup-init), get-pip.py (Common.psm1:395).
+Add ExpectSignature everywhere (behavior-neutral) + *_SHA256 pins for the
+immutable ones. TENSORRT_ZIP_SHA256 empty is documented-deliberate (EULA).
+
+**W4 — Invoke-ShieldedNative migration unfinished by its own docstring** (~25
+hand-rolled `& cmd /c … 2>&1` + exit-check pairs across 3 files, all currently
+exit-checked). Continue only inside already-scheduled rebuild windows.
+
+### CI / Android / Python (C) — workflows themselves came back CLEAN
+
+(Full preflight on every push incl. all 14 auto-discovered suites; Makefile
+matches script flags exactly; zero TODO/FIXME in the whole tree.)
+
+**C1 — Cerbero's entire ~40-package build-dep apt install is `|| true`.**
+build-android-from-source.sh:354-364 — a mirror outage surfaces hours later as
+an inscrutable cerbero bootstrap error far below the scrolled-away apt failure.
+Drop `|| true`; wrap in the cross-apt retry pattern if mirror tolerance wanted.
+
+**C2 — android-sdk.sh masks sdkmanager/license failures three ways on the path
+that installs the NDK.** :122-146 `grep -q "Done."` overrides rc!=0 (partial
+multi-package install prints Done. per package); :149/:170 both
+`accept_licenses || echo` downgrade hard failure; :151-167 duplicate the
+7-package list verbatim. Fix: direct sdkmanager_install call (kills the dup
+list), drop the Done. override, final accept_licenses fatal, postcondition
+assert ${ANDROID_HOME}/ndk/${ANDROID_NDK_VERSION} exists.
+
+**C3 — android scripts carry inline version fallbacks duplicating versions.env**
+(litert v2.1.6, onnx v1.28.0, iree v3.11.0, opencv 5.0.0, gstreamer 1.29.2 +
+NDK, api_default 34 ×6). All currently in sync → dead code whose only effect is
+masking a broken Dockerfile ARG forward as a silent stale-pin build. Replace
+with `:?must be set` (or read mounted versions.env like the same file's
+ANDROID_CMDLINE_TOOLS_SHA256 pattern).
+
+**C4 — zero Python quality gate; the llm-stack pytest suite runs NOWHERE.**
+~3,300 first-party lines (sync_versions 809, bump_versions 752, benchmark 490,
+flutter_capture 476, copy-coverage 279, 3× manifest-*.py) with no ruff/mypy —
+while shell, Dockerfiles, workflows AND PowerShell all have gates. llm-stack
+has tests + conftest but no workflow triggers on linux/llm-stack/**. Fix: a
+python-lint preflight slug (pinned-bootstrap pattern like lint-dockerfiles,
+advisory-first per the PSSA ramp precedent) + paths-filtered pytest CI step.
+
+**C5 — preflight's own slug registry rejects its 15th check.** preflight.sh:59
+KNOWN_SLUGS ends at script-tests; :172 registers stage-graph → PREFLIGHT_ONLY=
+stage-graph exits 2 "Unknown slug" — the exact drop-out the validator's header
+claims to prevent. Latent (no caller uses it yet). Add the slug + a unit test
+asserting every run_check slug ∈ KNOWN_SLUGS.
+
+### Architecture / layering (A) — VERDICT: 01-core layering is genuinely clean
+
+Verified source graph: L0 logging/load-versions/path-helpers → L1 platform/
+arch-mapping/mirror/downloads/parallelism → L2 common.sh facade → L3 cross-* →
+L4 artifact-common → L5 lib-orchestrator → build-*.sh. No upward edges; the one
+inversion (common.sh's cross_build_is_active fallback) is documented +
+A2-hardened. Naming/conventions: clean enough that no new rule pays for itself.
+
+**A1 — the env-knob surface has no owner: 156 cross-boundary `${VAR:-}` vars,
+with dead aliases and phantom knobs.** Verified zero setters repo-wide:
+ARCHITECTURES (dead 3rd alias in resolve_arch_list), UBUNTU_PORTS_MIRROR_URL
+(same concept as FAST_… under a 2nd name), plus undocumented point-of-use knobs
+(ARTIFACT_CONTEXT_MODE, VULKAN_ENV_STRICT, PUSH_MAX_ATTEMPTS,
+PYTHON_IMPORT_PYTHON, TARGET_PYTHON_MAJOR_MINOR, MESON_EXE_WRAPPER…). A typo'd
+export silently no-ops. Fix: knob-registry gate in the verify-arg-consistency
+family — every default-consumed ALL_CAPS var must be set somewhere, in
+versions.env, or in an allowlisted operator-knob table (which doubles as the
+missing docs). Delete the two dead aliases (cross-env.sh edit → closure batch).
+
+**A2 — lib/ is ~2,950 post-07-21 lines with zero in-repo consumers and zero
+regression signal.** Deliberately consumer-facing (AGENTS.md says so) but:
+cmake_build_parse_args (116 lines, top-10 longest tree-wide) and slang-compile
+have no backlog coverage and no tests; lib's own history records app-runner.sh
+as "the drifted copy with NO re-source guard". Minimal bar: one tests/ smoke
+per lib file (source + drive the arg-parser happy path); add
+cmake_build_parse_args to the risk-tier queue.
+
+**A3 — stage/vendor helpers inside 01-core; abseil-headers.sh dead-loaded into
+every orchestrator.** artifact-common.sh:75 sources it host-side where
+install_abseil_headers has no caller. CUDA/ROCm five (install-cuda-stack,
+install-tensorrt, setup-cuda-repo, verify-cuda-stack, setup-rocm-repo) are
+single-consumer stage helpers living in core. Cheapest: drop abseil from the
+aggregator loop (verify-critical-fixes sources it directly — confirm green).
+The gpu/ move is optional polish, closure-batch-only.
+
+**A4 — module-loading doc drift + the dual-loader rule is unwritten.**
+AGENTS.md list FIXED same-day (14→16). Still to write (3 lines): "scripts that
+also execute inside containers load via source_module; host-only orchestration
+sources artifact-common.sh" — and note modules.sh hardcodes ../02-toolchain
+search paths (a 01-core file encoding stage-2 layout; fold into any modules.sh
+touch).
+
+**A5 — freeze the clean layering while it's true.** ~30-line tests/ assertion:
+leaf files contain no `source` of higher-layer files; common.sh sources only
+L0/L1. The next 20 files added to 01-core then can't regress it silently.
