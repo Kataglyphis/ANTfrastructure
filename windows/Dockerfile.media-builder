@@ -48,11 +48,19 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # type==exec.cachemount at 20GB/168h (windows/buildkitd.toml), so an unbounded
 # L0 would be evicted between chains and quietly buy nothing. Raise BOTH
 # together or neither.
+#
+# SCCACHE_ERROR_LOG lives INSIDE the persistent sccache cache mount, so the
+# server's error/panic trail SURVIVES the container - when the nvcc
+# decomposition deadlocked/crashed (2026-08-10, fused_moe launchers), the
+# server died with its logs and the postmortem had only client-side 10054s.
+# Owner directive: NEVER swallow logs. SCCACHE_LOG stays an opt-in ARG
+# (debug is voluminous); the error log is always on and near-free.
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
     SCCACHE_DIR="C:\sccache" `
-    SCCACHE_CACHE_SIZE="15G"
+    SCCACHE_CACHE_SIZE="15G" `
+    SCCACHE_ERROR_LOG="C:\sccache\sccache-error.log"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 

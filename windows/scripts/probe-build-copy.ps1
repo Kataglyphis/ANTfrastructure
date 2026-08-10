@@ -55,6 +55,11 @@ foreach ($f in $probeAssets) {
 # Inspecting/removing it needs admin nerdctl - see AGENTS.md nerdctl lane.
 $probeRef = 'docker.io/local/kataglyphis:probe-build-copy'
 $failedLanes = @()
+# FULL lane output is persisted per lane (owner directive: never swallow
+# logs); the console shows only the tail plus the log path.
+$probeLogDir = Join-Path $repoRoot 'out\build-logs'
+New-Item -ItemType Directory -Force -Path $probeLogDir | Out-Null
+$probeStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 Write-Host '== buildkit (buildctl) lane ==' -ForegroundColor Cyan
 $buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
@@ -64,10 +69,11 @@ if (Test-Path $buildctl) {
     # hands the native exe the VERBATIM SOURCE TEXT - no variable expansion
     # (before 2026-08-10 buildctl exported into a directory literally named
     # '$outDir'). Regression pin: tests/Native.ArgQuoting.Tests.ps1.
+    $laneLog = Join-Path $probeLogDir "probe-build-copy-buildkit-$probeStamp.log"
     & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
         --local "context=$probeDir" --local "dockerfile=$probeDir" `
-        --output "type=image,name=$probeRef,unpack=true" 2>&1 | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
-    Write-Host ("buildkit exit=" + $LASTEXITCODE)
+        --output "type=image,name=$probeRef,unpack=true" 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
+    Write-Host ("buildkit exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
     if ($LASTEXITCODE -ne 0) { $failedLanes += 'buildkit' }
 } else {
     Write-Host 'buildctl.exe not found - skipping buildkit lane' -ForegroundColor Yellow
@@ -76,11 +82,12 @@ if (Test-Path $buildctl) {
 if ($Heavy) {
     Write-Host '== buildkit heavy-parent lane (RUN 2x100MB, then COPY) ==' -ForegroundColor Cyan
     if (Test-Path $buildctl) {
+        $laneLog = Join-Path $probeLogDir "probe-build-copy-heavy-$probeStamp.log"
         & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
             --local "context=$probeDir" --local "dockerfile=$probeDir" `
             --opt 'filename=Dockerfile.heavy' --no-cache `
-            --output "type=image,name=$probeRef-heavy,unpack=true" 2>&1 | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
-        Write-Host ("buildkit-heavy exit=" + $LASTEXITCODE)
+            --output "type=image,name=$probeRef-heavy,unpack=true" 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
+        Write-Host ("buildkit-heavy exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
         if ($LASTEXITCODE -ne 0) { $failedLanes += 'buildkit-heavy' }
     } else {
         Write-Host 'buildctl.exe not found - skipping heavy lane' -ForegroundColor Yellow
@@ -96,8 +103,9 @@ if ($Docker) {
     # Regression pin: tests/Native.ArgQuoting.Tests.ps1.
     $dockerExe = "$env:ProgramFiles\Stevedore\bin\docker.exe"
     if (Test-Path $dockerExe) {
-        & $dockerExe build -t local/test:probe-build-copy $probeDir 2>&1 | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
-        Write-Host ("docker exit=" + $LASTEXITCODE)
+        $laneLog = Join-Path $probeLogDir "probe-build-copy-docker-$probeStamp.log"
+        & $dockerExe build -t local/test:probe-build-copy $probeDir 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
+        Write-Host ("docker exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
         if ($LASTEXITCODE -ne 0) { $failedLanes += 'docker-classic' }
     } else {
         Write-Host 'docker.exe not found - skipping docker lane' -ForegroundColor Yellow

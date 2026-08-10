@@ -24,6 +24,16 @@
   the cuda_llm target stay encoded at the versions.env pin:
   `verify-cuda-cache.ps1` + an ONNX canary through the fused_moe launchers.
 - Stall guard + full-speed retry ladder stay armed for the whole wrapped set.
+- **Never-swallow-logs sweep (owner directive)**: the buildkitd service env
+  was found EMPTY — the repo-required `BUILDKIT_STEP_LOG_MAX_SIZE=-1`
+  (unlimited step logs, `setup-new-host.ps1` applies it) had been wiped by
+  the 2026-08-09 Stevedore/repair work, and the default 2 MiB clip hid the
+  stall-guard verdicts and sccache stats for three runs (re-apply + buildkitd
+  restart pending the next between-runs window). `SCCACHE_ERROR_LOG` now
+  persists inside the sccache cache mount (server postmortems survive the
+  container). `probe-build-copy.ps1` and `verify-cuda-cache.ps1` Tee their
+  FULL lane output to `out\build-logs\` and print the path (display keeps
+  showing tails only). New AGENTS.md invariant bullet pins the principle.
 
 ## 2026-08-10 (resolution) - RUN-layer finalize 0x20: root cause is the ENABLED RDNA4 dGPU; build with it disabled
 

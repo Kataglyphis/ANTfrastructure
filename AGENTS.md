@@ -349,6 +349,19 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
   re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
   HASHTABLE. Splatting arrays onto native executables stays fine.
+- **NEVER swallow logs — display may truncate, persistence must not (owner
+  directive 2026-08-10).** Every tool that shows `-Last N` lines Tee's the
+  FULL stream to `out\build-logs\` first and prints the path; sccache's
+  server error log persists inside the sccache cache mount
+  (`SCCACHE_ERROR_LOG=C:\sccache\sccache-error.log` in
+  Dockerfile.media-builder — the 2026-08-10 nvcc-decomposition postmortem had
+  only client-side 10054s because the server died with its logs); build
+  stats go to STDERR (survives the step-log clip); and
+  `BUILDKIT_STEP_LOG_MAX_SIZE=-1`/`MAX_SPEED=-1` on the buildkitd service is
+  a REQUIRED host setting — a Stevedore reinstall/repair wipes the service
+  env silently (found empty 2026-08-10; that clip hid guard verdicts and
+  stats for three runs). Verify with `setup-new-host.ps1 -ReportOnly`;
+  re-apply + `Restart-Service buildkitd` only between builds.
 - **Two more pwsh traps, both found live 2026-08-10 in `probe-build-copy.ps1`
   (regression pin: `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`):**
   (a) a BAREWORD comma-attribute native argument

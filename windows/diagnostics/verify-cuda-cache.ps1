@@ -67,12 +67,18 @@ try {
     Set-Content -Path (Join-Path $ctx 'Dockerfile') -Value ($runLines -join "`n") -Encoding ascii
 
     Write-Host "== CUDA cache verify: $BaseImage vs $Endpoint ==" -ForegroundColor Cyan
+    # Full output persisted (owner directive: never swallow logs).
+    $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    $logDir = Join-Path $repoRoot 'out\build-logs'
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $fullLog = Join-Path $logDir ("verify-cuda-cache-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".log")
     & $BuildCtl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
         --local "context=$ctx" --local "dockerfile=$ctx" `
         --opt image-resolve-mode=local --opt "build-arg:SCCACHE_EP=$Endpoint" --no-cache `
         --output 'type=image,name=docker.io/local/kataglyphis:verify-cuda-cache' 2>&1 |
-        ForEach-Object { Write-Host $_ }
+        Tee-Object -FilePath $fullLog | ForEach-Object { Write-Host $_ }
     $code = $LASTEXITCODE
+    Write-Host "[full log: $fullLog]"
 } finally {
     Remove-Item -Path $ctx -Recurse -Force -ErrorAction SilentlyContinue
 }
