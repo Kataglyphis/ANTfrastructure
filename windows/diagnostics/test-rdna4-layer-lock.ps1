@@ -38,8 +38,10 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
 $probeDir = Join-Path $repoRoot 'windows\diagnostics\probe-build-copy'
-$buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
-if (-not (Test-Path $buildctl)) { throw "buildctl not found at $buildctl" }
+# Candidate list, not a single hardcoded path (backlog item #2).
+$buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if (-not $buildctl) { throw 'buildctl not found in any supported Stevedore layout' }
 foreach ($f in 'Dockerfile', 'Dockerfile.heavy', 'hello.txt') {
     if (-not (Test-Path (Join-Path $probeDir $f))) { throw "probe asset missing: $f (expected under $probeDir)" }
 }
@@ -87,6 +89,11 @@ if ($onGreen) {
 
 Write-Host 'RED with the dGPU enabled - running the off-side of the A/B...' -ForegroundColor Yellow
 $disabled = $false
+# Initialized up front: under StrictMode these were only safe by control
+# flow - a future try/catch around the toggle would turn the verdict line
+# into a StrictMode error on the exact host being diagnosed (backlog #25).
+$offTiny = $false
+$offHeavy = $false
 try {
     Disable-PnpDevice -InstanceId $gpu.InstanceId -Confirm:$false
     $disabled = $true

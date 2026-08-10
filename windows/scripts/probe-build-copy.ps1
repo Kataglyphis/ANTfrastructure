@@ -66,8 +66,11 @@ New-Item -ItemType Directory -Force -Path $probeLogDir | Out-Null
 $probeStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 Write-Host '== buildkit (buildctl) lane ==' -ForegroundColor Cyan
-$buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
-if (Test-Path $buildctl) {
+# Candidate list, not a single hardcoded path: D:\Stevedore is a supported
+# layout (build-buildkit.ps1 resolves the same way; backlog item #2).
+$buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($buildctl) {
     $attemptedLanes += 'buildkit'
     # Comma-attribute native args MUST be double-quoted strings: pwsh parses
     # the bareword form (--output type=image,name=$ref) as an ArrayLiteral and
@@ -86,7 +89,7 @@ if (Test-Path $buildctl) {
 
 if ($Heavy) {
     Write-Host '== buildkit heavy-parent lane (RUN 2x100MB, then COPY) ==' -ForegroundColor Cyan
-    if (Test-Path $buildctl) {
+    if ($buildctl) {
         $attemptedLanes += 'buildkit-heavy'
         $laneLog = Join-Path $probeLogDir "probe-build-copy-heavy-$probeStamp.log"
         & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
@@ -107,8 +110,9 @@ if ($Docker) {
     # switch-constrained variable throws "Cannot convert ... String to ...
     # SwitchParameter" - this lane had never run until 2026-08-10.
     # Regression pin: tests/Native.ArgQuoting.Tests.ps1.
-    $dockerExe = "$env:ProgramFiles\Stevedore\bin\docker.exe"
-    if (Test-Path $dockerExe) {
+    $dockerExe = @("$env:ProgramFiles\Stevedore\bin\docker.exe", 'D:\Stevedore\bin\docker.exe') |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($dockerExe) {
         $attemptedLanes += 'docker-classic'
         $laneLog = Join-Path $probeLogDir "probe-build-copy-docker-$probeStamp.log"
         & $dockerExe build -t local/test:probe-build-copy $probeDir 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }

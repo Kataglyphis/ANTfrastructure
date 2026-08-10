@@ -22,14 +22,19 @@
 param(
     [string]$Endpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', 'Machine'),
     [string]$BaseImage = 'docker.io/local/kataglyphis:bk-windows-toolchain',
-    [string]$BuildCtl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
+    # Empty = resolve from the supported install layouts (backlog item #2).
+    [string]$BuildCtl = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 if (-not $Endpoint) { throw 'no WebDAV endpoint: pass -Endpoint or set SCCACHE_WEBDAV_ENDPOINT (Machine scope)' }
-if (-not (Test-Path $BuildCtl)) { throw "buildctl not found at $BuildCtl" }
+if (-not $BuildCtl) {
+    $BuildCtl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
+        Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+if (-not $BuildCtl -or -not (Test-Path $BuildCtl)) { throw 'buildctl not found in any supported Stevedore layout' }
 
 $ctx = Join-Path ([System.IO.Path]::GetTempPath()) ("cudacache-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $ctx | Out-Null
@@ -72,10 +77,12 @@ try {
     $logDir = Join-Path $repoRoot 'out\build-logs'
     New-Item -ItemType Directory -Force -Path $logDir | Out-Null
     $fullLog = Join-Path $logDir ("verify-cuda-cache-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".log")
+    # No --output: the verdict is the RUN's exit code; an image export would
+    # only mint store garbage per run (backlog item #22). Contrast with the
+    # finalize probes, which NEED type=image,unpack=true - export IS their test.
     & $BuildCtl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
         --local "context=$ctx" --local "dockerfile=$ctx" `
-        --opt image-resolve-mode=local --opt "build-arg:SCCACHE_EP=$Endpoint" --no-cache `
-        --output 'type=image,name=docker.io/local/kataglyphis:verify-cuda-cache' 2>&1 |
+        --opt image-resolve-mode=local --opt "build-arg:SCCACHE_EP=$Endpoint" --no-cache 2>&1 |
         Tee-Object -FilePath $fullLog | ForEach-Object { Write-Host $_ }
     $code = $LASTEXITCODE
     Write-Host "[full log: $fullLog]"

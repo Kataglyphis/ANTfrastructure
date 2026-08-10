@@ -1951,7 +1951,7 @@ this doc + CHANGELOG per repo priority 4.
    gained `(TM)`-rename tolerance on 2026-08-10 — the other two copies did
    NOT, widening the drift this item exists to close. Do together with
    #18.)*
-2. **The Stevedore tool path is hardcoded single-candidate in 10+ files**
+2. **The Stevedore tool path is hardcoded single-candidate in 10+ files** *(PARTIAL 2026-08-10 W1: the three 2026-08-10 diagnostics now resolve a candidate list; 7 legacy files remain)*
    (2026-08-10 evening sweep: probe-build-copy, verify-cuda-cache,
    test-rdna4-layer-lock, test-layer-rename, test-process-isolation-commit,
    deploy-shim-patch, reset-container-stores, verify-host-setup, ... — only
@@ -1979,7 +1979,7 @@ this doc + CHANGELOG per repo priority 4.
    just upgraded to provide. Fix: call the probe (or extract a shared
    lane-runner) so the load-bearing output-shape/quoting lessons live once.
    *(Its log-swallowing was fixed same-day — the duplication remains.)*
-6. **GPU toggle logic duplicated** between `toggle-rdna4-gpu.ps1` and the
+6. **GPU toggle logic duplicated** *(PARTIAL 2026-08-10 W1: toggle gained `-GpuName`, closing the wrong-SKU dead end; consolidation remains)* between `toggle-rdna4-gpu.ps1` and the
    A/B script's finally-block re-enable (the safety-critical path). Fix:
    parameterize the toggle script (`-GpuName`, `-NoPrompt`) and call it, or
    lift the toggle into the module.
@@ -2006,9 +2006,9 @@ this doc + CHANGELOG per repo priority 4.
 11. **Stall-guard verdicts print twice** (job stream + marker file re-read).
     Marker file is the single source of truth (ladder reads it, survives
     clip) — drop the Write-Output/Receive-Job channel.
-12. **`Native.ArgQuoting.Tests.ps1` manual case-insensitive loop** —
+12. *(DONE 2026-08-10 W1)* **`Native.ArgQuoting.Tests.ps1` manual case-insensitive loop** —
     `-notcontains` already compares case-insensitively; five lines → one.
-13. **Fake-ninja 'fail' line evaluates its condition twice**
+13. *(DONE 2026-08-10 W1)* **Fake-ninja 'fail' line evaluates its condition twice**
     (SourceBuild.NinjaRetry.Tests) — fold into one guarded block like the
     FAILONCE line below it.
 14. **`verify-cuda-cache.ps1`'s 21-statement concatenated RUN line** — write
@@ -2032,7 +2032,13 @@ this doc + CHANGELOG per repo priority 4.
     before each ninja invocation; classify on kills recorded during the
     failing attempt only. Also: the marker `Add-Content` is
     `-ErrorAction SilentlyContinue` — a failed write silently downgrades a
-    guard-kill to the `-j2` path with no log trail.
+    guard-kill to the `-j2` path with no log trail. **And (run-10 lesson):
+    a guard kill must be treated as POISONING in-flight L0 cache writes —
+    run 10 linked against truncated objects served as hits from the
+    persistent mount (undefined `QkvToContext`/`BiasSoftmaxImpl` symbols).
+    Either verify the multilevel fork writes atomically, or
+    purge/quarantine the L0 on every kill (interim fix 2026-08-10: mount id
+    bumped to `sccache-winamd64-2`).**
 18. **RDNA4 gate altitude**: regex-match should be the cheap trigger, the
     finalize probe the verdict (block only on a red probe); add a
     gate-specific `-SkipRdna4Gate` instead of the all-or-nothing
@@ -2055,7 +2061,7 @@ this doc + CHANGELOG per repo priority 4.
     Invoke-Tests + the same in Invoke-Lint) and forgets the `\archive\`
     exclusion: host the two ArgQuoting detectors inside Invoke-Lint's
     existing parse loop.
-22. **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
+22. *(DONE 2026-08-10 W1)* **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
     drop `--output` (solve-only is enough for the hit/write assertions;
     contrast: the finalize probes NEED `type=image,unpack=true`).
 23. **`SCCACHE_ERROR_LOG` sits at the root of a GC-capped cache mount** —
@@ -2065,7 +2071,7 @@ this doc + CHANGELOG per repo priority 4.
 24. **`#Requires -Version 7.0` missing across `windows/scripts/tests/`**
     (pre-existing; new files perpetuate it) — add during the next tests-dir
     touch.
-25. **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
+25. *(DONE 2026-08-10 W1)* **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
     `$offHeavy` are only-safe-by-control-flow; initialize them up front so a
     future try/catch edit cannot turn the verdict line into a StrictMode
     error on the exact host being diagnosed.

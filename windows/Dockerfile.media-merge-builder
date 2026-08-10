@@ -185,7 +185,7 @@ ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_ERROR_LOG="C:\sccache\sccache-error.log"
 # Same cache id as the media builder on purpose: GStreamer compiles the same
 # clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `

@@ -60,11 +60,8 @@ function script:Get-SwitchShadowViolation {
         foreach ($as in $scope.FindAll({ param($a) $a -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)) {
             if ($as.Left -isnot [System.Management.Automation.Language.VariableExpressionAst]) { continue }
             $name = $as.Left.VariablePath.UserPath
-            $isSwitch = $false
-            foreach ($n in $switchNames) {
-                if ([string]::Equals($n, $name, [System.StringComparison]::OrdinalIgnoreCase)) { $isSwitch = $true }
-            }
-            if (-not $isSwitch) { continue }
+            # -notcontains compares case-insensitively by default - the whole check.
+            if ($switchNames -notcontains $name) { continue }
             # Same-scope only: the nearest enclosing function of the assignment
             # must be the scope that declared the switch.
             $p = $as.Parent; $encl = $null

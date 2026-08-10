@@ -22,7 +22,7 @@ Describe 'Invoke-NinjaBuildWithRetry' {
         $lines = @(
             '@echo off',
             'echo NINJA %* >> "%WBT_NINJA_LOG%"',
-            'if "%WBT_NINJA_MODE%"=="fail" ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & if "%WBT_NINJA_MODE%"=="fail" exit /b 1',
+            'if "%WBT_NINJA_MODE%"=="fail" ( (if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%") & exit /b 1 )',
             'if exist "%WBT_NINJA_FAILONCE%" ( del "%WBT_NINJA_FAILONCE%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
             'exit /b 0'
         )
