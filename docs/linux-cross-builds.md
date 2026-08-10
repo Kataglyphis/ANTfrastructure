@@ -428,7 +428,7 @@ out/linux-sdk/riscv64/rootfs/
 out/linux-sdk/riscv64/artifact.env
 ```
 
-This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.1.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU end-to-end build, but it does not yet replace the full `:latest` pipeline.
+This helper uses `linux/Dockerfile.sdk` with `BUILD_MODE=cross` and the amd64-hosted cross compiler image. During successful cross SDK builds, CMake should identify the active C++ compiler as `GNU 16.2.0` rather than the Ubuntu 26.04 system GCC toolchain. It is the first real host-side rootfs export step toward a full multi-architecture non-QEMU end-to-end build, but it does not yet replace the full `:latest` pipeline.
 
 `linux/Dockerfile.sdk` also forwards the checked-in `LLVM_RELEASE` pin into the `target-clang` step, so rebuilding an SDK artifact from an older `cross-compiler-amd64` base still refreshes `/opt/llvm-target` to the repository pin instead of inheriting a stale base-image environment value.
 
@@ -579,7 +579,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-Validated for both `arm64` and `riscv64`: `gcc 16.1.0`, `clang 22.1.8`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, and optional runtime payloads under `/usr/local/lib/onnxruntime-*`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, `/usr/local/lib/pkgconfig/litert.pc`.
+Validated for both `arm64` and `riscv64`: `gcc 16.2.0`, `clang 22.1.8`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, and optional runtime payloads under `/usr/local/lib/onnxruntime-*`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, `/usr/local/lib/pkgconfig/litert.pc`.
 
 After the runtime helper cleanup, validated for `amd64` with:
 
@@ -596,7 +596,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-Result: `gcc 16.1.0`, `clang 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, `/usr/bin/clang → /etc/alternatives/clang → /usr/local/llvm-target/bin/clang`.
+Result: `gcc 16.2.0`, `clang 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, `/usr/bin/clang → /etc/alternatives/clang → /usr/local/llvm-target/bin/clang`.
 
 ### Local wrapper smoke validation
 
