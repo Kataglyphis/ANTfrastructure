@@ -414,9 +414,10 @@ pwsh -File windows/scripts/tests/Invoke-Tests.ps1          # harness + Pester su
 PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
 ```
 
-Verify: all three exit 0. Preflight's check list (incl. `crlf-guard`,
-`version-snapshot`, hadolint, actionlint) is the single source of the no-build
-gate list — see AGENTS.md § Validation.
+Verify: all three exit 0. Preflight's `KNOWN_SLUGS` array is the single
+source of the no-build gate list (don't enumerate it in docs — enumerations
+drift; `tests/test-preflight-slugs.sh` keeps the array honest) — see
+AGENTS.md § Validation.
 
 ---
 

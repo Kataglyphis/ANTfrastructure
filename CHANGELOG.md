@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-08-10/11 - Linux lane: media 3/3 GREEN after 5 chain fixes; backlog program (6 sweep rounds, ~50 items executed); 2 new gates
+
+- **base->latest-cross chain rebuilt to media-3/3-pinned** (amd64+arm64+riscv64
+  smokes all 0 failures; android/runtime/manifest in flight). Five fixes to
+  get there, each found the hard way: (1) ffmpeg libtensorflow — the global
+  `--extra-libs=-ltensorflow` broke FFmpeg's EXECUTED configure sanity binary;
+  fix = `-lstdc++` only (the ONNX pattern) + `bundle_tensorflow_runtime_lib`
+  copying the SDK .so out of the cache mount; (2-4) three latent smoke-media
+  bugs newly exposed by the 08-08 smoke-hardening: genai import deferred to
+  the torch-venv gate, LiteRT symbol check pointed at `libtensorflowlite_c.so`
+  AND un-broken from the `nm | grep -q` SIGPIPE-under-pipefail false-stub,
+  gst-libav gated on ffmpeg-executability; (5) libvulkan-dev Multi-Arch: same
+  mirror skew on arm64 — cross-scoped dpkg `--force-overwrite` drop-in.
+  Plus: parallel-arch OOM root-caused to INTRA-arch BuildKit DAG overcommit.
+- **Refactoring-backlog program**: 6 agent sweep rounds + toolchain deep-dive +
+  currency audit (36 legacy items proven already-fixed, 1 REGRESSION exposed:
+  live buildkitd.toml lost gckeepstorage) -> lean batch-ordered backlog
+  (docs/refactoring-backlog.md, journal archived), ~50 items executed same
+  day. Tree now gated by 22 unit suites / 311 assertions (was 13/150), fix10
+  (PR100017 -nostdinc++ static guard), and two NEW gates: `python-lint`
+  (ruff; gate=real-error classes) and `secret-scan` (gitleaks, enforcing,
+  2 public-trust-anchor FPs triaged into .gitleaksignore).
+- **Ops/infra**: `linux/host-config/` — canonical buildkitd.toml (gc 500GB +
+  max-parallelism 4) + apply/verify scripts (the anti-regression answer);
+  `logs/` excluded from build contexts (2.38 GB/stage transfer, measured);
+  services lane hardened (loopback bindings + lan override, compose pins +
+  healthchecks, nginx security-header include validated via containerized
+  `nginx -t`, benchmark runner atomic writes + JSONL persistence + the
+  _manifest.json KeyError that killed every suite run's final comparison);
+  llm-stack contract tests wired into CI (ollama service + micro model).
+- **Docs**: AGENTS.md Windows tables deduped into windows-builds.md (46 rows,
+  0 droppable, 1 real drift fixed), gate-list enumerations replaced by
+  KNOWN_SLUGS pointers everywhere, GCC 16.1.0-era stragglers + TensorRT/cuDNN
+  examples corrected, IREE + versions.env-toggle + smoke-deferral sections
+  written, doc-literal scan added to `sync_versions.py --check`.
+
 ## 2026-08-10 (night) - run 12: ONNX vertex GREEN (bare-CUDA verdict confirmed); OpenCV died one layer deeper in MLAS -> patch 003; run 13 launched
 
 - **Run 12's ONNX vertex went green at ~76 min INCLUDING the lld-link** that
