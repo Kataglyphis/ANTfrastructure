@@ -22,7 +22,8 @@ regressing the build.
 3. **Many tests.** Every fix ships with a regression test where testable:
    unit suites under `linux/scripts/tests/` (auto-discovered by the
    pre-commit `script-tests` gate), lint gates (shellcheck, IFS-safety,
-   hadolint, actionlint), preflight checks, and smoke assertions that assert
+   hadolint, actionlint, ruff via `lint-python.sh`, gitleaks via
+   `lint-secrets.sh`), preflight checks, and smoke assertions that assert
    real behavior against `versions.env` pins.
 4. **Docs always follow the change — in the same work unit.** Any behavior,
    flag, workflow, or invariant change updates AGENTS.md (rules/quick-ref),
@@ -951,13 +952,23 @@ base ─┬─ onnxruntime ───────┐
 ## Validation
 
 - **`bash linux/scripts/preflight.sh` is the single source of the no-build gate
-  list** (shellcheck, script COPY coverage, critical fixes, patch integrity,
-  artifact parity, ARG consistency, version snapshot, mirror consistency,
-  runtime paths, Dockerfile lint via hadolint, workflow lint via actionlint,
-  android stage parity, linux script unit tests). CI workflows and
-  `.githooks/pre-commit` run SUBSETS of it via `PREFLIGHT_ONLY=<slugs>` /
-  `PREFLIGHT_SKIP=<slugs>` — never copy the check list into a new caller.
+  list.** The authoritative check inventory is its `KNOWN_SLUGS` array (do NOT
+  enumerate it here — this very paragraph went stale by three slugs once);
+  `tests/test-preflight-slugs.sh` enforces that every slug has a registered
+  check and vice versa. Newest additions: `python-lint` (ruff, hard on
+  real-error classes, advisory rest), `secret-scan` (gitleaks, enforcing,
+  false positives via `.gitleaksignore` with justification), `stage-graph`.
+  CI workflows and `.githooks/pre-commit` run SUBSETS of it via
+  `PREFLIGHT_ONLY=<slugs>` / `PREFLIGHT_SKIP=<slugs>` — never copy the check
+  list into a new caller.
   On Windows hosts: `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
+- **Linux host config is code**: `linux/host-config/` carries the canonical
+  rootless-BuildKit `buildkitd.toml` (gc keep-budget + max-parallelism) and the
+  systemd drop-in. `apply-host-config.sh` installs (refuses while a chain
+  runs; daemon restart is a printed operator step), `verify-host-config.sh`
+  warn-diffs live vs repo. Exists because a live-only toml edit silently
+  regressed once — reconcile drift through the repo, never by editing
+  `~/.config` alone.
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest).

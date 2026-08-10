@@ -32,8 +32,8 @@ its batch's unlock condition; XC1 logs/-context fix landed immediately).
 
 ## Batch 0 remainder — unlock condition: NO chain running
 
-(The free half of Batch 0 + all of Batch 1 was executed 2026-08-10 evening:
-21 test suites / 306 assertions now gate the tree. See archive for the list.)
+(The free half of Batch 0 + all of Batch 1 was executed 2026-08-10 evening;
+22 test suites / 311 assertions now gate the tree. See archive for the list.)
 
 - **S1 — salvage-cache-export on stage failure** [M·★★★] `--cache-to
   type=local,mode=max` only materializes on SUCCESS (cross-stage-build.sh:
