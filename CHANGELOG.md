@@ -1,5 +1,104 @@
 # Changelog
 
+## 2026-08-09 (resolution) - Windows COPY-commit failure: root cause was a faulty AMD Adrenaline install, NOT the RDNA GPU
+
+- **The 'AMD RDNA3.5/RDNA4 GPU breaks Windows-container layer commits'
+  hypothesis (upstream microsoft/Windows-Containers#623) is RETRACTED as a
+  root cause (corrected 2026-08-09).** On the discovered host (Ryzen 9 9950X
+  + RX 9070 XT, 25H2/26200) the build-COPY failure - `hcsshim::ActivateLayer
+  0x20` on buildkit and `mkdir \\?\Volume{<GUID>}\C:.` on docker legacy,
+  both lanes, every COPY layer, surviving `-NoCache`, restarts, Defender
+  exclusions, a full store reset and a reboot - was caused by a **FAULTY AMD
+  ADRENALINE installation**. A clean **reinstall fixed it** (probe:
+  `windows/scripts/probe-build-copy.ps1`). GPU-disable never cured it;
+  `toggle-rdna4-gpu.ps1` is now obsolete as a fix. The Linux cross lane and
+  all repo gates were never affected. Docs updated (superseding the night
+  entry below): `AGENTS.md` Common Failure Modes + script table,
+  `docs/windows-host-setup.md` gate, `docs/windows-builds.md` diagnostic
+  section, `README.md`.
+
+## 2026-08-09 - LLM stack: GPU mode override + Qwen3-Coder deploy
+
+- **NEW `linux/llm-stack/docker-compose.gpu.yml`** — a compose overlay that
+  gives the Ollama service all NVIDIA GPUs
+  (`deploy.resources.reservations.devices`, driver `nvidia`) and raises the
+  default context via `OLLAMA_CONTEXT_LENGTH`. The base `docker-compose.yml`
+  stays CPU-only; GPU hosts run
+  `docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d` after
+  installing the `nvidia-container-toolkit` (install commands in the llm-stack
+  README). `OLLAMA_KV_CACHE_TYPE=q8_0` and flash attention remain the defaults.
+- **Deployed `qwen3-coder:30b` (30.5B A3B MoE, Q4_K_M, ~18 GB) on a 2× NVIDIA
+  host (12 GB + 16 GB)**: 100 % GPU placement (9.9 GB / 12.4 GB per card),
+  warm decode ~137 tok/s, ~47 s cold load, context tuned to 64K. Perf measured
+  via the `/api/generate` metrics.
+- **Docs:** `linux/llm-stack/README.md` gained a GPU-mode section (toolkit
+  install + override usage + `ollama ps` GPU check) and a VRAM/context sizing
+  table (~104 KB/token q8_0 KV ⇒ 28 GB total = ~64K cap; 256K needs >45 GB).
+  The "CPU-only inference" architecture note is now "CPU-only by default, GPU
+  optional". Repo `README.md` and `AGENTS.md` Quick Reference now point to the
+  LLM stack (previously undiscoverable from either).
+
+## 2026-08-09 (night) - Windows lane on a 25H2 host: platform COPY regression found; sccache source build proven host-side
+
+The base->final GPU verification run that motivated the sccache source build hit
+a wall that turned out to be the HOST OS, not the repo.
+
+- **SUPERSEDED 2026-08-09 — root cause corrected above: FAULTY AMD ADRENALINE install (reinstall fixed it), NOT the RDNA GPU. Historical entry kept verbatim below.** Originally claimed: Windows 11 build 26200 (25H2 line) `COPY`-into-layer failure — isolated to a
+  AMD RDNA3.5/RDNA4 GPU defect (upstream microsoft/Windows-Containers#623), NOT a blanket build break and NOT the ISO (corrected 2026-08-09).** buildkitd: `failed to reimport snapshot: hcsshim::ActivateLayer 0x20` (`file used by another process`), deterministic across fresh chain-IDs, survives `-NoCache`, service restarts, vmwp kills, Defender exclusions, a full store reset AND a reboot. docker-classic fallback: mkdir \\?\Volume{<GUID>}\C:. invalid directory name, under process AND Hyper-V isolation. A minimal 3-layer probe isolates it: `FROM servercore` + `RUN` commits fine, the first `COPY` layer never does. Root cause is the AMD GPU: on this box (Ryzen 9 9950X + Radeon RX 9070 XT, RDNA4) hcsshim layer VHD mounting breaks at COPY commit; the upstream issue's own matrix proves RDNA3.5/RDNA4 = broken while RDNA1/RDNA2 iGPU/Intel = fine. NOT the OS: a same-build 26200 machine builds fine, `sfc`/`DISM` report 0 components corrupt, and even projfs.sys is absent on the working machine too. Fix (reproducer-verified): disable the AMD GPU in Device Manager (RDP survives via the Remote Display Adapter). On the discovered host (2026-08-09) GPU-disable did NOT cure it - real upstream, persisted here; root cause on that box remains undetermined FINAL 2026-08-09: BK build lane unusable on that host - the reimport 0x20 persists on buildkit 0.32.0 AND a throwaway v0.32.2 (instrumented A/B), i.e. host-level, not engine-version; classic lane (dockerd) builds the same shapes fine there; heavy/GPU chain goes on the working host.. 
+  Docs updated: `docs/windows-host-setup.md` OS gate + AGENTS.md Common Failure
+  Modes carry the corrected row. The Linux cross lane and all repo gates are
+  unaffected.
+- **sccache source build verified HOST-SIDE** (the part that needs no image):
+  the pinned `SCCACHE_GIT_REV = e9b15a3` is confirmed from upstream to BE the
+  mozilla/sccache#2722 merge ("Fix nvcc dryrun parsing for CUDA 13.3", carries
+  `test_group_nvcc_subcommands_with_simt_only_cicc_input`); the EXACT command
+  `setup-rust-toolchain.ps1` runs (`cargo install sccache --locked --git
+  https://github.com/mozilla/sccache --rev <rev>`) compiles, links and installs
+  cleanly (exit 0, 3m25s, sccache.exe in CARGO_BIN, `--version` = 0.17.0 exactly
+  as the commit documented). The wiring itself remains covered by the 412-test /
+  0-lint gates (verify-toolchain CARGO_BIN assert, CMAKE_CUDA_COMPILER_LAUNCHER).
+  The one thing still pending is a real ONNX CUDA kernel cache-hit in an image
+  build - which needs a supporting (non-25H2) host.
+- New-host bring-up (setup-new-host.ps1 + verify-host-setup fix + magic-constant
+  purge, this morning's entry) proved out on this fresh host: verify-host-setup
+  all-green, patched shim deployed and hash-recorded, CNI confs on the live
+  subnet, dufs L2 up with logon task. Host-side probe toolchain (rustup gnu via
+  Strawberry's bundled mingw linker) installed for the verification above -
+  throwaway, not part of any image.
+
+## 2026-08-09 (late) - Windows lane: one-script new-host bring-up + magic-constant purge + verify crash fix
+
+Verified live while bringing up a brand-new host (this one) for the sccache
+source-build verification run; every fix below is what a fresh Stevedore box
+actually trips over.
+
+- **NEW `windows/scripts/setup-new-host.ps1`** - the scriptable half of
+  `docs/windows-host-setup.md` Phases A5+C as ONE elevated, idempotent run
+  (`-ReportOnly` safe, refuses while a build is live): authors the CNI
+  `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW
+  at runtime - **the magic subnet literals are gone from the docs**), then
+  orchestrates the canonical per-concern scripts (apply-containerd-config ->
+  `.conf` derive + debug flags + teardown env + Defender; apply-buildkitd-gcpolicy
+  + the `BUILDKIT_STEP_LOG_*` env; deploy-shim-patch - BUILDING the 45min/100min
+  fixed-constant shim from hcsshim source when no `-ShimPath` is given, Go via
+  scoop; dufs install/start/ONLOGON-task/machine endpoint env).
+  Every sub-script is called with a HASHTABLE splat - the first draft used
+  array splats and hit the documented position-binding trap in `-ReportOnly`
+  (`-ReportOnly` arriving as `$ServiceName`), exactly the AGENTS array-splat rule.
+- **`verify-host-setup.ps1` line-212 crash fixed**: `(Get-ItemProperty ...).Environment`
+  on a service whose `Environment` value does not exist threw PropertyNotFound,
+  which under StrictMode surfaced as an unset-variable error and CRASHED the
+  script mid-run on the common drifted host - silently skipping the teardown-env
+  and debug-flag checks and under-counting the verdict (reported 2 warnings
+  instead of 3). Registry values that do not exist now degrade to honest WARNs
+  (`.PSObject.Properties.Name -contains` reader), matching the Defender check's
+  degrade-to-UNKNOWN contract.
+- **Docs purge of stale example values**: `docs/windows-host-setup.md` A5 and
+  `docs/windows-builds.md` section Getting it going no longer hand out the
+  reference host's `172.31.32.0/20` subnet as copy-paste gospel - both now say
+  "derive" and point at `setup-new-host.ps1`; README's fresh-machine pointer
+  gains the one-run path.
+
 ## 2026-08-09 (early) — Linux lane: validator split + a locale bug the split's own probe caught
 
 - **validate_compiler_for_target decomposed** (complexity item 9): the

@@ -435,14 +435,21 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
                "type": "nat",
                "master": "Ethernet",
                "ipam": {
-                   "subnet": "<subnet of the vEthernet (nat) adapter>",   // e.g. 172.31.32.0/20
-                   "routes": [ { "GW": "<that adapter's IPv4>" } ]        // e.g. 172.31.32.1
+                   "subnet": "<subnet of the vEthernet (nat) adapter>",   // DERIVE, don't copy (see below)
+                   "routes": [ { "GW": "<that adapter's IPv4>" } ]
                },
                "capabilities": { "portMappings": true, "dns": true }
            }
        ]
    }
    ```
+
+   **No magic subnets.** `setup-new-host.ps1` authors this file from the live
+   `vEthernet (nat)` adapter (derived network/prefix + gateway) — the literals in
+   older copies of these docs (`172.31.32.0/20` etc.) were snapshots of one host
+   and are stale on any other. To derive by hand:
+   `Get-NetIPAddress | ? InterfaceAlias -eq 'vEthernet (nat)'` → adapter IP is
+   the GW, and `subnet` = network/prefix of that address.
 
    After writing it, verify with BOTH clients — a BuildKit RUN step that fetches
    something, and `nerdctl --namespace buildkit run --rm --network nat
@@ -453,7 +460,8 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    subnet on service restarts, silently orphaning this conf (containers then get
    unroutable IPs). `build-buildkit.ps1` fail-fasts on the mismatch at preflight
    with the exact fix; re-sync the conf to `ipconfig`'s `vEthernet (nat)` values
-   and `Restart-Service buildkitd -Force` (plain `Restart-Service` refuses when
+   (`setup-new-host.ps1 -ReportOnly` re-derives and shows any drift) and
+   `Restart-Service buildkitd -Force` (plain `Restart-Service` refuses when
    dependent services exist).
 3. **Windows Defender exclusions** for `C:\ProgramData\containerd` (and the
    buildkit state dir) — layer extraction races the scanner otherwise.
@@ -1273,6 +1281,32 @@ The **merge stage splits**: the fan-in (`COPY --from` of the three branch trees)
 IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 `docker commit` preserves the builder image's ENV, so each result image is a
 drop-in replacement for the old single-Dockerfile output.
+
+**Diagnostic / partial-alternative on hosts where build-`COPY` is broken.**
+Measured 2026-08-09 — root cause, since corrected, was a FAULTY AMD
+ADRENALINE installation (see AGENTS.md Common Failure Modes "AMD Radeon host —
+faulty Adrenaline install" row; a reinstall fixes it, GPU-disable does not):
+on a host where *every* `docker build`/`buildctl build` `COPY` commits fail
+(`hcsshim::ActivateLayer 0x20` on buildkit, `mkdir \\?\Volume{<GUID>}\C:.` on the
+docker legacy builder — while `FROM`+`RUN` layers commit fine), the **`CommitLayer`
+path via `docker run` + `docker commit` still works** and is a 30-second probe:
+
+```pwsh
+docker run --name probe-rc mcr.microsoft.com/windows/servercore:ltsc2025 cmd /c echo hi
+docker commit probe-rc local/test:probe-rc      # rc 0 = CommitLayer OK; only ApplyDiff (build COPY) is broken
+docker rm -f probe-rc
+```
+
+Committed version of the 3-layer build-`COPY` probe: `pwsh -File
+windows\scripts\probe-build-copy.ps1` (assets in
+`windows/diagnostics/probe-build-copy/`).
+
+So the classic lane's **CPU-bound run+commit stages remain viable** on such a host.
+Caveat: the chain cannot bootstrap end-to-end there, because the FROM images
+(base/sdk/merge fan-in) themselves contain `COPY` steps that still break — every
+repo Dockerfile has at least one `COPY`. Use the healthiest host for a full chain;
+the run+commit path only rescues the heavy compile stages once a starting image
+exists.
 
 The `litert`/`tvm` aux branches **also** run+commit at `-MediaCoreCpus` cores (via
 their `Dockerfile.media-builder` targets): media-core is already committed when they

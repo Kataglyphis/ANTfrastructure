@@ -87,7 +87,7 @@ linux/
 
 **Cross lane** (`linux/amd64` host, cross-compiles all arches): `base → compiler → sdk → media → android → package → torch`
 **Runtime lane** (native/QEMU per arch): `base → package → wrapper`
-**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), with the docker-classic Hyper-V run+commit lane (`windows/build.ps1`) as fallback. The lane runs **direct solves** on every stage: the host snapshotter defect that used to break heavy media layers (`ExportLayer 0x3` on heavy-churn container finalize) was root-caused on 2026-08-06 to a hardcoded 30 s teardown timeout in the containerd runhcs shim — it terminated a teardown that takes ~117 s for OpenCV, permanently poisoning the scratch disk — and is fixed by a locally patched shim, submitted upstream as [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855). **Every Stevedore/containerd update reverts that patch**, so `windows/scripts/deploy-shim-patch.ps1 -ReportOnly` belongs in your post-update routine. The older warm/materialize workaround is retired (kept in git history as the rollback path), and the Defender exclusions remain load-bearing for a separate family of transient finalize flakes — see [`docs/windows-builds.md`](docs/windows-builds.md) § BuildKit/containerd lane and [`docs/windows-host-setup.md`](docs/windows-host-setup.md) C4. **Two client lanes are supported:** `buildctl` builds the chain from a normal shell (buildkitd is ACL'd to `docker-users`), while `nerdctl` — from an **admin** shell, since containerd's pipe is Administrator-only upstream — runs, inspects and administers the resulting images, and can build as well; recipes in [`docs/windows-builds.md`](docs/windows-builds.md) § nerdctl lane.
+**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), with the docker-classic Hyper-V run+commit lane (`windows/build.ps1`) as fallback. The lane runs **direct solves** on every stage: the host snapshotter defect that used to break heavy media layers (`ExportLayer 0x3` on heavy-churn container finalize) was root-caused on 2026-08-06 to a hardcoded 30 s teardown timeout in the containerd runhcs shim — it terminated a teardown that takes ~117 s for OpenCV, permanently poisoning the scratch disk — and is fixed by a locally patched shim, submitted upstream as [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855). **Every Stevedore/containerd update reverts that patch**, so `windows/scripts/deploy-shim-patch.ps1 -ReportOnly` belongs in your post-update routine. The older warm/materialize workaround is retired (kept in git history as the rollback path), and the Defender exclusions remain load-bearing for a separate family of transient finalize flakes — see [`docs/windows-builds.md`](docs/windows-builds.md) § BuildKit/containerd lane and [`docs/windows-host-setup.md`](docs/windows-host-setup.md) C4. **Two client lanes are supported:** `buildctl` builds the chain from a normal shell (buildkitd is ACL'd to `docker-users`), while `nerdctl` — from an **admin** shell, since containerd's pipe is Administrator-only upstream — runs, inspects and administers the resulting images, and can build as well; recipes in [`docs/windows-builds.md`](docs/windows-builds.md) § nerdctl lane. On hosts where build-`COPY`-into-layer is broken (root-caused 2026-08-09 to a FAULTY AMD ADRENALINE install — a reinstall fixes it, GPU-disable does not; see AGENTS.md Common Failure Modes), the docker-classic **run+commit** lane still works (CommitLayer) and is the partial fallback - see docs/windows-builds.md § Build isolation and CPU parallelism.
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
 
@@ -132,6 +132,14 @@ If foreign-architecture builds fail with `exec format error`:
   `docker run --rm --privileged tonistiigi/binfmt --install all` works.
 
 Details: [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Host prerequisite.
+
+## LLM Stack
+
+An Ollama + Open WebUI serving stack lives in
+[`linux/llm-stack/`](linux/llm-stack/README.md) — CPU-only by default, with an
+opt-in GPU override (`docker-compose.gpu.yml`) for NVIDIA machines. Docs
+include a VRAM/context sizing table so a 256K-listed model is only configured
+at a context the GPUs can actually hold.
 
 ## CI
 
@@ -193,7 +201,7 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
 full host CPUs, real layer caching — one-time setup in
 [Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane;
-**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)**):
+**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\setup-new-host.ps1`; `-ReportOnly` first):
 
 ```pwsh
 # BUILD (non-admin shell; buildctl against buildkitd):

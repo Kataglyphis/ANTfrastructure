@@ -53,6 +53,29 @@
 [worker.containerd]
   gc = true
 
+  # Snapshotter experiments 2026-08-09 (kept as a record; REVERTED to the
+  # default `windows`): on this host the default windows snapshotter fails
+  # ActivateLayer 0x20 when committing any layer whose diff writes into an
+  # existing parent dir. Alternatives tried and NOT available on Windows
+  # buildkit here: "native" (snapshotter not loaded: native: invalid
+  # argument), "windows-uvm" (silently falls back to windows - worker still
+  # reports snapshotter=windows). The identical Stevedore stack (containerd
+  # 2.3.3 + buildkit 0.32.0) builds fine on a working machine, so this is a
+  # HOST hcs/VHD behavior, not the engine. Classic lane (dockerd) builds the
+  # same shapes on this host. See AGENTS.md Common Failure Modes.
+
+  # ATTEMPTED 2026-08-09 (kept as a record, REVERTED): setting
+  #   snapshotter = "native"
+  # looked like the way around this host's ActivateLayer-0x20-on-multi-level-
+  # writes defect (native skips hcsshim VHD activation), but buildkit's
+  # containerd worker on Windows cannot load "native" at all:
+  #   snapshotter not loaded: native: invalid argument
+  # So ONLY the default windows snapshotter is available to buildkit here; the
+  # 0x20 on "commit a layer whose diff writes into an existing parent dir" is a
+  # buildkit reimport/VHD re-activation lifecycle issue on this host's hcs, not
+  # a config knob. docker-classic (dockerd windowsfilter) proves the shapes are
+  # fine otherwise. Tracked in AGENTS.md Common Failure Modes.
+
   # Tier 0: local sources, git checkouts and cache mounts (C:\bkhandoff etc).
   # The default caps these at 512MB/48h — far too small for a week of chain
   # iterations over multi-GB handoffs.

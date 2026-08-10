@@ -24,6 +24,50 @@ Watch progress:
 nerdctl compose -f linux/llm-stack/docker-compose.yml logs -f
 ```
 
+## GPU mode (NVIDIA)
+
+The default stack is CPU-only. To run the Ollama service on all NVIDIA GPUs,
+use the GPU override file:
+
+```bash
+# 1. On the host, install the NVIDIA container toolkit ONCE:
+curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+
+# 2. Start the stack with the GPU override:
+docker compose -f linux/llm-stack/docker-compose.yml -f linux/llm-stack/docker-compose.gpu.yml up -d
+```
+
+The override is a compose overlay — `docker-compose.yml` stays CPU-only. It
+grants the ollama service all NVIDIA GPUs (`deploy.resources.reservations
+.devices`) and raises the default context window via `OLLAMA_CONTEXT_LENGTH`.
+Verify GPU placement:
+
+```bash
+docker exec llm-stack-ollama-1 ollama ps   # PROCESSOR column = 100% GPU
+```
+
+## VRAM & context sizing
+
+The context length Ollama lists for a model is its **maximum supported**
+window, not what fits your VRAM. Ollama loads as many layers as fit on GPU; the
+rest spill to CPU/RAM and crater throughput. Size `num_ctx` to the VRAM free
+*after* the weights. Rule of thumb at q8_0 KV: a Qwen3-class 30B A3B model uses
+~104 KB of KV per context token.
+
+| Total GPU VRAM | `qwen3-coder:30b` (Q4_K_M, ~19 GB) | Reasonable context (q8_0 KV) |
+|----------------|------------------------------------|------------------------------|
+| 24 GB          | fits, ~5 GB left                   | ~32K |
+| 28 GB (e.g. 2× 12+16 GB) | fits, ~9 GB left          | ~64K |
+| 48 GB          | fits, ~29 GB left                  | ~256K (model max) |
+
+`qwen3-coder:30b` advertises 256K, but that needs ~27 GB of KV cache alone —
+i.e. >45 GB total VRAM alongside the 19 GB of weights. On a 28 GB stack, 64K
+is the realistic ceiling; a host with 48 GB can run the full 256K.
+
 ## Services
 
 | Service | Port | URL | Purpose |
@@ -139,5 +183,6 @@ updates.
   then `nerdctl build linux/llm-stack`); compose does **not** use that image.
 - Model auto-pulled on container startup via compose `command` override
 - Multi-arch: amd64, arm64 (riscv64 unsupported — Ollama does not ship riscv64 binaries)
-- CPU-only inference (no GPU required)
+- CPU-only by default; an optional GPU override grants the Ollama service all
+  NVIDIA GPUs (see § GPU mode)
 - Models persist in Docker volumes across restarts
