@@ -98,8 +98,10 @@ Phases:
 > exists; full bootstrap still needs a working BK lane (every Dockerfile has
 > a COPY).
 >
-> **Latest state (2026-08-09, end of session — the deeper story the Adrenaline
-> fix opened):** with Adrenaline fixed + pristine Stevedore the buildkit lane
+> **[2026-08-09 end-of-session narrative — SUPERSEDED by the 2026-08-10 update
+> below; kept as history. Its closing "repair order" is obsolete: the modern
+> order is in the FIRST paragraph above.]** With Adrenaline fixed + pristine
+> Stevedore the buildkit lane
 > on the discovered host STILL refused multi-level commits (any layer writing
 > into an existing parent dir: `ActivateLayer 0x20` at snapshotter reimport,
 > identical on buildkit 0.32.0 and 0.32.2, on `windowcon`/`native`/`windowssvm`

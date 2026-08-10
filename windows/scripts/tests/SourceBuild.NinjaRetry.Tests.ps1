@@ -14,13 +14,16 @@ Describe 'Invoke-NinjaBuildWithRetry' {
     #   WBT_NINJA_MODE     — 'fail' = always exit 1
     #   WBT_NINJA_FAILONCE — marker file: if present, delete it and exit 1 (so
     #                        the FIRST call fails and the retry succeeds)
+    #   WBT_NINJA_STALLMARK — when set, every FAILING invocation also appends a
+    #                         line to this file (simulates a stall-guard kill
+    #                         recorded during the attempt)
     $newFakeNinja = {
         param($dir)
         $lines = @(
             '@echo off',
             'echo NINJA %* >> "%WBT_NINJA_LOG%"',
-            'if "%WBT_NINJA_MODE%"=="fail" exit /b 1',
-            'if exist "%WBT_NINJA_FAILONCE%" ( del "%WBT_NINJA_FAILONCE%" & exit /b 1 )',
+            'if "%WBT_NINJA_MODE%"=="fail" ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & if "%WBT_NINJA_MODE%"=="fail" exit /b 1',
+            'if exist "%WBT_NINJA_FAILONCE%" ( del "%WBT_NINJA_FAILONCE%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
             'exit /b 0'
         )
         Set-Content -LiteralPath (Join-Path $dir 'ninja.bat') -Value ($lines -join "`r`n") -Encoding ASCII
@@ -76,6 +79,46 @@ Describe 'Invoke-NinjaBuildWithRetry' {
             $calls = @(Get-Content -LiteralPath $log)
             Assert-Equal 2 $calls.Count 'full attempt + reduced retry, then give up'
             Assert-Match '^NINJA -j 1 ' $calls[1] 'the final attempt was the reduced one'
+        }
+    }
+
+    It 'retries a guard-kill failure at FULL -j, not -j<RetryJobs> (run-6 lesson)' {
+        Invoke-InTestDir { param($dir)
+            & $newFakeNinja $dir
+            $log = Join-Path $dir 'ninja.log'
+            $failOnce = Join-Path $dir 'fail-once.marker'
+            $stallMark = Join-Path $dir 'stall.marker'
+            Set-Content -LiteralPath $failOnce -Value 'x' -Encoding ASCII
+            Invoke-WithEnv @{
+                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = ''
+                WBT_NINJA_FAILONCE = $failOnce; WBT_NINJA_STALLMARK = $stallMark
+                BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
+            } {
+                Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 2 -StallMarkerPath $stallMark
+            }.GetNewClosure()
+            $calls = @(Get-Content -LiteralPath $log)
+            Assert-Equal 2 $calls.Count 'guard-kill attempt + ONE full-speed retry'
+            Assert-Match '^NINJA -j 4 ' $calls[1] 'the stall retry must stay at full parallelism (L0 hits), never drop to -j<RetryJobs>'
+        }
+    }
+
+    It 'bounds stall retries, then falls through to the incremental attempt, then throws' {
+        Invoke-InTestDir { param($dir)
+            & $newFakeNinja $dir
+            $log = Join-Path $dir 'ninja.log'
+            $stallMark = Join-Path $dir 'stall.marker'
+            Invoke-WithEnv @{
+                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = 'fail'
+                WBT_NINJA_FAILONCE = ''; WBT_NINJA_STALLMARK = $stallMark
+                BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
+            } {
+                Assert-Throws { Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 1 -StallRetries 3 -StallMarkerPath $stallMark } `
+                    -MessagePattern 'Build failed \(exit 1\)'
+            }.GetNewClosure()
+            $calls = @(Get-Content -LiteralPath $log)
+            Assert-Equal 5 $calls.Count 'first attempt + 3 bounded stall retries + 1 incremental attempt'
+            Assert-Match '^NINJA -j 4 ' $calls[3] 'stall retries stay at full -j'
+            Assert-Match '^NINJA -j 1 ' $calls[4] 'the last resort is the incremental -j<RetryJobs> attempt'
         }
     }
 

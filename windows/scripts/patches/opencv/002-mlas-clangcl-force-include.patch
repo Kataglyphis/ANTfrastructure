@@ -1,0 +1,31 @@
+diff --git a/3rdparty/mlas/CMakeLists.txt b/3rdparty/mlas/CMakeLists.txt
+index c773ec0..502127e 100644
+--- a/3rdparty/mlas/CMakeLists.txt
++++ b/3rdparty/mlas/CMakeLists.txt
+@@ -243,11 +243,21 @@ target_compile_definitions(opencv_dnn_mlas PRIVATE
+ )
+ 
+ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-  target_compile_options(opencv_dnn_mlas PRIVATE
+-    "$<$<COMPILE_LANGUAGE:CXX>:-w>"
+-    "$<$<COMPILE_LANGUAGE:CXX>:-include>"
+-    "$<$<COMPILE_LANGUAGE:CXX>:cstring>"
+-  )
++  if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
++    # PATCHED (clang-cl): the CL dialect parses GNU-style "-include cstring"
++    # as an input file (clang-cl: error: no such file or directory: 'cstring').
++    # /FI resolves the header via the include path; /w matches -w.
++    target_compile_options(opencv_dnn_mlas PRIVATE
++      "$<$<COMPILE_LANGUAGE:CXX>:/w>"
++      "$<$<COMPILE_LANGUAGE:CXX>:/FIcstring>"
++    )
++  else()
++    target_compile_options(opencv_dnn_mlas PRIVATE
++      "$<$<COMPILE_LANGUAGE:CXX>:-w>"
++      "$<$<COMPILE_LANGUAGE:CXX>:-include>"
++      "$<$<COMPILE_LANGUAGE:CXX>:cstring>"
++    )
++  endif()
+   # MLAS .S files lack .note.GNU-stack; tell the assembler the stack is non-exec.
+   target_compile_options(opencv_dnn_mlas PRIVATE
+     "$<$<COMPILE_LANGUAGE:ASM>:-Wa,--noexecstack>"

@@ -1,0 +1,21 @@
+diff --git a/cmake/onnxruntime_providers_cuda.cmake b/cmake/onnxruntime_providers_cuda.cmake
+index c5fc0fd..eb1a598 100644
+--- a/cmake/onnxruntime_providers_cuda.cmake
++++ b/cmake/onnxruntime_providers_cuda.cmake
+@@ -604,6 +604,16 @@
+             CUDA_ARCHITECTURES "${_ort_llm_cuda_architectures}"
+             NVCC_THREADS "${onnxruntime_NVCC_THREADS}"
+             SOURCES ${onnxruntime_cuda_llm_srcs})
++          # PORT PATCH (Kataglyphis-ContainerHub): compile the LLM kernels with a
++          # BARE nvcc. sccache's nvcc decomposition (CMAKE_CUDA_COMPILER_LAUNCHER)
++          # crashes its server deterministically on the fused_moe_gemm generated
++          # launchers (two full chain runs died at ~4910 s on
++          # fused_moe_gemm_sm80_*.generated.cu; every client got os error 10054).
++          # Scoping the exclusion to this one OBJECT library keeps the launcher -
++          # and its cache - for every other CUDA target.
++          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)
++            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER "")
++          endif()
+         endif()
+       endif()
+     endif()

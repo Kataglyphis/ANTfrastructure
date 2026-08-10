@@ -43,6 +43,11 @@ if (-not $contribOk) { $contribSrc = ''; Write-Host 'Continuing without contrib 
 #       are long long / unsigned long long, not long / ulong as on Unix LP64).
 $patchDir = Join-Path $PSScriptRoot 'patches'
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\001-cmake-clang-cl-compat.patch') -SourceDir $mainSrc -Description 'opencv: cmake clang-cl/CUDA compat' -IgnoreWhitespace
+# OpenCV 5.0.0 bundles MLAS; its cmake treats clang-cl as GNU-Clang and passes
+# the GNU pair `-include` + `cstring`, which the CL dialect parses as an INPUT
+# FILE (clang-cl: error: no such file or directory: 'cstring' on the first
+# mlas TU). The patch adds an MSVC-frontend branch using /FIcstring + /w.
+Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\002-mlas-clangcl-force-include.patch') -SourceDir $mainSrc -Description 'opencv: mlas clang-cl force-include' -IgnoreWhitespace
 if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
 }

@@ -193,8 +193,20 @@ function Invoke-CmakeConfigure {
             #
             # Set unconditionally: CMake ignores it when CUDA is not an enabled
             # language, so CPU-only configures are unaffected.
-            $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX/CUDA launchers)"
+            #
+            # SCCACHE_NO_CUDA_LAUNCHER=1 opts a build out of the CUDA launcher
+            # ONLY (C/CXX caching stays). The source-built sccache's nvcc
+            # decomposition DEADLOCKED mid-ONNX on 2026-08-10: server + 9
+            # clients all at 0% CPU with zero backend connections (dufs healthy),
+            # ~40 min stall, unwedged only by killing the processes. On a cold
+            # cache the CUDA launcher buys nothing (all misses) while carrying
+            # that risk, so the heavy CUDA consumers set the knob themselves.
+            if ($env:SCCACHE_NO_CUDA_LAUNCHER -eq '1') {
+                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend; C/CXX launchers only - CUDA launcher opted out via SCCACHE_NO_CUDA_LAUNCHER)"
+            } else {
+                $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX/CUDA launchers)"
+            }
         }
     } else {
         Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
@@ -505,7 +517,79 @@ function Get-BuildJobCount {
     return [Math]::Max(2, [Math]::Min($cores, [int][Math]::Floor($memGB / $MemGBPerJob)))
 }
 
+function Start-SccacheStallGuard {
+    # Background watchdog for the sccache-nvcc DEADLOCK (2026-08-10: sccache
+    # server + all 9 clients at 0 % CPU, ZERO backend connections while dufs
+    # answered HTTP 200 - the ONNX CUDA compile crawled/hung for ~40 min).
+    # While ninja runs, sample the whole compiler fleet once per SampleSeconds;
+    # if sccache processes exist and the fleet burns essentially no CPU for
+    # StallSamples consecutive samples, kill EVERY sccache process (server
+    # alone is not enough - clients block forever on the dead pipe). The
+    # in-flight compiles then fail fast, ninja exits nonzero, and the
+    # incremental retry ladder resumes WITH cache hits for every object
+    # already compiled. This keeps the CUDA launcher cache (owner requirement)
+    # while bounding the deadlock to minutes instead of a silent hang.
+    # Every kill is also appended to $MarkerPath IMMEDIATELY - the parent's
+    # retry ladder reads it to distinguish a guard-kill (retry at FULL -j,
+    # everything so far is an L0 hit) from an OOM-shaped failure (-j drop),
+    # and the file survives the 2MiB step-log clip that hides end-of-attempt
+    # console output (run 6 lesson, 2026-08-10).
+    # Returns $null when sccache is not on PATH - nothing to guard, and the
+    # fake-ninja unit tests stay free of background jobs.
+    param([int]$SampleSeconds = 60, [int]$StallSamples = 3, [string]$MarkerPath = '')
+    if (-not (Get-Command sccache.exe -ErrorAction SilentlyContinue)) { return $null }
+    return Start-Job -ScriptBlock {
+        $sampleSeconds = $using:SampleSeconds
+        $stallSamples = $using:StallSamples
+        $markerPath = $using:MarkerPath
+        $fleet = @('ninja', 'cl', 'clang-cl', 'nvcc', 'cicc', 'ptxas', 'cudafe++', 'link', 'lld-link', 'sccache')
+        $prev = -1.0
+        $strikes = 0
+        while ($true) {
+            Start-Sleep -Seconds $sampleSeconds
+            $procs = @(Get-Process -Name $fleet -ErrorAction SilentlyContinue)
+            $scc = @($procs | Where-Object { $_.ProcessName -eq 'sccache' })
+            if ($procs.Count -eq 0 -or $scc.Count -eq 0) { $prev = -1.0; $strikes = 0; continue }
+            $cpu = 0.0
+            foreach ($p in $procs) {
+                # A process can exit between enumeration and the property read;
+                # its CPU contribution is then simply skipped for this sample.
+                try { $cpu += $p.TotalProcessorTime.TotalSeconds } catch { continue }
+            }
+            $delta = if ($prev -ge 0) { $cpu - $prev } else { -1.0 }
+            $prev = $cpu
+            if ($delta -ge 0 -and $delta -lt 2.0) { $strikes++ } else { $strikes = 0 }
+            if ($strikes -ge $stallSamples) {
+                $msg = ("fleet burned {0:N1} CPU-s in the last {1}s with {2} sccache proc(s) alive - killing sccache to unwedge (ninja retry resumes incrementally, cache intact)" -f $delta, $sampleSeconds, $scc.Count)
+                Write-Output $msg
+                if ($markerPath) {
+                    Add-Content -Path $markerPath -Value ("{0} {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg) -ErrorAction SilentlyContinue
+                }
+                $scc | Stop-Process -Force -ErrorAction SilentlyContinue
+                $strikes = 0
+                $prev = -1.0
+            }
+        }
+    }
+}
+
+function Stop-SccacheStallGuard {
+    param($Guard)
+    if (-not $Guard) { return }
+    $msgs = @(Receive-Job -Job $Guard -ErrorAction SilentlyContinue)
+    Stop-Job -Job $Guard -ErrorAction SilentlyContinue
+    Remove-Job -Job $Guard -Force -ErrorAction SilentlyContinue
+    foreach ($m in $msgs) { Write-Host "[sccache-stall-guard] $m" -ForegroundColor Yellow }
+}
+
 function Invoke-NinjaBuildWithRetry {
+    # Retry ladder (run-6 lesson, 2026-08-10): a guard-kill failure is NOT
+    # OOM-shaped - everything already compiled is an L0 hit, so the right
+    # retry is at FULL -j, and the sccache deadlock recurs (~40-80 min apart),
+    # so ONE retry is not enough. Guard-kill attempts (marker file written by
+    # Start-SccacheStallGuard) get up to $StallRetries full-speed retries;
+    # only a plain compile failure falls through to the single incremental
+    # -j$RetryJobs attempt that handles the OOM shape.
     param(
         [Parameter(Mandatory)]
         [string]$BuildDir,
@@ -513,23 +597,51 @@ function Invoke-NinjaBuildWithRetry {
         [int]$MemGBPerJob = 4,
         [string]$LogFile = '',
         [switch]$Install,
-        [string]$InstallConfig = 'Release'
+        [string]$InstallConfig = 'Release',
+        [int]$StallRetries = 3,
+        # Injectable for tests; default lives beside the build dir.
+        [string]$StallMarkerPath = ''
     )
     $env:NINJA_STATUS = "[%f/%t] "
     $jobs = Get-BuildJobCount -MemGBPerJob $MemGBPerJob
     $ninjaKeep = if ($env:NINJA_KEEP_GOING -eq '1') { @('-k', '0') } else { @() }
-    Write-Host "Building with ninja -j$jobs..."
-    if ($LogFile) {
-        ninja -j $jobs @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile
-    } else {
-        ninja -j $jobs @ninjaKeep -C $BuildDir 2>&1
-    }
-    if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
-        Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j$RetryJobs..."
+    if (-not $StallMarkerPath) { $StallMarkerPath = Join-Path $BuildDir '.sccache-stall-guard.marker' }
+    Remove-Item -Path $StallMarkerPath -Force -ErrorAction SilentlyContinue
+
+    $invokeNinja = {
+        param($jobCount, $append)
         if ($LogFile) {
-            ninja -j $RetryJobs @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append
+            if ($append) { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append }
+            else { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile }
         } else {
-            ninja -j $RetryJobs @ninjaKeep -C $BuildDir 2>&1
+            ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1
+        }
+    }
+
+    Write-Host "Building with ninja -j$jobs..."
+    $guard = Start-SccacheStallGuard -MarkerPath $StallMarkerPath
+    try {
+        & $invokeNinja $jobs $false
+        # Guard-kill retries: full parallelism, bounded, only while the marker
+        # keeps growing (each retry that fails WITHOUT a new guard kill exits
+        # the loop - that failure is a real compile error, not the deadlock).
+        $seenKills = 0
+        for ($attempt = 1; $attempt -le $StallRetries -and $LASTEXITCODE -ne 0; $attempt++) {
+            $kills = 0
+            if (Test-Path $StallMarkerPath) { $kills = @(Get-Content $StallMarkerPath -ErrorAction SilentlyContinue).Count }
+            if ($kills -le $seenKills) { break }
+            $seenKills = $kills
+            Write-Host "ninja -j$jobs failed after sccache stall-guard kill #$kills - full-speed retry $attempt/$StallRetries (compiled objects are cache hits)..." -ForegroundColor Yellow
+            & $invokeNinja $jobs $true
+        }
+        if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
+            Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j$RetryJobs..."
+            & $invokeNinja $RetryJobs $true
+        }
+    } finally {
+        Stop-SccacheStallGuard $guard
+        if (Test-Path $StallMarkerPath) {
+            Get-Content $StallMarkerPath -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "[sccache-stall-guard] $_" -ForegroundColor Yellow }
         }
     }
     if ($LASTEXITCODE -ne 0) {

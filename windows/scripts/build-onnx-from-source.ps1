@@ -193,6 +193,17 @@ Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setup
 # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
 $cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization /clang:-Wno-unused-value"
 
+# CUDA launcher ON (owner requirement: CUDA must cache), made survivable by
+# scoping the ONE deterministic crash source out of the wrapped set: patch
+# 006 gives the onnxruntime_providers_cuda_llm OBJECT library (the
+# fused_moe_gemm generated launchers that killed two chain runs at ~4910 s
+# with os error 10054) a BARE nvcc via its CUDA_COMPILER_LAUNCHER target
+# property; every other CUDA target stays sccache-wrapped and cacheable.
+# The Start-SccacheStallGuard watchdog + full-speed retry ladder in
+# Invoke-NinjaBuildWithRetry stay armed. Hit-rates become visible via the
+# stderr stats emission after the build (stderr survives the 2MiB step-log
+# clip). Emergency full opt-out: $env:SCCACHE_NO_CUDA_LAUNCHER = '1'.
+
 # -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
 # ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the ~1h CUDA/TensorRT kernel compiles) so the DirectML
 # clang-cl patch can be iterated fast -- DirectML (USE_DML=ON) still builds and surfaces any clang-cl
@@ -248,6 +259,20 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
         Invoke-InlineRegexPatch -Path $xqaGen -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
             -Replacement '#else' `
             -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen." | Out-Null
+    }
+
+    # sccache's nvcc decomposition crashes deterministically on the fused_moe
+    # generated launchers (runs 6+7, ~4910 s, os error 10054): patch 006 pins a
+    # BARE nvcc onto the onnxruntime_providers_cuda_llm target only, so the
+    # launcher (and CUDA caching) stays on for every other target.
+    try {
+        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\006-cuda-llm-bare-nvcc.patch') -SourceDir $SourceDir -IgnoreWhitespace
+    } catch {
+        Write-Host "006-cuda-llm-bare-nvcc.patch did not apply cleanly -- falling back to inline property insertion"
+        $cudaCmake = Join-Path $SourceDir 'cmake\onnxruntime_providers_cuda.cmake'
+        Invoke-InlineRegexPatch -Path $cudaCmake -Pattern '(SOURCES \$\{onnxruntime_cuda_llm_srcs\}\))' `
+            -Replacement ('$1' + "`n          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)`n            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER `"`")`n          endif()") `
+            -WarnMessage "onnxruntime_providers_cuda.cmake: cuda_llm anchor not found; the fused_moe launchers will crash the sccache server. Verify $cudaCmake." | Out-Null
     }
 
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
@@ -413,6 +438,14 @@ if ($mlasTagged -gt 0) {
 # incremental, so the -j2 retry after an OOM-style failure only redoes the jobs
 # that died -- worst case is a slow tail, not a failed build.
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install
+
+# Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never
+# truncates (AGENTS.md priority 1: caching must be MEASURED). This is where
+# the CUDA-launcher value is finally visible per run: Cache hits (CUDA/PTX/
+# CUBIN) vs misses, and any 'Cache errors' pointing at a broken backend.
+foreach ($line in @(Get-SccacheStatsText -Advanced | Where-Object { $null -ne $_ })) {
+    [Console]::Error.WriteLine("sccache-stats| $line")
+}
 
 # DirectML EP: onnxruntime.dll depends on DirectML.dll (fetched via NuGet during configure). cmake
 # --install does not stage that redist, so a DML session would fail (0xC0000135) in the final image.

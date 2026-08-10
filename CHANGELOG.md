@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-08-10 (late) - sccache CUDA launcher: deterministic server crash scoped to the cuda_llm target → bare nvcc THERE, launcher (and CUDA caching) stays ON everywhere else
+
+- Runs 6 and 7 died at **~4910 s (±2 s) on the same TU family**
+  (`fused_moe_gemm_sm80_{bf16,f16}.generated.cu`, `os error 10054` on every
+  client): the pinned source-built sccache's nvcc decomposition crashes the
+  server deterministically there — this is NOT the earlier 0%-CPU stall
+  shape, and no retry ladder can pass a deterministic crash point. The
+  identical run-over-run timeline (despite a hot L0) additionally shows the
+  **CUDA hit-rate at this commit is ~zero** — the launcher cached nothing.
+- **NEW `patches/onnxruntime/006-cuda-llm-bare-nvcc.patch`** (owner
+  requirement: CUDA must cache — a blanket opt-out was rejected): the crash
+  source is exactly ONE OBJECT library (`onnxruntime_providers_cuda_llm`,
+  where all `fused_moe_gemm_*.generated.cu` live), so the patch clears that
+  target's `CUDA_COMPILER_LAUNCHER` property; every other CUDA target stays
+  sccache-wrapped and cacheable. Applied with an inline-regex fallback.
+  `SCCACHE_NO_CUDA_LAUNCHER=1` remains only as the emergency full opt-out.
+- **sccache stats now go to STDERR after the ONNX build**
+  (`sccache-stats|` prefix, `-Advanced`) — stderr survives the 2 MiB
+  step-log clip, so per-run CUDA hit/miss/error rates are finally visible
+  (they were never observable before; the ~zero-hit-rate claim can now be
+  confirmed or retired with data). Candidate-sccache re-enable criteria for
+  the cuda_llm target stay encoded at the versions.env pin:
+  `verify-cuda-cache.ps1` + an ONNX canary through the fused_moe launchers.
+- Stall guard + full-speed retry ladder stay armed for the whole wrapped set.
+
 ## 2026-08-10 (resolution) - RUN-layer finalize 0x20: root cause is the ENABLED RDNA4 dGPU; build with it disabled
 
 - **Same-boot A/B on the RX 9070 XT host: disable the dGPU → tiny AND heavy
@@ -38,6 +63,47 @@
   re-enable. `toggle-rdna4-gpu.ps1`'s "obsolete" header is retracted.
 - Chain relaunched with the dGPU disabled: base stage committed the
   previously-failing COPY and the VS Build Tools layer on the first attempt.
+- **Run 5 milestone: the ONNX vertex went GREEN end-to-end** (compile, link,
+  export, commit — first of the day; patches 001-005 all production-proven)
+  and died one partition later in OpenCV 5.0.0's newly bundled MLAS:
+  **NEW `patches/opencv/002-mlas-clangcl-force-include.patch`** — mlas cmake
+  treats clang-cl as GNU-Clang and passes `-include` + `cstring`, which the
+  CL dialect parses as an input file; the patch adds an MSVC-frontend branch
+  (`/FIcstring` + `/w`). 10/10 patches validate.
+- **NEW diagnostic `windows/diagnostics/verify-cuda-cache.ps1`** — proves the
+  sccache→nvcc(decomposed)→WebDAV path end to end: a tiny buildctl solve FROM
+  the local toolchain image compiles one `.cu` twice; asserts the recompile
+  HIT and that objects reached the store. First run verified 2026-08-10:
+  4/4 component hits (CUDA/Device/PTX/CUBIN), 4 objects + check-marker written
+  to the dufs root (which was EMPTY before — no prior run had ever populated
+  the CUDA cache). Traps encoded: sccache's nvcc parser needs the `-ccbin=`
+  (equals) form, and bare in-container compiles need INCLUDE assembled from
+  the MSVC root + Windows SDK (the images bake no VS env).
+- **sccache's nvcc launcher DEADLOCKED mid-ONNX (run 4): NEW
+  `Start-SccacheStallGuard` watchdog** in `Invoke-NinjaBuildWithRetry`
+  (WindowsSourceBuild.Common) — CUDA caching STAYS ON (owner requirement).
+  Symptom: sccache server + 9 clients all at 0 % CPU, zero backend
+  connections (dufs healthy), compile crawl/stall for 40 min; killing the
+  server alone is NOT enough (clients block forever on the dead pipe). The
+  guard samples the compiler fleet every 60 s from a background job; three
+  consecutive ~zero-CPU samples with sccache alive → kill ALL sccache
+  processes → in-flight compiles fail fast → the retry ladder resumes with
+  cache hits for everything already compiled. Guard is inert when sccache is
+  not on PATH (unit tests unaffected). Emergency escape:
+  `SCCACHE_NO_CUDA_LAUNCHER=1` (honored by `Invoke-CMakeConfigure`) drops
+  only the CUDA launcher, C/CXX caching stays.
+  **Run-6 hardening:** the deadlock recurs (~40-80 min apart) and a guard
+  kill is NOT OOM-shaped, so the single `-j<RetryJobs>` retry lost the run
+  (in-flight compiles die with `os error 10054`, and the guard's console
+  verdict sat beyond the 2 MiB step-log clip). The guard now appends every
+  kill to a marker file IMMEDIATELY, and `Invoke-NinjaBuildWithRetry` gives
+  marker-confirmed guard-kill failures up to 3 FULL-`-j` retries (compiled
+  objects are L0 hits) before the incremental attempt. 2 new tests pin the
+  ladder (429 total). Also learned: `C:\sccache` (the L0 tier) is a
+  persistent BuildKit cache mount (`id=sccache-winamd64`) — L0 hits make no
+  WebDAV traffic, so a quiet L2 store during a mostly-cached vertex is
+  normal, not a defect (the multilevel `disk,webdav` write-through itself
+  was probe-verified against the live endpoint).
 - **NEW `patches/onnxruntime/005-xqa-host-stub-sccache.patch`** — ORT 1.28.0's
   XQA (paged-attention) kernels are the only ORT sources with host/device-
   divergent include guards (host pass keys on the cmake define
