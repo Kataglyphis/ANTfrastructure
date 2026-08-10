@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-10 (late night) - run 11 falsified L0 poisoning: the sccache nvcc path SILENTLY MISCOMPILES → CUDA launcher off, final for this pin
+
+- Run 11 (fresh `sccache-winamd64-2` mount) failed the providers_cuda link
+  **byte-identically** to run 10 (`QkvToContext<*, __nv_fp8_e4m3>`,
+  `BiasSoftmaxImpl<double>` undefined) — cache poisoning is falsified. The
+  consistent explanation across all eleven runs: **run 5 (bare nvcc) is the
+  only run that ever linked green**; runs 6/7 (wrapped) died before the
+  link; 10/11 (wrapped) reached it first and lack the same arch-guarded
+  instantiations. The pinned sccache's nvcc decomposition drops
+  device-conditional code — silent wrong code, disqualifying regardless of
+  hit rate. (It also explains the `Severity::k0` phantom: run 5 compiled
+  triton_kernel.cu green with the WRONG 004 variant, bare — the macro
+  collision only ever manifested through sccache preprocessing.)
+- `SCCACHE_NO_CUDA_LAUNCHER=1` is back in build-onnx — now as the FINAL
+  state for this pin, with the three-canary re-enable bar (verify probe +
+  fused_moe compile + full LINK canary) encoded at the call site, in the
+  AGENTS failure row (rewritten from the falsified poisoning attribution),
+  and in the upstream issue draft (now carrying both failure classes).
+  Patch 006 stays: inert while unwrapped, load-bearing on any future retry.
+- C/CXX caching remains on and proven; run 12 relaunched in the run-5
+  configuration plus all of today's fixes (mlas patch, GenAI 0.15.2 ahead).
+
 ## 2026-08-10 (night) - backlog batch W1 round 2: #2 + #26 closed
 
 - **#2 closed with a scope correction**: the "10+ single-candidate files"
