@@ -652,6 +652,11 @@ def main() -> int:
         return 2
 
     updates: dict[str, str] = {}
+    # Lookup failures must not abort the sweep (a single flaky registry would
+    # hide every other key's status) — but they must not vanish into a rc-0
+    # report either: a cron/CI caller previously read "success" while half the
+    # keys said "lookup failed". Count them; nonzero exit at the end.
+    lookup_failures = 0
     print(f"{'KEY':32} {'CURRENT':22} {'LATEST':22} NOTE")
     print("-" * 100)
 
@@ -663,6 +668,7 @@ def main() -> int:
             latest, extras = spec(cur)
         except Exception as e:  # noqa: BLE001 — report and move on, never abort the sweep
             print(f"{key:32} {cur:22} {'?':22} lookup failed: {e}")
+            lookup_failures += 1
             continue
         if latest == cur:
             print(f"{key:32} {cur:22} {latest:22} up to date")
@@ -691,6 +697,7 @@ def main() -> int:
             latest, extras = spec(cur)
         except Exception as e:  # noqa: BLE001
             print(f"{key:32} {cur:22} {'?':22} lookup failed: {e}")
+            lookup_failures += 1
             continue
         if not latest:
             print(f"{key:32} {cur:22} {'?':22} lookup returned nothing")
@@ -738,6 +745,13 @@ def main() -> int:
     if args.write:
         if not updates:
             print("\nNothing to write — safe set already at latest.")
+            if lookup_failures:
+                print(
+                    f"WARNING: {lookup_failures} lookup(s) failed — 'already at latest' "
+                    "is unverified for those keys.",
+                    file=sys.stderr,
+                )
+                return 1
             return 0
         changed = write_env_values(updates)
         print(f"\nWrote {len(changed)} key(s) to {VERSIONS_ENV.relative_to(REPO_ROOT)}.")
@@ -745,6 +759,13 @@ def main() -> int:
         print("  python docs/scripts/sync_versions.py --write")
         print("  bash linux/scripts/01-core/verify-arg-consistency.sh")
         print("  bash linux/scripts/preflight.sh")
+    if lookup_failures:
+        print(
+            f"\nWARNING: {lookup_failures} lookup(s) failed — the report above is "
+            "INCOMPLETE for those keys. Exiting nonzero so scripted callers notice.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

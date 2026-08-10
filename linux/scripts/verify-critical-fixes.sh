@@ -358,10 +358,39 @@ fix9_riscv_isaspec_and_noise_2026_07() {
   fi
 }
 
+fix10_libstdcxx_nostdinc_2026_08() {
+  # The PR100017 Canadian-cross fix (docs/upstream-libstdcxx-c++23-nostdinc++.md,
+  # commit 052122f): build-gcc.sh patches -nostdinc++ into libstdc++'s c++23
+  # module Makefile.in, condition-gated (self-retires when upstream adds the
+  # flag) and loud on layout change. Its RUNTIME guards are exemplary — but no
+  # STATIC gate saw the block (toolchain sweep TG6, 2026-08-10): a refactor
+  # dropping it would only surface as the fenv/empty-std-module failure HOURS
+  # into a Canadian cross build. Pin the sed, its idempotence gate, and the
+  # loud-failure die here.
+  local bg="${REPO_ROOT}/linux/scripts/02-toolchain/build-gcc.sh"
+  if grep -q "src/c++23/Makefile.in" "${bg}" \
+     && grep -q -- "-std=gnu++23 -nostdinc++" "${bg}"; then
+    pass "build-gcc.sh carries the PR100017 -nostdinc++ c++23 module sed (fix10)"
+  else
+    fail "build-gcc.sh LOST the PR100017 -nostdinc++ patch block — Canadian-cross std module would silently ship EMPTY (fix10 regression)"
+  fi
+  if grep -q "AM_CXXFLAGS layout changed" "${bg}"; then
+    pass "the -nostdinc++ sed still dies loud on GCC layout change (fix10)"
+  else
+    fail "the -nostdinc++ sed lost its loud-failure die (fix10 regression)"
+  fi
+  # The idempotence gate is what makes the patch self-retiring on a fixed GCC.
+  if grep -qE '!\s*grep -q -- .-nostdinc\+\+' "${bg}"; then
+    pass "the -nostdinc++ sed is idempotence-gated / self-retiring (fix10)"
+  else
+    fail "the -nostdinc++ sed lost its idempotence gate (fix10 regression)"
+  fi
+}
+
 echo "=== Critical Fixes Regression Tests ==="
 echo ""
 
-FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07 fix9_riscv_isaspec_and_noise_2026_07)
+FIX_FUNCS=(fix1_python_pc fix2_abseil_span fix3_libdynload_dangling fix4_cc_dumpmachine fix5_gst_geometry_include fix6_native_gcc_system_paths fix7_hardening_2026_07 fix8_push_retry_2026_07 fix9_riscv_isaspec_and_noise_2026_07 fix10_libstdcxx_nostdinc_2026_08)
 for _fix_fn in "${FIX_FUNCS[@]}"; do
   "${_fix_fn}"
   echo ""

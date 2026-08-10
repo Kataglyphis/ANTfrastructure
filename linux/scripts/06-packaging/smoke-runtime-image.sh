@@ -30,6 +30,23 @@ inspect_image_config() {
   "${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "$1" 2>/dev/null || true
 }
 
+# Run a command inside the image under test (backlog 2026-08-10 D1: this exact
+# invocation preamble appeared verbatim at 18 call sites). Uses the caller's
+# ${image_tag}/${target_arch} via dynamic scope, same convention as
+# inspect_image_config above. Leading `-e KEY=VAL` pairs are forwarded as
+# nerdctl-run env options (extend here — one place — if a future check needs
+# more run options, timeouts, mounts, …); everything else is the in-image
+# command. Exit code is nerdctl's, so `if _rt_run …` keeps working.
+_rt_run() {
+  local -a _opts=()
+  while [ "${1:-}" = "-e" ]; do
+    _opts+=(-e "$2")
+    shift 2
+  done
+  "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" \
+    ${_opts[@]+"${_opts[@]}"} "${image_tag}" "$@"
+}
+
 main() {
   local image_tag="${1:-}"
   local target_arch="${2:-}"
@@ -62,7 +79,7 @@ main() {
 
   # 2. Run a trivial command
   echo "--- Trivial command ---"
-  if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" /bin/true 2>/dev/null; then
+  if _rt_run /bin/true 2>/dev/null; then
     pass "Container can run /bin/true"
   else
     fail "Container cannot run /bin/true"
@@ -93,7 +110,7 @@ main() {
 
   # 5. Check kataglyphis user exists
   echo "--- kataglyphis user ---"
-  if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" id -u kataglyphis >/dev/null 2>&1; then
+  if _rt_run id -u kataglyphis >/dev/null 2>&1; then
     pass "kataglyphis user exists"
   else
     fail "kataglyphis user not found"
@@ -145,7 +162,7 @@ main() {
   if [ "${RUNTIME_FUNCTIONAL_SMOKE:-1}" = "1" ]; then
     echo "--- Functional: torch-less sentinel (A3) ---"
     local torch_expected=1
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          test -f /opt/venv/.torch-missing >/dev/null 2>&1; then
       torch_expected=0
       if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
@@ -169,7 +186,7 @@ main() {
     # onnx/numpy import) since the suite treats torch as required.
     if [ "${torch_expected}" = "1" ]; then
       echo "--- Functional: app wheel smoke (python -m orchestr_ant_ion.smoke) ---"
-      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+      if _rt_run \
            /opt/venv/bin/python -m orchestr_ant_ion.smoke; then
         pass "app wheel smoke passed on-target (${target_arch})"
       else
@@ -177,7 +194,7 @@ main() {
       fi
     else
       echo "--- Functional: ML imports (torch-less image) ---"
-      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+      if _rt_run \
            /opt/venv/bin/python -c "import onnxruntime, numpy; print('onnxruntime', onnxruntime.__version__, '| numpy', numpy.__version__)"; then
         pass "onnxruntime + numpy import OK (torch-less, ${target_arch})"
       else
@@ -198,7 +215,7 @@ main() {
     # skip it (no versions to assert).
     if [ "${torch_expected}" = "1" ]; then
       echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
-      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+      if _rt_run \
            bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh'; then
         pass "ML-stack versions match pins (${target_arch})"
       else
@@ -217,7 +234,7 @@ main() {
     # WARN-only when absent, mirroring the app's optional-when-missing policy for
     # the riscv64 lane where only the runtime wheel ships.
     echo "--- Functional: IREE native compile + run (iree-compile/iree-run-module) ---"
-    if iree_out="$("${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if iree_out="$(_rt_run \
          bash -lc 'set -o pipefail
 ic="$(command -v iree-compile || echo /opt/venv/bin/iree-compile)"
 ir="$(command -v iree-run-module || echo /opt/venv/bin/iree-run-module)"
@@ -264,7 +281,7 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
     # exit (0), so a broken binary -- e.g. `error while loading shared libraries:
     # libopencore-amrwb.so.0` (observed 2026-07-11) -- silently PASSES. With
     # pipefail the missing-.so exit code propagates and the smoke fails as it must.
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
       pass "ffmpeg executes (${target_arch})"
     else
@@ -281,7 +298,7 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
     # etc. add their own package lib dirs at import time, which a bare `ldd` cannot
     # replicate (false positives); the import checks above are their real gate.
     echo "--- Functional: native /opt .so dependency closure ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          bash -lc 'set -uo pipefail
 n=0
 while IFS= read -r f; do
@@ -310,7 +327,7 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     # vkCreateWaylandSurfaceKHR) that ldd cannot see (the dep .so is present, just
     # missing a symbol). Still WARN-only: a broken OPTIONAL plugin degrades
     # gracefully; the functional pipeline check below is the fail-loud CORE gate.
-    "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    _rt_run \
       bash -lc '
 scan="$(gst-inspect-1.0 2>&1 >/dev/null || true)"
 printf "%s\n" "${scan}" | grep "Failed to load plugin" | sed "s/^.*Failed/  degraded: Failed/" | sort -u | head -40
@@ -323,7 +340,7 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # embedded Add model and the same imencode/imdecode round-trip on-target.)
 
     echo "--- Functional: GStreamer core pipeline ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          bash -lc 'gl="$(command -v gst-launch-1.0 || echo /opt/gstreamer/bin/gst-launch-1.0)"; timeout 40 "$gl" -q videotestsrc num-buffers=3 ! videoconvert ! fakesink'; then
       pass "GStreamer core pipeline runs (${target_arch})"
     else
@@ -336,7 +353,7 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # with only a WARN-only load-failure count. gst-inspect-1.0 <plugin>
     # exits non-zero if the plugin is missing OR fails to dlopen.
     echo "--- Functional: GStreamer mandatory plugins (libav opencv onnx tflite) ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"; missing=""; for p in libav opencv onnx tflite; do timeout 30 "$gi" "$p" >/dev/null 2>&1 || missing="$missing $p"; done; [ -z "$missing" ] || { echo "MISSING:$missing"; exit 1; }'; then
       pass "GStreamer mandatory plugin set loads on ${target_arch}"
     else
@@ -348,7 +365,7 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # The actual deliverable: the Orchestr-ANT-ion app must import in the shipped
     # venv. A broken/incomplete app install (missing runtime dep) shipped silently
     # before -- import it through the venv python to catch that.
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          /opt/venv/bin/python -c "import orchestr_ant_ion" >/dev/null 2>&1; then
       pass "application module imports (${target_arch})"
     else
@@ -362,7 +379,7 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # the container perpetually `unhealthy` while a string-only check stays green.
     # This runs the real command so that fail-open class can actually fail.
     echo "--- Functional: HEALTHCHECK command executes ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          /opt/venv/bin/python3 -c 'import onnxruntime' >/dev/null 2>&1; then
       pass "HEALTHCHECK command runs (import onnxruntime via /opt/venv/bin/python3) (${target_arch})"
     else
@@ -376,7 +393,7 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # absence must not gate the manifest, but a dead signalling entrypoint should be
     # visible every run.
     echo "--- Functional: WebRTC signalling-server binary (informational) ---"
-    if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    if _rt_run \
          bash -lc 's="$(command -v gst-webrtc-signalling-server || echo /opt/gstreamer/bin/gst-webrtc-signalling-server)"; [ -x "$s" ] && "$s" --help >/dev/null 2>&1'; then
       echo "  OK  gst-webrtc-signalling-server present + runnable (${target_arch})"
     else
@@ -397,7 +414,7 @@ echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || tr
     # vkEnumerateInstanceVersion works with ZERO ICDs and no GPU — a healthy
     # loader cannot legitimately fail it (smoke-depth R12). AttributeError
     # guard keeps a hypothetical 1.0 loader from false-failing.
-    _vk_out="$("${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+    _vk_out="$(_rt_run \
          /opt/venv/bin/python -c 'import ctypes
 l = ctypes.CDLL("libvulkan.so.1")
 try:
@@ -434,7 +451,7 @@ except AttributeError:
       # (riscv64 needs the runtime lib); -flto proves the LTO plugin loads. All six
       # validated to pass on arm64+riscv64 with the wrapper fix. Sources use only
       # double quotes / return-code checks so they stay clean inside bash -lc.
-      if "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}" \
+      if _rt_run \
            bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
 cxx="$(command -v g++ || command -v c++ || true)"
@@ -496,7 +513,7 @@ exit $rc'; then
       fi
       if [ -z "${_llvm_release}" ]; then
         fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"
-      elif "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" -e "WANT_LLVM=${_llvm_release}" "${image_tag}" \
+      elif _rt_run -e "WANT_LLVM=${_llvm_release}" \
              bash -lc 'set -uo pipefail
 rc=0
 for tool in clang clang++; do

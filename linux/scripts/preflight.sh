@@ -23,6 +23,7 @@ cd "${REPO_ROOT}" || exit 1
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\033[0m'
 FAILED=()
+RAN_CHECKS=0
 
 # Interpreter for the Python-based checks. Explicit override always wins:
 #   PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
@@ -58,7 +59,7 @@ export PYTHONUTF8=1
 
 KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths \
-             dockerfile-lint workflow-lint android-parity script-tests)
+             dockerfile-lint workflow-lint android-parity script-tests stage-graph)
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
@@ -90,6 +91,7 @@ check_selected() {  # check_selected slug -> 0 if this check should run
 run_check() {
   local slug="$1" name="$2"; shift 2
   check_selected "${slug}" || return 0
+  RAN_CHECKS=$((RAN_CHECKS + 1))
   printf "\n${BOLD}== %s ==${NC}\n" "${name}"
   if "$@"; then
     printf "${GREEN}✓ %s${NC}\n" "${name}"
@@ -178,6 +180,14 @@ run_check stage-graph "cross stage graph validation" bash -c '
   IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
 
 printf "\n${BOLD}=== preflight summary ===${NC}\n"
+# Zero-checks-ran guard: a PREFLIGHT_ONLY/PREFLIGHT_SKIP combination that
+# selects NOTHING would otherwise print "All preflight checks passed." with
+# zero checks executed — a silent green no-op (the exact drop-out class the
+# KNOWN_SLUGS validator guards against, but for the intersection case).
+if [ "${RAN_CHECKS:-0}" -eq 0 ]; then
+  printf "${RED}No preflight checks ran${NC} (PREFLIGHT_ONLY/PREFLIGHT_SKIP selected nothing) — refusing to report green.\n"
+  exit 2
+fi
 if [ "${#FAILED[@]}" -eq 0 ]; then
   printf "${GREEN}All preflight checks passed.${NC} Safe to start the cross rebuild.\n"
   exit 0

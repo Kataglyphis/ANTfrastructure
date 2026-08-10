@@ -38,7 +38,12 @@ while IFS= read -r -d '' f; do
     *.sh) STAGED_SH+=("$f") ;;
     *.*)  ;;
     *)
-      case "$(head -c 128 "$f" 2>/dev/null | head -n 1)" in
+      # Read the STAGED blob, not the worktree file: with partial staging
+      # (git add -p) or a worktree edit after staging, the two differ — and the
+      # gate's contract is "what is being committed". `git show :path` is the
+      # index content; fall back to the worktree only if the index read fails
+      # (should not happen for an ACMR-listed path).
+      case "$( { git show ":$f" 2>/dev/null || cat "$f" 2>/dev/null; } | head -c 128 | head -n 1)" in
         '#!'*ash|'#!'*ash\ *|'#!/bin/sh'|'#!/bin/sh '*|'#!'*env\ sh) STAGED_SH+=("$f") ;;
       esac
       ;;
