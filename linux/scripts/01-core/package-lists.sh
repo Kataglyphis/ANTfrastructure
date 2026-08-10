@@ -74,6 +74,7 @@ base_image_os_packages() {
   append_unique_packages "${array_name}" \
     nano tmux vim \
     sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
+    libsqlite3-dev \
     build-essential ninja-build make sccache ccache \
     pkg-config lsb-release software-properties-common \
     meson python3 python3-venv python3-pip \

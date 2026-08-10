@@ -165,7 +165,7 @@ _python_cross_stage_target_dev_pkgs() {
     "zlib1g-dev:${target_arch}" "libbz2-dev:${target_arch}" \
     "liblzma-dev:${target_arch}" "libzstd-dev:${target_arch}" \
     "libffi-dev:${target_arch}" "libssl-dev:${target_arch}" \
-    "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
+    "libsqlite3-dev:${target_arch}" "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
     warn "Some target dev packages failed to install; extension modules may be missing"
 }
 

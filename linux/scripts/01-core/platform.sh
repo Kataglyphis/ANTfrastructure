@@ -194,7 +194,12 @@ arch_list_csv_normalize() {
   IFS="${old_ifs}"
 
   [ "${#normalized_arches[@]}" -gt 0 ] || return 1
-  printf '%s' "${normalized_arches[*]}" | tr ' ' ','
+  local _arch _csv="" _sep=""
+  for _arch in "${normalized_arches[@]}"; do
+    _csv+="${_sep}${_arch}"
+    _sep=","
+  done
+  printf '%s' "${_csv}"
 }
 
 # Canonical target-arch fallback chain: an explicit argument wins, then
