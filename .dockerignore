@@ -2,6 +2,12 @@
 .github
 output.log
 *.log
+# logs/ held 2.3 GB across 249 files by 2026-08-10 and GROWS every run; the
+# bare `*.log` above matches only root-level files (the same semantics trap
+# documented for *.zip below), so the whole tree was uploaded with EVERY stage
+# build — measured live: "transferring context: 2.38GB 19.3s" (needed content
+# is ~86 MB). Never COPY'd by any Dockerfile → zero cache impact.
+logs/
 .codacy
 **/archive/
 README.md

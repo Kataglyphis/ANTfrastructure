@@ -215,15 +215,39 @@ def read_holds() -> set[str]:
     """
     holds: set[str] = set()
     block_held = False
-    for line in VERSIONS_ENV.read_text(encoding="utf-8").splitlines():
+    # Structural validation (backlog F4): a hold only attaches via a CONTIGUOUS
+    # comment block, so an innocently inserted blank line between the marker
+    # and its KEY= silently DISARMS the hold — for protoc that is precisely the
+    # 2026-08-03 gencode-#error incident replayed. Track every marker line and
+    # hard-fail if any never attached to a key.
+    pending_marker_lines: list[int] = []
+    orphaned: list[int] = []
+    for lineno, line in enumerate(VERSIONS_ENV.read_text(encoding="utf-8").splitlines(), 1):
         if line.lstrip().startswith("#"):
             if "bump:hold" in line:
                 block_held = True
+                pending_marker_lines.append(lineno)
             continue
         m = re.match(r"^([A-Z][A-Z0-9_]*)=", line)
         if m and block_held:
             holds.add(m.group(1))
+            pending_marker_lines.clear()
+        elif pending_marker_lines:
+            # Non-comment, non-key line (blank line, stray text) ended the
+            # block without attaching — the hold is disarmed.
+            orphaned.extend(pending_marker_lines)
+            pending_marker_lines.clear()
         block_held = False
+    orphaned.extend(pending_marker_lines)  # marker at EOF with no key
+    if orphaned:
+        for ln in orphaned:
+            print(
+                f"ERROR: versions.env:{ln}: 'bump:hold' marker is NOT attached "
+                "to any KEY= line (a blank/stray line broke the comment block) "
+                "— the hold is silently DISARMED. Re-join the comment block.",
+                file=sys.stderr,
+            )
+        raise SystemExit(2)
     return holds
 
 
@@ -626,6 +650,45 @@ MANUAL = [
 ]
 
 
+def audit_sha_pairs() -> int:
+    """Backlog F6 prep: no *_SHA256/*_SHA512 key may sit outside the refresh net.
+
+    Coverage heuristic (documented, deliberately simple): a pin key counts as
+    covered when its NAME appears in this script's source — every bump spec
+    hardcodes the sha keys it refreshes in its extras dict. Keys under
+    bump:hold are frozen by definition; the allowlist carries the documented
+    exceptions. Anything else = a version bump would silently freeze its SHA,
+    surfacing only as a download-verify failure mid-chain.
+    """
+    env = read_env()
+    holds = read_holds()
+    allow = {
+        # EULA-gated manual download — deliberately empty, documented in
+        # versions.env next to the key.
+        "TENSORRT_ZIP_SHA256",
+    }
+    src = Path(__file__).read_text(encoding="utf-8")
+    stray: list[str] = []
+    for key in sorted(env):
+        if not (key.endswith("_SHA256") or key.endswith("_SHA512")):
+            continue
+        if key in allow or key in holds:
+            continue
+        if key in src:
+            continue  # a bump spec refreshes it
+        stray.append(key)
+    if stray:
+        print("SHA pins with NO refresh spec, NO bump:hold, NO allowlist entry")
+        print("(their version key can bump while the SHA silently freezes):")
+        for key in stray:
+            print(f"  {key}")
+        print("\nFix: add the pair to the owning bump spec's extras, hold it, or")
+        print("allowlist it here WITH a justification.")
+        return 1
+    print("sha-pair audit: every *_SHA256/*_SHA512 key is refresh-covered, held, or allowlisted.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report only (default)")
@@ -637,7 +700,16 @@ def main() -> int:
              "entanglement — expect to fix breakage per library. Deliberate use only.",
     )
     ap.add_argument("--only", default="", help="comma-separated safe keys to restrict --write to")
+    ap.add_argument(
+        "--audit-sha-pairs", action="store_true",
+        help="Audit that every *_SHA256/*_SHA512 key in versions.env is either "
+             "refreshed by a bump spec here, bump:hold-annotated, or explicitly "
+             "allowlisted. Catches the scattered-pair hazard: a NEW version+SHA "
+             "pair added OUTSIDE this script's refresh registry gets its version "
+             "bumped while the far-away SHA silently freezes (backlog F6).")
     args = ap.parse_args()
+    if args.audit_sha_pairs:
+        return audit_sha_pairs()
     if args.write_all:
         args.write = True
     global WRITE_MODE
@@ -716,6 +788,15 @@ def main() -> int:
             continue
         marker = "BUMP (--write-all)" if args.write_all else "NEWER AVAILABLE"
         print(f"{key:32} {cur:22} {latest:22} {marker}")
+        if key == "LITERT_LM_VERSION":
+            # F4 soft rider: PROTOC_VERSION is a slaved, bump:hold'd pin — a
+            # LiteRT-LM bump without re-deriving it replays the 2026-08-03
+            # gencode-#error incident. Nudge with the NEW tag's derivation.
+            _derived = derive_protoc_from_litert_lm(latest)
+            _hint = "PROTOC_VERSION is SLAVED to this pin (bump:hold) — re-derive when bumping"
+            if _derived:
+                _hint += f"; the new tag's protobuf.cmake wants protoc {_derived}"
+            print(f"  NOTE: {_hint}")
         if args.write_all:
             updates[key] = latest
             updates.update(extras)

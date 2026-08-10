@@ -199,6 +199,20 @@ run_check stage-graph "cross stage graph validation" bash -c '
   source linux/scripts/01-core/stage-defs.sh
   IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
 
+# Informational only (backlog F7 residual): a locally-committed-but-unpushed
+# DocumANTation submodule pointer breaks build-docs.yml's checkout LOUDLY but
+# only post-push. Compare the recorded pointer against the remote HEAD —
+# network-dependent, so this WARNs and never fails; silent offline.
+_sub_dir="external/Kataglyphis-DocumANTation"
+if [ -e "${_sub_dir}/.git" ]; then
+  _sub_local="$(git -C "${_sub_dir}" rev-parse HEAD 2>/dev/null || true)"
+  _sub_remote="$(timeout 10 git -C "${_sub_dir}" ls-remote origin HEAD 2>/dev/null | awk '{print $1}' || true)"
+  if [ -n "${_sub_local}" ] && [ -n "${_sub_remote}" ] && [ "${_sub_local}" != "${_sub_remote}" ]; then
+    printf "${YELLOW}NOTE:${NC} DocumANTation submodule pointer %.9s != remote HEAD %.9s — unpushed local commit or upstream moved; verify before a docs build.\n" \
+      "${_sub_local}" "${_sub_remote}"
+  fi
+fi
+
 printf "\n${BOLD}=== preflight summary ===${NC}\n"
 # Zero-checks-ran guard: a PREFLIGHT_ONLY/PREFLIGHT_SKIP combination that
 # selects NOTHING would otherwise print "All preflight checks passed." with

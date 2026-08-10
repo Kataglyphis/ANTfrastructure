@@ -668,6 +668,53 @@ def target_files() -> list[Path]:
     return [REPO_ROOT / "README.md"]
 
 
+# Backlog F1 (2026-08-10): the three "manual" docs carry version literals as
+# backtick path/prose text where inline markers cannot live (code spans). This
+# scan covers the two highest-fanout patterns; historical narrative lines are
+# allowlisted BY CONTENT (not line number) so war stories survive refactors.
+DOC_LITERAL_FILES = (
+    "docs/linux-cross-builds.md",
+    "docs/linux-build-basics.md",
+    "AGENTS.md",
+)
+DOC_LITERAL_ALLOWLIST = (
+    # the --no-push digest-trail war story (an OLD gcc prefix is the point)
+    re.compile(r"inherited from"),
+    # the PR100017 / upstream-fix narrative referencing the era it happened
+    re.compile(r"war story|historisch|previously|the old ", re.IGNORECASE),
+    # deliberate source-built-vs-DISTRO contrast ("... not Ubuntu `clang X`"):
+    # the Ubuntu version is descriptive, not a pin. Line-level allowlist —
+    # the pinned 22.1.x mentions on other lines stay covered.
+    re.compile(r"not Ubuntu"),
+)
+
+
+def check_doc_literals(versions: dict[str, str]) -> int:
+    gcc = versions.get("GCC_VERSION", "")
+    llvm = versions.get("LLVM_RELEASE", "")
+    gcc_rx = re.compile(r"/opt/gcc-(\d+\.\d+\.\d+)")
+    llvm_rx = re.compile(r"[Cc]lang[- ]?(2\d\.\d+\.\d+)")
+    bad = 0
+    for rel in DOC_LITERAL_FILES:
+        path = REPO_ROOT / rel
+        if not path.exists():
+            continue
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(rx.search(line) for rx in DOC_LITERAL_ALLOWLIST):
+                continue
+            for m in gcc_rx.finditer(line):
+                if gcc and m.group(1) != gcc:
+                    print(f"{rel}:{lineno}: stale gcc literal /opt/gcc-{m.group(1)} (pin: {gcc})")
+                    bad = 1
+            for m in llvm_rx.finditer(line):
+                if llvm and m.group(1) != llvm:
+                    print(f"{rel}:{lineno}: stale clang literal {m.group(1)} (pin: {llvm})")
+                    bad = 1
+    if not bad:
+        print("Doc version literals match versions.env pins.")
+    return bad
+
+
 def check_snapshot(replacement: str) -> int:
     stale_files = [
         str(path.relative_to(REPO_ROOT))
@@ -722,6 +769,7 @@ def main() -> int:
         result |= check_deps_table(versions)
         result |= check_dockerfile_args(versions)
         result |= check_script_defaults(versions)
+        result |= check_doc_literals(versions)
         # Also check website license files.
         import subprocess
         lic_script = REPO_ROOT / "docs/scripts/generate-website-licenses.py"

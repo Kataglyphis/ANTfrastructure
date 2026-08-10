@@ -78,62 +78,14 @@ def parse_versions_env() -> dict[str, str]:
     return result
 
 
-def resolve_version(entry: dict, versions: dict[str, str]) -> str:
-    var = entry.get("var")
-    if var:
-        if var not in versions:
-            # Loud failure: a renamed/removed versions.env key used to degrade
-            # silently to version_fixed or an em-dash on the PUBLISHED pages.
-            raise KeyError(
-                f"deps.json entry {entry.get('name')!r}: var {var!r} "
-                f"not found in versions.env"
-            )
-        return versions[var]
-    fixed = entry.get("version_fixed")
-    if fixed:
-        return fixed
-    return "—"
-
-
 def render_table(versions: dict[str, str]) -> str:
-    metadata = json.loads(DEPS_JSON.read_text(encoding="utf-8"))
-    lines: list[str] = []
+    # Shared renderer (backlog F2, completed 2026-08-10): this script's own
+    # copy — which carried the loud-KeyError fix that sync_versions' copy
+    # LACKED — was promoted into deps_table.py; both scripts now consume the
+    # single source of truth, so the missing-var behavior cannot diverge again.
+    from deps_table import render_deps_table_lines
 
-    for section in metadata["sections"]:
-        title = section["title"]
-        tag = section.get("tag", "")
-        heading = f"## {title}"
-        if tag:
-            heading += f" (`{tag}`)"
-        lines.append("")
-        lines.append(heading)
-        lines.append("")
-
-        for subsection in section["subsections"]:
-            subtitle = subsection["title"]
-            df = subsection.get("dockerfile", "")
-            sub_heading = f"### {subtitle}"
-            if df:
-                sub_heading += f" (`{df}`)"
-            lines.append(sub_heading)
-            lines.append("")
-            lines.append("| Software | Version | Repository | License |")
-            lines.append("| --- | --- | --- | --- |")
-
-            for entry in subsection["entries"]:
-                name = entry["name"]
-                ver = resolve_version(entry, versions)
-                url = entry.get("url", "")
-                lic = entry.get("license", "")
-                if url:
-                    display = url.replace("https://", "").replace("http://", "").rstrip("/")
-                    repo = f"[{display}]({url})"
-                else:
-                    repo = "—"
-                lines.append(f"| {name} | {ver} | {repo} | {lic} |")
-            lines.append("")
-
-    return "\n".join(lines)
+    return "\n".join(render_deps_table_lines(versions))
 
 
 def generate_content(versions: dict[str, str]) -> tuple[str, str]:
