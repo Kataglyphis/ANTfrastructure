@@ -1868,6 +1868,29 @@ cache-tier map** (AGENTS.md / windows-refactor notes): edits to base/toolchain
 closure files force a full chain rebuild — batch those, and never remove the
 deliberate media-merge version-ARG mirrors.
 
+### P0 — architecture-level (highest leverage; from the same review's deep pass)
+
+0a. **Host-drift detection as a mandatory driver preflight.** Four of the
+    2026-08-10 blockers were pure host drift (dufs ONLOGON task dead after
+    reboot, buildkitd service env wiped by the Stevedore repair, Defender
+    exclusion uncertainty, dGPU state): the code is reproducible, the host
+    is not. `verify-host-setup.ps1` already exists — carve out its CHEAP
+    subset (service-env registry read, dufs HEAD request, RDNA4 state,
+    shim hash) and run it at the top of BOTH drivers. Seconds at launch
+    instead of minute-80 surprises.
+0b. **Version bumps must ride the Windows lane.** The 2026-08-03 bump
+    (ONNX 1.28, OpenCV 5.0.0) carried FIVE latent Windows breaks because
+    `[build-win]` is opt-in and nobody built the bump. Rule: versions.env
+    bump commits require `[build-win]` (or a weekly scheduled canary), and
+    `Test-PatchesApplyClean.ps1` runs as a pre-commit gate whenever
+    versions.env changes — that alone would have caught the OpenCV patch
+    drift before any container built.
+0c. **Lane parity is unowned.** The RDNA4 gate initially landed only in the
+    BK driver; the classic lane got it a day later via review. Either demote
+    build.ps1 to bootstrap-only, or add a parity test (BuildKit.TwinParity
+    is the in-repo pattern) asserting both drivers wire the same preflight
+    set.
+
 ### P1 — correctness-adjacent (drift that already bites or will)
 
 1. **RDNA4 hazard set exists in THREE divergent copies**: the
@@ -1944,19 +1967,6 @@ deliberate media-merge version-ARG mirrors.
     rename toward `sync-`/`ensure-` (or split), matching the repo's
     fail-loudly/reporting conventions.
 
-### Already fixed during the review session (2026-08-10, for the record)
-
-The sweep also surfaced correctness bugs in same-day code; these were fixed
-immediately rather than backlogged: probe zero-lane false-green (exit 0 with
-no lane run), `repair-windows-componentstore.ps1` still using the retired
-`type=local` probe shape, the classic lane (`build.ps1`) missing the RDNA4
-gate, `Get-SccacheStatsText` not re-exported (would have thrown AFTER the
-multi-hour ONNX build), `Dockerfile.heavy`'s trailing-backslash COPY dest
-(Dockerfile escape char), the RDNA4 A/B swallowing lane logs and re-enable
-failures, the `(TM)`-rename hole in the hazard regex, the opencv/001 patch
-EOL flip, `SCCACHE_ERROR_LOG` parity for the merge builder, and a stale
-module comment describing the abandoned launcher-opt-out design.
-
 ### P1 addenda from the full sweep
 
 16. **Stall-guard trigger is a CPU proxy — replace with a timed sccache
@@ -2008,3 +2018,16 @@ module comment describing the abandoned launcher-opt-out design.
     `$offHeavy` are only-safe-by-control-flow; initialize them up front so a
     future try/catch edit cannot turn the verdict line into a StrictMode
     error on the exact host being diagnosed.
+
+### Already fixed during the review session (2026-08-10, for the record)
+
+The sweep also surfaced correctness bugs in same-day code; these were fixed
+immediately rather than backlogged: probe zero-lane false-green (exit 0 with
+no lane run), `repair-windows-componentstore.ps1` still using the retired
+`type=local` probe shape, the classic lane (`build.ps1`) missing the RDNA4
+gate, `Get-SccacheStatsText` not re-exported (would have thrown AFTER the
+multi-hour ONNX build), `Dockerfile.heavy`'s trailing-backslash COPY dest
+(Dockerfile escape char), the RDNA4 A/B swallowing lane logs and re-enable
+failures, the `(TM)`-rename hole in the hazard regex, the opencv/001 patch
+EOL flip, `SCCACHE_ERROR_LOG` parity for the merge builder, and a stale
+module comment describing the abandoned launcher-opt-out design.
