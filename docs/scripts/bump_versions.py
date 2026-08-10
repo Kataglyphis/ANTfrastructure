@@ -745,6 +745,13 @@ def main() -> int:
     if args.write:
         if not updates:
             print("\nNothing to write — safe set already at latest.")
+            if lookup_failures:
+                print(
+                    f"WARNING: {lookup_failures} lookup(s) failed — 'already at latest' "
+                    "is unverified for those keys.",
+                    file=sys.stderr,
+                )
+                return 1
             return 0
         changed = write_env_values(updates)
         print(f"\nWrote {len(changed)} key(s) to {VERSIONS_ENV.relative_to(REPO_ROOT)}.")
