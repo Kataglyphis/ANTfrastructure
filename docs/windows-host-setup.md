@@ -476,7 +476,11 @@ host state):
 ### C2. Disable buildkitd's per-step log limit (REQUIRED for compile stages)
 
 Without this, heavy steps deadlock silently at the 2 MiB clip
-([Windows Build Image](windows-builds.md) § Getting it going, step 4):
+([Windows Build Image](windows-builds.md) § Getting it going, step 4).
+Since 2026-08-10 this is ENFORCED: `build-buildkit.ps1`'s
+`Assert-BuildkitdStepLogEnv` preflight refuses to launch while the value is
+missing (a Stevedore repair once wiped it silently); `-SkipStepLogGate` is
+the documented one-launch escape when no admin is at hand:
 
 ```pwsh
 Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd `
