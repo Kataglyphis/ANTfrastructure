@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-08-10 (night) - backlog batch W1 (host-only, zero cache impact, worked while run 11 compiled)
+
+- Backlog items closed/advanced with gates green (lint 137/0/0, tests
+  430/430): **#12** ArgQuoting manual case-loop → `-notcontains`; **#13**
+  fake-ninja double-guard folded; **#22** verify-cuda-cache no longer mints
+  a throwaway image per run (solve-only); **#25** A/B verdict variables
+  StrictMode-safe; **#2 partial** — the three 2026-08-10 diagnostics
+  (probe-build-copy, verify-cuda-cache, test-rdna4-layer-lock) resolve
+  buildctl/docker from the supported candidate list (`Program Files` +
+  `D:\Stevedore`) instead of a single hardcoded path (7 legacy files
+  remain); **#6 partial** — `toggle-rdna4-gpu.ps1 -GpuName` closes the
+  wrong-SKU dead end (gate names a remedy that can now act on RX 9060/
+  R9700 hosts). Media-closure items (#10/#11/#16/#17) deliberately deferred
+  until run 11 finishes — editing bind-mounted modules mid-chain would
+  redefine later vertices in flight.
+
+## 2026-08-10 (night) - run 10: link failure from POISONED sccache L0 → cache-mount id bumped
+
+- Run 10 compiled all ~1891 ONNX objects but died at the DLL link with
+  undefined template instantiations (`QkvToContext<*, __nv_fp8_e4m3>`,
+  `BiasSoftmaxImpl<double>`). Root-cause hypothesis with the best fit: the
+  persistent sccache L0 cache mount (`id=sccache-winamd64`) holds objects
+  from runs 6/7, whose sccache server was KILLED mid-write (guard kills /
+  manual unwedge) — truncated objects have been served as L0 hits ever
+  since, and the mount survives every retry, so the failure could never
+  self-heal. Fix: cache-mount id bumped to `sccache-winamd64-2` in BOTH
+  media Dockerfiles (fresh empty L0; the old one ages out via the
+  20GB/168h exec.cachemount GC tier). Non-admin, deterministic.
+- Follow-up encoded in the backlog (#16/#17 guard redesign): a guard kill
+  must be assumed to poison in-flight L0 writes — either verify the
+  multilevel fork's atomic-write behavior or purge/quarantine on kill.
+- Note: the next run also picks up the owner's GenAI v0.15.2 +
+  LiteRT-LM 0.15.0 bumps already present in the Dockerfiles — backlog item
+  0b (bumps must ride the Windows lane) is live, not theoretical.
+
 ## 2026-08-10 (review) - 8-angle code review of windows/: 10 same-day fixes + refactor backlog
 
 - Owner asked "is my chain clean code, what should I refactor" → systematic

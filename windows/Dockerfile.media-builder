@@ -264,7 +264,7 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # former `media-core-bk` ENV twin (and the sync_versions.py bookkeeping it
 # required) is gone; see media-core-env above.
 FROM media-core-env AS media-core-built-onnx
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -273,7 +273,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -283,7 +283,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -292,7 +292,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -301,7 +301,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
@@ -315,7 +315,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `

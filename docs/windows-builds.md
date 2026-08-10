@@ -1861,12 +1861,82 @@ The final image bakes the runtime orchestrator at
 
 ## Refactor Backlog (Windows container chain)
 
+> Cross-lane / Linux-side items live in [docs/refactoring-backlog.md](refactoring-backlog.md);
+> this section owns the WINDOWS chain exclusively (pointer there exists too).
+
 Owner-requested backlog from the 2026-08-10 systematic code review (8-angle
 sweep over `windows/`). Ordering = suggested attack order: correctness-adjacent
 first, then reuse, then cosmetics. **Before touching anything, check the
 cache-tier map** (AGENTS.md / windows-refactor notes): edits to base/toolchain
 closure files force a full chain rebuild — batch those, and never remove the
 deliberate media-merge version-ARG mirrors.
+
+**Contents**: P0 architecture (0a-0c) → P1 correctness-adjacent (1-4,
+16-19) → P2 reuse (5-9, 20) → P3 hygiene (10-15, 21-25) → second-pass
+build-definition/ops items (26-32) → pending host/upstream actions →
+already-fixed protocol. Cross-cutting pairs to do together: #1+#18 (RDNA4
+single source), #7+#19 (patch-stanza helper incl. hard-fail rung), #8+#30
+(log convention + retention).
+
+### Execution guide (effort·impact legend as in docs/refactoring-backlog.md; tier = what a change cache-busts)
+
+Work the backlog in BATCHES keyed on the cache tier — every media-closure
+edit costs one ONNX-vertex rebuild, so land them together:
+
+| Batch | Items | Tier | Effort | Impact |
+|---|---|---|---|---|
+| **W0 pending actions** | buildkitd env, sccache issue, tag cleanup | host | S | ★★★ (unblocks log visibility) |
+| **W1 host-only quick wins** | 2, 3, 5, 6, 9, 10-13, 15, 21, 22, 25, 29, 30 | host scripts/tests only — zero cache impact | S-M | ★★ |
+| **W2 preflight architecture** | 0a, 0c, 1+18, 26, 32 | host (drivers, diagnostics, probe assets) | M | ★★★ |
+| **W3 media-closure batch** | 4, 7+19, 16+17, 20, 23 | media closure (bkmods module + build scripts) — ONE ONNX rebuild for all | M-L | ★★★ (guard redesign + patch helper) |
+| **W4 base-tier batch** | 27 (+ anything else touching base closure) | base — FULL chain rebuild; batch with the next planned base bump | M | ★ |
+| **W5 process/policy** | 0b (bump protocol), 24, 28 (measure first!), 31 | repo/CI policy + measurements | M | ★★★ (0b + 28) |
+
+Suggested order: W0 → W1 → W2 → W5(0b sofort — GenAI 0.15.2/LiteRT-LM
+0.15.0 bumps are already announced in the docs!) → W3 → W4. Done-when: the
+per-item fix suggestion holds, gates stay green (lint 0 warnings, full test
+suite, Test-PatchesApplyClean), and any behavior change lands in AGENTS +
+this doc + CHANGELOG per repo priority 4.
+
+### Pending host/upstream actions (not refactors — do not let these evaporate)
+
+- **Restore the buildkitd service env** (`BUILDKIT_STEP_LOG_MAX_SIZE=-1`,
+  `MAX_SPEED=-1`): found EMPTY on 2026-08-10 (wiped by the Stevedore/repair
+  work); the default 2 MiB step-log clip hid verdicts all day. Elevated
+  `setup-new-host.ps1` (idempotent, refuses during builds) or the registry
+  Multi-String + `Restart-Service buildkitd` — ONLY between chain runs.
+- **Post the sccache upstream issue**: the drafted report (deterministic
+  server death on the fused_moe launchers, ±2 s across two runs) sits in
+  `out/upstream-issue-sccache-nvcc.md`, ready to file against
+  mozilla/sccache. The docker/for-win#14977 comment is already posted.
+- **Admin cleanup of 2026-08-10 diagnostic tags** (`copyprobe-*`, `sweep-*`,
+  `rdna4ab-*`, `flush-*`, `size*`, `pw*`, `mlchain-probe`,
+  `verify-cuda-cache`, `postboot-*`, `nano-*`, `gpuab-*`): admin
+  `nerdctl --namespace buildkit rmi` per docs § Store GC (see backlog #29
+  for the durable convention).
+
+### P0 — architecture-level (highest leverage; from the same review's deep pass)
+
+0a. **Host-drift detection as a mandatory driver preflight.** Four of the
+    2026-08-10 blockers were pure host drift (dufs ONLOGON task dead after
+    reboot, buildkitd service env wiped by the Stevedore repair, Defender
+    exclusion uncertainty, dGPU state): the code is reproducible, the host
+    is not. `verify-host-setup.ps1` already exists — carve out its CHEAP
+    subset (service-env registry read, dufs HEAD request, RDNA4 state,
+    shim hash) and run it at the top of BOTH drivers. Seconds at launch
+    instead of minute-80 surprises.
+0b. **Version bumps must ride the Windows lane.** The 2026-08-03 bump
+    (ONNX 1.28, OpenCV 5.0.0) carried FIVE latent Windows breaks because
+    `[build-win]` is opt-in and nobody built the bump. Rule: versions.env
+    bump commits require `[build-win]` (or a weekly scheduled canary), and
+    `Test-PatchesApplyClean.ps1` runs as a pre-commit gate whenever
+    versions.env changes — that alone would have caught the OpenCV patch
+    drift before any container built.
+0c. **Lane parity is unowned.** The RDNA4 gate initially landed only in the
+    BK driver; the classic lane got it a day later via review. Either demote
+    build.ps1 to bootstrap-only, or add a parity test (BuildKit.TwinParity
+    is the in-repo pattern) asserting both drivers wire the same preflight
+    set.
 
 ### P1 — correctness-adjacent (drift that already bites or will)
 
@@ -1877,21 +1947,26 @@ deliberate media-merge version-ARG mirrors.
    `test-rdna4-layer-lock.ps1`. Concrete dead end: on an RX 9060 host the
    gate refuses and points at a toggle script that cannot find the device.
    Fix: export ONE `Get-Rdna4HazardDevice` from WindowsBuildDriver.Common and
-   let toggle + A/B resolve through it.
-2. **buildctl path is single-candidate in the new diagnostics**
-   (`verify-cuda-cache.ps1`, `test-rdna4-layer-lock.ps1`: only
-   `$env:ProgramFiles\Stevedore\bin`), while build-buildkit.ps1 /
-   apply-buildkitd-gcpolicy.ps1 / reset-container-locks.ps1 carry a
-   candidate list incl. `D:\Stevedore\bin`. On a D:\ layout the diagnostics
-   throw exactly where they are needed. Fix: `Get-PreferredToolPath`
-   (already exported by WindowsScripts.Shared) everywhere; delete the 5th
-   copy of the constant.
-3. **`build-onnx-from-source.ps1` stats loop bypasses `Write-SccacheStats`'s
-   `-RequireRemote` gate** — on a no-remote build it spawns a throwaway
-   sccache server inside the layer just to print stats (the exact side
-   effect the helper exists to avoid), and its stderr formatting diverges
-   from every other lane. Fix: give Write-SccacheStats a `-Sink Stderr`
-   switch and call it.
+   let toggle + A/B resolve through it. *(The gate regex additionally
+   gained `(TM)`-rename tolerance on 2026-08-10 — the other two copies did
+   NOT, widening the drift this item exists to close. Do together with
+   #18.)*
+2. **The Stevedore tool path is hardcoded single-candidate in 10+ files** *(PARTIAL 2026-08-10 W1: the three 2026-08-10 diagnostics now resolve a candidate list; 7 legacy files remain)*
+   (2026-08-10 evening sweep: probe-build-copy, verify-cuda-cache,
+   test-rdna4-layer-lock, test-layer-rename, test-process-isolation-commit,
+   deploy-shim-patch, reset-container-stores, verify-host-setup, ... — only
+   build-buildkit.ps1 and friends carry the candidate list incl.
+   `D:\Stevedore\bin`). On a D:\ layout the diagnostics throw exactly where
+   they are needed, and the constant now has a dozen copies. Fix:
+   `Get-PreferredToolPath` (already exported by WindowsScripts.Shared)
+   everywhere; one candidate list, zero copies.
+3. **Consolidate the ONNX stderr stats loop into `Write-SccacheStats`**
+   (give the helper a `-Sink Stderr` switch and call it) so formatting and
+   the `-RequireRemote` contract live in one place and the next CUDA
+   consumer (TVM/OpenCV) inherits the clip-surviving sink for free.
+   *(The original finding's acute half — the missing `-RequireRemote`,
+   which would have spawned a throwaway server on no-remote builds — was
+   fixed same-day; only the consolidation remains.)*
 4. **ONNX ninja runs without `-LogFile`** — the full ninja stream exists
    only in the (clip-prone) step log; `[n/1891]` progress is invisible from
    the host. Violates the never-swallow-logs invariant. Fix: pass a LogFile
@@ -1901,10 +1976,10 @@ deliberate media-merge version-ARG mirrors.
 
 5. **`test-rdna4-layer-lock.ps1` re-implements the finalize probe** that
    `probe-build-copy.ps1` (exit codes + `-Heavy` + per-lane Tee logs) was
-   just upgraded to provide — and its copy keeps `Select -Last 2` with no
-   log file. Fix: call the probe (or extract a shared lane-runner) so the
-   load-bearing output-shape/quoting lessons live once.
-6. **GPU toggle logic duplicated** between `toggle-rdna4-gpu.ps1` and the
+   just upgraded to provide. Fix: call the probe (or extract a shared
+   lane-runner) so the load-bearing output-shape/quoting lessons live once.
+   *(Its log-swallowing was fixed same-day — the duplication remains.)*
+6. **GPU toggle logic duplicated** *(PARTIAL 2026-08-10 W1: toggle gained `-GpuName`, closing the wrong-SKU dead end; consolidation remains)* between `toggle-rdna4-gpu.ps1` and the
    A/B script's finally-block re-enable (the safety-critical path). Fix:
    parameterize the toggle script (`-GpuName`, `-NoPrompt`) and call it, or
    lift the toggle into the module.
@@ -1912,12 +1987,11 @@ deliberate media-merge version-ARG mirrors.
    Invoke-SourcePatch → catch → inline fallback → WarnMessage, near-identical
    each time; 3 added on 2026-08-10 alone). Fix: `Invoke-PatchWithFallback`
    helper in WindowsSourceBuild.Patches.psm1.
-8. **Log-persistence convention has no owner**: probe-build-copy and
-   verify-cuda-cache implement the same Tee-to-`out\build-logs` block twice
-   (with different stamps; test-rdna4 uses a third, day-colliding `HHmmss`
-   stamp and no log). Fix: one `Invoke-TeedNativeCommand`/
-   `Get-DiagnosticLogPath` helper in WindowsScripts.Shared (which already
-   owns New-Timestamp).
+8. **Log-persistence convention has no owner**: probe-build-copy,
+   verify-cuda-cache AND (since the same-day fix) test-rdna4-layer-lock now
+   implement the same Tee-to-`out\build-logs` block three times. Fix: one
+   `Invoke-TeedNativeCommand`/`Get-DiagnosticLogPath` helper in
+   WindowsScripts.Shared (which already owns New-Timestamp). Pair with #30.
 9. **probe-build-copy's three lanes are the same 9-line block ×3**
    (exe-check, lane log, run|Tee|tail, exit report, failedLanes append) —
    the shape that let the `-Docker` lane rot unnoticed. Fix: one
@@ -1932,9 +2006,9 @@ deliberate media-merge version-ARG mirrors.
 11. **Stall-guard verdicts print twice** (job stream + marker file re-read).
     Marker file is the single source of truth (ladder reads it, survives
     clip) — drop the Write-Output/Receive-Job channel.
-12. **`Native.ArgQuoting.Tests.ps1` manual case-insensitive loop** —
+12. *(DONE 2026-08-10 W1)* **`Native.ArgQuoting.Tests.ps1` manual case-insensitive loop** —
     `-notcontains` already compares case-insensitively; five lines → one.
-13. **Fake-ninja 'fail' line evaluates its condition twice**
+13. *(DONE 2026-08-10 W1)* **Fake-ninja 'fail' line evaluates its condition twice**
     (SourceBuild.NinjaRetry.Tests) — fold into one guarded block like the
     FAILONCE line below it.
 14. **`verify-cuda-cache.ps1`'s 21-statement concatenated RUN line** — write
@@ -1943,19 +2017,6 @@ deliberate media-merge version-ARG mirrors.
 15. **`verify-defender-exclusions.ps1` naming**: it verifies AND applies —
     rename toward `sync-`/`ensure-` (or split), matching the repo's
     fail-loudly/reporting conventions.
-
-### Already fixed during the review session (2026-08-10, for the record)
-
-The sweep also surfaced correctness bugs in same-day code; these were fixed
-immediately rather than backlogged: probe zero-lane false-green (exit 0 with
-no lane run), `repair-windows-componentstore.ps1` still using the retired
-`type=local` probe shape, the classic lane (`build.ps1`) missing the RDNA4
-gate, `Get-SccacheStatsText` not re-exported (would have thrown AFTER the
-multi-hour ONNX build), `Dockerfile.heavy`'s trailing-backslash COPY dest
-(Dockerfile escape char), the RDNA4 A/B swallowing lane logs and re-enable
-failures, the `(TM)`-rename hole in the hazard regex, the opencv/001 patch
-EOL flip, `SCCACHE_ERROR_LOG` parity for the merge builder, and a stale
-module comment describing the abandoned launcher-opt-out design.
 
 ### P1 addenda from the full sweep
 
@@ -1971,7 +2032,13 @@ module comment describing the abandoned launcher-opt-out design.
     before each ninja invocation; classify on kills recorded during the
     failing attempt only. Also: the marker `Add-Content` is
     `-ErrorAction SilentlyContinue` — a failed write silently downgrades a
-    guard-kill to the `-j2` path with no log trail.
+    guard-kill to the `-j2` path with no log trail. **And (run-10 lesson):
+    a guard kill must be treated as POISONING in-flight L0 cache writes —
+    run 10 linked against truncated objects served as hits from the
+    persistent mount (undefined `QkvToContext`/`BiasSoftmaxImpl` symbols).
+    Either verify the multilevel fork writes atomically, or
+    purge/quarantine the L0 on every kill (interim fix 2026-08-10: mount id
+    bumped to `sccache-winamd64-2`).**
 18. **RDNA4 gate altitude**: regex-match should be the cheap trigger, the
     finalize probe the verdict (block only on a red probe); add a
     gate-specific `-SkipRdna4Gate` instead of the all-or-nothing
@@ -1991,10 +2058,10 @@ module comment describing the abandoned launcher-opt-out design.
     gate `Start-SccacheStallGuard` on `Test-SccacheRemoteConfigured` like
     the launcher wiring does.
 21. **AST sweep double-parses the tree** every gate cycle (~141 files in
-    Invoke-Tests + the same in Invoke-Lint) and forgets the `rchive`
+    Invoke-Tests + the same in Invoke-Lint) and forgets the `\archive\`
     exclusion: host the two ArgQuoting detectors inside Invoke-Lint's
     existing parse loop.
-22. **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
+22. *(DONE 2026-08-10 W1)* **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
     drop `--output` (solve-only is enough for the hit/write assertions;
     contrast: the finalize probes NEED `type=image,unpack=true`).
 23. **`SCCACHE_ERROR_LOG` sits at the root of a GC-capped cache mount** —
@@ -2004,7 +2071,65 @@ module comment describing the abandoned launcher-opt-out design.
 24. **`#Requires -Version 7.0` missing across `windows/scripts/tests/`**
     (pre-existing; new files perpetuate it) — add during the next tests-dir
     touch.
-25. **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
+25. *(DONE 2026-08-10 W1)* **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
     `$offHeavy` are only-safe-by-control-flow; initialize them up front so a
     future try/catch edit cannot turn the verdict line into a StrictMode
     error on the exact host being diagnosed.
+
+### Second deep pass (build-definition & operations angles, 2026-08-10 evening)
+
+The 8-finder review read almost only `.ps1`/`.psm1`; this pass covered the
+Dockerfiles, resource economics, store hygiene and probe supply-chain.
+Checked and deliberately NOT flagged: isolation-probe already parameterizes
+its FROM; scrub coverage matches its documented tier map; `.dockerignore`
+guards the context; the ENV/ARG mirrors are the documented deliberate ones.
+
+26. **Probe Dockerfiles float their base** (`FROM ...servercore:ltsc2025`
+    without a digest) while the chain pins `WINDOWS_BASE_DIGEST` — when MS
+    rolls the tag, the probe certifies a DIFFERENT base than the chain
+    builds on, and pulls a fresh multi-GB image to do it. Fix: `ARG BASE`
+    like Dockerfile.isolation-probe, defaulted by the probe script from
+    versions.env's digest.
+27. **Dockerfile.base carries a 1214-char single-line RUN** (the pwsh
+    bootstrap blob) — unreviewable and undiffable. Move to a mounted script
+    like the heavy lanes; BASE-TIER CLOSURE, so batch it with the next
+    planned base rebuild, never alone.
+28. **~60-70 % of the CPU is idle during the heaviest stage** (26-31 %
+    total at ONNX `-j9`, memory-capped by a flat MemGBPerJob=4 that treats
+    a 200 MB CXX TU like a 4 GB flash-attention TU). AGENTS.md priority 1
+    calls idle cores "the standing wall-clock reserve": measure real
+    per-TU-class peaks, then split into heavy/light ninja job pools or
+    per-stage MemGBPerJob. Potentially the single largest wall-clock win
+    left in the chain.
+29. **Diagnostic image debris pins store layers**: incident days mint tags
+    (`copyprobe-*`, `sweep-*`, `rdna4ab-*`, `flush-*`, `verify-cuda-cache`,
+    ...) that sit in the containerd store until an admin `nerdctl rmi`.
+    Adopt one `diag-` tag prefix + a cleanup one-liner in the docs (or a
+    dedicated short-lived gcpolicy tier keyed on the prefix).
+30. **Build-log growth is unbounded** (28 MB today; the console log is one
+    append-across-runs file, which made per-run forensics harder all day).
+    One console log per driver invocation (timestamped name) + a simple
+    retention rule for `out\windows-build-logs`/`out\build-logs`.
+31. **Green stage images live ONLY in the local containerd store** until a
+    manual `-PushRef` — a host loss (this host has form: repair-installs,
+    driver surgery) costs every stage. Auto-push green stage tags (or at
+    least export-cache) once a chain goes green; the driver params already
+    exist, they are just never invoked by default.
+32. **Document the CI runner's GPU class vs the RDNA4 hazard**: the
+    `[build-win]` lane's host either has no RDNA4 dGPU (then CI is immune
+    and local-only repro notes belong in the docs) or it does (then the
+    gate/toggle must reach CI) — today nobody can tell without asking the
+    host.
+
+### Already fixed during the review session (2026-08-10, for the record)
+
+The sweep also surfaced correctness bugs in same-day code; these were fixed
+immediately rather than backlogged: probe zero-lane false-green (exit 0 with
+no lane run), `repair-windows-componentstore.ps1` still using the retired
+`type=local` probe shape, the classic lane (`build.ps1`) missing the RDNA4
+gate, `Get-SccacheStatsText` not re-exported (would have thrown AFTER the
+multi-hour ONNX build), `Dockerfile.heavy`'s trailing-backslash COPY dest
+(Dockerfile escape char), the RDNA4 A/B swallowing lane logs and re-enable
+failures, the `(TM)`-rename hole in the hazard regex, the opencv/001 patch
+EOL flip, `SCCACHE_ERROR_LOG` parity for the merge builder, and a stale
+module comment describing the abandoned launcher-opt-out design.

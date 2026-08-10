@@ -1,5 +1,11 @@
 # Refactoring backlog
 
+> **Windows container chain items live in their own prioritized list:**
+> [docs/windows-builds.md § Refactor Backlog](windows-builds.md#refactor-backlog-windows-container-chain)
+> (P0-P3 + pending host/upstream actions, from the 2026-08-10 8-angle review).
+> Keep Windows items THERE, cross-lane items here — two lists drifting over
+> the same code is the failure mode both lists exist to prevent.
+
 A living list of refactoring / hardening / efficiency candidates observed while
 operating the cross build. Each item: **what**, **why it matters**, and a rough
 **effort·impact**. Not a commitment — a triage queue. Newest observations at the

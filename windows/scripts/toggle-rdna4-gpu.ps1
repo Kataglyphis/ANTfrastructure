@@ -19,7 +19,11 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    [switch]$Disable
+    [switch]$Disable,
+    # Other RDNA4 SKUs (RX 9060 XT, AI PRO R9700, ...) hit the same layer-lock
+    # and the same gate refusal - without this parameter the prescribed remedy
+    # script could not act on them at all (backlog #1/#6, review 2026-08-10).
+    [string]$GpuName = 'AMD Radeon RX 9070 XT'
 )
 
 Set-StrictMode -Version Latest
@@ -31,9 +35,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 
 $target = Get-PnpDevice -ErrorAction SilentlyContinue |
-    Where-Object { $_.FriendlyName -eq 'AMD Radeon RX 9070 XT' }
+    Where-Object { $_.FriendlyName -eq $GpuName }
 if (-not $target) {
-    Write-Host 'RX 9070 XT not found (renamed/removed?) - listing Radeons:' -ForegroundColor Yellow
+    Write-Host "'$GpuName' not found (renamed/removed?) - listing Radeons:" -ForegroundColor Yellow
     Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'Radeon' } |
         Select-Object Status, FriendlyName, InstanceId | Format-Table -AutoSize | Out-Host
     Read-Host 'Press ENTER to close'; exit 1
