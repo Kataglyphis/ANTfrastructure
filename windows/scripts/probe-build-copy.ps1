@@ -65,6 +65,24 @@ $probeLogDir = Join-Path $repoRoot 'out\build-logs'
 New-Item -ItemType Directory -Force -Path $probeLogDir | Out-Null
 $probeStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
+# Pin the probe base to the SAME digest the chain builds on (backlog #26) -
+# a floating tag would certify a different servercore than the chain uses.
+# Dependency-free parse (no module import in the first script a new host runs);
+# falls back to the Dockerfile's tag default when versions.env is unreadable.
+$probeBase = ''
+$versionsEnv = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
+if (Test-Path $versionsEnv) {
+    $ltsc = ''
+    $digest = ''
+    foreach ($line in Get-Content $versionsEnv) {
+        if ($line -match '^WINDOWS_LTSC=(.+)$') { $ltsc = $Matches[1].Trim() }
+        elseif ($line -match '^WINDOWS_BASE_DIGEST=(.+)$') { $digest = $Matches[1].Trim() }
+    }
+    if ($ltsc -and $digest) { $probeBase = "mcr.microsoft.com/windows/servercore:ltsc$ltsc@$digest" }
+}
+$baseArgs = if ($probeBase) { @('--opt', "build-arg:BASE=$probeBase") } else { @() }
+if ($probeBase) { Write-Host "probe base pinned: $probeBase" -ForegroundColor DarkGray }
+
 Write-Host '== buildkit (buildctl) lane ==' -ForegroundColor Cyan
 # Candidate list, not a single hardcoded path: D:\Stevedore is a supported
 # layout (build-buildkit.ps1 resolves the same way; backlog item #2).
@@ -79,7 +97,7 @@ if ($buildctl) {
     # '$outDir'). Regression pin: tests/Native.ArgQuoting.Tests.ps1.
     $laneLog = Join-Path $probeLogDir "probe-build-copy-buildkit-$probeStamp.log"
     & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
-        --local "context=$probeDir" --local "dockerfile=$probeDir" `
+        --local "context=$probeDir" --local "dockerfile=$probeDir" @baseArgs `
         --output "type=image,name=$probeRef,unpack=true" 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
     Write-Host ("buildkit exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
     if ($LASTEXITCODE -ne 0) { $failedLanes += 'buildkit' }
@@ -93,7 +111,7 @@ if ($Heavy) {
         $attemptedLanes += 'buildkit-heavy'
         $laneLog = Join-Path $probeLogDir "probe-build-copy-heavy-$probeStamp.log"
         & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
-            --local "context=$probeDir" --local "dockerfile=$probeDir" `
+            --local "context=$probeDir" --local "dockerfile=$probeDir" @baseArgs `
             --opt 'filename=Dockerfile.heavy' --no-cache `
             --output "type=image,name=$probeRef-heavy,unpack=true" 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
         Write-Host ("buildkit-heavy exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
@@ -115,7 +133,8 @@ if ($Docker) {
     if ($dockerExe) {
         $attemptedLanes += 'docker-classic'
         $laneLog = Join-Path $probeLogDir "probe-build-copy-docker-$probeStamp.log"
-        & $dockerExe build -t local/test:probe-build-copy $probeDir 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
+        $dockerBaseArgs = if ($probeBase) { @('--build-arg', "BASE=$probeBase") } else { @() }
+        & $dockerExe build @dockerBaseArgs -t local/test:probe-build-copy $probeDir 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
         Write-Host ("docker exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
         if ($LASTEXITCODE -ne 0) { $failedLanes += 'docker-classic' }
     } else {

@@ -51,6 +51,9 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $abLogDir = Join-Path $repoRoot 'out\build-logs'
 New-Item -ItemType Directory -Force -Path $abLogDir | Out-Null
 function Test-RunLayerFinalize {
+    # NOTE: uses the probe Dockerfiles' tag-default base (unpinned) - the
+    # digest-pinning BASE build-arg lives in probe-build-copy.ps1; backlog #5
+    # (reuse the probe instead of re-implementing it) also closes that gap.
     param([ValidateSet('tiny', 'heavy')][string]$Kind, [string]$Label)
     $opts = if ($Kind -eq 'heavy') { @('--opt', 'filename=Dockerfile.heavy') } else { @() }
     $laneLog = Join-Path $abLogDir "rdna4-ab-$Label-$stamp.log"
