@@ -1695,3 +1695,219 @@ abort leaves partial snapshots that no gate reclaims. `buildctl prune` after an
 abort is part of aborting, not a separate chore. Confirmed safe mid-build twice
 today (44.8 GB and 43.9 GB freed with a solve running, no disturbance) — the
 2026-08-07 note that prune does not disturb an active solve holds.
+
+## 2026-08-10 — harvested during the latest-cross media rebuild (5 fixes to green)
+
+All observed live across four relaunches of `build-cross-chain.sh --from-stage
+media` on the 60 GB host. The five fixes themselves are in the working tree
+(ffmpeg TF, 3× smoke-media.sh, gstreamer vulkan); items below are the *residual*
+work they exposed. Ordered by value.
+
+### P1 — INTRA-arch OOM: concurrent BuildKit DAG stages each size their jobs as if alone
+
+The kernel OOM-killed cc1plus during a SINGLE arch's media build
+(`aarch64-linux-gnu-g++: fatal error: Killed signal terminated program cc1plus`,
+opencv, arm64, 3rd relaunch). Arches were NOT the problem: per-arch stages run
+sequentially by default (`PARALLEL_ARCHS=0`, runtime-flow-common.sh:41;
+parallel-loop.sh:40 gates on it; `--parallel-archs` is the opt-in — the
+parallelism doc is correct on this). The overcommit is INSIDE one arch:
+BuildKit parallelizes independent Dockerfile.media stages (tvm + opencv + IREE
+wheelhouse + onnx/Dawn all compiling at once — host load 36), each ninja sized
+by `mem_capped_jobs` **assuming it owns all usable RAM**, with no buildkitd
+max-parallelism cap and `BUILD_MEM_DIVISOR` unset on the default path. Whether
+it OOMs is scheduling luck: the surviving relaunch ran the same stages staggered
+(load ~7, one compile stage at a time). Fix candidates:
+- set `max-parallelism` in buildkitd.toml (bounds concurrent RUN steps host-wide);
+- or bake `BUILD_MEM_DIVISOR=<expected concurrent compile stages>` (2–3) into
+  the media stage env — the 2026-07-11 wiring exists exactly for "N builds
+  sharing RAM" but nothing engages it for intra-arch DAG overlap today;
+- minor drift while here: usage text says `--max-parallel-archs` default 4,
+  code defaults to nproc (build-cross-chain.sh:59).
+
+### P2 — `producer | grep -q` under `set -o pipefail` is a live footgun class
+
+smoke-media.sh's LiteRT gate read `nm -D … | grep -q SYMBOL`; grep -q exits on
+first match, nm takes SIGPIPE (141), pipefail fails the pipeline → a PRESENT
+symbol reported as a stub. Masked whenever the symbol is absent, so it only
+fires on success. Fixed at that site (capture to var + `case` glob), but the
+pattern exists elsewhere in smoke-media.sh (`find | grep -q`, `-encoders |
+grep -q` — low risk only because their producers emit little). Worth a
+tree-wide sweep: any `| grep -q` where the producer writes more than a pipe
+buffer is the same latent bug. Candidate for a lint-shell custom check.
+
+### P3 — Multi-Arch: same version skew on a rolling Ubuntu breaks cross apt installs
+
+`libvulkan-dev` (Multi-Arch: same) drifted between the amd64 archive and
+arm64 ports on 26.04 "resolute" → shared arch-independent headers differ →
+dpkg refuses the target-arch unpack ("trying to overwrite shared
+'/usr/include/vk_video/…'"), and libgtk-4-dev drags libvulkan-dev in despite
+the existing prefer_toolchain_vulkan dodge. Fixed with a cross-scoped
+`--force-overwrite` drop-in in gstreamer/install-deps.sh. Residual: any OTHER
+Multi-Arch: same dev package can hit the identical skew on a rolling release;
+if it recurs, generalize the drop-in into cross-apt.sh (currently kept local
+to gstreamer to avoid invalidating the whole media cache-key closure).
+
+### P4 — ffmpeg's libtensorflow bundling is a one-off; NEEDED-driven bundling exists next door
+
+`bundle_tensorflow_runtime_lib` hand-copies libtensorflow*.so into
+$FFMPEG_PREFIX/lib because the TF C SDK lives only in a cache mount.
+`emit_runtime_apt_manifest` already walks NEEDED sonames generically — a
+follow-up could derive "non-apt NEEDED libs to bundle" from the same objdump
+walk instead of naming TF explicitly (next SDK-from-cache-mount backend gets
+bundling for free). Low urgency: TF is the only such case today.
+
+### P5 — smoke-media.sh runs in two environments with different loader states
+
+The same script gates the media build sandbox (loader NOT wired; ffmpeg not
+executable) and the packaging stage (loader wired; strict). This forced the
+ffmpeg-executability-conditional deferral for the gst `libav` plugin. The
+two-environment contract is now implicit in scattered `INFO … functional gate
+is the …` branches; consider an explicit `SMOKE_ENV=sandbox|runtime` variable
+set by the callers, so gates declare intent instead of probing ffmpeg.
+
+### Process notes for the next reader
+
+- Per-arch `out/build-logs/media-<arch>.log` PERSISTS across chain relaunches;
+  any watcher/grep over it false-fires on the previous run's failures. Delete
+  stale per-arch logs when relaunching, or key on mtime. (Bit me once: a
+  "vulkan still failing" alarm that was entirely stale content. Same class as
+  the 2026-07 "per-run log namespacing ★★★" item above — that fix would
+  retire this whole gotcha.)
+- Long ninja steps inside BuildKit (IREE ~1 h+) emit NOTHING to the log; the
+  build looks hung. `pgrep cc1plus` age + distinct TU names distinguishes
+  progress from wedge in seconds — resource-monitor.sh CSV shows it too.
+- `dpkg-deb: paste subprocess was killed by signal (Broken pipe)` during apt
+  is dpkg reporting an ABORTED UNPACK (here: the Multi-Arch conflict), not
+  OOM — check for the "trying to overwrite shared" line above it first.
+
+## 2026-08-10 — 3-agent sweep: dedup / caching-speed / orchestration-DX
+
+Curated from three parallel read-only sweeps run against the tree while the
+latest-cross rebuild was in flight. Every item below was cross-checked against
+this backlog AND the deliberate-skip lists from the 2026-07 dedup passes —
+nothing here re-flags protected code. Grouped by theme, ranked within each.
+
+### Caching / speed
+
+**S1 — Failed chain builds export ZERO local cache; add a salvage-export pass.**
+`cross-stage-build.sh:164-168` — `--cache-to type=local,mode=max` only
+materializes on SUCCESS. Proof: `~/.cache/kata-buildcache/`'s arm64/riscv64
+media slugs were empty (4.0K) after ~8 h of completed arm64 stage work (armnn
+11221s, app-wheelhouse 11070s, ffmpeg 9308s in chain-final-fix-20260810) because
+a LATER stage failed; the same steps recompiled in the next relaunch. Fix: on
+stage failure, re-invoke the identical build (all completed vertices cache-hit
+from the layer store in seconds) so mode=max lands anyway. Win on iterate days
+like today (5 relaunches): 30 min–3 h per relaunch per arch. Risk: low.
+
+**S2 — FFmpeg TF DNN backend ships ~500 MB into every amd64 media+runtime
+image, ungated.** `bundle_tensorflow_runtime_lib` (build-ffmpeg.sh) copies
+libtensorflow.so.2.18.0 (447MB) + framework (50MB) into /opt/ffmpeg/lib, which
+is COPY'd wholesale (Dockerfile.media:601, Dockerfile.package:72). The probe is
+always-on — unlike x265's `FFMPEG_ENABLE_X265` gate right below it. amd64-only
+feature, and it caused two of today's five relaunches. Fix: `FFMPEG_ENABLE_TF`
+versions.env toggle (default off), mirroring x265 exactly. Win: ~500 MB off the
+pulled amd64 image + one failure source removed. Risk: low (optional backend;
+onnxruntime/OpenVINO remain).
+
+**S3 — Registry warm-start is structurally useless for framework stages.**
+`cross-stage-build.sh:174-178` pairs registry cache-from with `--cache-to
+type=inline`, which only covers the exported image's own layers — the
+tvm/opencv/onnx/litert/armnn/ffmpeg stages are separate vertices consumed via
+`COPY --from` and are NEVER in the inline cache. Proof: after the 2026-08-09
+prune emptied the local media slugs, the first amd64 media run recompiled every
+framework (~1.5–2 h) despite yesterday's push. Fix: per-stage registry cache
+refs with mode=max (small enough per stage to dodge the ghcr 400 noted at
+:136-147), or make the LRU prune treat media slugs as most-expensive-last (it
+kept 12G sdk slugs and dropped the media ones). Risk: medium (blob limits).
+
+**S4 — Component install-deps RUNs mount the whole component dir.** E.g.
+Dockerfile.media:552-557 binds all of `03-media/build/ffmpeg` into the
+`[ffmpeg 1/3]` apt step, so today's build-ffmpeg.sh iteration re-paid apt
+install on every arch (467–1177 s each relaunch). Per-file mount precedent
+exists in the same file (:114-117). Narrow deps RUNs to `install-deps.sh` +
+sourced helpers; same for opencv/gstreamer/libcamera. Win: 10–20 min per arch
+per script-iteration. Keep verify-script-copy-coverage.py green.
+
+**S5 — Cargo registry/git caches keyed per-TARGETARCH duplicate arch-independent
+crate downloads 3×.** Dockerfile.media:226/241/473/687, Dockerfile.toolchain:251
+— `id=cargo-registry-${TARGETARCH}`. Crates/git checkouts are arch-independent;
+cargo's own flock makes a shared id safe (keep target-dir caches per-arch).
+Win: minutes + several GB of buildkit store per rebuild.
+
+### Orchestration / DX (items O1–O3 are one coherent lifecycle feature)
+
+**O1 — Chain has zero signal handling: TERM/INT orphans every nerdctl/buildctl
+child.** build-cross-chain.sh has no `trap` at all; parallel-loop.sh workers
+are collected only for `wait`. Observed 4× today: pkill'ing the chain left
+builds running, requiring hand-killed PIDs (and one pkill self-match, exit 144).
+Fix: TERM/INT/EXIT trap in main() killing worker pids + own process group, plus
+`stop-cross-chain.sh` reading the pidfile (O2). Use EXIT/TERM only — NEVER a
+RETURN trap (see the set -u corpse documented in parallel-loop.sh:21-32).
+
+**O2 — No run identity / restart entrypoint.** `CROSS_RUN_ID` is consumed in 3
+places with 3 different defaults but GENERATED by no one (cross-stage-build.sh:42
+`$$`, build-cross-chain.sh:439 literal `cross`, build-cross-stage.sh:89). No
+pidfile, no previous-instance detection; `.run` markers truncate stale per-arch
+logs only lazily when the stage starts — the root of today's stale-watcher false
+alarm. Fix: chain generates a timestamp run-id, writes `${LOG_DIR}/chain.pid`,
+refuses/`--takeover`s a live sibling, eagerly archives prior per-arch logs for
+all enabled stages up front. Retires the stale-log process-note above AND the
+★★★ per-run log namespacing item's sharpest edge.
+
+**O3 — No machine-readable progress artifact.** Observers must grep
+'[stage X] pinned' out of 575k-line interleaved logs. The plumbing already
+exists and is thrown away: workers persist `failed-<arch>` / `pin.<stage>.<arch>`
+files into PARALLEL_LOOP_FLAGDIR (parallel-loop.sh:37,47) which is deleted at
+join (:84). Fix: `${LOG_DIR}/chain-status.json` (atomic tmp+mv) updated at
+stage start/pin/fail with {run_id, stage, arch, state, digest, rc, ts}. Pure
+host-side addition, no cache-key impact.
+
+**O4 — Sequential arch loop is not fail-fast.** parallel-loop.sh:59-62 sets
+failed=1 and CONTINUES to the next arch; the chain aborts only after all arches
+ran. A media-amd64 failure today would still grind full arm64+riscv64 media
+(hours) before the operator gets their turn. Fix: `PARALLEL_LOOP_FAIL_FAST=1`
+(default for interactive runs) — sequential path breaks on first failure,
+parallel path kills remaining pids. Toggle, not hard change: keep-going is
+wanted for collect-all-failures CI runs.
+
+**O5 — `--push` is silently accepted and inert in build-cross-chain.sh.**
+cli-parsers.sh:123-124 parses it for every orchestrator; the chain binds it to
+`_chain_push_enabled` which nothing reads (one repo-wide hit), and the usage
+block never mentions it — so `--no-push --push` does NOT re-enable pushing.
+Same class: `--parallel-archs`/`--max-parallel-archs` are silent no-ops in
+build-cross-stage.sh. Fix: per-script flag allowlist in the parser — unimplemented
+shared flags warn ("--push has no effect: chain always pushes") or reject.
+
+### Bash dedup (post-2026-07-passes; all cross-checked against protected lists)
+
+**D1 — smoke-runtime-image.sh repeats the nerdctl-run preamble 18×.**
+`"${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" "${image_tag}"`
+verbatim at :65,:96,:148,… (18 sites). Local `_rt_run()` wrapper; natural rider
+on open item B5 (459-line main() decomposition) — one place for future
+timeout/env/binfmt handling. Lowest-risk of the batch (host-side, post-build).
+
+**D2 — Cross-wheel retag loop exists 3×; one copy is already helper-shaped.**
+repair-wheels.sh:22-34, tvm-python.sh:108-113, build-app-wheelhouse.sh:379-391
+(`retag_directory_wheels()`) — each hand-rolls the loop around the already-shared
+`cross_wheel_platform_tag` (common.sh:242), with 3 different skip-filters and 3
+different python launchers. Promote `retag_directory_wheels` into 01-core,
+parameterized. CRITICAL wheel path + 01-core cache-key closure → guard with
+tests first, land only in a closure batch.
+
+**D3 — smoke-media.sh sandbox-gate scaffold: the mechanical half of P5.**
+The cross-active 3-branch gate block ×6 (:15,:55,:226,:286,:368,:456), the
+ELF-magic downgrade assert ×2 (:296,:379 — identical comment included), the
+PATH-or-prefix bin resolve ×4. Extract `smoke_resolve_bin`,
+`smoke_assert_elf_magic`, `smoke_component_gate` into smoke-common.sh —
+implementing P5's SMOKE_ENV then becomes a one-place change instead of six.
+Gating step under set -e (the SIGPIPE bug lived here) → do WITH P5 + extend
+test-smoke-arch-parity.sh, not separately.
+
+**D4 — Shared-library NEEDED/closure walk implemented 3× independently.**
+validate-media-runtime.sh:89,:145; build-ffmpeg.sh emit_runtime_apt_manifest;
+setup-torch-venv.sh:209 (ldd variant). Two open items (media-runtime manifest
+convergence 2026-07-18; NEEDED-driven bundling P4 above) both depend on this
+walk — neither proposes the primitive. Add `elf_needed_sonames` /
+`elf_unresolved_needed` to 01-core/platform.sh (next to elf_machine_name).
+Caveat: consumers are standalone-bundled with different copy sets — check
+verify-script-copy-coverage.py before landing; 01-core edit → closure batch.

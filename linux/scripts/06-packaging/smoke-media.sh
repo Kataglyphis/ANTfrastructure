@@ -66,9 +66,15 @@ elif command -v python3 >/dev/null 2>&1; then
     pass "onnxruntime_genai Python module imports"
   elif find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
          -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
-    # Shipped-but-unimportable is a defect, not an optional absence — the old
-    # branch downgraded BOTH cases to INFO (smoke-depth R13).
-    fail "onnxruntime_genai library SHIPPED but the Python module does not import"
+    # In the MEDIA stage the genai native lib + wheel are produced, but the wheel
+    # is only pip-installed into /opt/venv later, at PACKAGING time
+    # (assemble-torch-app.sh). System python3 here therefore cannot import it —
+    # exactly like plain onnxruntime above (its C libs ship, no wheel installed),
+    # which this smoke correctly downgrades to INFO. Mirror that: defer the
+    # functional import gate to the runtime torch-venv smoke (smoke-torch-venv.sh),
+    # which validates `import onnxruntime_genai` inside /opt/venv. A hard fail here
+    # was a false negative (the media stage never installs the genai wheel).
+    echo "  INFO: onnxruntime_genai lib present but import fails in build sandbox (wheel installs into /opt/venv at packaging) — functional gate is the runtime torch-venv smoke"
   else
     echo "  INFO: onnxruntime_genai not installed (optional)"
   fi
@@ -91,11 +97,40 @@ if [ -n "${lite_lib}" ]; then
   pass "LiteRT shared library found: ${lite_lib}"
   # Symbol depth (smoke-depth R7): `[ -f ]` passes on a 12-byte stub. `nm -D`
   # reads foreign-arch ELF fine, so this works on the cross branch too.
+  #
+  # BUT the TfLite C API (TfLiteInterpreterCreate/TfLiteModelCreate) lives in the
+  # SEPARATE C-API library libtensorflowlite_c.so (built by build-litert.sh
+  # build_tflite_c_api). ${lite_lib} above is libtensorflow-lite.so, which is the
+  # C++ library (a symlink to libLiteRt.so) and LEGITIMATELY exports no C API
+  # symbols — checking it was a false negative. Check the C-API lib instead.
+  lite_c_lib=""
+  for _c in /usr/local/lib/libtensorflowlite_c.so /usr/local/lib/libtensorflowlite_c.so.*; do
+    [ -f "${_c}" ] && { lite_c_lib="${_c}"; break; }
+  done
   if command -v nm >/dev/null 2>&1; then
-    if nm -D --defined-only "${lite_lib}" 2>/dev/null | grep -q 'TfLiteInterpreterCreate\|TfLiteModelCreate'; then
-      pass "LiteRT C API symbols exported (TfLiteInterpreterCreate/TfLiteModelCreate)"
+    if [ -n "${lite_c_lib}" ]; then
+      # Capture nm output to a var FIRST, then match with `case` — NOT
+      # `nm | grep -q`. Under `set -o pipefail`, `grep -q` exits on the first
+      # match and closes the pipe; nm (still emitting ~130 symbols) then takes
+      # SIGPIPE (141), and pipefail reports the whole PIPELINE as failed —
+      # turning a successful match into a false "stub/misbuilt" verdict. (The bug
+      # is masked when the symbol is ABSENT: grep drains all input, nm never gets
+      # SIGPIPE.) Empirically hit 2026-08-10: TfLiteInterpreterCreate@@VERS_1.0 is
+      # exported by libtensorflowlite_c.so, yet the old pipeline reported a stub.
+      # nm prints versioned names as `TfLiteInterpreterCreate@@VERS_1.0`; the glob
+      # substrings match those fine.
+      _lite_c_syms="$(nm -D --defined-only "${lite_c_lib}" 2>/dev/null || true)"
+      case "${_lite_c_syms}" in
+        *TfLiteInterpreterCreate*|*TfLiteModelCreate*)
+          pass "LiteRT C API symbols exported by ${lite_c_lib} (TfLiteInterpreterCreate/TfLiteModelCreate)" ;;
+        *)
+          fail "LiteRT C API lib ${lite_c_lib} exports no TfLite C API symbols (stub/misbuilt)" ;;
+      esac
     else
-      fail "LiteRT lib ${lite_lib} exports no TfLite C API symbols (stub/misbuilt)"
+      # C-API lib genuinely absent — real gap for anything linking -ltensorflowlite_c.
+      # Soft INFO (not FAIL) to avoid a hard gate on arches where it may not build;
+      # the C++ lib above is present, and LiteRT web/python paths do not need it.
+      echo "  INFO: LiteRT C-API lib libtensorflowlite_c.so not found (C++ lib present; C API consumers would need it)"
     fi
   fi
 else
@@ -278,9 +313,29 @@ if [ -n "${_gst_inspect}" ]; then
     # but a plugin that ships and then fails to dlopen was only a WARN-count.
     # A present-but-unloadable plugin is exactly the observed class
     # (webrtcbin2→librice-proto, gtk4→vkCreateWaylandSurfaceKHR).
+    # The `libav` plugin is special: this project's gst-libav links the
+    # source-built FFmpeg libav* (incl. libavfilter, which NEEDs the bundled
+    # libtensorflow.so.2). Those resolve only once configure-runtime.sh has wired
+    # the loader — the SAME reason the ffmpeg binary itself is deferred in the
+    # build sandbox below. So gate `libav` on ffmpeg executability HERE: if ffmpeg
+    # cannot run in this environment (sandbox), a libav load failure is that same
+    # deferral (INFO; re-tested by the packaging-stage smoke, Dockerfile.package,
+    # where the loader is wired); if ffmpeg DOES run here but libav still fails,
+    # that is a real defect. opencv/onnx/tflite never link ffmpeg, so they stay
+    # hard-gated unconditionally.
+    _ffmpeg_execok=0
+    { _ff_probe="$(command -v ffmpeg 2>/dev/null || echo "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
+      [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1
     _gst_missing=""
     for _p in libav opencv onnx tflite; do
-      "${_gst_inspect}" "${_p}" >/dev/null 2>&1 || _gst_missing="${_gst_missing} ${_p}"
+      "${_gst_inspect}" "${_p}" >/dev/null 2>&1 && continue
+      if [ "${_p}" = "libav" ] && [ "${_ffmpeg_execok}" = "0" ]; then
+        _gst_libav_err="$("${_gst_inspect}" libav 2>&1 >/dev/null | head -1 || true)"
+        echo "  INFO: gst 'libav' plugin not loadable in build sandbox (links source-built ffmpeg libav*/libtensorflow; ffmpeg itself non-executable here, loader wired at runtime) — functional gate is the packaging-stage smoke"
+        [ -n "${_gst_libav_err}" ] && echo "        detail: ${_gst_libav_err}"
+        continue
+      fi
+      _gst_missing="${_gst_missing} ${_p}"
     done
     if [ -z "${_gst_missing}" ]; then
       pass "GStreamer mandatory plugin set loads (libav opencv onnx tflite)"

@@ -140,6 +140,28 @@ ffmpeg_probe_libtensorflow() {
     export PKG_CONFIG_PATH="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}:${PKG_CONFIG_PATH:-}"
     if ffmpeg_probe_pkg_config_feature "libtensorflow" "tensorflow" \
         "tensorflow/c/c_api.h" "TF_Version TF_NewGraph"; then
+        # FFmpeg's libtensorflow check is a BARE require (check_func_headers +
+        # check_lib), NOT require_pkg_config — empirically verified 2026-08-09:
+        # the probe resolved the SDK via pkg-config, --enable-libtensorflow was
+        # set, and FFmpeg's own `require libtensorflow tensorflow/c/c_api.h
+        # TF_Version -ltensorflow` then hard-failed because the .pc's -I never
+        # reaches a bare check. Mirror ffmpeg_probe_libonnxruntime: export the
+        # resolved paths as extra flags so _ffmpeg_probe_dnn_backends can pass
+        # them as --extra-cflags/-ldflags/-libs (which bare requires DO honor).
+        _FFMPEG_TF_EXTRA_CFLAGS="-I${tf_cache}/include"
+        _FFMPEG_TF_EXTRA_LDFLAGS="-L${tf_cache}/lib"
+        # Do NOT put -ltensorflow in the GLOBAL --extra-libs. FFmpeg's configure
+        # validates --extra-* by compiling AND EXECUTING a trivial `int main(){}`;
+        # with -ltensorflow global that binary NEEDs libtensorflow.so.2 and dies
+        # at load (the SDK lib dir is not on the runtime loader path), failing
+        # configure at its very first sanity check (observed 2026-08-10, ~4s in).
+        # -ltensorflow must be added ONLY by FFmpeg's own `require libtensorflow
+        # ... -ltensorflow` line, which links (never runs). Mirror onnxruntime:
+        # pass -lstdc++ (libtensorflow.so is C++-backed) and nothing arch-linked.
+        _FFMPEG_TF_EXTRA_LIBS="-lstdc++"
+        # Make libtensorflow.so.2 loadable for any executed check and the native
+        # smoke; bundle_tensorflow_runtime_lib then copies it into the image.
+        export LD_LIBRARY_PATH="${tf_cache}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         return 0
     fi
 
@@ -151,6 +173,15 @@ ffmpeg_probe_libtensorflow() {
     if [ -n "${tf_base}" ] && ffmpeg_enable_via_synth_pkgconfig "libtensorflow" "tensorflow" \
         "tensorflow/c/c_api.h" "TF_Version TF_NewGraph" "${tf_base}" \
         "-I${tf_base}/include" "-L${tf_base}/lib -ltensorflow" "${TENSORFLOW_C_VERSION:-2.18.0}"; then
+        # Same bare-require caveat as above: the synth .pc is not enough for
+        # FFmpeg's bare require, so export the extra flags too.
+        _FFMPEG_TF_EXTRA_CFLAGS="-I${tf_base}/include"
+        _FFMPEG_TF_EXTRA_LDFLAGS="-L${tf_base}/lib"
+        # Same rule as the pkg-config path above: keep -ltensorflow OUT of the
+        # global --extra-libs (it breaks FFmpeg's executed sanity check); only
+        # -lstdc++ here, and make the .so loadable for executed checks/smoke.
+        _FFMPEG_TF_EXTRA_LIBS="-lstdc++"
+        export LD_LIBRARY_PATH="${tf_base}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         echo "TensorFlow C SDK enabled via synthesized pkg-config at ${tf_base}."
         return 0
     fi

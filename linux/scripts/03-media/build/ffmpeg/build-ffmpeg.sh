@@ -248,6 +248,12 @@ _ffmpeg_probe_dnn_backends() {
     # Deep Neural Network backends (always try; skip if SDK not available)
     if ffmpeg_probe_libtensorflow; then
         _ffpdb_out+=("--enable-libtensorflow")
+        # FFmpeg's libtensorflow check is a bare require that ignores pkg-config
+        # (see ffmpeg_probe_libtensorflow) — feed the header/lib paths through
+        # the global extra flags, exactly like the onnxruntime backend above.
+        [ -n "${_FFMPEG_TF_EXTRA_CFLAGS:-}" ] && _ffpdb_out+=("--extra-cflags=${_FFMPEG_TF_EXTRA_CFLAGS}")
+        [ -n "${_FFMPEG_TF_EXTRA_LDFLAGS:-}" ] && _ffpdb_out+=("--extra-ldflags=${_FFMPEG_TF_EXTRA_LDFLAGS}")
+        [ -n "${_FFMPEG_TF_EXTRA_LIBS:-}" ] && _ffpdb_out+=("--extra-libs=${_FFMPEG_TF_EXTRA_LIBS}")
     fi
 
     if ffmpeg_probe_libopenvino; then
@@ -443,6 +449,31 @@ install_ffmpeg() {
     ${SUDO_WRAP} ldconfig || true
 }
 
+bundle_tensorflow_runtime_lib() {
+    # FFmpeg's --enable-libtensorflow makes libtensorflow.so.2 a NEEDED dependency
+    # of libavfilter. The TF C SDK lives ONLY in the /var/cache/ffmpeg-sdks cache
+    # MOUNT (never in an image layer), and emit_runtime_apt_manifest cannot help
+    # (no apt package owns it, and it skips /opt/*). So unless we copy the runtime
+    # .so into the ffmpeg payload, the final image's ffmpeg dies at load with
+    # `libtensorflow.so.2: cannot open shared object file`. onnxruntime avoids this
+    # via `COPY --from=onnxruntime`; TF has no such stage. Bundle its two runtime
+    # libs into ${FFMPEG_PREFIX}/lib, which every downstream image already has on
+    # LD_LIBRARY_PATH. Only runs when the TF backend was actually enabled (the
+    # probe set _FFMPEG_TF_EXTRA_LDFLAGS) — a no-op on arm64/riscv64 (no TF SDK).
+    [ -n "${_FFMPEG_TF_EXTRA_LDFLAGS:-}" ] || return 0
+    local tf_libdir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow-c/lib"
+    [ -f "${tf_libdir}/libtensorflow.so" ] || return 0
+    echo "Bundling TensorFlow C runtime libraries into ${FFMPEG_PREFIX}/lib ..."
+    ensure_sudo_or_die
+    ${SUDO_WRAP} mkdir -p "${FFMPEG_PREFIX}/lib"
+    # cp -a preserves the soname symlink chain (libtensorflow.so -> .so.2 ->
+    # .so.2.18.0). Best-effort: a bundling problem must not fail a good build.
+    ${SUDO_WRAP} cp -a "${tf_libdir}"/libtensorflow.so* "${FFMPEG_PREFIX}/lib/" 2>/dev/null || true
+    ${SUDO_WRAP} cp -a "${tf_libdir}"/libtensorflow_framework.so* "${FFMPEG_PREFIX}/lib/" 2>/dev/null || true
+    ${SUDO_WRAP} ldconfig || true
+    echo "  bundled $(find "${FFMPEG_PREFIX}/lib" -maxdepth 1 -name 'libtensorflow*.so*' 2>/dev/null | wc -l) TensorFlow .so file(s)"
+}
+
 emit_runtime_apt_manifest() {
     # Record the EXACT apt packages that provide the external codec .so libraries
     # this FFmpeg build actually links, so the runtime image can install exactly
@@ -620,6 +651,9 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
+    # libtensorflow.so.2 lives only in the SDK cache mount; copy it into the
+    # ffmpeg payload so the shipped binary can load it (see the function header).
+    bundle_tensorflow_runtime_lib || true
     # Best-effort by declaration (see its header comment): a manifest problem
     # must never fail an ffmpeg build that already succeeded.
     emit_runtime_apt_manifest || true

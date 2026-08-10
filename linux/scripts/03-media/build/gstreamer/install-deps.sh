@@ -27,6 +27,25 @@ if is_cross; then
   fi
 fi
 
+# Ubuntu 26.04 "resolute" (rolling dev release) mirror skew: libvulkan-dev is
+# Multi-Arch: same, so its arch-independent headers under /usr/include/vk_video/
+# must be byte-identical across the host :amd64 instance (already installed) and
+# the target :<arch> instance being installed. When the amd64 archive and the
+# arm64/riscv64 ports archive drift to different libvulkan-dev versions, those
+# shared headers differ and dpkg REFUSES to unpack the target instance ("trying
+# to overwrite shared '/usr/include/vk_video/vulkan_video_codec_av1std.h', which
+# is different from other instances of package libvulkan-dev"). libgtk-4-dev
+# pulls libvulkan-dev in transitively, so this aborts the whole GTK/graphics
+# install and broke the base->latest-cross chain (observed 2026-08-10, arm64
+# media). The conflicting files are arch-independent vulkan-video codec headers —
+# letting the target instance's copy win is benign. Allow dpkg to overwrite so
+# the cross install completes. Cross-only (native builds have no second instance).
+if is_cross; then
+  install -d /etc/apt/apt.conf.d
+  printf 'Dpkg::Options { "--force-overwrite"; };\n' \
+    > /etc/apt/apt.conf.d/99-cross-vulkan-force-overwrite
+fi
+
 if is_cross; then
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
     echo "Using staged target Python headers from $(cross_target_python_include_dir)"
