@@ -1886,7 +1886,7 @@ edit costs one ONNX-vertex rebuild, so land them together:
 | Batch | Items | Tier | Effort | Impact |
 |---|---|---|---|---|
 | **W0 pending actions** | buildkitd env, sccache issue, tag cleanup | host | S | ★★★ (unblocks log visibility) |
-| **W1 host-only quick wins** | 2, 3, 5, 6, 9, 10-13, 15, 21, 22, 25, 29, 30 | host scripts/tests only — zero cache impact | S-M | ★★ |
+| **W1 host-only quick wins** | ~~12, 13, 22, 25~~ done · 2, 6 partial · REST: 2-legacy, 5, 9, 15, 21, 26, 29, 30 (NOT 3/10/11 — those are media-closure, they belong to W3) | host scripts/tests only — zero cache impact | S-M | ★★ |
 | **W2 preflight architecture** | 0a, 0c, 1+18, 26, 32 | host (drivers, diagnostics, probe assets) | M | ★★★ |
 | **W3 media-closure batch** | 4, 7+19, 16+17, 20, 23 | media closure (bkmods module + build scripts) — ONE ONNX rebuild for all | M-L | ★★★ (guard redesign + patch helper) |
 | **W4 base-tier batch** | 27 (+ anything else touching base closure) | base — FULL chain rebuild; batch with the next planned base bump | M | ★ |
@@ -1951,7 +1951,7 @@ this doc + CHANGELOG per repo priority 4.
    gained `(TM)`-rename tolerance on 2026-08-10 — the other two copies did
    NOT, widening the drift this item exists to close. Do together with
    #18.)*
-2. **The Stevedore tool path is hardcoded single-candidate in 10+ files** *(PARTIAL 2026-08-10 W1: the three 2026-08-10 diagnostics now resolve a candidate list; 7 legacy files remain)*
+2. *(DONE 2026-08-10 W1 — scope corrected: the evening grep matched files that ALREADY carry candidate lists; the truly single-candidate set was 6, all now resolve candidates (three same-day diagnostics + reset-container-stores ×2 + collect-host-docker-state). deploy-shim-patch/verify-host-setup keep their overridable Program-Files param defaults DELIBERATELY: the shim deploy target must not silently follow a stale D:\ layout)* **The Stevedore tool path was hardcoded single-candidate in several files**
    (2026-08-10 evening sweep: probe-build-copy, verify-cuda-cache,
    test-rdna4-layer-lock, test-layer-rename, test-process-isolation-commit,
    deploy-shim-patch, reset-container-stores, verify-host-setup, ... — only
@@ -2084,7 +2084,7 @@ Checked and deliberately NOT flagged: isolation-probe already parameterizes
 its FROM; scrub coverage matches its documented tier map; `.dockerignore`
 guards the context; the ENV/ARG mirrors are the documented deliberate ones.
 
-26. **Probe Dockerfiles float their base** (`FROM ...servercore:ltsc2025`
+26. *(DONE 2026-08-10 W1: ARG BASE in both probe Dockerfiles; probe-build-copy.ps1 pins it to versions.env WINDOWS_BASE_DIGEST via dependency-free parse on all three lanes, smoke-verified; the A/B script inherits the tag default until #5)* **Probe Dockerfiles float their base** (`FROM ...servercore:ltsc2025`
     without a digest) while the chain pins `WINDOWS_BASE_DIGEST` — when MS
     rolls the tag, the probe certifies a DIFFERENT base than the chain
     builds on, and pulls a fresh multi-GB image to do it. Fix: `ARG BASE`

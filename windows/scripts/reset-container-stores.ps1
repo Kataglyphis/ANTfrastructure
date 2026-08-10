@@ -59,11 +59,16 @@ foreach ($f in @('C:\Program Files\containerd\cni\conf\0-containerd-nat.conf', '
 }
 
 Say '== buildctl worker ==' 'Cyan'
-$bt = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
+$bt = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
 if (Test-Path $bt) { & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host } else { Say '  buildctl missing' 'Red' }
 
 Say '== docker info ==' 'Cyan'
-& "$env:ProgramFiles\Stevedore\bin\docker.exe" info 2>&1 | Select-String -Pattern 'Server Version|Storage Driver|Isolation' | ForEach-Object { $_.Line } | Write-Host
+$dockerExe = @("$env:ProgramFiles\Stevedore\bin\docker.exe", 'D:\Stevedore\bin\docker.exe') |
+    Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($dockerExe) {
+    & $dockerExe info 2>&1 | Select-String -Pattern 'Server Version|Storage Driver|Isolation' | ForEach-Object { $_.Line } | Write-Host
+}
 
 Say 'RESET COMPLETE - tell the agent to re-run the 3-layer probe.' 'Green'
 Read-Host 'Press ENTER to close'

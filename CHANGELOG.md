@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-08-10 (night) - backlog batch W1 round 2: #2 + #26 closed
+
+- **#2 closed with a scope correction**: the "10+ single-candidate files"
+  claim was an over-count (the grep matched files that already carry
+  candidate lists). The truly single-candidate set was six sites — all now
+  resolve the Program Files + `D:\Stevedore` candidates
+  (reset-container-stores ×2, collect-host-docker-state, plus the three
+  same-day diagnostics). `deploy-shim-patch`/`verify-host-setup` keep their
+  overridable Program-Files param defaults deliberately: a shim DEPLOY
+  target must not silently follow a stale `D:\` layout (that path vanished
+  on this host once before).
+- **#26 closed**: both probe Dockerfiles take `ARG BASE`;
+  `probe-build-copy.ps1` pins it to versions.env's `WINDOWS_BASE_DIGEST`
+  (dependency-free parse — no module import in the first script a new host
+  runs) on all three lanes. Smoke-verified live: probe green with
+  `probe base pinned: ...@sha256:d5bbb830…`. The RDNA4 A/B keeps the tag
+  default until #5 (probe reuse) lands.
+- Gates green after each step (lint 137/0/0, tests 430/430).
+
 ## 2026-08-10 (night) - backlog batch W1 (host-only, zero cache impact, worked while run 11 compiled)
 
 - Backlog items closed/advanced with gates green (lint 137/0/0, tests

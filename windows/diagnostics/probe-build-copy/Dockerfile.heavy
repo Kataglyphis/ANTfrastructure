@@ -1,4 +1,6 @@
-FROM mcr.microsoft.com/windows/servercore:ltsc2025
+# BASE: see Dockerfile (same pinning contract). Backlog #26.
+ARG BASE=mcr.microsoft.com/windows/servercore:ltsc2025
+FROM ${BASE}
 RUN fsutil file createnew C:\big1.bin 104857600 && fsutil file createnew C:\big2.bin 104857600
 # Forward slashes: a trailing backslash is the Dockerfile ESCAPE char and
 # eats the newline (degrades the dest to a FILE named "modules" at EOF).

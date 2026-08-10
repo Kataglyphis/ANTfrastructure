@@ -51,7 +51,7 @@ try {
 W ''
 W '== Engine binaries =='
 try {
-    Get-Item 'C:\Program Files\Stevedore\bin\*.exe', 'C:\Program Files\Stevedore\*.exe' -ErrorAction SilentlyContinue |
+    Get-Item 'C:\Program Files\Stevedore\bin\*.exe', 'C:\Program Files\Stevedore\*.exe', 'D:\Stevedore\bin\*.exe', 'D:\Stevedore\*.exe' -ErrorAction SilentlyContinue |
         Select-Object Name, @{n='Ver'; e={$_.VersionInfo.FileVersion}}, @{n='MB'; e={[math]::Round($_.Length/1MB,1)}} |
         ForEach-Object { W ('  {0} v{1} {2}MB' -f $_.Name, $_.Ver, $_.MB) }
 } catch { W ('  engines error: ' + $_.Exception.Message) }
