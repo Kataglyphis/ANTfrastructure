@@ -61,3 +61,21 @@ jobs:
       - name: Run test suites
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1
+
+  # Backlog 0b (2026-08-10): the 2026-08-03 versions.env bump carried FIVE
+  # latent Windows breaks because nothing exercised the patch stack against
+  # the new pins. This job re-verifies every committed .patch against its
+  # pinned upstream (shallow + sparse + blobless clones - megabytes, not a
+  # container build) on every trigger, which includes versions.env changes
+  # via the workflow paths above. The remaining HUMAN half of 0b: a
+  # versions.env bump still needs one local `[build-win]`-style full chain
+  # before it can be trusted - CI has no GPU and builds no containers.
+  patch-drift:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Patches apply cleanly at the pinned versions
+        shell: pwsh
+        run: pwsh -NoProfile -File windows/scripts/tests/Test-PatchesApplyClean.ps1

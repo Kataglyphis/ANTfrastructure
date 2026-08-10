@@ -5,7 +5,7 @@
 # builds. MUST run elevated (Get-MpPreference/Add-MpPreference need admin).
 # Prints BEFORE, applies missing, prints AFTER.
 #
-#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\verify-defender-exclusions.ps1'
+#   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\sync-defender-exclusions.ps1'
 
 #requires -Version 7.0
 $ErrorActionPreference = 'Stop'

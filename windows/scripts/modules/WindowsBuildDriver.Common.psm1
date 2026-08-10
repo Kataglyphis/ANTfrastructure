@@ -755,7 +755,12 @@ function Assert-BuildkitdStepLogEnv {
         # No service registered = not this host's lane; the buildctl
         # resolution in the driver is the authority on that failure.
         if (-not (Test-Path $svcKey)) { return }
-        $envStrings = (Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue).Environment
+        # Property-guarded read: `.Environment` on a key WITHOUT that value
+        # throws PropertyNotFound under StrictMode - which is EXACTLY the
+        # wiped-env case this gate exists for (it killed run 13's launch,
+        # 2026-08-10, because the tests only ever injected the override).
+        $props = Get-ItemProperty -Path $svcKey -ErrorAction SilentlyContinue
+        $envStrings = if ($props -and $props.PSObject.Properties.Name -contains 'Environment') { $props.Environment } else { @() }
     }
     if ((@($envStrings) -join "`n") -match 'BUILDKIT_STEP_LOG_MAX_SIZE\s*=\s*-1') { return }
     $msg = ("buildkitd service env is missing BUILDKIT_STEP_LOG_MAX_SIZE=-1 - step logs will clip at 2MiB. " +

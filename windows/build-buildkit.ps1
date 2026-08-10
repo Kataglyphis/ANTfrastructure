@@ -95,6 +95,12 @@ param(
     # verified green via probe-build-copy.ps1 -Heavy) without also disarming
     # the disk/shim gates the way the all-or-nothing -SkipHostChecks does.
     [switch]$SkipRdna4Gate,
+    # Bypass ONLY the buildkitd step-log-env gate (0a) for one launch when
+    # the elevated restore has to wait for a between-runs window with an
+    # admin present. The 2MiB clip stays active - causal errors still reach
+    # the host via stderr and the buildctl error summary, but chatty step
+    # middles are lost. Restore properly ASAP (setup-new-host.ps1).
+    [switch]$SkipStepLogGate,
     # Free-space floor for the preflight gate; below ~25 GB hcsshim misbehaves
     # in ways that do not look like a disk problem.
     [int]$MinFreeGb = 40
@@ -116,6 +122,10 @@ Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.C
 
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
+# Retention (backlog #30): stage logs are per-run keepsakes, not an archive -
+# trim the tail so incident-day forensics stay navigable. 80 files ≈ several
+# full chains; never-swallow-logs means the CURRENT incident always survives.
+Limit-DiagnosticLogs -Directory $script:LogDir -Keep 80
 
 # --- buildctl resolution ---
 if (-not $BuildCtl) {
@@ -192,7 +202,7 @@ Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostCh
 Assert-ShimPatch -Force:$SkipHostChecks
 # Host-drift preflight (backlog 0a): seconds at launch instead of a
 # minute-80 surprise - the 2MiB step-log clip hid verdicts for a day.
-Assert-BuildkitdStepLogEnv -Force:$SkipHostChecks
+Assert-BuildkitdStepLogEnv -Force:($SkipHostChecks -or $SkipStepLogGate)
 Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the

@@ -370,6 +370,21 @@ Describe 'Assert-BuildkitdStepLogEnv (step-log clip preflight, backlog 0a)' {
     It '-Force downgrades to a warning (SkipHostChecks path)' {
         Assert-BuildkitdStepLogEnv -EnvironmentOverride @() -Force -WarningAction SilentlyContinue
     }
+
+    It 'survives the REAL registry read on a key with no Environment value (run-13 regression)' {
+        # Winmgmt exists on every Windows host and carries no Environment
+        # value - the exact shape of the wiped-env case. The gate must reach
+        # its own refusal (or -Force warning), never a StrictMode
+        # PropertyNotFound from the raw `.Environment` access.
+        Assert-Throws -MessagePattern 'BUILDKIT_STEP_LOG_MAX_SIZE' -Body {
+            Assert-BuildkitdStepLogEnv -ServiceName 'Winmgmt'
+        } -Message 'missing value must produce the gate refusal, not a property error'
+        Assert-BuildkitdStepLogEnv -ServiceName 'Winmgmt' -Force -WarningAction SilentlyContinue
+    }
+
+    It 'returns silently when the service does not exist at all' {
+        Assert-BuildkitdStepLogEnv -ServiceName 'NoSuchServiceKataglyphis'
+    }
 }
 
 Describe 'Get-Rdna4HazardDevice (single-source hazard set, backlog #1)' {

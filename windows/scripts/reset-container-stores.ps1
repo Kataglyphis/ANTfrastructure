@@ -18,6 +18,9 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 }
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
+# Tool resolution via the shared candidate-list owner (backlog #2).
+Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1')
+
 function Say([string]$m, [string]$c = 'Gray') { Write-Host ('[{0}] {1}' -f (Get-Date -Format HH:mm:ss), $m) -ForegroundColor $c }
 
 Say '== stop services ==' 'Cyan'
@@ -50,7 +53,9 @@ Start-Sleep -Seconds 5
 Say ("  stevedore  = " + (Get-Service stevedore).Status) $(if ((Get-Service stevedore).Status -eq 'Running') { 'Green' } else { 'Red' })
 
 Say '== re-deploy GC policy toml ==' 'Cyan'
-& 'D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\apply-buildkitd-gcpolicy.ps1'
+# $PSScriptRoot, not a hardcoded checkout path: this script must work from
+# any clone location (a D:\GitHub literal broke C:-checkout hosts).
+& (Join-Path $PSScriptRoot 'apply-buildkitd-gcpolicy.ps1')
 Start-Sleep -Seconds 3
 
 Say '== CNI confs survive? ==' 'Cyan'
@@ -59,13 +64,13 @@ foreach ($f in @('C:\Program Files\containerd\cni\conf\0-containerd-nat.conf', '
 }
 
 Say '== buildctl worker ==' 'Cyan'
-$bt = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
-if (Test-Path $bt) { & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host } else { Say '  buildctl missing' 'Red' }
+# Get-PreferredToolPath: candidates first, then PATH; returns $null when
+# absent (the old `Test-Path $bt` threw on a $null path with buildctl missing).
+$bt = Get-PreferredToolPath -CommandName 'buildctl.exe' -CandidatePaths @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
+if ($bt) { & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host } else { Say '  buildctl missing' 'Red' }
 
 Say '== docker info ==' 'Cyan'
-$dockerExe = @("$env:ProgramFiles\Stevedore\bin\docker.exe", 'D:\Stevedore\bin\docker.exe') |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
+$dockerExe = Get-PreferredToolPath -CommandName 'docker.exe' -CandidatePaths @("$env:ProgramFiles\Stevedore\bin\docker.exe", 'D:\Stevedore\bin\docker.exe')
 if ($dockerExe) {
     & $dockerExe info 2>&1 | Select-String -Pattern 'Server Version|Storage Driver|Isolation' | ForEach-Object { $_.Line } | Write-Host
 }

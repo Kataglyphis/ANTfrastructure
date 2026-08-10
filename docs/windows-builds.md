@@ -64,6 +64,7 @@ Every inline substitution in a build script carries a `# Inline patch (kept inli
 | ONNX Runtime | `006-cuda-llm-bare-nvcc.patch` | `cmake/onnxruntime_providers_cuda.cmake` | sccache's nvcc decomposition crashes its server deterministically on the fused_moe_gemm generated launchers (two chain runs died at ~4910 s, `os error 10054` on every client). The launchers all live in the `onnxruntime_providers_cuda_llm` OBJECT library, so the patch clears that ONE target's `CUDA_COMPILER_LAUNCHER` property — bare nvcc there, sccache-wrapped (and cached) CUDA everywhere else. Hit rates are visible per run via the `sccache-stats|` stderr block after the ONNX build |
 | OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` | CMP0146/CMP0148 OLD→NEW + clang-cl/CUDA detection compat. REGENERATED against 5.0.0 on 2026-08-10 (5.0.0 dropped the `CMP0218` block the old hunk context named; the patch is applied with NO fallback, so drift here throws an hour into media-core — run `Test-PatchesApplyClean.ps1` after every pin bump) |
 | OpenCV | `002-mlas-clangcl-force-include.patch` | `3rdparty/mlas/CMakeLists.txt` | OpenCV 5.0.0's bundled MLAS treats clang-cl as GNU-Clang and passes the GNU pair `-include` + `cstring`, which the CL dialect parses as an INPUT FILE (`clang-cl: error: no such file or directory: 'cstring'`, first mlas TU). Adds an MSVC-frontend branch (`CMAKE_CXX_COMPILER_FRONTEND_VARIANT`) using `/FIcstring` + `/w`. The older inline `<cstring>` source-prepend loop in build-opencv-from-source.ps1 fixes only the CONTENT, not the broken flags |
+| OpenCV | `003-mlas-windows-skip.patch` | `3rdparty/mlas/CMakeLists.txt` | Skip the vendored MLAS on Windows: its kernels are GAS/ELF-only (`.type sym,@function`, no MASM port) and clang-cl IS a working GAS assembler, so the `check_language(ASM)` guard that saves MSVC does not fire — the `.S` files then die in the integrated assembler ("expected absolute expression", run 12, 2026-08-10). dnn falls back to its built-in SGEMM; inference runs on ONNX Runtime/DirectML anyway |
 | OpenCV (contrib) | `001-cudev-windows-llp64.patch` | `cudev/.../common.hpp` | Add `ulong`/`longlong`/`ulonglong` typedefs for Windows LLP64 |
 
 `ffmpeg/makedef` is **not** a patch — it is a whole-file replacement script staged over FFmpeg's `makedef` (a byte swap, not a diff), so it is not in the table above.
@@ -1912,7 +1913,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `verify-cuda-cache.ps1` | `windows/diagnostics/` | CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl solve FROM the local toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint; exit 0 only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store. Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump** — the launcher's value rests on this property. |
 | `collect-host-docker-state.ps1` | `windows/scripts/` | Cross-machine forensics for "works there, fails here": dumps OS build, optional features (DISM API health - reports "Klasse nicht registriert" when broken), filter drivers, services, engine versions, docker info, HNS. Writes `out\host-docker-forensics.txt`. Elevation needed for feature/fltmc reads. |
 | `reset-container-stores.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): full container-store reset - stops the services, RENAMES `C:\ProgramData\containerd`/`buildkitd`/`Docker` to `.bak-<stamp>` (rollback), restarts clean, re-deploys the GC-policy toml. The docs' last resort for persistent, non-release hcsshim weirdness; safe on a fresh host (stores re-pull). |
-| `verify-defender-exclusions.ps1` | `windows/scripts/` | HOST maintenance (admin): prints, then applies if missing, the FULL Defender exclusion set for Windows-container builds - paths (`C:\ProgramData\containerd`/`buildkitd`/`Docker`/`nerdctl`, `C:\ProgramData\Microsoft\Windows\Containers`, `C:\temp`, `C:\WINDOWS\SystemTemp`) and processes (dockerd/containerd/buildkitd/nerdctl/CExecSvc/vmcompute). READ the BEFORE output: non-admin cannot see `Get-MpPreference`, so this is the only proof exclusions were ever applied. |
+| `sync-defender-exclusions.ps1` | `windows/scripts/` | HOST maintenance (admin): prints, then applies if missing, the FULL Defender exclusion set for Windows-container builds - paths (`C:\ProgramData\containerd`/`buildkitd`/`Docker`/`nerdctl`, `C:\ProgramData\Microsoft\Windows\Containers`, `C:\temp`, `C:\WINDOWS\SystemTemp`) and processes (dockerd/containerd/buildkitd/nerdctl/CExecSvc/vmcompute). READ the BEFORE output: non-admin cannot see `Get-MpPreference`, so this is the only proof exclusions were ever applied. |
 | `repair-windows-componentstore.ps1` | `windows/scripts/` | HOST maintenance (admin, long-running 10-40 min): `DISM /Online /Cleanup-Image /RestoreHealth` + `sfc /scannow`, re-tests the DISM API (was `Klasse nicht registriert` on the reference-discovered box), then re-runs the 3-layer probe. The OS-level repair step for hosts where container-layer ops fail and everything else is clean. |
 | `verify-host-setup.ps1` | `windows/scripts/` | The machine-checkable form of `docs/windows-host-setup.md` — run it FIRST on any new machine, and after any host change. Non-admin: services, `buildctl` reaching buildkitd unelevated, nerdctl presence, **BOTH CNI forms** (`.conf` for buildkitd — missing is a FAIL; `.conflist` for nerdctl — missing is a WARN) plus content agreement between them and subnet-vs-adapter drift, patched runhcs shim **by SHA256** against the hash `deploy-shim-patch.ps1` recorded at install (size only as a fallback, reported as a WARN so "still guessing" is visible), containerd teardown env var + debug flags, worker snapshotter + gcpolicy, disk headroom **on C: AND the repo/build-context drive**, sccache reachability. Exit 1 on any FAIL; each failure prints its fix. Defender exclusions are reported UNKNOWN (not skipped) when unelevated, so their absence cannot masquerade as success. Registry values that do not EXIST (e.g. the containerd `Environment` value before the first apply) degrade to WARNs, not a mid-run crash (fixed 2026-08-09 — the old `(Get-ItemProperty ...).Environment` threw PropertyNotFound at line 212 and silently skipped the teardown-env + debug-flag checks, under-counting the verdict). **Keep it in step with the guide — they are two views of one contract**; the guide had shipped a broken CNI template for days precisely because prose cannot be executed |
 | `apply-containerd-config.ps1` | `windows/scripts/` | HOST config (admin, never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`: containerd runs with NO `config.toml` on this host, so its settings live only in the service's `ImagePath`/`Environment` registry values and existed nowhere in the repo until 2026-08-07. Owns: `--log-level debug --log-file` (permanent owner policy — truncate the log, never disable the flags), `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits the SERVICE environment; a shim built from the upstream patch keeps its 30 s defaults and silently reverts to the 0x3 defect without it — `TASK_CLOSE_TIMEOUT` stays unset on purpose, the patch derives it as 2×teardown+30 s), and the load-bearing Defender exclusions (otherwise invisible: `Get-MpPreference` needs admin). `-ReportOnly` shows drift without admin and changes nothing |
@@ -1946,18 +1947,18 @@ edit costs one ONNX-vertex rebuild, so land them together:
 | Batch | Items | Tier | Effort | Impact |
 |---|---|---|---|---|
 | **W0 pending actions** | buildkitd env (now ENFORCED by the 0a gate — restore before run 13!), sccache issue, tag cleanup | host | S | ★★★ (unblocks log visibility) |
-| **W1 host-only quick wins** | ~~5, 6, 12, 13, 22, 24, 25~~ done · 2 partial-by-design · REST: 2-legacy, 8+30, 9, 15, 21, 29 | host scripts/tests only — zero cache impact | S-M | ★★ |
-| **W2 preflight architecture** | ~~0a, 0c, 1+18, 26~~ done · REST: 32 | host (drivers, diagnostics, probe assets) | M | ★★★ |
+| **W1 host-only quick wins** | ~~2, 5, 6, 8+30, 9, 12, 13, 15, 21, 22, 24, 25, 29~~ ALL DONE | host scripts/tests only — zero cache impact | S-M | ★★ |
+| **W2 preflight architecture** | ~~0a, 0c, 1+18, 26, 32~~ ALL DONE | host (drivers, diagnostics, probe assets) | M | ★★★ |
 | **W3 media-closure batch** | ~~3, 4, 7+19, 10, 11, 16+17, 20, 23~~ ALL DONE (2026-08-10 night, landed inside run 12's already-busted closure window) | media closure | M-L | ★★★ |
 | **W4 base-tier batch** | 27 (+ anything else touching base closure) | base — FULL chain rebuild; batch with the next planned base bump | M | ★ |
-| **W5 process/policy** | 0b (bump protocol), 28 (measure first!), 31 | repo/CI policy + measurements | M | ★★★ (0b + 28) |
+| **W5 process/policy** | 0b (CI half DONE — patch-drift job; human bump-protocol half stands), 28 (measurement RUNNING: per-process fleet sampler captured run 12's ONNX compile → `out\build-logs\onnx-tu-memory-samples-20260810.csv`; analyze, then split job pools), 31 (needs the registry-creds decision) | repo/CI policy + measurements | M | ★★★ |
 
-Suggested order: W5(0b sofort — GenAI 0.15.2/LiteRT-LM 0.15.0 bumps are
-already announced in the docs!) → W1 rest → W4. Done-when: the per-item fix
-suggestion holds, gates stay green (lint 0 warnings, full test suite,
-Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
-+ CHANGELOG per repo priority 4. (2026-08-10 night batch: 457 tests / lint
-0-0 green after every sub-batch.)
+OPEN as of 2026-08-10 night: **27** (base-tier window), **28** (analyze the
+captured samples → pool split), **31** (owner decision), **0b human half**
+(bump protocol). Everything else in this backlog is closed.
+Done-when held throughout: gates green after every sub-batch (lint 141
+files 0/0 incl. the new AST-trap pass, 457/457 tests), behavior changes in
+AGENTS + this doc + CHANGELOG per repo priority 4.
 
 ### Pending host/upstream actions (not refactors — do not let these evaporate)
 
@@ -1995,7 +1996,12 @@ Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
     subset (service-env registry read, dufs HEAD request, RDNA4 state,
     shim hash) and run it at the top of BOTH drivers. Seconds at launch
     instead of minute-80 surprises.
-0b. **Version bumps must ride the Windows lane.** The 2026-08-03 bump
+0b. *(HALF DONE 2026-08-10 night: `patch-drift` job added to
+    windows-scripts.yml — Test-PatchesApplyClean now runs in CI on every
+    windows/**/versions.env trigger (shallow+sparse clones, ~minutes). The
+    HUMAN half stands: a versions.env bump still needs one local full-chain
+    build before trust — CI builds no containers.)*
+    **Version bumps must ride the Windows lane.** The 2026-08-03 bump
     (ONNX 1.28, OpenCV 5.0.0) carried FIVE latent Windows breaks because
     `[build-win]` is opt-in and nobody built the bump. Rule: versions.env
     bump commits require `[build-win]` (or a weekly scheduled canary), and
@@ -2029,7 +2035,7 @@ Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
    gained `(TM)`-rename tolerance on 2026-08-10 — the other two copies did
    NOT, widening the drift this item exists to close. Do together with
    #18.)*
-2. *(DONE 2026-08-10 W1 — scope corrected: the evening grep matched files that ALREADY carry candidate lists; the truly single-candidate set was 6, all now resolve candidates (three same-day diagnostics + reset-container-stores ×2 + collect-host-docker-state). deploy-shim-patch/verify-host-setup keep their overridable Program-Files param defaults DELIBERATELY: the shim deploy target must not silently follow a stale D:\ layout)* **The Stevedore tool path was hardcoded single-candidate in several files**
+2. *(DONE 2026-08-10 — candidate lists landed same-day (scope note: the truly single-candidate set was 6); the night batch finished the consolidation: reset-container-stores + verify-cuda-cache now resolve via `Get-PreferredToolPath` (candidates → PATH; `$null`-safe — the old `Test-Path $bt` threw when buildctl was absent), and reset-container-stores' hardcoded `D:\GitHub` repo path became `$PSScriptRoot`-relative. DELIBERATE keepers: probe-build-copy stays inline (first-script-on-a-new-host must be module-free), collect-host-docker-state's glob is forensics enumeration not tool resolution, deploy-shim-patch/verify-host-setup keep their overridable Program-Files param defaults — the shim deploy target must not silently follow a stale D:\ layout)* **The Stevedore tool path was hardcoded single-candidate in several files**
    (2026-08-10 evening sweep: probe-build-copy, verify-cuda-cache,
    test-rdna4-layer-lock, test-layer-rename, test-process-isolation-commit,
    deploy-shim-patch, reset-container-stores, verify-host-setup, ... — only
@@ -2084,15 +2090,18 @@ Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
    Invoke-SourcePatch → catch → inline fallback → WarnMessage, near-identical
    each time; 3 added on 2026-08-10 alone). Fix: `Invoke-PatchWithFallback`
    helper in WindowsSourceBuild.Patches.psm1.
-8. **Log-persistence convention has no owner**: probe-build-copy,
-   verify-cuda-cache AND (since the same-day fix) test-rdna4-layer-lock now
-   implement the same Tee-to-`out\build-logs` block three times. Fix: one
-   `Invoke-TeedNativeCommand`/`Get-DiagnosticLogPath` helper in
-   WindowsScripts.Shared (which already owns New-Timestamp). Pair with #30.
-9. **probe-build-copy's three lanes are the same 9-line block ×3**
-   (exe-check, lane log, run|Tee|tail, exit report, failedLanes append) —
-   the shape that let the `-Docker` lane rot unnoticed. Fix: one
-   `Invoke-ProbeLane` helper called three times.
+8. *(DONE 2026-08-10 night: `Get-DiagnosticLogPath` + `Limit-DiagnosticLogs`
+   in WindowsScripts.Shared own path + retention; verify-cuda-cache
+   consumes them, the A/B's copy vanished with the #5 delegation, and
+   probe-build-copy keeps its inline block BY DESIGN (module-free
+   first-script rule).)*
+   **Log-persistence convention has no owner.** Pair with #30.
+9. *(DONE 2026-08-10 night: script-local `Invoke-ProbeLane` (exe check, Tee
+   log, tail echo, exit report, attempted/failed bookkeeping) called for
+   all three lanes; args are quoted array elements per the ArgQuoting
+   lesson. NOTE: not yet live-smoked — run `probe-build-copy.ps1 -Heavy`
+   once after run 12's media-core finishes, before trusting a verdict.)*
+   **probe-build-copy's three lanes are the same 9-line block ×3.**
 
 ### P3 — cosmetics / hygiene
 
@@ -2112,12 +2121,14 @@ Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
 13. *(DONE 2026-08-10 W1)* **Fake-ninja 'fail' line evaluates its condition twice**
     (SourceBuild.NinjaRetry.Tests) — fold into one guarded block like the
     FAILONCE line below it.
-14. **`verify-cuda-cache.ps1`'s 21-statement concatenated RUN line** — write
-    the payload as a COPY'd `cachetest.ps1` (lintable, diffable) instead of
-    ''-escaped string concatenation.
-15. **`verify-defender-exclusions.ps1` naming**: it verifies AND applies —
-    rename toward `sync-`/`ensure-` (or split), matching the repo's
-    fail-loudly/reporting conventions.
+14. *(DONE 2026-08-10 night: payload lives at
+    `windows/diagnostics/verify-cuda-cache/cachetest.ps1` (lint scope),
+    copied into the solve context and run as `RUN & C:\cachetest.ps1`.)*
+    **`verify-cuda-cache.ps1`'s 21-statement concatenated RUN line.**
+15. *(DONE 2026-08-10 night: `git mv verify-defender-exclusions.ps1
+    sync-defender-exclusions.ps1`, all references updated — the name now
+    says what it does.)*
+    **`verify-defender-exclusions.ps1` naming**: it verified AND applied.
 
 ### P1 addenda from the full sweep
 
@@ -2166,10 +2177,12 @@ Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
     into the toolchain image, so it exists on PATH in every container):
     gate `Start-SccacheStallGuard` on `Test-SccacheRemoteConfigured` like
     the launcher wiring does.
-21. **AST sweep double-parses the tree** every gate cycle (~141 files in
-    Invoke-Tests + the same in Invoke-Lint) and forgets the `\archive\`
-    exclusion: host the two ArgQuoting detectors inside Invoke-Lint's
-    existing parse loop.
+21. *(DONE 2026-08-10 night: detectors moved to
+    `modules/WindowsLint.Common.psm1`; Invoke-Lint runs them inside its
+    parse loop (one parse per file, `\archive\` excluded, violations fail
+    the gate) over a now fully-recursive windows\ walk that also picked up
+    `windows\upstream`; the test suite keeps the 6 positive controls.)*
+    **AST sweep double-parses the tree** every gate cycle.
 22. *(DONE 2026-08-10 W1)* **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
     drop `--output` (solve-only is enough for the hit/write assertions;
     contrast: the finalize probes NEED `type=image,unpack=true`).
@@ -2213,25 +2226,31 @@ guards the context; the ENV/ARG mirrors are the documented deliberate ones.
     per-TU-class peaks, then split into heavy/light ninja job pools or
     per-stage MemGBPerJob. Potentially the single largest wall-clock win
     left in the chain.
-29. **Diagnostic image debris pins store layers**: incident days mint tags
-    (`copyprobe-*`, `sweep-*`, `rdna4ab-*`, `flush-*`, `verify-cuda-cache`,
-    ...) that sit in the containerd store until an admin `nerdctl rmi`.
-    Adopt one `diag-` tag prefix + a cleanup one-liner in the docs (or a
-    dedicated short-lived gcpolicy tier keyed on the prefix).
-30. **Build-log growth is unbounded** (28 MB today; the console log is one
-    append-across-runs file, which made per-run forensics harder all day).
-    One console log per driver invocation (timestamped name) + a simple
-    retention rule for `out\windows-build-logs`/`out\build-logs`.
+29. *(DONE 2026-08-10 night: the tag-minting diagnostics now share the
+    `diag-` prefix (`diag-probe-build-copy[-heavy]`, docker lane
+    `local/test:diag-probe-build-copy`; the A/B mints nothing since the #5
+    delegation, verify-cuda-cache nothing since #22). Cleanup one-liner:
+    admin `nerdctl --namespace buildkit images | findstr diag-` → `rmi`.
+    The pre-convention 2026-08-10 tags — incl. the old
+    `probe-build-copy[-heavy]` names — stay on the pending-cleanup list.)*
+    **Diagnostic image debris pins store layers.**
+30. *(DONE 2026-08-10 night: `Limit-DiagnosticLogs` retention — driver keeps
+    the newest 80 stage logs in `out\windows-build-logs`, diagnostics the
+    newest 60 in `out\build-logs` via `Get-DiagnosticLogPath`. Console-log
+    convention: the LAUNCHER names one timestamped file per driver
+    invocation — never append across runs.)*
+    **Build-log growth is unbounded.**
 31. **Green stage images live ONLY in the local containerd store** until a
     manual `-PushRef` — a host loss (this host has form: repair-installs,
     driver surgery) costs every stage. Auto-push green stage tags (or at
     least export-cache) once a chain goes green; the driver params already
     exist, they are just never invoked by default.
-32. **Document the CI runner's GPU class vs the RDNA4 hazard**: the
-    `[build-win]` lane's host either has no RDNA4 dGPU (then CI is immune
-    and local-only repro notes belong in the docs) or it does (then the
-    gate/toggle must reach CI) — today nobody can tell without asking the
-    host.
+32. *(DONE 2026-08-10 night — answered by reading the workflow: the Windows
+    CI lane is GITHUB-HOSTED `windows-latest`, builds NO container images
+    (scripts gate only, stated in windows-scripts.yml's header) and hosted
+    VMs carry no AMD dGPU → **CI is immune to the RDNA4 hazard**; the
+    gate/toggle workflow is local-host-only, which is where it lives.)*
+    **Document the CI runner's GPU class vs the RDNA4 hazard.**
 
 ### Already fixed during the review session (2026-08-10, for the record)
 

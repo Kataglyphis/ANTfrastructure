@@ -48,6 +48,13 @@ Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\001-cmake-clang-cl-co
 # FILE (clang-cl: error: no such file or directory: 'cstring' on the first
 # mlas TU). The patch adds an MSVC-frontend branch using /FIcstring + /w.
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\002-mlas-clangcl-force-include.patch') -SourceDir $mainSrc -Description 'opencv: mlas clang-cl force-include' -IgnoreWhitespace
+# Run-12 lesson (2026-08-10): 002 got the mlas C++ TUs compiling, then the
+# GAS-only .S kernels (`.type sym,@function`, ELF directives) died in
+# clang's integrated assembler for the COFF target. There is no MASM port
+# of the vendored kernels; MSVC never hits this because check_language(ASM)
+# finds no GAS there. 003 skips MLAS on Windows -> dnn's built-in SGEMM
+# (inference in this stack runs on ONNX Runtime/DirectML anyway).
+Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\003-mlas-windows-skip.patch') -SourceDir $mainSrc -Description 'opencv: mlas Windows skip (GAS-only kernels)' -IgnoreWhitespace
 if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
 }

@@ -344,6 +344,40 @@ function Get-SccacheStatsText {
     return @($lines)
 }
 
+function Limit-DiagnosticLogs {
+    # Retention for the log directories the diagnostics/drivers Tee into
+    # (backlog #30): growth was unbounded (28 MB day-one), which made
+    # per-run forensics harder. Never-swallow-logs means KEEP plenty -
+    # retention trims the tail, not the incident.
+    param(
+        [Parameter(Mandatory)][string]$Directory,
+        [int]$Keep = 60
+    )
+    if (-not (Test-Path $Directory)) { return }
+    $logs = @(Get-ChildItem -Path $Directory -Filter '*.log' -File -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending)
+    if ($logs.Count -le $Keep) { return }
+    $stale = @($logs | Select-Object -Skip $Keep)
+    $stale | Remove-Item -Force -ErrorAction SilentlyContinue
+    Write-Host ("log retention: removed {0} log(s) older than the newest {1} in {2}" -f $stale.Count, $Keep, $Directory)
+}
+
+function Get-DiagnosticLogPath {
+    # One owner for the diagnostics' log-persistence convention (backlog #8):
+    # <repo>\out\build-logs\<name>-<timestamp>.log, directory created,
+    # retention applied. probe-build-copy.ps1 alone keeps its inline copy BY
+    # DESIGN - it must run module-free on a fresh host (first-script rule).
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$Name,
+        [int]$Keep = 60
+    )
+    $dir = Join-Path $RepoRoot 'out\build-logs'
+    $null = New-Item -ItemType Directory -Force -Path $dir
+    Limit-DiagnosticLogs -Directory $dir -Keep $Keep
+    return Join-Path $dir ("{0}-{1}.log" -f $Name, (Get-Date -Format 'yyyyMMdd-HHmmss'))
+}
+
 function Write-SccacheStatsToStderr {
     # The end-of-build sink every in-container source build wants (backlog #3):
     # STDERR survives BuildKit's 2MiB step-log clip, so hit-rates stay
@@ -636,6 +670,8 @@ Export-ModuleMember -Function @(
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
     'Write-SccacheStatsToStderr',
+    'Limit-DiagnosticLogs',
+    'Get-DiagnosticLogPath',
     'Get-VisualStudioInstallPath',
     'Get-MsvcToolsRoots',
     'Resolve-LatestVersionTag'

@@ -23,28 +23,41 @@ $scriptsDir = Split-Path -Parent $MyInvocation.MyCommand.Path      # windows/scr
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows
 $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
 
-# Collect every script/module except the archived (dead) tree.
-# windows\diagnostics joined the scope 2026-08-10 - its scripts (GPU probes,
-# isolation probes, the RDNA4 layer-lock A/B) had silently never been linted.
+# Collect every script/module except the archived (dead) tree. One recursive
+# walk over windows\ (2026-08-10, backlog #21): the former three-list form
+# missed trees like windows\upstream, and windows\diagnostics had silently
+# never been linted before joining the scope the same day.
 $targets = @(
-    Get-ChildItem -Path $windowsDir -Filter '*.ps1' -File                                  # build.ps1 + siblings
-    Get-ChildItem -Path $scriptsDir -Recurse -Include '*.ps1', '*.psm1' -File
-    Get-ChildItem -Path (Join-Path $windowsDir 'diagnostics') -Recurse -Include '*.ps1', '*.psm1' -File -ErrorAction SilentlyContinue
+    Get-ChildItem -Path $windowsDir -Recurse -Include '*.ps1', '*.psm1' -File
 ) | Where-Object { $_.FullName -notmatch '\\archive\\' } | Sort-Object FullName -Unique
 
 Write-Host "== Lint gate: $($targets.Count) files ==" -ForegroundColor Cyan
 
-# ---- Pass 1: parse ----
+# AST trap detectors ride the parse loop (backlog #21: the ArgQuoting test
+# suite used to re-parse the whole tree a second time per gate cycle, and
+# its standalone sweep forgot the \archive\ exclusion).
+Import-Module (Join-Path $scriptsDir 'modules\WindowsLint.Common.psm1')
+
+# ---- Pass 1: parse + AST traps ----
 $parseErrors = New-Object System.Collections.ArrayList
+$astViolations = New-Object System.Collections.ArrayList
 foreach ($file in $targets) {
     $errors = $null
-    [void][System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors)
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors)
     if ($errors -and $errors.Count -gt 0) {
         foreach ($e in $errors) {
             [void]$parseErrors.Add([pscustomobject]@{
                     File = $file.FullName; Line = $e.Extent.StartLineNumber; Message = $e.Message
                 })
         }
+        continue
+    }
+    $rel = $file.FullName.Substring($windowsDir.Length).TrimStart('\', '/')
+    foreach ($v in @(Get-BarewordCommaAttrViolation -Ast $ast -Label $rel)) {
+        [void]$astViolations.Add("bareword comma-attribute native arg (quote the whole string): $v")
+    }
+    foreach ($v in @(Get-SwitchShadowViolation -Ast $ast -Label $rel)) {
+        [void]$astViolations.Add("[switch] parameter shadowed by non-boolean assignment (rename the local): $v")
     }
 }
 
@@ -55,6 +68,13 @@ if ($parseErrors.Count -gt 0) {
     }
 } else {
     Write-Host "PARSE: all $($targets.Count) files parse clean" -ForegroundColor Green
+}
+
+if ($astViolations.Count -gt 0) {
+    Write-Host "AST TRAPS: $($astViolations.Count) violation(s)" -ForegroundColor Red
+    foreach ($v in $astViolations) { Write-Host "  $v" -ForegroundColor Red }
+} else {
+    Write-Host 'AST TRAPS: none (comma-attr quoting + switch shadowing)' -ForegroundColor Green
 }
 
 # ---- Pass 2: PSScriptAnalyzer (optional) ----
@@ -88,7 +108,7 @@ if ($analyzerModule) {
 }
 
 # ---- Verdict ----
-$fail = $parseErrors.Count -gt 0
+$fail = ($parseErrors.Count -gt 0) -or ($astViolations.Count -gt 0)
 # -FailOnAnalyzer treats Warning as well as Error findings as fatal, matching the
 # "findings" wording in the help text.
 if ($FailOnAnalyzer -and ($errs.Count -gt 0 -or $warns.Count -gt 0)) { $fail = $true }

@@ -29,10 +29,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'windows\scripts\modules\WindowsScripts.Shared.psm1')
+
 if (-not $Endpoint) { throw 'no WebDAV endpoint: pass -Endpoint or set SCCACHE_WEBDAV_ENDPOINT (Machine scope)' }
 if (-not $BuildCtl) {
-    $BuildCtl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
-        Where-Object { Test-Path $_ } | Select-Object -First 1
+    # Shared candidate-list owner (backlog #2): candidates first, then PATH.
+    $BuildCtl = Get-PreferredToolPath -CommandName 'buildctl.exe' -CandidatePaths @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
 }
 if (-not $BuildCtl -or -not (Test-Path $BuildCtl)) { throw 'buildctl not found in any supported Stevedore layout' }
 
@@ -40,43 +42,25 @@ $ctx = Join-Path ([System.IO.Path]::GetTempPath()) ("cudacache-" + [guid]::NewGu
 New-Item -ItemType Directory -Force -Path $ctx | Out-Null
 try {
     # Dockerfile invariants: pwsh SHELL is inherited from the base image; shell-form
-    # RUN lines must not contain DOUBLE quotes (the frontend strips them). The RUN
-    # relies on the Machine-scope VS/CUDA env the base image bakes (INCLUDE/LIB).
+    # RUN lines must not contain DOUBLE quotes (the frontend strips them). The
+    # payload is a COPY'd, lintable script (backlog #14) living next to this
+    # one; its throw = RUN exit 1 = the probe verdict.
+    Copy-Item -Path (Join-Path $PSScriptRoot 'verify-cuda-cache\cachetest.ps1') -Destination (Join-Path $ctx 'cachetest.ps1')
     $runLines = @(
         "ARG SCCACHE_EP",
         "FROM $BaseImage",
         "ARG SCCACHE_EP",
         'ENV SCCACHE_WEBDAV_ENDPOINT=$SCCACHE_EP',
-        ('RUN $ErrorActionPreference = ''Stop''; ' +
-         '$scc = ''C:\Users\ContainerAdministrator\.cargo\bin\sccache.exe''; ' +
-         '$nvcc = (Get-ChildItem ''C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v*\bin\nvcc.exe'' | Select-Object -First 1).FullName; ' +
-         '$cl = (Get-ChildItem ''C:\Program Files (x86)\Microsoft Visual Studio\*\BuildTools\VC\Tools\MSVC\*\bin\HostX64\x64\cl.exe'' | Select-Object -First 1).FullName; ' +
-         'if (-not $nvcc -or -not $cl) { throw ''nvcc or cl not found in image'' }; ' +
-         '$env:Path = (Split-Path $cl) + '';'' + $env:Path; ' +
-         '$msvcRoot = Split-Path (Split-Path (Split-Path (Split-Path $cl))); ' +
-         '$sdkInc = (Get-ChildItem ''C:\Program Files (x86)\Windows Kits\10\Include\10.*'' | Sort-Object Name | Select-Object -Last 1).FullName; ' +
-         '$env:INCLUDE = $msvcRoot + ''\include;'' + $sdkInc + ''\ucrt;'' + $sdkInc + ''\shared;'' + $sdkInc + ''\um''; ' +
-         '& $scc --stop-server 2>$null; & $scc --start-server; & $scc -z | Out-Null; ' +
-         'Set-Content -Path C:\cachetest.cu -Value ''__global__ void k(float* p){ p[threadIdx.x] *= 2.0f; }''; ' +
-         '& $scc $nvcc (''-ccbin='' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t1.obj; ' +
-         'if ($LASTEXITCODE -ne 0) { throw (''first compile failed: '' + $LASTEXITCODE) }; ' +
-         '& $scc $nvcc (''-ccbin='' + $cl) -arch=sm_80 -c C:\cachetest.cu -o C:\t2.obj; ' +
-         'if ($LASTEXITCODE -ne 0) { throw (''second compile failed: '' + $LASTEXITCODE) }; ' +
-         '$stats = & $scc --show-stats | Out-String; Write-Host $stats; ' +
-         '$hits = 0; if ($stats -match ''Cache hits\s+(\d+)'') { $hits = [int]$Matches[1] }; ' +
-         '$writes = 0; if ($stats -match ''Cache writes\s+(\d+)'') { $writes = [int]$Matches[1] }; ' +
-         'Write-Host (''CUDA-CACHE-VERIFY hits='' + $hits + '' writes='' + $writes); ' +
-         'if ($hits -lt 1) { throw ''NO CACHE HIT on identical recompile - CUDA caching is broken'' }; ' +
-         'if ($writes -lt 1) { throw ''NO CACHE WRITE - objects never reached the WebDAV L2'' }')
+        'COPY cachetest.ps1 C:/cachetest.ps1',
+        'RUN & C:\cachetest.ps1'
     )
     Set-Content -Path (Join-Path $ctx 'Dockerfile') -Value ($runLines -join "`n") -Encoding ascii
 
     Write-Host "== CUDA cache verify: $BaseImage vs $Endpoint ==" -ForegroundColor Cyan
-    # Full output persisted (owner directive: never swallow logs).
+    # Full output persisted (owner directive: never swallow logs); path +
+    # retention via the shared convention owner (backlog #8/#30).
     $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $logDir = Join-Path $repoRoot 'out\build-logs'
-    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
-    $fullLog = Join-Path $logDir ("verify-cuda-cache-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".log")
+    $fullLog = Get-DiagnosticLogPath -RepoRoot $repoRoot -Name 'verify-cuda-cache'
     # No --output: the verdict is the RUN's exit code; an image export would
     # only mint store garbage per run (backlog item #22). Contrast with the
     # finalize probes, which NEED type=image,unpack=true - export IS their test.

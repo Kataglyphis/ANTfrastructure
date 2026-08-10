@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-08-10 (night) - run 12: ONNX vertex GREEN (bare-CUDA verdict confirmed); OpenCV died one layer deeper in MLAS -> patch 003; run 13 launched
+
+- **Run 12's ONNX vertex went green at ~76 min INCLUDING the lld-link** that
+  killed runs 10/11 - the sccache-nvcc miscompile verdict is now
+  triple-confirmed (run 5 bare green, 10/11 wrapped red, 12 bare green) and
+  patches 004/005/006 are exonerated as link suspects. The vertex is
+  committed as bk-windows-media-core-onnx; later solves FROM it.
+- **OpenCV vertex failed at 520 s in vendored MLAS - one layer past run 5's
+  failure** (002's force-include fix held): the bundled kernels are GAS/ELF
+  `.S` only (`.type sym,@function`), and clang-cl IS a working GAS
+  assembler, so the `check_language(ASM)` guard that protects MSVC does not
+  fire - the integrated assembler then rejects ELF directives for a COFF
+  target ("expected absolute expression", SgemmKernelSse2.S). No MASM port
+  exists upstream. **003-mlas-windows-skip.patch** skips MLAS on Windows
+  (dnn falls back to its built-in SGEMM, the same fallback upstream uses on
+  Android; inference runs on ORT/DirectML anyway). Patch regenerated from a
+  real `git diff` after a hand-written hunk mis-counted its header;
+  Test-PatchesApplyClean green across all 11 mapped patches.
+- The elevated buildkitd-env restore was DECLINED at the UAC prompt, so the
+  new 0a gate got a targeted `-SkipStepLogGate` override (same philosophy as
+  `-SkipRdna4Gate`: disk/shim gates stay armed) and run 13 launched with it
+  - the 2 MiB step-log clip remains active until the restore happens
+  between runs. Console logs now one timestamped file per launch (#30).
+
+## 2026-08-10 (night, backlog execution part 2) - W1/W2 rest + 0b CI half: the Windows backlog is now closed except 27/28-analysis/31/0b-human
+
+- **#21**: ArgQuoting AST detectors moved to `modules/WindowsLint.Common.psm1`;
+  Invoke-Lint now runs them inside its single parse pass (violations FAIL the
+  gate) over a fully recursive `windows\` walk — which also brought
+  `windows\upstream` into lint scope (141 files). The test suite keeps the
+  positive controls only.
+- **#9/#29**: probe-build-copy's three lanes collapsed into one
+  `Invoke-ProbeLane` runner; diagnostic tags adopted the `diag-` prefix
+  (cleanup one-liner documented). Not yet live-smoked — one
+  `probe-build-copy.ps1 -Heavy` after run 12's media-core is the last check.
+- **#8/#30**: `Get-DiagnosticLogPath` + `Limit-DiagnosticLogs` own the
+  diagnostics' log path/retention (driver keeps newest 80 stage logs,
+  diagnostics newest 60).
+- **#14**: verify-cuda-cache's 21-statement RUN line became a COPY'd,
+  lintable `cachetest.ps1`. **#15**: renamed to `sync-defender-exclusions.ps1`.
+- **#2 finish**: reset-container-stores + verify-cuda-cache resolve tools via
+  `Get-PreferredToolPath`; fixed reset-container-stores' hardcoded `D:\GitHub`
+  repo path and a latent `Test-Path $null` throw on missing buildctl.
+- **0b (CI half)**: new `patch-drift` job in windows-scripts.yml runs
+  Test-PatchesApplyClean on every windows/versions.env trigger; also repaired
+  a pre-existing `#requires` line lodged INSIDE that script's comment help.
+  **#32**: answered — CI is hosted `windows-latest`, no containers, no AMD
+  dGPU → RDNA4-immune; gate/toggle stay local-only.
+- **#28 groundwork**: 15 s fleet sampler captured per-process WorkingSet/CPU
+  through run 12's ONNX compile (`out\build-logs\onnx-tu-memory-samples-*.csv`).
+- Gates: lint 141/0/0 + AST-traps clean; tests 457/457.
+
 ## 2026-08-10 (night, backlog execution) - W3 media-closure batch + W2 preflight architecture + W1 quick wins, 457 tests green
 
 - **W3 (landed inside run 12's already-busted closure window — the
