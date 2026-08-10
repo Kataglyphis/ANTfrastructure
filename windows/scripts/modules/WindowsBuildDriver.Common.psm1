@@ -758,7 +758,7 @@ function Assert-NoActiveRdna4Gpu {
         # Injectable for tests. Default: live display-class PnP devices.
         [object[]]$Devices = $null,
         # RDNA4 discrete cards (RX 9xxx / AI PRO R9700). Extend as SKUs appear.
-        [string]$HazardPattern = 'Radeon\s+(AI\s+PRO\s+)?(RX\s+|R)?9\d{3}',
+        [string]$HazardPattern = 'Radeon\s*(\(TM\)\s*)?(AI\s+PRO\s+)?(RX\s+|R)?9\d{3}',
         [switch]$Force
     )
     if ($null -eq $Devices) {

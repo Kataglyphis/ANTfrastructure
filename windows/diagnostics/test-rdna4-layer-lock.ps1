@@ -44,14 +44,19 @@ foreach ($f in 'Dockerfile', 'Dockerfile.heavy', 'hello.txt') {
     if (-not (Test-Path (Join-Path $probeDir $f))) { throw "probe asset missing: $f (expected under $probeDir)" }
 }
 
-$stamp = Get-Date -Format 'HHmmss'
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+# Full probe output persisted per lane (owner directive: never swallow logs).
+$abLogDir = Join-Path $repoRoot 'out\build-logs'
+New-Item -ItemType Directory -Force -Path $abLogDir | Out-Null
 function Test-RunLayerFinalize {
     param([ValidateSet('tiny', 'heavy')][string]$Kind, [string]$Label)
     $opts = if ($Kind -eq 'heavy') { @('--opt', 'filename=Dockerfile.heavy') } else { @() }
+    $laneLog = Join-Path $abLogDir "rdna4-ab-$Label-$stamp.log"
     & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
         --local "context=$probeDir" --local "dockerfile=$probeDir" @opts --no-cache `
         --output "type=image,name=docker.io/local/kataglyphis:rdna4ab-$Label-$stamp,unpack=true" 2>&1 |
-        Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
+        Tee-Object -FilePath $laneLog | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
+    Write-Host "  [full log: $laneLog]" -ForegroundColor DarkGray
     $green = ($LASTEXITCODE -eq 0)
     Write-Host ("probe[{0}/{1}]: {2}" -f $Kind, $Label, $(if ($green) { 'GREEN' } else { 'RED' })) -ForegroundColor $(if ($green) { 'Green' } else { 'Red' })
     return $green
@@ -91,8 +96,17 @@ try {
     $offHeavy = if ($offTiny) { Test-RunLayerFinalize -Kind heavy -Label off-heavy } else { $false }
 } finally {
     if ($disabled) {
+        # Verify the re-enable actually took: a swallowed failure here strands
+        # the host on the iGPU while the console claims otherwise (review
+        # sweep finding, 2026-08-10).
         Enable-PnpDevice -InstanceId $gpu.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
-        Write-Host 'dGPU RE-ENABLED' -ForegroundColor Cyan
+        Start-Sleep -Seconds 2
+        $post = Get-PnpDevice -InstanceId $gpu.InstanceId -ErrorAction SilentlyContinue
+        if ($post -and $post.Status -eq 'OK') {
+            Write-Host 'dGPU RE-ENABLED (verified)' -ForegroundColor Cyan
+        } else {
+            Write-Host ("dGPU RE-ENABLE FAILED - status is '" + $(if ($post) { $post.Status } else { 'unknown' }) + "'. Re-enable manually: toggle-rdna4-gpu.ps1 (elevated, default action).") -ForegroundColor Red
+        }
     }
 }
 

@@ -1858,3 +1858,153 @@ The final image bakes the runtime orchestrator at
   (or `uv run` from `TORCH_APP_DIR`) is a ready environment where
   `import onnxruntime, onnxruntime_genai, cv2, tvm, torch` all resolve to the
   source-built wheels plus the app's locked PyPI dependency set.
+
+## Refactor Backlog (Windows container chain)
+
+Owner-requested backlog from the 2026-08-10 systematic code review (8-angle
+sweep over `windows/`). Ordering = suggested attack order: correctness-adjacent
+first, then reuse, then cosmetics. **Before touching anything, check the
+cache-tier map** (AGENTS.md / windows-refactor notes): edits to base/toolchain
+closure files force a full chain rebuild — batch those, and never remove the
+deliberate media-merge version-ARG mirrors.
+
+### P1 — correctness-adjacent (drift that already bites or will)
+
+1. **RDNA4 hazard set exists in THREE divergent copies**: the
+   `Assert-NoActiveRdna4Gpu` regex (covers RX 9xxx + AI PRO R9700), the
+   hardcoded `FriendlyName -eq 'AMD Radeon RX 9070 XT'` in
+   `toggle-rdna4-gpu.ps1`, and the same literal as `-GpuName` default in
+   `test-rdna4-layer-lock.ps1`. Concrete dead end: on an RX 9060 host the
+   gate refuses and points at a toggle script that cannot find the device.
+   Fix: export ONE `Get-Rdna4HazardDevice` from WindowsBuildDriver.Common and
+   let toggle + A/B resolve through it.
+2. **buildctl path is single-candidate in the new diagnostics**
+   (`verify-cuda-cache.ps1`, `test-rdna4-layer-lock.ps1`: only
+   `$env:ProgramFiles\Stevedore\bin`), while build-buildkit.ps1 /
+   apply-buildkitd-gcpolicy.ps1 / reset-container-locks.ps1 carry a
+   candidate list incl. `D:\Stevedore\bin`. On a D:\ layout the diagnostics
+   throw exactly where they are needed. Fix: `Get-PreferredToolPath`
+   (already exported by WindowsScripts.Shared) everywhere; delete the 5th
+   copy of the constant.
+3. **`build-onnx-from-source.ps1` stats loop bypasses `Write-SccacheStats`'s
+   `-RequireRemote` gate** — on a no-remote build it spawns a throwaway
+   sccache server inside the layer just to print stats (the exact side
+   effect the helper exists to avoid), and its stderr formatting diverges
+   from every other lane. Fix: give Write-SccacheStats a `-Sink Stderr`
+   switch and call it.
+4. **ONNX ninja runs without `-LogFile`** — the full ninja stream exists
+   only in the (clip-prone) step log; `[n/1891]` progress is invisible from
+   the host. Violates the never-swallow-logs invariant. Fix: pass a LogFile
+   under the build tree (or out-mounted), always.
+
+### P2 — reuse / single-source-of-truth
+
+5. **`test-rdna4-layer-lock.ps1` re-implements the finalize probe** that
+   `probe-build-copy.ps1` (exit codes + `-Heavy` + per-lane Tee logs) was
+   just upgraded to provide — and its copy keeps `Select -Last 2` with no
+   log file. Fix: call the probe (or extract a shared lane-runner) so the
+   load-bearing output-shape/quoting lessons live once.
+6. **GPU toggle logic duplicated** between `toggle-rdna4-gpu.ps1` and the
+   A/B script's finally-block re-enable (the safety-critical path). Fix:
+   parameterize the toggle script (`-GpuName`, `-NoPrompt`) and call it, or
+   lift the toggle into the module.
+7. **Patch-apply stanzas ×6 in build-onnx-from-source.ps1** (try →
+   Invoke-SourcePatch → catch → inline fallback → WarnMessage, near-identical
+   each time; 3 added on 2026-08-10 alone). Fix: `Invoke-PatchWithFallback`
+   helper in WindowsSourceBuild.Patches.psm1.
+8. **Log-persistence convention has no owner**: probe-build-copy and
+   verify-cuda-cache implement the same Tee-to-`out\build-logs` block twice
+   (with different stamps; test-rdna4 uses a third, day-colliding `HHmmss`
+   stamp and no log). Fix: one `Invoke-TeedNativeCommand`/
+   `Get-DiagnosticLogPath` helper in WindowsScripts.Shared (which already
+   owns New-Timestamp).
+9. **probe-build-copy's three lanes are the same 9-line block ×3**
+   (exe-check, lane log, run|Tee|tail, exit report, failedLanes append) —
+   the shape that let the `-Docker` lane rot unnoticed. Fix: one
+   `Invoke-ProbeLane` helper called three times.
+
+### P3 — cosmetics / hygiene
+
+10. **`$invokeNinja`'s positional `$true/$false` append flag**
+    (WindowsSourceBuild.Common): delete the LogFile once up front and always
+    `-Append` — removes a silent-log-truncation failure mode and two
+    branches.
+11. **Stall-guard verdicts print twice** (job stream + marker file re-read).
+    Marker file is the single source of truth (ladder reads it, survives
+    clip) — drop the Write-Output/Receive-Job channel.
+12. **`Native.ArgQuoting.Tests.ps1` manual case-insensitive loop** —
+    `-notcontains` already compares case-insensitively; five lines → one.
+13. **Fake-ninja 'fail' line evaluates its condition twice**
+    (SourceBuild.NinjaRetry.Tests) — fold into one guarded block like the
+    FAILONCE line below it.
+14. **`verify-cuda-cache.ps1`'s 21-statement concatenated RUN line** — write
+    the payload as a COPY'd `cachetest.ps1` (lintable, diffable) instead of
+    ''-escaped string concatenation.
+15. **`verify-defender-exclusions.ps1` naming**: it verifies AND applies —
+    rename toward `sync-`/`ensure-` (or split), matching the repo's
+    fail-loudly/reporting conventions.
+
+### Already fixed during the review session (2026-08-10, for the record)
+
+The sweep also surfaced correctness bugs in same-day code; these were fixed
+immediately rather than backlogged: probe zero-lane false-green (exit 0 with
+no lane run), `repair-windows-componentstore.ps1` still using the retired
+`type=local` probe shape, the classic lane (`build.ps1`) missing the RDNA4
+gate, `Get-SccacheStatsText` not re-exported (would have thrown AFTER the
+multi-hour ONNX build), `Dockerfile.heavy`'s trailing-backslash COPY dest
+(Dockerfile escape char), the RDNA4 A/B swallowing lane logs and re-enable
+failures, the `(TM)`-rename hole in the hazard regex, the opencv/001 patch
+EOL flip, `SCCACHE_ERROR_LOG` parity for the merge builder, and a stale
+module comment describing the abandoned launcher-opt-out design.
+
+### P1 addenda from the full sweep
+
+16. **Stall-guard trigger is a CPU proxy — replace with a timed sccache
+    client probe** (`sccache --show-stats` with a 10-15 s timeout from the
+    guard job): the real deadlock hangs the probe, every legitimately idle
+    phase (network-bound WebDAV waits, non-fleet codegen like python/protoc)
+    answers instantly. Kills the whole false-positive class; keep the CPU
+    delta at most as a pre-filter.
+17. **Marker-based retry classification is not attempt-scoped**: one spurious
+    guard kill early in a long attempt reclassifies a later genuine OOM as
+    deadlock-shaped (up to 3 full-`-j` re-OOMs). Reset/rotate the marker
+    before each ninja invocation; classify on kills recorded during the
+    failing attempt only. Also: the marker `Add-Content` is
+    `-ErrorAction SilentlyContinue` — a failed write silently downgrades a
+    guard-kill to the `-j2` path with no log trail.
+18. **RDNA4 gate altitude**: regex-match should be the cheap trigger, the
+    finalize probe the verdict (block only on a red probe); add a
+    gate-specific `-SkipRdna4Gate` instead of the all-or-nothing
+    `-SkipHostChecks` (which also disarms the disk gates); the day the
+    driver interaction is fixed upstream, healthy RDNA4 hosts stay blocked
+    until module surgery.
+19. **Patch-fallback last rung is soft**: when both the `.patch` AND the
+    inline-regex anchor miss (next ORT bump), `Invoke-InlineRegexPatch`
+    warns and returns `$false` piped to `Out-Null` — for patch 006 that
+    silently re-arms the deterministic sccache crash ~4900 s in. Hard-fail
+    the 006 rung (`-Require` or check the return).
+
+### P2/P3 addenda
+
+20. **Guard job spawns even when sccache has no remote configured** (baked
+    into the toolchain image, so it exists on PATH in every container):
+    gate `Start-SccacheStallGuard` on `Test-SccacheRemoteConfigured` like
+    the launcher wiring does.
+21. **AST sweep double-parses the tree** every gate cycle (~141 files in
+    Invoke-Tests + the same in Invoke-Lint) and forgets the `rchive`
+    exclusion: host the two ArgQuoting detectors inside Invoke-Lint's
+    existing parse loop.
+22. **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
+    drop `--output` (solve-only is enough for the hit/write assertions;
+    contrast: the finalize probes NEED `type=image,unpack=true`).
+23. **`SCCACHE_ERROR_LOG` sits at the root of a GC-capped cache mount** —
+    eviction under pressure can delete the postmortem exactly when needed;
+    consider a subdirectory exempted by policy or copying the log out in
+    the chain epilogue.
+24. **`#Requires -Version 7.0` missing across `windows/scripts/tests/`**
+    (pre-existing; new files perpetuate it) — add during the next tests-dir
+    touch.
+25. **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
+    `$offHeavy` are only-safe-by-control-flow; initialize them up front so a
+    future try/catch edit cannot turn the verdict line into a StrictMode
+    error on the exact host being diagnosed.

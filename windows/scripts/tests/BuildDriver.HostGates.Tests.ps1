@@ -336,4 +336,14 @@ Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
             } -Message "$name must be treated as a hazard"
         }
     }
+
+    It 'survives Adrenalin (TM)-style renames of the FriendlyName' {
+        # Drivers have shipped 'Radeon (TM)' / 'Radeon(TM)' spellings before; a
+        # rename must not silently disarm the gate (review sweep, 2026-08-10).
+        foreach ($name in @('AMD Radeon(TM) RX 9070 XT', 'AMD Radeon (TM) RX 9070 XT')) {
+            Assert-Throws -Body {
+                Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $name; Status = 'OK' })
+            } -Message "$name must still be treated as a hazard"
+        }
+    }
 }

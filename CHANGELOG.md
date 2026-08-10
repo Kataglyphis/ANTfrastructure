@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-10 (review) - 8-angle code review of windows/: 10 same-day fixes + refactor backlog
+
+- Owner asked "is my chain clean code, what should I refactor" → systematic
+  8-finder review over `windows/`. Verified correctness findings were FIXED
+  immediately (each with the failure it prevents): probe zero-lane
+  false-green; `repair-windows-componentstore.ps1` still on the retired
+  `type=local` probe shape (false-red on healthy hosts); classic lane
+  `build.ps1` missing the RDNA4 gate (isolation-probe verdict does not key
+  on dGPU state); **`Get-SccacheStatsText` not re-exported from
+  WindowsSourceBuild.Common — the stderr stats line would have thrown
+  CommandNotFound AFTER the multi-hour ONNX build** (run 9 was stopped
+  mid-flight over this); `Dockerfile.heavy`'s trailing-backslash COPY dest
+  (Dockerfile escape char eats the newline); RDNA4 A/B now Tee's full lane
+  logs and VERIFIES the dGPU re-enable; hazard regex survives
+  `Radeon(TM)`-style renames (test added, 430 total); opencv/001 patch EOL
+  flip reverted (byte content is a layer-cache key); `SCCACHE_ERROR_LOG`
+  parity for Dockerfile.media-merge-builder; stale launcher-opt-out comment
+  in Invoke-CmakeConfigure rewritten to the shipped design.
+- Everything not correctness-critical went to the new **"Refactor Backlog
+  (Windows container chain)"** section at the end of this file's sibling
+  docs/windows-builds.md — 25 prioritized items (P1 drift/correctness-adjacent,
+  P2 reuse, P3 hygiene), each with its failure scenario.
+
 ## 2026-08-10 (late) - sccache CUDA launcher: deterministic server crash scoped to the cuda_llm target → bare nvcc THERE, launcher (and CUDA caching) stays ON everywhere else
 
 - Runs 6 and 7 died at **~4910 s (±2 s) on the same TU family**

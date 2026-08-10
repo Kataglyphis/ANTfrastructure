@@ -443,7 +443,7 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Inst
 # truncates (AGENTS.md priority 1: caching must be MEASURED). This is where
 # the CUDA-launcher value is finally visible per run: Cache hits (CUDA/PTX/
 # CUBIN) vs misses, and any 'Cache errors' pointing at a broken backend.
-foreach ($line in @(Get-SccacheStatsText -Advanced | Where-Object { $null -ne $_ })) {
+foreach ($line in @(Get-SccacheStatsText -Advanced -RequireRemote | Where-Object { $null -ne $_ })) {
     [Console]::Error.WriteLine("sccache-stats| $line")
 }
 

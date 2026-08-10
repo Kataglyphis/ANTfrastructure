@@ -40,13 +40,16 @@ try {
     Say 'If RestoreHealth could not reach Windows Update, retry with /Source <path-to>install.wim: /RestoreHealth /Source D:\sources\install.wim /LimitAccess'
 }
 
-Say '== 4. quick 3-layer buildkit probe (COPY step) ==' 'Cyan'
-$bt = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
-if (Test-Path $bt) {
-    $probe = 'windows\diagnostics\probe-build-copy'
-    & $bt --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 --local context=$probe --local dockerfile=$probe --output type=local,dest=out\probe-build-copy 2>&1 | Select-Object -Last 12 | ForEach-Object { Write-Host $_ }
-    Say ('probe exit: ' + $LASTEXITCODE)
-}
+Say '== 4. committed build probe (image export, -Heavy) ==' 'Cyan'
+# Delegates to the canonical probe: it exports type=image (a type=local export
+# of a Windows rootfs dies in the receiver even on a HEALTHY host and reads
+# like a defect - the false signal this script used to produce), exits
+# non-zero per failing lane, and Tee's full lane logs to out\build-logs.
+# Absolute path: this script is documented to launch elevated via
+# Start-Process, where cwd is System32 and relative paths break.
+$probeScript = Join-Path $PSScriptRoot 'probe-build-copy.ps1'
+& pwsh -NoProfile -File $probeScript -Heavy 2>&1 | Select-Object -Last 12 | ForEach-Object { Write-Host $_ }
+Say ('probe exit: ' + $LASTEXITCODE)
 
 Write-Host ''
 Write-Host 'Done - report the probe result to the agent.' -ForegroundColor Green

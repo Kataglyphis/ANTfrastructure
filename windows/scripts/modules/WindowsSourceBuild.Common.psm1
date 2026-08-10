@@ -195,12 +195,13 @@ function Invoke-CmakeConfigure {
             # language, so CPU-only configures are unaffected.
             #
             # SCCACHE_NO_CUDA_LAUNCHER=1 opts a build out of the CUDA launcher
-            # ONLY (C/CXX caching stays). The source-built sccache's nvcc
-            # decomposition DEADLOCKED mid-ONNX on 2026-08-10: server + 9
-            # clients all at 0% CPU with zero backend connections (dufs healthy),
-            # ~40 min stall, unwedged only by killing the processes. On a cold
-            # cache the CUDA launcher buys nothing (all misses) while carrying
-            # that risk, so the heavy CUDA consumers set the knob themselves.
+            # ONLY (C/CXX caching stays). It is a MANUAL EMERGENCY ESCAPE that
+            # no build sets by default: the shipped mitigations for the
+            # 2026-08-10 nvcc-decomposition failures are ORT patch 006 (bare
+            # nvcc scoped to the crash-source cuda_llm target) plus the
+            # Start-SccacheStallGuard watchdog + full-speed retry ladder in
+            # Invoke-NinjaBuildWithRetry (the deadlock manifestation: server +
+            # clients at 0% CPU, zero backend connections, dufs healthy).
             if ($env:SCCACHE_NO_CUDA_LAUNCHER -eq '1') {
                 Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend; C/CXX launchers only - CUDA launcher opted out via SCCACHE_NO_CUDA_LAUNCHER)"
             } else {
@@ -1137,6 +1138,12 @@ Export-ModuleMember -Function @(
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
     'Test-SccacheRemoteConfigured',
+    # Re-exported from nested WindowsScripts.Shared for SCRIPT-scope callers
+    # (build-onnx's stderr stats emission): nested-module exports are invisible
+    # to scripts per the repo's 2026-08-05 scoping rule, and this omission
+    # would have thrown CommandNotFound AFTER the multi-hour ONNX build
+    # (caught by the 2026-08-10 review sweep before it fired).
+    'Get-SccacheStatsText',
     'Write-SccacheStats',
     'Save-PythonWheel',
     'Get-CudaRoot',

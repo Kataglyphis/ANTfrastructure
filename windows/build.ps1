@@ -344,6 +344,11 @@ Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostCh
 # service, which was found Stopped on 2026-08-07 — the "always-working
 # fallback" silently was not one.
 Assert-DockerDaemon -Docker $Docker -Force:$SkipHostChecks
+# RDNA4 layer-lock gate (2026-08-10): an enabled RDNA4 dGPU kills EVERY
+# process-isolated RUN-layer finalize, and this lane can run process-isolated
+# (Resolve-BuildIsolation 'auto' probe — whose cached verdict does NOT key on
+# the dGPU state). Same gate as the BK lane; -SkipHostChecks overrides.
+Assert-NoActiveRdna4Gpu -Force:$SkipHostChecks
 
 # (Get-DockerBuildArgList / Test-TransientDockerFailure / Assert-ImageExists /
 # Invoke-TransientCooldown / Invoke-DockerWithRetry: WindowsBuildDriver.Common.psm1)

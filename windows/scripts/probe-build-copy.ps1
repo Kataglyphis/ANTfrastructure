@@ -55,6 +55,10 @@ foreach ($f in $probeAssets) {
 # Inspecting/removing it needs admin nerdctl - see AGENTS.md nerdctl lane.
 $probeRef = 'docker.io/local/kataglyphis:probe-build-copy'
 $failedLanes = @()
+# Lanes that actually RAN. Zero attempted lanes must NEVER exit 0: a botched
+# Stevedore install (no buildctl/docker found) would otherwise certify the
+# host healthy with no evidence (found by the 2026-08-10 review sweep).
+$attemptedLanes = @()
 # FULL lane output is persisted per lane (owner directive: never swallow
 # logs); the console shows only the tail plus the log path.
 $probeLogDir = Join-Path $repoRoot 'out\build-logs'
@@ -64,6 +68,7 @@ $probeStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 Write-Host '== buildkit (buildctl) lane ==' -ForegroundColor Cyan
 $buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
 if (Test-Path $buildctl) {
+    $attemptedLanes += 'buildkit'
     # Comma-attribute native args MUST be double-quoted strings: pwsh parses
     # the bareword form (--output type=image,name=$ref) as an ArrayLiteral and
     # hands the native exe the VERBATIM SOURCE TEXT - no variable expansion
@@ -82,6 +87,7 @@ if (Test-Path $buildctl) {
 if ($Heavy) {
     Write-Host '== buildkit heavy-parent lane (RUN 2x100MB, then COPY) ==' -ForegroundColor Cyan
     if (Test-Path $buildctl) {
+        $attemptedLanes += 'buildkit-heavy'
         $laneLog = Join-Path $probeLogDir "probe-build-copy-heavy-$probeStamp.log"
         & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
             --local "context=$probeDir" --local "dockerfile=$probeDir" `
@@ -103,6 +109,7 @@ if ($Docker) {
     # Regression pin: tests/Native.ArgQuoting.Tests.ps1.
     $dockerExe = "$env:ProgramFiles\Stevedore\bin\docker.exe"
     if (Test-Path $dockerExe) {
+        $attemptedLanes += 'docker-classic'
         $laneLog = Join-Path $probeLogDir "probe-build-copy-docker-$probeStamp.log"
         & $dockerExe build -t local/test:probe-build-copy $probeDir 2>&1 | Tee-Object -FilePath $laneLog | Select-Object -Last 6 | ForEach-Object { Write-Host $_ }
         Write-Host ("docker exit=" + $LASTEXITCODE + "  [full log: $laneLog]")
@@ -113,9 +120,13 @@ if ($Docker) {
 }
 
 Write-Host ''
+if ($attemptedLanes.Count -eq 0) {
+    Write-Host 'PROBE INCONCLUSIVE: no lane could run (buildctl/docker not found) - this is NOT a healthy verdict.' -ForegroundColor Red
+    exit 1
+}
 if ($failedLanes.Count -gt 0) {
     Write-Host ("PROBE FAILED (" + ($failedLanes -join ', ') + "): the build-COPY defect (or a lane-specific break) is present on this host.") -ForegroundColor Red
     exit 1
 }
-Write-Host 'PROBE OK: every attempted lane committed all layers (healthy host).' -ForegroundColor Green
+Write-Host ('PROBE OK: every attempted lane committed all layers (healthy host): ' + ($attemptedLanes -join ', ')) -ForegroundColor Green
 exit 0
