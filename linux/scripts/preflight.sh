@@ -59,7 +59,7 @@ export PYTHONUTF8=1
 
 KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths \
-             dockerfile-lint workflow-lint python-lint android-parity script-tests stage-graph)
+             dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph)
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
@@ -140,18 +140,29 @@ run_check artifact-parity "artifact copy parity"  bash linux/scripts/verify-arti
 run_check arg-consistency "ARG consistency"       bash linux/scripts/01-core/verify-arg-consistency.sh
 
 # 5. Version snapshots / inline markers / deps table are in sync.
+# The [ -f ] guards FAIL (not skip) on a missing file: these are tracked repo
+# files, so absence means a broken tree/rename — silently dropping the check
+# would leave CI subsets (build-docs.yml runs PREFLIGHT_ONLY=version-snapshot,
+# mirror-consistency) permanently green with the gate gone, and the
+# zero-checks-ran guard only fires when NOTHING ran.
 if [ -f docs/scripts/sync_versions.py ]; then
   run_check version-snapshot "version snapshot"   ${PREFLIGHT_PYTHON} docs/scripts/sync_versions.py --check
+else
+  run_check version-snapshot "version snapshot"   bash -c 'echo "docs/scripts/sync_versions.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
 # 6. Canonical Ubuntu mirror ARGs present across Dockerfiles.
 if [ -f linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh ]; then
   run_check mirror-consistency "ubuntu mirror consistency" bash linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh
+else
+  run_check mirror-consistency "ubuntu mirror consistency" bash -c 'echo "verify-ubuntu-mirror-consistency.sh MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then
   run_check runtime-paths "runtime path consistency" bash linux/scripts/04-runtime/verify-runtime-paths.sh
+else
+  run_check runtime-paths "runtime path consistency" bash -c 'echo "verify-runtime-paths.sh MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
 # 8. Dockerfile lint (hadolint, policy in .hadolint.yaml; bootstraps a pinned,
@@ -164,6 +175,11 @@ run_check workflow-lint "workflow lint (actionlint)" bash linux/scripts/lint-wor
 # Python gate (backlog C4): hard-fails only on real-error classes (syntax /
 # undefined names); full ruleset is advisory — see lint-python.sh header.
 run_check python-lint "python lint (ruff)" bash linux/scripts/lint-python.sh
+
+# Secret scan (backlog SEC1): gitleaks over the working tree, ENFORCING —
+# the initial 2026-08-10 scan was clean after triaging two public-trust-anchor
+# false positives into .gitleaksignore (each entry needs a justification).
+run_check secret-scan "secret scan (gitleaks)" bash linux/scripts/lint-secrets.sh
 
 # 10. The five parallel Android library stages stay identical modulo ANDROID_LIB.
 run_check android-parity "android stage parity" bash linux/scripts/01-core/verify-android-stage-parity.sh

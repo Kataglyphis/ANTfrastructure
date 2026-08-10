@@ -10,6 +10,10 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Batches are grouped by REBUILD BLAST RADIUS, not theme — most items are cheap,
 rebuilds are expensive. Work top to bottom; each batch ships independently.
 
+Last groomed: 2026-08-10 (24 items executed same day; every remaining item is
+blocked on its batch's unlock condition — nothing here is doable "right now"
+while a chain runs).
+
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
 1. Never edit versions.env or anything in the 01-core / 03-media bind-mount
@@ -57,6 +61,75 @@ rebuilds are expensive. Work top to bottom; each batch ships independently.
   rates justify more.
 - **post-restart base cache-miss root cause** [M, investigate] one unexplained
   full-miss after a host reboot (archive: 2026-08-08 section).
+- **HC1 — Linux host config as code** [S/M·★★★] windows/buildkitd.toml IS
+  checked in; the LINUX buildkitd.toml + systemd drop-ins + nerdctl/containerd
+  mirror configs exist only in ~/.config + prose (project-info.md:118,136) —
+  which is EXACTLY how the gckeepstorage=500GB regression happened (recorded
+  DONE, silently gone, nothing in git). Fix: linux/host-config/ with the
+  canonical buildkitd.toml + override.conf + an apply script, AND a preflight
+  check diffing the live ~/.config copies against the repo (warn on drift).
+  Fold the Batch-0 toml re-do INTO this so it can't regress a third time.
+
+## Batch S — services lane (llm-stack / webserver; OUTSIDE the chain closure, no unlock needed)
+
+**STATUS 2026-08-10 late: EXECUTED in the fix-everything wave** (3 edit agents
+were killed mid-work by a session limit, but post-mortem validation showed the
+work LANDED: SV1/2/5/6/7 compose+nginx+webserver changes in place — loopback
+bindings ×3 + docker-compose.lan.yml override [`!override` is valid compose
+syntax; plain-YAML parsers reject it, that is expected], security-headers.conf
+included ×9, webserver HEALTHCHECK + resolver pattern, README dist note, npm
+ci, BENCH_MODEL var; SV4 core landed [atomic write + JSONL markers verified,
+py_compile green]; SV3 + F3 fixed earlier same day.) Same wave also landed:
+SEC1 (lint-secrets.sh, gitleaks 8.30.1 pinned, first scan triaged — 2 public
+trust-anchor false positives into .gitleaksignore — ENFORCING preflight slug
+`secret-scan` wired) and HC1's repo half (linux/host-config/ with canonical
+buildkitd.toml [gckeepstorage 500GB + max-parallelism 4] + override.conf +
+apply/verify scripts — APPLY still needs the post-chain daemon restart).
+RESIDUAL VERIFICATION for the next session: SV4 items 3-5 (sampler-try /
+SIGINT-grace / dead-code removal — diff benchmark_openai_api.py against the
+sweep spec), nginx.conf has no nginx -t validation (no binary on host), and
+`docker compose config` was never run with a real compose binary.
+
+- **SV2 — all three services bind 0.0.0.0** [S·★★★ security] compose ports
+  11434/3000/61208 publish on ALL interfaces (punching through host firewalls
+  via Docker's iptables): unauthenticated Ollama API (pull/delete/generate) +
+  Glances host telemetry (full process list) to the LAN. Everything local
+  needs only loopback → `"127.0.0.1:..."` prefixes + documented override
+  file for deliberate exposure. NOTE: deliberate-LAN-use is a user decision —
+  confirm before flipping.
+- **SV1 — compose ignores the repo's own pinned Ollama image** [S·★★]
+  docker-compose.yml:3 `ollama/ollama:latest` + inline sh bootstrap
+  duplicating entrypoint.sh's job — while the SHA-gated local image
+  (OLLAMA_VERSION=0.32.6) is referenced by NOTHING. open-webui pinned to
+  `:main` (moving dev branch!), glances `:latest-full`. Benchmark
+  comparability dies silently on any `compose pull`. Point at the local image
+  (or version@digest), delete the inline block, pin the other two.
+- **SV4 — benchmark run loses ALL results on one mid-run error** [M·★★]
+  benchmark_openai_api.py holds results in memory until the end (:453-463),
+  writes non-atomically (:483-485), and the two sample_resources() calls sit
+  OUTSIDE the per-request try. 45 min into a 26B config, one bad psutil read
+  or SIGINT discards everything. Fix: incremental JSONL flush + tmp+os.replace
+  + widen the sampler's except. Riders: stale "api/3" print, dead
+  get_container_stats/show_all.
+- **SV5 — nginx add_header inheritance trap half-handled** [S·★★] server-level
+  security headers silently DROPPED in html/manifest/assets locations that
+  re-add only COOP/COEP/HSTS — the HTML pages lack X-Frame-Options/
+  X-Content-Type-Options. Also: deprecated `listen ... http2` syntax,
+  meaningless ssl_stapling w/ self-signed cert + hardcoded 8.8.8.8 resolver,
+  obsolete X-XSS-Protection. Factor headers into an include snippet.
+- **SV6 — webserver image cannot start standalone; no HEALTHCHECK despite
+  /health** [S·★★] bare `proxy_pass http://beschleuniger:8443` resolves at
+  config LOAD → "host not found" crash-loop outside the compose file. Fix:
+  variable+resolver (127.0.0.11) pattern + `HEALTHCHECK curl -fsk
+  https://localhost/health` (llm-stack Dockerfile shows the house pattern).
+- **SV7 — compose ops hygiene: zero healthchecks/depends_on/mem limits** [S·★]
+  a 26B model on the BUILD HOST can OOM a running cross-chain — the exact
+  class the memory notes document. healthcheck on ollama + service_healthy
+  ordering + explicit mem limit.
+- **SV-minors** [S each]: viewer `npm install` → `npm ci` (lockfile committed);
+  linux/webserver/dist/ = 82 MB committed Flutter artifacts with no in-repo
+  provenance (likely deliberate — document it in README); `gemma4:26b`
+  hardcoded ×3 (compose inline, run_benchmarks.sh:10, detect_model fallback).
 
 ## Batch 2 — the 01-core / in-container closure window (ONE rebuild pays for all)
 
@@ -280,6 +353,64 @@ the already-listed GCC_PARALLEL_TARGETS validation.)
   forensic#3 smoke inner-warning propagation [S] (smoke-media:266
   assertion-free "(import failed in build sandbox)" PASS).
 
+### Runtime/packaging + artifact-performance additions (2026-08-10 sweep, RP/AP)
+
+- **AP7 — zero size observability FIRST** [S·★★★] the 42.66 GB media image
+  has no per-prefix breakdown anywhere. One `du -sh /opt/* …|sort -h` block in
+  verify-media-artifacts.sh + smoke-runtime-image turns every size item below
+  (and S2/TG4) into measured numbers on the very next build. Do before the
+  others.
+- **AP1 — cross wheels ship UNSTRIPPED: host strip no-ops on target ELFs**
+  [S·★★, MEASURED] media-arm64.log:20304-20347 — `cmake --install --strip`
+  runs /usr/bin/strip on arm64 .so → "Unable to recognise the architecture"
+  ×every lib (TVM/IREE/ORT cross wheels). CMAKE_STRIP exported (cross-env.sh:
+  542) but doesn't reach the wheel step. Fix: forward <triplet>-strip into the
+  wheel env or a strip_elf_tree post-pass in repair-wheels.sh. ~50-300 MB/arch.
+- **AP2 — /opt/venv never byte-compiled + runtime user can't write
+  __pycache__ → EVERY container start re-parses the stdlib+torch** [S·★★★]
+  uv doesn't compile by default; venv is root-owned, USER kataglyphis can't
+  cache .pyc → the cost recurs per start (seconds-to-tens on riscv64). Fix:
+  UV_COMPILE_BYTECODE=1 or compileall -j0 at venv build. +~10% venv size.
+- **AP3 — the wheelhouse is a dead layer in every shipped torch image**
+  [M·★★] Dockerfile.package:75 COPYs /opt/wheels; setup-torch-venv.sh:492
+  rm -rf's it ONE IMAGE LATER (whiteout reclaims nothing) → every pull
+  downloads 0.5-2 GB of dead wheels per arch. Fix: bind-mount the wheelhouse
+  into the venv RUN instead of COPYing (copy-media-payloads shows the pattern).
+- **AP4 — no strip pass over ANY media prefix** [S·★★] strip_elf_tree has
+  exactly 2 callers (gcc, clang); /opt/ffmpeg, /opt/opencv5, gstreamer,
+  litert, onnxruntime, armnn, libcamera all ship symbol tables. One pass per
+  prefix (cross <triplet>-strip). Inferred 5-10% of .so payload. (llvm-target
+  = TG4, separate.)
+- **AP5 — cross-target CPython built plain -O2: no PGO, no LTO** [M·★★]
+  build_python.sh:225-233 (cross configure has neither) vs :471 (native has
+  PGO, no LTO). The foreign-arch venv interpreter leaves 10-30% upstream-
+  documented speedup on the table. Add --with-lto both paths now; qemu-PGO =
+  separate investigation.
+- **RP1 — final image ships a setuid sudo NOBODY can use** [S·★★ security]
+  package-lists.sh:76 installs it; Dockerfile.torch:79-85 removes only the
+  FAKE shim; no sudoers/group grants exist → pure LPE attack surface (sudo
+  CVE stream). Purge in the final stage + a setuid-inventory assert in
+  smoke-runtime-image (cheap wrapper-layer rebuild only).
+- **RP2 — cleanup scripts wipe the SHARED apt cache mounts, contradicting the
+  Dockerfile's own comment** [S·★] setup-package-image.sh:402-403 +
+  setup-torch-venv.sh:219/240/273 `apt-get clean; rm -rf /var/lib/apt/lists`
+  inside sharing=locked cache mounts (Dockerfile.package:262-264 explicitly
+  says not to). Zero size benefit (mounts never commit); parallel arches
+  re-download metadata. Guard with `mountpoint -q || …`.
+- **RP3 — HEALTHCHECK timeout 5s too tight for cold ORT import** [S·★]
+  Dockerfile.torch:94-95 — cold import of a multi-hundred-MB .so on riscv64/
+  qemu plausibly >5 s → unhealthy-flapping. Raise timeout ~30 s (only bounds
+  the failure path).
+- **RP4 — whole-dir 01-core+02-toolchain COPYs sit ABOVE the expensive
+  package RUN** [M·★] Dockerfile.package:203-204 — any core-script comment
+  edit re-runs the slowest packaging layer ×3 arches. Narrow to consumed
+  files or move ship-only copies below the RUN. Riders: :108 COPY-then-rm
+  (persists in lower layer; bind-mount instead), :100 missing --link.
+- **RP6 — /root/.local/bin baked into PATH of a uid-1001 image** [S·★]
+  Dockerfile.package:168 + canonicalized in runtime-paths.env:25. Dead for
+  kataglyphis (0700 /root); PATH-hijack precondition if /root perms ever
+  loosen. Drop from both.
+
 ## Batch 3 — versions.env riders (NEVER alone; next planned pin bump)
 
 - **DOC1** [S·★] toggle comments contradict values: :81 WebGPU "(default
@@ -305,6 +436,22 @@ the already-listed GCC_PARALLEL_TARGETS validation.)
 - **TS4 rider** [S·★★] version-key build-clang.sh's cached llvm-project
   checkout ON the next LLVM bump — that is precisely when the stale-reuse
   bug fires (details in Batch 2).
+- **AP6 — ORT_ENABLE_LTO exists, defaults false, NOTHING ever sets it**
+  [S·★★] onnxruntime common.sh:453 gates --enable_lto; versions.env has no
+  key and no decision comment (never-considered, not deliberate). Flip
+  per-arch-gated in the next window, measure inference delta + .so size in
+  the validating rebuild; add a DOC1-style comment either way.
+- **F5 — THIRD stale versions.env comment (beyond DOC1's two)** [S] :115-117
+  claims OPENCV tracks "a live BRANCH (non-reproducible)" directly
+  contradicting :103-106 (pinned tag 5.0.0); header :7-9 still describes the
+  pre-enforcement ARG-default era (sync_versions now ENFORCES them). Fold
+  both into the DOC1 edit.
+- **F6 — SHA pin-pairs scattered up to 340 lines from their version keys**
+  [S] OLLAMA :198 vs :540, PANDOC :441 vs :562, NODE/UV/CMAKE :26-28 vs
+  :545-557. Real hazard: a NEW pair added outside bump_versions' refresh
+  registry silently freezes its SHA on the next bump. Co-locate pairs in the
+  next window; host-side prep anytime = a bump_versions checker that every
+  *_SHA256 key is registry-covered or bump:hold-annotated.
 
 ## Batch 4 — Windows rebuild-window riders (lane rule: script edits ride pin bumps)
 
@@ -349,41 +496,78 @@ the already-listed GCC_PARALLEL_TARGETS validation.)
   export local stages as OCI layout + --build-context override; couples with
   collapsing the dual local/push paths.
 
-## Batch 6 — CI / infra / docs ramps (independent, start anytime)
+## Batch 6 — CI / infra ramps (independent — but each residual has its OWN trigger)
 
-- **C4 residual — llm-stack tests in CI need a SERVING stack** [M·★]
-  (the lint half LANDED 2026-08-10: lint-python.sh + python-lint preflight
-  slug, gate=E9/F63/F7/F82 hard + full-ruleset advisory; gate pass came back
-  CLEAN, 3 advisory nits. RUFF_PIN=0.14.4 lives in the script — move to
-  versions.env as RUFF_VERSION on the next Batch-3 window.) The pytest half
-  was REFRAMED after reading the tests: test_v1_api.py is a LIVE integration
-  suite (requests against a running API, "inference" marker = model loaded)
-  — a bare CI pytest job would be red or meaningless. Real shape: a
-  paths-filtered workflow that composes the llm-stack (or a stub server
-  honoring the v1 contract) before pytest. Design needed; not a quick add.
+- **C4 residuals** [S] (both halves LANDED 2026-08-10: lint-python.sh +
+  python-lint slug, gate CLEAN; llm-stack-tests.yml runs the 19 non-inference
+  contract tests against a real ollama service + qwen2.5:0.5b, actionlint
+  green.) Two follow-ups: (a) flip the workflow's `continue-on-error: true`
+  to false after the FIRST GREEN run on a real runner proves the
+  service/model bootstrap (advisory-ramp rule); (b) move RUFF_PIN=0.14.4
+  from lint-python.sh into versions.env as RUFF_VERSION (Batch 3 rider).
 - **S3 — per-stage registry cache refs** [M·★★] inline cache covers only the
   exported image's own layers; framework stages (COPY --from vertices) never
   warm-start from registry → full recompile after any local prune. Per-stage
   mode=max refs dodge the ghcr 400 blob limit; needs testing.
 - **S5 — shared cargo cache ids** [S·★] cargo registry/git caches keyed
   per-TARGETARCH duplicate arch-independent downloads 3×.
-- **DOC3 residual** [S] IREE still deserves a real Linux section (build
-  shape, 3-arch status, riscv64 runtime-only) — the README list fix landed
-  2026-08-10; DOC2 (toggle section in linux-cross-builds.md) and DOC4
-  (smoke-media deferral semantics in cross-build-verification.md) LANDED
-  same day.
 - **ccache remote_storage tier** [M] evaluate for Linux (comment-only today);
   couples with the user's cross-OS sccache question.
 - **Rust sccache unblock** [S] RUSTC_WRAPPER="" pinned empty at
   Dockerfile.toolchain:58 + Dockerfile.package:157; ENABLE_SCCACHE_RUST
   wiring exists and is validated-off — flip in a controlled build.
-- **verify-parity zero-callers decision** [S] wire it somewhere or archive it.
 - **W1 first-run watch** [S] SourceBuild.PinParity.Tests.ps1 has not yet
   executed on a real pwsh (none on this host) — watch the first Windows
   Invoke-Tests.ps1 run.
+- **F1 — ~25 unguarded version literals in the three "manual" docs** [S/M·★★]
+  linux-cross-builds.md / linux-build-basics.md / AGENTS.md carry current
+  values as backtick path/prose literals (no markers possible in code spans);
+  versions.env:11-13 relies on a human. Fix: a literal-scan pass in
+  sync_versions --check for 2-3 high-fanout keys (/opt/gcc-X.Y.Z, clang
+  22.1.x) with an allowlist for historical narrative (:164's war story).
+- **F2 — deps-table renderer duplicated with DIVERGENT missing-var
+  behavior** [S·★★] the 2026-08-08 loud-KeyError fix landed only in
+  generate-website-licenses.py:81-95; sync_versions.py:364-371 still silently
+  em-dashes — and in --write mode the degraded table is ALREADY WRITTEN to
+  the tracked file before the rc goes 1. Extract one shared renderer module.
+- **F4 — bump:hold disarmed by a blank line, zero structural validation**
+  [S·★★] bump_versions.py:208-227 — hold attaches only via a CONTIGUOUS
+  comment block; an inserted blank line silently rejoins the key to auto-bump
+  (for protoc = the 2026-08-03 gencode-#error replay). Fix: count bump:hold
+  markers vs parsed holds, error on mismatch. Soft rider: wire
+  derive_protoc_from_litert_lm as the re-derivation nudge on LITERT_LM bumps.
+- **F7 residual** [S, optional] DocumANTation pointer confirmed PUSHED
+  (2a5007a = remote HEAD — the standalone item is closed); remaining gap is
+  only future-unpushed-SHA detection: a warn-only `git ls-remote` containment
+  probe in preflight (network-dependent → warn, never fail).
+- **SEC1 — no secret-scanning gate** [S·★★] shell/Dockerfiles/workflows/PS/
+  Python all have lint gates; secrets have NONE (no gitleaks/trufflehog in
+  workflows, preflight, or hooks). The .env pattern is correct today — the
+  gate keeps it that way. Pinned-bootstrap gitleaks (the hadolint pattern) as
+  a preflight slug + CI; advisory-first ramp on the existing history (a full
+  history scan may surface old noise — triage before enforcing).
+
+## Coverage map (2026-08-10) — what "swept" means, and the honest thin spots
+
+FIVE sweep rounds + toolchain deep-dive + currency audit have covered: bash
+dedup, caching/speed, orchestration/DX, error-masking, test gaps, docs drift,
+Windows lane, CI/android/python, architecture/layering, 02-toolchain scripts +
+build graph, services lane, runtime/packaging security, artifact performance,
+docs pipeline, versions.env structure. Deliberately THIN (sampled, not
+exhaustive — re-sweep only with a concrete reason):
+- GPU lanes (Dockerfile.nvidia/amd + the 5 CUDA/ROCm scripts): only the
+  helper-sweep item exists; opt-in lanes, dedicated sweep never ran.
+- Windows psm1 modules (30+): one agent sampled; verdict "better than Linux
+  pre-audit", CI-gated — accepted.
+- lib/ content beyond source-smoke (slang-compile/code-quality internals):
+  unconsumed code, smoke-tested only.
+- benchmark-viewer src/: 3 JSX files — trivial.
+THE REMAINING DISCOVERY CHANNEL IS RUNS, not more static sweeps: the classes
+that matter now (cache-bust latents, foreign-arch-only paths, timing/OOM)
+only surface in real rebuilds — which is what the smokes, fix-guards, and
+monitors built this session are for.
 
 ## Standalone (not batchable)
 
 - riscv64 isa-spec smoke on real hardware (shellcheck-only so far).
 - WEBUI_SECRET_KEY server-side rotation (user action).
-- Kataglyphis-DocumANTation submodule pointer push (user action).

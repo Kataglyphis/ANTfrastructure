@@ -1,21 +1,17 @@
 services:
   ollama:
-    image: ollama/ollama:latest
-    entrypoint: /bin/sh
-    command:
-      - -c
-      - |
-        ollama serve &
-        for i in $$(seq 1 30); do
-          if ollama list >/dev/null 2>&1; then
-            break
-          fi
-          sleep 2
-        done
-        ollama pull gemma4:26b
-        wait
+    # Repo-owned image (SHA-gated binary, OLLAMA_VERSION pinned in
+    # linux/scripts/01-core/versions.env). Before the first `compose build`,
+    # fetch the tarball once:
+    #   bash linux/llm-stack/scripts/download-ollama.sh
+    # entrypoint.sh handles serve + readiness poll + model pulls via
+    # OLLAMA_PULL_MODELS (comma-separated) — no inline sh bootstrap here.
+    build: .
+    image: kataglyphis-ollama:local
     ports:
-      - "11434:8080"
+      # Loopback-only by default: the Ollama API is UNAUTHENTICATED.
+      # For deliberate LAN exposure use docker-compose.lan.yml (see header there).
+      - "127.0.0.1:11434:8080"
     environment:
       OLLAMA_HOST: "0.0.0.0:8080"
       OLLAMA_FLASH_ATTENTION: "1"
@@ -24,25 +20,52 @@ services:
       OLLAMA_KEEP_ALIVE: "-1"
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_MAX_LOADED_MODELS: "1"
+      # Same default as run_benchmarks.sh; override both via BENCH_MODEL.
+      OLLAMA_PULL_MODELS: "${BENCH_MODEL:-gemma4:26b}"
     volumes:
       - ollama-models:/root/.ollama
+    # Mirrors the Dockerfile HEALTHCHECK (compose ignores image healthchecks
+    # when one is set here; kept identical). start_period covers the model pull
+    # window enough for the API to come up — pulls happen after readiness.
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/api/tags"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    # Host has 60 GB and concurrently runs cross-build chains; cap Ollama so a
+    # 26B model cannot OOM a running build (leaves ~20 GB headroom).
+    mem_limit: 40g
     restart: unless-stopped
 
   open-webui:
-    image: ghcr.io/open-webui/open-webui:main
+    # Pinned release (was :main, a moving dev branch — benchmark comparability
+    # died silently on any `compose pull`).
+    # TODO: verify current release (no network at pin time); NOTE: if the
+    # open-webui-data volume was last written by a NEWER :main image, its DB
+    # migrations may not be backward-compatible with this tag.
+    image: ghcr.io/open-webui/open-webui:v0.6.18
     ports:
-      - "3000:8080"
+      # Loopback-only by default; see docker-compose.lan.yml for LAN exposure.
+      - "127.0.0.1:3000:8080"
     environment:
       OLLAMA_BASE_URL: "http://ollama:8080"
       WEBUI_SECRET_KEY: "${WEBUI_SECRET_KEY:?WEBUI_SECRET_KEY must be set (e.g. in .env)}"
     volumes:
       - open-webui-data:/app/backend/data
+    depends_on:
+      ollama:
+        condition: service_healthy
     restart: unless-stopped
 
   glances:
-    image: nicolargo/glances:latest-full
+    # Pinned major release (was :latest-full).
+    # TODO: verify current 4.x release (no network at pin time).
+    image: nicolargo/glances:4.3.1-full
     ports:
-      - "61208:61208"
+      # Loopback-only by default: Glances exposes full host telemetry
+      # (process list) unauthenticated. See docker-compose.lan.yml.
+      - "127.0.0.1:61208:61208"
     command: glances -w
     restart: unless-stopped
 

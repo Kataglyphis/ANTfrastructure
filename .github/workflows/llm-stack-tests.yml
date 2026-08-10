@@ -1,0 +1,59 @@
+# llm-stack API contract tests (backlog 2026-08-10 C4 residual).
+#
+# The suite (linux/llm-stack/tests/test_v1_api.py) is a LIVE contract test
+# against an OpenAI-compatible endpoint — 19 of 22 tests need no real
+# inference, only a serving API with >=1 model present. CI shape: a real
+# ollama service + the smallest practical model, then `pytest -m "not
+# inference"`. The 3 inference-marked tests stay local-only (need a loaded
+# model with meaningful output).
+#
+# ADVISORY RAMP (the windows-scripts PSSA precedent): continue-on-error until
+# the first green run on a real runner proves the service/model bootstrap —
+# then flip continue-on-error to false to make it a gate (tracked in
+# docs/refactoring-backlog.md Batch 6).
+name: llm-stack tests
+
+on:
+  push:
+    paths:
+      - "linux/llm-stack/**"
+      - ".github/workflows/llm-stack-tests.yml"
+  pull_request:
+    paths:
+      - "linux/llm-stack/**"
+      - ".github/workflows/llm-stack-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  v1-api-contract:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # advisory ramp — flip after first green run
+    timeout-minutes: 20
+    services:
+      ollama:
+        image: ollama/ollama:latest
+        ports:
+          - 11434:11434
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Wait for ollama + pull micro model
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 30); do
+            curl -fsS http://localhost:11434/api/tags >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://localhost:11434/api/tags >/dev/null
+          # Smallest practical tag; only needs to EXIST in /v1/models — the
+          # non-inference tests never require meaningful generations.
+          curl -fsS http://localhost:11434/api/pull \
+            -d '{"name":"qwen2.5:0.5b"}' | tail -c 200
+      - name: Install pytest
+        run: pip install --quiet pytest requests
+      - name: Run non-inference contract tests
+        env:
+          OLLAMA_BASE_URL: http://localhost:11434
+          TEST_TIMEOUT: "60"
+        run: pytest linux/llm-stack/tests/ -v -m "not inference"

@@ -7,7 +7,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-MODEL="gemma4:26b"
+# Same default as the compose ollama service's OLLAMA_PULL_MODELS — override
+# BOTH with one env var: BENCH_MODEL=<model> (compose pulls it, this benches it).
+MODEL="${BENCH_MODEL:-gemma4:26b}"
 API_URL="http://localhost:11434/v1"
 OUTDIR="./benchmark_results"
 mkdir -p "$OUTDIR"
@@ -22,7 +24,7 @@ CONFIGS=(
 )
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  Gemma 4 26B — Config Benchmark Suite"
+echo "  LLM Config Benchmark Suite"
 echo "  Model: $MODEL"
 echo "  API:   $API_URL"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -113,11 +115,15 @@ python3 -c "
 import json, os
 results_dir = '$OUTDIR'
 for fname in sorted(os.listdir(results_dir)):
-    if not fname.endswith('.json'):
+    # Skip non-result files — including our own _manifest.json (no 'results'
+    # key; sorts FIRST, so without this guard the KeyError killed the whole
+    # comparison under set -e at the end of every multi-hour run). Mirrors the
+    # startswith('_') guard the manifest loop above already has.
+    if not fname.endswith('.json') or fname.startswith('_'):
         continue
     with open(os.path.join(results_dir, fname)) as f:
         d = json.load(f)
-    results = [r for r in d['results'] if 'error' not in r]
+    results = [r for r in d.get('results', []) if 'error' not in r]
     if not results:
         continue
     tps = [r['tokens_per_sec'] for r in results]

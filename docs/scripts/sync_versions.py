@@ -349,68 +349,21 @@ def write_inline_markers(versions: dict[str, str]) -> int:
 
 
 # -- Deps table (third-party-licenses.md) -----------------------------------
+# The renderer itself is shared with generate-website-licenses.py (F2, see
+# deps_table.py). It carries the LOUD missing-var contract: a deps.json entry
+# whose "var" is absent from versions.env raises KeyError BEFORE anything is
+# written (this file's old copy silently em-dashed — and in --write mode had
+# already written the degraded table when the rc finally went 1).
+
+from deps_table import render_deps_table_lines  # noqa: E402
 
 DEPS_START_MARKER = "<!-- generated:deps-table:start -->"
 DEPS_END_MARKER = "<!-- generated:deps-table:end -->"
-DEPS_JSON_PATH = REPO_ROOT / "docs/deps/deps.json"
 DEPS_TABLE_FILE = REPO_ROOT / "docs/third-party-licenses.md"
 
 
-def load_deps_metadata() -> dict:
-    import json
-    return json.loads(DEPS_JSON_PATH.read_text(encoding="utf-8"))
-
-
-def resolve_dep_version(entry: dict, versions: dict[str, str]) -> str:
-    var = entry.get("var")
-    if var and var in versions:
-        return versions[var]
-    fixed = entry.get("version_fixed")
-    if fixed:
-        return fixed
-    return "—"
-
-
 def render_deps_table(versions: dict[str, str]) -> str:
-    metadata = load_deps_metadata()
-    lines: list[str] = [DEPS_START_MARKER]
-
-    for section in metadata["sections"]:
-        title = section["title"]
-        tag = section.get("tag", "")
-        heading = f"## {title}"
-        if tag:
-            heading += f" (`{tag}`)"
-        lines.append("")
-        lines.append(heading)
-        lines.append("")
-
-        for subsection in section["subsections"]:
-            subtitle = subsection["title"]
-            df = subsection.get("dockerfile", "")
-            sub_heading = f"### {subtitle}"
-            if df:
-                sub_heading += f" (`{df}`)"
-            lines.append(sub_heading)
-            lines.append("")
-            lines.append("| Software | Version | Repository | License |")
-            lines.append("| --- | --- | --- | --- |")
-
-            for entry in subsection["entries"]:
-                name = entry["name"]
-                ver = resolve_dep_version(entry, versions)
-                url = entry.get("url", "")
-                lic = entry.get("license", "")
-                if url:
-                    display = url.replace("https://", "").replace("http://", "").rstrip("/")
-                    repo = f"[{display}]({url})"
-                else:
-                    repo = "—"
-                lines.append(f"| {name} | {ver} | {repo} | {lic} |")
-
-            lines.append("")
-
-    lines.append(DEPS_END_MARKER)
+    lines = [DEPS_START_MARKER, *render_deps_table_lines(versions), DEPS_END_MARKER]
     return "\n".join(lines)
 
 

@@ -13,10 +13,8 @@ Usage:
 import argparse
 import json
 import os
-import subprocess
 import sys
 import time
-from collections import defaultdict
 from datetime import datetime, timezone
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -165,34 +163,6 @@ def sample_resources_glances():
     }
 
 
-def get_container_stats(container_name="llm-stack-ollama-1"):
-    """Get CPU/RAM for a specific container via `nerdctl stats` or `docker stats`."""
-    for cmd in (["nerdctl", "stats"], ["docker", "stats"]):
-        try:
-            result = subprocess.run(
-                [*cmd, "--no-stream", "--no-trunc", container_name],
-                capture_output=True, text=True, timeout=10,
-            )
-            if result.returncode != 0:
-                continue
-            lines = result.stdout.strip().split("\n")
-            if len(lines) < 2:
-                continue
-            parts = [p for p in lines[1].split() if p]
-            if len(parts) >= 14:
-                cpu = parts[2].rstrip("%")
-                mem_pct = parts[6].rstrip("%")
-                mem_used = parts[5]  # e.g., "7.123GiB" or "7.123GiB"
-                return {
-                    "cpu_percent": float(cpu),
-                    "ram_percent": float(mem_pct),
-                    "ram_used": mem_used,
-                }
-        except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError):
-            continue
-    return None
-
-
 def detect_model_via_api():
     """Detect the currently loaded model via the Ollama API."""
     import requests
@@ -337,14 +307,27 @@ def benchmark_chat(
         }
 
 
+_sampler_warned = False
+
+
 def sample_resources():
-    """Unified resource sampler: Glances API → psutil → empty."""
-    result = sample_resources_glances()
-    if result is not None:
-        return result
+    """Unified resource sampler: Glances API → psutil → zeros.
+
+    Never raises: a broken sampler (missing psutil, flaky Glances, transient
+    psutil read error) must not abort a multi-hour benchmark run. Failures
+    degrade to zero readings with a single warning for the whole run.
+    """
+    global _sampler_warned
     try:
+        result = sample_resources_glances()
+        if result is not None:
+            return result
         return sample_resources_psutil()
-    except ImportError:
+    except Exception as e:  # noqa: BLE001 — sampling is best-effort by design
+        if not _sampler_warned:
+            _sampler_warned = True
+            print(f"  WARNING: resource sampling failed ({e!r}); "
+                  "reporting zeros for CPU/RAM from now on", file=sys.stderr)
         return {"cpu_percent": 0.0, "ram_percent": 0.0, "ram_used_gb": 0.0, "ram_total_gb": 0.0}
 
 
@@ -352,7 +335,7 @@ def print_separator(char="━", width=80):
     print(char * width)
 
 
-def print_table(results, show_all=False):
+def print_table(results):
     """Print benchmark results as a formatted table."""
     if not results:
         print("No results to display.")
@@ -438,7 +421,7 @@ def main():
     model = args.model or detect_model_via_api()
     print(f"\n  Model: {model}")
     print(f"  API:   {OLLAMA_BASE_URL}/v1")
-    print(f"  Glances: {GLANCES_URL}/api/3")
+    print(f"  Glances: {GLANCES_URL}/api/4 (v3 fallback)")
     print()
 
     # Build the prompt list
@@ -450,8 +433,20 @@ def main():
     print()
 
     extra_params = json.loads(args.extra_params) if args.extra_params else None
-    results = list(
-        benchmark_chat(
+
+    # Incremental persistence: every completed result is appended to a JSONL
+    # side file so a crash or Ctrl-C never discards finished measurements.
+    # The side file uses a .jsonl suffix on purpose — run_benchmarks.sh and
+    # the viewer manifest only glob *.json, so it can never be mistaken for
+    # a finished result file.
+    partial_path = f"{args.output}.partial.jsonl" if args.output else None
+    if partial_path and os.path.exists(partial_path):
+        os.remove(partial_path)  # stale leftover from an aborted run
+
+    results = []
+    interrupted = False
+    try:
+        for result in benchmark_chat(
             model,
             all_prompts,
             max_tokens=args.max_tokens,
@@ -459,8 +454,16 @@ def main():
             stream=args.stream,
             extra_params=extra_params,
             warmup=not args.no_warmup,
-        )
-    )
+        ):
+            results.append(result)
+            if partial_path:
+                with open(partial_path, "a") as pf:
+                    pf.write(json.dumps(result) + "\n")
+    except KeyboardInterrupt:
+        interrupted = True
+        print(f"\n  Interrupted — {len(results)}/{len(all_prompts)} prompts completed.")
+        if partial_path:
+            print(f"  Completed results preserved in {partial_path}")
 
     print_table(results)
 
@@ -480,10 +483,19 @@ def main():
         "results": results,
     }
 
-    if args.output:
-        with open(args.output, "w") as f:
+    if args.output and not interrupted:
+        # Atomic write: never leave a truncated/half-written JSON behind for
+        # run_benchmarks.sh's summary loop or the viewer manifest to choke on.
+        tmp_path = f"{args.output}.tmp"
+        with open(tmp_path, "w") as f:
             json.dump(output, f, indent=2)
+        os.replace(tmp_path, args.output)
+        if partial_path and os.path.exists(partial_path):
+            os.remove(partial_path)
         print(f"\n  Results written to {args.output}")
+
+    if interrupted:
+        sys.exit(130)
 
 
 if __name__ == "__main__":

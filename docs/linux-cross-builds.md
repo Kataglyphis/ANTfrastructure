@@ -649,6 +649,34 @@ Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
 (see `docs/refactoring-backlog.md`, standing rules).
 
+### IREE (Linux lane)
+
+IREE (`IREE_VERSION` in versions.env, currently v3.11.0) ships 3-arch in the
+media image since 2026-07-14, with a deliberately split strategy per arch:
+
+- **amd64 / arm64** — upstream PyPI `cp312-abi3` wheels, installed into the
+  Python 3.14 venv (abi3 makes the cp312 tag valid there). No source build.
+- **riscv64** — no upstream wheel exists; IREE is **source-built,
+  RUNTIME-ONLY** (`IREE_BUILD_COMPILER=OFF` for the target — consistent with
+  upstream's own riscv64 stance). The compiler tools come from a companion
+  **host** build (`IREE_BUILD_COMPILER=ON`, full LLVM — the long compile you
+  see in the `app-wheelhouse` stage); models are compiled on the host and
+  *executed* on riscv64.
+
+Build home: `linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh`
+(`build_iree_wheels`), which stages host tools + target runtime and is smoked
+both natively and via the Python import path. The riscv64 builder iterates on
+real rebuilds — treat first-failure there as expected tuning, not regression.
+
+### verify-parity.sh (on-demand diagnostic, not a gate)
+
+`06-packaging/verify-parity.sh <native-image> <cross-image>` diffs two BUILT
+images across `packages,python,versions,files,libs,imports`. It needs two
+images, so it can never be a preflight gate (preflight's `artifact-parity`
+slug is the UNRELATED `verify-artifact-copy-parity.sh`). Use it when a cross
+image misbehaves where the native one doesn't — it localizes the divergence
+in minutes.
+
 ## Five Critical Fixes To Maintain
 
 To prevent regressions during updates, always preserve the following five vital fixes in the Linux cross pipeline:

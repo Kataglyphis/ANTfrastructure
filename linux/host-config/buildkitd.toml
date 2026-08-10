@@ -1,0 +1,35 @@
+# CANONICAL rootless-BuildKit config for the Linux cross-build host
+# (backlog 2026-08-10 HC1: host config as code).
+#
+# Live copy: ~/.config/buildkit/buildkitd.toml
+# Apply:     linux/host-config/apply-host-config.sh   (NEVER while a chain runs
+#            — buildkitd restart kills in-flight builds)
+# Drift:     linux/host-config/verify-host-config.sh  (warn-only diff)
+#
+# HISTORY THIS FILE EXISTS TO PREVENT: gckeepstorage=500GB was applied
+# 2026-08-08, recorded DONE — and was silently GONE from the live file by
+# 2026-08-10 (nothing in git could see it). The Windows lane has always
+# checked its buildkitd.toml in; this closes the Linux gap.
+
+# --- registry ---------------------------------------------------------------
+# Mirror Docker Hub pulls (FROM ubuntu:..., docker.io/...) through a faster
+# mirror. NOTE: this only affects image pulls, NOT git/curl downloads inside
+# RUN steps -- those are sped up by the host networking change in
+# buildkit.service.d/override.conf instead.
+[registry."docker.io"]
+  mirrors = ["mirror.gcr.io"]
+
+# --- worker -----------------------------------------------------------------
+[worker.oci]
+  # GC keep-budget: 500 GB (bytes). Without it, buildkitd's default GC evicts
+  # the multi-hour media/toolchain layers between runs -- the "post-restart
+  # full cache miss" class. (Backlog Batch-0 "buildkitd toml pair", part a.)
+  gc = true
+  gckeepstorage = 500000000000
+
+  # Bound concurrent RUN steps. BuildKit otherwise runs every independent
+  # Dockerfile.media stage at once (tvm+opencv+IREE+Dawn compiling together,
+  # each ninja sized by mem_capped_jobs AS IF ALONE) -- the 2026-08-10
+  # cc1plus OOM on the 60 GB host. 4 bounds the overcommit while keeping the
+  # DAG pipelined; raise deliberately on a bigger host. (Part b.)
+  max-parallelism = 4

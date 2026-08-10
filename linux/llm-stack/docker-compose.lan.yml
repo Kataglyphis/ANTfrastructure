@@ -1,0 +1,21 @@
+# Deliberate LAN exposure override. The base docker-compose.yml binds every
+# published port to 127.0.0.1; this file re-exposes them on 0.0.0.0:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.lan.yml up
+#
+# WARNING: Ollama (pull/delete/generate) and Glances (full host telemetry,
+# process list) are UNAUTHENTICATED — use this override only on trusted
+# networks. `!override` replaces the base port list instead of appending to it
+# (appending would double-bind the same host port and fail at startup).
+services:
+  ollama:
+    ports: !override
+      - "0.0.0.0:11434:8080"
+
+  open-webui:
+    ports: !override
+      - "0.0.0.0:3000:8080"
+
+  glances:
+    ports: !override
+      - "0.0.0.0:61208:61208"

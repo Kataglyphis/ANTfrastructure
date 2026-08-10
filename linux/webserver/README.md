@@ -9,6 +9,15 @@ context-relative `./webserver/...` paths, which only resolve under `linux/`.
 
 `linux/webserver/Dockerfile` does not currently expose the fast Ubuntu mirror build flag used by the main Linux image chain.
 
+# dist/ provenance
+
+`linux/webserver/dist/` is ~82 MB of **committed, pre-built Flutter web
+artifacts** (the site served by this image). They are deliberately checked in:
+they are built in the sibling app repository (not from any source in this
+repo), and committing the output lets this image build standalone without a
+Flutter toolchain. Do not hand-edit files under `dist/` — regenerate them in
+the app repo and copy the fresh build output over.
+
 # Run mit Volume-Mount für dist UND nginx.conf
 ```bash
 sudo nerdctl run -d --name kataglyphis-webserver \

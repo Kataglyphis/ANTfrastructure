@@ -38,7 +38,7 @@ $CMD run --rm \
   -w "$VIEWER_DIR" \
   "$NODE_IMAGE" \
   sh -euc "
-    npm install
+    npm ci
     npm run build
     echo ''
     echo '✓ Build complete. Files in dist/:'
