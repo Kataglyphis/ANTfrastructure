@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-10 (late) - sccache forensics round: poisoning excluded on BOTH cache levels, minimal repros clean, issue draft rewritten to the honest evidence state
+
+- Owner challenge ("ist es wirklich upstream?") audit: binary confirmed
+  VANILLA mozilla/sccache main @ the #2722 merge (cargo install --git);
+  SCCACHE_MULTILEVEL_CHAIN is an upstream feature (src/cache/multilevel.rs).
+  Upstream prior art found: #1098/#1186 (our 10054 Windows crash family,
+  open, no root cause), #2299 (arch-guard x host-preprocessor correctness
+  bug, NVIDIA-reported, fixed pre-our-pin - proves the bug class), #2726.
+- The audit EXPOSED an overclaim in our own draft: run 11 only had a fresh
+  L0 - the WebDAV L2 was never reset. Follow-up killed that worry from the
+  other side: the L2 store contains just 9 entries (all from micro-probes) -
+  the chain's multilevel write-through silently never fed WebDAV (separate
+  puzzle, error-log dig pending post-run-13; until then cross-run CUDA
+  caching rests on the L0 mount alone). Consequence: runs 10/11 compiled
+  for REAL through the decomposition -> the miscompile happened at compile
+  time, not via cache hits.
+- Minimal wrapped-vs-bare discriminators (fresh disk-only cache, llvm-nm
+  symbol diff, toolchain-image solves): define-guard and __CUDA_ARCH__-guard
+  instantiation TUs x {plain, ORT-ish (4 gencode, -t2, -Xcompiler,
+  extended-lambda), --options-file rsp} - ALL CLEAN. The instantiation loss
+  requires real-ORT invocation complexity; next candidates -MD/-MF depgen,
+  -forward-unknown-to-host-compiler, quoted rsp defines, concurrency. Next
+  step: replay one affected TU's exact generated command line (post-run-13).
+- Issue draft + AGENTS failure row rewritten to exactly this evidence state
+  (controls a-d, prior-art links, no overclaims). Post still awaiting owner
+  go-ahead. Learned-the-hard-way note: nvcc response files are
+  `--options-file`, not cl-style `@file`.
+
 ## 2026-08-10 (night) - run 12: ONNX vertex GREEN (bare-CUDA verdict confirmed); OpenCV died one layer deeper in MLAS -> patch 003; run 13 launched
 
 - **Run 12's ONNX vertex went green at ~76 min INCLUDING the lld-link** that
