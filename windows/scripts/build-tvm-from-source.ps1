@@ -121,6 +121,8 @@ Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
 $buildLog = Join-Path $buildDir 'tvm-build.log'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install -InstallConfig $BuildType
+# Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
+Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 # TVM 0.25's FFI split builds libtvm_ffi as a SEPARATE shared lib that tvm_runtime.dll
 # imports, but `cmake --install` does not stage tvm_ffi.dll -> tvm_runtime.dll then fails to

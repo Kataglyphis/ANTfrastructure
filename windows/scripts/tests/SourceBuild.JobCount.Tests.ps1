@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Get-BuildJobCount — the memory-scaled parallelism math. A regression here
 # either serializes builds (slow) or over-subscribes a memory-capped container (OOM /
 # deadlock — the exact failure mode that made onnx-genai's full-core build risky).

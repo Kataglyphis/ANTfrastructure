@@ -160,12 +160,9 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
 # warn-not-throw), so if a future onnxruntime bump shifts the anchors and the static .patch stops applying,
 # the build self-heals instead of failing. See that function for the full rationale of each fix
 # (#1 incomplete-type out-lining, #2 `.##Z` token-paste, #3 Dispatch<size_t>).
-try {
-    Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir -IgnoreWhitespace
-} catch {
-    Write-Host '003-dml-clangcl-compat.patch did not apply cleanly -- falling back to inline regex patcher'
-    Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir
-}
+$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir `
+    -FallbackNote 'falling back to inline regex patcher' `
+    -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
 
 $py = Initialize-ToolchainPythonEnvironment
 
@@ -229,14 +226,13 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     $cudnnLib = Get-CudnnLibrary -CudnnRoot $cudnnRoot
 
     # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
-    try {
-        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir -IgnoreWhitespace
-    } catch {
-        Write-Host "002-disable-cuda-pch.patch did not apply cleanly -- falling back to inline regex"
-        $pch = "$SourceDir\cmake\onnxruntime_providers_cuda.cmake"
-        Invoke-InlineRegexPatch -Path $pch -Pattern 'target_precompile_headers\([^)]+\)' `
-            -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch." | Out-Null
-    }
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir `
+        -FallbackNote 'falling back to inline regex' `
+        -Fallback {
+            $pch = "$SourceDir\cmake\onnxruntime_providers_cuda.cmake"
+            Invoke-InlineRegexPatch -Path $pch -Pattern 'target_precompile_headers\([^)]+\)' `
+                -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch."
+        }
     # ORT 1.28.0 + CUDA 13.3: Windows headers in the CUDA include set define ERROR
     # (wingdi.h's `#define ERROR 0`, reached despite -DNOGDI) and can define VERBOSE;
     # either pre-expands through the LOGS_DEFAULT forwarding macro and token-pastes
@@ -244,15 +240,14 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     # "onnxruntime::logging::Severity" has no member "k0"` at the LOGS_DEFAULT(ERROR)
     # line; first TU: triton_kernel.cu). Reviewable .patch first; inline #undef
     # insertion after the last tunable.h include as the context-drift fallback.
-    try {
-        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir -IgnoreWhitespace
-    } catch {
-        Write-Host "004-tunable-severity-macro-collision.patch did not apply cleanly -- falling back to inline #undef insertion"
-        $tunable = Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h'
-        Invoke-InlineRegexPatch -Path $tunable -Pattern '(#include "core/framework/tuning_context\.h")' `
-            -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
-            -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $tunable." | Out-Null
-    }
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
+        -FallbackNote 'falling back to inline #undef insertion' `
+        -Fallback {
+            $tunable = Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h'
+            Invoke-InlineRegexPatch -Path $tunable -Pattern '(#include "core/framework/tuning_context\.h")' `
+                -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
+                -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $tunable."
+        }
 
     # ORT 1.28.0 XQA kernels: the host-pass include guard in xqa_impl_gen.cuh keys on the
     # cmake-provided HAS_SM80_OR_LATER define, and sccache's nvcc decomposition
@@ -260,42 +255,43 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     # the stub then fails with C2039/C2065 (`smemSize`/`kernelType`/`cacheVTileSeqLen`
     # missing from `H*::grp*_*` in x_?.cudafe1.stub.c). We always target sm80+
     # (CUDA_ARCHITECTURES 80;86;89;90), so the patch makes the host stub unconditional.
-    try {
-        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir -IgnoreWhitespace
-    } catch {
-        Write-Host "005-xqa-host-stub-sccache.patch did not apply cleanly -- falling back to inline guard rewrite"
-        $xqaGen = Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh'
-        Invoke-InlineRegexPatch -Path $xqaGen -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
-            -Replacement '#else' `
-            -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen." | Out-Null
-    }
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir `
+        -FallbackNote 'falling back to inline guard rewrite' `
+        -Fallback {
+            $xqaGen = Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh'
+            Invoke-InlineRegexPatch -Path $xqaGen -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
+                -Replacement '#else' `
+                -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen."
+        }
 
     # sccache's nvcc decomposition crashes deterministically on the fused_moe
     # generated launchers (runs 6+7, ~4910 s, os error 10054): patch 006 pins a
     # BARE nvcc onto the onnxruntime_providers_cuda_llm target only, so the
     # launcher (and CUDA caching) stays on for every other target.
-    try {
-        Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\006-cuda-llm-bare-nvcc.patch') -SourceDir $SourceDir -IgnoreWhitespace
-    } catch {
-        Write-Host "006-cuda-llm-bare-nvcc.patch did not apply cleanly -- falling back to inline property insertion"
-        $cudaCmake = Join-Path $SourceDir 'cmake\onnxruntime_providers_cuda.cmake'
-        Invoke-InlineRegexPatch -Path $cudaCmake -Pattern '(SOURCES \$\{onnxruntime_cuda_llm_srcs\}\))' `
-            -Replacement ('$1' + "`n          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)`n            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER `"`")`n          endif()") `
-            -WarnMessage "onnxruntime_providers_cuda.cmake: cuda_llm anchor not found; the fused_moe launchers will crash the sccache server. Verify $cudaCmake." | Out-Null
-    }
+    # -Fatal (backlog #19): 006 rotting silently would hand the fused_moe
+    # launchers back to the sccache server crash the day the CUDA launcher is
+    # retried - patch rot must surface at patch time, not at re-enable time.
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\006-cuda-llm-bare-nvcc.patch') -SourceDir $SourceDir -Fatal `
+        -FallbackNote 'falling back to inline property insertion' `
+        -Fallback {
+            $cudaCmake = Join-Path $SourceDir 'cmake\onnxruntime_providers_cuda.cmake'
+            Invoke-InlineRegexPatch -Path $cudaCmake -Pattern '(SOURCES \$\{onnxruntime_cuda_llm_srcs\}\))' `
+                -Replacement ('$1' + "`n          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)`n            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER `"`")`n          endif()") `
+                -WarnMessage "onnxruntime_providers_cuda.cmake: cuda_llm anchor not found; the fused_moe launchers will crash the sccache server. Verify $cudaCmake."
+        }
 
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
         # to the generic Edit-CppKeywordAlternatives helper against the two softmax source files.
-        try {
-            Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir -IgnoreWhitespace
-        } catch {
-            Write-Host "001-softmax-clangcl-keywords.patch did not apply cleanly -- falling back to keyword-alternatives in softmax sources"
-            foreach ($sf in @('softmax.cc', 'softmax.h')) {
-                $sfp = Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math' $sf
-                if (Test-Path $sfp) { Edit-CppKeywordAlternatives -Path $sfp }
+        $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir `
+            -FallbackNote 'falling back to keyword-alternatives in softmax sources' `
+            -Fallback {
+                foreach ($sf in @('softmax.cc', 'softmax.h')) {
+                    $sfp = Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math' $sf
+                    if (Test-Path $sfp) { Edit-CppKeywordAlternatives -Path $sfp }
+                }
+                $true
             }
-        }
 
     # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
     $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
@@ -446,15 +442,21 @@ if ($mlasTagged -gt 0) {
 # use ~2-3 GB and only a few heavy CUDA kernels approach the cap. Ninja is
 # incremental, so the -j2 retry after an OOM-style failure only redoes the jobs
 # that died -- worst case is a slow tail, not a failed build.
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install
+# Ninja log on the PERSISTENT sccache cache mount (backlog #4): when this
+# vertex fails, the container filesystem dies with the solve, but C:\sccache
+# survives into the next run - the full ninja stream stays readable from a
+# debug container (never-swallow-logs). One .prev generation bounds growth.
+$ninjaLogDir = if ($env:SCCACHE_DIR -and (Test-Path $env:SCCACHE_DIR)) { Join-Path $env:SCCACHE_DIR 'logs' } else { $buildDir }
+$null = New-Item -ItemType Directory -Force -Path $ninjaLogDir
+$ninjaLog = Join-Path $ninjaLogDir 'onnx-ninja.log'
+if (Test-Path $ninjaLog) { Move-Item -Path $ninjaLog -Destination "$ninjaLog.prev" -Force }
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install -LogFile $ninjaLog
 
 # Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never
-# truncates (AGENTS.md priority 1: caching must be MEASURED). This is where
-# the CUDA-launcher value is finally visible per run: Cache hits (CUDA/PTX/
-# CUBIN) vs misses, and any 'Cache errors' pointing at a broken backend.
-foreach ($line in @(Get-SccacheStatsText -Advanced -RequireRemote | Where-Object { $null -ne $_ })) {
-    [Console]::Error.WriteLine("sccache-stats| $line")
-}
+# truncates (AGENTS.md priority 1: caching must be MEASURED): C/CXX hits vs
+# misses (CUDA is bare nvcc by design - see the launcher block above), and
+# any 'Cache errors' pointing at a broken backend.
+Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 # DirectML EP: onnxruntime.dll depends on DirectML.dll (fetched via NuGet during configure). cmake
 # --install does not stage that redist, so a DML session would fail (0xC0000135) in the final image.

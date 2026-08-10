@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Get-WarningFamily, the classifier behind Measure-BuildWarnings.ps1.
 # The script exists to PROVE the four -Wno- suppressions added on 2026-08-08
 # still earn their place; if its classifier miscounts, that proof is worthless

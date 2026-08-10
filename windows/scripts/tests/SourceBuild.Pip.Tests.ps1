@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Invoke-CpythonPip — the shared `python -m pip` wrapper (routed through cmd.exe so
 # pip's stderr progress doesn't trip EAP=Stop). A regression here would either swallow a failed
 # pip install or abort a build on a non-critical wheel that should have been -Optional. A fake

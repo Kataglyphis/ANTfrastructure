@@ -736,6 +736,84 @@ function Assert-StageDiskHeadroom {
     throw "REFUSING to start: $msg"
 }
 
+function Assert-BuildkitdStepLogEnv {
+    # Host-drift preflight (backlog 0a): the buildkitd service must carry
+    # BUILDKIT_STEP_LOG_MAX_SIZE=-1 or every RUN step's log clips at 2MiB and
+    # buries the causal error of a multi-hour build. This exact drift ate a
+    # day on 2026-08-10 (a Stevedore repair silently wiped the service env;
+    # owner directive: never swallow logs). Non-admin registry READ; the fix
+    # needs elevation and a service restart - between chain runs only.
+    param(
+        [string]$ServiceName = 'buildkitd',
+        # Injectable for tests: pass the service's Environment multi-string.
+        [object[]]$EnvironmentOverride = $null,
+        [switch]$Force
+    )
+    $envStrings = $EnvironmentOverride
+    if ($null -eq $envStrings) {
+        $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
+        # No service registered = not this host's lane; the buildctl
+        # resolution in the driver is the authority on that failure.
+        if (-not (Test-Path $svcKey)) { return }
+        $envStrings = (Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue).Environment
+    }
+    if ((@($envStrings) -join "`n") -match 'BUILDKIT_STEP_LOG_MAX_SIZE\s*=\s*-1') { return }
+    $msg = ("buildkitd service env is missing BUILDKIT_STEP_LOG_MAX_SIZE=-1 - step logs will clip at 2MiB. " +
+        "Fix (elevated, between chain runs): windows\scripts\setup-new-host.ps1, or " +
+        "Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment " +
+        "-Value @('BUILDKIT_STEP_LOG_MAX_SIZE=-1','BUILDKIT_STEP_LOG_MAX_SPEED=-1') ; Restart-Service buildkitd.")
+    if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
+    throw "REFUSING to start: $msg Pass -SkipHostChecks to override."
+}
+
+# SINGLE SOURCE for the RDNA4 hazard set (backlog #1): the gate below, the
+# toggle script and the layer-lock A/B all resolve through this pattern -
+# it forked into three divergent copies once ((TM)-rename hole, 2026-08-10)
+# and must never fork again. RDNA4 discrete cards: RX 9xxx / AI PRO R9700;
+# extend as SKUs appear.
+$script:Rdna4HazardPattern = 'Radeon\s*(\(TM\)\s*)?(AI\s+PRO\s+)?(RX\s+|R)?9\d{3}'
+
+function Get-Rdna4HazardDevice {
+    # Returns the display-class PnP devices matching the RDNA4 hazard set
+    # (all of them, or only the ENABLED ones with -ActiveOnly). $Devices is
+    # injectable for tests; -Pattern exists for tests only - production
+    # callers must use the single-source default.
+    param(
+        [object[]]$Devices = $null,
+        [string]$Pattern = '',
+        [switch]$ActiveOnly
+    )
+    if ([string]::IsNullOrWhiteSpace($Pattern)) { $Pattern = $script:Rdna4HazardPattern }
+    if ($null -eq $Devices) {
+        $Devices = @(Get-PnpDevice -Class Display -ErrorAction SilentlyContinue)
+    }
+    $hazards = @($Devices | Where-Object { $_.FriendlyName -match $Pattern })
+    if ($ActiveOnly) { $hazards = @($hazards | Where-Object { $_.Status -eq 'OK' }) }
+    return $hazards
+}
+
+function Set-Rdna4DeviceState {
+    # The toggle primitive shared by toggle-rdna4-gpu.ps1 and the layer-lock
+    # A/B (backlog #6: the safety-critical re-enable path was duplicated).
+    # ELEVATED callers only. Always verifies the post-state - a swallowed
+    # Enable-PnpDevice failure strands the host on the iGPU while the
+    # console claims otherwise (review sweep finding, 2026-08-10).
+    param(
+        [Parameter(Mandatory)][object]$Device,
+        [Parameter(Mandatory)][ValidateSet('Enabled', 'Disabled')][string]$State
+    )
+    if ($State -eq 'Disabled') {
+        Disable-PnpDevice -InstanceId $Device.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
+    } else {
+        Enable-PnpDevice -InstanceId $Device.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
+    }
+    Start-Sleep -Seconds 2
+    $post = Get-PnpDevice -InstanceId $Device.InstanceId -ErrorAction SilentlyContinue
+    $status = if ($post) { [string]$post.Status } else { 'unknown' }
+    $ok = if ($State -eq 'Enabled') { $status -eq 'OK' } else { ($post -and $status -ne 'OK') }
+    return [pscustomobject]@{ Ok = [bool]$ok; Status = $status }
+}
+
 function Assert-NoActiveRdna4Gpu {
     # Host gate (2026-08-10, A/B-proven on the RX 9070 XT host): an ENABLED AMD
     # RDNA4 dGPU + Adrenalin driver locks freshly-written container layer files,
@@ -757,14 +835,12 @@ function Assert-NoActiveRdna4Gpu {
     param(
         # Injectable for tests. Default: live display-class PnP devices.
         [object[]]$Devices = $null,
-        # RDNA4 discrete cards (RX 9xxx / AI PRO R9700). Extend as SKUs appear.
-        [string]$HazardPattern = 'Radeon\s*(\(TM\)\s*)?(AI\s+PRO\s+)?(RX\s+|R)?9\d{3}',
+        # Test-only override; production resolves via Get-Rdna4HazardDevice
+        # (the single source, backlog #1).
+        [string]$HazardPattern = '',
         [switch]$Force
     )
-    if ($null -eq $Devices) {
-        $Devices = @(Get-PnpDevice -Class Display -ErrorAction SilentlyContinue)
-    }
-    $hazards = @($Devices | Where-Object { $_.FriendlyName -match $HazardPattern })
+    $hazards = @(Get-Rdna4HazardDevice -Devices $Devices -Pattern $HazardPattern)
     if ($hazards.Count -eq 0) { return }
 
     $active = @($hazards | Where-Object { $_.Status -eq 'OK' })
@@ -803,4 +879,5 @@ Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsol
     Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
     Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon,
     Get-ShimPatchStatePath, Write-ShimPatchState,
-    Get-StageDiskFloorGb, Assert-StageDiskHeadroom, Assert-NoActiveRdna4Gpu
+    Get-StageDiskFloorGb, Assert-StageDiskHeadroom, Assert-NoActiveRdna4Gpu,
+    Get-Rdna4HazardDevice, Set-Rdna4DeviceState, Assert-BuildkitdStepLogEnv

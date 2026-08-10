@@ -165,6 +165,8 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
 # a hand-rolled -j%NUMBER_OF_PROCESSORS% .bat (full-core, no memory scaling) that could
 # OOM / deadlock a memory-capped container; the -j1 retry still yields clean error output.
 Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install
+# Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
+Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 Write-Host "Installing to $genaiInstallDir..."
 # Copy built artifacts (top level only, matching the original non-recursive wildcard copy).

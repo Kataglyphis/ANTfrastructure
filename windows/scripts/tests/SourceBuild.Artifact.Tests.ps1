@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Copy-BuildArtifact (stage built files by extension into an install layout) and
 # Get-SourceBuildVersion -StripVPrefix. Copy-BuildArtifact drives the manual-install step in
 # build-litert / build-onnx-genai (upstreams whose cmake --install is a no-op), so a regression

@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Invoke-NinjaBuildWithRetry (WindowsSourceBuild.Common.psm1) — the
 # OOM-shaped compile retry: a failed `ninja -j<N>` is re-run incrementally with
 # -j<RetryJobs> before giving up. A regression here either retries a doomed
@@ -14,6 +15,8 @@ Describe 'Invoke-NinjaBuildWithRetry' {
     #   WBT_NINJA_MODE     — 'fail' = always exit 1
     #   WBT_NINJA_FAILONCE — marker file: if present, delete it and exit 1 (so
     #                        the FIRST call fails and the retry succeeds)
+    #   WBT_NINJA_FAILONCE2 — second single-shot fail marker (chain both for a
+    #                         fail-fail-succeed sequence)
     #   WBT_NINJA_STALLMARK — when set, every FAILING invocation also appends a
     #                         line to this file (simulates a stall-guard kill
     #                         recorded during the attempt)
@@ -24,6 +27,7 @@ Describe 'Invoke-NinjaBuildWithRetry' {
             'echo NINJA %* >> "%WBT_NINJA_LOG%"',
             'if "%WBT_NINJA_MODE%"=="fail" ( (if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%") & exit /b 1 )',
             'if exist "%WBT_NINJA_FAILONCE%" ( del "%WBT_NINJA_FAILONCE%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
+            'if exist "%WBT_NINJA_FAILONCE2%" ( del "%WBT_NINJA_FAILONCE2%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
             'exit /b 0'
         )
         Set-Content -LiteralPath (Join-Path $dir 'ninja.bat') -Value ($lines -join "`r`n") -Encoding ASCII
@@ -99,6 +103,32 @@ Describe 'Invoke-NinjaBuildWithRetry' {
             $calls = @(Get-Content -LiteralPath $log)
             Assert-Equal 2 $calls.Count 'guard-kill attempt + ONE full-speed retry'
             Assert-Match '^NINJA -j 4 ' $calls[1] 'the stall retry must stay at full parallelism (L0 hits), never drop to -j<RetryJobs>'
+        }
+    }
+
+    It 'attributes kills per attempt: two consecutive guard-kill failures get two full-speed retries' {
+        # Backlog #17 regression guard: the marker is truncated before every
+        # invocation, so each retry decision sees only THIS attempt's kills —
+        # a cumulative count must never stall the ladder after the first retry.
+        Invoke-InTestDir { param($dir)
+            & $newFakeNinja $dir
+            $log = Join-Path $dir 'ninja.log'
+            $fail1 = Join-Path $dir 'fail-1.marker'
+            $fail2 = Join-Path $dir 'fail-2.marker'
+            $stallMark = Join-Path $dir 'stall.marker'
+            Set-Content -LiteralPath $fail1 -Value 'x' -Encoding ASCII
+            Set-Content -LiteralPath $fail2 -Value 'x' -Encoding ASCII
+            Invoke-WithEnv @{
+                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = ''
+                WBT_NINJA_FAILONCE = $fail1; WBT_NINJA_FAILONCE2 = $fail2; WBT_NINJA_STALLMARK = $stallMark
+                BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
+            } {
+                Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 2 -StallMarkerPath $stallMark
+            }.GetNewClosure()
+            $calls = @(Get-Content -LiteralPath $log)
+            Assert-Equal 3 $calls.Count 'two guard-kill attempts + the green third'
+            Assert-Match '^NINJA -j 4 ' $calls[1] 'first stall retry at full -j'
+            Assert-Match '^NINJA -j 4 ' $calls[2] 'second stall retry STILL at full -j (per-attempt kill attribution)'
         }
     }
 

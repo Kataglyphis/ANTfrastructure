@@ -1945,18 +1945,19 @@ edit costs one ONNX-vertex rebuild, so land them together:
 
 | Batch | Items | Tier | Effort | Impact |
 |---|---|---|---|---|
-| **W0 pending actions** | buildkitd env, sccache issue, tag cleanup | host | S | ★★★ (unblocks log visibility) |
-| **W1 host-only quick wins** | ~~12, 13, 22, 25~~ done · 2, 6 partial · REST: 2-legacy, 5, 9, 15, 21, 26, 29, 30 (NOT 3/10/11 — those are media-closure, they belong to W3) | host scripts/tests only — zero cache impact | S-M | ★★ |
-| **W2 preflight architecture** | 0a, 0c, 1+18, 26, 32 | host (drivers, diagnostics, probe assets) | M | ★★★ |
-| **W3 media-closure batch** | 4, 7+19, 16+17, 20, 23 | media closure (bkmods module + build scripts) — ONE ONNX rebuild for all | M-L | ★★★ (guard redesign + patch helper) |
+| **W0 pending actions** | buildkitd env (now ENFORCED by the 0a gate — restore before run 13!), sccache issue, tag cleanup | host | S | ★★★ (unblocks log visibility) |
+| **W1 host-only quick wins** | ~~5, 6, 12, 13, 22, 24, 25~~ done · 2 partial-by-design · REST: 2-legacy, 8+30, 9, 15, 21, 29 | host scripts/tests only — zero cache impact | S-M | ★★ |
+| **W2 preflight architecture** | ~~0a, 0c, 1+18, 26~~ done · REST: 32 | host (drivers, diagnostics, probe assets) | M | ★★★ |
+| **W3 media-closure batch** | ~~3, 4, 7+19, 10, 11, 16+17, 20, 23~~ ALL DONE (2026-08-10 night, landed inside run 12's already-busted closure window) | media closure | M-L | ★★★ |
 | **W4 base-tier batch** | 27 (+ anything else touching base closure) | base — FULL chain rebuild; batch with the next planned base bump | M | ★ |
-| **W5 process/policy** | 0b (bump protocol), 24, 28 (measure first!), 31 | repo/CI policy + measurements | M | ★★★ (0b + 28) |
+| **W5 process/policy** | 0b (bump protocol), 28 (measure first!), 31 | repo/CI policy + measurements | M | ★★★ (0b + 28) |
 
-Suggested order: W0 → W1 → W2 → W5(0b sofort — GenAI 0.15.2/LiteRT-LM
-0.15.0 bumps are already announced in the docs!) → W3 → W4. Done-when: the
-per-item fix suggestion holds, gates stay green (lint 0 warnings, full test
-suite, Test-PatchesApplyClean), and any behavior change lands in AGENTS +
-this doc + CHANGELOG per repo priority 4.
+Suggested order: W5(0b sofort — GenAI 0.15.2/LiteRT-LM 0.15.0 bumps are
+already announced in the docs!) → W1 rest → W4. Done-when: the per-item fix
+suggestion holds, gates stay green (lint 0 warnings, full test suite,
+Test-PatchesApplyClean), and any behavior change lands in AGENTS + this doc
++ CHANGELOG per repo priority 4. (2026-08-10 night batch: 457 tests / lint
+0-0 green after every sub-batch.)
 
 ### Pending host/upstream actions (not refactors — do not let these evaporate)
 
@@ -1965,10 +1966,14 @@ this doc + CHANGELOG per repo priority 4.
   work); the default 2 MiB step-log clip hid verdicts all day. Elevated
   `setup-new-host.ps1` (idempotent, refuses during builds) or the registry
   Multi-String + `Restart-Service buildkitd` — ONLY between chain runs.
-- **Post the sccache upstream issue**: the drafted report (deterministic
-  server death on the fused_moe launchers, ±2 s across two runs) sits in
-  `out/upstream-issue-sccache-nvcc.md`, ready to file against
-  mozilla/sccache. The docker/for-win#14977 comment is already posted.
+  **Since 2026-08-10 night this is ENFORCED: `Assert-BuildkitdStepLogEnv`
+  refuses to launch the BK driver until restored (0a).**
+- **Post the sccache upstream issue**: `out/upstream-issue-sccache-nvcc.md`
+  now carries BOTH failure classes — the deterministic server death on the
+  fused_moe launchers (±2 s across two runs) AND the silent miscompilation
+  of arch-guarded instantiations (runs 10/11 vs bare-nvcc run 5, fresh-cache
+  control) — ready to file against mozilla/sccache. The
+  docker/for-win#14977 comment is already posted.
 - **Admin cleanup of 2026-08-10 diagnostic tags** (`copyprobe-*`, `sweep-*`,
   `rdna4ab-*`, `flush-*`, `size*`, `pw*`, `mlchain-probe`,
   `verify-cuda-cache`, `postboot-*`, `nano-*`, `gpuab-*`): admin
@@ -1977,7 +1982,12 @@ this doc + CHANGELOG per repo priority 4.
 
 ### P0 — architecture-level (highest leverage; from the same review's deep pass)
 
-0a. **Host-drift detection as a mandatory driver preflight.** Four of the
+0a. *(DONE 2026-08-10 night: `Assert-BuildkitdStepLogEnv` (non-admin registry
+    read, throws with the elevated remediation, `-SkipHostChecks` downgrades)
+    closed the one missing cheap check — disk/shim/daemon/RDNA4/dufs-endpoint
+    gates already ran in both drivers. NOTE: the gate now REFUSES to launch
+    until the wiped buildkitd env is restored — do W0 first.)*
+    **Host-drift detection as a mandatory driver preflight.** Four of the
     2026-08-10 blockers were pure host drift (dufs ONLOGON task dead after
     reboot, buildkitd service env wiped by the Stevedore repair, Defender
     exclusion uncertainty, dGPU state): the code is reproducible, the host
@@ -1992,7 +2002,11 @@ this doc + CHANGELOG per repo priority 4.
     `Test-PatchesApplyClean.ps1` runs as a pre-commit gate whenever
     versions.env changes — that alone would have caught the OpenCV patch
     drift before any container built.
-0c. **Lane parity is unowned.** The RDNA4 gate initially landed only in the
+0c. *(DONE 2026-08-10 night: `Driver.PreflightParity.Tests.ps1` — shared
+    contract table + lane allowlists with reasons + a catch-all that fails on
+    any NEW unlisted `Assert-*` in either driver; caught its first real case
+    (`Assert-ImageExists`) on the first run.)*
+    **Lane parity is unowned.** The RDNA4 gate initially landed only in the
     BK driver; the classic lane got it a day later via review. Either demote
     build.ps1 to bootstrap-only, or add a parity test (BuildKit.TwinParity
     is the in-repo pattern) asserting both drivers wire the same preflight
@@ -2000,7 +2014,11 @@ this doc + CHANGELOG per repo priority 4.
 
 ### P1 — correctness-adjacent (drift that already bites or will)
 
-1. **RDNA4 hazard set exists in THREE divergent copies**: the
+1. *(DONE 2026-08-10 night: `Get-Rdna4HazardDevice` + `Set-Rdna4DeviceState`
+   exported from WindowsBuildDriver.Common are the single source; the gate,
+   toggle (empty `-GpuName` default = resolve all hazard SKUs, `-NoPrompt`
+   for automation) and the A/B all consume them. +3 unit tests.)*
+   **RDNA4 hazard set exists in THREE divergent copies**: the
    `Assert-NoActiveRdna4Gpu` regex (covers RX 9xxx + AI PRO R9700), the
    hardcoded `FriendlyName -eq 'AMD Radeon RX 9070 XT'` in
    `toggle-rdna4-gpu.ps1`, and the same literal as `-GpuName` default in
@@ -2020,30 +2038,49 @@ this doc + CHANGELOG per repo priority 4.
    they are needed, and the constant now has a dozen copies. Fix:
    `Get-PreferredToolPath` (already exported by WindowsScripts.Shared)
    everywhere; one candidate list, zero copies.
-3. **Consolidate the ONNX stderr stats loop into `Write-SccacheStats`**
+3. *(DONE 2026-08-10 night: `Write-SccacheStatsToStderr` in
+   WindowsScripts.Shared (name states the sink; the sink-stays-with-caller
+   doctrine holds for other consumers); called end-of-build by ALL SIX
+   source-build scripts — onnx, opencv, genai, tvm, iree, litert.)*
+   **Consolidate the ONNX stderr stats loop into `Write-SccacheStats`**
    (give the helper a `-Sink Stderr` switch and call it) so formatting and
    the `-RequireRemote` contract live in one place and the next CUDA
    consumer (TVM/OpenCV) inherits the clip-surviving sink for free.
    *(The original finding's acute half — the missing `-RequireRemote`,
    which would have spawned a throwaway server on no-remote builds — was
    fixed same-day; only the consolidation remains.)*
-4. **ONNX ninja runs without `-LogFile`** — the full ninja stream exists
+4. *(DONE 2026-08-10 night: onnx ninja logs to
+   `$env:SCCACHE_DIR\logs\onnx-ninja.log` — the PERSISTENT cache mount, so
+   the stream survives a failed vertex into the next run/debug container;
+   one `.prev` rotation generation bounds growth.)*
+   **ONNX ninja runs without `-LogFile`** — the full ninja stream exists
    only in the (clip-prone) step log; `[n/1891]` progress is invisible from
    the host. Violates the never-swallow-logs invariant. Fix: pass a LogFile
    under the build tree (or out-mounted), always.
 
 ### P2 — reuse / single-source-of-truth
 
-5. **`test-rdna4-layer-lock.ps1` re-implements the finalize probe** that
+5. *(DONE 2026-08-10 night: the A/B now delegates each GPU-state side to
+   `probe-build-copy.ps1 -Heavy` — digest-pinned base, lane logs and the
+   output-shape lessons live once; the A/B only orchestrates GPU state.)*
+   **`test-rdna4-layer-lock.ps1` re-implements the finalize probe** that
    `probe-build-copy.ps1` (exit codes + `-Heavy` + per-lane Tee logs) was
    just upgraded to provide. Fix: call the probe (or extract a shared
    lane-runner) so the load-bearing output-shape/quoting lessons live once.
    *(Its log-swallowing was fixed same-day — the duplication remains.)*
-6. **GPU toggle logic duplicated** *(PARTIAL 2026-08-10 W1: toggle gained `-GpuName`, closing the wrong-SKU dead end; consolidation remains)* between `toggle-rdna4-gpu.ps1` and the
+6. *(DONE 2026-08-10 night: toggle lifted into the module as
+   `Set-Rdna4DeviceState` (post-state-verified); toggle script + A/B finally
+   block both consume it, and the toggle gained `-NoPrompt` + exit 1 on a
+   failed state change.)*
+   **GPU toggle logic duplicated** between `toggle-rdna4-gpu.ps1` and the
    A/B script's finally-block re-enable (the safety-critical path). Fix:
    parameterize the toggle script (`-GpuName`, `-NoPrompt`) and call it, or
    lift the toggle into the module.
-7. **Patch-apply stanzas ×6 in build-onnx-from-source.ps1** (try →
+7. *(DONE 2026-08-10 night: `Invoke-SourcePatchWithFallback` in
+   WindowsSourceBuild.Patches (fallback scriptblock runs in caller scope,
+   `-Fatal` throws on a double miss); all six build-onnx stanzas collapsed;
+   4 unit tests incl. the Fatal rung. See #19.)*
+   **Patch-apply stanzas ×6 in build-onnx-from-source.ps1** (try →
    Invoke-SourcePatch → catch → inline fallback → WarnMessage, near-identical
    each time; 3 added on 2026-08-10 alone). Fix: `Invoke-PatchWithFallback`
    helper in WindowsSourceBuild.Patches.psm1.
@@ -2059,11 +2096,15 @@ this doc + CHANGELOG per repo priority 4.
 
 ### P3 — cosmetics / hygiene
 
-10. **`$invokeNinja`'s positional `$true/$false` append flag**
+10. *(DONE 2026-08-10 night: log reset once up front, every invocation
+    appends; flag deleted.)*
+    **`$invokeNinja`'s positional `$true/$false` append flag**
     (WindowsSourceBuild.Common): delete the LogFile once up front and always
     `-Append` — removes a silent-log-truncation failure mode and two
     branches.
-11. **Stall-guard verdicts print twice** (job stream + marker file re-read).
+11. *(DONE 2026-08-10 night: marker is the single channel; the job stream
+    only speaks when a marker WRITE fails — see #17.)*
+    **Stall-guard verdicts print twice** (job stream + marker file re-read).
     Marker file is the single source of truth (ladder reads it, survives
     clip) — drop the Write-Output/Receive-Job channel.
 12. *(DONE 2026-08-10 W1)* **`Native.ArgQuoting.Tests.ps1` manual case-insensitive loop** —
@@ -2080,32 +2121,37 @@ this doc + CHANGELOG per repo priority 4.
 
 ### P1 addenda from the full sweep
 
-16. **Stall-guard trigger is a CPU proxy — replace with a timed sccache
-    client probe** (`sccache --show-stats` with a 10-15 s timeout from the
-    guard job): the real deadlock hangs the probe, every legitimately idle
-    phase (network-bound WebDAV waits, non-fleet codegen like python/protoc)
-    answers instantly. Kills the whole false-positive class; keep the CPU
-    delta at most as a pre-filter.
-17. **Marker-based retry classification is not attempt-scoped**: one spurious
-    guard kill early in a long attempt reclassifies a later genuine OOM as
-    deadlock-shaped (up to 3 full-`-j` re-OOMs). Reset/rotate the marker
-    before each ninja invocation; classify on kills recorded during the
-    failing attempt only. Also: the marker `Add-Content` is
-    `-ErrorAction SilentlyContinue` — a failed write silently downgrades a
-    guard-kill to the `-j2` path with no log trail. **And (run-10 lesson):
-    a guard kill must be treated as POISONING in-flight L0 cache writes —
-    run 10 linked against truncated objects served as hits from the
-    persistent mount (undefined `QkvToContext`/`BiasSoftmaxImpl` symbols).
-    Either verify the multilevel fork writes atomically, or
-    purge/quarantine the L0 on every kill (interim fix 2026-08-10: mount id
-    bumped to `sccache-winamd64-2`).**
-18. **RDNA4 gate altitude**: regex-match should be the cheap trigger, the
+16. *(DONE 2026-08-10 night: guard v2 — CPU delta demoted to pre-filter,
+    verdict is a timed `sccache --show-stats` client probe (15 s,
+    Start-Process + `.Handle` quirk); an answering server resets to healthy
+    idle, a hanging probe = kill on first confirmation.)*
+    **Stall-guard trigger is a CPU proxy — replace with a timed sccache
+    client probe.**
+17. *(DONE 2026-08-10 night: marker truncated inside `$invokeNinja` before
+    every invocation, ladder classifies on THIS attempt's kills only and
+    prints lines as it consumes them; `Add-Content` is try/catch with a
+    loud job-stream fallback on write failure. +1 regression test
+    (fail-fail-succeed at full `-j` ×2). The former POISONING paragraph is
+    RETRACTED: run 11 failed byte-identically on a FRESH mount — the run-10
+    link failure was the sccache nvcc MISCOMPILE (see the CUDA-launcher-OFF
+    block in build-onnx-from-source.ps1), not truncated cache objects. The
+    mount-id bump to `sccache-winamd64-2` stays, harmlessly.)*
+    **Marker-based retry classification is not attempt-scoped.**
+18. *(DONE 2026-08-10 night, pragmatic form: gate-specific `-SkipRdna4Gate`
+    in BOTH drivers (message points at `probe-build-copy.ps1 -Heavy` as the
+    evidence to earn it); the full probe-as-verdict altitude change is
+    deliberately NOT built — the probe costs minutes, the gate seconds, and
+    the skip-switch covers the healthy-host-after-driver-fix case.)*
+    **RDNA4 gate altitude**: regex-match should be the cheap trigger, the
     finalize probe the verdict (block only on a red probe); add a
     gate-specific `-SkipRdna4Gate` instead of the all-or-nothing
     `-SkipHostChecks` (which also disarms the disk gates); the day the
     driver interaction is fixed upstream, healthy RDNA4 hosts stay blocked
     until module surgery.
-19. **Patch-fallback last rung is soft**: when both the `.patch` AND the
+19. *(DONE 2026-08-10 night: the 006 stanza passes `-Fatal` to
+    `Invoke-SourcePatchWithFallback` — a double miss throws at patch time
+    instead of re-arming the sccache crash at re-enable time.)*
+    **Patch-fallback last rung is soft**: when both the `.patch` AND the
     inline-regex anchor miss (next ORT bump), `Invoke-InlineRegexPatch`
     warns and returns `$false` piped to `Out-Null` — for patch 006 that
     silently re-arms the deterministic sccache crash ~4900 s in. Hard-fail
@@ -2113,7 +2159,10 @@ this doc + CHANGELOG per repo priority 4.
 
 ### P2/P3 addenda
 
-20. **Guard job spawns even when sccache has no remote configured** (baked
+20. *(DONE 2026-08-10 night: `Start-SccacheStallGuard` returns `$null`
+    without `Test-SccacheRemoteConfigured`, same gate as the launcher
+    wiring.)*
+    **Guard job spawns even when sccache has no remote configured** (baked
     into the toolchain image, so it exists on PATH in every container):
     gate `Start-SccacheStallGuard` on `Test-SccacheRemoteConfigured` like
     the launcher wiring does.
@@ -2124,13 +2173,16 @@ this doc + CHANGELOG per repo priority 4.
 22. *(DONE 2026-08-10 W1)* **`verify-cuda-cache.ps1` exports a throwaway image** nobody consumes —
     drop `--output` (solve-only is enough for the hit/write assertions;
     contrast: the finalize probes NEED `type=image,unpack=true`).
-23. **`SCCACHE_ERROR_LOG` sits at the root of a GC-capped cache mount** —
+23. *(DONE 2026-08-10 night: moved to `C:\sccache\logs\` in both media
+    Dockerfiles; `Initialize-SourceBuildEnvironment` creates the dir before
+    the server can spawn — sccache does not create missing parents.)*
+    **`SCCACHE_ERROR_LOG` sits at the root of a GC-capped cache mount** —
     eviction under pressure can delete the postmortem exactly when needed;
     consider a subdirectory exempted by policy or copying the log out in
     the chain epilogue.
-24. **`#Requires -Version 7.0` missing across `windows/scripts/tests/`**
-    (pre-existing; new files perpetuate it) — add during the next tests-dir
-    touch.
+24. *(DONE 2026-08-10 night: prepended to all 40 remaining files, each
+    matching its own EOL style.)*
+    **`#Requires -Version 7.0` missing across `windows/scripts/tests/`.**
 25. *(DONE 2026-08-10 W1)* **`test-rdna4-layer-lock.ps1` StrictMode fragility**: `$offTiny`/
     `$offHeavy` are only-safe-by-control-flow; initialize them up front so a
     future try/catch edit cannot turn the verdict line into a StrictMode

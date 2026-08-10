@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Invoke-ShieldedNative (WindowsNative.Common.psm1, re-exported by
 # WindowsSourceBuild.Common) — the canonical `cmd.exe /s /c` stderr shield that
 # replaces the ~40 hand-rolled `& cmd /c "... 2>&1"` + exit-check pairs. Its two

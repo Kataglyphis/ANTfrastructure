@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for bk-warm.ps1 — the WARM-solve payload wrapper (build + WebDAV
 # handoff export, see docs/windows-builds.md § BuildKit/containerd lane). The
 # load-bearing detail: it relaunches the build script via `pwsh -File` so that

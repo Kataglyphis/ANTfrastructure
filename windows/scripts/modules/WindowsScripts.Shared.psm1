@@ -344,6 +344,23 @@ function Get-SccacheStatsText {
     return @($lines)
 }
 
+function Write-SccacheStatsToStderr {
+    # The end-of-build sink every in-container source build wants (backlog #3):
+    # STDERR survives BuildKit's 2MiB step-log clip, so hit-rates stay
+    # measurable even when the stdout tail is gone (AGENTS.md: caching must be
+    # MEASURED; never-swallow-logs). The name states the sink deliberately -
+    # the sink-stays-with-the-caller doctrine above still holds for every
+    # other consumer; this is the one sink shared by many callers.
+    param(
+        [switch]$Advanced,
+        [switch]$RequireRemote,
+        [string]$Prefix = 'sccache-stats| '
+    )
+    foreach ($line in @(Get-SccacheStatsText -Advanced:$Advanced -RequireRemote:$RequireRemote | Where-Object { $null -ne $_ })) {
+        [Console]::Error.WriteLine("$Prefix$line")
+    }
+}
+
 # --------------------------------------------------------------------------
 # Visual Studio / MSVC discovery -- single vswhere-based implementation.
 #
@@ -618,6 +635,7 @@ Export-ModuleMember -Function @(
     'Expand-ArchiveSubdirectory',
     'Test-SccacheRemoteConfigured',
     'Get-SccacheStatsText',
+    'Write-SccacheStatsToStderr',
     'Get-VisualStudioInstallPath',
     'Get-MsvcToolsRoots',
     'Resolve-LatestVersionTag'

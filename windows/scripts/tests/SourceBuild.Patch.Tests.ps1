@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the source-patch helpers that decide whether every upstream patch lands.
 # A silent regression here mis-patches a source tree and blows up mid-build, so these
 # are the highest-value units in the suite.
@@ -160,6 +161,68 @@ Describe 'Edit-SourceFile' {
         Invoke-InTestDir { param($dir)
             Assert-False (Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c })
             Assert-Throws { Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c } -Require }
+        }
+    }
+}
+
+Describe 'Invoke-SourcePatchWithFallback' {
+
+    # Each test dir becomes a tiny git repo so Invoke-SourcePatch's rung-1
+    # check runs through `git apply` (host patch.exe availability varies).
+    $newPatchRepo = {
+        param($dir)
+        $null = & git -C $dir init 2>&1
+        [System.IO.File]::WriteAllText((Join-Path $dir 't.txt'), "old`n")
+    }
+    $goodPatch = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-old`n+new`n"
+    $badPatch = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-DOES NOT MATCH`n+whatever`n"
+
+    It 'applies rung 1 and never invokes the fallback' {
+        Invoke-InTestDir { param($dir)
+            & $newPatchRepo $dir
+            $patch = Join-Path $dir 'p.patch'
+            [System.IO.File]::WriteAllText($patch, $goodPatch)
+            $flag = Join-Path $dir 'fallback-ran.flag'
+            $r = Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback { Set-Content -Path $flag -Value 'x'; $true }
+            Assert-True $r 'rung 1 applied must report $true'
+            # git apply rewrites EOLs under core.autocrlf - compare content only.
+            Assert-Equal 'new' ([System.IO.File]::ReadAllText((Join-Path $dir 't.txt')).Trim()) 'the .patch content must have landed'
+            Assert-False (Test-Path $flag) 'fallback must not run when the .patch applies'
+        }
+    }
+
+    It 'falls back when the .patch does not apply and reports the fallback verdict' {
+        Invoke-InTestDir { param($dir)
+            & $newPatchRepo $dir
+            $patch = Join-Path $dir 'p.patch'
+            [System.IO.File]::WriteAllText($patch, $badPatch)
+            $target = Join-Path $dir 't.txt'
+            $r = Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback {
+                Invoke-InlineRegexPatch -Path $target -Pattern 'old' -Replacement 'inline' -Description 't'
+            }
+            Assert-True $r 'a successful inline fallback must report $true'
+            Assert-Equal 'inline' ([System.IO.File]::ReadAllText($target).Trim())
+        }
+    }
+
+    It 'returns $false (no throw) when both rungs miss without -Fatal' {
+        Invoke-InTestDir { param($dir)
+            & $newPatchRepo $dir
+            $patch = Join-Path $dir 'p.patch'
+            [System.IO.File]::WriteAllText($patch, $badPatch)
+            $r = & { Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback { $false } } 3>$null
+            Assert-False $r 'double miss without -Fatal stays a warning-level verdict'
+        }
+    }
+
+    It 'throws on a double miss with -Fatal (backlog #19: load-bearing patches must not rot silently)' {
+        Invoke-InTestDir { param($dir)
+            & $newPatchRepo $dir
+            $patch = Join-Path $dir 'p.patch'
+            [System.IO.File]::WriteAllText($patch, $badPatch)
+            Assert-Throws { Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fatal -Fallback { $false } } `
+                -MessagePattern 'BOTH the \.patch and the inline fallback' `
+                'a rotted load-bearing patch must fail the build at patch time'
         }
     }
 }

@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Remove-SourceBuildTree's exit-code contract. Cleanup is best-effort
 # by design; its exit code must NEVER outlive the call: `rd` exiting 145
 # (ERROR_DIR_NOT_EMPTY) once made Invoke-SourceBuildChain declare a fully green

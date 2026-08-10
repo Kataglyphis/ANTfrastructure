@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Invoke-SourceBuildChain — the shared *-all.ps1 orchestrator loop driving all
 # three media branches (media-core, media-litert, media-tvm) and the BK lane's split
 # layers (-StartAt/-Until). A regression here breaks the run+commit chains: wrong stage

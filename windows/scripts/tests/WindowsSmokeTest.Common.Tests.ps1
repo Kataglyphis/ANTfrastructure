@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the smoke-test assertion harness, extracted from
 # smoke-test-container.ps1 on 2026-08-08.
 #

@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for WindowsBuildDriver.Common.psm1 — the classic-lane retry engine
 # extracted from build.ps1. These failure paths previously only ever executed
 # during real multi-hour builds; a regression here silently changes when hours

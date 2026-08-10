@@ -91,6 +91,10 @@ param(
     # Both refuse for good reason — see Assert-DiskHeadroom / Assert-ShimPatch —
     # so this is for deliberate exceptions, not routine use.
     [switch]$SkipHostChecks,
+    # Backlog #18: bypass ONLY the RDNA4 gate (e.g. after a driver update,
+    # verified green via probe-build-copy.ps1 -Heavy) without also disarming
+    # the disk/shim gates the way the all-or-nothing -SkipHostChecks does.
+    [switch]$SkipRdna4Gate,
     # Free-space floor for the preflight gate; below ~25 GB hcsshim misbehaves
     # in ways that do not look like a disk problem.
     [int]$MinFreeGb = 40
@@ -186,7 +190,10 @@ Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoScca
 # buildctl streams the local context from here on every solve.
 Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
 Assert-ShimPatch -Force:$SkipHostChecks
-Assert-NoActiveRdna4Gpu -Force:$SkipHostChecks
+# Host-drift preflight (backlog 0a): seconds at launch instead of a
+# minute-80 surprise - the 2MiB step-log clip hid verdicts for a day.
+Assert-BuildkitdStepLogEnv -Force:$SkipHostChecks
+Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the
 # classic docker lane's local/kataglyphis:windows-* tags can never collide ---

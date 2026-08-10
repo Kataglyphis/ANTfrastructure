@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for WindowsAgenticLoop.Common.psm1 -- reusable agentic loop module.
 #
 # These are CPU-only, no network calls. They exercise:

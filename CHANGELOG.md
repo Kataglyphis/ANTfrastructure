@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-08-10 (night, backlog execution) - W3 media-closure batch + W2 preflight architecture + W1 quick wins, 457 tests green
+
+- **W3 (landed inside run 12's already-busted closure window — the
+  morning's Dockerfile edits had already invalidated every downstream
+  vertex, so these were cache-free):** stall-guard v2 (#16: timed
+  `sccache --show-stats` client probe is the verdict, CPU delta only a
+  pre-filter; #20: no guard without a remote; #11: marker is the single
+  print channel), attempt-scoped retry ladder (#17, +regression test;
+  the run-10 "poisoned L0" paragraph RETRACTED — run 11's fresh-mount
+  control proved miscompile, not poisoning), `$invokeNinja` append flag
+  removed (#10), `Invoke-SourcePatchWithFallback` with `-Fatal` 006 rung
+  (#7+#19, all six build-onnx stanzas collapsed, 4 tests),
+  `Write-SccacheStatsToStderr` called by all six source builds (#3),
+  onnx ninja log persisted on the cache mount with one `.prev`
+  generation (#4), `SCCACHE_ERROR_LOG` into `C:\sccache\logs\` with
+  early dir creation (#23).
+- **W2/0a:** `Assert-BuildkitdStepLogEnv` — non-admin registry read that
+  REFUSES to launch while the buildkitd service env lacks
+  `BUILDKIT_STEP_LOG_MAX_SIZE=-1` (the drift that hid verdicts all day);
+  wired into build-buildkit.ps1. **0c:** `Driver.PreflightParity.Tests.ps1`
+  owns lane parity (shared contract + reasoned allowlists + catch-all for
+  new gates; caught `Assert-ImageExists` classification on first run).
+- **W1/#1+#6+#18+#5:** RDNA4 hazard set single-sourced
+  (`Get-Rdna4HazardDevice`) and the toggle primitive lifted into the module
+  (`Set-Rdna4DeviceState`, post-state-verified); toggle script resolves all
+  hazard SKUs by default, gained `-NoPrompt`/exit-1-on-failure; the A/B
+  delegates its lanes to `probe-build-copy.ps1 -Heavy`; both drivers offer
+  gate-specific `-SkipRdna4Gate`. **#24:** `#requires -Version 7.0` across
+  all 40 remaining test files, per-file EOL preserved.
+- Gates after every sub-batch: Invoke-Lint 139 files 0/0, test suite grew
+  438 → **457 passed / 0 failed**.
+
 ## 2026-08-10 (late night) - run 11 falsified L0 poisoning: the sccache nvcc path SILENTLY MISCOMPILES → CUDA launcher off, final for this pin
 
 - Run 11 (fresh `sccache-winamd64-2` mount) failed the providers_cuda link

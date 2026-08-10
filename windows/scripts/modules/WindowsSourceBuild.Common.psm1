@@ -346,6 +346,16 @@ function Initialize-SourceBuildEnvironment {
     # own `Set-StrictMode -Version Latest` + `$ErrorActionPreference = 'Stop'`
     # at top level (done across all build entrypoints as of 2026-08-04).
     if ([string]::IsNullOrWhiteSpace($InstallDir)) { $InstallDir = 'C:\runtime' }
+    # SCCACHE_ERROR_LOG sits in a subdirectory of the cache mount (backlog
+    # #23) - sccache does NOT create missing parent dirs for its error log,
+    # and the server spawns on the first wrapped compile, so the dir must
+    # exist before any build script reaches cmake.
+    if ($env:SCCACHE_ERROR_LOG) {
+        $errLogDir = Split-Path $env:SCCACHE_ERROR_LOG -Parent
+        if ($errLogDir -and -not (Test-Path $errLogDir)) {
+            $null = New-Item -ItemType Directory -Force -Path $errLogDir -ErrorAction SilentlyContinue
+        }
+    }
     return $InstallDir
 }
 
@@ -522,35 +532,45 @@ function Start-SccacheStallGuard {
     # Background watchdog for the sccache-nvcc DEADLOCK (2026-08-10: sccache
     # server + all 9 clients at 0 % CPU, ZERO backend connections while dufs
     # answered HTTP 200 - the ONNX CUDA compile crawled/hung for ~40 min).
-    # While ninja runs, sample the whole compiler fleet once per SampleSeconds;
-    # if sccache processes exist and the fleet burns essentially no CPU for
-    # StallSamples consecutive samples, kill EVERY sccache process (server
-    # alone is not enough - clients block forever on the dead pipe). The
-    # in-flight compiles then fail fast, ninja exits nonzero, and the
-    # incremental retry ladder resumes WITH cache hits for every object
-    # already compiled. This keeps the CUDA launcher cache (owner requirement)
-    # while bounding the deadlock to minutes instead of a silent hang.
-    # Every kill is also appended to $MarkerPath IMMEDIATELY - the parent's
-    # retry ladder reads it to distinguish a guard-kill (retry at FULL -j,
-    # everything so far is an L0 hit) from an OOM-shaped failure (-j drop),
-    # and the file survives the 2MiB step-log clip that hides end-of-attempt
-    # console output (run 6 lesson, 2026-08-10).
-    # Returns $null when sccache is not on PATH - nothing to guard, and the
-    # fake-ninja unit tests stay free of background jobs.
-    param([int]$SampleSeconds = 60, [int]$StallSamples = 3, [string]$MarkerPath = '')
+    # While ninja runs, sample the compiler fleet once per SampleSeconds; when
+    # the fleet looks idle AND the timed client probe below confirms the
+    # server is unresponsive, kill EVERY sccache process (server alone is not
+    # enough - clients block forever on the dead pipe). The in-flight compiles
+    # then fail fast, ninja exits nonzero, and the retry ladder resumes with
+    # cache hits for every object already compiled. Since 2026-08-10 the CUDA
+    # launcher is off (miscompile verdict) - this guards C/CXX launcher builds.
+    # Every kill is appended to $MarkerPath IMMEDIATELY - the parent's retry
+    # ladder reads it (attempt-scoped: the ladder truncates the marker before
+    # every ninja invocation) to distinguish a guard-kill from an OOM-shaped
+    # failure, and the file survives the 2MiB step-log clip (run 6 lesson).
+    #
+    # TRIGGER v2 (backlog #16, replaces the fleet-CPU 3-strike proxy): a
+    # quiet-CPU sample is only a PRE-FILTER; the verdict is a TIMED sccache
+    # client probe (`sccache --show-stats`, 15 s timeout). The real deadlock
+    # (server pipe wedged, clients blocked, zero backend connections) hangs
+    # that probe; every legitimately idle phase - network-bound WebDAV waits,
+    # non-fleet codegen (python/protoc/cmake -E) - answers instantly. This
+    # removes the false-positive class that could previously kill a healthy
+    # slow build.
+    # Returns $null when sccache is not on PATH OR no remote backend is
+    # configured (backlog #20: sccache is baked into the toolchain image, so
+    # PATH presence alone spawned a useless polling job on no-remote builds);
+    # the fake-ninja unit tests stay free of background jobs either way.
+    param([int]$SampleSeconds = 60, [string]$MarkerPath = '', [int]$ProbeTimeoutMs = 15000)
     if (-not (Get-Command sccache.exe -ErrorAction SilentlyContinue)) { return $null }
+    if (-not (Test-SccacheRemoteConfigured)) { return $null }
     return Start-Job -ScriptBlock {
         $sampleSeconds = $using:SampleSeconds
-        $stallSamples = $using:StallSamples
         $markerPath = $using:MarkerPath
+        $probeTimeoutMs = $using:ProbeTimeoutMs
+        $sccacheExe = (Get-Command sccache.exe -ErrorAction SilentlyContinue).Source
         $fleet = @('ninja', 'cl', 'clang-cl', 'nvcc', 'cicc', 'ptxas', 'cudafe++', 'link', 'lld-link', 'sccache')
         $prev = -1.0
-        $strikes = 0
         while ($true) {
             Start-Sleep -Seconds $sampleSeconds
             $procs = @(Get-Process -Name $fleet -ErrorAction SilentlyContinue)
             $scc = @($procs | Where-Object { $_.ProcessName -eq 'sccache' })
-            if ($procs.Count -eq 0 -or $scc.Count -eq 0) { $prev = -1.0; $strikes = 0; continue }
+            if ($procs.Count -eq 0 -or $scc.Count -eq 0) { $prev = -1.0; continue }
             $cpu = 0.0
             foreach ($p in $procs) {
                 # A process can exit between enumeration and the property read;
@@ -559,17 +579,30 @@ function Start-SccacheStallGuard {
             }
             $delta = if ($prev -ge 0) { $cpu - $prev } else { -1.0 }
             $prev = $cpu
-            if ($delta -ge 0 -and $delta -lt 2.0) { $strikes++ } else { $strikes = 0 }
-            if ($strikes -ge $stallSamples) {
-                $msg = ("fleet burned {0:N1} CPU-s in the last {1}s with {2} sccache proc(s) alive - killing sccache to unwedge (ninja retry resumes incrementally, cache intact)" -f $delta, $sampleSeconds, $scc.Count)
-                Write-Output $msg
-                if ($markerPath) {
-                    Add-Content -Path $markerPath -Value ("{0} {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg) -ErrorAction SilentlyContinue
-                }
-                $scc | Stop-Process -Force -ErrorAction SilentlyContinue
-                $strikes = 0
-                $prev = -1.0
+            if ($delta -lt 0 -or $delta -ge 2.0) { continue }  # pre-filter: fleet is visibly working
+            # Quiet fleet + live sccache: ask the server itself. PassThru quirk
+            # (repo memory): touch .Handle before WaitForExit or ExitCode lies.
+            $probe = Start-Process -FilePath $sccacheExe -ArgumentList '--show-stats' `
+                -WindowStyle Hidden -PassThru -RedirectStandardOutput ([System.IO.Path]::GetTempFileName())
+            $null = $probe.Handle
+            if ($probe.WaitForExit($probeTimeoutMs)) { continue }  # server answered: healthy idle
+            Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+            $msg = ("sccache server failed to answer --show-stats within {0}s while the fleet sat at {1:N1} CPU-s/{2}s - DEADLOCK confirmed, killing sccache (ninja retry resumes incrementally)" -f ($probeTimeoutMs / 1000), $delta, $sampleSeconds)
+            $recorded = $false
+            if ($markerPath) {
+                try {
+                    Add-Content -Path $markerPath -Value ("{0} {1}" -f (Get-Date -Format 'HH:mm:ss'), $msg) -ErrorAction Stop
+                    $recorded = $true
+                } catch { $recorded = $false }
             }
+            if (-not $recorded) {
+                # Marker write failed (locked file/bad path): shout via the job
+                # stream so the kill is never invisible (backlog #17) - the
+                # ladder will misclassify, but the human will not.
+                Write-Output ("MARKER WRITE FAILED - " + $msg)
+            }
+            $scc | Stop-Process -Force -ErrorAction SilentlyContinue
+            $prev = -1.0
         }
     }
 }
@@ -608,36 +641,39 @@ function Invoke-NinjaBuildWithRetry {
     $ninjaKeep = if ($env:NINJA_KEEP_GOING -eq '1') { @('-k', '0') } else { @() }
     if (-not $StallMarkerPath) { $StallMarkerPath = Join-Path $BuildDir '.sccache-stall-guard.marker' }
     Remove-Item -Path $StallMarkerPath -Force -ErrorAction SilentlyContinue
+    # The log is reset ONCE here; every invocation below appends (backlog #10 -
+    # the per-call append flag made each caller track whether it was first).
+    if ($LogFile) { Remove-Item -Path $LogFile -Force -ErrorAction SilentlyContinue }
 
     $invokeNinja = {
-        param($jobCount, $append)
-        if ($LogFile) {
-            if ($append) { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append }
-            else { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile }
-        } else {
-            ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1
-        }
+        param($jobCount)
+        # Attempt-scoped marker (backlog #17): truncate BEFORE each invocation
+        # so the post-attempt read attributes kills to THIS attempt only - the
+        # old cumulative count let one stale kill line satisfy the growth
+        # check for a later, unrelated failure. Lines are printed when
+        # consumed (below), so truncation never swallows a kill report.
+        Remove-Item -Path $StallMarkerPath -Force -ErrorAction SilentlyContinue
+        if ($LogFile) { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append }
+        else { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 }
     }
 
     Write-Host "Building with ninja -j$jobs..."
     $guard = Start-SccacheStallGuard -MarkerPath $StallMarkerPath
     try {
-        & $invokeNinja $jobs $false
-        # Guard-kill retries: full parallelism, bounded, only while the marker
-        # keeps growing (each retry that fails WITHOUT a new guard kill exits
-        # the loop - that failure is a real compile error, not the deadlock).
-        $seenKills = 0
+        & $invokeNinja $jobs
+        # Guard-kill retries: full parallelism, bounded, only while THIS
+        # attempt's marker shows a kill (a retry that fails without one is a
+        # real compile error, not the deadlock, and exits the loop).
         for ($attempt = 1; $attempt -le $StallRetries -and $LASTEXITCODE -ne 0; $attempt++) {
-            $kills = 0
-            if (Test-Path $StallMarkerPath) { $kills = @(Get-Content $StallMarkerPath -ErrorAction SilentlyContinue).Count }
-            if ($kills -le $seenKills) { break }
-            $seenKills = $kills
-            Write-Host "ninja -j$jobs failed after sccache stall-guard kill #$kills - full-speed retry $attempt/$StallRetries (compiled objects are cache hits)..." -ForegroundColor Yellow
-            & $invokeNinja $jobs $true
+            $kills = @(Get-Content $StallMarkerPath -ErrorAction SilentlyContinue)
+            if ($kills.Count -eq 0) { break }
+            foreach ($k in $kills) { Write-Host "[sccache-stall-guard] $k" -ForegroundColor Yellow }
+            Write-Host "ninja -j$jobs failed after $($kills.Count) stall-guard kill(s) this attempt - full-speed retry $attempt/$StallRetries (compiled objects are cache hits)..." -ForegroundColor Yellow
+            & $invokeNinja $jobs
         }
         if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
             Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j$RetryJobs..."
-            & $invokeNinja $RetryJobs $true
+            & $invokeNinja $RetryJobs
         }
     } finally {
         Stop-SccacheStallGuard $guard
@@ -1144,6 +1180,7 @@ Export-ModuleMember -Function @(
     # would have thrown CommandNotFound AFTER the multi-hour ONNX build
     # (caught by the 2026-08-10 review sweep before it fired).
     'Get-SccacheStatsText',
+    'Write-SccacheStatsToStderr',
     'Write-SccacheStats',
     'Save-PythonWheel',
     'Get-CudaRoot',
@@ -1155,6 +1192,7 @@ Export-ModuleMember -Function @(
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
+    'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Add-FileBlockOnce',
     'Edit-SourceFile',

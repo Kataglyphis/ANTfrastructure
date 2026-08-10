@@ -280,6 +280,8 @@ $buildLog = Join-Path $buildDir 'opencv-build.log'
 # to the failing TU) so the error output is unambiguous without paying the serial
 # build cost on the happy path.
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install
+# Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
+Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 # Fail HERE if cv2 didn't land + import -- a silently-skipped python3 module
 # otherwise only surfaces hours later in the final image's smoke test.

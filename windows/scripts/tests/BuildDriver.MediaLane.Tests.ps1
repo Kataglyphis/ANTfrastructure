@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the lane-shared media helpers in WindowsBuildDriver.Common.psm1
 # (Get-MediaBranchVersionArg / Get-MediaMergeVersionArg / Assert-SccacheEndpoint /
 # Get-MediaMemoryBudget). These are the ONE canonical definition both drivers

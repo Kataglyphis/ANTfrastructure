@@ -90,6 +90,8 @@ Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $
 
 $buildLog = Join-Path $buildDir 'litert-build.log'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog
+# Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
+Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 # Manual install (TFLITE_ENABLE_INSTALL=OFF disables cmake --install)
 # -InstallPrefix is still passed to Invoke-CmakeConfigure because CMake generator

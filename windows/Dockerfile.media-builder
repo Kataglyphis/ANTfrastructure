@@ -55,12 +55,15 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # server died with its logs and the postmortem had only client-side 10054s.
 # Owner directive: NEVER swallow logs. SCCACHE_LOG stays an opt-in ARG
 # (debug is voluminous); the error log is always on and near-free.
+# The \logs subdirectory (backlog #23) keeps postmortems out of the
+# GC-capped cache root (shared with build-onnx's persistent ninja log);
+# Initialize-SourceBuildEnvironment creates it before the server spawns.
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
     SCCACHE_DIR="C:\sccache" `
     SCCACHE_CACHE_SIZE="15G" `
-    SCCACHE_ERROR_LOG="C:\sccache\sccache-error.log"
+    SCCACHE_ERROR_LOG="C:\sccache\logs\sccache-error.log"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 

@@ -10,11 +10,15 @@
 # GONE verdict is the signal to retire the toggle workflow and the
 # Assert-NoActiveRdna4Gpu preflight gate.
 #
-# Sequence (mirrors the 2026-08-10 diagnosis; ~1-3 min, ELEVATED for the GPU
-# toggle, needs a running buildkitd):
-#   1. tiny RUN-layer finalize probe with the dGPU as-is (usually ENABLED)
-#      - green => INTERACTION GONE (nothing else to do)
-#   2. disable the dGPU -> tiny probe -> heavy probe (Dockerfile.heavy)
+# The finalize verdict per GPU state is DELEGATED to probe-build-copy.ps1
+# -Heavy (backlog #5): the probe owns digest-pinned bases, lane logging and
+# the output-shape/quoting lessons - this script only orchestrates the GPU
+# state around two probe runs. Per-lane logs land in out\build-logs\ (the
+# probe prints each path).
+#
+# Sequence (~2-4 min, ELEVATED for the GPU toggle, needs a running buildkitd):
+#   1. probe with the dGPU as-is (usually ENABLED) - green => INTERACTION GONE
+#   2. disable the dGPU -> probe again
 #   3. RE-ENABLE the dGPU (finally-guarded - also on Ctrl+C/throw)
 #
 # Verdicts: GONE (on-green) / PRESENT (on-red, off-green) / INCONCLUSIVE
@@ -24,104 +28,89 @@
 #requires -Version 7.0
 [CmdletBinding()]
 param(
-    # Device name to toggle; matches toggle-rdna4-gpu.ps1's target.
-    [string]$GpuName = 'AMD Radeon RX 9070 XT'
+    # Exact device name override; empty = resolve every RDNA4 hazard SKU via
+    # the single-source pattern in WindowsBuildDriver.Common (backlog #1).
+    [string]$GpuName = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1')
 
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Run ELEVATED (Enable/Disable-PnpDevice needs admin).'
 }
 
-$repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-$probeDir = Join-Path $repoRoot 'windows\diagnostics\probe-build-copy'
-# Candidate list, not a single hardcoded path (backlog item #2).
-$buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
-if (-not $buildctl) { throw 'buildctl not found in any supported Stevedore layout' }
-foreach ($f in 'Dockerfile', 'Dockerfile.heavy', 'hello.txt') {
-    if (-not (Test-Path (Join-Path $probeDir $f))) { throw "probe asset missing: $f (expected under $probeDir)" }
-}
+$probeScript = Join-Path $repoRoot 'windows\scripts\probe-build-copy.ps1'
+if (-not (Test-Path $probeScript)) { throw "probe script missing: $probeScript" }
 
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-# Full probe output persisted per lane (owner directive: never swallow logs).
-$abLogDir = Join-Path $repoRoot 'out\build-logs'
-New-Item -ItemType Directory -Force -Path $abLogDir | Out-Null
-function Test-RunLayerFinalize {
-    # NOTE: uses the probe Dockerfiles' tag-default base (unpinned) - the
-    # digest-pinning BASE build-arg lives in probe-build-copy.ps1; backlog #5
-    # (reuse the probe instead of re-implementing it) also closes that gap.
-    param([ValidateSet('tiny', 'heavy')][string]$Kind, [string]$Label)
-    $opts = if ($Kind -eq 'heavy') { @('--opt', 'filename=Dockerfile.heavy') } else { @() }
-    $laneLog = Join-Path $abLogDir "rdna4-ab-$Label-$stamp.log"
-    & $buildctl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
-        --local "context=$probeDir" --local "dockerfile=$probeDir" @opts --no-cache `
-        --output "type=image,name=docker.io/local/kataglyphis:rdna4ab-$Label-$stamp,unpack=true" 2>&1 |
-        Tee-Object -FilePath $laneLog | Select-Object -Last 2 | ForEach-Object { Write-Host "  $_" }
-    Write-Host "  [full log: $laneLog]" -ForegroundColor DarkGray
+function Test-FinalizeState {
+    # One GPU-state side of the A/B = one full probe run (tiny + heavy).
+    param([string]$Label)
+    Write-Host ''
+    Write-Host "=== probe [$Label] (probe-build-copy.ps1 -Heavy) ===" -ForegroundColor Cyan
+    & pwsh -NoProfile -ExecutionPolicy Bypass -File $probeScript -Heavy
     $green = ($LASTEXITCODE -eq 0)
-    Write-Host ("probe[{0}/{1}]: {2}" -f $Kind, $Label, $(if ($green) { 'GREEN' } else { 'RED' })) -ForegroundColor $(if ($green) { 'Green' } else { 'Red' })
+    Write-Host ("probe[{0}]: {1}" -f $Label, $(if ($green) { 'GREEN' } else { 'RED' })) -ForegroundColor $(if ($green) { 'Green' } else { 'Red' })
     return $green
 }
 
-$gpu = Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -eq $GpuName } | Select-Object -First 1
-if (-not $gpu) { throw "'$GpuName' not found in Device Manager - pass -GpuName, or this host has no RDNA4 dGPU (nothing to test)." }
+if ([string]::IsNullOrWhiteSpace($GpuName)) {
+    $gpu = Get-Rdna4HazardDevice | Select-Object -First 1
+    if (-not $gpu) { throw 'No RDNA4 hazard device found in Device Manager - nothing to test (pass -GpuName for a non-standard SKU name).' }
+} else {
+    $gpu = Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -eq $GpuName } | Select-Object -First 1
+    if (-not $gpu) { throw "'$GpuName' not found in Device Manager." }
+}
 Write-Host ("GPU: {0} [{1}]" -f $gpu.FriendlyName, $gpu.Status) -ForegroundColor Cyan
 
 if ($gpu.Status -ne 'OK') {
     Write-Host 'dGPU is already DISABLED - testing the off-state only (enable it first for the full A/B).' -ForegroundColor Yellow
-    $offTiny = Test-RunLayerFinalize -Kind tiny -Label off-tiny
-    $offHeavy = Test-RunLayerFinalize -Kind heavy -Label off-heavy
-    if ($offTiny -and $offHeavy) { Write-Host 'dGPU-off state is finalize-green (as expected). Re-run with the dGPU enabled for the A/B verdict.' -ForegroundColor Green; exit 0 }
-    Write-Host 'RED with the dGPU already off - the host has a problem beyond the RDNA4 interaction.' -ForegroundColor Red; exit 1
-}
-
-$onGreen = Test-RunLayerFinalize -Kind tiny -Label on-tiny
-if ($onGreen) {
-    $onHeavy = Test-RunLayerFinalize -Kind heavy -Label on-heavy
-    if ($onHeavy) {
-        Write-Host ''
-        Write-Host 'VERDICT: INTERACTION GONE - RUN-layer finalize is green with the dGPU ENABLED (tiny + heavy).' -ForegroundColor Green
-        Write-Host 'If this repeats across a real chain build, retire the toggle workflow + Assert-NoActiveRdna4Gpu gate (AGENTS.md).' -ForegroundColor Green
+    if (Test-FinalizeState -Label 'off') {
+        Write-Host 'dGPU-off state is finalize-green (as expected). Re-run with the dGPU enabled for the A/B verdict.' -ForegroundColor Green
         exit 0
     }
+    Write-Host 'RED with the dGPU already off - the host has a problem beyond the RDNA4 interaction.' -ForegroundColor Red
+    exit 1
+}
+
+if (Test-FinalizeState -Label 'on') {
+    Write-Host ''
+    Write-Host 'VERDICT: INTERACTION GONE - RUN-layer finalize is green with the dGPU ENABLED (tiny + heavy).' -ForegroundColor Green
+    Write-Host 'If this repeats across a real chain build, retire the toggle workflow + Assert-NoActiveRdna4Gpu gate (AGENTS.md).' -ForegroundColor Green
+    exit 0
 }
 
 Write-Host 'RED with the dGPU enabled - running the off-side of the A/B...' -ForegroundColor Yellow
 $disabled = $false
-# Initialized up front: under StrictMode these were only safe by control
-# flow - a future try/catch around the toggle would turn the verdict line
-# into a StrictMode error on the exact host being diagnosed (backlog #25).
-$offTiny = $false
-$offHeavy = $false
+# Initialized up front: under StrictMode a value assigned only inside try is
+# one refactor away from a StrictMode error in the verdict line (backlog #25).
+$offGreen = $false
 try {
-    Disable-PnpDevice -InstanceId $gpu.InstanceId -Confirm:$false
+    $off = Set-Rdna4DeviceState -Device $gpu -State Disabled
+    if (-not $off.Ok) { throw "failed to disable '$($gpu.FriendlyName)' (status '$($off.Status)') - cannot run the off-side" }
     $disabled = $true
     Write-Host 'dGPU DISABLED (display falls back to the iGPU)' -ForegroundColor Cyan
-    Start-Sleep -Seconds 3
-    $offTiny = Test-RunLayerFinalize -Kind tiny -Label off-tiny
-    $offHeavy = if ($offTiny) { Test-RunLayerFinalize -Kind heavy -Label off-heavy } else { $false }
+    $offGreen = Test-FinalizeState -Label 'off'
 } finally {
     if ($disabled) {
-        # Verify the re-enable actually took: a swallowed failure here strands
-        # the host on the iGPU while the console claims otherwise (review
-        # sweep finding, 2026-08-10).
-        Enable-PnpDevice -InstanceId $gpu.InstanceId -Confirm:$false -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        $post = Get-PnpDevice -InstanceId $gpu.InstanceId -ErrorAction SilentlyContinue
-        if ($post -and $post.Status -eq 'OK') {
+        # Post-state-verified shared primitive (backlog #6): a swallowed
+        # re-enable failure strands the host on the iGPU while the console
+        # claims otherwise.
+        $on = Set-Rdna4DeviceState -Device $gpu -State Enabled
+        if ($on.Ok) {
             Write-Host 'dGPU RE-ENABLED (verified)' -ForegroundColor Cyan
         } else {
-            Write-Host ("dGPU RE-ENABLE FAILED - status is '" + $(if ($post) { $post.Status } else { 'unknown' }) + "'. Re-enable manually: toggle-rdna4-gpu.ps1 (elevated, default action).") -ForegroundColor Red
+            Write-Host ("dGPU RE-ENABLE FAILED - status is '{0}'. Re-enable manually: toggle-rdna4-gpu.ps1 (elevated, default action)." -f $on.Status) -ForegroundColor Red
         }
     }
 }
 
 Write-Host ''
-if ($offTiny -and $offHeavy) {
+if ($offGreen) {
     Write-Host 'VERDICT: INTERACTION PRESENT - dGPU on = red, dGPU off = green. Build inside the toggle window:' -ForegroundColor Yellow
     Write-Host '  elevated toggle-rdna4-gpu.ps1 -Disable -> build -> re-enable (Assert-NoActiveRdna4Gpu enforces this).' -ForegroundColor Yellow
     exit 2

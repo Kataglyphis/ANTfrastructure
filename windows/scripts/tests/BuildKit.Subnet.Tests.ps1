@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for WindowsBuildKit.Common.psm1 — the CNI nat subnet-drift guard's math.
 # A wrong mask here makes build-buildkit.ps1's preflight PASS a drifted config,
 # which is exactly the silent no-network failure the guard exists to prevent

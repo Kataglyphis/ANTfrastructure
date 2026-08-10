@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for Resolve-LatestVersionTag — the ls-remote tag filter/sort behind
 # build.ps1's -LatestApp final-stage app-ref resolution.
 

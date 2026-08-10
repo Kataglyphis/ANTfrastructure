@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the shared helpers that replaced three duplicated implementations each:
 #   Get-SccacheStatsText  <- the sccache --show-stats copies in WindowsCMake.Common
 #                            (inline), WindowsBuild.Common (Show-SccacheStats) and

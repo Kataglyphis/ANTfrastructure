@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the warm/materialize handoff transport (Export-BuildHandoff /
 # Import-BuildHandoff, WindowsSourceBuild.Common.psm1). The transport carries
 # heavy-build artifacts out of never-finalized WARM solves over WebDAV (see

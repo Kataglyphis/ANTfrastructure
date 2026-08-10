@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the pure resolver/version helpers: version precedence, CUDA arch decoration,
 # and TensorRT root resolution (unset / empty / versioned-subdir / flat layouts).
 

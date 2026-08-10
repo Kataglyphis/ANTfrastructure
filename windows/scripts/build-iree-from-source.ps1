@@ -96,6 +96,8 @@ Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $
 Write-Host 'Building IREE (LLVM in-tree -- this may take 60-120 minutes)...'
 $buildLog = Join-Path $buildDir 'iree-build.log'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install -InstallConfig $BuildType
+# Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
+Write-SccacheStatsToStderr -Advanced -RequireRemote
 
 # Native gate: a REAL compile+run through the installed tools, not an
 # existence check (Server Core taught us binaries can exist and still not run).

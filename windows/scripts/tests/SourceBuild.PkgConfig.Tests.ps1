@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the mandatory-GStreamer-plugin contract and the pkg-config plumbing
 # that makes it satisfiable.
 #

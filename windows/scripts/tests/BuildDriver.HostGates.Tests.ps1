@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the two host preflight gates in WindowsBuildDriver.Common.psm1 that
 # were hardened on 2026-08-07: Assert-DiskHeadroom (now multi-drive) and
 # Assert-ShimPatch (now SHA256-based, size only as a fallback).
@@ -345,5 +346,50 @@ Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
                 Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $name; Status = 'OK' })
             } -Message "$name must still be treated as a hazard"
         }
+    }
+}
+
+Describe 'Assert-BuildkitdStepLogEnv (step-log clip preflight, backlog 0a)' {
+
+    It 'passes when BUILDKIT_STEP_LOG_MAX_SIZE=-1 is present' {
+        Assert-BuildkitdStepLogEnv -EnvironmentOverride @('BUILDKIT_STEP_LOG_MAX_SIZE=-1', 'BUILDKIT_STEP_LOG_MAX_SPEED=-1')
+    }
+
+    It 'refuses when the env was wiped (the 2026-08-10 Stevedore-repair drift)' {
+        Assert-Throws -MessagePattern 'BUILDKIT_STEP_LOG_MAX_SIZE' -Body {
+            Assert-BuildkitdStepLogEnv -EnvironmentOverride @()
+        } -Message 'a wiped service env must refuse before a multi-hour build loses its logs'
+    }
+
+    It 'names the elevated remediation in the refusal' {
+        Assert-Throws -MessagePattern 'Restart-Service buildkitd' -Body {
+            Assert-BuildkitdStepLogEnv -EnvironmentOverride @('SOME_OTHER=1')
+        }
+    }
+
+    It '-Force downgrades to a warning (SkipHostChecks path)' {
+        Assert-BuildkitdStepLogEnv -EnvironmentOverride @() -Force -WarningAction SilentlyContinue
+    }
+}
+
+Describe 'Get-Rdna4HazardDevice (single-source hazard set, backlog #1)' {
+
+    $rdna4On   = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9070 XT'; Status = 'OK' }
+    $rdna4Off  = [pscustomobject]@{ FriendlyName = 'AMD Radeon RX 9060 XT'; Status = 'Error' }
+    $aipro     = [pscustomobject]@{ FriendlyName = 'AMD Radeon AI PRO R9700'; Status = 'OK' }
+    $igpu      = [pscustomobject]@{ FriendlyName = 'AMD Radeon(TM) Graphics'; Status = 'OK' }
+
+    It 'returns every hazard SKU and nothing else' {
+        $r = @(Get-Rdna4HazardDevice -Devices @($rdna4On, $rdna4Off, $aipro, $igpu))
+        Assert-Equal 3 $r.Count 'RX 9070 XT + RX 9060 XT + AI PRO R9700, but never the iGPU'
+    }
+
+    It '-ActiveOnly filters to enabled devices' {
+        $r = @(Get-Rdna4HazardDevice -Devices @($rdna4On, $rdna4Off, $aipro, $igpu) -ActiveOnly)
+        Assert-Equal 2 $r.Count 'only the Status=OK hazards'
+    }
+
+    It 'returns empty for a hazard-free host' {
+        Assert-Equal 0 @(Get-Rdna4HazardDevice -Devices @($igpu)).Count
     }
 }

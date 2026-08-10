@@ -198,6 +198,9 @@ param(
     # Override the host disk preflight gate — see Assert-DiskHeadroom for why
     # it refuses rather than warns.
     [switch]$SkipHostChecks,
+    # Backlog #18: bypass ONLY the RDNA4 gate (verified green via
+    # probe-build-copy.ps1 -Heavy) without disarming the other host gates.
+    [switch]$SkipRdna4Gate,
     [int]$MinFreeGb = 40
 )
 
@@ -347,8 +350,9 @@ Assert-DockerDaemon -Docker $Docker -Force:$SkipHostChecks
 # RDNA4 layer-lock gate (2026-08-10): an enabled RDNA4 dGPU kills EVERY
 # process-isolated RUN-layer finalize, and this lane can run process-isolated
 # (Resolve-BuildIsolation 'auto' probe — whose cached verdict does NOT key on
-# the dGPU state). Same gate as the BK lane; -SkipHostChecks overrides.
-Assert-NoActiveRdna4Gpu -Force:$SkipHostChecks
+# the dGPU state). Same gate as the BK lane; -SkipHostChecks or the
+# gate-specific -SkipRdna4Gate override.
+Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 
 # (Get-DockerBuildArgList / Test-TransientDockerFailure / Assert-ImageExists /
 # Invoke-TransientCooldown / Invoke-DockerWithRetry: WindowsBuildDriver.Common.psm1)

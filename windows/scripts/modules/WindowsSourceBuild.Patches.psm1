@@ -138,6 +138,41 @@ function Invoke-SourcePatch {
     }
 }
 
+function Invoke-SourcePatchWithFallback {
+    # The two-rung apply ladder every version-sensitive patch uses (backlog #7):
+    # rung 1 is the reviewable .patch (skips cleanly when already applied),
+    # rung 2 the EOL/context-tolerant inline fallback for upstream drift.
+    # The Fallback scriptblock executes in the CALLER's scope (PS scriptblocks
+    # carry their creation SessionState), so it can use the caller's variables.
+    # -Fatal (backlog #19): the fallback must RETURN $true, or the ladder
+    # throws - for patches whose silent absence produces a broken build hours
+    # later (e.g. 006: a rotted patch would re-enable the sccache nvcc crash
+    # the day the CUDA launcher is retried). Without -Fatal a double miss
+    # stays a warning, preserving the never-hard-fail-on-drift default above.
+    param(
+        [Parameter(Mandatory)]
+        [string]$PatchFile,
+        [Parameter(Mandatory)]
+        [string]$SourceDir,
+        [Parameter(Mandatory)]
+        [scriptblock]$Fallback,
+        [string]$FallbackNote = 'falling back to inline patcher',
+        [switch]$Fatal
+    )
+    try {
+        Invoke-SourcePatch -PatchFile $PatchFile -SourceDir $SourceDir -IgnoreWhitespace
+        return $true
+    } catch {
+        Write-Host ("{0} did not apply cleanly -- {1}" -f (Split-Path $PatchFile -Leaf), $FallbackNote)
+    }
+    $applied = & $Fallback
+    $ok = @($applied) -contains $true
+    if (-not $ok -and $Fatal) {
+        throw ("{0}: BOTH the .patch and the inline fallback failed to apply -- refusing to continue (load-bearing patch; a silent miss breaks the build hours later)." -f (Split-Path $PatchFile -Leaf))
+    }
+    return $ok
+}
+
 function Invoke-InlineRegexPatch {
     param(
         [Parameter(Mandatory)]
@@ -237,6 +272,7 @@ Export-ModuleMember -Function @(
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
+    'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Add-FileBlockOnce',
     'Edit-SourceFile',

@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Tests for the canonical versions.env parser and the shared zip-extract helper
 # (ConvertFrom-VersionsEnv / Expand-ArchiveSubdirectory in WindowsScripts.Shared.psm1).
 
