@@ -114,8 +114,8 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
   -f linux/Dockerfile.nvidia \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
   --build-arg CUDA_VERSION=13.3.0 \
-  --build-arg CUDNN_VERSION=9.23.2.1 \
-  --build-arg TENSORRT_VERSION=11.1.0.106 \
+  --build-arg CUDNN_VERSION=9.25.0.15 \
+  --build-arg TENSORRT_VERSION=11.2.1.2 \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
   . 2>&1 | tee "${LOG_DIR}/toolchain-nvidia.log"

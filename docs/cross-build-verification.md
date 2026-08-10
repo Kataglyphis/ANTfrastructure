@@ -28,7 +28,7 @@ check that fails in seconds, not after a 30–60 min emulated build.**
   Used by `build-libcamera.sh`, `build-gstreamer-monorepo.sh`. (The torch-venv fix
   should adopt this — see task #16.)
 - **Compiler validation (class 4):** `06-packaging/validate-compilers.sh` emits
-  `ARTIFACT COMPILER VERIFICATION PASSED for <arch>`; validates GCC 16.1.0 + Clang
+  `ARTIFACT COMPILER VERIFICATION PASSED for <arch>`; validates GCC 16.2.0 + Clang
   22.1.8 chain and per-arch ELF machine type. Extend here for the compile smoke test.
 - **Smoke framework:** `06-packaging/smoke-common.sh` (`pass`/`fail`/`FAILURES`);
   smoke tests are `06-packaging/smoke-<thing>.sh` and `source smoke-common.sh`.

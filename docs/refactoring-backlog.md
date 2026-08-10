@@ -1911,3 +1911,141 @@ walk — neither proposes the primitive. Add `elf_needed_sonames` /
 `elf_unresolved_needed` to 01-core/platform.sh (next to elf_machine_name).
 Caveat: consumers are standalone-bundled with different copy sets — check
 verify-script-copy-coverage.py before landing; 01-core edit → closure batch.
+
+## 2026-08-10 — sweep round 2: robustness / test-gaps / docs-drift
+
+Second 3-agent read-only sweep (disjoint dimensions from round 1). Same
+discipline: every item survived dedup against this backlog, audit rounds
+Klasse A–D, the guard-helpers plan, and the protected optional-feature list.
+Doc drift class (A) was FIXED same-day (12 lines, 6 files: GCC 16.1.0→16.2.0 in
+four verification checklists, AGENTS/windows version labels GenAI 0.15.2 +
+LiteRT-LM 0.15.0, cuDNN/TensorRT example pins) — items below are what remains.
+
+### Robustness / silent-failure (R)
+
+**R1 — ensure_tensorflow_c_sdk reports success + writes a live tensorflow.pc
+even when EXTRACTION failed.** ffmpeg-dnn-backends.sh:107-120: `tar -xzf …
+2>/dev/null || true`, then `generate_pkgconfig_file` + `return 0` sit OUTSIDE
+the `[ -d lib ]` layout guard. A truncated tarball → "installed to …" + rc 0 +
+a valid-looking .pc pointing at an empty dir → amd64 ships without the TF DNN
+backend with no red anywhere. This is the IDENTICAL masking shape the function's
+own 2026-08-08 forensic comment documents for the download half (the swallowed
+404) — the fix stopped one line short. Also: `mv include 2>/dev/null || true`
+can half-cache the SDK (lib without include) → every build re-downloads.
+Fix: extraction failure = download failure (rm archive, return 1); success
+contingent on `[ -f "${tf_dir}/lib/libtensorflow.so" ]`. Risk: very low.
+
+**R2 — TF runtime-lib bundling is `|| true` while the consumer is exec-fatal —
+and both in-stage gates are structurally blind.** build-ffmpeg.sh:465-472:
+`cp … 2>/dev/null || true` on the very copy whose absence (per the function's
+own header) makes EVERY ffmpeg invocation die at load. The in-stage smoke can't
+catch it (ffmpeg-dnn-backends.sh:164 exports LD_LIBRARY_PATH=${tf_cache}/lib —
+ffmpeg resolves the .so from the cache MOUNT, which exists in no image layer);
+validate-media-runtime.sh:232-252 treats unresolved NEEDED as WARN rc 0. Only
+gate: packaging-stage exec, hours downstream, causal WARN buried under the
+2 MiB log clip. Fix (3 lines, doesn't wait for P4/S2): when
+_FFMPEG_TF_EXTRA_LDFLAGS is set, post-assert
+`[ -f "${FFMPEG_PREFIX}/lib/libtensorflow.so.2" ]` or fail. Also :466 no-ops
+if the SDK cache lacks the dev symlink. (If S2 lands TF default-off, R1/R2
+drop to enabled-lane-only — still worth the 3 lines.)
+
+**R3 — clone_or_update_repo's tolerated-stale path returns 0 with NO commit
+checked out; `retry` launders a failed clone into that success.**
+downloads.sh:115-140: the loud STALE CHECKOUT banner covers stale-but-VALID
+HEAD, but `_have` EMPTY (partial .git from an OOM/ENOSPC-killed first attempt)
+also returns 0 — and ~10 sites wrap this in `retry 3 10 …`, so attempt 2 enters
+the tolerant branch and retry can never fail once attempt 1 left `.git` behind.
+Mostly disarmed today (fresh clones per RUN) but ARMED TREE-WIDE the moment the
+open "media source cache mounts" S-item lands. Fix: one-line severity split at
+:126 — `_have` empty → return 1; stale-but-valid keeps the warn+0 contract.
+Land TOGETHER with the source-cache-mount item (prerequisite).
+
+**R4 — torch/torchvision silently drop CMAKE_TOOLCHAIN_FILE on failure; IREE
+next door guards the identical call.** build-app-wheelhouse.sh:522-523/:647-648
+`{ f="$(write_cross_cmake_toolchain_file || true)"; [ -n "$f" ] && export …; true; }`
+vs the IREE path :924-925 (empty → warn + return 1). These builders run ONLY in
+cross mode, where an empty toolchain file is never legitimate — and the file's
+own comment documents the outcome: cmake configures a NATIVE x86_64 build with
+a riscv64 compiler (cpuinfo picks x86 sources), surfacing hours later as an
+inscrutable compile error or a wrong-configured wheel. Fix: mirror the IREE
+guard + `|| return 1` on the `cat >` inside write_cross_cmake_toolchain_file.
+
+**R5 (minor, diagnosability) — opencv install discards stderr from BOTH
+fallbacks.** build-opencv.sh:571-575: `cmake --install 2>/dev/null || make
+install 2>/dev/null || die` — dies correctly, but the one message saying WHY
+(ENOSPC/permissions) never reaches the log, on a stage ~1 h in. Capture first
+attempt's stderr, print it in the failure branch. Risk nil.
+
+### Test coverage gaps (T) — the missing regression/unit tests, ranked
+
+Existing: 13 suites/150 assertions (arch-mapping DOES pin the IFS-CSV
+regression — verified). test-smoke-arch-parity.sh covers only smoke-common map
+parity, none of smoke-media's gating. Recipes below match existing suite style.
+
+**T1 — install_target_packages 3-path state machine: zero tests.**
+cross-apt.sh:260-330 — clean-batch (must NOT run files-present sweep:
+libfreetype6-dev false-negative), batch-fail→per-package retry (one bad name
+must not strip ~20 libs), files-present disambiguation (postinst noise vs
+missing). Both failure directions already happened live, each a multi-hour
+relaunch; mirror skew recurs every Ubuntu release. `test-cross-apt.sh` with
+fake apt-get/dpkg-query in a PATH-prepended temp bin + stubbed cross_* fns;
+4 assertions (see agent recipe in session notes).
+
+**T2 — SIGPIPE-under-pipefail: no regression test, no lint.** The 7ca9e4b
+case-glob fix is comment-documented only. `test-pipefail-safety.sh` modeled on
+test-ifs-safety.sh: (1) prove the mode (big-producer `| grep -q` returns 141
+on MATCH, 0 on drain, under pipefail); (2) tree-lint unbounded-producer
+`| grep -q` in `set -o pipefail` scripts. The class inverts pass→fail only on
+SUCCESS — nastiest false-red; the idiom is what everyone naturally writes.
+
+**T3 — ffmpeg TF probe extra-flags contract unpinned (the -ltensorflow
+global-poisoning class).** ffmpeg-dnn-backends.sh is source-only → testable:
+stub the probe fns + a temp SDK layout, call ffmpeg_probe_libtensorflow,
+assert _FFMPEG_TF_EXTRA_LIBS == "-lstdc++" and NEVER contains -ltensorflow,
+on BOTH probe paths. A future "fix the bare require" edit re-adding it is
+exactly how this regresses; failure surfaces 4 s into configure but only after
+an hours-long stage rebuild.
+
+**T4 — the D2 guard: cross_wheel_platform_tag + platform tables untested.**
+Extend test-arch-mapping.sh: platform tags, riscv64gc rust triple (the `gc`
+suffix is the rename-magnet), triplet table ×3 arches + unknown→rc 1,
+cross_wheel_platform_tag end-to-end with stubbed cross_target_arch. ~15 lines;
+explicitly unblocks backlog D2 ("guard with tests first").
+
+**T5 — generate_pkgconfig_file stray-brace class: documented, unpinned.**
+common.sh:360-405's NOTE describes the `${6:--L\${libdir}}` bug that shipped a
+stray `}` into tensorflow-lite.pc "for years". Assert output contains
+`Libs: -L${libdir}` literally and no stray `}`. Cheapest test in this list;
+callers: litert ×3, onnx, vvdec, ffmpeg TF synth.
+
+**T6 — the two recently-wired knobs their own suites skip.**
+(a) test-parallelism.sh never exercises BUILD_MEM_DIVISOR (wired 2026-07-18,
+gates the --parallel-archs 3× lever): one case with divisor=3 asserting jobs
+drop. (b) test-parallel-loop.sh tests failure only on the SEQUENTIAL path —
+the parallel path's flagdir failure-harvest is untested; a harvest regression
+= failed arch reads GREEN = the most expensive class in the repo. Two
+additions to existing suites.
+
+### Docs — remaining (drift class A fixed same-day, see header)
+
+**DOC1 — versions.env toggle comments contradict their values [BLOCKED until
+chain idle].** :81 "ORT_ENABLE_WEBGPU … (default off)" directly above
+`=true` (:85); :112 x265 "kept off by default" above `=1` (:114). Trivial
+comment fix — but versions.env invalidates the ENTIRE media chain (P1
+2026-08-07), so it MUST ride the next planned versions.env edit, never alone.
+
+**DOC2 — the Linux feature-toggle surface is undocumented.** FFMPEG_ENABLE_X265,
+ORT_ENABLE_WEBGPU/ORT_WEBGPU_ALLOW_CROSS, the ffmpeg DNN backend trio + TF C
+SDK bundling (~500 MB amd64) appear in NO doc — only this backlog. One
+"versions.env feature toggles" section in linux-cross-builds.md covers all.
+
+**DOC3 — README's media list is incomplete; IREE has no Linux doc.** README:57
++ :102 list "ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera"
+— Dockerfile.media also builds tvm (:375), armnn (:503), app-wheelhouse (:462);
+IREE (3-arch since 2026-07-14) exists in docs only as a tblgen-cache anecdote.
+
+**DOC4 — smoke-media's two-environment deferral semantics undocumented.**
+cross-build-verification.md:82-111 lists the suites but not that the media-
+sandbox run now DEFERS genai-import and (ffmpeg-conditional) gst-libav gates
+to the packaging stage — a coverage auditor would over-credit the media gate.
+Fold into the P5 SMOKE_ENV refactor or document as-is.
