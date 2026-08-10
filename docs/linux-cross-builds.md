@@ -627,6 +627,28 @@ All version numbers are now tracked in a single file: `linux/scripts/01-core/ver
 
 After bumping versions, run `python3 docs/scripts/sync_versions.py --write` to update the version snapshot in `README.md`.
 
+### versions.env feature toggles (Linux lane)
+
+Besides pins, `versions.env` carries **feature switches** for optional,
+build-cost-heavy capabilities. They are probe-gated: turning one on never
+hard-fails a build where the dependency is genuinely unavailable — the probe
+falls back to disabled. Current toggles:
+
+| Toggle | Effect | Notes |
+|---|---|---|
+| `FFMPEG_ENABLE_X265` | libx265 (HEVC) encoding in FFmpeg | Probe-gated; historically off because FFmpeg master could fail against bleeding-edge x265. |
+| `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
+| `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | Dawn cross-build is the risky part; amd64-only unless set. |
+
+Not yet a toggle (planned, backlog S2): the FFmpeg **TensorFlow DNN backend**
+currently auto-enables whenever the TF C SDK downloads (amd64 only) and bundles
+~500 MB of `libtensorflow*` into the image; `FFMPEG_ENABLE_TF` (default off,
+mirroring x265) is queued for the next versions.env window.
+
+Because `versions.env` sits in the media build's cache-key closure, toggle
+flips re-run the affected media compiles — batch them with planned pin bumps
+(see `docs/refactoring-backlog.md`, standing rules).
+
 ## Five Critical Fixes To Maintain
 
 To prevent regressions during updates, always preserve the following five vital fixes in the Linux cross pipeline:

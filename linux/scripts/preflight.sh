@@ -59,7 +59,7 @@ export PYTHONUTF8=1
 
 KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths \
-             dockerfile-lint workflow-lint android-parity script-tests stage-graph)
+             dockerfile-lint workflow-lint python-lint android-parity script-tests stage-graph)
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
@@ -160,6 +160,10 @@ run_check dockerfile-lint "dockerfile lint (hadolint)" bash linux/scripts/lint-d
 
 # 9. Workflow/composite-action lint (actionlint, same bootstrap pattern).
 run_check workflow-lint "workflow lint (actionlint)" bash linux/scripts/lint-workflows.sh
+
+# Python gate (backlog C4): hard-fails only on real-error classes (syntax /
+# undefined names); full ruleset is advisory — see lint-python.sh header.
+run_check python-lint "python lint (ruff)" bash linux/scripts/lint-python.sh
 
 # 10. The five parallel Android library stages stay identical modulo ANDROID_LIB.
 run_check android-parity "android stage parity" bash linux/scripts/01-core/verify-android-stage-parity.sh

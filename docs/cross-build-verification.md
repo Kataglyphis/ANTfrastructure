@@ -83,6 +83,19 @@ coverage, and critical-fixes checks on every commit.
 
 These validate a built/pulled image and also run during the build to fail fast:
 
+> **Two-environment semantics of `smoke-media.sh` (since 2026-08-10):** the
+> suite runs TWICE — once inside the media build sandbox (Dockerfile.media,
+> loader NOT yet wired: `/opt/ffmpeg` libs and `/opt/venv` are unreachable
+> there) and once at the packaging stage (Dockerfile.package, loader fully
+> configured). In the sandbox run, three gates deliberately DEFER instead of
+> failing: the `onnxruntime_genai` Python import (its wheel installs into
+> `/opt/venv` only at packaging; `smoke-torch-venv.sh` is the functional
+> gate), the gst `libav` plugin load (links the source-built ffmpeg libav*
+> incl. the bundled libtensorflow — gated on ffmpeg-executability), and
+> ffmpeg's own execution. Auditing coverage by the media-stage log alone
+> therefore UNDER-counts what is enforced — the packaging-stage run is the
+> strict one.
+
 - **Native source-build header preflight** — inside `setup-torch-venv.sh`
   (`verify_native_source_headers`): compiles tiny C / C++ / jpeglib probes with
   the same compiler+flags the pip build uses, so a header/sysroot regression

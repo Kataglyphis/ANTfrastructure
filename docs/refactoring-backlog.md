@@ -55,9 +55,6 @@ rebuilds are expensive. Work top to bottom; each batch ships independently.
 - **CCACHE_MAXSIZE concurrent-arch sizing** [S, investigate] default 10G
   (compiler-cache.sh:38); 3 arches share the mount id per arch — verify hit
   rates justify more.
-- **agentic-loop.sh jq consolidation** [S/M·★] 44 jq invocations
-  (lib/agentic-loop.sh); lib/ has zero in-repo consumers → safe anytime,
-  just not free. test-lib-smoke.sh now guards sourcing.
 - **post-restart base cache-miss root cause** [M, investigate] one unexplained
   full-miss after a host reboot (archive: 2026-08-08 section).
 
@@ -314,11 +311,16 @@ the already-listed GCC_PARALLEL_TARGETS validation.)
 - **W2 — -Require classification for inline patches** [M·★★★] 37 sites
   warn-and-continue on anchor miss, 25 discard the boolean; two recorded
   "cost one container run" incidents. Load-bearing sites get -Require.
-- **W1b — LIVE drift found by the pin-parity scan** [S·★★] GIT_VERSION
-  '2.54.0' vs pin 2.55.0 (setup-scoop-tools.ps1:105); WIX_UI_EXT_VERSION
-  '4.0.4' vs 4.0.6 (setup-scoop-tools.ps1:128 + verify-toolchain.ps1:122).
-  Fix the three defaults AND extend SourceBuild.PinParity.Tests.ps1 to
-  Resolve-ContainerImageValue sites so this class is covered.
+- **W1b remainder — fix the 3 drifted defaults** [S·★★] GIT_VERSION '2.54.0'
+  → 2.55.0 (setup-scoop-tools.ps1:105); WIX_UI_EXT_VERSION '4.0.4' → 4.0.6
+  (setup-scoop-tools.ps1:128 + verify-toolchain.ps1:122). The SUITE half
+  LANDED 2026-08-10: PinParity.Tests.ps1 now covers 9 Resolve-ContainerImage
+  Value sites; the 3 drifts are tracked as [pend] entries with a hard guard —
+  fixing a default without REMOVING it from $script:KnownDriftAwaitingRebuild
+  Window turns the suite red, so this item self-enforces. Adjacent note:
+  windows/Dockerfile.nvidia:53 carries a THIRD shadow-default
+  (CUDA_VERSION_MAJOR_MINOR=13.3, in sync) — Dockerfile ARGs are outside the
+  suite's scan; extend if that ever drifts.
 - **🔴 nv/target.h host-only stub** [S·★★] setup-cuda.ps1:103-122 writes an
   NV_IS_HOST=1 stub whenever target.h is absent — including over a REAL
   extensionless `nv/target` (the reported case). Forwarding include instead.
@@ -349,36 +351,33 @@ the already-listed GCC_PARALLEL_TARGETS validation.)
 
 ## Batch 6 — CI / infra / docs ramps (independent, start anytime)
 
-- **C4 — python quality gate + llm-stack pytest** [M·★★] ~3,300 first-party
-  py lines, zero lint (shell/Dockerfile/workflows/PS all gated); llm-stack
-  tests exist but NO workflow triggers on linux/llm-stack/**. python-lint
-  preflight slug (advisory-first, PSSA-ramp precedent) + paths-filtered
-  pytest step.
+- **C4 residual — llm-stack tests in CI need a SERVING stack** [M·★]
+  (the lint half LANDED 2026-08-10: lint-python.sh + python-lint preflight
+  slug, gate=E9/F63/F7/F82 hard + full-ruleset advisory; gate pass came back
+  CLEAN, 3 advisory nits. RUFF_PIN=0.14.4 lives in the script — move to
+  versions.env as RUFF_VERSION on the next Batch-3 window.) The pytest half
+  was REFRAMED after reading the tests: test_v1_api.py is a LIVE integration
+  suite (requests against a running API, "inference" marker = model loaded)
+  — a bare CI pytest job would be red or meaningless. Real shape: a
+  paths-filtered workflow that composes the llm-stack (or a stub server
+  honoring the v1 contract) before pytest. Design needed; not a quick add.
 - **S3 — per-stage registry cache refs** [M·★★] inline cache covers only the
   exported image's own layers; framework stages (COPY --from vertices) never
   warm-start from registry → full recompile after any local prune. Per-stage
   mode=max refs dodge the ghcr 400 blob limit; needs testing.
 - **S5 — shared cargo cache ids** [S·★] cargo registry/git caches keyed
   per-TARGETARCH duplicate arch-independent downloads 3×.
-- **DOC2** [S] a "versions.env feature toggles" section (x265, WebGPU, TF,
-  toggle philosophy) — no doc covers the Linux toggle surface.
-- **DOC3** [S] README media list omits tvm/armnn/app-wheelhouse; IREE has no
-  Linux doc beyond a tblgen anecdote.
-- **DOC4** [S] document smoke-media's two-environment deferral semantics
-  (or fold into D3+P5's SMOKE_ENV).
-- **A4** [S] write the dual-loader rule (3 lines: container-capable scripts →
-  source_module; host-only orchestration → artifact-common.sh) + note
-  modules.sh's hardcoded ../02-toolchain search path.
-- **AGENTS.md Windows-table dedup** [M] the per-library + scripts tables
-  duplicate windows-builds.md row-by-row (W1b showed the drift risk is real).
-- **overview.md third script-tree copy** [S].
+- **DOC3 residual** [S] IREE still deserves a real Linux section (build
+  shape, 3-arch status, riscv64 runtime-only) — the README list fix landed
+  2026-08-10; DOC2 (toggle section in linux-cross-builds.md) and DOC4
+  (smoke-media deferral semantics in cross-build-verification.md) LANDED
+  same day.
 - **ccache remote_storage tier** [M] evaluate for Linux (comment-only today);
   couples with the user's cross-OS sccache question.
 - **Rust sccache unblock** [S] RUSTC_WRAPPER="" pinned empty at
   Dockerfile.toolchain:58 + Dockerfile.package:157; ENABLE_SCCACHE_RUST
   wiring exists and is validated-off — flip in a controlled build.
 - **verify-parity zero-callers decision** [S] wire it somewhere or archive it.
-- **llm-stack node:20-alpine vs NODE_VERSION pin** [S] build-viewer.sh:10.
 - **W1 first-run watch** [S] SourceBuild.PinParity.Tests.ps1 has not yet
   executed on a real pwsh (none on this host) — watch the first Windows
   Invoke-Tests.ps1 run.

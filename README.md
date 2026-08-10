@@ -54,7 +54,7 @@ linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
 ├── Dockerfile.toolchain     GCC 16.2.0 + LLVM/Clang 22.1.8 + Python 3.14 (FROM base)
 ├── Dockerfile.sdk           Vulkan SDK + TVM (FROM toolchain)
-├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera (FROM sdk)
+├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN · app-wheelhouse (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
 ├── Dockerfile.package       lean runtime assembly + validation (FROM base + android)
 ├── Dockerfile.torch         final wrapper: entrypoint, labels, runtime scripts (FROM package)
@@ -99,7 +99,7 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 |-----|------|
 | `:latest-cross` | Multi-arch release (amd64/arm64/riscv64) — the stable API |
 | `:latest-cross-<arch>` | Per-architecture wrapper |
-| `:cross-media-<arch>` | Media libraries layer (ONNX Runtime, LiteRT, OpenCV, FFmpeg, GStreamer, libcamera) |
+| `:cross-media-<arch>` | Media libraries layer (ONNX Runtime, LiteRT, OpenCV, FFmpeg, GStreamer, libcamera, TVM, IREE, Arm NN on arm64, app wheelhouse) |
 | `:webserver` | Slim nginx webserver |
 | `:winamd64` | Windows build image |
 

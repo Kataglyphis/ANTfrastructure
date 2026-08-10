@@ -76,6 +76,13 @@ section() {
 }
 
 # ── Engine configuration ────────────────────────────────────────────────
+# Shared jq prelude for the consolidated single-pass config readers below
+# (load_engine_config, resolve_build_matrix_entry, _agentic_load_loop_config).
+# `v` renders a scalar exactly the way an individual `$(jq -r '<path>')`
+# command substitution did: null -> "null", numbers/booleans -> literal text,
+# trailing newlines stripped (command substitution strips those too).
+_AGENTIC_JQ_PRELUDE='def v: if . == null then "null" else tostring end | sub("\n+$"; "");'
+
 # Reads engine selection + per-engine model/prompt settings from the config
 # JSON.  Sets globals consumed by invoke_agent / invoke_claude.
 # Precedence: env override > .engines.<engine>.* > legacy .models.*
@@ -83,23 +90,53 @@ load_engine_config() {
     local config_json="$1" repo_root="${2:-$(pwd)}"
     if ! command -v jq &>/dev/null; then log "jq required" "FATAL"; return 1; fi
 
-    AGENTIC_ENGINE="${AGENTIC_ENGINE:-$(jq -r '.engine // "opencode"' "$config_json")}"
+    # One jq pass parses every engine-config field into a local map, emitted
+    # as @sh-quoted shell assignments (evaluated below).  Field semantics are
+    # unchanged from the previous one-jq-call-per-field version: `// empty`
+    # fields become "", defaulted fields keep their defaults, env overrides
+    # still win, a jq/JSON failure yields "" for every field, and the
+    # globals are only assigned in the original order (so the early return
+    # below still leaves CLAUDE_* / AGENT_* untouched, exactly as before).
+    local -A _c=()
+    local _al_cfg
+    _al_cfg=$(jq -r --arg eo "${AGENTIC_ENGINE:-}" "${_AGENTIC_JQ_PRELUDE}"'
+        (if $eo != "" then $eo else (.engine // "opencode" | v) end) as $e |
+        @sh "_c[engine]=\($e)",
+        @sh "_c[planner_model]=\(.engines[$e].plannerModel // .models.planner // "" | v)",
+        @sh "_c[executor_model]=\(.engines[$e].executorModel // .models.executor // "" | v)",
+        @sh "_c[planner_fallback]=\(.engines.claude.plannerFallbackModel // "" | v)",
+        @sh "_c[planner_prompt]=\(.engines.claude.plannerPromptFile // "" | v)",
+        @sh "_c[executor_prompt]=\(.engines.claude.executorPromptFile // "" | v)",
+        @sh "_c[permission_mode]=\(.engines.claude.permissionMode // "bypassPermissions" | v)",
+        @sh "_c[planner_allowed_tools]=\(.engines.claude.plannerAllowedTools // "" | v)",
+        @sh "_c[extra_args]=\(.engines.claude.extraArgs // "" | v)",
+        @sh "_c[stream_output]=\(.engines.claude.streamOutput // true | v)",
+        @sh "_c[timeout]=\(.intervals.timeoutSeconds // 0 | v)",
+        @sh "_c[planner_timeout]=\(.intervals.plannerTimeoutSeconds // 0 | v)",
+        @sh "_c[executor_timeout]=\(.intervals.executorTimeoutSeconds // 0 | v)",
+        @sh "_c[retries]=\(.intervals.agentRetries // 2 | v)",
+        @sh "_c[retry_delay]=\(.intervals.agentRetryDelaySeconds // 20 | v)",
+        @sh "_c[wait_limit_reset]=\(.intervals.waitForUsageLimitReset // true | v)"
+    ' "$config_json")
+    eval "$_al_cfg"
+
+    AGENTIC_ENGINE="${_c[engine]-${AGENTIC_ENGINE:-}}"
     local e="$AGENTIC_ENGINE"
 
-    PLANNER_MODEL="${AGENTIC_PLANNER_MODEL:-$(jq -r ".engines.${e}.plannerModel // .models.planner // empty" "$config_json")}"
-    EXECUTOR_MODEL="${AGENTIC_EXECUTOR_MODEL:-$(jq -r ".engines.${e}.executorModel // .models.executor // empty" "$config_json")}"
+    PLANNER_MODEL="${AGENTIC_PLANNER_MODEL:-${_c[planner_model]-}}"
+    EXECUTOR_MODEL="${AGENTIC_EXECUTOR_MODEL:-${_c[executor_model]-}}"
     if [[ -z "$PLANNER_MODEL" || -z "$EXECUTOR_MODEL" ]]; then
         log "No planner/executor model configured for engine '$e'" "FATAL"
         return 1
     fi
 
-    CLAUDE_PLANNER_FALLBACK_MODEL=$(jq -r '.engines.claude.plannerFallbackModel // empty' "$config_json")
-    CLAUDE_PLANNER_PROMPT_FILE=$(jq -r '.engines.claude.plannerPromptFile // empty' "$config_json")
-    CLAUDE_EXECUTOR_PROMPT_FILE=$(jq -r '.engines.claude.executorPromptFile // empty' "$config_json")
-    CLAUDE_PERMISSION_MODE=$(jq -r '.engines.claude.permissionMode // "bypassPermissions"' "$config_json")
-    CLAUDE_PLANNER_ALLOWED_TOOLS=$(jq -r '.engines.claude.plannerAllowedTools // empty' "$config_json")
-    CLAUDE_EXTRA_ARGS=$(jq -r '.engines.claude.extraArgs // empty' "$config_json")
-    CLAUDE_STREAM_OUTPUT=$(jq -r '.engines.claude.streamOutput // true' "$config_json")
+    CLAUDE_PLANNER_FALLBACK_MODEL="${_c[planner_fallback]-}"
+    CLAUDE_PLANNER_PROMPT_FILE="${_c[planner_prompt]-}"
+    CLAUDE_EXECUTOR_PROMPT_FILE="${_c[executor_prompt]-}"
+    CLAUDE_PERMISSION_MODE="${_c[permission_mode]-}"
+    CLAUDE_PLANNER_ALLOWED_TOOLS="${_c[planner_allowed_tools]-}"
+    CLAUDE_EXTRA_ARGS="${_c[extra_args]-}"
+    CLAUDE_STREAM_OUTPUT="${_c[stream_output]-}"
 
     # Prompt files are stored repo-relative in the config
     if [[ -n "$CLAUDE_PLANNER_PROMPT_FILE" && "$CLAUDE_PLANNER_PROMPT_FILE" != /* ]]; then
@@ -109,12 +146,12 @@ load_engine_config() {
         CLAUDE_EXECUTOR_PROMPT_FILE="${repo_root}/${CLAUDE_EXECUTOR_PROMPT_FILE}"
     fi
 
-    AGENT_TIMEOUT=$(jq -r '.intervals.timeoutSeconds // 0' "$config_json")
-    AGENT_PLANNER_TIMEOUT=$(jq -r '.intervals.plannerTimeoutSeconds // 0' "$config_json")
-    AGENT_EXECUTOR_TIMEOUT=$(jq -r '.intervals.executorTimeoutSeconds // 0' "$config_json")
-    AGENT_RETRIES=$(jq -r '.intervals.agentRetries // 2' "$config_json")
-    AGENT_RETRY_DELAY=$(jq -r '.intervals.agentRetryDelaySeconds // 20' "$config_json")
-    WAIT_FOR_USAGE_LIMIT_RESET=$(jq -r '.intervals.waitForUsageLimitReset // true' "$config_json")
+    AGENT_TIMEOUT="${_c[timeout]-}"
+    AGENT_PLANNER_TIMEOUT="${_c[planner_timeout]-}"
+    AGENT_EXECUTOR_TIMEOUT="${_c[executor_timeout]-}"
+    AGENT_RETRIES="${_c[retries]-}"
+    AGENT_RETRY_DELAY="${_c[retry_delay]-}"
+    WAIT_FOR_USAGE_LIMIT_RESET="${_c[wait_limit_reset]-}"
 
     log "Engine: $AGENTIC_ENGINE"
     log "Planner model: $PLANNER_MODEL"
@@ -515,11 +552,23 @@ invoke_sanitizer_tests() {
 # Usage: resolve_build_matrix_entry "$config_json" "$index" "$platform"
 resolve_build_matrix_entry() {
     local config_json="$1" index="$2" platform="${3:-linux}"
-    MATRIX_NAME=$(jq -r ".buildMatrix.${platform}[$index].name // .buildConfigurations.${platform}[$index] // empty" "$config_json")
-    MATRIX_SANITIZER=$(jq -r ".buildMatrix.${platform}[$index].sanitizer // \"none\"" "$config_json")
-    MATRIX_TEST_CMD=$(jq -r ".buildMatrix.${platform}[$index].testCommand // empty" "$config_json")
-    MATRIX_BUILD_DIR=$(jq -r ".buildMatrix.${platform}[$index].buildDir // \"build\"" "$config_json")
-    MATRIX_BUILD_TYPE=$(jq -r ".buildMatrix.${platform}[$index].buildType // empty" "$config_json")
+    # One jq pass for all five fields (was five calls).  Pre-initialise so a
+    # jq failure yields the same empty strings the per-field calls produced.
+    MATRIX_NAME="" MATRIX_SANITIZER="" MATRIX_TEST_CMD=""
+    MATRIX_BUILD_DIR="" MATRIX_BUILD_TYPE=""
+    local _al_cfg _al_rc=0
+    _al_cfg=$(jq -r --arg p "$platform" --argjson i "$index" "${_AGENTIC_JQ_PRELUDE}"'
+        .buildMatrix[$p][$i] as $m |
+        @sh "MATRIX_NAME=\($m.name // .buildConfigurations[$p][$i] // "" | v)",
+        @sh "MATRIX_SANITIZER=\($m.sanitizer // "none" | v)",
+        @sh "MATRIX_TEST_CMD=\($m.testCommand // "" | v)",
+        @sh "MATRIX_BUILD_DIR=\($m.buildDir // "build" | v)",
+        @sh "MATRIX_BUILD_TYPE=\($m.buildType // "" | v)"
+    ' "$config_json") || _al_rc=$?
+    eval "$_al_cfg"
+    # The old per-field version ended on a jq assignment, so callers saw
+    # jq's exit status on unreadable/broken configs — keep that contract.
+    return "$_al_rc"
 }
 
 # Count build matrix entries for a platform.
@@ -591,22 +640,37 @@ _agentic_load_loop_config() {
     _AL[config_json]="$config_json"
     _AL[repo_root]="$repo_root"
     _AL[platform]="$platform"
-    _AL[build_every_n]=$(jq -r '.intervals.buildEveryNTasks' "$config_json")
-    _AL[quality_every_n]=$(jq -r '.intervals.qualityEveryNTasks' "$config_json")
-    _AL[refactor_every_n]=$(jq -r '.intervals.refactorEveryNIterations' "$config_json")
-    _AL[max_iterations]=$(jq -r '.intervals.maxIterations' "$config_json")
-    _AL[max_retries]=$(jq -r '.intervals.maxExecutorRetries' "$config_json")
-    _AL[loop_delay]=$(jq -r '.intervals.loopDelaySeconds' "$config_json")
-    _AL[auto_commit]=$(jq -r '.git.autoCommit' "$config_json")
-    _AL[commit_prefix]=$(jq -r '.git.commitPrefix' "$config_json")
-    _AL[full_matrix_every_n]=$(jq -r '.intervals.fullMatrixEveryNIterations // 0' "$config_json")
-    _AL[fix_build_failures]=$(jq -r '.intervals.fixBuildFailures // true' "$config_json")
-    _AL[max_consecutive_build_failures]=$(jq -r '.intervals.maxConsecutiveBuildFailures // 3' "$config_json")
-    _AL[skip_planner_when_pending]=$(jq -r '.backlog.skipPlannerWhenTasksPending // true' "$config_json")
-    _AL[delete_completed]=$(jq -r '.backlog.deleteCompletedTasks // true' "$config_json")
-    _AL[test_cmd]=$(jq -r ".build.${platform}TestCommand // .build.linuxTestCommand // empty" "$config_json")
-    _AL[quality_cmd]=$(jq -r ".build.${platform}QualityCommand // .build.linuxQualityCommand // empty" "$config_json")
-    _AL[build_script]=$(jq -r ".build.${platform}Script // .build.linuxScript // empty" "$config_json")
+    # One jq pass for all 16 config fields (was 16 calls).  No-default fields
+    # keep the old `jq -r` behaviour of reading "null" when absent; a jq
+    # failure leaves every field "" (pre-initialised) exactly as before.
+    local _al_key
+    for _al_key in build_every_n quality_every_n refactor_every_n \
+        max_iterations max_retries loop_delay auto_commit commit_prefix \
+        full_matrix_every_n fix_build_failures max_consecutive_build_failures \
+        skip_planner_when_pending delete_completed test_cmd quality_cmd \
+        build_script; do
+        _AL[$_al_key]=""
+    done
+    local _al_cfg
+    _al_cfg=$(jq -r --arg p "$platform" "${_AGENTIC_JQ_PRELUDE}"'
+        @sh "_AL[build_every_n]=\(.intervals.buildEveryNTasks | v)",
+        @sh "_AL[quality_every_n]=\(.intervals.qualityEveryNTasks | v)",
+        @sh "_AL[refactor_every_n]=\(.intervals.refactorEveryNIterations | v)",
+        @sh "_AL[max_iterations]=\(.intervals.maxIterations | v)",
+        @sh "_AL[max_retries]=\(.intervals.maxExecutorRetries | v)",
+        @sh "_AL[loop_delay]=\(.intervals.loopDelaySeconds | v)",
+        @sh "_AL[auto_commit]=\(.git.autoCommit | v)",
+        @sh "_AL[commit_prefix]=\(.git.commitPrefix | v)",
+        @sh "_AL[full_matrix_every_n]=\(.intervals.fullMatrixEveryNIterations // 0 | v)",
+        @sh "_AL[fix_build_failures]=\(.intervals.fixBuildFailures // true | v)",
+        @sh "_AL[max_consecutive_build_failures]=\(.intervals.maxConsecutiveBuildFailures // 3 | v)",
+        @sh "_AL[skip_planner_when_pending]=\(.backlog.skipPlannerWhenTasksPending // true | v)",
+        @sh "_AL[delete_completed]=\(.backlog.deleteCompletedTasks // true | v)",
+        @sh "_AL[test_cmd]=\(.build[$p + "TestCommand"] // .build.linuxTestCommand // "" | v)",
+        @sh "_AL[quality_cmd]=\(.build[$p + "QualityCommand"] // .build.linuxQualityCommand // "" | v)",
+        @sh "_AL[build_script]=\(.build[$p + "Script"] // .build.linuxScript // "" | v)"
+    ' "$config_json")
+    eval "$_al_cfg"
     if [[ -n "${MAX_ITERATIONS_OVERRIDE:-}" ]]; then
         _AL[max_iterations]="$MAX_ITERATIONS_OVERRIDE"
     fi

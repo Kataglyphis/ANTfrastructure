@@ -7,7 +7,13 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-NODE_IMAGE="node:20-alpine"
+# Node major from the canonical NODE_VERSION pin (versions.env) — was a
+# hardcoded node:20-alpine that silently drifted from the 26.x pin (backlog
+# 2026-08-10). Major-only tag: the viewer build needs a Node runtime, not a
+# byte-pinned toolchain, and alpine tags exist per-major reliably.
+_VERSIONS_ENV="$(cd ../../.. && pwd)/linux/scripts/01-core/versions.env"
+NODE_MAJOR="$(grep -E '^NODE_VERSION=' "${_VERSIONS_ENV}" | head -1 | cut -d= -f2 | cut -d. -f1)"
+NODE_IMAGE="node:${NODE_MAJOR:-20}-alpine"
 
 # We mount the repo root so Vite can resolve the @import of brand.css
 # from the Kataglyphis-DocumANTation submodule at build time.

@@ -25,15 +25,7 @@ Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://gith
 
 ## Linux Image Chain
 
-Linux image chain (built as separate images for caching):
-
-- `linux/Dockerfile.base`: Ubuntu base + stable apt dependencies (no project scripts copied).
-- `linux/Dockerfile.toolchain`: GCC + LLVM/Clang compiler toolchain.
-- `linux/Dockerfile.sdk`: Vulkan SDK layer on top of compiler; also reused for amd64-hosted cross SDK artifact builds with `BUILD_MODE=cross`.
-- `linux/Dockerfile.media`: ONNX Runtime + GStreamer + Libcamera builds.
-- `linux/Dockerfile.android`: Android SDK/NDK setup.
-- `linux/Dockerfile.package`: runtime compatibility layer that rebuilds the developer-facing target image surface from a clean base image in both sequential/native and cross artifact flows.
-- `linux/Dockerfile.torch`: Final wrapper — Torch/Python application layer + runtime scripts + entrypoint built on top of the Android or packaged runtime image.
+The Linux images build as a chain of separate Dockerfiles (one per stage, for layer caching), ending in the `linux/Dockerfile.torch` wrapper. This page does not enumerate the stages: the authoritative per-stage table (Dockerfile → FROM → produced tag) is AGENTS.md § Container Architecture, and the README's repo tree carries the annotated per-stage contents. Per-stage mechanics live in [Linux build basics](linux-build-basics.md) and [Linux cross builds](linux-cross-builds.md) — including `Dockerfile.sdk`'s reuse for amd64-hosted cross SDK artifact builds via `BUILD_MODE=cross` and `Dockerfile.package`'s clean-base runtime assembly in both native and cross flows.
 
 ## What You Get
 
