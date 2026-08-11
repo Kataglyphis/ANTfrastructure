@@ -215,9 +215,24 @@ main() {
     # skip it (no versions to assert).
     if [ "${torch_expected}" = "1" ]; then
       echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
-      if _rt_run \
-           bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh'; then
+      _stv_out="$(_rt_run \
+           bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh' 2>&1)" \
+        && _stv_rc=0 || _stv_rc=$?
+      printf '%s\n' "${_stv_out}"
+      if [ "${_stv_rc}" -eq 0 ]; then
         pass "ML-stack versions match pins (${target_arch})"
+      elif [ "${target_arch}" = "riscv64" ] \
+           && [ "$(printf '%s\n' "${_stv_out}" | grep -cE '^[[:space:]]*XX ')" = "1" ] \
+           && printf '%s\n' "${_stv_out}" | grep -qE '^[[:space:]]*XX[[:space:]]+onnxruntime-genai[[:space:]]+NOT INSTALLED'; then
+        # DOCUMENTED exemption (2026-08-11): onnxruntime-genai does not
+        # cross-build for riscv64 — the media producer skips it loudly
+        # ("Skipping onnxruntime-genai on riscv64 because it is not supported")
+        # and verify-media-artifacts SKIPs in agreement. The in-image assert
+        # derives EXP_GENAI unconditionally from versions.env and cannot see
+        # arch policy; tolerating EXACTLY this one absence here (host side, no
+        # image rebuild) keeps every other mismatch fatal. Root fix backlogged:
+        # teach smoke-torch-venv an arch-aware expected-set.
+        pass "ML-stack versions match pins (${target_arch}; genai absent = documented riscv64 exemption)"
       else
         fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
       fi

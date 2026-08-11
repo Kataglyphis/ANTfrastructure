@@ -150,6 +150,27 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   overrides rc≠0 (partial installs print it per package); :149/:170 licenses
   downgraded to echo; :151-167 duplicated 7-package list. Direct
   sdkmanager_install + fatal licenses + NDK-dir postcondition.
+- **SCR1 — two MORE strings-scraping version checks (the fix-#8 class) + a
+  no-deps lint** [S·★★] the clang-smoke false-negative (dylib binaries keep
+  their version in libLLVM.so; `strings` on the slim driver greps empty — AND
+  masked the amd64 franken toolchain) was fixed by EXECUTING the tool; the
+  same scrape-not-execute pattern survives at setup-package-image.sh:150 and
+  validate-compilers.sh:48 (a GATE). Convert both to execution where the
+  check runs in-image/emulated; where true cross-static checks are needed,
+  assert ELF arch instead of version-string archaeology. Rider: a lint/test
+  asserting `uv pip install --force-reinstall` is ALWAYS paired with
+  --no-deps in runtime scripts (the fix-#7 class; currently clean — keep it
+  so, same shape as the pipefail lint).
+- **STV1 — smoke-torch-venv needs an arch-aware expected-set (root fix for
+  the riscv64-genai exemption)** [S·★★] found live 2026-08-11: the in-image
+  assert derives EXP_GENAI unconditionally from versions.env, but genai is a
+  DOCUMENTED riscv64 skip (producer: "does not cross-build"; artifact-verify
+  SKIPs in agreement) → first-ever riscv64 run of the assert flagged
+  "NOT INSTALLED". Host-side exemption landed in smoke-runtime-image
+  (tolerates EXACTLY that one absence on riscv64 only); root fix: an arch/
+  policy table in smoke-torch-venv (EXP_GENAI empty on riscv64, keep the
+  hard-assign wrapper overridable) — in-image script = torch-cascade cost,
+  so ride a wrapper rebuild window; then drop the host-side special case.
 - **T1 contract surprises** (from writing test-cross-apt.sh): rename/re-comment
   cross_package_files_present (checks dpkg ${Status}, NOT files — name and
   caller comment both stale); give _CROSS_ENV_APT_UPDATED a `:-` default
