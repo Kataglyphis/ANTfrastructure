@@ -147,11 +147,42 @@ runs:
           throw "Docker daemon did not become ready within ${timeout}s after the data-root move."
         }
 
-        # NOTE: `docker info --format '{{.DockerRootDir}}'` returns an EMPTY
-        # string on these runner images (see assert-docker-disk-space), so it is
-        # not usable as a verification. What we can assert is that the daemon
-        # came back and that the directory we configured is the one it will use.
         Write-Host "Docker is ready. data-root configured at: $dataRoot"
+
+        # Verification, in plain text. `docker info --format '{{.DockerRootDir}}'`
+        # returns an EMPTY string on these runner images (documented in
+        # assert-docker-disk-space), so the templated query cannot be trusted -
+        # but the human-readable `docker info` still prints a "Docker Root Dir"
+        # line, and that IS the daemon telling us where it will write.
+        Write-Host '=== docker info (storage-relevant lines) ==='
+        $info = (docker info 2>&1 | Out-String) -split "`r?`n"
+        $info | Where-Object { $_ -match 'Root Dir|Storage Driver|Operating System|Docker Root|Windows' } |
+          ForEach-Object { Write-Host ("  " + $_.Trim()) }
+
+        $reported = ($info | Where-Object { $_ -match 'Docker Root Dir:' } |
+                     Select-Object -First 1) -replace '.*Docker Root Dir:\s*', ''
+        $reported = $reported.Trim()
+        if ($reported) {
+          if ($reported -ieq $dataRoot) {
+            Write-Host "VERIFIED: the daemon reports its root as $reported"
+          } else {
+            throw ("Docker reports its root as '$reported' but we configured '$dataRoot'. " +
+                   "The daemon did not pick up the config - do NOT assume images will land on the target drive.")
+          }
+        } else {
+          Write-Host "NOTE: this daemon does not report a Docker Root Dir; falling back to a write probe."
+        }
+
+        # Independent of what the daemon says: the data-root must actually be
+        # populated once the daemon has started. An empty directory here means
+        # the daemon is still writing somewhere else.
+        $seeded = @(Get-ChildItem -LiteralPath $dataRoot -Force -ErrorAction SilentlyContinue)
+        Write-Host "=== $dataRoot after daemon start: $($seeded.Count) entries ==="
+        $seeded | Select-Object -First 12 | ForEach-Object { Write-Host ("  " + $_.Name) }
+        if ($seeded.Count -eq 0) {
+          throw ("$dataRoot is still empty after the daemon came up. Docker is writing elsewhere - " +
+                 "images would land on the old drive, which is the failure this action exists to prevent.")
+        }
 
         $vol = Get-Volume -DriveLetter $drive
         $freeGb = [math]::Round($vol.SizeRemaining / 1GB, 1)

@@ -103,6 +103,7 @@ jobs:
       # MUST come before the pull: moving the data-root hides anything under the
       # old one.
       - name: 'Put the Docker data-root on D:'
+        id: datar
         uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/set-docker-data-root@main
         with:
           data-root: 'D:\docker'
@@ -123,18 +124,41 @@ jobs:
       - name: Pull image
         run: docker pull "${{ inputs.image }}"
 
-      # Proves where the image actually landed. Without this the only evidence
+      # Proves WHERE the image actually landed. Without this the only evidence
       # that the data-root move did anything is that the pull stopped failing -
-      # which is suggestive, not conclusive, because cleanup-disk-space also
-      # frees C:. The drop belongs on the data-root drive.
+      # which is suggestive, not conclusive, because cleanup-disk-space frees C:
+      # in the same job. Three independent signals, so a wrong answer cannot hide:
+      #   1. free space per drive - the ~54 GB drop must be on the data-root drive
+      #   2. `docker system df`   - how much the daemon thinks it is storing
+      #   3. the data-root's own size on disk
       - name: Disk report after pull
         if: ${{ always() }}
         run: |
+          $root = '${{ steps.datar.outputs.data-root }}'
+          if (-not $root) { $root = 'D:\docker' }
+
+          Write-Host '=== Free space per drive ==='
           Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
             Format-Table DriveLetter,
               @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
               @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
               FileSystemLabel -AutoSize | Out-String | Write-Host
+
+          Write-Host '=== docker system df ==='
+          docker system df 2>&1 | ForEach-Object { Write-Host ("  " + $_) }
+
+          Write-Host "=== size of $root on disk ==="
+          if (Test-Path $root) {
+            $bytes = (Get-ChildItem -LiteralPath $root -Recurse -Force -File -ErrorAction SilentlyContinue |
+                      Measure-Object -Property Length -Sum).Sum
+            $gb = [math]::Round(($bytes / 1GB), 1)
+            Write-Host "  $root holds $gb GB"
+            if ($gb -lt 1) {
+              Write-Host "::warning::$root holds only $gb GB after pulling a multi-GB image - the daemon may be storing elsewhere."
+            }
+          } else {
+            Write-Host "::warning::$root does not exist."
+          }
 
       # ContainerHub's action instead of a hand-rolled `docker run`: it gives the
       # container every logical processor the runner has, delivers the payload
