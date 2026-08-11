@@ -1,0 +1,167 @@
+name: 'Move the Docker data-root to another drive (Windows)'
+description: >-
+  Points the Docker daemon's data-root at a different drive before any image is
+  pulled, so a multi-GB Windows image lands where there is actually room.
+
+  Motivation, measured on a windows-2025 runner on 2026-08-11:
+
+      DriveLetter FreeGB SizeGB FileSystemLabel
+                C  29.90 149.40 Windows
+                D 219.50 220.00 Temp
+
+  Docker on Windows keeps its data-root under the SYSTEM drive
+  (C:\ProgramData\Docker), and the winamd64 image needs ~54 GB to import - more
+  than C: has free. The existing workaround is cleanup-disk-space, which claws
+  C: back up to ~68 GB by deleting Visual Studio and the tool caches. That works,
+  but it is destructive, it costs minutes, and it leaves a 220 GB drive sitting
+  at 219.5 GB free.
+
+  Moving the data-root to D: skips all of that: the image lands on the empty
+  drive and C: is left alone.
+
+  MUST RUN BEFORE THE IMAGE IS PULLED. Changing the data-root makes images under
+  the old one invisible to the daemon, which is harmless on a fresh runner (there
+  is nothing there yet) and destructive to a pull you already paid for.
+
+  D: on a hosted runner is the ephemeral temp disk and is wiped between jobs -
+  which is exactly right for CI, and exactly wrong for a self-hosted machine you
+  expect to keep a layer cache on. See `data-root` below.
+
+inputs:
+  data-root:
+    description: >-
+      Target directory for the Docker data-root. The drive must exist. On hosted
+      Windows runners D: is the large temp disk; on a self-hosted runner point
+      this somewhere persistent instead, or the layer cache is discarded every
+      job.
+    required: false
+    default: 'D:\docker'
+  service-name:
+    description: 'Windows service to restart. The hosted runners call it "docker".'
+    required: false
+    default: 'docker'
+  required-free-gb:
+    description: >-
+      Refuse to continue when the TARGET drive has less than this free, so the
+      job fails here with a clear message instead of during the import with
+      hcsshim::ImportLayer "not enough space on the disk (0x70)". Set to 0 to
+      skip the check.
+    required: false
+    default: '70'
+  ready-timeout-seconds:
+    description: 'How long to wait for the daemon to come back after the restart.'
+    required: false
+    default: '180'
+
+outputs:
+  data-root:
+    description: 'The data-root the daemon was pointed at.'
+    value: ${{ steps.move.outputs.data-root }}
+  free-gb:
+    description: 'Free GB on the target drive after the move.'
+    value: ${{ steps.move.outputs.free-gb }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Point the Docker data-root at ${{ inputs.data-root }}
+      id: move
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+
+        $dataRoot = '${{ inputs.data-root }}'
+        $svc      = '${{ inputs.service-name }}'
+        $needGb   = [double]'${{ inputs.required-free-gb }}'
+        $timeout  = [int]'${{ inputs.ready-timeout-seconds }}'
+
+        Write-Host '=== Volumes BEFORE moving the data-root ==='
+        Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
+          Format-Table DriveLetter,
+            @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
+            @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
+            FileSystemLabel -AutoSize | Out-String | Write-Host
+
+        $drive = (Split-Path -Qualifier $dataRoot).TrimEnd(':')
+        $vol = Get-Volume -DriveLetter $drive -ErrorAction SilentlyContinue
+        if (-not $vol) {
+          throw "Target drive ${drive}: does not exist on this runner. Volumes are listed above."
+        }
+        $freeGb = [math]::Round($vol.SizeRemaining / 1GB, 1)
+        Write-Host "Target ${dataRoot} is on ${drive}: with ${freeGb} GB free."
+
+        if ($needGb -gt 0 -and $freeGb -lt $needGb) {
+          throw ("Target drive ${drive}: has ${freeGb} GB free, below the required ${needGb} GB. " +
+                 "Pick another drive, or lower required-free-gb if you know the image is smaller.")
+        }
+
+        # Stop first: the daemon rereads its config on start, and moving the
+        # data-root under a running daemon corrupts its view of existing layers.
+        $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if (-not $service) {
+          throw "No Windows service named '$svc'. Pass service-name if this runner calls it something else."
+        }
+        if ($service.Status -ne 'Stopped') {
+          Write-Host "Stopping service '$svc'..."
+          Stop-Service -Name $svc -Force
+          (Get-Service -Name $svc).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(120))
+        }
+
+        New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
+
+        # MERGE rather than overwrite: the runner image may already ship daemon
+        # settings (mirrors, log limits) and clobbering them is a silent change
+        # in behaviour that would only surface much later.
+        $cfgDir  = Join-Path $env:ProgramData 'Docker\config'
+        $cfgPath = Join-Path $cfgDir 'daemon.json'
+        New-Item -ItemType Directory -Path $cfgDir -Force | Out-Null
+
+        $cfg = [ordered]@{}
+        if (Test-Path $cfgPath) {
+          $raw = Get-Content $cfgPath -Raw
+          if ($raw.Trim()) {
+            Write-Host "Existing daemon.json:"; Write-Host $raw
+            $existing = $raw | ConvertFrom-Json
+            foreach ($p in $existing.PSObject.Properties) { $cfg[$p.Name] = $p.Value }
+          }
+        }
+        $cfg['data-root'] = $dataRoot
+        ($cfg | ConvertTo-Json -Depth 10) | Set-Content -Path $cfgPath -Encoding ascii
+        Write-Host "Wrote $cfgPath :"; Get-Content $cfgPath | Write-Host
+
+        Write-Host "Starting service '$svc'..."
+        Start-Service -Name $svc
+
+        # The service reporting Running is not the same as the daemon accepting
+        # commands; poll until `docker version` succeeds.
+        $deadline = (Get-Date).AddSeconds($timeout)
+        $ready = $false
+        while ((Get-Date) -lt $deadline) {
+          docker version --format '{{.Server.Version}}' 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+          Start-Sleep -Seconds 3
+        }
+        if (-not $ready) {
+          Write-Host '=== service state ==='
+          Get-Service -Name $svc | Format-List | Out-String | Write-Host
+          throw "Docker daemon did not become ready within ${timeout}s after the data-root move."
+        }
+
+        # NOTE: `docker info --format '{{.DockerRootDir}}'` returns an EMPTY
+        # string on these runner images (see assert-docker-disk-space), so it is
+        # not usable as a verification. What we can assert is that the daemon
+        # came back and that the directory we configured is the one it will use.
+        Write-Host "Docker is ready. data-root configured at: $dataRoot"
+
+        $vol = Get-Volume -DriveLetter $drive
+        $freeGb = [math]::Round($vol.SizeRemaining / 1GB, 1)
+
+        "data-root=$dataRoot" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        "free-gb=$freeGb"     | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+        Write-Host '=== Volumes AFTER moving the data-root ==='
+        Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
+          Format-Table DriveLetter,
+            @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
+            @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
+            FileSystemLabel -AutoSize | Out-String | Write-Host

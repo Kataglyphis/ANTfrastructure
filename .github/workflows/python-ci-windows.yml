@@ -95,9 +95,21 @@ jobs:
           fetch-depth: ${{ inputs.fetch-depth }}
           submodules: recursive
 
-      # The Windows image is large, so the runner needs room for it. ContainerHub's
-      # action deletes with `rmdir /s /q` (minutes instead of tens of minutes on
-      # hostedtoolcache) and reports free space before and after.
+      # The winamd64 image needs ~54 GB to import and Docker keeps its data-root
+      # on the SYSTEM drive. Measured on a windows-2025 runner 2026-08-11:
+      # C: 29.9 GB free of 149.4, D: 219.5 GB free of 220. Pointing the data-root
+      # at D: puts the image where the space actually is.
+      #
+      # MUST come before the pull: moving the data-root hides anything under the
+      # old one.
+      - name: 'Put the Docker data-root on D:'
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/set-docker-data-root@main
+        with:
+          data-root: 'D:\docker'
+
+      # Still worth running: the build itself, the checkout and the toolchain all
+      # live on C:. It just no longer has to claw back room for the image, so
+      # deleting Visual Studio is no longer load-bearing.
       - name: Cleanup disk space
         uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/cleanup-disk-space@main
 
