@@ -1473,9 +1473,16 @@ Kataglyphis-Inference-Engine inside the image):
   bind-mount the sources, then junction the Dart/Flutter write dirs
   (`.dart_tool`, `build`) from the mounted workspace to **container-local**
   dirs (`mklink /J`, run inside the container) — Dart ops work in fresh
-  sandbox dirs. A **Dev Drive** source additionally needs
-  `fsutil devdrv setfiltersallowed bindFlt, wcifs` once (elevated), then a
-  remount.
+  sandbox dirs. A **Dev Drive** source additionally needs the container filters
+  allow-listed once (elevated), then a remount:
+  `fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"`. The filter list
+  is ONE quoted argument — the unquoted `bindFlt, wcifs` form previously written
+  here is parsed as two arguments and fails with a bare syntax dump, which is
+  the very trap
+  [`windows-container-build-performance.md`](windows-container-build-performance.md)
+  § *Transport B* documents. That page owns the full setup, verification and
+  revert steps (including the reboot and the "allowed vs attached" distinction);
+  do not restate them.
 - **The bind-mount target must NOT already exist in the image** (verified
   2026-07-16): `--mount target=C:\workspace` (a baked image dir) fails at
   container creation with `hcs::CreateComputeSystem ... Die Anforderung wird
