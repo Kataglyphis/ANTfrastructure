@@ -338,6 +338,21 @@ uv_sync_project() {
     sync_args+=(--no-build-isolation-package wxpython)
   fi
   
+  # Pin the interpreter for the SAME reason uv_pip_install_requirements does,
+  # and it is just as load-bearing here: uv honours UV_PYTHON OVER the activated
+  # venv. The CI images export UV_PYTHON=/opt/venv/bin/python and run as the
+  # non-root user `kataglyphis`, so `--active` alone still resolves to that
+  # root-owned system venv and the sync dies with
+  #   error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
+  #          Permission denied (os error 13)
+  # Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
+  # the extras fix let the resolve get this far. --python forces the writable
+  # local environment; --active stays so uv still prefers it when no venv is set.
+  local _venv="${VIRTUAL_ENV:-${_CURRENT_VENV_PATH:-}}"
+  if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+    sync_args+=(--python "$_venv/bin/python")
+  fi
+
   sync_args+=(--active)
 
   uv "${sync_args[@]}"
