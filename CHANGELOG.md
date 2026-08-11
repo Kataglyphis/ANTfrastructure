@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-11 (midday) - run 17: shim 3 proven (litert @bazel-truth fetched, API-skew gone), configure died on litert's UNCONDITIONAL example projects -> shim 4; run 18 launched
+
+- Run 17 (survived a harness restart mid-flight; driver kept orchestrating):
+  media-core fully green for the THIRD consecutive run (ONNX 7th bare
+  link). litert-lm: pin bump applied and fetched ("Already at requested
+  ref: 3cb830ad"), the SetEnableYNNPack/RunAsync API-skew errors are GONE -
+  the failure moved into the NEW litert commit itself: @3cb830ad adds
+  tensor/examples/{segmentation,gemma3} guarded only by file-existence (no
+  option), and gemma3 does find_package(Protobuf REQUIRED) -> litert_external
+  CONFIGURE death. Shim 4 (litert-patcher-winfix.cmake): drop both
+  add_subdirectory(examples/...) calls - examples are not in litert-lm's
+  target map. google-ai-edge cmake-staleness set now at FOUR findings.
+
 ## 2026-08-11 - coverage.sh: optional HTML report for the llvm backend
 
 `coverage_llvm_report` gained `COVERAGE_LLVM_HTML_DIR`, which additionally emits

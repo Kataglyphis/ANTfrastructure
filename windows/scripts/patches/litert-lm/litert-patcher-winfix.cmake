@@ -48,3 +48,13 @@ patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(run_
 patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(analyze_model" "add_executable(analyze_model EXCLUDE_FROM_ALL" FALSE)
 patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(apply_plugin_main" "add_executable(apply_plugin_main EXCLUDE_FROM_ALL" FALSE)
 message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/apply_plugin_main) EXCLUDE_FROM_ALL")
+
+# litert @3cb830ad (the bazel-truth pin, staleness-#3 bump) adds
+# tensor/examples/{segmentation,gemma3} UNCONDITIONALLY (guarded only by
+# file-existence, no option); gemma3's CMakeLists does
+# find_package(Protobuf REQUIRED) and killed the litert_external CONFIGURE
+# (run 17, 2026-08-11). Examples are not part of the runtime and nothing in
+# litert-lm's target map wants them - drop both add_subdirectory calls.
+patch_file_content("${LITERT_SRC_DIR}/tensor/CMakeLists.txt" "add_subdirectory(examples/segmentation)" "# [LiteRTLM-winfix] examples dropped (segmentation)" FALSE)
+patch_file_content("${LITERT_SRC_DIR}/tensor/CMakeLists.txt" "add_subdirectory(examples/gemma3)" "# [LiteRTLM-winfix] examples dropped (gemma3: find_package(Protobuf REQUIRED) breaks configure)" FALSE)
+message(STATUS "[LiteRTLM-winfix] tensor/examples (segmentation, gemma3) dropped from the litert configure")
