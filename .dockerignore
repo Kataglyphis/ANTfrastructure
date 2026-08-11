@@ -8,7 +8,6 @@ output.log
 # build — measured live: "transferring context: 2.38GB 19.3s" (needed content
 # is ~86 MB). Never COPY'd by any Dockerfile → zero cache impact.
 logs/
-.codacy
 **/archive/
 README.md
 AGENTS.md

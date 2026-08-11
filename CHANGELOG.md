@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-11 - Codacy removed org-wide
+
+Codacy is dropped from every Kataglyphis repository at the owner's request. Here
+that means `.codacy/` (adopted only hours earlier in the pass-2 sweep below - it
+turned out the direction of travel was removal, not consolidation), the
+gitignored `.github/instructions/codacy.instructions.md`, and the `.codacy`
+entries in `.gitignore` / `.dockerignore`.
+
+Nine repositories were swept: ContainerHub, BeschleunigerBallett,
+Inference-Engine, Orchestr-ANT-ion, RustProjectTemplate, WebDavClient,
+jotrockenmitlocken, Kataglyphis and Cpp-Inference (plus DocumANTation's
+`.dockerignore`). No README badges and no CI steps referenced Codacy, so nothing
+else had to change. The pass-2 entry below is left as written: it is history,
+and it records why `.codacy/` briefly lived here.
+
 ## 2026-08-11 - consumer-duplication sweep, pass 2: shared config completed, .codacy adopted
 
 Second pass over the four consumers. The PowerShell, bash and CI surfaces came
