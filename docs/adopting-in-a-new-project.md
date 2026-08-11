@@ -194,9 +194,54 @@ downloader (`--extension`, Windows path sanitisation) used to fetch signing
 certificates in CI instead of committing them. The `WindowsMsix.Common`,
 `WindowsMsix.Signing` and `WindowsWebDav.Common` modules drive it.
 
+## 8. Calling conventions (what every consumer looks like)
+
+Seven repos consume this one. The shapes below are what they converged on;
+a new consumer that follows them is immediately legible to anyone who has read
+another. Recorded 2026-08-11 after measuring all seven, because until then the
+convention was folklore and had drifted.
+
+**Windows entry point** — `<scripts>/windows/Build-Windows.ps1`, PascalCase
+`Verb-Noun` like every other PowerShell file. It must:
+
+```powershell
+#requires -Version 7.0          # every module here declares it; pwsh, never powershell
+. (Join-Path $PSScriptRoot 'Resolve-BuildModule.ps1')
+Import-BuildModule @('WindowsScripts.Shared', 'WindowsBuild.Common', ...)
+```
+
+Run the app with a sibling `Start-Windows.ps1`. Project-specific modules go in
+`<scripts>/windows/modules/`, which the resolver checks after this repo.
+
+**Bash entry points** — `set -euo pipefail`, resolve the script's own directory,
+then source a per-repo bridge that pulls in `01-core/common.sh`:
+
+```bash
+set -euo pipefail
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${_SCRIPT_DIR}/ci_common.sh"          # or lib/common.sh
+source "${_SCRIPT_DIR}/../../ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/<lib>.sh"
+```
+
+Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh`
+drivers should be ~30 lines: source the library, set the project's defaults,
+call its `*_main`. `Kataglyphis-BeschleunigerBallett/Scripts/Linux/run-ctest.sh`
+is the canonical example.
+
+**Shell safety** — the five bug classes in this repo's `AGENTS.md`
+(§ *Shell safety conventions*) apply to consumer scripts too. Every one of them
+falsified or killed a real build here; they are not style preferences.
+
+**Known cosmetic divergence, deliberately not churned:** two repos use
+`Scripts/` + `Scripts/Windows/` (BeschleunigerBallett, RustProjectTemplate) and
+five use lowercase `scripts/`; bash filenames are kebab-case in two repos and
+snake_case in the rest. Renaming those would rewrite git history for every
+script for no functional gain — match the repo you are in, not a global rule.
+
 ## Checklist
 
 - [ ] Submodule added; `Resolve-BuildModule.ps1` copied
+- [ ] Entry points named and shaped as in § 8
 - [ ] Windows build script built on `WindowsContainerBuild.Reuse`, ending in a delivery check
 - [ ] Linux build uses a container-native build dir and a cargo cache volume
 - [ ] No consumer copy of anything that exists upstream (check before writing)
