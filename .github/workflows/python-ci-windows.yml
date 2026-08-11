@@ -123,6 +123,19 @@ jobs:
       - name: Pull image
         run: docker pull "${{ inputs.image }}"
 
+      # Proves where the image actually landed. Without this the only evidence
+      # that the data-root move did anything is that the pull stopped failing -
+      # which is suggestive, not conclusive, because cleanup-disk-space also
+      # frees C:. The drop belongs on the data-root drive.
+      - name: Disk report after pull
+        if: ${{ always() }}
+        run: |
+          Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
+            Format-Table DriveLetter,
+              @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
+              @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
+              FileSystemLabel -AutoSize | Out-String | Write-Host
+
       # ContainerHub's action instead of a hand-rolled `docker run`: it gives the
       # container every logical processor the runner has, delivers the payload
       # through env vars so nothing is re-parsed by the host shell, and runs it
