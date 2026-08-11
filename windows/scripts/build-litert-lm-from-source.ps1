@@ -547,6 +547,11 @@ $litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
 
 $litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
 $dlPatch = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\litert-patcher-winfix.cmake')
+# Run-18 forensics (2026-08-11): the appended patcher executed WITHOUT the
+# examples-drop block even though the repo file carried it - print what THIS
+# container actually read so stale-bind vs. non-execution is decidable from
+# the stage log alone.
+Write-Host ("litert-patcher-winfix.cmake read: {0} chars; examples-drop block present: {1}" -f $dlPatch.Length, $dlPatch.Contains('examples dropped'))
 [void](Add-FileBlockOnce -Path $litertPatcher -Marker 'LiteRTLM-winfix dynamic-loading' -Content $dlPatch -Encoding ASCII `
         -Description 'litert_patcher.cmake: dynamic_loading.cc std::filesystem::path narrowing')
 

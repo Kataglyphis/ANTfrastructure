@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-08-11 (night) - runs 19+20 decode the shim-4 flip-flop: patch_file_content silently NO-OPED; shim 4 rebuilt as REMOVE_RECURSE; run 21 launched
+
+- Run 19 (forensic line): the container READS the current patch file
+  ("5801 chars; examples-drop block present: True") - run 18's miss was a
+  stale-context one-off. Run 19 then died at a TRANSIENT dep download
+  ("cmake -E tar: ZIP decompression failed (-5)" at 92%) BEFORE reaching
+  gemma3 - which masked the real story.
+- Run 20 brought the Protobuf death BACK and completed the picture: the
+  shim-4 STATUS message had printed all along (hidden by buildkit's merged
+  log lines), but `patch_file_content`'s string-replace NEVER MATCHED (the
+  helper prints unconditionally - a no-op looks identical to success), so
+  gemma3 kept configuring. Lesson recorded: never trust an
+  unconditional-message patch helper; verify by absence of the symptom.
+- Shim 4 rebuilt drift-immune: `file(REMOVE_RECURSE
+  "${LITERT_SRC_DIR}/tensor/examples")` + self-verifying EXISTS check
+  (loud WARNING if the tree survives) - upstream's own
+  `if(EXISTS .../CMakeLists.txt)` guard then skips both example dirs.
+  Run 21 launched. media-core meanwhile at SIX consecutive fully-green
+  runs (ONNX 10x bare links).
+
 ## 2026-08-11 - knowledge placement: a rule, an index, and a consumer AGENTS.md skeleton
 
 Code reuse has a rule (the two-consumer test). Documentation did not, and it
