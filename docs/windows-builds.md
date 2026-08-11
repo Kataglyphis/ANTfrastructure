@@ -1935,9 +1935,13 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > the whole W1/W2/W3 batches, the review history and all DONE evidence notes —
 > is archived verbatim in
 > [windows-backlog-archive-2026-08-11.md](windows-backlog-archive-2026-08-11.md).
-> Standing rule that survives the close-out: check the cache-tier map before
+> Standing rules that survive the close-out: check the cache-tier map before
 > touching anything (media-closure edits cost one ONNX-vertex rebuild — batch
-> them), and never remove the deliberate media-merge version-ARG mirrors.
+> them); never remove the deliberate media-merge version-ARG mirrors; and
+> never trust a patch helper whose success message prints unconditionally
+> (litert-lm's `patch_file_content` no-oped silently for two runs, 2026-08-11
+> — verify by the SYMPTOM disappearing, or use structurally-immune ops like
+> `file(REMOVE_RECURSE)` with a self-check).
 
 ### Open items (effort·impact; ordered by leverage)
 
@@ -1996,8 +2000,10 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   mozilla/sccache (out/upstream-issue-sccache-nvcc.md — crash class rock
   solid, miscompile class with full controls) and opencv/opencv
   (out/upstream-issue-opencv-ort-wchar.md). Optional third:
-  google-ai-edge/LiteRT-LM cmake staleness (stale proto list + stale absl
-  pin at v0.15.0; evidence in CHANGELOG 2026-08-11).
+  google-ai-edge cmake-lane staleness at LiteRT-LM v0.15.0 — now FOUR
+  findings (stale proto list, stale absl pin, stale litert pin vs their own
+  bazel WORKSPACE, and litert's unconditional example subprojects with a
+  hard system-Protobuf requirement); evidence in CHANGELOG 2026-08-11.
 - **Post-run diagnostics queue:** read the chain's SCCACHE_ERROR_LOG from
   the -2 cache mount (the 1498-write-errors witness), one
   `probe-build-copy.ps1 -Heavy` smoke AFTER the poisoned-chain prune, and
