@@ -46,6 +46,7 @@ The two halves of one topic often split:
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
+| **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
 | Build matrix and sanitizer env for the loop | [`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md) |
@@ -65,6 +66,7 @@ The two halves of one topic often split:
 | Looking for | Read |
 |---|---|
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
+| Python CI: the shared lanes, and the two `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv) | [`python-ci.md`](python-ci.md) |
 | clang-format / clang-tidy / cmake-format, and the shared configs | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |
 | Watching resource use during a build | [`build-resource-monitoring.md`](build-resource-monitoring.md) |

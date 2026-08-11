@@ -243,6 +243,67 @@ Reproduces with a **freshly created** volume, so it is not stale state.
 Windows container volumes are filter-driver backed and do not behave like an
 ordinary directory for the operations CMake's compiler test performs.
 
+## The image does not fit on C:, and that is the default
+
+On a GitHub-hosted `windows-2025` runner, Docker keeps its data-root under the
+**system** drive (`C:\ProgramData\Docker`). That drive is the small one.
+Measured 2026-08-11 at job start:
+
+```
+DriveLetter FreeGB SizeGB FileSystemLabel
+          C  33.00 149.40 Windows
+          D 146.60 150.00 Temporary Storage
+```
+
+The `winamd64` image needs **~54 GB** to import. It does not fit in 33 GB, and
+the failure is expensive rather than obvious: `docker pull` grinds for tens of
+minutes and then dies with `hcsshim::ImportLayer ... not enough space on the
+disk (0x70)`.
+
+The historical workaround was `cleanup-disk-space`, which deletes Visual Studio
+and the tool caches to claw C: up to ~71 GB. That works, costs minutes, is
+destructive — and leaves a 150 GB drive sitting at 146.6 GB free.
+
+**Point the data-root at the big drive instead**, with the
+[`set-docker-data-root`](../.github/actions/README.md) action, *before* the pull:
+
+```yaml
+- name: 'Put the Docker data-root on D:'
+  uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/set-docker-data-root@main
+  with:
+    data-root: 'D:\docker'
+```
+
+Measured on the same job, across the whole run:
+
+| Point in the job | C: free | D: free |
+|---|---|---|
+| start | 33.00 | 146.60 |
+| after the data-root move | 33.00 | 146.60 |
+| after `cleanup-disk-space` | 71.20 | 146.60 |
+| **after `docker pull`** | **71.20** | **108.10** |
+
+D: absorbs **38.5 GB**; C: does not move at all, even though 71 GB were free
+there by then. The daemon confirms it independently: `Docker data-root: D:\docker`.
+
+Things worth knowing before you copy this:
+
+- **Order is not negotiable.** Run it before the pull. Changing the data-root
+  makes images under the old one invisible, so doing it afterwards throws away
+  a pull you already paid for.
+- **It merges into an existing `daemon.json`.** The runners ship one — on the
+  measured job it contained `{"hosts":["npipe://"]}`. Overwriting that would
+  have taken the daemon's named-pipe listener with it.
+- **D: is not the same size everywhere.** Two runners on the same day reported
+  150 GB and 220 GB. The action's `required-free-gb` checks the *target* drive
+  rather than assuming, so a wrong drive letter fails in seconds with a clear
+  message instead of during the import.
+- **D: is the ephemeral temp disk on hosted runners** — wiped between jobs,
+  which is right for CI and wrong for a self-hosted machine you expect to keep
+  a layer cache on. Point `data-root` somewhere persistent there.
+- **`cleanup-disk-space` still earns its place** — checkout, toolchain and build
+  live on C: — but it is no longer what makes the image fit.
+
 ## Gotchas that cost real time
 
 - **Windows path limit inside containers.** Deeply nested paths (here: Rust
