@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-11 - consumer-duplication sweep, pass 2: shared config completed, .codacy adopted
+
+Second pass over the four consumers. The PowerShell, bash and CI surfaces came
+back clean; what was left was shared *configuration*, and two live defects.
+
+- **`.codacy/` (new: `cli.sh`, `codacy.yaml`)** — Kataglyphis-Orchestr-ANT-ion
+  and Kataglyphis-RustProjectTemplate both symlink `.codacy/cli.sh` to
+  `../ExternalLib/Kataglyphis-ContainerHub/.codacy/cli.sh`, and this repo had no
+  `.codacy/` at all: **both symlinks were dangling.** Adopted from
+  Inference-Engine's real copy (Codacy's stock CLI bootstrap, nothing
+  project-specific in it), which makes the two symlinks resolve and lets the
+  third consumer stop carrying 173 lines of its own.
+- **`Sync-SharedConfig.ps1` no longer misdirects on a missing canonical file.**
+  If a name in `$names` has no file next to the script, `-Write` dies inside
+  `Copy-Item` with a bare "path not found" and `-Check` reports the file as
+  missing *in the consumer* - both sending you to the wrong repository. It now
+  throws a message naming this directory. Hardening only: all four canonical
+  files are present and `-Check` reports BeschleunigerBallett fully in sync.
+- README documents the standing override: the canonical set is C++-oriented, so
+  a Python consumer owns its own `.pre-commit-config.yaml` (ruff, not
+  clang-format) and passes `-Ignore .pre-commit-config.yaml`. That is
+  Orchestr-ANT-ion, and its difference is a deliberate override, not drift.
+
+Not moved, deliberately: Inference-Engine's `packaging-common.sh` (deb /
+AppImage / flatpak bundling, 502 lines). No second consumer packages desktop
+bundles, so it fails the two-consumer test and stays where it is.
+
 ## 2026-08-11 (mid-morning) - run 16: litert-lm shims 1+2 PROVEN (past run-15's deaths), failure moved to UPSTREAM STALENESS #3 (litert pin) -> shim 3, run 17 launched
 
 - Run 16: second consecutive fully-green media-core (ONNX 6th bare link,

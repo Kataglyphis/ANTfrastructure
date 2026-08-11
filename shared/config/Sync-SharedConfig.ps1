@@ -61,6 +61,17 @@ foreach ($name in $names) {
   $canonical = Join-Path $canonicalDir $name
   $local = Join-Path $resolvedRoot $name
 
+  # A missing CANONICAL file is a defect in THIS repo, and it has to say so
+  # loudly. Until 2026-08-11 three of the four names above had no file next to
+  # this script at all, and neither branch below coped: -Write died inside
+  # Copy-Item with a bare "path not found", and -Check blamed the CONSUMER for a
+  # file that was missing HERE. Both readings sent you looking in the wrong repo.
+  if (-not (Test-Path -LiteralPath $canonical)) {
+    throw ("Canonical config '$name' is missing from $canonicalDir. " +
+      'The name is listed in this script but no file backs it, so nothing can be checked or written. ' +
+      'Add the file here (this repo owns it), or remove the name from $names.')
+  }
+
   if (-not (Test-Path -LiteralPath $local)) {
     if ($Write) {
       Copy-Item -LiteralPath $canonical -Destination $local -Force

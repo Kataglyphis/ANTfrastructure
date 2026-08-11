@@ -48,3 +48,18 @@ consumer's copy directly is what the check exists to catch.
 A project that genuinely needs different settings passes `-Ignore` with the file
 names it owns, e.g. `-Ignore gcovr.cfg`. That records the exception explicitly
 rather than letting an unexplained diff sit there looking like drift.
+
+The standing example: this canonical set is written for **C++** projects, so a
+Python consumer owns its own `.pre-commit-config.yaml` — ruff hooks rather than
+clang-format — and runs `-Ignore .pre-commit-config.yaml`.
+Kataglyphis-Orchestr-ANT-ion is that case, and its difference is a deliberate
+override, not drift.
+
+## Completeness is enforced
+
+The four names live in `Sync-SharedConfig.ps1`'s `$names`, and each one must
+have a file next to it here. Do not add a name without adding the file: if one
+is missing, `-Write` dies inside `Copy-Item` with a bare "path not found" and
+`-Check` blames the *consumer* for a file that is actually missing *here* — both
+readings send the reader to the wrong repo. The script now throws a message
+naming this directory instead.
