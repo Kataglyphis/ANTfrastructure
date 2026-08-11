@@ -1,0 +1,92 @@
+# AGENTS.md
+
+<!--
+TEMPLATE — copy to <your-repo>/AGENTS.md and fill in. Delete these comments.
+
+The point of the layout below is one rule:
+
+    Would this still be true in a different project?
+        yes -> ContainerHub owns it. LINK, do not restate.
+        no  -> it belongs here. Write it out.
+
+Section 2 is links only, on purpose. The moment a procedure gets retyped here it
+starts drifting from upstream - that is not hypothetical, see
+ContainerHub docs/INDEX.md for the three-broken-copies case that motivated this.
+
+Topic -> owning document: ExternalLib/Kataglyphis-ContainerHub/docs/INDEX.md
+-->
+
+Guidance for coding agents (and new contributors) working in <PROJECT>.
+
+## 1. What this project is
+
+<!-- Two or three sentences. What it builds, what language/framework, what the
+     entry points are. Then the map: which directory holds what. -->
+
+| Path | What lives there |
+| --- | --- |
+| `src/…` | |
+| `scripts/windows/`, `scripts/linux/` | Thin wrappers over ContainerHub drivers + this project's payload |
+| `ExternalLib/Kataglyphis-ContainerHub/` | The submodule that owns every reusable script, module and doc |
+
+## 2. What ContainerHub owns — links only
+
+**Do not restate procedures in this section.** One line of orientation, then the
+link. If you catch yourself typing a command that would work in another repo,
+it belongs upstream.
+
+Start at
+[`ExternalLib/Kataglyphis-ContainerHub/docs/INDEX.md`](ExternalLib/Kataglyphis-ContainerHub/docs/INDEX.md)
+— topic → owning document, so these links stay valid when upstream reorganises.
+
+| Topic | Where |
+| --- | --- |
+| Wiring this repo to ContainerHub (resolver, actions, libraries) | `docs/adopting-in-a-new-project.md` |
+| The Windows image, its entrypoint and known traps | `docs/windows-builds.md` |
+| Bind mount vs tar-pipe, Dev Drive filter setup, container reuse | `docs/windows-container-build-performance.md` |
+| Linux container builds | `docs/linux-build-basics.md` |
+| clang-format / clang-tidy / cmake-format and the canonical configs | `docs/code-quality-tooling.md` |
+| The five shell-safety bug classes | ContainerHub `AGENTS.md` § *Shell safety conventions* |
+
+Two facts worth stating here because they bite immediately, not because this
+repo owns them:
+
+- Every ContainerHub PowerShell module declares `#requires -Version 7.0`, so the
+  entry scripts do too — launch with `pwsh`, never `powershell`.
+- Workflows resolve ContainerHub's composite actions at `@main`, so an upstream
+  change a workflow depends on must be pushed **before** the consumer change.
+
+## 3. Pitfalls specific to this project
+
+<!-- This is where you write things out in full. The test: would this sentence
+     be false, or meaningless, in another repo? If so it belongs here.
+
+     Good examples of genuinely project-specific knowledge:
+       - "Dart's copySync fails on a bind mount, so junction .dart_tool"
+         (only matters because this app is Flutter)
+       - "this app needs Microsoft's ASan runtime, not LLVM's"
+         (a property of a COM-hosting app, not of the image)
+       - "all presets install into the same runner dir; copy artifacts between runs"
+         (this repo's CMake layout)
+
+     Bad examples - these belong upstream, link instead:
+       - how to allow Dev Drive filters
+       - what --isolation process does
+       - why docker cp into a Windows container copies nothing
+-->
+
+## 4. Build, run, test
+
+<!-- The commands. Keep them exact and keep them working; a stale command here
+     is worse than no command. Note which are gated (CI opt-in, host-only, GPU). -->
+
+```bash
+# build
+# test
+# run
+```
+
+## 5. Docs owned by this repo
+
+<!-- Where the project's own documentation lives, and the rule that a change to
+     user-facing behaviour updates its doc in the same PR. -->

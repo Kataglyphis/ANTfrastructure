@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-08-11 - knowledge placement: a rule, an index, and a consumer AGENTS.md skeleton
+
+Code reuse has a rule (the two-consumer test). Documentation did not, and it
+showed: the Dev Drive filter command existed in three places - `windows-builds.md`
+here plus Inference-Engine's `AGENTS.md` and `docs/source/platforms.md` - and all
+three were wrong the same way while
+`windows-container-build-performance.md` had it right AND warned about that exact
+mistake. Restating produced three broken copies.
+
+- **AGENTS.md § Where does knowledge belong?** states the rule: *would this still
+  be true in a different project?* Yes -> here, and the consumer links. No -> the
+  consumer writes it out. Most topics split down the middle.
+- **`docs/INDEX.md` (new)** maps topic -> owning document. Consumers link one hop
+  through it, so reorganising docs here means editing that page rather than
+  hunting links across seven repositories.
+- **`shared/templates/AGENTS.md.template` (new)** is the consumer skeleton, with
+  section 2 ("what ContainerHub owns") deliberately links-only.
+
+Explicitly NOT added: a lint that fails consumer docs for mentioning `wcifs` or
+`--isolation process`. A keyword cannot tell *restating* from *applying* -
+Inference-Engine's ASan notes discuss image-level runtimes legitimately, because
+which runtime a Flutter/COM app survives is a property of that app.
+
 ## 2026-08-11 - the Python ci_*.sh drivers were unrunnable; both consumers had reimplemented them
 
 `02-toolchain/python/ci-common.sh` sourced `../01-core/python_uv.sh`. That file
