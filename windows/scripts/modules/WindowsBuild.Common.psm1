@@ -795,71 +795,77 @@ function Sync-BuildArtifacts {
     .SYNOPSIS
         Mirrors a directory tree with robocopy, optionally skipping build cache.
     .DESCRIPTION
-        Used to move a source tree onto fast local storage before building and
-        to bring the artifacts back afterwards — the pattern a bind-mounted or
-        network workspace needs to avoid paying filter-driver I/O per object.
+        Moves a source tree onto fast local storage before building and brings
+        the artifacts back afterwards - what a bind-mounted or network workspace
+        needs to avoid paying filter-driver I/O per object.
+
+        Deleted in cef62c3 as "zero callers" (a sweep that could only see this
+        repo), then re-implemented locally in Kataglyphis-RustProjectTemplate,
+        which is where the robocopy exit-code handling below was actually
+        debugged. Restored 2026-08-11 with THAT implementation, not the 2026-07
+        original: the original treated exit >= 8 as noteworthy and the original
+        exclusion set was file-level. This one is the version that has survived
+        CI.
     .PARAMETER ExcludeCommonRustAndCppCache
-        Skips the intermediate output that makes such a copy 10x larger than the
-        artifacts themselves (object files, .fingerprint, deps, CMakeFiles, …).
-        Do NOT pass it when copying a tree you intend to build in incrementally:
-        without those files every build is a full rebuild.
+        Skips the heavy, regenerable directories - the Rust target tree, .git,
+        node_modules and the clang-cl build trees. Do NOT pass it when copying a
+        tree you intend to build in INCREMENTALLY: without those directories
+        every build is a full rebuild.
+    .PARAMETER ExcludeDirs
+        Extra directory names to skip (robocopy /XD matches a bare name at ANY
+        depth, not just the top level).
+    .PARAMETER ExcludeFiles
+        Extra file patterns to skip (robocopy /XF).
     #>
     param(
-        [Parameter(Mandatory=$true)]
-        [pscustomobject]$Context,
-        [Parameter(Mandatory=$true)]
-        [string]$Source,
-        [Parameter(Mandatory=$true)]
-        [string]$Destination,
-        [string[]]$ExcludeFiles = @(),
-        [string[]]$ExcludeDirs = @(),
-        [switch]$ExcludeCommonRustAndCppCache
+        [Parameter(Mandatory = $true)] [object] $Context,
+        [Parameter(Mandatory = $true)] [string] $Source,
+        [Parameter(Mandatory = $true)] [string] $Destination,
+        [string[]] $ExcludeFiles = @(),
+        [string[]] $ExcludeDirs = @(),
+        [switch] $ExcludeCommonRustAndCppCache
     )
 
-    if ($ExcludeCommonRustAndCppCache) {
-        $ExcludeFiles += @("*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.rlib", "*.rmeta", "*.d", "*.o", "*.pcm", "*.modmap", ".ninja_deps", ".ninja_log", "CMakeCache.txt")
-        $ExcludeDirs += @("*.dir", ".fingerprint", "build", "deps", "incremental", "CMakeFiles", "vcpkg_installed", ".cmake")
-    }
-
-    Write-BuildLog -Context $Context -Message "Syncing artifacts from $Source to $Destination..."
-
-    if (-not (Test-Path -LiteralPath $Destination)) {
+    if (-not (Test-Path $Destination)) {
         New-Item -ItemType Directory -Force -Path $Destination | Out-Null
     }
 
-    # /FFT + /NOOFFLOAD are load-bearing on container and network volumes:
-    # coarse (2 s) timestamp comparison avoids re-copying everything on a
-    # filesystem whose timestamp resolution differs, and offloaded copy is
-    # unsupported by several of these filter drivers.
+    if ($ExcludeCommonRustAndCppCache) {
+        $ExcludeDirs += @('target', '.git', 'node_modules',
+            'build-clangcl-debug', 'build-clangcl-release', 'build-clangcl-profile')
+    }
+
+    # /E subdirs, /MT multithreaded, /R:1 /W:1 no retry-hangs on locked files,
+    # /FFT coarse timestamps (bind mounts), /NOOFFLOAD no copy-offload over the
+    # VM boundary - same rationale as Sync-FastLocalArtifactsToHost in
+    # WindowsFlutter.Common.psm1.
     $robocopyArgs = @(
-        $Source,
-        $Destination,
-        "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD"
+        $Source, $Destination,
+        '/E', '/MT:16', '/R:1', '/W:1', '/FFT', '/NOOFFLOAD',
+        '/NFL', '/NDL', '/NJH', '/NJS', '/nc', '/ns', '/np'
     )
+    if ($ExcludeDirs.Count -gt 0) { $robocopyArgs += @('/XD') + $ExcludeDirs }
+    if ($ExcludeFiles.Count -gt 0) { $robocopyArgs += @('/XF') + $ExcludeFiles }
 
-    if ($ExcludeFiles -and $ExcludeFiles.Count -gt 0) {
-        $robocopyArgs += "/XF"
-        $robocopyArgs += $ExcludeFiles
+    & robocopy.exe @robocopyArgs > $null 2>&1
+    $robocopyExit = $LASTEXITCODE
+    # Robocopy exit codes are a BITMASK, not a severity scale:
+    #   1 copied, 2 extra, 4 mismatch, 8 some files could not be copied,
+    #   16 serious error / nothing copied.
+    # Only 16 means the mirror did not happen. Bit 8 (exit 9 = 8+1 in CI) fires
+    # routinely on a live bind-mounted tree - a transient lock on one file while
+    # the rest copy fine - and treating it as fatal killed the packaging step.
+    if ($robocopyExit -ge 16) {
+        throw "Sync-BuildArtifacts failed (robocopy exit $robocopyExit, serious error): '$Source' -> '$Destination'"
     }
-
-    if ($ExcludeDirs -and $ExcludeDirs.Count -gt 0) {
-        $robocopyArgs += "/XD"
-        $robocopyArgs += $ExcludeDirs
+    if (($robocopyExit -band 8) -ne 0) {
+        # Through the build log, not Write-Warning: a partial copy is exactly
+        # the kind of thing you go looking for in the log file afterwards, and
+        # Write-Warning never reaches it. This is also what $Context is FOR.
+        Write-BuildLogWarning -Context $Context -Message "Sync-BuildArtifacts: robocopy exit $robocopyExit - some files could not be copied (likely a transient lock); continuing."
     }
-
-    $robocopyArgs += @("/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul")
-
-    & robocopy.exe $robocopyArgs > $null 2>&1
-    $exitCode = $LASTEXITCODE
-    # Robocopy's exit code is a bit field, not a status: anything below 8 means
-    # "copied / extra / mismatched", i.e. success. Only >= 8 is a real failure.
-    # Left as a warning rather than a throw because the callers treat a partial
-    # artifact sync as recoverable.
-    if ($exitCode -ge 8) {
-        Write-BuildLogWarning -Context $Context -Message "Robocopy returned exit code $exitCode while syncing $Source to $Destination."
-    }
-    # robocopy's non-zero success codes would otherwise poison the caller's
-    # $LASTEXITCODE check.
+    # Do not leak robocopy's nonzero SUCCESS codes into callers that treat
+    # $LASTEXITCODE as pass/fail.
     $global:LASTEXITCODE = 0
 }
 
