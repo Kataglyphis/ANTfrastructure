@@ -255,7 +255,16 @@ When adding here:
 
 - PowerShell 7 (pwsh) is the standard shell. All `.ps1` scripts require `#Requires -Version 7.0`. Windows containers use pwsh as the default SHELL.
 - PowerShell scripts go in `windows/scripts/modules/` with `Export-ModuleMember`, and
-  consumers resolve it ContainerHub-first with a vendored fallback.
+  consumers resolve it ContainerHub-first with a vendored fallback. The resolver
+  itself is a copied template:
+  [`shared/windows/templates/Resolve-BuildModule.ps1`](shared/windows/templates/README.md).
+- **The two-consumer test.** If a second consumer needs it, it belongs here — not
+  vendored twice. That test is what moved `WindowsTesting.Common` (test-exe
+  discovery, ctest driving, scoped ASAN_OPTIONS, ASan-runtime discovery) and
+  `WindowsClang.Common` (clang-tidy driving) upstream on 2026-08-11. When moving
+  one, turn its project-specific values into parameters whose DEFAULTS preserve
+  the original behaviour, so the vendoring consumer can delete its copy without
+  any behaviour change.
 - Document the **symptom**, not just the fix — platform traps here are found by
   recognising an error message, not by reading code.
 - Keep functions free of consumer-specific paths, preset names and build

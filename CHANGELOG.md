@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-08-11 (mid-morning) - run 16: litert-lm shims 1+2 PROVEN (past run-15's deaths), failure moved to UPSTREAM STALENESS #3 (litert pin) -> shim 3, run 17 launched
+
+- Run 16: second consecutive fully-green media-core (ONNX 6th bare link,
+  OpenCV 3rd, FFmpeg 2nd, GenAI 2nd). media-litert phase 1 (LiteRT v2.1.6)
+  green in ~11 min; LiteRT-LM applied BOTH staleness shims cleanly (proto
+  list + absl 20260526) and got PAST run-15's compile deaths - then died at
+  1879 s on the NEXT layer: **their cmake litert pin (fb16353a, '#Updated
+  on 2026-03-24') predates the LiteRT APIs 0.15.0's own executor calls**
+  (CpuOptions::SetEnableYNNPack missing, CompiledModel::Run/RunAsync
+  signature mismatches; plus a kv_cache.cc reference into a path that no
+  longer exists - suspected same-pin fallout). The bazel WORKSPACE pins
+  LITERT_REF=3cb830ad for this tag; shim 3 bumps their cmake pin to the
+  bazel truth. Staleness count for google-ai-edge/LiteRT-LM v0.15.0's
+  cmake lane: THREE (protos, absl, litert) - issue-worthy as a set.
+- Tree note: two new files + a PSSA warning appeared in
+  windows (WindowsTesting.Common.psm1 empty-catch) from outside this
+  session - left untouched.
+
+## 2026-08-11 - consumer-duplication sweep: two modules upstreamed, uv lock-retry, Resolve-BuildModule template
+
+Audited all four consumers (BeschleunigerBallett, Inference-Engine,
+Orchestr-ANT-ion, RustProjectTemplate) for code that duplicates what this repo
+already ships, and for local code that more than one of them needed.
+
+- **`windows/scripts/modules/WindowsTesting.Common.psm1` (new)** — upstreamed
+  from BeschleunigerBallett's vendored `Scripts/Windows/modules` copy. Test-exe
+  discovery (`Resolve-TestExecutable`), ctest driving
+  (`Invoke-CtestDiscoveredTests`), scoped ASAN_OPTIONS (`Invoke-WithAsanOptions`)
+  and ASan-runtime discovery (`Get-AsanRuntimeDirs`, `Get-AsanRuntimeDll`).
+  Nothing in it was project-specific. Second consumer proving it belongs here:
+  Inference-Engine's `Start-Windows.ps1` had its own narrower copy of the
+  runtime search that only ever matched the **BuildTools** SKU.
+  The Visual Studio half now resolves through `Get-MsvcToolsRoots`
+  (WindowsScripts.Shared) instead of globbing `Program Files*\Microsoft Visual
+  Studio\*\*`, so Community/Professional/Enterprise are found too, the cold-boot
+  vswhere race is retried, and the NEWEST toolset comes first.
+  `Get-AsanRuntimeDirs` lost its mandatory-but-unused `-BuildRoot`;
+  `Resolve-TestExecutable` gained `-AdditionalRelativeDirectory` in place of the
+  hard-coded `Test\{commit,compile,perf}` probes.
+- **`windows/scripts/modules/WindowsClang.Common.psm1` (new)** — likewise
+  upstreamed. clang-tidy driving, the sibling of WindowsFormatting.Common's
+  clang-format/cmake-format (separate because tidy needs a compile-commands
+  database). Its two project-specific values are now parameters with the old
+  values as defaults: `-SourceSubdirectory` (was a hard-coded `Src`) and
+  `-ModuleImportPattern` (was a hard-coded `import kataglyphis`).
+- **`Sync-UvProjectDependencies` gained `-RetryWithoutLocked`** and a
+  `-LogWarning` sink. Orchestr-ANT-ion had re-implemented the entire function
+  locally just to get the retry-without-`--locked` fallback. Deliberately
+  OPT-IN, not the default: `--locked` exists so CI fails on an un-regenerated
+  lockfile, and defaulting the fallback on would turn a reproducibility gate
+  into a no-op.
+- **`shared/windows/templates/Resolve-BuildModule.ps1` (new)** — the bootstrap
+  that cannot be imported from here (it is what *finds* this submodule) now has
+  a canonical template, plus a `Resolve-BuildModulePath` back-compat alias. All
+  four consumers had written it independently and drifted: different search
+  orders, different error text, one missing `-Global`.
+- `docs/adopting-in-a-new-project.md` updated for the new modules and template.
+
 ## 2026-08-11 (morning) - run 15 fell in media-litert: LiteRT-LM v0.15.0's cmake lane is DOUBLY stale upstream; two shims added, run 16 launched
 
 - media-litert died at 1757 s with two independent missing-header classes,

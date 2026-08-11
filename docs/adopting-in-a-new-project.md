@@ -26,21 +26,33 @@ actions at `@main`.
 
 Each consumer needs a tiny bootstrap that *finds* this submodule, since it runs
 before anything upstream is importable. Copy
-`Scripts/Windows/Resolve-BuildModule.ps1` from the reference consumer. It
-resolves a module name to
+[`shared/windows/templates/Resolve-BuildModule.ps1`](../shared/windows/templates/README.md)
+to `Scripts/Windows/Resolve-BuildModule.ps1` (or `scripts/windows/`, matching
+your repo's casing) and adjust `$script:RepoRootRelativeToHere` if the script
+does not sit exactly two directories below the repo root. It resolves a module
+name to
 `ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/<Name>.psm1`
-first, then a local `Scripts/Windows/modules/` fallback, and throws with both
+first, then a local `modules/` fallback beside itself, and throws with both
 paths if neither exists.
+
+Copy the template, do not re-author it. All four consumers had written this
+file independently and they had drifted — different search orders, different
+error text, one missing `-Global` on the import.
 
 That preference order is the whole contract: **put reusable modules upstream
 and they win automatically**; keep only genuinely project-specific modules in
-the local fallback directory. (In the reference consumer exactly two remain
-local, both hard-coding project paths.)
+the local fallback directory. If a second consumer needs it, it belongs here
+instead — that test is what moved `WindowsTesting.Common` and
+`WindowsClang.Common` upstream on 2026-08-11.
 
 Bash consumers have no equivalent bootstrap problem — they source libraries by
 relative path directly, e.g.
-`ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/app-runner.sh`, and
-fail loudly when the submodule is not checked out.
+`ExternalLib/Kataglyphis-ContainerHub/linux/scripts/lib/app-runner.sh`. Resolve
+that path from `${BASH_SOURCE[0]}` rather than assuming the caller's working
+directory is the repo root, and fail loudly (naming the
+`git submodule update --init --recursive` command) when the submodule is not
+checked out. Kataglyphis-Inference-Engine's `scripts/linux/lib/containerhub.sh`
+is a two-function example.
 
 ## 2. Windows container builds (Stevedore)
 

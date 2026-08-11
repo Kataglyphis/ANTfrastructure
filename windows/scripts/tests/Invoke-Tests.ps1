@@ -23,6 +23,8 @@ Import-Module (Join-Path $modDir 'WindowsSourceBuild.Common.psm1') -Force -Disab
 Import-Module (Join-Path $modDir 'WindowsBuildKit.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsBuildDriver.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsGstPlugins.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $modDir 'WindowsTesting.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $modDir 'WindowsClang.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 
 Reset-TestState

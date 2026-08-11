@@ -583,8 +583,19 @@ Export-ModuleMember -Function @(
 )
 
 # --------------------------------------------------------------------------
-# Restored from 04e1e07 (pre-refactor): functions still consumed by
-# downstream Build-Windows.ps1 scripts (Kataglyphis-Inference-Engine).
+# Restored from 04e1e07 (pre-refactor): functions still consumed by downstream
+# Build-Windows.ps1 scripts (Kataglyphis-Inference-Engine,
+# Kataglyphis-RustProjectTemplate).
+#
+# The lesson these keep re-teaching: cef62c3 deleted six exported functions
+# after a repo-wide sweep found "zero callers" — but the sweep could only see
+# THIS repo. Consumers pin a submodule commit, so they neither break at delete
+# time nor appear in the sweep, and a consumer that starts calling one
+# afterwards is broken the moment it bumps its pin. That is exactly what
+# happened to Sync-BuildArtifacts: deleted 2026-07-07, first called by
+# RustProjectTemplate later, found broken at three call sites on 2026-08-11.
+# Before deleting an EXPORTED function here, grep the consumer repos too — or
+# deprecate instead of deleting.
 # --------------------------------------------------------------------------
 function Initialize-BuildCacheEnvironment {
     param(
@@ -779,6 +790,79 @@ function Assert-FlutterPluginsBuilt {
     }
 }
 
-Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt
+function Sync-BuildArtifacts {
+    <#
+    .SYNOPSIS
+        Mirrors a directory tree with robocopy, optionally skipping build cache.
+    .DESCRIPTION
+        Used to move a source tree onto fast local storage before building and
+        to bring the artifacts back afterwards — the pattern a bind-mounted or
+        network workspace needs to avoid paying filter-driver I/O per object.
+    .PARAMETER ExcludeCommonRustAndCppCache
+        Skips the intermediate output that makes such a copy 10x larger than the
+        artifacts themselves (object files, .fingerprint, deps, CMakeFiles, …).
+        Do NOT pass it when copying a tree you intend to build in incrementally:
+        without those files every build is a full rebuild.
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [pscustomobject]$Context,
+        [Parameter(Mandatory=$true)]
+        [string]$Source,
+        [Parameter(Mandatory=$true)]
+        [string]$Destination,
+        [string[]]$ExcludeFiles = @(),
+        [string[]]$ExcludeDirs = @(),
+        [switch]$ExcludeCommonRustAndCppCache
+    )
+
+    if ($ExcludeCommonRustAndCppCache) {
+        $ExcludeFiles += @("*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.rlib", "*.rmeta", "*.d", "*.o", "*.pcm", "*.modmap", ".ninja_deps", ".ninja_log", "CMakeCache.txt")
+        $ExcludeDirs += @("*.dir", ".fingerprint", "build", "deps", "incremental", "CMakeFiles", "vcpkg_installed", ".cmake")
+    }
+
+    Write-BuildLog -Context $Context -Message "Syncing artifacts from $Source to $Destination..."
+
+    if (-not (Test-Path -LiteralPath $Destination)) {
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    }
+
+    # /FFT + /NOOFFLOAD are load-bearing on container and network volumes:
+    # coarse (2 s) timestamp comparison avoids re-copying everything on a
+    # filesystem whose timestamp resolution differs, and offloaded copy is
+    # unsupported by several of these filter drivers.
+    $robocopyArgs = @(
+        $Source,
+        $Destination,
+        "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD"
+    )
+
+    if ($ExcludeFiles -and $ExcludeFiles.Count -gt 0) {
+        $robocopyArgs += "/XF"
+        $robocopyArgs += $ExcludeFiles
+    }
+
+    if ($ExcludeDirs -and $ExcludeDirs.Count -gt 0) {
+        $robocopyArgs += "/XD"
+        $robocopyArgs += $ExcludeDirs
+    }
+
+    $robocopyArgs += @("/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul")
+
+    & robocopy.exe $robocopyArgs > $null 2>&1
+    $exitCode = $LASTEXITCODE
+    # Robocopy's exit code is a bit field, not a status: anything below 8 means
+    # "copied / extra / mismatched", i.e. success. Only >= 8 is a real failure.
+    # Left as a warning rather than a throw because the callers treat a partial
+    # artifact sync as recoverable.
+    if ($exitCode -ge 8) {
+        Write-BuildLogWarning -Context $Context -Message "Robocopy returned exit code $exitCode while syncing $Source to $Destination."
+    }
+    # robocopy's non-zero success codes would otherwise poison the caller's
+    # $LASTEXITCODE check.
+    $global:LASTEXITCODE = 0
+}
+
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts
 
 

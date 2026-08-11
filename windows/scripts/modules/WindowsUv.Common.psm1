@@ -213,22 +213,50 @@ function Install-UvRequirements {
 }
 
 function Sync-UvProjectDependencies {
+    <#
+    .SYNOPSIS
+        `uv sync --dev --all-extras`, optionally pinned to the lockfile.
+    .PARAMETER RetryWithoutLocked
+        With -UseLocked, retry once WITHOUT --locked when uv reports the
+        lockfile is out of date. Upstreamed from Kataglyphis-Orchestr-ANT-ion
+        (2026-08-11), which had re-implemented this whole function locally just
+        to get the fallback.
+
+        Why it is opt-in and not the default: --locked exists precisely so CI
+        FAILS on an un-regenerated lockfile. Silently syncing unlocked would
+        turn a reproducibility gate into a no-op. Pass it only where an
+        out-of-date lockfile should degrade to a warning (local dev loops,
+        best-effort matrix legs), never on the lane that guards the lockfile.
+    #>
     param(
         [switch]$NoBuildIsolationPackageWxPython,
         [switch]$UseLocked,
+        [switch]$RetryWithoutLocked,
         [scriptblock]$CommandRunner,
-        [scriptblock]$LogInfo
+        [scriptblock]$LogInfo,
+        [scriptblock]$LogWarning
     )
 
-    $syncArgs = @('-v', 'sync', '--dev', '--all-extras')
-    if ($UseLocked) {
-        $syncArgs += '--locked'
-    }
-    if ($NoBuildIsolationPackageWxPython) {
-        $syncArgs += @('--no-build-isolation-package', 'wxpython')
+    $buildArgs = {
+        param([bool]$Locked)
+        $a = @('-v', 'sync', '--dev', '--all-extras')
+        if ($Locked) { $a += '--locked' }
+        if ($NoBuildIsolationPackageWxPython) { $a += @('--no-build-isolation-package', 'wxpython') }
+        return $a
     }
 
-    Invoke-UvCommand -Arguments $syncArgs -CommandRunner $CommandRunner -LogInfo $LogInfo
+    try {
+        Invoke-UvCommand -Arguments (& $buildArgs $UseLocked.IsPresent) -CommandRunner $CommandRunner -LogInfo $LogInfo
+    } catch {
+        $message = $_.Exception.Message
+        # uv words this two ways depending on version; match both.
+        $lockOutdated = $message -match 'lockfile.*needs to be updated' -or $message -match '--locked was provided'
+        if (-not ($UseLocked -and $RetryWithoutLocked -and $lockOutdated)) {
+            throw
+        }
+        if ($LogWarning) { & $LogWarning 'uv.lock is out of date; retrying dependency sync without --locked.' }
+        Invoke-UvCommand -Arguments (& $buildArgs $false) -CommandRunner $CommandRunner -LogInfo $LogInfo
+    }
 }
 
 Export-ModuleMember -Function @(
