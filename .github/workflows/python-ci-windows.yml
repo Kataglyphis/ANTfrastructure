@@ -1,0 +1,136 @@
+# .github/workflows/python-ci-windows.yml
+#
+# Reusable Windows CI lane for the Python consumers (Kataglyphis-Orchestr-ANT-ion,
+# Kataglyphis-WebDavClient). Runs the repo's scripts/windows/Build-Windows.ps1
+# inside the winamd64 image and uploads whatever it produced.
+#
+# Twin of python-ci-linux.yml. Before this existed the two callers each carried a
+# ~70-line copy differing on 20 lines, and none of those differences were a
+# deliberate policy choice - they were drift. Where the copies disagreed this
+# takes the SAFER of the two, which in every case was WebDavClient's:
+#
+#   * upload on always()      - Orchestr-ANT-ion uploaded only on success, so a
+#                               failing build discarded the logs that explain it
+#   * if-no-files-found: warn - instead of failing the job a second time on an
+#                               empty dist/ when the real failure is upstream
+#   * logs/ + docs/test_results/ in the artifact, not just dist/
+#   * upload-artifact v7      - Orchestr-ANT-ion was a major version behind
+#
+# fetch-depth is the one difference that is a real choice, so it is an input:
+# WebDavClient fetches full history (0), Orchestr-ANT-ion shallow (1).
+name: Python CI (Windows, reusable)
+
+# Least privilege: this lane reads the repo, pulls an image and pushes artifacts.
+# It never writes to the repository.
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: Windows container image to build inside.
+        required: false
+        type: string
+        default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+      runs-on:
+        description: Runner label for the Windows job.
+        required: false
+        type: string
+        default: windows-2025
+      build-script:
+        description: >-
+          Path to the build entry point AS SEEN INSIDE THE CONTAINER, i.e. under
+          the mount target, not a host path.
+        required: false
+        type: string
+        default: C:\workspace\scripts\windows\Build-Windows.ps1
+      mount-target:
+        description: Where the workspace is mounted inside the container.
+        required: false
+        type: string
+        default: C:\workspace
+      fetch-depth:
+        description: >-
+          Checkout depth. 0 = full history (needed if the build derives a version
+          from git), 1 = shallow.
+        required: false
+        type: number
+        default: 1
+      artifact-name:
+        description: Name of the uploaded artifact.
+        required: false
+        type: string
+        default: python-package-windows-source-and-binaries
+      artifact-paths:
+        description: Newline-separated paths to upload.
+        required: false
+        type: string
+        default: |
+          ./dist/
+          ./logs/
+          ./docs/test_results/
+    secrets:
+      GHCR_PAT:
+        description: Token used to pull the build image from ghcr.
+        required: true
+
+defaults:
+  run:
+    shell: pwsh
+
+jobs:
+  build-test-python-package-on-windows:
+    runs-on: ${{ inputs.runs-on }}
+
+    steps:
+      # Windows path limit: without this, a deep node_modules/venv path in a
+      # submodule fails the checkout itself.
+      - name: Enable Git long paths
+        run: git config --global core.longpaths true
+
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: ${{ inputs.fetch-depth }}
+          submodules: recursive
+
+      # The Windows image is large, so the runner needs room for it. ContainerHub's
+      # action deletes with `rmdir /s /q` (minutes instead of tens of minutes on
+      # hostedtoolcache) and reports free space before and after.
+      - name: Cleanup disk space
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/cleanup-disk-space@main
+
+      - name: Login to GitHub
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: Kataglyphis
+          password: ${{ secrets.GHCR_PAT }}
+
+      - name: Pull image
+        run: docker pull "${{ inputs.image }}"
+
+      # ContainerHub's action instead of a hand-rolled `docker run`: it gives the
+      # container every logical processor the runner has, delivers the payload
+      # through env vars so nothing is re-parsed by the host shell, and runs it
+      # under `pwsh`. That last part is a requirement, not a preference - every
+      # ContainerHub module declares `#requires -Version 7.0`, and Windows
+      # PowerShell 5.1 cannot load them, which is how one caller's lane used to
+      # fail with an opaque Import-Module error.
+      - name: Run container
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-windows-container@main
+        with:
+          image: ${{ inputs.image }}
+          mount-source: ${{ github.workspace }}
+          mount-target: ${{ inputs.mount-target }}
+          file: ${{ inputs.build-script }}
+
+      # always(): a failed build is exactly when the logs are worth having.
+      - name: Upload files, logs & Zip
+        if: ${{ always() }}
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ${{ inputs.artifact-name }}
+          if-no-files-found: warn
+          path: ${{ inputs.artifact-paths }}
