@@ -81,7 +81,8 @@ The two halves of one topic often split:
 | Generic Python CI drivers | `linux/scripts/02-toolchain/python/ci_*.sh` |
 | CI composite actions | [`../.github/actions/README.md`](../.github/actions/README.md) |
 | Canonical `.clang-format`, `.clang-tidy`, `gcovr.cfg`, `.pre-commit-config.yaml` | [`../shared/config/README.md`](../shared/config/README.md) |
-| Copy-and-edit templates (`Resolve-BuildModule.ps1`, `AGENTS.md` skeleton, agentic-loop config) | `../shared/windows/templates/`, `../shared/agentic-loop/templates/` |
+| Copy-and-edit templates (`Resolve-BuildModule.ps1`, `containerhub.sh`, `AGENTS.md` skeleton, agentic-loop config) | [`../shared/windows/templates/`](../shared/windows/templates/README.md), [`../shared/linux/templates/`](../shared/linux/templates/README.md), `../shared/templates/`, `../shared/agentic-loop/templates/` |
+| Reusable CI workflows (`workflow_call`) — the Python Linux lane, docs build | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml), `../.github/workflows/build-docs.yml` |
 
 ## If you are about to write a procedure in a consumer repo
 

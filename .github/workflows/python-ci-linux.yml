@@ -1,0 +1,205 @@
+# .github/workflows/python-ci-linux.yml
+#
+# Reusable Linux CI lane for the Python consumers (Kataglyphis-Orchestr-ANT-ion,
+# Kataglyphis-WebDavClient). Static analysis -> tests -> docs -> FTP deploy ->
+# packaging, on the x86-64 and arm64 native runners.
+#
+# Before this existed the two callers each carried a 112-line copy that differed
+# on 14 lines, and every one of those differences was a parameter. Two of them
+# were not even real: Orchestr-ANT-ion passed '3.14' to ci_static_analysis.sh and
+# ci_packaging.sh, which is exactly what those drivers default to, so the two
+# repos were running identical commands through different-looking YAML.
+#
+# The drivers all read positionals as "${N:-default}", and that expansion treats
+# an EMPTY argument the same as an absent one. So every version input here can
+# default to '' and be passed through unconditionally - the driver's own default
+# then applies, and callers only name a version when they actually want to
+# override it. That is why there is no conditional command construction below.
+name: Python CI (Linux, reusable)
+
+# Least privilege: this lane reads the repo, pulls an image and pushes artifacts.
+# It never writes to the repository.
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      package-name:
+        description: >-
+          Importable package/module directory, e.g. orchestr_ant_ion. NOT the
+          distribution name from pyproject.toml - Orchestr-ANT-ion's distribution
+          is "Orchestr-ANT-ion" while its module is "orchestr_ant_ion", and
+          passing the former makes coverage silently target a path that does not
+          exist.
+        required: true
+        type: string
+      container-image:
+        description: The Linux build image to run every step inside.
+        required: false
+        type: string
+        default: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+      test-python-versions:
+        description: >-
+          Space-separated interpreter list for ci_tests.sh, e.g. "3.13 3.14 3.14t".
+          Empty keeps the driver's default.
+        required: false
+        type: string
+        default: ''
+      static-analysis-python-version:
+        description: Interpreter for ci_static_analysis.sh. Empty keeps the driver's default.
+        required: false
+        type: string
+        default: ''
+      docs-python-version:
+        description: Interpreter for ci_build_docs.sh. Empty keeps the driver's default.
+        required: false
+        type: string
+        default: ''
+      packaging-python-version:
+        description: Interpreter for ci_packaging.sh. Empty keeps the driver's default.
+        required: false
+        type: string
+        default: ''
+      deploy-docs:
+        description: >-
+          Whether to FTP-sync the built docs. Set false to build docs without
+          publishing (and then the FTP secrets are not required).
+        required: false
+        type: boolean
+        default: true
+      docs-artifact-path:
+        description: Directory the docs build produces, relative to the workspace.
+        required: false
+        type: string
+        default: ./docs/build/html/
+    secrets:
+      GHCR_PAT:
+        description: Token used to pull the build image from ghcr.
+        required: true
+      FTP_SERVER:
+        description: Docs deploy target host.
+        required: false
+      FTP_USERNAME:
+        description: Docs deploy user.
+        required: false
+      FTP_PASSWORD:
+        description: >-
+          Docs deploy password. Callers map their own secret name onto this -
+          Orchestr-ANT-ion stores it as PW, WebDavClient as PASSWORD. Renaming
+          either repo's secret is not required.
+        required: false
+
+jobs:
+  build:
+    name: ${{ matrix.arch }}
+    env:
+      CONTAINER_IMAGE: ${{ inputs.container-image }}
+    strategy:
+      # One arch failing should not hide the other's result.
+      fail-fast: false
+      matrix:
+        include:
+          - runs_on: ubuntu-24.04
+            arch: x64
+            platform: linux/amd64
+          - runs_on: ubuntu-24.04-arm
+            arch: arm64
+            platform: linux/arm64
+
+    runs-on: ${{ matrix.runs_on }}
+
+    steps:
+      # ContainerHub's shared prologue: reclaim runner disk, check out, log in
+      # to ghcr and pull with retries. Replaces four hand-rolled steps including
+      # a copy of the retry loop, so the retry count and timeout live in one
+      # place for every repo instead of drifting per workflow.
+      - name: Prepare CI host
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/prepare-linux-ci-host@main
+        with:
+          image: ${{ env.CONTAINER_IMAGE }}
+          registry-username: Kataglyphis
+          registry-password: ${{ secrets.GHCR_PAT }}
+          fetch-depth: '1'
+          submodules: recursive
+
+      - name: Python static analysis
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        with:
+          image: ${{ env.CONTAINER_IMAGE }}
+          extra-args: --platform ${{ matrix.platform }}
+          script: >-
+            bash -lc "bash scripts/linux/ci_static_analysis.sh
+            '${{ matrix.arch }}' '${{ inputs.static-analysis-python-version }}'"
+
+      - name: Run Python tests
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        with:
+          image: ${{ env.CONTAINER_IMAGE }}
+          extra-args: --platform ${{ matrix.platform }}
+          script: >-
+            bash -lc "bash scripts/linux/ci_tests.sh
+            '${{ inputs.package-name }}' '${{ inputs.test-python-versions }}'"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: test-reports-${{ matrix.runs_on }}
+          path: docs/test_results/
+
+      - name: Build Docs
+        if: ${{ matrix.arch == 'x64' }}
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        with:
+          image: ${{ env.CONTAINER_IMAGE }}
+          extra-args: --platform ${{ matrix.platform }}
+          script: >-
+            bash -lc "bash scripts/linux/ci_build_docs.sh
+            '${{ inputs.docs-python-version }}'"
+
+      # The docs are built as root inside the container; the deploy action reads
+      # them from the host.
+      - name: Fix permissions for doc directory
+        if: ${{ matrix.arch == 'x64' }}
+        run: |
+          chmod -R 755 "${{ inputs.docs-artifact-path }}"
+          ls -la "${{ inputs.docs-artifact-path }}"
+
+      - name: 📂 Sync files to domain
+        if: ${{ matrix.arch == 'x64' && inputs.deploy-docs }}
+        uses: SamKirkland/FTP-Deploy-Action@110f9186c050f71550953127052e77650219c287 # v4.4.0
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ${{ inputs.docs-artifact-path }}
+
+      - name: Packaging application
+        uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/run-in-linux-container@main
+        with:
+          image: ${{ env.CONTAINER_IMAGE }}
+          extra-args: --platform ${{ matrix.platform }}
+          script: >-
+            bash -lc "bash scripts/linux/ci_packaging.sh
+            '${{ inputs.packaging-python-version }}'"
+
+      - name: Fix permissions for dist directory
+        run: |
+          sudo chown -R "$USER:$USER" "${{ github.workspace }}/dist"
+          sudo chmod -R 755 "${{ github.workspace }}/dist"
+          ls -la "${{ github.workspace }}/dist/"
+
+      - name: Verify dist directory
+        run: |
+          echo "Checking for wheel files:"
+          ls -la "${{ github.workspace }}/dist/"
+          find "${{ github.workspace }}/dist/" -name "*.whl"
+
+      - name: Upload packages (source/binary only)
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: packages-linux-${{ matrix.runs_on }}-source-and-binary
+          path: ${{ github.workspace }}/dist/
+          if-no-files-found: error
