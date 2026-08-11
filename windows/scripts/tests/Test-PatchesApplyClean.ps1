@@ -104,7 +104,11 @@ try {
         $repoKey = Split-Path (Split-Path $p.FullName -Parent) -Leaf
         $spec = $repoMap[$repoKey]
         if (-not $spec) {
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = '?'; Status = 'SKIP (no repo mapping)' })
+            # FAIL, not SKIP (backlog item 33, review find 2026-08-10): a new
+            # patch directory added without a $repoMap entry used to escape
+            # this gate (and CI's patch-drift job) silently - the exact
+            # rot-goes-unnoticed class this tool exists to prevent.
+            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = '?'; Status = 'FAIL (no repo mapping - add it to $repoMap)' })
             continue
         }
         $targets = Get-PatchTargetPaths -PatchFile $p.FullName

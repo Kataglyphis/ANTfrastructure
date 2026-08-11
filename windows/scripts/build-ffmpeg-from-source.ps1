@@ -166,6 +166,35 @@ if ($ffmpegVersionNumber -match '^\d+(\.\d+)*$') {
     Write-Warning "FFMPEG_VERSION '$FfmpegVersion' is not a release number; .pc Version fields may come out empty."
 }
 
+# ── lib*.version files (n9.0 mechanics): since n9.0 every .pc gets its
+# Version from a GENERATED libX/libX.version file (library.mak rule ->
+# ffbuild/libversion.sh awk/eval chain), and under this Git-Bash port that
+# chain produced empty MAJOR/MINOR/MICRO (run 14, 2026-08-11: every
+# installed .pc said 'Version: ..' and the guard below refused - correctly).
+# The values are static facts of the pinned source, so write the files
+# ourselves: LF + no BOM (make -includes them for LIBVERSION/LIBMAJOR = DLL
+# naming!), mtime newer than the headers so library.mak never re-runs the
+# fragile generator. Format mirrors libversion.sh's output exactly.
+$ffLibs = 'avutil', 'avcodec', 'avformat', 'avdevice', 'avfilter', 'swscale', 'swresample', 'postproc'
+foreach ($ffLib in $ffLibs) {
+    $ffLibDir = Join-Path $srcDir "lib$ffLib"
+    if (-not (Test-Path $ffLibDir)) { continue }
+    $ffLibText = ''
+    foreach ($h in @((Join-Path $ffLibDir 'version_major.h'), (Join-Path $ffLibDir 'version.h'))) {
+        if (Test-Path $h) { $ffLibText += [System.IO.File]::ReadAllText($h) + "`n" }
+    }
+    $ffLibUc = "LIB$($ffLib.ToUpper())"
+    $ffMaj = if ($ffLibText -match "#define\s+${ffLibUc}_VERSION_MAJOR\s+(\d+)") { $Matches[1] } else { '' }
+    $ffMin = if ($ffLibText -match "#define\s+${ffLibUc}_VERSION_MINOR\s+(\d+)") { $Matches[1] } else { '' }
+    $ffMic = if ($ffLibText -match "#define\s+${ffLibUc}_VERSION_MICRO\s+(\d+)") { $Matches[1] } else { '' }
+    if (-not ($ffMaj -and $ffMin -and $ffMic)) {
+        throw "lib$ffLib version macros not found in version(.major).h (upstream layout changed?) - refusing to write a broken .version file"
+    }
+    $ffVerContent = "lib${ffLib}_VERSION=$ffMaj.$ffMin.$ffMic`nlib${ffLib}_VERSION_MAJOR=$ffMaj`nlib${ffLib}_VERSION_MINOR=$ffMin`n"
+    [System.IO.File]::WriteAllText((Join-Path $ffLibDir "lib$ffLib.version"), $ffVerContent)
+    Write-Host "Wrote lib$ffLib.version = $ffMaj.$ffMin.$ffMic (bypasses the libversion.sh awk chain)"
+}
+
 # Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment
 $scoopShims = "$env:USERPROFILE\scoop\shims"

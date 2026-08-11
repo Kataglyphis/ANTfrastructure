@@ -58,12 +58,19 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # The \logs subdirectory (backlog #23) keeps postmortems out of the
 # GC-capped cache root (shared with build-onnx's persistent ninja log);
 # Initialize-SourceBuildEnvironment creates it before the server spawns.
+# SCCACHE_IDLE_TIMEOUT=0 (2026-08-10 night): the default 600 s idle exit
+# killed the server mid-vertex during the long bare-CUDA tail (>10 min with
+# zero C/CXX requests), so the end-of-build stats emission talked to a
+# FRESH server and reported all-zero counters (runs 12+13) - measurement
+# poison, and the async webdav write-through tail dies with the server too.
+# The RUN step's process tree ends with the step, so 0 leaks nothing.
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
     SCCACHE_DIR="C:\sccache" `
     SCCACHE_CACHE_SIZE="15G" `
-    SCCACHE_ERROR_LOG="C:\sccache\logs\sccache-error.log"
+    SCCACHE_ERROR_LOG="C:\sccache\logs\sccache-error.log" `
+    SCCACHE_IDLE_TIMEOUT="0"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 

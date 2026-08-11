@@ -300,6 +300,41 @@ $fetchContentCmake = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
     $c -replace 'MINJA_EXAMPLE_ENABLE\b', 'MINJA_EXAMPLE_ENABLED'
 })
 
+# v0.15.0 UPSTREAM CMAKE STALENESS #1 (run 15, 2026-08-11): the cmake proto
+# list (cmake/packages/litert_lm/CMakeLists.txt:55-61) still enumerates only
+# the v0.13-era protos, but 0.15.0 sources include the generated headers of
+# FOUR newer runtime/proto files (model_resources.h -> embedding_metadata.pb.h
+# was the first to die; the bazel BUILD has all of them). Their cmake lane
+# clearly is not CI-covered at this tag. Append the missing protos after the
+# token.proto line.
+$llmPkgCmake = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
+[void](Edit-SourceFile -Path $llmPkgCmake -Marker 'embedding_metadata\.proto' -Description 'litert_lm CMakeLists: add the four 0.15.0 protos missing from the stale cmake list' -WarnMessage 'litert_lm proto-list anchor (token.proto) not found; embedding_metadata.pb.h will be missing at compile' -Transform {
+    param($c)
+    $llmAnchor = '"${LITERTLM_PROJECT_ROOT}/runtime/proto/token.proto"'
+    $llmAdd = $llmAnchor + "`n" +
+    '  "${LITERTLM_PROJECT_ROOT}/runtime/proto/embedding_metadata.proto"' + "`n" +
+    '  "${LITERTLM_PROJECT_ROOT}/runtime/proto/embedding_model_type.proto"' + "`n" +
+    '  "${LITERTLM_PROJECT_ROOT}/runtime/proto/executor_metadata.proto"' + "`n" +
+    '  "${LITERTLM_PROJECT_ROOT}/runtime/proto/litert_lm_metrics.proto"'
+    $c.Replace($llmAnchor, $llmAdd)
+})
+
+# v0.15.0 UPSTREAM CMAKE STALENESS #2: their absl pin (cmake/packages/absl/
+# absl.cmake GIT_TAG 20260107.1) predates absl/status/status_macros.h, which
+# 0.15.0's OWN generated sources include (litertlm_read.cc,
+# model_type_utils.cc -> fatal error: file not found; the header exists from
+# 20260526.0 on - verified against abseil-cpp tags). Bump their pin to the
+# repo-wide ABSEIL_VERSION so litert_lm's inner code compiles against the
+# absl its bazel build actually expects. Scope: absl_external only (tflite/
+# litert externals fetch their own absl and are untouched).
+$abslPkgCmake = Join-Path $SourceDir 'cmake\packages\absl\absl.cmake'
+$abseilPin = Get-SourceBuildVersion -EnvironmentVariables @('ABSEIL_VERSION') -DefaultValue '20260526.0'
+$abseilPinMarker = [regex]::Escape($abseilPin)
+[void](Edit-SourceFile -Path $abslPkgCmake -Marker $abseilPinMarker -Description "absl.cmake: bump stale upstream absl pin 20260107.1 -> $abseilPin (status_macros.h)" -WarnMessage 'absl.cmake GIT_TAG anchor not found; status_macros.h includes will fail' -Transform {
+    param($c)
+    $c -replace '(GIT_TAG\s*\r?\n\s*)20260107\.1', ('${1}' + $abseilPin)
+})
+
 # Inline patch: fix the Flatbuffers schema-compile step for NATIVE Windows builds.
 # LiteRT-LM's CMakeLists.txt unconditionally sets LITERTLM_HOST_FLATC to a "host
 # prebuild" path, and cmake/packages/flatbuffers/flatbuffers.cmake uses it whenever

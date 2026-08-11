@@ -1,5 +1,106 @@
 # Changelog
 
+## 2026-08-11 (morning) - run 15 fell in media-litert: LiteRT-LM v0.15.0's cmake lane is DOUBLY stale upstream; two shims added, run 16 launched
+
+- media-litert died at 1757 s with two independent missing-header classes,
+  both root-caused to UPSTREAM cmake staleness at v0.15.0 (their cmake lane
+  clearly lags their bazel truth and is not CI-covered): (1) the proto list
+  in cmake/packages/litert_lm/CMakeLists.txt enumerates only the v0.13-era
+  protos - embedding_metadata/embedding_model_type/executor_metadata/
+  litert_lm_metrics are MISSING while 0.15.0 sources include their pb.h
+  (verified against the tag's runtime/proto listing); (2) their absl pin
+  20260107.1 predates absl/status/status_macros.h, which 0.15.0's own
+  sources include (header exists from 20260526.0 - verified against
+  abseil-cpp tags). Fixes in build-litert-lm-from-source.ps1, port style:
+  proto-list append after token.proto + absl GIT_TAG bump to the repo-wide
+  ABSEIL_VERSION (scope: absl_external only; tflite/litert fetch their own).
+  Fourth genuine upstream bug of the night (sccache, opencv, 2x litert-lm) -
+  upstreamable to google-ai-edge/LiteRT-LM.
+
+## 2026-08-11 (morning) - run 15: MEDIA-CORE FULLY GREEN for the first time since the 2026-08-03 bump
+
+- The whole media-core branch is green end-to-end: ONNX (5th consecutive
+  bare-CUDA link), OpenCV (2nd green, patches 001-004), **FFmpeg n9.0
+  (.version pre-generation PROVEN: configure 73 s, .pc guard passed,
+  vertex committed)**, and **ONNX GenAI 0.15.2 (Neuland, green in 339 s;
+  CUDA 80/86/89/90, nvcc bare via the opt-in gate)**. Remaining chain:
+  media-litert + media-tvm branches, GStreamer merge, torch, final.
+- New P0 discovered along the way (**backlog item 34**): stage re-exports
+  mint fresh manifest digests every run (zero digest overlap between runs
+  14/15 even for byte-identical base/sdk/toolchain), so downstream FROMs
+  cache-miss chain-wide — the partitioned chain currently has NO cross-run
+  caching. Fix directions recorded (SOURCE_DATE_EPOCH clamp / skip-export
+  on hit / FROM-by-digest). Plus item 35: a transient ~120-min stall in
+  the ffmpeg stage's VsDevCmd/scoop section (self-recovered, bracketed in
+  the log).
+
+## 2026-08-11 (night) - run 14: OpenCV GREEN FOR THE FIRST TIME (patch 004 proven); FFmpeg n9.0 died in the NEW .version machinery -> PowerShell pre-generation; run 15 launched
+
+- **OpenCV vertex COMMITTED green** - first time ever since the 5.0.0 bump:
+  the full patch cascade 001 (cmake) -> 002 (mlas C++) -> 003 (mlas skip,
+  proven in run 13) -> 004 (dnn/ORT wchar, proven this run: compile sailed
+  past run 13's 435 s death point, 1862 TUs, ninja + link complete).
+- **Run-14 stats sealed the caching mystery** (dossier 2.7): 1498 (ONNX) /
+  1862 (OpenCV) compile requests, 0 hits, and **write errors == misses —
+  EVERY cache write of every real vertex fails**, both levels. The whole
+  caching apparatus has been a silent no-op all along. Config-matrix probes
+  exonerate every single-compile combination INCLUDING multilevel+cache-
+  mount, leaving concurrency or mount history; the chain's own error log
+  (1498 plain-text lines on the -2 mount) is the final witness, readable
+  once the mount unlocks.
+- **FFmpeg n9.0 (Neuland) died at our own .pc guard - correctly**: since
+  n9.0, .pc Version fields come from GENERATED libX.version files
+  (library.mak -> ffbuild/libversion.sh awk/eval); under the Git-Bash port
+  that chain emitted empty MAJOR/MINOR/MICRO -> 'Version: ..' in every .pc
+  (the guard existed because the OLD version of this failure shipped
+  silently once). Fix: build-ffmpeg-from-source.ps1 pre-generates all eight
+  libX/libX.version files from the version(.major).h macros (LF, no BOM -
+  make -includes them for LIBVERSION/LIBMAJOR = DLL naming), hard-throwing
+  if the macros are not found. Run 15 resumes at FFmpeg.
+
+## 2026-08-11 (early) - run 13: patch 003 PROVEN (MLAS passed), OpenCV died one layer deeper in an UPSTREAM OpenCV bug -> patch 004; run 14 launched
+
+- Run 13's OpenCV vertex applied 003 cleanly and got PAST the vendored MLAS
+  entirely (run 12's killer) - died at 435 s in
+  `modules/dnn/src/net_impl_backend.cpp:99`: dnn's ORT profiling call
+  passes `char*` to `Ort::SessionOptions::EnableProfiling`, but ORTCHAR_T
+  is `wchar_t` on Windows. **Genuine upstream OpenCV 5.0.0 bug**: the
+  model-path call four lines below is properly `#ifdef _WIN32`-widened,
+  the profiling call is not - upstream Windows CI never compiles dnn with
+  ORT enabled. **004-dnn-ort-profiling-wchar.patch** mirrors the existing
+  widening (generated via the git-diff method, apply-check green;
+  upstreamable to opencv/opencv as-is). Patch gate 12/12 OK, lint clean;
+  run 14 resumes at OpenCV (ONNX again cached-green from run 13's commit).
+- Also this run: ONNX linked green bare a SECOND time (runs 5/12/13 vs
+  wrapped 10/11 - the attribution A/B is now 5 runs deep).
+
+## 2026-08-11 (early) - fault-attribution round: CUDA class sealed as sccache-side; L2 mystery attributed to OUR dufs task lifecycle; idle-timeout stats artifact fixed
+
+- **Attribution dossier** (`out/sccache-fault-attribution.md`), built on the
+  owner's challenge "beweise, dass der Fehler bei mir oder bei sccache
+  liegt": Class 1 (nvcc crash + silent instantiation loss) = sccache-side
+  beyond reasonable doubt (7/8 evidence rows closed; only the internal
+  mechanism awaits the exact-TU replay). Class 2 (L2 never fed) = sccache
+  EXONERATED by a three-phase probe FROM the chain image: raw PUT/GET OK,
+  webdav-only write OK (+1 remote), multilevel READ+backfill OK (accidental
+  cross-phase hit - comment nonces don't survive preprocessing, round-2
+  nonce moved into a symbol), multilevel WRITE-THROUGH OK (+1 remote,
+  +1 local, 0 errors). Leading OUR-side theory (2.8): dufs is an ONLOGON
+  session-bound task - alive at launch (endpoint gate passes), killable by
+  a mid-run logoff, and multilevel fails OPEN (policy l0) with zero L2
+  entries as the only symptom. Seal pending: error-log timestamps from the
+  cache mount after run 13. Durable fix queued: dufs as a
+  session-independent service + single-instance guard.
+- **All-zero end-of-vertex stats (runs 12+13) root-caused as a measurement
+  artifact**: the build server idle-exits (600 s default) during the long
+  bare-CUDA tail, so the stats query talks to a fresh server.
+  `SCCACHE_IDLE_TIMEOUT=0` baked into both media Dockerfiles - run 14
+  delivers the first REAL per-vertex counters (and the async write-through
+  tail no longer dies with the server).
+- Run 13: ONNX vertex GREEN again (second consecutive bare-CUDA link);
+  OpenCV solve running with the full new closure incl. patch 003 - MLAS
+  verdict pending.
+
 ## 2026-08-10 (night, review round 2) - two-agent audit over the night's diff: 1 confirmed design flaw + 3 plausible bugs fixed, 2 doc/config gaps closed
 
 - **CUDA launcher flipped to OPT-IN at the wiring site** (confirmed find:

@@ -55,6 +55,12 @@ Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\002-mlas-clangcl-forc
 # finds no GAS there. 003 skips MLAS on Windows -> dnn's built-in SGEMM
 # (inference in this stack runs on ONNX Runtime/DirectML anyway).
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\003-mlas-windows-skip.patch') -SourceDir $mainSrc -Description 'opencv: mlas Windows skip (GAS-only kernels)' -IgnoreWhitespace
+# Run-13 lesson (2026-08-10): dnn's ORT profiling call passes char* to
+# Ort::SessionOptions::EnableProfiling, but ORTCHAR_T is wchar_t on Windows
+# (net_impl_backend.cpp:99) - the model-path call right below it IS guarded,
+# this one is not; upstream Windows CI never builds dnn with ORT enabled.
+# Genuine upstream bug, upstreamable as-is.
+Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\004-dnn-ort-profiling-wchar.patch') -SourceDir $mainSrc -Description 'opencv: dnn ORT profiling wchar_t path' -IgnoreWhitespace
 if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
 }

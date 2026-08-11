@@ -127,7 +127,15 @@
     # the disk is mostly buildkit's, and on this host ~68 % is other content.
     # Size against FREE space, not total.
     reservedSpace = "40GB"
-    maxUsedSpace  = "225GB"   # ~reservedSpace * 1.5, per the note above
+    # 225GB -> 400GB (2026-08-11, backlog item 34): one night's vertex churn
+    # (several ONNX/OpenCV generations at tens of GB each) exceeded 225GB,
+    # so GC evicted the OLDEST snapshots = the base/sdk/toolchain spine
+    # between driver runs -> every run re-solved the prefix (73/35 min
+    # instead of seconds) and the re-built layers' fresh digests cascaded
+    # cache-misses through every downstream FROM. Free-space doctrine holds:
+    # C: had ~790 GB free at edit time (the "~637 GB other content" figure
+    # above is stale); minFreeSpace still backstops if that changes.
+    maxUsedSpace  = "400GB"
     # 30GB -> 60GB (2026-08-07): 30 GB left GC no runway and forced two manual
     # prunes mid-chain. Still far below reservedSpace, so the VS-class spine
     # this tier protects is untouched by the change.
@@ -137,5 +145,7 @@
   [[worker.containerd.gcpolicy]]
     all = true
     reservedSpace = "40GB"   # keep in step with tier 1 (see its note)
-    maxUsedSpace  = "240GB"
+    # 240GB -> 450GB (2026-08-11, item 34): stays above the mid tier's new
+    # 400GB; minFreeSpace remains the safety backstop.
+    maxUsedSpace  = "450GB"
     minFreeSpace  = "25GB"

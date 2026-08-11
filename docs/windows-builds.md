@@ -65,6 +65,7 @@ Every inline substitution in a build script carries a `# Inline patch (kept inli
 | OpenCV | `001-cmake-clang-cl-compat.patch` | `CMakeLists.txt` + `cmake/FindONNX.cmake` | CMP0146/CMP0148 OLD→NEW + clang-cl/CUDA detection compat. REGENERATED against 5.0.0 on 2026-08-10 (5.0.0 dropped the `CMP0218` block the old hunk context named; the patch is applied with NO fallback, so drift here throws an hour into media-core — run `Test-PatchesApplyClean.ps1` after every pin bump) |
 | OpenCV | `002-mlas-clangcl-force-include.patch` | `3rdparty/mlas/CMakeLists.txt` | OpenCV 5.0.0's bundled MLAS treats clang-cl as GNU-Clang and passes the GNU pair `-include` + `cstring`, which the CL dialect parses as an INPUT FILE (`clang-cl: error: no such file or directory: 'cstring'`, first mlas TU). Adds an MSVC-frontend branch (`CMAKE_CXX_COMPILER_FRONTEND_VARIANT`) using `/FIcstring` + `/w`. The older inline `<cstring>` source-prepend loop in build-opencv-from-source.ps1 fixes only the CONTENT, not the broken flags |
 | OpenCV | `003-mlas-windows-skip.patch` | `3rdparty/mlas/CMakeLists.txt` | Skip the vendored MLAS on Windows: its kernels are GAS/ELF-only (`.type sym,@function`, no MASM port) and clang-cl IS a working GAS assembler, so the `check_language(ASM)` guard that saves MSVC does not fire — the `.S` files then die in the integrated assembler ("expected absolute expression", run 12, 2026-08-10). dnn falls back to its built-in SGEMM; inference runs on ONNX Runtime/DirectML anyway |
+| OpenCV | `004-dnn-ort-profiling-wchar.patch` | `modules/dnn/src/net_impl_backend.cpp` | UPSTREAM BUG (5.0.0, run-13 find): dnn's ORT `EnableProfiling` passes `char*` but `ORTCHAR_T` is `wchar_t` on Windows — the model-path call right below is `#ifdef _WIN32`-widened, this one was not (upstream Windows CI never builds dnn with ORT). Issue draft: `out/upstream-issue-opencv-ort-wchar.md` |
 | OpenCV (contrib) | `001-cudev-windows-llp64.patch` | `cudev/.../common.hpp` | Add `ulong`/`longlong`/`ulonglong` typedefs for Windows LLP64 |
 
 `ffmpeg/makedef` is **not** a patch — it is a whole-file replacement script staged over FFmpeg's `makedef` (a byte swap, not a diff), so it is not in the table above.
@@ -1953,13 +1954,37 @@ edit costs one ONNX-vertex rebuild, so land them together:
 | **W4 base-tier batch** | 27 (+ anything else touching base closure) | base — FULL chain rebuild; batch with the next planned base bump | M | ★ |
 | **W5 process/policy** | 0b (CI half DONE — patch-drift job; human bump-protocol half stands), 28 (measurement RUNNING: per-process fleet sampler captured run 12's ONNX compile → `out\build-logs\onnx-tu-memory-samples-20260810.csv`; analyze, then split job pools), 31 (needs the registry-creds decision) | repo/CI policy + measurements | M | ★★★ |
 
-OPEN as of 2026-08-10 night: **27** (base-tier window), **28** (analyze the
+OPEN as of 2026-08-10 night: **NEW 34 [M·★★★, P0] — the chain has NO
+cross-run caching; MECHANISM IDENTIFIED (2026-08-11 ~08:15): snapshot GC
+eviction under an undersized tier-2 budget, NOT export nondeterminism.**
+Evidence chain: (i) prefix stages rebuild every driver run (73/35 min
+instead of seconds, zero manifest-digest overlap between runs 14/15);
+(ii) back-to-back canary solves show digests ARE stable on cache-hit
+re-export (with AND without SOURCE_DATE_EPOCH) — so the exporter is
+deterministic given cached snapshots; (iii) the run-over-run delta is the
+hours of vertex churn between runs: tier 2 (buildkitd.toml, `keepDuration
+720h, maxUsedSpace 150GB`) is far below one night's vertex fleet
+(multiple ONNX/OpenCV generations at tens of GB each), so GC evicts the
+OLDEST snapshots = the prefix stages; the re-solved layers carry fresh
+internal file timestamps → new blobs → new digests → downstream FROMs
+miss, cascade. `BUILD_DATE`/`VCS_REF` stamps are exonerated (they reach
+only torch/final). FIX (elevated window, bundle with the W0 env restore):
+raise tier-2 maxUsedSpace 150→350GB and tier-3 240→450GB in
+windows/buildkitd.toml (930 GB disk, ~790 free — satisfiable; keep the
+2026-08-08 invariants), redeploy via apply-buildkitd-gcpolicy.ps1.
+SIDE-FINDING from the fix research: `rewrite-timestamp=true` on the
+Windows image exporter CRASHES mid-finalize and poisons the layer chain —
+never use it here (see the probe-chain cleanup pending-action). Item-34 fix research (2026-08-11 ~08:00): **`rewrite-timestamp=true` on the Windows image exporter is DANGEROUS** — it crashed mid-finalize (`hcsshim::ActivateLayer ... process cannot access the file`) and left a POISONED SNAPSHOT in the probe's layer chain (same snapshot id failed identically on the next two solves; a unique-layer discriminator solve was green, so the damage is chain-local, not a host wedge). ⚠ Until that snapshot is pruned (`buildctl prune` of the probe refs / worst case reboot), **probe-build-copy.ps1 will return a FALSE RED on this host** — do not trust a probe verdict before the cleanup. Epoch-only canary (no rewrite-timestamp) running separately. **NEW 35 [observe·★]**: run-15's ffmpeg stage stalled
+for ~120 min between `Enter-VsDevCmdEnvironment`'s vswhere-fallback line
+(15 s) and the awk-replacement line (7216 s) — a section that runs in
+seconds normally (run 14: whole prefix 177 s; no scoop-install messages,
+so both install branches were skipped). Smells like a stuck TCP/timeout
+(VsDevCmd first-run or scoop probe); transient, self-recovered, build
+continued green. If it recurs, wrap the section's candidates in explicit
+short timeouts. Also **27** (base-tier window), **28** (analyze the
 captured samples → pool split), **31** (owner decision), **0b human half**
-(bump protocol), **33 [S·★]** (review find, 2026-08-10 night audit):
-`Test-PatchesApplyClean.ps1` gives patches in a directory WITHOUT a
-`$repoMap` entry only a `SKIP (no repo mapping)` — a future patch dir
-added without a mapping silently escapes the gate (incl. CI's patch-drift
-job); make unmapped NON-empty patch dirs a FAIL. Everything else in this
+(bump protocol), **33** *(DONE 2026-08-11 morning: unmapped patch dirs now FAIL with
+"add it to $repoMap"; current tree 12/12 mapped+OK.)* Everything else in this
 backlog is closed.
 Done-when held throughout: gates green after every sub-batch (lint 141
 files 0/0 incl. the new AST-trap pass, 457/457 tests), behavior changes in
@@ -1974,6 +1999,14 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
   Multi-String + `Restart-Service buildkitd` — ONLY between chain runs.
   **Since 2026-08-10 night this is ENFORCED: `Assert-BuildkitdStepLogEnv`
   refuses to launch the BK driver until restored (0a).**
+- **Make dufs session-independent** (attribution dossier 2.8, 2026-08-10
+  night): today it is an ONLOGON scheduled task bound to the RDP session —
+  alive at driver-launch time (so Assert-SccacheEndpoint passes), killable
+  by a mid-run logoff/lock, and every WebDAV write then fails OPEN
+  (multilevel policy `l0`) with zero L2 entries as the only symptom.
+  Convert to a Windows service or ONSTART/SYSTEM task + single-instance
+  guard (two dufs.exe were live on 2026-08-10). Evidence:
+  `out/sccache-fault-attribution.md`.
 - **Post the sccache upstream issue**: `out/upstream-issue-sccache-nvcc.md`
   now carries BOTH failure classes — the deterministic server death on the
   fused_moe launchers (±2 s across two runs) AND the silent miscompilation
@@ -2234,17 +2267,18 @@ guards the context; the ENV/ARG mirrors are the documented deliberate ones.
     per-TU-class peaks, then split into heavy/light ninja job pools or
     per-stage MemGBPerJob. Potentially the single largest wall-clock win
     left in the chain.
-    *(MEASURED 2026-08-10 night, run 12, 1453 samples @15 s
-    (`out\build-logs\onnx-tu-memory-samples-20260810.csv`): peak per-TU
-    WorkingSet cicc 951 MB / clang-cl 893 MB / ptxas 827 MB — nowhere near
-    4 GB; peak CONCURRENT fleet total 3.9 GB across 20 processes at `-j9`.
-    If that holds for the full vertex, MemGBPerJob≈1-2 is safe → 19-32
-    jobs instead of 9, plausibly ONNX 76 min → half. CAVEAT before
-    shipping: the window covered only the LAST ~26 min of the ONNX compile
-    (sampler armed mid-run) — the early flash-attention/fused_moe region is
-    unsampled. Next step: arm the sampler at chain launch for one full
-    vertex, confirm the peak class, then lower MemGBPerJob for the ONNX
-    call site only.)*
+    *(MEASURED COMPLETE 2026-08-11: run-13 full window, 7821 samples @15 s
+    (`run13-tu-memory-samples.csv`) covering toolchain build + the ENTIRE
+    ONNX vertex incl. the early flash-attention region + the OpenCV
+    attempt; corroborated by run-12's 1453-sample tail window. Peak
+    per-process WorkingSet: cicc 998 MB / clang-cl 989 / cudafe++ 944 /
+    ptxas 830 — NO process reaches 1 GB; peak concurrent fleet total
+    5.5 GB across 21 processes at `-j9`. READY TO LAND: `-MemGBPerJob 2`
+    at the build-onnx/build-opencv call sites → 19 jobs (peak assumption
+    still ~2× measured; extrapolated fleet ≈ 11-12 GB against the 39 GB
+    budget). DELIBERATELY NOT hot-landed mid-run-14: media-closure edit =
+    one more ONNX rebuild, so bundle it with the NEXT closure window per
+    the standing cache-tier rule.)*
 29. *(DONE 2026-08-10 night: the tag-minting diagnostics now share the
     `diag-` prefix (`diag-probe-build-copy[-heavy]`, docker lane
     `local/test:diag-probe-build-copy`; the A/B mints nothing since the #5
