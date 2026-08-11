@@ -726,6 +726,16 @@ linux/scripts/02-toolchain/python/ci_*.sh   Python CI helpers (tests, static
 linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
                          nerdctl/buildkit prerequisites); intentionally not
                          wired into CI or builds
+linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
+                         assembly — consumer surface. Called from
+                         Kataglyphis-RustProjectTemplate's
+                         .github/workflows/rust_ubuntu24_04.yml release job.
+                         Deleted by the 2026-08-08 orphan sweep as
+                         "zero-reference" and restored 2026-08-11: the sweep
+                         searched only THIS repo, so a consumer's CI lane was
+                         broken silently. Grep the consumer repos before
+                         deleting anything under lib/, rust/, python/ or
+                         06-packaging/.
 windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
                          cargo-retry.cmd (transient file-lock retry wrapper),
                          certificates/ (MSIX cert generation + WebDAV
