@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-11 - shared config: canonical was the stale copy, and -Ignore never worked via -File
+
+Resolving Kataglyphis-Cpp-Inference's four-file drift report turned the
+conclusion around: it was not deviating, it was AHEAD, and three canonical
+files were wrong for every C++ consumer.
+
+- `.clang-format`: `Standard: c++20` -> `c++23`. BeschleunigerBallett sets
+  `CMAKE_CXX_STANDARD 23`; canonical had never been updated.
+- `.pre-commit-config.yaml`: the clang-format `files:` regex omitted `.ixx`, so
+  BeschleunigerBallett's **63 module interface units were never formatted**.
+- `.clang-tidy`: `misc-include-cleaner` disabled - noise on module-using code.
+
+All three written out to BeschleunigerBallett, which is back in sync.
+Cpp-Inference keeps three genuine overrides (documented in
+`shared/config/README.md` with the reason for each): its `.clang-tidy` answers
+the "clang-tidy sees `import` without BMIs" problem by suppressing
+`clang-diagnostic-error` where BeschleunigerBallett answers it by skipping
+module TUs entirely, its `gcovr.cfg` excludes follow its layout, and its
+pre-commit runs extra hooks. Its `.clang-format` is no longer an override.
+
+**`-Ignore` was broken via `pwsh -File`** - the invocation the README itself
+shows. Under `-File` every argument is a plain string, so `-Ignore a,b,c` bound
+as ONE element `"a,b,c"`, matched no file name, and the documented escape hatch
+silently did nothing. It now splits comma-separated values, so `-File` and
+`-Command` behave identically, and an entry that names no managed file throws
+instead of being quietly dropped.
+
 ## 2026-08-11 - WindowsOnnx.Common restored (silently-lost consumer dependency)
 
 Widening the sweep to every Kataglyphis repo turned up a seventh consumer -
