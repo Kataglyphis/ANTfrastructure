@@ -67,7 +67,22 @@ for V in $PY_VERSIONS; do
 
   uv_venv_activate "$VENV_DIR"
 
-  uv_sync_project --no-wxpython
+  # An EXPERIMENTAL interpreter is allowed to fail its dependency sync without
+  # taking the matrix down - that is the whole point of listing it separately.
+  # Venv CREATION above was already guarded this way; the sync was not, so a
+  # free-threaded build with one unbuildable wheel still failed the whole run.
+  # Picked up from Kataglyphis-Orchestr-ANT-ion, which had added the guard to
+  # its private copy of this script (2026-08-11).
+  if is_experimental_python "$V"; then
+    if ! uv_sync_project --no-wxpython; then
+      warn "[experimental] Failed to sync dependencies for $V; continuing"
+      uv_venv_deactivate
+      uv_venv_remove "$VENV_DIR"
+      continue
+    fi
+  else
+    uv_sync_project --no-wxpython
+  fi
 
   pytest_args=(
     tests/unit -v

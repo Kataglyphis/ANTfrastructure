@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-11 - the Python ci_*.sh drivers were unrunnable; both consumers had reimplemented them
+
+`02-toolchain/python/ci-common.sh` sourced `../01-core/python_uv.sh`. That file
+sits one level deeper than `02-toolchain/bootstrap.sh`, where `../01-core` IS
+correct, so it resolved to `02-toolchain/01-core/python_uv.sh` - a path that has
+never existed. Every driver in that directory therefore died on its first helper
+call with `detect_workspace: command not found`.
+
+Which explains the duplication it was hiding: Kataglyphis-Orchestr-ANT-ion and
+Kataglyphis-WebDavClient each carried a full local reimplementation of all four
+drivers - 339 and 383 lines - because the shared ones could not run. Both now
+delegate; 722 lines became 120.
+
+Also picked up from the consumer copies while collapsing them:
+
+- `ci_tests.sh` now guards the dependency SYNC for experimental interpreters the
+  way it already guarded venv creation. A free-threaded build with one
+  unbuildable wheel used to fail the whole matrix.
+
+Not upstreamed, per the two-consumer rule: WebDavClient's patchelf install (one
+consumer) stays in its wrapper.
+
 ## 2026-08-11 (midday) - run 17: shim 3 proven (litert @bazel-truth fetched, API-skew gone), configure died on litert's UNCONDITIONAL example projects -> shim 4; run 18 launched
 
 - Run 17 (survived a harness restart mid-flight; driver kept orchestrating):
