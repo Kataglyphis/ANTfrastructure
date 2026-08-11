@@ -190,25 +190,17 @@ Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setup
 # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
 $cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization /clang:-Wno-unused-value"
 
-# CUDA launcher OFF - FINAL for this sccache pin (2026-08-10, runs 5 vs
-# 10/11 discriminator). The pinned sccache's nvcc decomposition is unsafe
-# for ORT in TWO independent ways:
-#   1. it crashes its server deterministically on the fused_moe launchers
-#      (runs 6+7, ~4910 s, os error 10054 - patch 006 scoped that target
-#      bare, which is why runs 10/11 got further), and
-#   2. it SILENTLY MISCOMPILES arch-guarded template-instantiation TUs:
-#      runs 10 AND 11 (fresh L0 mount - cache poisoning falsified) linked
-#      identically short of QkvToContext<*, __nv_fp8_e4m3> and
-#      BiasSoftmaxImpl<double>, while run 5 - the ONLY bare-nvcc run to
-#      reach the link - went green end-to-end. Silent wrong code is
-#      disqualifying regardless of hit rate.
-# Re-enable requires a candidate sccache to pass ALL THREE:
-#   verify-cuda-cache.ps1, a fused_moe compile canary, AND a full
-#   providers_cuda LINK canary (the miscompile is invisible until link).
-# C/CXX compiles keep the launcher + remote L2 (proven safe + hitting).
-# Patch 006 stays: inert while the launcher is off, load-bearing the day a
-# fixed sccache is retried. Guard + retry ladder stay armed for C/CXX.
-$env:SCCACHE_NO_CUDA_LAUNCHER = '1'
+# CUDA stays BARE here - and everywhere: since 2026-08-10 night the CUDA
+# launcher is OPT-IN at the wiring site (Invoke-CmakeConfigure honors only
+# SCCACHE_CUDA_LAUNCHER=1; review find #1 killed the per-script opt-out
+# env var, which leaked process-wide on the classic lane while the BK lane
+# kept wrapping other CUDA stages). Evidence for the disqualification of
+# this sccache pin's nvcc decomposition - the runs 5/12-vs-10/11
+# discriminator, the fused_moe server crash, the three-canary re-enable
+# bar - lives in the Invoke-CmakeConfigure comment and AGENTS.md Common
+# Failure Modes. Patch 006 stays: inert while CUDA is bare, load-bearing
+# the day a fixed sccache is retried. Guard + retry ladder stay armed for
+# the C/CXX launchers.
 
 # -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
 # ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the ~1h CUDA/TensorRT kernel compiles) so the DirectML
@@ -449,7 +441,13 @@ if ($mlasTagged -gt 0) {
 $ninjaLogDir = if ($env:SCCACHE_DIR -and (Test-Path $env:SCCACHE_DIR)) { Join-Path $env:SCCACHE_DIR 'logs' } else { $buildDir }
 $null = New-Item -ItemType Directory -Force -Path $ninjaLogDir
 $ninjaLog = Join-Path $ninjaLogDir 'onnx-ninja.log'
-if (Test-Path $ninjaLog) { Move-Item -Path $ninjaLog -Destination "$ninjaLog.prev" -Force }
+# Copy+Remove, NOT Move-Item: the cache mount is rename-hostile (probed for
+# directories; file renames are the same wcifs hazard family - review find
+# #3). Create-only semantics keep the rotation inside the mount contract.
+if (Test-Path $ninjaLog) {
+    Copy-Item -Path $ninjaLog -Destination "$ninjaLog.prev" -Force
+    Remove-Item -Path $ninjaLog -Force -ErrorAction SilentlyContinue
+}
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install -LogFile $ninjaLog
 
 # Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never

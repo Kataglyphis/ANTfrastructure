@@ -1955,7 +1955,12 @@ edit costs one ONNX-vertex rebuild, so land them together:
 
 OPEN as of 2026-08-10 night: **27** (base-tier window), **28** (analyze the
 captured samples → pool split), **31** (owner decision), **0b human half**
-(bump protocol). Everything else in this backlog is closed.
+(bump protocol), **33 [S·★]** (review find, 2026-08-10 night audit):
+`Test-PatchesApplyClean.ps1` gives patches in a directory WITHOUT a
+`$repoMap` entry only a `SKIP (no repo mapping)` — a future patch dir
+added without a mapping silently escapes the gate (incl. CI's patch-drift
+job); make unmapped NON-empty patch dirs a FAIL. Everything else in this
+backlog is closed.
 Done-when held throughout: gates green after every sub-batch (lint 141
 files 0/0 incl. the new AST-trap pass, 457/457 tests), behavior changes in
 AGENTS + this doc + CHANGELOG per repo priority 4.
@@ -1977,7 +1982,10 @@ AGENTS + this doc + CHANGELOG per repo priority 4.
   docker/for-win#14977 comment is already posted.
 - **Admin cleanup of 2026-08-10 diagnostic tags** (`copyprobe-*`, `sweep-*`,
   `rdna4ab-*`, `flush-*`, `size*`, `pw*`, `mlchain-probe`,
-  `verify-cuda-cache`, `postboot-*`, `nano-*`, `gpuab-*`): admin
+  `verify-cuda-cache`, `postboot-*`, `nano-*`, `gpuab-*`, **plus the
+  pre-rename stable probe tags `probe-build-copy` and
+  `probe-build-copy-heavy`** — orphaned by the #29 `diag-` prefix adoption,
+  so the `findstr diag-` one-liner does NOT find them): admin
   `nerdctl --namespace buildkit rmi` per docs § Store GC (see backlog #29
   for the durable convention).
 

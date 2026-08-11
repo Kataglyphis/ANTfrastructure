@@ -90,9 +90,15 @@ $disabled = $false
 # one refactor away from a StrictMode error in the verdict line (backlog #25).
 $offGreen = $false
 try {
-    $off = Set-Rdna4DeviceState -Device $gpu -State Disabled
-    if (-not $off.Ok) { throw "failed to disable '$($gpu.FriendlyName)' (status '$($off.Status)') - cannot run the off-side" }
+    # $disabled is set the moment the disable is ISSUED, not after the
+    # verification (review find #4): Disable-PnpDevice completes
+    # asynchronously, so a slow driver teardown can fail the 2 s post-state
+    # check while the device still goes down moments later - the finally
+    # must then attempt the re-enable anyway (re-enabling an already-OK
+    # device is a no-op).
     $disabled = $true
+    $off = Set-Rdna4DeviceState -Device $gpu -State Disabled
+    if (-not $off.Ok) { throw "failed to disable '$($gpu.FriendlyName)' (status '$($off.Status)') - cannot run the off-side (re-enable attempted in finally)" }
     Write-Host 'dGPU DISABLED (display falls back to the iGPU)' -ForegroundColor Cyan
     $offGreen = Test-FinalizeState -Label 'off'
 } finally {

@@ -83,8 +83,15 @@
   # 20GB -> 40GB (2026-08-08). This tier stopped being scratch on that date: the
   # Windows chain gained real, load-bearing cache mounts, and they SHARE this
   # one budget with local sources and git checkouts —
-  #   sccache L0  (id=sccache-winamd64)   SCCACHE_CACHE_SIZE = 15G
-  #   uv/pip      (id=uv-wheels-winamd64)                    ~10G
+  #   sccache L0  (id=sccache-winamd64-2)  SCCACHE_CACHE_SIZE = 15G
+  #   uv/pip      (id=uv-wheels-winamd64)                     ~10G
+  # 2026-08-10: the L0 id was bumped -1 -> -2 (fresh-mount discriminator for
+  # the run-10/11 link-failure forensics). The ORPHANED -1 mount keeps
+  # counting against this 40GB budget until its 168h keepDuration lapses
+  # (~2026-08-17) - transient over-budget by up to 15G; LRU pressure in that
+  # window can evict uv wheels/fresh L0 between chains. Self-heals; prune
+  # earlier only via a full exec.cachemount prune (which also drops the live
+  # mounts - usually not worth it).
   # which alone is 25G against the old 20GB cap. Left at 20GB the two caches
   # would have evicted each other between chains and bought nothing, while every
   # log still reported a cache hit rate — the silent-degradation shape this repo
