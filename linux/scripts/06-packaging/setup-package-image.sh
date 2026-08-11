@@ -295,6 +295,31 @@ create_runtime_venv() {
 # Only things the image genuinely promises are checked. GTK4 dev is absent BY
 # DESIGN (see select_dev_packages), so it is reported, not enforced
 # - asserting it would turn a deliberate policy into a build failure.
+# Repair the gstreamer multiarch symlink BEFORE asserting the dev surface
+# (2026-08-11, first cross-arch run of the Klasse-B gate): NATIVE meson
+# installs to lib/<triplet>/ (Debian default) but the CROSS builds pass
+# libdir=lib (cargo_wrapper invocation in the media logs proves it), so on
+# arm64/riscv64 configure-runtime's `multiarch -> lib/<triplet>` symlink
+# points at an EMPTY directory while the real .pc files sit in lib/pkgconfig.
+# The July images shipped this dangling dev surface silently — the new gate
+# is the first thing to look. Point multiarch at whichever directory actually
+# carries gstreamer-1.0.pc. ROOT fix (make configure-runtime resolve the real
+# libdir, or force cross meson to lib/<triplet>) is backlogged for the media
+# closure window — this keeps the package lane honest either way.
+repair_gstreamer_multiarch_link() {
+    local prefix="${GSTREAMER_PREFIX:-/opt/gstreamer}" cand dir
+    [ -e "${prefix}/lib/multiarch/pkgconfig/gstreamer-1.0.pc" ] && return 0
+    for cand in "${prefix}"/lib/*/pkgconfig/gstreamer-1.0.pc \
+                "${prefix}"/lib/pkgconfig/gstreamer-1.0.pc; do
+        [ -f "${cand}" ] || continue
+        dir="$(dirname "$(dirname "${cand}")")"
+        ln -snf "${dir}" "${prefix}/lib/multiarch"
+        echo "repaired ${prefix}/lib/multiarch -> ${dir} (cross meson libdir=lib; triplet dir was empty)"
+        return 0
+    done
+    return 0   # nothing found — let verify_consumer_dev_surface fail loudly
+}
+
 verify_consumer_dev_surface() {
     local missing=() mod
     # gstreamer-*: the SOURCE-built stack under ${GSTREAMER_PREFIX}. If these
@@ -396,6 +421,7 @@ main() {
 
     # Verify BEFORE the apt lists are wiped, so a failure can still be
     # diagnosed with apt-cache inside a `docker run` on the failed layer.
+    repair_gstreamer_multiarch_link
     verify_consumer_dev_surface
     report_rust_provenance
 

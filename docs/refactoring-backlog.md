@@ -359,6 +359,19 @@ the already-listed GCC_PARALLEL_TARGETS validation.)
   forensic#3 smoke inner-warning propagation [S] (smoke-media:266
   assertion-free "(import failed in build sandbox)" PASS).
 
+- **GST1 — cross-vs-native gstreamer libdir split (ROOT fix)** [S/M·★★★]
+  found live 2026-08-11: native meson installs to lib/<triplet>/ but the
+  cross builds pass libdir=lib (cargo_wrapper invocation, media-arm64 log
+  :92779), so configure-runtime's `multiarch -> lib/<triplet>` symlink points
+  at an EMPTY dir on arm64/riscv64 — the arm64 dev surface (pkg-config
+  gstreamer-1.0) has been dangling in EVERY shipped image; the Klasse-B
+  package gate caught it on its first cross-arch run. HOTFIX landed same
+  night (repair_gstreamer_multiarch_link in setup-package-image.sh, proven on
+  both layouts). Root fix here: make configure-runtime resolve the REAL
+  pc-carrying libdir (same probe logic) — or force the cross meson builds to
+  libdir=lib/<triplet> for native parity — and add a media-stage assert that
+  `${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig/gstreamer-1.0.pc` resolves.
+
 ### Runtime/packaging + artifact-performance additions (2026-08-10 sweep, RP/AP)
 
 - **AP7 — zero size observability FIRST** [S·★★★] the 42.66 GB media image
