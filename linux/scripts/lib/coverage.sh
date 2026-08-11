@@ -139,6 +139,13 @@ coverage_llvm_generate_profile() {
 # Usage: coverage_llvm_report <test-exe> <profraw> <profdata> [json-output]
 # Merges the raw profile, prints the human-readable report, and - when a JSON
 # path is given - exports the machine-readable one (for Codecov and friends).
+#
+# Set COVERAGE_LLVM_HTML_DIR to ALSO emit the browsable `llvm-cov show` report
+# into that directory. Optional because the two consumers genuinely differ:
+# BeschleunigerBallett only feeds Codecov from the JSON, while
+# Kataglyphis-Cpp-Inference publishes the HTML next to its docs. Without it that
+# second consumer could not use this function at all and had to keep a private
+# llvm-cov pipeline - exactly the duplication this library exists to remove.
 coverage_llvm_report() {
   local test_suite="$1"
   local profraw="$2"
@@ -163,5 +170,12 @@ coverage_llvm_report() {
   if [[ -n "${json_output}" ]]; then
     info "Exporting coverage to JSON: ${json_output}"
     llvm-cov export "${test_suite}" -format=text -instr-profile="${profdata}" "${ignore_args[@]}" > "${json_output}"
+  fi
+
+  if [[ -n "${COVERAGE_LLVM_HTML_DIR:-}" ]]; then
+    info "Writing browsable HTML coverage report to ${COVERAGE_LLVM_HTML_DIR}"
+    mkdir -p "${COVERAGE_LLVM_HTML_DIR}"
+    llvm-cov show "${test_suite}" -instr-profile="${profdata}" "${ignore_args[@]}" \
+      -format=html -output-dir "${COVERAGE_LLVM_HTML_DIR}"
   fi
 }

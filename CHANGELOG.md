@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-11 - coverage.sh: optional HTML report for the llvm backend
+
+`coverage_llvm_report` gained `COVERAGE_LLVM_HTML_DIR`, which additionally emits
+the browsable `llvm-cov show` report.
+
+Optional because the two consumers genuinely differ: BeschleunigerBallett only
+feeds Codecov from the JSON export, while Kataglyphis-Cpp-Inference publishes
+the HTML next to its docs. Without it that second consumer could not use this
+function at all - it had to keep a private llvm-profdata/llvm-cov pipeline,
+which is precisely the duplication this library exists to remove. It now drives
+both backends (gcovr for GCC, llvm-cov for Clang) from here.
+
 ## 2026-08-11 - shared config: canonical was the stale copy, and -Ignore never worked via -File
 
 Resolving Kataglyphis-Cpp-Inference's four-file drift report turned the
