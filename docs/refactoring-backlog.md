@@ -234,6 +234,20 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   show it FAILING on arm64+riscv64 (target ELF can't exec on amd64); only mv
   existence is really gated. Replace with `test -x` + elf_machine_name assert
   vs TARGET_ARCH. Verify-only edit = cheap.
+- **BS3b — amd64 llvm-target is NOT self-contained (ROOT fix)** [M·★★★]
+  proven live 2026-08-11: the sdk amd64 branch `cp -a /usr/lib/llvm-22` copies
+  only dev SYMLINKS in lib/ — the runtime sonames (libLLVM.so.22.1,
+  libclang-cpp.so.22.1) live in the MULTIARCH dir and never ship, so the
+  wrapper's clang bound to ambient libs: fine while ambient==apt.llvm.org,
+  a 22.1.8-driver/22.1.2-libs FRANKEN build once the Klasse-B dev-surface
+  packages brought Ubuntu's libs in. Masked for ever by the strings-scraping
+  smoke (fixed same day to EXECUTE the tool); PACKAGE-level mitigation landed
+  (Dockerfile.package copies the artifact's matching sonames into
+  llvm-target/lib + 000-llvm-target.conf ld priority). Root fix here: sdk's
+  amd64 branch must copy the multiarch runtime libs alongside the prefix (or
+  build amd64's target-clang like the cross arches, with $ORIGIN RPATH) —
+  then drop the package-level shim. Also re-check TG7's minimal-profile idea
+  against this coupling.
 - **BS4 — base-image.sh stale third-channel fallbacks incl. FIVE dead SHAs**
   [S·★★] :23 node 26.5.1 (pin 26.7.0), :24 uv 0.12.1 (0.12.3), SHA fallbacks
   :304/:308/:371/:375/:379 all ≠ versions.env — a half-load regression

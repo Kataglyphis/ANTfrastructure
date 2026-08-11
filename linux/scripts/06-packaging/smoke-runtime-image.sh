@@ -519,9 +519,14 @@ rc=0
 for tool in clang clang++; do
   p="$(command -v "$tool" || true)"
   [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
-  f="$(readlink -f "$p")"
-  ver="$(strings "$f" 2>/dev/null | grep -o \"version\":\"[^\"]*\" | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
-  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-MISSING} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
+  # EXECUTE the tool for its version — never scrape the binary with strings.
+  # The old strings-based extraction false-negatived on arm64 (2026-08-11):
+  # the dylib-linked target clang keeps its version string in libLLVM.so, so
+  # the slim driver binary greps EMPTY while `clang --version` prints 22.1.8
+  # perfectly. This smoke runs INSIDE the image (qemu for cross arches), so
+  # execution is always available — verify the effect, not the bytes.
+  ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
+  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
 done
 exit $rc'; then
         pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"
