@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-08-11 - WindowsOnnx.Common restored (silently-lost consumer dependency)
+
+Widening the sweep to every Kataglyphis repo turned up a seventh consumer -
+Kataglyphis-Cpp-Inference, reached through
+Inference-Engine -> NativeInferencePlugin -> native/KataglyphisCppInference -
+and its `Build-Windows.ps1` imports two modules that no longer exist here:
+
+- `WindowsLogging.Common` was FOLDED into `WindowsBuild.Common` (b391a1d), so
+  the consumer just drops the import; the `Write-BuildLog*` wrappers it
+  actually uses are exported from there.
+- `WindowsOnnx.Common` was DELETED outright (f0d12ff) while the consumer still
+  calls `Get-OnnxPackageLayout`. **Restored here.** This is the third instance
+  of the same blind spot (`Sync-BuildArtifacts`, the
+  `WindowsToolchain/Flutter/CodeQL` trio, now this): a "zero callers" sweep can
+  only see this repo, and consumers pin a submodule commit, so they neither
+  break at delete time nor appear in the sweep.
+
+  This one was the worst of the three because the call site sits inside a
+  `try/catch`: losing it did not fail the build, it silently skipped the ONNX
+  include/lib wiring.
+
+  One substitution against the deleted original: it resolved paths through
+  `Resolve-ContainerNormalizedPath`, itself a pure pass-through to
+  `Resolve-NormalizedPath` and since removed as well. The restored module calls
+  `Resolve-NormalizedPath` (WindowsScripts.Shared) directly.
+
+Tests: 480/480 green.
+
 ## 2026-08-11 - Codacy removed org-wide
 
 Codacy is dropped from every Kataglyphis repository at the owner's request. Here
