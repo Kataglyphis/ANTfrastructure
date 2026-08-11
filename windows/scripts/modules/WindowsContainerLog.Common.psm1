@@ -7,7 +7,7 @@
 
 .DESCRIPTION
   Lifted from a consumer (Kataglyphis-RustProjectTemplate's
-  Scripts/Windows/Container/rust-build-all.ps1 and rust-test-all.ps1), which
+  scripts/windows/Container/rust-build-all.ps1 and rust-test-all.ps1), which
   carried two byte-identical copies of it.
 
   Deliberately DEPENDENCY-FREE and self-contained. An in-container script is

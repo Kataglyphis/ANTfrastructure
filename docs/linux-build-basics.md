@@ -251,7 +251,7 @@ Reusable libraries consumer repos source directly from the submodule:
   (`app_runner_post_vulkan_hook`, `app_runner_env_hook`,
   `APP_RUNNER_ENABLE_SHADER_CLEAN`). Consumers keep only per-profile
   wrappers (defaults + hooks); see BeschleunigerBallett
-  `Scripts/Linux/run-{debug,profile,release}.sh` for the pattern.
+  `scripts/linux/run-{debug,profile,release}.sh` for the pattern.
 - `ctest-run.sh` — ctest runner with a perf-baseline comparator (fails on
   regression against a stored baseline).
 - `docs-build.sh` — Sphinx docs build helper (not to be confused with the

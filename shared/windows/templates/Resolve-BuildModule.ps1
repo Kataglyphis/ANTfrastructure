@@ -1,6 +1,6 @@
 #requires -Version 7.0
 
-# TEMPLATE — copy to <consumer>/Scripts/Windows/Resolve-BuildModule.ps1
+# TEMPLATE — copy to <consumer>/scripts/windows/Resolve-BuildModule.ps1
 # (or scripts/windows/, matching your repo's casing). Do NOT dot-source it from
 # here: this is the one build-tooling file that cannot be consumed out of the
 # submodule, because it is what *finds* the submodule. It runs before anything

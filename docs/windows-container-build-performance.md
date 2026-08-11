@@ -8,7 +8,7 @@ afternoon rediscovering them.
 Reference project: a ~690-object C++23 **modules** engine (Vulkan, CMake +
 ninja + clang-cl, Rust bridged in via corrosion/cxx), built on a Dev Drive
 host. Concrete script:
-`Kataglyphis-BeschleunigerBallett/Scripts/Windows/Build-Windows-Container.ps1`.
+`Kataglyphis-BeschleunigerBallett/scripts/windows/Build-Windows-Container.ps1`.
 
 ## Result
 

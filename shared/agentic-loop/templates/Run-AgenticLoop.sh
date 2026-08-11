@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────────────────
-# TEMPLATE - copy to <your-repo>/Scripts/AgenticLoop/Run-AgenticLoop.sh.
+# TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Run-AgenticLoop.sh.
 #
 # Agentic loop (Linux). Thin wrapper: sources the reusable library from the
 # ContainerHub submodule, parses flags into the env vars the library reads,
@@ -17,7 +17,7 @@ set -euo pipefail
 #   opencode — OpenCode CLI; models come from the config
 #
 # Usage:
-#   ./Scripts/AgenticLoop/Run-AgenticLoop.sh [options]
+#   ./scripts/agentic-loop/Run-AgenticLoop.sh [options]
 #
 # Options:
 #   --config PATH        Config JSON path (default: AgenticLoop.config.json)

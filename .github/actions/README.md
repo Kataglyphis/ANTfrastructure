@@ -30,7 +30,7 @@ drifted before), plus packaging utilities. `require-rust` (default `'true'`)
 controls the rustc gate: with `'false'` the Rust toolchain block is skipped
 with a notice instead of failing, so uv-only consumers can use the action on
 runners without Rust. Optional: `run-setup-script: true` runs the consuming
-repo's `Scripts/Linux/setup-dependencies.sh` (skipped with a warning when
+repo's `scripts/linux/setup-dependencies.sh` (skipped with a warning when
 absent); `install-uv: true` installs the Astral uv package manager.
 
 ### `assert-docker-disk-space`

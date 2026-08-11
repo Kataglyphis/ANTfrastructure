@@ -27,9 +27,9 @@ actions at `@main`.
 Each consumer needs a tiny bootstrap that *finds* this submodule, since it runs
 before anything upstream is importable. Copy
 [`shared/windows/templates/Resolve-BuildModule.ps1`](../shared/windows/templates/README.md)
-to `Scripts/Windows/Resolve-BuildModule.ps1` (or `scripts/windows/`, matching
-your repo's casing) and adjust `$script:RepoRootRelativeToHere` if the script
-does not sit exactly two directories below the repo root. It resolves a module
+to `scripts/windows/Resolve-BuildModule.ps1` and adjust
+`$script:RepoRootRelativeToHere` if the script does not sit exactly two
+directories below the repo root. It resolves a module
 name to
 `ExternalLib/Kataglyphis-ContainerHub/windows/scripts/modules/<Name>.psm1`
 first, then a local `modules/` fallback beside itself, and throws with both
@@ -99,7 +99,7 @@ MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user r
   -v cargo-cache:/cargo-cache \
   -v /mnt/d/path/to/repo:/workspace -w /workspace \
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  bash -c 'bash Scripts/Linux/cmake-configure-build.sh --preset <preset> --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
+  bash -c 'bash scripts/linux/cmake-configure-build.sh --preset <preset> --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
 ```
 
 Three constraints worth internalising:
@@ -137,7 +137,7 @@ wrappers). A consumer supplies four things:
    backlog lets the planner run again), `- [x]` completed (pruned; history
    lives in git).
 2. **A config JSON.** Shape (see the reference consumer's
-   `Scripts/AgenticLoop/AgenticLoop.config.json`): `engine`, per-engine model
+   `scripts/agentic-loop/AgenticLoop.config.json`): `engine`, per-engine model
    and prompt settings under `engines.*`, cadences and timeouts under
    `intervals.*`, per-platform `buildMatrix.{windows,linux}` entries
    (`name`/`sanitizer`/`buildDir`/`buildType`/`testCommand`), `build.*`
@@ -225,18 +225,25 @@ source "${_SCRIPT_DIR}/../../ExternalLib/Kataglyphis-ContainerHub/linux/scripts/
 
 Long flags are `--kebab-case value`. A wrapper around one of the `lib/*.sh`
 drivers should be ~30 lines: source the library, set the project's defaults,
-call its `*_main`. `Kataglyphis-BeschleunigerBallett/Scripts/Linux/run-ctest.sh`
+call its `*_main`. `Kataglyphis-BeschleunigerBallett/scripts/linux/run-ctest.sh`
 is the canonical example.
 
 **Shell safety** — the five bug classes in this repo's `AGENTS.md`
 (§ *Shell safety conventions*) apply to consumer scripts too. Every one of them
 falsified or killed a real build here; they are not style preferences.
 
-**Known cosmetic divergence, deliberately not churned:** two repos use
-`Scripts/` + `Scripts/Windows/` (BeschleunigerBallett, RustProjectTemplate) and
-five use lowercase `scripts/`; bash filenames are kebab-case in two repos and
-snake_case in the rest. Renaming those would rewrite git history for every
-script for no functional gain — match the repo you are in, not a global rule.
+**Directory layout is now uniform across all seven consumers** (normalised
+2026-08-11): lowercase `scripts/`, with `scripts/windows/`, `scripts/linux/`,
+`scripts/windows/modules/` and — where the agentic loop is wired up —
+`scripts/agentic-loop/`. Two repos used `Scripts/` + `Scripts/Windows/` until
+that sweep. Use lowercase in a new consumer; there is no per-repo casing rule
+to look up any more.
+
+**Bash filenames still differ**: kebab-case in BeschleunigerBallett and
+Inference-Engine, snake_case in the rest. That one is left alone deliberately —
+unlike a directory rename it buys no structural consistency, and renaming every
+script would churn history across five repos for a purely lexical preference.
+Match the repo you are in.
 
 ## Checklist
 

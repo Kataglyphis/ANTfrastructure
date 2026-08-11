@@ -292,7 +292,7 @@ container-reuse pattern so consumers do not each reinvent it:
   probing, wcifs-tolerant removal.
 
 Consumers resolve it ContainerHub-first with a vendored fallback (see
-BeschleunigerBallett's `Scripts/Windows/Resolve-BuildModule.ps1`).
+BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).
 
 ### Building Projects Inside the Windows Image (performance)
 

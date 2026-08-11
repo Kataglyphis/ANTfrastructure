@@ -1,7 +1,7 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-  TEMPLATE - copy to <your-repo>/Scripts/AgenticLoop/Run-AgenticLoop.ps1.
+  TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Run-AgenticLoop.ps1.
 
   Agentic loop: planner adds tasks to BACKLOG.md, executor drains the queue.
   Uses the WindowsAgenticLoop.Common module from Kataglyphis-ContainerHub, so
