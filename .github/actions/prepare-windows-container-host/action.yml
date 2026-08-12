@@ -1,0 +1,182 @@
+name: 'Prepare Windows container host'
+description: >-
+  The prologue every containerised Windows CI job repeats: enable long paths,
+  check the repository out, clone the submodule tree into a short path, move
+  Docker's data-root onto the big drive, reclaim runner disk, log in to the
+  registry and pull the image. Six to seven steps and ~40 lines per job collapse
+  to one `uses:`.
+
+  Windows twin of prepare-linux-ci-host, and it exists for the same reason plus
+  one Windows-only one: the prologue is not just repetitive here, it is where the
+  platform's sharp edges live. Measured across the four inline Windows lanes on
+  2026-08-11, every one of them repeated the same sequence, and the three traps
+  in it had each already cost a lane:
+
+    * MAX_PATH - D:\a\<repo>\<repo> plus a deep submodule chain overruns 260
+      characters and the checkout dies with "Filename too long"
+    * the image does not fit on C: - Docker's data-root lives on the system
+      drive, which has ~33 GB free against a ~54 GB image
+    * the disk report before the pull, so a shortfall is visible rather than
+      surfacing 20 minutes later as hcsshim::ImportLayer 0x70
+
+  Unlike the Linux twin this deliberately stops after the pull. The four Windows
+  lanes diverge completely from there - one runs six test steps, one packages
+  MSIX/MSI, one builds on the host as well - so a reusable WORKFLOW would have to
+  model all of it. The shared part is the prologue; that is what this is.
+
+  Consumers: Kataglyphis-BeschleunigerBallett, Kataglyphis-RustProjectTemplate,
+  KataglyphisCppInference, Kataglyphis-Inference-Engine.
+
+inputs:
+  image:
+    description: 'Windows image to pull, e.g. ghcr.io/.../kataglyphis_beschleuniger:winamd64'
+    required: true
+  registry:
+    description: 'Registry to log in to.'
+    required: false
+    default: 'ghcr.io'
+  registry-username:
+    description: 'Registry user.'
+    required: false
+    default: 'Kataglyphis'
+  registry-password:
+    description: 'Registry token. Required unless the image is public.'
+    required: false
+    default: ''
+  checkout:
+    description: 'Check the repository out. Set false if the caller already did.'
+    required: false
+    default: 'true'
+  fetch-depth:
+    description: 'Checkout depth. 0 = full history (needed if the build derives a version from git).'
+    required: false
+    default: '1'
+  short-path-target:
+    description: >-
+      Clone the full tree with submodules here, in MSYS form (e.g. /d/ws). This
+      is what keeps a deep submodule chain inside MAX_PATH, and it is also what
+      run-in-windows-container mounts by default. Set to an empty string to skip
+      it - correct only for a repo with a shallow submodule tree, in which case
+      the plain checkout below takes submodules itself.
+    required: false
+    default: '/d/ws'
+  token:
+    description: 'Token for the short-path clone (submodule URLs are rewritten to token HTTPS).'
+    required: false
+    default: ''
+  data-root:
+    description: >-
+      Move Docker's data-root here before pulling. Empty skips the move, which
+      leaves the image on the system drive - see
+      docs/windows-container-build-performance.md before doing that.
+    required: false
+    default: 'D:\docker'
+  required-free-gb:
+    description: 'Minimum free GB required on the data-root drive. 0 disables the check.'
+    required: false
+    default: '70'
+  free-disk-space:
+    description: 'Run cleanup-disk-space. The build and toolchain still live on C:.'
+    required: false
+    default: 'true'
+
+outputs:
+  data-root:
+    description: 'The data-root Docker was pointed at (empty when the move was skipped).'
+    value: ${{ steps.datar.outputs.data-root }}
+  workspace:
+    description: >-
+      Where the build tree actually is: the short-path target when one was used,
+      otherwise the runner workspace. Use it for artifact paths - a relative path
+      would resolve against the submodule-less checkout instead.
+    value: ${{ steps.ws.outputs.path }}
+
+runs:
+  using: 'composite'
+  steps:
+    # Without this a deep path in a submodule fails the checkout itself. It is
+    # not sufficient on its own - see short-path-target - but it is free.
+    - name: Enable Git long paths
+      shell: pwsh
+      run: git config --global core.longpaths true
+
+    # submodules: false when a short-path clone follows, because that clone is
+    # what brings the tree in at a length MAX_PATH tolerates. Taking them twice
+    # would just reproduce the failure this avoids.
+    - name: Checkout
+      if: ${{ inputs.checkout == 'true' }}
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+        submodules: ${{ inputs.short-path-target == '' }}
+
+    - name: Clone full tree with submodules into a short path
+      if: ${{ inputs.short-path-target != '' }}
+      uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/clone-into-short-path@main
+      with:
+        target: ${{ inputs.short-path-target }}
+        token: ${{ inputs.token || github.token }}
+
+    # Before the pull, always: moving the data-root afterwards would hide the
+    # image that was just fetched.
+    - name: Put the Docker data-root on the big drive
+      id: datar
+      if: ${{ inputs.data-root != '' }}
+      uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/set-docker-data-root@main
+      with:
+        data-root: ${{ inputs.data-root }}
+        required-free-gb: ${{ inputs.required-free-gb }}
+
+    - name: Cleanup disk space
+      if: ${{ inputs.free-disk-space == 'true' }}
+      uses: Kataglyphis/Kataglyphis-ContainerHub/.github/actions/cleanup-disk-space@main
+
+    - name: Log in to the registry
+      if: ${{ inputs.registry-password != '' }}
+      uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+      with:
+        registry: ${{ inputs.registry }}
+        username: ${{ inputs.registry-username }}
+        password: ${{ inputs.registry-password }}
+
+    - name: Pull the Windows container image
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        Write-Host "Pulling ${{ inputs.image }}"
+        docker pull "${{ inputs.image }}"
+        if ($LASTEXITCODE -ne 0) { throw "docker pull failed for ${{ inputs.image }}" }
+
+    # Reported AFTER the pull on purpose: this is where the multi-GB drop has to
+    # show up, and it must be on the data-root drive. Before the pull the numbers
+    # only say what was available, not where the image went.
+    - name: Disk report after pull
+      if: ${{ always() }}
+      shell: pwsh
+      run: |
+        Write-Host '=== Free space per drive ==='
+        Get-Volume | Where-Object DriveLetter | Sort-Object DriveLetter |
+          Format-Table DriveLetter,
+            @{n='FreeGB';e={[math]::Round($_.SizeRemaining/1GB,1)}},
+            @{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}},
+            FileSystemLabel -AutoSize | Out-String | Write-Host
+
+        Write-Host '=== docker system df ==='
+        docker system df 2>&1 | ForEach-Object { Write-Host ("  " + $_) }
+
+    - name: Resolve the workspace path
+      id: ws
+      shell: pwsh
+      run: |
+        $short = '${{ inputs.short-path-target }}'
+        if ($short) {
+          # MSYS (/d/ws) -> Windows (D:\ws). Artifact globs need the Windows form.
+          # Upper-case the drive letter so the value matches what the rest of the
+          # lane writes by hand; Windows does not care, humans diffing logs do.
+          $win = $short -replace '^/([a-zA-Z])/', '$1:/' -replace '/', '\'
+          if ($win -match '^([a-z]):') { $win = $win.Substring(0,1).ToUpper() + $win.Substring(1) }
+        } else {
+          $win = '${{ github.workspace }}'
+        }
+        Write-Host "Build tree is at: $win"
+        "path=$win" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8

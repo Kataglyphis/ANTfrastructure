@@ -242,6 +242,40 @@ Green local tests do not imply green CI: the Linux lane runs ASan/UBSan fuzzing
 that the Windows dev box does not, so some bugs are only ever observable there.
 Fix what failed — do not edit the workflow to silence it.
 
+### Where does knowledge belong? (docs, not just code)
+
+The reuse rules below are about code. The same discipline applies to **what you
+write down**, and one question decides it:
+
+> **Would this still be true in a different project?**
+
+- **Yes** → it belongs here, and the consumer LINKS to it.
+- **No** → it belongs in the consumer.
+
+Most topics split down the middle. "Allow the `bindFlt`/`wcifs` filters on a Dev
+Drive" is ours; "Dart's `copySync` fails on a bind mount" is
+Kataglyphis-Inference-Engine's, because it only matters for a Flutter app.
+
+**Why linking rather than restating.** On 2026-08-11 the Dev Drive filter
+command existed in three places — `docs/windows-builds.md` here, plus
+Inference-Engine's `AGENTS.md` and `docs/source/platforms.md`. All three were
+wrong the same way (unquoted filter list, missing `/volume`) while
+`windows-container-build-performance.md` had it right the whole time *and*
+warned that people get it wrong exactly that way. Restating produced three
+broken copies.
+
+[`docs/INDEX.md`](docs/INDEX.md) maps topic → owning document. Consumers link
+one hop through it, so reorganising docs here means editing that page instead of
+hunting links across seven repositories.
+[`shared/templates/AGENTS.md.template`](shared/templates/README.md) is the
+consumer-side skeleton that keeps the split visible.
+
+One caution against automating this: a keyword check ("this consumer doc
+mentions wcifs") cannot tell *restating* from *applying*. Inference-Engine's
+AddressSanitizer section legitimately discusses image-level runtimes, because
+which ASan runtime a Flutter/COM app can survive is a property of that app. A
+human has to read it.
+
 ### Contributing Reusable Work Here
 
 Consumer projects are expected to push reusable work upstream rather than keep
@@ -292,7 +326,7 @@ container-reuse pattern so consumers do not each reinvent it:
   probing, wcifs-tolerant removal.
 
 Consumers resolve it ContainerHub-first with a vendored fallback (see
-BeschleunigerBallett's `Scripts/Windows/Resolve-BuildModule.ps1`).
+BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).
 
 ### Building Projects Inside the Windows Image (performance)
 
@@ -692,6 +726,16 @@ linux/scripts/02-toolchain/python/ci_*.sh   Python CI helpers (tests, static
 linux/scripts/01-core/setup-host-deps.sh    hand-run host bootstrap (rootless
                          nerdctl/buildkit prerequisites); intentionally not
                          wired into CI or builds
+linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
+                         assembly — consumer surface. Called from
+                         Kataglyphis-RustProjectTemplate's
+                         .github/workflows/rust_ubuntu24_04.yml release job.
+                         Deleted by the 2026-08-08 orphan sweep as
+                         "zero-reference" and restored 2026-08-11: the sweep
+                         searched only THIS repo, so a consumer's CI lane was
+                         broken silently. Grep the consumer repos before
+                         deleting anything under lib/, rust/, python/ or
+                         06-packaging/.
 windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
                          cargo-retry.cmd (transient file-lock retry wrapper),
                          certificates/ (MSIX cert generation + WebDAV

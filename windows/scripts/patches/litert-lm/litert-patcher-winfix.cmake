@@ -48,3 +48,26 @@ patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(run_
 patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(analyze_model" "add_executable(analyze_model EXCLUDE_FROM_ALL" FALSE)
 patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(apply_plugin_main" "add_executable(apply_plugin_main EXCLUDE_FROM_ALL" FALSE)
 message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/apply_plugin_main) EXCLUDE_FROM_ALL")
+
+# litert @3cb830ad (the bazel-truth pin, staleness-#3 bump) adds
+# tensor/examples/{segmentation,gemma3} UNCONDITIONALLY (guarded only by
+# `if(EXISTS .../CMakeLists.txt)`, no option); gemma3's CMakeLists does
+# find_package(Protobuf REQUIRED) and killed the litert_external CONFIGURE
+# (runs 17-20, 2026-08-11). A patch_file_content string-replace of the
+# add_subdirectory lines silently NO-OPED (run 20: the message printed but
+# gemma3 still configured - the helper's replace never matched). Use the
+# upstream guard itself instead: REMOVE the example trees, the EXISTS
+# check then skips them - immune to string-form drift.
+# PATH LESSON (run 21): the litert ExternalProject uses SOURCE_SUBDIR
+# `litert`, so LITERT_SRC_DIR is <repo>/litert - correct for blocks 1-5
+# (core/, c/, vendors/, tools/ live inside it) but tensor/ is a SIBLING at
+# the repo ROOT. The first version of this block removed
+# ${LITERT_SRC_DIR}/tensor/examples (a non-address), and its EXISTS check
+# "verified" absence of the same wrong path - a self-confirming no-op.
+get_filename_component(_LITERTLM_REPO_ROOT "${LITERT_SRC_DIR}" DIRECTORY)
+file(REMOVE_RECURSE "${_LITERTLM_REPO_ROOT}/tensor/examples")
+if(EXISTS "${_LITERTLM_REPO_ROOT}/tensor/examples")
+    message(WARNING "[LiteRTLM-winfix] ${_LITERTLM_REPO_ROOT}/tensor/examples still present after REMOVE_RECURSE - gemma3 will kill the configure")
+else()
+    message(STATUS "[LiteRTLM-winfix] ${_LITERTLM_REPO_ROOT}/tensor/examples REMOVED (gemma3's find_package(Protobuf REQUIRED) cannot fire)")
+endif()

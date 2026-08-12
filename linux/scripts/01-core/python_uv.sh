@@ -216,6 +216,78 @@ uv_venv_remove() {
   fi
 }
 
+# Extras that must NOT be installed together, one per line as a group.
+#
+# `uv sync --all-extras` is a hard error on any project that declares
+# `[tool.uv] conflicts` — uv refuses with
+#   error: Extras `a` and `b` are incompatible with the declared conflicts
+# and there is no "install as much as possible" flag. Measured 2026-08-11:
+# Kataglyphis-Orchestr-ANT-ion declares 12 pairwise conflicts across two
+# mutually-exclusive families (the ml-ai backends and the pytorch backends), so
+# every one of its CI lanes failed here regardless of what it was asked to do.
+_uv_conflict_groups() {
+  local pyproject="${1:-pyproject.toml}"
+  [ -f "$pyproject" ] || return 0
+  awk '
+    /^[[:space:]]*conflicts[[:space:]]*=/ { inblock = 1; depth = 0 }
+    inblock {
+      line = $0
+      n = length(line)
+      for (i = 1; i <= n; i++) {
+        c = substr(line, i, 1)
+        if (c == "[") { depth++; if (depth == 2) group = "" }
+        else if (c == "]") {
+          if (depth == 2 && group != "") { sub(/^ /, "", group); print group }
+          depth--
+          if (depth <= 0) { inblock = 0; exit }
+        }
+      }
+      if (depth >= 2) {
+        tmp = line
+        while (match(tmp, /extra[[:space:]]*=[[:space:]]*"[^"]+"/)) {
+          piece = substr(tmp, RSTART, RLENGTH)
+          tmp = substr(tmp, RSTART + RLENGTH)
+          if (match(piece, /"[^"]+"/)) {
+            group = group " " substr(piece, RSTART + 1, RLENGTH - 2)
+          }
+        }
+      }
+    }
+  ' "$pyproject"
+}
+
+# Which extras to exclude so that --all-extras becomes satisfiable.
+#
+# Greedy over the groups in DECLARATION ORDER: keep an extra unless it conflicts
+# with one already kept, otherwise exclude it. Deterministic, and it keeps the
+# first-declared member of each family — which for Orchestr-ANT-ion means the
+# plain `ml-ai` and `pytorch-cpu`, the right choices for CI. A project that wants
+# a different member sets UV_SYNC_EXTRAS and skips all of this.
+_uv_extras_to_exclude() {
+  local groups keep=" " drop=" " a b
+  groups="$(_uv_conflict_groups "${1:-pyproject.toml}")" || return 0
+  [ -n "$groups" ] || return 0
+  while read -r a b; do
+    [ -n "$a" ] || continue
+    for e in "$a" "$b"; do
+      [ -n "$e" ] || continue
+      case "$keep$drop" in *" $e "*) continue ;; esac
+      # conflicts with something already kept?
+      local conflicted=0 g x y
+      while read -r x y; do
+        case " $x $y " in
+          *" $e "*)
+            local other="$x"; [ "$x" = "$e" ] && other="$y"
+            case "$keep" in *" $other "*) conflicted=1 ;; esac
+            ;;
+        esac
+      done <<< "$groups"
+      if [ "$conflicted" -eq 1 ]; then drop="$drop$e "; else keep="$keep$e "; fi
+    done
+  done <<< "$groups"
+  echo "$drop" | tr -s ' ' | sed 's/^ //;s/ $//'
+}
+
 uv_sync_project() {
   local use_locked=0
   local no_wxpython=0
@@ -227,9 +299,30 @@ uv_sync_project() {
       *) shift ;;
     esac
   done
-  
-  local sync_args=(sync --dev --all-extras)
-  
+
+  local sync_args=(sync --dev)
+
+  if [ -n "${UV_SYNC_EXTRAS:-}" ]; then
+    # Explicit wins: the project knows which combination it wants.
+    info "UV_SYNC_EXTRAS set — syncing extras: ${UV_SYNC_EXTRAS}"
+    local _e
+    for _e in ${UV_SYNC_EXTRAS//,/ }; do
+      sync_args+=(--extra "$_e")
+    done
+  else
+    sync_args+=(--all-extras)
+    local _excl
+    _excl="$(_uv_extras_to_exclude pyproject.toml)"
+    if [ -n "$_excl" ]; then
+      info "Project declares conflicting extras; --all-extras alone would fail."
+      info "Excluding (keeping the first-declared of each family): ${_excl}"
+      info "Set UV_SYNC_EXTRAS to choose a different combination."
+      for _e in $_excl; do
+        sync_args+=(--no-extra "$_e")
+      done
+    fi
+  fi
+
   if [ $use_locked -eq 1 ] || [ -f uv.lock ]; then
     if [ -f uv.lock ]; then
       info "uv.lock found — using locked sync"
@@ -245,6 +338,21 @@ uv_sync_project() {
     sync_args+=(--no-build-isolation-package wxpython)
   fi
   
+  # Pin the interpreter for the SAME reason uv_pip_install_requirements does,
+  # and it is just as load-bearing here: uv honours UV_PYTHON OVER the activated
+  # venv. The CI images export UV_PYTHON=/opt/venv/bin/python and run as the
+  # non-root user `kataglyphis`, so `--active` alone still resolves to that
+  # root-owned system venv and the sync dies with
+  #   error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
+  #          Permission denied (os error 13)
+  # Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
+  # the extras fix let the resolve get this far. --python forces the writable
+  # local environment; --active stays so uv still prefers it when no venv is set.
+  local _venv="${VIRTUAL_ENV:-${_CURRENT_VENV_PATH:-}}"
+  if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+    sync_args+=(--python "$_venv/bin/python")
+  fi
+
   sync_args+=(--active)
 
   uv "${sync_args[@]}"

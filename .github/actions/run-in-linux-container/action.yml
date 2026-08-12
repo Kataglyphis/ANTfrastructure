@@ -19,7 +19,7 @@ inputs:
   script:
     description: >-
       The command line to execute inside the container, e.g.
-      `bash ./Scripts/Linux/foo.sh --flag "value"`. It is substituted verbatim
+      `bash ./scripts/linux/foo.sh --flag "value"`. It is substituted verbatim
       into the `docker run` command line, so shell quoting inside it behaves
       exactly as it did when the command was written inline in a workflow
       `run:` block.

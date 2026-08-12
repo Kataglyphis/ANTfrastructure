@@ -158,11 +158,38 @@ runs:
         # CRLF escapes the CR instead of the newline, breaking the continuation
         # ("Missing expression after unary operator '--'"). An @(...) array spans
         # newlines with no continuation char, so it is CRLF-safe.
-        $runArgs = @(
-          'run', '--rm', '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores"
-        ) + $extraArgs + @(
+        $tailArgs = $extraArgs + @(
           '--mount', ('type=bind,source=' + $env:RUN_IN_CONTAINER_MOUNT_SOURCE + ',target=' + $env:RUN_IN_CONTAINER_MOUNT_TARGET),
           '-w', $env:RUN_IN_CONTAINER_MOUNT_TARGET,
           $image
         ) + $entryArgs
-        docker @runArgs
+
+        $runArgs = @(
+          'run', '--rm', '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores"
+        ) + $tailArgs
+
+        Write-Host "docker $($runArgs -join ' ')"
+        $out = docker @runArgs 2>&1
+        $out | ForEach-Object { Write-Host $_ }
+
+        # HCS rejects some resource-limit combinations depending on the host's
+        # isolation mode and reports it only as
+        #   hcs::CreateComputeSystem <id>: The request is not supported.
+        # which names neither --memory nor --cpus. Observed on windows-2025
+        # runners 2026-08-11, where the lane had been dying here since long
+        # before anything else in the job changed.
+        #
+        # Rather than guess which of the two the host dislikes, retry WITHOUT the
+        # resource limits and say so loudly: the build still runs, and the log
+        # states plainly that the limits were dropped, so a degraded run cannot
+        # masquerade as a normal one.
+        if ($LASTEXITCODE -ne 0 -and ($out -join "`n") -match 'CreateComputeSystem.*not supported') {
+          Write-Host '::warning::docker run rejected with hcs::CreateComputeSystem "The request is not supported".'
+          Write-Host '::warning::Retrying WITHOUT --memory/--cpus - this run is NOT resource-limited.'
+          $runArgs = @('run', '--rm') + $tailArgs
+          Write-Host "docker $($runArgs -join ' ')"
+          docker @runArgs
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host '::warning::Retry succeeded: this host rejects the resource limits, not the container.'
+          }
+        }

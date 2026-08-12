@@ -27,7 +27,7 @@ sanitize_version() {
 # has: a VERSION.txt at the repo root, else the ref name, else the run number.
 #
 # Lifted out of a consumer (Kataglyphis-RustProjectTemplate's
-# Scripts/compute_version.sh) because every repo with a CI lane needs exactly
+# scripts/compute_version.sh) because every repo with a CI lane needs exactly
 # this and had to reimplement it around the primitives above.
 #
 # The guards are load-bearing, in this order:

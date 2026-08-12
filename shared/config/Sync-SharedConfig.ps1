@@ -46,6 +46,27 @@ Set-StrictMode -Version Latest
 
 if (-not $Write) { $Check = $true }
 
+# Accept a COMMA-SEPARATED -Ignore as well as a real array.
+#
+# The README documents invoking this with `pwsh -File`, and under -File every
+# argument arrives as a plain string: `-Ignore a,b,c` binds the whole thing as
+# ONE element "a,b,c", which then matches no file name and the ignore silently
+# does nothing. A consumer that legitimately owns several of these files would
+# see its documented escape hatch fail with no explanation (found doing exactly
+# that for Kataglyphis-Cpp-Inference, 2026-08-11). Splitting here makes -File
+# and -Command behave the same.
+$Ignore = @($Ignore | Where-Object { $_ } | ForEach-Object { $_ -split ',' } |
+  ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
+# Typo guard: an -Ignore entry that is not one of the canonical names is almost
+# certainly a mistake ('.clang_tidy', 'gcovr.conf'), and silently ignoring it
+# would leave the caller believing an exception is recorded when it is not.
+$unknownIgnore = @($Ignore | Where-Object { $_ -notin @('.clang-format', '.clang-tidy', 'gcovr.cfg', '.pre-commit-config.yaml') })
+if ($unknownIgnore.Count -gt 0) {
+  throw ("-Ignore names nothing this script manages: $($unknownIgnore -join ', '). " +
+    'Valid names: .clang-format, .clang-tidy, gcovr.cfg, .pre-commit-config.yaml')
+}
+
 $canonicalDir = $PSScriptRoot
 $names = @('.clang-format', '.clang-tidy', 'gcovr.cfg', '.pre-commit-config.yaml')
 

@@ -8,8 +8,16 @@
 # own) rather than in 01-core/python_uv.sh.
 
 _CI_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ../../ not ../ : this file lives in 02-toolchain/PYTHON/, one level deeper
+# than 02-toolchain/bootstrap.sh where `../01-core` is correct. At the wrong
+# depth it resolved to 02-toolchain/01-core/python_uv.sh, which does not exist,
+# so every driver in this directory died on its first helper call
+# ("detect_workspace: command not found"). That is almost certainly why both
+# Python consumers - Orchestr-ANT-ion and WebDavClient - carried full local
+# reimplementations of all four drivers: the shared ones could never run.
+# Found 2026-08-11 while collapsing those copies back onto these drivers.
 # shellcheck source=/dev/null
-source "$_CI_COMMON_DIR/../01-core/python_uv.sh"
+source "$_CI_COMMON_DIR/../../01-core/python_uv.sh"
 
 # derive_package_name <initial>
 # Echo the effective package name: <initial> when non-empty, else the

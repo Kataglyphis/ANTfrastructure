@@ -8,7 +8,7 @@
 # and formatting does not.
 #
 # Upstreamed from Kataglyphis-BeschleunigerBallett's vendored
-# Scripts/Windows/modules copy (2026-08-11). The only two project-specific
+# scripts/windows/modules copy (2026-08-11). The only two project-specific
 # things in it -- the source subdirectory and the C++20-module import pattern --
 # are now parameters with the previous values as defaults, so the vendored copy
 # can be deleted without changing that repo's behaviour.

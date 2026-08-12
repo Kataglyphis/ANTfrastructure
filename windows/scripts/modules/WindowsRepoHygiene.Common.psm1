@@ -7,7 +7,7 @@
 # none of which know anything about a particular project.
 #
 # Lifted out of a consumer repo (Kataglyphis-BeschleunigerBallett,
-# Scripts/Windows/tests) on 2026-08-07: both checks were written there as
+# scripts/windows/tests) on 2026-08-07: both checks were written there as
 # standalone Pester suites with the repo root hard-coded three levels up from
 # $PSScriptRoot, which is the only project-specific thing about them.
 #
