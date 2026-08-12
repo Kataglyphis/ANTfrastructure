@@ -161,6 +161,17 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   asserting `uv pip install --force-reinstall` is ALWAYS paired with
   --no-deps in runtime scripts (the fix-#7 class; currently clean — keep it
   so, same shape as the pipefail lint).
+- **GEN1 — (optional experiment) source-build onnxruntime-genai for riscv64**
+  [L·★] verified 2026-08-12: the skip is upstream-consistent, NOT our bug —
+  PyPI 0.15.2 ships linux wheels only for manylinux_2_28_x86_64 (no riscv64
+  in ANY version), genai has no riscv CI/build-docs (unlike core ORT's
+  --rv64), and upstream closed the one RISC-V field report (#594, nonsense
+  output on LicheePi4A) as "not planned". BUT its CMake is arch-neutral C++
+  that dlopens libonnxruntime — which we already source-build on riscv64. An
+  IREE-style self-build (runtime wheel via emulated-native or cross) is
+  plausible; would retire the STV1/smoke exemption. Risks: no upstream
+  test surface on riscv64, #594-class silent-quality failures → needs a real
+  generate() smoke, not just import. Do only if genai-on-riscv64 has a user.
 - **STV1 — smoke-torch-venv needs an arch-aware expected-set (root fix for
   the riscv64-genai exemption)** [S·★★] found live 2026-08-11: the in-image
   assert derives EXP_GENAI unconditionally from versions.env, but genai is a

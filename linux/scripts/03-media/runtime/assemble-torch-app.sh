@@ -418,6 +418,31 @@ reconcile_local_wheels() {
       uv pip install --no-deps ml_dtypes
     fi
   fi
+
+  # When torch ships as a LOCAL wheel (riscv64) its backend extra is never
+  # requested from uv sync, so the lock graph omits torch's own runtime deps —
+  # and the --no-deps force-reinstall above (correctly) no longer drags them
+  # in as a side effect. Result on riscv64: `import torchvision` dies with
+  # "No module named 'sympy'" (torch.fx symbolic shapes) while torch's core
+  # ops happen to work. Backfill exactly the missing pure-python leaves,
+  # --no-deps each (their own hard deps are in the list: sympy->mpmath,
+  # jinja2->markupsafe). amd64/arm64 get all of these from the lock and the
+  # import probes skip everything.
+  if [ "${have_torch_family}" = "true" ]; then
+    local _venv_py="${VIRTUAL_ENV:-/opt/venv}/bin/python3"
+    local -a _torch_dep_backfill=()
+    local _pair _pkg _mod
+    for _pair in sympy:sympy mpmath:mpmath networkx:networkx \
+                 jinja2:jinja2 markupsafe:markupsafe filelock:filelock \
+                 fsspec:fsspec typing-extensions:typing_extensions; do
+      _pkg="${_pair%%:*}"; _mod="${_pair##*:}"
+      "${_venv_py}" -c "import ${_mod}" 2>/dev/null || _torch_dep_backfill+=("${_pkg}")
+    done
+    if [ "${#_torch_dep_backfill[@]}" -gt 0 ]; then
+      printf 'Backfilling torch runtime deps missing from the sync graph: %s\n' "${_torch_dep_backfill[*]}"
+      uv pip install --no-deps "${_torch_dep_backfill[@]}"
+    fi
+  fi
 }
 
 install_project_environment() {

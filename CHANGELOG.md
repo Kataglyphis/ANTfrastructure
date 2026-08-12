@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-08-12 - :latest-cross SHIPPED: 3-arch manifest pushed after fixes #6-#10; the runtime-lane gate saga closes at 10 fixes / 8 runs
+
+- **GOAL ACHIEVED**: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`
+  manifest pushed (digest `sha256:8466ba39d395…994a`), verified 3-arch
+  (amd64 `2be255c2…`, arm64 `37ca9c0c…`, riscv64 `a1a3038a…`); all per-arch
+  runtime smokes 0 failures; `[INFO] Cross chain complete.` (run #8, log
+  `chain-runtime-fix10-20260812-040248.log`).
+- **Fix #10 — riscv64 torchvision `No module named 'sympy'`** (run #7's only
+  failure; fix-#7 collateral): on riscv64 torch ships as LOCAL wheels, so the
+  torch backend extra is never requested from `uv sync` and the lock graph
+  omits torch's own runtime deps; the old full-deps `--force-reinstall`
+  dragged them in as the exact side effect `--no-deps` rightly killed. Fix:
+  post-sync import-probe backfill in `reconcile_local_wheels`
+  (assemble-torch-app.sh) over sympy/mpmath/networkx/jinja2/markupsafe/
+  filelock/fsspec/typing-extensions, each installed `--no-deps`; live run
+  backfilled exactly the 5 missing leaves, amd64/arm64 probes all satisfied
+  (no-op). riscv64 app-wheel smoke then passed on-target incl.
+  `torchvision ops.nms`.
+- **riscv64 genai exemption validated in anger**: the host-side
+  smoke-runtime-image exemption converted the expected genai absence to PASS
+  while every other mismatch stays fatal. Researched upstream: genai has NO
+  riscv64 support (no PyPI wheel in any version, no riscv CI, issue #594
+  closed "not planned") — our skip is upstream-consistent; optional
+  self-build filed as backlog GEN1, root fix remains STV1.
+- **Diagnosis gotcha recorded**: smoke-torch-venv prints its OWN
+  `=== Results: N failure(s) ===` banner inside the captured-and-echoed
+  assert output; an outer-looking "1 failure(s)" mid-suite is the echoed
+  INNER summary, not the host verdict (which may arrive minutes later under
+  QEMU). Filed in the session memory to prevent re-diagnosis.
+- Backlog: +SCR1 (two more strings-scrape version checks:
+  setup-package-image.sh:150, validate-compilers.sh:48 + a force-reinstall/
+  no-deps pairing lint), +GEN1. Batch 0 (post-chain window) is now UNLOCKED.
+
 ## 2026-08-11 (night) - runs 19+20 decode the shim-4 flip-flop: patch_file_content silently NO-OPED; shim 4 rebuilt as REMOVE_RECURSE; run 21 launched
 
 - Run 19 (forensic line): the container READS the current patch file
