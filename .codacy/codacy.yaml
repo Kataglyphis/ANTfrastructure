@@ -1,4 +1,0 @@
-tools:
-    - trivy@0.66.0
-    - semgrep@1.78.0
-7.2

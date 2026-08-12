@@ -80,7 +80,7 @@ properly reproducible and is worth doing; it is not done yet.
 ## Reproducing a CI step locally
 
 The Linux workflow mounts the repository at `/workspace` and runs the scripts in
-`Scripts/Linux/`. The same shape works locally:
+`scripts/linux/`. The same shape works locally:
 
 ```pwsh
 $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
@@ -90,7 +90,7 @@ $image   = "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
   -v "D:\GitHub\Kataglyphis-BeschleunigerBallett:/workspace" `
   -w /workspace `
   $image `
-  bash ./Scripts/Linux/cmake-configure-build.sh --preset linux-debug-clang --build-dir build-linux
+  bash ./scripts/linux/cmake-configure-build.sh --preset linux-debug-clang --build-dir build-linux
 ```
 
 Notes that will save time:
@@ -129,7 +129,7 @@ MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user r
   -v cargo-cache:/cargo-cache \
   -v /mnt/d/path/to/repo:/workspace -w /workspace \
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  bash -c 'bash Scripts/Linux/cmake-configure-build.sh \
+  bash -c 'bash scripts/linux/cmake-configure-build.sh \
      --preset linux-debug-clang --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
 ```
 

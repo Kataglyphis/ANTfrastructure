@@ -224,7 +224,14 @@ build_uv_sync_args() {
       _sync_args+=(--no-install-package "${package_name}")
     done
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-      uv pip install --force-reinstall "${_locked_wheels[@]}"
+      # --no-deps on EVERY local-wheel force-reinstall (2026-08-11): without it
+      # uv re-resolves the wheels' dependencies to LATEST, silently floating
+      # the venv off the lock — caught live by assert_pinned_versions:
+      # numpy 2.5.1->2.5.2 (flagged) and protobuf 6.33.6->7.35.1 (a MAJOR bump
+      # that no gate covers). The lock graph installed by uv sync already
+      # satisfies every dependency; local wheels only replace same-name
+      # package bodies. The riscv64 IREE branch below always did this.
+      uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}"
     fi
   fi
 
@@ -238,7 +245,7 @@ build_uv_sync_args() {
   _genai_wheel="$(ls /opt/wheels/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${_genai_wheel}" ]; then
     printf 'Pinning local onnxruntime-genai wheel over the app lock: %s\n' "${_genai_wheel##*/}"
-    uv pip install --force-reinstall "${_genai_wheel}"
+    uv pip install --no-deps --force-reinstall "${_genai_wheel}"
     _sync_args+=(--no-install-package onnxruntime-genai)
   fi
 
@@ -287,14 +294,14 @@ run_uv_sync_with_fallback() {
       uv_lock_regen
       uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
       if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-        uv pip install --force-reinstall "${_locked_wheels[@]}" || true
+        uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
       fi
     fi
   else
     uv_lock_regen
     uv sync "${_sync_args[@]}" || echo "WARNING: uv sync had issues; force-reinstalling local wheels"
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-      uv pip install --force-reinstall "${_locked_wheels[@]}" || true
+      uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
     fi
   fi
 }
@@ -377,10 +384,13 @@ reconcile_local_wheels() {
   done
 
   if [ "${#other_wheels[@]}" -gt 0 ]; then
-    uv pip install --force-reinstall "${other_wheels[@]}"
+    # --no-deps: see the locked-wheels comment above — THIS site produced the
+    # live numpy/protobuf float (log: "- numpy==2.5.1 / + numpy==2.5.2" 0.5 s
+    # after uv sync had just enforced the lock).
+    uv pip install --no-deps --force-reinstall "${other_wheels[@]}"
   fi
   if [ "${#tvm_wheels[@]}" -gt 0 ]; then
-    uv pip install --force-reinstall "${tvm_wheels[@]}" || \
+    uv pip install --no-deps --force-reinstall "${tvm_wheels[@]}" || \
       echo "WARNING: TVM wheel install failed (optional; import tvm will optional-fail; native libs unaffected)"
   fi
   if [ "${#iree_wheels[@]}" -gt 0 ]; then
@@ -398,10 +408,14 @@ reconcile_local_wheels() {
       uv pip install ml_dtypes || \
         echo "WARNING: ml_dtypes source-build failed on riscv64 (iree.runtime bf16 dtypes unavailable; native iree-compile unaffected)"
     else
-      # amd64/arm64: resolve IREE's runtime deps (ml_dtypes, numpy) from PyPI so the
-      # source-built cp314 wheels are fully functional; the cp314 wheel replaces any
-      # PyPI cp312-abi3 build. Hard-fail under set -e -- IREE is REQUIRED here.
-      uv pip install --force-reinstall "${iree_wheels[@]}"
+      # amd64/arm64: the cp314 wheel replaces any PyPI cp312-abi3 build. IREE's
+      # runtime deps (numpy from the lock; ml_dtypes) must NOT be re-resolved
+      # here — a full-deps force-reinstall floats numpy off the lock (the
+      # 2026-08-11 2.5.2 incident, second injector). Install the wheels
+      # --no-deps, then ml_dtypes alone (absent from the app lock).
+      # Hard-fail under set -e -- IREE is REQUIRED here.
+      uv pip install --no-deps --force-reinstall "${iree_wheels[@]}"
+      uv pip install --no-deps ml_dtypes
     fi
   fi
 }

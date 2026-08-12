@@ -21,7 +21,7 @@ inputs:
     required: false
     default: 'true'
   run-setup-script:
-    description: 'If "true", chmod +x and run the CONSUMER repo''s Scripts/Linux/setup-dependencies.sh'
+    description: 'If "true", chmod +x and run the CONSUMER repo''s scripts/linux/setup-dependencies.sh'
     required: false
     default: 'false'
   install-uv:
@@ -63,11 +63,11 @@ runs:
         # Optionally run the CONSUMER repo's setup script (path is theirs, not
         # ContainerHub's — the skip branch keeps this action usable everywhere).
         if [ "$RUN_SETUP_SCRIPT" = "true" ]; then
-          if [ -f "Scripts/Linux/setup-dependencies.sh" ]; then
-            sudo chmod +x Scripts/Linux/setup-dependencies.sh
-            sudo ./Scripts/Linux/setup-dependencies.sh "${VULKAN_VERSION}"
+          if [ -f "scripts/linux/setup-dependencies.sh" ]; then
+            sudo chmod +x scripts/linux/setup-dependencies.sh
+            sudo ./scripts/linux/setup-dependencies.sh "${VULKAN_VERSION}"
           else
-            echo "Warning: Scripts/Linux/setup-dependencies.sh not found, skipping."
+            echo "Warning: scripts/linux/setup-dependencies.sh not found, skipping."
           fi
         fi
 

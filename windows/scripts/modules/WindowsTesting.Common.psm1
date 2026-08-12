@@ -8,7 +8,7 @@
 # scoped to the call.
 #
 # Upstreamed from Kataglyphis-BeschleunigerBallett's vendored
-# Scripts/Windows/modules copy (2026-08-11). Nothing in it was project-specific,
+# scripts/windows/modules copy (2026-08-11). Nothing in it was project-specific,
 # and a second consumer needed the same ASan-runtime discovery:
 # Kataglyphis-Inference-Engine's Start-Windows.ps1 was hand-rolling a narrower
 # version of Get-AsanRuntimeDirs that only ever matched the BuildTools SKU.

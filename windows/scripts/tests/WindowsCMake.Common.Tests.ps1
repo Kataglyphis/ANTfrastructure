@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # Moved up from a consumer repo (Kataglyphis-BeschleunigerBallett,
-# Scripts/Windows/tests) on 2026-08-07. The module was upstreamed on
+# scripts/windows/tests) on 2026-08-07. The module was upstreamed on
 # 2026-08-02 but its suite stayed behind, so this repo could change
 # WindowsCMake.Common with no test signal of its own - the only thing
 # exercising it was a consumer's opt-in Windows lane.

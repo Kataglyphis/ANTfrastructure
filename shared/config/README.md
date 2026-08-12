@@ -55,6 +55,37 @@ clang-format — and runs `-Ignore .pre-commit-config.yaml`.
 Kataglyphis-Orchestr-ANT-ion is that case, and its difference is a deliberate
 override, not drift.
 
+**Kataglyphis-Cpp-Inference** owns three of the four:
+`-Ignore .clang-tidy gcovr.cfg .pre-commit-config.yaml`.
+
+- `.clang-tidy` — it additionally disables `clang-diagnostic-error` and sets a
+  `HeaderFilterRegex`. Both are its own answer to clang-tidy seeing an `import`
+  without the BMIs on the command line. BeschleunigerBallett answers the same
+  question differently, by skipping module TUs entirely
+  (`Test-IsCxxModuleTranslationUnit` in `WindowsClang.Common`). Two valid
+  strategies; forcing either on the other would weaken it.
+- `gcovr.cfg` — coverage excludes follow the directory layout.
+- `.pre-commit-config.yaml` — it runs extra `clang-tidy` and `cmake-format`
+  hooks on commit. Which hooks a project runs locally is a workflow choice.
+
+Its `.clang-format` is NOT an override: it was ahead of canonical, and canonical
+was corrected to match (below).
+
+## The 2026-08-11 correction: canonical was the stale copy
+
+Three canonical files were wrong for **every** C++ consumer, and the drift
+report had been reading as "Cpp-Inference deviates" when it was in fact
+"Cpp-Inference is ahead":
+
+- `Standard: c++20` while BeschleunigerBallett sets `CMAKE_CXX_STANDARD 23`.
+- `.pre-commit-config.yaml`'s clang-format `files:` regex omitted `.ixx`, so
+  BeschleunigerBallett's **63 module interface units were never formatted**.
+- `misc-include-cleaner` left enabled, which is noise on module-using code.
+
+All three fixed here and written out to the consumers. The lesson for anyone
+reading a `-Check` failure: confirm which side is actually right before running
+`-Write`.
+
 ## Completeness is enforced
 
 The four names live in `Sync-SharedConfig.ps1`'s `$names`, and each one must

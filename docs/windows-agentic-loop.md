@@ -65,7 +65,7 @@ are exactly the drift the 2026-08-02 dedup pass removed.
 Create a `Run-AgenticLoop.ps1` script in your project:
 
 ```pwsh
-# Scripts/AgenticLoop/Run-AgenticLoop.ps1
+# scripts/agentic-loop/Run-AgenticLoop.ps1
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $configPath = Join-Path $PSScriptRoot 'AgenticLoop.config.json'
 $config = Get-Content $configPath -Raw | ConvertFrom-Json

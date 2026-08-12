@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Tests for WindowsTesting.Common and WindowsClang.Common, both upstreamed from
-# Kataglyphis-BeschleunigerBallett's vendored Scripts/Windows/modules copies on
+# Kataglyphis-BeschleunigerBallett's vendored scripts/windows/modules copies on
 # 2026-08-11 (they were never covered there).
 #
 # Only host-independent behaviour is asserted. The ASan-runtime *discovery*

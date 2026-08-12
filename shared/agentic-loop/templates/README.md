@@ -6,16 +6,16 @@ logic lives in `windows/scripts/modules/WindowsAgenticLoop.Common.psm1` and
 
 | File | Copy to | Then |
 |---|---|---|
-| `AgenticLoop.config.template.json` | `Scripts/AgenticLoop/AgenticLoop.config.json` | Replace every `TODO`: the build matrix entries and the build/test/quality commands. The loop refuses to start while any remain, naming each one — so you cannot silently run a half-filled template. |
-| `Run-AgenticLoop.ps1` | `Scripts/AgenticLoop/Run-AgenticLoop.ps1` | Nothing, unless your submodule path differs. |
-| `Run-AgenticLoop.sh` | `Scripts/AgenticLoop/Run-AgenticLoop.sh` | Same. `chmod +x`. |
+| `AgenticLoop.config.template.json` | `scripts/agentic-loop/AgenticLoop.config.json` | Replace every `TODO`: the build matrix entries and the build/test/quality commands. The loop refuses to start while any remain, naming each one — so you cannot silently run a half-filled template. |
+| `Run-AgenticLoop.ps1` | `scripts/agentic-loop/Run-AgenticLoop.ps1` | Nothing, unless your submodule path differs. |
+| `Run-AgenticLoop.sh` | `scripts/agentic-loop/Run-AgenticLoop.sh` | Same. `chmod +x`. |
 
 You also need a `BACKLOG.md` at the repo root using the checkbox protocol:
 `- [ ]` actionable, `- [b]` blocked (skipped by the executor and excluded
 from the pending count, so a backlog of only blocked entries lets the planner
 run again), `- [x]` done (pruned automatically — history lives in git).
 
-Optionally add project system prompts (`Scripts/AgenticLoop/prompts/*.md`)
+Optionally add project system prompts (`scripts/agentic-loop/prompts/*.md`)
 describing your conventions; they are passed per engine and are separate from
 the per-phase **task** prompts, which default to `../prompts/*.md` here and
 should not be duplicated into a consumer.
