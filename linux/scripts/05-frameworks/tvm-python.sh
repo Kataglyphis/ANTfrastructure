@@ -105,12 +105,9 @@ _tvm_build_wheel_cross() {
       log "Warning: cross TVM wheel build succeeded but produced no wheel artifact"
       return 0
     fi
-    local cross_wheel
-    for cross_wheel in "${built_cross_wheels[@]}"; do
-      log "Retagging cross TVM wheel for ${wheel_platform}: $(basename "${cross_wheel}")"
-      "$venv_python" -m wheel tags --remove --platform-tag="${wheel_platform}" "${cross_wheel}" || \
-        log "Warning: failed to retag cross TVM wheel $(basename "${cross_wheel}")"
-    done
+    log "Retagging cross TVM wheel(s) in ${TVM_WHEEL_DIR} for ${wheel_platform}"
+    # Canonical retag helper from 01-core/common.sh (sourced via tvm.sh).
+    retag_directory_wheels "${TVM_WHEEL_DIR}" "*" "${wheel_platform}" "$venv_python"
 }
 
 # Native mode: build the wheel, install tvm-ffi + the built wheel (or source

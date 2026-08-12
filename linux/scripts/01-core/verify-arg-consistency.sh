@@ -202,4 +202,30 @@ else
   echo "Case-mapped version literals match versions.env"
 fi
 
+echo ""
+echo "=== hand-forward of auto-forwarded ARG check ==="
+# append_version_build_args auto-forwards EVERY non-`# noforward` versions.env
+# variable into every build (via append_common_build_args). A script that ALSO
+# writes a literal `--build-arg VAR=` for such a name duplicates the forward —
+# a drift seed: the hand-written line survives refactors of the auto-forward
+# and the two channels can silently diverge (backlog XC7: stage-defs.sh
+# hand-forwarded VULKAN_VERSION). Narrow by construction: only names in
+# _VERSION_BUILD_ARG_VARS, only literal `--build-arg` tokens in build scripts;
+# tests/ is excluded (assertion messages quote the pattern as text).
+HANDFWD_ERRORS=0
+_vars_alt="$(IFS='|'; printf '%s' "${_VERSION_BUILD_ARG_VARS[*]}")"
+while IFS= read -r hit; do
+  [ -n "$hit" ] || continue
+  echo "  ERROR: hand-forward duplicates auto-forwarding: ${hit}"
+  HANDFWD_ERRORS=$((HANDFWD_ERRORS + 1))
+done < <(grep -rnP --include='*.sh' --exclude-dir=tests \
+           -e "--build-arg\s+\"?(${_vars_alt})=" "${REPO_ROOT}/linux/scripts" 2>/dev/null || true)
+if [ "$HANDFWD_ERRORS" -gt 0 ]; then
+  echo "ERROR: ${HANDFWD_ERRORS} literal --build-arg line(s) hand-forward an auto-forwarded versions.env variable"
+  echo "Delete the hand-forward; append_version_build_args already forwards it"
+  exit 1
+else
+  echo "No hand-forwards of auto-forwarded versions.env variables"
+fi
+
 echo "DONE: version ARG consistency check"

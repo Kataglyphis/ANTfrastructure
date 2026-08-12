@@ -104,11 +104,28 @@ ensure_tensorflow_c_sdk() {
     fi
     if [ "${_tf_fetch_ok}" = "1" ] \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
-        tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}" 2>/dev/null || true
-        # The tarball extracts to ./lib/ and ./include/ relative to cache_dir
-        if [ -d "${cache_dir}/lib" ] && [ -f "${cache_dir}/lib/libtensorflow.so" ]; then
-            mv "${cache_dir}/lib" "${tf_dir}/lib" 2>/dev/null || true
-            mv "${cache_dir}/include" "${tf_dir}/include" 2>/dev/null || true
+        # Extraction failure must disable the backend, not mask as success: a
+        # truncated tarball used to `|| true` through here, then generate a live
+        # .pc pointing at an empty ${tf_dir} — amd64 silently shipped without
+        # the TF backend. Keep tar's stderr visible; drop the corrupt archive so
+        # the next build re-downloads instead of re-failing on the cached copy.
+        if ! tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}"; then
+            rm -f "${cache_dir}/${tf_archive}"
+            echo "WARNING: TensorFlow C SDK archive extraction failed (corrupt/truncated ${tf_archive}). libtensorflow will not be available."
+            return 1
+        fi
+        # The tarball extracts to ./lib/ and ./include/ relative to cache_dir.
+        # The .pc generation below advertises ${tf_dir} to FFmpeg's configure,
+        # so it may only run once the expected layout demonstrably exists there.
+        if [ ! -f "${cache_dir}/lib/libtensorflow.so" ] \
+            || [ ! -f "${cache_dir}/include/tensorflow/c/c_api.h" ]; then
+            echo "WARNING: TensorFlow C SDK archive lacks the expected lib/ + include/ layout. libtensorflow will not be available."
+            return 1
+        fi
+        if ! mv "${cache_dir}/lib" "${tf_dir}/lib" \
+            || ! mv "${cache_dir}/include" "${tf_dir}/include"; then
+            echo "WARNING: failed to move TensorFlow C SDK into ${tf_dir}. libtensorflow will not be available."
+            return 1
         fi
         # Create a pkg-config file for FFmpeg's configure to find
         generate_pkgconfig_file "${cache_dir}/tensorflow.pc" \
@@ -160,7 +177,7 @@ ffmpeg_probe_libtensorflow() {
         # pass -lstdc++ (libtensorflow.so is C++-backed) and nothing arch-linked.
         _FFMPEG_TF_EXTRA_LIBS="-lstdc++"
         # Make libtensorflow.so.2 loadable for any executed check and the native
-        # smoke; bundle_tensorflow_runtime_lib then copies it into the image.
+        # smoke; bundle_sdk_runtime_libs then copies it into the image.
         export LD_LIBRARY_PATH="${tf_cache}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
         return 0
     fi

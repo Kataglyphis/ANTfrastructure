@@ -36,6 +36,24 @@ export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
 export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
 export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
 
+# Canonical NEEDED-walk primitive (backlog D4): elf_unresolved_needed
+# --transitive replaces the hand-rolled `ldd | awk '/=> not found/'` walk in
+# _assert_ffmpeg_so_closure below. Unlike common.sh (deliberately NOT pulled in
+# here — see the append_cross_idirafter note above), platform.sh is a
+# side-effect-free leaf that Dockerfile.torch already COPYs to
+# /opt/scripts/core/platform.sh; repo layout falls back to 01-core. Hard-require
+# it: this feeds a fail-loud gate, and silently skipping would un-gate it.
+for _stv_platform in /opt/scripts/core/platform.sh \
+                     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"; do
+  if [ -f "${_stv_platform}" ]; then
+    # shellcheck disable=SC1090
+    source "${_stv_platform}"
+    break
+  fi
+done
+command -v elf_unresolved_needed >/dev/null 2>&1 \
+  || { echo "FATAL: platform.sh (elf_unresolved_needed) not found" >&2; exit 1; }
+
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then
     echo "Skipping ${1:-torch step} in pure cross artifact mode"
@@ -208,7 +226,10 @@ _install_ffmpeg_runtime_codecs() {
 _assert_ffmpeg_so_closure() {
   if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
     local _ff_unresolved
-    _ff_unresolved="$(ldd /opt/ffmpeg/bin/ffmpeg 2>/dev/null | awk '/=> not found/{print $1}' | sort -u || true)"
+    # --transitive = the dynamic loader's view (full closure, honours the
+    # LD_LIBRARY_PATH exported by setup_torch_deps) — the property that
+    # actually matters, exactly as the previous inline ldd walk asserted.
+    _ff_unresolved="$(elf_unresolved_needed --transitive /opt/ffmpeg/bin/ffmpeg)"
     if [ -n "${_ff_unresolved}" ]; then
       echo "FATAL: /opt/ffmpeg/bin/ffmpeg has unresolved shared libraries on the runtime loader path:" >&2
       printf '  %s (not found)\n' ${_ff_unresolved} >&2

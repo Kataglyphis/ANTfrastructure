@@ -305,8 +305,11 @@ uv_sync_project() {
   if [ -n "${UV_SYNC_EXTRAS:-}" ]; then
     # Explicit wins: the project knows which combination it wants.
     info "UV_SYNC_EXTRAS set — syncing extras: ${UV_SYNC_EXTRAS}"
+    local -a _extras=()
+    IFS=',' read -r -a _extras <<<"${UV_SYNC_EXTRAS}"
     local _e
-    for _e in ${UV_SYNC_EXTRAS//,/ }; do
+    for _e in "${_extras[@]}"; do
+      [ -n "${_e}" ] || continue
       sync_args+=(--extra "$_e")
     done
   else

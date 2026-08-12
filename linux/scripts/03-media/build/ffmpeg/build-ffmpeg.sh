@@ -449,29 +449,87 @@ install_ffmpeg() {
     ${SUDO_WRAP} ldconfig || true
 }
 
-bundle_tensorflow_runtime_lib() {
-    # FFmpeg's --enable-libtensorflow makes libtensorflow.so.2 a NEEDED dependency
-    # of libavfilter. The TF C SDK lives ONLY in the /var/cache/ffmpeg-sdks cache
-    # MOUNT (never in an image layer), and emit_runtime_apt_manifest cannot help
-    # (no apt package owns it, and it skips /opt/*). So unless we copy the runtime
-    # .so into the ffmpeg payload, the final image's ffmpeg dies at load with
-    # `libtensorflow.so.2: cannot open shared object file`. onnxruntime avoids this
-    # via `COPY --from=onnxruntime`; TF has no such stage. Bundle its two runtime
-    # libs into ${FFMPEG_PREFIX}/lib, which every downstream image already has on
-    # LD_LIBRARY_PATH. Only runs when the TF backend was actually enabled (the
-    # probe set _FFMPEG_TF_EXTRA_LDFLAGS) — a no-op on arm64/riscv64 (no TF SDK).
-    [ -n "${_FFMPEG_TF_EXTRA_LDFLAGS:-}" ] || return 0
-    local tf_libdir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}/tensorflow-c/lib"
-    [ -f "${tf_libdir}/libtensorflow.so" ] || return 0
-    echo "Bundling TensorFlow C runtime libraries into ${FFMPEG_PREFIX}/lib ..."
-    ensure_sudo_or_die
-    ${SUDO_WRAP} mkdir -p "${FFMPEG_PREFIX}/lib"
-    # cp -a preserves the soname symlink chain (libtensorflow.so -> .so.2 ->
-    # .so.2.18.0). Best-effort: a bundling problem must not fail a good build.
-    ${SUDO_WRAP} cp -a "${tf_libdir}"/libtensorflow.so* "${FFMPEG_PREFIX}/lib/" 2>/dev/null || true
-    ${SUDO_WRAP} cp -a "${tf_libdir}"/libtensorflow_framework.so* "${FFMPEG_PREFIX}/lib/" 2>/dev/null || true
-    ${SUDO_WRAP} ldconfig || true
-    echo "  bundled $(find "${FFMPEG_PREFIX}/lib" -maxdepth 1 -name 'libtensorflow*.so*' 2>/dev/null | wc -l) TensorFlow .so file(s)"
+bundle_sdk_runtime_libs() {
+    # NEEDED-driven SDK bundling (backlog P4; generalizes the TF-only
+    # bundle_tensorflow_runtime_lib). SDKs under the /var/cache/ffmpeg-sdks
+    # cache MOUNT exist ONLY during the build RUN (never in an image layer),
+    # and emit_runtime_apt_manifest cannot help (no apt package owns them, and
+    # it skips /opt/*). So any NEEDED entry of the shipped ffmpeg payload that
+    # resolves ONLY from the SDK cache dies at load in the final image
+    # (`libtensorflow.so.2: cannot open shared object file`). onnxruntime
+    # avoids this via `COPY --from=onnxruntime`; cache-mount SDKs have no such
+    # stage. Derive the exact set via the canonical D4 primitives: sonames the
+    # ffmpeg binaries/libs NEED that resolve neither from the ffmpeg payload
+    # nor from apt/system paths, but DO exist in the SDK cache — bundle those
+    # (plus their own unresolved NEEDED closure: libtensorflow_framework.so.2
+    # is a NEEDED of libtensorflow.so.2, not of ffmpeg) into
+    # ${FFMPEG_PREFIX}/lib, which every downstream image already has on
+    # LD_LIBRARY_PATH. TensorFlow is the only expected case today; the loud
+    # BUNDLED log below is the audit trail if that ever changes. A no-op on
+    # arm64/riscv64 (no SDK libs in the cache).
+    local sdk_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
+
+    if [ -d "${sdk_cache}" ]; then
+        echo "Scanning ffmpeg NEEDED entries for SDK-cache-only libraries to bundle into ${FFMPEG_PREFIX}/lib ..."
+        ensure_sudo_or_die
+        ${SUDO_WRAP} mkdir -p "${FFMPEG_PREFIX}/lib"
+
+        # Worklist seeded with the sonames the shipped payload needs but which
+        # resolve neither from the payload itself nor from apt/system paths.
+        local -a queue=()
+        local -A seen=()
+        local _f _so _src _dep
+        while IFS= read -r _f; do
+            while IFS= read -r _so; do
+                { [ -n "${_so}" ] && [ -z "${seen[${_so}]:-}" ]; } || continue
+                seen["${_so}"]=1
+                queue+=("${_so}")
+            done < <(elf_unresolved_needed "${_f}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
+        done < <(
+            find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
+            find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
+        )
+
+        local bundled=0 i=0
+        while [ "${i}" -lt "${#queue[@]}" ]; do
+            _so="${queue[${i}]}"
+            i=$((i + 1))
+            # `|| true`: `find | head -1` dies with SIGPIPE on multiple matches
+            # (same class emit_runtime_apt_manifest guards against). -type l:
+            # SDK sonames are usually symlinks (.so.2 -> .so.2.18.0).
+            _src="$(find "${sdk_cache}" -maxdepth 6 \( -type f -o -type l \) -name "${_so}" 2>/dev/null | head -1 || true)"
+            if [ -z "${_src}" ]; then
+                echo "  NOTE: ${_so} unresolved and not in the SDK cache; leaving it to the runtime apt manifest / validator" >&2
+                continue
+            fi
+            # -L materializes the soname as a regular file: copying the bare
+            # symlink would dangle once the cache mount is gone at runtime.
+            ${SUDO_WRAP} cp -aL "${_src}" "${FFMPEG_PREFIX}/lib/${_so}"
+            echo "  BUNDLED: ${_so} (from ${_src%/*})"
+            bundled=$((bundled + 1))
+            # Enqueue the bundled lib's own unresolved NEEDED entries so
+            # SDK-internal deps ship too.
+            while IFS= read -r _dep; do
+                { [ -n "${_dep}" ] && [ -z "${seen[${_dep}]:-}" ]; } || continue
+                seen["${_dep}"]=1
+                queue+=("${_dep}")
+            done < <(elf_unresolved_needed "${_src}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
+        done
+
+        echo "Bundled ${bundled} SDK runtime .so file(s) into ${FFMPEG_PREFIX}/lib"
+        [ "${bundled}" -eq 0 ] || ${SUDO_WRAP} ldconfig || true
+    fi
+
+    # Postcondition (kept from the TF-only original): with TF enabled,
+    # libtensorflow.so.2 is a NEEDED dep of libavfilter and the SDK cache mount
+    # is gone at runtime — the bundled copy is the ONLY thing keeping ffmpeg
+    # loadable, and neither the in-stage smoke (resolves the .so from the cache
+    # mount via LD_LIBRARY_PATH) nor validate-media-runtime (WARN only) can
+    # catch a failed copy. Missing here means a broken image: die.
+    if [ -n "${_FFMPEG_TF_EXTRA_LDFLAGS:-}" ]; then
+        [ -f "${FFMPEG_PREFIX}/lib/libtensorflow.so.2" ] \
+            || die "TensorFlow backend enabled but libtensorflow.so.2 was not bundled into ${FFMPEG_PREFIX}/lib"
+    fi
 }
 
 emit_runtime_apt_manifest() {
@@ -501,7 +559,7 @@ emit_runtime_apt_manifest() {
         find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
         find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
     } | while IFS= read -r _f; do
-        objdump -p "${_f}" 2>/dev/null | awk '/NEEDED/{print $2}'
+        elf_needed_sonames "${_f}"   # canonical NEEDED walk (01-core/platform.sh, backlog D4)
     done | sort -u | while IFS= read -r _soname; do
         local _path _pkg
         # `|| true` on both: `find | head -1` dies with SIGPIPE (rc 141) when
@@ -651,9 +709,11 @@ main() {
     configure_ffmpeg
     build_ffmpeg
     install_ffmpeg
-    # libtensorflow.so.2 lives only in the SDK cache mount; copy it into the
-    # ffmpeg payload so the shipped binary can load it (see the function header).
-    bundle_tensorflow_runtime_lib || true
+    # SDK-cache-only NEEDED libs (today: libtensorflow.so.2 + its framework
+    # lib) live only in the SDK cache mount; copy them into the ffmpeg payload
+    # so the shipped binary can load them (see the function header). `|| true`
+    # keeps the scan best-effort; the TF die-assert inside still exits hard.
+    bundle_sdk_runtime_libs || true
     # Best-effort by declaration (see its header comment): a manifest problem
     # must never fail an ffmpeg build that already succeeded.
     emit_runtime_apt_manifest || true

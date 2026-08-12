@@ -1,0 +1,10 @@
+{
+  "run_id": "",
+  "arches": "amd64,arm64,riscv64",
+  "range": "sdk..runtime",
+  "stages": {
+    "sdk": {"status": "ok", "pin": ""},
+    "media": {"status": "running", "pin": ""}
+  },
+  "updated": "2026-08-12T18:00:12Z"
+}

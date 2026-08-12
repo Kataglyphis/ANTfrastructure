@@ -105,7 +105,7 @@ COPY --chmod=755 linux/scripts/03-media/core/common.sh              /opt/scripts
 # Data-driven per-arch MEDIA_SKIP_* flag files consumed by
 # media_load_arch_flags() (03-media/core/common.sh). COPY'd in base so they
 # are present in every derived stage, including install-deps RUN steps that
-# only bind-mount their own 03-media subtree + 01-core.
+# only bind-mount their own install-deps.sh + the cross-env module closure.
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-amd64.env   /opt/scripts/03-media/core/arch-flags-amd64.env
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-arm64.env   /opt/scripts/03-media/core/arch-flags-arm64.env
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-riscv64.env /opt/scripts/03-media/core/arch-flags-riscv64.env
@@ -127,7 +127,11 @@ RUN set -euo pipefail; \
 # that cause package version conflicts.  We start fresh here.
 # Uses the UBUNTU_CODENAME build arg (from versions.env) so the codename
 # stays in sync with the base image's Ubuntu version.
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,readonly \
+# Per-file mounts: this RUN sources only ubuntu-mirror.sh (which pulls in its
+# platform.sh leaf) — a whole-01-core mount here re-paid the entire base stage
+# (and everything after it) for ANY 01-core edit.
+RUN --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core-scripts/ubuntu-mirror.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core-scripts/platform.sh,readonly \
     set -euo pipefail; \
     rm -f /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources \
           /etc/apt/preferences.d/* 2>/dev/null || true; \
@@ -164,7 +168,8 @@ RUN set -euo pipefail; \
         --upgrade pip setuptools wheel cython pybind11 numpy
 
 # Re-register GCC as the default after install-deps reset alternatives.
-RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
+# register-gcc-alternatives.sh is self-contained (sources nothing) → mount it alone.
+RUN --mount=type=bind,source=linux/scripts/01-core/register-gcc-alternatives.sh,target=/tmp/core-scripts/register-gcc-alternatives.sh,ro \
     set -euo pipefail; \
     bash /tmp/core-scripts/register-gcc-alternatives.sh
 
@@ -206,11 +211,16 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     ORT_WEBGPU_ALLOW_CROSS=${ORT_WEBGPU_ALLOW_CROSS}
 
 # deps + fetch combined: both are fast IO-bound operations.
-# Bind-mount the onnxruntime build scripts (readonly) so changes to them only
-# invalidate this RUN — not a COPY layer that would cascade to every later RUN.
+# Per-file mounts: --step deps/fetch only execute build-onnxruntime.sh →
+# 10-deps.sh / 20-fetch.sh (all sourcing lib/common.sh), so mounting the whole
+# onnxruntime dir made every 30-*/40-*/50-*/60-*/70-* build-script edit re-pay
+# this apt+clone+submodule layer. 01-core stays whole-dir: lib/common.sh runs
+# media_common_init, whose source_module loader pulls most of 01-core by design.
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
-    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/runtime,target=/opt/scripts/03-media/build/onnxruntime/runtime,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,target=/opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/10-deps.sh,target=/opt/scripts/03-media/build/onnxruntime/build/10-deps.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh,target=/opt/scripts/03-media/build/onnxruntime/build/20-fetch.sh,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib,target=/opt/scripts/03-media/build/onnxruntime/build/lib,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -330,8 +340,21 @@ ARG LITERT_OUTPUT_DIR=/usr/local
 ARG LITERTJS_VERSION=2.5.3
 ARG MEDIAPIPE_GENAI_VERSION=0.10.29
 
-RUN --mount=type=bind,source=linux/scripts/03-media/build/litert,target=/opt/scripts/03-media/build/litert,readonly \
-    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+# Per-file install-deps mounts (pattern shared by every media install-deps RUN
+# below): each install-deps.sh sources ../../core/common.sh (base COPY) →
+# media_install_deps_init → /opt/scripts/core/install-deps-preamble.sh (base
+# COPY) → cross-env.sh → its module closure {platform, ubuntu-mirror, cross-gcc,
+# cross-python, cross-apt, cross-meson}. Mounting the whole component dir +
+# whole 01-core made every build-script edit re-pay this 10-20 min/arch apt
+# layer; the narrowed mounts below are exactly that traced source chain.
+RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh,target=/opt/scripts/03-media/build/litert/install-deps.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,readonly \
+    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \

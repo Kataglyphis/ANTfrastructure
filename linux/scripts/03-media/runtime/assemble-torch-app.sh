@@ -100,6 +100,28 @@ staged_opencv_python_available() {
   return 1
 }
 
+# THE wheel-family classifier — single source of truth for mapping a
+# /opt/wheels basename to its family (was the same case-arm globs drifting in
+# three separate sites; backlog "wheel-family classifier"). Family tokens are
+# consumed by the collect_/reconcile_ functions below; extend HERE only.
+wheel_family() {
+  case "$1" in
+    torch-*.whl)              printf 'torch' ;;
+    torchvision-*.whl)        printf 'torchvision' ;;
+    ai_edge_litert-*.whl|ai-edge-litert-*.whl) printf 'litert' ;;
+    iree_base_compiler-*.whl) printf 'iree-compiler' ;;
+    iree_base_runtime-*.whl)  printf 'iree-runtime' ;;
+    iree-*.whl)               printf 'iree' ;;
+    opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+                              printf 'opencv' ;;
+    onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
+                              printf 'onnx' ;;
+    apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
+                              printf 'tvm' ;;
+    *)                        printf 'other' ;;
+  esac
+}
+
 collect_locked_local_skip_packages() {
   local -n out_packages_ref=$1
   local wheel_path wheel_basename
@@ -111,25 +133,13 @@ collect_locked_local_skip_packages() {
   shopt -s nullglob
   for wheel_path in /opt/wheels/*.whl; do
     wheel_basename="$(basename "${wheel_path}")"
-    case "${wheel_basename}" in
-      torch-*.whl)
-        append_unique_arg out_packages_ref torch
-        ;;
-      torchvision-*.whl)
-        append_unique_arg out_packages_ref torchvision
-        ;;
-      ai_edge_litert-*.whl|ai-edge-litert-*.whl)
-        append_unique_arg out_packages_ref ai-edge-litert
-        ;;
-      iree_base_compiler-*.whl)
-        append_unique_arg out_packages_ref iree-base-compiler
-        ;;
-      iree_base_runtime-*.whl)
-        append_unique_arg out_packages_ref iree-base-runtime
-        ;;
-      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
-        append_unique_arg out_packages_ref opencv-python
-        ;;
+    case "$(wheel_family "${wheel_basename}")" in
+      torch)         append_unique_arg out_packages_ref torch ;;
+      torchvision)   append_unique_arg out_packages_ref torchvision ;;
+      litert)        append_unique_arg out_packages_ref ai-edge-litert ;;
+      iree-compiler) append_unique_arg out_packages_ref iree-base-compiler ;;
+      iree-runtime)  append_unique_arg out_packages_ref iree-base-runtime ;;
+      opencv)        append_unique_arg out_packages_ref opencv-python ;;
     esac
   done
   shopt -u nullglob
@@ -142,8 +152,8 @@ collect_locked_local_wheels() {
   shopt -s nullglob
   for wheel_path in /opt/wheels/*.whl; do
     wheel_basename="$(basename "${wheel_path}")"
-    case "${wheel_basename}" in
-      torch-*.whl|torchvision-*.whl|ai_edge_litert-*.whl|ai-edge-litert-*.whl)
+    case "$(wheel_family "${wheel_basename}")" in
+      torch|torchvision|litert)
         # Custom-built wheels are ALWAYS pinned as locked local wheels. A
         # broken line-continuation used to merge this branch with the opencv
         # one below (embedded-whitespace pattern), so with staged OpenCV
@@ -151,7 +161,7 @@ collect_locked_local_wheels() {
         # set and pip could resolve UPSTREAM torch instead of the custom build.
         out_wheels_ref+=("${wheel_path}")
         ;;
-      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+      opencv)
         if staged_opencv_python_available; then
           echo "Skipping ${wheel_basename} (source-built OpenCV5 bindings found)"
         else
@@ -325,19 +335,11 @@ reconcile_local_wheels() {
 
   for wheel_path in "${local_wheels[@]}"; do
     wheel_basename="$(basename "${wheel_path}")"
-    case "${wheel_basename}" in
-      onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
-        have_onnx_family=true
-        ;;
-      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
-        have_opencv_family=true
-        ;;
-      torch-*.whl|torchvision-*.whl)
-        have_torch_family=true
-        ;;
-      ai_edge_litert-*.whl|ai-edge-litert-*.whl)
-        have_litert_family=true
-        ;;
+    case "$(wheel_family "${wheel_basename}")" in
+      onnx)              have_onnx_family=true ;;
+      opencv)            have_opencv_family=true ;;
+      torch|torchvision) have_torch_family=true ;;
+      litert)            have_litert_family=true ;;
     esac
   done
 
@@ -373,10 +375,10 @@ reconcile_local_wheels() {
   # the runtime smoke's optional-fail instead of failing the build.
   local -a iree_wheels=() tvm_wheels=() other_wheels=()
   for wheel_path in "${local_wheels[@]}"; do
-    case "$(basename "${wheel_path}")" in
-      iree_base_runtime-*.whl|iree_base_compiler-*.whl|iree-*.whl)
+    case "$(wheel_family "$(basename "${wheel_path}")")" in
+      iree|iree-compiler|iree-runtime)
         iree_wheels+=("${wheel_path}") ;;
-      apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
+      tvm)
         tvm_wheels+=("${wheel_path}") ;;
       *)
         other_wheels+=("${wheel_path}") ;;
