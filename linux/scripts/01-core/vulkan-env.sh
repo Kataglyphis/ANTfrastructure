@@ -6,7 +6,7 @@
 #   * 02-toolchain/vulkan.sh::source_vulkan_sdk_env  - returns 1 on a miss; its
 #     callers gate on that (04-runtime/entrypoint.sh, 05-frameworks/tvm-detect.sh,
 #     03-media/build/gstreamer/install-deps.sh and .../common/pre-setup.sh).
-#   * project launchers (e.g. BeschleunigerBallett Scripts/Linux/lib/common.sh::
+#   * project launchers (e.g. BeschleunigerBallett scripts/linux/lib/common.sh::
 #     source_vulkan_env) - warn and return 0 so a dev box without an installed
 #     SDK still proceeds, and carry four extra fallbacks the installer copy
 #     lacked (explicit $VULKAN_SETUP_SCRIPT, ${HOME}/vulkan, an arch-subdirectory

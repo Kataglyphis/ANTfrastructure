@@ -1473,9 +1473,16 @@ Kataglyphis-Inference-Engine inside the image):
   bind-mount the sources, then junction the Dart/Flutter write dirs
   (`.dart_tool`, `build`) from the mounted workspace to **container-local**
   dirs (`mklink /J`, run inside the container) — Dart ops work in fresh
-  sandbox dirs. A **Dev Drive** source additionally needs
-  `fsutil devdrv setfiltersallowed bindFlt, wcifs` once (elevated), then a
-  remount.
+  sandbox dirs. A **Dev Drive** source additionally needs the container filters
+  allow-listed once (elevated), then a remount:
+  `fsutil devdrv setFiltersAllowed /volume D: "bindFlt,wcifs"`. The filter list
+  is ONE quoted argument — the unquoted `bindFlt, wcifs` form previously written
+  here is parsed as two arguments and fails with a bare syntax dump, which is
+  the very trap
+  [`windows-container-build-performance.md`](windows-container-build-performance.md)
+  § *Transport B* documents. That page owns the full setup, verification and
+  revert steps (including the reboot and the "allowed vs attached" distinction);
+  do not restate them.
 - **The bind-mount target must NOT already exist in the image** (verified
   2026-07-16): `--mount target=C:\workspace` (a baked image dir) fails at
   container creation with `hcs::CreateComputeSystem ... Die Anforderung wird
@@ -1928,9 +1935,13 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > the whole W1/W2/W3 batches, the review history and all DONE evidence notes —
 > is archived verbatim in
 > [windows-backlog-archive-2026-08-11.md](windows-backlog-archive-2026-08-11.md).
-> Standing rule that survives the close-out: check the cache-tier map before
+> Standing rules that survive the close-out: check the cache-tier map before
 > touching anything (media-closure edits cost one ONNX-vertex rebuild — batch
-> them), and never remove the deliberate media-merge version-ARG mirrors.
+> them); never remove the deliberate media-merge version-ARG mirrors; and
+> never trust a patch helper whose success message prints unconditionally
+> (litert-lm's `patch_file_content` no-oped silently for two runs, 2026-08-11
+> — verify by the SYMPTOM disappearing, or use structurally-immune ops like
+> `file(REMOVE_RECURSE)` with a self-check).
 
 ### Open items (effort·impact; ordered by leverage)
 
@@ -1989,8 +2000,10 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   mozilla/sccache (out/upstream-issue-sccache-nvcc.md — crash class rock
   solid, miscompile class with full controls) and opencv/opencv
   (out/upstream-issue-opencv-ort-wchar.md). Optional third:
-  google-ai-edge/LiteRT-LM cmake staleness (stale proto list + stale absl
-  pin at v0.15.0; evidence in CHANGELOG 2026-08-11).
+  google-ai-edge cmake-lane staleness at LiteRT-LM v0.15.0 — now FOUR
+  findings (stale proto list, stale absl pin, stale litert pin vs their own
+  bazel WORKSPACE, and litert's unconditional example subprojects with a
+  hard system-Protobuf requirement); evidence in CHANGELOG 2026-08-11.
 - **Post-run diagnostics queue:** read the chain's SCCACHE_ERROR_LOG from
   the -2 cache mount (the 1498-write-errors witness), one
   `probe-build-copy.ps1 -Heavy` smoke AFTER the poisoned-chain prune, and

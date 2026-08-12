@@ -30,8 +30,34 @@ drifted before), plus packaging utilities. `require-rust` (default `'true'`)
 controls the rustc gate: with `'false'` the Rust toolchain block is skipped
 with a notice instead of failing, so uv-only consumers can use the action on
 runners without Rust. Optional: `run-setup-script: true` runs the consuming
-repo's `Scripts/Linux/setup-dependencies.sh` (skipped with a warning when
+repo's `scripts/linux/setup-dependencies.sh` (skipped with a warning when
 absent); `install-uv: true` installs the Astral uv package manager.
+
+### `set-docker-data-root`
+Points the Docker daemon's data-root at another drive **before the image is
+pulled**, so a multi-GB Windows image lands where there is room. Inputs:
+`data-root` (default `D:\docker`), `service-name`, `required-free-gb`,
+`ready-timeout-seconds`. Outputs: `data-root`, `free-gb`.
+
+Why it exists, measured on a windows-2025 runner 2026-08-11:
+
+```
+DriveLetter FreeGB SizeGB FileSystemLabel
+          C  29.90 149.40 Windows
+          D 219.50 220.00 Temp
+```
+
+Docker on Windows keeps its data-root under the system drive, and the winamd64
+image needs ~54 GB to import — more than C: has. `cleanup-disk-space` claws C:
+back to ~68 GB by deleting Visual Studio and the tool caches, which works but is
+destructive and slow, and leaves a 220 GB drive at 219.5 GB free.
+
+Order matters: run it **before** the pull. Changing the data-root makes images
+under the old one invisible — harmless on a fresh runner, wasteful after a pull.
+It merges into any existing `daemon.json` rather than overwriting it, so runner
+defaults (mirrors, log options) survive. On a self-hosted runner set `data-root`
+to somewhere persistent; `D:` on a hosted runner is the ephemeral temp disk and
+is wiped between jobs.
 
 ### `assert-docker-disk-space`
 Resolves the Docker daemon's data-root and fails FAST when its drive has less
@@ -39,6 +65,9 @@ free space than a large image import needs, instead of letting `docker pull`
 grind ~40 minutes into hcsshim::ImportLayer "not enough space on the disk
 (0x70)". Inputs: `required-free-gb` (required), `fallback-data-root`,
 `probe-attempts`, `probe-interval-seconds`. Outputs: `data-root`, `free-gb`.
+
+Complements `set-docker-data-root`: move the data-root first, then assert the
+drive it now lives on is big enough.
 
 Do not simplify the probe back to a one-shot `docker info --format
 '{{.DockerRootDir}}' 2>$null`. On runner image win25-vs2026/20260728.188 that

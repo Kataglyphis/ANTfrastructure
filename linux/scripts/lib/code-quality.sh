@@ -17,7 +17,7 @@
 # The Windows equivalent of this library is split across
 #   windows/scripts/modules/WindowsFormatting.Common.psm1   (upstream, here)
 #   windows/scripts/modules/WindowsCMake.Common.psm1        (upstream, here)
-#   Scripts/Windows/modules/WindowsClang.Common.psm1        (consumer project)
+#   scripts/windows/modules/WindowsClang.Common.psm1        (consumer project)
 # An audit found the two sides have genuinely drifted on six axes. They are
 # listed here so that a future unification is a decision with the facts in
 # hand rather than an accident. This library reproduces the LINUX behaviour

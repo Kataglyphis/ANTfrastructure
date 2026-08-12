@@ -5,7 +5,7 @@ modules.
 
 | File | Copy to | Then |
 |---|---|---|
-| `Resolve-BuildModule.ps1` | `Scripts/Windows/Resolve-BuildModule.ps1` (or `scripts/windows/`) | Adjust `$script:RepoRootRelativeToHere` if the script does not sit exactly two directories below the repo root. Nothing else. |
+| `Resolve-BuildModule.ps1` | `scripts/windows/Resolve-BuildModule.ps1` (or `scripts/windows/`) | Adjust `$script:RepoRootRelativeToHere` if the script does not sit exactly two directories below the repo root. Nothing else. |
 
 ## Why this one file is copied rather than imported
 
@@ -27,7 +27,7 @@ Import-BuildModule @(
     'WindowsScripts.Shared'   # dependency order matters: Shared first,
     'WindowsBuild.Common'     # then Build, then everything built on them
     'WindowsCMake.Common'
-    'MyProject.Paths'         # project-specific -> Scripts/Windows/modules/
+    'MyProject.Paths'         # project-specific -> scripts/windows/modules/
 )
 ```
 

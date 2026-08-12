@@ -150,6 +150,27 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   overrides rc≠0 (partial installs print it per package); :149/:170 licenses
   downgraded to echo; :151-167 duplicated 7-package list. Direct
   sdkmanager_install + fatal licenses + NDK-dir postcondition.
+- **SCR1 — two MORE strings-scraping version checks (the fix-#8 class) + a
+  no-deps lint** [S·★★] the clang-smoke false-negative (dylib binaries keep
+  their version in libLLVM.so; `strings` on the slim driver greps empty — AND
+  masked the amd64 franken toolchain) was fixed by EXECUTING the tool; the
+  same scrape-not-execute pattern survives at setup-package-image.sh:150 and
+  validate-compilers.sh:48 (a GATE). Convert both to execution where the
+  check runs in-image/emulated; where true cross-static checks are needed,
+  assert ELF arch instead of version-string archaeology. Rider: a lint/test
+  asserting `uv pip install --force-reinstall` is ALWAYS paired with
+  --no-deps in runtime scripts (the fix-#7 class; currently clean — keep it
+  so, same shape as the pipefail lint).
+- **STV1 — smoke-torch-venv needs an arch-aware expected-set (root fix for
+  the riscv64-genai exemption)** [S·★★] found live 2026-08-11: the in-image
+  assert derives EXP_GENAI unconditionally from versions.env, but genai is a
+  DOCUMENTED riscv64 skip (producer: "does not cross-build"; artifact-verify
+  SKIPs in agreement) → first-ever riscv64 run of the assert flagged
+  "NOT INSTALLED". Host-side exemption landed in smoke-runtime-image
+  (tolerates EXACTLY that one absence on riscv64 only); root fix: an arch/
+  policy table in smoke-torch-venv (EXP_GENAI empty on riscv64, keep the
+  hard-assign wrapper overridable) — in-image script = torch-cascade cost,
+  so ride a wrapper rebuild window; then drop the host-side special case.
 - **T1 contract surprises** (from writing test-cross-apt.sh): rename/re-comment
   cross_package_files_present (checks dpkg ${Status}, NOT files — name and
   caller comment both stale); give _CROSS_ENV_APT_UPDATED a `:-` default
@@ -234,6 +255,20 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   show it FAILING on arm64+riscv64 (target ELF can't exec on amd64); only mv
   existence is really gated. Replace with `test -x` + elf_machine_name assert
   vs TARGET_ARCH. Verify-only edit = cheap.
+- **BS3b — amd64 llvm-target is NOT self-contained (ROOT fix)** [M·★★★]
+  proven live 2026-08-11: the sdk amd64 branch `cp -a /usr/lib/llvm-22` copies
+  only dev SYMLINKS in lib/ — the runtime sonames (libLLVM.so.22.1,
+  libclang-cpp.so.22.1) live in the MULTIARCH dir and never ship, so the
+  wrapper's clang bound to ambient libs: fine while ambient==apt.llvm.org,
+  a 22.1.8-driver/22.1.2-libs FRANKEN build once the Klasse-B dev-surface
+  packages brought Ubuntu's libs in. Masked for ever by the strings-scraping
+  smoke (fixed same day to EXECUTE the tool); PACKAGE-level mitigation landed
+  (Dockerfile.package copies the artifact's matching sonames into
+  llvm-target/lib + 000-llvm-target.conf ld priority). Root fix here: sdk's
+  amd64 branch must copy the multiarch runtime libs alongside the prefix (or
+  build amd64's target-clang like the cross arches, with $ORIGIN RPATH) —
+  then drop the package-level shim. Also re-check TG7's minimal-profile idea
+  against this coupling.
 - **BS4 — base-image.sh stale third-channel fallbacks incl. FIVE dead SHAs**
   [S·★★] :23 node 26.5.1 (pin 26.7.0), :24 uv 0.12.1 (0.12.3), SHA fallbacks
   :304/:308/:371/:375/:379 all ≠ versions.env — a half-load regression

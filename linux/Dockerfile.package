@@ -109,7 +109,33 @@ COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-med
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
     SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
-    rm -f /tmp/copy-media-payloads.sh
+    rm -f /tmp/copy-media-payloads.sh; \
+    # Make /usr/local/llvm-target SELF-CONTAINED (2026-08-11): the amd64 copy
+    # (apt.llvm.org tree) ships only dev symlinks in lib/ — its runtime sonames
+    # (libLLVM.so.22.1, libclang-cpp.so.22.1) live in the MULTIARCH dir and were
+    # never copied, so the shipped clang silently bound to whatever ambient
+    # libLLVM the image carried. That was invisibly "fine" while ambient ==
+    # apt.llvm.org; since the dev-surface packages install Ubuntu's 22.1.2 libs,
+    # amd64's effective clang became a 22.1.8-driver/22.1.2-libs franken build —
+    # exposed the moment the clang smoke started EXECUTING the tool instead of
+    # scraping strings. Copy the artifact's matching runtime libs next to the
+    # driver and give llvm-target/lib loader priority. No-op on arm64/riscv64
+    # (source-built with \$ORIGIN RPATH and their own complete lib/).
+    for _lib in /artifact-src/usr/lib/*-linux-gnu/libLLVM.so.2* \
+                /artifact-src/usr/lib/*-linux-gnu/libclang-cpp.so.2*; do \
+        [ -e "${_lib}" ] || continue; \
+        _soname="$(basename "${_lib}")"; \
+        # -e is FALSE for a dangling symlink (the apt.llvm.org tree ships
+        # exactly such a stale .so.22.1 link into the void) — rm it first or
+        # cp refuses "not writing through dangling symlink". A REAL lib
+        # (arm64/riscv64 source builds) still short-circuits the copy.
+        if [ ! -e "/usr/local/llvm-target/lib/${_soname}" ]; then \
+            rm -f "/usr/local/llvm-target/lib/${_soname}"; \
+            cp -a "${_lib}" "/usr/local/llvm-target/lib/${_soname}"; \
+        fi; \
+    done; \
+    printf '/usr/local/llvm-target/lib\n' > /etc/ld.so.conf.d/000-llvm-target.conf; \
+    ldconfig
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 

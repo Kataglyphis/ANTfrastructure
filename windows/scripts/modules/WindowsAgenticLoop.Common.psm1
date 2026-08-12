@@ -930,8 +930,8 @@ function Invoke-AgenticLoop {
     $buildCfg = Get-AgenticConfigValue $Config 'build' $null
     $testCmd = if ($OnWindows) { Get-AgenticConfigValue $buildCfg 'windowsTestCommand' $null } else { Get-AgenticConfigValue $buildCfg 'linuxTestCommand' $null }
     $qualityCmd = if ($OnWindows) { Get-AgenticConfigValue $buildCfg 'windowsQualityCommand' $null } else { Get-AgenticConfigValue $buildCfg 'linuxQualityCommand' $null }
-    $windowsBuildScript = Get-AgenticConfigValue $buildCfg 'windowsScript' 'Scripts/Windows/Build-Windows-Container.ps1'
-    $linuxBuildScript = Get-AgenticConfigValue $buildCfg 'linuxScript' 'Scripts/Linux/cmake-configure-build.sh'
+    $windowsBuildScript = Get-AgenticConfigValue $buildCfg 'windowsScript' 'scripts/windows/Build-Windows-Container.ps1'
+    $linuxBuildScript = Get-AgenticConfigValue $buildCfg 'linuxScript' 'scripts/linux/cmake-configure-build.sh'
 
     # Full matrix sweep: every N iterations, run ALL configs instead of one.
     # 0 = disabled (cycle one config per build trigger).

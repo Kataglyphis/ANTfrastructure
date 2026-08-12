@@ -215,9 +215,24 @@ main() {
     # skip it (no versions to assert).
     if [ "${torch_expected}" = "1" ]; then
       echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
-      if _rt_run \
-           bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh'; then
+      _stv_out="$(_rt_run \
+           bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh' 2>&1)" \
+        && _stv_rc=0 || _stv_rc=$?
+      printf '%s\n' "${_stv_out}"
+      if [ "${_stv_rc}" -eq 0 ]; then
         pass "ML-stack versions match pins (${target_arch})"
+      elif [ "${target_arch}" = "riscv64" ] \
+           && [ "$(printf '%s\n' "${_stv_out}" | grep -cE '^[[:space:]]*XX ')" = "1" ] \
+           && printf '%s\n' "${_stv_out}" | grep -qE '^[[:space:]]*XX[[:space:]]+onnxruntime-genai[[:space:]]+NOT INSTALLED'; then
+        # DOCUMENTED exemption (2026-08-11): onnxruntime-genai does not
+        # cross-build for riscv64 — the media producer skips it loudly
+        # ("Skipping onnxruntime-genai on riscv64 because it is not supported")
+        # and verify-media-artifacts SKIPs in agreement. The in-image assert
+        # derives EXP_GENAI unconditionally from versions.env and cannot see
+        # arch policy; tolerating EXACTLY this one absence here (host side, no
+        # image rebuild) keeps every other mismatch fatal. Root fix backlogged:
+        # teach smoke-torch-venv an arch-aware expected-set.
+        pass "ML-stack versions match pins (${target_arch}; genai absent = documented riscv64 exemption)"
       else
         fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
       fi
@@ -519,9 +534,14 @@ rc=0
 for tool in clang clang++; do
   p="$(command -v "$tool" || true)"
   [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
-  f="$(readlink -f "$p")"
-  ver="$(strings "$f" 2>/dev/null | grep -o \"version\":\"[^\"]*\" | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true)"
-  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-MISSING} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
+  # EXECUTE the tool for its version — never scrape the binary with strings.
+  # The old strings-based extraction false-negatived on arm64 (2026-08-11):
+  # the dylib-linked target clang keeps its version string in libLLVM.so, so
+  # the slim driver binary greps EMPTY while `clang --version` prints 22.1.8
+  # perfectly. This smoke runs INSIDE the image (qemu for cross arches), so
+  # execution is always available — verify the effect, not the bytes.
+  ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
+  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
 done
 exit $rc'; then
         pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"

@@ -48,3 +48,19 @@ patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(run_
 patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(analyze_model" "add_executable(analyze_model EXCLUDE_FROM_ALL" FALSE)
 patch_file_content("${LITERT_SRC_DIR}/tools/CMakeLists.txt" "add_executable(apply_plugin_main" "add_executable(apply_plugin_main EXCLUDE_FROM_ALL" FALSE)
 message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/apply_plugin_main) EXCLUDE_FROM_ALL")
+
+# litert @3cb830ad (the bazel-truth pin, staleness-#3 bump) adds
+# tensor/examples/{segmentation,gemma3} UNCONDITIONALLY (guarded only by
+# `if(EXISTS .../CMakeLists.txt)`, no option); gemma3's CMakeLists does
+# find_package(Protobuf REQUIRED) and killed the litert_external CONFIGURE
+# (runs 17-20, 2026-08-11). A patch_file_content string-replace of the
+# add_subdirectory lines silently NO-OPED (run 20: the message printed but
+# gemma3 still configured - the helper's replace never matched). Use the
+# upstream guard itself instead: REMOVE the example trees, the EXISTS
+# check then skips them - immune to string-form drift.
+file(REMOVE_RECURSE "${LITERT_SRC_DIR}/tensor/examples")
+if(EXISTS "${LITERT_SRC_DIR}/tensor/examples")
+    message(WARNING "[LiteRTLM-winfix] tensor/examples still present after REMOVE_RECURSE - gemma3 will kill the configure")
+else()
+    message(STATUS "[LiteRTLM-winfix] tensor/examples REMOVED (gemma3's find_package(Protobuf REQUIRED) cannot fire)")
+endif()

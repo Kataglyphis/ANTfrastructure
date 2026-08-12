@@ -1,5 +1,122 @@
 # Changelog
 
+## 2026-08-11 (night) - runs 19+20 decode the shim-4 flip-flop: patch_file_content silently NO-OPED; shim 4 rebuilt as REMOVE_RECURSE; run 21 launched
+
+- Run 19 (forensic line): the container READS the current patch file
+  ("5801 chars; examples-drop block present: True") - run 18's miss was a
+  stale-context one-off. Run 19 then died at a TRANSIENT dep download
+  ("cmake -E tar: ZIP decompression failed (-5)" at 92%) BEFORE reaching
+  gemma3 - which masked the real story.
+- Run 20 brought the Protobuf death BACK and completed the picture: the
+  shim-4 STATUS message had printed all along (hidden by buildkit's merged
+  log lines), but `patch_file_content`'s string-replace NEVER MATCHED (the
+  helper prints unconditionally - a no-op looks identical to success), so
+  gemma3 kept configuring. Lesson recorded: never trust an
+  unconditional-message patch helper; verify by absence of the symptom.
+- Shim 4 rebuilt drift-immune: `file(REMOVE_RECURSE
+  "${LITERT_SRC_DIR}/tensor/examples")` + self-verifying EXISTS check
+  (loud WARNING if the tree survives) - upstream's own
+  `if(EXISTS .../CMakeLists.txt)` guard then skips both example dirs.
+  Run 21 launched. media-core meanwhile at SIX consecutive fully-green
+  runs (ONNX 10x bare links).
+
+## 2026-08-11 - knowledge placement: a rule, an index, and a consumer AGENTS.md skeleton
+
+Code reuse has a rule (the two-consumer test). Documentation did not, and it
+showed: the Dev Drive filter command existed in three places - `windows-builds.md`
+here plus Inference-Engine's `AGENTS.md` and `docs/source/platforms.md` - and all
+three were wrong the same way while
+`windows-container-build-performance.md` had it right AND warned about that exact
+mistake. Restating produced three broken copies.
+
+- **AGENTS.md § Where does knowledge belong?** states the rule: *would this still
+  be true in a different project?* Yes -> here, and the consumer links. No -> the
+  consumer writes it out. Most topics split down the middle.
+- **`docs/INDEX.md` (new)** maps topic -> owning document. Consumers link one hop
+  through it, so reorganising docs here means editing that page rather than
+  hunting links across seven repositories.
+- **`shared/templates/AGENTS.md.template` (new)** is the consumer skeleton, with
+  section 2 ("what ContainerHub owns") deliberately links-only.
+
+Explicitly NOT added: a lint that fails consumer docs for mentioning `wcifs` or
+`--isolation process`. A keyword cannot tell *restating* from *applying* -
+Inference-Engine's ASan notes discuss image-level runtimes legitimately, because
+which runtime a Flutter/COM app survives is a property of that app.
+
+## 2026-08-11 - the Python ci_*.sh drivers were unrunnable; both consumers had reimplemented them
+
+`02-toolchain/python/ci-common.sh` sourced `../01-core/python_uv.sh`. That file
+sits one level deeper than `02-toolchain/bootstrap.sh`, where `../01-core` IS
+correct, so it resolved to `02-toolchain/01-core/python_uv.sh` - a path that has
+never existed. Every driver in that directory therefore died on its first helper
+call with `detect_workspace: command not found`.
+
+Which explains the duplication it was hiding: Kataglyphis-Orchestr-ANT-ion and
+Kataglyphis-WebDavClient each carried a full local reimplementation of all four
+drivers - 339 and 383 lines - because the shared ones could not run. Both now
+delegate; 722 lines became 120.
+
+Also picked up from the consumer copies while collapsing them:
+
+- `ci_tests.sh` now guards the dependency SYNC for experimental interpreters the
+  way it already guarded venv creation. A free-threaded build with one
+  unbuildable wheel used to fail the whole matrix.
+
+Not upstreamed, per the two-consumer rule: WebDavClient's patchelf install (one
+consumer) stays in its wrapper.
+
+## 2026-08-11 (midday) - run 17: shim 3 proven (litert @bazel-truth fetched, API-skew gone), configure died on litert's UNCONDITIONAL example projects -> shim 4; run 18 launched
+
+- Run 17 (survived a harness restart mid-flight; driver kept orchestrating):
+  media-core fully green for the THIRD consecutive run (ONNX 7th bare
+  link). litert-lm: pin bump applied and fetched ("Already at requested
+  ref: 3cb830ad"), the SetEnableYNNPack/RunAsync API-skew errors are GONE -
+  the failure moved into the NEW litert commit itself: @3cb830ad adds
+  tensor/examples/{segmentation,gemma3} guarded only by file-existence (no
+  option), and gemma3 does find_package(Protobuf REQUIRED) -> litert_external
+  CONFIGURE death. Shim 4 (litert-patcher-winfix.cmake): drop both
+  add_subdirectory(examples/...) calls - examples are not in litert-lm's
+  target map. google-ai-edge cmake-staleness set now at FOUR findings.
+
+## 2026-08-11 - coverage.sh: optional HTML report for the llvm backend
+
+`coverage_llvm_report` gained `COVERAGE_LLVM_HTML_DIR`, which additionally emits
+the browsable `llvm-cov show` report.
+
+Optional because the two consumers genuinely differ: BeschleunigerBallett only
+feeds Codecov from the JSON export, while Kataglyphis-Cpp-Inference publishes
+the HTML next to its docs. Without it that second consumer could not use this
+function at all - it had to keep a private llvm-profdata/llvm-cov pipeline,
+which is precisely the duplication this library exists to remove. It now drives
+both backends (gcovr for GCC, llvm-cov for Clang) from here.
+
+## 2026-08-11 - shared config: canonical was the stale copy, and -Ignore never worked via -File
+
+Resolving Kataglyphis-Cpp-Inference's four-file drift report turned the
+conclusion around: it was not deviating, it was AHEAD, and three canonical
+files were wrong for every C++ consumer.
+
+- `.clang-format`: `Standard: c++20` -> `c++23`. BeschleunigerBallett sets
+  `CMAKE_CXX_STANDARD 23`; canonical had never been updated.
+- `.pre-commit-config.yaml`: the clang-format `files:` regex omitted `.ixx`, so
+  BeschleunigerBallett's **63 module interface units were never formatted**.
+- `.clang-tidy`: `misc-include-cleaner` disabled - noise on module-using code.
+
+All three written out to BeschleunigerBallett, which is back in sync.
+Cpp-Inference keeps three genuine overrides (documented in
+`shared/config/README.md` with the reason for each): its `.clang-tidy` answers
+the "clang-tidy sees `import` without BMIs" problem by suppressing
+`clang-diagnostic-error` where BeschleunigerBallett answers it by skipping
+module TUs entirely, its `gcovr.cfg` excludes follow its layout, and its
+pre-commit runs extra hooks. Its `.clang-format` is no longer an override.
+
+**`-Ignore` was broken via `pwsh -File`** - the invocation the README itself
+shows. Under `-File` every argument is a plain string, so `-Ignore a,b,c` bound
+as ONE element `"a,b,c"`, matched no file name, and the documented escape hatch
+silently did nothing. It now splits comma-separated values, so `-File` and
+`-Command` behave identically, and an entry that names no managed file throws
+instead of being quietly dropped.
+
 ## 2026-08-11 - WindowsOnnx.Common restored (silently-lost consumer dependency)
 
 Widening the sweep to every Kataglyphis repo turned up a seventh consumer -

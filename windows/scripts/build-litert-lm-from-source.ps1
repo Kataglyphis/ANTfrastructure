@@ -335,6 +335,20 @@ $abseilPinMarker = [regex]::Escape($abseilPin)
     $c -replace '(GIT_TAG\s*\r?\n\s*)20260107\.1', ('${1}' + $abseilPin)
 })
 
+# v0.15.0 UPSTREAM CMAKE STALENESS #3 (run 16, 2026-08-11): their litert
+# pin (cmake/packages/litert/litert.cmake GIT_TAG fb16353a..., '#Updated on
+# 2026-03-24') predates the LiteRT APIs that 0.15.0's own executor code
+# calls - llm_executor_settings_utils.cc:264 wants
+# litert::CpuOptions::SetEnableYNNPack, llm_litert_compiled_model_executor
+# wants the newer CompiledModel::Run/RunAsync signatures. The bazel
+# WORKSPACE pins LITERT_REF=3cb830ad9c94f9922f0a88dd431b005413628919 for
+# this tag - bump their cmake pin to the bazel truth.
+$litertPkgCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
+[void](Edit-SourceFile -Path $litertPkgCmake -Marker '3cb830ad9c94f9922f0a88dd431b005413628919' -Description 'litert.cmake: bump stale upstream litert pin fb16353a -> 3cb830ad (bazel WORKSPACE truth; SetEnableYNNPack/RunAsync APIs)' -WarnMessage 'litert.cmake GIT_TAG anchor fb16353a not found; executor API-skew compile errors will follow' -Transform {
+    param($c)
+    $c -replace 'fb16353a648922cb6c67a8e9a7a9ebc946360ad2', '3cb830ad9c94f9922f0a88dd431b005413628919'
+})
+
 # Inline patch: fix the Flatbuffers schema-compile step for NATIVE Windows builds.
 # LiteRT-LM's CMakeLists.txt unconditionally sets LITERTLM_HOST_FLATC to a "host
 # prebuild" path, and cmake/packages/flatbuffers/flatbuffers.cmake uses it whenever
@@ -533,6 +547,11 @@ $litertCmake = Join-Path $SourceDir 'cmake\packages\litert\litert.cmake'
 
 $litertPatcher = Join-Path $SourceDir 'cmake\packages\litert\litert_patcher.cmake'
 $dlPatch = Get-Content -Raw (Join-Path $PSScriptRoot 'patches\litert-lm\litert-patcher-winfix.cmake')
+# Run-18 forensics (2026-08-11): the appended patcher executed WITHOUT the
+# examples-drop block even though the repo file carried it - print what THIS
+# container actually read so stale-bind vs. non-execution is decidable from
+# the stage log alone.
+Write-Host ("litert-patcher-winfix.cmake read: {0} chars; examples-drop block present: {1}" -f $dlPatch.Length, $dlPatch.Contains('examples dropped'))
 [void](Add-FileBlockOnce -Path $litertPatcher -Marker 'LiteRTLM-winfix dynamic-loading' -Content $dlPatch -Encoding ASCII `
         -Description 'litert_patcher.cmake: dynamic_loading.cc std::filesystem::path narrowing')
 
