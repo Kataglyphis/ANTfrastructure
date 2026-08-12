@@ -33,6 +33,31 @@ runners without Rust. Optional: `run-setup-script: true` runs the consuming
 repo's `scripts/linux/setup-dependencies.sh` (skipped with a warning when
 absent); `install-uv: true` installs the Astral uv package manager.
 
+### `prepare-windows-container-host`
+The prologue every containerised Windows job repeats: long paths, checkout,
+short-path clone, data-root move, disk cleanup, registry login, image pull, disk
+report. Inputs: `image` (required), `registry`, `registry-username`,
+`registry-password`, `checkout`, `fetch-depth`, `short-path-target`, `token`,
+`data-root`, `required-free-gb`, `free-disk-space`. Outputs: `data-root`,
+`workspace`.
+
+Windows twin of `prepare-linux-ci-host`. Measured 2026-08-11: four inline lanes
+repeated the same six-to-seven steps, and each of the three traps in them had
+already cost a lane — MAX_PATH on a deep submodule chain, the image not fitting
+on C:, and a disk shortfall surfacing 20 minutes into the pull instead of
+immediately.
+
+Use the `workspace` output for artifact paths. With a short-path clone the build
+runs *outside* `GITHUB_WORKSPACE`, so a relative path silently matches nothing in
+the submodule-less checkout — and `if-no-files-found: error` then reports a
+missing build rather than a wrong path. The same applies to `hashFiles()`, which
+only sees inside `GITHUB_WORKSPACE`: probe with a step instead.
+
+It stops after the pull on purpose. The four Windows lanes diverge completely
+from there — one runs six test steps, one packages MSIX/MSI, one also builds on
+the host — so a reusable *workflow* would have to model all of it. The prologue
+is the part that is genuinely shared.
+
 ### `set-docker-data-root`
 Points the Docker daemon's data-root at another drive **before the image is
 pulled**, so a multi-GB Windows image lands where there is room. Inputs:
