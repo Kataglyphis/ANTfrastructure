@@ -351,11 +351,31 @@ uv_sync_project() {
   local _venv="${VIRTUAL_ENV:-${_CURRENT_VENV_PATH:-}}"
   if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
     sync_args+=(--python "$_venv/bin/python")
+    info "uv sync pinned to ${_venv}/bin/python"
+  else
+    # Say WHY, because the pin silently not applying is exactly how the sync ends
+    # up in /opt/venv. Measured 2026-08-12: this branch was taken on a runner
+    # where the venv had just been created at an absolute path, and the run then
+    # died with "Permission denied (os error 13)" - the diagnosis was impossible
+    # from the log because nothing said which interpreter uv had chosen.
+    warn "No usable venv resolved for uv sync."
+    warn "  VIRTUAL_ENV='${VIRTUAL_ENV:-}'  _CURRENT_VENV_PATH='${_CURRENT_VENV_PATH:-}'"
+    if [ -n "$_venv" ]; then
+      warn "  '${_venv}/bin/python' is not executable"
+    fi
   fi
 
   sync_args+=(--active)
 
-  uv "${sync_args[@]}"
+  # UV_PYTHON is unset for the CALL, not for the shell. The images export
+  # UV_PYTHON=/opt/venv/bin/python (root-owned, and the container runs as a
+  # non-root user), and uv honours it OVER both --active and an activated venv.
+  # Removing it here means that even when the pin above could not be resolved,
+  # the sync cannot be redirected into a system venv it has no right to write to
+  # - it falls back to uv's own discovery instead of failing on a permission
+  # error. When the pin DID apply this changes nothing: --python already wins.
+  info "uv ${sync_args[*]}"
+  env -u UV_PYTHON uv "${sync_args[@]}"
 }
 
 uv_run() {
