@@ -34,6 +34,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install shellcheck
         run: sudo apt-get update && sudo apt-get install -y shellcheck
+      # preflight.sh ends with a python-lint gate (lint-python.sh) that needs
+      # ruff. It prefers a ruff on PATH and otherwise falls back to
+      # `uvx ruff@<pin>` - but this runner had neither, so the gate died with
+      #   ERROR: neither ruff nor uvx found - install uv (repo standard) or ruff
+      # AFTER every other check had already passed. uv is the repo standard, so
+      # install that rather than a second, unpinned ruff: lint-python.sh pins the
+      # version itself (RUFF_PIN) and uvx honours it.
+      - name: Install uv (provides uvx for the python-lint gate)
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
       - name: Run preflight checks
         run: bash linux/scripts/preflight.sh
 

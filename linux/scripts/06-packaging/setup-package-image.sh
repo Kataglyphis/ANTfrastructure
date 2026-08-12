@@ -250,13 +250,58 @@ preserve_custom_gcc() {
 }
 
 # Symlink the cargo/rust toolchain binaries into CARGO_HOME/bin.
+#
+# NEVER overwrite what rustup already put there. link_command_if_present resolves
+# via `command -v`, i.e. through PATH - and in the built image PATH carries /bin
+# and /usr/local/bin AHEAD of /usr/local/cargo/bin:
+#
+#   PATH=/opt/venv/bin:...:/bin:/bin:/usr/local/bin:...:/usr/local/cargo/bin:...
+#
+# so `command -v rustc` finds Ubuntu's apt rustc and `ln -sf` then replaces the
+# rustup shim with it. The pinned toolchain is present and correct in the image -
+# Dockerfile.package COPYs /usr/local/{rustup,cargo} from the toolchain stage -
+# and this function quietly demoted it afterwards.
+#
+# Measured 2026-08-12: the image carried RUST_VERSION=1.97.1 as pinned, yet
+# consumers ran rustc 1.93.1 and Kataglyphis-RustProjectTemplate died on
+# "rustc 1.93.1 is not supported by ... sysinfo@0.39.6 requires rustc 1.95".
+#
+# The fallback these links exist for - an image with NO rustup at all - still
+# works: nothing is at the link path then, so the apt binary is linked as before.
+_link_unless_rustup_provides() {
+    local command_name="$1" link_path="$2"
+
+    if [ -e "${link_path}" ] || [ -L "${link_path}" ]; then
+        echo "Keeping existing ${link_path} (rustup toolchain wins over PATH lookup)"
+        return 0
+    fi
+    link_command_if_present "${command_name}" "${link_path}"
+}
+
 wire_cargo_symlinks() {
-    link_command_if_present cargo "${CARGO_HOME}/bin/cargo"
-    link_command_if_present rustc "${CARGO_HOME}/bin/rustc"
-    link_command_if_present rustdoc "${CARGO_HOME}/bin/rustdoc"
-    link_command_if_present cargo-cbuild "${CARGO_HOME}/bin/cargo-cbuild"
-    link_command_if_present cargo-cinstall "${CARGO_HOME}/bin/cargo-cinstall"
-    link_command_if_present rustup "${CARGO_HOME}/bin/rustup"
+    _link_unless_rustup_provides cargo "${CARGO_HOME}/bin/cargo"
+    _link_unless_rustup_provides rustc "${CARGO_HOME}/bin/rustc"
+    _link_unless_rustup_provides rustdoc "${CARGO_HOME}/bin/rustdoc"
+    _link_unless_rustup_provides cargo-cbuild "${CARGO_HOME}/bin/cargo-cbuild"
+    _link_unless_rustup_provides cargo-cinstall "${CARGO_HOME}/bin/cargo-cinstall"
+    _link_unless_rustup_provides rustup "${CARGO_HOME}/bin/rustup"
+
+    # Fail the BUILD rather than ship a silently downgraded toolchain. A version
+    # skew here does not surface in the image - it surfaces days later in a
+    # consumer, as an MSRV error on some dependency, pointing at the dependency
+    # instead of at us.
+    if [ -n "${RUST_VERSION:-}" ] && [ -x "${CARGO_HOME}/bin/rustc" ]; then
+        local _got
+        _got="$("${CARGO_HOME}/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
+        if [ -n "${_got}" ] && [ "${_got}" != "${RUST_VERSION}" ]; then
+            echo "ERROR: ${CARGO_HOME}/bin/rustc reports ${_got}, but RUST_VERSION pins ${RUST_VERSION}." >&2
+            echo "       The pinned rustup toolchain is being shadowed - check that" >&2
+            echo "       /usr/local/{rustup,cargo} were copied into this stage and that" >&2
+            echo "       nothing relinked ${CARGO_HOME}/bin over them." >&2
+            return 1
+        fi
+        echo "rustc ${_got} matches the pinned RUST_VERSION"
+    fi
 }
 
 # Create the runtime uv venv with build tooling. riscv64 can't run compiled

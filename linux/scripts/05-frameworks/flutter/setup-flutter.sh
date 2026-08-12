@@ -95,14 +95,36 @@ fi
 # releases_linux.json; FLUTTER_SDK_SHA256 mirrors it (bump with FLUTTER_VERSION).
 # noforward pin: read it from the mounted versions.env when the env lacks it.
 if [ -z "${FLUTTER_SDK_SHA256:-}" ]; then
+  _flutter_pinned_version=""
   for _flutter_ve in /opt/scripts/core/versions.env \
       "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/versions.env"; do
     if [ -f "${_flutter_ve}" ]; then
       FLUTTER_SDK_SHA256="$(sed -n 's/^FLUTTER_SDK_SHA256=//p' "${_flutter_ve}")"
+      _flutter_pinned_version="$(sed -n 's/^FLUTTER_VERSION=//p' "${_flutter_ve}")"
       break
     fi
   done
-  unset _flutter_ve
+
+  # The SHA and the version in versions.env are ONE pin, but --version is a
+  # caller-supplied parameter - so a consumer can ask for a version the pinned
+  # SHA cannot possibly match. That failed as
+  #   Checksum verification FAILED for /tmp/flutter-sdk-XXXX.tar.xz
+  # which reads like a corrupted download and sent the search in the wrong
+  # direction entirely. Measured 2026-08-12: Kataglyphis-Inference-Engine asked
+  # for 3.41.6 while versions.env pinned 3.44.9, and all three of its Flutter
+  # lanes died here.
+  #
+  # Say what actually happened instead, and name both ways out.
+  if [ -n "${FLUTTER_SDK_SHA256:-}" ] && [ -n "${_flutter_pinned_version}" ] \
+     && [ "${_flutter_pinned_version}" != "${FLUTTER_VERSION}" ]; then
+    echo "ERROR: asked to install Flutter ${FLUTTER_VERSION}, but the pinned checksum in" >&2
+    echo "       ${_flutter_ve} belongs to ${_flutter_pinned_version}." >&2
+    echo "       The version and its sha256 are one pin; overriding only the version can never verify." >&2
+    echo "       Either request ${_flutter_pinned_version}, or pass FLUTTER_SDK_SHA256 for ${FLUTTER_VERSION}" >&2
+    echo "       (Google publishes it in releases_linux.json)." >&2
+    exit 1
+  fi
+  unset _flutter_ve _flutter_pinned_version
 fi
 if [ -n "${FLUTTER_SDK_SHA256:-}" ]; then
   _flutter_tmp="$(mktemp "${TMPDIR:-/tmp}/flutter-sdk-XXXXXX.tar.xz")"
