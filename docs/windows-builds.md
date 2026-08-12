@@ -1945,6 +1945,35 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 ### Open items (effort·impact; ordered by leverage)
 
+- **36 [M-L·★★★, owner-endorsed direction 2026-08-12] Migrate the litert
+  branch to BAZEL.** The CMake lane is upstream-unmaintained (four
+  stalenesses in one bump day: proto list, absl pin, litert pin vs their
+  own WORKSPACE, unconditional examples) while bazel is the only path
+  Google CI-tests — every bump re-opens our port layer. Plan: (1) CANARY
+  solve: bazelisk + LiteRT-LM v0.15.0 per upstream docs in a toolchain-
+  image container, artifact = litert_lm_main.exe through the EXISTING
+  smoke gate; probe bazel's disk-cache temp+rename behavior on a wcifs
+  cache mount FIRST (same hazard family as the sccache write errors -
+  keep output_base container-local, persist only the repository cache if
+  renames fail); (2) green → wire via litert-lm-export-bridge.ps1, freeze
+  the CMake port as documented fallback. Costs: bazelisk+JVM in the
+  toolchain image, multi-GB first fetch (repository cache mount).
+  **CANARY PROGRESS (2026-08-12, scratchpad bazel-canary, 5 iterations):
+  the official `bazelisk build //runtime/engine:litert_lm_main
+  --config=windows` RUNS in the toolchain image and REACHES ANALYSIS (175
+  packages loaded, 15 targets configured) — every blocker so far is
+  base-image Android-env POLLUTION, not a code/port issue. Blocker 1
+  (SOLVED): TF `android_configure.bzl:69` does `int($ANDROID_NDK_VERSION)`
+  on the baked dotted revision "29.0.14206865"; fix = clear
+  ANDROID_NDK_VERSION + the whole ANDROID_* family at Machine+Process scope
+  AND via `--repo_env=ANDROID_*=`. Blocker 2 (OPEN): analysis then fails
+  "Expected directory at C:/llm/platforms ... Unable to read the
+  Android[...]" — a lingering android platform-mapping reference; likely
+  `--android_platforms=` clear or full android-repo suppression. VERDICT:
+  migration is VIABLE; remaining work is "strip the base image's Android
+  pollution from the bazel invocation," NOT porting. Resume deliberately;
+  bake the ANDROID_* clears into whatever runs bazel.**
+
 - **34 [M·★★★, P0] No cross-run caching — snapshot GC eviction.** Mechanism
   identified 2026-08-11: tier-2 `maxUsedSpace` was far below one night's
   vertex churn, so GC evicted the oldest snapshots (= the base/sdk/toolchain
