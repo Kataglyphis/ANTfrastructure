@@ -24,6 +24,15 @@ FROM ${CORE_IMAGE} AS media-core
 FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
+# Flatten the CUDA/cuDNN runtime DLLs into one dir the merge image can put on
+# PATH. Derived from media-core (built on the nvidia base -> carries CUDA_ROOT /
+# CUDNN_ROOT + the actual DLLs). A COPY cannot do this: the sources are under
+# "C:\Program Files\..." (spaces) and cuDNN 9 buries its DLLs in a CUDA-major
+# subdir under bin\, so a recursive script is needed. See stage-cuda-runtime.ps1.
+FROM ${CORE_IMAGE} AS cuda-runtime-stage
+COPY windows\scripts\stage-cuda-runtime.ps1 C:\stage-cuda-runtime.ps1
+RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
+
 # ── Mount source for the BK lane's module closure ────────────────────────────
 # Same pattern (and same reasoning) as Dockerfile.media-builder's `buildmods`:
 # one stage holding exactly the in-container module closure, mounted as a single
@@ -123,14 +132,10 @@ COPY --from=media-core C:\runtime C:\runtime
 # with Win32 126 "The specified module could not be found". Stage the runtime
 # DLLs from media-core (built on the nvidia base, so it carries them) into a
 # stable dir that the ENV PATH below exposes.
-# JSON/exec form is required: the source paths contain spaces, which the
-# shell-form COPY tokenizer mishandles ("matching double-quote" parse error).
-# JSON form does no ${ARG} expansion, so the CUDA/cuDNN versions are written
-# literally here -- KEEP IN LOCKSTEP with Dockerfile.nvidia (CUDA 13.3, cuDNN
-# 9.25.0.15). Whole-\bin copy (JSON form has no wildcard); the extra nvcc/ptxas
-# tooling is a small tax next to the cuDNN engine DLLs that must ship anyway.
-COPY --from=media-core ["C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.3\\bin", "C:\\runtime\\cuda-runtime\\bin"]
-COPY --from=media-core ["C:\\Program Files\\NVIDIA\\CUDNN\\v9.25.0.15\\bin", "C:\\runtime\\cuda-runtime\\bin"]
+# The CUDA/cuDNN runtime DLLs, pre-flattened into one dir by cuda-runtime-stage
+# (see the stage above): a plain COPY of a no-space, single-level dir -- so it
+# lands cudnn64_9.dll + cudart/cublas directly on the PATH set below.
+COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime\bin
 # media-core's CPython site-packages carry the installed python bindings
 # (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install) plus their
 # pypi deps (numpy, ...) and the win-amd64 platform-tag sitecustomize shim —
