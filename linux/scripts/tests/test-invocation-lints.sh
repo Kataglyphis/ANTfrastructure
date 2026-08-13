@@ -38,4 +38,15 @@ t_case "every 'uv venv' invocation passes an explicit --python"
 _uv_hits="$(_lint_tree 'uv[[:space:]]+venv' | grep -v -- '--python' || true)"
 t_assert_eq "" "${_uv_hits}" "uv venv without --python (ambient seeding — the e3ffb0a class):${_uv_hits:+ }${_uv_hits}"
 
+# 3. `uv pip install --force-reinstall` without `--no-deps` — a full-deps
+#    force-reinstall RE-RESOLVES the wheel's dependency tree to latest,
+#    silently floating the venv off the lock. Caught live 2026-08-11 by
+#    assert_pinned_versions: numpy 2.5.1->2.5.2 (flagged) and protobuf
+#    6.33.6->7.35.1 (a MAJOR bump no gate covered) — 8 sites fixed at once
+#    (fix #7). This keeps the class out; deliberate full-deps installs should
+#    not use --force-reinstall on locked packages.
+t_case "every 'uv pip install --force-reinstall' pairs with --no-deps"
+_fr_hits="$(_lint_tree 'uv[[:space:]]+pip[[:space:]]+install[[:space:]][^#]*--force-reinstall' | grep -v -- '--no-deps' || true)"
+t_assert_eq "" "${_fr_hits}" "force-reinstall without --no-deps (lock-float — the fix-#7 numpy/protobuf class):${_fr_hits:+ }${_fr_hits}"
+
 t_summary

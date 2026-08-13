@@ -258,8 +258,10 @@ cross_stage_build_args() {
       _csba_out+=(--build-arg "CROSS_TARGETS=${CROSS_TARGETS}")
       ;;
     sdk)
+      # VULKAN_VERSION needs no hand-forward here: append_version_build_args
+      # (via append_common_build_args in _cross_stage_build_impl) auto-forwards
+      # every non-noforward versions.env variable.
       append_cross_per_arch_build_args _csba_out "${arch}"
-      _csba_out+=(--build-arg "VULKAN_VERSION=${VULKAN_VERSION}")
       ;;
     media)
       append_cross_per_arch_build_args _csba_out "${arch}"

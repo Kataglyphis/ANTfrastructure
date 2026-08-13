@@ -125,6 +125,10 @@ append_wrapper_build_args() {
     --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}"
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}"
   )
+  # Documented operator overrides (see runtime_shared_usage_env_overrides);
+  # forwarded only when set so the Dockerfile.torch defaults stay authoritative.
+  append_optional_build_arg _awba_out ONNX_PACKAGE "${ONNX_PACKAGE:-}"
+  append_optional_build_arg _awba_out PYTORCH_EXTRA "${PYTORCH_EXTRA:-}"
 }
 
 runtime_build_package_image() {
@@ -291,8 +295,7 @@ Environment overrides:
   BASE_PARENT_IMAGE            Optional parent image passed as BASE_IMAGE to the
                                 selected base Dockerfile (for example a GPU base)
   PACKAGE_DOCKERFILE_PATH      Package Dockerfile path
-  TORCH_DOCKERFILE_PATH        Torch Dockerfile path
-  WRAPPER_DOCKERFILE_PATH      Final wrapper Dockerfile path
+  WRAPPER_DOCKERFILE_PATH      Final wrapper (torch) Dockerfile path
   TORCH_APP_MODE               TORCH_APP_MODE passed to linux/Dockerfile.torch
   ENABLE_NVIDIA                Optional accelerator flag passed to package/torch/wrapper builds
   ENABLE_AMD                   Optional accelerator flag passed to package/torch/wrapper builds

@@ -1,78 +1,80 @@
 # Changelog
 
-## 2026-08-12 - media-litert GREEN via the bazel port (chain-verified); chain advanced to tvm
+## 2026-08-12 (afternoon) - "fix everything" wave 2 + a mass-agent-failure recovery
 
-- **The bazel litert-lm port is DONE and chain-verified: the media-litert
-  branch committed green** (litert_lm_main.exe + 5 DLLs installed via
-  `bazelisk build //runtime/engine:litert_lm_main --config=windows`), and
-  the chain advanced to media-tvm - the first green media-litert since the
-  2026-08-03 bump. Three infra hurdles were cleared after the build itself
-  was proven (runs 25-28, each a fast litert-only re-solve):
-    1. `litert_lm_main --help` exits 1 (abseil CLI convention) - reset
-       `$global:LASTEXITCODE = 0` after the output-validated smoke so the
-       &-caller doesn't misread it as a build failure;
-    2. api.adoptium.net went fully unreachable (all retries) - cache
-       bazelisk + JDK on the persistent mount (plain Copy-Item, wcifs-safe)
-       and prefer the Temurin GitHub release asset over the flaky redirect;
-    3. bazel's `--repository_cache` on the wcifs mount died on its
-       temp+rename (the exact hazard the script header flags for
-       output_base) - dropped it; output_base stays container-local, the
-       mount carries only the create-only tool cache.
-  Remaining chain: tvm (unaffected branch), merge, torch, final.
+- **Landed & validated** (12 more Batch-2/legacy items, all gates green): STV1
+  root fix (smoke-torch-venv carries the genai-on-riscv64 policy itself;
+  STV_REQUIRE_GENAI=1 re-arms; host exemption now TRANSITIONAL); the
+  wheel-family classifier (one wheel_family() fn, 4 sites, 21-name equivalence
+  battery); csound patch-first; MAKEINFO=true (GCC log noise); opencv cross-dep
+  presence WARN; TG3+TG7 (ONE LLVM compile/arch + minimal host-LLVM profile
+  after a zero-consumer audit); D4+P4 (elf_needed_sonames/elf_unresolved_needed
+  primitives + NEEDED-driven SDK-lib bundling); setup_gi_cross_wrappers split
+  into 8 phases; S4 (per-file install-deps mounts — COPY-fallback-safe); NDK
+  shared android-sdk download cache; BS1/BS2/BS3/BS3b (sdk COPY closure, dead
+  TVM RUN removed, real ELF verification, self-contained amd64 llvm prefix);
+  TS3 + partial TS2 (see below). 22 suites / 317 assertions, copy-coverage 9/9,
+  verify-critical-fixes 0 failures.
+- **TS3 done / TS2 partial**: new `01-core/cpython-dev-packages.sh` is the
+  single dev-package<->extension table; both the host list (package-lists.sh)
+  and the cross list (build_python.sh) derive from it, ending the desync that
+  caused the 2026-08-09 libsqlite3-dev incident. The required/optional fatality
+  split + lib-dynload asserts remain (need a cross rebuild).
+- **Recovery**: a Fable-5 session limit killed 8 subagents mid-edit. Post-
+  mortem + consolidation on Opus 4.8: (1) found and fixed a real double
+  build-break — the dying TS agent left `build_python.sh` (and package-lists.sh)
+  sourcing the new table with no mount and no COPY fallback; added the mounts in
+  Dockerfile.base + Dockerfile.toolchain and wired build_python to the table.
+  (2) Reverted TG1 (lazy-dispatch + 17-line mount trim, killed mid-trim) to its
+  shipped HEAD state — a toolchain RUN has no COPY fallback so a missed mount =
+  a multi-hour break, and copy-coverage.py can't see source_module-by-name gaps;
+  re-opened with a "needs per-RUN audit + real rebuild" note. (3) Confirmed the
+  run_priv, D3/P5-smoke-scaffold, and NVIDIA-sweep agents landed nothing (no
+  partial state). Built a differential source_module-vs-mount auditor to prove
+  no other new closure gaps.
 
-## 2026-08-12 - litert-lm MIGRATED to bazel + wired into the chain (install-test proven); run 24 (first full chain on the bazel port) launched
+## 2026-08-12 (day) - backlog execution wave: Batch 0 CLOSED + 17 Batch-2 items landed in one opened closure window
 
-- The bazel port is production-ready and INTEGRATED. Standalone install-test
-  green: `build-litert-lm-bazel.ps1` builds via `bazelisk build
-  //runtime/engine:litert_lm_main --config=windows`, installs
-  litert_lm_main.exe (19 MB) + 5 co-located runtime DLLs (incl. the git-lfs
-  libGemmaModelConstraintProvider.dll the CMake port hand-staged) into
-  C:\runtime\lib\litert-lm\bin, stages headers, and smoke-runs `--help` (flag
-  parser reached). NO toolchain-image rebuild needed - the script self-installs
-  bazelisk + Temurin JDK in the RUN step, so this is a media-litert-closure
-  change only.
-- Wiring: build-litert-all.ps1 phase 2 now calls the bazel script (phase 1,
-  the LiteRT C++ SDK, stays CMake); Dockerfile.media-builder adds a
-  container-local bazel repository-cache mount (id=bazel-litertlm-winamd64;
-  output_base stays off the wcifs mount per the rename hazard) and sets
-  BAZEL_REPO_CACHE. The CMake port (build-litert-lm-from-source.ps1 + export
-  bridge + shims + litert-lm patches) stays in-tree, bind-mounted, as the
-  frozen documented fallback. Ends 24h of CMake staleness-shell peeling
-  (proto/absl/litert-pin/examples/ruy).
-- Run 24 launched: first full chain on the bazel port. media-core caches
-  (9x green); litert rebuilds with bazel litert-lm; then tvm, merge, torch,
-  final - the chain can go fully green for the first time since the
-  2026-08-03 bump.
-
-## 2026-08-12 - run 23: litert examples-removal PROVEN (configure now passes), failure moved into litert's own build (ruy header); STRATEGIC PIVOT to bazel
-
-- Run 22 was cut off overnight by a session restart (driver process killed
-  mid-litert-Phase-1; no verdict, no error). Run 23 relaunched, reached the
-  litert verdict: the repo-root REMOVE_RECURSE fix (shim 4, corrected path)
-  is PROVEN - "tensor/examples REMOVED" printed with the right absolute
-  path, "Could NOT find Protobuf" is GONE, and the failure moved from
-  CONFIGURE into litert's own BUILD (litert_external-build): `fatal error:
-  'ruy/profiler/instrumentation.h' file not found` in shape_inference.cc
-  (missing -isystem for ruy, same class as the existing flatbuffers fix).
-- **This is the ~5th distinct litert-lm CMake shell in 24h, each ~2.5h
-  (GC-tax prefix rebuild), depth unbounded.** Owner endorsed migrating
-  litert-lm to bazel (item 36). Decision: STOP peeling CMake shells; drive
-  the bazel canary to green instead. Canary progress: blocker 1 (TF
-  android_configure int(ANDROID_NDK_VERSION) on dotted "29.0.14206865") -
-  clear that ONE var; blocker 2 (WORKSPACE unconditionally instantiates
-  android_{ndk,sdk}_repository → C:/llm/platforms) - neutralize both bare
-  calls in WORKSPACE, and do NOT empty ANDROID_HOME (that caused blocker 2).
-  media-core meanwhile: NINE consecutive fully-green runs (ONNX 13th bare
-  link).
-- **BAZEL CANARY GREEN (v6, same day): `bazelisk build
-  //runtime/engine:litert_lm_main --config=windows` produced a working 19 MB
-  litert_lm_main.exe in 549 s / 5094 actions, ZERO code patches.** The
-  migration is no longer "viable" - it is PROVEN. Recipe saved to
-  windows/scripts/build-litert-lm-bazel.ps1. Remaining is pure chain
-  integration (bazelisk+JDK in the toolchain image, repository-cache mount,
-  export-bridge wiring), not porting. The CMake port
-  (build-litert-lm-from-source.ps1) becomes the frozen fallback; its ruy
-  -isystem shell (run 23) is left documented, unfixed - superseded.
+- **Batch 0 closed** (post-ship window): canonical buildkitd config APPLIED +
+  daemon restarted — gckeepstorage=500GB restored (the regression), NEW
+  max-parallelism=4 (bounds the intra-arch DAG overcommit behind the
+  2026-08-10 opencv OOM), BUILDKIT_STEP_LOG_MAX_SIZE=50MiB live;
+  verify-host-config reports drift-free. S1 salvage-cache-export: on
+  non-transient build failure cross-stage-build.sh now sweeps the
+  Dockerfile's named stages with --target rebuilds (completed subtrees
+  cache-hit in seconds and their local cache export finally lands;
+  SALVAGE_CACHE_EXPORT=0 opts out, per-target timeout, stops after 2
+  consecutive failures). O3: orchestrator emits ${LOG_DIR}/chain-status.json
+  (atomic, best-effort) at stage start/ok/fail with captured digest pins.
+  B5: smoke-runtime-image main() split into 23 per-check functions —
+  validated by before/after runs against the live amd64 wrapper (verdict
+  lines byte-identical). CROSS_CACHE_MAX_GB=250 total-size cap added as
+  disk-guard phase 2. CCACHE_MAXSIZE investigate RESOLVED with data (live
+  limit already 30GB, 17.6% hits/129k — key churn, not size; → TG2).
+- **Batch-2 window opened deliberately** (S1's 01-core edit busts the
+  toolchain/sdk/package whole-dir COPY caches → next chain run pays ONE full
+  rebuild) and 17 items pulled into it: R1-R5 (ffmpeg-TF extraction/bundle
+  guards, downloads no-HEAD split, torch/vision toolchain-file guards,
+  opencv install stderr), C1/C2 (Cerbero apt fatal; android-sdk rc-only
+  success + fatal licenses + deduped package list + NDK postcondition),
+  BS4-BS6 (7 stale fallback literals → `:?` half-load guards, loud riscv64
+  node unpin + major assert, requested-but-absent package summary +
+  must-have postcondition), TG2/TG4 (ccache stats blocks in the compiler
+  stage; llvm-cross cmake --install --strip), XC4-XC7 (ONNX_PACKAGE/
+  PYTORCH_EXTRA actually wired ARG→ENV→forward + KNOWN_DEAD pruned to
+  empty, smoke-vulkan comment truth, Dockerfile.package TARGETARCH-
+  parameterized BASE_IMAGE default, VULKAN_VERSION hand-forward deleted +
+  new no-hand-forward checker rule), D2 (retag_directory_wheels promoted to
+  01-core, 3 drifted copies replaced, copy-coverage green), A3
+  (abseil-headers out of the eager loop).
+- **SCR1 retired honestly**: the two remaining strings-pipelines are
+  deliberate (embedded DEB metadata beats --version, which apt's
+  libclang-cpp shadowing falsifies; executed fallback covers dylib-blind
+  binaries) — not the fix-#8 class. Rider landed: test-invocation-lints now
+  asserts force-reinstall ⇒ --no-deps.
+- Pre-existing IFS comma-split in python_uv.sh fixed (test-ifs-safety was
+  red). Gates: preflight rc=0, 23 suites green (312+ assertions),
+  verify-script-copy-coverage green, verify-critical-fixes rc=0.
 
 ## 2026-08-12 - :latest-cross SHIPPED: 3-arch manifest pushed after fixes #6-#10; the runtime-lane gate saga closes at 10 fixes / 8 runs
 

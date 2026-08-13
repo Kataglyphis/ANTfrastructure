@@ -160,7 +160,8 @@ fi
 # paths that could contain any sed delimiter/replacement metacharacter; the
 # quoted replacement also keeps bash >= 5.2 patsub_replacement from interpreting
 # '&'. Hoisted to file scope (was defined inside the if-block); reads
-# target_triplet/qemu_runner/qemu_sysroot from setup_gi_cross_wrappers.
+# target_triplet/qemu_runner/qemu_sysroot set by the _gi_cross_detect_* phases
+# of setup_gi_cross_wrappers.
 # shellcheck disable=SC2154
 write_qemu_binary_wrapper() {
   local wrapper_path="$1"
@@ -186,8 +187,23 @@ write_qemu_binary_wrapper() {
 # Set up the cross gobject-introspection scanner/ldd/qemu wrappers + pkg-config
 # metadata. Keeps the cross pkg-config path target-only while exposing the
 # wrapped scanner path through a focused shim without dropping the target
-# package's real include/library flags. (Extracted from a 250-line inline block.)
-setup_gi_cross_wrappers() {
+# package's real include/library flags. (Extracted from a 250-line inline
+# block, then decomposed into the _gi_cross_* phase functions below;
+# setup_gi_cross_wrappers orchestrates them.)
+#
+# The phases communicate through file-scope variables (deliberately not
+# local): build_triplet, target_triplet, target_gi_bindir/datadir/includedir/
+# libdir/requires/libs/cflags/compiler/generate/pc, gi_version, gi_bindir,
+# gi_libdir, gi_scanner, gi_host_ldd, gi_scanner_wrapper,
+# gi_scanner_triplet_wrapper, gi_scanner_default, gi_ldd_default,
+# gi_ldd_wrapper, gi_binary_wrapper, meson_binary_wrapper, qemu_runner,
+# qemu_sysroot. write_qemu_binary_wrapper (above) reads target_triplet/
+# qemu_runner/qemu_sysroot from here as well.
+
+# Detect the build/target multiarch triplets and the target-side
+# gobject-introspection metadata (paths, tools, and the Requires/Libs/Cflags
+# taken from the target package's real .pc file when present).
+_gi_cross_detect_target_metadata() {
   build_triplet="$(dpkg-architecture -q DEB_BUILD_MULTIARCH 2>/dev/null || dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
   target_triplet=""
   target_gi_bindir="/usr/bin"
@@ -223,6 +239,11 @@ setup_gi_cross_wrappers() {
     target_gi_libs="$(awk -F': *' '$1=="Libs" { print $2; exit }' "${target_gi_pc}")"
     target_gi_cflags="$(awk -F': *' '$1=="Cflags" { print $2; exit }' "${target_gi_pc}")"
   fi
+}
+
+# Detect the host-side introspection tooling (scanner, ldd, gi version) and
+# fix the wrapper install paths.
+_gi_cross_detect_host_tools() {
   gi_version="$(dpkg-query -W -f='${Version}' gobject-introspection 2>/dev/null || true)"
   gi_version="${gi_version%%-*}"
   gi_bindir="/usr/bin"
@@ -250,7 +271,10 @@ setup_gi_cross_wrappers() {
   if [ -z "${gi_host_ldd}" ]; then
     gi_host_ldd="/usr/bin/ldd"
   fi
+}
 
+# Locate the qemu user-mode runner for the target arch (hard requirement).
+_gi_cross_detect_qemu_runner() {
   qemu_runner=""
   case "${gi_cross_wrapper_arch}" in
     riscv64)
@@ -268,7 +292,11 @@ setup_gi_cross_wrappers() {
       fi
       ;;
   esac
+}
 
+# Locate the qemu sysroot by probing for the target dynamic loader (hard
+# requirement).
+_gi_cross_detect_qemu_sysroot() {
   qemu_sysroot=""
   for candidate in "/usr/${target_triplet}" "/"; do
     case "${gi_cross_wrapper_arch}" in
@@ -303,7 +331,11 @@ setup_gi_cross_wrappers() {
     echo "ERROR: Could not locate a ${gi_cross_wrapper_arch} dynamic loader for qemu under /usr/${target_triplet} or /" >&2
     exit 1
   fi
+}
 
+# Write the objdump-based cross ldd wrapper plus the arch-dispatching default
+# ldd shim.
+_gi_cross_write_ldd_wrappers() {
   cat > "${gi_ldd_wrapper}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -356,10 +388,17 @@ done
 exec "\${host_ldd}" "\$@"
 EOF
   chmod +x "${gi_ldd_default}"
+}
 
+# Render the qemu binary wrappers (gi + meson modes) from the template.
+_gi_cross_write_binary_wrappers() {
   write_qemu_binary_wrapper "${gi_binary_wrapper}" gi
   write_qemu_binary_wrapper "${meson_binary_wrapper}" meson
+}
 
+# Write the wrapped g-ir-scanner plus the triplet-prefixed and default shims
+# that dispatch to it.
+_gi_cross_write_scanner_wrappers() {
   cat > "${gi_scanner_wrapper}" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -383,7 +422,11 @@ set -euo pipefail
 exec "${gi_scanner_wrapper}" "\$@"
 EOF
   chmod +x "${gi_scanner_default}"
+}
 
+# Write the gobject-introspection pkg-config helper metadata pointing at the
+# wrapped scanner and target tools.
+_gi_cross_write_pkgconfig() {
   mkdir -p /usr/local/lib/pkgconfig
   printf '%s\n' \
     "prefix=/usr" \
@@ -407,6 +450,19 @@ EOF
     "Cflags: ${target_gi_cflags}" \
     > /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc
   cp /usr/local/lib/pkgconfig/gobject-introspection-1.0.pc /usr/local/lib/pkgconfig/gobject-introspection-no-export-1.0.pc
+}
+
+# Orchestrating shell: detection phases first (they populate the file-scope
+# variables documented above), then the wrapper/metadata generation phases.
+setup_gi_cross_wrappers() {
+  _gi_cross_detect_target_metadata
+  _gi_cross_detect_host_tools
+  _gi_cross_detect_qemu_runner
+  _gi_cross_detect_qemu_sysroot
+  _gi_cross_write_ldd_wrappers
+  _gi_cross_write_binary_wrappers
+  _gi_cross_write_scanner_wrappers
+  _gi_cross_write_pkgconfig
 }
 
 if [ -n "${gi_cross_wrapper_arch}" ]; then

@@ -90,4 +90,52 @@ t_assert_eq "linux_aarch64" "$(
   cross_wheel_platform_tag
 )"
 
+# ── D4 NEEDED-walk primitives (elf_needed_sonames / elf_unresolved_needed) ───
+# The harness has no compiled ELF fixtures, so exercise the pure text-parsing
+# path: a stub objdump on PATH replays captured `objdump -p` output. Sonames
+# use a libkataglyphis-test-* namespace guaranteed absent from any host, plus
+# libc.so.6 which resolves on every glibc host (standard dirs/ldconfig cache).
+_elf_stub_dir="$(mktemp -d)"
+cat > "${_elf_stub_dir}/objdump" <<'STUB'
+#!/usr/bin/env bash
+cat <<'OUT'
+
+/opt/ffmpeg/bin/ffmpeg:     file format elf64-x86-64
+
+Dynamic Section:
+  NEEDED               libkataglyphis-test-sdk.so.1
+  NEEDED               libkataglyphis-test-missing.so.9
+  NEEDED               libc.so.6
+  RPATH                /opt/ffmpeg/lib
+OUT
+STUB
+chmod +x "${_elf_stub_dir}/objdump"
+_elf_fixture="${_elf_stub_dir}/fake-elf.bin"
+: > "${_elf_fixture}"
+_elf_sdk_libdir="${_elf_stub_dir}/sdk-lib"
+mkdir -p "${_elf_sdk_libdir}"
+: > "${_elf_sdk_libdir}/libkataglyphis-test-sdk.so.1"
+
+t_case "elf_needed_sonames parses objdump -p NEEDED lines in link order"
+t_assert_eq "libkataglyphis-test-sdk.so.1
+libkataglyphis-test-missing.so.9
+libc.so.6" "$(PATH="${_elf_stub_dir}:${PATH}" elf_needed_sonames "${_elf_fixture}")"
+
+t_case "elf_needed_sonames on a missing file prints nothing and still succeeds (best-effort contract)"
+t_assert_eq "" "$(PATH="${_elf_stub_dir}:${PATH}" elf_needed_sonames "${_elf_stub_dir}/does-not-exist")"
+t_assert_ok bash -c "set -euo pipefail; source '${TESTS_DIR}/../01-core/platform.sh'; \
+  PATH='${_elf_stub_dir}:${PATH}' elf_needed_sonames '${_elf_stub_dir}/does-not-exist'"
+
+t_case "elf_unresolved_needed: extra lib dirs resolve, system paths resolve libc, rest is reported"
+t_assert_eq "libkataglyphis-test-missing.so.9" \
+  "$(PATH="${_elf_stub_dir}:${PATH}" elf_unresolved_needed "${_elf_fixture}" "${_elf_sdk_libdir}")" \
+  "with the sdk libdir passed, only the nowhere-resolvable soname must remain"
+
+t_case "elf_unresolved_needed without extra lib dirs reports both test sonames"
+t_assert_eq "libkataglyphis-test-sdk.so.1
+libkataglyphis-test-missing.so.9" \
+  "$(PATH="${_elf_stub_dir}:${PATH}" elf_unresolved_needed "${_elf_fixture}")"
+
+rm -rf "${_elf_stub_dir}"
+
 t_summary

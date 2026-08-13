@@ -246,6 +246,42 @@ cross_wheel_platform_tag() {
   arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
 }
 
+# ── directory wheel retag ─────────────────────────────────────────────────────
+# Retag every matching wheel in a directory to <platform_tag> via
+# `python -m wheel tags --remove --platform-tag=...`. Canonical implementation
+# (backlog D2) replacing the three drifted copies in 03-media/runtime/
+# repair-wheels.sh, 05-frameworks/tvm-python.sh and 05-frameworks/torch/
+# build-app-wheelhouse.sh. Guarded by tests/test-arch-mapping.sh (T4).
+#
+# Always skipped: pure-python *-none-any.whl (a platform retag would be wrong)
+# and wheels already carrying <platform_tag> (rerun-safe: the media wheelhouse
+# retags in place). A per-wheel retag failure warns and continues — all three
+# former copies tolerated it.
+#
+# Usage: retag_directory_wheels <dist_dir> <glob_prefix|*> <platform_tag> [python_cmd...]
+#   glob_prefix  wheel name prefix, matched as <prefix>-*.whl ('*' = all wheels)
+#   python_cmd   launcher for `-m wheel` (default: python3); may be multi-word,
+#                e.g. `uv run python`, or a venv/host python path
+retag_directory_wheels() {
+  local dist_dir="$1" glob_prefix="$2" platform_tag="$3"
+  shift 3
+  local -a python_cmd=("$@")
+  [ "${#python_cmd[@]}" -gt 0 ] || python_cmd=(python3)
+  local wheel_path wheel_name
+
+  shopt -s nullglob
+  for wheel_path in "${dist_dir}"/${glob_prefix}-*.whl; do
+    wheel_name="$(basename "${wheel_path}")"
+    case "${wheel_name}" in
+      *-none-any.whl|*"${platform_tag}"*.whl) continue ;;
+    esac
+    "${python_cmd[@]}" -m wheel tags --remove --platform-tag="${platform_tag}" "${wheel_path}" >/dev/null && \
+      info "Retagged for ${platform_tag}: ${wheel_name}" || \
+      warn "Failed to retag ${wheel_name} for ${platform_tag}"
+  done
+  shopt -u nullglob
+}
+
 # ── cmake build with fallback ─────────────────────────────────────────────────
 # Run cmake --build with parallel jobs; on failure, retry single-threaded with
 # --verbose for diagnostics.  Patterns from build-litert.sh and build-opencv.sh.

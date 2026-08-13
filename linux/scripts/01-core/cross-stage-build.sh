@@ -212,8 +212,44 @@ _cross_stage_build_impl() {
       _rc=$?
     fi
     [ "${_rc}" -eq 0 ] && return 0
-    [ "${_attempt}" -ge "${_max_attempts}" ] && return "${_rc}"
-    _cross_stage_push_error_is_transient "${log_file}" || return "${_rc}"
+    if [ "${_attempt}" -ge "${_max_attempts}" ] \
+       || ! _cross_stage_push_error_is_transient "${log_file}"; then
+      # S1 salvage-cache-export (backlog 2026-08-11): --cache-to type=local
+      # only materializes on a SUCCESSFUL solve, so a failed stage discards
+      # every completed vertex (~8h of arm64 media work exported ZERO cache
+      # once). Re-drive the same build per named Dockerfile stage (--target):
+      # a subtree that completed is a pure cache-hit and its export lands in
+      # seconds. A subtree containing the broken vertex would RE-RUN it, so
+      # each target gets a hard timeout and two consecutive failures stop the
+      # sweep (later file-order targets almost certainly sit downstream of
+      # the same break). Opt out with SALVAGE_CACHE_EXPORT=0.
+      if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
+         && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run; then
+        local -a _salvage_targets=()
+        mapfile -t _salvage_targets < <(grep -iE \
+          '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \
+          "${dockerfile}" 2>/dev/null | awk '{print $NF}')
+        if [ "${#_salvage_targets[@]}" -gt 0 ]; then
+          warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
+          local _tgt _salvage_fails=0 _salvage_ok=0
+          for _tgt in "${_salvage_targets[@]}"; do
+            [ "${_salvage_fails}" -ge 2 ] && break
+            if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
+                 "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
+                 --target "${_tgt}" -f "${dockerfile}" \
+                 --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
+                 --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
+                 "${extra[@]}" "${common_args[@]}" . >/dev/null 2>&1; then
+              _salvage_ok=$((_salvage_ok + 1)); _salvage_fails=0
+            else
+              _salvage_fails=$((_salvage_fails + 1))
+            fi
+          done
+          warn "salvage-cache-export: ${_salvage_ok}/${#_salvage_targets[@]} named stages exported to the local cache for ${tag}"
+        fi
+      fi
+      return "${_rc}"
+    fi
     _delay="$(( _attempt * ${PUSH_RETRY_BASE_SECS:-15} ))"
     warn "Push attempt ${_attempt}/${_max_attempts} for ${tag} hit a transient registry/network error; retrying in ${_delay}s (built layers are cached, only the push repeats)"
     sleep "${_delay}"

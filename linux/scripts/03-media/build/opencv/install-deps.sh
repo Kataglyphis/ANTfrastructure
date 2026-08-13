@@ -55,6 +55,26 @@ else
     install_target_packages "${target_packages[@]}"
 fi
 
+# The cross arches route EVERYTHING through the optional installer above
+# (documented broken dep chains on this rolling Ubuntu; riscv64 additionally
+# has the static-libpng fallback, so even codec dev packages may not be hard
+# requirements). That tolerance must not mean SILENCE: a Ports outage used to
+# strip features with no trace until the runtime smoke. Emit one greppable
+# presence verdict per install so the build log shows exactly which requested
+# dev packages the target arch actually got. (Functional codec coverage is
+# gated downstream by the runtime opencv smoke — this line is for diagnosis.)
+if is_cross && [ -n "${cross_arch}" ] && [ "${cross_arch}" != "amd64" ]; then
+    _ocv_missing=()
+    for _ocv_pkg in "${target_packages[@]}"; do
+        dpkg -s "${_ocv_pkg}:${cross_arch}" >/dev/null 2>&1 || _ocv_missing+=("${_ocv_pkg}")
+    done
+    if [ "${#_ocv_missing[@]}" -gt 0 ]; then
+        echo "[WARN] opencv cross deps (${cross_arch}): $(( ${#target_packages[@]} - ${#_ocv_missing[@]} ))/${#target_packages[@]} present; MISSING: ${_ocv_missing[*]} (features built without them; runtime smoke gates the codec surface)"
+    else
+        echo "[INFO] opencv cross deps (${cross_arch}): all ${#target_packages[@]} requested target dev packages present"
+    fi
+fi
+
 if [ "${WITH_PYTHON}" = "true" ]; then
     if is_cross; then
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then

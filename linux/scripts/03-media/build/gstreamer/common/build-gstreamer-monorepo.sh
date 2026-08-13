@@ -548,6 +548,14 @@ _gst_monorepo_compile() {
   export JOBS
   echo "Using JOBS=$JOBS (mem-capped; GSTREAMER_MB_PER_JOB=${GSTREAMER_MB_PER_JOB:-2500}, AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
+  # Patch FIRST: on warm caches the csound-sys crate is already extracted in
+  # the persistent cargo-registry mount, so rewriting it before the compile
+  # skips paying a full failed compile + incremental retry. A cold cache only
+  # extracts the crate DURING the compile — the guarded retry below still
+  # covers that first-ever build. Idempotent; rc intentionally ignored (rc 1
+  # just means "nothing extracted yet / already patched").
+  patch_csound_sys_char_signedness || true
+
   echo "Compiling GStreamer..."
   if uv run meson compile -C builddir --jobs "${JOBS}" 2>&1 | tee /tmp/meson-compile.log; then
     return 0
