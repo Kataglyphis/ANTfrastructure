@@ -52,6 +52,20 @@ folded into TG2. See archive for details.)
   full-miss after a host reboot (archive: 2026-08-08 section). Only actionable
   at the next reboot+run — keep until observed again or absolved.
 
+## Rebuild-surfaced fixes (2026-08-12 validating rebuild)
+
+- **ORT-WEB1 — onnx-web JS build was hard-fatal on a transient network error**
+  [S·★★] FIXED 2026-08-12: the validating rebuild's media-amd64 stage died
+  when electron's npm postinstall (`socket hang up`) + SafeInt's FetchContent
+  (`REFUSED_STREAM` from github) failed — but onnx-web is OPTIONAL (Python/
+  native runtime never consumes it) and 40-build-wasm.sh already ships-without
+  on failure, while the JS wrapper (which DEPENDS on that WASM) called
+  err()/fatal. Made run_web_build_step (build-onnxruntime.sh) tolerant: warn +
+  ship-without on any web-build failure; ORT_WEB_REQUIRED=1 restores hard-fail.
+  Not a code bug from today's work — a pre-existing robustness gap the rebuild
+  exposed. NOTE: host network flakiness during this rebuild; other network
+  steps (gstreamer/ffmpeg clones) rely on clone_or_update_repo retries.
+
 ## Batch S — services lane (llm-stack / webserver; OUTSIDE the chain closure, no unlock needed)
 
 - **SV-residual: compose-CLI validation only** [S] nginx half CLOSED
