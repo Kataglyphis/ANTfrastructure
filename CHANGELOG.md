@@ -1,5 +1,32 @@
 # Changelog
 
+## 2026-08-13 - VALIDATING REBUILD COMPLETE: :latest-cross re-shipped, 3 arches, every keeper change proven by a real build
+
+- **`:latest-cross` rebuilt base→manifest and pushed** — manifest digest
+  `sha256:8d1538b1…`, 3-arch (amd64 `35c1f1df`, arm64 `e677e4f8`, riscv64
+  `5002954385`), all runtime smokes 0 failures, `[INFO] Cross chain complete.`
+  This validates the entire 2026-08-12 "fix everything" pile against a real
+  build — the thing static gates (lint/tests/copy-coverage) structurally
+  cannot prove.
+- **Keeper changes proven live**: cpython-dev-packages table (base
+  install-os-packages + toolchain build_python both built clean), BS1/BS2/BS3/
+  BS3b (sdk self-contained `NEEDED walk clean`, dead TVM RUN gone), S4 mounts,
+  setup_gi 8-phase split, R1-R5, **D4/P4** (`BUNDLED: libtensorflow.so.2` +
+  transitive `libtensorflow_framework.so.2`), wheel_family, csound patch-first,
+  C1/C2 + NDK cache, and the recovery fixes (Fix #10 sympy backfill fired on
+  riscv64; STV1 genai policy: `not installed (documented riscv64 skip; policy,
+  not drift)` → VERSION-ASSERT PASS).
+- **Rebuild-surfaced fixes** (latent over-strictness / infra the rebuild flushed
+  out, none in the keeper changes): reverted TG1/TG3/TG7 (build-speed tweaks
+  that failed a real build — libLLVMSupportLSP install, missing clang-tblgen,
+  lazy-mount closure — all re-backlogged with redo recipes); BS3b libclang
+  glob (`libclang.so.2*`→`libclang*.so.2*`, its own assert caught it); ORT-WEB1
+  (onnx-web hard-fail on a transient npm/GitHub error → optional/ship-without);
+  BS5-followup (riscv64 Node major-assert `die`→`warn`, unavoidable ports lag).
+- **Infra**: disk exhaustion twice (freed 367G via slug prune + `nerdctl
+  builder prune`; android-riscv64 ld.lld Bus error was OOD, not code) and a
+  corrupt local cache slug → switched resumes to `CROSS_NO_LOCAL_CACHE_EXPORT=1`.
+
 ## 2026-08-12 (afternoon) - "fix everything" wave 2 + a mass-agent-failure recovery
 
 - **Landed & validated** (12 more Batch-2/legacy items, all gates green): STV1
