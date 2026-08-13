@@ -1945,6 +1945,17 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 ### Open items (effort·impact; ordered by leverage)
 
+- **37 [M·★★★, P0 blocks chain completion] TVM import fails post-build:
+  `import tvm` → OSError [WinError 127] "The specified procedure could not
+  be found"** (run 28, 2026-08-12). TVM BUILDS clean (apache_tvm-0.25.0
+  wheel created, tvm_ffi.dll staged) but the smoke-import gate fails: a DLL
+  tvm loads is missing an expected export (entry-point/ABI mismatch, not a
+  missing-DLL 0xC0000135). Independent of the litert-lm bazel port (that
+  branch is green). Prime suspect: LLVM 22.1.8 ABI skew between what
+  libtvm/tvm_ffi.dll was linked against and the runtime LLVM DLL, or a
+  numpy/CRT dependency export change. Diagnose with `dumpbin /dependents`
+  + `/imports` on tvm_ffi.dll to name the DLL and the missing procedure.
+
 - **36 [M-L·★★★, owner-endorsed direction 2026-08-12] Migrate the litert
   branch to BAZEL.** The CMake lane is upstream-unmaintained (four
   stalenesses in one bump day: proto list, absl pin, litert pin vs their
@@ -1971,8 +1982,18 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   Android[...]" — a lingering android platform-mapping reference; likely
   `--android_platforms=` clear or full android-repo suppression. VERDICT:
   migration is VIABLE; remaining work is "strip the base image's Android
-  pollution from the bazel invocation," NOT porting. Resume deliberately;
-  bake the ANDROID_* clears into whatever runs bazel.**
+  pollution from the bazel invocation," NOT porting.**
+  **PROVEN GREEN 2026-08-12 (canary v6): built litert_lm_main.exe — 5094
+  actions, 549 s, 19 MB, `--help` exit 0. Recipe preserved at
+  `windows/scripts/build-litert-lm-bazel.ps1`. Both android blockers
+  solved (clear ANDROID_NDK_VERSION only; comment out WORKSPACE's bare
+  android_{ndk,sdk}_repository calls; do NOT empty ANDROID_HOME). REMAINING
+  = chain integration only: bazelisk + JDK into the toolchain image
+  (base/toolchain-tier rebuild — batch it), a repository-cache mount
+  (output_base stays container-local per the wcifs rename hazard), wire
+  bazel-bin output into litert-lm-export-bridge.ps1, freeze
+  build-litert-lm-from-source.ps1 as fallback. ENDS the CMake shell-peeling
+  (was on shell 5+: proto/absl/litert-pin/examples/ruy-header, ~2.5 h each).**
 
 - **34 [M·★★★, P0] No cross-run caching — snapshot GC eviction.** Mechanism
   identified 2026-08-11: tier-2 `maxUsedSpace` was far below one night's

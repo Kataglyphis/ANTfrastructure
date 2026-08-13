@@ -1,5 +1,79 @@
 # Changelog
 
+## 2026-08-12 - media-litert GREEN via the bazel port (chain-verified); chain advanced to tvm
+
+- **The bazel litert-lm port is DONE and chain-verified: the media-litert
+  branch committed green** (litert_lm_main.exe + 5 DLLs installed via
+  `bazelisk build //runtime/engine:litert_lm_main --config=windows`), and
+  the chain advanced to media-tvm - the first green media-litert since the
+  2026-08-03 bump. Three infra hurdles were cleared after the build itself
+  was proven (runs 25-28, each a fast litert-only re-solve):
+    1. `litert_lm_main --help` exits 1 (abseil CLI convention) - reset
+       `$global:LASTEXITCODE = 0` after the output-validated smoke so the
+       &-caller doesn't misread it as a build failure;
+    2. api.adoptium.net went fully unreachable (all retries) - cache
+       bazelisk + JDK on the persistent mount (plain Copy-Item, wcifs-safe)
+       and prefer the Temurin GitHub release asset over the flaky redirect;
+    3. bazel's `--repository_cache` on the wcifs mount died on its
+       temp+rename (the exact hazard the script header flags for
+       output_base) - dropped it; output_base stays container-local, the
+       mount carries only the create-only tool cache.
+  Remaining chain: tvm (unaffected branch), merge, torch, final.
+
+## 2026-08-12 - litert-lm MIGRATED to bazel + wired into the chain (install-test proven); run 24 (first full chain on the bazel port) launched
+
+- The bazel port is production-ready and INTEGRATED. Standalone install-test
+  green: `build-litert-lm-bazel.ps1` builds via `bazelisk build
+  //runtime/engine:litert_lm_main --config=windows`, installs
+  litert_lm_main.exe (19 MB) + 5 co-located runtime DLLs (incl. the git-lfs
+  libGemmaModelConstraintProvider.dll the CMake port hand-staged) into
+  C:\runtime\lib\litert-lm\bin, stages headers, and smoke-runs `--help` (flag
+  parser reached). NO toolchain-image rebuild needed - the script self-installs
+  bazelisk + Temurin JDK in the RUN step, so this is a media-litert-closure
+  change only.
+- Wiring: build-litert-all.ps1 phase 2 now calls the bazel script (phase 1,
+  the LiteRT C++ SDK, stays CMake); Dockerfile.media-builder adds a
+  container-local bazel repository-cache mount (id=bazel-litertlm-winamd64;
+  output_base stays off the wcifs mount per the rename hazard) and sets
+  BAZEL_REPO_CACHE. The CMake port (build-litert-lm-from-source.ps1 + export
+  bridge + shims + litert-lm patches) stays in-tree, bind-mounted, as the
+  frozen documented fallback. Ends 24h of CMake staleness-shell peeling
+  (proto/absl/litert-pin/examples/ruy).
+- Run 24 launched: first full chain on the bazel port. media-core caches
+  (9x green); litert rebuilds with bazel litert-lm; then tvm, merge, torch,
+  final - the chain can go fully green for the first time since the
+  2026-08-03 bump.
+
+## 2026-08-12 - run 23: litert examples-removal PROVEN (configure now passes), failure moved into litert's own build (ruy header); STRATEGIC PIVOT to bazel
+
+- Run 22 was cut off overnight by a session restart (driver process killed
+  mid-litert-Phase-1; no verdict, no error). Run 23 relaunched, reached the
+  litert verdict: the repo-root REMOVE_RECURSE fix (shim 4, corrected path)
+  is PROVEN - "tensor/examples REMOVED" printed with the right absolute
+  path, "Could NOT find Protobuf" is GONE, and the failure moved from
+  CONFIGURE into litert's own BUILD (litert_external-build): `fatal error:
+  'ruy/profiler/instrumentation.h' file not found` in shape_inference.cc
+  (missing -isystem for ruy, same class as the existing flatbuffers fix).
+- **This is the ~5th distinct litert-lm CMake shell in 24h, each ~2.5h
+  (GC-tax prefix rebuild), depth unbounded.** Owner endorsed migrating
+  litert-lm to bazel (item 36). Decision: STOP peeling CMake shells; drive
+  the bazel canary to green instead. Canary progress: blocker 1 (TF
+  android_configure int(ANDROID_NDK_VERSION) on dotted "29.0.14206865") -
+  clear that ONE var; blocker 2 (WORKSPACE unconditionally instantiates
+  android_{ndk,sdk}_repository → C:/llm/platforms) - neutralize both bare
+  calls in WORKSPACE, and do NOT empty ANDROID_HOME (that caused blocker 2).
+  media-core meanwhile: NINE consecutive fully-green runs (ONNX 13th bare
+  link).
+- **BAZEL CANARY GREEN (v6, same day): `bazelisk build
+  //runtime/engine:litert_lm_main --config=windows` produced a working 19 MB
+  litert_lm_main.exe in 549 s / 5094 actions, ZERO code patches.** The
+  migration is no longer "viable" - it is PROVEN. Recipe saved to
+  windows/scripts/build-litert-lm-bazel.ps1. Remaining is pure chain
+  integration (bazelisk+JDK in the toolchain image, repository-cache mount,
+  export-bridge wiring), not porting. The CMake port
+  (build-litert-lm-from-source.ps1) becomes the frozen fallback; its ruy
+  -isystem shell (run 23) is left documented, unfixed - superseded.
+
 ## 2026-08-12 - :latest-cross SHIPPED: 3-arch manifest pushed after fixes #6-#10; the runtime-lane gate saga closes at 10 fixes / 8 runs
 
 - **GOAL ACHIEVED**: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`

@@ -215,6 +215,15 @@ try {
     # Invoke-GitClone deliberately does NOT force it for ordinary clones.
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GIT_SSL_NO_VERIFY = '1'
+    # meson downloads [wrap-file] subprojects (pango, theora, libgudev, ...) with
+    # Python's urllib, which verifies TLS against a CA store the source-built
+    # CPython in this image does not ship -> "CERTIFICATE_VERIFY_FAILED: unable to
+    # get local issuer certificate", so every wrap fetch burns its full retry/delay
+    # budget before falling back. PYTHONHTTPSVERIFY=0 disables that verification for
+    # this ephemeral build container's wrap fetches only (same trust-boundary
+    # reasoning as GIT_SSL_NO_VERIFY above); it both unblocks the downloads and cuts
+    # the multi-minute retry stalls out of `meson setup`.
+    $env:PYTHONHTTPSVERIFY = '0'
 
     # ---- 4. download GStreamer source tarball ----
     $gstSrcDir = Join-Path $resolvedSrcDir "gstreamer-$GstVersion"
@@ -462,10 +471,42 @@ int _isatty(int);
         if ($ocvLibs.Count -eq 0) { throw "no import libraries found in $ocvLib — the OpenCV install is incomplete." }
         # Version: satisfies '>= 4.0.0' while naming the real OpenCV 5 release.
         $ocvVersion = if ($env:OPENCV_SOURCE_VERSION -match '^(\d+)') { "$($Matches[1]).0.0" } else { '5.0.0' }
+        # Prefix = the OpenCV install ROOT (not the lib dir): gst-plugins-bad
+        # opencv/meson.build reads get_variable('prefix') and requires
+        # is_dir(<prefix>/share/{opencv,OpenCV,opencv4}) for the xml cascade data,
+        # erroring out hard ("opencv enabled, but data directory not found") when
+        # absent. A lib-dir prefix would send it looking under <lib>/share.
         [void](Write-PkgConfigFile -Name 'opencv4' -Version $ocvVersion `
                 -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
                 -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
+                -Prefix $ocvRoot `
                 -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
+        # gst-plugins-bad opencv/meson.build derives its cascade-data dir as
+        # opencv_dep.get_variable('prefix') + /share/{opencv,OpenCV,opencv4} and
+        # errors hard when none is a directory. Two OpenCV-5 mismatches bite here:
+        #  1. gst never looks for share/opencv5, and OpenCV 5 on Windows drops its
+        #     xml under <root>\etc anyway (not share/ at all).
+        #  2. pkgconf RELOCATES the prefix from the .pc file LOCATION
+        #     (<...>/x64/vc18/lib/pkgconfig -> strips lib/pkgconfig -> <...>/x64/vc18),
+        #     ignoring the explicit prefix= line, so the prefix meson computes is
+        #     NOT $ocvRoot. Rather than guess which relocation wins, create
+        #     share\opencv4 under every plausible prefix root (install root, the
+        #     relocated lib-parent, and the lib dir itself) and fill each from
+        #     <root>\etc so both meson's is_dir probe AND facedetect's runtime
+        #     cascade lookup resolve wherever the prefix lands.
+        $ocvPrefixCandidates = @($ocvRoot, (Split-Path $ocvLib -Parent), $ocvLib) |
+            Where-Object { $_ } | Select-Object -Unique
+        foreach ($base in $ocvPrefixCandidates) {
+            $shareDir = Join-Path $base 'share\opencv4'
+            if (Test-Path $shareDir) { continue }
+            New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
+            $filled = $false
+            foreach ($d in @('haarcascades', 'lbpcascades')) {
+                $src = Join-Path $ocvRoot "etc\$d"
+                if (Test-Path $src) { Copy-Item $src (Join-Path $shareDir $d) -Recurse -Force; $filled = $true }
+            }
+            log ("Ensured OpenCV data dir $shareDir" + $(if ($filled) { ' (populated from etc\)' } else { ' (empty; no etc\haarcascades found)' }))
+        }
 
         # libonnxruntime.pc — ORT ships none on any platform.
         $ortRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
@@ -548,15 +589,20 @@ int _isatty(int);
 
         # cc.find_library / cc.has_header consult the COMPILER's search paths,
         # not meson options, so INCLUDE/LIB is the mechanism that actually works
-        # here. Set for this process; the meson args below carry the same dirs so
-        # the plugin's own compile and link succeed too.
+        # here. lld-link (invoked by clang-cl) reads LIB for its default library
+        # search path, so setting it below is sufficient for the tflite plugin's
+        # find_library AND its link. Do NOT also push the dir as a `/LIBPATH:`
+        # c_link_arg: clang-cl does not recognise `/LIBPATH:` as a driver flag
+        # and treats the whole token as an input filename ("no such file or
+        # directory: '/LIBPATH:...'"), which fails meson's compile+link sanity
+        # check before any plugin is even configured (regression fixed 2026-08-13,
+        # first surfaced once all three media branches fanned into the merge).
         $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
         $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
         # Forward slashes inside the meson array literal: meson parses those
         # strings with escape sequences, so a native C:\... path would mangle
         # (\r, \t, ...). Same reason $rtFullPath above is converted.
         $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
-        $linkArgElems = $linkArgElems + ",'/LIBPATH:$($litertLib -replace '\\', '/')'"
         log "INCLUDE += $litertInclude ; LIB += $litertLib"
 
         # Everything the required set needs must resolve NOW, not after an hour.
@@ -677,6 +723,18 @@ int _isatty(int);
         if (Test-Path $outFile) { Get-Content $outFile | ForEach-Object { if ($_) { log $_ } } }
         Remove-Item $outFile -Force -ErrorAction SilentlyContinue
         if ($mesonExitCode -eq 0) { $mesonSucceeded = $true; break }
+
+        # Never swallow logs: meson's stdout only says "cannot compile programs";
+        # the actual compiler command line + its stderr live in meson-log.txt.
+        # Dump it here, BEFORE the attempt-1 cleanup below wipes $resolvedBuildDir.
+        $mesonLog = Join-Path $resolvedBuildDir 'meson-logs\meson-log.txt'
+        if (Test-Path $mesonLog) {
+            log "---- meson-log.txt (attempt $attempt, exit $mesonExitCode) ----"
+            Get-Content $mesonLog | ForEach-Object { if ($_) { log $_ } }
+            log '---- end meson-log.txt ----'
+        } else {
+            log "meson-log.txt not found at $mesonLog"
+        }
 
         if ($attempt -eq 1) {
             # Delete known-problematic [wrap-git] wraps inside downloaded subprojects

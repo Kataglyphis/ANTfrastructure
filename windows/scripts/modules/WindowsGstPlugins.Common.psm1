@@ -111,14 +111,22 @@ function Write-PkgConfigFile {
         [Parameter(Mandatory)][string]$LibDir,
         [Parameter(Mandatory)][string[]]$Library,      # link names WITHOUT extension
         [Parameter(Mandatory)][string]$PkgConfigDir,
-        [string[]]$ExtraCflags = @()
+        [string[]]$ExtraCflags = @(),
+        # The pkg-config `prefix` variable. Cflags/Libs below are emitted absolute
+        # (not ${prefix}-relative), so prefix is consumed ONLY by callers that read
+        # get_variable('prefix') — notably gst-plugins-bad opencv/meson.build, which
+        # derives its data dir as <prefix>/share/opencv4. Defaults to LibDir to keep
+        # existing callers unchanged; pass the install ROOT when a consumer resolves
+        # sibling data (share/, etc/) off the prefix.
+        [string]$Prefix = ''
     )
     $fwd = { param($p) ($p -replace '\\', '/') }
     New-Item -ItemType Directory -Force -Path $PkgConfigDir | Out-Null
     $cflags = @($IncludeDir | Where-Object { $_ } | ForEach-Object { '-I' + (& $fwd $_) }) + $ExtraCflags
     $libs = @('-L' + (& $fwd $LibDir)) + @($Library | ForEach-Object { '-l' + $_ })
+    $prefixVal = if ($Prefix) { & $fwd $Prefix } else { & $fwd $LibDir }
     $content = @(
-        "prefix=$(& $fwd $LibDir)",
+        "prefix=$prefixVal",
         '',
         "Name: $Name",
         "Description: $Description",

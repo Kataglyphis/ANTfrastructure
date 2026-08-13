@@ -208,6 +208,7 @@ COPY windows\scripts\shims C:\temp\scripts\shims
 COPY windows\scripts\patches\litert-lm C:\temp\scripts\patches\litert-lm
 
 COPY windows\scripts\build-litert-from-source.ps1 `
+     windows\scripts\build-litert-lm-bazel.ps1 `
      windows\scripts\build-litert-lm-from-source.ps1 `
      windows\scripts\litert-lm-export-bridge.ps1 `
      windows\scripts\build-litert-all.ps1 `
@@ -311,9 +312,17 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
+# LiteRT SDK = CMake (sccache mount); LiteRT-LM = bazel (own repository cache
+# mount id=bazel-litertlm-winamd64; bazel's output_base stays container-local
+# - it is rename-heavy and this cache mount is wcifs rename-hostile). The
+# frozen CMake litert-lm fallback (build-litert-lm-from-source.ps1 + export
+# bridge + link diag + litert-lm patches/shims) stays bind-mounted so a
+# BAZEL_REPO_CACHE-less / fallback run still has it.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build-litert-lm-bazel.ps1,target=C:\bkmnt\build-litert-lm-bazel.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
     --mount=type=bind,source=windows/scripts/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
@@ -321,7 +330,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
-    & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    $env:BAZEL_REPO_CACHE = 'C:\bzl-repo-cache'; & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built

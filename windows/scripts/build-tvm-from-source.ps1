@@ -153,7 +153,11 @@ if ($pythonModule -eq 'ON') {
     # 64-bit platform tag BEFORE any pip resolution (clang-built CPython
     # self-reports win32 and pulls 32-bit wheels otherwise).
     Initialize-PythonPlatformTag | Out-Null
-    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel')
+    # cython: tvm_ffi's cython module (core.pyx -> core.cpp) is transpiled by a
+    # CMake custom-build step that shells out to `python -m cython`; without it
+    # the tvm_ffi wheel dies with `No module named cython` -> MSB8066. The main
+    # tvm wheel does not need it, but installing here covers both.
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'scikit-build-core', 'setuptools-scm', 'wheel', 'cython')
     # The DNS-workaround clone may lack git tags -- pin the scm version directly.
     # Save/restore: stages run in-process, and a leaked pretend-version would
     # mis-stamp the NEXT stage's setuptools-scm build (e.g. IREE).
@@ -173,10 +177,165 @@ if ($pythonModule -eq 'ON') {
         if ($null -ne $prevScmPretendVersion) { $env:SETUPTOOLS_SCM_PRETEND_VERSION = $prevScmPretendVersion }
         else { Remove-Item Env:\SETUPTOOLS_SCM_PRETEND_VERSION -ErrorAction SilentlyContinue }
     }
-    # Stage + install (WITH deps -- apache-tvm-ffi must resolve) +
-    # import-assert via the shared helper (EAP=Stop-safe: tvm warns to
-    # stderr on successful imports, which killed the first e2e run).
-    Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName 'tvm' | Out-Null
+    # ITEM 37 ROOT CAUSE + FIX (2026-08-12, found via libinfo diagnostics):
+    # tvm/base.py loads the runtime with
+    #   load_lib_ctypes("tvm","tvm_runtime", extra_lib_paths=tvm_ffi.libinfo.package_lib_paths())
+    # i.e. the tvm_runtime.dll's FFI dependency is resolved from the SEPARATE
+    # `tvm_ffi` PYTHON PACKAGE (apache-tvm-ffi), pulled from PyPI as a wheel
+    # dependency. That prebuilt tvm_ffi.dll is a DIFFERENT build than our
+    # source-built tvm_runtime.dll, so a TVMFFI procedure it imports is absent
+    # -> OSError [WinError 127]. (Ruled out first, all via dumpbin: LLVM (no
+    # dynamic dep), the wheel-internal FFI contract (0 missing), dbghelp (all
+    # 8 procs present).) FIX: overwrite the tvm_ffi package's dll(s) with our
+    # matching build so the loaded FFI is the one tvm_runtime.dll was linked
+    # against.
+    # Install tvm_ffi (the apache-tvm-ffi package) FROM OUR VENDORED SOURCE,
+    # NOT PyPI (item 37 real fix). `import tvm` -> `from tvm_ffi import ...` ->
+    # tvm_ffi/registry.py `from . import core` loads the tvm_ffi package's
+    # compiled `core` extension + its tvm_ffi.dll. When pip pulls
+    # apache-tvm-ffi from PyPI (a RELEASED version) it does not match the
+    # tvm-ffi submodule TVM 0.25 vendors, so core.pyd/tvm_ffi.dll and our
+    # source-built tvm_runtime.dll disagree on the TVMFFI ABI -> WinError 127.
+    # Building tvm_ffi from 3rdparty/tvm-ffi makes core.pyd + tvm_ffi.dll +
+    # tvm_runtime.dll one consistent build. Then install tvm with --no-deps so
+    # pip never re-pulls the PyPI apache-tvm-ffi over it.
+    $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
+    if (Test-Path (Join-Path $tvmFfiSrc 'pyproject.toml')) {
+        # tvm_ffi builds a cython extension via scikit-build-core, which re-runs
+        # CMake FindPython from scratch in a subprocess. CMake 4.4's FindPython
+        # reads <cpython>\Include\pyconfig.h to get the version; in-tree Windows
+        # CPython keeps that header at PC\pyconfig.h only, so FindPython dies with
+        # `file STRINGS Include/pyconfig.h cannot be read`. This build skips the
+        # full Initialize-ToolchainPythonEnvironment preamble (see top of file),
+        # so stage pyconfig.h ourselves -- the same fix opencv/iree/genai use.
+        Copy-CpythonPyConfigHeader
+        Write-Host "Building + installing tvm_ffi from vendored source ($tvmFfiSrc)..."
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--no-build-isolation', '--force-reinstall', '--no-deps', $tvmFfiSrc)
+    } else {
+        Write-Warning "vendored tvm-ffi source not at $tvmFfiSrc - falling back to the PyPI apache-tvm-ffi (import may fail 127)"
+    }
+    $staged = @(Save-PythonWheel -SourceDir $wheelOut -WheelDir 'C:\runtime\wheels' -Required)
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--no-deps', '--only-binary', ':all:', $staged[0])
+    # Both tvm_ffi and tvm install with --no-deps (so pip never re-pulls the PyPI
+    # apache-tvm-ffi BINARY over our source build), so their pure-python runtime
+    # deps must be provided explicitly. tvm-ffi declares only typing-extensions;
+    # tvm 0.25's FFI split leaves numpy (already present) plus a small optional
+    # set (ml_dtypes/cloudpickle/psutil). typing_extensions is a hard import in
+    # tvm_ffi/dataclasses/c_class.py, so it is required; the rest are best-effort
+    # (--only-binary keeps a cp314-less sdist from dragging in a source build).
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'typing_extensions')
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', '--only-binary', ':all:', 'ml_dtypes', 'cloudpickle', 'psutil') -Optional
+    $sitePkgTvm = & $py.Exe -c "import site,os; print(next((os.path.join(d,'tvm') for d in site.getsitepackages() if os.path.isdir(os.path.join(d,'tvm'))), ''))" 2>&1 | Select-Object -Last 1
+    try {
+        Test-PythonImport -Python $py -ModuleName 'tvm'
+    } catch {
+        # SELF-DIAGNOSIS (item 37): ask tvm which lib it loads, then WinDLL
+        # THAT exact path to surface the WinError 127 procedure, and dumpbin
+        # its unresolved TVM/TVMFFI imports against the co-bundled ffi/runtime.
+        Write-Host '=== TVM import-failure diagnostics (item 37) ===' -ForegroundColor Yellow
+        $pyExe = $py.Exe
+        $findLib = @'
+import os, ctypes, traceback
+try:
+    from tvm._ffi import libinfo
+    for p in libinfo.find_lib_path():
+        print("FINDLIB", p)
+        try:
+            ctypes.CDLL(p)
+            print("  CDLL-load OK", p)
+        except Exception as e:
+            print("  CDLL-load FAIL", p, repr(e))
+except Exception:
+    traceback.print_exc()
+'@
+        $flFile = Join-Path $env:TEMP 'tvm_findlib.py'
+        Set-Content -Path $flFile -Value $findLib -Encoding ascii
+        & $pyExe $flFile 2>&1 | ForEach-Object { Write-Host "  findlib: $_" }
+        $dumpbin2 = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+        if ($dumpbin2 -and $sitePkgTvm -and (Test-Path $sitePkgTvm)) {
+            $allExports = New-Object System.Collections.Generic.HashSet[string]
+            Get-ChildItem $sitePkgTvm -Filter '*.dll' -Recurse | ForEach-Object {
+                & $dumpbin2 /exports $_.FullName 2>&1 | Select-String '\b(TVM\w+)\b' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { [void]$allExports.Add($_.Groups[1].Value) }
+            }
+            foreach ($big in @("$sitePkgTvm\lib\tvm_compiler.dll", "$sitePkgTvm\tvm_runtime.dll", "$sitePkgTvm\lib\tvm_runtime.dll")) {
+                if (Test-Path $big) {
+                    $imps = @(& $dumpbin2 /imports $big 2>&1 | Select-String '\b(TVM\w+)\b' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+                    $miss = @($imps | Where-Object { -not $allExports.Contains($_) })
+                    Write-Host ("  {0}: imports {1} TVM syms, MISSING across all bundled dlls: {2}" -f [IO.Path]::GetFileName($big), $imps.Count, ($miss -join ', '))
+                }
+            }
+        }
+        # dumpbin the FFI symbol contract: which tvm_ffi procedures does the
+        # runtime IMPORT, and which does the staged tvm_ffi.dll EXPORT? The
+        # set difference names the missing procedure (WinError 127) and proves
+        # stale-sidecar vs genuine ABI mismatch.
+        $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+        $stagedFfi = "$tvmInstallDir\lib\tvm_ffi.dll"
+        $stagedRt = "$tvmInstallDir\lib\tvm_runtime.dll"
+        $buildFfi = Join-Path $buildDir 'tvm_ffi.dll'
+        if ($dumpbin -and (Test-Path $stagedFfi)) {
+            $stagedExports = @(& $dumpbin /exports $stagedFfi 2>&1 | Select-String 'TVMFFI\w+' -AllMatches | ForEach-Object { $_.Matches.Value } | Sort-Object -Unique)
+            $rtImports = @(& $dumpbin /imports $stagedRt 2>&1 | Select-String 'TVMFFI\w+' -AllMatches | ForEach-Object { $_.Matches.Value } | Sort-Object -Unique)
+            $missing = @($rtImports | Where-Object { $_ -notin $stagedExports })
+            Write-Host ("  staged tvm_ffi.dll exports {0} TVMFFI syms; runtime imports {1}; MISSING from staged: {2}" -f $stagedExports.Count, $rtImports.Count, ($missing -join ', '))
+            if (Test-Path $buildFfi) {
+                $buildExports = @(& $dumpbin /exports $buildFfi 2>&1 | Select-String 'TVMFFI\w+' -AllMatches | ForEach-Object { $_.Matches.Value } | Sort-Object -Unique)
+                $stillMissing = @($rtImports | Where-Object { $_ -notin $buildExports })
+                Write-Host ("  build-dir tvm_ffi.dll exports {0} TVMFFI syms; MISSING from build-dir copy: {1}  (staged==build size: {2})" -f $buildExports.Count, ($stillMissing -join ', '), ((Get-Item $stagedFfi).Length -eq (Get-Item $buildFfi).Length))
+            }
+        }
+        foreach ($dll in @($stagedFfi, $stagedRt)) {
+            if (Test-Path $dll) { & $pyExe -c "import ctypes; ctypes.WinDLL(r'$dll')" 2>&1 | ForEach-Object { Write-Host "  load[$([IO.Path]::GetFileName($dll))]: $_" } }
+        }
+        # THE REAL SCENE (v5): tvm.base loads the WHEEL-BUNDLED libs from
+        # site-packages\tvm\, NOT the staged sidecars (which sit co-located and
+        # load fine). Enumerate what the wheel actually shipped and load each
+        # bundled DLL the way python does (default search dirs), so the 127
+        # names itself.
+        $sitePkgTvm = & $pyExe -c "import site,os; p=[os.path.join(d,'tvm') for d in site.getsitepackages()+[site.getusersitepackages()] if os.path.isdir(os.path.join(d,'tvm'))]; print(p[0] if p else '')" 2>&1 | Select-Object -Last 1
+        Write-Host "  wheel tvm package dir: $sitePkgTvm"
+        if ($sitePkgTvm -and (Test-Path $sitePkgTvm)) {
+            Get-ChildItem -Path $sitePkgTvm -Filter '*.dll' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                Write-Host ("  wheel dll: {0} ({1:N0} bytes)" -f $_.FullName.Replace($sitePkgTvm, '...'), $_.Length)
+                & $pyExe -c "import ctypes; ctypes.WinDLL(r'$($_.FullName)')" 2>&1 | ForEach-Object { Write-Host "    load: $_" }
+            }
+        }
+        # WinError 127 with a satisfied FFI contract => a SYSTEM-DLL procedure
+        # is missing. Dump each DLL's non-TVMFFI imports grouped by source DLL,
+        # and cross-check dbghelp.dll (backtrace_win.cc; Server Core ships a
+        # minimal dbghelp) - name the exact missing export.
+        if ($dumpbin) {
+            $sysDbghelp = "$env:SystemRoot\System32\dbghelp.dll"
+            $dbghelpExports = if (Test-Path $sysDbghelp) { @(& $dumpbin /exports $sysDbghelp 2>&1 | Select-String '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]+\s+(\w+)' | ForEach-Object { $_.Matches.Groups[1].Value }) } else { @() }
+            Write-Host ("  system dbghelp.dll ($sysDbghelp) exports {0} procs" -f $dbghelpExports.Count)
+            foreach ($dll in @($stagedFfi, $stagedRt)) {
+                if (-not (Test-Path $dll)) { continue }
+                $imp = @(& $dumpbin /imports $dll 2>&1)
+                $curDll = ''
+                foreach ($ln in $imp) {
+                    if ($ln -match '^\s{4}(\S+\.dll)') { $curDll = $Matches[1] }
+                    elseif ($curDll -match 'dbghelp' -and $ln -match '^\s+[0-9A-F]+\s+(\w+)$') {
+                        $proc = $Matches[1]
+                        $present = $dbghelpExports -contains $proc
+                        Write-Host ("  [{0}] imports dbghelp!{1} - present in system dbghelp: {2}" -f [IO.Path]::GetFileName($dll), $proc, $present)
+                    }
+                }
+            }
+        }
+        # Where is tvm's extension + which DLL/procedure does its import resolve to?
+        $tb = @'
+import importlib, traceback
+try:
+    importlib.import_module("tvm")
+    print("import ok")
+except Exception:
+    traceback.print_exc()
+'@
+        $tbFile = Join-Path $env:TEMP 'tvm_import_diag.py'
+        Set-Content -Path $tbFile -Value $tb -Encoding ascii
+        & $pyExe $tbFile 2>&1 | Select-Object -First 15 | ForEach-Object { Write-Host "  import tvm: $_" }
+        throw
+    }
 }
 
 Remove-SourceBuildTree -Path $SourceDir
