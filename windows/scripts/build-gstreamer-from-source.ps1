@@ -410,6 +410,27 @@ int _isatty(int);
             [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
         })
 
+    # ---- 5g. bump cpp_std=c++11 pins to c++17 for the VS 18 MSVC STL ----
+    # Several gst-plugins-bad C++ libs pin `override_options: ['cpp_std=c++11']`
+    # (dxva, d3d11/12, ...). VS 18's MSVC STL (14.51+) uses C++14+ constructs
+    # unconditionally (deduced return types, `auto` returns without a trailing
+    # type, ...), which clang-cl REJECTS in C++11 mode -- the dxva decoders fail
+    # with "'auto' return without trailing return type is a C++14 extension".
+    # Older MSVC STLs tolerated a c++11 language mode; 14.51 does not. Bump every
+    # c++11 pin in the gst source tree to c++17 (what the rest of this image
+    # compiles with); C++17 is backward-compatible with this C++11 code and is
+    # above the minimum the new STL needs. Wrap subprojects are pure C and carry
+    # no such pin, so only gst's own C++ libs are touched.
+    $cppStdPatched = 0
+    Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $content = [System.IO.File]::ReadAllText($_.FullName)
+        if ($content -match 'cpp_std=c\+\+11') {
+            [System.IO.File]::WriteAllText($_.FullName, ($content -replace 'cpp_std=c\+\+11', 'cpp_std=c++17'))
+            $cppStdPatched++
+        }
+    }
+    log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
+
     # ---- 5c. MANDATORY PLUGIN PRE-FLIGHT ─────────────────────────────────────
     # Everything below exists because of the 2026-07-11 finding: `gst-inspect-1.0
     # opencv|libav` exited -1 in the SHIPPED winamd64 image. Nothing failed —
@@ -471,15 +492,9 @@ int _isatty(int);
         if ($ocvLibs.Count -eq 0) { throw "no import libraries found in $ocvLib — the OpenCV install is incomplete." }
         # Version: satisfies '>= 4.0.0' while naming the real OpenCV 5 release.
         $ocvVersion = if ($env:OPENCV_SOURCE_VERSION -match '^(\d+)') { "$($Matches[1]).0.0" } else { '5.0.0' }
-        # Prefix = the OpenCV install ROOT (not the lib dir): gst-plugins-bad
-        # opencv/meson.build reads get_variable('prefix') and requires
-        # is_dir(<prefix>/share/{opencv,OpenCV,opencv4}) for the xml cascade data,
-        # erroring out hard ("opencv enabled, but data directory not found") when
-        # absent. A lib-dir prefix would send it looking under <lib>/share.
         [void](Write-PkgConfigFile -Name 'opencv4' -Version $ocvVersion `
                 -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
                 -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
-                -Prefix $ocvRoot `
                 -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
         # gst-plugins-bad opencv/meson.build derives its cascade-data dir as
         # opencv_dep.get_variable('prefix') + /share/{opencv,OpenCV,opencv4} and
@@ -720,7 +735,8 @@ int _isatty(int);
         $outFile = Join-Path $resolvedLogDir "meson-setup-$attempt-out.txt"
         & $mesonExe @setupArgs > $outFile
         $mesonExitCode = $LASTEXITCODE
-        if (Test-Path $outFile) { Get-Content $outFile | ForEach-Object { if ($_) { log $_ } } }
+        $mesonOut = if (Test-Path $outFile) { @(Get-Content $outFile) } else { @() }
+        $mesonOut | ForEach-Object { if ($_) { log $_ } }
         Remove-Item $outFile -Force -ErrorAction SilentlyContinue
         if ($mesonExitCode -eq 0) { $mesonSucceeded = $true; break }
 
@@ -728,12 +744,25 @@ int _isatty(int);
         # the actual compiler command line + its stderr live in meson-log.txt.
         # Dump it here, BEFORE the attempt-1 cleanup below wipes $resolvedBuildDir.
         $mesonLog = Join-Path $resolvedBuildDir 'meson-logs\meson-log.txt'
+        $mesonLogLines = @()
         if (Test-Path $mesonLog) {
+            $mesonLogLines = @(Get-Content $mesonLog)
             log "---- meson-log.txt (attempt $attempt, exit $mesonExitCode) ----"
-            Get-Content $mesonLog | ForEach-Object { if ($_) { log $_ } }
+            $mesonLogLines | ForEach-Object { if ($_) { log $_ } }
             log '---- end meson-log.txt ----'
         } else {
             log "meson-log.txt not found at $mesonLog"
+        }
+
+        # A deterministic meson configure error (a plugin's meson.build erroring on
+        # a missing dependency/function/data dir) fails IDENTICALLY on retry, so the
+        # attempt-2 cleanup + full wrap re-download (~hours when the wrapdb fetches
+        # hit SSL retry backoff) is pure waste. Retry ONLY transient failures;
+        # short-circuit on a hard `meson.build:LINE:COL: ERROR/Exception`.
+        $hardError = @($mesonOut + $mesonLogLines) -match 'meson\.build:\d+:\d+: (ERROR|Exception)'
+        if ($hardError) {
+            log "meson setup hit a deterministic configure error; NOT retrying (a retry repeats it identically after a full wrap re-download): $($hardError[-1].Trim())"
+            break
         }
 
         if ($attempt -eq 1) {
