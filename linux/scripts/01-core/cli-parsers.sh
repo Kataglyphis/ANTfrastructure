@@ -130,6 +130,33 @@ parse_shared_orchestrator_args() {
 }
 
 # ==============================================================================
+# orchestrator_warn_if_unsupported <flag> [script_name]
+#
+# Per-script flag allowlist (Batch 5 / O5). A few shared orchestrator flags parse
+# in EVERY cross entry point because they live in parse_shared_orchestrator_args
+# / _parse_global_flags, yet are inert in some scripts: --push does nothing in
+# build-cross-chain (the chain always pushes), and --parallel-archs /
+# --max-parallel-archs do nothing in build-cross-stage (it builds one arch).
+# They used to be accepted and silently ignored. Each script lists its inert
+# shared flags in ORCHESTRATOR_UNSUPPORTED_FLAGS (space-separated); the arg loop
+# calls this to warn — clearly and once — when such a flag is passed, without
+# rejecting it (so habitual/CI invocations keep working).
+#
+# Returns 0 when it warned (flag is unsupported here), 1 otherwise.
+# ==============================================================================
+orchestrator_warn_if_unsupported() {
+  local flag="$1" script="${2:-this script}" u
+  # shellcheck disable=SC2086  # intentional word-split of the space-separated list
+  for u in ${ORCHESTRATOR_UNSUPPORTED_FLAGS:-}; do
+    if [ "${flag}" = "${u}" ]; then
+      warn "${flag} is accepted for CLI compatibility but has no effect in ${script} — ignoring it."
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ==============================================================================
 # dispatch_parsed_args
 #
 # Calls a shared CLI argument parser and translates its return codes into

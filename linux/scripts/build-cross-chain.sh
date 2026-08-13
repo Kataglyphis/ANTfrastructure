@@ -216,6 +216,10 @@ _chain_extra_arg() {
 
 _chain_parse_args() {
   ONLY_STAGE=""
+  # O5 flag allowlist: --push is inert in the chain (every cross stage is ALWAYS
+  # pushed — digest pinning needs the manifest in the registry; --no-push is the
+  # real toggle). It used to sink silently into _chain_push_enabled; warn instead.
+  ORCHESTRATOR_UNSUPPORTED_FLAGS="--push"
   run_orchestrator_arg_loop usage _chain_extra_arg \
     TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
     FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION _chain_push_enabled \
@@ -440,6 +444,10 @@ _chain_disk_preflight() {
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
 
+# Run-id / pidfile / child-reaping primitives shared with stop-cross-chain.sh.
+# shellcheck disable=SC1091
+source "${REPO_ROOT}/linux/scripts/01-core/chain-lifecycle.sh"
+
 _chain_stage_disk_guard() {
   local completed_stage="${1:-}"
   local threshold="${CROSS_DISK_GUARD_GB:-40}"
@@ -508,10 +516,135 @@ _chain_start_resource_monitor() {
   log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
 }
 
+# ── lifecycle: pidfile + signal-driven child reaping (Batch 5 / O1+O2) ─────────
+#
+# The chain spawns nerdctl/buildctl children (directly and inside
+# run_parallel_arch_loop subshells). Before this, a TERM/INT to the orchestrator
+# left those children running as orphans (observed 4× on 2026-08-10 — the manual
+# pkill afterwards left zombies). These handlers write a pidfile at start,
+# reap the whole child subtree on a signal, and remove the pidfile on exit.
+#
+# EXIT/TERM/INT/HUP only — never a RETURN trap (see the parallel-loop.sh:21-32
+# corpse: a RETURN trap re-arms on the caller's return and corrupts unrelated
+# returns under set -u).
+#
+# BASH TRAP-DEFERRAL CAVEAT (verified 2026-08-13): a per-arch stage runs the
+# build in the BACKGROUND under run_parallel_arch_loop's builtin `wait`, which a
+# signal interrupts — so the handler fires PROMPTLY there. A non-per-arch stage
+# (base/compiler/runtime) runs the build as a FOREGROUND pipeline
+# (`run … | tee logfile`), and bash defers a signal trap until a foreground
+# pipeline finishes. A bare `kill -TERM <orchestrator>` during such a stage is
+# therefore queued, not immediate. The robust, always-prompt way to stop a chain
+# is linux/scripts/stop-cross-chain.sh: it reaps the nerdctl/buildctl subtree
+# DIRECTLY (which returns the foreground pipeline and lets this deferred handler
+# run its cleanup). A group-wide signal (Ctrl-C in the controlling terminal)
+# reaches the children too and is likewise handled cleanly.
+_CHAIN_PIDFILE=""
+_CHAIN_SIGNAL_HANDLED=0
+
+_chain_write_pidfile() {
+  _CHAIN_PIDFILE="$(cross_chain_pidfile_path)"
+  # A live SIBLING chain already owns this pidfile: warn (do not clobber its
+  # ownership — the deliberate path to stop it is stop-cross-chain.sh).
+  if [ -f "${_CHAIN_PIDFILE}" ]; then
+    local other; other="$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)"
+    if [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null; then
+      warn "another cross chain appears to be running (pid ${other}, pidfile ${_CHAIN_PIDFILE}); stop it with stop-cross-chain.sh. Continuing anyway."
+    fi
+  fi
+  printf '%s\n' "$$" > "${_CHAIN_PIDFILE}" 2>/dev/null \
+    || { warn "could not write pidfile ${_CHAIN_PIDFILE}"; _CHAIN_PIDFILE=""; }
+}
+
+_chain_remove_pidfile() {
+  [ -n "${_CHAIN_PIDFILE}" ] || return 0
+  # Only remove a pidfile we own (contains OUR pid) — never a sibling's.
+  if [ "$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)" = "$$" ]; then
+    rm -f "${_CHAIN_PIDFILE}" 2>/dev/null || true
+  fi
+}
+
+# EXIT fires on BOTH normal completion and after the signal handler exits.
+# Do ONLY pidfile cleanup here: on a clean finish the build children have
+# already exited and the backgrounded resource-monitor self-terminates via its
+# --watch-pid. Reaping the subtree here would kill that monitor before it wrote
+# its summary — so tree termination lives ONLY in the signal path. Every command
+# is guarded so a cleanup hiccup cannot flip the script's real exit code.
+_chain_on_exit() {
+  _chain_remove_pidfile
+}
+
+_chain_on_signal() {
+  local sig="$1"
+  # Idempotent: a second signal mid-teardown must not re-run the kill sweep.
+  [ "${_CHAIN_SIGNAL_HANDLED}" -eq 1 ] && return 0
+  _CHAIN_SIGNAL_HANDLED=1
+  warn "received SIG${sig} — terminating child build processes (nerdctl/buildctl) before exit"
+  chain_terminate_descendants TERM "$$"
+  # Brief grace for a clean TERM, then KILL any straggler that ignored it.
+  local waited=0
+  while [ "${waited}" -lt 10 ]; do
+    pgrep -P "$$" >/dev/null 2>&1 || break
+    sleep 1
+    waited=$((waited + 1))
+  done
+  chain_terminate_descendants KILL "$$"
+  _chain_remove_pidfile
+  # Drop our traps and exit with the conventional 128+signum so the caller sees
+  # a signalled termination (not a bare exit 1). Clearing EXIT here avoids a
+  # redundant second cleanup pass.
+  trap - "${sig}" EXIT
+  local num=15
+  case "${sig}" in INT) num=2 ;; HUP) num=1 ;; TERM) num=15 ;; esac
+  exit $((128 + num))
+}
+
+_chain_install_lifecycle_traps() {
+  trap '_chain_on_signal TERM' TERM
+  trap '_chain_on_signal INT' INT
+  trap '_chain_on_signal HUP' HUP
+  trap '_chain_on_exit' EXIT
+}
+
+# Eager per-run log archiving (O2): the per-stage ${LOG_DIR}/<stage>.log files
+# are truncated LAZILY on first write of each run (cross_stage_log_redirect's
+# .run marker). A watcher that peeked BEFORE a stage first wrote saw the PREVIOUS
+# run's log and read a stale failure as current (the stale-watcher false-green
+# class). Fix: at chain start, move any prior run's logs out of the LOG_DIR root
+# into archive/<prior-run-id>/ so the root only ever holds the CURRENT run — the
+# stale files are namespaced away up front instead of overwritten in place.
+_chain_archive_prev_logs() {
+  [ -n "${LOG_DIR:-}" ] && [ -d "${LOG_DIR}" ] || return 0
+  shopt -s nullglob
+  local logs=( "${LOG_DIR}"/*.log ) markers=( "${LOG_DIR}"/*.log.run )
+  shopt -u nullglob
+  [ "${#logs[@]}" -gt 0 ] || return 0
+  # Derive the prior run id from any surviving .run marker, else a timestamp.
+  local prev="" m
+  for m in "${markers[@]}"; do
+    prev="$(cat "${m}" 2>/dev/null || true)"
+    [ -n "${prev}" ] && break
+  done
+  [ -n "${prev}" ] || prev="$(date -u +%Y%m%d-%H%M%S)"
+  # Defensive: never archive our own current run's freshly-created logs.
+  [ "${prev}" = "${CROSS_RUN_ID:-}" ] && return 0
+  local dest="${LOG_DIR}/archive/${prev}"
+  mkdir -p "${dest}" 2>/dev/null || return 0
+  local f
+  for f in "${logs[@]}" "${markers[@]}"; do
+    [ -e "${f}" ] && mv -f "${f}" "${dest}/" 2>/dev/null || true
+  done
+  log "archived previous run logs -> ${dest}"
+}
+
 main() {
   _chain_parse_args "$@"
+  cross_run_id_ensure          # O2: one canonical CROSS_RUN_ID for all consumers
   _chain_resolve_final_image
-  _chain_validate_stages
+  _chain_validate_stages       # may exit 0 for --describe-chain / --verify-chain
+  _chain_archive_prev_logs     # O2: eager per-run log archiving (before any write)
+  _chain_write_pidfile         # O2: pidfile read by stop-cross-chain.sh
+  _chain_install_lifecycle_traps  # O1: reap nerdctl/buildctl children on signal
   _chain_assert_ancestry
   _chain_disk_preflight
   _chain_start_resource_monitor

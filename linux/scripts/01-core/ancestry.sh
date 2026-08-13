@@ -59,6 +59,10 @@ _ANCESTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ANCESTRY_PARENT_DIGEST_KEY="${ANCESTRY_PARENT_DIGEST_KEY:-org.kataglyphis.parent-digest}"
 ANCESTRY_PARENT_STAGE_KEY="${ANCESTRY_PARENT_STAGE_KEY:-org.kataglyphis.parent-stage}"
+# Which orchestrator generation produced an image. The runtime lane stamps this
+# on the per-arch wrapper pushes so a later manifest run can prove the three
+# tags it is about to index came from ONE run (XC3), not a mix of generations.
+ANCESTRY_RUN_ID_KEY="${ANCESTRY_RUN_ID_KEY:-org.kataglyphis.run-id}"
 
 # ==============================================================================
 # ancestry_output_annotations
@@ -88,6 +92,27 @@ ancestry_output_annotations() {
 }
 
 # ==============================================================================
+# ancestry_run_id_annotation
+#
+# Emit the `,annotation.<run-id-key>=<value>` fragment recording which
+# orchestrator generation produced this build. Prints nothing for an empty run
+# id, so callers can append the result unconditionally (mirrors
+# ancestry_output_annotations). XC3 reads this back off the per-arch wrapper
+# tags to refuse assembling a mixed-generation manifest.
+#
+# Usage: out="type=image,name=${tag}$(ancestry_run_id_annotation "${CROSS_RUN_ID}")"
+# ==============================================================================
+ancestry_run_id_annotation() {
+  local run_id="${1:-}"
+  [ -n "${run_id}" ] || return 0
+  case "${run_id}" in
+    *,*) warn "[ancestry] run id contains a comma, not recording: ${run_id}"; return 0 ;;
+  esac
+  printf ',annotation.%s=%s' "${ANCESTRY_RUN_ID_KEY}" "${run_id}"
+  return 0
+}
+
+# ==============================================================================
 # ancestry_recorded_parent
 #
 # Print the parent reference recorded on <image_ref>.
@@ -96,8 +121,8 @@ ancestry_output_annotations() {
 #
 # Usage: recorded="$(ancestry_recorded_parent "${tag}")"
 # ==============================================================================
-ancestry_recorded_parent() {
-  local image_ref="$1"
+ancestry_recorded_annotation() {
+  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}"
   local helper="${_ANCESTRY_DIR}/manifest-annotation.py"
 
   if ! command -v python3 >/dev/null 2>&1 || [ ! -f "${helper}" ]; then
@@ -108,7 +133,17 @@ ancestry_recorded_parent() {
   manifest_json="$("${NERDCTL_BIN:-nerdctl}" manifest inspect --verbose "${image_ref}" 2>/dev/null)" || return 1
   [ -n "${manifest_json}" ] || return 1
 
-  printf '%s' "${manifest_json}" | python3 "${helper}" "${ANCESTRY_PARENT_DIGEST_KEY}" 2>/dev/null
+  printf '%s' "${manifest_json}" | python3 "${helper}" "${key}" 2>/dev/null
+}
+
+# Read the recorded parent digest (thin wrapper kept for existing callers).
+ancestry_recorded_parent() {
+  ancestry_recorded_annotation "$1" "${ANCESTRY_PARENT_DIGEST_KEY}"
+}
+
+# Read the recorded orchestrator run id (empty/exit-2 when unstamped).
+ancestry_recorded_run_id() {
+  ancestry_recorded_annotation "$1" "${ANCESTRY_RUN_ID_KEY}"
 }
 
 # Digest half of a `repo@sha256:...` reference.
@@ -216,4 +251,66 @@ ancestry_assert_chain() {
     log "[ancestry] ancestor chain verified"
   fi
   return "${rc}"
+}
+
+# ==============================================================================
+# runtime_ancestry_assert_wrappers  (XC2 — runtime-lane ancestry coverage)
+#
+# The cross-lane walker (ancestry_assert_chain) stops at android: the runtime
+# lane's base/package/wrapper build on a different platform and, in the normal
+# flow, only the wrapper is pushed (base/package are local intermediates). The
+# one immutable, registry-resident ancestor a pushed wrapper has is the android
+# artifact it was packaged from, stamped as its parent-digest annotation (see
+# runtime-build-fns.sh). This walks the runtime-lane graph table
+# (RUNTIME_STAGE_PARENT_MAP → android) and verifies each per-arch wrapper still
+# descends from the CURRENT android tag — the "wrapper predating its android"
+# case a --repair/standalone manifest run could not previously detect.
+#
+# Reuses _ancestry_check_link, so the verdict semantics match the cross lane:
+# absent annotation → WARN (pre-XC2 image, non-breaking), unresolvable tag →
+# WARN, present + digest mismatch → FAIL (rc 1).
+#
+# Usage: runtime_ancestry_assert_wrappers "amd64,arm64,riscv64"
+# ==============================================================================
+runtime_ancestry_assert_wrappers() {
+  local arches_csv="$1" arch rc=0 wrapper_ref android_ref
+  declare -F runtime_stage_tag >/dev/null 2>&1 || return 0
+  for arch in $(arch_list_to_words "${arches_csv}"); do
+    wrapper_ref="$(runtime_stage_tag wrapper "${arch}" 2>/dev/null || true)"
+    android_ref="$(runtime_stage_tag "$(runtime_stage_parent wrapper 2>/dev/null || printf 'android')" "${arch}" 2>/dev/null || true)"
+    [ -n "${wrapper_ref}" ] && [ -n "${android_ref}" ] || continue
+    _ancestry_check_link "${wrapper_ref}" "${android_ref}" "android→wrapper (${arch})" || rc=1
+  done
+  return "${rc}"
+}
+
+# ==============================================================================
+# manifest generation coherence (XC3)
+#
+# The per-arch wrapper tags are mutable and go LIVE inside the build loop, before
+# the manifest is smoke-gated. A later --repair run indexes whatever those tags
+# currently hold; a 2-of-3 rebuild leaves one arch on an older generation, so
+# indexing them ships a mixed-generation :latest-cross. The run-id annotation
+# (ancestry_run_id_annotation) is the coherence key: three tags from one run
+# share it.
+# ==============================================================================
+
+# Print each non-empty argument once, de-duplicated. Empty args (a tag with no
+# run-id annotation) are dropped — "unknown provenance", not a distinct
+# generation.
+_ancestry_distinct_nonempty() {
+  local a
+  for a in "$@"; do [ -n "${a}" ] && printf '%s\n' "${a}"; done | sort -u
+}
+
+# Return 0 when every PRESENT (non-empty) run id is identical — i.e. the tags are
+# one coherent generation (or provenance is simply unknown). Return 1 when two or
+# more DIFFERENT run ids are present: the tags mix generations and indexing them
+# would ship a Frankenstein manifest.
+#
+# Usage: ancestry_run_ids_coherent "${run_id_amd64}" "${run_id_arm64}" ...
+ancestry_run_ids_coherent() {
+  local -a distinct
+  mapfile -t distinct < <(_ancestry_distinct_nonempty "$@")
+  [ "${#distinct[@]}" -le 1 ]
 }

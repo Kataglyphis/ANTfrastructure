@@ -68,6 +68,18 @@ runtime_artifact_platform() {
   esac
 }
 
+# Environment variable name carrying the immutable android artifact digest for
+# <arch> (XC2). The cross orchestrator exports it from the captured ANDROID_PIN
+# so the runtime helper packages from — and records provenance against — the
+# exact android generation this run produced, not the mutable cross-android tag.
+# Both the exporter (cross-stage-build.sh) and the reader (runtime-build-fns.sh)
+# derive the name here so they can never drift; arch is sanitized to a legal
+# shell identifier.
+runtime_android_pin_varname() {
+  local arch="$1"
+  printf 'RUNTIME_ANDROID_PIN_%s' "${arch//[^A-Za-z0-9_]/_}"
+}
+
 runtime_artifact_image_ref() {
   local arch="$1"
   case "${ARTIFACT_BUILD_MODE:-cross}" in

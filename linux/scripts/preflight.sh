@@ -200,18 +200,41 @@ run_check stage-graph "cross stage graph validation" bash -c '
   IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
 
 # Informational only (backlog F7 residual): a locally-committed-but-unpushed
-# DocumANTation submodule pointer breaks build-docs.yml's checkout LOUDLY but
-# only post-push. Compare the recorded pointer against the remote HEAD —
-# network-dependent, so this WARNs and never fails; silent offline.
-_sub_dir="external/Kataglyphis-DocumANTation"
-if [ -e "${_sub_dir}/.git" ]; then
-  _sub_local="$(git -C "${_sub_dir}" rev-parse HEAD 2>/dev/null || true)"
-  _sub_remote="$(timeout 10 git -C "${_sub_dir}" ls-remote origin HEAD 2>/dev/null | awk '{print $1}' || true)"
-  if [ -n "${_sub_local}" ] && [ -n "${_sub_remote}" ] && [ "${_sub_local}" != "${_sub_remote}" ]; then
-    printf "${YELLOW}NOTE:${NC} DocumANTation submodule pointer %.9s != remote HEAD %.9s — unpushed local commit or upstream moved; verify before a docs build.\n" \
-      "${_sub_local}" "${_sub_remote}"
-  fi
-fi
+# submodule pointer breaks a downstream checkout/clone (e.g. build-docs.yml's
+# DocumANTation checkout) LOUDLY, but only post-push. This is a warn-only
+# CONTAINMENT probe: for each initialized submodule, is the recorded pointer
+# actually REACHABLE on its remote (a ref tip, or an ancestor of one)? A pointer
+# that is not reachable is almost certainly an unpushed local commit. This is
+# strictly network-dependent, so it WARNs and NEVER fails, and is silent when
+# offline / the remote is unreachable (empty ls-remote -> skip). It generalizes
+# the earlier DocumANTation-only probe so future submodules are covered too.
+_probe_submodule_pushed() {  # dir
+  local dir="$1" recorded remote_tips tip
+  [ -e "${dir}/.git" ] || return 0
+  recorded="$(git -C "${dir}" rev-parse HEAD 2>/dev/null || true)"
+  [ -n "${recorded}" ] || return 0
+  # Remote ref tips (SHAs). Network-dependent; timeout-bounded. Empty result
+  # (offline / no remote / auth failure) -> degrade silently, never warn.
+  remote_tips="$(timeout 10 git -C "${dir}" ls-remote --heads --tags origin 2>/dev/null | awk '{print $1}' || true)"
+  [ -n "${remote_tips}" ] || return 0
+  # Exact tip match is the common, cheapest case.
+  if printf '%s\n' "${remote_tips}" | grep -qxF "${recorded}"; then return 0; fi
+  # Otherwise: reachable as an ancestor of any remote tip we can resolve locally?
+  # (The submodule tree is checked out at the recorded SHA, so its objects are
+  # present; remote tips we already have locally let us test ancestry offline-free.)
+  for tip in ${remote_tips}; do
+    if git -C "${dir}" cat-file -e "${tip}^{commit}" 2>/dev/null \
+       && git -C "${dir}" merge-base --is-ancestor "${recorded}" "${tip}" 2>/dev/null; then
+      return 0
+    fi
+  done
+  printf "${YELLOW}NOTE:${NC} submodule %s pin %.9s is not reachable on its remote (unpushed local commit or upstream rewrite) — push it before a build/docs job that clones it.\n" \
+    "${dir}" "${recorded}"
+}
+while IFS= read -r _sub_path; do
+  [ -n "${_sub_path}" ] && _probe_submodule_pushed "${_sub_path}"
+done < <(git config --file .gitmodules --get-regexp '\.path$' 2>/dev/null | awk '{print $2}')
+unset -f _probe_submodule_pushed 2>/dev/null || true
 
 printf "\n${BOLD}=== preflight summary ===${NC}\n"
 # Zero-checks-ran guard: a PREFLIGHT_ONLY/PREFLIGHT_SKIP combination that

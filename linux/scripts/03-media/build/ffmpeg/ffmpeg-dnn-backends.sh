@@ -56,6 +56,16 @@ ffmpeg_probe_libonnxruntime() {
 # Download TensorFlow C API SDK into a cache directory so it persists across
 # rebuilds. FFmpeg's --enable-libtensorflow needs libtensorflow.so + headers.
 ensure_tensorflow_c_sdk() {
+    # Gate the ~500 MB TF C SDK download behind FFMPEG_ENABLE_TF (default off),
+    # mirroring the FFMPEG_ENABLE_X265 pattern. The primary gate is the call site
+    # in build-ffmpeg.sh's _ffmpeg_probe_dnn_backends (which never reaches the TF
+    # probe when off); this is belt-and-suspenders so any direct call to the probe
+    # path also skips the download rather than pulling half a gigabyte for a
+    # backend that will not be enabled. ONNX Runtime is unaffected (always on).
+    if command -v is_truthy >/dev/null 2>&1 && ! is_truthy "${FFMPEG_ENABLE_TF:-0}"; then
+        echo "Skipping TensorFlow C SDK: FFMPEG_ENABLE_TF is off (optional DNN backend, ~500 MB). Set FFMPEG_ENABLE_TF=1 to enable."
+        return 1
+    fi
     local cache_dir="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
     local tf_dir="${cache_dir}/tensorflow-c"
     local tf_version="${TENSORFLOW_C_VERSION:-2.18.0}"

@@ -596,6 +596,22 @@ cross_stage_assemble_runtime_helper_args() {
     --artifact-image-prefix "${IMAGE_REPO}:cross-android"
     --artifact-build-mode cross
   )
+  # XC2: thread the captured, immutable android digests into the runtime helper
+  # so the package build copies from — and the wrapper/package pushes record —
+  # the exact android generation this run produced, instead of whatever the
+  # mutable :cross-android-<arch> tag currently resolves to. Exported (not passed
+  # as flags) so the child inherits them via the `env` exec in run_runtime_stage.
+  # Guarded: a standalone helper run without ANDROID_PIN in scope simply falls
+  # back to the mutable tag (unchanged behavior).
+  if declare -p ANDROID_PIN &>/dev/null; then
+    local -n _arha_android_pin=ANDROID_PIN
+    local _arha_arch _arha_var
+    for _arha_arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      [ -n "${_arha_android_pin[$_arha_arch]:-}" ] || continue
+      _arha_var="$(runtime_android_pin_varname "${_arha_arch}")"
+      export "${_arha_var}=${_arha_android_pin[$_arha_arch]}"
+    done
+  fi
   # Publish final images + manifest unless CROSS_NO_PUSH (validation runs stay
   # local to skip the slow multi-GB ghcr uploads; the chain still works via the
   # local image store). See build-cross-chain.sh --no-push.

@@ -125,4 +125,80 @@ t_case "a partial run passes when every ancestor is current"
 RECORDED="repo/img@sha256:same"; CURRENT="repo/img@sha256:same"
 t_assert_ok ancestry_assert_chain "media" "amd64,arm64"
 
+# ---------------------------------------------------------------------------
+# XC3: run-id annotation + generation-coherence logic.
+t_case "ancestry_run_id_annotation emits the run-id annotation fragment"
+t_assert_eq ",annotation.org.kataglyphis.run-id=r-123" \
+            "$(ancestry_run_id_annotation "r-123")"
+
+t_case "ancestry_run_id_annotation emits nothing for an empty run id"
+t_assert_eq "" "$(ancestry_run_id_annotation "")"
+
+t_case "ancestry_run_id_annotation refuses a comma (would corrupt --output)"
+t_assert_eq "" "$(ancestry_run_id_annotation "a,b" 2>/dev/null)"
+
+t_case "manifest-annotation.py extracts the run-id key too"
+out="$(_mk_inspect_json '{"org.kataglyphis.run-id":"20260813-run"}' \
+       | python3 "${CORE_DIR}/manifest-annotation.py" "org.kataglyphis.run-id")"
+t_assert_eq "20260813-run" "${out}"
+
+t_case "_ancestry_distinct_nonempty dedups and drops empties"
+t_assert_eq $'a\nb' "$(_ancestry_distinct_nonempty a b a "" b)"
+t_assert_eq "" "$(_ancestry_distinct_nonempty "" "" "")"
+
+t_case "a coherent single-run wrapper set passes silently"
+t_assert_ok ancestry_run_ids_coherent "run-A" "run-A" "run-A"
+
+t_case "one arch on a different generation is INCOHERENT (refused)"
+t_assert_fails ancestry_run_ids_coherent "run-A" "run-A" "run-B"
+
+t_case "absent run-ids are unknown provenance, not a distinct generation"
+t_assert_ok ancestry_run_ids_coherent "run-A" "" "run-A"
+t_assert_ok ancestry_run_ids_coherent "" "" ""
+
+t_case "a single arch is trivially coherent"
+t_assert_ok ancestry_run_ids_coherent "run-A"
+
+# ---------------------------------------------------------------------------
+# XC2: annotation threading helpers (runtime-build-fns.sh + tag-naming.sh).
+source "${CORE_DIR}/tag-naming.sh"
+source "${CORE_DIR}/runtime-build-fns.sh"
+
+t_case "runtime_android_pin_varname sanitizes the arch into a legal identifier"
+t_assert_eq "RUNTIME_ANDROID_PIN_amd64"   "$(runtime_android_pin_varname amd64)"
+t_assert_eq "RUNTIME_ANDROID_PIN_riscv64" "$(runtime_android_pin_varname riscv64)"
+t_assert_eq "RUNTIME_ANDROID_PIN_a_b"     "$(runtime_android_pin_varname "a-b")"
+
+t_case "runtime_android_pin reads the threaded env var (empty when unset)"
+unset RUNTIME_ANDROID_PIN_arm64 || true
+t_assert_eq "" "$(runtime_android_pin arm64)"
+RUNTIME_ANDROID_PIN_arm64="repo@sha256:android"
+t_assert_eq "repo@sha256:android" "$(runtime_android_pin arm64)"
+unset RUNTIME_ANDROID_PIN_arm64
+
+t_case "runtime_image_output_arg folds parent-digest + run-id into the exporter"
+CROSS_RUN_ID="run-XYZ"
+out="$(runtime_image_output_arg "repo:runtime-arm64" "repo@sha256:android" "android" "run-XYZ")"
+t_assert_eq "type=image,name=repo:runtime-arm64,annotation.org.kataglyphis.parent-digest=repo@sha256:android,annotation.org.kataglyphis.parent-stage=android,annotation.org.kataglyphis.run-id=run-XYZ" \
+            "${out}"
+
+t_case "runtime_image_output_arg with no parent pin records only the run-id"
+t_assert_eq "type=image,name=repo:runtime-arm64,annotation.org.kataglyphis.run-id=run-XYZ" \
+            "$(runtime_image_output_arg "repo:runtime-arm64" "" "" "run-XYZ")"
+
+t_case "runtime_image_output_arg with nothing recordable reduces to a plain -t equivalent"
+t_assert_eq "type=image,name=repo:runtime-arm64" \
+            "$(runtime_image_output_arg "repo:runtime-arm64" "" "" "")"
+
+t_case "append_runtime_image_output uses plain -t when the image is NOT pushed"
+_out=()
+append_runtime_image_output _out "repo:runtime-arm64" 0 "repo@sha256:android" android
+t_assert_eq "-t repo:runtime-arm64" "${_out[*]}"
+
+t_case "append_runtime_image_output uses the annotated exporter when pushing"
+_out=()
+append_runtime_image_output _out "repo:runtime-arm64" 1 "repo@sha256:android" android
+t_assert_contains "${_out[*]}" "annotation.org.kataglyphis.parent-digest=repo@sha256:android" "pushed image records provenance"
+t_assert_contains "${_out[*]}" "--output" "pushed image uses --output not -t"
+
 t_summary

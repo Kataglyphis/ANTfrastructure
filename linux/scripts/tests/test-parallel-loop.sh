@@ -104,4 +104,38 @@ t_assert_eq "0" "$(find "${workdir}" -maxdepth 1 \( -name 'f4.*' -o -name 'f5.*'
   "parallel runs must not leak their flag dirs"
 PARALLEL_ARCHS=0
 
+# ---------------------------------------------------------------------------
+# O4: PARALLEL_LOOP_FAIL_FAST (sequential path). Default keep-going still
+# attempts every arch after a failure (CI resilience); opt-in fail-fast aborts
+# the loop on the first failure so the remaining arches aren't ground for hours.
+# A worker records each arch it is invoked for (into an order file), so we can
+# assert exactly which arches ran. The scenario runs in a child bash under the
+# same set the orchestrator uses; amd64 is made to fail first.
+
+t_case "O4: fail-fast aborts the sequential loop after the first arch failure"
+: > "${workdir}/ff-order"
+PARALLEL_ARCHS=0
+t_assert_fails env PARALLEL_LOOP_FAIL_FAST=1 bash -c '
+  source "'"${CORE_DIR}"'/parallel-loop.sh"
+  _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
+  warn() { :; }
+  w() { printf "%s\n" "$1" >> "'"${workdir}"'/ff-order"; [ "$1" != "amd64" ]; }
+  run_parallel_arch_loop w "'"${workdir}"'/ff" 4 amd64 arm64 riscv64
+'
+t_assert_eq "amd64" "$(tr '\n' ' ' < "${workdir}/ff-order" | sed 's/ *$//')" \
+  "fail-fast must stop after amd64 fails (arm64/riscv64 skipped)"
+
+t_case "O4: default (keep-going) still attempts every arch after a failure"
+: > "${workdir}/kg-order"
+PARALLEL_ARCHS=0
+t_assert_fails env -u PARALLEL_LOOP_FAIL_FAST bash -c '
+  source "'"${CORE_DIR}"'/parallel-loop.sh"
+  _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
+  warn() { :; }
+  w() { printf "%s\n" "$1" >> "'"${workdir}"'/kg-order"; [ "$1" != "amd64" ]; }
+  run_parallel_arch_loop w "'"${workdir}"'/kg" 4 amd64 arm64 riscv64
+'
+t_assert_eq "amd64 arm64 riscv64" "$(tr '\n' ' ' < "${workdir}/kg-order" | sed 's/ *$//')" \
+  "default keep-going must attempt all three arches"
+
 t_summary
