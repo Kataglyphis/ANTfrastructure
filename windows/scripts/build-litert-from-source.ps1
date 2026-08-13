@@ -78,6 +78,26 @@ if(NOT TARGET tensorflowlite_c)
   )
   target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
   target_link_libraries(tensorflowlite_c tensorflow-lite)
+  # tensorflow-lite adds -DTFL_STATIC_LIBRARY_BUILD as a PUBLIC compile option
+  # (tflite/CMakeLists.txt), which this target INHERITS via the link above. In
+  # c_api_types.h that macro is checked BEFORE TFL_COMPILE_LIBRARY and makes
+  # TFL_CAPI_EXPORT expand to nothing -- so none of the C API (TfLiteInterpreter*
+  # etc.) gets __declspec(dllexport) and the DLL exports zero C API symbols, so
+  # gst-plugins-bad's tflite plugin fails to LINK. Let CMake generate a .def from
+  # this target's own objects (c_api.cc, common.cc, ...) so the C API is exported
+  # regardless of the macro -- independent of -D/-U ordering.
+  set_target_properties(tensorflowlite_c PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  # WINDOWS_EXPORT_ALL_SYMBOLS only exports THIS target's own object files
+  # (c_api.cc, ...). The XNNPACK delegate C API (TfLiteXNNPackDelegate*) lives in
+  # the linked-in tensorflow-lite static lib (TFLITE_ENABLE_XNNPACK=ON) and is
+  # built without TFL_COMPILE_LIBRARY, so it is neither auto-exported nor
+  # dllexport'd -- gst's tflite plugin needs it for the XNNPACK accelerator.
+  # Force lld-link to pull those three from the static lib and export them.
+  target_link_options(tensorflowlite_c PRIVATE
+    /EXPORT:TfLiteXNNPackDelegateCreate
+    /EXPORT:TfLiteXNNPackDelegateDelete
+    /EXPORT:TfLiteXNNPackDelegateOptionsDefault
+  )
 endif()
 '@
 Add-Content -Path $mainCmake -Value $capiSnippet -Encoding ASCII

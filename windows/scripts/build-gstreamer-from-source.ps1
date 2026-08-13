@@ -431,6 +431,59 @@ int _isatty(int);
     }
     log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
 
+    # ---- 5h. port gst-plugins-bad ext/opencv to the OpenCV 5 header layout ----
+    # gstreamer 1.29.2's opencv plugin is written for OpenCV 4; OpenCV 5
+    # RELOCATED the APIs it uses out of their 4.x headers (verified against the
+    # opencv/opencv_contrib 5.0.0 tags this image builds):
+    #   cv::CascadeClassifier + CASCADE_* : moved to opencv_contrib xobjdetect
+    #                                       (opencv2/xobjdetect.hpp) -- built here.
+    #   contourArea/approxPolyDP/convexHull : moved to the new geometry module
+    #                                         (opencv2/geometry.hpp).
+    #   findChessboardCorners/findCirclesGrid/CALIB_CB_* : moved to the new calib
+    #                                         module + objdetect (opencv2/calib.hpp,
+    #                                         opencv2/objdetect.hpp).
+    # The plugin still includes only the OpenCV-4 headers, so add the new header
+    # to each file that uses a relocated symbol (inserted after the file's first
+    # opencv2 include). NOT a behavioural change -- same classic APIs, new homes.
+    $ocvExtDir = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\opencv'
+    $ocv5IncludeMap = @(
+        @{ Pattern = 'CascadeClassifier|CASCADE_DO_CANNY_PRUNING|CASCADE_SCALE_IMAGE'; Add = @('opencv2/xobjdetect.hpp') },
+        @{ Pattern = 'contourArea|approxPolyDP|convexHull';                            Add = @('opencv2/geometry.hpp') },
+        @{ Pattern = 'findChessboardCorners|findCirclesGrid|CALIB_CB_';                Add = @('opencv2/calib.hpp', 'opencv2/objdetect.hpp') }
+    )
+    $ocvPortPatched = 0
+    Get-ChildItem -Path $ocvExtDir -Include '*.cpp', '*.h', '*.hpp' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $c = [System.IO.File]::ReadAllText($_.FullName)
+        $orig = $c
+        foreach ($map in $ocv5IncludeMap) {
+            if ($c -match $map.Pattern) {
+                foreach ($hdr in $map.Add) {
+                    if ($c -notmatch [regex]::Escape($hdr)) {
+                        # Insert after the FIRST #include <opencv2/...> line in the file.
+                        $c = [regex]::Replace($c, "(#include <opencv2/[^>]+>\r?\n)", "`${1}#include <$hdr>`n", 1)
+                    }
+                }
+            }
+        }
+        # POSIX ftello/fseeko are absent under the Windows CRT -> use the 64-bit
+        # MSVC equivalents (this build is Windows/clang-cl only).
+        $c = $c -replace '\bftello\b', '_ftelli64' -replace '\bfseeko\b', '_fseeki64'
+        if ($c -ne $orig) { [System.IO.File]::WriteAllText($_.FullName, $c); $ocvPortPatched++; log "OpenCV5 port -> $($_.Name)" }
+    }
+    log "OpenCV 5 header port applied to $ocvPortPatched gst ext/opencv file(s)"
+    # gst hardcodes the UNVERSIONED '-lopencv_tracking' (Linux naming) for the
+    # cvtracker element, but OpenCV's Windows libs are versioned
+    # (opencv_tracking500.lib) and already arrive via the opencv4.pc dependency
+    # with their real names -- so lld-link fails to open the bare
+    # 'opencv_tracking.lib'. Drop the redundant hardcoded flag; the pkg-config
+    # dependency supplies the correctly-named versioned lib.
+    $ocvMeson = Join-Path $ocvExtDir 'meson.build'
+    if (Test-Path $ocvMeson) {
+        $mc = [System.IO.File]::ReadAllText($ocvMeson)
+        $mc2 = $mc -replace "\s*,\s*'-lopencv_tracking'", '' -replace "'-lopencv_tracking'\s*,\s*", '' -replace "'-lopencv_tracking'", ''
+        if ($mc2 -ne $mc) { [System.IO.File]::WriteAllText($ocvMeson, $mc2); log 'Removed hardcoded -lopencv_tracking from ext/opencv/meson.build (opencv4.pc provides the versioned lib)' }
+    }
+
     # ---- 5c. MANDATORY PLUGIN PRE-FLIGHT ─────────────────────────────────────
     # Everything below exists because of the 2026-07-11 finding: `gst-inspect-1.0
     # opencv|libav` exited -1 in the SHIPPED winamd64 image. Nothing failed —
@@ -673,8 +726,13 @@ int _isatty(int);
         # plugin gate is skipped). It rides in c_args AND cpp_args because the
         # tflite plugin's has_header probe runs against the C compiler while the
         # plugin sources themselves are C++.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
-        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
+        # -Wno-incompatible-pointer-types: clang 16+ promoted -Wincompatible-pointer-types
+        # to a DEFAULT error; gst-plugins-bad ext/onnx (gstonnxinference.c) passes a
+        # gchar* where a differently-typed pointer is expected, which older clang let
+        # through as a warning. Demote it to match the function-pointer variant already
+        # here, so the version bump to a newer clang-cl does not fail the onnx plugin.
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
+        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
         # MF device provider) required by the Rust capture path. Needs the GUID
@@ -879,6 +937,46 @@ int _isatty(int);
         throw "gst-inspect-1.0.exe missing at $gstInspect — cannot verify the mandatory plugin set."
     }
     $missingPlugins = @()
+    # Make every media DLL home searchable for the load probe. The image's runtime
+    # PATH (Dockerfile ENV) lists ONNX under \lib, but onnxruntime.dll + DirectML.dll
+    # ship in \bin -- so onnx failed to load. Mirror the full set here (the
+    # Dockerfile PATH is corrected to match) so the gate reflects the shipped image.
+    foreach ($d in @('C:\runtime\cuda-runtime\bin', "$env:ONNX_ROOT\bin", "$env:ONNX_GENAI_ROOT\bin", $env:FFMPEG_BIN,
+            $env:OPENCV_BIN, $env:LITERT_BIN, $env:GSTREAMER_BIN, "$env:TVM_ROOT\bin", $env:IREE_BIN)) {
+        if ($d -and (Test-Path $d) -and (($env:PATH -split ';') -notcontains $d)) { $env:PATH = "$d;$env:PATH" }
+    }
+    # Force a FRESH registry scan against the (now-complete) PATH so a stale
+    # blacklist from an earlier partial-PATH scan cannot mask a real fix.
+    $gstPluginDir = Join-Path $resolvedInstallDir 'lib\gstreamer-1.0'
+    $prevGstDebug = $env:GST_DEBUG
+    $prevGstReg = $env:GST_REGISTRY
+    $env:GST_REGISTRY = Join-Path $env:TEMP_DIR 'gst-registry-verify.bin'
+    Remove-Item $env:GST_REGISTRY -Force -ErrorAction SilentlyContinue
+    $env:GST_DEBUG = 'GST_REGISTRY:4,GST_PLUGIN_LOADING:4'
+    $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    $dllSearchDirs = @($gstPluginDir) + @($env:PATH -split ';' | Where-Object { $_ }) + @("$env:SystemRoot\System32")
+    # Recursively resolve a DLL's dependency tree and return the names that resolve
+    # nowhere. api-ms-win-* / ext-ms-win-* are virtual API sets (loader resolves
+    # them via the API-set schema, never real files), so they are never "missing".
+    function Get-UnresolvedDeps {
+        param($DllPath, $Dumpbin, $SearchDirs, $Seen)
+        $missing = [System.Collections.Generic.List[string]]::new()
+        $deps = @(& $Dumpbin /dependents $DllPath 2>&1 | Select-String '^\s{4,}(\S+\.dll)' | ForEach-Object { $_.Matches.Groups[1].Value })
+        foreach ($dep in $deps) {
+            if ($dep -match '^(api|ext)-ms-') { continue }   # virtual API sets (loader-resolved)
+            if ($Seen.Contains($dep.ToLower())) { continue }
+            [void]$Seen.Add($dep.ToLower())
+            $hit = $SearchDirs | Where-Object { $_ -and (Test-Path (Join-Path $_ $dep)) } | Select-Object -First 1
+            if (-not $hit) { $missing.Add($dep) }
+            # Do NOT recurse into OS DLLs (System32/WinSxS): their deep OneCore
+            # deps are absent on Server Core but loader-tolerated (delay-loaded) --
+            # recursing there floods the report with noise. Only walk OUR DLLs.
+            elseif ($hit -notmatch '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)') {
+                foreach ($m in (Get-UnresolvedDeps (Join-Path $hit $dep) $Dumpbin $SearchDirs $Seen)) { $missing.Add($m) }
+            }
+        }
+        return $missing
+    }
     foreach ($plugin in @(Get-RequiredGstPlugin)) {
         $global:LASTEXITCODE = 0
         $null = & $gstInspect $plugin.Name 2>&1
@@ -886,9 +984,26 @@ int _isatty(int);
             log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' present ($($plugin.Provides))"
         } else {
             log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' MISSING — $($plugin.Why)"
+            $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($pluginDll) {
+                log "    load-probing $($pluginDll.Name) directly:"
+                & $gstInspect $pluginDll.FullName 2>&1 |
+                    Where-Object { $_ -match 'load|dll|error|fail|blacklist|symbol|module|cannot|Failed' } |
+                    Select-Object -Last 4 | ForEach-Object { if ($_) { log "      $_" } }
+                # Name the actual unresolved DLL(s) anywhere in the dependency tree.
+                if ($dumpbin) {
+                    $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
+                    if ($unresolved) { $unresolved | ForEach-Object { log "      unresolved dependency (tree): $_" } }
+                    else { log '      (all non-API-set deps resolve; failure may be a delay-load or DllMain init error)' }
+                }
+            } else {
+                log "    (no gst*$($plugin.Name)*.dll found in $gstPluginDir)"
+            }
             $missingPlugins += $plugin
         }
     }
+    if ($null -ne $prevGstDebug) { $env:GST_DEBUG = $prevGstDebug } else { Remove-Item Env:\GST_DEBUG -ErrorAction SilentlyContinue }
+    if ($null -ne $prevGstReg) { $env:GST_REGISTRY = $prevGstReg } else { Remove-Item Env:\GST_REGISTRY -ErrorAction SilentlyContinue }
     $global:LASTEXITCODE = 0
     if ($missingPlugins.Count -gt 0) {
         $detail = ($missingPlugins | ForEach-Object { "$($_.Name) (needs pkg-config: $($_.NeedsPc -join ', '))" }) -join '; '

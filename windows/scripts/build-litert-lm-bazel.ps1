@@ -108,6 +108,12 @@ try {
     $ws = Get-Content C:\llm\WORKSPACE -Raw
     $ws = $ws.Replace('android_ndk_repository(name = "androidndk")', '# [bazel-port] android_ndk_repository disabled (no android targets)')
     $ws = $ws.Replace('android_sdk_repository(name = "androidsdk")', '# [bazel-port] android_sdk_repository disabled (no android targets)')
+    # zlib.net/fossils is a notoriously flaky host (8/8 bazel download retries
+    # timed out mid-build). The @minizip repo pulls zlib-1.3.1.tar.gz from there
+    # with NO sha256, so it re-downloads every run. Point it at the official
+    # zlib 1.3.1 release asset on GitHub -- byte-identical tarball (same
+    # zlib-1.3.1/ layout, so strip_prefix still resolves), reliable host.
+    $ws = $ws.Replace('https://zlib.net/fossils/zlib-1.3.1.tar.gz', 'https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz')
     Set-Content -Path C:\llm\WORKSPACE -Value $ws -NoNewline
 
     Write-Host '=== [4/6] bazel env ==='

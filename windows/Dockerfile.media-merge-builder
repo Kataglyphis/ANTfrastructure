@@ -115,6 +115,22 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
 # then layer the independent branches' components on top.
 COPY --from=media-core C:\runtime C:\runtime
+# CUDA/cuDNN RUNTIME DLLs. The CUDA-built libs fanned in above (OpenCV with
+# WITH_CUDA/WITH_CUDNN, onnxruntime's CUDA EP, TVM's CUDA backend) hard- or
+# delay-link cudnn64_9.dll + cudart/cublas, which live in the nvidia base's
+# NVIDIA install dirs -- NOT under C:\runtime, so the fan-in above missed them
+# and gst-plugins-bad's opencv plugin (and any GPU code path) failed to LOAD
+# with Win32 126 "The specified module could not be found". Stage the runtime
+# DLLs from media-core (built on the nvidia base, so it carries them) into a
+# stable dir that the ENV PATH below exposes.
+# JSON/exec form is required: the source paths contain spaces, which the
+# shell-form COPY tokenizer mishandles ("matching double-quote" parse error).
+# JSON form does no ${ARG} expansion, so the CUDA/cuDNN versions are written
+# literally here -- KEEP IN LOCKSTEP with Dockerfile.nvidia (CUDA 13.3, cuDNN
+# 9.25.0.15). Whole-\bin copy (JSON form has no wildcard); the extra nvcc/ptxas
+# tooling is a small tax next to the cuDNN engine DLLs that must ship anyway.
+COPY --from=media-core ["C:\\Program Files\\NVIDIA GPU Computing Toolkit\\CUDA\\v13.3\\bin", "C:\\runtime\\cuda-runtime\\bin"]
+COPY --from=media-core ["C:\\Program Files\\NVIDIA\\CUDNN\\v9.25.0.15\\bin", "C:\\runtime\\cuda-runtime\\bin"]
 # media-core's CPython site-packages carry the installed python bindings
 # (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install) plus their
 # pypi deps (numpy, ...) and the win-amd64 platform-tag sitecustomize shim —
@@ -141,7 +157,7 @@ COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site
 # PATH references the vars above, and PKG_CONFIG_PATH lets GStreamer auto-detect
 # FFmpeg + OpenCV (libav*.pc enables gst-libav; LiteRT and ONNX Runtime ship no
 # .pc files). GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
-ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
+ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\bin;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
     PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
 # Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
