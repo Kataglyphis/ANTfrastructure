@@ -1,9 +1,9 @@
 {
   "run_id": "",
-  "arches": "riscv64",
-  "range": "android..android",
+  "arches": "amd64,arm64,riscv64",
+  "range": "runtime..runtime",
   "stages": {
-    "android": {"status": "ok", "pin": ""}
+    "runtime": {"status": "running", "pin": ""}
   },
-  "updated": "2026-08-13T06:30:34Z"
+  "updated": "2026-08-13T10:43:20Z"
 }

@@ -54,6 +54,19 @@ folded into TG2. See archive for details.)
 
 ## Rebuild-surfaced fixes (2026-08-12 validating rebuild)
 
+- **BS5-FOLLOWUP — riscv64 Node major-assert was hard-fatal on an
+  unavoidable ports lag** [S·★★] FIXED 2026-08-13: BS5's new major-version
+  assert correctly SURFACED that riscv64 silently ships the ubuntu-ports Node
+  (v22) vs the pinned major 26 — but there is no official Node tarball for
+  riscv64 and ports has no 26.x, so the exact `-1~ubuntu26.04.1` pin drops as
+  ports advances and the fallback lands v22. Hard-failing the wrapper build
+  over that is wrong (riscv64 Node backs only optional litert-web/onnx-web
+  JS tooling the Python runtime never imports). Changed the riscv64 branch's
+  `die` → loud `warn` (NODE_RISCV64_MAJOR_REQUIRED=1 restores hard-fail); the
+  amd64/arm64 tarball path (real pin) stays strict. BS5's visibility win is
+  preserved. Base built earlier when ports still had the exact pin; the
+  wrapper hit the drop hours later — a moving-ports-target class.
+
 - **ORT-WEB1 — onnx-web JS build was hard-fatal on a transient network error**
   [S·★★] FIXED 2026-08-12: the validating rebuild's media-amd64 stage died
   when electron's npm postinstall (`socket hang up`) + SafeInt's FetchContent

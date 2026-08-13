@@ -335,14 +335,25 @@ install_nodejs() {
       # so swallowing a failed install (the old `|| true`) only deferred and
       # obscured the error. Fail at the install step, which names the culprit.
       apt_install npm
-      # A fallback install may have unpinned entirely — assert the installed
-      # major still matches the pin so an ABI-relevant jump cannot slip by.
+      # A fallback install may have unpinned entirely — surface the installed
+      # major vs the pin LOUDLY so a drift is never silent (BS5). It is NOT
+      # fatal on riscv64: there is no official Node tarball for this arch (see
+      # above), so we are at the mercy of ubuntu-ports, which lags the pinned
+      # major and drops the exact `-1~ubuntu26.04.1` build as ports advances.
+      # Node on riscv64 only backs optional JS/web tooling (litert-web /
+      # onnx-web) the Python/native runtime never imports, so a major lag must
+      # not abort the whole build. Set NODE_RISCV64_MAJOR_REQUIRED=1 to restore
+      # a hard failure.
       installed_node="$(node --version)"
       installed_major="${installed_node#v}"
       installed_major="${installed_major%%.*}"
       pinned_major="${BASE_IMAGE_NODE_VERSION%%.*}"
-      [ "${installed_major}" = "${pinned_major}" ] || \
-        die "riscv64 Node.js major mismatch: installed ${installed_node}, but pin ${BASE_IMAGE_NODE_VERSION} expects major ${pinned_major}"
+      if [ "${installed_major}" != "${pinned_major}" ]; then
+        if [ "${NODE_RISCV64_MAJOR_REQUIRED:-0}" = "1" ]; then
+          die "riscv64 Node.js major mismatch: installed ${installed_node}, but pin ${BASE_IMAGE_NODE_VERSION} expects major ${pinned_major}"
+        fi
+        warn "riscv64 Node.js major LAGS the pin: installed ${installed_node}, pin ${BASE_IMAGE_NODE_VERSION} (major ${pinned_major}) — ubuntu-ports has no ${pinned_major}.x; shipping the ports default (optional JS/web tooling only)"
+      fi
       node --version
       npm --version
       return 0
