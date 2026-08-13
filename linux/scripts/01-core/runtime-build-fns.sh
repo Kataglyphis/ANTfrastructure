@@ -32,6 +32,51 @@ runtime_push_tag() {
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
 }
 
+# XC2: the immutable android artifact digest for <arch>, threaded from the cross
+# orchestrator as RUNTIME_ANDROID_PIN_<arch> (see runtime_android_pin_varname).
+# Empty for a standalone/--repair helper run, which then falls back to the
+# mutable cross-android tag. Used both as the ARTIFACT_IMAGE the package copies
+# from AND as the parent-digest annotation recorded on the package/wrapper push.
+runtime_android_pin() {
+  local arch="$1" var
+  var="$(runtime_android_pin_varname "${arch}")"
+  printf '%s' "${!var:-}"
+}
+
+# XC2/XC3: compose the buildkit image-exporter spec for a runtime build, folding
+# in the ancestry annotations (parent-digest/parent-stage + run-id) so the pushed
+# wrapper/package manifest carries its provenance. Reduces to a plain
+# `type=image,name=<tag>` (equivalent to `-t <tag>`) when ancestry.sh is absent
+# or nothing is recordable, so it is always safe to use in place of -t. The
+# annotations ride the manifest that runtime_push_tag later pushes; on a locally
+# exported (unpushed) image they simply travel with — and are discarded with — it.
+runtime_image_output_arg() {
+  local tag="$1" parent_pin="${2:-}" parent_stage="${3:-}" run_id="${4:-}"
+  local ann=""
+  if declare -F ancestry_output_annotations >/dev/null 2>&1; then
+    ann+="$(ancestry_output_annotations "${parent_pin}" "${parent_stage}")"
+  fi
+  if declare -F ancestry_run_id_annotation >/dev/null 2>&1; then
+    ann+="$(ancestry_run_id_annotation "${run_id}")"
+  fi
+  printf 'type=image,name=%s%s' "${tag}" "${ann}"
+}
+
+# Append the image target for a runtime build to the nameref array. When the
+# image WILL be pushed we use the annotated `--output type=image,...` exporter so
+# the provenance reaches the registry; otherwise we keep the plain `-t <tag>` the
+# local stage-context path has always used (byte-for-byte unchanged, so the
+# normal-flow base/package local builds are untouched).
+append_runtime_image_output() {
+  local -n _ario_out=$1
+  local tag="$2" will_push="$3" parent_pin="${4:-}" parent_stage="${5:-}"
+  if [ "${will_push}" = "1" ]; then
+    _ario_out+=(--output "$(runtime_image_output_arg "${tag}" "${parent_pin}" "${parent_stage}" "${CROSS_RUN_ID:-}")")
+  else
+    _ario_out+=(-t "${tag}")
+  fi
+}
+
 _runtime_finish_stage() {
   local kind="$1"
   local arch="$2"
@@ -141,6 +186,12 @@ runtime_build_package_image() {
   append_common_build_args build_args
   append_runtime_accelerator_build_args build_args
 
+  # XC2: prefer the immutable android digest (threaded from the orchestrator) as
+  # the artifact the package copies from; falls back to the mutable tag when no
+  # pin was threaded (standalone/--repair run).
+  local _android_pin
+  _android_pin="$(runtime_android_pin "${arch}")"
+
   if runtime_use_local_artifact_context; then
     artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-oci}"
     artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
@@ -149,6 +200,7 @@ runtime_build_package_image() {
     build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
   else
     artifact_image="$(runtime_artifact_image_ref "${arch}")"
+    [ -n "${_android_pin}" ] && artifact_image="${_android_pin}"
     package_base_stage="package-image"
   fi
 
@@ -163,11 +215,17 @@ runtime_build_package_image() {
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
+  # Record the android parent-digest annotation only when the package is pushed
+  # (intermediate push); the local stage-context path keeps a plain `-t`.
+  local _pkg_push=0
+  runtime_pushes_intermediate_images && _pkg_push=1
+  local -a _pkg_out=()
+  append_runtime_image_output _pkg_out "${tag}" "${_pkg_push}" "${_android_pin}" android
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
     --platform "linux/${arch}" \
     --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
-    -t "${tag}" \
+    "${_pkg_out[@]}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
     "${build_args[@]}" \
     . || return 1
@@ -197,10 +255,20 @@ _runtime_build_wrapper() {
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
+  # XC2/XC3: the wrapper is the tag that goes LIVE and is indexed into
+  # :latest-cross, so stamp it with the android parent-digest (its immutable
+  # cross-lane ancestor) + the run-id when it will be pushed. base/package are
+  # local intermediates in the normal flow, so android is the wrapper's nearest
+  # registry-resident ancestor to record.
+  local _wrap_push=0
+  runtime_pushes_wrapper_images && _wrap_push=1
+  local -a _wrap_out=()
+  append_runtime_image_output _wrap_out "${_wrapper_tag_out}" "${_wrap_push}" \
+    "$(runtime_android_pin "${arch}")" android
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
     --platform "linux/${arch}" \
-    -t "${_wrapper_tag_out}" \
+    "${_wrap_out[@]}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
     "${_wrapper_build_args_out[@]}" \
     . || return 1

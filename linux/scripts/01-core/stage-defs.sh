@@ -125,6 +125,39 @@ CROSS_PER_ARCH_STAGES=(sdk media android)
 # shellcheck disable=SC2034
 RUNTIME_STAGE_ORDER=(base package wrapper)
 
+# ── Runtime lane ancestry graph (XC2) ──────────────────────────────────────────
+# The cross-lane parent map (CROSS_STAGE_PARENT_MAP) ends at android→runtime.
+# This table extends the machine-checked ancestry ONE lane further so the
+# runtime walker (runtime_ancestry_assert_wrappers in ancestry.sh) can cover the
+# android→package→wrapper edges. The package copies the cross-compiled payload
+# out of the immutable android artifact; the wrapper layers the torch venv on the
+# package. `android` is the cross lane's handoff — its tag/pin already exists.
+# shellcheck disable=SC2034
+declare -A RUNTIME_STAGE_PARENT_MAP=(
+  [package]="android"
+  [wrapper]="package"
+)
+
+# Parent stage of a runtime-lane stage (empty when unknown). android is the
+# lane's root and is intentionally absent (it is a cross-lane stage).
+runtime_stage_parent() {
+  printf '%s' "${RUNTIME_STAGE_PARENT_MAP[$1]:-}"
+}
+
+# Per-arch tag for a runtime-lane stage. base/package/wrapper delegate to the
+# runtime_*_tag helpers (tag-naming.sh); android resolves to the cross-lane
+# artifact tag it was packaged from. Returns 1 for an unknown stage.
+runtime_stage_tag() {
+  local stage="$1" arch="${2:-}"
+  case "${stage}" in
+    base)    runtime_base_tag "${arch}" ;;
+    package) runtime_package_tag "${arch}" ;;
+    wrapper) runtime_wrapper_tag "${arch}" ;;
+    android) cross_android_tag "${arch}" ;;
+    *)       return 1 ;;
+  esac
+}
+
 # ── Stage property tables ─────────────────────────────────────────────────────
 # Single source of truth for the pure stage→string maps (dockerfile, parent, pin
 # variable). Adding a stage = one entry per table. `tag` and `build_args` carry

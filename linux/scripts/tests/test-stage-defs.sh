@@ -48,4 +48,18 @@ _args=()
 ENABLE_NVIDIA=true cross_stage_build_args _args media arm64
 t_assert_contains "${_args[*]}" "ENABLE_NVIDIA=true" "set toggle must reach the media stage"
 
+# ── XC2: runtime-lane ancestry graph ───────────────────────────────────────────
+t_case "runtime_stage_parent extends the graph one lane past android"
+t_assert_eq "android" "$(runtime_stage_parent package)"
+t_assert_eq "package" "$(runtime_stage_parent wrapper)"
+t_assert_eq ""        "$(runtime_stage_parent android)"
+
+t_case "runtime_stage_tag resolves runtime roles + the android handoff"
+RUNTIME_IMAGE_PREFIX="example.io/repo:runtime"
+t_assert_eq "example.io/repo:runtime-base-arm64"    "$(runtime_stage_tag base arm64)"
+t_assert_eq "example.io/repo:runtime-package-arm64" "$(runtime_stage_tag package arm64)"
+t_assert_eq "example.io/repo:runtime-arm64"         "$(runtime_stage_tag wrapper arm64)"
+t_assert_eq "example.io/repo:cross-android-arm64"   "$(runtime_stage_tag android arm64)"
+t_assert_fails runtime_stage_tag no-such-stage arm64
+
 t_summary

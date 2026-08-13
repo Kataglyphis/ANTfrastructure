@@ -245,8 +245,15 @@ _ffmpeg_probe_dnn_backends() {
         [ -n "${_FFMPEG_ONNX_EXTRA_LIBS:-}" ] && _ffpdb_out+=("--extra-libs=${_FFMPEG_ONNX_EXTRA_LIBS}")
     fi
 
-    # Deep Neural Network backends (always try; skip if SDK not available)
-    if ffmpeg_probe_libtensorflow; then
+    # TensorFlow DNN backend. Gated behind FFMPEG_ENABLE_TF (default off) exactly
+    # like libx265 below: the TF C SDK drags ~500 MB into the amd64 image for one
+    # optional backend. Default off SKIPS the SDK download (ensure_tensorflow_c_sdk
+    # is never reached), the --enable-libtensorflow flag, and — because no SDK lib
+    # ever lands in the cache and _FFMPEG_TF_EXTRA_LDFLAGS stays unset — the
+    # runtime-lib bundling in bundle_sdk_runtime_libs. When on it stays probe-gated,
+    # so a genuinely-absent/unusable SDK (arm64/riscv64) still falls back cleanly.
+    # ONNX Runtime above is unaffected: it is ALWAYS-ON.
+    if is_truthy "${FFMPEG_ENABLE_TF:-0}" && ffmpeg_probe_libtensorflow; then
         _ffpdb_out+=("--enable-libtensorflow")
         # FFmpeg's libtensorflow check is a bare require that ignores pkg-config
         # (see ffmpeg_probe_libtensorflow) — feed the header/lib paths through

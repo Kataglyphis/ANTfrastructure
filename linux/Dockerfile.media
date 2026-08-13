@@ -569,8 +569,15 @@ ARG FFMPEG_COMMIT=""
 # (forwarded from versions.env) to probe-gate --enable-libx265. See build-ffmpeg.sh.
 ARG FFMPEG_ENABLE_X265=1
 
+# TensorFlow DNN backend (--enable-libtensorflow). Default 0 = disabled: the TF
+# C SDK adds ~500 MB to the amd64 image for one optional DNN backend. Set to 1
+# (forwarded from versions.env) to probe-gate it. ONNX backend is unaffected
+# (always on). See build-ffmpeg.sh / ffmpeg-dnn-backends.sh.
+ARG FFMPEG_ENABLE_TF=0
+
 ENV FFMPEG_PREFIX=/opt/ffmpeg \
-    FFMPEG_ENABLE_X265=${FFMPEG_ENABLE_X265}
+    FFMPEG_ENABLE_X265=${FFMPEG_ENABLE_X265} \
+    FFMPEG_ENABLE_TF=${FFMPEG_ENABLE_TF}
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \

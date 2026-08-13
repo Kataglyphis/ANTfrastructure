@@ -397,6 +397,7 @@ install_llvm_clang_minimal() {
 
   apt_install_available \
     "clang-${CLANG_WANTED}" \
+    "clang-tools-${CLANG_WANTED}" \
     "lld-${CLANG_WANTED}" \
     "lldb-${CLANG_WANTED}" \
     "llvm-${LLVM_WANTED}" \
@@ -408,6 +409,13 @@ install_llvm_clang_minimal() {
     "libc++-${CLANG_WANTED}-dev" \
     "libc++abi-${CLANG_WANTED}-dev" \
     "libclang1-${CLANG_WANTED}"
+  # clang-tools-${CLANG_WANTED} is REQUIRED, not an "IDE extra": it ships
+  # /usr/lib/llvm-${LLVM_WANTED}/bin/clang-tblgen, which the cross target-clang
+  # build consumes as a prebuilt host tool via CMake's CLANG_TABLEGEN= (see
+  # llvm-cross.sh). Dropping it makes ninja fail with "clang-tblgen ... missing
+  # and no known rule to make it". (llvm-tblgen comes from llvm-${LLVM_WANTED}-dev
+  # above.) Everything else genuinely unused downstream — flang/bolt/mlir/libclc/
+  # clangd/clang-tidy/clang-format — stays out of the minimal set.
 }
 
 install_llvm_clang_full() {
@@ -452,8 +460,11 @@ install_llvm_clang_full() {
 }
 
 install_llvm_clang() {
-  # Default to a complete install; override with LLVM_INSTALL_PROFILE=minimal if desired.
-  local profile="${LLVM_INSTALL_PROFILE:-full}"
+  # TG7 — default to the minimal host LLVM/Clang set (flang/bolt/mlir/libclc/
+  # clangd/clang-tidy/clang-format have zero downstream consumers per audit).
+  # The minimal set still includes clang-tools (clang-tblgen) — required by the
+  # cross target-clang build. Override with LLVM_INSTALL_PROFILE=full if desired.
+  local profile="${LLVM_INSTALL_PROFILE:-minimal}"
   local installed_from_source=0
   local target_arch=""
 

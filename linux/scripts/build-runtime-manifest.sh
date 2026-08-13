@@ -12,6 +12,8 @@ IMAGE_NAME="${IMAGE_NAME:-}"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
+# XC3: --force overrides the per-arch wrapper generation-coherence gate below.
+FORCE_MANIFEST=0
 
 usage() {
   cat <<'EOF'
@@ -31,6 +33,8 @@ Options:
   --skip-manifest              Build images only; do not create a manifest locally
   --manifest-only              Create/push the manifest only; skip all image builds
   --repair                     Alias for --manifest-only (repair manifest from existing per-arch images)
+  --force                      Assemble the manifest even if the per-arch wrapper tags
+                                span multiple generations (skip the XC3 coherence gate)
   --push                       Short for --push-images --push-manifest (intermediates stay local)
   --dry-run                    Print build commands without executing them
   --parallel-archs              Build per-architecture images in parallel
@@ -57,6 +61,64 @@ EOF
   runtime_shared_usage_env_overrides
 }
 
+# ==============================================================================
+# _manifest_wrapper_gate  (XC3 coherence + XC2 android-freshness)
+#
+# Before assembling the multi-arch index out of the mutable per-arch wrapper
+# tags, prove they are ONE generation. The run-id annotation (stamped on each
+# wrapper push, see runtime-build-fns.sh) is the coherence key: three tags from
+# one run share it, so a normal same-run push passes silently. A --repair run
+# over tags left mixed by a 2-of-3 build has disagreeing run-ids and is refused
+# (unless --force). Tags predating the annotation only WARN (unknown provenance,
+# non-breaking rollout). android-freshness (each wrapper still descends from the
+# current android) is advisory on a normal build but a gate under --repair.
+#
+# Returns 0 to proceed, 1 to refuse. Never bites the happy path.
+# ==============================================================================
+_manifest_wrapper_gate() {
+  local -a run_ids=()
+  local arch tag rid coherent=1 missing=0 r
+
+  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+    tag="$(runtime_wrapper_tag "${arch}")" || return 0
+    rid="$(ancestry_recorded_run_id "${tag}" 2>/dev/null || true)"
+    run_ids+=("${rid}")
+    [ -z "${rid}" ] && missing=$((missing + 1))
+  done
+
+  if declare -F ancestry_run_ids_coherent >/dev/null 2>&1; then
+    ancestry_run_ids_coherent "${run_ids[@]}" || coherent=0
+  fi
+  [ "${missing}" -gt 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) carry no run-id annotation — generation provenance unverifiable (rebuild to enable the XC3 coherence gate)."
+
+  # XC2: verify each wrapper still descends from the CURRENT android. Advisory on
+  # a normal build (BUILD_IMAGES=1, wrappers were just built this run); a hard
+  # gate under --repair/--manifest-only, where the mutable tags are all we have.
+  local android_stale=0
+  if declare -F runtime_ancestry_assert_wrappers >/dev/null 2>&1; then
+    runtime_ancestry_assert_wrappers "${TARGET_ARCHES}" || android_stale=1
+  fi
+
+  local refuse=0
+  [ "${coherent}" -eq 0 ] && refuse=1
+  [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
+
+  if [ "${refuse}" -eq 0 ]; then
+    log "[manifest] per-arch wrapper generation check: OK"
+    return 0
+  fi
+
+  [ "${coherent}" -eq 0 ] && warn "[manifest] per-arch wrapper tags span multiple generations (run-ids: ${run_ids[*]}) — assembling ${IMAGE_NAME} would MIX releases."
+  [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] a wrapper tag predates the current android artifact (see the [ancestry] lines above)."
+
+  if [ "${FORCE_MANIFEST}" -eq 1 ]; then
+    warn "[manifest] --force set: assembling ${IMAGE_NAME} despite the generation mismatch above."
+    return 0
+  fi
+  warn "[manifest] refusing to assemble ${IMAGE_NAME}. Re-run the runtime lane so every arch shares one generation, or pass --force (RUNTIME_MANIFEST_COHERENCE=0 disables this check)."
+  return 1
+}
+
 create_manifest() {
   local refs=()
   local arch
@@ -68,6 +130,11 @@ create_manifest() {
   if is_dry_run; then
     log "[DRY RUN] would create manifest ${IMAGE_NAME} from refs: ${refs[*]}"
     return 0
+  fi
+
+  # XC2/XC3 gate: refuse a mixed/stale-generation index unless --force.
+  if [ "${RUNTIME_MANIFEST_COHERENCE:-1}" = "1" ]; then
+    _manifest_wrapper_gate || err "manifest coherence gate refused ${IMAGE_NAME} (see above; --force overrides, RUNTIME_MANIFEST_COHERENCE=0 disables)"
   fi
 
   if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
@@ -91,6 +158,7 @@ _manifest_extra_arg() {
     --push-manifest) PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
     --skip-manifest) CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --manifest-only|--repair) BUILD_IMAGES=0; _OARG_SHIFT=1 ;;
+    --force) FORCE_MANIFEST=1; _OARG_SHIFT=1 ;;
     --push) PUSH_IMAGES=1; PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
     --push-all) PUSH_IMAGES=1; PUSH_MANIFEST=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
     *) return 1 ;;
@@ -136,6 +204,13 @@ main() {
   # Post-parse setup (replaces runtime_flow_export_setup)
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
+
+  # XC3: every wrapper built in THIS process must share one run-id so the
+  # coherence gate passes silently on a same-run push. The orchestrator exports a
+  # canonical CROSS_RUN_ID (chain-lifecycle.sh); a standalone invocation defaults
+  # its own here. Either way all three per-arch wrappers read the same value.
+  : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"
+  export CROSS_RUN_ID
 
   # Belt-and-suspenders for --no-push orchestrator runs (CROSS_NO_PUSH=1): the
   # per-arch wrapper tags are never pushed, so a registry-based `nerdctl manifest
