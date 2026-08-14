@@ -121,7 +121,10 @@ Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
 # Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
 $buildLog = Get-PersistentBuildLogPath -Name 'tvm-build.log' -FallbackDir $buildDir
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install -InstallConfig $BuildType
+# MemGBPerJob 2, not 4 (backlog #74) — see the note in build-onnx-genai. The
+# sibling build-iree, which compiles LLVM in-tree in this same branch, has used
+# 2 all along, so the LLVM-class TUs are covered by evidence, not optimism.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install -InstallConfig $BuildType
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 

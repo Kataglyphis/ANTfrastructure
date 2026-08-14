@@ -169,7 +169,15 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
 # GenAI compiles nvcc CUDA kernels; a failure emitted only whatever stdout
 # happened to survive. Persistent path, same as every sibling.
 $genaiLog = Get-PersistentBuildLogPath -Name 'onnx-genai-ninja.log' -FallbackDir $genaiBuildDir
-Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install -LogFile $genaiLog
+# MemGBPerJob 2, not 4 (backlog #74). The 2026-08-15 chain still ran three
+# stages at `ninja -j9` because backlog #28 only lowered onnx and opencv; the
+# leftover 4 halves the job count for no measured reason. The measurement that
+# justified 2 came from the ONNX vertex — 9274 samples, peak per-process
+# WorkingSet 998 MB — and genai compiles the same nvcc CUDA workload. The
+# strongest local evidence is build-iree, which builds LLVM in-tree, the most
+# memory-hungry load in the chain, and has run at 2 all along. Downside is
+# bounded: the retry ladder drops to -j1 on an OOM-shaped failure.
+Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 2 -Install -LogFile $genaiLog
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 

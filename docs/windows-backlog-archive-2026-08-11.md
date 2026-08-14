@@ -158,6 +158,32 @@ closed — see the end.
 they are left for the owner: enable branch protection with both jobs required,
 and decide whether analyzer findings should be fatal.
 
+## Addendum — closed 2026-08-14 (#48: two host gates that failed OPEN)
+
+Both were host-side only (`WindowsBuildDriver.Common.psm1` is COPY'd into no
+image), so they were safe to land while a full chain was mid-flight — the media
+scripts and patch dirs are bind-mounted and were deliberately left alone.
+
+- **`Assert-ShimPatch` returned GREEN when it could not find the shim** — a
+  `Write-Warning` and `return`. The gate exists because a STOCK shim kills heavy
+  RUN layers with `ExportLayer 0x3` *after* the compile is already paid for, so
+  "could not check" is the one answer that must not read as "fine". Worse, the
+  hardcoded `$env:ProgramFiles\Stevedore\...` default missed a `D:\Stevedore`
+  host — a layout the SAME driver explicitly supports when resolving buildctl.
+  Now: probe both candidate roots, and **throw** when neither has one, with
+  `-SkipHostChecks` as the deliberate override. (`$advice` had to move above the
+  branch, since the new throw quotes it.)
+- **The per-stage disk gate only ever looked at `C:`.** `[string]$Drive = 'C'`
+  and neither caller passed anything, while the LAUNCH gate passes
+  `-Drive @($repoRoot)` — it learned the lesson the hard way: the build context
+  is the repo checkout, on the reference host a dynamically-expanding VHDX at
+  `D:`, which "fell to 11.7 GB free while a C:-only gate reported everything
+  fine". The per-stage gate exists *because* the launch gate is not enough, and
+  it was watching the wrong disk. Both lanes now derive the drive from
+  `$repoRoot` (verified: `D:\GitHub\…` → `D`). Its silent `return` on an
+  unreadable drive now warns first — in a multi-MB build log, no output is
+  indistinguishable from "plenty of space".
+
 ## Addendum — closed 2026-08-14 (Batch A / #71: sccache was NOT broken)
 
 - **71 (CLOSED — DISPROVEN, not fixed).** The log forensics reported the

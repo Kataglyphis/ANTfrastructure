@@ -70,6 +70,12 @@ param(
     [switch]$LatestApp,
     [string]$FinalTar = '',
     [switch]$NoCache,
+    # Extra build-args forwarded to EVERY solve, as 'KEY=VALUE'. Escape hatch for
+    # one-off investigations (e.g. SCCACHE_REPRO_CUDA_LLM=1 for the upstream
+    # sccache deadlock capture) without threading a bespoke parameter through the
+    # whole driver. An unknown key is inert — the Dockerfile must declare a
+    # matching ARG for it to have any effect, and BuildKit warns when it does not.
+    [string[]]$BuildArg = @(),
     # SMOKE GATE (backlog #44). After `final`, the produced image is run through
     # smoke-test-container.ps1 and the chain FAILS if it does not pass. Neither
     # driver did this before 2026-08-14, so every chain shipped unverified.
@@ -283,7 +289,13 @@ function Invoke-BkStage {
     # the documented "always-working fallback", which had no per-stage gate at
     # all — enforces exactly the same numbers instead of a second copy that
     # drifts.
-    Assert-StageDiskHeadroom -Label $Label -Force:$SkipHostChecks
+    # -Drive from the REPO root, not the 'C' default (backlog #48). The launch
+    # gate learned this the hard way — the build context is the repo checkout,
+    # on the reference host a dynamically-expanding VHDX at D:, which "fell to
+    # 11.7 GB free while a C:-only gate reported everything fine". The per-stage
+    # gate exists precisely because the launch gate is not enough, and it was
+    # still looking at the wrong drive.
+    Assert-StageDiskHeadroom -Label $Label -Drive (Split-Path -Qualifier $repoRoot).TrimEnd(':') -Force:$SkipHostChecks
     $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
     $dfName = [IO.Path]::GetFileName($Dockerfile)
     $bkArgs = @(
@@ -325,6 +337,12 @@ function Invoke-BkStage {
     foreach ($k in ($BuildArgs.Keys | Sort-Object)) {
         $v = $BuildArgs[$k]
         if ($null -ne $v -and "$v" -ne '') { $bkArgs += @('--opt', "build-arg:$k=$v") }
+    }
+    # -BuildArg passthrough, applied LAST so an explicit one-off overrides the
+    # stage's computed value rather than being silently dropped by it.
+    foreach ($extra in $BuildArg) {
+        if ($extra -notmatch '^[^=]+=') { throw "-BuildArg '$extra' is not in KEY=VALUE form" }
+        $bkArgs += @('--opt', "build-arg:$extra")
     }
     $stageLog = Join-Path $script:LogDir ("bk-" + ($Label -replace '[:\\/]', '-') + ".log")
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }

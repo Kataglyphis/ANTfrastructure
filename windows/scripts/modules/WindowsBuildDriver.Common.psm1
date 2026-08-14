@@ -596,14 +596,35 @@ function Assert-ShimPatch {
         [string]$StatePath = '',
         [switch]$Force
     )
-    if (-not (Test-Path $ShimPath)) {
-        Write-Warning "shim not found at $ShimPath - skipping the patch check."
-        return
-    }
+    # Defined BEFORE the not-found branch below, which quotes it in its throw.
     $advice = 'Re-install it before building: pwsh -File windows\scripts\deploy-shim-patch.ps1 ' +
         '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
         'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
         'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
+    # FAIL CLOSED on a shim we cannot find (backlog #48). This used to warn and
+    # return green — including on a D:\Stevedore host, a layout the SAME driver
+    # explicitly supports when resolving buildctl. The gate exists because a
+    # STOCK shim means ExportLayer 0x3 *after* the compile is already paid for,
+    # so "could not check" is the one answer that must not read as "fine".
+    # Probe the same candidate roots buildctl resolution uses before giving up.
+    if (-not (Test-Path $ShimPath)) {
+        $alt = @(
+            "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
+            'D:\Stevedore\bin\containerd-shim-runhcs-v1.exe'
+        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+        if ($alt) {
+            Write-Host "shim not at $ShimPath; using $alt" -ForegroundColor DarkGray
+            $ShimPath = $alt
+        } elseif ($Force) {
+            Write-Warning "shim not found at $ShimPath and no alternate root has one - continuing because -Force/-SkipHostChecks was passed."
+            return
+        } else {
+            throw ("containerd shim not found at '$ShimPath' (nor under D:\Stevedore\bin). " +
+                   'Refusing to build: an UNPATCHED shim kills heavy RUN layers with ExportLayer 0x3 only ' +
+                   "AFTER the compile is paid for, so an unverifiable shim is not a safe default. $advice " +
+                   'Pass -SkipHostChecks to override deliberately.')
+        }
+    }
     $size = (Get-Item $ShimPath).Length
 
     $statePath = Get-ShimPatchStatePath -StatePath $StatePath
@@ -731,7 +752,13 @@ function Assert-StageDiskHeadroom {
     )
     if ($FloorGb -le 0) { $FloorGb = Get-StageDiskFloorGb -Label $Label }
     $psDrive = Get-PSDrive $Drive -ErrorAction SilentlyContinue
-    if (-not $psDrive -or $null -eq $psDrive.Free) { return }
+    if (-not $psDrive -or $null -eq $psDrive.Free) {
+        # Say so instead of returning silently (backlog #48): a mid-chain gate
+        # that cannot read its target reports nothing, and "no output" is
+        # indistinguishable from "plenty of space" in a 2 MB build log.
+        Write-Warning "[$Label] disk headroom NOT checked: drive '$Drive' has no readable free space (network drive, or wrong letter?)."
+        return
+    }
     $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
     if ($freeGb -ge $FloorGb) {
         Write-Host "[$Label] disk OK: ${freeGb} GB free (stage floor ${FloorGb} GB)" -ForegroundColor DarkGray

@@ -97,10 +97,28 @@
   # log still reported a cache hit rate — the silent-degradation shape this repo
   # keeps designing against. Whoever grows either cache raises this number in
   # the SAME change: the sizes and this cap are one decision, not two.
+  # 2026-08-15 (backlog #89): this tier had NO reservedSpace, so GC was free to
+  # evict the compiler cache down to nothing — and the evidence says it did.
+  # On the first fully-captured chain the sccache write path worked in the FIRST
+  # media stage (onnx: 1488 misses, 0 write errors) and then failed 100 % in
+  # EVERY stage after it (opencv 1849, genai 157, litert 5037, tvm 596, iree
+  # 6686). Two observations separate "GC ate it" from "sccache hit its own 15G
+  # ceiling": `buildctl du` lists NO sccache cachemount record at all (only the
+  # 1.2 GB bazel one), and a probe found the mount present but EMPTY. A cache
+  # that hit its own size limit would be FULL and accounted for; one that is
+  # absent and empty was reclaimed.
+  #
+  # reservedSpace is the only knob GC will not prune below. Sized to hold both
+  # live mounts with headroom (15G sccache + ~10G uv = 25G), leaving the 40GB
+  # cap as the churn ceiling above it. Note the orphaned -1 mount described
+  # above lapsed ~2026-08-17, so the transient over-budget window is closing;
+  # do NOT read a low hit rate as "cold cache" until this is deployed and a
+  # chain has run — that misreading is what cost this defect a month.
   [[worker.containerd.gcpolicy]]
     filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
     keepDuration = "168h"
-    maxUsedSpace = "40GB"
+    reservedSpace = "30GB"
+    maxUsedSpace = "60GB"
 
   # Tier 1: anything unused for >30 days goes first.
   [[worker.containerd.gcpolicy]]

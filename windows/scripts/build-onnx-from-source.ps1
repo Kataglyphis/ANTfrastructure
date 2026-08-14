@@ -263,6 +263,19 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     # -Fatal (backlog #19): 006 rotting silently would hand the fused_moe
     # launchers back to the sccache server crash the day the CUDA launcher is
     # retried - patch rot must surface at patch time, not at re-enable time.
+    #
+    # SCCACHE_REPRO_CUDA_LLM=1 DELIBERATELY SKIPS the workaround so the upstream
+    # deadlock can be captured server-side (mozilla/sccache#2808). It is an
+    # opt-in escape for that investigation ONLY: the build is EXPECTED to die
+    # ~80 min in with `error reading compile response from server`. Never set it
+    # in a chain you want to finish. Pair it with SCCACHE_LOG=debug and an
+    # SCCACHE_ERROR_LOG on the persistent cache mount, or the trace dies with
+    # the solve and the whole exercise is wasted.
+    if ($env:SCCACHE_REPRO_CUDA_LLM -eq '1') {
+        Write-Warning ('SCCACHE_REPRO_CUDA_LLM=1: SKIPPING patch 006, so the sccache CUDA launcher stays ' +
+                       'ON for onnxruntime_providers_cuda_llm. This build is EXPECTED TO FAIL at the ' +
+                       'fused_moe launchers (~4910 s) - that failure IS the artifact being collected.')
+    } else {
     $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\006-cuda-llm-bare-nvcc.patch') -SourceDir $SourceDir -Fatal `
         -FallbackNote 'falling back to inline property insertion' `
         -Fallback {
@@ -271,6 +284,7 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
                 -Replacement ('$1' + "`n          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)`n            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER `"`")`n          endif()") `
                 -WarnMessage "onnxruntime_providers_cuda.cmake: cuda_llm anchor not found; the fused_moe launchers will crash the sccache server. Verify $cudaCmake."
         }
+    }
 
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back

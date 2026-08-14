@@ -143,7 +143,8 @@ $buildLog = Get-PersistentBuildLogPath -Name 'litert-build.log' -FallbackDir $bu
 # The injected tensorflowlite_c target (see above) is a normal add_library, so
 # `all` builds it alongside tensorflow-lite -- no separate target invocation
 # needed. The manual-install gate below hard-fails if its import lib is missing.
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog
+# MemGBPerJob 2, not 4 (backlog #74) — see the note in build-onnx-genai.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 

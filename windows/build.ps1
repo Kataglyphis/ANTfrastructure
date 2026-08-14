@@ -376,7 +376,9 @@ function Invoke-Stage {
     # "always-working fallback" and had NO per-stage check at all: the
     # start-of-run one can pass with 160 GB free while a single heavy stage walks
     # the disk into the band where hcsshim stops failing honestly.
-    Assert-StageDiskHeadroom -Label ([IO.Path]::GetFileName($Dockerfile) + $targetSuffix) -Force:$SkipHostChecks
+    # -Drive from the REPO root, not the 'C' default — same reason as the BK
+    # lane (backlog #48): the context lives on the D: VHDX on the reference host.
+    Assert-StageDiskHeadroom -Label ([IO.Path]::GetFileName($Dockerfile) + $targetSuffix) -Drive (Split-Path -Qualifier $repoRoot).TrimEnd(':') -Force:$SkipHostChecks
     $stageLog = Join-Path $script:LogDir ("stage-" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix + ".log")
     Set-BuildPhase ("build:" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix)
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker

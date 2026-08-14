@@ -2075,6 +2075,48 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > Dockerfiles + 102 build logs). Each was verified against the tree/logs, not
 > inferred. These ship broken today — do them before any refactor below.
 
+### P0d — sccache writes fail in EVERY stage after the first (2026-08-15)
+
+- **89 [M·★★★, none] Only the FIRST media stage writes to the compiler cache;
+  every stage after it fails 100 % of writes.** Measured on the first
+  fully-captured chain (`bk-run-fullchain-verify.log`, **zero clip events**):
+
+  | stage | hits | misses | write errors |
+  |---|---|---|---|
+  | media-core-built-onnx | 10 | 1488 | **0** |
+  | media-core-built-opencv | 0 | 1862 | **1849** |
+  | media-core-built (genai) | 0 | 157 | **157** |
+  | media-litert-built | 0 | 5037 | **5037** |
+  | media-tvm-built | 0 | 596 | **596** |
+  | media-tvm-built (iree) | 0 | 6686 | **6686** |
+
+  **This RETRACTS the earlier "#71 is resolved" conclusion**, which generalised
+  from two samples (a synthetic probe in the base image, and the ONNX stage) to
+  the whole chain. The write path is stage-dependent, not fixed.
+
+  Ruled OUT: "dufs died mid-chain" (the pre-2026-08-13 failure mode) — dufs was
+  running and answering HTTP 200 immediately after the run.
+
+  **TWO candidate causes, neither confirmed. Do not fix one before
+  distinguishing them:**
+  1. **`SCCACHE_CACHE_SIZE=15G` is exhausted by ONNX alone.** 1488 CUDA objects
+     is plausibly ~15 GB, which would put the ceiling exactly at the boundary
+     between the stage that works and the ones that do not.
+  2. **BuildKit's tier-0 GC evicts the cache mount.** `buildkitd.toml`'s first
+     gcpolicy is `maxUsedSpace = "40GB"` with filters
+     `source.local + exec.cachemount + source.git.checkout` and **no
+     `reservedSpace` floor** — so the sccache mount competes with context
+     uploads and git checkouts for one 40 GB budget. Corroborating: `buildctl du`
+     lists **no sccache cachemount record at all** (only the 1.2 GB bazel one),
+     and a probe found the mount present but EMPTY. Store total is 559.76 GB
+     with 483.51 GB reclaimable.
+
+  **The discriminator is `SCCACHE_ERROR_LOG`** — sccache says which layer
+  rejected the write. It is still uncaptured: two extraction attempts timed out,
+  the mount needing >4 min for a plain directory listing (itself consistent with
+  cause 2). Capture it before touching either knob; raising `SCCACHE_CACHE_SIZE`
+  when the GC is the culprit would change nothing and cost a full chain to learn.
+
 ### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
 
 > The corpus predates the step-log fix, so 28 of these logs are CLIPPED
@@ -2110,13 +2152,17 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   analysis cannot see this — it exists only in the clang-cl port's compiler
   output. FIX: runtime smoke test of flash-attention, then a clang-cl
   `udiv128` patch alongside the existing `patches/onnxruntime` set.
-- **74 [S·★★★, none] ONNX builds at `ninja -j9` while sccache is provisioned
-  for 32 jobs.** Corpus: `ninja -j9` ×90, `ninja -j19` ×1 (the single run after
-  backlog #28 landed). Job count derives from the 39 GB memory cap, not core
-  count, and the two subsystems disagree by 3.5×. 1498 TUs at -j9 is the direct
-  cause of the 78-minute figure. #28 (MemGBPerJob 2) already addresses this for
-  onnx/opencv but has only executed once — verify the -j19 figure holds on the
-  next cold media-core, and extend the treatment to genai/tvm/litert (still 4).
+- **74 [S·★★, none] PARTLY DONE 2026-08-15 — the `-j9` half is fixed, the
+  measurement is not.** Backlog #28 lowered `MemGBPerJob` to 2 for onnx and
+  opencv only, so the 2026-08-15 chain still logged `ninja -j9` three times
+  (genai, litert, tvm) against `-j19` three times. Those three are now at 2 as
+  well, justified by the ONNX measurement (9274 samples, peak per-process
+  WorkingSet 998 MB, same nvcc workload) and by build-iree, which compiles LLVM
+  in-tree — the heaviest TUs in the chain — at 2 all along. **UNVERIFIED:** no
+  build has run since the change, and the claim that sccache is "provisioned for
+  32 jobs" while ninja runs at 9 came from the CLIPPED corpus. Confirm the job
+  count and the wall-clock on the next cold media build before closing.
+
 - **75 [S·★★★, none] The `-j` downgrade ladder is a SILENT self-heal that
   converts a failure into an hours-long serial rebuild.** One run
   (`bk-chain-20260810-nogpu`) burned **11 h 17 m re-running the same ONNX build
@@ -2187,16 +2233,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   entirely: build green, `import tvm` green, and every `tvm.build` for an LLVM
   target fails at runtime in the shipped image. An LLVM/scoop bump that drops
   `llvm-config.exe` off PATH is a plausible one-line regression.
-- **48 [S·★★, none] Two host gates fail OPEN.** `Assert-ShimPatch` warns and
-  returns green when the shim is missing (`WindowsBuildDriver.Common.psm1:590`)
-  — including on a `D:\Stevedore` host, a layout the *same driver* explicitly
-  supports for buildctl (`build-buildkit.ps1:132`); the gate exists because a
-  stock shim means `ExportLayer 0x3` after the compile is paid for. And the
-  per-stage disk gate only ever checks `C:` (`:719` default, neither caller
-  passes `-Drive`) although the launch gate learned the opposite lesson the
-  hard way — the repo lives on the D: VHDX that "fell to 11.7 GB free while a
-  C:-only gate reported everything fine".
-
 ### P2b — Per-component build-script gaps (sibling scripts that drifted apart)
 
 - **65 [S·★★★, none] GStreamer compiles with NO job budget, NO retry ladder and
@@ -2227,6 +2263,22 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   a `-ResumeFrom FFmpeg` after such a failure skips `Assert-FfmpegPkgConfig`,
   the import-lib assert and PyAV — the resumed run cannot detect the broken
   install it inherited.
+- **88 [S·★★★, none] GStreamer wrap downloads fail SILENTLY and the build ships
+  a feature-reduced image — OBSERVED, not theorised.** The 2026-08-14 full chain
+  logged **22 failed wrap downloads** in one merge stage:
+  `gst-plugins-base` ×15, `theora` ×5, `pango` ×2, each as
+  `WARNING: failed to download ... features may be disabled`, and the build went
+  green. The fetch is `curl.exe ... 2>nul` (`build-gstreamer-from-source.ps1`
+  ~:294 and the libffi fetch at ~:313), so the ONE thing that distinguishes a
+  moved wrap revision (404) from a DNS/TLS problem is discarded — and 20 lines
+  earlier the main tarball already uses `Invoke-DownloadWithRetry` with backoff
+  and non-empty verification. Only the four MANDATORY plugins are gated; every
+  other codec silently becomes optional. FIX: route the wrap and libffi fetches
+  through the shared helper, and fail (or at least summarise loudly at the end
+  of the stage) rather than emitting 22 warnings nobody counts. NOTE this was in
+  the 2026-08-14 audit and was dropped when the findings were numbered — the
+  numbers came from the audit's list, and this one fell out; re-verify the P2b
+  set against the audit before assuming it is complete.
 - **69 [S·★★, none] Live pin drift that the parity gate structurally cannot
   see.** `build-ffmpeg-from-source.ps1:241` hardcodes
   `else { 'n13.0.19.0' }` against `versions.env:184 NV_CODEC_HEADERS_REF=n13.1.15.0`
