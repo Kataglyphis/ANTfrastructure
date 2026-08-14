@@ -387,26 +387,30 @@ uv_sync_project() {
     fi
   fi
 
-  # UV_PYTHON is unset for the CALL, not for the shell. The images export
-  # UV_PYTHON=/opt/venv/bin/python (root-owned, and the container runs as a
-  # non-root user), and uv honours it OVER both --active and an activated venv.
-  # Removing it here means that even when the pin above could not be resolved,
-  # the sync cannot be redirected into a system venv it has no right to write to
-  # - it falls back to uv's own discovery instead of failing on a permission
-  # error. When the pin DID apply this changes nothing: --python already wins.
-  local -a _env_clear=(-u UV_PYTHON)
+  # Three different knobs can redirect `uv sync`, and ALL of them point at the
+  # root-owned system venv in these images. Clear them for the CALL, not for the
+  # shell:
+  #   UV_PYTHON=/opt/venv/bin/python  - exported by the image; uv honours it
+  #                                     over both --active and an activated venv.
+  #   VIRTUAL_ENV=/opt/venv           - exported by the image; what --active binds
+  #                                     to.
+  # Leaving either in place is how this lane kept dying with
+  #   error: failed to remove file `/opt/venv/...`: Permission denied (os error 13)
+  local -a _env_clear=(-u UV_PYTHON -u VIRTUAL_ENV)
 
   if [ "$_pinned" -eq 1 ]; then
-    # --python already decides the target; --active only tells uv to prefer an
-    # activated venv when nothing else does.
-    sync_args+=(--active)
+    # UV_PROJECT_ENVIRONMENT is the knob that actually decides WHERE `uv sync`
+    # installs. --python only chooses the INTERPRETER; with --active still in
+    # play uv resolved the environment to VIRTUAL_ENV=/opt/venv and tried to
+    # rewrite it, so a correctly-pinned interpreter still produced
+    #   failed to remove file `/opt/venv/CACHEDIR.TAG`: Permission denied
+    # (Orchestr-ANT-ion, both arches, 2026-08-14). Name the environment
+    # explicitly and drop --active: with VIRTUAL_ENV cleared there is no active
+    # environment for it to mean anything about.
+    _env_clear+=("UV_PROJECT_ENVIRONMENT=${_venv}")
+    info "uv sync target environment: ${_venv}"
   else
-    # No pin, so --active would hand uv whatever VIRTUAL_ENV says - and the
-    # value it says in these images is /opt/venv, the root-owned system venv
-    # this function exists to stay out of. Drop both the flag and the variable
-    # so uv falls back to its own project discovery.
-    warn "uv sync is UNPINNED; dropping --active and VIRTUAL_ENV so it cannot target ${VIRTUAL_ENV:-a system venv}."
-    _env_clear+=(-u VIRTUAL_ENV)
+    warn "uv sync is UNPINNED; dropping --active and VIRTUAL_ENV so it cannot target a system venv."
   fi
 
   info "uv ${sync_args[*]}"
