@@ -116,11 +116,22 @@ printf '== hadolint (%s) on %d Dockerfile(s) ==\n' "$("${HADOLINT_BIN}" --versio
 # Dockerfile.media-builder:321) raises a shellcheck PARSE error, which is
 # error-severity and so fails the gate on a pure false positive.
 #
-# Suppress only the "shellcheck could not parse this at all" family, and only
-# for windows/*: those diagnostics can never be true for a PowerShell RUN. The
-# Linux Dockerfiles keep the full rule set — a real sh parse error there must
-# still fail. Style/semantic shellcheck rules stay on everywhere.
-HADOLINT_WINDOWS_IGNORES=(SC1009 SC1070 SC1071 SC1072 SC1073 SC1083)
+# Suppress the "shellcheck could not parse this at all" family, and only for
+# windows/*: those diagnostics can never be true for a PowerShell RUN. The Linux
+# Dockerfiles keep the full rule set — a real sh parse error there must still
+# fail. Style/semantic shellcheck rules stay on everywhere.
+#
+# The list is the whole parse-error family on purpose, not the codes observed so
+# far. The first version of this fix listed only the ones that had actually
+# fired (SC1070 on Dockerfile.media-builder); the very next Windows Dockerfile
+# added to the repo tripped SC1088 instead and broke main again. Which parse
+# error PowerShell happens to provoke is arbitrary — enumerating them one
+# outage at a time is not a policy.
+HADOLINT_WINDOWS_IGNORES=(
+  SC1009 SC1035 SC1046 SC1047 SC1056 SC1064 SC1066
+  SC1070 SC1071 SC1072 SC1073 SC1078 SC1079 SC1083
+  SC1088 SC1089 SC1099
+)
 
 FAILED=0
 for df in "${DOCKERFILES[@]}"; do
