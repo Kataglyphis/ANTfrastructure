@@ -101,12 +101,18 @@ ENV GPU_TYPE="nvidia" `
     TENSORRT_ROOT="C:\tensorrt" `
     TENSORRT_VERSION="${TENSORRT_VERSION}"
 # TensorRT rides a STABLE 'current\' directory, never the pin (backlog #38).
-# The old form was $TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib, which put a
-# NONEXISTENT path here the moment the pin and the staged zip disagreed — with
-# no failure anywhere, because ONNX resolves its build-time root with a glob
-# and only the RUNTIME lookup broke. normalize-tensorrt-tree.ps1 (trt-extract
-# stage) renames the versioned dir to 'current' and fails closed on a tree
-# without DLLs, so this entry is correct for any staged version. When no zip is
-# staged the directory simply does not exist and the entry is inert — the
-# documented graceful-skip contract is unchanged.
-ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\lib;$PATH
+# The old form was $TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib, which was
+# broken in TWO independent ways and green in both:
+#   1. the VERSION came from the pin, so it named a nonexistent directory the
+#      moment the pin and the staged zip disagreed;
+#   2. the DIRECTORY was lib\, which on TensorRT 10+ holds only link-time .lib
+#      import libraries — the 14 runtime DLLs live in bin\ (measured on the
+#      staged 11.1.0.106 zip). So even a correctly-pinned image could never
+#      have loaded the EP at runtime.
+# Neither failed the build, because ONNX resolves its BUILD-time root with a
+# glob and only the RUNTIME lookup was wrong — ORT then dropped the TensorRT EP
+# with no error. bin\ first (runtime), lib\ kept for the 8.x/9.x layout where
+# the DLLs lived there. normalize-tensorrt-tree.ps1 fails closed if neither
+# carries DLLs. When no zip is staged the directories do not exist and the
+# entries are inert — the documented graceful-skip contract is unchanged.
+ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib;$PATH

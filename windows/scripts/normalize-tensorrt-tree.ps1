@@ -73,12 +73,26 @@ Rename-Item -LiteralPath $versionDir.FullName -NewName 'current'
 
 # Fail CLOSED: a tree that exists without loadable DLLs is the failure this
 # whole script exists to prevent, and it must not reach a downstream stage.
+#
+# WHERE THE DLLs LIVE (measured against the staged 11.1.0.106 Enterprise zip,
+# 2026-08-14): bin\ holds the 14 runtime DLLs, lib\ holds only 6 link-time
+# .lib import libraries. TensorRT 8.x/9.x shipped the DLLs in lib\ and 10+
+# moved them to bin\ — Dockerfile.nvidia never caught up, so its PATH entry
+# pointed at lib\. That means the runtime lookup was broken in TWO independent
+# ways: the wrong VERSION (the pin/zip mismatch) and the wrong DIRECTORY. Even
+# a correctly-pinned image could never have loaded the EP. Accept either layout
+# and require DLLs in at least one of them.
+$binDir = Join-Path $stable 'bin'
 $libDir = Join-Path $stable 'lib'
-if (-not (Test-Path $libDir)) {
-    throw "TensorRT tree '$($versionDir.Name)' has no lib\ directory after normalization — refusing to ship a partial extract."
+$dllDirs = @($binDir, $libDir) | Where-Object {
+    Test-Path $_
+} | Where-Object {
+    @(Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File -ErrorAction SilentlyContinue).Count -gt 0
 }
-$dlls = @(Get-ChildItem -LiteralPath $libDir -Filter '*.dll' -File -ErrorAction SilentlyContinue)
-if ($dlls.Count -eq 0) {
-    throw "TensorRT lib directory '$libDir' contains no DLLs — the EP would be dropped silently at runtime."
+if ($dllDirs.Count -eq 0) {
+    $present = @(Get-ChildItem -LiteralPath $stable -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) -join ', '
+    throw ("TensorRT tree '$($versionDir.Name)' carries no runtime DLLs in bin\ or lib\ (subdirs: $present) — " +
+           'the EP would be dropped silently at runtime. Refusing to ship an unloadable TensorRT.')
 }
-Write-Host "TensorRT $actual normalized to '$stable' ($($dlls.Count) DLLs in lib\)."
+$dllCount = @($dllDirs | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File }).Count
+Write-Host "TensorRT $actual normalized to '$stable' ($dllCount runtime DLLs in: $(($dllDirs | Split-Path -Leaf) -join ', '))."

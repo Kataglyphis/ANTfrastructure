@@ -48,11 +48,31 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
     so pre-normalization images and host-lane trees keep resolving. Two new
     tests pin both behaviours (486 total, was 484).
 
-  **VERIFIED WITHOUT A BUILD** against synthetic trees: normalization + drift
-  warning (DLL reachable at `current\lib`), tree-without-DLLs → **exit 1**,
-  tree-without-`lib\` → **exit 1**, empty root → exit 0 graceful.
-  **STILL UNVERIFIED:** the Dockerfile itself — needs one sdk rebuild, which
-  re-pays CUDA once because #53 reordered the instructions above that RUN.
+  **THE BUILD FOUND A SECOND, BIGGER DEFECT — the fail-closed gate earned its
+  keep on its first run.** The sdk rebuild failed with
+  `TensorRT lib directory 'C:\tensorrt\current\lib' contains no DLLs`.
+  Inspecting the staged 11.1.0.106 Enterprise zip:
+
+  | dir | contents |
+  |-----|----------|
+  | `lib\` | **6 × `.lib`** — link-time import libraries only |
+  | `bin\` | **14 × `.dll`** — the runtime DLLs |
+
+  TensorRT 8.x/9.x shipped the runtime DLLs in `lib\`; **10+ moved them to
+  `bin\`**, and `Dockerfile.nvidia` never caught up. So the PATH entry was
+  broken in TWO independent ways — wrong VERSION *and* wrong DIRECTORY —
+  meaning **the TensorRT EP could never have loaded at runtime in this image,
+  even with a correctly-pinned zip**. The pin mismatch merely hid the second
+  defect behind the first. Neither failed a build, because ONNX resolves its
+  BUILD-time root with a glob and only the RUNTIME lookup was wrong.
+  Final form: PATH gets `current\bin` (runtime) **and** `current\lib` (kept for
+  the 8.x/9.x layout), and the normalizer requires DLLs in at least one of them.
+
+  **VERIFIED:** synthetic trees on the host (normalize + drift warning,
+  tree-without-DLLs → **exit 1**, tree-without-`lib\` → **exit 1**, empty root →
+  exit 0 graceful), then the real build:
+  `TensorRT 11.1.0.106 normalized to 'C:\tensorrt\current' (14 runtime DLLs in:
+  bin)` — trt-extract DONE 7.4s.
   **OPEN DECISION FOR THE OWNER:** the pin and the staged zip still disagree.
   The image is now internally consistent either way, but `versions.env`
   no longer describes what ships — either re-stage an 11.2.1.2 zip or correct
