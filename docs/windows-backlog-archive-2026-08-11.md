@@ -12,11 +12,37 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
 
 ## Addendum — closed 2026-08-13 (`:winamd64` green end-to-end)
 
+- **34 + ELEVATED WINDOW + dufs (DONE 2026-08-13, applied by owner).** Owner ran
+  the between-runs elevated bundle: (1) buildkitd service env restored
+  (`BUILDKIT_STEP_LOG_MAX_SIZE/-SPEED=-1`) so `-SkipStepLogGate` is no longer
+  needed; (2) GC budgets deployed (`apply-buildkitd-gcpolicy.ps1`, buildkitd.toml
+  400/450GB) — fixes the cross-run snapshot eviction (#34); (3) poisoned
+  probe-build-copy layer chain pruned (`probe-build-copy.ps1` no longer FALSE
+  RED); (4) diagnostic tag cleanup. Also ran `setup-dufs-service.ps1` → dufs is
+  now a session-independent SYSTEM ONSTART task (no more mid-run WebDAV-write
+  fail-open). Sanity: `buildctl debug workers -v` should show reservedSpace=200GB.
+- **Upstream issues (POSTED 2026-08-13):** mozilla/sccache#2808 (nvcc deadlock +
+  miscompile) and google-ai-edge/LiteRT-LM#3245 (CMake-lane staleness). opencv/opencv
+  (dnn ORT `char*`/`wchar_t`) draft still unposted.
 - **28 (LANDED 2026-08-13) Ninja job-count `-MemGBPerJob 2`.** Changed `4`→`2`
   at the build-onnx-from-source.ps1 (line ~451) and build-opencv-from-source.ps1
   (line ~295) `Invoke-NinjaBuildWithRetry` call sites → ~19 jobs (from ~9) at the
   measured ~1 GB/process, well under the 39 GB budget. Code landed + lint/tests
   green; the throughput win verifies on the next full media-core build.
+- **27 (DONE + VERIFIED 2026-08-14) Dockerfile.base 1214-char single-line RUN →
+  mounted script.** Extracted the pwsh-7 bootstrap blob into
+  `windows/scripts/bootstrap-pwsh.ps1` (WPS-5.1-safe, byte-identical logic:
+  3-attempt backoff + in-loop SHA256 + original-exception rethrow) and rewrote
+  the base RUN to `RUN --mount=type=bind,source=windows/scripts/bootstrap-pwsh.ps1,target=C:\bootstrap-pwsh.ps1 & 'C:\bootstrap-pwsh.ps1'`.
+  Bind-mount, NOT COPY — no layer, nothing COPY'd this early in base by design;
+  runs under WPS 5.1 (SHELL not yet switched to pwsh). Despite the item's
+  "never alone / batch with a base bump" caveat, verified standalone with a
+  scoped `-Stages base` build: **step `#6 … RUN --mount=…bootstrap-pwsh.ps1… DONE
+  11.1s`**, build proceeded to VS Build Tools (#9) — the mounted-script bootstrap
+  behaves exactly as the inline blob did. Lint 151/0, parse-clean. NOTE: landing
+  it busts the base-tier cache (base instruction changed) → the next full chain
+  rebuilds downstream of base; that cost is inherent to the change, not the
+  verify build.
 
 
 - **37 (DONE 2026-08-13) TVM `import tvm` → WinError 127.** Root cause was NOT

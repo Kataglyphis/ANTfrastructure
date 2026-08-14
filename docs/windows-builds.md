@@ -1951,65 +1951,521 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > never trust a patch helper whose success message prints unconditionally
 > (litert-lm's `patch_file_content` no-oped silently for two runs, 2026-08-11
 > — verify by the SYMPTOM disappearing, or use structurally-immune ops like
-> `file(REMOVE_RECURSE)` with a self-check).
+> `file(REMOVE_RECURSE)` with a self-check); and NEVER set
+> `rewrite-timestamp=true` on the Windows image exporter — it crashes
+> mid-finalize and POISONS the layer chain (the #34 side-finding).
+
+### HOW TO WORK THIS BACKLOG (execution batches — read this first)
+
+> The P-sections below are ordered by SEVERITY, which is how to *read* the
+> backlog. This section is how to *execute* it: grouped by what shares a
+> rebuild, a file, or a decision. **The numbers are discovery order, not work
+> order — never work top-to-bottom by number.** Batches A-C are independent of
+> each other; D-H can follow in any order.
+>
+> **Batch A — CAPTURE FIRST (gates the accuracy of everything in P0b).**
+> #71's `SCCACHE_ERROR_LOG` is the one decisive artifact still missing, and the
+> entire 49-run corpus behind P0b was CLIPPED (step-log env only became correct
+> on 2026-08-13). Do this before theorising about causes, and re-run the
+> forensics against the first fully-captured chain — it will confirm or revise
+> #72's export numbers and #74's `-j19`. *Nothing else in Batch A.*
+>
+> **Batch B — one sitting, pure PowerShell, ZERO rebuild cost.** #39, #40,
+> #41, #42, #43, #62, #63, #64. All are driver/script edits in
+> `build-buildkit.ps1` / `build.ps1` / `WindowsBuildDriver.Common.psm1`,
+> unit-testable, and none touches a Dockerfile — so none invalidates any cache.
+> This is the highest value-per-hour block in the backlog. #41+#42+#43 are the
+> same two files; #39+#40+#62+#64 are the same driver pair.
+>
+> **Batch C — the TensorRT chain. ORDER IS LOAD-BEARING: #53 THEN #38.**
+> Doing #38 first costs a ~3.8 GB CUDA + cuDNN re-download for nothing.
+>
+> **Batch D — the "nothing verifies the artifact" epic.** #44, #46, #57, #67
+> are ONE piece of work, not four: the smoke test is never invoked, its skips
+> are not fatal, it load-tests 1 of ~30 OpenCV DLLs, and it never checks the
+> LiteRT exports. Fixing them separately means touching
+> `smoke-test-container.ps1` four times. Do #44 first (make it run and make
+> SKIP fatal) — the other three are assertions inside the harness it enables.
+>
+> **Batch E — base-tier. MUST be batched; never land alone.** #50 + #81. One
+> base rebuild (~30 min + full downstream invalidation) pays for both. Add any
+> future base-tier item to this batch rather than landing it on its own — this
+> is the same rule that governed #27.
+>
+> **Batch F — media cache tiering, NO base rebuild.** #49, #51, #52, #54.
+> Each is self-contained; #49 has the largest payoff (a PyAV bump currently
+> re-runs the 75-min ONNX build).
+>
+> **Batch G — the test net.** #55, #56, #58, #59, #60. #55 (`.gitattributes`)
+> and #59 (branch protection) are minutes of work and both currently fail
+> open; do them first in this batch.
+>
+> **Batch H — needs a measurement or a decision before any code.** #72 is a
+> genuine trade-off (export round-trips vs. resume granularity), #70 needs a
+> configure-only probe, #74 needs one cold media-core to confirm, #31 needs
+> your registry choice. Do NOT start these as coding tasks.
+>
+> **Cross-cutting note:** #71 (sccache), #74 (`-j9`) and #75 (the silent `-j`
+> downgrade ladder) are three views of ONE root cause. Fixing #71 may retire
+> #75 outright — re-check it before working it.
+
+### P0 — LIVE DEFECTS (not refactors; the chain is green *and* wrong)
+
+> Found by the 2026-08-14 deep audit (static sweep of 151 scripts + 6
+> Dockerfiles + 102 build logs). Each was verified against the tree/logs, not
+> inferred. These ship broken today — do them before any refactor below.
+
+- **38 [S·★★★, sdk-tier] TensorRT pin ≠ staged zip → the shipped image has a
+  DEAD TensorRT EP.** `versions.env:256` pins `TENSORRT_VERSION=11.2.1.2`;
+  the staged archive is `TensorRT-Enterprise-11.1.0.106-…zip`, which extracts
+  `TensorRT-11.1.0.106/`. Two *contradictory* resolution strategies exist for
+  the same directory: `WindowsSourceBuild.Cuda.psm1:30` globs `TensorRT-*`
+  (pin-INdependent → resolves correctly), while `Dockerfile.nvidia:97` builds
+  the runtime PATH from the PIN → `…\TensorRT-11.2.1.2\lib`, which does not
+  exist. So ONNX compiles the EP fine (logs confirm ×24:
+  `TensorRT detected at C:\tensorrt\TensorRT-11.1.0.106` +
+  `onnxruntime_USE_TENSORRT=ON`) and the DLLs are then unreachable at RUNTIME.
+  This is a REGRESSION of the incident `versions.env:238-248` already
+  documents verbatim ("Bump this WITH the staged zip, never alone") — the pin
+  was bumped alone. FIX: pin to `11.1.0.106` (or stage the 11.2.1.2 zip) AND
+  make the PATH pin-independent so it cannot silently recur; add the 3-second
+  `Test-Path` assertion in the nvidia tail (see #44 — nothing below the base
+  verifies anything today). **Land #53 first**, or this pin fix triggers a
+  ~3.8 GB CUDA + cuDNN re-download.
+- **39 [S·★★★, none] `-MediaBranches <subset>` silently ships a STALE image.**
+  `build-buildkit.ps1:437` sets `$runMerge` true only when *all three* branches
+  are selected; on a subset it prints one yellow line. But `:465` runs torch
+  regardless with `BASE_IMAGE = Get-BkTag 'windows-media'` — the PREVIOUS run's
+  merge tag. So `-Stages media,torch,final -MediaBranches media-litert` (the
+  natural "I fixed LiteRT, re-ship" invocation) delivers a `winamd64` WITHOUT
+  the fix, and nothing fails. The classic lane gets this right
+  (`build.ps1:795-836` merges unconditionally + `Assert-ImageExists`). FIX:
+  `throw` when merge is skipped while torch/final are selected — fail closed.
+- **71 [M·★★★, none] sccache has NEVER produced a single cache hit — it is a
+  100 % no-op, and every write has failed.** Aggregated over **94 stat blocks
+  spanning the whole log corpus**: `Cache hits` = **0** in 94/94, and
+  `Cache misses` = `Cache write errors` = **189,861 — exactly equal**. Read
+  errors are 0, so the read path is healthy; the defect is write-side only. Per
+  stage the signature is stable (ONNX 1498, OpenCV 1862, LiteRT/XNNPACK 5033).
+  CONSEQUENCE: no run has ever been able to seed the next, which is what makes
+  **18.42 h of ONNX Runtime rebuilds across 24 executions** possible — the step
+  clusters at 78-82 min with <6 % run-over-run variance, the signature of zero
+  reuse. BuildKit's *layer* cache works (the step shows CACHED in the green
+  run); it is only the *compiler* cache that is dead. This is the single
+  highest-leverage item in the entire backlog: fixing it should collapse runs
+  2..N of any iteration cycle from ~78 min to minutes. NOTE the decisive
+  artifact is still missing — `SCCACHE_ERROR_LOG` appears in NO log in the
+  corpus (it lives inside the cache mount and was never captured), so capture
+  it first (see the diagnostics queue).
+- **40 [S·★★★, none] The scripted resume is broken — and deletes the preserved
+  container first.** `build.ps1:663` does `docker container rm -f $container`,
+  then the retry `-Action` block uses `.GetNewClosure()`, which snapshots
+  LOCALS only — `$Docker`/`$MediaCoreCpus`/`$MediaMemoryGb` are script-scope
+  `param()` vars and resolve EMPTY inside the module invoker. The identical
+  fix is already applied to the sibling 150 lines above and even carries the
+  explanatory comment (`build.ps1:501`: `$dockerExe = $Docker   # local copy:
+  .GetNewClosure() snapshots LOCALS only`). The resume feature exists because
+  the recipe "was hand-typed 5x on 2026-08-03" — and it has never worked. No
+  test covers it (`grep ResumeStage windows/scripts/tests/` → 0). FIX: three
+  local copies + a unit test.
+
+### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
+
+> The corpus predates the step-log fix, so 28 of these logs are CLIPPED
+> (the green reference run is 49 % blind in its merge step; historical ONNX
+> steps are 83 % blind). Findings below survive that caveat — they rest on
+> end-of-step stat blocks and timestamps, not on clipped body text. Re-run the
+> forensics once a full chain has been captured with the env now in place.
+
+- **72 [M·★★★, none] Image export/unpack costs MORE than the build it wraps —
+  4.33 h across the corpus, 339 operations.** The chain is split into 9+
+  separate `buildctl` invocations and **each pays a full Windows-image export
+  AND unpack**. Torch: 358.4 s export vs 172.6 s build (**2.08×**). LiteRT:
+  1401.8 s export vs 1117 s build (1.25×). Today's base build: 605.6 s
+  export/unpack = **33.5 % of the whole stage**. In the green 41:30 run,
+  export/unpack is **23 % of the entire chain** — more than every COPY, every
+  fan-in and the torch build combined. No static reading of the Dockerfiles
+  reveals this. FIX: collapse the four `media-core-built-*` checkpoints into
+  one invocation → removes 3 export/unpack round-trips per run. **CONFLICT —
+  decide before doing:** those four checkpoints are exactly what gives
+  media-core its per-library BuildKit-native resume (the reason litert/tvm,
+  which lack them, re-pay a whole branch on any failure). Collapsing them buys
+  ~3 export round-trips and costs that resume granularity. Measure both before
+  choosing; this is a trade-off, not a free win.
+- **73 [S·★★★, none] Latent defect in the SHIPPED ONNX CUDA provider: infinite
+  recursion in CUTLASS `udiv128`.** 225 occurrences of
+  `uint128.h(96,90): warning: all paths through this function will call itself
+  [-Winfinite-recursion]`, reached via `flash_api.h:36` while compiling
+  `onnxruntime_providers_cuda` TUs (`attention.cc`, `paged_attention.cc`,
+  `packed_multihead_attention.cc`). CUTLASS selects an MSVC `_udiv128`
+  intrinsic path that clang-cl does not resolve, so the function calls itself
+  unconditionally → stack overflow **if that path is taken at runtime**. It
+  sits in the flash-/paged-attention code of a shipped provider. Static
+  analysis cannot see this — it exists only in the clang-cl port's compiler
+  output. FIX: runtime smoke test of flash-attention, then a clang-cl
+  `udiv128` patch alongside the existing `patches/onnxruntime` set.
+- **74 [S·★★★, none] ONNX builds at `ninja -j9` while sccache is provisioned
+  for 32 jobs.** Corpus: `ninja -j9` ×90, `ninja -j19` ×1 (the single run after
+  backlog #28 landed). Job count derives from the 39 GB memory cap, not core
+  count, and the two subsystems disagree by 3.5×. 1498 TUs at -j9 is the direct
+  cause of the 78-minute figure. #28 (MemGBPerJob 2) already addresses this for
+  onnx/opencv but has only executed once — verify the -j19 figure holds on the
+  next cold media-core, and extend the treatment to genai/tvm/litert (still 4).
+- **75 [S·★★★, none] The `-j` downgrade ladder is a SILENT self-heal that
+  converts a failure into an hours-long serial rebuild.** One run
+  (`bk-chain-20260810-nogpu`) burned **11 h 17 m re-running the same ONNX build
+  11 times**, each cycle ending
+  `ninja -j9 failed (exit 2) - retrying incrementally with -j2...` at 4911.5 s
+  / 4909.2 s — a ±2 s determinism that identifies the sccache-CUDA server crash
+  rather than an env flake. 12 occurrences corpus-wide. FIX: make the downgrade
+  loud and bounded; abort instead of grinding serially.
+- **76 [S·★★, none] The ~120-min ffmpeg stall (old #35) is CONFIRMED as a
+  one-off and DENIED as recurring — and it is a TIMEOUT, not jitter.** Exact
+  gap: **7200.9 s** (≈ exactly 2 h) of zero output between
+  `WARNING: vswhere returned no installation; using filesystem fallback` and
+  `Replaced MSYS2 awk with gawk`. In 10 other runs that marker lands at
+  t = 11.5-17.9 s. Actual ffmpeg work in that step was only ~162 s. The
+  two-hour boundary reads as a network timeout in the MSYS2/gawk provisioning
+  call. Not recurred in 9 subsequent runs → latent, not active. FIX: bound that
+  step with an explicit timeout + heartbeat. **Supersedes the old #35 observe
+  entry**, which can now be closed.
+- **77 [S·★★, none] GStreamer's GES `_commit` conflict is patched REACTIVELY
+  after a failed compile — deterministic, 3/3 runs, ~20 min discarded each
+  time.** `Compile attempt 1 failed; patching _commit conflict in GES and
+  retrying...` at 1236.8 s / 1392.2 s / 1391.3 s in three separate runs. Tight
+  clustering + 100 % reproduction = this belongs in `patches/gstreamer`
+  applied up-front, not as a post-failure repair.
+- **78 [S·★★, none] The VS major-version pin is NOT being honoured — the
+  toolchain is pinned by luck.** Today's base build:
+  `WARNING: major-pinned VS alias unavailable — used floating 'stable' channel
+  (currently VS 18…)`. Plus `vswhere returned no installation; using filesystem
+  fallback` ×100 — so the build depends on a literal path string rather than on
+  discovery. The day Microsoft promotes VS 19, the pin floats AND the fallback
+  path breaks simultaneously, re-opening the documented vcpkg/VS-toolset
+  rejection class.
+- **79 [S·★★, none] `aka.ms` serves HTML instead of the VS bootstrapper binary
+  — the same failure family as the known nuget trap.** Today's base build:
+  `expected a MZ-signature file but got first bytes 60,33 (likely an HTML error
+  page)` — `60,33` is `<!`. Also 3 consecutive failures against
+  `api.adoptium.net` for JDK 21. The MZ-signature guard is excellent defence,
+  but the retry budget is 2 and it self-heals only because a fallback URL
+  exists. The pre-seed fix already applied to nuget was never extended to the
+  VS bootstrapper or Adoptium.
+- **80 [S·★★, none] 96 % of the warning stream is 5 noise classes, hiding 1,055
+  genuine signals.** Corpus totals: `-Wunused-parameter` 68,502,
+  `-Wdocumentation-unknown-command` 18,144, `-Wdeprecated-copy…` 17,887,
+  `-Wundef` 17,056, `-Wmissing-field-initializers` 12,294 — vs the signal
+  classes `-Winconsistent-missing-override` 9,449 (vtable/ABI),
+  `-Wundefined-var-template` 552 (ODR/link), `-Winconsistent-dllimport` 252
+  (Windows linkage), `-Winfinite-recursion` 225 (#73), `C4715` 26 (UB — all in
+  the vendored `tvm-ffi/.../creator.h(112)`, falling off the end of a
+  value-returning function). Also `-Wunused-command-line-argument` 7,200:
+  `/Zc:preprocessor` is passed but ignored by clang-cl — a config smell worth
+  removing. FIX: suppress the top-5 noise classes at build-script level so CI
+  can see the rest.
+
+### P1 — Log & diagnosis integrity (direct "never swallow logs" violations)
+
+- **41 [S·★★★, none] The retry path DESTROYS the failing attempt's log.**
+  `build-buildkit.ps1:297` tees without `-Append`, so attempt 2 truncates
+  attempt 1. When a stage burns its 3-attempt budget (merge: 5) only the last
+  attempt survives — and if attempt 1 held the real compile error while 2-3
+  died on infra flakes, the evidence is gone. FIX: `-Append` + per-attempt
+  banner.
+- **42 [S·★★★, none] The failure tail is computed, then thrown away.** Both
+  lanes build `$tail` purely to CLASSIFY the error and then `throw` a bare
+  path (`build-buildkit.ps1:299,307`; `WindowsBuildDriver.Common.psm1:157-166`).
+  The owner gets a filename and opens a deliberately-unbounded log. This is the
+  "hunting through 2.5MB logs" loop, two lines from fixed: print `$tail` (or an
+  `error:`-grepped excerpt) before the throw.
+- **43 [S·★★★, none] 4 of 5 ninja logs die WITH the build tree; genai has no
+  log at all.** Only ONNX was fixed (`build-onnx-from-source.ps1:441` writes
+  into `$SCCACHE_DIR\logs`, which survives the solve, with the rationale in a
+  comment). The siblings still write inside `$buildDir`, which dies with the
+  failed vertex: `build-opencv:291`, `build-iree:97`, `build-tvm:122`,
+  `build-litert:141`. Worse, `build-onnx-genai:167` passes no `-LogFile` at
+  all, so even the 50-line failure tail does not exist. IREE is a 60-120 min
+  LLVM build whose only surviving diagnosis is a clipped 50-line tail. FIX: one
+  line each — the same `$SCCACHE_DIR\logs` treatment.
+
+### P2 — Fail-open gates & silent degradation (green build, crippled image)
+
+- **44 [S·★★★, none] Nothing verifies the artifact: the smoke test is never
+  run, and SKIP is not fatal.** `grep -i smoke windows/build.ps1
+  windows/build-buildkit.ps1` → **0 hits in both**; no CI reference; the final
+  Dockerfile has zero RUN steps. `smoke-test-container.ps1:1376` exits 0 on
+  `Failed -eq 0` while `Skipped` is printed and never consulted — with 24
+  `Skip-Test` sites and seven env-gated sections, a misconfigured run prints
+  "All smoke tests passed!" having asserted nothing. Last recorded baseline:
+  2026-07-14. FIX: `-MinPassed`/`-MaxSkipped` floors + invoke it from both
+  drivers against the produced tag.
+- **45 [S·★★★, none] A mis-plumbed CUDA path yields a fully green, CPU-ONLY
+  media chain — discovered hours later.** `WindowsSourceBuild.Cuda.psm1:47`
+  gates on `Test-Path $cudaRoot`; every consumer then takes a quiet else-branch
+  (`build-onnx:307` "CPU-only build", `build-opencv:277` `WITH_CUDA=OFF`,
+  `build-tvm:39` silently). `GPU_TYPE=nvidia` is baked at `Dockerfile.nvidia:93`,
+  so "lane says nvidia but no CUDA" is never legitimate. Cost: ~75 min ONNX +
+  ~30 min OpenCV + ~45 min GenAI all green and all useless. The explicit
+  opt-outs (`ONNX_FORCE_CPU`, `GENAI_FORCE_CPU`) already exist, so a `throw`
+  is safe. FIX: fail closed when `GpuType -eq 'nvidia' -and -not $CudaRoot`.
+- **46 [S·★★, none] DirectML can vanish from the image with zero red at either
+  end** — and on the reference AMD host it is the ONLY working GPU path.
+  Staging warns instead of failing (`WindowsSourceBuild.Common.psm1:1103,1117`)
+  and the smoke test *skips itself* when the artifact is absent
+  (`smoke-test-container.ps1:572`), i.e. the gate is keyed on the very thing it
+  should verify. `USE_DML=ON` is unconditional, so absence is never legitimate.
+- **47 [S·★★, none] TVM silently drops LLVM / Vulkan / cuDNN.**
+  `build-tvm-from-source.ps1:76-82` (and :68-73, :53-64) print on the ON path
+  and print NOTHING on the OFF path. `USE_LLVM=OFF` removes TVM's CPU codegen
+  entirely: build green, `import tvm` green, and every `tvm.build` for an LLVM
+  target fails at runtime in the shipped image. An LLVM/scoop bump that drops
+  `llvm-config.exe` off PATH is a plausible one-line regression.
+- **48 [S·★★, none] Two host gates fail OPEN.** `Assert-ShimPatch` warns and
+  returns green when the shim is missing (`WindowsBuildDriver.Common.psm1:590`)
+  — including on a `D:\Stevedore` host, a layout the *same driver* explicitly
+  supports for buildctl (`build-buildkit.ps1:132`); the gate exists because a
+  stock shim means `ExportLayer 0x3` after the compile is paid for. And the
+  per-stage disk gate only ever checks `C:` (`:719` default, neither caller
+  passes `-Drive`) although the launch gate learned the opposite lesson the
+  hard way — the repo lives on the D: VHDX that "fell to 11.7 GB free while a
+  C:-only gate reported everything fine".
+
+### P2b — Per-component build-script gaps (sibling scripts that drifted apart)
+
+- **65 [S·★★★, none] GStreamer compiles with NO job budget, NO retry ladder and
+  NO sccache stall guard — while using sccache.** Verified: 0 hits for
+  `Start-SccacheStallGuard` / `Get-BuildJobCount` / `MemGBPerJob` in
+  `build-gstreamer-from-source.ps1`. It sets `$env:CC = 'sccache clang-cl'`
+  (:205) then runs `meson compile` (:879) with no `-j`, so ninja's default
+  (cores+2) ignores `MEMORY_LIMIT_GB` entirely — exactly the OOM shape
+  `MemGBPerJob` exists to prevent. It is also the ONE compile stage using
+  sccache without the watchdog written for the documented sccache-server
+  deadlock; a wedge there hangs the merge stage indefinitely with no
+  kill/resume. FIX: `meson compile -j (Get-BuildJobCount -MemGBPerJob 2)` +
+  the stall guard.
+- **66 [S·★★★, none] GStreamer's "must resolve NOW" pre-flight runs AFTER the
+  tarball, ~20 wrap downloads and five patch loops.** The gate's own comment
+  reads "Everything the required set needs must resolve NOW, not after an
+  hour" (:676) — but the block starts at :522 while the downloads run at
+  :242-:323 and patching at :404-:485, and the things it checks (OpenCV
+  headers, `onnxruntime.lib`, LiteRT headers, `tensorflowlite_c.lib`) depend on
+  NONE of that work. Hoisting it above :228 turns a missing media fan-in from
+  "full download+patch phase, then fail" into a ~5-second failure.
+- **67 [S·★★★, none] LiteRT gates on `tensorflowlite_c.lib` but never on the
+  DLL or its EXPORTS** (`build-litert-from-source.ps1:180-187`). The documented
+  failure was an import lib that existed while the DLL exported ZERO C-API
+  symbols — the lib-only assert is structurally blind to that recurrence, and
+  the just-shipped `/EXPORT:` + `WINDOWS_EXPORT_ALL_SYMBOLS` work therefore has
+  no regression gate. FIX: `dumpbin /exports` (or `llvm-nm`) on the produced
+  DLL for the three XNNPack symbols the link options force.
+- **68 [M·★★★, none] FFmpeg's prebuilt fallback ships a MIXED install, and the
+  skip-if-present early return bypasses every gate on re-entry.** On a missing
+  `ffmpeg.exe` it downloads BtbN's zip and copies `*.exe`/`*.dll` over whatever
+  a partial `make install` left (:441-459), while OUR import libs and `.pc`
+  files stay — so gst-libav links a version mismatch, announced by one
+  `Write-Warning`. Separately `:110` returns early when `ffmpeg.exe` exists, so
+  a `-ResumeFrom FFmpeg` after such a failure skips `Assert-FfmpegPkgConfig`,
+  the import-lib assert and PyAV — the resumed run cannot detect the broken
+  install it inherited.
+- **69 [S·★★, none] Live pin drift that the parity gate structurally cannot
+  see.** `build-ffmpeg-from-source.ps1:241` hardcodes
+  `else { 'n13.0.19.0' }` against `versions.env:184 NV_CODEC_HEADERS_REF=n13.1.15.0`
+  — verified drift. `SourceBuild.PinParity.Tests.ps1:80` scans only
+  `Get-SourceBuildVersion` call sites, so the `if ($env:X) {…} else {<literal>}`
+  idiom is invisible to it (~13 such sites; four more version literals bypass
+  the gate the same way). versions.env:180-183 records that a wrong
+  nv-codec-headers ref once "404'd and NVENC was silently skipped on both
+  lanes" — this is that incident's seed, re-planted. FIX: route the literals
+  through `Get-SourceBuildVersion`; teach the AST scanner the second idiom.
+- **70 [S·★★, none] FFmpeg is the only compile stage with NO sccache wiring at
+  all** — verified: 0 `Write-SccacheStats` calls, and the script never sets the
+  sccache endpoint. The precedent is its sibling, which documents that
+  GStreamer "ran completely uncached (~30 min hot)" until 2026-08-04 because
+  "the merge builder simply never wired the endpoint through". A 30-60 min
+  stage recompiles cold every attempt and is not even MEASURABLE. Emitting the
+  stats is unconditionally safe; whether FFmpeg's `configure` tolerates
+  `--cc="sccache clang-cl"` needs a configure-only probe first.
+
+### P3 — Cache tiering (pure rebuild-time cost; no correctness change)
+
+- **49 [M·★★★, media-core once] Nine version ARGs share ONE ENV layer directly
+  above the ~75-min ONNX compile.** `Dockerfile.media-builder:142-168` declares
+  ONNX/GENAI/OPENCV/FFMPEG/PYAV/NV_CODEC/CUDA_ARCH/PYTHON in a single
+  `media-core-env`, and opencv/ffmpeg/genai chain `FROM` ONNX's output. So a
+  **PyAV bump re-runs the full ONNX build** and cascades through the whole
+  branch (hours). The 2026-08-07 versions.env-COPY removal fixed this at BRANCH
+  granularity and never reached COMPONENT granularity. FIX: move each ARG+ENV
+  into the stage that consumes it.
+- **50 [M·★★★, base once] `versions.env` is COPY'd above scoop + vcpkg + the
+  ~30-min rust/sccache-from-source layer.** `Dockerfile.base:87-89`, then
+  `:114-120`, then `:156`. versions.env is shared by BOTH lanes, so editing a
+  purely *Linux* key (`PANDOC_VERSION`, `ROCM_VERSION`, `UBUNTU_DIGEST`)
+  re-pays GB-scale scoop + vcpkg + the 30-min rust layer on the next base
+  build. The file already proves it knows the pattern — `setup-vs.ps1` was
+  deliberately hoisted above this COPY for exactly this reason (`:71-76`). Only
+  8 keys are needed below the COPY; promote those to ARGs and move the COPY
+  down. Pairs with #53.
+- **51 [M·★★★, media once] `MEMORY_LIMIT_GB` — a scheduling knob — is an image
+  ENV and therefore a CACHE KEY** (`Dockerfile.media-builder:29,67`). The
+  driver halves it for `-ConcurrentAux` (`build-buildkit.ps1:378`), so merely
+  TOGGLING that flag changes the layer digest and invalidates every litert/tvm
+  compile. Same on any host with different RAM. `Dockerfile.torch:57-60`
+  already states the principle ("Build-time state belongs in the build step,
+  not in the artifact"). FIX: derive in-container, or bind-mount it.
+- **52 [M·★★, toolchain] The toolchain builder never got the bind-mount
+  treatment.** `Dockerfile.toolchain-builder:38-43` COPYs the shared module +
+  versions.env + the build script into the stage whose child RUNs the CPython
+  compile — so editing *any* of them (incl. a module ~30 scripts share)
+  re-pays the full CPython build, and toolchain is the parent of every media
+  branch. `Dockerfile.media-builder:243-259` documents the exact solution.
+- **81 [S·★, base — RIDE WITH #50, never alone] The base SHELL sets a variable
+  that does not exist.** `Dockerfile.base:58` sets
+  `$PSNativeCommandErrorActionPreference = $false`; the real pwsh variable is
+  **`PSNativeCommandUseErrorActionPreference`** (verified against pwsh 7.6.4,
+  exactly `PWSH_VERSION`: `Get-Variable PSNative*` returns only
+  `PSNativeCommandArgumentPassing` and `PSNativeCommandUseErrorActionPreference`).
+  The assignment creates an unrelated variable and does nothing — the base
+  believes it has a guard it does not have. Harmless *today* only because the
+  real variable already defaults to `False`; the day pwsh flips that default
+  (its stated direction), every native non-zero exit inside a base RUN starts
+  throwing. Note the repo spells it correctly elsewhere
+  (`WindowsFormatting.Common.psm1:279`). Also: all six derived Dockerfiles
+  re-declare `SHELL` and drop the clause — `SHELL` IS inherited via image
+  config, so those are redundant layers against the 125-cap.
+- **53 [S·★★, sdk once] `TENSORRT_VERSION` ARG+ENV sits above the multi-GB CUDA
+  install** (`Dockerfile.nvidia:55,72` vs the `:79` RUN) although nothing there
+  consumes it — TensorRT arrives via `COPY --from`. So fixing #38 forces a
+  ~3.8 GB CUDA + cuDNN re-download. Move the ARG+ENV into the `:93` ENV block
+  FIRST, then fix #38 nearly free. **Land #53 before #38.**
+- **54 [S·★★, merge] `cuda-runtime-stage` ships a SECOND, flattened copy of the
+  CUDA + cuDNN runtime DLLs** (`Dockerfile.media-merge-builder:138`); cuDNN's
+  set alone is 0.52 GB uncompressed, plus CUDA 13's cublas/cufft/cusolver/nvrtc.
+  The originals are still in the image (merge descends from the nvidia stage)
+  and `Dockerfile.nvidia:97` already PATHs them. One extra PATH entry for
+  cuDNN's nested layout likely replaces the whole stage. NOTE: verify the
+  actual cuDNN 9 nesting against the installed tree before removing the stage —
+  the flatten fix was load-bearing for OpenCV's `cudnn64_9.dll`.
+
+### P4 — Missing regression tests (each maps to a bug that already cost hours)
+
+- **55 [S·★★★, none] `.gitattributes` does not cover `*.cmake` / `*.cc` /
+  `*.cmd`** — only ps1/psm1/env/patch/sh/bash. All three are COPY'd into
+  images, `core.autocrlf=true` on this host, and the worktree is ALREADY
+  inconsistent (one litert-lm `.cmake` is CRLF while five siblings are LF). A
+  fresh clone on any `autocrlf=true` host (incl. `windows-latest`) flips bytes
+  on 5 of 6 patchers → busts media-litert and everything downstream. FIX: a
+  test that enumerates every COPY-reachable path and asserts `git check-attr
+  text` is set. It fails today.
+- **56 [S·★★★, none] The CMake source-patchers have ZERO no-op detection and
+  log "Patched" unconditionally.** 22 replace-ops across 6 files, 11
+  unconditional success messages, one `FATAL_ERROR`-shaped guard — and it is
+  inside a comment. `Test-PatchesApplyClean.ps1:95` globs `*.patch` only, so
+  all 8 of these are outside the CI `patch-drift` job. This is exactly the
+  sentencepiece duplicate-`ABSL_FLAG(minloglevel)` ODR bug that made
+  `litert_lm_main.exe` link-clean but abort on EVERY run: if upstream
+  reformats the statement the regex no-ops, the log still says "fixes abseil
+  flag ODR abort", and the defect returns after a full media-litert build.
+- **57 [M·★★★, none] No DLL-LOAD enumeration — 1 of ~30 OpenCV DLLs is
+  load-tested.** The primitives exist and are good (`Assert-DllLoads` via
+  `LoadLibraryW`, `Assert-NativeLinkRun` compile+link+run) but there are only
+  10 call sites, every one a hardcoded name. This is the OPENGL32 bug verbatim
+  — existence checks passed, only a LOAD test caught it. FIX: enumerate
+  `C:\runtime\**\*.dll`, LoadLibrary each, assert no `0xC0000135`, with an
+  explicit allowlist. It is a loop over machinery that already exists.
+- **58 [S·★★, none] The `CUDA_ARCHITECTURES` directive is protected only by a
+  fallback the real build path never reaches.** `SourceBuild.Resolve.Tests.ps1:34`
+  asserts `80;86;89;90` with the env var CLEARED; the next test proves the env
+  value overrides it. Trimming `versions.env:261` keeps the whole suite green
+  and `sync_versions.py --write` would then propagate the trim into the
+  Dockerfile ARG. Given the standing never-trim directive, assert the PIN.
+- **59 [S·★★, none] Lint/tests are advisory, not gating.** `main` is not
+  branch-protected (`gh api …/protection` → 404); `windows-scripts.yml:50` runs
+  the linter WITHOUT `-FailOnAnalyzer`; `.githooks/pre-commit` runs the Linux
+  preflight but neither `Invoke-Lint.ps1` nor `Invoke-Tests.ps1`. The gate is
+  currently human discipline plus a post-hoc notification.
+- **60 [S·★★, none] Merge-builder's 11 hardcoded version ARGs have no parity
+  test.** `BuildKit.TwinParity.Tests.ps1:25` hardcodes the *media-builder* path;
+  merge-builder is opened by no test, and PinParity never reads any Dockerfile.
+  All 11 match versions.env today — the exposure is procedural, in exactly the
+  stage where the "~8 versions.env-bump breaks" landed.
+
+### P5 — Observability (makes everything above measurable)
+
+- **61 [M·★★★, none] No per-stage timing, no run manifest, and stage logs are
+  OVERWRITTEN every run.** `build-buildkit.ps1:284` names logs by label only —
+  no run id, no timestamp — so run N truncates run N-1, and `Limit-DiagnosticLogs
+  -Keep 80` never fires because there are only ~10 distinct names. On failure
+  the BK lane prints no elapsed time at all (the total is past the throw; the
+  `finally` only pops the location). The Linux orchestrator already emits
+  `chain-status.json` per stage — Windows has no equivalent, so run-over-run
+  comparison is done by hand in CHANGELOG prose. FIX: stamp logs with a run id;
+  emit `run-<id>.json` (stage, tag, attempts, seconds, exit, disk before/after);
+  print the table at the end AND in a `finally` on failure.
+- **62 [S·★★★, none] `-ConcurrentAux` drops six parameters, three of which
+  GUARANTEE a failure after media-core is already paid for.**
+  `build-buildkit.ps1:412-424` never forwards `-SkipHostChecks`,
+  `-SkipRdna4Gate`, `-SkipStepLogGate`, `-NoSccache`, `-MinFreeGb`,
+  `-HostReserveGb`, and each child re-runs the FULL preflight with defaults. So
+  `-Gpu -ConcurrentAux -SkipRdna4Gate` (the documented post-driver-update path)
+  has both children throw 1-2 h in; `-ConcurrentAux -NoSccache` can never
+  succeed. Same block: no fail-fast (a child dying at minute 5 is noticed ~40
+  min later) and no cleanup — children spawn outside any `try/finally`, so
+  killing the parent orphans two pwsh+buildctl trees racing the same store.
+- **63 [S·★★, none] Every preflight-gate failure orphans a hidden sampler
+  process that never exits.** `build.ps1:235` starts it; the `try` that owns it
+  opens at `:717` and the `finally` that kills it at `:872`. Every throw in
+  between (sccache down, RDNA4 enabled, disk short, dockerd stopped — all
+  common) leaves one invisible `-WindowStyle Hidden` pwsh in a
+  `while($true)` loop appending CSV forever, one per failed attempt.
+- **64 [S·★★, none] The driver prescribes a remedy it cannot express.** The
+  determinism gate tells the owner "the fix is `-NoCache` on this stage alone,
+  NOT a retry" (`WindowsBuildDriver.Common.psm1:109`), but `-NoCache` applies
+  to every solve in the run (`build-buildkit.ps1:274`). For a poisoned
+  `media-core-built-opencv` there is no lever short of hand-running buildctl.
+  FIX: `-NoCacheStage <label[]>` against the labels the log names already use.
 
 ### Open items (effort·impact; ordered by leverage)
 
-- **34 [M·★★★, P0] No cross-run caching — snapshot GC eviction.** Mechanism
-  identified 2026-08-11: tier-2 `maxUsedSpace` was far below one night's
-  vertex churn, so GC evicted the oldest snapshots (= the base/sdk/toolchain
-  spine) between driver runs; re-solved layers carry fresh internal
-  timestamps → new digests → every downstream FROM misses (prefix rebuilt
-  73/35 min instead of seconds; canaries proved the exporter itself is
-  deterministic on cache hits; BUILD_DATE/VCS_REF exonerated — they reach
-  only torch/final). FIX PREPARED: windows/buildkitd.toml raised to 400GB
-  (mid tier) / 450GB (hard ceiling) — needs one elevated
-  `apply-buildkitd-gcpolicy.ps1` between runs (bundle with the W0 restore
-  below). ⚠ Side-finding: `rewrite-timestamp=true` on the Windows image
-  exporter crashes mid-finalize and POISONS the layer chain — never use it.
-- **27 [M·★, base-tier window only] Dockerfile.base 1214-char single-line
-  RUN** (pwsh bootstrap blob) — move to a mounted script. Base closure:
-  batch with the next planned base bump, never alone.
 - **31 [S·★★, owner decision] Auto-push green stage images** (or export-
   cache) once a chain goes green — driver params exist; needs the registry
   choice + a `docker login`. Until then a host loss costs every stage.
 - **0b human half [policy] versions.env bumps ride the Windows lane**: one
   local full-chain build before trust. (CI half shipped: the `patch-drift`
   job re-verifies every .patch against its pins on each trigger.)
-- **35 [observe·★] Transient ~120-min stall** in run-15's ffmpeg stage
-  between the VsDevCmd fallback line and the awk replacement (a
-  seconds-long section normally; self-recovered, build green). If it
-  recurs, wrap the section's network-touching candidates in short
-  timeouts.
+- ~~**35 [observe·★] Transient ~120-min ffmpeg stall**~~ — **CLOSED 2026-08-14,
+  superseded by #76.** The log forensics measured it exactly (7200.9 s ≈ a
+  2-hour timeout, not jitter), located it in the MSYS2/gawk provisioning call,
+  and confirmed it has not recurred in 9 subsequent runs. It is now an
+  actionable item (bound the step with a timeout), not an observation.
 
 ### Pending host/upstream actions (not refactors — do not let these evaporate)
 
-- **ELEVATED WINDOW (bundle, between chain runs):** (1) restore the
-  buildkitd service env (`BUILDKIT_STEP_LOG_MAX_SIZE=-1`,
-  `BUILDKIT_STEP_LOG_MAX_SPEED=-1`) — enforced since 0a by
-  `Assert-BuildkitdStepLogEnv`, currently bridged per-launch with
-  `-SkipStepLogGate`; (2) deploy the new GC budgets via
-  `apply-buildkitd-gcpolicy.ps1` (item 34); (3) prune the POISONED
-  probe-build-copy layer chain left by the rewrite-timestamp crash —
-  **until then probe-build-copy.ps1 returns a FALSE RED on this host**;
-  (4) admin tag cleanup: `copyprobe-*`, `sweep-*`, `rdna4ab-*`, `flush-*`,
-  `size*`, `pw*`, `mlchain-probe`, `verify-cuda-cache`, `postboot-*`,
-  `nano-*`, `gpuab-*`, `diag-epoch-canary*`, `diag-wedgetest`,
-  `diag-scc-writetest` plus the pre-rename `probe-build-copy[-heavy]` tags.
-- **Make dufs session-independent** (Windows service / ONSTART SYSTEM task
-  + single-instance guard): today an ONLOGON task bound to the RDP session
-  — alive at launch, killable mid-run, and WebDAV writes then fail OPEN
-  (evidence: out/sccache-fault-attribution.md).
-- **Post the upstream issues** (drafts ready, owner go-ahead):
-  mozilla/sccache (out/upstream-issue-sccache-nvcc.md — crash class rock
-  solid, miscompile class with full controls) and opencv/opencv
-  (out/upstream-issue-opencv-ort-wchar.md). Optional third:
-  google-ai-edge cmake-lane staleness at LiteRT-LM v0.15.0 — now FOUR
-  findings (stale proto list, stale absl pin, stale litert pin vs their own
-  bazel WORKSPACE, and litert's unconditional example subprojects with a
-  hard system-Protobuf requirement); evidence in CHANGELOG 2026-08-11.
-- **Post-run diagnostics queue:** read the chain's SCCACHE_ERROR_LOG from
-  the -2 cache mount (the 1498-write-errors witness), one
-  `probe-build-copy.ps1 -Heavy` smoke AFTER the poisoned-chain prune, and
-  the exact-TU sccache replay (bias_softmax_impl.cu) to pinpoint the
-  miscompile mechanism.
+> The elevated between-runs window (buildkitd step-log env restore, GC-budget
+> deploy = #34, poisoned probe-chain prune, diagnostic tag cleanup) and the dufs
+> SYSTEM-service migration were APPLIED by the owner 2026-08-13 — see the archive
+> addendum. Sanity-check the GC deploy with `buildctl debug workers -v`
+> (reservedSpace must read 200GB).
+
+- **Post the upstream issues** — POSTED 2026-08-13:
+  mozilla/sccache → https://github.com/mozilla/sccache/issues/2808 (nvcc
+  deadlock + miscompile), google-ai-edge/LiteRT-LM →
+  https://github.com/google-ai-edge/LiteRT-LM/issues/3245 (CMake-lane
+  staleness, four findings). **STILL TO POST:** opencv/opencv
+  (out/upstream-issue-opencv-ort-wchar.md — dnn/ORT `char*` vs `wchar_t`).
+- **Post-run diagnostics queue — PROMOTED 2026-08-14, this is now the #1
+  investigation.** The log forensics upgraded the sccache picture from "1498
+  write errors in one witness" to **0 cache hits and 189,861 failed writes
+  across 94 stat blocks spanning the entire corpus** (see #71) — sccache has
+  never worked, on any run. Read errors are 0, so this is write-side only.
+  Steps, in order: (1) capture `SCCACHE_ERROR_LOG` from the cache mount — it is
+  confirmed absent from ALL 102 logs (it lives inside the mount and was never
+  tee'd out), so it is the one decisive artifact still missing; (2) the
+  exact-TU replay (`bias_softmax_impl.cu`) for the miscompile mechanism;
+  (3) one `probe-build-copy.ps1 -Heavy` smoke after the poisoned-chain prune.
+  VERIFIED 2026-08-14: the buildkitd service env now really does carry
+  `BUILDKIT_STEP_LOG_MAX_SIZE=-1` + `..._MAX_SPEED=-1` (checked at the service
+  registry key, and today's base build no longer emits the clip warning) — so
+  the next full chain will be the FIRST fully-captured one. The 49-run corpus
+  analysed above predates this: 28 of those logs contain real clip events, the
+  green reference run is 49 % blind in its merge step, and historical ONNX
+  steps are 83 % blind. Re-run the forensics against a full captured chain.
