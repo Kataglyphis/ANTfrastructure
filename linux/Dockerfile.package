@@ -229,9 +229,18 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # POSIX sh, not bash: /etc/profile.d entries are sourced by whatever /bin/sh is.
 # The case guard keeps it idempotent - nested login shells would otherwise stack
 # duplicate PATH entries onto every image layered on top of this one.
+# `:=` not `=`: a plain assignment CLOBBERS what the caller passed. CI steps run
+# `docker run -e CARGO_HOME=/tmp/cargo-home ... bash -lc '<script>'` precisely
+# because /usr/local/cargo is root-owned and the container is uid 1001 - and
+# this file, sourced by the login shell, then overwrote that with the
+# unwritable path again. Every inline `cargo` in a login shell died with
+#   error: failed to create directory `/usr/local/cargo/registry/cache/...`
+#   Caused by: Permission denied (os error 13)
+# while the same lane's script-driven cargo steps survived, because those call
+# ContainerHub's own cargo-home guard. Default the values, do not impose them.
 RUN printf '%s\n' \
-      'export RUSTUP_HOME=/usr/local/rustup' \
-      'export CARGO_HOME=/usr/local/cargo' \
+      ': "${RUSTUP_HOME:=/usr/local/rustup}"; export RUSTUP_HOME' \
+      ': "${CARGO_HOME:=/usr/local/cargo}"; export CARGO_HOME' \
       'case ":${PATH}:" in' \
       '  *":/usr/local/cargo/bin:"*) ;;' \
       '  *) export PATH="/usr/local/cargo/bin:${PATH}" ;;' \
