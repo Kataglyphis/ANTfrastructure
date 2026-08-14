@@ -65,6 +65,19 @@ try_rustup() {
 
 try_rustup rustup component add clippy
 
+# rustfmt, on the DEFAULT toolchain. NOT optional, for the same reason as the
+# wasm target below: `--profile minimal` ships neither, the runtime stage has no
+# rustup for a consumer to add one itself, and a consumer lane that calls
+# `cargo fmt` therefore cannot run its format gate at all - it dies with
+#   error: 'cargo-fmt' is not installed for the toolchain '<ver>-<host>'
+# RustProjectTemplate's workflow had been asserting in a comment that "rustfmt
+# and clippy are baked in at image-build time" while only clippy actually was;
+# the format gate was dead from the moment it stopped being
+# continue-on-error. Failing the image build is the correct response to a
+# missing lint component - a gate that cannot run is the failure mode this
+# repo keeps paying for.
+rustup component add rustfmt
+
 # The browser build target, on the DEFAULT (stable) toolchain: consumer CI
 # lanes run `cargo check --target wasm32-unknown-unknown` on stable, and the
 # runtime containers have no rustup on PATH to add it themselves - without
