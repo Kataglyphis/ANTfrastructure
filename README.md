@@ -32,7 +32,11 @@ expense of the others:
   WebDAV L2) covering C/C++ **and** CUDA, and a uv/pip wheel cache — see
   [`AGENTS.md` § Caching discipline](AGENTS.md) rule 5, which also records why
   sccache is built from source there (released builds cannot wrap `nvcc` on
-  CUDA 13.3).
+  CUDA 13.3). **The WebDAV L2 is only as available as the dufs server backing
+  it:** while dufs ran as a user-session process it died mid-build and every
+  cache WRITE failed silently — builds stayed green, just uncached. Run it as
+  the session-independent SYSTEM task (`windows\scripts\setup-dufs-service.ps1`)
+  and treat a 0 % hit rate as an outage, not as a cold cache.
 - **Stability** — digest-pinned stage handoffs, machine-checked cross-run
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
   version pins in a single source of truth (`linux/scripts/01-core/versions.env`),

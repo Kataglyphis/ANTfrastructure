@@ -16,3 +16,27 @@ makedef -text eol=lf
 # core.autocrlf=true flips all of them to CRLF on a Windows checkout.
 *.sh text eol=lf
 *.bash text eol=lf
+# Same layer-cache-key argument as the PowerShell rules above — these are all
+# COPY'd into Windows images too, and were left unprotected until 2026-08-14
+# (backlog #55). The gap was not theoretical: windows/scripts/patches/litert-lm/
+# held ONE CRLF .cmake next to five LF siblings, so a fresh clone on any
+# core.autocrlf=true host (this one; GitHub windows-latest) flipped bytes on the
+# other five and busted media-litert plus everything downstream.
+#   *.cmake  — patches/{litert-lm,iree}/*.cmake, injected into the build
+#   *.cc/*.h — patches/litert-lm/*.cc and scripts/shims/*.h (compiled shims)
+#   *.cmd    — scripts/entrypoint.cmd, COPY'd into the final image
+*.cmake -text
+*.cc -text
+*.h -text
+*.cmd -text
+# PATH rules, deliberately last so they win: everything under these two trees is
+# COPY'd or bind-mounted into a Windows image, so its bytes are a layer-cache
+# key REGARDLESS of extension. The per-extension rules above miss whatever
+# nobody thought of — .md, .py, .psd1 and .txt were all found unprotected here
+# on 2026-08-14, and `COPY downloads C:\temp\downloads` means even
+# downloads/README.md sits in a layer. A path rule needs no maintenance when a
+# new file type shows up; Dockerfile.EolAttributes.Tests.ps1 enforces it.
+# (No *.sh/*.bash exist under these trees, so the eol=lf rules above are not
+# overridden. If one is ever added, re-check that ordering.)
+windows/scripts/** -text
+windows/downloads/** -text

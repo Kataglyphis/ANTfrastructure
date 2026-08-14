@@ -1951,6 +1951,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `verify-host-setup.ps1` | `windows/scripts/` | The machine-checkable form of `docs/windows-host-setup.md` — run it FIRST on any new machine, and after any host change. Non-admin: services, `buildctl` reaching buildkitd unelevated, nerdctl presence, **BOTH CNI forms** (`.conf` for buildkitd — missing is a FAIL; `.conflist` for nerdctl — missing is a WARN) plus content agreement between them and subnet-vs-adapter drift, patched runhcs shim **by SHA256** against the hash `deploy-shim-patch.ps1` recorded at install (size only as a fallback, reported as a WARN so "still guessing" is visible), containerd teardown env var + debug flags, worker snapshotter + gcpolicy, disk headroom **on C: AND the repo/build-context drive**, sccache reachability. Exit 1 on any FAIL; each failure prints its fix. Defender exclusions are reported UNKNOWN (not skipped) when unelevated, so their absence cannot masquerade as success. Registry values that do not EXIST (e.g. the containerd `Environment` value before the first apply) degrade to WARNs, not a mid-run crash (fixed 2026-08-09 — the old `(Get-ItemProperty ...).Environment` threw PropertyNotFound at line 212 and silently skipped the teardown-env + debug-flag checks, under-counting the verdict). **Keep it in step with the guide — they are two views of one contract**; the guide had shipped a broken CNI template for days precisely because prose cannot be executed |
 | `apply-containerd-config.ps1` | `windows/scripts/` | HOST config (admin, never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`: containerd runs with NO `config.toml` on this host, so its settings live only in the service's `ImagePath`/`Environment` registry values and existed nowhere in the repo until 2026-08-07. Owns: `--log-level debug --log-file` (permanent owner policy — truncate the log, never disable the flags), `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits the SERVICE environment; a shim built from the upstream patch keeps its 30 s defaults and silently reverts to the 0x3 defect without it — `TASK_CLOSE_TIMEOUT` stays unset on purpose, the patch derives it as 2×teardown+30 s), and the load-bearing Defender exclusions (otherwise invisible: `Get-MpPreference` needs admin). `-ReportOnly` shows drift without admin and changes nothing |
 | `compact-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims disk when the checkout/store sits on a dynamically-expanding VHDX. Kills stale `buildctl`, stops the build services, detaches → compacts (`Optimize-VHD`) → reattaches read-write in a `finally`, restarts. `-ReportOnly` reports sizes/guest-fs/reclaim potential without touching anything. Machine-specific values are all parameters (`-VhdxPath` mandatory, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-LogPath`, `-Mode`). Warns on ReFS guests, where compaction reclaims ~nothing (measured: 0.2 GB of a possible 254 GB) — see § Store GC. When it reports a near-zero reclaim, `rebuild-host-vhdx.ps1` is the answer |
+| `normalize-tensorrt-tree.ps1` | `windows/scripts/` | Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted `TensorRT-<version>` tree to a stable **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift, and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Backlog #38: the old pin-derived PATH was wrong twice over — wrong version AND wrong dir (TensorRT 10+ moved the DLLs to `bin\`), so the ORT TensorRT EP could never load, silently, while builds stayed green. Absent zip stays a supported graceful skip; a half-extracted tree is a build failure. |
 | `bootstrap-pwsh.ps1` | `windows/scripts/` | Installs PowerShell 7 as the FIRST RUN of `Dockerfile.base`, BIND-MOUNTED (no layer). Runs under Windows PowerShell **5.1** — the SHELL is not switched to pwsh until after it — so keep it 5.1-safe and do not use `Invoke-DownloadWithRetry` (no module is mounted that early). Carries its own 3-attempt retry with an in-loop SHA256 check. Extracted from a 1214-char inline RUN (backlog #27). |
 | `rebuild-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims a dynamically-expanding VHDX by REBUILDING it around its live data — the only reliable reclaim on ReFS guests, where `compact-host-vhdx.ps1` returns ~nothing. Creates a fresh dynamic disk, reproduces the source's filesystem/label/cluster size (and Dev Drive flag where `Format-Volume -DevDrive` exists), mirrors with `robocopy /MIR /COPYALL`, then verifies file count AND byte totals before anything is swapped. TWO PHASES on purpose: `-CopyOnly` touches nothing live and is safe with editors/agents still on the volume; the swap DETACHES the volume and so requires that no process holds a handle on it (a stray detach on 2026-08-06 pulled D: out from under a running session and killed it) — it REFUSES rather than forces, keeping the verified copy for a later `-SwapOnly`. Old disk kept as `.old` unless `-RetireOld`; **no space is reclaimed until it is deleted.** Failed swaps roll back to the original disk automatically. Parameters: `-VhdxPath` mandatory, `-NewSizeGB`, `-NewVhdxPath`, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-ExcludeDir`, `-LogPath`, `-ReportOnly`, `-CopyOnly`, `-SwapOnly`, `-RetireOld`, `-Force`. Put `-LogPath` off the volume for swap runs |
 
@@ -1980,12 +1981,16 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > order — never work top-to-bottom by number.** Batches A-C are independent of
 > each other; D-H can follow in any order.
 >
-> **Batch A — CAPTURE FIRST (gates the accuracy of everything in P0b).**
-> #71's `SCCACHE_ERROR_LOG` is the one decisive artifact still missing, and the
-> entire 49-run corpus behind P0b was CLIPPED (step-log env only became correct
-> on 2026-08-13). Do this before theorising about causes, and re-run the
-> forensics against the first fully-captured chain — it will confirm or revise
-> #72's export numbers and #74's `-j19`. *Nothing else in Batch A.*
+> **Batch A — DONE 2026-08-14, and it CLOSED #71 by disproving it.** sccache
+> was believed dead (0 hits / 189,861 failed writes across 94 stat blocks). A
+> probe against the real cache mount and the real WebDAV endpoint showed
+> **miss → store → HIT, 0 write errors** — the corpus was simply STALE: its
+> newest sccache stats are from 2026-08-13 19:43, the dufs SYSTEM-service
+> migration landed the same day, and no run since has exercised sccache. See
+> the archive addendum. **Standing caution: the whole P0b section rests on that
+> same clipped, pre-fix corpus.** Re-run the forensics against the first
+> fully-captured media chain before acting on #72's export numbers or #74's
+> `-j19` — treat those as hypotheses, not measurements.
 >
 > **Batch B — DONE 2026-08-14.** (#39, #40, #41, #42, #43, #62, #63, #64 —
 > landed, lint 152/0, tests 484/484, entries moved to the archive addendum.)
@@ -2016,18 +2021,21 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > Each is self-contained; #49 has the largest payoff (a PyAV bump currently
 > re-runs the 75-min ONNX build).
 >
-> **Batch G — the test net.** #55, #56, #58, #59, #60. #55 (`.gitattributes`)
-> and #59 (branch protection) are minutes of work and both currently fail
-> open; do them first in this batch.
+> **Batch G — DONE 2026-08-14 except #59** (#55, #56, #58, #60, #82 landed;
+> tests 486 → 493). **#59 stays open because it is an OWNER action, not a code
+> change:** enabling branch protection on `main` and adding `-FailOnAnalyzer`
+> to the CI lint step are repo-settings decisions. See the archive addendum.
 >
 > **Batch H — needs a measurement or a decision before any code.** #72 is a
 > genuine trade-off (export round-trips vs. resume granularity), #70 needs a
 > configure-only probe, #74 needs one cold media-core to confirm, #31 needs
 > your registry choice. Do NOT start these as coding tasks.
 >
-> **Cross-cutting note:** #71 (sccache), #74 (`-j9`) and #75 (the silent `-j`
-> downgrade ladder) are three views of ONE root cause. Fixing #71 may retire
-> #75 outright — re-check it before working it.
+> **Cross-cutting note:** #71 (sccache) is CLOSED — the write path works. #74
+> (`-j9`) and #75 (the silent `-j` downgrade ladder) are NOT retired by it:
+> #75's trigger is the sccache-**CUDA** server crash (±2 s deterministic,
+> ~4909-4911 s into ONNX), which the clang-cl probe says nothing about. Verify
+> both against the first real media build rather than against the old corpus.
 
 ### P0 — LIVE DEFECTS (not refactors; the chain is green *and* wrong)
 
@@ -2035,22 +2043,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > Dockerfiles + 102 build logs). Each was verified against the tree/logs, not
 > inferred. These ship broken today — do them before any refactor below.
 
-- **71 [M·★★★, none] sccache has NEVER produced a single cache hit — it is a
-  100 % no-op, and every write has failed.** Aggregated over **94 stat blocks
-  spanning the whole log corpus**: `Cache hits` = **0** in 94/94, and
-  `Cache misses` = `Cache write errors` = **189,861 — exactly equal**. Read
-  errors are 0, so the read path is healthy; the defect is write-side only. Per
-  stage the signature is stable (ONNX 1498, OpenCV 1862, LiteRT/XNNPACK 5033).
-  CONSEQUENCE: no run has ever been able to seed the next, which is what makes
-  **18.42 h of ONNX Runtime rebuilds across 24 executions** possible — the step
-  clusters at 78-82 min with <6 % run-over-run variance, the signature of zero
-  reuse. BuildKit's *layer* cache works (the step shows CACHED in the green
-  run); it is only the *compiler* cache that is dead. This is the single
-  highest-leverage item in the entire backlog: fixing it should collapse runs
-  2..N of any iteration cycle from ~78 min to minutes. NOTE the decisive
-  artifact is still missing — `SCCACHE_ERROR_LOG` appears in NO log in the
-  corpus (it lives inside the cache mount and was never captured), so capture
-  it first (see the diagnostics queue).
 ### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
 
 > The corpus predates the step-log fix, so 28 of these logs are CLIPPED
@@ -2302,23 +2294,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 ### P4 — Missing regression tests (each maps to a bug that already cost hours)
 
-- **55 [S·★★★, none] `.gitattributes` does not cover `*.cmake` / `*.cc` /
-  `*.cmd`** — only ps1/psm1/env/patch/sh/bash. All three are COPY'd into
-  images, `core.autocrlf=true` on this host, and the worktree is ALREADY
-  inconsistent (one litert-lm `.cmake` is CRLF while five siblings are LF). A
-  fresh clone on any `autocrlf=true` host (incl. `windows-latest`) flips bytes
-  on 5 of 6 patchers → busts media-litert and everything downstream. FIX: a
-  test that enumerates every COPY-reachable path and asserts `git check-attr
-  text` is set. It fails today.
-- **56 [S·★★★, none] The CMake source-patchers have ZERO no-op detection and
-  log "Patched" unconditionally.** 22 replace-ops across 6 files, 11
-  unconditional success messages, one `FATAL_ERROR`-shaped guard — and it is
-  inside a comment. `Test-PatchesApplyClean.ps1:95` globs `*.patch` only, so
-  all 8 of these are outside the CI `patch-drift` job. This is exactly the
-  sentencepiece duplicate-`ABSL_FLAG(minloglevel)` ODR bug that made
-  `litert_lm_main.exe` link-clean but abort on EVERY run: if upstream
-  reformats the statement the regex no-ops, the log still says "fixes abseil
-  flag ODR abort", and the defect returns after a full media-litert build.
 - **57 [M·★★★, none] No DLL-LOAD enumeration — 1 of ~30 OpenCV DLLs is
   load-tested.** The primitives exist and are good (`Assert-DllLoads` via
   `LoadLibraryW`, `Assert-NativeLinkRun` compile+link+run) but there are only
@@ -2326,23 +2301,11 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   — existence checks passed, only a LOAD test caught it. FIX: enumerate
   `C:\runtime\**\*.dll`, LoadLibrary each, assert no `0xC0000135`, with an
   explicit allowlist. It is a loop over machinery that already exists.
-- **58 [S·★★, none] The `CUDA_ARCHITECTURES` directive is protected only by a
-  fallback the real build path never reaches.** `SourceBuild.Resolve.Tests.ps1:34`
-  asserts `80;86;89;90` with the env var CLEARED; the next test proves the env
-  value overrides it. Trimming `versions.env:261` keeps the whole suite green
-  and `sync_versions.py --write` would then propagate the trim into the
-  Dockerfile ARG. Given the standing never-trim directive, assert the PIN.
 - **59 [S·★★, none] Lint/tests are advisory, not gating.** `main` is not
   branch-protected (`gh api …/protection` → 404); `windows-scripts.yml:50` runs
   the linter WITHOUT `-FailOnAnalyzer`; `.githooks/pre-commit` runs the Linux
   preflight but neither `Invoke-Lint.ps1` nor `Invoke-Tests.ps1`. The gate is
   currently human discipline plus a post-hoc notification.
-- **60 [S·★★, none] Merge-builder's 11 hardcoded version ARGs have no parity
-  test.** `BuildKit.TwinParity.Tests.ps1:25` hardcodes the *media-builder* path;
-  merge-builder is opened by no test, and PinParity never reads any Dockerfile.
-  All 11 match versions.env today — the exposure is procedural, in exactly the
-  stage where the "~8 versions.env-bump breaks" landed.
-
 ### P5 — Observability (makes everything above measurable)
 
 - **61 [M·★★★, none] No per-stage timing, no run manifest, and stage logs are
@@ -2383,16 +2346,24 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   https://github.com/google-ai-edge/LiteRT-LM/issues/3245 (CMake-lane
   staleness, four findings). **STILL TO POST:** opencv/opencv
   (out/upstream-issue-opencv-ort-wchar.md — dnn/ORT `char*` vs `wchar_t`).
-- **Post-run diagnostics queue — PROMOTED 2026-08-14, this is now the #1
-  investigation.** The log forensics upgraded the sccache picture from "1498
-  write errors in one witness" to **0 cache hits and 189,861 failed writes
-  across 94 stat blocks spanning the entire corpus** (see #71) — sccache has
-  never worked, on any run. Read errors are 0, so this is write-side only.
-  Steps, in order: (1) capture `SCCACHE_ERROR_LOG` from the cache mount — it is
-  confirmed absent from ALL 102 logs (it lives inside the mount and was never
-  tee'd out), so it is the one decisive artifact still missing; (2) the
-  exact-TU replay (`bias_softmax_impl.cu`) for the miscompile mechanism;
-  (3) one `probe-build-copy.ps1 -Heavy` smoke after the poisoned-chain prune.
+- **Post-run diagnostics queue — DEMOTED 2026-08-14: the sccache half is
+  CLOSED.** The forensics had escalated this to "sccache has never worked, on
+  any run" (0 hits / 189,861 failed writes across 94 stat blocks). **That was
+  stale evidence, not a live defect** — the newest sccache stats in the whole
+  corpus are from 2026-08-13 19:43, the dufs SYSTEM-service migration landed
+  the same day, and every run since had media-core CACHED, so nothing could
+  have shown the improvement. A direct probe (real cache mount, real WebDAV
+  endpoint, one TU compiled twice) returned **miss → store → HIT, 0 write
+  errors, 0 read errors**, and confirmed `HEAD`/`GET`/`PUT` succeed **from
+  inside a container** — the direction `Assert-SccacheEndpoint` never tests.
+  `SCCACHE_ERROR_LOG` is no longer "the missing artifact": the cache mount was
+  found EMPTY, so there was never a log to recover.
+  What remains here: (1) the exact-TU replay (`bias_softmax_impl.cu`) for the
+  miscompile mechanism and the nvcc/CUDA sccache crash — **untested by the
+  clang-cl probe and still genuinely open** (it is what drives #75's silent
+  `-j` downgrade ladder); (2) one `probe-build-copy.ps1 -Heavy` smoke after the
+  poisoned-chain prune; (3) re-measure the at-scale hit rate on the first real
+  media build after 2026-08-13 — until then it is simply unmeasured.
   VERIFIED 2026-08-14: the buildkitd service env now really does carry
   `BUILDKIT_STEP_LOG_MAX_SIZE=-1` + `..._MAX_SPEED=-1` (checked at the service
   registry key, and today's base build no longer emits the clip warning) — so

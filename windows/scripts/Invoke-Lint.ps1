@@ -79,6 +79,10 @@ if ($astViolations.Count -gt 0) {
 
 # ---- Pass 2: PSScriptAnalyzer (optional) ----
 $analyzerFindings = @()
+# Initialized HERE, not inside the PSSA branch: the verdict block reads it
+# unconditionally, and an undefined variable there would fail under StrictMode
+# on the "PSScriptAnalyzer not installed" path (backlog #82).
+$analyzerCrashes = @()
 $errs = @()
 $warns = @()
 $analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
@@ -90,10 +94,27 @@ if ($analyzerModule) {
     Import-Module $analyzerModule -Force
     # Invoke-ScriptAnalyzer -Path takes a SINGLE path (an array throws "cannot convert Object[] to
     # String"), so analyze each target file and aggregate.
+    # PSSA 1.25.0 intermittently throws "Object reference not set to an instance
+    # of an object." from inside Invoke-ScriptAnalyzer — observed ~2 in 9 runs
+    # on 2026-08-14, never on the same file twice, and always clean on an
+    # immediate re-run (backlog #82). An exception is NOT a lint finding: left
+    # unhandled it aborts the whole gate, which reads as a spurious red in CI
+    # and trains you to re-run instead of read. Retry the file once, then
+    # record it as an INFRASTRUCTURE failure — never silently skip it, because
+    # a skipped file is a fail-open hole in the gate.
     foreach ($t in $targets) {
         $params = @{ Path = $t.FullName }
         if (Test-Path $settings) { $params['Settings'] = $settings }
-        $analyzerFindings += @(Invoke-ScriptAnalyzer @params)
+        try {
+            $analyzerFindings += @(Invoke-ScriptAnalyzer @params)
+        } catch {
+            Write-Host "  [retry] PSSA threw on $($t.Name): $($_.Exception.Message)" -ForegroundColor DarkYellow
+            try {
+                $analyzerFindings += @(Invoke-ScriptAnalyzer @params)
+            } catch {
+                $analyzerCrashes += [pscustomobject]@{ File = $t.Name; Message = $_.Exception.Message }
+            }
+        }
     }
     $errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
     $warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })
@@ -102,6 +123,15 @@ if ($analyzerModule) {
     foreach ($f in ($analyzerFindings | Sort-Object Severity -Descending | Select-Object -First 40)) {
         $c = if ($f.Severity -eq 'Error') { 'Red' } else { 'Yellow' }
         Write-Host ("  [{0}] {1}:{2}  {3} ({4})" -f $f.Severity, $f.ScriptName, $f.Line, $f.Message, $f.RuleName) -ForegroundColor $c
+    }
+    if ($analyzerCrashes.Count -gt 0) {
+        # Reported separately from findings on purpose: these files were NOT
+        # analysed, so the gate's coverage is incomplete and saying otherwise
+        # would be a lie. Distinct exit code so CI can tell a tooling fault from
+        # a code-quality failure.
+        Write-Host "PSSA INFRASTRUCTURE FAILURE: $($analyzerCrashes.Count) file(s) could not be analysed after a retry:" -ForegroundColor Red
+        foreach ($c in $analyzerCrashes) { Write-Host "  $($c.File): $($c.Message)" -ForegroundColor Red }
+        Write-Host 'These files were NOT linted - coverage is incomplete.' -ForegroundColor Red
     }
 } else {
     Write-Host "PSSA: PSScriptAnalyzer not installed - skipping (install-time only; parse gate still enforced)" -ForegroundColor DarkYellow
@@ -112,6 +142,14 @@ $fail = ($parseErrors.Count -gt 0) -or ($astViolations.Count -gt 0)
 # -FailOnAnalyzer treats Warning as well as Error findings as fatal, matching the
 # "findings" wording in the help text.
 if ($FailOnAnalyzer -and ($errs.Count -gt 0 -or $warns.Count -gt 0)) { $fail = $true }
+# Exit 2 = the GATE broke, not the code (backlog #82). Distinct from 1 so CI can
+# retry a tooling fault without treating it as a lint failure, and so a green
+# "LINT OK" is never printed over files that were never analysed. Reported even
+# without -FailOnAnalyzer: incomplete coverage is not a style opinion.
+if ($analyzerCrashes.Count -gt 0) {
+    Write-Host "`nLINT INCONCLUSIVE - PSScriptAnalyzer failed on $($analyzerCrashes.Count) file(s)" -ForegroundColor Red
+    exit 2
+}
 if ($fail) { Write-Host "`nLINT FAILED" -ForegroundColor Red; exit 1 }
 Write-Host "`nLINT OK" -ForegroundColor Green
 exit 0

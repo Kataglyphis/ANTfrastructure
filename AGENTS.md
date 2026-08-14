@@ -361,6 +361,30 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   window). Never add `powershell`/`powershell.exe` invocations or `cmd`
   SHELL directives; `cmd.exe /c` may appear only inside
   `Invoke-ShieldedNative` and the documented bespoke sites.
+- **When a probe says the product is broken, suspect the probe first — and
+  always run a known-good control.** Three probes lied on 2026-08-14 before one
+  told the truth, each looking exactly like a product defect:
+  (1) a hand-rolled `[DllImport("kernel32")] LoadLibraryW(string)` marshals
+  `string` as **ANSI** by default, so a UTF-16 API answered "module not found"
+  (126) for all 14 TensorRT DLLs — the repo's `Assert-DllLoads`
+  (`WindowsSmokeTest.Common.psm1:233`) has always declared
+  `CharSet=CharSet.Unicode`; **use the existing helper, don't re-declare
+  P/Invoke**. (2) A hand-written probe Dockerfile without `# escape=\`` let the
+  default `\` escape eat the `s` in `target=C:\sccache`, so a cache mount
+  silently did not exist. (3) `/Fo:C:\x.obj` (colon) makes sccache build
+  `C:\:C:\x.obj` and fail with a misleading "failed to zip up compiler outputs";
+  MSVC syntax is `/Fo<path>`. In each case the control is what exposed it — a
+  `VCRUNTIME140.dll` that obviously loads in an MSVC-built image, a mount that
+  should exist. **A probe with no control cannot distinguish "broken product"
+  from "broken probe".**
+- **Aggregate evidence has a SHELF LIFE — check the newest sample's timestamp
+  against the last fix.** The log forensics concluded "sccache has never
+  worked" from 0 hits / 189,861 failed writes across 94 stat blocks. Every one
+  of those samples predated the dufs SYSTEM-service migration on the same day,
+  and no run since had exercised sccache — a direct probe showed
+  miss → store → HIT with 0 write errors. Confident conclusions about a state
+  that no longer exists are the failure mode of corpus-wide aggregation; date
+  the newest sample before trusting the aggregate.
 - **A build log written inside the build dir DIES WITH THE SOLVE — always use
   `Get-PersistentBuildLogPath`.** When a vertex fails, BuildKit discards the
   container filesystem, so a log at `$buildDir\x-build.log` is gone exactly
@@ -560,11 +584,44 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 
 TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
 
-1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-11.2.1.2.Windows10.x86_64.cuda-13.3.zip`)
-2. Place the zip in `windows/downloads/`
-3. It will be auto-detected during the `Dockerfile.nvidia` build
+1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-Enterprise-11.2.1.2-Windows-amd64-cuda-13.3-Release-external.zip`).
+   **OWNER DIRECTIVE: always take the NEWEST release.** Never resolve a
+   pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip.
+2. Place the zip in `windows/downloads/` and **delete the superseded one**. The
+   extract step version-sorts and takes the highest (a `[version]` cast, so
+   `11.10.0.1` beats `11.2.1.2` — plain string sort gets that backwards), but a
+   stale ~2 GB zip still bloats the `COPY downloads` layer.
+3. Set `TENSORRT_ZIP_SHA256` in `versions.env` to the new zip's hash
+   (`Get-FileHash -Algorithm SHA256 windows\downloads\TensorRT-*.zip`,
+   lowercase). It was EMPTY until 2026-08-14, so ~2 GB of EULA-gated payload
+   entered the image unverified. A stale hash now fails the build loudly — that
+   is intended, not a bug.
+4. It is auto-detected during the `Dockerfile.nvidia` build. `TENSORRT_VERSION`
+   is used for REPORTING only; every path is resolved from the filesystem.
 
 If no zip is found, the build **skips TensorRT gracefully** (CUDA + cuDNN still work; `setup-tensorrt.ps1` warns and returns, ORT auto-disables the TensorRT EP, and the smoke test's `TENSORRT_ROOT` pointer passes on the guaranteed-empty `C:\tensorrt`). This zip-less configuration is the NORMAL state of this host's GPU lane. Do NOT re-harden this into a fail-fast: a 2026-08-04 "fail-fast" variant (premised on the wrong claim that the smoke test would reject a TensorRT-less nvidia image) broke the first hardened `-Gpu` rebuild and was reverted on 2026-08-05. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
+
+**A PRESENT zip is a different matter and now fails CLOSED.**
+`normalize-tensorrt-tree.ps1` (bind-mounted into the `trt-extract` stage)
+renames the extracted `TensorRT-<version>` tree to a stable **`current`** and
+throws if it carries no runtime DLLs. Absent zip = supported; half-extracted
+tree = build failure. `Resolve-TensorRtRoot` prefers `current` and falls back to
+the versioned glob for older images.
+
+**Why `current` exists — two silent defects, both green for their whole life
+(fixed 2026-08-14, backlog #38):** `Dockerfile.nvidia` used to build the runtime
+PATH as `$TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib`, which was wrong twice
+over. (1) The VERSION came from the pin, so it named a nonexistent directory the
+moment the pin and the staged zip disagreed. (2) The DIRECTORY was `lib\` —
+**TensorRT 10+ ships the runtime DLLs in `bin\`; `lib\` holds only link-time
+`.lib` import libraries** (measured: 14 DLLs vs 6 `.lib`). So even a correctly
+pinned image could never load the EP. Neither failed a build, because ORT
+resolves its BUILD-time root with a glob and compiles the EP fine — only the
+RUNTIME lookup broke, and ORT drops an EP with unreachable DLLs **silently**.
+PATH now carries `current\bin` first, `current\lib` after it for the 8.x/9.x
+layout. **Never derive that PATH from the pin again**, and note a Machine-PATH
+write inside a RUN cannot substitute: `Dockerfile.base` sets `ENV PATH=` and the
+image config wins.
 
 ### Windows Build Notes
 
