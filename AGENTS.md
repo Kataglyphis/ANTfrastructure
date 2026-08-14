@@ -361,6 +361,19 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   window). Never add `powershell`/`powershell.exe` invocations or `cmd`
   SHELL directives; `cmd.exe /c` may appear only inside
   `Invoke-ShieldedNative` and the documented bespoke sites.
+- **A build log written inside the build dir DIES WITH THE SOLVE — always use
+  `Get-PersistentBuildLogPath`.** When a vertex fails, BuildKit discards the
+  container filesystem, so a log at `$buildDir\x-build.log` is gone exactly
+  when it is needed and the only diagnosis left is the 50-line tail
+  `Invoke-NinjaBuildWithRetry` prints. `C:\sccache` is a persistent cache mount
+  and survives into the next run, so the helper
+  (`WindowsSourceBuild.Common.psm1`) puts logs under `$SCCACHE_DIR\logs` with
+  one `.prev` generation, falling back to the build dir only when no mount
+  exists. Pass the result as `-LogFile`; never hand-roll the path, and never
+  omit `-LogFile` (build-onnx-genai did, and produced no ninja log at all).
+  This lived as ONE inline block in build-onnx for months while
+  opencv/iree/tvm/litert silently lost their logs — hence a shared helper
+  (backlog #43). Corollary of the owner's standing "never swallow logs" rule.
 - **Never put DOUBLE QUOTES inside shell-form RUN lines in the Windows
   Dockerfiles.** The dockerfile frontend strips embedded `"` from the command
   string before it reaches the pwsh SHELL (three incidents on 2026-08-04:
@@ -1024,7 +1037,14 @@ base ─┬─ onnxruntime ───────┐
   `~/.config` alone.
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
-  `.github/workflows/windows-scripts.yml` on windows-latest).
+  `.github/workflows/windows-scripts.yml` on windows-latest). The suite is
+  zero-dependency and guards *classes* of defect, not just instances — e.g.
+  `Driver.ClosureScope.Tests.ps1` walks the AST of both drivers and fails any
+  `.GetNewClosure()` block inside a function that reads a top-level `param()`
+  variable, because that silently resolves to EMPTY and broke the scripted
+  resume for months (backlog #40). When you fix a bug here, prefer a guard for
+  its class; note that CI currently runs the linter WITHOUT `-FailOnAnalyzer`
+  and `main` is not branch-protected, so this gate is advisory (backlog #59).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
