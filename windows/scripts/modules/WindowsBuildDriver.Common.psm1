@@ -163,7 +163,16 @@ function Invoke-DockerWithRetry {
             continue
         }
         if ($OnFinalFailure) { & $OnFinalFailure }
-        throw "[$Label] docker step failed (exit $exitCode)"
+        # Surface the CAUSE, not just an exit code (backlog #42). $tail is
+        # already computed above for the transient classification and was then
+        # discarded, so the classic lane threw a bare exit code and left the
+        # owner to find and open the log by hand. Same fix as the BK lane.
+        if ($tail) {
+            Write-Host "`n--- [$Label] tail of the failing attempt ---" -ForegroundColor Yellow
+            Write-Host $tail
+            Write-Host "--- end of tail$(if ($LogFile) { " (full log: $LogFile)" }) ---`n" -ForegroundColor Yellow
+        }
+        throw "[$Label] docker step failed (exit $exitCode)$(if ($LogFile) { " — full log: $LogFile" })"
     }
 }
 

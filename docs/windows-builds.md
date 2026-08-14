@@ -1970,12 +1970,11 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > forensics against the first fully-captured chain — it will confirm or revise
 > #72's export numbers and #74's `-j19`. *Nothing else in Batch A.*
 >
-> **Batch B — one sitting, pure PowerShell, ZERO rebuild cost.** #39, #40,
-> #41, #42, #43, #62, #63, #64. All are driver/script edits in
-> `build-buildkit.ps1` / `build.ps1` / `WindowsBuildDriver.Common.psm1`,
-> unit-testable, and none touches a Dockerfile — so none invalidates any cache.
-> This is the highest value-per-hour block in the backlog. #41+#42+#43 are the
-> same two files; #39+#40+#62+#64 are the same driver pair.
+> **Batch B — DONE 2026-08-14.** (#39, #40, #41, #42, #43, #62, #63, #64 —
+> landed, lint 152/0, tests 484/484, entries moved to the archive addendum.)
+> The pattern is worth reusing: eight fixes in one sitting because none of them
+> touched a Dockerfile, so nothing invalidated any cache and the whole batch was
+> verifiable without a single container build. **Group future work this way.**
 >
 > **Batch C — the TensorRT chain. ORDER IS LOAD-BEARING: #53 THEN #38.**
 > Doing #38 first costs a ~3.8 GB CUDA + cuDNN re-download for nothing.
@@ -2032,15 +2031,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   `Test-Path` assertion in the nvidia tail (see #44 — nothing below the base
   verifies anything today). **Land #53 first**, or this pin fix triggers a
   ~3.8 GB CUDA + cuDNN re-download.
-- **39 [S·★★★, none] `-MediaBranches <subset>` silently ships a STALE image.**
-  `build-buildkit.ps1:437` sets `$runMerge` true only when *all three* branches
-  are selected; on a subset it prints one yellow line. But `:465` runs torch
-  regardless with `BASE_IMAGE = Get-BkTag 'windows-media'` — the PREVIOUS run's
-  merge tag. So `-Stages media,torch,final -MediaBranches media-litert` (the
-  natural "I fixed LiteRT, re-ship" invocation) delivers a `winamd64` WITHOUT
-  the fix, and nothing fails. The classic lane gets this right
-  (`build.ps1:795-836` merges unconditionally + `Assert-ImageExists`). FIX:
-  `throw` when merge is skipped while torch/final are selected — fail closed.
 - **71 [M·★★★, none] sccache has NEVER produced a single cache hit — it is a
   100 % no-op, and every write has failed.** Aggregated over **94 stat blocks
   spanning the whole log corpus**: `Cache hits` = **0** in 94/94, and
@@ -2057,18 +2047,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   artifact is still missing — `SCCACHE_ERROR_LOG` appears in NO log in the
   corpus (it lives inside the cache mount and was never captured), so capture
   it first (see the diagnostics queue).
-- **40 [S·★★★, none] The scripted resume is broken — and deletes the preserved
-  container first.** `build.ps1:663` does `docker container rm -f $container`,
-  then the retry `-Action` block uses `.GetNewClosure()`, which snapshots
-  LOCALS only — `$Docker`/`$MediaCoreCpus`/`$MediaMemoryGb` are script-scope
-  `param()` vars and resolve EMPTY inside the module invoker. The identical
-  fix is already applied to the sibling 150 lines above and even carries the
-  explanatory comment (`build.ps1:501`: `$dockerExe = $Docker   # local copy:
-  .GetNewClosure() snapshots LOCALS only`). The resume feature exists because
-  the recipe "was hand-typed 5x on 2026-08-03" — and it has never worked. No
-  test covers it (`grep ResumeStage windows/scripts/tests/` → 0). FIX: three
-  local copies + a unit test.
-
 ### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
 
 > The corpus predates the step-log fix, so 28 of these logs are CLIPPED
@@ -2163,30 +2141,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   `/Zc:preprocessor` is passed but ignored by clang-cl — a config smell worth
   removing. FIX: suppress the top-5 noise classes at build-script level so CI
   can see the rest.
-
-### P1 — Log & diagnosis integrity (direct "never swallow logs" violations)
-
-- **41 [S·★★★, none] The retry path DESTROYS the failing attempt's log.**
-  `build-buildkit.ps1:297` tees without `-Append`, so attempt 2 truncates
-  attempt 1. When a stage burns its 3-attempt budget (merge: 5) only the last
-  attempt survives — and if attempt 1 held the real compile error while 2-3
-  died on infra flakes, the evidence is gone. FIX: `-Append` + per-attempt
-  banner.
-- **42 [S·★★★, none] The failure tail is computed, then thrown away.** Both
-  lanes build `$tail` purely to CLASSIFY the error and then `throw` a bare
-  path (`build-buildkit.ps1:299,307`; `WindowsBuildDriver.Common.psm1:157-166`).
-  The owner gets a filename and opens a deliberately-unbounded log. This is the
-  "hunting through 2.5MB logs" loop, two lines from fixed: print `$tail` (or an
-  `error:`-grepped excerpt) before the throw.
-- **43 [S·★★★, none] 4 of 5 ninja logs die WITH the build tree; genai has no
-  log at all.** Only ONNX was fixed (`build-onnx-from-source.ps1:441` writes
-  into `$SCCACHE_DIR\logs`, which survives the solve, with the rationale in a
-  comment). The siblings still write inside `$buildDir`, which dies with the
-  failed vertex: `build-opencv:291`, `build-iree:97`, `build-tvm:122`,
-  `build-litert:141`. Worse, `build-onnx-genai:167` passes no `-LogFile` at
-  all, so even the 50-line failure tail does not exist. IREE is a 60-120 min
-  LLVM build whose only surviving diagnosis is a clipped 50-line tail. FIX: one
-  line each — the same `$SCCACHE_DIR\logs` treatment.
 
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 
@@ -2401,29 +2355,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   comparison is done by hand in CHANGELOG prose. FIX: stamp logs with a run id;
   emit `run-<id>.json` (stage, tag, attempts, seconds, exit, disk before/after);
   print the table at the end AND in a `finally` on failure.
-- **62 [S·★★★, none] `-ConcurrentAux` drops six parameters, three of which
-  GUARANTEE a failure after media-core is already paid for.**
-  `build-buildkit.ps1:412-424` never forwards `-SkipHostChecks`,
-  `-SkipRdna4Gate`, `-SkipStepLogGate`, `-NoSccache`, `-MinFreeGb`,
-  `-HostReserveGb`, and each child re-runs the FULL preflight with defaults. So
-  `-Gpu -ConcurrentAux -SkipRdna4Gate` (the documented post-driver-update path)
-  has both children throw 1-2 h in; `-ConcurrentAux -NoSccache` can never
-  succeed. Same block: no fail-fast (a child dying at minute 5 is noticed ~40
-  min later) and no cleanup — children spawn outside any `try/finally`, so
-  killing the parent orphans two pwsh+buildctl trees racing the same store.
-- **63 [S·★★, none] Every preflight-gate failure orphans a hidden sampler
-  process that never exits.** `build.ps1:235` starts it; the `try` that owns it
-  opens at `:717` and the `finally` that kills it at `:872`. Every throw in
-  between (sccache down, RDNA4 enabled, disk short, dockerd stopped — all
-  common) leaves one invisible `-WindowStyle Hidden` pwsh in a
-  `while($true)` loop appending CSV forever, one per failed attempt.
-- **64 [S·★★, none] The driver prescribes a remedy it cannot express.** The
-  determinism gate tells the owner "the fix is `-NoCache` on this stage alone,
-  NOT a retry" (`WindowsBuildDriver.Common.psm1:109`), but `-NoCache` applies
-  to every solve in the run (`build-buildkit.ps1:274`). For a poisoned
-  `media-core-built-opencv` there is no lever short of hand-running buildctl.
-  FIX: `-NoCacheStage <label[]>` against the labels the log names already use.
-
 ### Open items (effort·impact; ordered by leverage)
 
 - **31 [S·★★, owner decision] Auto-push green stage images** (or export-

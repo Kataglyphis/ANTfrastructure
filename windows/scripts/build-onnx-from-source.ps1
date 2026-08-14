@@ -437,17 +437,10 @@ if ($mlasTagged -gt 0) {
 # Ninja log on the PERSISTENT sccache cache mount (backlog #4): when this
 # vertex fails, the container filesystem dies with the solve, but C:\sccache
 # survives into the next run - the full ninja stream stays readable from a
-# debug container (never-swallow-logs). One .prev generation bounds growth.
-$ninjaLogDir = if ($env:SCCACHE_DIR -and (Test-Path $env:SCCACHE_DIR)) { Join-Path $env:SCCACHE_DIR 'logs' } else { $buildDir }
-$null = New-Item -ItemType Directory -Force -Path $ninjaLogDir
-$ninjaLog = Join-Path $ninjaLogDir 'onnx-ninja.log'
-# Copy+Remove, NOT Move-Item: the cache mount is rename-hostile (probed for
-# directories; file renames are the same wcifs hazard family - review find
-# #3). Create-only semantics keep the rotation inside the mount contract.
-if (Test-Path $ninjaLog) {
-    Copy-Item -Path $ninjaLog -Destination "$ninjaLog.prev" -Force
-    Remove-Item -Path $ninjaLog -Force -ErrorAction SilentlyContinue
-}
+# debug container (never-swallow-logs).
+# Moved into the shared module 2026-08-14 (backlog #43): this block lived here
+# ALONE for months while opencv/iree/tvm/litert silently kept losing their logs.
+$ninjaLog = Get-PersistentBuildLogPath -Name 'onnx-ninja.log' -FallbackDir $buildDir
 # MemGBPerJob=2 (backlog #28): runs 12+13 measured 9274 samples across the full
 # ONNX vertex -- peak per-process WorkingSet 998 MB, peak fleet 5.5 GB at -j9.
 # At 2 GB/job the job-count formula yields ~19 jobs (~11-12 GB extrapolated vs

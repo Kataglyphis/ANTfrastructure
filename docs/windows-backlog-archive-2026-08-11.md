@@ -10,6 +10,83 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
 
 ---
 
+## Addendum — closed 2026-08-14 (Batch B: driver/log hardening, zero rebuild)
+
+Eight backlog items landed in one sitting. Selection criterion: **none touches a
+Dockerfile**, so nothing invalidated a cache layer and the whole batch was
+verifiable with lint + unit tests alone — no container build. Result: lint
+152/0, tests **484/484** (up from 480; the 4 new ones are #40's regression
+guard). All eight came out of the 2026-08-14 deep audit.
+
+- **41 (DONE) The retry path destroyed the failing attempt's log.**
+  `build-buildkit.ps1` teed without `-Append`, so attempt 2 truncated attempt 1
+  — a stage that burned its budget kept only the last attempt, and when
+  attempt 1 held the real compile error while 2-3 died on infra flakes the
+  evidence was gone. Now: log cleared once per RUN, appended per ATTEMPT with a
+  `===== attempt N/M =====` banner. Direct "never swallow logs" fix, inside the
+  path that exists to survive failures.
+- **42 (DONE) The failure tail was computed, then thrown away — both lanes.**
+  `$tail` was built purely to CLASSIFY the error and then discarded, so the
+  throw carried a bare path (BK) or a bare exit code (classic) and the owner
+  opened a deliberately-unbounded log by hand. Both lanes now print the tail
+  before throwing, and the classic lane's throw names the log file.
+- **43 (DONE) 4 of 5 ninja logs died with the build tree; genai had none.**
+  Only ONNX wrote to the persistent `$SCCACHE_DIR\logs`; opencv/iree/tvm/litert
+  wrote inside `$buildDir`, which is discarded with the failed solve (IREE is a
+  60-120 min build whose only surviving diagnosis was a 50-line tail), and
+  `build-onnx-genai` passed no `-LogFile` at all, so not even that existed.
+  **Fixed as a SHARED helper, not five copies:** `Get-PersistentBuildLogPath`
+  in `WindowsSourceBuild.Common.psm1`, with all six call sites converted —
+  including ONNX's original inline block. Copy-paste is exactly how this drift
+  happened; there is now one implementation to drift from.
+- **39 (DONE) `-MediaBranches <subset>` silently shipped a STALE image.** The
+  merge is skipped on a branch subset, but torch/final still resolved
+  `BASE_IMAGE` from the `windows-media` tag — the PREVIOUS run's merge. So
+  "I fixed LiteRT, re-ship" delivered a `winamd64` without the fix, with a zero
+  exit code. Now throws when the merge is skipped while torch/final are
+  selected, naming both the subset and the missing branches.
+- **40 (DONE) The scripted resume never worked (closure scope).**
+  `.GetNewClosure()` snapshots LOCALS only, but
+  `$Docker`/`$MediaCoreCpus`/`$MediaMemoryGb`/`$ResumeStage` are script-level
+  `param()` vars → empty inside the module invoker, degrading the run to
+  `[] run --isolation hyperv --cpu-count  --memory "g"` and dying with a
+  PowerShell *parser* error that pointed nowhere. The identical fix had been on
+  the sibling `Invoke-RunCommitStage` since 2026-07 *with an explanatory
+  comment*; this path never got it. Fixed with four local copies. **Note the
+  first draft of this entry overstated it:** the `docker container rm -f` is NOT
+  data loss — the state is committed to `$partial` and exit-code-checked first,
+  and the removal is required to reuse the container name.
+  **NEW TEST — guards the CLASS, not the instance:**
+  `tests/Driver.ClosureScope.Tests.ps1` walks the AST of both drivers, finds
+  every `.GetNewClosure()` block *inside a function*, and fails if it reads a
+  top-level `param()` variable that is not shadowed by a local. It correctly
+  ignores top-level closures (there, params ARE locals) and locally-shadowed
+  names like `$isolation`; it carries its own negative control (a synthetic
+  re-introduction of the defect must be caught) and a false-positive control
+  (the sibling's correct pattern must NOT be flagged).
+- **62 (DONE) `-ConcurrentAux` dropped six parameters — three guaranteed a
+  failure AFTER media-core was paid for.** Children re-run the full preflight
+  with defaults, so `-SkipHostChecks`, `-SkipRdna4Gate`, `-SkipStepLogGate`,
+  `-NoSccache`, `-MinFreeGb`, `-HostReserveGb` now forward.
+  `-ConcurrentAux -NoSccache` previously could NEVER succeed. Same change adds
+  **fail-fast** (a child dying at minute 5 was unnoticed until the other
+  finished ~40 min later) and a **`finally` that stops surviving children** —
+  they were spawned outside any `try`, so killing the parent orphaned two
+  pwsh+buildctl trees racing the same store.
+- **63 (DONE) Every preflight-gate failure orphaned a hidden sampler.** It
+  started ~500 lines before the `try` that owns it, so each rejected launch
+  (sccache down, RDNA4 enabled, disk short, dockerd stopped — all common) left
+  an invisible `-WindowStyle Hidden` pwsh in a `while ($true)` loop forever, one
+  per failed attempt. Moved to immediately before the `try/finally`; the
+  preflight costs seconds, so no sample coverage is lost.
+- **64 (DONE) The driver prescribed a remedy it could not express.** The
+  determinism gate says "the fix is `-NoCache` on this stage alone, NOT a
+  retry", but `-NoCache` applied to every solve — for a poisoned
+  `media-core-built-opencv` the only lever was `-Stages media -NoCache`, which
+  re-does all four media-core sub-stages plus litert plus tvm plus merge. Added
+  **`-NoCacheStage <label[]>`**, substring-matched against the same `$Label` the
+  stage logs and disk gate already use (`-NoCacheStage opencv` works).
+
 ## Addendum — closed 2026-08-13 (`:winamd64` green end-to-end)
 
 - **34 + ELEVATED WINDOW + dufs (DONE 2026-08-13, applied by owner).** Owner ran

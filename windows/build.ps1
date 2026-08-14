@@ -228,15 +228,12 @@ function Set-BuildPhase {
     # Best-effort: phase tagging must never fail a build.
     try { Set-Content -Path $script:PhaseFile -Value $Name -ErrorAction Stop } catch { Write-Verbose "phase write skipped: $_" }
 }
-if (-not $NoResourceLog) {
-    $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".csv")
-    Set-BuildPhase 'init'
-    $samplerScript = Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1'
-    $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
-        '-NoProfile', '-File', $samplerScript,
-        '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
-    Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
-}
+# NOTE: the resource sampler is NOT started here — see the block just above the
+# main try/finally below (backlog #63). It used to start at this point, ~500
+# lines before the try that owns its lifecycle, so every preflight-gate throw
+# (sccache endpoint down, RDNA4 enabled, disk short, dockerd stopped — all
+# common) orphaned a hidden pwsh running `while ($true)` forever, one per failed
+# attempt, invisible because it is -WindowStyle Hidden.
 
 # Transient-failure classification, retry engine, build-arg shaping, image
 # preflight and the isolation probe live in WindowsBuildDriver.Common.psm1
@@ -673,16 +670,31 @@ function Invoke-ResumeRunCommit {
     # Invoke-RunCommitStage: transient retry removes the dead container and
     # re-runs from $partial (the preserved state IS the partial image); a
     # non-transient failure preserves the container for another resume round.
+    # LOCAL COPIES — load-bearing (backlog #40). .GetNewClosure() snapshots the
+    # LOCAL scope only, never $script:. $Docker/$MediaCoreCpus/$MediaMemoryGb/
+    # $ResumeStage are script-level param() variables, so inside the blocks
+    # below they resolved to EMPTY: the run degraded to
+    #   [] run --isolation hyperv --cpu-count  --memory "g" --name c1 p1
+    # which dies with a PowerShell parser error ("The expression after '&' ...")
+    # rather than a docker error — so the resume aborted pointing nowhere. The
+    # identical fix has been on the sibling Invoke-RunCommitStage since 2026-07
+    # (see $dockerExe above); this path never got it, and no test covered it.
+    # The compile state itself was never at risk: it lives in $partial, which is
+    # committed and exit-code-checked before the container is removed.
+    $dockerExe = $Docker
+    $cpus = $MediaCoreCpus
+    $memGb = $MediaMemoryGb
+    $stageName = $ResumeStage
     Invoke-DockerWithRetry -Label "resume:$ResumeStage" -LogFile $outLog -MaxAttempts 2 `
         -Action {
-            & $Docker run --isolation $isolation --cpu-count $MediaCoreCpus --memory "${MediaMemoryGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog
+            & $dockerExe run --isolation $isolation --cpu-count $cpus --memory "${memGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog
         }.GetNewClosure() `
         -OnFailedAttempt {
-            & $Docker container rm -f $container 2>&1 | Out-Null
+            & $dockerExe container rm -f $container 2>&1 | Out-Null
         }.GetNewClosure() `
         -OnFinalFailure {
-            Write-Host ("[resume:$ResumeStage] run FAILED — container '$container' PRESERVED again; " +
-                "fix forward and re-run: .\windows\build.ps1 -ResumeStage $ResumeStage -ResumeFrom '<stage>' [-CopyFix <file>]") -ForegroundColor Red
+            Write-Host ("[resume:$stageName] run FAILED — container '$container' PRESERVED again; " +
+                "fix forward and re-run: .\windows\build.ps1 -ResumeStage $stageName -ResumeFrom '<stage>' [-CopyFix <file>]") -ForegroundColor Red
         }.GetNewClosure()
     Write-Host "[resume:$ResumeStage] committing -> $($spec.Tag)" -ForegroundColor Cyan
     # --change: same reason as Invoke-RunCommitStage's commit — without it the
@@ -713,6 +725,20 @@ if ($MediaMemoryGb -le 0) {
 }
 
 $started = Get-Date
+
+# Resource sampler starts HERE, immediately before the try/finally that stops
+# it (backlog #63) — every preflight gate above is now past, so a rejected
+# launch can no longer orphan it. The preflight costs seconds, so nothing
+# meaningful is lost from the sample series.
+if (-not $NoResourceLog) {
+    $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".csv")
+    Set-BuildPhase 'init'
+    $samplerScript = Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1'
+    $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile', '-File', $samplerScript,
+        '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
+    Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
+}
 
 try {
     if ($ResumeStage) {

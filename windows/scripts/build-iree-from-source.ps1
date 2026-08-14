@@ -94,7 +94,9 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $ireeInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 Write-Host 'Building IREE (LLVM in-tree -- this may take 60-120 minutes)...'
-$buildLog = Join-Path $buildDir 'iree-build.log'
+# Persistent log (backlog #43): a 60-120 min build whose log used to die with
+# the failed solve, leaving only a 50-line tail as the entire diagnosis.
+$buildLog = Get-PersistentBuildLogPath -Name 'iree-build.log' -FallbackDir $buildDir
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install -InstallConfig $BuildType
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote

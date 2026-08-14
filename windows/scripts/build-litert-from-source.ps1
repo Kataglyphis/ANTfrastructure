@@ -138,7 +138,8 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 # InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
 Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
-$buildLog = Join-Path $buildDir 'litert-build.log'
+# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+$buildLog = Get-PersistentBuildLogPath -Name 'litert-build.log' -FallbackDir $buildDir
 # The injected tensorflowlite_c target (see above) is a normal add_library, so
 # `all` builds it alongside tensorflow-lite -- no separate target invocation
 # needed. The manual-install gate below hard-fails if its import lib is missing.

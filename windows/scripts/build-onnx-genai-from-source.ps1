@@ -164,7 +164,12 @@ Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatte
 # Memory-scaled ninja + incremental -j1 retry + install via the shared helper. Replaces
 # a hand-rolled -j%NUMBER_OF_PROCESSORS% .bat (full-core, no memory scaling) that could
 # OOM / deadlock a memory-capped container; the -j1 retry still yields clean error output.
-Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install
+# -LogFile was MISSING here entirely (backlog #43), so this stage produced no
+# ninja log at all - not even the 50-line failure tail, which is gated on it.
+# GenAI compiles nvcc CUDA kernels; a failure emitted only whatever stdout
+# happened to survive. Persistent path, same as every sibling.
+$genaiLog = Get-PersistentBuildLogPath -Name 'onnx-genai-ninja.log' -FallbackDir $genaiBuildDir
+Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 4 -Install -LogFile $genaiLog
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 

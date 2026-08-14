@@ -288,7 +288,8 @@ if ($contribSrc) {
 
 Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
-$buildLog = Join-Path $buildDir 'opencv-build.log'
+# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+$buildLog = Get-PersistentBuildLogPath -Name 'opencv-build.log' -FallbackDir $buildDir
 # Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
 # to the failing TU) so the error output is unambiguous without paying the serial
 # build cost on the happy path.

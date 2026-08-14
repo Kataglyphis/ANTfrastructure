@@ -119,7 +119,8 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 Write-Host 'Building TVM (this may take 30-60 minutes)...'
-$buildLog = Join-Path $buildDir 'tvm-build.log'
+# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+$buildLog = Get-PersistentBuildLogPath -Name 'tvm-build.log' -FallbackDir $buildDir
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install -InstallConfig $BuildType
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote

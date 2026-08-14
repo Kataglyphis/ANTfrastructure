@@ -609,6 +609,38 @@ function Stop-SccacheStallGuard {
     foreach ($m in $msgs) { Write-Host "[sccache-stall-guard] $m" -ForegroundColor Yellow }
 }
 
+function Get-PersistentBuildLogPath {
+    # A build log written inside $buildDir DIES WITH THE SOLVE: when the vertex
+    # fails, the container filesystem is discarded and the only surviving
+    # diagnosis is the 50-line tail Invoke-NinjaBuildWithRetry prints - inside a
+    # step log that used to clip at 2MiB. C:\sccache is a persistent cache mount
+    # and survives into the next run, so the full stream stays readable from a
+    # debug container (never-swallow-logs).
+    #
+    # This was fixed for ONNX alone in 2026-08 (backlog #4) and COPY-PASTED
+    # nowhere, so opencv/iree/tvm/litert kept losing their logs for months -
+    # IREE being a 60-120 min LLVM build. Backlog #43 made it shared: one
+    # implementation, five call sites, no room to drift again.
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        # Where the log goes when no persistent cache mount is available (the
+        # host lane, or a container built without the sccache mount).
+        [Parameter(Mandatory)][string]$FallbackDir
+    )
+    $logDir = if ($env:SCCACHE_DIR -and (Test-Path $env:SCCACHE_DIR)) { Join-Path $env:SCCACHE_DIR 'logs' } else { $FallbackDir }
+    $null = New-Item -ItemType Directory -Force -Path $logDir
+    $logPath = Join-Path $logDir $Name
+    # Copy+Remove, NOT Move-Item: the cache mount is rename-hostile (probed for
+    # directories; file renames are the same wcifs hazard family). Create-only
+    # semantics keep the rotation inside the mount contract. One .prev
+    # generation bounds growth.
+    if (Test-Path $logPath) {
+        Copy-Item -Path $logPath -Destination "$logPath.prev" -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+    }
+    return $logPath
+}
+
 function Invoke-NinjaBuildWithRetry {
     # Retry ladder (run-6 lesson, 2026-08-10): a guard-kill failure is NOT
     # OOM-shaped - everything already compiled is an L0 hit, so the right
@@ -1156,6 +1188,7 @@ function Complete-SourceBuildChain {
 
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
+    'Get-PersistentBuildLogPath',
     'Invoke-SourceBuildChain',
     'Complete-SourceBuildChain',
     'Stop-LingeringBuildProcess',
