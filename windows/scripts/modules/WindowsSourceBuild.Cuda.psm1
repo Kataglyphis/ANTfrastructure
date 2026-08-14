@@ -27,6 +27,14 @@ function Resolve-TensorRtRoot {
     if (-not $trtRoot) { return $null }
     if (-not (Test-Path $trtRoot)) { return $null }
     if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
+    # 'current' first (backlog #38): normalize-tensorrt-tree.ps1 renames the
+    # extracted TensorRT-<version> tree to a stable name so the Dockerfile's
+    # runtime PATH can reference it WITHOUT spelling the pin — deriving that
+    # path from TENSORRT_VERSION is what silently killed the EP when the pin
+    # and the staged zip disagreed. The versioned glob stays as the fallback so
+    # pre-normalization images and host-lane trees keep resolving.
+    $stable = Join-Path $trtRoot 'current'
+    if (Test-Path $stable) { return $stable }
     $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($trtVerDir) { return $trtVerDir.FullName }
     return $trtRoot

@@ -10,6 +10,55 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
 
 ---
 
+## Addendum — closed 2026-08-14 (Batch C: the TensorRT pin defect)
+
+- **53 (DONE) `TENSORRT_VERSION` ARG+ENV moved BELOW the CUDA RUN.** An ARG in
+  scope keys every following RUN, and nothing up to and including
+  `setup-cuda.ps1` consumes it — TensorRT arrives via `COPY --from`. With it
+  declared above, bumping the TensorRT pin forced a ~3.8 GB CUDA + cuDNN
+  re-download, which is precisely what made fixing #38 expensive. It now rides
+  the existing `GPU_TYPE`/`CUDA_ROOT` ENV block, so **no extra layer** is spent.
+  Landed FIRST, on purpose.
+- **38 (DONE) The shipped image had a DEAD TensorRT EP.** `versions.env` pinned
+  `11.2.1.2` while the staged archive was `TensorRT-Enterprise-11.1.0.106`.
+  Two contradictory resolutions of the same directory existed:
+  `Resolve-TensorRtRoot` globbed `TensorRT-*` (pin-INdependent → correct) while
+  `Dockerfile.nvidia` built the runtime PATH from the PIN → a directory that
+  did not exist. The build stayed green — logs confirm ×24 `TensorRT detected
+  at C:\tensorrt\TensorRT-11.1.0.106` **and** `onnxruntime_USE_TENSORRT=ON`, so
+  ONNX compiled the EP against the real 11.1 headers — and only the RUNTIME
+  lookup broke, so ORT dropped the EP with no error. A REGRESSION of the
+  incident `versions.env:238-248` documents verbatim ("Bump this WITH the
+  staged zip, never alone"): the pin was bumped alone, because nothing
+  ENFORCED the rule.
+
+  **A Machine-PATH write does NOT fix this** (the first attempt, discarded):
+  `Dockerfile.base` sets `ENV PATH=...` explicitly, so the image config wins and
+  a registry PATH written inside a RUN is invisible to later stages. The fix
+  that works *with* the ENV is a stable directory NAME:
+  - NEW `windows/scripts/normalize-tensorrt-tree.ps1`, bind-mounted into the
+    `trt-extract` stage: renames `TensorRT-<version>` → **`current`**, WARNS
+    (never fails) on pin-vs-zip drift so it can no longer be silent, and
+    **fails closed** on a tree with no `lib\` or no DLLs — the exact "ships but
+    cannot load" shape this class produces.
+  - `Dockerfile.nvidia` PATH is now `$TENSORRT_ROOT\current\lib` — correct for
+    any staged version, forever. The zip-less graceful-skip contract is
+    unchanged (the directory simply does not exist, the entry is inert).
+  - `Resolve-TensorRtRoot` prefers `current`, falling back to the versioned glob
+    so pre-normalization images and host-lane trees keep resolving. Two new
+    tests pin both behaviours (486 total, was 484).
+
+  **VERIFIED WITHOUT A BUILD** against synthetic trees: normalization + drift
+  warning (DLL reachable at `current\lib`), tree-without-DLLs → **exit 1**,
+  tree-without-`lib\` → **exit 1**, empty root → exit 0 graceful.
+  **STILL UNVERIFIED:** the Dockerfile itself — needs one sdk rebuild, which
+  re-pays CUDA once because #53 reordered the instructions above that RUN.
+  **OPEN DECISION FOR THE OWNER:** the pin and the staged zip still disagree.
+  The image is now internally consistent either way, but `versions.env`
+  no longer describes what ships — either re-stage an 11.2.1.2 zip or correct
+  the pin to 11.1.0.106. Note the pin is also consumed by the Linux lane (apt),
+  so this is not a mechanical edit.
+
 ## Addendum — closed 2026-08-14 (Batch B: driver/log hardening, zero rebuild)
 
 Eight backlog items landed in one sitting. Selection criterion: **none touches a

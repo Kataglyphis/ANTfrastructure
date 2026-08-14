@@ -1993,8 +1993,12 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > touched a Dockerfile, so nothing invalidated any cache and the whole batch was
 > verifiable without a single container build. **Group future work this way.**
 >
-> **Batch C — the TensorRT chain. ORDER IS LOAD-BEARING: #53 THEN #38.**
-> Doing #38 first costs a ~3.8 GB CUDA + cuDNN re-download for nothing.
+> **Batch C — DONE 2026-08-14** (the TensorRT chain, #53 then #38 — see the
+> archive addendum). **UNVERIFIED BY A BUILD:** the logic was proven against
+> synthetic trees on the host (normalize + two fail-closed cases + the zip-less
+> graceful case), but the Dockerfile itself has not been rebuilt. The next sdk
+> build re-pays CUDA + cuDNN once regardless, because #53 reordered the
+> instructions above that RUN.
 >
 > **Batch D — the "nothing verifies the artifact" epic.** #44, #46, #57, #67
 > are ONE piece of work, not four: the smoke test is never invoked, its skips
@@ -2031,23 +2035,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > Dockerfiles + 102 build logs). Each was verified against the tree/logs, not
 > inferred. These ship broken today — do them before any refactor below.
 
-- **38 [S·★★★, sdk-tier] TensorRT pin ≠ staged zip → the shipped image has a
-  DEAD TensorRT EP.** `versions.env:256` pins `TENSORRT_VERSION=11.2.1.2`;
-  the staged archive is `TensorRT-Enterprise-11.1.0.106-…zip`, which extracts
-  `TensorRT-11.1.0.106/`. Two *contradictory* resolution strategies exist for
-  the same directory: `WindowsSourceBuild.Cuda.psm1:30` globs `TensorRT-*`
-  (pin-INdependent → resolves correctly), while `Dockerfile.nvidia:97` builds
-  the runtime PATH from the PIN → `…\TensorRT-11.2.1.2\lib`, which does not
-  exist. So ONNX compiles the EP fine (logs confirm ×24:
-  `TensorRT detected at C:\tensorrt\TensorRT-11.1.0.106` +
-  `onnxruntime_USE_TENSORRT=ON`) and the DLLs are then unreachable at RUNTIME.
-  This is a REGRESSION of the incident `versions.env:238-248` already
-  documents verbatim ("Bump this WITH the staged zip, never alone") — the pin
-  was bumped alone. FIX: pin to `11.1.0.106` (or stage the 11.2.1.2 zip) AND
-  make the PATH pin-independent so it cannot silently recur; add the 3-second
-  `Test-Path` assertion in the nvidia tail (see #44 — nothing below the base
-  verifies anything today). **Land #53 first**, or this pin fix triggers a
-  ~3.8 GB CUDA + cuDNN re-download.
 - **71 [M·★★★, none] sccache has NEVER produced a single cache hit — it is a
   100 % no-op, and every write has failed.** Aggregated over **94 stat blocks
   spanning the whole log corpus**: `Cache hits` = **0** in 94/94, and
@@ -2275,7 +2262,8 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   build. The file already proves it knows the pattern — `setup-vs.ps1` was
   deliberately hoisted above this COPY for exactly this reason (`:71-76`). Only
   8 keys are needed below the COPY; promote those to ARGs and move the COPY
-  down. Pairs with #53.
+  down. (The sibling ARG-below-the-expensive-RUN fix for TensorRT shipped
+  2026-08-14 — same pattern, see the archive addendum.)
 - **51 [M·★★★, media once] `MEMORY_LIMIT_GB` — a scheduling knob — is an image
   ENV and therefore a CACHE KEY** (`Dockerfile.media-builder:29,67`). The
   driver halves it for `-ConcurrentAux` (`build-buildkit.ps1:378`), so merely
@@ -2303,11 +2291,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   (`WindowsFormatting.Common.psm1:279`). Also: all six derived Dockerfiles
   re-declare `SHELL` and drop the clause — `SHELL` IS inherited via image
   config, so those are redundant layers against the 125-cap.
-- **53 [S·★★, sdk once] `TENSORRT_VERSION` ARG+ENV sits above the multi-GB CUDA
-  install** (`Dockerfile.nvidia:55,72` vs the `:79` RUN) although nothing there
-  consumes it — TensorRT arrives via `COPY --from`. So fixing #38 forces a
-  ~3.8 GB CUDA + cuDNN re-download. Move the ARG+ENV into the `:93` ENV block
-  FIRST, then fix #38 nearly free. **Land #53 before #38.**
 - **54 [S·★★, merge] `cuda-runtime-stage` ships a SECOND, flattened copy of the
   CUDA + cuDNN runtime DLLs** (`Dockerfile.media-merge-builder:138`); cuDNN's
   set alone is 0.52 GB uncompressed, plus CUDA 13's cublas/cufft/cusolver/nvrtc.
