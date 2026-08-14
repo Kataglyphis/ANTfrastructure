@@ -221,8 +221,17 @@ runtime_build_package_image() {
   runtime_pushes_intermediate_images && _pkg_push=1
   local -a _pkg_out=()
   append_runtime_image_output _pkg_out "${tag}" "${_pkg_push}" "${_android_pin}" android
+  # RTCACHE2: the package re-materializes /opt/ffmpeg via `COPY --from=android`.
+  # BuildKit's worker cache can serve a STALE copy layer from a prior run even
+  # when the android artifact-source digest changed (observed 2026-08-14: a
+  # media→android→runtime rebuild that dropped ffmpeg's libtensorflow shipped a
+  # byte-identical wrapper because the package/wrapper fully cache-hit the 3-day
+  # -old layers). RUNTIME_NO_CACHE=1 forces a clean re-evaluation so the fresh
+  # artifact-source content actually lands. Unquoted: empty → no word.
+  # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
+    ${RUNTIME_NO_CACHE:+--no-cache} \
     --platform "linux/${arch}" \
     --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
     "${_pkg_out[@]}" \
@@ -265,8 +274,13 @@ _runtime_build_wrapper() {
   local -a _wrap_out=()
   append_runtime_image_output _wrap_out "${_wrapper_tag_out}" "${_wrap_push}" \
     "$(runtime_android_pin "${arch}")" android
+  # RTCACHE2: same stale-worker-cache hazard as the package build — the wrapper
+  # is FROM package, so a clean package rebuild normally invalidates it, but
+  # gate it too so RUNTIME_NO_CACHE=1 guarantees an end-to-end fresh wrapper.
+  # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
+    ${RUNTIME_NO_CACHE:+--no-cache} \
     --platform "linux/${arch}" \
     "${_wrap_out[@]}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \

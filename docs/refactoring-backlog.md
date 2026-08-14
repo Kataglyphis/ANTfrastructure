@@ -10,13 +10,14 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Batches are grouped by REBUILD BLAST RADIUS, not theme — most items are cheap,
 rebuilds are expensive. Work top to bottom; each batch ships independently.
 
-Last groomed: 2026-08-13 (post VALIDATING-REBUILD cleanup: :latest-cross
-re-shipped 3-arch, digest 8d1538b1, all keeper changes PROVEN live. Removed
-every executed closure note — Batch 0, all of Batch 2's code fixes (R1-5,
-C1-2, D2-4/P4, BS1-6, XC4-7, A3, S4, wheel_family, setup_gi, cpython TS2/3),
-TG3/TG4/TG7 (reverted, re-opened), BS3b glob, ORT-WEB1, BS5-followup, noise
-riders, verify-media orphans. What remains below is genuinely OPEN. Records
-of the done work live in CHANGELOG.md + memory + the archive.)
+Last groomed: 2026-08-14 (post wave-2: host-side B5 lifecycle (O1/O2/O4/O5 +
+stop-cross-chain.sh) + B6 (C4a/F7/SEC1) DONE; the rebuild-gated wave
+(TG3/TG4/TG7 redo, S2, XC2/XC3) validated in a full rebuild — TG done (one
+residual: RUN-3d recompile), S2 code+media-validated (shipped image pending
+the RTCACHE1 NO_CACHE re-run), XC3 coherence gate live. New findings logged:
+RTCACHE1 (runtime wrapper registry-cache-hit shipped STALE content — the
+verify-the-bytes-not-the-push lesson) + the XC2 annotation-survival gap.
+Records of done work live in CHANGELOG.md + memory + the archive.)
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
@@ -152,37 +153,16 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   (the config that shipped :latest-cross). REDO REQUIREMENT: per-RUN mount
   audit (subcommand → lazy arm closure → transitive module deps) PLUS one
   real toolchain rebuild to validate before merging — do not land blind.
-- **TG3 — LLVM core cross-compiled TWICE per target arch** [M·★★] ⚠ ATTEMPTED
-  + REVERTED 2026-08-12: llvm-cross.sh was collapsed to ONE superset build
-  installed to both prefixes, but the FULL validating rebuild caught it — the
-  unified configure carried the OLD target-llvm-only flags (LLVM_BUILD_UTILS=
-  OFF, LLVM_INCLUDE_UTILS=OFF, LLVM_INCLUDE_TESTS=OFF, LLVM_TOOL_LLVM_SHLIB_
-  BUILD=ON) that are fine for a core-only build but, combined with
-  clang-tools-extra, leave libLLVMSupportLSP.a UNBUILT while `cmake --install`
-  still references it → "file INSTALL cannot find libLLVMSupportLSP.a" +
-  "[ERROR] Target LLVM CMake package missing after install for arm64" (arm64,
-  ~134s in; riscv64 identical). HEAD's target-clang configure had none of
-  those flags and shipped. Reverted llvm-cross.sh to HEAD (drops TG3 + TG4 +
-  the TG2 ccache-stats-in-that-file). REDO: match HEAD's proven target-clang
-  flag set exactly for the unified build (drop the utils/tests-restricting
-  flags), keep `cmake --install` WITHOUT --strip unless separately validated,
-  and re-run a real toolchain rebuild before merging. TG4 (strip) + TG2
-  (ccache stats) ride the same redo.
-- **TG7 — host-LLVM apt profile defaults to `full`** [S, investigate] ⚠
-  ATTEMPTED + REVERTED 2026-08-12: flipped full→minimal after a repo-wide
-  audit of flang/bolt/mlir/libclc/clangd/clang-tidy consumers — but the
-  validating rebuild caught the audit's blind spot: `clang-tblgen` (shipped by
-  the clang-tools package the minimal profile drops) is a BUILD-TIME tool the
-  cross target-clang build consumes via CMake's `CLANG_TABLEGEN=`, not a
-  runtime binary any grep would find. Result: `ninja: error:
-  '/usr/lib/llvm-22/bin/clang-tblgen' ... missing and no known rule to make
-  it` in the arm64 target-clang RUN. Reverted llvm.sh to HEAD (full profile).
-  REDO: keep minimal BUT explicitly add the clang-tblgen-providing package
-  (clang-tools-<major>) to the minimal set, then a real toolchain rebuild.
-- **TG7 — host-LLVM apt profile defaults to `full`** [S, investigate]
-  flang/bolt/mlir/libclc/lldb ride every downstream image (llvm.sh:440-456);
-  a `minimal` profile exists but no consumer audit does. Audit, then flip or
-  document.
+- **TG3-residual — RUN-3d does not skip the recompile** [S·★] the TG3/TG4/TG7
+  REDO landed + validated 2026-08-14 (wave-2 compiler stage: one unified
+  LLVM+clang build/arch, libLLVMSupportLSP installed to both prefixes,
+  --strip, minimal profile + clang-tools-22 for clang-tblgen — all confirmed
+  live). Residual: the target-clang Dockerfile RUN (3d) still recompiles
+  instead of reusing RUN-3's install (the reuse-check doesn't fire across the
+  two separate RUNs). ccache absorbs it (~97s vs ~1500s), so the cost is
+  small — but to fully realize "one compile per arch" collapse the two
+  toolchain RUNs into one (a Dockerfile.toolchain mount-closure change,
+  deliberately deferred from the redo to avoid mount risk). Pairs with TG1.
 - **TS1 — appimagetool pinned to the MOVING `continuous` tag with 4 in-script
   SHA256s** [S/M·★★★] packaging-deps.sh:144-176, required-mode in the BASE
   stage → upstream re-uploads its continuous assets ⇒ next cache-miss build
@@ -296,10 +276,14 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
 - **DOC1** [S·★] toggle comments contradict values: :81 WebGPU "(default
   off)" above `=true`; :112 x265 "kept off" above `=1`.
-- **S2 — FFMPEG_ENABLE_TF gate** [S·★★★] TF backend ungated → ~500 MB
-  (libtensorflow 447MB + framework 50MB) in every amd64 media+runtime image
-  for one optional DNN backend; mirror FFMPEG_ENABLE_X265 exactly (default
-  off). Also removes the R1/R2 failure surface from the default lane.
+- **S2 — FFMPEG_ENABLE_TF gate** [S·★★★] CODE DONE + media-validated
+  2026-08-14: FFMPEG_ENABLE_TF=0 default, x265 pattern mirrored end-to-end;
+  the wave-2 media build confirmed ffmpeg configured WITHOUT
+  --enable-libtensorflow (ONNX still on) and 0 BUNDLED TF libs. SHIPPED image
+  still PENDING: the first wave-2 :latest-cross shipped STALE (RTCACHE1 — the
+  runtime wrapper registry-cache-hit reused the prior TF-present layers); the
+  NO_CACHE=1 runtime re-run (in flight) will actually ship the −500MB image.
+  Verify TF-absent in the shipped wrapper before closing.
 - **C3 — android inline version fallbacks → `:?must be set`** [S·★★] litert/
   onnx/iree/opencv/gstreamer android scripts carry dead fallbacks that mask a
   broken ARG forward as a silent stale-pin build.
@@ -360,27 +344,48 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
 ## Batch 5 — orchestrator lifecycle (one coherent PR)
 
+- **RTCACHE1 — runtime wrapper registry-cache-hit ships STALE content when
+  only a sub-artifact's bytes change** [M·★★★] found live 2026-08-14: after
+  a full rebuild where S2 removed the 447MB TF lib from media's /opt/ffmpeg,
+  the runtime wrapper build `--cache-from type=registry` (inline cache) reused
+  the PRIOR wrapper's layers wholesale — `Dockerfile.package:76 COPY --from=
+  artifact-source /opt/ffmpeg` cache-hit because BuildKit under-tracked the
+  changed COPY source — so the manifest, the smokes, AND the pushed
+  :latest-cross were byte-identical to the previous run (TF STILL present,
+  ffmpeg still --enable-libtensorflow). CROSS_NO_LOCAL_CACHE_EXPORT=1 does
+  NOT help (it only stops WRITING local cache; the registry --cache-from is
+  still read). Workaround used: re-run the runtime stage with NO_CACHE=1.
+  Real fix options: (a) key the wrapper's COPY-from on the artifact image's
+  content digest so a changed upstream busts it; (b) a post-manifest gate that
+  pulls the shipped wrapper and asserts it matches the fresh build (e.g. the
+  ffmpeg buildconf / expected lib set) — "manifest pushed" must NOT be trusted
+  as "fresh content shipped". LESSON: always verify the shipped bytes, not the
+  push. Pairs with XC2/XC3 (the annotation-provenance work) + the --no-push
+  item below.
+- **XC2 annotation-survival gap** [S·★★] found 2026-08-14: XC2 threads a
+  run-id annotation onto wrapper pushes, but the XC3 manifest gate reported
+  "3/3 wrapper tag(s) carry no run-id annotation" — the annotation set via
+  buildkit `--output type=image,annotation.*` did NOT survive the separate
+  `nerdctl push` / land on the pulled tag (the agent's flagged open
+  assumption). XC3's gate degrades gracefully (warns, proceeds) so it is not
+  breaking, but XC2's provenance is inert until the annotation actually
+  persists — verify with `nerdctl manifest inspect --verbose` and fix the
+  emit path (annotation on the pushed manifest, or a post-push `annotate`).
 - **--no-push OCI-layout handoff + dual-path collapse** [M·★★] --no-push
   builds resolve parents against the REGISTRY (two runs lost historically);
   export local stages as OCI layout + --build-context override; couples with
   collapsing the dual local/push paths.
-- **XC2 — digest/ancestry discipline ENDS at android→runtime** [M·★★★] the
-  runtime lane pushes plain (no parent annotations), chain-verify explicitly
-  `continue`s on runtime, and the artifact handoff is a MUTABLE tag (the
-  captured ANDROID_PIN digest is never handed to the runtime helper) — the
-  stale-ancestor class ancestry.sh was built to kill, alive one lane later:
-  a --repair/standalone manifest run cannot detect a wrapper predating its
-  android. Fix: thread the pin digests into the helper + annotate wrapper/
-  package pushes + a small runtime-graph table so the existing walkers cover
-  the edges.
-- **XC3 — per-arch wrapper tags go LIVE before the smoke gate; --repair can
-  ship a mixed-generation :latest-cross** [M·★★★] wrappers push inside the
-  build loop; only the MANIFEST is smoke-gated ("already pushed" comment
-  admits it). 2-of-3 success → per-arch tags are the new generation while
-  :latest-cross is old; a later --repair indexes whatever the mutable tags
-  hold — silently mixing releases. Fix: run-id/parent-digest cross-check in
-  create_manifest (refuse --repair on mismatch without --force), better:
-  staging tags + post-smoke retag. Pairs with XC2.
+(XC2 PIN-THREADING + XC3 EXECUTED 2026-08-14: XC2 threads the android pin
+digest into the runtime helper (RUNTIME_ANDROID_PIN_<arch>) so the package
+build prefers the immutable digest over the mutable tag + a runtime-graph
+table (RUNTIME_STAGE_PARENT_MAP) so the ancestry walkers cover the
+android→wrapper→package edges — validated: the wave-2 wrapper built FROM the
+correct new android digest. XC3's create_manifest coherence gate is LIVE and
+validated (warned on the absent-annotation set, passed the same-run check,
+did NOT break the push). REMAINING = the "XC2 annotation-survival gap" item
+above: the run-id annotation set via buildkit --output does not persist to
+the pushed tag, so the provenance-verification half of XC2/XC3 is inert until
+that emit path is fixed.)
 
 ## Batch 6 — CI / infra ramps (independent — but each residual has its OWN trigger)
 

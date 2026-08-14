@@ -637,17 +637,17 @@ falls back to disabled. Current toggles:
 | Toggle | Effect | Notes |
 |---|---|---|
 | `FFMPEG_ENABLE_X265` | libx265 (HEVC) encoding in FFmpeg | Probe-gated; historically off because FFmpeg master could fail against bleeding-edge x265. |
+| `FFMPEG_ENABLE_TF` | FFmpeg **TensorFlow** DNN backend (amd64 only) | **Default OFF** (2026-08-14). When off, the TF C SDK is never downloaded and ~500 MB of `libtensorflow*` never enters the image; the ONNX DNN backend stays always-on regardless. Set `=1` to restore it. |
 | `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
 | `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | Dawn cross-build is the risky part; amd64-only unless set. |
 
-Not yet a toggle (planned, backlog S2): the FFmpeg **TensorFlow DNN backend**
-currently auto-enables whenever the TF C SDK downloads (amd64 only) and bundles
-~500 MB of `libtensorflow*` into the image; `FFMPEG_ENABLE_TF` (default off,
-mirroring x265) is queued for the next versions.env window.
-
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
-(see `docs/refactoring-backlog.md`, standing rules).
+(see `docs/refactoring-backlog.md`, standing rules). Note: a media re-run alone
+does NOT reshape the shipped runtime image if the runtime wrapper build
+cache-hits the prior wrapper from the registry — force a fresh runtime rebuild
+(`NO_CACHE=1`) after a toggle flip, and verify the shipped bytes, not just that
+the manifest pushed (see backlog RTCACHE1).
 
 ### IREE (Linux lane)
 

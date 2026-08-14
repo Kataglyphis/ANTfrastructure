@@ -55,7 +55,7 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`.
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`. To stop a running chain cleanly (reaps the orphaned nerdctl/buildctl child subtree — never `pkill` the orchestrator, that orphans them), use `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep). Cache knobs: `NO_CACHE=1` disables ALL `--cache-from` (local + registry) for a fully fresh build; `CROSS_NO_LOCAL_CACHE_EXPORT=1` only stops WRITING the local buildcache but STILL reads the registry inline cache — so after changing content that BuildKit's `COPY --from` under-tracks (e.g. an ffmpeg toggle), the runtime wrapper can cache-hit the prior image and ship STALE bytes; force `NO_CACHE=1` on the runtime re-run and verify the shipped image, not just the manifest push (backlog RTCACHE1).
 
 Most common build commands:
 
@@ -752,7 +752,7 @@ After a successful `build-cross-chain.sh` run:
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (57 as of 2026-08-08 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (59 as of 2026-08-14 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
 ├── 03-media/            media library build scripts
 │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
