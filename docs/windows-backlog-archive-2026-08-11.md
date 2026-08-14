@@ -10,6 +10,41 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
 
 ---
 
+## Addendum — closed 2026-08-13 (`:winamd64` green end-to-end)
+
+- **28 (LANDED 2026-08-13) Ninja job-count `-MemGBPerJob 2`.** Changed `4`→`2`
+  at the build-onnx-from-source.ps1 (line ~451) and build-opencv-from-source.ps1
+  (line ~295) `Invoke-NinjaBuildWithRetry` call sites → ~19 jobs (from ~9) at the
+  measured ~1 GB/process, well under the 39 GB budget. Code landed + lint/tests
+  green; the throughput win verifies on the next full media-core build.
+
+
+- **37 (DONE 2026-08-13) TVM `import tvm` → WinError 127.** Root cause was NOT
+  an LLVM ABI skew (the archived suspicion): TVM 0.25 vendors `3rdparty/tvm-ffi`
+  at an UNRELEASED commit (0.1.13.dev1, not on PyPI), so the PyPI `apache-tvm-ffi`
+  wheel pip pulled was ABI-skewed vs our source-built `tvm_runtime.dll`. Fix =
+  build tvm_ffi FROM the vendored source + install the tvm wheel `--no-deps`
+  (build-tvm-from-source.ps1). Three sub-fixes gated that source build:
+  `Copy-CpythonPyConfigHeader` (CMake-4.4 FindPython can't read in-tree
+  pyconfig.h), install `cython` (core.pyx transpile → MSB8066), install
+  `typing_extensions` (`--no-deps` starves tvm_ffi's only declared dep). See
+  memory `tvm-ffi-source-build-winfix`.
+- **36 (DONE 2026-08-13) litert branch → BAZEL — chain integration complete.**
+  The canary recipe (`build-litert-lm-bazel.ps1`) was wired into the media-litert
+  branch and the full chain built green; media-litert now produces
+  litert_lm_main.exe via bazel, CMake path frozen as fallback. Included the
+  zlib.net→GitHub-mirror WORKSPACE patch (flaky-download fix).
+- **(NEW, not previously numbered) GStreamer merge stage — 8 versions.env-bump
+  regressions** that blocked `:winamd64`, all fixed 2026-08-13: /LIBPATH-breaks-
+  clang-cl, opencv-5 data-dir + API relocation (xobjdetect/geometry/calib),
+  tflite C-API export, cpp_std c++11→c++17 (MSVC 14.51 STL), plugin-LOAD gate
+  (recursive dumpbin walker), and CUDA-runtime FLATTEN-deploy for opencv's
+  cudnn64_9.dll (`stage-cuda-runtime.ps1`). Full detail in memory
+  `gstreamer-merge-winfix`. Verified: `[bk] Done in 00:41:30` →
+  `local/kataglyphis:bk-winamd64` (all stages, GPU).
+
+---
+
 ## Refactor Backlog (Windows container chain)
 
 > Cross-lane / Linux-side items live in [docs/refactoring-backlog.md](refactoring-backlog.md);

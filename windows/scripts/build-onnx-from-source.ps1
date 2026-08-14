@@ -448,7 +448,11 @@ if (Test-Path $ninjaLog) {
     Copy-Item -Path $ninjaLog -Destination "$ninjaLog.prev" -Force
     Remove-Item -Path $ninjaLog -Force -ErrorAction SilentlyContinue
 }
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install -LogFile $ninjaLog
+# MemGBPerJob=2 (backlog #28): runs 12+13 measured 9274 samples across the full
+# ONNX vertex -- peak per-process WorkingSet 998 MB, peak fleet 5.5 GB at -j9.
+# At 2 GB/job the job-count formula yields ~19 jobs (~11-12 GB extrapolated vs
+# the 39 GB budget), roughly doubling parallelism on the long-pole ONNX build.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Install -LogFile $ninjaLog
 
 # Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never
 # truncates (AGENTS.md priority 1: caching must be MEASURED): C/CXX hits vs

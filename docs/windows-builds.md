@@ -30,7 +30,11 @@ This repository applies a **patch-first** policy to upstream sources on the Wind
 6. **Single-file regex edits on aggressively-changing generated-as-schema upstream files** — The OpenCV `add_extra_compiler_option(-include cstring)` removal (plus surrounding CMake add-to-flags lines on `cmake/OpenCVCompilerOptions.cmake`) is kept inline *not* because a `.patch` couldn't be authored today, but because the upstream context drifts enough between minor releases that a static `.patch` would need re-generation on every tag bump:
    - `build-opencv-from-source.ps1` — `cmake/OpenCVCompilerOptions.cmake` `-include cstring` removal
 
-7. **Upstream export-gap bridges (LiteRT-LM v0.14.0)** — Google ships LiteRT-LM
+7. **Upstream export-gap bridges (LiteRT-LM v0.14.0) — FROZEN FALLBACK ONLY.**
+   The primary LiteRT-LM build is now **Bazel** (`build-litert-lm-bazel.ps1`),
+   which is the path Google CI-tests and does NOT need any of these bridges;
+   everything in this item applies only to the retired CMake fallback
+   `build-litert-lm-from-source.ps1`. Google ships LiteRT-LM
    tags whose CMake layer lags the source restructure (v0.14.0's was never
    buildable anywhere: it references the deleted `constrained_decoding`
    component, pins a LiteRT from *before* the `support/` tree its own shim
@@ -79,9 +83,9 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
 - The **media stage fans out into three branch images** by `windows/build.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
   - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.2 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `n9.0` (pinned release tag, `FFMPEG_VERSION` in versions.env since 2026-08-04; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
-  - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 → LiteRT-LM 0.15.0 (independent of ONNX; the v0.14-era broken OSS CMake export is bridged by `litert-lm-export-bridge.ps1`, see § Source Patch Policy #7).
+  - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 (CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM 0.15.0 (independent of ONNX; built via **Bazel** with `build-litert-lm-bazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`build-litert-lm-from-source.ps1`) is a frozen fallback, see § Source Patch Policy #7).
   - **media-tvm** (`--target media-tvm` + `build-media-tvm-all.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
-  - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, then GStreamer 1.29.2 built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
+  - **merge** (`Dockerfile.media-merge-builder`): `COPY --from` fan-in of the three branch trees into one `C:\runtime` + canonical env layout, plus a `cuda-runtime-stage` (via `stage-cuda-runtime.ps1`) that FLATTENS the CUDA/cuDNN runtime DLLs into `C:\runtime\cuda-runtime\bin` on PATH — the CUDA-linked libs (notably OpenCV, which hard-links `cudnn64_9.dll`) otherwise fail to load in this non-nvidia-based image. Then GStreamer 1.29.2 is built via `build-gstreamer-from-source.ps1` in the run+commit step (Meson + clang-cl; auto-detects CUDA, OpenCV, ONNX and FFmpeg from the merged tree).
 - `windows/Dockerfile.torch` assembles the Orchestr-ANT-ion app env on the media image (`media → torch → final`; tag `local/kataglyphis:windows-torch`), and `windows/Dockerfile` produces the final developer image FROM that torch image (VsDevCmd entrypoint).
 
 ## Component Build Matrix
@@ -94,8 +98,8 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | ONNX Runtime 1.28.0 | Ninja | clang-cl, lld-link | DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsX86Avx512Flags`) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`. |
 | ONNX GenAI 0.15.2 | CMake (Ninja) | clang-cl, lld-link | Source-built directly via CMake (bypasses `build.py` which always builds examples). DirectML **enabled** (`USE_DML=ON`) — compiled straight into `onnxruntime-genai.dll` with 0 source patches (`src/dml` is clang-clean; the `RESTORE_PACKAGES` DXC nuget dep is pruned since shaders are pre-generated DXIL; the x64 `D3D12Core.dll` is staged beside the DLL). CUDA **enabled** (`USE_CUDA=ON`) — builds a separate `onnxruntime-genai-cuda.dll`; CUDA and DML are independent CMake blocks so they coexist. `-DENABLE_TELEMETRY=OFF` (0.15 defaults MS 1DS telemetry ON; its bundled zlib also breaks clang-cl under -Werror). VsDevCmd environment loaded for MSVC STL headers. |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
-| LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. |
-| LiteRT-LM 0.15.0 | Ninja | clang-cl, lld-link | On-device LLM inference. CUDA support enabled when detected. Links against LiteRT from previous stage. **v0.14.0's OSS CMake export was never functional upstream** (rationale + policy: § Source Patch Policy #7) — the build script bridges it with 5 condition-gated, self-retiring patches: (1) INTERFACE stubs for the CMake-referenced-but-deleted `constrained_decoding` component + the header-only `preprocessor`; (2) host protoc pinned 31.1 (== its internal protobuf 6.31.1 — see `bump:hold` in versions.env); (3) the `support/` tree grafted from LiteRT `v2.1.6` (the `// from @litert` shim includes) + staged via PROJECT_ROOT-anchored globs; (4) ~15 orphaned sources (new `logits_processor` subsystem, support impls, `multimodal_processor_helper`) injected into the engine lib, with miniaudio/kissfft/stb wired (upstream fetches them but connects nothing); (5) upstream's prebuilt-only `libGemmaModelConstraintProvider` import lib linked on the exe + its DLL (and z.dll/kissfft-float.dll) staged beside `litert_lm_main.exe`. Exe smoke-RUN gated (missing artifact = throw). |
+| LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. Also builds the TFLite **C-API** shared lib `tensorflowlite_c` (target injected into the main build, `WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) that gst-plugins-bad's tflite plugin links. |
+| LiteRT-LM 0.15.0 | **Bazel** | clang-cl, lld-link | On-device LLM inference, built via `build-litert-lm-bazel.ps1` (bazelisk + Temurin JDK, `bazelisk build //runtime/engine:litert_lm_main --config=windows`) → `litert_lm_main.exe`, through the smoke-RUN gate. Bazel is the only path Google CI-tests, so it survives version bumps. The old CMake export-bridge path (`build-litert-lm-from-source.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**. |
 | TVM 0.25.0 | Ninja | clang-cl, lld-link | Auto-detects CUDA/Vulkan/LLVM. Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers. |
 | FFmpeg `n9.0` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | Source build from the pinned release tag (`FFMPEG_VERSION=n9.0` in `versions.env`; a release TAG since 2026-08-04 — previously tracked `master`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). Disabled x86asm. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set). |
 | GStreamer 1.29.2 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
@@ -253,12 +257,15 @@ directory so an OpenCV module-list change cannot rot into a link error.
 > because the lying healthcheck "found" it. Requiring it would fail every build
 > forever. Wanting it means adding an NNStreamer source-build stage.
 
-> **Unproven until the next build:** whether `gst-libav` compiles against FFmpeg
-> **9.0**. Upstream pins its wrap to 7.1.1, so 9.0 is untested territory and API
-> removals in FFmpeg 8/9 may need source patches. The constraints have no upper
-> bound, so it is allowed to try — and it will now fail loudly rather than
-> silently dropping the plugin. `-SkipPluginGate` gets an image out while that
-> is iterated on; such an image is by definition not shippable.
+> **PROVEN 2026-08-13:** all four mandatory plugins (`libav`, `opencv`, `onnx`,
+> `tflite`) build AND load in the merge image — the post-install `gst-inspect`
+> gate passes for all of them. `gst-libav` compiles and loads against the image's
+> own FFmpeg `n9.0` (the wrap is disabled so it links our FFmpeg, not upstream's
+> pinned 7.1.1). Getting there took an OpenCV-4→5 header port of the opencv
+> plugin, a `tensorflowlite_c` C-API lib for tflite, and deploying the CUDA/cuDNN
+> runtime so opencv's `cudnn64_9.dll` resolves (see the merge-stage notes above
+> and the `gstreamer-merge-winfix` build memory). `-SkipPluginGate` still exists
+> as the deliberate escape hatch; an image built with it is not shippable.
 
 ### Toolchain pins and the provenance manifest
 
@@ -1893,8 +1900,10 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `build-onnx-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl build with build.ninja patching and VsDevCmd wrapper |
 | `build-onnx-genai-from-source.ps1` | `windows/scripts/` | Source-built directly via CMake+clang-cl (bypasses `build.py` which always builds examples). Loads VsDevCmd via `vswhere`, clones git tag, runs `cmake`/`ninja` directly. CUDA enabled (`USE_CUDA=ON`) — builds a separate `onnxruntime-genai-cuda.dll` alongside the DML-enabled `onnxruntime-genai.dll`. |
 | `build-opencv-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl with global SIMD flags and mlas `<cstring>` patch |
-| `build-litert-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; GPU delegate (Vulkan+OpenCL), XNNPACK, external CUDA delegate |
-| `build-litert-lm-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; on-device LLM inference; links against LiteRT from previous stage. Carries the v0.14.0 export-bridge patch stack (`[LiteRTLM-winfix export-stubs]` / `[LiteRTLM-winfix support-graft]` / v0.14 orphans + deps blocks) — all gated on the breakage so they self-retire when upstream's CMake catches up |
+| `build-litert-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; GPU delegate (Vulkan+OpenCL), XNNPACK, external CUDA delegate. Injects + builds the TFLite C-API `tensorflowlite_c` shared lib (`WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) for gst's tflite plugin |
+| `build-litert-lm-bazel.ps1` | `windows/scripts/` | **PRIMARY LiteRT-LM builder.** Self-installs bazelisk + Temurin JDK; `bazelisk build //runtime/engine:litert_lm_main --config=windows` → `litert_lm_main.exe` through the smoke gate. Neutralizes the base image's Android env/WORKSPACE pollution; patches the WORKSPACE zlib URL to the GitHub release mirror (zlib.net is flaky). `output_base` stays container-local (wcifs rename hazard) |
+| `build-litert-lm-from-source.ps1` | `windows/scripts/` | **FROZEN FALLBACK** (superseded by the Bazel builder above). Ninja+clang-cl; carries the v0.14.0 export-bridge patch stack (`[LiteRTLM-winfix export-stubs]` / `[LiteRTLM-winfix support-graft]` / v0.14 orphans + deps blocks) — all gated on the breakage so they self-retire when upstream's CMake catches up |
+| `stage-cuda-runtime.ps1` | `windows/scripts/` | Runs in the merge's `cuda-runtime-stage` (derived from media-core). Recursively FLATTENS the CUDA_ROOT/CUDNN_ROOT DLLs into one dir COPY'd to `C:\runtime\cuda-runtime\bin` on PATH (cuDNN 9 buries DLLs in a CUDA-major subdir); hard-gates on `cudnn64_9.dll`. Fixes opencv's plugin load in the non-nvidia merge image |
 | `build-tvm-from-source.ps1` | `windows/scripts/` | Ninja+clang-cl; auto-detects CUDA/Vulkan/LLVM; builds Python wheel; VsDevCmd for MSVC STL headers |
 | `build-ffmpeg-from-source.ps1` | `windows/scripts/` | MSYS2 `make` with `--toolchain=msvc`; `--enable-libonnxruntime` links against the source-built ONNX Runtime. Loads `versions.env` via `load-versions.ps1` for the centralized `FFMPEG_VERSION` tag pin. Falls back to BtbN pre-built GPL binary on source-build failure (`FFMPEG_SOURCE_BUILD=0` sentinel). |
 | `build-gstreamer-from-source.ps1` | `windows/scripts/` | Meson+clang-cl with wrap pre-extraction; loads `versions.env` via `load-versions.ps1` |
@@ -1932,6 +1941,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 > Cross-lane / Linux-side items live in [docs/refactoring-backlog.md](refactoring-backlog.md).
 > OPEN items only. Everything completed — 0a, 0c, items 1-26, 29, 30, 32, 33,
+> **36 and 37 (both closed 2026-08-13 when `:winamd64` went green end-to-end)**,
 > the whole W1/W2/W3 batches, the review history and all DONE evidence notes —
 > is archived verbatim in
 > [windows-backlog-archive-2026-08-11.md](windows-backlog-archive-2026-08-11.md).
@@ -1945,56 +1955,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 ### Open items (effort·impact; ordered by leverage)
 
-- **37 [M·★★★, P0 blocks chain completion] TVM import fails post-build:
-  `import tvm` → OSError [WinError 127] "The specified procedure could not
-  be found"** (run 28, 2026-08-12). TVM BUILDS clean (apache_tvm-0.25.0
-  wheel created, tvm_ffi.dll staged) but the smoke-import gate fails: a DLL
-  tvm loads is missing an expected export (entry-point/ABI mismatch, not a
-  missing-DLL 0xC0000135). Independent of the litert-lm bazel port (that
-  branch is green). Prime suspect: LLVM 22.1.8 ABI skew between what
-  libtvm/tvm_ffi.dll was linked against and the runtime LLVM DLL, or a
-  numpy/CRT dependency export change. Diagnose with `dumpbin /dependents`
-  + `/imports` on tvm_ffi.dll to name the DLL and the missing procedure.
-
-- **36 [M-L·★★★, owner-endorsed direction 2026-08-12] Migrate the litert
-  branch to BAZEL.** The CMake lane is upstream-unmaintained (four
-  stalenesses in one bump day: proto list, absl pin, litert pin vs their
-  own WORKSPACE, unconditional examples) while bazel is the only path
-  Google CI-tests — every bump re-opens our port layer. Plan: (1) CANARY
-  solve: bazelisk + LiteRT-LM v0.15.0 per upstream docs in a toolchain-
-  image container, artifact = litert_lm_main.exe through the EXISTING
-  smoke gate; probe bazel's disk-cache temp+rename behavior on a wcifs
-  cache mount FIRST (same hazard family as the sccache write errors -
-  keep output_base container-local, persist only the repository cache if
-  renames fail); (2) green → wire via litert-lm-export-bridge.ps1, freeze
-  the CMake port as documented fallback. Costs: bazelisk+JVM in the
-  toolchain image, multi-GB first fetch (repository cache mount).
-  **CANARY PROGRESS (2026-08-12, scratchpad bazel-canary, 5 iterations):
-  the official `bazelisk build //runtime/engine:litert_lm_main
-  --config=windows` RUNS in the toolchain image and REACHES ANALYSIS (175
-  packages loaded, 15 targets configured) — every blocker so far is
-  base-image Android-env POLLUTION, not a code/port issue. Blocker 1
-  (SOLVED): TF `android_configure.bzl:69` does `int($ANDROID_NDK_VERSION)`
-  on the baked dotted revision "29.0.14206865"; fix = clear
-  ANDROID_NDK_VERSION + the whole ANDROID_* family at Machine+Process scope
-  AND via `--repo_env=ANDROID_*=`. Blocker 2 (OPEN): analysis then fails
-  "Expected directory at C:/llm/platforms ... Unable to read the
-  Android[...]" — a lingering android platform-mapping reference; likely
-  `--android_platforms=` clear or full android-repo suppression. VERDICT:
-  migration is VIABLE; remaining work is "strip the base image's Android
-  pollution from the bazel invocation," NOT porting.**
-  **PROVEN GREEN 2026-08-12 (canary v6): built litert_lm_main.exe — 5094
-  actions, 549 s, 19 MB, `--help` exit 0. Recipe preserved at
-  `windows/scripts/build-litert-lm-bazel.ps1`. Both android blockers
-  solved (clear ANDROID_NDK_VERSION only; comment out WORKSPACE's bare
-  android_{ndk,sdk}_repository calls; do NOT empty ANDROID_HOME). REMAINING
-  = chain integration only: bazelisk + JDK into the toolchain image
-  (base/toolchain-tier rebuild — batch it), a repository-cache mount
-  (output_base stays container-local per the wcifs rename hazard), wire
-  bazel-bin output into litert-lm-export-bridge.ps1, freeze
-  build-litert-lm-from-source.ps1 as fallback. ENDS the CMake shell-peeling
-  (was on shell 5+: proto/absl/litert-pin/examples/ruy-header, ~2.5 h each).**
-
 - **34 [M·★★★, P0] No cross-run caching — snapshot GC eviction.** Mechanism
   identified 2026-08-11: tier-2 `maxUsedSpace` was far below one night's
   vertex churn, so GC evicted the oldest snapshots (= the base/sdk/toolchain
@@ -2007,12 +1967,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   `apply-buildkitd-gcpolicy.ps1` between runs (bundle with the W0 restore
   below). ⚠ Side-finding: `rewrite-timestamp=true` on the Windows image
   exporter crashes mid-finalize and POISONS the layer chain — never use it.
-- **28 [S·★★, READY TO LAND] Ninja job-count is memory-capped 4× too low.**
-  Measured complete (runs 12+13, 9274 samples total incl. the full ONNX
-  vertex): peak per-process WorkingSet 998 MB, peak fleet 5.5 GB at `-j9`.
-  Land `-MemGBPerJob 2` at the build-onnx/build-opencv call sites (→ 19
-  jobs; extrapolated fleet ~11-12 GB vs 39 GB budget) in the NEXT
-  media-closure window — do not land alone.
 - **27 [M·★, base-tier window only] Dockerfile.base 1214-char single-line
   RUN** (pwsh bootstrap blob) — move to a mounted script. Base closure:
   batch with the next planned base bump, never alone.

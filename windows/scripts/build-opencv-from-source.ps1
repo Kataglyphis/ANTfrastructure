@@ -292,7 +292,10 @@ $buildLog = Join-Path $buildDir 'opencv-build.log'
 # Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
 # to the failing TU) so the error output is unambiguous without paying the serial
 # build cost on the happy path.
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install
+# MemGBPerJob=2 (backlog #28): same memory envelope as the ONNX vertex (runs
+# 12+13, peak per-process ~1 GB, fleet 5.5 GB at -j9) -> ~19 jobs at 2 GB/job,
+# well under the 39 GB budget. Doubles OpenCV compile parallelism.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
