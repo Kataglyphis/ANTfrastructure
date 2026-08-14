@@ -70,6 +70,18 @@ param(
     [switch]$LatestApp,
     [string]$FinalTar = '',
     [switch]$NoCache,
+    # SMOKE GATE (backlog #44). After `final`, the produced image is run through
+    # smoke-test-container.ps1 and the chain FAILS if it does not pass. Neither
+    # driver did this before 2026-08-14, so every chain shipped unverified.
+    # -SkipSmokeGate is for iterating on the chain itself — it does not make an
+    # unverified image safe to ship.
+    [switch]$SkipSmokeGate,
+    # Coverage floors, not just "0 failures": a fully-skipped run used to print
+    # "All smoke tests passed!" and exit 0. Defaults are deliberately concrete
+    # so an image that silently loses whole sections trips the gate; lower them
+    # EXPLICITLY for a lane with fewer sections rather than by accident.
+    [int]$SmokeMinPassed = 40,
+    [int]$SmokeMaxSkipped = 24,
     # Per-stage cache bypass (backlog #64) — the lever the determinism gate
     # already tells you to pull when a snapshot is poisoned, e.g.
     #   -NoCacheStage opencv          (one media-core sub-stage)
@@ -561,6 +573,24 @@ if ($Stages -contains 'torch') {
 if ($Stages -contains 'final') {
     $finalArgs = $stampArgs + @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
     Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Tag (Get-BkTag 'winamd64') -BuildArgs $finalArgs
+    # SMOKE GATE (backlog #44). Until 2026-08-14 neither driver ran the smoke
+    # test at all, so a multi-hour chain ended with "Done" and zero evidence the
+    # image worked — in a repo whose defect history is dominated by "builds
+    # fine, fails to LOAD". Runs as a buildctl solve, not `nerdctl run`,
+    # because containerd's pipe is admin-only and this driver is deliberately
+    # non-admin. -SkipSmokeGate exists for iterating on the chain itself; it is
+    # NOT a way to ship an unverified image.
+    if (-not $SkipSmokeGate) {
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.smoke-gate' -Label 'smoke-gate' -NoOutput -BuildArgs @{
+            BASE_IMAGE  = Get-BkTag 'winamd64'
+            MIN_PASSED  = "$SmokeMinPassed"
+            MAX_SKIPPED = "$SmokeMaxSkipped"
+            EXPECT_GPU  = $(if ($Gpu) { '1' } else { '0' })
+        } -MaxAttempts 1
+        Write-Host '[bk:smoke-gate] image verified' -ForegroundColor Green
+    } else {
+        Write-Host '[bk:smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
+    }
     # FinalTar / PushRef: the same final solve from cache, different exporter —
     # via Invoke-BkStage so both get the transient retry + stage log for free.
     # Same $finalArgs so the re-solve is a pure cache hit of the export above.

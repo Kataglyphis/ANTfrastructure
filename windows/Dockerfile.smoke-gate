@@ -1,0 +1,60 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+#
+# Backlog #44: runs smoke-test-container.ps1 against a BUILT image and fails the
+# solve if it does not pass.
+#
+# WHY A DOCKERFILE AND NOT `nerdctl run`
+# --------------------------------------
+# containerd's pipe is Administrator-only upstream, so `nerdctl run` cannot be
+# invoked from the non-admin shell the build driver deliberately runs in. A
+# buildctl solve reaches the same image through the same non-admin path the
+# whole chain already uses, so the gate costs no privilege escalation and no
+# second toolchain.
+#
+# WHY IT EXISTS AT ALL
+# --------------------
+# Until 2026-08-14 NEITHER driver invoked the smoke test: `grep -i smoke
+# windows/build.ps1 windows/build-buildkit.ps1` returned zero hits in both, the
+# final Dockerfile has no RUN, and CI never referenced it. A ~5 h chain ended
+# with "Done in hh:mm:ss" and zero evidence the image worked — in a repo whose
+# defect history is dominated by "builds fine, fails to LOAD" (OPENGL32 on
+# Server Core; the TensorRT EP that could never load; gst plugins with Win32
+# 126). The script exists, is modular, is documented, and was simply never run.
+#
+# Everything it needs is already in the final image (C:\temp\), so this stage
+# adds no COPY and no layer of its own.
+
+ARG BASE_IMAGE=local/kataglyphis:winamd64
+FROM ${BASE_IMAGE}
+
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Coverage floors, not just "0 failures" (backlog #44): the verdict used to read
+# only $summary.Failed, so a fully skipped run printed "All smoke tests passed!"
+# and exited 0. MIN_PASSED/MAX_SKIPPED make "nothing ran" a distinct failure
+# (exit 3). Passed as ARGs so a lane with legitimately fewer sections (a CPU-only
+# image, say) can lower them explicitly rather than by accident.
+ARG MIN_PASSED=40
+ARG MAX_SKIPPED=24
+ARG EXPECT_GPU=0
+
+# BIND-MOUNT the current script + harness rather than running the copy baked
+# into the image. Two reasons, both load-bearing:
+#   1. The baked copy is whatever existed when the final image was built, so a
+#      fix to the smoke test could not be re-verified without rebuilding the
+#      whole image first — which is precisely the friction that let this script
+#      go unrun for a month.
+#   2. A mount adds no layer, so the gate never alters the artifact it verifies.
+# The image still ships its own copy at C:\temp for interactive use.
+#
+# The run's own output IS the evidence — never redirect it away.
+RUN --mount=type=bind,source=windows/scripts/smoke-test-container.ps1,target=C:\gate\smoke-test-container.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\gate\modules `
+    $params = @{ MinPassed = [int]$env:MIN_PASSED; MaxSkipped = [int]$env:MAX_SKIPPED }; `
+    if ($env:EXPECT_GPU -eq '1') { $params['ExpectGpu'] = $true }; `
+    & 'C:\gate\smoke-test-container.ps1' @params
+
+# Marker so the solve produces something, and so `docker history` shows the gate ran.
+RUN Set-Content -Path 'C:\temp\smoke-gate.ok' -Value ('smoke gate passed ' + (Get-Date -Format o))

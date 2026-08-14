@@ -10,6 +10,56 @@ The lean OPEN-only backlog lives in docs/windows-builds.md § Refactor Backlog.
 
 ---
 
+## Addendum — closed 2026-08-14 (Batch D: nothing verified the artifact)
+
+Four items treated as ONE piece of work, because they all live in
+`smoke-test-container.ps1`. **The gate found 8 real failures in the shipped
+image on its first run** — see backlog P0c (#83-#87).
+
+- **44 (DONE) The smoke test was never invoked, and SKIP was not fatal.**
+  `grep -i smoke windows/build.ps1 windows/build-buildkit.ps1` returned **zero
+  hits in both**; the final Dockerfile has no RUN; CI never referenced it. A
+  ~5 h chain ended with "Done" and zero evidence the image worked. Worse, the
+  verdict read only `$summary.Failed`, so a run where every section skipped
+  printed "All smoke tests passed!" and exited 0 — with 24 `Skip-Test` sites and
+  seven env-gated sections that is a reachable shape, not a hypothetical.
+  Now: `-MinPassed` / `-MaxSkipped` coverage floors plus an `Aborted` check,
+  reported as **exit 3 (INSUFFICIENT COVERAGE)** distinct from exit 1
+  (failures) — "0 failures with too little executed is indistinguishable from a
+  broken harness". Wired into the BK driver after `final` via a new
+  `windows/Dockerfile.smoke-gate`, run as a **buildctl solve, not `nerdctl
+  run`**, because containerd's pipe is admin-only while the driver is
+  deliberately non-admin. `-SkipSmokeGate` exists for chain iteration and says
+  so loudly. The gate **bind-mounts the current script and modules** instead of
+  running the copy baked into the image: otherwise a fix to the smoke test could
+  not be re-verified without first rebuilding the whole image — exactly the
+  friction that let it go unrun for a month — and a mount adds no layer, so the
+  gate never alters the artifact it verifies.
+- **57 (DONE) Bulk DLL-load enumeration.** New `Assert-AllDllsLoad` walks a root
+  and LoadLibrary's EVERY DLL, with an explicit `-Allow` list for
+  unloadable-by-design plugins and a `-MinimumChecked` rot guard so a moved root
+  cannot pass vacuously. Wired into the OpenCV section, where exactly ONE of
+  ~25-30 module DLLs (`opencv_core`) had been load-tested and the rest were
+  existence checks — the OPENGL32 defect verbatim. **First run: 65 OpenCV DLLs
+  loaded, 0 failures.** Note the probing happens OUTSIDE the `Assert-Test`
+  condition on purpose: `-FailMessage` is a plain string evaluated at call time,
+  so a message built from results computed inside the condition would always be
+  empty.
+- **46 (DONE) DirectML could vanish with zero red at either end.** The smoke
+  test skipped itself when `DirectML.dll` was absent — keyed on the very
+  artifact it exists to verify — while the staging helper only `Write-Warning`s
+  on a missing sidecar. `USE_DML=ON` is unconditional in
+  build-onnx-from-source.ps1, so an absent redist is never legitimate, and on
+  the AMD reference host DirectML is the ONLY working GPU path. Now a hard
+  failure.
+- **67 (DONE) LiteRT exports are pinned.** The build gates on
+  `tensorflowlite_c.lib` being installed, but the documented failure was an
+  import lib that existed while the DLL exported ZERO C-API symbols — invisible
+  to a presence check, surfacing one branch later in gst's meson link. Now
+  asserts the DLL exists and exports `TfLiteInterpreterCreate`,
+  `TfLiteXNNPackDelegateCreate` and `TfLiteXNNPackDelegateOptionsDefault` — the
+  three the `/EXPORT:` injection forces.
+
 ## Addendum — closed 2026-08-14 (Batch G: the test net)
 
 Five items, tests **486 → 493**, no rebuild required. #59 deliberately NOT

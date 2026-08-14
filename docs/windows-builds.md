@@ -2005,12 +2005,11 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > build re-pays CUDA + cuDNN once regardless, because #53 reordered the
 > instructions above that RUN.
 >
-> **Batch D — the "nothing verifies the artifact" epic.** #44, #46, #57, #67
-> are ONE piece of work, not four: the smoke test is never invoked, its skips
-> are not fatal, it load-tests 1 of ~30 OpenCV DLLs, and it never checks the
-> LiteRT exports. Fixing them separately means touching
-> `smoke-test-container.ps1` four times. Do #44 first (make it run and make
-> SKIP fatal) — the other three are assertions inside the harness it enables.
+> **Batch D — DONE 2026-08-14** (#44, #46, #57, #67). The gate now runs as a
+> buildctl solve after `final` and FAILS the chain. It paid for itself
+> immediately: pointed at the existing image it returned **176 passed, 8
+> FAILED** — see P0c. Treating the four as one piece was right; they all landed
+> in `smoke-test-container.ps1` plus one new Dockerfile.
 >
 > **Batch E — base-tier. MUST be batched; never land alone.** #50 + #81. One
 > base rebuild (~30 min + full downstream invalidation) pays for both. Add any
@@ -2138,17 +2137,46 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   removing. FIX: suppress the top-5 noise classes at build-script level so CI
   can see the rest.
 
+### P0c — The shipped image FAILS 8 smoke assertions (found 2026-08-14 by #44)
+
+> Found the moment the smoke gate was wired up and pointed at the existing
+> `bk-winamd64`. Result: **176 passed, 8 FAILED, 1 skipped (185 total)**. The
+> last recorded baseline was 2026-07-14 at 104/0/1, so these regressed at some
+> point in the month the test was never run. Nothing here was caused by the
+> gate; the gate is what made a month-old regression visible.
+> Re-verify each against a FRESH chain before fixing — this image predates the
+> 2026-08-14 TensorRT and driver work.
+
+- **83 [M·★★★, none] Four failures point at ONE root cause: the MSVC dev
+  environment is not present in the shipped image.**
+  `Command 'msbuild' on PATH` → not found; `MSBuild works (ClangCL toolset
+  available)`; `MSBuild+ClangCL builds`; and `Env var VCToolsInstallDir` → not
+  set. Decide FIRST whether that is a defect or the design: the chain enters
+  VsDevCmd per build step rather than baking it, in which case the smoke test
+  is asserting something the image was never meant to carry and the TEST is
+  wrong. If the dev image is meant to be usable interactively for MSBuild, the
+  image is wrong. Do not "fix" either side before answering that.
+- **84 [M·★★★, none] `nvcc` cannot compile a trivial kernel to PTX** in the
+  shipped image ("host_config/nv-target/cl.exe integration?"). If real, CUDA
+  source builds inside the delivered image are impossible — distinct from the
+  chain's own builds, which work. Likely related to #83 (nvcc needs a host
+  compiler it cannot find without the MSVC env).
+- **85 [S·★★, none] AddressSanitizer probe fails** — `/fsanitize=address` did
+  not compile, or the ASAN runtime DLLs are not reachable. The repo already has
+  `Get-LlvmAsanRuntimeDirs` and an entrypoint hook for exactly this, so the
+  likely cause is that the runtime dir is not on PATH in a non-entrypoint shell.
+- **86 [S·★★, none] `SCOOP_GLOBAL_SHIMS=C:\ProgramData\scoop\shims` does not
+  exist** in the image — the env var survived a change in where the `--global`
+  scoop install puts its shims. Either the path moved or the global install
+  stopped happening; a dangling PATH-adjacent env var is how tools silently
+  fail to resolve.
+- **87 [S·★★★, none] `vcpkg zlib.lib` is missing under `C:\vcpkg`** ("vcpkg
+  install broken in the base image"). zlib is a media-build dependency; this
+  one is base-tier and worth checking against a fresh base before acting,
+  since the base was rebuilt 2026-08-14.
+
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 
-- **44 [S·★★★, none] Nothing verifies the artifact: the smoke test is never
-  run, and SKIP is not fatal.** `grep -i smoke windows/build.ps1
-  windows/build-buildkit.ps1` → **0 hits in both**; no CI reference; the final
-  Dockerfile has zero RUN steps. `smoke-test-container.ps1:1376` exits 0 on
-  `Failed -eq 0` while `Skipped` is printed and never consulted — with 24
-  `Skip-Test` sites and seven env-gated sections, a misconfigured run prints
-  "All smoke tests passed!" having asserted nothing. Last recorded baseline:
-  2026-07-14. FIX: `-MinPassed`/`-MaxSkipped` floors + invoke it from both
-  drivers against the produced tag.
 - **45 [S·★★★, none] A mis-plumbed CUDA path yields a fully green, CPU-ONLY
   media chain — discovered hours later.** `WindowsSourceBuild.Cuda.psm1:47`
   gates on `Test-Path $cudaRoot`; every consumer then takes a quiet else-branch
@@ -2158,12 +2186,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   ~30 min OpenCV + ~45 min GenAI all green and all useless. The explicit
   opt-outs (`ONNX_FORCE_CPU`, `GENAI_FORCE_CPU`) already exist, so a `throw`
   is safe. FIX: fail closed when `GpuType -eq 'nvidia' -and -not $CudaRoot`.
-- **46 [S·★★, none] DirectML can vanish from the image with zero red at either
-  end** — and on the reference AMD host it is the ONLY working GPU path.
-  Staging warns instead of failing (`WindowsSourceBuild.Common.psm1:1103,1117`)
-  and the smoke test *skips itself* when the artifact is absent
-  (`smoke-test-container.ps1:572`), i.e. the gate is keyed on the very thing it
-  should verify. `USE_DML=ON` is unconditional, so absence is never legitimate.
 - **47 [S·★★, none] TVM silently drops LLVM / Vulkan / cuDNN.**
   `build-tvm-from-source.ps1:76-82` (and :68-73, :53-64) print on the ON path
   and print NOTHING on the OFF path. `USE_LLVM=OFF` removes TVM's CPU codegen
@@ -2201,13 +2223,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   headers, `onnxruntime.lib`, LiteRT headers, `tensorflowlite_c.lib`) depend on
   NONE of that work. Hoisting it above :228 turns a missing media fan-in from
   "full download+patch phase, then fail" into a ~5-second failure.
-- **67 [S·★★★, none] LiteRT gates on `tensorflowlite_c.lib` but never on the
-  DLL or its EXPORTS** (`build-litert-from-source.ps1:180-187`). The documented
-  failure was an import lib that existed while the DLL exported ZERO C-API
-  symbols — the lib-only assert is structurally blind to that recurrence, and
-  the just-shipped `/EXPORT:` + `WINDOWS_EXPORT_ALL_SYMBOLS` work therefore has
-  no regression gate. FIX: `dumpbin /exports` (or `llvm-nm`) on the produced
-  DLL for the three XNNPack symbols the link options force.
 - **68 [M·★★★, none] FFmpeg's prebuilt fallback ships a MIXED install, and the
   skip-if-present early return bypasses every gate on re-entry.** On a missing
   `ffmpeg.exe` it downloads BtbN's zip and copies `*.exe`/`*.dll` over whatever
@@ -2294,13 +2309,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 ### P4 — Missing regression tests (each maps to a bug that already cost hours)
 
-- **57 [M·★★★, none] No DLL-LOAD enumeration — 1 of ~30 OpenCV DLLs is
-  load-tested.** The primitives exist and are good (`Assert-DllLoads` via
-  `LoadLibraryW`, `Assert-NativeLinkRun` compile+link+run) but there are only
-  10 call sites, every one a hardcoded name. This is the OPENGL32 bug verbatim
-  — existence checks passed, only a LOAD test caught it. FIX: enumerate
-  `C:\runtime\**\*.dll`, LoadLibrary each, assert no `0xC0000135`, with an
-  explicit allowlist. It is a loop over machinery that already exists.
 - **59 [S·★★, none] Lint/tests are advisory, not gating.** `main` is not
   branch-protected (`gh api …/protection` → 404); `windows-scripts.yml:50` runs
   the linter WITHOUT `-FailOnAnalyzer`; `.githooks/pre-commit` runs the Linux

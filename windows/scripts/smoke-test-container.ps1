@@ -37,7 +37,20 @@ param(
     # — an nvidia image that LOST its CUDA_ROOT env now skips instead of failing.
     # Default off = exactly the previous behavior.
     [switch]$ExpectGpu,
-    [switch]$ExitOnFirstFailure
+    [switch]$ExitOnFirstFailure,
+    # COVERAGE FLOORS (backlog #44). Until 2026-08-14 the verdict read only
+    # $summary.Failed, so a run that asserted NOTHING — every section skipped
+    # because an env var was missing, or the harness bailed early — printed
+    # "All smoke tests passed!" and exited 0. With 24 Skip-Test call sites and
+    # seven env-gated sections that is not a hypothetical shape. A gate that
+    # cannot distinguish "everything passed" from "nothing ran" is worse than no
+    # gate, because it is quoted as evidence.
+    #   -MinPassed  : fail if fewer than N assertions actually PASSED.
+    #   -MaxSkipped : fail if more than N were skipped (-1 = no ceiling).
+    # Defaults stay 0 / -1 so existing hand invocations behave exactly as before;
+    # the drivers pass real floors.
+    [int]$MinPassed = 0,
+    [int]$MaxSkipped = -1
 )
 
 $ErrorActionPreference = 'Continue'
@@ -573,7 +586,16 @@ int main() {
         if ($dmlRedist) {
             Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source $onnxEpProbeSource -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
         } else {
-            Skip-Test 'DirectML EP (USE_DML=OFF on the clang-cl lane -- DML provider sources are MSVC-only)'
+            # FAIL, don't skip (backlog #46). This branch was keyed on the very
+            # artifact it is meant to verify: DirectML.dll missing => "skip",
+            # so the EP could vanish from the image with zero red at either end
+            # (the staging helper only Write-Warnings on a missing sidecar). But
+            # USE_DML=ON is UNCONDITIONAL in build-onnx-from-source.ps1, so an
+            # absent redist is never legitimate on this lane — and on the
+            # reference AMD host DirectML is the ONLY working GPU path.
+            Assert-Test -Name 'ONNX Runtime DirectML redist present (USE_DML=ON is unconditional)' `
+                -Condition { $false } `
+                -FailMessage "DirectML.dll not found under $onnxRoot. ONNX Runtime is built with USE_DML=ON unconditionally, so the redist must ship; Copy-SidecarDll only WARNS when it cannot stage it. On the AMD reference host this is the only working GPU path."
         }
     } else {
         Skip-Test 'ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)'
@@ -683,6 +705,18 @@ if ($opencvInclude -and (Test-Path $opencvInclude)) {
 if ($opencvSearchRoot) {
     # opencv_core is always built (world only if BUILD_opencv_world=ON).
     Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_core*.dll' -Description 'OpenCV core DLL'
+    # BULK LOAD TEST (backlog #57). Until 2026-08-14 exactly ONE of OpenCV's
+    # ~25-30 per-module DLLs was load-tested (opencv_core); the rest — including
+    # every cudaarithm/dnn module — were existence checks only. That is the
+    # OPENGL32 defect verbatim: WITH_OPENGL=ON linked fine and failed
+    # 0xC0000135 at LOAD on Server Core, and only a load test caught it.
+    # CUDA/cuDNN live outside this root, so pass their bins as dependency dirs.
+    $cvDepDirs = @(
+        $env:CUDA_ROOT, "$env:CUDA_ROOT\bin", "$env:CUDNN_ROOT\bin",
+        'C:\runtime\cuda-runtime\bin'
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    Assert-AllDllsLoad -Name 'every OpenCV DLL loads (full dependent chain, not just opencv_core)' `
+        -Root $opencvSearchRoot -DependencyDirs $cvDepDirs -MinimumChecked 5
 } else {
     Skip-Test 'OpenCV DLLs (OPENCV_ROOT/INCLUDE not found)'
 }
@@ -822,6 +856,23 @@ if (Test-Path $litertInclude) {
 
 if (Test-Path $litertLibDir) {
     Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
+    # EXPORTS, not just the import lib (backlog #67). build-litert-from-source
+    # gates on tensorflowlite_c.lib being INSTALLED — but the documented failure
+    # was an import lib that existed while the DLL exported ZERO C-API symbols,
+    # which is structurally invisible to a presence check and only surfaced one
+    # branch later in gst's meson link. The injected target forces three XNNPack
+    # symbols via /EXPORT: plus WINDOWS_EXPORT_ALL_SYMBOLS; nothing pinned that
+    # until now, so an export regression could ship silently.
+    $tfliteDll = Get-ChildItem -Path (Split-Path $litertLibDir -Parent) -Filter 'tensorflowlite_c.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($tfliteDll) {
+        foreach ($sym in @('TfLiteInterpreterCreate', 'TfLiteXNNPackDelegateCreate', 'TfLiteXNNPackDelegateOptionsDefault')) {
+            Assert-DllLoads -Name "tensorflowlite_c.dll exports $sym" -DllPath $tfliteDll.FullName -Export $sym `
+                -FailMessage "tensorflowlite_c.dll does not export $sym - the /EXPORT: + WINDOWS_EXPORT_ALL_SYMBOLS injection in build-litert-from-source.ps1 regressed. A link-clean lib with no exports breaks gst-tflite one branch later."
+        }
+    } else {
+        Assert-Test -Name 'tensorflowlite_c.dll present (C API consumers need it)' -Condition { $false } `
+            -FailMessage "tensorflowlite_c.dll not found near $litertLibDir - the build gates on the .lib only, so an import lib without its DLL passes that check and fails downstream."
+    }
 }
 
 if (Test-Path $litertBinDir) {
@@ -1379,8 +1430,28 @@ if ($summary.Failed -gt 0) {
         Write-Host "  $detail" -ForegroundColor Red
     }
     exit 1
-} else {
-    Write-Host "`nAll smoke tests passed!" -ForegroundColor Green
-    exit 0
 }
+
+# Coverage floors (backlog #44): zero failures is NOT the same as "verified".
+# These are checked after the failure branch so a real failure still reports as
+# a failure, not as a coverage problem.
+$coverageProblems = @()
+if ($MinPassed -gt 0 -and $summary.Passed -lt $MinPassed) {
+    $coverageProblems += "only $($summary.Passed) assertion(s) passed, expected at least $MinPassed — the run proved far less than it appears to"
+}
+if ($MaxSkipped -ge 0 -and $summary.Skipped -gt $MaxSkipped) {
+    $coverageProblems += "$($summary.Skipped) test(s) skipped, ceiling is $MaxSkipped — sections are being gated out (usually a missing env var or an absent artifact keyed as 'optional')"
+}
+if ($summary.Aborted) {
+    $coverageProblems += '-ExitOnFirstFailure aborted the run, so the remaining tests never executed and this result is not a full verdict'
+}
+if ($coverageProblems.Count -gt 0) {
+    Write-Host "`n--- INSUFFICIENT COVERAGE ---" -ForegroundColor Red
+    foreach ($p in $coverageProblems) { Write-Host "  $p" -ForegroundColor Red }
+    Write-Host 'Refusing to report success: 0 failures with too little executed is indistinguishable from a broken harness.' -ForegroundColor Red
+    exit 3
+}
+
+Write-Host "`nAll smoke tests passed! ($($summary.Passed) assertions, $($summary.Skipped) skipped)" -ForegroundColor Green
+exit 0
 
