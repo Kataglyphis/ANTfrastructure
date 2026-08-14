@@ -107,9 +107,29 @@ hadolint_ensure() {
 hadolint_ensure
 printf '== hadolint (%s) on %d Dockerfile(s) ==\n' "$("${HADOLINT_BIN}" --version)" "${#DOCKERFILES[@]}"
 
+# Windows Dockerfiles are PowerShell (`# escape=`` + SHELL ["pwsh",...]), but
+# hadolint's embedded shellcheck still parses RUN bodies as sh wherever it
+# cannot see the inherited SHELL — e.g. stages whose base is an ARG image
+# (`FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS ...`), where the SHELL set back in
+# `common` is invisible to a static linter. PowerShell that happens to parse as
+# sh slips through; PowerShell that does not (`...; & 'C:\x.ps1'` —
+# Dockerfile.media-builder:321) raises a shellcheck PARSE error, which is
+# error-severity and so fails the gate on a pure false positive.
+#
+# Suppress only the "shellcheck could not parse this at all" family, and only
+# for windows/*: those diagnostics can never be true for a PowerShell RUN. The
+# Linux Dockerfiles keep the full rule set — a real sh parse error there must
+# still fail. Style/semantic shellcheck rules stay on everywhere.
+HADOLINT_WINDOWS_IGNORES=(SC1009 SC1070 SC1071 SC1072 SC1073 SC1083)
+
 FAILED=0
 for df in "${DOCKERFILES[@]}"; do
-  if "${HADOLINT_BIN}" --config "${REPO_ROOT}/.hadolint.yaml" "${df}"; then
+  hl_args=(--config "${REPO_ROOT}/.hadolint.yaml")
+  case "${df}" in
+    windows/*)
+      for rule in "${HADOLINT_WINDOWS_IGNORES[@]}"; do hl_args+=(--ignore "${rule}"); done ;;
+  esac
+  if "${HADOLINT_BIN}" "${hl_args[@]}" "${df}"; then
     printf '  ok: %s\n' "${df}"
   else
     printf '  FAIL: %s\n' "${df}" >&2

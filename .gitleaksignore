@@ -1,12 +1,9 @@
-# gitleaks false-positive allowlist (backlog SEC1, triaged 2026-08-10).
-# RULE: every entry needs a justification comment. Entries are
-# file:rule:line fingerprints — they self-invalidate if the line moves
-# (re-triage on scan failure after refactors; that is intentional).
-
-# GCC release-signer GPG key FINGERPRINT — the accepted-signer allowlist for
-# tarball signature verification. A public trust anchor, not a credential.
-linux/scripts/02-toolchain/build-gcc.sh:generic-api-key:332
-
-# SHA256 pin OF the public ROCm apt GPG key (supply-chain download gate).
-# Public trust anchor, not a credential.
-linux/scripts/01-core/versions.env:generic-api-key:408
+# gitleaks false-positive allowlist — SUPERSEDED by .gitleaks.toml.
+#
+# Entries here are `file:rule:line` fingerprints, which stop matching as soon
+# as an unrelated edit shifts the line; both triaged entries drifted that way
+# and failed the preflight gate on main. Triaged false positives now live in
+# .gitleaks.toml as value-pinned allowlist entries, which survive refactors.
+#
+# Kept (empty) so a stray fingerprint is not added here by habit — add the
+# justification + regex to .gitleaks.toml instead.

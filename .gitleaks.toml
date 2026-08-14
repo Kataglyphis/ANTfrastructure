@@ -1,0 +1,45 @@
+# gitleaks config for linux/scripts/lint-secrets.sh (preflight + CI + hook).
+#
+# Extends the built-in rule set — this file only ADDS allowlist entries, it
+# never disables a rule.
+#
+# Why this exists instead of .gitleaksignore: .gitleaksignore entries are
+# `file:rule:line` fingerprints, so they silently stop matching the moment an
+# unrelated edit shifts the line. That is what turned main red — both triaged
+# false positives below drifted (build-gcc.sh 332 -> 339, versions.env
+# 408 -> 420) and the gate started reporting them as fresh leaks.
+#
+# Allowlisting the exact secret VALUE instead is stable across refactors and
+# stays narrow: each regex below pins one specific literal, so a genuinely new
+# high-entropy string in the same file is still reported.
+#
+# RULE, unchanged: every entry needs a justification comment saying why the
+# matched value is not a credential.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+GCC release-signer GPG key FINGERPRINTS — the accepted-signer allowlist used to
+verify downloaded gcc tarball signatures (linux/scripts/02-toolchain/build-gcc.sh).
+A public trust anchor: knowing a signing key's fingerprint grants nothing.
+"""
+regexTarget = "secret"
+regexes = [
+  '''D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62''',
+  '''7F74F97C103468EE5D750B583AB00996FC26A641''',
+  '''33C235A34C46AA3FFB293709A328C3A2C3C45C06''',
+  '''13975A70E63C361C73AE69EF6EEB81F8981C74C7''',
+]
+
+[[allowlists]]
+description = """
+SHA256 pin OF the public AMD ROCm apt signing key (repo.radeon.com/rocm/rocm.gpg.key),
+used as the supply-chain download gate in linux/scripts/01-core/versions.env.
+A checksum of a public file, not a credential.
+"""
+regexTarget = "secret"
+regexes = [
+  '''2de99e2354646a90d9903e2a669fc4e36b02c1bbff7075c481e12d7edab2c88b''',
+]
