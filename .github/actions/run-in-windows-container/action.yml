@@ -221,6 +221,20 @@ runs:
           Write-Host '(process isolation needs the image and host BUILD numbers to match;'
           Write-Host ' differing UBR/revision is fine. hyperv isolation needs nested'
           Write-Host ' virtualization, which GitHub-hosted runners do not have.)'
+
+          # Bare probe: no bind mount, no -w, no limits, nothing but the image.
+          # HCS reports "The request is not supported" for the CONTAINER and for
+          # its MOUNT with the same words, and the difference decides where to
+          # look next - a host/image mismatch, or the D:\ bind mount. Without
+          # this probe the two are indistinguishable from the log, which is why
+          # this failure survived several rounds of guessing.
+          Write-Host '--- probe: can this image start AT ALL (no mount, no limits)? ---'
+          docker run --rm $image cmd /c ver
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host '::warning::PROBE PASSED: the image starts fine bare, so the container is not the problem - the bind mount or the resource limits are.'
+          } else {
+            Write-Host "::warning::PROBE FAILED (exit $LASTEXITCODE): this image cannot start on this host at all, mount or no mount. Compare the build numbers above."
+          }
           Write-Host '==================================='
 
           # Rung 1: same isolation, no resource limits.
