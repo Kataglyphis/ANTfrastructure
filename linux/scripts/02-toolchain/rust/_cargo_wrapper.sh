@@ -15,6 +15,12 @@ source "$_CARGO_WRAPPER_DIR/../../01-core/logging.sh"
 # shellcheck source=/dev/null
 source "$_CARGO_WRAPPER_DIR/_cargo_home_guard.sh"
 
+# Toolchain selection, for the same reason and in the same place: the images
+# also carry Ubuntu's Rust debs, and without this a step can end up running
+# cargo from the pinned toolchain and rustc from the deb.
+# shellcheck source=/dev/null
+source "$_CARGO_WRAPPER_DIR/_rust_toolchain_guard.sh"
+
 # cargo_step <start-msg> <done-msg> -- <command...>
 # Logs <start-msg>, runs <command...>, then logs <done-msg>. The `--` separates
 # the two message args from the command so messages may contain spaces.
