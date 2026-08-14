@@ -350,11 +350,30 @@ uv_sync_project() {
   #          Permission denied (os error 13)
   # Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
   # the extras fix let the resolve get this far. --python forces the writable
-  # local environment; --active stays so uv still prefers it when no venv is set.
-  local _venv="${VIRTUAL_ENV:-${_CURRENT_VENV_PATH:-}}"
-  if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+  # local environment.
+  #
+  # Consult _CURRENT_VENV_PATH FIRST and VIRTUAL_ENV only as a fallback. The
+  # other order made the pin fire backwards: the images ALSO export
+  # VIRTUAL_ENV=/opt/venv, and `uv venv` only prints "Activate with: source
+  # .../activate" — it does not activate — so a caller that creates
+  # .venv_static_analysis never overwrites the inherited VIRTUAL_ENV. The pin
+  # then resolved to the very system venv it exists to avoid, logged
+  # "uv sync pinned to /opt/venv/bin/python", and died 2.5 minutes later with
+  # the exact permission error above (WebDavClient x64, 2026-08-12).
+  # _CURRENT_VENV_PATH is set by uv_venv_create/uv_venv_ensure/uv_venv_activate,
+  # so it names the venv THIS script owns — which is the one to sync into.
+  local _venv="${_CURRENT_VENV_PATH:-${VIRTUAL_ENV:-}}"
+  # Writability is checked, not assumed: pinning to a venv this uid cannot
+  # write is strictly worse than not pinning at all, because uv then fails deep
+  # into the sync instead of falling back to its own discovery.
+  local _pinned=0
+  if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ] && [ -w "$_venv/lib" ]; then
     sync_args+=(--python "$_venv/bin/python")
     info "uv sync pinned to ${_venv}/bin/python"
+    _pinned=1
+  elif [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+    warn "Refusing to pin uv sync to ${_venv}: ${_venv}/lib is not writable by uid $(id -u)."
+    warn "  Falling back to uv's own discovery rather than failing mid-sync."
   else
     # Say WHY, because the pin silently not applying is exactly how the sync ends
     # up in /opt/venv. Measured 2026-08-12: this branch was taken on a runner
@@ -368,8 +387,6 @@ uv_sync_project() {
     fi
   fi
 
-  sync_args+=(--active)
-
   # UV_PYTHON is unset for the CALL, not for the shell. The images export
   # UV_PYTHON=/opt/venv/bin/python (root-owned, and the container runs as a
   # non-root user), and uv honours it OVER both --active and an activated venv.
@@ -377,8 +394,23 @@ uv_sync_project() {
   # the sync cannot be redirected into a system venv it has no right to write to
   # - it falls back to uv's own discovery instead of failing on a permission
   # error. When the pin DID apply this changes nothing: --python already wins.
+  local -a _env_clear=(-u UV_PYTHON)
+
+  if [ "$_pinned" -eq 1 ]; then
+    # --python already decides the target; --active only tells uv to prefer an
+    # activated venv when nothing else does.
+    sync_args+=(--active)
+  else
+    # No pin, so --active would hand uv whatever VIRTUAL_ENV says - and the
+    # value it says in these images is /opt/venv, the root-owned system venv
+    # this function exists to stay out of. Drop both the flag and the variable
+    # so uv falls back to its own project discovery.
+    warn "uv sync is UNPINNED; dropping --active and VIRTUAL_ENV so it cannot target ${VIRTUAL_ENV:-a system venv}."
+    _env_clear+=(-u VIRTUAL_ENV)
+  fi
+
   info "uv ${sync_args[*]}"
-  env -u UV_PYTHON uv "${sync_args[@]}"
+  env "${_env_clear[@]}" uv "${sync_args[@]}"
 }
 
 uv_run() {

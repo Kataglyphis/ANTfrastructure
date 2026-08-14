@@ -60,6 +60,15 @@ inputs:
       the plain checkout below takes submodules itself.
     required: false
     default: '/d/ws'
+  exclude-submodules:
+    description: >-
+      Forwarded to clone-into-short-path: submodule NAMES (one per line) to skip
+      during the recursive update, with everything beneath them. A short clone
+      root fixes MAX_PATH but not git's own `fatal: '$GIT_DIR' too big`, which a
+      deep enough chain hits regardless of how short the root is. See that
+      action's input docs.
+    required: false
+    default: ''
   token:
     description: 'Token for the short-path clone (submodule URLs are rewritten to token HTTPS).'
     required: false
@@ -116,6 +125,7 @@ runs:
       with:
         target: ${{ inputs.short-path-target }}
         token: ${{ inputs.token || github.token }}
+        exclude-submodules: ${{ inputs.exclude-submodules }}
 
     # Before the pull, always: moving the data-root afterwards would hide the
     # image that was just fetched.
