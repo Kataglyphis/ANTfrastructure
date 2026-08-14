@@ -24,7 +24,8 @@
 # 126). The script exists, is modular, is documented, and was simply never run.
 #
 # Everything it needs is already in the final image (C:\temp\), so this stage
-# adds no COPY and no layer of its own.
+# adds no COPY, and the driver solves it with -NoOutput so nothing is exported —
+# the verified artifact is never modified by verifying it.
 
 ARG BASE_IMAGE=local/kataglyphis:winamd64
 FROM ${BASE_IMAGE}
@@ -65,5 +66,9 @@ RUN --mount=type=bind,source=windows/scripts/smoke-test-container.ps1,target=C:\
     & cmd /S /C ('C:\temp\scripts\entrypoint.cmd ' + $cmdline); `
     if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }
 
-# Marker so the solve produces something, and so `docker history` shows the gate ran.
-RUN Set-Content -Path 'C:\temp\smoke-gate.ok' -Value ('smoke gate passed ' + (Get-Date -Format o))
+# No marker RUN. An earlier version wrote C:\temp\smoke-gate.ok "so docker
+# history shows the gate ran" — but the driver solves this with -NoOutput, so
+# nothing is ever exported and that history could never be inspected. It was a
+# dead instruction whose only real effect was to contradict the "adds no layer"
+# rationale above. The RUN that executes the smoke test is the vertex; its exit
+# code is the verdict.

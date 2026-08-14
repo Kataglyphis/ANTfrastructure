@@ -308,16 +308,26 @@ public static class KataNativeProbe {
     } else {
         $dlls = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue)
         # Rot guard: an empty or moved root would otherwise pass vacuously —
-        # the exact shape this test exists to eliminate.
-        if ($dlls.Count -lt $MinimumChecked) {
-            $problems += "only $($dlls.Count) DLL(s) under $Root, expected at least $MinimumChecked - wrong root?"
+        # the exact shape this test exists to eliminate. Counted AFTER the
+        # -Allow filter (see below), not on the raw find: a root that is 100 %
+        # allow-listed would otherwise satisfy the guard while checking nothing.
+        $candidates = @($dlls | Where-Object { $Allow -notcontains $_.Name })
+        if ($candidates.Count -lt $MinimumChecked) {
+            $problems += "only $($candidates.Count) non-allow-listed DLL(s) under $Root (of $($dlls.Count) found), expected at least $MinimumChecked - wrong root, or over-broad -Allow?"
         } else {
             $prev = $env:PATH
-            $env:PATH = ((@($Root) + $DependencyDirs) -join ';') + ';' + $env:PATH
             try {
                 foreach ($d in $dlls) {
                     if ($Allow -contains $d.Name) { continue }
                     $checked++
+                    # The DLL's OWN directory must lead, per DLL. LoadLibraryW with
+                    # a full path does NOT add that directory to the dependency
+                    # search order, so a DLL in a SUBdirectory whose dependents sit
+                    # beside it would report a fabricated Win32 126. Assert-DllLoads
+                    # already does this correctly; putting only $Root on PATH (the
+                    # first version here) happened to work for OpenCV's flat bin\
+                    # and would have invented failures at the next call site.
+                    $env:PATH = ((@((Split-Path $d.FullName)) + @($Root) + $DependencyDirs) -join ';') + ';' + $prev
                     $h = [KataNativeProbe]::LoadLibraryW($d.FullName)
                     if ($h -eq [IntPtr]::Zero) {
                         $problems += ("{0} (Win32 {1})" -f $d.Name, [Runtime.InteropServices.Marshal]::GetLastWin32Error())

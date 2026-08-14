@@ -612,8 +612,13 @@ Housekeeping and sharing:
   ```
 
   Chain-wide `-NoCache` still overrides it. Each matched stage announces itself
-  (`-NoCacheStage match -> --no-cache for THIS stage only`) so a typo that
-  matches nothing is visible rather than silently doing a fully-cached build.
+  (`-NoCacheStage match -> --no-cache for THIS stage only`), and an entry that
+  matched **no** stage **fails the run at the end** — printing only on a match
+  would have meant a typo printed nothing at all while every stage built from
+  cache and the owner believed a poisoned snapshot had been busted. Under
+  `-ConcurrentAux` the flag is forwarded to the child drivers, since litert and
+  tvm are built by those children and a parent-only flag would be a silent
+  no-op for exactly the branches it targets.
 
   Re-running the RUN produces a new layer digest (its output is not
   bit-identical), so every chain ID beneath it is fresh and the poisoned
@@ -1797,7 +1802,33 @@ but capped at 2 CPUs on this host). NAT networking and DNS work in both modes.
 
 ## Smoke Testing
 
-After building, run the container smoke test to verify all components:
+**Since 2026-08-14 this runs AUTOMATICALLY as the last step of every BK chain
+(backlog #44).** `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate`
+against the freshly built `winamd64` image after `final`, and a failure fails
+the chain. Before that, neither driver invoked the smoke test at all — a
+multi-hour build ended with "Done" and zero evidence the image worked, in a repo
+whose defect history is dominated by "builds fine, fails to LOAD".
+
+Three things about the gate are load-bearing:
+
+- **It runs through `entrypoint.cmd`, not as a bare `RUN`.** A bare RUN bypasses
+  `ENTRYPOINT`, which is what loads VsDevCmd and the LLVM clang_rt ASAN runtime
+  dir. Skipping it made SIX assertions fail against a perfectly good image
+  (msbuild, `VCToolsInstallDir`, MSBuild+ClangCL, nvcc, ASAN). If you ever see
+  that cluster fail, suspect the invocation before the image.
+- **It bind-mounts the CURRENT script + modules** instead of the copies baked
+  into the image, so a fix to the smoke test is re-verifiable without first
+  rebuilding the whole image — the friction that let this script go unrun for a
+  month. It adds no layer, so the gate never alters the artifact it verifies.
+- **Coverage floors, not just "0 failures".** `-MinPassed` / `-MaxSkipped`
+  (driver: `-SmokeMinPassed` / `-SmokeMaxSkipped`, defaults 40 / 24) make
+  "nothing ran" a distinct failure, **exit 3 = INSUFFICIENT COVERAGE**. The
+  verdict used to read only `$summary.Failed`, so a run where every section
+  skipped printed "All smoke tests passed!" and exited 0. `-SkipSmokeGate`
+  exists for iterating on the chain itself and says loudly that the image is
+  unverified; it is not a way to ship one.
+
+To run it by hand against an existing image:
 
 ```pwsh
 # Run smoke tests inside the built container. On a GPU (nvidia-lane) image,
@@ -1809,7 +1840,7 @@ After building, run the container smoke test to verify all components:
   pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
 ```
 
-The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-07-14, GPU lane): 167 passed / 0 failed / 1 skipped** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. **This number is known-stale and WILL rise:** the mandatory-plugin assertions (2026-08-07) and the `SCOOP_GLOBAL_SHIMS` checks (2026-08-08) were added after it, and no full run has been made since. Record the new figure here from the next green run rather than treating a higher count as a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
+The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-08-14, via the automatic gate): 184 passed / 0 failed / 1 skipped (185 total)** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. This supersedes the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
 
 ### What is verified: native vs. Python
 
@@ -1951,6 +1982,8 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `verify-host-setup.ps1` | `windows/scripts/` | The machine-checkable form of `docs/windows-host-setup.md` — run it FIRST on any new machine, and after any host change. Non-admin: services, `buildctl` reaching buildkitd unelevated, nerdctl presence, **BOTH CNI forms** (`.conf` for buildkitd — missing is a FAIL; `.conflist` for nerdctl — missing is a WARN) plus content agreement between them and subnet-vs-adapter drift, patched runhcs shim **by SHA256** against the hash `deploy-shim-patch.ps1` recorded at install (size only as a fallback, reported as a WARN so "still guessing" is visible), containerd teardown env var + debug flags, worker snapshotter + gcpolicy, disk headroom **on C: AND the repo/build-context drive**, sccache reachability. Exit 1 on any FAIL; each failure prints its fix. Defender exclusions are reported UNKNOWN (not skipped) when unelevated, so their absence cannot masquerade as success. Registry values that do not EXIST (e.g. the containerd `Environment` value before the first apply) degrade to WARNs, not a mid-run crash (fixed 2026-08-09 — the old `(Get-ItemProperty ...).Environment` threw PropertyNotFound at line 212 and silently skipped the teardown-env + debug-flag checks, under-counting the verdict). **Keep it in step with the guide — they are two views of one contract**; the guide had shipped a broken CNI template for days precisely because prose cannot be executed |
 | `apply-containerd-config.ps1` | `windows/scripts/` | HOST config (admin, never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`: containerd runs with NO `config.toml` on this host, so its settings live only in the service's `ImagePath`/`Environment` registry values and existed nowhere in the repo until 2026-08-07. Owns: `--log-level debug --log-file` (permanent owner policy — truncate the log, never disable the flags), `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits the SERVICE environment; a shim built from the upstream patch keeps its 30 s defaults and silently reverts to the 0x3 defect without it — `TASK_CLOSE_TIMEOUT` stays unset on purpose, the patch derives it as 2×teardown+30 s), and the load-bearing Defender exclusions (otherwise invisible: `Get-MpPreference` needs admin). `-ReportOnly` shows drift without admin and changes nothing |
 | `compact-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims disk when the checkout/store sits on a dynamically-expanding VHDX. Kills stale `buildctl`, stops the build services, detaches → compacts (`Optimize-VHD`) → reattaches read-write in a `finally`, restarts. `-ReportOnly` reports sizes/guest-fs/reclaim potential without touching anything. Machine-specific values are all parameters (`-VhdxPath` mandatory, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-LogPath`, `-Mode`). Warns on ReFS guests, where compaction reclaims ~nothing (measured: 0.2 GB of a possible 254 GB) — see § Store GC. When it reports a near-zero reclaim, `rebuild-host-vhdx.ps1` is the answer |
+| `Dockerfile.smoke-gate` | `windows/` | Not a script — the automatic verification stage (backlog #44). Solved against the finished `winamd64` image as the last step of every BK chain; a smoke-test failure fails the chain. Runs a buildctl solve rather than `nerdctl run` because containerd's pipe is admin-only while the driver is non-admin, invokes the test **through `entrypoint.cmd`** (a bare RUN bypasses ENTRYPOINT and loses VsDevCmd + the ASAN runtime dir), and **bind-mounts** the current script + modules so a smoke-test fix needs no image rebuild to re-verify. Knobs: `-SkipSmokeGate`, `-SmokeMinPassed`, `-SmokeMaxSkipped`. |
+| `patches/litert-lm/patch-assert.cmake` | `windows/scripts/` | `patch_replace_required` / `patch_regex_replace_required` — replace-with-verification for the CMake source patchers (backlog #56). `FATAL_ERROR`s when a pattern matched NOTHING, instead of the old bare `string(REPLACE)` + unconditional "Patched …" message that let an upstream reformat silently restore a fixed defect. Lives INSIDE `litert-lm/` because the Dockerfile COPYs that directory specifically. Enforced by `Patches.CmakeNoOpGuards.Tests.ps1`; a legitimate non-source replace opts out with a `patch-assert-exempt` marker + reason. |
 | `normalize-tensorrt-tree.ps1` | `windows/scripts/` | Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted `TensorRT-<version>` tree to a stable **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift, and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Backlog #38: the old pin-derived PATH was wrong twice over — wrong version AND wrong dir (TensorRT 10+ moved the DLLs to `bin\`), so the ORT TensorRT EP could never load, silently, while builds stayed green. Absent zip stays a supported graceful skip; a half-extracted tree is a build failure. |
 | `bootstrap-pwsh.ps1` | `windows/scripts/` | Installs PowerShell 7 as the FIRST RUN of `Dockerfile.base`, BIND-MOUNTED (no layer). Runs under Windows PowerShell **5.1** — the SHELL is not switched to pwsh until after it — so keep it 5.1-safe and do not use `Invoke-DownloadWithRetry` (no module is mounted that early). Carries its own 3-attempt retry with an in-loop SHA256 check. Extracted from a 1214-char inline RUN (backlog #27). |
 | `rebuild-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims a dynamically-expanding VHDX by REBUILDING it around its live data — the only reliable reclaim on ReFS guests, where `compact-host-vhdx.ps1` returns ~nothing. Creates a fresh dynamic disk, reproduces the source's filesystem/label/cluster size (and Dev Drive flag where `Format-Volume -DevDrive` exists), mirrors with `robocopy /MIR /COPYALL`, then verifies file count AND byte totals before anything is swapped. TWO PHASES on purpose: `-CopyOnly` touches nothing live and is safe with editors/agents still on the volume; the swap DETACHES the volume and so requires that no process holds a handle on it (a stray detach on 2026-08-06 pulled D: out from under a running session and killed it) — it REFUSES rather than forces, keeping the verified copy for a later `-SwapOnly`. Old disk kept as `.old` unless `-RetireOld`; **no space is reclaimed until it is deleted.** Failed swaps roll back to the original disk automatically. Parameters: `-VhdxPath` mandatory, `-NewSizeGB`, `-NewVhdxPath`, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-ExcludeDir`, `-LogPath`, `-ReportOnly`, `-CopyOnly`, `-SwapOnly`, `-RetireOld`, `-Force`. Put `-LogPath` off the volume for swap runs |
@@ -2254,8 +2287,9 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   Linux-only key (PANDOC_VERSION, ROCM_VERSION, UBUNTU_DIGEST) would stop
   re-paying scoop + vcpkg + the ~30-min rust/sccache layer on the next base
   build. The cost is eleven new duplicated pins, i.e. exactly the drift surface
-  that #60 and #69 exist to police — and `Pins.CanonicalValues.Tests.ps1` would
-  have to be extended to cover Dockerfile.base before landing them. Not obviously
+  that #69 still tracks and that `Pins.CanonicalValues.Tests.ps1` was written to
+  police (closed #60) — that test covers Dockerfile.media-merge-builder today
+  and would have to be extended to Dockerfile.base before landing them. Not obviously
   worth it; that judgement is the owner's, which is why this was NOT landed with
   #81 on 2026-08-14 even though the base was rebuilt anyway.
 - **51 [M·★★★, media once] `MEMORY_LIMIT_GB` — a scheduling knob — is an image

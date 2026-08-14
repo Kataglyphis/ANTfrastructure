@@ -41,11 +41,17 @@ expense of the others:
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
   version pins in a single source of truth (`linux/scripts/01-core/versions.env`),
   and gates that fail loudly instead of passing on fallbacks.
-- **Tests** — unit suites (`linux/scripts/tests/`), lint gates (shellcheck,
-  IFS-safety, hadolint, actionlint, ruff for Python, gitleaks secret scan),
-  a fast preflight (`linux/scripts/preflight.sh`) that catches error classes
-  in seconds instead of hours, and runtime smokes that assert real behavior
-  against the pins.
+- **Tests** — unit suites (`linux/scripts/tests/`, `windows/scripts/tests/`),
+  lint gates (shellcheck, IFS-safety, hadolint, actionlint, ruff for Python,
+  gitleaks secret scan), a fast preflight (`linux/scripts/preflight.sh`) that
+  catches error classes in seconds instead of hours, and runtime smokes that
+  assert real behavior against the pins. On the **Windows** lane the smoke test
+  is not optional: every chain ends with a gate that runs it against the image
+  it just built and fails the build if it does not pass — with coverage floors,
+  so "nothing ran" is a distinct failure rather than a green "all tests passed".
+  The tests that matter most there assert *loading*, not existence: this repo's
+  defect history is dominated by libraries that build and link cleanly and then
+  fail at load time.
 
 Rules an automated agent must follow live in [`AGENTS.md`](AGENTS.md)
 (§ Project priorities, § Shell safety conventions, § Caching discipline).

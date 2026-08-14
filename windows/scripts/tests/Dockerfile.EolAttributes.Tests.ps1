@@ -32,7 +32,23 @@ Describe 'COPY-reachable files have a frozen git EOL attribute (backlog #55)' {
         $out = @()
         foreach ($df in (Get-ChildItem $windowsDir -Filter 'Dockerfile*' -File)) {
             $ctxRoot = if ($df.Name -in @('Dockerfile.nvidia')) { $windowsDir } else { $repoRoot }
-            foreach ($line in (Get-Content $df.FullName)) {
+            # JOIN CONTINUATION LINES FIRST. Windows Dockerfiles use `# escape=\``,
+            # and a multi-line COPY's continuation lines do not match ^COPY — so
+            # scanning line-by-line dropped them entirely AND mistook the first
+            # line's last source for a destination. There are ~10 such COPYs in
+            # this tree (2 in base, 6 in media-builder, 2 in media-merge), and the
+            # >=10 rot guard was satisfied by the single-line ones alone, which is
+            # why the gap was invisible.
+            $joined = @()
+            $pending = ''
+            foreach ($raw in (Get-Content $df.FullName)) {
+                $pending = if ($pending) { $pending + ' ' + $raw.Trim() } else { $raw }
+                if ($pending -match '`\s*$') { $pending = $pending -replace '`\s*$', ''; continue }
+                $joined += $pending
+                $pending = ''
+            }
+            if ($pending) { $joined += $pending }
+            foreach ($line in $joined) {
                 if ($line -notmatch '^\s*COPY\s') { continue }
                 if ($line -match '--from=') { continue }
                 $rest = ($line -replace '^\s*COPY\s+', '') -replace '`\s*$', ''

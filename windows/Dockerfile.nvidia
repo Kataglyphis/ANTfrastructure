@@ -46,7 +46,7 @@ RUN --mount=type=bind,source=scripts/normalize-tensorrt-tree.ps1,target=C:\norma
     $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; `
     & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
-    & 'C:\normalize-tensorrt-tree.ps1' -TensorRtRoot 'C:\tensorrt'
+    & 'C:\normalize-tensorrt-tree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
 
 # ── Stage 2: CUDA + cuDNN + TensorRT ──────────────────────────────────────────
 FROM ${BASE_IMAGE}

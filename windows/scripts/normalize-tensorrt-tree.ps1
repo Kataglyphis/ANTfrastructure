@@ -35,31 +35,62 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $stable = Join-Path $TensorRtRoot 'current'
+# Set by the flat-layout branch below, which folds the tree into 'current'
+# itself and must therefore skip the rename — but still reach the DLL gate.
+$alreadyStable = $false
 
 if (-not (Test-Path $TensorRtRoot)) {
     Write-Host "TensorRT: '$TensorRtRoot' absent -> nothing to normalize (EP skipped downstream)."
     return
 }
 if (Test-Path $stable) {
-    Write-Host "TensorRT: '$stable' already present -> nothing to normalize."
-    return
+    # Nothing to RENAME, but do NOT return: a pre-existing or half-populated
+    # 'current' must still pass the DLL gate below, or an unverified tree ships.
+    Write-Host "TensorRT: '$stable' already present -> verifying it rather than re-normalizing."
+    $alreadyStable = $true
+    $versionDir = $null
 }
 
-$versionDir = Get-ChildItem -LiteralPath $TensorRtRoot -Directory -Filter 'TensorRT-*' -ErrorAction SilentlyContinue |
-    Sort-Object Name | Select-Object -First 1
+# NEWEST tree wins, by [version] comparison — NOT a lexical sort. `Sort-Object
+# Name | Select -First 1` (the original here) takes the LOWEST, i.e. the
+# superseded tree, and a plain string sort also ranks 11.2.1.2 above 11.10.0.1.
+# Both contradict the owner directive recorded at versions.env's
+# TENSORRT_VERSION ("always track the newest release") and the matching
+# comparator in Dockerfile.nvidia's zip selection.
+if (-not $alreadyStable) {
+    $versionDir = Get-ChildItem -LiteralPath $TensorRtRoot -Directory -Filter 'TensorRT-*' -ErrorAction SilentlyContinue |
+        Sort-Object -Property @{ Expression = {
+                $v = $_.Name -replace '^TensorRT-', ''
+                if ($v -match '^\d+(\.\d+)+$') { [version]$v } else { [version]'0.0' }
+            }
+        } -Descending | Select-Object -First 1
+}
 
-if (-not $versionDir) {
-    # Flat layout (setup-tensorrt.ps1 tolerates it) or the supported zip-less
-    # build. Both are legitimate; only a half-extracted tree is not.
-    if (Test-Path (Join-Path $TensorRtRoot 'lib')) {
-        Write-Host "TensorRT: flat layout at '$TensorRtRoot' -> consumers use the root directly."
+if (-not $alreadyStable -and -not $versionDir) {
+    # A FLAT tree is no longer survivable, and saying "consumers use the root
+    # directly" would be false: Dockerfile.nvidia's PATH is
+    # $TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib, so on a flat layout
+    # neither directory exists and the runtime lookup is broken in exactly the
+    # way backlog #38 was written to eliminate. setup-tensorrt.ps1 still
+    # TOLERATES the layout, so normalize it into 'current' here rather than
+    # leaving a shape the ENV cannot address.
+    $flatLib = Join-Path $TensorRtRoot 'lib'
+    $flatBin = Join-Path $TensorRtRoot 'bin'
+    if ((Test-Path $flatLib) -or (Test-Path $flatBin)) {
+        Write-Host "TensorRT: flat layout at '$TensorRtRoot' -> folding into '$stable' so the ENV PATH resolves."
+        $null = New-Item -ItemType Directory -Force -Path $stable
+        foreach ($item in @(Get-ChildItem -LiteralPath $TensorRtRoot -Force | Where-Object { $_.Name -ne 'current' })) {
+            Move-Item -LiteralPath $item.FullName -Destination $stable -Force
+        }
+        # Already named 'current' — skip the rename below, but DO reach the DLL gate.
+        $alreadyStable = $true
     } else {
         Write-Host "TensorRT: '$TensorRtRoot' holds no versioned tree -> EP skipped (supported: no zip staged)."
+        return
     }
-    return
 }
 
-$actual = $versionDir.Name -replace '^TensorRT-', ''
+$actual = if ($versionDir) { $versionDir.Name -replace '^TensorRT-', '' } else { 'flat' }
 if ($ExpectedVersion -and $actual -ne $ExpectedVersion) {
     # Loud, but NOT fatal: the staged zip is the truth for this image, and the
     # pin is also consumed by the Linux lane (apt), where it may legitimately
@@ -69,7 +100,7 @@ if ($ExpectedVersion -and $actual -ne $ExpectedVersion) {
                    'pin no longer describes what ships. Re-stage the zip or correct the pin.')
 }
 
-Rename-Item -LiteralPath $versionDir.FullName -NewName 'current'
+if (-not $alreadyStable) { Rename-Item -LiteralPath $versionDir.FullName -NewName 'current' }
 
 # Fail CLOSED: a tree that exists without loadable DLLs is the failure this
 # whole script exists to prevent, and it must not reach a downstream stage.

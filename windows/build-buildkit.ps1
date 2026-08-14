@@ -77,11 +77,15 @@ param(
     # unverified image safe to ship.
     [switch]$SkipSmokeGate,
     # Coverage floors, not just "0 failures": a fully-skipped run used to print
-    # "All smoke tests passed!" and exit 0. Defaults are deliberately concrete
-    # so an image that silently loses whole sections trips the gate; lower them
-    # EXPLICITLY for a lane with fewer sections rather than by accident.
-    [int]$SmokeMinPassed = 40,
-    [int]$SmokeMaxSkipped = 24,
+    # "All smoke tests passed!" and exit 0. Derived from the MEASURED baseline
+    # (2026-08-14: 184 passed / 1 skipped) with a modest margin — the first
+    # defaults (40 / 24) were inert: the script has only 23 Skip-Test sites, so
+    # a ceiling of 24 could not trip even if EVERY section skipped, and a floor
+    # of 40 tolerated losing 78 % of the assertion surface. Raise these together
+    # with the recorded baseline when the suite grows; lower them EXPLICITLY for
+    # a lane with genuinely fewer sections rather than by accident.
+    [int]$SmokeMinPassed = 160,
+    [int]$SmokeMaxSkipped = 3,
     # Per-stage cache bypass (backlog #64) — the lever the determinism gate
     # already tells you to pull when a snapshot is poisoned, e.g.
     #   -NoCacheStage opencv          (one media-core sub-stage)
@@ -231,6 +235,11 @@ function Get-BkTag([string]$Name) { return "docker.io/local/kataglyphis:bk-$Name
 # Get-TorchAppRef / Get-BuildVcsRef now live in WindowsBuildDriver.Common
 # (Resolve-TorchAppRef / Get-BuildVcsRef) — shared with build.ps1.
 
+# Which -NoCacheStage entries actually matched a stage label. Checked once at
+# the end of the run so a typo fails LOUDLY instead of silently building
+# everything from cache (backlog #64 follow-up).
+$script:NoCacheStageMatched = @{}
+
 function Invoke-BkStage {
     param(
         [Parameter(Mandatory)][string]$Dockerfile,   # repo-relative
@@ -298,7 +307,14 @@ function Invoke-BkStage {
     # sub-stages plus litert plus tvm plus merge. Matched against the same
     # $Label the stage logs and the disk gate already use, substring so
     # 'opencv' catches 'Dockerfile.media-builder:media-core-built-opencv'.
-    $stageNoCache = @($NoCacheStage | Where-Object { $Label -like "*$_*" }).Count -gt 0
+    $matched = @($NoCacheStage | Where-Object { $Label -like "*$_*" })
+    # Record what matched so a typo can be caught at the END of the run
+    # (Assert-NoCacheStageMatched). Printing only on a match is NOT visibility:
+    # a misspelled entry would print nothing and the stage would build fully
+    # cached while the owner believed it had been busted — the fail-open shape
+    # this repo's conventions forbid.
+    foreach ($m in $matched) { $script:NoCacheStageMatched[$m] = $true }
+    $stageNoCache = $matched.Count -gt 0
     if ($NoCache -or $stageNoCache) { $bkArgs += @('--no-cache') }
     if ($stageNoCache -and -not $NoCache) { Write-Host "[bk:$Label] -NoCacheStage match -> --no-cache for THIS stage only" -ForegroundColor Yellow }
     if ($Target) { $bkArgs += @('--opt', "target=$Target") }
@@ -463,6 +479,11 @@ if ($Stages -contains 'media') {
             # Children inherit the cache/tooling knobs — without these a
             # -NoCache parent quietly built its aux branches FROM cache.
             if ($NoCache) { $auxArgs += '-NoCache' }
+            # -NoCacheStage MUST ride along too: under -ConcurrentAux the litert
+            # and tvm branches are built by these CHILD processes, so a parent-only
+            # flag is a silent no-op for exactly the branches it targets — and a
+            # poisoned snapshot in litert/tvm is the scenario the flag exists for.
+            if ($NoCacheStage) { $auxArgs += @('-NoCacheStage', ($NoCacheStage -join ',')) }
             if ($ImportCacheRef) { $auxArgs += @('-ImportCacheRef', $ImportCacheRef) }
             if ($ExportCacheRef) { $auxArgs += @('-ExportCacheRef', $ExportCacheRef) }
             if ($BuildCtl) { $auxArgs += @('-BuildCtl', $BuildCtl) }
@@ -603,6 +624,16 @@ if ($Stages -contains 'final') {
         Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec "type=image,name=$PushRef,push=true" -BuildArgs $finalArgs
         Write-Host "[bk] pushed $PushRef" -ForegroundColor Green
     }
+}
+
+# FAIL LOUDLY on a -NoCacheStage entry that matched nothing. Printing only on a
+# match is not visibility: a typo would print nothing, every stage would build
+# fully cached, and the owner would believe a poisoned snapshot had been busted.
+$unmatchedNoCacheStage = @($NoCacheStage | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
+if ($unmatchedNoCacheStage.Count -gt 0) {
+    throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
+           'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
+           'stage labels in the output above (they are the same labels used for the log filenames).')
 }
 
 $elapsed = (Get-Date) - $started

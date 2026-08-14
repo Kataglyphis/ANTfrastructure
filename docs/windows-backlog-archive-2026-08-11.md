@@ -237,13 +237,17 @@ and decide whether analyzer findings should be fatal.
   a registry PATH written inside a RUN is invisible to later stages. The fix
   that works *with* the ENV is a stable directory NAME:
   - NEW `windows/scripts/normalize-tensorrt-tree.ps1`, bind-mounted into the
-    `trt-extract` stage: renames `TensorRT-<version>` → **`current`**, WARNS
-    (never fails) on pin-vs-zip drift so it can no longer be silent, and
-    **fails closed** on a tree with no `lib\` or no DLLs — the exact "ships but
-    cannot load" shape this class produces.
-  - `Dockerfile.nvidia` PATH is now `$TENSORRT_ROOT\current\lib` — correct for
-    any staged version, forever. The zip-less graceful-skip contract is
-    unchanged (the directory simply does not exist, the entry is inert).
+    `trt-extract` stage: renames the NEWEST `TensorRT-<version>` tree (by
+    `[version]` comparison, not a lexical sort — see the correction below) →
+    **`current`**, WARNS (never fails) on pin-vs-zip drift so it can no longer
+    be silent, folds a FLAT layout into `current` as well, and **fails closed**
+    when neither `bin\` nor `lib\` carries runtime DLLs.
+  - `Dockerfile.nvidia` PATH is now
+    `$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib` — `bin` first
+    because that is where TensorRT 10+ puts the runtime DLLs; `lib` kept for the
+    8.x/9.x layout. Correct for any staged version, forever. The zip-less
+    graceful-skip contract is unchanged (the directories simply do not exist and
+    the entries are inert).
   - `Resolve-TensorRtRoot` prefers `current`, falling back to the versioned glob
     so pre-normalization images and host-lane trees keep resolving. Two new
     tests pin both behaviours (486 total, was 484).
@@ -267,6 +271,18 @@ and decide whether analyzer findings should be fatal.
   BUILD-time root with a glob and only the RUNTIME lookup was wrong.
   Final form: PATH gets `current\bin` (runtime) **and** `current\lib` (kept for
   the 8.x/9.x layout), and the normalizer requires DLLs in at least one of them.
+
+  **CORRECTION (independent review, same day).** The first version of this
+  script had two defects the review caught: it sorted the versioned trees
+  **lexically ascending and took the FIRST**, i.e. the OLDEST — directly
+  contradicting the owner's "always newest" directive one file over; and its
+  flat-layout branch printed "consumers use the root directly" while the ENV
+  PATH pointed at `current\bin`/`current\lib`, which on a flat tree do not
+  exist. Two early `return`s also bypassed the fail-closed DLL gate. All fixed
+  and re-verified across five synthetic trees: newest-of-two wins
+  (`11.10.0.1` over `11.2.1.2` — a lexical sort ranks these backwards), flat
+  layout folds into `current`, and a pre-existing `current` without DLLs now
+  exits 1 instead of returning early.
 
   **VERIFIED, end to end.** Synthetic trees on the host (normalize + drift
   warning, tree-without-DLLs → **exit 1**, tree-without-`lib\` → **exit 1**,

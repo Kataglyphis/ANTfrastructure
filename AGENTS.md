@@ -361,6 +361,27 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   window). Never add `powershell`/`powershell.exe` invocations or `cmd`
   SHELL directives; `cmd.exe /c` may appear only inside
   `Invoke-ShieldedNative` and the documented bespoke sites.
+- **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
+  `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
+  finished image after `final`, and a failure fails the chain (backlog #44).
+  Before 2026-08-14 neither driver ran the smoke test at all, so every chain
+  shipped unverified. Three rules when touching it: it must run **through
+  `entrypoint.cmd`** (a bare `RUN` bypasses ENTRYPOINT and loses VsDevCmd + the
+  ASAN runtime dir — that alone made six assertions fail against a good image);
+  it **bind-mounts** the current script rather than the image's baked copy, so a
+  smoke-test fix is re-verifiable without an image rebuild; and it enforces
+  **coverage floors** (`-SmokeMinPassed`/`-SmokeMaxSkipped`, exit 3), because a
+  run that asserted nothing used to print "All smoke tests passed!" and exit 0.
+  `-SkipSmokeGate` is for chain iteration only.
+- **Never rewrite upstream sources with a bare `string(REPLACE)`.** Use
+  `patch_replace_required` / `patch_regex_replace_required` from
+  `patches/litert-lm/patch-assert.cmake`, which `FATAL_ERROR`s when the pattern
+  matched nothing (backlog #56). The old pattern printed "Patched …"
+  unconditionally, so an upstream reformat silently restored the defect the
+  patch existed to fix — for sentencepiece's duplicate `ABSL_FLAG(minloglevel)`
+  that means a link-clean `litert_lm_main.exe` that aborts on every run.
+  `Patches.CmakeNoOpGuards.Tests.ps1` fails any unguarded replace; a genuine
+  non-source replace opts out with a `patch-assert-exempt` marker AND a reason.
 - **When a probe says the product is broken, suspect the probe first — and
   always run a known-good control.** Three probes lied on 2026-08-14 before one
   told the truth, each looking exactly like a product defect:
@@ -597,7 +618,11 @@ TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's 
    entered the image unverified. A stale hash now fails the build loudly — that
    is intended, not a bug.
 4. It is auto-detected during the `Dockerfile.nvidia` build. `TENSORRT_VERSION`
-   is used for REPORTING only; every path is resolved from the filesystem.
+   never derives a **filesystem** path — the tree is resolved from disk and
+   normalized to `current` — and is otherwise used for drift REPORTING. One
+   exception, so the claim is not read as absolute: `setup-tensorrt.ps1` still
+   builds its NVIDIA CDN fallback URLs out of the pin, used only when no zip is
+   staged.
 
 If no zip is found, the build **skips TensorRT gracefully** (CUDA + cuDNN still work; `setup-tensorrt.ps1` warns and returns, ORT auto-disables the TensorRT EP, and the smoke test's `TENSORRT_ROOT` pointer passes on the guaranteed-empty `C:\tensorrt`). This zip-less configuration is the NORMAL state of this host's GPU lane. Do NOT re-harden this into a fail-fast: a 2026-08-04 "fail-fast" variant (premised on the wrong claim that the smoke test would reject a TensorRT-less nvidia image) broke the first hardened `-Gpu` rebuild and was reverted on 2026-08-05. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
 
@@ -1099,9 +1124,20 @@ base ─┬─ onnxruntime ───────┐
   `Driver.ClosureScope.Tests.ps1` walks the AST of both drivers and fails any
   `.GetNewClosure()` block inside a function that reads a top-level `param()`
   variable, because that silently resolves to EMPTY and broke the scripted
-  resume for months (backlog #40). When you fix a bug here, prefer a guard for
-  its class; note that CI currently runs the linter WITHOUT `-FailOnAnalyzer`
-  and `main` is not branch-protected, so this gate is advisory (backlog #59).
+  resume for months (backlog #40). Same shape elsewhere:
+  `Dockerfile.EolAttributes.Tests.ps1` walks the real COPY instructions and
+  fails any COPY-reachable file with no frozen git EOL attribute (#55);
+  `Patches.CmakeNoOpGuards.Tests.ps1` fails unguarded source rewrites (#56);
+  `Pins.CanonicalValues.Tests.ps1` pins CUDA_ARCHITECTURES at versions.env
+  itself rather than at a code fallback the real build path never reaches, and
+  compares every merge-builder ARG default against the pin (#58, #60). Each
+  carries a rot guard so a moved target cannot make it pass vacuously.
+  When you fix a bug here, prefer a guard for its class.
+  Note the linter also exits **2** for an INFRASTRUCTURE failure — PSScriptAnalyzer
+  1.25.0 throws intermittently (~2 in 9 runs) and an exception is not a finding;
+  files are retried once and never silently skipped (#82). And CI currently runs
+  the linter WITHOUT `-FailOnAnalyzer` while `main` is not branch-protected, so
+  this gate is advisory (backlog #59).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.

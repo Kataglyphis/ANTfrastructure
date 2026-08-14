@@ -1220,7 +1220,7 @@ if ([string]::IsNullOrWhiteSpace($globalShims)) {
         $root = [Environment]::GetEnvironmentVariable('SCOOP_GLOBAL')
         if (-not $root) { $root = Split-Path $globalShims -Parent }
         Test-Path (Join-Path $root 'apps') -PathType Container
-    }.GetNewClosure() -FailMessage "no apps\ under the global scoop root — the --global install did not happen at allirs"
+    }.GetNewClosure() -FailMessage 'no apps\ directory under the global scoop root — the --global install did not happen at all'
 }
 
 # vcpkg zlib is the one vcpkg artifact media builds still consume (LiteRT-LM's

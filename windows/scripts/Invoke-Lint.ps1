@@ -146,11 +146,18 @@ if ($FailOnAnalyzer -and ($errs.Count -gt 0 -or $warns.Count -gt 0)) { $fail = $
 # retry a tooling fault without treating it as a lint failure, and so a green
 # "LINT OK" is never printed over files that were never analysed. Reported even
 # without -FailOnAnalyzer: incomplete coverage is not a style opinion.
+# ORDER MATTERS. $fail comes from parse errors and AST-trap violations — hard,
+# deterministic code defects. Exit 2 means "the TOOL broke, retry me", so
+# reporting it FIRST would let a CI retry loop re-run a build that has a genuine
+# parse error while the operator never sees LINT FAILED. Announce the
+# infrastructure problem either way, but let a real defect win the exit code.
+# (smoke-test-container.ps1 already gets this ordering right: failures branch
+# before the coverage branch.)
 if ($analyzerCrashes.Count -gt 0) {
     Write-Host "`nLINT INCONCLUSIVE - PSScriptAnalyzer failed on $($analyzerCrashes.Count) file(s)" -ForegroundColor Red
-    exit 2
 }
 if ($fail) { Write-Host "`nLINT FAILED" -ForegroundColor Red; exit 1 }
+if ($analyzerCrashes.Count -gt 0) { exit 2 }
 Write-Host "`nLINT OK" -ForegroundColor Green
 exit 0
 
