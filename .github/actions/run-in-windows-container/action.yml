@@ -81,6 +81,21 @@ inputs:
       working directory (-w).
     required: false
     default: 'C:\ws'
+  isolation:
+    description: >-
+      `--isolation` value for `docker run`. Defaults to `process`, which is
+      what a Server SKU host can actually provide: a GitHub-hosted runner is a
+      VM WITHOUT nested virtualization, so anything that asks HCS for a
+      VM-backed (hyperv) container is refused with
+      `hcs::CreateComputeSystem <id>: The request is not supported` - an error
+      that names neither the isolation mode nor any flag, which is why this
+      lane read as a resource-limit problem for months.
+      Set to `hyperv` to force VM isolation, or to the empty string to let the
+      daemon pick (the pre-2026-08 behaviour).
+      NOTE: this is `docker run` only. `docker build --isolation process` is
+      separately unusable on this image - see docs/windows-builds.md.
+    required: false
+    default: 'process'
 
 runs:
   using: 'composite'
@@ -97,6 +112,7 @@ runs:
         RUN_IN_CONTAINER_MEMORY: ${{ inputs.memory }}
         RUN_IN_CONTAINER_MOUNT_SOURCE: ${{ inputs.mount-source }}
         RUN_IN_CONTAINER_MOUNT_TARGET: ${{ inputs.mount-target }}
+        RUN_IN_CONTAINER_ISOLATION: ${{ inputs.isolation }}
       run: |
         $ErrorActionPreference = 'Stop'
         $image = $env:RUN_IN_CONTAINER_IMAGE
@@ -164,32 +180,80 @@ runs:
           $image
         ) + $entryArgs
 
-        $runArgs = @(
-          'run', '--rm', '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores"
+        # `--isolation` FIRST, ahead of the resource limits: a Windows container
+        # that HCS refuses to create never gets far enough for --memory/--cpus
+        # to matter. See the `isolation` input for why `process` is the default.
+        $isolationArgs = @()
+        if ($env:RUN_IN_CONTAINER_ISOLATION) {
+          $isolationArgs = @('--isolation', $env:RUN_IN_CONTAINER_ISOLATION)
+        }
+
+        $runArgs = @('run', '--rm') + $isolationArgs + @(
+          '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores"
         ) + $tailArgs
 
         Write-Host "docker $($runArgs -join ' ')"
         $out = docker @runArgs 2>&1
         $out | ForEach-Object { Write-Host $_ }
 
-        # HCS rejects some resource-limit combinations depending on the host's
-        # isolation mode and reports it only as
-        #   hcs::CreateComputeSystem <id>: The request is not supported.
-        # which names neither --memory nor --cpus. Observed on windows-2025
-        # runners 2026-08-11, where the lane had been dying here since long
-        # before anything else in the job changed.
+        # hcs::CreateComputeSystem <id>: The request is not supported.
         #
-        # Rather than guess which of the two the host dislikes, retry WITHOUT the
-        # resource limits and say so loudly: the build still runs, and the log
-        # states plainly that the limits were dropped, so a degraded run cannot
-        # masquerade as a normal one.
+        # HCS reports several unrelated refusals through this one message, and
+        # it names neither a flag nor an isolation mode. The two that reach a
+        # GitHub-hosted runner:
+        #   1. VM-backed (hyperv) isolation requested on a VM with no nested
+        #      virtualization. This is the one that killed the lane from
+        #      2026-05-19 on; the default is now an explicit `--isolation
+        #      process`, so a run only lands here if the caller overrode it.
+        #   2. A resource-limit combination the host's isolation mode rejects.
+        #
+        # Print the facts that decide between them BEFORE retrying - the
+        # original failure gave no way to tell, which is why the first fix
+        # guessed "resource limits" and stayed red. Then walk the ladder,
+        # loudly: a degraded run must never masquerade as a normal one.
         if ($LASTEXITCODE -ne 0 -and ($out -join "`n") -match 'CreateComputeSystem.*not supported') {
           Write-Host '::warning::docker run rejected with hcs::CreateComputeSystem "The request is not supported".'
+          Write-Host '=== container-start diagnostics ==='
+          Write-Host "host OS build : $((Get-CimInstance Win32_OperatingSystem).Version) (UBR $((Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').UBR))"
+          Write-Host "requested isolation: '$($env:RUN_IN_CONTAINER_ISOLATION)'"
+          Write-Host "daemon default isolation: $(docker info --format '{{.Isolation}}' 2>&1)"
+          Write-Host "image os.version: $(docker image inspect $image --format '{{.OsVersion}}' 2>&1)"
+          Write-Host '(process isolation needs the image and host BUILD numbers to match;'
+          Write-Host ' differing UBR/revision is fine. hyperv isolation needs nested'
+          Write-Host ' virtualization, which GitHub-hosted runners do not have.)'
+          Write-Host '==================================='
+
+          # Rung 1: same isolation, no resource limits.
           Write-Host '::warning::Retrying WITHOUT --memory/--cpus - this run is NOT resource-limited.'
-          $runArgs = @('run', '--rm') + $tailArgs
+          $runArgs = @('run', '--rm') + $isolationArgs + $tailArgs
           Write-Host "docker $($runArgs -join ' ')"
-          docker @runArgs
+          $out = docker @runArgs 2>&1
+          $out | ForEach-Object { Write-Host $_ }
           if ($LASTEXITCODE -eq 0) {
             Write-Host '::warning::Retry succeeded: this host rejects the resource limits, not the container.'
           }
+
+          # Rung 2: let the daemon choose the isolation mode. Only worth trying
+          # when we asked for a specific one and HCS is still refusing.
+          # No backtick line-continuation here: the runner checks this YAML out
+          # with autocrlf, and a backtick before CRLF escapes the CR instead of
+          # the newline. Parenthesise the condition so it can span lines safely.
+          $stillRefused = ($LASTEXITCODE -ne 0 -and $isolationArgs.Count -gt 0 -and
+                           ($out -join "`n") -match 'CreateComputeSystem.*not supported')
+          if ($stillRefused) {
+            Write-Host "::warning::Retrying with the daemon's DEFAULT isolation instead of '$($env:RUN_IN_CONTAINER_ISOLATION)'."
+            $runArgs = @('run', '--rm') + $tailArgs
+            Write-Host "docker $($runArgs -join ' ')"
+            docker @runArgs
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host "::warning::Retry succeeded: this host rejects --isolation $($env:RUN_IN_CONTAINER_ISOLATION) - change the caller's isolation input."
+            }
+          }
+        }
+
+        # The step's own exit status. Without this the composite step reports
+        # the exit code of the last *PowerShell* statement, so a container that
+        # failed on every rung of the ladder could still be reported green.
+        if ($LASTEXITCODE -ne 0) {
+          throw "docker run failed with exit code $LASTEXITCODE"
         }
