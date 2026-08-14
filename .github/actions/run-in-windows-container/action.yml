@@ -180,6 +180,18 @@ runs:
           $image
         ) + $entryArgs
 
+        # Same run expressed with the older -v syntax. Kept ready because the
+        # two are NOT equivalent for Windows containers: the daemon builds a
+        # different mount spec for --mount than for -v, and HCS rejects the
+        # former on this host while accepting the latter. Used by the fallback
+        # ladder below, which only reaches for it once the bare-image probe has
+        # shown the container itself is fine.
+        $tailArgsV = $extraArgs + @(
+          '-v', ($env:RUN_IN_CONTAINER_MOUNT_SOURCE + ':' + $env:RUN_IN_CONTAINER_MOUNT_TARGET),
+          '-w', $env:RUN_IN_CONTAINER_MOUNT_TARGET,
+          $image
+        ) + $entryArgs
+
         # `--isolation` FIRST, ahead of the resource limits: a Windows container
         # that HCS refuses to create never gets far enough for --memory/--cpus
         # to matter. See the `isolation` input for why `process` is the default.
@@ -230,21 +242,46 @@ runs:
           # this failure survived several rounds of guessing.
           Write-Host '--- probe: can this image start AT ALL (no mount, no limits)? ---'
           docker run --rm $image cmd /c ver
-          if ($LASTEXITCODE -eq 0) {
+          $bareProbeOk = ($LASTEXITCODE -eq 0)
+          if ($bareProbeOk) {
             Write-Host '::warning::PROBE PASSED: the image starts fine bare, so the container is not the problem - the bind mount or the resource limits are.'
           } else {
             Write-Host "::warning::PROBE FAILED (exit $LASTEXITCODE): this image cannot start on this host at all, mount or no mount. Compare the build numbers above."
           }
           Write-Host '==================================='
 
-          # Rung 1: same isolation, no resource limits.
-          Write-Host '::warning::Retrying WITHOUT --memory/--cpus - this run is NOT resource-limited.'
-          $runArgs = @('run', '--rm') + $isolationArgs + $tailArgs
-          Write-Host "docker $($runArgs -join ' ')"
-          $out = docker @runArgs 2>&1
-          $out | ForEach-Object { Write-Host $_ }
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host '::warning::Retry succeeded: this host rejects the resource limits, not the container.'
+          # Rung 1: -v instead of --mount, keeping everything else.
+          #
+          # This is the rung that actually fixes it on windows-2025. The bare
+          # probe above starts the same image with the same isolation and no
+          # mount, and PASSES - so neither the image, the host build numbers nor
+          # the isolation mode are at fault, which is what several earlier
+          # guesses assumed. What HCS rejects is the mount spec the daemon
+          # builds for `--mount type=bind` on this host; the older -v form maps
+          # to a different spec that it accepts.
+          if ($bareProbeOk) {
+            Write-Host '::warning::Retrying with -v instead of --mount type=bind.'
+            $runArgs = @('run', '--rm') + $isolationArgs + @(
+              '--memory', $env:RUN_IN_CONTAINER_MEMORY, '--cpus', "$cores"
+            ) + $tailArgsV
+            Write-Host "docker $($runArgs -join ' ')"
+            $out = docker @runArgs 2>&1
+            $out | ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host '::warning::Retry succeeded with -v: this host rejects --mount type=bind, nothing else.'
+            }
+          }
+
+          # Rung 2: same isolation, no resource limits.
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host '::warning::Retrying WITHOUT --memory/--cpus - this run is NOT resource-limited.'
+            $runArgs = @('run', '--rm') + $isolationArgs + $tailArgsV
+            Write-Host "docker $($runArgs -join ' ')"
+            $out = docker @runArgs 2>&1
+            $out | ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -eq 0) {
+              Write-Host '::warning::Retry succeeded: this host rejects the resource limits, not the container.'
+            }
           }
 
           # Rung 2: let the daemon choose the isolation mode. Only worth trying
