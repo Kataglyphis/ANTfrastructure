@@ -2137,44 +2137,6 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   removing. FIX: suppress the top-5 noise classes at build-script level so CI
   can see the rest.
 
-### P0c — The shipped image FAILS 8 smoke assertions (found 2026-08-14 by #44)
-
-> Found the moment the smoke gate was wired up and pointed at the existing
-> `bk-winamd64`. Result: **176 passed, 8 FAILED, 1 skipped (185 total)**. The
-> last recorded baseline was 2026-07-14 at 104/0/1, so these regressed at some
-> point in the month the test was never run. Nothing here was caused by the
-> gate; the gate is what made a month-old regression visible.
-> Re-verify each against a FRESH chain before fixing — this image predates the
-> 2026-08-14 TensorRT and driver work.
-
-- **83 [M·★★★, none] Four failures point at ONE root cause: the MSVC dev
-  environment is not present in the shipped image.**
-  `Command 'msbuild' on PATH` → not found; `MSBuild works (ClangCL toolset
-  available)`; `MSBuild+ClangCL builds`; and `Env var VCToolsInstallDir` → not
-  set. Decide FIRST whether that is a defect or the design: the chain enters
-  VsDevCmd per build step rather than baking it, in which case the smoke test
-  is asserting something the image was never meant to carry and the TEST is
-  wrong. If the dev image is meant to be usable interactively for MSBuild, the
-  image is wrong. Do not "fix" either side before answering that.
-- **84 [M·★★★, none] `nvcc` cannot compile a trivial kernel to PTX** in the
-  shipped image ("host_config/nv-target/cl.exe integration?"). If real, CUDA
-  source builds inside the delivered image are impossible — distinct from the
-  chain's own builds, which work. Likely related to #83 (nvcc needs a host
-  compiler it cannot find without the MSVC env).
-- **85 [S·★★, none] AddressSanitizer probe fails** — `/fsanitize=address` did
-  not compile, or the ASAN runtime DLLs are not reachable. The repo already has
-  `Get-LlvmAsanRuntimeDirs` and an entrypoint hook for exactly this, so the
-  likely cause is that the runtime dir is not on PATH in a non-entrypoint shell.
-- **86 [S·★★, none] `SCOOP_GLOBAL_SHIMS=C:\ProgramData\scoop\shims` does not
-  exist** in the image — the env var survived a change in where the `--global`
-  scoop install puts its shims. Either the path moved or the global install
-  stopped happening; a dangling PATH-adjacent env var is how tools silently
-  fail to resolve.
-- **87 [S·★★★, none] `vcpkg zlib.lib` is missing under `C:\vcpkg`** ("vcpkg
-  install broken in the base image"). zlib is a media-build dependency; this
-  one is base-tier and worth checking against a fresh base before acting,
-  since the base was rebuilt 2026-08-14.
-
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 
 - **45 [S·★★★, none] A mis-plumbed CUDA path yields a fully green, CPU-ONLY
@@ -2271,6 +2233,31 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   8 keys are needed below the COPY; promote those to ARGs and move the COPY
   down. (The sibling ARG-below-the-expensive-RUN fix for TensorRT shipped
   2026-08-14 — same pattern, see the archive addendum.)
+
+  **SCOPED 2026-08-14 — and the audit's "only 8 keys" was wrong.** Enumerating
+  what the three RUNs below the COPY actually read (both `$env:X` *and*
+  `Resolve-ContainerImageValue -EnvironmentVariable 'X'`, which the first pass
+  missed because it uses no `$env:` syntax):
+  - `setup-scoop-tools.ps1`: CMAKE_VERSION, FLUTTER_VERSION, GIT_INSTALLER_URL,
+    GIT_VERSION, GIT_WINDOWS_INSTALLER_SHA256, LLVM_WINDOWS_VERSION,
+    NASM_WINDOWS_VERSION, NINJA_WINDOWS_VERSION, SCOOP_INSTALLER_SHA256,
+    VULKAN_VERSION, WIX_UI_EXT_VERSION, WIX_VERSION
+  - `setup-vcpkg.ps1`: VCPKG_REF
+  - `setup-rust-toolchain.ps1`: SCCACHE_GIT_REV, RUSTUP_DIST_SERVER,
+    RUSTUP_IO_THREADS
+
+  Five of those (CMAKE/LLVM/NINJA/NASM/VULKAN) **already have ARGs** and are
+  passed as parameters, so the work is ~11 NEW ARG declarations, each
+  duplicating a versions.env pin into the most expensive Dockerfile in the repo.
+
+  **TRADE-OFF — decide before doing.** The gain is purely cache cost: editing a
+  Linux-only key (PANDOC_VERSION, ROCM_VERSION, UBUNTU_DIGEST) would stop
+  re-paying scoop + vcpkg + the ~30-min rust/sccache layer on the next base
+  build. The cost is eleven new duplicated pins, i.e. exactly the drift surface
+  that #60 and #69 exist to police — and `Pins.CanonicalValues.Tests.ps1` would
+  have to be extended to cover Dockerfile.base before landing them. Not obviously
+  worth it; that judgement is the owner's, which is why this was NOT landed with
+  #81 on 2026-08-14 even though the base was rebuilt anyway.
 - **51 [M·★★★, media once] `MEMORY_LIMIT_GB` — a scheduling knob — is an image
   ENV and therefore a CACHE KEY** (`Dockerfile.media-builder:29,67`). The
   driver halves it for `-ConcurrentAux` (`build-buildkit.ps1:378`), so merely

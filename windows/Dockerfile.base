@@ -55,7 +55,18 @@ ENV PWSH_PATH="C:\Program Files\PowerShell\7" `
 ENV PATH=$PWSH_PATH;$WIN_BASE_PATH
 
 # Switch the default container shell to pwsh (PowerShell 7) for all subsequent RUN instructions.
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandErrorActionPreference = $false;"]
+# The native-exit-code preference is PSNativeCommandUseErrorActionPreference —
+# note the "Use" (backlog #81). Until 2026-08-14 this line set
+# $PSNativeCommandErrorActionPreference, which is not a PowerShell variable at
+# all: verified against pwsh 7.6.4 (exactly PWSH_VERSION), where
+# `Get-Variable PSNative*` returns only PSNativeCommandArgumentPassing and
+# PSNativeCommandUseErrorActionPreference. The assignment created an unrelated
+# variable and did nothing, so the base believed it had a guard it did not have.
+# It was harmless only by luck — the real variable already defaults to False —
+# and would have started throwing on every native non-zero exit the day pwsh
+# flips that default, which is its stated direction. The repo spells it
+# correctly in WindowsFormatting.Common.psm1.
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # COPY-immediately-before-RUN throughout this file: each input lands in the layer
 # right before the step that consumes it, so editing a LATER script (or versions.env)

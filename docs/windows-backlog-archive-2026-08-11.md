@@ -16,6 +16,39 @@ Four items treated as ONE piece of work, because they all live in
 `smoke-test-container.ps1`. **The gate found 8 real failures in the shipped
 image on its first run** — see backlog P0c (#83-#87).
 
+**The gate's own first lesson — 8 reported failures, ZERO image defects.**
+Pointed at `bk-winamd64` the gate reported 8 failures, and they were written
+into the backlog as P0c "the shipped image fails 8 assertions". **That writeup
+was wrong in full, and is retracted.** Final state after diagnosis:
+**184 passed, 0 failed, 1 skipped — "All smoke tests passed!"**
+
+- **Six were the GATE's fault.** A bare Dockerfile `RUN` bypasses `ENTRYPOINT`,
+  and `entrypoint.cmd` is what loads VsDevCmd (`-arch=amd64`) and prepends
+  LLVM's versioned clang_rt ASAN dir to PATH. So msbuild-on-PATH,
+  `VCToolsInstallDir`, MSBuild+ClangCL, nvcc (it needs `cl.exe`) and the ASAN
+  probe all failed against a perfectly good image, because the gate was testing
+  a configuration no user ever runs. Fixed by invoking through
+  `C:\temp\scripts\entrypoint.cmd` → 176→182 passed.
+- **Two were STALE ASSERTIONS, also not image defects.** Probing the freshly
+  built base settled both:
+  - *vcpkg zlib* — the port DOES install, as
+    `installed\x64-windows\lib\z.lib` (+ `debug\lib\zd.lib`). Upstream vcpkg
+    switched zlib's output to the Unix-style name; the check still looked for
+    `zlib.lib`. Now accepts either, so the next rename does not re-open it.
+  - *SCOOP_GLOBAL_SHIMS* — the `--global` install works
+    (`C:\ProgramData\scoop\apps\flutter` exists, `flutter` resolves by name);
+    scoop simply never creates a global `shims` dir in this configuration. The
+    assertion tested an implementation detail of scoop instead of the outcome.
+    Rewritten to assert the GOAL — a `--global` package resolves by NAME — with
+    the shims dir as one acceptable way of getting there.
+
+**Generalised rule, the second instance in one day** (after the ANSI-marshalled
+`LoadLibraryW` probe): **a new gate reporting a pile of failures is far more
+likely mis-configured than the artifact is broken.** Both times the fix was to
+reproduce the real usage path — a known-good control, then the actual entrypoint
+— rather than to "fix" the thing under test. Publishing the first reading as
+fact cost a retraction; probe first, publish second.
+
 - **44 (DONE) The smoke test was never invoked, and SKIP was not fatal.**
   `grep -i smoke windows/build.ps1 windows/build-buildkit.ps1` returned **zero
   hits in both**; the final Dockerfile has no RUN; CI never referenced it. A

@@ -50,11 +50,20 @@ ARG EXPECT_GPU=0
 # The image still ships its own copy at C:\temp for interactive use.
 #
 # The run's own output IS the evidence — never redirect it away.
+# RUN THROUGH THE ENTRYPOINT, not directly. A bare RUN bypasses ENTRYPOINT, and
+# entrypoint.cmd is what loads the VS developer environment (VsDevCmd -arch=amd64)
+# and prepends LLVM's versioned clang_rt ASAN runtime dir to PATH. Skipping it
+# made SIX smoke assertions fail against a perfectly good image — msbuild not on
+# PATH, VCToolsInstallDir unset, MSBuild+ClangCL, nvcc (it needs cl.exe), and the
+# ASAN probe. Those were defects in THIS GATE, not in the artifact: the image is
+# designed to be entered through its entrypoint, so a gate that does not is
+# testing a configuration no user ever runs.
 RUN --mount=type=bind,source=windows/scripts/smoke-test-container.ps1,target=C:\gate\smoke-test-container.ps1 `
     --mount=type=bind,source=windows/scripts/modules,target=C:\gate\modules `
-    $params = @{ MinPassed = [int]$env:MIN_PASSED; MaxSkipped = [int]$env:MAX_SKIPPED }; `
-    if ($env:EXPECT_GPU -eq '1') { $params['ExpectGpu'] = $true }; `
-    & 'C:\gate\smoke-test-container.ps1' @params
+    $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\smoke-test-container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
+    if ($env:EXPECT_GPU -eq '1') { $cmdline = $cmdline + ' -ExpectGpu' }; `
+    & cmd /S /C ('C:\temp\scripts\entrypoint.cmd ' + $cmdline); `
+    if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }
 
 # Marker so the solve produces something, and so `docker history` shows the gate ran.
 RUN Set-Content -Path 'C:\temp\smoke-gate.ok' -Value ('smoke gate passed ' + (Get-Date -Format o))
