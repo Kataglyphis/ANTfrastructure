@@ -164,3 +164,32 @@ strip_elf_tree() {
     | awk -F': *' '/ELF/{print $1}' \
     | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
 }
+
+# strip_media_prefixes [prefix...] — AP4: strip symbol tables from the media
+# install prefixes. Uses ${STRIP} when set (cross builds export it to the target
+# <triplet>-strip via cross-env.sh; host `strip` no-ops on foreign ELFs — the
+# AP1 finding), else plain `strip` for native. Best-effort per prefix (each goes
+# through strip_elf_tree, which never aborts the caller). With no args, strips
+# the default media set. Call this from a stage where the cross toolchain is on
+# PATH and the prefixes are already installed (STRIP live) — otherwise it
+# silently falls back to host strip and leaves foreign ELFs unstripped (a missed
+# size win, never a build break).
+#
+# NB: not a wheel stripper — wheels carry per-file <triplet>.so that a tree walk
+# would still strip correctly, but AP1's wheel-env forwarding is the dedicated
+# path for those. This is for the plain /opt/<lib> and /usr/local trees.
+strip_media_prefixes() {
+  local strip_bin="${STRIP:-strip}" jobs="${STRIP_JOBS:-$(nproc)}" p
+  local -a prefixes=("$@")
+  if [ "${#prefixes[@]}" -eq 0 ]; then
+    prefixes=(
+      /opt/ffmpeg /opt/opencv5 /opt/gstreamer /opt/libcamera
+      /opt/armnn /opt/acl
+      /usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-genai
+    )
+  fi
+  for p in "${prefixes[@]}"; do
+    [ -d "${p}" ] || continue
+    strip_elf_tree "${p}" "${jobs}" "${strip_bin}"
+  done
+}

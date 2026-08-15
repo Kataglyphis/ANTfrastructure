@@ -147,3 +147,10 @@ bash /opt/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh \
   "${BUILD_TYPE}" 2>&1
 
 trap - ERR
+
+# AP4: strip the installed gstreamer prefix (symbol tables only — --strip-all
+# keeps .dynsym so plugin/loader dynamic linking is unaffected). STRIP is live
+# (setup_linux_cross_env). Best-effort; MEDIA_STRIP=0 disables.
+if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
+  strip_media_prefixes "${GSTREAMER_PREFIX}" || true
+fi

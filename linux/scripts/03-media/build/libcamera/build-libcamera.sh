@@ -266,3 +266,10 @@ else
 fi
 
 rm -rf "${LIBCAMERA_SRC}" || true
+
+# AP4: strip the installed libcamera prefix (symbol tables only — --strip-all
+# keeps .dynsym so dynamic linking is unaffected). STRIP is live
+# (setup_linux_cross_env at the top). Best-effort; MEDIA_STRIP=0 disables.
+if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
+  strip_media_prefixes "${LIBCAMERA_PREFIX}" || true
+fi

@@ -330,10 +330,22 @@ order to actually WORK them — the item text lives in the sub-sections below):
   rm -rf's it ONE IMAGE LATER (whiteout reclaims nothing) → every pull
   downloads 0.5-2 GB of dead wheels per arch. Fix: bind-mount the wheelhouse
   into the venv RUN instead of COPYing (copy-media-payloads shows the pattern).
-- **AP4 — no strip pass over ANY media prefix** [S·★★] strip_elf_tree has
-  exactly 2 callers (gcc, clang); /opt/ffmpeg, /opt/opencv5, gstreamer,
-  litert, onnxruntime, armnn, libcamera all ship symbol tables. One pass per
-  prefix (cross <triplet>-strip). Inferred 5-10% of .so payload. (llvm-target
+- **AP4 — no strip pass over ANY media prefix** [S·★★] ✅ PARTIALLY STAGED
+  2026-08-15 (rides next rebuild). Added `strip_media_prefixes` to
+  build-helpers.sh (01-core, universally mounted — no new dep): uses ${STRIP}
+  (cross-env exports the target <triplet>-strip on cross, host strip on native —
+  the AP1 finding that host strip no-ops on foreign ELFs), --strip-all KEEPS
+  .dynsym so dynamic linking is unaffected (unit-tested: .symtab 1→0, smaller,
+  nm -D still resolves; skips absent dirs; survives set -e). WIRED at end-of-
+  install in the 3 scripts where STRIP is proven-live-in-mechanism (they call
+  setup_linux_cross_env AND source common.sh→build-helpers): build-ffmpeg.sh,
+  build-gstreamer-stage.sh, build-libcamera.sh — each guarded `MEDIA_STRIP=1`
+  (default on, =0 disables) + best-effort. The rebuild's functional smokes
+  (ffmpeg -version, gstreamer pipelines) are the validation net. STILL OPEN:
+  opencv5 / litert / onnxruntime / armnn / acl prefixes — their cross-env
+  activation pattern differs per script; wire in the rebuild window after
+  confirming STRIP is live at each (helper already handles them via its default
+  prefix list). Measure the drop via AP7's new per-prefix numbers. (llvm-target
   = TG4, separate.)
 - **AP5 — cross-target CPython built plain -O2: no PGO, no LTO** [M·★★]
   build_python.sh:225-233 (cross configure has neither) vs :471 (native has

@@ -725,6 +725,16 @@ main() {
     # must never fail an ffmpeg build that already succeeded.
     emit_runtime_apt_manifest || true
 
+    # AP4: strip symbol tables from the installed ffmpeg prefix. STRIP is live
+    # here (setup_linux_cross_env exported the target <triplet>-strip on cross,
+    # host strip on native); --strip-all keeps .dynsym so dynamic linking is
+    # unaffected (only .symtab/.debug go). Best-effort — never fails a build that
+    # already succeeded. MEDIA_STRIP=0 disables. Runs after bundle so the SDK
+    # runtime .so copied in above are stripped too.
+    if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
+        strip_media_prefixes "${FFMPEG_PREFIX}" || true
+    fi
+
     # Only write stamp and run smoke test for native builds
     if [ "${_is_native}" = "1" ]; then
         echo "$(${FFMPEG_PREFIX}/bin/ffmpeg -version 2>/dev/null | head -n1 | awk '{print $3}')" > "$_ff_stamp"
