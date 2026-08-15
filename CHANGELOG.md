@@ -1,9 +1,19 @@
 # Changelog
 
-## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6, cross-wheel SOABI)
+## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6, cross-wheel SOABI, litert-web integrity)
 
 Static-validated code-only fixes (no rebuild), each verified against the failure
 it addresses:
+
+- **litert-web npm dist.integrity verification (install-litert-web.sh)**:
+  `_fetch_npm_package` downloaded the @litertjs/* tarballs with NO integrity
+  check. It now fetches the registry packument's published `dist.integrity`
+  (sha512) and verifies the downloaded tarball against it — a MISMATCH refuses
+  the package (return 1), and since litert-web vendoring is already non-fatal the
+  image ships WITHOUT a tampered/corrupted dependency instead of installing it;
+  metadata-unavailable warns + proceeds (no worse than before). Validated against
+  the live registry: real @litertjs/core@2.5.3 matches, a 1-byte-tampered tarball
+  is refused.
 
 - **cross-wheel SOABI/default-triple assert (verify-wheels.sh)**: the filename-tag
   loop only checks the Python tag (cp314), which is host==target — so it cannot

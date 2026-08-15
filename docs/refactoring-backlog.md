@@ -119,8 +119,13 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   ffmpeg manifest (third truth source). D4 gives the substrate.
 - **cerbero checksums.env class fix** [M] the forge auto-archive re-pin
   (soundtouch override at build-android-from-source.sh:94-111) needs the
-  general table; + **soundtouch TOFU re-hash** [S] and **litert-web npm
-  dist.integrity verification** [S].
+  general table; + **soundtouch TOFU re-hash** [S]. (litert-web npm
+  dist.integrity verification DONE 2026-08-15: _fetch_npm_package now verifies
+  each downloaded tarball against the registry's published `dist.integrity`
+  sha512 — mismatch refuses the package, so a tampered/corrupted npm tarball can
+  no longer be vendored; metadata-unavailable warns + proceeds. Validated vs the
+  live registry: real @litertjs/core@2.5.3 matches, a 1-byte-tampered tarball is
+  refused.)
 - **GCC_PARALLEL_TARGETS validation** [S] landed gated default-0 (gcc.sh:
   404-494), never validated/enabled.
 - **Complexity-queue survivors** [S-M each] tvm-config append_tvm_cmake_args
