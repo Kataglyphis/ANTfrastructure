@@ -340,10 +340,14 @@ order to actually WORK them — the item text lives in the sub-sections below):
   edit re-runs the slowest packaging layer ×3 arches. Narrow to consumed
   files or move ship-only copies below the RUN. Riders: :108 COPY-then-rm
   (persists in lower layer; bind-mount instead), :100 missing --link.
-- **RP6 — /root/.local/bin baked into PATH of a uid-1001 image** [S·★]
-  Dockerfile.package:168 + canonicalized in runtime-paths.env:25. Dead for
-  kataglyphis (0700 /root); PATH-hijack precondition if /root perms ever
-  loosen. Drop from both.
+- **RP6 — /root/.local/bin baked into PATH of a uid-1001 image** ✅ STAGED
+  2026-08-15 (rides next rebuild) — dropped from Dockerfile.package:208 (the
+  shipped-image PATH ENV) and runtime-paths.env:25 (the canonical reference);
+  Dockerfile.base:77 intentionally KEPT (base builds run as root and legitimately
+  install to /root/.local). The advisory verify-runtime-paths only WARNs on
+  /opt|/usr/local paths so it was unaffected (rc=0); full unit suite green. Dead
+  for kataglyphis (0700 /root) + a PATH-hijack precondition if /root perms ever
+  loosened — now gone from the shipped image.
 
 ## Batch 3 — versions.env riders (NEVER alone; next planned pin bump)
 
