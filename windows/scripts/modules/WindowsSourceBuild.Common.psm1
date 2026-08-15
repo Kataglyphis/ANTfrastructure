@@ -1234,6 +1234,38 @@ function Complete-SourceBuildChain {
         }
     }
 
+    # DUMP THE SERVER LOG INTO THE BUILD LOG, in this same RUN (backlog #98).
+    #
+    # Reading it from a LATER build does not work and cost four wrong
+    # conclusions: `buildctl --no-cache` empties the cache mount for that build,
+    # so every probe wiped the log before looking at it (#96). Emitting it here
+    # sidesteps mounts entirely — the content lands in the step log, which the
+    # buildkitd step-log env now keeps unclipped.
+    #
+    # This is the ONLY way we currently get sccache's own account of WHY a write
+    # is rejected. The failures are all at L0 (local disk): genai reports
+    # `L0 (disk) write failures 157` against `L1 (webdav) write failures 0`
+    # (#98), and the top-level `Cache write errors` counter hides that split —
+    # read the per-layer block, not the summary.
+    $errLog = $env:SCCACHE_ERROR_LOG
+    if ($errLog -and (Test-Path $errLog)) {
+        $lines = @(Get-Content $errLog -ErrorAction SilentlyContinue)
+        Write-Host "`n=== sccache server log ($($lines.Count) lines, $errLog) ==="
+        # Failures first and in full; they are what this exists for. The tail
+        # gives surrounding context without dumping a debug-level flood.
+        $failures = @($lines | Select-String -Pattern 'ERROR|WARN|failed|denied|refused' -SimpleMatch:$false)
+        if ($failures.Count -gt 0) {
+            Write-Host "--- $($failures.Count) error/warn line(s) ---"
+            $failures | Select-Object -First 60 | ForEach-Object { Write-Host "  sccache-log| $_" }
+        } else {
+            Write-Host '--- no error/warn lines; tail follows ---'
+            $lines | Select-Object -Last 20 | ForEach-Object { Write-Host "  sccache-log| $_" }
+        }
+        Write-Host '=== end sccache server log ==='
+    } elseif ($errLog) {
+        Write-Host "sccache server log NOT written ($errLog) - the server never opened it."
+    }
+
     if ($ScrubAfter) { Clear-BuildScratch }
     # Callers still end with their own explicit `exit 0`: pwsh -File (and
     # docker run) otherwise propagate the LAST native exit code, and a

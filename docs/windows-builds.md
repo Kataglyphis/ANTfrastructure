@@ -2181,6 +2181,39 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   fully-populated env. Cheap to try, and it would also make the epilogue's flush
   meaningful.
 
+- **98 [M·★★★, none] LOCALISED: every write failure is at **L0 (local disk)**,
+  never at the WebDAV remote.** The multilevel breakdown — which nobody had read
+  until 2026-08-15, because the top-level `Cache write errors` counter hides it —
+  says it plainly for the genai stage:
+
+  ```text
+  L0 (disk)   misses 157 · writes 0 · write failures 157
+  L1 (webdav) misses 157 · writes 0 · write failures   0
+  ```
+
+  opencv shows the same shape at its one write opportunity
+  (`L0 (disk) write failures 1`). Because `SCCACHE_MULTILEVEL_CHAIN=disk,webdav`
+  writes L0 first, an L0 failure means L1 is never attempted — which is why
+  `L1 writes 0` everywhere and why the remote looked suspicious for days. **The
+  WebDAV endpoint is not involved in this defect at all.**
+  Also visible in the same block: `L1 (webdav) backfills to 0` — remote hits are
+  never copied down into L0 either, consistent with L0 being unwritable rather
+  than merely empty.
+
+  RULED OUT so far: cache-size exhaustion (`Cache size 65 MiB` against a 15 G
+  ceiling), GC reclaiming the mount (#89, fixed), the log location/level
+  (#90/#91), PDB locking (`CMAKE_BUILD_TYPE=Release`, no `/Zi`, no `.pdb`
+  anywhere in the build log — mspdbsrv was a red herring), and MSVC-vs-clang-cl
+  (sccache classifies clang-cl as `[msvc]`, so onnx and genai report the same
+  compiler class).
+
+  NEXT: the question is now narrow and concrete — *why is a write into the
+  `C:\sccache` cache mount rejected, in a stage that reads from it fine?* Note
+  onnx wrote 1488 objects into the SAME mount successfully on 2026-08-15 03:54,
+  so it is not a permanent property of the mount. Read the L0 backend's own
+  WARN output (now that `SCCACHE_LOG=warn` is set) rather than guessing again —
+  five hypotheses have already died here.
+
 - **92 [M·★★★, none] genai's 157/157 write failures are NOT explained by cache,
   mount or configuration.** A probe in the SAME `bk-windows-media-core` image
   with the SAME inherited env (`SCCACHE_LOG=warn`,

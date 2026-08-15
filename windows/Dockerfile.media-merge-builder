@@ -195,6 +195,9 @@ COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 FROM merge-fanin AS built
 # ARGs do not cross stage boundaries — redeclare for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Overridable so a single stage can be re-run at debug level without editing
+# this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+ARG SCCACHE_LOG="warn"
 # Two-tier sccache, same reasoning and same caveats as Dockerfile.media-builder's
 # `common` stage (read the block there before changing either). This stage is not
 # a descendant of it, so the variables have to be repeated -- ENV does not cross a
@@ -204,7 +207,7 @@ ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_DIR="C:\sccache" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
-    SCCACHE_LOG="warn" `
+    SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
 # Same cache id as the media builder on purpose: GStreamer compiles the same
 # clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
