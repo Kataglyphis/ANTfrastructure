@@ -139,24 +139,35 @@ ensure_appimagetool() {
         return 0
     fi
 
-    local arch asset url tmpfile sha256
+    local arch asset url tmpfile sha256 version
+    # TS1 (2026-08-15): pin an IMMUTABLE versioned tag, not the moving
+    # `continuous` tag. `continuous` re-uploads its assets in place, so a
+    # cache-miss build after any upstream re-upload downloaded new bytes that no
+    # longer matched the pinned SHA256 → download_verified_file died with a
+    # tamper-shaped "checksum mismatch" that was actually just upstream drift.
+    # 1.9.1 (published 2025-11-18) is a stable release with the same asset names;
+    # SHA256s below are the GitHub API `digest` (server-computed) for 1.9.1's
+    # assets. Bump APPIMAGETOOL_VERSION + all four SHAs together on the next
+    # upgrade (Batch-3 rider moves these to versions.env keys with a stale-pin
+    # guard). Override via APPIMAGETOOL_VERSION for a controlled test.
+    version="${APPIMAGETOOL_VERSION:-1.9.1}"
     arch="$(uname -m)"
     case "$arch" in
         x86_64|amd64)
             asset="appimagetool-x86_64.AppImage"
-            sha256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
+            sha256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
             ;;
         aarch64|arm64)
             asset="appimagetool-aarch64.AppImage"
-            sha256="1b00524ba8c6b678dc15ef88a5c25ec24def36cdfc7e3abb32ddcd068e8007fe"
+            sha256="f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158"
             ;;
         armv7l)
             asset="appimagetool-armhf.AppImage"
-            sha256="32aeca26db15a7d029b76adb8d5836f98acbf4a37b2a3101758b094f721e4b67"
+            sha256="42b61cba5495d8aaf418a5c9a015a49b85ad92efabcbd3c341f1540440e4e23d"
             ;;
         i686)
             asset="appimagetool-i686.AppImage"
-            sha256="ba04b9ecb2869993173bd38516dbafcfbe3064aca942500e94e7a3c3c2ea578d"
+            sha256="7ad9ff47c203aae0149b18f6df9e3018b2e2f470ea644a0413e3ded39e9e3bdb"
             ;;
         *)
             warn "Unsupported architecture '$arch' for appimagetool"
@@ -164,11 +175,10 @@ ensure_appimagetool() {
             ;;
     esac
 
-    # Use the AppImage appimagetool continuous release tag (stable asset URL).
-    # The workflow previously used the 'AppImageKit/releases/latest' path which
-    # started returning 404s; point to the continuous tag on the appimagetool
-    # repo which contains the up-to-date assets we need.
-    url="https://github.com/AppImage/appimagetool/releases/download/continuous/$asset"
+    # Immutable versioned asset URL (see TS1 note above). The old
+    # AppImageKit/releases/latest path 404'd; `continuous` fixed the 404 but
+    # reintroduced mutability — a pinned version tag fixes both.
+    url="https://github.com/AppImage/appimagetool/releases/download/${version}/$asset"
     tmpfile="$(mktemp /tmp/appimagetool.XXXXXX)"
     CLEANUP_FILES+=("$tmpfile")
 

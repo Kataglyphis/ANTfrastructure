@@ -264,12 +264,18 @@ order to actually WORK them — the item text lives in the sub-sections below):
   small — but to fully realize "one compile per arch" collapse the two
   toolchain RUNs into one (a Dockerfile.toolchain mount-closure change,
   deliberately deferred from the redo to avoid mount risk). Pairs with TG1.
-- **TS1 — appimagetool pinned to the MOVING `continuous` tag with 4 in-script
-  SHA256s** [S/M·★★★] packaging-deps.sh:144-176, required-mode in the BASE
-  stage → upstream re-uploads its continuous assets ⇒ next cache-miss build
-  dies with a tamper-shaped "checksum mismatch". Pin a dated asset or vendor;
-  move pins to APPIMAGETOOL_*_SHA256 in versions.env (keys = Batch 3) with a
-  cmake.sh-style stale-pin guard.
+- **TS1 — appimagetool pinned to the MOVING `continuous` tag** [S/M·★★★]
+  ✅ SCRIPT HALF STAGED 2026-08-15 (rides next rebuild). packaging-deps.sh now
+  pins the IMMUTABLE versioned tag 1.9.1 (published 2025-11-18, same asset names)
+  instead of `continuous`, with the 4 SHA256s updated to 1.9.1's GitHub API
+  `digest` values. amd64 asset VERIFIED by real download+sha256 (the arch base
+  builds actually fetch — `uname -m` on the amd64 build host); aarch64/armhf/i686
+  from the authoritative server-computed digest field. URL now
+  `.../download/${APPIMAGETOOL_VERSION:-1.9.1}/<asset>`. This removes the
+  tamper-shaped "checksum mismatch" death that fired whenever upstream re-uploaded
+  `continuous`. shellcheck-clean. REMAINING (Batch 3 rider, below): move
+  APPIMAGETOOL_VERSION + the 4 SHAs into versions.env keys with a cmake.sh-style
+  stale-pin guard (needs Dockerfile.base ARG plumbing to forward them).
 
 - **TS4 — build-clang.sh reuses an UNVERSIONED cached llvm-project checkout**
   [S·★★] :162/:214 — since the LLVM_CROSS_SOURCE_ROOT fix the checkout
