@@ -258,7 +258,9 @@ setup_torch_deps() {
   _install_ffmpeg_runtime_codecs
   _assert_ffmpeg_so_closure
 
-  rm -rf /var/lib/apt/lists/*
+  # RP2: /var/lib/apt is a BuildKit cache mount here (Dockerfile.torch:46) — the
+  # wipe has no size benefit and forces sibling arches to re-download metadata.
+  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
 }
 
 seed_riscv64_apt_packages() {
@@ -291,7 +293,8 @@ seed_riscv64_apt_packages() {
   # can resolve libsleef.so.3 -- without it the venv torch fails to import.
   apt-get install -y --no-install-recommends libsleef3 \
     || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
-  rm -rf /var/lib/apt/lists/*
+  # RP2: cache-mount guard (see above) — skip the no-op wipe on a mount.
+  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
   local _sp
   _sp="$(venv_site_packages)"
   if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then

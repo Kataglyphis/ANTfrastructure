@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-08-15 - S2 SHIPPED: libtensorflow removed from ffmpeg (−~500MB), :latest-cross re-shipped with FRESH digests after root-causing a 5× stale-ship bug
+
+- **`:latest-cross` re-shipped with genuinely fresh per-arch wrappers** — manifest
+  now indexes amd64 `f1a205a6`, arm64 `d5ae1470`, riscv64 `6024f28a` (the stale
+  `35c1f1df`/`e677e4f8`/`5002954385` are GONE; 0 stale refs in the index). All 3
+  on-target smokes 0 failures.
+- **S2 verified live**: pulled the shipped amd64 wrapper and confirmed
+  `opt/ffmpeg/lib/libtensorflow.so.2` + `libtensorflow_framework.so.2` are ABSENT
+  (−~500MB), ffmpeg (`libavcodec.so.63`) intact, onnxruntime still present.
+  `FFMPEG_ENABLE_TF=0` is the default (versions.env + Dockerfile.media ARG).
+- **ROOT CAUSE of the 5× stale-ship saga — RTCACHE3** (`runtime-build-fns.sh`
+  `append_runtime_image_output`): the runtime lane tagged the wrapper with the XC2
+  provenance exporter `--output type=image,name=<tag>,annotation.*`. On this
+  rootless nerdctl+containerd host that exporter builds the image into buildkit's
+  content store but **creates NO local containerd tag** (proven with a minimal
+  busybox repro: `--output type=image,name=X` → X absent; `-t X` → X present). So
+  the freshly built wrapper was invisible — `runtime_push_tag` (`nerdctl push`)
+  and `nerdctl manifest create` both resolved the STALE pre-existing tag from a
+  prior run, shipping byte-identical every time. It only ever "worked" because the
+  first-ever build had no stale tag to be stuck on. The annotations never reached
+  the registry either (the perennial "carry no run-id annotation … provenance
+  unverifiable" WARN was the visible symptom). **Fix**: use plain `-t` on both
+  paths (reliably creates AND overwrites the local tag); inert annotations dropped.
+- **Red herring corrected**: the earlier RTCACHE1 diagnosis (runtime wrapper
+  registry-cache-hit) was WRONG — the fresh media (`f3c64fbb`) and android
+  (`dee9049d`) were pulled and found already TF-less; the problem was purely the
+  tag never moving. Lesson reinforced: **verify the shipped BYTES (pull+inspect),
+  never trust "manifest pushed" = "fresh shipped"** — this manual check caught all
+  five stale ships.
+- **New escape hatch — `RUNTIME_NO_CACHE=1`** (`runtime-build-fns.sh`): gates
+  `--no-cache` on the runtime package+wrapper builds as a hard guarantee against
+  BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer. Distinct from
+  `NO_CACHE=1` (whole chain) and `CROSS_NO_LOCAL_CACHE_EXPORT=1` (write-only).
+- **New automated byte-gate — `verify-shipped-wrapper.sh`** wired into
+  `build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled.
+  It lists each wrapper's rootfs (`nerdctl export | tar -t` — arch-agnostic, no
+  qemu) and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env
+  toggles: `FFMPEG_ENABLE_TF` ⇒ `libtensorflow` present/absent, ffmpeg intact
+  (`libavcodec`). A toggle-mismatched or stale wrapper now aborts before
+  `:latest-cross` goes live — the manual pull+grep that caught all five stale
+  ships, automated. Tested: PASS on the fresh f1a205a6, FAIL on a synthetic
+  TF-present-with-toggle-off image and on an empty-ffmpeg image.
+  `WRAPPER_CONTENT_GATE=0` downgrades it to advisory.
+
 ## 2026-08-13 - VALIDATING REBUILD COMPLETE: :latest-cross re-shipped, 3 arches, every keeper change proven by a real build
 
 - **`:latest-cross` rebuilt base→manifest and pushed** — manifest digest

@@ -470,8 +470,13 @@ main() {
     verify_consumer_dev_surface
     report_rust_provenance
 
-    apt-get clean
-    rm -rf /var/lib/apt/lists/*
+    # RP2: /var/cache/apt and /var/lib/apt are BuildKit cache MOUNTS here
+    # (Dockerfile.package:307-308, sharing=locked). Wiping them has ZERO
+    # image-size benefit (a mount never commits to the layer) and forces sibling
+    # arches to re-download all apt metadata on their next run. Only clean a real
+    # committed dir. `mountpoint` missing → falls back to the old wipe (safe).
+    mountpoint -q /var/cache/apt || apt-get clean
+    mountpoint -q /var/lib/apt   || rm -rf /var/lib/apt/lists/*
 }
 
 main "$@"

@@ -62,19 +62,33 @@ runtime_image_output_arg() {
   printf 'type=image,name=%s%s' "${tag}" "${ann}"
 }
 
-# Append the image target for a runtime build to the nameref array. When the
-# image WILL be pushed we use the annotated `--output type=image,...` exporter so
-# the provenance reaches the registry; otherwise we keep the plain `-t <tag>` the
-# local stage-context path has always used (byte-for-byte unchanged, so the
-# normal-flow base/package local builds are untouched).
+# Append the image target for a runtime build to the nameref array.
+#
+# RTCACHE3 (root cause of the 2026-08-14 stale-ship saga): this used to emit the
+# annotated `--output type=image,name=<tag>,annotation.*` exporter on the push
+# path, on the assumption (see the now-corrected runtime_image_output_arg note)
+# that it was "equivalent to -t <tag>". It is NOT. Verified with a minimal
+# busybox repro on this rootless nerdctl+containerd host:
+#     nerdctl build --output type=image,name=X   → X is NOT in the local image store
+#     nerdctl build -t X                          → X IS in the local image store
+# The exporter builds the image into buildkit's content store but never lands a
+# local containerd tag. So the freshly built wrapper was invisible: the
+# subsequent `nerdctl push <tag>` (runtime_push_tag) and `nerdctl manifest
+# create <tag>` both resolved the STALE pre-existing local tag from an earlier
+# run, and :latest-cross shipped byte-identical every time (amd64 stuck at
+# 35c1f1df across five rebuilds). The annotations never reached the registry
+# either — every run logged "wrapper tag(s) carry no run-id annotation …
+# provenance unverifiable" — so nothing of value is lost by dropping the
+# exporter. Use plain `-t` on BOTH paths: it reliably creates AND overwrites the
+# local tag, which is what runtime_push_tag + the manifest step consume.
+# (Re-embedding ancestry provenance via a locally-tagging method is tracked
+# separately; correctness of the shipped bytes comes first.)
 append_runtime_image_output() {
   local -n _ario_out=$1
-  local tag="$2" will_push="$3" parent_pin="${4:-}" parent_stage="${5:-}"
-  if [ "${will_push}" = "1" ]; then
-    _ario_out+=(--output "$(runtime_image_output_arg "${tag}" "${parent_pin}" "${parent_stage}" "${CROSS_RUN_ID:-}")")
-  else
-    _ario_out+=(-t "${tag}")
-  fi
+  local tag="$2"
+  # Args 3-5 (will_push, parent_pin, parent_stage) are accepted for call-site
+  # compatibility but intentionally ignored now that both paths use -t.
+  _ario_out+=(-t "${tag}")
 }
 
 _runtime_finish_stage() {

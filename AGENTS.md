@@ -55,7 +55,7 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`. To stop a running chain cleanly (reaps the orphaned nerdctl/buildctl child subtree — never `pkill` the orchestrator, that orphans them), use `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep). Cache knobs: `NO_CACHE=1` disables ALL `--cache-from` (local + registry) for a fully fresh build; `CROSS_NO_LOCAL_CACHE_EXPORT=1` only stops WRITING the local buildcache but STILL reads the registry inline cache — so after changing content that BuildKit's `COPY --from` under-tracks (e.g. an ffmpeg toggle), the runtime wrapper can cache-hit the prior image and ship STALE bytes; force `NO_CACHE=1` on the runtime re-run and verify the shipped image, not just the manifest push (backlog RTCACHE1).
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`. To stop a running chain cleanly (reaps the orphaned nerdctl/buildctl child subtree — never `pkill` the orchestrator, that orphans them), use `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep). Cache knobs (three distinct, do not conflate): `NO_CACHE=1` disables ALL `--cache-from` (local + registry) for the whole chain; `RUNTIME_NO_CACHE=1` gates `--no-cache` on only the runtime package+wrapper builds (`runtime-build-fns.sh`) — a targeted guarantee against BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer; `CROSS_NO_LOCAL_CACHE_EXPORT=1` only stops WRITING the local buildcache but STILL reads the registry inline cache. **Verify the shipped BYTES, never the push** (backlog RTCACHE3): the 2026-08-15 S2 saga shipped `:latest-cross` STALE five times with every static gate and all smokes GREEN — the manifest, smokes, and push were all byte-identical to a prior run. The real cause was the `--output type=image` tagging bug (see "Cross Chain Stage Handoff"), NOT a cache; media+android were always fresh. This is now GATED automatically: `verify-shipped-wrapper.sh` runs in `build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled — it lists each wrapper's rootfs (`nerdctl export | tar -t`, arch-agnostic, no emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact). A mismatch aborts before `:latest-cross` goes live. `WRAPPER_CONTENT_GATE=0` makes it advisory. To spot-check by hand: pull the wrapper and grep for the expected lib set.
 
 Most common build commands:
 
@@ -1031,10 +1031,22 @@ stage does `FROM ${BASE_IMAGE}`: `base → compiler → sdk → media → androi
 package → torch → wrapper → manifest`. The base-image handoff MUST NOT rely on a
 bare mutable tag, or a stage can silently consume a STALE locally-cached image.
 
-`--output type=image,name=...,push=true` pushes the new digest but does not
-reliably refresh the local containerd tag; BuildKit's default `FROM` prefers an
-already-present local image. So rebuilding `media` then building `android` can
-quietly reuse the old `media`.
+`--output type=image,name=...` does not reliably refresh the local containerd
+tag; BuildKit's default `FROM` prefers an already-present local image. So
+rebuilding `media` then building `android` can quietly reuse the old `media`.
+**This is not just a `FROM` hazard — it broke the runtime wrapper's OWN tag.**
+On this rootless nerdctl host, `nerdctl build --output type=image,name=X`
+creates NO local tag X at all (verify: `--output type=image,name=X` → X absent
+from `nerdctl images`; `-t X` → present). The runtime lane used the annotated
+`--output type=image,name=<tag>,annotation.*` exporter to tag the wrapper, so
+the freshly built wrapper was invisible and `nerdctl push <tag>` +
+`nerdctl manifest create <tag>` resolved the STALE pre-existing tag — shipping
+`:latest-cross` byte-identical five times (2026-08-14/15, amd64 frozen at
+`35c1f1df`). FIXED: `runtime-build-fns.sh append_runtime_image_output` now uses
+plain `-t` on both paths (reliably creates AND overwrites the tag). Do NOT
+reintroduce the `--output type=image,name=` exporter for a tag you then push or
+index — use `-t`. (The dropped ancestry annotations never reached the registry
+anyway; re-embedding them is a tracked follow-up.)
 
 Rules:
 

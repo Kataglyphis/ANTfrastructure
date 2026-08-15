@@ -270,6 +270,13 @@ main() {
         run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       fi
       run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
+      # RTCACHE3 content byte-gate: the boot smoke proves the wrapper RUNS, but a
+      # STALE wrapper (see verify-shipped-wrapper.sh) boots green too. Re-derive
+      # the expected /opt/ffmpeg lib set from versions.env toggles and assert the
+      # shipped bytes match — this fires BEFORE the manifest is assembled, so
+      # stale/toggle-mismatched content can never reach :latest-cross. Arch-
+      # agnostic (tar listing, no emulation). WRAPPER_CONTENT_GATE=0 → advisory.
+      run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
     done
   fi
 

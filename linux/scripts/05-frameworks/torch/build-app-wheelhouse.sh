@@ -490,8 +490,8 @@ _torch_build_host_protoc() {
 # failure stays visible. Sets use_system_sleef.
 _torch_detect_system_sleef() {
     use_system_sleef=0
-    if command -v cross_package_files_present >/dev/null 2>&1 && \
-       cross_package_files_present "libsleef-dev:$(cross_target_arch 2>/dev/null || echo none)"; then
+    if command -v cross_package_status_present >/dev/null 2>&1 && \
+       cross_package_status_present "libsleef-dev:$(cross_target_arch 2>/dev/null || echo none)"; then
         use_system_sleef=1
         log "Using target system sleef (libsleef-dev) instead of pytorch's bundled sleef"
     else

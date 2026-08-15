@@ -363,6 +363,50 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     echo ""
 }
 
+# RP1 (security): assert the shipped image carries NO usable `sudo` — it was
+# purged from the final stage (Dockerfile.torch) because no sudoers/group grants
+# exist and USER kataglyphis can never use it, so it is pure LPE attack surface.
+# This gate fails loud if a future base/package change reintroduces it. Every
+# OTHER setuid binary is inventoried (informational) so a new one is at least
+# VISIBLE in the smoke log rather than shipping unnoticed.
+check_setuid_inventory() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Functional: setuid inventory (sudo must be absent) ---"
+    if _rt_run \
+         bash -lc 'set -uo pipefail
+found=""
+while IFS= read -r f; do
+  found="${found}${f}\n"
+done < <(find / -xdev -perm -4000 -type f 2>/dev/null)
+if [ -n "$found" ]; then printf "  setuid binaries present:\n"; printf "%b" "$found" | sed "s/^/    /"; fi
+# fail iff a sudo-family setuid binary survived
+printf "%b" "$found" | grep -qE "/sudo(edit)?$" && { echo "  VIOLATION: setuid sudo present"; exit 1; }
+exit 0'; then
+      pass "no setuid sudo in the shipped image (${target_arch})"
+    else
+      fail "setuid sudo present in the shipped image (${target_arch}) -- RP1 purge regressed (Dockerfile.torch)"
+    fi
+    echo ""
+}
+
+# AP7 (size observability, INFORMATIONAL — never fails): the shipped image has no
+# per-prefix size breakdown anywhere, so every "shrink X" item (strip passes,
+# dead wheels, the TF removal, byte-compile) is un-measurable. One du block turns
+# them all into numbers visible in the smoke log — run it so size regressions and
+# wins are at least attributable to a prefix. Sorted largest-last for eyeballing.
+check_size_observability() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Size: per-prefix disk usage (informational, ${target_arch}) ---"
+    _rt_run \
+      bash -lc 'set -uo pipefail
+du -sh /opt/* /opt/venv/lib/python*/site-packages 2>/dev/null | sort -h | sed "s/^/    /"
+printf "    ---- total /opt ----\n"
+du -sh /opt 2>/dev/null | sed "s/^/    /"' || echo "  (size probe unavailable)"
+    echo ""
+}
+
 # GStreamer plugin health -- WARN only. Unlike ffmpeg/opencv, a GStreamer
 # plugin whose runtime .so is absent degrades gracefully (the element is just
 # unavailable), so a broken optional plugin must not fail the gate. But surface
@@ -663,6 +707,8 @@ main() {
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"
+    check_setuid_inventory "${image_tag}" "${target_arch}"
+    check_size_observability "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

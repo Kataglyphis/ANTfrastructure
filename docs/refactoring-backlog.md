@@ -10,13 +10,15 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Batches are grouped by REBUILD BLAST RADIUS, not theme — most items are cheap,
 rebuilds are expensive. Work top to bottom; each batch ships independently.
 
-Last groomed: 2026-08-14 (post wave-2: host-side B5 lifecycle (O1/O2/O4/O5 +
-stop-cross-chain.sh) + B6 (C4a/F7/SEC1) DONE; the rebuild-gated wave
-(TG3/TG4/TG7 redo, S2, XC2/XC3) validated in a full rebuild — TG done (one
-residual: RUN-3d recompile), S2 code+media-validated (shipped image pending
-the RTCACHE1 NO_CACHE re-run), XC3 coherence gate live. New findings logged:
-RTCACHE1 (runtime wrapper registry-cache-hit shipped STALE content — the
-verify-the-bytes-not-the-push lesson) + the XC2 annotation-survival gap.
+Last groomed: 2026-08-15 (S2 ✅ SHIPPED+VERIFIED — :latest-cross now carries
+FRESH digests amd64 f1a205a6 / arm64 d5ae1470 / riscv64 6024f28a, libtensorflow
+CONFIRMED GONE by pulling the shipped wrapper. Root cause of the 5× stale-ship
+saga was RTCACHE3, NOT RTCACHE1: `--output type=image,name=X` never creates a
+local containerd tag on this rootless host, so push+manifest kept resolving the
+stale pre-existing tag — FIXED by switching append_runtime_image_output to `-t`.
+RTCACHE1's registry-cache theory was a red herring (media+android were always
+TF-less). XC2 annotation-survival gap SUPERSEDED by the -t fix (annotations
+dropped; provenance re-embed is a follow-up). New knob: RUNTIME_NO_CACHE=1.
 Records of done work live in CHANGELOG.md + memory + the archive.)
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
@@ -57,7 +59,6 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
 ### New code fixes (2026-08-10 rounds, all evidence-verified)
 
-
 - **D3 + P5 — smoke-media gate scaffold + SMOKE_ENV** [M·★★] extract
   smoke_resolve_bin / smoke_assert_elf_magic / smoke_component_gate (6+2+4
   duplicated sites) into smoke-common.sh and make the two-environment contract
@@ -81,11 +82,7 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   plausible; would retire the STV1/smoke exemption. Risks: no upstream
   test surface on riscv64, #594-class silent-quality failures → needs a real
   generate() smoke, not just import. Do only if genai-on-riscv64 has a user.
-- **T1 contract surprises** (from writing test-cross-apt.sh): rename/re-comment
-  cross_package_files_present (checks dpkg ${Status}, NOT files — name and
-  caller comment both stale); give _CROSS_ENV_APT_UPDATED a `:-` default
-  (standalone sourcing under set -u crashes); surface per-package apt rc in
-  the retry loop (diagnosability).
+
 - **P3 residual** [S·note] the vulkan Multi-Arch force-overwrite drop-in is
   gstreamer-local by design (cache blast radius); if ANOTHER Multi-Arch: same
   dev package skews on 26.04, generalize into cross-apt.sh.
@@ -169,20 +166,13 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   dies with a tamper-shaped "checksum mismatch". Pin a dated asset or vendor;
   move pins to APPIMAGETOOL_*_SHA256 in versions.env (keys = Batch 3) with a
   cmake.sh-style stale-pin guard.
-- **TS5 — three version-fallback literals escaped verify-arg-consistency**
-  [S·★] cross-gcc.sh:15 + llvm.sh:297 (`gcc-16.2.0`), smoke-toolchain.sh:35
-  (`22.1.8`) — a GCC/LLVM bump makes the smoke gate FAIL the correct build.
-  Add to the checker's literal diff. (Checker lives in 01-core → closure-
-  bound, despite being host-run.)
+
 - **TS6 — vulkan cross-targets: no aggregate verdict; header-staging cp is
   `2>/dev/null || true`** [S·★★] loader/SPIRV/glslang each tolerated by
   design (vulkan.sh:419-523) but all-3-failed (one env-shaped cause) still
   exits 0; :440-443 masks real cp failures as "source absent". Add a summary
   line + all-failed die; split the cp guard. Rides the vulkan T2 stanza item.
-- **TS7 — configure-gcc-env.sh does unanchored sed surgery on
-  /etc/environment** [S·★] :12-20 substring-strips values (prefix-nesting
-  corrupts sibling entries; unescaped pattern) and masks the delete step
-  (`|| true` → duplicate lines). Rebuild by exact-entry filtering.
+
 - **TS4 — build-clang.sh reuses an UNVERSIONED cached llvm-project checkout**
   [S·★★] :162/:214 — since the LLVM_CROSS_SOURCE_ROOT fix the checkout
   SURVIVES builds; an LLVM bump silently rebuilds the OLD tag for hours
@@ -216,7 +206,7 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
 ### Runtime/packaging + artifact-performance additions (2026-08-10 sweep, RP/AP)
 
-- **AP7 — zero size observability FIRST** [S·★★★] the 42.66 GB media image
+- **AP7 — zero size observability FIRST** [S·★★★] ✅ CODE-DONE 2026-08-15 (runtime half): check_size_observability added to smoke-runtime-image — `du -sh /opt/* + site-packages | sort -h` per arch, informational. Rides next rebuild-window validation. STILL OPEN: the media-stage half (same block in verify-media-artifacts.sh) for the 42.66 GB media image —
   has no per-prefix breakdown anywhere. One `du -sh /opt/* …|sort -h` block in
   verify-media-artifacts.sh + smoke-runtime-image turns every size item below
   (and S2/TG4) into measured numbers on the very next build. Do before the
@@ -247,18 +237,18 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   PGO, no LTO). The foreign-arch venv interpreter leaves 10-30% upstream-
   documented speedup on the table. Add --with-lto both paths now; qemu-PGO =
   separate investigation.
-- **RP1 — final image ships a setuid sudo NOBODY can use** [S·★★ security]
+- **RP1 — final image ships a setuid sudo NOBODY can use** [S·★★ security] ✅ CODE-DONE 2026-08-15 (Dockerfile.torch purges /usr/bin/sudo* + setuid-sudo find-delete; check_setuid_inventory added to smoke-runtime-image asserts sudo absent + inventories the rest) — rides next rebuild-window validation.
   package-lists.sh:76 installs it; Dockerfile.torch:79-85 removes only the
   FAKE shim; no sudoers/group grants exist → pure LPE attack surface (sudo
   CVE stream). Purge in the final stage + a setuid-inventory assert in
   smoke-runtime-image (cheap wrapper-layer rebuild only).
-- **RP2 — cleanup scripts wipe the SHARED apt cache mounts, contradicting the
+- **RP2 — cleanup scripts wipe the SHARED apt cache mounts** [✅ CODE-DONE 2026-08-15: `mountpoint -q /var/{cache,lib}/apt ||` guards added to setup-package-image.sh + 2 setup-torch-venv.sh normal-path sites; error-path site :240 left. Rides next rebuild-window validation.] — original note: cleanup scripts wipe the SHARED apt cache mounts, contradicting the
   Dockerfile's own comment** [S·★] setup-package-image.sh:402-403 +
   setup-torch-venv.sh:219/240/273 `apt-get clean; rm -rf /var/lib/apt/lists`
   inside sharing=locked cache mounts (Dockerfile.package:262-264 explicitly
   says not to). Zero size benefit (mounts never commit); parallel arches
   re-download metadata. Guard with `mountpoint -q || …`.
-- **RP3 — HEALTHCHECK timeout 5s too tight for cold ORT import** [S·★]
+- **RP3 — HEALTHCHECK timeout 5s too tight for cold ORT import** [S·★] ✅ CODE-DONE 2026-08-15 (Dockerfile.torch: timeout 5s→30s) — rides next rebuild-window validation.
   Dockerfile.torch:94-95 — cold import of a multi-hundred-MB .so on riscv64/
   qemu plausibly >5 s → unhealthy-flapping. Raise timeout ~30 s (only bounds
   the failure path).
@@ -274,16 +264,6 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
 ## Batch 3 — versions.env riders (NEVER alone; next planned pin bump)
 
-- **DOC1** [S·★] toggle comments contradict values: :81 WebGPU "(default
-  off)" above `=true`; :112 x265 "kept off" above `=1`.
-- **S2 — FFMPEG_ENABLE_TF gate** [S·★★★] CODE DONE + media-validated
-  2026-08-14: FFMPEG_ENABLE_TF=0 default, x265 pattern mirrored end-to-end;
-  the wave-2 media build confirmed ffmpeg configured WITHOUT
-  --enable-libtensorflow (ONNX still on) and 0 BUNDLED TF libs. SHIPPED image
-  still PENDING: the first wave-2 :latest-cross shipped STALE (RTCACHE1 — the
-  runtime wrapper registry-cache-hit reused the prior TF-present layers); the
-  NO_CACHE=1 runtime re-run (in flight) will actually ship the −500MB image.
-  Verify TF-absent in the shipped wrapper before closing.
 - **C3 — android inline version fallbacks → `:?must be set`** [S·★★] litert/
   onnx/iree/opencv/gstreamer android scripts carry dead fallbacks that mask a
   broken ARG forward as a silent stale-pin build.
@@ -306,22 +286,33 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   key and no decision comment (never-considered, not deliberate). Flip
   per-arch-gated in the next window, measure inference delta + .so size in
   the validating rebuild; add a DOC1-style comment either way.
-- **F5 — THIRD stale versions.env comment (beyond DOC1's two)** [S] :115-117
-  claims OPENCV tracks "a live BRANCH (non-reproducible)" directly
-  contradicting :103-106 (pinned tag 5.0.0); header :7-9 still describes the
-  pre-enforcement ARG-default era (sync_versions now ENFORCES them). Fold
-  both into the DOC1 edit.
-- **F6 — triage the 13 stray SHA pins the new audit found** [S/M·★★] the
-  checker LANDED (`bump_versions.py --audit-sha-pairs`, opt-in, rc 1 on
-  strays) and its first run lists exactly which pins have NO refresh spec,
-  NO bump:hold, NO allowlist: ABSEIL_TARBALL, ANDROID_CMDLINE_TOOLS,
-  BINARYEN_LINUX_AARCH64, FLUTTER_SDK, GSTREAMER_ANDROID_UNIVERSAL,
-  ROCM_GPG_KEY, RUSTUP_INIT, SCOOP_INSTALLER, SHELLCHECK_LINUX_X86_64,
-  SHELLCHECK_WINDOWS, TENSORFLOW_C, UV_INSTALL_SH, VULKAN_SDK (_SHA256 each).
-  Per key: add to the owning bump spec's extras, `bump:hold`-annotate
-  (TENSORFLOW_C is documented do-not-bump but never annotated!), or allowlist
-  with justification — all versions.env edits → THIS window. Then co-locate
-  the scattered pairs (OLLAMA :198 vs :540 etc.) in the same pass.
+
+- **F6 — triage the stray SHA pins** [M·★★] `bump_versions.py --audit-sha-pairs`
+  (opt-in, rc 1 on strays). Progress 2026-08-15: **13 → 3 strays** (10 covered,
+  each SHA-VERIFIED against the live upstream BEFORE writing the spec — the
+  discipline that caught ABSEIL's non-determinism). Done:
+  · TENSORFLOW_C + ROCM_GPG_KEY → `bump:hold` (frozen: last upstream C build / a
+    GPG signing key — no version to bump with).
+  · RUSTUP_INIT + UV_INSTALL_SH + SCOOP_INSTALLER → audit `allow` set
+    (unversioned always-latest installer scripts, hand-reviewed).
+  · BINARYEN_LINUX_AARCH64 → spec_binaryen extras (asset verified on version_131).
+  · SHELLCHECK_LINUX_X86_64 + SHELLCHECK_WINDOWS → new spec_shellcheck (both SHAs
+    verified vs v0.11.0's release assets; download-hash, no sums file upstream).
+  · FLUTTER_SDK → spec_flutter now reads `sha256` from the releases JSON it
+    already fetches (verified match for 3.44.9).
+  · GSTREAMER_ANDROID_UNIVERSAL → new spec_gstreamer (moved from a REPORT lambda);
+    reads the `.tar.xz.sha256sum` sidecar freedesktop publishes (verified 1.29.2).
+  **REMAINING 3 — genuinely hard, no cheap auto-track:**
+  · ABSEIL_TARBALL — pin is a GitHub ARCHIVE tarball (`archive/refs/tags/X.tar.gz`)
+    whose SHA is NON-deterministic (GitHub regenerates it — verified the current
+    pin already mismatches a fresh fetch). Needs a commit-pinned codeload or a
+    content-based verify, not sha256_of_url.
+  · ANDROID_CMDLINE_TOOLS — dl.google.com zip, NO published checksums + version
+    detection goes through sdkmanager/repository2.xml, not a tag.
+  · VULKAN_SDK — LunarG; spec_vulkan gets the version from lunarg.com but the
+    ~1GB tarball SHA is in no JSON/sums file (config.json carries only build repo
+    config) → would need a full download-and-hash on every bump (heavy).
+  Co-locate the scattered pairs (OLLAMA :198 vs :540) when doing them.
 
 ## Batch 4 — Windows rebuild-window riders (lane rule: script edits ride pin bumps)
 
@@ -344,33 +335,19 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
 ## Batch 5 — orchestrator lifecycle (one coherent PR)
 
-- **RTCACHE1 — runtime wrapper registry-cache-hit ships STALE content when
-  only a sub-artifact's bytes change** [M·★★★] found live 2026-08-14: after
-  a full rebuild where S2 removed the 447MB TF lib from media's /opt/ffmpeg,
-  the runtime wrapper build `--cache-from type=registry` (inline cache) reused
-  the PRIOR wrapper's layers wholesale — `Dockerfile.package:76 COPY --from=
-  artifact-source /opt/ffmpeg` cache-hit because BuildKit under-tracked the
-  changed COPY source — so the manifest, the smokes, AND the pushed
-  :latest-cross were byte-identical to the previous run (TF STILL present,
-  ffmpeg still --enable-libtensorflow). CROSS_NO_LOCAL_CACHE_EXPORT=1 does
-  NOT help (it only stops WRITING local cache; the registry --cache-from is
-  still read). Workaround used: re-run the runtime stage with NO_CACHE=1.
-  Real fix options: (a) key the wrapper's COPY-from on the artifact image's
-  content digest so a changed upstream busts it; (b) a post-manifest gate that
-  pulls the shipped wrapper and asserts it matches the fresh build (e.g. the
-  ffmpeg buildconf / expected lib set) — "manifest pushed" must NOT be trusted
-  as "fresh content shipped". LESSON: always verify the shipped bytes, not the
-  push. Pairs with XC2/XC3 (the annotation-provenance work) + the --no-push
-  item below.
-- **XC2 annotation-survival gap** [S·★★] found 2026-08-14: XC2 threads a
-  run-id annotation onto wrapper pushes, but the XC3 manifest gate reported
-  "3/3 wrapper tag(s) carry no run-id annotation" — the annotation set via
-  buildkit `--output type=image,annotation.*` did NOT survive the separate
-  `nerdctl push` / land on the pulled tag (the agent's flagged open
-  assumption). XC3's gate degrades gracefully (warns, proceeds) so it is not
-  breaking, but XC2's provenance is inert until the annotation actually
-  persists — verify with `nerdctl manifest inspect --verbose` and fix the
-  emit path (annotation on the pushed manifest, or a post-push `annotate`).
+- **RTCACHE3 follow-up — re-embed ancestry provenance** [S·★★] the root-cause
+  fix shipped 2026-08-15 (runtime-build-fns.sh → plain `-t`; see CHANGELOG +
+  memory [[rtcache3-output-tag-bug-2026-08-15]]). The `-t` fix dropped the XC2
+  `--output …,annotation.*` exporter that never persisted its annotations to the
+  registry anyway (SUPERSEDES the old XC2 annotation-survival gap item). Re-add
+  provenance via a locally-tagging method: `nerdctl annotate` / `image convert`
+  post-`-t`, or annotate the pushed multi-arch manifest. Correctness of shipped
+  bytes came first; this is the cosmetic/provenance rider.
+  (The automated post-manifest byte gate — the OTHER follow-up — is DONE:
+  `verify-shipped-wrapper.sh`, wired into build-runtime-manifest.sh's per-arch
+  loop before the manifest is assembled; asserts the shipped /opt/ffmpeg lib set
+  matches the versions.env toggles. Tested: PASS on fresh, FAIL on TF-present-
+  with-toggle-off and on broken ffmpeg. WRAPPER_CONTENT_GATE=0 → advisory.)
 - **--no-push OCI-layout handoff + dual-path collapse** [M·★★] --no-push
   builds resolve parents against the REGISTRY (two runs lost historically);
   export local stages as OCI layout + --build-context override; couples with

@@ -246,7 +246,12 @@ cross_filter_known_foreign_postinst_noise() {
 # binaries can't run on the build host) is still fully unpacked, so its
 # headers/libs ARE usable for cross-compiling. Treat unpacked/half-configured
 # as present; only "not installed at all" counts as missing.
-cross_package_files_present() {
+# T1a: named for what it ACTUALLY does — queries the dpkg install STATUS, not the
+# filesystem (the old name `cross_package_files_present` implied a file probe and
+# misled every caller/comment). A foreign-arch package counts as present when its
+# status is installed OR merely unpacked/half-configured (its headers+libs are on
+# disk for cross-compiling even when the postinst couldn't run on the build host).
+cross_package_status_present() {
   local pkg="${1%%=*}"
   local status
   status="$(dpkg-query -W -f='${Status}' "${pkg}" 2>/dev/null || true)"
@@ -265,7 +270,9 @@ install_target_packages() {
   [ "$#" -gt 0 ] || return 0
   if cross_build_enabled; then
     cross_prepare_foreign_arch
-    if [ "${_CROSS_ENV_APT_UPDATED}" != "1" ]; then
+    # T1b: `:-0` so cross-apt.sh sourced standalone under `set -u` (before
+    # cross-env.sh's default at :7 is in scope) reads a value instead of crashing.
+    if [ "${_CROSS_ENV_APT_UPDATED:-0}" != "1" ]; then
       apt-get update
       _CROSS_ENV_APT_UPDATED=1
     fi
@@ -288,11 +295,10 @@ install_target_packages() {
     ) || apt_rc=$?
 
     # Trust a clean atomic install: apt-get succeeded, every package is unpacked.
-    # Do NOT run the cross_package_files_present sweep on this path — that check
-    # is only a heuristic (it hunts for a representative file) and returns false
-    # negatives for some packages (e.g. libfreetype6-dev), which would turn a
-    # perfectly good install into a spurious failure. It is used ONLY below, as a
-    # disambiguator AFTER apt has already errored.
+    # Do NOT run the cross_package_status_present sweep on this path — it is a
+    # dpkg-status probe (installed/unpacked/half-configured all count as present),
+    # used ONLY below as a disambiguator AFTER apt has already errored, never to
+    # second-guess a clean atomic install.
     [ "${apt_rc}" -eq 0 ] && return 0
 
     # The atomic transaction failed. That can be harmless foreign-arch postinst
@@ -303,20 +309,29 @@ install_target_packages() {
     # this (gstreamer graphics/HLS/X11 batches), that silently strips ~20 libs
     # at once. Retry each package on its own so one bad name can't drop the rest.
     echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
+    local _pkg_rc
     for pkg in "${pkgs[@]}"; do
+      _pkg_rc=0
       (
         set -o pipefail
         apt-get install -y --no-install-recommends "${pkg}" 2>&1 \
           | cross_filter_known_foreign_postinst_noise
-      ) || true
+      ) || _pkg_rc=$?
+      # T1c: surface the per-package rc (diagnosability). Non-zero here is often
+      # benign foreign-arch postinst noise — the dpkg-status sweep below is the
+      # real arbiter of what landed — but seeing WHICH package and WHAT rc turns
+      # a silent `|| true` into an attributable signal when a name genuinely fails.
+      [ "${_pkg_rc}" -ne 0 ] && \
+        echo "install_target_packages: '${pkg}' apt-get exited ${_pkg_rc} (per-package retry; status sweep decides)" >&2
     done
 
-    # Now disambiguate: which packages genuinely did not land? The files-present
-    # check tolerates foreign-arch postinst noise (apt errored but files present)
-    # while still catching genuinely-absent packages (dependency conflicts, ports
-    # outages) that would otherwise surface much later as baffling feature-skips.
+    # Now disambiguate: which packages genuinely did not land? The dpkg-status
+    # check tolerates foreign-arch postinst noise (apt errored but the package is
+    # unpacked) while still catching genuinely-absent packages (dependency
+    # conflicts, ports outages) that would otherwise surface much later as
+    # baffling feature-skips.
     for pkg in "${pkgs[@]}"; do
-      cross_package_files_present "${pkg}" || missing+=("${pkg}")
+      cross_package_status_present "${pkg}" || missing+=("${pkg}")
     done
     if [ "${#missing[@]}" -eq 0 ]; then
       echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
