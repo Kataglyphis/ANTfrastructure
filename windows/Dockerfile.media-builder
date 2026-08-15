@@ -28,6 +28,9 @@ FROM ${BASE_IMAGE} AS common
 
 ARG MEMORY_LIMIT_GB=""
 ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Overridable so a single stage can be re-run at debug level without editing
+# this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+ARG SCCACHE_LOG="warn"
 
 # sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
 # every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
@@ -89,7 +92,7 @@ ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_DIR="C:\sccache" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
-    SCCACHE_LOG="warn" `
+    SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]

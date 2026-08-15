@@ -2153,6 +2153,67 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   **Rule this earns:** when a log is empty only after REAL runs but fine under a
   probe, suspect lifetime before correctness.
 
+- **96 [S·★★★, none] METHOD TRAP that cost four wrong conclusions: `buildctl
+  --no-cache` EMPTIES the cache mount for that build.** Every probe used to read
+  `SCCACHE_ERROR_LOG` passed `--no-cache`, so each one wiped the mount before
+  looking into it and reported "no log" — four times, feeding four separate
+  wrong hypotheses (LRU pruning, wrong location, unset `SCCACHE_LOG`, missing
+  flush). Proven by isolation: write a marker with `--no-cache`, then read it
+  **without** → `SEE marker2.txt COUNT=1`; read it **with** → mount empty.
+  **RULE: never pass `--no-cache` to a probe that reads a cache mount.** Only
+  the write side may use it. Worth a one-line note wherever cache-mount probes
+  are documented, because the failure looks exactly like the thing being
+  investigated.
+
+- **97 [S·★★★, none] The sccache server in a real build never picks up
+  `SCCACHE_ERROR_LOG`.** Now cleanly isolated (after #96 removed the probe
+  artifact): the mount persists, `SCCACHE_LOG=warn` and `SCCACHE_ERROR_LOG` are
+  verifiably present in the image env, the epilogue's `--stop-server` runs in
+  all four stages and reports the true counters (genai: 157 misses, 157 write
+  errors) — and **no log file is ever created**. Yet a hand probe in the SAME
+  image with the SAME env produces one immediately. The one difference left:
+  the probe calls **`--stop-server` BEFORE the first compile**, forcing a fresh
+  server that reads the current env, while a build lets the first sccache
+  invocation start the server implicitly. HYPOTHESIS (untested): the server is
+  started at a point where `SCCACHE_ERROR_LOG` is not yet in its environment, so
+  the setting never takes. FIX TO TRY: add a `--stop-server` to the build
+  PROLOGUE (not only the epilogue), so every stage starts its server with the
+  fully-populated env. Cheap to try, and it would also make the epilogue's flush
+  meaningful.
+
+- **98 [M·★★★, none] LOCALISED: every write failure is at **L0 (local disk)**,
+  never at the WebDAV remote.** The multilevel breakdown — which nobody had read
+  until 2026-08-15, because the top-level `Cache write errors` counter hides it —
+  says it plainly for the genai stage:
+
+  ```text
+  L0 (disk)   misses 157 · writes 0 · write failures 157
+  L1 (webdav) misses 157 · writes 0 · write failures   0
+  ```
+
+  opencv shows the same shape at its one write opportunity
+  (`L0 (disk) write failures 1`). Because `SCCACHE_MULTILEVEL_CHAIN=disk,webdav`
+  writes L0 first, an L0 failure means L1 is never attempted — which is why
+  `L1 writes 0` everywhere and why the remote looked suspicious for days. **The
+  WebDAV endpoint is not involved in this defect at all.**
+  Also visible in the same block: `L1 (webdav) backfills to 0` — remote hits are
+  never copied down into L0 either, consistent with L0 being unwritable rather
+  than merely empty.
+
+  RULED OUT so far: cache-size exhaustion (`Cache size 65 MiB` against a 15 G
+  ceiling), GC reclaiming the mount (#89, fixed), the log location/level
+  (#90/#91), PDB locking (`CMAKE_BUILD_TYPE=Release`, no `/Zi`, no `.pdb`
+  anywhere in the build log — mspdbsrv was a red herring), and MSVC-vs-clang-cl
+  (sccache classifies clang-cl as `[msvc]`, so onnx and genai report the same
+  compiler class).
+
+  NEXT: the question is now narrow and concrete — *why is a write into the
+  `C:\sccache` cache mount rejected, in a stage that reads from it fine?* Note
+  onnx wrote 1488 objects into the SAME mount successfully on 2026-08-15 03:54,
+  so it is not a permanent property of the mount. Read the L0 backend's own
+  WARN output (now that `SCCACHE_LOG=warn` is set) rather than guessing again —
+  five hypotheses have already died here.
+
 - **92 [M·★★★, none] genai's 157/157 write failures are NOT explained by cache,
   mount or configuration.** A probe in the SAME `bk-windows-media-core` image
   with the SAME inherited env (`SCCACHE_LOG=warn`,
@@ -2279,6 +2340,72 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   `/Zc:preprocessor` is passed but ignored by clang-cl — a config smell worth
   removing. FIX: suppress the top-5 noise classes at build-script level so CI
   can see the rest.
+
+### P0e — OpenCV ships WITHOUT the GStreamer backend, and with a FOREIGN FFmpeg
+
+- **93 [M·★★★, media] `-DWITH_GSTREAMER=ON` is requested and silently becomes
+  `NO`; the owner's code calls `cv::VideoCapture(..., CAP_GSTREAMER)`.**
+  Confirmed 2026-08-15 by asking the built artifact, not the log
+  (`cv2.getBuildInformation()` on `bk-windows-media-core`):
+
+  ```text
+  FFMPEG:      YES (prebuilt binaries)      <- NOT the chain's ffmpeg
+    avcodec:   61.19.100                    <- FFmpeg 7.1, while the chain builds n9.0
+    avdevice:  NO
+  GStreamer:   NO                           <- requested ON, silently disabled
+  DirectShow:  YES
+  ```
+
+  CAUSE: build order. OpenCV configures at `media-core-built-opencv`, but
+  GStreamer is not built until the MERGE stage, so CMake finds nothing and
+  disables the backend without failing. **Do not trust
+  `cv2.videoio_registry.getBackends()` here** — it lists known backend IDs
+  (GSTREAMER appears) regardless of what was compiled in; only
+  `getBuildInformation()` is authoritative. That mismatch is exactly how this
+  stayed invisible.
+
+  CIRCULARITY (why the order is not simply wrong): `gst-plugins-bad`'s
+  `ext/opencv` needs OpenCV — this repo even ports it to the OpenCV 5 headers —
+  while OpenCV's `CAP_GSTREAMER` needs GStreamer. The two directions are
+  independent features and the owner needs BOTH: OpenCV inside GStreamer
+  pipelines (works today) AND GStreamer pipelines inside `cv::VideoCapture`
+  (missing).
+
+  OPTIONS, cheapest first:
+  1. **videoio plugin build (PREFERRED, needs verification).** OpenCV can build
+     `opencv_videoio_gstreamer` as a standalone runtime-loaded plugin
+     (`VIDEOIO_PLUGIN_LIST`), so only the plugin is compiled after GStreamer
+     exists — no second full OpenCV pass. VERIFY this is supported on the 5.0.0
+     tag before planning around it.
+  2. **Second OpenCV pass** after the merge's GStreamer, with
+     `-DWITH_GSTREAMER=ON`. ~20 min, structurally simple, but duplicates the
+     most expensive media compile after ONNX.
+
+- **94 [S·★★, media] OpenCV uses its OWN prebuilt FFmpeg, not the chain's.**
+  Same evidence block: `FFMPEG: YES (prebuilt binaries)`, avcodec 61.19.100
+  (FFmpeg 7.1) while the chain builds n9.0 — so the image carries TWO FFmpeg
+  generations and `cv::VideoCapture`'s FFmpeg path uses the older one. Also
+  costs an extra download and leaves `avdevice: NO`.
+  **This one is nearly free to fix: FFmpeg does NOT depend on OpenCV** (no
+  `--enable-libopencv` anywhere in build-ffmpeg-from-source.ps1), so the
+  opencv/ffmpeg stages can simply SWAP — no circularity, no second pass. Verify
+  with `getBuildInformation()` afterwards that avcodec reports the n9.0 line.
+
+- **95 [S·★★★, none] GUARD BOTH: assert the compiled-in video backends, in the
+  smoke test.** Neither #93 nor #94 may land without this — the whole reason
+  they went unnoticed is that nothing ever asserted them, while the one obvious
+  check (`cv2.videoio_registry.getBackends()`) reports GSTREAMER whether or not
+  it was compiled in. The assertion must parse
+  **`cv2.getBuildInformation()`**'s `Video I/O:` block and require:
+  - `GStreamer: YES` (fails today — the point of #93)
+  - `FFMPEG: YES` **and NOT `(prebuilt binaries)`** — the substring is what
+    distinguishes the chain's FFmpeg from OpenCV's own download (#94)
+  - the avcodec version line matching the `FFMPEG_VERSION` pin, so a future
+    silent fallback to a bundled build fails instead of shipping
+  This belongs with the existing OpenCV section in `smoke-test-container.ps1`,
+  next to the bulk DLL-load enumeration (#57). Add the assertions FIRST, watch
+  them fail, then land the fix — a guard written after the fact proves nothing
+  about the defect it was meant to catch.
 
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 

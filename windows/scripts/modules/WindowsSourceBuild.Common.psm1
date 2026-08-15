@@ -933,6 +933,31 @@ function Invoke-SourceBuildChain {
     if ($Until -and ($names -notcontains $Until)) {
         throw "Invoke-SourceBuildChain: -Until '$Until' is not a stage of '$Label' (stages: $($names -join ', '))"
     }
+    # PROLOGUE: force a FRESH sccache server before the first compile (backlog
+    # #97). sccache reads SCCACHE_ERROR_LOG when the SERVER starts, and in a
+    # build the server is started implicitly by the first wrapped compile - at
+    # which point the setting evidently does not take: four consecutive builds
+    # produced ZERO error-log bytes while a hand probe in the SAME image with
+    # the SAME env produced one immediately. The only difference the probe had
+    # was an explicit --stop-server BEFORE compiling, so it always got a server
+    # that had read the current environment. This makes every stage do the same.
+    #
+    # Also the precondition for the epilogue's flush to mean anything: stopping
+    # a server that never opened the log flushes nothing.
+    #
+    # Best-effort: no server running is the NORMAL case in a fresh container, and
+    # a failure here must never fail a build that would otherwise be green.
+    $sccachePrologue = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($sccachePrologue) {
+        Write-Host "Resetting the sccache server so it starts with this stage's environment (SCCACHE_ERROR_LOG)..."
+        try {
+            & $sccachePrologue.Source --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+        } catch {
+            Write-Verbose "sccache --stop-server (prologue) skipped: $($_.Exception.Message)"
+        }
+        $global:LASTEXITCODE = 0
+    }
+
     $skipping = [bool]$StartAt
     foreach ($stage in $Stages) {
         if ($skipping) {
@@ -1207,6 +1232,38 @@ function Complete-SourceBuildChain {
         } catch {
             Write-Warning "sccache --stop-server failed (non-fatal): $($_.Exception.Message)"
         }
+    }
+
+    # DUMP THE SERVER LOG INTO THE BUILD LOG, in this same RUN (backlog #98).
+    #
+    # Reading it from a LATER build does not work and cost four wrong
+    # conclusions: `buildctl --no-cache` empties the cache mount for that build,
+    # so every probe wiped the log before looking at it (#96). Emitting it here
+    # sidesteps mounts entirely — the content lands in the step log, which the
+    # buildkitd step-log env now keeps unclipped.
+    #
+    # This is the ONLY way we currently get sccache's own account of WHY a write
+    # is rejected. The failures are all at L0 (local disk): genai reports
+    # `L0 (disk) write failures 157` against `L1 (webdav) write failures 0`
+    # (#98), and the top-level `Cache write errors` counter hides that split —
+    # read the per-layer block, not the summary.
+    $errLog = $env:SCCACHE_ERROR_LOG
+    if ($errLog -and (Test-Path $errLog)) {
+        $lines = @(Get-Content $errLog -ErrorAction SilentlyContinue)
+        Write-Host "`n=== sccache server log ($($lines.Count) lines, $errLog) ==="
+        # Failures first and in full; they are what this exists for. The tail
+        # gives surrounding context without dumping a debug-level flood.
+        $failures = @($lines | Select-String -Pattern 'ERROR|WARN|failed|denied|refused' -SimpleMatch:$false)
+        if ($failures.Count -gt 0) {
+            Write-Host "--- $($failures.Count) error/warn line(s) ---"
+            $failures | Select-Object -First 60 | ForEach-Object { Write-Host "  sccache-log| $_" }
+        } else {
+            Write-Host '--- no error/warn lines; tail follows ---'
+            $lines | Select-Object -Last 20 | ForEach-Object { Write-Host "  sccache-log| $_" }
+        }
+        Write-Host '=== end sccache server log ==='
+    } elseif ($errLog) {
+        Write-Host "sccache server log NOT written ($errLog) - the server never opened it."
     }
 
     if ($ScrubAfter) { Clear-BuildScratch }
