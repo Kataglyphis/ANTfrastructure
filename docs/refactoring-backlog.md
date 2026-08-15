@@ -283,18 +283,23 @@ order to actually WORK them — the item text lives in the sub-sections below):
 - **Shared apt-source/mirror include (carried from archive P3-2026-07-17):**
   [S] media+package covered; Dockerfile.nvidia/amd/android + now
   build_python.sh (TS8) still hand-roll. One include, five consumers.
-- **GST1 — cross-vs-native gstreamer libdir split (ROOT fix)** [S/M·★★★]
-  found live 2026-08-11: native meson installs to lib/<triplet>/ but the
-  cross builds pass libdir=lib (cargo_wrapper invocation, media-arm64 log
-  :92779), so configure-runtime's `multiarch -> lib/<triplet>` symlink points
-  at an EMPTY dir on arm64/riscv64 — the arm64 dev surface (pkg-config
-  gstreamer-1.0) has been dangling in EVERY shipped image; the Klasse-B
-  package gate caught it on its first cross-arch run. HOTFIX landed same
-  night (repair_gstreamer_multiarch_link in setup-package-image.sh, proven on
-  both layouts). Root fix here: make configure-runtime resolve the REAL
-  pc-carrying libdir (same probe logic) — or force the cross meson builds to
-  libdir=lib/<triplet> for native parity — and add a media-stage assert that
-  `${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig/gstreamer-1.0.pc` resolves.
+- **GST1 — cross-vs-native gstreamer libdir split (ROOT fix)** ✅ STAGED
+  2026-08-15 (rides next rebuild). Root cause: configure-runtime.sh:41-42
+  UNCONDITIONALLY `mkdir`ed lib/<triplet> and pointed `multiarch` there, but
+  cross builds pass libdir=lib (native installs to lib/<triplet>/), so the
+  symlink dangled the entire pkg-config gstreamer-1.0 dev surface on
+  arm64/riscv64 in EVERY shipped image (Klasse-B package gate caught it
+  2026-08-11). FIX: `resolve_gstreamer_libdir` now points multiarch at whichever
+  libdir actually carries gstreamer-1.0.pc (probes lib/<triplet>/pkgconfig →
+  lib/*/pkgconfig → lib/pkgconfig, historical default as fallback) — which also
+  makes GST_PLUGIN_PATH / GI_TYPELIB_PATH (both route through lib/multiarch/)
+  correct on both layouts; ld.so.conf now registers the resolved libdir AND the
+  plain lib/ root; plus a fail-loud in-step assert that
+  lib/multiarch/pkgconfig/gstreamer-1.0.pc resolves when gstreamer is present
+  (skips cleanly otherwise). Edits a file already in the package RUN closure → no
+  new mount dep. shellcheck-clean; sandbox-tested → both NATIVE (lib/<triplet>)
+  and CROSS (lib) layouts resolve. repair_gstreamer_multiarch_link stays as the
+  belt-and-suspenders net. Rebuild proves it on real arm64/riscv64 gstreamer.
 
 ### Runtime/packaging + artifact-performance additions (2026-08-10 sweep, RP/AP)
 
