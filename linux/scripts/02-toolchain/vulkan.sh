@@ -246,7 +246,10 @@ _vulkan_setup_cross_pkgconfig() {
     local host_pkgconfig="/usr/share/pkgconfig:/usr/local/lib/pkgconfig"
     local host_multiarch="${DEB_BUILD_MULTIARCH:-}"
     if [ -z "${host_multiarch}" ]; then
-      host_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || uname -m | sed 's/x86_64/x86_64-linux-gnu/; s/aarch64/aarch64-linux-gnu/; s/riscv64/riscv64-linux-gnu/')"
+      # DUP1: prefer dpkg's authoritative DEB_BUILD_MULTIARCH; fall back to the
+      # canonical build_deb_multiarch_triplet (platform.sh) instead of an inline
+      # uname→sed copy of the arch map (proven identical output on this host).
+      host_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || build_deb_multiarch_triplet)"
     fi
     if [ -n "${host_multiarch}" ]; then
       host_pkgconfig="/usr/lib/${host_multiarch}/pkgconfig:/usr/share/pkgconfig:/usr/local/lib/pkgconfig"

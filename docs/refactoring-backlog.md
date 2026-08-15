@@ -83,12 +83,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
   shared apt-source include, RP4, RP6, TVM cross-build.
 - **Investigate / experiment (not straight code):** GEN1 (genai-on-riscv64 self-
   build), onnxruntime 1.28-vs-1.27 dedupe, gcc prereq inconsistency (forensic#6).
-- **✅ CLOSED 2026-08-15 by the validating rebuild:** RP1 (setuid-sudo purge),
-  RP2 (apt cache-mount guards), RP3 (HEALTHCHECK 30s), AP7 runtime-half — all
-  proven live on :latest-cross (fresh digests d92cc0fb/99531bbe/252ca5e8; RP1
-  "no setuid sudo" + AP7 size report ×3, byte-gate PASS ×3, 0 smoke failures,
-  sudo/TF confirmed absent in the pulled wrapper). Removed from the batches.
-
 ### New code fixes (2026-08-10 rounds, all evidence-verified)
 
 - **D3 + P5 — smoke-media gate scaffold + SMOKE_ENV** [M·★★] extract
@@ -168,16 +162,23 @@ order to actually WORK them — the item text lives in the sub-sections below):
   (`cv2.getBuildInformation()` grep) so a regression to a degraded opencv fails
   loud. Cost: opencv compiles twice (heaviest media lib) — acceptable per owner.
 - **gcc prereq inconsistency** [M] (forensic#6, archive) — unchanged.
-- **DUP1 — build-host uname→triplet hand-rolled twice** [S·★★] (dup-audit
-  2026-08-15) `vulkan.sh:249` (`uname -m | sed 's/x86_64/x86_64-linux-gnu/;…'`)
-  and `cross-apt.sh:408-412` (`case "$(uname -m)"`) both reconstruct the build-
-  host DEB_BUILD_MULTIARCH triplet inline after a `${DEB_BUILD_MULTIARCH:-}`/
-  `dpkg-architecture` probe, bypassing the canonical `build_deb_multiarch_triplet`
-  (platform.sh:373). cross-apt.sh already sources the core lib, so the helper is
-  in scope — fall back to it after the probe instead of the sed/case. Distinct
-  from the target-triplet map (that one is a load-bearing canonical-first fallback
-  → guard-helpers migration); THIS is accidental copy-paste of a map with a
-  canonical helper. Minor same-family echo fallbacks: vulkan.sh:157,
+- **DUP1 — build-host uname→triplet hand-rolled** [S·★★] (dup-audit 2026-08-15)
+  the `uname→triplet` FALLBACK (after the `${DEB_BUILD_MULTIARCH:-}`/
+  `dpkg-architecture` probe) duplicated the canonical `build_deb_multiarch_triplet`
+  (platform.sh). Equivalence PROVEN on-host (`build_deb_multiarch_triplet` ==
+  `uname→sed` == `x86_64-linux-gnu`; map matches all 3 arches).
+  · vulkan.sh:249 ✅ DONE 2026-08-15 — SAFE because vulkan.sh already uses
+    `arch_normalize` (platform.sh), so the helper adds NO new mount dependency.
+    Rides a rebuild-window final-validation (toolchain closure), but it's a
+    proven-equivalent + no-new-dep swap.
+  · cross-apt.sh:408-412 — DEFERRED: cross-apt.sh uses NO platform.sh function
+    today, so calling build_deb_multiarch_triplet would add a NEW mount dependency
+    on platform.sh into every cross-apt RUN. If platform.sh is not mounted there
+    the helper returns empty and the pkgconfig candidate is silently dropped (a
+    behaviour change, not a crash). Keep the self-contained inline until it's
+    confirmed platform.sh is mounted in every cross-apt.sh RUN (Dockerfile.toolchain
+    / media / …) — or route it through the guard-helpers migration instead.
+  Minor same-family echo fallbacks (unchanged): vulkan.sh:157,
   validate-media-runtime.sh:36.
 - **DUP2 — `/opt/gcc-${GCC_VERSION:-16.2.0}` prefix + `16.2.0` literal sprawl
   ~25× across ~11 files** [M·★★] (dup-audit 2026-08-15) the GCC install prefix
