@@ -165,6 +165,31 @@ order to actually WORK them — the item text lives in the sub-sections below):
   (`cv2.getBuildInformation()` grep) so a regression to a degraded opencv fails
   loud. Cost: opencv compiles twice (heaviest media lib) — acceptable per owner.
 - **gcc prereq inconsistency** [M] (forensic#6, archive) — unchanged.
+- **DUP1 — build-host uname→triplet hand-rolled twice** [S·★★] (dup-audit
+  2026-08-15) `vulkan.sh:249` (`uname -m | sed 's/x86_64/x86_64-linux-gnu/;…'`)
+  and `cross-apt.sh:408-412` (`case "$(uname -m)"`) both reconstruct the build-
+  host DEB_BUILD_MULTIARCH triplet inline after a `${DEB_BUILD_MULTIARCH:-}`/
+  `dpkg-architecture` probe, bypassing the canonical `build_deb_multiarch_triplet`
+  (platform.sh:373). cross-apt.sh already sources the core lib, so the helper is
+  in scope — fall back to it after the probe instead of the sed/case. Distinct
+  from the target-triplet map (that one is a load-bearing canonical-first fallback
+  → guard-helpers migration); THIS is accidental copy-paste of a map with a
+  canonical helper. Minor same-family echo fallbacks: vulkan.sh:157,
+  validate-media-runtime.sh:36.
+- **DUP2 — `/opt/gcc-${GCC_VERSION:-16.2.0}` prefix + `16.2.0` literal sprawl
+  ~25× across ~11 files** [M·★★] (dup-audit 2026-08-15) the GCC install prefix
+  and its magic `16.2.0` default are reconstructed inline instead of via the SSOT
+  `gcc_toolchain_prefix()` (cross-gcc.sh:15): validate-compilers.sh (8×: 71/81/
+  84/112/129/220/257/593), runtime-paths.env (6×: 9/23/38/39/57/58),
+  Dockerfile.media (180/181/762), media-env.sh:31, configure-runtime.sh:50,
+  build-gstreamer-stage.sh:84, llvm.sh:297, setup-torch-venv.sh:389-390,
+  smoke-cross-all-arches.sh:20, cross-env.sh:405. DRIFT HAZARD — a GCC bump must
+  change every `:-16.2.0` in lockstep or a subset silently points at a
+  nonexistent prefix (bit before: 16.1.0→16.2.0, archive:2118). Route script-side
+  sites through `gcc_toolchain_prefix()`; the `16.2.0` default belongs in ONE
+  place. NB: the existing "verify-arg-consistency literal gate" item covers
+  CATCHING drift, not this DEDUP — complementary, not a duplicate item. Rides a
+  rebuild window (touches media/toolchain closure + Dockerfile.media).
 - **onnxruntime 1.28-vs-1.27 dedupe + CPython decision** [S, investigate]
   (forensic#7) — needs image inspection.
 - **riscv64 ffmpeg network/codec skips** [S/M] TLS via --enable-openssl never
