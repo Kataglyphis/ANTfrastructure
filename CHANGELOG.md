@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6)
+
+Static-validated code-only fixes (no rebuild), each verified against the failure
+it addresses:
+
+- **A1 (dead-alias)**: removed the never-set, undocumented `${UBUNTU_PORTS_MIRROR_URL:-}`
+  inner fallback at cross-env.sh:17 (only the `FAST_`-prefixed variant is a real
+  operator knob). ARCHITECTURES was found NOT dead (documented alias + live 3rd
+  fallback in resolve_arch_list) and kept — the backlog premise was wrong.
+- **forensic#3 (smoke-media)**: the opencv cv2-import else-branch no longer PASSes
+  unconditionally. It now `cross_build_is_active`-gates — cross build → legitimate
+  PASS-with-caveat (foreign-arch extension can't import on the host), NATIVE build
+  → `fail` with the real import error surfaced. The old "import failed in build
+  sandbox — will work at runtime" masked a genuinely-broken native cv2 as green.
+- **TS6 (vulkan cross-targets)**: `_build_vulkan_targets` now tracks attempted/built
+  per component (loader/SPIRV-Tools/glslang), logs an "N/M component(s) built"
+  summary, and on ALL-attempted-failed WARNs loudly (an env-shaped cause — broken
+  cross toolchain — that used to exit 0 silently); `VULKAN_CROSS_STRICT=1` promotes
+  it to fatal. The arch-independent header-staging cp guards were split so a cp
+  that fails with the source dir PRESENT warns instead of being masked as "source
+  absent" by the old `2>/dev/null || true`. Success path byte-unchanged
+  (conservative: no default hard-die on a load-bearing toolchain fn with no build
+  to validate against).
+
 ## 2026-08-15 - S2 SHIPPED: libtensorflow removed from ffmpeg (−~500MB), :latest-cross re-shipped with FRESH digests after root-causing a 5× stale-ship bug
 
 - **`:latest-cross` re-shipped with genuinely fresh per-arch wrappers** — manifest

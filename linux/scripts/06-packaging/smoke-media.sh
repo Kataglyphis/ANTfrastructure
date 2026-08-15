@@ -262,8 +262,18 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       else
         fail "opencv imencode/videoio roundtrip FAILED (import works, so this is real)"
       fi
+    elif cross_build_is_active 2>/dev/null; then
+      # CROSS build: the interpreter runs on the amd64 host but cv2 is a
+      # foreign-arch extension, so an import failure here is expected — the
+      # runtime smoke validates it on-target. Legitimate PASS-with-caveat.
+      pass "opencv Python bindings present at ${cv2_pkg} (import skipped: foreign-arch extension under cross build — validated on-target by the runtime smoke)"
     else
-      pass "opencv Python bindings present at ${cv2_pkg} (import failed in build sandbox — will work at runtime)"
+      # NATIVE build (forensic#3): the interpreter IS the target arch, so a cv2
+      # import failure is a REAL defect (missing/broken .so), NOT a sandbox
+      # artifact — the old code masked it as an unconditional PASS. Fail loud and
+      # surface the actual import error for diagnosis.
+      _cv2_import_err="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2" 2>&1 | tail -1)"
+      fail "opencv Python bindings FAIL to import on a NATIVE build (${_cv2_import_err:-see above}) — real defect, not a sandbox artifact"
     fi
   else
     echo "  INFO: opencv Python bindings not found in /opt/opencv5"

@@ -64,13 +64,16 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   duplicated sites) into smoke-common.sh and make the two-environment contract
   explicit (SMOKE_ENV=sandbox|runtime set by callers) instead of six scattered
   "functional gate is the …" branches. Extend test-smoke-arch-parity.sh.
-- **A1 — env-knob registry gate + dead-alias deletion** [S/M·★★] 156
-  cross-boundary `${VAR:-}` knobs, no owner. Delete dead aliases ARCHITECTURES
-  (resolve_arch_list 3rd alias) + UBUNTU_PORTS_MIRROR_URL (cross-env.sh:17);
-  add a verify-arg-consistency-family gate: every consumed ALL_CAPS knob must
-  be set somewhere / in versions.env / in an allowlisted operator table
-  (which doubles as the missing docs). Gate itself is host-side (can land
-  early); the deletions are closure-bound.
+- **A1 — env-knob registry gate** [S/M·★★] 156 cross-boundary `${VAR:-}` knobs,
+  no owner. Add a verify-arg-consistency-family gate: every consumed ALL_CAPS
+  knob must be set somewhere / in versions.env / in an allowlisted operator
+  table (which doubles as the missing docs). Gate itself is host-side (can land
+  early). Dead-alias half: UBUNTU_PORTS_MIRROR_URL DONE 2026-08-15 (removed the
+  never-set, undocumented inner fallback at cross-env.sh:17). ARCHITECTURES is
+  NOT dead — it is a documented operator alias (usage text in
+  build-sdk-artifacts.sh + runtime-build-fns.sh) AND the live 3rd fallback in
+  resolve_arch_list (artifact-common.sh:51); the "dead 3rd alias" premise was
+  wrong, KEEP it.
 - **GEN1 — (optional experiment) source-build onnxruntime-genai for riscv64**
   [L·★] verified 2026-08-12: the skip is upstream-consistent, NOT our bug —
   PyPI 0.15.2 ships linux wheels only for manylinux_2_28_x86_64 (no riscv64
@@ -167,12 +170,6 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   move pins to APPIMAGETOOL_*_SHA256 in versions.env (keys = Batch 3) with a
   cmake.sh-style stale-pin guard.
 
-- **TS6 — vulkan cross-targets: no aggregate verdict; header-staging cp is
-  `2>/dev/null || true`** [S·★★] loader/SPIRV/glslang each tolerated by
-  design (vulkan.sh:419-523) but all-3-failed (one env-shaped cause) still
-  exits 0; :440-443 masks real cp failures as "source absent". Add a summary
-  line + all-failed die; split the cp guard. Rides the vulkan T2 stanza item.
-
 - **TS4 — build-clang.sh reuses an UNVERSIONED cached llvm-project checkout**
   [S·★★] :162/:214 — since the LLVM_CROSS_SOURCE_ROOT fix the checkout
   SURVIVES builds; an LLVM bump silently rebuilds the OLD tag for hours
@@ -187,9 +184,12 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
   build_python.sh (TS8) still hand-roll. One include, five consumers.
 - **Batch-1 leftovers (folded here — the harness batch closed without them):**
   cross-wheel SOABI/default-triple assert [M] (verify-wheels checks filename
-  tags only — a wrong-SOABI wheel installs and fails at import on-target);
-  forensic#3 smoke inner-warning propagation [S] (smoke-media:266
-  assertion-free "(import failed in build sandbox)" PASS).
+  tags only — a wrong-SOABI wheel installs and fails at import on-target).
+  (forensic#3 DONE 2026-08-15: smoke-media's cv2-import else-branch no longer
+  PASSes unconditionally — it now `cross_build_is_active`-gates: cross → legit
+  PASS-with-caveat, NATIVE → `fail` with the real import error surfaced. The old
+  "import failed in build sandbox — will work at runtime" masked a broken native
+  cv2 as green.)
 
 - **GST1 — cross-vs-native gstreamer libdir split (ROOT fix)** [S/M·★★★]
   found live 2026-08-11: native meson installs to lib/<triplet>/ but the

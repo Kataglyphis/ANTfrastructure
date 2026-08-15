@@ -426,6 +426,10 @@ _build_vulkan_targets() {
   local spirv_tools_src="${target_dir}/source/SPIRV-Tools"
   local spirv_headers_src="${target_dir}/source/SPIRV-Headers"
   local _xbuild_cc _xbuild_cxx _xbuild_proc
+  # TS6: aggregate verdict — individual component failures are tolerated (each is
+  # optional downstream), but ALL of them failing at once is an env-shaped cause
+  # (a broken cross toolchain), which used to exit 0 silently. Count attempts/ok.
+  local _vk_attempted=0 _vk_ok=0
 
   _xbuild_cc="${CC:-${target_triplet}-gcc}"
   _xbuild_cxx="${CXX:-${target_triplet}-g++}"
@@ -437,14 +441,23 @@ _build_vulkan_targets() {
 
   ${SUDO:-} mkdir -p "${archdir}/lib" "${archdir}/include"
   # Vulkan headers are arch-independent: reuse the host archdir's installed copy.
-  [ -d "${host_archdir}/include/vulkan" ] && \
-    ${SUDO:-} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" 2>/dev/null || true
-  [ -d "${host_archdir}/include/vk_video" ] && \
-    ${SUDO:-} cp -a "${host_archdir}/include/vk_video" "${archdir}/include/" 2>/dev/null || true
+  # TS6: guard ONLY on the source dir being absent; a cp that FAILS with the dir
+  # present is a real error (disk/perms) — the old `2>/dev/null || true` masked it
+  # as "source absent". Surface it (non-fatal: the loader build below will fail
+  # loudly if the headers really didn't land).
+  if [ -d "${host_archdir}/include/vulkan" ]; then
+    ${SUDO:-} cp -a "${host_archdir}/include/vulkan" "${archdir}/include/" \
+      || warn "vulkan headers present at ${host_archdir} but cp to ${archdir} failed (${arch_suffix})"
+  fi
+  if [ -d "${host_archdir}/include/vk_video" ]; then
+    ${SUDO:-} cp -a "${host_archdir}/include/vk_video" "${archdir}/include/" \
+      || warn "vk_video headers present at ${host_archdir} but cp to ${archdir} failed (${arch_suffix})"
+  fi
 
   # Vulkan loader (libvulkan.so). WSI off: TVM uses Vulkan for compute only, so we
   # avoid needing target windowing-system dev libraries.
   if [ -d "${loader_src}" ] && [ -d "${host_archdir}/include/vulkan" ]; then
+    _vk_attempted=$((_vk_attempted + 1))
     log "Cross-building Vulkan loader for ${arch_suffix}"
     if _cross_build_sdk_component "${loader_src}" "vulkan-loader-${arch_suffix}" \
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
@@ -454,6 +467,7 @@ _build_vulkan_targets() {
         -DBUILD_WSI_XLIB_SUPPORT=OFF \
         -DBUILD_WSI_WAYLAND_SUPPORT=OFF \
         -DBUILD_WSI_DIRECTFB_SUPPORT=OFF; then
+      _vk_ok=$((_vk_ok + 1))
       log "Installed target Vulkan loader: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
     else
       log "Target Vulkan loader unavailable; cross Vulkan will be disabled downstream"
@@ -465,6 +479,7 @@ _build_vulkan_targets() {
   # SPIRV-Tools (libSPIRV-Tools.a) — TVM's Vulkan build links it. SPIRV_WERROR=OFF:
   # GCC 16's -Warray-bounds false-positives on timer.h would otherwise fail -Werror.
   if [ -d "${spirv_tools_src}" ]; then
+    _vk_attempted=$((_vk_attempted + 1))
     log "Cross-building SPIRV-Tools for ${arch_suffix}"
     if _cross_build_sdk_component "${spirv_tools_src}" "spirv-tools-${arch_suffix}" \
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
@@ -472,6 +487,7 @@ _build_vulkan_targets() {
         -DSPIRV_SKIP_TESTS=ON \
         -DSPIRV_SKIP_EXECUTABLES=ON \
         -DSPIRV_WERROR=OFF; then
+      _vk_ok=$((_vk_ok + 1))
       log "Installed target SPIRV-Tools: $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | tr '\n' ' ')"
     else
       log "Target SPIRV-Tools unavailable; cross TVM Vulkan may fail to configure"
@@ -491,6 +507,7 @@ _build_vulkan_targets() {
   local glslang_src="${target_dir}/source/glslang"
   [ -d "${glslang_src}" ] || glslang_src="${target_dir}/source/glslang-main"
   if [ -d "${glslang_src}" ]; then
+    _vk_attempted=$((_vk_attempted + 1))
     log "Cross-building glslang (glslangValidator) for ${arch_suffix}"
     if _cross_build_sdk_component "${glslang_src}" "glslang-${arch_suffix}" \
         -DCMAKE_INSTALL_PREFIX="${archdir}" \
@@ -513,12 +530,28 @@ _build_vulkan_targets() {
       for _b in glslang glslangValidator; do
         [ -e "${archdir}/bin/${_b}" ] && ${SUDO:-} ln -sf "${archdir}/bin/${_b}" "/usr/local/bin/${_b}"
       done
+      _vk_ok=$((_vk_ok + 1))
       log "Installed target glslang: $(ls "${archdir}"/bin/glslang* 2>/dev/null | tr '\n' ' '); on PATH: $(command -v glslangValidator 2>/dev/null || echo none)"
     else
       log "Target glslang unavailable; GLSL shader compilation will fail on ${arch_suffix}"
     fi
   else
     log "glslang source missing at ${target_dir}/source/glslang; skipping target glslang"
+  fi
+
+  # TS6 aggregate verdict: a per-component failure is tolerated (each logs its own
+  # "unavailable; downstream may fail"), but if EVERY attempted component failed
+  # the cause is almost certainly systemic (a broken ${target_triplet} toolchain,
+  # missing cross sysroot, …) rather than three independent optional misses — and
+  # the old code returned 0 regardless, so downstream only discovered it much
+  # later as a baffling Vulkan/TVM/KOMPUTE configure failure. Surface it loudly;
+  # VULKAN_CROSS_STRICT=1 promotes it to fatal for callers that want the hard stop.
+  log "Vulkan cross-targets ${arch_suffix}: ${_vk_ok}/${_vk_attempted} component(s) built"
+  if [ "${_vk_attempted}" -gt 0 ] && [ "${_vk_ok}" -eq 0 ]; then
+    warn "ALL ${_vk_attempted} Vulkan cross-component(s) FAILED for ${arch_suffix} (loader/SPIRV-Tools/glslang) — this is an env-shaped failure (broken ${target_triplet} toolchain?), not per-component optionality; downstream cross Vulkan will be disabled. Set VULKAN_CROSS_STRICT=1 to make this fatal."
+    if [ "${VULKAN_CROSS_STRICT:-0}" = "1" ]; then
+      die "VULKAN_CROSS_STRICT=1 and all ${_vk_attempted} Vulkan cross-components failed for ${arch_suffix}"
+    fi
   fi
 }
 
