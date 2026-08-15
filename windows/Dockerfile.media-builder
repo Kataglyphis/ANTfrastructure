@@ -44,19 +44,38 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # verify-toolchain.ps1 -- a speed feature that can vanish without a signal is
 # worse than no feature at all.
 #
-# SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule caps
-# type==exec.cachemount at 20GB/168h (windows/buildkitd.toml), so an unbounded
-# L0 would be evicted between chains and quietly buy nothing. Raise BOTH
-# together or neither.
+# SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule bounds
+# type==exec.cachemount (windows/buildkitd.toml), so an unbounded L0 would be
+# evicted between chains and quietly buy nothing. Raise BOTH together or
+# neither. NB the cap figure quoted here was stale ("20GB/168h"): as of
+# 2026-08-15 that tier is reservedSpace 30GB / maxUsedSpace 60GB — the
+# reservedSpace FLOOR was the actual fix for backlog #89, where GC reclaimed the
+# whole mount mid-chain and every write after the first stage failed. Read the
+# live numbers from buildkitd.toml, not from this comment.
 #
-# SCCACHE_ERROR_LOG lives INSIDE the persistent sccache cache mount, so the
-# server's error/panic trail SURVIVES the container - when the nvcc
-# decomposition deadlocked/crashed (2026-08-10, fused_moe launchers), the
-# server died with its logs and the postmortem had only client-side 10054s.
-# Owner directive: NEVER swallow logs. SCCACHE_LOG stays an opt-in ARG
-# (debug is voluminous); the error log is always on and near-free.
-# The \logs subdirectory (backlog #23) keeps postmortems out of the
-# GC-capped cache root (shared with build-onnx's persistent ninja log);
+# SCCACHE_ERROR_LOG lives on its OWN cache mount (C:\sccache-logs,
+# id=sccache-logs-winamd64), NOT inside SCCACHE_DIR - corrected 2026-08-15,
+# backlog #90. It used to sit at C:\sccache\logs\, i.e. inside the directory
+# sccache itself manages by LRU, and sccache deleted it: a probe of a healthy
+# mount holding 236 MB of cache content found `logs\` simply GONE, even though
+# the creation code runs on every entrypoint and the mount persists. That is
+# why the server's error trail was unobtainable through the whole multi-day
+# write-failure investigation - it was pruned by design, not lost by accident,
+# which left the genai 157/157 write failures undiagnosable. A log must live
+# where no other tool has a delete policy over it.
+# Owner directive: NEVER swallow logs. SCCACHE_LOG="warn" is NOT optional
+# decoration - corrected 2026-08-15. The previous note claimed "the error log is
+# always on and near-free" with SCCACHE_LOG left unset. That was FALSE: with no
+# level configured sccache never initialises its logger, so SCCACHE_ERROR_LOG
+# names a file that is never created. Proof: after moving the log to its own
+# unpruned mount the directory existed and the file still did not (LOGDIR=True,
+# NO_ERRORLOG) - while a hand probe that set SCCACHE_LOG=info DID produce
+# content. `warn` is the cheap level that still captures write/read failures
+# (opendal reports them at WARN); `debug` remains opt-in because it is
+# voluminous.
+# Historical note (backlog #23): the original \logs subdirectory was meant to
+# keep postmortems out of the GC-capped cache root (shared with build-onnx's
+# persistent ninja log);
 # Initialize-SourceBuildEnvironment creates it before the server spawns.
 # SCCACHE_IDLE_TIMEOUT=0 (2026-08-10 night): the default 600 s idle exit
 # killed the server mid-vertex during the long bare-CUDA tail (>10 min with
@@ -69,7 +88,8 @@ ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
     SCCACHE_DIR="C:\sccache" `
     SCCACHE_CACHE_SIZE="15G" `
-    SCCACHE_ERROR_LOG="C:\sccache\logs\sccache-error.log" `
+    SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
+    SCCACHE_LOG="warn" `
     SCCACHE_IDLE_TIMEOUT="0"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -276,6 +296,7 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # required) is gone; see media-core-env above.
 FROM media-core-env AS media-core-built-onnx
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -285,6 +306,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -295,6 +317,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -304,6 +327,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -319,6 +343,7 @@ FROM media-litert-env AS media-litert-built
 # bridge + link diag + litert-lm patches/shims) stays bind-mounted so a
 # BAZEL_REPO_CACHE-less / fallback run still has it.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
@@ -335,6 +360,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `

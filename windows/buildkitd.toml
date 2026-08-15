@@ -83,8 +83,15 @@
   # 20GB -> 40GB (2026-08-08). This tier stopped being scratch on that date: the
   # Windows chain gained real, load-bearing cache mounts, and they SHARE this
   # one budget with local sources and git checkouts —
-  #   sccache L0  (id=sccache-winamd64-2)  SCCACHE_CACHE_SIZE = 15G
-  #   uv/pip      (id=uv-wheels-winamd64)                     ~10G
+  #   sccache L0  (id=sccache-winamd64-2)       SCCACHE_CACHE_SIZE = 15G
+  #   uv/pip      (id=uv-wheels-winamd64)                          ~10G
+  #   sccache log (id=sccache-logs-winamd64)                        <1G
+  #     Added 2026-08-15 (backlog #90). SCCACHE_ERROR_LOG used to live inside
+  #     SCCACHE_DIR, i.e. inside the directory sccache manages by LRU — and
+  #     sccache deleted it, which is why its error trail was unobtainable
+  #     through the whole write-failure investigation. It needs its own mount
+  #     so nothing else holds a delete policy over it. Tiny by nature, but it
+  #     counts against this budget like the others.
   # 2026-08-10: the L0 id was bumped -1 -> -2 (fresh-mount discriminator for
   # the run-10/11 link-failure forensics). The ORPHANED -1 mount keeps
   # counting against this 40GB budget until its 168h keepDuration lapses

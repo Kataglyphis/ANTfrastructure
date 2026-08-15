@@ -611,6 +611,11 @@ Housekeeping and sharing:
   .\windows\build-buildkit.ps1 -Gpu -NoCacheStage media-merge,torch   # several
   ```
 
+  For a one-off build-arg that no driver parameter covers, `-BuildArg
+  'KEY=VALUE'` forwards to every solve (validated as `KEY=VALUE`, applied last so
+  it wins over a stage's computed value). The Dockerfile must declare a matching
+  `ARG` for it to do anything — BuildKit warns when it does not.
+
   Chain-wide `-NoCache` still overrides it. Each matched stage announces itself
   (`-NoCacheStage match -> --no-cache for THIS stage only`), and an entry that
   matched **no** stage **fails the run at the end** — printing only on a match
@@ -1982,6 +1987,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `verify-host-setup.ps1` | `windows/scripts/` | The machine-checkable form of `docs/windows-host-setup.md` — run it FIRST on any new machine, and after any host change. Non-admin: services, `buildctl` reaching buildkitd unelevated, nerdctl presence, **BOTH CNI forms** (`.conf` for buildkitd — missing is a FAIL; `.conflist` for nerdctl — missing is a WARN) plus content agreement between them and subnet-vs-adapter drift, patched runhcs shim **by SHA256** against the hash `deploy-shim-patch.ps1` recorded at install (size only as a fallback, reported as a WARN so "still guessing" is visible), containerd teardown env var + debug flags, worker snapshotter + gcpolicy, disk headroom **on C: AND the repo/build-context drive**, sccache reachability. Exit 1 on any FAIL; each failure prints its fix. Defender exclusions are reported UNKNOWN (not skipped) when unelevated, so their absence cannot masquerade as success. Registry values that do not EXIST (e.g. the containerd `Environment` value before the first apply) degrade to WARNs, not a mid-run crash (fixed 2026-08-09 — the old `(Get-ItemProperty ...).Environment` threw PropertyNotFound at line 212 and silently skipped the teardown-env + debug-flag checks, under-counting the verdict). **Keep it in step with the guide — they are two views of one contract**; the guide had shipped a broken CNI template for days precisely because prose cannot be executed |
 | `apply-containerd-config.ps1` | `windows/scripts/` | HOST config (admin, never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`: containerd runs with NO `config.toml` on this host, so its settings live only in the service's `ImagePath`/`Environment` registry values and existed nowhere in the repo until 2026-08-07. Owns: `--log-level debug --log-file` (permanent owner policy — truncate the log, never disable the flags), `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits the SERVICE environment; a shim built from the upstream patch keeps its 30 s defaults and silently reverts to the 0x3 defect without it — `TASK_CLOSE_TIMEOUT` stays unset on purpose, the patch derives it as 2×teardown+30 s), and the load-bearing Defender exclusions (otherwise invisible: `Get-MpPreference` needs admin). `-ReportOnly` shows drift without admin and changes nothing |
 | `compact-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims disk when the checkout/store sits on a dynamically-expanding VHDX. Kills stale `buildctl`, stops the build services, detaches → compacts (`Optimize-VHD`) → reattaches read-write in a `finally`, restarts. `-ReportOnly` reports sizes/guest-fs/reclaim potential without touching anything. Machine-specific values are all parameters (`-VhdxPath` mandatory, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-LogPath`, `-Mode`). Warns on ReFS guests, where compaction reclaims ~nothing (measured: 0.2 GB of a possible 254 GB) — see § Store GC. When it reports a near-zero reclaim, `rebuild-host-vhdx.ps1` is the answer |
+| `repro-sccache-cuda-llm-deadlock.ps1` | `windows/scripts/` | **Deliberately fails.** Reproduces the sccache nvcc server deadlock and collects a server-side trace for mozilla/sccache#2808. Sets `SCCACHE_REPRO_CUDA_LLM=1`, which makes `build-onnx-from-source.ps1` SKIP patch 006 so the sccache CUDA launcher stays on for `onnxruntime_providers_cuda_llm` — the target the workaround exists to protect. Expect the build to die ~80 min in; that failure IS the artifact. Refuses to start while another `buildctl` is running (a concurrent build shares the sccache server and the locked mount, so a wedge would be unattributable). Needs `ARG SCCACHE_REPRO_CUDA_LLM` wired into `Dockerfile.media-builder`'s media-core-env stage first — it checks and throws with instructions if absent. |
 | `Dockerfile.smoke-gate` | `windows/` | Not a script — the automatic verification stage (backlog #44). Solved against the finished `winamd64` image as the last step of every BK chain; a smoke-test failure fails the chain. Runs a buildctl solve rather than `nerdctl run` because containerd's pipe is admin-only while the driver is non-admin, invokes the test **through `entrypoint.cmd`** (a bare RUN bypasses ENTRYPOINT and loses VsDevCmd + the ASAN runtime dir), and **bind-mounts** the current script + modules so a smoke-test fix needs no image rebuild to re-verify. Knobs: `-SkipSmokeGate`, `-SmokeMinPassed`, `-SmokeMaxSkipped`. |
 | `patches/litert-lm/patch-assert.cmake` | `windows/scripts/` | `patch_replace_required` / `patch_regex_replace_required` — replace-with-verification for the CMake source patchers (backlog #56). `FATAL_ERROR`s when a pattern matched NOTHING, instead of the old bare `string(REPLACE)` + unconditional "Patched …" message that let an upstream reformat silently restore a fixed defect. Lives INSIDE `litert-lm/` because the Dockerfile COPYs that directory specifically. Enforced by `Patches.CmakeNoOpGuards.Tests.ps1`; a legitimate non-source replace opts out with a `patch-assert-exempt` marker + reason. |
 | `normalize-tensorrt-tree.ps1` | `windows/scripts/` | Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted `TensorRT-<version>` tree to a stable **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift, and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Backlog #38: the old pin-derived PATH was wrong twice over — wrong version AND wrong dir (TensorRT 10+ moved the DLLs to `bin\`), so the ORT TensorRT EP could never load, silently, while builds stayed green. Absent zip stays a supported graceful skip; a half-extracted tree is a build failure. |
@@ -2111,11 +2117,36 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
      and a probe found the mount present but EMPTY. Store total is 559.76 GB
      with 483.51 GB reclaimable.
 
-  **The discriminator is `SCCACHE_ERROR_LOG`** — sccache says which layer
-  rejected the write. It is still uncaptured: two extraction attempts timed out,
-  the mount needing >4 min for a plain directory listing (itself consistent with
-  cause 2). Capture it before touching either knob; raising `SCCACHE_CACHE_SIZE`
-  when the GC is the culprit would change nothing and cost a full chain to learn.
+  **RESULT 2026-08-15 — cause 2 CONFIRMED, cause 1 REFUTED, and a residue
+  remains.** `reservedSpace = "30GB"` + `maxUsedSpace = "60GB"` on the tier-0
+  policy was deployed and a targeted rebuild (`-NoCacheStage onnx,opencv`) ran:
+
+  | stage | hits | misses | write errors | before |
+  |---|---|---|---|---|
+  | onnx | **1498** | 0 | 0 | 10 / 1488 / 0 |
+  | opencv | 37 | 1825 | **0** | 0 / 1862 / **1849** |
+  | genai (`media-core-built`) | 0 | 157 | **157** | 0 / 157 / **157** |
+
+  - **opencv 1849 → 0.** The GC was reclaiming the mount; the floor stops it.
+  - **ONNX ran at a 100 % hit rate** (1498 hits, 0 misses) off the previous
+    aborted run's writes — the first time this cache has ever been *reused*,
+    and the reason that stage looked suspiciously fast mid-run.
+  - **Cause 1 is dead:** the mount holds **236 MB**, nowhere near the 15 G
+    ceiling, so `SCCACHE_CACHE_SIZE` was never the constraint.
+  - **genai is UNCHANGED at 157/157** — same mount id, same inherited sccache
+    ENV, so the remaining failure is neither GC nor configuration. Open.
+
+- **90 [S·★★★, none] `SCCACHE_ERROR_LOG` can never survive: it is written INSIDE
+  `SCCACHE_DIR`, which sccache prunes.** Probing the healthy mount returned
+  `LOGDIR=False` — `C:\sccache\logs` does not exist, while 236 MB of cache
+  content in the same mount does. `Initialize-…`'s directory creation
+  (WindowsSourceBuild.Common, backlog #23) runs and the mount persists, so the
+  only actor that removes it is sccache's own LRU management of `SCCACHE_DIR`.
+  **This is why the "decisive artifact" has been unobtainable for the entire
+  investigation** — it was deleted by design, not lost by accident. FIX: put the
+  error log OUTSIDE `SCCACHE_DIR` (its own cache-mount id, or a bind-mounted
+  host path). Until then no sccache write failure in this chain can be
+  diagnosed from its own logs, which is what left #89's residue unexplained.
 
 ### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
 

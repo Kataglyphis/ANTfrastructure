@@ -406,6 +406,19 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   miss → store → HIT with 0 write errors. Confident conclusions about a state
   that no longer exists are the failure mode of corpus-wide aggregation; date
   the newest sample before trusting the aggregate.
+- **Never put a log inside a directory some OTHER tool owns and prunes.**
+  `SCCACHE_ERROR_LOG` was set to `C:\sccache\logs\sccache-error.log` — inside
+  `SCCACHE_DIR`, the directory sccache itself manages by LRU. The dir-creation
+  code runs, the cache mount persists (236 MB of content survived), and the
+  `logs\` directory is gone anyway: sccache pruned it. **That is why sccache's
+  own error log was unobtainable through an entire multi-day investigation** —
+  it was deleted by design, not lost by accident, and its absence is what left
+  the genai write failures undiagnosable (backlog #90). It now lives on its
+  **own** cache mount — `C:\sccache-logs` (`id=sccache-logs-winamd64`), mounted
+  next to the sccache mount on every compiling RUN — and is listed in
+  `windows/buildkitd.toml`'s tier-0 inventory, which must stay in step with that
+  budget. Sibling rule to the one below: a log must live where nothing else has
+  a delete policy over it.
 - **A build log written inside the build dir DIES WITH THE SOLVE — always use
   `Get-PersistentBuildLogPath`.** When a vertex fails, BuildKit discards the
   container filesystem, so a log at `$buildDir\x-build.log` is gone exactly
