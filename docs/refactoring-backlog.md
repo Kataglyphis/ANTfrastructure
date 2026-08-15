@@ -194,6 +194,18 @@ order to actually WORK them — the item text lives in the sub-sections below):
   place. NB: the existing "verify-arg-consistency literal gate" item covers
   CATCHING drift, not this DEDUP — complementary, not a duplicate item. Rides a
   rebuild window (touches media/toolchain closure + Dockerfile.media).
+  SCOPE INVESTIGATION (2026-08-15) — this is NOT a clean function-substitution;
+  the sites split three ways: (a) NOT in helper scope — validate-compilers.sh
+  (220/257 plain) does NOT source cross-gcc.sh, so routing through the helper
+  needs a NEW source+bind-mount (the mount-gap hazard) → do it via the
+  common.sh/guard-helpers wiring, not a lone source; (b) NOT the same value —
+  validate-compilers.sh:129 is `/opt/gcc-…-native-${arch}` (native suffix,
+  distinct from the cross prefix) and :146 is a comment; (c) deliberate literal
+  FALLBACK for the helper — llvm.sh:297 is the `[ -n "$gcc_prefix" ] ||
+  gcc_prefix="/opt/gcc-…"` safety net right after :296 `gcc_toolchain_prefix`
+  itself → replacing it is circular, KEEP. So the real fix is SSOT-of-the-default
+  (`16.2.0` in ONE spot the fallbacks read) tied to the common.sh sourcing pass,
+  not a site-by-site call swap. No safe code-only subset exists standalone.
 - **onnxruntime 1.28-vs-1.27 dedupe + CPython decision** [S, investigate]
   (forensic#7) — needs image inspection.
 - **riscv64 ffmpeg network/codec skips** [S/M] TLS via --enable-openssl never
