@@ -1,9 +1,24 @@
 # Changelog
 
-## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6)
+## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6, cross-wheel SOABI)
 
 Static-validated code-only fixes (no rebuild), each verified against the failure
 it addresses:
+
+- **cross-wheel SOABI/default-triple assert (verify-wheels.sh)**: the filename-tag
+  loop only checks the Python tag (cp314), which is host==target — so it cannot
+  catch a native extension stamped with the wrong arch SOABI (a cross build that
+  leaked the host BUILD_PYTHON's `.cpython-314-x86_64-linux-gnu.so` into a riscv64
+  wheel), which installs fine and only fails at `import` on-target. Added a pass
+  that reads each wheel (python zipfile — no unzip) and checks native
+  `.cpython-*.so` members against the expected `.cpython-XY-<target-triplet>.so`.
+  Crucially derives the triplet from TARGET_ARCH, NOT the running interpreter's
+  EXT_SUFFIX (this script runs on the amd64 host during a cross build, so the host
+  suffix would falsely reject every correct cross wheel). abi3 + pure-python +
+  bundled non-extension .so are skipped. Advisory (WARN) by default so a wrong
+  triple map can never break an un-revalidatable build; WHEEL_SOABI_STRICT=1 makes
+  it fatal. Unit-tested: correct/wrong-arch/abi3/pure-py/generic all classified
+  right; triplet map matches test-arch-mapping.sh.
 
 - **A1 (dead-alias)**: removed the never-set, undocumented `${UBUNTU_PORTS_MIRROR_URL:-}`
   inner fallback at cross-env.sh:17 (only the `FAST_`-prefixed variant is a real

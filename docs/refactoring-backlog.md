@@ -182,15 +182,6 @@ order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 - **Shared apt-source/mirror include (carried from archive P3-2026-07-17):**
   [S] media+package covered; Dockerfile.nvidia/amd/android + now
   build_python.sh (TS8) still hand-roll. One include, five consumers.
-- **Batch-1 leftovers (folded here — the harness batch closed without them):**
-  cross-wheel SOABI/default-triple assert [M] (verify-wheels checks filename
-  tags only — a wrong-SOABI wheel installs and fails at import on-target).
-  (forensic#3 DONE 2026-08-15: smoke-media's cv2-import else-branch no longer
-  PASSes unconditionally — it now `cross_build_is_active`-gates: cross → legit
-  PASS-with-caveat, NATIVE → `fail` with the real import error surfaced. The old
-  "import failed in build sandbox — will work at runtime" masked a broken native
-  cv2 as green.)
-
 - **GST1 — cross-vs-native gstreamer libdir split (ROOT fix)** [S/M·★★★]
   found live 2026-08-11: native meson installs to lib/<triplet>/ but the
   cross builds pass libdir=lib (cargo_wrapper invocation, media-arm64 log
