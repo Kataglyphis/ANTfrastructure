@@ -57,6 +57,30 @@ Precondition SATISFIED: T1-T6 harness exists. Sequence inside the batch:
 guard helpers FIRST (several refactors below want them), then the rest in any
 order, verify-script-copy-coverage green throughout, one full 3-arch validate.
 
+**Priority order within Batch 2** (the batch groups by blast radius; this is the
+order to actually WORK them — the item text lives in the sub-sections below):
+
+- **Tier 0 — land FIRST (unblocks refactors):** Named guard helpers.
+- **Tier 1 — correctness / real defects (★★★, do next):** GST1 (arm64 dev
+  surface dangling in EVERY shipped image), opencv-builds-before-ffmpeg/gstreamer
+  (HighGUI/videoIO silently degraded), TS1 (moving `continuous` tag → tamper-
+  shaped build death), TG1 (13-wide GCC cache closure — REDO carefully, it was
+  attempted+reverted; needs a real toolchain rebuild to validate).
+- **Tier 2 — measurable size/perf (★★★/★★):** AP7 media-half FIRST (size
+  observability — turns every size item below into numbers), then AP2 (byte-
+  compile venv — per-start cost), AP1 (unstripped cross wheels, ~50-300 MB/arch),
+  AP4 (strip media prefixes, 5-10%), AP3 (dead wheelhouse layer, 0.5-2 GB/pull),
+  AP5 (cross CPython no LTO, 10-30% interp speedup).
+- **Tier 3 — hygiene / robustness (★-★★):** D3+P5, A1 (gate half), P3 residual,
+  Media source-cache mounts, LLVM ccache launcher, riscv64 ffmpeg skips, codec
+  runtime-list convergence, cerbero/soundtouch, GCC_PARALLEL_TARGETS, Complexity-
+  queue survivors, NVIDIA-lane sweep, SUDO run_priv, TG3-residual, TS4, TS8 +
+  shared apt-source include, RP4, RP6, TVM cross-build.
+- **Investigate / experiment (not straight code):** GEN1 (genai-on-riscv64 self-
+  build), onnxruntime 1.28-vs-1.27 dedupe, gcc prereq inconsistency (forensic#6).
+- **Staged, code-done — closing after the in-flight validating rebuild:** AP7
+  runtime-half, RP1, RP2, RP3 (each ✅-marked in Tier 2/3 below).
+
 ### New code fixes (2026-08-10 rounds, all evidence-verified)
 
 - **D3 + P5 — smoke-media gate scaffold + SMOKE_ENV** [M·★★] extract
