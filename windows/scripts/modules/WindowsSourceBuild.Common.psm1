@@ -1179,6 +1179,36 @@ function Complete-SourceBuildChain {
         [switch]$ScrubAfter
     )
     Write-Host "`n=== $Label chain completed ==="
+
+    # FLUSH THE SCCACHE SERVER BEFORE THE RUN ENDS (2026-08-15).
+    #
+    # SCCACHE_ERROR_LOG is written by the sccache SERVER, and with
+    # SCCACHE_IDLE_TIMEOUT=0 that server never exits on its own - so the RUN's
+    # process tree is torn down with it still holding the log buffered, and the
+    # file never lands on the mount. That is why the error log was EMPTY after
+    # every real build while a hand probe (which waits a few seconds with the
+    # server alive) sees content immediately: the path, the level and the mount
+    # were all correct the whole time, and three separate hypotheses (LRU
+    # pruning, wrong location, unset SCCACHE_LOG) were chased before the actual
+    # mechanism turned out to be "killed before flush".
+    #
+    # --stop-server also flushes the async webdav write-through tail, which the
+    # Dockerfile's own IDLE_TIMEOUT note already warns "dies with the server".
+    # Runs AFTER every per-component Write-SccacheStatsToStderr (this is the
+    # outermost chain epilogue), so the stats still talk to a live server.
+    #
+    # Best-effort by design: a missing sccache, or a server that already exited,
+    # must never fail a green stage.
+    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        Write-Host 'Stopping the sccache server so its error log + webdav tail flush before the layer closes...'
+        try {
+            & $sccacheCmd.Source --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache| $_" }
+        } catch {
+            Write-Warning "sccache --stop-server failed (non-fatal): $($_.Exception.Message)"
+        }
+    }
+
     if ($ScrubAfter) { Clear-BuildScratch }
     # Callers still end with their own explicit `exit 0`: pwsh -File (and
     # docker run) otherwise propagate the LAST native exit code, and a

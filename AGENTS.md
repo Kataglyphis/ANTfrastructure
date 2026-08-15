@@ -406,6 +406,18 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   miss → store → HIT with 0 write errors. Confident conclusions about a state
   that no longer exists are the failure mode of corpus-wide aggregation; date
   the newest sample before trusting the aggregate.
+- **A daemon's log is only as durable as its last flush — stop the server before
+  the RUN ends.** `SCCACHE_ERROR_LOG` is written by the sccache SERVER, and
+  `SCCACHE_IDLE_TIMEOUT=0` means it never exits on its own, so BuildKit tears
+  the RUN's process tree down with the log still buffered and nothing reaches
+  the mount. `Complete-SourceBuildChain` now calls `sccache --stop-server` as
+  the chain epilogue (after every `Write-SccacheStatsToStderr`, which needs a
+  live server), which also flushes the async webdav write-through tail.
+  **Diagnostic value of this one:** the path, the level and the mount were all
+  correct for days while three separate hypotheses were chased — LRU pruning,
+  wrong location, unset `SCCACHE_LOG` — because a hand probe that waits a few
+  seconds with the server alive ALWAYS saw content, and a real build never did.
+  When a log is empty only after real runs, suspect lifetime before correctness.
 - **Never put a log inside a directory some OTHER tool owns and prunes.**
   `SCCACHE_ERROR_LOG` was set to `C:\sccache\logs\sccache-error.log` — inside
   `SCCACHE_DIR`, the directory sccache itself manages by LRU. The dir-creation

@@ -2136,17 +2136,50 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   - **genai is UNCHANGED at 157/157** — same mount id, same inherited sccache
     ENV, so the remaining failure is neither GC nor configuration. Open.
 
-- **90 [S·★★★, none] `SCCACHE_ERROR_LOG` can never survive: it is written INSIDE
-  `SCCACHE_DIR`, which sccache prunes.** Probing the healthy mount returned
-  `LOGDIR=False` — `C:\sccache\logs` does not exist, while 236 MB of cache
-  content in the same mount does. `Initialize-…`'s directory creation
-  (WindowsSourceBuild.Common, backlog #23) runs and the mount persists, so the
-  only actor that removes it is sccache's own LRU management of `SCCACHE_DIR`.
-  **This is why the "decisive artifact" has been unobtainable for the entire
-  investigation** — it was deleted by design, not lost by accident. FIX: put the
-  error log OUTSIDE `SCCACHE_DIR` (its own cache-mount id, or a bind-mounted
-  host path). Until then no sccache write failure in this chain can be
-  diagnosed from its own logs, which is what left #89's residue unexplained.
+- **91 [S·★★★, none] RESOLVED 2026-08-15 — the sccache error log was never
+  FLUSHED, not never written.** The real mechanism, after three wrong
+  hypotheses: the log is written by the sccache SERVER;
+  `SCCACHE_IDLE_TIMEOUT=0` means it never exits on its own; BuildKit tears the
+  RUN's process tree down at step end with the log still buffered, so nothing
+  reaches the mount. **The tell was there the whole time and was misread**: a
+  hand probe that sleeps 3 s with the server alive sees content instantly
+  (`FILE sccache-error.log` + `WARN opendal::services service=webdav …`), while
+  every real build left the directory empty. Path, level and mount were correct
+  from the moment #90 landed. FIX: `Complete-SourceBuildChain` now runs
+  `sccache --stop-server` as the chain epilogue — after every
+  `Write-SccacheStatsToStderr` (those need a live server) — which also flushes
+  the async webdav write-through tail the Dockerfile's own IDLE_TIMEOUT note
+  already warned "dies with the server". **UNVERIFIED:** no build has run since.
+  **Rule this earns:** when a log is empty only after REAL runs but fine under a
+  probe, suspect lifetime before correctness.
+
+- **92 [M·★★★, none] genai's 157/157 write failures are NOT explained by cache,
+  mount or configuration.** A probe in the SAME `bk-windows-media-core` image
+  with the SAME inherited env (`SCCACHE_LOG=warn`,
+  `SCCACHE_ERROR_LOG=C:\sccache-logs\…`, both cache mounts attached) compiled a
+  TU and reported **0 write errors**, while `media-core-built` reports 157 of
+  157 in every run. Ruled out so far: GC reclaiming the mount (#89, fixed —
+  opencv went 1849 → 0), `SCCACHE_CACHE_SIZE` exhaustion (mount holds 236 MB
+  against a 15 G ceiling), the log location (#90), and the log level. Note
+  opencv reproducibly shows `1 miss → 1 write error` in the last two runs, so
+  the failure is not genai-specific — it is *write-attempt*-specific and merely
+  invisible while the hit rate is ~100 %. Next step is now unblocked: with #91
+  in place a real build finally leaves an error log naming the layer that
+  rejects the write.
+
+- **90 [S·★★, none] DONE 2026-08-15 — error log moved OUT of `SCCACHE_DIR`.
+  CORRECTION: the stated cause was wrong.** The observation was real —
+  `C:\sccache\logs` was absent while 236 MB of cache content in the same mount
+  survived — and it was read as "sccache's LRU pruned it". **That was not the
+  mechanism** (see #91: the log was never flushed at all, so it never existed to
+  be pruned). The move is still correct and was kept: a log has no business
+  inside a directory another tool manages, and the dedicated mount
+  (`C:\sccache-logs`, `id=sccache-logs-winamd64`, added to all 6 compiling RUNs
+  and to buildkitd.toml's tier-0 inventory) removes that risk permanently. It
+  was simply not SUFFICIENT — and the fact that the log stayed absent on a mount
+  nothing prunes is exactly what disproved the LRU story. Two hypotheses were
+  spent here before #91: LRU pruning, then an unset `SCCACHE_LOG` (also fixed,
+  also not the cause on its own — `SCCACHE_LOG="warn"` is now set and needed).
 
 ### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
 
