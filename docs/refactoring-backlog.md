@@ -188,7 +188,19 @@ order to actually WORK them — the item text lives in the sub-sections below):
   shipped opencv reports the ffmpeg + gstreamer videoio backends as ENABLED
   (`cv2.getBuildInformation()` grep) so a regression to a degraded opencv fails
   loud. Cost: opencv compiles twice (heaviest media lib) — acceptable per owner.
-- **gcc prereq inconsistency** [M] (forensic#6, archive) — unchanged.
+- **gcc prereq inconsistency** [M] (forensic#6, archive). SOURCE TRIAGE
+  2026-08-15: the headline "inconsistency" (Canadian-cross passes pull in-tree
+  gmp/mpfr/mpc/isl via `contrib/download_prerequisites` while native passes use
+  the system `lib{gmp,mpfr,mpc,isl}-dev`) is DELIBERATE and documented at
+  build-gcc.sh:513-524 — the foreign host can't link amd64 -dev libs, so it must
+  build them in-tree; NOT a bug, do not "unify". The genuinely-open facets all
+  need a real build to observe/measure, not a source edit: (a) cache the
+  sha512.sum/.sig next to the tarball (the 5× refetch caused 3/4 transient
+  retries); (b) LIBRARY_PATH possibly leaking into NATIVE sub-build links;
+  (c) verify step never exercises the C/ASM cross paths; (d) the #12-vs-#15
+  duplicate-compile overlap worth measuring once ccache stats exist. Keep as a
+  rebuild-window measurement item; the "make the two prereq paths consistent"
+  reading is CLOSED (they're correctly different).
 - **DUP1 — build-host uname→triplet hand-rolled** [S·★★] (dup-audit 2026-08-15)
   the `uname→triplet` FALLBACK (after the `${DEB_BUILD_MULTIARCH:-}`/
   `dpkg-architecture` probe) duplicated the canonical `build_deb_multiarch_triplet`
@@ -234,7 +246,20 @@ order to actually WORK them — the item text lives in the sub-sections below):
   (`16.2.0` in ONE spot the fallbacks read) tied to the common.sh sourcing pass,
   not a site-by-site call swap. No safe code-only subset exists standalone.
 - **onnxruntime 1.28-vs-1.27 dedupe + CPython decision** [S, investigate]
-  (forensic#7) — needs image inspection.
+  (forensic#7). SOURCE-LEVEL RESOLVED 2026-08-15: the git-tag version is
+  CONSISTENTLY `v1.28.0` across every authority (versions.env:79 + all script
+  defaults `${ONNXRUNTIME_VERSION:-v1.28.0}`). The only `1.27` in source is a
+  historical COMMENT (30-build-native.sh:80, about v1.27's build.py rejecting
+  --use_armnn) and unrelated pycairo==1.27.0 — NOT an onnx version. The
+  "1.28-vs-1.27" is a RUNTIME quirk (the v1.28.0 branch self-reports __version__
+  1.27.0) and it is ALREADY HANDLED: smoke-torch-venv.sh:81 asserts against the
+  UNION (1.27 source-built lib vs 1.24.4 locked wheel). So there is NO source
+  dedup to do. Residual (rolls into C3 below, NOT separate): the two inline
+  `:-v1.28.0` fallbacks (onnxruntime/android/build-android.sh:15,
+  onnxruntime/build/lib/common.sh:70) mask a broken ARG-forward → convert to
+  `:?must be set` with the other android inline fallbacks. Image inspection only
+  still needed if the CPython-ABI decision (which py the built .so targets) is
+  ever revisited — not blocking.
 - **riscv64 ffmpeg network/codec skips** [S/M] TLS via --enable-openssl never
   attempted (build-ffmpeg.sh:202 skip list).
 - **codec runtime-list + so-package-map convergence** [M] hand-maintained

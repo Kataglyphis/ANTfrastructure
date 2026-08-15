@@ -643,11 +643,35 @@ falls back to disabled. Current toggles:
 
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
-(see `docs/refactoring-backlog.md`, standing rules). Note: a media re-run alone
-does NOT reshape the shipped runtime image if the runtime wrapper build
-cache-hits the prior wrapper from the registry — force a fresh runtime rebuild
-(`NO_CACHE=1`) after a toggle flip, and verify the shipped bytes, not just that
-the manifest pushed (see backlog RTCACHE1).
+(see `docs/refactoring-backlog.md`, standing rules). After a toggle flip, force
+a fresh runtime wrapper build with **`RUNTIME_NO_CACHE=1`** (scoped to the
+runtime package + wrapper; lighter than whole-chain `NO_CACHE=1`) so the shipped
+image actually reflects the new media. The shipped **bytes** are now checked
+automatically: `verify-shipped-wrapper.sh` runs in the per-arch manifest loop
+and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
+(so `FFMPEG_ENABLE_TF=0` ⇒ `libtensorflow*` must be absent). Set
+`WRAPPER_CONTENT_GATE=0` to downgrade that gate to advisory.
+
+> **Why the explicit `RUNTIME_NO_CACHE`:** the runtime wrapper once shipped
+> `:latest-cross` byte-identical five times because
+> `nerdctl build --output type=image,name=X` never creates a local containerd
+> tag on this rootless host, so push + manifest kept resolving a **stale** prior
+> tag (root cause **RTCACHE3**; the earlier "registry cache-hit" theory,
+> RTCACHE1, was a red herring). The fix switched `append_runtime_image_output`
+> to plain `-t`; the byte gate above is the belt-and-suspenders check. Always
+> verify shipped bytes, not just that the manifest pushed.
+
+### Operational env knobs (not versions.env)
+
+Runtime/orchestration switches that are **not** pins or feature toggles:
+
+| Knob | Effect |
+|---|---|
+| `NO_CACHE=1` | `--no-cache` across the whole chain. |
+| `RUNTIME_NO_CACHE=1` | `--no-cache` on just the runtime package + wrapper builds (use after a media toggle flip). |
+| `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
+| `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
+| `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 
 ### IREE (Linux lane)
 
