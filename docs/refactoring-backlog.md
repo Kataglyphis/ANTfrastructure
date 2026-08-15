@@ -135,17 +135,27 @@ order to actually WORK them — the item text lives in the sub-sections below):
 - **LLVM nested-build ccache launcher** [S·★] llvm-cross.sh:232
   CROSS_TOOLCHAIN_FLAGS_NATIVE launcher-less; toolchain RUNs emit no ccache
   stats (media does).
-- **opencv builds before ffmpeg/gstreamer exist** [M/L·★★] stage order
-  (opencv:416 < ffmpeg:539 < gstreamer:620, all FROM base) — opencv's
-  HighGUI/video IO capabilities silently degraded. ⚠ NOT a simple reorder:
-  gstreamer ships an **opencv plugin**, so gstreamer needs opencv built FIRST —
-  opencv-before-gstreamer is DELIBERATE (do NOT flip it or the gstreamer opencv
-  plugin breaks). It is a genuine two-way dependency (opencv wants ffmpeg/
-  gstreamer for videoio; gstreamer wants opencv for its plugin). The ONLY correct
-  fix is a TWO-PASS build: (1) opencv without gstreamer, (2) ffmpeg + gstreamer
-  (opencv plugin works), (3) rebuild opencv WITH ffmpeg/gstreamer for full
-  videoio. ffmpeg-before-opencv alone (so opencv gets ffmpeg videoio without
-  touching the gstreamer order) is the cheaper partial win.
+- **opencv ⇄ gstreamer two-pass build (DECIDED — owner wants two-pass)** [M/L·★★]
+  Problem: opencv builds before ffmpeg/gstreamer (opencv:416 < ffmpeg:539 <
+  gstreamer:620, all FROM base), so opencv's HighGUI/videoio is silently
+  degraded — but it CANNOT simply be reordered, because gstreamer ships an
+  **opencv plugin** and therefore needs opencv built FIRST. Genuine two-way
+  dependency (opencv wants ffmpeg/gstreamer for videoio; gstreamer wants opencv
+  for its plugin). ⚠ Do NOT flip opencv after gstreamer — that breaks the
+  gstreamer opencv plugin.
+  **DECISION: implement the THREE-STAGE two-pass build** (this is the wanted
+  design, not just one option):
+  1. **opencv pass 1** — build opencv WITHOUT ffmpeg/gstreamer (a lean opencv
+     that satisfies gstreamer's opencv plugin).
+  2. **ffmpeg + gstreamer** — build both against opencv-pass-1; the gstreamer
+     opencv plugin resolves.
+  3. **opencv pass 2** — REBUILD opencv WITH ffmpeg + gstreamer present, so its
+     videoio/HighGUI backends light up fully.
+  Ship opencv-pass-2 as the final /opt/opencv5. Keep pass-1 as an intermediate
+  (build-stage only, not in the runtime image). Add a media-stage assert that the
+  shipped opencv reports the ffmpeg + gstreamer videoio backends as ENABLED
+  (`cv2.getBuildInformation()` grep) so a regression to a degraded opencv fails
+  loud. Cost: opencv compiles twice (heaviest media lib) — acceptable per owner.
 - **gcc prereq inconsistency** [M] (forensic#6, archive) — unchanged.
 - **onnxruntime 1.28-vs-1.27 dedupe + CPython decision** [S, investigate]
   (forensic#7) — needs image inspection.
