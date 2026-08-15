@@ -20,7 +20,7 @@ case "${1:-}" in
     echo ""
     echo "Stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu,"
     echo "        onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core,"
-    echo "        ffmpeg, gstreamer, libcamera, app-wheels, media-inputs"
+    echo "        ffmpeg, gstreamer, libcamera, app-wheels, sizes, media-inputs"
     exit 0
     ;;
 esac
@@ -146,6 +146,22 @@ verify_any_lib() {
   done
   fail_check "${label}: none of the expected libraries found ($*)"
   return 1
+}
+
+# AP7 (media half) — per-prefix size observability. INFORMATIONAL ONLY: never
+# touches FAILURES, never returns non-zero. The media image is ~42 GB with no
+# per-prefix breakdown anywhere; this prints one so every size item (AP1/AP4/S2/
+# TG4) becomes a measured number on the very next build. Mirrors the runtime
+# half's check_size_observability (smoke-runtime-image.sh). `|| true` on each
+# probe so a missing prefix or a du hiccup can never abort the verifier.
+report_prefix_sizes() {
+  echo "--- Size: per-prefix disk usage (informational, ${TARGET_ARCH:-${TARGETARCH:-native}}) ---" >&2
+  du -sh /opt/* 2>/dev/null | sort -h | sed 's/^/    /' >&2 || true
+  # onnxruntime/litert install under /usr/local, not /opt — surface them too.
+  du -sh /usr/local/lib/onnxruntime-* 2>/dev/null | sort -h | sed 's/^/    /' >&2 || true
+  echo "    ---- total /opt ----" >&2
+  du -sh /opt 2>/dev/null | sed 's/^/    /' >&2 || true
+  echo "" >&2
 }
 
 case "${STAGE}" in
@@ -314,6 +330,12 @@ case "${STAGE}" in
     esac
     ;;
 
+  sizes)
+    # Explicit invocation of the informational size report (AP7). No integrity
+    # checks, no failure path — just the per-prefix breakdown.
+    report_prefix_sizes
+    ;;
+
   media-inputs)
     echo "=== Media inputs stage integrity check ==="
     verify_dir_not_empty "${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}/lib" "ONNX CPU libs in media-inputs"
@@ -327,11 +349,15 @@ case "${STAGE}" in
         verify_dir_not_empty "/opt/acl/lib" "ACL in media-inputs" || true
         ;;
     esac
+    # AP7: emit the per-prefix size breakdown at the media consolidation point
+    # (this arm runs on every media build) so the numbers land without a
+    # dedicated Dockerfile RUN line. Informational — cannot affect FAILURES.
+    report_prefix_sizes
     ;;
 
   *)
     echo "ERROR: Unknown verification stage: ${STAGE}" >&2
-    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, media-inputs" >&2
+    echo "Known stages: onnxruntime-cpu, onnxruntime-genai, onnxruntime-gpu, onnxruntime-pkgconfig, litert, litert-headers, opencv, opencv-core, ffmpeg, gstreamer, libcamera, app-wheels, armnn, sizes, media-inputs" >&2
     exit 1
     ;;
 esac

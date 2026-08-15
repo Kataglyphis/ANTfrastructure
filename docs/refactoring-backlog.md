@@ -300,13 +300,15 @@ order to actually WORK them — the item text lives in the sub-sections below):
 
 - **AP7 — zero size observability** [S·★★★] runtime half ✅ DONE + REBUILD-VALIDATED
   2026-08-15 (check_size_observability in smoke-runtime-image emitted "per-prefix
-  disk usage" on all 3 arches in the verify rebuild). STILL OPEN: the media-stage
-  half (same `du -sh /opt/*|sort -h` block in verify-media-artifacts.sh) for the
-  42.66 GB media image —
-  has no per-prefix breakdown anywhere. One `du -sh /opt/* …|sort -h` block in
-  verify-media-artifacts.sh + smoke-runtime-image turns every size item below
-  (and S2/TG4) into measured numbers on the very next build. Do before the
-  others.
+  disk usage" on all 3 arches in the verify rebuild). Media half ✅ STAGED
+  2026-08-15 (rides next rebuild): `report_prefix_sizes` added to
+  verify-media-artifacts.sh — INFORMATIONAL-only (never touches FAILURES), called
+  at the always-run `media-inputs` consolidation arm so the `du -sh /opt/* +
+  /usr/local/lib/onnxruntime-* | sort -h` breakdown lands with no dedicated
+  Dockerfile RUN line; also exposed as an explicit `sizes` stage. Edits a file
+  already in the media RUN closure → no new mount dependency. shellcheck-clean,
+  smoke-run rc=0. Turns every size item below (AP1/AP4/S2/TG4) into measured
+  numbers on the next build.
 - **AP1 — cross wheels ship UNSTRIPPED: host strip no-ops on target ELFs**
   [S·★★, MEASURED] media-arm64.log:20304-20347 — `cmake --install --strip`
   runs /usr/bin/strip on arm64 .so → "Unable to recognise the architecture"
