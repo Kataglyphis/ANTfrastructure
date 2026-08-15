@@ -21,6 +21,11 @@ TF-less). XC2 annotation-survival gap SUPERSEDED by the -t fix (annotations
 dropped; provenance re-embed is a follow-up). New knob: RUNTIME_NO_CACHE=1.
 Records of done work live in CHANGELOG.md + memory + the archive.)
 
+**Windows items live in a SEPARATE Windows backlog** — removed from here
+2026-08-15 (was Batch 4 + W3 + W1). This file is Linux/cross-lane only. A few
+Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
+not as to-do items.
+
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
 1. Never edit versions.env or anything in the 01-core / 03-media bind-mount
@@ -132,7 +137,15 @@ order to actually WORK them — the item text lives in the sub-sections below):
   stats (media does).
 - **opencv builds before ffmpeg/gstreamer exist** [M/L·★★] stage order
   (opencv:416 < ffmpeg:539 < gstreamer:620, all FROM base) — opencv's
-  HighGUI/video IO capabilities silently degraded; reorder or two-pass.
+  HighGUI/video IO capabilities silently degraded. ⚠ NOT a simple reorder:
+  gstreamer ships an **opencv plugin**, so gstreamer needs opencv built FIRST —
+  opencv-before-gstreamer is DELIBERATE (do NOT flip it or the gstreamer opencv
+  plugin breaks). It is a genuine two-way dependency (opencv wants ffmpeg/
+  gstreamer for videoio; gstreamer wants opencv for its plugin). The ONLY correct
+  fix is a TWO-PASS build: (1) opencv without gstreamer, (2) ffmpeg + gstreamer
+  (opencv plugin works), (3) rebuild opencv WITH ffmpeg/gstreamer for full
+  videoio. ffmpeg-before-opencv alone (so opencv gets ffmpeg videoio without
+  touching the gstreamer order) is the cheaper partial win.
 - **gcc prereq inconsistency** [M] (forensic#6, archive) — unchanged.
 - **onnxruntime 1.28-vs-1.27 dedupe + CPython decision** [S, investigate]
   (forensic#7) — needs image inspection.
@@ -287,8 +300,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
 - **C3 — android inline version fallbacks → `:?must be set`** [S·★★] litert/
   onnx/iree/opencv/gstreamer android scripts carry dead fallbacks that mask a
   broken ARG forward as a silent stale-pin build.
-- **W3 — sha-pins for the thin Windows download sites** [S·★★] vcpkg tag zip,
-  get-pip.py (+ ExpectSignature everywhere); rustup floating by decision.
 - **pyav dead pin removal** [S] PYAV_VERSION consumed by no Linux consumer
   (Windows ffmpeg uses it — verify before deleting; may be rename-to-clarify).
 - **LLVM_COMMIT opt-in key** [S] TVM_COMMIT exists, LLVM_COMMIT absent.
@@ -333,25 +344,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
     ~1GB tarball SHA is in no JSON/sums file (config.json carries only build repo
     config) → would need a full download-and-hash on every bump (heavy).
   Co-locate the scattered pairs (OLLAMA :198 vs :540) when doing them.
-
-## Batch 4 — Windows rebuild-window riders (lane rule: script edits ride pin bumps)
-
-- **W2 — -Require classification for inline patches** [M·★★★] 37 sites
-  warn-and-continue on anchor miss, 25 discard the boolean; two recorded
-  "cost one container run" incidents. Load-bearing sites get -Require.
-- **W1b remainder — fix the 3 drifted defaults** [S·★★] GIT_VERSION '2.54.0'
-  → 2.55.0 (setup-scoop-tools.ps1:105); WIX_UI_EXT_VERSION '4.0.4' → 4.0.6
-  (setup-scoop-tools.ps1:128 + verify-toolchain.ps1:122). The PinParity suite
-  tracks them as [pend] — fixing WITHOUT removing them from
-  $script:KnownDriftAwaitingRebuildWindow turns it red. Adjacent:
-  windows/Dockerfile.nvidia:53 is a third shadow-default (in sync today).
-- **🔴 nv/target.h host-only stub** [S·★★] setup-cuda.ps1:103-122 writes an
-  NV_IS_HOST=1 stub whenever target.h is absent — including over a REAL
-  extensionless `nv/target` (the reported case). Forwarding include instead.
-- **W4 — Invoke-ShieldedNative migration** [M·★] ~25 hand-rolled pairs left;
-  continue only inside scheduled rebuild windows (their own plan).
-- **Test-CniHealth unification** [S] the two check fns remain separate after
-  the .conf derivation fix.
 
 ## Batch 5 — orchestrator lifecycle (one coherent PR)
 
@@ -400,9 +392,6 @@ that emit path is fixed.)
 - **Rust sccache unblock** [S] RUSTC_WRAPPER="" pinned empty at
   Dockerfile.toolchain:58 + Dockerfile.package:157; ENABLE_SCCACHE_RUST
   wiring exists and is validated-off — flip in a controlled build.
-- **W1 first-run watch** [S] SourceBuild.PinParity.Tests.ps1 has not yet
-  executed on a real pwsh (none on this host) — watch the first Windows
-  Invoke-Tests.ps1 run.
 
 ## Coverage map (2026-08-10) — what "swept" means, and the honest thin spots
 
