@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-08-15 - VALIDATING REBUILD: RP1/RP2/RP3/AP7 proven live; :latest-cross re-shipped (fresh digests)
+
+A full runtime-lane rebuild (build-runtime-manifest.sh on the TF-less android
+pins) validated this session's staged runtime-hygiene changes against a real
+3-arch build + on-target smokes, and re-shipped :latest-cross with FRESH per-arch
+digests amd64 `d92cc0fb` / arm64 `99531bbe` / riscv64 `252ca5e8`.
+
+- **RP1 (setuid-sudo purge)** — `check_setuid_inventory` reported "no setuid sudo
+  in the shipped image" on all 3 arches; pulling the amd64 wrapper confirmed
+  `/usr/bin/sudo` + `/usr/local/bin/sudo` are ABSENT. Security win proven live.
+- **RP2 (apt cache-mount guards)** — the package + torch builds succeeded on all
+  3 arches with the `mountpoint -q` guards in place.
+- **RP3 (HEALTHCHECK 5s→30s)** — the shipped wrapper reports `Timeout:30`.
+- **AP7 (size observability, runtime half)** — `check_size_observability` emitted
+  the per-prefix `du` breakdown on all 3 arches.
+- **Regression checks held**: the RTCACHE3 `-t` fix produced three FRESH wrapper
+  tags again (no stale reuse); the byte-gate PASSed on all 3 (content matches
+  toggles); S2 held (libtensorflow still absent from the pulled wrapper); all
+  on-target smokes 0 failures.
+
+RP1/RP2/RP3 + AP7-runtime-half are now closed. AP7 media-half remains open.
+
 ## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6, cross-wheel SOABI, litert-web integrity)
 
 Static-validated code-only fixes (no rebuild), each verified against the failure

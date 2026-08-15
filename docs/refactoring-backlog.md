@@ -83,8 +83,11 @@ order to actually WORK them — the item text lives in the sub-sections below):
   shared apt-source include, RP4, RP6, TVM cross-build.
 - **Investigate / experiment (not straight code):** GEN1 (genai-on-riscv64 self-
   build), onnxruntime 1.28-vs-1.27 dedupe, gcc prereq inconsistency (forensic#6).
-- **Staged, code-done — closing after the in-flight validating rebuild:** AP7
-  runtime-half, RP1, RP2, RP3 (each ✅-marked in Tier 2/3 below).
+- **✅ CLOSED 2026-08-15 by the validating rebuild:** RP1 (setuid-sudo purge),
+  RP2 (apt cache-mount guards), RP3 (HEALTHCHECK 30s), AP7 runtime-half — all
+  proven live on :latest-cross (fresh digests d92cc0fb/99531bbe/252ca5e8; RP1
+  "no setuid sudo" + AP7 size report ×3, byte-gate PASS ×3, 0 smoke failures,
+  sudo/TF confirmed absent in the pulled wrapper). Removed from the batches.
 
 ### New code fixes (2026-08-10 rounds, all evidence-verified)
 
@@ -282,7 +285,11 @@ order to actually WORK them — the item text lives in the sub-sections below):
 
 ### Runtime/packaging + artifact-performance additions (2026-08-10 sweep, RP/AP)
 
-- **AP7 — zero size observability FIRST** [S·★★★] ✅ CODE-DONE 2026-08-15 (runtime half): check_size_observability added to smoke-runtime-image — `du -sh /opt/* + site-packages | sort -h` per arch, informational. Rides next rebuild-window validation. STILL OPEN: the media-stage half (same block in verify-media-artifacts.sh) for the 42.66 GB media image —
+- **AP7 — zero size observability** [S·★★★] runtime half ✅ DONE + REBUILD-VALIDATED
+  2026-08-15 (check_size_observability in smoke-runtime-image emitted "per-prefix
+  disk usage" on all 3 arches in the verify rebuild). STILL OPEN: the media-stage
+  half (same `du -sh /opt/*|sort -h` block in verify-media-artifacts.sh) for the
+  42.66 GB media image —
   has no per-prefix breakdown anywhere. One `du -sh /opt/* …|sort -h` block in
   verify-media-artifacts.sh + smoke-runtime-image turns every size item below
   (and S2/TG4) into measured numbers on the very next build. Do before the
@@ -313,21 +320,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
   PGO, no LTO). The foreign-arch venv interpreter leaves 10-30% upstream-
   documented speedup on the table. Add --with-lto both paths now; qemu-PGO =
   separate investigation.
-- **RP1 — final image ships a setuid sudo NOBODY can use** [S·★★ security] ✅ CODE-DONE 2026-08-15 (Dockerfile.torch purges /usr/bin/sudo* + setuid-sudo find-delete; check_setuid_inventory added to smoke-runtime-image asserts sudo absent + inventories the rest) — rides next rebuild-window validation.
-  package-lists.sh:76 installs it; Dockerfile.torch:79-85 removes only the
-  FAKE shim; no sudoers/group grants exist → pure LPE attack surface (sudo
-  CVE stream). Purge in the final stage + a setuid-inventory assert in
-  smoke-runtime-image (cheap wrapper-layer rebuild only).
-- **RP2 — cleanup scripts wipe the SHARED apt cache mounts** [✅ CODE-DONE 2026-08-15: `mountpoint -q /var/{cache,lib}/apt ||` guards added to setup-package-image.sh + 2 setup-torch-venv.sh normal-path sites; error-path site :240 left. Rides next rebuild-window validation.] — original note: cleanup scripts wipe the SHARED apt cache mounts, contradicting the
-  Dockerfile's own comment** [S·★] setup-package-image.sh:402-403 +
-  setup-torch-venv.sh:219/240/273 `apt-get clean; rm -rf /var/lib/apt/lists`
-  inside sharing=locked cache mounts (Dockerfile.package:262-264 explicitly
-  says not to). Zero size benefit (mounts never commit); parallel arches
-  re-download metadata. Guard with `mountpoint -q || …`.
-- **RP3 — HEALTHCHECK timeout 5s too tight for cold ORT import** [S·★] ✅ CODE-DONE 2026-08-15 (Dockerfile.torch: timeout 5s→30s) — rides next rebuild-window validation.
-  Dockerfile.torch:94-95 — cold import of a multi-hundred-MB .so on riscv64/
-  qemu plausibly >5 s → unhealthy-flapping. Raise timeout ~30 s (only bounds
-  the failure path).
 - **RP4 — whole-dir 01-core+02-toolchain COPYs sit ABOVE the expensive
   package RUN** [M·★] Dockerfile.package:203-204 — any core-script comment
   edit re-runs the slowest packaging layer ×3 arches. Narrow to consumed
