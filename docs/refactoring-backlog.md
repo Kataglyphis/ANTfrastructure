@@ -26,6 +26,33 @@ Records of done work live in CHANGELOG.md + memory + the archive.)
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
+## Next-rebuild readiness (staged 2026-08-15 — validate ALL in one 3-arch build)
+
+A batch of Batch-2 fixes are STAGED on main and only need the next validating
+rebuild to confirm. They were chosen as the safely-stageable subset: each is
+script-level (no new bind-mount dependency), shellcheck-clean, and unit/sandbox
+-tested where possible. Verify them together in ONE rebuild:
+
+- **AP7 media-half** — per-prefix `du` report at the media-inputs arm. Verify:
+  the size breakdown appears in the media build log on all 3 arches.
+- **RP6** — `/root/.local/bin` gone from the shipped PATH. Verify: `docker run
+  <img> sh -c 'echo $PATH'` has no /root/.local/bin (base still does).
+- **GST1 root fix** — configure-runtime resolves the real gstreamer libdir.
+  Verify: `pkg-config --exists gstreamer-1.0` OK on arm64/riscv64 WITHOUT the
+  repair net firing (watch for the "repaired …" log line — it should NOT print).
+- **AP4 (ffmpeg/gstreamer/libcamera)** — strip pass. Verify against AP7 numbers:
+  /opt/ffmpeg, /opt/gstreamer, /opt/libcamera shrink; smokes still green.
+- **TS1 script half** — appimagetool pinned to 1.9.1. Verify: base stage fetches
+  the immutable tag; no checksum-mismatch.
+
+REBUILD-WINDOW WORK (needs the mount audit / restructure DURING the rebuild, do
+NOT land blind — see the per-item notes below): guard-helper wiring+migration
+(Tier 0), opencv TWO-PASS (Tier 1), AP4 remainder (opencv5/litert/onnxruntime/
+armnn), AP1 wheels (RECORD re-hash), AP3 wheelhouse bind-mount, AP5 CPython LTO
+(cross-LTO is fragile — validate), RP4 package layer reorder, TG1 (attempted+
+reverted — mount audit mandatory), TG3-residual. BATCH 3 (versions.env): TS1
+keys, C3, AP6, RUFF/pyav/LLVM_COMMIT pins.
+
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
 1. Never edit versions.env or anything in the 01-core / 03-media bind-mount
