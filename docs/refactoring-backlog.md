@@ -124,6 +124,14 @@ order to actually WORK them — the item text lives in the sub-sections below):
 - **Named guard helpers (first_match/probe/csv_each/source_vendor)** [M·★★]
   — land FIRST in this batch; several items below assume them. (~426
   find|head||true-class sites documented in archive.)
+  FOUNDATION DONE 2026-08-15: `01-core/guard-helpers.sh` written + fully
+  unit-tested (`test-guard-helpers.sh`, 16 assertions; each helper fixes the
+  subtle bug its raw idiom repeats — `-print -quit`+`|| true`, real-status probe,
+  nounset-state-restoring source, IFS-safe split). NOT yet wired into common.sh
+  and NOT yet migrated to the call sites — that step bind-mounts a newly-sourced
+  01-core file into every RUN that uses common.sh, so a missed mount = a multi-
+  hour build break (the source_module-mount-gap lesson); it rides the next real
+  rebuild window. New code can source guard-helpers.sh directly today.
 - **Media source-cache mounts** [S/M·★★] no version-keyed src mounts for
   opencv/gstreamer/ffmpeg/onnx clones — every rebuild re-clones. Pairs with R3.
   (STILL OPEN — S4's 2026-08-12 pass did only the per-file install-deps mount

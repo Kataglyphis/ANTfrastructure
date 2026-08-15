@@ -195,10 +195,18 @@ _out=()
 append_runtime_image_output _out "repo:runtime-arm64" 0 "repo@sha256:android" android
 t_assert_eq "-t repo:runtime-arm64" "${_out[*]}"
 
-t_case "append_runtime_image_output uses the annotated exporter when pushing"
+# RTCACHE3 (2026-08-15): append_runtime_image_output now uses plain `-t` on BOTH
+# paths, including the push path. The old annotated `--output type=image,name=…`
+# exporter NEVER created a local containerd tag on this rootless host, so the
+# freshly built wrapper was invisible and push/manifest resolved the STALE tag —
+# :latest-cross shipped byte-identical 5×. The ancestry ANNOTATIONS never reached
+# the registry either (their persistence was the assumption this test encoded).
+# So the contract is now "use -t, drop the inert exporter"; provenance re-embed
+# via a locally-tagging method is a tracked follow-up. runtime_image_output_arg
+# (the annotation composer) is still exercised directly above.
+t_case "append_runtime_image_output uses -t on the push path too (RTCACHE3)"
 _out=()
 append_runtime_image_output _out "repo:runtime-arm64" 1 "repo@sha256:android" android
-t_assert_contains "${_out[*]}" "annotation.org.kataglyphis.parent-digest=repo@sha256:android" "pushed image records provenance"
-t_assert_contains "${_out[*]}" "--output" "pushed image uses --output not -t"
+t_assert_eq "${_out[*]}" "-t repo:runtime-arm64"
 
 t_summary
