@@ -933,6 +933,31 @@ function Invoke-SourceBuildChain {
     if ($Until -and ($names -notcontains $Until)) {
         throw "Invoke-SourceBuildChain: -Until '$Until' is not a stage of '$Label' (stages: $($names -join ', '))"
     }
+    # PROLOGUE: force a FRESH sccache server before the first compile (backlog
+    # #97). sccache reads SCCACHE_ERROR_LOG when the SERVER starts, and in a
+    # build the server is started implicitly by the first wrapped compile - at
+    # which point the setting evidently does not take: four consecutive builds
+    # produced ZERO error-log bytes while a hand probe in the SAME image with
+    # the SAME env produced one immediately. The only difference the probe had
+    # was an explicit --stop-server BEFORE compiling, so it always got a server
+    # that had read the current environment. This makes every stage do the same.
+    #
+    # Also the precondition for the epilogue's flush to mean anything: stopping
+    # a server that never opened the log flushes nothing.
+    #
+    # Best-effort: no server running is the NORMAL case in a fresh container, and
+    # a failure here must never fail a build that would otherwise be green.
+    $sccachePrologue = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($sccachePrologue) {
+        Write-Host "Resetting the sccache server so it starts with this stage's environment (SCCACHE_ERROR_LOG)..."
+        try {
+            & $sccachePrologue.Source --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+        } catch {
+            Write-Verbose "sccache --stop-server (prologue) skipped: $($_.Exception.Message)"
+        }
+        $global:LASTEXITCODE = 0
+    }
+
     $skipping = [bool]$StartAt
     foreach ($stage in $Stages) {
         if ($skipping) {
