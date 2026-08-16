@@ -204,7 +204,7 @@ ARG SCCACHE_LOG="warn"
 # FROM boundary any more than ARG does.
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
-    SCCACHE_DIR="C:\sccache" `
+    SCCACHE_DIR="C:\sccache\v2" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

@@ -32,6 +32,16 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
 
+# The L0/L1 layout, as a build-arg so the disk level can be switched OFF without
+# editing this file:
+#   build-buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=
+# Empty means "no chain": sccache then uses the WebDAV remote alone. That is not
+# a hypothetical - `webdav-only` is the ONE configuration that has written
+# cleanly in every probe, on every base image, while the L0 disk level fails
+# 100 % of its writes inside a real build (genai 157/157) no matter which
+# directory it points at. Keep the default two-level; flip it when L0 misbehaves.
+ARG SCCACHE_MULTILEVEL_CHAIN="disk,webdav"
+
 # sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
 # every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
 #
@@ -55,6 +65,18 @@ ARG SCCACHE_LOG="warn"
 # reservedSpace FLOOR was the actual fix for backlog #89, where GC reclaimed the
 # whole mount mid-chain and every write after the first stage failed. Read the
 # live numbers from buildkitd.toml, not from this comment.
+#
+# SCCACHE_DIR points at a SUBDIRECTORY (`\v2`), not at the mount root. The tree
+# that grew directly in C:\sccache is damaged in a PATH-DEPENDENT way: writing
+# an object whose hash lands on a bad path fails with `The system cannot find
+# the path specified. (os error 3)`, which is why a build (157 objects, spread
+# over every bucket) failed 157/157 while single-compile probes were erratic -
+# 1/1, then 5/6, then 0/6, depending on where that one hash landed. Chasing that
+# noise cost several wrong "root causes" (the CWD, the multilevel chain, the
+# mount itself, the foreign `logs` dir, process detachment, concurrency - each
+# measured and each dead). A FRESH directory writes cleanly, on this mount, in
+# every probe and across container boundaries; the damaged tree is simply
+# abandoned. Bump to \v3 if it ever recurs, and see backlog #99.
 #
 # SCCACHE_ERROR_LOG lives on its OWN cache mount (C:\sccache-logs,
 # id=sccache-logs-winamd64), NOT inside SCCACHE_DIR - corrected 2026-08-15,
@@ -88,8 +110,8 @@ ARG SCCACHE_LOG="warn"
 # The RUN step's process tree ends with the step, so 0 leaks nothing.
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
-    SCCACHE_DIR="C:\sccache" `
+    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
+    SCCACHE_DIR="C:\sccache\v2" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
