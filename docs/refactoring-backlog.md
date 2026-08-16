@@ -404,12 +404,17 @@ order to actually WORK them — the item text lives in the sub-sections below):
   a cross build is active, else host strip. Unit-tested all 5 resolution paths
   (STRIP-set / cross+onPATH / cross-no-strip / native / no-helpers), shellcheck
   + full suite green. Wired at end of build-opencv.sh main (MEDIA_STRIP-gated,
-  best-effort, /opt/opencv5 is a dedicated prefix). STILL OPEN: **litert +
-  onnxruntime** install into the SHARED /usr/local (stripping the whole prefix
-  would hit the base CPython — need to target only their own libs), and
-  onnxruntime's build script does NOT source common.sh (helper unavailable) —
-  both need a targeted approach, not the prefix-strip pattern. armnn/acl (arm64
-  only) similar. (llvm-target = TG4, separate.)
+  best-effort, /opt/opencv5 is a dedicated prefix). **litert ✅ STAGED 2026-08-16**
+  (rides next rebuild): litert installs into the SHARED /usr/local/lib (next to
+  base CPython), so a whole-prefix strip is wrong — added `strip_media_libs <dir>
+  <name-glob…>` (targeted maxdepth-1, reuses _resolve_media_strip_bin) and wired
+  build-litert.sh to strip ONLY libtensorflow-lite*/libtensorflowlite_c*/libtflite*
+  (unit-tested: litert libs 1→0, libpython UNTOUCHED). STILL OPEN: **onnxruntime**
+  (dedicated subdir /usr/local/lib/onnxruntime-cpu so a whole-dir strip WOULD work,
+  but its build script doesn't source common.sh → helper unavailable; needs the
+  helper wired in, or an inline strip using its own ${STRIP} which
+  30-build-native.sh does export) and **armnn/acl** (arm64 only). (llvm-target =
+  TG4, separate.)
 - **AP5 — cross-target CPython built plain -O2: no PGO, no LTO** [M·★★]
   build_python.sh:225-233 (cross configure has neither) vs :471 (native has
   PGO, no LTO). The foreign-arch venv interpreter leaves 10-30% upstream-

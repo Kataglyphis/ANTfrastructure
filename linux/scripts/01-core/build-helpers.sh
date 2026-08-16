@@ -215,3 +215,24 @@ strip_media_prefixes() {
     strip_elf_tree "${p}" "${jobs}" "${strip_bin}"
   done
 }
+
+# strip_media_libs <dir> <name-glob> [name-glob...] — AP4: strip ONLY the libs
+# matching <name-glob>s directly under <dir> (maxdepth 1). For a library that
+# installs into a SHARED prefix (e.g. litert into /usr/local/lib, next to the
+# base CPython libs) where strip_media_prefixes' whole-tree walk would wrongly
+# strip unrelated base libs. Resolves the cross/host strip via
+# _resolve_media_strip_bin; --strip-all keeps .dynsym. Best-effort; the caller
+# owns the MEDIA_STRIP gate (mirrors strip_media_prefixes).
+strip_media_libs() {
+  local dir="$1"; shift
+  { [ -d "${dir}" ] && [ "$#" -gt 0 ]; } || return 0
+  local strip_bin; strip_bin="$(_resolve_media_strip_bin)"
+  local -a name_expr=()
+  local g
+  for g in "$@"; do
+    if [ "${#name_expr[@]}" -eq 0 ]; then name_expr=( -name "${g}" )
+    else name_expr+=( -o -name "${g}" ); fi
+  done
+  find "${dir}" -maxdepth 1 -type f \( "${name_expr[@]}" \) \
+    -exec "${strip_bin}" --strip-all {} + 2>/dev/null || true
+}
