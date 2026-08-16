@@ -48,12 +48,20 @@ triplet="$(resolve_triplet)"
 # lib/multiarch/) correct on both layouts. repair_gstreamer_multiarch_link in
 # setup-package-image.sh remains as the belt-and-suspenders net.
 resolve_gstreamer_libdir() {
-  local base="/opt/gstreamer/lib" cand
+  local base="/opt/gstreamer/lib" cand libdir
   for cand in "${base}/${triplet}/pkgconfig/gstreamer-1.0.pc" \
               "${base}"/*/pkgconfig/gstreamer-1.0.pc \
               "${base}/pkgconfig/gstreamer-1.0.pc"; do
     [ -f "${cand}" ] || continue
-    dirname "$(dirname "${cand}")"   # the libdir that carries pkgconfig/
+    libdir="$(dirname "$(dirname "${cand}")")"
+    # NEVER resolve to the multiarch symlink itself. configure-runtime runs a
+    # SECOND time in the package stage on a media payload that already carries
+    # lib/multiarch, and the middle glob matches lib/multiarch/pkgconfig/… —
+    # resolving to it would re-point multiarch at ITSELF (a self-referential
+    # link that dangles). Skip it; we want the real triplet/lib dir. (Belt-and-
+    # suspenders: the caller also rm's the stale link before calling us.)
+    [ "${libdir}" = "${base}/multiarch" ] && continue
+    printf '%s' "${libdir}"   # the libdir that carries pkgconfig/
     return 0
   done
   # Nothing built yet / unexpected layout: keep the historical default so a
@@ -61,22 +69,29 @@ resolve_gstreamer_libdir() {
   printf '%s' "${base}/${triplet}"
 }
 
+# Drop any pre-existing multiarch symlink BEFORE resolving, so (a) the resolver
+# can't self-match it and (b) we always recreate it fresh from the real
+# pc-carrying dir. It is ALWAYS a symlink here (never a real dir), so removing
+# it drops only the link, never the target.
+if [ -L /opt/gstreamer/lib/multiarch ]; then rm -f /opt/gstreamer/lib/multiarch; fi
+
 gst_libdir="$(resolve_gstreamer_libdir)"
 mkdir -p "${gst_libdir}"
 ln -snf "${gst_libdir}" "/opt/gstreamer/lib/multiarch" || true
 
-# GST1 assert: when the gstreamer stack IS present, the dev surface consumers
-# actually use (lib/multiarch/pkgconfig/gstreamer-1.0.pc) MUST resolve through
-# the symlink just made — a dangling multiarch dir is the exact silent
-# regression this fix closes. Skip cleanly for a gstreamer-less image.
+# GST1 check — WARN only, NOT fail-loud. This runs in the package stage BEFORE
+# repair_gstreamer_multiarch_link (setup-package-image.sh), which fixes any
+# residual dangle, and the pkg-config `verify_consumer_dev_surface` gate right
+# after is the fail-loud authority. (An earlier fail-loud exit HERE killed the
+# riscv64 build before the repair net could act — 2026-08-16.)
 if find /opt/gstreamer/lib -name gstreamer-1.0.pc -type f 2>/dev/null | grep -q .; then
   if [ ! -f /opt/gstreamer/lib/multiarch/pkgconfig/gstreamer-1.0.pc ]; then
-    echo "ERROR: gstreamer-1.0.pc exists under /opt/gstreamer/lib but does NOT resolve" >&2
-    echo "       through lib/multiarch/pkgconfig — the dev surface would ship dangling." >&2
-    echo "       multiarch -> $(readlink /opt/gstreamer/lib/multiarch 2>/dev/null || echo '?')" >&2
-    exit 1
+    echo "WARN: gstreamer-1.0.pc under /opt/gstreamer/lib does not yet resolve via" >&2
+    echo "      lib/multiarch/pkgconfig (multiarch -> $(readlink /opt/gstreamer/lib/multiarch 2>/dev/null || echo '?')) —" >&2
+    echo "      repair_gstreamer_multiarch_link + the dev-surface gate will handle it." >&2
+  else
+    echo "OK: gstreamer dev surface resolves via lib/multiarch/pkgconfig/gstreamer-1.0.pc"
   fi
-  echo "OK: gstreamer dev surface resolves via lib/multiarch/pkgconfig/gstreamer-1.0.pc"
 fi
 
 # ld.so: register the resolved libdir AND the plain lib/ root (cross libdir=lib
