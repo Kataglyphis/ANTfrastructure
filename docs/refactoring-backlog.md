@@ -57,33 +57,6 @@ rebuild:
   split is risky for a ★ cache win). DUP2: no safe code-only subset
   (native-suffix/out-of-scope/deliberate-fallback).
 
-## ✅ SHIPPED 2026-08-16 (the staged Batch-2 subset — validated by a full rebuild)
-
-The 2026-08-15 staged subset SHIPPED via a full base→:latest-cross 3-arch
-rebuild. Fresh manifest: amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64
-`28e3ded96f72` (all differ from the prior d92cc0fb/99531bbe/252ca5e8). Byte-gate
-PASSED 3/3 (libtensorflow absent); manual amd64 pull confirmed GST1 resolves,
-RP6 PATH clean, stripped sizes. **DONE + LIVE:** AP7 media-half, RP6, GST1 root
-fix, AP4 (ffmpeg/gstreamer/libcamera), TS1 script half. The real build flushed
-out TWO bugs the runtime-lane validations couldn't (they skip smoke-media):
-- **numpy/cv2** (fix 0b2b306) — smoke-media native cv2 hard-failed on numpy
-  being absent in the media BUILD sandbox (a /opt/venv packaging dep); now
-  deferred to the runtime smoke like onnxruntime.
-- **GST1 self-link** (fix 22fb812) — configure-runtime runs a 2nd time in the
-  package stage; the resolver glob matched the existing lib/multiarch symlink
-  and re-pointed it at itself. Fixed: rm the stale link before resolving + skip
-  it in the resolver + assert downgraded to WARN (the pkg-config gate is the
-  fail-loud authority — a script that runs twice must not carry a fragile
-  build-breaking assert).
-
-STILL REBUILD-WINDOW WORK (needs the mount audit / restructure DURING a rebuild,
-do NOT land blind): guard-helper wiring+migration (Tier 0), opencv TWO-PASS
-(Tier 1), AP4 remainder (opencv5/litert/onnxruntime/armnn), AP1 wheels (RECORD
-re-hash), AP3 wheelhouse bind-mount, AP5 CPython LTO (cross-LTO is fragile —
-validate), RP4 package layer reorder, TG1 (attempted+reverted — mount audit
-mandatory), TG3-residual. BATCH 3 (versions.env): TS1 keys, C3, AP6,
-RUFF/pyav/LLVM_COMMIT pins.
-
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
 1. Never edit versions.env or anything in the 01-core / 03-media bind-mount
@@ -121,31 +94,10 @@ RUFF/pyav/LLVM_COMMIT pins.
 
 ## Batch 2 — the 01-core / in-container closure window (ONE rebuild pays for all)
 
-Precondition SATISFIED: T1-T6 harness exists. Sequence inside the batch:
-guard helpers FIRST (several refactors below want them), then the rest in any
-order, verify-script-copy-coverage green throughout, one full 3-arch validate.
-
-**Priority order within Batch 2** (the batch groups by blast radius; this is the
-order to actually WORK them — the item text lives in the sub-sections below):
-
-- **Tier 0 — land FIRST (unblocks refactors):** Named guard helpers.
-- **Tier 1 — correctness / real defects (★★★, do next):** GST1 (arm64 dev
-  surface dangling in EVERY shipped image), opencv-builds-before-ffmpeg/gstreamer
-  (HighGUI/videoIO silently degraded), TS1 (moving `continuous` tag → tamper-
-  shaped build death), TG1 (13-wide GCC cache closure — REDO carefully, it was
-  attempted+reverted; needs a real toolchain rebuild to validate).
-- **Tier 2 — measurable size/perf (★★★/★★):** AP7 media-half FIRST (size
-  observability — turns every size item below into numbers), then AP2 (byte-
-  compile venv — per-start cost), AP1 (unstripped cross wheels, ~50-300 MB/arch),
-  AP4 (strip media prefixes, 5-10%), AP3 (dead wheelhouse layer, 0.5-2 GB/pull),
-  AP5 (cross CPython no LTO, 10-30% interp speedup).
-- **Tier 3 — hygiene / robustness (★-★★):** D3+P5, A1 (gate half), P3 residual,
-  Media source-cache mounts, LLVM ccache launcher, riscv64 ffmpeg skips, codec
-  runtime-list convergence, cerbero/soundtouch, GCC_PARALLEL_TARGETS, Complexity-
-  queue survivors, NVIDIA-lane sweep, SUDO run_priv, TG3-residual, TS4, TS8 +
-  shared apt-source include, RP4, RP6, TVM cross-build.
-- **Investigate / experiment (not straight code):** GEN1 (genai-on-riscv64 self-
-  build), onnxruntime 1.28-vs-1.27 dedupe, gcc prereq inconsistency (forensic#6).
+The high-value Tier 0-2 work (guard-helper wiring, GST1, opencv two-pass, TS1,
+TG1, AP1-5) is DONE + staged for the in-flight validating rebuild — see the top
+**"Batch-2 BIG WAVE staged"** section. What remains below is the OPEN Tier-3
+hygiene items + the investigate items; each still rides a closure-window rebuild.
 ### New code fixes (2026-08-10 rounds, all evidence-verified)
 
 - **D3 + P5 — smoke-media gate scaffold + SMOKE_ENV** [M·★★] extract
@@ -181,17 +133,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
 
 ### Legacy items folded in (verified OPEN by the currency audit)
 
-- **Named guard helpers (first_match/probe/csv_each/source_vendor)** [M·★★]
-  — land FIRST in this batch; several items below assume them. (~426
-  find|head||true-class sites documented in archive.)
-  FOUNDATION DONE 2026-08-15: `01-core/guard-helpers.sh` written + fully
-  unit-tested (`test-guard-helpers.sh`, 16 assertions; each helper fixes the
-  subtle bug its raw idiom repeats — `-print -quit`+`|| true`, real-status probe,
-  nounset-state-restoring source, IFS-safe split). NOT yet wired into common.sh
-  and NOT yet migrated to the call sites — that step bind-mounts a newly-sourced
-  01-core file into every RUN that uses common.sh, so a missed mount = a multi-
-  hour build break (the source_module-mount-gap lesson); it rides the next real
-  rebuild window. New code can source guard-helpers.sh directly today.
 - **Media source-cache mounts** [S/M·★★] no version-keyed src mounts for
   opencv/gstreamer/ffmpeg/onnx clones — every rebuild re-clones. Pairs with R3.
   (STILL OPEN — S4's 2026-08-12 pass did only the per-file install-deps mount
@@ -203,27 +144,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
 - **LLVM nested-build ccache launcher** [S·★] llvm-cross.sh:232
   CROSS_TOOLCHAIN_FLAGS_NATIVE launcher-less; toolchain RUNs emit no ccache
   stats (media does).
-- **opencv ⇄ gstreamer two-pass build (DECIDED — owner wants two-pass)** [M/L·★★]
-  Problem: opencv builds before ffmpeg/gstreamer (opencv:416 < ffmpeg:539 <
-  gstreamer:620, all FROM base), so opencv's HighGUI/videoio is silently
-  degraded — but it CANNOT simply be reordered, because gstreamer ships an
-  **opencv plugin** and therefore needs opencv built FIRST. Genuine two-way
-  dependency (opencv wants ffmpeg/gstreamer for videoio; gstreamer wants opencv
-  for its plugin). ⚠ Do NOT flip opencv after gstreamer — that breaks the
-  gstreamer opencv plugin.
-  **DECISION: implement the THREE-STAGE two-pass build** (this is the wanted
-  design, not just one option):
-  1. **opencv pass 1** — build opencv WITHOUT ffmpeg/gstreamer (a lean opencv
-     that satisfies gstreamer's opencv plugin).
-  2. **ffmpeg + gstreamer** — build both against opencv-pass-1; the gstreamer
-     opencv plugin resolves.
-  3. **opencv pass 2** — REBUILD opencv WITH ffmpeg + gstreamer present, so its
-     videoio/HighGUI backends light up fully.
-  Ship opencv-pass-2 as the final /opt/opencv5. Keep pass-1 as an intermediate
-  (build-stage only, not in the runtime image). Add a media-stage assert that the
-  shipped opencv reports the ffmpeg + gstreamer videoio backends as ENABLED
-  (`cv2.getBuildInformation()` grep) so a regression to a degraded opencv fails
-  loud. Cost: opencv compiles twice (heaviest media lib) — acceptable per owner.
 - **gcc prereq inconsistency** [M] (forensic#6, archive). SOURCE TRIAGE
   2026-08-15: the headline "inconsistency" (Canadian-cross passes pull in-tree
   gmp/mpfr/mpc/isl via `contrib/download_prerequisites` while native passes use
@@ -237,16 +157,8 @@ order to actually WORK them — the item text lives in the sub-sections below):
   duplicate-compile overlap worth measuring once ccache stats exist. Keep as a
   rebuild-window measurement item; the "make the two prereq paths consistent"
   reading is CLOSED (they're correctly different).
-- **DUP1 — build-host uname→triplet hand-rolled** [S·★★] (dup-audit 2026-08-15)
-  the `uname→triplet` FALLBACK (after the `${DEB_BUILD_MULTIARCH:-}`/
-  `dpkg-architecture` probe) duplicated the canonical `build_deb_multiarch_triplet`
-  (platform.sh). Equivalence PROVEN on-host (`build_deb_multiarch_triplet` ==
-  `uname→sed` == `x86_64-linux-gnu`; map matches all 3 arches).
-  · vulkan.sh:249 ✅ DONE 2026-08-15 — SAFE because vulkan.sh already uses
-    `arch_normalize` (platform.sh), so the helper adds NO new mount dependency.
-    Rides a rebuild-window final-validation (toolchain closure), but it's a
-    proven-equivalent + no-new-dep swap.
-  · cross-apt.sh:408-412 — DEFERRED: cross-apt.sh uses NO platform.sh function
+- **DUP1 residual — build-host uname→triplet in cross-apt.sh** [S·★] (vulkan.sh:249
+  half done). cross-apt.sh:408-412 — DEFERRED: cross-apt.sh uses NO platform.sh function
     today, so calling build_deb_multiarch_triplet would add a NEW mount dependency
     on platform.sh into every cross-apt RUN. If platform.sh is not mounted there
     the helper returns empty and the pkgconfig candidate is silently dropped (a
@@ -325,23 +237,12 @@ order to actually WORK them — the item text lives in the sub-sections below):
 
 ### Toolchain deep-sweep additions (2026-08-10, two agents; TG=build-graph, TS=scripts)
 
-- **TG1 — GCC layer's cache closure is 13 files wide because
-  setup-dependencies.sh eagerly sources everything** [M·★★★] the GCC RUN
-  bind-mounts llvm*.sh/vulkan.sh/cmake.sh/… (Dockerfile.toolchain:94-106,
-  "keep in sync" comment at :67); a one-line vulkan.sh edit re-runs the
-  3655 s GCC build + everything downstream (~2.3 h). Fix: lazy per-command
-  source_module dispatch, then trim the three mount lists to true closures.
-  Also UNBLOCKS the vulkan SUDO-helper refactor cheaply.
-  ⚠ ATTEMPTED + REVERTED 2026-08-12: an agent implemented the lazy dispatch
-  + trimmed 17 mount lines but was killed mid-trim (Fable session limit) on
-  the LLVM RUN, leaving a POSSIBLY-inconsistent per-RUN mount closure. Since
-  the toolchain RUNs have NO whole-dir COPY fallback (unlike media/sdk), a
-  single missed mount = a multi-hour build break with no cheap validator
-  (copy-coverage.py does NOT resolve source_module-by-name — proven this
-  session). Reverted setup-dependencies.sh + Dockerfile.toolchain to HEAD
-  (the config that shipped :latest-cross). REDO REQUIREMENT: per-RUN mount
-  audit (subcommand → lazy arm closure → transitive module deps) PLUS one
-  real toolchain rebuild to validate before merging — do not land blind.
+- **TG1 residual — fuller toolchain-closure trim** [M·★★] the bounded TG1
+  (lazy cmake/vulkan + trimmed their mounts) is done; the fuller trim (llvm-cross/
+  llvm-validate lazy, 01-core narrowing to true per-RUN closures) stays deferred —
+  the toolchain RUNs have NO whole-dir COPY fallback, so a missed mount = a
+  multi-hour break with no cheap validator (copy-coverage.py doesn't resolve
+  source_module-by-name). Needs a per-RUN mount audit + a real toolchain rebuild.
 - **TG3-residual — RUN-3d does not skip the recompile** [S·★] the TG3/TG4/TG7
   REDO landed + validated 2026-08-14 (wave-2 compiler stage: one unified
   LLVM+clang build/arch, libLLVMSupportLSP installed to both prefixes,
@@ -352,19 +253,6 @@ order to actually WORK them — the item text lives in the sub-sections below):
   small — but to fully realize "one compile per arch" collapse the two
   toolchain RUNs into one (a Dockerfile.toolchain mount-closure change,
   deliberately deferred from the redo to avoid mount risk). Pairs with TG1.
-- **TS1 — appimagetool pinned to the MOVING `continuous` tag** [S/M·★★★]
-  ✅ SCRIPT HALF STAGED 2026-08-15 (rides next rebuild). packaging-deps.sh now
-  pins the IMMUTABLE versioned tag 1.9.1 (published 2025-11-18, same asset names)
-  instead of `continuous`, with the 4 SHA256s updated to 1.9.1's GitHub API
-  `digest` values. amd64 asset VERIFIED by real download+sha256 (the arch base
-  builds actually fetch — `uname -m` on the amd64 build host); aarch64/armhf/i686
-  from the authoritative server-computed digest field. URL now
-  `.../download/${APPIMAGETOOL_VERSION:-1.9.1}/<asset>`. This removes the
-  tamper-shaped "checksum mismatch" death that fired whenever upstream re-uploaded
-  `continuous`. shellcheck-clean. REMAINING (Batch 3 rider, below): move
-  APPIMAGETOOL_VERSION + the 4 SHAs into versions.env keys with a cmake.sh-style
-  stale-pin guard (needs Dockerfile.base ARG plumbing to forward them).
-
 - **TS4 — build-clang.sh reuses an UNVERSIONED cached llvm-project checkout**
   [S·★★] :162/:214 — since the LLVM_CROSS_SOURCE_ROOT fix the checkout
   SURVIVES builds; an LLVM bump silently rebuilds the OLD tag for hours
@@ -377,93 +265,7 @@ order to actually WORK them — the item text lives in the sub-sections below):
 - **Shared apt-source/mirror include (carried from archive P3-2026-07-17):**
   [S] media+package covered; Dockerfile.nvidia/amd/android + now
   build_python.sh (TS8) still hand-roll. One include, five consumers.
-- **GST1 — cross-vs-native gstreamer libdir split (ROOT fix)** ✅ STAGED
-  2026-08-15 (rides next rebuild). Root cause: configure-runtime.sh:41-42
-  UNCONDITIONALLY `mkdir`ed lib/<triplet> and pointed `multiarch` there, but
-  cross builds pass libdir=lib (native installs to lib/<triplet>/), so the
-  symlink dangled the entire pkg-config gstreamer-1.0 dev surface on
-  arm64/riscv64 in EVERY shipped image (Klasse-B package gate caught it
-  2026-08-11). FIX: `resolve_gstreamer_libdir` now points multiarch at whichever
-  libdir actually carries gstreamer-1.0.pc (probes lib/<triplet>/pkgconfig →
-  lib/*/pkgconfig → lib/pkgconfig, historical default as fallback) — which also
-  makes GST_PLUGIN_PATH / GI_TYPELIB_PATH (both route through lib/multiarch/)
-  correct on both layouts; ld.so.conf now registers the resolved libdir AND the
-  plain lib/ root; plus a fail-loud in-step assert that
-  lib/multiarch/pkgconfig/gstreamer-1.0.pc resolves when gstreamer is present
-  (skips cleanly otherwise). Edits a file already in the package RUN closure → no
-  new mount dep. shellcheck-clean; sandbox-tested → both NATIVE (lib/<triplet>)
-  and CROSS (lib) layouts resolve. repair_gstreamer_multiarch_link stays as the
-  belt-and-suspenders net. Rebuild proves it on real arm64/riscv64 gstreamer.
 
-### Runtime/packaging + artifact-performance additions (2026-08-10 sweep, RP/AP)
-
-- **AP7 — zero size observability** [S·★★★] runtime half ✅ DONE + REBUILD-VALIDATED
-  2026-08-15 (check_size_observability in smoke-runtime-image emitted "per-prefix
-  disk usage" on all 3 arches in the verify rebuild). Media half ✅ STAGED
-  2026-08-15 (rides next rebuild): `report_prefix_sizes` added to
-  verify-media-artifacts.sh — INFORMATIONAL-only (never touches FAILURES), called
-  at the always-run `media-inputs` consolidation arm so the `du -sh /opt/* +
-  /usr/local/lib/onnxruntime-* | sort -h` breakdown lands with no dedicated
-  Dockerfile RUN line; also exposed as an explicit `sizes` stage. Edits a file
-  already in the media RUN closure → no new mount dependency. shellcheck-clean,
-  smoke-run rc=0. Turns every size item below (AP1/AP4/S2/TG4) into measured
-  numbers on the next build.
-- **AP1 — cross wheels ship UNSTRIPPED: host strip no-ops on target ELFs**
-  [S·★★, MEASURED] media-arm64.log:20304-20347 — `cmake --install --strip`
-  runs /usr/bin/strip on arm64 .so → "Unable to recognise the architecture"
-  ×every lib (TVM/IREE/ORT cross wheels). CMAKE_STRIP exported (cross-env.sh:
-  542) but doesn't reach the wheel step. Fix: forward <triplet>-strip into the
-  wheel env or a strip_elf_tree post-pass in repair-wheels.sh. ~50-300 MB/arch.
-- **AP2 — /opt/venv never byte-compiled + runtime user can't write
-  __pycache__ → EVERY container start re-parses the stdlib+torch** [S·★★★]
-  uv doesn't compile by default; venv is root-owned, USER kataglyphis can't
-  cache .pyc → the cost recurs per start (seconds-to-tens on riscv64). Fix:
-  UV_COMPILE_BYTECODE=1 or compileall -j0 at venv build. +~10% venv size.
-- **AP3 — the wheelhouse is a dead layer in every shipped torch image**
-  [M·★★] Dockerfile.package:75 COPYs /opt/wheels; setup-torch-venv.sh:492
-  rm -rf's it ONE IMAGE LATER (whiteout reclaims nothing) → every pull
-  downloads 0.5-2 GB of dead wheels per arch. Fix: bind-mount the wheelhouse
-  into the venv RUN instead of COPYing (copy-media-payloads shows the pattern).
-- **AP4 — no strip pass over ANY media prefix** [S·★★] ffmpeg/gstreamer/libcamera
-  ✅ SHIPPED 2026-08-16 (strip_media_prefixes wired + validated live in the full
-  rebuild — the shipped amd64 wrapper's prefixes are stripped: ffmpeg 35M/gst
-  263M/opencv 140M/libcamera 11M). **opencv5 ✅ STAGED 2026-08-16** (rides next
-  rebuild): build-opencv.sh does NOT call setup_linux_cross_env (it sets the
-  NATIVE gcc in configure_opencv_build_env, ${STRIP} unset), so the helper gained
-  `_resolve_media_strip_bin` — it self-derives the cross `<triplet>-strip` (via
-  cross_target_triplet + the on-PATH cross bin symlinks) when STRIP is unset and
-  a cross build is active, else host strip. Unit-tested all 5 resolution paths
-  (STRIP-set / cross+onPATH / cross-no-strip / native / no-helpers), shellcheck
-  + full suite green. Wired at end of build-opencv.sh main (MEDIA_STRIP-gated,
-  best-effort, /opt/opencv5 is a dedicated prefix). **litert ✅ STAGED 2026-08-16**
-  (rides next rebuild): litert installs into the SHARED /usr/local/lib (next to
-  base CPython), so a whole-prefix strip is wrong — added `strip_media_libs <dir>
-  <name-glob…>` (targeted maxdepth-1, reuses _resolve_media_strip_bin) and wired
-  build-litert.sh to strip ONLY libtensorflow-lite*/libtensorflowlite_c*/libtflite*
-  (unit-tested: litert libs 1→0, libpython UNTOUCHED). STILL OPEN: **onnxruntime**
-  (dedicated subdir /usr/local/lib/onnxruntime-cpu so a whole-dir strip WOULD work,
-  but its build script doesn't source common.sh → helper unavailable; needs the
-  helper wired in, or an inline strip using its own ${STRIP} which
-  30-build-native.sh does export) and **armnn/acl** (arm64 only). (llvm-target =
-  TG4, separate.)
-- **AP5 — cross-target CPython built plain -O2: no PGO, no LTO** [M·★★]
-  build_python.sh:225-233 (cross configure has neither) vs :471 (native has
-  PGO, no LTO). The foreign-arch venv interpreter leaves 10-30% upstream-
-  documented speedup on the table. Add --with-lto both paths now; qemu-PGO =
-  separate investigation.
-- **RP4 — whole-dir 01-core+02-toolchain COPYs sit ABOVE the expensive
-  package RUN** [M·★] Dockerfile.package:203-204 — any core-script comment
-  edit re-runs the slowest packaging layer ×3 arches. Narrow to consumed
-  files or move ship-only copies below the RUN. Riders: :108 COPY-then-rm
-  (persists in lower layer; bind-mount instead), :100 missing --link.
-- **RP6 — /root/.local/bin baked into PATH of a uid-1001 image** ✅ STAGED
-  2026-08-15 (rides next rebuild) — dropped from Dockerfile.package:208 (the
-  shipped-image PATH ENV) and runtime-paths.env:25 (the canonical reference);
-  Dockerfile.base:77 intentionally KEPT (base builds run as root and legitimately
-  install to /root/.local). The advisory verify-runtime-paths only WARNs on
-  /opt|/usr/local paths so it was unaffected (rc=0); full unit suite green. Dead
-  for kataglyphis (0700 /root) + a PATH-hijack precondition if /root perms ever
-  loosened — now gone from the shipped image.
 
 ## Batch 3 — versions.env riders (NEVER alone; next planned pin bump)
 
