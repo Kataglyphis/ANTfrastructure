@@ -205,16 +205,10 @@ $cmakeExtra = @(
     # Any consumer linking all modules (the cv2 pyd!) then dies 0xC0000135. Same
     # class as the WITH_OPENGL=OFF fix; FFmpeg + GStreamer backends remain.
     '-DWITH_VTK=OFF', '-DWITH_MSMF=OFF', '-DWITH_OBSENSOR=OFF', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
-    # OPENCV_FFMPEG_SKIP_DOWNLOAD=ON (backlog #94). WITH_FFMPEG=ON alone does NOT
-    # mean "use the FFmpeg on this machine": on Windows OpenCV downloads its own
-    # prebuilt `opencv_videoio_ffmpeg*.dll` and reports `FFMPEG: YES (prebuilt
-    # binaries)`. That shipped for months — avcodec 61 inside OpenCV while this
-    # chain builds avcodec 63, i.e. two FFmpeg generations in one image, with
-    # cv::VideoCapture on the older one and `avdevice: NO`. Skipping the download
-    # makes OpenCV resolve FFmpeg through pkg-config instead, which is why the
-    # PKG_CONFIG_PATH block below is not optional and why the media chain now
-    # builds FFmpeg BEFORE OpenCV.
-    '-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON',
+    # NB: OPENCV_FFMPEG_SKIP_DOWNLOAD is deliberately NOT set — see the block
+    # below the flag list. Setting it produced `FFMPEG: NO` (measured 2026-08-16,
+    # a real regression), because OpenCV's Windows pkg-config fallback is gated
+    # on PKG_CONFIG_FOUND, which is never set on this platform. Backlog #94.
     # WITH_OPENMP=OFF: clang-cl compiles `#pragma omp` (e.g. contrib surface_matching)
     # into __kmpc_* runtime calls but the generated link line never includes libomp.lib
     # -> lld-link "undefined symbol: __kmpc_fork_call". TBB (WITH_TBB=ON above) is
@@ -229,27 +223,37 @@ $cmakeExtra = @(
 )
 
 # --- FFmpeg discovery for videoio (backlog #94) -------------------------------
-# With OPENCV_FFMPEG_SKIP_DOWNLOAD=ON above, OpenCV finds FFmpeg through
-# pkg-config and NOTHING ELSE, so PKG_CONFIG_PATH has to carry this chain's
-# .pc files or videoio ends up with `FFMPEG: NO` — worse than the prebuilt it
-# replaces. build-ffmpeg-from-source.ps1 already rewrites the MSYS `/c/...`
-# prefixes in those .pc files to Windows form, which is what makes them usable
-# by clang-cl/lld-link at all.
+# The chain builds FFmpeg BEFORE OpenCV (swapped 2026-08-16) and puts its .pc
+# files on PKG_CONFIG_PATH here. That much is correct and stays — other probes
+# (ONNX Runtime) use the same mechanism.
 #
-# Verified discoverable before this was wired (probe-opencv-video-backends.ps1
-# on bk-windows-media-core-ffmpeg): 7 .pc files present, `pkg-config
-# --modversion libavcodec` -> 63.1.100. Assert rather than hope: a missing
-# directory here means a silent capability loss, exactly the class of defect
-# this file's other comments keep documenting.
+# WHAT DOES NOT WORK, MEASURED: adding `-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON` to
+# make OpenCV link THIS FFmpeg instead of downloading its own turned
+# `FFMPEG: YES (prebuilt binaries)` into a flat `FFMPEG: NO` — strictly worse.
+# Reverted the same day. The reason is in OpenCV's own
+# modules/videoio/cmake/detect_ffmpeg.cmake (5.0.0), where the pkg-config route
+# is guarded by:
+#
+#     if(NOT HAVE_FFMPEG AND PKG_CONFIG_FOUND)
+#
+# `PKG_CONFIG_FOUND` comes from find_package(PkgConfig), which OpenCV does not
+# run on Windows — so skipping the download removes the only detection path that
+# was working and the fallback never fires, no matter what PKG_CONFIG_PATH says.
+# pkg-config itself is fine here: `pkg-config --modversion libavcodec` returns
+# 63.1.100 inside the same image.
+#
+# So a real #94 fix has to give CMake a detection route it actually takes on
+# Windows — the find_package branch (OPENCV_FFMPEG_USE_FIND_PACKAGE, which needs
+# a FindFFMPEG providing AVCODEC/AVFORMAT/AVUTIL/SWSCALE), or setting
+# PKG_CONFIG_FOUND/HAVE_FFMPEG plus the FFMPEG_* variables directly. Do not try
+# SKIP_DOWNLOAD again on its own; that experiment has been run.
 $ffPkgConfig = Join-Path $InstallDir 'ffmpeg\lib\pkgconfig'
 if (Test-Path $ffPkgConfig) {
     $pcParts = @($ffPkgConfig) + @($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })
     $env:PKG_CONFIG_PATH = ($pcParts | Select-Object -Unique) -join ';'
     Write-Host "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
 } else {
-    throw ("OPENCV_FFMPEG_SKIP_DOWNLOAD=ON is set but FFmpeg's pkgconfig dir is missing at $ffPkgConfig. " +
-        "OpenCV would configure with FFMPEG: NO and cv::VideoCapture would lose its FFmpeg backend silently. " +
-        "The media chain must build FFmpeg BEFORE OpenCV (see build-media-core-all.ps1) — backlog #94.")
+    Write-Host "NOTE: no FFmpeg pkgconfig dir at $ffPkgConfig (harmless today; OpenCV uses its own prebuilt FFmpeg — backlog #94)"
 }
 
 # cv2 python module inputs. OpenCV 5.x's find_python() still round-trips through

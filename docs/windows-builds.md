@@ -2713,6 +2713,47 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   opencv/ffmpeg stages can simply SWAP — no circularity, no second pass. Verify
   with `getBuildInformation()` afterwards that avcodec reports the n9.0 line.
 
+  **PARTLY DONE 2026-08-16 — the swap SHIPPED, the flag that was supposed to
+  exploit it REGRESSED and was reverted the same day.**
+
+  Shipped and kept: FFmpeg now builds BEFORE OpenCV
+  (`build-media-core-all.ps1` stage order, the `FROM` graph in
+  `Dockerfile.media-builder`, the `Invoke-BkStage` order in
+  `build-buildkit.ps1` — three places, all three verified in agreement), and
+  every RUN passes BOTH `-ResumeFrom` and `-Until`. The ffmpeg step previously
+  passed only `-ResumeFrom` and worked purely because it was LAST; after the
+  swap that would have silently dragged OpenCV into the ffmpeg layer.
+
+  Reverted: `-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON`. It turned
+  `FFMPEG: YES (prebuilt binaries)` into a flat **`FFMPEG: NO`** — strictly
+  worse than the defect it was meant to fix. Cause, from OpenCV 5.0.0's
+  `modules/videoio/cmake/detect_ffmpeg.cmake`:
+
+  ```cmake
+  if(NOT HAVE_FFMPEG AND PKG_CONFIG_FOUND)   # <- the pkg-config route
+  ```
+
+  `PKG_CONFIG_FOUND` comes from `find_package(PkgConfig)`, which OpenCV does not
+  run on Windows. So skipping the download removes the ONLY detection path that
+  works there and nothing takes its place. **Do not try `SKIP_DOWNLOAD` on its
+  own again — that experiment has been run.**
+
+  METHOD NOTE, worth more than the failed attempt: the prerequisite was checked
+  first, and the check was the WRONG one. `pkg-config --modversion libavcodec`
+  → 63.1.100 inside the image proves *pkg-config* works; it says nothing about
+  whether *OpenCV's CMake* ever calls it. Right question, wrong instrument.
+
+  WHAT A REAL FIX NEEDS: a detection route CMake actually takes on Windows —
+  the `find_package` branch (`OPENCV_FFMPEG_USE_FIND_PACKAGE`, which needs a
+  `FindFFMPEG` exporting AVCODEC/AVFORMAT/AVUTIL/SWSCALE), or setting
+  `PKG_CONFIG_FOUND` + the `FFMPEG_*` variables directly. Verify by asserting on
+  the CMake configure output, not on a shell pkg-config call.
+
+  COST NOTE: the revert rebuilt only opencv+genai — onnx and ffmpeg stayed
+  CACHED, 21:55 instead of ~90 min. That per-library checkpoint granularity is
+  exactly what #72 proposed collapsing; this incident is a concrete argument for
+  keeping it.
+
 - **95 [S·★★★, none] GUARD BOTH: assert the compiled-in video backends, in the
   smoke test.** Neither #93 nor #94 may land without this — the whole reason
   they went unnoticed is that nothing ever asserted them, while the one obvious
