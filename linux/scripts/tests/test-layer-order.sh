@@ -12,7 +12,7 @@
 # deliberately changes, and keep it matching reality):
 #
 #   L0 (true leaves, source NO other 01-core file):
-#       logging.sh load-versions-env.sh path-helpers.sh platform.sh
+#       logging.sh load-versions-env.sh path-helpers.sh platform.sh guard-helpers.sh
 #       NOTE: platform.sh is L0, not L1 as the original A5 sketch guessed —
 #       it sources nothing (its own header calls it a "true leaf") and BOTH
 #       arch-mapping.sh and ubuntu-mirror.sh source it.
@@ -33,7 +33,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE_DIR="${TESTS_DIR}/../01-core"
 
-L0=(logging.sh load-versions-env.sh path-helpers.sh platform.sh)
+L0=(logging.sh load-versions-env.sh path-helpers.sh platform.sh guard-helpers.sh)
 L1=(arch-mapping.sh ubuntu-mirror.sh downloads.sh parallelism.sh)
 L2=(common.sh)
 L3=(cross-env.sh cross-gcc.sh cross-python.sh cross-apt.sh cross-meson.sh)
