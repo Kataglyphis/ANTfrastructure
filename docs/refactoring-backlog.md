@@ -78,10 +78,15 @@ RUFF/pyav/LLVM_COMMIT pins.
 
 - **SV-residual: compose-CLI validation only** [S] nginx half CLOSED
   2026-08-11: containerized `nginx -t` (nginx:alpine + dummy certs) passed
-  "syntax ok / test successful" on the post-surgery config. Remaining: run
-  `docker compose config` (+ the lan override) once on a machine with a
-  compose CLI, and watch the first real `compose up` (SV1 switched ollama to
-  the locally built image + healthcheck ordering).
+  "syntax ok / test successful" on the post-surgery config. STRUCTURAL check DONE
+  2026-08-16 (no compose CLI on this host): all llm-stack compose files
+  (base/gpu/lan) + linux/docker-compose.yml are valid YAML; the lan override's
+  !override/!reset tags parse; its overridden services (ollama/open-webui/glances)
+  all exist in base and touch only `ports` (the expected LAN-exposure change);
+  gpu override (ollama) likewise valid. Remaining (needs a compose CLI): the full
+  `docker compose config` schema/interpolation validation (+ the lan override
+  merge), and watching the first real `compose up` (SV1 switched ollama to the
+  locally built image + healthcheck ordering).
 
 ## Batch 2 — the 01-core / in-container closure window (ONE rebuild pays for all)
 
