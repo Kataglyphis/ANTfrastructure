@@ -26,6 +26,37 @@ Records of done work live in CHANGELOG.md + memory + the archive.)
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
+## 🔨 Batch-2 BIG WAVE staged 2026-08-16 (awaiting the bundled 3-arch rebuild)
+
+Owner chose "alles inkl. TG1 + guard-Migration → 1 Rebuild". Implemented + tested
+(shellcheck + unit suite 396 + copy-coverage all green), pending the validating
+rebuild:
+- **AP4 complete** — opencv/litert/onnxruntime/armnn/acl now stripped too (added
+  `_resolve_media_strip_bin` self-deriving the cross `<triplet>-strip`, and
+  `strip_media_libs` for the shared /usr/local libs).
+- **AP5** — CPython `--with-lto` cross+native, `PYTHON_LTO=0` escape hatch.
+- **AP3** — wheelhouse bind-mounted (readonly) into the package RUN instead of
+  COPY+rm → no 0.5-2 GB dead layer; `rm` mountpoint-guarded.
+- **AP2** — `/opt/venv` byte-compiled at build (target python under qemu),
+  `VENV_COMPILE=0` gate.
+- **AP1** — cross wheels stripped via RECORD-safe `wheel unpack→strip→pack` in
+  repair-wheels.sh (corruption-safe: original removed only after a good repack).
+- **opencv two-pass** — new `opencv-gst` stage (`FROM gstreamer`) rebuilds OpenCV
+  with the source-built /opt/gstreamer (FORCE_REBUILD=1); `final` COPYs it over
+  the pass-1 tree. riscv64 reproduces pass-1 (gstreamer OFF upstream).
+- **TG1 (bounded)** — cmake.sh + vulkan.sh made lazy in setup-dependencies.sh +
+  their dead mounts trimmed from all 3 toolchain RUNs (verified: gcc/eager-set/
+  verify never source them; the subcommands invoked here don't install them). A
+  cmake/vulkan edit no longer re-runs the 3655s GCC build. The fuller closure
+  trim (llvm-cross/validate, 01-core narrowing) stays deferred — higher risk.
+- **Guard-helper wiring** — sourced into both common.sh files (guarded);
+  layer-order test updated. The 426-site call-site migration stays incremental
+  (cosmetic, per-site + mount-gap risk; not worth 426 hand-edits pre-rebuild).
+- **RP4 + DUP2 — DEFERRED, no safe form.** RP4: the core/toolchain scripts are
+  BOTH consumed by the package RUN AND shipped (can't move below; bind-mount
+  split is risky for a ★ cache win). DUP2: no safe code-only subset
+  (native-suffix/out-of-scope/deliberate-fallback).
+
 ## ✅ SHIPPED 2026-08-16 (the staged Batch-2 subset — validated by a full rebuild)
 
 The 2026-08-15 staged subset SHIPPED via a full base→:latest-cross 3-arch
