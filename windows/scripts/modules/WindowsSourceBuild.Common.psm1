@@ -627,7 +627,23 @@ function Get-PersistentBuildLogPath {
         # host lane, or a container built without the sccache mount).
         [Parameter(Mandatory)][string]$FallbackDir
     )
-    $logDir = if ($env:SCCACHE_DIR -and (Test-Path $env:SCCACHE_DIR)) { Join-Path $env:SCCACHE_DIR 'logs' } else { $FallbackDir }
+    # NEVER $env:SCCACHE_DIR — that is sccache's own cache ROOT, and this
+    # function used to write build logs straight into it as `<SCCACHE_DIR>\logs`.
+    # sccache's LRU disk cache indexes everything under its root, so every build
+    # was churning large, appended, rotated files through the middle of the cache
+    # index. Measured consequence: 100 % of L0 cache writes failing with
+    # `The system cannot find the path specified. (os error 3)` — genai 157/157,
+    # opencv 1/1, every stage that attempted a write at all. The dir reappeared
+    # (65.8 MB) after every build even when a probe had just deleted it, which is
+    # what finally identified this function as the source.
+    #
+    # #90 moved SCCACHE_ERROR_LOG out of the cache root for the same reason and
+    # created a DEDICATED mount for it (C:\sccache-logs, id=sccache-logs-winamd64).
+    # Build logs belong on that same mount; it is equally persistent and is not
+    # scanned by sccache. Deriving it from SCCACHE_ERROR_LOG keeps the two in
+    # step instead of hard-coding the path a second time.
+    $logRoot = if ($env:SCCACHE_ERROR_LOG) { Split-Path $env:SCCACHE_ERROR_LOG -Parent } else { '' }
+    $logDir = if ($logRoot -and (Test-Path $logRoot)) { $logRoot } else { $FallbackDir }
     $null = New-Item -ItemType Directory -Force -Path $logDir
     $logPath = Join-Path $logDir $Name
     # Copy+Remove, NOT Move-Item: the cache mount is rename-hostile (probed for
@@ -949,11 +965,57 @@ function Invoke-SourceBuildChain {
     # a failure here must never fail a build that would otherwise be green.
     $sccachePrologue = Get-Command sccache.exe -ErrorAction SilentlyContinue
     if ($sccachePrologue) {
-        Write-Host "Resetting the sccache server so it starts with this stage's environment (SCCACHE_ERROR_LOG)..."
+        Write-Host "Starting the sccache server from a STABLE working directory (backlog #99)..."
         try {
+            # Stop first so the start below is the one that wins (usually a no-op
+            # in a fresh container - "no connection could be made" is expected).
             & $sccachePrologue.Source --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+
+            # START IT EXPLICITLY, FROM C:\.
+            #
+            # NOTE — this did NOT fix the cache-write failures. The hypothesis was
+            # that the implicitly-spawned server inherits the build script's CWD,
+            # which the chain later deletes, breaking relative path resolution.
+            # MEASURED 2026-08-15 with this code live: genai still reported
+            # 157 misses / 157 L0 write failures — unchanged. See backlog #99;
+            # do not re-litigate the CWD theory from the old evidence.
+            #
+            # Kept anyway because it is independently correct: it guarantees the
+            # server has read THIS stage's environment (SCCACHE_ERROR_LOG,
+            # SCCACHE_LOG) rather than inheriting a stale one, which is what makes
+            # the epilogue dump meaningful at all. It is hygiene, not a fix.
+            #
+            # C:\ cannot be deleted, so the server's CWD stays valid for the whole
+            # stage. Push-Location/Pop-Location keeps the caller's directory.
+            #
+            # TRUNCATE THE ERROR LOG FIRST — it lives on the SHARED sccache-logs
+            # cache mount and is APPEND-only, so it survives across runs (50,928
+            # lines / 12,413 error lines observed). The epilogue dump therefore
+            # replayed a PREVIOUS run's failures verbatim, which read exactly like
+            # a live regression and cost a false alarm. Truncate here, between the
+            # stop (handle released) and the start (server reopens the path), so
+            # everything the epilogue prints belongs to THIS stage and nothing
+            # else. Best-effort: never fail a green stage over a log file.
+            if ($env:SCCACHE_ERROR_LOG) {
+                try {
+                    $errDir = Split-Path $env:SCCACHE_ERROR_LOG -Parent
+                    if ($errDir -and -not (Test-Path $errDir)) {
+                        $null = New-Item -ItemType Directory -Force -Path $errDir -ErrorAction Stop
+                    }
+                    Set-Content -Path $env:SCCACHE_ERROR_LOG -Value $null -Force -ErrorAction Stop
+                    Write-Host "  sccache-prologue| truncated $($env:SCCACHE_ERROR_LOG) (per-stage attribution)"
+                } catch {
+                    Write-Host "  sccache-prologue| WARNING: could not truncate the error log: $($_.Exception.Message)"
+                    Write-Host "  sccache-prologue| WARNING: the epilogue dump may contain entries from EARLIER runs."
+                }
+            }
+
+            Push-Location 'C:\'
+            try {
+                & $sccachePrologue.Source --start-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+            } finally { Pop-Location }
         } catch {
-            Write-Verbose "sccache --stop-server (prologue) skipped: $($_.Exception.Message)"
+            Write-Verbose "sccache prologue skipped: $($_.Exception.Message)"
         }
         $global:LASTEXITCODE = 0
     }
@@ -1256,7 +1318,7 @@ function Complete-SourceBuildChain {
         $failures = @($lines | Select-String -Pattern 'ERROR|WARN|failed|denied|refused' -SimpleMatch:$false)
         if ($failures.Count -gt 0) {
             Write-Host "--- $($failures.Count) error/warn line(s) ---"
-            $failures | Select-Object -First 60 | ForEach-Object { Write-Host "  sccache-log| $_" }
+            $failures | Select-Object -Last 60 | ForEach-Object { Write-Host "  sccache-log| $_" }
         } else {
             Write-Host '--- no error/warn lines; tail follows ---'
             $lines | Select-Object -Last 20 | ForEach-Object { Write-Host "  sccache-log| $_" }

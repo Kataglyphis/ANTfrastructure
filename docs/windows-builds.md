@@ -2181,6 +2181,102 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   fully-populated env. Cheap to try, and it would also make the epilogue's flush
   meaningful.
 
+- **99 [S·★★★, none] ROOT CAUSE FOUND — sccache's cache write fails with
+  `os error 3` (ERROR_PATH_NOT_FOUND), and the artifact itself is fine.** After
+  six dead hypotheses, sccache's own debug log (finally obtainable, see #96/#98)
+  states it plainly, once per TU, 157 times:
+
+  ```text
+  [main.cpp.obj]: Compiled in 1.389 s, storing in cache
+  [main.cpp.obj]: Created cache artifact in 0.000 s      <- packaging SUCCEEDS
+  [main.cpp.obj]: compile result: cache miss
+  Error executing cache write: The system cannot find the path specified. (os error 3)
+  ```
+
+  So it is not permissions, not disk space, not the remote, and not the
+  packaging step — the STORAGE WRITE cannot resolve a path.
+
+  **CWD HYPOTHESIS — TRIED AND DISPROVEN 2026-08-15.** The theory was that the
+  server, spawned implicitly by the first wrapped compile, inherits the build
+  script's CWD, which the chain later deletes (`Removing build tree: …`),
+  breaking relative path resolution. An explicit `--stop-server` +
+  `--start-server` from `C:\` shipped in `Invoke-SourceBuildChain` and the next
+  full media build measured **genai 157 misses / 157 L0 write failures —
+  bit-for-bit unchanged**. Do not resurrect this from the old evidence.
+
+  That build also killed the "later stages are special" framing that had
+  survived since #89. Writes fail at a **flat 100 % everywhere**; onnx merely
+  had nothing to write:
+
+  | stage | misses | write attempts | failures |
+  |---|---|---|---|
+  | onnx | 0 | 0 | 0 (vacuous) |
+  | opencv | 1 | 1 | **1** |
+  | genai | 157 | 157 | **157** |
+
+  A "0 write errors" line from a stage with 0 misses is not evidence of health —
+  it is evidence of nothing. Always read it next to the miss count.
+
+  **CONFIRMED CAUSE 2026-08-15 — it is the BUILDKIT CACHE MOUNT.** Isolated by
+  `windows/scripts/probe-sccache-write.ps1`, which reproduces the failure with
+  ONE compile in ~2 minutes and varies one factor at a time:
+
+  | variant | SCCACHE_DIR | chain | write errors |
+  |---|---|---|---|
+  | disk-only | `C:\sccache` (cache mount) | — | **1** |
+  | multilevel-mounted | `C:\sccache` (cache mount) | disk,webdav | **1** |
+  | multilevel-plaindir | `C:\sccache-alt` (plain dir) | disk,webdav | **0** |
+  | webdav-only | (remote) | — | **0** |
+
+  The identical configuration writes cleanly to an ordinary container directory
+  and fails against the cache mount, so it is **not** the multilevel chain
+  (row 3 disproves it) and **not** the remote (row 4). Meanwhile the probe's raw
+  `.NET` tests — nested `create_dir_all`, file write, rename inside the mount,
+  and rename from `%TEMP%` INTO the mount — all **pass**. So the mount is
+  writable by the foreground script and not by the sccache server.
+
+  **DETACHED-PROCESS THEORY — TESTED AND DEAD.** The spawn matrix runs the same
+  raw write from an attached child, a hidden async child and a fully detached
+  child (`CreateNoWindow`, no console): all three report
+  `exists=True | entries=19 | write=OK` against the mount, same user. Process
+  shape is not the difference.
+
+  **AND THE MOUNT THEORY WAS A CONFOUND.** `multilevel-plaindir` changed TWO
+  things at once — off the mount AND into an EMPTY directory. The extra row
+  `disk-mounted-subdir` (empty dir ON the mount) writes **cleanly**, so the
+  mount is innocent; what fails is the *populated* root. Never accept a
+  two-variable comparison as a cause, however good the story sounds.
+
+  **ACTUAL CAUSE: stale directory entries in the pre-existing bucket tree.**
+  Bisecting the root (`probe-sccache-write.ps1`, ~2 min/round):
+  - the foreign entries (`logs`, 65.8 MB, left over from before #90; `wtest.txt`)
+    were **not** it — removing them changed nothing;
+  - `preprocessor` was not it;
+  - no SINGLE bucket reproduced it: the binary search ended at `f` by
+    elimination, and restoring `f` alone wrote **cleanly**. Elimination is not
+    reproduction — the confirmation step is what caught this;
+  - but after every bucket had been moved OFF the mount and back, the same root
+    wrote **10 of 10 clean**.
+
+  A cross-volume `Move-Item` is copy+delete, so the cycle rewrote the whole tree
+  and with it every directory entry. That is the repair, and it explains the one
+  observation that made no sense for days: the probe's raw `.NET` writes always
+  passed because they CREATE NEW paths (`probe-tmp\a1\b2`), while sccache writes
+  into the PRE-EXISTING bucket subtree (`8\a\c\<hash>`) — only sccache ever
+  touched the damaged entries. Cf. this host's known wcifs layer-rename quirk.
+
+  **STATUS: repaired empirically, durability unverified.** The next real media
+  build is the test — genai must go from 157/157 write failures to 0, and the
+  run after that must show HITS for it (today it has none at all, ever).
+
+  **DEPLOYABLE WORKAROUND, measured not guessed:** row 4 writes fine, so drop
+  L0 and run WebDAV as the sole cache (remove `SCCACHE_MULTILEVEL_CHAIN` and the
+  `C:\sccache` mount). The disk level is already contributing almost nothing —
+  in the last opencv stage it served **13 hits against L1's 1848** and has been
+  write-dead throughout — while the breakage costs genai its cache **entirely**
+  (`L1 writes 0`: when L0's write fails, nothing reaches the remote either, so
+  those objects have never been stored, which is why genai rebuilds every time).
+
 - **98 [M·★★★, none] LOCALISED: every write failure is at **L0 (local disk)**,
   never at the WebDAV remote.** The multilevel breakdown — which nobody had read
   until 2026-08-15, because the top-level `Cache write errors` counter hides it —
@@ -2570,6 +2666,36 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   cuDNN's nested layout likely replaces the whole stage. NOTE: verify the
   actual cuDNN 9 nesting against the installed tree before removing the stage —
   the flatten fix was load-bearing for OpenCV's `cudnn64_9.dll`.
+- **100 [M·★★★, media-core] FFmpeg and PyAV compile with sccache COMPLETELY
+  BYPASSED — the whole ffmpeg branch is uncached, every build, forever.**
+  Measured 2026-08-15 in the #99 verification run: the `media-core-built-ffmpeg`
+  stage reported `Compile requests 0` — not "0 hits", *zero requests*. sccache
+  never saw a single compile.
+
+  CAUSE: sccache is wired **only** through CMake, in
+  `WindowsBuild.Common.psm1:642-643` (`CMAKE_C_COMPILER_LAUNCHER` /
+  `CMAKE_CXX_COMPILER_LAUNCHER`). FFmpeg does not use CMake — it configures with
+  `--toolchain=msvc --cc=clang-cl --ld=lld-link`
+  (`build-ffmpeg-from-source.ps1:317`), so every one of its C files goes
+  straight to `clang-cl`. PyAV is the same story from the other direction: it
+  builds through setuptools, which invokes MSVC `cl.exe` directly (visible in
+  the same log right before `Staged wheel: av-18.0.0-…`).
+
+  WHY IT WENT UNNOTICED: the chain's aggregate hit rate looks excellent
+  (onnx 1498/1498, opencv 1861/1862) precisely BECAUSE the uncached components
+  contribute no requests to the denominator. A component that bypasses sccache
+  entirely is invisible in a hit-rate metric — it can only be seen by reading
+  `Compile requests` per stage. Cf. the AGENTS.md "aggregate evidence" rule.
+
+  FIX TO TRY: pass the launcher into FFmpeg's own configure —
+  `--cc="sccache clang-cl"` (FFmpeg's configure tolerates a launcher prefix in
+  `--cc`; verify `ffbuild/config.mak` afterwards, and that `--ld` stays bare).
+  For PyAV, setuptools honours `CC`/`CXX` only on non-MSVC; the realistic lever
+  is a compiler shim on PATH, so treat PyAV as a separate, lower-value item.
+  VERIFY BY: `Compile requests` > 0 for the ffmpeg stage — that number, not the
+  hit rate, is the acceptance criterion. Do NOT accept a rerun with a warm
+  cache as evidence: a stage with 0 misses writes nothing and proves nothing
+  (that trap cost two stages' worth of "0 write errors" in this very run).
 
 ### P4 — Missing regression tests (each maps to a bug that already cost hours)
 
