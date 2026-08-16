@@ -28,8 +28,11 @@ expense of the others:
   compete — pinned buildkitd GC budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
   That map is the **Linux** lane. The **Windows** lane caches by deliberate
-  layer ordering plus a two-tier sccache (local `disk` L0 in front of the
-  WebDAV L2) covering C/C++ **and** CUDA, and a uv/pip wheel cache — see
+  layer ordering plus an sccache WebDAV remote covering C/C++, and a uv/pip
+  wheel cache. A local disk tier in front of that remote is wired but **off by
+  default**, because BuildKit's Windows cache mounts lose writes into a
+  directory an earlier build step populated; CUDA is deliberately not routed
+  through sccache at all. Both are measured, not assumed — see
   [`AGENTS.md` § Caching discipline](AGENTS.md) rule 5, which also records why
   sccache is built from source there (released builds cannot wrap `nvcc` on
   CUDA 13.3). **The WebDAV L2 is only as available as the dufs server backing

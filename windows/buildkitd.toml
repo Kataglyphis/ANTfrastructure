@@ -84,6 +84,12 @@
   # Windows chain gained real, load-bearing cache mounts, and they SHARE this
   # one budget with local sources and git checkouts —
   #   sccache L0  (id=sccache-winamd64-2)       SCCACHE_CACHE_SIZE = 15G
+  #     DORMANT since 2026-08-16: SCCACHE_MULTILEVEL_CHAIN defaults to "" (WebDAV
+  #     only), so this mount is still ATTACHED to every compiling RUN but nothing
+  #     writes to it -- the 15G is reserved-in-name, not consumed. Do not reclaim
+  #     the budget on that basis: the two-tier layout is meant to come back once
+  #     BuildKit's WCOW cache mounts stop losing writes into an inherited
+  #     directory (docs/windows-builds.md #99), and it needs this headroom again.
   #   uv/pip      (id=uv-wheels-winamd64)                          ~10G
   #   sccache log (id=sccache-logs-winamd64)                        <1G
   #     Added 2026-08-15 (backlog #90). SCCACHE_ERROR_LOG used to live inside

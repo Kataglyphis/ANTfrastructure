@@ -398,6 +398,28 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   `VCRUNTIME140.dll` that obviously loads in an MSVC-built image, a mount that
   should exist. **A probe with no control cannot distinguish "broken product"
   from "broken probe".**
+- **A probe that reproduces the ENVIRONMENT does not necessarily reproduce the
+  FAILURE — and until it does, it can clear nothing.** `probe-sccache-write.ps1`
+  ran the real image, the real cache mount ids and the real ENV, and for two days
+  every configuration it pronounced clean then failed in the next 90-minute
+  build: a repaired cache tree, a fresh `SCCACHE_DIR`, the multilevel chain,
+  16-way concurrency, 239-character paths. It was not lying — its writes really
+  did succeed. It was simply too SMALL: the defect needs ~250 objects written
+  into a directory a PREVIOUS container populated, and every section until then
+  wrote a single object. Two rules from that: (a) treat a green probe as a hypothesis to test
+  in a real build, never as clearance — only per-stage `--show-stats` numbers
+  from a build settled anything here; (b) when a probe and the product disagree,
+  the next move is to make the probe BIGGER along the dimension you have not
+  varied, not to trust it. See backlog #99 for the full list of dead hypotheses.
+- **A probe can destroy its own experiment — read the setup output, not just the
+  verdict.** The same script sweeps anything in the cache root that is not a hex
+  bucket off the mount as debris; that quietly deleted the inheritance fixture a
+  later section depended on, and the run reported "0 files inherited" — which
+  reads as "the cache mount lost 250 objects", i.e. exactly backwards.
+  The directory listing printed at the top of the log is what exposed it. Keep
+  fixtures on an explicit allow-list (`$probeOwned`), and when a probe's result
+  is surprising, check what the probe DID to the system before believing what it
+  says about the system.
 - **Aggregate evidence has a SHELF LIFE — check the newest sample's timestamp
   against the last fix.** The log forensics concluded "sccache has never
   worked" from 0 hits / 189,861 failed writes across 94 stat blocks. Every one
@@ -413,6 +435,13 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   the mount. `Complete-SourceBuildChain` now calls `sccache --stop-server` as
   the chain epilogue (after every `Write-SccacheStatsToStderr`, which needs a
   live server), which also flushes the async webdav write-through tail.
+  `Invoke-SourceBuildChain`'s prologue is the other half: it stops the server,
+  **truncates the error log**, and starts the server explicitly from `C:\`. The
+  truncation is not tidiness — the log lives on a SHARED mount and only appends,
+  so the epilogue's dump was replaying a PREVIOUS run's failures verbatim
+  (50,928 lines / 12,413 error lines) and cost a full false alarm before anyone
+  compared its timestamps to the run's start time. Dump `-Last N`, never
+  `-First N`, on any log that accumulates.
   **Diagnostic value of this one:** the path, the level and the mount were all
   correct for days while three separate hypotheses were chased — LRU pruning,
   wrong location, unset `SCCACHE_LOG` — because a hand probe that waits a few
@@ -435,11 +464,13 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   `Get-PersistentBuildLogPath`.** When a vertex fails, BuildKit discards the
   container filesystem, so a log at `$buildDir\x-build.log` is gone exactly
   when it is needed and the only diagnosis left is the 50-line tail
-  `Invoke-NinjaBuildWithRetry` prints. `C:\sccache` is a persistent cache mount
-  and survives into the next run, so the helper
-  (`WindowsSourceBuild.Common.psm1`) puts logs under `$SCCACHE_DIR\logs` with
-  one `.prev` generation, falling back to the build dir only when no mount
-  exists. Pass the result as `-LogFile`; never hand-roll the path, and never
+  `Invoke-NinjaBuildWithRetry` prints. The helper
+  (`WindowsSourceBuild.Common.psm1`) therefore puts logs on the persistent
+  **`C:\sccache-logs`** mount (derived from `SCCACHE_ERROR_LOG`'s parent, so the
+  two cannot drift apart) with one `.prev` generation, falling back to the build
+  dir only when no mount exists. **Never `$SCCACHE_DIR\logs`** — it wrote build
+  logs straight into sccache's own LRU-managed cache ROOT, which is the same
+  mistake #90 had already fixed for the error log; corrected 2026-08-16. Pass the result as `-LogFile`; never hand-roll the path, and never
   omit `-LogFile` (build-onnx-genai did, and produced no ninja log at all).
   This lived as ONE inline block in build-onnx for months while
   opencv/iree/tvm/litert silently lost their logs — hence a shared helper
@@ -476,9 +507,9 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 - **NEVER swallow logs — display may truncate, persistence must not (owner
   directive 2026-08-10).** Every tool that shows `-Last N` lines Tee's the
   FULL stream to `out\build-logs\` first and prints the path; sccache's
-  server error log persists inside the sccache cache mount
-  (`SCCACHE_ERROR_LOG=C:\sccache\sccache-error.log` in
-  Dockerfile.media-builder — the 2026-08-10 nvcc-decomposition postmortem had
+  server error log persists on its OWN cache mount
+  (`SCCACHE_ERROR_LOG=C:\sccache-logs\sccache-error.log` in
+  Dockerfile.media-builder — NOT inside `SCCACHE_DIR`, see #90 — the 2026-08-10 nvcc-decomposition postmortem had
   only client-side 10054s because the server died with its logs); build
   stats go to STDERR (survives the step-log clip); and
   `BUILDKIT_STEP_LOG_MAX_SIZE=-1`/`MAX_SPEED=-1` on the buildkitd service is
@@ -611,7 +642,7 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 
 - **media-core builds via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core builds via `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`), which is the only way to get >2 CPUs *and* a committable image. Regression symptoms: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-builds.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see § Re-testing process isolation on new versions).
 - **Rust: rustup WITH a default toolchain is the sole provider — never a toolchain-less rustup, never a second provider (no scoop rust).** Polarity INVERTED by the Flutter-Cargokit fix: Cargokit (flutter_rust_bridge-style plugins) hard-requires rustup and aborts with "rustup not found in PATH." otherwise, so `setup-rust-toolchain.ps1` runs `rustup-init -y --default-toolchain stable --profile minimal` and `setup-scoop-tools.ps1` installs NO rust. `CARGO_BIN` (= `...\.cargo\bin`, the rustup proxy dir) sits ahead of scoop's shims on PATH **by design**. The failure the old "never rustup" rule guarded against was narrower than the rule: a **toolchain-less** rustup (`--default-toolchain none`) drops proxy shims that resolve no toolchain ("no default toolchain configured"); installed WITH a default they resolve correctly. Do not re-add `scoop install main/rust` alongside — one provider only. Details: `docs/windows-builds.md` § Rust toolchain.
-- **Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; inside a run+commit stage, `ProcessorCount` = `--cpu-count` (default = all host logical processors, 32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-builds.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM, an sccache remote, and — verified available 2026-08-08 but NOT yet wired — a local sccache L0 tier in front of that remote (`SCCACHE_MULTILEVEL_CHAIN`, see § Caching discipline rule 5).
+- **Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; inside a run+commit stage, `ProcessorCount` = `--cpu-count` (default = all host logical processors, 32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-builds.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM and the sccache WebDAV remote. **The local L0 disk tier is DISABLED BY DEFAULT since 2026-08-16 — and the fault is BuildKit, not sccache.** A BuildKit cache mount on Windows loses writes once its directory holds objects an EARLIER RUN wrote: 158 of 250 failed on the mount vs 0 of 250 into a plain container directory, same program, same moment; a FRESH directory on the same mount takes all 250. That is why opencv/genai (which inherit onnx's cache dir) failed ~100 % of writes while onnx, filling its own, failed 1.9 %. `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in BOTH media Dockerfiles; restore `disk,webdav` only after re-verifying against a newer buildkit (recipe + full measurement in `docs/windows-builds.md` #99). Do not "fix" this in sccache.
 - **Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`.** Media modules are LF, some build scripts CRLF; `core.autocrlf=true` plus some editors can flip a whole file, busting the media layer cache. `.gitattributes` pins these `-text`; after editing, confirm `git diff` shows only your change, not a whole-file EOL flip.
 - **`versions.env` is the single source of truth.** `build.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `setup-scoop-tools.ps1` splits its installs into exactly those two blocks.
 - **AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `build-onnx-from-source.ps1` appends `Get-WindowsX86Avx512Flags` per-TU to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and logs the tagged count. Don't "simplify" in either direction.
@@ -965,12 +996,19 @@ The rules an agent must never violate:
 
    **Wired 2026-08-08** (this list said "not wired" the same morning — it is
    current as of that afternoon):
-   - **sccache two-tier**, `SCCACHE_MULTILEVEL_CHAIN=disk,webdav` + a
-     `type=cache` mount for `SCCACHE_DIR`, on all seven compile RUNs
-     (`Dockerfile.media-builder` `common` stage + the merge builder, which is
-     not a descendant so the ENV is repeated). `SCCACHE_DIR` ALONE DOES
-     NOTHING — without the chain variable sccache stays in single-level legacy
-     mode and the disk backend is not in the chain at all.
+   - **sccache — WebDAV remote ONLY since 2026-08-16.**
+     `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in
+     `Dockerfile.media-builder`'s `common` stage AND in the merge builder (not a
+     descendant, so the ENV is repeated — change BOTH or neither). The two-tier
+     layout `disk,webdav` is what it *was*, and the owner wants it back once
+     WCOW cache mounts mature; it is off because **BuildKit cache mounts on
+     Windows lose writes** once the directory holds objects an EARLIER RUN
+     wrote (158 of 250 vs 0 of 250 into a plain directory; a fresh dir on the
+     same mount is fine). Note this is the same family as the already-known
+     "directory RENAMES fail on cache mounts" caveat further down this rule.
+     Full measurement + the two-step re-verification recipe: `docs/windows-builds.md` #99.
+     `SCCACHE_DIR` ALONE DOES NOTHING — without the chain variable sccache is in
+     single-level mode, and with a remote configured that means remote-only.
    - **sccache is BUILT FROM SOURCE** at `SCCACHE_GIT_REV`, not installed from
      scoop, and this is load-bearing: released sccache cannot wrap nvcc on CUDA
      13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved `--simt-only`
@@ -979,8 +1017,14 @@ The rules an agent must never violate:
      2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
      asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell
      the fixed and broken builds apart — main still reports 0.17.0.
-   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** on the back of that, which is what makes
-     ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable at all.
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** was wired on the back of that, and would
+     be what makes ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable — but it
+     has been **OPT-IN and OFF by default since 2026-08-10** (`SCCACHE_CUDA_LAUNCHER=1`;
+     sccache-wrapped nvcc dropped per-arch instantiations and produced link
+     failures). CUDA therefore recompiles on every run today, which is most of
+     onnx's ~53 min; do not read a long onnx stage as a cache failure. Never
+     flip the opt-in without all three canaries — see the Common Failure Modes
+     row on `lld-link: error: undefined symbol`.
    - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
      would bake a build-only mount path into the shipped image).
 
@@ -992,7 +1036,10 @@ The rules an agent must never violate:
    tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
    **shared** by every cache mount plus local sources and git checkouts, and
    the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
-   sizes and that cap are ONE decision, not two.
+   sizes and that cap are ONE decision, not two. (Since 2026-08-16 the L0 mount
+   is attached but DORMANT — the chain defaults to WebDAV-only — so its 15G is
+   reserved rather than consumed. Do not repurpose that headroom: the tier is
+   meant to return, see #99.)
 
 ## Code Organization (key shared utilities)
 

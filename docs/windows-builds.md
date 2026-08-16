@@ -1029,6 +1029,15 @@ steps; the remaining work is the Dockerfile surgery):
   variables. `SCCACHE_MULTILEVEL_WRITE_ERROR_POLICY` defaults to `l0` (a write
   failure on the local tier fails; remote-tier write errors are tolerated).
 
+  > **DISABLED SINCE 2026-08-16 — this describes the layout we want back, not
+  > the one in effect.** `SCCACHE_MULTILEVEL_CHAIN` now defaults to `""` in both
+  > media Dockerfiles, so the WebDAV remote is the sole cache. The L0 tier lives
+  > on a BuildKit cache mount, and on Windows those lose writes once the
+  > directory holds objects an EARLIER RUN wrote. The `l0` write-error policy
+  > above is what turned that into a total failure: with L0 broken, nothing ever
+  > reached the remote either (`L1 writes 0`). Measurement, cause and the
+  > re-enable recipe: backlog #99.
+
   **Version dependency this creates:** multi-tier landed in sccache **v0.16.0**
   (2026-06-19; implemented 2026-04-17, PR #2581). The image installs sccache
   from the FLOATING scoop block — measured **0.17.0** in the 2026-08-08 chain,
@@ -1992,6 +2001,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `patches/litert-lm/patch-assert.cmake` | `windows/scripts/` | `patch_replace_required` / `patch_regex_replace_required` — replace-with-verification for the CMake source patchers (backlog #56). `FATAL_ERROR`s when a pattern matched NOTHING, instead of the old bare `string(REPLACE)` + unconditional "Patched …" message that let an upstream reformat silently restore a fixed defect. Lives INSIDE `litert-lm/` because the Dockerfile COPYs that directory specifically. Enforced by `Patches.CmakeNoOpGuards.Tests.ps1`; a legitimate non-source replace opts out with a `patch-assert-exempt` marker + reason. |
 | `normalize-tensorrt-tree.ps1` | `windows/scripts/` | Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted `TensorRT-<version>` tree to a stable **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift, and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Backlog #38: the old pin-derived PATH was wrong twice over — wrong version AND wrong dir (TensorRT 10+ moved the DLLs to `bin\`), so the ORT TensorRT EP could never load, silently, while builds stayed green. Absent zip stays a supported graceful skip; a half-extracted tree is a build failure. |
 | `bootstrap-pwsh.ps1` | `windows/scripts/` | Installs PowerShell 7 as the FIRST RUN of `Dockerfile.base`, BIND-MOUNTED (no layer). Runs under Windows PowerShell **5.1** — the SHELL is not switched to pwsh until after it — so keep it 5.1-safe and do not use `Invoke-DownloadWithRetry` (no module is mounted that early). Carries its own 3-attempt retry with an in-loop SHA256 check. Extracted from a 1214-char inline RUN (backlog #27). |
+| `probe-sccache-write.ps1` + `run-sccache-write-probe.ps1` + `Dockerfile.sccache-write-probe` | `windows/scripts/`, `windows/` | Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min media build (backlog #99): same cache-mount ids, same ENV, then a configuration matrix (`disk-only`, `disk-mounted-subdir`, `disk-plaindir`, `multilevel-mounted`, `multilevel-plaindir`, `webdav-only`), raw filesystem tests, a process-spawn matrix, a bisect of the cache root, serial-vs-parallel and path-length sections. **Run it against the REAL base image** (`-BaseImage local/kataglyphis:bk-windows-media-core-ffmpeg`), not the toolchain default. **Health warning:** it reproduces the ENVIRONMENT but not the FAILURE — every configuration it blessed then failed in a real build, so treat its verdicts as hypotheses to test in a build, never as clearance. `PROBE_NONCE` + a `probe complete` marker check exist because an unchanged script gives `#6 CACHED` and silently replays an old verdict; `--no-cache` is not the alternative (it empties cache mounts, #96). |
 | `rebuild-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims a dynamically-expanding VHDX by REBUILDING it around its live data — the only reliable reclaim on ReFS guests, where `compact-host-vhdx.ps1` returns ~nothing. Creates a fresh dynamic disk, reproduces the source's filesystem/label/cluster size (and Dev Drive flag where `Format-Volume -DevDrive` exists), mirrors with `robocopy /MIR /COPYALL`, then verifies file count AND byte totals before anything is swapped. TWO PHASES on purpose: `-CopyOnly` touches nothing live and is safe with editors/agents still on the volume; the swap DETACHES the volume and so requires that no process holds a handle on it (a stray detach on 2026-08-06 pulled D: out from under a running session and killed it) — it REFUSES rather than forces, keeping the verified copy for a later `-SwapOnly`. Old disk kept as `.old` unless `-RetireOld`; **no space is reclaimed until it is deleted.** Failed swaps roll back to the original disk automatically. Parameters: `-VhdxPath` mandatory, `-NewSizeGB`, `-NewVhdxPath`, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-ExcludeDir`, `-LogPath`, `-ReportOnly`, `-CopyOnly`, `-SwapOnly`, `-RetireOld`, `-Force`. Put `-LogPath` off the volume for swap runs |
 
 ## Refactor Backlog (Windows container chain)
@@ -2081,11 +2091,27 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > Dockerfiles + 102 build logs). Each was verified against the tree/logs, not
 > inferred. These ship broken today — do them before any refactor below.
 
-### P0d — sccache writes fail in EVERY stage after the first (2026-08-15)
+### P0d — RESOLVED 2026-08-16: sccache write failures were BuildKit's WCOW cache mounts
 
-- **89 [M·★★★, none] Only the FIRST media stage writes to the compiler cache;
-  every stage after it fails 100 % of writes.** Measured on the first
-  fully-captured chain (`bk-run-fullchain-verify.log`, **zero clip events**):
+> **Read #99 first — it carries the answer; #89/#92/#97/#98 below are the trail
+> that led there and are kept for their method value, not as open work.** The
+> section title used to read "sccache writes fail in EVERY stage after the
+> first", which was itself one of the wrong turns: the failure was never
+> stage-dependent, it tracked whether the cache directory held objects an
+> EARLIER RUN had written. Fix shipped — `SCCACHE_MULTILEVEL_CHAIN` defaults to
+> `""` (WebDAV only) in both media Dockerfiles; genai went 157 write errors → 0
+> and then to 157 cache HITS. Still open in here: the upstream report to
+> moby/buildkit, and the owner's intent to restore `disk,webdav` once WCOW cache
+> mounts mature.
+
+- **89 [M·★★★, none] ~~Only the FIRST media stage writes to the compiler
+  cache~~ — SUPERSEDED BY #99, and the framing was the error.** The pattern is
+  real, the "stage-dependent" reading of it was not: what actually decides is
+  whether the cache directory already holds objects an EARLIER RUN wrote. onnx
+  looks privileged only because it fills its own. Kept because the numbers below
+  are the first trustworthy full-chain capture and #99's explanation has to
+  account for all of them. Measured on that chain
+  (`bk-run-fullchain-verify.log`, **zero clip events**):
 
   | stage | hits | misses | write errors |
   |---|---|---|---|
@@ -2181,6 +2207,17 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   fully-populated env. Cheap to try, and it would also make the epilogue's flush
   meaningful.
 
+  **DONE 2026-08-15/16 — and worth reading as a half-success.**
+  `Invoke-SourceBuildChain`'s prologue now stops the server, TRUNCATES the error
+  log, and starts the server explicitly from `C:\`. The log is obtainable and
+  per-stage attributable, which is what finally made #99 diagnosable at all. But
+  note what it did NOT do: the explicit `--start-server` was also floated as the
+  cure for the write failures themselves (the "server CWD gets deleted" theory)
+  and the next full build measured genai at an unchanged 157/157. The truncation
+  is the part that mattered — without it the epilogue replayed a PREVIOUS run's
+  errors and produced a false alarm. Log plumbing is not a fix; it is what lets
+  you find one.
+
 - **99 [S·★★★, none] ROOT CAUSE FOUND — sccache's cache write fails with
   `os error 3` (ERROR_PATH_NOT_FOUND), and the artifact itself is fine.** After
   six dead hypotheses, sccache's own debug log (finally obtainable, see #96/#98)
@@ -2265,9 +2302,156 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   into the PRE-EXISTING bucket subtree (`8\a\c\<hash>`) — only sccache ever
   touched the damaged entries. Cf. this host's known wcifs layer-rename quirk.
 
-  **STATUS: repaired empirically, durability unverified.** The next real media
-  build is the test — genai must go from 157/157 write failures to 0, and the
-  run after that must show HITS for it (today it has none at all, ever).
+  **THE TREE-DAMAGE THEORY IS ALSO DEAD.** Pointing `SCCACHE_DIR` at a FRESH
+  empty directory on the same mount (`C:\sccache\v2`, verified live in the build:
+  `L0 (disk) Local disk: "C:\\sccache\\v2"`) changed nothing — opencv 1/1, genai
+  157/157, exactly as before. So it is not the directory, damaged or otherwise.
+
+  **RESOLVED 2026-08-16 by REMOVING L0, not by explaining it.** Running the media
+  chain with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=` (WebDAV as the sole cache,
+  confirmed live: `Cache location  webdav, name: , prefix: /`, no `Multi-level`,
+  no `Local disk`):
+
+  | stage | misses | write errors — before → after |
+  |---|---|---|
+  | onnx | 0 | 0 → 0 (vacuous both times) |
+  | opencv | 1 | **1 → 0** |
+  | genai | 157 | **157 → 0** |
+
+  157 objects across every hash bucket, zero failures, in the stage that had lost
+  every single write in six consecutive builds.
+
+  **THE L0 CAUSE REMAINS UNKNOWN — this is a workaround, not an explanation.**
+  Eleven hypotheses were measured and killed: server CWD, the multilevel chain,
+  the cache mount, foreign `logs`/`wtest.txt` entries, the `preprocessor` dir,
+  bucket `f`, process detachment, concurrency (16 at once writes fine), tree
+  damage, path length (239-char source path writes fine), and a fresh cache dir.
+
+  **METHOD LESSON, the expensive one:** `probe-sccache-write.ps1` reproduces the
+  environment but NOT the failure — every configuration it blessed then failed in
+  a real build, and it never once predicted build behaviour. A probe that cannot
+  reproduce the bug cannot clear a fix either. Only build-stage `--show-stats`
+  numbers counted in the end, and only next to their miss counts: three separate
+  "0 write errors" readings were vacuous because the stage had 0 misses.
+
+  **RE-USE CONFIRMED 2026-08-16 — the loop is closed.** The follow-up run (same
+  build-arg, plus `-NoCacheStage` so every stage really re-executed rather than
+  replaying a layer):
+
+  | stage | before the fix | after | follow-up run |
+  |---|---|---|---|
+  | genai | 0 hits / 157 misses / **157 write errors** | 157 misses / **0 write errors** | **157 hits / 0 misses** |
+  | opencv | 1 miss / **1 write error** | 1 miss / 0 write errors | 1 miss / 0 write errors |
+  | onnx | 1498 hits (from L1 all along) | unchanged | unchanged |
+
+  genai's objects were written on one run and served from WebDAV on the next —
+  the first time that stage has ever produced a cache hit. Note onnx got 1498
+  hits with `--no-cache` on its own layer, which independently shows the remote
+  carries the whole load without L0.
+
+  **SIDE FINDING — upstream documents the amplifier:**
+  `SCCACHE_MULTILEVEL_WRITE_ERROR_POLICY` defaults to `l0` = "fail only if L0
+  write fails". That is exactly why `L1 (webdav) writes` was always 0: one broken
+  level poisoned every write instead of degrading to the next. `ignore` would
+  keep the two-level chain alive through a broken L0 — untested here, and worth
+  it only if L0 is ever wanted back.
+
+  **STILL OPEN:**
+  - ~~the default is still `disk,webdav`~~ **DONE 2026-08-16: both media
+    Dockerfiles default to `""` (WebDAV only). Owner wants `disk,webdav` back
+    once WCOW cache mounts mature — see the re-verification recipe below.**
+  - ~~**backend or chain?**~~ **ANSWERED 2026-08-16 by an A/B pair — it is the
+    BACKEND, not the chain.** Two full media builds, one variable changed:
+
+    | stage | cache dir at stage start | A: `chain=disk` | B: legacy disk (no chain) |
+    |---|---|---|---|
+    | onnx | **empty** | 225 / 1488 (15.1 %) | **28 / 1488 (1.9 %)** |
+    | opencv | **populated** | 1849 / 1862 (99.3 %) | **1849 / 1862 (99.3 %)** |
+    | genai | populated | 157 / 157 (100 %) | **157 / 157 (100 %)** |
+
+    Two separate effects, and the big one is not the chain:
+    - **Dominant: the cache directory having CONTENT.** Reproduces bit-for-bit
+      without any multi-level code — 1849 of 1862, and exactly **13** successful
+      writes before it turns, in BOTH runs. That determinism rules out a race or
+      a sporadic filesystem fault. The cache grew 62 → 63 MiB during opencv
+      against a 15 GiB limit, so it is not capacity either.
+    - **Secondary: the chain layer.** On an EMPTY directory it multiplies the
+      failure rate ~8× (28 → 225). Once the directory is populated the effect
+      is invisible because nearly everything fails anyway.
+
+    So the honest upstream claim is *"sccache's local disk cache loses writes
+    once its directory has content, on Windows containers"* — NOT *"the
+    multi-level chain is broken"*. `SCCACHE_MULTILEVEL_WRITE_ERROR_POLICY=l0`
+    remains the amplifier that turns a partial L0 failure into a total one and
+    stops anything reaching the remote.
+
+    Running B needed `SCCACHE_FORCE_LOCAL=1` (`WindowsScripts.Shared.psm1`):
+    clearing the endpoint to isolate the disk level silently disables sccache
+    altogether (`Test-SccacheRemoteConfigured` gates the cmake launchers), and
+    the first attempt reported `Compile requests 0` — a run that looks clean and
+    measures nothing. Always check `Compile requests > 0` AND the
+    `Cache location` line before reading any failure count.
+
+    **Best remaining thread:** why exactly 13 writes succeed before the turn.
+    That number is identical across both configurations and is the only
+    deterministic handle found so far; `probe-sccache-write.ps1` can chase it in
+    minutes instead of 90-minute builds.
+
+  **ROOT CAUSE, 2026-08-16 — IT IS THE BUILDKIT CACHE MOUNT, NOT SCCACHE.**
+  The bulk section of `probe-sccache-write.ps1` isolates it with one program, one
+  moment, two target directories, 250 unique objects each:
+
+  | target | inherited content | result |
+  |---|---|---|
+  | `C:\sccache\bulk-inherit` (BuildKit cache mount) | 250 files from the previous RUN | **158 of 250 FAILED** |
+  | `C:\bulk-plain-inherit` (plain container filesystem) | none | **0 of 250 failed** |
+  | `C:\sccache\<fresh>` (same mount, brand-new dir) | none | **0 of 250 failed** |
+
+  Same sccache, same config, back to back — only the target filesystem differed.
+  **Both conditions are required:** the BuildKit cache mount *and* content that an
+  EARLIER container wrote. A fresh directory on the same mount takes all 250.
+
+  That is precisely the chain's stage order, and it explains every earlier number
+  without any of the eleven dead hypotheses:
+  - **onnx** fills its OWN directory in its own RUN → 28 failures of 1488 (1.9 %)
+  - **opencv** INHERITS onnx's directory → 1849 of 1862 (99.3 %)
+  - **genai** inherits a fuller one → 157 of 157 (100 %)
+
+  And it explains why sccache looked guilty for days: it is the only thing in the
+  chain that writes many files into an inherited cache-mount directory. The
+  probe's own raw `.NET` writes always passed because they created NEW paths and
+  never wrote more than a handful.
+
+  **Reportable against moby/buildkit, not mozilla/sccache.** Context fits: WCOW
+  cache-mount support landed only in v0.21.0 (moby/buildkit#5603, PR #5708), a
+  mounter race was fixed in PR #5885, `--mount=type=cache` failing SILENTLY is
+  #1648, and CVE-2026-15788 (GHSA-388v-wmr2-g2v2) touched WCOW cache-mount source
+  selectors. Host here runs buildctl **v0.32.0**. No open `area/windows-wcow`
+  issue matches this signature. To make the report airtight, reproduce it with
+  PLAIN FILE WRITES (no sccache at all) into an inherited cache-mount directory —
+  not done yet.
+
+  **METHOD TRAP, and it cost a spectacular false conclusion:** the first
+  inheritance run reported "0 files inherited" and looked like the mount had
+  silently lost 250 objects. It had not — an EARLIER section of the same probe
+  classifies anything in the cache root that is not a hex bucket as debris and
+  moves it off the mount, so the probe destroyed its own experiment. The
+  directory listing at the top of the log is what exposed it. `$probeOwned` now
+  excludes the probe's own state.
+
+  **DEFAULT FLIPPED 2026-08-16:** `SCCACHE_MULTILEVEL_CHAIN` is now `""` in BOTH
+  `Dockerfile.media-builder` and `Dockerfile.media-merge-builder` — WebDAV is the
+  sole cache. Owner intent: **restore `disk,webdav` later, once BuildKit's WCOW
+  cache mounts have matured.** Re-verification recipe when that day comes — do
+  NOT assume a newer buildkit fixed it:
+  1. `probe-sccache-write.ps1` twice against the real media base image; the bulk
+     section's ON-mount row must read 0 failures on the SECOND (inheriting) run;
+  2. then one media build with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`;
+     genai must report 0 write errors next to its 157 misses.
+  - nearest upstream neighbour is mozilla/sccache#739 (Windows in a container,
+    local disk cache, unidentified path-not-found, "deleting the cache folder
+    helps", open since 2019). No report matches this exact signature, and this
+    repo now has what #739 lacks: a 2-minute repro and an isolation matrix.
 
   **DEPLOYABLE WORKAROUND, measured not guessed:** row 4 writes fine, so drop
   L0 and run WebDAV as the sole cache (remove `SCCACHE_MULTILEVEL_CHAIN` and the
@@ -2289,6 +2473,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
   opencv shows the same shape at its one write opportunity
   (`L0 (disk) write failures 1`). Because `SCCACHE_MULTILEVEL_CHAIN=disk,webdav`
+  — the layout in force when this was measured, defaulted OFF since 2026-08-16 —
   writes L0 first, an L0 failure means L1 is never attempted — which is why
   `L1 writes 0` everywhere and why the remote looked suspicious for days. **The
   WebDAV endpoint is not involved in this defect at all.**

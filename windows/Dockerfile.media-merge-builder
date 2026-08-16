@@ -198,12 +198,20 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
-# Two-tier sccache, same reasoning and same caveats as Dockerfile.media-builder's
+# WebDAV-ONLY sccache, same reasoning and same caveats as Dockerfile.media-builder's
 # `common` stage (read the block there before changing either). This stage is not
 # a descendant of it, so the variables have to be repeated -- ENV does not cross a
 # FROM boundary any more than ARG does.
+#
+# SCCACHE_MULTILEVEL_CHAIN is EMPTY on purpose since 2026-08-16: the local L0 tier
+# sits on a BuildKit cache mount, and on Windows those lose writes once the
+# directory holds objects an EARLIER RUN wrote (158 of 250 vs 0 of 250 into a
+# plain directory, same program, same moment). Restore `disk,webdav` here AND in
+# Dockerfile.media-builder together, once WCOW cache mounts are proven — see
+# backlog #99 for the measurement and the re-verification recipe.
+ARG SCCACHE_MULTILEVEL_CHAIN=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
+    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
     SCCACHE_DIR="C:\sccache\v2" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `

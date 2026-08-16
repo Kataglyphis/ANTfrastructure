@@ -32,15 +32,57 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
 ARG SCCACHE_LOG="warn"
 
-# The L0/L1 layout, as a build-arg so the disk level can be switched OFF without
-# editing this file:
-#   build-buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=
-# Empty means "no chain": sccache then uses the WebDAV remote alone. That is not
-# a hypothetical - `webdav-only` is the ONE configuration that has written
-# cleanly in every probe, on every base image, while the L0 disk level fails
-# 100 % of its writes inside a real build (genai 157/157) no matter which
-# directory it points at. Keep the default two-level; flip it when L0 misbehaves.
-ARG SCCACHE_MULTILEVEL_CHAIN="disk,webdav"
+# THE CACHE LAYOUT. Empty (the default) = NO chain: the WebDAV remote is the one
+# and only cache. To restore the two-level layout later:
+#   build-buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
+#
+# WHY THE DISK LEVEL IS OFF (2026-08-16, backlog #99). The local L0 tier lives on
+# a BuildKit cache mount, and on Windows those LOSE WRITES once the directory
+# holds objects that an EARLIER RUN put there. Isolated with one program, one
+# moment, two target directories, 250 unique objects each:
+#
+#   C:\sccache\bulk-inherit  (cache mount, inherited content)  158 of 250 FAILED
+#   C:\bulk-plain-inherit    (plain container filesystem)        0 of 250 failed
+#
+# Same sccache, same config, back to back — only the target filesystem differed.
+# Both conditions are required: a FRESH directory on the same mount writes 250 of
+# 250 cleanly. That is exactly the chain's stage order, and exactly what the
+# builds showed: onnx fills its OWN directory and mostly succeeds (28 failures of
+# 1488 with no chain), opencv INHERITS onnx's and fails 1849 of 1862, genai
+# inherits a fuller one and fails 157 of 157 — identical with and without the
+# multi-level chain, so sccache is the victim here, not the cause.
+#
+# The WebDAV remote is not a cache mount and is unaffected: with this default,
+# genai went 157 write errors -> 0, and the next run served all 157 from cache —
+# its first cache hits ever.
+#
+# RESTORE THE TWO-LEVEL LAYOUT once BuildKit's WCOW cache mounts mature (support
+# only landed in v0.21.0, moby/buildkit#5603 / PR #5708; a mounter race was fixed
+# in PR #5885; "cache mounts fail silently" is #1648). Re-verify by rebuilding
+# media with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` and checking that
+# genai reports 0 write errors — not by assuming a newer buildkit fixed it.
+# `windows/scripts/probe-sccache-write.ps1` answers it in ~2 minutes.
+ARG SCCACHE_MULTILEVEL_CHAIN=""
+
+# Also an ARG so an experiment can start from a GUARANTEED-EMPTY cache dir:
+#   -BuildArg SCCACHE_DIR=C:\sccache\v3
+# This matters because the L0 failure rate depends on how much the directory
+# already holds — measured 2026-08-16 with `chain=disk`: onnx started empty and
+# wrote 1263 objects with 225 failures, opencv then started with those 1263 and
+# failed 1849 of 1862, genai 157 of 157. Comparing a fresh-dir run against a
+# run that inherits a full one measures the wrong thing.
+ARG SCCACHE_DIR="C:\sccache\v2"
+
+# DIAGNOSTIC ONLY (backlog #99). The cmake launcher wiring is gated on a
+# configured REMOTE (Test-SccacheRemoteConfigured); with the endpoint cleared,
+# sccache is not wired at all and a run reports `Compile requests 0` -- which
+# reads like a clean build and measures nothing. Set to 1 to wire sccache with a
+# LOCAL-ONLY backend so the disk level can be measured by itself:
+#   -BuildArg SCCACHE_FORCE_LOCAL=1,SCCACHE_WEBDAV_ENDPOINT=,SCCACHE_MULTILEVEL_CHAIN=
+# Never for production builds: without a remote the cache is only as persistent
+# as SCCACHE_DIR's mount, and the whole point of the gate is to stop that
+# happening by accident.
+ARG SCCACHE_FORCE_LOCAL=""
 
 # sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
 # every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
@@ -111,7 +153,8 @@ ARG SCCACHE_MULTILEVEL_CHAIN="disk,webdav"
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
-    SCCACHE_DIR="C:\sccache\v2" `
+    SCCACHE_DIR="${SCCACHE_DIR}" `
+    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

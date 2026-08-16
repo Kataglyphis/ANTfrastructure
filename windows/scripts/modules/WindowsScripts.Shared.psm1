@@ -298,6 +298,16 @@ function Test-SccacheRemoteConfigured {
     # True when any sccache remote backend is configured. Shared by the cmake
     # launcher wiring (Invoke-CmakeConfigure) and the end-of-build stats dump --
     # without a remote there is no cache, so neither should activate.
+    #
+    # SCCACHE_FORCE_LOCAL=1 overrides that for ONE purpose: measuring sccache's
+    # LOCAL DISK backend on its own. It is a diagnostic escape hatch, not a
+    # supported build mode -- a local-only cache dies with the RUN's container
+    # unless SCCACHE_DIR points at a cache mount, which is exactly why this gate
+    # exists. Added 2026-08-16 for backlog #99: clearing the endpoint to isolate
+    # the disk level silently disabled sccache entirely (`Compile requests 0`),
+    # so the experiment measured nothing and looked like a clean run.
+    if ($env:SCCACHE_FORCE_LOCAL -eq '1') { return $true }
+
     return (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT)) -or
         (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET)) -or
         (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT))

@@ -195,12 +195,18 @@ Install-ScoopPackage -Package 'main/ninja' -Version $NinjaVersion
 Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
 # sccache is pinned for a DIFFERENT reason than the three above: it shapes no
 # compiled output whatsoever. It is here because multi-tier caching
-# (SCCACHE_MULTILEVEL_CHAIN=disk,webdav, wired in Dockerfile.media-builder)
-# requires >= v0.16.0, and an older sccache ignores that variable SILENTLY --
-# the local L0 tier would not exist, every compile would go back to a WebDAV
-# round-trip, and no gate anywhere would notice. A speed feature that can
-# vanish without a signal is exactly what this repo refuses to ship, so the
-# version it needs is asserted rather than assumed.
+# (SCCACHE_MULTILEVEL_CHAIN, an ARG in Dockerfile.media-builder) requires
+# >= v0.16.0, and an older sccache ignores that variable SILENTLY -- the local
+# L0 tier would not exist, every compile would go back to a WebDAV round-trip,
+# and no gate anywhere would notice. A speed feature that can vanish without a
+# signal is exactly what this repo refuses to ship, so the version it needs is
+# asserted rather than assumed.
+#
+# NOTE 2026-08-16: the chain is currently DEFAULTED OFF (WebDAV is the only
+# cache) because BuildKit's Windows cache mounts lose writes into a directory an
+# earlier RUN populated -- docs/windows-builds.md #99. The pin stays exactly
+# because the two-tier layout is wanted back: dropping below 0.16 would make
+# re-enabling it fail silently instead of loudly.
 Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
 
 # ── FLOATING (deliberate): tools the build only INVOKES ───────────────────────

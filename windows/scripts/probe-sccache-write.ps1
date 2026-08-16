@@ -459,8 +459,15 @@ Write-Section 'narrowing: quarantine foreign entries in the cache root'
 $quarantine = 'C:\sccache-quarantine'
 $null = New-Item -ItemType Directory -Force -Path $quarantine -ErrorAction SilentlyContinue
 
+# `bulk-inherit` / `probe-persist` are THIS PROBE's own state, deliberately left
+# on the mount so the NEXT run inherits it. Excluding them is not cosmetic: the
+# first inheritance experiment reported "0 files inherited" and looked like the
+# mount had lost 250 objects, when in fact this very sweep had classified the
+# directory as debris and moved it off the mount minutes earlier — the probe
+# destroyed its own experiment and produced a spectacular false conclusion.
+$probeOwned = @('preprocessor', 'bulk-inherit', 'probe-persist')
 $foreign = @(Get-ChildItem $origDir -Force -ErrorAction SilentlyContinue | Where-Object {
-        -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') -and $_.Name -ne 'preprocessor'
+        -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') -and $probeOwned -notcontains $_.Name
     })
 # The bisect below must run whenever disk-only failed, NOT only when foreign
 # entries happen to exist: an earlier probe already moved `logs`/`wtest.txt` off
@@ -769,6 +776,101 @@ int main() { std::printf("%d\n", probe_value_$t()); return 0; }
     }
     Remove-Item (Join-Path $deepRoot "$seg-1") -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# --- THE DECISIVE ONE: is it the BUILDKIT CACHE MOUNT? -----------------------
+# Two full builds established that sccache's local disk cache loses writes once
+# its directory holds content — 1849 of 1862 in opencv, with AND without the
+# multi-level chain, at 63 MiB against a 15 GiB limit. Every single-write probe
+# so far was too small to see it: the effect only appears after enough objects
+# have gone in, which is why one compile against a fresh dir always looked fine.
+#
+# This writes N objects into a FRESH directory ON the cache mount and into a
+# FRESH directory OFF it (plain container filesystem), same sccache, same
+# config, back to back. BuildKit's WCOW cache-mount support is new (moby/buildkit
+# #5603 / PR #5708, shipped v0.21.0; race fixed in PR #5885; "cache mounts fail
+# silently" is #1648) so "the mount cannot take sustained writes" is a live
+# hypothesis — and this is the first probe section big enough to test it.
+Write-Section "bulk write test: cache MOUNT vs plain directory (N unique objects)"
+
+function Invoke-BulkWrite {
+    param([string]$Label, [string]$Dir, [int]$Count)
+
+    & $sccache.Source --stop-server 2>&1 | Out-Null
+    $global:LASTEXITCODE = 0
+    Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue
+    Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
+    $env:SCCACHE_DIR = $Dir
+    $null = New-Item -ItemType Directory -Force -Path $Dir -ErrorAction SilentlyContinue
+    Push-Location 'C:\'
+    try { & $sccache.Source --start-server 2>&1 | Where-Object { $_ -match 'Listening|error' } | ForEach-Object { Write-Host "  start| $_" } }
+    finally { Pop-Location }
+    & $sccache.Source --zero-stats 2>&1 | Out-Null
+    $global:LASTEXITCODE = 0
+
+    $work = Join-Path $env:TEMP ('bulk-' + [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Force -Path $work
+    Push-Location $work
+    try {
+        for ($i = 1; $i -le $Count; $i++) {
+            # Unique in REAL CODE — a unique // comment is stripped by the
+            # preprocessor and every TU would collide on one hash key.
+            $t = [Guid]::NewGuid().ToString('N')
+            $s = Join-Path $work "b$i.cpp"
+            "int probe_$t() { return $i; }" | Set-Content -Path $s -Encoding ascii
+            & $sccache.Source clang-cl /c /nologo "/Fo$(Join-Path $work "b$i.obj")" $s 2>&1 | Out-Null
+        }
+    } finally { Pop-Location }
+    $global:LASTEXITCODE = 0
+
+    $st = @(& $sccache.Source --show-stats 2>&1)
+    $global:LASTEXITCODE = 0
+    $misses = -1; $werr = -1
+    foreach ($line in $st) {
+        if ($line -match 'Cache misses\s+(\d+)') { if ($misses -lt 0) { $misses = [int]$Matches[1] } }
+        if ($line -match 'Cache write errors\s+(\d+)') { if ($werr -lt 0) { $werr = [int]$Matches[1] } }
+    }
+    $sz = ($st | Where-Object { $_ -match 'Cache size\s+(.*)' } | Select-Object -First 1)
+    Write-Host ("  {0,-14} dir={1}" -f $Label, $Dir)
+    Write-Host ("  {0,-14} misses={1} write errors={2}  {3}" -f '', $misses, $werr, $(if ($sz) { $sz.ToString().Trim() } else { '' }))
+    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+    return [pscustomobject]@{ Label = $Label; Misses = $misses; WriteErrors = $werr }
+}
+
+# STABLE names, deliberately NOT deleted at the end. N=250 into a dir this same
+# container just created writes cleanly — measured — so writing volume is not the
+# trigger. What the build does and the probe never did is INHERIT a populated
+# directory across the container boundary: opencv's RUN opens a cache dir that a
+# PREVIOUS RUN filled, and fails 99 %; onnx fills its own and mostly succeeds.
+# Keeping these dirs makes the SECOND probe run the actual experiment — it starts
+# with whatever the first run left behind. Run the probe twice and compare.
+$bulkN = 250
+$mountDir = Join-Path $CacheDir 'bulk-inherit'   # ON the BuildKit cache mount
+$plainDir = 'C:\bulk-plain-inherit'              # NOT a mount: container filesystem
+foreach ($d in $mountDir, $plainDir) {
+    $n = @(Get-ChildItem $d -Recurse -Force -File -ErrorAction SilentlyContinue).Count
+    Write-Host ("  inherited from a previous run: {0,-28} {1} file(s)" -f $d, $n)
+}
+
+$onMount = Invoke-BulkWrite -Label 'ON mount' -Dir $mountDir -Count $bulkN
+$offMount = Invoke-BulkWrite -Label 'OFF mount' -Dir $plainDir -Count $bulkN
+
+Write-Section 'BULK VERDICT'
+Write-Host ("  ON  mount ({0}): {1} write errors of {2} misses" -f $mountDir, $onMount.WriteErrors, $onMount.Misses)
+Write-Host ("  OFF mount ({0}): {1} write errors of {2} misses" -f $plainDir, $offMount.WriteErrors, $offMount.Misses)
+if ($onMount.WriteErrors -gt 0 -and $offMount.WriteErrors -eq 0) {
+    Write-Host '  => THE BUILDKIT CACHE MOUNT IS THE FAULT. Same sccache, same config,'
+    Write-Host '     same object count — only the target filesystem differs. Reportable'
+    Write-Host '     against moby/buildkit (WCOW cache mounts), not against sccache.'
+} elseif ($onMount.WriteErrors -gt 0 -and $offMount.WriteErrors -gt 0) {
+    Write-Host '  => Both fail: it is sccache, not the mount. Report against mozilla/sccache.'
+} elseif ($onMount.WriteErrors -eq 0 -and $offMount.WriteErrors -eq 0) {
+    Write-Host ('  => Neither fails at N={0}. Either the threshold is higher, or the probe' -f $bulkN)
+    Write-Host '     still differs from a real build. Do NOT read this as a clean bill.'
+}
+# NOT deleted: the next run must inherit them. `C:\bulk-plain-inherit` dies with
+# the container anyway, which is itself the control — only the mounted one can
+# carry state across the boundary.
+Write-Host ("  kept for the next run: {0}" -f $mountDir)
 
 Write-Section 'sccache error log'
 & $sccache.Source --stop-server 2>&1 | Where-Object { $_ -match 'Stopping|error' } | ForEach-Object { Write-Host "  stop| $_" }
