@@ -26,32 +26,32 @@ Records of done work live in CHANGELOG.md + memory + the archive.)
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
-## Next-rebuild readiness (staged 2026-08-15 — validate ALL in one 3-arch build)
+## ✅ SHIPPED 2026-08-16 (the staged Batch-2 subset — validated by a full rebuild)
 
-A batch of Batch-2 fixes are STAGED on main and only need the next validating
-rebuild to confirm. They were chosen as the safely-stageable subset: each is
-script-level (no new bind-mount dependency), shellcheck-clean, and unit/sandbox
--tested where possible. Verify them together in ONE rebuild:
+The 2026-08-15 staged subset SHIPPED via a full base→:latest-cross 3-arch
+rebuild. Fresh manifest: amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64
+`28e3ded96f72` (all differ from the prior d92cc0fb/99531bbe/252ca5e8). Byte-gate
+PASSED 3/3 (libtensorflow absent); manual amd64 pull confirmed GST1 resolves,
+RP6 PATH clean, stripped sizes. **DONE + LIVE:** AP7 media-half, RP6, GST1 root
+fix, AP4 (ffmpeg/gstreamer/libcamera), TS1 script half. The real build flushed
+out TWO bugs the runtime-lane validations couldn't (they skip smoke-media):
+- **numpy/cv2** (fix 0b2b306) — smoke-media native cv2 hard-failed on numpy
+  being absent in the media BUILD sandbox (a /opt/venv packaging dep); now
+  deferred to the runtime smoke like onnxruntime.
+- **GST1 self-link** (fix 22fb812) — configure-runtime runs a 2nd time in the
+  package stage; the resolver glob matched the existing lib/multiarch symlink
+  and re-pointed it at itself. Fixed: rm the stale link before resolving + skip
+  it in the resolver + assert downgraded to WARN (the pkg-config gate is the
+  fail-loud authority — a script that runs twice must not carry a fragile
+  build-breaking assert).
 
-- **AP7 media-half** — per-prefix `du` report at the media-inputs arm. Verify:
-  the size breakdown appears in the media build log on all 3 arches.
-- **RP6** — `/root/.local/bin` gone from the shipped PATH. Verify: `docker run
-  <img> sh -c 'echo $PATH'` has no /root/.local/bin (base still does).
-- **GST1 root fix** — configure-runtime resolves the real gstreamer libdir.
-  Verify: `pkg-config --exists gstreamer-1.0` OK on arm64/riscv64 WITHOUT the
-  repair net firing (watch for the "repaired …" log line — it should NOT print).
-- **AP4 (ffmpeg/gstreamer/libcamera)** — strip pass. Verify against AP7 numbers:
-  /opt/ffmpeg, /opt/gstreamer, /opt/libcamera shrink; smokes still green.
-- **TS1 script half** — appimagetool pinned to 1.9.1. Verify: base stage fetches
-  the immutable tag; no checksum-mismatch.
-
-REBUILD-WINDOW WORK (needs the mount audit / restructure DURING the rebuild, do
-NOT land blind — see the per-item notes below): guard-helper wiring+migration
-(Tier 0), opencv TWO-PASS (Tier 1), AP4 remainder (opencv5/litert/onnxruntime/
-armnn), AP1 wheels (RECORD re-hash), AP3 wheelhouse bind-mount, AP5 CPython LTO
-(cross-LTO is fragile — validate), RP4 package layer reorder, TG1 (attempted+
-reverted — mount audit mandatory), TG3-residual. BATCH 3 (versions.env): TS1
-keys, C3, AP6, RUFF/pyav/LLVM_COMMIT pins.
+STILL REBUILD-WINDOW WORK (needs the mount audit / restructure DURING a rebuild,
+do NOT land blind): guard-helper wiring+migration (Tier 0), opencv TWO-PASS
+(Tier 1), AP4 remainder (opencv5/litert/onnxruntime/armnn), AP1 wheels (RECORD
+re-hash), AP3 wheelhouse bind-mount, AP5 CPython LTO (cross-LTO is fragile —
+validate), RP4 package layer reorder, TG1 (attempted+reverted — mount audit
+mandatory), TG3-residual. BATCH 3 (versions.env): TS1 keys, C3, AP6,
+RUFF/pyav/LLVM_COMMIT pins.
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 

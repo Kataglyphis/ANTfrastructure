@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-08-16 - FULL 3-ARCH REBUILD: Batch-2 subset shipped; :latest-cross re-shipped (fresh digests); 2 real bugs flushed
+
+A full base→:latest-cross rebuild (all 3 arches) validated the 2026-08-15 staged
+Batch-2 subset and re-shipped `:latest-cross` with FRESH per-arch digests amd64
+`509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72` (all differ from
+the prior d92cc0fb/99531bbe/252ca5e8). Byte-gate PASSED 3/3 (`libtensorflow
+absent`); a manual pull of the amd64 wrapper confirmed libtensorflow gone,
+ffmpeg 9.0 intact, GST1 `multiarch -> lib/x86_64-linux-gnu` resolves (no
+self-link), `/root/.local/bin` gone from PATH, stripped prefix sizes.
+
+- **DONE + LIVE**: AP7 media-half (per-prefix size report), RP6 (dropped dead
+  `/root/.local/bin` from the shipped PATH), GST1 root fix (configure-runtime
+  resolves the real gstreamer libdir — "dev surface resolves" 3/3), AP4 strip
+  (ffmpeg/gstreamer/libcamera), TS1 (appimagetool pinned to 1.9.1).
+- **Bug flushed — smoke-media cv2/numpy** (`0b2b306`): the native cv2 import test
+  hard-failed because numpy is absent in the media BUILD sandbox (it is a
+  /opt/venv packaging dep). Gated on `import numpy`; absent → defer to the
+  runtime torch-venv smoke, exactly like the onnxruntime test. Killed media-amd64
+  first — invisible to the runtime-lane validations because they skip smoke-media.
+- **Bug flushed — GST1 self-referential multiarch symlink** (`22fb812`):
+  `configure-runtime.sh` runs a SECOND time in the package stage on a payload
+  that already carries `lib/multiarch`; the resolver glob matched it and
+  re-pointed multiarch at itself, and the fail-loud assert killed riscv64 before
+  the repair net could act. Fixed: rm the stale link + skip it in the resolver +
+  downgrade the assert to WARN (the pkg-config gate is the fail-loud authority).
+
 ## 2026-08-15 - VALIDATING REBUILD: RP1/RP2/RP3/AP7 proven live; :latest-cross re-shipped (fresh digests)
 
 A full runtime-lane rebuild (build-runtime-manifest.sh on the TF-less android
