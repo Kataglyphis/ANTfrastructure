@@ -513,6 +513,13 @@ cleanup_wheelhouse() {
     echo "Keeping /opt/wheels (KEEP_WHEELHOUSE=1)"
     return 0
   fi
+  # AP3: /opt/wheels is now a READONLY bind-mount (ephemeral — never becomes a
+  # shipped layer), so there is nothing to reclaim AND `rm -rf` would fail on the
+  # read-only mount. Only rm when it is a real directory (the COPY fallback path).
+  if mountpoint -q /opt/wheels 2>/dev/null; then
+    echo "/opt/wheels is a bind-mount (AP3) — ephemeral, nothing to remove"
+    return 0
+  fi
   rm -rf /opt/wheels
   echo "Removed /opt/wheels after successful venv assembly (set KEEP_WHEELHOUSE=1 to keep)"
 }
