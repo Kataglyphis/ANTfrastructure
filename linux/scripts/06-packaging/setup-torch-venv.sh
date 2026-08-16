@@ -524,11 +524,29 @@ cleanup_wheelhouse() {
   echo "Removed /opt/wheels after successful venv assembly (set KEEP_WHEELHOUSE=1 to keep)"
 }
 
+# AP2: byte-compile the fully-assembled venv. The runtime USER (uid-1001) cannot
+# write __pycache__ into the root-owned /opt/venv, so WITHOUT this every container
+# start re-parses site-packages (torch etc.) from source — seconds-to-tens on
+# riscv64. Compile at build time as root with the TARGET interpreter (correct
+# .pyc magic; it runs under qemu in the per-arch package stage — slow but
+# one-time). Best-effort; VENV_COMPILE=0 disables. (The stdlib under
+# /usr/local/lib is already compiled by CPython's make [alt]install; the gap is
+# the venv's site-packages, which uv installs without .pyc by default.)
+bytecompile_venv() {
+  [ "${VENV_COMPILE:-1}" = "1" ] || { echo "VENV_COMPILE=0 — skipping venv byte-compile"; return 0; }
+  local py="${VENV}/bin/python"
+  [ -x "${py}" ] || return 0
+  echo "Byte-compiling ${VENV}/lib (AP2; may be slow under qemu on cross arches)..."
+  "${py}" -m compileall -q -j0 "${VENV}/lib" 2>/dev/null \
+    || echo "  (compileall best-effort — some modules skipped; non-fatal)"
+}
+
 main() {
   setup_torch_venv
   seed_opencv5_bindings
   setup_torch_deps
   setup_torch_app
+  bytecompile_venv
   cleanup_wheelhouse
 }
 
