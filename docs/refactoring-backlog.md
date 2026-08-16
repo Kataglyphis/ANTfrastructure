@@ -10,16 +10,13 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Batches are grouped by REBUILD BLAST RADIUS, not theme — most items are cheap,
 rebuilds are expensive. Work top to bottom; each batch ships independently.
 
-Last groomed: 2026-08-15 (S2 ✅ SHIPPED+VERIFIED — :latest-cross now carries
-FRESH digests amd64 f1a205a6 / arm64 d5ae1470 / riscv64 6024f28a, libtensorflow
-CONFIRMED GONE by pulling the shipped wrapper. Root cause of the 5× stale-ship
-saga was RTCACHE3, NOT RTCACHE1: `--output type=image,name=X` never creates a
-local containerd tag on this rootless host, so push+manifest kept resolving the
-stale pre-existing tag — FIXED by switching append_runtime_image_output to `-t`.
-RTCACHE1's registry-cache theory was a red herring (media+android were always
-TF-less). XC2 annotation-survival gap SUPERSEDED by the -t fix (annotations
-dropped; provenance re-embed is a follow-up). New knob: RUNTIME_NO_CACHE=1.
-Records of done work live in CHANGELOG.md + memory + the archive.)
+Last groomed: 2026-08-17. LIVE `:latest-cross` = the 2026-08-16 re-ship (digests
+amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) which
+shipped RP1-3 + AP7-runtime + GST1 + RP6 + AP4(ffmpeg/gst/libcamera) + TS1. A
+FULL Batch-2 rebuild is IN FLIGHT validating the staged big wave (AP1-5, opencv
+two-pass, TG1, guard-helper wiring — see the top section). Completed items were
+deleted from this file 2026-08-17 (lean OPEN-only); done-work records live in
+CHANGELOG.md + memory + the archive.
 
 **Windows items live in a SEPARATE Windows backlog** — removed from here
 2026-08-15 (was Batch 4 + W3 + W1). This file is Linux/cross-lane only. A few
