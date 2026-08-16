@@ -26,32 +26,63 @@ Records of done work live in CHANGELOG.md + memory + the archive.)
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
-## Next-rebuild readiness (staged 2026-08-15 — validate ALL in one 3-arch build)
+## 🔨 Batch-2 BIG WAVE staged 2026-08-16 (awaiting the bundled 3-arch rebuild)
 
-A batch of Batch-2 fixes are STAGED on main and only need the next validating
-rebuild to confirm. They were chosen as the safely-stageable subset: each is
-script-level (no new bind-mount dependency), shellcheck-clean, and unit/sandbox
--tested where possible. Verify them together in ONE rebuild:
+Owner chose "alles inkl. TG1 + guard-Migration → 1 Rebuild". Implemented + tested
+(shellcheck + unit suite 396 + copy-coverage all green), pending the validating
+rebuild:
+- **AP4 complete** — opencv/litert/onnxruntime/armnn/acl now stripped too (added
+  `_resolve_media_strip_bin` self-deriving the cross `<triplet>-strip`, and
+  `strip_media_libs` for the shared /usr/local libs).
+- **AP5** — CPython `--with-lto` cross+native, `PYTHON_LTO=0` escape hatch.
+- **AP3** — wheelhouse bind-mounted (readonly) into the package RUN instead of
+  COPY+rm → no 0.5-2 GB dead layer; `rm` mountpoint-guarded.
+- **AP2** — `/opt/venv` byte-compiled at build (target python under qemu),
+  `VENV_COMPILE=0` gate.
+- **AP1** — cross wheels stripped via RECORD-safe `wheel unpack→strip→pack` in
+  repair-wheels.sh (corruption-safe: original removed only after a good repack).
+- **opencv two-pass** — new `opencv-gst` stage (`FROM gstreamer`) rebuilds OpenCV
+  with the source-built /opt/gstreamer (FORCE_REBUILD=1); `final` COPYs it over
+  the pass-1 tree. riscv64 reproduces pass-1 (gstreamer OFF upstream).
+- **TG1 (bounded)** — cmake.sh + vulkan.sh made lazy in setup-dependencies.sh +
+  their dead mounts trimmed from all 3 toolchain RUNs (verified: gcc/eager-set/
+  verify never source them; the subcommands invoked here don't install them). A
+  cmake/vulkan edit no longer re-runs the 3655s GCC build. The fuller closure
+  trim (llvm-cross/validate, 01-core narrowing) stays deferred — higher risk.
+- **Guard-helper wiring** — sourced into both common.sh files (guarded);
+  layer-order test updated. The 426-site call-site migration stays incremental
+  (cosmetic, per-site + mount-gap risk; not worth 426 hand-edits pre-rebuild).
+- **RP4 + DUP2 — DEFERRED, no safe form.** RP4: the core/toolchain scripts are
+  BOTH consumed by the package RUN AND shipped (can't move below; bind-mount
+  split is risky for a ★ cache win). DUP2: no safe code-only subset
+  (native-suffix/out-of-scope/deliberate-fallback).
 
-- **AP7 media-half** — per-prefix `du` report at the media-inputs arm. Verify:
-  the size breakdown appears in the media build log on all 3 arches.
-- **RP6** — `/root/.local/bin` gone from the shipped PATH. Verify: `docker run
-  <img> sh -c 'echo $PATH'` has no /root/.local/bin (base still does).
-- **GST1 root fix** — configure-runtime resolves the real gstreamer libdir.
-  Verify: `pkg-config --exists gstreamer-1.0` OK on arm64/riscv64 WITHOUT the
-  repair net firing (watch for the "repaired …" log line — it should NOT print).
-- **AP4 (ffmpeg/gstreamer/libcamera)** — strip pass. Verify against AP7 numbers:
-  /opt/ffmpeg, /opt/gstreamer, /opt/libcamera shrink; smokes still green.
-- **TS1 script half** — appimagetool pinned to 1.9.1. Verify: base stage fetches
-  the immutable tag; no checksum-mismatch.
+## ✅ SHIPPED 2026-08-16 (the staged Batch-2 subset — validated by a full rebuild)
 
-REBUILD-WINDOW WORK (needs the mount audit / restructure DURING the rebuild, do
-NOT land blind — see the per-item notes below): guard-helper wiring+migration
-(Tier 0), opencv TWO-PASS (Tier 1), AP4 remainder (opencv5/litert/onnxruntime/
-armnn), AP1 wheels (RECORD re-hash), AP3 wheelhouse bind-mount, AP5 CPython LTO
-(cross-LTO is fragile — validate), RP4 package layer reorder, TG1 (attempted+
-reverted — mount audit mandatory), TG3-residual. BATCH 3 (versions.env): TS1
-keys, C3, AP6, RUFF/pyav/LLVM_COMMIT pins.
+The 2026-08-15 staged subset SHIPPED via a full base→:latest-cross 3-arch
+rebuild. Fresh manifest: amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64
+`28e3ded96f72` (all differ from the prior d92cc0fb/99531bbe/252ca5e8). Byte-gate
+PASSED 3/3 (libtensorflow absent); manual amd64 pull confirmed GST1 resolves,
+RP6 PATH clean, stripped sizes. **DONE + LIVE:** AP7 media-half, RP6, GST1 root
+fix, AP4 (ffmpeg/gstreamer/libcamera), TS1 script half. The real build flushed
+out TWO bugs the runtime-lane validations couldn't (they skip smoke-media):
+- **numpy/cv2** (fix 0b2b306) — smoke-media native cv2 hard-failed on numpy
+  being absent in the media BUILD sandbox (a /opt/venv packaging dep); now
+  deferred to the runtime smoke like onnxruntime.
+- **GST1 self-link** (fix 22fb812) — configure-runtime runs a 2nd time in the
+  package stage; the resolver glob matched the existing lib/multiarch symlink
+  and re-pointed it at itself. Fixed: rm the stale link before resolving + skip
+  it in the resolver + assert downgraded to WARN (the pkg-config gate is the
+  fail-loud authority — a script that runs twice must not carry a fragile
+  build-breaking assert).
+
+STILL REBUILD-WINDOW WORK (needs the mount audit / restructure DURING a rebuild,
+do NOT land blind): guard-helper wiring+migration (Tier 0), opencv TWO-PASS
+(Tier 1), AP4 remainder (opencv5/litert/onnxruntime/armnn), AP1 wheels (RECORD
+re-hash), AP3 wheelhouse bind-mount, AP5 CPython LTO (cross-LTO is fragile —
+validate), RP4 package layer reorder, TG1 (attempted+reverted — mount audit
+mandatory), TG3-residual. BATCH 3 (versions.env): TS1 keys, C3, AP6,
+RUFF/pyav/LLVM_COMMIT pins.
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
@@ -78,10 +109,15 @@ keys, C3, AP6, RUFF/pyav/LLVM_COMMIT pins.
 
 - **SV-residual: compose-CLI validation only** [S] nginx half CLOSED
   2026-08-11: containerized `nginx -t` (nginx:alpine + dummy certs) passed
-  "syntax ok / test successful" on the post-surgery config. Remaining: run
-  `docker compose config` (+ the lan override) once on a machine with a
-  compose CLI, and watch the first real `compose up` (SV1 switched ollama to
-  the locally built image + healthcheck ordering).
+  "syntax ok / test successful" on the post-surgery config. STRUCTURAL check DONE
+  2026-08-16 (no compose CLI on this host): all llm-stack compose files
+  (base/gpu/lan) + linux/docker-compose.yml are valid YAML; the lan override's
+  !override/!reset tags parse; its overridden services (ollama/open-webui/glances)
+  all exist in base and touch only `ports` (the expected LAN-exposure change);
+  gpu override (ollama) likewise valid. Remaining (needs a compose CLI): the full
+  `docker compose config` schema/interpolation validation (+ the lan override
+  merge), and watching the first real `compose up` (SV1 switched ollama to the
+  locally built image + healthcheck ordering).
 
 ## Batch 2 — the 01-core / in-container closure window (ONE rebuild pays for all)
 
@@ -388,23 +424,28 @@ order to actually WORK them — the item text lives in the sub-sections below):
   rm -rf's it ONE IMAGE LATER (whiteout reclaims nothing) → every pull
   downloads 0.5-2 GB of dead wheels per arch. Fix: bind-mount the wheelhouse
   into the venv RUN instead of COPYing (copy-media-payloads shows the pattern).
-- **AP4 — no strip pass over ANY media prefix** [S·★★] ✅ PARTIALLY STAGED
-  2026-08-15 (rides next rebuild). Added `strip_media_prefixes` to
-  build-helpers.sh (01-core, universally mounted — no new dep): uses ${STRIP}
-  (cross-env exports the target <triplet>-strip on cross, host strip on native —
-  the AP1 finding that host strip no-ops on foreign ELFs), --strip-all KEEPS
-  .dynsym so dynamic linking is unaffected (unit-tested: .symtab 1→0, smaller,
-  nm -D still resolves; skips absent dirs; survives set -e). WIRED at end-of-
-  install in the 3 scripts where STRIP is proven-live-in-mechanism (they call
-  setup_linux_cross_env AND source common.sh→build-helpers): build-ffmpeg.sh,
-  build-gstreamer-stage.sh, build-libcamera.sh — each guarded `MEDIA_STRIP=1`
-  (default on, =0 disables) + best-effort. The rebuild's functional smokes
-  (ffmpeg -version, gstreamer pipelines) are the validation net. STILL OPEN:
-  opencv5 / litert / onnxruntime / armnn / acl prefixes — their cross-env
-  activation pattern differs per script; wire in the rebuild window after
-  confirming STRIP is live at each (helper already handles them via its default
-  prefix list). Measure the drop via AP7's new per-prefix numbers. (llvm-target
-  = TG4, separate.)
+- **AP4 — no strip pass over ANY media prefix** [S·★★] ffmpeg/gstreamer/libcamera
+  ✅ SHIPPED 2026-08-16 (strip_media_prefixes wired + validated live in the full
+  rebuild — the shipped amd64 wrapper's prefixes are stripped: ffmpeg 35M/gst
+  263M/opencv 140M/libcamera 11M). **opencv5 ✅ STAGED 2026-08-16** (rides next
+  rebuild): build-opencv.sh does NOT call setup_linux_cross_env (it sets the
+  NATIVE gcc in configure_opencv_build_env, ${STRIP} unset), so the helper gained
+  `_resolve_media_strip_bin` — it self-derives the cross `<triplet>-strip` (via
+  cross_target_triplet + the on-PATH cross bin symlinks) when STRIP is unset and
+  a cross build is active, else host strip. Unit-tested all 5 resolution paths
+  (STRIP-set / cross+onPATH / cross-no-strip / native / no-helpers), shellcheck
+  + full suite green. Wired at end of build-opencv.sh main (MEDIA_STRIP-gated,
+  best-effort, /opt/opencv5 is a dedicated prefix). **litert ✅ STAGED 2026-08-16**
+  (rides next rebuild): litert installs into the SHARED /usr/local/lib (next to
+  base CPython), so a whole-prefix strip is wrong — added `strip_media_libs <dir>
+  <name-glob…>` (targeted maxdepth-1, reuses _resolve_media_strip_bin) and wired
+  build-litert.sh to strip ONLY libtensorflow-lite*/libtensorflowlite_c*/libtflite*
+  (unit-tested: litert libs 1→0, libpython UNTOUCHED). STILL OPEN: **onnxruntime**
+  (dedicated subdir /usr/local/lib/onnxruntime-cpu so a whole-dir strip WOULD work,
+  but its build script doesn't source common.sh → helper unavailable; needs the
+  helper wired in, or an inline strip using its own ${STRIP} which
+  30-build-native.sh does export) and **armnn/acl** (arm64 only). (llvm-target =
+  TG4, separate.)
 - **AP5 — cross-target CPython built plain -O2: no PGO, no LTO** [M·★★]
   build_python.sh:225-233 (cross configure has neither) vs :471 (native has
   PGO, no LTO). The foreign-arch venv interpreter leaves 10-30% upstream-

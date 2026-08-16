@@ -28,6 +28,12 @@ fi
 [ -f "${_COMMON_SH_DIR}/downloads.sh" ] && source "${_COMMON_SH_DIR}/downloads.sh"
 # shellcheck disable=SC1090,SC1091
 [ -f "${_COMMON_SH_DIR}/parallelism.sh" ] && source "${_COMMON_SH_DIR}/parallelism.sh"
+# Named guard helpers (first_match/probe/source_vendor/csv_each). Guarded like
+# the rest: skips cleanly if guard-helpers.sh is not co-mounted, so common.sh
+# never breaks — but any script that MIGRATED to these helpers needs its RUN to
+# mount guard-helpers.sh (added to the per-file-common.sh RUNs alongside this).
+# shellcheck disable=SC1090,SC1091
+[ -f "${_COMMON_SH_DIR}/guard-helpers.sh" ] && source "${_COMMON_SH_DIR}/guard-helpers.sh"
 
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC

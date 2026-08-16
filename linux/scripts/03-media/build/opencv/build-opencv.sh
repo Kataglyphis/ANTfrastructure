@@ -691,6 +691,19 @@ main() {
     }
     
     echo "OpenCV ${OPENCV_VERSION} installed successfully to ${OPENCV_PREFIX}"
+
+    # AP4: strip symbol tables from the installed OpenCV prefix. Unlike
+    # ffmpeg/gstreamer/libcamera, this script does not call setup_linux_cross_env,
+    # so ${STRIP} is unset — strip_media_prefixes self-derives the cross
+    # <triplet>-strip (via _resolve_media_strip_bin) when a cross build is active,
+    # else host strip. --strip-all keeps .dynsym (dynamic linking unaffected).
+    # Best-effort; MEDIA_STRIP=0 disables. /opt/opencv5 is a dedicated prefix, so
+    # this touches only OpenCV libs (litert/onnxruntime live in the shared
+    # /usr/local and are handled elsewhere).
+    if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
+        strip_media_prefixes "${OPENCV_PREFIX}" || true
+    fi
+
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"
     

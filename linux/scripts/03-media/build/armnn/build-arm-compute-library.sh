@@ -75,6 +75,12 @@ build_acl() {
     || die "ACL install verification failed: arm_compute headers missing from ${ACL_INSTALL_DIR}/include"
 
   info "ACL installed to ${ACL_INSTALL_DIR}"
+  # AP4: strip ACL's libs (dedicated /opt/acl prefix). strip_media_prefixes
+  # self-derives the cross <triplet>-strip; --strip-all keeps .dynsym.
+  # Best-effort, MEDIA_STRIP=0 disables. arm64-only lane.
+  if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
+    strip_media_prefixes "${ACL_INSTALL_DIR}" || true
+  fi
   ls -la "${ACL_INSTALL_DIR}/lib/" | head -10
 }
 

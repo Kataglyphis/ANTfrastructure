@@ -94,7 +94,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/opt/scripts/toolchain/cmake.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
@@ -103,7 +102,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/vulkan.sh,target=/opt/scripts/toolchain/vulkan.sh,ro \
     --mount=type=tmpfs,target=/tmp \
     --mount=type=tmpfs,target=/var/tmp \
     set -euo pipefail; \
@@ -150,7 +148,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/opt/scripts/toolchain/cmake.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
@@ -159,7 +156,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/vulkan.sh,target=/opt/scripts/toolchain/vulkan.sh,ro \
     --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
     --mount=type=tmpfs,target=/var/tmp \
@@ -216,7 +212,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/opt/scripts/toolchain/cmake.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
@@ -225,7 +220,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/vulkan.sh,target=/opt/scripts/toolchain/vulkan.sh,ro \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     apt-get update -qq && \

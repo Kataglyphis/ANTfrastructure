@@ -15,15 +15,19 @@ done
 [ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
 unset _bs_path _FOUND_MODULES
 
-# Source required modules
+# Source required modules. cmake.sh and vulkan.sh are sourced LAZILY (in their
+# own dispatch arms below), NOT here — they are standalone (install_cmake /
+# install_vulkan_* are used only by the cmake/vulkan/all subcommands) and are
+# NOT reachable from the gcc path. That lets the GCC RUN (dockerfile-gcc) drop
+# their bind-mounts, so a cmake.sh/vulkan.sh edit no longer invalidates the
+# ~3655s GCC build (TG1). llvm.sh stays eager — target-clang/dockerfile-llvm
+# have an intricate llvm-cross/validate closure not worth the trim risk here.
 source_module common.sh
 source_module cross-env.sh
 source_module repos.sh
 source_module core.sh
-source_module cmake.sh
 source_module llvm.sh
 source_module gcc.sh
-source_module vulkan.sh
 source_module verify.sh
 
 usage() {
@@ -152,6 +156,7 @@ main() {
       add_llvm_repo
       ;;
     cmake)
+      source_module cmake.sh   # TG1: lazy — sourced only where install_cmake is used
       install_core_tools_if_needed
       install_cmake
       ;;
@@ -164,6 +169,7 @@ main() {
       install_gcc
       ;;
     vulkan)
+      source_module vulkan.sh   # TG1: lazy — sourced only where install_vulkan_* is used
       [ -n "${VULKAN_VERSION_DEFAULT:-}" ] || die "--vulkan-version is required for the vulkan command"
       install_core_tools_if_needed
       install_vulkan_for_current_env "$VULKAN_VERSION_DEFAULT"
@@ -182,6 +188,8 @@ main() {
       install_target_clang_toolchain "${normalized_arch_override:-${TARGET_ARCH:-${TARGETARCH:-}}}"
       ;;
     all)
+      source_module cmake.sh    # TG1: lazy modules — the `all` path needs both
+      source_module vulkan.sh
       [ -n "${VULKAN_VERSION_DEFAULT:-}" ] || die "--vulkan-version is required for the all command"
       install_core_tools_if_needed
       install_cmake

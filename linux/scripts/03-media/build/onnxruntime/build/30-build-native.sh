@@ -128,6 +128,19 @@ ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files f
 
 finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
 
+# AP4: strip the CPU-EP shared libs. setup_linux_cross_env (above) exported
+# ${STRIP} = the target <triplet>-strip on cross (host strip no-ops on foreign
+# ELFs), plain strip on native; --strip-all keeps .dynsym so dynamic linking is
+# unaffected. onnxruntime-cpu is a DEDICATED prefix so a subtree strip is safe.
+# This script sources onnxruntime's own lib/common.sh (not 01-core), so no
+# strip_media_prefixes helper — a direct ${STRIP} find suffices. Best-effort,
+# MEDIA_STRIP=0 disables. Excludes wheels/ (RECORD-hashed; AP1 owns those).
+if [ "${MEDIA_STRIP:-1}" = "1" ]; then
+  find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 2 -type f \
+    \( -name '*.so' -o -name '*.so.*' \) \
+    -exec "${STRIP:-strip}" --strip-all {} + 2>/dev/null || true
+fi
+
 info "Build complete. Artifacts in ${NATIVE_CPU_OUTPUT_DIR}"
 info "Wheels in ${NATIVE_CPU_OUTPUT_DIR}/wheels"
 ls -lh "${NATIVE_CPU_OUTPUT_DIR}/wheels"/*.whl 2>/dev/null || true

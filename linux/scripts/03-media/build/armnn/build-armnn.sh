@@ -76,6 +76,12 @@ build_armnn() {
   cmake --install .
 
   info "Arm NN installed to ${ARMNN_INSTALL_DIR}"
+  # AP4: strip Arm NN's libs (dedicated /opt/armnn prefix). strip_media_prefixes
+  # self-derives the cross <triplet>-strip; --strip-all keeps .dynsym.
+  # Best-effort, MEDIA_STRIP=0 disables. arm64-only lane.
+  if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
+    strip_media_prefixes "${ARMNN_INSTALL_DIR}" || true
+  fi
   ls -la "${ARMNN_INSTALL_DIR}/lib/" 2>/dev/null | head -10 || true
 }
 

@@ -229,6 +229,16 @@ EOF
   rm -rf "${cross_build_dir}" "${stage_root}"
   mkdir -p "${cross_build_dir}/Python/frozen_modules" "${stage_root}"
 
+  # AP5: link-time optimization for the foreign-arch interpreter (10-30%
+  # upstream-documented speedup). Cross-LTO relies on the target GCC's LTO
+  # linker plugin working through the cross toolchain — fragile, so it is
+  # GATED: PYTHON_LTO=0 disables it without a code revert (a knob flip in the
+  # next build if it ever breaks the cross Python compile). PGO stays cross-out
+  # of reach (needs the foreign interpreter under qemu — separate investigation).
+  # The empty-array expansion below is safe under set -u in bash 4.4+.
+  local -a _lto_args=()
+  [ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
+
   (
     cd "${cross_build_dir}"
     CONFIG_SITE="${config_site}" \
@@ -244,6 +254,7 @@ EOF
         --with-build-python="${build_python_bin}" \
         --with-pkg-config=yes \
         --enable-shared \
+        "${_lto_args[@]}" \
         --without-ensurepip \
         --disable-test-modules
   )
@@ -483,7 +494,12 @@ fi
 tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"
-./configure --enable-shared --enable-optimizations --prefix=/usr/local
+# AP5: native interpreter already builds with PGO (--enable-optimizations); add
+# LTO too (safe/well-trodden natively). Same PYTHON_LTO=0 escape hatch as the
+# cross path. Empty-array expansion is set -u safe (bash 4.4+).
+_lto_args=()
+[ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
+./configure --enable-shared --enable-optimizations "${_lto_args[@]}" --prefix=/usr/local
 make -j"$(compute_jobs_with_mem_cap "" 2500)"
 make altinstall
 

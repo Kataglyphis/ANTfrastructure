@@ -727,6 +727,63 @@ RUN --mount=type=tmpfs,target=/tmp \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh libcamera
 
 # ==============================================================================
+# OpenCV PASS 2 (opencv-gst) — rebuild OpenCV WITH the source-built GStreamer.
+# ------------------------------------------------------------------------------
+# Owner-decided two-pass build: PASS 1 (the `opencv` stage, FROM base, NO
+# gstreamer) produces the OpenCV that GStreamer's OWN opencv plugin links
+# against — that is why opencv must build BEFORE gstreamer. PASS 2 here rebuilds
+# OpenCV FROM the gstreamer stage so OpenCV's videoio backend links the
+# SOURCE-built /opt/gstreamer (1.29.x), not apt's older gstreamer. `final` COPYs
+# OpenCV from HERE, overwriting the pass-1 tree it inherits from media-inputs.
+# FORCE_REBUILD=1 is required — pass-1 opencv5.pc is present, so build-opencv
+# would otherwise skip. riscv64: build-opencv forces WITH_GSTREAMER=OFF (Ubuntu
+# Ports lacks the riscv64 gstreamer dev chain) so this pass reproduces pass 1
+# there (a deliberate, tolerated extra build for layout uniformity).
+# ==============================================================================
+FROM gstreamer AS opencv-gst
+
+ARG OPENCV_VERSION
+ARG OPENCV_COMMIT=""
+ARG OPENCV_CONTRIB_COMMIT=""
+ARG OPENCV_BUILD_TYPE=Release
+ARG OPENCV_WITH_CONTRIB=true
+ARG OPENCV_WITH_PYTHON=true
+ARG OPENCV_OUTPUT_DIR=/opt/opencv5
+ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
+
+RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+    --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    set -euo pipefail; \
+    bash /opt/scripts/03-media/build/opencv/install-deps.sh
+
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
+    export FORCE_REBUILD=1; \
+    _gst_pc="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -name 'gstreamer-1.0.pc' -type f 2>/dev/null | head -1)"; \
+    if [ -n "${_gst_pc}" ]; then export PKG_CONFIG_PATH="$(dirname "${_gst_pc}"):${PKG_CONFIG_PATH:-}"; fi; \
+    echo "opencv pass 2: gstreamer .pc=${_gst_pc:-NONE}  PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-<unset>}"; \
+    bash /opt/scripts/03-media/build/opencv/build-opencv.sh \
+        --opencv-version "${OPENCV_VERSION}" \
+        --prefix "${OPENCV_OUTPUT_DIR}" \
+        --build-type "${OPENCV_BUILD_TYPE}" \
+        --with-contrib "${OPENCV_WITH_CONTRIB}" \
+        --with-python "${OPENCV_WITH_PYTHON}" \
+        --skip-dep-install
+
+RUN --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
+    bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
+
+# ==============================================================================
 # Final stage — combine all artifacts; COPY only the runtime scripts that must
 # persist in the published image (build scripts are NOT shipped).
 # ==============================================================================
@@ -781,6 +838,11 @@ COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 # Dir-to-dir COPYs are tolerant of the empty (non-amd64 / build-failed) case.
 COPY --link --from=tvm /opt/tvm/wheels /opt/tvm-wheels
 COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/
+# OpenCV two-pass: OVERWRITE the pass-1 OpenCV inherited from media-inputs with
+# the pass-2 tree (opencv-gst), which linked the source-built GStreamer videoio.
+# Must come AFTER any media-inputs-inherited /opt/opencv5 content; a dir COPY
+# replaces the tree. See the `opencv-gst` stage header for the two-pass rationale.
+COPY --link --from=opencv-gst ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=gstreamer ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=gstreamer /usr/local/lib/libvvdec* /usr/local/lib/
 # libvvdec.pc lives in the pkgconfig/ subdir, which the libvvdec* glob above does
