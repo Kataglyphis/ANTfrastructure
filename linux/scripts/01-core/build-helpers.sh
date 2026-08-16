@@ -165,21 +165,43 @@ strip_elf_tree() {
     | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
 }
 
+# _resolve_media_strip_bin — pick the right `strip` for strip_media_prefixes.
+# Prefers ${STRIP} (setup_linux_cross_env exports the target <triplet>-strip),
+# else derives the cross <triplet>-strip when a cross build is active and the
+# cross bin symlinks are on PATH (opencv/litert/onnxruntime build scripts do NOT
+# call setup_linux_cross_env, so STRIP is unset there — without this they'd fall
+# back to host `strip`, a no-op on foreign ELFs, the AP1 finding). Falls back to
+# plain `strip` for native. Fully guarded: every probe `|| true`, missing helpers
+# just yield host strip — never aborts a set -e caller.
+_resolve_media_strip_bin() {
+  local bin="${STRIP:-}"
+  if [ -z "${bin}" ] \
+     && declare -F cross_build_is_active >/dev/null 2>&1 \
+     && cross_build_is_active 2>/dev/null \
+     && declare -F cross_target_triplet >/dev/null 2>&1; then
+    local _trip
+    _trip="$(cross_target_triplet 2>/dev/null || true)"
+    if [ -n "${_trip}" ] && command -v "${_trip}-strip" >/dev/null 2>&1; then
+      bin="${_trip}-strip"
+    fi
+  fi
+  printf '%s' "${bin:-strip}"
+}
+
 # strip_media_prefixes [prefix...] — AP4: strip symbol tables from the media
-# install prefixes. Uses ${STRIP} when set (cross builds export it to the target
-# <triplet>-strip via cross-env.sh; host `strip` no-ops on foreign ELFs — the
-# AP1 finding), else plain `strip` for native. Best-effort per prefix (each goes
-# through strip_elf_tree, which never aborts the caller). With no args, strips
-# the default media set. Call this from a stage where the cross toolchain is on
-# PATH and the prefixes are already installed (STRIP live) — otherwise it
-# silently falls back to host strip and leaves foreign ELFs unstripped (a missed
-# size win, never a build break).
+# install prefixes. Resolves the strip binary via _resolve_media_strip_bin (cross
+# <triplet>-strip when cross, host strip when native), so it works whether or not
+# the caller exported ${STRIP}. Best-effort per prefix (each goes through
+# strip_elf_tree, which never aborts the caller). With no args, strips the default
+# media set. If no cross-strip is resolvable it falls back to host strip and
+# leaves foreign ELFs unstripped (a missed size win, never a build break).
 #
 # NB: not a wheel stripper — wheels carry per-file <triplet>.so that a tree walk
 # would still strip correctly, but AP1's wheel-env forwarding is the dedicated
 # path for those. This is for the plain /opt/<lib> and /usr/local trees.
 strip_media_prefixes() {
-  local strip_bin="${STRIP:-strip}" jobs="${STRIP_JOBS:-$(nproc)}" p
+  local strip_bin jobs="${STRIP_JOBS:-$(nproc)}" p
+  strip_bin="$(_resolve_media_strip_bin)"
   local -a prefixes=("$@")
   if [ "${#prefixes[@]}" -eq 0 ]; then
     prefixes=(
