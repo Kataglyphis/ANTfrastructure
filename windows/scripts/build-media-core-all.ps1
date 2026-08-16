@@ -48,11 +48,19 @@ Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -F
 
 # Each stage consumes the prior stage's install, so they stay sequential.
 # Invoke-SourceBuildChain owns the banner + native-exit check + EAP=Stop inheritance.
+# FFmpeg BEFORE OpenCV (swapped 2026-08-16, backlog #94): OpenCV's videoio only
+# links this chain's FFmpeg if FFmpeg is already installed when OpenCV
+# configures; otherwise it silently downloads and uses its own prebuilt one
+# (`FFMPEG: YES (prebuilt binaries)`, avcodec 61 vs the chain's 63). The reverse
+# dependency does not exist — FFmpeg is configured without `--enable-libopencv`
+# — so this is a plain reorder, not a cycle break. Callers must pass BOTH
+# -ResumeFrom and -Until; relying on a component's POSITION here is what made
+# the old ffmpeg invocation (-ResumeFrom only) order-dependent.
 $stages = @(
     @{ Name = 'ONNX Runtime'; Script = 'build-onnx-from-source.ps1';       SourceDir = 'C:\temp\onnx-src' }
     @{ Name = 'ONNX GenAI';   Script = 'build-onnx-genai-from-source.ps1'; SourceDir = 'C:\temp\onnx-genai-src' }
-    @{ Name = 'OpenCV';       Script = 'build-opencv-from-source.ps1';     SourceDir = 'C:\temp\opencv-src' }
     @{ Name = 'FFmpeg';       Script = 'build-ffmpeg-from-source.ps1';     SourceDir = 'C:\temp\ffmpeg-src' }
+    @{ Name = 'OpenCV';       Script = 'build-opencv-from-source.ps1';     SourceDir = 'C:\temp\opencv-src' }
 )
 
 Invoke-SourceBuildChain -Label 'media-core' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom -Until $Until

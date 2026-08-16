@@ -478,9 +478,14 @@ if ($Stages -contains 'media') {
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $onnxArg)
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $opencvArg)
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $ffmpegArg)
+            # ORDER: onnx -> FFMPEG -> OPENCV -> genai (swapped 2026-08-16,
+            # backlog #94). OpenCV must configure AFTER FFmpeg exists or it
+            # silently links its own downloaded prebuilt FFmpeg instead of this
+            # chain's. Keep this in step with the FROM graph in
+            # Dockerfile.media-builder — the two encode the same order twice.
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $onnxArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $ffmpegArg)
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $opencvArg)
         } elseif ($branch -eq 'media-tvm') {
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-tvm-built' -Tag (Get-BkTag 'windows-media-tvm') -BuildArgs $branchBuildArgs
         } else {

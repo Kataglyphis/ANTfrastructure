@@ -1316,6 +1316,76 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-cv2 .* True')
     } -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
 
+    # ---- COMPILED-IN VIDEO BACKENDS (backlog #95) --------------------------
+    # These guard #93 (GStreamer silently OFF) and #94 (OpenCV using its OWN
+    # prebuilt FFmpeg instead of the chain's). Both shipped unnoticed for months
+    # because nothing asserted them and the one obvious check LIES:
+    # `cv2.videoio_registry.getBackends()` lists GSTREAMER as a known backend ID
+    # whether or not it was compiled in. Only getBuildInformation() is
+    # authoritative, so parse that and nothing else.
+    #
+    # Written BEFORE the fix, deliberately, and expected to FAIL until #93/#94
+    # land — a guard added afterwards proves nothing about the defect it exists
+    # to catch. If you are here because these are red: that is the known state,
+    # see docs/windows-builds.md P0e.
+    $cvBuildInfo = & python -c "import cv2; print(cv2.getBuildInformation())" 2>&1 | Out-String
+
+    Assert-Test -Name "OpenCV compiled WITH the GStreamer video backend (#93)" -Condition {
+        $cvBuildInfo -match '(?m)^\s*GStreamer:\s+YES'
+    } -FailMessage ("cv2.getBuildInformation() does not report 'GStreamer: YES' -- cv::VideoCapture(..., CAP_GSTREAMER) " +
+        "cannot work. Requested via -DWITH_GSTREAMER=ON but silently disabled: OpenCV configures at " +
+        "media-core-built-opencv, while GStreamer is not built until the MERGE stage, so CMake finds nothing. " +
+        "Backlog #93 -- do NOT 'fix' this by trusting cv2.videoio_registry.getBackends(), which reports GSTREAMER regardless.")
+
+    # `FFMPEG: YES (prebuilt binaries)` is OpenCV's OWN downloaded FFmpeg. The
+    # negative lookahead is the whole assertion: plain `FFMPEG: YES` passes,
+    # `YES (prebuilt binaries)` fails.
+    Assert-Test -Name "OpenCV uses the chain's FFmpeg, not its own prebuilt one (#94)" -Condition {
+        $cvBuildInfo -match '(?m)^\s*FFMPEG:\s+YES(?![^\r\n]*prebuilt)'
+    } -FailMessage ("cv2.getBuildInformation() reports FFMPEG as '(prebuilt binaries)' -- OpenCV downloaded its own " +
+        "FFmpeg instead of linking the one this chain builds, so the image carries TWO FFmpeg generations and " +
+        "cv::VideoCapture's FFmpeg path uses the wrong one (also leaves avdevice: NO). FFmpeg does not depend on " +
+        "OpenCV, so the opencv/ffmpeg stages can simply swap -- backlog #94.")
+
+    # Cross-check the versions rather than hard-coding a pin: ask ffmpeg.exe what
+    # avcodec the chain actually ships, ask OpenCV what avcodec it was built
+    # against, and require the majors to agree. Survives an FFMPEG_VERSION bump
+    # without edits, and catches a silent fallback to a bundled build.
+    # Read both majors ONCE, up front, so the two failure modes stay separable:
+    # "the versions disagree" and "we could not read one of them" are different
+    # defects and must not share a message. The probe run on 2026-08-16 reported
+    # `chain=?` purely because ffmpeg.exe would not launch in that intermediate
+    # image, which read as a version mismatch and is not one.
+    $ffDir = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
+    $ffExe = Join-Path $ffDir 'ffmpeg.exe'
+    $chainAvcodec = ''
+    if (Test-Path $ffExe) {
+        $chainVer = (& $ffExe -version 2>&1 | Out-String)
+        if ($chainVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodec = $Matches[1] }
+    }
+    # OpenCV prints either `avcodec: 61.19.100` or `avcodec: YES (61.19.100)`
+    # depending on version; accept both rather than guess (the abridged quote in
+    # backlog #93 shows the first, real builds print the second).
+    $cvAvcodec = ''
+    if ($cvBuildInfo -match '(?m)^\s*avcodec:\s+(?:YES\s*\()?(\d+)\.') { $cvAvcodec = $Matches[1] }
+
+    Assert-Test -Name "both avcodec majors are readable (precondition for the #94 check)" -Condition {
+        $chainAvcodec -and $cvAvcodec
+    } -FailMessage ("could not read one of the avcodec versions -- chain='$chainAvcodec' (from '$ffExe' -version), " +
+        "opencv='$cvAvcodec' (from cv2.getBuildInformation()). This is NOT a version-mismatch verdict: an empty " +
+        "chain value usually means ffmpeg.exe could not launch (its bin dir missing from PATH), an empty opencv " +
+        "value means the Video I/O block had no avcodec line at all.")
+
+    if ($chainAvcodec -and $cvAvcodec) {
+        Assert-Test -Name "OpenCV's avcodec major matches the chain's FFmpeg (#94)" -Condition {
+            $chainAvcodec -eq $cvAvcodec
+        } -FailMessage ("OpenCV was built against avcodec $cvAvcodec while this chain ships avcodec $chainAvcodec -- " +
+            "the image carries TWO FFmpeg generations and cv::VideoCapture's FFmpeg path uses the wrong one. " +
+            "Backlog #94.")
+    } else {
+        Skip-Test 'OpenCV avcodec major vs chain (one of the versions unreadable)'
+    }
+
     Assert-Test -Name "python tvm imports (runtime device reachable)" -Condition {
         $out = & python -c "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-tvm')

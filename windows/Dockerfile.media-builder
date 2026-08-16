@@ -372,7 +372,30 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
+# FFMPEG BEFORE OPENCV (swapped 2026-08-16, backlog #94). OpenCV's videoio
+# needs FFmpeg to EXIST at configure time or it silently falls back to the
+# prebuilt `opencv_videoio_ffmpeg*.dll` it downloads itself — which is what
+# shipped for months: `FFMPEG: YES (prebuilt binaries)`, avcodec 61 while this
+# chain builds avcodec 63, two FFmpeg generations in one image and
+# cv::VideoCapture using the older. The swap is safe because the dependency runs
+# ONE way: FFmpeg is configured without `--enable-libopencv`, so it needs
+# nothing from OpenCV. (GStreamer↔OpenCV genuinely IS circular — that is #93,
+# a different problem with a different fix.)
+#
+# Every RUN below now passes BOTH -ResumeFrom and -Until. The ffmpeg step used
+# to pass only -ResumeFrom and rely on being LAST in the stage list; after the
+# swap that would have silently dragged OpenCV into the ffmpeg layer.
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
+    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
+
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
@@ -383,17 +406,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
-    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
-
-FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `

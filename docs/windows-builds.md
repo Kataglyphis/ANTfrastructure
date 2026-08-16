@@ -2002,6 +2002,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `normalize-tensorrt-tree.ps1` | `windows/scripts/` | Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted `TensorRT-<version>` tree to a stable **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift, and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Backlog #38: the old pin-derived PATH was wrong twice over — wrong version AND wrong dir (TensorRT 10+ moved the DLLs to `bin\`), so the ORT TensorRT EP could never load, silently, while builds stayed green. Absent zip stays a supported graceful skip; a half-extracted tree is a build failure. |
 | `bootstrap-pwsh.ps1` | `windows/scripts/` | Installs PowerShell 7 as the FIRST RUN of `Dockerfile.base`, BIND-MOUNTED (no layer). Runs under Windows PowerShell **5.1** — the SHELL is not switched to pwsh until after it — so keep it 5.1-safe and do not use `Invoke-DownloadWithRetry` (no module is mounted that early). Carries its own 3-attempt retry with an in-loop SHA256 check. Extracted from a 1214-char inline RUN (backlog #27). |
 | `probe-sccache-write.ps1` + `run-sccache-write-probe.ps1` + `Dockerfile.sccache-write-probe` | `windows/scripts/`, `windows/` | Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min media build (backlog #99): same cache-mount ids, same ENV, then a configuration matrix (`disk-only`, `disk-mounted-subdir`, `disk-plaindir`, `multilevel-mounted`, `multilevel-plaindir`, `webdav-only`), raw filesystem tests, a process-spawn matrix, a bisect of the cache root, serial-vs-parallel and path-length sections. **Run it against the REAL base image** (`-BaseImage local/kataglyphis:bk-windows-media-core-ffmpeg`), not the toolchain default. **Health warning:** it reproduces the ENVIRONMENT but not the FAILURE — every configuration it blessed then failed in a real build, so treat its verdicts as hypotheses to test in a build, never as clearance. `PROBE_NONCE` + a `probe complete` marker check exist because an unchanged script gives `#6 CACHED` and silently replays an old verdict; `--no-cache` is not the alternative (it empties cache mounts, #96). |
+| `probe-opencv-video-backends.ps1` + `run-opencv-video-probe.ps1` + `Dockerfile.opencv-video-probe` | `windows/scripts/`, `windows/` | Asks a BUILT media image what video backends OpenCV actually has (backlog #93-#95): prints the `Video I/O:` block, runs the three #95 assertions, and shows `videoio_registry.getBackends()` beside them. ~4 s against `bk-windows-media-core-ffmpeg`, versus a full chain rebuild — which is what let the #95 guards be watched FAILING on the real artifact before the fixes land. Same two safeguards as the sccache probe: `PROBE_NONCE` (a re-run with an unchanged script otherwise gives `CACHED` and replays an old verdict) and a `probe complete` marker check; `--no-cache` is not the alternative, it empties cache mounts (#96). |
 | `rebuild-host-vhdx.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): reclaims a dynamically-expanding VHDX by REBUILDING it around its live data — the only reliable reclaim on ReFS guests, where `compact-host-vhdx.ps1` returns ~nothing. Creates a fresh dynamic disk, reproduces the source's filesystem/label/cluster size (and Dev Drive flag where `Format-Volume -DevDrive` exists), mirrors with `robocopy /MIR /COPYALL`, then verifies file count AND byte totals before anything is swapped. TWO PHASES on purpose: `-CopyOnly` touches nothing live and is safe with editors/agents still on the volume; the swap DETACHES the volume and so requires that no process holds a handle on it (a stray detach on 2026-08-06 pulled D: out from under a running session and killed it) — it REFUSES rather than forces, keeping the verified copy for a later `-SwapOnly`. Old disk kept as `.old` unless `-RetireOld`; **no space is reclaimed until it is deleted.** Failed swaps roll back to the original disk automatically. Parameters: `-VhdxPath` mandatory, `-NewSizeGB`, `-NewVhdxPath`, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-ExcludeDir`, `-LogPath`, `-ReportOnly`, `-CopyOnly`, `-SwapOnly`, `-RetireOld`, `-Force`. Put `-LogPath` off the volume for swap runs |
 
 ## Refactor Backlog (Windows container chain)
@@ -2030,16 +2031,27 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > order — never work top-to-bottom by number.** Batches A-C are independent of
 > each other; D-H can follow in any order.
 >
-> **Batch A — DONE 2026-08-14, and it CLOSED #71 by disproving it.** sccache
-> was believed dead (0 hits / 189,861 failed writes across 94 stat blocks). A
-> probe against the real cache mount and the real WebDAV endpoint showed
-> **miss → store → HIT, 0 write errors** — the corpus was simply STALE: its
-> newest sccache stats are from 2026-08-13 19:43, the dufs SYSTEM-service
-> migration landed the same day, and no run since has exercised sccache. See
-> the archive addendum. **Standing caution: the whole P0b section rests on that
+> **Batch A — DONE 2026-08-14. It closed #71, and its "sccache is healthy"
+> reading was WRONG — see #99.** sccache was believed dead (0 hits / 189,861
+> failed writes across 94 stat blocks). A probe against the real cache mount and
+> the real WebDAV endpoint showed **miss → store → HIT, 0 write errors**, and
+> the corpus really was stale (newest stats 2026-08-13 19:43, same day as the
+> dufs SYSTEM-service migration, no run since had exercised sccache). Both true,
+> and the conclusion drawn from them still did not hold: that probe wrote ONE
+> object into a directory it had just created, which is the one shape the defect
+> cannot appear in. The writes were failing all along, and stayed failing for
+> another two days. **This batch is the origin of the "a probe that cannot
+> reproduce the bug cannot clear it" invariant in AGENTS.md.** See the archive
+> addendum. **Standing caution: the whole P0b section rests on that
 > same clipped, pre-fix corpus.** Re-run the forensics against the first
 > fully-captured media chain before acting on #72's export numbers or #74's
 > `-j19` — treat those as hypotheses, not measurements.
+>
+> **CAUTION DISCHARGED 2026-08-16 for #72/#75/#76** — re-measured across five
+> complete chains (`bk-run-{webdavonly,reuse,chain-disk,legacy-disk,forcelocal}`):
+> export is ~1.2 % of a chain (not 23 %), zero `-j` downgrades, zero >2 h stalls.
+> #72's premise is dead; #75/#76 are latent, not active. The remaining P0b items
+> (#73, #74, #77–#80) have NOT been re-checked and still carry the caution.
 >
 > **Batch B — DONE 2026-08-14.** (#39, #40, #41, #42, #43, #62, #63, #64 —
 > landed, lint 152/0, tests 484/484, entries moved to the archive addendum.)
@@ -2546,6 +2558,25 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   which lack them, re-pay a whole branch on any failure). Collapsing them buys
   ~3 export round-trips and costs that resume granularity. Measure both before
   choosing; this is a trade-off, not a free win.
+
+  **RE-MEASURED 2026-08-16 on five complete media chains — THE PREMISE NO LONGER
+  HOLDS; DOWNGRADE TO [S·★].** Batch A's standing caution said this item rests
+  on the clipped pre-fix corpus and must be re-checked before anyone acts on it.
+  Done, across `bk-run-{webdavonly,reuse,chain-disk,legacy-disk,forcelocal}.log`:
+
+  | | per chain |
+  |---|---|
+  | `exporting layers`, all vertices summed | **63–69 s** |
+  | longest single build vertex (onnx) | 3277–3517 s |
+  | whole chain | ~5 400 s |
+
+  Export is **~1.2 % of the chain**, not 23 %, and nowhere near "more than the
+  build it wraps". The old figures were real for the runs they came from, but
+  those runs were dominated by stalls and cache failures that no longer occur.
+  **Do NOT collapse the four `media-core-built-*` checkpoints on this item's
+  authority** — the resume granularity it would cost is now worth far more than
+  the ~60 s it would save. Keep the entry only as the record of a disproven
+  premise.
 - **73 [S·★★★, none] Latent defect in the SHIPPED ONNX CUDA provider: infinite
   recursion in CUTLASS `udiv128`.** 225 occurrences of
   `uint128.h(96,90): warning: all paths through this function will call itself
@@ -2577,6 +2608,11 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   / 4909.2 s — a ±2 s determinism that identifies the sccache-CUDA server crash
   rather than an env flake. 12 occurrences corpus-wide. FIX: make the downgrade
   loud and bounded; abort instead of grinding serially.
+
+  **RE-MEASURED 2026-08-16: zero occurrences across five complete media chains.**
+  Still worth fixing — a self-heal that can silently cost 11 h must be loud and
+  bounded whether or not it fires today — but it is **latent, not active**, so it
+  does not belong ahead of work on live defects. Same status as #76.
 - **76 [S·★★, none] The ~120-min ffmpeg stall (old #35) is CONFIRMED as a
   one-off and DENIED as recurring — and it is a TIMEOUT, not jitter.** Exact
   gap: **7200.9 s** (≈ exactly 2 h) of zero output between
@@ -2587,6 +2623,11 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   call. Not recurred in 9 subsequent runs → latent, not active. FIX: bound that
   step with an explicit timeout + heartbeat. **Supersedes the old #35 observe
   entry**, which can now be closed.
+
+  **RE-MEASURED 2026-08-16: not recurred in five more complete chains** (longest
+  vertex anywhere 3 517 s = onnx, no >2 h gap). 14 clean runs since the one-off.
+  Confirms latent-not-active; the timeout+heartbeat is still the right fix and
+  is cheap, but it is insurance, not a repair.
 - **77 [S·★★, none] GStreamer's GES `_commit` conflict is patched REACTIVELY
   after a failed compile — deterministic, 3/3 runs, ~20 min discarded each
   time.** `Compile attempt 1 failed; patching _commit conflict in GES and
@@ -2687,6 +2728,45 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   next to the bulk DLL-load enumeration (#57). Add the assertions FIRST, watch
   them fail, then land the fix — a guard written after the fact proves nothing
   about the defect it was meant to catch.
+
+  **DONE 2026-08-16 — three assertions landed and VERIFIED FAILING on the real
+  artifact.** They sit in the python section of `smoke-test-container.ps1`
+  (where `cv2` is importable) and parse `cv2.getBuildInformation()` only:
+  1. `GStreamer: YES` — guards #93
+  2. `FFMPEG: YES` **without** `(prebuilt binaries)`, via a negative lookahead — guards #94
+  3. OpenCV's `avcodec` major **== the chain's** `libavcodec` major, read from
+     `ffmpeg -version` at runtime rather than hard-coded, so an `FFMPEG_VERSION`
+     bump needs no edit and a silent fallback to a bundled build still fails
+
+  Watched failing with `windows/scripts/run-opencv-video-probe.ps1` (+
+  `Dockerfile.opencv-video-probe`, ~4 s against a media image instead of a full
+  chain). Measured against `bk-windows-media-core-ffmpeg`:
+
+  ```text
+  FFMPEG:      YES (prebuilt binaries)
+    avcodec:   YES (61.19.100)
+    avformat:  YES (61.7.100)
+    avdevice:  NO
+  GStreamer:   NO
+
+  [FAIL] GStreamer backend compiled in (#93)
+  [FAIL] FFmpeg is the chain's, not a prebuilt download (#94)
+  [FAIL] OpenCV avcodec major == chain avcodec major (#94) - chain=? opencv=61
+  ```
+
+  **CORRECTION to this entry's own premise:** it says
+  `cv2.videoio_registry.getBackends()` "reports GSTREAMER whether or not it was
+  compiled in", and that is **not what this build does** — the registry listed
+  GSTREAMER as *absent*, agreeing with `getBuildInformation()`. The rationale
+  for parsing build information stands on its own (it is the authoritative
+  source and also carries the FFmpeg provenance the registry cannot express),
+  but do not repeat the "the registry lies" claim as fact; it did not reproduce.
+
+  Two notes for whoever lands #93/#94: real OpenCV prints
+  `avcodec: YES (61.19.100)`, not the abridged `avcodec: 61.19.100` quoted in
+  #93 — the assertion accepts both. And `chain=?` above is honest: that media
+  image has no `ffmpeg.exe` at `FFMPEG_BIN`, so assertion 3 fails closed there;
+  it is meaningful in the final image, where the smoke test actually runs.
 
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 
@@ -2903,6 +2983,36 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   print the table at the end AND in a `finally` on failure.
 ### Open items (effort·impact; ordered by leverage)
 
+> **RECOMMENDED ORDER 2026-08-16.** Live, user-visible defects first; latent
+> insurance last. Everything below the line is real work, but nothing below the
+> line changes what the shipped image can do.
+>
+> 1. **#93/#94/#95 (P0e) — OpenCV has no GStreamer backend and a FOREIGN
+>    FFmpeg.** The only items here that make the SHIPPED IMAGE wrong: the owner
+>    calls `cv::VideoCapture`, and `getBuildInformation()` reports
+>    `GStreamer: NO` with an avcodec that is not the chain's own. Write the
+>    smoke-test assertions FIRST and watch them fail — that is what stops this
+>    regressing again.
+> 2. **#100 — FFmpeg and PyAV compile with sccache entirely bypassed**
+>    (`Compile requests 0`). Pure rebuild cost, but it is invisible in every
+>    hit-rate metric, so it will never surface on its own.
+> 3. **#99-followup — the BuildKit upstream report**, while the measurements are
+>    fresh and the repro still runs in two minutes.
+> 4. **#59 — branch protection** (owner decision, minutes).
+> 5. #75/#76 timeout+heartbeat, #73, #77–#80 — latent or unverified; re-measure
+>    against a fresh chain before spending time on any of them.
+
+- **99-followup [S·★★★, owner] Report the BuildKit WCOW cache-mount write loss
+  upstream.** Cause, A/B measurements and the 2-minute repro are in #99; the
+  report itself is unwritten. Strengthen it first by reproducing with PLAIN FILE
+  WRITES (no sccache) into an inherited cache-mount directory — that removes the
+  third-party tool from the argument entirely. Goes to moby/buildkit, NOT
+  mozilla/sccache.
+- **99-restore [S·★★, owner] Bring back the two-tier `disk,webdav` cache** once
+  WCOW cache mounts stop losing writes. Owner intent recorded 2026-08-16; the
+  default is `""` (WebDAV only) in both media Dockerfiles until then. Do not
+  assume a newer buildkit fixed it — the two-step re-verification recipe is at
+  the end of #99.
 - **31 [S·★★, owner decision] Auto-push green stage images** (or export-
   cache) once a chain goes green — driver params exist; needs the registry
   choice + a `docker login`. Until then a host loss costs every stage.
