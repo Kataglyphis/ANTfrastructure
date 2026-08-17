@@ -238,6 +238,43 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
+
+- **NET1 — github.com is the chain's dominant SPOF; FFmpeg's mirror is DEAD
+  code** [S-M·★★★] full fetch-map done (see below). Headline: `FFMPEG_GIT` /
+  `FFMPEG_GIT_MIRROR` (build-ffmpeg.sh:60-61) are never used — fetch_ffmpeg()
+  downloads ONLY the github archive tarball → falsely-mirrored SPOF. Nearly
+  every media/framework fetch (onnxruntime, opencv, armnn/acl, litert, iree,
+  tvm, pytorch/vision, abseil, rice, vvdec, llvm-source, gstreamer-github)
+  single-homes on github. TOP-3 CHEAPEST fixes (ride the next closure window):
+  1. GCC → try ftpmirror.gnu.org first, gcc.gnu.org fallback (sha512 already
+     verified — zero trust cost; protects the earliest highest-blast stage).
+  2. FFmpeg → wire the dead mirror vars: tarball → clone_or_update_repo
+     $FFMPEG_GIT → $FFMPEG_GIT_MIRROR fallback (~5 lines, helpers exist).
+  3. GStreamer + nv-codec-headers → second-URL fallback to their canonical
+     homes (gitlab.freedesktop.org / git.videolan.org), libcamera-pattern.
+  Also cheap: cmake.sh → apt.kitware.com fallback (already wired as a repo);
+  CPython → github/python/cpython tag mirror; tvm → git.apache.org [M].
+  Vendor-locked (accept): lunarg, dl.google, nvidia, radeon, rustup.
+  ALREADY MIRRORED (don't re-audit): libcamera (git.libcamera.org→github),
+  libpng (3 sources), cross_compile_cmake_lib_from_source pipe-mirrors,
+  apt.llvm.org→source-build fallback, Ubuntu apt (fast-mirror+retries).
+
+### Batch-3 planning data (2026-08-17 freshness snapshot; api.github.com live)
+
+- **B3-PLAN — available pin bumps for the next versions.env window** [ref]:
+  SAFE tier: UV 0.12.3→0.12.5, VULKAN 1.4.357.0→.1, FLUTTER 3.44.9→3.47.0,
+  OLLAMA 0.32.6→0.32.14 (llm-stack only), UBUNTU_DIGEST refresh (full-chain),
+  pandoc/binaryen host-side. REPORT tier (one at a time, patch entanglement):
+  ONNXRUNTIME v1.28.0→v1.29.0, LITERT v2.1.6→v2.2.0 (+LM 0.15→0.16;
+  PROTOC_VERSION is SLAVED — re-derive), TVM v0.25→v0.26, PYAV 18.0→18.1,
+  TENSORFLOW_C 2.18→2.21 (only matters if FFMPEG_ENABLE_TF=1). Everything else
+  up-to-date (GCC/LLVM/Python/Rust/GStreamer/Node/CMake/IREE/OpenVINO/ArmNN…).
+- **F7 — 18 versions.env keys UNCLASSIFIED in bump_versions.py** [S·★] (PY_*
+  executor pins, LIBCAMERA_VERSION, FLATPAK_RUNTIME, SCCACHE_*, windows-tool
+  pins…) — add each to SAFE/REPORT/MANUAL or the non-version filter so the
+  freshness report stays complete.
+
 ### CI-workflow sweep additions (2026-08-17) — **CI1-3 ✅ ALL FIXED same day**
 
 CI1: timeout-minutes added to all 5 Linux workflows (python-ci 60 / ubuntu24.04
