@@ -361,35 +361,19 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
 
 ## Batch G — GPU lanes (opt-in; OWN build trigger — needs no chain-closure window)
 
-First dedicated sweep 2026-08-17 found real defects. Validate with ONE opt-in
-nvidia/amd lane build — independent of the main chain.
-
-- **GPU1 — TensorRT silently SKIPPED in the shipped :*-nvidia image** [S·★★★]
-  install-cuda-stack.sh:49 `rm -rf /var/lib/apt/lists/*` wipes the indices inside
-  the SHARED `id=apt-lib-*` cache mount; the next RUN (install-tensorrt.sh) does
-  NO `apt-get update` on its default NVIDIA-apt path (update exists only in the
-  local-deb branch, :21) and `2>/dev/null` swallows the "no candidates" error →
-  `tensorrt-dev tensorrt-libs` install silently no-ops. Default nvidia images
-  likely ship WITHOUT TensorRT despite the LABEL advertising it. Fix: `apt-get
-  update` at the top of install-tensorrt.sh's non-local path (and see GPU4).
-  Validate by building the nvidia lane once and asserting trtexec/libnvinfer.
-- **GPU2 — CUDA verify is fail-open** [S·★★] verify-cuda-stack.sh:70 gates on
-  `CUDA_STACK_STRICT` (default 0) and Dockerfile.nvidia:129-131 never sets it →
-  a build with nvcc/cuDNN/TensorRT ALL missing still goes green (and would have
-  masked GPU1 forever). Fix: `CUDA_STACK_STRICT=1` in the verify RUN.
-- **GPU3 — NVIDIA-vs-AMD verify contract mismatch** [M·★★] AMD verifies HARD
-  (setup-rocm-repo.sh:74-76 exit 1 on missing hipcc/migraphx) while NVIDIA only
-  warns (GPU2). One contract: NVIDIA should match AMD's hard gate.
-- **GPU4 — in-cache-mount `rm -rf lists/*` is useless + harmful** [S·★]
-  install-cuda-stack.sh:49 + setup-rocm-repo.sh:70 — the mount isn't in the
-  layer (real cleanup happens unmounted at Dockerfile.nvidia:110), so the rm
-  only defeats caching for later RUNs (and caused GPU1). Drop both.
-- **GPU5 — ROCm arm64 guard is a comment** [S·★] setup-rocm-repo.sh:38-45
-  promises "fail loudly" on non-amd64 but has no check → generic apt error
-  instead. Add `[ "$(dpkg --print-architecture)" = amd64 ] || die`.
-- **GPU6 — Dockerfile.nvidia:86 COPY lacks --link** [S·★] (main lane has it).
-  Clean per sweep: version-ARG↔versions.env consistency, keyring/GPG sha256
-  verification, per-arch cache ids, ENABLE_* gating, script mount coverage.
+**GPU1-7 ✅ ALL FIXED 2026-08-17 (e51a0da) — awaiting ONE nvidia-lane validation
+build.** GPU1 TensorRT-silent-skip (apt-get update added to install-tensorrt's
+NVIDIA-repo path), GPU2/3 fail-open verify → `CUDA_STACK_STRICT=1` (matches
+AMD's hard contract), GPU4 both in-cache-mount `rm -rf lists/*` dropped, GPU5
+ROCm amd64-guard enforced up front, GPU6 COPY --link, **GPU7 (found during the
+fix, worse than GPU1)**: `_trt_deb="$(find …|head -1) || true)"` had the
+`|| true` OUTSIDE the substitution — with no staged EULA deb the value was the
+literal `" || true)"` → mv failed → set -e killed the RUN: the default nvidia
+build couldn't get past deb-staging at all. Validation: build the nvidia lane
+once — the now-strict verify asserts nvcc/cuDNN/TensorRT presence itself; also
+build the amd lane once (arch-guard + lists-rm change). Clean per sweep:
+version-ARG↔versions.env, GPG sha256 verification, per-arch cache ids,
+ENABLE_* gating, script mount coverage.
 
 ## Batch 3 — versions.env riders (NEVER alone; next planned pin bump)
 
