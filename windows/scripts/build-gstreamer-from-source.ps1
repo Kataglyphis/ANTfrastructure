@@ -225,6 +225,33 @@ try {
     # the multi-minute retry stalls out of `meson setup`.
     $env:PYTHONHTTPSVERIFY = '0'
 
+    # ---- 3b. EARLY fan-in fast-fail (backlog #66) ----------------------------
+    # The full "must resolve NOW" pre-flight further down authors .pc files and
+    # computes meson args, so it stays where its outputs are consumed — but its
+    # own comment promised "NOW, not after an hour" while it ran AFTER the
+    # tarball, ~20 wrap downloads and five patch loops. These existence checks
+    # mirror the artifacts that gate actually requires and depend on NOTHING
+    # downloaded here: a missing media fan-in now fails in seconds, not after
+    # the whole provisioning phase. Deliberately presence-only — version floors
+    # and .pc semantics remain the full gate's job.
+    if (-not $SkipPluginGate) {
+        $earlyOcvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
+        $earlyOrtRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
+        $earlyLitertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
+        $earlyChecks = @(
+            @{ Path = $earlyOcvRoot;    What = 'OpenCV install (gst-plugins-bad ext/opencv)' }
+            @{ Path = $earlyOrtRoot;    What = 'ONNX Runtime install (gst onnx plugin)' }
+            @{ Path = $earlyLitertRoot; What = 'LiteRT install (gst tflite plugin)' }
+        )
+        $earlyMissing = @($earlyChecks | Where-Object { -not (Test-Path $_.Path) })
+        if ($earlyMissing) {
+            throw ("GStreamer pre-flight (early, #66): media fan-in missing BEFORE any download was spent: " +
+                (($earlyMissing | ForEach-Object { "$($_.What) at $($_.Path)" }) -join '; ') +
+                ". The merge image is incomplete; fix the fan-in instead of paying the provisioning phase first.")
+        }
+        log 'Early fan-in fast-fail passed (OpenCV/ONNX/LiteRT roots present).'
+    }
+
     # ---- 4. download GStreamer source tarball ----
     $gstSrcDir = Join-Path $resolvedSrcDir "gstreamer-$GstVersion"
     if (Test-Path $gstSrcDir) {
@@ -271,6 +298,15 @@ try {
     Initialize-ExtractedGitRepo -Path $gstSrcDir
 
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
+    # Failures are COLLECTED and become fatal after the loop (backlog #88): the
+    # 2026-08-14 chain logged 22 failed wrap downloads as warnings and went
+    # GREEN — gst-plugins-base ×15, theora ×5, pango ×2 — shipping a
+    # feature-reduced image nobody noticed. Only the four mandatory plugins were
+    # gated; every other codec was silently "optional". The fetch also ran as
+    # `curl ... 2>nul`, discarding the one line that distinguishes a moved wrap
+    # revision (404) from a DNS/TLS problem. Shared retry helper + visible
+    # errors + fail-closed summary now.
+    $wrapFailures = @()
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
     Get-ChildItem -Path $subprojDir -Filter '*.wrap' | ForEach-Object {
         $content = Get-Content $_.FullName -Raw
@@ -291,35 +327,55 @@ try {
             $tmp = Join-Path $resolvedLogDir "$dir-$rev.tar"
             $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
             log "Pre-extracting $fname..."
-            cmd.exe /c "curl.exe -fsSL --retry 3 ""$tarballUrl"" -o ""$tmpFile"" 2>nul"
-            if ($LASTEXITCODE -eq 0 -and (Test-Path $tmpFile)) {
+            try {
+                Invoke-DownloadWithRetry -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)"
                 if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
                     Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                     log "Pre-extracted $fname to $target"
+                } else {
+                    $script:wrapFailures += "$fname (downloaded but extraction into $dir failed)"
                 }
-            } else {
-                log "WARNING: Failed to download $fname, features may be disabled"
+            } catch {
+                # Real error text KEPT (was `2>nul`): a 404 on a moved revision
+                # and a TLS failure need different fixes.
+                $script:wrapFailures += "$fname : $($_.Exception.Message)"
+                log "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
             }
             Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
         }
     }
-    # Force-download libffi via PowerShell's & (bypasses cmd.exe path issues)
+    # libffi through the same helper + failure collection (#88). It is glib's
+    # hard dependency — a miss here never was "optional", it just looked so.
     $libffiTarget = Join-Path $subprojDir 'libffi'
     if (-not (Test-Path $libffiTarget)) {
         log 'Force-downloading libffi...'
         $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
         $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
-        & curl.exe -fsSL --retry 3 $libffiUrl -o $libffiTmp 2>$null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $libffiTmp)) {
+        try {
+            Invoke-DownloadWithRetry -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer"
             if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
-                log "Force-pre-extracted libffi"
+                log 'Force-pre-extracted libffi'
+            } else {
+                $script:wrapFailures += 'libffi (downloaded but extraction failed)'
             }
-        } else {
-            log "WARNING: Force-download of libffi failed (exit $LASTEXITCODE)"
+        } catch {
+            $script:wrapFailures += "libffi : $($_.Exception.Message)"
+            log "ERROR: libffi download failed - $($_.Exception.Message)"
         }
         Remove-Item -Path $libffiTmp -Force -ErrorAction SilentlyContinue
         Remove-Item -Path (Join-Path $subprojDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
+    }
+
+    # FAIL CLOSED on any wrap loss (#88): a build that continues here ships
+    # with silently narrowed codec coverage — the exact green-but-crippled
+    # shape this repo's gates exist to prevent. Transient blips are already
+    # absorbed by the helper's retry/backoff; what reaches this point is
+    # persistent (moved revision, dead mirror, broken TLS) and needs a human.
+    if ($script:wrapFailures.Count -gt 0) {
+        throw ("GStreamer subproject provisioning failed for $($script:wrapFailures.Count) wrap(s): " +
+            ($script:wrapFailures -join ' | ') +
+            ' — refusing to build a feature-reduced GStreamer (backlog #88).')
     }
 
     # Recursively delete ALL [wrap-git] wraps across the entire source tree.
@@ -873,10 +929,24 @@ int _isatty(int);
     }
 
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
+    # Job budget + stall guard (backlog #65): this was the ONE compile stage
+    # running sccache with neither. `meson compile` without -j lets ninja
+    # default to cores+2, ignoring MEMORY_LIMIT_GB entirely — the OOM shape
+    # MemGBPerJob exists to prevent — and without the stall guard a wedged
+    # sccache server (the documented deadlock family) hangs the merge stage
+    # indefinitely with no kill/resume. 2 GB/job: GStreamer TUs are C-sized,
+    # not ONNX-CUDA-sized.
+    $gstJobs = Get-BuildJobCount -MemGBPerJob 2
+    log "meson compile with -j $gstJobs (MEMORY_LIMIT_GB='$env:MEMORY_LIMIT_GB', cores=$([Environment]::ProcessorCount))"
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
         log "Compiling GStreamer (attempt $cAttempt/2, may take 30-60 min)..."
-        & $mesonExe compile -C $resolvedBuildDir 2>&1 | ForEach-Object { if ($_) { log $_ } }
+        $gstStallGuard = Start-SccacheStallGuard -MarkerPath (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
+        try {
+            & $mesonExe compile -C $resolvedBuildDir -j $gstJobs 2>&1 | ForEach-Object { if ($_) { log $_ } }
+        } finally {
+            Stop-SccacheStallGuard -Guard $gstStallGuard
+        }
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
             log 'Compile attempt 1 failed; patching _commit conflict in GES and retrying...'

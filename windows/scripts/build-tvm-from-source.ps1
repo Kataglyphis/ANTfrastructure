@@ -62,6 +62,13 @@ if ($useCuda -eq 'ON' -and $gpuEnv.CudnnRoot -and (Test-Path (Join-Path $gpuEnv.
         Write-Host "cuDNN detected at $($gpuEnv.CudnnRoot) - enabling TVM cuDNN (CUDA_CUDNN_LIBRARY=$(Split-Path $cudnnLibPath -Leaf))"
     }
 }
+# Backlog #47: every OFF path here used to be SILENT — a green build with LLVM
+# off has no CPU codegen at all (`tvm.build` for any llvm target dies at
+# RUNTIME), and nothing in the log said so. Each detection now states the OFF
+# verdict and its consequence; the LLVM one below is fatal on the GPU lane.
+if ($useCudnn -eq 'OFF' -and $useCuda -eq 'ON') {
+    Write-Warning "TVM: cuDNN NOT found (CudnnRoot='$($gpuEnv.CudnnRoot)') - building WITHOUT cuDNN kernels; conv workloads fall back to slower paths."
+}
 
 # Auto-detect Vulkan SDK ($useVulkan is the single gate; the include/lib args
 # below branch on it too instead of re-evaluating the env+Test-Path pair).
@@ -70,6 +77,8 @@ $useVulkan = 'OFF'
 if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     Write-Host "Vulkan SDK detected at: $vulkanSdk - enabling TVM Vulkan support"
     $useVulkan = 'ON'
+} else {
+    Write-Warning "TVM: Vulkan SDK NOT found (VULKAN_SDK='$vulkanSdk') - building WITHOUT the Vulkan runtime; base images bake it via scoop, so an OFF here usually means a broken image, not a policy choice (#47)."
 }
 
 # Auto-detect LLVM
@@ -79,6 +88,15 @@ $useLLVM = 'OFF'
 if ($llvmConfig) {
     Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
     $useLLVM = 'ON'
+} else {
+    # USE_LLVM=OFF removes TVM's CPU CODEGEN entirely: the build stays green,
+    # `import tvm` stays green, and every `tvm.build` for an llvm target fails
+    # at RUNTIME in whatever application first tries. That is the fail-open
+    # shape this repo forbids (#47): this toolchain always ships llvm-config
+    # (scoop LLVM), so its absence is a broken PATH/image, not a configuration.
+    throw ("TVM: llvm-config.exe not found on PATH - USE_LLVM would silently be OFF and the shipped TVM would have " +
+        "no CPU codegen. The toolchain image bakes LLVM via scoop; a missing llvm-config means the image or PATH " +
+        "is broken. Refusing to build a crippled TVM (backlog #47).")
 }
 
 $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
