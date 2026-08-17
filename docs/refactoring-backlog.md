@@ -238,6 +238,32 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### Live findings from the FIRST --parallel-archs run (2026-08-17/18)
+
+- **CACHE1 — routine `builder prune` DESTROYS the compile caches** [M·★★★,
+  COSTED THIS RUN] `nerdctl builder prune -f` (my standard disk-pressure tool,
+  run ~10× across the 2-day saga) wipes buildkit CACHE MOUNTS (ccache-*/
+  sccache-*/uv/cargo ids) together with the disposable layer cache — this run
+  paid for it directly: BOTH target-LLVMs rebuilt COLD (+~1.5-2h on the
+  compiler stage; sequential-run had them warm). Precious compile caches and
+  disposable layer cache need SEPARATE lifecycles: (a) move ccache/sccache to
+  host bind-mount dirs (excluded from builder prune; trivially protectable), or
+  (b) prune with filters/keep-storage instead of -f-everything, or (c) a
+  documented `prune-safe.sh` that spares cache-mount records. Pairs with the
+  disk-guard runbook.
+- **PUSH1 — registry pushes are the parallel wall-clock ceiling** [M·★★,
+  MEASURED] uplink is ~4-5 MB/s shared: compiler push ~30 min (20GB), the two
+  parallel sdk pushes 23 min — and 3 media images (~12-17GB each) will contend
+  next. Builds parallelize; pushes serialize on bandwidth. Cheapest lever:
+  **zstd layer compression** on the image exports (buildkit
+  `compression=zstd[,force-compression]` — much faster than gzip AND ~30-40%
+  smaller → directly cuts push minutes); also consider skipping intermediate-
+  stage pushes when a local OCI-layout handoff exists (couples with the
+  Batch-5 --no-push item).
+  Verified-good this run (recorded): BUILD_MEM_DIVISOR=3 live in all three
+  parallel media invocations, RAM 12G/60G under 3-way load; sdk builds 22 min
+  parallel vs 64 min sequential (~2.9×).
+
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
 - **NET1 — github.com is the chain's dominant SPOF; FFmpeg's mirror is DEAD
