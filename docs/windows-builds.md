@@ -2426,6 +2426,15 @@ Upstream follow-ups: see "Pending" at the bottom.
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
   are bind-mounted into media stages, land between builds.
+- **113 [S·★, none, MODULE-FREEZE-DEFERRED] Export `Start-/Stop-SccacheStallGuard`
+  from `WindowsSourceBuild.Common.psm1`.** verify12 (2026-08-17): the #65
+  refactor defined+used them module-internally but never exported them; the
+  direct call in `build-gstreamer-from-source.ps1` threw CommandNotFound at
+  compile start. Interim: the script invokes them via module scope
+  (`& (Get-Module ...) { ... }`) — grep for `sbcModule` and remove that shim
+  when the exports land. A module edit busts every media stage cache, so this
+  MUST ride the next planned full-chain rebuild (the versions.env bump ride),
+  never a hotfix relaunch.
 - **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
   "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
   logged `could not compare avcodec majors (chain='' configure='63')`: in
