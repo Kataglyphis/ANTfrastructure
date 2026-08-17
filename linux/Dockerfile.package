@@ -76,9 +76,14 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
-# AP3: /opt/wheels is NOT COPYed — it is bind-mounted (readonly) into the
-# setup-package-image RUN below, so the ~0.5-2 GB wheelhouse never becomes a
-# shipped layer. See that RUN's --mount=type=bind,from=artifact-source,...=/opt/wheels.
+# AP3 REVERTED 2026-08-17: /opt/wheels MUST be COPY'd into the package image —
+# Dockerfile.torch (FROM this package image) is where setup-torch-venv.sh actually
+# reads it (`uv pip install --find-links /opt/wheels`), and it has NO artifact-source
+# stage to bind-mount from. The bind-mount-into-the-package-RUN attempt was
+# ephemeral, so the torch stage lost /opt/wheels → build broke. A correct AP3 needs
+# the wheelhouse reachable in Dockerfile.torch's RUN (e.g. a from=artifact-source
+# mount wired THERE), not here — re-filed in the backlog.
+COPY --link --from=artifact-source /opt/wheels /opt/wheels
 COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
@@ -308,14 +313,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,tar
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core/ubuntu-mirror.sh,ro \
     set -euo pipefail; \
     bash /tmp/core/use-fast-ubuntu-mirror.sh
-# AP3: bind-mount the wheelhouse instead of COPYing it (see the removed
-# `COPY /opt/wheels` above). setup-torch-venv.sh (called by setup-package-image)
-# only READS /opt/wheels to install the app wheels; COPY --link made it a lower
-# layer that the later `rm -rf /opt/wheels` could not reclaim (whiteout), so
-# every pull carried 0.5-2 GB of dead wheels per arch. A readonly bind-mount is
-# ephemeral — it never enters the image, so no dead layer and no rm needed.
-RUN --mount=type=bind,from=artifact-source,source=/opt/wheels,target=/opt/wheels,readonly \
-    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     set -euo pipefail; \
