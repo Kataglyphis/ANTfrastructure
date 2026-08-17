@@ -824,7 +824,12 @@ int _isatty(int);
         # gchar* where a differently-typed pointer is expected, which older clang let
         # through as a warning. Demote it to match the function-pointer variant already
         # here, so the version bump to a newer clang-cl does not fail the onnx plugin.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
+        # -Wno-undef: graphene 1.10.8 (building for the FIRST time now that #88
+        # delivers every wrap - it used to drop out silently) tests bare
+        # `__GNUC__` in #if under a -Werror it brings along; clang-cl defines
+        # no __GNUC__ in MSVC personality. Disabling the diagnostic beats
+        # chasing where the -Werror comes from (verify13).
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef",
         "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
@@ -840,6 +845,12 @@ int _isatty(int);
         # wasapi2 (the modern replacement, built by default and present in the
         # image) provides WASAPI capture/render. Only the deprecated v1 is off.
         '-Dgst-plugins-bad:wasapi=disabled',
+        # graphene: its MSVC code path calls SSE4.1 intrinsics (dpps) with no
+        # target-feature guard - MSVC tolerates that, clang-cl refuses
+        # ("__builtin_ia32_dpps needs target feature sse4.1", verify13). The
+        # scalar path is correct and this is geometry math for GL mixers, not
+        # a hot loop worth a global -msse4.1 baseline change.
+        '-Dgraphene:sse2=false',
         # svtjpegxs stays DISABLED: its SVT-JPEG-XS codec subproject does not
         # compile under clang-cl (Mct.c: "conflicting types" / "too many
         # arguments" -- the local access() clash was only the first of several
