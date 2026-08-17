@@ -226,3 +226,21 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
     & 'C:\bkmnt\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter
+
+# OpenCV's STANDALONE GStreamer videoio plugin (backlog #93). MUST run after
+# the GStreamer RUN above — that is the whole point: OpenCV itself configured
+# in media-core BEFORE GStreamer existed, so its videoio carries
+# `GStreamer: NO`; this builds `opencv_videoio_gstreamer*.dll` out-of-tree
+# against the INSTALLED OpenCV + the GStreamer just built, and drops it next to
+# opencv_videoio*.dll where the runtime plugin loader probes. One source file,
+# minutes, no second OpenCV pass.
+# NB `cv2.getBuildInformation()` STILL says `GStreamer: NO` afterwards — that
+# string is compile-time; the runtime truth is
+# `cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER)` (asserted by the smoke
+# test since 2026-08-17).
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build-opencv-gstreamer-plugin.ps1,target=C:\bkmnt\build-opencv-gstreamer-plugin.ps1 `
+    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\build-opencv-gstreamer-plugin.ps1' -InstallDir 'C:\runtime'

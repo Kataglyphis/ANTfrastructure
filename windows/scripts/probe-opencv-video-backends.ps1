@@ -45,8 +45,13 @@ foreach ($line in ($info -split "`r?`n")) {
 }
 
 Write-Host "`n--- the three #95 assertions, run here ---"
-$gst = $info -match '(?m)^\s*GStreamer:\s+YES'
-Write-Result 'GStreamer backend compiled in (#93)' $gst
+# Plugin-aware since 2026-08-17: #93's fix is a runtime-loaded plugin, so the
+# build-info line stays `GStreamer: NO` on a CORRECT image. hasBackend() is the
+# authoritative check (it attempts the plugin load).
+$gstInfo = $info -match '(?m)^\s*GStreamer:\s+YES'
+$gstReg = (& python -c "import cv2; print(cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String) -match 'True'
+$gst = $gstInfo -or $gstReg
+Write-Result 'GStreamer backend available (built-in OR plugin, #93)' $gst "build-info=$gstInfo plugin=$gstReg"
 
 $ffOwn = $info -match '(?m)^\s*FFMPEG:\s+YES(?![^\r\n]*prebuilt)'
 Write-Result "FFmpeg is the chain's, not a prebuilt download (#94)" $ffOwn

@@ -1330,12 +1330,31 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # see docs/windows-builds.md P0e.
     $cvBuildInfo = & python -c "import cv2; print(cv2.getBuildInformation())" 2>&1 | Out-String
 
-    Assert-Test -Name "OpenCV compiled WITH the GStreamer video backend (#93)" -Condition {
-        $cvBuildInfo -match '(?m)^\s*GStreamer:\s+YES'
-    } -FailMessage ("cv2.getBuildInformation() does not report 'GStreamer: YES' -- cv::VideoCapture(..., CAP_GSTREAMER) " +
-        "cannot work. Requested via -DWITH_GSTREAMER=ON but silently disabled: OpenCV configures at " +
-        "media-core-built-opencv, while GStreamer is not built until the MERGE stage, so CMake finds nothing. " +
-        "Backlog #93 -- do NOT 'fix' this by trusting cv2.videoio_registry.getBackends(), which reports GSTREAMER regardless.")
+    # #93 is solved by the STANDALONE plugin route (opencv_videoio_gstreamer*.dll
+    # built in the MERGE stage, after GStreamer exists, and dropped next to
+    # opencv_videoio*.dll). Two consequences for these assertions:
+    #  * getBuildInformation() legitimately KEEPS saying `GStreamer: NO` — that
+    #    string is videoio's COMPILE-TIME config and the plugin loads at
+    #    runtime. Asserting on it would stay red on a CORRECT image forever.
+    #  * hasBackend(CAP_GSTREAMER) is the authoritative check: it attempts the
+    #    plugin load and returns true only when the DLL is found AND loads
+    #    (including its GStreamer dependency chain).
+    Assert-Test -Name "cv::VideoCapture has a working GStreamer backend (plugin, #93)" -Condition {
+        $out = & python -c "import cv2; print('gst-backend', cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'gst-backend True')
+    } -FailMessage ("cv2.videoio_registry.hasBackend(CAP_GSTREAMER) is False -- the opencv_videoio_gstreamer plugin " +
+        "DLL is missing next to opencv_videoio*.dll, or it failed to load (GStreamer DLLs not resolvable). " +
+        "Built by build-opencv-gstreamer-plugin.ps1 in the merge stage -- backlog #93.")
+
+    # Capability, not just loadability: open a real (synthetic) GStreamer
+    # pipeline through cv::VideoCapture and read one frame. This is the exact
+    # call the owner's code makes.
+    Assert-Test -Name "cv::VideoCapture opens a GStreamer pipeline and reads a frame (#93)" -Condition {
+        $out = & python -c "import cv2; cap = cv2.VideoCapture('videotestsrc num-buffers=1 ! videoconvert ! appsink', cv2.CAP_GSTREAMER); ok, frame = cap.read(); print('gst-read', bool(ok) and frame is not None and frame.size > 0)" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'gst-read True')
+    } -FailMessage ("VideoCapture(CAP_GSTREAMER) could not read a frame from a videotestsrc pipeline -- the plugin " +
+        "loads but the GStreamer runtime underneath it is broken (core plugins missing from the plugin dir, or " +
+        "GST_PLUGIN_PATH/PATH not set by the entrypoint). Backlog #93.")
 
     # NOT a provenance check: `(prebuilt binaries)` is printed on Windows
     # whenever videoio uses the wrapper mechanism, REGARDLESS of where the libs
