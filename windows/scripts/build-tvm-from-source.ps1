@@ -81,23 +81,55 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
     Write-Warning "TVM: Vulkan SDK NOT found (VULKAN_SDK='$vulkanSdk') - building WITHOUT the Vulkan runtime; base images bake it via scoop, so an OFF here usually means a broken image, not a policy choice (#47)."
 }
 
-# Auto-detect LLVM
+# Auto-detect LLVM. The #47 gate fired on its first live run (verify5,
+# 2026-08-17) and corrected its own premise: the toolchain's scoop LLVM is the
+# official Windows INSTALLER build, which ships clang/lld but NEITHER
+# llvm-config.exe NOR the LLVM dev libs (probed: 0 hits in the whole install).
+# So every prior Windows TVM was silently USE_LLVM=OFF - no CPU codegen at all
+# (`tvm.build` for any llvm target dies at RUNTIME). Self-heal: fetch the
+# official clang+llvm dev tarball (the -pc-windows-msvc release artifact DOES
+# contain llvm-config.exe + static libs + CMake configs), point USE_LLVM at its
+# llvm-config, and keep the gate fail-closed behind it. Build-time only: TVM
+# links LLVM statically, and Clear-BuildScratch scrubs the tree afterwards.
 $llvmCmd = Get-Command llvm-config.exe -ErrorAction SilentlyContinue
 $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
-$useLLVM = 'OFF'
-if ($llvmConfig) {
-    Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
-    $useLLVM = 'ON'
-} else {
-    # USE_LLVM=OFF removes TVM's CPU CODEGEN entirely: the build stays green,
-    # `import tvm` stays green, and every `tvm.build` for an llvm target fails
-    # at RUNTIME in whatever application first tries. That is the fail-open
-    # shape this repo forbids (#47): this toolchain always ships llvm-config
-    # (scoop LLVM), so its absence is a broken PATH/image, not a configuration.
-    throw ("TVM: llvm-config.exe not found on PATH - USE_LLVM would silently be OFF and the shipped TVM would have " +
-        "no CPU codegen. The toolchain image bakes LLVM via scoop; a missing llvm-config means the image or PATH " +
-        "is broken. Refusing to build a crippled TVM (backlog #47).")
+if (-not $llvmConfig) {
+    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '22.1.8'
+    # SHA pins per version - extend when LLVM_WINDOWS_VERSION moves. An unknown
+    # version must THROW, never download unpinned (repo download policy).
+    $llvmDevSha = @{
+        '22.1.8' = 'd96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234'
+    }
+    if (-not $llvmDevSha.ContainsKey($llvmDevVersion)) {
+        throw ("TVM: llvm-config.exe not on PATH and no SHA256 pin for the LLVM $llvmDevVersion dev tarball - " +
+            "add it to `$llvmDevSha in this script (compute from the official clang+llvm-$llvmDevVersion-" +
+            "x86_64-pc-windows-msvc.tar.xz). Refusing an unpinned download (backlog #47).")
+    }
+    $llvmDevRoot = 'C:\temp\llvm-dev'
+    $llvmDevTar = Join-Path $llvmDevRoot "clang+llvm-$llvmDevVersion-x86_64-pc-windows-msvc.tar.xz"
+    Write-Host "TVM: llvm-config.exe not on PATH (scoop LLVM never ships it) - fetching the LLVM $llvmDevVersion dev tarball (~820 MB)"
+    Invoke-DownloadWithRetry `
+        -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmDevVersion/clang%2Bllvm-$llvmDevVersion-x86_64-pc-windows-msvc.tar.xz" `
+        -DestinationPath $llvmDevTar -ExpectedSha256 $llvmDevSha[$llvmDevVersion] `
+        -Description "LLVM $llvmDevVersion Windows dev tarball (llvm-config + libs; backlog #47)"
+    # System32 bsdtar first (xz support baked in); git's GNU tar needs xz.exe.
+    $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+    if (-not $tarExe) { throw 'TVM: no tar.exe found to extract the LLVM dev tarball (#47).' }
+    & $tarExe -xf $llvmDevTar -C $llvmDevRoot
+    if ($LASTEXITCODE -ne 0) { throw "TVM: extracting the LLVM dev tarball failed (tar exit $LASTEXITCODE) (#47)." }
+    $llvmConfig = Join-Path $llvmDevRoot "clang+llvm-$llvmDevVersion-x86_64-pc-windows-msvc\bin\llvm-config.exe"
+    if (-not (Test-Path $llvmConfig)) {
+        # Fail closed with evidence: name what the archive actually unpacked to.
+        $unpacked = (Get-ChildItem $llvmDevRoot -Directory | ForEach-Object Name) -join ', '
+        throw ("TVM: llvm-config.exe still missing after extracting the dev tarball (unpacked dirs: $unpacked). " +
+            "USE_LLVM=OFF would ship a TVM with no CPU codegen - refusing (backlog #47).")
+    }
+    Remove-Item $llvmDevTar -Force  # keep the scratch tier lean; the tree itself is scrubbed post-build
 }
+Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
+# A PATH (forward slashes) is TVM's documented USE_LLVM form; plain ON only
+# works when llvm-config is already on PATH, which is exactly what is absent.
+$useLLVM = $llvmConfig -replace '\\', '/'
 
 $pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
 
