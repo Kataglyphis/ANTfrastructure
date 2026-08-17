@@ -84,17 +84,11 @@ ARG SCCACHE_DIR="C:\sccache\v2"
 # happening by accident.
 ARG SCCACHE_FORCE_LOCAL=""
 
-# OPT-IN for backlog #94: make OpenCV link the FFmpeg this chain builds instead
-# of downloading its own prebuilt one. Off by default because OpenCV 5.0.0's
-# videoio needs a source patch to compile against FFmpeg 9 at all
-# (windows/scripts/patches/opencv/ffmpeg9-avcodec-config.ps1), and a chain that
-# does not build is worse than the known avcodec-61 defect.
-#   build-buildkit.ps1 ... -BuildArg OPENCV_LINK_CHAIN_FFMPEG=1
-# NB it must be declared HERE as well as read in build-opencv-from-source.ps1 —
-# a --opt build-arg for an ARG the Dockerfile never declares is silently
-# discarded, which cost one 25-minute run that looked like the opt-in "not
-# working" when in fact it never arrived.
-ARG OPENCV_LINK_CHAIN_FFMPEG=""
+# NB: OPENCV_LINK_CHAIN_FFMPEG deliberately does NOT live in this common block.
+# It sat here for one day (2026-08-16→17) and a single flip of the value re-ran
+# the whole media branch including the ~50-min ONNX stage, although only the
+# opencv stage reads it. It is declared in `media-core-built-opencv` below —
+# backlog #103, the concrete instance of the #49 disease.
 
 # sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
 # every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
@@ -167,7 +161,6 @@ ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
     SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
-    OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
@@ -409,6 +402,20 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
+# DEFAULT ON since 2026-08-17: OpenCV links the FFmpeg this chain builds
+# (avcodec 63) instead of downloading its own prebuilt one (avcodec 61,
+# avdevice NO). Verified by the full-chain smoke gate: 188 passed / 1 failed,
+# the 1 being the deliberately-red #93 GStreamer guard. Requires the FFmpeg-9
+# source patch + PkgConfig shim (both applied by build-opencv-from-source.ps1
+# when this is 1). Opt OUT with: -BuildArg OPENCV_LINK_CHAIN_FFMPEG=
+#
+# Declared HERE, not in `common` (#103): only this stage reads it, and in the
+# common ENV block one flip re-ran the ~50-min ONNX stage for nothing. Here a
+# flip re-runs opencv+genai only (~25 min). NB the ARG must exist in the
+# Dockerfile or buildctl silently DISCARDS the --opt build-arg (cost a
+# 25-minute run on 2026-08-16).
+ARG OPENCV_LINK_CHAIN_FFMPEG="1"
+ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `

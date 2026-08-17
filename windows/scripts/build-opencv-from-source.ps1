@@ -349,24 +349,17 @@ if ($contribSrc) {
 #                          `avdevice: NO`, which #94 lists as part of the defect.
 # Passing SKIP_DOWNLOAD without the shim was measured on 2026-08-16 and produced
 # `FFMPEG: NO` — strictly worse than the prebuilt. Keep them together or not at all.
-# OPT-IN, DEFAULT OFF (2026-08-16). The wiring below WORKS — measured: the shim
-# makes OpenCV's pkg-config route fire and it resolves THIS chain's FFmpeg,
-# `FFMPEG: YES` with `avcodec: YES (63.1.100)` instead of the downloaded 61.
-# What blocks it is not the wiring but the SOURCE: OpenCV 5.0.0's videoio does
-# not compile against FFmpeg n9.0 (avcodec 63) --
+# DEFAULT ON since 2026-08-17 (the ARG in Dockerfile.media-builder's opencv
+# stage defaults to 1; opt out with -BuildArg OPENCV_LINK_CHAIN_FFMPEG=).
+# Full-chain verified: smoke gate 188/1/1, all three #94 assertions green in
+# the shipped image (FFmpeg backend present, avdevice YES, avcodec major ==
+# the chain's 63).
 #
-#   cap_ffmpeg_hw.hpp(760,762)    error: no member named 'pix_fmts' in 'AVCodec'
-#   cap_ffmpeg_impl.hpp(2632,2633) error: no member named 'supported_framerates' in 'AVCodec'
-#
-# FFmpeg deprecated those AVCodec fields in 7.1 and REMOVED them by 9.0, in
-# favour of avcodec_get_supported_config(); OpenCV 5.0.0 predates the removal.
-# Five sites, two headers — a real patch for windows/scripts/patches/opencv/,
-# not a flag. Until that patch exists, OpenCV keeps using its own prebuilt
-# FFmpeg (the known #94 defect: avcodec 61, avdevice NO) because a chain that
-# does not build is worse.
-#
-# Turn on with: -BuildArg OPENCV_LINK_CHAIN_FFMPEG=1 (expect the compile errors
-# above until the source patch lands).
+# The three parts below only work TOGETHER with the FFmpeg-9 source patch
+# applied earlier in this script (ffmpeg9-avcodec-config.ps1): OpenCV 5.0.0's
+# videoio does not compile against FFmpeg n9.0 without it — AVCodec::pix_fmts
+# and ::supported_framerates were REMOVED in favour of
+# avcodec_get_supported_config().
 # Report the switch's OBSERVED value, always. A `--opt build-arg` for an ARG the
 # Dockerfile does not declare is discarded by BuildKit without a warning, so an
 # opt-in can silently never arrive — that happened here on 2026-08-16 and cost a
@@ -417,7 +410,16 @@ Write-Host "CMake configure log: $cfgLog"
 $chainAvcodecMajor = ''
 $ffProbe = Join-Path $InstallDir 'ffmpeg\bin\ffmpeg.exe'
 if (Test-Path $ffProbe) {
-    $ffVer = & $ffProbe -version 2>&1 | Out-String
+    # ffmpeg.exe needs its own bin dir on PATH to resolve avcodec-63.dll etc.;
+    # without it the exe dies on startup, the version reads back EMPTY, and this
+    # gate degraded to "provenance unverified" in every build (the probe's
+    # recurring `chain=?`). Same fix as in smoke-test-container.ps1.
+    $ffBinDir = Split-Path $ffProbe -Parent
+    $savedPath = $env:PATH
+    try {
+        if ($env:PATH -notlike "*$ffBinDir*") { $env:PATH = "$ffBinDir;$env:PATH" }
+        $ffVer = & $ffProbe -version 2>&1 | Out-String
+    } finally { $env:PATH = $savedPath }
     if ($ffVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodecMajor = $Matches[1] }
 }
 $cfgText = if (Test-Path $cfgLog) { Get-Content $cfgLog -Raw } else { '' }
