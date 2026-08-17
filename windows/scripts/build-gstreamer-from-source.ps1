@@ -824,7 +824,12 @@ int _isatty(int);
         # gchar* where a differently-typed pointer is expected, which older clang let
         # through as a warning. Demote it to match the function-pointer variant already
         # here, so the version bump to a newer clang-cl does not fail the onnx plugin.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
+        # -Wno-undef: graphene 1.10.8 (building for the FIRST time now that #88
+        # delivers every wrap - it used to drop out silently) tests bare
+        # `__GNUC__` in #if under a -Werror it brings along; clang-cl defines
+        # no __GNUC__ in MSVC personality. Disabling the diagnostic beats
+        # chasing where the -Werror comes from (verify13).
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef",
         "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
@@ -840,6 +845,12 @@ int _isatty(int);
         # wasapi2 (the modern replacement, built by default and present in the
         # image) provides WASAPI capture/render. Only the deprecated v1 is off.
         '-Dgst-plugins-bad:wasapi=disabled',
+        # graphene: its MSVC code path calls SSE4.1 intrinsics (dpps) with no
+        # target-feature guard - MSVC tolerates that, clang-cl refuses
+        # ("__builtin_ia32_dpps needs target feature sse4.1", verify13). The
+        # scalar path is correct and this is geometry math for GL mixers, not
+        # a hot loop worth a global -msse4.1 baseline change.
+        '-Dgraphene:sse2=false',
         # svtjpegxs stays DISABLED: its SVT-JPEG-XS codec subproject does not
         # compile under clang-cl (Mct.c: "conflicting types" / "too many
         # arguments" -- the local access() clash was only the first of several
@@ -965,6 +976,24 @@ int _isatty(int);
             })
     }
 
+    # graphene (first-ever build here since #88 delivers every wrap): its
+    # meson.build appends -Werror=undef AFTER our c_args, so the -Wno-undef we
+    # pass is overridden (last flag wins) and its bare `#if __GNUC__` tests die
+    # under clang-cl, which defines no __GNUC__ (verify14). Drop that ONE flag
+    # from its test_cflags at the source; ninja regenerates on meson.build
+    # changes, so patching between setup and compile is safe.
+    $grapheneMeson = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'graphene-*' -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName 'meson.build' } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($grapheneMeson) {
+        [void](Edit-SourceFile -Path $grapheneMeson `
+                -Description 'graphene meson.build: drop -Werror=undef (clang-cl has no __GNUC__)' `
+                -WarnMessage 'graphene meson.build present but -Werror=undef not found; if graphene still fails on -Wundef, its warning flags moved.' `
+                -Transform {
+                param($mbContent)
+                $mbContent -replace "'-Werror=undef',?\s*", ''
+            })
+    }
+
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     # Job budget + stall guard (backlog #65): this was the ONE compile stage
     # running sccache with neither. `meson compile` without -j lets ninja
@@ -978,11 +1007,19 @@ int _isatty(int);
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
         log "Compiling GStreamer (attempt $cAttempt/2, may take 30-60 min)..."
-        $gstStallGuard = Start-SccacheStallGuard -MarkerPath (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
+        # Module-scope invocation: Start-/Stop-SccacheStallGuard live in
+        # WindowsSourceBuild.Common but are NOT in its export list (#65 used
+        # them internally where exports don't matter; verify12 caught the
+        # direct call throwing CommandNotFound). Adding the exports is the
+        # right fix but a module edit busts EVERY media stage cache - frozen
+        # mid-chain, so it rides the next full-chain rebuild instead.
+        $sbcModule = Get-Module WindowsSourceBuild.Common
+        if (-not $sbcModule) { throw 'WindowsSourceBuild.Common not loaded - stall guard unavailable (#65)' }
+        $gstStallGuard = & $sbcModule { param($p) Start-SccacheStallGuard -MarkerPath $p } (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
         try {
             & $mesonExe compile -C $resolvedBuildDir -j $gstJobs 2>&1 | ForEach-Object { if ($_) { log $_ } }
         } finally {
-            Stop-SccacheStallGuard -Guard $gstStallGuard
+            & $sbcModule { param($g) Stop-SccacheStallGuard -Guard $g } $gstStallGuard
         }
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
