@@ -22,6 +22,7 @@ jobs:
   build-docs:
     name: Build Documentation
     runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
     # Serialize production deploys: two overlapping runs must not FTP-sync into
     # the same server directory at once. Job-level on purpose — a reusable
     # (workflow_call) workflow does not get its own workflow run, so a

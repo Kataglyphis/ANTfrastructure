@@ -238,7 +238,14 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
-### CI-workflow sweep additions (2026-08-17; Linux lanes — first dedicated audit)
+### CI-workflow sweep additions (2026-08-17) — **CI1-3 ✅ ALL FIXED same day**
+
+CI1: timeout-minutes added to all 5 Linux workflows (python-ci 60 / ubuntu24.04
+45 / build-docs 30 / ghcr-cleanup 20 / stale-docs 15). CI2: llm-stack ollama
+service digest-pinned (sha256:9d30908e…; bump deliberately, not implicitly).
+CI3: registry login secret moved to env-var pattern. actionlint OK. Original
+findings kept below for context:
+
 
 - **CI1 — missing `timeout-minutes` in 5 Linux workflows** [S·★★]
   python-ci-linux.yml:98 (multi-GB pull + tests → a hang burns the 6h default;
