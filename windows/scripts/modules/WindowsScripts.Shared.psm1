@@ -203,8 +203,19 @@ function Invoke-DownloadWithRetry {
             $msg = $_.Exception.Message
             if (Test-Path $DestinationPath) { Remove-Item $DestinationPath -Force -ErrorAction SilentlyContinue }
             if ($attempt -ge $MaxAttempts) { throw "Download failed after $MaxAttempts attempt(s) [$label]: $msg" }
-            Write-Host "  download attempt $attempt/$MaxAttempts failed [$label]: $msg -- retrying in ${delay}s"
-            if ($delay -gt 0) { Start-Sleep -Seconds $delay }
+            # HTTP 429 is a RATE LIMIT, not a blip: 3s/6s/12s backoff retries
+            # into the same closed window and burns all attempts in ~20s —
+            # measured 2026-08-17, four 429s from GitHub codeload killed a merge
+            # chain 55 minutes in. A 429 needs a WAIT, not persistence: one
+            # minute per prior attempt, so the limiter can actually reset.
+            $wait = $delay
+            if ($msg -match '\b429\b|Too Many Requests') {
+                $wait = 60 * $attempt
+                Write-Host "  download attempt $attempt/$MaxAttempts rate-limited (429) [$label] -- backing off ${wait}s to let the limiter reset"
+            } else {
+                Write-Host "  download attempt $attempt/$MaxAttempts failed [$label]: $msg -- retrying in ${wait}s"
+            }
+            if ($wait -gt 0) { Start-Sleep -Seconds $wait }
             $delay = [Math]::Min($delay * 2, 30)
         }
     }

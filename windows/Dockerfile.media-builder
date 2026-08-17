@@ -369,6 +369,24 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # former `media-core-bk` ENV twin (and the sync_versions.py bookkeeping it
 # required) is gone; see media-core-env above.
 FROM media-core-env AS media-core-built-onnx
+# Both DORMANT by default (empty ARG = inert; the scripts test for -eq '1').
+# Declared in the CONSUMING stage per the #103 lesson, and declared AT ALL
+# because buildctl silently DISCARDS a --opt build-arg no Dockerfile ARG
+# matches (the lesson that cost a 25-minute "the flag does not work" run).
+#
+#   SCCACHE_CUDA_LAUNCHER    opt-in: route nvcc through sccache. OFF since the
+#                            2026-08-10 miscompile verdict; NEVER default this
+#                            on without the three-canary bar (AGENTS.md).
+#   SCCACHE_REPRO_CUDA_LLM   repro-sccache-cuda-llm-deadlock.ps1 sets this to
+#                            skip patch 006 so the fused_moe launchers hit the
+#                            sccache server (the #2808 deadlock target). The
+#                            repro passes BOTH: without the launcher opt-in the
+#                            CUDA compiles run bare and a "no deadlock" verdict
+#                            would be a false all-clear.
+ARG SCCACHE_CUDA_LAUNCHER=""
+ARG SCCACHE_REPRO_CUDA_LLM=""
+ENV SCCACHE_CUDA_LAUNCHER="${SCCACHE_CUDA_LAUNCHER}" `
+    SCCACHE_REPRO_CUDA_LLM="${SCCACHE_REPRO_CUDA_LLM}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `

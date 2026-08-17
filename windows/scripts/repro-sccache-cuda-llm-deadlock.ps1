@@ -57,13 +57,22 @@ if ($busy.Count -gt 0 -and -not $Force) {
 # ---- Preconditions ---------------------------------------------------------
 $df = Join-Path $repoRoot 'windows\Dockerfile.media-builder'
 $dfText = Get-Content $df -Raw
-if ($dfText -notmatch 'ARG\s+SCCACHE_REPRO_CUDA_LLM') {
-    throw ("$df does not declare ARG/ENV SCCACHE_REPRO_CUDA_LLM in the media-core-env stage. " +
-           "Add it next to the other media-core ARGs (an unset ARG is inert, so it is safe to keep permanently):`n" +
-           "    ARG SCCACHE_REPRO_CUDA_LLM=`"`"`n" +
-           "and mirror it into that stage's ENV block. This wiring was deliberately NOT applied while a chain " +
-           'was mid-flight, because editing the Dockerfile changes the cache key of stages that had not run yet.')
+if ($dfText -notmatch 'ARG\s+SCCACHE_REPRO_CUDA_LLM' -or $dfText -notmatch 'ARG\s+SCCACHE_CUDA_LAUNCHER') {
+    throw ("$df does not declare ARG/ENV for SCCACHE_REPRO_CUDA_LLM and SCCACHE_CUDA_LAUNCHER " +
+           "(both live in the media-core-built-onnx stage since 2026-08-17; unset ARGs are inert). " +
+           'Without the declarations buildctl silently discards the --opt build-args and this repro ' +
+           'compiles bare nvcc — a false all-clear.')
 }
+
+# CONTEXT since 2026-08-17 (#99): the original deadlock was measured while the
+# L0 disk tier sat on a BuildKit cache mount that failed 100 % of writes with
+# os error 3 — the server may have wedged inside that error-path storm, not in
+# its own decomposition logic. The chain now defaults to WebDAV-only, so THIS
+# run tests the deadlock in a storage environment that has never hosted it:
+#   * still wedges  -> genuinely sccache-internal; attach the trace to #2808.
+#   * runs through  -> the deadlock was #99 collateral; report THAT upstream,
+#     and only then run the three-canary miscompile bar (AGENTS.md) before any
+#     thought of enabling the CUDA launcher by default.
 
 $null = New-Item -ItemType Directory -Force -Path $OutDir
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -75,9 +84,15 @@ $log = Join-Path $OutDir "repro-$stamp.log"
 Write-Host "`nBuilding media-core WITHOUT patch 006. Log: $log" -ForegroundColor Cyan
 Push-Location $repoRoot
 try {
+    # BOTH build-args, and this is load-bearing: since the 2026-08-10 opt-in
+    # flip, skipping patch 006 alone leaves the CUDA compiles BARE
+    # (Invoke-CmakeConfigure only adds CMAKE_CUDA_COMPILER_LAUNCHER under
+    # SCCACHE_CUDA_LAUNCHER=1). Without the second arg this repro "succeeds",
+    # and the success branch below reads as "deadlock no longer reproduces" —
+    # a false all-clear from an instrument that never touched the fault line.
     & pwsh -NoProfile -ExecutionPolicy Bypass -File 'windows\build-buildkit.ps1' `
         -Gpu -Stages media -MediaBranches media-core -NoCacheStage onnx `
-        -BuildArg 'SCCACHE_REPRO_CUDA_LLM=1' 2>&1 | Tee-Object -FilePath $log
+        -BuildArg 'SCCACHE_REPRO_CUDA_LLM=1','SCCACHE_CUDA_LAUNCHER=1' 2>&1 | Tee-Object -FilePath $log
     $code = $LASTEXITCODE
 } finally { Pop-Location }
 
