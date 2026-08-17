@@ -177,12 +177,22 @@ append_package_build_args() {
 append_wrapper_build_args() {
   local -n _awba_out=$1
   local arch="$2" parent_image="$3"
+  # PROV1 (2026-08-17): fill the OCI provenance labels. Dockerfile.torch
+  # declares ARG BUILD_DATE=""/VCS_REF="" for its org.opencontainers.image.
+  # created/.revision labels, but nothing ever passed them → every shipped
+  # wrapper carried EMPTY provenance (the concrete half of the RTCACHE3
+  # provenance follow-up). Best-effort: outside a git checkout VCS_REF stays "".
+  local _prov_date _prov_ref
+  _prov_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _prov_ref="$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
   _awba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "BUILD_MODE=native"
     --build-arg "TARGET_ARCH=${arch}"
     --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}"
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}"
+    --build-arg "BUILD_DATE=${_prov_date}"
+    --build-arg "VCS_REF=${_prov_ref}"
   )
   # Documented operator overrides (see runtime_shared_usage_env_overrides);
   # forwarded only when set so the Dockerfile.torch defaults stay authoritative.

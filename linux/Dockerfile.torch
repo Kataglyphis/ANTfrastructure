@@ -62,6 +62,9 @@ ARG BUILD_TYPE=Release
 ARG WORKDIR=/workspace
 ARG BUILD_DATE=""
 ARG VCS_REF=""
+# POS2: re-declared for the version LABEL below (ARGs are per-stage; the torch
+# stage's APP_REF does not reach this stage). Default matches versions.env.
+ARG APP_REF=v0.0.27
 
 # Runtime scripts, entrypoint, CMD, VOLUME, HEALTHCHECK, user, and OCI
 # labels.  This is the canonical source for shared final-stage elements.
@@ -110,9 +113,13 @@ CMD ["/bin/bash"]
 HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
   CMD /opt/venv/bin/python3 -c "import onnxruntime" || exit 1
 
+# POS2 (2026-08-17): image.version used to carry BUILD_TYPE ("Release") — not a
+# version. Point it at the shipped app ref (APP_REF, versions.env-driven) and
+# keep the build type as a custom label.
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.description="My beschleuniger image for 2D AI" \
-      org.opencontainers.image.version="${BUILD_TYPE}" \
+      org.opencontainers.image.version="${APP_REF}" \
+      org.kataglyphis.build-type="${BUILD_TYPE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \

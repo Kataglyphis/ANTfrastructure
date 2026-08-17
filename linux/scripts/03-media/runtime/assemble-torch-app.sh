@@ -539,6 +539,17 @@ usage() {
   printf 'Usage: %s [install|verify|all]\n' "${0##*/}" >&2
 }
 
+# POS1 (2026-08-17): the cloned app tree shipped WITH its .git (packed objects,
+# remote URL, history) in the final uid-1001 image — attack-surface/hygiene +
+# size + provenance leak. The package is pip-installed into the venv and the
+# app's version comes from VERSION.txt (not setuptools-scm), so .git is dead
+# weight once install is done. Remove ONLY .git; the working tree stays (it may
+# be consulted at runtime). Best-effort — never fails a completed install.
+cleanup_app_git() {
+  [ -d "${APP_DIR}/.git" ] || return 0
+  rm -rf "${APP_DIR}/.git" && echo "Removed ${APP_DIR}/.git (POS1: no VCS data in the shipped image)" || true
+}
+
 main() {
   local mode="${1:-all}"
 
@@ -546,14 +557,17 @@ main() {
     install)
       prepare_project_tree
       install_project_environment
+      cleanup_app_git
       ;;
     verify)
       verify_project_environment
+      cleanup_app_git
       ;;
     all)
       prepare_project_tree
       install_project_environment
       verify_project_environment
+      cleanup_app_git
       ;;
     *)
       usage
