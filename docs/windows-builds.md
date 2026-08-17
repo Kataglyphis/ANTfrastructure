@@ -100,7 +100,7 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
 | LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. Also builds the TFLite **C-API** shared lib `tensorflowlite_c` (target injected into the main build, `WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) that gst-plugins-bad's tflite plugin links. |
 | LiteRT-LM 0.15.0 | **Bazel** | clang-cl, lld-link | On-device LLM inference, built via `build-litert-lm-bazel.ps1` (bazelisk + Temurin JDK, `bazelisk build //runtime/engine:litert_lm_main --config=windows`) → `litert_lm_main.exe`, through the smoke-RUN gate. Bazel is the only path Google CI-tests, so it survives version bumps. The old CMake export-bridge path (`build-litert-lm-from-source.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**. |
-| TVM 0.25.0 | Ninja | clang-cl, lld-link | Auto-detects CUDA/Vulkan/LLVM. Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers. |
+| TVM 0.25.0 | Ninja | clang-cl, lld-link | Auto-detects CUDA/Vulkan. **Builds its own minimal LLVM from pinned source** (#47 heal 2026-08-17: scoop LLVM ships no llvm-config/dev-libs, the official dev tarball is /MT — X86+NVPTX, DIA off, RTTI on, `USE_LLVM=<path>/llvm-config.exe`; SHA pins in `$llvmSrcSha`, ~6 min sccache-warm). Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers. |
 | FFmpeg `n9.0` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | Source build from the pinned release tag (`FFMPEG_VERSION=n9.0` in `versions.env`; a release TAG since 2026-08-04 — previously tracked `master`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). Disabled x86asm. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set). |
 | GStreamer 1.29.2 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
 
@@ -2217,7 +2217,15 @@ Upstream follow-ups: see "Pending" at the bottom.
   ~30 min OpenCV + ~45 min GenAI all green and all useless. The explicit
   opt-outs (`ONNX_FORCE_CPU`, `GENAI_FORCE_CPU`) already exist, so a `throw`
   is safe. FIX: fail closed when `GpuType -eq 'nvidia' -and -not $CudaRoot`.
-- **47 [S·★★, none] DONE 2026-08-17 (verify in the next tvm build) — loud OFF-paths shipped: cuDNN/Vulkan warn with the consequence spelled out, missing llvm-config now THROWS (USE_LLVM=OFF would strip TVM's CPU codegen while staying green; the toolchain always bakes LLVM, so absence = broken image). Original finding: TVM silently drops LLVM / Vulkan / cuDNN.**
+- **47 [S·★★, none] DONE + VERIFIED 2026-08-17 — and the gate's first live run
+  DISPROVED its own premise:** "the toolchain always bakes LLVM" was false —
+  scoop LLVM (official Windows installer) ships NO llvm-config/dev-libs at all,
+  so every prior Windows TVM was silently USE_LLVM=OFF. The throw fired on
+  verify5 and forced the real fix: the tvm stage now builds its own minimal
+  pinned LLVM (see Component Build Matrix row + AGENTS invariants; the /MT dev
+  tarball detour and the 4-fix path are in the 2026-08-17 commits). Loud
+  cuDNN/Vulkan OFF-paths shipped as planned. Original finding: TVM silently
+  drops LLVM / Vulkan / cuDNN.**
   `build-tvm-from-source.ps1:76-82` (and :68-73, :53-64) print on the ON path
   and print NOTHING on the OFF path. `USE_LLVM=OFF` removes TVM's CPU codegen
   entirely: build green, `import tvm` green, and every `tvm.build` for an LLVM
