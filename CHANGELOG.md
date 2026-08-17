@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-08-17 - BATCH-2 BIG WAVE SHIPPED: full 3-arch rebuild, opencv two-pass proven, GPU-lane fixes
+
+Full base→:latest-cross rebuild (owner-chosen "everything incl. TG1 in one
+rebuild") shipped FRESH digests amd64 `0cba6b61` / arm64 `ebc7562` / riscv64
+`6a87341d`. Byte-gate PASS ×3 (libtensorflow absent). Manual byte-verification
+of the shipped amd64 wrapper:
+
+- **opencv ⇄ gstreamer TWO-PASS PROVEN**: `cv2.getBuildInformation()` reports
+  **GStreamer: YES** — the shipped OpenCV links the source-built GStreamer
+  (new `opencv-gst` pass-2 stage). Follow-up OCV-FF1: FFMPEG backend still NO
+  (pre-existing, now visible) — likely opencv-5.0.0 vs ffmpeg n9.0.
+- **AP2**: /opt/venv byte-compiled (.pyc present) — no more per-start re-parse.
+- **AP4 complete**: media libs stripped across all prefixes (.symtab=0 verified).
+- **AP1**: cross wheels stripped (RECORD-safe). **AP5**: CPython --with-lto.
+- **TG1 (bounded)**: cmake/vulkan lazy + toolchain mounts trimmed — survived the
+  full compiler stage; a cmake/vulkan edit no longer re-runs the 3655s GCC build.
+- **Guard-helper wiring** live in both common.sh lanes.
+- Regressions held: S2 (TF absent), GST1 (dev surface resolves), RP6 (PATH clean),
+  torch 2.13.0 intact.
+- **AP3 REVERTED mid-run** (80a81eb): the wheelhouse bind-mount sat in the wrong
+  RUN — Dockerfile.torch (FROM package) is where setup-torch-venv reads
+  /opt/wheels and it has no artifact-source stage → all 3 wrappers failed;
+  reverted + runtime stage re-run. Re-filed with the correct approach.
+
+Same day, GPU lane (opt-in, commit e51a0da): **GPU7** — broken `_trt_deb`
+substitution (`|| true` OUTSIDE `$()`) made the default no-EULA-deb nvidia build
+die at deb staging; **GPU1** TensorRT silent-skip fixed (apt-get update before
+the NVIDIA-repo path; the shared apt-lists cache had been wiped by an earlier
+RUN); **GPU2/3** verification now CUDA_STACK_STRICT=1 (was fail-open with ALL
+components missing); **GPU4** in-cache-mount lists-rms dropped; **GPU5** ROCm
+amd64 guard enforced; **GPU6** COPY --link. Awaiting one nvidia/amd lane build.
+
+Also: backlog deep-look additions from the first GPU-lane sweep, shipped-image
+posture sweep (POS1 app .git ships in image, PROV1 empty OCI labels), build-log
+mining (LOG1-7 incl. libfuse3-3 absent on resolute + onnxruntime-web missing
+webgpu JS), PAR1 measured (--parallel-archs ready: media 8.5h sequential vs
+~3.5h parallel, divisor wiring verified), and smoke-gap self-review (SMK1-3).
+
 ## 2026-08-16 - FULL 3-ARCH REBUILD: Batch-2 subset shipped; :latest-cross re-shipped (fresh digests); 2 real bugs flushed
 
 A full base→:latest-cross rebuild (all 3 arches) validated the 2026-08-15 staged

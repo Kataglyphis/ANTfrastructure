@@ -30,43 +30,26 @@ CHANGELOG.md + memory + the archive.
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
-## 🔨 Batch-2 BIG WAVE staged 2026-08-16 (awaiting the bundled 3-arch rebuild)
+## ✅ Batch-2 BIG WAVE SHIPPED 2026-08-17 (full rebuild + byte-verified)
 
-Owner chose "alles inkl. TG1 + guard-Migration → 1 Rebuild". Implemented + tested
-(shellcheck + unit suite 396 + copy-coverage all green), pending the validating
-rebuild:
-- **AP4 complete** — opencv/litert/onnxruntime/armnn/acl now stripped too (added
-  `_resolve_media_strip_bin` self-deriving the cross `<triplet>-strip`, and
-  `strip_media_libs` for the shared /usr/local libs).
-- **AP5** — CPython `--with-lto` cross+native, `PYTHON_LTO=0` escape hatch.
-- **AP3 — ❌ REVERTED 2026-08-17 (80a81eb), re-filed as OPEN.** The bind-mount
-  into the package RUN was misplaced: /opt/wheels is COPY'd into the package
-  image so Dockerfile.torch (FROM package) inherits it — THAT is where
-  setup-torch-venv.sh reads it (`--find-links /opt/wheels`), and torch has no
-  artifact-source stage to mount from → all 3 wrappers failed, runtime stage
-  re-run with the revert. CORRECT approach for a future attempt: make the
-  wheelhouse reachable in Dockerfile.torch's RUN (add an artifact-source-style
-  stage/mount THERE), or restructure so the venv assembles in the package image.
-  The `rm` mountpoint-guard in setup-torch-venv.sh is harmless and stays.
-- **AP2** — `/opt/venv` byte-compiled at build (target python under qemu),
-  `VENV_COMPILE=0` gate.
-- **AP1** — cross wheels stripped via RECORD-safe `wheel unpack→strip→pack` in
-  repair-wheels.sh (corruption-safe: original removed only after a good repack).
-- **opencv two-pass** — new `opencv-gst` stage (`FROM gstreamer`) rebuilds OpenCV
-  with the source-built /opt/gstreamer (FORCE_REBUILD=1); `final` COPYs it over
-  the pass-1 tree. riscv64 reproduces pass-1 (gstreamer OFF upstream).
-- **TG1 (bounded)** — cmake.sh + vulkan.sh made lazy in setup-dependencies.sh +
-  their dead mounts trimmed from all 3 toolchain RUNs (verified: gcc/eager-set/
-  verify never source them; the subcommands invoked here don't install them). A
-  cmake/vulkan edit no longer re-runs the 3655s GCC build. The fuller closure
-  trim (llvm-cross/validate, 01-core narrowing) stays deferred — higher risk.
-- **Guard-helper wiring** — sourced into both common.sh files (guarded);
-  layer-order test updated. The 426-site call-site migration stays incremental
-  (cosmetic, per-site + mount-gap risk; not worth 426 hand-edits pre-rebuild).
-- **RP4 + DUP2 — DEFERRED, no safe form.** RP4: the core/toolchain scripts are
-  BOTH consumed by the package RUN AND shipped (can't move below; bind-mount
-  split is risky for a ★ cache win). DUP2: no safe code-only subset
-  (native-suffix/out-of-scope/deliberate-fallback).
+Full base→:latest-cross rebuild (~21h incl. one AP3 revert-rerun) SHIPPED fresh
+digests amd64 `0cba6b61` / arm64 `ebc75627` / riscv64 `6a87341d`; byte-gate PASS
+×3. Manual byte-verification on the shipped amd64 wrapper: **opencv two-pass
+PROVEN (`cv2.getBuildInformation()` → GStreamer: YES)**, AP2 .pyc present, AP4
+libs stripped (.symtab=0), S2/GST1/RP6 hold, torch 2.13.0 intact. LIVE: AP1,
+AP2, AP4-complete, AP5, opencv two-pass, TG1-bounded, guard-wiring. NOT shipped:
+AP3 (reverted 80a81eb — bind-mount belongs in Dockerfile.torch's RUN, re-filed
+below), RP4+DUP2 (no safe form, deferred). One real bug flushed by the build:
+the AP3 mount-gap (wrappers failed on `--find-links /opt/wheels`; the numpy/
+GST1-class lesson again — closure restructures only prove out in a real build).
+Details: CHANGELOG + memory.
+
+- **OCV-FF1 — opencv videoio FFMPEG backend still NO (made VISIBLE by the
+  two-pass)** [M·★★, investigate] the shipped cv2 reports GStreamer: YES but
+  FFMPEG: NO — pass-2 had /opt/ffmpeg/lib/pkgconfig on PKG_CONFIG_PATH, so the
+  likely cause is opencv-5.0.0's videoio not supporting ffmpeg n9.0's API (or
+  missing ffmpeg dev headers in the pass-2 env). Investigate; couple with SMK1
+  (its assert should require GStreamer=YES now and gate FFMPEG once decided).
 
 ## Next up (recommended order, 2026-08-17)
 
