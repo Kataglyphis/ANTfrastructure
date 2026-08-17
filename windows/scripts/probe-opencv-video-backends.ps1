@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
 .SYNOPSIS
     Print OpenCV's compiled-in video backends and cross-check them against the

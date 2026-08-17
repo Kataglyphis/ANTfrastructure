@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
 .SYNOPSIS
     Make OpenCV 5.0.0's videoio compile against FFmpeg 9 (avcodec 63).

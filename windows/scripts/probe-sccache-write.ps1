@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
 .SYNOPSIS
     Diagnose WHY every sccache L0 (disk) cache write fails with

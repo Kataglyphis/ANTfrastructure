@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
 .SYNOPSIS
     Host-side runner for the sccache L0 write-failure probe (backlog #99).
