@@ -25,7 +25,9 @@ expense of the others:
 - **Speed** — layered caching end-to-end (BuildKit layers with narrow cache
   keys, local cache exports, the ccache/sccache HYBRID — ccache for C/C++,
   sccache for Rust; layer cache and compiler cache multiply, they don't
-  compete — pinned buildkitd GC budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
+  compete — pinned buildkitd GC budget whose policies spare compile-cache
+  mounts, plus `linux/host-config/prune-safe.sh` for manual reclaim that
+  provably keeps them) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
   That map is the **Linux** lane. The **Windows** lane caches by deliberate
   layer ordering plus an sccache WebDAV remote covering C/C++, and a uv/pip

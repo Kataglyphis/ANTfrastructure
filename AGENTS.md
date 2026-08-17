@@ -1195,12 +1195,20 @@ base ─┬─ onnxruntime ───────┐
   list into a new caller.
   On Windows hosts: `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
 - **Linux host config is code**: `linux/host-config/` carries the canonical
-  rootless-BuildKit `buildkitd.toml` (gc keep-budget + max-parallelism) and the
-  systemd drop-in. `apply-host-config.sh` installs (refuses while a chain
-  runs; daemon restart is a printed operator step), `verify-host-config.sh`
-  warn-diffs live vs repo. Exists because a live-only toml edit silently
-  regressed once — reconcile drift through the repo, never by editing
-  `~/.config` alone.
+  rootless-BuildKit `buildkitd.toml` (gc keep-budget + cachemount-sparing
+  gcpolicy pair + max-parallelism) and the systemd drop-in.
+  `apply-host-config.sh` installs (refuses while a chain runs; daemon restart
+  is a printed operator step), `verify-host-config.sh` warn-diffs live vs
+  repo. Exists because a live-only toml edit silently regressed once —
+  reconcile drift through the repo, never by editing `~/.config` alone.
+- **Linux disk reclaim: `linux/host-config/prune-safe.sh`, NEVER
+  `nerdctl builder prune -f`** (CACHE1, 2026-08-17). The -f prune deletes
+  `type==exec.cachemount` records — ccache/sccache/uv/cargo/llvm-src, hours
+  of compile time in a few GB — together with the cheap-to-regenerate layer
+  cache (measured 207 GB vs 4.9 GB); one run paid ~1.5-2 h of cold LLVM
+  rebuilds for it. prune-safe.sh prunes `type==regular` only via buildctl's
+  `--filter` (nerdctl has none), takes `PRUNE_KEEP_GB`/`DRY_RUN`, and proves
+  cachemount survival before/after.
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest). The suite is
