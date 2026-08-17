@@ -338,8 +338,9 @@ try {
     # feature-reduced image nobody noticed. Only the four mandatory plugins were
     # gated; every other codec was silently "optional". The fetch also ran as
     # `curl ... 2>nul`, discarding the one line that distinguishes a moved wrap
-    # revision (404) from a DNS/TLS problem. Shared retry helper + visible
-    # errors + fail-closed summary now.
+    # revision (404) from a DNS/TLS problem. Now: Invoke-WrapDownload (curl-UA
+    # + magic-byte check — NOT the shared helper, whose browser UA gets Anubis
+    # challenge pages) + visible errors + fail-closed summary.
     $wrapFailures = @()
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
     Get-ChildItem -Path $subprojDir -Filter '*.wrap' | ForEach-Object {

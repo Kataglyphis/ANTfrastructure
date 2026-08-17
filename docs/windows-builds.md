@@ -2017,15 +2017,21 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > Ordered by what unblocks what; the verification chain is the bottleneck, not
 > the code. One experiment per build.
 >
-> 1. **Flip-verification media build** (running) — proves the #94 default +
->    #103 ARG placement with no build-arg.
-> 2. **Merge build** — verifies FIVE landed changes in one run: #93 standalone
->    GStreamer plugin (+ the rewritten #95 runtime assertions), #65 job budget
->    + stall guard, #66 early fan-in fast-fail, #88 fail-closed wrap downloads.
+> **2026-08-17 late: steps 1+2 are DONE-GREEN** (verify10–15 + final; smoke
+> gate 190 passed / 1 skipped / 0 failed). That run verified #93/#95/#65/#66/#88
+> end-to-end and en passant surfaced+fixed: the #47 TVM LLVM heal (own minimal
+> LLVM — scoop has none, dev tarball is /MT), the Anubis/`.git` wrap-download
+> pair, graphene's clang-cl port, and #113 (stall-guard exports).
+>
+> 1. **versions.env bump full-chain ride** (RUNNING — base rebuild; carries
+>    the #113 module edit).
+> 2. **Deadlock repro** (`repro-sccache-cuda-llm-deadlock.ps1`, ~80 min) —
+>    #2808 under WebDAV-only; wedge → trace upstream, no wedge → three-canary
+>    miscompile bar before any launcher-default talk.
 > 3. **After those builds free the mounts/files:** #100 (FFmpeg/PyAV sccache),
->    #107 (extract sccache session helpers), #104 (cache-mount debris), #68/#69
->    (FFmpeg fallback + pin drift), #45 (CUDA path fail-open), #106 rest
->    (mass `#requires`), #49/#51 (media ENV split).
+>    #107 (extract sccache session helpers), #112 (opencv-stage provenance
+>    gate empty-read), #68/#69 (FFmpeg fallback + pin drift), #45 (CUDA path
+>    fail-open), #106 rest (mass `#requires`), #49/#51 (media ENV split).
 > 4. **Base-tier batch — NEVER land alone** (#50 + #81, plus #78/#79 if their
 >    fixes touch setup-vs): one deliberate base rebuild for all of them.
 > 5. **Owner decisions:** #31 (registry push; #59 branch protection DECLINED 2026-08-17), and the
@@ -2247,7 +2253,14 @@ Upstream follow-ups: see "Pending" at the bottom.
   a `-ResumeFrom FFmpeg` after such a failure skips `Assert-FfmpegPkgConfig`,
   the import-lib assert and PyAV — the resumed run cannot detect the broken
   install it inherited.
-- **88 [S·★★★, none] DONE 2026-08-17 (wraps + libffi through Invoke-DownloadWithRetry, real error text kept, FAIL-CLOSED summary after the loop; verify in the next merge build) — original finding: GStreamer wrap downloads fail SILENTLY and the build ships
+- **88 [S·★★★, none] DONE + VERIFIED 2026-08-17 (fail-closed summary after the
+  loop; VERIFIED live in verify15+smoke. NOTE the fetch route changed same-day:
+  wraps + libffi go through the script-local `Invoke-WrapDownload` — curl-native
+  UA + magic-byte check — NOT the shared `Invoke-DownloadWithRetry`, whose
+  browser UA gets Anubis HTML challenge pages from freedesktop/videolan GitLab;
+  `.git` is stripped from GitLab archive URLs. The gate's first live run also
+  caught graphene entering the build for the first time, see AGENTS invariants)
+  — original finding: GStreamer wrap downloads fail SILENTLY and the build ships
   a feature-reduced image — OBSERVED, not theorised.** The 2026-08-14 full chain
   logged **22 failed wrap downloads** in one merge stage:
   `gst-plugins-base` ×15, `theora` ×5, `pango` ×2, each as

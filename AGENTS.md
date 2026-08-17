@@ -1332,6 +1332,11 @@ After changing versions:
    (also enforces that every versions.env-named ARG has a safety-net default in its file)
 6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
+Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` also requires adding the
+new version's SHA256 to `$llvmSrcSha` in `build-tvm-from-source.ps1` (the #47
+mini-LLVM heal pins the llvm-project source tarball per version and THROWS on
+an unknown one — deliberately, unpinned downloads are forbidden).
+
 Windows layer-cost note: `windows/Dockerfile.base` declares `VULKAN_VERSION`/
 `CMAKE_VERSION` just above the scoop step (NOT at the top) so bumping them
 re-runs scoop, never the hours-long VS Build Tools layer. Keep new version ARGs
