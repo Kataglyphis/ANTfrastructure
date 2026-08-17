@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#requires -Version 7.0
 <#
 .SYNOPSIS
     Host-side runner for the OpenCV video-backend probe (backlog #93/#94/#95).
