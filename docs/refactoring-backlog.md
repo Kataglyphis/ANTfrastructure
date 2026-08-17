@@ -32,8 +32,15 @@ rebuild:
   `_resolve_media_strip_bin` self-deriving the cross `<triplet>-strip`, and
   `strip_media_libs` for the shared /usr/local libs).
 - **AP5** — CPython `--with-lto` cross+native, `PYTHON_LTO=0` escape hatch.
-- **AP3** — wheelhouse bind-mounted (readonly) into the package RUN instead of
-  COPY+rm → no 0.5-2 GB dead layer; `rm` mountpoint-guarded.
+- **AP3 — ❌ REVERTED 2026-08-17 (80a81eb), re-filed as OPEN.** The bind-mount
+  into the package RUN was misplaced: /opt/wheels is COPY'd into the package
+  image so Dockerfile.torch (FROM package) inherits it — THAT is where
+  setup-torch-venv.sh reads it (`--find-links /opt/wheels`), and torch has no
+  artifact-source stage to mount from → all 3 wrappers failed, runtime stage
+  re-run with the revert. CORRECT approach for a future attempt: make the
+  wheelhouse reachable in Dockerfile.torch's RUN (add an artifact-source-style
+  stage/mount THERE), or restructure so the venv assembles in the package image.
+  The `rm` mountpoint-guard in setup-torch-venv.sh is harmless and stays.
 - **AP2** — `/opt/venv` byte-compiled at build (target python under qemu),
   `VENV_COMPILE=0` gate.
 - **AP1** — cross wheels stripped via RECORD-safe `wheel unpack→strip→pack` in
