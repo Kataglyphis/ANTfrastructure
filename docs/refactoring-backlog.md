@@ -257,6 +257,34 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### Build-log mining additions (2026-08-17; from the REAL Batch-2 rebuild logs)
+
+- **LOG1 — libfuse3-3 has no install candidate on resolute** [S·★★] requested by
+  package-lists.sh:75 + packaging-deps.sh:107, dropped with only a WARN
+  (`append_available_packages: requested-but-absent packages dropped`). AppImages
+  need libfuse at RUNTIME — if resolute renamed it (libfuse3-4?), the shipped
+  image may quietly lack AppImage support. Find the resolute name + update both
+  lists; add a smoke that an AppImage actually mounts.
+- **LOG2 — onnxruntime-web ships WITHOUT the webgpu JS backend despite
+  ORT_ENABLE_WEBGPU=true** [S/M·★★] 50-build-js.sh:87 "Skipping ort.webgpu JS
+  outputs: asyncify WASM artifacts are unavailable" (+ jspi) — the wasm build
+  flavor that produces asyncify artifacts isn't built. Either build it or
+  document the web-webgpu exclusion next to the toggle in versions.env.
+- **LOG3 — ffmpeg swscale SPIR-V backend unavailable (spirv-headers missing)**
+  [S·★] one-line dep add in ffmpeg install-deps enables a real backend.
+- **LOG4 — uv "Failed to hardlink; falling back to full copy" ×32** [S·★] the
+  uv cache mount and target sit on different fs views → every venv op pays a
+  full copy. Set `UV_LINK_MODE=copy` explicitly (silences the warn, same cost)
+  or align the cache mount to kill the copy.
+- **LOG5 — libatlas-base-dev has no apt candidate ×3** [S·★] dead request in
+  the opencv/media dep lists (OpenBLAS is used anyway) — drop it.
+- **LOG6 — `jsonschema` missing → sdk-stage schema validation silently skipped
+  ×4** [S·★] (sdk-arm64/riscv64 logs; external tool emits it) — pip-install
+  jsonschema in the sdk stage so the validation actually runs.
+- **LOG7 — Android `sdkmanager` CLI deprecated ×6** [S·★, watch] upstream says
+  "use Android CLI instead" — bit-rot watch for the android stage before Google
+  removes it.
+
 ### Self-review of the Batch-2 wave code (2026-08-17; new-code dup + smoke gaps)
 
 - **SMK1 — the opencv two-pass has NO functional gate** [S·★★★] the ORIGINAL
