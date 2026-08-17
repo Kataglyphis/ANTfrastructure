@@ -89,17 +89,14 @@ Details: CHANGELOG + memory.
 
 ## Batch S — services lane (llm-stack / webserver; OUTSIDE the chain closure, no unlock needed)
 
-- **SV-residual: compose-CLI validation only** [S] nginx half CLOSED
-  2026-08-11: containerized `nginx -t` (nginx:alpine + dummy certs) passed
-  "syntax ok / test successful" on the post-surgery config. STRUCTURAL check DONE
-  2026-08-16 (no compose CLI on this host): all llm-stack compose files
-  (base/gpu/lan) + linux/docker-compose.yml are valid YAML; the lan override's
-  !override/!reset tags parse; its overridden services (ollama/open-webui/glances)
-  all exist in base and touch only `ports` (the expected LAN-exposure change);
-  gpu override (ollama) likewise valid. Remaining (needs a compose CLI): the full
-  `docker compose config` schema/interpolation validation (+ the lan override
-  merge), and watching the first real `compose up` (SV1 switched ollama to the
-  locally built image + healthcheck ordering).
+- **SV-residual: watch the first real `compose up`** [S, user-side] the
+  compose-CLI validation half CLOSED 2026-08-17: `nerdctl compose` (v2.3.4, was
+  overlooked) ran full `config` — schema + interpolation + merge — on ALL FOUR
+  combos (base / base+lan / base+gpu / base+gpu+lan): VALID. The
+  WEBUI_SECRET_KEY required-var fail-loud fired exactly as designed (validated
+  with a dummy value). nginx half closed 2026-08-11. ONLY remaining: watch the
+  first real `compose up` (SV1 switched ollama to the locally built image +
+  healthcheck ordering) — user-side.
 
 ## Batch 2 — the 01-core / in-container closure window (ONE rebuild pays for all)
 
@@ -114,16 +111,12 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   duplicated sites) into smoke-common.sh and make the two-environment contract
   explicit (SMOKE_ENV=sandbox|runtime set by callers) instead of six scattered
   "functional gate is the …" branches. Extend test-smoke-arch-parity.sh.
-- **A1 — env-knob registry gate** [S/M·★★] 156 cross-boundary `${VAR:-}` knobs,
-  no owner. Add a verify-arg-consistency-family gate: every consumed ALL_CAPS
-  knob must be set somewhere / in versions.env / in an allowlisted operator
-  table (which doubles as the missing docs). Gate itself is host-side (can land
-  early). Dead-alias half: UBUNTU_PORTS_MIRROR_URL DONE 2026-08-15 (removed the
-  never-set, undocumented inner fallback at cross-env.sh:17). ARCHITECTURES is
-  NOT dead — it is a documented operator alias (usage text in
-  build-sdk-artifacts.sh + runtime-build-fns.sh) AND the live 3rd fallback in
-  resolve_arch_list (artifact-common.sh:51); the "dead 3rd alias" premise was
-  wrong, KEEP it.
+- **A1 — env-knob registry gate ✅ DONE 2026-08-17** — `lint-env-knobs.sh`
+  (advisory; `KNOB_GATE=1` enforces) + the seeded operator-knob registry
+  `lint-env-knobs.allow` (146 knobs, doubles as the missing docs); wired into
+  preflight as `env-knobs`. Verified: 0 unowned on the tree, a planted new knob
+  is detected. Curating the allowlist down is the follow-on (each entry is either
+  real operator docs or a reader to fix).
 - **GEN1 — (optional experiment) source-build onnxruntime-genai for riscv64**
   [L·★] verified 2026-08-12: the skip is upstream-consistent, NOT our bug —
   PyPI 0.15.2 ships linux wheels only for manylinux_2_28_x86_64 (no riscv64

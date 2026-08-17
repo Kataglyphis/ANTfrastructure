@@ -58,7 +58,7 @@ fi
 export PYTHONUTF8=1
 
 KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
-             arg-consistency version-snapshot mirror-consistency runtime-paths \
+             arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph)
 
 _in_csv() {  # _in_csv needle csv
@@ -149,6 +149,13 @@ if [ -f docs/scripts/sync_versions.py ]; then
   run_check version-snapshot "version snapshot"   ${PREFLIGHT_PYTHON} docs/scripts/sync_versions.py --check
 else
   run_check version-snapshot "version snapshot"   bash -c 'echo "docs/scripts/sync_versions.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
+fi
+
+# 5b. A1: env-knob registry — every consumed ${VAR:-} knob must have an owner
+# (versions.env / Dockerfile ARG-ENV / script assignment / lint-env-knobs.allow).
+# Advisory internally unless KNOB_GATE=1.
+if [ -f linux/scripts/lint-env-knobs.sh ]; then
+  run_check env-knobs "env-knob registry" bash linux/scripts/lint-env-knobs.sh
 fi
 
 # 6. Canonical Ubuntu mirror ARGs present across Dockerfiles.
