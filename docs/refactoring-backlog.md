@@ -235,9 +235,55 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
 - **NVIDIA-lane helper sweep** [S] install-tensorrt/verify-cuda-stack
   find|head sites, Dockerfile.nvidia:88, smoke-cross-all-arches cross_gpp,
   verify-patch-integrity:59, lint-shell empty-array.
+
+### GPU lanes (opt-in; first dedicated sweep 2026-08-17 — real defects found)
+
+- **GPU1 — TensorRT silently SKIPPED in the shipped :*-nvidia image** [S·★★★]
+  install-cuda-stack.sh:49 `rm -rf /var/lib/apt/lists/*` wipes the indices inside
+  the SHARED `id=apt-lib-*` cache mount; the next RUN (install-tensorrt.sh) does
+  NO `apt-get update` on its default NVIDIA-apt path (update exists only in the
+  local-deb branch, :21) and `2>/dev/null` swallows the "no candidates" error →
+  `tensorrt-dev tensorrt-libs` install silently no-ops. Default nvidia images
+  likely ship WITHOUT TensorRT despite the LABEL advertising it. Fix: `apt-get
+  update` at the top of install-tensorrt.sh's non-local path (and see GPU4).
+  Validate by building the nvidia lane once and asserting trtexec/libnvinfer.
+- **GPU2 — CUDA verify is fail-open** [S·★★] verify-cuda-stack.sh:70 gates on
+  `CUDA_STACK_STRICT` (default 0) and Dockerfile.nvidia:129-131 never sets it →
+  a build with nvcc/cuDNN/TensorRT ALL missing still goes green (and would have
+  masked GPU1 forever). Fix: `CUDA_STACK_STRICT=1` in the verify RUN.
+- **GPU3 — NVIDIA-vs-AMD verify contract mismatch** [M·★★] AMD verifies HARD
+  (setup-rocm-repo.sh:74-76 exit 1 on missing hipcc/migraphx) while NVIDIA only
+  warns (GPU2). One contract: NVIDIA should match AMD's hard gate.
+- **GPU4 — in-cache-mount `rm -rf lists/*` is useless + harmful** [S·★]
+  install-cuda-stack.sh:49 + setup-rocm-repo.sh:70 — the mount isn't in the
+  layer (real cleanup happens unmounted at Dockerfile.nvidia:110), so the rm
+  only defeats caching for later RUNs (and caused GPU1). Drop both.
+- **GPU5 — ROCm arm64 guard is a comment** [S·★] setup-rocm-repo.sh:38-45
+  promises "fail loudly" on non-amd64 but has no check → generic apt error
+  instead. Add `[ "$(dpkg --print-architecture)" = amd64 ] || die`.
+- **GPU6 — Dockerfile.nvidia:86 COPY lacks --link** [S·★] (main lane has it).
+  Clean per sweep: version-ARG↔versions.env consistency, keyring/GPG sha256
+  verification, per-arch cache ids, ENABLE_* gating, script mount coverage.
 - **SUDO run_priv helper** [M·★] the lint half landed (test-invocation-lints);
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
+
+### Shipped-image posture additions (2026-08-17 sweep; fresh angles)
+
+- **POS1 — app clone ships WITH its `.git` in the final image** [M·★★]
+  assemble-torch-app.sh:39 clones /opt/Kataglyphis-Orchestr-ANT-ion, setup-torch-
+  venv.sh:511 pip-installs it — but nothing removes the tree or its `.git`
+  (packed objects, remote URL, history) from the shipped uid-1001 image; on
+  riscv64 a stray pytorch `torch/` source tree can persist too (comment at
+  :466). Attack-surface/hygiene + size + provenance leak. Fix: `rm -rf
+  "${APP_DIR}/.git"` (or the whole tree post-install) at the end of
+  assemble-torch-app.sh.
+- **POS2 — Dockerfile.torch:115 `image.version` label = "Release"** [S·★]
+  wired to BUILD_TYPE, not a version. Point at APP_REF/tag; move build-type to a
+  custom label. (POS-provenance half — BUILD_DATE/VCS_REF — is Batch 5, pairs
+  with the RTCACHE3 follow-up.)
+  Clean per sweep: secrets/creds, entrypoint robustness (set -euo + exec),
+  USER/permissions (chown, PYTHONDONTWRITEBYTECODE, no world-writable).
 
 ### Toolchain deep-sweep additions (2026-08-10, two agents; TG=build-graph, TS=scripts)
 
@@ -340,6 +386,24 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   builds resolve parents against the REGISTRY (two runs lost historically);
   export local stages as OCI layout + --build-context override; couples with
   collapsing the dual local/push paths.
+- **PAR1 — validate `--parallel-archs` (the single biggest wall-clock lever)**
+  [M·★★★, MEASURED 2026-08-17] the full Batch-2 rebuild ran the per-arch stages
+  SEQUENTIALLY: media = 2h18 (amd64) + 3h28 (arm64) + 2h42 (riscv64) ≈ 8.5h,
+  sdk ≈ 1h, android ≈ 2h — while the host (32 cores / 60G RAM) sat largely idle
+  (runtime lane measured avg 1% / peak 9% CPU; per-stage mem peaks well under
+  20G). `--parallel-archs` (+ `--max-parallel-archs`, default 4) already exists
+  and BUILD_MEM_DIVISOR is wired for exactly this — it has just never been
+  VALIDATED. Potential: full chain ~15h → ~8-9h (slowest arch dominates each
+  stage instead of the sum). Do a supervised validation run (watch mem + the
+  interleaved logs); riders: the runtime lane builds its 3 wrappers sequentially
+  too (same lever, build-runtime-manifest.sh).
+- **PROV1 — OCI created/revision labels ship EMPTY** [S·★★] (posture sweep
+  2026-08-17; the concrete half of the RTCACHE3 provenance follow-up above)
+  runtime-build-fns.sh append_wrapper_build_args never passes BUILD_DATE/VCS_REF,
+  so Dockerfile.torch's `org.opencontainers.image.created`/`.revision` fall back
+  to their empty ARG defaults on every shipped image. Fix: add
+  `--build-arg BUILD_DATE=$(date -u +%FT%TZ)` + `VCS_REF=$(git rev-parse HEAD)`
+  in append_wrapper_build_args. (`source`/`licenses`/`title` are fine.)
 (XC2 PIN-THREADING + XC3 EXECUTED 2026-08-14: XC2 threads the android pin
 digest into the runtime helper (RUNTIME_ANDROID_PIN_<arch>) so the package
 build prefers the immutable digest over the mutable tag + a runtime-graph
@@ -368,6 +432,22 @@ that emit path is fixed.)
 - **Rust sccache unblock** [S] RUSTC_WRAPPER="" pinned empty at
   Dockerfile.toolchain:58 + Dockerfile.package:157; ENABLE_SCCACHE_RUST
   wiring exists and is validated-off — flip in a controlled build.
+- **MON1 — resource-monitor stage detection broken** [S·★] (observed 2026-08-17)
+  the run summaries show `stage=?` on every sample and the `context` column is
+  full of buildkitd stderr spam (`(*service).Write failed…`) — the stage/context
+  scrape no longer matches the current log format, so the per-stage attribution
+  (the point of the monitor) is blind. Re-derive stage from the per-stage
+  `*.log.run` markers or chain-status.json instead of log-grepping.
+- **SCC1 — sccache-webdav design (owner question, 2026-08-17)** [M·★★] hybrid
+  by compiler, NOT a full switch: keep ccache for gcc/clang C/C++ (direct-mode
+  faster locally, mature, already wired), add sccache ONLY where it wins —
+  rustc (ENABLE_SCCACHE_RUST exists) and nvcc CUDA kernels (ccache's nvcc
+  support is weak; only matters for the opt-in ENABLE_NVIDIA lane), plus the
+  shared webdav tier for cross-machine/CI warm-starts (mirrors the Windows
+  lane's setup). Absorbs/couples: "ccache remote_storage tier" + "Rust sccache
+  unblock" + S5 above. Full-switch rejected: slower per-compile locally
+  (mandatory preprocess + network RTT), weaker PCH/edge-case caching, new
+  endpoint-down failure mode, re-validation burden across 3 arches.
 
 ## Coverage map (2026-08-10) — what "swept" means, and the honest thin spots
 
