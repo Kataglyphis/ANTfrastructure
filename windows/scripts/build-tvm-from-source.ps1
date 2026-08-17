@@ -86,45 +86,71 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
 # official Windows INSTALLER build, which ships clang/lld but NEITHER
 # llvm-config.exe NOR the LLVM dev libs (probed: 0 hits in the whole install).
 # So every prior Windows TVM was silently USE_LLVM=OFF - no CPU codegen at all
-# (`tvm.build` for any llvm target dies at RUNTIME). Self-heal: fetch the
-# official clang+llvm dev tarball (the -pc-windows-msvc release artifact DOES
-# contain llvm-config.exe + static libs + CMake configs), point USE_LLVM at its
-# llvm-config, and keep the gate fail-closed behind it. Build-time only: TVM
-# links LLVM statically, and Clear-BuildScratch scrubs the tree afterwards.
+# (`tvm.build` for any llvm target dies at RUNTIME).
+#
+# Self-heal: build a MINIMAL LLVM (X86+NVPTX, no tests/docs/xml2/zlib) from the
+# pinned source release and point USE_LLVM at its llvm-config. Building it
+# ourselves is not gold-plating - it is the only ABI that works: the official
+# clang+llvm-*-windows-msvc dev tarball was tried first (verify6, same day) and
+# its static libs are /MT (MT_StaticRelease) + want xml2s.lib, which lld-link
+# rightly refuses against this /MD chain (SPIRV-Tools et al.). sccache makes
+# the ~2000 extra TUs a one-time cost. Build-time only: TVM links LLVM
+# statically, and Clear-BuildScratch scrubs the tree afterwards.
 $llvmCmd = Get-Command llvm-config.exe -ErrorAction SilentlyContinue
 $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
 if (-not $llvmConfig) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '22.1.8'
     # SHA pins per version - extend when LLVM_WINDOWS_VERSION moves. An unknown
     # version must THROW, never download unpinned (repo download policy).
-    $llvmDevSha = @{
-        '22.1.8' = 'd96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234'
+    $llvmSrcSha = @{
+        '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
     }
-    if (-not $llvmDevSha.ContainsKey($llvmDevVersion)) {
-        throw ("TVM: llvm-config.exe not on PATH and no SHA256 pin for the LLVM $llvmDevVersion dev tarball - " +
-            "add it to `$llvmDevSha in this script (compute from the official clang+llvm-$llvmDevVersion-" +
-            "x86_64-pc-windows-msvc.tar.xz). Refusing an unpinned download (backlog #47).")
+    if (-not $llvmSrcSha.ContainsKey($llvmDevVersion)) {
+        throw ("TVM: llvm-config.exe not on PATH and no SHA256 pin for the llvm-project-$llvmDevVersion source " +
+            "tarball - add it to `$llvmSrcSha in this script. Refusing an unpinned download (backlog #47).")
     }
     $llvmDevRoot = 'C:\temp\llvm-dev'
-    $llvmDevTar = Join-Path $llvmDevRoot "clang+llvm-$llvmDevVersion-x86_64-pc-windows-msvc.tar.xz"
-    Write-Host "TVM: llvm-config.exe not on PATH (scoop LLVM never ships it) - fetching the LLVM $llvmDevVersion dev tarball (~820 MB)"
+    $llvmSrcTar = Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src.tar.xz"
+    Write-Host "TVM: llvm-config.exe not on PATH (scoop LLVM never ships it) - building a minimal LLVM $llvmDevVersion from source (backlog #47)"
     Invoke-DownloadWithRetry `
-        -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmDevVersion/clang%2Bllvm-$llvmDevVersion-x86_64-pc-windows-msvc.tar.xz" `
-        -DestinationPath $llvmDevTar -ExpectedSha256 $llvmDevSha[$llvmDevVersion] `
-        -Description "LLVM $llvmDevVersion Windows dev tarball (llvm-config + libs; backlog #47)"
-    # System32 bsdtar first (xz support baked in); git's GNU tar needs xz.exe.
+        -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$llvmDevVersion/llvm-project-$llvmDevVersion.src.tar.xz" `
+        -DestinationPath $llvmSrcTar -ExpectedSha256 $llvmSrcSha[$llvmDevVersion] `
+        -Description "llvm-project $llvmDevVersion source tarball (backlog #47)"
+    # System32 bsdtar (xz support baked in); git's GNU tar would need xz.exe.
     $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-    if (-not $tarExe) { throw 'TVM: no tar.exe found to extract the LLVM dev tarball (#47).' }
-    & $tarExe -xf $llvmDevTar -C $llvmDevRoot
-    if ($LASTEXITCODE -ne 0) { throw "TVM: extracting the LLVM dev tarball failed (tar exit $LASTEXITCODE) (#47)." }
-    $llvmConfig = Join-Path $llvmDevRoot "clang+llvm-$llvmDevVersion-x86_64-pc-windows-msvc\bin\llvm-config.exe"
+    if (-not $tarExe) { throw 'TVM: no tar.exe found to extract the LLVM source tarball (#47).' }
+    & $tarExe -xf $llvmSrcTar -C $llvmDevRoot
+    if ($LASTEXITCODE -ne 0) { throw "TVM: extracting the LLVM source tarball failed (tar exit $LASTEXITCODE) (#47)." }
+    Remove-Item $llvmSrcTar -Force  # keep the scratch tier lean; the tree is scrubbed post-build anyway
+    $llvmInstall = Join-Path $llvmDevRoot 'install'
+    Write-Host 'Building minimal LLVM (X86+NVPTX, Release, /MD) - ~20-40 min cold, sccache-cached after'
+    Invoke-CmakeConfigure `
+        -SourceDir (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src\llvm") `
+        -BuildDir (Join-Path $llvmDevRoot 'build') -InstallPrefix $llvmInstall `
+        -ExtraArgs @(
+            # X86 for host codegen, NVPTX so TVM's llvm path can feed the CUDA lane.
+            '-DLLVM_TARGETS_TO_BUILD=X86;NVPTX'
+            # No compression/xml deps: nothing here needs them, and each one is
+            # another import the /MD-vs-/MT tarball failure taught us to distrust.
+            '-DLLVM_ENABLE_LIBXML2=OFF', '-DLLVM_ENABLE_ZLIB=OFF', '-DLLVM_ENABLE_ZSTD=OFF'
+            '-DLLVM_INCLUDE_TESTS=OFF', '-DLLVM_INCLUDE_BENCHMARKS=OFF'
+            '-DLLVM_INCLUDE_EXAMPLES=OFF', '-DLLVM_INCLUDE_DOCS=OFF'
+            '-DLLVM_ENABLE_ASSERTIONS=OFF'
+            # RTTI on: TVM compiles its codegen TUs with RTTI (clang-cl default);
+            # matching avoids the typeinfo-mismatch class outright.
+            '-DLLVM_ENABLE_RTTI=ON'
+        ) | Out-Null
+    $llvmBuildLog = Get-PersistentBuildLogPath -Name 'llvm-minimal-build.log' -FallbackDir (Join-Path $llvmDevRoot 'build')
+    Invoke-NinjaBuildWithRetry -BuildDir (Join-Path $llvmDevRoot 'build') -RetryJobs 1 -MemGBPerJob 2 `
+        -LogFile $llvmBuildLog -Install -InstallConfig 'Release'
+    $llvmConfig = Join-Path $llvmInstall 'bin\llvm-config.exe'
     if (-not (Test-Path $llvmConfig)) {
-        # Fail closed with evidence: name what the archive actually unpacked to.
-        $unpacked = (Get-ChildItem $llvmDevRoot -Directory | ForEach-Object Name) -join ', '
-        throw ("TVM: llvm-config.exe still missing after extracting the dev tarball (unpacked dirs: $unpacked). " +
+        throw ("TVM: llvm-config.exe missing after the minimal LLVM build+install ($llvmInstall). " +
             "USE_LLVM=OFF would ship a TVM with no CPU codegen - refusing (backlog #47).")
     }
-    Remove-Item $llvmDevTar -Force  # keep the scratch tier lean; the tree itself is scrubbed post-build
+    # Reclaim the ~5 GB object tree now; only the install prefix is needed below.
+    Remove-Item (Join-Path $llvmDevRoot 'build') -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src") -Recurse -Force -ErrorAction SilentlyContinue
 }
 Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
 # A PATH (forward slashes) is TVM's documented USE_LLVM form; plain ON only
