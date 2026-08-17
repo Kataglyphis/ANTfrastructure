@@ -700,9 +700,8 @@ main() {
     # Best-effort; MEDIA_STRIP=0 disables. /opt/opencv5 is a dedicated prefix, so
     # this touches only OpenCV libs (litert/onnxruntime live in the shared
     # /usr/local and are handled elsewhere).
-    if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
-        strip_media_prefixes "${OPENCV_PREFIX}" || true
-    fi
+    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${OPENCV_PREFIX}" || true
 
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"

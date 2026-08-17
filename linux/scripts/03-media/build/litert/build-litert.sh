@@ -846,10 +846,10 @@ main() {
     # self-derives the cross <triplet>-strip (this script does not export STRIP);
     # --strip-all keeps .dynsym. Best-effort, MEDIA_STRIP=0 disables. Runs BEFORE
     # verify_installation so the verify exercises the stripped libs.
-    if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_libs >/dev/null 2>&1; then
-        strip_media_libs "${LITERT_PREFIX}/lib" \
+    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    declare -F strip_media_libs >/dev/null 2>&1 \
+        && strip_media_libs "${LITERT_PREFIX}/lib" \
             'libtensorflow-lite*.so*' 'libtensorflowlite_c*.so*' 'libtflite*.so*' || true
-    fi
     verify_installation
     cleanup
     info LiteRT build complete

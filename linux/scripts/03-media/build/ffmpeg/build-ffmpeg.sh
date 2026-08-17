@@ -731,9 +731,8 @@ main() {
     # unaffected (only .symtab/.debug go). Best-effort — never fails a build that
     # already succeeded. MEDIA_STRIP=0 disables. Runs after bundle so the SDK
     # runtime .so copied in above are stripped too.
-    if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
-        strip_media_prefixes "${FFMPEG_PREFIX}" || true
-    fi
+    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${FFMPEG_PREFIX}" || true
 
     # Only write stamp and run smoke test for native builds
     if [ "${_is_native}" = "1" ]; then

@@ -200,6 +200,9 @@ _resolve_media_strip_bin() {
 # would still strip correctly, but AP1's wheel-env forwarding is the dedicated
 # path for those. This is for the plain /opt/<lib> and /usr/local trees.
 strip_media_prefixes() {
+  # DUPN1: the MEDIA_STRIP gate lives HERE (not at the 9 call sites) — one
+  # authority, call sites keep only the declare -F guard + `|| true`.
+  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0
   local strip_bin jobs="${STRIP_JOBS:-$(nproc)}" p
   strip_bin="$(_resolve_media_strip_bin)"
   local -a prefixes=("$@")
@@ -224,6 +227,7 @@ strip_media_prefixes() {
 # _resolve_media_strip_bin; --strip-all keeps .dynsym. Best-effort; the caller
 # owns the MEDIA_STRIP gate (mirrors strip_media_prefixes).
 strip_media_libs() {
+  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0   # DUPN1: gate lives in the helper
   local dir="$1"; shift
   { [ -d "${dir}" ] && [ "$#" -gt 0 ]; } || return 0
   local strip_bin; strip_bin="$(_resolve_media_strip_bin)"

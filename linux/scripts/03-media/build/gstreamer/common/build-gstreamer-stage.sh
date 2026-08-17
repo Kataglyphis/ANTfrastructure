@@ -151,6 +151,5 @@ trap - ERR
 # AP4: strip the installed gstreamer prefix (symbol tables only — --strip-all
 # keeps .dynsym so plugin/loader dynamic linking is unaffected). STRIP is live
 # (setup_linux_cross_env). Best-effort; MEDIA_STRIP=0 disables.
-if [ "${MEDIA_STRIP:-1}" = "1" ] && declare -F strip_media_prefixes >/dev/null 2>&1; then
-  strip_media_prefixes "${GSTREAMER_PREFIX}" || true
-fi
+# DUPN1: MEDIA_STRIP gate lives inside the helper now.
+declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${GSTREAMER_PREFIX}" || true
