@@ -1007,19 +1007,11 @@ int _isatty(int);
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
         log "Compiling GStreamer (attempt $cAttempt/2, may take 30-60 min)..."
-        # Module-scope invocation: Start-/Stop-SccacheStallGuard live in
-        # WindowsSourceBuild.Common but are NOT in its export list (#65 used
-        # them internally where exports don't matter; verify12 caught the
-        # direct call throwing CommandNotFound). Adding the exports is the
-        # right fix but a module edit busts EVERY media stage cache - frozen
-        # mid-chain, so it rides the next full-chain rebuild instead.
-        $sbcModule = Get-Module WindowsSourceBuild.Common
-        if (-not $sbcModule) { throw 'WindowsSourceBuild.Common not loaded - stall guard unavailable (#65)' }
-        $gstStallGuard = & $sbcModule { param($p) Start-SccacheStallGuard -MarkerPath $p } (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
+        $gstStallGuard = Start-SccacheStallGuard -MarkerPath (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
         try {
             & $mesonExe compile -C $resolvedBuildDir -j $gstJobs 2>&1 | ForEach-Object { if ($_) { log $_ } }
         } finally {
-            & $sbcModule { param($g) Stop-SccacheStallGuard -Guard $g } $gstStallGuard
+            Stop-SccacheStallGuard -Guard $gstStallGuard
         }
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
