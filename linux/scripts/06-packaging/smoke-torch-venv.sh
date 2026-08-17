@@ -257,6 +257,28 @@ try:
         print("  XX  %-16s %s: major != %s" % ("opencv/cv2", cvv, cv_major))
     else:
         print("  OK  %-16s %-16s (major %s)" % ("opencv/cv2", cvv, cv_major or "?"))
+    # SMK1 (2026-08-17): the opencv TWO-PASS functional gate. Pass-2 rebuilds
+    # OpenCV against the source-built GStreamer; if that regresses (e.g. the
+    # .pc probe in the opencv-gst stage), cv2 silently loses its gstreamer
+    # videoio backend while everything else stays green — this is the assert
+    # the original two-pass design called for. riscv64 exempt (gstreamer OFF
+    # there by design, build-opencv.sh target adjustment). FFMPEG stays
+    # ADVISORY until OCV-FF1 is resolved (opencv-5.0.0 does not currently
+    # enable it against ffmpeg n9.0 — reported NO on the first proven build).
+    import re as _re
+    _binfo = cv2.getBuildInformation()
+    def _backend(name):
+        m = _re.search(name + r":\s*(\S+)", _binfo)
+        return m.group(1) if m else "?"
+    _gst = _backend("GStreamer")
+    _ff  = _backend("FFMPEG")
+    if is_riscv64:
+        print("  --  cv2 videoio      GStreamer=%s FFMPEG=%s (riscv64: gstreamer OFF by design)" % (_gst, _ff))
+    elif _gst.upper().startswith("YES"):
+        print("  OK  cv2 videoio      GStreamer=%s (two-pass intact); FFMPEG=%s (advisory, OCV-FF1)" % (_gst, _ff))
+    else:
+        fails.append("cv2 GStreamer backend=%s (two-pass regressed; expected YES)" % _gst)
+        print("  XX  cv2 videoio      GStreamer=%s — two-pass REGRESSED (expected YES)" % _gst)
 except Exception as e:
     if cv_required:
         fails.append("cv2 %s" % e)

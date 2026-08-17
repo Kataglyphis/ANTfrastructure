@@ -407,6 +407,24 @@ du -sh /opt 2>/dev/null | sed "s/^/    /"' || echo "  (size probe unavailable)"
     echo ""
 }
 
+# SMK3 (2026-08-17): AP2 gate — the venv must ship byte-compiled. The runtime
+# user (uid-1001) cannot write __pycache__ into the root-owned /opt/venv, so if
+# the build-time compileall regresses, every container start silently re-parses
+# site-packages again (the exact cost AP2 removed). HARD fail: a shipped venv
+# without any .pyc is a real regression, not an environment artifact.
+check_venv_bytecode() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- AP2: venv byte-compiled (.pyc present) ---"
+    if _rt_run \
+      bash -lc 'find /opt/venv/lib -name "*.pyc" -print -quit 2>/dev/null | grep -q .'; then
+      echo "  OK: /opt/venv ships .pyc (AP2 intact)"
+    else
+      fail "AP2 REGRESSED: no .pyc anywhere under /opt/venv/lib — venv not byte-compiled (VENV_COMPILE gate broken?)"
+    fi
+    echo ""
+}
+
 # GStreamer plugin health -- WARN only. Unlike ffmpeg/opencv, a GStreamer
 # plugin whose runtime .so is absent degrades gracefully (the element is just
 # unavailable), so a broken optional plugin must not fail the gate. But surface
@@ -709,6 +727,7 @@ main() {
     check_native_so_closure "${image_tag}" "${target_arch}"
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"
+    check_venv_bytecode "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

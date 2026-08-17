@@ -108,6 +108,29 @@ if _is_truthy "${_x265}"; then
   else _advise "FFMPEG_ENABLE_X265=${_x265}: no shared libx265.so (likely static — OK)"; fi
 fi
 
+# 5) SMK2 (2026-08-17), ADVISORY: verify the AP4 strip actually happened on a
+#    sentinel lib. Extract exactly ONE real file (the versioned libavcodec) from
+#    a second export stream — `--occurrence=1` lets tar stop early — and check
+#    host-side with readelf (arch-agnostic on ELF sections; no emulation). A
+#    surviving .symtab means the strip pass regressed. Advisory-only for now:
+#    static-lib edge cases and future layout moves must not fail the ship.
+_avc_path="$(grep -E 'opt/ffmpeg/lib/libavcodec\.so\.[0-9]+\.[0-9]+\.[0-9]+$' "${_listing}" | head -1 || true)"
+if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
+  _xdir="$(mktemp -d)"
+  if "${_nerdctl}" export "${_cid}" 2>/dev/null \
+       | tar -xf - -C "${_xdir}" --occurrence=1 "${_avc_path}" 2>/dev/null \
+     && [ -f "${_xdir}/${_avc_path}" ]; then
+    if [ "$(readelf -S "${_xdir}/${_avc_path}" 2>/dev/null | grep -c '\.symtab')" -eq 0 ]; then
+      _advise "AP4 strip verified: $(basename "${_avc_path}") has no .symtab"
+    else
+      _advise "AP4 strip NOT applied: $(basename "${_avc_path}") still carries .symtab (advisory — investigate MEDIA_STRIP)"
+    fi
+  else
+    _advise "AP4 strip check skipped (could not extract ${_avc_path})"
+  fi
+  rm -rf "${_xdir}"
+fi
+
 if [ "${_hard_fail}" -ne 0 ]; then
   if _is_truthy "${_soft}"; then
     echo "[wrapper-gate] FAIL (${_arch}): shipped content does not match build toggles — see above. (WRAPPER_CONTENT_GATE=0 to make advisory.)" >&2
