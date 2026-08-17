@@ -136,6 +136,10 @@ if (-not $llvmConfig) {
             '-DLLVM_INCLUDE_TESTS=OFF', '-DLLVM_INCLUDE_BENCHMARKS=OFF'
             '-DLLVM_INCLUDE_EXAMPLES=OFF', '-DLLVM_INCLUDE_DOCS=OFF'
             '-DLLVM_ENABLE_ASSERTIONS=OFF'
+            # No ATL in these Build Tools: DIA-SDK support #includes atlbase.h
+            # and dies (verify9) - same trap the IREE port hit. llvm-config
+            # consumers here never read PDBs.
+            '-DLLVM_ENABLE_DIA_SDK=OFF'
             # RTTI on: TVM compiles its codegen TUs with RTTI (clang-cl default);
             # matching avoids the typeinfo-mismatch class outright.
             '-DLLVM_ENABLE_RTTI=ON'
