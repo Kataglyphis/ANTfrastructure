@@ -198,6 +198,10 @@ ENV BUILD_MODE=${BUILD_MODE} \
     OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
     VIRTUAL_ENV=/opt/python/.venv \
     UV_PYTHON=/opt/python/.venv/bin/python \
+    # LOG4: uv's cache mount and install targets sit on different overlayfs
+    # views, so hardlinking always failed ("falling back to full copy", ×32 per
+    # build). Same cost either way — set copy explicitly to silence the warn.
+    UV_LINK_MODE=copy \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python \
     CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \

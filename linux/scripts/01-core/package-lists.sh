@@ -72,7 +72,7 @@ packaging_prerequisite_packages() {
     dpkg
 
   append_available_packages "${array_name}" \
-    libfuse3-3 \
+    libfuse3-4 \
     flatpak flatpak-builder \
     elfutils \
     dbus-user-session \

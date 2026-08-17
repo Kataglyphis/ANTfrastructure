@@ -57,6 +57,16 @@ install_vulkan_prereqs() {
 
   apt_install "${host_packages[@]}"
 
+  # LOG6 (2026-08-17): the Vulkan-Profiles generator validated ×0 profiles —
+  # "`jsonschema` module is not installed, schema validation skip" — because the
+  # SDK builder picks the ACTIVE python (the uv venv when present), where apt's
+  # python3-jsonschema (system dist-packages, installed above) is invisible.
+  # Best-effort install into the venv python too so the validation actually runs.
+  if command -v uv >/dev/null 2>&1 && [ -x /opt/python/.venv/bin/python ]; then
+    UV_PYTHON=/opt/python/.venv/bin/python uv pip install jsonschema >/dev/null 2>&1 \
+      || log "jsonschema venv install failed (schema validation will be skipped — non-fatal)"
+  fi
+
   if cross_build_is_active && \
      command -v install_target_packages >/dev/null 2>&1; then
     # Cross Vulkan builds keep pkg-config pointed at target multiarch roots.

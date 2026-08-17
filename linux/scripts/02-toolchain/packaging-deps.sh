@@ -104,7 +104,10 @@ install_apt_deps() {
         pkgs=(
             ca-certificates curl wget xz-utils
             dpkg
-            libfuse3-3
+            # LOG1 (2026-08-17): resolute renamed the fuse3 runtime lib
+            # libfuse3-3 → libfuse3-4 (soname bump); the old name had no install
+            # candidate and was silently dropped → AppImages could not mount.
+            libfuse3-4
             flatpak flatpak-builder
             elfutils
             dbus-user-session
