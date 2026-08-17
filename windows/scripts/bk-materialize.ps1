@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -10,7 +11,6 @@
 # snapshot finalizes normally — the exported image carries the artifacts.
 # Counterpart of bk-warm.ps1; keeps the Dockerfile RUNs one-liners.
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$Name,

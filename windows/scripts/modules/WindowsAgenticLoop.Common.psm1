@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -19,8 +20,6 @@
 # Model overrides:  $env:AGENTIC_PLANNER_MODEL / $env:AGENTIC_EXECUTOR_MODEL.
 
 Set-StrictMode -Version Latest
-#requires -Version 7.0
-
 
 # -- Module state ---------------------------------------------------------
 $script:AgenticLogFile = $null

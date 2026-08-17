@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Reusable Windows build-container lifecycle and transfer helpers.
 #
 # CONSUMED-BY (downstream repos vendoring this repo as ExternalLib — verified
@@ -22,8 +23,6 @@
 # docs/windows-container-build-performance.md.
 
 Set-StrictMode -Version Latest
-#requires -Version 7.0
-
 
 <#
 .SYNOPSIS

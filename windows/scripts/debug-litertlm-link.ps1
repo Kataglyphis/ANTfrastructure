@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -6,7 +7,6 @@
 # tree). Dumps the link rsp, WHOLEARCHIVE/FORCE:MULTIPLE presence, built abseil libs,
 # missing/empty archives, and nm scans for the recurring undefined/duplicate symbols.
 
-#requires -Version 7.0
 
 param(
     [Parameter(Mandatory)]

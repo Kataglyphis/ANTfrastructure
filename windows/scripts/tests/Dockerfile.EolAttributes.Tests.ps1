@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Backlog #55: every file COPY'd into a Windows image has its BYTE CONTENT used
 # as the layer-cache key, so a checkout that flips LF<->CRLF invalidates hours
 # of cached build layers. `.gitattributes` froze *.ps1/*.psm1/*.env/*.patch for
@@ -14,7 +15,6 @@
 # NEW file type COPY'd into an image fails here instead of silently re-opening
 # the hole.
 
-#requires -Version 7.0
 
 Describe 'COPY-reachable files have a frozen git EOL attribute (backlog #55)' {
 

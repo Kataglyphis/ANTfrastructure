@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -24,7 +25,6 @@
 #
 # Exit codes: 0 = all required checks passed, 1 = at least one FAIL.
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [string]$StevedoreBin = "$env:ProgramFiles\Stevedore\bin",

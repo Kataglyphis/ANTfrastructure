@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -35,7 +36,6 @@
 # Verify afterwards:
 #   pwsh -File windows\scripts\verify-host-setup.ps1 -SccacheEndpoint http://<lan-ip>:5000
 
-#requires -Version 7.0
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     # A prebuilt patched shim to deploy instead of building one.

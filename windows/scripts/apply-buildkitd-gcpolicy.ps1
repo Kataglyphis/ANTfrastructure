@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -13,7 +14,6 @@
 # reservedSpace=200GB — not the computed defaults maxUsedSpace=100GB /
 # minFreeSpace=187GB that caused the 2026-08-04 VS-layer eviction).
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [string]$ConfigDest = 'C:\ProgramData\buildkitd\buildkitd.toml',

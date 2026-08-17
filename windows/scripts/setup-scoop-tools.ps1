@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -10,7 +11,6 @@
 # REPORTED at the COPY step below; busting that one is insufficient.
 # New content => new chain-IDs for this layer and everything after.
 
-#requires -Version 7.0
 
 param(
     [string]$TempDir = 'C:\temp',

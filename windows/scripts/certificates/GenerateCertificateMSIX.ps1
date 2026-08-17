@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -5,7 +6,6 @@
 # and export it as a password-protected PFX. Template/utility script — run
 # manually with your own values.
 
-#requires -Version 7.0
 
 # PSSA suppression, justified: throwaway self-signed DEV certificate; the
 # password is a caller-supplied parameter of a local, manual utility (same

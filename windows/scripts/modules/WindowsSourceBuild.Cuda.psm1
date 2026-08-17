@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -7,8 +8,6 @@
 # ONNX Runtime, GenAI, OpenCV, LiteRT, TVM, and GStreamer builds.
 
 Set-StrictMode -Version Latest
-#requires -Version 7.0
-
 
 # Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
 # re-import rebinds Shared into this module's private scope and unloads the

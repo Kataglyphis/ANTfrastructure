@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Backlog #58 + #60: pin the values that a mechanical edit could quietly change.
 #
 # #58 — CUDA_ARCHITECTURES. The owner's standing directive is that
@@ -16,7 +17,6 @@
 # all, and PinParity never reads any Dockerfile. That is exactly the stage where
 # the documented "~8 versions.env-bump breaks" landed.
 
-#requires -Version 7.0
 
 Describe 'canonical pin values (backlog #58, #60)' {
 

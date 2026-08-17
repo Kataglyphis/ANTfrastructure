@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -44,7 +45,6 @@
 #   pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx `
 #        -VerifyPath D:\GitHub\Kataglyphis-ContainerHub -RetireOld
 
-#requires -Version 7.0
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     # The dynamically-expanding VHDX to rebuild. Machine-specific, no default.

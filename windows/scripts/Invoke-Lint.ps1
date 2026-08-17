@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -8,7 +9,6 @@
 #      a note otherwise, so the gate is always usable on an offline/bare host.
 # Exit code is non-zero if any parse error (or, with -FailOnAnalyzer, any analyzer
 # finding of Warning or Error severity) is found. Run it before build.ps1 and in CI.
-#requires -Version 7.0
 
 [CmdletBinding()]
 param(

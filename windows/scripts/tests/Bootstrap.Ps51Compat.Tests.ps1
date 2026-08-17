@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Backlog #106: the three scripts that run under Windows PowerShell 5.1 — in
 # Dockerfile.base BEFORE pwsh exists in the image — must stay 5.1-PARSEABLE.
 # A `#requires -Version 5.1` line cannot enforce that (it gates the MINIMUM

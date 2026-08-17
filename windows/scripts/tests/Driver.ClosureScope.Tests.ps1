@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Backlog #40: the scripted resume (-ResumeStage) NEVER worked. Its retry
 # blocks use .GetNewClosure(), which snapshots the LOCAL scope only — but
 # $Docker / $MediaCoreCpus / $MediaMemoryGb / $ResumeStage are script-level
@@ -13,7 +14,6 @@
 # .GetNewClosure() block anywhere in either driver that reads a top-level
 # param() variable is a latent copy of the same defect, and fails here.
 
-#requires -Version 7.0
 
 Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
 

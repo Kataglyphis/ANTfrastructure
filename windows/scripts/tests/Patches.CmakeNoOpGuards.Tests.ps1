@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Backlog #56: the CMake source-patchers rewrite upstream files with bare
 # string(REPLACE ...) and then print "Patched ..." UNCONDITIONALLY. If upstream
 # reformats the text a pattern targets, the replace silently does nothing, the
@@ -12,7 +13,6 @@
 # Test-PatchesApplyClean.ps1 globs '*.patch' only, so these .cmake patchers are
 # outside the CI patch-drift job entirely. This suite is their gate.
 
-#requires -Version 7.0
 
 Describe 'CMake source patchers guard against silent no-ops (backlog #56)' {
 

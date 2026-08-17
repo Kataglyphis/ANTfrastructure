@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,7 +16,6 @@
 #
 #   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\setup-dufs-service.ps1'
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [string]$DufsExe = "$env:USERPROFILE\scoop\shims\dufs.exe",

@@ -1,10 +1,10 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 # PS 5.1 turns native stderr under $ErrorActionPreference='Stop' into terminating
 # NativeCommandErrors mid-docker-run (a documented trap on this lane) -- require pwsh 7
 # up front instead of failing confusingly hours into a build.
-#Requires -Version 7.0
 
 <#
 .SYNOPSIS
