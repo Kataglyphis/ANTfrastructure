@@ -139,7 +139,10 @@ if (-not $llvmConfig) {
             # RTTI on: TVM compiles its codegen TUs with RTTI (clang-cl default);
             # matching avoids the typeinfo-mismatch class outright.
             '-DLLVM_ENABLE_RTTI=ON'
-        ) | Out-Null
+            # Full :FILEPATH archiver, same as the TVM configure below: the
+            # helper's bare -DCMAKE_AR=llvm-lib gets absolutized by LLVM's build
+            # to C:\llvm-lib and every static-lib step dies (verify7).
+        ) + (Get-LlvmArchiverCmakeArg) | Out-Null
     $llvmBuildLog = Get-PersistentBuildLogPath -Name 'llvm-minimal-build.log' -FallbackDir (Join-Path $llvmDevRoot 'build')
     Invoke-NinjaBuildWithRetry -BuildDir (Join-Path $llvmDevRoot 'build') -RetryJobs 1 -MemGBPerJob 2 `
         -LogFile $llvmBuildLog -Install -InstallConfig 'Release'
