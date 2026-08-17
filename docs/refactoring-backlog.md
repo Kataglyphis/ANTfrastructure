@@ -241,16 +241,25 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
 ### Live findings from the FIRST --parallel-archs run (2026-08-17/18)
 
 - **CACHE1 — routine `builder prune` DESTROYS the compile caches** [M·★★★,
-  COSTED THIS RUN] `nerdctl builder prune -f` (my standard disk-pressure tool,
-  run ~10× across the 2-day saga) wipes buildkit CACHE MOUNTS (ccache-*/
-  sccache-*/uv/cargo ids) together with the disposable layer cache — this run
-  paid for it directly: BOTH target-LLVMs rebuilt COLD (+~1.5-2h on the
-  compiler stage; sequential-run had them warm). Precious compile caches and
-  disposable layer cache need SEPARATE lifecycles: (a) move ccache/sccache to
-  host bind-mount dirs (excluded from builder prune; trivially protectable), or
-  (b) prune with filters/keep-storage instead of -f-everything, or (c) a
-  documented `prune-safe.sh` that spares cache-mount records. Pairs with the
-  disk-guard runbook.
+  COSTED THIS RUN → **FIXED-STAGED 2026-08-17**] `nerdctl builder prune -f`
+  (run ~10× across the 2-day saga) wipes buildkit CACHE MOUNTS together with
+  the disposable layer cache — this run paid directly: BOTH target-LLVMs
+  rebuilt COLD (+~1.5-2h). Root cause quantified live: store was 207 GB
+  `type==regular` (layer cache, regenerable) vs 4.9 GB `type==exec.cachemount`
+  (ccache/sccache/uv/cargo/apt/llvm-src — hours of compile time); `nerdctl
+  builder prune` has no --filter, `buildctl prune` DOES (filter syntax
+  verified read-only via `buildctl du --filter type==...`). FIX (option c,
+  shipped): **`linux/host-config/prune-safe.sh`** — prunes `type==regular`
+  only, optional PRUNE_KEEP_GB / DRY_RUN, prints cachemount inventory
+  before/after and FAILS if any record vanished; shellcheck-clean, dry-run
+  tested live. Plus buildkitd.toml explicit `[[worker.oci.gcpolicy]]` pair
+  (regular→450GB pass 1, all→500GB backstop) so AUTO-GC also spares
+  cachemounts — toml staged in repo, **apply-host-config.sh AFTER the run**
+  (restart kills in-flight builds). Operator rule: never `builder prune -f`
+  again; use prune-safe.sh. RESIDUAL: post-run, check why `buildctl du`
+  showed ccache/sccache mounts at ~0 GB even after the 4h compiler stage
+  (in-use mounts may under-report; if genuinely empty, ccache is not
+  persisting at all → separate bug).
 - **PUSH1 — registry pushes are the parallel wall-clock ceiling** [M·★★,
   MEASURED] uplink is ~4-5 MB/s shared: compiler push ~30 min (20GB), the two
   parallel sdk pushes 23 min — and 3 media images (~12-17GB each) will contend
