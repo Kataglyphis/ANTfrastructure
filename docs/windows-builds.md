@@ -2694,14 +2694,35 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   (missing).
 
   OPTIONS, cheapest first:
-  1. **videoio plugin build (PREFERRED, needs verification).** OpenCV can build
-     `opencv_videoio_gstreamer` as a standalone runtime-loaded plugin
-     (`VIDEOIO_PLUGIN_LIST`), so only the plugin is compiled after GStreamer
-     exists — no second full OpenCV pass. VERIFY this is supported on the 5.0.0
-     tag before planning around it.
+  1. **STANDALONE videoio plugin — VERIFIED PRESENT in 5.0.0, 2026-08-17.**
+     `modules/videoio/misc/plugin_gstreamer/CMakeLists.txt` exists on the tag and
+     builds `opencv_videoio_gstreamer` **against an INSTALLED OpenCV**, out of
+     tree, from a single source file:
+
+     ```cmake
+     include("${OpenCV_SOURCE_DIR}/cmake/OpenCVPluginStandalone.cmake")
+     set(WITH_GSTREAMER ON)
+     include("${OpenCV_SOURCE_DIR}/modules/videoio/cmake/init.cmake")
+     set(OPENCV_PLUGIN_DEPS core imgproc imgcodecs)
+     ocv_create_plugin(videoio "opencv_videoio_gstreamer" "ocv.3rdparty.gstreamer" "GStreamer" "src/cap_gstreamer.cpp")
+     ```
+
+     This is the route: a small stage AFTER the merge's GStreamer that points at
+     the installed OpenCV + the OpenCV source tree and builds only the plugin
+     DLL, which videoio then loads at runtime. Breaks the circularity without
+     rebuilding OpenCV.
+
+     **CORRECTION to this entry's own wording:** `VIDEOIO_PLUGIN_LIST=gstreamer`
+     alone does NOT achieve it. In `modules/videoio/CMakeLists.txt` the plugin
+     branch sits inside `if(TARGET ocv.3rdparty.gstreamer)` — i.e. it still
+     requires GStreamer to be DETECTED at OpenCV configure time. That option
+     only changes HOW a detected backend is built (separate runtime-loaded DLL
+     instead of linked in), never WHETHER detection succeeds. Do not plan around
+     it as an in-tree flag.
   2. **Second OpenCV pass** after the merge's GStreamer, with
      `-DWITH_GSTREAMER=ON`. ~20 min, structurally simple, but duplicates the
-     most expensive media compile after ONNX.
+     most expensive media compile after ONNX. Only worth it if the standalone
+     plugin turns out not to link against this image's OpenCV.
 
 - **94 [S·★★, media] OpenCV uses its OWN prebuilt FFmpeg, not the chain's.**
   Same evidence block: `FFMPEG: YES (prebuilt binaries)`, avcodec 61.19.100
@@ -2712,6 +2733,40 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   `--enable-libopencv` anywhere in build-ffmpeg-from-source.ps1), so the
   opencv/ffmpeg stages can simply SWAP — no circularity, no second pass. Verify
   with `getBuildInformation()` afterwards that avcodec reports the n9.0 line.
+
+  ## RESOLVED 2026-08-17
+
+  Measured on the rebuilt `bk-windows-media-core`:
+
+  ```text
+  FFMPEG:      YES (prebuilt binaries)
+    avcodec:   YES (63.1.100)   <- this chain's FFmpeg (was 61.19.100)
+    avformat:  YES (63.1.100)
+    avdevice:  YES (63.1.100)   <- was NO
+  ```
+
+  Both symptoms gone. Four parts, all required:
+  1. **stage swap** — FFmpeg builds before OpenCV (three places kept in step:
+     `build-media-core-all.ps1`, the `FROM` graph, `build-buildkit.ps1`);
+  2. **`patches/opencv/pkgconfig-shim.cmake`** via `CMAKE_PROJECT_INCLUDE` —
+     runs the `find_package(PkgConfig)` OpenCV skips on Windows, which is the
+     only thing standing between its pkg-config route and this chain's FFmpeg;
+  3. **`OPENCV_FFMPEG_SKIP_DOWNLOAD=ON` + `OPENCV_FFMPEG_ENABLE_LIBAVDEVICE=ON`**;
+  4. **`patches/opencv/ffmpeg9-avcodec-config.ps1`** — OpenCV 5.0.0 does not
+     compile against FFmpeg 9 without it (`AVCodec::pix_fmts` and
+     `supported_framerates` were removed in favour of
+     `avcodec_get_supported_config()`); 3 + 2 call sites, two compat shims.
+
+  Currently **opt-in**: `-BuildArg OPENCV_LINK_CHAIN_FFMPEG=1`. Flip the default
+  once the FINAL image's smoke test is green — one media build is not enough to
+  justify it.
+
+  **`(prebuilt binaries)` IS NOT A PROVENANCE SIGNAL.** The label stays on a
+  correct build — it reflects videoio's wrapper mechanism on Windows, not where
+  the libraries came from. The #95 assertion that keyed on it failed against a
+  CORRECT image and has been replaced by the avcodec-version comparison. Anyone
+  reading that label as "OpenCV downloaded its own FFmpeg" will chase a
+  non-defect.
 
   **PARTLY DONE 2026-08-16 — the swap SHIPPED, the flag that was supposed to
   exploit it REGRESSED and was reverted the same day.**
@@ -2743,11 +2798,56 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
   → 63.1.100 inside the image proves *pkg-config* works; it says nothing about
   whether *OpenCV's CMake* ever calls it. Right question, wrong instrument.
 
-  WHAT A REAL FIX NEEDS: a detection route CMake actually takes on Windows —
-  the `find_package` branch (`OPENCV_FFMPEG_USE_FIND_PACKAGE`, which needs a
-  `FindFFMPEG` exporting AVCODEC/AVFORMAT/AVUTIL/SWSCALE), or setting
-  `PKG_CONFIG_FOUND` + the `FFMPEG_*` variables directly. Verify by asserting on
-  the CMake configure output, not on a shell pkg-config call.
+  **DETECTION SOLVED 2026-08-16 — the blocker moved from the build wiring to the
+  SOURCE.** `windows/scripts/patches/opencv/pkgconfig-shim.cmake` (passed via
+  `CMAKE_PROJECT_INCLUDE`) runs the `find_package(PkgConfig)` that OpenCV skips
+  on Windows, which unblocks its existing pkg-config route. With that plus
+  `OPENCV_FFMPEG_SKIP_DOWNLOAD=ON` and `OPENCV_FFMPEG_ENABLE_LIBAVDEVICE=ON`,
+  OpenCV's own configure summary reports what #94 asked for:
+
+  ```text
+  Checking for modules 'libavcodec;libavformat;libavutil;libswscale'
+    Found libavcodec,  version 63.1.100      <- the chain's, not the prebuilt 61
+    Found libavdevice, version 63.1.100      <- #94's `avdevice: NO` fixed
+      FFMPEG:    YES
+        avcodec: YES (63.1.100)
+  ```
+
+  **BUT THE COMPILE THEN FAILS.** OpenCV 5.0.0's videoio does not build against
+  FFmpeg n9.0:
+
+  ```text
+  cap_ffmpeg_hw.hpp(760,761,762)    error: no member named 'pix_fmts' in 'AVCodec'
+  cap_ffmpeg_impl.hpp(2632,2633)    error: no member named 'supported_framerates' in 'AVCodec'
+  ```
+
+  FFmpeg deprecated those `AVCodec` fields in 7.1 and REMOVED them by 9.0 in
+  favour of `avcodec_get_supported_config()`; OpenCV 5.0.0 predates the removal.
+  Five sites, two headers — that is the remaining work, and it is a source patch
+  under `windows/scripts/patches/opencv/`, not a flag.
+
+  **SHIPPED STATE: opt-in, default OFF.** `-BuildArg OPENCV_LINK_CHAIN_FFMPEG=1`
+  turns the wiring on; without it OpenCV keeps its own prebuilt FFmpeg (the
+  original #94 defect) because a chain that does not build is worse. The
+  stage swap and the shim stay in place so the next attempt starts from a proven
+  base.
+
+  **THREE FALSE VERDICTS FROM MY OWN GATE, worth more than the attempt itself.**
+  Each looked like a build defect and was an instrument defect:
+  1. `pkg-config --modversion libavcodec` → 63.1.100 was taken as "OpenCV can
+     find it". It proves pkg-config works, not that OpenCV's CMake calls it.
+  2. The gate read `cvconfig.h` for `HAVE_FFMPEG` and got a false FAILURE —
+     first blamed on `Select-Object -First 1` picking the wrong file. Both files
+     lacked it. **`HAVE_FFMPEG` does not exist in OpenCV 5.0.0's
+     `cvconfig.h.in` at all**; the gate could never have passed.
+  3. `Invoke-CmakeConfigure ... | Out-Null` swallowed the entire configure
+     output, so the first gate failure had no evidence to read at all — a
+     "never swallow logs" violation exactly where the log decides.
+  The gate now reads OpenCV's configure SUMMARY (the same text
+  `getBuildInformation()` reproduces), the configure output is Tee'd to
+  `opencv-configure.log` on the sccache-logs mount, and the failure branch
+  prints the FFmpeg lines inline — pointing at a log inside a container that is
+  about to be discarded helps nobody.
 
   COST NOTE: the revert rebuilt only opencv+genai — onnx and ffmpeg stayed
   CACHED, 21:55 instead of ~90 min. That per-library checkpoint granularity is

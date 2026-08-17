@@ -110,4 +110,78 @@ if (-not $pkgConfig) {
     }
 }
 
+# --- Does CMAKE find FFmpeg? (the question the pkg-config check did NOT answer)
+# The 2026-08-16 regression came from testing the wrong layer: `pkg-config
+# --modversion libavcodec` succeeds here, and OpenCV still configured
+# `FFMPEG: NO`, because its pkg-config route is gated on PKG_CONFIG_FOUND —
+# which OpenCV never sets on Windows (it does not call find_package(PkgConfig)).
+#
+# So ask CMAKE, with the exact call OpenCV's detect_ffmpeg.cmake makes:
+#   ocv_check_modules(FFMPEG libavcodec libavformat libavutil libswscale)
+# which is pkg_check_modules underneath. If this configures and reports FOUND,
+# then supplying PkgConfig to OpenCV (via a CMAKE_PROJECT_INCLUDE shim, the same
+# mechanism this repo already uses for IREE) makes the route viable. If it does
+# NOT, the find_package route with our own FindFFMPEG is the only option left.
+Write-Host "`n--- does CMake's pkg_check_modules resolve FFmpeg here? (#94 route test) ---"
+
+$cmake = Get-Command cmake -ErrorAction SilentlyContinue
+if (-not $cmake) {
+    Write-Result 'cmake on PATH' $false 'cannot test the CMake detection route'
+} else {
+    $cmWork = Join-Path $env:TEMP ('cmffmpeg-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $null = New-Item -ItemType Directory -Force -Path $cmWork
+    @'
+cmake_minimum_required(VERSION 3.20)
+project(ffmpeg_detect_probe NONE)
+find_package(PkgConfig)
+message(STATUS "PROBE PKG_CONFIG_FOUND=${PKG_CONFIG_FOUND}")
+message(STATUS "PROBE PKG_CONFIG_EXECUTABLE=${PKG_CONFIG_EXECUTABLE}")
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(FFMPEG libavcodec libavformat libavutil libswscale)
+  message(STATUS "PROBE FFMPEG_FOUND=${FFMPEG_FOUND}")
+  message(STATUS "PROBE FFMPEG_VERSION=${FFMPEG_libavcodec_VERSION}")
+  message(STATUS "PROBE FFMPEG_INCLUDE_DIRS=${FFMPEG_INCLUDE_DIRS}")
+  message(STATUS "PROBE FFMPEG_LIBRARY_DIRS=${FFMPEG_LIBRARY_DIRS}")
+  message(STATUS "PROBE FFMPEG_LIBRARIES=${FFMPEG_LIBRARIES}")
+endif()
+'@ | Set-Content -Path (Join-Path $cmWork 'CMakeLists.txt') -Encoding ascii
+
+    Push-Location $cmWork
+    try {
+        $out = & $cmake.Source -S . -B build -G Ninja 2>&1 | Out-String
+    } finally { Pop-Location }
+    $global:LASTEXITCODE = 0
+
+    foreach ($line in ($out -split "`r?`n")) {
+        if ($line -match 'PROBE ') { Write-Host "  $($line.Trim())" }
+    }
+    Write-Result 'CMake pkg_check_modules finds FFmpeg' ($out -match 'PROBE FFMPEG_FOUND=1') `
+        'if true, a CMAKE_PROJECT_INCLUDE shim that calls find_package(PkgConfig) unblocks OpenCV''s existing route'
+    Remove-Item $cmWork -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- Why did the last OpenCV configure decide as it did? ---------------------
+# opencv-configure.log lives on the sccache-logs mount and OUTLIVES the solve
+# that wrote it, so a failed configure can be read back without rebuilding.
+# Filter out the pkgconfig-shim's own STATUS line: CMake includes
+# CMAKE_PROJECT_INCLUDE once per project() call, so it repeats ~20x and drowns
+# the one message that matters (that is exactly what happened when the gate's
+# inline dump showed 40 identical lines and nothing else).
+Write-Host "`n--- last OpenCV configure: FFmpeg decision ---"
+$cfgLog = 'C:\sccache-logs\opencv-configure.log'
+if (Test-Path $cfgLog) {
+    $lines = @(Get-Content $cfgLog -ErrorAction SilentlyContinue)
+    Write-Host "  $($lines.Count) line(s) in $cfgLog"
+    $interesting = @($lines | Where-Object {
+            $_ -match 'FFMPEG|ffmpeg|avcodec|libav' -and $_ -notmatch 'pkgconfig-shim'
+        })
+    if ($interesting) {
+        $interesting | Select-Object -First 30 | ForEach-Object { Write-Host "  cfg| $($_.Trim())" }
+    } else {
+        Write-Host '  no FFmpeg-related lines at all — OpenCV never even reported a decision'
+    }
+} else {
+    Write-Host "  no configure log at $cfgLog (run a media build first)"
+}
+
 Write-Host "`n=== probe complete ==="

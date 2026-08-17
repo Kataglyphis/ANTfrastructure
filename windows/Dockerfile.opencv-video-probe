@@ -19,5 +19,9 @@ FROM ${BASE_IMAGE} AS probe
 # on 2026-08-16). `--no-cache` is NOT the alternative - it empties cache mounts.
 ARG PROBE_NONCE="0"
 
-RUN --mount=type=bind,source=windows/scripts/probe-opencv-video-backends.ps1,target=C:\bkmnt\probe-opencv-video-backends.ps1 `
+# sccache-logs carries the PERSISTENT build logs (Get-PersistentBuildLogPath),
+# including opencv-configure.log — which survives a failed solve and is the only
+# way to read why a configure disabled a backend without rebuilding.
+RUN --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/probe-opencv-video-backends.ps1,target=C:\bkmnt\probe-opencv-video-backends.ps1 `
     & 'C:\bkmnt\probe-opencv-video-backends.ps1' -Nonce "${PROBE_NONCE}"

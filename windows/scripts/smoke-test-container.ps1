@@ -1337,15 +1337,23 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         "media-core-built-opencv, while GStreamer is not built until the MERGE stage, so CMake finds nothing. " +
         "Backlog #93 -- do NOT 'fix' this by trusting cv2.videoio_registry.getBackends(), which reports GSTREAMER regardless.")
 
-    # `FFMPEG: YES (prebuilt binaries)` is OpenCV's OWN downloaded FFmpeg. The
-    # negative lookahead is the whole assertion: plain `FFMPEG: YES` passes,
-    # `YES (prebuilt binaries)` fails.
-    Assert-Test -Name "OpenCV uses the chain's FFmpeg, not its own prebuilt one (#94)" -Condition {
-        $cvBuildInfo -match '(?m)^\s*FFMPEG:\s+YES(?![^\r\n]*prebuilt)'
-    } -FailMessage ("cv2.getBuildInformation() reports FFMPEG as '(prebuilt binaries)' -- OpenCV downloaded its own " +
-        "FFmpeg instead of linking the one this chain builds, so the image carries TWO FFmpeg generations and " +
-        "cv::VideoCapture's FFmpeg path uses the wrong one (also leaves avdevice: NO). FFmpeg does not depend on " +
-        "OpenCV, so the opencv/ffmpeg stages can simply swap -- backlog #94.")
+    # NOT a provenance check: `(prebuilt binaries)` is printed on Windows
+    # whenever videoio uses the wrapper mechanism, REGARDLESS of where the libs
+    # came from. Measured 2026-08-17 after #94 landed: the label still said
+    # `YES (prebuilt binaries)` while avcodec read 63.1.100 — this chain's
+    # FFmpeg. An assertion on that string therefore fails on a CORRECT build, so
+    # it is reported for information only. The version comparison below is the
+    # real provenance test.
+    Assert-Test -Name 'OpenCV has an FFmpeg backend at all' -Condition {
+        $cvBuildInfo -match '(?m)^\s*FFMPEG:\s+YES'
+    } -FailMessage 'cv2.getBuildInformation() does not report FFMPEG: YES -- cv::VideoCapture has no FFmpeg path.'
+
+    # avdevice was NO with OpenCV's downloaded FFmpeg; #94 turned it on via
+    # OPENCV_FFMPEG_ENABLE_LIBAVDEVICE. Guard it so a regression is visible.
+    Assert-Test -Name 'OpenCV FFmpeg backend includes avdevice (#94)' -Condition {
+        $cvBuildInfo -match '(?m)^\s*avdevice:\s+YES'
+    } -FailMessage ('cv2.getBuildInformation() reports avdevice as NO -- the FFmpeg backend lost libavdevice, ' +
+        'which is one of the symptoms #94 fixed.')
 
     # Cross-check the versions rather than hard-coding a pin: ask ffmpeg.exe what
     # avcodec the chain actually ships, ask OpenCV what avcodec it was built
@@ -1360,8 +1368,16 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     $ffExe = Join-Path $ffDir 'ffmpeg.exe'
     $chainAvcodec = ''
     if (Test-Path $ffExe) {
-        $chainVer = (& $ffExe -version 2>&1 | Out-String)
-        if ($chainVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodec = $Matches[1] }
+        # ffmpeg.exe needs its own bin dir on PATH to resolve avcodec-*.dll etc.
+        # Without this it exits silently, the version comes back empty, and the
+        # comparison below reports a mismatch that is really "could not read" —
+        # exactly what the probe showed as `chain=?` on 2026-08-16/17.
+        $savedPath = $env:PATH
+        try {
+            if ($env:PATH -notlike "*$ffDir*") { $env:PATH = "$ffDir;$env:PATH" }
+            $chainVer = (& $ffExe -version 2>&1 | Out-String)
+            if ($chainVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodec = $Matches[1] }
+        } finally { $env:PATH = $savedPath }
     }
     # OpenCV prints either `avcodec: 61.19.100` or `avcodec: YES (61.19.100)`
     # depending on version; accept both rather than guess (the abridged quote in

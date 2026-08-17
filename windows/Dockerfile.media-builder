@@ -84,6 +84,18 @@ ARG SCCACHE_DIR="C:\sccache\v2"
 # happening by accident.
 ARG SCCACHE_FORCE_LOCAL=""
 
+# OPT-IN for backlog #94: make OpenCV link the FFmpeg this chain builds instead
+# of downloading its own prebuilt one. Off by default because OpenCV 5.0.0's
+# videoio needs a source patch to compile against FFmpeg 9 at all
+# (windows/scripts/patches/opencv/ffmpeg9-avcodec-config.ps1), and a chain that
+# does not build is worse than the known avcodec-61 defect.
+#   build-buildkit.ps1 ... -BuildArg OPENCV_LINK_CHAIN_FFMPEG=1
+# NB it must be declared HERE as well as read in build-opencv-from-source.ps1 —
+# a --opt build-arg for an ARG the Dockerfile never declares is silently
+# discarded, which cost one 25-minute run that looked like the opt-in "not
+# working" when in fact it never arrived.
+ARG OPENCV_LINK_CHAIN_FFMPEG=""
+
 # sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
 # every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
 #
@@ -155,6 +167,7 @@ ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
     SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
+    OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `
