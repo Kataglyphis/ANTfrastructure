@@ -2169,7 +2169,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   but the retry budget is 2 and it self-heals only because a fallback URL
   exists. The pre-seed fix already applied to nuget was never extended to the
   VS bootstrapper or Adoptium.
-- **80 [S·★★, none] 96 % of the warning stream is 5 noise classes, hiding 1,055
+- **80 [S·★★, none] HALF DONE 2026-08-17 — the observability half shipped: `analyze-warning-stream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
   genuine signals.** Corpus totals: `-Wunused-parameter` 68,502,
   `-Wdocumentation-unknown-command` 18,144, `-Wdeprecated-copy…` 17,887,
   `-Wundef` 17,056, `-Wmissing-field-initializers` 12,294 — vs the signal
@@ -2433,6 +2433,31 @@ Upstream follow-ups: see "Pending" at the bottom.
   unit-testable (the log truncation and the `-Last N` dump each cost a false
   alarm), and the chain functions drop back to readable size.
 
+### P7 — PERFECTION CAMPAIGN (owner mandate 2026-08-17: "drastische Maßnahmen erlaubt")
+
+> Sequenced by the verification chain — every tranche lands with the build that
+> proves it, never blind. Tranche 1 (uniform `#requires`, zero build cost)
+> landed 2026-08-17.
+
+- **108 [M·★★, none] Directory convention for `windows/scripts/` (60 flat
+  scripts).** Target: `scripts/build/` (chain components), `scripts/host/`
+  (setup/repair/elevated tools), `scripts/diagnostics/` (probes + analyzers,
+  merging the half-empty top-level `diagnostics/`), `modules/` and `tests/`
+  stay. COSTS: every bind-mount path in the Dockerfiles, the docs script
+  table, and downstream repos'' vendored references (CONSUMED-BY modules stay
+  put). Land in ONE sweep with a full-chain verify — path moves are the most
+  cache-hostile edit there is.
+- **109 [L·★★★, staged] Phase-split the monolith build scripts.**
+  `build-gstreamer` (991 lines), `build-litert-lm` (1207),
+  `smoke-test-container` (1419) each mix download/patch/configure/compile/
+  verify in one file. Target: phase functions in the script (not new files —
+  bind-mount closures stay stable), each with its own gate, so a failure names
+  its phase and a reader navigates by structure instead of scrolling. Do ONE
+  script per tranche, verify with its own build; gstreamer first (its three
+  fresh gates from #65/#66/#88 already mark the seams).
+- **110 [S·★★, none] One logging idiom.** `log` vs `Write-Host` vs
+  `Write-BuildLog` across sibling scripts; pick the module helper, sweep the
+  rest during #109''s per-script tranches (zero extra builds that way).
 ### Pending host/upstream actions (not refactors — do not let these evaporate)
 
 > The elevated between-runs window (buildkitd step-log env restore, GC-budget
