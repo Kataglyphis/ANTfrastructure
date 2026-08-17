@@ -351,12 +351,15 @@ try {
             $dir = if ($content -match '(?ms)directory\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
             $target = Join-Path $subprojDir $dir
             if (Test-Path $target) { Remove-Item -Path $_.FullName -Force; return }
-            # Build tarball URL
+            # Build tarball URL. Strip .git in BOTH branches: GitLab answers
+            # .git-in-path /-/archive/ URLs with an HTML page instead of the
+            # tarball (verify11: libdv.git = 17 KB HTML, libdv = 421 KB BZh) -
+            # only the GitHub branch ever stripped it.
+            $base = $url -replace '\.git$', ''
             if ($url -match 'github\.com') {
-                $base = $url -replace '\.git$', ''
                 $tarballUrl = "$base/archive/$rev.tar.gz"
             } else {
-                $tarballUrl = "$url/-/archive/$rev/$dir-$rev.tar.bz2"
+                $tarballUrl = "$base/-/archive/$rev/$dir-$rev.tar.bz2"
             }
             $tmp = Join-Path $resolvedLogDir "$dir-$rev.tar"
             $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
