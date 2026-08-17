@@ -268,6 +268,31 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### Self-review of the Batch-2 wave code (2026-08-17; new-code dup + smoke gaps)
+
+- **SMK1 — the opencv two-pass has NO functional gate** [S·★★★] the ORIGINAL
+  two-pass design called for asserting the shipped opencv reports the
+  ffmpeg+gstreamer videoio backends ENABLED — never implemented. Today the
+  runtime cv2 smoke checks only import + version major (smoke-torch-venv.sh:253);
+  if pass-2 silently produced a gstreamer-less opencv (e.g. the .pc probe
+  regresses), everything stays green. Fix: in the runtime torch-venv smoke,
+  `cv2.getBuildInformation()` must contain `GStreamer:` YES + `FFMPEG:` YES on
+  amd64/arm64 (riscv64 exempt — gstreamer OFF there by design).
+- **SMK2 — nothing asserts the AP4/AP1 strips actually happened** [S·★★] the
+  size numbers are informational only. Cheap gate: verify-shipped-wrapper
+  already tars the rootfs — extract one known lib (libavcodec.so) and
+  `readelf -S | grep -c .symtab` == 0 host-side (advisory first).
+- **SMK3 — nothing asserts AP2's .pyc exist** [S·★] runtime smoke: assert
+  `/opt/venv/lib/python*/site-packages/**/__pycache__/*.pyc` non-empty.
+- **DUPN1 — MEDIA_STRIP gate copy-pasted ×9** [S·★] the 3-line
+  `[ "${MEDIA_STRIP:-1}" = "1" ] && declare -F …` block is in 9 build scripts.
+  Move the MEDIA_STRIP check INSIDE strip_media_prefixes/strip_media_libs/
+  strip_cross_wheels (call sites keep only the declare -F guard + `|| true`).
+- **DUPN2 — opencv-gst RUN duplicates the opencv stage's build args**
+  [accepted·note] deliberate (pass-2 needs the same invocation FROM gstreamer);
+  drift risk: an arg added to one build-opencv.sh call must be added to BOTH
+  (Dockerfile.media, 2 sites). Keep in sync or single-source via ARG.
+
 ### Shipped-image posture additions (2026-08-17 sweep; fresh angles)
 
 - **POS1 — app clone ships WITH its `.git` in the final image** [M·★★]
