@@ -124,10 +124,10 @@ if (-not $llvmConfig) {
     Remove-Item $llvmSrcTar -Force  # keep the scratch tier lean; the tree is scrubbed post-build anyway
     $llvmInstall = Join-Path $llvmDevRoot 'install'
     Write-Host 'Building minimal LLVM (X86+NVPTX, Release, /MD) - ~20-40 min cold, sccache-cached after'
-    Invoke-CmakeConfigure `
-        -SourceDir (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src\llvm") `
-        -BuildDir (Join-Path $llvmDevRoot 'build') -InstallPrefix $llvmInstall `
-        -ExtraArgs @(
+    # Build the arg list in a VARIABLE: `-ExtraArgs @(...) + (...)` in argument
+    # position does not concatenate - the parser fed `+` to -Generator and the
+    # archiver arg to -Platform (verify8: "Could not create named generator +").
+    $llvmCmakeArgs = @(
             # X86 for host codegen, NVPTX so TVM's llvm path can feed the CUDA lane.
             '-DLLVM_TARGETS_TO_BUILD=X86;NVPTX'
             # No compression/xml deps: nothing here needs them, and each one is
@@ -142,7 +142,12 @@ if (-not $llvmConfig) {
             # Full :FILEPATH archiver, same as the TVM configure below: the
             # helper's bare -DCMAKE_AR=llvm-lib gets absolutized by LLVM's build
             # to C:\llvm-lib and every static-lib step dies (verify7).
-        ) + (Get-LlvmArchiverCmakeArg) | Out-Null
+        )
+    $llvmCmakeArgs += Get-LlvmArchiverCmakeArg
+    Invoke-CmakeConfigure `
+        -SourceDir (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src\llvm") `
+        -BuildDir (Join-Path $llvmDevRoot 'build') -InstallPrefix $llvmInstall `
+        -ExtraArgs $llvmCmakeArgs | Out-Null
     $llvmBuildLog = Get-PersistentBuildLogPath -Name 'llvm-minimal-build.log' -FallbackDir (Join-Path $llvmDevRoot 'build')
     Invoke-NinjaBuildWithRetry -BuildDir (Join-Path $llvmDevRoot 'build') -RetryJobs 1 -MemGBPerJob 2 `
         -LogFile $llvmBuildLog -Install -InstallConfig 'Release'
