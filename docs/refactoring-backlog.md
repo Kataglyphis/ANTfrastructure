@@ -238,6 +238,43 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### Refactor sweep additions (2026-08-17; Dockerfile idioms + bash patterns + parallel-readiness — all rebuild-window)
+
+- **PAR2 — cache-mount ids CONTEND under --parallel-archs** [S/M·★★★] measured
+  in the last build's logs: media-arm64 AND media-riscv64 use `id=apt-cache-amd64`
+  + `id=ccache-amd64` in SOME RUNs (the `${TARGETARCH}` builtin is amd64 for every
+  cross build; only some RUNs use a target-derived id) while others use
+  apt-cache-arm64/riscv64 — mixed. Under --parallel-archs all 3 media builds
+  SERIALIZE on the shared `sharing=locked` apt mounts and share one ccache id in
+  those RUNs. Fix: unify every cache-mount id to the TARGET arch (one convention),
+  audit all Dockerfiles. Also amplifies the existing "Media source-cache mounts"
+  item: parallel builds download the SAME tarballs ×3 SIMULTANEOUSLY.
+- **DF1 — Dockerfile.media:237-238+252-253: dead cargo mounts on the onnxruntime
+  RUNs** [S·★★] no ORT build script touches cargo/rust (verified) — 4 mounts
+  widen the cache closure of the two most expensive media RUNs (TG1 class). Drop.
+- **DF2 — Dockerfile.sdk:72-157: 86-line inline RUN** [M/L·★★] the llvm-target
+  materialization (self-copy + symlink repair + DT_NEEDED walk) as one string —
+  extract to a COPY'd materialize-llvm-target.sh (toolchain:332 heredoc idiom).
+- **DF3 — Dockerfile.package:120-159: ~40-line inline llvm soname-repair loop**
+  [M·★★] bolted onto the copy-media-payloads RUN whose script is already COPY'd —
+  move the loop into it.
+- **DF4 — small Dockerfile hygiene** [S·★ each]: package:111 lone COPY without
+  --link (siblings have it); media:671 stray gstreamer-env.sh mount on the
+  install-deps RUN (only the build RUN reads it); package:255-264 printf-list →
+  heredoc; media:120-155 + :883 readability extractions.
+- **SH1 — android-sdk.sh:160+183: identical retry-skeleton ×2** [S·★★] extract a
+  local _sdk_retry (canonical retry() in logging.sh:157 doesn't fit the
+  grep-success shape).
+- **SH2 — packaging-deps.sh:33 error() shadows logging.sh** [S·★] it sources
+  common.sh at :27 first — drop the local copy, use err/warn.
+- **SH3 — host-side mktemp without trap-cleanup** [M·★] leak-on-error class in 5
+  host-run scripts (setup-rootless-binfmt.sh:96, verify-critical-fixes.sh:296,
+  cross-env.sh:635, downloads.sh:64, cmake.sh:44) — shared _mk_scratch/trap
+  idiom; in-container sites are fine (layer discarded).
+  Clean per sweep: version-ARG mirrors (20 checked, zero drift), no dead stages,
+  torch USER/HEALTHCHECK ordering, no copy-then-overwrite beyond the deliberate
+  two-pass, error-handling/arg-parsing/py-heredocs largely canonical.
+
 ### Build-log mining additions (2026-08-17; from the REAL Batch-2 rebuild logs)
 
 - **LOG1 — libfuse3-3 has no install candidate on resolute** [S·★★] requested by
