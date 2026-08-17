@@ -1399,6 +1399,11 @@ Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
-    'Invoke-DownloadWithRetry'
+    'Invoke-DownloadWithRetry',
+    # #113: used directly by build-gstreamer-from-source.ps1; their omission
+    # threw CommandNotFound at compile start (verify12) because module-internal
+    # use never needs the export list - direct script calls do.
+    'Start-SccacheStallGuard',
+    'Stop-SccacheStallGuard'
 )
 
