@@ -238,6 +238,28 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### Stale-arch-exception audit (2026-08-17; LIVE-verified against resolute ports)
+
+- **RV1 — the riscv64 availability-exceptions are STALE; ports has caught up**
+  [M·★★★] live `apt-cache policy :riscv64` against resolute ports (2026-08-17):
+  libgstreamer1.0-dev 1.28.2 ✅, libglib2.0-dev 2.88 ✅, libsdl2-dev ✅,
+  libssl-dev ✅, libgnutls28-dev ✅ — all AVAILABLE. Stale exceptions to lift
+  (each needs a rebuild-validate; co-installability in the cross sysroot must
+  be proven, availability ≠ coinstallable):
+  · opencv build-opencv.sh:236-237 `WITH_GSTREAMER=OFF` on riscv64 ("Ports
+    cannot satisfy the GStreamer/GLib dev chain" — no longer true; AND the
+    two-pass makes it doubly obsolete: pass-2 links OUR source-built
+    /opt/gstreamer, which riscv64 builds — lifting this = `GStreamer: YES` on
+    ALL THREE arches, full two-pass parity).
+  · ffmpeg `--disable-sdl2 --disable-ffplay` on riscv64 (libsdl2-dev now on
+    ports) — re-enable + probe.
+  · the "riscv64 ffmpeg network/codec skips" item (TLS via --enable-openssl
+    never attempted): libssl-dev:riscv64 now exists — unblocked.
+  · ffmpeg gnutls skip (:202, "configure probe does not pass") — package now
+    exists; re-test the probe (may have been availability all along).
+  Rider: riscv64 `WITH_PNG` static-libpng workaround + Node.js lag are NOT
+  availability-class (compiler probe / upstream) — unchanged.
+
 ### Refactor sweep additions (2026-08-17; Dockerfile idioms + bash patterns + parallel-readiness — all rebuild-window)
 
 - **PAR2 — cache-mount ids CONTEND under --parallel-archs** [S/M·★★★] measured
