@@ -2426,6 +2426,20 @@ Upstream follow-ups: see "Pending" at the bottom.
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
   are bind-mounted into media stages, land between builds.
+- **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
+  "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
+  logged `could not compare avcodec majors (chain='' configure='63')`: in
+  `build-opencv-from-source.ps1` the `$InstallDir\ffmpeg\bin\ffmpeg.exe` probe
+  produced no parseable `libavcodec` line even WITH the bin-dir-on-PATH fix
+  (exe absent at that path in the stage container, or startup still fails —
+  diagnose inside the image, don't guess). Not release-gating: the
+  authoritative #94/#95 assertion runs in `smoke-test-container.ps1` against
+  the shipped image. But the stage gate exists to fail 25 minutes earlier than
+  the smoke does; today it can only ever throw when BOTH majors read back,
+  so the empty-read path silently waives exactly the case it was built for.
+  Fix: make the empty chain-read loud (assert the probe path exists + version
+  output non-empty when `OPENCV_LINK_CHAIN_FFMPEG=1`), and print WHY it was
+  empty (path missing vs exit code vs regex miss).
 - **107 [M·★★, none] `Invoke-SourceBuildChain` / `Complete-SourceBuildChain`
   carry 134/158 lines of inline sccache choreography** accreted through
   #97–#99. Extract `Start-/Complete-SccacheServerSession` into the module:
