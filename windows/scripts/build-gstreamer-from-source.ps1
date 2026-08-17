@@ -104,6 +104,40 @@ function log($text) {
 # then moves the single top-level source dir onto $Target. Returns $true when a
 # directory was moved. Shared by the wrap pre-extraction loop and the libffi
 # force-download below, which used to carry two copies of this body.
+function Invoke-WrapDownload {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [string]$Description = ''
+    )
+    # freedesktop/videolan GitLab sit behind the Anubis anti-scraper: browser
+    # User-Agents without JS get an HTML challenge page, plain curl UAs pass.
+    # The shared Invoke-DownloadWithRetry sends a browser UA (right for the
+    # CDNs it serves) - on verify10 it "downloaded" 7 challenge pages and the
+    # #88 gate refused them all (correctly, but for the wrong-looking reason:
+    # "extraction failed"). Verified 2026-08-17: same URL, browser UA = 7.5 KB
+    # HTML, curl UA = 400 KB BZh. So wraps go through curl.exe with its native
+    # UA + a magic-byte check. Deliberately NOT a Shared.psm1 change: the
+    # module is frozen mid-chain (an edit there busts every media stage cache).
+    $label = if ($Description) { $Description } else { $Url }
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        # --fail: 4xx/5xx exit non-zero instead of saving the error body.
+        $curlOut = & curl.exe --fail --location --silent --show-error --connect-timeout 30 -o $DestinationPath $Url 2>&1
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $DestinationPath) -and (Get-Item $DestinationPath).Length -ge 3) {
+            $head = [byte[]](Get-Content -Path $DestinationPath -AsByteStream -TotalCount 3)
+            $isGzip  = ($head[0] -eq 0x1f -and $head[1] -eq 0x8b)
+            $isBzip2 = ($head[0] -eq 0x42 -and $head[1] -eq 0x5a -and $head[2] -eq 0x68)  # 'BZh'
+            if ($isGzip -or $isBzip2) { return }
+            log "attempt ${attempt}: $label returned non-archive bytes ($($head -join ' ')) - likely an HTML challenge/error page"
+        } else {
+            log "attempt ${attempt}: curl exit $LASTEXITCODE for $label - $curlOut"
+        }
+        Remove-Item -Path $DestinationPath -Force -ErrorAction SilentlyContinue
+        if ($attempt -lt 4) { Start-Sleep -Seconds (3 * $attempt) }
+    }
+    throw "download failed after 4 attempts: $label"
+}
+
 function Expand-SubprojectArchive {
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -328,7 +362,7 @@ try {
             $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
             log "Pre-extracting $fname..."
             try {
-                Invoke-DownloadWithRetry -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)"
+                Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)"
                 if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
                     Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                     log "Pre-extracted $fname to $target"
@@ -353,7 +387,7 @@ try {
         $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
         try {
-            Invoke-DownloadWithRetry -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer"
+            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer"
             if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
                 log 'Force-pre-extracted libffi'
             } else {
