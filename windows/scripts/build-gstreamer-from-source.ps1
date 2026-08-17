@@ -976,6 +976,24 @@ int _isatty(int);
             })
     }
 
+    # graphene (first-ever build here since #88 delivers every wrap): its
+    # meson.build appends -Werror=undef AFTER our c_args, so the -Wno-undef we
+    # pass is overridden (last flag wins) and its bare `#if __GNUC__` tests die
+    # under clang-cl, which defines no __GNUC__ (verify14). Drop that ONE flag
+    # from its test_cflags at the source; ninja regenerates on meson.build
+    # changes, so patching between setup and compile is safe.
+    $grapheneMeson = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'graphene-*' -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName 'meson.build' } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($grapheneMeson) {
+        [void](Edit-SourceFile -Path $grapheneMeson `
+                -Description 'graphene meson.build: drop -Werror=undef (clang-cl has no __GNUC__)' `
+                -WarnMessage 'graphene meson.build present but -Werror=undef not found; if graphene still fails on -Wundef, its warning flags moved.' `
+                -Transform {
+                param($mbContent)
+                $mbContent -replace "'-Werror=undef',?\s*", ''
+            })
+    }
+
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     # Job budget + stall guard (backlog #65): this was the ONE compile stage
     # running sccache with neither. `meson compile` without -j lets ninja
