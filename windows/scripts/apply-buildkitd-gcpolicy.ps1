@@ -69,6 +69,9 @@ Restart-Service buildkitd -Force
 Write-Host 'buildkitd restarted.' -ForegroundColor Green
 
 # Show the effective GC rules so the change is verifiable at a glance.
+# Inline ON PURPOSE (#101 reviewed 2026-08-17): elevated repair/maintenance
+# tool — keep it module-free so it works with a half-broken checkout. Same
+# rationale as probe-build-copy and reset-container-locks.
 $buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($buildctl) {

@@ -1,5 +1,15 @@
 # Reusable Windows build-container lifecycle and transfer helpers.
 #
+# CONSUMED-BY (downstream repos vendoring this repo as ExternalLib — verified
+# 2026-08-17; nothing INSIDE this repo imports this module except its tests, so
+# an in-repo dead-code sweep WILL flag it and would be wrong, backlog #105):
+#   Kataglyphis-BeschleunigerBallett/scripts/windows/Build-Windows-Container.ps1
+#     (Invoke-ContainerBuild, Get-ReusableBuildContainer, Copy-Into/From...,
+#      Resolve-DockerExe, Get-ContainerIsolationArgs, ...)
+#   Kataglyphis-RustProjectTemplate/scripts/windows/container/Invoke-StevedoreBuild.ps1
+#     (Resolve-DockerExe)
+# Renames/removals here are BREAKING changes for those repos.
+#
 # Building a large project inside a Windows container is dominated by two
 # costs: recompiling everything because the container is fresh, and moving the
 # build tree in and out. Reusing ONE container removes both - the build tree,

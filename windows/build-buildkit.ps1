@@ -151,17 +151,23 @@ Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.C
 
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
+# Per-RUN id (backlog #61): stage logs used to be named by label alone, so run
+# N TRUNCATED run N-1's evidence — and Limit-DiagnosticLogs -Keep 80 never
+# fired because there were only ~10 distinct names. With the id in the name,
+# history accumulates and the existing Keep-80 rotation below actually rotates.
+$script:RunId = (Get-Date).ToString('yyyyMMdd-HHmmss')
+# Stage -> seconds, written to a manifest at the end; on a green run this is
+# the only place per-stage cost is recorded at all.
+$script:StageTimings = [ordered]@{}
 # Retention (backlog #30): stage logs are per-run keepsakes, not an archive -
 # trim the tail so incident-day forensics stay navigable. 80 files ≈ several
 # full chains; never-swallow-logs means the CURRENT incident always survives.
 Limit-DiagnosticLogs -Directory $script:LogDir -Keep 80
 
-# --- buildctl resolution ---
+# --- buildctl resolution (shared helper, #101; Shared.psm1 is imported above) -
 if (-not $BuildCtl) {
-    foreach ($c in @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')) {
-        if (Test-Path $c) { $BuildCtl = $c; break }
-    }
-    if (-not $BuildCtl) { $BuildCtl = (Get-Command buildctl -ErrorAction SilentlyContinue).Source }
+    $BuildCtl = Get-PreferredToolPath -CommandName 'buildctl' -CandidatePaths @(
+        "$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
 }
 if (-not $BuildCtl) { throw 'buildctl.exe not found (Stevedore bin or PATH).' }
 & $BuildCtl debug info *> $null
@@ -344,7 +350,8 @@ function Invoke-BkStage {
         if ($extra -notmatch '^[^=]+=') { throw "-BuildArg '$extra' is not in KEY=VALUE form" }
         $bkArgs += @('--opt', "build-arg:$extra")
     }
-    $stageLog = Join-Path $script:LogDir ("bk-" + ($Label -replace '[:\\/]', '-') + ".log")
+    $stageLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-" + ($Label -replace '[:\\/]', '-') + ".log")
+    $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
     # ONE automatic retry on transient container-infrastructure failures via
     # the shared, unit-tested engine (WindowsBuildDriver.Common; pattern set
@@ -386,7 +393,9 @@ function Invoke-BkStage {
         }
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — full log: $stageLog"
     }
-    Write-Host "[bk:$Label] OK -> $dest" -ForegroundColor Green
+    $stageClock.Stop()
+    $script:StageTimings[$Label] = [math]::Round($stageClock.Elapsed.TotalSeconds, 1)
+    Write-Host ("[bk:{0}] OK -> {1}  ({2:hh\:mm\:ss})" -f $Label, $dest, $stageClock.Elapsed) -ForegroundColor Green
 }
 
 $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
@@ -660,6 +669,18 @@ if ($unmatchedNoCacheStage.Count -gt 0) {
 }
 
 $elapsed = (Get-Date) - $started
+# Run manifest (backlog #61): per-stage seconds, machine-parseable, one file
+# per run — before this, a green run recorded NO per-stage cost anywhere and
+# regressions like "export got slow" were only findable by log archaeology.
+if ($script:StageTimings.Count -gt 0) {
+    $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
+    $lines = @("run=$($script:RunId) stages=$($Stages -join ',') gpu=$([bool]$Gpu) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
+    foreach ($k in $script:StageTimings.Keys) { $lines += ("{0}={1}" -f $k, $script:StageTimings[$k]) }
+    Set-Content -Path $manifest -Value $lines -Encoding utf8
+    Write-Host "`n[bk] per-stage timings:" -ForegroundColor Cyan
+    foreach ($k in $script:StageTimings.Keys) { Write-Host ("  {0,8:N1}s  {1}" -f $script:StageTimings[$k], $k) }
+    Write-Host "[bk] manifest: $manifest"
+}
 Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Gpu) { ' (GPU)' } else { ' (CPU)' })) -ForegroundColor Green
 
 } finally { Pop-Location }
