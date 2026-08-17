@@ -7,6 +7,13 @@ Completed/obsolete items and the full observation journal live in
 do not resurrect items from it without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
+Item-prefix glossary (grown from the sweeps that found them): **AP**=artifact
+performance · **RP**=runtime/packaging · **TG**=toolchain build-graph ·
+**TS**=toolchain scripts · **GPU**=GPU lanes · **POS**=shipped-image posture ·
+**PROV**=provenance · **SMK**=smoke-test gaps · **DUP/DUPN**=duplication
+(N=new-code) · **PAR**=parallelism · **MON**=monitoring · **SCC**=sccache/cache
+tiers · **S#/C#/D#/P#/A#/F#**=legacy sweep rounds (see archive) ·
+**GEN/GST/SV**=genai/gstreamer/services one-offs.
 Batches are grouped by REBUILD BLAST RADIUS, not theme — most items are cheap,
 rebuilds are expensive. Work top to bottom; each batch ships independently.
 
@@ -60,6 +67,16 @@ rebuild:
   BOTH consumed by the package RUN AND shipped (can't move below; bind-mount
   split is risky for a ★ cache win). DUP2: no safe code-only subset
   (native-suffix/out-of-scope/deliberate-fallback).
+
+## Next up (recommended order, 2026-08-17)
+
+1. **GPU1+GPU2** [★★★, cheap] — 2-line fixes, validated by ONE opt-in nvidia
+   build; independent of the main chain (Batch G).
+2. **SMK1-3 + DUPN1 + POS1** [small, coherent] — the Batch-2-wave follow-ups
+   (functional gates + tiny dedup + .git cleanup); next closure window.
+3. **PAR1** [★★★, big lever] — supervised `--parallel-archs` validation run
+   (~15h → ~8-9h full chain).
+4. **Batch 3 riders** — bundle with the next planned pin bump.
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
@@ -236,34 +253,6 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   find|head sites, Dockerfile.nvidia:88, smoke-cross-all-arches cross_gpp,
   verify-patch-integrity:59, lint-shell empty-array.
 
-### GPU lanes (opt-in; first dedicated sweep 2026-08-17 — real defects found)
-
-- **GPU1 — TensorRT silently SKIPPED in the shipped :*-nvidia image** [S·★★★]
-  install-cuda-stack.sh:49 `rm -rf /var/lib/apt/lists/*` wipes the indices inside
-  the SHARED `id=apt-lib-*` cache mount; the next RUN (install-tensorrt.sh) does
-  NO `apt-get update` on its default NVIDIA-apt path (update exists only in the
-  local-deb branch, :21) and `2>/dev/null` swallows the "no candidates" error →
-  `tensorrt-dev tensorrt-libs` install silently no-ops. Default nvidia images
-  likely ship WITHOUT TensorRT despite the LABEL advertising it. Fix: `apt-get
-  update` at the top of install-tensorrt.sh's non-local path (and see GPU4).
-  Validate by building the nvidia lane once and asserting trtexec/libnvinfer.
-- **GPU2 — CUDA verify is fail-open** [S·★★] verify-cuda-stack.sh:70 gates on
-  `CUDA_STACK_STRICT` (default 0) and Dockerfile.nvidia:129-131 never sets it →
-  a build with nvcc/cuDNN/TensorRT ALL missing still goes green (and would have
-  masked GPU1 forever). Fix: `CUDA_STACK_STRICT=1` in the verify RUN.
-- **GPU3 — NVIDIA-vs-AMD verify contract mismatch** [M·★★] AMD verifies HARD
-  (setup-rocm-repo.sh:74-76 exit 1 on missing hipcc/migraphx) while NVIDIA only
-  warns (GPU2). One contract: NVIDIA should match AMD's hard gate.
-- **GPU4 — in-cache-mount `rm -rf lists/*` is useless + harmful** [S·★]
-  install-cuda-stack.sh:49 + setup-rocm-repo.sh:70 — the mount isn't in the
-  layer (real cleanup happens unmounted at Dockerfile.nvidia:110), so the rm
-  only defeats caching for later RUNs (and caused GPU1). Drop both.
-- **GPU5 — ROCm arm64 guard is a comment** [S·★] setup-rocm-repo.sh:38-45
-  promises "fail loudly" on non-amd64 but has no check → generic apt error
-  instead. Add `[ "$(dpkg --print-architecture)" = amd64 ] || die`.
-- **GPU6 — Dockerfile.nvidia:86 COPY lacks --link** [S·★] (main lane has it).
-  Clean per sweep: version-ARG↔versions.env consistency, keyring/GPG sha256
-  verification, per-arch cache ids, ENABLE_* gating, script mount coverage.
 - **SUDO run_priv helper** [M·★] the lint half landed (test-invocation-lints);
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
@@ -341,6 +330,38 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   [S] media+package covered; Dockerfile.nvidia/amd/android + now
   build_python.sh (TS8) still hand-roll. One include, five consumers.
 
+
+## Batch G — GPU lanes (opt-in; OWN build trigger — needs no chain-closure window)
+
+First dedicated sweep 2026-08-17 found real defects. Validate with ONE opt-in
+nvidia/amd lane build — independent of the main chain.
+
+- **GPU1 — TensorRT silently SKIPPED in the shipped :*-nvidia image** [S·★★★]
+  install-cuda-stack.sh:49 `rm -rf /var/lib/apt/lists/*` wipes the indices inside
+  the SHARED `id=apt-lib-*` cache mount; the next RUN (install-tensorrt.sh) does
+  NO `apt-get update` on its default NVIDIA-apt path (update exists only in the
+  local-deb branch, :21) and `2>/dev/null` swallows the "no candidates" error →
+  `tensorrt-dev tensorrt-libs` install silently no-ops. Default nvidia images
+  likely ship WITHOUT TensorRT despite the LABEL advertising it. Fix: `apt-get
+  update` at the top of install-tensorrt.sh's non-local path (and see GPU4).
+  Validate by building the nvidia lane once and asserting trtexec/libnvinfer.
+- **GPU2 — CUDA verify is fail-open** [S·★★] verify-cuda-stack.sh:70 gates on
+  `CUDA_STACK_STRICT` (default 0) and Dockerfile.nvidia:129-131 never sets it →
+  a build with nvcc/cuDNN/TensorRT ALL missing still goes green (and would have
+  masked GPU1 forever). Fix: `CUDA_STACK_STRICT=1` in the verify RUN.
+- **GPU3 — NVIDIA-vs-AMD verify contract mismatch** [M·★★] AMD verifies HARD
+  (setup-rocm-repo.sh:74-76 exit 1 on missing hipcc/migraphx) while NVIDIA only
+  warns (GPU2). One contract: NVIDIA should match AMD's hard gate.
+- **GPU4 — in-cache-mount `rm -rf lists/*` is useless + harmful** [S·★]
+  install-cuda-stack.sh:49 + setup-rocm-repo.sh:70 — the mount isn't in the
+  layer (real cleanup happens unmounted at Dockerfile.nvidia:110), so the rm
+  only defeats caching for later RUNs (and caused GPU1). Drop both.
+- **GPU5 — ROCm arm64 guard is a comment** [S·★] setup-rocm-repo.sh:38-45
+  promises "fail loudly" on non-amd64 but has no check → generic apt error
+  instead. Add `[ "$(dpkg --print-architecture)" = amd64 ] || die`.
+- **GPU6 — Dockerfile.nvidia:86 COPY lacks --link** [S·★] (main lane has it).
+  Clean per sweep: version-ARG↔versions.env consistency, keyring/GPG sha256
+  verification, per-arch cache ids, ENABLE_* gating, script mount coverage.
 
 ## Batch 3 — versions.env riders (NEVER alone; next planned pin bump)
 
