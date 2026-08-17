@@ -238,6 +238,37 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
+### CI-workflow sweep additions (2026-08-17; Linux lanes — first dedicated audit)
+
+- **CI1 — missing `timeout-minutes` in 5 Linux workflows** [S·★★]
+  python-ci-linux.yml:98 (multi-GB pull + tests → a hang burns the 6h default;
+  the repo's own Windows lanes set 30/20, so the convention exists),
+  ghcr-cleanup.yml:15 (unbounded registry loops), plus ubuntu24.04/build-docs/
+  stale-docs-check [★]. Add sensible per-job timeouts.
+- **CI2 — llm-stack-tests service is non-hermetic** [S·★] `ollama/ollama:latest`
+  (mutable tag) + network-pulled `qwen2.5:0.5b` — pin the image digest (and
+  consider caching the model) so the test can't drift/flake with upstream.
+- **CI3 — registry-login style** [S·★] prepare-linux-ci-host/action.yml:90
+  echoes registry-password into `docker login --password-stdin` — correct +
+  GitHub-masked, but the env-var pattern is marginally cleaner. Cosmetic.
+  CLEAN per sweep (recorded to prevent re-audits): ALL 18 preflight gates run in
+  CI (ubuntu24.04.yml runs preflight.sh un-filtered — env-knobs + the
+  396-assertion script-tests included); every `uses:` SHA-pinned;
+  least-privilege permissions blocks; continue-on-error only where intentional;
+  no dead workflows.
+
+### Idempotency audit verdict (2026-08-17; the GST1 runs-twice class — CLEAN)
+
+Traced the true DOUBLE-RUN set (media final RUN → package re-invocation via
+setup-package-image.sh): only **install-deps.sh** and **configure-runtime.sh**
+run twice; both are second-run-safe by construction (symlink-guarded mv/ln,
+truncate-not-append `write_conf`, idempotent apt/ldconfig; the GST resolver has
+its rm-before-resolve + self-match skip). collect-artifacts / repair-wheels /
+verify-wheels / validate-media-runtime run once; apply-patch.sh is
+reverse-apply-guarded; copy-media-payloads uses `cp -aT`. **No remaining live
+sibling of the GST1 bug class** — do not re-sweep without a new double-run path
+being added (if one is added, THIS is the checklist to run it against).
+
 ### Stale-arch-exception audit (2026-08-17; LIVE-verified against resolute ports)
 
 - **RV1 — the riscv64 availability-exceptions are STALE; ports has caught up**
