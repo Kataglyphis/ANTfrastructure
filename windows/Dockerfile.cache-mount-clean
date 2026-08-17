@@ -1,0 +1,20 @@
+# escape=`
+# =============================================================================
+# One-shot cleanup of the sccache cache mount (backlog #104). Ships nothing.
+# =============================================================================
+# Deletes the dead trees (#99 corpse at the root, v3/v4 experiments) while
+# keeping v2 and the inheritance fixtures. Run via:
+#   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.cache-mount-clean -BaseImage local/kataglyphis:bk-windows-toolchain
+# Needs NO network: resolves the base image locally and bind-mounts the script.
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
+FROM ${BASE_IMAGE} AS probe
+
+# Layer-cache buster (same rationale as the other probes: a CACHED run replays
+# an old verdict; --no-cache would EMPTY the very mount being cleaned, #96).
+ARG PROBE_NONCE="0"
+
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=bind,source=windows/scripts/clean-sccache-mount.ps1,target=C:\bkmnt\clean-sccache-mount.ps1 `
+    & 'C:\bkmnt\clean-sccache-mount.ps1' -Nonce "${PROBE_NONCE}"; `
+    Write-Host 'probe complete'

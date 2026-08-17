@@ -2415,8 +2415,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   print the table at the end AND in a `finally` on failure.
 ### P6 — 2026-08-17 static audit, OPEN remainder (done items #101/#102/#103/#105 + methodology: archive)
 
-- **104 [S·★, none] The sccache cache mount carries dead weight that no build
-  will ever read again.** The damaged original root tree (buckets `0..f`,
+- **104 [S·★, none] DONE 2026-08-17 — with a finding: the corpse was ALREADY GONE.** `clean-sccache-mount.ps1` (+ `Dockerfile.cache-mount-clean`, via the shared probe runner, network-free) found the mount root holding only KB-scale bucket remnants — **no v2, no v3, no v4** — and freed just 0.1 MiB. v4 (~63 MiB, experiment B) verifiably existed yesterday; something reclaimed the mount contents during today's build churn, most plausibly buildkitd GC treating the exec.cachemount as reclaimable under the shared tier-0 budget. RELEVANT LATER: when the disk,webdav tier returns (#99 restore), do not assume cache-mount contents survive GC pressure between runs. Fixtures probe-persist/bulk-inherit kept (the #99 repro). Original finding: The sccache cache mount carries dead weight that no build will ever read again.** The damaged original root tree (buckets `0..f`,
   ~114 MiB — the #99 corpse), the empty `v3`, experiment B''s `v4` (~63 MiB),
   and the probe fixtures `probe-persist`/`bulk-inherit` (keep those until the
   BuildKit upstream report is filed). Only `v2` is referenced. One probe-style
@@ -2458,6 +2457,10 @@ Upstream follow-ups: see "Pending" at the bottom.
 - **110 [S·★★, none] One logging idiom.** `log` vs `Write-Host` vs
   `Write-BuildLog` across sibling scripts; pick the module helper, sweep the
   rest during #109''s per-script tranches (zero extra builds that way).
+> **DECLINED by owner 2026-08-17:** branch protection (#59) and a scheduled
+> nightly/weekly chain run (would-be #111). Manual launches remain the
+> verification cadence — do not re-propose either.
+
 ### Pending host/upstream actions (not refactors — do not let these evaporate)
 
 > The elevated between-runs window (buildkitd step-log env restore, GC-budget
