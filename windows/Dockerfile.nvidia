@@ -26,7 +26,7 @@ ARG TENSORRT_VERSION=11.2.1.2
 # base-baked env value is stale after a pin bump; the ARG (forwarded from the
 # current versions.env by both drivers) always matches. Empty = no pin check
 # (the zip is an EULA-gated manual download whose exact file varies per user).
-ARG TENSORRT_ZIP_SHA256=""
+ARG TENSORRT_ZIP_SHA256="9cdb433f0f3803bc854d4b13eb7bd42a4aef1962749349be62d97c0f64c8f9b6"
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
