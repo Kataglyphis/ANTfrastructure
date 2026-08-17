@@ -44,12 +44,17 @@ the AP3 mount-gap (wrappers failed on `--find-links /opt/wheels`; the numpy/
 GST1-class lesson again — closure restructures only prove out in a real build).
 Details: CHANGELOG + memory.
 
-- **OCV-FF1 — opencv videoio FFMPEG backend still NO (made VISIBLE by the
-  two-pass)** [M·★★, investigate] the shipped cv2 reports GStreamer: YES but
-  FFMPEG: NO — pass-2 had /opt/ffmpeg/lib/pkgconfig on PKG_CONFIG_PATH, so the
-  likely cause is opencv-5.0.0's videoio not supporting ffmpeg n9.0's API (or
-  missing ffmpeg dev headers in the pass-2 env). Investigate; couple with SMK1
-  (its assert should require GStreamer=YES now and gate FFMPEG once decided).
+- **OCV-FF1 — opencv videoio FFMPEG backend still NO** [M·★★, NARROWED
+  2026-08-17] Log forensics on the shipped build: opencv-gst's cmake summary
+  found avcodec 63.1/avformat 63.1/avutil 61.1/swscale 10.1 = **YES** (all via
+  /opt/ffmpeg pkgconfig — so it is NOT an n9.0-API or PKG_CONFIG_PATH problem)
+  but **swresample never appears in the probe output** and overall FFMPEG: NO —
+  OpenCV's HAVE_FFMPEG requires ALL FIVE. ffmpeg's own build DOES produce
+  libswresample.so + .pc (seen in the #46 build log). NEXT CHECK (needs the next
+  media image): does /opt/ffmpeg/lib contain libswresample.so + pkgconfig/
+  libswresample.pc? If ABSENT → ffmpeg install/copy drops it (fix there); if
+  PRESENT → opencv-5.0.0's FindFFMPEG probe quirk (fix/patch there). Couple with
+  SMK1 (FFMPEG stays advisory until resolved).
 
 ## Next up (recommended order, 2026-08-17)
 
