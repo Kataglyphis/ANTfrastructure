@@ -44,12 +44,17 @@ the AP3 mount-gap (wrappers failed on `--find-links /opt/wheels`; the numpy/
 GST1-class lesson again — closure restructures only prove out in a real build).
 Details: CHANGELOG + memory.
 
-- **OCV-FF1 — opencv videoio FFMPEG backend still NO (made VISIBLE by the
-  two-pass)** [M·★★, investigate] the shipped cv2 reports GStreamer: YES but
-  FFMPEG: NO — pass-2 had /opt/ffmpeg/lib/pkgconfig on PKG_CONFIG_PATH, so the
-  likely cause is opencv-5.0.0's videoio not supporting ffmpeg n9.0's API (or
-  missing ffmpeg dev headers in the pass-2 env). Investigate; couple with SMK1
-  (its assert should require GStreamer=YES now and gate FFMPEG once decided).
+- **OCV-FF1 — opencv videoio FFMPEG backend still NO** [M·★★, NARROWED
+  2026-08-17] Log forensics on the shipped build: opencv-gst's cmake summary
+  found avcodec 63.1/avformat 63.1/avutil 61.1/swscale 10.1 = **YES** (all via
+  /opt/ffmpeg pkgconfig — so it is NOT an n9.0-API or PKG_CONFIG_PATH problem)
+  but **swresample never appears in the probe output** and overall FFMPEG: NO —
+  OpenCV's HAVE_FFMPEG requires ALL FIVE. ffmpeg's own build DOES produce
+  libswresample.so + .pc (seen in the #46 build log). NEXT CHECK (needs the next
+  media image): does /opt/ffmpeg/lib contain libswresample.so + pkgconfig/
+  libswresample.pc? If ABSENT → ffmpeg install/copy drops it (fix there); if
+  PRESENT → opencv-5.0.0's FindFFMPEG probe quirk (fix/patch there). Couple with
+  SMK1 (FFMPEG stays advisory until resolved).
 
 ## Next up (recommended order, 2026-08-17)
 
@@ -84,17 +89,14 @@ Details: CHANGELOG + memory.
 
 ## Batch S — services lane (llm-stack / webserver; OUTSIDE the chain closure, no unlock needed)
 
-- **SV-residual: compose-CLI validation only** [S] nginx half CLOSED
-  2026-08-11: containerized `nginx -t` (nginx:alpine + dummy certs) passed
-  "syntax ok / test successful" on the post-surgery config. STRUCTURAL check DONE
-  2026-08-16 (no compose CLI on this host): all llm-stack compose files
-  (base/gpu/lan) + linux/docker-compose.yml are valid YAML; the lan override's
-  !override/!reset tags parse; its overridden services (ollama/open-webui/glances)
-  all exist in base and touch only `ports` (the expected LAN-exposure change);
-  gpu override (ollama) likewise valid. Remaining (needs a compose CLI): the full
-  `docker compose config` schema/interpolation validation (+ the lan override
-  merge), and watching the first real `compose up` (SV1 switched ollama to the
-  locally built image + healthcheck ordering).
+- **SV-residual: watch the first real `compose up`** [S, user-side] the
+  compose-CLI validation half CLOSED 2026-08-17: `nerdctl compose` (v2.3.4, was
+  overlooked) ran full `config` — schema + interpolation + merge — on ALL FOUR
+  combos (base / base+lan / base+gpu / base+gpu+lan): VALID. The
+  WEBUI_SECRET_KEY required-var fail-loud fired exactly as designed (validated
+  with a dummy value). nginx half closed 2026-08-11. ONLY remaining: watch the
+  first real `compose up` (SV1 switched ollama to the locally built image +
+  healthcheck ordering) — user-side.
 
 ## Batch 2 — the 01-core / in-container closure window (ONE rebuild pays for all)
 
@@ -109,16 +111,12 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   duplicated sites) into smoke-common.sh and make the two-environment contract
   explicit (SMOKE_ENV=sandbox|runtime set by callers) instead of six scattered
   "functional gate is the …" branches. Extend test-smoke-arch-parity.sh.
-- **A1 — env-knob registry gate** [S/M·★★] 156 cross-boundary `${VAR:-}` knobs,
-  no owner. Add a verify-arg-consistency-family gate: every consumed ALL_CAPS
-  knob must be set somewhere / in versions.env / in an allowlisted operator
-  table (which doubles as the missing docs). Gate itself is host-side (can land
-  early). Dead-alias half: UBUNTU_PORTS_MIRROR_URL DONE 2026-08-15 (removed the
-  never-set, undocumented inner fallback at cross-env.sh:17). ARCHITECTURES is
-  NOT dead — it is a documented operator alias (usage text in
-  build-sdk-artifacts.sh + runtime-build-fns.sh) AND the live 3rd fallback in
-  resolve_arch_list (artifact-common.sh:51); the "dead 3rd alias" premise was
-  wrong, KEEP it.
+- **A1 — env-knob registry gate ✅ DONE 2026-08-17** — `lint-env-knobs.sh`
+  (advisory; `KNOB_GATE=1` enforces) + the seeded operator-knob registry
+  `lint-env-knobs.allow` (146 knobs, doubles as the missing docs); wired into
+  preflight as `env-knobs`. Verified: 0 unowned on the tree, a planted new knob
+  is detected. Curating the allowlist down is the follow-on (each entry is either
+  real operator docs or a reader to fix).
 - **GEN1 — (optional experiment) source-build onnxruntime-genai for riscv64**
   [L·★] verified 2026-08-12: the skip is upstream-consistent, NOT our bug —
   PyPI 0.15.2 ships linux wheels only for manylinux_2_28_x86_64 (no riscv64
@@ -239,6 +237,140 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
 - **SUDO run_priv helper** [M·★] the lint half landed (test-invocation-lints);
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
+
+### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
+
+- **NET1 — github.com is the chain's dominant SPOF; FFmpeg's mirror is DEAD
+  code** [S-M·★★★] full fetch-map done (see below). Headline: `FFMPEG_GIT` /
+  `FFMPEG_GIT_MIRROR` (build-ffmpeg.sh:60-61) are never used — fetch_ffmpeg()
+  downloads ONLY the github archive tarball → falsely-mirrored SPOF. Nearly
+  every media/framework fetch (onnxruntime, opencv, armnn/acl, litert, iree,
+  tvm, pytorch/vision, abseil, rice, vvdec, llvm-source, gstreamer-github)
+  single-homes on github. TOP-3 CHEAPEST fixes (ride the next closure window):
+  1. GCC → try ftpmirror.gnu.org first, gcc.gnu.org fallback (sha512 already
+     verified — zero trust cost; protects the earliest highest-blast stage).
+  2. FFmpeg → wire the dead mirror vars: tarball → clone_or_update_repo
+     $FFMPEG_GIT → $FFMPEG_GIT_MIRROR fallback (~5 lines, helpers exist).
+  3. GStreamer + nv-codec-headers → second-URL fallback to their canonical
+     homes (gitlab.freedesktop.org / git.videolan.org), libcamera-pattern.
+  Also cheap: cmake.sh → apt.kitware.com fallback (already wired as a repo);
+  CPython → github/python/cpython tag mirror; tvm → git.apache.org [M].
+  Vendor-locked (accept): lunarg, dl.google, nvidia, radeon, rustup.
+  ALREADY MIRRORED (don't re-audit): libcamera (git.libcamera.org→github),
+  libpng (3 sources), cross_compile_cmake_lib_from_source pipe-mirrors,
+  apt.llvm.org→source-build fallback, Ubuntu apt (fast-mirror+retries).
+
+### Batch-3 planning data (2026-08-17 freshness snapshot; api.github.com live)
+
+- **B3-PLAN — available pin bumps for the next versions.env window** [ref]:
+  SAFE tier: UV 0.12.3→0.12.5, VULKAN 1.4.357.0→.1, FLUTTER 3.44.9→3.47.0,
+  OLLAMA 0.32.6→0.32.14 (llm-stack only), UBUNTU_DIGEST refresh (full-chain),
+  pandoc/binaryen host-side. REPORT tier (one at a time, patch entanglement):
+  ONNXRUNTIME v1.28.0→v1.29.0, LITERT v2.1.6→v2.2.0 (+LM 0.15→0.16;
+  PROTOC_VERSION is SLAVED — re-derive), TVM v0.25→v0.26, PYAV 18.0→18.1,
+  TENSORFLOW_C 2.18→2.21 (only matters if FFMPEG_ENABLE_TF=1). Everything else
+  up-to-date (GCC/LLVM/Python/Rust/GStreamer/Node/CMake/IREE/OpenVINO/ArmNN…).
+- **F7 — 18 versions.env keys UNCLASSIFIED in bump_versions.py** [S·★] (PY_*
+  executor pins, LIBCAMERA_VERSION, FLATPAK_RUNTIME, SCCACHE_*, windows-tool
+  pins…) — add each to SAFE/REPORT/MANUAL or the non-version filter so the
+  freshness report stays complete.
+
+### CI-workflow sweep additions (2026-08-17) — **CI1-3 ✅ ALL FIXED same day**
+
+CI1: timeout-minutes added to all 5 Linux workflows (python-ci 60 / ubuntu24.04
+45 / build-docs 30 / ghcr-cleanup 20 / stale-docs 15). CI2: llm-stack ollama
+service digest-pinned (sha256:9d30908e…; bump deliberately, not implicitly).
+CI3: registry login secret moved to env-var pattern. actionlint OK. Original
+findings kept below for context:
+
+
+- **CI1 — missing `timeout-minutes` in 5 Linux workflows** [S·★★]
+  python-ci-linux.yml:98 (multi-GB pull + tests → a hang burns the 6h default;
+  the repo's own Windows lanes set 30/20, so the convention exists),
+  ghcr-cleanup.yml:15 (unbounded registry loops), plus ubuntu24.04/build-docs/
+  stale-docs-check [★]. Add sensible per-job timeouts.
+- **CI2 — llm-stack-tests service is non-hermetic** [S·★] `ollama/ollama:latest`
+  (mutable tag) + network-pulled `qwen2.5:0.5b` — pin the image digest (and
+  consider caching the model) so the test can't drift/flake with upstream.
+- **CI3 — registry-login style** [S·★] prepare-linux-ci-host/action.yml:90
+  echoes registry-password into `docker login --password-stdin` — correct +
+  GitHub-masked, but the env-var pattern is marginally cleaner. Cosmetic.
+  CLEAN per sweep (recorded to prevent re-audits): ALL 18 preflight gates run in
+  CI (ubuntu24.04.yml runs preflight.sh un-filtered — env-knobs + the
+  396-assertion script-tests included); every `uses:` SHA-pinned;
+  least-privilege permissions blocks; continue-on-error only where intentional;
+  no dead workflows.
+
+### Idempotency audit verdict (2026-08-17; the GST1 runs-twice class — CLEAN)
+
+Traced the true DOUBLE-RUN set (media final RUN → package re-invocation via
+setup-package-image.sh): only **install-deps.sh** and **configure-runtime.sh**
+run twice; both are second-run-safe by construction (symlink-guarded mv/ln,
+truncate-not-append `write_conf`, idempotent apt/ldconfig; the GST resolver has
+its rm-before-resolve + self-match skip). collect-artifacts / repair-wheels /
+verify-wheels / validate-media-runtime run once; apply-patch.sh is
+reverse-apply-guarded; copy-media-payloads uses `cp -aT`. **No remaining live
+sibling of the GST1 bug class** — do not re-sweep without a new double-run path
+being added (if one is added, THIS is the checklist to run it against).
+
+### Stale-arch-exception audit (2026-08-17; LIVE-verified against resolute ports)
+
+- **RV1 — the riscv64 availability-exceptions are STALE; ports has caught up**
+  [M·★★★] live `apt-cache policy :riscv64` against resolute ports (2026-08-17):
+  libgstreamer1.0-dev 1.28.2 ✅, libglib2.0-dev 2.88 ✅, libsdl2-dev ✅,
+  libssl-dev ✅, libgnutls28-dev ✅ — all AVAILABLE. Stale exceptions to lift
+  (each needs a rebuild-validate; co-installability in the cross sysroot must
+  be proven, availability ≠ coinstallable):
+  · opencv build-opencv.sh:236-237 `WITH_GSTREAMER=OFF` on riscv64 ("Ports
+    cannot satisfy the GStreamer/GLib dev chain" — no longer true; AND the
+    two-pass makes it doubly obsolete: pass-2 links OUR source-built
+    /opt/gstreamer, which riscv64 builds — lifting this = `GStreamer: YES` on
+    ALL THREE arches, full two-pass parity).
+  · ffmpeg `--disable-sdl2 --disable-ffplay` on riscv64 (libsdl2-dev now on
+    ports) — re-enable + probe.
+  · the "riscv64 ffmpeg network/codec skips" item (TLS via --enable-openssl
+    never attempted): libssl-dev:riscv64 now exists — unblocked.
+  · ffmpeg gnutls skip (:202, "configure probe does not pass") — package now
+    exists; re-test the probe (may have been availability all along).
+  Rider: riscv64 `WITH_PNG` static-libpng workaround + Node.js lag are NOT
+  availability-class (compiler probe / upstream) — unchanged.
+
+### Refactor sweep additions (2026-08-17; Dockerfile idioms + bash patterns + parallel-readiness — all rebuild-window)
+
+- **PAR2 — cache-mount ids CONTEND under --parallel-archs** [S/M·★★★] measured
+  in the last build's logs: media-arm64 AND media-riscv64 use `id=apt-cache-amd64`
+  + `id=ccache-amd64` in SOME RUNs (the `${TARGETARCH}` builtin is amd64 for every
+  cross build; only some RUNs use a target-derived id) while others use
+  apt-cache-arm64/riscv64 — mixed. Under --parallel-archs all 3 media builds
+  SERIALIZE on the shared `sharing=locked` apt mounts and share one ccache id in
+  those RUNs. Fix: unify every cache-mount id to the TARGET arch (one convention),
+  audit all Dockerfiles. Also amplifies the existing "Media source-cache mounts"
+  item: parallel builds download the SAME tarballs ×3 SIMULTANEOUSLY.
+- **DF1 — Dockerfile.media:237-238+252-253: dead cargo mounts on the onnxruntime
+  RUNs** [S·★★] no ORT build script touches cargo/rust (verified) — 4 mounts
+  widen the cache closure of the two most expensive media RUNs (TG1 class). Drop.
+- **DF2 — Dockerfile.sdk:72-157: 86-line inline RUN** [M/L·★★] the llvm-target
+  materialization (self-copy + symlink repair + DT_NEEDED walk) as one string —
+  extract to a COPY'd materialize-llvm-target.sh (toolchain:332 heredoc idiom).
+- **DF3 — Dockerfile.package:120-159: ~40-line inline llvm soname-repair loop**
+  [M·★★] bolted onto the copy-media-payloads RUN whose script is already COPY'd —
+  move the loop into it.
+- **DF4 — small Dockerfile hygiene** [S·★ each]: package:111 lone COPY without
+  --link (siblings have it); media:671 stray gstreamer-env.sh mount on the
+  install-deps RUN (only the build RUN reads it); package:255-264 printf-list →
+  heredoc; media:120-155 + :883 readability extractions.
+- **SH1 — android-sdk.sh:160+183: identical retry-skeleton ×2** [S·★★] extract a
+  local _sdk_retry (canonical retry() in logging.sh:157 doesn't fit the
+  grep-success shape).
+- **SH2 — packaging-deps.sh:33 error() shadows logging.sh** [S·★] it sources
+  common.sh at :27 first — drop the local copy, use err/warn.
+- **SH3 — host-side mktemp without trap-cleanup** [M·★] leak-on-error class in 5
+  host-run scripts (setup-rootless-binfmt.sh:96, verify-critical-fixes.sh:296,
+  cross-env.sh:635, downloads.sh:64, cmake.sh:44) — shared _mk_scratch/trap
+  idiom; in-container sites are fine (layer discarded).
+  Clean per sweep: version-ARG mirrors (20 checked, zero drift), no dead stages,
+  torch USER/HEALTHCHECK ordering, no copy-then-overwrite beyond the deliberate
+  two-pass, error-handling/arg-parsing/py-heredocs largely canonical.
 
 ### Build-log mining additions (2026-08-17; from the REAL Batch-2 rebuild logs)
 

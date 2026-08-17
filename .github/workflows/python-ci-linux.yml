@@ -130,6 +130,7 @@ jobs:
             image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
     runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 60
 
     steps:
       # ContainerHub's shared prologue: reclaim runner disk, check out, log in
