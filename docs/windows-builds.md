@@ -2475,7 +2475,9 @@ Upstream follow-ups: see "Pending" at the bottom.
   --git`) = BASE rebuild — rides the next base-tier batch, never alone.
   After shipping: three canaries + a cache-hit second run, THEN the
   SCCACHE_CUDA_LAUNCHER default discussion reopens (~50 min/chain at stake).
-  Owner: submit the patch upstream (draft in the package README).
+  Upstream PR SUBMITTED 2026-08-18: mozilla/sccache#2811 (fmt/clippy/tests
+  green in-container, regression test included). Owner: post the #2808
+  addendum comment referencing it.
 - **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
   "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
   logged `could not compare avcodec majors (chain='' configure='63')`: in
