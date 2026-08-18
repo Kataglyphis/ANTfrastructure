@@ -287,5 +287,34 @@ foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     }
 }
 
+# ---- 11. tokenizer autopsy: replicate nvcc.rs's windows mangling + shlex ---
+# Hypothesis: .replace('\','/') runs BEFORE tokenization, so every escaped
+# quote \" in the dryrun line becomes /" and the quote structure collapses at
+# the first string-valued define (FILE_NAME=\"...\"); everything after gets
+# mis-grouped and cl never sees those -D pairs as options.
+$cpp4Plan = ($planLines | Select-String 'cpp4\.ii' | Select-Object -First 1).Line
+if ($cpp4Plan) {
+    $mangled = $cpp4Plan -replace '""', '"'
+    $mangled = $mangled -replace [regex]::Escape('\?'), ''
+    $mangled = $mangled.Replace('', '/').Replace(' -E ', ' -P ').Replace(' > ', ' -Fi')
+    Set-Content -Path mangled-cpp4.txt -Value $mangled -Encoding utf8
+    $py = 'C:/temp/cpython/PCbuild/amd64/python.exe'
+    if (-not (Test-Path $py)) { $py = 'python' }
+    & $py -c @"
+import shlex, io
+line = io.open('mangled-cpp4.txt', encoding='utf-8-sig').read().strip()
+line = line[3:] if line.startswith('#$ ') else line
+try:
+    toks = shlex.split(line)
+except ValueError as e:
+    print('shlex FAILED:', e); toks = []
+print('token count:', len(toks))
+hits = [(i, t) for i, t in enumerate(toks) if 'USE_CUDA' in t or 'FILE_NAME' in t or 'VER_STRING' in t]
+for i, t in hits: print(f'tok[{i}] len={len(t)}: {t[:160]}')
+big = max(toks, key=len, default='')
+print('longest token len:', len(big)); print('longest token head:', big[:220])
+"@
+}
+
 Write-Host 'probe complete'
 exit 0
