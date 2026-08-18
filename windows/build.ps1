@@ -772,6 +772,16 @@ try {
             # reach it via ARG -- and changing it SHOULD bust the VS layer.
             WINDOWS_SDK_BUILD = Get-Ver 'WINDOWS_SDK_BUILD'
             VISUAL_STUDIO_VERSION = Get-Ver 'VISUAL_STUDIO_VERSION'
+            # #50 (2026-08-18): consumed below versions.env's relocated COPY -
+            # keep in sync with Dockerfile.base's ARG block and build-buildkit.
+            GIT_VERSION                  = Get-Ver 'GIT_VERSION'
+            GIT_WINDOWS_INSTALLER_SHA256 = Get-Ver 'GIT_WINDOWS_INSTALLER_SHA256'
+            SCOOP_INSTALLER_SHA256       = Get-Ver 'SCOOP_INSTALLER_SHA256'
+            WIX_VERSION                  = Get-Ver 'WIX_VERSION'
+            WIX_UI_EXT_VERSION           = Get-Ver 'WIX_UI_EXT_VERSION'
+            FLUTTER_VERSION              = Get-Ver 'FLUTTER_VERSION'
+            VCPKG_REF                    = Get-Ver 'VCPKG_REF'
+            SCCACHE_GIT_REV              = Get-Ver 'SCCACHE_GIT_REV'
         }
     }
 

@@ -92,15 +92,20 @@ ARG VISUAL_STUDIO_VERSION=18
 COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 
-# versions.env is the single source of truth for version numbers.
-# load-versions.ps1 reads it and sets matching (Machine + Process) env vars for
-# every later RUN. Dockerfile ARG defaults should mirror versions.env entries.
-COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
-COPY linux\scripts\01-core\versions.env C:\temp\
-RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
-
-# Needs load-versions first: setup-scoop-tools reads GIT_VERSION (+ the
-# GIT_WINDOWS_INSTALLER_SHA256 pin) and FLUTTER_VERSION from the baked env.
+# versions.env's COPY moved BELOW the expensive layers (#50, 2026-08-18):
+# it is shared by BOTH lanes, so editing a purely Linux key (PANDOC_VERSION,
+# ROCM_VERSION, ...) used to re-pay GB-scale scoop + vcpkg + the ~30-min rust
+# layer. The keys those layers actually consume arrive as ARGs here instead
+# (declared immediately above their consumer, #103 discipline); the COPY +
+# load-versions bake now sits after the rust layer, in front of
+# verify/finalize, which still read the baked Machine env - as do all later
+# stages (FROM this image). NB the consumed-key inventory includes
+# helper-reads (Resolve-ContainerImageValue / Get-SourceBuildVersion), not
+# just $env: literals - that is exactly how GIT_VERSION hid from the first
+# audit.
+#
+# setup-scoop-tools consumes (git installer URL derived from GIT_VERSION,
+# hash-verified; WiX + flutter + the scoop bootstrap pin):
 # Git is pinned, but NOT through scoop — the script builds the git-for-windows
 # release URL from GIT_VERSION and verifies the installer hash.
 # LLVM/ninja/nasm are PINNED (versions.env LLVM_WINDOWS_VERSION /
@@ -122,11 +127,24 @@ ARG NASM_WINDOWS_VERSION=3.02
 # sccache joined the pinned set 2026-08-08 -- for a FEATURE gate, not output
 # determinism: multi-tier caching needs >= v0.16.0 and degrades silently below.
 ARG SCCACHE_WINDOWS_VERSION=0.17.0
+# #50: these used to arrive via the baked versions.env Machine env; as ARGs
+# (auto-env during this stage's RUNs, names match the script reads) a Linux
+# key edit no longer re-pays this layer. Defaults mirror versions.env; the
+# drivers pass the live values.
+ARG GIT_VERSION=2.55.0
+ARG GIT_WINDOWS_INSTALLER_SHA256=0c66e4a5875da5a74f9754386de7555ba301503b03bbdcdbafa69dc6464e548d
+ARG GIT_INSTALLER_URL=""
+ARG SCOOP_INSTALLER_SHA256=48f6ea398b3a3fa26fae0093d37bd85b13e7eaa5d1d4a3e208408768408e35ae
+ARG WIX_VERSION=4.0.6
+ARG WIX_UI_EXT_VERSION=4.0.6
+ARG FLUTTER_VERSION=3.44.9
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
     -SccacheVersion $env:SCCACHE_WINDOWS_VERSION
 
+# #50: VCPKG_REF as ARG for the same reason (was baked env).
+ARG VCPKG_REF=2026.07.29
 COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
@@ -164,6 +182,8 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # FIRST so edits to the cheap assertion/config scripts below never re-pay it
 # (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
 # assertion list cost a full rust reinstall).
+# #50: SCCACHE_GIT_REV as ARG (was baked env; the script throws if empty).
+ARG SCCACHE_GIT_REV=e9b15a35f7240a7edd1b9644583edb388c6cb5f9
 COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
 # Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
 # source build. Deliberately in the SAME layer group as the rust install - a
@@ -172,6 +192,16 @@ COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
 # upstream PR merges and the .patch files are deleted).
 COPY windows\upstream\sccache-nvcc-quote-fix C:\temp\scripts\sccache-patches\
 RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
+
+# versions.env bake, relocated BELOW the expensive layers (#50): a Linux-key
+# edit now invalidates only this cheap RUN + verify/finalize. load-versions
+# sets Machine env, which persists in the image regardless of layer position -
+# verify/finalize below and every later stage (FROM this image) read it
+# exactly as before. Windows keys consumed ABOVE this line ride as ARGs.
+COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
+COPY linux\scripts\01-core\versions.env C:\temp\
+RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
+
 # verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
 # matched exactly this one file, but a future verify-* script would have
 # silently busted the layers above). Pure assertion pass + the tiny

@@ -2329,7 +2329,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   branch (hours). The 2026-08-07 versions.env-COPY removal fixed this at BRANCH
   granularity and never reached COMPONENT granularity. FIX: move each ARG+ENV
   into the stage that consumes it.
-- **50 [M·★★★, base once] `versions.env` is COPY'd above scoop + vcpkg + the
+- **50 [M·★★★, base once] DONE 2026-08-18 (riding the #114 base batch): versions.env COPY relocated below scoop/vcpkg/rust; the 9 consumed keys (incl. helper-reads GIT_VERSION/WIX_*/SCOOP_INSTALLER_SHA256 - invisible to a naive $env: grep) ride as ARGs mirrored in both drivers. Original finding: `versions.env` is COPY'd above scoop + vcpkg + the
   ~30-min rust/sccache-from-source layer.** `Dockerfile.base:87-89`, then
   `:114-120`, then `:156`. versions.env is shared by BOTH lanes, so editing a
   purely *Linux* key (`PANDOC_VERSION`, `ROCM_VERSION`, `UBUNTU_DIGEST`)
@@ -2378,7 +2378,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   compile — so editing *any* of them (incl. a module ~30 scripts share)
   re-pays the full CPython build, and toolchain is the parent of every media
   branch. `Dockerfile.media-builder:243-259` documents the exact solution.
-- **81 [S·★, base — RIDE WITH #50, never alone] The base SHELL sets a variable
+- **81 [S·★, base] DONE - STALE ENTRY: already fixed 2026-08-14 (the SHELL line sets PSNativeCommandUseErrorActionPreference correctly; the entry outlived its fix). Original finding: The base SHELL sets a variable
   that does not exist.** `Dockerfile.base:58` sets
   `$PSNativeCommandErrorActionPreference = $false`; the real pwsh variable is
   **`PSNativeCommandUseErrorActionPreference`** (verified against pwsh 7.6.4,
