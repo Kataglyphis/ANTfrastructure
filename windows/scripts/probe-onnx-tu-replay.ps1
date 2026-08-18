@@ -105,7 +105,12 @@ Copy-Item $obj "$WorkDir\wrapped.obj" -Force
 # ---- 5. verdict -------------------------------------------------------------
 $bareSyms = (& llvm-nm --defined-only "$WorkDir\bare.obj" 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
 $wrapSyms = (& llvm-nm --defined-only "$WorkDir\wrapped.obj" 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
-$missing = @(Compare-Object $bareSyms $wrapSyms | Where-Object SideIndicator -eq '<=' | ForEach-Object InputObject)
+$missing = @(Compare-Object $bareSyms $wrapSyms | Where-Object SideIndicator -eq '<=' | ForEach-Object InputObject |
+    # ??_C@ = anonymous string LITERALS. cudafe embeds the (randomized) module
+    # id / temp names in internal strings, so bare and wrapped legitimately
+    # carry 1:1-substituted literals (patch-verify: 68 differing literals at
+    # EQUAL total counts). Only real code/data symbols count as a miss.
+    Where-Object { $_ -notmatch '^\?\?_C@' })
 Write-Host ("bare symbols: {0}  wrapped symbols: {1}" -f $bareSyms.Count, $wrapSyms.Count)
 if ($missing.Count -gt 0) {
     Write-Host "[FAIL] wrapped object MISSING $($missing.Count) symbol(s):"

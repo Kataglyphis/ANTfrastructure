@@ -2463,6 +2463,19 @@ Upstream follow-ups: see "Pending" at the bottom.
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
   are bind-mounted into media stages, land between builds.
+- **114 [M·★★★, BASE-TIER] Ship the sccache nvcc quote-protection fix.**
+  2026-08-18: the dropped-instantiation miscompile is ROOT-CAUSED and the fix
+  VERIFIED on the reproducer (patch-verify probe: bare 3189 == wrapped 3189
+  symbols). Cause: nvcc.rs flattens `\` before tokenizing dryrun lines, `\"`
+  escapes collapse, shlex packs ~30 -D pairs into one 493-char token, the
+  cpp4 preprocess loses `USE_CUDA` & friends, cudafe++ emits no stubs. The
+  package (patch + README + verify probe) lives in
+  `windows/upstream/sccache-nvcc-quote-fix/`. Shipping = editing
+  `setup-rust-toolchain.ps1` (clone+apply+install instead of `cargo install
+  --git`) = BASE rebuild — rides the next base-tier batch, never alone.
+  After shipping: three canaries + a cache-hit second run, THEN the
+  SCCACHE_CUDA_LAUNCHER default discussion reopens (~50 min/chain at stake).
+  Owner: submit the patch upstream (draft in the package README).
 - **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
   "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
   logged `could not compare avcodec majors (chain='' configure='63')`: in
