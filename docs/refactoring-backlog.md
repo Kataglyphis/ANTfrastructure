@@ -291,6 +291,22 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   parallel-vs-sequential per stage entry. Re-evaluate/remove after PAR2 is
   fixed and media parallel is re-measured.
 
+- **PAR4 — the parallel memory model ignores INTRA-build step parallelism**
+  [M·★★★, BIT 2026-08-18] wave3b OOM: with PAR2's lock serialization gone, all
+  3 lanes hit their heaviest phase (IREE wheelhouse) SIMULTANEOUSLY and the
+  kernel OOM-killed cc1plus on arm64+riscv64 (`g++: fatal error: Killed`) at
+  ~2h09m. The math gap: BUILD_MEM_DIVISOR=3 sizes ninja -j per BUILD as if
+  each build ran ONE step, but buildkitd max-parallelism=4 lets EACH build run
+  up to 4 heavy steps concurrently → worst case 3 builds x 4 steps, each
+  job-pool sized for RAM/3. Yesterday's lock contention accidentally
+  serialized the peaks; PAR2 removed that safety net. Fix options: (a) fold
+  max-parallelism into the divisor (effective = n_arch x per-build step
+  budget), (b) systemd-run MemoryHigh per build, (c) a global compile-job
+  governor (jobserver). Interim operator rule: for 3-way media parallel set
+  BUILD_MEM_DIVISOR>=5 or PARALLEL_STAGES=sdk,android. NOTE the incident
+  recovery: the chain self-staggered (arm64 salvage + riscv64 retry-2 while
+  amd64 continued) — retries that land staggered can pass.
+
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
 - **NET1 — github.com is the chain's dominant SPOF; FFmpeg's mirror is DEAD
