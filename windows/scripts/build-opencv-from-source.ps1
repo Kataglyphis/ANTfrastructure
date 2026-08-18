@@ -163,7 +163,27 @@ $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
 $simdFlags = Get-WindowsX86SimdFlags
 
-$cmakeExtra = @(
+# EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
+# nvcc command lines go through CMake response files, which sccache passes
+# through UNCACHED (measured: 2018 requests, zero CUDA cache categories) -
+# so a wrapped OpenCV CUDA compile is bare-but-green and wins nothing.
+# OPENCV_CUDA_NO_RSP=1 disables the CUDA response files so the calls arrive
+# inline and enter sccache's nvcc decomposition. ONLY meaningful once the
+# quote-protection fix ships (#114 / mozilla/sccache#2811) - without it,
+# inline calls inherit the dropped-instantiation miscompile. Command-length
+# risk: ninja spawns directly (32,767-char limit); OpenCV's lists are ~5-8k,
+# and an overflow fails loudly at build, not silently.
+$cudaRspArgs = @()
+if ($env:OPENCV_CUDA_NO_RSP -eq '1') {
+    Write-Host 'OPENCV_CUDA_NO_RSP=1: disabling CUDA response files (inline nvcc args -> sccache decomposition reachable)'
+    $cudaRspArgs = @(
+        '-DCMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES:BOOL=OFF',
+        '-DCMAKE_CUDA_USE_RESPONSE_FILE_FOR_LIBRARIES:BOOL=OFF',
+        '-DCMAKE_CUDA_USE_RESPONSE_FILE_FOR_OBJECTS:BOOL=OFF'
+    )
+}
+
+$cmakeExtra = $cudaRspArgs + @(
     # Suppress CMake policy deprecation warnings baked into OpenCV's own CMakeLists.txt
     # (CMP0146: cmake_minimum_required version range; CMP0148: FindPython* deprecation;
     #  CMP0177: install() DESTINATION path normalisation).

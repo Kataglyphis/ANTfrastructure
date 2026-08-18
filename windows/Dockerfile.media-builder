@@ -454,6 +454,12 @@ ARG OPENCV_LINK_CHAIN_FFMPEG="1"
 # cache categories) - so "wrapped" OpenCV CUDA is bare-but-green and there is
 # currently nothing to win here.
 ARG OPENCV_CUDA_LAUNCHER=""
+# Companion experiment knob: disable CMake's CUDA response files so nvcc
+# calls arrive inline and can enter sccache's decomposition at all (rsp files
+# are passed through uncached - measured 2026-08-18). Only meaningful with
+# OPENCV_CUDA_LAUNCHER=1 AND the shipped quote fix (#114). RUN-scoped, no
+# ENV bake.
+ARG OPENCV_CUDA_NO_RSP=""
 ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `

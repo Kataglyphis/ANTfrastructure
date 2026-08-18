@@ -2478,6 +2478,17 @@ Upstream follow-ups: see "Pending" at the bottom.
   Upstream PR SUBMITTED 2026-08-18: mozilla/sccache#2811 (fmt/clippy/tests
   green in-container, regression test included). Owner: post the #2808
   addendum comment referencing it.
+- **115 [M·★★, none] OpenCV CUDA caching: rsp-off experiment + upstream
+  `--options-file` expansion.** OpenCV's nvcc calls ride CMake response
+  files, which sccache passes through UNCACHED (measured 2026-08-18: zero
+  CUDA cache categories at 99.95% C/C++ hits) — wrapped OpenCV CUDA is
+  bare-but-green. Wired: dormant `OPENCV_CUDA_NO_RSP=1` knob (disables
+  CMAKE_CUDA_USE_RESPONSE_FILE_*, calls arrive inline; loud failure if the
+  32,767-char spawn limit ever bites). ORDER: only test after #114 ships —
+  inline calls without the quote fix inherit the miscompile. The durable fix
+  is upstream PR #2: teach nvcc.rs to expand `--options-file` the way the
+  gcc/msvc handlers already expand @rsp files (follow-up to
+  mozilla/sccache#2811); then the CMake knob retires.
 - **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
   "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
   logged `could not compare avcodec majors (chain='' configure='63')`: in
