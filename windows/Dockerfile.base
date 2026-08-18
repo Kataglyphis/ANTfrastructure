@@ -165,6 +165,12 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
 # assertion list cost a full rust reinstall).
 COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
+# Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
+# source build. Deliberately in the SAME layer group as the rust install - a
+# patch change must re-pay this layer, because it produces a different
+# sccache. An empty/absent patch dir = stock build (auto-retires when the
+# upstream PR merges and the .patch files are deleted).
+COPY windows\upstream\sccache-nvcc-quote-fix C:\temp\scripts\sccache-patches\
 RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 # verify-toolchain.ps1 is copied EXPLICITLY (the old `verify-*.ps1` wildcard
 # matched exactly this one file, but a future verify-* script would have
