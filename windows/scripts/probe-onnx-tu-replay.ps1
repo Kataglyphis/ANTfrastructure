@@ -204,5 +204,40 @@ if (Test-Path $env:SCCACHE_ERROR_LOG) {
         Select-Object -First 120 | ForEach-Object { "exec| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
 }
 
+# ---- 7. intermediate forensics: where do the double stubs first vanish? ----
+# sccache's nvcc handler understands --keep/--keep-dir itself (nvcc.rs:325ff:
+# strips them from the invocation, copies its intermediates out). So both
+# flows dump their intermediates and we count the double (Iddd) vs float
+# (Ifff) mangled markers per file - the first wrapped file whose Iddd count
+# drops below bare's is the artifact the decomposition breaks.
+$keepBare = Join-Path $WorkDir 'keep-bare'
+$keepWrap = Join-Path $WorkDir 'keep-wrap'
+$null = New-Item -ItemType Directory -Force -Path $keepBare, $keepWrap
+Set-Location $build
+Remove-Item $obj -Force -ErrorAction SilentlyContinue
+& cmd.exe /S /C "$cmd --keep --keep-dir `"$keepBare`"" 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" }
+if ($LASTEXITCODE -ne 0) { throw "bare --keep compile failed ($LASTEXITCODE)" }
+
+# Fresh cache dir: the wrapped run must MISS, or the sub-steps never execute.
+$env:SCCACHE_DIR = Join-Path $WorkDir 'cache-keep'
+$env:SCCACHE_ERROR_LOG = Join-Path $WorkDir 'sccache-keep.log'
+& $sccache --start-server 2>&1 | Out-Null
+Remove-Item $obj -Force -ErrorAction SilentlyContinue
+& cmd.exe /S /C "`"$sccache`" $cmd --keep --keep-dir `"$keepWrap`"" 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" }
+$keepExit = $LASTEXITCODE
+& $sccache --stop-server 2>&1 | Out-Null
+if ($keepExit -ne 0) { throw "wrapped --keep compile failed ($keepExit)" }
+
+foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
+    $side = $pair[0]; $dir = $pair[1]
+    Get-ChildItem $dir -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $ddd = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxWarpForwardIddd' -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+        $fff = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxWarpForwardIfff' -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+        if ($ddd -or $fff) {
+            Write-Host ("stub-count {0,-4} {1,-40} ddd={2,-5} fff={3}" -f $side, $_.Name, [int]$ddd, [int]$fff)
+        }
+    }
+}
+
 Write-Host 'probe complete'
 exit 0
