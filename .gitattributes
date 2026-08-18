@@ -40,3 +40,6 @@ makedef -text eol=lf
 # overridden. If one is ever added, re-check that ordering.)
 windows/scripts/** -text
 windows/downloads/** -text
+# COPY-reachable since 2026-08-18: Dockerfile.base COPYs the sccache patch
+# package into the rust layer (#114).
+windows/upstream/sccache-nvcc-quote-fix/** -text
