@@ -342,22 +342,6 @@ being added (if one is added, THIS is the checklist to run it against).
 
 ### Refactor sweep additions (2026-08-17; Dockerfile idioms + bash patterns + parallel-readiness — all rebuild-window)
 
-- **PAR2 — cache-mount ids CONTEND under --parallel-archs** [S/M·★★★ →
-  **FIXED-STAGED 2026-08-18**, validating in wave3b] Root cause confirmed
-  live: EVERY cache-mount id used `${TARGETARCH}` (builtin = amd64 for all
-  cross lanes) → all 3 lanes shared `apt-cache-amd64` etc.; the smoking gun
-  was onnxruntime deps+fetch holding the `sharing=locked` apt mounts for its
-  ~90-min submodule clone while the other lanes' step 220 blocked (observed
-  23:50-01:14: amd64+arm64 at 0 CPU). FIX: split per-target via
-  `${TARGET_ARCH}` build-arg for the contended/mis-shared ids (apt-cache,
-  apt-lib, flutter-cache, cargo-registry, cargo-git + ffmpeg-sdks which was
-  per-arch-INTENDED) across Dockerfile.{sdk,media,android}; added stage-scoped
-  `ARG TARGET_ARCH` to 7 media stages (ARG-scoping trap: unset expands empty
-  → silent re-collision; programmatic checker verified 0 uncovered stages).
-  DELIBERATELY still shared: ccache/sccache (concurrency-safe, dedup win),
-  uv/pip (no lock, internal locking), android-sdk-shared +
-  onnxruntime-web-shared (version-keyed cross-arch dedup BY DESIGN — the
-  wait is cheaper than 3× compile).
 - **DF1 — Dockerfile.media:237-238+252-253: dead cargo mounts on the onnxruntime
   RUNs** [S·★★] no ORT build script touches cargo/rust (verified) — 4 mounts
   widen the cache closure of the two most expensive media RUNs (TG1 class). Drop.
