@@ -5,6 +5,16 @@
 # a wrong-arch wrapper (the orchestrator always overrides BASE_IMAGE anyway).
 ARG TARGETARCH
 ARG BASE_IMAGE="ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-package-${TARGETARCH}"
+# AP3 (2026-08-18, correct re-implementation of the 2026-08-17 revert): the
+# cross wheelhouse is no longer BAKED into the package image — it is
+# bind-mounted here, in the ONE RUN that reads it (setup-torch-venv.sh
+# `--find-links /opt/wheels`). WHEELS_IMAGE mirrors Dockerfile.package's
+# ARTIFACT_IMAGE default; the runtime helper passes the digest-pinned android
+# ref (runtime_android_pin). A missing /opt/wheels in that image fails the
+# mount LOUDLY at build time — the exact failure mode that silently broke the
+# first AP3 attempt is now impossible.
+ARG WHEELS_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGETARCH}
+FROM ${WHEELS_IMAGE} AS wheels-source
 FROM ${BASE_IMAGE} AS torch
 
 SHELL ["bash", "-lc"]
@@ -45,6 +55,7 @@ COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/pac
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=bind,from=wheels-source,source=/opt/wheels,target=/opt/wheels \
     set -euo pipefail; \
     bash /opt/scripts/packaging/setup-torch-venv.sh
 

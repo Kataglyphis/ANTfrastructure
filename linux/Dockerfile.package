@@ -76,14 +76,12 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
-# AP3 REVERTED 2026-08-17: /opt/wheels MUST be COPY'd into the package image —
-# Dockerfile.torch (FROM this package image) is where setup-torch-venv.sh actually
-# reads it (`uv pip install --find-links /opt/wheels`), and it has NO artifact-source
-# stage to bind-mount from. The bind-mount-into-the-package-RUN attempt was
-# ephemeral, so the torch stage lost /opt/wheels → build broke. A correct AP3 needs
-# the wheelhouse reachable in Dockerfile.torch's RUN (e.g. a from=artifact-source
-# mount wired THERE), not here — re-filed in the backlog.
-COPY --link --from=artifact-source /opt/wheels /opt/wheels
+# AP3 LANDED 2026-08-18 (correct home this time): /opt/wheels is NOT baked
+# here anymore — Dockerfile.torch now carries its own wheels-source stage
+# (the android image, digest-pinned via WHEELS_IMAGE) and bind-mounts
+# /opt/wheels into the ONE RUN that reads it. The 2026-08-17 revert happened
+# because the mount lived in THIS file's RUN while the reader lives in
+# Dockerfile.torch; that gap is closed at the reader now.
 COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
