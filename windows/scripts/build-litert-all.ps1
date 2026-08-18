@@ -38,15 +38,44 @@ $ProgressPreference    = 'SilentlyContinue'
 
 Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -Force
 
-# LiteRT-LM depends on LiteRT's install, so the two stay sequential. Invoke-SourceBuildChain
-# owns the banner + native-exit check + EAP=Stop inheritance the child scripts rely on.
-$stages = @(
-    @{ Name = 'LiteRT';    Script = 'build-litert-from-source.ps1';    SourceDir = 'C:\temp\litert-src' }
-    @{ Name = 'LiteRT-LM'; Script = 'build-litert-lm-from-source.ps1'; SourceDir = 'C:\temp\litert-lm-src' }
-)
+# Two phases, sequential (LiteRT-LM needs no LiteRT SDK install, but they share
+# the branch and export order):
+#   1. LiteRT — the C++ SDK (headers + .lib for C:\runtime\lib\litert). STILL
+#      CMake (build-litert-from-source.ps1): it works and is a separate concern.
+#   2. LiteRT-LM — the litert_lm_main.exe runner. MIGRATED TO BAZEL 2026-08-12
+#      (build-litert-lm-bazel.ps1): Google's CI-tested path builds it in ~9 min
+#      with zero patches, ending the CMake port's unbounded staleness-shell
+#      peeling (proto/absl/litert-pin/examples/ruy, ~2.5 h each). The CMake port
+#      (build-litert-lm-from-source.ps1) + its export bridge stay in-tree as the
+#      documented frozen fallback. The bazel script has its OWN signature
+#      (-InstallDir/-RepositoryCache, no -SourceDir), so it runs OUTSIDE
+#      Invoke-SourceBuildChain.
+$phases = @('LiteRT', 'LiteRT-LM')
+if ($ResumeFrom -and ($phases -notcontains $ResumeFrom)) { throw "build-litert-all: -ResumeFrom '$ResumeFrom' not in: $($phases -join ', ')" }
+if ($Until -and ($phases -notcontains $Until)) { throw "build-litert-all: -Until '$Until' not in: $($phases -join ', ')" }
+$startIdx = if ($ResumeFrom) { $phases.IndexOf($ResumeFrom) } else { 0 }
+$stopIdx = if ($Until) { $phases.IndexOf($Until) } else { $phases.Count - 1 }
 
-Invoke-SourceBuildChain -Label 'media-litert' -Stages $stages -InstallDir $InstallDir -ScriptDir $ScriptDir -StartAt $ResumeFrom -Until $Until
+if ($startIdx -le 0 -and $stopIdx -ge 0) {
+    # Invoke-SourceBuildChain owns the banner + native-exit check + EAP=Stop
+    # inheritance + the sccache stats dump the CMake SDK build relies on.
+    Invoke-SourceBuildChain -Label 'media-litert' -InstallDir $InstallDir -ScriptDir $ScriptDir -Stages @(
+        @{ Name = 'LiteRT'; Script = 'build-litert-from-source.ps1'; SourceDir = 'C:\temp\litert-src' }
+    )
+} else {
+    Write-Host "`n=== media-litert stage: LiteRT — SKIPPED (partition) ==="
+}
 
+if ($startIdx -le 1 -and $stopIdx -ge 1) {
+    Write-Host "`n=== media-litert stage: LiteRT-LM (bazel) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
+    # Repository cache mount (optional) for cross-run reuse; the bazel
+    # output_base stays container-local (see the script's header).
+    & (Join-Path $ScriptDir 'build-litert-lm-bazel.ps1') -InstallDir $InstallDir -RepositoryCache ([string]$env:BAZEL_REPO_CACHE)
+    $lmExit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+    if ($lmExit) { throw "LiteRT-LM (bazel) build failed (exit $lmExit)" }
+} else {
+    Write-Host "`n=== media-litert stage: LiteRT-LM — SKIPPED (partition) ==="
+}
 
 Complete-SourceBuildChain -Label 'media-litert' -ScrubAfter:$ScrubAfter
 

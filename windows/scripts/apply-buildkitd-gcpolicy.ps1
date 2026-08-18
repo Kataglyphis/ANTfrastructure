@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -13,7 +14,6 @@
 # reservedSpace=200GB — not the computed defaults maxUsedSpace=100GB /
 # minFreeSpace=187GB that caused the 2026-08-04 VS-layer eviction).
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [string]$ConfigDest = 'C:\ProgramData\buildkitd\buildkitd.toml',
@@ -69,6 +69,9 @@ Restart-Service buildkitd -Force
 Write-Host 'buildkitd restarted.' -ForegroundColor Green
 
 # Show the effective GC rules so the change is verifiable at a glance.
+# Inline ON PURPOSE (#101 reviewed 2026-08-17): elevated repair/maintenance
+# tool — keep it module-free so it works with a half-broken checkout. Same
+# rationale as probe-build-copy and reset-container-locks.
 $buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($buildctl) {

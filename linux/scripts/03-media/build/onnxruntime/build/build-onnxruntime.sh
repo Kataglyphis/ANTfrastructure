@@ -65,7 +65,19 @@ ensure_onnx_gpu_placeholder_output_dir
 run_web_build_step() {
   local script="$1" label="$2"
   if is_amd64_arch; then
-    bash "${SCRIPT_DIR}/${script}" "${FORWARDED_ARGS[@]}"
+    # onnx-web (WASM + its JS wrapper) is OPTIONAL — the runtime image is
+    # Python/native and does not consume it. 40-build-wasm.sh already ships
+    # without it on failure; the JS wrapper DEPENDS on that WASM, so it cannot
+    # be more-mandatory than the thing it wraps. A transient npm/GitHub network
+    # error (electron postinstall, SafeInt FetchContent) must therefore NOT
+    # abort the whole media stage — warn and ship without onnx-web. Set
+    # ORT_WEB_REQUIRED=1 to restore hard-fail.
+    if ! bash "${SCRIPT_DIR}/${script}" "${FORWARDED_ARGS[@]}"; then
+      if [ "${ORT_WEB_REQUIRED:-0}" = "1" ]; then
+        err "${label} failed and ORT_WEB_REQUIRED=1"
+      fi
+      warn "${label} failed (onnx-web is OPTIONAL — shipping without it; common cause: a transient npm/GitHub network error fetching electron/SafeInt)"
+    fi
   else
     info "Skipping ${label} on non-amd64 architecture (arch=$(detect_target_arch))"
   fi

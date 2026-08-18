@@ -58,9 +58,16 @@ message(STATUS "[LiteRTLM-winfix] litert tool exes (run_model/analyze_model/appl
 # gemma3 still configured - the helper's replace never matched). Use the
 # upstream guard itself instead: REMOVE the example trees, the EXISTS
 # check then skips them - immune to string-form drift.
-file(REMOVE_RECURSE "${LITERT_SRC_DIR}/tensor/examples")
-if(EXISTS "${LITERT_SRC_DIR}/tensor/examples")
-    message(WARNING "[LiteRTLM-winfix] tensor/examples still present after REMOVE_RECURSE - gemma3 will kill the configure")
+# PATH LESSON (run 21): the litert ExternalProject uses SOURCE_SUBDIR
+# `litert`, so LITERT_SRC_DIR is <repo>/litert - correct for blocks 1-5
+# (core/, c/, vendors/, tools/ live inside it) but tensor/ is a SIBLING at
+# the repo ROOT. The first version of this block removed
+# ${LITERT_SRC_DIR}/tensor/examples (a non-address), and its EXISTS check
+# "verified" absence of the same wrong path - a self-confirming no-op.
+get_filename_component(_LITERTLM_REPO_ROOT "${LITERT_SRC_DIR}" DIRECTORY)
+file(REMOVE_RECURSE "${_LITERTLM_REPO_ROOT}/tensor/examples")
+if(EXISTS "${_LITERTLM_REPO_ROOT}/tensor/examples")
+    message(WARNING "[LiteRTLM-winfix] ${_LITERTLM_REPO_ROOT}/tensor/examples still present after REMOVE_RECURSE - gemma3 will kill the configure")
 else()
-    message(STATUS "[LiteRTLM-winfix] tensor/examples REMOVED (gemma3's find_package(Protobuf REQUIRED) cannot fire)")
+    message(STATUS "[LiteRTLM-winfix] ${_LITERTLM_REPO_ROOT}/tensor/examples REMOVED (gemma3's find_package(Protobuf REQUIRED) cannot fire)")
 endif()

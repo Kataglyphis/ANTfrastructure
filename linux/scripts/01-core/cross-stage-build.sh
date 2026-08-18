@@ -117,8 +117,15 @@ _cross_stage_build_impl() {
       _ancestry_ann="$(ancestry_output_annotations \
         "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
     fi
+    # PUSH1 (2026-08-18): compress NEW layers with zstd — measured uplink is
+    # ~4-5 MB/s, so push time IS the parallel-chain ceiling (compiler ~30 min,
+    # 3 media images contend). zstd compresses faster than gzip AND ~30-40%
+    # smaller. Deliberately NOT force-compression: parent layers already in the
+    # registry keep their encoding and are skipped, only this stage's own
+    # layers are (re)compressed. Digest pinning is unaffected (pin is read
+    # back from the registry AFTER push). Revert knob: CROSS_LAYER_COMPRESSION=gzip.
     build_cmd+=(
-      --output "type=image,name=${tag},push=true${_ancestry_ann}"
+      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
     )
     # Supply-chain attestations (opt-in via BUILD_ATTEST=1): SLSA provenance +
     # an SBOM attached to the pushed image as OCI referrers. Off by default
@@ -212,8 +219,44 @@ _cross_stage_build_impl() {
       _rc=$?
     fi
     [ "${_rc}" -eq 0 ] && return 0
-    [ "${_attempt}" -ge "${_max_attempts}" ] && return "${_rc}"
-    _cross_stage_push_error_is_transient "${log_file}" || return "${_rc}"
+    if [ "${_attempt}" -ge "${_max_attempts}" ] \
+       || ! _cross_stage_push_error_is_transient "${log_file}"; then
+      # S1 salvage-cache-export (backlog 2026-08-11): --cache-to type=local
+      # only materializes on a SUCCESSFUL solve, so a failed stage discards
+      # every completed vertex (~8h of arm64 media work exported ZERO cache
+      # once). Re-drive the same build per named Dockerfile stage (--target):
+      # a subtree that completed is a pure cache-hit and its export lands in
+      # seconds. A subtree containing the broken vertex would RE-RUN it, so
+      # each target gets a hard timeout and two consecutive failures stop the
+      # sweep (later file-order targets almost certainly sit downstream of
+      # the same break). Opt out with SALVAGE_CACHE_EXPORT=0.
+      if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
+         && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run; then
+        local -a _salvage_targets=()
+        mapfile -t _salvage_targets < <(grep -iE \
+          '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \
+          "${dockerfile}" 2>/dev/null | awk '{print $NF}')
+        if [ "${#_salvage_targets[@]}" -gt 0 ]; then
+          warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
+          local _tgt _salvage_fails=0 _salvage_ok=0
+          for _tgt in "${_salvage_targets[@]}"; do
+            [ "${_salvage_fails}" -ge 2 ] && break
+            if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
+                 "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
+                 --target "${_tgt}" -f "${dockerfile}" \
+                 --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
+                 --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
+                 "${extra[@]}" "${common_args[@]}" . >/dev/null 2>&1; then
+              _salvage_ok=$((_salvage_ok + 1)); _salvage_fails=0
+            else
+              _salvage_fails=$((_salvage_fails + 1))
+            fi
+          done
+          warn "salvage-cache-export: ${_salvage_ok}/${#_salvage_targets[@]} named stages exported to the local cache for ${tag}"
+        fi
+      fi
+      return "${_rc}"
+    fi
     _delay="$(( _attempt * ${PUSH_RETRY_BASE_SECS:-15} ))"
     warn "Push attempt ${_attempt}/${_max_attempts} for ${tag} hit a transient registry/network error; retrying in ${_delay}s (built layers are cached, only the push repeats)"
     sleep "${_delay}"
@@ -560,6 +603,22 @@ cross_stage_assemble_runtime_helper_args() {
     --artifact-image-prefix "${IMAGE_REPO}:cross-android"
     --artifact-build-mode cross
   )
+  # XC2: thread the captured, immutable android digests into the runtime helper
+  # so the package build copies from — and the wrapper/package pushes record —
+  # the exact android generation this run produced, instead of whatever the
+  # mutable :cross-android-<arch> tag currently resolves to. Exported (not passed
+  # as flags) so the child inherits them via the `env` exec in run_runtime_stage.
+  # Guarded: a standalone helper run without ANDROID_PIN in scope simply falls
+  # back to the mutable tag (unchanged behavior).
+  if declare -p ANDROID_PIN &>/dev/null; then
+    local -n _arha_android_pin=ANDROID_PIN
+    local _arha_arch _arha_var
+    for _arha_arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      [ -n "${_arha_android_pin[$_arha_arch]:-}" ] || continue
+      _arha_var="$(runtime_android_pin_varname "${_arha_arch}")"
+      export "${_arha_var}=${_arha_android_pin[$_arha_arch]}"
+    done
+  fi
   # Publish final images + manifest unless CROSS_NO_PUSH (validation runs stay
   # local to skip the slow multi-GB ghcr uploads; the chain still works via the
   # local image store). See build-cross-chain.sh --no-push.

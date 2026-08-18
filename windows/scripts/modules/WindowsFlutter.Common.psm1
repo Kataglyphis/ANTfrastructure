@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -8,7 +9,6 @@
 # once in 5be9b1e and restored (2026-07-15) -- grep known consumers before any
 # future sweep of windows/scripts/modules/.
 
-#requires -Version 7.0
 
 # WindowsFlutter.Common.psm1
 # Reusable functions for building and patching Flutter Windows applications in a containerized environment.

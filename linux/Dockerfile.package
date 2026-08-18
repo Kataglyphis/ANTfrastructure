@@ -8,13 +8,17 @@
 # TARGET_ARCH is always set by the orchestrator; TARGETARCH is Docker's native
 # build arg and used as a fallback.
 
-ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:base
+# BuildKit populates TARGETARCH in the global scope, so a plain `docker build`
+# defaults to the CURRENT platform's runtime base image instead of silently
+# building on the amd64-only cross :base tag (the orchestrator always overrides
+# BASE_IMAGE anyway). Same shape as Dockerfile.torch's BASE_IMAGE default.
+ARG TARGETARCH
+ARG BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-base-${TARGETARCH}
 # TARGET_ARCH must be declared BEFORE ARTIFACT_IMAGE so a --build-arg TARGET_ARCH
 # influences the ARTIFACT_IMAGE default (ARG expansion only sees prior ARGs).
 ARG TARGET_ARCH
 ARG ARTIFACT_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android-${TARGET_ARCH:-amd64}
 ARG BUILD_MODE=native
-ARG TARGETARCH
 ARG TARGETPLATFORM
 ARG ARTIFACT_PLATFORM=${TARGETPLATFORM}
 ARG PACKAGE_BASE_STAGE=package-image
@@ -72,6 +76,13 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
+# AP3 REVERTED 2026-08-17: /opt/wheels MUST be COPY'd into the package image —
+# Dockerfile.torch (FROM this package image) is where setup-torch-venv.sh actually
+# reads it (`uv pip install --find-links /opt/wheels`), and it has NO artifact-source
+# stage to bind-mount from. The bind-mount-into-the-package-RUN attempt was
+# ephemeral, so the torch stage lost /opt/wheels → build broke. A correct AP3 needs
+# the wheelhouse reachable in Dockerfile.torch's RUN (e.g. a from=artifact-source
+# mount wired THERE), not here — re-filed in the backlog.
 COPY --link --from=artifact-source /opt/wheels /opt/wheels
 COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
@@ -121,8 +132,18 @@ RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     # scraping strings. Copy the artifact's matching runtime libs next to the
     # driver and give llvm-target/lib loader priority. No-op on arm64/riscv64
     # (source-built with \$ORIGIN RPATH and their own complete lib/).
-    for _lib in /artifact-src/usr/lib/*-linux-gnu/libLLVM.so.2* \
-                /artifact-src/usr/lib/*-linux-gnu/libclang-cpp.so.2*; do \
+    # UPDATE 2026-08-12 (backlog BS3b): the ROOT fix now lives in
+    # Dockerfile.sdk — its amd64 /opt/llvm-target branch copies the multiarch
+    # runtime sonames into the prefix and hard-gates via a NEEDED walk, so new
+    # sdk artifacts arrive self-contained and this block should find every
+    # soname already present ([ ! -e ] short-circuits). KEEP it anyway: it is
+    # belt-and-braces for pre-fix sdk artifacts (resumed/pinned chains) and
+    # still performs the arm64/riscv64 dangling-symlink repair described
+    # above. Candidate for removal only after a full rebuild shows this loop
+    # copying nothing on all three arches (see docs/refactoring-backlog.md).
+    for _lib in /artifact-src/usr/lib/*-linux-gnu/libLLVM*.so.2* \
+                /artifact-src/usr/lib/*-linux-gnu/libclang-cpp*.so.2* \
+                /artifact-src/usr/lib/*-linux-gnu/libclang*.so.2*; do \
         [ -e "${_lib}" ] || continue; \
         _soname="$(basename "${_lib}")"; \
         # -e is FALSE for a dangling symlink (the apt.llvm.org tree ships
@@ -177,6 +198,10 @@ ENV BUILD_MODE=${BUILD_MODE} \
     OPENCV_PYTHON_VERSION=${PYTHON_MAJOR_MINOR} \
     VIRTUAL_ENV=/opt/python/.venv \
     UV_PYTHON=/opt/python/.venv/bin/python \
+    # LOG4: uv's cache mount and install targets sit on different overlayfs
+    # views, so hardlinking always failed ("falling back to full copy", ×32 per
+    # build). Same cost either way — set copy explicitly to silence the warn.
+    UV_LINK_MODE=copy \
     MEDIA_HOST_PYTHON=/opt/python/.venv/bin/python \
     CARGO_HOME=/usr/local/cargo \
     RUSTUP_HOME=/usr/local/rustup \
@@ -191,7 +216,10 @@ ENV BUILD_MODE=${BUILD_MODE} \
     CCACHE_DIR=/workspace/.ccache \
     # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
     # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
-    PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    # RP6: /root/.local/bin dropped — final image is uid-1001 (kataglyphis),
+    # /root is 0700 so the entry was dead + a PATH-hijack precondition. Kept in
+    # Dockerfile.base (root-run base builds legitimately install there).
+    PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
     LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
@@ -215,9 +243,18 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # POSIX sh, not bash: /etc/profile.d entries are sourced by whatever /bin/sh is.
 # The case guard keeps it idempotent - nested login shells would otherwise stack
 # duplicate PATH entries onto every image layered on top of this one.
+# `:=` not `=`: a plain assignment CLOBBERS what the caller passed. CI steps run
+# `docker run -e CARGO_HOME=/tmp/cargo-home ... bash -lc '<script>'` precisely
+# because /usr/local/cargo is root-owned and the container is uid 1001 - and
+# this file, sourced by the login shell, then overwrote that with the
+# unwritable path again. Every inline `cargo` in a login shell died with
+#   error: failed to create directory `/usr/local/cargo/registry/cache/...`
+#   Caused by: Permission denied (os error 13)
+# while the same lane's script-driven cargo steps survived, because those call
+# ContainerHub's own cargo-home guard. Default the values, do not impose them.
 RUN printf '%s\n' \
-      'export RUSTUP_HOME=/usr/local/rustup' \
-      'export CARGO_HOME=/usr/local/cargo' \
+      ': "${RUSTUP_HOME:=/usr/local/rustup}"; export RUSTUP_HOME' \
+      ': "${CARGO_HOME:=/usr/local/cargo}"; export CARGO_HOME' \
       'case ":${PATH}:" in' \
       '  *":/usr/local/cargo/bin:"*) ;;' \
       '  *) export PATH="/usr/local/cargo/bin:${PATH}" ;;' \

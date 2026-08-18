@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -34,7 +35,6 @@
 #   pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath E:\disks\ci.vhdx `
 #        -Service buildkitd, containerd, stevedore -VerifyPath E:\src\Kataglyphis-ContainerHub
 
-#requires -Version 7.0
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     # The dynamically-expanding VHDX to compact. Machine-specific, no default.

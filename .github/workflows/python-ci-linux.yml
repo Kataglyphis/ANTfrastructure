@@ -105,16 +105,20 @@ jobs:
       # One arch failing should not hide the other's result.
       fail-fast: false
       matrix:
-        # The image is per-leg on purpose. This lane used to pull a single
-        # multi-arch `:latest` for both, which stopped working when that tag's
-        # per-platform children were deleted by the ghcr-cleanup bug (fixed in
-        # b70d3f4) - `docker pull` then reports only "manifest unknown".
+        # Both legs pull the SAME tag. `:latest-cross` is a multi-arch index
+        # (linux/amd64, linux/arm64, linux/riscv64, all children present as of
+        # 2026-08-12), so docker resolves the right platform per runner and the
+        # tag does not have to be spelled per architecture.
         #
-        # `:latest-cross` is the Linux image these lanes should use, but it is
-        # amd64-ONLY - a single manifest, not an index. Pointing the arm64 leg at
-        # it would reproduce the same class of failure for a different reason, so
-        # arm64 uses the arch-suffixed `:latest-cross-arm64`. Both were verified
-        # healthy against the registry on 2026-08-11.
+        # It briefly did: while the index listed amd64 only, the arm64 leg had to
+        # name `:latest-cross-arm64` explicitly. That is no longer true, and the
+        # arch-suffixed tags are now an implementation detail of the image build
+        # rather than something a consumer should reference.
+        #
+        # Do NOT fall back to plain `:latest`. Its per-platform children were
+        # deleted by the ghcr-cleanup bug (fixed in b70d3f4) and are still gone -
+        # the index resolves, every child 404s, and `docker pull` reports only
+        # "manifest unknown".
         include:
           - runs_on: ubuntu-24.04
             arch: x64
@@ -123,9 +127,10 @@ jobs:
           - runs_on: ubuntu-24.04-arm
             arch: arm64
             platform: linux/arm64
-            image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64
+            image: ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
     runs-on: ${{ matrix.runs_on }}
+    timeout-minutes: 60
 
     steps:
       # ContainerHub's shared prologue: reclaim runner disk, check out, log in

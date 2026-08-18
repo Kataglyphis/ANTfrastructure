@@ -239,12 +239,49 @@ slang_compile_newest_source_stamp() {
 
 # Caches the subdirectories under the source tree in SLANG_COMPILE_SUBDIRS,
 # reused for every -I expansion.
+#
+# ORDER IS LOAD-BEARING and was previously whatever `find` happened to emit -
+# i.e. filesystem order, which differs between a developer's ext4 checkout and
+# the CI runner's overlayfs. `import <name>` resolves to the FIRST <name>.slang
+# on the -I list, so any two modules sharing a basename resolved differently on
+# different machines. BeschleunigerBallett has exactly that: common/noise.slang
+# (simplex noise + fbm) and compute/noise.slang (a noise-volume kernel). On CI
+# the compute/ one won and tests/noise_test.slang, which wants the common/ one,
+# failed to build every clang lane with
+#   error[E30015]: undefined identifier 'snoise'
+# while the same tree built fine locally.
+#
+# Two rules, both deliberate:
+#   1. sort, so the answer is reproducible anywhere;
+#   2. hoist a top-level common/ ahead of the rest, because "shared module
+#      lives in common/" is already this driver's assumption (see the comment
+#      on the -I expansion below) and is the documented contract on the
+#      consumer side too - BeschleunigerBallett's buildIntegritySuite.cpp
+#      resolves imports with an explicit "then a common/ preference".
+#      Alphabetical order happens to give the same answer for common/ vs
+#      compute/, which is precisely why this must not be left to luck.
+#
+# The generated output tree is excluded: it holds no .slang sources, and
+# feeding a build directory back in as an include path can only add
+# ambiguity.
 _slang_compile_collect_subdirs() {
-  SLANG_COMPILE_SUBDIRS=()
-  local dir
+  local -a common_dirs=() other_dirs=()
+  local dir rel
   while IFS= read -r -d '' dir; do
-    SLANG_COMPILE_SUBDIRS+=("$dir")
-  done < <(find "${SLANG_COMPILE_SOURCE_ROOT}" -mindepth 1 -type d -print0)
+    rel="${dir#"${SLANG_COMPILE_SOURCE_ROOT}/"}"
+    case "${rel}" in
+      build|build/*) continue ;;
+    esac
+    if [ "${rel}" = "common" ]; then
+      common_dirs+=("${dir}")
+    else
+      other_dirs+=("${dir}")
+    fi
+  done < <(find "${SLANG_COMPILE_SOURCE_ROOT}" -mindepth 1 -type d -print0 | LC_ALL=C sort -z)
+  SLANG_COMPILE_SUBDIRS=(
+    ${common_dirs[@]+"${common_dirs[@]}"}
+    ${other_dirs[@]+"${other_dirs[@]}"}
+  )
 }
 
 # slangc resolves `import <name>` to <name>.slang on the -I paths. Add the

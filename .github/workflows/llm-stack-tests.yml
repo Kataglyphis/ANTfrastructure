@@ -7,10 +7,14 @@
 # inference"`. The 3 inference-marked tests stay local-only (need a loaded
 # model with meaningful output).
 #
-# ADVISORY RAMP (the windows-scripts PSSA precedent): continue-on-error until
-# the first green run on a real runner proves the service/model bootstrap —
-# then flip continue-on-error to false to make it a gate (tracked in
-# docs/refactoring-backlog.md Batch 6).
+# ADVISORY RAMP — NOW A GATE (backlog Batch 6 C4 residual, flipped 2026-08-13):
+# the ramp condition ("first green run on a real runner proves the service/model
+# bootstrap") is met. Run 31435175821 on main (push, ubuntu-latest, real ollama
+# service) had the "Run non-inference contract tests" STEP conclude success —
+# step-level, so it was not masked by continue-on-error. continue-on-error is
+# now false; a red test step fails the job. If the service/model bootstrap
+# proves flaky on the shared runner, re-add `continue-on-error: true` to the job
+# and re-open this residual rather than deleting the suite.
 name: llm-stack tests
 
 on:
@@ -29,11 +33,15 @@ permissions:
 jobs:
   v1-api-contract:
     runs-on: ubuntu-latest
-    continue-on-error: true   # advisory ramp — flip after first green run
+    continue-on-error: false  # gate — flipped 2026-08-13 after run 31435175821 (see header)
     timeout-minutes: 20
     services:
       ollama:
-        image: ollama/ollama:latest
+        # CI2 (2026-08-17): digest-pinned — a mutable :latest service made the
+        # test non-hermetic (could drift/flake with upstream releases). Bump by
+        # re-resolving the digest deliberately, not implicitly on every run.
+        # latest @ pin time = resolved via registry HEAD.
+        image: ollama/ollama@sha256:9d30908e41144b1f1da89b9d8e33c07e4aeb43ff41a8660241b1686e2cc330ad
         ports:
           - 11434:11434
     steps:

@@ -840,6 +840,16 @@ main() {
     build_litert
     build_tflite_c_api
     install_litert
+    # AP4: strip ONLY litert's own libs (it installs into the shared
+    # ${LITERT_PREFIX}/lib = /usr/local/lib, next to the base CPython libs, so a
+    # whole-prefix strip would wrongly hit libpython etc.). strip_media_libs
+    # self-derives the cross <triplet>-strip (this script does not export STRIP);
+    # --strip-all keeps .dynsym. Best-effort, MEDIA_STRIP=0 disables. Runs BEFORE
+    # verify_installation so the verify exercises the stripped libs.
+    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    declare -F strip_media_libs >/dev/null 2>&1 \
+        && strip_media_libs "${LITERT_PREFIX}/lib" \
+            'libtensorflow-lite*.so*' 'libtensorflowlite_c*.so*' 'libtflite*.so*' || true
     verify_installation
     cleanup
     info LiteRT build complete

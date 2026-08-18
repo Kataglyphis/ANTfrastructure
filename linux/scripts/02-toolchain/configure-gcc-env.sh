@@ -3,21 +3,47 @@ set -euo pipefail
 # configure-gcc-env.sh - Environment configuration for GCC installation.
 # Called from build-gcc.sh after GCC is installed.
 
+# Prepend var_value to a ':'-separated var in an /etc/environment-style file,
+# de-duplicating it, and leave exactly ONE line for var_name.
+#
+# TS7 fix: the old body had two corruption bugs on this system file.
+#   1. It stripped the existing value with `sed "s|${var_value}:||g"`, an
+#      UNANCHORED SUBSTRING edit. Prefix-nesting mangled siblings: removing
+#      '/opt/gcc' from '/opt/gcc-16/bin:/usr/bin' left '-16/bin:/usr/bin', and
+#      an unescaped var_value with a sed metacharacter matched wrong. We now
+#      split on ':' and drop only EXACT-equal elements.
+#   2. It deleted the old line with `sed -i "/d" ... 2>/dev/null || true` then
+#      appended — so a MASKED delete failure left DUPLICATE var_name lines. We
+#      now filter every prior var_name line out and write exactly one back,
+#      atomically via a temp file (no delete-then-append gap).
 _append_env_var() {
   local var_name="$1" var_value="$2" env_file="$3"
 
   [ -f "${env_file}" ] || return 0
 
   local existing
-  existing=$(grep -E "^${var_name}=" "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '"' || echo "")
-  existing=$(echo "$existing" | sed -e "s|${var_value}:||g" -e "s|:${var_value}||g")
-  if [ -n "$existing" ]; then
-    existing="${var_value}:${existing}"
-  else
-    existing="${var_value}"
-  fi
-  ${SUDO:-} sed -i "/^${var_name}=/d" "${env_file}" 2>/dev/null || true
-  echo "${var_name}=\"${existing}\"" | ${SUDO:-} tee -a "${env_file}" >/dev/null
+  existing=$(grep -E "^${var_name}=" "${env_file}" 2>/dev/null | head -1 | cut -d= -f2- | tr -d '"' || true)
+
+  # Rebuild the ':'-list by EXACT-element filtering (never substring), dropping
+  # any prior occurrence of var_value, then prepend it exactly once.
+  local -a parts=()
+  IFS=':' read -ra parts <<< "${existing}"
+  local rebuilt="" part
+  for part in "${parts[@]}"; do
+    [ -n "${part}" ] || continue
+    [ "${part}" = "${var_value}" ] && continue
+    rebuilt="${rebuilt:+${rebuilt}:}${part}"
+  done
+  rebuilt="${var_value}${rebuilt:+:${rebuilt}}"
+
+  # Remove EVERY prior var_name line by exact-key filtering, append exactly one
+  # fresh line, replace the file's content in place (keeps perms/owner via cp).
+  local tmp
+  tmp=$(mktemp)
+  grep -vE "^${var_name}=" "${env_file}" 2>/dev/null > "${tmp}" || true
+  printf '%s="%s"\n' "${var_name}" "${rebuilt}" >> "${tmp}"
+  ${SUDO:-} cp "${tmp}" "${env_file}"
+  rm -f "${tmp}"
 }
 
 # 6) Add library path to loader and run ldconfig

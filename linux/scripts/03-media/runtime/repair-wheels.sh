@@ -7,31 +7,77 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
+# retag_directory_wheels (and arch_linux_platform_tag_for) live in 01-core
+# common.sh — bind-mounted at /opt/scripts/core in the media runtime stage,
+# with the repo-relative fallback for host-side runs.
+_SCRIPT_DIR_EARLY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for _common in \
+  "/opt/scripts/core/common.sh" \
+  "${_SCRIPT_DIR_EARLY}/../../01-core/common.sh"; do
+  if [ -f "${_common}" ]; then
+    # shellcheck disable=SC1090,SC1091
+    source "${_common}"
+    break
+  fi
+done
+unset _common
+
 # WHEELS_DIR comes from the canonical media-env.sh (sibling of this script).
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/media-env.sh"
 
+# AP1: cross wheels ship UNSTRIPPED — `cmake --install --strip` runs the HOST
+# strip, a no-op on foreign-arch ELFs (~50-300 MB/arch of dead symbols). Strip
+# the .so inside each cross wheel with the target <triplet>-strip. Python wheels
+# are zips with a RECORD manifest (path,sha256,size), so we unpack → strip →
+# `wheel pack` (which RECOMPUTES RECORD) — never an in-place edit that would
+# desync RECORD. Corruption-safe: the original is removed only AFTER a successful
+# repack to a temp dir. Best-effort per wheel; MEDIA_STRIP=0 disables. Pure-python
+# (*-none-any) wheels have no .so and are skipped.
+strip_cross_wheels() {
+  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0
+  command -v uv >/dev/null 2>&1 || return 0
+  declare -F _resolve_media_strip_bin >/dev/null 2>&1 || return 0
+  local strip_bin; strip_bin="$(_resolve_media_strip_bin 2>/dev/null || printf 'strip')"
+  local whl tmp unpacked packed
+  for whl in "${WHEELS_DIR}"/*.whl; do
+    [ -f "${whl}" ] || continue
+    case "${whl}" in *-none-any.whl) continue ;; esac
+    tmp="$(mktemp -d)"
+    if uv run python -m wheel unpack "${whl}" -d "${tmp}/u" >/dev/null 2>&1 \
+       && find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) -print -quit 2>/dev/null | grep -q .; then
+      find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) \
+        -exec "${strip_bin}" --strip-all {} + 2>/dev/null || true
+      unpacked="$(find "${tmp}/u" -mindepth 1 -maxdepth 1 -type d | head -1)"
+      mkdir -p "${tmp}/p"   # `wheel pack -d` does NOT create its dest dir
+      if [ -n "${unpacked}" ] && uv run python -m wheel pack "${unpacked}" -d "${tmp}/p" >/dev/null 2>&1; then
+        packed="$(find "${tmp}/p" -maxdepth 1 -name '*.whl' | head -1)"
+        if [ -n "${packed}" ]; then
+          rm -f "${whl}"
+          mv -f "${packed}" "${WHEELS_DIR}/$(basename "${packed}")"
+          echo "  AP1: stripped + repacked $(basename "${packed}")"
+        fi
+      fi
+    fi
+    rm -rf "${tmp}"
+  done
+}
+
 if cross_build_is_active; then
+  # AP1: strip cross wheels BEFORE retagging (retag then normalizes the tag on
+  # the repacked wheels).
+  strip_cross_wheels
   target_arch="$(cross_target_arch 2>/dev/null || true)"
   [ -n "${target_arch}" ] || target_arch="${TARGET_ARCH:-}"
-  if [ -n "${target_arch}" ] && command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
+  if [ -n "${target_arch}" ] && command -v arch_linux_platform_tag_for >/dev/null 2>&1 \
+      && command -v retag_directory_wheels >/dev/null 2>&1; then
     platform_tag="$(arch_linux_platform_tag_for "${target_arch}")"
     if [ -n "${platform_tag}" ]; then
       echo "Retagging cross-built wheels for platform: ${platform_tag}"
-      shopt -s nullglob
-      for wheel in "${WHEELS_DIR}"/*.whl; do
-        wheel_name="$(basename "${wheel}")"
-        case "${wheel_name}" in
-          *-none-any.whl|*"${platform_tag}"*.whl)
-            continue
-            ;;
-        esac
-        uv run python -m wheel tags --remove --platform-tag "${platform_tag}" "${wheel}" && \
-          echo "Retagged: ${wheel_name}" || \
-          echo "Warning: Failed to retag: ${wheel_name}"
-      done
-      shopt -u nullglob
+      # Canonical helper (01-core/common.sh); skips *-none-any.whl and
+      # already-tagged wheels, exactly like the hand-rolled loop it replaced.
+      retag_directory_wheels "${WHEELS_DIR}" "*" "${platform_tag}" uv run python
     fi
   fi
   echo "Cross-build wheel retagging complete"

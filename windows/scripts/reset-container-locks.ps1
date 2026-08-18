@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -11,7 +12,6 @@
 #
 #   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\reset-container-locks.ps1'
 
-#requires -Version 7.0
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
@@ -41,6 +41,9 @@ Get-Service containerd, buildkitd | Select-Object Name, Status | Format-Table -A
 
 Write-Host ''
 Write-Host '== Step 3: buildctl reaches the worker? ==' -ForegroundColor Cyan
+# Inline ON PURPOSE (#101 reviewed 2026-08-17): this is an elevated REPAIR tool
+# for a wedged container stack — a module import is one more thing that can be
+# broken exactly when this script is needed. Same rationale as probe-build-copy.
 $bt = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'C:\Program Files\Stevedore\bin\buildctl.exe', 'D:\Stevedore\bin\buildctl.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($bt) {
     & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host

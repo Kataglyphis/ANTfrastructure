@@ -53,4 +53,36 @@ parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu \
 t_assert_eq "2" "${_rc}" "two-arg flag must return 2"
 t_assert_eq "arm64,riscv64" "${_ta}"
 
+# ---------------------------------------------------------------------------
+# O5: per-script flag allowlist. A shared flag listed in
+# ORCHESTRATOR_UNSUPPORTED_FLAGS warns (and reports it warned via rc 0); a
+# supported flag stays silent (rc 1). The warning must name the flag and say it
+# has no effect, so a user passing an inert --push/--parallel-archs is told.
+warn() { printf '[WARN] %s\n' "$*" >&2; }   # stub for orchestrator_warn_if_unsupported
+
+t_case "O5: an inert shared flag warns and returns 0"
+ORCHESTRATOR_UNSUPPORTED_FLAGS="--push"
+t_assert_ok orchestrator_warn_if_unsupported --push build-cross-chain.sh
+_w="$(orchestrator_warn_if_unsupported --push build-cross-chain.sh 2>&1)"
+t_assert_contains "${_w}" "--push" "warning must name the flag"
+t_assert_contains "${_w}" "no effect" "warning must explain the flag is inert"
+t_assert_contains "${_w}" "build-cross-chain.sh" "warning must name the script"
+
+t_case "O5: a supported shared flag stays silent and returns non-zero"
+ORCHESTRATOR_UNSUPPORTED_FLAGS="--push"
+t_assert_fails orchestrator_warn_if_unsupported --target-arches build-cross-chain.sh
+t_assert_eq "" "$(orchestrator_warn_if_unsupported --target-arches x 2>&1)" \
+  "a supported flag must not warn"
+
+t_case "O5: multiple inert flags (build-cross-stage) are each caught"
+ORCHESTRATOR_UNSUPPORTED_FLAGS="--parallel-archs --max-parallel-archs"
+t_assert_ok orchestrator_warn_if_unsupported --parallel-archs build-cross-stage.sh
+t_assert_ok orchestrator_warn_if_unsupported --max-parallel-archs build-cross-stage.sh
+t_assert_fails orchestrator_warn_if_unsupported --push build-cross-stage.sh
+
+t_case "O5: empty allowlist warns for nothing"
+ORCHESTRATOR_UNSUPPORTED_FLAGS=""
+t_assert_fails orchestrator_warn_if_unsupported --push x
+unset ORCHESTRATOR_UNSUPPORTED_FLAGS
+
 t_summary

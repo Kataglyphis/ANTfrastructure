@@ -83,17 +83,22 @@ the failure.
 
 ## Which Linux image
 
-Use the `latest-cross` family, and mind the architecture:
+**`:latest-cross`, on every architecture.** It is a multi-arch index —
+`linux/amd64`, `linux/arm64` and `linux/riscv64`, all children present as of
+2026-08-12 — so docker resolves the right platform per runner and the tag does
+not have to be spelled per lane.
 
-| Lane | Image |
-|---|---|
-| x86-64 | `:latest-cross` |
-| arm64 | `:latest-cross-arm64` |
+The arch-suffixed tags (`:latest-cross-amd64`, `-arm64`, `-riscv64`) exist, but
+treat them as an implementation detail of the image build. A consumer that names
+one is pinning itself to a single architecture.
 
-`:latest-cross` is **amd64-only** — a single manifest, not an index — so it
-cannot serve an arm64 leg. The reusable Linux workflow picks per matrix leg;
-a workflow that takes the architecture as an input derives the tag from it.
+> Between 2026-08-04 and 2026-08-12 the index listed **amd64 only**, and lanes
+> had to name `:latest-cross-arm64` explicitly or `docker pull` on an arm runner
+> died with "no matching manifest for linux/arm64/v8 in the manifest list
+> entries". If you find such a workaround still in place, it is stale — remove
+> it rather than copying it.
 
 Do not use the plain `:latest`. Its per-platform children were deleted by a
-`ghcr-cleanup` bug (fixed 2026-08-11), so it resolves as an index whose children
-404 and `docker pull` reports only `manifest unknown`.
+`ghcr-cleanup` bug (fixed 2026-08-11 in b70d3f4) and are **still missing**, so
+the index resolves, every child 404s, and `docker pull` reports only
+`manifest unknown`.

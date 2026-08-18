@@ -6,12 +6,13 @@
 # compile_charsmap): litert-lm only needs the sentencepiece-static library, and those
 # standalone executables fail to link abseil-flags/protobuf under clang++/lld-link. Wrap
 # the exe region and its install-append each in if(FALSE); the library + its install stay.
+include("${CMAKE_CURRENT_LIST_DIR}/patch-assert.cmake")
 file(READ "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" _sp_src)
-string(REPLACE "-O0 -Wall -fPIC -coverage" "-O0 -Wall -coverage" _sp_src "${_sp_src}")
-string(REPLACE "-O3 -Wall -fPIC" "-O3 -Wall" _sp_src "${_sp_src}")
-string(REPLACE "add_executable(spm_encode spm_encode_main.cc)" "if(FALSE) # LiteRTLM-winfix: skip unused spm CLI tools (abseil-flags/protobuf link failure)\nadd_executable(spm_encode spm_encode_main.cc)" _sp_src "${_sp_src}")
-string(REPLACE "list(APPEND SPM_INSTALLTARGETS" "endif() # LiteRTLM-winfix: end skip spm CLI tools\nif(FALSE) # LiteRTLM-winfix: exclude spm tools from install\nlist(APPEND SPM_INSTALLTARGETS" _sp_src "${_sp_src}")
-string(REPLACE "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)" "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)\nendif() # LiteRTLM-winfix" _sp_src "${_sp_src}")
+patch_replace_required(_sp_src "-O0 -Wall -fPIC -coverage" "-O0 -Wall -coverage" "sentencepiece: strip -fPIC from the debug flags")
+patch_replace_required(_sp_src "-O3 -Wall -fPIC" "-O3 -Wall" "sentencepiece: strip -fPIC from the release flags")
+patch_replace_required(_sp_src "add_executable(spm_encode spm_encode_main.cc)" "if(FALSE) # LiteRTLM-winfix: skip unused spm CLI tools (abseil-flags/protobuf link failure)\nadd_executable(spm_encode spm_encode_main.cc)" "sentencepiece: open if(FALSE) around the spm CLI tools")
+patch_replace_required(_sp_src "list(APPEND SPM_INSTALLTARGETS" "endif() # LiteRTLM-winfix: end skip spm CLI tools\nif(FALSE) # LiteRTLM-winfix: exclude spm tools from install\nlist(APPEND SPM_INSTALLTARGETS" "sentencepiece: close the tools block and open the install-exclude block")
+patch_replace_required(_sp_src "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)" "  spm_encode spm_decode spm_normalize spm_train spm_export_vocab)\nendif() # LiteRTLM-winfix" "sentencepiece: close the install-exclude block")
 file(WRITE "${SENTENCE_SRC_DIR}/src/CMakeLists.txt" "${_sp_src}")
 message(STATUS "[LiteRTLM] Patched sentencepiece src/CMakeLists.txt: stripped -fPIC + skipped spm CLI tools")
 
@@ -25,6 +26,6 @@ message(STATUS "[LiteRTLM] Patched sentencepiece src/CMakeLists.txt: stripped -f
 # eol-agnostic) so abseil's definition stands alone; litert_lm_main still links absl_log_flags
 # so the symbol resolves. This is THE fix for the litert_lm_main.exe startup ODR abort.
 file(READ "${SENTENCE_SRC_DIR}/src/error.cc" _sp_err)
-string(REGEX REPLACE "ABSL_FLAG\\(int32, minloglevel, 0,[^;]*;" "/* [LiteRTLM-winfix] dropped duplicate ABSL_FLAG(minloglevel); abseil absl_log_flags provides it (ODR fix) */" _sp_err "${_sp_err}")
+patch_regex_replace_required(_sp_err "ABSL_FLAG\\(int32, minloglevel, 0,[^;]*;" "/* [LiteRTLM-winfix] dropped duplicate ABSL_FLAG(minloglevel); abseil absl_log_flags provides it (ODR fix) */" "sentencepiece error.cc: drop the duplicate ABSL_FLAG(minloglevel) -- THE fix for the litert_lm_main.exe startup ODR abort")
 file(WRITE "${SENTENCE_SRC_DIR}/src/error.cc" "${_sp_err}")
 message(STATUS "[LiteRTLM] Patched sentencepiece error.cc: dropped duplicate ABSL_FLAG(minloglevel) -> fixes abseil flag ODR abort")

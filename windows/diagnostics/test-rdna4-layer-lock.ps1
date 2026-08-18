@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,7 +26,6 @@
 # (red in both states - host broken beyond the GPU interaction; check
 # probe-build-copy.ps1 -Heavy history and AGENTS.md Common Failure Modes).
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     # Exact device name override; empty = resolve every RDNA4 hazard SKU via

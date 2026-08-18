@@ -263,10 +263,46 @@ if ([string]::IsNullOrWhiteSpace($sccacheRev)) {
     throw 'SCCACHE_GIT_REV is not set (versions.env not loaded?) — refusing to build an unpinned sccache.'
 }
 Write-Host "Building sccache from source at $sccacheRev (CUDA 13.3 nvcc fix, mozilla/sccache#2722)..."
-Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache' `
-    -FilePath (Join-Path $cargoBin 'cargo.exe') `
-    -ArgumentList @('install', 'sccache', '--locked', '--git', 'https://github.com/mozilla/sccache', '--rev', $sccacheRev) `
-    -TimeoutSec 3600
+# Local patches (#114): C:\temp\scripts\sccache-patches\*.patch are applied on
+# top of the pin before the build - currently the nvcc quote-protection fix
+# (mozilla/sccache#2811; without it the decomposition drops #ifdef-guarded
+# instantiations = silent CUDA miscompile). No patches present = stock
+# `cargo install --git` path, so the machinery auto-retires the day the PR
+# merges into a bumped SCCACHE_GIT_REV and the .patch files are deleted.
+$sccachePatches = @(Get-ChildItem 'C:\temp\scripts\sccache-patches\*.patch' -ErrorAction SilentlyContinue | Sort-Object Name)
+if ($sccachePatches.Count -eq 0) {
+    Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache' `
+        -FilePath (Join-Path $cargoBin 'cargo.exe') `
+        -ArgumentList @('install', 'sccache', '--locked', '--git', 'https://github.com/mozilla/sccache', '--rev', $sccacheRev) `
+        -TimeoutSec 3600
+} else {
+    Write-Host "Applying $($sccachePatches.Count) local sccache patch(es) on top of $sccacheRev (#114):"
+    $sccacheSrc = 'C:\temp\sccache-src'
+    & git init -q $sccacheSrc
+    Push-Location $sccacheSrc
+    try {
+        & git remote add origin https://github.com/mozilla/sccache
+        & git fetch -q --depth 1 origin $sccacheRev
+        if ($LASTEXITCODE -ne 0) { throw "sccache fetch failed ($LASTEXITCODE)" }
+        & git checkout -q FETCH_HEAD
+        foreach ($p in $sccachePatches) {
+            & git apply --check $p.FullName
+            if ($LASTEXITCODE -ne 0) {
+                throw ("sccache patch $($p.Name) does not apply on $sccacheRev. Either the pin moved (rebase the " +
+                    'patch in windows/upstream/sccache-nvcc-quote-fix) or the fix merged upstream (then bump ' +
+                    'SCCACHE_GIT_REV past the merge and DELETE the .patch - the stock path takes over). ' +
+                    'Refusing a silent fallback: an unpatched sccache reintroduces the CUDA miscompile.')
+            }
+            & git apply $p.FullName
+            Write-Host "  applied: $($p.Name)"
+        }
+    } finally { Pop-Location }
+    Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache (patched source)' `
+        -FilePath (Join-Path $cargoBin 'cargo.exe') `
+        -ArgumentList @('install', 'sccache', '--locked', '--path', $sccacheSrc) `
+        -TimeoutSec 3600
+    Remove-Item $sccacheSrc -Recurse -Force -ErrorAction SilentlyContinue
+}
 Invoke-NativeRustStep -Description 'sccache --version (cargo build)' -Command {
     & (Join-Path $cargoBin 'sccache.exe') --version
 }

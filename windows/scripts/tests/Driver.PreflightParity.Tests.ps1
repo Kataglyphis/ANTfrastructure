@@ -1,10 +1,10 @@
+#requires -Version 7.0
 # Backlog 0c: lane parity is now OWNED by this suite. The RDNA4 gate landed
 # in the BK driver a day before the classic lane got it via review - this
 # test makes that class of drift a red gate instead of a lucky catch. When a
 # new preflight is added to one driver, either add it to the other or extend
 # the lane-specific allowlist below WITH a reason.
 
-#requires -Version 7.0
 
 Describe 'driver preflight parity (build.ps1 vs build-buildkit.ps1)' {
 

@@ -25,13 +25,28 @@ source "${TESTS_DIR}/test-harness.sh"
 # be writing when grep -q exits early — no timing race, the outcome is
 # deterministic in both directions.
 
-t_case "pipefail + EARLY match: pipeline reports 141 (producer took SIGPIPE)"
-bash -c 'set -o pipefail; seq 300000 | grep -q "^1$"'; rc=$?
-t_assert_eq "141" "${rc}" \
-  "a FOUND symbol must reproduce the false-failure (grep quits, seq gets SIGPIPE)"
+# The producer's exit code depends on the SIGPIPE disposition it INHERITS,
+# which we do not control — GitHub's runner execs job steps with SIGPIPE set to
+# SIG_IGN, and an ignored SIGPIPE is inherited across fork+exec:
+#   SIGPIPE default  -> seq is killed by the signal            -> rc 141
+#   SIGPIPE ignored  -> write() returns EPIPE, seq diagnoses
+#                       "write error: Broken pipe" and exits   -> rc 1
+# Both are the SAME bug — under pipefail the pipeline reports failure on the
+# SUCCESS direction — so assert the property that actually matters (non-zero)
+# and report which disposition produced it. Pinning 141 made this suite pass
+# locally and fail on every GitHub runner.
+t_case "pipefail + EARLY match: pipeline reports failure (producer lost the pipe)"
+bash -c 'set -o pipefail; seq 300000 | grep -q "^1$"' 2>/dev/null; rc=$?
+case "${rc}" in
+  141) _early="reproduced" ; _early_kind="killed by SIGPIPE" ;;
+  1)   _early="reproduced" ; _early_kind="EPIPE write error (SIGPIPE ignored)" ;;
+  *)   _early="rc=${rc}"   ; _early_kind="NOT REPRODUCED" ;;
+esac
+t_assert_eq "reproduced" "${_early}" \
+  "a FOUND symbol must reproduce the false-failure (grep quits, producer loses the pipe) — ${_early_kind}"
 
 t_case "same early match WITHOUT pipefail: 0 — pipefail is the trigger"
-bash -c 'seq 300000 | grep -q "^1$"'; rc=$?
+bash -c 'seq 300000 | grep -q "^1$"' 2>/dev/null; rc=$?
 t_assert_eq "0" "${rc}" "without pipefail the pipeline takes grep's rc"
 
 t_case "pipefail + match at EOF: grep drains everything, pipeline is 0"

@@ -637,17 +637,41 @@ falls back to disabled. Current toggles:
 | Toggle | Effect | Notes |
 |---|---|---|
 | `FFMPEG_ENABLE_X265` | libx265 (HEVC) encoding in FFmpeg | Probe-gated; historically off because FFmpeg master could fail against bleeding-edge x265. |
+| `FFMPEG_ENABLE_TF` | FFmpeg **TensorFlow** DNN backend (amd64 only) | **Default OFF** (2026-08-14). When off, the TF C SDK is never downloaded and ~500 MB of `libtensorflow*` never enters the image; the ONNX DNN backend stays always-on regardless. Set `=1` to restore it. |
 | `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
 | `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | Dawn cross-build is the risky part; amd64-only unless set. |
 
-Not yet a toggle (planned, backlog S2): the FFmpeg **TensorFlow DNN backend**
-currently auto-enables whenever the TF C SDK downloads (amd64 only) and bundles
-~500 MB of `libtensorflow*` into the image; `FFMPEG_ENABLE_TF` (default off,
-mirroring x265) is queued for the next versions.env window.
-
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
-(see `docs/refactoring-backlog.md`, standing rules).
+(see `docs/refactoring-backlog.md`, standing rules). After a toggle flip, force
+a fresh runtime wrapper build with **`RUNTIME_NO_CACHE=1`** (scoped to the
+runtime package + wrapper; lighter than whole-chain `NO_CACHE=1`) so the shipped
+image actually reflects the new media. The shipped **bytes** are now checked
+automatically: `verify-shipped-wrapper.sh` runs in the per-arch manifest loop
+and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
+(so `FFMPEG_ENABLE_TF=0` ⇒ `libtensorflow*` must be absent). Set
+`WRAPPER_CONTENT_GATE=0` to downgrade that gate to advisory.
+
+> **Why the explicit `RUNTIME_NO_CACHE`:** the runtime wrapper once shipped
+> `:latest-cross` byte-identical five times because
+> `nerdctl build --output type=image,name=X` never creates a local containerd
+> tag on this rootless host, so push + manifest kept resolving a **stale** prior
+> tag (root cause **RTCACHE3**; the earlier "registry cache-hit" theory,
+> RTCACHE1, was a red herring). The fix switched `append_runtime_image_output`
+> to plain `-t`; the byte gate above is the belt-and-suspenders check. Always
+> verify shipped bytes, not just that the manifest pushed.
+
+### Operational env knobs (not versions.env)
+
+Runtime/orchestration switches that are **not** pins or feature toggles:
+
+| Knob | Effect |
+|---|---|
+| `NO_CACHE=1` | `--no-cache` across the whole chain. |
+| `RUNTIME_NO_CACHE=1` | `--no-cache` on just the runtime package + wrapper builds (use after a media toggle flip). |
+| `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
+| `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
+| `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 
 ### IREE (Linux lane)
 

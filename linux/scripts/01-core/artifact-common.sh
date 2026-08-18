@@ -65,6 +65,10 @@ resolve_arch_list() {
 #   runtime-build-fns.sh   — per-arch runtime build chain functions
 #   compiler-resolution.sh — host compiler resolution for media builds
 #   parallel-loop.sh       — per-architecture parallel build loop
+# NOTE: abseil-headers.sh is deliberately NOT in this loop (backlog A3):
+# install_abseil_headers has no host-side caller. Its in-image consumers
+# (build-litert.sh, build-libcamera.sh) load it via 03-media/core/common.sh's
+# `source_module abseil-headers.sh`.
 # shellcheck disable=SC1090,SC1091
 _ac_module=""
 for _ac_module in \
@@ -72,7 +76,7 @@ for _ac_module in \
   build-helpers.sh cross-stage-build.sh \
   context-management.sh version-forwarding.sh cli-parsers.sh \
   runtime-build-fns.sh compiler-resolution.sh parallel-loop.sh \
-  abseil-headers.sh path-helpers.sh; do
+  path-helpers.sh; do
   if [ -f "${_ARTIFACT_COMMON_DIR}/${_ac_module}" ]; then
     source "${_ARTIFACT_COMMON_DIR}/${_ac_module}"
   fi

@@ -2,6 +2,8 @@
 
 # package-lists.sh - shared apt package lists for image/bootstrap scripts
 
+_PACKAGE_LISTS_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Thin wrapper around apt_has_package (canonical, in common.sh). Exists so
 # callers that source package-lists.sh without common.sh still get a working
 # probe via the fallback body below.
@@ -39,11 +41,27 @@ append_available_packages() {
   shift
 
   local pkg
+  local -a _absent=()
   for pkg in "$@"; do
     if apt_package_exists "${pkg}"; then
       append_unique_packages "${array_name}" "${pkg}"
+    else
+      _absent+=("${pkg}")
     fi
   done
+
+  # Never drop silently: an archive/mirror hiccup here used to erase
+  # clang/lld/valgrind from the base image with no trace in the build log.
+  # Keep this one-liner greppable. warn comes from logging.sh; fall back to
+  # plain stderr for callers that source this file without the framework
+  # (same contingency as apt_package_exists above).
+  if [ "${#_absent[@]}" -gt 0 ]; then
+    if declare -F warn >/dev/null 2>&1; then
+      warn "append_available_packages: requested-but-absent packages dropped: ${_absent[*]}"
+    else
+      echo "WARNING: append_available_packages: requested-but-absent packages dropped: ${_absent[*]}" >&2
+    fi
+  fi
 }
 
 packaging_prerequisite_packages() {
@@ -54,7 +72,7 @@ packaging_prerequisite_packages() {
     dpkg
 
   append_available_packages "${array_name}" \
-    libfuse3-3 \
+    libfuse3-4 \
     flatpak flatpak-builder \
     elfutils \
     dbus-user-session \
@@ -70,11 +88,37 @@ packaging_prerequisite_packages() {
 base_image_os_packages() {
   local arch="$1"
   local array_name="$2"
+  local _cdp _pkg
+  local -a _cpython_dev=()
+
+  # STRUCTURAL host/target CPython dev-package parity (backlog TS3): the dev
+  # packages CPython's stdlib extensions link against come from the shared
+  # cpython-dev-packages.sh table instead of literals here — the same table
+  # drives the cross-target install and the extension asserts in
+  # 02-toolchain/python/build_python.sh plus the staged-artifact asserts in
+  # 06-packaging/smoke-toolchain.sh. Before this, host closure for several of
+  # them rested on TRANSITIVE pulls from the GUI dev packages below (the
+  # 2026-08-09 libsqlite3-dev incident class).
+  if ! declare -F cpython_ext_dev_packages >/dev/null 2>&1; then
+    for _cdp in "${_PACKAGE_LISTS_SH_DIR}/cpython-dev-packages.sh" \
+                /opt/scripts/core/cpython-dev-packages.sh; do
+      if [ -f "${_cdp}" ]; then
+        # shellcheck disable=SC1090,SC1091
+        source "${_cdp}"
+        break
+      fi
+    done
+  fi
+  if ! declare -F cpython_ext_dev_packages >/dev/null 2>&1; then
+    echo "ERROR: cpython-dev-packages.sh not found - the base image would silently lose the CPython extension dev packages" >&2
+    return 1
+  fi
+  while IFS= read -r _pkg; do _cpython_dev+=("${_pkg}"); done < <(cpython_ext_dev_packages)
+  append_unique_packages "${array_name}" "${_cpython_dev[@]}"
 
   append_unique_packages "${array_name}" \
     nano tmux vim \
-    sudo curl ca-certificates gnupg wget xz-utils libssl-dev git \
-    libsqlite3-dev \
+    sudo curl ca-certificates gnupg wget xz-utils git \
     build-essential ninja-build make sccache ccache \
     pkg-config lsb-release software-properties-common \
     meson python3 python3-venv python3-pip \

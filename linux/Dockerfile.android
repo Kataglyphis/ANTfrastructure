@@ -67,10 +67,22 @@ COPY --chmod=755 linux/scripts/01-core/downloads.sh /opt/scripts/core/downloads.
 # canonical resolver prefers real host toolchains; self-contained, no deps.
 COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/compiler-resolution.sh
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+# android-sdk-shared: cross-arch SDK/NDK download cache. The id is deliberately
+# NOT keyed by TARGETARCH (same pattern as onnxruntime-web-shared in
+# Dockerfile.media): android-sdk.sh only runs on amd64 build hosts and the
+# downloaded payload (cmdline-tools zip, Java tooling, sdkmanager packages,
+# NDK) is identical for every target arch — packages are keyed by name+version,
+# not build arch. Keying the id on the version tuple invalidates the cache on
+# any pin bump; sharing=locked serializes concurrent --parallel-archs builds so
+# the first arch populates <cache>/sdk-tree and the others restore from it
+# (grep the build log for "android-sdk shared cache HIT/MISS"). The cache mount
+# is invisible at image runtime — the script still installs everything the
+# image needs into ${ANDROID_HOME} in this layer.
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/android-sdk-shared,id=android-sdk-shared-${ANDROID_SDK_VERSION}-${ANDROID_NDK_VERSION}-${ANDROID_COMPILE_SDK}-${ANDROID_BUILD_TOOLS}-${ANDROID_CMAKE_VERSION},sharing=locked \
     --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; /opt/scripts/android-sdk.sh && \
+    set -euo pipefail; ANDROID_SDK_CACHE_DIR=/var/cache/android-sdk-shared /opt/scripts/android-sdk.sh && \
     mkdir -p /opt/android-sdk /opt/android && \
     mkdir -p /opt/android/gstreamer /opt/android/onnxruntime /opt/android/litert /opt/android/opencv /opt/android/iree
 
@@ -92,8 +104,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -113,8 +125,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -134,8 +146,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -155,8 +167,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -178,8 +190,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -218,10 +230,11 @@ RUN set -euo pipefail; \
 # Execute the Android-SDK/NDK smoke now that this stage's artifacts are
 # assembled (it was COPY'd in but never run). Hard-fail via smoke_summary so a
 # broken SDK/NDK surfaces at build time. NOTE: smoke-vulkan is deliberately NOT
-# run here -- the full Vulkan *SDK* (/opt/vulkan/active, headers, loader) is only
-# assembled in the package stage by setup-vulkan-symlinks.sh; this android image
-# carries only base's runtime libvulkan.so.1, so smoke-vulkan runs in the
-# package wrapper-smoke stage instead.
+# run here -- this android image carries only base's runtime libvulkan.so.1. It
+# is not run in any other build stage either (see the tail note in
+# Dockerfile.package): the cross build never installs the full Vulkan *SDK* the
+# smoke probes, so it is retained as a standalone host tool for image variants
+# that DO ship the full SDK.
 RUN set -euo pipefail; \
     bash /opt/scripts/packaging/smoke-android.sh
 

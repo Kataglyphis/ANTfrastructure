@@ -8,6 +8,15 @@
 # in Dockerfile.amd, which Docker exposes as an env var to the RUN command).
 set -euo pipefail
 
+# GPU5 (2026-08-17): the amd64-only promise below used to be a COMMENT only —
+# an arm64 build died later with a generic apt "package not found" instead of
+# the promised loud failure. Enforce it up front.
+if [ "$(dpkg --print-architecture 2>/dev/null || uname -m)" != "amd64" ] \
+   && [ "$(uname -m)" != "x86_64" ]; then
+  echo "ERROR: the ROCm/MIGraphX lane is amd64-only (AMD publishes no arm64 ROCm apt packages for this repo layout)." >&2
+  exit 1
+fi
+
 # Apply the fast Ubuntu mirror rewrite (if enabled) before any apt access, so the
 # repo setup + package installs below use the configured mirror. No-op unless
 # USE_FAST_UBUNTU_MIRROR is truthy. Folded in here so callers invoke a single
@@ -67,7 +76,10 @@ apt-get install -y --no-install-recommends \
     rocm-device-libs \
     migraphx \
     migraphx-dev
-rm -rf /var/lib/apt/lists/*
+# GPU4 (2026-08-17): dropped the former `rm -rf /var/lib/apt/lists/*` — the
+# lists live in a shared cache MOUNT (not in the layer), so the rm only wiped
+# the cache for sibling RUNs (the GPU1 failure class). The repo-source removal
+# below is the real in-layer hygiene and stays.
 rm -f /etc/apt/sources.list.d/rocm.list /etc/apt/preferences.d/rocm-pin
 echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf
 ldconfig

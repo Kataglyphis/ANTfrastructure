@@ -36,6 +36,24 @@ export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
 export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
 export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
 
+# Canonical NEEDED-walk primitive (backlog D4): elf_unresolved_needed
+# --transitive replaces the hand-rolled `ldd | awk '/=> not found/'` walk in
+# _assert_ffmpeg_so_closure below. Unlike common.sh (deliberately NOT pulled in
+# here — see the append_cross_idirafter note above), platform.sh is a
+# side-effect-free leaf that Dockerfile.torch already COPYs to
+# /opt/scripts/core/platform.sh; repo layout falls back to 01-core. Hard-require
+# it: this feeds a fail-loud gate, and silently skipping would un-gate it.
+for _stv_platform in /opt/scripts/core/platform.sh \
+                     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"; do
+  if [ -f "${_stv_platform}" ]; then
+    # shellcheck disable=SC1090
+    source "${_stv_platform}"
+    break
+  fi
+done
+command -v elf_unresolved_needed >/dev/null 2>&1 \
+  || { echo "FATAL: platform.sh (elf_unresolved_needed) not found" >&2; exit 1; }
+
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then
     echo "Skipping ${1:-torch step} in pure cross artifact mode"
@@ -208,7 +226,10 @@ _install_ffmpeg_runtime_codecs() {
 _assert_ffmpeg_so_closure() {
   if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
     local _ff_unresolved
-    _ff_unresolved="$(ldd /opt/ffmpeg/bin/ffmpeg 2>/dev/null | awk '/=> not found/{print $1}' | sort -u || true)"
+    # --transitive = the dynamic loader's view (full closure, honours the
+    # LD_LIBRARY_PATH exported by setup_torch_deps) — the property that
+    # actually matters, exactly as the previous inline ldd walk asserted.
+    _ff_unresolved="$(elf_unresolved_needed --transitive /opt/ffmpeg/bin/ffmpeg)"
     if [ -n "${_ff_unresolved}" ]; then
       echo "FATAL: /opt/ffmpeg/bin/ffmpeg has unresolved shared libraries on the runtime loader path:" >&2
       printf '  %s (not found)\n' ${_ff_unresolved} >&2
@@ -237,7 +258,9 @@ setup_torch_deps() {
   _install_ffmpeg_runtime_codecs
   _assert_ffmpeg_so_closure
 
-  rm -rf /var/lib/apt/lists/*
+  # RP2: /var/lib/apt is a BuildKit cache mount here (Dockerfile.torch:46) — the
+  # wipe has no size benefit and forces sibling arches to re-download metadata.
+  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
 }
 
 seed_riscv64_apt_packages() {
@@ -270,7 +293,8 @@ seed_riscv64_apt_packages() {
   # can resolve libsleef.so.3 -- without it the venv torch fails to import.
   apt-get install -y --no-install-recommends libsleef3 \
     || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
-  rm -rf /var/lib/apt/lists/*
+  # RP2: cache-mount guard (see above) — skip the no-op wipe on a mount.
+  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
   local _sp
   _sp="$(venv_site_packages)"
   if [ -d /usr/lib/python3/dist-packages ] && [ -n "${_sp}" ] && [ -d "${_sp}" ]; then
@@ -489,8 +513,32 @@ cleanup_wheelhouse() {
     echo "Keeping /opt/wheels (KEEP_WHEELHOUSE=1)"
     return 0
   fi
+  # AP3: /opt/wheels is now a READONLY bind-mount (ephemeral — never becomes a
+  # shipped layer), so there is nothing to reclaim AND `rm -rf` would fail on the
+  # read-only mount. Only rm when it is a real directory (the COPY fallback path).
+  if mountpoint -q /opt/wheels 2>/dev/null; then
+    echo "/opt/wheels is a bind-mount (AP3) — ephemeral, nothing to remove"
+    return 0
+  fi
   rm -rf /opt/wheels
   echo "Removed /opt/wheels after successful venv assembly (set KEEP_WHEELHOUSE=1 to keep)"
+}
+
+# AP2: byte-compile the fully-assembled venv. The runtime USER (uid-1001) cannot
+# write __pycache__ into the root-owned /opt/venv, so WITHOUT this every container
+# start re-parses site-packages (torch etc.) from source — seconds-to-tens on
+# riscv64. Compile at build time as root with the TARGET interpreter (correct
+# .pyc magic; it runs under qemu in the per-arch package stage — slow but
+# one-time). Best-effort; VENV_COMPILE=0 disables. (The stdlib under
+# /usr/local/lib is already compiled by CPython's make [alt]install; the gap is
+# the venv's site-packages, which uv installs without .pyc by default.)
+bytecompile_venv() {
+  [ "${VENV_COMPILE:-1}" = "1" ] || { echo "VENV_COMPILE=0 — skipping venv byte-compile"; return 0; }
+  local py="${VENV}/bin/python"
+  [ -x "${py}" ] || return 0
+  echo "Byte-compiling ${VENV}/lib (AP2; may be slow under qemu on cross arches)..."
+  "${py}" -m compileall -q -j0 "${VENV}/lib" 2>/dev/null \
+    || echo "  (compileall best-effort — some modules skipped; non-fatal)"
 }
 
 main() {
@@ -498,6 +546,7 @@ main() {
   seed_opencv5_bindings
   setup_torch_deps
   setup_torch_app
+  bytecompile_venv
   cleanup_wheelhouse
 }
 

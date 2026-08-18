@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -51,7 +52,6 @@
 # confirm it finalizes and exports without 0x3. A disposable canary snapshot is
 # the right thing to risk; a chain run is not.
 
-#requires -Version 7.0
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     # The newly built shim binary to install. Required unless -ReportOnly or

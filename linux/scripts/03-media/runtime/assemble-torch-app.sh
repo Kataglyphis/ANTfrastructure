@@ -100,6 +100,28 @@ staged_opencv_python_available() {
   return 1
 }
 
+# THE wheel-family classifier — single source of truth for mapping a
+# /opt/wheels basename to its family (was the same case-arm globs drifting in
+# three separate sites; backlog "wheel-family classifier"). Family tokens are
+# consumed by the collect_/reconcile_ functions below; extend HERE only.
+wheel_family() {
+  case "$1" in
+    torch-*.whl)              printf 'torch' ;;
+    torchvision-*.whl)        printf 'torchvision' ;;
+    ai_edge_litert-*.whl|ai-edge-litert-*.whl) printf 'litert' ;;
+    iree_base_compiler-*.whl) printf 'iree-compiler' ;;
+    iree_base_runtime-*.whl)  printf 'iree-runtime' ;;
+    iree-*.whl)               printf 'iree' ;;
+    opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+                              printf 'opencv' ;;
+    onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
+                              printf 'onnx' ;;
+    apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
+                              printf 'tvm' ;;
+    *)                        printf 'other' ;;
+  esac
+}
+
 collect_locked_local_skip_packages() {
   local -n out_packages_ref=$1
   local wheel_path wheel_basename
@@ -111,25 +133,13 @@ collect_locked_local_skip_packages() {
   shopt -s nullglob
   for wheel_path in /opt/wheels/*.whl; do
     wheel_basename="$(basename "${wheel_path}")"
-    case "${wheel_basename}" in
-      torch-*.whl)
-        append_unique_arg out_packages_ref torch
-        ;;
-      torchvision-*.whl)
-        append_unique_arg out_packages_ref torchvision
-        ;;
-      ai_edge_litert-*.whl|ai-edge-litert-*.whl)
-        append_unique_arg out_packages_ref ai-edge-litert
-        ;;
-      iree_base_compiler-*.whl)
-        append_unique_arg out_packages_ref iree-base-compiler
-        ;;
-      iree_base_runtime-*.whl)
-        append_unique_arg out_packages_ref iree-base-runtime
-        ;;
-      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
-        append_unique_arg out_packages_ref opencv-python
-        ;;
+    case "$(wheel_family "${wheel_basename}")" in
+      torch)         append_unique_arg out_packages_ref torch ;;
+      torchvision)   append_unique_arg out_packages_ref torchvision ;;
+      litert)        append_unique_arg out_packages_ref ai-edge-litert ;;
+      iree-compiler) append_unique_arg out_packages_ref iree-base-compiler ;;
+      iree-runtime)  append_unique_arg out_packages_ref iree-base-runtime ;;
+      opencv)        append_unique_arg out_packages_ref opencv-python ;;
     esac
   done
   shopt -u nullglob
@@ -142,8 +152,8 @@ collect_locked_local_wheels() {
   shopt -s nullglob
   for wheel_path in /opt/wheels/*.whl; do
     wheel_basename="$(basename "${wheel_path}")"
-    case "${wheel_basename}" in
-      torch-*.whl|torchvision-*.whl|ai_edge_litert-*.whl|ai-edge-litert-*.whl)
+    case "$(wheel_family "${wheel_basename}")" in
+      torch|torchvision|litert)
         # Custom-built wheels are ALWAYS pinned as locked local wheels. A
         # broken line-continuation used to merge this branch with the opencv
         # one below (embedded-whitespace pattern), so with staged OpenCV
@@ -151,7 +161,7 @@ collect_locked_local_wheels() {
         # set and pip could resolve UPSTREAM torch instead of the custom build.
         out_wheels_ref+=("${wheel_path}")
         ;;
-      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
+      opencv)
         if staged_opencv_python_available; then
           echo "Skipping ${wheel_basename} (source-built OpenCV5 bindings found)"
         else
@@ -325,19 +335,11 @@ reconcile_local_wheels() {
 
   for wheel_path in "${local_wheels[@]}"; do
     wheel_basename="$(basename "${wheel_path}")"
-    case "${wheel_basename}" in
-      onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
-        have_onnx_family=true
-        ;;
-      opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
-        have_opencv_family=true
-        ;;
-      torch-*.whl|torchvision-*.whl)
-        have_torch_family=true
-        ;;
-      ai_edge_litert-*.whl|ai-edge-litert-*.whl)
-        have_litert_family=true
-        ;;
+    case "$(wheel_family "${wheel_basename}")" in
+      onnx)              have_onnx_family=true ;;
+      opencv)            have_opencv_family=true ;;
+      torch|torchvision) have_torch_family=true ;;
+      litert)            have_litert_family=true ;;
     esac
   done
 
@@ -373,10 +375,10 @@ reconcile_local_wheels() {
   # the runtime smoke's optional-fail instead of failing the build.
   local -a iree_wheels=() tvm_wheels=() other_wheels=()
   for wheel_path in "${local_wheels[@]}"; do
-    case "$(basename "${wheel_path}")" in
-      iree_base_runtime-*.whl|iree_base_compiler-*.whl|iree-*.whl)
+    case "$(wheel_family "$(basename "${wheel_path}")")" in
+      iree|iree-compiler|iree-runtime)
         iree_wheels+=("${wheel_path}") ;;
-      apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
+      tvm)
         tvm_wheels+=("${wheel_path}") ;;
       *)
         other_wheels+=("${wheel_path}") ;;
@@ -416,6 +418,31 @@ reconcile_local_wheels() {
       # Hard-fail under set -e -- IREE is REQUIRED here.
       uv pip install --no-deps --force-reinstall "${iree_wheels[@]}"
       uv pip install --no-deps ml_dtypes
+    fi
+  fi
+
+  # When torch ships as a LOCAL wheel (riscv64) its backend extra is never
+  # requested from uv sync, so the lock graph omits torch's own runtime deps —
+  # and the --no-deps force-reinstall above (correctly) no longer drags them
+  # in as a side effect. Result on riscv64: `import torchvision` dies with
+  # "No module named 'sympy'" (torch.fx symbolic shapes) while torch's core
+  # ops happen to work. Backfill exactly the missing pure-python leaves,
+  # --no-deps each (their own hard deps are in the list: sympy->mpmath,
+  # jinja2->markupsafe). amd64/arm64 get all of these from the lock and the
+  # import probes skip everything.
+  if [ "${have_torch_family}" = "true" ]; then
+    local _venv_py="${VIRTUAL_ENV:-/opt/venv}/bin/python3"
+    local -a _torch_dep_backfill=()
+    local _pair _pkg _mod
+    for _pair in sympy:sympy mpmath:mpmath networkx:networkx \
+                 jinja2:jinja2 markupsafe:markupsafe filelock:filelock \
+                 fsspec:fsspec typing-extensions:typing_extensions; do
+      _pkg="${_pair%%:*}"; _mod="${_pair##*:}"
+      "${_venv_py}" -c "import ${_mod}" 2>/dev/null || _torch_dep_backfill+=("${_pkg}")
+    done
+    if [ "${#_torch_dep_backfill[@]}" -gt 0 ]; then
+      printf 'Backfilling torch runtime deps missing from the sync graph: %s\n' "${_torch_dep_backfill[*]}"
+      uv pip install --no-deps "${_torch_dep_backfill[@]}"
     fi
   fi
 }
@@ -512,6 +539,17 @@ usage() {
   printf 'Usage: %s [install|verify|all]\n' "${0##*/}" >&2
 }
 
+# POS1 (2026-08-17): the cloned app tree shipped WITH its .git (packed objects,
+# remote URL, history) in the final uid-1001 image — attack-surface/hygiene +
+# size + provenance leak. The package is pip-installed into the venv and the
+# app's version comes from VERSION.txt (not setuptools-scm), so .git is dead
+# weight once install is done. Remove ONLY .git; the working tree stays (it may
+# be consulted at runtime). Best-effort — never fails a completed install.
+cleanup_app_git() {
+  [ -d "${APP_DIR}/.git" ] || return 0
+  rm -rf "${APP_DIR}/.git" && echo "Removed ${APP_DIR}/.git (POS1: no VCS data in the shipped image)" || true
+}
+
 main() {
   local mode="${1:-all}"
 
@@ -519,14 +557,17 @@ main() {
     install)
       prepare_project_tree
       install_project_environment
+      cleanup_app_git
       ;;
     verify)
       verify_project_environment
+      cleanup_app_git
       ;;
     all)
       prepare_project_tree
       install_project_environment
       verify_project_environment
+      cleanup_app_git
       ;;
     *)
       usage

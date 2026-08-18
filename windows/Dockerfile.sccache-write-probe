@@ -1,0 +1,52 @@
+# escape=`
+# =============================================================================
+# sccache L0 (disk) write-failure probe - DIAGNOSTIC ONLY, ships nothing.
+# =============================================================================
+# Reproduces the media builder's sccache environment EXACTLY (same cache mount
+# ids, same ENV block as Dockerfile.media-builder:88-96) around a single
+# throwaway compile, so `Cache write errors 1` can be reproduced in ~2 minutes
+# instead of a 90-minute media build.
+#
+# WHY IT EXISTS: on 2026-08-15 every L0 write in the chain failed with
+# `The system cannot find the path specified. (os error 3)` - genai 157/157,
+# opencv 1/1, onnx 0/0 only because onnx had no misses. Two full builds were
+# spent on hypotheses that a probe of this size would have killed in minutes.
+#
+# NOTE the mount ids must match the real build byte for byte. A probe against a
+# DIFFERENT cache mount tests a different filesystem and proves nothing.
+#
+# Run it with windows/scripts/probe-sccache-write.ps1's host-side sibling:
+#   .\windows\scripts\run-sccache-write-probe.ps1
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
+FROM ${BASE_IMAGE} AS probe
+
+ARG SCCACHE_WEBDAV_ENDPOINT=""
+# debug by default: this is a diagnostic, and `Error executing cache write` is
+# logged at DEBUG level - at `warn` the decisive line is simply absent (that
+# cost one otherwise-clean measurement on 2026-08-15).
+ARG SCCACHE_LOG="debug"
+
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
+    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
+    SCCACHE_DIR="C:\sccache" `
+    SCCACHE_CACHE_SIZE="15G" `
+    SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
+    SCCACHE_LOG="${SCCACHE_LOG}" `
+    SCCACHE_IDLE_TIMEOUT="0"
+
+# PROBE_NONCE exists ONLY to bust the layer cache. Without it, re-running the
+# probe with an unchanged script gives `#6 CACHED` — buildkit replays the old
+# layer, the RUN never executes, and the runner prints a stale verdict as if it
+# were a fresh measurement. That happened on 2026-08-16 and would have been
+# reported as "the repair ran" when nothing ran at all. `--no-cache` is NOT the
+# alternative: on this lane it EMPTIES the cache mounts (backlog #96), which
+# would destroy the very cache the probe is inspecting.
+ARG PROBE_NONCE="0"
+
+# sharing=locked on C:\sccache mirrors the real stages: with `shared` this probe
+# could run against a mount a live build is mutating and produce noise.
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/probe-sccache-write.ps1,target=C:\bkmnt\probe-sccache-write.ps1 `
+    & 'C:\bkmnt\probe-sccache-write.ps1' -Nonce "${PROBE_NONCE}"

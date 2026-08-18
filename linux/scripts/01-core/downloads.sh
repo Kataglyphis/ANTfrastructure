@@ -123,6 +123,14 @@ clone_or_update_repo() {
       local _want _have _have_desc
       _want="$(git -C "${dest_dir}" rev-parse --verify --quiet "${branch}^{commit}" 2>/dev/null || true)"
       _have="$(git -C "${dest_dir}" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
+      # Severity split: a stale-but-present checkout is tolerated (warned below),
+      # but NO usable HEAD at all means the previous clone crashed mid-flight —
+      # there is nothing to build from, so fail instead of laundering rc 0.
+      if [ -z "${_have}" ]; then
+        printf 'ERROR: no usable HEAD in %s (requested ref: %s); previous clone/fetch failed. Delete the directory and retry.\n' \
+          "${dest_dir}" "${branch}" >&2
+        return 1
+      fi
       if [ -z "${_want}" ] || [ "${_want}" != "${_have}" ]; then
         _have_desc="$(git -C "${dest_dir}" describe --tags --always 2>/dev/null || echo '?')"
         {
