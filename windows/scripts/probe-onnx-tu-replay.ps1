@@ -294,9 +294,9 @@ foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
 # mis-grouped and cl never sees those -D pairs as options.
 $cpp4Plan = ($planLines | Select-String 'cpp4\.ii' | Select-Object -First 1).Line
 if ($cpp4Plan) {
-    $mangled = $cpp4Plan -replace '""', '"'
-    $mangled = $mangled -replace [regex]::Escape('\?'), ''
-    $mangled = $mangled.Replace('', '/').Replace(' -E ', ' -P ').Replace(' > ', ' -Fi')
+    $mangled = $cpp4Plan.Replace('""', '"')
+    $mangled = $mangled.Replace('\\?\', '')
+    $mangled = $mangled.Replace('\', '/').Replace(' -E ', ' -P ').Replace(' > ', ' -Fi')
     Set-Content -Path mangled-cpp4.txt -Value $mangled -Encoding utf8
     $py = 'C:/temp/cpython/PCbuild/amd64/python.exe'
     if (-not (Test-Path $py)) { $py = 'python' }
