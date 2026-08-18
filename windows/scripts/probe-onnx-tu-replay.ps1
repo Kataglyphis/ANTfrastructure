@@ -239,5 +239,27 @@ foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     }
 }
 
+# ---- 8. .ii-level forensics: unmangled markers + define presence -----------
+# The mangled-marker table skips the .ii files (preprocessed SOURCE carries
+# unmangled names). Count the double instantiation textually per intermediate
+# and check whether the injected defines survive into sccache's preprocess
+# invocations across ALL legs (the earlier single-line compare could have
+# mixed up legs).
+foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
+    $side = $pair[0]; $dir = $pair[1]
+    Get-ChildItem $dir -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
+        $dbl = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxImpl<double' -SimpleMatch -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+        $flt = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxImpl<float' -SimpleMatch -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+        Write-Host ("ii-scan {0,-4} {1,-44} {2,10:N0} B  dbl={3,-4} flt={4}" -f $side, $_.Name, $_.Length, [int]$dbl, [int]$flt)
+    }
+}
+$keepLog = Join-Path $WorkDir 'sccache-keep.log'
+if (Test-Path $keepLog) {
+    foreach ($needle in @('CUDA_DOUBLE_MATH_FUNCTIONS', '__CUDACC__', '__CUDACC_VER_MAJOR__')) {
+        $n = (Select-String -Path $keepLog -Pattern $needle -SimpleMatch -AllMatches | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+        Write-Host ("define-presence in sccache debug log: {0} = {1}" -f $needle, [int]$n)
+    }
+}
+
 Write-Host 'probe complete'
 exit 0
