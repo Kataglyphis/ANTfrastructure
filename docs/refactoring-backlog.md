@@ -30,6 +30,24 @@ live in CHANGELOG.md + memory + the archive.
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
+## 🔨 CLOSURE-WINDOW WAVE-4 STAGED 2026-08-18 (validating full rebuild IN FLIGHT)
+
+One window, maximal bundle (user call): **B3 version bumps** (7 SAFE + 14
+REPORT keys incl. ONNXRUNTIME 1.29/LITERT 2.2/LM 0.16.1/TVM 0.26/ABSEIL —
+SHAs re-derived), **RV1** (all riscv64 exceptions lifted — target GStreamer:
+YES ×3), **NET1 top-3+** (gcc ftpmirror, ffmpeg mirror-vars wired, gstreamer
+gitlab fallback, nv-codec github fallback), **DF1-4** (dead cargo mounts,
+sdk 86-line RUN → materialize-llvm-target.sh, package soname loop →
+copy-media-payloads.sh, --link/stray-mount), **AP3 correct** (wheels-source
+stage in Dockerfile.torch, package stops baking /opt/wheels),
+**LLVM-ccache-launcher** (nested tablegen build). Re-triaged KEEP: SH1
+(deliberately different retry semantics), SH2 (documented-deliberate),
+DF4c (cosmetic). DEFERRED to the NEXT window (M-effort each; this bundle's
+blast radius is already maximal): D3+P5 smoke scaffold, cerbero checksums
+table + soundtouch TOFU, codec-map convergence, SUDO run_priv helper,
+NVIDIA-lane helper sweep, complexity survivors, DUP2-SSOT-default,
+media-source-cache mounts, TVM-cross, SH3 sourced-lib sites.
+
 ## Carry-over from the shipped waves (still OPEN)
 
 - **OCV-FF1 — opencv videoio FFMPEG backend NO: opencv-5.0.0 FindFFMPEG probe
@@ -97,12 +115,6 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   duplicated sites) into smoke-common.sh and make the two-environment contract
   explicit (SMOKE_ENV=sandbox|runtime set by callers) instead of six scattered
   "functional gate is the …" branches. Extend test-smoke-arch-parity.sh.
-- **A1 — env-knob registry gate ✅ DONE 2026-08-17** — `lint-env-knobs.sh`
-  (advisory; `KNOB_GATE=1` enforces) + the seeded operator-knob registry
-  `lint-env-knobs.allow` (146 knobs, doubles as the missing docs); wired into
-  preflight as `env-knobs`. Verified: 0 unowned on the tree, a planted new knob
-  is detected. Curating the allowlist down is the follow-on (each entry is either
-  real operator docs or a reader to fix).
 - **GEN1 — (optional experiment) source-build onnxruntime-genai for riscv64**
   [L·★] verified 2026-08-12: the skip is upstream-consistent, NOT our bug —
   PyPI 0.15.2 ships linux wheels only for manylinux_2_28_x86_64 (no riscv64
@@ -271,7 +283,7 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   now in REPORT (10 PyPI + libcamera-gitlab) or MANUAL (LT82/FLATPAK-branch/
   SCCACHE_GIT_REV + 4 Windows-lane pins) — freshness report is complete.
 
-### CI-workflow sweep additions (2026-08-17) — **CI1-3 ✅ ALL FIXED same day**
+### CI-workflow sweep verdict (2026-08-17): CI1-3 all fixed same day (timeouts, ollama digest-pin, env-var login) — commits 814e60f; sweep otherwise CLEAN
 
 CI1: timeout-minutes added to all 5 Linux workflows (python-ci 60 / ubuntu24.04
 45 / build-docs 30 / ghcr-cleanup 20 / stale-docs 15). CI2: llm-stack ollama
@@ -279,23 +291,6 @@ service digest-pinned (sha256:9d30908e…; bump deliberately, not implicitly).
 CI3: registry login secret moved to env-var pattern. actionlint OK. Original
 findings kept below for context:
 
-
-- **CI1 — missing `timeout-minutes` in 5 Linux workflows** [S·★★]
-  python-ci-linux.yml:98 (multi-GB pull + tests → a hang burns the 6h default;
-  the repo's own Windows lanes set 30/20, so the convention exists),
-  ghcr-cleanup.yml:15 (unbounded registry loops), plus ubuntu24.04/build-docs/
-  stale-docs-check [★]. Add sensible per-job timeouts.
-- **CI2 — llm-stack-tests service is non-hermetic** [S·★] `ollama/ollama:latest`
-  (mutable tag) + network-pulled `qwen2.5:0.5b` — pin the image digest (and
-  consider caching the model) so the test can't drift/flake with upstream.
-- **CI3 — registry-login style** [S·★] prepare-linux-ci-host/action.yml:90
-  echoes registry-password into `docker login --password-stdin` — correct +
-  GitHub-masked, but the env-var pattern is marginally cleaner. Cosmetic.
-  CLEAN per sweep (recorded to prevent re-audits): ALL 18 preflight gates run in
-  CI (ubuntu24.04.yml runs preflight.sh un-filtered — env-knobs + the
-  396-assertion script-tests included); every `uses:` SHA-pinned;
-  least-privilege permissions blocks; continue-on-error only where intentional;
-  no dead workflows.
 
 ### Idempotency audit verdict (2026-08-17; the GST1 runs-twice class — CLEAN)
 

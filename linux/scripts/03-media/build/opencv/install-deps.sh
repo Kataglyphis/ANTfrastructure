@@ -34,7 +34,12 @@ if is_cross; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
     cross_arch="$(cross_target_arch 2>/dev/null || true)"
     if [ "${cross_arch}" = "riscv64" ]; then
-        echo "Skipping GStreamer dev packages for riscv64 cross builds because Ubuntu Ports cannot satisfy their GLib helper dependency chain."
+        # RV1 (2026-08-18): resolute ports NOW satisfies the GStreamer/GLib dev
+        # chain for riscv64 (live apt-cache policy verified 2026-08-17) — add the
+        # dev packages like arm64; the riscv64 lane already installs best-effort,
+        # so a ports regression degrades gracefully instead of failing the stage.
+        target_packages+=(libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev)
+        echo "riscv64 target OpenCV deps: adding GStreamer dev packages (ports caught up, RV1; best-effort install)"
         echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
     elif [ "${cross_arch}" = "arm64" ]; then
         echo "Arm64 target OpenCV deps: adding GStreamer dev packages but using best-effort install"

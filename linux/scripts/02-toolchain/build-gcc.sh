@@ -222,6 +222,12 @@ fi
 
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
 DOWNLOAD_BASE="https://gcc.gnu.org/pub/gcc/releases/gcc-${GCC_VERSION}"
+# NET1 (2026-08-18): gcc.gnu.org is a single host and the earliest,
+# highest-blast-radius fetch of the chain. Try the GNU mirror redirector first
+# for the TARBALL (zero trust cost — sha512 verification below is against the
+# canonical server either way); checksum + signature stay canonical-only.
+MIRROR_BASE="https://ftpmirror.gnu.org/gnu/gcc/gcc-${GCC_VERSION}"
+MIRROR_TARBALL_URL="${MIRROR_BASE}/${TARBALL}"
 TARBALL_URL="${DOWNLOAD_BASE}/${TARBALL}"
 SHA_URL="${DOWNLOAD_BASE}/sha512.sum"
 SIG_URL="${DOWNLOAD_BASE}/${TARBALL}.sig"
@@ -426,7 +432,9 @@ fetch_gcc_tarball() {
     cp "${GCC_TARBALL_CACHE_DIR}/${TARBALL}" "${TARBALL}"
   fi
   if [ ! -f "${TARBALL}" ]; then
-    wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
+    # NET1: mirror redirector first, canonical gcc.gnu.org as fallback.
+    wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 3 "${MIRROR_TARBALL_URL}" -O "${TARBALL}" \
+      || wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
   else
     echo "Tarball already exists: ${TARBALL}"
   fi
