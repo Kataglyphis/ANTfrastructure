@@ -81,11 +81,17 @@ run_orchestrator_arg_loop() {
   shift 9
 
   while [ $# -gt 0 ]; do
+    local _flag="$1"
     consume_shared_arg "${_usage_fn}" \
       parse_shared_orchestrator_args \
       "${_n1}" "${_n2}" "${_n3}" "${_n4}" "${_n5}" "${_n6}" "${_n7}" \
       "$1" "${2:-}" || break
-    consume_dp_shift && { shift "${_DP_SHIFT}"; continue; }
+    # O5: a shared flag was recognized — warn if this script lists it inert.
+    if consume_dp_shift; then
+      orchestrator_warn_if_unsupported "${_flag}" "$(basename "${0:-orchestrator}")" || true
+      shift "${_DP_SHIFT}"
+      continue
+    fi
     _OARG_SHIFT=0
     if "${_case_fn}" "$@"; then
       shift "${_OARG_SHIFT}"

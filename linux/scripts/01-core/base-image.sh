@@ -20,8 +20,11 @@ source_module package-lists.sh
 source_module cmake.sh
 
 BASE_IMAGE_CMAKE_VERSION="${CMAKE_VERSION:-4.4.2}"
-BASE_IMAGE_NODE_VERSION="${NODE_VERSION:-26.5.1}"
-BASE_IMAGE_UV_VERSION="${UV_VERSION:-0.12.1}"
+# versions.env (loaded via common.sh above) is authoritative for these; no
+# fallback literals — a stale third channel here silently unpins, and a
+# half-loaded env must fail loud instead.
+BASE_IMAGE_NODE_VERSION="${NODE_VERSION:?NODE_VERSION not set - versions.env half-loaded?}"
+BASE_IMAGE_UV_VERSION="${UV_VERSION:?UV_VERSION not set - versions.env half-loaded?}"
 BASE_IMAGE_VULKAN_VERSION="${VULKAN_VERSION}"
 BASE_IMAGE_CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-30G}"
 
@@ -272,7 +275,7 @@ configure_fast_mirror() {
 }
 
 install_os_packages() {
-  local arch
+  local arch tool
   local -a packages=()
 
   arch="$(base_image_arch)"
@@ -280,6 +283,15 @@ install_os_packages() {
   apt-get update -qq
   base_image_os_packages "${arch}" packages
   apt-get install -y --no-install-recommends "${packages[@]}"
+
+  # Postcondition: the must-have core of this ~90-package root layer actually
+  # landed (append_available_packages silently filters optional packages, so
+  # the install line alone proves nothing about what was requested). Failing
+  # here names the culprit instead of surfacing layers later as a missing tool.
+  for tool in git ninja ccache python3 pkg-config; do
+    command -v "${tool}" >/dev/null 2>&1 || \
+      die "install_os_packages postcondition failed: required tool '${tool}' missing after base package install"
+  done
 }
 
 install_shared_build_tooling() {
@@ -296,23 +308,52 @@ install_shared_build_tooling() {
 
 install_nodejs() {
   local arch node_asset node_sha256 node_url tmpdir node_dir tool
+  local installed_node installed_major pinned_major
 
   arch="$(base_image_arch)"
   case "${arch}" in
     amd64|x86_64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-x64.tar.xz"
-      node_sha256="${NODE_AMD64_SHA256:-cc7b3484ade63bd203a9d304f21ec37a3b622b988d7bdecf1dc4d68fc44a91b7}"
+      # No SHA fallback literals: versions.env is authoritative, and a
+      # half-loaded env must fail HERE, not as a tamper-shaped checksum error.
+      node_sha256="${NODE_AMD64_SHA256:?NODE_AMD64_SHA256 not set - versions.env half-loaded?}"
       ;;
     arm64|aarch64)
       node_asset="node-v${BASE_IMAGE_NODE_VERSION}-linux-arm64.tar.xz"
-      node_sha256="${NODE_ARM64_SHA256:-0b6b0cc2a1eecbe736f9918de8b5a6c9a48d286b88bec1298a3c1e3376182ea8}"
+      node_sha256="${NODE_ARM64_SHA256:?NODE_ARM64_SHA256 not set - versions.env half-loaded?}"
       ;;
     riscv64)
       # RISC-V: no official Node.js tarball. Pin to a known version from distro packages.
       log "Installing pinned Node.js distro packages on riscv64"
       apt-get update -qq
-      apt_install "nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1" || apt_install nodejs
-      apt_install npm || true
+      if ! apt_install "nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1"; then
+        warn "Exact Node.js pin nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1 unavailable on riscv64; falling back to the distro default version"
+        apt_install nodejs
+        warn "Installed Node.js $(node --version) instead of pinned ${BASE_IMAGE_NODE_VERSION}"
+      fi
+      # npm is REQUIRED here: `npm --version` below asserts it under set -e,
+      # so swallowing a failed install (the old `|| true`) only deferred and
+      # obscured the error. Fail at the install step, which names the culprit.
+      apt_install npm
+      # A fallback install may have unpinned entirely — surface the installed
+      # major vs the pin LOUDLY so a drift is never silent (BS5). It is NOT
+      # fatal on riscv64: there is no official Node tarball for this arch (see
+      # above), so we are at the mercy of ubuntu-ports, which lags the pinned
+      # major and drops the exact `-1~ubuntu26.04.1` build as ports advances.
+      # Node on riscv64 only backs optional JS/web tooling (litert-web /
+      # onnx-web) the Python/native runtime never imports, so a major lag must
+      # not abort the whole build. Set NODE_RISCV64_MAJOR_REQUIRED=1 to restore
+      # a hard failure.
+      installed_node="$(node --version)"
+      installed_major="${installed_node#v}"
+      installed_major="${installed_major%%.*}"
+      pinned_major="${BASE_IMAGE_NODE_VERSION%%.*}"
+      if [ "${installed_major}" != "${pinned_major}" ]; then
+        if [ "${NODE_RISCV64_MAJOR_REQUIRED:-0}" = "1" ]; then
+          die "riscv64 Node.js major mismatch: installed ${installed_node}, but pin ${BASE_IMAGE_NODE_VERSION} expects major ${pinned_major}"
+        fi
+        warn "riscv64 Node.js major LAGS the pin: installed ${installed_node}, pin ${BASE_IMAGE_NODE_VERSION} (major ${pinned_major}) — ubuntu-ports has no ${pinned_major}.x; shipping the ports default (optional JS/web tooling only)"
+      fi
       node --version
       npm --version
       return 0
@@ -368,15 +409,17 @@ install_uv() {
   case "${arch}" in
     amd64|x86_64)
       uv_asset="uv-x86_64-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_AMD64_SHA256:-90b2f223fb69d19db49e117da601f64978593417988530aa733d456141b4bcbb}"
+      # No SHA fallback literals: versions.env is authoritative, and a
+      # half-loaded env must fail HERE, not as a tamper-shaped checksum error.
+      uv_sha256="${UV_AMD64_SHA256:?UV_AMD64_SHA256 not set - versions.env half-loaded?}"
       ;;
     arm64|aarch64)
       uv_asset="uv-aarch64-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_ARM64_SHA256:-769d373e146692c639b5fbaae33b331c297a32e03d30448772051902df52bbf4}"
+      uv_sha256="${UV_ARM64_SHA256:?UV_ARM64_SHA256 not set - versions.env half-loaded?}"
       ;;
     riscv64)
       uv_asset="uv-riscv64gc-unknown-linux-gnu.tar.gz"
-      uv_sha256="${UV_RISCV64_SHA256:-dda637a8f2f11b73a3e8da35c7909772beb49799aea61bacb04c2e7d2455b939}"
+      uv_sha256="${UV_RISCV64_SHA256:?UV_RISCV64_SHA256 not set - versions.env half-loaded?}"
       ;;
     *)
       die "Unsupported uv architecture: ${arch}"

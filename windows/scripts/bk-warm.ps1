@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -18,7 +19,6 @@
 # snapshot is never finalized and the lost-shutdown-notification defect never
 # fires.
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     # Handoff name (tar becomes <endpoint>/bkhandoff/<Name>.tar).

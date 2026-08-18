@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -6,7 +7,6 @@
 # identical chain-IDs (ActivateLayer 0x20) — debris from a finalize attempt
 # that raced the 0x3-canary's export. New file content -> new chain-IDs.
 
-#requires -Version 7.0
 
 # Toolchain run+commit entrypoint (windows/build.ps1 Invoke-RunCommitStage). The
 # thin builder (Dockerfile.toolchain-builder) already cloned CPython and wrote

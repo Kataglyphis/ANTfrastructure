@@ -59,6 +59,16 @@ run_parallel_arch_loop() {
       if ! "${fn_name}" "${arch}"; then
         warn "Arch ${arch} failed during build"
         failed=1
+        # O4: PARALLEL_LOOP_FAIL_FAST (default keep-going, for CI resilience) —
+        # when truthy, abort the loop on the FIRST arch failure instead of
+        # grinding the remaining arches for hours. The failure flag is already
+        # set, so the return code is unchanged; only the remaining work is cut.
+        # Sequential-path only: the parallel path has already launched every
+        # lane, so aborting its join would break the harvest semantics.
+        if _bool_truthy "${PARALLEL_LOOP_FAIL_FAST:-0}"; then
+          warn "PARALLEL_LOOP_FAIL_FAST=1 — aborting remaining arches after ${arch} failure"
+          break
+        fi
       fi
     fi
   done

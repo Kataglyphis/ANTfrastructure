@@ -37,7 +37,20 @@ param(
     # — an nvidia image that LOST its CUDA_ROOT env now skips instead of failing.
     # Default off = exactly the previous behavior.
     [switch]$ExpectGpu,
-    [switch]$ExitOnFirstFailure
+    [switch]$ExitOnFirstFailure,
+    # COVERAGE FLOORS (backlog #44). Until 2026-08-14 the verdict read only
+    # $summary.Failed, so a run that asserted NOTHING — every section skipped
+    # because an env var was missing, or the harness bailed early — printed
+    # "All smoke tests passed!" and exited 0. With 24 Skip-Test call sites and
+    # seven env-gated sections that is not a hypothetical shape. A gate that
+    # cannot distinguish "everything passed" from "nothing ran" is worse than no
+    # gate, because it is quoted as evidence.
+    #   -MinPassed  : fail if fewer than N assertions actually PASSED.
+    #   -MaxSkipped : fail if more than N were skipped (-1 = no ceiling).
+    # Defaults stay 0 / -1 so existing hand invocations behave exactly as before;
+    # the drivers pass real floors.
+    [int]$MinPassed = 0,
+    [int]$MaxSkipped = -1
 )
 
 $ErrorActionPreference = 'Continue'
@@ -573,7 +586,16 @@ int main() {
         if ($dmlRedist) {
             Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source $onnxEpProbeSource -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
         } else {
-            Skip-Test 'DirectML EP (USE_DML=OFF on the clang-cl lane -- DML provider sources are MSVC-only)'
+            # FAIL, don't skip (backlog #46). This branch was keyed on the very
+            # artifact it is meant to verify: DirectML.dll missing => "skip",
+            # so the EP could vanish from the image with zero red at either end
+            # (the staging helper only Write-Warnings on a missing sidecar). But
+            # USE_DML=ON is UNCONDITIONAL in build-onnx-from-source.ps1, so an
+            # absent redist is never legitimate on this lane — and on the
+            # reference AMD host DirectML is the ONLY working GPU path.
+            Assert-Test -Name 'ONNX Runtime DirectML redist present (USE_DML=ON is unconditional)' `
+                -Condition { $false } `
+                -FailMessage "DirectML.dll not found under $onnxRoot. ONNX Runtime is built with USE_DML=ON unconditionally, so the redist must ship; Copy-SidecarDll only WARNS when it cannot stage it. On the AMD reference host this is the only working GPU path."
         }
     } else {
         Skip-Test 'ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)'
@@ -683,6 +705,18 @@ if ($opencvInclude -and (Test-Path $opencvInclude)) {
 if ($opencvSearchRoot) {
     # opencv_core is always built (world only if BUILD_opencv_world=ON).
     Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_core*.dll' -Description 'OpenCV core DLL'
+    # BULK LOAD TEST (backlog #57). Until 2026-08-14 exactly ONE of OpenCV's
+    # ~25-30 per-module DLLs was load-tested (opencv_core); the rest — including
+    # every cudaarithm/dnn module — were existence checks only. That is the
+    # OPENGL32 defect verbatim: WITH_OPENGL=ON linked fine and failed
+    # 0xC0000135 at LOAD on Server Core, and only a load test caught it.
+    # CUDA/cuDNN live outside this root, so pass their bins as dependency dirs.
+    $cvDepDirs = @(
+        $env:CUDA_ROOT, "$env:CUDA_ROOT\bin", "$env:CUDNN_ROOT\bin",
+        'C:\runtime\cuda-runtime\bin'
+    ) | Where-Object { $_ -and (Test-Path $_) }
+    Assert-AllDllsLoad -Name 'every OpenCV DLL loads (full dependent chain, not just opencv_core)' `
+        -Root $opencvSearchRoot -DependencyDirs $cvDepDirs -MinimumChecked 5
 } else {
     Skip-Test 'OpenCV DLLs (OPENCV_ROOT/INCLUDE not found)'
 }
@@ -822,6 +856,23 @@ if (Test-Path $litertInclude) {
 
 if (Test-Path $litertLibDir) {
     Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
+    # EXPORTS, not just the import lib (backlog #67). build-litert-from-source
+    # gates on tensorflowlite_c.lib being INSTALLED — but the documented failure
+    # was an import lib that existed while the DLL exported ZERO C-API symbols,
+    # which is structurally invisible to a presence check and only surfaced one
+    # branch later in gst's meson link. The injected target forces three XNNPack
+    # symbols via /EXPORT: plus WINDOWS_EXPORT_ALL_SYMBOLS; nothing pinned that
+    # until now, so an export regression could ship silently.
+    $tfliteDll = Get-ChildItem -Path (Split-Path $litertLibDir -Parent) -Filter 'tensorflowlite_c.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($tfliteDll) {
+        foreach ($sym in @('TfLiteInterpreterCreate', 'TfLiteXNNPackDelegateCreate', 'TfLiteXNNPackDelegateOptionsDefault')) {
+            Assert-DllLoads -Name "tensorflowlite_c.dll exports $sym" -DllPath $tfliteDll.FullName -Export $sym `
+                -FailMessage "tensorflowlite_c.dll does not export $sym - the /EXPORT: + WINDOWS_EXPORT_ALL_SYMBOLS injection in build-litert-from-source.ps1 regressed. A link-clean lib with no exports breaks gst-tflite one branch later."
+        }
+    } else {
+        Assert-Test -Name 'tensorflowlite_c.dll present (C API consumers need it)' -Condition { $false } `
+            -FailMessage "tensorflowlite_c.dll not found near $litertLibDir - the build gates on the .lib only, so an import lib without its DLL passes that check and fails downstream."
+    }
 }
 
 if (Test-Path $litertBinDir) {
@@ -1152,15 +1203,24 @@ $globalShims = $env:SCOOP_GLOBAL_SHIMS
 if ([string]::IsNullOrWhiteSpace($globalShims)) {
     Skip-Test 'SCOOP_GLOBAL_SHIMS checks skipped (env var absent -- base image predates 2026-08-08)'
 } else {
-    Assert-Test -Name 'SCOOP_GLOBAL_SHIMS points at an existing directory' -Condition {
-        Test-Path $globalShims -PathType Container
-    }.GetNewClosure() -FailMessage "SCOOP_GLOBAL_SHIMS=$globalShims does not exist (did the --global flutter install move?)"
-    # The whole point of the var: a `scoop install --global` package must be
-    # resolvable by NAME, not only via a hand-baked *_BIN pointer.
-    Assert-Test -Name 'SCOOP_GLOBAL_SHIMS is on PATH' -Condition {
-        $entries = $env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') }
-        $entries -contains $globalShims.TrimEnd('\')
-    }.GetNewClosure() -FailMessage "$globalShims is not on PATH -- globally installed scoop packages resolve only through their app dirs"
+    # ASSERT THE GOAL, NOT THE MECHANISM (diagnosed 2026-08-14, backlog #86).
+    # This used to require C:\ProgramData\scoop\shims to exist and be on PATH,
+    # and it failed on every image — including a freshly built base. Probing
+    # showed why: the global install WORKS (C:\ProgramData\scoop\apps\flutter is
+    # there and `flutter` resolves), scoop just never creates a global shims
+    # directory in this configuration. The image was fine; the check was
+    # asserting an implementation detail of scoop rather than the outcome it
+    # cares about. What actually matters is that a --global package is
+    # resolvable BY NAME, so assert exactly that, and treat the shims dir as one
+    # acceptable way of achieving it.
+    Assert-Test -Name 'globally scoop-installed package resolves by name (flutter)' -Condition {
+        [bool](Get-Command flutter -ErrorAction SilentlyContinue)
+    } -FailMessage 'flutter (scoop --global) does not resolve by name — neither a global shims dir nor a baked *_BIN entry is on PATH'
+    Assert-Test -Name 'global scoop root holds the --global install' -Condition {
+        $root = [Environment]::GetEnvironmentVariable('SCOOP_GLOBAL')
+        if (-not $root) { $root = Split-Path $globalShims -Parent }
+        Test-Path (Join-Path $root 'apps') -PathType Container
+    }.GetNewClosure() -FailMessage 'no apps\ directory under the global scoop root — the --global install did not happen at all'
 }
 
 # vcpkg zlib is the one vcpkg artifact media builds still consume (LiteRT-LM's
@@ -1172,9 +1232,18 @@ if ([string]::IsNullOrWhiteSpace($globalShims)) {
 # honor); 'C:\vcpkg' is only the conventional default install dir used by
 # setup-vcpkg.ps1 when no override is baked.
 $vcpkgRoot = $env:VCPKG_ROOT ?? 'C:\vcpkg'
+# NAME DRIFT, not a missing library (diagnosed 2026-08-14, backlog #87). The
+# assertion looked for zlib.lib and failed on every image; probing the freshly
+# built base showed the port DOES install, as
+# installed\x64-windows\lib\z.lib (+ debug\lib\zd.lib) — upstream vcpkg's zlib
+# port switched to the Unix-style output name. The image was fine; the check was
+# stale. Accept either name rather than pinning whichever one is current, so the
+# next rename does not re-open this.
 Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
-    Test-Path (Join-Path $vcpkgRoot 'installed\x64-windows\lib\zlib.lib')
-} -FailMessage "vcpkg zlib.lib missing under $vcpkgRoot (vcpkg install broken in the base image)"
+    $libDir = Join-Path $vcpkgRoot 'installed\x64-windows\lib'
+    @(Get-ChildItem -Path $libDir -Filter 'z*.lib' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -in @('z.lib', 'zlib.lib', 'zlibstatic.lib') }).Count -gt 0
+} -FailMessage "no vcpkg zlib import lib (z.lib/zlib.lib) under $vcpkgRoot\installed\x64-windows\lib — vcpkg install genuinely broken"
 # (A "vcpkg protoc runs IF present" assertion lived here for legacy base
 # images; vcpkg has shipped zlib-only since 2026-08-03 and every image in the
 # chain builds from that base, so the test could only ever pass vacuously —
@@ -1246,6 +1315,111 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         $out = & python -c "import cv2, numpy; img = numpy.zeros((8, 8, 3), numpy.uint8); ok, buf = cv2.imencode('.png', img); d = cv2.imdecode(buf, cv2.IMREAD_COLOR); print('py-cv2', cv2.__version__, bool(ok) and d.shape == (8, 8, 3))" 2>&1 | Out-String
         ($LASTEXITCODE -eq 0) -and ($out -match 'py-cv2 .* True')
     } -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
+
+    # ---- COMPILED-IN VIDEO BACKENDS (backlog #95) --------------------------
+    # These guard #93 (GStreamer silently OFF) and #94 (OpenCV using its OWN
+    # prebuilt FFmpeg instead of the chain's). Both shipped unnoticed for months
+    # because nothing asserted them and the one obvious check LIES:
+    # `cv2.videoio_registry.getBackends()` lists GSTREAMER as a known backend ID
+    # whether or not it was compiled in. Only getBuildInformation() is
+    # authoritative, so parse that and nothing else.
+    #
+    # Written BEFORE the fix, deliberately, and expected to FAIL until #93/#94
+    # land — a guard added afterwards proves nothing about the defect it exists
+    # to catch. If you are here because these are red: that is the known state,
+    # see docs/windows-builds.md P0e.
+    $cvBuildInfo = & python -c "import cv2; print(cv2.getBuildInformation())" 2>&1 | Out-String
+
+    # #93 is solved by the STANDALONE plugin route (opencv_videoio_gstreamer*.dll
+    # built in the MERGE stage, after GStreamer exists, and dropped next to
+    # opencv_videoio*.dll). Two consequences for these assertions:
+    #  * getBuildInformation() legitimately KEEPS saying `GStreamer: NO` — that
+    #    string is videoio's COMPILE-TIME config and the plugin loads at
+    #    runtime. Asserting on it would stay red on a CORRECT image forever.
+    #  * hasBackend(CAP_GSTREAMER) is the authoritative check: it attempts the
+    #    plugin load and returns true only when the DLL is found AND loads
+    #    (including its GStreamer dependency chain).
+    Assert-Test -Name "cv::VideoCapture has a working GStreamer backend (plugin, #93)" -Condition {
+        $out = & python -c "import cv2; print('gst-backend', cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'gst-backend True')
+    } -FailMessage ("cv2.videoio_registry.hasBackend(CAP_GSTREAMER) is False -- the opencv_videoio_gstreamer plugin " +
+        "DLL is missing next to opencv_videoio*.dll, or it failed to load (GStreamer DLLs not resolvable). " +
+        "Built by build-opencv-gstreamer-plugin.ps1 in the merge stage -- backlog #93.")
+
+    # Capability, not just loadability: open a real (synthetic) GStreamer
+    # pipeline through cv::VideoCapture and read one frame. This is the exact
+    # call the owner's code makes.
+    Assert-Test -Name "cv::VideoCapture opens a GStreamer pipeline and reads a frame (#93)" -Condition {
+        $out = & python -c "import cv2; cap = cv2.VideoCapture('videotestsrc num-buffers=1 ! videoconvert ! appsink', cv2.CAP_GSTREAMER); ok, frame = cap.read(); print('gst-read', bool(ok) and frame is not None and frame.size > 0)" 2>&1 | Out-String
+        ($LASTEXITCODE -eq 0) -and ($out -match 'gst-read True')
+    } -FailMessage ("VideoCapture(CAP_GSTREAMER) could not read a frame from a videotestsrc pipeline -- the plugin " +
+        "loads but the GStreamer runtime underneath it is broken (core plugins missing from the plugin dir, or " +
+        "GST_PLUGIN_PATH/PATH not set by the entrypoint). Backlog #93.")
+
+    # NOT a provenance check: `(prebuilt binaries)` is printed on Windows
+    # whenever videoio uses the wrapper mechanism, REGARDLESS of where the libs
+    # came from. Measured 2026-08-17 after #94 landed: the label still said
+    # `YES (prebuilt binaries)` while avcodec read 63.1.100 — this chain's
+    # FFmpeg. An assertion on that string therefore fails on a CORRECT build, so
+    # it is reported for information only. The version comparison below is the
+    # real provenance test.
+    Assert-Test -Name 'OpenCV has an FFmpeg backend at all' -Condition {
+        $cvBuildInfo -match '(?m)^\s*FFMPEG:\s+YES'
+    } -FailMessage 'cv2.getBuildInformation() does not report FFMPEG: YES -- cv::VideoCapture has no FFmpeg path.'
+
+    # avdevice was NO with OpenCV's downloaded FFmpeg; #94 turned it on via
+    # OPENCV_FFMPEG_ENABLE_LIBAVDEVICE. Guard it so a regression is visible.
+    Assert-Test -Name 'OpenCV FFmpeg backend includes avdevice (#94)' -Condition {
+        $cvBuildInfo -match '(?m)^\s*avdevice:\s+YES'
+    } -FailMessage ('cv2.getBuildInformation() reports avdevice as NO -- the FFmpeg backend lost libavdevice, ' +
+        'which is one of the symptoms #94 fixed.')
+
+    # Cross-check the versions rather than hard-coding a pin: ask ffmpeg.exe what
+    # avcodec the chain actually ships, ask OpenCV what avcodec it was built
+    # against, and require the majors to agree. Survives an FFMPEG_VERSION bump
+    # without edits, and catches a silent fallback to a bundled build.
+    # Read both majors ONCE, up front, so the two failure modes stay separable:
+    # "the versions disagree" and "we could not read one of them" are different
+    # defects and must not share a message. The probe run on 2026-08-16 reported
+    # `chain=?` purely because ffmpeg.exe would not launch in that intermediate
+    # image, which read as a version mismatch and is not one.
+    $ffDir = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
+    $ffExe = Join-Path $ffDir 'ffmpeg.exe'
+    $chainAvcodec = ''
+    if (Test-Path $ffExe) {
+        # ffmpeg.exe needs its own bin dir on PATH to resolve avcodec-*.dll etc.
+        # Without this it exits silently, the version comes back empty, and the
+        # comparison below reports a mismatch that is really "could not read" —
+        # exactly what the probe showed as `chain=?` on 2026-08-16/17.
+        $savedPath = $env:PATH
+        try {
+            if ($env:PATH -notlike "*$ffDir*") { $env:PATH = "$ffDir;$env:PATH" }
+            $chainVer = (& $ffExe -version 2>&1 | Out-String)
+            if ($chainVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodec = $Matches[1] }
+        } finally { $env:PATH = $savedPath }
+    }
+    # OpenCV prints either `avcodec: 61.19.100` or `avcodec: YES (61.19.100)`
+    # depending on version; accept both rather than guess (the abridged quote in
+    # backlog #93 shows the first, real builds print the second).
+    $cvAvcodec = ''
+    if ($cvBuildInfo -match '(?m)^\s*avcodec:\s+(?:YES\s*\()?(\d+)\.') { $cvAvcodec = $Matches[1] }
+
+    Assert-Test -Name "both avcodec majors are readable (precondition for the #94 check)" -Condition {
+        $chainAvcodec -and $cvAvcodec
+    } -FailMessage ("could not read one of the avcodec versions -- chain='$chainAvcodec' (from '$ffExe' -version), " +
+        "opencv='$cvAvcodec' (from cv2.getBuildInformation()). This is NOT a version-mismatch verdict: an empty " +
+        "chain value usually means ffmpeg.exe could not launch (its bin dir missing from PATH), an empty opencv " +
+        "value means the Video I/O block had no avcodec line at all.")
+
+    if ($chainAvcodec -and $cvAvcodec) {
+        Assert-Test -Name "OpenCV's avcodec major matches the chain's FFmpeg (#94)" -Condition {
+            $chainAvcodec -eq $cvAvcodec
+        } -FailMessage ("OpenCV was built against avcodec $cvAvcodec while this chain ships avcodec $chainAvcodec -- " +
+            "the image carries TWO FFmpeg generations and cv::VideoCapture's FFmpeg path uses the wrong one. " +
+            "Backlog #94.")
+    } else {
+        Skip-Test 'OpenCV avcodec major vs chain (one of the versions unreadable)'
+    }
 
     Assert-Test -Name "python tvm imports (runtime device reachable)" -Condition {
         $out = & python -c "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" 2>&1 | Out-String
@@ -1379,8 +1553,28 @@ if ($summary.Failed -gt 0) {
         Write-Host "  $detail" -ForegroundColor Red
     }
     exit 1
-} else {
-    Write-Host "`nAll smoke tests passed!" -ForegroundColor Green
-    exit 0
 }
+
+# Coverage floors (backlog #44): zero failures is NOT the same as "verified".
+# These are checked after the failure branch so a real failure still reports as
+# a failure, not as a coverage problem.
+$coverageProblems = @()
+if ($MinPassed -gt 0 -and $summary.Passed -lt $MinPassed) {
+    $coverageProblems += "only $($summary.Passed) assertion(s) passed, expected at least $MinPassed — the run proved far less than it appears to"
+}
+if ($MaxSkipped -ge 0 -and $summary.Skipped -gt $MaxSkipped) {
+    $coverageProblems += "$($summary.Skipped) test(s) skipped, ceiling is $MaxSkipped — sections are being gated out (usually a missing env var or an absent artifact keyed as 'optional')"
+}
+if ($summary.Aborted) {
+    $coverageProblems += '-ExitOnFirstFailure aborted the run, so the remaining tests never executed and this result is not a full verdict'
+}
+if ($coverageProblems.Count -gt 0) {
+    Write-Host "`n--- INSUFFICIENT COVERAGE ---" -ForegroundColor Red
+    foreach ($p in $coverageProblems) { Write-Host "  $p" -ForegroundColor Red }
+    Write-Host 'Refusing to report success: 0 failures with too little executed is indistinguishable from a broken harness.' -ForegroundColor Red
+    exit 3
+}
+
+Write-Host "`nAll smoke tests passed! ($($summary.Passed) assertions, $($summary.Skipped) skipped)" -ForegroundColor Green
+exit 0
 

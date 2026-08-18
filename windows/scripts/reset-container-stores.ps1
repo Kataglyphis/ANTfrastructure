@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -8,7 +9,6 @@
 #
 #   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\reset-container-stores.ps1'
 
-#requires -Version 7.0
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off
 

@@ -94,6 +94,10 @@ _stage_start_resource_monitor() {
 }
 
 main() {
+  # O5 flag allowlist: build-cross-stage builds a SINGLE arch via cross_stage_run
+  # (no run_parallel_arch_loop), so the parallel-arch knobs parse for CLI-compat
+  # but do nothing here — warn instead of silently ignoring them.
+  ORCHESTRATOR_UNSUPPORTED_FLAGS="--parallel-archs --max-parallel-archs"
   run_orchestrator_arg_loop usage _cross_stage_extra_arg \
     TARGET_ARCH USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
     FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO VULKAN_VERSION PUSH_IMAGES \

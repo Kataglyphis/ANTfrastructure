@@ -24,6 +24,15 @@ FROM ${CORE_IMAGE} AS media-core
 FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
+# Flatten the CUDA/cuDNN runtime DLLs into one dir the merge image can put on
+# PATH. Derived from media-core (built on the nvidia base -> carries CUDA_ROOT /
+# CUDNN_ROOT + the actual DLLs). A COPY cannot do this: the sources are under
+# "C:\Program Files\..." (spaces) and cuDNN 9 buries its DLLs in a CUDA-major
+# subdir under bin\, so a recursive script is needed. See stage-cuda-runtime.ps1.
+FROM ${CORE_IMAGE} AS cuda-runtime-stage
+COPY windows\scripts\stage-cuda-runtime.ps1 C:\stage-cuda-runtime.ps1
+RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
+
 # ── Mount source for the BK lane's module closure ────────────────────────────
 # Same pattern (and same reasoning) as Dockerfile.media-builder's `buildmods`:
 # one stage holding exactly the in-container module closure, mounted as a single
@@ -115,6 +124,18 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
 # then layer the independent branches' components on top.
 COPY --from=media-core C:\runtime C:\runtime
+# CUDA/cuDNN RUNTIME DLLs. The CUDA-built libs fanned in above (OpenCV with
+# WITH_CUDA/WITH_CUDNN, onnxruntime's CUDA EP, TVM's CUDA backend) hard- or
+# delay-link cudnn64_9.dll + cudart/cublas, which live in the nvidia base's
+# NVIDIA install dirs -- NOT under C:\runtime, so the fan-in above missed them
+# and gst-plugins-bad's opencv plugin (and any GPU code path) failed to LOAD
+# with Win32 126 "The specified module could not be found". Stage the runtime
+# DLLs from media-core (built on the nvidia base, so it carries them) into a
+# stable dir that the ENV PATH below exposes.
+# The CUDA/cuDNN runtime DLLs, pre-flattened into one dir by cuda-runtime-stage
+# (see the stage above): a plain COPY of a no-space, single-level dir -- so it
+# lands cudnn64_9.dll + cudart/cublas directly on the PATH set below.
+COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime\bin
 # media-core's CPython site-packages carry the installed python bindings
 # (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install) plus their
 # pypi deps (numpy, ...) and the win-amd64 platform-tag sitecustomize shim —
@@ -141,7 +162,7 @@ COPY --from=media-tvm C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site
 # PATH references the vars above, and PKG_CONFIG_PATH lets GStreamer auto-detect
 # FFmpeg + OpenCV (libav*.pc enables gst-libav; LiteRT and ONNX Runtime ship no
 # .pc files). GStreamer's own .pc files land at C:\runtime\lib\pkgconfig.
-ENV PATH=$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
+ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$ONNX_ROOT\lib;$ONNX_GENAI_ROOT\bin;$ONNX_GENAI_ROOT\lib;$LITERT_BIN;$LITERT_LIB;$OPENCV_BIN;$TVM_LIBRARY_PATH;$IREE_BIN;$PATH `
     PKG_CONFIG_PATH=$FFMPEG_LIB\pkgconfig;$OPENCV_LIB\pkgconfig;C:\runtime\lib\pkgconfig
 
 # Re-COPY versions.env (base bakes a stale copy — build scripts re-read this at run time).
@@ -174,21 +195,52 @@ COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 FROM merge-fanin AS built
 # ARGs do not cross stage boundaries — redeclare for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
-# Two-tier sccache, same reasoning and same caveats as Dockerfile.media-builder's
+# Overridable so a single stage can be re-run at debug level without editing
+# this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+ARG SCCACHE_LOG="warn"
+# WebDAV-ONLY sccache, same reasoning and same caveats as Dockerfile.media-builder's
 # `common` stage (read the block there before changing either). This stage is not
 # a descendant of it, so the variables have to be repeated -- ENV does not cross a
 # FROM boundary any more than ARG does.
+#
+# SCCACHE_MULTILEVEL_CHAIN is EMPTY on purpose since 2026-08-16: the local L0 tier
+# sits on a BuildKit cache mount, and on Windows those lose writes once the
+# directory holds objects an EARLIER RUN wrote (158 of 250 vs 0 of 250 into a
+# plain directory, same program, same moment). Restore `disk,webdav` here AND in
+# Dockerfile.media-builder together, once WCOW cache mounts are proven — see
+# backlog #99 for the measurement and the re-verification recipe.
+ARG SCCACHE_MULTILEVEL_CHAIN=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
-    SCCACHE_DIR="C:\sccache" `
+    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
+    SCCACHE_DIR="C:\sccache\v2" `
     SCCACHE_CACHE_SIZE="15G" `
-    SCCACHE_ERROR_LOG="C:\sccache\logs\sccache-error.log" `
+    SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
+    SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
 # Same cache id as the media builder on purpose: GStreamer compiles the same
 # clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
     & 'C:\bkmnt\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter
+
+# OpenCV's STANDALONE GStreamer videoio plugin (backlog #93). MUST run after
+# the GStreamer RUN above — that is the whole point: OpenCV itself configured
+# in media-core BEFORE GStreamer existed, so its videoio carries
+# `GStreamer: NO`; this builds `opencv_videoio_gstreamer*.dll` out-of-tree
+# against the INSTALLED OpenCV + the GStreamer just built, and drops it next to
+# opencv_videoio*.dll where the runtime plugin loader probes. One source file,
+# minutes, no second OpenCV pass.
+# NB `cv2.getBuildInformation()` STILL says `GStreamer: NO` afterwards — that
+# string is compile-time; the runtime truth is
+# `cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER)` (asserted by the smoke
+# test since 2026-08-17).
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build-opencv-gstreamer-plugin.ps1,target=C:\bkmnt\build-opencv-gstreamer-plugin.ps1 `
+    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\build-opencv-gstreamer-plugin.ps1' -InstallDir 'C:\runtime'

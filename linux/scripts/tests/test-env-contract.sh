@@ -3,27 +3,28 @@
 #
 # runtime_shared_usage_env_overrides DOCUMENTS operator env overrides; nothing
 # machine-checked that a documented name is actually CONSUMED. XC4 found the
-# live instance: ONNX_PACKAGE / PYTORCH_EXTRA are advertised, forwarded by
-# nothing, and Dockerfile.torch bakes fixed values — the documented GPU path
-# silently builds a CPU venv, and smoke-torch-venv validates the BAKED env so
-# it cannot catch it. Contract enforced here: every ALL-CAPS name in the
+# live instance (since wired): ONNX_PACKAGE / PYTORCH_EXTRA were advertised,
+# forwarded by nothing, and Dockerfile.torch baked fixed values — the documented
+# GPU path silently built a CPU venv, and smoke-torch-venv validates the BAKED
+# env so it could not catch it. Contract enforced here: every ALL-CAPS name in the
 # usage-overrides block must be referenced OUTSIDE that block somewhere in the
 # runtime lane (forwarded as a build-arg or consumed host-side).
 #
-# KNOWN_DEAD carries the two open XC4 names so the suite ships green today;
-# a guard fails the suite the moment an entry becomes live without being
-# removed here (the Windows PinParity [pend] pattern).
+# KNOWN_DEAD carries any open documented-but-dead names so the suite ships
+# green while a fix is pending; a guard fails the suite the moment an entry
+# becomes live without being removed here (the Windows PinParity [pend]
+# pattern).
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
 RBF="${CORE}/runtime-build-fns.sh"
 
-# backlog XC4 — remove entries WITH the fix. TORCH_DOCKERFILE_PATH was found
-# BY this test on first run: documented, but the torch build actually consumes
-# WRAPPER_DOCKERFILE_PATH (runtime-build-fns.sh:200) — the override can never
-# take effect.
-KNOWN_DEAD=(ONNX_PACKAGE PYTORCH_EXTRA TORCH_DOCKERFILE_PATH)
+# backlog XC4 CLOSED 2026-08-12: ONNX_PACKAGE / PYTORCH_EXTRA are now forwarded
+# by append_wrapper_build_args and consumed as ARGs in Dockerfile.torch; the
+# dead TORCH_DOCKERFILE_PATH doc line was removed (the torch build consumes
+# WRAPPER_DOCKERFILE_PATH). Add new entries here only WITH a pending fix.
+KNOWN_DEAD=()
 
 t_case "runtime-build-fns.sh exists and parses"
 t_assert_ok test -f "${RBF}"

@@ -1,0 +1,27 @@
+# escape=`
+# =============================================================================
+# OpenCV video-backend probe - DIAGNOSTIC ONLY, ships nothing (backlog #93-#95).
+# =============================================================================
+# Asks a BUILT media image what video backends OpenCV actually has, so the #95
+# smoke-test assertions can be watched FAILING against the real artifact before
+# the #93/#94 fixes land. A guard added after the fact proves nothing about the
+# defect it was meant to catch.
+#
+# Point it at the image that carries OpenCV + the python bindings:
+#   .\windows\scripts\run-opencv-video-probe.ps1
+#   .\windows\scripts\run-opencv-video-probe.ps1 -BaseImage local/kataglyphis:bk-windows-media-core
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-media-core-ffmpeg
+FROM ${BASE_IMAGE} AS probe
+
+# Layer-cache buster: without it a re-run gives `CACHED` and silently replays an
+# old verdict as if it were a fresh measurement (that trap cost a wasted report
+# on 2026-08-16). `--no-cache` is NOT the alternative - it empties cache mounts.
+ARG PROBE_NONCE="0"
+
+# sccache-logs carries the PERSISTENT build logs (Get-PersistentBuildLogPath),
+# including opencv-configure.log — which survives a failed solve and is the only
+# way to read why a configure disabled a backend without rebuilding.
+RUN --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/probe-opencv-video-backends.ps1,target=C:\bkmnt\probe-opencv-video-backends.ps1 `
+    & 'C:\bkmnt\probe-opencv-video-backends.ps1' -Nonce "${PROBE_NONCE}"

@@ -1,0 +1,74 @@
+# escape=`
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+#
+# Backlog #44: runs smoke-test-container.ps1 against a BUILT image and fails the
+# solve if it does not pass.
+#
+# WHY A DOCKERFILE AND NOT `nerdctl run`
+# --------------------------------------
+# containerd's pipe is Administrator-only upstream, so `nerdctl run` cannot be
+# invoked from the non-admin shell the build driver deliberately runs in. A
+# buildctl solve reaches the same image through the same non-admin path the
+# whole chain already uses, so the gate costs no privilege escalation and no
+# second toolchain.
+#
+# WHY IT EXISTS AT ALL
+# --------------------
+# Until 2026-08-14 NEITHER driver invoked the smoke test: `grep -i smoke
+# windows/build.ps1 windows/build-buildkit.ps1` returned zero hits in both, the
+# final Dockerfile has no RUN, and CI never referenced it. A ~5 h chain ended
+# with "Done in hh:mm:ss" and zero evidence the image worked — in a repo whose
+# defect history is dominated by "builds fine, fails to LOAD" (OPENGL32 on
+# Server Core; the TensorRT EP that could never load; gst plugins with Win32
+# 126). The script exists, is modular, is documented, and was simply never run.
+#
+# Everything it needs is already in the final image (C:\temp\), so this stage
+# adds no COPY, and the driver solves it with -NoOutput so nothing is exported —
+# the verified artifact is never modified by verifying it.
+
+ARG BASE_IMAGE=local/kataglyphis:winamd64
+FROM ${BASE_IMAGE}
+
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Coverage floors, not just "0 failures" (backlog #44): the verdict used to read
+# only $summary.Failed, so a fully skipped run printed "All smoke tests passed!"
+# and exited 0. MIN_PASSED/MAX_SKIPPED make "nothing ran" a distinct failure
+# (exit 3). Passed as ARGs so a lane with legitimately fewer sections (a CPU-only
+# image, say) can lower them explicitly rather than by accident.
+ARG MIN_PASSED=40
+ARG MAX_SKIPPED=24
+ARG EXPECT_GPU=0
+
+# BIND-MOUNT the current script + harness rather than running the copy baked
+# into the image. Two reasons, both load-bearing:
+#   1. The baked copy is whatever existed when the final image was built, so a
+#      fix to the smoke test could not be re-verified without rebuilding the
+#      whole image first — which is precisely the friction that let this script
+#      go unrun for a month.
+#   2. A mount adds no layer, so the gate never alters the artifact it verifies.
+# The image still ships its own copy at C:\temp for interactive use.
+#
+# The run's own output IS the evidence — never redirect it away.
+# RUN THROUGH THE ENTRYPOINT, not directly. A bare RUN bypasses ENTRYPOINT, and
+# entrypoint.cmd is what loads the VS developer environment (VsDevCmd -arch=amd64)
+# and prepends LLVM's versioned clang_rt ASAN runtime dir to PATH. Skipping it
+# made SIX smoke assertions fail against a perfectly good image — msbuild not on
+# PATH, VCToolsInstallDir unset, MSBuild+ClangCL, nvcc (it needs cl.exe), and the
+# ASAN probe. Those were defects in THIS GATE, not in the artifact: the image is
+# designed to be entered through its entrypoint, so a gate that does not is
+# testing a configuration no user ever runs.
+RUN --mount=type=bind,source=windows/scripts/smoke-test-container.ps1,target=C:\gate\smoke-test-container.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\gate\modules `
+    $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\smoke-test-container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
+    if ($env:EXPECT_GPU -eq '1') { $cmdline = $cmdline + ' -ExpectGpu' }; `
+    & cmd /S /C ('C:\temp\scripts\entrypoint.cmd ' + $cmdline); `
+    if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }
+
+# No marker RUN. An earlier version wrote C:\temp\smoke-gate.ok "so docker
+# history shows the gate ran" — but the driver solves this with -NoOutput, so
+# nothing is ever exported and that history could never be inspected. It was a
+# dead instruction whose only real effect was to contradict the "adds no layer"
+# rationale above. The RUN that executes the smoke test is the vertex; its exit
+# code is the verdict.

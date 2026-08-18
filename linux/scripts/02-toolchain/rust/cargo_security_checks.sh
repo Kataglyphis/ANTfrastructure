@@ -8,6 +8,8 @@ source "$SCRIPT_DIR/../../01-core/logging.sh"
 # "Permission denied (os error 13)". Shared with the build wrapper.
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/_cargo_home_guard.sh"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/_rust_toolchain_guard.sh"
 
 run_step() {
    local description="$1"

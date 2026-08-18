@@ -86,6 +86,32 @@ Describe 'Resolve-TensorRtRoot' {
             }
         }
     }
+
+    # Backlog #38: normalize-tensorrt-tree.ps1 renames the extracted tree to a
+    # stable 'current' so Dockerfile.nvidia's runtime PATH never spells the pin
+    # (deriving it from TENSORRT_VERSION put a nonexistent dir on PATH and
+    # silently killed the ORT TensorRT EP). The resolver must agree with that
+    # PATH, and must still handle pre-normalization trees.
+    It "prefers the stable 'current' directory (backlog #38)" {
+        Invoke-InTestDir { param($dir)
+            $stable = Join-Path $dir 'current'
+            New-Item -ItemType Directory -Force -Path $stable | Out-Null
+            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } {
+                Assert-Equal $stable (Resolve-TensorRtRoot)
+            }
+        }
+    }
+
+    It "prefers 'current' OVER a leftover versioned dir (both present)" {
+        Invoke-InTestDir { param($dir)
+            $stable = Join-Path $dir 'current'
+            New-Item -ItemType Directory -Force -Path $stable | Out-Null
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'TensorRT-10.5.0.18') | Out-Null
+            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } {
+                Assert-Equal $stable (Resolve-TensorRtRoot)
+            }
+        }
+    }
 }
 
 Describe 'Get-CudnnLibrary' {

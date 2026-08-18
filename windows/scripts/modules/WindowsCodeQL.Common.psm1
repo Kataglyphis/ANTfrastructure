@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -9,8 +10,6 @@
 # future sweep of windows/scripts/modules/.
 
 Set-StrictMode -Version Latest
-#requires -Version 7.0
-
 
 # Import shared helpers (Resolve-DirectoryPath, New-Timestamp, Invoke-DownloadWithRetry, etc.)
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'

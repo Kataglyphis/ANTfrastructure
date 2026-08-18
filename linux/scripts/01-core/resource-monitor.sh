@@ -67,6 +67,7 @@ _rm_context() {
   [ -n "${log}" ] && [ -r "${log}" ] || { printf '%s' ""; return 0; }
   tail -n 40 "${log}" 2>/dev/null \
     | grep -aE 'Building|Compiling|\[[0-9]+/[0-9]+\]|CC[[:space:]]|CXX[[:space:]]|LD[[:space:]]|LINK|Built target|\[stage |Finished|Installing|error|warning' \
+    | grep -avE 'level=(error|warning)|\(\*service\)\.Write' \
     | grep -avE '^\s*$' \
     | tail -n 1 \
     | tr ',"\n\r' '    ' \
@@ -90,9 +91,17 @@ _rm_active_log() {
   # Resolve the log to read for context THIS tick: an explicit --stage-log, else
   # the most recently modified *.log in --stage-log-dir (follows the build as it
   # moves from per-stage logs to the orchestrator log). One cheap `ls`.
-  local explicit="$1" dir="$2"
+  # MON1 (2026-08-17): PREFER logs that carry a sibling `.log.run` marker — those
+  # are the orchestrator's per-stage tee logs. The plain newest-*.log pick often
+  # landed on a nohup'd ORCHESTRATOR runlog in the same dir (constantly appended
+  # with buildkitd stderr), which is why every sample showed stage=? and the
+  # context column filled with `(*service).Write failed` spam.
+  local explicit="$1" dir="$2" f
   if [ -n "${explicit}" ]; then printf '%s' "${explicit}"; return 0; fi
   [ -n "${dir}" ] && [ -d "${dir}" ] || { printf '%s' ""; return 0; }
+  for f in $(ls -t "${dir}"/*.log 2>/dev/null); do
+    [ -f "${f}.run" ] && { printf '%s' "${f}"; return 0; }
+  done
   ls -t "${dir}"/*.log 2>/dev/null | head -n 1
 }
 

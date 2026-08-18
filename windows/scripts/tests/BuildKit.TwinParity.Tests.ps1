@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -19,7 +20,6 @@
 #   4. nobody re-declares those ARGs in a descendant, which would reintroduce a
 #      twin by the back door.
 
-#requires -Version 7.0
 
 BeforeAll {
     $script:dfPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Dockerfile.media-builder'

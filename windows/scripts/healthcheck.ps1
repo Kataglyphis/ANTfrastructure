@@ -1,9 +1,9 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 # Comprehensive Docker HEALTHCHECK for Windows developer image.
 # Exits 0 if all critical components respond, 1 otherwise.
 
-#requires -Version 7.0
 
 $ErrorActionPreference = 'Continue'
 # StrictMode is safe here: the script stays standalone (no module imports) and every

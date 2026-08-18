@@ -56,7 +56,8 @@ KNOWN_BASE_PROVIDED: dict[str, list[str]] = {
         "/opt/scripts/core/cross-apt.sh",
         "/opt/scripts/core/modules.sh",
     ],
-    # vulkan.sh is inherited from the sdk FROM base (which COPYs 02-toolchain).
+    # vulkan.sh is inherited from the sdk FROM base (Dockerfile.sdk COPYs it
+    # per-file as part of the setup-dependencies.sh closure).
     "Dockerfile.media": [
         "/opt/scripts/toolchain/vulkan.sh",
     ],

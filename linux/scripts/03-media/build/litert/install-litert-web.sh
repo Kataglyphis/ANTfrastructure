@@ -40,6 +40,27 @@ _fetch_npm_package() {
     tries=$((tries + 1)); warn "download ${spec}@${version} failed (try ${tries}/3)"; sleep 2
   done
   if [ "${ok}" -ne 1 ]; then rm -rf "${tmp}"; warn "giving up on ${spec}@${version}"; return 1; fi
+  # Integrity: verify the downloaded tarball against the registry's published
+  # `dist.integrity` (sha512). The tarball comes over the CDN; the packument is
+  # the registry's authoritative hash, so this catches a corrupted/tampered
+  # download. A MISMATCH refuses the package (return 1) — vendor_litertjs treats
+  # that as non-fatal, so the image ships WITHOUT a tampered dependency rather
+  # than vendoring it. Metadata unavailable (offline mirror) → warn + proceed,
+  # which is no worse than the prior no-check behaviour.
+  local _want_int _got_int
+  _want_int="$(curl -fsSL --max-time 30 "${REGISTRY}/${scope_path}/${version}" 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("dist",{}).get("integrity",""))' 2>/dev/null || true)"
+  if [ -n "${_want_int}" ]; then
+    _got_int="sha512-$(python3 -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],"rb").read()).digest()).decode())' "${tmp}/pkg.tgz" 2>/dev/null)"
+    if [ "${_want_int}" != "${_got_int}" ]; then
+      rm -rf "${tmp}"
+      warn "INTEGRITY MISMATCH ${spec}@${version}: registry ${_want_int} != downloaded ${_got_int} — refusing (tampering/corruption)"
+      return 1
+    fi
+    info "integrity verified ${spec}@${version} (sha512)"
+  else
+    warn "could not fetch dist.integrity for ${spec}@${version} — proceeding WITHOUT integrity verification"
+  fi
   mkdir -p "${dest}"
   # npm tarballs unpack under a top-level `package/`; strip it.
   tar xzf "${tmp}/pkg.tgz" -C "${dest}" --strip-components=1 package/ 2>/dev/null \

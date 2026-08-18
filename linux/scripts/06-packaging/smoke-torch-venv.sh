@@ -175,10 +175,25 @@ def installed_version(import_name, dist_name):
     except Exception:
         return None
 
+# Arch policy: genai is a DOCUMENTED riscv64 skip — the producer refuses the
+# arch ("Skipping onnxruntime-genai on riscv64 because it is not supported";
+# upstream ships no riscv64 wheel in any version and closed its one RISC-V
+# field report as not-planned) and verify-media-artifacts SKIPs in agreement,
+# so absence there is policy, not drift. STV_REQUIRE_GENAI=1 re-arms the hard
+# assert (e.g. should GEN1 ever self-build a riscv64 wheel). Found live
+# 2026-08-11: without this, the assert derived EXP_GENAI unconditionally from
+# versions.env and flagged the documented absence as a pin failure.
+expected_absent = set()
+if is_riscv64 and os.environ.get("STV_REQUIRE_GENAI", "") != "1":
+    expected_absent.add("onnxruntime-genai")
+
 fails = []
 for import_name, dist_name, build_pin, torchlike in SPECS:
     inst = installed_version(import_name, dist_name)
     if inst is None:
+        if dist_name in expected_absent:
+            print("  ~~  %-16s not installed (documented riscv64 skip; policy, not drift)" % dist_name)
+            continue
         fails.append("%s NOT INSTALLED" % dist_name)
         print("  XX  %-16s NOT INSTALLED" % dist_name)
         continue
@@ -242,6 +257,28 @@ try:
         print("  XX  %-16s %s: major != %s" % ("opencv/cv2", cvv, cv_major))
     else:
         print("  OK  %-16s %-16s (major %s)" % ("opencv/cv2", cvv, cv_major or "?"))
+    # SMK1 (2026-08-17): the opencv TWO-PASS functional gate. Pass-2 rebuilds
+    # OpenCV against the source-built GStreamer; if that regresses (e.g. the
+    # .pc probe in the opencv-gst stage), cv2 silently loses its gstreamer
+    # videoio backend while everything else stays green — this is the assert
+    # the original two-pass design called for. riscv64 exempt (gstreamer OFF
+    # there by design, build-opencv.sh target adjustment). FFMPEG stays
+    # ADVISORY until OCV-FF1 is resolved (opencv-5.0.0 does not currently
+    # enable it against ffmpeg n9.0 — reported NO on the first proven build).
+    import re as _re
+    _binfo = cv2.getBuildInformation()
+    def _backend(name):
+        m = _re.search(name + r":\s*(\S+)", _binfo)
+        return m.group(1) if m else "?"
+    _gst = _backend("GStreamer")
+    _ff  = _backend("FFMPEG")
+    if is_riscv64:
+        print("  --  cv2 videoio      GStreamer=%s FFMPEG=%s (riscv64: gstreamer OFF by design)" % (_gst, _ff))
+    elif _gst.upper().startswith("YES"):
+        print("  OK  cv2 videoio      GStreamer=%s (two-pass intact); FFMPEG=%s (advisory, OCV-FF1)" % (_gst, _ff))
+    else:
+        fails.append("cv2 GStreamer backend=%s (two-pass regressed; expected YES)" % _gst)
+        print("  XX  cv2 videoio      GStreamer=%s — two-pass REGRESSED (expected YES)" % _gst)
 except Exception as e:
     if cv_required:
         fails.append("cv2 %s" % e)

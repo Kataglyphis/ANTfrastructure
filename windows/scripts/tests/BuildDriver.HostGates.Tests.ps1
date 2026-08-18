@@ -250,7 +250,21 @@ Describe 'Get-StageDiskFloorGb / Assert-StageDiskHeadroom (shared by both lanes)
     }
 
     It 'passes when the floor is clearable and throws when it is not' {
-        Assert-StageDiskHeadroom -Label 'test' -FloorGb 0     # 0 -> table lookup, real disk clears 40
+        # The pass case derives its floor from the ACTUAL free space instead of
+        # `-FloorGb 0`. That form looked up the 40 GB table default and assumed
+        # the runner clears it - "real disk clears 40" was written right here -
+        # which made the test a property of the host. On 2026-08-12 a
+        # windows-2025 runner had 32.5 GB free on C: and this was the single red
+        # test in an otherwise green 480-test suite, failing with a message about
+        # buildkit store GC that had nothing to do with the code under test.
+        #
+        # The table-lookup path is not lost: the preceding test already asserts
+        # Get-StageDiskFloorGb returns 40 for an unknown label, which is the same
+        # code `-FloorGb 0` reaches.
+        $freeGb = [math]::Floor((Get-PSDrive C).Free / 1GB)
+        $clearable = [math]::Max(1, $freeGb - 1)
+        Assert-StageDiskHeadroom -Label 'test' -FloorGb $clearable
+
         Assert-Throws -MessagePattern 'REFUSING to start' -Body {
             Assert-StageDiskHeadroom -Label 'test' -FloorGb 100000000
         }

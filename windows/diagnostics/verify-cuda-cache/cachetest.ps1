@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -7,7 +8,6 @@
 # Compiles the same .cu twice through sccache's nvcc launcher and asserts a
 # cache hit AND a backend write; the verdict is the exit code. Relies on the
 # Machine-scope VS/CUDA env the base image bakes (INCLUDE/LIB assembled here).
-#requires -Version 7.0
 $ErrorActionPreference = 'Stop'
 
 $scc = 'C:\Users\ContainerAdministrator\.cargo\bin\sccache.exe'

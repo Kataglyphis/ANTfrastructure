@@ -25,18 +25,9 @@ install_deps_preamble build-essential cmake git pkg-config curl unzip cpio gfort
 
 install_target_packages "${target_packages[@]}"
 
-atlas_pkg="libatlas-base-dev"
-if is_cross; then
-    atlas_pkg_resolved="$(cross_resolve_target_package "${atlas_pkg}")"
-else
-    atlas_pkg_resolved="${atlas_pkg}"
-fi
-
-if cross_package_has_install_candidate "${atlas_pkg_resolved}"; then
-    install_target_packages "${atlas_pkg}"
-else
-    echo "[WARN] ${atlas_pkg_resolved} has no apt install candidate; continuing with OpenBLAS/LAPACK"
-fi
+# LOG5 (2026-08-17): the libatlas-base-dev probe was removed — Ubuntu resolute
+# ships no atlas package at all (the probe WARNed on every build, ×3 per run)
+# and the build has always proceeded on OpenBLAS/LAPACK anyway.
 
 # NOTE: do NOT `rm -rf /var/lib/apt/lists/*` here — /var/lib/apt is a shared
 # BuildKit cache mount in Dockerfile.media, so wiping it only forces the next

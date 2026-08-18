@@ -263,6 +263,19 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
     # -Fatal (backlog #19): 006 rotting silently would hand the fused_moe
     # launchers back to the sccache server crash the day the CUDA launcher is
     # retried - patch rot must surface at patch time, not at re-enable time.
+    #
+    # SCCACHE_REPRO_CUDA_LLM=1 DELIBERATELY SKIPS the workaround so the upstream
+    # deadlock can be captured server-side (mozilla/sccache#2808). It is an
+    # opt-in escape for that investigation ONLY: the build is EXPECTED to die
+    # ~80 min in with `error reading compile response from server`. Never set it
+    # in a chain you want to finish. Pair it with SCCACHE_LOG=debug and an
+    # SCCACHE_ERROR_LOG on the persistent cache mount, or the trace dies with
+    # the solve and the whole exercise is wasted.
+    if ($env:SCCACHE_REPRO_CUDA_LLM -eq '1') {
+        Write-Warning ('SCCACHE_REPRO_CUDA_LLM=1: SKIPPING patch 006, so the sccache CUDA launcher stays ' +
+                       'ON for onnxruntime_providers_cuda_llm. This build is EXPECTED TO FAIL at the ' +
+                       'fused_moe launchers (~4910 s) - that failure IS the artifact being collected.')
+    } else {
     $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\006-cuda-llm-bare-nvcc.patch') -SourceDir $SourceDir -Fatal `
         -FallbackNote 'falling back to inline property insertion' `
         -Fallback {
@@ -271,6 +284,7 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
                 -Replacement ('$1' + "`n          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)`n            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER `"`")`n          endif()") `
                 -WarnMessage "onnxruntime_providers_cuda.cmake: cuda_llm anchor not found; the fused_moe launchers will crash the sccache server. Verify $cudaCmake."
         }
+    }
 
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back
@@ -437,18 +451,15 @@ if ($mlasTagged -gt 0) {
 # Ninja log on the PERSISTENT sccache cache mount (backlog #4): when this
 # vertex fails, the container filesystem dies with the solve, but C:\sccache
 # survives into the next run - the full ninja stream stays readable from a
-# debug container (never-swallow-logs). One .prev generation bounds growth.
-$ninjaLogDir = if ($env:SCCACHE_DIR -and (Test-Path $env:SCCACHE_DIR)) { Join-Path $env:SCCACHE_DIR 'logs' } else { $buildDir }
-$null = New-Item -ItemType Directory -Force -Path $ninjaLogDir
-$ninjaLog = Join-Path $ninjaLogDir 'onnx-ninja.log'
-# Copy+Remove, NOT Move-Item: the cache mount is rename-hostile (probed for
-# directories; file renames are the same wcifs hazard family - review find
-# #3). Create-only semantics keep the rotation inside the mount contract.
-if (Test-Path $ninjaLog) {
-    Copy-Item -Path $ninjaLog -Destination "$ninjaLog.prev" -Force
-    Remove-Item -Path $ninjaLog -Force -ErrorAction SilentlyContinue
-}
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 4 -Install -LogFile $ninjaLog
+# debug container (never-swallow-logs).
+# Moved into the shared module 2026-08-14 (backlog #43): this block lived here
+# ALONE for months while opencv/iree/tvm/litert silently kept losing their logs.
+$ninjaLog = Get-PersistentBuildLogPath -Name 'onnx-ninja.log' -FallbackDir $buildDir
+# MemGBPerJob=2 (backlog #28): runs 12+13 measured 9274 samples across the full
+# ONNX vertex -- peak per-process WorkingSet 998 MB, peak fleet 5.5 GB at -j9.
+# At 2 GB/job the job-count formula yields ~19 jobs (~11-12 GB extrapolated vs
+# the 39 GB budget), roughly doubling parallelism on the long-pole ONNX build.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Install -LogFile $ninjaLog
 
 # Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never
 # truncates (AGENTS.md priority 1: caching must be MEASURED): C/CXX hits vs

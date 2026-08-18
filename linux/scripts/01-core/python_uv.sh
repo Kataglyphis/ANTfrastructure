@@ -305,8 +305,11 @@ uv_sync_project() {
   if [ -n "${UV_SYNC_EXTRAS:-}" ]; then
     # Explicit wins: the project knows which combination it wants.
     info "UV_SYNC_EXTRAS set — syncing extras: ${UV_SYNC_EXTRAS}"
+    local -a _extras=()
+    IFS=',' read -r -a _extras <<<"${UV_SYNC_EXTRAS}"
     local _e
-    for _e in ${UV_SYNC_EXTRAS//,/ }; do
+    for _e in "${_extras[@]}"; do
+      [ -n "${_e}" ] || continue
       sync_args+=(--extra "$_e")
     done
   else
@@ -347,15 +350,71 @@ uv_sync_project() {
   #          Permission denied (os error 13)
   # Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
   # the extras fix let the resolve get this far. --python forces the writable
-  # local environment; --active stays so uv still prefers it when no venv is set.
-  local _venv="${VIRTUAL_ENV:-${_CURRENT_VENV_PATH:-}}"
-  if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+  # local environment.
+  #
+  # Consult _CURRENT_VENV_PATH FIRST and VIRTUAL_ENV only as a fallback. The
+  # other order made the pin fire backwards: the images ALSO export
+  # VIRTUAL_ENV=/opt/venv, and `uv venv` only prints "Activate with: source
+  # .../activate" — it does not activate — so a caller that creates
+  # .venv_static_analysis never overwrites the inherited VIRTUAL_ENV. The pin
+  # then resolved to the very system venv it exists to avoid, logged
+  # "uv sync pinned to /opt/venv/bin/python", and died 2.5 minutes later with
+  # the exact permission error above (WebDavClient x64, 2026-08-12).
+  # _CURRENT_VENV_PATH is set by uv_venv_create/uv_venv_ensure/uv_venv_activate,
+  # so it names the venv THIS script owns — which is the one to sync into.
+  local _venv="${_CURRENT_VENV_PATH:-${VIRTUAL_ENV:-}}"
+  # Writability is checked, not assumed: pinning to a venv this uid cannot
+  # write is strictly worse than not pinning at all, because uv then fails deep
+  # into the sync instead of falling back to its own discovery.
+  local _pinned=0
+  if [ -n "$_venv" ] && [ -x "$_venv/bin/python" ] && [ -w "$_venv/lib" ]; then
     sync_args+=(--python "$_venv/bin/python")
+    info "uv sync pinned to ${_venv}/bin/python"
+    _pinned=1
+  elif [ -n "$_venv" ] && [ -x "$_venv/bin/python" ]; then
+    warn "Refusing to pin uv sync to ${_venv}: ${_venv}/lib is not writable by uid $(id -u)."
+    warn "  Falling back to uv's own discovery rather than failing mid-sync."
+  else
+    # Say WHY, because the pin silently not applying is exactly how the sync ends
+    # up in /opt/venv. Measured 2026-08-12: this branch was taken on a runner
+    # where the venv had just been created at an absolute path, and the run then
+    # died with "Permission denied (os error 13)" - the diagnosis was impossible
+    # from the log because nothing said which interpreter uv had chosen.
+    warn "No usable venv resolved for uv sync."
+    warn "  VIRTUAL_ENV='${VIRTUAL_ENV:-}'  _CURRENT_VENV_PATH='${_CURRENT_VENV_PATH:-}'"
+    if [ -n "$_venv" ]; then
+      warn "  '${_venv}/bin/python' is not executable"
+    fi
   fi
 
-  sync_args+=(--active)
+  # Three different knobs can redirect `uv sync`, and ALL of them point at the
+  # root-owned system venv in these images. Clear them for the CALL, not for the
+  # shell:
+  #   UV_PYTHON=/opt/venv/bin/python  - exported by the image; uv honours it
+  #                                     over both --active and an activated venv.
+  #   VIRTUAL_ENV=/opt/venv           - exported by the image; what --active binds
+  #                                     to.
+  # Leaving either in place is how this lane kept dying with
+  #   error: failed to remove file `/opt/venv/...`: Permission denied (os error 13)
+  local -a _env_clear=(-u UV_PYTHON -u VIRTUAL_ENV)
 
-  uv "${sync_args[@]}"
+  if [ "$_pinned" -eq 1 ]; then
+    # UV_PROJECT_ENVIRONMENT is the knob that actually decides WHERE `uv sync`
+    # installs. --python only chooses the INTERPRETER; with --active still in
+    # play uv resolved the environment to VIRTUAL_ENV=/opt/venv and tried to
+    # rewrite it, so a correctly-pinned interpreter still produced
+    #   failed to remove file `/opt/venv/CACHEDIR.TAG`: Permission denied
+    # (Orchestr-ANT-ion, both arches, 2026-08-14). Name the environment
+    # explicitly and drop --active: with VIRTUAL_ENV cleared there is no active
+    # environment for it to mean anything about.
+    _env_clear+=("UV_PROJECT_ENVIRONMENT=${_venv}")
+    info "uv sync target environment: ${_venv}"
+  else
+    warn "uv sync is UNPINNED; dropping --active and VIRTUAL_ENV so it cannot target a system venv."
+  fi
+
+  info "uv ${sync_args[*]}"
+  env "${_env_clear[@]}" uv "${sync_args[@]}"
 }
 
 uv_run() {

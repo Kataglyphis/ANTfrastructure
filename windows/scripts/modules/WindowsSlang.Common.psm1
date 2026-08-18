@@ -135,8 +135,31 @@ function Get-SlangIncludeArgument {
         [Parameter(Mandatory)][string]$SourceDirectory
     )
 
+    # ORDER IS LOAD-BEARING. `import <name>` resolves to the FIRST <name>.slang
+    # on the -I list, so two modules sharing a basename resolve by whatever
+    # order the directory walk happens to produce. Kept in lockstep with the
+    # Linux twin (_slang_compile_collect_subdirs in linux/scripts/lib/
+    # slang-compile.sh), where an unsorted walk made common/noise.slang vs
+    # compute/noise.slang resolve one way locally and the other way on CI -
+    # failing every clang lane with "undefined identifier 'snoise'".
+    #
+    #   1. sort, so the answer is reproducible;
+    #   2. hoist a top-level common\ ahead of the rest - "shared modules live in
+    #      common/" is this driver's standing assumption, and the consumer side
+    #      documents the same "common/ preference" when it resolves imports.
+    #
+    # The generated build tree is excluded: it holds no .slang sources and can
+    # only add ambiguity.
     $includeArgs = @('-I', $SourceRoot, '-I', $SourceDirectory)
-    foreach ($d in (Get-ChildItem -Path $SourceRoot -Directory -Recurse -ErrorAction SilentlyContinue)) {
+    $buildRoot = Join-Path $SourceRoot 'build'
+    $subdirs = Get-ChildItem -Path $SourceRoot -Directory -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -ne $buildRoot -and -not $_.FullName.StartsWith($buildRoot + [System.IO.Path]::DirectorySeparatorChar) } |
+        Sort-Object -Property FullName
+    $commonDir = Join-Path $SourceRoot 'common'
+    foreach ($d in @($subdirs | Where-Object { $_.FullName -eq $commonDir })) {
+        $includeArgs += '-I'; $includeArgs += $d.FullName
+    }
+    foreach ($d in @($subdirs | Where-Object { $_.FullName -ne $commonDir })) {
         $includeArgs += '-I'; $includeArgs += $d.FullName
     }
     return , $includeArgs

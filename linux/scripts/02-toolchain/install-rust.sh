@@ -63,7 +63,31 @@ try_rustup() {
   printf 'WARNING: optional rustup command failed: %s\n' "$*" >&2
 }
 
-try_rustup rustup component add clippy
+# clippy and rustfmt are NOT optional (no try_rustup), for the same reason the
+# wasm target below is not. `--profile minimal` ships neither. The runtime stage
+# has no rustup, so a consumer cannot add a missing component itself — and it
+# does not even get a clean error: the images also carry Ubuntu's cargo/clippy
+# debs at /bin, so `cargo clippy` silently falls through to THAT one and builds
+# the project with rustc 1.93.1 instead of the pinned toolchain. The symptom is
+# unrelated-looking, e.g.
+#   error[E0658]: use of unstable library feature `array_windows`
+#     --> .../epaint-0.36.1/src/shapes/shape.rs
+# for code that compiles fine on the pinned rustc. A silently-degraded
+# toolchain is worse than a failed image build.
+rustup component add clippy
+
+# rustfmt, on the DEFAULT toolchain. NOT optional, for the same reason as the
+# wasm target below: `--profile minimal` ships neither, the runtime stage has no
+# rustup for a consumer to add one itself, and a consumer lane that calls
+# `cargo fmt` therefore cannot run its format gate at all - it dies with
+#   error: 'cargo-fmt' is not installed for the toolchain '<ver>-<host>'
+# RustProjectTemplate's workflow had been asserting in a comment that "rustfmt
+# and clippy are baked in at image-build time" while only clippy actually was;
+# the format gate was dead from the moment it stopped being
+# continue-on-error. Failing the image build is the correct response to a
+# missing lint component - a gate that cannot run is the failure mode this
+# repo keeps paying for.
+rustup component add rustfmt
 
 # The browser build target, on the DEFAULT (stable) toolchain: consumer CI
 # lanes run `cargo check --target wasm32-unknown-unknown` on stable, and the

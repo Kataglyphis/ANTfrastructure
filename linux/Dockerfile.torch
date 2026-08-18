@@ -25,10 +25,16 @@ ARG FAST_UBUNTU_PORTS_MIRROR_URL
 # clone always fell back to the script default). Default kept in sync with
 # versions.env so a plain `docker build` matches the orchestrated build.
 ARG APP_REF=v0.0.27
+# ONNX_PACKAGE / PYTORCH_EXTRA: documented operator overrides (runtime-build-fns.sh
+# usage). These ARGs are what let the orchestrator's --build-arg reach the venv
+# setup (previously hardcoded here, so a documented GPU override silently baked
+# the CPU defaults). Defaults preserve the historical baked values.
+ARG ONNX_PACKAGE=onnxruntime
+ARG PYTORCH_EXTRA="pytorch-cpu"
 ENV VENV=/opt/venv \
     TORCH_APP_MODE=${TORCH_APP_MODE} \
-    ONNX_PACKAGE=onnxruntime \
-    PYTORCH_EXTRA="pytorch-cpu" \
+    ONNX_PACKAGE=${ONNX_PACKAGE} \
+    PYTORCH_EXTRA="${PYTORCH_EXTRA}" \
     APP_REF=${APP_REF} \
     SKIP_TORCH_TEST_EXTRAS=true
 
@@ -56,6 +62,9 @@ ARG BUILD_TYPE=Release
 ARG WORKDIR=/workspace
 ARG BUILD_DATE=""
 ARG VCS_REF=""
+# POS2: re-declared for the version LABEL below (ARGs are per-stage; the torch
+# stage's APP_REF does not reach this stage). Default matches versions.env.
+ARG APP_REF=v0.0.27
 
 # Runtime scripts, entrypoint, CMD, VOLUME, HEALTHCHECK, user, and OCI
 # labels.  This is the canonical source for shared final-stage elements.
@@ -80,9 +89,15 @@ VOLUME ["${WORKDIR}"]
 # around sudo-rs env filtering) from the shipped runtime image: it grants no
 # privilege, shadows any real sudo, and silently runs `sudo cmd` as the
 # unprivileged user -- misleading at runtime. Build stages that need it keep it.
+# RP1 (security): also purge the REAL setuid sudo the base pulled in
+# (package-lists.sh installs it for build stages). No sudoers/group grants exist
+# and USER kataglyphis (uid 1001) can never use it — it is pure LPE attack
+# surface (the sudo CVE stream) with zero runtime benefit. rm the binaries and
+# clear any residual setuid bits; no runtime script invokes sudo (verified).
 RUN id -u kataglyphis >/dev/null 2>&1 || useradd -m -s /bin/bash kataglyphis; \
     mkdir -p ${WORKDIR} && chown -R kataglyphis:kataglyphis ${WORKDIR}; \
-    rm -f /usr/local/bin/sudo
+    rm -f /usr/local/bin/sudo /usr/bin/sudo /usr/bin/sudoedit /usr/local/bin/sudoedit; \
+    find / -xdev -perm -4000 -name 'sudo*' -type f -delete 2>/dev/null || true
 
 ENV PYTHONDONTWRITEBYTECODE=1
 
@@ -91,12 +106,20 @@ USER kataglyphis
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+# RP3: timeout raised 5s→30s — a cold import of the multi-hundred-MB onnxruntime
+# .so on riscv64 under qemu plausibly exceeds 5s, flapping the container to
+# unhealthy on a healthy image. The timeout only bounds the FAILURE path, so a
+# generous value costs nothing on a fast native import.
+HEALTHCHECK --interval=30s --timeout=30s --start-period=30s --retries=3 \
   CMD /opt/venv/bin/python3 -c "import onnxruntime" || exit 1
 
+# POS2 (2026-08-17): image.version used to carry BUILD_TYPE ("Release") — not a
+# version. Point it at the shipped app ref (APP_REF, versions.env-driven) and
+# keep the build type as a custom label.
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.description="My beschleuniger image for 2D AI" \
-      org.opencontainers.image.version="${BUILD_TYPE}" \
+      org.opencontainers.image.version="${APP_REF}" \
+      org.kataglyphis.build-type="${BUILD_TYPE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \

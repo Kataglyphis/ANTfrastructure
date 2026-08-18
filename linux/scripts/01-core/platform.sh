@@ -176,6 +176,86 @@ assert_elf_arch() {
   esac
 }
 
+# ── Canonical DT_NEEDED walk primitives (refactoring backlog D4) ─────────────
+# Three sites used to hand-roll this walk: validate-media-runtime.sh
+# (find_missing_needed + scan_plugin_directory, objdump), build-ffmpeg.sh
+# (emit_runtime_apt_manifest, objdump) and setup-torch-venv.sh
+# (_assert_ffmpeg_so_closure, transitive via ldd). They now all call these.
+
+# elf_needed_sonames <file>
+#   Print the DIRECT DT_NEEDED sonames of an ELF file, one per line, in link
+#   order. objdump primary (reads foreign-arch ELF too, so it is cross-safe),
+#   readelf -d fallback. NEVER fails: a missing/unreadable/non-ELF file prints
+#   nothing and returns 0 — every call site treats this walk as best-effort.
+elf_needed_sonames() {
+  local file="${1:-}"
+  [ -e "${file}" ] || return 0
+  if command -v objdump >/dev/null 2>&1; then
+    # `|| true` inside the group: objdump exits non-zero on non-ELF input and
+    # pipefail would otherwise surface that through the pipeline.
+    { objdump -p "${file}" 2>/dev/null || true; } | awk '/NEEDED/{print $2}'
+  elif command -v readelf >/dev/null 2>&1; then
+    { LC_ALL=C readelf -d "${file}" 2>/dev/null || true; } \
+      | sed -n 's/.*(NEEDED)[^[]*\[\(.*\)\].*/\1/p'
+  fi
+  return 0
+}
+
+# _elf_soname_resolves <soname> [libdir...]
+#   0 iff <soname> exists as a file in one of the given lib dirs, the standard
+#   system lib dirs (/usr/lib, /lib and their multiarch variants), or the
+#   ldconfig cache. Internal helper for elf_unresolved_needed.
+_elf_soname_resolves() {
+  local so_name="$1" dir
+  shift
+  for dir in "$@" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
+    [ -d "${dir}" ] || continue
+    [ -f "${dir}/${so_name}" ] && return 0
+  done
+  # grep WITHOUT -q: -q exits at the first match and can SIGPIPE ldconfig,
+  # which pipefail reports as failure even though the soname WAS found (the
+  # `nm | grep -q` bug class). Reading the full output is cheap and safe.
+  [ -n "$({ ldconfig -p 2>/dev/null || true; } | grep -F " ${so_name} " || true)" ] && return 0
+  return 1
+}
+
+# elf_unresolved_needed [--transitive] <file> [libdir...]
+#   Print the NEEDED sonames of <file> that resolve NEITHER in the given lib
+#   dirs NOR the standard system paths/ldconfig cache (see
+#   _elf_soname_resolves). Default mode walks the DIRECT NEEDED entries
+#   statically — works for foreign-arch ELF on any host.
+#   --transitive: resolve the FULL closure through the dynamic loader (ldd),
+#   honouring the ambient LD_LIBRARY_PATH/RPATH; the given lib dirs are
+#   prepended to LD_LIBRARY_PATH for the probe and the output is `sort -u`ed
+#   (the closure visits shared deps repeatedly). Requires a runnable binary
+#   (native arch or registered binfmt); falls back to the static direct walk
+#   when ldd is unavailable. NEVER fails (rc 0); empty output means
+#   "everything resolved".
+elf_unresolved_needed() {
+  local transitive=0
+  if [ "${1:-}" = "--transitive" ]; then
+    transitive=1
+    shift
+  fi
+  local file="${1:-}"
+  shift || true
+  if [ "${transitive}" = "1" ] && command -v ldd >/dev/null 2>&1; then
+    local extra="" dir
+    for dir in "$@"; do
+      extra="${extra:+${extra}:}${dir}"
+    done
+    { LD_LIBRARY_PATH="${extra:+${extra}:}${LD_LIBRARY_PATH:-}" ldd "${file}" 2>/dev/null || true; } \
+      | awk '/=> not found/{print $1}' | sort -u
+    return 0
+  fi
+  local so_name
+  while IFS= read -r so_name; do
+    [ -n "${so_name}" ] || continue
+    _elf_soname_resolves "${so_name}" "$@" || printf '%s\n' "${so_name}"
+  done < <(elf_needed_sonames "${file}")
+  return 0
+}
+
 arch_list_csv_normalize() {
   local raw_list="$1"
   local raw_arch normalized_arch

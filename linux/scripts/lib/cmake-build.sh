@@ -258,7 +258,15 @@ cmake_build_prepare_env() {
   #   2. $CARGO_CACHE_DIR   (environment variable override)
   #   3. $CARGO_HOME        (image default; /usr/local/cargo, usually read-only)
   #   4. $TMPDIR/cargo-home (fallback, lost when container exits)
-  if [[ ! -w "${CARGO_HOME:-/usr/local/cargo}" ]]; then
+  # Probe registry/, not CARGO_HOME itself. /usr/local/cargo is writable in the
+  # cross image while /usr/local/cargo/registry underneath it is root-owned
+  # (populated by `cargo install cargo-c` during the image build), so the
+  # shallow `-w` test PASSED and the build then died anyway with
+  #   error: failed to create directory `/usr/local/cargo/registry/cache/...`
+  #   Caused by: Permission denied (os error 13)
+  # Same mkdir-then-test idiom the sccache/ccache loop below already uses.
+  if ! { mkdir -p "${CARGO_HOME:-/usr/local/cargo}/registry" 2>/dev/null \
+         && [[ -w "${CARGO_HOME:-/usr/local/cargo}/registry" ]]; }; then
     if [[ -n "${CARGO_CACHE_DIR:-}" ]]; then
       export CARGO_HOME="${CARGO_CACHE_DIR}"
       # Also redirect the cargo target directory to the same volume (under

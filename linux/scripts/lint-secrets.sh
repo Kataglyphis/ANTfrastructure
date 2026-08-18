@@ -58,9 +58,14 @@ fi
 # or a false positive (add a .gitleaksignore entry WITH a comment).
 # ---------------------------------------------------------------------------
 echo "== secret scan: gitleaks ${GITLEAKS_PIN} (working tree) =="
-if "${GITLEAKS}" detect --no-git --source "${1:-.}" --no-banner --redact; then
+# --verbose is what actually PRINTS the findings: without it gitleaks logs only
+# "leaks found: N" and the failure is undiagnosable from a CI log (exactly how
+# this gate failed on main — the summary said 2 leaks and named neither).
+# --redact keeps the values themselves out of the log.
+if "${GITLEAKS}" detect --no-git --source "${1:-.}" \
+     --config "${REPO_ROOT}/.gitleaks.toml" --no-banner --redact --verbose; then
   echo "secret scan: clean"
   exit 0
 fi
 echo "" >&2
-err "gitleaks found potential secrets (redacted above). Real leak -> rotate the credential and purge; false positive -> add a .gitleaksignore entry with a justification comment."
+err "gitleaks found potential secrets (values redacted, file:line shown above). Real leak -> rotate the credential and purge; false positive -> add an allowlist entry (with justification) to .gitleaks.toml."

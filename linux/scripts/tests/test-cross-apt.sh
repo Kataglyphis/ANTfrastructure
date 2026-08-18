@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Tests for 01-core/cross-apt.sh — the install_target_packages 3-path state
 # machine (clean batch / batch-fail + per-package retry / genuinely missing)
-# and the cross_package_files_present contract it uses as a disambiguator.
+# and the cross_package_status_present contract it uses as a disambiguator.
 #
 # Headline regression guard: on a CLEAN batch install (apt-get rc 0) the
-# files-present sweep must NOT run at all. cross_package_files_present is only
+# files-present sweep must NOT run at all. cross_package_status_present is only
 # a heuristic and false-negatives for some packages (e.g. libfreetype6-dev);
 # running it after a successful atomic install turned perfectly good installs
 # into spurious failures. A clean rc=0 must be trusted as-is.
@@ -16,7 +16,7 @@
 # unit under test is real.
 #
 # Contract note (deliberate): despite its name — and the caller comment about
-# "hunting for a representative file" — cross_package_files_present checks the
+# "hunting for a representative file" — cross_package_status_present checks the
 # dpkg-query '${Status}' field, NOT files on disk. The suite tests that actual
 # status contract: installed/unpacked/half-configured/triggers-* are "present",
 # "deinstall ok config-files" and unknown packages are not.
@@ -143,28 +143,28 @@ t_assert_eq "install_target_packages: FAILED — missing after apt-get (rc=100):
   "failure line must name exactly the absent package (and not libfoo-dev)"
 
 # ---------------------------------------------------------------------------
-# cross_package_files_present contract: it reads the dpkg '${Status}' field
+# cross_package_status_present contract: it reads the dpkg '${Status}' field
 # (NOT files on disk, despite the name). Unpacked/half-configured — the state
 # a foreign-arch package lands in when its postinst hits Exec format error —
 # must count as present; a removed package must not.
-t_case "cross_package_files_present accepts usable dpkg Status values"
+t_case "cross_package_status_present accepts usable dpkg Status values"
 _reset_fakes ok
 printf 'install ok installed'        > "${FAKE_STATE_DIR}/pkg-inst"
 printf 'install ok unpacked'         > "${FAKE_STATE_DIR}/pkg-unp"
 printf 'install ok half-configured'  > "${FAKE_STATE_DIR}/pkg-half"
 printf 'install ok triggers-awaited' > "${FAKE_STATE_DIR}/pkg-trig"
-t_assert_ok cross_package_files_present pkg-inst
-t_assert_ok cross_package_files_present pkg-unp
-t_assert_ok cross_package_files_present pkg-half
-t_assert_ok cross_package_files_present pkg-trig
+t_assert_ok cross_package_status_present pkg-inst
+t_assert_ok cross_package_status_present pkg-unp
+t_assert_ok cross_package_status_present pkg-half
+t_assert_ok cross_package_status_present pkg-trig
 
-t_case "cross_package_files_present rejects removed and unknown packages"
+t_case "cross_package_status_present rejects removed and unknown packages"
 printf 'deinstall ok config-files' > "${FAKE_STATE_DIR}/pkg-gone"
-t_assert_fails cross_package_files_present pkg-gone
-t_assert_fails cross_package_files_present pkg-never-seen
+t_assert_fails cross_package_status_present pkg-gone
+t_assert_fails cross_package_status_present pkg-never-seen
 
 t_case "a pkg=version spec is stripped to the bare name for the lookup"
-t_assert_ok cross_package_files_present "pkg-inst=1.2.3-1"
+t_assert_ok cross_package_status_present "pkg-inst=1.2.3-1"
 t_assert_eq "pkg-inst" "$(tail -1 "${FAKE_LOG_DIR}/dpkg-query.log" | awk '{print $NF}')" \
   "dpkg-query must receive the bare package name, not name=version"
 

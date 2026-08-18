@@ -104,6 +104,40 @@ function log($text) {
 # then moves the single top-level source dir onto $Target. Returns $true when a
 # directory was moved. Shared by the wrap pre-extraction loop and the libffi
 # force-download below, which used to carry two copies of this body.
+function Invoke-WrapDownload {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$DestinationPath,
+        [string]$Description = ''
+    )
+    # freedesktop/videolan GitLab sit behind the Anubis anti-scraper: browser
+    # User-Agents without JS get an HTML challenge page, plain curl UAs pass.
+    # The shared Invoke-DownloadWithRetry sends a browser UA (right for the
+    # CDNs it serves) - on verify10 it "downloaded" 7 challenge pages and the
+    # #88 gate refused them all (correctly, but for the wrong-looking reason:
+    # "extraction failed"). Verified 2026-08-17: same URL, browser UA = 7.5 KB
+    # HTML, curl UA = 400 KB BZh. So wraps go through curl.exe with its native
+    # UA + a magic-byte check. Deliberately NOT a Shared.psm1 change: the
+    # module is frozen mid-chain (an edit there busts every media stage cache).
+    $label = if ($Description) { $Description } else { $Url }
+    for ($attempt = 1; $attempt -le 4; $attempt++) {
+        # --fail: 4xx/5xx exit non-zero instead of saving the error body.
+        $curlOut = & curl.exe --fail --location --silent --show-error --connect-timeout 30 -o $DestinationPath $Url 2>&1
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $DestinationPath) -and (Get-Item $DestinationPath).Length -ge 3) {
+            $head = [byte[]](Get-Content -Path $DestinationPath -AsByteStream -TotalCount 3)
+            $isGzip  = ($head[0] -eq 0x1f -and $head[1] -eq 0x8b)
+            $isBzip2 = ($head[0] -eq 0x42 -and $head[1] -eq 0x5a -and $head[2] -eq 0x68)  # 'BZh'
+            if ($isGzip -or $isBzip2) { return }
+            log "attempt ${attempt}: $label returned non-archive bytes ($($head -join ' ')) - likely an HTML challenge/error page"
+        } else {
+            log "attempt ${attempt}: curl exit $LASTEXITCODE for $label - $curlOut"
+        }
+        Remove-Item -Path $DestinationPath -Force -ErrorAction SilentlyContinue
+        if ($attempt -lt 4) { Start-Sleep -Seconds (3 * $attempt) }
+    }
+    throw "download failed after 4 attempts: $label"
+}
+
 function Expand-SubprojectArchive {
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -215,6 +249,42 @@ try {
     # Invoke-GitClone deliberately does NOT force it for ordinary clones.
     $env:GIT_TERMINAL_PROMPT = '0'
     $env:GIT_SSL_NO_VERIFY = '1'
+    # meson downloads [wrap-file] subprojects (pango, theora, libgudev, ...) with
+    # Python's urllib, which verifies TLS against a CA store the source-built
+    # CPython in this image does not ship -> "CERTIFICATE_VERIFY_FAILED: unable to
+    # get local issuer certificate", so every wrap fetch burns its full retry/delay
+    # budget before falling back. PYTHONHTTPSVERIFY=0 disables that verification for
+    # this ephemeral build container's wrap fetches only (same trust-boundary
+    # reasoning as GIT_SSL_NO_VERIFY above); it both unblocks the downloads and cuts
+    # the multi-minute retry stalls out of `meson setup`.
+    $env:PYTHONHTTPSVERIFY = '0'
+
+    # ---- 3b. EARLY fan-in fast-fail (backlog #66) ----------------------------
+    # The full "must resolve NOW" pre-flight further down authors .pc files and
+    # computes meson args, so it stays where its outputs are consumed — but its
+    # own comment promised "NOW, not after an hour" while it ran AFTER the
+    # tarball, ~20 wrap downloads and five patch loops. These existence checks
+    # mirror the artifacts that gate actually requires and depend on NOTHING
+    # downloaded here: a missing media fan-in now fails in seconds, not after
+    # the whole provisioning phase. Deliberately presence-only — version floors
+    # and .pc semantics remain the full gate's job.
+    if (-not $SkipPluginGate) {
+        $earlyOcvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
+        $earlyOrtRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
+        $earlyLitertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
+        $earlyChecks = @(
+            @{ Path = $earlyOcvRoot;    What = 'OpenCV install (gst-plugins-bad ext/opencv)' }
+            @{ Path = $earlyOrtRoot;    What = 'ONNX Runtime install (gst onnx plugin)' }
+            @{ Path = $earlyLitertRoot; What = 'LiteRT install (gst tflite plugin)' }
+        )
+        $earlyMissing = @($earlyChecks | Where-Object { -not (Test-Path $_.Path) })
+        if ($earlyMissing) {
+            throw ("GStreamer pre-flight (early, #66): media fan-in missing BEFORE any download was spent: " +
+                (($earlyMissing | ForEach-Object { "$($_.What) at $($_.Path)" }) -join '; ') +
+                ". The merge image is incomplete; fix the fan-in instead of paying the provisioning phase first.")
+        }
+        log 'Early fan-in fast-fail passed (OpenCV/ONNX/LiteRT roots present).'
+    }
 
     # ---- 4. download GStreamer source tarball ----
     $gstSrcDir = Join-Path $resolvedSrcDir "gstreamer-$GstVersion"
@@ -262,6 +332,16 @@ try {
     Initialize-ExtractedGitRepo -Path $gstSrcDir
 
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
+    # Failures are COLLECTED and become fatal after the loop (backlog #88): the
+    # 2026-08-14 chain logged 22 failed wrap downloads as warnings and went
+    # GREEN — gst-plugins-base ×15, theora ×5, pango ×2 — shipping a
+    # feature-reduced image nobody noticed. Only the four mandatory plugins were
+    # gated; every other codec was silently "optional". The fetch also ran as
+    # `curl ... 2>nul`, discarding the one line that distinguishes a moved wrap
+    # revision (404) from a DNS/TLS problem. Now: Invoke-WrapDownload (curl-UA
+    # + magic-byte check — NOT the shared helper, whose browser UA gets Anubis
+    # challenge pages) + visible errors + fail-closed summary.
+    $wrapFailures = @()
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
     Get-ChildItem -Path $subprojDir -Filter '*.wrap' | ForEach-Object {
         $content = Get-Content $_.FullName -Raw
@@ -272,45 +352,68 @@ try {
             $dir = if ($content -match '(?ms)directory\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
             $target = Join-Path $subprojDir $dir
             if (Test-Path $target) { Remove-Item -Path $_.FullName -Force; return }
-            # Build tarball URL
+            # Build tarball URL. Strip .git in BOTH branches: GitLab answers
+            # .git-in-path /-/archive/ URLs with an HTML page instead of the
+            # tarball (verify11: libdv.git = 17 KB HTML, libdv = 421 KB BZh) -
+            # only the GitHub branch ever stripped it.
+            $base = $url -replace '\.git$', ''
             if ($url -match 'github\.com') {
-                $base = $url -replace '\.git$', ''
                 $tarballUrl = "$base/archive/$rev.tar.gz"
             } else {
-                $tarballUrl = "$url/-/archive/$rev/$dir-$rev.tar.bz2"
+                $tarballUrl = "$base/-/archive/$rev/$dir-$rev.tar.bz2"
             }
             $tmp = Join-Path $resolvedLogDir "$dir-$rev.tar"
             $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
             log "Pre-extracting $fname..."
-            cmd.exe /c "curl.exe -fsSL --retry 3 ""$tarballUrl"" -o ""$tmpFile"" 2>nul"
-            if ($LASTEXITCODE -eq 0 -and (Test-Path $tmpFile)) {
+            try {
+                Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)"
                 if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
                     Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                     log "Pre-extracted $fname to $target"
+                } else {
+                    $script:wrapFailures += "$fname (downloaded but extraction into $dir failed)"
                 }
-            } else {
-                log "WARNING: Failed to download $fname, features may be disabled"
+            } catch {
+                # Real error text KEPT (was `2>nul`): a 404 on a moved revision
+                # and a TLS failure need different fixes.
+                $script:wrapFailures += "$fname : $($_.Exception.Message)"
+                log "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
             }
             Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
         }
     }
-    # Force-download libffi via PowerShell's & (bypasses cmd.exe path issues)
+    # libffi through the same helper + failure collection (#88). It is glib's
+    # hard dependency — a miss here never was "optional", it just looked so.
     $libffiTarget = Join-Path $subprojDir 'libffi'
     if (-not (Test-Path $libffiTarget)) {
         log 'Force-downloading libffi...'
         $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
         $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
-        & curl.exe -fsSL --retry 3 $libffiUrl -o $libffiTmp 2>$null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $libffiTmp)) {
+        try {
+            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer"
             if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
-                log "Force-pre-extracted libffi"
+                log 'Force-pre-extracted libffi'
+            } else {
+                $script:wrapFailures += 'libffi (downloaded but extraction failed)'
             }
-        } else {
-            log "WARNING: Force-download of libffi failed (exit $LASTEXITCODE)"
+        } catch {
+            $script:wrapFailures += "libffi : $($_.Exception.Message)"
+            log "ERROR: libffi download failed - $($_.Exception.Message)"
         }
         Remove-Item -Path $libffiTmp -Force -ErrorAction SilentlyContinue
         Remove-Item -Path (Join-Path $subprojDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
+    }
+
+    # FAIL CLOSED on any wrap loss (#88): a build that continues here ships
+    # with silently narrowed codec coverage — the exact green-but-crippled
+    # shape this repo's gates exist to prevent. Transient blips are already
+    # absorbed by the helper's retry/backoff; what reaches this point is
+    # persistent (moved revision, dead mirror, broken TLS) and needs a human.
+    if ($script:wrapFailures.Count -gt 0) {
+        throw ("GStreamer subproject provisioning failed for $($script:wrapFailures.Count) wrap(s): " +
+            ($script:wrapFailures -join ' | ') +
+            ' — refusing to build a feature-reduced GStreamer (backlog #88).')
     }
 
     # Recursively delete ALL [wrap-git] wraps across the entire source tree.
@@ -401,6 +504,80 @@ int _isatty(int);
             [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
         })
 
+    # ---- 5g. bump cpp_std=c++11 pins to c++17 for the VS 18 MSVC STL ----
+    # Several gst-plugins-bad C++ libs pin `override_options: ['cpp_std=c++11']`
+    # (dxva, d3d11/12, ...). VS 18's MSVC STL (14.51+) uses C++14+ constructs
+    # unconditionally (deduced return types, `auto` returns without a trailing
+    # type, ...), which clang-cl REJECTS in C++11 mode -- the dxva decoders fail
+    # with "'auto' return without trailing return type is a C++14 extension".
+    # Older MSVC STLs tolerated a c++11 language mode; 14.51 does not. Bump every
+    # c++11 pin in the gst source tree to c++17 (what the rest of this image
+    # compiles with); C++17 is backward-compatible with this C++11 code and is
+    # above the minimum the new STL needs. Wrap subprojects are pure C and carry
+    # no such pin, so only gst's own C++ libs are touched.
+    $cppStdPatched = 0
+    Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $content = [System.IO.File]::ReadAllText($_.FullName)
+        if ($content -match 'cpp_std=c\+\+11') {
+            [System.IO.File]::WriteAllText($_.FullName, ($content -replace 'cpp_std=c\+\+11', 'cpp_std=c++17'))
+            $cppStdPatched++
+        }
+    }
+    log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
+
+    # ---- 5h. port gst-plugins-bad ext/opencv to the OpenCV 5 header layout ----
+    # gstreamer 1.29.2's opencv plugin is written for OpenCV 4; OpenCV 5
+    # RELOCATED the APIs it uses out of their 4.x headers (verified against the
+    # opencv/opencv_contrib 5.0.0 tags this image builds):
+    #   cv::CascadeClassifier + CASCADE_* : moved to opencv_contrib xobjdetect
+    #                                       (opencv2/xobjdetect.hpp) -- built here.
+    #   contourArea/approxPolyDP/convexHull : moved to the new geometry module
+    #                                         (opencv2/geometry.hpp).
+    #   findChessboardCorners/findCirclesGrid/CALIB_CB_* : moved to the new calib
+    #                                         module + objdetect (opencv2/calib.hpp,
+    #                                         opencv2/objdetect.hpp).
+    # The plugin still includes only the OpenCV-4 headers, so add the new header
+    # to each file that uses a relocated symbol (inserted after the file's first
+    # opencv2 include). NOT a behavioural change -- same classic APIs, new homes.
+    $ocvExtDir = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\opencv'
+    $ocv5IncludeMap = @(
+        @{ Pattern = 'CascadeClassifier|CASCADE_DO_CANNY_PRUNING|CASCADE_SCALE_IMAGE'; Add = @('opencv2/xobjdetect.hpp') },
+        @{ Pattern = 'contourArea|approxPolyDP|convexHull';                            Add = @('opencv2/geometry.hpp') },
+        @{ Pattern = 'findChessboardCorners|findCirclesGrid|CALIB_CB_';                Add = @('opencv2/calib.hpp', 'opencv2/objdetect.hpp') }
+    )
+    $ocvPortPatched = 0
+    Get-ChildItem -Path $ocvExtDir -Include '*.cpp', '*.h', '*.hpp' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $c = [System.IO.File]::ReadAllText($_.FullName)
+        $orig = $c
+        foreach ($map in $ocv5IncludeMap) {
+            if ($c -match $map.Pattern) {
+                foreach ($hdr in $map.Add) {
+                    if ($c -notmatch [regex]::Escape($hdr)) {
+                        # Insert after the FIRST #include <opencv2/...> line in the file.
+                        $c = [regex]::Replace($c, "(#include <opencv2/[^>]+>\r?\n)", "`${1}#include <$hdr>`n", 1)
+                    }
+                }
+            }
+        }
+        # POSIX ftello/fseeko are absent under the Windows CRT -> use the 64-bit
+        # MSVC equivalents (this build is Windows/clang-cl only).
+        $c = $c -replace '\bftello\b', '_ftelli64' -replace '\bfseeko\b', '_fseeki64'
+        if ($c -ne $orig) { [System.IO.File]::WriteAllText($_.FullName, $c); $ocvPortPatched++; log "OpenCV5 port -> $($_.Name)" }
+    }
+    log "OpenCV 5 header port applied to $ocvPortPatched gst ext/opencv file(s)"
+    # gst hardcodes the UNVERSIONED '-lopencv_tracking' (Linux naming) for the
+    # cvtracker element, but OpenCV's Windows libs are versioned
+    # (opencv_tracking500.lib) and already arrive via the opencv4.pc dependency
+    # with their real names -- so lld-link fails to open the bare
+    # 'opencv_tracking.lib'. Drop the redundant hardcoded flag; the pkg-config
+    # dependency supplies the correctly-named versioned lib.
+    $ocvMeson = Join-Path $ocvExtDir 'meson.build'
+    if (Test-Path $ocvMeson) {
+        $mc = [System.IO.File]::ReadAllText($ocvMeson)
+        $mc2 = $mc -replace "\s*,\s*'-lopencv_tracking'", '' -replace "'-lopencv_tracking'\s*,\s*", '' -replace "'-lopencv_tracking'", ''
+        if ($mc2 -ne $mc) { [System.IO.File]::WriteAllText($ocvMeson, $mc2); log 'Removed hardcoded -lopencv_tracking from ext/opencv/meson.build (opencv4.pc provides the versioned lib)' }
+    }
+
     # ---- 5c. MANDATORY PLUGIN PRE-FLIGHT ─────────────────────────────────────
     # Everything below exists because of the 2026-07-11 finding: `gst-inspect-1.0
     # opencv|libav` exited -1 in the SHIPPED winamd64 image. Nothing failed —
@@ -466,6 +643,32 @@ int _isatty(int);
                 -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
                 -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
                 -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
+        # gst-plugins-bad opencv/meson.build derives its cascade-data dir as
+        # opencv_dep.get_variable('prefix') + /share/{opencv,OpenCV,opencv4} and
+        # errors hard when none is a directory. Two OpenCV-5 mismatches bite here:
+        #  1. gst never looks for share/opencv5, and OpenCV 5 on Windows drops its
+        #     xml under <root>\etc anyway (not share/ at all).
+        #  2. pkgconf RELOCATES the prefix from the .pc file LOCATION
+        #     (<...>/x64/vc18/lib/pkgconfig -> strips lib/pkgconfig -> <...>/x64/vc18),
+        #     ignoring the explicit prefix= line, so the prefix meson computes is
+        #     NOT $ocvRoot. Rather than guess which relocation wins, create
+        #     share\opencv4 under every plausible prefix root (install root, the
+        #     relocated lib-parent, and the lib dir itself) and fill each from
+        #     <root>\etc so both meson's is_dir probe AND facedetect's runtime
+        #     cascade lookup resolve wherever the prefix lands.
+        $ocvPrefixCandidates = @($ocvRoot, (Split-Path $ocvLib -Parent), $ocvLib) |
+            Where-Object { $_ } | Select-Object -Unique
+        foreach ($base in $ocvPrefixCandidates) {
+            $shareDir = Join-Path $base 'share\opencv4'
+            if (Test-Path $shareDir) { continue }
+            New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
+            $filled = $false
+            foreach ($d in @('haarcascades', 'lbpcascades')) {
+                $src = Join-Path $ocvRoot "etc\$d"
+                if (Test-Path $src) { Copy-Item $src (Join-Path $shareDir $d) -Recurse -Force; $filled = $true }
+            }
+            log ("Ensured OpenCV data dir $shareDir" + $(if ($filled) { ' (populated from etc\)' } else { ' (empty; no etc\haarcascades found)' }))
+        }
 
         # libonnxruntime.pc — ORT ships none on any platform.
         $ortRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
@@ -548,15 +751,20 @@ int _isatty(int);
 
         # cc.find_library / cc.has_header consult the COMPILER's search paths,
         # not meson options, so INCLUDE/LIB is the mechanism that actually works
-        # here. Set for this process; the meson args below carry the same dirs so
-        # the plugin's own compile and link succeed too.
+        # here. lld-link (invoked by clang-cl) reads LIB for its default library
+        # search path, so setting it below is sufficient for the tflite plugin's
+        # find_library AND its link. Do NOT also push the dir as a `/LIBPATH:`
+        # c_link_arg: clang-cl does not recognise `/LIBPATH:` as a driver flag
+        # and treats the whole token as an input filename ("no such file or
+        # directory: '/LIBPATH:...'"), which fails meson's compile+link sanity
+        # check before any plugin is even configured (regression fixed 2026-08-13,
+        # first surfaced once all three media branches fanned into the merge).
         $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
         $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
         # Forward slashes inside the meson array literal: meson parses those
         # strings with escape sequences, so a native C:\... path would mangle
         # (\r, \t, ...). Same reason $rtFullPath above is converted.
         $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
-        $linkArgElems = $linkArgElems + ",'/LIBPATH:$($litertLib -replace '\\', '/')'"
         log "INCLUDE += $litertInclude ; LIB += $litertLib"
 
         # Everything the required set needs must resolve NOW, not after an hour.
@@ -612,8 +820,18 @@ int _isatty(int);
         # plugin gate is skipped). It rides in c_args AND cpp_args because the
         # tflite plugin's has_header probe runs against the C compiler while the
         # plugin sources themselves are C++.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
-        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types",
+        # -Wno-incompatible-pointer-types: clang 16+ promoted -Wincompatible-pointer-types
+        # to a DEFAULT error; gst-plugins-bad ext/onnx (gstonnxinference.c) passes a
+        # gchar* where a differently-typed pointer is expected, which older clang let
+        # through as a warning. Demote it to match the function-pointer variant already
+        # here, so the version bump to a newer clang-cl does not fail the onnx plugin.
+        # -Wno-undef: graphene 1.10.8 (building for the FIRST time now that #88
+        # delivers every wrap - it used to drop out silently) tests bare
+        # `__GNUC__` in #if under a -Werror it brings along; clang-cl defines
+        # no __GNUC__ in MSVC personality. Disabling the diagnostic beats
+        # chasing where the -Werror comes from (verify13).
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef",
+        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
         # MF device provider) required by the Rust capture path. Needs the GUID
@@ -628,6 +846,12 @@ int _isatty(int);
         # wasapi2 (the modern replacement, built by default and present in the
         # image) provides WASAPI capture/render. Only the deprecated v1 is off.
         '-Dgst-plugins-bad:wasapi=disabled',
+        # graphene: its MSVC code path calls SSE4.1 intrinsics (dpps) with no
+        # target-feature guard - MSVC tolerates that, clang-cl refuses
+        # ("__builtin_ia32_dpps needs target feature sse4.1", verify13). The
+        # scalar path is correct and this is geometry math for GL mixers, not
+        # a hot loop worth a global -msse4.1 baseline change.
+        '-Dgraphene:sse2=false',
         # svtjpegxs stays DISABLED: its SVT-JPEG-XS codec subproject does not
         # compile under clang-cl (Mct.c: "conflicting types" / "too many
         # arguments" -- the local access() clash was only the first of several
@@ -674,9 +898,35 @@ int _isatty(int);
         $outFile = Join-Path $resolvedLogDir "meson-setup-$attempt-out.txt"
         & $mesonExe @setupArgs > $outFile
         $mesonExitCode = $LASTEXITCODE
-        if (Test-Path $outFile) { Get-Content $outFile | ForEach-Object { if ($_) { log $_ } } }
+        $mesonOut = if (Test-Path $outFile) { @(Get-Content $outFile) } else { @() }
+        $mesonOut | ForEach-Object { if ($_) { log $_ } }
         Remove-Item $outFile -Force -ErrorAction SilentlyContinue
         if ($mesonExitCode -eq 0) { $mesonSucceeded = $true; break }
+
+        # Never swallow logs: meson's stdout only says "cannot compile programs";
+        # the actual compiler command line + its stderr live in meson-log.txt.
+        # Dump it here, BEFORE the attempt-1 cleanup below wipes $resolvedBuildDir.
+        $mesonLog = Join-Path $resolvedBuildDir 'meson-logs\meson-log.txt'
+        $mesonLogLines = @()
+        if (Test-Path $mesonLog) {
+            $mesonLogLines = @(Get-Content $mesonLog)
+            log "---- meson-log.txt (attempt $attempt, exit $mesonExitCode) ----"
+            $mesonLogLines | ForEach-Object { if ($_) { log $_ } }
+            log '---- end meson-log.txt ----'
+        } else {
+            log "meson-log.txt not found at $mesonLog"
+        }
+
+        # A deterministic meson configure error (a plugin's meson.build erroring on
+        # a missing dependency/function/data dir) fails IDENTICALLY on retry, so the
+        # attempt-2 cleanup + full wrap re-download (~hours when the wrapdb fetches
+        # hit SSL retry backoff) is pure waste. Retry ONLY transient failures;
+        # short-circuit on a hard `meson.build:LINE:COL: ERROR/Exception`.
+        $hardError = @($mesonOut + $mesonLogLines) -match 'meson\.build:\d+:\d+: (ERROR|Exception)'
+        if ($hardError) {
+            log "meson setup hit a deterministic configure error; NOT retrying (a retry repeats it identically after a full wrap re-download): $($hardError[-1].Trim())"
+            break
+        }
 
         if ($attempt -eq 1) {
             # Delete known-problematic [wrap-git] wraps inside downloaded subprojects
@@ -727,11 +977,43 @@ int _isatty(int);
             })
     }
 
+    # graphene (first-ever build here since #88 delivers every wrap): its
+    # meson.build appends -Werror=undef AFTER our c_args, so the -Wno-undef we
+    # pass is overridden (last flag wins) and its bare `#if __GNUC__` tests die
+    # under clang-cl, which defines no __GNUC__ (verify14). Drop that ONE flag
+    # from its test_cflags at the source; ninja regenerates on meson.build
+    # changes, so patching between setup and compile is safe.
+    $grapheneMeson = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'graphene-*' -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName 'meson.build' } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($grapheneMeson) {
+        [void](Edit-SourceFile -Path $grapheneMeson `
+                -Description 'graphene meson.build: drop -Werror=undef (clang-cl has no __GNUC__)' `
+                -WarnMessage 'graphene meson.build present but -Werror=undef not found; if graphene still fails on -Wundef, its warning flags moved.' `
+                -Transform {
+                param($mbContent)
+                $mbContent -replace "'-Werror=undef',?\s*", ''
+            })
+    }
+
     # ---- 6. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
+    # Job budget + stall guard (backlog #65): this was the ONE compile stage
+    # running sccache with neither. `meson compile` without -j lets ninja
+    # default to cores+2, ignoring MEMORY_LIMIT_GB entirely — the OOM shape
+    # MemGBPerJob exists to prevent — and without the stall guard a wedged
+    # sccache server (the documented deadlock family) hangs the merge stage
+    # indefinitely with no kill/resume. 2 GB/job: GStreamer TUs are C-sized,
+    # not ONNX-CUDA-sized.
+    $gstJobs = Get-BuildJobCount -MemGBPerJob 2
+    log "meson compile with -j $gstJobs (MEMORY_LIMIT_GB='$env:MEMORY_LIMIT_GB', cores=$([Environment]::ProcessorCount))"
     $compileSucceeded = $false
     for ($cAttempt = 1; $cAttempt -le 2; $cAttempt++) {
         log "Compiling GStreamer (attempt $cAttempt/2, may take 30-60 min)..."
-        & $mesonExe compile -C $resolvedBuildDir 2>&1 | ForEach-Object { if ($_) { log $_ } }
+        $gstStallGuard = Start-SccacheStallGuard -MarkerPath (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
+        try {
+            & $mesonExe compile -C $resolvedBuildDir -j $gstJobs 2>&1 | ForEach-Object { if ($_) { log $_ } }
+        } finally {
+            Stop-SccacheStallGuard -Guard $gstStallGuard
+        }
         if ($LASTEXITCODE -eq 0) { $compileSucceeded = $true; break }
         if ($cAttempt -eq 1) {
             log 'Compile attempt 1 failed; patching _commit conflict in GES and retrying...'
@@ -792,6 +1074,46 @@ int _isatty(int);
         throw "gst-inspect-1.0.exe missing at $gstInspect — cannot verify the mandatory plugin set."
     }
     $missingPlugins = @()
+    # Make every media DLL home searchable for the load probe. The image's runtime
+    # PATH (Dockerfile ENV) lists ONNX under \lib, but onnxruntime.dll + DirectML.dll
+    # ship in \bin -- so onnx failed to load. Mirror the full set here (the
+    # Dockerfile PATH is corrected to match) so the gate reflects the shipped image.
+    foreach ($d in @('C:\runtime\cuda-runtime\bin', "$env:ONNX_ROOT\bin", "$env:ONNX_GENAI_ROOT\bin", $env:FFMPEG_BIN,
+            $env:OPENCV_BIN, $env:LITERT_BIN, $env:GSTREAMER_BIN, "$env:TVM_ROOT\bin", $env:IREE_BIN)) {
+        if ($d -and (Test-Path $d) -and (($env:PATH -split ';') -notcontains $d)) { $env:PATH = "$d;$env:PATH" }
+    }
+    # Force a FRESH registry scan against the (now-complete) PATH so a stale
+    # blacklist from an earlier partial-PATH scan cannot mask a real fix.
+    $gstPluginDir = Join-Path $resolvedInstallDir 'lib\gstreamer-1.0'
+    $prevGstDebug = $env:GST_DEBUG
+    $prevGstReg = $env:GST_REGISTRY
+    $env:GST_REGISTRY = Join-Path $env:TEMP_DIR 'gst-registry-verify.bin'
+    Remove-Item $env:GST_REGISTRY -Force -ErrorAction SilentlyContinue
+    $env:GST_DEBUG = 'GST_REGISTRY:4,GST_PLUGIN_LOADING:4'
+    $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+    $dllSearchDirs = @($gstPluginDir) + @($env:PATH -split ';' | Where-Object { $_ }) + @("$env:SystemRoot\System32")
+    # Recursively resolve a DLL's dependency tree and return the names that resolve
+    # nowhere. api-ms-win-* / ext-ms-win-* are virtual API sets (loader resolves
+    # them via the API-set schema, never real files), so they are never "missing".
+    function Get-UnresolvedDeps {
+        param($DllPath, $Dumpbin, $SearchDirs, $Seen)
+        $missing = [System.Collections.Generic.List[string]]::new()
+        $deps = @(& $Dumpbin /dependents $DllPath 2>&1 | Select-String '^\s{4,}(\S+\.dll)' | ForEach-Object { $_.Matches.Groups[1].Value })
+        foreach ($dep in $deps) {
+            if ($dep -match '^(api|ext)-ms-') { continue }   # virtual API sets (loader-resolved)
+            if ($Seen.Contains($dep.ToLower())) { continue }
+            [void]$Seen.Add($dep.ToLower())
+            $hit = $SearchDirs | Where-Object { $_ -and (Test-Path (Join-Path $_ $dep)) } | Select-Object -First 1
+            if (-not $hit) { $missing.Add($dep) }
+            # Do NOT recurse into OS DLLs (System32/WinSxS): their deep OneCore
+            # deps are absent on Server Core but loader-tolerated (delay-loaded) --
+            # recursing there floods the report with noise. Only walk OUR DLLs.
+            elseif ($hit -notmatch '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)') {
+                foreach ($m in (Get-UnresolvedDeps (Join-Path $hit $dep) $Dumpbin $SearchDirs $Seen)) { $missing.Add($m) }
+            }
+        }
+        return $missing
+    }
     foreach ($plugin in @(Get-RequiredGstPlugin)) {
         $global:LASTEXITCODE = 0
         $null = & $gstInspect $plugin.Name 2>&1
@@ -799,9 +1121,26 @@ int _isatty(int);
             log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' present ($($plugin.Provides))"
         } else {
             log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' MISSING — $($plugin.Why)"
+            $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($pluginDll) {
+                log "    load-probing $($pluginDll.Name) directly:"
+                & $gstInspect $pluginDll.FullName 2>&1 |
+                    Where-Object { $_ -match 'load|dll|error|fail|blacklist|symbol|module|cannot|Failed' } |
+                    Select-Object -Last 4 | ForEach-Object { if ($_) { log "      $_" } }
+                # Name the actual unresolved DLL(s) anywhere in the dependency tree.
+                if ($dumpbin) {
+                    $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
+                    if ($unresolved) { $unresolved | ForEach-Object { log "      unresolved dependency (tree): $_" } }
+                    else { log '      (all non-API-set deps resolve; failure may be a delay-load or DllMain init error)' }
+                }
+            } else {
+                log "    (no gst*$($plugin.Name)*.dll found in $gstPluginDir)"
+            }
             $missingPlugins += $plugin
         }
     }
+    if ($null -ne $prevGstDebug) { $env:GST_DEBUG = $prevGstDebug } else { Remove-Item Env:\GST_DEBUG -ErrorAction SilentlyContinue }
+    if ($null -ne $prevGstReg) { $env:GST_REGISTRY = $prevGstReg } else { Remove-Item Env:\GST_REGISTRY -ErrorAction SilentlyContinue }
     $global:LASTEXITCODE = 0
     if ($missingPlugins.Count -gt 0) {
         $detail = ($missingPlugins | ForEach-Object { "$($_.Name) (needs pkg-config: $($_.NeedsPc -join ', '))" }) -join '; '
