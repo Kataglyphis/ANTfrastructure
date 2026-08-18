@@ -110,5 +110,16 @@ if ($missing.Count -gt 0) {
 } else {
     Write-Host '[ OK ] wrapped object contains every bare-object symbol (this TU does not reproduce)'
 }
+# ---- 6. mechanism evidence: nvcc's own plan vs sccache's executed steps ----
+# The container fs dies with the RUN, so everything upstream needs lands in
+# stdout here. Filter to the sub-command lines; cap so the log stays sane.
+Set-Location $build
+& cmd.exe /S /C "$cmd --dryrun" 2>&1 | Select-String 'cicc|ptxas|cudafe|fatbinary' |
+    Select-Object -First 40 | ForEach-Object { "plan| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
+if (Test-Path $env:SCCACHE_ERROR_LOG) {
+    Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'cicc|ptxas|cudafe|fatbinary' |
+        Select-Object -First 120 | ForEach-Object { "exec| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
+}
+
 Write-Host 'probe complete'
 exit 0
