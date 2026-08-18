@@ -94,6 +94,9 @@ extract_emulators() {
   fi
   echo "[extract] pulling + unpacking ${BINFMT_IMAGE} (amd64) to ${QDIR}"
   local tmp; tmp="$(mktemp -d)"
+  # SH3: leak-on-error guard — host /tmp accumulates otherwise (EXIT-scoped;
+  # a second EXIT trap in this script would need consolidating, none exists).
+  trap 'rm -rf "${tmp}"' EXIT
   # `image save` only reads the LOCAL store — pull first or a fresh host dies
   # with 'image not found' (bit us 2026-08-08 after image GC).
   "${NERDCTL}" image inspect "${BINFMT_IMAGE}" >/dev/null 2>&1 \
