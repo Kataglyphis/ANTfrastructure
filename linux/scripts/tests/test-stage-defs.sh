@@ -27,11 +27,18 @@ t_case "cross_build_mem_divisor: serial default is 1"
 unset PARALLEL_ARCHS TARGET_ARCHES MAX_PARALLEL_ARCHS || true
 t_assert_eq "1" "$(cross_build_mem_divisor)"
 
-t_case "cross_build_mem_divisor: parallel divides by min(arches, max)"
-t_assert_eq "2" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=arm64,riscv64 MAX_PARALLEL_ARCHS=4 cross_build_mem_divisor)" \
-  "2 arches under max=4 -> divide by 2"
-t_assert_eq "2" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=2 cross_build_mem_divisor)" \
-  "3 arches capped by max=2"
+t_case "cross_build_mem_divisor: min(arches, max) x intra-step budget (PAR4)"
+# PAR4 (2026-08-18): buildkitd max-parallelism runs several heavy steps PER
+# build, so the divisor multiplies the arch count by PAR_INTRA_STEP_BUDGET
+# (default 2) — the un-multiplied divisor OOM'd the first post-PAR2 run.
+t_assert_eq "4" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=arm64,riscv64 MAX_PARALLEL_ARCHS=4 cross_build_mem_divisor)" \
+  "2 arches under max=4 -> 2 x budget(2) = 4"
+t_assert_eq "4" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=2 cross_build_mem_divisor)" \
+  "3 arches capped by max=2 -> 2 x budget(2) = 4"
+t_assert_eq "6" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=3 cross_build_mem_divisor)" \
+  "3-way -> 3 x budget(2) = 6 (the wave3b-OOM configuration, now sized)"
+t_assert_eq "9" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=3 PAR_INTRA_STEP_BUDGET=3 cross_build_mem_divisor)" \
+  "budget knob raises the divisor (escalation path)"
 
 t_case "stage graph validates clean"
 t_assert_ok cross_stage_validate_graph
