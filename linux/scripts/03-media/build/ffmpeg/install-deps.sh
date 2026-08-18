@@ -40,9 +40,12 @@ if is_cross && \
    command -v cross_target_arch >/dev/null 2>&1; then
     case "$(cross_target_arch)" in
         riscv64)
-            echo "Skipping libass-dev for riscv64 because Ubuntu Ports cannot satisfy its HarfBuzz/GLib helper dependency chain."
-            echo "Skipping libgnutls28-dev for riscv64 because FFmpeg's cross probe does not currently pass in this environment."
-            echo "Skipping libsdl2-dev for riscv64 because Ubuntu Ports cannot satisfy its GLib helper dependency chain."
+            # RV1 (2026-08-18): all three exceptions LIFTED — resolute ports now
+            # carries libass/libsdl2/libgnutls28 dev for riscv64 (live-verified
+            # 2026-08-17). Best-effort like arm64; FFmpeg's configure probes gate
+            # each feature, so a ports regression degrades instead of failing.
+            optional_cross_target_packages+=(libgnutls28-dev libass-dev libsdl2-dev)
+            echo "Installing gnutls/ass/sdl2 dev on a best-effort basis for riscv64 (ports caught up, RV1); FFmpeg probes decide."
             ;;
         arm64)
             target_packages+=(libgnutls28-dev)
@@ -110,7 +113,10 @@ done
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
     nv_codec_ref="${NV_CODEC_HEADERS_REF:-n13.1.15.0}"
-    git clone --branch "${nv_codec_ref}" --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+    # NET1 (2026-08-18): second-URL fallback — videolan canonical, github mirror.
+    git clone --branch "${nv_codec_ref}" --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers \
+      || { rm -rf /tmp/nv-codec-headers
+           git clone --branch "${nv_codec_ref}" --depth 1 https://github.com/FFmpeg/nv-codec-headers.git /tmp/nv-codec-headers; }
     cd /tmp/nv-codec-headers
     make install
     cd -

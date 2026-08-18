@@ -233,8 +233,11 @@ _opencv_target_adjustments() {
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # Ubuntu Ports cannot currently satisfy the target GStreamer/GLib dev chain for riscv64 cross builds.
-            _ota_with_gstreamer="OFF"
+            # RV1 (2026-08-18): the old riscv64 WITH_GSTREAMER=OFF exception is
+            # LIFTED — ports now carries the GStreamer/GLib dev chain, and pass-2
+            # (opencv-gst) links OUR source-built /opt/gstreamer anyway, which
+            # riscv64 builds. GStreamer follows the same probe path as arm64 now;
+            # target: cv2 GStreamer:YES on ALL THREE arches (full two-pass parity).
             # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
             # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL

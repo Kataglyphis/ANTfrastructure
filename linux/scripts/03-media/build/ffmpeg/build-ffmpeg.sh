@@ -89,8 +89,17 @@ fetch_ffmpeg() {
         ;;
     esac
     echo "Downloading FFmpeg ${release_ref} from ${tarball_url}..."
+    # NET1 (2026-08-18): the github tarball was a falsely-mirrored SPOF —
+    # FFMPEG_GIT/FFMPEG_GIT_MIRROR existed but were DEAD code. Wire them as the
+    # fallback chain: tarball -> canonical git.ffmpeg.org -> github clone.
     download_and_extract "${tarball_url}" "${FFMPEG_SRC}" 1 || {
-        die "Tarball download failed for ${tarball_url}"
+        echo "Tarball download failed; falling back to git clone (${FFMPEG_GIT})..." >&2
+        rm -rf "${FFMPEG_SRC}"; mkdir -p "${FFMPEG_SRC}"
+        git clone --depth 1 --branch "${release_ref}" "${FFMPEG_GIT}" "${FFMPEG_SRC}" \
+          || { echo "Canonical clone failed; trying mirror (${FFMPEG_GIT_MIRROR})..." >&2
+               rm -rf "${FFMPEG_SRC}"; mkdir -p "${FFMPEG_SRC}"
+               git clone --depth 1 --branch "${release_ref}" "${FFMPEG_GIT_MIRROR}" "${FFMPEG_SRC}"; } \
+          || die "All FFmpeg sources failed: tarball, ${FFMPEG_GIT}, ${FFMPEG_GIT_MIRROR}"
     }
     cd "${FFMPEG_SRC}"
     echo "FFmpeg version: ${release_ref} (from tarball)"
@@ -155,8 +164,9 @@ _ffmpeg_cross_args() {
             echo "Cross: added multiarch lib/include dirs for ${_ma_triplet} (-L/-I incl /usr/include) so apt-installed target codecs link"
         fi
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # Avoid cross-detecting host SDL when the target SDL dev package is unavailable.
-            _ffca_out+=("--disable-sdl2" "--disable-ffplay")
+            # RV1 (2026-08-18): --disable-sdl2/--disable-ffplay LIFTED — ports now
+            # ships libsdl2-dev:riscv64 (installed best-effort by install-deps);
+            # configure's own pkg-config probe gates SDL/ffplay from here.
             # RVV assembly uses absolute relocations; allow text rels in shared libs
             _ffca_out+=("--extra-ldflags=-Wl,-z,notext")
         fi
@@ -198,9 +208,9 @@ _ffmpeg_probe_core_codecs() {
     fi
 
     # Optional codecs - add if libraries are available
-    if cross_build_is_active && [ "$(cross_target_arch)" = "riscv64" ]; then
-        echo "Skipping gnutls for riscv64 cross builds because FFmpeg's configure probe does not currently pass in this environment."
-    elif ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
+    # RV1 (2026-08-18): riscv64 gnutls skip LIFTED — libgnutls28-dev:riscv64
+    # exists on ports now; the probe decides like everywhere else (TLS support).
+    if ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
         _ffpcc_out+=("--enable-gnutls")
     fi
 
