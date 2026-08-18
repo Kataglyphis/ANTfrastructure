@@ -20,8 +20,8 @@ upstream component below carries its own license terms.
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.7.0 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.12.3 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
-| Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| uv | 0.12.5 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| Vulkan SDK | 1.4.357.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
 
@@ -36,15 +36,15 @@ upstream component below carries its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Apache TVM | v0.25.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+| Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 
 ### Media Layer (`Dockerfile.media`)
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| ONNX Runtime | v1.28.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.29.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
-| LiteRT (TensorFlow Lite) | v2.1.6 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
+| LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer Rust plugins (gst-plugins-rs) | 1.29.2 | [gitlab.freedesktop.org/gstreamer/gst-plugins-rs](https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs) | MPL-2.0 |
@@ -55,7 +55,7 @@ upstream component below carries its own license terms.
 | ArmNN (arm64) | v26.07 | [github.com/ARM-software/armnn](https://github.com/ARM-software/armnn) | MIT |
 | Arm Compute Library (arm64) | v53.2.0 | [github.com/ARM-software/ComputeLibrary](https://github.com/ARM-software/ComputeLibrary) | MIT |
 | libcamera | v0.7.2 | [libcamera.org](https://libcamera.org/) | LGPLv2.1+ |
-| Abseil | 20260526.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
+| Abseil | 20260817.0 | [github.com/abseil/abseil-cpp](https://github.com/abseil/abseil-cpp) | Apache 2.0 |
 | FreeType | 2.14.3 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
 | nv-codec-headers | n13.1.15.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
 | GObject-Introspection | 1.86.0 | [gitlab.gnome.org/GNOME/gobject-introspection](https://gitlab.gnome.org/GNOME/gobject-introspection) | LGPLv2+ |
@@ -91,7 +91,7 @@ upstream component below carries its own license terms.
 | --- | --- | --- | --- |
 | PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.44.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.0 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
 
@@ -103,7 +103,7 @@ upstream component below carries its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.32.6 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.32.14 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -139,10 +139,10 @@ upstream component below carries its own license terms.
 | Python (source-built, ClangCL) | 3.14.7 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
 | CMake | 4.4.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.357.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.44.9 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.0 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 
@@ -158,13 +158,13 @@ upstream component below carries its own license terms.
 | --- | --- | --- | --- |
 | GStreamer | 1.29.2 | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ |
 | GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) | per wrap files | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | LGPLv2+ / GPL (x264) / BSD (openh264) |
-| ONNX Runtime | v1.28.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
+| ONNX Runtime | v1.29.0 | [github.com/microsoft/onnxruntime](https://github.com/microsoft/onnxruntime) | MIT |
 | ONNX Runtime GenAI | v0.15.2 | [github.com/microsoft/onnxruntime-genai](https://github.com/microsoft/onnxruntime-genai) | MIT |
 | OpenCV | 5.0.0 | [opencv.org](https://opencv.org/) | Apache 2.0 |
 | FFmpeg | n9.0 | [ffmpeg.org](https://ffmpeg.org/) | GPLv3+ (built with --enable-gpl --enable-version3) |
-| LiteRT (TensorFlow Lite) | v2.1.6 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
-| LiteRT-LM | 0.15.0 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
-| Apache TVM | v0.25.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
+| LiteRT (TensorFlow Lite) | v2.2.0 | [www.tensorflow.org/lite](https://www.tensorflow.org/lite) | Apache 2.0 |
+| LiteRT-LM | 0.16.1 | [github.com/google-ai-edge/LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) | Apache 2.0 |
+| Apache TVM | v0.26.0 | [tvm.apache.org](https://tvm.apache.org/) | Apache 2.0 |
 
 ### Build Tooling (build-time only)
 
@@ -183,7 +183,7 @@ upstream component below carries its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| Pandoc | 3.10.1 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
+| Pandoc | 3.10.2 | [github.com/jgm/pandoc](https://github.com/jgm/pandoc) | GPLv2+ |
 | TeX Live (texlive-full) | Ubuntu apt | [tug.org/texlive](https://tug.org/texlive/) | Collection; per package LPPL / GPL / X11 / modified BSD |
 | Latin Modern fonts (lmodern) | Ubuntu apt | [www.gust.org.pl/projects/e-foundry/latin-modern](http://www.gust.org.pl/projects/e-foundry/latin-modern) | GUST Font License (LPPL-style) |
 | Ghostscript | Ubuntu apt | [www.ghostscript.com](https://www.ghostscript.com/) | AGPLv3+ |
@@ -194,7 +194,7 @@ upstream component below carries its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.12.3 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.5 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`external/Kataglyphis-DocumANTation/Dockerfile`)

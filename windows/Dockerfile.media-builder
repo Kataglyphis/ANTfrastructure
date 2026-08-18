@@ -235,11 +235,11 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
 # layers — hence a shared ANCESTOR rather than one lane building on the other.
 FROM common AS media-core-env
 
-ARG ONNXRUNTIME_VERSION=v1.28.0
+ARG ONNXRUNTIME_VERSION=v1.29.0
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ARG OPENCV_SOURCE_VERSION=5.0.0
 ARG FFMPEG_VERSION=n9.0
-ARG PYAV_VERSION=18.0.0
+ARG PYAV_VERSION=18.1.0
 ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 ARG CUDA_ARCHITECTURES="80;86;89;90"
 # Consumed by build-opencv-from-source.ps1 (bindings target + its own version
@@ -279,8 +279,8 @@ COPY windows\scripts\build-onnx-from-source.ps1 `
 # ── media-litert version env — SHARED ANCESTOR of both lanes (see media-core-env)
 FROM common AS media-litert-env
 
-ARG LITERT_VERSION=v2.1.6
-ARG LITERT_LM_VERSION=0.15.0
+ARG LITERT_VERSION=v2.2.0
+ARG LITERT_LM_VERSION=0.16.1
 # PROTOC_VERSION is NOT independent software: it must match the protobuf runtime
 # pinned inside LiteRT-LM (v0.14.0 -> 6.31.1 -> protoc 31.1). A stale value emits
 # gencode the pinned headers #error on (bit us 2026-08-03). JRE_VERSION feeds
@@ -312,7 +312,7 @@ COPY windows\scripts\build-litert-from-source.ps1 `
 # ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
 FROM common AS media-tvm-env
 
-ARG TVM_REF=v0.25.0
+ARG TVM_REF=v0.26.0
 ARG IREE_VERSION=v3.11.0
 
 ENV TVM_REF="${TVM_REF}" `

@@ -19,7 +19,7 @@ $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $
 # LITERT REF SYNC: this 'v2.1.6' is the AUTHORITATIVE default. The v0.14
 # support-graft in litert-lm-export-bridge.ps1 resolves the same LITERT_VERSION
 # env with the same fallback -- a LiteRT bump must update BOTH defaults.
-$LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.1.6'
+$LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 
 Write-Host "=== LiteRT source build ($LiteRtVersion, Ninja+clang-cl) ==="
