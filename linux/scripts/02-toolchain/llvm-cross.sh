@@ -222,7 +222,11 @@ _llvm_cross_setup_and_build() {
       -DCOMPILER_RT_BUILD_CTX_PROFILE=OFF
       -DSANITIZER_CXX_ABI=libstdc++
       -DLLVM_USE_HOST_TOOLS=ON
-      "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}"
+      # LLVM-ccache-launcher (2026-08-18): the NESTED native tablegen build
+      # compiled launcher-less — the only uncached compile in the toolchain
+      # lane (its cold rebuild after the CACHE1 prune cost ~2h). Wire ccache
+      # when present; harmless no-op flags otherwise absent.
+      "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}$(command -v ccache >/dev/null 2>&1 && printf ';%s;%s' '-DCMAKE_C_COMPILER_LAUNCHER=ccache' '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')"
       -DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"
     )
 
