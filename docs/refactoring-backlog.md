@@ -272,6 +272,19 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   Verified-good this run (recorded): BUILD_MEM_DIVISOR=3 live in all three
   parallel media invocations, RAM 12G/60G under 3-way load; sdk builds 22 min
   parallel vs 64 min sequential (~2.9×).
+- **PAR3 — --parallel-archs must be switchable PER STAGE** [S-M·★★, MEASURED
+  2026-08-18] The run proved parallelism pays off very differently per stage:
+  sdk ~2.9× faster (22 vs 64 min), but media-parallel crossed the ~8h30m
+  sequential mark at ~9h52m STILL UNFINISHED — the PAR2 lock serialization
+  (hours-long windows where amd64+arm64 sat at 0 CPU while riscv64 held
+  shared `sharing=locked` cache mounts, observed live 23:50-01:14+) ate the
+  entire media gain. Until PAR2 lands, the correct driving mode is
+  "sdk+android parallel, media sequential" — but the flag is all-or-nothing
+  today. Add per-stage control (e.g. `PARALLEL_STAGES=sdk,android` or
+  `--parallel-archs sdk,android`; default = all, current behavior) in
+  build-cross-chain.sh's stage loop. Cheap: the orchestrator already decides
+  parallel-vs-sequential per stage entry. Re-evaluate/remove after PAR2 is
+  fixed and media parallel is re-measured.
 
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
