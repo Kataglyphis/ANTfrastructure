@@ -1073,9 +1073,15 @@ The rules an agent must never violate:
      by buildctl — before this, the documented opt-in was wired to nothing),
      and `repro-sccache-cuda-llm-deadlock.ps1` passes BOTH (skipping patch 006
      alone compiles bare nvcc and reads as a false "deadlock gone" all-clear).
-     The #2808 deadlock also deserves a WebDAV-only retest: its two recorded
-     wedges ran while the L0 tier failed 100% of writes (#99 collateral
-     suspicion) — see the repro script header.
+     The WebDAV-only retest ran 2026-08-18 and settled both questions: the
+     #2808 DEADLOCK is #99 collateral (all 1891 CUDA objects incl. every
+     fused_moe launcher compiled through the server, no stall), but the
+     MISCOMPILE is real, storage-independent, and happens on a COLD-CACHE
+     run — dropped instantiations (`QkvToContext<*, __nv_fp8_e4m3>`,
+     `BiasSoftmaxImpl<double>`, `run_memory_efficient_attention`) as the
+     objects leave the wrapped compile. CUDA stays bare; the launcher-default
+     question is CLOSED until upstream fixes the decomposition layer
+     (addendum draft: `out/upstream-sccache-2808-addendum.md`).
    - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
      would bake a build-only mount path into the shipped image).
 
