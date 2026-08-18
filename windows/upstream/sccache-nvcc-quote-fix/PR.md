@@ -38,7 +38,7 @@ ONNX Runtime v1.28.0, `onnxruntime/contrib_ops/cuda/math/bias_softmax_impl.cu`,
 compiled with the exact command from ORT's build.ninja (extract via
 `ninja -t commands`), CUDA 13.3.1, four `-gencode` archs, cl.exe host:
 
-* bare nvcc: 3,189 defined symbols
+* bare nvcc: 3,189 defined symbols (identical numbers on ORT v1.29.0 - the trigger defines are version-independent)
 * `sccache nvcc` (cold cache): 2,628 — every `double` instantiation's
   `__device_stub__` missing, float/half intact
 * intermediates: `cudafe1.stub.c` ddd-marker counts 88 (bare) vs 0 (wrapped);
