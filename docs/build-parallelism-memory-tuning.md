@@ -141,6 +141,35 @@ This exact failure is already recorded in code: at the generic 2 GB/job estimate
 `cc1plus` (see the comment above `compute_cpp_heavy_jobs`). **4096 is the tightest
 value that keeps the worst case under 62 GB. It is not padding.**
 
+## ⚠️⚠️ The second-order trap: the divisor ignores INTRA-build step parallelism (PAR4 — OOM incident 2026-08-18)
+
+`BUILD_MEM_DIVISOR = min(MAX_PARALLEL_ARCHS, n_arch)` sizes each build's job
+pools as if that build ran **one step at a time**. It does not: buildkitd's
+`max-parallelism = 4` lets EVERY build run up to 4 independent Dockerfile
+stages concurrently. Worst case under 3-way `--parallel-archs`:
+`3 builds × up to 4 heavy steps × jobs sized for RAM/3` — a multiple of
+physical RAM.
+
+**The incident (wave3b, 2026-08-18):** the first run with the PAR2 cache-mount
+id split. Before PAR2, the shared `sharing=locked` apt mounts accidentally
+SERIALIZED the lanes' heavy phases — a hidden safety net. With PAR2 fixed, all
+3 media lanes reached their heaviest phase (IREE wheelhouse) simultaneously at
+~2h09m, and the kernel OOM-killed `cc1plus` on arm64 AND riscv64
+(`g++: fatal error: Killed signal terminated program cc1plus`; both lanes'
+media builds failed; recovery rode the retry+salvage staggering). Lesson:
+**removing a contention bug can surface a latent memory overcommit** — the two
+bugs were load-bearing for each other.
+
+**Interim operator rule (until the PAR4 fix lands):** for 3-way parallel media
+either set `BUILD_MEM_DIVISOR=5` (or higher) explicitly, or exclude media from
+parallelism via `PARALLEL_STAGES=sdk,android`. sdk/android phases have not
+OOMed under 3-way (validated 2026-08-17/18).
+
+**The real fix (PAR4, backlog ★★★):** fold intra-build step parallelism into
+the divisor (effective divisor ≈ `n_arch × per-build heavy-step budget`), or
+bound each build with `systemd-run MemoryHigh`, or a global compile-job
+governor across lanes (jobserver).
+
 ---
 
 ## How to tune safely (procedure for an agent)

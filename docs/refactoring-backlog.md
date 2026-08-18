@@ -56,15 +56,16 @@ Details: CHANGELOG + memory.
   PRESENT → opencv-5.0.0's FindFFMPEG probe quirk (fix/patch there). Couple with
   SMK1 (FFMPEG stays advisory until resolved).
 
-## Next up (recommended order, 2026-08-17)
+## Next up (recommended order, 2026-08-18)
 
-1. **GPU1+GPU2** [★★★, cheap] — 2-line fixes, validated by ONE opt-in nvidia
-   build; independent of the main chain (Batch G).
-2. **SMK1-3 + DUPN1 + POS1** [small, coherent] — the Batch-2-wave follow-ups
-   (functional gates + tiny dedup + .git cleanup); next closure window.
-3. **PAR1** [★★★, big lever] — supervised `--parallel-archs` validation run
-   (~15h → ~8-9h full chain).
-4. **Batch 3 riders** — bundle with the next planned pin bump.
+1. **PAR4** [★★★, POST-wave3b IMMEDIATELY] — fold buildkitd max-parallelism
+   into the mem divisor (the wave3b OOM root cause; interim rule documented in
+   AGENTS.md + build-parallelism-memory-tuning.md). Fix is host-side
+   orchestrator math (stage-defs.sh cross_build_mem_divisor) — NO closure
+   rebuild needed to stage it; validates on the next parallel run.
+2. **GPU1+GPU2 validation** [★★★, cheap] — staged fixes, validated by ONE
+   opt-in nvidia build; independent of the main chain (Batch G).
+3. **Batch 3 riders** — bundle with the next planned pin bump.
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
@@ -290,6 +291,22 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   build-cross-chain.sh's stage loop. Cheap: the orchestrator already decides
   parallel-vs-sequential per stage entry. Re-evaluate/remove after PAR2 is
   fixed and media parallel is re-measured.
+
+- **PAR4 — the parallel memory model ignores INTRA-build step parallelism**
+  [M·★★★, BIT 2026-08-18] wave3b OOM: with PAR2's lock serialization gone, all
+  3 lanes hit their heaviest phase (IREE wheelhouse) SIMULTANEOUSLY and the
+  kernel OOM-killed cc1plus on arm64+riscv64 (`g++: fatal error: Killed`) at
+  ~2h09m. The math gap: BUILD_MEM_DIVISOR=3 sizes ninja -j per BUILD as if
+  each build ran ONE step, but buildkitd max-parallelism=4 lets EACH build run
+  up to 4 heavy steps concurrently → worst case 3 builds x 4 steps, each
+  job-pool sized for RAM/3. Yesterday's lock contention accidentally
+  serialized the peaks; PAR2 removed that safety net. Fix options: (a) fold
+  max-parallelism into the divisor (effective = n_arch x per-build step
+  budget), (b) systemd-run MemoryHigh per build, (c) a global compile-job
+  governor (jobserver). Interim operator rule: for 3-way media parallel set
+  BUILD_MEM_DIVISOR>=5 or PARALLEL_STAGES=sdk,android. NOTE the incident
+  recovery: the chain self-staggered (arm64 salvage + riscv64 retry-2 while
+  amd64 continued) — retries that land staggered can pass.
 
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
