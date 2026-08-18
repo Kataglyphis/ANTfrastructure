@@ -110,6 +110,25 @@ if ($missing.Count -gt 0) {
 } else {
     Write-Host '[ OK ] wrapped object contains every bare-object symbol (this TU does not reproduce)'
 }
+# ---- 6b. machine diff: plan host-step defines vs sccache's host arg vector --
+# The dropped symbols are all double instantiations, and nvcc's plan gives the
+# FINAL host cl.exe step arch defines (__CUDA_ARCH__=900 etc.) that typically
+# guard double code paths. If sccache rebuilds that host step with a different
+# define set, that is the mechanism. Tokenize both and diff.
+Set-Location $build
+$planLines = & cmd.exe /S /C "$cmd --dryrun" 2>&1
+$planHost = ($planLines | Select-String 'cl\.exe' | Select-Object -Last 1).Line
+$planTokens = @([regex]::Matches($planHost, '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') })
+$execLine = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'bias_softmax_impl\.cu\.obj\]: get_cached_or_compile' | Select-Object -Last 1).Line
+$execTokens = @([regex]::Matches($execLine, '"((?:[^"\\]|\\.)*)"') | ForEach-Object { $_.Groups[1].Value -replace '\\\\', '\' })
+$planD = @($planTokens | Where-Object { $_ -match '^[-/](D|FI|I)' } | Sort-Object -Unique)
+$execD = @($execTokens | Where-Object { $_ -match '^[-/](D|FI|I)' } | Sort-Object -Unique)
+Write-Host ("plan host-step -D/-FI/-I tokens: {0}; sccache host-step: {1}" -f $planD.Count, $execD.Count)
+Compare-Object $planD $execD | ForEach-Object {
+    $tag = if ($_.SideIndicator -eq '<=') { 'ONLY-IN-PLAN' } else { 'ONLY-IN-EXEC' }
+    Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
+}
+
 # ---- 6. mechanism evidence: nvcc's own plan vs sccache's executed steps ----
 # The container fs dies with the RUN, so everything upstream needs lands in
 # stdout here. Filter to the sub-command lines; cap so the log stays sane.
