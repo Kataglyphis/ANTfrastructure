@@ -17,58 +17,40 @@ tiers · **S#/C#/D#/P#/A#/F#**=legacy sweep rounds (see archive) ·
 Batches are grouped by REBUILD BLAST RADIUS, not theme — most items are cheap,
 rebuilds are expensive. Work top to bottom; each batch ships independently.
 
-Last groomed: 2026-08-17. LIVE `:latest-cross` = the 2026-08-16 re-ship (digests
-amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) which
-shipped RP1-3 + AP7-runtime + GST1 + RP6 + AP4(ffmpeg/gst/libcamera) + TS1. A
-FULL Batch-2 rebuild is IN FLIGHT validating the staged big wave (AP1-5, opencv
-two-pass, TG1, guard-helper wiring — see the top section). Completed items were
-deleted from this file 2026-08-17 (lean OPEN-only); done-work records live in
-CHANGELOG.md + memory + the archive.
+Last groomed: 2026-08-18 (post WAVE-3 ship). LIVE `:latest-cross` = the
+2026-08-18 wave-3 ship (digests amd64 `fd0d8d74` / arm64 `6153d76b` / riscv64
+`549789b8`, byte-gate 3/3, cv2 GStreamer:YES on shipped bytes) — Batch-2 big
+wave (AP1/2/4/5, opencv two-pass, TG1) AND the parallel-archs hardening
+(PAR2/PAR3/PUSH1/CACHE1 shipped+validated; PAR4 fix staged, validates next
+parallel run). Completed items deleted per lean OPEN-only rule; ship records
+live in CHANGELOG.md + memory + the archive.
 
 **Windows items live in a SEPARATE Windows backlog** — removed from here
 2026-08-15 (was Batch 4 + W3 + W1). This file is Linux/cross-lane only. A few
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
-## ✅ Batch-2 BIG WAVE SHIPPED 2026-08-17 (full rebuild + byte-verified)
+## Carry-over from the shipped waves (still OPEN)
 
-Full base→:latest-cross rebuild (~21h incl. one AP3 revert-rerun) SHIPPED fresh
-digests amd64 `0cba6b61` / arm64 `ebc75627` / riscv64 `6a87341d`; byte-gate PASS
-×3. Manual byte-verification on the shipped amd64 wrapper: **opencv two-pass
-PROVEN (`cv2.getBuildInformation()` → GStreamer: YES)**, AP2 .pyc present, AP4
-libs stripped (.symtab=0), S2/GST1/RP6 hold, torch 2.13.0 intact. LIVE: AP1,
-AP2, AP4-complete, AP5, opencv two-pass, TG1-bounded, guard-wiring. NOT shipped:
-AP3 (reverted 80a81eb — bind-mount belongs in Dockerfile.torch's RUN, re-filed
-below), RP4+DUP2 (no safe form, deferred). One real bug flushed by the build:
-the AP3 mount-gap (wrappers failed on `--find-links /opt/wheels`; the numpy/
-GST1-class lesson again — closure restructures only prove out in a real build).
-Details: CHANGELOG + memory.
+- **OCV-FF1 — opencv videoio FFMPEG backend NO: opencv-5.0.0 FindFFMPEG probe
+  quirk** [M·★★, ROOT-CAUSED 2026-08-18] Byte-verified on the wave-3 shipped
+  amd64 wrapper: /opt/ffmpeg/lib HAS libswresample.so AND pkgconfig/
+  libswresample.pc, yet opencv's probe reports avcodec/avformat/avutil/swscale
+  YES and never emits a swresample line → HAVE_FFMPEG=NO. ffmpeg side is
+  CLEAN; fix on the opencv side (patch/hint FindFFMPEG, e.g. OPENCV_FFMPEG_*
+  hints or probe patch) in the next media closure window. SMK1's FFMPEG check
+  stays advisory until then.
 
-- **OCV-FF1 — opencv videoio FFMPEG backend still NO** [M·★★, NARROWED
-  2026-08-17] Log forensics on the shipped build: opencv-gst's cmake summary
-  found avcodec 63.1/avformat 63.1/avutil 61.1/swscale 10.1 = **YES** (all via
-  /opt/ffmpeg pkgconfig — so it is NOT an n9.0-API or PKG_CONFIG_PATH problem)
-  but **swresample never appears in the probe output** and overall FFMPEG: NO —
-  OpenCV's HAVE_FFMPEG requires ALL FIVE. ffmpeg's own build DOES produce
-  libswresample.so + .pc (seen in the #46 build log). NEXT CHECK (needs the next
-  media image): RESOLVED 2026-08-18 on the wave3 shipped amd64 wrapper —
-  libswresample.so AND pkgconfig/libswresample.pc ARE present in
-  /opt/ffmpeg/lib → the fork lands on **opencv-5.0.0 FindFFMPEG probe quirk**:
-  its probe reports avcodec/avformat/avutil/swscale YES but never emits a
-  swresample line → HAVE_FFMPEG=NO. Fix on the opencv side (patch/hint its
-  FindFFMPEG; e.g. OPENCV_FFMPEG_* hints or probe patch) next media closure
-  window. SMK1's FFMPEG check stays advisory until then.
+## Next up (recommended order, 2026-08-18 post-ship)
 
-## Next up (recommended order, 2026-08-18)
-
-1. **PAR4** [★★★, POST-wave3b IMMEDIATELY] — fold buildkitd max-parallelism
-   into the mem divisor (the wave3b OOM root cause; interim rule documented in
-   AGENTS.md + build-parallelism-memory-tuning.md). Fix is host-side
-   orchestrator math (stage-defs.sh cross_build_mem_divisor) — NO closure
-   rebuild needed to stage it; validates on the next parallel run.
-2. **GPU1+GPU2 validation** [★★★, cheap] — staged fixes, validated by ONE
-   opt-in nvidia build; independent of the main chain (Batch G).
-3. **Batch 3 riders** — bundle with the next planned pin bump.
+1. **GPU lane validation build** [★★★, cheap] — the staged GPU1-7 fixes,
+   validated by ONE opt-in nvidia (+amd) build; independent of the main chain.
+2. **PAR4 validation** [rides the next --parallel-archs run] — divisor ×
+   PAR_INTRA_STEP_BUDGET staged+function-tested; the next clean parallel run
+   from base is ALSO the real PAR1 full-chain measurement.
+3. **OCV-FF1 opencv-side fix + AP3 correct re-implementation** — next media
+   closure window.
+4. **Batch 3 riders** — bundle with the next planned pin bump.
 
 ## Standing rules (survived 3 sweep rounds + a currency audit — read first)
 
@@ -242,77 +224,24 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   the helper half (append --preserve-env only when sudo is real; ~32 sites in
   vulkan.sh alone) is closure-bound.
 
-### Live findings from the FIRST --parallel-archs run (2026-08-17/18)
+### Parallel-archs residuals (from the 2026-08-17/18 hardening saga; shipped parts in CHANGELOG)
 
-- **CACHE1 — routine `builder prune` DESTROYS the compile caches** [M·★★★,
-  COSTED THIS RUN → **FIXED-STAGED 2026-08-17**] `nerdctl builder prune -f`
-  (run ~10× across the 2-day saga) wipes buildkit CACHE MOUNTS together with
-  the disposable layer cache — this run paid directly: BOTH target-LLVMs
-  rebuilt COLD (+~1.5-2h). Root cause quantified live: store was 207 GB
-  `type==regular` (layer cache, regenerable) vs 4.9 GB `type==exec.cachemount`
-  (ccache/sccache/uv/cargo/apt/llvm-src — hours of compile time); `nerdctl
-  builder prune` has no --filter, `buildctl prune` DOES (filter syntax
-  verified read-only via `buildctl du --filter type==...`). FIX (option c,
-  shipped): **`linux/host-config/prune-safe.sh`** — prunes `type==regular`
-  only, optional PRUNE_KEEP_GB / DRY_RUN, prints cachemount inventory
-  before/after and FAILS if any record vanished; shellcheck-clean, dry-run
-  tested live. Plus buildkitd.toml explicit `[[worker.oci.gcpolicy]]` pair
-  (regular→450GB pass 1, all→500GB backstop) so AUTO-GC also spares
-  cachemounts — toml staged in repo, **apply-host-config.sh AFTER the run**
-  (restart kills in-flight builds). Operator rule: never `builder prune -f`
-  again; use prune-safe.sh. RESIDUAL: post-run, check why `buildctl du`
-  showed ccache/sccache mounts at ~0 GB even after the 4h compiler stage
-  (in-use mounts may under-report; if genuinely empty, ccache is not
-  persisting at all → separate bug).
-- **PUSH1 — registry pushes are the parallel wall-clock ceiling** [M·★★,
-  MEASURED → **FIXED-STAGED 2026-08-18**, validating in wave3b: cross-stage
-  pushes now `compression=zstd` (no force — parent layers skipped), knob
-  CROSS_LAYER_COMPRESSION=gzip reverts; runtime-wrapper lane NOT touched
-  (RTCACHE3 minefield) — residual below] uplink is ~4-5 MB/s shared: compiler push ~30 min (20GB), the two
-  parallel sdk pushes 23 min — and 3 media images (~12-17GB each) will contend
-  next. Builds parallelize; pushes serialize on bandwidth. Cheapest lever:
-  **zstd layer compression** on the image exports (buildkit
-  `compression=zstd[,force-compression]` — much faster than gzip AND ~30-40%
-  smaller → directly cuts push minutes); also consider skipping intermediate-
-  stage pushes when a local OCI-layout handoff exists (couples with the
-  Batch-5 --no-push item).
-  Verified-good this run (recorded): BUILD_MEM_DIVISOR=3 live in all three
-  parallel media invocations, RAM 12G/60G under 3-way load; sdk builds 22 min
-  parallel vs 64 min sequential (~2.9×).
-- **PAR3 — --parallel-archs must be switchable PER STAGE** [S-M·★★, MEASURED
-  2026-08-18 → **FIXED-STAGED 2026-08-18**: env PARALLEL_STAGES=all|csv in
-  build-cross-chain.sh (default all = current behavior), save/restore around
-  the per-stage loop; 17/17 loop tests green] The run proved parallelism pays off very differently per stage:
-  sdk ~2.9× faster (22 vs 64 min), but media-parallel crossed the ~8h30m
-  sequential mark at ~9h52m STILL UNFINISHED — the PAR2 lock serialization
-  (hours-long windows where amd64+arm64 sat at 0 CPU while riscv64 held
-  shared `sharing=locked` cache mounts, observed live 23:50-01:14+) ate the
-  entire media gain. Until PAR2 lands, the correct driving mode is
-  "sdk+android parallel, media sequential" — but the flag is all-or-nothing
-  today. Add per-stage control (e.g. `PARALLEL_STAGES=sdk,android` or
-  `--parallel-archs sdk,android`; default = all, current behavior) in
-  build-cross-chain.sh's stage loop. Cheap: the orchestrator already decides
-  parallel-vs-sequential per stage entry. Re-evaluate/remove after PAR2 is
-  fixed and media parallel is re-measured.
-
-- **PAR4 — the parallel memory model ignores INTRA-build step parallelism**
-  [M·★★★, BIT 2026-08-18 → **FIXED-STAGED same day**: cross_build_mem_divisor
-  ×= PAR_INTRA_STEP_BUDGET (default 2) under --parallel-archs → 3-way divisor
-  6; functional test green; validates next parallel run. Residual PAR4-hard:
-  MemoryHigh/jobserver for a TRUE cap.] wave3b OOM: with PAR2's lock serialization gone, all
-  3 lanes hit their heaviest phase (IREE wheelhouse) SIMULTANEOUSLY and the
-  kernel OOM-killed cc1plus on arm64+riscv64 (`g++: fatal error: Killed`) at
-  ~2h09m. The math gap: BUILD_MEM_DIVISOR=3 sizes ninja -j per BUILD as if
-  each build ran ONE step, but buildkitd max-parallelism=4 lets EACH build run
-  up to 4 heavy steps concurrently → worst case 3 builds x 4 steps, each
-  job-pool sized for RAM/3. Yesterday's lock contention accidentally
-  serialized the peaks; PAR2 removed that safety net. Fix options: (a) fold
-  max-parallelism into the divisor (effective = n_arch x per-build step
-  budget), (b) systemd-run MemoryHigh per build, (c) a global compile-job
-  governor (jobserver). Interim operator rule: for 3-way media parallel set
-  BUILD_MEM_DIVISOR>=5 or PARALLEL_STAGES=sdk,android. NOTE the incident
-  recovery: the chain self-staggered (arm64 salvage + riscv64 retry-2 while
-  amd64 continued) — retries that land staggered can pass.
+- **PAR4-hard — a TRUE memory cap for parallel builds** [M·★★, residual] The
+  shipped divisor fix (× PAR_INTRA_STEP_BUDGET) is a heuristic; worst-case
+  alignment of heavy TUs can still overcommit. Real cap options: systemd-run
+  MemoryHigh per arch build, or a global compile-job governor (jobserver)
+  across lanes. Revisit only if a divisor-6 parallel run OOMs again.
+- **PUSH1-residual — runtime-wrapper lane still pushes gzip** [S·★] wrappers
+  (~7-8 GiB each) go through runtime-build-fns.sh `-t`+push (RTCACHE3
+  minefield) — zstd there needs `nerdctl image convert --zstd` before push or
+  exporter rework; measure gain vs risk first.
+- **ghcr cache-import flake class** [S·★, PLAYBOOK] `DeadlineExceeded: failed
+  to compute cache key: httpReadSeeker ... no active session` killed 6 build
+  attempts across 2 lanes on 2026-08-18. Recovery that worked: stop chain,
+  restart buildkitd (session hygiene), relaunch with NO_CACHE_EXPORT=1 (drops
+  `--cache-from type=registry`; local cache carries the fast-forward).
+  Consider: retry classifier could auto-drop the registry cache-from after
+  2 consecutive DeadlineExceeded failures.
 
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
