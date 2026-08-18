@@ -1,6 +1,6 @@
 # sccache nvcc quote-protection fix (Windows dropped-instantiation miscompile)
 
-**Status 2026-08-18: fix VERIFIED on the reproducer** (patch-verify probe:
+**Status 2026-08-18: fix VERIFIED on the reproducer, PR submitted: https://github.com/mozilla/sccache/pull/2811** (patch-verify probe:
 bare 3189 == wrapped 3189 defined symbols; only 1:1-substituted `??_C@`
 string literals differ, which is the expected module-id naming divergence).
 
