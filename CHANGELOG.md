@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-08-18 - WAVE-3 SHIPPED: :latest-cross re-ship + the parallel-archs hardening saga (PAR2/PAR3/PUSH1/PAR4/CACHE1)
+
+Fresh 3-arch `:latest-cross` (amd64 `fd0d8d74` / arm64 `6153d76b` / riscv64
+`549789b8`), byte-gate PASS ×3, cv2 GStreamer:YES re-proven on shipped bytes.
+The run doubled as the first real `--parallel-archs` hardening campaign:
+
+- **CACHE1 SHIPPED+PROVEN**: `linux/host-config/prune-safe.sh` (filtered
+  buildctl prune) + buildkitd gcpolicy pair applied live. 5 mid-run prunes,
+  ~350G reclaimed total, **0 cachemount losses** (proven before/after each);
+  ccache persistence confirmed (7.3 GB after mount release).
+- **PAR2 SHIPPED+VALIDATED**: cache-mount ids split per ${TARGET_ARCH} (the
+  ${TARGETARCH}=amd64 collision serialized all lanes on locked apt mounts —
+  onnxruntime deps+fetch held them ~90 min). Post-fix: all 3 lanes compiled
+  simultaneously (load 27-35 vs 4).
+- **PAR4 INCIDENT+FIX**: removing PAR2's accidental serialization exposed the
+  divisor's blind spot — 3 lanes hit IREE simultaneously, OOM-killed cc1plus
+  ×2. Root cause: BUILD_MEM_DIVISOR ignored buildkitd max-parallelism
+  intra-build steps. Fix: divisor ×= PAR_INTRA_STEP_BUDGET (default 2) under
+  --parallel-archs (3-way → 6). Fully documented (tuning doc § second-order
+  trap, AGENTS.md recipe note).
+- **PAR3 SHIPPED**: PARALLEL_STAGES=all|csv per-stage parallelism control.
+- **PUSH1 SHIPPED+MEASURED**: zstd layer compression on cross-stage pushes —
+  media pushes ~10 min (vs 23-30 min gzip class).
+- **OCV-FF1 RESOLVED**: shipped /opt/ffmpeg/lib HAS libswresample.so+.pc →
+  opencv-5.0.0 FindFFMPEG probe quirk (fix on opencv side, next window).
+- Ops lessons hardened into memory/docs: registry-cache DeadlineExceeded
+  flake class (NO_CACHE_EXPORT=1 recovery), `nerdctl system prune` removes
+  TAGGED non-container images (registry-pinned handoffs saved the run),
+  wrapper smokes (SMK1-3) live-gated all three shipped wrappers.
+
 ## 2026-08-17 - BATCH-2 BIG WAVE SHIPPED: full 3-arch rebuild, opencv two-pass proven, GPU-lane fixes
 
 Full base→:latest-cross rebuild (owner-chosen "everything incl. TG1 in one
