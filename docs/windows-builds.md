@@ -2028,14 +2028,22 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 >    min, litert 43.9, base 31.1, merge 28.9 incl. two snapshotter-mount
 >    retries, tvm 21.8 with the mini-LLVM warm). #112's `chain=''` reproduced
 >    deterministically on this ride too — it is a parse hole, not a flake.
-> 2. **Deadlock repro** (`repro-sccache-cuda-llm-deadlock.ps1`, ~85 min) —
->    #2808 under WebDAV-only; wedge → trace upstream, no wedge → three-canary
->    miscompile bar before any launcher-default talk. **Run 1 (2026-08-18)
->    was a FALSE ALL-CLEAR** — `& pwsh -File` flattened the -BuildArg pair
->    into one mangled string buildctl silently discarded (patch 006 stayed
->    on, CUDA bare, green, zero signal). Fixed (in-process invocation +
->    driver key validation); run 2 RUNNING with an early launcher-arrival
->    check on the configure line.
+> 2. **Deadlock repro — VERDICT IN (2026-08-18, run 2):**
+>    * **Deadlock GONE under WebDAV-only** — all 1891 CUDA objects incl.
+>      every fused_moe launcher compiled through the sccache server, no
+>      stall. The two historical wedges were #99 collateral (the L0
+>      write-failure storm), not a decomposition hang.
+>    * **Miscompile CONFIRMED, storage-independent, on a COLD-CACHE run** —
+>      link died on dropped instantiations (`QkvToContext<*, __nv_fp8_e4m3>`,
+>      `BiasSoftmaxImpl<double>`, `run_memory_efficient_attention`): the
+>      objects are wrong as they leave the wrapped compile, so the loss is in
+>      sccache's nvcc decomposition itself, not cache-hit replay. **CUDA
+>      stays bare; the launcher-default question is CLOSED (canary 3 is red
+>      before any hits are even consumed).** Addendum draft updated:
+>      `out/upstream-sccache-2808-addendum.md` (owner posts).
+>    * (Run 1 earlier that morning was a false all-clear — `& pwsh -File`
+>      flattened the -BuildArg pair into one mangled string buildctl silently
+>      discarded. Fixed: in-process invocation + driver key validation.)
 > 3. **After those builds free the mounts/files:** #100 (FFmpeg/PyAV sccache),
 >    #107 (extract sccache session helpers), #112 (opencv-stage provenance
 >    gate empty-read), #68/#69 (FFmpeg fallback + pin drift), #45 (CUDA path
