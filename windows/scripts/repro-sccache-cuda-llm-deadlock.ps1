@@ -90,9 +90,16 @@ try {
     # SCCACHE_CUDA_LAUNCHER=1). Without the second arg this repro "succeeds",
     # and the success branch below reads as "deadlock no longer reproduces" —
     # a false all-clear from an instrument that never touched the fault line.
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File 'windows\build-buildkit.ps1' `
+    #
+    # DIRECT invocation, NOT `& pwsh -File`: -File flattens a comma array into
+    # ONE literal string INCLUDING the quote characters, so buildctl received
+    # --opt build-arg:'SCCACHE_REPRO_CUDA_LLM=1','SCCACHE_CUDA_LAUNCHER=1' — an
+    # undeclared ARG name it silently discarded. That produced exactly the
+    # false all-clear described above on the first live run (2026-08-18,
+    # 88 min: patch 006 applied, CUDA bare, build green, zero signal).
+    & 'windows\build-buildkit.ps1' `
         -Gpu -Stages media -MediaBranches media-core -NoCacheStage onnx `
-        -BuildArg 'SCCACHE_REPRO_CUDA_LLM=1','SCCACHE_CUDA_LAUNCHER=1' 2>&1 | Tee-Object -FilePath $log
+        -BuildArg 'SCCACHE_REPRO_CUDA_LLM=1', 'SCCACHE_CUDA_LAUNCHER=1' *>&1 | Tee-Object -FilePath $log
     $code = $LASTEXITCODE
 } finally { Pop-Location }
 
