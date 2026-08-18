@@ -2485,7 +2485,15 @@ Upstream follow-ups: see "Pending" at the bottom.
   cost the full stage queue. Give Invoke-GitClone (module — land with the
   NEXT planned media rebuild, cache closure!) 2-3 attempts with backoff +
   `Remove-SourceBuildTree` between; same family as Invoke-DownloadWithRetry.
-- **115 [M·★★, none] OpenCV CUDA caching: rsp-off experiment + upstream
+- **115 [M·★★, none] MEASURED 2026-08-19 00:10: the rsp-off knob is
+  INSUFFICIENT — CUDA stats stayed empty (2018/1863/1862, identical to the
+  rsp run) although both banners fired. CMake's Ninja generator falls back
+  to a response file whenever the real command exceeds the ~32k spawn limit,
+  regardless of the USE_RESPONSE_FILE_* variables — OpenCV's CUDA lines are
+  genuinely over it. PRIMARY PATH is now upstream PR 2: teach sccache's nvcc
+  handler to expand `--options-file` (gcc/msvc handlers already expand @rsp).
+  The OPENCV_CUDA_NO_RSP knob stays dormant/documented until then. Original:
+  OpenCV CUDA caching: rsp-off experiment + upstream
   `--options-file` expansion.** OpenCV's nvcc calls ride CMake response
   files, which sccache passes through UNCACHED (measured 2026-08-18: zero
   CUDA cache categories at 99.95% C/C++ hits) — wrapped OpenCV CUDA is
