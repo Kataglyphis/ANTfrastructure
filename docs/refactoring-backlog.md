@@ -231,17 +231,6 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   alignment of heavy TUs can still overcommit. Real cap options: systemd-run
   MemoryHigh per arch build, or a global compile-job governor (jobserver)
   across lanes. Revisit only if a divisor-6 parallel run OOMs again.
-- **PUSH1-residual — runtime-wrapper lane still pushes gzip** [S·★] wrappers
-  (~7-8 GiB each) go through runtime-build-fns.sh `-t`+push (RTCACHE3
-  minefield) — zstd there needs `nerdctl image convert --zstd` before push or
-  exporter rework; measure gain vs risk first.
-- **ghcr cache-import flake class** [S·★, PLAYBOOK] `DeadlineExceeded: failed
-  to compute cache key: httpReadSeeker ... no active session` killed 6 build
-  attempts across 2 lanes on 2026-08-18. Recovery that worked: stop chain,
-  restart buildkitd (session hygiene), relaunch with NO_CACHE_EXPORT=1 (drops
-  `--cache-from type=registry`; local cache carries the fast-forward).
-  Consider: retry classifier could auto-drop the registry cache-from after
-  2 consecutive DeadlineExceeded failures.
 
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
@@ -267,18 +256,20 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
 
 ### Batch-3 planning data (2026-08-17 freshness snapshot; api.github.com live)
 
-- **B3-PLAN — available pin bumps for the next versions.env window** [ref]:
-  SAFE tier: UV 0.12.3→0.12.5, VULKAN 1.4.357.0→.1, FLUTTER 3.44.9→3.47.0,
-  OLLAMA 0.32.6→0.32.14 (llm-stack only), UBUNTU_DIGEST refresh (full-chain),
-  pandoc/binaryen host-side. REPORT tier (one at a time, patch entanglement):
-  ONNXRUNTIME v1.28.0→v1.29.0, LITERT v2.1.6→v2.2.0 (+LM 0.15→0.16;
-  PROTOC_VERSION is SLAVED — re-derive), TVM v0.25→v0.26, PYAV 18.0→18.1,
-  TENSORFLOW_C 2.18→2.21 (only matters if FFMPEG_ENABLE_TF=1). Everything else
-  up-to-date (GCC/LLVM/Python/Rust/GStreamer/Node/CMake/IREE/OpenVINO/ArmNN…).
-- **F7 — 18 versions.env keys UNCLASSIFIED in bump_versions.py** [S·★] (PY_*
-  executor pins, LIBCAMERA_VERSION, FLATPAK_RUNTIME, SCCACHE_*, windows-tool
-  pins…) — add each to SAFE/REPORT/MANUAL or the non-version filter so the
-  freshness report stays complete.
+- **B3-PLAN — available pin bumps for the next versions.env window** [ref,
+  REFRESHED 2026-08-18 live]: SAFE tier: UV 0.12.3→0.12.5, VULKAN
+  1.4.357.0→.1, FLUTTER 3.44.9→3.47.0, OLLAMA 0.32.6→0.32.14 (llm-stack
+  only), UBUNTU_DIGEST refresh (full-chain), pandoc/binaryen host-side.
+  REPORT tier (one at a time, patch entanglement): ONNXRUNTIME
+  v1.28.0→v1.29.0, LITERT v2.1.6→v2.2.0 (+LM 0.15→0.16.1; PROTOC slaved —
+  re-derive: new tag still wants 31.1), TVM v0.25→v0.26, PYAV 18.0→18.1,
+  ABSEIL 20260526→20260817, TENSORFLOW_C 2.18→2.21 (only if
+  FFMPEG_ENABLE_TF=1). NEW via F7 coverage: auditwheel 6.7→6.8.1, meson
+  1.11.2→1.12.0, setuptools 83→84, wheel 0.47→0.48. Everything else
+  up-to-date (GCC/LLVM/Python/Rust/GStreamer/Node/CMake/IREE/OpenVINO/
+  ArmNN/libcamera…). F7 CLOSED same day: all 18 formerly-unclassified keys
+  now in REPORT (10 PyPI + libcamera-gitlab) or MANUAL (LT82/FLATPAK-branch/
+  SCCACHE_GIT_REV + 4 Windows-lane pins) — freshness report is complete.
 
 ### CI-workflow sweep additions (2026-08-17) — **CI1-3 ✅ ALL FIXED same day**
 

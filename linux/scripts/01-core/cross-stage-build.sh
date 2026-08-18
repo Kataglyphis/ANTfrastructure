@@ -205,7 +205,7 @@ _cross_stage_build_impl() {
   # PUSH_RETRY_BASE_SECS (default 15, linear backoff: 15s, 30s, 45s...).
   local _max_attempts=1
   [ "${push_flag}" -eq 1 ] && _max_attempts="${PUSH_MAX_ATTEMPTS:-4}"
-  local _attempt=1 _rc=0 _delay
+  local _attempt=1 _rc=0 _delay _regcache_fails=0
   while :; do
     if [ -n "${log_file}" ]; then
       # Real pipe, not process substitution: the shell waits for tee to drain,
@@ -256,6 +256,35 @@ _cross_stage_build_impl() {
         fi
       fi
       return "${_rc}"
+    fi
+    # ghcr cache-import flake class (2026-08-18): `DeadlineExceeded: failed to
+    # compute cache key: ... httpReadSeeker ... no active session` killed 6
+    # attempts across 2 lanes in one afternoon — the REGISTRY CACHE IMPORT
+    # itself is the failing read, so retrying the identical command just
+    # re-rolls the dice. After 2 such failures, drop the registry cache
+    # import/export from the remaining retries: the LOCAL cache still carries
+    # the fast-forward; only cross-host warm-start is lost for this build.
+    # (Manual recovery that day was exactly this, via NO_CACHE_EXPORT=1.)
+    if [ -n "${log_file}" ] \
+       && tail -n 40 "${log_file}" 2>/dev/null | grep -qE 'DeadlineExceeded|httpReadSeeker'; then
+      _regcache_fails=$(( _regcache_fails + 1 ))
+      if [ "${_regcache_fails}" -ge 2 ]; then
+        local -a _no_regcache=()
+        local _i=0 _arg
+        while [ "${_i}" -lt "${#build_cmd[@]}" ]; do
+          _arg="${build_cmd[${_i}]}"
+          case "${_arg}:${build_cmd[$(( _i + 1 ))]:-}" in
+            --cache-from:type=registry*|--cache-to:type=inline*)
+              _i=$(( _i + 2 )); continue ;;
+          esac
+          _no_regcache+=("${_arg}")
+          _i=$(( _i + 1 ))
+        done
+        if [ "${#_no_regcache[@]}" -lt "${#build_cmd[@]}" ]; then
+          warn "registry cache import failed ${_regcache_fails}x (DeadlineExceeded/httpReadSeeker) — dropping type=registry cache-from + inline cache-to from the remaining retries (local cache stays active)"
+          build_cmd=("${_no_regcache[@]}")
+        fi
+      fi
     fi
     _delay="$(( _attempt * ${PUSH_RETRY_BASE_SECS:-15} ))"
     warn "Push attempt ${_attempt}/${_max_attempts} for ${tag} hit a transient registry/network error; retrying in ${_delay}s (built layers are cached, only the push repeats)"

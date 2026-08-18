@@ -603,6 +603,11 @@ def _r(repo, strip_v=True, pattern=None, prefix=""):
     return fn
 
 
+def _pypi(pkg: str) -> Callable:
+    """REPORT helper: latest release of a PyPI package (F7)."""
+    return lambda cur: (http_json(f"https://pypi.org/pypi/{pkg}/json")["info"]["version"], {})
+
+
 SAFE: list[tuple[str, Callable, str]] = [
     # (env key, spec, rebuild impact of a bump)
     ("PWSH_VERSION", spec_pwsh, "windows base (full — pwsh is layer 1)"),
@@ -675,6 +680,19 @@ REPORT: list[tuple[str, Callable]] = [
     ("PROTOBUF_VERSION", lambda cur: (
         http_json("https://pypi.org/pypi/protobuf/json")["info"]["version"], {})),
     ("VCPKG_REF", _r("microsoft/vcpkg", strip_v=False)),
+    # -- F7 (2026-08-18): python build-dep pins (wheelhouse/venv tooling) --
+    ("PY_AUDITWHEEL_VERSION", _pypi("auditwheel")),
+    ("PY_CYTHON_VERSION", _pypi("Cython")),
+    ("PY_MESON_VERSION", _pypi("meson")),
+    ("PY_NINJA_VERSION", _pypi("ninja")),
+    ("PY_PATCHELF_VERSION", _pypi("patchelf")),
+    ("PY_PYBIND11_VERSION", _pypi("pybind11")),
+    ("PY_SCIKIT_BUILD_CORE_VERSION", _pypi("scikit-build-core")),
+    ("PY_SETUPTOOLS_SCM_VERSION", _pypi("setuptools-scm")),
+    ("PY_SETUPTOOLS_VERSION", _pypi("setuptools")),
+    ("PY_WHEEL_VERSION", _pypi("wheel")),
+    ("LIBCAMERA_VERSION", lambda cur: (
+        gitlab_latest_tag("gitlab.freedesktop.org", "camera/libcamera", r"^v\d+\.\d+\.\d+$"), {})),
 ]
 
 MANUAL = [
@@ -689,6 +707,13 @@ MANUAL = [
     "VISUAL_STUDIO_VERSION", "RUST_NIGHTLY_TOOLCHAIN",
     "OPENCV_VERSION", "FFMPEG_VERSION",
     "JRE_VERSION", "LIBFFI_MESON_VERSION",
+    # F7 (2026-08-18): deliberate pins + non-versions
+    "PY_SETUPTOOLS_LT82_VERSION",  # deliberate <82 compat pin — pairs with PY_SETUPTOOLS_VERSION
+    "FLATPAK_RUNTIME_VERSION",     # freedesktop runtime BRANCH (24.08), not a package version
+    "SCCACHE_GIT_REV",             # git SHA rides the sccache quote-fix PR state
+    # F7: Windows-lane pins — bump via the WINDOWS backlog, not this tool
+    "LLVM_WINDOWS_VERSION", "NASM_WINDOWS_VERSION",
+    "NINJA_WINDOWS_VERSION", "SCCACHE_WINDOWS_VERSION",
 ]
 
 
