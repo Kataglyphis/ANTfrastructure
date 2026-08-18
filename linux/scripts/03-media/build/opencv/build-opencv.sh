@@ -568,11 +568,21 @@ install_opencv() {
     ensure_sudo_or_die
 
     # Use cmake --install which works with any generator (Ninja, Make, etc.)
-    ${SUDO_WRAP} cmake --install . --prefix "${OPENCV_PREFIX}" 2>/dev/null || \
-    ${SUDO_WRAP} make install 2>/dev/null || {
+    # Keep stderr of each attempt quiet on the happy path, but capture it so the
+    # actual reason (ENOSPC, permissions, ...) reaches the log if BOTH fail.
+    local _cmake_install_err _make_install_err
+    _cmake_install_err="$(mktemp)"
+    _make_install_err="$(mktemp)"
+    ${SUDO_WRAP} cmake --install . --prefix "${OPENCV_PREFIX}" 2>"${_cmake_install_err}" || \
+    ${SUDO_WRAP} make install 2>"${_make_install_err}" || {
       echo "ERROR: Both cmake --install and make install failed for OpenCV"
+      echo "--- cmake --install stderr ---"
+      cat "${_cmake_install_err}"
+      echo "--- make install stderr ---"
+      cat "${_make_install_err}"
       exit 1
     }
+    rm -f "${_cmake_install_err}" "${_make_install_err}"
     ${SUDO_WRAP} ldconfig || true
 
     # Ensure unversioned symlinks exist for contrib libraries (search lib and lib64)
@@ -681,6 +691,18 @@ main() {
     }
     
     echo "OpenCV ${OPENCV_VERSION} installed successfully to ${OPENCV_PREFIX}"
+
+    # AP4: strip symbol tables from the installed OpenCV prefix. Unlike
+    # ffmpeg/gstreamer/libcamera, this script does not call setup_linux_cross_env,
+    # so ${STRIP} is unset — strip_media_prefixes self-derives the cross
+    # <triplet>-strip (via _resolve_media_strip_bin) when a cross build is active,
+    # else host strip. --strip-all keeps .dynsym (dynamic linking unaffected).
+    # Best-effort; MEDIA_STRIP=0 disables. /opt/opencv5 is a dedicated prefix, so
+    # this touches only OpenCV libs (litert/onnxruntime live in the shared
+    # /usr/local and are handled elsewhere).
+    # DUPN1: MEDIA_STRIP gate lives inside the helper now.
+    declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${OPENCV_PREFIX}" || true
+
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"
     

@@ -66,4 +66,62 @@ for _path in 0 1; do
 done
 
 rm -rf "${_sdk}"
+
+# ---------------------------------------------------------------------------
+# FFMPEG_ENABLE_TF gate (backlog S2). The TF C SDK adds ~500 MB to the amd64
+# image for one OPTIONAL DNN backend, so it is gated OFF by default, mirroring
+# FFMPEG_ENABLE_X265. Assert: (1) the default is OFF in versions.env + the
+# Dockerfile ARG, (2) the configure call site is gated by is_truthy, (3) the
+# SDK-download function honors the gate and skips when off, (4) ONNX Runtime is
+# NOT gated (stays always-on).
+BUILD="${TESTS_DIR}/../03-media/build/ffmpeg/build-ffmpeg.sh"
+VERSIONS="${TESTS_DIR}/../01-core/versions.env"
+DOCKERFILE="${TESTS_DIR}/../../Dockerfile.media"
+
+t_case "versions.env defines FFMPEG_ENABLE_TF and it defaults OFF (0)"
+t_assert_ok grep -qE '^FFMPEG_ENABLE_TF=0$' "${VERSIONS}"
+
+t_case "Dockerfile.media ARG FFMPEG_ENABLE_TF defaults OFF (0), matching versions.env"
+t_assert_ok grep -qE '^ARG FFMPEG_ENABLE_TF=0$' "${DOCKERFILE}"
+
+t_case "build-ffmpeg.sh gates --enable-libtensorflow behind is_truthy FFMPEG_ENABLE_TF"
+t_assert_ok grep -qE 'is_truthy "\$\{FFMPEG_ENABLE_TF:-0\}" && ffmpeg_probe_libtensorflow' "${BUILD}"
+
+t_case "ONNX Runtime backend is NOT gated by any FFMPEG_ENABLE toggle (stays always-on)"
+# The libonnxruntime enable must be reached unconditionally in the dnn-backend
+# probe — no FFMPEG_ENABLE_* guard on its `if ffmpeg_probe_libonnxruntime` line.
+t_assert_ok grep -qE '^\s*if ffmpeg_probe_libonnxruntime; then' "${BUILD}"
+
+# Drive ensure_tensorflow_c_sdk with the gate toggled, an EMPTY cache (so the
+# cached-SDK short-circuit does not pre-empt the gate), and download stubbed to
+# fail (never touch the network). is_truthy is provided with platform.sh
+# semantics — the real function is in common.sh, not sourced in this unit test.
+_run_ensure() {
+  # $1 = FFMPEG_ENABLE_TF value ("" = unset -> default off)
+  local _cache; _cache="$(mktemp -d)"
+  bash -c "
+    set -uo pipefail
+    is_truthy() { case \"\${1:-}\" in 1|true|TRUE|yes|YES|on|ON) return 0;; *) return 1;; esac; }
+    download_file() { return 1; }
+    download_verified_file() { return 1; }
+    FFMPEG_SDK_CACHE='${_cache}'
+    ${1:+FFMPEG_ENABLE_TF='$1'}
+    source '${DNN}'
+    ensure_tensorflow_c_sdk 2>&1 || true
+  "
+  rm -rf "${_cache}"
+}
+
+t_case "ensure_tensorflow_c_sdk: gate FIRES when FFMPEG_ENABLE_TF unset (default off)"
+_off_default="$(_run_ensure "")"
+t_assert_contains "${_off_default}" "FFMPEG_ENABLE_TF is off"
+
+t_case "ensure_tensorflow_c_sdk: gate FIRES when FFMPEG_ENABLE_TF=0"
+_off_explicit="$(_run_ensure "0")"
+t_assert_contains "${_off_explicit}" "FFMPEG_ENABLE_TF is off"
+
+t_case "ensure_tensorflow_c_sdk: gate does NOT fire when FFMPEG_ENABLE_TF=1 (download path reached)"
+_on="$(_run_ensure "1")"
+t_assert_ok bash -c "case '${_on}' in *'FFMPEG_ENABLE_TF is off'*) exit 1;; *) exit 0;; esac"
+
 t_summary

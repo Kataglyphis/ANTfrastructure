@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -15,7 +16,6 @@
 #
 #   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\setup-dufs-service.ps1'
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [string]$DufsExe = "$env:USERPROFILE\scoop\shims\dufs.exe",
@@ -56,7 +56,7 @@ Start-ScheduledTask -TaskName 'dufs-sccache-l2'
 Write-Host '== 3/3 verify ==' -ForegroundColor Cyan
 Start-Sleep -Seconds 3
 $resp = $null
-try { $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 10 } catch {}
+try { $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$Port/" -UseBasicParsing -TimeoutSec 10 } catch { $resp = $null }
 if ($resp -and $resp.StatusCode -eq 200) {
     Write-Host "dufs-sccache-l2 answers on port $Port (session-independent, restart-on-failure)." -ForegroundColor Green
 } else {

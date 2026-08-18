@@ -83,8 +83,21 @@
   # 20GB -> 40GB (2026-08-08). This tier stopped being scratch on that date: the
   # Windows chain gained real, load-bearing cache mounts, and they SHARE this
   # one budget with local sources and git checkouts —
-  #   sccache L0  (id=sccache-winamd64-2)  SCCACHE_CACHE_SIZE = 15G
-  #   uv/pip      (id=uv-wheels-winamd64)                     ~10G
+  #   sccache L0  (id=sccache-winamd64-2)       SCCACHE_CACHE_SIZE = 15G
+  #     DORMANT since 2026-08-16: SCCACHE_MULTILEVEL_CHAIN defaults to "" (WebDAV
+  #     only), so this mount is still ATTACHED to every compiling RUN but nothing
+  #     writes to it -- the 15G is reserved-in-name, not consumed. Do not reclaim
+  #     the budget on that basis: the two-tier layout is meant to come back once
+  #     BuildKit's WCOW cache mounts stop losing writes into an inherited
+  #     directory (docs/windows-builds.md #99), and it needs this headroom again.
+  #   uv/pip      (id=uv-wheels-winamd64)                          ~10G
+  #   sccache log (id=sccache-logs-winamd64)                        <1G
+  #     Added 2026-08-15 (backlog #90). SCCACHE_ERROR_LOG used to live inside
+  #     SCCACHE_DIR, i.e. inside the directory sccache manages by LRU — and
+  #     sccache deleted it, which is why its error trail was unobtainable
+  #     through the whole write-failure investigation. It needs its own mount
+  #     so nothing else holds a delete policy over it. Tiny by nature, but it
+  #     counts against this budget like the others.
   # 2026-08-10: the L0 id was bumped -1 -> -2 (fresh-mount discriminator for
   # the run-10/11 link-failure forensics). The ORPHANED -1 mount keeps
   # counting against this 40GB budget until its 168h keepDuration lapses
@@ -97,10 +110,28 @@
   # log still reported a cache hit rate — the silent-degradation shape this repo
   # keeps designing against. Whoever grows either cache raises this number in
   # the SAME change: the sizes and this cap are one decision, not two.
+  # 2026-08-15 (backlog #89): this tier had NO reservedSpace, so GC was free to
+  # evict the compiler cache down to nothing — and the evidence says it did.
+  # On the first fully-captured chain the sccache write path worked in the FIRST
+  # media stage (onnx: 1488 misses, 0 write errors) and then failed 100 % in
+  # EVERY stage after it (opencv 1849, genai 157, litert 5037, tvm 596, iree
+  # 6686). Two observations separate "GC ate it" from "sccache hit its own 15G
+  # ceiling": `buildctl du` lists NO sccache cachemount record at all (only the
+  # 1.2 GB bazel one), and a probe found the mount present but EMPTY. A cache
+  # that hit its own size limit would be FULL and accounted for; one that is
+  # absent and empty was reclaimed.
+  #
+  # reservedSpace is the only knob GC will not prune below. Sized to hold both
+  # live mounts with headroom (15G sccache + ~10G uv = 25G), leaving the 40GB
+  # cap as the churn ceiling above it. Note the orphaned -1 mount described
+  # above lapsed ~2026-08-17, so the transient over-budget window is closing;
+  # do NOT read a low hit rate as "cold cache" until this is deployed and a
+  # chain has run — that misreading is what cost this defect a month.
   [[worker.containerd.gcpolicy]]
     filters = ["type==source.local", "type==exec.cachemount", "type==source.git.checkout"]
     keepDuration = "168h"
-    maxUsedSpace = "40GB"
+    reservedSpace = "30GB"
+    maxUsedSpace = "60GB"
 
   # Tier 1: anything unused for >30 days goes first.
   [[worker.containerd.gcpolicy]]

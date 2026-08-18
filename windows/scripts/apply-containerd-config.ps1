@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -35,7 +36,6 @@
 #   pwsh -File windows\scripts\apply-containerd-config.ps1               # apply
 #   pwsh -File windows\scripts\apply-containerd-config.ps1 -TeardownTimeout ''  # drop the env var
 
-#requires -Version 7.0
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     [string]$ServiceName = 'containerd',

@@ -91,7 +91,8 @@ These validate a built/pulled image and also run during the build to fail fast:
 > failing: the `onnxruntime_genai` Python import (its wheel installs into
 > `/opt/venv` only at packaging; `smoke-torch-venv.sh` is the functional
 > gate), the gst `libav` plugin load (links the source-built ffmpeg libav*
-> incl. the bundled libtensorflow — gated on ffmpeg-executability), and
+> — gated on ffmpeg-executability; libtensorflow is bundled only when
+> `FFMPEG_ENABLE_TF=1`, which defaults OFF since S2, 2026-08-14), and
 > ffmpeg's own execution. Auditing coverage by the media-stage log alone
 > therefore UNDER-counts what is enforced — the packaging-stage run is the
 > strict one.

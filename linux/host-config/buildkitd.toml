@@ -27,6 +27,23 @@
   gc = true
   gckeepstorage = 500000000000
 
+  # CACHE1 (2026-08-17): explicit GC policies so auto-GC prunes LAYER cache
+  # (type==regular, cheap to regenerate) long before it ever touches
+  # RUN --mount=type=cache records (ccache/sccache/uv/cargo/apt/llvm-src --
+  # hours of compile time in a few GB). Policies run in order; cachemounts
+  # are only candidates for the final total-budget backstop.
+  # NOTE: defining gcpolicy overrides gckeepstorage above (kept for docs).
+  # Manual reclaim: use linux/host-config/prune-safe.sh, NEVER
+  # `nerdctl builder prune -f` (it has no filter and wipes cachemounts).
+  [[worker.oci.gcpolicy]]
+    # pass 1: layer cache down to 450 GB, oldest first
+    filters = ["type==regular"]
+    keepBytes = 450000000000
+  [[worker.oci.gcpolicy]]
+    # pass 2: total backstop at 500 GB (may touch cachemounts only here)
+    all = true
+    keepBytes = 500000000000
+
   # Bound concurrent RUN steps. BuildKit otherwise runs every independent
   # Dockerfile.media stage at once (tvm+opencv+IREE+Dawn compiling together,
   # each ninja sized by mem_capped_jobs AS IF ALONE) -- the 2026-08-10

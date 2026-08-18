@@ -203,8 +203,19 @@ function Invoke-DownloadWithRetry {
             $msg = $_.Exception.Message
             if (Test-Path $DestinationPath) { Remove-Item $DestinationPath -Force -ErrorAction SilentlyContinue }
             if ($attempt -ge $MaxAttempts) { throw "Download failed after $MaxAttempts attempt(s) [$label]: $msg" }
-            Write-Host "  download attempt $attempt/$MaxAttempts failed [$label]: $msg -- retrying in ${delay}s"
-            if ($delay -gt 0) { Start-Sleep -Seconds $delay }
+            # HTTP 429 is a RATE LIMIT, not a blip: 3s/6s/12s backoff retries
+            # into the same closed window and burns all attempts in ~20s —
+            # measured 2026-08-17, four 429s from GitHub codeload killed a merge
+            # chain 55 minutes in. A 429 needs a WAIT, not persistence: one
+            # minute per prior attempt, so the limiter can actually reset.
+            $wait = $delay
+            if ($msg -match '\b429\b|Too Many Requests') {
+                $wait = 60 * $attempt
+                Write-Host "  download attempt $attempt/$MaxAttempts rate-limited (429) [$label] -- backing off ${wait}s to let the limiter reset"
+            } else {
+                Write-Host "  download attempt $attempt/$MaxAttempts failed [$label]: $msg -- retrying in ${wait}s"
+            }
+            if ($wait -gt 0) { Start-Sleep -Seconds $wait }
             $delay = [Math]::Min($delay * 2, 30)
         }
     }
@@ -298,6 +309,16 @@ function Test-SccacheRemoteConfigured {
     # True when any sccache remote backend is configured. Shared by the cmake
     # launcher wiring (Invoke-CmakeConfigure) and the end-of-build stats dump --
     # without a remote there is no cache, so neither should activate.
+    #
+    # SCCACHE_FORCE_LOCAL=1 overrides that for ONE purpose: measuring sccache's
+    # LOCAL DISK backend on its own. It is a diagnostic escape hatch, not a
+    # supported build mode -- a local-only cache dies with the RUN's container
+    # unless SCCACHE_DIR points at a cache mount, which is exactly why this gate
+    # exists. Added 2026-08-16 for backlog #99: clearing the endpoint to isolate
+    # the disk level silently disabled sccache entirely (`Compile requests 0`),
+    # so the experiment measured nothing and looked like a clean run.
+    if ($env:SCCACHE_FORCE_LOCAL -eq '1') { return $true }
+
     return (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_WEBDAV_ENDPOINT)) -or
         (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_BUCKET)) -or
         (-not [string]::IsNullOrWhiteSpace($env:SCCACHE_REDIS_ENDPOINT))

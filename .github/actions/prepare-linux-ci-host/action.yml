@@ -86,8 +86,12 @@ runs:
     - name: Log in to the container registry
       if: inputs.registry-password != ''
       shell: bash
+      # CI3: secret via env, not spliced into the script body (masked either
+      # way, but the env-var pattern keeps it out of the composed script file).
+      env:
+        REGISTRY_PASSWORD: ${{ inputs.registry-password }}
       run: |
-        echo "${{ inputs.registry-password }}" \
+        printf '%s' "${REGISTRY_PASSWORD}" \
           | docker login "${{ inputs.registry }}" -u "${{ inputs.registry-username }}" --password-stdin
 
     # Retried on purpose: pulling a multi-GB image over a shared runner network

@@ -6,6 +6,22 @@ if [ -f /opt/scripts/core/cross-env.sh ]; then
   source /opt/scripts/core/cross-env.sh   # defines cross_build_is_active
 fi
 
+# Canonical NEEDED-walk primitives (elf_needed_sonames / elf_unresolved_needed,
+# backlog D4) live in 01-core/platform.sh: bind-mounted at /opt/scripts/core in
+# the Dockerfile.media package-stage RUN that executes this validator,
+# repo-relative when run from a checkout. Side-effect-free, so hard-require it
+# (a silent fallback would gut the whole missing-deps scan below).
+_VMR_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for _vmr_platform in /opt/scripts/core/platform.sh "${_VMR_SELF_DIR}/../../01-core/platform.sh"; do
+  if [ -f "${_vmr_platform}" ]; then
+    # shellcheck disable=SC1090
+    source "${_vmr_platform}"
+    break
+  fi
+done
+command -v elf_unresolved_needed >/dev/null 2>&1 \
+  || { echo "FATAL: platform.sh (elf_needed_sonames/elf_unresolved_needed) not found" >&2; exit 1; }
+
 ARTIFACTS=(
   "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
   "${LIBCAMERA_PREFIX:-/opt/libcamera}/bin/cam"
@@ -38,18 +54,10 @@ if [ -n "${_VMR_MA}" ]; then
   )
 fi
 
-# Return 0 if <so_name> resolves under LIB_DIRS, the standard lib dirs, or the
-# ldconfig cache; 1 otherwise. DRYs the identical scan used by
-# find_missing_needed and scan_plugin_directory.
-so_name_resolvable() {
-  local so_name="$1" dir
-  for dir in "${LIB_DIRS[@]}" /usr/lib /lib /usr/lib/*-linux-gnu* /usr/local/lib/*-linux-gnu*; do
-    [ -d "${dir}" ] || continue
-    [ -f "${dir}/${so_name}" ] && return 0
-  done
-  ldconfig -p 2>/dev/null | grep -qF " ${so_name} " && return 0
-  return 1
-}
+# The "does this soname resolve under LIB_DIRS + standard lib dirs + ldconfig
+# cache" scan that find_missing_needed and scan_plugin_directory share is now
+# the canonical elf_unresolved_needed (01-core/platform.sh, sourced above),
+# called with LIB_DIRS as the extra search roots.
 
 known_so_packages_load() {
   local map_file="${1:-${SCRIPT_DIR:-.}/so-package-map.txt}"
@@ -82,11 +90,9 @@ find_missing_needed() {
   local so_name
   while IFS= read -r so_name; do
     [ -n "${so_name}" ] || continue
-    if ! so_name_resolvable "${so_name}"; then
-      echo "  MISSING: ${so_name}" >&2
-      missing+=("${so_name}")
-    fi
-  done < <(objdump -p "${binary}" 2>/dev/null | awk '/NEEDED/ {print $2}')
+    echo "  MISSING: ${so_name}" >&2
+    missing+=("${so_name}")
+  done < <(elf_unresolved_needed "${binary}" "${LIB_DIRS[@]}")
 
   if [ ${#missing[@]} -gt 0 ]; then
     printf '%s\n' "${missing[@]}"
@@ -139,10 +145,8 @@ scan_plugin_directory() {
     local so_name
     while IFS= read -r so_name; do
       [ -n "${so_name}" ] || continue
-      if ! so_name_resolvable "${so_name}"; then
-        missing_all+=("${so_name}")
-      fi
-    done < <(objdump -p "${p}" 2>/dev/null | awk '/NEEDED/ {print $2}')
+      missing_all+=("${so_name}")
+    done < <(elf_unresolved_needed "${p}" "${LIB_DIRS[@]}")
   done
 
   if [ ${#missing_all[@]} -gt 0 ]; then

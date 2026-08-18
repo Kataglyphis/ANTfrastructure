@@ -1,0 +1,17 @@
+# escape=`
+# =============================================================================
+# PR hygiene probe for the sccache quote fix: fmt --check + clippy + the nvcc
+# grouping unit tests on the patched pin. Ships nothing. Run via:
+#   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.sccache-pr-hygiene -BaseImage local/kataglyphis:bk-windows-toolchain
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
+FROM ${BASE_IMAGE} AS probe
+
+# Layer-cache buster (a CACHED run replays an old verdict).
+ARG PROBE_NONCE="0"
+
+RUN --mount=type=bind,source=windows/scripts/probe-sccache-pr-hygiene.ps1,target=C:\bkmnt\probe-sccache-pr-hygiene.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/upstream/sccache-nvcc-quote-fix,target=C:\bkmnt\patch `
+    & 'C:\bkmnt\probe-sccache-pr-hygiene.ps1' -Nonce "${PROBE_NONCE}"; `
+    Write-Host 'probe complete'

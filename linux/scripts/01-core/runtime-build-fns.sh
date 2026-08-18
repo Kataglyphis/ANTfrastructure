@@ -32,6 +32,65 @@ runtime_push_tag() {
     run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
 }
 
+# XC2: the immutable android artifact digest for <arch>, threaded from the cross
+# orchestrator as RUNTIME_ANDROID_PIN_<arch> (see runtime_android_pin_varname).
+# Empty for a standalone/--repair helper run, which then falls back to the
+# mutable cross-android tag. Used both as the ARTIFACT_IMAGE the package copies
+# from AND as the parent-digest annotation recorded on the package/wrapper push.
+runtime_android_pin() {
+  local arch="$1" var
+  var="$(runtime_android_pin_varname "${arch}")"
+  printf '%s' "${!var:-}"
+}
+
+# XC2/XC3: compose the buildkit image-exporter spec for a runtime build, folding
+# in the ancestry annotations (parent-digest/parent-stage + run-id) so the pushed
+# wrapper/package manifest carries its provenance. Reduces to a plain
+# `type=image,name=<tag>` (equivalent to `-t <tag>`) when ancestry.sh is absent
+# or nothing is recordable, so it is always safe to use in place of -t. The
+# annotations ride the manifest that runtime_push_tag later pushes; on a locally
+# exported (unpushed) image they simply travel with — and are discarded with — it.
+runtime_image_output_arg() {
+  local tag="$1" parent_pin="${2:-}" parent_stage="${3:-}" run_id="${4:-}"
+  local ann=""
+  if declare -F ancestry_output_annotations >/dev/null 2>&1; then
+    ann+="$(ancestry_output_annotations "${parent_pin}" "${parent_stage}")"
+  fi
+  if declare -F ancestry_run_id_annotation >/dev/null 2>&1; then
+    ann+="$(ancestry_run_id_annotation "${run_id}")"
+  fi
+  printf 'type=image,name=%s%s' "${tag}" "${ann}"
+}
+
+# Append the image target for a runtime build to the nameref array.
+#
+# RTCACHE3 (root cause of the 2026-08-14 stale-ship saga): this used to emit the
+# annotated `--output type=image,name=<tag>,annotation.*` exporter on the push
+# path, on the assumption (see the now-corrected runtime_image_output_arg note)
+# that it was "equivalent to -t <tag>". It is NOT. Verified with a minimal
+# busybox repro on this rootless nerdctl+containerd host:
+#     nerdctl build --output type=image,name=X   → X is NOT in the local image store
+#     nerdctl build -t X                          → X IS in the local image store
+# The exporter builds the image into buildkit's content store but never lands a
+# local containerd tag. So the freshly built wrapper was invisible: the
+# subsequent `nerdctl push <tag>` (runtime_push_tag) and `nerdctl manifest
+# create <tag>` both resolved the STALE pre-existing local tag from an earlier
+# run, and :latest-cross shipped byte-identical every time (amd64 stuck at
+# 35c1f1df across five rebuilds). The annotations never reached the registry
+# either — every run logged "wrapper tag(s) carry no run-id annotation …
+# provenance unverifiable" — so nothing of value is lost by dropping the
+# exporter. Use plain `-t` on BOTH paths: it reliably creates AND overwrites the
+# local tag, which is what runtime_push_tag + the manifest step consume.
+# (Re-embedding ancestry provenance via a locally-tagging method is tracked
+# separately; correctness of the shipped bytes comes first.)
+append_runtime_image_output() {
+  local -n _ario_out=$1
+  local tag="$2"
+  # Args 3-5 (will_push, parent_pin, parent_stage) are accepted for call-site
+  # compatibility but intentionally ignored now that both paths use -t.
+  _ario_out+=(-t "${tag}")
+}
+
 _runtime_finish_stage() {
   local kind="$1"
   local arch="$2"
@@ -118,13 +177,27 @@ append_package_build_args() {
 append_wrapper_build_args() {
   local -n _awba_out=$1
   local arch="$2" parent_image="$3"
+  # PROV1 (2026-08-17): fill the OCI provenance labels. Dockerfile.torch
+  # declares ARG BUILD_DATE=""/VCS_REF="" for its org.opencontainers.image.
+  # created/.revision labels, but nothing ever passed them → every shipped
+  # wrapper carried EMPTY provenance (the concrete half of the RTCACHE3
+  # provenance follow-up). Best-effort: outside a git checkout VCS_REF stays "".
+  local _prov_date _prov_ref
+  _prov_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _prov_ref="$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
   _awba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "BUILD_MODE=native"
     --build-arg "TARGET_ARCH=${arch}"
     --build-arg "TORCH_APP_MODE=${TORCH_APP_MODE:-all}"
     --build-arg "BUILD_TYPE=${BUILD_TYPE:-Release}"
+    --build-arg "BUILD_DATE=${_prov_date}"
+    --build-arg "VCS_REF=${_prov_ref}"
   )
+  # Documented operator overrides (see runtime_shared_usage_env_overrides);
+  # forwarded only when set so the Dockerfile.torch defaults stay authoritative.
+  append_optional_build_arg _awba_out ONNX_PACKAGE "${ONNX_PACKAGE:-}"
+  append_optional_build_arg _awba_out PYTORCH_EXTRA "${PYTORCH_EXTRA:-}"
 }
 
 runtime_build_package_image() {
@@ -137,6 +210,12 @@ runtime_build_package_image() {
   append_common_build_args build_args
   append_runtime_accelerator_build_args build_args
 
+  # XC2: prefer the immutable android digest (threaded from the orchestrator) as
+  # the artifact the package copies from; falls back to the mutable tag when no
+  # pin was threaded (standalone/--repair run).
+  local _android_pin
+  _android_pin="$(runtime_android_pin "${arch}")"
+
   if runtime_use_local_artifact_context; then
     artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-oci}"
     artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
@@ -145,6 +224,7 @@ runtime_build_package_image() {
     build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
   else
     artifact_image="$(runtime_artifact_image_ref "${arch}")"
+    [ -n "${_android_pin}" ] && artifact_image="${_android_pin}"
     package_base_stage="package-image"
   fi
 
@@ -159,11 +239,26 @@ runtime_build_package_image() {
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
+  # Record the android parent-digest annotation only when the package is pushed
+  # (intermediate push); the local stage-context path keeps a plain `-t`.
+  local _pkg_push=0
+  runtime_pushes_intermediate_images && _pkg_push=1
+  local -a _pkg_out=()
+  append_runtime_image_output _pkg_out "${tag}" "${_pkg_push}" "${_android_pin}" android
+  # RTCACHE2: the package re-materializes /opt/ffmpeg via `COPY --from=android`.
+  # BuildKit's worker cache can serve a STALE copy layer from a prior run even
+  # when the android artifact-source digest changed (observed 2026-08-14: a
+  # media→android→runtime rebuild that dropped ffmpeg's libtensorflow shipped a
+  # byte-identical wrapper because the package/wrapper fully cache-hit the 3-day
+  # -old layers). RUNTIME_NO_CACHE=1 forces a clean re-evaluation so the fresh
+  # artifact-source content actually lands. Unquoted: empty → no word.
+  # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
+    ${RUNTIME_NO_CACHE:+--no-cache} \
     --platform "linux/${arch}" \
     --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
-    -t "${tag}" \
+    "${_pkg_out[@]}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
     "${build_args[@]}" \
     . || return 1
@@ -193,10 +288,25 @@ _runtime_build_wrapper() {
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
+  # XC2/XC3: the wrapper is the tag that goes LIVE and is indexed into
+  # :latest-cross, so stamp it with the android parent-digest (its immutable
+  # cross-lane ancestor) + the run-id when it will be pushed. base/package are
+  # local intermediates in the normal flow, so android is the wrapper's nearest
+  # registry-resident ancestor to record.
+  local _wrap_push=0
+  runtime_pushes_wrapper_images && _wrap_push=1
+  local -a _wrap_out=()
+  append_runtime_image_output _wrap_out "${_wrapper_tag_out}" "${_wrap_push}" \
+    "$(runtime_android_pin "${arch}")" android
+  # RTCACHE2: same stale-worker-cache hazard as the package build — the wrapper
+  # is FROM package, so a clean package rebuild normally invalidates it, but
+  # gate it too so RUNTIME_NO_CACHE=1 guarantees an end-to-end fresh wrapper.
+  # shellcheck disable=SC2086  # intentional: empty RUNTIME_NO_CACHE must vanish
   run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
     "${_rb_pull}" \
+    ${RUNTIME_NO_CACHE:+--no-cache} \
     --platform "linux/${arch}" \
-    -t "${_wrapper_tag_out}" \
+    "${_wrap_out[@]}" \
     -f "${WRAPPER_DOCKERFILE_PATH:-linux/Dockerfile.torch}" \
     "${_wrapper_build_args_out[@]}" \
     . || return 1
@@ -291,8 +401,7 @@ Environment overrides:
   BASE_PARENT_IMAGE            Optional parent image passed as BASE_IMAGE to the
                                 selected base Dockerfile (for example a GPU base)
   PACKAGE_DOCKERFILE_PATH      Package Dockerfile path
-  TORCH_DOCKERFILE_PATH        Torch Dockerfile path
-  WRAPPER_DOCKERFILE_PATH      Final wrapper Dockerfile path
+  WRAPPER_DOCKERFILE_PATH      Final wrapper (torch) Dockerfile path
   TORCH_APP_MODE               TORCH_APP_MODE passed to linux/Dockerfile.torch
   ENABLE_NVIDIA                Optional accelerator flag passed to package/torch/wrapper builds
   ENABLE_AMD                   Optional accelerator flag passed to package/torch/wrapper builds

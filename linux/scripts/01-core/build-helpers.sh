@@ -164,3 +164,79 @@ strip_elf_tree() {
     | awk -F': *' '/ELF/{print $1}' \
     | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
 }
+
+# _resolve_media_strip_bin — pick the right `strip` for strip_media_prefixes.
+# Prefers ${STRIP} (setup_linux_cross_env exports the target <triplet>-strip),
+# else derives the cross <triplet>-strip when a cross build is active and the
+# cross bin symlinks are on PATH (opencv/litert/onnxruntime build scripts do NOT
+# call setup_linux_cross_env, so STRIP is unset there — without this they'd fall
+# back to host `strip`, a no-op on foreign ELFs, the AP1 finding). Falls back to
+# plain `strip` for native. Fully guarded: every probe `|| true`, missing helpers
+# just yield host strip — never aborts a set -e caller.
+_resolve_media_strip_bin() {
+  local bin="${STRIP:-}"
+  if [ -z "${bin}" ] \
+     && declare -F cross_build_is_active >/dev/null 2>&1 \
+     && cross_build_is_active 2>/dev/null \
+     && declare -F cross_target_triplet >/dev/null 2>&1; then
+    local _trip
+    _trip="$(cross_target_triplet 2>/dev/null || true)"
+    if [ -n "${_trip}" ] && command -v "${_trip}-strip" >/dev/null 2>&1; then
+      bin="${_trip}-strip"
+    fi
+  fi
+  printf '%s' "${bin:-strip}"
+}
+
+# strip_media_prefixes [prefix...] — AP4: strip symbol tables from the media
+# install prefixes. Resolves the strip binary via _resolve_media_strip_bin (cross
+# <triplet>-strip when cross, host strip when native), so it works whether or not
+# the caller exported ${STRIP}. Best-effort per prefix (each goes through
+# strip_elf_tree, which never aborts the caller). With no args, strips the default
+# media set. If no cross-strip is resolvable it falls back to host strip and
+# leaves foreign ELFs unstripped (a missed size win, never a build break).
+#
+# NB: not a wheel stripper — wheels carry per-file <triplet>.so that a tree walk
+# would still strip correctly, but AP1's wheel-env forwarding is the dedicated
+# path for those. This is for the plain /opt/<lib> and /usr/local trees.
+strip_media_prefixes() {
+  # DUPN1: the MEDIA_STRIP gate lives HERE (not at the 9 call sites) — one
+  # authority, call sites keep only the declare -F guard + `|| true`.
+  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0
+  local strip_bin jobs="${STRIP_JOBS:-$(nproc)}" p
+  strip_bin="$(_resolve_media_strip_bin)"
+  local -a prefixes=("$@")
+  if [ "${#prefixes[@]}" -eq 0 ]; then
+    prefixes=(
+      /opt/ffmpeg /opt/opencv5 /opt/gstreamer /opt/libcamera
+      /opt/armnn /opt/acl
+      /usr/local/lib/onnxruntime-cpu /usr/local/lib/onnxruntime-genai
+    )
+  fi
+  for p in "${prefixes[@]}"; do
+    [ -d "${p}" ] || continue
+    strip_elf_tree "${p}" "${jobs}" "${strip_bin}"
+  done
+}
+
+# strip_media_libs <dir> <name-glob> [name-glob...] — AP4: strip ONLY the libs
+# matching <name-glob>s directly under <dir> (maxdepth 1). For a library that
+# installs into a SHARED prefix (e.g. litert into /usr/local/lib, next to the
+# base CPython libs) where strip_media_prefixes' whole-tree walk would wrongly
+# strip unrelated base libs. Resolves the cross/host strip via
+# _resolve_media_strip_bin; --strip-all keeps .dynsym. Best-effort; the caller
+# owns the MEDIA_STRIP gate (mirrors strip_media_prefixes).
+strip_media_libs() {
+  [ "${MEDIA_STRIP:-1}" = "1" ] || return 0   # DUPN1: gate lives in the helper
+  local dir="$1"; shift
+  { [ -d "${dir}" ] && [ "$#" -gt 0 ]; } || return 0
+  local strip_bin; strip_bin="$(_resolve_media_strip_bin)"
+  local -a name_expr=()
+  local g
+  for g in "$@"; do
+    if [ "${#name_expr[@]}" -eq 0 ]; then name_expr=( -name "${g}" )
+    else name_expr+=( -o -name "${g}" ); fi
+  done
+  find "${dir}" -maxdepth 1 -type f \( "${name_expr[@]}" \) \
+    -exec "${strip_bin}" --strip-all {} + 2>/dev/null || true
+}

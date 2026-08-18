@@ -27,6 +27,13 @@ if [ -f /tmp/tensorrt-local-repo.deb ]; then
     fi
 fi
 if [ "${_trt_ok}" -eq 0 ]; then
+    # GPU1 fix (2026-08-17): refresh the indices FIRST. install-cuda-stack.sh's
+    # RUN used to wipe /var/lib/apt/lists inside the SHARED apt-lib cache mount,
+    # so this RUN saw empty indices, found no tensorrt candidates, and the
+    # 2>/dev/null fallback chain swallowed it — TensorRT silently missing from
+    # the shipped :*-nvidia image. An explicit update makes this path
+    # self-sufficient regardless of what earlier RUNs did to the shared mount.
+    apt-get update -qq || echo "TensorRT: apt-get update failed; install may find no candidates" >&2
     if apt-get install -y --no-install-recommends "tensorrt-dev=${TENSORRT_VERSION}*" "tensorrt-libs=${TENSORRT_VERSION}*" 2>/dev/null; then
         echo "TensorRT: installed ${TENSORRT_VERSION} from NVIDIA apt repo"
         _trt_ok=1

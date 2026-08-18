@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -25,7 +26,6 @@
 #
 # Exit code: 0 = every attempted lane committed all layers; 1 = any lane failed.
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     # Also run the docker-classic legacy-builder probe (needs the stevedore/dockerd service up).

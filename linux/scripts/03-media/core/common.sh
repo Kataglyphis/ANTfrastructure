@@ -124,6 +124,7 @@ media_common_init() {
   source_module cross-env.sh         || true
   source_module logging.sh           || true
   source_module build-helpers.sh     || true
+  source_module guard-helpers.sh     || true
   source_module parallelism.sh       || true
 
   # Optional modules — may not be needed by every consumer.

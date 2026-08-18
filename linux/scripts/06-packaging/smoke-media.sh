@@ -225,6 +225,16 @@ if command -v python3 >/dev/null 2>&1; then
   if [ -n "${cv2_pkg}" ]; then
     if cross_build_is_active 2>/dev/null; then
       pass "opencv Python bindings present at ${cv2_pkg} (cross build — import skipped)"
+    elif ! python3 -c "import numpy" 2>/dev/null; then
+      # numpy is a packaging-stage dependency (installed into /opt/venv at
+      # packaging), NOT present in the media build sandbox. cv2 cannot import
+      # without numpy regardless of cv2's own health, so an import failure here
+      # is an environment artifact, not a cv2 defect — defer to the runtime
+      # torch-venv smoke (where numpy + cv2 coexist), exactly like the
+      # onnxruntime import above. Without this gate, forensic#3's native
+      # hard-fail below fired on every full media build (numpy is absent here) —
+      # only surfaced now because prior validations were runtime-lane only.
+      echo "  INFO: cv2 import needs numpy, absent in the media build sandbox (a /opt/venv packaging dep) — deferred to the runtime torch-venv smoke (functional gate)"
     elif PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2" 2>/dev/null; then
       cv2_ver="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2; print(cv2.__version__)" 2>/dev/null || echo '?')"
       pass "opencv Python module imports (v${cv2_ver})"
@@ -262,8 +272,19 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       else
         fail "opencv imencode/videoio roundtrip FAILED (import works, so this is real)"
       fi
+    elif cross_build_is_active 2>/dev/null; then
+      # CROSS build: the interpreter runs on the amd64 host but cv2 is a
+      # foreign-arch extension, so an import failure here is expected — the
+      # runtime smoke validates it on-target. Legitimate PASS-with-caveat.
+      pass "opencv Python bindings present at ${cv2_pkg} (import skipped: foreign-arch extension under cross build — validated on-target by the runtime smoke)"
     else
-      pass "opencv Python bindings present at ${cv2_pkg} (import failed in build sandbox — will work at runtime)"
+      # NATIVE build (forensic#3): the interpreter IS the target arch AND numpy
+      # is importable (the elif above already deferred the numpy-absent case), so
+      # a cv2 import failure is a REAL defect (missing/broken .so), NOT a sandbox
+      # artifact — the old code masked it as an unconditional PASS. Fail loud and
+      # surface the actual import error for diagnosis.
+      _cv2_import_err="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "import cv2" 2>&1 | tail -1)"
+      fail "opencv Python bindings FAIL to import on a NATIVE build with numpy present (${_cv2_import_err:-see above}) — real cv2 defect, not a sandbox artifact"
     fi
   else
     echo "  INFO: opencv Python bindings not found in /opt/opencv5"

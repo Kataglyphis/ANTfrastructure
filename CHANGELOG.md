@@ -1,5 +1,320 @@
 # Changelog
 
+## 2026-08-17 - BATCH-2 BIG WAVE SHIPPED: full 3-arch rebuild, opencv two-pass proven, GPU-lane fixes
+
+Full base→:latest-cross rebuild (owner-chosen "everything incl. TG1 in one
+rebuild") shipped FRESH digests amd64 `0cba6b61` / arm64 `ebc7562` / riscv64
+`6a87341d`. Byte-gate PASS ×3 (libtensorflow absent). Manual byte-verification
+of the shipped amd64 wrapper:
+
+- **opencv ⇄ gstreamer TWO-PASS PROVEN**: `cv2.getBuildInformation()` reports
+  **GStreamer: YES** — the shipped OpenCV links the source-built GStreamer
+  (new `opencv-gst` pass-2 stage). Follow-up OCV-FF1: FFMPEG backend still NO
+  (pre-existing, now visible) — likely opencv-5.0.0 vs ffmpeg n9.0.
+- **AP2**: /opt/venv byte-compiled (.pyc present) — no more per-start re-parse.
+- **AP4 complete**: media libs stripped across all prefixes (.symtab=0 verified).
+- **AP1**: cross wheels stripped (RECORD-safe). **AP5**: CPython --with-lto.
+- **TG1 (bounded)**: cmake/vulkan lazy + toolchain mounts trimmed — survived the
+  full compiler stage; a cmake/vulkan edit no longer re-runs the 3655s GCC build.
+- **Guard-helper wiring** live in both common.sh lanes.
+- Regressions held: S2 (TF absent), GST1 (dev surface resolves), RP6 (PATH clean),
+  torch 2.13.0 intact.
+- **AP3 REVERTED mid-run** (80a81eb): the wheelhouse bind-mount sat in the wrong
+  RUN — Dockerfile.torch (FROM package) is where setup-torch-venv reads
+  /opt/wheels and it has no artifact-source stage → all 3 wrappers failed;
+  reverted + runtime stage re-run. Re-filed with the correct approach.
+
+Same day, GPU lane (opt-in, commit e51a0da): **GPU7** — broken `_trt_deb`
+substitution (`|| true` OUTSIDE `$()`) made the default no-EULA-deb nvidia build
+die at deb staging; **GPU1** TensorRT silent-skip fixed (apt-get update before
+the NVIDIA-repo path; the shared apt-lists cache had been wiped by an earlier
+RUN); **GPU2/3** verification now CUDA_STACK_STRICT=1 (was fail-open with ALL
+components missing); **GPU4** in-cache-mount lists-rms dropped; **GPU5** ROCm
+amd64 guard enforced; **GPU6** COPY --link. Awaiting one nvidia/amd lane build.
+
+Also: backlog deep-look additions from the first GPU-lane sweep, shipped-image
+posture sweep (POS1 app .git ships in image, PROV1 empty OCI labels), build-log
+mining (LOG1-7 incl. libfuse3-3 absent on resolute + onnxruntime-web missing
+webgpu JS), PAR1 measured (--parallel-archs ready: media 8.5h sequential vs
+~3.5h parallel, divisor wiring verified), and smoke-gap self-review (SMK1-3).
+
+## 2026-08-16 - FULL 3-ARCH REBUILD: Batch-2 subset shipped; :latest-cross re-shipped (fresh digests); 2 real bugs flushed
+
+A full base→:latest-cross rebuild (all 3 arches) validated the 2026-08-15 staged
+Batch-2 subset and re-shipped `:latest-cross` with FRESH per-arch digests amd64
+`509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72` (all differ from
+the prior d92cc0fb/99531bbe/252ca5e8). Byte-gate PASSED 3/3 (`libtensorflow
+absent`); a manual pull of the amd64 wrapper confirmed libtensorflow gone,
+ffmpeg 9.0 intact, GST1 `multiarch -> lib/x86_64-linux-gnu` resolves (no
+self-link), `/root/.local/bin` gone from PATH, stripped prefix sizes.
+
+- **DONE + LIVE**: AP7 media-half (per-prefix size report), RP6 (dropped dead
+  `/root/.local/bin` from the shipped PATH), GST1 root fix (configure-runtime
+  resolves the real gstreamer libdir — "dev surface resolves" 3/3), AP4 strip
+  (ffmpeg/gstreamer/libcamera), TS1 (appimagetool pinned to 1.9.1).
+- **Bug flushed — smoke-media cv2/numpy** (`0b2b306`): the native cv2 import test
+  hard-failed because numpy is absent in the media BUILD sandbox (it is a
+  /opt/venv packaging dep). Gated on `import numpy`; absent → defer to the
+  runtime torch-venv smoke, exactly like the onnxruntime test. Killed media-amd64
+  first — invisible to the runtime-lane validations because they skip smoke-media.
+- **Bug flushed — GST1 self-referential multiarch symlink** (`22fb812`):
+  `configure-runtime.sh` runs a SECOND time in the package stage on a payload
+  that already carries `lib/multiarch`; the resolver glob matched it and
+  re-pointed multiarch at itself, and the fail-loud assert killed riscv64 before
+  the repair net could act. Fixed: rm the stale link + skip it in the resolver +
+  downgrade the assert to WARN (the pkg-config gate is the fail-loud authority).
+
+## 2026-08-15 - VALIDATING REBUILD: RP1/RP2/RP3/AP7 proven live; :latest-cross re-shipped (fresh digests)
+
+A full runtime-lane rebuild (build-runtime-manifest.sh on the TF-less android
+pins) validated this session's staged runtime-hygiene changes against a real
+3-arch build + on-target smokes, and re-shipped :latest-cross with FRESH per-arch
+digests amd64 `d92cc0fb` / arm64 `99531bbe` / riscv64 `252ca5e8`.
+
+- **RP1 (setuid-sudo purge)** — `check_setuid_inventory` reported "no setuid sudo
+  in the shipped image" on all 3 arches; pulling the amd64 wrapper confirmed
+  `/usr/bin/sudo` + `/usr/local/bin/sudo` are ABSENT. Security win proven live.
+- **RP2 (apt cache-mount guards)** — the package + torch builds succeeded on all
+  3 arches with the `mountpoint -q` guards in place.
+- **RP3 (HEALTHCHECK 5s→30s)** — the shipped wrapper reports `Timeout:30`.
+- **AP7 (size observability, runtime half)** — `check_size_observability` emitted
+  the per-prefix `du` breakdown on all 3 arches.
+- **Regression checks held**: the RTCACHE3 `-t` fix produced three FRESH wrapper
+  tags again (no stale reuse); the byte-gate PASSed on all 3 (content matches
+  toggles); S2 held (libtensorflow still absent from the pulled wrapper); all
+  on-target smokes 0 failures.
+
+RP1/RP2/RP3 + AP7-runtime-half are now closed. AP7 media-half remains open.
+
+## 2026-08-15 - backlog: gate/dead-code hardening (A1, forensic#3, TS6, cross-wheel SOABI, litert-web integrity)
+
+Static-validated code-only fixes (no rebuild), each verified against the failure
+it addresses:
+
+- **litert-web npm dist.integrity verification (install-litert-web.sh)**:
+  `_fetch_npm_package` downloaded the @litertjs/* tarballs with NO integrity
+  check. It now fetches the registry packument's published `dist.integrity`
+  (sha512) and verifies the downloaded tarball against it — a MISMATCH refuses
+  the package (return 1), and since litert-web vendoring is already non-fatal the
+  image ships WITHOUT a tampered/corrupted dependency instead of installing it;
+  metadata-unavailable warns + proceeds (no worse than before). Validated against
+  the live registry: real @litertjs/core@2.5.3 matches, a 1-byte-tampered tarball
+  is refused.
+
+- **cross-wheel SOABI/default-triple assert (verify-wheels.sh)**: the filename-tag
+  loop only checks the Python tag (cp314), which is host==target — so it cannot
+  catch a native extension stamped with the wrong arch SOABI (a cross build that
+  leaked the host BUILD_PYTHON's `.cpython-314-x86_64-linux-gnu.so` into a riscv64
+  wheel), which installs fine and only fails at `import` on-target. Added a pass
+  that reads each wheel (python zipfile — no unzip) and checks native
+  `.cpython-*.so` members against the expected `.cpython-XY-<target-triplet>.so`.
+  Crucially derives the triplet from TARGET_ARCH, NOT the running interpreter's
+  EXT_SUFFIX (this script runs on the amd64 host during a cross build, so the host
+  suffix would falsely reject every correct cross wheel). abi3 + pure-python +
+  bundled non-extension .so are skipped. Advisory (WARN) by default so a wrong
+  triple map can never break an un-revalidatable build; WHEEL_SOABI_STRICT=1 makes
+  it fatal. Unit-tested: correct/wrong-arch/abi3/pure-py/generic all classified
+  right; triplet map matches test-arch-mapping.sh.
+
+- **A1 (dead-alias)**: removed the never-set, undocumented `${UBUNTU_PORTS_MIRROR_URL:-}`
+  inner fallback at cross-env.sh:17 (only the `FAST_`-prefixed variant is a real
+  operator knob). ARCHITECTURES was found NOT dead (documented alias + live 3rd
+  fallback in resolve_arch_list) and kept — the backlog premise was wrong.
+- **forensic#3 (smoke-media)**: the opencv cv2-import else-branch no longer PASSes
+  unconditionally. It now `cross_build_is_active`-gates — cross build → legitimate
+  PASS-with-caveat (foreign-arch extension can't import on the host), NATIVE build
+  → `fail` with the real import error surfaced. The old "import failed in build
+  sandbox — will work at runtime" masked a genuinely-broken native cv2 as green.
+- **TS6 (vulkan cross-targets)**: `_build_vulkan_targets` now tracks attempted/built
+  per component (loader/SPIRV-Tools/glslang), logs an "N/M component(s) built"
+  summary, and on ALL-attempted-failed WARNs loudly (an env-shaped cause — broken
+  cross toolchain — that used to exit 0 silently); `VULKAN_CROSS_STRICT=1` promotes
+  it to fatal. The arch-independent header-staging cp guards were split so a cp
+  that fails with the source dir PRESENT warns instead of being masked as "source
+  absent" by the old `2>/dev/null || true`. Success path byte-unchanged
+  (conservative: no default hard-die on a load-bearing toolchain fn with no build
+  to validate against).
+
+## 2026-08-15 - S2 SHIPPED: libtensorflow removed from ffmpeg (−~500MB), :latest-cross re-shipped with FRESH digests after root-causing a 5× stale-ship bug
+
+- **`:latest-cross` re-shipped with genuinely fresh per-arch wrappers** — manifest
+  now indexes amd64 `f1a205a6`, arm64 `d5ae1470`, riscv64 `6024f28a` (the stale
+  `35c1f1df`/`e677e4f8`/`5002954385` are GONE; 0 stale refs in the index). All 3
+  on-target smokes 0 failures.
+- **S2 verified live**: pulled the shipped amd64 wrapper and confirmed
+  `opt/ffmpeg/lib/libtensorflow.so.2` + `libtensorflow_framework.so.2` are ABSENT
+  (−~500MB), ffmpeg (`libavcodec.so.63`) intact, onnxruntime still present.
+  `FFMPEG_ENABLE_TF=0` is the default (versions.env + Dockerfile.media ARG).
+- **ROOT CAUSE of the 5× stale-ship saga — RTCACHE3** (`runtime-build-fns.sh`
+  `append_runtime_image_output`): the runtime lane tagged the wrapper with the XC2
+  provenance exporter `--output type=image,name=<tag>,annotation.*`. On this
+  rootless nerdctl+containerd host that exporter builds the image into buildkit's
+  content store but **creates NO local containerd tag** (proven with a minimal
+  busybox repro: `--output type=image,name=X` → X absent; `-t X` → X present). So
+  the freshly built wrapper was invisible — `runtime_push_tag` (`nerdctl push`)
+  and `nerdctl manifest create` both resolved the STALE pre-existing tag from a
+  prior run, shipping byte-identical every time. It only ever "worked" because the
+  first-ever build had no stale tag to be stuck on. The annotations never reached
+  the registry either (the perennial "carry no run-id annotation … provenance
+  unverifiable" WARN was the visible symptom). **Fix**: use plain `-t` on both
+  paths (reliably creates AND overwrites the local tag); inert annotations dropped.
+- **Red herring corrected**: the earlier RTCACHE1 diagnosis (runtime wrapper
+  registry-cache-hit) was WRONG — the fresh media (`f3c64fbb`) and android
+  (`dee9049d`) were pulled and found already TF-less; the problem was purely the
+  tag never moving. Lesson reinforced: **verify the shipped BYTES (pull+inspect),
+  never trust "manifest pushed" = "fresh shipped"** — this manual check caught all
+  five stale ships.
+- **New escape hatch — `RUNTIME_NO_CACHE=1`** (`runtime-build-fns.sh`): gates
+  `--no-cache` on the runtime package+wrapper builds as a hard guarantee against
+  BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer. Distinct from
+  `NO_CACHE=1` (whole chain) and `CROSS_NO_LOCAL_CACHE_EXPORT=1` (write-only).
+- **New automated byte-gate — `verify-shipped-wrapper.sh`** wired into
+  `build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled.
+  It lists each wrapper's rootfs (`nerdctl export | tar -t` — arch-agnostic, no
+  qemu) and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env
+  toggles: `FFMPEG_ENABLE_TF` ⇒ `libtensorflow` present/absent, ffmpeg intact
+  (`libavcodec`). A toggle-mismatched or stale wrapper now aborts before
+  `:latest-cross` goes live — the manual pull+grep that caught all five stale
+  ships, automated. Tested: PASS on the fresh f1a205a6, FAIL on a synthetic
+  TF-present-with-toggle-off image and on an empty-ffmpeg image.
+  `WRAPPER_CONTENT_GATE=0` downgrades it to advisory.
+
+## 2026-08-13 - VALIDATING REBUILD COMPLETE: :latest-cross re-shipped, 3 arches, every keeper change proven by a real build
+
+- **`:latest-cross` rebuilt base→manifest and pushed** — manifest digest
+  `sha256:8d1538b1…`, 3-arch (amd64 `35c1f1df`, arm64 `e677e4f8`, riscv64
+  `5002954385`), all runtime smokes 0 failures, `[INFO] Cross chain complete.`
+  This validates the entire 2026-08-12 "fix everything" pile against a real
+  build — the thing static gates (lint/tests/copy-coverage) structurally
+  cannot prove.
+- **Keeper changes proven live**: cpython-dev-packages table (base
+  install-os-packages + toolchain build_python both built clean), BS1/BS2/BS3/
+  BS3b (sdk self-contained `NEEDED walk clean`, dead TVM RUN gone), S4 mounts,
+  setup_gi 8-phase split, R1-R5, **D4/P4** (`BUNDLED: libtensorflow.so.2` +
+  transitive `libtensorflow_framework.so.2`), wheel_family, csound patch-first,
+  C1/C2 + NDK cache, and the recovery fixes (Fix #10 sympy backfill fired on
+  riscv64; STV1 genai policy: `not installed (documented riscv64 skip; policy,
+  not drift)` → VERSION-ASSERT PASS).
+- **Rebuild-surfaced fixes** (latent over-strictness / infra the rebuild flushed
+  out, none in the keeper changes): reverted TG1/TG3/TG7 (build-speed tweaks
+  that failed a real build — libLLVMSupportLSP install, missing clang-tblgen,
+  lazy-mount closure — all re-backlogged with redo recipes); BS3b libclang
+  glob (`libclang.so.2*`→`libclang*.so.2*`, its own assert caught it); ORT-WEB1
+  (onnx-web hard-fail on a transient npm/GitHub error → optional/ship-without);
+  BS5-followup (riscv64 Node major-assert `die`→`warn`, unavoidable ports lag).
+- **Infra**: disk exhaustion twice (freed 367G via slug prune + `nerdctl
+  builder prune`; android-riscv64 ld.lld Bus error was OOD, not code) and a
+  corrupt local cache slug → switched resumes to `CROSS_NO_LOCAL_CACHE_EXPORT=1`.
+
+## 2026-08-12 (afternoon) - "fix everything" wave 2 + a mass-agent-failure recovery
+
+- **Landed & validated** (12 more Batch-2/legacy items, all gates green): STV1
+  root fix (smoke-torch-venv carries the genai-on-riscv64 policy itself;
+  STV_REQUIRE_GENAI=1 re-arms; host exemption now TRANSITIONAL); the
+  wheel-family classifier (one wheel_family() fn, 4 sites, 21-name equivalence
+  battery); csound patch-first; MAKEINFO=true (GCC log noise); opencv cross-dep
+  presence WARN; TG3+TG7 (ONE LLVM compile/arch + minimal host-LLVM profile
+  after a zero-consumer audit); D4+P4 (elf_needed_sonames/elf_unresolved_needed
+  primitives + NEEDED-driven SDK-lib bundling); setup_gi_cross_wrappers split
+  into 8 phases; S4 (per-file install-deps mounts — COPY-fallback-safe); NDK
+  shared android-sdk download cache; BS1/BS2/BS3/BS3b (sdk COPY closure, dead
+  TVM RUN removed, real ELF verification, self-contained amd64 llvm prefix);
+  TS3 + partial TS2 (see below). 22 suites / 317 assertions, copy-coverage 9/9,
+  verify-critical-fixes 0 failures.
+- **TS3 done / TS2 partial**: new `01-core/cpython-dev-packages.sh` is the
+  single dev-package<->extension table; both the host list (package-lists.sh)
+  and the cross list (build_python.sh) derive from it, ending the desync that
+  caused the 2026-08-09 libsqlite3-dev incident. The required/optional fatality
+  split + lib-dynload asserts remain (need a cross rebuild).
+- **Recovery**: a Fable-5 session limit killed 8 subagents mid-edit. Post-
+  mortem + consolidation on Opus 4.8: (1) found and fixed a real double
+  build-break — the dying TS agent left `build_python.sh` (and package-lists.sh)
+  sourcing the new table with no mount and no COPY fallback; added the mounts in
+  Dockerfile.base + Dockerfile.toolchain and wired build_python to the table.
+  (2) Reverted TG1 (lazy-dispatch + 17-line mount trim, killed mid-trim) to its
+  shipped HEAD state — a toolchain RUN has no COPY fallback so a missed mount =
+  a multi-hour break, and copy-coverage.py can't see source_module-by-name gaps;
+  re-opened with a "needs per-RUN audit + real rebuild" note. (3) Confirmed the
+  run_priv, D3/P5-smoke-scaffold, and NVIDIA-sweep agents landed nothing (no
+  partial state). Built a differential source_module-vs-mount auditor to prove
+  no other new closure gaps.
+
+## 2026-08-12 (day) - backlog execution wave: Batch 0 CLOSED + 17 Batch-2 items landed in one opened closure window
+
+- **Batch 0 closed** (post-ship window): canonical buildkitd config APPLIED +
+  daemon restarted — gckeepstorage=500GB restored (the regression), NEW
+  max-parallelism=4 (bounds the intra-arch DAG overcommit behind the
+  2026-08-10 opencv OOM), BUILDKIT_STEP_LOG_MAX_SIZE=50MiB live;
+  verify-host-config reports drift-free. S1 salvage-cache-export: on
+  non-transient build failure cross-stage-build.sh now sweeps the
+  Dockerfile's named stages with --target rebuilds (completed subtrees
+  cache-hit in seconds and their local cache export finally lands;
+  SALVAGE_CACHE_EXPORT=0 opts out, per-target timeout, stops after 2
+  consecutive failures). O3: orchestrator emits ${LOG_DIR}/chain-status.json
+  (atomic, best-effort) at stage start/ok/fail with captured digest pins.
+  B5: smoke-runtime-image main() split into 23 per-check functions —
+  validated by before/after runs against the live amd64 wrapper (verdict
+  lines byte-identical). CROSS_CACHE_MAX_GB=250 total-size cap added as
+  disk-guard phase 2. CCACHE_MAXSIZE investigate RESOLVED with data (live
+  limit already 30GB, 17.6% hits/129k — key churn, not size; → TG2).
+- **Batch-2 window opened deliberately** (S1's 01-core edit busts the
+  toolchain/sdk/package whole-dir COPY caches → next chain run pays ONE full
+  rebuild) and 17 items pulled into it: R1-R5 (ffmpeg-TF extraction/bundle
+  guards, downloads no-HEAD split, torch/vision toolchain-file guards,
+  opencv install stderr), C1/C2 (Cerbero apt fatal; android-sdk rc-only
+  success + fatal licenses + deduped package list + NDK postcondition),
+  BS4-BS6 (7 stale fallback literals → `:?` half-load guards, loud riscv64
+  node unpin + major assert, requested-but-absent package summary +
+  must-have postcondition), TG2/TG4 (ccache stats blocks in the compiler
+  stage; llvm-cross cmake --install --strip), XC4-XC7 (ONNX_PACKAGE/
+  PYTORCH_EXTRA actually wired ARG→ENV→forward + KNOWN_DEAD pruned to
+  empty, smoke-vulkan comment truth, Dockerfile.package TARGETARCH-
+  parameterized BASE_IMAGE default, VULKAN_VERSION hand-forward deleted +
+  new no-hand-forward checker rule), D2 (retag_directory_wheels promoted to
+  01-core, 3 drifted copies replaced, copy-coverage green), A3
+  (abseil-headers out of the eager loop).
+- **SCR1 retired honestly**: the two remaining strings-pipelines are
+  deliberate (embedded DEB metadata beats --version, which apt's
+  libclang-cpp shadowing falsifies; executed fallback covers dylib-blind
+  binaries) — not the fix-#8 class. Rider landed: test-invocation-lints now
+  asserts force-reinstall ⇒ --no-deps.
+- Pre-existing IFS comma-split in python_uv.sh fixed (test-ifs-safety was
+  red). Gates: preflight rc=0, 23 suites green (312+ assertions),
+  verify-script-copy-coverage green, verify-critical-fixes rc=0.
+
+## 2026-08-12 - :latest-cross SHIPPED: 3-arch manifest pushed after fixes #6-#10; the runtime-lane gate saga closes at 10 fixes / 8 runs
+
+- **GOAL ACHIEVED**: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`
+  manifest pushed (digest `sha256:8466ba39d395…994a`), verified 3-arch
+  (amd64 `2be255c2…`, arm64 `37ca9c0c…`, riscv64 `a1a3038a…`); all per-arch
+  runtime smokes 0 failures; `[INFO] Cross chain complete.` (run #8, log
+  `chain-runtime-fix10-20260812-040248.log`).
+- **Fix #10 — riscv64 torchvision `No module named 'sympy'`** (run #7's only
+  failure; fix-#7 collateral): on riscv64 torch ships as LOCAL wheels, so the
+  torch backend extra is never requested from `uv sync` and the lock graph
+  omits torch's own runtime deps; the old full-deps `--force-reinstall`
+  dragged them in as the exact side effect `--no-deps` rightly killed. Fix:
+  post-sync import-probe backfill in `reconcile_local_wheels`
+  (assemble-torch-app.sh) over sympy/mpmath/networkx/jinja2/markupsafe/
+  filelock/fsspec/typing-extensions, each installed `--no-deps`; live run
+  backfilled exactly the 5 missing leaves, amd64/arm64 probes all satisfied
+  (no-op). riscv64 app-wheel smoke then passed on-target incl.
+  `torchvision ops.nms`.
+- **riscv64 genai exemption validated in anger**: the host-side
+  smoke-runtime-image exemption converted the expected genai absence to PASS
+  while every other mismatch stays fatal. Researched upstream: genai has NO
+  riscv64 support (no PyPI wheel in any version, no riscv CI, issue #594
+  closed "not planned") — our skip is upstream-consistent; optional
+  self-build filed as backlog GEN1, root fix remains STV1.
+- **Diagnosis gotcha recorded**: smoke-torch-venv prints its OWN
+  `=== Results: N failure(s) ===` banner inside the captured-and-echoed
+  assert output; an outer-looking "1 failure(s)" mid-suite is the echoed
+  INNER summary, not the host verdict (which may arrive minutes later under
+  QEMU). Filed in the session memory to prevent re-diagnosis.
+- Backlog: +SCR1 (two more strings-scrape version checks:
+  setup-package-image.sh:150, validate-compilers.sh:48 + a force-reinstall/
+  no-deps pairing lint), +GEN1. Batch 0 (post-chain window) is now UNLOCKED.
+
 ## 2026-08-11 (night) - runs 19+20 decode the shim-4 flip-flop: patch_file_content silently NO-OPED; shim 4 rebuilt as REMOVE_RECURSE; run 21 launched
 
 - Run 19 (forensic line): the container READS the current patch file

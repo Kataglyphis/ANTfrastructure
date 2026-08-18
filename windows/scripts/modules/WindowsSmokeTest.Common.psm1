@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
@@ -265,7 +266,87 @@ function Assert-EnvVarSet {
     }.GetNewClosure() -FailMessage "$Name is not set or doesn't match expected prefix"
 }
 
+function Assert-AllDllsLoad {
+    # Backlog #57: LoadLibrary EVERY shipped DLL under a root, not a hand-picked
+    # sample. The named Assert-DllLoads call sites cover ~10 hardcoded libraries;
+    # OpenCV alone ships ~25-30 modules with BUILD_opencv_world=OFF, of which
+    # exactly ONE (opencv_core) was load-tested — the rest were existence checks.
+    #
+    # That is the OPENGL32 defect verbatim: OpenCV built with WITH_OPENGL=ON
+    # linked fine and failed 0xC0000135 at LOAD on Server Core, and only a load
+    # test caught it. Existence proves a file was produced; it says nothing about
+    # whether its dependency chain resolves on THIS image.
+    #
+    # Not every DLL is legitimately loadable standalone (plugins expecting a host
+    # to have initialised first, delay-load stubs), so unloadable-by-design names
+    # go in -Allow with a reason at the call site — an explicit, reviewable list
+    # rather than a silent sample.
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Root,
+        [string[]]$DependencyDirs = @(),
+        [string[]]$Allow = @(),
+        [int]$MinimumChecked = 1
+    )
+    # The probing happens HERE, not inside the Assert-Test condition: -FailMessage
+    # is a plain string evaluated at CALL time, so a message referring to results
+    # computed inside the condition would always be empty. Do the work first,
+    # then assert on a value that already exists.
+    if (-not ('KataNativeProbe' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class KataNativeProbe {
+    [DllImport("kernel32", SetLastError=true, CharSet=CharSet.Unicode)] public static extern IntPtr LoadLibraryW(string p);
+    [DllImport("kernel32", SetLastError=true)] public static extern bool FreeLibrary(IntPtr h);
+}
+'@
+    }
+    $problems = @()
+    $checked = 0
+    if (-not (Test-Path $Root)) {
+        $problems += "root not found: $Root"
+    } else {
+        $dlls = @(Get-ChildItem -LiteralPath $Root -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue)
+        # Rot guard: an empty or moved root would otherwise pass vacuously —
+        # the exact shape this test exists to eliminate. Counted AFTER the
+        # -Allow filter (see below), not on the raw find: a root that is 100 %
+        # allow-listed would otherwise satisfy the guard while checking nothing.
+        $candidates = @($dlls | Where-Object { $Allow -notcontains $_.Name })
+        if ($candidates.Count -lt $MinimumChecked) {
+            $problems += "only $($candidates.Count) non-allow-listed DLL(s) under $Root (of $($dlls.Count) found), expected at least $MinimumChecked - wrong root, or over-broad -Allow?"
+        } else {
+            $prev = $env:PATH
+            try {
+                foreach ($d in $dlls) {
+                    if ($Allow -contains $d.Name) { continue }
+                    $checked++
+                    # The DLL's OWN directory must lead, per DLL. LoadLibraryW with
+                    # a full path does NOT add that directory to the dependency
+                    # search order, so a DLL in a SUBdirectory whose dependents sit
+                    # beside it would report a fabricated Win32 126. Assert-DllLoads
+                    # already does this correctly; putting only $Root on PATH (the
+                    # first version here) happened to work for OpenCV's flat bin\
+                    # and would have invented failures at the next call site.
+                    $env:PATH = ((@((Split-Path $d.FullName)) + @($Root) + $DependencyDirs) -join ';') + ';' + $prev
+                    $h = [KataNativeProbe]::LoadLibraryW($d.FullName)
+                    if ($h -eq [IntPtr]::Zero) {
+                        $problems += ("{0} (Win32 {1})" -f $d.Name, [Runtime.InteropServices.Marshal]::GetLastWin32Error())
+                    } else {
+                        [void][KataNativeProbe]::FreeLibrary($h)
+                    }
+                }
+            } finally { $env:PATH = $prev }
+        }
+    }
+    $ok = ($problems.Count -eq 0)
+    if ($ok) { Write-Host "    ($checked DLLs loaded under $Root)" -ForegroundColor DarkGray }
+    Assert-Test -Name $Name -Condition { $ok }.GetNewClosure() `
+        -FailMessage ("DLL load failures under {0}: {1}" -f $Root, (($problems | Select-Object -First 12) -join '; '))
+}
+
 Export-ModuleMember -Function @(
+    'Assert-AllDllsLoad'
     'Initialize-SmokeTestRun'
     'Get-SmokeTestSummary'
     'Skip-Test'

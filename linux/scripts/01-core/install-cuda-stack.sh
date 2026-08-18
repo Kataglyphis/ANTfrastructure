@@ -46,5 +46,9 @@ echo "WARNING: cuDNN packages not found; continuing without cuDNN"
 # removed here — the TensorRT RUN still installs tensorrt-dev / tensorrt-libs
 # from the NVIDIA apt repo. Repo removal happens at the end of that RUN (the last
 # apt install against NVIDIA repos in Dockerfile.nvidia).
-rm -rf /var/lib/apt/lists/*
+# GPU4 (2026-08-17): the former `rm -rf /var/lib/apt/lists/*` here was USELESS
+# for image size (/var/lib/apt is a cache MOUNT — not in the layer; the real
+# unmounted cleanup happens later in Dockerfile.nvidia) and HARMFUL: it wiped
+# the shared per-arch apt-lib cache so the next RUN (install-tensorrt.sh) saw
+# empty indices → the TensorRT silent-skip (GPU1). Dropped.
 ldconfig

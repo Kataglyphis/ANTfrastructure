@@ -53,6 +53,56 @@ add_library($targetName INTERFACE)
     }
 }
 
+# Inject the TFLite C API shared lib (tensorflowlite_c) into the MAIN build.
+# gst-plugins-bad's tflite plugin resolves cc.find_library('tensorflowlite_c')
+# FIRST and only falls back to the C++ `tensorflow-lite` lib -- which lacks the
+# C API symbols like TfLiteInterpreterCreate -- when it is absent, so without
+# this the gst tflite plugin fails meson configure. Upstream's own
+# tflite/c/CMakeLists.txt CANNOT be reused: it is a STANDALONE project() that
+# re-adds the whole tflite tree (a duplicate `tensorflow-lite` target) and
+# hardcodes the pre-rename `tensorflow/lite/` layout that LiteRT no longer has.
+# So append the target directly against THIS build's tensorflow-lite target and
+# TFLITE_SOURCE_DIR (=CMAKE_CURRENT_LIST_DIR, the tflite dir). On WIN32,
+# TFL_COMPILE_LIBRARY dllexports the C API and there are no version-script link
+# flags, so it links cleanly under clang-cl. All four sources verified present.
+$mainCmake = Join-Path $tfliteSrc 'CMakeLists.txt'
+$capiSnippet = @'
+
+# ---- tensorflowlite_c (TFLite C API) injected by build-litert-from-source.ps1 ----
+if(NOT TARGET tensorflowlite_c)
+  add_library(tensorflowlite_c SHARED
+    ${TFLITE_SOURCE_DIR}/core/c/c_api.cc
+    ${TFLITE_SOURCE_DIR}/core/c/c_api_experimental.cc
+    ${TFLITE_SOURCE_DIR}/core/c/common.cc
+    ${TFLITE_SOURCE_DIR}/core/c/operator.cc
+  )
+  target_compile_definitions(tensorflowlite_c PRIVATE TFL_COMPILE_LIBRARY)
+  target_link_libraries(tensorflowlite_c tensorflow-lite)
+  # tensorflow-lite adds -DTFL_STATIC_LIBRARY_BUILD as a PUBLIC compile option
+  # (tflite/CMakeLists.txt), which this target INHERITS via the link above. In
+  # c_api_types.h that macro is checked BEFORE TFL_COMPILE_LIBRARY and makes
+  # TFL_CAPI_EXPORT expand to nothing -- so none of the C API (TfLiteInterpreter*
+  # etc.) gets __declspec(dllexport) and the DLL exports zero C API symbols, so
+  # gst-plugins-bad's tflite plugin fails to LINK. Let CMake generate a .def from
+  # this target's own objects (c_api.cc, common.cc, ...) so the C API is exported
+  # regardless of the macro -- independent of -D/-U ordering.
+  set_target_properties(tensorflowlite_c PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+  # WINDOWS_EXPORT_ALL_SYMBOLS only exports THIS target's own object files
+  # (c_api.cc, ...). The XNNPACK delegate C API (TfLiteXNNPackDelegate*) lives in
+  # the linked-in tensorflow-lite static lib (TFLITE_ENABLE_XNNPACK=ON) and is
+  # built without TFL_COMPILE_LIBRARY, so it is neither auto-exported nor
+  # dllexport'd -- gst's tflite plugin needs it for the XNNPACK accelerator.
+  # Force lld-link to pull those three from the static lib and export them.
+  target_link_options(tensorflowlite_c PRIVATE
+    /EXPORT:TfLiteXNNPackDelegateCreate
+    /EXPORT:TfLiteXNNPackDelegateDelete
+    /EXPORT:TfLiteXNNPackDelegateOptionsDefault
+  )
+endif()
+'@
+Add-Content -Path $mainCmake -Value $capiSnippet -Encoding ASCII
+Write-Host "Injected tensorflowlite_c (TFLite C API) target into $mainCmake"
+
 $buildDir = Join-Path $SourceDir 'build'
 # Clean any stale build artifacts (CMake pkgRedirects path casing issues).
 # -ErrorAction Stop: this cleanup EXISTS to prevent stale caches -- silently
@@ -88,8 +138,13 @@ $cmakeExtra += Get-LlvmArchiverCmakeArg
 # InstallPrefix passed for CMake generator expressions even though TFLITE_ENABLE_INSTALL=OFF
 Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $buildDir -InstallPrefix $litertInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
-$buildLog = Join-Path $buildDir 'litert-build.log'
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog
+# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+$buildLog = Get-PersistentBuildLogPath -Name 'litert-build.log' -FallbackDir $buildDir
+# The injected tensorflowlite_c target (see above) is a normal add_library, so
+# `all` builds it alongside tensorflow-lite -- no separate target invocation
+# needed. The manual-install gate below hard-fails if its import lib is missing.
+# MemGBPerJob 2, not 4 (backlog #74) — see the note in build-onnx-genai.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
@@ -126,7 +181,13 @@ Write-Host "Copied $headerCount headers to $includeRoot"
 if ($headerCount -eq 0) { throw "LiteRT manual install copied 0 headers to $includeRoot (source tree layout changed?)" }
 $installedLibs = @(Get-ChildItem -Path (Join-Path $litertInstallDir 'lib') -Filter '*.lib' -File -ErrorAction SilentlyContinue)
 if ($installedLibs.Count -lt 1) { throw "LiteRT manual install staged no .lib files into $(Join-Path $litertInstallDir 'lib') (build produced none under $buildDir?)" }
-Write-Host 'LiteRT manual install completed'
+# The TFLite C API import lib is a hard requirement for the gst-plugins-bad tflite
+# plugin (fails loud HERE instead of hours later in the merge's meson configure).
+if ('tensorflowlite_c.lib' -notin $installedLibs.Name) {
+    throw ("LiteRT install is missing tensorflowlite_c.lib (the TFLite C API import lib) in $(Join-Path $litertInstallDir 'lib'). " +
+        "The explicit tensorflowlite_c target build produced no import lib. Present: $($installedLibs.Name -join ', ')")
+}
+Write-Host "LiteRT manual install completed ($($installedLibs.Count) libs incl. tensorflowlite_c.lib)"
 
 Remove-SourceBuildTree -Path $SourceDir
 

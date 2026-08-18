@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
@@ -6,7 +7,6 @@
 # finalize of the COPY layer for this file — identical chain-IDs across
 # retries; see AGENTS.md failure table). New content => new chain-IDs.
 
-#requires -Version 7.0
 
 param(
     [string]$VcpkgDir = 'C:\vcpkg',

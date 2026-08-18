@@ -65,6 +65,19 @@ if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
 }
 
+# FFmpeg 9 compatibility (backlog #94). A SCRIPT, not a .patch, on purpose: a
+# unified diff must match upstream context byte for byte, while this edit only
+# needs to find two accessor expressions — which survives OpenCV point releases
+# far better. It carries its own no-op assertions (rule from #56): a pattern
+# that matches nothing throws instead of quietly "succeeding", and a leftover
+# direct field access after patching throws too.
+# Only relevant when the chain's FFmpeg is actually linked; with the default
+# prebuilt FFmpeg the videoio sources compile as they always did.
+if ($env:OPENCV_LINK_CHAIN_FFMPEG -eq '1') {
+    & (Join-Path $patchDir 'opencv\ffmpeg9-avcodec-config.ps1') -SourceDir $mainSrc
+    if ($LASTEXITCODE -ne 0) { throw 'opencv: FFmpeg-9 videoio patch failed' }
+}
+
 # Inline patch (kept inline, NOT a .patch file): the mlas `<cstring>` include is
 # a multi-file prepend loop that conditionally skips files which already include
 # <cstring>. A static .patch cannot express the per-file conditional guard, so the
@@ -150,7 +163,27 @@ $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
 $simdFlags = Get-WindowsX86SimdFlags
 
-$cmakeExtra = @(
+# EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
+# nvcc command lines go through CMake response files, which sccache passes
+# through UNCACHED (measured: 2018 requests, zero CUDA cache categories) -
+# so a wrapped OpenCV CUDA compile is bare-but-green and wins nothing.
+# OPENCV_CUDA_NO_RSP=1 disables the CUDA response files so the calls arrive
+# inline and enter sccache's nvcc decomposition. ONLY meaningful once the
+# quote-protection fix ships (#114 / mozilla/sccache#2811) - without it,
+# inline calls inherit the dropped-instantiation miscompile. Command-length
+# risk: ninja spawns directly (32,767-char limit); OpenCV's lists are ~5-8k,
+# and an overflow fails loudly at build, not silently.
+$cudaRspArgs = @()
+if ($env:OPENCV_CUDA_NO_RSP -eq '1') {
+    Write-Host 'OPENCV_CUDA_NO_RSP=1: disabling CUDA response files (inline nvcc args -> sccache decomposition reachable)'
+    $cudaRspArgs = @(
+        '-DCMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES:BOOL=OFF',
+        '-DCMAKE_CUDA_USE_RESPONSE_FILE_FOR_LIBRARIES:BOOL=OFF',
+        '-DCMAKE_CUDA_USE_RESPONSE_FILE_FOR_OBJECTS:BOOL=OFF'
+    )
+}
+
+$cmakeExtra = $cudaRspArgs + @(
     # Suppress CMake policy deprecation warnings baked into OpenCV's own CMakeLists.txt
     # (CMP0146: cmake_minimum_required version range; CMP0148: FindPython* deprecation;
     #  CMP0177: install() DESTINATION path normalisation).
@@ -205,6 +238,10 @@ $cmakeExtra = @(
     # Any consumer linking all modules (the cv2 pyd!) then dies 0xC0000135. Same
     # class as the WITH_OPENGL=OFF fix; FFmpeg + GStreamer backends remain.
     '-DWITH_VTK=OFF', '-DWITH_MSMF=OFF', '-DWITH_OBSENSOR=OFF', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
+    # NB: OPENCV_FFMPEG_SKIP_DOWNLOAD is deliberately NOT set — see the block
+    # below the flag list. Setting it produced `FFMPEG: NO` (measured 2026-08-16,
+    # a real regression), because OpenCV's Windows pkg-config fallback is gated
+    # on PKG_CONFIG_FOUND, which is never set on this platform. Backlog #94.
     # WITH_OPENMP=OFF: clang-cl compiles `#pragma omp` (e.g. contrib surface_matching)
     # into __kmpc_* runtime calls but the generated link line never includes libomp.lib
     # -> lld-link "undefined symbol: __kmpc_fork_call". TBB (WITH_TBB=ON above) is
@@ -217,6 +254,40 @@ $cmakeExtra = @(
     # detected. Enabling it here unconditionally would make a CPU-only build enable_language(CUDA)
     # with no nvcc present and fail to configure.
 )
+
+# --- FFmpeg discovery for videoio (backlog #94) -------------------------------
+# The chain builds FFmpeg BEFORE OpenCV (swapped 2026-08-16) and puts its .pc
+# files on PKG_CONFIG_PATH here. That much is correct and stays — other probes
+# (ONNX Runtime) use the same mechanism.
+#
+# WHAT DOES NOT WORK, MEASURED: adding `-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON` to
+# make OpenCV link THIS FFmpeg instead of downloading its own turned
+# `FFMPEG: YES (prebuilt binaries)` into a flat `FFMPEG: NO` — strictly worse.
+# Reverted the same day. The reason is in OpenCV's own
+# modules/videoio/cmake/detect_ffmpeg.cmake (5.0.0), where the pkg-config route
+# is guarded by:
+#
+#     if(NOT HAVE_FFMPEG AND PKG_CONFIG_FOUND)
+#
+# `PKG_CONFIG_FOUND` comes from find_package(PkgConfig), which OpenCV does not
+# run on Windows — so skipping the download removes the only detection path that
+# was working and the fallback never fires, no matter what PKG_CONFIG_PATH says.
+# pkg-config itself is fine here: `pkg-config --modversion libavcodec` returns
+# 63.1.100 inside the same image.
+#
+# So a real #94 fix has to give CMake a detection route it actually takes on
+# Windows — the find_package branch (OPENCV_FFMPEG_USE_FIND_PACKAGE, which needs
+# a FindFFMPEG providing AVCODEC/AVFORMAT/AVUTIL/SWSCALE), or setting
+# PKG_CONFIG_FOUND/HAVE_FFMPEG plus the FFMPEG_* variables directly. Do not try
+# SKIP_DOWNLOAD again on its own; that experiment has been run.
+$ffPkgConfig = Join-Path $InstallDir 'ffmpeg\lib\pkgconfig'
+if (Test-Path $ffPkgConfig) {
+    $pcParts = @($ffPkgConfig) + @($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })
+    $env:PKG_CONFIG_PATH = ($pcParts | Select-Object -Unique) -join ';'
+    Write-Host "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
+} else {
+    Write-Host "NOTE: no FFmpeg pkgconfig dir at $ffPkgConfig (harmless today; OpenCV uses its own prebuilt FFmpeg — backlog #94)"
+}
 
 # cv2 python module inputs. OpenCV 5.x's find_python() still round-trips through
 # find_package(PythonInterp)/find_package(PythonLibs) -- BOTH removed in CMake
@@ -286,13 +357,146 @@ if ($contribSrc) {
     $cmakeExtra += '-DOPENCV_FORCE_3RDPARTY_BUILD=ON'
 }
 
-Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra | Out-Null
+# --- link the CHAIN's FFmpeg instead of a downloaded prebuilt (backlog #94) ---
+# Three flags that only work TOGETHER:
+#   CMAKE_PROJECT_INCLUDE  runs find_package(PkgConfig) right after project(),
+#                          which is the piece OpenCV skips on Windows and the
+#                          sole reason its pkg-config route never fires here.
+#   SKIP_DOWNLOAD          stops OpenCV grabbing its own prebuilt FFmpeg, which
+#                          would otherwise satisfy HAVE_FFMPEG first and make
+#                          the pkg-config branch unreachable.
+#   ENABLE_LIBAVDEVICE     picks up libavdevice too; the prebuilt route left
+#                          `avdevice: NO`, which #94 lists as part of the defect.
+# Passing SKIP_DOWNLOAD without the shim was measured on 2026-08-16 and produced
+# `FFMPEG: NO` — strictly worse than the prebuilt. Keep them together or not at all.
+# DEFAULT ON since 2026-08-17 (the ARG in Dockerfile.media-builder's opencv
+# stage defaults to 1; opt out with -BuildArg OPENCV_LINK_CHAIN_FFMPEG=).
+# Full-chain verified: smoke gate 188/1/1, all three #94 assertions green in
+# the shipped image (FFmpeg backend present, avdevice YES, avcodec major ==
+# the chain's 63).
+#
+# The three parts below only work TOGETHER with the FFmpeg-9 source patch
+# applied earlier in this script (ffmpeg9-avcodec-config.ps1): OpenCV 5.0.0's
+# videoio does not compile against FFmpeg n9.0 without it — AVCodec::pix_fmts
+# and ::supported_framerates were REMOVED in favour of
+# avcodec_get_supported_config().
+# Report the switch's OBSERVED value, always. A `--opt build-arg` for an ARG the
+# Dockerfile does not declare is discarded by BuildKit without a warning, so an
+# opt-in can silently never arrive — that happened here on 2026-08-16 and cost a
+# 25-minute run that looked like "the flag does not work". One printed line is
+# the difference between diagnosing that in seconds and rebuilding to find out.
+Write-Host "OPENCV_LINK_CHAIN_FFMPEG='$($env:OPENCV_LINK_CHAIN_FFMPEG)' (empty = OpenCV uses its own prebuilt FFmpeg)"
 
-$buildLog = Join-Path $buildDir 'opencv-build.log'
+$ocvShim = Join-Path $PSScriptRoot 'patches\opencv\pkgconfig-shim.cmake'
+if ($env:OPENCV_LINK_CHAIN_FFMPEG -eq '1' -and (Test-Path $ocvShim)) {
+    Write-Host 'OPENCV_LINK_CHAIN_FFMPEG=1: linking the chain FFmpeg (needs the AVCodec source patch — backlog #94)'
+    $cmakeExtra += "-DCMAKE_PROJECT_INCLUDE=$($ocvShim -replace '\\', '/')"
+    $cmakeExtra += '-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON'
+    $cmakeExtra += '-DOPENCV_FFMPEG_ENABLE_LIBAVDEVICE=ON'
+} else {
+    Write-Host 'OpenCV uses its own prebuilt FFmpeg (backlog #94 blocked on an OpenCV-5.0.0-vs-FFmpeg-9 source patch)'
+}
+
+# `| Out-Null` used to sit here and swallowed the ENTIRE configure output —
+# every `-- ...` STATUS line CMake emits, including OpenCV's own
+# "FFMPEG is disabled" explanation and this build's pkgconfig-shim message.
+# When the FFmpeg gate below first fired there was literally nothing to read,
+# which is a "never swallow logs" violation at exactly the moment the log
+# matters. Tee to a persistent path instead (survives the failed solve, #43).
+$cfgLog = Get-PersistentBuildLogPath -Name 'opencv-configure.log' -FallbackDir $buildDir
+Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra 2>&1 |
+    Tee-Object -FilePath $cfgLog | Out-Null
+Write-Host "CMake configure log: $cfgLog"
+
+# GATE: prove FFmpeg was actually detected before spending ~20 min compiling.
+# Without this the failure mode is silent — a configure that quietly drops the
+# backend still builds, still installs, still passes every existing test, and the
+# loss only surfaces when someone calls cv::VideoCapture in production. That is
+# precisely how #93/#94 survived for months, and how the 2026-08-16 SKIP_DOWNLOAD
+# attempt shipped `FFMPEG: NO` into an image before a probe caught it.
+# cvconfig.h is the authoritative artifact: CMake writes #define HAVE_FFMPEG
+# there only when detection succeeded.
+# DO NOT gate on cvconfig.h. `HAVE_FFMPEG` DOES NOT EXIST in OpenCV 5.0.0's
+# cmake/templates/cvconfig.h.in (verified against the 5.0.0 tag) — videoio
+# backend flags are not emitted there any more, so a gate looking for it fails
+# 100 % of the time no matter what was detected. That produced two false build
+# failures on 2026-08-16 while the configure log plainly showed FFmpeg found
+# with avcodec 63.1.100. Cost: two ~25-minute rebuilds chasing a defect in the
+# gate rather than in the build.
+#
+# The authoritative signal is OpenCV's own configure summary — the same text
+# `cv2.getBuildInformation()` reproduces at runtime, which is what backlog #95
+# asserts on. Read it from the log captured above.
+$chainAvcodecMajor = ''
+$ffProbe = Join-Path $InstallDir 'ffmpeg\bin\ffmpeg.exe'
+if (Test-Path $ffProbe) {
+    # ffmpeg.exe needs its own bin dir on PATH to resolve avcodec-63.dll etc.;
+    # without it the exe dies on startup, the version reads back EMPTY, and this
+    # gate degraded to "provenance unverified" in every build (the probe's
+    # recurring `chain=?`). Same fix as in smoke-test-container.ps1.
+    $ffBinDir = Split-Path $ffProbe -Parent
+    $savedPath = $env:PATH
+    try {
+        if ($env:PATH -notlike "*$ffBinDir*") { $env:PATH = "$ffBinDir;$env:PATH" }
+        $ffVer = & $ffProbe -version 2>&1 | Out-String
+    } finally { $env:PATH = $savedPath }
+    if ($ffVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodecMajor = $Matches[1] }
+}
+$cfgText = if (Test-Path $cfgLog) { Get-Content $cfgLog -Raw } else { '' }
+$cfgFfmpegYes = $cfgText -match '(?m)^\s*--\s+FFMPEG:\s+YES'
+$cfgAvcodecMajor = ''
+if ($cfgText -match '(?m)^\s*--\s+avcodec:\s+(?:YES\s*\()?(\d+)\.') { $cfgAvcodecMajor = $Matches[1] }
+
+Write-Host "FFmpeg gate inputs: configure says FFMPEG=$(if ($cfgFfmpegYes) { 'YES' } else { 'NO/absent' }), avcodec=$cfgAvcodecMajor; chain builds avcodec=$chainAvcodecMajor"
+
+# The provenance gate only has teeth in the opt-in mode. With the default
+# (OpenCV's own prebuilt FFmpeg) a mismatch is the KNOWN state of #94, not a
+# regression, and failing the build over it would just stop the chain.
+if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
+    Write-Host 'NOTE: no FFMPEG: YES in the configure summary; not gating (chain-FFmpeg mode is off) — backlog #94'
+} elseif ($cfgFfmpegYes) {
+    Write-Host 'FFmpeg backend gate OK: OpenCV configured WITH the FFmpeg backend'
+    # The point of #94 is not merely THAT FFmpeg was found but WHICH one.
+    if ($chainAvcodecMajor -and $cfgAvcodecMajor) {
+        if ($chainAvcodecMajor -eq $cfgAvcodecMajor) {
+            Write-Host "FFmpeg provenance gate OK: OpenCV linked avcodec $cfgAvcodecMajor, matching this chain"
+        } else {
+            throw ("OpenCV linked avcodec $cfgAvcodecMajor but this chain builds avcodec $chainAvcodecMajor - " +
+                "it fell back to a foreign/bundled FFmpeg. Backlog #94.")
+        }
+    } else {
+        Write-Host "NOTE: could not compare avcodec majors (chain='$chainAvcodecMajor' configure='$cfgAvcodecMajor') - provenance unverified"
+    }
+} else {
+    # Print the evidence INSTEAD of pointing at a log the reader may not be able
+    # to reach: this throw happens inside a container whose filesystem is about
+    # to be discarded, so "see the configure log" is useless advice here.
+    # Filter out the pkgconfig-shim's own line: CMAKE_PROJECT_INCLUDE runs once
+    # per project() call, so it repeats ~20x and crowded the real message out of
+    # this very dump the first time it fired.
+    Write-Host "`n--- FFmpeg-related lines from the configure log ---"
+    if (Test-Path $cfgLog) {
+        @(Get-Content $cfgLog -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match 'FFMPEG|ffmpeg|avcodec|libav|PkgConfig|pkg-config' -and $_ -notmatch 'pkgconfig-shim' }) |
+            Select-Object -First 40 | ForEach-Object { Write-Host "  cfg| $_" }
+    } else {
+        Write-Host "  (no configure log at $cfgLog)"
+    }
+    Write-Host "--- end of configure evidence ---`n"
+    throw ("OpenCV configured WITHOUT the FFmpeg backend (no 'FFMPEG: YES' in the configure summary). " +
+        "cv::VideoCapture would silently lose its FFmpeg path. The lines above are the reason; " +
+        "PKG_CONFIG_PATH was '$env:PKG_CONFIG_PATH'. Backlog #94.")
+}
+
+# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+$buildLog = Get-PersistentBuildLogPath -Name 'opencv-build.log' -FallbackDir $buildDir
 # Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
 # to the failing TU) so the error output is unambiguous without paying the serial
 # build cost on the happy path.
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 4 -LogFile $buildLog -Install
+# MemGBPerJob=2 (backlog #28): same memory envelope as the ONNX vertex (runs
+# 12+13, peak per-process ~1 GB, fleet 5.5 GB at -j9) -> ~19 jobs at 2 GB/job,
+# well under the 39 GB budget. Doubles OpenCV compile parallelism.
+Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 

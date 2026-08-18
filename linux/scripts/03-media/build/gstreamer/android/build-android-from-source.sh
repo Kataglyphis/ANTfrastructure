@@ -351,6 +351,10 @@ fi
     # Ensure apt runs non-interactively and pre-install common build deps
     # Cerbero's bootstrap may invoke apt-get without -y which prompts; pre-install
     # the packages it requests so the bootstrap won't stop for confirmation.
+    # Must FAIL here on error (no `|| true`): a mirror outage swallowed at this
+    # point resurfaces hours later as an inscrutable Cerbero bootstrap failure.
+    # Transient network hiccups are already retried via the base image's
+    # /etc/apt/apt.conf.d/80-retries (Acquire::Retries "3").
     echo "==> Installing system packages required by Cerbero (non-interactive)"
     apt-get update
     apt-get install -y --no-install-recommends \
@@ -361,7 +365,7 @@ fi
         libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev libxfixes-dev \
         libxi-dev libxrandr-dev libxrender-dev libxtst-dev libxv-dev m4 make nasm \
         ninja-build pkg-config python3-dev python3-setuptools x11proto-record-dev \
-        xutils-dev || true
+        xutils-dev
 
     echo "==> Running Cerbero Bootstrap..."
     uv run ./cerbero-uninstalled -c ${CONFIG_NAME}.cbc "${CERBERO_JOBS_ARGS[@]}" bootstrap

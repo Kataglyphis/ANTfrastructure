@@ -14,7 +14,10 @@ _CROSS_ENV_APT_UPDATED="${_CROSS_ENV_APT_UPDATED:-0}"
 cross_foreign_arch_ports_mirror_url() {
   local archive_url explicit_ports_url
 
-  explicit_ports_url="${FAST_UBUNTU_PORTS_MIRROR_URL:-${UBUNTU_PORTS_MIRROR_URL:-}}"
+  # A1: dropped the dead `${UBUNTU_PORTS_MIRROR_URL:-}` inner fallback — that
+  # (un-prefixed) name was never set anywhere and is undocumented (only the
+  # FAST_ variant is a real operator knob), so the fallback always resolved empty.
+  explicit_ports_url="${FAST_UBUNTU_PORTS_MIRROR_URL:-}"
   if ubuntu_mirror_is_truthy "${USE_FAST_UBUNTU_MIRROR:-false}"; then
     archive_url="${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}"
     ubuntu_effective_ports_mirror_url "${archive_url}" "${explicit_ports_url}"

@@ -1,5 +1,12 @@
+#requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
+#
+# CONSUMED-BY (downstream repos vendoring this repo as ExternalLib — verified
+# 2026-08-17; nothing INSIDE this repo imports this module except its tests, so
+# an in-repo dead-code sweep WILL flag it and would be wrong, backlog #105):
+#   Kataglyphis-BeschleunigerBallett/scripts/agentic-loop/Run-AgenticLoop.ps1
+# Renames/removals here are BREAKING changes for that repo.
 #
 # Reusable building blocks for a planner/executor agentic loop.
 # Requires PowerShell 7+ (Core). Not compatible with PS 5.1's parser.
@@ -13,8 +20,6 @@
 # Model overrides:  $env:AGENTIC_PLANNER_MODEL / $env:AGENTIC_EXECUTOR_MODEL.
 
 Set-StrictMode -Version Latest
-#requires -Version 7.0
-
 
 # -- Module state ---------------------------------------------------------
 $script:AgenticLogFile = $null

@@ -28,6 +28,67 @@ FROM ${BASE_IMAGE} AS common
 
 ARG MEMORY_LIMIT_GB=""
 ARG SCCACHE_WEBDAV_ENDPOINT=""
+# Overridable so a single stage can be re-run at debug level without editing
+# this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
+ARG SCCACHE_LOG="warn"
+
+# THE CACHE LAYOUT. Empty (the default) = NO chain: the WebDAV remote is the one
+# and only cache. To restore the two-level layout later:
+#   build-buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
+#
+# WHY THE DISK LEVEL IS OFF (2026-08-16, backlog #99). The local L0 tier lives on
+# a BuildKit cache mount, and on Windows those LOSE WRITES once the directory
+# holds objects that an EARLIER RUN put there. Isolated with one program, one
+# moment, two target directories, 250 unique objects each:
+#
+#   C:\sccache\bulk-inherit  (cache mount, inherited content)  158 of 250 FAILED
+#   C:\bulk-plain-inherit    (plain container filesystem)        0 of 250 failed
+#
+# Same sccache, same config, back to back — only the target filesystem differed.
+# Both conditions are required: a FRESH directory on the same mount writes 250 of
+# 250 cleanly. That is exactly the chain's stage order, and exactly what the
+# builds showed: onnx fills its OWN directory and mostly succeeds (28 failures of
+# 1488 with no chain), opencv INHERITS onnx's and fails 1849 of 1862, genai
+# inherits a fuller one and fails 157 of 157 — identical with and without the
+# multi-level chain, so sccache is the victim here, not the cause.
+#
+# The WebDAV remote is not a cache mount and is unaffected: with this default,
+# genai went 157 write errors -> 0, and the next run served all 157 from cache —
+# its first cache hits ever.
+#
+# RESTORE THE TWO-LEVEL LAYOUT once BuildKit's WCOW cache mounts mature (support
+# only landed in v0.21.0, moby/buildkit#5603 / PR #5708; a mounter race was fixed
+# in PR #5885; "cache mounts fail silently" is #1648). Re-verify by rebuilding
+# media with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` and checking that
+# genai reports 0 write errors — not by assuming a newer buildkit fixed it.
+# `windows/scripts/probe-sccache-write.ps1` answers it in ~2 minutes.
+ARG SCCACHE_MULTILEVEL_CHAIN=""
+
+# Also an ARG so an experiment can start from a GUARANTEED-EMPTY cache dir:
+#   -BuildArg SCCACHE_DIR=C:\sccache\v3
+# This matters because the L0 failure rate depends on how much the directory
+# already holds — measured 2026-08-16 with `chain=disk`: onnx started empty and
+# wrote 1263 objects with 225 failures, opencv then started with those 1263 and
+# failed 1849 of 1862, genai 157 of 157. Comparing a fresh-dir run against a
+# run that inherits a full one measures the wrong thing.
+ARG SCCACHE_DIR="C:\sccache\v2"
+
+# DIAGNOSTIC ONLY (backlog #99). The cmake launcher wiring is gated on a
+# configured REMOTE (Test-SccacheRemoteConfigured); with the endpoint cleared,
+# sccache is not wired at all and a run reports `Compile requests 0` -- which
+# reads like a clean build and measures nothing. Set to 1 to wire sccache with a
+# LOCAL-ONLY backend so the disk level can be measured by itself:
+#   -BuildArg SCCACHE_FORCE_LOCAL=1,SCCACHE_WEBDAV_ENDPOINT=,SCCACHE_MULTILEVEL_CHAIN=
+# Never for production builds: without a remote the cache is only as persistent
+# as SCCACHE_DIR's mount, and the whole point of the gate is to stop that
+# happening by accident.
+ARG SCCACHE_FORCE_LOCAL=""
+
+# NB: OPENCV_LINK_CHAIN_FFMPEG deliberately does NOT live in this common block.
+# It sat here for one day (2026-08-16→17) and a single flip of the value re-ran
+# the whole media branch including the ~50-min ONNX stage, although only the
+# opencv stage reads it. It is declared in `media-core-built-opencv` below —
+# backlog #103, the concrete instance of the #49 disease.
 
 # sccache TWO-TIER, wired 2026-08-08. Until then WebDAV was the only tier, so
 # every one of the ~5000 compiles per stage paid an HTTP round-trip even on a hit.
@@ -44,19 +105,50 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # verify-toolchain.ps1 -- a speed feature that can vanish without a signal is
 # worse than no feature at all.
 #
-# SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule caps
-# type==exec.cachemount at 20GB/168h (windows/buildkitd.toml), so an unbounded
-# L0 would be evicted between chains and quietly buy nothing. Raise BOTH
-# together or neither.
+# SCCACHE_CACHE_SIZE=15G is deliberate: buildkitd's tier-0 GC rule bounds
+# type==exec.cachemount (windows/buildkitd.toml), so an unbounded L0 would be
+# evicted between chains and quietly buy nothing. Raise BOTH together or
+# neither. NB the cap figure quoted here was stale ("20GB/168h"): as of
+# 2026-08-15 that tier is reservedSpace 30GB / maxUsedSpace 60GB — the
+# reservedSpace FLOOR was the actual fix for backlog #89, where GC reclaimed the
+# whole mount mid-chain and every write after the first stage failed. Read the
+# live numbers from buildkitd.toml, not from this comment.
 #
-# SCCACHE_ERROR_LOG lives INSIDE the persistent sccache cache mount, so the
-# server's error/panic trail SURVIVES the container - when the nvcc
-# decomposition deadlocked/crashed (2026-08-10, fused_moe launchers), the
-# server died with its logs and the postmortem had only client-side 10054s.
-# Owner directive: NEVER swallow logs. SCCACHE_LOG stays an opt-in ARG
-# (debug is voluminous); the error log is always on and near-free.
-# The \logs subdirectory (backlog #23) keeps postmortems out of the
-# GC-capped cache root (shared with build-onnx's persistent ninja log);
+# SCCACHE_DIR points at a SUBDIRECTORY (`\v2`), not at the mount root. The tree
+# that grew directly in C:\sccache is damaged in a PATH-DEPENDENT way: writing
+# an object whose hash lands on a bad path fails with `The system cannot find
+# the path specified. (os error 3)`, which is why a build (157 objects, spread
+# over every bucket) failed 157/157 while single-compile probes were erratic -
+# 1/1, then 5/6, then 0/6, depending on where that one hash landed. Chasing that
+# noise cost several wrong "root causes" (the CWD, the multilevel chain, the
+# mount itself, the foreign `logs` dir, process detachment, concurrency - each
+# measured and each dead). A FRESH directory writes cleanly, on this mount, in
+# every probe and across container boundaries; the damaged tree is simply
+# abandoned. Bump to \v3 if it ever recurs, and see backlog #99.
+#
+# SCCACHE_ERROR_LOG lives on its OWN cache mount (C:\sccache-logs,
+# id=sccache-logs-winamd64), NOT inside SCCACHE_DIR - corrected 2026-08-15,
+# backlog #90. It used to sit at C:\sccache\logs\, i.e. inside the directory
+# sccache itself manages by LRU, and sccache deleted it: a probe of a healthy
+# mount holding 236 MB of cache content found `logs\` simply GONE, even though
+# the creation code runs on every entrypoint and the mount persists. That is
+# why the server's error trail was unobtainable through the whole multi-day
+# write-failure investigation - it was pruned by design, not lost by accident,
+# which left the genai 157/157 write failures undiagnosable. A log must live
+# where no other tool has a delete policy over it.
+# Owner directive: NEVER swallow logs. SCCACHE_LOG="warn" is NOT optional
+# decoration - corrected 2026-08-15. The previous note claimed "the error log is
+# always on and near-free" with SCCACHE_LOG left unset. That was FALSE: with no
+# level configured sccache never initialises its logger, so SCCACHE_ERROR_LOG
+# names a file that is never created. Proof: after moving the log to its own
+# unpruned mount the directory existed and the file still did not (LOGDIR=True,
+# NO_ERRORLOG) - while a hand probe that set SCCACHE_LOG=info DID produce
+# content. `warn` is the cheap level that still captures write/read failures
+# (opendal reports them at WARN); `debug` remains opt-in because it is
+# voluminous.
+# Historical note (backlog #23): the original \logs subdirectory was meant to
+# keep postmortems out of the GC-capped cache root (shared with build-onnx's
+# persistent ninja log);
 # Initialize-SourceBuildEnvironment creates it before the server spawns.
 # SCCACHE_IDLE_TIMEOUT=0 (2026-08-10 night): the default 600 s idle exit
 # killed the server mid-vertex during the long bare-CUDA tail (>10 min with
@@ -66,10 +158,12 @@ ARG SCCACHE_WEBDAV_ENDPOINT=""
 # The RUN step's process tree ends with the step, so 0 leaks nothing.
 ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
-    SCCACHE_MULTILEVEL_CHAIN="disk,webdav" `
-    SCCACHE_DIR="C:\sccache" `
+    SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
+    SCCACHE_DIR="${SCCACHE_DIR}" `
+    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
     SCCACHE_CACHE_SIZE="15G" `
-    SCCACHE_ERROR_LOG="C:\sccache\logs\sccache-error.log" `
+    SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
+    SCCACHE_LOG="${SCCACHE_LOG}" `
     SCCACHE_IDLE_TIMEOUT="0"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
@@ -208,6 +302,7 @@ COPY windows\scripts\shims C:\temp\scripts\shims
 COPY windows\scripts\patches\litert-lm C:\temp\scripts\patches\litert-lm
 
 COPY windows\scripts\build-litert-from-source.ps1 `
+     windows\scripts\build-litert-lm-bazel.ps1 `
      windows\scripts\build-litert-lm-from-source.ps1 `
      windows\scripts\litert-lm-export-bridge.ps1 `
      windows\scripts\build-litert-all.ps1 `
@@ -274,7 +369,28 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # former `media-core-bk` ENV twin (and the sync_versions.py bookkeeping it
 # required) is gone; see media-core-env above.
 FROM media-core-env AS media-core-built-onnx
+# Both DORMANT by default (empty ARG = inert; the scripts test for -eq '1').
+# Declared in the CONSUMING stage per the #103 lesson, and declared AT ALL
+# because buildctl silently DISCARDS a --opt build-arg no Dockerfile ARG
+# matches (the lesson that cost a 25-minute "the flag does not work" run).
+#
+#   SCCACHE_CUDA_LAUNCHER    opt-in: route nvcc through sccache. OFF since the
+#                            2026-08-10 miscompile verdict; NEVER default this
+#                            on without the three-canary bar (AGENTS.md).
+#   SCCACHE_REPRO_CUDA_LLM   repro-sccache-cuda-llm-deadlock.ps1 sets this to
+#                            skip patch 006 so the fused_moe launchers hit the
+#                            sccache server (the #2808 deadlock target). The
+#                            repro passes BOTH: without the launcher opt-in the
+#                            CUDA compiles run bare and a "no deadlock" verdict
+#                            would be a false all-clear.
+# ARG only, deliberately NO ENV mirror: a declared ARG is already an env var
+# inside this stage's RUN steps, while an ENV would BAKE the experiment value
+# into the image and every downstream stage would inherit it (discovered
+# 2026-08-18: the opencv experiment's launcher leaked into genai's build).
+ARG SCCACHE_CUDA_LAUNCHER=""
+ARG SCCACHE_REPRO_CUDA_LLM=""
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -282,27 +398,83 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-opencv
+# FFMPEG BEFORE OPENCV (swapped 2026-08-16, backlog #94). OpenCV's videoio
+# needs FFmpeg to EXIST at configure time or it silently falls back to the
+# prebuilt `opencv_videoio_ffmpeg*.dll` it downloads itself — which is what
+# shipped for months: `FFMPEG: YES (prebuilt binaries)`, avcodec 61 while this
+# chain builds avcodec 63, two FFmpeg generations in one image and
+# cv::VideoCapture using the older. The swap is safe because the dependency runs
+# ONE way: FFmpeg is configured without `--enable-libopencv`, so it needs
+# nothing from OpenCV. (GStreamer↔OpenCV genuinely IS circular — that is #93,
+# a different problem with a different fix.)
+#
+# Every RUN below now passes BOTH -ResumeFrom and -Until. The ffmpeg step used
+# to pass only -ResumeFrom and rely on being LAST in the stage list; after the
+# swap that would have silently dragged OpenCV into the ffmpeg layer.
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
+    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
+
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
+# DEFAULT ON since 2026-08-17: OpenCV links the FFmpeg this chain builds
+# (avcodec 63) instead of downloading its own prebuilt one (avcodec 61,
+# avdevice NO). Verified by the full-chain smoke gate: 188 passed / 1 failed,
+# the 1 being the deliberately-red #93 GStreamer guard. Requires the FFmpeg-9
+# source patch + PkgConfig shim (both applied by build-opencv-from-source.ps1
+# when this is 1). Opt OUT with: -BuildArg OPENCV_LINK_CHAIN_FFMPEG=
+#
+# Declared HERE, not in `common` (#103): only this stage reads it, and in the
+# common ENV block one flip re-ran the ~50-min ONNX stage for nothing. Here a
+# flip re-runs opencv+genai only (~25 min). NB the ARG must exist in the
+# Dockerfile or buildctl silently DISCARDS the --opt build-arg (cost a
+# 25-minute run on 2026-08-16).
+ARG OPENCV_LINK_CHAIN_FFMPEG="1"
+# EXPERIMENT KNOB (owner request 2026-08-18): route OpenCV's CUDA compiles
+# through the sccache launcher. Dormant by default ("" = bare CUDA, the
+# production stance since the miscompile verdict). DELIBERATELY NOT named
+# SCCACHE_CUDA_LAUNCHER: the driver's -BuildArg is global across stages, and
+# the shared name flipped the ONNX stage's cache key too - the first
+# experiment run rebuilt onnx WITH the launcher and died at the known
+# providers_cuda link failure before opencv ever ran (2026-08-18; the hit
+# path served the same dropped-instantiation objects). The stage-local name
+# maps onto the env var only HERE. Gate is the LINK of the CUDA modules; a
+# green link still cannot be runtime-verified on this host (no NVIDIA GPU in
+# the container). Never default this on.
+# ARG only - the SCCACHE_CUDA_LAUNCHER mapping happens INSIDE the RUN, never
+# via ENV: an ENV mapping baked the experiment flag into the image and genai
+# inherited an active CUDA launcher (2026-08-18). Measured result of run 2,
+# for the record: OpenCV's nvcc calls arrive via response files, which
+# sccache passes through UNCACHED (2018 requests / 1863 executed / zero CUDA
+# cache categories) - so "wrapped" OpenCV CUDA is bare-but-green and there is
+# currently nothing to win here.
+ARG OPENCV_CUDA_LAUNCHER=""
+# Companion experiment knob: disable CMake's CUDA response files so nvcc
+# calls arrive inline and can enter sccache's decomposition at all (rsp files
+# are passed through uncached - measured 2026-08-18). Only meaningful with
+# OPENCV_CUDA_LAUNCHER=1 AND the shipped quote fix (#114). RUN-scoped, no
+# ENV bake.
+ARG OPENCV_CUDA_NO_RSP=""
+ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}"
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
+    $env:SCCACHE_CUDA_LAUNCHER = $env:OPENCV_CUDA_LAUNCHER; `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
-FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built-ffmpeg
+FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
-    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
-    & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
-
-FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -311,9 +483,18 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
+# LiteRT SDK = CMake (sccache mount); LiteRT-LM = bazel (own repository cache
+# mount id=bazel-litertlm-winamd64; bazel's output_base stays container-local
+# - it is rename-heavy and this cache mount is wcifs rename-hostile). The
+# frozen CMake litert-lm fallback (build-litert-lm-from-source.ps1 + export
+# bridge + link diag + litert-lm patches/shims) stays bind-mounted so a
+# BAZEL_REPO_CACHE-less / fallback run still has it.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
+    --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build-litert-lm-bazel.ps1,target=C:\bkmnt\build-litert-lm-bazel.ps1 `
     --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
     --mount=type=bind,source=windows/scripts/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
@@ -321,11 +502,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
-    & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
+    $env:BAZEL_REPO_CACHE = 'C:\bzl-repo-cache'; & 'C:\bkmnt\build-litert-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+    --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `

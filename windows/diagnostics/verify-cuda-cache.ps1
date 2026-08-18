@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,7 +18,6 @@
 #
 # Exit codes: 0 = CACHE VERIFIED (hit on recompile), 1 = broken/unprovable.
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [string]$Endpoint = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', 'Machine'),

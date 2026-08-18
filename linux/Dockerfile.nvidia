@@ -83,9 +83,14 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
 # 3-tier fallback below. COPY the committed drop-directory instead (always
 # exists via its README), then normalize inside the RUN: drop your EULA-gated
 # deb into linux/nvidia-local-debs/ to enable the local-repo path.
-COPY linux/nvidia-local-debs/ /tmp/tensorrt-staging/
+COPY --link linux/nvidia-local-debs/ /tmp/tensorrt-staging/
+# GPU7 fix (2026-08-17): the substitution was `$(find … | head -1) || true)"` —
+# the ` || true)` sat OUTSIDE the $() and became a LITERAL part of the value, so
+# with no staged deb _trt_deb=" || true)" (non-empty) → `mv` failed → set -e
+# killed this RUN: the default (no-EULA-deb) nvidia build could not get past
+# here. Correct form keeps the || true INSIDE the substitution.
 RUN set -euo pipefail; \
-    _trt_deb="$(find /tmp/tensorrt-staging -maxdepth 1 -name 'tensorrt-local-repo*.deb' | head -1) || true)"; \
+    _trt_deb="$(find /tmp/tensorrt-staging -maxdepth 1 -name 'tensorrt-local-repo*.deb' | head -1 || true)"; \
     if [ -n "${_trt_deb}" ]; then mv "${_trt_deb}" /tmp/tensorrt-local-repo.deb; fi; \
     rm -rf /tmp/tensorrt-staging
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
@@ -126,8 +131,12 @@ ENV CUDA_HOME=/usr/local/cuda \
 # ==============================================================================
 # 3. Verification
 # ==============================================================================
+# GPU2/GPU3 (2026-08-17): STRICT verification — previously CUDA_STACK_STRICT
+# defaulted to 0, so a build with nvcc/cuDNN/TensorRT ALL missing still went
+# green (fail-open; it masked the TensorRT silent-skip, GPU1). Now hard-gated,
+# matching the AMD lane's contract (setup-rocm-repo.sh exits 1 on missing bits).
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     set -euo pipefail; \
-    bash /tmp/core-scripts/verify-cuda-stack.sh
+    CUDA_STACK_STRICT=1 bash /tmp/core-scripts/verify-cuda-stack.sh
 LABEL org.opencontainers.image.title="Kataglyphis Toolchain NVIDIA" \
       org.opencontainers.image.description="NVIDIA GPU library layer: CUDA, cuDNN, TensorRT, NCCL, math libs, NVTX"

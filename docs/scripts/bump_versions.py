@@ -408,9 +408,48 @@ def spec_binaryen(cur):
     if v != cur and WRITE_MODE:
         for env_key, asset in [
             ("BINARYEN_LINUX_X86_64_SHA256", f"binaryen-{v}-x86_64-linux.tar.gz"),
+            # F6: aarch64 tarball ships in every release alongside x86_64 (asset
+            # name verified on version_131) and is consumed by lib/wasm-opt.sh for
+            # arm64 — refresh it in step so a binaryen bump can't freeze it stale.
+            ("BINARYEN_LINUX_AARCH64_SHA256", f"binaryen-{v}-aarch64-linux.tar.gz"),
             ("BINARYEN_WINDOWS_X86_64_SHA256", f"binaryen-{v}-x86_64-windows.tar.gz"),
         ]:
             extras[env_key] = asset_sha256("WebAssembly/binaryen", v, asset)
+    return v, extras
+
+
+def spec_shellcheck(cur):
+    # F6: shellcheck ships byte-stable release ASSETS (not archive tarballs), so
+    # both pins refresh cleanly on a bump. koalaman/shellcheck publishes no sums
+    # file, so asset_sha256 falls back to download-and-hash. Both current SHAs
+    # verified to match v0.11.0's assets. Keep the leading v (env stores it).
+    v = gh_latest("koalaman/shellcheck")
+    extras = {}
+    if v != cur and WRITE_MODE:
+        for env_key, asset in [
+            ("SHELLCHECK_LINUX_X86_64_SHA256", f"shellcheck-{v}.linux.x86_64.tar.xz"),
+            ("SHELLCHECK_WINDOWS_SHA256", f"shellcheck-{v}.zip"),
+        ]:
+            extras[env_key] = asset_sha256("koalaman/shellcheck", v, asset)
+    return v, extras
+
+
+def spec_gstreamer(cur):
+    # The repo deliberately pins an odd-minor (development-series) release, so the
+    # newest tag overall is the right comparison — not stable-only.
+    tags = http_json(
+        "https://gitlab.freedesktop.org/api/v4/projects/gstreamer%2Fgstreamer/repository/tags?per_page=100")
+    v = max((t["name"] for t in tags if re.match(r"^\d+\.\d+\.\d+$", t["name"])),
+            key=lambda s: [int(x) for x in s.split(".")], default="")
+    extras = {}
+    # F6: the android-universal tarball ships a `.sha256sum` sidecar on freedesktop
+    # (verified for 1.29.2) — refresh GSTREAMER_ANDROID_UNIVERSAL_SHA256 from it so
+    # a gstreamer bump can't freeze it stale. Not every dev tag publishes an
+    # android build; a --write to such a version fails loud on the missing sidecar.
+    if v and v != cur and WRITE_MODE:
+        url = (f"https://gstreamer.freedesktop.org/data/pkg/android/{v}/"
+               f"gstreamer-1.0-android-universal-{v}.tar.xz.sha256sum")
+        extras["GSTREAMER_ANDROID_UNIVERSAL_SHA256"] = http_text(url).split()[0]
     return v, extras
 
 
@@ -455,8 +494,14 @@ def spec_flutter(cur):
     # betas); the flutter_infra_release JSON is the authoritative stable pointer.
     data = http_json("https://storage.googleapis.com/flutter_infra_release/releases/releases_linux.json")
     stable_hash = data["current_release"]["stable"]
-    v = next(r["version"] for r in data["releases"] if r["hash"] == stable_hash and r["channel"] == "stable")
-    return v, {}
+    rel = next(r for r in data["releases"] if r["hash"] == stable_hash and r["channel"] == "stable")
+    v = rel["version"]
+    extras = {}
+    # F6: the same release object carries the SDK tarball's sha256 — refresh
+    # FLUTTER_SDK_SHA256 in step so a flutter bump can't freeze it stale.
+    if v != cur and WRITE_MODE and rel.get("sha256"):
+        extras["FLUTTER_SDK_SHA256"] = rel["sha256"]
+    return v, extras
 
 
 def _nuget_pkg_latest(pkg: str, same_major_as: str = "") -> str:
@@ -571,6 +616,7 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("BINARYEN_VERSION", spec_binaryen, "none (host-side bootstrap)"),
     ("HADOLINT_VERSION", spec_hadolint, "none (host-side lint bootstrap)"),
     ("ACTIONLINT_VERSION", spec_actionlint, "none (host-side lint bootstrap)"),
+    ("SHELLCHECK_VERSION", spec_shellcheck, "none (host-side lint bootstrap; linux+windows)"),
     ("RUST_VERSION", spec_rust, "linux toolchain rust layer + tail"),
     ("CARGO_C_VERSION", spec_cargo_c, "linux toolchain rust layer + tail"),
     ("FLUTTER_VERSION", spec_flutter, "linux sdk flutter layer"),
@@ -578,6 +624,7 @@ SAFE: list[tuple[str, Callable, str]] = [
     ("WIX_UI_EXT_VERSION", spec_wix_ui, "windows base scoop layer"),
     ("PYTHON_VERSION", spec_python, "linux+windows toolchain CPython builds (same-minor only)"),
     ("VULKAN_VERSION", spec_vulkan, "linux base/sdk + windows scoop layer"),
+    ("GSTREAMER_VERSION", spec_gstreamer, "linux media gstreamer stage (+ android universal)"),
     ("APP_REF", spec_app_ref, "torch + final leaves (minutes)"),
     ("UBUNTU_DIGEST", spec_ubuntu_digest, "linux base (full chain)"),
     ("WINDOWS_BASE_DIGEST", spec_windows_digest, "windows base (full chain)"),
@@ -592,13 +639,8 @@ REPORT: list[tuple[str, Callable]] = [
     ("LITERT_LM_VERSION", _r("google-ai-edge/LiteRT-LM")),
     ("TVM_REF", _r("apache/tvm", strip_v=False)),
     ("IREE_VERSION", _r("iree-org/iree", strip_v=False)),
-    # NB: the repo deliberately pins an odd-minor (development-series) release,
-    # so the newest tag overall is the right comparison — not stable-only.
-    ("GSTREAMER_VERSION", lambda cur: (max(
-        (t["name"] for t in http_json(
-            "https://gitlab.freedesktop.org/api/v4/projects/gstreamer%2Fgstreamer/repository/tags?per_page=100")
-         if re.match(r"^\d+\.\d+\.\d+$", t["name"])),
-        key=lambda v: [int(x) for x in v.split(".")], default=""), {})),
+    # GSTREAMER_VERSION moved to SPECS (spec_gstreamer) so it also refreshes the
+    # android-universal tarball SHA (F6); the version-detection logic is unchanged.
     ("PYAV_VERSION", _r("PyAV-Org/PyAV")),
     ("NV_CODEC_HEADERS_REF", _r("FFmpeg/nv-codec-headers", strip_v=False, pattern=r"^n[\d.]+$")),
     # -- media/library build deps --
@@ -666,6 +708,15 @@ def audit_sha_pairs() -> int:
         # EULA-gated manual download — deliberately empty, documented in
         # versions.env next to the key.
         "TENSORRT_ZIP_SHA256",
+        # F6: unversioned bootstrap installer scripts — their upstream URL is
+        # always-latest (no release tag to bump in step with), so they cannot be
+        # tracked by a version bump. The hash is pinned and re-reviewed BY HAND
+        # on each deliberate update (the fetch recipe lives in versions.env next
+        # to each key). Allowlisted, not held: they DO change, just not on a
+        # version schedule.
+        "RUSTUP_INIT_SHA256",   # sh.rustup.rs
+        "UV_INSTALL_SH_SHA256",  # astral.sh/uv/install.sh
+        "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
     }
     src = Path(__file__).read_text(encoding="utf-8")
     stray: list[str] = []

@@ -2,6 +2,8 @@
 # [LiteRTLM-winfix rust-lib-stage] stage the MSVC-named rust staticlib + cxxbridge C++ glue under the
 # GNU lib*.a names that _cxxbridge_paths references (rustc/clang-cl emit <name>.lib on windows-msvc).
 foreach(_winfix_pair "litert_lm_deps.lib|liblitert_lm_deps.a" "litertlm_cxx_bridge.lib|liblitertlm_cxx_bridge.a")
+    # patch-assert-exempt: splits a local "a|b" pair into a list; it rewrites no
+    # upstream source, so a no-op guard would be meaningless here (backlog #56).
     string(REPLACE "|" ";" _winfix_kv "${_winfix_pair}")
     list(GET _winfix_kv 0 _winfix_src_name)
     list(GET _winfix_kv 1 _winfix_dst_name)

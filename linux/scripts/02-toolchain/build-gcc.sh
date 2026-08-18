@@ -291,6 +291,13 @@ apt_install \
 : "${STAGE1_CFLAGS:=${BOOT_CFLAGS}}"
 export CFLAGS CXXFLAGS FFLAGS FCFLAGS CFLAGS_FOR_BUILD CXXFLAGS_FOR_BUILD BOOT_CFLAGS STAGE1_CFLAGS
 
+# texinfo is deliberately absent (see above) but gcc's makefiles still probe
+# makeinfo and spam "Makeinfo is missing" warnings through the ~1h build log.
+# MAKEINFO=true registers a no-op makeinfo at configure time, silencing the
+# probe and skipping doc targets without installing texinfo.
+: "${MAKEINFO:=true}"
+export MAKEINFO
+
 # 2) Prepare build directory (no /tmp used)
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
@@ -662,10 +669,22 @@ trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
 
 # 4) Build & install
 echo "Building (this will take a long time)..."
+# Zero ccache stats so the post-build block below reports THIS build's hit rate
+# (media builds already print these; the compiler stage was silent). Best-effort:
+# absent/failing ccache must never fail the build.
+if [ "${USE_CCACHE}" = "1" ]; then
+  ccache -z >/dev/null 2>&1 || true
+fi
 if [ -n "${TARGET_TRIPLET}" ]; then
   make -j"${JOBS}" all-gcc all-target-libgcc all-target-libstdc++-v3 all-target-libatomic
 else
   make -j"${JOBS}"
+fi
+# ccache stats for this GCC compile phase (on bootstrapped host builds only
+# stage1 goes through ccache — see the ccache wiring note above). House style
+# matches 01-core/compiler-cache.sh; best-effort, never fails the build.
+if [ "${USE_CCACHE}" = "1" ]; then
+  ccache --show-stats 2>/dev/null | head -5 || true
 fi
 
 echo "Installing to ${PREFIX}..."

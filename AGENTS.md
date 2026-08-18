@@ -55,7 +55,7 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`.
+Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`. To stop a running chain cleanly (reaps the orphaned nerdctl/buildctl child subtree — never `pkill` the orchestrator, that orphans them), use `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep). Cache knobs (three distinct, do not conflate): `NO_CACHE=1` disables ALL `--cache-from` (local + registry) for the whole chain; `RUNTIME_NO_CACHE=1` gates `--no-cache` on only the runtime package+wrapper builds (`runtime-build-fns.sh`) — a targeted guarantee against BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer; `CROSS_NO_LOCAL_CACHE_EXPORT=1` only stops WRITING the local buildcache but STILL reads the registry inline cache. **Verify the shipped BYTES, never the push** (backlog RTCACHE3): the 2026-08-15 S2 saga shipped `:latest-cross` STALE five times with every static gate and all smokes GREEN — the manifest, smokes, and push were all byte-identical to a prior run. The real cause was the `--output type=image` tagging bug (see "Cross Chain Stage Handoff"), NOT a cache; media+android were always fresh. This is now GATED automatically: `verify-shipped-wrapper.sh` runs in `build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled — it lists each wrapper's rootfs (`nerdctl export | tar -t`, arch-agnostic, no emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact). A mismatch aborts before `:latest-cross` goes live. `WRAPPER_CONTENT_GATE=0` makes it advisory. `MEDIA_STRIP=0` disables the media-prefix symbol-strip pass (`strip_media_prefixes`, default ON, wired into build-ffmpeg/build-gstreamer-stage/build-libcamera; uses the cross `${STRIP}` and `--strip-all` which keeps `.dynsym` so runtime linking is unaffected). **:latest-cross was re-shipped 2026-08-16** (fresh amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) carrying the Batch-2 fixes; that full-media rebuild flushed out two bugs the runtime-lane validations miss because they skip smoke-media — (1) smoke-media's native cv2 import must be gated on numpy being importable (numpy is a /opt/venv packaging dep, absent in the media BUILD sandbox → defer to the runtime smoke, like onnxruntime), and (2) `configure-runtime.sh` runs a SECOND time in the package stage, so its gstreamer-multiarch resolver must drop/skip the pre-existing `lib/multiarch` symlink before resolving or it re-points it at itself — and its dev-surface check must be a WARN, not a fail-loud exit (a script that runs twice must not carry a build-breaking assert; the pkg-config `verify_consumer_dev_surface` gate is the authority). To spot-check by hand: pull the wrapper and grep for the expected lib set. Two sibling gates default to advisory (WARN) and promote to fatal only on opt-in: `VULKAN_CROSS_STRICT=1` (all three Vulkan cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause; `vulkan.sh`) and `WHEEL_SOABI_STRICT=1` (a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`; `verify-wheels.sh`, triple derived from `TARGET_ARCH` not the running interpreter).
 
 Most common build commands:
 
@@ -361,6 +361,154 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   window). Never add `powershell`/`powershell.exe` invocations or `cmd`
   SHELL directives; `cmd.exe /c` may appear only inside
   `Invoke-ShieldedNative` and the documented bespoke sites.
+- **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
+  `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
+  finished image after `final`, and a failure fails the chain (backlog #44).
+  Before 2026-08-14 neither driver ran the smoke test at all, so every chain
+  shipped unverified. Three rules when touching it: it must run **through
+  `entrypoint.cmd`** (a bare `RUN` bypasses ENTRYPOINT and loses VsDevCmd + the
+  ASAN runtime dir — that alone made six assertions fail against a good image);
+  it **bind-mounts** the current script rather than the image's baked copy, so a
+  smoke-test fix is re-verifiable without an image rebuild; and it enforces
+  **coverage floors** (`-SmokeMinPassed`/`-SmokeMaxSkipped`, exit 3), because a
+  run that asserted nothing used to print "All smoke tests passed!" and exit 0.
+  `-SkipSmokeGate` is for chain iteration only.
+- **Never cross a pwsh process boundary with an array parameter.** `& pwsh
+  -File script.ps1 -Param 'a','b'` delivers ONE literal string INCLUDING the
+  quote characters, not a two-element array. Cost (2026-08-18): the deadlock
+  repro's `-BuildArg` pair reached buildctl as one mangled undeclared ARG
+  name, buildctl silently discarded it, and an 88-minute repro measured
+  nothing while reporting success. Invoke repo scripts DIRECTLY (`&
+  'windows\build-buildkit.ps1' …`) when already in pwsh 7;
+  `build-buildkit.ps1` now throws on non-identifier `-BuildArg` keys so the
+  flattened form fails loudly instead of vanishing downstream.
+- **TVM builds its OWN minimal LLVM (#47, 2026-08-17) — do not "simplify" it
+  away.** Scoop's LLVM (official Windows installer) ships NO `llvm-config.exe`
+  and no dev libs anywhere (probed: 0 hits), so every earlier Windows TVM was
+  silently `USE_LLVM=OFF` — no CPU codegen, `tvm.build` for llvm targets dies
+  at runtime. The official `clang+llvm-*-windows-msvc` dev tarball is NOT the
+  fix: its static libs are /MT and want `xml2s.lib`, fatally mismatched
+  against this /MD chain (verified by one link attempt). The heal in
+  `build-tvm-from-source.ps1` builds a SHA-pinned llvm-project from source
+  (X86+NVPTX, no xml2/zlib/tests, `LLVM_ENABLE_DIA_SDK=OFF` — no ATL in these
+  Build Tools, RTTI ON, full-`:FILEPATH` archiver) and passes
+  `USE_LLVM=<path>/llvm-config.exe`. sccache makes it a one-time ~6 min cost.
+- **freedesktop/videolan GitLab downloads MUST go through
+  `Invoke-WrapDownload`** (curl-native UA + gzip/bzip2 magic-byte check, in
+  `build-gstreamer-from-source.ps1`) — the Anubis anti-scraper in front of
+  those hosts answers browser UAs without JS with an HTTP-200 HTML challenge
+  page, which is exactly what the shared `Invoke-DownloadWithRetry` sends.
+  Also strip `.git` from GitLab `/-/archive/` URLs (with it, GitLab serves
+  HTML even to curl). Both burned a merge run each on 2026-08-17; do not
+  "unify" wrap fetching back onto the shared helper.
+- **graphene builds only with `-Dgraphene:sse2=false` plus the post-setup
+  meson.build patch** dropping its `-Werror=undef` (it outranks our c_args —
+  last flag wins; clang-cl defines no `__GNUC__`, and its MSVC SIMD path
+  calls SSE4.1 intrinsics unguarded). graphene entered the build for the
+  FIRST time when #88 made every wrap actually arrive — expect more
+  first-ever subprojects to surface clang-cl corners after wrap fixes.
+- **Never rewrite upstream sources with a bare `string(REPLACE)`.** Use
+  `patch_replace_required` / `patch_regex_replace_required` from
+  `patches/litert-lm/patch-assert.cmake`, which `FATAL_ERROR`s when the pattern
+  matched nothing (backlog #56). The old pattern printed "Patched …"
+  unconditionally, so an upstream reformat silently restored the defect the
+  patch existed to fix — for sentencepiece's duplicate `ABSL_FLAG(minloglevel)`
+  that means a link-clean `litert_lm_main.exe` that aborts on every run.
+  `Patches.CmakeNoOpGuards.Tests.ps1` fails any unguarded replace; a genuine
+  non-source replace opts out with a `patch-assert-exempt` marker AND a reason.
+- **When a probe says the product is broken, suspect the probe first — and
+  always run a known-good control.** Three probes lied on 2026-08-14 before one
+  told the truth, each looking exactly like a product defect:
+  (1) a hand-rolled `[DllImport("kernel32")] LoadLibraryW(string)` marshals
+  `string` as **ANSI** by default, so a UTF-16 API answered "module not found"
+  (126) for all 14 TensorRT DLLs — the repo's `Assert-DllLoads`
+  (`WindowsSmokeTest.Common.psm1:233`) has always declared
+  `CharSet=CharSet.Unicode`; **use the existing helper, don't re-declare
+  P/Invoke**. (2) A hand-written probe Dockerfile without `# escape=\`` let the
+  default `\` escape eat the `s` in `target=C:\sccache`, so a cache mount
+  silently did not exist. (3) `/Fo:C:\x.obj` (colon) makes sccache build
+  `C:\:C:\x.obj` and fail with a misleading "failed to zip up compiler outputs";
+  MSVC syntax is `/Fo<path>`. In each case the control is what exposed it — a
+  `VCRUNTIME140.dll` that obviously loads in an MSVC-built image, a mount that
+  should exist. **A probe with no control cannot distinguish "broken product"
+  from "broken probe".**
+- **A probe that reproduces the ENVIRONMENT does not necessarily reproduce the
+  FAILURE — and until it does, it can clear nothing.** `probe-sccache-write.ps1`
+  ran the real image, the real cache mount ids and the real ENV, and for two days
+  every configuration it pronounced clean then failed in the next 90-minute
+  build: a repaired cache tree, a fresh `SCCACHE_DIR`, the multilevel chain,
+  16-way concurrency, 239-character paths. It was not lying — its writes really
+  did succeed. It was simply too SMALL: the defect needs ~250 objects written
+  into a directory a PREVIOUS container populated, and every section until then
+  wrote a single object. Two rules from that: (a) treat a green probe as a hypothesis to test
+  in a real build, never as clearance — only per-stage `--show-stats` numbers
+  from a build settled anything here; (b) when a probe and the product disagree,
+  the next move is to make the probe BIGGER along the dimension you have not
+  varied, not to trust it. See backlog #99 for the full list of dead hypotheses.
+- **A probe can destroy its own experiment — read the setup output, not just the
+  verdict.** The same script sweeps anything in the cache root that is not a hex
+  bucket off the mount as debris; that quietly deleted the inheritance fixture a
+  later section depended on, and the run reported "0 files inherited" — which
+  reads as "the cache mount lost 250 objects", i.e. exactly backwards.
+  The directory listing printed at the top of the log is what exposed it. Keep
+  fixtures on an explicit allow-list (`$probeOwned`), and when a probe's result
+  is surprising, check what the probe DID to the system before believing what it
+  says about the system.
+- **Aggregate evidence has a SHELF LIFE — check the newest sample's timestamp
+  against the last fix.** The log forensics concluded "sccache has never
+  worked" from 0 hits / 189,861 failed writes across 94 stat blocks. Every one
+  of those samples predated the dufs SYSTEM-service migration on the same day,
+  and no run since had exercised sccache — a direct probe showed
+  miss → store → HIT with 0 write errors. Confident conclusions about a state
+  that no longer exists are the failure mode of corpus-wide aggregation; date
+  the newest sample before trusting the aggregate.
+- **A daemon's log is only as durable as its last flush — stop the server before
+  the RUN ends.** `SCCACHE_ERROR_LOG` is written by the sccache SERVER, and
+  `SCCACHE_IDLE_TIMEOUT=0` means it never exits on its own, so BuildKit tears
+  the RUN's process tree down with the log still buffered and nothing reaches
+  the mount. `Complete-SourceBuildChain` now calls `sccache --stop-server` as
+  the chain epilogue (after every `Write-SccacheStatsToStderr`, which needs a
+  live server), which also flushes the async webdav write-through tail.
+  `Invoke-SourceBuildChain`'s prologue is the other half: it stops the server,
+  **truncates the error log**, and starts the server explicitly from `C:\`. The
+  truncation is not tidiness — the log lives on a SHARED mount and only appends,
+  so the epilogue's dump was replaying a PREVIOUS run's failures verbatim
+  (50,928 lines / 12,413 error lines) and cost a full false alarm before anyone
+  compared its timestamps to the run's start time. Dump `-Last N`, never
+  `-First N`, on any log that accumulates.
+  **Diagnostic value of this one:** the path, the level and the mount were all
+  correct for days while three separate hypotheses were chased — LRU pruning,
+  wrong location, unset `SCCACHE_LOG` — because a hand probe that waits a few
+  seconds with the server alive ALWAYS saw content, and a real build never did.
+  When a log is empty only after real runs, suspect lifetime before correctness.
+- **Never put a log inside a directory some OTHER tool owns and prunes.**
+  `SCCACHE_ERROR_LOG` was set to `C:\sccache\logs\sccache-error.log` — inside
+  `SCCACHE_DIR`, the directory sccache itself manages by LRU. The dir-creation
+  code runs, the cache mount persists (236 MB of content survived), and the
+  `logs\` directory is gone anyway: sccache pruned it. **That is why sccache's
+  own error log was unobtainable through an entire multi-day investigation** —
+  it was deleted by design, not lost by accident, and its absence is what left
+  the genai write failures undiagnosable (backlog #90). It now lives on its
+  **own** cache mount — `C:\sccache-logs` (`id=sccache-logs-winamd64`), mounted
+  next to the sccache mount on every compiling RUN — and is listed in
+  `windows/buildkitd.toml`'s tier-0 inventory, which must stay in step with that
+  budget. Sibling rule to the one below: a log must live where nothing else has
+  a delete policy over it.
+- **A build log written inside the build dir DIES WITH THE SOLVE — always use
+  `Get-PersistentBuildLogPath`.** When a vertex fails, BuildKit discards the
+  container filesystem, so a log at `$buildDir\x-build.log` is gone exactly
+  when it is needed and the only diagnosis left is the 50-line tail
+  `Invoke-NinjaBuildWithRetry` prints. The helper
+  (`WindowsSourceBuild.Common.psm1`) therefore puts logs on the persistent
+  **`C:\sccache-logs`** mount (derived from `SCCACHE_ERROR_LOG`'s parent, so the
+  two cannot drift apart) with one `.prev` generation, falling back to the build
+  dir only when no mount exists. **Never `$SCCACHE_DIR\logs`** — it wrote build
+  logs straight into sccache's own LRU-managed cache ROOT, which is the same
+  mistake #90 had already fixed for the error log; corrected 2026-08-16. Pass the result as `-LogFile`; never hand-roll the path, and never
+  omit `-LogFile` (build-onnx-genai did, and produced no ninja log at all).
+  This lived as ONE inline block in build-onnx for months while
+  opencv/iree/tvm/litert silently lost their logs — hence a shared helper
+  (backlog #43). Corollary of the owner's standing "never swallow logs" rule.
 - **Never put DOUBLE QUOTES inside shell-form RUN lines in the Windows
   Dockerfiles.** The dockerfile frontend strips embedded `"` from the command
   string before it reaches the pwsh SHELL (three incidents on 2026-08-04:
@@ -393,9 +541,9 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 - **NEVER swallow logs — display may truncate, persistence must not (owner
   directive 2026-08-10).** Every tool that shows `-Last N` lines Tee's the
   FULL stream to `out\build-logs\` first and prints the path; sccache's
-  server error log persists inside the sccache cache mount
-  (`SCCACHE_ERROR_LOG=C:\sccache\sccache-error.log` in
-  Dockerfile.media-builder — the 2026-08-10 nvcc-decomposition postmortem had
+  server error log persists on its OWN cache mount
+  (`SCCACHE_ERROR_LOG=C:\sccache-logs\sccache-error.log` in
+  Dockerfile.media-builder — NOT inside `SCCACHE_DIR`, see #90 — the 2026-08-10 nvcc-decomposition postmortem had
   only client-side 10054s because the server died with its logs); build
   stats go to STDERR (survives the step-log clip); and
   `BUILDKIT_STEP_LOG_MAX_SIZE=-1`/`MAX_SPEED=-1` on the buildkitd service is
@@ -528,7 +676,7 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 
 - **media-core builds via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core builds via `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`), which is the only way to get >2 CPUs *and* a committable image. Regression symptoms: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-builds.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see § Re-testing process isolation on new versions).
 - **Rust: rustup WITH a default toolchain is the sole provider — never a toolchain-less rustup, never a second provider (no scoop rust).** Polarity INVERTED by the Flutter-Cargokit fix: Cargokit (flutter_rust_bridge-style plugins) hard-requires rustup and aborts with "rustup not found in PATH." otherwise, so `setup-rust-toolchain.ps1` runs `rustup-init -y --default-toolchain stable --profile minimal` and `setup-scoop-tools.ps1` installs NO rust. `CARGO_BIN` (= `...\.cargo\bin`, the rustup proxy dir) sits ahead of scoop's shims on PATH **by design**. The failure the old "never rustup" rule guarded against was narrower than the rule: a **toolchain-less** rustup (`--default-toolchain none`) drops proxy shims that resolve no toolchain ("no default toolchain configured"); installed WITH a default they resolve correctly. Do not re-add `scoop install main/rust` alongside — one provider only. Details: `docs/windows-builds.md` § Rust toolchain.
-- **Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; inside a run+commit stage, `ProcessorCount` = `--cpu-count` (default = all host logical processors, 32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-builds.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM, an sccache remote, and — verified available 2026-08-08 but NOT yet wired — a local sccache L0 tier in front of that remote (`SCCACHE_MULTILEVEL_CHAIN`, see § Caching discipline rule 5).
+- **Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; inside a run+commit stage, `ProcessorCount` = `--cpu-count` (default = all host logical processors, 32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-builds.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM and the sccache WebDAV remote. **The local L0 disk tier is DISABLED BY DEFAULT since 2026-08-16 — and the fault is BuildKit, not sccache.** A BuildKit cache mount on Windows loses writes once its directory holds objects an EARLIER RUN wrote: 158 of 250 failed on the mount vs 0 of 250 into a plain container directory, same program, same moment; a FRESH directory on the same mount takes all 250. That is why opencv/genai (which inherit onnx's cache dir) failed ~100 % of writes while onnx, filling its own, failed 1.9 %. `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in BOTH media Dockerfiles; restore `disk,webdav` only after re-verifying against a newer buildkit (recipe + full measurement in `docs/windows-builds.md` #99). Do not "fix" this in sccache.
 - **Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`.** Media modules are LF, some build scripts CRLF; `core.autocrlf=true` plus some editors can flip a whole file, busting the media layer cache. `.gitattributes` pins these `-text`; after editing, confirm `git diff` shows only your change, not a whole-file EOL flip.
 - **`versions.env` is the single source of truth.** `build.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `setup-scoop-tools.ps1` splits its installs into exactly those two blocks.
 - **AVX-512/AMX flags NEVER go in global CXX flags (final polarity, settled 2026-08-03).** Globally, clang may emit AVX-512 anywhere — the in-tree protoc AND `onnxruntime.dll`'s static initializers both crashed with `STATUS_ILLEGAL_INSTRUCTION` at run/load time on the AVX2-only build host (the import assert catches this). But entirely without the flags, MLAS's arch TUs fail to COMPILE (clang-cl gates intrinsics behind target features; MSVC doesn't). The settled design: `build-onnx-from-source.ps1` appends `Get-WindowsX86Avx512Flags` per-TU to exactly the MLAS arch `FLAGS =` lines in build.ninja post-configure (runtime-dispatched kernels — the only code allowed to assume the features) and logs the tagged count. Don't "simplify" in either direction.
@@ -547,15 +695,52 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 
 TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's EULA. To include TensorRT:
 
-1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-11.2.1.2.Windows10.x86_64.cuda-13.3.zip`)
-2. Place the zip in `windows/downloads/`
-3. It will be auto-detected during the `Dockerfile.nvidia` build
+1. Download from https://developer.nvidia.com/tensorrt (e.g., `TensorRT-Enterprise-11.2.1.2-Windows-amd64-cuda-13.3-Release-external.zip`).
+   **OWNER DIRECTIVE: always take the NEWEST release.** Never resolve a
+   pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip.
+2. Place the zip in `windows/downloads/` and **delete the superseded one**. The
+   extract step version-sorts and takes the highest (a `[version]` cast, so
+   `11.10.0.1` beats `11.2.1.2` — plain string sort gets that backwards), but a
+   stale ~2 GB zip still bloats the `COPY downloads` layer.
+3. Set `TENSORRT_ZIP_SHA256` in `versions.env` to the new zip's hash
+   (`Get-FileHash -Algorithm SHA256 windows\downloads\TensorRT-*.zip`,
+   lowercase). It was EMPTY until 2026-08-14, so ~2 GB of EULA-gated payload
+   entered the image unverified. A stale hash now fails the build loudly — that
+   is intended, not a bug.
+4. It is auto-detected during the `Dockerfile.nvidia` build. `TENSORRT_VERSION`
+   never derives a **filesystem** path — the tree is resolved from disk and
+   normalized to `current` — and is otherwise used for drift REPORTING. One
+   exception, so the claim is not read as absolute: `setup-tensorrt.ps1` still
+   builds its NVIDIA CDN fallback URLs out of the pin, used only when no zip is
+   staged.
 
 If no zip is found, the build **skips TensorRT gracefully** (CUDA + cuDNN still work; `setup-tensorrt.ps1` warns and returns, ORT auto-disables the TensorRT EP, and the smoke test's `TENSORRT_ROOT` pointer passes on the guaranteed-empty `C:\tensorrt`). This zip-less configuration is the NORMAL state of this host's GPU lane. Do NOT re-harden this into a fail-fast: a 2026-08-04 "fail-fast" variant (premised on the wrong claim that the smoke test would reject a TensorRT-less nvidia image) broke the first hardened `-Gpu` rebuild and was reverted on 2026-08-05. The ORT build script auto-detects `$env:TENSORRT_ROOT` and enables the TensorRT EP when available.
 
+**A PRESENT zip is a different matter and now fails CLOSED.**
+`normalize-tensorrt-tree.ps1` (bind-mounted into the `trt-extract` stage)
+renames the extracted `TensorRT-<version>` tree to a stable **`current`** and
+throws if it carries no runtime DLLs. Absent zip = supported; half-extracted
+tree = build failure. `Resolve-TensorRtRoot` prefers `current` and falls back to
+the versioned glob for older images.
+
+**Why `current` exists — two silent defects, both green for their whole life
+(fixed 2026-08-14, backlog #38):** `Dockerfile.nvidia` used to build the runtime
+PATH as `$TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib`, which was wrong twice
+over. (1) The VERSION came from the pin, so it named a nonexistent directory the
+moment the pin and the staged zip disagreed. (2) The DIRECTORY was `lib\` —
+**TensorRT 10+ ships the runtime DLLs in `bin\`; `lib\` holds only link-time
+`.lib` import libraries** (measured: 14 DLLs vs 6 `.lib`). So even a correctly
+pinned image could never load the EP. Neither failed a build, because ORT
+resolves its BUILD-time root with a glob and compiles the EP fine — only the
+RUNTIME lookup broke, and ORT drops an EP with unreachable DLLs **silently**.
+PATH now carries `current\bin` first, `current\lib` after it for the 8.x/9.x
+layout. **Never derive that PATH from the pin again**, and note a Machine-PATH
+write inside a RUN cannot substitute: `Dockerfile.base` sets `ENV PATH=` and the
+image config wins.
+
 ### Windows Build Notes
 
-The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → OpenCV → FFmpeg in media-core; LiteRT → LiteRT-LM in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
+The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `build-litert-lm-bazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → OpenCV → FFmpeg in media-core; LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
 
 - **Per-library reference** (generator/compiler per component, EP/delegate flags, patch stacks, RAM budgets, fallback paths): the authoritative table is `docs/windows-builds.md` § Component Build Matrix.
 - **Per-script reference** (every build/setup/verify and HOST-maintenance script, with flags, gotchas and refusal conditions): the authoritative table is `docs/windows-builds.md` § Windows Script Reference.
@@ -572,7 +757,15 @@ bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,a
 # Build only one stage for one architecture
 bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
 
-# Build per-arch stages in parallel (faster on multi-core machines)
+# Build per-arch stages in parallel (faster on multi-core machines).
+# ⚠️ PAR4 (2026-08-18, OPEN): 3-way parallel MEDIA can OOM the 60 GB host —
+# BUILD_MEM_DIVISOR sizes job pools per build but buildkitd max-parallelism=4
+# runs up to 4 heavy steps PER build (worst case 3×4 pools sized for RAM/3;
+# killed cc1plus in both cross lanes' IREE builds on the first post-PAR2 run).
+# Until the PAR4 fix lands, pick ONE for 3-way media:
+#   BUILD_MEM_DIVISOR=5 ... --parallel-archs            # smaller job pools
+#   PARALLEL_STAGES=sdk,android ... --parallel-archs    # media sequential
+# Details: docs/build-parallelism-memory-tuning.md § second-order trap.
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)
@@ -682,7 +875,7 @@ After a successful `build-cross-chain.sh` run:
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (57 as of 2026-08-08 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (59 as of 2026-08-14 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
 ├── 03-media/            media library build scripts
 │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
@@ -845,12 +1038,19 @@ The rules an agent must never violate:
 
    **Wired 2026-08-08** (this list said "not wired" the same morning — it is
    current as of that afternoon):
-   - **sccache two-tier**, `SCCACHE_MULTILEVEL_CHAIN=disk,webdav` + a
-     `type=cache` mount for `SCCACHE_DIR`, on all seven compile RUNs
-     (`Dockerfile.media-builder` `common` stage + the merge builder, which is
-     not a descendant so the ENV is repeated). `SCCACHE_DIR` ALONE DOES
-     NOTHING — without the chain variable sccache stays in single-level legacy
-     mode and the disk backend is not in the chain at all.
+   - **sccache — WebDAV remote ONLY since 2026-08-16.**
+     `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in
+     `Dockerfile.media-builder`'s `common` stage AND in the merge builder (not a
+     descendant, so the ENV is repeated — change BOTH or neither). The two-tier
+     layout `disk,webdav` is what it *was*, and the owner wants it back once
+     WCOW cache mounts mature; it is off because **BuildKit cache mounts on
+     Windows lose writes** once the directory holds objects an EARLIER RUN
+     wrote (158 of 250 vs 0 of 250 into a plain directory; a fresh dir on the
+     same mount is fine). Note this is the same family as the already-known
+     "directory RENAMES fail on cache mounts" caveat further down this rule.
+     Full measurement + the two-step re-verification recipe: `docs/windows-builds.md` #99.
+     `SCCACHE_DIR` ALONE DOES NOTHING — without the chain variable sccache is in
+     single-level mode, and with a remote configured that means remote-only.
    - **sccache is BUILT FROM SOURCE** at `SCCACHE_GIT_REV`, not installed from
      scoop, and this is load-bearing: released sccache cannot wrap nvcc on CUDA
      13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved `--simt-only`
@@ -859,8 +1059,29 @@ The rules an agent must never violate:
      2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
      asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell
      the fixed and broken builds apart — main still reports 0.17.0.
-   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** on the back of that, which is what makes
-     ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable at all.
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** was wired on the back of that, and would
+     be what makes ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable — but it
+     has been **OPT-IN and OFF by default since 2026-08-10** (`SCCACHE_CUDA_LAUNCHER=1`;
+     sccache-wrapped nvcc dropped per-arch instantiations and produced link
+     failures). CUDA therefore recompiles on every run today, which is most of
+     onnx's ~53 min; do not read a long onnx stage as a cache failure. Never
+     flip the opt-in without all three canaries — see the Common Failure Modes
+     row on `lld-link: error: undefined symbol`. Since 2026-08-17 the opt-in is
+     actually REACHABLE from the host: `SCCACHE_CUDA_LAUNCHER` and
+     `SCCACHE_REPRO_CUDA_LLM` are declared as dormant ARGs in the
+     media-core-built-onnx stage (undeclared build-args are silently DISCARDED
+     by buildctl — before this, the documented opt-in was wired to nothing),
+     and `repro-sccache-cuda-llm-deadlock.ps1` passes BOTH (skipping patch 006
+     alone compiles bare nvcc and reads as a false "deadlock gone" all-clear).
+     The WebDAV-only retest ran 2026-08-18 and settled both questions: the
+     #2808 DEADLOCK is #99 collateral (all 1891 CUDA objects incl. every
+     fused_moe launcher compiled through the server, no stall), but the
+     MISCOMPILE is real, storage-independent, and happens on a COLD-CACHE
+     run — dropped instantiations (`QkvToContext<*, __nv_fp8_e4m3>`,
+     `BiasSoftmaxImpl<double>`, `run_memory_efficient_attention`) as the
+     objects leave the wrapped compile. CUDA stays bare; the launcher-default
+     question is CLOSED until upstream fixes the decomposition layer
+     (addendum draft: `out/upstream-sccache-2808-addendum.md`).
    - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
      would bake a build-only mount path into the shipped image).
 
@@ -872,7 +1093,10 @@ The rules an agent must never violate:
    tier-0 `type==exec.cachemount` cap in `windows/buildkitd.toml` — it is
    **shared** by every cache mount plus local sources and git checkouts, and
    the sccache L0 (15G) and uv cache (10G) already claim most of it. Cache
-   sizes and that cap are ONE decision, not two.
+   sizes and that cap are ONE decision, not two. (Since 2026-08-16 the L0 mount
+   is attached but DORMANT — the chain defaults to WebDAV-only — so its 15G is
+   reserved rather than consumed. Do not repurpose that headroom: the tier is
+   meant to return, see #99.)
 
 ## Code Organization (key shared utilities)
 
@@ -923,10 +1147,22 @@ stage does `FROM ${BASE_IMAGE}`: `base → compiler → sdk → media → androi
 package → torch → wrapper → manifest`. The base-image handoff MUST NOT rely on a
 bare mutable tag, or a stage can silently consume a STALE locally-cached image.
 
-`--output type=image,name=...,push=true` pushes the new digest but does not
-reliably refresh the local containerd tag; BuildKit's default `FROM` prefers an
-already-present local image. So rebuilding `media` then building `android` can
-quietly reuse the old `media`.
+`--output type=image,name=...` does not reliably refresh the local containerd
+tag; BuildKit's default `FROM` prefers an already-present local image. So
+rebuilding `media` then building `android` can quietly reuse the old `media`.
+**This is not just a `FROM` hazard — it broke the runtime wrapper's OWN tag.**
+On this rootless nerdctl host, `nerdctl build --output type=image,name=X`
+creates NO local tag X at all (verify: `--output type=image,name=X` → X absent
+from `nerdctl images`; `-t X` → present). The runtime lane used the annotated
+`--output type=image,name=<tag>,annotation.*` exporter to tag the wrapper, so
+the freshly built wrapper was invisible and `nerdctl push <tag>` +
+`nerdctl manifest create <tag>` resolved the STALE pre-existing tag — shipping
+`:latest-cross` byte-identical five times (2026-08-14/15, amd64 frozen at
+`35c1f1df`). FIXED: `runtime-build-fns.sh append_runtime_image_output` now uses
+plain `-t` on both paths (reliably creates AND overwrites the tag). Do NOT
+reintroduce the `--output type=image,name=` exporter for a tag you then push or
+index — use `-t`. (The dropped ancestry annotations never reached the registry
+anyway; re-embedding them is a tracked follow-up.)
 
 Rules:
 
@@ -1016,15 +1252,41 @@ base ─┬─ onnxruntime ───────┐
   list into a new caller.
   On Windows hosts: `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`.
 - **Linux host config is code**: `linux/host-config/` carries the canonical
-  rootless-BuildKit `buildkitd.toml` (gc keep-budget + max-parallelism) and the
-  systemd drop-in. `apply-host-config.sh` installs (refuses while a chain
-  runs; daemon restart is a printed operator step), `verify-host-config.sh`
-  warn-diffs live vs repo. Exists because a live-only toml edit silently
-  regressed once — reconcile drift through the repo, never by editing
-  `~/.config` alone.
+  rootless-BuildKit `buildkitd.toml` (gc keep-budget + cachemount-sparing
+  gcpolicy pair + max-parallelism) and the systemd drop-in.
+  `apply-host-config.sh` installs (refuses while a chain runs; daemon restart
+  is a printed operator step), `verify-host-config.sh` warn-diffs live vs
+  repo. Exists because a live-only toml edit silently regressed once —
+  reconcile drift through the repo, never by editing `~/.config` alone.
+- **Linux disk reclaim: `linux/host-config/prune-safe.sh`, NEVER
+  `nerdctl builder prune -f`** (CACHE1, 2026-08-17). The -f prune deletes
+  `type==exec.cachemount` records — ccache/sccache/uv/cargo/llvm-src, hours
+  of compile time in a few GB — together with the cheap-to-regenerate layer
+  cache (measured 207 GB vs 4.9 GB); one run paid ~1.5-2 h of cold LLVM
+  rebuilds for it. prune-safe.sh prunes `type==regular` only via buildctl's
+  `--filter` (nerdctl has none), takes `PRUNE_KEEP_GB`/`DRY_RUN`, and proves
+  cachemount survival before/after.
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
-  `.github/workflows/windows-scripts.yml` on windows-latest).
+  `.github/workflows/windows-scripts.yml` on windows-latest). The suite is
+  zero-dependency and guards *classes* of defect, not just instances — e.g.
+  `Driver.ClosureScope.Tests.ps1` walks the AST of both drivers and fails any
+  `.GetNewClosure()` block inside a function that reads a top-level `param()`
+  variable, because that silently resolves to EMPTY and broke the scripted
+  resume for months (backlog #40). Same shape elsewhere:
+  `Dockerfile.EolAttributes.Tests.ps1` walks the real COPY instructions and
+  fails any COPY-reachable file with no frozen git EOL attribute (#55);
+  `Patches.CmakeNoOpGuards.Tests.ps1` fails unguarded source rewrites (#56);
+  `Pins.CanonicalValues.Tests.ps1` pins CUDA_ARCHITECTURES at versions.env
+  itself rather than at a code fallback the real build path never reaches, and
+  compares every merge-builder ARG default against the pin (#58, #60). Each
+  carries a rot guard so a moved target cannot make it pass vacuously.
+  When you fix a bug here, prefer a guard for its class.
+  Note the linter also exits **2** for an INFRASTRUCTURE failure — PSScriptAnalyzer
+  1.25.0 throws intermittently (~2 in 9 runs) and an exception is not a finding;
+  files are retried once and never silently skipped (#82). And CI currently runs
+  the linter WITHOUT `-FailOnAnalyzer` while `main` is not branch-protected, so
+  this gate is advisory (backlog #59).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
@@ -1062,6 +1324,8 @@ base ─┬─ onnxruntime ───────┐
 | Rust smoke test fails: "rustup could not choose a version of cargo/rustc" | A **toolchain-less** rustup (proxy shims in `CARGO_BIN` that resolve no toolchain) — e.g. `rustup-init --default-toolchain none`, or an image from before the Cargokit fix | rustup WITH a stable default toolchain IS the sole provider (`setup-rust-toolchain.ps1`); `CARGO_BIN` on the rustup path is by design. Fix with `rustup default stable`; never add a second provider (no scoop rust) (§ Windows Build Invariants). |
 | BK lane: `failed to reimport snapshot` / `failed to write compressed diff` at finalize/export | hcs-temp flake family (2026-08-05): realtime scanner racing `C:\WINDOWS\SystemTemp\hcs*` scratch, and/or low disk (<~25 GB free makes hcsshim "weird" before disk-full) | Auto-retried by the BK driver's transient pattern. Root remedies (applied 2026-08-05): Defender exclusions for buildkitd/containerd + their ProgramData dirs; keep ≥40 GB free; gcpolicy active. ALWAYS check free disk first — disk-full mimics the same message. |
 | `buildctl` local export of a Windows image dies `error from receiver: write ...\Boot\Fonts\<font>.ttf: file already closed` (nondeterministic file; every layer had already committed) | The `type=local` exporter cannot receive a full Windows rootfs client-side — NOT a host/commit defect (measured 2026-08-10 on a host whose `type=image,...,unpack=true` export of the same solve was green) | Export `type=image` (what `build-buildkit.ps1` and, since 2026-08-10, `probe-build-copy.ps1` do) or the tar-stream `type=docker,dest=<file>` (`-FinalTar`); never judge host health from a `type=local` export of a Windows image. |
+| A download from gitlab.freedesktop.org / code.videolan.org "succeeds" (HTTP 200) but is a few KB and extraction fails — e.g. GStreamer wraps "downloaded but extraction into X failed" | **Anubis anti-scraper**: browser User-Agents without JS get an HTML challenge page as a 200 (the shared `Invoke-DownloadWithRetry` sends a browser UA). Second variant: `.git` left in a GitLab `/-/archive/` URL serves HTML even to curl. Both burned a merge run on 2026-08-17. | Fetch via `Invoke-WrapDownload` (curl-native UA + gzip/bzip2 magic-byte check) and strip `.git` from GitLab archive URLs. Diagnosis in 10 s: read the first bytes — `<!doctype html>` = challenge page, not a corrupt archive. |
+| tvm stage: `TVM: llvm-config.exe not found on PATH` (#47 gate) | Scoop LLVM never ships llvm-config or dev libs — TVM was silently USE_LLVM=OFF (no CPU codegen) until 2026-08-17. NOT a broken PATH. | The self-heal in `build-tvm-from-source.ps1` builds a pinned minimal LLVM from source (§ Windows Build Invariants). If the gate throws, check the heal's download/SHA pin for the current `LLVM_WINDOWS_VERSION` — do NOT fall back to the official /MT dev tarball or USE_LLVM=OFF. |
 | Compile fully green, then `lld-link: error: undefined symbol` for template instantiations (`QkvToContext<...>`, `BiasSoftmaxImpl<double>`) at the DLL link — identical on every retry AND on a fresh cache mount | **the sccache nvcc path produced objects lacking arch/define-guarded instantiations during REAL compiles** — runs 10+11 with launcher failed identically, runs 5+12 bare-nvcc linked green. Poisoning is excluded on BOTH levels (run 11: fresh L0 mount; L2 turned out to hold only 9 probe entries — the chain's write-through never fed it). Minimal wrapped-vs-bare nm-diff repros (define-guard + arch-guard shapes; plain, ORT-ish and `--options-file` command lines, fresh disk-only cache) are all CLEAN — the loss needs real-ORT invocation complexity (untested: `-MD/-MF` depgen, `-forward-unknown-to-host-compiler`, quoted rsp defines, client concurrency). Same machinery also crashed the server on fused_moe (10054, upstream family #1098) and produced the `Severity::k0` phantom; arch-guard×preprocessing has upstream history (#2299) | CUDA is bare BY DEFAULT since 2026-08-10 night — the launcher is OPT-IN at the wiring site (`Invoke-CmakeConfigure` adds `CMAKE_CUDA_COMPILER_LAUNCHER` only under `SCCACHE_CUDA_LAUNCHER=1`; the earlier per-script opt-out env var leaked process-wide on the classic lane, review find). NEVER export that opt-in on a new sccache without all THREE canaries: verify-cuda-cache.ps1 + fused_moe compile + a full providers_cuda LINK (the miscompile is invisible until link). C/CXX launcher stays safe. |
 | BK lane: `hcsshim::ImportLayer failed ... (0xb7) "already exists"` on the SAME chain-IDs across retries | Persistent snapshotter debris from an earlier low-disk finalize failure — NOT transient, `buildctl prune` cannot reach it (0B reclaimable) | Non-admin sidestep: cache-bust the layer above (any content change to the COPY'd/mounted file → new chain-IDs; live example in `setup-scoop-tools.ps1`'s 2026-08-05 header). Admin fix: prune/GC under the active gcpolicy. |
 | `buildctl prune` returns `Total: 0B` no matter what you pass | **CHECK `du -v` FOR `Shared: true` FIRST — that is almost always the answer.** `Shared` records are pinned by containerd IMAGE TAGS and NO prune flag can take them; prune only ever gets the `Private` slice. Measured 2026-08-08: a 109.06 GB store reporting `Reclaimable: 109.06GB` under a 42.95 GB reserve — i.e. well ABOVE the reserve, everything nominally reclaimable — still pruned **0 B**, because every record was `Shared: true`. `Reclaimable` describes the LEASE state, not what prune will hand back. Earlier the same day I twice blamed `reservedSpace` for this and twice wrote it into the docs; both times the real holder was tag-pinning. **`reservedSpace` is a red herring for this symptom.** The lever for `Shared` is an admin `nerdctl --namespace buildkit rmi` (or `image prune -f` for untagged generations) — and note that freeing it means deleting stage images you may want, so decide deliberately rather than reflexively. Otherwise: refs pinned by BUILD HISTORY (every record incl. failed attempts pins its refs indefinitely — 2026-08-05: 414 GB store, 0B reclaimable, ~10 grind-run histories) and/or by named `bk-*` image generations | If Total < reservedSpace, the ONLY levers are (a) admin `nerdctl --namespace buildkit rmi` on dead stage tags — that frees the **containerd image store**, a SEPARATE store (measured: 66.5 → 85.0 GB while buildkit's 207.63 GB did not move a byte), or (b) lower `reservedSpace` in `windows/buildkitd.toml` and re-apply with an admin **pwsh 7** `apply-buildkitd-gcpolicy.ps1` (it `#requires -Version 7.0` and refuses silently-looking under 5.1). Size the reserve against space actually AVAILABLE to buildkit, not total disk: `reservedSpace` + the highest stage disk floor (60 GB) must fit, or the chain starves with GC unable to help — that is what made a run die at 53.5 GB mid-media and read as a disk problem. Otherwise (non-admin, safe while a build runs): `buildctl prune --free-storage <MB>` — the lever that works WHEN the store is above the reserve; released 63.8 GB mid-build on 2026-08-07 without disturbing the running solve. **`prune-histories` is NOT a reliable first step any more:** on 2026-08-07 it aborted with `error: lease "ref_...": not found` and freed 0 bytes, against the 289 GB it released on 2026-08-05 — a stale lease from a killed run poisons it. Try it second, not first, and never rely on it while the disk is already critical. Both leave pinned fresh images + active-solve leases alone. Obsolete named generations additionally need an ADMIN shell: `nerdctl --namespace buildkit rmi docker.io/local/kataglyphis:bk-<old>`. Durable fix: the `[history] maxAge/maxEntries` section in windows/buildkitd.toml (active after the next service restart). The classic docker lane is separate (`docker rmi` works non-admin; verify a registry copy exists before deleting tagged finals). **`--free-storage` is a MINIMUM-FREE TARGET, not an amount** (2026-08-06/07): the daemon prunes until the host has that many MB free and stops, so on a disk already above the target it deletes nothing — measured 77 MB at `200000` with 198.5 GB free and 150.5 GB Private, vs the full 150.48 GB at `900000`. To drain everything unpinned, ask for more free space than the disk physically has; it cannot over-delete, `Shared` stays pinned. **A SUPERSEDED lineage is the big hidden reclaim:** after a cache-bust rebuilds base/sdk/toolchain, the old downstream stage tags still pin a FULL copy of every layer beneath them — measured 3× `setup-cuda` (109.5 GB), 3× `setup-scoop-tools` (88.5 GB), 2× `setup-vs` (69.1 GB), i.e. 267 GB of a 384 GB store. Spot it with `buildctl du -v` grouped by the script in `Description`, reading `Last used` (superseded records predate the current chain's rebuild); kill by lineage not by age, admin `rmi` the dead stage tags, wait ~30 s for the containerd GC, then prune. Full sequence and numbers (266 GB, C: 4.8 → 271.3 GB) in `docs/windows-builds.md` § Store GC. |
@@ -1090,6 +1354,11 @@ After changing versions:
 5. Verify ARG consistency: `bash linux/scripts/01-core/verify-arg-consistency.sh`
    (also enforces that every versions.env-named ARG has a safety-net default in its file)
 6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
+
+Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` also requires adding the
+new version's SHA256 to `$llvmSrcSha` in `build-tvm-from-source.ps1` (the #47
+mini-LLVM heal pins the llvm-project source tarball per version and THROWS on
+an unknown one — deliberately, unpinned downloads are forbidden).
 
 Windows layer-cost note: `windows/Dockerfile.base` declares `VULKAN_VERSION`/
 `CMAKE_VERSION` just above the scoop step (NOT at the top) so bumping them

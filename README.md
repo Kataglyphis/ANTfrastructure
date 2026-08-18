@@ -25,23 +25,38 @@ expense of the others:
 - **Speed** — layered caching end-to-end (BuildKit layers with narrow cache
   keys, local cache exports, the ccache/sccache HYBRID — ccache for C/C++,
   sccache for Rust; layer cache and compiler cache multiply, they don't
-  compete — pinned buildkitd GC budget) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
+  compete — pinned buildkitd GC budget whose policies spare compile-cache
+  mounts, plus `linux/host-config/prune-safe.sh` for manual reclaim that
+  provably keeps them) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
   That map is the **Linux** lane. The **Windows** lane caches by deliberate
-  layer ordering plus a two-tier sccache (local `disk` L0 in front of the
-  WebDAV L2) covering C/C++ **and** CUDA, and a uv/pip wheel cache — see
+  layer ordering plus an sccache WebDAV remote covering C/C++, and a uv/pip
+  wheel cache. A local disk tier in front of that remote is wired but **off by
+  default**, because BuildKit's Windows cache mounts lose writes into a
+  directory an earlier build step populated; CUDA is deliberately not routed
+  through sccache at all. Both are measured, not assumed — see
   [`AGENTS.md` § Caching discipline](AGENTS.md) rule 5, which also records why
   sccache is built from source there (released builds cannot wrap `nvcc` on
-  CUDA 13.3).
+  CUDA 13.3). **The WebDAV L2 is only as available as the dufs server backing
+  it:** while dufs ran as a user-session process it died mid-build and every
+  cache WRITE failed silently — builds stayed green, just uncached. Run it as
+  the session-independent SYSTEM task (`windows\scripts\setup-dufs-service.ps1`)
+  and treat a 0 % hit rate as an outage, not as a cold cache.
 - **Stability** — digest-pinned stage handoffs, machine-checked cross-run
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
   version pins in a single source of truth (`linux/scripts/01-core/versions.env`),
   and gates that fail loudly instead of passing on fallbacks.
-- **Tests** — unit suites (`linux/scripts/tests/`), lint gates (shellcheck,
-  IFS-safety, hadolint, actionlint, ruff for Python, gitleaks secret scan),
-  a fast preflight (`linux/scripts/preflight.sh`) that catches error classes
-  in seconds instead of hours, and runtime smokes that assert real behavior
-  against the pins.
+- **Tests** — unit suites (`linux/scripts/tests/`, `windows/scripts/tests/`),
+  lint gates (shellcheck, IFS-safety, hadolint, actionlint, ruff for Python,
+  gitleaks secret scan), a fast preflight (`linux/scripts/preflight.sh`) that
+  catches error classes in seconds instead of hours, and runtime smokes that
+  assert real behavior against the pins. On the **Windows** lane the smoke test
+  is not optional: every chain ends with a gate that runs it against the image
+  it just built and fails the build if it does not pass — with coverage floors,
+  so "nothing ran" is a distinct failure rather than a green "all tests passed".
+  The tests that matter most there assert *loading*, not existence: this repo's
+  defect history is dominated by libraries that build and link cleanly and then
+  fail at load time.
 
 Rules an automated agent must follow live in [`AGENTS.md`](AGENTS.md)
 (§ Project priorities, § Shell safety conventions, § Caching discipline).

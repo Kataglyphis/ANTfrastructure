@@ -21,6 +21,10 @@ source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
 source_module downloads.sh
+# Shared CPython dev-package/extension table (backlog TS3): drives the
+# cross-target dev installs and the extension asserts below, and the SAME
+# table feeds the host list (package-lists.sh) and smoke-toolchain.sh.
+source_module cpython-dev-packages.sh
 
 install_err_trap
 
@@ -161,11 +165,22 @@ _python_cross_enable_multiarch_apt() {
 # fallback (cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
 _python_cross_stage_target_dev_pkgs() {
   local target_arch="$1"
-  apt-get install -y --no-install-recommends \
-    "zlib1g-dev:${target_arch}" "libbz2-dev:${target_arch}" \
-    "liblzma-dev:${target_arch}" "libzstd-dev:${target_arch}" \
-    "libffi-dev:${target_arch}" "libssl-dev:${target_arch}" \
-    "libsqlite3-dev:${target_arch}" "uuid-dev:${target_arch}" "libbz2-dev" 2>&1 || \
+  # Package NAMES come from the shared cpython-dev-packages.sh table (backlog
+  # TS3), so this cross list can never again desync from the host list in
+  # package-lists.sh (the 2026-08-09 libsqlite3-dev incident). Each gets the
+  # explicit :${target_arch} qualifier (install_target_packages' silent amd64
+  # fallback would defeat the cross install). The single tolerant `|| warn` is
+  # kept as-is; promoting the table's required rows to a FATAL install is the
+  # remaining TS2 refinement (deferred: needs a cross rebuild to prove no
+  # target arch flakily drops a "required" dev package under Ports outages).
+  local -a target_pkgs=() _pkg
+  while IFS= read -r _pkg; do
+    [ -n "${_pkg}" ] && target_pkgs+=("${_pkg}:${target_arch}")
+  done < <(cpython_ext_dev_packages)
+  # Host-arch libbz2-dev too: the build interpreter links bz2 during the
+  # cross configure probes (ac_cv_lib_bz2_* below), so it must exist unqualified.
+  target_pkgs+=("libbz2-dev")
+  apt-get install -y --no-install-recommends "${target_pkgs[@]}" 2>&1 || \
     warn "Some target dev packages failed to install; extension modules may be missing"
 }
 
@@ -214,6 +229,16 @@ EOF
   rm -rf "${cross_build_dir}" "${stage_root}"
   mkdir -p "${cross_build_dir}/Python/frozen_modules" "${stage_root}"
 
+  # AP5: link-time optimization for the foreign-arch interpreter (10-30%
+  # upstream-documented speedup). Cross-LTO relies on the target GCC's LTO
+  # linker plugin working through the cross toolchain — fragile, so it is
+  # GATED: PYTHON_LTO=0 disables it without a code revert (a knob flip in the
+  # next build if it ever breaks the cross Python compile). PGO stays cross-out
+  # of reach (needs the foreign interpreter under qemu — separate investigation).
+  # The empty-array expansion below is safe under set -u in bash 4.4+.
+  local -a _lto_args=()
+  [ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
+
   (
     cd "${cross_build_dir}"
     CONFIG_SITE="${config_site}" \
@@ -229,6 +254,7 @@ EOF
         --with-build-python="${build_python_bin}" \
         --with-pkg-config=yes \
         --enable-shared \
+        "${_lto_args[@]}" \
         --without-ensurepip \
         --disable-test-modules
   )
@@ -468,7 +494,12 @@ fi
 tar -xf "${PYTHON_TARBALL}" -C "${TMPDIR:-/tmp}"
 
 cd "${PYTHON_SOURCE_DIR}"
-./configure --enable-shared --enable-optimizations --prefix=/usr/local
+# AP5: native interpreter already builds with PGO (--enable-optimizations); add
+# LTO too (safe/well-trodden natively). Same PYTHON_LTO=0 escape hatch as the
+# cross path. Empty-array expansion is set -u safe (bash 4.4+).
+_lto_args=()
+[ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
+./configure --enable-shared --enable-optimizations "${_lto_args[@]}" --prefix=/usr/local
 make -j"$(compute_jobs_with_mem_cap "" 2500)"
 make altinstall
 

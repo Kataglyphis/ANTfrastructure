@@ -1,3 +1,4 @@
+#requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -17,7 +18,6 @@
 #   pwsh -File windows\scripts\toggle-rdna4-gpu.ps1 -Disable
 #   Start-Process pwsh -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','D:\GitHub\Kataglyphis-ContainerHub\windows\scripts\toggle-rdna4-gpu.ps1'
 
-#requires -Version 7.0
 [CmdletBinding()]
 param(
     [switch]$Disable,

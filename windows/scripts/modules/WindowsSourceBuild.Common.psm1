@@ -609,6 +609,54 @@ function Stop-SccacheStallGuard {
     foreach ($m in $msgs) { Write-Host "[sccache-stall-guard] $m" -ForegroundColor Yellow }
 }
 
+function Get-PersistentBuildLogPath {
+    # A build log written inside $buildDir DIES WITH THE SOLVE: when the vertex
+    # fails, the container filesystem is discarded and the only surviving
+    # diagnosis is the 50-line tail Invoke-NinjaBuildWithRetry prints - inside a
+    # step log that used to clip at 2MiB. C:\sccache is a persistent cache mount
+    # and survives into the next run, so the full stream stays readable from a
+    # debug container (never-swallow-logs).
+    #
+    # This was fixed for ONNX alone in 2026-08 (backlog #4) and COPY-PASTED
+    # nowhere, so opencv/iree/tvm/litert kept losing their logs for months -
+    # IREE being a 60-120 min LLVM build. Backlog #43 made it shared: one
+    # implementation, five call sites, no room to drift again.
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        # Where the log goes when no persistent cache mount is available (the
+        # host lane, or a container built without the sccache mount).
+        [Parameter(Mandatory)][string]$FallbackDir
+    )
+    # NEVER $env:SCCACHE_DIR — that is sccache's own cache ROOT, and this
+    # function used to write build logs straight into it as `<SCCACHE_DIR>\logs`.
+    # sccache's LRU disk cache indexes everything under its root, so every build
+    # was churning large, appended, rotated files through the middle of the cache
+    # index. Measured consequence: 100 % of L0 cache writes failing with
+    # `The system cannot find the path specified. (os error 3)` — genai 157/157,
+    # opencv 1/1, every stage that attempted a write at all. The dir reappeared
+    # (65.8 MB) after every build even when a probe had just deleted it, which is
+    # what finally identified this function as the source.
+    #
+    # #90 moved SCCACHE_ERROR_LOG out of the cache root for the same reason and
+    # created a DEDICATED mount for it (C:\sccache-logs, id=sccache-logs-winamd64).
+    # Build logs belong on that same mount; it is equally persistent and is not
+    # scanned by sccache. Deriving it from SCCACHE_ERROR_LOG keeps the two in
+    # step instead of hard-coding the path a second time.
+    $logRoot = if ($env:SCCACHE_ERROR_LOG) { Split-Path $env:SCCACHE_ERROR_LOG -Parent } else { '' }
+    $logDir = if ($logRoot -and (Test-Path $logRoot)) { $logRoot } else { $FallbackDir }
+    $null = New-Item -ItemType Directory -Force -Path $logDir
+    $logPath = Join-Path $logDir $Name
+    # Copy+Remove, NOT Move-Item: the cache mount is rename-hostile (probed for
+    # directories; file renames are the same wcifs hazard family). Create-only
+    # semantics keep the rotation inside the mount contract. One .prev
+    # generation bounds growth.
+    if (Test-Path $logPath) {
+        Copy-Item -Path $logPath -Destination "$logPath.prev" -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $logPath -Force -ErrorAction SilentlyContinue
+    }
+    return $logPath
+}
+
 function Invoke-NinjaBuildWithRetry {
     # Retry ladder (run-6 lesson, 2026-08-10): a guard-kill failure is NOT
     # OOM-shaped - everything already compiled is an L0 hit, so the right
@@ -901,6 +949,77 @@ function Invoke-SourceBuildChain {
     if ($Until -and ($names -notcontains $Until)) {
         throw "Invoke-SourceBuildChain: -Until '$Until' is not a stage of '$Label' (stages: $($names -join ', '))"
     }
+    # PROLOGUE: force a FRESH sccache server before the first compile (backlog
+    # #97). sccache reads SCCACHE_ERROR_LOG when the SERVER starts, and in a
+    # build the server is started implicitly by the first wrapped compile - at
+    # which point the setting evidently does not take: four consecutive builds
+    # produced ZERO error-log bytes while a hand probe in the SAME image with
+    # the SAME env produced one immediately. The only difference the probe had
+    # was an explicit --stop-server BEFORE compiling, so it always got a server
+    # that had read the current environment. This makes every stage do the same.
+    #
+    # Also the precondition for the epilogue's flush to mean anything: stopping
+    # a server that never opened the log flushes nothing.
+    #
+    # Best-effort: no server running is the NORMAL case in a fresh container, and
+    # a failure here must never fail a build that would otherwise be green.
+    $sccachePrologue = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($sccachePrologue) {
+        Write-Host "Starting the sccache server from a STABLE working directory (backlog #99)..."
+        try {
+            # Stop first so the start below is the one that wins (usually a no-op
+            # in a fresh container - "no connection could be made" is expected).
+            & $sccachePrologue.Source --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+
+            # START IT EXPLICITLY, FROM C:\.
+            #
+            # NOTE — this did NOT fix the cache-write failures. The hypothesis was
+            # that the implicitly-spawned server inherits the build script's CWD,
+            # which the chain later deletes, breaking relative path resolution.
+            # MEASURED 2026-08-15 with this code live: genai still reported
+            # 157 misses / 157 L0 write failures — unchanged. See backlog #99;
+            # do not re-litigate the CWD theory from the old evidence.
+            #
+            # Kept anyway because it is independently correct: it guarantees the
+            # server has read THIS stage's environment (SCCACHE_ERROR_LOG,
+            # SCCACHE_LOG) rather than inheriting a stale one, which is what makes
+            # the epilogue dump meaningful at all. It is hygiene, not a fix.
+            #
+            # C:\ cannot be deleted, so the server's CWD stays valid for the whole
+            # stage. Push-Location/Pop-Location keeps the caller's directory.
+            #
+            # TRUNCATE THE ERROR LOG FIRST — it lives on the SHARED sccache-logs
+            # cache mount and is APPEND-only, so it survives across runs (50,928
+            # lines / 12,413 error lines observed). The epilogue dump therefore
+            # replayed a PREVIOUS run's failures verbatim, which read exactly like
+            # a live regression and cost a false alarm. Truncate here, between the
+            # stop (handle released) and the start (server reopens the path), so
+            # everything the epilogue prints belongs to THIS stage and nothing
+            # else. Best-effort: never fail a green stage over a log file.
+            if ($env:SCCACHE_ERROR_LOG) {
+                try {
+                    $errDir = Split-Path $env:SCCACHE_ERROR_LOG -Parent
+                    if ($errDir -and -not (Test-Path $errDir)) {
+                        $null = New-Item -ItemType Directory -Force -Path $errDir -ErrorAction Stop
+                    }
+                    Set-Content -Path $env:SCCACHE_ERROR_LOG -Value $null -Force -ErrorAction Stop
+                    Write-Host "  sccache-prologue| truncated $($env:SCCACHE_ERROR_LOG) (per-stage attribution)"
+                } catch {
+                    Write-Host "  sccache-prologue| WARNING: could not truncate the error log: $($_.Exception.Message)"
+                    Write-Host "  sccache-prologue| WARNING: the epilogue dump may contain entries from EARLIER runs."
+                }
+            }
+
+            Push-Location 'C:\'
+            try {
+                & $sccachePrologue.Source --start-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+            } finally { Pop-Location }
+        } catch {
+            Write-Verbose "sccache prologue skipped: $($_.Exception.Message)"
+        }
+        $global:LASTEXITCODE = 0
+    }
+
     $skipping = [bool]$StartAt
     foreach ($stage in $Stages) {
         if ($skipping) {
@@ -1147,6 +1266,68 @@ function Complete-SourceBuildChain {
         [switch]$ScrubAfter
     )
     Write-Host "`n=== $Label chain completed ==="
+
+    # FLUSH THE SCCACHE SERVER BEFORE THE RUN ENDS (2026-08-15).
+    #
+    # SCCACHE_ERROR_LOG is written by the sccache SERVER, and with
+    # SCCACHE_IDLE_TIMEOUT=0 that server never exits on its own - so the RUN's
+    # process tree is torn down with it still holding the log buffered, and the
+    # file never lands on the mount. That is why the error log was EMPTY after
+    # every real build while a hand probe (which waits a few seconds with the
+    # server alive) sees content immediately: the path, the level and the mount
+    # were all correct the whole time, and three separate hypotheses (LRU
+    # pruning, wrong location, unset SCCACHE_LOG) were chased before the actual
+    # mechanism turned out to be "killed before flush".
+    #
+    # --stop-server also flushes the async webdav write-through tail, which the
+    # Dockerfile's own IDLE_TIMEOUT note already warns "dies with the server".
+    # Runs AFTER every per-component Write-SccacheStatsToStderr (this is the
+    # outermost chain epilogue), so the stats still talk to a live server.
+    #
+    # Best-effort by design: a missing sccache, or a server that already exited,
+    # must never fail a green stage.
+    $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($sccacheCmd) {
+        Write-Host 'Stopping the sccache server so its error log + webdav tail flush before the layer closes...'
+        try {
+            & $sccacheCmd.Source --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache| $_" }
+        } catch {
+            Write-Warning "sccache --stop-server failed (non-fatal): $($_.Exception.Message)"
+        }
+    }
+
+    # DUMP THE SERVER LOG INTO THE BUILD LOG, in this same RUN (backlog #98).
+    #
+    # Reading it from a LATER build does not work and cost four wrong
+    # conclusions: `buildctl --no-cache` empties the cache mount for that build,
+    # so every probe wiped the log before looking at it (#96). Emitting it here
+    # sidesteps mounts entirely — the content lands in the step log, which the
+    # buildkitd step-log env now keeps unclipped.
+    #
+    # This is the ONLY way we currently get sccache's own account of WHY a write
+    # is rejected. The failures are all at L0 (local disk): genai reports
+    # `L0 (disk) write failures 157` against `L1 (webdav) write failures 0`
+    # (#98), and the top-level `Cache write errors` counter hides that split —
+    # read the per-layer block, not the summary.
+    $errLog = $env:SCCACHE_ERROR_LOG
+    if ($errLog -and (Test-Path $errLog)) {
+        $lines = @(Get-Content $errLog -ErrorAction SilentlyContinue)
+        Write-Host "`n=== sccache server log ($($lines.Count) lines, $errLog) ==="
+        # Failures first and in full; they are what this exists for. The tail
+        # gives surrounding context without dumping a debug-level flood.
+        $failures = @($lines | Select-String -Pattern 'ERROR|WARN|failed|denied|refused' -SimpleMatch:$false)
+        if ($failures.Count -gt 0) {
+            Write-Host "--- $($failures.Count) error/warn line(s) ---"
+            $failures | Select-Object -Last 60 | ForEach-Object { Write-Host "  sccache-log| $_" }
+        } else {
+            Write-Host '--- no error/warn lines; tail follows ---'
+            $lines | Select-Object -Last 20 | ForEach-Object { Write-Host "  sccache-log| $_" }
+        }
+        Write-Host '=== end sccache server log ==='
+    } elseif ($errLog) {
+        Write-Host "sccache server log NOT written ($errLog) - the server never opened it."
+    }
+
     if ($ScrubAfter) { Clear-BuildScratch }
     # Callers still end with their own explicit `exit 0`: pwsh -File (and
     # docker run) otherwise propagate the LAST native exit code, and a
@@ -1156,6 +1337,7 @@ function Complete-SourceBuildChain {
 
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
+    'Get-PersistentBuildLogPath',
     'Invoke-SourceBuildChain',
     'Complete-SourceBuildChain',
     'Stop-LingeringBuildProcess',
@@ -1217,6 +1399,11 @@ Export-ModuleMember -Function @(
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
-    'Invoke-DownloadWithRetry'
+    'Invoke-DownloadWithRetry',
+    # #113: used directly by build-gstreamer-from-source.ps1; their omission
+    # threw CommandNotFound at compile start (verify12) because module-internal
+    # use never needs the export list - direct script calls do.
+    'Start-SccacheStallGuard',
+    'Stop-SccacheStallGuard'
 )
 
