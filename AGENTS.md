@@ -1264,7 +1264,13 @@ base ─┬─ onnxruntime ───────┐
   cache (measured 207 GB vs 4.9 GB); one run paid ~1.5-2 h of cold LLVM
   rebuilds for it. prune-safe.sh prunes `type==regular` only via buildctl's
   `--filter` (nerdctl has none), takes `PRUNE_KEEP_GB`/`DRY_RUN`, and proves
-  cachemount survival before/after.
+  cachemount survival before/after. Battle-proven 2026-08-18: 5 mid-run
+  invocations, ~350 GB reclaimed, 0 cachemount losses. Mid-run lever ORDER:
+  (1) prune-safe.sh, (2) `nerdctl rmi` of specific already-pushed tags
+  (refuses in-use ones — safe), (3) `nerdctl system prune` NEVER while a
+  chain runs — "unused" means not-container-referenced, so it deletes TAGGED
+  cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
+  registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest). The suite is
@@ -1298,7 +1304,7 @@ base ─┬─ onnxruntime ───────┐
 
 |---------|-------------|-----|
 | `exec format error` | QEMU/binfmt not registered after host reboot | `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` |
-| `no space left on device` | Disk full from cached images/artifacts | `nerdctl system prune -a -f && rm -rf out/local-*` |
+| `no space left on device` | Disk full from cached images/artifacts | In order: (1) `linux/host-config/prune-safe.sh` (spares compile caches), (2) `nerdctl rmi` of specific already-pushed tags, (3) `nerdctl system prune -a -f` ONLY with no chain running — it deletes ALL non-container-referenced images INCLUDING tagged cross-stage locals (bit us mid-run 2026-08-18; registry-pinned handoffs survived via re-pull) |
 | Stale downstream images | Base image rebuilt but downstream not refreshed | Use `--verify-chain` or rebuild from replaced stage |
 | `registry_pin_ref` fails on fresh push | Registry hasn't propagated the new manifest | Now uses `retry()` with 5 attempts; wait a few seconds and retry |
 | Terminal freeze during long build | Build output overwhelms terminal | Use `setsid` / `disown` for very long builds |

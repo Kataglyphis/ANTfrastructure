@@ -27,7 +27,9 @@ expense of the others:
   sccache for Rust; layer cache and compiler cache multiply, they don't
   compete — pinned buildkitd GC budget whose policies spare compile-cache
   mounts, plus `linux/host-config/prune-safe.sh` for manual reclaim that
-  provably keeps them) and opt-in parallelism levers. Map: [`docs/linux-build-basics.md`
+  provably keeps them; cross-stage pushes ship zstd-compressed layers) and
+  opt-in parallelism levers (per-arch `--parallel-archs` with per-stage
+  control and OOM-aware job sizing). Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
   That map is the **Linux** lane. The **Windows** lane caches by deliberate
   layer ordering plus an sccache WebDAV remote covering C/C++, and a uv/pip
