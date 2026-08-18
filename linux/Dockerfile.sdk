@@ -199,8 +199,8 @@ COPY --chmod=755 \
     linux/scripts/02-toolchain/gcc.sh \
     linux/scripts/02-toolchain/vulkan.sh \
     /opt/scripts/toolchain/
-RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
@@ -259,7 +259,7 @@ ENV TVM_REF=${TVM_REF} \
 # /opt/scripts/core/versions.env (FLUTTER_SDK_SHA256 pin) — both already
 # COPY'd above the vulkan RUN.
 COPY --chmod=755 linux/scripts/05-frameworks/flutter/setup-flutter.sh /opt/scripts/frameworks/flutter/setup-flutter.sh
-RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGETARCH},sharing=locked \
+RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGET_ARCH},sharing=locked \
     set -euo pipefail; \
     mkdir -p /var/cache/flutter; \
     mkdir -p /opt/flutter && cp -an /var/cache/flutter/. /opt/flutter/ 2>/dev/null || true; \

@@ -185,6 +185,8 @@ ENV NVIDIA_CODEC_HEADERS=auto \
 # ONNX Runtime stage
 # ==============================================================================
 FROM base AS onnxruntime
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 ARG ONNXRUNTIME_VERSION
 ARG ONNXRUNTIME_NATIVE_BUILD_TYPE=Release
@@ -222,8 +224,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/10-deps.sh,target=/opt/scripts/03-media/build/onnxruntime/build/10-deps.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh,target=/opt/scripts/03-media/build/onnxruntime/build/20-fetch.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib,target=/opt/scripts/03-media/build/onnxruntime/build/lib,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     set -euo pipefail; \
@@ -234,8 +236,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step cpu
@@ -249,8 +251,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -335,6 +337,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # LiteRT stage (Critical Fix #2: abseil span.h copy lives in build-litert.sh)
 # ==============================================================================
 FROM base AS litert
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 ARG LITERT_VERSION
 ARG LITERT_OUTPUT_DIR=/usr/local
@@ -356,8 +360,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh
     --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
@@ -404,8 +408,8 @@ ARG TARGETARCH
 
 RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-frameworks,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -438,6 +442,8 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
 # OpenCV stage
 # ==============================================================================
 FROM base AS opencv
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 ARG OPENCV_VERSION
 # Opt-in reproducibility: 40-hex SHAs pin core/contrib to immutable commits;
@@ -454,8 +460,8 @@ ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
@@ -490,12 +496,12 @@ ARG TARGET_ARCH
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -531,8 +537,8 @@ ARG BUILD_MODE
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
         arm64|aarch64) bash /opt/scripts/03-media/build/armnn/install-deps.sh ;; \
@@ -561,6 +567,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
 # FFmpeg stage
 # ==============================================================================
 FROM base AS ffmpeg
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 # Opt-in reproducibility: set FFMPEG_COMMIT to a 40-hex SHA to pin FFmpeg to an
 # immutable commit archive; empty (default) tracks FFMPEG_VERSION/master.
@@ -582,19 +590,19 @@ ENV FFMPEG_PREFIX=/opt/ffmpeg \
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/ffmpeg/install-deps.sh
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,from=onnxruntime,source=/usr/local/lib/onnxruntime-cpu,target=/usr/local/lib/onnxruntime-cpu,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/ffmpeg-sdks,id=ffmpeg-sdks-${TARGETARCH},sharing=shared \
+    --mount=type=cache,target=/var/cache/ffmpeg-sdks,id=ffmpeg-sdks-${TARGET_ARCH},sharing=shared \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     export PKG_CONFIG_PATH="/var/cache/ffmpeg-sdks:/usr/local/lib/onnxruntime-cpu/runtime/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"; \
@@ -669,8 +677,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/gstreamer/install-deps.sh
 
@@ -678,8 +686,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -699,11 +707,13 @@ RUN --mount=type=tmpfs,target=/tmp \
 # libcamera stage
 # ==============================================================================
 FROM gstreamer AS libcamera
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/libcamera/install-deps.sh
 
@@ -711,12 +721,12 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -742,6 +752,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # there (a deliberate, tolerated extra build for layout uniformity).
 # ==============================================================================
 FROM gstreamer AS opencv-gst
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 ARG OPENCV_VERSION
 ARG OPENCV_COMMIT=""
@@ -754,8 +766,8 @@ ENV OPENCV_PREFIX=${OPENCV_OUTPUT_DIR}
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
@@ -769,7 +781,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
     export FORCE_REBUILD=1; \
     _gst_pc="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -name 'gstreamer-1.0.pc' -type f 2>/dev/null | head -1)"; \
-    if [ -n "${_gst_pc}" ]; then export PKG_CONFIG_PATH="$(dirname "${_gst_pc}"):${PKG_CONFIG_PATH:-}"; fi; \
+    if [ -n "${_gst_pc}" ]; then _gst_dir="$(dirname "${_gst_pc}")"; export PKG_CONFIG_PATH="${_gst_dir}:${PKG_CONFIG_PATH:-}"; fi; \
     echo "opencv pass 2: gstreamer .pc=${_gst_pc:-NONE}  PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-<unset>}"; \
     bash /opt/scripts/03-media/build/opencv/build-opencv.sh \
         --opencv-version "${OPENCV_VERSION}" \
@@ -789,6 +801,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # persist in the published image (build scripts are NOT shipped).
 # ==============================================================================
 FROM media-inputs AS final
+# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+ARG TARGET_ARCH
 
 ARG GSTREAMER_VERSION
 # OPENCV_VERSION rides the same ENV channel as GSTREAMER_VERSION below: the
@@ -868,8 +882,8 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packagin
 
 RUN --mount=type=bind,source=linux/scripts/03-media/runtime,target=/opt/scripts/03-media/runtime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \

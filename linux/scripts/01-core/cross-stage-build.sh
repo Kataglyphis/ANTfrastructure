@@ -117,8 +117,15 @@ _cross_stage_build_impl() {
       _ancestry_ann="$(ancestry_output_annotations \
         "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
     fi
+    # PUSH1 (2026-08-18): compress NEW layers with zstd — measured uplink is
+    # ~4-5 MB/s, so push time IS the parallel-chain ceiling (compiler ~30 min,
+    # 3 media images contend). zstd compresses faster than gzip AND ~30-40%
+    # smaller. Deliberately NOT force-compression: parent layers already in the
+    # registry keep their encoding and are skipped, only this stage's own
+    # layers are (re)compressed. Digest pinning is unaffected (pin is read
+    # back from the registry AFTER push). Revert knob: CROSS_LAYER_COMPRESSION=gzip.
     build_cmd+=(
-      --output "type=image,name=${tag},push=true${_ancestry_ann}"
+      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
     )
     # Supply-chain attestations (opt-in via BUILD_ATTEST=1): SLSA provenance +
     # an SBOM attached to the pushed image as OCI referrers. Off by default

@@ -57,6 +57,19 @@ TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DESCRIBE_CHAIN=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
+# PAR3 (2026-08-18): --parallel-archs pays off very differently per stage
+# (sdk measured ~2.9x faster parallel; media was SLOWER than sequential until
+# the PAR2 cache-mount id split). PARALLEL_STAGES limits which per-arch stages
+# actually run parallel: "all" (default) or a csv like "sdk,android" — stages
+# not listed run sequentially even under --parallel-archs.
+PARALLEL_STAGES="${PARALLEL_STAGES:-all}"
+
+# True when ${1} may run its arches in parallel under --parallel-archs.
+_stage_parallel_allowed() {
+  [ "${PARALLEL_STAGES}" = "all" ] && return 0
+  case ",${PARALLEL_STAGES}," in *",$1,"*) return 0 ;; esac
+  return 1
+}
 
 # Digest reference pins captured during this run.
 # Variables are declared by cross_stage_init_pins() driven by the stage graph
@@ -137,6 +150,8 @@ Options:
                             docs/refactoring-backlog.md).
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
+                            Env PARALLEL_STAGES=all|csv (e.g. "sdk,android")
+                            limits WHICH stages parallelize (default: all)
 EOF
   orchestrator_usage_mirror_options
   cat <<'EOF'
@@ -356,8 +371,13 @@ _chain_run_build_loop() {
       *)
         if cross_stage_is_per_arch "${stage}"; then
           _CROSS_CURRENT_STAGE="${stage}"
+          # PAR3: demote this stage to sequential when PARALLEL_STAGES excludes
+          # it (save/restore — later stages decide independently).
+          _par_saved="${PARALLEL_ARCHS:-0}"
+          _stage_parallel_allowed "${stage}" || PARALLEL_ARCHS=0
           run_parallel_arch_loop _cross_per_arch_build "$(arch_loop_flag_prefix cross-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}") \
             || { _chain_status_emit "${stage}" "failed"; err "stage ${stage} failed for one or more arches"; }
+          PARALLEL_ARCHS="${_par_saved}"
         else
           cross_stage_run "${stage}" \
             || { _chain_status_emit "${stage}" "failed"; err "stage ${stage} failed"; }

@@ -261,7 +261,10 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   (in-use mounts may under-report; if genuinely empty, ccache is not
   persisting at all → separate bug).
 - **PUSH1 — registry pushes are the parallel wall-clock ceiling** [M·★★,
-  MEASURED] uplink is ~4-5 MB/s shared: compiler push ~30 min (20GB), the two
+  MEASURED → **FIXED-STAGED 2026-08-18**, validating in wave3b: cross-stage
+  pushes now `compression=zstd` (no force — parent layers skipped), knob
+  CROSS_LAYER_COMPRESSION=gzip reverts; runtime-wrapper lane NOT touched
+  (RTCACHE3 minefield) — residual below] uplink is ~4-5 MB/s shared: compiler push ~30 min (20GB), the two
   parallel sdk pushes 23 min — and 3 media images (~12-17GB each) will contend
   next. Builds parallelize; pushes serialize on bandwidth. Cheapest lever:
   **zstd layer compression** on the image exports (buildkit
@@ -273,7 +276,9 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   parallel media invocations, RAM 12G/60G under 3-way load; sdk builds 22 min
   parallel vs 64 min sequential (~2.9×).
 - **PAR3 — --parallel-archs must be switchable PER STAGE** [S-M·★★, MEASURED
-  2026-08-18] The run proved parallelism pays off very differently per stage:
+  2026-08-18 → **FIXED-STAGED 2026-08-18**: env PARALLEL_STAGES=all|csv in
+  build-cross-chain.sh (default all = current behavior), save/restore around
+  the per-stage loop; 17/17 loop tests green] The run proved parallelism pays off very differently per stage:
   sdk ~2.9× faster (22 vs 64 min), but media-parallel crossed the ~8h30m
   sequential mark at ~9h52m STILL UNFINISHED — the PAR2 lock serialization
   (hours-long windows where amd64+arm64 sat at 0 CPU while riscv64 held
@@ -385,15 +390,22 @@ being added (if one is added, THIS is the checklist to run it against).
 
 ### Refactor sweep additions (2026-08-17; Dockerfile idioms + bash patterns + parallel-readiness — all rebuild-window)
 
-- **PAR2 — cache-mount ids CONTEND under --parallel-archs** [S/M·★★★] measured
-  in the last build's logs: media-arm64 AND media-riscv64 use `id=apt-cache-amd64`
-  + `id=ccache-amd64` in SOME RUNs (the `${TARGETARCH}` builtin is amd64 for every
-  cross build; only some RUNs use a target-derived id) while others use
-  apt-cache-arm64/riscv64 — mixed. Under --parallel-archs all 3 media builds
-  SERIALIZE on the shared `sharing=locked` apt mounts and share one ccache id in
-  those RUNs. Fix: unify every cache-mount id to the TARGET arch (one convention),
-  audit all Dockerfiles. Also amplifies the existing "Media source-cache mounts"
-  item: parallel builds download the SAME tarballs ×3 SIMULTANEOUSLY.
+- **PAR2 — cache-mount ids CONTEND under --parallel-archs** [S/M·★★★ →
+  **FIXED-STAGED 2026-08-18**, validating in wave3b] Root cause confirmed
+  live: EVERY cache-mount id used `${TARGETARCH}` (builtin = amd64 for all
+  cross lanes) → all 3 lanes shared `apt-cache-amd64` etc.; the smoking gun
+  was onnxruntime deps+fetch holding the `sharing=locked` apt mounts for its
+  ~90-min submodule clone while the other lanes' step 220 blocked (observed
+  23:50-01:14: amd64+arm64 at 0 CPU). FIX: split per-target via
+  `${TARGET_ARCH}` build-arg for the contended/mis-shared ids (apt-cache,
+  apt-lib, flutter-cache, cargo-registry, cargo-git + ffmpeg-sdks which was
+  per-arch-INTENDED) across Dockerfile.{sdk,media,android}; added stage-scoped
+  `ARG TARGET_ARCH` to 7 media stages (ARG-scoping trap: unset expands empty
+  → silent re-collision; programmatic checker verified 0 uncovered stages).
+  DELIBERATELY still shared: ccache/sccache (concurrency-safe, dedup win),
+  uv/pip (no lock, internal locking), android-sdk-shared +
+  onnxruntime-web-shared (version-keyed cross-arch dedup BY DESIGN — the
+  wait is cheaper than 3× compile).
 - **DF1 — Dockerfile.media:237-238+252-253: dead cargo mounts on the onnxruntime
   RUNs** [S·★★] no ORT build script touches cargo/rust (verified) — 4 mounts
   widen the cache closure of the two most expensive media RUNs (TG1 class). Drop.

@@ -78,8 +78,8 @@ COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/
 # (grep the build log for "android-sdk shared cache HIT/MISS"). The cache mount
 # is invisible at image runtime — the script still installs everything the
 # image needs into ${ANDROID_HOME} in this layer.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/android-sdk-shared,id=android-sdk-shared-${ANDROID_SDK_VERSION}-${ANDROID_NDK_VERSION}-${ANDROID_COMPILE_SDK}-${ANDROID_BUILD_TOOLS}-${ANDROID_CMAKE_VERSION},sharing=locked \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; ANDROID_SDK_CACHE_DIR=/var/cache/android-sdk-shared /opt/scripts/android-sdk.sh && \
@@ -104,8 +104,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -125,8 +125,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -146,8 +146,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -167,8 +167,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -190,8 +190,8 @@ COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scrip
 
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
