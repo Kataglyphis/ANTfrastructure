@@ -30,6 +30,24 @@ live in CHANGELOG.md + memory + the archive.
 Windows mentions remain as CONTEXT (a protected-list rule, coverage-map prose),
 not as to-do items.
 
+## 🔨 CLOSURE-WINDOW WAVE-4 STAGED 2026-08-18 (validating full rebuild IN FLIGHT)
+
+One window, maximal bundle (user call): **B3 version bumps** (7 SAFE + 14
+REPORT keys incl. ONNXRUNTIME 1.29/LITERT 2.2/LM 0.16.1/TVM 0.26/ABSEIL —
+SHAs re-derived), **RV1** (all riscv64 exceptions lifted — target GStreamer:
+YES ×3), **NET1 top-3+** (gcc ftpmirror, ffmpeg mirror-vars wired, gstreamer
+gitlab fallback, nv-codec github fallback), **DF1-4** (dead cargo mounts,
+sdk 86-line RUN → materialize-llvm-target.sh, package soname loop →
+copy-media-payloads.sh, --link/stray-mount), **AP3 correct** (wheels-source
+stage in Dockerfile.torch, package stops baking /opt/wheels),
+**LLVM-ccache-launcher** (nested tablegen build). Re-triaged KEEP: SH1
+(deliberately different retry semantics), SH2 (documented-deliberate),
+DF4c (cosmetic). DEFERRED to the NEXT window (M-effort each; this bundle's
+blast radius is already maximal): D3+P5 smoke scaffold, cerbero checksums
+table + soundtouch TOFU, codec-map convergence, SUDO run_priv helper,
+NVIDIA-lane helper sweep, complexity survivors, DUP2-SSOT-default,
+media-source-cache mounts, TVM-cross, SH3 sourced-lib sites.
+
 ## Carry-over from the shipped waves (still OPEN)
 
 - **OCV-FF1 — opencv videoio FFMPEG backend NO: opencv-5.0.0 FindFFMPEG probe
