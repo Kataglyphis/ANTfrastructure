@@ -129,6 +129,29 @@ Compare-Object $planD $execD | ForEach-Object {
     Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
 }
 
+# ---- 6e. THE define delta: plan host-preprocess vs sccache's preprocess ----
+# sccache's cudafe++ consumes x_0.cpp4.ii, an .ii sccache preprocessed itself
+# (probe5) - so the define set of THAT preprocess decides which #ifdef
+# branches ever reach stub generation. Probe3 counted 48 exec -D tokens vs
+# 59-64 in the plan. Compute the exact missing set.
+$planPPLine = ($planLines | Select-String '\-EP |/EP ' | Select-Object -Last 1).Line
+$execPPLine = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'preprocess' | Select-Object -First 1).Line
+if ($planPPLine -and $execPPLine) {
+    $planDefs = @([regex]::Matches($planPPLine, '-D\s*"?([^"\s]+)"?') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+    $execDefs = @([regex]::Matches($execPPLine, '\\?"-D"?,?\s*\\?"([^"\\]+)\\?"|"-D([^"]+)"') | ForEach-Object { if ($_.Groups[1].Value) { $_.Groups[1].Value } else { $_.Groups[2].Value } }) | Sort-Object -Unique
+    if ($execDefs.Count -eq 0) {
+        # Rust Debug vector form: "...", "-DFOO", ... - fall back to plain -D capture
+        $execDefs = @([regex]::Matches($execPPLine, '-D([^"\\]+)') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
+    }
+    Write-Host ("define delta: plan={0} exec={1}" -f $planDefs.Count, $execDefs.Count)
+    Compare-Object $planDefs $execDefs | ForEach-Object {
+        $tag = if ($_.SideIndicator -eq '<=') { 'LOST-BY-SCCACHE' } else { 'ADDED-BY-SCCACHE' }
+        Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
+    }
+} else {
+    Write-Host ("define delta: line capture failed (plan={0} exec={1})" -f [bool]$planPPLine, [bool]$execPPLine)
+}
+
 # ---- 6d. FULL lines, no summarizing: original cmd truth + both preprocess
 # and cudafe++ invocations, chunked for the log. The 6c accounting used two
 # different regexes on the two sides and produced contradictory-looking
