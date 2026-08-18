@@ -51,10 +51,13 @@ Details: CHANGELOG + memory.
   but **swresample never appears in the probe output** and overall FFMPEG: NO —
   OpenCV's HAVE_FFMPEG requires ALL FIVE. ffmpeg's own build DOES produce
   libswresample.so + .pc (seen in the #46 build log). NEXT CHECK (needs the next
-  media image): does /opt/ffmpeg/lib contain libswresample.so + pkgconfig/
-  libswresample.pc? If ABSENT → ffmpeg install/copy drops it (fix there); if
-  PRESENT → opencv-5.0.0's FindFFMPEG probe quirk (fix/patch there). Couple with
-  SMK1 (FFMPEG stays advisory until resolved).
+  media image): RESOLVED 2026-08-18 on the wave3 shipped amd64 wrapper —
+  libswresample.so AND pkgconfig/libswresample.pc ARE present in
+  /opt/ffmpeg/lib → the fork lands on **opencv-5.0.0 FindFFMPEG probe quirk**:
+  its probe reports avcodec/avformat/avutil/swscale YES but never emits a
+  swresample line → HAVE_FFMPEG=NO. Fix on the opencv side (patch/hint its
+  FindFFMPEG; e.g. OPENCV_FFMPEG_* hints or probe patch) next media closure
+  window. SMK1's FFMPEG check stays advisory until then.
 
 ## Next up (recommended order, 2026-08-18)
 
@@ -293,7 +296,10 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   fixed and media parallel is re-measured.
 
 - **PAR4 — the parallel memory model ignores INTRA-build step parallelism**
-  [M·★★★, BIT 2026-08-18] wave3b OOM: with PAR2's lock serialization gone, all
+  [M·★★★, BIT 2026-08-18 → **FIXED-STAGED same day**: cross_build_mem_divisor
+  ×= PAR_INTRA_STEP_BUDGET (default 2) under --parallel-archs → 3-way divisor
+  6; functional test green; validates next parallel run. Residual PAR4-hard:
+  MemoryHigh/jobserver for a TRUE cap.] wave3b OOM: with PAR2's lock serialization gone, all
   3 lanes hit their heaviest phase (IREE wheelhouse) SIMULTANEOUSLY and the
   kernel OOM-killed cc1plus on arm64+riscv64 (`g++: fatal error: Killed`) at
   ~2h09m. The math gap: BUILD_MEM_DIVISOR=3 sizes ninja -j per BUILD as if

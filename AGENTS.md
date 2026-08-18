@@ -758,14 +758,13 @@ bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,a
 bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
 
 # Build per-arch stages in parallel (faster on multi-core machines).
-# ⚠️ PAR4 (2026-08-18, OPEN): 3-way parallel MEDIA can OOM the 60 GB host —
-# BUILD_MEM_DIVISOR sizes job pools per build but buildkitd max-parallelism=4
-# runs up to 4 heavy steps PER build (worst case 3×4 pools sized for RAM/3;
-# killed cc1plus in both cross lanes' IREE builds on the first post-PAR2 run).
-# Until the PAR4 fix lands, pick ONE for 3-way media:
-#   BUILD_MEM_DIVISOR=5 ... --parallel-archs            # smaller job pools
-#   PARALLEL_STAGES=sdk,android ... --parallel-archs    # media sequential
-# Details: docs/build-parallelism-memory-tuning.md § second-order trap.
+# PAR4 (FIXED-STAGED 2026-08-18): cross_build_mem_divisor now multiplies the
+# arch count by PAR_INTRA_STEP_BUDGET (default 2) because buildkitd
+# max-parallelism runs several heavy steps PER build — the un-multiplied
+# divisor OOM-killed cc1plus in two lanes' IREE builds on the first post-PAR2
+# run. Validates on the next parallel run; if a lane still OOMs raise
+# PAR_INTRA_STEP_BUDGET=3 or use PARALLEL_STAGES=sdk,android (media
+# sequential). Details: docs/build-parallelism-memory-tuning.md § second-order trap.
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)

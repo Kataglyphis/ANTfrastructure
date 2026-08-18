@@ -253,6 +253,18 @@ cross_build_mem_divisor() {
   max="${MAX_PARALLEL_ARCHS:-1}"
   [ "${max}" -ge 1 ] 2>/dev/null || max=1
   [ "${n_arch}" -lt "${max}" ] && max="${n_arch}"
+  # PAR4 (2026-08-18): arch-count alone under-divides. buildkitd's
+  # max-parallelism lets EACH build run several independent Dockerfile stages
+  # concurrently, so N parallel arch builds can hold N × <intra> heavy compile
+  # pools at once — with only ×N the pools were each sized for RAM/N and the
+  # first post-PAR2 run OOM-killed cc1plus in two lanes' IREE builds (the PAR2
+  # lock contention had been accidentally serializing those peaks). Budget 2
+  # concurrent heavy steps per build (empirical: 2-4 observed, and ×5 total
+  # held through the android×3 recovery run). Parallel-archs only — the
+  # sequential path is empirically fine under max-parallelism alone.
+  if [ "${max}" -gt 1 ]; then
+    max=$(( max * ${PAR_INTRA_STEP_BUDGET:-2} ))
+  fi
   printf '%s' "${max}"
 }
 

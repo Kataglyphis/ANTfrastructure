@@ -55,6 +55,7 @@ CPP_HEAVY_MB_PER_JOB
 CROSS_BIN_DIR
 CROSS_CACHE_MAX_GB
 CROSS_LAYER_COMPRESSION  # PUSH1: zstd (default) | gzip — layer encoding for pushed cross-stage images
+PAR_INTRA_STEP_BUDGET    # PAR4: assumed concurrent heavy steps per build under --parallel-archs (default 2; multiplies BUILD_MEM_DIVISOR)
 CROSS_TARGET_ARCH
 CTEST_EXCLUDE_DEFAULT
 CTEST_RUN_DEFAULT_BUILD_DIR

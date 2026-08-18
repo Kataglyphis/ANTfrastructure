@@ -165,10 +165,15 @@ either set `BUILD_MEM_DIVISOR=5` (or higher) explicitly, or exclude media from
 parallelism via `PARALLEL_STAGES=sdk,android`. sdk/android phases have not
 OOMed under 3-way (validated 2026-08-17/18).
 
-**The real fix (PAR4, backlog ★★★):** fold intra-build step parallelism into
-the divisor (effective divisor ≈ `n_arch × per-build heavy-step budget`), or
-bound each build with `systemd-run MemoryHigh`, or a global compile-job
-governor across lanes (jobserver).
+**The fix (PAR4, LANDED 2026-08-18, validates next parallel run):**
+`cross_build_mem_divisor` now multiplies the arch count by
+`PAR_INTRA_STEP_BUDGET` (default 2 = assumed concurrent heavy steps per
+build; observed 2-4, and an effective ×5 held through the android×3 recovery
+run). 3-way parallel → divisor 6. Parallel-archs only; the sequential path
+(bounded by max-parallelism alone) is empirically fine and unchanged.
+Escalation if a lane still OOMs: `PAR_INTRA_STEP_BUDGET=3` or
+`PARALLEL_STAGES=sdk,android`. The stronger options (systemd-run MemoryHigh
+per build, a global compile-job governor) stay on the backlog as PAR4-hard.
 
 ---
 
