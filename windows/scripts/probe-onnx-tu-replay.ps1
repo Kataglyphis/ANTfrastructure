@@ -129,6 +129,26 @@ Compare-Object $planD $execD | ForEach-Object {
     Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
 }
 
+# ---- 6d. FULL lines, no summarizing: original cmd truth + both preprocess
+# and cudafe++ invocations, chunked for the log. The 6c accounting used two
+# different regexes on the two sides and produced contradictory-looking
+# numbers - raw lines don't lie.
+function Write-Chunked([string]$Prefix, [string]$Line) {
+    if (-not $Line) { Write-Host "$Prefix <absent>"; return }
+    for ($i = 0; $i -lt $Line.Length; $i += 230) {
+        Write-Host ("{0} {1}" -f $Prefix, $Line.Substring($i, [Math]::Min(230, $Line.Length - $i)))
+    }
+}
+Write-Host ("truth: original command carries -DUSE_CUDA: " + [bool]($cmd -match '[-/]DUSE_CUDA'))
+$planPP = ($planLines | Select-String ' -E |\-EP |/EP ' | Select-Object -First 1).Line
+Write-Chunked 'planPP|' $planPP
+$planFE = ($planLines | Select-String 'cudafe\+\+' | Select-Object -First 1).Line
+Write-Chunked 'planFE|' $planFE
+$execPP = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'msvc\] preprocess' | Select-Object -First 1).Line
+Write-Chunked 'execPP|' $execPP
+$execFE = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'module_id\]: get_cached_or_compile' | Select-Object -First 1).Line
+Write-Chunked 'execFE|' $execFE
+
 # ---- 6c. per-step -DUSE_CUDA accounting ------------------------------------
 # The dropped double instantiation is guarded by a plain `#ifdef USE_CUDA`.
 # The final host step's define set matches the plan (6b), so the loss must be
