@@ -388,12 +388,12 @@ FROM media-core-env AS media-core-built-onnx
 #                            Do not flip this back off silently - without it
 #                            the onnx stage re-pays ~25 min of CUDA compiles
 #                            per rebuild.
-#   SCCACHE_REPRO_CUDA_LLM   repro-sccache-cuda-llm-deadlock.ps1 sets this to
-#                            skip patch 006 so the fused_moe launchers hit the
-#                            sccache server (the #2808 deadlock target). The
-#                            repro passes BOTH: without the launcher opt-in the
-#                            CUDA compiles run bare and a "no deadlock" verdict
-#                            would be a false all-clear.
+#   SCCACHE_REPRO_CUDA_LLM   RETIRED 2026-08-18 with patch 006 (it existed
+#                            only to skip 006 for the #2808 server-trace
+#                            repro; 006's fused_moe family now goes through
+#                            the launcher by default). ARG kept declared so
+#                            historical commands don't silently no-op via
+#                            buildctl's discard behavior; the env is unread.
 # ARG only, deliberately NO ENV mirror: a declared ARG is already an env var
 # inside this stage's RUN steps, while an ENV would BAKE the experiment value
 # into the image and every downstream stage would inherit it (discovered
