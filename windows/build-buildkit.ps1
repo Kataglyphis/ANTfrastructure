@@ -347,7 +347,18 @@ function Invoke-BkStage {
     # -BuildArg passthrough, applied LAST so an explicit one-off overrides the
     # stage's computed value rather than being silently dropped by it.
     foreach ($extra in $BuildArg) {
-        if ($extra -notmatch '^[^=]+=') { throw "-BuildArg '$extra' is not in KEY=VALUE form" }
+        # Strict KEY validation, not just "has an =": buildctl silently
+        # discards build-args for ARG names no Dockerfile declares, so a
+        # mangled key is invisible downstream. Seen live 2026-08-18: a caller
+        # used `& pwsh -File`, which flattens a comma array into ONE literal
+        # string with the quotes kept — the "key" began with an apostrophe,
+        # buildctl dropped it, and an 88-minute repro measured nothing.
+        if ($extra -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') {
+            throw ("-BuildArg '$extra' is not in KEY=VALUE form with a clean identifier key. " +
+                'If several args arrived as ONE quoted string, the caller crossed a process boundary ' +
+                '(`pwsh -File` flattens comma arrays, quotes included) - invoke build-buildkit.ps1 ' +
+                'directly or pass one -BuildArg element per KEY=VALUE.')
+        }
         $bkArgs += @('--opt', "build-arg:$extra")
     }
     $stageLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-" + ($Label -replace '[:\\/]', '-') + ".log")
