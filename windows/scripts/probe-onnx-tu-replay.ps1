@@ -275,5 +275,17 @@ if (Test-Path $keepLog) {
     if ($clLine) { for ($i = 0; $i -lt [Math]::Min($clLine.Length, 4600); $i += 230) { Write-Host ("xformPP| " + $clLine.Substring($i, [Math]::Min(230, $clLine.Length - $i))) } }
 }
 
+# ---- 10. cpp4.ii content scan (loose regex; probe9's SimpleMatch found 0
+# even in bare, so spacing differs in preprocessed output) -------------------
+foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
+    $side = $pair[0]
+    $f = Join-Path $pair[1] 'bias_softmax_impl.cpp4.ii'
+    if (-not (Test-Path $f)) { Write-Host "cpp4-scan $side <missing>"; continue }
+    $txt = [System.IO.File]::ReadAllText($f)
+    foreach ($pat in @('BiasSoftmaxImpl\s*<\s*double', 'BiasSoftmaxImpl\s*<\s*float', '__dadd_rn', 'BiasSoftmaxWarpForward')) {
+        Write-Host ("cpp4-scan {0,-4} {1,-38} = {2}" -f $side, $pat, [regex]::Matches($txt, $pat).Count)
+    }
+}
+
 Write-Host 'probe complete'
 exit 0
