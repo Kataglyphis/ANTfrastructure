@@ -1058,29 +1058,25 @@ The rules an agent must never violate:
      2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
      asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell
      the fixed and broken builds apart — main still reports 0.17.0.
-   - **`CMAKE_CUDA_COMPILER_LAUNCHER`** was wired on the back of that, and would
-     be what makes ONNX's "~1h CUDA/TensorRT kernel compiles" cacheable — but it
-     has been **OPT-IN and OFF by default since 2026-08-10** (`SCCACHE_CUDA_LAUNCHER=1`;
-     sccache-wrapped nvcc dropped per-arch instantiations and produced link
-     failures). CUDA therefore recompiles on every run today, which is most of
-     onnx's ~53 min; do not read a long onnx stage as a cache failure. Never
-     flip the opt-in without all three canaries — see the Common Failure Modes
-     row on `lld-link: error: undefined symbol`. Since 2026-08-17 the opt-in is
-     actually REACHABLE from the host: `SCCACHE_CUDA_LAUNCHER` and
-     `SCCACHE_REPRO_CUDA_LLM` are declared as dormant ARGs in the
-     media-core-built-onnx stage (undeclared build-args are silently DISCARDED
-     by buildctl — before this, the documented opt-in was wired to nothing),
-     and `repro-sccache-cuda-llm-deadlock.ps1` passes BOTH (skipping patch 006
-     alone compiles bare nvcc and reads as a false "deadlock gone" all-clear).
-     The WebDAV-only retest ran 2026-08-18 and settled both questions: the
-     #2808 DEADLOCK is #99 collateral (all 1891 CUDA objects incl. every
-     fused_moe launcher compiled through the server, no stall), but the
-     MISCOMPILE is real, storage-independent, and happens on a COLD-CACHE
-     run — dropped instantiations (`QkvToContext<*, __nv_fp8_e4m3>`,
-     `BiasSoftmaxImpl<double>`, `run_memory_efficient_attention`) as the
-     objects leave the wrapped compile. CUDA stays bare; the launcher-default
-     question is CLOSED until upstream fixes the decomposition layer
-     (addendum draft: `out/upstream-sccache-2808-addendum.md`).
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18**
+     (`SCCACHE_CUDA_LAUNCHER="1"` in the media-core-built-onnx stage): the
+     2026-08-10 miscompile (dropped instantiations, `lld-link: undefined
+     symbol`) was root-caused to sccache's Windows dryrun quote-collapse —
+     `\"` escapes flattened before tokenization packed ~30 `-D` pairs into
+     one 493-char token, so the cpp4 preprocess lost `USE_CUDA` & friends —
+     fixed by the local patch series in
+     `windows/upstream/sccache-nvcc-quote-fix/` (upstream:
+     mozilla/sccache#2811), applied by the base rust layer (#114). The
+     three-canary bar passed 2026-08-18 evening: fused_moe compile green,
+     providers_cuda link green COLD (153 CUDA device writes), link green on
+     the HIT run at **100.00% CUDA/PTX/CUBIN hit rate** (207/816 hits) —
+     onnx's CUDA portion drops from ~60 to ~33 min warm. The #2808 DEADLOCK
+     separately proved to be #99 collateral (gone under a healthy backend).
+     Patch 006 (bare fused_moe) STAYS for now — retiring it is a separate
+     experiment. Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`;
+     never flip the default off silently, and never bump SCCACHE_GIT_REV
+     without checking the patch series still applies (the rust layer THROWS
+     if not).
    - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
      would bake a build-only mount path into the shipped image).
 

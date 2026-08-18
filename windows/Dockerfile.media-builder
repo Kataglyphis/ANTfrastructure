@@ -374,9 +374,20 @@ FROM media-core-env AS media-core-built-onnx
 # because buildctl silently DISCARDS a --opt build-arg no Dockerfile ARG
 # matches (the lesson that cost a 25-minute "the flag does not work" run).
 #
-#   SCCACHE_CUDA_LAUNCHER    opt-in: route nvcc through sccache. OFF since the
-#                            2026-08-10 miscompile verdict; NEVER default this
-#                            on without the three-canary bar (AGENTS.md).
+#   SCCACHE_CUDA_LAUNCHER    routes nvcc through sccache. DEFAULT ON since
+#                            2026-08-18: the 2026-08-10 miscompile was
+#                            root-caused to the dryrun quote-collapse bug
+#                            (mozilla/sccache#2811), the patched sccache
+#                            shipped with the #114 base ride, and the
+#                            three-canary bar passed the same evening -
+#                            fused_moe compile green, providers_cuda link
+#                            green COLD (153 device writes) and green on the
+#                            HIT run at a 100.00% CUDA/PTX/CUBIN hit rate
+#                            (207/816 hits). Opt OUT for experiments with:
+#                            -BuildArg SCCACHE_CUDA_LAUNCHER=
+#                            Do not flip this back off silently - without it
+#                            the onnx stage re-pays ~25 min of CUDA compiles
+#                            per rebuild.
 #   SCCACHE_REPRO_CUDA_LLM   repro-sccache-cuda-llm-deadlock.ps1 sets this to
 #                            skip patch 006 so the fused_moe launchers hit the
 #                            sccache server (the #2808 deadlock target). The
@@ -387,7 +398,7 @@ FROM media-core-env AS media-core-built-onnx
 # inside this stage's RUN steps, while an ENV would BAKE the experiment value
 # into the image and every downstream stage would inherit it (discovered
 # 2026-08-18: the opencv experiment's launcher leaked into genai's build).
-ARG SCCACHE_CUDA_LAUNCHER=""
+ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `

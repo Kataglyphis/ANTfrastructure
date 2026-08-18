@@ -2463,7 +2463,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
   are bind-mounted into media stages, land between builds.
-- **114 [M·★★★, BASE-TIER] Ship the sccache nvcc quote-protection fix.**
+- **114 [M·★★★, BASE-TIER] DONE 2026-08-18 EVENING: shipped with the base batch ride (3h30, smoke 190/1/0), three-canary bar PASSED (cold: link green + 153 CUDA device writes; hit: link green at 100.00% CUDA/PTX/CUBIN hit rate, 207/816 hits), SCCACHE_CUDA_LAUNCHER default flipped ON. Original: Ship the sccache nvcc quote-protection fix.**
   2026-08-18: the dropped-instantiation miscompile is ROOT-CAUSED and the fix
   VERIFIED on the reproducer (patch-verify probe: bare 3189 == wrapped 3189
   symbols). Cause: nvcc.rs flattens `\` before tokenizing dryrun lines, `\"`
