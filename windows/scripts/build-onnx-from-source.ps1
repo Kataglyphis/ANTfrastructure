@@ -16,7 +16,7 @@ $modulePath = Join-Path $PSScriptRoot 'modules\WindowsSourceBuild.Common.psm1'
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-$OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.28.0' -StripVPrefix
+$OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.29.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
@@ -194,13 +194,12 @@ $cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clan
 # launcher is OPT-IN at the wiring site (Invoke-CmakeConfigure honors only
 # SCCACHE_CUDA_LAUNCHER=1; review find #1 killed the per-script opt-out
 # env var, which leaked process-wide on the classic lane while the BK lane
-# kept wrapping other CUDA stages). Evidence for the disqualification of
-# this sccache pin's nvcc decomposition - the runs 5/12-vs-10/11
-# discriminator, the fused_moe server crash, the three-canary re-enable
-# bar - lives in the Invoke-CmakeConfigure comment and AGENTS.md Common
-# Failure Modes. Patch 006 stays: inert while CUDA is bare, load-bearing
-# the day a fixed sccache is retried. Guard + retry ladder stay armed for
-# the C/CXX launchers.
+# kept wrapping other CUDA stages). HISTORY: the nvcc decomposition was
+# disqualified 2026-08-10 (runs 5/12-vs-10/11 discriminator, fused_moe
+# server crash) and REHABILITATED 2026-08-18 - root cause was the dryrun
+# quote-collapse, fixed by the #114 patch series (mozilla/sccache#2811),
+# proven by the three-canary bar incl. a 100% CUDA-hit link. Patch 006 was
+# retired the same evening (see below). Guard + retry ladder stay armed.
 
 # -- GPU detection (single shot via Get-GpuEnvironment; ONNX-specific flag names stay local) --
 # ONNX_FORCE_CPU=1 forces a CPU-only ONNX (skips the ~1h CUDA/TensorRT kernel compiles) so the DirectML
@@ -256,35 +255,19 @@ if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
                 -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen."
         }
 
-    # sccache's nvcc decomposition crashes deterministically on the fused_moe
-    # generated launchers (runs 6+7, ~4910 s, os error 10054): patch 006 pins a
-    # BARE nvcc onto the onnxruntime_providers_cuda_llm target only, so the
-    # launcher (and CUDA caching) stays on for every other target.
-    # -Fatal (backlog #19): 006 rotting silently would hand the fused_moe
-    # launchers back to the sccache server crash the day the CUDA launcher is
-    # retried - patch rot must surface at patch time, not at re-enable time.
-    #
-    # SCCACHE_REPRO_CUDA_LLM=1 DELIBERATELY SKIPS the workaround so the upstream
-    # deadlock can be captured server-side (mozilla/sccache#2808). It is an
-    # opt-in escape for that investigation ONLY: the build is EXPECTED to die
-    # ~80 min in with `error reading compile response from server`. Never set it
-    # in a chain you want to finish. Pair it with SCCACHE_LOG=debug and an
-    # SCCACHE_ERROR_LOG on the persistent cache mount, or the trace dies with
-    # the solve and the whole exercise is wasted.
-    if ($env:SCCACHE_REPRO_CUDA_LLM -eq '1') {
-        Write-Warning ('SCCACHE_REPRO_CUDA_LLM=1: SKIPPING patch 006, so the sccache CUDA launcher stays ' +
-                       'ON for onnxruntime_providers_cuda_llm. This build is EXPECTED TO FAIL at the ' +
-                       'fused_moe launchers (~4910 s) - that failure IS the artifact being collected.')
-    } else {
-    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $PSScriptRoot 'patches\onnxruntime\006-cuda-llm-bare-nvcc.patch') -SourceDir $SourceDir -Fatal `
-        -FallbackNote 'falling back to inline property insertion' `
-        -Fallback {
-            $cudaCmake = Join-Path $SourceDir 'cmake\onnxruntime_providers_cuda.cmake'
-            Invoke-InlineRegexPatch -Path $cudaCmake -Pattern '(SOURCES \$\{onnxruntime_cuda_llm_srcs\}\))' `
-                -Replacement ('$1' + "`n          if(DEFINED CMAKE_CUDA_COMPILER_LAUNCHER)`n            set_property(TARGET onnxruntime_providers_cuda_llm PROPERTY CUDA_COMPILER_LAUNCHER `"`")`n          endif()") `
-                -WarnMessage "onnxruntime_providers_cuda.cmake: cuda_llm anchor not found; the fused_moe launchers will crash the sccache server. Verify $cudaCmake."
-        }
-    }
+    # Patch 006 (bare nvcc pinned onto onnxruntime_providers_cuda_llm) was
+    # RETIRED 2026-08-18 (owner call): both reasons for it are resolved and
+    # measured. The server deadlock on the fused_moe launchers was collateral
+    # of the #99 broken L0 cache mount (gone under WebDAV-only - all 1891 CUDA
+    # objects compiled through the server without a stall on 2026-08-18), and
+    # the dropped-instantiation miscompile was the dryrun quote-collapse fixed
+    # by the #114-shipped patch series (mozilla/sccache#2811; hit canary:
+    # 100.00% CUDA hit rate, link green). The fused_moe family now goes
+    # through the launcher like every other CUDA target. If lld-link ever
+    # reports undefined fused_moe/QkvToContext symbols again, FIRST check the
+    # sccache patch series still applies (SCCACHE_GIT_REV bump?) before
+    # resurrecting any bare-nvcc exception. SCCACHE_REPRO_CUDA_LLM is retired
+    # with it (it existed only to skip 006 for the #2808 server-trace repro).
 
         # clang-cl can't handle `and`/`or`/`not` keyword alternatives -- replace via a reviewable .patch.
         # If the .patch context has drifted upstream (common when ONNX rearranges comments), fall back

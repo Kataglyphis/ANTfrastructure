@@ -586,8 +586,13 @@ ${SUDO_WRAP} mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 ${SUDO_WRAP} chown -R "$(id -u):$(id -g)" "${BUILD_DIR}" 2>/dev/null || true
 
+# NET1 (2026-08-18): github primary, canonical gitlab.freedesktop.org fallback.
+GST_GIT_URL="https://github.com/GStreamer/gstreamer.git"
+GST_GIT_FALLBACK="https://gitlab.freedesktop.org/gstreamer/gstreamer.git"
 if command -v clone_or_update_repo >/dev/null 2>&1; then
-  retry 3 10 "GStreamer git clone" clone_or_update_repo "https://github.com/GStreamer/gstreamer.git" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"
+  retry 3 10 "GStreamer git clone" clone_or_update_repo "${GST_GIT_URL}" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}" \
+    || { rm -rf "${BUILD_DIR}/gstreamer"
+         retry 2 10 "GStreamer git clone (fallback)" clone_or_update_repo "${GST_GIT_FALLBACK}" "${BUILD_DIR}/gstreamer" "${GSTREAMER_VERSION}"; }
   cd "${BUILD_DIR}/gstreamer"
 elif [ -d "gstreamer" ]; then
   echo "Updating existing GStreamer repository..."
@@ -597,8 +602,9 @@ elif [ -d "gstreamer" ]; then
     echo "Version ${GSTREAMER_VERSION} not found in shallow clone; re-cloning..."
     cd "${BUILD_DIR}"
     rm -rf gstreamer
-    git clone --depth 1 --branch "${GSTREAMER_VERSION}" https://github.com/GStreamer/gstreamer.git || {
-      echo "ERROR: Failed to re-clone GStreamer repository"
+    git clone --depth 1 --branch "${GSTREAMER_VERSION}" "${GST_GIT_URL}" \
+      || git clone --depth 1 --branch "${GSTREAMER_VERSION}" "${GST_GIT_FALLBACK}" || {
+      echo "ERROR: Failed to re-clone GStreamer repository (github + gitlab)"
       exit 1
     }
     cd gstreamer
@@ -606,8 +612,9 @@ elif [ -d "gstreamer" ]; then
 else
   :
   echo "Cloning GStreamer repository..."
-  git clone --depth 1 --branch "${GSTREAMER_VERSION}" https://github.com/GStreamer/gstreamer.git || {
-    echo "ERROR: Failed to clone GStreamer repository"
+  git clone --depth 1 --branch "${GSTREAMER_VERSION}" "${GST_GIT_URL}" \
+    || git clone --depth 1 --branch "${GSTREAMER_VERSION}" "${GST_GIT_FALLBACK}" || {
+    echo "ERROR: Failed to clone GStreamer repository (github + gitlab)"
     exit 1
   }
   cd gstreamer

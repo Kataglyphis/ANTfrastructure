@@ -76,14 +76,12 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
-# AP3 REVERTED 2026-08-17: /opt/wheels MUST be COPY'd into the package image —
-# Dockerfile.torch (FROM this package image) is where setup-torch-venv.sh actually
-# reads it (`uv pip install --find-links /opt/wheels`), and it has NO artifact-source
-# stage to bind-mount from. The bind-mount-into-the-package-RUN attempt was
-# ephemeral, so the torch stage lost /opt/wheels → build broke. A correct AP3 needs
-# the wheelhouse reachable in Dockerfile.torch's RUN (e.g. a from=artifact-source
-# mount wired THERE), not here — re-filed in the backlog.
-COPY --link --from=artifact-source /opt/wheels /opt/wheels
+# AP3 LANDED 2026-08-18 (correct home this time): /opt/wheels is NOT baked
+# here anymore — Dockerfile.torch now carries its own wheels-source stage
+# (the android image, digest-pinned via WHEELS_IMAGE) and bind-mounts
+# /opt/wheels into the ONE RUN that reads it. The 2026-08-17 revert happened
+# because the mount lived in THIS file's RUN while the reader lives in
+# Dockerfile.torch; that gap is closed at the reader now.
 COPY --link --from=artifact-source /opt/vulkan /opt/vulkan
 COPY --link --from=artifact-source /opt/android-sdk /opt/android-sdk
 COPY --link --from=artifact-source /opt/android /opt/android
@@ -108,7 +106,7 @@ COPY --link --from=artifact-source /usr/local/cargo /usr/local/cargo
 # The SDK stage cross-compiles a native Clang 22.1.8 toolchain for the
 # target architecture and stores it at /opt/llvm-target.  Copy it into
 # the runtime image so every arch ships its own native clang.
-COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
+COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Lightweight payload files (LiteRT libs + pkg-config, VVdec, ONNX Runtime
 # GenAI/GPU, tflite/tensorflow headers). The dangling comment that used to sit
 # here documented COPYs that were REMOVED when copy-media-payloads.sh was
@@ -119,44 +117,11 @@ COPY --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
+    # DF3: the llvm-target soname self-containment repair moved INTO
+    # copy-media-payloads.sh (repair_llvm_target_sonames — history + rationale
+    # documented there); this RUN is now a single script call.
     SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
-    rm -f /tmp/copy-media-payloads.sh; \
-    # Make /usr/local/llvm-target SELF-CONTAINED (2026-08-11): the amd64 copy
-    # (apt.llvm.org tree) ships only dev symlinks in lib/ — its runtime sonames
-    # (libLLVM.so.22.1, libclang-cpp.so.22.1) live in the MULTIARCH dir and were
-    # never copied, so the shipped clang silently bound to whatever ambient
-    # libLLVM the image carried. That was invisibly "fine" while ambient ==
-    # apt.llvm.org; since the dev-surface packages install Ubuntu's 22.1.2 libs,
-    # amd64's effective clang became a 22.1.8-driver/22.1.2-libs franken build —
-    # exposed the moment the clang smoke started EXECUTING the tool instead of
-    # scraping strings. Copy the artifact's matching runtime libs next to the
-    # driver and give llvm-target/lib loader priority. No-op on arm64/riscv64
-    # (source-built with \$ORIGIN RPATH and their own complete lib/).
-    # UPDATE 2026-08-12 (backlog BS3b): the ROOT fix now lives in
-    # Dockerfile.sdk — its amd64 /opt/llvm-target branch copies the multiarch
-    # runtime sonames into the prefix and hard-gates via a NEEDED walk, so new
-    # sdk artifacts arrive self-contained and this block should find every
-    # soname already present ([ ! -e ] short-circuits). KEEP it anyway: it is
-    # belt-and-braces for pre-fix sdk artifacts (resumed/pinned chains) and
-    # still performs the arm64/riscv64 dangling-symlink repair described
-    # above. Candidate for removal only after a full rebuild shows this loop
-    # copying nothing on all three arches (see docs/refactoring-backlog.md).
-    for _lib in /artifact-src/usr/lib/*-linux-gnu/libLLVM*.so.2* \
-                /artifact-src/usr/lib/*-linux-gnu/libclang-cpp*.so.2* \
-                /artifact-src/usr/lib/*-linux-gnu/libclang*.so.2*; do \
-        [ -e "${_lib}" ] || continue; \
-        _soname="$(basename "${_lib}")"; \
-        # -e is FALSE for a dangling symlink (the apt.llvm.org tree ships
-        # exactly such a stale .so.22.1 link into the void) — rm it first or
-        # cp refuses "not writing through dangling symlink". A REAL lib
-        # (arm64/riscv64 source builds) still short-circuits the copy.
-        if [ ! -e "/usr/local/llvm-target/lib/${_soname}" ]; then \
-            rm -f "/usr/local/llvm-target/lib/${_soname}"; \
-            cp -a "${_lib}" "/usr/local/llvm-target/lib/${_soname}"; \
-        fi; \
-    done; \
-    printf '/usr/local/llvm-target/lib\n' > /etc/ld.so.conf.d/000-llvm-target.conf; \
-    ldconfig
+    rm -f /tmp/copy-media-payloads.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
@@ -179,7 +144,7 @@ ARG USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL FAST_UBUNTU_PORTS_MIRROR_URL
 # shipped runtime image. Re-declare the runtime-relevant ones here.
 ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all
-ARG VULKAN_VERSION=1.4.357.0
+ARG VULKAN_VERSION=1.4.357.1
 ENV VULKAN_VERSION=${VULKAN_VERSION}
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \

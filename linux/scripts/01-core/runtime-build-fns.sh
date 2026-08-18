@@ -185,6 +185,12 @@ append_wrapper_build_args() {
   local _prov_date _prov_ref
   _prov_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   _prov_ref="$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
+  # AP3 (2026-08-18): the wheelhouse is bind-mounted into Dockerfile.torch's
+  # venv RUN from a wheels-source stage instead of being baked into package —
+  # pass the digest-pinned android ref (the wrapper's registry-resident
+  # cross-lane ancestor, same pin XC2/XC3 stamp into the manifest).
+  local _wheels_image
+  _wheels_image="$(runtime_android_pin "${arch}")"
   _awba_out+=(
     --build-arg "BASE_IMAGE=${parent_image}"
     --build-arg "BUILD_MODE=native"
@@ -194,6 +200,7 @@ append_wrapper_build_args() {
     --build-arg "BUILD_DATE=${_prov_date}"
     --build-arg "VCS_REF=${_prov_ref}"
   )
+  [ -n "${_wheels_image}" ] && _awba_out+=(--build-arg "WHEELS_IMAGE=${_wheels_image}")
   # Documented operator overrides (see runtime_shared_usage_env_overrides);
   # forwarded only when set so the Dockerfile.torch defaults stay authoritative.
   append_optional_build_arg _awba_out ONNX_PACKAGE "${ONNX_PACKAGE:-}"
