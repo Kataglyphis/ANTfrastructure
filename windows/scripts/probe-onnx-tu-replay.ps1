@@ -129,6 +129,27 @@ Compare-Object $planD $execD | ForEach-Object {
     Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
 }
 
+# ---- 6c. per-step -DUSE_CUDA accounting ------------------------------------
+# The dropped double instantiation is guarded by a plain `#ifdef USE_CUDA`.
+# The final host step's define set matches the plan (6b), so the loss must be
+# in an EARLIER step's input: the preprocess feeding cudafe++ (which GENERATES
+# the host stubs). One column tells the story: does each step still carry
+# -DUSE_CUDA?
+Write-Host '--- per-step USE_CUDA accounting (plan) ---'
+$planLines | Select-String 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' | ForEach-Object {
+    $l = $_.Line
+    $label = if ($l -match 'cudafe\+\+') { 'cudafe++' } elseif ($l -match 'cicc') { 'cicc' }
+             elseif ($l -match '-EP|/EP|-E |/E ') { 'preprocess' } else { 'host-cl' }
+    Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $label, ([regex]::Matches($l, '[-/]D')).Count, ($l -match 'DUSE_CUDA'))
+}
+Write-Host '--- per-step USE_CUDA accounting (sccache executed) ---'
+Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'get_cached_or_compile|msvc\] preprocess|creating.*command' | ForEach-Object {
+    $l = $_.Line
+    $label = if ($l -match 'module_id') { 'cudafe++' } elseif ($l -match 'compute_\d+\.ptx') { 'cicc' }
+             elseif ($l -match 'preprocess') { 'preprocess' } elseif ($l -match '\.cu\.obj') { 'host-cl' } else { 'other' }
+    Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $label, ([regex]::Matches($l, '"-D|\\"-D|[-/]D')).Count, ($l -match 'USE_CUDA'))
+}
+
 # ---- 6. mechanism evidence: nvcc's own plan vs sccache's executed steps ----
 # The container fs dies with the RUN, so everything upstream needs lands in
 # stdout here. Filter to the sub-command lines; cap so the log stays sane.
