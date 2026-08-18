@@ -2023,11 +2023,19 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 > LLVM — scoop has none, dev tarball is /MT), the Anubis/`.git` wrap-download
 > pair, graphene's clang-cl port, and #113 (stall-guard exports).
 >
-> 1. **versions.env bump full-chain ride** (RUNNING — base rebuild; carries
->    the #113 module edit).
-> 2. **Deadlock repro** (`repro-sccache-cuda-llm-deadlock.ps1`, ~80 min) —
+> 1. **versions.env bump full-chain ride — DONE-GREEN 2026-08-18** (4 h 01,
+>    smoke 190/1/0, image verified; first full-chain #61 manifest: onnx 60.5
+>    min, litert 43.9, base 31.1, merge 28.9 incl. two snapshotter-mount
+>    retries, tvm 21.8 with the mini-LLVM warm). #112's `chain=''` reproduced
+>    deterministically on this ride too — it is a parse hole, not a flake.
+> 2. **Deadlock repro** (`repro-sccache-cuda-llm-deadlock.ps1`, ~85 min) —
 >    #2808 under WebDAV-only; wedge → trace upstream, no wedge → three-canary
->    miscompile bar before any launcher-default talk.
+>    miscompile bar before any launcher-default talk. **Run 1 (2026-08-18)
+>    was a FALSE ALL-CLEAR** — `& pwsh -File` flattened the -BuildArg pair
+>    into one mangled string buildctl silently discarded (patch 006 stayed
+>    on, CUDA bare, green, zero signal). Fixed (in-process invocation +
+>    driver key validation); run 2 RUNNING with an early launcher-arrival
+>    check on the configure line.
 > 3. **After those builds free the mounts/files:** #100 (FFmpeg/PyAV sccache),
 >    #107 (extract sccache session helpers), #112 (opencv-stage provenance
 >    gate empty-read), #68/#69 (FFmpeg fallback + pin drift), #45 (CUDA path
