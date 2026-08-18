@@ -433,7 +433,17 @@ FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
 # Dockerfile or buildctl silently DISCARDS the --opt build-arg (cost a
 # 25-minute run on 2026-08-16).
 ARG OPENCV_LINK_CHAIN_FFMPEG="1"
-ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}"
+# EXPERIMENT KNOB (owner request 2026-08-18): route OpenCV's CUDA compiles
+# through the sccache launcher. Dormant by default ("" = bare CUDA, the
+# production stance since the miscompile verdict). The ONNX cold-cache run of
+# 2026-08-18 proved sccache's nvcc decomposition drops template
+# instantiations, and opencv_cudev is template-heavy - so a run with this ON
+# is an experiment whose LINK is the gate; a green link still cannot be
+# runtime-verified on this host (no NVIDIA GPU in the container). Never
+# default this on.
+ARG SCCACHE_CUDA_LAUNCHER=""
+ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
+    SCCACHE_CUDA_LAUNCHER="${SCCACHE_CUDA_LAUNCHER}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
