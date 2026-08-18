@@ -1,0 +1,53 @@
+From a02bffa8c2223e0a631aee7eeba5bd0ad200a159 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Tue, 18 Aug 2026 11:28:41 +0200
+Subject: [PATCH] nvcc (Windows): protect escaped quotes in dryrun lines before
+ flattening backslashes
+
+nvcc --dryrun prints string-valued defines with escaped quotes
+(-D "FILE_NAME=\"x.dll\""). The Windows line mangling replaces every
+backslash with a forward slash BEFORE tokenization, turning \" into /" and
+collapsing the line's quote structure. shlex then groups everything after
+the first such define into one giant token (measured: a 493-char token
+containing ~30 -D pairs), so the host preprocess runs without those defines
+and #ifdef-guarded explicit instantiations silently vanish from the final
+object - a dropped-instantiation miscompile that surfaces as lld-link
+undefined symbols (reproduced with ONNX Runtime v1.28.0
+bias_softmax_impl.cu: bare 3189 defined symbols vs wrapped 2628).
+
+Protect the \" escapes with a sentinel before the backslash flatten and
+restore them afterwards so shlex sees the original quoting.
+---
+ src/compiler/nvcc.rs | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/compiler/nvcc.rs b/src/compiler/nvcc.rs
+index 895f67d..b8c0f8b 100644
+--- a/src/compiler/nvcc.rs
++++ b/src/compiler/nvcc.rs
+@@ -1096,11 +1096,21 @@ fn fold_env_vars_or_split_into_exe_and_args(
+     // The rest of the lines are subcommands, so parse into a vec of [cmd, args..]
+ 
+     let mut line = if cfg!(target_os = "windows") {
++        // Protect escaped quotes (\") before flattening path separators:
++        // nvcc --dryrun prints string-valued defines as -D "FILE_NAME=\"x.dll\"",
++        // and replacing '\' with '/' first turns \" into /", collapsing the
++        // line's quote structure. shlex then mis-groups everything after the
++        // first such define into one giant token, so the host preprocess runs
++        // WITHOUT those -D's and #ifdef-guarded instantiations silently
++        // disappear from the final object (dropped-instantiation miscompile;
++        // observed as lld-link undefined symbols on ONNX Runtime).
+         let line = line
++            .replace("\\\"", "\u{1}")
+             .replace("\"\"", "\"")
+             .replace(r"\\?\", "")
+             .replace('\\', "/")
+-            .replace(r"//?/", "");
++            .replace(r"//?/", "")
++            .replace('\u{1}', "\\\"");
+         match host_compiler {
+             NvccHostCompiler::Msvc => line.replace(" -E ", " -P ").replace(" > ", " -Fi"),
+             _ => line,
+-- 
+2.55.0.windows.3
+

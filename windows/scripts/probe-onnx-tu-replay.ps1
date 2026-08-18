@@ -26,6 +26,8 @@ param(
     [string]$WorkDir = 'C:\probe-ort',
     [string]$OrtRef = 'v1.28.0',
     [string]$Tu = 'bias_softmax_impl.cu',
+    # Override to test a locally built sccache (patch-verify probe).
+    [string]$SccacheExe = '',
     [string]$Nonce = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -82,7 +84,8 @@ if ($cmd -match '^\s*C?:?.*cmd(\.exe)? /S /C "(.*)"\s*$') { $cmd = $Matches[2] }
 if ($LASTEXITCODE -ne 0) { throw "bare compile failed ($LASTEXITCODE)" }
 Copy-Item $obj "$WorkDir\bare.obj" -Force
 
-$sccache = "$env:USERPROFILE\.cargo\bin\sccache.exe"
+$sccache = if ($SccacheExe) { $SccacheExe } else { "$env:USERPROFILE\.cargo\bin\sccache.exe" }
+Write-Host "sccache under test: $sccache"
 $env:SCCACHE_MULTILEVEL_CHAIN = ''
 $env:SCCACHE_WEBDAV_ENDPOINT = ''
 $env:SCCACHE_DIR = Join-Path $WorkDir 'cache'
