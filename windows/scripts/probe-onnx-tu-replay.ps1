@@ -134,7 +134,7 @@ Compare-Object $planD $execD | ForEach-Object {
 # (probe5) - so the define set of THAT preprocess decides which #ifdef
 # branches ever reach stub generation. Probe3 counted 48 exec -D tokens vs
 # 59-64 in the plan. Compute the exact missing set.
-$planPPLine = ($planLines | Select-String '\-EP |/EP ' | Select-Object -Last 1).Line
+$planPPLine = ($planLines | Select-String ' -E |\-EP |/EP ' | Select-Object -Last 1).Line
 $execPPLine = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'preprocess' | Select-Object -First 1).Line
 if ($planPPLine -and $execPPLine) {
     $planDefs = @([regex]::Matches($planPPLine, '-D\s*"?([^"\s]+)"?') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
