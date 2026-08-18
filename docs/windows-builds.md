@@ -2478,6 +2478,13 @@ Upstream follow-ups: see "Pending" at the bottom.
   Upstream PR SUBMITTED 2026-08-18: mozilla/sccache#2811 (fmt/clippy/tests
   green in-container, regression test included). Owner: post the #2808
   addendum comment referencing it.
+- **116 [S·★★, none] `Invoke-GitClone` has no retry — one TCP drop kills a
+  4-hour ride.** 2026-08-18: the base-batch ride died in litert on `curl 18
+  transfer closed` at 610 s of the LiteRT clone; the driver correctly does
+  not infra-retry script failures, so the chain stopped and the relaunch
+  cost the full stage queue. Give Invoke-GitClone (module — land with the
+  NEXT planned media rebuild, cache closure!) 2-3 attempts with backoff +
+  `Remove-SourceBuildTree` between; same family as Invoke-DownloadWithRetry.
 - **115 [M·★★, none] OpenCV CUDA caching: rsp-off experiment + upstream
   `--options-file` expansion.** OpenCV's nvcc calls ride CMake response
   files, which sccache passes through UNCACHED (measured 2026-08-18: zero
