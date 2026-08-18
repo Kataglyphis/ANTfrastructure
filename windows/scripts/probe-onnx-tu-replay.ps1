@@ -221,6 +221,7 @@ if ($LASTEXITCODE -ne 0) { throw "bare --keep compile failed ($LASTEXITCODE)" }
 # Fresh cache dir: the wrapped run must MISS, or the sub-steps never execute.
 $env:SCCACHE_DIR = Join-Path $WorkDir 'cache-keep'
 $env:SCCACHE_ERROR_LOG = Join-Path $WorkDir 'sccache-keep.log'
+$env:SCCACHE_LOG = 'trace'
 & $sccache --start-server 2>&1 | Out-Null
 Remove-Item $obj -Force -ErrorAction SilentlyContinue
 & cmd.exe /S /C "`"$sccache`" $cmd --keep --keep-dir `"$keepWrap`"" 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" }
@@ -259,6 +260,19 @@ if (Test-Path $keepLog) {
         $n = (Select-String -Path $keepLog -Pattern $needle -SimpleMatch -AllMatches | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
         Write-Host ("define-presence in sccache debug log: {0} = {1}" -f $needle, [int]$n)
     }
+}
+
+# ---- 9. the transformed commands sccache actually executed (trace level) ---
+if (Test-Path $keepLog) {
+    Get-Content $keepLog | Select-String 'transformed nvcc command' | ForEach-Object {
+        $l = $_.Line
+        $kind = if ($l -match 'cudafe') { 'cudafe++' } elseif ($l -match 'cicc') { 'cicc' }
+                elseif ($l -match 'ptxas') { 'ptxas' } elseif ($l -match 'fatbinary') { 'fatbin' }
+                elseif ($l -match 'cl\.exe|cl ') { 'cl' } else { '?' }
+        Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $kind, ([regex]::Matches($l, '-D')).Count, ($l -match 'CUDA_DOUBLE_MATH'), ($l -match '__CUDACC__'), $l.Length)
+    }
+    $clLine = (Get-Content $keepLog | Select-String 'transformed nvcc command' | Where-Object { $_.Line -match 'cpp1\.ii|cpp4\.ii' } | Select-Object -First 1).Line
+    if ($clLine) { for ($i = 0; $i -lt [Math]::Min($clLine.Length, 4600); $i += 230) { Write-Host ("xformPP| " + $clLine.Substring($i, [Math]::Min(230, $clLine.Length - $i))) } }
 }
 
 Write-Host 'probe complete'
