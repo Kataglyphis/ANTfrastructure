@@ -373,6 +373,15 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   **coverage floors** (`-SmokeMinPassed`/`-SmokeMaxSkipped`, exit 3), because a
   run that asserted nothing used to print "All smoke tests passed!" and exit 0.
   `-SkipSmokeGate` is for chain iteration only.
+- **Never cross a pwsh process boundary with an array parameter.** `& pwsh
+  -File script.ps1 -Param 'a','b'` delivers ONE literal string INCLUDING the
+  quote characters, not a two-element array. Cost (2026-08-18): the deadlock
+  repro's `-BuildArg` pair reached buildctl as one mangled undeclared ARG
+  name, buildctl silently discarded it, and an 88-minute repro measured
+  nothing while reporting success. Invoke repo scripts DIRECTLY (`&
+  'windows\build-buildkit.ps1' …`) when already in pwsh 7;
+  `build-buildkit.ps1` now throws on non-identifier `-BuildArg` keys so the
+  flattened form fails loudly instead of vanishing downstream.
 - **TVM builds its OWN minimal LLVM (#47, 2026-08-17) — do not "simplify" it
   away.** Scoop's LLVM (official Windows installer) ships NO `llvm-config.exe`
   and no dev libs anywhere (probed: 0 hits), so every earlier Windows TVM was
