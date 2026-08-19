@@ -2479,13 +2479,14 @@ Upstream follow-ups: see "Pending" at the bottom.
   SCCACHE_GIT_REV bumped to the merge commit, patches 0001/0002 deleted —
   the series now carries only 0003 (#115 diag-suppress; local until its own
   PR lands). Owner: post the #2808 addendum comment referencing it.
-- **116 [S·★★, none] `Invoke-GitClone` has no retry — one TCP drop kills a
-  4-hour ride.** 2026-08-18: the base-batch ride died in litert on `curl 18
-  transfer closed` at 610 s of the LiteRT clone; the driver correctly does
-  not infra-retry script failures, so the chain stopped and the relaunch
-  cost the full stage queue. Give Invoke-GitClone (module — land with the
-  NEXT planned media rebuild, cache closure!) 2-3 attempts with backoff +
-  `Remove-SourceBuildTree` between; same family as Invoke-DownloadWithRetry.
+- **116 [S·★★, none] DONE 2026-08-19 (module edit — takes effect with the
+  next media rebuild, cache closure): Invoke-GitClone retries transient
+  failures** (3 attempts, backoff doubling capped at 30 s, mount-safe
+  partial-tree wipe between attempts; throw/SkipOnFailure only after the
+  last). 4 unit tests (fake git.bat, NinjaRetry pattern). Original finding:
+  one TCP drop (`curl 18 transfer closed` at 610 s of the LiteRT clone)
+  killed a 4-hour ride; the driver correctly does not infra-retry script
+  failures, so the chain stopped and the relaunch cost the full stage queue.
 - **115 [S·★★★, none] ROOT-CAUSED + FIX PREPARED 2026-08-19: OpenCV
   CUDA was never an rsp/length problem** (both earlier theories were probe
   artifacts: an undefined `$obj` interleaved 'replay1.obj' between every
