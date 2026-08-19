@@ -241,18 +241,7 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
 
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
 
-### Bump-tool gaps (2026-08-19, found by wave4b's sdk x3 checksum death)
-
-- **BT1 — spec_vulkan must refresh VULKAN_SDK_SHA256** [S·★★] the SAFE write
-  bumped the version but the manually-paired SHA (versions.env "bump
-  together" recipe) sits outside the tool's refresh net → all 3 sdk lanes
-  died on checksum verify. Fold the SHA fetch into spec_vulkan.
-- **BT2 — REPORT tier reports git TAGS, not artifacts** [S·★★]
-  TENSORFLOW_C's "2.21 available" was a tag; the C tarball stopped shipping
-  after 2.18.1 (404). Artifact-existence probe (HEAD request) belongs in the
-  report for artifact-based pins. ALSO the empty-download trap: sha256 of a
-  silent curl failure is e3b0c442... (= sha256("")) — any SHA-derive helper
-  must reject that fingerprint.
+### Bump-tool gaps verdict (2026-08-19): BT1+BT2 fixed same day — spec_vulkan refreshes VULKAN_SDK_SHA256 (stream-hash), TENSORFLOW_C artifact-gated (HEAD probe), sha256_of_url rejects the empty-download fingerprint
 
 ### Batch-3 planning data (2026-08-17 freshness snapshot; api.github.com live)
 

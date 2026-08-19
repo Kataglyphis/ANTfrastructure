@@ -84,13 +84,34 @@ def http_header(url: str, header: str, accept: str, auth: str | None = None) -> 
         return r.headers.get(header, "")
 
 
+# sha256("") — the fingerprint of a silently failed/empty download. Committing
+# it as a pin bricks the consuming stage (BT2, 2026-08-19: nearly happened
+# with the nonexistent libtensorflow 2.21 artifact).
+_EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
 def sha256_of_url(url: str) -> str:
     """Stream-download and hash (for artifacts without a published digest)."""
     h = hashlib.sha256()
+    n = 0
     with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=600) as r:
         for chunk in iter(lambda: r.read(1 << 20), b""):
             h.update(chunk)
-    return h.hexdigest()
+            n += len(chunk)
+    digest = h.hexdigest()
+    if n == 0 or digest == _EMPTY_SHA256:
+        raise RuntimeError(f"empty download for {url} — refusing sha256('') as a pin (BT2)")
+    return digest
+
+
+def artifact_exists(url: str) -> bool:
+    """HEAD-probe an artifact URL (BT2: report artifacts, not just git tags)."""
+    try:
+        req = urllib.request.Request(url, headers=_headers(), method="HEAD")
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return 200 <= r.status < 300
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -536,7 +557,17 @@ def spec_python(cur):
 
 
 def spec_vulkan(cur):
-    return http_text("https://vulkan.lunarg.com/sdk/latest/linux.txt").strip(), {}
+    v = http_text("https://vulkan.lunarg.com/sdk/latest/linux.txt").strip()
+    extras = {}
+    # BT1 (2026-08-19): VULKAN_SDK_SHA256 is a manually-paired pin ("bump
+    # together" recipe in versions.env) that sat OUTSIDE the tool's refresh
+    # net — a version-only write killed all three sdk lanes on checksum
+    # verify. LunarG publishes no digest endpoint, so stream-hash the tarball
+    # (write-mode only; ~600 MB, the CUDA spec sets the precedent).
+    if v != cur and WRITE_MODE:
+        url = f"https://sdk.lunarg.com/sdk/download/{v}/linux/vulkansdk-linux-x86_64-{v}.tar.xz"
+        extras["VULKAN_SDK_SHA256"] = sha256_of_url(url)
+    return v, extras
 
 
 def spec_app_ref(cur):
@@ -650,7 +681,12 @@ REPORT: list[tuple[str, Callable]] = [
     ("NV_CODEC_HEADERS_REF", _r("FFmpeg/nv-codec-headers", strip_v=False, pattern=r"^n[\d.]+$")),
     # -- media/library build deps --
     ("VVDEC_VERSION", _r("fraunhoferhhi/vvdec", strip_v=False)),
-    ("TENSORFLOW_C_VERSION", _r("tensorflow/tensorflow")),
+    # BT2: TF stopped publishing the libtensorflow C tarball after 2.18.1 —
+    # gate the report on the ARTIFACT existing, not the git tag.
+    ("TENSORFLOW_C_VERSION", lambda cur: (
+        (lambda tag: tag if artifact_exists(
+            f"https://storage.googleapis.com/tensorflow/versions/{tag}/libtensorflow-cpu-linux-x86_64.tar.gz")
+         else cur)(gh_latest("tensorflow/tensorflow").lstrip("v")), {})),
     ("OPENVINO_VERSION", _r("openvinotoolkit/openvino")),
     ("ARMNN_VERSION", _r("ARM-software/armnn", strip_v=False, pattern=r"^v\d+\.\d+$")),
     ("ACL_VERSION", _r("ARM-software/ComputeLibrary", strip_v=False, pattern=r"^v\d+\.\d+(\.\d+)?$")),
