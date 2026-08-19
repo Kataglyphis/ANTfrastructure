@@ -109,8 +109,13 @@ mis-split at the MSVC layer when the host sub-compile of nvcc's
 decomposition is parsed). Same failure mode, different argument table - I
 reproduced it on current main and verified this PR does not change it.
 
-**Posting notes (not part of the body):** issue search 2026-08-19 found NO
-existing report of the separated diag-suppress bug (fresh find). #1077
+**Posting notes (not part of the body):** #1105 precedent VERIFIED
+2026-08-19 (probe-sccache-1105-check): all four --default-stream spellings
+compile clean through the pinned build - the issue is resolved on main
+since fb6e671 and could simply be closed (0.17.0-release failures on the
+same shape are the pre-#2722 decomposition breakage, not #1105). Issue
+search 2026-08-19 found NO existing report of the separated diag-suppress
+bug (fresh find). #1077
 matches textually but is the attached `--diag_suppress=` underscore form
 inside one -Xcudafe value - do not link it here. #2372 (hard fail on
 uncacheable nvcc args) is optional context, not required. No pending PR
