@@ -241,9 +241,16 @@ _gst_monorepo_arch_flags() {
       fi
       # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
       append_meson_arg "-Dgstreamer:ptp-helper=disabled"
-      # Introspection kept enabled — exe_wrapper is provided via pre-setup.sh QEMU wrapper.
-      # Force graphene introspection on to avoid dangling .gir dependency in ninja.
-      append_meson_arg "-Dgraphene:introspection=enabled"
+      # RV1-FOLGE (2026-08-20): with ports glib-dev now installed in the
+      # riscv64 sysroot, gobject-introspection-1.84's gir build dies with
+      # `Subproject "subprojects/glib" required but not found` (meson
+      # system-vs-subproject resolution shifted; deterministic). Take the
+      # SAME route the arm64 cross branch has always taken: introspection
+      # OFF for the cross build. GIRs/typelibs served no consumer on
+      # riscv64 anyway (gst-python is disabled above). RESIDUAL: re-enable
+      # once the g-i subproject resolution is understood (backlog RV1-GI).
+      MESON_FLAGS+=("-Dintrospection=disabled")
+      append_meson_arg "-Dgraphene:introspection=disabled"
       # Pango: ensure GTK's subprojects dir can find the top-level pango subproject
       # (GTK looks for pango in its own subprojects/ directory when force_fallback_for
       # is active, but the pango wrap is at the GStreamer top level).
