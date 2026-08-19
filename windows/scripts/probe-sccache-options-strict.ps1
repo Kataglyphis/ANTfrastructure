@@ -43,13 +43,20 @@ foreach ($case in @(
     if ($LASTEXITCODE -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { Write-Host "  err| $_" } }
 }
 
-# The proof: parse is CORRECT (round 6) - the crash is in the spawned
-# compile. Dump every spawned command line + compiler stderr around the
-# trigger to see which sccache-ADDED flag /options:strict rejects.
-Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
-    Select-String 'tiny2|clang-cl.exe|stderr|stdout|status|error' |
-    Select-Object -Last 30 | ForEach-Object {
-        $t = $_.Line.Trim(); Write-Host ("  trace| {0}" -f $t.Substring(0, [Math]::Min(400, $t.Length)))
+# Round 3 (rounds 1-2 verdicts: parse OK; sccache believes the compile
+# SUCCEEDED in 0.021 s yet no object exists). Dump the UNFILTERED window
+# from 'Compiling locally' to the zip-up failure - the spawned compile line
+# sits in there and no keyword guess has caught it yet.
+$lines = @(Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue)
+$start = ($lines | Select-String 'tiny2.*Compiling locally' | Select-Object -First 1).LineNumber
+$end = ($lines | Select-String 'tiny2.*zip up' | Select-Object -First 1).LineNumber
+if ($start -and $end) {
+    $lines[($start - 1)..([Math]::Min($end + 1, $lines.Count - 1))] | ForEach-Object {
+        $t = "$_".Trim(); if ($t) { Write-Host ("  win| {0}" -f $t.Substring(0, [Math]::Min(500, $t.Length))) }
     }
+} else {
+    Write-Host "window markers not found (start=$start end=$end) - dumping tail"
+    $lines | Select-Object -Last 25 | ForEach-Object { Write-Host ("  win| {0}" -f "$_") }
+}
 & $sccache --stop-server 2>&1 | Out-Null
 Write-Host 'probe complete'
