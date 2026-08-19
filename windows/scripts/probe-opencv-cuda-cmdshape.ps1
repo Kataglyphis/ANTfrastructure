@@ -103,7 +103,14 @@ $variants = [ordered]@{
 $i = 0
 foreach ($name in $variants.Keys) {
     $i++
-    $v = $variants[$name] -replace [regex]::Escape($obj), "replay$i.obj"
+    # $target, NOT $obj: $obj never existed in this script (copied from the
+    # ONNX replay). An undefined var makes Escape('') an EMPTY pattern, and
+    # -replace with an empty pattern INTERLEAVES the replacement between
+    # every character - that single bug manufactured the "24k command"
+    # (2040 real chars + 2039 insertions = 24,491), the cmd-8191 death, and
+    # the argv corruption behind "cannot find binary path". Probes 8-13.
+    if (-not $target) { throw 'target empty - refusing to build variants from garbage' }
+    $v = $variants[$name] -replace [regex]::Escape($target), "replay$i.obj"
     $v = $v -replace '-MF \S+', "-MF replay$i.d"
     $env:SCCACHE_DIR = Join-Path $WorkDir "rcache$i"
     $env:SCCACHE_ERROR_LOG = Join-Path $WorkDir "rlog$i.log"
