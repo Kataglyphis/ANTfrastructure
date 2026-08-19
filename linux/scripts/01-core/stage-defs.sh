@@ -245,8 +245,17 @@ cross_stage_tag() {
 # Historically this was documented as "injected by the orchestrator" but never
 # actually set anywhere (only read), so --parallel-archs would N-times overcommit
 # RAM and OOM. Serial builds (the default) → 1, i.e. unchanged behavior.
+# $1 (optional): "shared" for single-build stages (base/compiler) — they run
+# ALONE even under --parallel-archs, so they get divisor 1 (the empirically
+# proven sequential sizing; intra-build step overlap is bounded by buildkitd
+# max-parallelism, which has held since 2026-08-10). Default/per-arch: see PAR4.
 cross_build_mem_divisor() {
+  local kind="${1:-per-arch}"
   _bool_truthy "${PARALLEL_ARCHS:-0}" || { printf '1'; return 0; }
+  # PAR4-AMEND (2026-08-19): the first wave4 launch applied the ×budget
+  # divisor to the SHARED compiler stage too — throttled its LLVM build to
+  # ~1/3 jobs at load 2 (projected +10h). Shared stages run alone: divisor 1.
+  if [ "${kind}" = "shared" ]; then printf '1'; return 0; fi
   local n_arch max
   n_arch="$(arch_list_to_words "${TARGET_ARCHES:-}" | wc -w)"
   [ "${n_arch}" -ge 1 ] 2>/dev/null || n_arch=1
@@ -270,8 +279,9 @@ cross_build_mem_divisor() {
 
 append_cross_build_args() {
   local -n _acba_out=$1
+  local _kind="${2:-per-arch}"
   _acba_out+=(--build-arg "BUILD_MODE=cross")
-  _acba_out+=(--build-arg "BUILD_MEM_DIVISOR=$(cross_build_mem_divisor)")
+  _acba_out+=(--build-arg "BUILD_MEM_DIVISOR=$(cross_build_mem_divisor "${_kind}")")
 }
 
 append_per_arch_build_args() {
@@ -299,7 +309,7 @@ cross_stage_build_args() {
     base)
       ;;
     compiler)
-      append_cross_build_args _csba_out
+      append_cross_build_args _csba_out shared
       _csba_out+=(--build-arg "CROSS_TARGETS=${CROSS_TARGETS}")
       ;;
     sdk)

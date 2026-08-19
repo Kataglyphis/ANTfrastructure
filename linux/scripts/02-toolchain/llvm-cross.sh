@@ -4,6 +4,8 @@
 [ -n "${_LLVM_CROSS_SH_LOADED:-}" ] && return 0
 _LLVM_CROSS_SH_LOADED=1
 set -euo pipefail
+# CCACHE-CONTENT (2026-08-19): survive compiler rebuilds (see build-gcc.sh note)
+export CCACHE_COMPILERCHECK=content
 
 install_cross_llvm_target_packages() {
   local target_label="$1"

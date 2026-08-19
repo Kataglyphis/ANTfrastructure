@@ -2,6 +2,8 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 umask 022
+# CCACHE-CONTENT (2026-08-19): survive compiler rebuilds (see build-gcc.sh note)
+export CCACHE_COMPILERCHECK=content
 
 # build-clang.sh
 # Build LLVM/Clang from source for any architecture (RISC-V, ARM64, x86_64, etc.)
