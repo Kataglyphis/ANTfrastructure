@@ -52,12 +52,15 @@ ensure_onnx_output_tree "${NATIVE_CPU_OUTPUT_DIR}"
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
 BUILD_ARGS+=(--use_xnnpack)
-# ORT-1.29 (2026-08-19): v1.29 pulls cpp_client_telemetry on arm64, whose
-# vendored sqlite trips GCC-16's stringop-overflow -Werror promotion
-# (sqlite3_retail.c:81192 balance_quick — deterministic, retries can't heal
-# it; killed the arm64 media lane 2×). Vendor -Werror on third-party deps
-# buys us nothing — use build.py's own escape hatch.
-BUILD_ARGS+=(--compile_no_warning_as_error)
+# ORT-1.29 (2026-08-19): v1.29 flipped TELEMETRY to DEFAULT-ON for native
+# Linux builds ("--no_telemetry ... enabled by default") — it silently pulls
+# Microsoft's cpp_client_telemetry (1DS SDK) into every build, and that
+# dep's vendored sqlite dies on GCC-16's stringop-overflow -Werror on arm64
+# (sqlite3_retail.c:81192, deterministic — killed the arm64 media lane 3×;
+# --compile_no_warning_as_error does NOT reach the sub-project's own
+# -Werror). We want neither the build break NOR a telemetry SDK in shipped
+# images: turn it off explicitly.
+BUILD_ARGS+=(--no_telemetry)
 
 BUILD_ARGS+=(
   --cmake_extra_defines
