@@ -2485,25 +2485,22 @@ Upstream follow-ups: see "Pending" at the bottom.
   cost the full stage queue. Give Invoke-GitClone (module — land with the
   NEXT planned media rebuild, cache closure!) 2-3 attempts with backoff +
   `Remove-SourceBuildTree` between; same family as Invoke-DownloadWithRetry.
-- **115 [M·★★, none] MEASURED 2026-08-19 00:10: the rsp-off knob is
-  INSUFFICIENT — CUDA stats stayed empty (2018/1863/1862, identical to the
-  rsp run) although both banners fired. CMake's Ninja generator falls back
-  to a response file whenever the real command exceeds the ~32k spawn limit,
-  regardless of the USE_RESPONSE_FILE_* variables — OpenCV's CUDA lines are
-  genuinely over it. PRIMARY PATH is now upstream PR 2: teach sccache's nvcc
-  handler to expand `--options-file` (gcc/msvc handlers already expand @rsp).
-  The OPENCV_CUDA_NO_RSP knob stays dormant/documented until then. Original:
-  OpenCV CUDA caching: rsp-off experiment + upstream
-  `--options-file` expansion.** OpenCV's nvcc calls ride CMake response
-  files, which sccache passes through UNCACHED (measured 2026-08-18: zero
-  CUDA cache categories at 99.95% C/C++ hits) — wrapped OpenCV CUDA is
-  bare-but-green. Wired: dormant `OPENCV_CUDA_NO_RSP=1` knob (disables
-  CMAKE_CUDA_USE_RESPONSE_FILE_*, calls arrive inline; loud failure if the
-  32,767-char spawn limit ever bites). ORDER: only test after #114 ships —
-  inline calls without the quote fix inherit the miscompile. The durable fix
-  is upstream PR #2: teach nvcc.rs to expand `--options-file` the way the
-  gcc/msvc handlers already expand @rsp files (follow-up to
-  mozilla/sccache#2811); then the CMake knob retires.
+- **115 [S·★★★, none] ROOT-CAUSED + FIX PREPARED 2026-08-19: OpenCV
+  CUDA was never an rsp/length problem** (both earlier theories were probe
+  artifacts: an undefined `$obj` interleaved 'replay1.obj' between every
+  character and manufactured a phantom 24k command). The real command is
+  ~2,040 chars, inline, no rsp. sccache rejects it as
+  `CannotCache(multiple input files)` because **`--diag-suppress 1394,1388`
+  (separated) is missing from the nvcc ARGS table** - the value parses as a
+  bare token = phantom second input. Measured: separated form uncached,
+  attached form cached; all 155 OpenCV .cu compiles carry the flag. Fix =
+  patch 0003 in windows/upstream/sccache-nvcc-quote-fix (diag-error/
+  suppress/warn, both dash forms, + regression test); ships with the next
+  base ride, upstream PR 2 draft in the package (OWNER submits - no direct
+  PR interaction per 2026-08-19 directive). The OPENCV_CUDA_NO_RSP knob is
+  moot and stays only as a documented dead end. AFTER the ship: the
+  OPENCV_CUDA_LAUNCHER=1 experiment repeats and should finally show CUDA
+  cache categories.
 - **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
   "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
   logged `could not compare avcodec majors (chain='' configure='63')`: in

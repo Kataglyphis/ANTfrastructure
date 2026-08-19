@@ -62,3 +62,28 @@ expected module-id naming divergence).
 `fix/nvcc-dryrun-escaped-quotes-windows` on the Kataglyphis fork; reference
 #2808 and #1077 in the description, do not claim to close #2808 (its
 deadlock half is a separate finding).
+
+---
+
+# PR 2 draft (SEPARATE upstream PR - owner submits): nvcc diag-family flags
+
+**Patch:** `0003-nvcc-accept-the-diag-error-diag-suppress-diag-warn-f.patch`
+**Branch suggestion:** `fix/nvcc-diag-suppress-separated` from the pin.
+
+**Title:** `nvcc: accept the --diag-error/--diag-suppress/--diag-warn family`
+
+**Body:**
+
+nvcc's diagnostic-control options take an error-number list and accept the
+separated form (`--diag-suppress 1394,1388`). None of the family is in the
+argument table, so the separated value parses as a bare token, is taken for
+a second input file, and the whole compile is rejected as
+`CannotCache(multiple input files)` - silently forwarded, never cached.
+
+Real-world impact: OpenCV 5.x passes `-Xcudafe --display_error_number
+--diag-suppress 1394,1388` on every CUDA TU; all 155 of its .cu compiles
+are forwarded uncached (measured: separated form `requests executed 0`,
+attached `--diag-suppress=...` caches fine).
+
+Adds double- and single-dash forms (`CanBeSeparated('=')`, `PassThrough`)
+plus a regression test for the separated shape.
