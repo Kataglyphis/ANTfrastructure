@@ -34,6 +34,20 @@ RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VE
 # strips embedded double quotes from shell-form RUN lines (same trap as the
 # 2026-08-04 handoff-scrub incident).
 RUN Set-Content -Path 'C:\temp\cpython\PCbuild\Directory.Build.props' -Value @('<?xml version=''1.0'' encoding=''utf-8''?>', '<Project xmlns=''http://schemas.microsoft.com/developer/msbuild/2003''>', '  <PropertyGroup>', '    <PlatformToolset>ClangCL</PlatformToolset>', '  </PropertyGroup>', '</Project>')
+# Expose the (to-be-built) source Python via PATH for downstream media builds.
+# Set here so `docker commit` preserves it in the result image (the interpreter is
+# produced by the run step, but ENV is metadata and is carried over by the commit).
+ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
+ENV PATH=$PYTHON_BUILD_BIN;$PATH
+
+# ── classic-lane target (docker run + commit) ────────────────────────────────
+# #52 (2026-08-19): the script/module/versions.env COPYs moved OUT of the
+# shared `builder` ancestry into this classic-only stage - docker run has no
+# bind mounts, so the run+commit path needs the files IN the image, but the BK
+# lane's `built` stage must not re-pay the CPython compile whenever one of
+# them is edited (the module is shared by ~30 scripts). build.ps1 pins
+# `--target builder-classic`.
+FROM builder AS builder-classic
 # Shared module for build-toolchain-all.ps1's nuget pre-seed (Invoke-DownloadWithRetry).
 COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 # Re-COPY versions.env (same pattern as the media builders): base bakes a copy
@@ -42,16 +56,14 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\
 
-# Expose the (to-be-built) source Python via PATH for downstream media builds.
-# Set here so `docker commit` preserves it in the result image (the interpreter is
-# produced by the run step, but ENV is metadata and is carried over by the commit).
-ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
-ENV PATH=$PYTHON_BUILD_BIN;$PATH
-
 # ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────
 # Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
 # steps see all host CPUs, so the heavy compile can be a plain LAYER — no
-# run+commit. The classic docker lane builds `--target builder` (build.ps1 pins
-# it, since docker defaults to the LAST stage) and never executes this RUN.
+# run+commit. Script + module + versions.env arrive as bind mounts (#52): an
+# edit to any of them no longer invalidates this stage's ancestry, and the
+# script prefers the SIBLING versions.env under C:\bkmnt over $env:TEMP_DIR.
 FROM builder AS built
-RUN & 'C:\temp\scripts\build-toolchain-all.ps1'
+RUN --mount=type=bind,source=windows/scripts/build-toolchain-all.ps1,target=C:\bkmnt\build-toolchain-all.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
+    & 'C:\bkmnt\build-toolchain-all.ps1'
