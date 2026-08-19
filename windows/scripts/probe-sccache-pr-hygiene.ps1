@@ -18,7 +18,14 @@ Import-Module 'C:\bkmnt\modules\WindowsSourceBuild.Common.psm1' -Force
 Enter-VsDevCmdEnvironment
 
 $rev = $env:SCCACHE_GIT_REV
-if (-not $rev) { throw 'SCCACHE_GIT_REV missing' }
+if (-not $rev) {
+    # Post-#50 images may not bake this key into Machine env - the file
+    # itself ships at C:\temp\versions.env, read the pin from there.
+    $rev = (Select-String -Path 'C:\temp\versions.env' -Pattern '^SCCACHE_GIT_REV=(.+)$' |
+        ForEach-Object { $_.Matches[0].Groups[1].Value } | Select-Object -First 1)
+}
+if (-not $rev) { throw 'SCCACHE_GIT_REV missing (env AND C:\temp\versions.env)' }
+Write-Host "pin: $rev"
 $null = New-Item -ItemType Directory -Force -Path $WorkDir
 Set-Location $WorkDir
 & git init -q src; Set-Location src
