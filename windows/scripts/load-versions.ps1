@@ -68,8 +68,17 @@ foreach ($name in $versions.Keys) {
     $fromMachine = [Environment]::GetEnvironmentVariable($name, 'Machine')
     $isExplicitOverride = (-not [string]::IsNullOrWhiteSpace($fromProcess)) -and ($fromProcess -ne $fromMachine)
     if ($isExplicitOverride) {
+        # PERSIST the winning value (2026-08-19): an override wins the RUN
+        # *and* gets baked. Leaving Machine untouched silently un-baked the
+        # nine #50 ARG-mirrored keys from the BASE image itself - the base
+        # stage declares them as ARGs before this bake RUN, so during the
+        # bake they sit in the process env, Machine is empty, and this
+        # branch skipped them (SCCACHE_GIT_REV missing from every post-#50
+        # image; probes grew a C:\temp\versions.env fallback). The image
+        # should record what it was actually built with.
+        [Environment]::SetEnvironmentVariable($name, $fromProcess, 'Machine')
         if ($fromProcess -ne $value) {
-            Write-Host "  $name = $fromProcess  (kept: build-arg/ENV beats the file's '$value')"
+            Write-Host "  $name = $fromProcess  (kept + baked: build-arg/ENV beats the file's '$value')"
         }
         $kept++
         continue
