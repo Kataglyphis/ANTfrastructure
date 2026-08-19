@@ -2475,9 +2475,10 @@ Upstream follow-ups: see "Pending" at the bottom.
   --git`) = BASE rebuild — rides the next base-tier batch, never alone.
   After shipping: three canaries + a cache-hit second run, THEN the
   SCCACHE_CUDA_LAUNCHER default discussion reopens (~50 min/chain at stake).
-  Upstream PR SUBMITTED 2026-08-18: mozilla/sccache#2811 (fmt/clippy/tests
-  green in-container, regression test included). Owner: post the #2808
-  addendum comment referencing it.
+  Upstream PR mozilla/sccache#2811 MERGED 2026-08-19 (ffac4a5, sylvestre);
+  SCCACHE_GIT_REV bumped to the merge commit, patches 0001/0002 deleted —
+  the series now carries only 0003 (#115 diag-suppress; local until its own
+  PR lands). Owner: post the #2808 addendum comment referencing it.
 - **116 [S·★★, none] `Invoke-GitClone` has no retry — one TCP drop kills a
   4-hour ride.** 2026-08-18: the base-batch ride died in litert on `curl 18
   transfer closed` at 610 s of the LiteRT clone; the driver correctly does

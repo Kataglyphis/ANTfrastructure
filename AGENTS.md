@@ -1064,16 +1064,19 @@ The rules an agent must never violate:
      symbol`) was root-caused to sccache's Windows dryrun quote-collapse —
      `\"` escapes flattened before tokenization packed ~30 `-D` pairs into
      one 493-char token, so the cpp4 preprocess lost `USE_CUDA` & friends —
-     fixed by the local patch series in
-     `windows/upstream/sccache-nvcc-quote-fix/` (upstream:
-     mozilla/sccache#2811), applied by the base rust layer (#114). The
+     fixed upstream (mozilla/sccache#2811, MERGED 2026-08-19 =
+     SCCACHE_GIT_REV ffac4a5); the local series in
+     `windows/upstream/sccache-nvcc-quote-fix/` now carries only 0003
+     (--diag-suppress separated form, OpenCV #115 — its own PR is drafted,
+     owner submits), applied by the base rust layer (#114). The
      three-canary bar passed 2026-08-18 evening: fused_moe compile green,
      providers_cuda link green COLD (153 CUDA device writes), link green on
      the HIT run at **100.00% CUDA/PTX/CUBIN hit rate** (207/816 hits) —
      onnx's CUDA portion drops from ~60 to ~33 min warm. The #2808 DEADLOCK
      separately proved to be #99 collateral (gone under a healthy backend).
-     Patch 006 (bare fused_moe) STAYS for now — retiring it is a separate
-     experiment. Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`;
+     Patch 006 (bare fused_moe) was RETIRED 2026-08-18 (moe compiles
+     through the launcher, link green). Opt out per run with
+     `-BuildArg SCCACHE_CUDA_LAUNCHER=`;
      never flip the default off silently, and never bump SCCACHE_GIT_REV
      without checking the patch series still applies (the rust layer THROWS
      if not).
