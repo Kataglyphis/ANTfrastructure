@@ -72,18 +72,31 @@ deadlock half is a separate finding).
 
 **Title:** `nvcc: accept the --diag-error/--diag-suppress/--diag-warn family`
 
-**Body:**
+**Body** (written to read like a build-log war story, not a report - keep
+this tone if editing):
 
-nvcc's diagnostic-control options take an error-number list and accept the
-separated form (`--diag-suppress 1394,1388`). None of the family is in the
-argument table, so the separated value parses as a bare token, is taken for
-a second input file, and the whole compile is rejected as
-`CannotCache(multiple input files)` - silently forwarded, never cached.
+While trying to get OpenCV's CUDA build cached on Windows I noticed that
+none of its .cu files ever got cache hits. The server log shows every
+single compile being rejected with:
 
-Real-world impact: OpenCV 5.x passes `-Xcudafe --display_error_number
---diag-suppress 1394,1388` on every CUDA TU; all 155 of its .cu compiles
-are forwarded uncached (measured: separated form `requests executed 0`,
-attached `--diag-suppress=...` caches fine).
+```
+CannotCache(multiple input files)
+```
 
-Adds double- and single-dash forms (`CanBeSeparated('=')`, `PassThrough`)
-plus a regression test for the separated shape.
+OpenCV passes `-Xcudafe --display_error_number --diag-suppress 1394,1388`
+on every CUDA file. The problem: `--diag-suppress` (and its siblings
+`--diag-error` / `--diag-warn`) are missing from the nvcc argument table.
+nvcc accepts the value either attached (`--diag-suppress=1394,1388`) or as
+a separate argument, and CMake/OpenCV happen to emit the separated form -
+so sccache parses `1394,1388` as a bare token, takes it for a second input
+file and refuses the compile.
+
+Easy to reproduce with any single nvcc compile: add
+`--diag-suppress 1394,1388` and the request is forwarded uncached
+(`requests executed 0` in the stats), switch to `--diag-suppress=1394,1388`
+and the same compile caches fine.
+
+This adds the three flags in both their single- and double-dash forms
+(`CanBeSeparated`, `PassThrough`) plus a regression test for the separated
+form. With the patch applied, OpenCV's CUDA compiles (155 files in our
+build) all cache.
