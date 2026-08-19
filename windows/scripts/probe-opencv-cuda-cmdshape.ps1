@@ -112,11 +112,19 @@ foreach ($name in $variants.Keys) {
     & $sccache --start-server 2>&1 | Out-Null
     # Direct spawn (CreateProcess, 32k limit) - a cmd.exe wrapper dies at 8191
     # with "The command line is too long." (probe 9: all variants, 2s).
-    # PS-native call with a parsed arg ARRAY (the 2470 probe's working
-    # mechanism; ProcessStartInfo string-quoting broke client-side compiler
-    # resolution in probes 10/11, and a cmd wrapper dies at 8191 chars).
-    $tokens = @([regex]::Matches($v, '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') })
+    # Token splitter that survives MIXED-quote args (-Xcompiler="-O2 -Ob2",
+    # -DX="long long"): a token is any run of non-space chars and quoted
+    # spans. The naive '"..."|\S+' split tore those into two broken args and
+    # every harness failure since probe 10 was THAT, not sccache.
+    $tokens = @([regex]::Matches($v, '(?:[^\s"]+|"[^"]*")+') | ForEach-Object { $_.Value -replace '"', '' })
     Write-Host ("  len={0} tokens={1}" -f $v.Length, $tokens.Count)
+    if ($name -eq 'full') {
+        # Control: the SAME tokens through bare nvcc. If this fails, the
+        # harness (not sccache) is broken - never let that masquerade again.
+        $bareOut = & $tokens[0] @($tokens[1..($tokens.Count-1)] | ForEach-Object { $_ -replace 'replay1', 'bare0' }) 2>&1
+        Write-Host ("  bare-control exit={0}" -f $LASTEXITCODE)
+        if ($LASTEXITCODE -ne 0) { ($bareOut | Select-Object -Last 2) | ForEach-Object { "  bare| $_" } }
+    }
     $out = & $sccache @tokens 2>&1
     $rc = $LASTEXITCODE
     if ($rc -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { "  err| $_" } }
