@@ -112,9 +112,14 @@ foreach ($name in $variants.Keys) {
     & $sccache --start-server 2>&1 | Out-Null
     # Direct spawn (CreateProcess, 32k limit) - a cmd.exe wrapper dies at 8191
     # with "The command line is too long." (probe 9: all variants, 2s).
+    # sccache choked on the QUOTED nvcc path as its first argv ("cannot find
+    # binary path", probe 10) - hand it the bare exe path and keep the rest.
+    $nvccTok = [regex]::Match($v, '^\s*"([^"]+)"|^\s*(\S+)')
+    $nvccExe = if ($nvccTok.Groups[1].Value) { $nvccTok.Groups[1].Value } else { $nvccTok.Groups[2].Value }
+    $rest = $v.Substring($nvccTok.Length)
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $sccache
-    $psi.Arguments = $v
+    $psi.Arguments = "`"$nvccExe`"$rest"
     $psi.WorkingDirectory = (Get-Location).Path
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
@@ -131,6 +136,11 @@ foreach ($name in $variants.Keys) {
     $stats = & $sccache --show-stats 2>&1
     $exe = (($stats | Select-String 'requests executed' | Select-Object -First 1).Line -replace '\D+', '')
     $why = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache|cannot cache|NotCompilation' | Select-Object -First 1)
+    if ($rc -ne 0) {
+        Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
+            Select-String 'which|binary|Error|failed|dryrun' | Select-Object -Last 4 |
+            ForEach-Object { "  srv| $($_.Line.Trim().Substring(0, [Math]::Min(220, $_.Line.Trim().Length)))" }
+    }
     & $sccache --stop-server 2>&1 | Out-Null
     Write-Host ("variant {0,-15} exit={1} executed={2} why='{3}'" -f $name, $rc, $exe, $why)
 }
