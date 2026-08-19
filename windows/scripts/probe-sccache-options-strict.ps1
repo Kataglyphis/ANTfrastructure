@@ -43,12 +43,13 @@ foreach ($case in @(
     if ($LASTEXITCODE -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { Write-Host "  err| $_" } }
 }
 
-# The proof: sccache's own trace of how it parsed the trigger - outputs map,
-# unhandled args, and the compile command it actually spawned.
+# The proof: parse is CORRECT (round 6) - the crash is in the spawned
+# compile. Dump every spawned command line + compiler stderr around the
+# trigger to see which sccache-ADDED flag /options:strict rejects.
 Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
-    Select-String 'parse_arguments|outputs|options:strict|ptions|zip up|failed to open|compile_cmd|arguments' |
-    Select-Object -Last 20 | ForEach-Object {
-        $t = $_.Line.Trim(); Write-Host ("  trace| {0}" -f $t.Substring(0, [Math]::Min(220, $t.Length)))
+    Select-String 'tiny2|clang-cl.exe|stderr|stdout|status|error' |
+    Select-Object -Last 30 | ForEach-Object {
+        $t = $_.Line.Trim(); Write-Host ("  trace| {0}" -f $t.Substring(0, [Math]::Min(400, $t.Length)))
     }
 & $sccache --stop-server 2>&1 | Out-Null
 Write-Host 'probe complete'
