@@ -105,8 +105,15 @@ if ($compileLine) {
         'no-warnings'     = ($compileLine -replace '-W[a-z][^\s]*\s*', '' -replace '-wd\d+\s*', '')
         'no-defines'      = ($compileLine -replace '-D[^\s]+\s*', '')
         'no-includes'     = ($compileLine -replace '-I[^\s]+\s*', '')
-        'minimal-control' = 'clang-cl -nologo -c -Folibavutil/avstring.o libavutil/avstring.c'
+        'minimal-control' = 'clang-cl -nologo -c -Fotiny1.o tiny.c'
+        # THE isolated trigger (round 4 verdict: only no-optstrict passes):
+        # if this crashes, the upstream repro needs no ffmpeg at all -
+        # suspicion: sccache's arg parser eats '-options:strict' as
+        # '-o' + 'ptions:strict'. tiny.c is standalone (the libavutil TUs
+        # need config.h and exit 1 on their own, masking the verdict).
+        'minimal-PLUS-optstrict' = 'clang-cl -nologo -options:strict -c -Fotiny2.o tiny.c'
     }
+    Set-Content -Path (Join-Path (Get-Location) 'tiny.c') -Value 'int tiny_fn(int x) { return x + 1; }' -Encoding ascii
     $vi = 0
     foreach ($vn in $variants.Keys) {
         $vi++
