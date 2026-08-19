@@ -2400,7 +2400,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   cuDNN's nested layout likely replaces the whole stage. NOTE: verify the
   actual cuDNN 9 nesting against the installed tree before removing the stage —
   the flatten fix was load-bearing for OpenCV's `cudnn64_9.dll`.
-- **100 [M·★★★, media-core] LANDED 2026-08-19 for FFmpeg (riding the full ride; ACCEPT on `Compile requests` > 0 in the ffmpeg stage stats - NOT hit rate; PyAV stays open as the lower-value half): --cc='sccache clang-cl' in configure, config.mak CC= echoed, loud warning if the prefix is dropped. Original finding: FFmpeg and PyAV compile with sccache COMPLETELY
+- **100 [M·★★★, media-core] REOPENED 2026-08-19 after two measured failures - FFmpeg stays BARE:** (1) configure --cc='sccache clang-cl': configure's own compiler tests produce objects lld-link rejects ("unknown file type"); (2) make-time CC override: dies ~20 files in with sccache "failed to zip up compiler outputs" on the RELATIVE forward-slash -Fo outputs (libavdevice/dshow*.o resolved to C:	emp\...\libavdevice/dshow_pin.o, file absent) - and the bare `make install` then silently recompiled everything launcher-less (15 min), so both "green" rides were uncached anyway. Next angle: sccache-side (does it mishandle relative -Fo through a server whose cwd differs? possibly upstream PR 3 material - owner decides); PyAV unchanged. Original finding: FFmpeg and PyAV compile with sccache COMPLETELY
   BYPASSED — the whole ffmpeg branch is uncached, every build, forever.**
   Measured 2026-08-15 in the #99 verification run: the `media-core-built-ffmpeg`
   stage reported `Compile requests 0` — not "0 hits", *zero requests*. sccache
