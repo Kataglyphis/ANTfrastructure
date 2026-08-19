@@ -432,9 +432,16 @@ Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware
 # library dependencies (libavutil -> libswscale) aren't fully linked before
 # consumers — the serial retry resolves those deterministically.
 $makeJobs = Get-BuildJobCount -MemGBPerJob 2
-# #100: the sccache launcher enters HERE, as a make-time CC override (beats
-# config.mak) - configure's own compiler tests stay bare (see above).
-$makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl'" } else { '' }
+# #100 RETIRED after two measured failures (2026-08-19): (1) configure's own
+# compiler tests break through sccache ("unknown file type" objects); (2) a
+# make-time CC='sccache clang-cl' override dies ~20 files in with sccache
+# "failed to zip up compiler outputs" on ffmpeg's RELATIVE forward-slash -Fo
+# outputs (libavdevice/dshow*.o) - and the bare `make install` below then
+# silently re-compiled everything anyway (15 min, launcher-less), so the
+# "green" run was uncached regardless. FFmpeg stays bare until sccache
+# handles that output shape; the full trail lives on backlog #100.
+$makeCc = ''
+if ($ffUseLauncher) { Write-Host 'NOTE: ffmpeg compiles BARE - the sccache launcher is retired here (backlog #100, output-collection failures)' }
 # All three make calls are -Optional by design: a parallel-link race falls
 # through to the -j1 retry, and an incomplete build/install falls through to
 # the artifact verification + prebuilt fallback below (never throw here).
