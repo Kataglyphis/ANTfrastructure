@@ -315,15 +315,18 @@ $ffToolchain = if ($env:FFMPEG_TOOLCHAIN) { $env:FFMPEG_TOOLCHAIN } else { 'clan
 if ($ffToolchain -eq 'clang-cl') {
     # #100: FFmpeg does not use CMake, so the module's CMAKE_*_COMPILER_LAUNCHER
     # wiring never reached it - the stage reported `Compile requests 0` (not "0
-    # hits": ZERO requests) in every build. FFmpeg's configure tolerates a
-    # launcher prefix in --cc; --ld stays bare. Opt out: FFMPEG_SCCACHE=0.
-    # Acceptance criterion is `Compile requests` > 0 in the stage stats, NOT
-    # the hit rate (uncached components are invisible in aggregate hit rates).
-    $ffCc = 'clang-cl'
+    # hits": ZERO requests) in every build. The launcher must NOT go into
+    # configure's --cc: configure's own compiler tests (MSYS relative paths,
+    # -P/-EP preprocess modes) produce objects lld-link rejects as "unknown
+    # file type" through sccache (measured 2026-08-19, ride 4). configure runs
+    # BARE; the launcher is injected at MAKE time instead (make CC=... beats
+    # config.mak). Opt out: FFMPEG_SCCACHE=0. Acceptance criterion is `Compile
+    # requests` > 0 in the stage stats, NOT the hit rate (uncached components
+    # are invisible in aggregate hit rates).
     $ffSccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    if ($ffSccache -and $env:FFMPEG_SCCACHE -ne '0') { $ffCc = 'sccache clang-cl' }
-    Write-Host "FFmpeg toolchain: $ffCc + lld-link (overriding the msvc preset's cc/ld)"
-    $confFlags += '--toolchain=msvc', "--cc=$ffCc", '--ld=lld-link'
+    $ffUseLauncher = [bool]($ffSccache -and $env:FFMPEG_SCCACHE -ne '0')
+    Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
+    $confFlags += '--toolchain=msvc', '--cc=clang-cl', '--ld=lld-link'
 } else {
     Write-Host 'FFmpeg toolchain: msvc (cl.exe + link.exe)'
     $confFlags += '--toolchain=msvc'
@@ -363,17 +366,13 @@ if ($LASTEXITCODE -ne 0) {
     if (Test-Path $logFile) { Write-Host "=== config.log (last 50 lines) ==="; Get-Content $logFile -Tail 50 }
     throw "FFmpeg configure failed (exit $LASTEXITCODE)"
 }
-# #100 verification: configure must have KEPT the launcher prefix in CC. A
-# silently stripped launcher is the status quo (bare but green), so warn
-# loudly instead of failing - the stage's `Compile requests` count is the
-# real acceptance gate.
+# #100: CC in config.mak is the BARE compiler by design (see the toolchain
+# note above); the launcher rides in as a make-time override. Echo it for the
+# log so a cache regression is diagnosable from the build output alone.
 $configMak = Join-Path $srcDir 'ffbuild\config.mak'
 if (Test-Path $configMak) {
     $ccLine = (Select-String -Path $configMak -Pattern '^CC=' | Select-Object -First 1).Line
-    Write-Host "config.mak: $ccLine"
-    if ($ffToolchain -eq 'clang-cl' -and $ffCc -like 'sccache*' -and $ccLine -notmatch 'sccache') {
-        Write-Warning "#100: configure DROPPED the sccache launcher from CC ('$ccLine') - the ffmpeg stage will compile uncached."
-    }
+    Write-Host "config.mak: $ccLine (make-time sccache launcher: $ffUseLauncher)"
 }
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
@@ -433,14 +432,17 @@ Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware
 # library dependencies (libavutil -> libswscale) aren't fully linked before
 # consumers — the serial retry resolves those deterministically.
 $makeJobs = Get-BuildJobCount -MemGBPerJob 2
+# #100: the sccache launcher enters HERE, as a make-time CC override (beats
+# config.mak) - configure's own compiler tests stay bare (see above).
+$makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl'" } else { '' }
 # All three make calls are -Optional by design: a parallel-link race falls
 # through to the -j1 retry, and an incomplete build/install falls through to
 # the artifact verification + prebuilt fallback below (never throw here).
-[void](Invoke-ShieldedNative -Optional -Label "ffmpeg make -j$makeJobs" -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j$makeJobs`"")
+[void](Invoke-ShieldedNative -Optional -Label "ffmpeg make -j$makeJobs" -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j$makeJobs$makeCc`"")
 $builtFfmpeg = Join-Path $srcDir 'ffmpeg.exe'
 if (-not (Test-Path $builtFfmpeg)) {
     Write-Host 'Retrying with single job (resolves MSVC link races)...'
-    [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make -j1' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j1`"")
+    [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make -j1' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j1$makeCc`"")
 }
 # Source build may fail at link stage (EXTRALIBS config issue with MSVC/MSYS2).
 # Fall through to download a pre-built MSVC FFmpeg binary.
