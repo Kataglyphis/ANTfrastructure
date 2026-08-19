@@ -2487,7 +2487,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   one TCP drop (`curl 18 transfer closed` at 610 s of the LiteRT clone)
   killed a 4-hour ride; the driver correctly does not infra-retry script
   failures, so the chain stopped and the relaunch cost the full stage queue.
-- **115 [S·★★★, none] ROOT-CAUSED + FIX PREPARED 2026-08-19: OpenCV
+- **115 [S·★★★, none] DONE 2026-08-19 EVENING - OPENCV_CUDA_LAUNCHER default ON: cold run wrote every CUDA category (155 cudafe++/nvcc, 620 cicc/ptxas, link green), the no-cache hit run came back 100.00% on all four CUDA categories (99.97% overall) and cut the opencv stage ~13->~4.3 min. Upstream PR 2 submitted by the owner (fix/nvcc-diag-suppress-separated). Original: OpenCV
   CUDA was never an rsp/length problem** (both earlier theories were probe
   artifacts: an undefined `$obj` interleaved 'replay1.obj' between every
   character and manufactured a phantom 24k command). The real command is

@@ -468,25 +468,25 @@ FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
 # Dockerfile or buildctl silently DISCARDS the --opt build-arg (cost a
 # 25-minute run on 2026-08-16).
 ARG OPENCV_LINK_CHAIN_FFMPEG="1"
-# EXPERIMENT KNOB (owner request 2026-08-18): route OpenCV's CUDA compiles
-# through the sccache launcher. Dormant by default ("" = bare CUDA, the
-# production stance since the miscompile verdict). DELIBERATELY NOT named
-# SCCACHE_CUDA_LAUNCHER: the driver's -BuildArg is global across stages, and
-# the shared name flipped the ONNX stage's cache key too - the first
-# experiment run rebuilt onnx WITH the launcher and died at the known
-# providers_cuda link failure before opencv ever ran (2026-08-18; the hit
-# path served the same dropped-instantiation objects). The stage-local name
-# maps onto the env var only HERE. Gate is the LINK of the CUDA modules; a
-# green link still cannot be runtime-verified on this host (no NVIDIA GPU in
-# the container). Never default this on.
-# ARG only - the SCCACHE_CUDA_LAUNCHER mapping happens INSIDE the RUN, never
-# via ENV: an ENV mapping baked the experiment flag into the image and genai
-# inherited an active CUDA launcher (2026-08-18). Measured result of run 2,
-# for the record: OpenCV's nvcc calls arrive via response files, which
-# sccache passes through UNCACHED (2018 requests / 1863 executed / zero CUDA
-# cache categories) - so "wrapped" OpenCV CUDA is bare-but-green and there is
-# currently nothing to win here.
-ARG OPENCV_CUDA_LAUNCHER=""
+# DEFAULT ON since 2026-08-19 (#115 closed): OpenCV's CUDA compiles route
+# through the sccache launcher. The old blocker - every .cu rejected as
+# CannotCache(multiple input files) because the SEPARATED --diag-suppress
+# form was missing from sccache's nvcc table - is fixed by patch 0003 in
+# windows/upstream/sccache-nvcc-quote-fix (upstream PR pending). Canary bar
+# passed 2026-08-19 evening: COLD run wrote all CUDA categories (155
+# cudafe++/nvcc, 620 cicc/ptxas) with a green link; the no-cache HIT run
+# came back at 100.00% across every CUDA category (99.97% overall) and cut
+# the stage from ~13 to ~4.3 min. Opt OUT for experiments with:
+#   -BuildArg OPENCV_CUDA_LAUNCHER=
+# DELIBERATELY NOT named SCCACHE_CUDA_LAUNCHER: the driver's -BuildArg is
+# global across stages, and the shared name once flipped the ONNX stage's
+# cache key too (2026-08-18). The stage-local name maps onto the env var
+# only HERE, INSIDE the RUN - never via ENV (an ENV mapping once baked the
+# flag into the image and genai inherited an active CUDA launcher).
+# History, for the record: the 2026-08-18 run 2 verdict "rsp files pass
+# through uncached" was true but NOT the root cause - the diag-suppress
+# table gap was (backlog #115).
+ARG OPENCV_CUDA_LAUNCHER="1"
 # Companion experiment knob: disable CMake's CUDA response files so nvcc
 # calls arrive inline and can enter sccache's decomposition at all (rsp files
 # are passed through uncached - measured 2026-08-18). Only meaningful with
