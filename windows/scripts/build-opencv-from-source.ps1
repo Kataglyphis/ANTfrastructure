@@ -434,13 +434,28 @@ if (Test-Path $ffProbe) {
     # without it the exe dies on startup, the version reads back EMPTY, and this
     # gate degraded to "provenance unverified" in every build (the probe's
     # recurring `chain=?`). Same fix as in smoke-test-container.ps1.
+    #
+    # #112 root cause (measured in-image 2026-08-19): the bin dir alone is NOT
+    # enough - avfilter-12.dll statically imports onnxruntime.dll
+    # (--enable-libonnxruntime links the chain's ORT), which lives under
+    # lib\onnxruntime-source, so ffmpeg.exe still died 0xC0000135
+    # STATUS_DLL_NOT_FOUND with an EMPTY version and chain='' every build.
     $ffBinDir = Split-Path $ffProbe -Parent
+    $probeDirs = @($ffBinDir)
+    $ortDll = Get-ChildItem (Join-Path $InstallDir 'lib\onnxruntime-source') -Recurse -Filter 'onnxruntime.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($ortDll) { $probeDirs += $ortDll.DirectoryName }
     $savedPath = $env:PATH
     try {
-        if ($env:PATH -notlike "*$ffBinDir*") { $env:PATH = "$ffBinDir;$env:PATH" }
+        $env:PATH = ($probeDirs -join ';') + ';' + $env:PATH
         $ffVer = & $ffProbe -version 2>&1 | Out-String
+        $ffExit = $LASTEXITCODE
     } finally { $env:PATH = $savedPath }
     if ($ffVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodecMajor = $Matches[1] }
+    elseif ($ffExit -ne 0) {
+        # Never swallow the loader's verdict again: 0xC0000135 with empty
+        # output is a missing-DLL signature, not a parse miss.
+        Write-Host ("NOTE: ffmpeg.exe -version exited {0} (0x{0:X8}) with no parseable output - probe dirs: {1}" -f $ffExit, ($probeDirs -join ';'))
+    }
 }
 $cfgText = if (Test-Path $cfgLog) { Get-Content $cfgLog -Raw } else { '' }
 $cfgFfmpegYes = $cfgText -match '(?m)^\s*--\s+FFMPEG:\s+YES'
