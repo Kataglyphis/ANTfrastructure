@@ -2521,11 +2521,13 @@ Upstream follow-ups: see "Pending" at the bottom.
   Fix: make the empty chain-read loud (assert the probe path exists + version
   output non-empty when `OPENCV_LINK_CHAIN_FFMPEG=1`), and print WHY it was
   empty (path missing vs exit code vs regex miss).
-- **107 [M·★★, none] `Invoke-SourceBuildChain` / `Complete-SourceBuildChain`
-  carry 134/158 lines of inline sccache choreography** accreted through
-  #97–#99. Extract `Start-/Complete-SccacheServerSession` into the module:
-  unit-testable (the log truncation and the `-Last N` dump each cost a false
-  alarm), and the chain functions drop back to readable size.
+- **107 [M·★★, none] DONE 2026-08-19 (module edit — takes effect with the
+  next media rebuild): `Start-/Complete-SccacheServerSession` extracted** with
+  a `-SccachePath` test seam + 6 unit tests pinning the truncation and the
+  failures-first dump (each had cost a false alarm); war-story comments moved
+  with the code, chain functions back to readable size, suite 511/511.
+  Original finding: the chain functions carried 134/158 lines of inline
+  sccache choreography accreted through #97–#99.
 
 ### P7 — PERFECTION CAMPAIGN (owner mandate 2026-08-17: "drastische Maßnahmen erlaubt")
 
