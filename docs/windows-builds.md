@@ -2329,7 +2329,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   branch (hours). The 2026-08-07 versions.env-COPY removal fixed this at BRANCH
   granularity and never reached COMPONENT granularity. FIX: move each ARG+ENV
   into the stage that consumes it.
-- **50 [M·★★★, base once] DONE 2026-08-18 (riding the #114 base batch): versions.env COPY relocated below scoop/vcpkg/rust; the 9 consumed keys (incl. helper-reads GIT_VERSION/WIX_*/SCOOP_INSTALLER_SHA256 - invisible to a naive $env: grep) ride as ARGs mirrored in both drivers. Original finding: `versions.env` is COPY'd above scoop + vcpkg + the
+- **50 [M·★★★, base once] DONE 2026-08-18 (riding the #114 base batch): versions.env COPY relocated below scoop/vcpkg/rust; the 9 consumed keys (incl. helper-reads GIT_VERSION/WIX_*/SCOOP_INSTALLER_SHA256 - invisible to a naive $env: grep) ride as ARGs mirrored in both drivers. AFTERMATH FIXED 2026-08-19: the final-stage ARG mirrors sat in the process env during the bake RUN, load-versions' override branch left Machine untouched, and those keys (measured: SCCACHE_GIT_REV, machine=[] in-container) were never baked into post-#50 images - load-versions now persists the winning override to Machine (Dockerfile.load-versions-probe, fail-closed; rides the next base build). Original finding: `versions.env` is COPY'd above scoop + vcpkg + the
   ~30-min rust/sccache-from-source layer.** `Dockerfile.base:87-89`, then
   `:114-120`, then `:156`. versions.env is shared by BOTH lanes, so editing a
   purely *Linux* key (`PANDOC_VERSION`, `ROCM_VERSION`, `UBUNTU_DIGEST`)
