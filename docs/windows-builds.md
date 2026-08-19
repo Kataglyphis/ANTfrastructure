@@ -2321,7 +2321,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 
 ### P3 — Cache tiering (pure rebuild-time cost; no correctness change)
 
-- **49 [M·★★★, media-core once] Nine version ARGs share ONE ENV layer directly
+- **49 [M·★★★, media-core once] LANDED 2026-08-19, riding the full ride (verify: a later PYAV-only bump must NOT re-run onnx): per-component ARG/ENV blocks in the BK stages, media-core-env is classic-lane-only, TwinParity suite carries the new contract. Original finding: nine version ARGs share ONE ENV layer directly
   above the ~75-min ONNX compile.** `Dockerfile.media-builder:142-168` declares
   ONNX/GENAI/OPENCV/FFMPEG/PYAV/NV_CODEC/CUDA_ARCH/PYTHON in a single
   `media-core-env`, and opencv/ffmpeg/genai chain `FROM` ONNX's output. So a
@@ -2372,7 +2372,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   compile. Same on any host with different RAM. `Dockerfile.torch:57-60`
   already states the principle ("Build-time state belongs in the build step,
   not in the artifact"). FIX: derive in-container, or bind-mount it.
-- **52 [M·★★, toolchain] The toolchain builder never got the bind-mount
+- **52 [M·★★, toolchain] LANDED 2026-08-19, riding the full ride: BK 'built' stage bind-mounts script/module/versions.env (sibling versions.env preferred), classic lane gets builder-classic COPY stage (build.ps1 target updated). Original finding: the toolchain builder never got the bind-mount
   treatment.** `Dockerfile.toolchain-builder:38-43` COPYs the shared module +
   versions.env + the build script into the stage whose child RUNs the CPython
   compile — so editing *any* of them (incl. a module ~30 scripts share)
@@ -2400,7 +2400,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   cuDNN's nested layout likely replaces the whole stage. NOTE: verify the
   actual cuDNN 9 nesting against the installed tree before removing the stage —
   the flatten fix was load-bearing for OpenCV's `cudnn64_9.dll`.
-- **100 [M·★★★, media-core] FFmpeg and PyAV compile with sccache COMPLETELY
+- **100 [M·★★★, media-core] LANDED 2026-08-19 for FFmpeg (riding the full ride; ACCEPT on `Compile requests` > 0 in the ffmpeg stage stats - NOT hit rate; PyAV stays open as the lower-value half): --cc='sccache clang-cl' in configure, config.mak CC= echoed, loud warning if the prefix is dropped. Original finding: FFmpeg and PyAV compile with sccache COMPLETELY
   BYPASSED — the whole ffmpeg branch is uncached, every build, forever.**
   Measured 2026-08-15 in the #99 verification run: the `media-core-built-ffmpeg`
   stage reported `Compile requests 0` — not "0 hits", *zero requests*. sccache
