@@ -84,4 +84,40 @@ Write-Host ("command tail: {0}" -f $cmd.Substring([Math]::Max(0, $cmd.Length - 3
 $rspRef = [regex]::Match($cmd, '--options-file\s+("?[^"\s]+"?)|@(\S+\.rsp)')
 Write-Host ("rsp reference in command: '{0}'" -f $rspRef.Value)
 
+# ---- replay + flag bisection: WHY does sccache forward this command? -------
+# Shapes C/D proved -Fd and -MD/-MT/-MF innocent in isolation; replay the
+# REAL command (and targeted reductions) and read `requests executed` per
+# variant. executed=0 => classified uncacheable; the first variant that
+# flips to executed>0 names the culprit token.
+$sccache = "$env:USERPROFILE\.cargo\bin\sccache.exe"
+$env:SCCACHE_MULTILEVEL_CHAIN = ''
+$env:SCCACHE_WEBDAV_ENDPOINT = ''
+$env:SCCACHE_LOG = 'debug'
+$variants = [ordered]@{
+    'full'          = $cmd
+    'no-Fd'         = ($cmd -replace '-Xcompiler=-Fd\S+', '')
+    'no-space-def'  = ($cmd -replace '-DOPENCV_ALLOCATOR_STATS_COUNTER_TYPE="[^"]*"', '')
+    'no-depflags'   = ($cmd -replace '-MD -MT \S+ -MF \S+', '')
+    'no-fwd-unknown' = ($cmd -replace '-forward-unknown-to-host-compiler', '')
+}
+$i = 0
+foreach ($name in $variants.Keys) {
+    $i++
+    $v = $variants[$name] -replace [regex]::Escape($obj), "replay$i.obj"
+    $v = $v -replace '-MF \S+', "-MF replay$i.d"
+    $env:SCCACHE_DIR = Join-Path $WorkDir "rcache$i"
+    $env:SCCACHE_ERROR_LOG = Join-Path $WorkDir "rlog$i.log"
+    $env:SCCACHE_SERVER_PORT = "43$($i)0"
+    & $sccache --stop-server 2>&1 | Out-Null
+    & $sccache --start-server 2>&1 | Out-Null
+    $out = & cmd.exe /S /C "`"$sccache`" $v" 2>&1
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) { $out | Select-Object -Last 3 | ForEach-Object { "  err| $_" } }
+    $stats = & $sccache --show-stats 2>&1
+    $exe = (($stats | Select-String 'requests executed' | Select-Object -First 1).Line -replace '\D+', '')
+    $why = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache|cannot cache|NotCompilation' | Select-Object -First 1)
+    & $sccache --stop-server 2>&1 | Out-Null
+    Write-Host ("variant {0,-15} exit={1} executed={2} why='{3}'" -f $name, $rc, $exe, $why)
+}
+
 Write-Host 'probe complete'
