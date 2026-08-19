@@ -44,8 +44,23 @@ $cygSrc = '/c/probe-ffcc/src'
     Select-Object -Last 3 | ForEach-Object { "$_" }
 if ($LASTEXITCODE -ne 0) { throw "configure failed ($LASTEXITCODE)" }
 
-# 1. The exact recipe for two representative objects.
-Write-Host '--- make -n (exact recipes) ---'
+# PRODUCTION FIXUP (round 3): the real build strips -showIncludes and the
+# awk dep pipelines from every generated *.mak (Remove-MakefileShowIncludes
+# in build-ffmpeg-from-source.ps1) - round 2 measured the UNPATCHED recipe
+# (its awk program is genuinely broken through make; production never runs
+# it). Replicate the same regexes so the replayed shapes match production.
+foreach ($mak in (Get-ChildItem -Path . -Recurse -Include '*.mak', 'Makefile' -File)) {
+    $c = [System.IO.File]::ReadAllText($mak.FullName)
+    $c = $c -replace '-showIncludes', ''
+    $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
+    $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
+    $c = $c -replace '\s*\|\s*awk.*', ''
+    [System.IO.File]::WriteAllText($mak.FullName, $c)
+}
+Write-Host 'applied: production -showIncludes/awk strip to *.mak'
+
+# 1. The exact PRODUCTION recipe for two representative objects.
+Write-Host '--- make -n (exact production recipes) ---'
 $recipes = & $bashExe -c "cd $cygSrc && make -n libavutil/avstring.o libavutil/mem.o 2>&1" |
     Where-Object { $_ -match 'clang-cl|printf' } | Select-Object -First 6
 $recipes | ForEach-Object { Write-Host "recipe| $_" }
@@ -60,13 +75,18 @@ $env:SCCACHE_SERVER_PORT = '4760'
 & $sccache --stop-server 2>&1 | Out-Null
 Push-Location 'C:\'
 try { & $sccache --start-server 2>&1 | Out-Null } finally { Pop-Location }
-$one = ($recipes | Where-Object { $_ -match '^clang-cl' } | Select-Object -First 1)
-if ($one) {
-    $cmd = "cd $cygSrc && sccache $one"
-    & $bashExe -c $cmd 2>&1 | Select-Object -Last 3 | ForEach-Object { "  serial| $_" }
-    Write-Host ("serial replay exit={0}" -f $LASTEXITCODE)
-} else {
-    Write-Host 'serial replay SKIPPED (no clang-cl recipe line captured)'
+# Serial replay of EACH captured production shape (dep-scan line first, then
+# the -c/-Fo compile) - write them to a script file so no PS/bash re-quoting
+# can mangle them (round 2's awk breakage was exactly that).
+$recipeLines = @($recipes | Where-Object { $_ -match 'clang-cl' })
+$i = 0
+foreach ($r in $recipeLines) {
+    $i++
+    $sh = @("cd $cygSrc", ($r -replace '(^|; )(clang-cl )', '$1sccache clang-cl ' -replace '^printf', 'printf'))
+    $shPath = Join-Path $WorkDir "replay$i.sh"
+    [System.IO.File]::WriteAllLines($shPath, $sh)
+    & $bashExe "/c/probe-ffcc/replay$i.sh" 2>&1 | Select-Object -Last 2 | ForEach-Object { "  serial$i| $_" }
+    Write-Host ("serial replay #{0} exit={1} ({2}...)" -f $i, $LASTEXITCODE, $r.Substring(0, [Math]::Min(60, $r.Length)))
 }
 
 # 3. Parallel slice: everything under libavutil with the launcher, -j8.
