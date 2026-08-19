@@ -51,6 +51,19 @@ function Get-GpuEnvironment {
     $trtRoot = Resolve-TensorRtRoot
     $cudaBin = if ($cudaRoot) { Join-Path $cudaRoot 'bin' } else { $null }
 
+    # FAIL CLOSED on the nvidia lane (#45): GPU_TYPE=nvidia is BAKED into the
+    # image (Dockerfile.nvidia), so "lane says nvidia but no CUDA root" is
+    # never legitimate - it is a mis-plumbed path, and every consumer would
+    # take its quiet CPU-only else-branch (onnx "CPU-only build", opencv
+    # WITH_CUDA=OFF, tvm silently), yielding ~2.5 h of green-and-useless
+    # stages. Deliberate CPU builds go through the ForceCpuEnvVar opt-outs
+    # (ONNX_FORCE_CPU & friends), which return above and never reach this.
+    if ($gpuType -eq 'nvidia' -and (-not $cudaRoot -or -not (Test-Path $cudaRoot))) {
+        throw ("GPU_TYPE=nvidia but no CUDA toolkit found (CudaRoot='$cudaRoot') - " +
+            'a mis-plumbed CUDA path would silently produce a CPU-only image (backlog #45). ' +
+            'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
+    }
+
     if ($gpuType -eq 'nvidia' -and $cudaRoot -and (Test-Path $cudaRoot)) {
         if ($cudaBin -and (Test-Path $cudaBin) -and ($env:PATH -notlike "*$cudaBin*")) {
             $env:PATH = "$cudaBin;$env:PATH"

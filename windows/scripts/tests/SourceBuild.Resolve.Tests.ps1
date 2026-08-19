@@ -196,6 +196,23 @@ Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
             Assert-Equal 'cpu' (Get-GpuEnvironment).GpuType
         }
     }
+
+    It 'THROWS on GPU_TYPE=nvidia with no resolvable CUDA root (#45 fail-closed gate)' {
+        # The nvidia lane bakes GPU_TYPE=nvidia into the image, so "nvidia but
+        # no CUDA" is always a mis-plumbed path - every consumer would take
+        # its quiet CPU-only else-branch for ~2.5 h of green-and-useless work.
+        Invoke-WithEnv @{ GPU_TYPE = 'nvidia'; CUDA_ROOT = ''; CUDA_PATH = 'C:\does\not\exist-45'; TENSORRT_ROOT = '' } {
+            Assert-Throws { Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU' } `
+                -MessagePattern 'mis-plumbed CUDA path' `
+                'nvidia without CUDA must fail closed, not degrade to CPU'
+        }
+    }
+
+    It 'the FORCE_CPU opt-out still beats the #45 gate (deliberate CPU builds stay legal)' {
+        Invoke-WithEnv @{ GPU_TYPE = 'nvidia'; CUDA_ROOT = ''; CUDA_PATH = 'C:\does\not\exist-45'; ONNX_FORCE_CPU = '1' } {
+            Assert-Equal 'cpu' (Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU').GpuType
+        }
+    }
 }
 
 Describe 'Test-SccacheRemoteConfigured' {

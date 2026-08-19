@@ -730,8 +730,22 @@ function Invoke-NinjaBuildWithRetry {
             & $invokeNinja $jobs
         }
         if ($LASTEXITCODE -ne 0 -and $jobs -gt $RetryJobs) {
-            Write-Host "ninja -j$jobs failed (exit $LASTEXITCODE) - retrying incrementally with -j$RetryJobs..."
+            # LOUD, not chatty (#75): one silent-looking line here once hid an
+            # 11 h 17 m self-heal - a run re-ground the same ONNX build 11
+            # times, each cycle dying at -j9 after a ±2 s-deterministic 4910 s
+            # (a crash signature, not an env flake) and then crawling on
+            # serially. The ladder stays BOUNDED (exactly one incremental
+            # attempt); these warnings make the downgrade impossible to miss
+            # in a log skim and stamp the duration so a deterministic repeat
+            # is recognizable across runs.
+            Write-Warning ("#75 JOB-DOWNGRADE: ninja -j$jobs failed (exit $LASTEXITCODE) - ONE bounded incremental retry at -j$RetryJobs. " +
+                'If this pattern repeats across runs at ~the same runtime, it is a crash signature (sccache server, OOM killer) - investigate, do not re-run the stage.')
+            $incrementalStart = Get-Date
             & $invokeNinja $RetryJobs
+            if ($LASTEXITCODE -eq 0) {
+                $incMin = [math]::Round(((Get-Date) - $incrementalStart).TotalMinutes, 1)
+                Write-Warning "#75 JOB-DOWNGRADE: build completed ONLY via the -j$RetryJobs fallback (+$incMin min serial) - green, but the -j$jobs failure above still needs a root cause."
+            }
         }
     } finally {
         Stop-SccacheStallGuard $guard
