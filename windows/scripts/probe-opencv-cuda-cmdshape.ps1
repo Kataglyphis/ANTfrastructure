@@ -43,8 +43,11 @@ $cuda = $env:CUDA_PATH
     "-DCMAKE_CUDA_COMPILER:FILEPATH=$cuda\bin\nvcc.exe" `
     "-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real" `
     -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_opencv_python3=OFF `
-    2>&1 | Select-Object -Last 4 | ForEach-Object { "$_" }
+    2>&1 | Tee-Object -FilePath configure.log | Select-Object -Last 4 | ForEach-Object { "$_" }
 if ($LASTEXITCODE -ne 0) { throw "configure failed" }
+# opencv's own verdict: why would it drop CUDA/modules? Print the summary.
+Get-Content configure.log | Select-String 'CUDA|NVCC|cudev|Unavailable|Disabled|To be built' |
+    Select-Object -First 25 | ForEach-Object { "cfg| $($_.Line.Trim())" }
 # Fail-open guards (#94 family): opencv silently drops CUDA when unhappy.
 if (-not (Select-String -Path 'build\CMakeCache.txt' -Pattern 'WITH_CUDA:BOOL=ON' -Quiet)) { throw 'WITH_CUDA not ON in the cache' }
 $cuCount = @(& ninja -C build -t targets all 2>$null | Select-String '\.cu\.obj').Count
