@@ -44,7 +44,11 @@ $gencode = '-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm
 # Shape B: flags in the rsp, -c/-o inline (CMake/ninja shape)
 "-std=c++17 -Xcompiler /MD -DPROBE_GUARDED=1 $gencode" -replace ' ', "`n" | Set-Content shapeB.rsp -Encoding ascii
 
-foreach ($shape in @('A', 'B')) {
+# Shapes C/D (probe7's OpenCV anatomy: commands are INLINE and short - the
+# 155 uncached requests must come from a flag, not the rsp):
+#   C) inline + -Xcompiler=-Fd<pdb>,-FS   (PDB - the classic CannotCache)
+#   D) inline + -MD -MT out -MF dep       (CMake's gcc-style depfile flags)
+foreach ($shape in @('A', 'B', 'C', 'D')) {
     $env:SCCACHE_MULTILEVEL_CHAIN = ''
     $env:SCCACHE_WEBDAV_ENDPOINT = ''
     $env:SCCACHE_DIR = Join-Path $WorkDir "cache$shape"
@@ -53,10 +57,11 @@ foreach ($shape in @('A', 'B')) {
     $env:SCCACHE_SERVER_PORT = "424$([int][char]$shape)"
     & $sccache --stop-server 2>&1 | Out-Null
     & $sccache --start-server 2>&1 | Out-Null
-    if ($shape -eq 'A') {
-        & $sccache $nvcc --options-file shapeA.rsp 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" }
-    } else {
-        & $sccache $nvcc --options-file shapeB.rsp -c probe.cu -o shapeB.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" }
+    switch ($shape) {
+        'A' { & $sccache $nvcc --options-file shapeA.rsp 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
+        'B' { & $sccache $nvcc --options-file shapeB.rsp -c probe.cu -o shapeB.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
+        'C' { & $sccache $nvcc -forward-unknown-to-host-compiler -std=c++17 -DPROBE_GUARDED=1 '-gencode=arch=compute_80,code=sm_80' '-Xcompiler=-FdshapeC.pdb,-FS' -x cu -c probe.cu -o shapeC.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
+        'D' { & $sccache $nvcc -forward-unknown-to-host-compiler -std=c++17 -DPROBE_GUARDED=1 '-gencode=arch=compute_80,code=sm_80' -MD -MT shapeD.obj -MF shapeD.obj.d -x cu -c probe.cu -o shapeD.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
     }
     $rc = $LASTEXITCODE
     $stats = & $sccache --show-stats 2>&1
