@@ -313,8 +313,17 @@ if ($onnxHeaderCopied) {
 # + 7 DLLs with --enable-libonnxruntime + NVENC, 0 errors (validated in windows-media-core).
 $ffToolchain = if ($env:FFMPEG_TOOLCHAIN) { $env:FFMPEG_TOOLCHAIN } else { 'clang-cl' }
 if ($ffToolchain -eq 'clang-cl') {
-    Write-Host 'FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset''s cc/ld)'
-    $confFlags += '--toolchain=msvc', '--cc=clang-cl', '--ld=lld-link'
+    # #100: FFmpeg does not use CMake, so the module's CMAKE_*_COMPILER_LAUNCHER
+    # wiring never reached it - the stage reported `Compile requests 0` (not "0
+    # hits": ZERO requests) in every build. FFmpeg's configure tolerates a
+    # launcher prefix in --cc; --ld stays bare. Opt out: FFMPEG_SCCACHE=0.
+    # Acceptance criterion is `Compile requests` > 0 in the stage stats, NOT
+    # the hit rate (uncached components are invisible in aggregate hit rates).
+    $ffCc = 'clang-cl'
+    $ffSccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($ffSccache -and $env:FFMPEG_SCCACHE -ne '0') { $ffCc = 'sccache clang-cl' }
+    Write-Host "FFmpeg toolchain: $ffCc + lld-link (overriding the msvc preset's cc/ld)"
+    $confFlags += '--toolchain=msvc', "--cc=$ffCc", '--ld=lld-link'
 } else {
     Write-Host 'FFmpeg toolchain: msvc (cl.exe + link.exe)'
     $confFlags += '--toolchain=msvc'
@@ -327,7 +336,9 @@ $confFlags += '--disable-indev=vfwcap'
 # NVIDIA hardware video accel: empty on the CPU-only lane, populated above when CUDA is present.
 $confFlags += $nvencFlags
 
-$confStr = $confFlags -join ' '
+# Shell-quote flags carrying spaces (--cc='sccache clang-cl') - the wrapper
+# line is parsed by bash, and an unquoted space would split the flag in two.
+$confStr = ($confFlags | ForEach-Object { if ($_ -match ' ') { "'$_'" } else { $_ } }) -join ' '
 
 # Patch configure to allow MSYS2 builds (official docs say MSYS is discouraged)
 Invoke-SourcePatch -PatchFile (Join-Path $PSScriptRoot 'patches\ffmpeg\001-allow-msys-builds.patch') -SourceDir $srcDir -IgnoreWhitespace
@@ -351,6 +362,18 @@ if ($LASTEXITCODE -ne 0) {
     $logFile = Join-Path $srcDir 'ffbuild\config.log'
     if (Test-Path $logFile) { Write-Host "=== config.log (last 50 lines) ==="; Get-Content $logFile -Tail 50 }
     throw "FFmpeg configure failed (exit $LASTEXITCODE)"
+}
+# #100 verification: configure must have KEPT the launcher prefix in CC. A
+# silently stripped launcher is the status quo (bare but green), so warn
+# loudly instead of failing - the stage's `Compile requests` count is the
+# real acceptance gate.
+$configMak = Join-Path $srcDir 'ffbuild\config.mak'
+if (Test-Path $configMak) {
+    $ccLine = (Select-String -Path $configMak -Pattern '^CC=' | Select-Object -First 1).Line
+    Write-Host "config.mak: $ccLine"
+    if ($ffToolchain -eq 'clang-cl' -and $ffCc -like 'sccache*' -and $ccLine -notmatch 'sccache') {
+        Write-Warning "#100: configure DROPPED the sccache launcher from CC ('$ccLine') - the ffmpeg stage will compile uncached."
+    }
 }
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
