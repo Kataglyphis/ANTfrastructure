@@ -99,18 +99,23 @@ and the same compile caches fine.
 This adds the three flags in both their single- and double-dash forms
 (`CanBeSeparated`, `PassThrough`) plus a regression test for the separated
 form. With the patch applied, OpenCV's CUDA compiles (155 files in our
-build) all cache. Same kind of table gap as #1105 (`--default-stream`,
-since added in fb6e671).
+build) all cache. Same kind of table gap #2708 filled for
+`--dependency-output`.
 
 Possibly related: #2726 hits the same `multiple input files` rejection,
 but from the MSVC-side parsing of nvcc's host sub-compile - I reproduced
 it on current main and verified this PR does not change it.
 
-**Posting notes (not part of the body):** #1105 precedent VERIFIED
-2026-08-19 (probe-sccache-1105-check): all four --default-stream spellings
-compile clean through the pinned build - the issue is resolved on main
-since fb6e671 and could simply be closed (0.17.0-release failures on the
-same shape are the pre-#2722 decomposition breakage, not #1105). Issue
+**Posting notes (not part of the body):** the body cites #2708
+(--dependency-output, merged 2026-06-01, same one-file table fix) as THE
+precedent - most recent and structurally identical. The full table-gap
+lineage if a maintainer asks: #2708, #1823 (-Werror w/ argument), #1571
+(--threads), #1147/#990 (-ccbin/--compiler-bindir), #2384/#2356
+(--device-debug), fb6e671 (--default-stream, resolves the still-open
+#1105 - VERIFIED 2026-08-19 via probe-sccache-1105-check: all four
+spellings compile clean at the pin; could simply be closed. 0.17.0-release
+failures on the same shape are pre-#2722 decomposition breakage, not
+#1105), #745 (the inverse: flags wrongly CAPTURING parameters). Issue
 search 2026-08-19 found NO existing report of the separated diag-suppress
 bug (fresh find). #1077
 matches textually but is the attached `--diag_suppress=` underscore form
