@@ -99,15 +99,12 @@ and the same compile caches fine.
 This adds the three flags in both their single- and double-dash forms
 (`CanBeSeparated`, `PassThrough`) plus a regression test for the separated
 form. With the patch applied, OpenCV's CUDA compiles (155 files in our
-build) all cache. It's the same kind of gap #1105 reported for
-`--default-stream` (added in fb6e671) - this does the same for the
-diagnostic-control family.
+build) all cache. Same kind of table gap as #1105 (`--default-stream`,
+since added in fb6e671).
 
-Possibly related: #2726 reports the same `multiple input files` rejection
-for another flag the parser doesn't know (`-Xcompiler "/openmp:llvm"`,
-mis-split at the MSVC layer when the host sub-compile of nvcc's
-decomposition is parsed). Same failure mode, different argument table - I
-reproduced it on current main and verified this PR does not change it.
+Possibly related: #2726 hits the same `multiple input files` rejection,
+but from the MSVC-side parsing of nvcc's host sub-compile - I reproduced
+it on current main and verified this PR does not change it.
 
 **Posting notes (not part of the body):** #1105 precedent VERIFIED
 2026-08-19 (probe-sccache-1105-check): all four --default-stream spellings
