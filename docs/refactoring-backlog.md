@@ -141,9 +141,6 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   self-described no-op placeholder; cross path in tvm-python.sh:78 never
   wired. Do together with: **TVM builds against distro llvm-config**
   (tvm.sh:198-234 auto-detect, no pin).
-- **LLVM nested-build ccache launcher** [S·★] llvm-cross.sh:232
-  CROSS_TOOLCHAIN_FLAGS_NATIVE launcher-less; toolchain RUNs emit no ccache
-  stats (media does).
 - **gcc prereq inconsistency** [M] (forensic#6, archive). SOURCE TRIAGE
   2026-08-15: the headline "inconsistency" (Canadian-cross passes pull in-tree
   gmp/mpfr/mpc/isl via `contrib/download_prerequisites` while native passes use
@@ -208,8 +205,6 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   `:?must be set` with the other android inline fallbacks. Image inspection only
   still needed if the CPython-ABI decision (which py the built .so targets) is
   ever revisited — not blocking.
-- **riscv64 ffmpeg network/codec skips** [S/M] TLS via --enable-openssl never
-  attempted (build-ffmpeg.sh:202 skip list).
 - **codec runtime-list + so-package-map convergence** [M] hand-maintained
   lists in 03-media/runtime/install-deps.sh:53+ and so-package-map.txt vs the
   ffmpeg manifest (third truth source). D4 gives the substrate.
@@ -245,26 +240,6 @@ hygiene items + the investigate items; each still rides a closure-window rebuild
   across lanes. Revisit only if a divisor-6 parallel run OOMs again.
 
 ### Outage-resilience audit (2026-08-17; motivated by the live GitHub outage)
-
-- **NET1 — github.com is the chain's dominant SPOF; FFmpeg's mirror is DEAD
-  code** [S-M·★★★] full fetch-map done (see below). Headline: `FFMPEG_GIT` /
-  `FFMPEG_GIT_MIRROR` (build-ffmpeg.sh:60-61) are never used — fetch_ffmpeg()
-  downloads ONLY the github archive tarball → falsely-mirrored SPOF. Nearly
-  every media/framework fetch (onnxruntime, opencv, armnn/acl, litert, iree,
-  tvm, pytorch/vision, abseil, rice, vvdec, llvm-source, gstreamer-github)
-  single-homes on github. TOP-3 CHEAPEST fixes (ride the next closure window):
-  1. GCC → try ftpmirror.gnu.org first, gcc.gnu.org fallback (sha512 already
-     verified — zero trust cost; protects the earliest highest-blast stage).
-  2. FFmpeg → wire the dead mirror vars: tarball → clone_or_update_repo
-     $FFMPEG_GIT → $FFMPEG_GIT_MIRROR fallback (~5 lines, helpers exist).
-  3. GStreamer + nv-codec-headers → second-URL fallback to their canonical
-     homes (gitlab.freedesktop.org / git.videolan.org), libcamera-pattern.
-  Also cheap: cmake.sh → apt.kitware.com fallback (already wired as a repo);
-  CPython → github/python/cpython tag mirror; tvm → git.apache.org [M].
-  Vendor-locked (accept): lunarg, dl.google, nvidia, radeon, rustup.
-  ALREADY MIRRORED (don't re-audit): libcamera (git.libcamera.org→github),
-  libpng (3 sources), cross_compile_cmake_lib_from_source pipe-mirrors,
-  apt.llvm.org→source-build fallback, Ubuntu apt (fast-mirror+retries).
 
 ### Bump-tool gaps (2026-08-19, found by wave4b's sdk x3 checksum death)
 
@@ -319,53 +294,7 @@ being added (if one is added, THIS is the checklist to run it against).
 
 ### Stale-arch-exception audit (2026-08-17; LIVE-verified against resolute ports)
 
-- **RV1 — the riscv64 availability-exceptions are STALE; ports has caught up**
-  [M·★★★] live `apt-cache policy :riscv64` against resolute ports (2026-08-17):
-  libgstreamer1.0-dev 1.28.2 ✅, libglib2.0-dev 2.88 ✅, libsdl2-dev ✅,
-  libssl-dev ✅, libgnutls28-dev ✅ — all AVAILABLE. Stale exceptions to lift
-  (each needs a rebuild-validate; co-installability in the cross sysroot must
-  be proven, availability ≠ coinstallable):
-  · opencv build-opencv.sh:236-237 `WITH_GSTREAMER=OFF` on riscv64 ("Ports
-    cannot satisfy the GStreamer/GLib dev chain" — no longer true; AND the
-    two-pass makes it doubly obsolete: pass-2 links OUR source-built
-    /opt/gstreamer, which riscv64 builds — lifting this = `GStreamer: YES` on
-    ALL THREE arches, full two-pass parity).
-  · ffmpeg `--disable-sdl2 --disable-ffplay` on riscv64 (libsdl2-dev now on
-    ports) — re-enable + probe.
-  · the "riscv64 ffmpeg network/codec skips" item (TLS via --enable-openssl
-    never attempted): libssl-dev:riscv64 now exists — unblocked.
-  · ffmpeg gnutls skip (:202, "configure probe does not pass") — package now
-    exists; re-test the probe (may have been availability all along).
-  Rider: riscv64 `WITH_PNG` static-libpng workaround + Node.js lag are NOT
-  availability-class (compiler probe / upstream) — unchanged.
-
 ### Refactor sweep additions (2026-08-17; Dockerfile idioms + bash patterns + parallel-readiness — all rebuild-window)
-
-- **DF1 — Dockerfile.media:237-238+252-253: dead cargo mounts on the onnxruntime
-  RUNs** [S·★★] no ORT build script touches cargo/rust (verified) — 4 mounts
-  widen the cache closure of the two most expensive media RUNs (TG1 class). Drop.
-- **DF2 — Dockerfile.sdk:72-157: 86-line inline RUN** [M/L·★★] the llvm-target
-  materialization (self-copy + symlink repair + DT_NEEDED walk) as one string —
-  extract to a COPY'd materialize-llvm-target.sh (toolchain:332 heredoc idiom).
-- **DF3 — Dockerfile.package:120-159: ~40-line inline llvm soname-repair loop**
-  [M·★★] bolted onto the copy-media-payloads RUN whose script is already COPY'd —
-  move the loop into it.
-- **DF4 — small Dockerfile hygiene** [S·★ each]: package:111 lone COPY without
-  --link (siblings have it); media:671 stray gstreamer-env.sh mount on the
-  install-deps RUN (only the build RUN reads it); package:255-264 printf-list →
-  heredoc; media:120-155 + :883 readability extractions.
-- **SH1 — android-sdk.sh:160+183: identical retry-skeleton ×2** [S·★★] extract a
-  local _sdk_retry (canonical retry() in logging.sh:157 doesn't fit the
-  grep-success shape).
-- **SH2 — packaging-deps.sh:33 error() shadows logging.sh** [S·★] it sources
-  common.sh at :27 first — drop the local copy, use err/warn.
-- **SH3 — host-side mktemp without trap-cleanup** [M·★] leak-on-error class in 5
-  host-run scripts (setup-rootless-binfmt.sh:96, verify-critical-fixes.sh:296,
-  cross-env.sh:635, downloads.sh:64, cmake.sh:44) — shared _mk_scratch/trap
-  idiom; in-container sites are fine (layer discarded).
-  Clean per sweep: version-ARG mirrors (20 checked, zero drift), no dead stages,
-  torch USER/HEALTHCHECK ordering, no copy-then-overwrite beyond the deliberate
-  two-pass, error-handling/arg-parsing/py-heredocs largely canonical.
 
 ### Build-log mining additions (2026-08-17; from the REAL Batch-2 rebuild logs)
 
