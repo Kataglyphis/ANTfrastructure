@@ -233,6 +233,9 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
 # from it makes divergence structurally impossible instead of policed.
 # The BK lane still must not inherit the classic stage's script/patch COPY
 # layers — hence a shared ANCESTOR rather than one lane building on the other.
+# CLASSIC-lane ancestor only since #49 (2026-08-19): the BK compile stages
+# declare their component keys per stage (see media-core-built-onnx below),
+# so a single-component bump no longer cascades through the whole branch.
 FROM common AS media-core-env
 
 ARG ONNXRUNTIME_VERSION=v1.29.0
@@ -365,10 +368,21 @@ COPY windows\scripts\build-tvm-from-source.ps1 `
 # bk-warm.ps1/bk-materialize.ps1 and the handoff helpers remain in the
 # tree for exactly that case.
 
-# The BK compile stages descend from the SHARED media-core-env ancestor — the
-# former `media-core-bk` ENV twin (and the sync_versions.py bookkeeping it
-# required) is gone; see media-core-env above.
-FROM media-core-env AS media-core-built-onnx
+# #49 (2026-08-19): the BK compile stages NO LONGER descend from the shared
+# media-core-env ancestor - each stage declares exactly the version keys its
+# component consumes, so a PyAV/FFmpeg bump re-runs ffmpeg+downstream instead
+# of the full ~75-min ONNX build, and a GenAI bump re-runs genai alone.
+# ENV (not bare ARG) so the values persist into the downstream stages via the
+# image config: CUDA_ARCHITECTURES/PYTHON_VERSION set here are inherited by
+# ffmpeg/opencv/genai. media-core-env remains for the CLASSIC lane only,
+# which runs the whole chain in one stage and has no granularity to gain.
+FROM common AS media-core-built-onnx
+ARG ONNXRUNTIME_VERSION=v1.29.0
+ARG CUDA_ARCHITECTURES="80;86;89;90"
+ARG PYTHON_VERSION=3.14.7
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
+    PYTHON_VERSION="${PYTHON_VERSION}"
 # Both DORMANT by default (empty ARG = inert; the scripts test for -eq '1').
 # Declared in the CONSUMING stage per the #103 lesson, and declared AT ALL
 # because buildctl silently DISCARDS a --opt build-arg no Dockerfile ARG
@@ -423,6 +437,14 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # to pass only -ResumeFrom and rely on being LAST in the stage list; after the
 # swap that would have silently dragged OpenCV into the ffmpeg layer.
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
+# #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
+# never the ONNX stage above.
+ARG FFMPEG_VERSION=n9.0
+ARG PYAV_VERSION=18.1.0
+ARG NV_CODEC_HEADERS_REF=n13.1.15.0
+ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
+    PYAV_VERSION="${PYAV_VERSION}" `
+    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
@@ -471,7 +493,12 @@ ARG OPENCV_CUDA_LAUNCHER=""
 # OPENCV_CUDA_LAUNCHER=1 AND the shipped quote fix (#114). RUN-scoped, no
 # ENV bake.
 ARG OPENCV_CUDA_NO_RSP=""
-ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}"
+# #49: opencv-component keys live HERE.
+ARG OPENCV_SOURCE_VERSION=5.0.0
+ARG OPENCV_VERSION=5.0.0
+ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
+    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
+    OPENCV_VERSION="${OPENCV_VERSION}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
@@ -484,6 +511,9 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built
+# #49: the genai key lives HERE - a GenAI bump re-runs this stage alone.
+ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
+ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
