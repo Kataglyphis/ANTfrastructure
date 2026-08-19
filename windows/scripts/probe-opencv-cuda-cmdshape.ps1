@@ -110,9 +110,24 @@ foreach ($name in $variants.Keys) {
     $env:SCCACHE_SERVER_PORT = "43$($i)0"
     & $sccache --stop-server 2>&1 | Out-Null
     & $sccache --start-server 2>&1 | Out-Null
-    $out = & cmd.exe /S /C "`"$sccache`" $v" 2>&1
-    $rc = $LASTEXITCODE
-    if ($rc -ne 0) { $out | Select-Object -Last 3 | ForEach-Object { "  err| $_" } }
+    # Direct spawn (CreateProcess, 32k limit) - a cmd.exe wrapper dies at 8191
+    # with "The command line is too long." (probe 9: all variants, 2s).
+    $psi = [System.Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = $sccache
+    $psi.Arguments = $v
+    $psi.WorkingDirectory = (Get-Location).Path
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    foreach ($k in @('SCCACHE_DIR', 'SCCACHE_ERROR_LOG', 'SCCACHE_LOG', 'SCCACHE_SERVER_PORT', 'SCCACHE_MULTILEVEL_CHAIN', 'SCCACHE_WEBDAV_ENDPOINT')) {
+        $psi.Environment[$k] = (Get-Item "env:$k" -ErrorAction SilentlyContinue).Value
+    }
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    $out = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
+    $proc.WaitForExit()
+    $rc = $proc.ExitCode
+    Write-Host ("  len={0}" -f $v.Length)
+    if ($rc -ne 0) { ($out -split "`r?`n" | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { "  err| $_" } }
     $stats = & $sccache --show-stats 2>&1
     $exe = (($stats | Select-String 'requests executed' | Select-Object -First 1).Line -replace '\D+', '')
     $why = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache|cannot cache|NotCompilation' | Select-Object -First 1)
