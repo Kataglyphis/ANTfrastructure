@@ -60,18 +60,36 @@ function Invoke-ScoopStep {
 }
 
 # Collapses the repeated `if ($version) { pkg@ver } else { pkg }` idiom and routes
-# every install through the exit-code gate above.
+# every install through the exit-code gate above. RETRIES (2026-08-19, the
+# #116 lesson one level down): scoop itself has NO download retry, and a
+# 20-minute 275 MB vulkan transfer died mid-download and killed the whole
+# base ride. A dropped transfer can leave a partial file in scoop's cache,
+# so the app's cache is purged between attempts.
 function Install-ScoopPackage {
     param(
         [Parameter(Mandatory)][string]$Package,
         [string]$Version = '',
-        [switch]$Global
+        [switch]$Global,
+        [int]$MaxAttempts = 3
     )
     $spec = if ([string]::IsNullOrWhiteSpace($Version)) { $Package } else { "$Package@$Version" }
     $flags = @(if ($Global) { '--global' })
-    Invoke-ScoopStep -Description "scoop install $($flags -join ' ') $spec".Replace('  ', ' ') -Command {
-        scoop install @flags $spec
-    }.GetNewClosure()
+    $desc = "scoop install $($flags -join ' ') $spec".Replace('  ', ' ')
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Invoke-ScoopStep -Description $desc -Command {
+                scoop install @flags $spec
+            }.GetNewClosure()
+            return
+        } catch {
+            if ($attempt -ge $MaxAttempts) { throw }
+            Write-Warning "$desc failed (attempt $attempt/$MaxAttempts) - purging the app's scoop cache and retrying in 15s"
+            $app = ($Package -split '/')[-1]
+            scoop cache rm $app 2>$null | Out-Null
+            $global:LASTEXITCODE = 0
+            Start-Sleep -Seconds 15
+        }
+    }
 }
 
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
