@@ -48,7 +48,11 @@ $gencode = '-gencode=arch=compute_80,code=sm_80 -gencode=arch=compute_86,code=sm
 # 155 uncached requests must come from a flag, not the rsp):
 #   C) inline + -Xcompiler=-Fd<pdb>,-FS   (PDB - the classic CannotCache)
 #   D) inline + -MD -MT out -MF dep       (CMake's gcc-style depfile flags)
-foreach ($shape in @('A', 'B', 'C', 'D')) {
+# E/F (probe15's full arg echo): opencv passes `--diag-suppress 1394,1388`
+# SEPARATED - the flag is absent from sccache's nvcc ARGS table, so the
+# value becomes a bare token = phantom first input file =>
+# CannotCache(multiple input files). F = attached form as control.
+foreach ($shape in @('A', 'B', 'C', 'D', 'E', 'F')) {
     $env:SCCACHE_MULTILEVEL_CHAIN = ''
     $env:SCCACHE_WEBDAV_ENDPOINT = ''
     $env:SCCACHE_DIR = Join-Path $WorkDir "cache$shape"
@@ -62,6 +66,8 @@ foreach ($shape in @('A', 'B', 'C', 'D')) {
         'B' { & $sccache $nvcc --options-file shapeB.rsp -c probe.cu -o shapeB.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
         'C' { & $sccache $nvcc -forward-unknown-to-host-compiler -std=c++17 -DPROBE_GUARDED=1 '-gencode=arch=compute_80,code=sm_80' '-Xcompiler=-FdshapeC.pdb,-FS' -x cu -c probe.cu -o shapeC.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
         'D' { & $sccache $nvcc -forward-unknown-to-host-compiler -std=c++17 -DPROBE_GUARDED=1 '-gencode=arch=compute_80,code=sm_80' -MD -MT shapeD.obj -MF shapeD.obj.d -x cu -c probe.cu -o shapeD.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
+        'E' { & $sccache $nvcc -std=c++17 -DPROBE_GUARDED=1 '-gencode=arch=compute_80,code=sm_80' -Xcudafe --display_error_number --diag-suppress '1394,1388' -x cu -c probe.cu -o shapeE.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
+        'F' { & $sccache $nvcc -std=c++17 -DPROBE_GUARDED=1 '-gencode=arch=compute_80,code=sm_80' '--diag-suppress=1394,1388' -x cu -c probe.cu -o shapeF.obj 2>&1 | Select-Object -Last 2 | ForEach-Object { "$_" } }
     }
     $rc = $LASTEXITCODE
     $stats = & $sccache --show-stats 2>&1
