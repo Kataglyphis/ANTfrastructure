@@ -100,3 +100,15 @@ This adds the three flags in both their single- and double-dash forms
 (`CanBeSeparated`, `PassThrough`) plus a regression test for the separated
 form. With the patch applied, OpenCV's CUDA compiles (155 files in our
 build) all cache.
+
+Possibly related: #2726 reports the same `multiple input files` rejection
+for another flag the parser doesn't know (`-Xcompiler "/openmp:llvm"`,
+mis-split at the MSVC layer). Same failure mode, different argument table -
+not fixed by this PR.
+
+**Posting notes (not part of the body):** issue search 2026-08-19 found NO
+existing report of the separated diag-suppress bug (fresh find). #1077
+matches textually but is the attached `--diag_suppress=` underscore form
+inside one -Xcudafe value - do not link it here. #2372 (hard fail on
+uncacheable nvcc args) is optional context, not required. No pending PR
+touches the diag family.
