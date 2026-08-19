@@ -2141,7 +2141,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   32 jobs" while ninja runs at 9 came from the CLIPPED corpus. Confirm the job
   count and the wall-clock on the next cold media build before closing.
 
-- **75 [S·★★★, none] The `-j` downgrade ladder is a SILENT self-heal that
+- **75 [S·★★★, none] DONE 2026-08-19 (module edit, next media rebuild): the downgrade is now LOUD - Write-Warning before (naming the cross-run crash signature to watch for) and after (stamping the serial fallback's added minutes on a green finish); the ladder was already bounded to ONE incremental attempt. Original finding: the `-j` downgrade ladder is a SILENT self-heal that
   converts a failure into an hours-long serial rebuild.** One run
   (`bk-chain-20260810-nogpu`) burned **11 h 17 m re-running the same ONNX build
   11 times**, each cycle ending
