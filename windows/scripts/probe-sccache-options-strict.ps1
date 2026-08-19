@@ -33,30 +33,37 @@ $env:SCCACHE_SERVER_PORT = '4770'
 & $sccache --stop-server 2>&1 | Out-Null
 & $sccache --start-server 2>&1 | Out-Null
 
+# Round 4: sccache never logs the spawned compile line (even at trace), so
+# intercept it - a shim that records every argv and forwards to the real
+# clang-cl. sccache detects the shim as clang-cl because it forwards
+# everything (incl. the -E detection probe).
+$realClang = (Get-Command clang-cl.exe).Source
+$shim = Join-Path $WorkDir 'clang-shim.bat'
+@(
+    '@echo off',
+    "echo ARGS: %* >> $WorkDir\shim.log",
+    "`"$realClang`" %*",
+    "echo EXIT: %ERRORLEVEL% >> $WorkDir\shim.log",
+    'exit /b %ERRORLEVEL%'
+) | Set-Content -Path $shim -Encoding ascii
+
 # Control (must pass), then the trigger (crashes at output collection).
 foreach ($case in @(
-        @{ Name = 'control'; Args = @('clang-cl', '-nologo', '-c', '-Fotiny1.o', 'tiny.c') },
-        @{ Name = 'TRIGGER'; Args = @('clang-cl', '-nologo', '-options:strict', '-c', '-Fotiny2.o', 'tiny.c') }
+        @{ Name = 'control'; Args = @($shim, '-nologo', '-c', '-Fotiny1.o', 'tiny.c') },
+        @{ Name = 'TRIGGER'; Args = @($shim, '-nologo', '-options:strict', '-c', '-Fotiny2.o', 'tiny.c') }
     )) {
     $out = & $sccache @($case.Args) 2>&1
     Write-Host ("case {0,-8} exit={1} object={2}" -f $case.Name, $LASTEXITCODE, (Test-Path ($case.Args[-2] -replace '^-Fo', '')))
     if ($LASTEXITCODE -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { Write-Host "  err| $_" } }
 }
 
-# Round 3 (rounds 1-2 verdicts: parse OK; sccache believes the compile
-# SUCCEEDED in 0.021 s yet no object exists). Dump the UNFILTERED window
-# from 'Compiling locally' to the zip-up failure - the spawned compile line
-# sits in there and no keyword guess has caught it yet.
-$lines = @(Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue)
-$start = ($lines | Select-String 'tiny2.*Compiling locally' | Select-Object -First 1).LineNumber
-$end = ($lines | Select-String 'tiny2.*zip up' | Select-Object -First 1).LineNumber
-if ($start -and $end) {
-    $lines[($start - 1)..([Math]::Min($end + 1, $lines.Count - 1))] | ForEach-Object {
-        $t = "$_".Trim(); if ($t) { Write-Host ("  win| {0}" -f $t.Substring(0, [Math]::Min(500, $t.Length))) }
-    }
-} else {
-    Write-Host "window markers not found (start=$start end=$end) - dumping tail"
-    $lines | Select-Object -Last 25 | ForEach-Object { Write-Host ("  win| {0}" -f "$_") }
+# The shim's argv log IS the missing evidence: every line sccache actually
+# spawned, with exit codes, in order.
+Get-Content (Join-Path $WorkDir 'shim.log') -ErrorAction SilentlyContinue | ForEach-Object {
+    $t = "$_".Trim(); if ($t) { Write-Host ("  shim| {0}" -f $t.Substring(0, [Math]::Min(400, $t.Length))) }
 }
+# Where DID the object land? Sweep the workdir for stray .o/.obj files.
+Get-ChildItem $WorkDir -Recurse -Include '*.o', '*.obj' -File -ErrorAction SilentlyContinue |
+    ForEach-Object { Write-Host ("  obj| {0} ({1} bytes)" -f $_.FullName, $_.Length) }
 & $sccache --stop-server 2>&1 | Out-Null
 Write-Host 'probe complete'
