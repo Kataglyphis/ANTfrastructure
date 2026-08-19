@@ -65,5 +65,18 @@ Get-Content (Join-Path $WorkDir 'shim.log') -ErrorAction SilentlyContinue | ForE
 # Where DID the object land? Sweep the workdir for stray .o/.obj files.
 Get-ChildItem $WorkDir -Recurse -Include '*.o', '*.obj' -File -ErrorAction SilentlyContinue |
     ForEach-Object { Write-Host ("  obj| {0} ({1} bytes)" -f $_.FullName, $_.Length) }
+
+# Round 5 - the reorder theory, proven WITHOUT sccache: clang-cl does not
+# know /options:strict and parses the prefix as the deprecated -o (output).
+# In ffmpeg's original order the later -Fo wins (harmless); in sccache's
+# REBUILT order (-Fo first, flag after) '-o ptions:strict' wins and the
+# object lands in an NTFS alternate data stream 'strict' of a file named
+# 'ptions' - invisible, exit 0.
+& $realClang -c -Fotiny3.o -nologo -options:strict tiny.c 2>&1 | Select-Object -First 2 | ForEach-Object { "  bare| $_" }
+Write-Host ("bare-with-sccache-order exit={0} tiny3.o={1}" -f $LASTEXITCODE, (Test-Path 'tiny3.o'))
+foreach ($f in (Get-ChildItem $WorkDir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '\.(c|o|obj|log|bat|sh)$' })) {
+    $streams = @(Get-Item $f.FullName -Stream * -ErrorAction SilentlyContinue | ForEach-Object { "$($_.Stream):$($_.Length)b" })
+    Write-Host ("  stray| {0} streams=[{1}]" -f $f.Name, ($streams -join ', '))
+}
 & $sccache --stop-server 2>&1 | Out-Null
 Write-Host 'probe complete'
