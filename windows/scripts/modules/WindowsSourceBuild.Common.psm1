@@ -95,11 +95,15 @@ function Invoke-GitClone {
         [string]$Tag = '',
         [switch]$Recursive,
         [switch]$SkipOnFailure,
-        [int]$Depth = 1
+        [int]$Depth = 1,
+        # #116: one TCP drop (curl 18 at 610 s of the LiteRT clone) killed a
+        # 4-hour ride - the driver correctly does not infra-retry script
+        # failures, so the clone must retry ITSELF. Same family as
+        # Invoke-DownloadWithRetry: backoff doubles, capped at 30 s; tests
+        # pass InitialDelaySeconds 0 to avoid sleeping.
+        [int]$MaxAttempts = 3,
+        [int]$InitialDelaySeconds = 10
     )
-
-    # Mount-safe wipe of any leftover tree (see Reset-SourceBuildDirectory).
-    Reset-SourceBuildDirectory -Path $SourceDir
 
     $ref = if ($Tag) { $Tag } else { $Branch }
     if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
@@ -110,26 +114,39 @@ function Invoke-GitClone {
     $gitArgs += '--depth', $Depth
     $gitArgs += $RepoUrl, $SourceDir
 
-    $oldEAP = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    $env:GIT_TERMINAL_PROMPT = '0'
+    $delay = $InitialDelaySeconds
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        # Mount-safe wipe of any leftover/partial tree, EVERY attempt: a
+        # half-transferred clone is unusable and git refuses non-empty dirs
+        # (see Reset-SourceBuildDirectory).
+        Reset-SourceBuildDirectory -Path $SourceDir
 
-    # Capture, don't discard: a clone failure on a 2-hour chain must carry its
-    # diagnosis (auth error, 404 tag, DNS) instead of forcing a blind retry.
-    $cloneOut = @(& git @gitArgs 2>&1)
-    $cloneExit = $LASTEXITCODE
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $env:GIT_TERMINAL_PROMPT = '0'
 
-    $ErrorActionPreference = $oldEAP
+        # Capture, don't discard: a clone failure on a 2-hour chain must carry
+        # its diagnosis (auth error, 404 tag, DNS) instead of a blind retry.
+        $cloneOut = @(& git @gitArgs 2>&1)
+        $cloneExit = $LASTEXITCODE
 
-    if ($cloneExit -ne 0) {
+        $ErrorActionPreference = $oldEAP
+
+        if ($cloneExit -eq 0) { return $true }
+
         $tail = ($cloneOut | Select-Object -Last 10) -join [Environment]::NewLine
+        if ($attempt -lt $MaxAttempts) {
+            Write-Warning "git clone failed (exit $cloneExit, attempt $attempt/$MaxAttempts): $RepoUrl $ref - retrying in ${delay}s`n$tail"
+            if ($delay -gt 0) { Start-Sleep -Seconds $delay }
+            $delay = [Math]::Min($delay * 2, 30)
+            continue
+        }
         if ($SkipOnFailure) {
-            Write-Warning "git clone failed (exit $cloneExit) - skipped: $tail"
+            Write-Warning "git clone failed (exit $cloneExit) after $MaxAttempts attempts - skipped: $tail"
             return $false
         }
-        throw "git clone failed (exit $cloneExit): $RepoUrl $ref`n$tail"
+        throw "git clone failed (exit $cloneExit) after $MaxAttempts attempts: $RepoUrl $ref`n$tail"
     }
-    return $true
 }
 
 function Invoke-CmakeConfigure {
