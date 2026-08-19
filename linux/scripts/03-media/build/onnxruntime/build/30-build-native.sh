@@ -52,6 +52,12 @@ ensure_onnx_output_tree "${NATIVE_CPU_OUTPUT_DIR}"
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
 BUILD_ARGS+=(--use_xnnpack)
+# ORT-1.29 (2026-08-19): v1.29 pulls cpp_client_telemetry on arm64, whose
+# vendored sqlite trips GCC-16's stringop-overflow -Werror promotion
+# (sqlite3_retail.c:81192 balance_quick — deterministic, retries can't heal
+# it; killed the arm64 media lane 2×). Vendor -Werror on third-party deps
+# buys us nothing — use build.py's own escape hatch.
+BUILD_ARGS+=(--compile_no_warning_as_error)
 
 BUILD_ARGS+=(
   --cmake_extra_defines
