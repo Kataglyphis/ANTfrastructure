@@ -60,18 +60,36 @@ function Invoke-ScoopStep {
 }
 
 # Collapses the repeated `if ($version) { pkg@ver } else { pkg }` idiom and routes
-# every install through the exit-code gate above.
+# every install through the exit-code gate above. RETRIES (2026-08-19, the
+# #116 lesson one level down): scoop itself has NO download retry, and a
+# 20-minute 275 MB vulkan transfer died mid-download and killed the whole
+# base ride. A dropped transfer can leave a partial file in scoop's cache,
+# so the app's cache is purged between attempts.
 function Install-ScoopPackage {
     param(
         [Parameter(Mandatory)][string]$Package,
         [string]$Version = '',
-        [switch]$Global
+        [switch]$Global,
+        [int]$MaxAttempts = 3
     )
     $spec = if ([string]::IsNullOrWhiteSpace($Version)) { $Package } else { "$Package@$Version" }
     $flags = @(if ($Global) { '--global' })
-    Invoke-ScoopStep -Description "scoop install $($flags -join ' ') $spec".Replace('  ', ' ') -Command {
-        scoop install @flags $spec
-    }.GetNewClosure()
+    $desc = "scoop install $($flags -join ' ') $spec".Replace('  ', ' ')
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        try {
+            Invoke-ScoopStep -Description $desc -Command {
+                scoop install @flags $spec
+            }.GetNewClosure()
+            return
+        } catch {
+            if ($attempt -ge $MaxAttempts) { throw }
+            Write-Warning "$desc failed (attempt $attempt/$MaxAttempts) - purging the app's scoop cache and retrying in 15s"
+            $app = ($Package -split '/')[-1]
+            scoop cache rm $app 2>$null | Out-Null
+            $global:LASTEXITCODE = 0
+            Start-Sleep -Seconds 15
+        }
+    }
 }
 
 $sharedModulePath = Join-Path $PSScriptRoot 'modules\WindowsContainerImage.Common.psm1'
@@ -171,6 +189,32 @@ Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { s
 # proxies in CARGO_BIN, and a toolchain-LESS rustup would drop proxy shims that
 # resolve no toolchain (the failure the old "never rustup" rule guarded against).
 
+# Preseed the 275 MB SDK from the LAN webdav into scoop's cache under scoop's
+# own cache name (app#version#first-7-of-sha256(url)): sdk.lunarg.com stalls
+# out reproducibly from inside containers (2026-08-19, three ~20-min transfer
+# deaths). scoop still verifies its manifest hash on install, so a stale or
+# corrupt preseed fails open into the normal (retried) vendor download.
+if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
+    try {
+        $vkVendorUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/vulkansdk-windows-X64-$VulkanVersion.exe"
+        $vkUrlSha = [System.Security.Cryptography.SHA256]::Create()
+        $vkTok = ([BitConverter]::ToString($vkUrlSha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($vkVendorUrl))) -replace '-', '').ToLower().Substring(0, 7)
+        $vkCacheDir = Join-Path $env:USERPROFILE 'scoop\cache'
+        $null = New-Item -ItemType Directory -Force -Path $vkCacheDir
+        $vkDest = Join-Path $vkCacheDir "vulkan#$VulkanVersion#$vkTok.exe"
+        $vkSrc = "$($env:VULKAN_PRESEED_ENDPOINT)/preseed/vulkansdk-windows-X64-$VulkanVersion.exe"
+        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -o $vkDest $vkSrc
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "vulkan preseed: $vkDest ($([math]::Round((Get-Item $vkDest).Length / 1MB)) MB) from $vkSrc"
+        } else {
+            Remove-Item $vkDest -Force -ErrorAction SilentlyContinue
+            Write-Warning "vulkan preseed fetch failed (exit $LASTEXITCODE) - falling back to the direct download"
+        }
+        $global:LASTEXITCODE = 0
+    } catch {
+        Write-Warning "vulkan preseed skipped: $($_.Exception.Message)"
+    }
+}
 Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
 # Flutter pinned to versions.env FLUTTER_VERSION (baked env) — previously the

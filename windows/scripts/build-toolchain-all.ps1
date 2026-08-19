@@ -34,18 +34,22 @@ if (-not (Test-Path $src)) { throw "CPython source tree missing at $src (builder
 # `if NOT exist "%_Py_NUGET%"` guard then skips the flaky aka.ms fetch entirely.
 Import-Module (Join-Path $PSScriptRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
-# Re-read versions.env if a fresh copy was COPY'd into the builder image
-# (Dockerfile.toolchain-builder): the NUGET_VERSION / NUGET_EXE_SHA256 env vars
-# below come from the BASE-BAKED Machine env, so a versions.env nuget bump would
-# silently lag until a base rebuild — a fresh COPY beats the baked env. Degrades
-# gracefully: file absent (older builder image) -> baked env, current behavior.
-if ($env:TEMP_DIR) {
-    $versionsEnvFile = Join-Path $env:TEMP_DIR 'versions.env'
-    if (Test-Path $versionsEnvFile) {
-        Write-Host "Overriding process env from fresh $versionsEnvFile (beats base-baked values)"
-        foreach ($entry in (ConvertFrom-VersionsEnv -Path $versionsEnvFile).GetEnumerator()) {
-            [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
-        }
+# Re-read versions.env if a fresh copy is reachable: the NUGET_VERSION /
+# NUGET_EXE_SHA256 env vars below come from the BASE-BAKED Machine env, so a
+# versions.env nuget bump would silently lag until a base rebuild — a fresh
+# file beats the baked env. Preference order (#52): a SIBLING versions.env
+# first (the BK lane bind-mounts script + file side by side under C:\bkmnt,
+# so edits never bust the CPython layer), then the classic lane's COPY at
+# $env:TEMP_DIR. Degrades gracefully: neither present -> baked env.
+$versionsEnvFile = ''
+foreach ($cand in @((Join-Path $PSScriptRoot 'versions.env'),
+        $(if ($env:TEMP_DIR) { Join-Path $env:TEMP_DIR 'versions.env' }))) {
+    if ($cand -and (Test-Path $cand)) { $versionsEnvFile = $cand; break }
+}
+if ($versionsEnvFile) {
+    Write-Host "Overriding process env from fresh $versionsEnvFile (beats base-baked values)"
+    foreach ($entry in (ConvertFrom-VersionsEnv -Path $versionsEnvFile).GetEnumerator()) {
+        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
     }
 }
 

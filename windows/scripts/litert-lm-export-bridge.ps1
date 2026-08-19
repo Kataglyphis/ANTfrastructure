@@ -133,7 +133,7 @@ function Invoke-LiteRtLmSupportGraft {
     # (LITERT_VERSION env, fallback 'v2.1.6'). The AUTHORITATIVE default lives
     # there -- when bumping LiteRT, update BOTH defaults (a mismatched graft
     # pulls a support/ tree from a different LiteRT than the one built).
-    $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.1.6'
+    $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'
     $supportClone = 'C:\temp\litert-support-src'
     if (Test-Path $supportClone) { Remove-Item $supportClone -Recurse -Force }
     Write-Host "[LiteRTLM-winfix support-graft] sparse-cloning LiteRT $litertRef support/ tree..."

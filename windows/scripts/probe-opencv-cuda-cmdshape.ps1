@@ -103,7 +103,14 @@ $variants = [ordered]@{
 $i = 0
 foreach ($name in $variants.Keys) {
     $i++
-    $v = $variants[$name] -replace [regex]::Escape($obj), "replay$i.obj"
+    # $target, NOT $obj: $obj never existed in this script (copied from the
+    # ONNX replay). An undefined var makes Escape('') an EMPTY pattern, and
+    # -replace with an empty pattern INTERLEAVES the replacement between
+    # every character - that single bug manufactured the "24k command"
+    # (2040 real chars + 2039 insertions = 24,491), the cmd-8191 death, and
+    # the argv corruption behind "cannot find binary path". Probes 8-13.
+    if (-not $target) { throw 'target empty - refusing to build variants from garbage' }
+    $v = $variants[$name] -replace [regex]::Escape($target), "replay$i.obj"
     $v = $v -replace '-MF \S+', "-MF replay$i.d"
     $env:SCCACHE_DIR = Join-Path $WorkDir "rcache$i"
     $env:SCCACHE_ERROR_LOG = Join-Path $WorkDir "rlog$i.log"
@@ -112,25 +119,34 @@ foreach ($name in $variants.Keys) {
     & $sccache --start-server 2>&1 | Out-Null
     # Direct spawn (CreateProcess, 32k limit) - a cmd.exe wrapper dies at 8191
     # with "The command line is too long." (probe 9: all variants, 2s).
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $sccache
-    $psi.Arguments = $v
-    $psi.WorkingDirectory = (Get-Location).Path
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    foreach ($k in @('SCCACHE_DIR', 'SCCACHE_ERROR_LOG', 'SCCACHE_LOG', 'SCCACHE_SERVER_PORT', 'SCCACHE_MULTILEVEL_CHAIN', 'SCCACHE_WEBDAV_ENDPOINT')) {
-        $psi.Environment[$k] = (Get-Item "env:$k" -ErrorAction SilentlyContinue).Value
+    # Token splitter that survives MIXED-quote args (-Xcompiler="-O2 -Ob2",
+    # -DX="long long"): a token is any run of non-space chars and quoted
+    # spans. The naive '"..."|\S+' split tore those into two broken args and
+    # every harness failure since probe 10 was THAT, not sccache.
+    $tokens = @([regex]::Matches($v, '(?:[^\s"]+|"[^"]*")+') | ForEach-Object { $_.Value -replace '"', '' })
+    Write-Host ("  len={0} tokens={1}" -f $v.Length, $tokens.Count)
+    if ($name -eq 'full') {
+        # Control: the SAME tokens through bare nvcc. If this fails, the
+        # harness (not sccache) is broken - never let that masquerade again.
+        $bareOut = & $tokens[0] @($tokens[1..($tokens.Count-1)] | ForEach-Object { $_ -replace 'replay1', 'bare0' }) 2>&1
+        Write-Host ("  bare-control exit={0}" -f $LASTEXITCODE)
+        if ($LASTEXITCODE -ne 0) { ($bareOut | Select-Object -Last 2) | ForEach-Object { "  bare| $_" } }
     }
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $out = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    $rc = $proc.ExitCode
-    Write-Host ("  len={0}" -f $v.Length)
-    if ($rc -ne 0) { ($out -split "`r?`n" | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { "  err| $_" } }
+    $out = & $sccache @tokens 2>&1
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { "  err| $_" } }
     $stats = & $sccache --show-stats 2>&1
     $exe = (($stats | Select-String 'requests executed' | Select-Object -First 1).Line -replace '\D+', '')
     $why = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache|cannot cache|NotCompilation' | Select-Object -First 1)
+    if ($rc -ne 0) {
+        Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
+            Select-String 'which|binary|Error|failed|dryrun' | Select-Object -Last 4 |
+            ForEach-Object { "  srv| $($_.Line.Trim().Substring(0, [Math]::Min(220, $_.Line.Trim().Length)))" }
+        # The FULL CannotCache echo, chunked - the 220-char cap above hid the
+        # very token list that names the mis-detected "second input".
+        $cc = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache' | Select-Object -First 1).Line
+        if ($cc) { for ($p = 0; $p -lt $cc.Length; $p += 220) { Write-Host ("  cc| {0}" -f $cc.Substring($p, [Math]::Min(220, $cc.Length - $p))) } }
+    }
     & $sccache --stop-server 2>&1 | Out-Null
     Write-Host ("variant {0,-15} exit={1} executed={2} why='{3}'" -f $name, $rc, $exe, $why)
 }

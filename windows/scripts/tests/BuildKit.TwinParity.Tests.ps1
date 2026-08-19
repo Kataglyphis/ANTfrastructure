@@ -52,12 +52,24 @@ BeforeAll {
         }
     }
 
-    # branch -> the shared env stage, plus the two lanes that must descend from it.
+    # branch -> the shared env stage, plus the two lanes that must descend from
+    # it. media-core is NOT in this list since #49 (2026-08-19): its BK lane is
+    # partitioned per component and carries per-stage version blocks - the
+    # dedicated Describe below asserts that contract instead.
     $script:branches = @(
-        @{ Env = 'media-core-env';   Classic = 'media-core';   Bk = 'media-core-built-onnx' }
         @{ Env = 'media-litert-env'; Classic = 'media-litert'; Bk = 'media-litert-built' }
         @{ Env = 'media-tvm-env';    Classic = 'media-tvm';    Bk = 'media-tvm-built' }
     )
+
+    # #49 contract: each BK media-core stage declares EXACTLY its component's
+    # version keys, so a single-component bump re-runs that stage + downstream
+    # instead of the full ~75-min ONNX build.
+    $script:coreComponentKeys = @{
+        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')
+        'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF')
+        'media-core-built-opencv' = @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION')
+        'media-core-built'        = @('ONNXRUNTIME_GENAI_VERSION')
+    }
 }
 
 Describe 'Dockerfile.media-builder version-env contract' {
@@ -101,5 +113,42 @@ Describe 'Dockerfile.media-builder version-env contract' {
                     -Because "$name re-declaring $($redeclared -join ', ') reintroduces the twin this refactor removed"
             }
         }
+    }
+}
+
+Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
+    It 'keeps the classic lane on the shared media-core-env ancestor' {
+        $script:stages['media-core'].Parent | Should -Be 'media-core-env' `
+            -Because 'the classic lane runs the whole chain in one stage and inherits the full version set'
+    }
+
+    It 'starts the BK partition from common, not the shared env stage' {
+        $script:stages['media-core-built-onnx'].Parent | Should -Be 'common' `
+            -Because 'descending from media-core-env would make every component bump re-pay the ONNX stage (#49)'
+    }
+
+    It 'declares and ENV-mirrors exactly its component keys per BK stage' {
+        foreach ($name in $script:coreComponentKeys.Keys) {
+            $script:stages.Keys | Should -Contain $name
+            $keys = $script:coreComponentKeys[$name]
+            foreach ($k in $keys) {
+                $script:stages[$name].Args | Should -Contain $k -Because "$name consumes $k"
+                $script:stages[$name].EnvMirrored | Should -Contain $k `
+                    -Because "an unmirrored ARG silently falls back to the base image's baked env"
+            }
+            # No foreign component keys: a key creeping back into an earlier
+            # stage re-couples the cache chain the split exists to cut.
+            $foreign = @($script:coreComponentKeys.Keys | Where-Object { $_ -ne $name } |
+                    ForEach-Object { $script:coreComponentKeys[$_] }) | Where-Object { $_ -in $script:stages[$name].Args }
+            @($foreign) | Should -BeNullOrEmpty `
+                -Because "$name declaring $($foreign -join ', ') re-couples another component's cache key"
+        }
+    }
+
+    It 'covers the full classic version set with the per-stage union (no drift)' {
+        $union = @($script:coreComponentKeys.Values | ForEach-Object { $_ }) | Sort-Object -Unique
+        $classic = @($script:stages['media-core-env'].Args) | Sort-Object -Unique
+        ($union -join ',') | Should -Be ($classic -join ',') `
+            -Because 'a key present in one lane but not the other is exactly the twin drift this suite polices'
     }
 }

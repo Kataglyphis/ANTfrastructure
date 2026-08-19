@@ -824,7 +824,7 @@ try {
                 BASE_IMAGE     = $script:ImageTag.sdk
                 PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
             } `
-            -BuilderExtraFlags @('--target', 'builder') `
+            -BuilderExtraFlags @('--target', 'builder-classic') `
             -Label 'toolchain' -OutLog $tcLog
     }
 

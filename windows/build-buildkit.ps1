@@ -410,6 +410,38 @@ function Invoke-BkStage {
 }
 
 $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
+
+# Preseed the vulkan SDK exe onto the LAN webdav so containers never pull it
+# from the vendor: sdk.lunarg.com stalls out reproducibly INSIDE containers
+# (2026-08-19: three ~20-min 275 MB transfers, all died mid-stream) while the
+# host pulls the same file fine. Fail-open at every step - a failure here
+# just leaves the container on its own (retried) direct-download path.
+if ($SccacheEndpoint) {
+    try {
+        $vkVer = Get-Ver 'VULKAN_VERSION'
+        $vkName = "vulkansdk-windows-X64-$vkVer.exe"
+        $vkOnDav = "$SccacheEndpoint/preseed/$vkName"
+        $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+        & $curlExe -sfI $vkOnDav *> $null
+        if ($LASTEXITCODE -ne 0) {
+            $vkLocal = Join-Path $PSScriptRoot 'downloads' $vkName
+            if (-not (Test-Path $vkLocal)) {
+                Write-Host "preseed: downloading $vkName host-side..."
+                & $curlExe -sfL --retry 3 --retry-delay 5 --retry-all-errors "https://sdk.lunarg.com/sdk/download/$vkVer/windows/$vkName" -o $vkLocal
+                if ($LASTEXITCODE -ne 0) { throw "host download failed (exit $LASTEXITCODE)" }
+            }
+            & $curlExe -sf --retry 3 --retry-delay 5 --retry-all-errors -T $vkLocal $vkOnDav
+            if ($LASTEXITCODE -ne 0) { throw "webdav PUT failed (exit $LASTEXITCODE)" }
+            Write-Host "preseed: $vkName staged at $vkOnDav"
+        } else {
+            Write-Host "preseed: $vkName already on the webdav"
+        }
+    } catch {
+        Write-Warning "vulkan preseed skipped (container falls back to direct download): $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
+}
+
 $started = Get-Date
 
 if ($Stages -contains 'base') {
@@ -417,6 +449,8 @@ if ($Stages -contains 'base') {
         WINDOWS_LTSC          = Get-Ver 'WINDOWS_LTSC'
         WINDOWS_BASE_DIGEST   = Get-Ver 'WINDOWS_BASE_DIGEST'
         VULKAN_VERSION        = Get-Ver 'VULKAN_VERSION'
+        # LAN source for the 275 MB SDK exe (see the preseed block above).
+        VULKAN_PRESEED_ENDPOINT = $SccacheEndpoint
         CMAKE_VERSION         = Get-Ver 'CMAKE_VERSION'
         # Compiled-output pins — see the same block in build.ps1.
         LLVM_WINDOWS_VERSION  = Get-Ver 'LLVM_WINDOWS_VERSION'

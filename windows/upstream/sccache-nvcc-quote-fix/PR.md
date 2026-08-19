@@ -62,3 +62,63 @@ expected module-id naming divergence).
 `fix/nvcc-dryrun-escaped-quotes-windows` on the Kataglyphis fork; reference
 #2808 and #1077 in the description, do not claim to close #2808 (its
 deadlock half is a separate finding).
+
+---
+
+# PR 2 draft (SEPARATE upstream PR - owner submits): nvcc diag-family flags
+
+**Patch:** `0003-nvcc-accept-the-diag-error-diag-suppress-diag-warn-f.patch`
+**Branch suggestion:** `fix/nvcc-diag-suppress-separated` from the pin.
+
+**Title:** `nvcc: accept the --diag-error/--diag-suppress/--diag-warn family`
+
+**Body** (written to read like a build-log war story, not a report - keep
+this tone if editing):
+
+While trying to get OpenCV's CUDA build cached on Windows I noticed that
+none of its .cu files ever got cache hits. The server log shows every
+single compile being rejected with:
+
+```
+CannotCache(multiple input files)
+```
+
+OpenCV passes `-Xcudafe --display_error_number --diag-suppress 1394,1388`
+on every CUDA file. The problem: `--diag-suppress` (and its siblings
+`--diag-error` / `--diag-warn`) are missing from the nvcc argument table.
+nvcc accepts the value either attached (`--diag-suppress=1394,1388`) or as
+a separate argument, and CMake/OpenCV happen to emit the separated form -
+so sccache parses `1394,1388` as a bare token, takes it for a second input
+file and refuses the compile.
+
+Easy to reproduce with any single nvcc compile: add
+`--diag-suppress 1394,1388` and the request is forwarded uncached
+(`requests executed 0` in the stats), switch to `--diag-suppress=1394,1388`
+and the same compile caches fine.
+
+This adds the three flags in both their single- and double-dash forms
+(`CanBeSeparated`, `PassThrough`) plus a regression test for the separated
+form. With the patch applied, OpenCV's CUDA compiles (155 files in our
+build) all cache. Same kind of table gap #2708 filled for
+`--dependency-output`.
+
+Possibly related: #2726 hits the same `multiple input files` rejection,
+but from the MSVC-side parsing of nvcc's host sub-compile - I reproduced
+it on current main and verified this PR does not change it.
+
+**Posting notes (not part of the body):** the body cites #2708
+(--dependency-output, merged 2026-06-01, same one-file table fix) as THE
+precedent - most recent and structurally identical. The full table-gap
+lineage if a maintainer asks: #2708, #1823 (-Werror w/ argument), #1571
+(--threads), #1147/#990 (-ccbin/--compiler-bindir), #2384/#2356
+(--device-debug), fb6e671 (--default-stream, resolves the still-open
+#1105 - VERIFIED 2026-08-19 via probe-sccache-1105-check: all four
+spellings compile clean at the pin; could simply be closed. 0.17.0-release
+failures on the same shape are pre-#2722 decomposition breakage, not
+#1105), #745 (the inverse: flags wrongly CAPTURING parameters). Issue
+search 2026-08-19 found NO existing report of the separated diag-suppress
+bug (fresh find). #1077
+matches textually but is the attached `--diag_suppress=` underscore form
+inside one -Xcudafe value - do not link it here. #2372 (hard fail on
+uncacheable nvcc args) is optional context, not required. No pending PR
+touches the diag family.

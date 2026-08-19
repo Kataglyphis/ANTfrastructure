@@ -119,7 +119,7 @@ RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 # VS layer made a Vulkan/CMake/LLVM bump re-pay the VS Build Tools install.
 # Declared here they can only invalidate scoop and the tail (their sole
 # consumers).
-ARG VULKAN_VERSION=1.4.357.1
+ARG VULKAN_VERSION=1.4.357.0
 ARG CMAKE_VERSION=4.4.2
 ARG LLVM_WINDOWS_VERSION=22.1.8
 ARG NINJA_WINDOWS_VERSION=1.13.2
@@ -138,6 +138,12 @@ ARG SCOOP_INSTALLER_SHA256=48f6ea398b3a3fa26fae0093d37bd85b13e7eaa5d1d4a3e208408
 ARG WIX_VERSION=4.0.6
 ARG WIX_UI_EXT_VERSION=4.0.6
 ARG FLUTTER_VERSION=3.47.0
+# LAN preseed source for the 275 MB vulkan SDK exe: sdk.lunarg.com stalls out
+# reproducibly from inside containers (2026-08-19, 3x ~20-min deaths), so the
+# driver stages the exe on the webdav and setup-scoop-tools pulls it into
+# scoop's cache from there. Empty = direct (retried) vendor download. The
+# endpoint is a stable LAN URL, so it does not churn this layer's cache key.
+ARG VULKAN_PRESEED_ENDPOINT=""
 COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
@@ -183,7 +189,7 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
 # assertion list cost a full rust reinstall).
 # #50: SCCACHE_GIT_REV as ARG (was baked env; the script throws if empty).
-ARG SCCACHE_GIT_REV=e9b15a35f7240a7edd1b9644583edb388c6cb5f9
+ARG SCCACHE_GIT_REV=ffac4a596aa50da3540520eb307b7a591984a064
 COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
 # Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
 # source build. Deliberately in the SAME layer group as the rust install - a

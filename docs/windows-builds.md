@@ -2321,7 +2321,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 
 ### P3 — Cache tiering (pure rebuild-time cost; no correctness change)
 
-- **49 [M·★★★, media-core once] Nine version ARGs share ONE ENV layer directly
+- **49 [M·★★★, media-core once] LANDED 2026-08-19, riding the full ride (verify: a later PYAV-only bump must NOT re-run onnx): per-component ARG/ENV blocks in the BK stages, media-core-env is classic-lane-only, TwinParity suite carries the new contract. Original finding: nine version ARGs share ONE ENV layer directly
   above the ~75-min ONNX compile.** `Dockerfile.media-builder:142-168` declares
   ONNX/GENAI/OPENCV/FFMPEG/PYAV/NV_CODEC/CUDA_ARCH/PYTHON in a single
   `media-core-env`, and opencv/ffmpeg/genai chain `FROM` ONNX's output. So a
@@ -2329,7 +2329,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   branch (hours). The 2026-08-07 versions.env-COPY removal fixed this at BRANCH
   granularity and never reached COMPONENT granularity. FIX: move each ARG+ENV
   into the stage that consumes it.
-- **50 [M·★★★, base once] DONE 2026-08-18 (riding the #114 base batch): versions.env COPY relocated below scoop/vcpkg/rust; the 9 consumed keys (incl. helper-reads GIT_VERSION/WIX_*/SCOOP_INSTALLER_SHA256 - invisible to a naive $env: grep) ride as ARGs mirrored in both drivers. Original finding: `versions.env` is COPY'd above scoop + vcpkg + the
+- **50 [M·★★★, base once] DONE 2026-08-18 (riding the #114 base batch): versions.env COPY relocated below scoop/vcpkg/rust; the 9 consumed keys (incl. helper-reads GIT_VERSION/WIX_*/SCOOP_INSTALLER_SHA256 - invisible to a naive $env: grep) ride as ARGs mirrored in both drivers. AFTERMATH FIXED 2026-08-19: the final-stage ARG mirrors sat in the process env during the bake RUN, load-versions' override branch left Machine untouched, and those keys (measured: SCCACHE_GIT_REV, machine=[] in-container) were never baked into post-#50 images - load-versions now persists the winning override to Machine (Dockerfile.load-versions-probe, fail-closed; rides the next base build). Original finding: `versions.env` is COPY'd above scoop + vcpkg + the
   ~30-min rust/sccache-from-source layer.** `Dockerfile.base:87-89`, then
   `:114-120`, then `:156`. versions.env is shared by BOTH lanes, so editing a
   purely *Linux* key (`PANDOC_VERSION`, `ROCM_VERSION`, `UBUNTU_DIGEST`)
@@ -2372,7 +2372,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   compile. Same on any host with different RAM. `Dockerfile.torch:57-60`
   already states the principle ("Build-time state belongs in the build step,
   not in the artifact"). FIX: derive in-container, or bind-mount it.
-- **52 [M·★★, toolchain] The toolchain builder never got the bind-mount
+- **52 [M·★★, toolchain] LANDED 2026-08-19, riding the full ride: BK 'built' stage bind-mounts script/module/versions.env (sibling versions.env preferred), classic lane gets builder-classic COPY stage (build.ps1 target updated). Original finding: the toolchain builder never got the bind-mount
   treatment.** `Dockerfile.toolchain-builder:38-43` COPYs the shared module +
   versions.env + the build script into the stage whose child RUNs the CPython
   compile — so editing *any* of them (incl. a module ~30 scripts share)
@@ -2400,7 +2400,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   cuDNN's nested layout likely replaces the whole stage. NOTE: verify the
   actual cuDNN 9 nesting against the installed tree before removing the stage —
   the flatten fix was load-bearing for OpenCV's `cudnn64_9.dll`.
-- **100 [M·★★★, media-core] FFmpeg and PyAV compile with sccache COMPLETELY
+- **100 [M·★★★, media-core] LANDED 2026-08-19 for FFmpeg (riding the full ride; ACCEPT on `Compile requests` > 0 in the ffmpeg stage stats - NOT hit rate; PyAV stays open as the lower-value half): --cc='sccache clang-cl' in configure, config.mak CC= echoed, loud warning if the prefix is dropped. Original finding: FFmpeg and PyAV compile with sccache COMPLETELY
   BYPASSED — the whole ffmpeg branch is uncached, every build, forever.**
   Measured 2026-08-15 in the #99 verification run: the `media-core-built-ffmpeg`
   stage reported `Compile requests 0` — not "0 hits", *zero requests*. sccache
@@ -2475,42 +2475,45 @@ Upstream follow-ups: see "Pending" at the bottom.
   --git`) = BASE rebuild — rides the next base-tier batch, never alone.
   After shipping: three canaries + a cache-hit second run, THEN the
   SCCACHE_CUDA_LAUNCHER default discussion reopens (~50 min/chain at stake).
-  Upstream PR SUBMITTED 2026-08-18: mozilla/sccache#2811 (fmt/clippy/tests
-  green in-container, regression test included). Owner: post the #2808
-  addendum comment referencing it.
-- **116 [S·★★, none] `Invoke-GitClone` has no retry — one TCP drop kills a
-  4-hour ride.** 2026-08-18: the base-batch ride died in litert on `curl 18
-  transfer closed` at 610 s of the LiteRT clone; the driver correctly does
-  not infra-retry script failures, so the chain stopped and the relaunch
-  cost the full stage queue. Give Invoke-GitClone (module — land with the
-  NEXT planned media rebuild, cache closure!) 2-3 attempts with backoff +
-  `Remove-SourceBuildTree` between; same family as Invoke-DownloadWithRetry.
-- **115 [M·★★, none] MEASURED 2026-08-19 00:10: the rsp-off knob is
-  INSUFFICIENT — CUDA stats stayed empty (2018/1863/1862, identical to the
-  rsp run) although both banners fired. CMake's Ninja generator falls back
-  to a response file whenever the real command exceeds the ~32k spawn limit,
-  regardless of the USE_RESPONSE_FILE_* variables — OpenCV's CUDA lines are
-  genuinely over it. PRIMARY PATH is now upstream PR 2: teach sccache's nvcc
-  handler to expand `--options-file` (gcc/msvc handlers already expand @rsp).
-  The OPENCV_CUDA_NO_RSP knob stays dormant/documented until then. Original:
-  OpenCV CUDA caching: rsp-off experiment + upstream
-  `--options-file` expansion.** OpenCV's nvcc calls ride CMake response
-  files, which sccache passes through UNCACHED (measured 2026-08-18: zero
-  CUDA cache categories at 99.95% C/C++ hits) — wrapped OpenCV CUDA is
-  bare-but-green. Wired: dormant `OPENCV_CUDA_NO_RSP=1` knob (disables
-  CMAKE_CUDA_USE_RESPONSE_FILE_*, calls arrive inline; loud failure if the
-  32,767-char spawn limit ever bites). ORDER: only test after #114 ships —
-  inline calls without the quote fix inherit the miscompile. The durable fix
-  is upstream PR #2: teach nvcc.rs to expand `--options-file` the way the
-  gcc/msvc handlers already expand @rsp files (follow-up to
-  mozilla/sccache#2811); then the CMake knob retires.
-- **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
-  "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
-  logged `could not compare avcodec majors (chain='' configure='63')`: in
-  `build-opencv-from-source.ps1` the `$InstallDir\ffmpeg\bin\ffmpeg.exe` probe
-  produced no parseable `libavcodec` line even WITH the bin-dir-on-PATH fix
-  (exe absent at that path in the stage container, or startup still fails —
-  diagnose inside the image, don't guess). Not release-gating: the
+  Upstream PR mozilla/sccache#2811 MERGED 2026-08-19 (ffac4a5, sylvestre);
+  SCCACHE_GIT_REV bumped to the merge commit, patches 0001/0002 deleted —
+  the series now carries only 0003 (#115 diag-suppress; local until its own
+  PR lands). Owner: post the #2808 addendum comment referencing it.
+- **116 [S·★★, none] DONE 2026-08-19 (module edit — takes effect with the
+  next media rebuild, cache closure): Invoke-GitClone retries transient
+  failures** (3 attempts, backoff doubling capped at 30 s, mount-safe
+  partial-tree wipe between attempts; throw/SkipOnFailure only after the
+  last). 4 unit tests (fake git.bat, NinjaRetry pattern). Original finding:
+  one TCP drop (`curl 18 transfer closed` at 610 s of the LiteRT clone)
+  killed a 4-hour ride; the driver correctly does not infra-retry script
+  failures, so the chain stopped and the relaunch cost the full stage queue.
+- **115 [S·★★★, none] ROOT-CAUSED + FIX PREPARED 2026-08-19: OpenCV
+  CUDA was never an rsp/length problem** (both earlier theories were probe
+  artifacts: an undefined `$obj` interleaved 'replay1.obj' between every
+  character and manufactured a phantom 24k command). The real command is
+  ~2,040 chars, inline, no rsp. sccache rejects it as
+  `CannotCache(multiple input files)` because **`--diag-suppress 1394,1388`
+  (separated) is missing from the nvcc ARGS table** - the value parses as a
+  bare token = phantom second input. Measured: separated form uncached,
+  attached form cached; all 155 OpenCV .cu compiles carry the flag. Fix =
+  patch 0003 in windows/upstream/sccache-nvcc-quote-fix (diag-error/
+  suppress/warn, both dash forms, + regression test); ships with the next
+  base ride, upstream PR 2 draft in the package (OWNER submits - no direct
+  PR interaction per 2026-08-19 directive). The OPENCV_CUDA_NO_RSP knob is
+  moot and stays only as a documented dead end. AFTER the ship: the
+  OPENCV_CUDA_LAUNCHER=1 experiment repeats and should finally show CUDA
+  cache categories.
+- **112 [S·★, none] DONE 2026-08-19 (verify in the next media rebuild):
+  the chain-side probe read back empty because ffmpeg.exe died 0xC0000135
+  STATUS_DLL_NOT_FOUND** — `--enable-libonnxruntime` links avfilter-12.dll
+  against the chain's onnxruntime.dll (lib\onnxruntime-source\bin), which the
+  bin-dir-on-PATH fix never covered. Measured in-image via
+  Dockerfile.ffmpeg-provenance-probe (symptom → dumpbin walker names the DLL
+  → fixed-gate replay exit 0 / avcodec 63). Gate now adds the discovered
+  onnxruntime.dll dir to the probe PATH and prints the exit code hex on a
+  parse miss instead of a silent chain=''. Original finding: verify5
+  (2026-08-17) logged `could not compare avcodec majors (chain=''
+  configure='63')`. Not release-gating: the
   authoritative #94/#95 assertion runs in `smoke-test-container.ps1` against
   the shipped image. But the stage gate exists to fail 25 minutes earlier than
   the smoke does; today it can only ever throw when BOTH majors read back,
@@ -2518,11 +2521,13 @@ Upstream follow-ups: see "Pending" at the bottom.
   Fix: make the empty chain-read loud (assert the probe path exists + version
   output non-empty when `OPENCV_LINK_CHAIN_FFMPEG=1`), and print WHY it was
   empty (path missing vs exit code vs regex miss).
-- **107 [M·★★, none] `Invoke-SourceBuildChain` / `Complete-SourceBuildChain`
-  carry 134/158 lines of inline sccache choreography** accreted through
-  #97–#99. Extract `Start-/Complete-SccacheServerSession` into the module:
-  unit-testable (the log truncation and the `-Last N` dump each cost a false
-  alarm), and the chain functions drop back to readable size.
+- **107 [M·★★, none] DONE 2026-08-19 (module edit — takes effect with the
+  next media rebuild): `Start-/Complete-SccacheServerSession` extracted** with
+  a `-SccachePath` test seam + 6 unit tests pinning the truncation and the
+  failures-first dump (each had cost a false alarm); war-story comments moved
+  with the code, chain functions back to readable size, suite 511/511.
+  Original finding: the chain functions carried 134/158 lines of inline
+  sccache choreography accreted through #97–#99.
 
 ### P7 — PERFECTION CAMPAIGN (owner mandate 2026-08-17: "drastische Maßnahmen erlaubt")
 
