@@ -1,0 +1,14 @@
+# escape=`
+# =============================================================================
+# Reproduce mozilla/sccache#2470 and test the #2811 fix against it. Run via:
+#   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.sccache-2470-probe -BaseImage local/kataglyphis:bk-windows-toolchain
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
+FROM ${BASE_IMAGE} AS probe
+
+# Layer-cache buster (a CACHED run replays an old verdict).
+ARG PROBE_NONCE="0"
+
+RUN --mount=type=bind,source=windows/scripts/probe-sccache-2470-repro.ps1,target=C:\bkmnt\probe-sccache-2470-repro.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\probe-sccache-2470-repro.ps1' -Nonce "${PROBE_NONCE}"
