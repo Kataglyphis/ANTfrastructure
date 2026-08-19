@@ -2503,13 +2503,17 @@ Upstream follow-ups: see "Pending" at the bottom.
   moot and stays only as a documented dead end. AFTER the ship: the
   OPENCV_CUDA_LAUNCHER=1 experiment repeats and should finally show CUDA
   cache categories.
-- **112 [S·★, none] opencv stage's FFmpeg provenance gate degrades to
-  "unverified" — the chain-side probe reads back empty.** verify5 (2026-08-17)
-  logged `could not compare avcodec majors (chain='' configure='63')`: in
-  `build-opencv-from-source.ps1` the `$InstallDir\ffmpeg\bin\ffmpeg.exe` probe
-  produced no parseable `libavcodec` line even WITH the bin-dir-on-PATH fix
-  (exe absent at that path in the stage container, or startup still fails —
-  diagnose inside the image, don't guess). Not release-gating: the
+- **112 [S·★, none] DONE 2026-08-19 (verify in the next media rebuild):
+  the chain-side probe read back empty because ffmpeg.exe died 0xC0000135
+  STATUS_DLL_NOT_FOUND** — `--enable-libonnxruntime` links avfilter-12.dll
+  against the chain's onnxruntime.dll (lib\onnxruntime-source\bin), which the
+  bin-dir-on-PATH fix never covered. Measured in-image via
+  Dockerfile.ffmpeg-provenance-probe (symptom → dumpbin walker names the DLL
+  → fixed-gate replay exit 0 / avcodec 63). Gate now adds the discovered
+  onnxruntime.dll dir to the probe PATH and prints the exit code hex on a
+  parse miss instead of a silent chain=''. Original finding: verify5
+  (2026-08-17) logged `could not compare avcodec majors (chain=''
+  configure='63')`. Not release-gating: the
   authoritative #94/#95 assertion runs in `smoke-test-container.ps1` against
   the shipped image. But the stage gate exists to fail 25 minutes earlier than
   the smoke does; today it can only ever throw when BOTH majors read back,
