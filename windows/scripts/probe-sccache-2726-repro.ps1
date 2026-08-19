@@ -87,7 +87,15 @@ function Invoke-Candidate {
     $cc = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
         Select-String 'CannotCache\(multiple input files' | Select-Object -First 1)
     & $Exe --stop-server 2>&1 | Out-Null
-    if ($rc -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 2) | ForEach-Object { "  err| $_" } }
+    if ($rc -ne 0) {
+        # Write-Host, NOT the pipeline: in a function, pipeline strings
+        # become part of the RETURN value and vanish from the log (bitten
+        # in run 1 - every exit=1 was blind).
+        ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { Write-Host "  err| $_" }
+        Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
+            Select-String 'CannotCache|parse|failed' | Select-Object -Last 2 |
+            ForEach-Object { Write-Host "  srv| $($_.Line.Trim().Substring(0, [Math]::Min(200, $_.Line.Trim().Length)))" }
+    }
     [pscustomobject]@{ Exit = $rc; Executed = $exeCnt; MultiInput = [bool]$cc }
 }
 
@@ -108,6 +116,14 @@ $forms = [ordered]@{
     'separated' = @('-gencode=arch=compute_80,code=sm_80', '-Xcompiler', '/openmp:llvm', '-x', 'cu', '-c', 'vectorAdd.cu')
     'attached'  = @('-gencode=arch=compute_80,code=sm_80', '-Xcompiler=/openmp:llvm', '-x', 'cu', '-c', 'vectorAdd.cu')
 }
+# Bare-control first: if plain nvcc rejects the shape, the repro doesn't
+# express #2726 in this environment and every sccache verdict is noise.
+foreach ($form in $forms.Keys) {
+    $bareOut = & $nvcc @($forms[$form]) -o "bare-$form.obj" 2>&1
+    Write-Host ("bare-control form={0,-9} exit={1}" -f $form, $LASTEXITCODE)
+    if ($LASTEXITCODE -ne 0) { ($bareOut | Select-Object -Last 3) | ForEach-Object { Write-Host "  bare| $_" } }
+}
+
 $slot = 1
 foreach ($name in $candidates.Keys) {
     $exe = $candidates[$name]
