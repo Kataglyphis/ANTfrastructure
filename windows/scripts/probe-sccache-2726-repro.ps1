@@ -84,8 +84,10 @@ function Invoke-Candidate {
     $rc = $LASTEXITCODE
     $stats = & $Exe --show-stats 2>&1
     $exeCnt = (($stats | Select-String 'requests executed' | Select-Object -First 1).Line -replace '\D+', '')
-    $cc = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
-        Select-String 'CannotCache\(multiple input files' | Select-Object -First 1)
+    # Client message is `Cannot cache(` (space), server log `CannotCache(`
+    # - run 2 grepped only the latter and reported False on true hits.
+    $cc = (@($out) + @(Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue) |
+        Select-String 'Cannot ?cache\(multiple input files' -CaseSensitive:$false | Select-Object -First 1)
     & $Exe --stop-server 2>&1 | Out-Null
     if ($rc -ne 0) {
         # Write-Host, NOT the pipeline: in a function, pipeline strings

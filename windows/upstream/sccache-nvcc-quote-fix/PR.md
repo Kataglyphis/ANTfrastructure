@@ -103,8 +103,9 @@ build) all cache.
 
 Possibly related: #2726 reports the same `multiple input files` rejection
 for another flag the parser doesn't know (`-Xcompiler "/openmp:llvm"`,
-mis-split at the MSVC layer). Same failure mode, different argument table -
-not fixed by this PR.
+mis-split at the MSVC layer when the host sub-compile of nvcc's
+decomposition is parsed). Same failure mode, different argument table - I
+reproduced it on current main and verified this PR does not change it.
 
 **Posting notes (not part of the body):** issue search 2026-08-19 found NO
 existing report of the separated diag-suppress bug (fresh find). #1077
