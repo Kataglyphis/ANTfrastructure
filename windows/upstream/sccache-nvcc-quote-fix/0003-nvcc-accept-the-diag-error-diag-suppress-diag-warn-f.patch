@@ -1,6 +1,6 @@
-From 36fee468348233da2a46c1e26c8096bd10a78082 Mon Sep 17 00:00:00 2001
+From c9f007cf84641fc263775dcca33853a89857a483 Mon Sep 17 00:00:00 2001
 From: Jonas Heinle <jonasheinle@googlemail.com>
-Date: Wed, 19 Aug 2026 09:32:20 +0200
+Date: Wed, 19 Aug 2026 10:42:57 +0200
 Subject: [PATCH] nvcc: accept the --diag-error/--diag-suppress/--diag-warn
  family
 
@@ -16,11 +16,11 @@ forwarded uncached; with the entries added the same command is cached.
 Adds double- and single-dash forms, CanBeSeparated('='), PassThrough, plus
 a regression test for the separated shape.
 ---
- src/compiler/nvcc.rs | 41 +++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 41 insertions(+)
+ src/compiler/nvcc.rs | 38 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 38 insertions(+)
 
 diff --git a/src/compiler/nvcc.rs b/src/compiler/nvcc.rs
-index 3a45358..fcdba7d 100644
+index c594f8e..ccfb540 100644
 --- a/src/compiler/nvcc.rs
 +++ b/src/compiler/nvcc.rs
 @@ -1419,6 +1419,9 @@ counted_array!(pub static ARGS: [ArgInfo<gcc::ArgData>; _] = [
@@ -43,17 +43,14 @@ index 3a45358..fcdba7d 100644
      flag!("-dw", DoCompilation),
      flag!("-expt-extended-lambda", PreprocessorArgumentFlag),
      flag!("-expt-relaxed-constexpr", PreprocessorArgumentFlag),
-@@ -2155,6 +2161,41 @@ mod test {
+@@ -2155,6 +2161,38 @@ mod test {
          );
      }
  
 +    #[test]
 +    fn test_parse_diag_suppress_separated() {
-+        // OpenCV passes `-Xcudafe --display_error_number --diag-suppress
-+        // 1394,1388` with the value SEPARATED. Without a table entry the
-+        // value became a bare token, was taken for a second input file, and
-+        // every OpenCV CUDA compile was rejected as
-+        // CannotCache(multiple input files).
++        // The separated form (`--diag-suppress 1394,1388`, as OpenCV emits
++        // it) must not be mistaken for a second input file.
 +        let a = parses!(
 +            "-x=cu",
 +            "-Xcudafe",
