@@ -89,6 +89,34 @@ foreach ($r in $recipeLines) {
     Write-Host ("serial replay #{0} exit={1} ({2}...)" -f $i, $LASTEXITCODE, $r.Substring(0, [Math]::Min(60, $r.Length)))
 }
 
+# 2b. FLAG BISECTION (round 4): the full -c/-Fo recipe crashes SERIALLY
+# ("failed to open file `...avstring.o`") while round 1's minimal flags with
+# the IDENTICAL -Fo shape pass - so one flag family flips sccache's output
+# handling. Drop one family per variant; the variant that stops crashing
+# names the trigger.
+$compileLine = ($recipeLines | Where-Object { $_ -match '-c -Fo' } | Select-Object -First 1) -replace '^printf[^;]*;\s*', ''
+if ($compileLine) {
+    $variants = [ordered]@{
+        'full'            = $compileLine
+        'no-std'          = ($compileLine -replace '/std:c17\s*', '')
+        'no-optstrict'    = ($compileLine -replace '-options:strict\s*', '')
+        'no-utf8'         = ($compileLine -replace '-utf-8\s*', '')
+        'no-Z7'           = ($compileLine -replace '-Z7\s*', '')
+        'no-warnings'     = ($compileLine -replace '-W[a-z][^\s]*\s*', '' -replace '-wd\d+\s*', '')
+        'no-defines'      = ($compileLine -replace '-D[^\s]+\s*', '')
+        'no-includes'     = ($compileLine -replace '-I[^\s]+\s*', '')
+        'minimal-control' = 'clang-cl -nologo -c -Folibavutil/avstring.o libavutil/avstring.c'
+    }
+    $vi = 0
+    foreach ($vn in $variants.Keys) {
+        $vi++
+        $vcmd = $variants[$vn] -replace '-Fo(\S+)\.o', "-Fo`$1.v$vi.o"
+        [System.IO.File]::WriteAllLines((Join-Path $WorkDir "bisect$vi.sh"), @("cd $cygSrc", "sccache $vcmd"))
+        $null = & $bashExe "/c/probe-ffcc/bisect$vi.sh" 2>&1
+        Write-Host ("bisect {0,-16} exit={1}" -f $vn, $LASTEXITCODE)
+    }
+}
+
 # 3. Parallel slice: everything under libavutil with the launcher, -j8.
 #    (The real crash hit ~20 files in at -j19.)
 & $bashExe -c "cd $cygSrc && make -j8 CC='sccache clang-cl' libavutil/avstring.o libavutil/mem.o libavutil/buffer.o libavutil/dict.o libavutil/error.o libavutil/eval.o libavutil/fifo.o libavutil/frame.o libavutil/log.o libavutil/opt.o libavutil/parseutils.o libavutil/rational.o libavutil/samplefmt.o libavutil/time.o libavutil/utils.o libavutil/mathematics.o" 2>&1 |
