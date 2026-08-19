@@ -99,7 +99,9 @@ and the same compile caches fine.
 This adds the three flags in both their single- and double-dash forms
 (`CanBeSeparated`, `PassThrough`) plus a regression test for the separated
 form. With the patch applied, OpenCV's CUDA compiles (155 files in our
-build) all cache.
+build) all cache. It's the same kind of gap #1105 reported for
+`--default-stream` (added in fb6e671) - this does the same for the
+diagnostic-control family.
 
 Possibly related: #2726 reports the same `multiple input files` rejection
 for another flag the parser doesn't know (`-Xcompiler "/openmp:llvm"`,
