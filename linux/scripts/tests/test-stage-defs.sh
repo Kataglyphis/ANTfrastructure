@@ -39,6 +39,8 @@ t_assert_eq "6" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALL
   "3-way -> 3 x budget(2) = 6 (the wave3b-OOM configuration, now sized)"
 t_assert_eq "9" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=3 PAR_INTRA_STEP_BUDGET=3 cross_build_mem_divisor)" \
   "budget knob raises the divisor (escalation path)"
+t_assert_eq "1" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=3 cross_build_mem_divisor shared)" \
+  "shared stages (base/compiler) run alone -> divisor 1 (PAR4-amend 2026-08-19)"
 
 t_case "stage graph validates clean"
 t_assert_ok cross_stage_validate_graph

@@ -218,6 +218,11 @@ if [ "${USE_CCACHE}" = "1" ]; then
   fi
   export CCACHE_BASEDIR="${BUILD_DIR}"
   export CCACHE_SLOPPINESS="locale,time_macros,include_file_mtime,include_file_ctime"
+  # CCACHE-CONTENT (2026-08-19): hash the compiler BINARY CONTENT, not
+  # mtime/size — a base-image bump rebuilds GCC and the default check then
+  # invalidates EVERY downstream cache entry even though the binary is
+  # byte-identical in behavior (bit wave4: warm LLVM cache, 0% hits).
+  export CCACHE_COMPILERCHECK=content
 fi
 
 TARBALL="gcc-${GCC_VERSION}.tar.xz"
