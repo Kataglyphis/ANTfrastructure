@@ -142,6 +142,10 @@ foreach ($name in $variants.Keys) {
         Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue |
             Select-String 'which|binary|Error|failed|dryrun' | Select-Object -Last 4 |
             ForEach-Object { "  srv| $($_.Line.Trim().Substring(0, [Math]::Min(220, $_.Line.Trim().Length)))" }
+        # The FULL CannotCache echo, chunked - the 220-char cap above hid the
+        # very token list that names the mis-detected "second input".
+        $cc = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache' | Select-Object -First 1).Line
+        if ($cc) { for ($p = 0; $p -lt $cc.Length; $p += 220) { Write-Host ("  cc| {0}" -f $cc.Substring($p, [Math]::Min(220, $cc.Length - $p))) } }
     }
     & $sccache --stop-server 2>&1 | Out-Null
     Write-Host ("variant {0,-15} exit={1} executed={2} why='{3}'" -f $name, $rc, $exe, $why)
