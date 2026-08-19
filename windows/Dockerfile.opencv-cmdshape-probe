@@ -11,4 +11,5 @@ ARG PROBE_NONCE="0"
 
 RUN --mount=type=bind,source=windows/scripts/probe-opencv-cuda-cmdshape.ps1,target=C:\bkmnt\probe-opencv-cuda-cmdshape.ps1 `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     & 'C:\bkmnt\probe-opencv-cuda-cmdshape.ps1' -Nonce "${PROBE_NONCE}"

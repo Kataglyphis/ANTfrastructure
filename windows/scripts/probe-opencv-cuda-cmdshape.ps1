@@ -34,13 +34,26 @@ if (-not (Test-Path 'contrib\.git')) {
     & git clone --depth 1 --branch $ver https://github.com/opencv/opencv_contrib.git contrib 2>&1 | Select-Object -Last 1 | ForEach-Object { "$_" }
     if ($LASTEXITCODE -ne 0) { throw "contrib clone failed" }
 }
+# opencv's CMake rejects clang-cl for CUDA outright ("Clang unsupported on
+# your platform", probe run 6). Production gets past it with the
+# clang-cl-compat patch - apply the same one (bind-mounted).
+Set-Location ocv
+& git apply 'C:\bkmnt\patches\opencv\001-cmake-clang-cl-compat.patch'
+if ($LASTEXITCODE -ne 0) { throw "clang-cl compat patch failed ($LASTEXITCODE)" }
+Write-Host 'applied: 001-cmake-clang-cl-compat.patch'
+Set-Location $WorkDir
+
 $cuda = $env:CUDA_PATH
+$cudaFwd = $cuda -replace '\\', '/'
+$env:CUDACXX = "$cuda\bin\nvcc.exe"
 & cmake -S ocv -B build -G Ninja `
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl `
     -DCMAKE_LINKER=lld-link "-DCMAKE_AR=llvm-lib" `
-    -DWITH_CUDA=ON -DWITH_CUDNN=OFF -DWITH_CUBLAS=ON -DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON `
+    -DWITH_CUDA=ON -DWITH_CUDNN=ON -DWITH_CUBLAS=ON -DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON `
+    -DOPENCV_DNN_CUDA=ON `
+    "-DCUDAToolkit_ROOT=$cudaFwd" "-DCUDA_TOOLKIT_ROOT_DIR=$cudaFwd" `
     "-DOPENCV_EXTRA_MODULES_PATH=$WorkDir\contrib\modules" `
-    "-DCMAKE_CUDA_COMPILER:FILEPATH=$cuda\bin\nvcc.exe" `
+    "-DCMAKE_CUDA_COMPILER:FILEPATH=$cudaFwd/bin/nvcc.exe" `
     "-DCMAKE_CUDA_ARCHITECTURES=80-real;86-real" `
     -DBUILD_TESTS=OFF -DBUILD_PERF_TESTS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_opencv_python3=OFF `
     2>&1 | Tee-Object -FilePath configure.log | Select-Object -Last 4 | ForEach-Object { "$_" }
