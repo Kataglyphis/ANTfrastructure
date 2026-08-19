@@ -112,27 +112,14 @@ foreach ($name in $variants.Keys) {
     & $sccache --start-server 2>&1 | Out-Null
     # Direct spawn (CreateProcess, 32k limit) - a cmd.exe wrapper dies at 8191
     # with "The command line is too long." (probe 9: all variants, 2s).
-    # sccache choked on the QUOTED nvcc path as its first argv ("cannot find
-    # binary path", probe 10) - hand it the bare exe path and keep the rest.
-    $nvccTok = [regex]::Match($v, '^\s*"([^"]+)"|^\s*(\S+)')
-    $nvccExe = if ($nvccTok.Groups[1].Value) { $nvccTok.Groups[1].Value } else { $nvccTok.Groups[2].Value }
-    $rest = $v.Substring($nvccTok.Length)
-    $psi = [System.Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $sccache
-    $psi.Arguments = "`"$nvccExe`"$rest"
-    $psi.WorkingDirectory = (Get-Location).Path
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    foreach ($k in @('SCCACHE_DIR', 'SCCACHE_ERROR_LOG', 'SCCACHE_LOG', 'SCCACHE_SERVER_PORT', 'SCCACHE_MULTILEVEL_CHAIN', 'SCCACHE_WEBDAV_ENDPOINT')) {
-        $psi.Environment[$k] = (Get-Item "env:$k" -ErrorAction SilentlyContinue).Value
-    }
-    $proc = [System.Diagnostics.Process]::Start($psi)
-    $out = $proc.StandardOutput.ReadToEnd() + $proc.StandardError.ReadToEnd()
-    $proc.WaitForExit()
-    $rc = $proc.ExitCode
-    Write-Host ("  len={0}" -f $v.Length)
-    if ($rc -ne 0) { ($out -split "`r?`n" | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { "  err| $_" } }
+    # PS-native call with a parsed arg ARRAY (the 2470 probe's working
+    # mechanism; ProcessStartInfo string-quoting broke client-side compiler
+    # resolution in probes 10/11, and a cmd wrapper dies at 8191 chars).
+    $tokens = @([regex]::Matches($v, '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') })
+    Write-Host ("  len={0} tokens={1}" -f $v.Length, $tokens.Count)
+    $out = & $sccache @tokens 2>&1
+    $rc = $LASTEXITCODE
+    if ($rc -ne 0) { ($out | Where-Object { $_ } | Select-Object -Last 3) | ForEach-Object { "  err| $_" } }
     $stats = & $sccache --show-stats 2>&1
     $exe = (($stats | Select-String 'requests executed' | Select-Object -First 1).Line -replace '\D+', '')
     $why = (Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue | Select-String 'CannotCache|cannot cache|NotCompilation' | Select-Object -First 1)
