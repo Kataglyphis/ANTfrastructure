@@ -45,6 +45,10 @@ secrets/
 **/build/
 !linux/scripts/03-media/build/
 !linux/scripts/03-media/build/onnxruntime/build/
+# #108: the grouped scripts layout put chain components under scripts/build/ -
+# without this negation the generic **/build/ exclusion above swallows them
+# (cost one base solve: verify-toolchain.ps1 "not found" in the context).
+!windows/scripts/build/
 **/dist/
 .venv/
 venv/
