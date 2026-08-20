@@ -373,10 +373,22 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     if (Test-Path $cutlassInclude) {
         Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Edit-CppKeywordAlternatives -Path $_.FullName }
     }
-    # CUTLASS uint128: clang-cl lacks the MSVC-only `_udiv128` intrinsic.
+    # CUTLASS uint128: clang-cl lacks the MSVC-only `_udiv128` intrinsic, and
+    # CUTLASS enables the intrinsic branch for EVERY _MSC_VER >= 1920 (which
+    # clang-cl defines). #73 POST-MORTEM (2026-08-20): the previous fix here
+    # substituted `_udiv128 -> udiv128` - i.e. it rewrote the call INSIDE
+    # udiv128 into a call to itself, hand-crafting the infinite recursion
+    # behind all 225 -Winfinite-recursion warnings and a latent stack
+    # overflow in the SHIPPED provider. The correct fix disables the
+    # intrinsic GUARD for clang so CUTLASS falls back to its portable
+    # 128-bit long-division loop (correct by construction; MSVC-proper
+    # builds keep the intrinsic). Upstream candidate for NVIDIA/cutlass:
+    # the guard should carry `&& !defined(__clang__)`.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    Invoke-InlineRegexPatch -Path $cut -Pattern '_udiv128' -Replacement 'udiv128' `
-        -WarnMessage "cutlass/uint128.h: _udiv128 not found; if CUTLASS still references the MSVC-only intrinsic, clang-cl will fail. Verify $cut." | Out-Null
+    Invoke-InlineRegexPatch -Path $cut `
+        -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
+        -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
+        -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
 }
 
