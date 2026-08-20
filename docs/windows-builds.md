@@ -2130,7 +2130,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   analysis cannot see this — it exists only in the clang-cl port's compiler
   output. FIX: runtime smoke test of flash-attention, then a clang-cl
   `udiv128` patch alongside the existing `patches/onnxruntime` set.
-- **74 [S·★★, none] PARTLY DONE 2026-08-15 — the `-j9` half is fixed, the
+- **74 [S·★★, none] DONE + VERIFIED 2026-08-20: the batch-verify ride (cold C++ media build, green + smoke 190/0/1) logged ninja -j19 in ALL three formerly -j9 stages (genai, litert, tvm) - the MemGBPerJob=2 change measures out. Original PARTLY DONE 2026-08-15 — the `-j9` half is fixed, the
   measurement is not.** Backlog #28 lowered `MemGBPerJob` to 2 for onnx and
   opencv only, so the 2026-08-15 chain still logged `ninja -j9` three times
   (genai, litert, tvm) against `-j19` three times. Those three are now at 2 as
@@ -2191,7 +2191,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   but the retry budget is 2 and it self-heals only because a fallback URL
   exists. The pre-seed fix already applied to nuget was never extended to the
   VS bootstrapper or Adoptium.
-- **80 [S·★★, none] HALF DONE 2026-08-17 — the observability half shipped: `analyze-warning-stream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
+- **80 [S·★★, none] DONE 2026-08-20 - the suppression half shipped too (Get-WarningNoiseSuppressionFlags, ONE module-exported list feeding onnx/opencv/tvm/genai/litert-lm; gstreamer=meson deliberately untouched) and rode the green batch-verify ride. Earlier: HALF DONE 2026-08-17 — the observability half shipped: `analyze-warning-stream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
   genuine signals.** Corpus totals: `-Wunused-parameter` 68,502,
   `-Wdocumentation-unknown-command` 18,144, `-Wdeprecated-copy…` 17,887,
   `-Wundef` 17,056, `-Wmissing-field-initializers` 12,294 — vs the signal
@@ -2458,7 +2458,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   BuildKit upstream report is filed). Only `v2` is referenced. One probe-style
   cleanup RUN reclaims ~200 MiB of the shared 40 GB tier-0 budget. Builder
   disk, not image size. BLOCKED while any build holds the locked mount.
-- **106 [S·★, none] PARTLY DONE — the 5.1 parse gate shipped and immediately
+- **106 [S·★, none] DONE 2026-08-20 - STALE REMAINDER: the '~52 undeclared files' were already normalized by 09f97bab (repo-wide sweep); today's audit finds exactly ONE file without `#requires -Version 7.0` - bootstrap-pwsh.ps1, the DELIBERATE 5.1 exception whose test asserts it must NOT declare 7.0. Entry outlived its fix (same class as #81). Earlier: PARTLY DONE — the 5.1 parse gate shipped and immediately
   corrected the entry''s own premise** (only `bootstrap-pwsh.ps1` runs under
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
