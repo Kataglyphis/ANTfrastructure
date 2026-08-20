@@ -2118,7 +2118,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   authority** — the resume granularity it would cost is now worth far more than
   the ~60 s it would save. Keep the entry only as the record of a disproven
   premise.
-- **73 [S·★★★, none] Latent defect in the SHIPPED ONNX CUDA provider: infinite
+- **73 [S·★★★, none] SOLVED 2026-08-20 (verify: next media rebuild must show ZERO -Winfinite-recursion) - and the culprit was OUR OWN inline patch: the `_udiv128 -> udiv128` substitution (added for clang-cl's missing MSVC intrinsic; probe-udiv128-recursion proved clang 22.1.8 has no _udiv128) rewrote the call INSIDE cutlass's udiv128 into a self-call. Fix: disable CUTLASS's intrinsic guard for __clang__ instead - the portable 128-bit loop compiles, correct by construction. Upstream candidate (owner): NVIDIA/cutlass's guard `#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__)` should also carry `&& !defined(__clang__)`. Original finding: latent defect in the SHIPPED ONNX CUDA provider: infinite
   recursion in CUTLASS `udiv128`.** 225 occurrences of
   `uint128.h(96,90): warning: all paths through this function will call itself
   [-Winfinite-recursion]`, reached via `flash_api.h:36` while compiling
