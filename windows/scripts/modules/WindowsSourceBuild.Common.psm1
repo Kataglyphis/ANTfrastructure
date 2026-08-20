@@ -548,7 +548,7 @@ function Get-BuildJobCount {
         # invalidate every litert/tvm compile). The driver publishes it to
         # the LAN webdav instead; memoized per process (one HTTP round-trip,
         # not one per ninja invocation). Fail-open to CIM below.
-        if ($null -eq $script:WebdavMemoryLimitGb) {
+        if (-not (Test-Path 'Variable:script:WebdavMemoryLimitGb')) {
             $script:WebdavMemoryLimitGb = ''
             try {
                 $resp = & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --max-time 5 "$($env:SCCACHE_WEBDAV_ENDPOINT)/preseed/memory-limit-gb.txt" 2>$null

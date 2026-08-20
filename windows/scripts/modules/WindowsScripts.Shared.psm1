@@ -478,7 +478,7 @@ function Get-VisualStudioInstallPath {
         # re-warn - one base build logged the warning x100. Resolve once per
         # process, warn once. (Process-scope cache: a VS install appearing
         # mid-process is not a supported scenario.)
-        if (-not $script:VsFilesystemFallbackCache) {
+        if (-not (Test-Path 'Variable:script:VsFilesystemFallbackCache')) {
             $globbed = @(Get-ChildItem -Path @(
                     "$env:ProgramFiles\Microsoft Visual Studio",
                     "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
