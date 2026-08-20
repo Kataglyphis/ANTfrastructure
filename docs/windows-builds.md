@@ -2543,7 +2543,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   table, and downstream repos'' vendored references (CONSUMED-BY modules stay
   put). Land in ONE sweep with a full-chain verify — path moves are the most
   cache-hostile edit there is.
-- **109 [L·★★★, staged] Phase-split the monolith build scripts.**
+- **109 [L·★★★, staged] CORE LANDED 2026-08-20: Start-/Complete-BuildPhase + summary machinery in the module (scope-transparent try/catch brackets, 4 unit tests); build-gstreamer bracketed into 10 named phases (its numbered sections, duplicate '6' renumbered); build-litert-lm's 8 #region markers made live (catch stamps the failing phase before the chain wrapper). smoke-test-container needs NOTHING - its 23 Write-TestHeader sections + per-assertion counters already satisfy the goal. OPTIONAL remainder: bracket onnx/opencv (mid-size, already chain-labeled - low value). Verify: next merge/media builds print the phase tables. Original: phase-split the monolith build scripts.**
   **TRANCHE PLAN (2026-08-20, execute one tranche per planned rebuild window,
   never standalone - script edits bust the bind-mount cache keys):**
   T1 build-gstreamer (largest, most phases; carry #110's logging sweep for
@@ -2559,9 +2559,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   its phase and a reader navigates by structure instead of scrolling. Do ONE
   script per tranche, verify with its own build; gstreamer first (its three
   fresh gates from #65/#66/#88 already mark the seams).
-- **110 [S·★★, none] One logging idiom.** `log` vs `Write-Host` vs
-  `Write-BuildLog` across sibling scripts; pick the module helper, sweep the
-  rest during #109''s per-script tranches (zero extra builds that way).
+- **110 [S·★★, none] CLOSED 2026-08-20 with a DECISION instead of a sweep: chain build scripts use Write-Host (stage labels + the #109 phase tables carry the structure), build-gstreamer keeps its STRUCTURED `log` (richest idiom - file+console via New-StructuredLogContext; converting it would lose the file log), Write-BuildLog stays host-driver territory. A mass sweep would bust every bind-mount cache key for cosmetics - enforcement is review + this note. Original finding: `log` vs `Write-Host` vs `Write-BuildLog` across sibling scripts.
 > **DECLINED by owner 2026-08-17:** branch protection (#59) and a scheduled
 > nightly/weekly chain run (would-be #111). Manual launches remain the
 > verification cadence — do not re-propose either.
