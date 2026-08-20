@@ -2084,7 +2084,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 > end-of-step stat blocks and timestamps, not on clipped body text. Re-run the
 > forensics once a full chain has been captured with the env now in place.
 
-- **72 [M·★★★, none] Image export/unpack costs MORE than the build it wraps —
+- **72 [M·★★★, none] CLOSED 2026-08-20 - PREMISE DISPROVEN by the 2026-08-16 re-measurement (export ~1.2% of the chain, not 23%; the old figures came from stall/cache-failure-dominated runs). Standing instruction: do NOT collapse the media-core checkpoints on this item's authority - the resume granularity is worth more than ~60 s. Original finding: image export/unpack costs MORE than the build it wraps —
   4.33 h across the corpus, 339 operations.** The chain is split into 9+
   separate `buildctl` invocations and **each pays a full Windows-image export
   AND unpack**. Torch: 358.4 s export vs 172.6 s build (**2.08×**). LiteRT:
