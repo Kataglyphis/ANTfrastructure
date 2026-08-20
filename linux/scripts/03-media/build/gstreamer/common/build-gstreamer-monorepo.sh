@@ -24,6 +24,14 @@ prebuild_gstreamer_riscv_targets() {
   if [ "${TARGET_MACHINE_ARCH}" != "riscv64" ]; then
     return 0
   fi
+  # RV1-FOLGE (2026-08-20): the whole prebuild exists to satisfy GIR
+  # generation ordering — with introspection now DISABLED for the riscv64
+  # cross build (see the meson-args branch), the Graphene-1.0.gir target no
+  # longer exists and `meson compile <gir>` dies "target not found". Skip.
+  if printf '%s\n' "${MESON_FLAGS[@]}" | grep -q '^-Dintrospection=disabled$'; then
+    echo "Skipping glib/graphene GIR prebuild: introspection is disabled for this cross build"
+    return 0
+  fi
 
   shopt -s nullglob
   glib_subprojects=(subprojects/glib-[0-9]*)
