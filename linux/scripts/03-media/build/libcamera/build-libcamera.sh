@@ -161,6 +161,22 @@ fi
 if cross_build_is_active; then
   cross_triplet="$(cross_target_triplet)"
 
+  # RV1-FOLGE 5 (2026-08-20): glibconfig.h lives in gstreamer's LIBDIR
+  # include (lib/*/glib-2.0/include), and the riscv64 pkg-config context
+  # loses that -I (the same prefix-expansion defect as RV1-GST-PC) — the
+  # gstlibcamera element then dies `fatal error: glibconfig.h`. Repair at
+  # the FILESYSTEM: link it next to the glib headers that ARE found
+  # (include/glib-2.0/), which fixes every /opt/gstreamer consumer here.
+  # Idempotent; no-op when pkg-config resolves correctly (file exists).
+  if [ -d /opt/gstreamer/include/glib-2.0 ] \
+     && [ ! -e /opt/gstreamer/include/glib-2.0/glibconfig.h ]; then
+    _glibconf="$(find /opt/gstreamer -name glibconfig.h 2>/dev/null | head -1)"
+    if [ -n "${_glibconf}" ]; then
+      ${SUDO_WRAP:-} ln -sf "${_glibconf}" /opt/gstreamer/include/glib-2.0/glibconfig.h
+      echo "Linked glibconfig.h into /opt/gstreamer/include/glib-2.0/ (libdir-include .pc loss workaround)"
+    fi
+  fi
+
   # lc-compliance is a test application, not a runtime dependency. Cross builds
   # currently pick up an incomplete GTest link line here, so keep the shipped
   # libcamera runtime/plugin artifacts and skip that test tool.
