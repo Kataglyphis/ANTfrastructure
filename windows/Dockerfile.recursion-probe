@@ -1,8 +1,10 @@
 # escape=`
 # =============================================================================
-# #73: does clang-cl turn `return _udiv128(...)` into SELF-recursion? (All 225
-# -Winfinite-recursion warnings are cutlass's udiv128 wrapper.) Run via:
+# #73: does clang-cl turn `return _udiv128(...)` into SELF-recursion? Run via:
 #   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.recursion-probe -BaseImage local/kataglyphis:bk-windows-toolchain
+# NB logic lives in probe-udiv128-recursion.ps1 - the first inline-RUN version
+# hit the dockerfile frontend's double-quote stripping (the documented
+# 2026-08-04 handoff-scrub trap).
 # =============================================================================
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
 FROM ${BASE_IMAGE} AS probe
@@ -10,25 +12,6 @@ FROM ${BASE_IMAGE} AS probe
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
 
-RUN --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
-    Import-Module 'C:\bkmnt\modules\WindowsSourceBuild.Common.psm1' -Force; `
-    Enter-VsDevCmdEnvironment; `
-    $null = New-Item -ItemType Directory -Force -Path C:\probe-rec; `
-    Set-Location C:\probe-rec; `
-    Set-Content -Path 't.cpp' -Encoding ascii -Value @( `
-        '#include <cstdint>', `
-        '#include <intrin.h>', `
-        'uint64_t udiv128(uint64_t h, uint64_t l, uint64_t d, uint64_t* r) {', `
-        '  return _udiv128(h, l, d, r);', `
-        '}', `
-        'uint64_t caller(uint64_t h, uint64_t l, uint64_t d, uint64_t* r) {', `
-        '  return udiv128(h, l, d, r);', `
-        '}'); `
-    Write-Host '--- compile (warnings on) ---'; `
-    & clang-cl -nologo -W3 -c -Fot.obj t.cpp 2>&1 | ForEach-Object { "cc| $_" }; `
-    Write-Host ('compile exit: ' + $LASTEXITCODE); `
-    Write-Host '--- disassembly of udiv128 (does it CALL itself?) ---'; `
-    $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' | Select-Object -First 1).FullName; `
-    & $dumpbin /disasm t.obj 2>&1 | Select-String -Context 0, 12 'udiv128.*:$|PROC|\?udiv128' | Select-Object -First 3 | ForEach-Object { "asm| $_" }; `
-    & $dumpbin /disasm t.obj 2>&1 | Select-Object -First 40 | ForEach-Object { "dis| $_" }; `
-    Write-Host 'probe complete'
+RUN --mount=type=bind,source=windows/scripts/probe-udiv128-recursion.ps1,target=C:\bkmnt\probe-udiv128-recursion.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\probe-udiv128-recursion.ps1' -Nonce "${PROBE_NONCE}"
