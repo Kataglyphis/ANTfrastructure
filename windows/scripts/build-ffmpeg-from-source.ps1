@@ -98,6 +98,15 @@ function Remove-MakefileShowIncludes {
     if (-not (Test-Path $Path)) { return }
     $c = [System.IO.File]::ReadAllText($Path)
     $c = $c -replace '-showIncludes', ''
+    # -options:strict is cl.exe's strict-options flag; clang-cl does NOT
+    # implement it and parses the prefix as the deprecated -o (output file!).
+    # Bare builds survived only by argument ORDER (the later -Fo wins);
+    # sccache rebuilds the command with -Fo FIRST, the hijack wins, and the
+    # object lands invisibly in an NTFS alternate data stream
+    # (ptions:strict.obj) at exit 0 -> "failed to zip up compiler outputs".
+    # Stripping it is a correctness fix either way (probe-sccache-options-
+    # strict.ps1 rounds 1-5, 2026-08-20) and unblocks the #100 launcher.
+    $c = $c -replace '-options:strict\s*', ''
     $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
     $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
     $c = $c -replace '\s*\|\s*awk.*', ''
@@ -432,16 +441,14 @@ Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware
 # library dependencies (libavutil -> libswscale) aren't fully linked before
 # consumers — the serial retry resolves those deterministically.
 $makeJobs = Get-BuildJobCount -MemGBPerJob 2
-# #100 RETIRED after two measured failures (2026-08-19): (1) configure's own
-# compiler tests break through sccache ("unknown file type" objects); (2) a
-# make-time CC='sccache clang-cl' override dies ~20 files in with sccache
-# "failed to zip up compiler outputs" on ffmpeg's RELATIVE forward-slash -Fo
-# outputs (libavdevice/dshow*.o) - and the bare `make install` below then
-# silently re-compiled everything anyway (15 min, launcher-less), so the
-# "green" run was uncached regardless. FFmpeg stays bare until sccache
-# handles that output shape; the full trail lives on backlog #100.
-$makeCc = ''
-if ($ffUseLauncher) { Write-Host 'NOTE: ffmpeg compiles BARE - the sccache launcher is retired here (backlog #100, output-collection failures)' }
+# #100 RE-ENABLED 2026-08-20: the "failed to zip up compiler outputs" crash
+# was ROOT-CAUSED to -options:strict (clang-cl parses its prefix as the
+# deprecated -o; sccache's arg reorder let that hijack the output into an
+# NTFS alternate data stream - see Remove-MakefileShowIncludes). With the
+# flag stripped from the generated maks the launcher is safe at make time;
+# configure stays bare (its own compiler tests still break through sccache,
+# "unknown file type" - measured 2026-08-19).
+$makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl'" } else { '' }
 # All three make calls are -Optional by design: a parallel-link race falls
 # through to the -j1 retry, and an incomplete build/install falls through to
 # the artifact verification + prebuilt fallback below (never throw here).
