@@ -222,7 +222,7 @@ $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 # --- resource budget + sccache gate (canonical, shared with build.ps1 via
 # WindowsBuildDriver.Common — the hand-copied twins had started drifting) ---
 $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
-Write-Host "BuildKit lane: process isolation, all CPUs; MEMORY_LIMIT_GB=$MediaMemoryGb (job-count cap)" -ForegroundColor Cyan
+Write-Host "BuildKit lane: process isolation, all CPUs; memory budget $MediaMemoryGb GB (published via webdav, #51)" -ForegroundColor Cyan
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
 # --- host preflight: the two failures that cost HOURS when discovered late ---
@@ -440,6 +440,24 @@ if ($SccacheEndpoint) {
         Write-Warning "vulkan preseed skipped (container falls back to direct download): $($_.Exception.Message)"
     }
     $global:LASTEXITCODE = 0
+
+    # #51: MEMORY_LIMIT_GB is a SCHEDULING knob and must not be an image
+    # ARG/ENV (cache key - toggling -ConcurrentAux used to invalidate every
+    # litert/tvm compile; a different-RAM host invalidated everything).
+    # Published here instead; Get-BuildJobCount reads it via the endpoint.
+    # Under -ConcurrentAux EVERY branch now gets the halved budget - the old
+    # asymmetry (parent full + two halved children) oversubscribed the host.
+    $effectiveMemGb = if ($ConcurrentAux) { [Math]::Max(8, [int]($MediaMemoryGb / 2)) } else { [int]$MediaMemoryGb }
+    try {
+        $memBody = Join-Path $env:TEMP 'memory-limit-gb.txt'
+        Set-Content -Path $memBody -Value "$effectiveMemGb" -Encoding ascii -NoNewline
+        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $memBody "$SccacheEndpoint/preseed/memory-limit-gb.txt"
+        if ($LASTEXITCODE -eq 0) { Write-Host "preseed: memory-limit-gb=$effectiveMemGb published" }
+        else { Write-Warning "memory-limit publish failed (exit $LASTEXITCODE) - containers fall back to CIM host RAM" }
+    } catch {
+        Write-Warning "memory-limit publish skipped: $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
 }
 
 $started = Get-Date
@@ -525,7 +543,6 @@ if ($Stages -contains 'media') {
     foreach ($branch in $loopBranches) {
         $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
-            MEMORY_LIMIT_GB = $MediaMemoryGb
         } + $branchArgs[$branch] + $sccache
         if ($branch -eq 'media-core') {
             # DIRECT SOLVES (de-warmed 2026-08-06, round 2): every library
@@ -633,7 +650,6 @@ if ($Stages -contains 'media') {
             CORE_IMAGE      = Get-BkTag 'windows-media-core'
             LITERT_IMAGE    = Get-BkTag 'windows-media-litert'
             TVM_IMAGE       = Get-BkTag 'windows-media-tvm'
-            MEMORY_LIMIT_GB = $MediaMemoryGb
         }
         # Direct solve (de-warmed 2026-08-05 — see the media-core comment above).
         # -MaxAttempts 5: the fan-in stage mounts three branch trees and is the

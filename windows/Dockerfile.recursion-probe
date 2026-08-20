@@ -1,0 +1,17 @@
+# escape=`
+# =============================================================================
+# #73: does clang-cl turn `return _udiv128(...)` into SELF-recursion? Run via:
+#   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.recursion-probe -BaseImage local/kataglyphis:bk-windows-toolchain
+# NB logic lives in probe-udiv128-recursion.ps1 - the first inline-RUN version
+# hit the dockerfile frontend's double-quote stripping (the documented
+# 2026-08-04 handoff-scrub trap).
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
+FROM ${BASE_IMAGE} AS probe
+
+# Layer-cache buster (a CACHED run replays an old verdict).
+ARG PROBE_NONCE="0"
+
+RUN --mount=type=bind,source=windows/scripts/diagnostics/probe-udiv128-recursion.ps1,target=C:\bkmnt\probe-udiv128-recursion.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\probe-udiv128-recursion.ps1' -Nonce "${PROBE_NONCE}"

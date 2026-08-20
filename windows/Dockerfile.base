@@ -37,12 +37,12 @@ SHELL ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$E
 # RETRY (added 2026-08-07): this is the FIRST network fetch of the chain's most
 # expensive stage — a transient blip cost the whole base build, so the fetch
 # retries three times with backoff + a SHA256 check inside the loop. The logic
-# lives in windows/scripts/bootstrap-pwsh.ps1 (backlog #27: was a 1200-char
+# lives in windows/scripts/host/bootstrap-pwsh.ps1 (backlog #27: was a 1200-char
 # single-line RUN). It is BIND-MOUNTED, not COPY'd — no layer, and nothing is
 # COPY'd this early in base by design. It runs under Windows PowerShell 5.1
 # (the SHELL is not switched to pwsh until below) and cannot use
 # Invoke-DownloadWithRetry (no module is mounted yet).
-RUN --mount=type=bind,source=windows/scripts/bootstrap-pwsh.ps1,target=C:\bootstrap-pwsh.ps1 & 'C:\bootstrap-pwsh.ps1'
+RUN --mount=type=bind,source=windows/scripts/host/bootstrap-pwsh.ps1,target=C:\bootstrap-pwsh.ps1 & 'C:\bootstrap-pwsh.ps1'
 
 # Ensure pwsh and the base Windows paths are on PATH for the SHELL switch below and all
 # subsequent RUN instructions. The base image's PATH is NOT inherited by Docker ENV
@@ -89,7 +89,7 @@ ARG WINDOWS_SDK_BUILD=26100
 # Same ARG route for the VS Build Tools major (versions.env VISUAL_STUDIO_VERSION):
 # setup-vs.ps1's VsDevCmd sanity check derives its path from it instead of a literal.
 ARG VISUAL_STUDIO_VERSION=18
-COPY windows\scripts\setup-vs.ps1 C:\temp\scripts\
+COPY windows\scripts\host\setup-vs.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 
 # versions.env's COPY moved BELOW the expensive layers (#50, 2026-08-18):
@@ -144,14 +144,14 @@ ARG FLUTTER_VERSION=3.47.0
 # scoop's cache from there. Empty = direct (retried) vendor download. The
 # endpoint is a stable LAN URL, so it does not churn this layer's cache key.
 ARG VULKAN_PRESEED_ENDPOINT=""
-COPY windows\scripts\setup-scoop-tools.ps1 C:\temp\scripts\
+COPY windows\scripts\host\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
     -SccacheVersion $env:SCCACHE_WINDOWS_VERSION
 
 # #50: VCPKG_REF as ARG for the same reason (was baked env).
 ARG VCPKG_REF=2026.07.29
-COPY windows\scripts\setup-vcpkg.ps1 C:\temp\scripts\
+COPY windows\scripts\host\setup-vcpkg.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-vcpkg.ps1'
 
 # LLVM_GLOBAL_BIN removed 2026-07-14: llvm is a user-scope install and it
@@ -190,7 +190,7 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # assertion list cost a full rust reinstall).
 # #50: SCCACHE_GIT_REV as ARG (was baked env; the script throws if empty).
 ARG SCCACHE_GIT_REV=ffac4a596aa50da3540520eb307b7a591984a064
-COPY windows\scripts\setup-rust-toolchain.ps1 C:\temp\scripts\
+COPY windows\scripts\host\setup-rust-toolchain.ps1 C:\temp\scripts\
 # Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
 # source build. Deliberately in the SAME layer group as the rust install - a
 # patch change must re-pay this layer, because it produces a different
@@ -204,7 +204,7 @@ RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 # sets Machine env, which persists in the image regardless of layer position -
 # verify/finalize below and every later stage (FROM this image) read it
 # exactly as before. Windows keys consumed ABOVE this line ride as ARGs.
-COPY windows\scripts\load-versions.ps1 C:\temp\scripts\
+COPY windows\scripts\build\load-versions.ps1 C:\temp\scripts\
 COPY linux\scripts\01-core\versions.env C:\temp\
 RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 
@@ -212,8 +212,8 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 # matched exactly this one file, but a future verify-* script would have
 # silently busted the layers above). Pure assertion pass + the tiny
 # finalize config step share one RUN (125-layer budget); both are seconds.
-COPY windows\scripts\verify-toolchain.ps1 `
-     windows\scripts\finalize-container.ps1 `
+COPY windows\scripts\build\verify-toolchain.ps1 `
+     windows\scripts\build\finalize-container.ps1 `
      C:\temp\scripts\
 RUN & 'C:\temp\scripts\verify-toolchain.ps1'; & 'C:\temp\scripts\finalize-container.ps1'
 

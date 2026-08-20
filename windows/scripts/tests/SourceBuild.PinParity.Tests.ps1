@@ -60,7 +60,8 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
     # Returns one record per call site; literal-'' defaults are dropped (see above).
     function Get-PinParitySite {
         $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -File | Sort-Object Name)
+        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
         $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
 
         $sites = @()
@@ -327,7 +328,8 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     # CommandAst, so it is correctly not a site. Literal-'' defaults dropped.
     function Get-RcivSite {
         $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -File | Sort-Object Name)
+        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
         $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
 
         $sites = @()
@@ -543,5 +545,94 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             Assert-True $s.DefaultIsLiteral "$($s.Script):$($s.Line) WiX UI extension default must be a string literal"
         }
         Assert-True (@($twins)[0].Default -ceq @($twins)[1].Default) "WIX_UI_EXT_VERSION twin defaults disagree: $(@($twins)[0].Script):$(@($twins)[0].Line)='$(@($twins)[0].Default)' vs $(@($twins)[1].Script):$(@($twins)[1].Line)='$(@($twins)[1].Default)' - the two must be bumped together"
+    }
+}
+
+Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbacks vs versions.env' {
+    # Backlog #69: build-ffmpeg's `else { 'n13.0.19.0' }` drifted against
+    # NV_CODEC_HEADERS_REF=n13.1.15.0 - re-planting the exact incident
+    # versions.env documents ("a wrong nv-codec-headers ref 404'd and NVENC
+    # was silently skipped on both lanes"). W1/W1b scan only the two resolver
+    # helpers; this Describe covers the RAW idiom. Membership in versions.env
+    # is the version-ness filter: an else-literal for a key NOT in
+    # versions.env (FFMPEG_TOOLCHAIN, GPU_TYPE, PKG_CONFIG_PATH) is a
+    # behavior default, not a pin, and is ignored.
+
+    function Get-IdiomPins {
+        $envPath = Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env'
+        if (-not (Test-Path $envPath)) { throw "PinParity(W1c): canonical pin file not found at $envPath" }
+        return (ConvertFrom-VersionsEnv -Path $envPath)
+    }
+
+    function Get-EnvElseLiteralSite {
+        $scriptsDir = Split-Path $PSScriptRoot -Parent
+        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
+        $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
+        $sites = @()
+        foreach ($f in $files) {
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+            if ($errors -and @($errors).Count -gt 0) { continue } # syntax health is another gate's job
+            foreach ($ifAst in @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] }, $true))) {
+                if ($null -eq $ifAst.ElseClause) { continue }
+                # env vars referenced by the CONDITION (covers bare $env:X,
+                # IsNullOrWhiteSpace($env:X), $env:X -match ...).
+                $envNames = @($ifAst.Clauses[0].Item1.FindAll({ param($n)
+                            $n -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                            $n.VariablePath.UserPath -like 'env:*' }, $true) |
+                        ForEach-Object { $_.VariablePath.UserPath.Substring(4) } | Sort-Object -Unique)
+                if ($envNames.Count -eq 0) { continue }
+                # else branch must be a SINGLE bare string literal - anything
+                # richer (string building, cmdlet calls) is not the pin idiom.
+                $elseStrings = @($ifAst.ElseClause.FindAll({ param($n)
+                            $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true))
+                if ($elseStrings.Count -ne 1) { continue }
+                if ($ifAst.ElseClause.Statements.Count -ne 1) { continue }
+                $literal = $elseStrings[0].Value
+                if ([string]::IsNullOrEmpty($literal)) { continue }
+                foreach ($name in $envNames) {
+                    $sites += [pscustomobject]@{
+                        Script  = $f.Name
+                        Line    = $ifAst.Extent.StartLineNumber
+                        Key     = $name
+                        Literal = $literal
+                    }
+                }
+            }
+        }
+        return $sites
+    }
+
+    It 'every env-else-literal fallback for a versions.env key equals the canonical pin' {
+        $pins = Get-IdiomPins
+        $bad = @()
+        foreach ($s in @(Get-EnvElseLiteralSite)) {
+            if (-not $pins.Contains($s.Key)) { continue }
+            if ($s.Literal -ne $pins[$s.Key]) {
+                $bad += "$($s.Script):$($s.Line): else-literal '$($s.Literal)' != versions.env $($s.Key)=$($pins[$s.Key]) - update the literal (and any twin site) to the canonical pin"
+            }
+        }
+        Assert-True ($bad.Count -eq 0) ("env-else-literal default(s) drifted from versions.env:`n  " + ($bad -join "`n  "))
+    }
+
+    It 'scanner-rot guard: still discovers the known idiom sites' {
+        $pins = Get-IdiomPins
+        $found = @{}
+        foreach ($s in @(Get-EnvElseLiteralSite)) {
+            if ($pins.Contains($s.Key)) { $found["$($s.Script)|$($s.Key)"] = $true }
+        }
+        foreach ($expected in @(
+                'build-ffmpeg-from-source.ps1|NV_CODEC_HEADERS_REF',
+                'build-litert-lm-bazel.ps1|LITERT_LM_VERSION',
+                'assemble-torch-app.ps1|APP_REF',
+                'build-opencv-from-source.ps1|PYTHON_VERSION',
+                'build-gstreamer-from-source.ps1|LIBFFI_MESON_VERSION',
+                'build-toolchain-all.ps1|NUGET_VERSION',
+                'setup-vcpkg.ps1|VCPKG_REF',
+                'setup-vs.ps1|VISUAL_STUDIO_VERSION',
+                'setup-vs.ps1|WINDOWS_SDK_BUILD')) {
+            Assert-True ($found.ContainsKey($expected)) "scanner no longer sees the known idiom site $expected - the scan broke or the site changed shape; update this suite deliberately"
+        }
     }
 }

@@ -12,6 +12,6 @@ ARG PROBE_NONCE="0"
 # Which ORT tag to replay (the bug is version-independent; measured on 1.28+1.29).
 ARG ORT_REF="v1.28.0"
 
-RUN --mount=type=bind,source=windows/scripts/probe-onnx-tu-replay.ps1,target=C:\bkmnt\probe-onnx-tu-replay.ps1 `
+RUN --mount=type=bind,source=windows/scripts/diagnostics/probe-onnx-tu-replay.ps1,target=C:\bkmnt\probe-onnx-tu-replay.ps1 `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
     & 'C:\bkmnt\probe-onnx-tu-replay.ps1' -Nonce "${PROBE_NONCE}"
