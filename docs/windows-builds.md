@@ -2224,8 +2224,8 @@ Upstream follow-ups: see "Pending" at the bottom.
 
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 
-- **45 [S·★★★, none] A mis-plumbed CUDA path yields a fully green, CPU-ONLY
-  media chain — discovered hours later.** `WindowsSourceBuild.Cuda.psm1:47`
+- **45 [S·★★★, none] DONE 2026-08-19 (module edit, next media rebuild): Get-GpuEnvironment THROWS on GPU_TYPE=nvidia with no resolvable CUDA root; FORCE_CPU opt-outs short-circuit before the gate (2 unit tests).** Original finding: a mis-plumbed CUDA path yields a fully green, CPU-ONLY
+  media chain — discovered hours later. `WindowsSourceBuild.Cuda.psm1:47`
   gates on `Test-Path $cudaRoot`; every consumer then takes a quiet else-branch
   (`build-onnx:307` "CPU-only build", `build-opencv:277` `WITH_CUDA=OFF`,
   `build-tvm:39` silently). `GPU_TYPE=nvidia` is baked at `Dockerfile.nvidia:93`,
@@ -2310,8 +2310,8 @@ Upstream follow-ups: see "Pending" at the bottom.
   nv-codec-headers ref once "404'd and NVENC was silently skipped on both
   lanes" — this is that incident's seed, re-planted. FIX: route the literals
   through `Get-SourceBuildVersion`; teach the AST scanner the second idiom.
-- **70 [S·★★, none] FFmpeg is the only compile stage with NO sccache wiring at
-  all** — verified: 0 `Write-SccacheStats` calls, and the script never sets the
+- **70 [S·★★, none] DONE 2026-08-20, subsumed by #100: FFmpeg compiles through the make-time sccache launcher (2198/2198, 100.00% on the hit run) and the chain epilogue emits its stats.** Original finding: FFmpeg is the only compile stage with NO sccache wiring at
+  all — verified: 0 `Write-SccacheStats` calls, and the script never sets the
   sccache endpoint. The precedent is its sibling, which documents that
   GStreamer "ran completely uncached (~30 min hot)" until 2026-08-04 because
   "the merge builder simply never wired the endpoint through". A 30-60 min
