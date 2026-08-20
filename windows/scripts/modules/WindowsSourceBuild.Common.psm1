@@ -520,6 +520,54 @@ function Remove-SourceBuildTree {
     $global:LASTEXITCODE = 0
 }
 
+# ── build phases (#109) ──────────────────────────────────────────────────────
+# Structure for the monolith build scripts: named phases with timing, failure
+# attribution and an end-of-run summary. DELIBERATELY marker-based (the script
+# wraps a region in try/catch at SCRIPT level and brackets it with these two
+# calls) rather than scriptblock-taking: try/catch does not open a variable
+# scope in PowerShell, so cross-phase state flows exactly as before - a
+# function-invoked body would silently drop every assignment on return, and
+# in a 991-line organically grown script that contract is unknowable.
+function Start-BuildPhase {
+    param(
+        [Parameter(Mandatory)][string]$Name
+    )
+    if (-not (Test-Path 'Variable:script:BuildPhaseTable')) { $script:BuildPhaseTable = [System.Collections.Generic.List[object]]::new() }
+    $phase = [pscustomobject]@{ Name = $Name; Started = Get-Date; Seconds = $null; Failed = $false }
+    $script:BuildPhaseTable.Add($phase)
+    Write-Host ""
+    Write-Host ("=== PHASE: {0} ({1:HH:mm:ss}) ===" -f $Name, $phase.Started) -ForegroundColor Cyan
+    return $phase
+}
+
+function Complete-BuildPhase {
+    param(
+        [Parameter(Mandatory)]$Phase,
+        # The caught ErrorRecord on the failure path: the phase stamps itself
+        # onto the error so a chain log names the phase, not just the line.
+        $ErrorRecord = $null
+    )
+    $Phase.Seconds = [math]::Round(((Get-Date) - $Phase.Started).TotalSeconds, 1)
+    if ($null -ne $ErrorRecord) {
+        $Phase.Failed = $true
+        Write-Host ("=== PHASE FAILED: {0} after {1}s - {2} ===" -f $Phase.Name, $Phase.Seconds, $ErrorRecord.Exception.Message) -ForegroundColor Red
+    } else {
+        Write-Host ("=== PHASE OK: {0} ({1}s) ===" -f $Phase.Name, $Phase.Seconds) -ForegroundColor Cyan
+    }
+}
+
+function Write-BuildPhaseSummary {
+    param([string]$Label = '')
+    if (-not (Test-Path 'Variable:script:BuildPhaseTable')) { return }
+    Write-Host ""
+    Write-Host ("=== phase summary{0} ===" -f $(if ($Label) { " ($Label)" } else { '' }))
+    foreach ($p in $script:BuildPhaseTable) {
+        $mark = if ($p.Failed) { 'FAIL' } elseif ($null -eq $p.Seconds) { '....' } else { ' ok ' }
+        Write-Host ("  [{0}] {1,-38} {2,8}s" -f $mark, $p.Name, $(if ($null -ne $p.Seconds) { $p.Seconds } else { '-' }))
+    }
+    $script:BuildPhaseTable = [System.Collections.Generic.List[object]]::new()
+}
+
 function Get-WarningNoiseSuppressionFlags {
     # #80 (second half, 2026-08-20): five classes were 96% of an 87,515-line
     # chain warning stream (-Wunused-parameter 68,502; -Wdocumentation-
@@ -1482,6 +1530,9 @@ Export-ModuleMember -Function @(
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
     'Get-WarningNoiseSuppressionFlags',
+    'Start-BuildPhase',
+    'Complete-BuildPhase',
+    'Write-BuildPhaseSummary',
     'Install-CpythonPip',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
