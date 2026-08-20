@@ -34,12 +34,16 @@ if is_cross; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
     cross_arch="$(cross_target_arch 2>/dev/null || true)"
     if [ "${cross_arch}" = "riscv64" ]; then
-        # RV1 (2026-08-18): resolute ports NOW satisfies the GStreamer/GLib dev
-        # chain for riscv64 (live apt-cache policy verified 2026-08-17) — add the
-        # dev packages like arm64; the riscv64 lane already installs best-effort,
-        # so a ports regression degrades gracefully instead of failing the stage.
-        target_packages+=(libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev)
-        echo "riscv64 target OpenCV deps: adding GStreamer dev packages (ports caught up, RV1; best-effort install)"
+        # RV1 REVERTED FOR GSTREAMER-DEV (2026-08-20, after 5 live failures):
+        # ports DOES ship the packages now, but its riscv64 glib-2.0.pc
+        # expands prefix/libdir EMPTY in cross pkg-config contexts — and once
+        # installed it POISONS every glib lookup in the stage (opencv imported
+        # targets, libcamera's gst element compile AND link all died on it;
+        # wave-3 behavior without the package was clean). Availability !=
+        # cross-coinstallable. Do NOT install gstreamer/glib dev here until
+        # RV1-GST-PC fixes the expansion; the two-pass opencv-gst pass-2
+        # still links OUR /opt/gstreamer.
+        echo "Skipping GStreamer dev packages for riscv64: ports' glib-2.0.pc poisons cross pkg-config (RV1-GST-PC)"
         echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
     elif [ "${cross_arch}" = "arm64" ]; then
         echo "Arm64 target OpenCV deps: adding GStreamer dev packages but using best-effort install"
