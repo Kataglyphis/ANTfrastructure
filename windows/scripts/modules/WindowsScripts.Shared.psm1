@@ -653,7 +653,7 @@ function Resolve-PreferredTool {
 
 # ── Tool guards ───────────────────────────────────────────────────────────────
 # Assert-Command lived as a private copy in windows/scripts/rust/
-# New-MsixPackage.ps1, windows/scripts/smoke-test-container.ps1 and a
+# New-MsixPackage.ps1, windows/scripts/build/smoke-test-container.ps1 and a
 # consumer's Build-Windows.ps1, all three identical. One home now.
 #
 # There is deliberately NO general Resolve-Executable here. Both the

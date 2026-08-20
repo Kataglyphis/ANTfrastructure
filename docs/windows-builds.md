@@ -317,7 +317,7 @@ asserts it exists and records a resolved clang-cl (SKIP on older images).
 
 **Policy (build.ps1 `-Isolation`, default `auto`): process isolation is always
 preferred and used automatically wherever the host can support it.** `auto`
-runs the ~10s commit probe (`windows/diagnostics/test-process-isolation-commit.ps1`)
+runs the ~10s commit probe (`windows/scripts/diagnostics/test-process-isolation-commit.ps1`)
 once per (host build, docker version) — verdict cached in
 `out\windows-build-logs\isolation-probe-cache.json` — and:
 
@@ -552,13 +552,13 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 > `docs/windows-host-setup.md` and AGENTS.md Common Failure Modes). The
 > preflight gate `Assert-NoActiveRdna4Gpu` refuses to start while it is
 > enabled. Build window: elevated
-> `pwsh -File windows\scripts\toggle-rdna4-gpu.ps1 -Disable` → build (display
+> `pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1 -Disable` → build (display
 > falls back to the iGPU) → re-enable with the same script (default action).
 > Two extra facts that save hours: failed finalizes WEDGE hcs state until a
 > reboot (don't A/B anything on a wedged host), and the severity moved with
 > Windows updates (post-KB5101684 even tiny RUN layers trip — expect patch
 > days to change behavior). After every Adrenalin/Windows update, re-check in
-> ~2 min with `windows\diagnostics\test-rdna4-layer-lock.ps1` (elevated) —
+> ~2 min with `windows\scripts\diagnostics\test-rdna4-layer-lock.ps1` (elevated) —
 > its GONE verdict is the signal the workaround can be retired.
 
 Remaining gotchas (why the classic lane still exists): images land in the
@@ -670,7 +670,7 @@ Housekeeping and sharing:
   that is what protects the ~35GB VS-class layers; v0.32 key names are
   `reservedSpace`/`maxUsedSpace`/`minFreeSpace`, NOT the legacy
   `gckeepstorage`). Deploy/refresh it with
-  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an admin **pwsh 7**
+  `windows\scripts\host\apply-buildkitd-gcpolicy.ps1` from an admin **pwsh 7**
   shell (`pwsh -File …`; the script carries `#requires -Version 7.0`, and
   under Windows PowerShell 5.1 it refuses with a `#requires` message that is
   easy to read as "it ran and did nothing" — cost a round trip 2026-08-08,
@@ -833,8 +833,8 @@ Housekeeping and sharing:
   (ADMIN, never while a build solves):
 
   ```pwsh
-  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly   # look first
-  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx               # then act
+  pwsh -File windows\scripts\host\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly   # look first
+  pwsh -File windows\scripts\host\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx               # then act
   ```
 
   **ReFS caveat — measured, do not re-probe:** `Optimize-VHD -Mode Full` ran 42 s
@@ -848,15 +848,15 @@ Housekeeping and sharing:
   works on any filesystem, which is why the script does both.
 
   **When compaction returns ~nothing, rebuild instead:**
-  `windows\scripts\rebuild-host-vhdx.ps1` creates a fresh disk, mirrors the
+  `windows\scripts\host\rebuild-host-vhdx.ps1` creates a fresh disk, mirrors the
   live data into it, compares file count AND byte totals, and only then hands
   over the drive letter. It runs in two phases on purpose, because they have
   very different requirements:
 
   ```pwsh
-  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
-  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
-  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
+  pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
+  pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
+  pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
        -VerifyPath D:\GitHub\Kataglyphis-ContainerHub -LogPath C:\rebuild.log -RetireOld
   ```
 
@@ -1379,8 +1379,8 @@ docker rm -f probe-rc
 ```
 
 Committed version of the build probe: `pwsh -File
-windows\scripts\probe-build-copy.ps1 -Heavy` (assets in
-`windows/diagnostics/probe-build-copy/`; only a `-Heavy`-green verdict counts
+windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` (assets in
+`windows/scripts/diagnostics/probe-build-copy/`; only a `-Heavy`-green verdict counts
 — the light lanes stay green on hosts whose heavyweight RUN-layer finalize is
 broken).
 
@@ -1471,10 +1471,10 @@ After **any** Docker Engine / containerd / hcsshim / Windows / base-image upgrad
 re-check whether `docker build --isolation process` can commit a layer again — if
 it can, the *entire* Windows build (not just media-core) could run at full CPU
 count and the run+commit workaround could be retired. A durable, self-contained
-probe lives under `windows/diagnostics/`:
+probe lives under `windows/scripts/diagnostics/`:
 
 ```pwsh
-.\windows\diagnostics\test-process-isolation-commit.ps1
+.\windows\scripts\diagnostics\test-process-isolation-commit.ps1
 ```
 
 It records the current Docker/containerd/host build numbers, runs a `docker run
@@ -1541,7 +1541,7 @@ commit-side one — re-run it after any Docker / containerd / hcsshim / Windows 
 base-image upgrade:
 
 ```pwsh
-.\windows\diagnostics\test-layer-rename.ps1
+.\windows\scripts\diagnostics\test-layer-rename.ps1
 ```
 
 It renames files in a fresh sandbox dir (CONTROL, expected PASS) and in an
@@ -1589,10 +1589,10 @@ still works fine _outside_ containers** — run the source-built ORT / GenAI bin
 directly on the bare host and the `DmlExecutionProvider` selects the RX 9070 XT.
 
 Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-driver
-upgrade with the self-contained probe under `windows/diagnostics/`:
+upgrade with the self-contained probe under `windows/scripts/diagnostics/`:
 
 ```pwsh
-.\windows\diagnostics\test-gpu-passthrough.ps1
+.\windows\scripts\diagnostics\test-gpu-passthrough.ps1
 ```
 
 It prints host/image builds and partitionable GPUs, runs a process-isolation control,
@@ -1696,7 +1696,7 @@ commit charge / container-VM (`vmmem`) size every 20 s into
 phase (`build:<dockerfile>`, `run:<stage>`, `commit:<stage>`), and prints a
 per-phase exhaustion summary at the end — including on failure. Re-analyze any
 run later with
-`pwsh -File windows/scripts/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
+`pwsh -File windows/scripts/build/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
 `MinFreeGB` per phase shows which step pushed the host hardest, and an
 `AvgCpuPct` far below 100 during a compile phase means the step was memory-bound
 (`jobs = min(cores, MEMORY_LIMIT_GB/perJob)`), not CPU-bound. Disable with
@@ -1917,7 +1917,7 @@ hard-import Media Foundation, which Server Core does not ship.
 
 The final image bakes the runtime orchestrator at
 **`C:\opt\Kataglyphis-Orchestr-ANT-ion`** (`TORCH_APP_DIR`), assembled by
-`windows/scripts/assemble-torch-app.ps1` (mirror of the linux
+`windows/scripts/build/assemble-torch-app.ps1` (mirror of the linux
 `assemble-torch-app.sh` stage) during the final `docker build`:
 
 - **Ref**: `build.ps1` uses versions.env's **`APP_REF` pin by default** (the
@@ -1986,9 +1986,9 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `deploy-shim-patch.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): installs a locally built `containerd-shim-runhcs-v1.exe` over Stevedore's, keeping `.orig` (stock, written once) plus a timestamped backup per deployment, and optionally merges env vars into the containerd service (`-ServiceEnvironment`) since the shim inherits them. `-ReportOnly` lists installed binary, backups and env without touching anything; `-Restore .orig` / `-Restore .45min` puts a backup back. Refuses while `buildctl` or a shim process is alive (the binary is locked). Needed because every Stevedore/containerd update silently reverts the patched shim — see § BuildKit/containerd lane and `windows/upstream/`. NB: a quiet log is NOT proof it took effect (the shim logs its effective timeout at Debug, which does not reach containerd's log) — verify behaviourally with the OpenCV canary |
 | `setup-new-host.ps1` | `windows/scripts/` | HOST bring-up (admin, run `-ReportOnly` first, never while a build solves): the ONE elevated run that turns a freshly-rebooted Stevedore host into a green `verify-host-setup.ps1`. Orchestrates the canonical per-concern scripts rather than duplicating them: authors the CNI `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW at runtime — no magic subnet literals anywhere), then `apply-containerd-config.ps1` (derives the `.conf`, debug flags, teardown env, Defender), `apply-buildkitd-gcpolicy.ps1` + the `BUILDKIT_STEP_LOG_*` step-log env, the patched runhcs shim (BUILDS the 45min/100min fixed-constant shim from hcsshim source when no `-ShimPath` is given, installing Go via scoop — the recipe from `windows/upstream/`, then `deploy-shim-patch.ps1`), and dufs (scoops if missing, starts it, registers the ONLOGON task, sets machine `SCCACHE_WEBDAV_ENDPOINT` to the host's LAN IP). Idempotent; every sub-script is called with a HASHTABLE splat (array splatting would bind `-ReportOnly`/`-ShimPath` by position — the array-splat rule in AGENTS.md). Companion to `verify-host-setup.ps1` below |
 | `toggle-rdna4-gpu.ps1` | `windows/scripts/` | HOST maintenance (admin): enable/disable the RDNA4 dGPU in Device Manager (`-GpuName` overrides the RX 9070 XT default — the gate fires for ALL RX 9xxx/R9700 SKUs, so the remedy must reach them too; added 2026-08-10 W1). **RE-INSTATED 2026-08-10 as the RDNA4 build-window workaround** (the 2026-08-09 "obsolete" verdict is superseded): an enabled RDNA4 dGPU kills every process-isolated RUN-layer finalize (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven). Workflow: `-Disable` → build (display falls back to the iGPU) → default action re-enables. `build-buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight refuses while the dGPU is enabled. |
-| `probe-build-copy.ps1` | `windows/scripts/` | The committed build probe (assets `windows/diagnostics/probe-build-copy/`): `FROM servercore` + `RUN` + `COPY`, BK lane exporting `type=image,...,unpack=true` (the real lane's output path), per-lane exit codes; `-Heavy` adds the heavyweight-RUN finalize lane (the shape the RDNA4 interaction kills), `-Docker` the classic-builder lane. **Run `-Heavy` before trusting a new Windows host** — only a `-Heavy`-green verdict counts (light lanes stayed green while the chain died, 2026-08-10). No admin. |
-| `test-rdna4-layer-lock.ps1` | `windows/diagnostics/` | RDNA4 layer-lock A/B (ELEVATED): probes RUN-layer finalize with the dGPU enabled, then disabled (auto re-enables in a finally). Verdicts: GONE / PRESENT / INCONCLUSIVE. **Re-run after every Adrenalin or Windows update** — a GONE verdict is the signal to retire the toggle workflow + `Assert-NoActiveRdna4Gpu` gate (docker/for-win#14977 tracked upstream). |
-| `verify-cuda-cache.ps1` | `windows/diagnostics/` | CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl solve FROM the local toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint; exit 0 only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store. Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump** — the launcher's value rests on this property. |
+| `probe-build-copy.ps1` | `windows/scripts/` | The committed build probe (assets `windows/scripts/diagnostics/probe-build-copy/`): `FROM servercore` + `RUN` + `COPY`, BK lane exporting `type=image,...,unpack=true` (the real lane's output path), per-lane exit codes; `-Heavy` adds the heavyweight-RUN finalize lane (the shape the RDNA4 interaction kills), `-Docker` the classic-builder lane. **Run `-Heavy` before trusting a new Windows host** — only a `-Heavy`-green verdict counts (light lanes stayed green while the chain died, 2026-08-10). No admin. |
+| `test-rdna4-layer-lock.ps1` | `windows/scripts/diagnostics/` | RDNA4 layer-lock A/B (ELEVATED): probes RUN-layer finalize with the dGPU enabled, then disabled (auto re-enables in a finally). Verdicts: GONE / PRESENT / INCONCLUSIVE. **Re-run after every Adrenalin or Windows update** — a GONE verdict is the signal to retire the toggle workflow + `Assert-NoActiveRdna4Gpu` gate (docker/for-win#14977 tracked upstream). |
+| `verify-cuda-cache.ps1` | `windows/scripts/diagnostics/` | CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl solve FROM the local toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint; exit 0 only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store. Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump** — the launcher's value rests on this property. |
 | `collect-host-docker-state.ps1` | `windows/scripts/` | Cross-machine forensics for "works there, fails here": dumps OS build, optional features (DISM API health - reports "Klasse nicht registriert" when broken), filter drivers, services, engine versions, docker info, HNS. Writes `out\host-docker-forensics.txt`. Elevation needed for feature/fltmc reads. |
 | `reset-container-stores.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): full container-store reset - stops the services, RENAMES `C:\ProgramData\containerd`/`buildkitd`/`Docker` to `.bak-<stamp>` (rollback), restarts clean, re-deploys the GC-policy toml. The docs' last resort for persistent, non-release hcsshim weirdness; safe on a fresh host (stores re-pull). |
 | `sync-defender-exclusions.ps1` | `windows/scripts/` | HOST maintenance (admin): prints, then applies if missing, the FULL Defender exclusion set for Windows-container builds - paths (`C:\ProgramData\containerd`/`buildkitd`/`Docker`/`nerdctl`, `C:\ProgramData\Microsoft\Windows\Containers`, `C:\temp`, `C:\WINDOWS\SystemTemp`) and processes (dockerd/containerd/buildkitd/nerdctl/CExecSvc/vmcompute). READ the BEFORE output: non-admin cannot see `Get-MpPreference`, so this is the only proof exclusions were ever applied. |

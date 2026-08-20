@@ -24,7 +24,7 @@ Describe 'Dockerfile.base WPS-5.1 bootstrap scripts stay 5.1-parseable (#106)' {
     # under the initial `powershell` SHELL (line ~30 → RUN at ~45). Keep this
     # list in step with the SHELL ordering in Dockerfile.base, not with lore.
     $bootstrapScripts = @(
-        'windows\scripts\bootstrap-pwsh.ps1'    # first RUN of Dockerfile.base, WPS 5.1 SHELL
+        'windows\scripts\host\bootstrap-pwsh.ps1'    # first RUN of Dockerfile.base, WPS 5.1 SHELL
     )
 
     foreach ($rel in $bootstrapScripts) {

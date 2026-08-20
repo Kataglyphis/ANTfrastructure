@@ -64,7 +64,7 @@ ARG SCCACHE_LOG="warn"
 # in PR #5885; "cache mounts fail silently" is #1648). Re-verify by rebuilding
 # media with `-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav` and checking that
 # genai reports 0 write errors — not by assuming a newer buildkit fixed it.
-# `windows/scripts/probe-sccache-write.ps1` answers it in ~2 minutes.
+# `windows/scripts/diagnostics/probe-sccache-write.ps1` answers it in ~2 minutes.
 ARG SCCACHE_MULTILEVEL_CHAIN=""
 
 # Also an ARG so an experiment can start from a GUARANTEED-EMPTY cache dir:
@@ -274,11 +274,11 @@ COPY windows\scripts\patches\opencv          C:\temp\scripts\patches\opencv
 COPY windows\scripts\patches\opencv_contrib  C:\temp\scripts\patches\opencv_contrib
 COPY windows\scripts\patches\ffmpeg          C:\temp\scripts\patches\ffmpeg
 
-COPY windows\scripts\build-onnx-from-source.ps1 `
-     windows\scripts\build-onnx-genai-from-source.ps1 `
-     windows\scripts\build-opencv-from-source.ps1 `
-     windows\scripts\build-ffmpeg-from-source.ps1 `
-     windows\scripts\build-media-core-all.ps1 `
+COPY windows\scripts\build\build-onnx-from-source.ps1 `
+     windows\scripts\build\build-onnx-genai-from-source.ps1 `
+     windows\scripts\build\build-opencv-from-source.ps1 `
+     windows\scripts\build\build-ffmpeg-from-source.ps1 `
+     windows\scripts\build\build-media-core-all.ps1 `
      C:\temp\scripts\
 
 # ── media-litert version env — SHARED ANCESTOR of both lanes (see media-core-env)
@@ -306,12 +306,12 @@ FROM media-litert-env AS media-litert
 COPY windows\scripts\shims C:\temp\scripts\shims
 COPY windows\scripts\patches\litert-lm C:\temp\scripts\patches\litert-lm
 
-COPY windows\scripts\build-litert-from-source.ps1 `
-     windows\scripts\build-litert-lm-bazel.ps1 `
-     windows\scripts\build-litert-lm-from-source.ps1 `
-     windows\scripts\litert-lm-export-bridge.ps1 `
-     windows\scripts\build-litert-all.ps1 `
-     windows\scripts\debug-litertlm-link.ps1 `
+COPY windows\scripts\build\build-litert-from-source.ps1 `
+     windows\scripts\build\build-litert-lm-bazel.ps1 `
+     windows\scripts\build\build-litert-lm-from-source.ps1 `
+     windows\scripts\build\litert-lm-export-bridge.ps1 `
+     windows\scripts\build\build-litert-all.ps1 `
+     windows\scripts\build\debug-litertlm-link.ps1 `
      C:\temp\scripts\
 
 # ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
@@ -328,9 +328,9 @@ FROM media-tvm-env AS media-tvm
 
 COPY windows\scripts\patches\iree C:\temp\scripts\patches\iree
 
-COPY windows\scripts\build-tvm-from-source.ps1 `
-     windows\scripts\build-iree-from-source.ps1 `
-     windows\scripts\build-media-tvm-all.ps1 `
+COPY windows\scripts\build\build-tvm-from-source.ps1 `
+     windows\scripts\build\build-iree-from-source.ps1 `
+     windows\scripts\build\build-media-tvm-all.ps1 `
      C:\temp\scripts\
 
 # ── BuildKit lane (buildctl --opt target=media-<branch>-built) ───────────────
@@ -418,9 +418,9 @@ ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
@@ -449,9 +449,9 @@ ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/ffmpeg,target=C:\bkmnt\patches\ffmpeg `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
@@ -503,9 +503,9 @@ ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     OPENCV_VERSION="${OPENCV_VERSION}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/opencv,target=C:\bkmnt\patches\opencv `
     --mount=type=bind,source=windows/scripts/patches/opencv_contrib,target=C:\bkmnt\patches\opencv_contrib `
@@ -518,9 +518,9 @@ ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'ONNX GenAI' -Until 'ONNX GenAI' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
@@ -535,13 +535,13 @@ FROM media-litert-env AS media-litert-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
-    --mount=type=bind,source=windows/scripts/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build-litert-lm-bazel.ps1,target=C:\bkmnt\build-litert-lm-bazel.ps1 `
-    --mount=type=bind,source=windows/scripts/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
-    --mount=type=bind,source=windows/scripts/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-litert-from-source.ps1,target=C:\bkmnt\build-litert-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-litert-lm-bazel.ps1,target=C:\bkmnt\build-litert-lm-bazel.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-litert-lm-from-source.ps1,target=C:\bkmnt\build-litert-lm-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/litert-lm-export-bridge.ps1,target=C:\bkmnt\litert-lm-export-bridge.ps1 `
+    --mount=type=bind,source=windows/scripts/build/debug-litertlm-link.ps1,target=C:\bkmnt\debug-litertlm-link.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/shims,target=C:\bkmnt\shims `
     --mount=type=bind,source=windows/scripts/patches/litert-lm,target=C:\bkmnt\patches\litert-lm `
@@ -551,10 +551,10 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 FROM media-tvm-env AS media-tvm-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
-    --mount=type=bind,source=windows/scripts/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
     & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter

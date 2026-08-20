@@ -11,8 +11,8 @@ FROM ${BASE_IMAGE} AS probe
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
 
-RUN --mount=type=bind,source=windows/scripts/probe-sccache-patch-verify.ps1,target=C:\bkmnt\probe-sccache-patch-verify.ps1 `
-    --mount=type=bind,source=windows/scripts/probe-onnx-tu-replay.ps1,target=C:\bkmnt\probe-onnx-tu-replay.ps1 `
+RUN --mount=type=bind,source=windows/scripts/diagnostics/probe-sccache-patch-verify.ps1,target=C:\bkmnt\probe-sccache-patch-verify.ps1 `
+    --mount=type=bind,source=windows/scripts/diagnostics/probe-onnx-tu-replay.ps1,target=C:\bkmnt\probe-onnx-tu-replay.ps1 `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/upstream/sccache-nvcc-quote-fix,target=C:\bkmnt\patch `
     & 'C:\bkmnt\probe-sccache-patch-verify.ps1' -Nonce "${PROBE_NONCE}"; `

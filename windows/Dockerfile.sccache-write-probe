@@ -15,8 +15,8 @@
 # NOTE the mount ids must match the real build byte for byte. A probe against a
 # DIFFERENT cache mount tests a different filesystem and proves nothing.
 #
-# Run it with windows/scripts/probe-sccache-write.ps1's host-side sibling:
-#   .\windows\scripts\run-sccache-write-probe.ps1
+# Run it with windows/scripts/diagnostics/probe-sccache-write.ps1's host-side sibling:
+#   .\windows\scripts\diagnostics\run-sccache-write-probe.ps1
 # =============================================================================
 ARG BASE_IMAGE=local/kataglyphis:bk-windows-toolchain
 FROM ${BASE_IMAGE} AS probe
@@ -48,5 +48,5 @@ ARG PROBE_NONCE="0"
 # could run against a mount a live build is mutating and produce noise.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/probe-sccache-write.ps1,target=C:\bkmnt\probe-sccache-write.ps1 `
+    --mount=type=bind,source=windows/scripts/diagnostics/probe-sccache-write.ps1,target=C:\bkmnt\probe-sccache-write.ps1 `
     & 'C:\bkmnt\probe-sccache-write.ps1' -Nonce "${PROBE_NONCE}"

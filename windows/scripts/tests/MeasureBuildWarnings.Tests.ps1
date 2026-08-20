@@ -7,7 +7,7 @@
 Describe 'Get-WarningFamily' {
     # AST-extract the function rather than dot-sourcing the script, which would
     # demand a -LogPath and start analysing. Same pattern as the FFmpeg gate.
-    $script = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'Measure-BuildWarnings.ps1'
+    $script = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'diagnostics\Measure-BuildWarnings.ps1'
     $tokens = $null; $errors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($script, [ref]$tokens, [ref]$errors)
     $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Get-WarningFamily' }, $true) | Select-Object -First 1

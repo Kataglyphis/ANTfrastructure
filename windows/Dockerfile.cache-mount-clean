@@ -15,6 +15,6 @@ FROM ${BASE_IMAGE} AS probe
 ARG PROBE_NONCE="0"
 
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
-    --mount=type=bind,source=windows/scripts/clean-sccache-mount.ps1,target=C:\bkmnt\clean-sccache-mount.ps1 `
+    --mount=type=bind,source=windows/scripts/host/clean-sccache-mount.ps1,target=C:\bkmnt\clean-sccache-mount.ps1 `
     & 'C:\bkmnt\clean-sccache-mount.ps1' -Nonce "${PROBE_NONCE}"; `
     Write-Host 'probe complete'

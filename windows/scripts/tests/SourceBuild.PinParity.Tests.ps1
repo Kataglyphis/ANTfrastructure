@@ -60,7 +60,8 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
     # Returns one record per call site; literal-'' defaults are dropped (see above).
     function Get-PinParitySite {
         $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -File | Sort-Object Name)
+        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
         $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
 
         $sites = @()
@@ -327,7 +328,8 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     # CommandAst, so it is correctly not a site. Literal-'' defaults dropped.
     function Get-RcivSite {
         $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -File | Sort-Object Name)
+        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
         $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
 
         $sites = @()
@@ -564,7 +566,8 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
 
     function Get-EnvElseLiteralSite {
         $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -File | Sort-Object Name)
+        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
         $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
         $sites = @()
         foreach ($f in $files) {

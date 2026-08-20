@@ -151,7 +151,7 @@ param(
     # the container and prints a manual recipe. These parameters EXECUTE that
     # recipe instead of hand-typing it (it was hand-typed 5x on 2026-08-03):
     #   .\windows\build.ps1 -ResumeStage media-litert -ResumeFrom 'LiteRT-LM' `
-    #        -CopyFix windows\scripts\build-litert-lm-from-source.ps1
+    #        -CopyFix windows\scripts\build\build-litert-lm-from-source.ps1
     # Flow: [docker cp each -CopyFix into C:\temp\scripts\] -> commit
     # <tag>-partial -> rm container -> run from the partial with -ResumeFrom ->
     # commit <tag> -> cleanup. Runs INSTEAD of the normal stage chain.
@@ -167,7 +167,7 @@ param(
     # Container isolation policy. 'auto' (default) PREFERS process isolation —
     # full host CPUs for docker build AND docker run, no 2-CPU Hyper-V cap — and
     # decides by running the ~10s commit probe
-    # (windows/diagnostics/test-process-isolation-commit.ps1, verdict cached per
+    # (windows/scripts/diagnostics/test-process-isolation-commit.ps1, verdict cached per
     # host build + docker version): process when the wcifs layer-commit bug is
     # absent, else hyperv with a loud warning. 'process'/'hyperv' force it.
     [ValidateSet('auto', 'process', 'hyperv')]
@@ -216,7 +216,7 @@ $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 
 # ---- per-run host resource log (which steps exhaust the machine?) ----
-# A detached sampler (windows/scripts/build-resource-sampler.ps1) appends CPU/RAM/commit/vmmem
+# A detached sampler (windows/scripts/build/build-resource-sampler.ps1) appends CPU/RAM/commit/vmmem
 # rows every 20s, tagged with the CURRENT PHASE via a state file that Set-BuildPhase rewrites at
 # every docker build / run / commit chokepoint. The finally block stops the sampler and prints a
 # per-phase exhaustion summary (also available later: the sampler script's -Summarize mode).
@@ -454,7 +454,7 @@ function Invoke-RunCommitStage {
     # cap on this host while still producing a committable image. `docker build` is
     # hard-capped at 2 CPUs (Hyper-V) and process isolation cannot commit ANY layer
     # (hcsshim::ActivateLayer 0x20 — the wcifs detach bug, re-verify with
-    # windows/diagnostics/test-process-isolation-commit.ps1). So:
+    # windows/scripts/diagnostics/test-process-isolation-commit.ps1). So:
     #   1. `docker build` a THIN builder image (cheap COPY/clone layers commit fine
     #      under Hyper-V) carrying the sources + build scripts but NO heavy compile.
     #   2. `docker run --isolation hyperv --cpu-count N` the heavy compile — `docker
@@ -910,7 +910,7 @@ try {
 finally {
     # Stop the resource sampler and print the per-phase exhaustion summary -- ALSO on failure
     # (that is when you most want to know which step ate the machine). Re-runnable later via:
-    #   pwsh -File windows/scripts/build-resource-sampler.ps1 -Summarize -CsvPath <csv>
+    #   pwsh -File windows/scripts/build/build-resource-sampler.ps1 -Summarize -CsvPath <csv>
     Set-BuildPhase 'done'
     if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
         Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue

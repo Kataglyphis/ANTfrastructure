@@ -30,7 +30,7 @@ FROM ${TVM_IMAGE} AS media-tvm
 # "C:\Program Files\..." (spaces) and cuDNN 9 buries its DLLs in a CUDA-major
 # subdir under bin\, so a recursive script is needed. See stage-cuda-runtime.ps1.
 FROM ${CORE_IMAGE} AS cuda-runtime-stage
-COPY windows\scripts\stage-cuda-runtime.ps1 C:\stage-cuda-runtime.ps1
+COPY windows\scripts\build\stage-cuda-runtime.ps1 C:\stage-cuda-runtime.ps1
 RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
 
 # ── Mount source for the BK lane's module closure ────────────────────────────
@@ -179,7 +179,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      C:\temp\scripts\modules\
-COPY windows\scripts\build-gstreamer-from-source.ps1 C:\temp\scripts\
+COPY windows\scripts\build\build-gstreamer-from-source.ps1 C:\temp\scripts\
 COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
 
 # ── BuildKit lane (direct solve, de-warmed 2026-08-06 round 2) ──────────────
@@ -219,8 +219,8 @@ ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
 # clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/gstreamer,target=C:\bkmnt\patches\gstreamer `
     & 'C:\bkmnt\build-gstreamer-from-source.ps1' -InstallDir 'C:\runtime' -LogDir 'C:\temp\logs' -ScrubAfter
@@ -238,7 +238,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # test since 2026-08-17).
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/build-opencv-gstreamer-plugin.ps1,target=C:\bkmnt\build-opencv-gstreamer-plugin.ps1 `
-    --mount=type=bind,source=windows/scripts/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-opencv-gstreamer-plugin.ps1,target=C:\bkmnt\build-opencv-gstreamer-plugin.ps1 `
+    --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\build-opencv-gstreamer-plugin.ps1' -InstallDir 'C:\runtime'

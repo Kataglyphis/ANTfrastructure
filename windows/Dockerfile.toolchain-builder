@@ -54,7 +54,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
 # at ITS build time, so NUGET_VERSION/NUGET_EXE_SHA256 bumps would silently lag
 # until a base rebuild — build-toolchain-all.ps1 re-reads this file at run time.
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
-COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\
+COPY windows\scripts\build\build-toolchain-all.ps1 C:\temp\scripts\
 
 # ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────
 # Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
@@ -63,7 +63,7 @@ COPY windows\scripts\build-toolchain-all.ps1 C:\temp\scripts\
 # edit to any of them no longer invalidates this stage's ancestry, and the
 # script prefers the SIBLING versions.env under C:\bkmnt over $env:TEMP_DIR.
 FROM builder AS built
-RUN --mount=type=bind,source=windows/scripts/build-toolchain-all.ps1,target=C:\bkmnt\build-toolchain-all.ps1 `
+RUN --mount=type=bind,source=windows/scripts/build/build-toolchain-all.ps1,target=C:\bkmnt\build-toolchain-all.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
     & 'C:\bkmnt\build-toolchain-all.ps1'

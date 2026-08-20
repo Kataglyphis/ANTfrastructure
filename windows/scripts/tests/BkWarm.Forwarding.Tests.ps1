@@ -15,7 +15,7 @@ Describe 'bk-warm.ps1 argument forwarding' {
 
     It 'forwards -BuildArgs as named parameters (space-containing value intact), then attempts the export' {
         Invoke-InTestDir { param($dir)
-            $bkWarm = Join-Path $PSScriptRoot '..\bk-warm.ps1'
+            $bkWarm = Join-Path $PSScriptRoot '..\host\bk-warm.ps1'
             $outFile = Join-Path $dir 'params.txt'
             # Fixture build script: records its NAMED parameters, exits green.
             $fixture = Join-Path $dir 'fake-build.ps1'
@@ -46,7 +46,7 @@ Describe 'bk-warm.ps1 argument forwarding' {
 
     It 'a failing build script aborts bk-warm before any export is attempted' {
         Invoke-InTestDir { param($dir)
-            $bkWarm = Join-Path $PSScriptRoot '..\bk-warm.ps1'
+            $bkWarm = Join-Path $PSScriptRoot '..\host\bk-warm.ps1'
             $marker = Join-Path $dir 'ran.txt'
             $fixture = Join-Path $dir 'fake-build.ps1'
             Set-Content -LiteralPath $fixture -Encoding ASCII -Value @(
