@@ -12,8 +12,8 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-19. LIVE `:latest-cross` = wave-3 ship (fd0d8d74/
-6153d76b/549789b8). **wave-4 validating rebuild IN FLIGHT** (see § Staged).
+Last groomed: 2026-08-21. LIVE `:latest-cross` = WAVE-4 ship (73927a45/
+345096db/da763dc3, manifest 98d90db6) — see § WAVE-4 SHIPPED.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
 
@@ -65,12 +65,11 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 
 ## Next up (recommended order, 2026-08-19)
 
-1. **wave-4 Endabnahme** (auto, on chain end): byte-gates ×3, RV1 check
-   (cv2 GStreamer ×3?), PAR1 numbers, PAR4 verdict, then backlog/CHANGELOG/
-   memory fold.
-2. **GPU lane validation build** [★★★, cheap, anytime].
-3. **Next closure window** — § A below (OCV-FF1 first).
-4. **Next pin-bump window** — § B riders.
+1. **GPU lane validation build** [★★★, cheap, anytime] — the last staged
+   set (GPU1-7) still awaiting its one opt-in build.
+2. **Next closure window** — § A below (OCV-FF1 + RV1-GST-PC first).
+3. **Next pin-bump window** — § B riders.
+4. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
 
 ---
 
