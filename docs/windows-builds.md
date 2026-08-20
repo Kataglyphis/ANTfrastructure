@@ -2536,7 +2536,22 @@ Upstream follow-ups: see "Pending" at the bottom.
 > landed 2026-08-17.
 
 - **108 [M·★★, none] Directory convention for `windows/scripts/` (60 flat
-  scripts).** Target: `scripts/build/` (chain components), `scripts/host/`
+  scripts).** **EXECUTION SPEC (2026-08-20, measured surface: 66 Dockerfile
+  mount/COPY refs, 26 test files with path assumptions, 57 docs refs, 11
+  scripts with $PSScriptRoot-relative imports, 3 driver refs, plus
+  downstream-vendored module refs):** (1) mapping: build-* and the *-all
+  wrappers -> scripts/build/, setup-*/apply-*/repair-*/bootstrap-* ->
+  scripts/host/, probe-*/analyze-* + top-level diagnostics/ ->
+  scripts/diagnostics/; modules/tests/patches/shims stay. (2) THE
+  dual-layout trap: after the move, $PSScriptRoot-relative modules/patches
+  refs cannot serve host (scripts/build/) AND container (flat C:/bkmnt)
+  with one string - the bind-mount TARGETS must mirror the new layout
+  (C:/bkmnt/build/<script> + C:/bkmnt/modules), which cascades through
+  every -ScriptDir contract in the chain wrappers. (3) land as ONE commit,
+  ONLY on a green chain, verified by ITS OWN full ride + smoke.
+  Prerequisite not met at spec time (the 2026-08-20 batch-verify ride was
+  still running); execute as a fresh dedicated session, never at the tail
+  of a change-heavy day. Target: `scripts/build/` (chain components), `scripts/host/`
   (setup/repair/elevated tools), `scripts/diagnostics/` (probes + analyzers,
   merging the half-empty top-level `diagnostics/`), `modules/` and `tests/`
   stay. COSTS: every bind-mount path in the Dockerfiles, the docs script
