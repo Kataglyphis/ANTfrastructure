@@ -117,7 +117,13 @@ function Remove-MakefileShowIncludes {
 Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
-    Write-Host "FFmpeg already installed at $prefix - skipping"; return
+    # #68: trust but VERIFY on re-entry. A -ResumeFrom after a failed run
+    # used to take this return and inherit whatever the failure left -
+    # incl. a prebuilt-fallback MIX (foreign exes/dlls over our import
+    # libs/.pc) - with every gate below skipped. Run the .pc gate before
+    # trusting; it throws on the mixed/broken shapes.
+    $null = Assert-FfmpegPkgConfig -PkgConfigDir (Join-Path $prefix 'lib\pkgconfig')
+    Write-Host "FFmpeg already installed at $prefix - .pc gate passed, skipping"; return
 }
 
 # Download and extract
@@ -476,10 +482,25 @@ if ((Test-Path "$ffmpegDir\ffmpeg.exe") -and $installedDlls.Count -eq 0) {
     Remove-Item "$ffmpegDir\ffmpeg.exe", "$ffmpegDir\ffplay.exe", "$ffmpegDir\ffprobe.exe" -Force -ErrorAction SilentlyContinue
 }
 
-# Download pre-built MSVC FFmpeg if source build didn't produce ffmpeg.exe
+# Prebuilt fallback: FAIL-CLOSED by default since #68 (2026-08-20). The
+# chain promise is OUR FFmpeg (avcodec 63, --enable-libonnxruntime, the one
+# OpenCV links against since OPENCV_LINK_CHAIN_FFMPEG defaulted on) - a
+# silent BtbN substitute violates that AND used to land as a MIX: foreign
+# exes/dlls copied over whatever a partial `make install` left, while our
+# import libs and .pc files stayed, so gst-libav linked a version mismatch
+# announced by one Write-Warning. Opt in explicitly for experiments with
+# FFMPEG_ALLOW_PREBUILT=1; the opt-in path now SCRUBS the whole prefix
+# first so the result is at least self-consistent.
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
-    Write-Warning 'FFmpeg source build failed -- falling back to pre-built BtbN MSVC FFmpeg. DNN/ONNX integration will NOT be available in the fallback binary.'
+    if ($env:FFMPEG_ALLOW_PREBUILT -ne '1') {
+        throw ('FFmpeg source build did not produce ffmpeg.exe and the prebuilt fallback is fail-closed (#68) - ' +
+            'fix the source build (see the make output above) or opt in explicitly with FFMPEG_ALLOW_PREBUILT=1.')
+    }
+    Write-Warning 'FFmpeg source build failed -- falling back to pre-built BtbN MSVC FFmpeg (FFMPEG_ALLOW_PREBUILT=1). DNN/ONNX integration will NOT be available in the fallback binary.'
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '0', 'Process')
+    # No MIXED installs: wipe every artifact of the partial source install
+    # (import libs, headers, .pc) before the foreign binaries land.
+    Reset-SourceBuildDirectory -Path $prefix
     if (-not (Test-Path $prefix)) { New-Item -Path $prefix -ItemType Directory -Force | Out-Null }
     $dlUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
     $zipPath = "$env:TEMP\ffmpeg.zip"
@@ -530,8 +551,14 @@ if (Test-Path $ffPkgConfigDir) {
 # Called OUTSIDE the Test-Path guard above on purpose: until 2026-08-08 the gate
 # sat inside it, so a missing lib\pkgconfig directory — the most complete failure
 # of all — skipped every assertion and reported nothing. Assert-FfmpegPkgConfig
-# treats an absent directory as the hard failure it is.
-$null = Assert-FfmpegPkgConfig -PkgConfigDir $ffPkgConfigDir
+# treats an absent directory as the hard failure it is. The explicitly opted-in
+# prebuilt fallback (#68) ships NO .pc files BY DESIGN (the prefix is scrubbed,
+# nothing links against it) — that is the one legitimate skip.
+if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
+    Write-Warning 'Prebuilt fallback active (FFMPEG_ALLOW_PREBUILT=1): no .pc files exist by design; downstream consumers (gst-libav, OpenCV chain-link, PyAV) will not find FFmpeg.'
+} else {
+    $null = Assert-FfmpegPkgConfig -PkgConfigDir $ffPkgConfigDir
+}
 
 # ── Import-lib normalization (PyAV and other MSVC-style consumers link these) ──
 # `make install` places avformat.lib / avformat-63.def per configure's SHLIBDIR/
