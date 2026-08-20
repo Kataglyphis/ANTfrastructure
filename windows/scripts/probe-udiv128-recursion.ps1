@@ -33,7 +33,9 @@ uint64_t caller(uint64_t h, uint64_t l, uint64_t d, uint64_t* r) {
 '@ | Set-Content -Path 't.cpp' -Encoding ascii
 
 Write-Host '--- compile (warnings on) ---'
-& clang-cl -nologo -W3 -c -Fot.obj t.cpp 2>&1 | ForEach-Object { "cc| $_" }
+# '-Fot.obj' MUST be quoted: PS splits a bare -X token at the first dot
+# when passing to natives (yesterday's memory note, stepped in anyway).
+& clang-cl -nologo -W3 -c '-Fot.obj' t.cpp 2>&1 | ForEach-Object { "cc| $_" }
 Write-Host ('compile exit: ' + $LASTEXITCODE)
 
 Write-Host '--- clang version ---'
