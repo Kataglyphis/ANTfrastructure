@@ -456,7 +456,7 @@ function Assert-DiskHeadroom {
         'buildctl prune --free-storage <MB ABOVE total disk size, it is a minimum-free TARGET>; ' +
         'then admin `nerdctl --namespace buildkit rmi` for superseded bk-* stage tags. ' +
         'For a VHDX-backed checkout the lever is a different one entirely: ' +
-        'windows\scripts\compact-host-vhdx.ps1 / rebuild-host-vhdx.ps1.'
+        'windows\scripts\host\compact-host-vhdx.ps1 / rebuild-host-vhdx.ps1.'
     # Normalize: accept 'C', 'C:', 'C:\' and full paths alike, dedupe, keep order.
     $letters = [System.Collections.Generic.List[string]]::new()
     foreach ($d in (@('C') + $Drive)) {
@@ -598,7 +598,7 @@ function Assert-ShimPatch {
         [switch]$Force
     )
     # Defined BEFORE the not-found branch below, which quotes it in its throw.
-    $advice = 'Re-install it before building: pwsh -File windows\scripts\deploy-shim-patch.ps1 ' +
+    $advice = 'Re-install it before building: pwsh -File windows\scripts\host\deploy-shim-patch.ps1 ' +
         '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
         'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
         'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
@@ -666,7 +666,7 @@ function Assert-ShimPatch {
 
     # ── fallback: size heuristic (no recorded hash on this host yet) ──────────
     $record = "Record the deployed binary's hash so this gate stops guessing: re-run " +
-        'windows\scripts\deploy-shim-patch.ps1 (it writes ' + $statePath + ' on a successful swap).'
+        'windows\scripts\host\deploy-shim-patch.ps1 (it writes ' + $statePath + ' on a successful swap).'
     if ($PatchedSize -contains $size) {
         Write-Host "runhcs shim: patched build by SIZE ($('{0:N0}' -f $size) bytes; no recorded hash)" -ForegroundColor Cyan
         Write-Warning $record
@@ -801,7 +801,7 @@ function Assert-BuildkitdStepLogEnv {
     }
     if ((@($envStrings) -join "`n") -match 'BUILDKIT_STEP_LOG_MAX_SIZE\s*=\s*-1') { return }
     $msg = ("buildkitd service env is missing BUILDKIT_STEP_LOG_MAX_SIZE=-1 - step logs will clip at 2MiB. " +
-        "Fix (elevated, between chain runs): windows\scripts\setup-new-host.ps1, or " +
+        "Fix (elevated, between chain runs): windows\scripts\host\setup-new-host.ps1, or " +
         "Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment " +
         "-Value @('BUILDKIT_STEP_LOG_MAX_SIZE=-1','BUILDKIT_STEP_LOG_MAX_SPEED=-1') ; Restart-Service buildkitd.")
     if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
@@ -871,7 +871,7 @@ function Assert-NoActiveRdna4Gpu {
     # delays were all falsified first.
     #
     # The build window is: disable the dGPU (display falls back to the iGPU),
-    # build, re-enable. `windows\scripts\toggle-rdna4-gpu.ps1` (elevated) does
+    # build, re-enable. `windows\scripts\host\toggle-rdna4-gpu.ps1` (elevated) does
     # the toggle. This gate refuses to START a chain that would die on its
     # first RUN finalize hours before anyone looks.
     param(
@@ -890,13 +890,13 @@ function Assert-NoActiveRdna4Gpu {
         # NOTE: -f binds TIGHTER than + (probed live 2026-08-10: an unwrapped
         # concat printed a literal {0}); keep the concat parenthesized.
         Write-Host (("RDNA4 gate: {0} present but DISABLED - RUN-layer finalize is safe; re-enable after the " +
-            "build with windows\scripts\toggle-rdna4-gpu.ps1 (elevated).") -f $hazards[0].FriendlyName) -ForegroundColor Cyan
+            "build with windows\scripts\host\toggle-rdna4-gpu.ps1 (elevated).") -f $hazards[0].FriendlyName) -ForegroundColor Cyan
         return
     }
     $msg = (("'{0}' is ENABLED. On this host family an active RDNA4 dGPU makes EVERY process-isolated RUN-layer " +
         "finalize fail with hcsshim::ActivateLayer 0x20 (docker/for-win#14977; A/B-proven here 2026-08-10) - the " +
         "chain would die on its first RUN commit. Disable it for the build window (display falls back to the " +
-        "iGPU): elevated pwsh -File windows\scripts\toggle-rdna4-gpu.ps1 -Disable, build, then re-enable with " +
+        "iGPU): elevated pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1 -Disable, build, then re-enable with " +
         "the same script (default action). Verify first with probe-build-copy.ps1 -Heavy.") -f $active[0].FriendlyName)
     if ($Force) { Write-Warning "$msg Continuing because the host-check override was passed."; return }
     throw "REFUSING to start: $msg Pass -SkipHostChecks to override."

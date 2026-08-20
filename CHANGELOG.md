@@ -1026,9 +1026,9 @@ already ships, and for local code that more than one of them needed.
   "in-place repair fixed it" root-cause claims are SUPERSEDED: they coincided
   with patch-level/reboot changes that moved the trigger threshold.
 - **Lint-scope gap closed**: `Invoke-Lint.ps1` never covered
-  `windows\diagnostics\` — its scripts (GPU/isolation probes, now the RDNA4
+  `windows\scripts\diagnostics\` — its scripts (GPU/isolation probes, now the RDNA4
   A/B) were silently unlinted. Added recursively; 136 files, all clean.
-- **NEW diagnostic `windows/diagnostics/test-rdna4-layer-lock.ps1`**
+- **NEW diagnostic `windows/scripts/diagnostics/test-rdna4-layer-lock.ps1`**
   (elevated): the RDNA4 A/B as a durable ~2-min tool — probes RUN-layer
   finalize with the dGPU enabled then disabled (finally-guarded re-enable),
   verdicts GONE / PRESENT / INCONCLUSIVE. Re-run after every
@@ -1049,7 +1049,7 @@ already ships, and for local code that more than one of them needed.
   treats clang-cl as GNU-Clang and passes `-include` + `cstring`, which the
   CL dialect parses as an input file; the patch adds an MSVC-frontend branch
   (`/FIcstring` + `/w`). 10/10 patches validate.
-- **NEW diagnostic `windows/diagnostics/verify-cuda-cache.ps1`** — proves the
+- **NEW diagnostic `windows/scripts/diagnostics/verify-cuda-cache.ps1`** — proves the
   sccache→nvcc(decomposed)→WebDAV path end to end: a tiny buildctl solve FROM
   the local toolchain image compiles one `.cu` twice; asserts the recompile
   HIT and that objects reached the store. First run verified 2026-08-10:
@@ -1173,7 +1173,7 @@ already ships, and for local code that more than one of them needed.
   both lanes, every COPY layer, surviving `-NoCache`, restarts, Defender
   exclusions, a full store reset and a reboot - was caused by a **FAULTY AMD
   ADRENALINE installation**. A clean **reinstall fixed it** (probe:
-  `windows/scripts/probe-build-copy.ps1`). GPU-disable never cured it;
+  `windows/scripts/diagnostics/probe-build-copy.ps1`). GPU-disable never cured it;
   `toggle-rdna4-gpu.ps1` is now obsolete as a fix. The Linux cross lane and
   all repo gates were never affected. Docs updated (superseding the night
   entry below): `AGENTS.md` Common Failure Modes + script table,
@@ -1235,7 +1235,7 @@ Verified live while bringing up a brand-new host (this one) for the sccache
 source-build verification run; every fix below is what a fresh Stevedore box
 actually trips over.
 
-- **NEW `windows/scripts/setup-new-host.ps1`** - the scriptable half of
+- **NEW `windows/scripts/host/setup-new-host.ps1`** - the scriptable half of
   `docs/windows-host-setup.md` Phases A5+C as ONE elevated, idempotent run
   (`-ReportOnly` safe, refuses while a build is live): authors the CNI
   `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW

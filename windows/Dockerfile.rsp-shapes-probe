@@ -9,6 +9,6 @@ FROM ${BASE_IMAGE} AS probe
 # Layer-cache buster (a CACHED run replays an old verdict).
 ARG PROBE_NONCE="0"
 
-RUN --mount=type=bind,source=windows/scripts/probe-sccache-rsp-shapes.ps1,target=C:\bkmnt\probe-sccache-rsp-shapes.ps1 `
+RUN --mount=type=bind,source=windows/scripts/diagnostics/probe-sccache-rsp-shapes.ps1,target=C:\bkmnt\probe-sccache-rsp-shapes.ps1 `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
     & 'C:\bkmnt\probe-sccache-rsp-shapes.ps1' -Nonce "${PROBE_NONCE}"

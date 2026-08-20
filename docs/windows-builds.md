@@ -317,7 +317,7 @@ asserts it exists and records a resolved clang-cl (SKIP on older images).
 
 **Policy (build.ps1 `-Isolation`, default `auto`): process isolation is always
 preferred and used automatically wherever the host can support it.** `auto`
-runs the ~10s commit probe (`windows/diagnostics/test-process-isolation-commit.ps1`)
+runs the ~10s commit probe (`windows/scripts/diagnostics/test-process-isolation-commit.ps1`)
 once per (host build, docker version) — verdict cached in
 `out\windows-build-logs\isolation-probe-cache.json` — and:
 
@@ -552,13 +552,13 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 > `docs/windows-host-setup.md` and AGENTS.md Common Failure Modes). The
 > preflight gate `Assert-NoActiveRdna4Gpu` refuses to start while it is
 > enabled. Build window: elevated
-> `pwsh -File windows\scripts\toggle-rdna4-gpu.ps1 -Disable` → build (display
+> `pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1 -Disable` → build (display
 > falls back to the iGPU) → re-enable with the same script (default action).
 > Two extra facts that save hours: failed finalizes WEDGE hcs state until a
 > reboot (don't A/B anything on a wedged host), and the severity moved with
 > Windows updates (post-KB5101684 even tiny RUN layers trip — expect patch
 > days to change behavior). After every Adrenalin/Windows update, re-check in
-> ~2 min with `windows\diagnostics\test-rdna4-layer-lock.ps1` (elevated) —
+> ~2 min with `windows\scripts\diagnostics\test-rdna4-layer-lock.ps1` (elevated) —
 > its GONE verdict is the signal the workaround can be retired.
 
 Remaining gotchas (why the classic lane still exists): images land in the
@@ -670,7 +670,7 @@ Housekeeping and sharing:
   that is what protects the ~35GB VS-class layers; v0.32 key names are
   `reservedSpace`/`maxUsedSpace`/`minFreeSpace`, NOT the legacy
   `gckeepstorage`). Deploy/refresh it with
-  `windows\scripts\apply-buildkitd-gcpolicy.ps1` from an admin **pwsh 7**
+  `windows\scripts\host\apply-buildkitd-gcpolicy.ps1` from an admin **pwsh 7**
   shell (`pwsh -File …`; the script carries `#requires -Version 7.0`, and
   under Windows PowerShell 5.1 it refuses with a `#requires` message that is
   easy to read as "it ran and did nothing" — cost a round trip 2026-08-08,
@@ -833,8 +833,8 @@ Housekeeping and sharing:
   (ADMIN, never while a build solves):
 
   ```pwsh
-  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly   # look first
-  pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx               # then act
+  pwsh -File windows\scripts\host\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly   # look first
+  pwsh -File windows\scripts\host\compact-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx               # then act
   ```
 
   **ReFS caveat — measured, do not re-probe:** `Optimize-VHD -Mode Full` ran 42 s
@@ -848,15 +848,15 @@ Housekeeping and sharing:
   works on any filesystem, which is why the script does both.
 
   **When compaction returns ~nothing, rebuild instead:**
-  `windows\scripts\rebuild-host-vhdx.ps1` creates a fresh disk, mirrors the
+  `windows\scripts\host\rebuild-host-vhdx.ps1` creates a fresh disk, mirrors the
   live data into it, compares file count AND byte totals, and only then hands
   over the drive letter. It runs in two phases on purpose, because they have
   very different requirements:
 
   ```pwsh
-  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
-  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
-  pwsh -File windows\scripts\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
+  pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -ReportOnly
+  pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -CopyOnly    # safe with everything open
+  pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\my.vhdx -SwapOnly `
        -VerifyPath D:\GitHub\Kataglyphis-ContainerHub -LogPath C:\rebuild.log -RetireOld
   ```
 
@@ -1379,8 +1379,8 @@ docker rm -f probe-rc
 ```
 
 Committed version of the build probe: `pwsh -File
-windows\scripts\probe-build-copy.ps1 -Heavy` (assets in
-`windows/diagnostics/probe-build-copy/`; only a `-Heavy`-green verdict counts
+windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` (assets in
+`windows/scripts/diagnostics/probe-build-copy/`; only a `-Heavy`-green verdict counts
 — the light lanes stay green on hosts whose heavyweight RUN-layer finalize is
 broken).
 
@@ -1471,10 +1471,10 @@ After **any** Docker Engine / containerd / hcsshim / Windows / base-image upgrad
 re-check whether `docker build --isolation process` can commit a layer again — if
 it can, the *entire* Windows build (not just media-core) could run at full CPU
 count and the run+commit workaround could be retired. A durable, self-contained
-probe lives under `windows/diagnostics/`:
+probe lives under `windows/scripts/diagnostics/`:
 
 ```pwsh
-.\windows\diagnostics\test-process-isolation-commit.ps1
+.\windows\scripts\diagnostics\test-process-isolation-commit.ps1
 ```
 
 It records the current Docker/containerd/host build numbers, runs a `docker run
@@ -1541,7 +1541,7 @@ commit-side one — re-run it after any Docker / containerd / hcsshim / Windows 
 base-image upgrade:
 
 ```pwsh
-.\windows\diagnostics\test-layer-rename.ps1
+.\windows\scripts\diagnostics\test-layer-rename.ps1
 ```
 
 It renames files in a fresh sandbox dir (CONTROL, expected PASS) and in an
@@ -1589,10 +1589,10 @@ still works fine _outside_ containers** — run the source-built ORT / GenAI bin
 directly on the bare host and the `DmlExecutionProvider` selects the RX 9070 XT.
 
 Re-check after any Docker / containerd / hcsshim / Windows / base-image / GPU-driver
-upgrade with the self-contained probe under `windows/diagnostics/`:
+upgrade with the self-contained probe under `windows/scripts/diagnostics/`:
 
 ```pwsh
-.\windows\diagnostics\test-gpu-passthrough.ps1
+.\windows\scripts\diagnostics\test-gpu-passthrough.ps1
 ```
 
 It prints host/image builds and partitionable GPUs, runs a process-isolation control,
@@ -1696,7 +1696,7 @@ commit charge / container-VM (`vmmem`) size every 20 s into
 phase (`build:<dockerfile>`, `run:<stage>`, `commit:<stage>`), and prints a
 per-phase exhaustion summary at the end — including on failure. Re-analyze any
 run later with
-`pwsh -File windows/scripts/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
+`pwsh -File windows/scripts/build/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
 `MinFreeGB` per phase shows which step pushed the host hardest, and an
 `AvgCpuPct` far below 100 during a compile phase means the step was memory-bound
 (`jobs = min(cores, MEMORY_LIMIT_GB/perJob)`), not CPU-bound. Disable with
@@ -1917,7 +1917,7 @@ hard-import Media Foundation, which Server Core does not ship.
 
 The final image bakes the runtime orchestrator at
 **`C:\opt\Kataglyphis-Orchestr-ANT-ion`** (`TORCH_APP_DIR`), assembled by
-`windows/scripts/assemble-torch-app.ps1` (mirror of the linux
+`windows/scripts/build/assemble-torch-app.ps1` (mirror of the linux
 `assemble-torch-app.sh` stage) during the final `docker build`:
 
 - **Ref**: `build.ps1` uses versions.env's **`APP_REF` pin by default** (the
@@ -1986,9 +1986,9 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `deploy-shim-patch.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): installs a locally built `containerd-shim-runhcs-v1.exe` over Stevedore's, keeping `.orig` (stock, written once) plus a timestamped backup per deployment, and optionally merges env vars into the containerd service (`-ServiceEnvironment`) since the shim inherits them. `-ReportOnly` lists installed binary, backups and env without touching anything; `-Restore .orig` / `-Restore .45min` puts a backup back. Refuses while `buildctl` or a shim process is alive (the binary is locked). Needed because every Stevedore/containerd update silently reverts the patched shim — see § BuildKit/containerd lane and `windows/upstream/`. NB: a quiet log is NOT proof it took effect (the shim logs its effective timeout at Debug, which does not reach containerd's log) — verify behaviourally with the OpenCV canary |
 | `setup-new-host.ps1` | `windows/scripts/` | HOST bring-up (admin, run `-ReportOnly` first, never while a build solves): the ONE elevated run that turns a freshly-rebooted Stevedore host into a green `verify-host-setup.ps1`. Orchestrates the canonical per-concern scripts rather than duplicating them: authors the CNI `.conflist` from the LIVE `vEthernet (nat)` subnet (derived network/prefix+GW at runtime — no magic subnet literals anywhere), then `apply-containerd-config.ps1` (derives the `.conf`, debug flags, teardown env, Defender), `apply-buildkitd-gcpolicy.ps1` + the `BUILDKIT_STEP_LOG_*` step-log env, the patched runhcs shim (BUILDS the 45min/100min fixed-constant shim from hcsshim source when no `-ShimPath` is given, installing Go via scoop — the recipe from `windows/upstream/`, then `deploy-shim-patch.ps1`), and dufs (scoops if missing, starts it, registers the ONLOGON task, sets machine `SCCACHE_WEBDAV_ENDPOINT` to the host's LAN IP). Idempotent; every sub-script is called with a HASHTABLE splat (array splatting would bind `-ReportOnly`/`-ShimPath` by position — the array-splat rule in AGENTS.md). Companion to `verify-host-setup.ps1` below |
 | `toggle-rdna4-gpu.ps1` | `windows/scripts/` | HOST maintenance (admin): enable/disable the RDNA4 dGPU in Device Manager (`-GpuName` overrides the RX 9070 XT default — the gate fires for ALL RX 9xxx/R9700 SKUs, so the remedy must reach them too; added 2026-08-10 W1). **RE-INSTATED 2026-08-10 as the RDNA4 build-window workaround** (the 2026-08-09 "obsolete" verdict is superseded): an enabled RDNA4 dGPU kills every process-isolated RUN-layer finalize (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven). Workflow: `-Disable` → build (display falls back to the iGPU) → default action re-enables. `build-buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight refuses while the dGPU is enabled. |
-| `probe-build-copy.ps1` | `windows/scripts/` | The committed build probe (assets `windows/diagnostics/probe-build-copy/`): `FROM servercore` + `RUN` + `COPY`, BK lane exporting `type=image,...,unpack=true` (the real lane's output path), per-lane exit codes; `-Heavy` adds the heavyweight-RUN finalize lane (the shape the RDNA4 interaction kills), `-Docker` the classic-builder lane. **Run `-Heavy` before trusting a new Windows host** — only a `-Heavy`-green verdict counts (light lanes stayed green while the chain died, 2026-08-10). No admin. |
-| `test-rdna4-layer-lock.ps1` | `windows/diagnostics/` | RDNA4 layer-lock A/B (ELEVATED): probes RUN-layer finalize with the dGPU enabled, then disabled (auto re-enables in a finally). Verdicts: GONE / PRESENT / INCONCLUSIVE. **Re-run after every Adrenalin or Windows update** — a GONE verdict is the signal to retire the toggle workflow + `Assert-NoActiveRdna4Gpu` gate (docker/for-win#14977 tracked upstream). |
-| `verify-cuda-cache.ps1` | `windows/diagnostics/` | CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl solve FROM the local toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint; exit 0 only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store. Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump** — the launcher's value rests on this property. |
+| `probe-build-copy.ps1` | `windows/scripts/` | The committed build probe (assets `windows/scripts/diagnostics/probe-build-copy/`): `FROM servercore` + `RUN` + `COPY`, BK lane exporting `type=image,...,unpack=true` (the real lane's output path), per-lane exit codes; `-Heavy` adds the heavyweight-RUN finalize lane (the shape the RDNA4 interaction kills), `-Docker` the classic-builder lane. **Run `-Heavy` before trusting a new Windows host** — only a `-Heavy`-green verdict counts (light lanes stayed green while the chain died, 2026-08-10). No admin. |
+| `test-rdna4-layer-lock.ps1` | `windows/scripts/diagnostics/` | RDNA4 layer-lock A/B (ELEVATED): probes RUN-layer finalize with the dGPU enabled, then disabled (auto re-enables in a finally). Verdicts: GONE / PRESENT / INCONCLUSIVE. **Re-run after every Adrenalin or Windows update** — a GONE verdict is the signal to retire the toggle workflow + `Assert-NoActiveRdna4Gpu` gate (docker/for-win#14977 tracked upstream). |
+| `verify-cuda-cache.ps1` | `windows/scripts/diagnostics/` | CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl solve FROM the local toolchain image compiles one `.cu` TWICE through sccache against the live WebDAV endpoint; exit 0 only when the recompile HIT (per-component: CUDA/Device/PTX/CUBIN) AND objects landed in the store. Verified 2026-08-10 (4/4 hits, 4 objects on disk). **Run after every sccache bump** — the launcher's value rests on this property. |
 | `collect-host-docker-state.ps1` | `windows/scripts/` | Cross-machine forensics for "works there, fails here": dumps OS build, optional features (DISM API health - reports "Klasse nicht registriert" when broken), filter drivers, services, engine versions, docker info, HNS. Writes `out\host-docker-forensics.txt`. Elevation needed for feature/fltmc reads. |
 | `reset-container-stores.ps1` | `windows/scripts/` | HOST maintenance (admin, never while a build solves): full container-store reset - stops the services, RENAMES `C:\ProgramData\containerd`/`buildkitd`/`Docker` to `.bak-<stamp>` (rollback), restarts clean, re-deploys the GC-policy toml. The docs' last resort for persistent, non-release hcsshim weirdness; safe on a fresh host (stores re-pull). |
 | `sync-defender-exclusions.ps1` | `windows/scripts/` | HOST maintenance (admin): prints, then applies if missing, the FULL Defender exclusion set for Windows-container builds - paths (`C:\ProgramData\containerd`/`buildkitd`/`Docker`/`nerdctl`, `C:\ProgramData\Microsoft\Windows\Containers`, `C:\temp`, `C:\WINDOWS\SystemTemp`) and processes (dockerd/containerd/buildkitd/nerdctl/CExecSvc/vmcompute). READ the BEFORE output: non-admin cannot see `Get-MpPreference`, so this is the only proof exclusions were ever applied. |
@@ -2084,7 +2084,7 @@ Upstream follow-ups: see "Pending" at the bottom.
 > end-of-step stat blocks and timestamps, not on clipped body text. Re-run the
 > forensics once a full chain has been captured with the env now in place.
 
-- **72 [M·★★★, none] Image export/unpack costs MORE than the build it wraps —
+- **72 [M·★★★, none] CLOSED 2026-08-20 - PREMISE DISPROVEN by the 2026-08-16 re-measurement (export ~1.2% of the chain, not 23%; the old figures came from stall/cache-failure-dominated runs). Standing instruction: do NOT collapse the media-core checkpoints on this item's authority - the resume granularity is worth more than ~60 s. Original finding: image export/unpack costs MORE than the build it wraps —
   4.33 h across the corpus, 339 operations.** The chain is split into 9+
   separate `buildctl` invocations and **each pays a full Windows-image export
   AND unpack**. Torch: 358.4 s export vs 172.6 s build (**2.08×**). LiteRT:
@@ -2118,7 +2118,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   authority** — the resume granularity it would cost is now worth far more than
   the ~60 s it would save. Keep the entry only as the record of a disproven
   premise.
-- **73 [S·★★★, none] Latent defect in the SHIPPED ONNX CUDA provider: infinite
+- **73 [S·★★★, none] SOLVED 2026-08-20 (verify: next media rebuild must show ZERO -Winfinite-recursion) - and the culprit was OUR OWN inline patch: the `_udiv128 -> udiv128` substitution (added for clang-cl's missing MSVC intrinsic; probe-udiv128-recursion proved clang 22.1.8 has no _udiv128) rewrote the call INSIDE cutlass's udiv128 into a self-call. Fix: disable CUTLASS's intrinsic guard for __clang__ instead - the portable 128-bit loop compiles, correct by construction. Upstream candidate (owner): NVIDIA/cutlass's guard `#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__)` should also carry `&& !defined(__clang__)`. Original finding: latent defect in the SHIPPED ONNX CUDA provider: infinite
   recursion in CUTLASS `udiv128`.** 225 occurrences of
   `uint128.h(96,90): warning: all paths through this function will call itself
   [-Winfinite-recursion]`, reached via `flash_api.h:36` while compiling
@@ -2130,7 +2130,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   analysis cannot see this — it exists only in the clang-cl port's compiler
   output. FIX: runtime smoke test of flash-attention, then a clang-cl
   `udiv128` patch alongside the existing `patches/onnxruntime` set.
-- **74 [S·★★, none] PARTLY DONE 2026-08-15 — the `-j9` half is fixed, the
+- **74 [S·★★, none] DONE + VERIFIED 2026-08-20: the batch-verify ride (cold C++ media build, green + smoke 190/0/1) logged ninja -j19 in ALL three formerly -j9 stages (genai, litert, tvm) - the MemGBPerJob=2 change measures out. Original PARTLY DONE 2026-08-15 — the `-j9` half is fixed, the
   measurement is not.** Backlog #28 lowered `MemGBPerJob` to 2 for onnx and
   opencv only, so the 2026-08-15 chain still logged `ninja -j9` three times
   (genai, litert, tvm) against `-j19` three times. Those three are now at 2 as
@@ -2154,7 +2154,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   Still worth fixing — a self-heal that can silently cost 11 h must be loud and
   bounded whether or not it fires today — but it is **latent, not active**, so it
   does not belong ahead of work on live defects. Same status as #76.
-- **76 [S·★★, none] The ~120-min ffmpeg stall (old #35) is CONFIRMED as a
+- **76 [S·★★, none] DONE 2026-08-20: the make/gawk provisioning region is bounded (10-min ceiling, 60-s heartbeat via Invoke-BoundedProvisionStep) - a recurrence costs minutes and names itself. Original finding: the ~120-min ffmpeg stall (old #35) is CONFIRMED as a
   one-off and DENIED as recurring — and it is a TIMEOUT, not jitter.** Exact
   gap: **7200.9 s** (≈ exactly 2 h) of zero output between
   `WARNING: vswhere returned no installation; using filesystem fallback` and
@@ -2175,7 +2175,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   retrying...` at 1236.8 s / 1392.2 s / 1391.3 s in three separate runs. Tight
   clustering + 100 % reproduction = this belongs in `patches/gstreamer`
   applied up-front, not as a post-failure repair.
-- **78 [S·★★, none] The VS major-version pin is NOT being honoured — the
+- **78 [S·★★, none] DONE 2026-08-20: the filesystem fallback prefers the VISUAL_STUDIO_VERSION major (a VS promotion can no longer float in newest-first), warns loudly on a pin miss, and is memoized per process (was x100 warnings). Original finding: the VS major-version pin is NOT being honoured — the
   toolchain is pinned by luck.** Today's base build:
   `WARNING: major-pinned VS alias unavailable — used floating 'stable' channel
   (currently VS 18…)`. Plus `vswhere returned no installation; using filesystem
@@ -2183,7 +2183,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   discovery. The day Microsoft promotes VS 19, the pin floats AND the fallback
   path breaks simultaneously, re-opening the documented vcpkg/VS-toolset
   rejection class.
-- **79 [S·★★, none] `aka.ms` serves HTML instead of the VS bootstrapper binary
+- **79 [S·★★, none] DONE 2026-08-20: pinned-alias retry budget 2->3 before the loud stable degrade; the Adoptium half already shipped separately (github-first JDK fetch in build-litert-lm-bazel). The MZ-signature guard remains the HTML defence; no bootstrapper preseed (its hash floats within a channel by design). Original finding: `aka.ms` serves HTML instead of the VS bootstrapper binary
   — the same failure family as the known nuget trap.** Today's base build:
   `expected a MZ-signature file but got first bytes 60,33 (likely an HTML error
   page)` — `60,33` is `<!`. Also 3 consecutive failures against
@@ -2191,7 +2191,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   but the retry budget is 2 and it self-heals only because a fallback URL
   exists. The pre-seed fix already applied to nuget was never extended to the
   VS bootstrapper or Adoptium.
-- **80 [S·★★, none] HALF DONE 2026-08-17 — the observability half shipped: `analyze-warning-stream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
+- **80 [S·★★, none] DONE 2026-08-20 - the suppression half shipped too (Get-WarningNoiseSuppressionFlags, ONE module-exported list feeding onnx/opencv/tvm/genai/litert-lm; gstreamer=meson deliberately untouched) and rode the green batch-verify ride. Earlier: HALF DONE 2026-08-17 — the observability half shipped: `analyze-warning-stream.ps1` classifies any build log in seconds (verified against today's 34-MB chain: 87,515 warnings, 82.7 % noise, and LIVE signal — 422 ×inconsistent-missing-override, 26 ×undefined-var-template, 14 ×infinite-recursion, 68 ×inconsistent-dllimport). STILL OPEN: suppress the top-5 noise classes at build-script level (files are bind-mounted — land between builds). Original finding: 96 % of the warning stream is 5 noise classes, hiding 1,055
   genuine signals.** Corpus totals: `-Wunused-parameter` 68,502,
   `-Wdocumentation-unknown-command` 18,144, `-Wdeprecated-copy…` 17,887,
   `-Wundef` 17,056, `-Wmissing-field-initializers` 12,294 — vs the signal
@@ -2224,8 +2224,8 @@ Upstream follow-ups: see "Pending" at the bottom.
 
 ### P2 — Fail-open gates & silent degradation (green build, crippled image)
 
-- **45 [S·★★★, none] A mis-plumbed CUDA path yields a fully green, CPU-ONLY
-  media chain — discovered hours later.** `WindowsSourceBuild.Cuda.psm1:47`
+- **45 [S·★★★, none] DONE 2026-08-19 (module edit, next media rebuild): Get-GpuEnvironment THROWS on GPU_TYPE=nvidia with no resolvable CUDA root; FORCE_CPU opt-outs short-circuit before the gate (2 unit tests).** Original finding: a mis-plumbed CUDA path yields a fully green, CPU-ONLY
+  media chain — discovered hours later. `WindowsSourceBuild.Cuda.psm1:47`
   gates on `Test-Path $cudaRoot`; every consumer then takes a quiet else-branch
   (`build-onnx:307` "CPU-only build", `build-opencv:277` `WITH_CUDA=OFF`,
   `build-tvm:39` silently). `GPU_TYPE=nvidia` is baked at `Dockerfile.nvidia:93`,
@@ -2268,7 +2268,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   headers, `onnxruntime.lib`, LiteRT headers, `tensorflowlite_c.lib`) depend on
   NONE of that work. Hoisting it above :228 turns a missing media fan-in from
   "full download+patch phase, then fail" into a ~5-second failure.
-- **68 [M·★★★, none] FFmpeg's prebuilt fallback ships a MIXED install, and the
+- **68 [M·★★★, none] DONE 2026-08-20: the BtbN fallback is FAIL-CLOSED (throws unless FFMPEG_ALLOW_PREBUILT=1; the opt-in path scrubs the whole prefix first so a MIX is impossible, and the .pc gate skip is loud); the skip-if-present early return runs Assert-FfmpegPkgConfig before trusting an inherited install. Original finding: FFmpeg's prebuilt fallback ships a MIXED install, and the
   skip-if-present early return bypasses every gate on re-entry.** On a missing
   `ffmpeg.exe` it downloads BtbN's zip and copies `*.exe`/`*.dll` over whatever
   a partial `make install` left (:441-459), while OUR import libs and `.pc`
@@ -2300,7 +2300,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   the 2026-08-14 audit and was dropped when the findings were numbered — the
   numbers came from the audit's list, and this one fell out; re-verify the P2b
   set against the audit before assuming it is complete.
-- **69 [S·★★, none] Live pin drift that the parity gate structurally cannot
+- **69 [S·★★, none] DONE 2026-08-20: W1c AST scanner covers the if($env:KEY){...}else{'<literal>'} idiom (pin membership filters behavior defaults; scanner-rot guard pins 9 sites) and caught 3 LIVE drifts, all fixed: build-ffmpeg NV_CODEC_HEADERS_REF n13.0.19.0->n13.1.15.0 (the documented 404/NVENC-skip seed), build-litert-lm-bazel 0.15.0->0.16.1, assemble-torch-app v0.0.22->v0.0.27. Original finding: live pin drift that the parity gate structurally cannot
   see.** `build-ffmpeg-from-source.ps1:241` hardcodes
   `else { 'n13.0.19.0' }` against `versions.env:184 NV_CODEC_HEADERS_REF=n13.1.15.0`
   — verified drift. `SourceBuild.PinParity.Tests.ps1:80` scans only
@@ -2310,8 +2310,8 @@ Upstream follow-ups: see "Pending" at the bottom.
   nv-codec-headers ref once "404'd and NVENC was silently skipped on both
   lanes" — this is that incident's seed, re-planted. FIX: route the literals
   through `Get-SourceBuildVersion`; teach the AST scanner the second idiom.
-- **70 [S·★★, none] FFmpeg is the only compile stage with NO sccache wiring at
-  all** — verified: 0 `Write-SccacheStats` calls, and the script never sets the
+- **70 [S·★★, none] DONE 2026-08-20, subsumed by #100: FFmpeg compiles through the make-time sccache launcher (2198/2198, 100.00% on the hit run) and the chain epilogue emits its stats.** Original finding: FFmpeg is the only compile stage with NO sccache wiring at
+  all — verified: 0 `Write-SccacheStats` calls, and the script never sets the
   sccache endpoint. The precedent is its sibling, which documents that
   GStreamer "ran completely uncached (~30 min hot)" until 2026-08-04 because
   "the merge builder simply never wired the endpoint through". A 30-60 min
@@ -2365,7 +2365,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   and would have to be extended to Dockerfile.base before landing them. Not obviously
   worth it; that judgement is the owner's, which is why this was NOT landed with
   #81 on 2026-08-14 even though the base was rebuilt anyway.
-- **51 [M·★★★, media once] `MEMORY_LIMIT_GB` — a scheduling knob — is an image
+- **51 [M·★★★, media once] DONE 2026-08-20: no longer image metadata - the driver publishes the effective budget to the webdav (preseed/memory-limit-gb.txt), Get-BuildJobCount reads env -> webdav (memoized) -> CIM; under -ConcurrentAux every branch now gets the halved budget (the old full+halved+halved asymmetry oversubscribed the host). Original finding: `MEMORY_LIMIT_GB` — a scheduling knob — is an image
   ENV and therefore a CACHE KEY** (`Dockerfile.media-builder:29,67`). The
   driver halves it for `-ConcurrentAux` (`build-buildkit.ps1:378`), so merely
   TOGGLING that flag changes the layer digest and invalidates every litert/tvm
@@ -2392,7 +2392,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   (`WindowsFormatting.Common.psm1:279`). Also: all six derived Dockerfiles
   re-declare `SHELL` and drop the clause — `SHELL` IS inherited via image
   config, so those are redundant layers against the 125-cap.
-- **54 [S·★★, merge] `cuda-runtime-stage` ships a SECOND, flattened copy of the
+- **54 [S·★★, merge] DONE 2026-08-20, PREMISE DISPROVEN + RE-SCOPED TO A TRIM: the merge lineage (merge-fanin FROM toolchain; final <- torch <- media) never carries the nvidia originals, so the flatten is the ONLY copy, not a duplicate. The real win: the closure probe (probe-cuda-runtime-closure) showed 13/36 staged DLLs statically imported; the stage now trims the closure-verified-unreferenced, non-dynamic-load families (cusparse/cusolver/cusolvermg/nvjpeg/npps, ~436 MB) and KEEPS all cudnn_* + the nvrtc JIT chain (dlopened at runtime; unverifiable on this GPU-less host). Next merge build. Original finding: `cuda-runtime-stage` ships a SECOND, flattened copy of the
   CUDA + cuDNN runtime DLLs** (`Dockerfile.media-merge-builder:138`); cuDNN's
   set alone is 0.52 GB uncompressed, plus CUDA 13's cublas/cufft/cusolver/nvrtc.
   The originals are still in the image (merge descends from the nvidia stage)
@@ -2458,7 +2458,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   BuildKit upstream report is filed). Only `v2` is referenced. One probe-style
   cleanup RUN reclaims ~200 MiB of the shared 40 GB tier-0 budget. Builder
   disk, not image size. BLOCKED while any build holds the locked mount.
-- **106 [S·★, none] PARTLY DONE — the 5.1 parse gate shipped and immediately
+- **106 [S·★, none] DONE 2026-08-20 - STALE REMAINDER: the '~52 undeclared files' were already normalized by 09f97bab (repo-wide sweep); today's audit finds exactly ONE file without `#requires -Version 7.0` - bootstrap-pwsh.ps1, the DELIBERATE 5.1 exception whose test asserts it must NOT declare 7.0. Entry outlived its fix (same class as #81). Earlier: PARTLY DONE — the 5.1 parse gate shipped and immediately
   corrected the entry''s own premise** (only `bootstrap-pwsh.ps1` runs under
   WPS 5.1; setup-vs/setup-scoop declare 7.0 and run after the SHELL switch).
   STILL OPEN: add `#requires -Version 7.0` to the ~52 undeclared files — many
@@ -2536,14 +2536,37 @@ Upstream follow-ups: see "Pending" at the bottom.
 > landed 2026-08-17.
 
 - **108 [M·★★, none] Directory convention for `windows/scripts/` (60 flat
-  scripts).** Target: `scripts/build/` (chain components), `scripts/host/`
+  scripts).** **EXECUTION SPEC (2026-08-20, measured surface: 66 Dockerfile
+  mount/COPY refs, 26 test files with path assumptions, 57 docs refs, 11
+  scripts with $PSScriptRoot-relative imports, 3 driver refs, plus
+  downstream-vendored module refs):** (1) mapping: build-* and the *-all
+  wrappers -> scripts/build/, setup-*/apply-*/repair-*/bootstrap-* ->
+  scripts/host/, probe-*/analyze-* + top-level diagnostics/ ->
+  scripts/diagnostics/; modules/tests/patches/shims stay. (2) THE
+  dual-layout trap: after the move, $PSScriptRoot-relative modules/patches
+  refs cannot serve host (scripts/build/) AND container (flat C:/bkmnt)
+  with one string - the bind-mount TARGETS must mirror the new layout
+  (C:/bkmnt/build/<script> + C:/bkmnt/modules), which cascades through
+  every -ScriptDir contract in the chain wrappers. (3) land as ONE commit,
+  ONLY on a green chain, verified by ITS OWN full ride + smoke.
+  Prerequisite not met at spec time (the 2026-08-20 batch-verify ride was
+  still running); execute as a fresh dedicated session, never at the tail
+  of a change-heavy day. Target: `scripts/build/` (chain components), `scripts/host/`
   (setup/repair/elevated tools), `scripts/diagnostics/` (probes + analyzers,
   merging the half-empty top-level `diagnostics/`), `modules/` and `tests/`
   stay. COSTS: every bind-mount path in the Dockerfiles, the docs script
   table, and downstream repos'' vendored references (CONSUMED-BY modules stay
   put). Land in ONE sweep with a full-chain verify — path moves are the most
   cache-hostile edit there is.
-- **109 [L·★★★, staged] Phase-split the monolith build scripts.**
+- **109 [L·★★★, staged] CORE LANDED 2026-08-20: Start-/Complete-BuildPhase + summary machinery in the module (scope-transparent try/catch brackets, 4 unit tests); build-gstreamer bracketed into 10 named phases (its numbered sections, duplicate '6' renumbered); build-litert-lm's 8 #region markers made live (catch stamps the failing phase before the chain wrapper). smoke-test-container needs NOTHING - its 23 Write-TestHeader sections + per-assertion counters already satisfy the goal. OPTIONAL remainder: bracket onnx/opencv (mid-size, already chain-labeled - low value). Verify: next merge/media builds print the phase tables. Original: phase-split the monolith build scripts.**
+  **TRANCHE PLAN (2026-08-20, execute one tranche per planned rebuild window,
+  never standalone - script edits bust the bind-mount cache keys):**
+  T1 build-gstreamer (largest, most phases; carry #110's logging sweep for
+  the files touched); T2 build-onnx + build-opencv; T3 the litert/tvm pair;
+  T4 the setup-* family + #108's directory convention in the same window
+  (one big COPY/mount path sweep, all Dockerfiles + drivers + tests in ONE
+  commit, verified by a full ride). #110 rides each tranche (its own entry
+  says so); #108 lands WITH T4, never alone.
   `build-gstreamer` (991 lines), `build-litert-lm` (1207),
   `smoke-test-container` (1419) each mix download/patch/configure/compile/
   verify in one file. Target: phase functions in the script (not new files —
@@ -2551,9 +2574,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   its phase and a reader navigates by structure instead of scrolling. Do ONE
   script per tranche, verify with its own build; gstreamer first (its three
   fresh gates from #65/#66/#88 already mark the seams).
-- **110 [S·★★, none] One logging idiom.** `log` vs `Write-Host` vs
-  `Write-BuildLog` across sibling scripts; pick the module helper, sweep the
-  rest during #109''s per-script tranches (zero extra builds that way).
+- **110 [S·★★, none] CLOSED 2026-08-20 with a DECISION instead of a sweep: chain build scripts use Write-Host (stage labels + the #109 phase tables carry the structure), build-gstreamer keeps its STRUCTURED `log` (richest idiom - file+console via New-StructuredLogContext; converting it would lose the file log), Write-BuildLog stays host-driver territory. A mass sweep would bust every bind-mount cache key for cosmetics - enforcement is review + this note. Original finding: `log` vs `Write-Host` vs `Write-BuildLog` across sibling scripts.
 > **DECLINED by owner 2026-08-17:** branch protection (#59) and a scheduled
 > nightly/weekly chain run (would-be #111). Manual launches remain the
 > verification cadence — do not re-propose either.

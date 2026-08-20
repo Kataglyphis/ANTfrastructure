@@ -474,19 +474,39 @@ function Get-VisualStudioInstallPath {
         if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
     }
     if ($vsPaths.Count -eq 0) {
-        $globbed = @(Get-ChildItem -Path @(
-                "$env:ProgramFiles\Microsoft Visual Studio",
-                "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
-            ) -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match '^\d+$' } |
-            Get-ChildItem -Directory -ErrorAction SilentlyContinue |
-            Where-Object { Test-Path (Join-Path $_.FullName 'VC\Tools\MSVC') -PathType Container } |
-            Sort-Object FullName -Descending |
-            Select-Object -ExpandProperty FullName)
-        if ($globbed.Count -gt 0) {
-            Write-Warning "vswhere returned no installation; using filesystem fallback: $($globbed[0])"
-            $vsPaths = $globbed
+        # Memoized (#78): under a dead vswhere every caller used to re-glob and
+        # re-warn - one base build logged the warning x100. Resolve once per
+        # process, warn once. (Process-scope cache: a VS install appearing
+        # mid-process is not a supported scenario.)
+        if (-not (Test-Path 'Variable:script:VsFilesystemFallbackCache')) {
+            $globbed = @(Get-ChildItem -Path @(
+                    "$env:ProgramFiles\Microsoft Visual Studio",
+                    "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
+                ) -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -match '^\d+$' } |
+                Get-ChildItem -Directory -ErrorAction SilentlyContinue |
+                Where-Object { Test-Path (Join-Path $_.FullName 'VC\Tools\MSVC') -PathType Container } |
+                Sort-Object FullName -Descending |
+                Select-Object -ExpandProperty FullName)
+            # Honour the pin (#78): newest-first is right for a dev host, but in
+            # the pinned images a VS major promotion must never float in via the
+            # fallback. Prefer the VISUAL_STUDIO_VERSION major when present;
+            # warn loudly when the pin resolves to nothing (pre-promotion class
+            # of the documented vcpkg/VS-toolset rejection).
+            if ($globbed.Count -gt 0 -and $env:VISUAL_STUDIO_VERSION) {
+                $pinned = @($globbed | Where-Object { $_ -match [regex]::Escape("\$($env:VISUAL_STUDIO_VERSION)\") })
+                if ($pinned.Count -gt 0) {
+                    $globbed = @($pinned) + @($globbed | Where-Object { $_ -notin $pinned })
+                } else {
+                    Write-Warning "VS filesystem fallback: no install matches the VISUAL_STUDIO_VERSION=$env:VISUAL_STUDIO_VERSION pin - resolving newest ($($globbed[0])). If a VS major was just promoted, expect the vcpkg/VS-toolset rejection class."
+                }
+            }
+            if ($globbed.Count -gt 0) {
+                Write-Warning "vswhere returned no installation; using filesystem fallback: $($globbed[0]) (memoized for this process)"
+            }
+            $script:VsFilesystemFallbackCache = $globbed
         }
+        $vsPaths = $script:VsFilesystemFallbackCache
     }
 
     if ($vsPaths.Count -eq 0) {
@@ -633,7 +653,7 @@ function Resolve-PreferredTool {
 
 # ── Tool guards ───────────────────────────────────────────────────────────────
 # Assert-Command lived as a private copy in windows/scripts/rust/
-# New-MsixPackage.ps1, windows/scripts/smoke-test-container.ps1 and a
+# New-MsixPackage.ps1, windows/scripts/build/smoke-test-container.ps1 and a
 # consumer's Build-Windows.ps1, all three identical. One home now.
 #
 # There is deliberately NO general Resolve-Executable here. Both the

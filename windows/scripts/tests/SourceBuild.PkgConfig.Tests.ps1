@@ -208,7 +208,7 @@ Describe 'Assert-PkgConfigModule version floors' {
 
     It 'carries the floors gst actually demands at the call site' {
         # Guards the numbers against drift from upstream's meson.build.
-        $script = Get-Content (Join-Path $PSScriptRoot '..\build-gstreamer-from-source.ps1') -Raw
+        $script = Get-Content (Join-Path $PSScriptRoot '..\build\build-gstreamer-from-source.ps1') -Raw
         foreach ($pair in @(
                 @{ M = 'libavcodec';     V = '58.18.100' },
                 @{ M = 'libavformat';    V = '58.12.100' },

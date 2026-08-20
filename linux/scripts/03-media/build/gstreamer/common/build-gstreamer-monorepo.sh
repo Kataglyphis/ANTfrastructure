@@ -671,6 +671,16 @@ build_gstreamer_monorepo() {
   # stale value into a later native/amd64 call in the same shell process.
   local gtk_feature="enabled"
 
+  # SCCACHE-RUST OFF (2026-08-20): the toolchain cargo config wires sccache as
+  # rustc-wrapper; its in-container server died mid-compile in THREE separate
+  # media rounds this session ("Failed to send/receive data from server" /
+  # "No such file or directory" fatals on trivial crates) and killed otherwise
+  # green gstreamer builds at 99%. Empty RUSTC_WRAPPER beats the cargo config
+  # (env > config precedence; empty = no wrapper). ccache keeps covering
+  # C/C++; sccache-for-rust returns via the controlled ENABLE_SCCACHE_RUST /
+  # SCC1 validation, not as a silent default.
+  export RUSTC_WRAPPER=""
+
   _gst_monorepo_env_setup
   _gst_monorepo_python_config
   _gst_monorepo_meson_base_flags

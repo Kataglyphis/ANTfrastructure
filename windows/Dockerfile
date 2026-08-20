@@ -32,7 +32,7 @@ ENV PATH=C:\runtime\lib\onnxruntime-source\bin;$PATH
 # Docker's 125-layer cap (hit 2026-08-03). Modules dir COPY stays separate
 # (different dest). Copied here — the cheapest, last stage — so script edits
 # never invalidate the base or media layers.
-COPY windows\scripts\healthcheck.ps1 windows\scripts\smoke-test-container.ps1 windows\scripts\entrypoint.cmd C:\temp\scripts\
+COPY windows\scripts\build\healthcheck.ps1 windows\scripts\build\smoke-test-container.ps1 windows\scripts\entrypoint.cmd C:\temp\scripts\
 # Full module set for in-container CI tooling (WindowsBuild/WindowsUv/... are
 # imported from this path by downstream Invoke-Ci* / rust build scripts).
 COPY windows\scripts\modules C:\temp\scripts\modules

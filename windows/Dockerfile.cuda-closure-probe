@@ -1,0 +1,14 @@
+# escape=`
+# =============================================================================
+# #54 re-scoped: measure the ACTUAL dependency closure of the staged
+# CUDA/cuDNN runtime DLLs in the merge image. Run via:
+#   run-diagnostic-probe.ps1 -Dockerfile Dockerfile.cuda-closure-probe -BaseImage local/kataglyphis:bk-windows-media
+# =============================================================================
+ARG BASE_IMAGE=local/kataglyphis:bk-windows-media
+FROM ${BASE_IMAGE} AS probe
+
+# Layer-cache buster (a CACHED run replays an old verdict).
+ARG PROBE_NONCE="0"
+
+RUN --mount=type=bind,source=windows/scripts/diagnostics/probe-cuda-runtime-closure.ps1,target=C:\bkmnt\probe-cuda-runtime-closure.ps1 `
+    & 'C:\bkmnt\probe-cuda-runtime-closure.ps1' -Nonce "${PROBE_NONCE}"

@@ -233,11 +233,24 @@ _opencv_target_adjustments() {
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # RV1 (2026-08-18): the old riscv64 WITH_GSTREAMER=OFF exception is
-            # LIFTED — ports now carries the GStreamer/GLib dev chain, and pass-2
-            # (opencv-gst) links OUR source-built /opt/gstreamer anyway, which
-            # riscv64 builds. GStreamer follows the same probe path as arm64 now;
-            # target: cv2 GStreamer:YES on ALL THREE arches (full two-pass parity).
+            # RV1 FINAL VERDICT (2026-08-20, after live testing BOTH passes):
+            # riscv64 stays WITH_GSTREAMER=OFF in BOTH passes. Pass-1 against
+            # ports gstreamer AND pass-2 against our /opt/gstreamer BOTH die
+            # the same way: the ports glib-2.0.pc (a transitive Requires of
+            # every gstreamer .pc) expands includedir WITHOUT its prefix in
+            # opencv's cmake pkg-config context ("/glib-2.0/include") and the
+            # imported target hard-fails on the nonexistent path. This is a
+            # riscv64 cross-pkg-config defect, not an availability gap —
+            # backlog RV1-GST-PC has the exact diagnosis. cv2 GStreamer:YES
+            # ships on amd64+arm64; riscv64 keeps wave-3 behavior (NO) until
+            # the .pc prefix expansion is fixed.
+            _ota_with_gstreamer="OFF"
+            # RV1-FOLGE 4 (2026-08-20): the contrib freetype module now
+            # activates (RV1's dev packages) but resolves the HOST x86
+            # libharfbuzz in the riscv64 cross link ("file in wrong format").
+            # Text-rendering nicety, not core — off until the harfbuzz
+            # resolution is sysroot-clean (rides RV1-GST-PC's root cause).
+            _ota_cmake_opts+=("-DBUILD_opencv_freetype=OFF")
             # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
             # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL

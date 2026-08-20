@@ -57,7 +57,7 @@ Describe 'Remove-MakefileShowIncludes' {
     # These tests keep pinning the PRODUCTION definition: extract exactly the
     # function's AST from the script (dot-sourcing the whole script would start
     # a build) and load it into this scope.
-    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build-ffmpeg-from-source.ps1'
+    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build\build-ffmpeg-from-source.ps1'
     $tokens = $null; $errors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($ffmpegScript, [ref]$tokens, [ref]$errors)
     $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Remove-MakefileShowIncludes' }, $true) | Select-Object -First 1
@@ -99,7 +99,7 @@ Describe 'Remove-MakefileShowIncludes' {
 Describe 'Assert-FfmpegPkgConfig' {
     # Same AST-extraction rationale as above: the gate lives in the FFmpeg script
     # so it stays out of the three media branches' compile closure.
-    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build-ffmpeg-from-source.ps1'
+    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build\build-ffmpeg-from-source.ps1'
     $tokens = $null; $errors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($ffmpegScript, [ref]$tokens, [ref]$errors)
     $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Assert-FfmpegPkgConfig' }, $true) | Select-Object -First 1
