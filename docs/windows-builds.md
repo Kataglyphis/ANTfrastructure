@@ -2175,7 +2175,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   retrying...` at 1236.8 s / 1392.2 s / 1391.3 s in three separate runs. Tight
   clustering + 100 % reproduction = this belongs in `patches/gstreamer`
   applied up-front, not as a post-failure repair.
-- **78 [S·★★, none] The VS major-version pin is NOT being honoured — the
+- **78 [S·★★, none] DONE 2026-08-20: the filesystem fallback prefers the VISUAL_STUDIO_VERSION major (a VS promotion can no longer float in newest-first), warns loudly on a pin miss, and is memoized per process (was x100 warnings). Original finding: the VS major-version pin is NOT being honoured — the
   toolchain is pinned by luck.** Today's base build:
   `WARNING: major-pinned VS alias unavailable — used floating 'stable' channel
   (currently VS 18…)`. Plus `vswhere returned no installation; using filesystem
@@ -2183,7 +2183,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   discovery. The day Microsoft promotes VS 19, the pin floats AND the fallback
   path breaks simultaneously, re-opening the documented vcpkg/VS-toolset
   rejection class.
-- **79 [S·★★, none] `aka.ms` serves HTML instead of the VS bootstrapper binary
+- **79 [S·★★, none] DONE 2026-08-20: pinned-alias retry budget 2->3 before the loud stable degrade; the Adoptium half already shipped separately (github-first JDK fetch in build-litert-lm-bazel). The MZ-signature guard remains the HTML defence; no bootstrapper preseed (its hash floats within a channel by design). Original finding: `aka.ms` serves HTML instead of the VS bootstrapper binary
   — the same failure family as the known nuget trap.** Today's base build:
   `expected a MZ-signature file but got first bytes 60,33 (likely an HTML error
   page)` — `60,33` is `<!`. Also 3 consecutive failures against
@@ -2268,7 +2268,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   headers, `onnxruntime.lib`, LiteRT headers, `tensorflowlite_c.lib`) depend on
   NONE of that work. Hoisting it above :228 turns a missing media fan-in from
   "full download+patch phase, then fail" into a ~5-second failure.
-- **68 [M·★★★, none] FFmpeg's prebuilt fallback ships a MIXED install, and the
+- **68 [M·★★★, none] DONE 2026-08-20: the BtbN fallback is FAIL-CLOSED (throws unless FFMPEG_ALLOW_PREBUILT=1; the opt-in path scrubs the whole prefix first so a MIX is impossible, and the .pc gate skip is loud); the skip-if-present early return runs Assert-FfmpegPkgConfig before trusting an inherited install. Original finding: FFmpeg's prebuilt fallback ships a MIXED install, and the
   skip-if-present early return bypasses every gate on re-entry.** On a missing
   `ffmpeg.exe` it downloads BtbN's zip and copies `*.exe`/`*.dll` over whatever
   a partial `make install` left (:441-459), while OUR import libs and `.pc`
@@ -2392,7 +2392,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   (`WindowsFormatting.Common.psm1:279`). Also: all six derived Dockerfiles
   re-declare `SHELL` and drop the clause — `SHELL` IS inherited via image
   config, so those are redundant layers against the 125-cap.
-- **54 [S·★★, merge] `cuda-runtime-stage` ships a SECOND, flattened copy of the
+- **54 [S·★★, merge] DONE 2026-08-20, PREMISE DISPROVEN + RE-SCOPED TO A TRIM: the merge lineage (merge-fanin FROM toolchain; final <- torch <- media) never carries the nvidia originals, so the flatten is the ONLY copy, not a duplicate. The real win: the closure probe (probe-cuda-runtime-closure) showed 13/36 staged DLLs statically imported; the stage now trims the closure-verified-unreferenced, non-dynamic-load families (cusparse/cusolver/cusolvermg/nvjpeg/npps, ~436 MB) and KEEPS all cudnn_* + the nvrtc JIT chain (dlopened at runtime; unverifiable on this GPU-less host). Next merge build. Original finding: `cuda-runtime-stage` ships a SECOND, flattened copy of the
   CUDA + cuDNN runtime DLLs** (`Dockerfile.media-merge-builder:138`); cuDNN's
   set alone is 0.52 GB uncompressed, plus CUDA 13's cublas/cufft/cusolver/nvrtc.
   The originals are still in the image (merge descends from the nvidia stage)
