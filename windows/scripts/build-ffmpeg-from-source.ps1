@@ -213,15 +213,44 @@ foreach ($ffLib in $ffLibs) {
 # Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment
 $scoopShims = "$env:USERPROFILE\scoop\shims"
+# #76 insurance: this provisioning region once sat SILENT for exactly
+# 7200.9 s (a network timeout inside a scoop fetch; normal is 11-18 s,
+# 14 clean runs since - latent, not active). Bound it: the step runs as a
+# job with a heartbeat every minute and a hard 10-min ceiling, so a
+# recurrence costs minutes and names itself instead of eating 2 h mute.
+function Invoke-BoundedProvisionStep {
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][scriptblock]$Step,
+        [int]$TimeoutMinutes = 10
+    )
+    $stepStart = Get-Date
+    $job = Start-Job -ScriptBlock $Step
+    try {
+        while ($job.State -eq 'Running' -and (Get-Date) -lt $stepStart.AddMinutes($TimeoutMinutes)) {
+            $null = Wait-Job -Job $job -Timeout 60
+            if ($job.State -eq 'Running') {
+                Write-Host ("  [{0}] still running ({1:N0}s) - heartbeat (#76 guard)" -f $Label, ((Get-Date) - $stepStart).TotalSeconds)
+            }
+        }
+        if ($job.State -eq 'Running') {
+            Stop-Job -Job $job
+            throw "$Label exceeded $TimeoutMinutes min - the #76 stall class (2h-mute network timeout); rerun or check egress."
+        }
+        Receive-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+    } finally {
+        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    }
+}
 # Ensure make is available
 if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     Write-Host "Installing make via scoop..."
-    & scoop install main/make 2>&1 | Out-Null
+    Invoke-BoundedProvisionStep -Label 'scoop install make' -Step { & scoop install main/make 2>&1 }
 }
 # Install gawk and replace MSYS2's broken awk
 if (-not (Get-Command gawk -ErrorAction SilentlyContinue)) {
     Write-Host "Installing gawk via scoop..."
-    & scoop install main/gawk 2>&1 | Out-Null
+    Invoke-BoundedProvisionStep -Label 'scoop install gawk' -Step { & scoop install main/gawk 2>&1 }
 }
 # Replace MSYS2 awk with gawk for FFmpeg dep file processing
 $gitAwk = 'C:\Program Files\Git\usr\bin\awk.exe'
