@@ -253,7 +253,7 @@ if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path 
     # Clone the pinned nv-codec-headers ref and `make install` into a private prefix. PREFIX is a
     # forward-slash *Windows* path (C:/...), NOT an MSYS /c/... path, so the generated ffnvcodec.pc
     # emits `-IC:/.../include` cflags that cl.exe consumes directly (verified in an isolated lab).
-    $nvHdrRef       = if ($env:NV_CODEC_HEADERS_REF) { $env:NV_CODEC_HEADERS_REF } else { 'n13.0.19.0' }
+    $nvHdrRef       = if ($env:NV_CODEC_HEADERS_REF) { $env:NV_CODEC_HEADERS_REF } else { 'n13.1.15.0' }
     $nvHdrSrc       = 'C:\temp\nv-codec-headers'
     $nvHdrPrefix    = 'C:\temp\nv-codec-headers-install'
     $nvHdrPrefixFwd = $nvHdrPrefix -replace '\\', '/'

@@ -43,7 +43,7 @@ Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 if ([string]::IsNullOrWhiteSpace($LitertLmVersion)) {
-    $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.15.0' }
+    $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.16.1' }
 }
 $tag = if ($LitertLmVersion -match '^v') { $LitertLmVersion } else { "v$LitertLmVersion" }
 

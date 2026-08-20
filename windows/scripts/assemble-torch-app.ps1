@@ -35,7 +35,7 @@ $nativeModulePath = Join-Path $PSScriptRoot 'modules\WindowsNative.Common.psm1'
 if (-not (Test-Path $nativeModulePath)) { throw "Required module not found: $nativeModulePath" }
 Import-Module $nativeModulePath -Force
 
-if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'v0.0.22' } }
+if ([string]::IsNullOrWhiteSpace($AppRef)) { $AppRef = if ($env:APP_REF) { $env:APP_REF } else { 'v0.0.27' } }
 if ([string]::IsNullOrWhiteSpace($PytorchExtra)) { $PytorchExtra = if ($env:PYTORCH_EXTRA) { $env:PYTORCH_EXTRA } else { 'pytorch-cpu' } }
 
 $cpythonExe = 'C:\temp\cpython\PCbuild\amd64\python.exe'
