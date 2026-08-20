@@ -179,7 +179,7 @@ $cmakeExtra = @(
     # Upstream's own header comments -- nothing here can fix them, and they say
     # nothing about the correctness of this build.
     # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
-    '-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes -Wno-documentation-unknown-command'
+    "-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
     '-DUSE_OPENCL=OFF'
     '-DUSE_MICRO=OFF'
     "-DUSE_CUDA=$useCuda"

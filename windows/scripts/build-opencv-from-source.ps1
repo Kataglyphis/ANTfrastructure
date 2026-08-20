@@ -207,7 +207,7 @@ $cmakeExtra = $cudaRspArgs + @(
     # nvcc's cl.exe host compiler (patches/opencv/001-cmake-clang-cl-compat.patch)
     # -- cl.exe would reject a GNU-style -W flag with D8021.
     # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
-    "-DCMAKE_CXX_FLAGS:STRING=/FIcstring -Wno-deprecated-copy $simdFlags",
+    "-DCMAKE_CXX_FLAGS:STRING=/FIcstring $(Get-WarningNoiseSuppressionFlags) $simdFlags",
     '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF',
                          # BUILD_opencv_world=OFF: avoids FFmpeg/ONNX importing issues
                          '-DBUILD_opencv_world=OFF',

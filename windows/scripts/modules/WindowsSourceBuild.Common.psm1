@@ -520,6 +520,19 @@ function Remove-SourceBuildTree {
     $global:LASTEXITCODE = 0
 }
 
+function Get-WarningNoiseSuppressionFlags {
+    # #80 (second half, 2026-08-20): five classes were 96% of an 87,515-line
+    # chain warning stream (-Wunused-parameter 68,502; -Wdocumentation-
+    # unknown-command 18,144; -Wdeprecated-copy 17,887; -Wundef 17,056;
+    # -Wmissing-field-initializers 12,294) and BURIED the ~1,055 genuine
+    # signals (-Winconsistent-missing-override, -Wundefined-var-template,
+    # -Winfinite-recursion, ...). Suppress the noise at the source so
+    # analyze-warning-stream.ps1 and a plain log skim can see the rest.
+    # ONE list for every clang-cl CMake build - per-script copies would
+    # drift exactly like the version literals W1c polices.
+    return '-Wno-unused-parameter -Wno-documentation-unknown-command -Wno-deprecated-copy -Wno-undef -Wno-missing-field-initializers'
+}
+
 function Get-BuildJobCount {
     param(
         [int]$MemGBPerJob = 4
@@ -1468,6 +1481,7 @@ Export-ModuleMember -Function @(
     'Test-PythonImport',
     'Remove-SourceBuildTree',
     'Get-BuildJobCount',
+    'Get-WarningNoiseSuppressionFlags',
     'Install-CpythonPip',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',

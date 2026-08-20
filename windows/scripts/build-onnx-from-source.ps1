@@ -188,7 +188,7 @@ Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setup
 # own diagnostics must stay visible. /WX- above already rules out warnings-as-
 # errors, so even an unrecognised -Wno- could not break this build.
 # Verify the count actually dropped: windows\scripts\Measure-BuildWarnings.ps1
-$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization /clang:-Wno-unused-value"
+$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization /clang:-Wno-unused-value $(Get-WarningNoiseSuppressionFlags)"
 
 # CUDA stays BARE here - and everywhere: since 2026-08-10 night the CUDA
 # launcher is OPT-IN at the wiring site (Invoke-CmakeConfigure honors only
