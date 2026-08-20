@@ -233,11 +233,17 @@ _opencv_target_adjustments() {
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # RV1 (2026-08-18): the old riscv64 WITH_GSTREAMER=OFF exception is
-            # LIFTED — ports now carries the GStreamer/GLib dev chain, and pass-2
-            # (opencv-gst) links OUR source-built /opt/gstreamer anyway, which
-            # riscv64 builds. GStreamer follows the same probe path as arm64 now;
-            # target: cv2 GStreamer:YES on ALL THREE arches (full two-pass parity).
+            # RV1 REFINED (2026-08-20): the blanket OFF is lifted, but ONLY for
+            # pass-2. Pass-1 against the PORTS gstreamer dies in cmake: the
+            # riscv64 ports glib-2.0.pc expands its includedir WITHOUT the
+            # sysroot prefix ("/glib-2.0/include") and opencv's imported
+            # target hard-fails on the non-existent path — availability !=
+            # cross-coinstallable, exactly RV1's caveat. Pass-2
+            # (FORCE_REBUILD=1) probes OUR source-built /opt/gstreamer whose
+            # .pc files are clean → cv2 GStreamer:YES still lands on riscv64.
+            if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+                _ota_with_gstreamer="OFF"
+            fi
             # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
             # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL
