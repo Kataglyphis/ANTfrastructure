@@ -29,15 +29,30 @@ if ($roots.Count -eq 0) {
     throw "Neither CUDA_ROOT\bin nor CUDNN_ROOT resolves (CUDA_ROOT='$env:CUDA_ROOT', CUDNN_ROOT='$env:CUDNN_ROOT'). Is this stage derived from the nvidia base?"
 }
 
+# TRIM (#54 re-scoped, 2026-08-20, probe-cuda-runtime-closure): the closure
+# walk over every consumer (opencv/gst/onnxruntime/cv2, 76 DLLs) shows these
+# are neither statically imported by anything in the merge image nor part of
+# a known DYNAMIC-load family - ~436 MB reclaimed. Deliberately NOT trimmed
+# despite being static-unreferenced: ALL cudnn_* sub-libraries (cudnn64_9 is
+# a stub that dlopens graph/ops/engines at runtime), nvrtc/nvjitlink/
+# nvfatbin/nvrtc-builtins (the JIT chain, dlopened by opencv cudev), and
+# curand (cheap insurance) - dumpbin sees static imports ONLY, and this host
+# cannot runtime-verify GPU loads (no NVIDIA GPU in containers), so every
+# dynamic-load family stays fail-safe.
+$trimmed = @('cusparse64_*.dll', 'cusolver64_*.dll', 'cusolvermg64_*.dll', 'nvjpeg64_*.dll', 'npps64_*.dll')
 $count = 0
+$skipped = 0
 foreach ($root in $roots) {
     Get-ChildItem -Path $root -Filter '*.dll' -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+        $name = $_.Name
+        if ($trimmed | Where-Object { $name -like $_ }) { $skipped++; return }
         # Flat destination: last writer wins on duplicate basenames (same DLL in
         # multiple CUDA-version subdirs), which is fine for a single-CUDA image.
-        Copy-Item -Path $_.FullName -Destination (Join-Path $dest $_.Name) -Force
+        Copy-Item -Path $_.FullName -Destination (Join-Path $dest $name) -Force
         $count++
     }
 }
+Write-Host "Trimmed $skipped unreferenced DLLs (closure-verified; see #54)"
 
 # Hard gate: the whole point is cudnn64_9.dll. Fail loud if the layout moved.
 if (-not (Test-Path (Join-Path $dest 'cudnn64_9.dll'))) {
