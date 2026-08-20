@@ -116,7 +116,9 @@ try {
         try {
             # -ExpectSignature MZ rejects-and-retries HTML pages served in place of the
             # binary (missing alias / flaky aka.ms redirect — same class as the nuget bug).
-            $attempts = if ($vsUrl -match 'stable') { 4 } else { 2 }
+            # 3 pinned attempts (#79): budget 2 once lost the pinned alias to a
+            # transient aka.ms hiccup and silently degraded to floating stable.
+            $attempts = if ($vsUrl -match 'stable') { 4 } else { 3 }
             Invoke-DownloadWithRetry -Url $vsUrl -DestinationPath $installer `
                 -Description "VS Build Tools installer ($vsUrl)" -ExpectSignature MZ -MaxAttempts $attempts
             $vsDownloaded = $true
