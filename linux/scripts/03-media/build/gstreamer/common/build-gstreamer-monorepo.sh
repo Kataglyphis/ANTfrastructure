@@ -259,6 +259,11 @@ _gst_monorepo_arch_flags() {
       # once the g-i subproject resolution is understood (backlog RV1-GI).
       MESON_FLAGS+=("-Dintrospection=disabled")
       append_meson_arg "-Dgraphene:introspection=disabled"
+      # RV1-FOLGE 3 (2026-08-20): the glib SUBPROJECT builds its test suite by
+      # default and gdbus-server-auth.c needs dbus/dbus.h — libdbus dev is not
+      # in the riscv64 sysroot. Cross builds never run subproject tests;
+      # don't compile them.
+      append_meson_arg "-Dglib:tests=false"
       # Pango: ensure GTK's subprojects dir can find the top-level pango subproject
       # (GTK looks for pango in its own subprojects/ directory when force_fallback_for
       # is active, but the pango wrap is at the GStreamer top level).
