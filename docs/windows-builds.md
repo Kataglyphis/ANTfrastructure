@@ -2544,6 +2544,14 @@ Upstream follow-ups: see "Pending" at the bottom.
   put). Land in ONE sweep with a full-chain verify — path moves are the most
   cache-hostile edit there is.
 - **109 [L·★★★, staged] Phase-split the monolith build scripts.**
+  **TRANCHE PLAN (2026-08-20, execute one tranche per planned rebuild window,
+  never standalone - script edits bust the bind-mount cache keys):**
+  T1 build-gstreamer (largest, most phases; carry #110's logging sweep for
+  the files touched); T2 build-onnx + build-opencv; T3 the litert/tvm pair;
+  T4 the setup-* family + #108's directory convention in the same window
+  (one big COPY/mount path sweep, all Dockerfiles + drivers + tests in ONE
+  commit, verified by a full ride). #110 rides each tranche (its own entry
+  says so); #108 lands WITH T4, never alone.
   `build-gstreamer` (991 lines), `build-litert-lm` (1207),
   `smoke-test-container` (1419) each mix download/patch/configure/compile/
   verify in one file. Target: phase functions in the script (not new files —
