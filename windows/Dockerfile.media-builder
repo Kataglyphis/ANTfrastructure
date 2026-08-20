@@ -26,7 +26,10 @@ ARG MEDIA_CORE_FFMPEG_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-ff
 # ── Common base: shared boilerplate for all three builders ────────────────────
 FROM ${BASE_IMAGE} AS common
 
-ARG MEMORY_LIMIT_GB=""
+# MEMORY_LIMIT_GB deliberately has NO ARG/ENV here (#51): a scheduling
+# knob as image metadata was a CACHE KEY - toggling -ConcurrentAux
+# invalidated every litert/tvm compile. The driver publishes it on the
+# webdav; Get-BuildJobCount fetches it at RUN time (fail-open to CIM).
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
@@ -156,8 +159,7 @@ ARG SCCACHE_FORCE_LOCAL=""
 # FRESH server and reported all-zero counters (runs 12+13) - measurement
 # poison, and the async webdav write-through tail dies with the server too.
 # The RUN step's process tree ends with the step, so 0 leaks nothing.
-ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
-    SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
+ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
     SCCACHE_DIR="${SCCACHE_DIR}" `
     SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `

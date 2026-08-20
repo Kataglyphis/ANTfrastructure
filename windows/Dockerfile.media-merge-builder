@@ -63,7 +63,6 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
 FROM ${BASE_IMAGE} AS merge-fanin
 
 ARG GSTREAMER_VERSION=1.29.2
-ARG MEMORY_LIMIT_GB=""
 # Component versions are consumed by the branch builds; re-declared here only so the
 # image carries the canonical version env vars (sync_versions.py verifies them).
 ARG ONNXRUNTIME_VERSION=v1.29.0
@@ -81,8 +80,7 @@ ARG IREE_VERSION=v3.11.0
 # 125-layer cap on 2026-08-03 ("max depth exceeded" in the final stage) with
 # ~28 separate ENV lines here as the main cost. Same-instruction ${} refs don't
 # resolve, so derived paths are written out literally (layouts documented below).
-ENV MEMORY_LIMIT_GB="${MEMORY_LIMIT_GB}" `
-    ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
+ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
     FFMPEG_VERSION="${FFMPEG_VERSION}" `

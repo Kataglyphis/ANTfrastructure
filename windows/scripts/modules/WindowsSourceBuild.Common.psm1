@@ -529,7 +529,23 @@ function Get-BuildJobCount {
     $memGB = 0
     if ($env:MEMORY_LIMIT_GB -match '^\d+$') {
         $memGB = [int]$env:MEMORY_LIMIT_GB
-    } else {
+    } elseif ($env:SCCACHE_WEBDAV_ENDPOINT) {
+        # #51: the budget is a SCHEDULING knob, so it must not ride as image
+        # ENV/ARG (both are cache keys - toggling -ConcurrentAux used to
+        # invalidate every litert/tvm compile). The driver publishes it to
+        # the LAN webdav instead; memoized per process (one HTTP round-trip,
+        # not one per ninja invocation). Fail-open to CIM below.
+        if ($null -eq $script:WebdavMemoryLimitGb) {
+            $script:WebdavMemoryLimitGb = ''
+            try {
+                $resp = & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --max-time 5 "$($env:SCCACHE_WEBDAV_ENDPOINT)/preseed/memory-limit-gb.txt" 2>$null
+                if ("$resp".Trim() -match '^\d+$') { $script:WebdavMemoryLimitGb = "$resp".Trim() }
+            } catch { }
+            $global:LASTEXITCODE = 0
+        }
+        if ($script:WebdavMemoryLimitGb -match '^\d+$') { $memGB = [int]$script:WebdavMemoryLimitGb }
+    }
+    if ($memGB -le 0) {
         try {
             $memGB = [int][Math]::Floor((Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize / 1MB)
         } catch { $memGB = 0 }
