@@ -245,6 +245,12 @@ _opencv_target_adjustments() {
             # ships on amd64+arm64; riscv64 keeps wave-3 behavior (NO) until
             # the .pc prefix expansion is fixed.
             _ota_with_gstreamer="OFF"
+            # RV1-FOLGE 4 (2026-08-20): the contrib freetype module now
+            # activates (RV1's dev packages) but resolves the HOST x86
+            # libharfbuzz in the riscv64 cross link ("file in wrong format").
+            # Text-rendering nicety, not core — off until the harfbuzz
+            # resolution is sysroot-clean (rides RV1-GST-PC's root cause).
+            _ota_cmake_opts+=("-DBUILD_opencv_freetype=OFF")
             # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
             # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL
