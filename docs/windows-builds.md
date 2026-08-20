@@ -2154,7 +2154,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   Still worth fixing — a self-heal that can silently cost 11 h must be loud and
   bounded whether or not it fires today — but it is **latent, not active**, so it
   does not belong ahead of work on live defects. Same status as #76.
-- **76 [S·★★, none] The ~120-min ffmpeg stall (old #35) is CONFIRMED as a
+- **76 [S·★★, none] DONE 2026-08-20: the make/gawk provisioning region is bounded (10-min ceiling, 60-s heartbeat via Invoke-BoundedProvisionStep) - a recurrence costs minutes and names itself. Original finding: the ~120-min ffmpeg stall (old #35) is CONFIRMED as a
   one-off and DENIED as recurring — and it is a TIMEOUT, not jitter.** Exact
   gap: **7200.9 s** (≈ exactly 2 h) of zero output between
   `WARNING: vswhere returned no installation; using filesystem fallback` and
@@ -2300,7 +2300,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   the 2026-08-14 audit and was dropped when the findings were numbered — the
   numbers came from the audit's list, and this one fell out; re-verify the P2b
   set against the audit before assuming it is complete.
-- **69 [S·★★, none] Live pin drift that the parity gate structurally cannot
+- **69 [S·★★, none] DONE 2026-08-20: W1c AST scanner covers the if($env:KEY){...}else{'<literal>'} idiom (pin membership filters behavior defaults; scanner-rot guard pins 9 sites) and caught 3 LIVE drifts, all fixed: build-ffmpeg NV_CODEC_HEADERS_REF n13.0.19.0->n13.1.15.0 (the documented 404/NVENC-skip seed), build-litert-lm-bazel 0.15.0->0.16.1, assemble-torch-app v0.0.22->v0.0.27. Original finding: live pin drift that the parity gate structurally cannot
   see.** `build-ffmpeg-from-source.ps1:241` hardcodes
   `else { 'n13.0.19.0' }` against `versions.env:184 NV_CODEC_HEADERS_REF=n13.1.15.0`
   — verified drift. `SourceBuild.PinParity.Tests.ps1:80` scans only
@@ -2365,7 +2365,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   and would have to be extended to Dockerfile.base before landing them. Not obviously
   worth it; that judgement is the owner's, which is why this was NOT landed with
   #81 on 2026-08-14 even though the base was rebuilt anyway.
-- **51 [M·★★★, media once] `MEMORY_LIMIT_GB` — a scheduling knob — is an image
+- **51 [M·★★★, media once] DONE 2026-08-20: no longer image metadata - the driver publishes the effective budget to the webdav (preseed/memory-limit-gb.txt), Get-BuildJobCount reads env -> webdav (memoized) -> CIM; under -ConcurrentAux every branch now gets the halved budget (the old full+halved+halved asymmetry oversubscribed the host). Original finding: `MEMORY_LIMIT_GB` — a scheduling knob — is an image
   ENV and therefore a CACHE KEY** (`Dockerfile.media-builder:29,67`). The
   driver halves it for `-ConcurrentAux` (`build-buildkit.ps1:378`), so merely
   TOGGLING that flag changes the layer digest and invalidates every litert/tvm
