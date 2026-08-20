@@ -31,7 +31,7 @@ ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
 
-COPY scripts\setup-tensorrt.ps1 C:\temp\scripts\
+COPY scripts\host\setup-tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
 
 # Extract to the space-free canonical root. GRACEFUL-SKIP CONTRACT (restored
@@ -41,10 +41,10 @@ COPY downloads C:\temp\downloads
 # directory below always exists. This host's GPU lane has always built
 # zip-less; a 2026-08-04 fail-fast hardening briefly broke that and was
 # reverted after the first hardened rebuild died here.
-RUN --mount=type=bind,source=scripts/normalize-tensorrt-tree.ps1,target=C:\normalize-tensorrt-tree.ps1 `
+RUN --mount=type=bind,source=scripts/build/normalize-tensorrt-tree.ps1,target=C:\normalize-tensorrt-tree.ps1 `
     $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Sort-Object -Property @{ Expression = { if ($_.Name -match 'TensorRT-(?:[A-Za-z]+-)?(\d+(?:\.\d+)+)') { [version]$Matches[1] } else { [version]'0.0' } } } -Descending | Select-Object -First 1; `
     $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; `
-    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
+    & 'C:\temp\scripts\host\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
     & 'C:\normalize-tensorrt-tree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
 
@@ -72,7 +72,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Narrow COPY — only the script this stage runs (a wildcard `scripts` would bust
 # the CUDA layer on every unrelated script edit). Modules were already populated
 # by the base stage. (Path relative to the `windows` build context.)
-COPY scripts\setup-cuda.ps1 C:\temp\scripts\
+COPY scripts\host\setup-cuda.ps1 C:\temp\scripts\
 
 # One ENV instruction = one layer (125-cap budget; see docs/windows-builds.md).
 # TENSORRT_VERSION moved out of this block (backlog #53) — it now rides the
@@ -83,7 +83,7 @@ ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 # on Windows Containers), the scratch directory is discarded after the RUN completes.
 # setup-cuda.ps1 cleans up its own temp files; the final image layer contains only
 # the installed CUDA binaries.
-RUN & 'C:\temp\scripts\setup-cuda.ps1' -TempDir $env:TEMP_DIR
+RUN & 'C:\temp\scripts\host\setup-cuda.ps1' -TempDir $env:TEMP_DIR
 
 # TensorRT: only the extracted tree from stage 1 (no zip layer). Empty when no
 # zip was provided — build scripts then skip the TensorRT EP gracefully

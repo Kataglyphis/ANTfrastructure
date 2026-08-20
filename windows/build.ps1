@@ -735,7 +735,7 @@ $started = Get-Date
 if (-not $NoResourceLog) {
     $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + ".csv")
     Set-BuildPhase 'init'
-    $samplerScript = Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1'
+    $samplerScript = Join-Path $PSScriptRoot 'scripts\build\build-resource-sampler.ps1'
     $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
         '-NoProfile', '-File', $samplerScript,
         '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
