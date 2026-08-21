@@ -42,7 +42,7 @@ expense of the others:
   CUDA 13.3). **The WebDAV L2 is only as available as the dufs server backing
   it:** while dufs ran as a user-session process it died mid-build and every
   cache WRITE failed silently — builds stayed green, just uncached. Run it as
-  the session-independent SYSTEM task (`windows\scripts\setup-dufs-service.ps1`)
+  the session-independent SYSTEM task (`windows\scripts\host\setup-dufs-service.ps1`)
   and treat a 0 % hit rate as an outage, not as a cold cache.
 - **Stability** — digest-pinned stage handoffs, machine-checked cross-run
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
@@ -195,10 +195,10 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 | Target | Source-controlled defaults |
 | --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.1 |
+| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.0 |
 | Android layer | Android SDK 15859902, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.1, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
+| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.0, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
 <!-- generated:version-snapshot:end -->
 
 ## Quick Start 🏁
@@ -219,7 +219,7 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
 full host CPUs, real layer caching — one-time setup in
 [Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane;
-**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\setup-new-host.ps1`; `-ReportOnly` first):
+**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\host\setup-new-host.ps1`; `-ReportOnly` first):
 
 ```pwsh
 # BUILD (non-admin shell; buildctl against buildkitd):
@@ -238,7 +238,7 @@ setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
 
 > **Host with a broken BK lane (`hcsshim::ActivateLayer 0x20` on layer
 > commit/finalize)?** Run the committed probe first —
-> `windows\scripts\probe-build-copy.ps1 -Heavy` — and trust only a
+> `windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` — and trust only a
 > `-Heavy`-green verdict: the light lanes (BK lane exports
 > `type=image,...,unpack=true`, the same path the real build uses; exit code
 > names each failing lane) can be green while heavyweight RUN-layer finalize

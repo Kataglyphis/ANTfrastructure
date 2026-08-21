@@ -27,7 +27,7 @@ ARG APP_REF=v0.0.27
 # pytorch-cu130, ... 'none' disables (torch is only declared inside the extras).
 ARG PYTORCH_EXTRA=pytorch-cpu
 
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # Fresh copy from the build context (NOT the baked one): app-assembly fixes must
 # reach this leaf without waiting for a full base republish.

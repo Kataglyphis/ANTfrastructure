@@ -26,8 +26,7 @@ $LiteRtLmVersion = Get-SourceBuildVersion -Value $LiteRtLmVersion -EnvironmentVa
 $litertLmInstallDir = Join-Path $InstallDir 'lib\litert-lm'
 
 #region Phase 1 | Resolve version + clone LiteRT-LM (git-lfs)
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '1. Resolve version + clone LiteRT-LM (git-lfs)'
+Switch-BuildPhase '1. Resolve version + clone LiteRT-LM (git-lfs)'
 Write-Host "=== LiteRT-LM source build (v$LiteRtLmVersion, Ninja+clang-cl) ==="
 
 Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT-LM.git' -Tag "v$LiteRtLmVersion" -SourceDir $SourceDir -Recursive | Out-Null
@@ -48,8 +47,7 @@ Invoke-LiteRtLmSupportGraft -SourceDir $SourceDir
 #endregion
 
 #region Phase 2 | Toolchain acquisition (vcpkg + host protoc 31.1 + Temurin JRE)
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '2. Toolchain acquisition (vcpkg + host protoc 31.1 + Temurin JRE)'
+Switch-BuildPhase '2. Toolchain acquisition (vcpkg + host protoc 31.1 + Temurin JRE)'
 # vcpkg paths: prefer -VcpkgRoot param, then $env:VCPKG_ROOT, then the container default.
 $VcpkgRoot = Get-SourceBuildVersion -Value $VcpkgRoot -EnvironmentVariables @('VCPKG_ROOT') -DefaultValue 'C:\vcpkg'
 $vcpkgInstalledX64 = Join-Path $VcpkgRoot 'installed\x64-windows'
@@ -131,8 +129,7 @@ Write-Host "Using Java for ANTLR codegen: $($javaExe.FullName)"
 #endregion
 
 #region Phase 3 | Windows link-lib + POSIX header shims (rt/pthread/dl/z, dlfcn/unistd/alloca, LIB)
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '3. Windows link-lib + POSIX header shims (rt/pthread/dl/z, dlfcn/unistd/alloca, LIB)'
+Switch-BuildPhase '3. Windows link-lib + POSIX header shims (rt/pthread/dl/z, dlfcn/unistd/alloca, LIB)'
 # Windows link-lib shim for the GNU-driver Unix libs. The inner build links with
 # clang++ (GNU driver) + lld-link, so CMake's platform/threads/zlib detection adds
 # POSIX link libs -- `-lz -lrt -lpthread -ldl` -> `z.lib rt.lib pthread.lib dl.lib` --
@@ -209,8 +206,7 @@ if (($env:PATH -notlike "*$cargoBin*") -and (Test-Path $cargoBin)) { $env:PATH =
 #endregion
 
 #region Phase 4 | clang++ compiler environment (CXXFLAGS / CCC_OVERRIDE_OPTIONS)
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '4. clang++ compiler environment (CXXFLAGS / CCC_OVERRIDE_OPTIONS)'
+Switch-BuildPhase '4. clang++ compiler environment (CXXFLAGS / CCC_OVERRIDE_OPTIONS)'
 # clang-cl + modern MSVC STL fix for the Rust `cxx` crate (transitive dep). Its
 # build script compiles a generated C++ bridge via `cxx-build`/`cc`, which defaults
 # to -std=c++11. MSVC 14.51's <xutility> uses `constexpr void` return types (legal
@@ -291,8 +287,7 @@ Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from c
 #endregion
 
 #region Phase 5 | Source tree & CMake winfix patches (clang-cl/lld-link port)
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '5. Source tree & CMake winfix patches (clang-cl/lld-link port)'
+Switch-BuildPhase '5a. Source tree + dependency-pin bumps (absl/litert)'
 # NOTE: LiteRT-LM v0.13.1 ships runtime/proto/ as Bazel-only (BUILD + *.proto, no CMakeLists.txt),
 # so the former runtime/proto/CMakeLists.txt patch (disable protobuf_generate / find_package Protobuf
 # QUIET) was a permanent no-op: the target file never exists at patch time, and the build succeeds
@@ -349,6 +344,11 @@ $abseilPinMarker = [regex]::Escape($abseilPin)
     $c -replace '(GIT_TAG\s*\r?\n\s*)20260107\.1', ('${1}' + $abseilPin)
 })
 
+# #129 exemption (2026-08-21): the two 40-char SHAs below are PATCH ANCHORS
+# correcting upstream's own stale pins to upstream's own bazel-WORKSPACE
+# truth — deliberately NOT versions.env keys (they are not our version
+# policy; they change only when LITERT_LM_VERSION bumps and the patch is
+# re-verified anyway).
 # v0.15.0 UPSTREAM CMAKE STALENESS #3 (run 16, 2026-08-11): their litert
 # pin (cmake/packages/litert/litert.cmake GIT_TAG fb16353a..., '#Updated on
 # 2026-03-24') predates the LiteRT APIs that 0.15.0's own executor code
@@ -407,6 +407,7 @@ $superCmake = Join-Path $SourceDir 'CMakeLists.txt'
     $c.Replace($btAnchor, $btRepl)
 })
 
+Switch-BuildPhase '5b. externals: protobuf / sentencepiece / tokenizers'
 # Inline patch: skip building protobuf's upb generator TOOLS (protoc-gen-upb /
 # protoc-gen-upbdefs). They fail to link under clang++/lld-link -- undefined abseil
 # symbols (absl::StrCat / absl::log_internal::* / absl::Mutex ...) that lld-link won't
@@ -486,6 +487,9 @@ if ((Test-Path $tokenizersCmake) -and ((Get-Content -Raw $tokenizersCmake) -notm
         $tkPatchCmd = 'PATCH_COMMAND ${CMAKE_COMMAND} -DTK_SRC=<SOURCE_DIR> -P ${CMAKE_CURRENT_LIST_DIR}/tokenizers_libname_patch.cmake' + "`n    " + $tkCfgAnchor
         $tk = $tk.Replace($tkCfgAnchor, $tkPatchCmd)
         # (3b) litert-lm's own imports of the rust lib (leaves libtokenizers_cpp.a untouched)
+        if (-not $tk.Contains('libtokenizers_c.a')) {
+            Write-Warning 'tokenizers.cmake: libtokenizers_c.a not found — upstream renamed the rust lib import; the link will fail with unresolved tokenizers_c symbols'
+        }
         $tk = $tk.Replace('libtokenizers_c.a', 'tokenizers_c.lib')
         [System.IO.File]::WriteAllText($tokenizersCmake, $tk)
         Write-Host 'Patched tokenizers.cmake: -GNinja + cmake --build + rust lib -> tokenizers_c.lib'
@@ -539,6 +543,7 @@ $mbPatch = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\tflit
 [void](Add-FileBlockOnce -Path $tflitePatcher -Marker 'LiteRTLM-winfix model_building-friend' -Content $mbPatch -Encoding ASCII `
         -Description 'tflite_patcher.cmake: model_building.h friend forward-declarations')
 
+Switch-BuildPhase '5c. litert core winfixes (POSIX->Win32 narrowing)'
 # LiteRT's core/dynamic_loading.cc is written for POSIX: std::filesystem::path::c_str() and the
 # path->string implicit conversion are WIDE (wchar_t / std::wstring) on Windows but narrow on
 # Linux, so access(path.c_str()), results.push_back(path) into a vector<string>, and
@@ -719,6 +724,7 @@ if ($engineBridged -ne $engineTxt) {
     Write-Host '[LiteRTLM-winfix orphans] engine lib source list updated'
 }
 
+Switch-BuildPhase '5d. runtime CMake retargets (engine/util/logger winfixes)'
 # litert_util.cc AND resource_manager.cc both set EnvironmentOptions::Tag::kMinLoggerSeverity, which
 # the litert core pinned by litert-lm v0.13.1 does not expose (the litert-lm source tree is ahead of
 # its own litert dependency). It only pushes an optional min-log-severity env option -> compile that
@@ -727,15 +733,17 @@ if ($engineBridged -ne $engineTxt) {
 # on $SourceDir before the ExternalProject copies sources into generated/src (same phase as the
 # executor #if !defined(_WIN32) guards, which propagate fine).
 foreach ($rel in @('runtime\util\litert_util.cc', 'runtime\framework\resource_management\resource_manager.cc')) {
-    $p = Join-Path $SourceDir $rel
-    if ((Test-Path $p) -and ((Get-Content -Raw $p) -notmatch 'LiteRTLM-winfix kMinLoggerSeverity')) {
-        $t = [System.IO.File]::ReadAllText($p)
-        $t = [regex]::Replace($t,
-            '(if \(auto severity = GetMinLogSeverity\(\)\) \{[\s\S]*?kMinLoggerSeverity[\s\S]*?\)\}\);\s*\})',
-            "#if 0  // [LiteRTLM-winfix kMinLoggerSeverity] litert core pinned here has no such Tag`n      `$1`n#endif")
-        [System.IO.File]::WriteAllText($p, $t)
-        Write-Host "Patched $(Split-Path $rel -Leaf): compiled out kMinLoggerSeverity env option (absent in pinned litert core)"
-    }
+    # Edit-SourceFile (not raw write): the earlier raw form logged "Patched"
+    # even when the regex matched NOTHING — false green on upstream drift.
+    [void](Edit-SourceFile -Path (Join-Path $SourceDir $rel) `
+            -Marker 'LiteRTLM-winfix kMinLoggerSeverity' `
+            -Description "$(Split-Path $rel -Leaf) (compile out kMinLoggerSeverity env option, absent in pinned litert core)" `
+            -Transform {
+            param($t)
+            [regex]::Replace($t,
+                '(if \(auto severity = GetMinLogSeverity\(\)\) \{[\s\S]*?kMinLoggerSeverity[\s\S]*?\)\}\);\s*\})',
+                "#if 0  // [LiteRTLM-winfix kMinLoggerSeverity] litert core pinned here has no such Tag`n      `$1`n#endif")
+        })
 }
 
 # The Rust staticlib (litert_lm_deps) pulls in rust std, whose windows-msvc target needs system libs
@@ -809,6 +817,7 @@ $litertLmPkg = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
     $c.Replace('set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")', 'set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")')
 })
 
+Switch-BuildPhase '5e. link spec: clean-link + CRT compat + lib aliasing'
 # [LiteRTLM-winfix clean-link] Make ninja link litert_lm_main.exe cleanly IN ONE PASS (no post-ninja
 # manual relink). Three independent defects converge at this one link, all fixed in the CMake target:
 #   1. deprecated CRT globals (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr + POSIX and
@@ -1011,8 +1020,7 @@ foreach ($rel in @(
 #endregion
 
 #region Phase 6 | CMake configure + proto codegen
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '6. CMake configure + proto codegen'
+Switch-BuildPhase '6. CMake configure + proto codegen'
 $buildDir = Join-Path $SourceDir 'build_ninja'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
 $litertCmakeDir = Join-Path $litertInstallDir 'cmake'
@@ -1024,7 +1032,7 @@ $gpuEnv = Get-GpuEnvironment
 $cmakeExtra = @(
     "-DCMAKE_PREFIX_PATH=$litertInstallDir;$litertCmakeDir"
 )
-if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { $cmakeExtra += '-DUSE_CUDA=ON' }
+if ($gpuEnv.HasCuda) { $cmakeExtra += '-DUSE_CUDA=ON' }
 if (Test-Path $litertCmakeDir) { $cmakeExtra += "-DLiteRT_DIR=$litertCmakeDir" }
 
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $litertLmInstallDir -ExtraArgs $cmakeExtra | Out-Null
@@ -1056,8 +1064,7 @@ Copy-Item $hostProtoc (Join-Path $protoInstallBin 'protoc') -Force
 #endregion
 
 #region Phase 7 | Ninja build + ExternalProject lib stubs
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '7. Ninja build + ExternalProject lib stubs'
+Switch-BuildPhase '7. Ninja build + ExternalProject lib stubs'
 $litertBuildDir = Join-Path $buildDir 'litert_lm\build'
 $llvmAr = (Get-Command llvm-ar.exe -ErrorAction Stop).Source
 $ninja = (Get-Command ninja.exe -ErrorAction Stop).Source
@@ -1149,8 +1156,7 @@ Write-Host "Build step completed with exit code: $LASTEXITCODE"
 #endregion
 
 #region Phase 8 | Stage litert_lm_main.exe + smoke test + restore vcpkg headers
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
-$llmPhase = Start-BuildPhase '8. Stage litert_lm_main.exe + smoke test + restore vcpkg headers'
+Switch-BuildPhase '8. Stage litert_lm_main.exe + smoke test + restore vcpkg headers'
 # --- litert_lm_main.exe: ninja links it cleanly in one pass -------------------------------------
 # The [LiteRTLM-winfix clean-link] CMake patch (crtcompat shim + flatbuffers util.cpp sources, CRT
 # /alternatename aliases, PRE_LINK protoc/protobuf-lite neutralize) makes the ExternalProject build
@@ -1293,7 +1299,7 @@ else { Remove-SourceBuildTree -Path $SourceDir }
 
 } catch {
     # #109: name the failing phase before the throw reaches the chain wrapper.
-    if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase -ErrorRecord $_ }
+    Complete-CurrentBuildPhase -ErrorRecord $_
     Write-BuildPhaseSummary -Label 'litert-lm'
     throw
 } finally {
@@ -1304,7 +1310,7 @@ else { Remove-SourceBuildTree -Path $SourceDir }
     }
 }
 
-if (Test-Path 'Variable:llmPhase') { Complete-BuildPhase $llmPhase }
+Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'litert-lm'
 Write-Host '=== LiteRT-LM source build completed ==='
 # Explicit success: without this, pwsh -File propagates the LAST native exit code.

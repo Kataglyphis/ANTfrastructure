@@ -36,10 +36,35 @@
 # ConvertFrom-VersionsEnv comes from WindowsScripts.Shared.psm1, imported by
 # Invoke-Tests.ps1.
 
+# ONE owner for the scan surface (#126, 2026-08-21): the three Describes
+# (W1/W1b/W1c) each enumerated + AST-parsed the same file set. The MATCHER
+# logic stays per-Describe on purpose — they scan different AST shapes and a
+# collapse bug would weaken the gate silently.
+function Get-PinScanAst {
+    param([string]$MustMentionPattern = '')
+    $scriptsDir = Split-Path $PSScriptRoot -Parent
+    $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
+            Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
+    $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
+    foreach ($f in $files) {
+        $tokens = $null; $errors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
+        if ($errors -and @($errors).Count -gt 0) {
+            # Fatal only when the file plausibly contains a site the caller
+            # would then miss; general syntax health is another gate's job.
+            if ($MustMentionPattern -and ((Get-Content -Path $f.FullName -Raw) -match $MustMentionPattern)) {
+                throw ('PinParity: ' + $f.Name + ' has parse errors; cannot scan: ' + @($errors)[0].Message)
+            }
+            continue
+        }
+        [pscustomobject]@{ File = $f; Ast = $ast }
+    }
+}
+
 Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' {
 
     function Get-PinParityPins {
-        $envPath = Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env'
+        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         if (-not (Test-Path $envPath)) {
             throw "PinParity: canonical pin file not found at $envPath"
         }
@@ -59,24 +84,9 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
     # AST-scan for Get-SourceBuildVersion calls carrying a -DefaultValue.
     # Returns one record per call site; literal-'' defaults are dropped (see above).
     function Get-PinParitySite {
-        $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
-                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
-        $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
-
         $sites = @()
-        foreach ($f in $files) {
-            $tokens = $null
-            $errors = $null
-            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
-            if ($errors -and @($errors).Count -gt 0) {
-                # Fatal only when the file plausibly contains a site this suite
-                # would then miss; general syntax health is another gate's job.
-                if ((Get-Content -Path $f.FullName -Raw) -match 'Get-SourceBuildVersion') {
-                    throw "PinParity: $($f.Name) has parse errors; cannot scan its Get-SourceBuildVersion sites: $(@($errors)[0].Message)"
-                }
-                continue
-            }
+        foreach ($entry in @(Get-PinScanAst -MustMentionPattern 'Get-SourceBuildVersion')) {
+            $f = $entry.File; $ast = $entry.Ast
 
             $calls = @($ast.FindAll({ param($n)
                         $n -is [System.Management.Automation.Language.CommandAst] -and
@@ -174,6 +184,10 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 'build-ffmpeg-from-source.ps1|FFMPEG_VERSION',
                 'build-ffmpeg-from-source.ps1|PYAV_VERSION',
                 'build-gstreamer-from-source.ps1|GSTREAMER_VERSION',
+                # 2026-08-21: gstreamer's .pc writer used a variable-indirected
+                # fallback W1c cannot see and drifted to 1.28.0 — converted to
+                # Get-SourceBuildVersion; this pin keeps it under W1's eye.
+                'build-gstreamer-from-source.ps1|ONNXRUNTIME_VERSION',
                 'build-onnx-from-source.ps1|ONNXRUNTIME_VERSION',
                 'build-onnx-genai-from-source.ps1|ONNXRUNTIME_GENAI_VERSION')) {
             Assert-True $found.ContainsKey($expected) "known pin site [$expected] no longer discovered - default removed, key renamed, or scanner broke; update this suite deliberately"
@@ -279,7 +293,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValue fallbacks vs versions.env' {
 
     function Get-RcivPins {
-        $envPath = Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env'
+        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         if (-not (Test-Path $envPath)) {
             throw "PinParity(W1b): canonical pin file not found at $envPath"
         }
@@ -300,21 +314,15 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         )
     }
 
-    # KNOWN LIVE DRIFT (backlog W1b, verified 2026-08-10): these -DefaultValue
-    # literals lag versions.env, but the windows\scripts\*.ps1 fixes are batched
-    # for the next Windows rebuild window (COPY-layer invalidation). Until then
-    # these exact (script, env var, drifted default) triples are reported as
-    # pending, NOT failures. THE MOMENT a listed default is fixed to match the
-    # pin, the guard test below FAILS with "remove from KnownDrift list" --
-    # delete the entry in the same change that fixes the script.
-    #   setup-scoop-tools.ps1:105  GIT_VERSION        '2.54.0' (pin 2.55.0)
-    #   setup-scoop-tools.ps1:128  WIX_UI_EXT_VERSION '4.0.4'  (pin 4.0.6)
-    #   verify-toolchain.ps1:122   WIX_UI_EXT_VERSION '4.0.4'  (pin 4.0.6)
-    $script:KnownDriftAwaitingRebuildWindow = @(
-        [pscustomobject]@{ Script = 'setup-scoop-tools.ps1'; EnvVar = 'GIT_VERSION';        DriftedDefault = '2.54.0' },
-        [pscustomobject]@{ Script = 'setup-scoop-tools.ps1'; EnvVar = 'WIX_UI_EXT_VERSION'; DriftedDefault = '4.0.4' },
-        [pscustomobject]@{ Script = 'verify-toolchain.ps1';  EnvVar = 'WIX_UI_EXT_VERSION'; DriftedDefault = '4.0.4' }
-    )
+    # KNOWN LIVE DRIFT mechanism (backlog W1b): -DefaultValue literals that lag
+    # versions.env while their fix waits for a rebuild window (COPY-layer
+    # invalidation). Listed triples report as pending, NOT failures; THE MOMENT
+    # a listed default is fixed to match the pin, the guard test below FAILS
+    # with "remove from KnownDrift list" -- delete the entry in the same change
+    # that fixes the script. EMPTY since 2026-08-21: the store-reset rebuild
+    # window absorbed the last three (GIT_VERSION 2.54.0->2.55.0,
+    # WIX_UI_EXT_VERSION 4.0.4->4.0.6 x2).
+    $script:KnownDriftAwaitingRebuildWindow = @()
 
     function Get-RcivKnownDriftId {
         return @($script:KnownDriftAwaitingRebuildWindow | ForEach-Object { "$($_.Script)|$($_.EnvVar)" })
@@ -327,22 +335,9 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     # FALLBACK DEFINITION of the helper is a FunctionDefinitionAst, not a
     # CommandAst, so it is correctly not a site. Literal-'' defaults dropped.
     function Get-RcivSite {
-        $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
-                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
-        $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
-
         $sites = @()
-        foreach ($f in $files) {
-            $tokens = $null
-            $errors = $null
-            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
-            if ($errors -and @($errors).Count -gt 0) {
-                if ((Get-Content -Path $f.FullName -Raw) -match 'Resolve-ContainerImageValue') {
-                    throw "PinParity(W1b): $($f.Name) has parse errors; cannot scan its Resolve-ContainerImageValue sites: $(@($errors)[0].Message)"
-                }
-                continue
-            }
+        foreach ($entry in @(Get-PinScanAst -MustMentionPattern 'Resolve-ContainerImageValue')) {
+            $f = $entry.File; $ast = $entry.Ast
 
             $calls = @($ast.FindAll({ param($n)
                         $n -is [System.Management.Automation.Language.CommandAst] -and
@@ -559,21 +554,15 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
     # behavior default, not a pin, and is ignored.
 
     function Get-IdiomPins {
-        $envPath = Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env'
+        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         if (-not (Test-Path $envPath)) { throw "PinParity(W1c): canonical pin file not found at $envPath" }
         return (ConvertFrom-VersionsEnv -Path $envPath)
     }
 
     function Get-EnvElseLiteralSite {
-        $scriptsDir = Split-Path $PSScriptRoot -Parent
-        $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
-                Where-Object { $_.FullName -notmatch '\\(tests|modules)\\' } | Sort-Object Name)  # #108 grouped layout
-        $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
         $sites = @()
-        foreach ($f in $files) {
-            $tokens = $null; $errors = $null
-            $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
-            if ($errors -and @($errors).Count -gt 0) { continue } # syntax health is another gate's job
+        foreach ($entry in @(Get-PinScanAst)) {
+            $f = $entry.File; $ast = $entry.Ast
             foreach ($ifAst in @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] }, $true))) {
                 if ($null -eq $ifAst.ElseClause) { continue }
                 # env vars referenced by the CONDITION (covers bare $env:X,

@@ -50,36 +50,23 @@ Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -F
 #      documented frozen fallback. The bazel script has its OWN signature
 #      (-InstallDir/-RepositoryCache, no -SourceDir), so it runs OUTSIDE
 #      Invoke-SourceBuildChain.
-$phases = @('LiteRT', 'LiteRT-LM')
-if ($ResumeFrom -and ($phases -notcontains $ResumeFrom)) { throw "build-litert-all: -ResumeFrom '$ResumeFrom' not in: $($phases -join ', ')" }
-if ($Until -and ($phases -notcontains $Until)) { throw "build-litert-all: -Until '$Until' not in: $($phases -join ', ')" }
-$startIdx = if ($ResumeFrom) { $phases.IndexOf($ResumeFrom) } else { 0 }
-$stopIdx = if ($Until) { $phases.IndexOf($Until) } else { $phases.Count - 1 }
-
-if ($startIdx -le 0 -and $stopIdx -ge 0) {
-    # Invoke-SourceBuildChain owns the banner + native-exit check + EAP=Stop
-    # inheritance + the sccache stats dump the CMake SDK build relies on.
-    Invoke-SourceBuildChain -Label 'media-litert' -InstallDir $InstallDir -ScriptDir $ScriptDir -Stages @(
-        @{ Name = 'LiteRT'; Script = 'build-litert-from-source.ps1'; SourceDir = 'C:\temp\litert-src' }
-    )
-} else {
-    Write-Host "`n=== media-litert stage: LiteRT — SKIPPED (partition) ==="
-}
-
-if ($startIdx -le 1 -and $stopIdx -ge 1) {
-    Write-Host "`n=== media-litert stage: LiteRT-LM (bazel) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
-    # Repository cache mount (optional) for cross-run reuse; the bazel
-    # output_base stays container-local (see the script's header).
-    & (Join-Path $ScriptDir 'build-litert-lm-bazel.ps1') -InstallDir $InstallDir -RepositoryCache ([string]$env:BAZEL_REPO_CACHE)
-    $lmExit = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
-    if ($lmExit) { throw "LiteRT-LM (bazel) build failed (exit $lmExit)" }
-} else {
-    Write-Host "`n=== media-litert stage: LiteRT-LM — SKIPPED (partition) ==="
-}
+# ONE chain call for both phases (#128, 2026-08-21): the bazel script's own
+# signature (-RepositoryCache, no -SourceDir) used to force it OUTSIDE
+# Invoke-SourceBuildChain, and this wrapper reimplemented the whole
+# -ResumeFrom/-Until partition logic (26 lines) around that split. The chain's
+# Invoke-stage shape carries the odd signature now; the chain also owns the
+# banner + native-exit check + partition validation + the sccache stats dump.
+Invoke-SourceBuildChain -Label 'media-litert' -InstallDir $InstallDir -ScriptDir $ScriptDir `
+    -StartAt $ResumeFrom -Until $Until -Stages @(
+    @{ Name = 'LiteRT'; Script = 'build-litert-from-source.ps1'; SourceDir = 'C:\temp\litert-src' }
+    @{ Name = 'LiteRT-LM'; Invoke = { param($sd, $id)
+            # Repository cache mount (optional) for cross-run reuse; the bazel
+            # output_base stays container-local (see the script's header).
+            & (Join-Path $sd 'build-litert-lm-bazel.ps1') -InstallDir $id -RepositoryCache ([string]$env:BAZEL_REPO_CACHE)
+        } }
+)
 
 Complete-SourceBuildChain -Label 'media-litert' -ScrubAfter:$ScrubAfter
 
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+# Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0

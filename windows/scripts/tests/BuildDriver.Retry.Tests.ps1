@@ -93,6 +93,30 @@ Describe 'Invoke-DockerWithRetry' {
         }
     }
 
+    It 'a DETERMINISTIC verdict (identical transient tail) also preserves the container (no OnFailedAttempt)' {
+        # Adversarial review 2026-08-21: the first cut of the determinism gate
+        # ran OnFailedAttempt (container rm) BEFORE the gate decided, deleting
+        # hours of finished stages and then printing a -ResumeFrom recipe for
+        # a container that no longer existed. The gate verdict is a FINAL
+        # failure — the preservation invariant applies to it too.
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'run.log'
+            # transient-classified tail, byte-identical on every attempt
+            Set-Content $log 'failed to create shim task: ttrpc: closed'
+            $calls = @{ action = 0; failed = 0; final = 0 }
+            $action   = { param($a) $calls.action++; & cmd /c "exit 1" }.GetNewClosure()
+            $onFailed = { $calls.failed++ }.GetNewClosure()
+            $onFinal  = { $calls.final++ }.GetNewClosure()
+            Assert-Throws {
+                Invoke-DockerWithRetry -Label 't' -MaxAttempts 3 -CooldownSeconds 0 -LogFile $log `
+                    -Action $action -OnFailedAttempt $onFailed -OnFinalFailure $onFinal
+            }.GetNewClosure() 'deterministic repeat must throw'
+            Assert-Equal 2 $calls.action 'attempt 2 fails identically and stops there'
+            Assert-Equal 1 $calls.failed 'cleanup ran only for the ONE retry that actually re-ran the action'
+            Assert-Equal 1 $calls.final 'final-failure hook ran once on the deterministic verdict'
+        }
+    }
+
     It 'exhausting MaxAttempts on transient failures ends with OnFinalFailure + throw' {
         Invoke-InTestDir { param($dir)
             $log = Join-Path $dir 'run.log'

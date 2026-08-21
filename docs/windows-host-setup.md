@@ -52,7 +52,7 @@ Phases:
 > **Fast path for Phase A5 + C: `setup-new-host.ps1`.** Once the interactive
 > steps are done (A1 Stevedore+reboot, A2 docker-users + a new shell, A3
 > services, B0 Git/B1 repo), a single elevated run of
-> `windows\scripts\setup-new-host.ps1` does the *entire* scriptable half — CNI
+> `windows\scripts\host\setup-new-host.ps1` does the *entire* scriptable half — CNI
 > `.conflist` authored from the **live** `vEthernet (nat)` subnet (magic
 > constants removed: it derives `network/prefix` + gateway at runtime), then
 > `apply-containerd-config.ps1` (debug flags, teardown env var, Defender
@@ -63,9 +63,9 @@ Phases:
 > machine `SCCACHE_WEBDAV_ENDPOINT` set to the host's LAN IP).
 >
 > ```pwsh
-> pwsh -File windows\scripts\setup-new-host.ps1 -ReportOnly   # plan first (safe, non-admin)
-> pwsh -File windows\scripts\setup-new-host.ps1               # admin - bring the host to green
-> pwsh -File windows\scripts\setup-new-host.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
+> pwsh -File windows\scripts\host\setup-new-host.ps1 -ReportOnly   # plan first (safe, non-admin)
+> pwsh -File windows\scripts\host\setup-new-host.ps1               # admin - bring the host to green
+> pwsh -File windows\scripts\host\setup-new-host.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
 > ```
 >
 > It is idempotent and refuses to run while a build is live (unless `-Force`).
@@ -82,7 +82,7 @@ Phases:
 > locks freshly-written container layers** (upstream docker/for-win#14977;
 > A/B-proven on the RX 9070 XT host — dGPU off → green, on → red, same
 > boot). Probe and repair order: **(1)**
-> `pwsh -File windows\scripts\probe-build-copy.ps1 -Heavy` (the committed
+> `pwsh -File windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` (the committed
 > probe; only a `-Heavy`-green verdict counts — light lanes can be green
 > while RUN-layer finalize is broken), then **(2)** on RDNA4 hosts:
 > elevated `toggle-rdna4-gpu.ps1 -Disable` → re-probe `-Heavy` → build →
@@ -439,8 +439,8 @@ capture the debug evidence again").
 **Use the script — it is the source of truth for the containerd side:**
 
 ```pwsh
-pwsh -File windows\scripts\apply-containerd-config.ps1 -ReportOnly   # inspect, no admin needed
-pwsh -File windows\scripts\apply-containerd-config.ps1               # admin; restarts containerd
+pwsh -File windows\scripts\host\apply-containerd-config.ps1 -ReportOnly   # inspect, no admin needed
+pwsh -File windows\scripts\host\apply-containerd-config.ps1               # admin; restarts containerd
 ```
 
 containerd runs with **no `config.toml`** here — every setting lives in the
@@ -503,7 +503,7 @@ history pinned a 414 GB store at `Reclaimable: 0B`. The repo policy
 `[history] maxAge/maxEntries` cap) is deployed by:
 
 ```pwsh
-pwsh -File windows\scripts\apply-buildkitd-gcpolicy.ps1    # admin; refuses while a build runs
+pwsh -File windows\scripts\host\apply-buildkitd-gcpolicy.ps1    # admin; refuses while a build runs
 ```
 
 **Sizing on a different disk:** the toml's literals assume a ~930 GB C:.
@@ -637,7 +637,7 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    it — the report costs nothing and stops nothing:
 
    ```pwsh
-   pwsh -File windows\scripts\compact-host-vhdx.ps1 -VhdxPath <your.vhdx> -ReportOnly   # admin
+   pwsh -File windows\scripts\host\compact-host-vhdx.ps1 -VhdxPath <your.vhdx> -ReportOnly   # admin
    ```
 
    Without `-ReportOnly` it stops the build services, compacts and restores

@@ -142,7 +142,7 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
     # five such gaps; these cases stop them coming back.
 
     It 'passes every key the media-core scripts consume' {
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
         $args_ = Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $v
         foreach ($k in 'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_SOURCE_VERSION',
                        'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
@@ -155,7 +155,7 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
     It 'passes the litert keys INCLUDING the protoc/JRE pins' {
         # PROTOC_VERSION must match LiteRT-LM's internal protobuf; a stale value
         # emits gencode the pinned headers #error on.
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
         $args_ = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
         foreach ($k in 'LITERT_VERSION', 'LITERT_LM_VERSION', 'PROTOC_VERSION', 'JRE_VERSION') {
             Assert-True ($args_.ContainsKey($k)) "media-litert must forward $k"
@@ -164,7 +164,7 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
     }
 
     It 'forwards values that actually match versions.env' {
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
         $args_ = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
         Assert-Equal $v['PROTOC_VERSION'] $args_['PROTOC_VERSION'] 'forwarded value must be the canonical one'
     }

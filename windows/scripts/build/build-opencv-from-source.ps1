@@ -333,7 +333,7 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
 # Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH; we only
 # need CUDACXX on top (CMake's built-in enable_language(CUDA) probe uses it).
 $gpuEnv = Get-GpuEnvironment
-if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot -and (Test-Path $gpuEnv.CudaRoot)) {
+if ($gpuEnv.HasCuda) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
     $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
@@ -526,9 +526,4 @@ Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
 
 Remove-SourceBuildTree -Path $SourceDir
 
-Write-Host '=== OpenCV source build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-SourceBuild -Banner '=== OpenCV source build completed ==='  # cleanup + banner + exit 0 (see module help)

@@ -20,14 +20,17 @@
 
 Describe 'canonical pin values (backlog #58, #60)' {
 
-    $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+    $repoRoot = Get-RepoRoot
     $versionsEnv = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
 
+    # Thin wrapper over the CANONICAL parser (#126, 2026-08-21): the previous
+    # hand-rolled regex loop handled no quoting/comments/continuations — a
+    # suite whose purpose is "pin the values a mechanical edit could quietly
+    # change" must not read the source of truth with a divergent parser.
+    $script:canonicalPins = ConvertFrom-VersionsEnv -Path $versionsEnv
     function Get-Pin {
         param([string]$Name)
-        foreach ($line in (Get-Content $versionsEnv)) {
-            if ($line -match "^\s*$([regex]::Escape($Name))=(.*)$") { return $Matches[1].Trim() }
-        }
+        if ($script:canonicalPins.Contains($Name)) { return $script:canonicalPins[$Name] }
         return $null
     }
 
@@ -54,11 +57,15 @@ Describe 'canonical pin values (backlog #58, #60)' {
         }
     }
 
-    It 'keeps every version ARG default in Dockerfile.media-merge-builder equal to versions.env (backlog #60)' {
-        $df = Join-Path $repoRoot 'windows\Dockerfile.media-merge-builder'
-        Assert-True (Test-Path $df) "missing $df"
+    It 'keeps every version ARG default in the merge + toolchain Dockerfiles equal to versions.env (backlog #60, extended 2026-08-21)' {
+        # toolchain-builder joined 2026-08-21: its ARG defaults feed the
+        # versions.env precedence rule in build-toolchain-all.ps1 (a stale
+        # Dockerfile literal would now beat the fresh file for that key).
+        $dfFiles = @('Dockerfile.media-merge-builder', 'Dockerfile.toolchain-builder') | ForEach-Object { Join-Path $repoRoot ('windows\' + $_) }
         $checked = 0
         $drift = @()
+        foreach ($df in $dfFiles) {
+        Assert-True (Test-Path $df) "missing $df"
         foreach ($line in (Get-Content $df)) {
             if ($line -notmatch '^\s*ARG\s+([A-Z0-9_]+)\s*=\s*(.+?)\s*$') { continue }
             $name = $Matches[1]
@@ -68,6 +75,7 @@ Describe 'canonical pin values (backlog #58, #60)' {
             if ($null -eq $pin) { continue }                        # not a versions.env key
             $checked++
             if ($pin -ne $val) { $drift += "$name (Dockerfile=$val, versions.env=$pin)" }
+        }
         }
         # Rot guard: if the ARG block is ever restructured so nothing matches,
         # this test would pass vacuously — which is how #60 existed at all.

@@ -121,10 +121,11 @@ $NasmVersion  = Resolve-ContainerImageValue -Value $NasmVersion  -EnvironmentVar
 
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
+#region 1. Git (pinned installer)
 # Derive the Git installer URL from GIT_VERSION (versions.env) so the pin cannot drift
 # invisibly in a param default -- same pattern as the CMake/Vulkan pins above. The
 # ".windows.1" tag suffix covers normal releases; a respun release needs -GitInstallerUrl.
-$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.54.0'
+$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.55.0'
 $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
     -DefaultValue "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe"
 
@@ -144,10 +145,12 @@ Sync-ContainerProcessPath -AdditionalPaths @(
     'C:\Program Files\Git\usr\bin'
 ) | Out-Null
 
+#endregion
+#region 2. WiX toolset (dotnet tool, pinned)
 # WiX versions come from versions.env (single source of truth shared with the
 # verify-toolchain.ps1 assert); defaults keep the script runnable standalone.
 $WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
-$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
+$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.6'
 Invoke-ScoopStep -Description "dotnet tool install wix $WixVersion" -Command {
     dotnet tool install --tool-path C:\WiX wix --version $WixVersion
 }
@@ -157,6 +160,8 @@ Invoke-ScoopStep -Description "wix extension add WixToolset.UI.wixext/$WixUiExtV
 
 Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
+#endregion
+#region 3. scoop bootstrap + shims
 # Hardened fetch (retry + TLS) instead of a bare one-shot irm -- a transient blip here
 # killed the whole base build. Hash-pinned (SCOOP_INSTALLER_SHA256): this script is
 # EXECUTED, so we only run the exact bytes that were reviewed when the pin was set.
@@ -193,6 +198,8 @@ Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { s
 # proxies in CARGO_BIN, and a toolchain-LESS rustup would drop proxy shims that
 # resolve no toolchain (the failure the old "never rustup" rule guarded against).
 
+#endregion
+#region 4. Vulkan LAN preseed + pinned installs (cmake/vulkan/flutter)
 # Preseed the 275 MB SDK from the LAN webdav into scoop's cache under scoop's
 # own cache name (app#version#first-7-of-sha256(url)): sdk.lunarg.com stalls
 # out reproducibly from inside containers (2026-08-19, three ~20-min transfer
@@ -226,6 +233,8 @@ Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 # could silently diverge from the Linux lane's Flutter. Empty env falls back to
 # scoop's current manifest (standalone runs), same pattern as vulkan/cmake.
 Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VERSION) -Global
+#endregion
+#region 5. PINNED compiled-output packages + floating toolset + cache scrub
 # ── PINNED: the three scoop packages that produce or shape compiled output ────
 # llvm was DELIBERATELY UNPINNED until 2026-08-07, which left the base image --
 # the most expensive layer in the chain -- unreproducible in its single most
@@ -267,8 +276,12 @@ Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
 # `pkgconf` manifest; the package name is `pkg-config`.
 # sccache LEFT this list on 2026-08-08 -- see the pinned block above. It is the
 # one package here whose VERSION gates behaviour rather than output.
-Invoke-ScoopStep -Description 'scoop install floating toolset (nano, cppcheck, nsis, uv, nuget, zlib, openssl, pkg-config)' -Command {
-    scoop install nano cppcheck extras/nsis main/uv main/nuget extras/zlib main/openssl main/pkg-config
+# Per-package via Install-ScoopPackage (2026-08-21): the former single
+# 8-package Invoke-ScoopStep bypassed the 3-attempt retry + cache purge, so
+# one transient SourceForge/GitHub blip on ANY of the 8 killed the whole base
+# build — the precise failure the retry helper was added for on 2026-08-19.
+foreach ($floatingPkg in @('nano', 'cppcheck', 'extras/nsis', 'main/uv', 'main/nuget', 'extras/zlib', 'main/openssl', 'main/pkg-config')) {
+    Install-ScoopPackage -Package $floatingPkg
 }
 
 # CMake stable release via scoop (replaces the old cmake.org MSI download); the
@@ -301,4 +314,4 @@ foreach ($d in @("$env:USERPROFILE\.nuget\packages", "$env:LOCALAPPDATA\Temp")) 
         Remove-Item "$d\*" -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
-
+#endregion

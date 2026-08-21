@@ -137,6 +137,16 @@ configure_opencv_build_env() {
     if [ -d "${FFMPEG_PREFIX:-/opt/ffmpeg}/lib" ]; then
         export LDFLAGS="${LDFLAGS} -L${FFMPEG_PREFIX:-/opt/ffmpeg}/lib -Wl,-rpath-link,${FFMPEG_PREFIX:-/opt/ffmpeg}/lib"
     fi
+    # Same class for GSTREAMER (2026-08-21, riscv64 pass-2): videoio links
+    # our /opt/gstreamer fine, but APP binaries (opencv_visualisation) then
+    # need the gst libdir on the rpath-link for transitive NEEDED
+    # resolution ("libgstapp-1.0.so.0 ... not found (try using
+    # -rpath-link)"). Resolve the real libdir (per-arch layouts differ).
+    local _gst_lib
+    _gst_lib="$(dirname "$(find /opt/gstreamer -name 'libgstreamer-1.0.so*' -not -type d 2>/dev/null | head -1)" 2>/dev/null || true)"
+    if [ -n "${_gst_lib}" ] && [ "${_gst_lib}" != "." ]; then
+        export LDFLAGS="${LDFLAGS} -L${_gst_lib} -Wl,-rpath-link,${_gst_lib}"
+    fi
 }
 
 configure_opencv_build_env
@@ -196,6 +206,20 @@ fetch_opencv() {
             "${OPENCV_SRC}" \
             "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
     fi
+
+    # OCV-FF1 phase 2 (2026-08-21): with the try_compile link gap fixed,
+    # HAVE_FFMPEG went TRUE for the first time — and exposed that opencv
+    # 5.0.0 still uses the AVCodec fields FFmpeg 8 removed (pix_fmts,
+    # supported_framerates; 4.x master already migrated, the 5.x branch has
+    # not). Backport shim: avcodec_get_supported_config() behind
+    # LIBAVCODEC_VERSION_MAJOR >= 62 guards — 2 sites, drops cleanly when a
+    # 5.x release lands the migration.
+    if [ -f "${OPENCV_SRC}/modules/videoio/src/cap_ffmpeg_impl.hpp" ]; then
+        bash /opt/scripts/core/apply-patch.sh \
+            /opt/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch \
+            "${OPENCV_SRC}" \
+            "OpenCV 5.0.0 FFmpeg-8 AVCodec config-API compat (OCV-FF1)"
+    fi
 }
 
 target_machine() {
@@ -248,10 +272,14 @@ _opencv_target_adjustments() {
             # glib-2.0.pc sat in the sysroot; that package is gone (root-cause
             # revert) and riscv64 gstreamer builds with introspection again →
             # /opt/gstreamer exports working glib .pcs like wave-3. Pass-1
-            # (no FORCE_REBUILD) stays OFF (no system gstreamer to probe —
-            # deliberate); pass-2 probes OUR /opt/gstreamer. Target restored:
-            # cv2 GStreamer:YES on ALL THREE arches.
-            if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+            # (OPENCV_GSTREAMER_PASS unset) stays OFF (no system gstreamer to
+            # probe — deliberate); pass-2 (Dockerfile.media exports
+            # OPENCV_GSTREAMER_PASS=2) probes OUR /opt/gstreamer. Target:
+            # cv2 GStreamer:YES on ALL THREE arches. Dedicated discriminator
+            # (2026-08-21): this used to key on FORCE_REBUILD, so forcing a
+            # PASS-1 rebuild silently flipped gstreamer ON with nothing to
+            # probe — FORCE_REBUILD keeps its one meaning (skip-override).
+            if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
             # RV1-FOLGE 4 (2026-08-20): the contrib freetype module now
@@ -557,6 +585,15 @@ configure_opencv() {
     _opencv_cmake_java_opts cmake_opts
     _opencv_cmake_cuda_opts cmake_opts
     _opencv_cmake_freetype_opts cmake_opts
+
+    # DETERMINISTIC exe-linker flags (2026-08-21): the cross/cache helpers
+    # can place their own -DCMAKE_EXE_LINKER_FLAGS in cmake_opts, and an
+    # explicit -D beats env LDFLAGS — which silently dropped the
+    # ffmpeg/gstreamer -L/-rpath-link repairs from the APP links (riscv64
+    # pass-2 died on libgst* "not found (try using -rpath-link)" despite the
+    # env fix). cmake is last-wins on repeated -D: append ours LAST, merging
+    # whatever the helpers put into the env with our LDFLAGS bundle.
+    cmake_opts+=("-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS:-} ${LDFLAGS:-}")
 
     echo "CMake options: ${cmake_opts[*]}"
     cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || die "OpenCV configure failed"

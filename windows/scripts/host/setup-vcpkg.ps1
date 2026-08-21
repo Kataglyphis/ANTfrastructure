@@ -38,7 +38,11 @@ Write-Host "Setting up vcpkg ($VcpkgRef) at $VcpkgDir..."
 if (-not (Test-Path (Join-Path $VcpkgDir 'vcpkg.exe'))) {
     Write-Host 'Downloading vcpkg (DNS workaround: HTTP download with retries instead of git clone)...'
     $vcpkgZip = Join-Path $env:TEMP 'vcpkg.zip'
-    Invoke-DownloadWithRetry -Url "https://github.com/microsoft/vcpkg/archive/refs/tags/$VcpkgRef.zip" -DestinationPath $vcpkgZip -Description "vcpkg (pinned tag $VcpkgRef)"
+    # -ExpectSignature PK, no SHA: GitHub auto-generated tag archives are not
+    # bit-stable across time, so a pinned hash would be a false alarm waiting
+    # to happen — the magic-byte check guards the real failure class (an HTML
+    # error/challenge page reaching Expand-ArchiveSubdirectory unverified).
+    Invoke-DownloadWithRetry -Url "https://github.com/microsoft/vcpkg/archive/refs/tags/$VcpkgRef.zip" -DestinationPath $vcpkgZip -Description "vcpkg (pinned tag $VcpkgRef)" -ExpectSignature PK
     $extracted = Expand-ArchiveSubdirectory -ArchivePath $vcpkgZip -DestinationPath $env:TEMP -Filter 'vcpkg-*'
     if (-not $extracted) { throw 'Failed to locate extracted vcpkg directory' }
     # If a previous half-finished run left $VcpkgDir behind (dir exists but no

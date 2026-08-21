@@ -1,0 +1,166 @@
+#requires -Version 7.0
+# Copyright (c) 2025 Kataglyphis
+# SPDX-License-Identifier: MIT
+#
+# The BK media-core solve ORDER is encoded twice — as the FROM graph in
+# Dockerfile.media-builder (media-core-built-ffmpeg FROM ${MEDIA_CORE_ONNX_IMAGE}
+# etc.) and as the Invoke-BkStage sequence + MEDIA_CORE_*_IMAGE build-args in
+# build-buildkit.ps1. The driver's own comment admits "the two encode the same
+# order twice". A mismatch does not error: buildctl resolves whatever image the
+# build-arg names, so a drifted driver silently builds the chain on a stale
+# ancestor (old common-stage ENV included). Order is load-bearing (#94: OpenCV
+# must configure AFTER FFmpeg exists or it links its own downloaded prebuilt).
+# This suite derives the parent map from BOTH files and asserts they agree.
+
+Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
+
+    $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    $dfText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-builder')
+    $drvText = Get-Content -Raw (Join-Path $repoWin 'build-buildkit.ps1')
+
+    # Dockerfile side: stage -> parent ARG key, from `FROM ${MEDIA_CORE_X_IMAGE} AS stage`
+    $dfMap = @{}
+    foreach ($m in [regex]::Matches($dfText, '(?m)^FROM \$\{(MEDIA_CORE_[A-Z]+_IMAGE)\} AS ([\w-]+)')) {
+        $dfMap[$m.Groups[2].Value] = $m.Groups[1].Value
+    }
+
+    # Driver side: $xArg = @{ MEDIA_CORE_Y_IMAGE = ... } definitions ...
+    $argVarMap = @{}
+    foreach ($m in [regex]::Matches($drvText, '\$(\w+Arg)\s*=\s*@\{\s*(MEDIA_CORE_[A-Z]+_IMAGE)\s*=')) {
+        $argVarMap[$m.Groups[1].Value] = $m.Groups[2].Value
+    }
+    # ... and which Invoke-BkStage -Target gets which $xArg appended.
+    $drvMap = @{}
+    $drvOrder = [System.Collections.Generic.List[string]]::new()
+    foreach ($m in [regex]::Matches($drvText, "Invoke-BkStage[^\r\n]*-Target '([\w-]+)'[^\r\n]*")) {
+        $target = $m.Groups[1].Value
+        if ($target -notmatch '^media-core-built') { continue }
+        $drvOrder.Add($target)
+        $argRef = [regex]::Match($m.Value, '\+\s*\$(\w+Arg)')
+        if ($argRef.Success) { $drvMap[$target] = $argVarMap[$argRef.Groups[1].Value] }
+    }
+
+    It 'discovers the chain in both files (scanner-rot guard)' {
+        Assert-True ($dfMap.Count -ge 3) "Dockerfile FROM graph: expected >=3 MEDIA_CORE_*_IMAGE stages, found $($dfMap.Count)"
+        Assert-True ($drvOrder.Count -ge 4) "driver: expected >=4 media-core-built* Invoke-BkStage calls, found $($drvOrder.Count)"
+        Assert-True ($argVarMap.Count -ge 3) "driver: expected >=3 `$xArg = @{ MEDIA_CORE_*_IMAGE } definitions, found $($argVarMap.Count)"
+    }
+
+    It 'driver hands every chained stage the SAME parent the Dockerfile declares' {
+        $bad = @()
+        foreach ($stage in $dfMap.Keys) {
+            if (-not $drvMap.ContainsKey($stage)) { $bad += "driver never passes a MEDIA_CORE_*_IMAGE arg to '$stage'"; continue }
+            if ($drvMap[$stage] -ne $dfMap[$stage]) {
+                $bad += "'$stage': Dockerfile parent $($dfMap[$stage]) vs driver arg $($drvMap[$stage])"
+            }
+        }
+        Assert-True ($bad.Count -eq 0) ("solve-order drift (silent stale-ancestor builds):`n  " + ($bad -join "`n  "))
+    }
+
+    It 'the two production sccache ENV blocks declare identical key sets and ARG defaults' {
+        # media-builder `common` vs media-merge-builder `built`: not FROM-related
+        # (ENV crosses no FROM boundary), so they are hand-mirrored twins — the
+        # 2026-08-21 audit caught SCCACHE_DIR hardcoded and SCCACHE_FORCE_LOCAL
+        # missing on the merge side. This pins the sets AND the ARG defaults.
+        $mergeText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
+        $getKeys = { param($text)
+            [regex]::Matches($text, '(?m)^\s*(SCCACHE_[A-Z_]+)=') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+        }
+        $a = & $getKeys $dfText
+        $b = & $getKeys $mergeText
+        Assert-Equal ($a -join ',') ($b -join ',') 'sccache ENV key sets drifted between the two files'
+        # ARG defaults: compare on the INTERSECTION of names — media-builder
+        # legitimately declares onnx-stage-only knobs (SCCACHE_CUDA_LAUNCHER,
+        # SCCACHE_REPRO_CUDA_LLM) with no merge-side counterpart.
+        $getArgs = { param($text)
+            $t = @{}
+            [regex]::Matches($text, '(?m)^ARG (SCCACHE_[A-Z_]+)=("[^"]*")') | ForEach-Object { $t[$_.Groups[1].Value] = $_.Groups[2].Value }
+            $t
+        }
+        $argsA = & $getArgs $dfText
+        $argsB = & $getArgs $mergeText
+        $drift = @()
+        foreach ($k in ($argsA.Keys | Where-Object { $argsB.ContainsKey($_) })) {
+            if ($argsA[$k] -ne $argsB[$k]) { $drift += "$k : $($argsA[$k]) vs $($argsB[$k])" }
+        }
+        Assert-True ($drift.Count -eq 0) ('sccache ARG defaults drifted on shared names: ' + ($drift -join '; '))
+    }
+
+    It 'classic COPY and BK mount reference the same build scripts per branch (B6)' {
+        # A script added to the BK mount list and forgotten in the classic COPY
+        # (or vice versa) fails only at the OTHER lane's runtime. Documented
+        # exception: load-versions.ps1 is BK-only — the classic lane gets its
+        # versions through the media-core-env ENV mirror, not the script.
+        $joined = $dfText -replace ('`' + "`r?`n"), ' '
+        $stage = ''
+        $classicSets = @{}; $bkSets = @{}
+        foreach ($line in ($joined -split "`n")) {
+            if ($line -match '^FROM \S+ AS ([\w-]+)') { $stage = $Matches[1] }
+            $names = [regex]::Matches($line, 'windows.scripts.build.([\w.-]+\.ps1)') | ForEach-Object { $_.Groups[1].Value }
+            if (-not $names) { continue }
+            if ($line -match '--mount' -and $line -match 'source=') {
+                if (-not $bkSets.ContainsKey($stage)) { $bkSets[$stage] = [System.Collections.Generic.HashSet[string]]::new() }
+                $names | ForEach-Object { [void]$bkSets[$stage].Add($_) }
+            } elseif ($line.TrimStart().StartsWith('COPY')) {
+                if (-not $classicSets.ContainsKey($stage)) { $classicSets[$stage] = [System.Collections.Generic.HashSet[string]]::new() }
+                $names | ForEach-Object { [void]$classicSets[$stage].Add($_) }
+            }
+        }
+        # Scanner-rot guard (audit 2026-08-21): if the path regex stops
+        # matching (next layout move), both sets go empty and '' -eq ''
+        # would report green while checking nothing.
+        Assert-True ($classicSets.Count -ge 3) "classic COPY scan found only $($classicSets.Count) branch stages — scan broke or layout moved"
+        Assert-True ($bkSets.Count -ge 3) "BK mount scan found only $($bkSets.Count) stages — scan broke or layout moved"
+        $branchMap = @{
+            'media-core'   = @('media-core-built-onnx', 'media-core-built-ffmpeg', 'media-core-built-opencv', 'media-core-built')
+            'media-litert' = @('media-litert-built')
+            'media-tvm'    = @('media-tvm-built')
+        }
+        $bad = @()
+        foreach ($branch in $branchMap.Keys) {
+            $classic = @($classicSets[$branch]) | Sort-Object
+            $bkUnion = @($branchMap[$branch] | ForEach-Object { @($bkSets[$_]) }) |
+                Where-Object { $_ -and $_ -ne 'load-versions.ps1' } | Sort-Object -Unique
+            if (($classic -join ',') -ne ($bkUnion -join ',')) {
+                $bad += "$branch : classic [$($classic -join ', ')] vs bk [$($bkUnion -join ', ')]"
+            }
+        }
+        Assert-True ($bad.Count -eq 0) ("lane script-set drift:`n  " + ($bad -join "`n  "))
+    }
+
+    It 'merge-builder buildmods is a superset of media-builder buildmods (B4)' {
+        # The 5-module core must stay in step by hand across the two files
+        # (no cross-Dockerfile stage sharing exists).
+        $mergeText2 = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
+        $getMods = { param($text)
+            $j = $text -replace ('`' + "`r?`n"), ' '
+            $inStage = $false; $mods = @()
+            foreach ($line in ($j -split "`n")) {
+                if ($line -match '^FROM \S+ AS buildmods') { $inStage = $true; continue }
+                if ($inStage -and $line -match '^FROM ') { break }
+                if ($inStage) {
+                    $mods += ([regex]::Matches($line, 'modules.(Windows[\w.]+\.psm1)') | ForEach-Object { $_.Groups[1].Value })
+                }
+            }
+            $mods | Sort-Object -Unique
+        }
+        $a = & $getMods $dfText
+        $b = & $getMods $mergeText2
+        Assert-True ($a.Count -ge 5) "media-builder buildmods parse found only $($a.Count) modules — stage layout changed?"
+        $missing = @($a | Where-Object { $b -notcontains $_ })
+        Assert-True ($missing.Count -eq 0) ('modules in media-builder buildmods but MISSING from merge-builder: ' + ($missing -join ', '))
+    }
+
+    It 'driver builds every parent BEFORE the stage that consumes it' {
+        $bad = @()
+        # MEDIA_CORE_X_IMAGE is produced by the driver call targeting media-core-built-x
+        foreach ($stage in $dfMap.Keys) {
+            $parentStage = 'media-core-built-' + ($dfMap[$stage] -replace '^MEDIA_CORE_|_IMAGE$', '').ToLowerInvariant()
+            $pi = $drvOrder.IndexOf($parentStage)
+            $si = $drvOrder.IndexOf($stage)
+            if ($pi -lt 0 -or $si -lt 0) { continue } # covered by the map assertion above
+            if ($pi -gt $si) { $bad += "'$parentStage' (idx $pi) is built after its consumer '$stage' (idx $si)" }
+        }
+        Assert-True ($bad.Count -eq 0) ("driver order violates the FROM graph:`n  " + ($bad -join "`n  "))
+    }
+}

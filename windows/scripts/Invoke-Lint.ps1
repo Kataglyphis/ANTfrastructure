@@ -29,6 +29,10 @@ $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
 # never been linted before joining the scope the same day.
 $targets = @(
     Get-ChildItem -Path $windowsDir -Recurse -Include '*.ps1', '*.psm1' -File
+    # shared/windows: templates consumed by 4 external repos — an edit there
+    # was gated by NOTHING until 2026-08-21 (no lint, no tests, no workflow
+    # trigger); exactly the class of miss #108 cleaned up in-repo.
+    Get-ChildItem -Path (Join-Path (Split-Path -Parent $windowsDir) 'shared\windows') -Recurse -Include '*.ps1', '*.psm1' -File -ErrorAction SilentlyContinue
 ) | Where-Object { $_.FullName -notmatch '\\archive\\' } | Sort-Object FullName -Unique
 
 Write-Host "== Lint gate: $($targets.Count) files ==" -ForegroundColor Cyan

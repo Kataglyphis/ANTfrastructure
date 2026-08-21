@@ -31,25 +31,27 @@ later as `lld-link: undefined symbol` (ONNX Runtime v1.28.0:
 
 ## The fix
 
-`0001-nvcc-Windows-protect-escaped-quotes-in-dryrun-lines-.patch`: protect
-`\"` with a sentinel around the backslash flatten so shlex sees the original
-quoting. One hunk in `fold_env_vars_or_split_into_exe_and_args`.
+The quote fix itself (formerly 0001/0002 here) MERGED upstream in
+mozilla/sccache#2811 — those files are deleted, the pinned rev carries them.
+What remains on disk is `0003-nvcc-accept-the-diag-error-family-...patch`:
+accept the space-separated `--diag-suppress <n>` / `--diag-error <n>` forms
+nvcc emits in dryrun lines (upstream PR mozilla/sccache#2816, open).
 
 ## Verification
 
-`windows/scripts/probe-sccache-patch-verify.ps1` (via
-`Dockerfile.sccache-patch-verify`): builds the pin + patch in-container and
+`windows/scripts/diagnostics/probe-sccache-patch-verify.ps1` (via
+`Dockerfile.probe` with `-ProbeScript probe-sccache-patch-verify.ps1`): builds the pin + patch in-container and
 re-runs the single-TU replay (`probe-onnx-tu-replay.ps1`, which carries the
 full forensic chain: symbol diff, define delta, intermediate stub counts,
 tokenizer autopsy).
 
-## Shipping (base-tier - do NOT land alone)
+## Shipping — CURRENT STATE (2026-08-21)
 
-Production builds sccache via `setup-rust-toolchain.ps1` (`cargo install
---git --rev` in `Dockerfile.base`). Carrying this patch means switching that
-step to clone + `git apply` + `cargo install --path .` (or pinning a fork
-rev) - a BASE rebuild, so it rides the next base-tier batch (backlog #114).
-After it ships: the three-canary bar (verify-cuda-cache, fused_moe compile,
-full providers_cuda link) before flipping SCCACHE_CUDA_LAUNCHER on, plus a
-cache-hit second run. Upstream: owner submits the patch as a PR (this dir is
-the prepared package, hcsshim-teardown-timeout precedent).
+SHIPPED: production builds sccache from the merged upstream rev via
+`setup-rust-toolchain.ps1` (SCCACHE_GIT_REV pin in versions.env = ffac4a5,
+clone + git apply of 0003 + `cargo install --path .`). The pre-merge plan
+this section used to describe (backlog #114 base-tier batch) is done.
+Standing rule unchanged: CUDA compiles stay BARE nvcc — the launcher-default
+question is CLOSED (miscompile is storage-independent; see the #99/P0b
+verdict in docs). 0003 rides until mozilla/sccache#2816 merges, then this
+whole directory retires like 0001/0002 did.

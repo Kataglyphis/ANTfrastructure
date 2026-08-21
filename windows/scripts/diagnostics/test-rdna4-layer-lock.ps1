@@ -37,12 +37,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1')
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run ELEVATED (Enable/Disable-PnpDevice needs admin).'
-}
+Assert-Elevated -Reason 'Enable/Disable-PnpDevice needs admin'
 
 $probeScript = Join-Path $repoRoot 'windows\scripts\diagnostics\probe-build-copy.ps1'
 if (-not (Test-Path $probeScript)) { throw "probe script missing: $probeScript" }

@@ -125,6 +125,15 @@ function Invoke-InTestDir {
 
 function Get-TestResult { return $script:Results }
 
-Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, `
+# One owner for "where is the repo root" (#126): the suites spelled the
+# three-parent walk 4 different ways ($PSScriptRoot chains, piped Split-Path,
+# unresolved ..\..\.., $PSCommandPath). Anchored on THIS module's location
+# (tests -> scripts -> windows -> root), so it is independent of how the
+# calling suite was loaded (dot-sourced or invoked).
+function Get-RepoRoot {
+    return (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
+}
+
+Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, `
     Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir

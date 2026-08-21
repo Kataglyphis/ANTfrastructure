@@ -29,10 +29,7 @@ $ErrorActionPreference = 'Stop'
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1')
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run ELEVATED (service env + Restart-Service + nerdctl need admin).'
-}
+Assert-Elevated -Reason 'service env + Restart-Service + nerdctl need admin'
 
 Write-Host '== 1/4 buildkitd service env (BUILDKIT_STEP_LOG_MAX_SIZE/-SPEED=-1) ==' -ForegroundColor Cyan
 New-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment `

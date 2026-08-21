@@ -82,6 +82,13 @@ function Invoke-MsixSign {
 
       # Import the signing certificate into the LocalMachine trust store so
       # subsequent signtool verify calls succeed when using a self-signed PFX.
+      # DELIBERATE WARN-NOT-THROW (#145, documented 2026-08-21): the package
+      # IS signed above regardless — only the trust-store import for the
+      # local `signtool verify` needs elevation. Consumer dev loops
+      # (BeschleunigerBallett/NativeInferencePlugin Build-Windows) run
+      # unelevated and must still produce the signed MSIX; a throw here
+      # would break them for a verification nicety. The degraded state is
+      # named in the warning, so this is not the Slang-class silent skip.
       try {
         if (-not (Test-Administrator)) {
           Write-BuildLogWarning -Context $Context -Message 'Not running as Administrator; skipping PFX import into LocalMachine certificate store. signtool verify may fail.'

@@ -42,19 +42,12 @@ $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('Windo
 
 $PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageName
 
-$script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir $LogDir -StopOnError:$StopOnError
-$script:BuildContext.SuppressConsoleOutput = $false
+# #141: shared preamble — context/log/wrappers come from New-CiSession
+# (Initialize-CiEnvironment.ps1); this file used to carry the drifted copy.
+$script:BuildContext = New-CiSession -RepoRoot $repoRoot -LogDir $LogDir -StopOnError:$StopOnError
 $logPath = $script:BuildContext.LogPath
 $script:CreatedUvEnvs = New-Object System.Collections.Generic.List[string]
 $script:Results = $script:BuildContext.Results
-
-function Close-Log { Close-BuildLog -Context $script:BuildContext }
-function Write-CiLog { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-function Write-CiLogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
-function Write-LogError { param([string]$Message); Write-BuildLogError -Context $script:BuildContext -Message $Message }
-function Write-LogSuccess { param([string]$Message); Write-BuildLogSuccess -Context $script:BuildContext -Message $Message }
-
-Open-BuildLog -Context $script:BuildContext
 
 Write-CiLog "=== Python CI Test Matrix (Windows) ==="
 Write-CiLog "Repo root: $repoRoot"
@@ -147,7 +140,7 @@ try {
     }
 
     Write-BuildSummary -Context $script:BuildContext
-    Close-Log
+    Close-CiLog
 
     if ($script:Results.Failed.Count -gt 0) {
         exit 1

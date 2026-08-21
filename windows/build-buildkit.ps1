@@ -445,19 +445,27 @@ if ($SccacheEndpoint) {
     # ARG/ENV (cache key - toggling -ConcurrentAux used to invalidate every
     # litert/tvm compile; a different-RAM host invalidated everything).
     # Published here instead; Get-BuildJobCount reads it via the endpoint.
-    # Under -ConcurrentAux EVERY branch now gets the halved budget - the old
-    # asymmetry (parent full + two halved children) oversubscribed the host.
-    $effectiveMemGb = if ($ConcurrentAux) { [Math]::Max(8, [int]($MediaMemoryGb / 2)) } else { [int]$MediaMemoryGb }
-    try {
-        $memBody = Join-Path $env:TEMP 'memory-limit-gb.txt'
-        Set-Content -Path $memBody -Value "$effectiveMemGb" -Encoding ascii -NoNewline
-        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $memBody "$SccacheEndpoint/preseed/memory-limit-gb.txt"
-        if ($LASTEXITCODE -eq 0) { Write-Host "preseed: memory-limit-gb=$effectiveMemGb published" }
-        else { Write-Warning "memory-limit publish failed (exit $LASTEXITCODE) - containers fall back to CIM host RAM" }
-    } catch {
-        Write-Warning "memory-limit publish skipped: $($_.Exception.Message)"
+    # PHASED under -ConcurrentAux (audit 2026-08-21 #16): the schedule is
+    # sequential-then-parallel — media-core runs ALONE and gets the FULL
+    # budget (the old single halved publish ran the memory-bound long pole,
+    # ONNX, at half RAM with nothing else on the host); the halved budget is
+    # re-published just before the two children spawn, and the full one again
+    # before the merge stage (GStreamer reads it too).
+    function Publish-MemoryBudget {
+        param([Parameter(Mandatory)][int]$Gb, [string]$Phase = '')
+        try {
+            $memBody = Join-Path $env:TEMP 'memory-limit-gb.txt'
+            Set-Content -Path $memBody -Value "$Gb" -Encoding ascii -NoNewline
+            & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $memBody "$SccacheEndpoint/preseed/memory-limit-gb.txt"
+            $phaseNote = if ($Phase) { " ($Phase)" } else { '' }
+            if ($LASTEXITCODE -eq 0) { Write-Host "preseed: memory-limit-gb=$Gb published$phaseNote" }
+            else { Write-Warning "memory-limit publish failed (exit $LASTEXITCODE) - containers fall back to CIM host RAM" }
+        } catch {
+            Write-Warning "memory-limit publish skipped: $($_.Exception.Message)"
+        }
+        $global:LASTEXITCODE = 0
     }
-    $global:LASTEXITCODE = 0
+    Publish-MemoryBudget -Gb ([int]$MediaMemoryGb) -Phase 'sequential phase'
 }
 
 $started = Get-Date
@@ -509,7 +517,7 @@ if ($Stages -contains 'sdk') {
         # the sdk name via a trivial FROM (cache-hit, seconds).
         $alias = Join-Path $script:LogDir 'Dockerfile.bk-sdk-alias'
         "FROM $(Get-BkTag 'windows-base')`r`n" | Set-Content $alias -Encoding ASCII
-        Invoke-BkStage -Dockerfile ('out/windows-build-logs/' + [IO.Path]::GetFileName($alias)) -Tag (Get-BkTag 'windows-sdk') -Label 'sdk-alias'
+        Invoke-BkStage -Dockerfile ('out/windows-build-logs/' + [IO.Path]::GetFileName($alias)) -Tag (Get-BkTag 'windows-sdk') -Label 'bk-cpu-alias'
     }
 }
 
@@ -568,14 +576,17 @@ if ($Stages -contains 'media') {
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-ffmpeg' -Tag (Get-BkTag 'windows-media-core-ffmpeg') -BuildArgs ($branchBuildArgs + $onnxArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-opencv' -Tag (Get-BkTag 'windows-media-core-opencv') -BuildArgs ($branchBuildArgs + $ffmpegArg)
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built' -Tag (Get-BkTag 'windows-media-core') -BuildArgs ($branchBuildArgs + $opencvArg)
-        } elseif ($branch -eq 'media-tvm') {
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-tvm-built' -Tag (Get-BkTag 'windows-media-tvm') -BuildArgs $branchBuildArgs
         } else {
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target "$branch-built" -Tag (Get-BkTag "windows-$branch") -BuildArgs $branchBuildArgs
         }
     }
     if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
         Write-Host "`n==> [bk:aux] concurrent litert + tvm child drivers ($auxMem GB memory budget each)" -ForegroundColor Cyan
+        # Parallel phase begins: halve the published budget for the two
+        # concurrent children (see Publish-MemoryBudget's phased contract).
+        if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
+            Publish-MemoryBudget -Gb ([Math]::Max(8, [int]($MediaMemoryGb / 2))) -Phase 'parallel aux phase'
+        }
         foreach ($aux in 'media-litert', 'media-tvm') {
             $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
                 '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem)
@@ -588,7 +599,14 @@ if ($Stages -contains 'media') {
             # and tvm branches are built by these CHILD processes, so a parent-only
             # flag is a silent no-op for exactly the branches it targets — and a
             # poisoned snapshot in litert/tvm is the scenario the flag exists for.
-            if ($NoCacheStage) { $auxArgs += @('-NoCacheStage', ($NoCacheStage -join ',')) }
+            # Forward ONLY the entries this child's branch can match: the child
+            # builds one aux branch, and its end-of-run matched-nothing gate
+            # would otherwise throw on a parent-scoped label like 'opencv'
+            # (audit 2026-08-21 #5) — killing the chain AFTER the branches
+            # were paid for. NB -File cannot deliver arrays (documented in
+            # .NOTES), so entries go one-per-argument, not comma-joined.
+            $auxNoCache = @($NoCacheStage | Where-Object { $aux -match [regex]::Escape(($_ -replace '^media-', '')) -or $_ -match ($aux -replace '^media-', '') })
+            foreach ($ncs in $auxNoCache) { $auxArgs += @('-NoCacheStage', $ncs) }
             if ($ImportCacheRef) { $auxArgs += @('-ImportCacheRef', $ImportCacheRef) }
             if ($ExportCacheRef) { $auxArgs += @('-ExportCacheRef', $ExportCacheRef) }
             if ($BuildCtl) { $auxArgs += @('-BuildCtl', $BuildCtl) }
@@ -607,7 +625,18 @@ if ($Stages -contains 'media') {
             if ($NoSccache) { $auxArgs += '-NoSccache' }
             if ($PSBoundParameters.ContainsKey('MinFreeGb')) { $auxArgs += @('-MinFreeGb', $MinFreeGb) }
             if ($PSBoundParameters.ContainsKey('HostReserveGb')) { $auxArgs += @('-HostReserveGb', $HostReserveGb) }
-            $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgs -PassThru -NoNewWindow
+            # Forward -BuildArg too: under -ConcurrentAux the litert/tvm solves
+            # are the CHILDREN's, so a parent-only compile knob was a silent
+            # no-op for two of three branches (audit 2026-08-21 #17).
+            foreach ($ba in $BuildArg) { $auxArgs += @('-BuildArg', $ba) }
+            # QUOTE spaced elements: Start-Process -ArgumentList joins with
+            # spaces and does NOT quote, so a buildctl under
+            # 'C:\Program Files\Stevedore' (this host since 2026-08-21!) or a
+            # spaced checkout path split mid-token and killed both children
+            # right after media-core (audit 2026-08-21 #4 — the same
+            # argv-boundary class this file hard-throws on for -BuildArg).
+            $auxArgsQuoted = @($auxArgs | ForEach-Object { if ("$_" -match '\s') { '"{0}"' -f $_ } else { "$_" } })
+            $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgsQuoted -PassThru -NoNewWindow
         }
         # FAIL FAST + never orphan (backlog #62). Wait-Process on the whole set
         # meant a child dying at minute 5 went unnoticed until the other
@@ -635,6 +664,11 @@ if ($Stages -contains 'media') {
         # (No second exit-code sweep: the wait loop above already throws on the
         # FIRST non-zero child rather than after every child has finished.)
         Write-Host '[bk:aux] litert + tvm OK' -ForegroundColor Green
+        # Parallel phase over: the merge stage (GStreamer reads the budget
+        # too) runs alone again — restore the full budget.
+        if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
+            Publish-MemoryBudget -Gb ([int]$MediaMemoryGb) -Phase 'merge phase'
+        }
     }
     # Merge fan-in needs ALL THREE branch images — and must run exactly ONCE.
     # -ConcurrentAux children are spawned with a single -MediaBranches entry,
@@ -697,7 +731,11 @@ if ($Stages -contains 'torch') {
 
 if ($Stages -contains 'final') {
     $finalArgs = $stampArgs + @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Tag (Get-BkTag 'winamd64') -BuildArgs $finalArgs
+    # -Label 'final' (audit 2026-08-21 #14): the default label is the
+    # Dockerfile filename ('Dockerfile'), so -NoCacheStage final matched
+    # only final-tar/final-push — busting the re-EXPORT while the owner
+    # believed the final stage was rebuilt.
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag 'winamd64') -BuildArgs $finalArgs
     # SMOKE GATE (backlog #44). Until 2026-08-14 neither driver ran the smoke
     # test at all, so a multi-hour chain ended with "Done" and zero evidence the
     # image worked — in a repo whose defect history is dominated by "builds
@@ -716,6 +754,15 @@ if ($Stages -contains 'final') {
     } else {
         Write-Host '[bk:smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
     }
+# FAIL LOUDLY (moved pre-export, audit #15) on a -NoCacheStage entry that matched nothing. Printing only on a
+    # match is not visibility: a typo would print nothing, every stage would build
+    # fully cached, and the owner would believe a poisoned snapshot had been busted.
+    $unmatchedNoCacheStage = @($NoCacheStage | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
+    if ($unmatchedNoCacheStage.Count -gt 0) {
+        throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
+               'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
+               'stage labels in the output above (they are the same labels used for the log filenames).')
+    }
     # FinalTar / PushRef: the same final solve from cache, different exporter —
     # via Invoke-BkStage so both get the transient retry + stage log for free.
     # Same $finalArgs so the re-solve is a pure cache hit of the export above.
@@ -730,14 +777,17 @@ if ($Stages -contains 'final') {
     }
 }
 
-# FAIL LOUDLY on a -NoCacheStage entry that matched nothing. Printing only on a
-# match is not visibility: a typo would print nothing, every stage would build
-# fully cached, and the owner would believe a poisoned snapshot had been busted.
-$unmatchedNoCacheStage = @($NoCacheStage | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
-if ($unmatchedNoCacheStage.Count -gt 0) {
-    throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
-           'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
-           'stage labels in the output above (they are the same labels used for the log filenames).')
+# The -NoCacheStage matched-nothing gate fires PRE-EXPORT inside the final
+# block (audit 2026-08-21 #15: it used to fire only after -PushRef had already
+# published a fully-cached image). This tail copy covers runs WITHOUT 'final'
+# in -Stages, where the pre-export site never executes.
+if ($Stages -notcontains 'final') {
+    $unmatchedNoCacheStage = @($NoCacheStage | Where-Object { -not $script:NoCacheStageMatched.ContainsKey($_) })
+    if ($unmatchedNoCacheStage.Count -gt 0) {
+        throw ("[bk] -NoCacheStage matched NO stage in this run: $($unmatchedNoCacheStage -join ', '). " +
+               'Every stage built from cache, so nothing was busted. Check the spelling against the ' +
+               'stage labels in the output above (they are the same labels used for the log filenames).')
+    }
 }
 
 $elapsed = (Get-Date) - $started

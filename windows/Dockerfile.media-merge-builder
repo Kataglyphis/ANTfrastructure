@@ -95,7 +95,6 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source" `
     ONNX_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
-    ONNX_GPU_VARIANT="${GPU_TYPE}" `
     LITERT_ROOT="C:\runtime\lib\litert" `
     LITERT_INCLUDE="C:\runtime\lib\litert\include" `
     LITERT_LIB="C:\runtime\lib\litert\lib" `
@@ -116,7 +115,7 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     IREE_BIN="C:\runtime\iree\bin" `
     PYTHON_WHEELS="C:\runtime\wheels"
 
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # ── Fan-in: merge the branch install trees ───────────────────────────────────
 # Branch A carries the largest tree (ORT, GenAI, OpenCV, FFmpeg) — copy it first,
@@ -208,9 +207,16 @@ ARG SCCACHE_LOG="warn"
 # Dockerfile.media-builder together, once WCOW cache mounts are proven — see
 # backlog #99 for the measurement and the re-verification recipe.
 ARG SCCACHE_MULTILEVEL_CHAIN=""
+# ARG-backed like the media builder's block (2026-08-21 parity fix): the
+# hardcoded SCCACHE_DIR here could not be overridden the way media-builder's
+# ARG documents as necessary for experiments, and SCCACHE_FORCE_LOCAL was
+# missing entirely — the two production ENV blocks are now literally identical.
+ARG SCCACHE_DIR="C:\sccache\v2"
+ARG SCCACHE_FORCE_LOCAL=""
 ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_MULTILEVEL_CHAIN="${SCCACHE_MULTILEVEL_CHAIN}" `
-    SCCACHE_DIR="C:\sccache\v2" `
+    SCCACHE_DIR="${SCCACHE_DIR}" `
+    SCCACHE_FORCE_LOCAL="${SCCACHE_FORCE_LOCAL}" `
     SCCACHE_CACHE_SIZE="15G" `
     SCCACHE_ERROR_LOG="C:\sccache-logs\sccache-error.log" `
     SCCACHE_LOG="${SCCACHE_LOG}" `

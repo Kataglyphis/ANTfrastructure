@@ -186,7 +186,7 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
 - **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`,
   in CI *and* locally.** Not `:latest` — that tag went unrebuilt from 2026-04-16
   while the cross lane was refreshed (2026-07-20). Both publish amd64/arm64/
-  riscv64. `Linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
+  riscv64. `python-ci-linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
   uses a different tag, reproducing a CI failure proves nothing. Neither tag is
   digest-pinned, so both still float.
 
@@ -364,7 +364,11 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 - **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
   `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
   finished image after `final`, and a failure fails the chain (backlog #44).
-  Before 2026-08-14 neither driver ran the smoke test at all, so every chain
+  Since 2026-08-21 the CLASSIC driver gates too — as `docker run` with a
+  DIRECTORY mount of `windows\scripts` (its dockerd has no BuildKit
+  `RUN --mount`, and Windows containers reject single-FILE binds outright;
+  `docker run` also enters through the ENTRYPOINT naturally). Before
+  2026-08-14 neither driver ran the smoke test at all, so every chain
   shipped unverified. Three rules when touching it: it must run **through
   `entrypoint.cmd`** (a bare `RUN` bypasses ENTRYPOINT and loses VsDevCmd + the
   ASAN runtime dir — that alone made six assertions fail against a good image);
@@ -667,7 +671,10 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 - **The "unreferenced" `windows/scripts` modules are EXTERNAL-CONSUMER API —
   never delete (owner decision 2026-08-04).** Flutter/CMake/CodeQL/MSIX/
   Slang/Vulkan/PerfBaseline/WasmOpt/AppRunner/ContainerBuild.Reuse/Uv/
-  Build.Common/WebDav/Toolchain/Config/Formatting plus `scripts/rust/` and
+  Build.Common/WebDav/Toolchain/Config/Formatting/**ContainerLog** (verified
+  live 2026-08-21: RustProjectTemplate's container scripts import it —
+  Invoke-StevedoreBuild + rust-build/test-all — vendored into
+  BeschleunigerBallett and Inference-Engine) plus `scripts/rust/` and
   `scripts/python/` are the shared build framework other Kataglyphis repos
   consume (this repo IS the upstream). Repo-internal reference audits will
   flag them as dead — they are library surface. Keep them lint-clean; do not
@@ -928,21 +935,40 @@ linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          broken silently. Grep the consumer repos before
                          deleting anything under lib/, rust/, python/ or
                          06-packaging/.
-windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
-                         cargo-retry.cmd (transient file-lock retry wrapper),
+windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
+                         build/ (chain components: build-*-from-source.ps1,
+                         *-all wrappers, smoke-test-container, load-versions),
+                         host/ (setup-*/apply-*/repair-*/reset-* + elevated
+                         maintenance), diagnostics/ (probe-*/test-* + the
+                         run-diagnostic-probe runner; settled one-shots in
+                         diagnostics/archive/, still runnable via
+                         -ProbeScript archive/<name>.ps1). Container mounts
+                         stay FLAT (C:\bkmnt, C:\temp\scripts) — the
+                         $scriptAssetRoot resolver bridges both layouts and
+                         is gated by ScriptAssetRoot.Parity.Tests.
+                         Ungrouped residents BY DECISION (#131):
+                         Invoke-Lint.ps1, entrypoint.cmd, cargo-retry.cmd
+                         (consumer-CI suspect — never delete unverified),
                          certificates/ (MSIX cert generation + WebDAV
                          download_webdav_files.py — see its README.md),
+                         python/ + rust/ (consumer CI-lane drivers).
                          modules/*.psm1 (reusable PS modules: SourceBuild,
                          Build.Common, ContainerBuild.Reuse, AgenticLoop,
                          CMake, Config, Formatting, Msix.{Common,Signing},
                          WebDav, Uv, Scripts.Shared, Toolchain, CodeQL,
-                         ContainerImage, Flutter, Installer),
-                         tests/ (harness + suites), shims/, diagnostics/
+                         ContainerImage, Flutter, Installer,
+                         HostMaintenance, SmokeTest, GstPlugins, …),
+                         tests/ (harness + suites), shims/
 windows/upstream/        prepared upstream submissions (not build inputs):
                          hcsshim-teardown-timeout/ = ISSUE.md + PR.md +
                          format-patch making the shim teardown timeouts
                          configurable, plus the deployed 45min local patch
-                         and the rebuild recipe (see its README.md)
+                         and the rebuild recipe (see its README.md);
+                         sccache-nvcc-quote-fix/ = the 0003 diag-family
+                         patch riding until mozilla/sccache#2816 merges
+                         (0001/0002 merged upstream in #2811; the dir is
+                         ALSO a build input — setup-rust-toolchain applies
+                         0003 on top of the pinned rev)
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
@@ -1273,6 +1299,59 @@ base ─┬─ onnxruntime ───────┐
   chain runs — "unused" means not-container-referenced, so it deletes TAGGED
   cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
   registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
+- **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
+  `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
+  the worst incident this repo has produced). A "let's free some space"
+  command was composed on the spot, handed over for an elevated shell, and did
+  not stop at the container stores: it walked into the installed programs and
+  the user profile and took the host with it — editor, VCS, GPU driver stack,
+  container runtime, the PowerShell 7 this repo's whole gate suite needs, all
+  reinstalled by hand. Nothing in the loop said no, because a blanket delete
+  rule had been allow-listed in `.claude/settings.local.json`. The rules now:
+  - **The reclaim script is the only sanctioned path.** It cleans exactly the
+    regenerable classes — unused container layers (via the daemon's own GC),
+    dead `*.bak-<stamp>` store husks, user + Windows TEMP, rotated host logs,
+    repo `out/` scratch — resolved from an ALLOWLIST, reports by default, and
+    needs `-Apply` to touch anything. Every live-directory rule is AGE-GATED
+    (`-TempOlderThanDays`, default 7) so nothing in flight is deleted. It
+    aborts the WHOLE run — not just the one target — if any resolved candidate
+    lands on a protected root, because a candidate that lands there means the
+    resolution logic is wrong and the rest of the plan is untrustworthy too.
+  - **A name is not a target.** A candidate containing a junction or symlink is
+    skipped: every path check reasons about names, and a reparse point is
+    exactly where a name stops predicting what a recursive delete reaches — a
+    cleared candidate could otherwise tunnel straight into the profile.
+  - **The compile caches are NOT cleanup targets.** sccache/ccache/cargo/uv
+    read as "cache" and are the most expensive bytes on the disk (CACHE1: a
+    prune once traded ~1.5–2 h of cold LLVM rebuilds for a few GB). The
+    reclaim script never lists them, and neither should you.
+  - **Daemon levers before filesystem levers, always.** `buildctl prune
+    --free-storage`, `docker image prune`, the store-GC sequence in
+    `docs/windows-builds.md` § Store GC. They hand back far more and they know
+    what is still referenced. Filesystem reclaim is a last resort limited to
+    dead `*.bak-<stamp>` husks.
+  - **Protected roots are OFF LIMITS to the agent, permanently**: `C:\Program
+    Files`, `C:\Program Files (x86)`, `C:\Windows`, `C:\ProgramData` outside
+    the container stores, any user profile under `C:\Users`, `AppData`,
+    per-user tool directories (`.vscode`, `.ssh`, `scoop`, `.claude`), drive
+    roots, and every installed-package or driver store. Not with a flag, not
+    with a force switch, not "just this once". Space that only comes back by
+    reaching in there is a reinstall, not a cleanup — and it is the user's
+    call, run by the user, outside the agent.
+  - **Uninstalling the user's software is never the agent's move.** No package
+    manager removals, no MSI removals, no appx removals. Suggest, never do.
+  - **The gate is mechanical, not advisory.**
+    `.claude/hooks/guard-destructive-deletes.ps1` runs as a `PreToolUse` hook
+    (registered in both `.claude/settings.json` and the user-level settings, so
+    one broken path cannot silently disarm it). It DENIES — a decision no
+    prompt can override — any command touching a protected root, and it scans
+    file CONTENT on Write/Edit too, because the 2026-08-21 vector was a script
+    written for the user to paste, not a command the agent ran. Outside the
+    protected roots it downgrades to a prompt rather than a block.
+    `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1` is the incident
+    in executable form; it also fails if a settings file ever re-introduces a
+    blanket delete permission. If a guard regex ever needs relaxing, that is a
+    reviewed repo change with a test — never a bypass in the moment.
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest). The suite is

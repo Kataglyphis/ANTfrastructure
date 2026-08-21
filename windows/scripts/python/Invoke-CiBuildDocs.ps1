@@ -28,17 +28,9 @@ $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @('WindowsBuild.Common', 'WindowsUv.Common') -EnterRepoRoot
 
-$script:BuildContext = New-BuildContext -Workspace $repoRoot -LogDir "logs"
-
-function Write-CiLog { param([string]$Message); Write-BuildLog -Context $script:BuildContext -Message $Message }
-function Write-CiLogWarning { param([string]$Message); Write-BuildLogWarning -Context $script:BuildContext -Message $Message }
-
-$uvDelegates = New-UvBuildDelegates -Context $script:BuildContext
-$script:UvCommandRunner = $uvDelegates.CommandRunner
-$script:UvLogInfo = $uvDelegates.LogInfo
-$script:UvLogWarning = $uvDelegates.LogWarning
-
-Open-BuildLog -Context $script:BuildContext
+# #141: shared preamble — context/log/wrappers/uv delegates come from
+# New-CiSession (Initialize-CiEnvironment.ps1).
+$script:BuildContext = New-CiSession -RepoRoot $repoRoot -WithUvDelegates
 
 Write-CiLog "Using Python version: $PythonVersion for docs build"
 

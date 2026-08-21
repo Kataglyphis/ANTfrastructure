@@ -96,8 +96,9 @@ $requiredGstPlugins = if (Test-Path $gstPluginModule) {
     @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
 } else {
     # Older image without the module: fall back to the literal contract rather
-    # than silently probing nothing.
-    @('libav', 'opencv', 'onnx')
+    # than silently probing nothing. MUST mirror Get-RequiredGstPlugin — this
+    # list re-diverged once already (tflite missing, caught 2026-08-21).
+    @('libav', 'opencv', 'onnx', 'tflite')
 }
 foreach ($gstPlugin in $requiredGstPlugins) {
     # Guard the invoke: with $gstInspect null/missing, `& $null` throws a statement-terminating

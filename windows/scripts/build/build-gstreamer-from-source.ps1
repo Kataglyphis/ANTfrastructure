@@ -183,16 +183,14 @@ try {
     log "LogDir:    $LogDir"
     log "GitRepo:   $GitRepo"
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '1. resolve directories'
+    Switch-BuildPhase '1. resolve directories'
     # ---- 1. resolve directories ----
     $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
     $resolvedSrcDir     = Resolve-DirectoryPath -Path $SourceDir
     $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '2. Meson via source CPython'
+    Switch-BuildPhase '2. Meson via source CPython'
     # ---- 2. install Meson via source-built CPython ----
     # The toolchain layer built CPython 3.14 at $env:TEMP_DIR\cpython\PCbuild\amd64\python.exe.
     # pip is bootstrapped here if missing (no ordering assumption on other build
@@ -226,8 +224,7 @@ try {
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '3. clang-cl toolchain + sccache'
+    Switch-BuildPhase '3. clang-cl toolchain + sccache'
     # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'
     $env:CC  = 'clang-cl'
@@ -244,6 +241,12 @@ try {
     # this build ran completely uncached (~30 min hot) — the merge builder
     # simply never wired the endpoint through. Same gate as everywhere else:
     # remote backend only; a container-local cache would die with the layer.
+    # #128 (2026-08-21): this script runs OUTSIDE Invoke-SourceBuildChain (the
+    # merge stage invokes it directly), so it never got the chain prologue's
+    # fresh-server guarantee — without it the implicitly-started server may
+    # not have read SCCACHE_ERROR_LOG (#97) and the epilogue flush means
+    # nothing. Same call the chain makes, safe no-op without sccache.
+    Start-SccacheServerSession
     if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
         if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
         $env:CC  = 'sccache clang-cl'
@@ -296,8 +299,7 @@ try {
         log 'Early fan-in fast-fail passed (OpenCV/ONNX/LiteRT roots present).'
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '4. source tarball'
+    Switch-BuildPhase '4. source tarball'
     # ---- 4. download GStreamer source tarball ----
     $gstSrcDir = Join-Path $resolvedSrcDir "gstreamer-$GstVersion"
     if (Test-Path $gstSrcDir) {
@@ -343,8 +345,7 @@ try {
     # apply); the helper shields git's stderr via cmd.exe (else PS 5.1 EAP=Stop throws).
     Initialize-ExtractedGitRepo -Path $gstSrcDir
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '5. wrap prefetch + meson fixups'
+    Switch-BuildPhase '5. wrap prefetch + meson fixups'
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
     # Failures are COLLECTED and become fatal after the loop (backlog #88): the
     # 2026-08-14 chain logged 22 failed wrap downloads as warnings and went
@@ -465,7 +466,7 @@ int _isatty(int);
     # Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH
     # -- all this script needs on top is logging and the GpuType for downstream logic.
     $gpuEnv = Get-GpuEnvironment
-    if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+    if ($gpuEnv.HasCuda) {
         log "CUDA detected at: $($gpuEnv.CudaRoot)"
     } else {
         log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'
@@ -536,6 +537,9 @@ int _isatty(int);
             [System.IO.File]::WriteAllText($_.FullName, ($content -replace 'cpp_std=c\+\+11', 'cpp_std=c++17'))
             $cppStdPatched++
         }
+    }
+    if ($cppStdPatched -eq 0) {
+        Write-Warning 'cpp_std patch matched 0 meson.build files — upstream likely bumped past c++11; verify and retire this patch (or the MSVC-14.51 STL build breaks return)'
     }
     log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
 
@@ -689,8 +693,11 @@ int _isatty(int);
         $ortLib = Join-Path $ortRoot 'lib'
         $ortInclude = Join-Path $ortRoot 'include'
         if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
-        $ortVersion = ([string]$env:ONNX_VERSION).TrimStart('v')
-        if (-not $ortVersion) { $ortVersion = '1.28.0' }
+        # Same env-name order as build-onnx-from-source.ps1: ONNXRUNTIME_VERSION
+        # is what the BK lane sets; ONNX_VERSION only exists in the merge image.
+        # Reading only the latter wrote a 1.28.0 .pc against a 1.29.0 install in
+        # standalone runs — and passed the >= 1.16.1 constraint silently.
+        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.29.0' -StripVPrefix
         # ORT's headers sit at include\ AND include\onnxruntime\core\session on
         # some layouts; both are handed over so the plugin's #include resolves
         # either way.
@@ -801,8 +808,7 @@ int _isatty(int);
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '6. meson setup'
+    Switch-BuildPhase '6. meson setup'
     # ---- 6. meson setup (retry with wrap cleanup) ----
     $setupArgs = @(
         'setup', '--vsenv',
@@ -1011,8 +1017,7 @@ int _isatty(int);
             })
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '7. compile'
+    Switch-BuildPhase '7. compile'
     # ---- 7. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     # Job budget + stall guard (backlog #65): this was the ONE compile stage
     # running sccache with neither. `meson compile` without -j lets ninja
@@ -1061,16 +1066,14 @@ int _isatty(int);
     if (-not $compileSucceeded) { throw 'meson compile failed after 2 attempts' }
     log 'Compilation complete.'
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '8. install'
+    Switch-BuildPhase '8. install'
     # ---- 8. install ----
     log 'Installing GStreamer...'
     & $mesonExe install -C $resolvedBuildDir 2>&1 | ForEach-Object { if ($_) { log $_ } }
     if ($LASTEXITCODE -ne 0) { throw 'meson install failed' }
     log 'Installation complete.'
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '9. verify (plugin + pc gates)'
+    Switch-BuildPhase '9. verify (plugin + pc gates)'
     # ---- 9. verify ----
     $gstLaunch = Join-Path $resolvedInstallDir 'bin\gst-launch-1.0.exe'
     if (Test-Path $gstLaunch) {
@@ -1180,8 +1183,7 @@ int _isatty(int);
         log "All $(@(Get-RequiredGstPlugin).Count) mandatory GStreamer plugins verified present."
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '10. cleanup'
+    Switch-BuildPhase '10. cleanup'
     # ---- 10. cleanup ----
     if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
@@ -1191,8 +1193,11 @@ int _isatty(int);
     # This script is not chain-run (no Invoke-SourceBuildChain tail), so dump
     # the sccache counters itself — they die with the container otherwise.
     Write-SccacheStats -Label 'gstreamer'
+    # ... and flush/stop the session server the #128 prologue started (the
+    # error-log dump only means something after a clean server stop, #107).
+    Complete-SccacheServerSession
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
+    Complete-CurrentBuildPhase
     Write-BuildPhaseSummary -Label 'gstreamer'
 
     log 'END - GStreamer source build completed successfully.'
@@ -1200,8 +1205,12 @@ int _isatty(int);
 } catch {
     # #109: name the phase in the failure - a 60-min meson run once died
     # with a bare message; the phase table narrows it before the stack.
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase -ErrorRecord $_ }
+    Complete-CurrentBuildPhase -ErrorRecord $_
     Write-BuildPhaseSummary -Label 'gstreamer'
+    # Flush/stop the #128 session server on the FAILURE path too — the
+    # error-log dump only means something after a clean server stop, and the
+    # failing run is exactly the one whose log you want (audit 2026-08-21).
+    try { Complete-SccacheServerSession } catch { Write-Warning "sccache session flush failed in catch: $($_.Exception.Message)" }
     log "FATAL ERROR: $($_.Exception.Message)"
     if ($_.Exception.InnerException) {
         log "Inner: $($_.Exception.InnerException.Message)"
@@ -1222,7 +1231,5 @@ int _isatty(int);
 
 if ($ScrubAfter) { Clear-BuildScratch }
 
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+# Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0

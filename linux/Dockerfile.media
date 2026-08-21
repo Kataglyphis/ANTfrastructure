@@ -774,7 +774,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     export OPENCV_COMMIT="${OPENCV_COMMIT}" OPENCV_CONTRIB_COMMIT="${OPENCV_CONTRIB_COMMIT}"; \
-    export FORCE_REBUILD=1; \
+    export FORCE_REBUILD=1 OPENCV_GSTREAMER_PASS=2; \
     _gst_pc="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -name 'gstreamer-1.0.pc' -type f 2>/dev/null | head -1)"; \
     if [ -n "${_gst_pc}" ]; then _gst_dir="$(dirname "${_gst_pc}")"; export PKG_CONFIG_PATH="${_gst_dir}:${PKG_CONFIG_PATH:-}"; fi; \
     echo "opencv pass 2: gstreamer .pc=${_gst_pc:-NONE}  PKG_CONFIG_PATH=${PKG_CONFIG_PATH:-<unset>}"; \

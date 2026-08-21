@@ -146,6 +146,7 @@ function Invoke-DockerWithRetry {
         [int]$MaxAttempts = 3,
         [int]$CooldownSeconds = 60
     )
+    $previousTail = ''
     foreach ($attempt in 1..$MaxAttempts) {
         # Do NOT capture -- let the action's docker output stream through to the
         # console/log; read the native exit code the docker call set.
@@ -157,10 +158,30 @@ function Invoke-DockerWithRetry {
         }
         $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
         if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
-            if ($OnFailedAttempt) { & $OnFailedAttempt }
             # -AssumeTransient: this branch IS the classification; the cooldown
-            # helper only owns the message + delay here.
-            Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -CooldownSeconds $CooldownSeconds -AssumeTransient | Out-Null
+            # helper only owns the message + delay here. -PreviousTail arms the
+            # determinism gate — the BK lane has passed it since 2026-08-07,
+            # this shared loop silently never did (2026-08-21 audit), so the
+            # classic lane paid full retries on byte-identical poisoned-
+            # snapshot failures.
+            # ORDER IS LOAD-BEARING: the gate decides BEFORE OnFailedAttempt
+            # runs. A deterministic verdict is a FINAL failure, and the
+            # OnFailedAttempt contract (see param block) says final failures
+            # must not fire it — the first cut of this gate ran the cleanup
+            # first and deleted the preserved run+commit container, then
+            # printed a -ResumeFrom recipe for a container that no longer
+            # existed (adversarial review, 2026-08-21).
+            if (-not (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -CooldownSeconds $CooldownSeconds -AssumeTransient -PreviousTail $previousTail)) {
+                if ($OnFinalFailure) { & $OnFinalFailure }
+                if ($tail) {
+                    Write-Host "`n--- [$Label] tail of the failing attempt ---" -ForegroundColor Yellow
+                    Write-Host $tail
+                    Write-Host "--- end of tail$(if ($LogFile) { " (full log: $LogFile)" }) ---`n" -ForegroundColor Yellow
+                }
+                throw "[$Label] docker step failed DETERMINISTICALLY (identical tail on attempt $attempt)$(if ($LogFile) { " — full log: $LogFile" })"
+            }
+            if ($OnFailedAttempt) { & $OnFailedAttempt }
+            $previousTail = $tail
             continue
         }
         if ($OnFinalFailure) { & $OnFinalFailure }
@@ -301,8 +322,8 @@ function Get-MediaBranchVersionArg {
         # The lists below were derived by auditing what the scripts actually
         # read, both directly (`$env:X`) and indirectly (`Get-SourceBuildVersion
         # -EnvironmentVariables`). Re-run that audit when adding a build script:
-        #   grep -ohE '\$env:[A-Z_]+' windows/scripts/build-*.ps1
-        #   grep -ohE "EnvironmentVariables?\s+@?\('[A-Z_, ']+" windows/scripts/build-*.ps1
+        #   grep -ohE '\$env:[A-Z_]+' windows/scripts/build/build-*.ps1
+        #   grep -ohE "EnvironmentVariables?\s+@?\('[A-Z_, ']+" windows/scripts/build/build-*.ps1
         'media-core' {
             return @{
                 ONNXRUNTIME_VERSION       = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_VERSION'

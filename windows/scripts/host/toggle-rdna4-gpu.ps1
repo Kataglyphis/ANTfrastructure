@@ -39,12 +39,10 @@ $ErrorActionPreference = 'Stop'
 # (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
 # beside this script in the flat layout and one level up in the repo layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1')
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run ELEVATED (Enable/Disable-PnpDevice needs admin).'
-}
+Assert-Elevated -Reason 'Enable/Disable-PnpDevice needs admin'
 
 if ([string]::IsNullOrWhiteSpace($GpuName)) {
     $target = Get-Rdna4HazardDevice

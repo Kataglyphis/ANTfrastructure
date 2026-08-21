@@ -73,8 +73,9 @@
     --memory limit (GB) for the run+commit stages (media-core, toolchain, and the
     merge/GStreamer stage; the aux branches also get this full budget, since
     media-core has already committed by the time they run).
-    Forwarded as MEMORY_LIMIT_GB so the build scripts scale
-    parallelism to the cap. Default 0 = AUTO-DETECT from host RAM: usable physical
+    Published to the sccache WebDAV preseed (memory-limit-gb.txt, #51) so
+    Get-BuildJobCount scales parallelism to the cap — NOT an image ARG/ENV
+    (cache key). Default 0 = AUTO-DETECT from host RAM: usable physical
     GB minus -HostReserveGb. Since
     media-core parallelism is memory-bound (jobs = min(cpu-count, mem/per-job-GB),
     ONNX ~4 GB/job), maximizing this is what actually raises the ONNX job count.
@@ -113,9 +114,9 @@
 .EXAMPLE
     .\windows\build.ps1 -Gpu
 .EXAMPLE
-    .\windows\build.ps1 -Gpu -Stages media,final   # iterate on media only
+    .\windows\build.ps1 -Gpu -Stages media,torch,final   # iterate on media (torch+final ride along — final builds FROM torch)
 .EXAMPLE
-    .\windows\build.ps1 -Gpu -Stages media,final -MediaBranches media-litert
+    .\windows\build.ps1 -Gpu -Stages media,torch,final -MediaBranches media-litert
     # rebuild ONLY the litert branch (full cores via run+commit), re-merge, re-final
 .EXAMPLE
     .\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
@@ -201,18 +202,42 @@ param(
     # Backlog #18: bypass ONLY the RDNA4 gate (verified green via
     # probe-build-copy.ps1 -Heavy) without disarming the other host gates.
     [switch]$SkipRdna4Gate,
-    [int]$MinFreeGb = 40
+    [int]$MinFreeGb = 40,
+    # Smoke gate parity with build-buildkit.ps1 (2026-08-21): same names, same
+    # defaults, same rule — -SkipSmokeGate is for iterating on the chain
+    # itself, it is NOT a way to ship an unverified image.
+    [switch]$SkipSmokeGate,
+    [int]$SmokeMinPassed = 160,
+    [int]$SmokeMaxSkipped = 3
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-Push-Location $repoRoot
+# Push-Location moved NEXT TO the try/finally that pops it (audit 2026-08-21
+# #8): ~550 lines of throwing preflight sat between push and try, so any
+# preflight throw left the caller's CWD changed. Preflight uses absolute
+# paths; only the docker-build context upload needs the cwd.
+
+# Cross-parameter validation (audit 2026-08-21 #3/#7) — fail in seconds,
+# not hours:
+if ($Stages -contains 'media' -and $Stages -contains 'final' -and $Stages -notcontains 'torch') {
+    throw ("-Stages includes media and final but skips torch: windows/Dockerfile builds FROM the torch image, " +
+           'so final would silently ship the PREVIOUS torch with its OLD media. Use -Stages media,torch,final.')
+}
+if (($ResumeFrom -or $CopyFix) -and -not $ResumeStage) {
+    throw '-ResumeFrom/-CopyFix require -ResumeStage — without it the FULL default chain runs (a multi-hour silent misfire on a cold store) while the preserved container sits untouched.'
+}
 
 # Single log directory for every stage (docker build stage logs + run+commit logs) --
 # previously split between %TEMP% and out\windows-build-logs, computed at three sites.
 $script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
+# Run id in every classic-lane log name (#11 parity with the BK lane, ports
+# backlog #41/#61): fixed names meant retry attempt 2 destroyed attempt 1's
+# log, run N destroyed run N-1's, and the FIRST resume attempt overwrote the
+# original failure evidence you pick -ResumeFrom from.
+$script:RunId = 'cl-' + (Get-Date -Format 'yyyyMMdd-HHmmss')
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 
 # ---- per-run host resource log (which steps exhaust the machine?) ----
@@ -320,7 +345,14 @@ function Get-MediaBranchTag {
 # at its first commit. 'auto' therefore runs the ~10s commit probe and caches
 # the verdict per (host build, docker version); a Windows update or Docker
 # upgrade re-probes automatically.
-$script:BuildIsolation = Resolve-BuildIsolation -Isolation $Isolation -Docker $Docker -LogDir $script:LogDir -ProbeScript (Join-Path $PSScriptRoot 'diagnostics\test-process-isolation-commit.ps1')
+# This lane needs a live dockerd. On a Stevedore host that is the `stevedore`
+# service, which was found Stopped on 2026-08-07 — the "always-working
+# fallback" silently was not one.
+Assert-DockerDaemon -Docker $Docker -Force:$SkipHostChecks
+# (daemon gate FIRST — audit 2026-08-21 #9: the isolation probe below runs
+# docker itself; with dockerd down it cached a WRONG verdict under an empty
+# docker-version key and misdiagnosed the host.)
+$script:BuildIsolation = Resolve-BuildIsolation -Isolation $Isolation -Docker $Docker -LogDir $script:LogDir -ProbeScript (Join-Path $PSScriptRoot 'scripts\diagnostics\test-process-isolation-commit.ps1')
 Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 
 # ── sccache policy (required by default for the media stage) ─────────────────
@@ -333,17 +365,18 @@ Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
 # Disk preflight (see Assert-DiskHeadroom): below the floor, hcsshim fails in
-# ways that do not look like a disk problem, hours into the run. The shim-patch
-# gate is BuildKit-lane only — this lane's run+commit path uses Hyper-V
-# isolation, where the teardown-timeout defect does not apply.
+# ways that do not look like a disk problem, hours into the run.
+# SHIM GATE (audit 2026-08-21 #10): the old claim 'BuildKit-lane only, this
+# lane uses Hyper-V' contradicted this lane's own isolation policy — 'auto'
+# PREFERS process isolation, where the teardown-timeout defect applies in
+# full. Gate exactly when process isolation was resolved.
+if ($script:BuildIsolation -eq 'process') {
+    Assert-ShimPatch -Force:$SkipHostChecks
+}
 # -Drive: the repo checkout's drive on top of C: (the layer stores) — the build
 # context is uploaded from here on every `docker build`, and on this host it is a
 # VHDX with its own exhaustion mode.
 Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
-# This lane needs a live dockerd. On a Stevedore host that is the `stevedore`
-# service, which was found Stopped on 2026-08-07 — the "always-working
-# fallback" silently was not one.
-Assert-DockerDaemon -Docker $Docker -Force:$SkipHostChecks
 # RDNA4 layer-lock gate (2026-08-10): an enabled RDNA4 dGPU kills EVERY
 # process-isolated RUN-layer finalize, and this lane can run process-isolated
 # (Resolve-BuildIsolation 'auto' probe — whose cached verdict does NOT key on
@@ -379,13 +412,13 @@ function Invoke-Stage {
     # -Drive from the REPO root, not the 'C' default — same reason as the BK
     # lane (backlog #48): the context lives on the D: VHDX on the reference host.
     Assert-StageDiskHeadroom -Label ([IO.Path]::GetFileName($Dockerfile) + $targetSuffix) -Drive (Split-Path -Qualifier $repoRoot).TrimEnd(':') -Force:$SkipHostChecks
-    $stageLog = Join-Path $script:LogDir ("stage-" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix + ".log")
+    $stageLog = Join-Path $script:LogDir ($script:RunId + "-stage-" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix + ".log")
     Set-BuildPhase ("build:" + [IO.Path]::GetFileName($Dockerfile) + $targetSuffix)
     $dockerExe = $Docker   # local copy: .GetNewClosure() snapshots LOCALS only, not the script-scope $Docker
     $action = {
         param($attempt)
         Write-Host "`n==> docker $($dockerArgs -join ' ')" -ForegroundColor Cyan
-        & $dockerExe @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog
+        & $dockerExe @dockerArgs 2>&1 | Tee-Object -FilePath $stageLog -Append
     }.GetNewClosure()
     Invoke-DockerWithRetry -Action $action -Label $Dockerfile -LogFile $stageLog
 }
@@ -424,7 +457,6 @@ function Get-MediaBranchSpecs {
             -Tag (Get-MediaBranchTag 'media-core') `
             -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-litert' `
             -BuilderDockerfile $builderDf `
@@ -434,7 +466,6 @@ function Get-MediaBranchSpecs {
             -Tag (Get-MediaBranchTag 'media-litert') `
             -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-tvm' `
             -BuilderDockerfile $builderDf `
@@ -444,7 +475,6 @@ function Get-MediaBranchSpecs {
             -Tag (Get-MediaBranchTag 'media-tvm') `
             -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-tvm' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
     )
 }
@@ -511,7 +541,7 @@ function Invoke-RunCommitStage {
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
         & $setBuildPhase "run:$Label"
         Write-Host "`n==> [$Label] docker run --isolation $isolation --cpu-count $Cpus --memory ${MemoryGb}g (attempt $attempt)" -ForegroundColor Cyan
-        & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog
+        & $dockerExe @runArgs 2>&1 | Tee-Object -FilePath $OutLog -Append
     }.GetNewClosure()
     $onSuccess = {
         # The commit is where this host's transient hcsshim/ttrpc flakiness bites hardest (a
@@ -532,15 +562,19 @@ function Invoke-RunCommitStage {
         # C:\runtime instead of giving you a shell. The final image is unaffected
         # either way (windows/Dockerfile's ENTRYPOINT resets an inherited CMD), which
         # is exactly why this stayed invisible.
+        $prevCommitTail = ''
         foreach ($commitAttempt in 1..3) {
             $commitOut = & $dockerExe commit --change 'CMD ["pwsh"]' $ContainerName $ResultTag 2>&1
             $commitOut | ForEach-Object { Write-Host $_ }
             if ($LASTEXITCODE -eq 0) { break }
             $commitTail = ($commitOut | Select-Object -Last 15) -join "`n"
-            if (-not (& $transientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit")) {
+            # -PreviousTail arms the determinism gate — this was the one retry
+            # path in either driver without it (audit 2026-08-21 #20).
+            if (-not (& $transientCooldown -Tail $commitTail -Attempt $commitAttempt -MaxAttempts 3 -Label "$Label commit" -PreviousTail $prevCommitTail)) {
                 throw ("$Label commit failed -- container '$ContainerName' PRESERVED (it holds the finished build). " +
                     "Recover manually: docker commit --change 'CMD [`"pwsh`"]' $ContainerName $ResultTag ; docker container rm -f $ContainerName")
             }
+            $prevCommitTail = $commitTail
         }
         & $dockerExe container rm -f $ContainerName 2>&1 | Out-Null
         Write-Host "$Label built via run+commit ($Cpus CPUs) -> $ResultTag" -ForegroundColor Green
@@ -551,13 +585,25 @@ function Invoke-RunCommitStage {
     # NB: `docker start` would re-run the original chain command from scratch;
     # the correct resume is commit-partial → run a NEW container with -ResumeFrom.
     $runCommand = $RunCommand
+    # Only the three *-all chain wrappers accept -ResumeFrom; toolchain's
+    # wrapper is parameterless and gstreamer has -ScrubAfter only — printing
+    # the -ResumeFrom recipe for those told the operator to rm the preserved
+    # container and then die on an unknown parameter (audit 2026-08-21 #6).
+    $supportsResumeFrom = [bool]($RunCommand | Where-Object { $_ -match 'build-(media-core|litert|media-tvm)-all\.ps1$' })
     $onFinalFailure = {
         Write-Host ("`n[$Label] run FAILED (non-transient) — container '$ContainerName' PRESERVED with all completed stages." ) -ForegroundColor Yellow
-        Write-Host ("[$Label] Resume (check $OutLog for the last '=== ... stage:' banner to pick <stage>):") -ForegroundColor Yellow
-        Write-Host ("    docker commit $ContainerName ${ResultTag}-partial")
-        Write-Host ("    docker container rm -f $ContainerName")
-        Write-Host ("    docker run --isolation $isolation --cpu-count $Cpus --memory ${MemoryGb}g --name $ContainerName ${ResultTag}-partial " + ($runCommand -join ' ') + " -ResumeFrom '<stage>'")
-        Write-Host ("    docker commit --change 'CMD [`"pwsh`"]' $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+        if ($supportsResumeFrom) {
+            Write-Host ("[$Label] Resume (check $OutLog for the last '=== ... stage:' banner to pick <stage>):") -ForegroundColor Yellow
+            Write-Host ("    docker commit $ContainerName ${ResultTag}-partial")
+            Write-Host ("    docker container rm -f $ContainerName")
+            Write-Host ("    docker run --isolation $isolation --cpu-count $Cpus --memory ${MemoryGb}g --name $ContainerName ${ResultTag}-partial " + ($runCommand -join ' ') + " -ResumeFrom '<stage>'")
+            Write-Host ("    docker commit --change 'CMD [`"pwsh`"]' $ContainerName $ResultTag ; docker container rm -f $ContainerName")
+            Write-Host ("[$Label] Scripted form: .\windows\build.ps1 -ResumeStage <media-branch> -ResumeFrom '<stage>' (media branches only)")
+        } else {
+            Write-Host ("[$Label] This stage script has NO -ResumeFrom support " + [char]0x2014 + " re-run resumes at its own idempotent skips. Recover:") -ForegroundColor Yellow
+            Write-Host ("    docker commit $ContainerName ${ResultTag}-partial   # preserve evidence/state")
+            Write-Host ("    docker container rm -f $ContainerName              # then re-run the driver for this stage")
+        }
         Write-Host ("[$Label] Or discard: docker container rm -f $ContainerName") -ForegroundColor Yellow
     }.GetNewClosure()
     Invoke-DockerWithRetry -Action $action -OnSuccess $onSuccess -OnFailedAttempt $onFailedAttempt `
@@ -627,10 +673,10 @@ function Invoke-MediaBranches {
     $coreSpec = $specs | Where-Object { $_.Name -eq 'media-core' } | Select-Object -First 1
     $auxSpecs = @($specs | Where-Object { $_.Name -ne 'media-core' })
     if ($coreSpec) {
-        Invoke-MediaBranchRunCommit -Spec $coreSpec -OutLog (Join-Path $script:LogDir 'media-core.log')
+        Invoke-MediaBranchRunCommit -Spec $coreSpec -OutLog (Join-Path $script:LogDir "$($script:RunId)-media-core.log")
     }
     foreach ($spec in $auxSpecs) {
-        Invoke-MediaBranchRunCommit -Spec $spec -OutLog (Join-Path $script:LogDir "$($spec.Name).log")
+        Invoke-MediaBranchRunCommit -Spec $spec -OutLog (Join-Path $script:LogDir "$($script:RunId)-$($spec.Name).log")
     }
     Write-Host 'All media branches built.' -ForegroundColor Green
 }
@@ -659,10 +705,11 @@ function Invoke-ResumeRunCommit {
     Write-Host "[resume:$ResumeStage] committing preserved container -> $partial" -ForegroundColor Cyan
     & $Docker commit $container $partial | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "partial commit failed — container '$container' left untouched" }
-    & $Docker container rm -f $container | Out-Null
+    & $Docker container rm -f $container 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "could not remove container '$container' " + [char]0x2014 + ' a later docker run would fail with name-already-in-use; remove it manually and re-run.' }
 
     $isolation = $script:BuildIsolation
-    $outLog = Join-Path $script:LogDir "$($spec.Name).log"
+    $outLog = Join-Path $script:LogDir "$($script:RunId)-resume-$($spec.Name).log"
     # -ScrubAfter mirrors Invoke-MediaBranchRunCommit: a resumed branch must
     # produce the same image shape as a first-pass one.
     $runCmd = (Get-MediaRunCommand $spec.RunScript -ExtraArgs @('-ScrubAfter')) + @('-ResumeFrom', $ResumeFrom)
@@ -689,7 +736,7 @@ function Invoke-ResumeRunCommit {
     $stageName = $ResumeStage
     Invoke-DockerWithRetry -Label "resume:$ResumeStage" -LogFile $outLog -MaxAttempts 2 `
         -Action {
-            & $dockerExe run --isolation $isolation --cpu-count $cpus --memory "${memGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog
+            & $dockerExe run --isolation $isolation --cpu-count $cpus --memory "${memGb}g" --name $container $partial @runCmd 2>&1 | Tee-Object -FilePath $outLog -Append
         }.GetNewClosure() `
         -OnFailedAttempt {
             & $dockerExe container rm -f $container 2>&1 | Out-Null
@@ -728,6 +775,26 @@ if ($MediaMemoryGb -le 0) {
 
 $started = Get-Date
 
+# #51 parity (2026-08-21): MEMORY_LIMIT_GB is a SCHEDULING knob, not an image
+# ARG (the media Dockerfiles dropped the ARG; Get-BuildJobCount reads the
+# webdav preseed instead). The BK driver has published this since #51 — this
+# lane silently never did, so classic compiles read a STALE value from the
+# other lane's runs, or fell back to CIM host RAM (61 GB on the reference
+# host under process isolation -> ~30 onnx jobs, squarely in the documented
+# 53-GB-deadlock envelope).
+if ($SccacheEndpoint -and -not $NoSccache) {
+    try {
+        $memBody = Join-Path $env:TEMP 'memory-limit-gb.txt'
+        Set-Content -Path $memBody -Value "$([int]$MediaMemoryGb)" -Encoding ascii -NoNewline
+        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $memBody "$SccacheEndpoint/preseed/memory-limit-gb.txt"
+        if ($LASTEXITCODE -eq 0) { Write-Host "preseed: memory-limit-gb=$([int]$MediaMemoryGb) published" }
+        else { Write-Warning "memory-limit publish failed (exit $LASTEXITCODE) - containers fall back to CIM host RAM" }
+    } catch {
+        Write-Warning "memory-limit publish skipped: $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
+}
+
 # Resource sampler starts HERE, immediately before the try/finally that stops
 # it (backlog #63) — every preflight gate above is now past, so a rejected
 # launch can no longer orphan it. The preflight costs seconds, so nothing
@@ -742,6 +809,7 @@ if (-not $NoResourceLog) {
     Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
 }
 
+Push-Location $repoRoot
 try {
     if ($ResumeStage) {
         # Scripted recovery mode: runs INSTEAD of the stage chain (continue the
@@ -812,7 +880,7 @@ try {
         # CPython build.bat is CPU-bound, so it uses the run+commit path for full
         # cores instead of the 2-CPU `docker build`. The thin builder clones CPython
         # + writes Directory.Build.props (cheap, IO-bound); the run does the compile.
-        $tcLog = Join-Path $script:LogDir 'toolchain.log'
+        $tcLog = Join-Path $script:LogDir "$($script:RunId)-toolchain.log"
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.toolchain-builder' `
             -BuilderTag    $script:ImageTag.toolchainBuilder `
@@ -841,7 +909,7 @@ try {
         # IO, so 2 CPUs is fine. The CPU-bound GStreamer compile then runs via the
         # run+commit path (Dockerfile.media-merge-builder carries the merged tree +
         # env + GStreamer scripts but does NOT run the compile; the run does).
-        $gstLog = Join-Path $script:LogDir 'gstreamer.log'
+        $gstLog = Join-Path $script:LogDir "$($script:RunId)-gstreamer.log"
         # Branch result tags come from the specs (single source of truth): a
         # renamed -Tag cannot leave the merge COPY --from pointing at the old
         # name. The component-version union comes from the CANONICAL
@@ -859,7 +927,6 @@ try {
             CORE_IMAGE        = $branchTag['media-core']
             LITERT_IMAGE      = $branchTag['media-litert']
             TVM_IMAGE         = $branchTag['media-tvm']
-            MEMORY_LIMIT_GB   = $MediaMemoryGb
         }
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.media-merge-builder' `
@@ -878,6 +945,12 @@ try {
     # logic lives here alone and an APP_REF bump rebuilds torch + the cheap
     # final tail only. -TorchBaseImage swaps the parent (e.g. the published
     # :winamd64 image on a host without local chain images).
+    # ONE BUILD_DATE for torch AND final: computed per-stage, the two images of
+    # one run carried different stamps (and re-invocations regenerated the LABEL
+    # layer). The BK driver fixed this 2026-08-16 ($stampArgs); ported here
+    # 2026-08-21.
+    $buildDateStamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
     if ($Stages -contains 'torch') {
         $torchBase = if ($TorchBaseImage) { $TorchBaseImage } else { $script:ImageTag.media }
         $torchTagResolved = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
@@ -885,7 +958,7 @@ try {
         Write-Host "Orchestr-ANT-ion app stage: $torchBase + $appRef -> $torchTagResolved"
         Invoke-Stage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTagResolved -BuildArgs @{
             BASE_IMAGE = $torchBase
-            BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            BUILD_DATE = $buildDateStamp
             VCS_REF    = Get-BuildVcsRef
             APP_REF    = $appRef
             # Backend extra from the app's pyproject — without this a -Gpu chain
@@ -899,8 +972,43 @@ try {
         # in an earlier run when iterating with -Stages final alone).
         Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
             BASE_IMAGE = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
-            BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            BUILD_DATE = $buildDateStamp
             VCS_REF    = Get-BuildVcsRef
+        }
+
+        # SMOKE GATE (#44 parity, 2026-08-21): the BK driver has failed the
+        # chain on a red smoke test since 2026-08-14 — this lane ended with
+        # "Done" and zero evidence the image worked, in a repo whose defect
+        # history is dominated by "builds fine, fails to LOAD".
+        # NOT Dockerfile.smoke-gate here: its RUN --mount is BuildKit-only and
+        # this lane's dockerd has no BuildKit. `docker run` is actually the
+        # cleaner form — it enters through the image ENTRYPOINT naturally
+        # (VsDevCmd + ASAN PATH), the very thing the BK gate's RUN has to
+        # reconstruct by hand. Same bind-mount rationale as the Dockerfile:
+        # the CURRENT script + harness run, not the baked copy, and the
+        # verified artifact is never modified by verifying it.
+        if (-not $SkipSmokeGate) {
+            $gateLog = Join-Path $script:LogDir "$($script:RunId)-stage-smoke-gate.log"
+            # DIRECTORY mount, never a file mount: hcsshim rejects single-file
+            # binds outright ("source path must be a directory", exit 125 —
+            # measured 2026-08-21 before this ever ran). Mounting scripts\ also
+            # makes $scriptAssetRoot resolve to C:\gate\scripts (modules\ one
+            # level up from build\), so no second mount is needed.
+            $gateCmd = @('run', '--rm', '--isolation', $script:BuildIsolation,
+                '-v', "$repoRoot\windows\scripts:C:\gate\scripts",
+                $FinalTag,
+                'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', 'C:\gate\scripts\build\smoke-test-container.ps1',
+                '-MinPassed', "$SmokeMinPassed", '-MaxSkipped', "$SmokeMaxSkipped")
+            if ($Gpu) { $gateCmd += '-ExpectGpu' }
+            Write-Host "`n==> [smoke-gate] docker run $FinalTag (log: $gateLog)" -ForegroundColor Cyan
+            & $Docker @gateCmd 2>&1 | Tee-Object -FilePath $gateLog -Append
+            if ($LASTEXITCODE -ne 0) {
+                throw "[smoke-gate] FAILED (exit $LASTEXITCODE) — the image is not shippable; full output: $gateLog"
+            }
+            Write-Host '[smoke-gate] image verified' -ForegroundColor Green
+        } else {
+            Write-Host '[smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
         }
     }
 
@@ -911,12 +1019,19 @@ finally {
     # Stop the resource sampler and print the per-phase exhaustion summary -- ALSO on failure
     # (that is when you most want to know which step ate the machine). Re-runnable later via:
     #   pwsh -File windows/scripts/build/build-resource-sampler.ps1 -Summarize -CsvPath <csv>
-    Set-BuildPhase 'done'
-    if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
-        Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
-    }
-    if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
-        & (Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+    # WHOLE BODY guarded (audit 2026-08-21 #12): a throw in here replaced the
+    # real stage exception AND skipped Pop-Location; .HasExited can itself
+    # throw Win32Exception on an unqueryable process.
+    try {
+        Set-BuildPhase 'done'
+        if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
+            Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
+        }
+        if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
+            & (Join-Path $PSScriptRoot 'scripts\build\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+        }
+    } catch {
+        Write-Warning "resource-sampler teardown failed (build verdict above is unaffected): $($_.Exception.Message)"
     }
     Pop-Location
 }

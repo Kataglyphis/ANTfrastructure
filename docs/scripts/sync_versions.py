@@ -134,7 +134,7 @@ def collect_versions() -> dict[str, str]:
     windows_base = read_repo_file("windows/Dockerfile.base")
     windows_nvidia = read_repo_file("windows/Dockerfile.nvidia")
     windows_media = read_repo_file("windows/Dockerfile.media-merge-builder")
-    windows_vs = read_repo_file("windows/scripts/setup-vs.ps1")
+    windows_vs = read_repo_file("windows/scripts/host/setup-vs.ps1")
 
     return {
         "linux_ubuntu": v["UBUNTU_VERSION"],

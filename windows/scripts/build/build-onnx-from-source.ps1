@@ -24,6 +24,12 @@ $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables 
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
+# #122 (2026-08-21): phase brackets via trap — same failure-names-its-phase
+# contract as gstreamer/litert-lm (#109) without indenting the body. EAP=Stop
+# makes every failure terminating, so the trap stamps the open phase and
+# rethrows.
+trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'onnx'; break }
+Switch-BuildPhase '1. clone + source patches (DML clang-cl, rc filter)'
 Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$OnnxVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 $cmakeSrc = if (Test-Path "$SourceDir\cmake\CMakeLists.txt") { "$SourceDir\cmake" } else { $SourceDir }
@@ -175,6 +181,7 @@ $py = Initialize-ToolchainPythonEnvironment
 # (Initialize-ToolchainPythonEnvironment wrote the win-amd64 platform-tag shim, so
 # pip resolves 64-bit wheels and our wheel tags correctly.)
 Install-CpythonPip -Python $py
+Switch-BuildPhase '2. python deps + cmake args'
 Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setuptools', 'wheel', 'packaging')
 
 # ONNX-specific CPU feature flags added on top of the shared SIMD base.
@@ -213,7 +220,7 @@ $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
 $gpuArgs = @()
 # if/elseif/else used in place of `switch ($gpuEnv.GpuType) { ... }` for broad compatibility
 # with Windows PowerShell 5.1 (the switch-on-property syntax can trigger parser errors in PS 5.1).
-if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+if ($gpuEnv.HasCuda) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
@@ -320,7 +327,9 @@ $cmakeArgs = @(
     "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)"
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs
+Switch-BuildPhase '3. cmake configure'
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs | Out-Null
+Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
 # -- Post-configure patches (fetched _deps trees; inline, NOT .patch files —
 # static patches against CMake-fetched deps rot when ORT's dep pointer moves) --
@@ -389,10 +398,19 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     # builds keep the intrinsic). Upstream candidate for NVIDIA/cutlass:
     # the guard should carry `&& !defined(__clang__)`.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    Invoke-InlineRegexPatch -Path $cut `
-        -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
-        -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
-        -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
+    # Idempotency (audit 2026-08-21): the pattern is a PREFIX of its own
+    # replacement, so a resumed build (the _deps tree survives) re-appended
+    # '&& !defined(__clang__)' on every pass — and after the first patch the
+    # no-op drift warning could never fire again. Explicit already-applied
+    # skip keeps resumes quiet AND keeps the drift warning meaningful.
+    if ((Test-Path $cut) -and ((Get-Content -Raw $cut) -match '!defined\(__clang__\)')) {
+        Write-Host 'cutlass/uint128.h: __clang__ guard already applied (resumed tree) - skipping'
+    } else {
+        Invoke-InlineRegexPatch -Path $cut `
+            -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
+            -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
+            -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
+    }
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
 }
 
@@ -458,6 +476,7 @@ $ninjaLog = Get-PersistentBuildLogPath -Name 'onnx-ninja.log' -FallbackDir $buil
 # ONNX vertex -- peak per-process WorkingSet 998 MB, peak fleet 5.5 GB at -j9.
 # At 2 GB/job the job-count formula yields ~19 jobs (~11-12 GB extrapolated vs
 # the 39 GB budget), roughly doubling parallelism on the long-pole ONNX build.
+Switch-BuildPhase '5. ninja build + install'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Install -LogFile $ninjaLog
 
 # Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never
@@ -480,6 +499,7 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # source-root setup.py run as bdist_wheel FROM the build dir. No
 # --wheel_name_suffix: our CUDA+TensorRT+DML combo matches no upstream package
 # split, so it ships as plain `onnxruntime`. Must run BEFORE Remove-SourceBuildTree.
+Switch-BuildPhase '6. python wheel'
 Write-Host 'Building onnxruntime python wheel...'
 # Shared wheel-build shape (was duplicated verbatim with the GenAI script):
 # stage + install (WITH pypi deps) + import-assert, so the shipped image can
@@ -491,10 +511,6 @@ Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
     -Arguments """$SourceDir\setup.py"" bdist_wheel" `
     -ModuleName 'onnxruntime' | Out-Null
 
-Remove-SourceBuildTree -Path $SourceDir
-Write-Host '=== ONNX Runtime source build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-CurrentBuildPhase
+Write-BuildPhaseSummary -Label 'onnx'
+Complete-SourceBuild -Banner '=== ONNX Runtime source build completed ===' -SourceDir $SourceDir  # cleanup + banner + exit 0 (see module help)

@@ -51,9 +51,19 @@ foreach ($cand in @((Join-Path $scriptAssetRoot 'versions.env'),
     if ($cand -and (Test-Path $cand)) { $versionsEnvFile = $cand; break }
 }
 if ($versionsEnvFile) {
-    Write-Host "Overriding process env from fresh $versionsEnvFile (beats base-baked values)"
+    # Precedence (aligned with load-versions.ps1, 2026-08-21): the fresh file
+    # beats base-BAKED values, but a value someone forwarded deliberately
+    # (process differs from the Machine-baked one) beats the file — the old
+    # unconditional overwrite silently reverted --build-arg experiments.
+    Write-Host "Overriding process env from fresh $versionsEnvFile (baked values only; forwarded overrides win)"
     foreach ($entry in (ConvertFrom-VersionsEnv -Path $versionsEnvFile).GetEnumerator()) {
-        [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
+        $procVal = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
+        $machVal = [Environment]::GetEnvironmentVariable($entry.Key, 'Machine')
+        if ($procVal -and $procVal -ne $machVal -and $procVal -ne $entry.Value) {
+            Write-Host "  keeping forwarded $($entry.Key)=$procVal (file has $($entry.Value))"
+        } else {
+            [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
+        }
     }
 }
 
@@ -97,7 +107,5 @@ if ($LASTEXITCODE -ne 0) { throw "source-built python failed to run (exit $LASTE
 Write-Host "Python version: $pyVersionLine"
 Write-Host "Python built at: $pyExe"
 
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+# Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0

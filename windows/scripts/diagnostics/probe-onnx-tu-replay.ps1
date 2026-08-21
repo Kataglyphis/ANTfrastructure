@@ -24,7 +24,9 @@
 [CmdletBinding()]
 param(
     [string]$WorkDir = 'C:\probe-ort',
-    [string]$OrtRef = 'v1.28.0',
+    # Env fallback: Dockerfile.probe declares ARG ORT_REF so a
+    # -BuildArg ORT_REF=... override reaches this run as $env:ORT_REF.
+    [string]$OrtRef = $(if ($env:ORT_REF) { $env:ORT_REF } else { 'v1.28.0' }),
     [string]$Tu = 'bias_softmax_impl.cu',
     # Override to test a locally built sccache (patch-verify probe).
     [string]$SccacheExe = '',

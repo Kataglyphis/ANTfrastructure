@@ -135,6 +135,13 @@ $tarballPath = "$SourceDir\ffmpeg.tar.gz"
 if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 
+# #122 (2026-08-21): phase brackets via trap, not a whole-body try/catch —
+# same failure-names-its-phase contract as gstreamer/litert-lm (#109)
+# without indenting 570 lines. EAP=Stop makes every failure terminating, so
+# the trap stamps the open phase and rethrows.
+trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'ffmpeg'; break }
+
+Switch-BuildPhase '1. download + extract'
 Write-Host "Downloading FFmpeg $FfmpegVersion..."
 if ($FfmpegVersion -in @('main', 'master', 'develop')) {
     try {
@@ -157,6 +164,7 @@ Write-Host "Source at: $srcDir"
 # turns into a terminating NativeCommandError; the helper shields git output via cmd.exe.
 Initialize-ExtractedGitRepo -Path $srcDir
 
+Switch-BuildPhase '2. VERSION synthesis + lib*.version'
 # ── VERSION file: without it every generated .pc says "Version: .." ───────────
 # FFmpeg's configure derives its version from $source_path/VERSION, falling back
 # to `git describe`. NEITHER exists here: GitHub's auto-generated
@@ -241,20 +249,31 @@ function Invoke-BoundedProvisionStep {
             Stop-Job -Job $job
             throw "$Label exceeded $TimeoutMinutes min - the #76 stall class (2h-mute network timeout); rerun or check egress."
         }
-        Receive-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+        # A job that ENDED in failure must fail the step too — the first cut
+        # only threw on timeout and silently discarded a failed scoop install,
+        # deferring the crash to an unrelated 'make: not found' hundreds of
+        # lines later (adversarial review, 2026-08-21). Keep the output for
+        # the log; a Failed state or an error record throws with the evidence.
+        $jobOut = Receive-Job -Job $job -ErrorAction SilentlyContinue -ErrorVariable jobErrs
+        if ($jobOut) { $jobOut | ForEach-Object { Write-Host "  [$Label] $_" } }
+        if ($job.State -ne 'Completed' -or ($jobErrs -and $jobErrs.Count -gt 0)) {
+            $reason = if ($jobErrs) { ($jobErrs | Select-Object -First 3) -join '; ' } else { "job state $($job.State)" }
+            throw "$Label FAILED: $reason"
+        }
     } finally {
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
 }
 # Ensure make is available
+Switch-BuildPhase '3. toolchain provisioning (make/gawk/nv-codec)'
 if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     Write-Host "Installing make via scoop..."
-    Invoke-BoundedProvisionStep -Label 'scoop install make' -Step { & scoop install main/make 2>&1 }
+    Invoke-BoundedProvisionStep -Label 'scoop install make' -Step { & scoop install main/make 2>&1; if ($LASTEXITCODE) { throw "scoop exit $LASTEXITCODE" } }
 }
 # Install gawk and replace MSYS2's broken awk
 if (-not (Get-Command gawk -ErrorAction SilentlyContinue)) {
     Write-Host "Installing gawk via scoop..."
-    Invoke-BoundedProvisionStep -Label 'scoop install gawk' -Step { & scoop install main/gawk 2>&1 }
+    Invoke-BoundedProvisionStep -Label 'scoop install gawk' -Step { & scoop install main/gawk 2>&1; if ($LASTEXITCODE) { throw "scoop exit $LASTEXITCODE" } }
 }
 # Replace MSYS2 awk with gawk for FFmpeg dep file processing
 $gitAwk = 'C:\Program Files\Git\usr\bin\awk.exe'
@@ -275,7 +294,7 @@ $bashExe = Join-Path $gitUsrBin 'bash.exe'
 # (which COMPILES CUDA *filters* and would need nvcc under the msvc toolchain) is deliberately left off.
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
-if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
+if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
     Write-Host 'NVIDIA CUDA detected -> enabling FFmpeg NVENC/NVDEC/CUVID via nv-codec-headers'
     # pkg-config is required by configure to locate ffnvcodec and is not present in the media build
     # image, so install it the same scoop way make/gawk are installed above.
@@ -371,8 +390,11 @@ if ($ffToolchain -eq 'clang-cl') {
     # config.mak). Opt out: FFMPEG_SCCACHE=0. Acceptance criterion is `Compile
     # requests` > 0 in the stage stats, NOT the hit rate (uncached components
     # are invisible in aggregate hit rates).
+    # Test-SccacheRemoteConfigured mirrors the cmake-side gate in
+    # Invoke-CmakeConfigure: remote backend only — a container-local cache
+    # would only bloat layers (same invariant, same reason).
     $ffSccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    $ffUseLauncher = [bool]($ffSccache -and $env:FFMPEG_SCCACHE -ne '0')
+    $ffUseLauncher = [bool]($ffSccache -and (Test-SccacheRemoteConfigured) -and $env:FFMPEG_SCCACHE -ne '0')
     Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
     $confFlags += '--toolchain=msvc', '--cc=clang-cl', '--ld=lld-link'
 } else {
@@ -402,6 +424,7 @@ $wrapperLines += "cd $cygSrc"
 $wrapperLines += 'export MSYS=winsymlinks:lnk'
 $wrapperLines += 'export TMPDIR=tmpdir'
 $wrapperLines += 'rm -rf tmpdir; mkdir -p tmpdir'
+Switch-BuildPhase '4. configure'
 $wrapperLines += "./configure $confStr"
 
 $wrapperPath = Join-Path $srcDir 'ffmpeg-configure-wrapper.sh'
@@ -487,6 +510,7 @@ $makeJobs = Get-BuildJobCount -MemGBPerJob 2
 # flag stripped from the generated maks the launcher is safe at make time;
 # configure stays bare (its own compiler tests still break through sccache,
 # "unknown file type" - measured 2026-08-19).
+Switch-BuildPhase '5. make + install'
 $makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl'" } else { '' }
 # All three make calls are -Optional by design: a parallel-link race falls
 # through to the -j1 retry, and an incomplete build/install falls through to
@@ -504,6 +528,12 @@ if (-not (Test-Path $builtFfmpeg)) {
 }
 Write-Host 'Attempting install from source if built...'
 [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make install (verify below)' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make install`"")
+
+# STAGE stats right where the #100 acceptance criterion lives ("Compile
+# requests > 0 in the STAGE stats"): the chain-aggregate dump cannot
+# attribute per-stage, so this stage emitted its criterion nowhere (D3,
+# 2026-08-21 audit).
+if ($ffUseLauncher) { Write-SccacheStatsToStderr -Advanced -RequireRemote }
 
 # A --enable-shared build is only usable if the av*.dll runtime libraries were
 # installed next to the exes; exes alone die with STATUS_DLL_NOT_FOUND. Treat an
@@ -587,6 +617,7 @@ if (Test-Path $ffPkgConfigDir) {
 # treats an absent directory as the hard failure it is. The explicitly opted-in
 # prebuilt fallback (#68) ships NO .pc files BY DESIGN (the prefix is scrubbed,
 # nothing links against it) — that is the one legitimate skip.
+Switch-BuildPhase '6. pc gate + PyAV wheel'
 if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
     Write-Warning 'Prebuilt fallback active (FFMPEG_ALLOW_PREBUILT=1): no .pc files exist by design; downstream consumers (gst-libav, OpenCV chain-link, PyAV) will not find FFmpeg.'
 } else {
@@ -688,10 +719,6 @@ try {
     [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel")
 } finally { Pop-Location }
 Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
-Remove-SourceBuildTree -Path $pyavSrcRoot
-Write-Host '=== PyAV wheel build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-CurrentBuildPhase
+Write-BuildPhaseSummary -Label 'ffmpeg'
+Complete-SourceBuild -Banner '=== PyAV wheel build completed ===' -SourceDir $pyavSrcRoot  # cleanup + banner + exit 0 (see module help)

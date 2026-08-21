@@ -15,7 +15,7 @@ ENV SCCACHE_GIT_REV="probe-override-value"
 
 RUN --mount=type=bind,source=windows/scripts,target=C:\bkmnt `
     Write-Host ('machine BEFORE: [' + [Environment]::GetEnvironmentVariable('SCCACHE_GIT_REV','Machine') + ']'); `
-    & C:\bkmnt\load-versions.ps1 2>&1 | Select-String 'SCCACHE_GIT_REV|loaded' | ForEach-Object { "$_" }; `
+    & C:\bkmnt\build\load-versions.ps1 2>&1 | Select-String 'SCCACHE_GIT_REV|loaded' | ForEach-Object { "$_" }; `
     $m = [Environment]::GetEnvironmentVariable('SCCACHE_GIT_REV','Machine'); `
     Write-Host ('machine AFTER: [' + $m + ']'); `
     if ($m -ne 'probe-override-value') { throw 'override was NOT baked to Machine env' }; `

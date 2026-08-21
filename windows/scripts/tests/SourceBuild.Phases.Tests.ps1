@@ -48,4 +48,21 @@ Describe 'Build phase machinery (#109)' {
         $out = Write-BuildPhaseSummary 6>&1 | Out-String
         Assert-False ($out -match 'once') 'the table was reset after the first summary'
     }
+
+    It 'Switch-BuildPhase auto-completes the tracked phase; Complete-CurrentBuildPhase is a safe no-op after' {
+        Switch-BuildPhase 'first' 6>$null
+        Switch-BuildPhase 'second' 6>$null            # must complete 'first' itself
+        Complete-CurrentBuildPhase 6>$null            # closes 'second'
+        Complete-CurrentBuildPhase 6>$null            # idempotent: nothing open, must not throw
+        $out = Write-BuildPhaseSummary -Label 'switch' 6>&1 | Out-String
+        Assert-Match '\[ ok \] first' $out 'first phase completed by the switch'
+        Assert-Match '\[ ok \] second' $out 'second phase completed by Complete-CurrentBuildPhase'
+    }
+
+    It 'Complete-CurrentBuildPhase -ErrorRecord stamps the tracked phase as failed' {
+        Switch-BuildPhase 'doomed-current' 6>$null
+        try { throw 'current-phase error' } catch { Complete-CurrentBuildPhase -ErrorRecord $_ 6>$null }
+        $out = Write-BuildPhaseSummary 6>&1 | Out-String
+        Assert-Match '\[FAIL\] doomed-current' $out 'tracked phase stamped failed'
+    }
 }

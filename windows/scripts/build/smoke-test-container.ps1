@@ -266,10 +266,10 @@ if ($pyExpected) {
 # Source-built CPython silently OMITS optional extension modules whose deps were
 # missing at build time (OpenSSL, sqlite, bzip2, xz) -- each import below loads a
 # real .pyd plus its dependent DLLs, so this catches the whole class at once.
-Assert-Test -Name "Python stdlib extension modules import (ssl/sqlite3/zlib/ctypes/bz2/lzma)" -Condition {
-    $out = & python -c "import ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; print('stdlib-ok')" 2>&1 | Out-String
-    ($LASTEXITCODE -eq 0) -and ($out -match 'stdlib-ok')
-} -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
+Assert-PythonSnippet -Name "Python stdlib extension modules import (ssl/sqlite3/zlib/ctypes/bz2/lzma)" `
+    -Code "import ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; print('stdlib-ok')" `
+    -ExpectMatch @('stdlib-ok') `
+    -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
 
 # ============================================================================
 Write-TestHeader '3. Rust Toolchain'
@@ -311,7 +311,7 @@ Assert-Test -Name 'Rust version (well-formed)' -Condition {
 # COMPILE + LINK (via the MSVC linker) + RUN -- catches a broken linker / missing target / std.
 Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-rust'
-    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $d
     $src = Join-Path $d 'main.rs'
     'fn main() { println!("rust ok"); }' | Set-Content -Path $src -Encoding ASCII
     $exe = Join-Path $d 'main.exe'
@@ -380,7 +380,7 @@ Assert-EnvVarSet -Name 'VULKAN_SDK'
 # vulkaninfo, which we deliberately do NOT run headless), so it exercises the real toolchain.
 Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-glslc'
-    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $d
     $src = Join-Path $d 'smoke.vert'
     "#version 450`nvoid main() { gl_Position = vec4(0.0); }" | Set-Content -Path $src -Encoding ASCII
     $spv = Join-Path $d 'smoke.spv'
@@ -431,7 +431,7 @@ if ($script:gpuNvidia) {
     $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }
     Assert-Test -Name 'nvcc compiles a CUDA kernel to PTX' -Condition {
         $d = Join-Path $env:TEMP 'kataglyphis-smoke-cuda'
-        New-Item -Path $d -ItemType Directory -Force | Out-Null
+        Initialize-SmokeScratch -Path $d
         $src = Join-Path $d 'k.cu'
         "__global__ void k(float* a) { a[threadIdx.x] *= 2.0f; }`nint main() { return 0; }" | Set-Content -Path $src -Encoding ASCII
         $ptx = Join-Path $d 'k.ptx'
@@ -508,7 +508,7 @@ int main() {
         # ($script:identityOnnxBytes, also used by the python probe in section 20) --
         # no external files, no GPU device; exercises graph load, session init, Run().
         $ortModelDir = Join-Path $env:TEMP 'kataglyphis-smoke-ort-model'
-        New-Item -Path $ortModelDir -ItemType Directory -Force | Out-Null
+        Initialize-SmokeScratch -Path $ortModelDir
         [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), $script:identityOnnxBytes)
         $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($onnxCxxHdr) {
@@ -602,7 +602,12 @@ int main() {
                 -FailMessage "DirectML.dll not found under $onnxRoot. ONNX Runtime is built with USE_DML=ON unconditionally, so the redist must ship; Copy-SidecarDll only WARNS when it cannot stage it. On the AMD reference host this is the only working GPU path."
         }
     } else {
-        Skip-Test 'ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)'
+        # Root resolved but the probe artifact is gone: that is the defect
+        # this section exists for, not an optional feature (#46 pattern —
+        # 2026-08-21 audit: deleting onnxruntime.lib silently dropped the 7
+        # strongest assertions and stayed green).
+        Assert-Test -Name 'ONNX Runtime link+run prerequisites present' -Condition { $false } `
+            -FailMessage 'ONNX_ROOT exists but onnxruntime.lib/.dll/c_api.h are not all found — the install shrank'
     }
 } else {
     Skip-Test 'ONNX_ROOT not set'
@@ -683,7 +688,8 @@ if ($genaiRoot) {
             Skip-Test 'GenAI DirectML evidence (D3D12Core.dll absent -- USE_DML=OFF variant)'
         }
     } else {
-        Skip-Test 'GenAI load probe (onnxruntime-genai.dll not found)'
+        Assert-Test -Name 'GenAI load-probe prerequisite present' -Condition { $false } `
+            -FailMessage 'ONNX_GENAI_ROOT exists but onnxruntime-genai.dll is missing (a -cuda.dll alone satisfies the glob above — this is the CPU-EP DLL vanishing)'
     }
 } else {
     Skip-Test 'ONNX_GENAI_ROOT not set'
@@ -761,7 +767,8 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_dnn*.dll' -Description 'OpenCV DNN module DLL (opencv_dnn*.dll)'
     }
 } else {
-    Skip-Test 'OpenCV link+run (opencv_core lib/dll or core.hpp not all found)'
+    Assert-Test -Name 'OpenCV link+run prerequisites present' -Condition { $false } `
+        -FailMessage 'OPENCV_ROOT exists but opencv_core lib/dll or core.hpp are not all found — the install shrank'
 }
 
 # ============================================================================
@@ -858,6 +865,7 @@ if (Test-Path $litertInclude) {
     Assert-Test -Name "LiteRT GPU delegate headers" -Condition { @($litertGpuHeaders).Count -gt 0 } -FailMessage "No GPU delegate headers found under $litertInclude"
 }
 
+Assert-DirectoryExists -Path $litertLibDir -Description 'LiteRT lib dir'
 if (Test-Path $litertLibDir) {
     Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
     # EXPORTS, not just the import lib (backlog #67). build-litert-from-source
@@ -879,6 +887,7 @@ if (Test-Path $litertLibDir) {
     }
 }
 
+Assert-DirectoryExists -Path $litertBinDir -Description 'LiteRT bin dir'
 if (Test-Path $litertBinDir) {
     # LiteRT builds statically by default (TFLITE_ENABLE_INSTALL=OFF, no
     # BUILD_SHARED_LIBS) — DLLs are optional; the static .lib files are the real
@@ -895,10 +904,12 @@ $litertLmLibDir = Join-Path $litertLmRoot 'lib'
 
 Assert-DirectoryExists -Path $litertLmRoot -Description 'LiteRT-LM root dir'
 
+Assert-DirectoryExists -Path $litertLmInclude -Description 'LiteRT-LM include dir'
 if (Test-Path $litertLmInclude) {
     Assert-ArtifactPresent -Root $litertLmInclude -Filter '*.h' -Description 'LiteRT-LM headers'
 }
 
+Assert-DirectoryExists -Path $litertLmLibDir -Description 'LiteRT-LM lib dir'
 if (Test-Path $litertLmLibDir) {
     Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.lib' -Description 'LiteRT-LM lib files'
     Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.dll' -Description 'LiteRT-LM DLL files'
@@ -935,7 +946,7 @@ if (Test-Path $litertLmExe) {
 Write-TestHeader '14. Compiler smoke test (clang-cl builds C++)'
 # ============================================================================
 $tmpDir = Join-Path $env:TEMP 'kataglyphis-smoke-test'
-New-Item -Path $tmpDir -ItemType Directory -Force | Out-Null
+Initialize-SmokeScratch -Path $tmpDir
 
 $cppSource = @"
 #include <iostream>
@@ -971,7 +982,7 @@ Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 # intentional heap-buffer-overflow (output contains the report marker).
 Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
-    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $d
     try {
         $src = Join-Path $d 'main.cpp'
         Set-Content -Path $src -Encoding ASCII -Value @'
@@ -997,7 +1008,7 @@ int main() {
 Write-TestHeader '15. CMake + Ninja + clang-cl integration'
 # ============================================================================
 $tmpDir2 = Join-Path $env:TEMP 'kataglyphis-smoke-cmake'
-New-Item -Path $tmpDir2 -ItemType Directory -Force | Out-Null
+Initialize-SmokeScratch -Path $tmpDir2
 
 $cmakeLists = @"
 cmake_minimum_required(VERSION 3.20)
@@ -1031,7 +1042,7 @@ Remove-Item $tmpDir2 -Recurse -Force -ErrorAction SilentlyContinue
 Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
 # ============================================================================
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
-New-Item -Path $tmpDir3 -ItemType Directory -Force | Out-Null
+Initialize-SmokeScratch -Path $tmpDir3
 
 # NB: single-quoted here-string — a double-quoted form makes PowerShell evaluate
 # MSBuild's $(VCTargetsPath) as a subexpression. The template also needs the
@@ -1101,7 +1112,8 @@ if (Test-Path $tvmRoot) {
     if ($tvmRuntimeDll) {
         Assert-DllLoads -Name 'TVM runtime DLL loads (dependent chain resolves)' -DllPath $tvmRuntimeDll.FullName -FailMessage 'tvm_runtime.dll failed to load -- a dependent DLL (LLVM/CUDA/Vulkan runtime) did not resolve'
     } else {
-        Skip-Test 'TVM load probe (tvm_runtime.dll not found)'
+        Assert-Test -Name 'TVM load-probe prerequisite present' -Condition { $false } `
+            -FailMessage 'TVM_ROOT exists but tvm_runtime.dll is missing — the runtime DLL vanished from the install'
     }
 } else {
     Skip-Test 'TVM not installed (C:\runtime\lib\tvm not found)'
@@ -1179,9 +1191,13 @@ $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
-    'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
-    'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
-    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS',
+    'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB', 'OPENCV_INCLUDE',
+    # FFMPEG_ROOT/LITERT_LM_INCLUDE/LITERT_LM_LIB joined 2026-08-21 (#127):
+    # they were declared in the merge image with zero readers repo-wide —
+    # asserting them here turns layout documentation into a checked contract.
+    'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'TEMP_DIR',
+    'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
+    'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_LIB', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
     # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
     # unset (old-image tolerance), so without this pointer check a lost env var
@@ -1197,6 +1213,30 @@ foreach ($envPointer in $envPointerNames) {
         $v = [Environment]::GetEnvironmentVariable($pointerName)
         (-not [string]::IsNullOrWhiteSpace($v)) -and (Test-Path $v -PathType Container)
     }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
+}
+
+# PATH COMPOSITION (2026-08-21 coverage audit A7): pointer-exists proves the
+# TARGET is there, not that it is ON PATH — deleting the Dockerfile PATH line
+# that adds ONNX_ROOT\bin kept every assertion green. Assert membership for
+# every pointer the Dockerfiles put on PATH.
+$pathMembers = @('ONNX_ROOT', 'OPENCV_BIN', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'LITERT_BIN', 'LITERT_LIB', 'TVM_LIBRARY_PATH', 'IREE_BIN', 'PYTHON_BUILD_BIN')
+$pathEntries = @($env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
+foreach ($pm in $pathMembers) {
+    $pmVal = [Environment]::GetEnvironmentVariable($pm)
+    if (-not $pmVal) { continue }  # unset pointers are the pointer loop's problem
+    # ONNX_ROOT itself is not on PATH — its bin\ is (windows/Dockerfile).
+    $expected = $(if ($pm -eq 'ONNX_ROOT') { Join-Path $pmVal 'bin' } else { $pmVal }).TrimEnd('\')
+    Assert-Test -Name "$pm target is on PATH ($expected)" -Condition {
+        $pathEntries -contains $expected
+    }.GetNewClosure() -FailMessage "$expected is not on PATH — the ENV PATH line that adds it was lost; dependents die with STATUS_DLL_NOT_FOUND"
+}
+# cuda-runtime staging dir: PATH entry #1 on BOTH lanes, COPY'd unconditionally
+# (audit A8) — cudnn64_9.dll is what the ORT CUDA EP dlopens at session time.
+Assert-Test -Name 'C:\runtime\cuda-runtime\bin is on PATH' -Condition {
+    $pathEntries -contains 'C:\runtime\cuda-runtime\bin'
+} -FailMessage 'the flattened CUDA-runtime staging dir fell off PATH (stage-cuda-runtime.ps1 contract)'
+if ($script:gpuNvidia) {
+    Assert-FileExists -Path 'C:\runtime\cuda-runtime\bin\cudnn64_9.dll' -Description 'staged cuDNN runtime (ORT CUDA EP dlopens it)'
 }
 
 # Global-scope scoop shims. flutter is installed `--global`, so scoop creates
@@ -1285,7 +1325,7 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # onnxruntime: real python-side inference over the shared 63-byte Identity model.
     Assert-Test -Name "python onnxruntime inference end-to-end (CPU EP)" -Condition {
         $mdir = Join-Path $env:TEMP 'kataglyphis-smoke-pyort'
-        New-Item -Path $mdir -ItemType Directory -Force | Out-Null
+        Initialize-SmokeScratch -Path $mdir
         try {
             [IO.File]::WriteAllBytes((Join-Path $mdir 'identity.onnx'), $script:identityOnnxBytes)
             $out = & python -c "import os, numpy, onnxruntime as ort; s = ort.InferenceSession(os.path.join(os.environ['TEMP'], 'kataglyphis-smoke-pyort', 'identity.onnx'), providers=['CPUExecutionProvider']); y = s.run(['y'], {'x': numpy.array([42.0], numpy.float32)})[0]; print('py-ort', ort.__version__, float(y[0]))" 2>&1 | Out-String
@@ -1297,28 +1337,28 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # variant that shadowed it: PyPI onnxruntime-gpu (dragged in via genai's
     # dep metadata before the -NoDeps fix) ships NO DmlExecutionProvider, so
     # asserting DML here detects any same-version shadowing (caught 2026-07-13).
-    Assert-Test -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" -Condition {
-        $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'DmlExecutionProvider')
-    } -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
+    Assert-PythonSnippet -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" `
+        -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
+        -ExpectMatch @('DmlExecutionProvider') `
+        -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
 
     if ($script:gpuNvidia) {
-        Assert-Test -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" -Condition {
-            $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
-            ($LASTEXITCODE -eq 0) -and ($out -match 'CUDAExecutionProvider') -and ($out -match 'TensorrtExecutionProvider')
-        } -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
+        Assert-PythonSnippet -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" `
+            -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
+            -ExpectMatch @('CUDAExecutionProvider', 'TensorrtExecutionProvider') `
+            -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
     }
 
-    Assert-Test -Name "python onnxruntime-genai imports" -Condition {
-        $out = & python -c "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-genai')
-    } -FailMessage "import onnxruntime_genai failed (pyd or embedded DLL chain broken)"
+    Assert-PythonSnippet -Name "python onnxruntime-genai imports" `
+        -Code "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" `
+        -ExpectMatch @('py-genai') `
+        -FailMessage "import onnxruntime_genai failed (pyd or embedded DLL chain broken)"
 
     # cv2: PNG encode/decode round-trip exercises core + imgcodecs via python.
-    Assert-Test -Name "python cv2 imports + PNG round-trip" -Condition {
-        $out = & python -c "import cv2, numpy; img = numpy.zeros((8, 8, 3), numpy.uint8); ok, buf = cv2.imencode('.png', img); d = cv2.imdecode(buf, cv2.IMREAD_COLOR); print('py-cv2', cv2.__version__, bool(ok) and d.shape == (8, 8, 3))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-cv2 .* True')
-    } -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
+    Assert-PythonSnippet -Name "python cv2 imports + PNG round-trip" `
+        -Code "import cv2, numpy; img = numpy.zeros((8, 8, 3), numpy.uint8); ok, buf = cv2.imencode('.png', img); d = cv2.imdecode(buf, cv2.IMREAD_COLOR); print('py-cv2', cv2.__version__, bool(ok) and d.shape == (8, 8, 3))" `
+        -ExpectMatch @('py-cv2 .* True') `
+        -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
 
     # ---- COMPILED-IN VIDEO BACKENDS (backlog #95) --------------------------
     # These guard #93 (GStreamer silently OFF) and #94 (OpenCV using its OWN
@@ -1425,19 +1465,19 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         Skip-Test 'OpenCV avcodec major vs chain (one of the versions unreadable)'
     }
 
-    Assert-Test -Name "python tvm imports (runtime device reachable)" -Condition {
-        $out = & python -c "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-tvm')
-    } -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
+    Assert-PythonSnippet -Name "python tvm imports (runtime device reachable)" `
+        -Code "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" `
+        -ExpectMatch @('py-tvm') `
+        -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
 
     # PyAV built against OUR ffmpeg (PyPI's wheel is unloadable on Server Core:
     # bundled avdevice imports AVICAP32). Real work: an in-memory mpeg4 encode
     # (SOFTWARE codec by name -- the generic 'h264' resolves to h264_d3d12va,
     # a hardware encoder that cannot open without a D3D12 device in-container).
-    Assert-Test -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" -Condition {
-        $out = & python -c "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-av .* True')
-    } -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
+    Assert-PythonSnippet -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" `
+        -Code "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" `
+        -ExpectMatch @('py-av .* True') `
+        -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
 
     # IREE python end-to-end: compile MLIR through iree.compiler and execute on
     # iree.runtime's local-task driver -- proves the two wheels interoperate.
@@ -1445,10 +1485,10 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # (whitespace-insensitive one-liner; no embedded double quotes -- PS 5.1
     # strips those from -c strings). tensor<f32> args must be numpy arrays
     # (a bare float dies in VM marshaling).
-    Assert-Test -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" -Condition {
-        $out = & python -c "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-iree 5\.0')
-    } -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
+    Assert-PythonSnippet -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" `
+        -Code "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" `
+        -ExpectMatch @('py-iree 5\.0') `
+        -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
 
 } else {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'
@@ -1463,8 +1503,20 @@ Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
 # cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm,
 # av, iree.
 $torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
-$torchAppScript = Join-Path $PSScriptRoot 'assemble-torch-app.ps1'
-if ($torchAppDir -and (Test-Path $torchAppDir) -and (Test-Path $torchAppScript)) {
+# Resolve the verifier beside this script OR from the image's baked copy —
+# the BK gate used to file-mount ONLY the smoke script, so this Join-Path
+# missed and section 21 SKIPPED silently on that lane forever (2026-08-21
+# coverage audit, lane asymmetry 7a). And a set TORCH_APP_DIR with NO
+# resolvable verifier is a GATE bug, not an optional feature: fail loudly.
+$torchAppScript = @(
+    (Join-Path $PSScriptRoot 'assemble-torch-app.ps1'),
+    'C:\temp\scripts\assemble-torch-app.ps1'
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($torchAppDir -and (Test-Path $torchAppDir) -and -not $torchAppScript) {
+    Assert-Test -Name 'torch-app verifier reachable (gate wiring)' -Condition { $false } `
+        -FailMessage 'TORCH_APP_DIR is baked but assemble-torch-app.ps1 is neither beside the smoke script nor at C:\temp\scripts — the gate mount lost the verifier'
+}
+if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
     Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree)" -Condition {
         $out = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
@@ -1504,7 +1556,7 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
     } -FailMessage "iree-compile --version failed (tool or DLL chain broken)"
 
     $ireeDir = Join-Path $env:TEMP 'kataglyphis-smoke-iree'
-    New-Item -Path $ireeDir -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $ireeDir
     $ireeMlir = Join-Path $ireeDir 'abs.mlir'
     $ireeVmfb = Join-Path $ireeDir 'abs-cpu.vmfb'
     Set-Content -Path $ireeMlir -Encoding ascii -Value $script:ireeGateMlir
@@ -1571,6 +1623,28 @@ if ($MaxSkipped -ge 0 -and $summary.Skipped -gt $MaxSkipped) {
 }
 if ($summary.Aborted) {
     $coverageProblems += '-ExitOnFirstFailure aborted the run, so the remaining tests never executed and this result is not a full verdict'
+}
+# PER-SECTION floors (2026-08-21 coverage-gap audit): the global floor left 34
+# points of anonymous slack — deleting onnxruntime.lib alone silently dropped
+# 7 of the suite's strongest assertions and stayed green. A section falling
+# below its floor is now a NAMED hole. Baseline = the measured per-section
+# counts of the 2026-08-20 green ride; second value = the CPU-lane floor
+# (GPU-only branches subtracted). Update DELIBERATELY when adding assertions.
+$sectionFloors = @{
+    '1' = @(13, 13); '2' = @(6, 6); '3' = @(8, 8); '4' = @(8, 8); '5' = @(4, 4)
+    '6' = @(4, 4); '7' = @(14, 0); '8' = @(11, 8); '9' = @(9, 6); '10' = @(7, 5)
+    '11' = @(12, 12); '12' = @(9, 9); '13' = @(6, 6); '14' = @(3, 3); '15' = @(2, 2)
+    '16' = @(1, 1); '17' = @(5, 5); '18' = @(8, 6); '19' = @(30, 26); '20' = @(22, 21)
+    '21' = @(2, 2); '22' = @(7, 6)
+}
+$floorIdx = if ($ExpectGpu) { 0 } else { 1 }
+foreach ($sec in $sectionFloors.Keys) {
+    $floor = $sectionFloors[$sec][$floorIdx]
+    if ($floor -le 0) { continue }
+    $got = if ($summary.SectionPassed.Contains($sec)) { [int]$summary.SectionPassed[$sec] } else { 0 }
+    if ($got -lt $floor) {
+        $coverageProblems += "section $sec passed only $got assertion(s), floor is $floor — a subsystem's verification quietly shrank"
+    }
 }
 if ($coverageProblems.Count -gt 0) {
     Write-Host "`n--- INSUFFICIENT COVERAGE ---" -ForegroundColor Red
