@@ -174,6 +174,12 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 - **post-restart base cache-miss** — observe at the next host reboot.
 - **LOG7 — sdkmanager CLI deprecated** — bit-rot watch before Google
   removes it.
+- **MESON-GI — meson 1.12 breaks g-i-1.84 glib-subproject resolution
+  (riscv64 cross gst)** [S·★, watch] falsified the RV1-poison theory in
+  wave5: reproduces with a clean sysroot. Scoped pin meson==1.11.2 in
+  setup-gstreamer.sh for riscv64 cross only. Re-bump when upstream
+  meson/g-i fix the `subproject('glib')` resolution — retest by removing
+  the pin in a closure window.
 - **NODE-RV — riscv64 ships Node v22 (pin: 26.7)** [S·★, watch] ubuntu-ports
   has no 26.x for riscv64; the install falls back fail-open with a WARN (by
   design, seen in every wave-4 smoke log). Lift when ports ships 26.x —
