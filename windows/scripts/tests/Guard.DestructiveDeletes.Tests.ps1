@@ -17,11 +17,11 @@ function Get-GuardDecision {
     # Returns 'deny', 'ask' or 'allow' (silence = no opinion = allow).
     param([string]$Tool, [string]$Command, [string]$FilePath, [string]$Content)
 
-    $input = @{ }
-    if ($Command) { $input['command'] = $Command }
-    if ($FilePath) { $input['file_path'] = $FilePath }
-    if ($Content) { $input['content'] = $Content }
-    $json = @{ tool_name = $Tool; tool_input = $input } | ConvertTo-Json -Depth 6 -Compress
+    $toolInput = @{ }
+    if ($Command) { $toolInput['command'] = $Command }
+    if ($FilePath) { $toolInput['file_path'] = $FilePath }
+    if ($Content) { $toolInput['content'] = $Content }
+    $json = @{ tool_name = $Tool; tool_input = $toolInput } | ConvertTo-Json -Depth 6 -Compress
 
     $out = & $guard -InputJson $json
     if (-not $out) { return 'allow' }
@@ -139,6 +139,48 @@ Start-Service buildkitd
     }
 }
 
+Describe 'free-disk-space.ps1: the reclaim script itself' {
+
+    It 'is report-only by default and never deletes without -Apply' {
+        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+        Assert-True (Test-Path $script) "reclaim script not found at $script"
+        $raw = Get-Content -Raw $script
+        # The delete is downstream of the -Apply gate: the report path exits
+        # before it. A refactor that moves the delete above the gate fails here.
+        $applyGate = $raw.IndexOf('if (-not $Apply)')
+        $delete = $raw.IndexOf('Remove-Item -LiteralPath $t.Path')
+        Assert-True ($applyGate -gt 0) 'the -Apply gate is gone'
+        Assert-True ($delete -gt $applyGate) 'a delete now sits ABOVE the -Apply gate'
+    }
+
+    It 'refuses a candidate that tunnels through a junction into a protected root' {
+        # The name-based checks all clear a junction; the recursive delete then
+        # walks through it. Build the real thing and prove it is skipped.
+        $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('guard-junction-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $husk = Join-Path $sandbox 'containerd.bak-20260821-000000'
+        New-Item -ItemType Directory -Path $husk -Force | Out-Null
+        try {
+            $link = Join-Path $husk 'tunnel'
+            # A junction pointing at a protected root - the hazard shape.
+            $null = New-Item -ItemType Junction -Path $link -Target $env:USERPROFILE -ErrorAction Stop
+
+            $found = @(Get-ChildItem -LiteralPath $husk -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue)
+            Assert-True ($found.Count -gt 0) 'test setup: the junction was not created'
+
+            # Same predicate the script uses, run against the real subtree.
+            $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+            $raw = Get-Content -Raw $script
+            Assert-Match 'Test-HasReparsePoint' $raw 'the reparse-point check is gone from the reclaim script'
+            Assert-Match '\$t\.Linked' $raw 'the delete loop no longer honours the reparse-point check'
+        } finally {
+            # Remove the junction ITSELF first (never its contents).
+            $link = Join-Path $husk 'tunnel'
+            if (Test-Path -LiteralPath $link) { [IO.Directory]::Delete($link) }
+            if (Test-Path -LiteralPath $sandbox) { [IO.Directory]::Delete($sandbox, $true) }
+        }
+    }
+}
+
 Describe 'guard-destructive-deletes: the hook is actually registered' {
 
     It 'project settings wire the guard into PreToolUse' {
@@ -156,8 +198,12 @@ Describe 'guard-destructive-deletes: the hook is actually registered' {
             $p = Join-Path $root $f
             if (-not (Test-Path $p)) { continue }
             $raw = Get-Content -Raw $p
-            $blanket = [regex]::Matches($raw, '"(?:PowerShell|Bash)\((?:Remove-Item|rm)\s\*\)"')
-            Assert-Equal 0 $blanket.Count "$f still allow-lists a blanket delete: $($blanket.Value)"
+            # Materialise the matches before reporting: under StrictMode a
+            # member access on an EMPTY MatchCollection throws, so the
+            # pass-case message would fail instead of the assertion.
+            $blanket = @([regex]::Matches($raw, '"(?:PowerShell|Bash)\((?:Remove-Item|rm)\s\*\)"') |
+                    ForEach-Object { $_.Value })
+            Assert-Equal 0 $blanket.Count "$f still allow-lists a blanket delete: $($blanket -join ', ')"
         }
     }
 }

@@ -122,9 +122,24 @@ function Test-Protected {
     return $false
 }
 
+function Test-HasReparsePoint {
+    # A junction or symlink inside a delete candidate is a tunnel OUT of the
+    # allowlist: the path check clears the candidate, and the recursive delete
+    # then walks through the link into whatever it points at - which can be a
+    # protected root. Every path check in this script reasons about NAMES, and
+    # a reparse point is precisely where a name stops predicting the target.
+    # So: a candidate containing one is not deleted, loudly.
+    param([Parameter(Mandatory)][string]$Path)
+    try {
+        $links = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue)
+        return ($links.Count -gt 0)
+    } catch { return $true }   # cannot tell = treat as unsafe
+}
+
 function Get-DirSizeGB {
     param([Parameter(Mandatory)][string]$Path)
     try {
+        # No -FollowSymlink: sizing must not walk out of the subtree either.
         $bytes = (Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
                 Measure-Object -Property Length -Sum).Sum
         if (-not $bytes) { return 0.0 }
@@ -143,6 +158,7 @@ foreach ($rule in ($script:Reclaimable + $script:ReclaimableRepo)) {
             Path   = $h.FullName
             What   = $rule.What
             SizeGB = Get-DirSizeGB $h.FullName
+            Linked = Test-HasReparsePoint $h.FullName
         }
     }
 }
@@ -161,9 +177,14 @@ if ($plan.Count -eq 0) {
 } else {
     $plan | Sort-Object SizeGB -Descending | Format-Table -AutoSize @(
         @{ n = 'GB'; e = { $_.SizeGB } }
+        @{ n = 'link?'; e = { if ($_.Linked) { 'SKIP' } else { '' } } }
         @{ n = 'path'; e = { $_.Path } }
         @{ n = 'what'; e = { $_.What } }
     ) | Out-String | Write-Host
+
+    foreach ($l in ($plan | Where-Object { $_.Linked })) {
+        Say ('SKIP - contains a junction/symlink, a recursive delete could tunnel out of it: ' + $l.Path) 'Yellow'
+    }
     Say ('total allow-listed: {0} GB in {1} directories' -f (($plan | Measure-Object SizeGB -Sum).Sum, $plan.Count)) 'Yellow'
 }
 
@@ -205,6 +226,7 @@ Say '== deleting allow-listed husks ==' 'Cyan'
 $freed = 0.0
 foreach ($t in $plan) {
     if (Test-Protected $t.Path) { Say ('SKIP (protected): ' + $t.Path) 'Red'; continue }
+    if ($t.Linked) { Say ('SKIP (contains a junction/symlink): ' + $t.Path) 'Yellow'; continue }
     try {
         Remove-Item -LiteralPath $t.Path -Recurse -Force -ErrorAction Stop
         $freed += $t.SizeGB
