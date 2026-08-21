@@ -27,6 +27,10 @@ Linux/cross-lane only.
    re-verified intentional across four sweep rounds.
 3. Disk reclaim mid-run: prune-safe.sh → targeted rmi of pushed tags →
    NEVER system/image prune while a chain runs (removes TAGGED locals).
+   SHARPENED 2026-08-21: `nerdctl system prune` ALSO wipes the buildkit
+   store INCLUDING exec.cachemount records (35→1 observed) — even with no
+   chain running it costs the compile caches. It is the last-resort hammer
+   ONLY; prune-safe + rmi + kata-buildcache/archive-log trims come first.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
