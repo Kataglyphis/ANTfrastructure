@@ -86,6 +86,66 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
         Assert-True ($drift.Count -eq 0) ('sccache ARG defaults drifted on shared names: ' + ($drift -join '; '))
     }
 
+    It 'classic COPY and BK mount reference the same build scripts per branch (B6)' {
+        # A script added to the BK mount list and forgotten in the classic COPY
+        # (or vice versa) fails only at the OTHER lane's runtime. Documented
+        # exception: load-versions.ps1 is BK-only — the classic lane gets its
+        # versions through the media-core-env ENV mirror, not the script.
+        $joined = $dfText -replace ('`' + "`r?`n"), ' '
+        $stage = ''
+        $classicSets = @{}; $bkSets = @{}
+        foreach ($line in ($joined -split "`n")) {
+            if ($line -match '^FROM \S+ AS ([\w-]+)') { $stage = $Matches[1] }
+            $names = [regex]::Matches($line, 'windows.scripts.build.([\w.-]+\.ps1)') | ForEach-Object { $_.Groups[1].Value }
+            if (-not $names) { continue }
+            if ($line -match '--mount' -and $line -match 'source=') {
+                if (-not $bkSets.ContainsKey($stage)) { $bkSets[$stage] = [System.Collections.Generic.HashSet[string]]::new() }
+                $names | ForEach-Object { [void]$bkSets[$stage].Add($_) }
+            } elseif ($line.TrimStart().StartsWith('COPY')) {
+                if (-not $classicSets.ContainsKey($stage)) { $classicSets[$stage] = [System.Collections.Generic.HashSet[string]]::new() }
+                $names | ForEach-Object { [void]$classicSets[$stage].Add($_) }
+            }
+        }
+        $branchMap = @{
+            'media-core'   = @('media-core-built-onnx', 'media-core-built-ffmpeg', 'media-core-built-opencv', 'media-core-built')
+            'media-litert' = @('media-litert-built')
+            'media-tvm'    = @('media-tvm-built')
+        }
+        $bad = @()
+        foreach ($branch in $branchMap.Keys) {
+            $classic = @($classicSets[$branch]) | Sort-Object
+            $bkUnion = @($branchMap[$branch] | ForEach-Object { @($bkSets[$_]) }) |
+                Where-Object { $_ -and $_ -ne 'load-versions.ps1' } | Sort-Object -Unique
+            if (($classic -join ',') -ne ($bkUnion -join ',')) {
+                $bad += "$branch : classic [$($classic -join ', ')] vs bk [$($bkUnion -join ', ')]"
+            }
+        }
+        Assert-True ($bad.Count -eq 0) ("lane script-set drift:`n  " + ($bad -join "`n  "))
+    }
+
+    It 'merge-builder buildmods is a superset of media-builder buildmods (B4)' {
+        # The 5-module core must stay in step by hand across the two files
+        # (no cross-Dockerfile stage sharing exists).
+        $mergeText2 = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
+        $getMods = { param($text)
+            $j = $text -replace ('`' + "`r?`n"), ' '
+            $inStage = $false; $mods = @()
+            foreach ($line in ($j -split "`n")) {
+                if ($line -match '^FROM \S+ AS buildmods') { $inStage = $true; continue }
+                if ($inStage -and $line -match '^FROM ') { break }
+                if ($inStage) {
+                    $mods += ([regex]::Matches($line, 'modules.(Windows[\w.]+\.psm1)') | ForEach-Object { $_.Groups[1].Value })
+                }
+            }
+            $mods | Sort-Object -Unique
+        }
+        $a = & $getMods $dfText
+        $b = & $getMods $mergeText2
+        Assert-True ($a.Count -ge 5) "media-builder buildmods parse found only $($a.Count) modules — stage layout changed?"
+        $missing = @($a | Where-Object { $b -notcontains $_ })
+        Assert-True ($missing.Count -eq 0) ('modules in media-builder buildmods but MISSING from merge-builder: ' + ($missing -join ', '))
+    }
+
     It 'driver builds every parent BEFORE the stage that consumes it' {
         $bad = @()
         # MEDIA_CORE_X_IMAGE is produced by the driver call targeting media-core-built-x

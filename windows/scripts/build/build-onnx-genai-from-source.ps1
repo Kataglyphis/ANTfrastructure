@@ -77,7 +77,7 @@ $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # path (USE_DML=ON) can be iterated fast -- DML is D3D12 host C++, unaffected by CUDA. Dev knob only
 # (mirrors ONNX_FORCE_CPU in build-onnx); the media-core build never sets it.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
-if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+if ($gpuEnv.HasCuda) {
     $cudaRoot  = $gpuEnv.CudaRoot
     $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
     # nvcc host = MSVC cl.exe (NOT clang-cl); C++ stays clang-cl. C++20 (std::span in cuda_topk.cu; 17

@@ -213,7 +213,7 @@ $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
 $gpuArgs = @()
 # if/elseif/else used in place of `switch ($gpuEnv.GpuType) { ... }` for broad compatibility
 # with Windows PowerShell 5.1 (the switch-on-property syntax can trigger parser errors in PS 5.1).
-if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+if ($gpuEnv.HasCuda) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot

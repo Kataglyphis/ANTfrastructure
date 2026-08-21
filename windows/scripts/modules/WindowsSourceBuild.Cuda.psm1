@@ -43,7 +43,7 @@ function Get-GpuEnvironment {
     param([string]$ForceCpuEnvVar)
     if ($ForceCpuEnvVar -and ([Environment]::GetEnvironmentVariable($ForceCpuEnvVar) -eq '1')) {
         Write-Host "$ForceCpuEnvVar=1 -> CPU-only build (GPU detection overridden; CUDA/TensorRT/cuDNN skipped)"
-        return @{ GpuType = 'cpu'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null; CudaBin = $null }
+        return @{ GpuType = 'cpu'; CudaRoot = $null; CudnnRoot = $null; TensorRtRoot = $null; CudaBin = $null; HasCuda = $false }
     }
     $gpuType = if ($env:GPU_TYPE) { $env:GPU_TYPE.ToLowerInvariant() } else { 'cpu' }
     $cudaRoot = Get-CudaRoot
@@ -78,6 +78,11 @@ function Get-GpuEnvironment {
         CudnnRoot     = $cudnnRoot
         TensorRtRoot  = $trtRoot
         CudaBin       = $cudaBin
+        # THE lane predicate (#121): the fail-closed gate above already
+        # guarantees a valid CudaRoot whenever GpuType is nvidia, so consumers
+        # need no defensive '-and CudaRoot -and Test-Path' tails — six
+        # divergent spellings of this condition existed before 2026-08-21.
+        HasCuda       = ($gpuType -eq 'nvidia')
     }
 }
 

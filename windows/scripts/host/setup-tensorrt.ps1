@@ -25,11 +25,20 @@ Import-Module $sharedModulePath -Force
 $TensorRtVersion = Resolve-ContainerImageValue -Value $TensorRtVersion -EnvironmentVariable 'TENSORRT_VERSION' -DefaultValue ''
 $TensorRtRoot = Resolve-ContainerImageValue -Value $TensorRtRoot -EnvironmentVariable 'TENSORRT_ROOT' -DefaultValue 'C:\Program Files\NVIDIA GPU Computing Toolkit\TensorRT'
 
-# Returns the first *TensorRT*.zip in $Dir (or $null if the dir is absent / has none).
+# Returns the NEWEST *TensorRT*.zip in $Dir by the version embedded in the
+# filename (or $null if the dir is absent / has none). Newest, not first:
+# owner directive 2026-08-14 — TensorRT drift is always resolved FORWARD, and
+# a downloads dir briefly holding two zips must never pick the old one. This
+# encodes the TensorRT-<edition?>-<version> filename contract that used to
+# live as an untestable inline regex in Dockerfile.nvidia (#127).
 function Find-TensorRtZipIn {
     param([string]$Dir)
     if (-not (Test-Path $Dir)) { return $null }
-    $found = Get-ChildItem (Join-Path $Dir '*TensorRT*.zip') -ErrorAction SilentlyContinue | Select-Object -First 1
+    $found = Get-ChildItem (Join-Path $Dir '*TensorRT*.zip') -ErrorAction SilentlyContinue |
+        Sort-Object -Property @{ Expression = {
+                if ($_.Name -match 'TensorRT-(?:[A-Za-z]+-)?(\d+(?:\.\d+)+)') { [version]$Matches[1] } else { [version]'0.0' }
+            } } -Descending |
+        Select-Object -First 1
     if ($found) { return $found.FullName }
     return $null
 }

@@ -40,7 +40,7 @@ $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
 # Auto-detect CUDA via the canonical GPU environment helper (CUDA_PATH / PATH already set by it).
 $gpuEnv = Get-GpuEnvironment
-$useCuda = if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { 'ON' } else { 'OFF' }
+$useCuda = if ($gpuEnv.HasCuda) { 'ON' } else { 'OFF' }
 if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
 
 # GPU math libraries (CUDA lane only). cuBLAS ships inside the CUDA toolkit (found via
@@ -106,9 +106,13 @@ if (-not $llvmConfig) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '22.1.8'
     # SHA pins per version - extend when LLVM_WINDOWS_VERSION moves. An unknown
     # version must THROW, never download unpinned (repo download policy).
+    # versions.env can pre-seed the CURRENT version's sha via
+    # LLVM_WINDOWS_SRC_SHA256 (#129, 2026-08-21) so a version bump is a
+    # two-line versions.env edit; the table stays as record + fallback.
     $llvmSrcSha = @{
         '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
     }
+    if ($env:LLVM_WINDOWS_SRC_SHA256) { $llvmSrcSha[$llvmDevVersion] = $env:LLVM_WINDOWS_SRC_SHA256 }
     if (-not $llvmSrcSha.ContainsKey($llvmDevVersion)) {
         throw ("TVM: llvm-config.exe not on PATH and no SHA256 pin for the llvm-project-$llvmDevVersion source " +
             "tarball - add it to `$llvmSrcSha in this script. Refusing an unpinned download (backlog #47).")

@@ -2540,7 +2540,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   STATUS_DLL_NOT_FOUND** — `--enable-libonnxruntime` links avfilter-12.dll
   against the chain's onnxruntime.dll (lib\onnxruntime-source\bin), which the
   bin-dir-on-PATH fix never covered. Measured in-image via
-  Dockerfile.ffmpeg-provenance-probe (symptom → dumpbin walker names the DLL
+  the ffmpeg-provenance probe, now scripts/diagnostics/archive/probe-ffmpeg-provenance.ps1 (symptom → dumpbin walker names the DLL
   → fixed-gate replay exit 0 / avcodec 63). Gate now adds the discovered
   onnxruntime.dll dir to the probe PATH and prints the exit code hex on a
   parse miss instead of a silent chain=''. Original finding: verify5

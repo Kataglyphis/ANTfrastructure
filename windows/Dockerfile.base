@@ -11,7 +11,10 @@ ARG WINDOWS_LTSC=2025
 # reproducible and base OS revisions deliberate (they matter here — the wcifs
 # commit bug is version-skew-sensitive). The digest wins over the tag.
 ARG WINDOWS_BASE_DIGEST=sha256:d5bbb83057f6bc2b6aeba5d01ec80a53003aba9bc84a6b1ebe780570cd52558a
-FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC:-2025}@${WINDOWS_BASE_DIGEST}
+# NB the tag part is COSMETIC — the digest wins (see above); a WINDOWS_LTSC
+# bump without a matching digest bump changes nothing. Single default only
+# (the inline :-2025 fallback duplicated the ARG default, #127).
+FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIGEST}
 # PowerShell 7 (pwsh) version — single source of truth is versions.env, forwarded
 # by build.ps1 as --build-arg. Installed early so all subsequent layers use pwsh
 # as the default container shell instead of Windows PowerShell 5.1.

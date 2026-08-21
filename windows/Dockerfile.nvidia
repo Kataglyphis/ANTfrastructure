@@ -42,9 +42,9 @@ COPY downloads C:\temp\downloads
 # zip-less; a 2026-08-04 fail-fast hardening briefly broke that and was
 # reverted after the first hardened rebuild died here.
 RUN --mount=type=bind,source=scripts/build/normalize-tensorrt-tree.ps1,target=C:\normalize-tensorrt-tree.ps1 `
-    $trtZip = Get-ChildItem 'C:\temp\downloads\*TensorRT*.zip' -ErrorAction SilentlyContinue | Sort-Object -Property @{ Expression = { if ($_.Name -match 'TensorRT-(?:[A-Za-z]+-)?(\d+(?:\.\d+)+)') { [version]$Matches[1] } else { [version]'0.0' } } } -Descending | Select-Object -First 1; `
-    $trtPath = if ($trtZip) { $trtZip.FullName } else { '' }; `
-    & 'C:\temp\scripts\setup-tensorrt.ps1' -LocalZipPath $trtPath -TensorRtRoot 'C:\tensorrt'; `
+    # zip discovery lives in setup-tensorrt.ps1 (Find-TensorRtZipIn, newest-
+    # by-version — #127): its downloads-dir search covers C:\temp\downloads.
+    & 'C:\temp\scripts\setup-tensorrt.ps1' -TensorRtRoot 'C:\tensorrt'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
     & 'C:\normalize-tensorrt-tree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
 

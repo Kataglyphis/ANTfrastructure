@@ -95,7 +95,6 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_GENAI_ROOT="C:\runtime\lib\onnxruntime-genai-source" `
     ONNX_VERSION="${ONNXRUNTIME_VERSION}" `
     ONNX_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
-    ONNX_GPU_VARIANT="${GPU_TYPE}" `
     LITERT_ROOT="C:\runtime\lib\litert" `
     LITERT_INCLUDE="C:\runtime\lib\litert\include" `
     LITERT_LIB="C:\runtime\lib\litert\lib" `

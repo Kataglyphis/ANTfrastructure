@@ -1180,8 +1180,11 @@ $envPointerNames = @(
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
-    'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
-    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'PYTHON_WHEELS',
+    # FFMPEG_ROOT/LITERT_LM_INCLUDE/LITERT_LM_LIB joined 2026-08-21 (#127):
+    # they were declared in the merge image with zero readers repo-wide —
+    # asserting them here turns layout documentation into a checked contract.
+    'FFMPEG_ROOT', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
+    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_LIB', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
     # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
     # unset (old-image tolerance), so without this pointer check a lost env var

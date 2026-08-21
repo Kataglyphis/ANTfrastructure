@@ -460,7 +460,7 @@ int _isatty(int);
     # Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH
     # -- all this script needs on top is logging and the GpuType for downstream logic.
     $gpuEnv = Get-GpuEnvironment
-    if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) {
+    if ($gpuEnv.HasCuda) {
         log "CUDA detected at: $($gpuEnv.CudaRoot)"
     } else {
         log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'

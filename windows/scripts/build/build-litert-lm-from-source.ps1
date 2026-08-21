@@ -344,6 +344,11 @@ $abseilPinMarker = [regex]::Escape($abseilPin)
     $c -replace '(GIT_TAG\s*\r?\n\s*)20260107\.1', ('${1}' + $abseilPin)
 })
 
+# #129 exemption (2026-08-21): the two 40-char SHAs below are PATCH ANCHORS
+# correcting upstream's own stale pins to upstream's own bazel-WORKSPACE
+# truth — deliberately NOT versions.env keys (they are not our version
+# policy; they change only when LITERT_LM_VERSION bumps and the patch is
+# re-verified anyway).
 # v0.15.0 UPSTREAM CMAKE STALENESS #3 (run 16, 2026-08-11): their litert
 # pin (cmake/packages/litert/litert.cmake GIT_TAG fb16353a..., '#Updated on
 # 2026-03-24') predates the LiteRT APIs that 0.15.0's own executor code
@@ -1023,7 +1028,7 @@ $gpuEnv = Get-GpuEnvironment
 $cmakeExtra = @(
     "-DCMAKE_PREFIX_PATH=$litertInstallDir;$litertCmakeDir"
 )
-if ($gpuEnv.GpuType -eq 'nvidia' -and $gpuEnv.CudaRoot) { $cmakeExtra += '-DUSE_CUDA=ON' }
+if ($gpuEnv.HasCuda) { $cmakeExtra += '-DUSE_CUDA=ON' }
 if (Test-Path $litertCmakeDir) { $cmakeExtra += "-DLiteRT_DIR=$litertCmakeDir" }
 
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $litertLmInstallDir -ExtraArgs $cmakeExtra | Out-Null

@@ -68,7 +68,7 @@ if (-not $SkipPython) {
 # target emits PTX through IREE's own NVPTX backend -- neither needs nvcc, so
 # they are safe to enable whenever the lane is nvidia.
 $gpuEnv = Get-GpuEnvironment
-$cudaFlag = if ($gpuEnv.GpuType -eq 'nvidia') { 'ON' } else { 'OFF' }
+$cudaFlag = if ($gpuEnv.HasCuda) { 'ON' } else { 'OFF' }
 if ($cudaFlag -eq 'ON') { Write-Host 'NVIDIA lane -> enabling IREE CUDA HAL driver + CUDA target backend (PTX via NVPTX, no nvcc)' }
 
 $cmakeExtra = @(

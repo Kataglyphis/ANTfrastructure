@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dropped into C:\temp\cpython\PCbuild\ by Dockerfile.toolchain-builder:
+     forces the ClangCL PlatformToolset for the CPython source build. A real
+     checked-in file since 2026-08-21 (#127) — the previous inline Set-Content
+     one-liner had to single-quote all XML attributes to dodge the dockerfile
+     frontend's double-quote stripping, and was neither greppable nor
+     diffable. -->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <PlatformToolset>ClangCL</PlatformToolset>
+  </PropertyGroup>
+</Project>

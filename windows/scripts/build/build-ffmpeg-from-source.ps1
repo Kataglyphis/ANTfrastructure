@@ -275,7 +275,7 @@ $bashExe = Join-Path $gitUsrBin 'bash.exe'
 # (which COMPILES CUDA *filters* and would need nvcc under the msvc toolchain) is deliberately left off.
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
-if ($ffGpu.GpuType -eq 'nvidia' -and $ffGpu.CudaRoot -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
+if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
     Write-Host 'NVIDIA CUDA detected -> enabling FFmpeg NVENC/NVDEC/CUVID via nv-codec-headers'
     # pkg-config is required by configure to locate ffnvcodec and is not present in the media build
     # image, so install it the same scoop way make/gawk are installed above.
