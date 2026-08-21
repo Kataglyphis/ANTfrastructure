@@ -526,9 +526,4 @@ Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
 
 Remove-SourceBuildTree -Path $SourceDir
 
-Write-Host '=== OpenCV source build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-SourceBuild -Banner '=== OpenCV source build completed ==='  # cleanup + banner + exit 0 (see module help)

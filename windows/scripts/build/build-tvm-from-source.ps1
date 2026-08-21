@@ -334,7 +334,5 @@ Remove-SourceBuildTree -Path $SourceDir
 Write-Host '=== TVM source build completed ==='
 Write-Host "Artifacts at: $tvmInstallDir"
 
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+# Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0

@@ -491,10 +491,4 @@ Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
     -Arguments """$SourceDir\setup.py"" bdist_wheel" `
     -ModuleName 'onnxruntime' | Out-Null
 
-Remove-SourceBuildTree -Path $SourceDir
-Write-Host '=== ONNX Runtime source build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-SourceBuild -Banner '=== ONNX Runtime source build completed ===' -SourceDir $SourceDir  # cleanup + banner + exit 0 (see module help)

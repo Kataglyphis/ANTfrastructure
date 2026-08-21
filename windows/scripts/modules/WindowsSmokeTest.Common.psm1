@@ -116,6 +116,28 @@ function Assert-Test {
     }
 }
 
+function Assert-PythonSnippet {
+    <#
+    .SYNOPSIS
+        The one-line python assertion the smoke test repeated 14 times: run
+        `python -c $Code`, require exit 0 AND every -ExpectMatch regex in the
+        combined output. Sites with setup/teardown around the interpreter
+        call (temp model files etc.) stay hand-written with Assert-Test.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][string[]]$ExpectMatch,
+        [Parameter(Mandatory)][string]$FailMessage
+    )
+    Assert-Test -Name $Name -FailMessage $FailMessage -Condition {
+        $out = & python -c $Code 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { return $false }
+        foreach ($m in $ExpectMatch) { if ($out -notmatch $m) { return $false } }
+        return $true
+    }.GetNewClosure()
+}
+
 function Request-SmokeAbort {
     Write-Host '  [ABORT] -ExitOnFirstFailure: short-circuiting all remaining tests (summary follows)' -ForegroundColor Red
     $script:abortRun = $true
@@ -352,6 +374,7 @@ Export-ModuleMember -Function @(
     'Skip-Test'
     'Write-TestHeader'
     'Assert-Test'
+    'Assert-PythonSnippet'
     'Request-SmokeAbort'
     'Assert-CommandExists'
     'Assert-FileExists'

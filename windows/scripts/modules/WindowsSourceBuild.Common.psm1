@@ -482,6 +482,27 @@ function Invoke-PythonWheelBuild {
     return Install-StagedPythonWheel -Python $Python -SourceDir $DistDir -ModuleName $ModuleName -NoDeps:$NoDeps
 }
 
+function Complete-SourceBuild {
+    <#
+    .SYNOPSIS
+        The shared build-script epilogue: optional source-tree cleanup, the
+        completion banner (passed verbatim so log-watchers keep their grep
+        anchors), then `exit 0` — and the exit is the point: pwsh -File (and
+        docker run) otherwise propagate the LAST native exit code, and a
+        best-effort cleanup once failed a fully green stage with exit 145.
+        Real failures throw earlier (EAP=Stop + gates); reaching this call IS
+        success. Existed as a 4-6 line clone at 14 script tails until
+        2026-08-21. NOTE: never returns.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Banner,
+        [string]$SourceDir = ''
+    )
+    if ($SourceDir) { Remove-SourceBuildTree -Path $SourceDir }
+    Write-Host $Banner
+    exit 0
+}
+
 function Remove-SourceBuildTree {
     param(
         [Parameter(Mandatory)]
@@ -538,6 +559,32 @@ function Start-BuildPhase {
     Write-Host ""
     Write-Host ("=== PHASE: {0} ({1:HH:mm:ss}) ===" -f $Name, $phase.Started) -ForegroundColor Cyan
     return $phase
+}
+
+function Switch-BuildPhase {
+    <#
+    .SYNOPSIS
+        Completes the tracked open phase (if any) and starts a new one. The
+        module owns the current-phase state, so callers lose the 2-line
+        `if (Test-Path 'Variable:xPhase') { Complete-BuildPhase $xPhase }`
+        couplet that existed 21 times across gstreamer/litert-lm (#109
+        follow-up 2026-08-21). Pair with Complete-CurrentBuildPhase in the
+        script's final/catch brackets.
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+    Complete-CurrentBuildPhase
+    $script:CurrentBuildPhase = Start-BuildPhase $Name
+}
+
+function Complete-CurrentBuildPhase {
+    # Safe no-op when no phase is open — callable from catch/final brackets
+    # unconditionally. -ErrorRecord stamps the failing phase (see
+    # Complete-BuildPhase).
+    param($ErrorRecord = $null)
+    if (-not (Test-Path 'Variable:script:CurrentBuildPhase')) { return }
+    if ($null -eq $script:CurrentBuildPhase) { return }
+    Complete-BuildPhase $script:CurrentBuildPhase -ErrorRecord $ErrorRecord
+    $script:CurrentBuildPhase = $null
 }
 
 function Complete-BuildPhase {
@@ -1529,9 +1576,12 @@ Export-ModuleMember -Function @(
     'Invoke-PythonWheelBuild',
     'Test-PythonImport',
     'Remove-SourceBuildTree',
+    'Complete-SourceBuild',
     'Get-BuildJobCount',
     'Get-WarningNoiseSuppressionFlags',
     'Start-BuildPhase',
+    'Switch-BuildPhase',
+    'Complete-CurrentBuildPhase',
     'Complete-BuildPhase',
     'Write-BuildPhaseSummary',
     'Install-CpythonPip',

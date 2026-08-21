@@ -691,10 +691,4 @@ try {
     [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel")
 } finally { Pop-Location }
 Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
-Remove-SourceBuildTree -Path $pyavSrcRoot
-Write-Host '=== PyAV wheel build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-SourceBuild -Banner '=== PyAV wheel build completed ===' -SourceDir $pyavSrcRoot  # cleanup + banner + exit 0 (see module help)

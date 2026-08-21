@@ -183,16 +183,14 @@ try {
     log "LogDir:    $LogDir"
     log "GitRepo:   $GitRepo"
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '1. resolve directories'
+    Switch-BuildPhase '1. resolve directories'
     # ---- 1. resolve directories ----
     $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
     $resolvedSrcDir     = Resolve-DirectoryPath -Path $SourceDir
     $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '2. Meson via source CPython'
+    Switch-BuildPhase '2. Meson via source CPython'
     # ---- 2. install Meson via source-built CPython ----
     # The toolchain layer built CPython 3.14 at $env:TEMP_DIR\cpython\PCbuild\amd64\python.exe.
     # pip is bootstrapped here if missing (no ordering assumption on other build
@@ -226,8 +224,7 @@ try {
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '3. clang-cl toolchain + sccache'
+    Switch-BuildPhase '3. clang-cl toolchain + sccache'
     # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'
     $env:CC  = 'clang-cl'
@@ -296,8 +293,7 @@ try {
         log 'Early fan-in fast-fail passed (OpenCV/ONNX/LiteRT roots present).'
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '4. source tarball'
+    Switch-BuildPhase '4. source tarball'
     # ---- 4. download GStreamer source tarball ----
     $gstSrcDir = Join-Path $resolvedSrcDir "gstreamer-$GstVersion"
     if (Test-Path $gstSrcDir) {
@@ -343,8 +339,7 @@ try {
     # apply); the helper shields git's stderr via cmd.exe (else PS 5.1 EAP=Stop throws).
     Initialize-ExtractedGitRepo -Path $gstSrcDir
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '5. wrap prefetch + meson fixups'
+    Switch-BuildPhase '5. wrap prefetch + meson fixups'
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
     # Failures are COLLECTED and become fatal after the loop (backlog #88): the
     # 2026-08-14 chain logged 22 failed wrap downloads as warnings and went
@@ -807,8 +802,7 @@ int _isatty(int);
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '6. meson setup'
+    Switch-BuildPhase '6. meson setup'
     # ---- 6. meson setup (retry with wrap cleanup) ----
     $setupArgs = @(
         'setup', '--vsenv',
@@ -1017,8 +1011,7 @@ int _isatty(int);
             })
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '7. compile'
+    Switch-BuildPhase '7. compile'
     # ---- 7. compile (retry once to work around LLVM 22 mmintrin.h bug in Cairo) ----
     # Job budget + stall guard (backlog #65): this was the ONE compile stage
     # running sccache with neither. `meson compile` without -j lets ninja
@@ -1067,16 +1060,14 @@ int _isatty(int);
     if (-not $compileSucceeded) { throw 'meson compile failed after 2 attempts' }
     log 'Compilation complete.'
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '8. install'
+    Switch-BuildPhase '8. install'
     # ---- 8. install ----
     log 'Installing GStreamer...'
     & $mesonExe install -C $resolvedBuildDir 2>&1 | ForEach-Object { if ($_) { log $_ } }
     if ($LASTEXITCODE -ne 0) { throw 'meson install failed' }
     log 'Installation complete.'
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '9. verify (plugin + pc gates)'
+    Switch-BuildPhase '9. verify (plugin + pc gates)'
     # ---- 9. verify ----
     $gstLaunch = Join-Path $resolvedInstallDir 'bin\gst-launch-1.0.exe'
     if (Test-Path $gstLaunch) {
@@ -1186,8 +1177,7 @@ int _isatty(int);
         log "All $(@(Get-RequiredGstPlugin).Count) mandatory GStreamer plugins verified present."
     }
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
-    $gstPhase = Start-BuildPhase '10. cleanup'
+    Switch-BuildPhase '10. cleanup'
     # ---- 10. cleanup ----
     if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
@@ -1198,7 +1188,7 @@ int _isatty(int);
     # the sccache counters itself — they die with the container otherwise.
     Write-SccacheStats -Label 'gstreamer'
 
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase }
+    Complete-CurrentBuildPhase
     Write-BuildPhaseSummary -Label 'gstreamer'
 
     log 'END - GStreamer source build completed successfully.'
@@ -1206,7 +1196,7 @@ int _isatty(int);
 } catch {
     # #109: name the phase in the failure - a 60-min meson run once died
     # with a bare message; the phase table narrows it before the stack.
-    if (Test-Path 'Variable:gstPhase') { Complete-BuildPhase $gstPhase -ErrorRecord $_ }
+    Complete-CurrentBuildPhase -ErrorRecord $_
     Write-BuildPhaseSummary -Label 'gstreamer'
     log "FATAL ERROR: $($_.Exception.Message)"
     if ($_.Exception.InnerException) {
@@ -1228,7 +1218,5 @@ int _isatty(int);
 
 if ($ScrubAfter) { Clear-BuildScratch }
 
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
+# Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0

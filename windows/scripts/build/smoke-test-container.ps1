@@ -266,10 +266,10 @@ if ($pyExpected) {
 # Source-built CPython silently OMITS optional extension modules whose deps were
 # missing at build time (OpenSSL, sqlite, bzip2, xz) -- each import below loads a
 # real .pyd plus its dependent DLLs, so this catches the whole class at once.
-Assert-Test -Name "Python stdlib extension modules import (ssl/sqlite3/zlib/ctypes/bz2/lzma)" -Condition {
-    $out = & python -c "import ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; print('stdlib-ok')" 2>&1 | Out-String
-    ($LASTEXITCODE -eq 0) -and ($out -match 'stdlib-ok')
-} -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
+Assert-PythonSnippet -Name "Python stdlib extension modules import (ssl/sqlite3/zlib/ctypes/bz2/lzma)" `
+    -Code "import ssl, sqlite3, zlib, ctypes, bz2, lzma, hashlib, socket; print('stdlib-ok')" `
+    -ExpectMatch @('stdlib-ok') `
+    -FailMessage "one or more stdlib extension modules failed to import (dep missing at CPython build time?)"
 
 # ============================================================================
 Write-TestHeader '3. Rust Toolchain'
@@ -1297,28 +1297,28 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # variant that shadowed it: PyPI onnxruntime-gpu (dragged in via genai's
     # dep metadata before the -NoDeps fix) ships NO DmlExecutionProvider, so
     # asserting DML here detects any same-version shadowing (caught 2026-07-13).
-    Assert-Test -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" -Condition {
-        $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'DmlExecutionProvider')
-    } -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
+    Assert-PythonSnippet -Name "python onnxruntime exposes DML EP (not shadowed by a PyPI variant)" `
+        -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
+        -ExpectMatch @('DmlExecutionProvider') `
+        -FailMessage "base-interpreter onnxruntime lacks DmlExecutionProvider -- a PyPI onnxruntime variant shadowed the source-built wheel"
 
     if ($script:gpuNvidia) {
-        Assert-Test -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" -Condition {
-            $out = & python -c "import onnxruntime; print(onnxruntime.get_available_providers())" 2>&1 | Out-String
-            ($LASTEXITCODE -eq 0) -and ($out -match 'CUDAExecutionProvider') -and ($out -match 'TensorrtExecutionProvider')
-        } -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
+        Assert-PythonSnippet -Name "python onnxruntime exposes CUDA + TensorRT EPs (GPU lane)" `
+            -Code "import onnxruntime; print(onnxruntime.get_available_providers())" `
+            -ExpectMatch @('CUDAExecutionProvider', 'TensorrtExecutionProvider') `
+            -FailMessage "base-interpreter onnxruntime lacks CUDA/TensorRT EPs"
     }
 
-    Assert-Test -Name "python onnxruntime-genai imports" -Condition {
-        $out = & python -c "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-genai')
-    } -FailMessage "import onnxruntime_genai failed (pyd or embedded DLL chain broken)"
+    Assert-PythonSnippet -Name "python onnxruntime-genai imports" `
+        -Code "import onnxruntime_genai as og; print('py-genai', getattr(og, '__version__', 'n/a'))" `
+        -ExpectMatch @('py-genai') `
+        -FailMessage "import onnxruntime_genai failed (pyd or embedded DLL chain broken)"
 
     # cv2: PNG encode/decode round-trip exercises core + imgcodecs via python.
-    Assert-Test -Name "python cv2 imports + PNG round-trip" -Condition {
-        $out = & python -c "import cv2, numpy; img = numpy.zeros((8, 8, 3), numpy.uint8); ok, buf = cv2.imencode('.png', img); d = cv2.imdecode(buf, cv2.IMREAD_COLOR); print('py-cv2', cv2.__version__, bool(ok) and d.shape == (8, 8, 3))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-cv2 .* True')
-    } -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
+    Assert-PythonSnippet -Name "python cv2 imports + PNG round-trip" `
+        -Code "import cv2, numpy; img = numpy.zeros((8, 8, 3), numpy.uint8); ok, buf = cv2.imencode('.png', img); d = cv2.imdecode(buf, cv2.IMREAD_COLOR); print('py-cv2', cv2.__version__, bool(ok) and d.shape == (8, 8, 3))" `
+        -ExpectMatch @('py-cv2 .* True') `
+        -FailMessage "cv2 import or PNG round-trip failed (cv2 pyd, loader config, or OpenCV DLL chain broken)"
 
     # ---- COMPILED-IN VIDEO BACKENDS (backlog #95) --------------------------
     # These guard #93 (GStreamer silently OFF) and #94 (OpenCV using its OWN
@@ -1425,19 +1425,19 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         Skip-Test 'OpenCV avcodec major vs chain (one of the versions unreadable)'
     }
 
-    Assert-Test -Name "python tvm imports (runtime device reachable)" -Condition {
-        $out = & python -c "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-tvm')
-    } -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
+    Assert-PythonSnippet -Name "python tvm imports (runtime device reachable)" `
+        -Code "import tvm; print('py-tvm', tvm.__version__, tvm.cpu(0))" `
+        -ExpectMatch @('py-tvm') `
+        -FailMessage "import tvm failed (wheel, tvm_runtime/tvm_ffi DLLs, or deps broken)"
 
     # PyAV built against OUR ffmpeg (PyPI's wheel is unloadable on Server Core:
     # bundled avdevice imports AVICAP32). Real work: an in-memory mpeg4 encode
     # (SOFTWARE codec by name -- the generic 'h264' resolves to h264_d3d12va,
     # a hardware encoder that cannot open without a D3D12 device in-container).
-    Assert-Test -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" -Condition {
-        $out = & python -c "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-av .* True')
-    } -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
+    Assert-PythonSnippet -Name "python av (PyAV vs our ffmpeg): in-memory mpeg4 encode" `
+        -Code "import io, av; buf = io.BytesIO(); c = av.open(buf, mode='w', format='mp4'); s = c.add_stream('mpeg4', rate=24); s.width = 64; s.height = 64; s.pix_fmt = 'yuv420p'; f = av.VideoFrame(64, 64, 'yuv420p'); [c.mux(p) for p in s.encode(f)]; [c.mux(p) for p in s.encode()]; c.close(); print('py-av', av.__version__, len(buf.getvalue()) > 0)" `
+        -ExpectMatch @('py-av .* True') `
+        -FailMessage "PyAV import or mpeg4 encode failed (av pyd, our ffmpeg DLL chain, or codec table broken)"
 
     # IREE python end-to-end: compile MLIR through iree.compiler and execute on
     # iree.runtime's local-task driver -- proves the two wheels interoperate.
@@ -1445,10 +1445,10 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # (whitespace-insensitive one-liner; no embedded double quotes -- PS 5.1
     # strips those from -c strings). tensor<f32> args must be numpy arrays
     # (a bare float dies in VM marshaling).
-    Assert-Test -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" -Condition {
-        $out = & python -c "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'py-iree 5\.0')
-    } -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
+    Assert-PythonSnippet -Name "python iree compile+run end-to-end (abs(-5)=5, local-task)" `
+        -Code "import numpy as np, iree.compiler.tools as t, iree.runtime as rt; vm = t.compile_str('$script:ireeGateMlir', target_backends=['llvm-cpu']); m = rt.load_vm_flatbuffer(vm, driver='local-task'); print('py-iree', float(m.abs(np.asarray(-5.0, dtype=np.float32)).to_host()))" `
+        -ExpectMatch @('py-iree 5\.0') `
+        -FailMessage "iree.compiler/iree.runtime end-to-end failed (wheels, bundled iree-compile, or runtime driver broken)"
 
 } else {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'

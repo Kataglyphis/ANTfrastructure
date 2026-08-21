@@ -195,9 +195,4 @@ Write-Host "LiteRT manual install completed ($($installedLibs.Count) libs incl. 
 
 Remove-SourceBuildTree -Path $SourceDir
 
-Write-Host '=== LiteRT source build completed ==='
-
-# Explicit success: pwsh -File (and docker run) propagate the LAST native exit
-# code otherwise -- a best-effort cleanup once failed a fully green stage with
-# exit 145. Real failures throw above (EAP=Stop + gates); reaching EOF IS success.
-exit 0
+Complete-SourceBuild -Banner '=== LiteRT source build completed ==='  # cleanup + banner + exit 0 (see module help)
