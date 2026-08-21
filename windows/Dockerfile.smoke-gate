@@ -59,9 +59,13 @@ ARG EXPECT_GPU=0
 # ASAN probe. Those were defects in THIS GATE, not in the artifact: the image is
 # designed to be entered through its entrypoint, so a gate that does not is
 # testing a configuration no user ever runs.
-RUN --mount=type=bind,source=windows/scripts/build/smoke-test-container.ps1,target=C:\gate\smoke-test-container.ps1 `
-    --mount=type=bind,source=windows/scripts/modules,target=C:\gate\modules `
-    $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\smoke-test-container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
+# DIRECTORY mount of scripts\ (2026-08-21, lane parity with the classic gate):
+# the former file-mount of ONLY the smoke script left $PSScriptRoot without
+# assemble-torch-app.ps1 beside it, so section 21 (the whole torch-app venv
+# verification) SKIPPED silently on this lane forever. scripts\ also carries
+# modules\ one level up from build\, so the separate modules mount is gone.
+RUN --mount=type=bind,source=windows/scripts,target=C:\gate\scripts `
+    $cmdline = 'pwsh -NoProfile -ExecutionPolicy Bypass -File C:\gate\scripts\build\smoke-test-container.ps1 -MinPassed ' + $env:MIN_PASSED + ' -MaxSkipped ' + $env:MAX_SKIPPED; `
     if ($env:EXPECT_GPU -eq '1') { $cmdline = $cmdline + ' -ExpectGpu' }; `
     & cmd /S /C ('C:\temp\scripts\entrypoint.cmd ' + $cmdline); `
     if ($LASTEXITCODE -ne 0) { throw ('smoke gate FAILED (exit ' + $LASTEXITCODE + ') - see the assertion output above') }

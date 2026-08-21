@@ -602,7 +602,12 @@ int main() {
                 -FailMessage "DirectML.dll not found under $onnxRoot. ONNX Runtime is built with USE_DML=ON unconditionally, so the redist must ship; Copy-SidecarDll only WARNS when it cannot stage it. On the AMD reference host this is the only working GPU path."
         }
     } else {
-        Skip-Test 'ONNX Runtime link+run (onnxruntime.lib/.dll/c_api.h not all found)'
+        # Root resolved but the probe artifact is gone: that is the defect
+        # this section exists for, not an optional feature (#46 pattern —
+        # 2026-08-21 audit: deleting onnxruntime.lib silently dropped the 7
+        # strongest assertions and stayed green).
+        Assert-Test -Name 'ONNX Runtime link+run prerequisites present' -Condition { $false } `
+            -FailMessage 'ONNX_ROOT exists but onnxruntime.lib/.dll/c_api.h are not all found — the install shrank'
     }
 } else {
     Skip-Test 'ONNX_ROOT not set'
@@ -683,7 +688,8 @@ if ($genaiRoot) {
             Skip-Test 'GenAI DirectML evidence (D3D12Core.dll absent -- USE_DML=OFF variant)'
         }
     } else {
-        Skip-Test 'GenAI load probe (onnxruntime-genai.dll not found)'
+        Assert-Test -Name 'GenAI load-probe prerequisite present' -Condition { $false } `
+            -FailMessage 'ONNX_GENAI_ROOT exists but onnxruntime-genai.dll is missing (a -cuda.dll alone satisfies the glob above — this is the CPU-EP DLL vanishing)'
     }
 } else {
     Skip-Test 'ONNX_GENAI_ROOT not set'
@@ -761,7 +767,8 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
         Assert-ArtifactPresent -Root $opencvSearchRoot -Filter 'opencv_dnn*.dll' -Description 'OpenCV DNN module DLL (opencv_dnn*.dll)'
     }
 } else {
-    Skip-Test 'OpenCV link+run (opencv_core lib/dll or core.hpp not all found)'
+    Assert-Test -Name 'OpenCV link+run prerequisites present' -Condition { $false } `
+        -FailMessage 'OPENCV_ROOT exists but opencv_core lib/dll or core.hpp are not all found — the install shrank'
 }
 
 # ============================================================================
@@ -858,6 +865,7 @@ if (Test-Path $litertInclude) {
     Assert-Test -Name "LiteRT GPU delegate headers" -Condition { @($litertGpuHeaders).Count -gt 0 } -FailMessage "No GPU delegate headers found under $litertInclude"
 }
 
+Assert-DirectoryExists -Path $litertLibDir -Description 'LiteRT lib dir'
 if (Test-Path $litertLibDir) {
     Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
     # EXPORTS, not just the import lib (backlog #67). build-litert-from-source
@@ -879,6 +887,7 @@ if (Test-Path $litertLibDir) {
     }
 }
 
+Assert-DirectoryExists -Path $litertBinDir -Description 'LiteRT bin dir'
 if (Test-Path $litertBinDir) {
     # LiteRT builds statically by default (TFLITE_ENABLE_INSTALL=OFF, no
     # BUILD_SHARED_LIBS) — DLLs are optional; the static .lib files are the real
@@ -895,10 +904,12 @@ $litertLmLibDir = Join-Path $litertLmRoot 'lib'
 
 Assert-DirectoryExists -Path $litertLmRoot -Description 'LiteRT-LM root dir'
 
+Assert-DirectoryExists -Path $litertLmInclude -Description 'LiteRT-LM include dir'
 if (Test-Path $litertLmInclude) {
     Assert-ArtifactPresent -Root $litertLmInclude -Filter '*.h' -Description 'LiteRT-LM headers'
 }
 
+Assert-DirectoryExists -Path $litertLmLibDir -Description 'LiteRT-LM lib dir'
 if (Test-Path $litertLmLibDir) {
     Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.lib' -Description 'LiteRT-LM lib files'
     Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.dll' -Description 'LiteRT-LM DLL files'
@@ -1101,7 +1112,8 @@ if (Test-Path $tvmRoot) {
     if ($tvmRuntimeDll) {
         Assert-DllLoads -Name 'TVM runtime DLL loads (dependent chain resolves)' -DllPath $tvmRuntimeDll.FullName -FailMessage 'tvm_runtime.dll failed to load -- a dependent DLL (LLVM/CUDA/Vulkan runtime) did not resolve'
     } else {
-        Skip-Test 'TVM load probe (tvm_runtime.dll not found)'
+        Assert-Test -Name 'TVM load-probe prerequisite present' -Condition { $false } `
+            -FailMessage 'TVM_ROOT exists but tvm_runtime.dll is missing — the runtime DLL vanished from the install'
     }
 } else {
     Skip-Test 'TVM not installed (C:\runtime\lib\tvm not found)'
@@ -1179,12 +1191,13 @@ $envPointerNames = @(
     'CMAKE_BIN', 'FLUTTER_BIN', 'VULKAN_SDK', 'WIX', 'LLVM_USER_BIN',
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
-    'ONNX_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB',
+    'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB', 'OPENCV_INCLUDE',
     # FFMPEG_ROOT/LITERT_LM_INCLUDE/LITERT_LM_LIB joined 2026-08-21 (#127):
     # they were declared in the merge image with zero readers repo-wide —
     # asserting them here turns layout documentation into a checked contract.
-    'FFMPEG_ROOT', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN',
-    'TVM_ROOT', 'LITERT_ROOT', 'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_LIB', 'PYTHON_WHEELS',
+    'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'TEMP_DIR',
+    'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
+    'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_LIB', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
     # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
     # unset (old-image tolerance), so without this pointer check a lost env var
@@ -1200,6 +1213,30 @@ foreach ($envPointer in $envPointerNames) {
         $v = [Environment]::GetEnvironmentVariable($pointerName)
         (-not [string]::IsNullOrWhiteSpace($v)) -and (Test-Path $v -PathType Container)
     }.GetNewClosure() -FailMessage "$envPointer is unset or points at a nonexistent path (stale Dockerfile ENV?)"
+}
+
+# PATH COMPOSITION (2026-08-21 coverage audit A7): pointer-exists proves the
+# TARGET is there, not that it is ON PATH — deleting the Dockerfile PATH line
+# that adds ONNX_ROOT\bin kept every assertion green. Assert membership for
+# every pointer the Dockerfiles put on PATH.
+$pathMembers = @('ONNX_ROOT', 'OPENCV_BIN', 'FFMPEG_BIN', 'GSTREAMER_BIN', 'LITERT_BIN', 'LITERT_LIB', 'TVM_LIBRARY_PATH', 'IREE_BIN', 'PYTHON_BUILD_BIN')
+$pathEntries = @($env:PATH -split ';' | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') })
+foreach ($pm in $pathMembers) {
+    $pmVal = [Environment]::GetEnvironmentVariable($pm)
+    if (-not $pmVal) { continue }  # unset pointers are the pointer loop's problem
+    # ONNX_ROOT itself is not on PATH — its bin\ is (windows/Dockerfile).
+    $expected = $(if ($pm -eq 'ONNX_ROOT') { Join-Path $pmVal 'bin' } else { $pmVal }).TrimEnd('\')
+    Assert-Test -Name "$pm target is on PATH ($expected)" -Condition {
+        $pathEntries -contains $expected
+    }.GetNewClosure() -FailMessage "$expected is not on PATH — the ENV PATH line that adds it was lost; dependents die with STATUS_DLL_NOT_FOUND"
+}
+# cuda-runtime staging dir: PATH entry #1 on BOTH lanes, COPY'd unconditionally
+# (audit A8) — cudnn64_9.dll is what the ORT CUDA EP dlopens at session time.
+Assert-Test -Name 'C:\runtime\cuda-runtime\bin is on PATH' -Condition {
+    $pathEntries -contains 'C:\runtime\cuda-runtime\bin'
+} -FailMessage 'the flattened CUDA-runtime staging dir fell off PATH (stage-cuda-runtime.ps1 contract)'
+if ($script:gpuNvidia) {
+    Assert-FileExists -Path 'C:\runtime\cuda-runtime\bin\cudnn64_9.dll' -Description 'staged cuDNN runtime (ORT CUDA EP dlopens it)'
 }
 
 # Global-scope scoop shims. flutter is installed `--global`, so scoop creates
@@ -1466,8 +1503,20 @@ Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
 # cv2, torch, onnxruntime (CUDA EP build-assert on the GPU lane), genai, tvm,
 # av, iree.
 $torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
-$torchAppScript = Join-Path $PSScriptRoot 'assemble-torch-app.ps1'
-if ($torchAppDir -and (Test-Path $torchAppDir) -and (Test-Path $torchAppScript)) {
+# Resolve the verifier beside this script OR from the image's baked copy —
+# the BK gate used to file-mount ONLY the smoke script, so this Join-Path
+# missed and section 21 SKIPPED silently on that lane forever (2026-08-21
+# coverage audit, lane asymmetry 7a). And a set TORCH_APP_DIR with NO
+# resolvable verifier is a GATE bug, not an optional feature: fail loudly.
+$torchAppScript = @(
+    (Join-Path $PSScriptRoot 'assemble-torch-app.ps1'),
+    'C:\temp\scripts\assemble-torch-app.ps1'
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($torchAppDir -and (Test-Path $torchAppDir) -and -not $torchAppScript) {
+    Assert-Test -Name 'torch-app verifier reachable (gate wiring)' -Condition { $false } `
+        -FailMessage 'TORCH_APP_DIR is baked but assemble-torch-app.ps1 is neither beside the smoke script nor at C:\temp\scripts — the gate mount lost the verifier'
+}
+if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Assert-DirectoryExists -Path (Join-Path $torchAppDir '.venv') -Description 'torch-app venv'
     Assert-Test -Name "torch-app venv verifies (numpy/cv2/torch/ort+CUDA-EP/genai/tvm/av/iree)" -Condition {
         $out = & pwsh -NoProfile -ExecutionPolicy Bypass -File $torchAppScript -AppDir $torchAppDir -Mode verify 2>&1 | Out-String
@@ -1574,6 +1623,28 @@ if ($MaxSkipped -ge 0 -and $summary.Skipped -gt $MaxSkipped) {
 }
 if ($summary.Aborted) {
     $coverageProblems += '-ExitOnFirstFailure aborted the run, so the remaining tests never executed and this result is not a full verdict'
+}
+# PER-SECTION floors (2026-08-21 coverage-gap audit): the global floor left 34
+# points of anonymous slack — deleting onnxruntime.lib alone silently dropped
+# 7 of the suite's strongest assertions and stayed green. A section falling
+# below its floor is now a NAMED hole. Baseline = the measured per-section
+# counts of the 2026-08-20 green ride; second value = the CPU-lane floor
+# (GPU-only branches subtracted). Update DELIBERATELY when adding assertions.
+$sectionFloors = @{
+    '1' = @(13, 13); '2' = @(6, 6); '3' = @(8, 8); '4' = @(8, 8); '5' = @(4, 4)
+    '6' = @(4, 4); '7' = @(14, 0); '8' = @(11, 8); '9' = @(9, 6); '10' = @(7, 5)
+    '11' = @(12, 12); '12' = @(9, 9); '13' = @(6, 6); '14' = @(3, 3); '15' = @(2, 2)
+    '16' = @(1, 1); '17' = @(5, 5); '18' = @(8, 6); '19' = @(30, 26); '20' = @(22, 21)
+    '21' = @(2, 2); '22' = @(7, 6)
+}
+$floorIdx = if ($ExpectGpu) { 0 } else { 1 }
+foreach ($sec in $sectionFloors.Keys) {
+    $floor = $sectionFloors[$sec][$floorIdx]
+    if ($floor -le 0) { continue }
+    $got = if ($summary.SectionPassed.Contains($sec)) { [int]$summary.SectionPassed[$sec] } else { 0 }
+    if ($got -lt $floor) {
+        $coverageProblems += "section $sec passed only $got assertion(s), floor is $floor — a subsystem's verification quietly shrank"
+    }
 }
 if ($coverageProblems.Count -gt 0) {
     Write-Host "`n--- INSUFFICIENT COVERAGE ---" -ForegroundColor Red

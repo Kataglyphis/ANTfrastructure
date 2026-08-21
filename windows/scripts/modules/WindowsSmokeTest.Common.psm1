@@ -42,6 +42,9 @@ function Initialize-SmokeTestRun {
     $script:failureDetails = @()
     $script:abortRun = $false
     $script:exitOnFirstFailure = [bool]$ExitOnFirstFailure
+    $script:sectionCounts = [ordered]@{}
+    $script:currentSection = ''
+    $script:sectionStartPassed = 0
 }
 
 function Get-SmokeTestSummary {
@@ -53,6 +56,7 @@ function Get-SmokeTestSummary {
     #>
     [OutputType([pscustomobject])]
     param()
+    Complete-SmokeSection
     [pscustomobject]@{
         Passed         = $script:passed
         Failed         = $script:failed
@@ -60,13 +64,29 @@ function Get-SmokeTestSummary {
         Total          = $script:passed + $script:failed + $script:skipped
         Aborted        = $script:abortRun
         FailureDetails = @($script:failureDetails)
+        # Per-section PASSED counts, keyed by the leading number of the
+        # Write-TestHeader title (2026-08-21 coverage-floor work: 34 points
+        # of anonymous slack against MinPassed meant whole subsystems could
+        # vanish green — per-section floors name the hole).
+        SectionPassed  = $script:sectionCounts
     }
+}
+
+function Complete-SmokeSection {
+    # Internal: record the passed-delta of the section in flight.
+    if ($script:currentSection) {
+        $script:sectionCounts[$script:currentSection] = $script:passed - $script:sectionStartPassed
+    }
+    $script:currentSection = ''
 }
 
 $script:passed = 0
 $script:failed = 0
 $script:skipped = 0
 $script:failureDetails = @()
+$script:sectionCounts = [ordered]@{}
+$script:currentSection = ''
+$script:sectionStartPassed = 0
 # -ExitOnFirstFailure no longer throws (a throw here used to blow straight past the
 # SUMMARY / FAILURE DETAILS dump at the bottom). Instead the first failure sets this
 # flag and every later assert/skip short-circuits, so the run still ends with the
@@ -84,6 +104,11 @@ function Skip-Test {
 
 function Write-TestHeader {
     param([string]$Title)
+    Complete-SmokeSection
+    # Section key = the leading number of the title ('8. ONNX Runtime' -> '8');
+    # a numberless title keys on its full text.
+    $script:currentSection = if ($Title -match '^\s*(\d+)') { $Matches[1] } else { $Title }
+    $script:sectionStartPassed = $script:passed
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "  $Title" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
