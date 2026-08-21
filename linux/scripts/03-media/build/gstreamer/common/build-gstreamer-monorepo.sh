@@ -249,16 +249,15 @@ _gst_monorepo_arch_flags() {
       fi
       # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
       append_meson_arg "-Dgstreamer:ptp-helper=disabled"
-      # RV1-FOLGE (2026-08-20): with ports glib-dev now installed in the
-      # riscv64 sysroot, gobject-introspection-1.84's gir build dies with
-      # `Subproject "subprojects/glib" required but not found` (meson
-      # system-vs-subproject resolution shifted; deterministic). Take the
-      # SAME route the arm64 cross branch has always taken: introspection
-      # OFF for the cross build. GIRs/typelibs served no consumer on
-      # riscv64 anyway (gst-python is disabled above). RESIDUAL: re-enable
-      # once the g-i subproject resolution is understood (backlog RV1-GI).
-      MESON_FLAGS+=("-Dintrospection=disabled")
-      append_meson_arg "-Dgraphene:introspection=disabled"
+      # RV1 RE-LIFT (2026-08-21): the 2026-08-20 introspection-off was a
+      # SYMPTOM fix — g-i's glib-subproject break only appeared while the
+      # poisoned ports glib-2.0.pc sat in the sysroot (system-vs-subproject
+      # resolution flipped). That package is gone (root-cause revert), so
+      # the wave-3-proven configuration returns: introspection ENABLED via
+      # the pre-setup.sh QEMU wrapper machinery below — which also restores
+      # /opt/gstreamer's glib .pc export that libcamera/opencv consume.
+      # Force graphene introspection on to avoid dangling .gir deps in ninja.
+      append_meson_arg "-Dgraphene:introspection=enabled"
       # RV1-FOLGE 3 (2026-08-20): the glib SUBPROJECT builds its test suite by
       # default and gdbus-server-auth.c needs dbus/dbus.h — libdbus dev is not
       # in the riscv64 sysroot. Cross builds never run subproject tests;

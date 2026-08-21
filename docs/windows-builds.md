@@ -2535,8 +2535,16 @@ Upstream follow-ups: see "Pending" at the bottom.
 > proves it, never blind. Tranche 1 (uniform `#requires`, zero build cost)
 > landed 2026-08-17.
 
-- **108 [M·★★, none] Directory convention for `windows/scripts/` (60 flat
-  scripts).** **EXECUTION SPEC (2026-08-20, measured surface: 66 Dockerfile
+- **108 [M·★★, none] DONE 2026-08-20: directory convention LANDED + verified
+  by its own full ride (bk-20260820-152656, 3h14, smoke 190/0/1). 74 scripts
+  moved (build=26, host=25, diagnostics=23); container mount TARGETS stayed
+  FLAT (C:\bkmnt, C:\temp\scripts) — only host-side sources grouped; the 38
+  moved scripts with shared-asset refs carry the `$scriptAssetRoot` resolver
+  (modules/ beside = flat, else one level up). Ride needed 3 path follow-ups
+  before green: .dockerignore `**/build/` needed a `!windows/scripts/build/`
+  negation, Dockerfile.nvidia bare-context refs, and container run paths that
+  were wrongly grouped (flattened back). Original: directory convention for
+  `windows/scripts/` (60 flat scripts).** **EXECUTION SPEC (2026-08-20, measured surface: 66 Dockerfile
   mount/COPY refs, 26 test files with path assumptions, 57 docs refs, 11
   scripts with $PSScriptRoot-relative imports, 3 driver refs, plus
   downstream-vendored module refs):** (1) mapping: build-* and the *-all

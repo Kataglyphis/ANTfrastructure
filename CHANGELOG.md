@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-08-21 - WAVE-4 SHIPPED: the 9-mine validating rebuild (closure window + 21 bumps)
+
+`:latest-cross` = amd64 `73927a45` / arm64 `345096db` / riscv64 `da763dc3`
+(manifest `98d90db6`). Byte-gate PASS x3; cv2 GStreamer:YES verified on
+shipped amd64 AND arm64 bytes. The rebuild validated the entire closure
+window (21 Linux version bumps, RV1, NET1 mirrors, DF1-4, AP3-correct,
+PAR2/PAR4+amend, CCACHE_COMPILERCHECK=content, BT1/BT2) and flushed NINE
+real defects only a live build could find:
+
+1. VULKAN_SDK_SHA256 not in the bump tool's refresh net (killed sdk x3) -> BT1.
+2. TENSORFLOW_C 2.21 is a git tag with NO artifact (2.19+ tarballs 404) -> BT2
+   + the sha256('') empty-download trap, now rejected.
+3. ORT 1.29 flipped telemetry DEFAULT-ON -> pulls cpp_client_telemetry whose
+   vendored sqlite dies on GCC-16 -Werror (arm64) -> --no_telemetry (also a
+   hygiene win: no MS telemetry SDK in shipped images).
+4. PAR4-amend: the x-budget divisor over-throttled SHARED stages (compiler at
+   1/3 jobs); shared stages now divisor 1. LLVM 50 min vs 11h projected after
+   the ccache-content fix.
+5. RV1's ports glib-2.0.pc expands prefix/libdir EMPTY in cross pkg-config ->
+   poisons every glib lookup (5 distinct failure shapes) -> reverted for
+   riscv64; precise root cause filed as RV1-GST-PC.
+6. gobject-introspection-1.84 glib-subproject break under the new sysroot ->
+   riscv64 introspection off (arm64 parity).
+7. sccache rustc-wrapper server death x3 at 99% of gstreamer -> silent wrapper
+   disabled (returns via controlled ENABLE_SCCACHE_RUST/SCC1).
+8. opencv contrib freetype cross-links HOST harfbuzz on riscv64 -> module off.
+9. buildkitd session rot after ~1-2h parallel load (grpc cancels at export,
+   DeadlineExceeded) -> BKD1 filed; interim: restarts (cachemounts survive,
+   proven 12x by prune-safe with ~1 TB reclaimed, zero losses).
+
+riscv64 shipped state: wave-3 parity minus the libcamera gst element
+(documented RV1-GST-PC residual). PAR1: sdk 2.9x stands; clean full-chain
+timing deferred to one undisturbed run.
+
+
 ## 2026-08-18 - WAVE-3 SHIPPED: :latest-cross re-ship + the parallel-archs hardening saga (PAR2/PAR3/PUSH1/PAR4/CACHE1)
 
 Fresh 3-arch `:latest-cross` (amd64 `fd0d8d74` / arm64 `6153d76b` / riscv64

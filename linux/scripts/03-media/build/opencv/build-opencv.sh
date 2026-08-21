@@ -127,6 +127,16 @@ configure_opencv_build_env() {
         export CMAKE_CXX_COMPILER="/opt/gcc-${GCC_VERSION}/bin/g++"
     fi
     export LDFLAGS="-Wl,--allow-multiple-definition"
+    # OCV-FF1 ROOT CAUSE (2026-08-21): opencv's detect_ffmpeg try_compile
+    # ("Can't build ffmpeg test code") got only the four -l names from
+    # pkg-config but NO link dir for our custom prefix — the test link died
+    # resolving avcodec's transitive libswresample and HAVE_FFMPEG went
+    # FALSE despite four YES probes. cmake folds env LDFLAGS into
+    # CMAKE_EXE_LINKER_FLAGS, which try_compile inherits: hand it the
+    # ffmpeg libdir (+rpath-link for the transitive closure).
+    if [ -d "${FFMPEG_PREFIX:-/opt/ffmpeg}/lib" ]; then
+        export LDFLAGS="${LDFLAGS} -L${FFMPEG_PREFIX:-/opt/ffmpeg}/lib -Wl,-rpath-link,${FFMPEG_PREFIX:-/opt/ffmpeg}/lib"
+    fi
 }
 
 configure_opencv_build_env
@@ -233,18 +243,17 @@ _opencv_target_adjustments() {
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # RV1 FINAL VERDICT (2026-08-20, after live testing BOTH passes):
-            # riscv64 stays WITH_GSTREAMER=OFF in BOTH passes. Pass-1 against
-            # ports gstreamer AND pass-2 against our /opt/gstreamer BOTH die
-            # the same way: the ports glib-2.0.pc (a transitive Requires of
-            # every gstreamer .pc) expands includedir WITHOUT its prefix in
-            # opencv's cmake pkg-config context ("/glib-2.0/include") and the
-            # imported target hard-fails on the nonexistent path. This is a
-            # riscv64 cross-pkg-config defect, not an availability gap —
-            # backlog RV1-GST-PC has the exact diagnosis. cv2 GStreamer:YES
-            # ships on amd64+arm64; riscv64 keeps wave-3 behavior (NO) until
-            # the .pc prefix expansion is fixed.
-            _ota_with_gstreamer="OFF"
+            # RV1 RE-LIFT (2026-08-21, closure window 2): the 2026-08-20
+            # "OFF both passes" verdict was taken while the POISONED ports
+            # glib-2.0.pc sat in the sysroot; that package is gone (root-cause
+            # revert) and riscv64 gstreamer builds with introspection again →
+            # /opt/gstreamer exports working glib .pcs like wave-3. Pass-1
+            # (no FORCE_REBUILD) stays OFF (no system gstreamer to probe —
+            # deliberate); pass-2 probes OUR /opt/gstreamer. Target restored:
+            # cv2 GStreamer:YES on ALL THREE arches.
+            if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+                _ota_with_gstreamer="OFF"
+            fi
             # RV1-FOLGE 4 (2026-08-20): the contrib freetype module now
             # activates (RV1's dev packages) but resolves the HOST x86
             # libharfbuzz in the riscv64 cross link ("file in wrong format").

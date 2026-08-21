@@ -12,8 +12,8 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-19. LIVE `:latest-cross` = wave-3 ship (fd0d8d74/
-6153d76b/549789b8). **wave-4 validating rebuild IN FLIGHT** (see § Staged).
+Last groomed: 2026-08-21. LIVE `:latest-cross` = WAVE-4 ship (73927a45/
+345096db/da763dc3, manifest 98d90db6) — see § WAVE-4 SHIPPED.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
 
@@ -30,34 +30,46 @@ Linux/cross-lane only.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
-## 🔨 STAGED — validating in the IN-FLIGHT wave-4 rebuild
+## ✅ WAVE-4 SHIPPED 2026-08-21 (validating rebuild survived 9 real mines)
 
-One maximal closure window (2026-08-18/19, user call): **B3 bumps** (21
-Linux keys: ONNXRUNTIME 1.29, LITERT 2.2+LM 0.16.1, TVM 0.26, VULKAN
-.357.1, ABSEIL, UBUNTU_DIGEST …, SHAs re-derived ×2 after the vulkan/TF
-incidents), **RV1** (all riscv64 exceptions lifted → target GStreamer:YES
-×3 + TLS/SDL), **NET1** (gcc ftpmirror, ffmpeg mirror-vars, gstreamer
-gitlab-fallback, nv-codec github-fallback), **DF1-4** (dead cargo mounts,
-materialize-llvm-target.sh, soname-loop → copy-media-payloads.sh), **AP3
-correct** (wheels-source stage at the READER), **LLVM-ccache-launcher**,
-**PAR4 + amend** (divisor × intra-budget for per-arch stages, 1 for shared)
-and **CCACHE_COMPILERCHECK=content** (proven: LLVM 50 min vs 11h projected).
-This run IS the **PAR1 full-chain parallel measurement** and the **PAR4
-no-OOM validation**. On green: delete this section, record in CHANGELOG.
+`:latest-cross` = amd64 `73927a45` / arm64 `345096db` / riscv64 `da763dc3`
+(manifest `98d90db6`), byte-gate PASS ×3, **cv2 GStreamer:YES verified on
+shipped amd64 AND arm64 bytes**. Everything from the closure window is LIVE:
+21 version bumps (ORT 1.29 incl. --no_telemetry, LITERT 2.2, TVM 0.26 …),
+NET1 mirrors, DF1-4, AP3-correct, PAR2/PAR4(+amend), ccache-content,
+prune-safe (12 flawless uses, ~1 TB reclaimed total). Full mine list +
+lessons in CHANGELOG. PAR4 verdict: ONE isolated OOM kill across ~12 media
+rounds, absorbed by retries — heuristic adequate; PAR4-hard stays
+trigger-gated. PAR1 verdict: sdk 2.9× stands; media-parallel WORKS post-PAR2
+but a clean full-chain timing needs one undisturbed run (next rebuild).
 
-**Batch G (GPU lanes) — GPU1-7 ✅ ALL FIXED 2026-08-17 (e51a0da), awaiting
-ONE opt-in nvidia (+amd) validation build** — independent of the chain;
-GPU7 alone made the default nvidia build unbuildable. The now-strict verify
-asserts nvcc/cuDNN/TensorRT itself.
+- **RV1-GST-PC — riscv64 cross pkg-config .pc expansion defect** [M·★★★,
+  ROOT-CAUSED across 6 live failures] ports' riscv64 glib-2.0.pc expands
+  prefix/libdir EMPTY in cross pkg-config contexts and POISONS every glib
+  lookup once installed (opencv imported targets, libcamera gst element
+  compile+link). Additionally our introspection-less /opt/gstreamer exports
+  no usable glib .pc for foreign consumers (headers repaired via
+  glibconfig-symlink; LIBS unreachable). Current shipped state on riscv64:
+  cv2 GStreamer NO (wave-3 parity), libcamera WITHOUT gst element (small
+  regression vs wave-3, documented), opencv freetype module OFF. FIX = cross
+  pkg-config wrapper that sysroot-prefixes ports .pc vars (or a
+  prefix-clean shim set) + optionally re-export glib .pcs from our
+  gstreamer install; then re-lift the three scoped OFFs + RV1-GI
+  (introspection) in one validated pass.
+- **BKD1 — buildkitd session rot under multi-hour parallel load** [M·★★]
+  sessions die after ~1-2h ("no active session", grpc cancels at export,
+  DeadlineExceeded on cache reads) — cost ~6 retry cycles across the wave-4
+  saga; cure each time = daemon restart. Investigate buildkit v0.31.1
+  issue trackers / upgrade; interim playbook: restart between chain rounds
+  (cachemounts provably survive).
 
 ## Next up (recommended order, 2026-08-19)
 
-1. **wave-4 Endabnahme** (auto, on chain end): byte-gates ×3, RV1 check
-   (cv2 GStreamer ×3?), PAR1 numbers, PAR4 verdict, then backlog/CHANGELOG/
-   memory fold.
-2. **GPU lane validation build** [★★★, cheap, anytime].
-3. **Next closure window** — § A below (OCV-FF1 first).
-4. **Next pin-bump window** — § B riders.
+1. **GPU lane validation build** [★★★, cheap, anytime] — the last staged
+   set (GPU1-7) still awaiting its one opt-in build.
+2. **Next closure window** — § A below (OCV-FF1 + RV1-GST-PC first).
+3. **Next pin-bump window** — § B riders.
+4. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
 
 ---
 
@@ -162,6 +174,11 @@ asserts nvcc/cuDNN/TensorRT itself.
 - **post-restart base cache-miss** — observe at the next host reboot.
 - **LOG7 — sdkmanager CLI deprecated** — bit-rot watch before Google
   removes it.
+- **NODE-RV — riscv64 ships Node v22 (pin: 26.7)** [S·★, watch] ubuntu-ports
+  has no 26.x for riscv64; the install falls back fail-open with a WARN (by
+  design, seen in every wave-4 smoke log). Lift when ports ships 26.x —
+  check via `apt-cache policy nodejs` on the ports snapshot at each bump
+  window; until then the riscv64 image runs the distro v22.
 - **SV-residual — watch the first real `compose up`** — user-side.
 - **riscv64 isa-spec smoke on real hardware** — needs hardware.
 - **WEBUI_SECRET_KEY server-side rotation** — user action.

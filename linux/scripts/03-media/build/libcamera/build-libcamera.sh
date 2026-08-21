@@ -182,6 +182,13 @@ if cross_build_is_active; then
   # libcamera runtime/plugin artifacts and skip that test tool.
   MESON_SETUP_ARGS+=(-Dlc-compliance=disabled)
 
+  # RV1 RE-LIFT (2026-08-21): the gstlibcamera element returns on riscv64 —
+  # its 2026-08-20 link failure (undefined g_object_ref …) came from the
+  # introspection-less gstreamer install exporting no usable glib .pc;
+  # introspection is back on (see build-gstreamer-monorepo.sh), restoring
+  # the wave-3 layout the element linked against. The glibconfig-symlink
+  # repair above stays as a harmless no-op belt.
+
   # GCC 16 emits a FALSE-POSITIVE -Warray-bounds on libcamera's shared std::mutex
   # teardown / logger path. The -Wno-error=array-bounds added to CXXFLAGS above
   # does NOT reach the target compiler in a meson cross build (env C*FLAGS apply

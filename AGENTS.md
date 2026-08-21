@@ -758,13 +758,13 @@ bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,a
 bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
 
 # Build per-arch stages in parallel (faster on multi-core machines).
-# PAR4 (FIXED-STAGED 2026-08-18): cross_build_mem_divisor now multiplies the
-# arch count by PAR_INTRA_STEP_BUDGET (default 2) because buildkitd
-# max-parallelism runs several heavy steps PER build — the un-multiplied
-# divisor OOM-killed cc1plus in two lanes' IREE builds on the first post-PAR2
-# run. Validates on the next parallel run; if a lane still OOMs raise
-# PAR_INTRA_STEP_BUDGET=3 or use PARALLEL_STAGES=sdk,android (media
-# sequential). Details: docs/build-parallelism-memory-tuning.md § second-order trap.
+# PAR4 (VALIDATED through wave-4, 2026-08-21): cross_build_mem_divisor
+# multiplies the arch count by PAR_INTRA_STEP_BUDGET (default 2) for
+# PER-ARCH stages, and uses divisor 1 for SHARED stages (base/compiler run
+# alone — the ×budget throttled the compiler to 1/3 jobs once). Across ~12
+# parallel media rounds: ONE isolated OOM kill, absorbed by retries. If a
+# lane OOMs repeatedly raise PAR_INTRA_STEP_BUDGET=3 or use
+# PARALLEL_STAGES=sdk,android. Details: docs/build-parallelism-memory-tuning.md.
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)
@@ -1263,8 +1263,11 @@ base ─┬─ onnxruntime ───────┐
   cache (measured 207 GB vs 4.9 GB); one run paid ~1.5-2 h of cold LLVM
   rebuilds for it. prune-safe.sh prunes `type==regular` only via buildctl's
   `--filter` (nerdctl has none), takes `PRUNE_KEEP_GB`/`DRY_RUN`, and proves
-  cachemount survival before/after. Battle-proven 2026-08-18: 5 mid-run
-  invocations, ~350 GB reclaimed, 0 cachemount losses. Mid-run lever ORDER:
+  cachemount survival before/after. Battle-proven through wave-4: 12
+  invocations, ~1 TB reclaimed, 0 cachemount losses. Mid-run, use
+  `PRUNE_KEEP_GB>=100` — smaller budgets evict the IN-FLIGHT lanes' fresh
+  layers and buy recompile churn; the kata-buildcache media slugs
+  (rewritten every round) are the better lever when the store runs lean. Mid-run lever ORDER:
   (1) prune-safe.sh, (2) `nerdctl rmi` of specific already-pushed tags
   (refuses in-use ones — safe), (3) `nerdctl system prune` NEVER while a
   chain runs — "unused" means not-container-referenced, so it deletes TAGGED
@@ -1305,6 +1308,7 @@ base ─┬─ onnxruntime ───────┐
 | `exec format error` | QEMU/binfmt not registered after host reboot | `sudo nerdctl run --rm --privileged tonistiigi/binfmt --install all` |
 | `no space left on device` | Disk full from cached images/artifacts | In order: (1) `linux/host-config/prune-safe.sh` (spares compile caches), (2) `nerdctl rmi` of specific already-pushed tags, (3) `nerdctl system prune -a -f` ONLY with no chain running — it deletes ALL non-container-referenced images INCLUDING tagged cross-stage locals (bit us mid-run 2026-08-18; registry-pinned handoffs survived via re-pull) |
 | Stale downstream images | Base image rebuilt but downstream not refreshed | Use `--verify-chain` or rebuild from replaced stage |
+| `no active session` / `grpc: the client connection is closing` / `DeadlineExceeded` mid-chain (cache reads, layer export, pushes) | buildkitd session rot after ~1-2 h of parallel load (BKD1, bit 6× on 2026-08-19/20) | Let the worker retries absorb one-offs; on a repeat: stop chain → `systemctl --user restart buildkit.service` → relaunch (cache mounts provably survive; builds fast-forward) |
 | `registry_pin_ref` fails on fresh push | Registry hasn't propagated the new manifest | Now uses `retry()` with 5 attempts; wait a few seconds and retry |
 | Terminal freeze during long build | Build output overwhelms terminal | Use `setsid` / `disown` for very long builds |
 | nerdctl DNS failure in build | BuildKit container can't resolve hostnames on Windows without a CNI nat CONFIG (`--dns` and `--network host` unsupported) | Fixed 2026-08-03: install `0-containerd-nat.conf` into `C:\Program Files\containerd\cni\conf\` (nat.exe was already in ...\cni\bin) — buildkitd RUN steps then have full NAT+DNS. docker.exe remains the fallback. |
