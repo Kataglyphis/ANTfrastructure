@@ -58,6 +58,7 @@ function Invoke-NativeRustStep {
     }
 }
 
+#region 1. rustup via local dist mirror (HOST QUIRK workaround)
 # HOST QUIRK (diagnosed across 5 base builds, 2026-07-15): rustup-init's own
 # (parallel) component download/install deadlocks in this host's 2-CPU Hyper-V
 # docker-build containers -- 4/5 runs froze at "downloading 3 components" with
@@ -195,6 +196,8 @@ try {
     Remove-Item Env:\RUSTUP_DIST_SERVER -ErrorAction SilentlyContinue
 }
 
+#endregion
+#region 2. assertion battery + codegen tools
 # CARGO_HOME (Dockerfile.base) already points at C:\Users\ContainerAdministrator\.cargo,
 # so the rustup proxies land in CARGO_BIN, which the persistent PATH already carries
 # for later build stages. Prepend it to THIS process's PATH so the asserts below
@@ -240,6 +243,12 @@ Invoke-NativeRustStep -Description 'flutter_rust_bridge_codegen --version' -Comm
     flutter_rust_bridge_codegen --version
 }
 
+#endregion
+#region 3. sccache from source (split candidate, #146 note)
+# #146 accepted risk (2026-08-21): after the local-mirror URL rewrite the
+# channel manifest SHA is REGENERATED from the rewritten bytes — manifest
+# authenticity is self-asserted; per-component tarball hashes inside it
+# survive untouched, which is the integrity that matters for the payload.
 # ── sccache FROM SOURCE, overwriting the scoop baseline on PATH ───────────────
 # Released sccache cannot wrap nvcc on CUDA 13.3: it decomposes nvcc by parsing
 # `nvcc --dryrun`, and 13.3.33 moved `--simt-only` AFTER the input file, so the
@@ -316,4 +325,4 @@ foreach ($cacheDir in @('registry', 'git')) {
     $p = Join-Path $env:USERPROFILE ".cargo\$cacheDir"
     if (Test-Path $p) { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue }
 }
-
+#endregion

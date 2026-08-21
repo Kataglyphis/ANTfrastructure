@@ -2086,36 +2086,36 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 ### P9 — 2026-08-21 audit ROUND 2 residue (deferred with reasons; the fixes
 ### themselves landed same day in 72d92fb1 + e680fb4b, suite 523->537)
 
-- **140 [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
+- **140 DONE 2026-08-21: ZERO callers verified across ALL local consumer repos (BeschleunigerBallett/Inference-Engine/Orchestr-ANT-ion/RustProjectTemplate/WebDavClient/jotrockenmitlocken + the reusable workflows) — the comment was wrong, the code was unowned. Comment now states the truth (ContainerHub checkout root) + explicit -RepoRoot override for vendored consumers. Original: [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
   comment.** `..\..\..` from scripts/python resolves to the ContainerHub
   checkout root, the comment claims "the parent of the ContainerHub checkout".
   All 8 python/rust lane drivers have ZERO in-repo callers — the real contract
   lives in the consumer repos. Verify against a consumer checkout, then fix
   either the comment or the depth. Highest-value unknown of the outer ring.
-- **141 [S·★] the four `Invoke-Ci*.ps1` share a 30-line context/log/uv
+- **141 DONE 2026-08-21: New-CiSession (+ canonical Write-CiLog/-Warning/-Error/-Success + Close-CiLog + uv-delegate wiring) in Initialize-CiEnvironment; all four drivers converted, CiTests's divergent wrapper names renamed. Original: [S·★] the four `Invoke-Ci*.ps1` share a 30-line context/log/uv
   preamble that has already drifted once** (CiTests adds Write-LogError/
   Success the others lack) — `New-CiSession` in Initialize-CiEnvironment.
   Consumer-facing lane: change alongside a consumer-repo check.
-- **142 [S·decision] WindowsAgenticLoop.Common.psd1 is an inert manifest**
+- **142 DONE 2026-08-21: Export-ModuleMember matching the .psd1 added to the .psm1 itself — encapsulation now holds on the direct-psm1 import path every consumer actually uses (BeschleunigerBallett verified); Invoke-LoggedAgenticCommand is private again. Manifest stays for manifest-path importers. Original: [S·decision] WindowsAgenticLoop.Common.psd1 is an inert manifest**
   (every consumer imports the .psm1 directly; the export whitelist and the
   PowerShellVersion gate are not in effect). Either wire consumers to the
   manifest or delete it — consumer-repo check required first.
-- **143 [S·decision] `WindowsContainerLog.Common` (97 LOC, 3 exports) has
+- **143 CLOSED 2026-08-21 — the module is ALIVE: RustProjectTemplate's container scripts (Invoke-StevedoreBuild, rust-build/test-all) import it, vendored into BeschleunigerBallett + Inference-Engine. Added to the AGENTS.md never-delete consumer-API list, where it had been missing. Original: [S·decision] `WindowsContainerLog.Common` (97 LOC, 3 exports) has
   ZERO references anywhere in-repo AND is not on the AGENTS.md consumer-API
   list.** The only true dead-module candidate — but four restore incidents
   say: grep the consumer repos before deleting anything.
-- **144 [M·★] untested-orchestrator pattern:** in six library modules the
+- **144 DONE 2026-08-21 (4 of 6): new Modules.Orchestrators suite — Invoke-WasmOpt (3 cases incl. the --all-features retry ladder), Get-ReusableBuildContainer (create/reuse/wcifs-survivor-fallback, via a FUNCTION fake — a .bat fake loses the | in the inspect format string to cmd), Slang + Vulkan fail-fast contracts. CodeQL (needs a real PE at a fixed path) and CmakeConfigureAndBuild (needs a full Build.Common session) are documented gaps in the suite header. Original: [M·★] untested-orchestrator pattern:** in six library modules the
   ENTRY POINT is a dead export while only leaf helpers have tests
   (Invoke-VulkanValidationRun, Invoke-WasmOpt, Invoke-SlangShaderCompile,
   Invoke-CmakeConfigureAndBuild, Invoke-BuildCodeQL,
   Get-ReusableBuildContainer) — the composed path is untested and unused
   in-repo. Consumer-facing: add orchestrator tests, don't prune.
-- **145 [S·★] `WindowsMsix.Signing`: missing-elevation degrades to a warning
+- **145 CLOSED 2026-08-21 by DOCUMENTATION: the warn-not-throw is load-bearing — the MSIX is signed either way, only the local trust-store import for signtool verify needs elevation, and consumer dev loops run unelevated. Now stated at the site, so it is no longer the undocumented Slang-class silent skip. Original: [S·★] `WindowsMsix.Signing`: missing-elevation degrades to a warning
   with no documented reason** — the exact "silent skip" shape Slang.Common
   documents as a past CI-green-with-no-output incident. Decide: throw, or
   document why warning is right. Also its exported Test-Administrator
   duplicates Shared's expression (consumer API — coordinate before touching).
-- **146 [S·note] setup-rust-toolchain: manifest authenticity is self-asserted
+- **146 DONE 2026-08-21: setup-scoop-tools got 5 #regions, setup-rust-toolchain 3 (sccache-from-source named as the split candidate in its region title) + the manifest accepted-risk note inline. Original: [S·note] setup-rust-toolchain: manifest authenticity is self-asserted
   after the local-mirror rewrite** (per-component hashes survive; accepted
   risk) and its ~70-line sccache-from-source block is a split candidate;
   setup-scoop-tools' ~180 top-level lines want #region structure. Both ride

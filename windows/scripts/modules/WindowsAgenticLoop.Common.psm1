@@ -1108,3 +1108,43 @@ function Invoke-AgenticLoop {
         if ($loopDelay -gt 0 -and -not $script:AgenticDryRun) { Write-AgenticLog "Sleeping ${loopDelay}s..."; Start-Sleep $loopDelay }
     }
 }
+
+# #142 (2026-08-21): explicit exports MATCHING the .psd1 FunctionsToExport.
+# Every consumer imports this .psm1 directly (by path), bypassing the
+# manifest — so the manifest's whitelist was inert and the internal
+# Invoke-LoggedAgenticCommand leaked as public API. Keep this list and the
+# .psd1 in lockstep (the manifest stays for manifest-path importers).
+Export-ModuleMember -Function @(
+    'Initialize-AgenticLoop',
+    'Complete-AgenticLoop',
+    'Write-AgenticLog',
+    'Write-AgenticSection',
+    'Get-AgenticLogFile',
+    'Get-AgenticPlatform',
+    'Test-IsWindows',
+    'Get-AgenticConfigValue',
+    'Get-AgenticBuildConfigs',
+    'Get-AgenticDefaultPrompt',
+    'Get-AgenticDefaultPromptPath',
+    'Get-AgenticSystemPromptPath',
+    'New-AgenticComposedPrompt',
+    'Resolve-AgenticEngine',
+    'Get-AgentTimeoutForRole',
+    'Invoke-AgentProcess',
+    'Invoke-OpenCode',
+    'Invoke-ClaudeCode',
+    'Invoke-AgenticAgent',
+    'Invoke-BuildFixer',
+    'Get-UncheckedTaskCount',
+    'Get-BlockedTaskCount',
+    'Get-UsageLimitWaitSeconds',
+    'Remove-CheckedBacklogTasks',
+    'Invoke-GitAutoCommit',
+    'Invoke-BuildCommand',
+    'Invoke-TestCommand',
+    'Invoke-QualityCommand',
+    'Resolve-BuildMatrixEntry',
+    'Get-SanitizerEnvVars',
+    'Invoke-SanitizerTestCommand',
+    'Invoke-AgenticLoop'
+)
