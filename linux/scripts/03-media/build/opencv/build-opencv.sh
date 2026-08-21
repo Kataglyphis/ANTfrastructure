@@ -568,6 +568,15 @@ configure_opencv() {
     _opencv_cmake_cuda_opts cmake_opts
     _opencv_cmake_freetype_opts cmake_opts
 
+    # DETERMINISTIC exe-linker flags (2026-08-21): the cross/cache helpers
+    # can place their own -DCMAKE_EXE_LINKER_FLAGS in cmake_opts, and an
+    # explicit -D beats env LDFLAGS — which silently dropped the
+    # ffmpeg/gstreamer -L/-rpath-link repairs from the APP links (riscv64
+    # pass-2 died on libgst* "not found (try using -rpath-link)" despite the
+    # env fix). cmake is last-wins on repeated -D: append ours LAST, merging
+    # whatever the helpers put into the env with our LDFLAGS bundle.
+    cmake_opts+=("-DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS:-} ${LDFLAGS:-}")
+
     echo "CMake options: ${cmake_opts[*]}"
     cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || die "OpenCV configure failed"
 }
