@@ -135,6 +135,13 @@ $tarballPath = "$SourceDir\ffmpeg.tar.gz"
 if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 
+# #122 (2026-08-21): phase brackets via trap, not a whole-body try/catch —
+# same failure-names-its-phase contract as gstreamer/litert-lm (#109)
+# without indenting 570 lines. EAP=Stop makes every failure terminating, so
+# the trap stamps the open phase and rethrows.
+trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'ffmpeg'; break }
+
+Switch-BuildPhase '1. download + extract'
 Write-Host "Downloading FFmpeg $FfmpegVersion..."
 if ($FfmpegVersion -in @('main', 'master', 'develop')) {
     try {
@@ -157,6 +164,7 @@ Write-Host "Source at: $srcDir"
 # turns into a terminating NativeCommandError; the helper shields git output via cmd.exe.
 Initialize-ExtractedGitRepo -Path $srcDir
 
+Switch-BuildPhase '2. VERSION synthesis + lib*.version'
 # ── VERSION file: without it every generated .pc says "Version: .." ───────────
 # FFmpeg's configure derives its version from $source_path/VERSION, falling back
 # to `git describe`. NEITHER exists here: GitHub's auto-generated
@@ -249,6 +257,7 @@ function Invoke-BoundedProvisionStep {
 # Ensure make is available
 if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     Write-Host "Installing make via scoop..."
+    Switch-BuildPhase '3. toolchain provisioning (make/gawk/nv-codec)'
     Invoke-BoundedProvisionStep -Label 'scoop install make' -Step { & scoop install main/make 2>&1 }
 }
 # Install gawk and replace MSYS2's broken awk
@@ -405,6 +414,7 @@ $wrapperLines += "cd $cygSrc"
 $wrapperLines += 'export MSYS=winsymlinks:lnk'
 $wrapperLines += 'export TMPDIR=tmpdir'
 $wrapperLines += 'rm -rf tmpdir; mkdir -p tmpdir'
+Switch-BuildPhase '4. configure'
 $wrapperLines += "./configure $confStr"
 
 $wrapperPath = Join-Path $srcDir 'ffmpeg-configure-wrapper.sh'
@@ -490,6 +500,7 @@ $makeJobs = Get-BuildJobCount -MemGBPerJob 2
 # flag stripped from the generated maks the launcher is safe at make time;
 # configure stays bare (its own compiler tests still break through sccache,
 # "unknown file type" - measured 2026-08-19).
+Switch-BuildPhase '5. make + install'
 $makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl'" } else { '' }
 # All three make calls are -Optional by design: a parallel-link race falls
 # through to the -j1 retry, and an incomplete build/install falls through to
@@ -599,6 +610,7 @@ if (Test-Path $ffPkgConfigDir) {
 if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
     Write-Warning 'Prebuilt fallback active (FFMPEG_ALLOW_PREBUILT=1): no .pc files exist by design; downstream consumers (gst-libav, OpenCV chain-link, PyAV) will not find FFmpeg.'
 } else {
+    Switch-BuildPhase '6. pc gate + PyAV wheel'
     $null = Assert-FfmpegPkgConfig -PkgConfigDir $ffPkgConfigDir
 }
 
@@ -697,4 +709,6 @@ try {
     [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel")
 } finally { Pop-Location }
 Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
+Complete-CurrentBuildPhase
+Write-BuildPhaseSummary -Label 'ffmpeg'
 Complete-SourceBuild -Banner '=== PyAV wheel build completed ===' -SourceDir $pyavSrcRoot  # cleanup + banner + exit 0 (see module help)

@@ -113,6 +113,7 @@ if (-not $LogPath) { $LogPath = Join-Path $repoRoot 'out\rebuild-host-vhdx.log' 
 if (-not $NewVhdxPath) { $NewVhdxPath = [IO.Path]::ChangeExtension($VhdxPath, $null) + 'new.vhdx' }
 $oldVhdxPath = "$VhdxPath.old"
 
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
 $LogPath = $hostLog.LogPath
@@ -141,10 +142,7 @@ function Get-FreeDriveLetter {
 
 # --- guards ------------------------------------------------------------------
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run from an elevated (admin) shell: attach/detach, format and service control need it.'
-}
+Assert-Elevated -Reason 'attach/detach, format and service control need it'
 if ($CopyOnly -and $SwapOnly) { throw '-CopyOnly and -SwapOnly are mutually exclusive.' }
 if (-not (Test-Path $VhdxPath)) { throw "VHDX not found: $VhdxPath" }
 if (-not (Get-Command New-VHD -ErrorAction SilentlyContinue)) {

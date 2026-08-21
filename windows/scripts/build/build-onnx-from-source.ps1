@@ -24,6 +24,12 @@ $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables 
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
+# #122 (2026-08-21): phase brackets via trap — same failure-names-its-phase
+# contract as gstreamer/litert-lm (#109) without indenting the body. EAP=Stop
+# makes every failure terminating, so the trap stamps the open phase and
+# rethrows.
+trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'onnx'; break }
+Switch-BuildPhase '1. clone + source patches (DML clang-cl, rc filter)'
 Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$OnnxVersion" -SourceDir $SourceDir -Recursive | Out-Null
 
 $cmakeSrc = if (Test-Path "$SourceDir\cmake\CMakeLists.txt") { "$SourceDir\cmake" } else { $SourceDir }
@@ -175,6 +181,7 @@ $py = Initialize-ToolchainPythonEnvironment
 # (Initialize-ToolchainPythonEnvironment wrote the win-amd64 platform-tag shim, so
 # pip resolves 64-bit wheels and our wheel tags correctly.)
 Install-CpythonPip -Python $py
+Switch-BuildPhase '2. python deps + cmake args'
 Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setuptools', 'wheel', 'packaging')
 
 # ONNX-specific CPU feature flags added on top of the shared SIMD base.
@@ -320,7 +327,9 @@ $cmakeArgs = @(
     "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)"
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs
+Switch-BuildPhase '3. cmake configure'
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs | Out-Null
+Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
 # -- Post-configure patches (fetched _deps trees; inline, NOT .patch files —
 # static patches against CMake-fetched deps rot when ORT's dep pointer moves) --
@@ -458,6 +467,7 @@ $ninjaLog = Get-PersistentBuildLogPath -Name 'onnx-ninja.log' -FallbackDir $buil
 # ONNX vertex -- peak per-process WorkingSet 998 MB, peak fleet 5.5 GB at -j9.
 # At 2 GB/job the job-count formula yields ~19 jobs (~11-12 GB extrapolated vs
 # the 39 GB budget), roughly doubling parallelism on the long-pole ONNX build.
+Switch-BuildPhase '5. ninja build + install'
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Install -LogFile $ninjaLog
 
 # Hit-rate evidence on STDERR - the stream the 2MiB step-log clip never
@@ -480,6 +490,7 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # source-root setup.py run as bdist_wheel FROM the build dir. No
 # --wheel_name_suffix: our CUDA+TensorRT+DML combo matches no upstream package
 # split, so it ships as plain `onnxruntime`. Must run BEFORE Remove-SourceBuildTree.
+Switch-BuildPhase '6. python wheel'
 Write-Host 'Building onnxruntime python wheel...'
 # Shared wheel-build shape (was duplicated verbatim with the GenAI script):
 # stage + install (WITH pypi deps) + import-assert, so the shipped image can
@@ -491,4 +502,6 @@ Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
     -Arguments """$SourceDir\setup.py"" bdist_wheel" `
     -ModuleName 'onnxruntime' | Out-Null
 
+Complete-CurrentBuildPhase
+Write-BuildPhaseSummary -Label 'onnx'
 Complete-SourceBuild -Banner '=== ONNX Runtime source build completed ===' -SourceDir $SourceDir  # cleanup + banner + exit 0 (see module help)

@@ -287,7 +287,7 @@ Write-Host "Set CCC_OVERRIDE_OPTIONS to strip -fPIC + gemmlowp MSVC flags from c
 #endregion
 
 #region Phase 5 | Source tree & CMake winfix patches (clang-cl/lld-link port)
-Switch-BuildPhase '5. Source tree & CMake winfix patches (clang-cl/lld-link port)'
+Switch-BuildPhase '5a. Source tree + dependency-pin bumps (absl/litert)'
 # NOTE: LiteRT-LM v0.13.1 ships runtime/proto/ as Bazel-only (BUILD + *.proto, no CMakeLists.txt),
 # so the former runtime/proto/CMakeLists.txt patch (disable protobuf_generate / find_package Protobuf
 # QUIET) was a permanent no-op: the target file never exists at patch time, and the build succeeds
@@ -407,6 +407,7 @@ $superCmake = Join-Path $SourceDir 'CMakeLists.txt'
     $c.Replace($btAnchor, $btRepl)
 })
 
+Switch-BuildPhase '5b. externals: protobuf / sentencepiece / tokenizers'
 # Inline patch: skip building protobuf's upb generator TOOLS (protoc-gen-upb /
 # protoc-gen-upbdefs). They fail to link under clang++/lld-link -- undefined abseil
 # symbols (absl::StrCat / absl::log_internal::* / absl::Mutex ...) that lld-link won't
@@ -542,6 +543,7 @@ $mbPatch = Get-Content -Raw (Join-Path $scriptAssetRoot 'patches\litert-lm\tflit
 [void](Add-FileBlockOnce -Path $tflitePatcher -Marker 'LiteRTLM-winfix model_building-friend' -Content $mbPatch -Encoding ASCII `
         -Description 'tflite_patcher.cmake: model_building.h friend forward-declarations')
 
+Switch-BuildPhase '5c. litert core winfixes (POSIX->Win32 narrowing)'
 # LiteRT's core/dynamic_loading.cc is written for POSIX: std::filesystem::path::c_str() and the
 # path->string implicit conversion are WIDE (wchar_t / std::wstring) on Windows but narrow on
 # Linux, so access(path.c_str()), results.push_back(path) into a vector<string>, and
@@ -722,6 +724,7 @@ if ($engineBridged -ne $engineTxt) {
     Write-Host '[LiteRTLM-winfix orphans] engine lib source list updated'
 }
 
+Switch-BuildPhase '5d. runtime CMake retargets (engine/util/logger winfixes)'
 # litert_util.cc AND resource_manager.cc both set EnvironmentOptions::Tag::kMinLoggerSeverity, which
 # the litert core pinned by litert-lm v0.13.1 does not expose (the litert-lm source tree is ahead of
 # its own litert dependency). It only pushes an optional min-log-severity env option -> compile that
@@ -814,6 +817,7 @@ $litertLmPkg = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
     $c.Replace('set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")', 'set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")')
 })
 
+Switch-BuildPhase '5e. link spec: clean-link + CRT compat + lib aliasing'
 # [LiteRTLM-winfix clean-link] Make ninja link litert_lm_main.exe cleanly IN ONE PASS (no post-ninja
 # manual relink). Three independent defects converge at this one link, all fixed in the CMake target:
 #   1. deprecated CRT globals (_timezone/_daylight/_tzname/_environ/_sys_errlist/_sys_nerr + POSIX and

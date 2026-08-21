@@ -11,10 +11,12 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'This must run ELEVATED.'
-}
+# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
+# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
+# beside this script in the flat layout and one level up in the repo layout.
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
+Assert-Elevated
 
 $desiredPaths = @(
     'C:\ProgramData\containerd',

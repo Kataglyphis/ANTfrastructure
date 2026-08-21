@@ -77,6 +77,7 @@ $ErrorActionPreference = 'Stop'
 # beside this script in the flat layout and one level up in the repo layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'compact-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
 $LogPath = $hostLog.LogPath
@@ -86,10 +87,7 @@ function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
 # --- guards ------------------------------------------------------------------
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run from an elevated (admin) shell: attach/detach and service control need it.'
-}
+Assert-Elevated -Reason 'attach/detach and service control need it'
 if (-not (Test-Path $VhdxPath)) { throw "VHDX not found: $VhdxPath" }
 
 # --- inspect: sizes + guest filesystem ---------------------------------------

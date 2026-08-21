@@ -27,10 +27,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    throw 'Run ELEVATED (schtasks /RU SYSTEM needs admin).'
-}
+# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
+# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
+# beside this script in the flat layout and one level up in the repo layout.
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
+Assert-Elevated -Reason 'schtasks /RU SYSTEM needs admin'
 if (-not (Test-Path $DufsExe)) { throw "dufs.exe not found at $DufsExe (pass -DufsExe)" }
 if (-not (Test-Path $ServeDir)) { throw "serve dir not found at $ServeDir (pass -ServeDir)" }
 
