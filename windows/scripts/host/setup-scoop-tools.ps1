@@ -124,7 +124,7 @@ $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 # Derive the Git installer URL from GIT_VERSION (versions.env) so the pin cannot drift
 # invisibly in a param default -- same pattern as the CMake/Vulkan pins above. The
 # ".windows.1" tag suffix covers normal releases; a respun release needs -GitInstallerUrl.
-$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.54.0'
+$gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.55.0'
 $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
     -DefaultValue "https://github.com/git-for-windows/git/releases/download/v$gitVer.windows.1/Git-$gitVer-64-bit.exe"
 
@@ -147,7 +147,7 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 # WiX versions come from versions.env (single source of truth shared with the
 # verify-toolchain.ps1 assert); defaults keep the script runnable standalone.
 $WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '4.0.6'
-$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
+$WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.6'
 Invoke-ScoopStep -Description "dotnet tool install wix $WixVersion" -Command {
     dotnet tool install --tool-path C:\WiX wix --version $WixVersion
 }
@@ -267,8 +267,12 @@ Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
 # `pkgconf` manifest; the package name is `pkg-config`.
 # sccache LEFT this list on 2026-08-08 -- see the pinned block above. It is the
 # one package here whose VERSION gates behaviour rather than output.
-Invoke-ScoopStep -Description 'scoop install floating toolset (nano, cppcheck, nsis, uv, nuget, zlib, openssl, pkg-config)' -Command {
-    scoop install nano cppcheck extras/nsis main/uv main/nuget extras/zlib main/openssl main/pkg-config
+# Per-package via Install-ScoopPackage (2026-08-21): the former single
+# 8-package Invoke-ScoopStep bypassed the 3-attempt retry + cache purge, so
+# one transient SourceForge/GitHub blip on ANY of the 8 killed the whole base
+# build — the precise failure the retry helper was added for on 2026-08-19.
+foreach ($floatingPkg in @('nano', 'cppcheck', 'extras/nsis', 'main/uv', 'main/nuget', 'extras/zlib', 'main/openssl', 'main/pkg-config')) {
+    Install-ScoopPackage -Package $floatingPkg
 }
 
 # CMake stable release via scoop (replaces the old cmake.org MSI download); the

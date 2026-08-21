@@ -123,7 +123,7 @@ $wixExtensions | Out-Host
 # "extension not installed" and send the operator chasing the wrong problem.
 if ($LASTEXITCODE -ne 0) { throw "wix extension list --global failed (exit code $LASTEXITCODE): $wixExtensions" }
 # Assert against the same versions.env value the install used (no hand-synced literal).
-$wixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.4'
+$wixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '4.0.6'
 if (-not ($wixExtensions | Select-String -SimpleMatch "WixToolset.UI.wixext $wixUiExtVersion")) {
     throw "Required WiX extension not installed: WixToolset.UI.wixext $wixUiExtVersion"
 }

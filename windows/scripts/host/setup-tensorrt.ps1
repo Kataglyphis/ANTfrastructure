@@ -108,9 +108,11 @@ if (-not $trtZip -or -not (Test-Path $trtZip)) {
     return
 }
 
-# Optional integrity pin: TENSORRT_ZIP_SHA256 (versions.env) is empty by default
-# because the zip is an EULA-gated manual download; when set, the zip we are
-# about to extract must match it regardless of which lookup tier found it.
+# Integrity pin: TENSORRT_ZIP_SHA256 (versions.env). Populated since 2026-08
+# (the staged zip is hashed when a new one lands — TensorRT-always-newest
+# directive); when set, the zip we are about to extract must match it
+# regardless of which lookup tier found it. Empty only on hosts that never
+# staged the EULA-gated download.
 $trtSha = Resolve-ContainerImageValue -EnvironmentVariable 'TENSORRT_ZIP_SHA256' -DefaultValue ''
 if ($trtSha) {
     $actual = (Get-FileHash -Algorithm SHA256 -Path $trtZip).Hash

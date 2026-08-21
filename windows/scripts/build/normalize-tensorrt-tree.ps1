@@ -92,7 +92,11 @@ if (-not $alreadyStable -and -not $versionDir) {
 }
 
 $actual = if ($versionDir) { $versionDir.Name -replace '^TensorRT-', '' } else { 'flat' }
-if ($ExpectedVersion -and $actual -ne $ExpectedVersion) {
+# Pre-existing 'current' (re-run/idempotent path): no zip was extracted THIS
+# run, so a zip-drift warning would be a false positive — the DLL gate below
+# still applies (F12, 2026-08-21: this fired 'extracted TensorRT-flat' on
+# every re-run and eroded trust in the drift signal).
+if (-not $alreadyStable -and $ExpectedVersion -and $actual -ne $ExpectedVersion) {
     # Loud, but NOT fatal: the staged zip is the truth for this image, and the
     # pin is also consumed by the Linux lane (apt), where it may legitimately
     # differ. The point is that drift can no longer be SILENT.
@@ -123,7 +127,7 @@ $dllDirs = @($binDir, $libDir) | Where-Object {
 }
 if ($dllDirs.Count -eq 0) {
     $present = @(Get-ChildItem -LiteralPath $stable -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) -join ', '
-    throw ("TensorRT tree '$($versionDir.Name)' carries no runtime DLLs in bin\ or lib\ (subdirs: $present) — " +
+    throw ("TensorRT tree '$(if ($versionDir) { $versionDir.Name } else { $stable })' carries no runtime DLLs in bin\ or lib\ (subdirs: $present) — " +
            'the EP would be dropped silently at runtime. Refusing to ship an unloadable TensorRT.')
 }
 $dllCount = @($dllDirs | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File }).Count

@@ -314,21 +314,15 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         )
     }
 
-    # KNOWN LIVE DRIFT (backlog W1b, verified 2026-08-10): these -DefaultValue
-    # literals lag versions.env, but the windows\scripts\*.ps1 fixes are batched
-    # for the next Windows rebuild window (COPY-layer invalidation). Until then
-    # these exact (script, env var, drifted default) triples are reported as
-    # pending, NOT failures. THE MOMENT a listed default is fixed to match the
-    # pin, the guard test below FAILS with "remove from KnownDrift list" --
-    # delete the entry in the same change that fixes the script.
-    #   setup-scoop-tools.ps1:105  GIT_VERSION        '2.54.0' (pin 2.55.0)
-    #   setup-scoop-tools.ps1:128  WIX_UI_EXT_VERSION '4.0.4'  (pin 4.0.6)
-    #   verify-toolchain.ps1:122   WIX_UI_EXT_VERSION '4.0.4'  (pin 4.0.6)
-    $script:KnownDriftAwaitingRebuildWindow = @(
-        [pscustomobject]@{ Script = 'setup-scoop-tools.ps1'; EnvVar = 'GIT_VERSION';        DriftedDefault = '2.54.0' },
-        [pscustomobject]@{ Script = 'setup-scoop-tools.ps1'; EnvVar = 'WIX_UI_EXT_VERSION'; DriftedDefault = '4.0.4' },
-        [pscustomobject]@{ Script = 'verify-toolchain.ps1';  EnvVar = 'WIX_UI_EXT_VERSION'; DriftedDefault = '4.0.4' }
-    )
+    # KNOWN LIVE DRIFT mechanism (backlog W1b): -DefaultValue literals that lag
+    # versions.env while their fix waits for a rebuild window (COPY-layer
+    # invalidation). Listed triples report as pending, NOT failures; THE MOMENT
+    # a listed default is fixed to match the pin, the guard test below FAILS
+    # with "remove from KnownDrift list" -- delete the entry in the same change
+    # that fixes the script. EMPTY since 2026-08-21: the store-reset rebuild
+    # window absorbed the last three (GIT_VERSION 2.54.0->2.55.0,
+    # WIX_UI_EXT_VERSION 4.0.4->4.0.6 x2).
+    $script:KnownDriftAwaitingRebuildWindow = @()
 
     function Get-RcivKnownDriftId {
         return @($script:KnownDriftAwaitingRebuildWindow | ForEach-Object { "$($_.Script)|$($_.EnvVar)" })

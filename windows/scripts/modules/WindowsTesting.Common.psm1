@@ -106,6 +106,10 @@ function Get-LlvmAsanRuntimeDirs {
       Add-AsanRuntimeDirIfPresent -RuntimeDirs $runtimeDirs -CandidateDir (Join-Path $clangResourceDir.Trim() 'lib\windows')
     }
   } catch {
+    # Best-effort probe: clang-cl absent (or a broken --print-resource-dir) just
+    # means no ASAN runtime dir candidate from this source — the explicit
+    # LLVM-install candidates above still apply. Not actionable, say so quietly.
+    Write-Verbose "clang-cl resource-dir probe failed: $($_.Exception.Message)"
   }
 
   return @($runtimeDirs)

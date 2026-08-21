@@ -61,7 +61,9 @@ if ([string]::IsNullOrWhiteSpace($ProbeScript) -eq [string]::IsNullOrWhiteSpace(
     throw 'pass exactly ONE of -ProbeScript (shared Dockerfile.probe) or -Dockerfile (bespoke probe Dockerfile)'
 }
 if ($ProbeScript) {
-    $probePath = Join-Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'diagnostics') $ProbeScript
+    # $PSScriptRoot IS the diagnostics dir (repo layout) or the flat mount —
+    # no re-derivation, same dual-layout rule as the resolver below (#108).
+    $probePath = Join-Path $PSScriptRoot $ProbeScript
     if (-not (Test-Path $probePath)) { throw "-ProbeScript '$ProbeScript' not found at $probePath" }
     $Dockerfile = 'Dockerfile.probe'
     $BuildArg = @("PROBE_SCRIPT=$ProbeScript") + $BuildArg

@@ -120,6 +120,13 @@ function Install-TorchAppEnvironment {
             if (Test-Path $src) {
                 Copy-Item $src -Destination $venvSite -Recurse -Force
                 Write-Host "Staged $staged into venv site-packages"
+            } elseif ($staged -eq 'sitecustomize.py') {
+                # HARD fail (2026-08-21): unlike cv2/tvm_ffi/ml_dtypes, nothing
+                # downstream ever imports sitecustomize explicitly — a missing
+                # copy silently drops the win-amd64 platform tag AND the
+                # add_dll_directory calls for the image's native DLL homes,
+                # and Test-TorchAppEnvironment cannot catch it.
+                throw "$src not found -- the venv would silently lose the platform tag + DLL-dir wiring"
             } else {
                 Write-Warning "$src not found -- venv will miss $staged"
             }

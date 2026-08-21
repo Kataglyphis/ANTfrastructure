@@ -310,8 +310,8 @@ function Get-MediaBranchVersionArg {
         # The lists below were derived by auditing what the scripts actually
         # read, both directly (`$env:X`) and indirectly (`Get-SourceBuildVersion
         # -EnvironmentVariables`). Re-run that audit when adding a build script:
-        #   grep -ohE '\$env:[A-Z_]+' windows/scripts/build-*.ps1
-        #   grep -ohE "EnvironmentVariables?\s+@?\('[A-Z_, ']+" windows/scripts/build-*.ps1
+        #   grep -ohE '\$env:[A-Z_]+' windows/scripts/build/build-*.ps1
+        #   grep -ohE "EnvironmentVariables?\s+@?\('[A-Z_, ']+" windows/scripts/build/build-*.ps1
         'media-core' {
             return @{
                 ONNXRUNTIME_VERSION       = Get-VersionTableValue $VersionTable 'ONNXRUNTIME_VERSION'

@@ -34,7 +34,12 @@ Do not confuse them:
   built from this patch needs the environment variables set or it behaves
   exactly like the stock one.**
 
-## Submitting
+## Submitting (HISTORICAL — the PR is already open)
+
+> This recipe was for the ORIGINAL submission and is kept as the record of
+> how #2855 was produced. Do NOT run it again — that would produce a
+> duplicate PR. Current actions live in the status header above (the
+> unfiled ISSUE.md + the Windows-Containers#547 comment).
 
 ```bash
 git clone https://github.com/Microsoft/hcsshim

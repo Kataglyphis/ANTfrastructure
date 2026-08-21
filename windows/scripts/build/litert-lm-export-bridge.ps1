@@ -130,7 +130,7 @@ function Invoke-LiteRtLmSupportGraft {
         return
     }
     # LITERT REF SYNC: same resolution chain as build-litert-from-source.ps1
-    # (LITERT_VERSION env, fallback 'v2.1.6'). The AUTHORITATIVE default lives
+    # (LITERT_VERSION env fallback; keep in step with build-litert-from-source). The AUTHORITATIVE default lives
     # there -- when bumping LiteRT, update BOTH defaults (a mismatched graft
     # pulls a support/ tree from a different LiteRT than the one built).
     $litertRef = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'

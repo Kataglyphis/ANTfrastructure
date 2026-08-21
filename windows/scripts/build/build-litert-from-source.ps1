@@ -20,7 +20,7 @@ $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1
 Import-Module $modulePath -Force
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-# LITERT REF SYNC: this 'v2.1.6' is the AUTHORITATIVE default. The v0.14
+# LITERT REF SYNC: this default is the AUTHORITATIVE one. The v0.14
 # support-graft in litert-lm-export-bridge.ps1 resolves the same LITERT_VERSION
 # env with the same fallback -- a LiteRT bump must update BOTH defaults.
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.2.0'

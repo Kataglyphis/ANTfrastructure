@@ -1224,9 +1224,10 @@ steps; the remaining work is the Dockerfile surgery):
   snapshotter cannot create parentless scratch snapshots, which BuildKit
   needs even to load the Dockerfile context. CimFS is pull/run-only today;
   do not retry until a containerd release notes BuildKit/build support.
-  The teardown probe remains in `bk-warm.ps1` (harmless, ~1.5 s, keeps exits
-  quiet and preserves the diagnostic exit dump; removing it would cache-bust
-  every warm layer for zero gain).
+  (STALE-NOTE corrected 2026-08-21: an earlier revision claimed a teardown
+  probe remained in `bk-warm.ps1` — it does not; the file is a 55-line
+  arg-forward + Export-BuildHandoff wrapper, and all solves are direct,
+  so there are no warm layers to cache-bust either.)
 - **HISTORICAL (2026-08-04, worked around via warm/materialize) —
   GenAI/OpenCV snapshot finalize
   (`ExportLayer 0x3`, disk fine)**: those two layers deterministically fail BOTH finalize paths on
