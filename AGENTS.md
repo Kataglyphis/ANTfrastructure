@@ -567,11 +567,25 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
   Import-CanonicalVersions, made `Resolve-DirectoryPath` CommandNotFound at
   gstreamer top level and killed the merge-warm solve). Nested imports use the
   guarded form `if (-not (Get-Module -Name 'X')) { Import-Module $path }`.
-  The rule is REPO-COMPLETE since 2026-08-05: load-versions.ps1 — the last
-  holdout — is guarded, and build-gstreamer's historical Shared-re-import
-  workarounds are removed. Regression pin: import Shared→Installer→
-  SourceBuild.Common, run Import-CanonicalVersions, then
-  `Get-Command Resolve-DirectoryPath` must still resolve.
+  Regression pin: import Shared→Installer→SourceBuild.Common, run
+  Import-CanonicalVersions, then `Get-Command Resolve-DirectoryPath` must still
+  resolve.
+  **The "REPO-COMPLETE since 2026-08-05" claim that stood here was WRONG, and
+  it cost a 53-minute compile on 2026-08-21.** Every leaf builder
+  (`build-onnx-from-source.ps1`, `-opencv-`, `-ffmpeg-`, `-gstreamer-`, `-tvm-`,
+  `-litert-`, `-iree-`, …) still opened with `Import-Module $modulePath -Force`
+  — and those are precisely "scripts `&`-invoked from module scope": the chain
+  runs them in-process via `& (Join-Path $ScriptDir $stage.Script)`. ONNX built
+  green for 53 min; the chain tail then died on `The term
+  'Stop-LingeringBuildProcess' is not recognized`, because `-Force` had removed
+  the module instance `Invoke-SourceBuildChain` was still running inside.
+  **Read the asymmetry in the log — it is the fingerprint of this bug:** the
+  EXPORTED call one line earlier (`Write-SccacheStats`) succeeded, because
+  exported names resolve through the global command table, while the UNEXPORTED
+  helper existed only in the destroyed scope. A prose rule with no gate is a
+  suggestion: `windows/scripts/tests/Modules.ForceImportScope.Tests.ps1` now
+  discovers the leaves from the `$stages` tables and fails on any `-Force`
+  among them (with a rot guard, so it cannot pass vacuously).
 - **Never splat a string ARRAY containing `-Param`-shaped tokens onto a
   PowerShell script/function — array splatting binds strictly BY POSITION.**
   `& $script @('-ResumeFrom','OpenCV')` delivers `-ResumeFrom` as the VALUE of
