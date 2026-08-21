@@ -364,7 +364,11 @@ Load-bearing fixes — preserve them or builds slow down / ship broken. Details 
 - **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
   `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
   finished image after `final`, and a failure fails the chain (backlog #44).
-  Before 2026-08-14 neither driver ran the smoke test at all, so every chain
+  Since 2026-08-21 the CLASSIC driver gates too — as `docker run` with a
+  DIRECTORY mount of `windows\scripts` (its dockerd has no BuildKit
+  `RUN --mount`, and Windows containers reject single-FILE binds outright;
+  `docker run` also enters through the ENTRYPOINT naturally). Before
+  2026-08-14 neither driver ran the smoke test at all, so every chain
   shipped unverified. Three rules when touching it: it must run **through
   `entrypoint.cmd`** (a bare `RUN` bypasses ENTRYPOINT and loses VsDevCmd + the
   ASAN runtime dir — that alone made six assertions fail against a good image);
@@ -928,21 +932,40 @@ linux/scripts/06-packaging/package_archive.sh   tar/deb/AppImage/Flatpak
                          broken silently. Grep the consumer repos before
                          deleting anything under lib/, rust/, python/ or
                          06-packaging/.
-windows/scripts/         Windows lane: setup-*.ps1, build-*-from-source.ps1,
-                         cargo-retry.cmd (transient file-lock retry wrapper),
+windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
+                         build/ (chain components: build-*-from-source.ps1,
+                         *-all wrappers, smoke-test-container, load-versions),
+                         host/ (setup-*/apply-*/repair-*/reset-* + elevated
+                         maintenance), diagnostics/ (probe-*/test-* + the
+                         run-diagnostic-probe runner; settled one-shots in
+                         diagnostics/archive/, still runnable via
+                         -ProbeScript archive/<name>.ps1). Container mounts
+                         stay FLAT (C:\bkmnt, C:\temp\scripts) — the
+                         $scriptAssetRoot resolver bridges both layouts and
+                         is gated by ScriptAssetRoot.Parity.Tests.
+                         Ungrouped residents BY DECISION (#131):
+                         Invoke-Lint.ps1, entrypoint.cmd, cargo-retry.cmd
+                         (consumer-CI suspect — never delete unverified),
                          certificates/ (MSIX cert generation + WebDAV
                          download_webdav_files.py — see its README.md),
+                         python/ + rust/ (consumer CI-lane drivers).
                          modules/*.psm1 (reusable PS modules: SourceBuild,
                          Build.Common, ContainerBuild.Reuse, AgenticLoop,
                          CMake, Config, Formatting, Msix.{Common,Signing},
                          WebDav, Uv, Scripts.Shared, Toolchain, CodeQL,
-                         ContainerImage, Flutter, Installer),
-                         tests/ (harness + suites), shims/, diagnostics/
+                         ContainerImage, Flutter, Installer,
+                         HostMaintenance, SmokeTest, GstPlugins, …),
+                         tests/ (harness + suites), shims/
 windows/upstream/        prepared upstream submissions (not build inputs):
                          hcsshim-teardown-timeout/ = ISSUE.md + PR.md +
                          format-patch making the shim teardown timeouts
                          configurable, plus the deployed 45min local patch
-                         and the rebuild recipe (see its README.md)
+                         and the rebuild recipe (see its README.md);
+                         sccache-nvcc-quote-fix/ = the 0003 diag-family
+                         patch riding until mozilla/sccache#2816 merges
+                         (0001/0002 merged upstream in #2811; the dir is
+                         ALSO a build input — setup-rust-toolchain applies
+                         0003 on top of the pinned rev)
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
