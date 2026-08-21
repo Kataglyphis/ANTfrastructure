@@ -20,7 +20,14 @@ linux/llm-stack/benchmark_results/
 linux/llm-stack/benchmark-viewer/dist/
 linux/llm-stack/benchmark-viewer/node_modules/
 linux/nextcloud-aio/.env
-.claude/
+.claude/*
+# ...except the safety gate. A guard that only exists on one machine is not a
+# guard: a fresh clone, or a `git clean -xdf`, would silently disarm it
+# (2026-08-21 host wipe). settings.local.json stays ignored - it is personal.
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/*
+!.claude/hooks/guard-destructive-deletes.ps1
 
 # Throwaway litert-lm fast-rebuild harness (overlays the build script onto a local
 # windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)

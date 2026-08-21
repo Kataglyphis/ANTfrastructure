@@ -1299,6 +1299,49 @@ base ─┬─ onnxruntime ───────┐
   chain runs — "unused" means not-container-referenced, so it deletes TAGGED
   cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
   registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
+- **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
+  `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
+  the worst incident this repo has produced). A "let's free some space"
+  command was composed on the spot, handed over for an elevated shell, and did
+  not stop at the container stores: it walked into the installed programs and
+  the user profile and took the host with it — editor, VCS, GPU driver stack,
+  container runtime, the PowerShell 7 this repo's whole gate suite needs, all
+  reinstalled by hand. Nothing in the loop said no, because a blanket delete
+  rule had been allow-listed in `.claude/settings.local.json`. The rules now:
+  - **The reclaim script is the only sanctioned path.** It resolves candidates
+    from an ALLOWLIST (container-store husks left aside by
+    `reset-container-stores.ps1`, rotated host logs, repo `out/` scratch),
+    reports by default, and needs `-Apply` to touch anything. It aborts the
+    WHOLE run — not just the one target — if any resolved candidate lands on a
+    protected root, because a candidate that lands there means the resolution
+    logic is wrong and the rest of the plan is untrustworthy too.
+  - **Daemon levers before filesystem levers, always.** `buildctl prune
+    --free-storage`, `docker image prune`, the store-GC sequence in
+    `docs/windows-builds.md` § Store GC. They hand back far more and they know
+    what is still referenced. Filesystem reclaim is a last resort limited to
+    dead `*.bak-<stamp>` husks.
+  - **Protected roots are OFF LIMITS to the agent, permanently**: `C:\Program
+    Files`, `C:\Program Files (x86)`, `C:\Windows`, `C:\ProgramData` outside
+    the container stores, any user profile under `C:\Users`, `AppData`,
+    per-user tool directories (`.vscode`, `.ssh`, `scoop`, `.claude`), drive
+    roots, and every installed-package or driver store. Not with a flag, not
+    with a force switch, not "just this once". Space that only comes back by
+    reaching in there is a reinstall, not a cleanup — and it is the user's
+    call, run by the user, outside the agent.
+  - **Uninstalling the user's software is never the agent's move.** No package
+    manager removals, no MSI removals, no appx removals. Suggest, never do.
+  - **The gate is mechanical, not advisory.**
+    `.claude/hooks/guard-destructive-deletes.ps1` runs as a `PreToolUse` hook
+    (registered in both `.claude/settings.json` and the user-level settings, so
+    one broken path cannot silently disarm it). It DENIES — a decision no
+    prompt can override — any command touching a protected root, and it scans
+    file CONTENT on Write/Edit too, because the 2026-08-21 vector was a script
+    written for the user to paste, not a command the agent ran. Outside the
+    protected roots it downgrades to a prompt rather than a block.
+    `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1` is the incident
+    in executable form; it also fails if a settings file ever re-introduces a
+    blanket delete permission. If a guard regex ever needs relaxing, that is a
+    reviewed repo change with a test — never a bypass in the moment.
 - PowerShell gate: `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest). The suite is

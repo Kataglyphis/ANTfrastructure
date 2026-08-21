@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(rm -fr /*)",
+      "Bash(winget uninstall*)",
+      "Bash(choco uninstall*)",
+      "Bash(scoop uninstall*)",
+      "PowerShell(winget uninstall*)",
+      "PowerShell(choco uninstall*)",
+      "PowerShell(scoop uninstall*)",
+      "PowerShell(Uninstall-Package*)",
+      "PowerShell(Remove-AppxPackage*)",
+      "PowerShell(systemreset*)",
+      "PowerShell(Remove-Item C:\\*)",
+      "PowerShell(Remove-Item D:\\*)",
+      "PowerShell(Remove-Item $env:USERPROFILE*)",
+      "PowerShell(Remove-Item $env:LOCALAPPDATA*)",
+      "PowerShell(Remove-Item $env:APPDATA*)",
+      "PowerShell(Remove-Item $HOME*)",
+      "PowerShell(Remove-Item ~*)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoProfile",
+              "-ExecutionPolicy",
+              "Bypass",
+              "-File",
+              "${CLAUDE_PROJECT_DIR}\\.claude\\hooks\\guard-destructive-deletes.ps1"
+            ],
+            "timeout": 20,
+            "statusMessage": "Checking the command against the protected roots..."
+          }
+        ]
+      }
+    ]
+  }
+}
