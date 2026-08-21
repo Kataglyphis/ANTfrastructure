@@ -179,10 +179,6 @@ if (-not (Test-Path $shim)) {
     $size = (Get-Item $shim).Length
     $shimState = $null
     try {
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
-$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
         Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
         $shimStatePath = Get-ShimPatchStatePath
         if (Test-Path $shimStatePath) { $shimState = Get-Content $shimStatePath -Raw | ConvertFrom-Json }

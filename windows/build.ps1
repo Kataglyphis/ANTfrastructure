@@ -916,7 +916,7 @@ finally {
         Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
     }
     if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
-        & (Join-Path $PSScriptRoot 'scripts\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+        & (Join-Path $PSScriptRoot 'scripts\build\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
     }
     Pop-Location
 }
