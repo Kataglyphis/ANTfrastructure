@@ -182,18 +182,12 @@ if cross_build_is_active; then
   # libcamera runtime/plugin artifacts and skip that test tool.
   MESON_SETUP_ARGS+=(-Dlc-compliance=disabled)
 
-  # RV1-GST-PC FINAL CUT (2026-08-20): on riscv64 the gstlibcamera element
-  # cannot link — our introspection-less /opt/gstreamer no longer exports a
-  # usable glib .pc (headers resolve via the symlink repair, but the glib
-  # LIBS never reach the link line: undefined g_object_ref/g_hash_table_*…),
-  # and the ports glib-dev alternative poisons the whole stage (see the
-  # 2026-08-20 revert). Disable the element on riscv64 until RV1-GST-PC
-  # fixes .pc resolution; libcamera core + apps still ship. Wave-3 shipped
-  # the element — a known, documented riscv64-only content regression.
-  if [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
-    MESON_SETUP_ARGS+=(-Dgstreamer=disabled)
-    echo "riscv64: libcamera gstreamer element disabled (RV1-GST-PC residual)"
-  fi
+  # RV1 RE-LIFT (2026-08-21): the gstlibcamera element returns on riscv64 —
+  # its 2026-08-20 link failure (undefined g_object_ref …) came from the
+  # introspection-less gstreamer install exporting no usable glib .pc;
+  # introspection is back on (see build-gstreamer-monorepo.sh), restoring
+  # the wave-3 layout the element linked against. The glibconfig-symlink
+  # repair above stays as a harmless no-op belt.
 
   # GCC 16 emits a FALSE-POSITIVE -Warray-bounds on libcamera's shared std::mutex
   # teardown / logger path. The -Wno-error=array-bounds added to CXXFLAGS above
