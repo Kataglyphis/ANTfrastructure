@@ -23,7 +23,7 @@ ENV PYTHON_VERSION="${PYTHON_VERSION}"
 # pwsh 7 everywhere (host policy 2026-08-04): the old cmd SHELL here existed
 # for caret-escaped XML echo — that was a PS 5.1 encoding problem; pwsh 7's
 # Set-Content default (UTF-8, no BOM) produces XML MSBuild accepts.
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # Clone CPython source at the canonical version (cheap, network-bound — fine at 2 CPUs).
 RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VERSION --depth 1 https://github.com/python/cpython.git C:\temp\cpython 2>&1 | Write-Host }

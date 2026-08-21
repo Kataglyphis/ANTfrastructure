@@ -146,6 +146,7 @@ function Invoke-DockerWithRetry {
         [int]$MaxAttempts = 3,
         [int]$CooldownSeconds = 60
     )
+    $previousTail = ''
     foreach ($attempt in 1..$MaxAttempts) {
         # Do NOT capture -- let the action's docker output stream through to the
         # console/log; read the native exit code the docker call set.
@@ -159,8 +160,16 @@ function Invoke-DockerWithRetry {
         if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
             if ($OnFailedAttempt) { & $OnFailedAttempt }
             # -AssumeTransient: this branch IS the classification; the cooldown
-            # helper only owns the message + delay here.
-            Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -CooldownSeconds $CooldownSeconds -AssumeTransient | Out-Null
+            # helper only owns the message + delay here. -PreviousTail arms the
+            # determinism gate — the BK lane has passed it since 2026-08-07,
+            # this shared loop silently never did (2026-08-21 audit), so the
+            # classic lane paid full retries on byte-identical poisoned-
+            # snapshot failures.
+            if (-not (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -CooldownSeconds $CooldownSeconds -AssumeTransient -PreviousTail $previousTail)) {
+                if ($OnFinalFailure) { & $OnFinalFailure }
+                throw "[$Label] docker step failed DETERMINISTICALLY (identical tail on attempt $attempt)$(if ($LogFile) { " — full log: $LogFile" })"
+            }
+            $previousTail = $tail
             continue
         }
         if ($OnFinalFailure) { & $OnFinalFailure }

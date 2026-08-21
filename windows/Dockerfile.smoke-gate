@@ -30,7 +30,7 @@
 ARG BASE_IMAGE=local/kataglyphis:winamd64
 FROM ${BASE_IMAGE}
 
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # Coverage floors, not just "0 failures" (backlog #44): the verdict used to read
 # only $summary.Failed, so a fully skipped run printed "All smoke tests passed!"

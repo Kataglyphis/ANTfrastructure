@@ -201,7 +201,13 @@ param(
     # Backlog #18: bypass ONLY the RDNA4 gate (verified green via
     # probe-build-copy.ps1 -Heavy) without disarming the other host gates.
     [switch]$SkipRdna4Gate,
-    [int]$MinFreeGb = 40
+    [int]$MinFreeGb = 40,
+    # Smoke gate parity with build-buildkit.ps1 (2026-08-21): same names, same
+    # defaults, same rule — -SkipSmokeGate is for iterating on the chain
+    # itself, it is NOT a way to ship an unverified image.
+    [switch]$SkipSmokeGate,
+    [int]$SmokeMinPassed = 160,
+    [int]$SmokeMaxSkipped = 3
 )
 
 Set-StrictMode -Version Latest
@@ -320,7 +326,7 @@ function Get-MediaBranchTag {
 # at its first commit. 'auto' therefore runs the ~10s commit probe and caches
 # the verdict per (host build, docker version); a Windows update or Docker
 # upgrade re-probes automatically.
-$script:BuildIsolation = Resolve-BuildIsolation -Isolation $Isolation -Docker $Docker -LogDir $script:LogDir -ProbeScript (Join-Path $PSScriptRoot 'diagnostics\test-process-isolation-commit.ps1')
+$script:BuildIsolation = Resolve-BuildIsolation -Isolation $Isolation -Docker $Docker -LogDir $script:LogDir -ProbeScript (Join-Path $PSScriptRoot 'scripts\diagnostics\test-process-isolation-commit.ps1')
 Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 
 # ── sccache policy (required by default for the media stage) ─────────────────
@@ -878,6 +884,12 @@ try {
     # logic lives here alone and an APP_REF bump rebuilds torch + the cheap
     # final tail only. -TorchBaseImage swaps the parent (e.g. the published
     # :winamd64 image on a host without local chain images).
+    # ONE BUILD_DATE for torch AND final: computed per-stage, the two images of
+    # one run carried different stamps (and re-invocations regenerated the LABEL
+    # layer). The BK driver fixed this 2026-08-16 ($stampArgs); ported here
+    # 2026-08-21.
+    $buildDateStamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+
     if ($Stages -contains 'torch') {
         $torchBase = if ($TorchBaseImage) { $TorchBaseImage } else { $script:ImageTag.media }
         $torchTagResolved = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
@@ -885,7 +897,7 @@ try {
         Write-Host "Orchestr-ANT-ion app stage: $torchBase + $appRef -> $torchTagResolved"
         Invoke-Stage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTagResolved -BuildArgs @{
             BASE_IMAGE = $torchBase
-            BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            BUILD_DATE = $buildDateStamp
             VCS_REF    = Get-BuildVcsRef
             APP_REF    = $appRef
             # Backend extra from the app's pyproject — without this a -Gpu chain
@@ -899,8 +911,39 @@ try {
         # in an earlier run when iterating with -Stages final alone).
         Invoke-Stage -Dockerfile 'windows/Dockerfile' -Tag $FinalTag -BuildArgs @{
             BASE_IMAGE = if ($TorchTag) { $TorchTag } else { $script:ImageTag.torch }
-            BUILD_DATE = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            BUILD_DATE = $buildDateStamp
             VCS_REF    = Get-BuildVcsRef
+        }
+
+        # SMOKE GATE (#44 parity, 2026-08-21): the BK driver has failed the
+        # chain on a red smoke test since 2026-08-14 — this lane ended with
+        # "Done" and zero evidence the image worked, in a repo whose defect
+        # history is dominated by "builds fine, fails to LOAD".
+        # NOT Dockerfile.smoke-gate here: its RUN --mount is BuildKit-only and
+        # this lane's dockerd has no BuildKit. `docker run` is actually the
+        # cleaner form — it enters through the image ENTRYPOINT naturally
+        # (VsDevCmd + ASAN PATH), the very thing the BK gate's RUN has to
+        # reconstruct by hand. Same bind-mount rationale as the Dockerfile:
+        # the CURRENT script + harness run, not the baked copy, and the
+        # verified artifact is never modified by verifying it.
+        if (-not $SkipSmokeGate) {
+            $gateLog = Join-Path $script:LogDir 'stage-smoke-gate.log'
+            $gateCmd = @('run', '--rm',
+                '-v', "$repoRoot\windows\scripts\build\smoke-test-container.ps1:C:\gate\smoke-test-container.ps1",
+                '-v', "$repoRoot\windows\scripts\modules:C:\gate\modules",
+                $FinalTag,
+                'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                '-File', 'C:\gate\smoke-test-container.ps1',
+                '-MinPassed', "$SmokeMinPassed", '-MaxSkipped', "$SmokeMaxSkipped")
+            if ($Gpu) { $gateCmd += '-ExpectGpu' }
+            Write-Host "`n==> [smoke-gate] docker run $FinalTag (log: $gateLog)" -ForegroundColor Cyan
+            & $Docker @gateCmd 2>&1 | Tee-Object -FilePath $gateLog
+            if ($LASTEXITCODE -ne 0) {
+                throw "[smoke-gate] FAILED (exit $LASTEXITCODE) — the image is not shippable; full output: $gateLog"
+            }
+            Write-Host '[smoke-gate] image verified' -ForegroundColor Green
+        } else {
+            Write-Host '[smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
         }
     }
 

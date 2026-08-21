@@ -29,7 +29,7 @@ ARG TENSORRT_VERSION=11.2.1.2
 ARG TENSORRT_ZIP_SHA256="9cdb433f0f3803bc854d4b13eb7bd42a4aef1962749349be62d97c0f64c8f9b6"
 ENV TENSORRT_VERSION="${TENSORRT_VERSION}"
 
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 COPY scripts\host\setup-tensorrt.ps1 C:\temp\scripts\
 COPY downloads C:\temp\downloads
@@ -67,7 +67,7 @@ ARG CUDNN_VERSION=9.25.0.15
 ARG CUDA_INSTALLER_SHA256=d68839fcce644576f0a1c6b066e0c5bc146a62db2fcac9fc6b4e6418e7ec533f
 ARG CUDNN_ZIP_SHA256=1ee69c966cfd43d883d7e00e10b6e3052112a7b2abd2a9b0ef293eea1eae5f1e
 
-SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
 # Narrow COPY — only the script this stage runs (a wildcard `scripts` would bust
 # the CUDA layer on every unrelated script edit). Modules were already populated

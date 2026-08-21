@@ -57,6 +57,35 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
         Assert-True ($bad.Count -eq 0) ("solve-order drift (silent stale-ancestor builds):`n  " + ($bad -join "`n  "))
     }
 
+    It 'the two production sccache ENV blocks declare identical key sets and ARG defaults' {
+        # media-builder `common` vs media-merge-builder `built`: not FROM-related
+        # (ENV crosses no FROM boundary), so they are hand-mirrored twins — the
+        # 2026-08-21 audit caught SCCACHE_DIR hardcoded and SCCACHE_FORCE_LOCAL
+        # missing on the merge side. This pins the sets AND the ARG defaults.
+        $mergeText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
+        $getKeys = { param($text)
+            [regex]::Matches($text, '(?m)^\s*(SCCACHE_[A-Z_]+)=') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+        }
+        $a = & $getKeys $dfText
+        $b = & $getKeys $mergeText
+        Assert-Equal ($a -join ',') ($b -join ',') 'sccache ENV key sets drifted between the two files'
+        # ARG defaults: compare on the INTERSECTION of names — media-builder
+        # legitimately declares onnx-stage-only knobs (SCCACHE_CUDA_LAUNCHER,
+        # SCCACHE_REPRO_CUDA_LLM) with no merge-side counterpart.
+        $getArgs = { param($text)
+            $t = @{}
+            [regex]::Matches($text, '(?m)^ARG (SCCACHE_[A-Z_]+)=("[^"]*")') | ForEach-Object { $t[$_.Groups[1].Value] = $_.Groups[2].Value }
+            $t
+        }
+        $argsA = & $getArgs $dfText
+        $argsB = & $getArgs $mergeText
+        $drift = @()
+        foreach ($k in ($argsA.Keys | Where-Object { $argsB.ContainsKey($_) })) {
+            if ($argsA[$k] -ne $argsB[$k]) { $drift += "$k : $($argsA[$k]) vs $($argsB[$k])" }
+        }
+        Assert-True ($drift.Count -eq 0) ('sccache ARG defaults drifted on shared names: ' + ($drift -join '; '))
+    }
+
     It 'driver builds every parent BEFORE the stage that consumes it' {
         $bad = @()
         # MEDIA_CORE_X_IMAGE is produced by the driver call targeting media-core-built-x
