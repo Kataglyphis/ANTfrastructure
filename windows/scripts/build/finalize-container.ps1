@@ -83,8 +83,14 @@ function Get-DirectoryVersion {
     try {
         if (-not (Test-Path $Path)) { return $null }
         if ($LeafIsVersion) { return (Split-Path $Path -Leaf) }
+        # NUMERIC version sort where the name parses as one (audit 2026-08-21:
+        # the lexical Sort-Object Name recorded MSVC toolset 14.9.x as newer
+        # than 14.10.x in the provenance manifest); lexical stays the fallback
+        # for non-version names.
         $child = Get-ChildItem $Path -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne 'current' } | Sort-Object Name | Select-Object -Last 1
+            Where-Object { $_.Name -ne 'current' } |
+            Sort-Object -Property @{ Expression = { $v = $null; if ([version]::TryParse($_.Name, [ref]$v)) { $v } else { $null } } }, Name |
+            Select-Object -Last 1
         if ($child) { return $child.Name }
         return $null
     } catch {

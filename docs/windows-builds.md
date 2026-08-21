@@ -2083,6 +2083,44 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 - **Restore `disk,webdav` only after WCOW cache mounts are PROVEN** (#99
   re-verification recipe in the archive; also listed under Pending).
 
+### P9 — 2026-08-21 audit ROUND 2 residue (deferred with reasons; the fixes
+### themselves landed same day in 72d92fb1 + e680fb4b, suite 523->537)
+
+- **140 [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
+  comment.** `..\..\..` from scripts/python resolves to the ContainerHub
+  checkout root, the comment claims "the parent of the ContainerHub checkout".
+  All 8 python/rust lane drivers have ZERO in-repo callers — the real contract
+  lives in the consumer repos. Verify against a consumer checkout, then fix
+  either the comment or the depth. Highest-value unknown of the outer ring.
+- **141 [S·★] the four `Invoke-Ci*.ps1` share a 30-line context/log/uv
+  preamble that has already drifted once** (CiTests adds Write-LogError/
+  Success the others lack) — `New-CiSession` in Initialize-CiEnvironment.
+  Consumer-facing lane: change alongside a consumer-repo check.
+- **142 [S·decision] WindowsAgenticLoop.Common.psd1 is an inert manifest**
+  (every consumer imports the .psm1 directly; the export whitelist and the
+  PowerShellVersion gate are not in effect). Either wire consumers to the
+  manifest or delete it — consumer-repo check required first.
+- **143 [S·decision] `WindowsContainerLog.Common` (97 LOC, 3 exports) has
+  ZERO references anywhere in-repo AND is not on the AGENTS.md consumer-API
+  list.** The only true dead-module candidate — but four restore incidents
+  say: grep the consumer repos before deleting anything.
+- **144 [M·★] untested-orchestrator pattern:** in six library modules the
+  ENTRY POINT is a dead export while only leaf helpers have tests
+  (Invoke-VulkanValidationRun, Invoke-WasmOpt, Invoke-SlangShaderCompile,
+  Invoke-CmakeConfigureAndBuild, Invoke-BuildCodeQL,
+  Get-ReusableBuildContainer) — the composed path is untested and unused
+  in-repo. Consumer-facing: add orchestrator tests, don't prune.
+- **145 [S·★] `WindowsMsix.Signing`: missing-elevation degrades to a warning
+  with no documented reason** — the exact "silent skip" shape Slang.Common
+  documents as a past CI-green-with-no-output incident. Decide: throw, or
+  document why warning is right. Also its exported Test-Administrator
+  duplicates Shared's expression (consumer API — coordinate before touching).
+- **146 [S·note] setup-rust-toolchain: manifest authenticity is self-asserted
+  after the local-mirror rewrite** (per-component hashes survive; accepted
+  risk) and its ~70-line sccache-from-source block is a split candidate;
+  setup-scoop-tools' ~180 top-level lines want #region structure. Both ride
+  a future base-tier window, never alone.
+
 ### Pending host/upstream actions (not refactors — do not let these evaporate)
 
 
@@ -2110,6 +2148,11 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
      (#99): probe twice (ON-mount row must be clean on the SECOND, inheriting
      run), then one media build with the chain re-enabled and genai at 0 write
      errors.
+- **hcsshim follow-ups still unfiled** (package README status header,
+  re-checked 2026-08-21): the ISSUE.md issue and the
+  Windows-Containers#547 comment for microsoft/hcsshim#2855 (the draft
+  PR itself IS filed; the package's submission recipe is now marked
+  HISTORICAL so nobody files a duplicate).
 - **Post the upstream issues** — POSTED 2026-08-13:
   mozilla/sccache → https://github.com/mozilla/sccache/issues/2808 (nvcc
   deadlock + miscompile), google-ai-edge/LiteRT-LM →
