@@ -101,7 +101,15 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     LITERT_BIN="C:\runtime\lib\litert\bin" `
     LITERT_LM_ROOT="C:\runtime\lib\litert-lm" `
     LITERT_LM_INCLUDE="C:\runtime\lib\litert-lm\include" `
-    LITERT_LM_LIB="C:\runtime\lib\litert-lm\lib" `
+    LITERT_LM_BIN="C:\runtime\lib\litert-lm\bin" `
+    # NO LITERT_LM_LIB: LiteRT-LM ships here as an EXECUTABLE deliverable
+    # (bin\litert_lm_main.exe + its co-located runtime DLLs), built through the
+    # bazel path, which produces no installable library set. The variable was
+    # declared 2026-07-05 and pointed at a directory that never existed; the
+    # #127 smoke assertion (2026-08-21) is what finally caught it, eleven weeks
+    # later, because until then nothing read it. If LiteRT-LM ever has to be
+    # LINKED against, that is a build-side change first (export the libs), and
+    # the ENV follows — not the other way round.
     OPENCV_ROOT="C:\runtime\lib\opencv5" `
     OPENCV_INCLUDE="C:\runtime\lib\opencv5\include" `
     OPENCV_LIB="C:\runtime\lib\opencv5\x64\vc18\lib" `

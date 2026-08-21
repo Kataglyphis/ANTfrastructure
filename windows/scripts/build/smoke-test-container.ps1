@@ -900,7 +900,6 @@ Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
 # ============================================================================
 $litertLmRoot = if ($env:LITERT_LM_ROOT) { $env:LITERT_LM_ROOT } else { 'C:\runtime\lib\litert-lm' }
 $litertLmInclude = Join-Path $litertLmRoot 'include'
-$litertLmLibDir = Join-Path $litertLmRoot 'lib'
 
 Assert-DirectoryExists -Path $litertLmRoot -Description 'LiteRT-LM root dir'
 
@@ -909,10 +908,16 @@ if (Test-Path $litertLmInclude) {
     Assert-ArtifactPresent -Root $litertLmInclude -Filter '*.h' -Description 'LiteRT-LM headers'
 }
 
-Assert-DirectoryExists -Path $litertLmLibDir -Description 'LiteRT-LM lib dir'
-if (Test-Path $litertLmLibDir) {
-    Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.lib' -Description 'LiteRT-LM lib files'
-    Assert-ArtifactPresent -Root $litertLmLibDir -Filter '*.dll' -Description 'LiteRT-LM DLL files'
+# NO lib\ assertion: LiteRT-LM is an EXECUTABLE deliverable here (the bazel
+# path builds bin\litert_lm_main.exe + co-located runtime DLLs and installs no
+# library set). Asserting a lib\ dir asserted a promise the build never made —
+# see Dockerfile.media-merge-builder's ENV comment. What IS load-bearing is the
+# binary and its DLLs, and the smoke-RUN below already covers that.
+$litertLmBinDir = Join-Path $litertLmRoot 'bin'
+Assert-DirectoryExists -Path $litertLmBinDir -Description 'LiteRT-LM bin dir'
+if (Test-Path $litertLmBinDir) {
+    Assert-ArtifactPresent -Root $litertLmBinDir -Filter '*.exe' -Description 'LiteRT-LM executable'
+    Assert-ArtifactPresent -Root $litertLmBinDir -Filter '*.dll' -Description 'LiteRT-LM runtime DLLs'
 }
 
 # Smoke-RUN litert_lm_main.exe, not just check it exists: the shipped binary once linked
@@ -1192,12 +1197,13 @@ $envPointerNames = @(
     'SCOOP_HOME', 'SCOOP_GLOBAL', 'SCOOP_USER_SHIMS',
     'GIT_CMD', 'GIT_BIN', 'GIT_USRBIN',
     'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'OPENCV_ROOT', 'OPENCV_BIN', 'OPENCV_LIB', 'OPENCV_INCLUDE',
-    # FFMPEG_ROOT/LITERT_LM_INCLUDE/LITERT_LM_LIB joined 2026-08-21 (#127):
+    # FFMPEG_ROOT/LITERT_LM_INCLUDE joined 2026-08-21 (#127); LITERT_LM_BIN replaced
+    # LITERT_LM_LIB the same day, once the assertion proved that path never existed:
     # they were declared in the merge image with zero readers repo-wide —
     # asserting them here turns layout documentation into a checked contract.
     'FFMPEG_ROOT', 'FFMPEG_BIN', 'FFMPEG_LIB', 'GSTREAMER_BIN', 'PYTHON_BUILD_BIN', 'TEMP_DIR',
     'TVM_ROOT', 'TVM_LIBRARY_PATH', 'LITERT_ROOT', 'LITERT_INCLUDE', 'LITERT_LIB', 'LITERT_BIN',
-    'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_LIB', 'PYTHON_WHEELS',
+    'LITERT_LM_ROOT', 'LITERT_LM_INCLUDE', 'LITERT_LM_BIN', 'PYTHON_WHEELS',
     'IREE_ROOT', 'IREE_BIN',
     # Hard-assert TORCH_APP_DIR here: section 21 deliberately SKIPs when it is
     # unset (old-image tolerance), so without this pointer check a lost env var
