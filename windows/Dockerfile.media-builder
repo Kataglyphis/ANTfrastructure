@@ -39,25 +39,11 @@ ARG SCCACHE_LOG="warn"
 # and only cache. To restore the two-level layout later:
 #   build-buildkit.ps1 ... -BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav
 #
-# WHY THE DISK LEVEL IS OFF (2026-08-16, backlog #99). The local L0 tier lives on
-# a BuildKit cache mount, and on Windows those LOSE WRITES once the directory
-# holds objects that an EARLIER RUN put there. Isolated with one program, one
-# moment, two target directories, 250 unique objects each:
-#
-#   C:\sccache\bulk-inherit  (cache mount, inherited content)  158 of 250 FAILED
-#   C:\bulk-plain-inherit    (plain container filesystem)        0 of 250 failed
-#
-# Same sccache, same config, back to back — only the target filesystem differed.
-# Both conditions are required: a FRESH directory on the same mount writes 250 of
-# 250 cleanly. That is exactly the chain's stage order, and exactly what the
-# builds showed: onnx fills its OWN directory and mostly succeeds (28 failures of
-# 1488 with no chain), opencv INHERITS onnx's and fails 1849 of 1862, genai
-# inherits a fuller one and fails 157 of 157 — identical with and without the
-# multi-level chain, so sccache is the victim here, not the cause.
-#
-# The WebDAV remote is not a cache mount and is unaffected: with this default,
-# genai went 157 write errors -> 0, and the next run served all 157 from cache —
-# its first cache hits ever.
+# WHY THE DISK LEVEL IS OFF (2026-08-16, backlog #99): Windows BuildKit cache
+# mounts LOSE WRITES into a directory an earlier RUN populated (isolated A/B:
+# 158/250 failures on the inherited mount dir vs 0/250 on plain fs — full
+# measurement + per-stage failure ladder in docs/windows-builds.md, #99
+# archive). The WebDAV remote is not a cache mount and is unaffected.
 #
 # RESTORE THE TWO-LEVEL LAYOUT once BuildKit's WCOW cache mounts mature (support
 # only landed in v0.21.0, moby/buildkit#5603 / PR #5708; a mounter race was fixed
@@ -228,16 +214,14 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      C:\bkmods\
 
-# ── media-core version env — SHARED ANCESTOR of both lanes ───────────────────
-# The classic `media-core` stage and the BK compile stages used to declare this
-# ARG+ENV block twice (a `media-core-bk` twin), kept in step by sync_versions.py
-# and BuildKit.TwinParity.Tests.ps1. Declaring it ONCE and descending both lanes
-# from it makes divergence structurally impossible instead of policed.
-# The BK lane still must not inherit the classic stage's script/patch COPY
-# layers — hence a shared ANCESTOR rather than one lane building on the other.
-# CLASSIC-lane ancestor only since #49 (2026-08-19): the BK compile stages
-# declare their component keys per stage (see media-core-built-onnx below),
-# so a single-component bump no longer cascades through the whole branch.
+# ── media-core version env — CLASSIC-lane ancestor (since #49, 2026-08-19) ───
+# The classic `media-core` stage runs the whole chain in one stage and takes
+# its version keys from here. The BK compile stages deliberately do NOT
+# descend from this (they declare their component keys per stage, see
+# media-core-built-onnx below, so a single-component bump no longer cascades
+# through the whole branch); TwinParity asserts the two key SETS stay equal.
+# History: both lanes once shared this ancestor (and before that, a hand-kept
+# media-core-bk twin) — see git log on this header for the evolution.
 FROM common AS media-core-env
 
 ARG ONNXRUNTIME_VERSION=v1.29.0

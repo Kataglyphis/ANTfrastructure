@@ -2624,36 +2624,36 @@ Upstream follow-ups: see "Pending" at the bottom.
 ### 9377c0ac, 1e38346e, 1dfbde2e, 48a87c15 + the 7-bug fix pair 48f5733f/5eb37c55.
 ### These are the DEFERRED remainders, each with the reason it waited.)
 
-- **120 [M·★★] Assert-Elevated adoption, remaining ~9 host sites.** The
+- **120 DONE 2026-08-21 (7 assert sites converted; the 3 $isAdmin FLAG sites are mode logic, untouched by design). Original: Assert-Elevated adoption, remaining ~9 host sites.** The
   function exists in Shared (2 adopters). The rest need a Shared import ADDED
   to elevated tools — decide per script; NEVER for the module-free repair
   pair (reset-container-locks, repair-windows-componentstore — documented in
   the function help).
-- **121 [S·★★] Get-GpuEnvironment: add HasCuda, collapse the 6 divergent
+- **121 DONE 2026-08-21 (HasCuda on the env table, 8 scripts converted). Original: Get-GpuEnvironment: add HasCuda, collapse the 6 divergent
   "is this the CUDA lane?" predicates.** Since the #45 fail-closed fix,
   `GpuType -eq 'nvidia'` already guarantees CudaRoot; 5 sites carry dead
   defensive Test-Paths (build-iree's terse form is the correct one).
-- **122 [M·★★] litert-lm Phase 5 split (716 lines, 54% of the file) into
+- **122 DONE 2026-08-21 (5a-5e at the audit seams; ffmpeg 6 phases + onnx 6 phases via script-level trap). Original: litert-lm Phase 5 split (716 lines, 54% of the file) into
   5a-5e at the audit's seams; ffmpeg/onnx get phase brackets (#109 T2).**
   Bind-mount cache keys — land inside a planned rebuild window.
-- **123 [L·★, risky] the 19 litert-lm Edit-SourceFile CMake patches → real
+- **123 CLOSED 2026-08-21 as WONTFIX per Source Patch Policy #7: the 19 calls live exclusively in the FROZEN CMake fallback (primary path is Bazel, zero patches); several transforms are env-pin-parameterized and cannot be static diffs. Original: the 19 litert-lm Edit-SourceFile CMake patches → real
   .patch files** (pinned upstream 0.16.1; patches/litert-lm/ precedent
   exists). High-touch: per-patch verification ride required.
-- **124 [S·★★] smoke-test helpers, round 2:** Use-SmokeScratch (10 sites, 3
+- **124 DONE 2026-08-21 (Initialize-SmokeScratch scrub-then-create at all 10 sites kills the dirty-reuse hazard; the ComponentRoot half closed by finding — env-pointer-first + the asserted ENV contract already unify the paths). Original:** Use-SmokeScratch (10 sites, 3
   leak on throw), Test-ComponentRoot (5 sites — including the absolute-path
   vs Join-Path -InstallDir mismatch for litert/litert-lm), and
   Get-ComponentInstallRoot as the single owner of the lib\<component> layout
   table (16 scattered literals).
-- **125 [S·★] Invoke-CmakeSourceBuild (configure/build/stats trio).** Only 4
+- **125 CLOSED 2026-08-21 as deliberate DROP: only 4/7 sites contiguous, and the per-line variance (-InstallConfig, missing -Install, #43/#74/#3 rationale comments) is information a wrapper would bury. Original: Invoke-CmakeSourceBuild (configure/build/stats trio).** Only 4
   of the audit's 7 sites are actually contiguous (ninja patching sits between
   configure and build in onnx/opencv/genai) — extract for tvm×2/litert/iree
   or drop deliberately.
-- **126 [M·★★] tests hygiene:** collapse PinParity's 3 parallel scanner
+- **126 DONE 2026-08-21 (Get-RepoRoot in the harness + versions.env readers converted; Get-Pin wraps ConvertFrom-VersionsEnv; ONE Get-PinScanAst owns enumeration/parse for W1/W1b/W1c — matchers stay separate by design; Invoke-Thing was a false positive, both defs are here-string fixtures). Original:** collapse PinParity's 3 parallel scanner
   families (~200 lines); Get-RepoRoot in TestHarness (9 spellings of the
   repo-root walk, $PSCommandPath vs $PSScriptRoot under dot-sourcing);
   Pins.CanonicalValues' hand-rolled Get-Pin → ConvertFrom-VersionsEnv; the
   two same-name Invoke-Thing test helpers (shared-session collision).
-- **127 [S·★] Dockerfile leftovers:** extract ffmpeg-provenance's 22-line
+- **127 DONE 2026-08-21 (provenance+llvm-config probes extracted to archive/ scripts, Dockerfiles deleted; props file checked in + COPY; TRT zip finder newest-by-version in setup-tensorrt; LTSC inline default dropped; ONNX_GPU_VARIANT removed, 3 path ENVs joined the smoke pointer contract; B6+B4 parity tests added). Original:** extract ffmpeg-provenance's 22-line
   inline dumpbin walker + llvm-config's inline body to diagnostics scripts
   (both files carry quoting-trap scar tissue); check in the CPython
   Directory.Build.props as a real file (toolchain-builder:36's 300-char
@@ -2663,17 +2663,17 @@ Upstream follow-ups: see "Pending" at the bottom.
   (ONNX_GPU_VARIANT/LITERT_LM_INCLUDE/LITERT_LM_LIB/FFMPEG_ROOT) — add to
   smoke's $envPointerNames or delete; classic-COPY vs BK-mount script-set
   parity test (B6) + buildmods 5-module-core parity test (B4).
-- **128 [S·★] chain wrappers:** build-litert-all's 26-line partition dup →
+- **128 DONE 2026-08-21 (chain stages accept an Invoke scriptblock, build-litert-all collapsed to one chain call; gstreamer got the sccache session pair; litert-lm-bazel needs none — no sccache in the bazel lane). Original:** build-litert-all's 26-line partition dup →
   extend the $Stages entry shape; route gstreamer + litert-lm-bazel through
   Start-/Complete-SccacheServerSession (they run outside the chain and never
   get a fresh server/error-log dump).
-- **129 [S·★] pins without versions.env keys:** tvm's LLVM SHA256 table and
+- **129 DONE 2026-08-21 (LLVM_WINDOWS_SRC_SHA256 key in versions.env; the litert-lm SHAs carry an explicit patch-anchor exemption note). Original:** tvm's LLVM SHA256 table and
   litert-lm's two baked 40-char git SHAs (:363) + stale absl anchor (:349) —
   give them keys or a documented exemption.
-- **130 [M·★] media-builder comment archaeology (~250 of 345 comment lines)
+- **130 DONE 2026-08-21 with a SMALLER footprint than audited: on close reading most of the 345 comment lines are knob-side operating rules or live recovery pointers, not archaeology — relocated/trimmed the #99 measurement narrative (docs pointer) and rewrote the stale-then-corrected media-core-env header; smoke-gate/base headers judged operative. Original: media-builder comment archaeology (~250 of 345 comment lines)
   → docs/ under stable anchors, 2-4 line summaries + links stay.** Same for
   smoke-gate/base headers. Relocation, NOT deletion — owner-reviewed.
-- **131 [S·★] scripts root leftovers:** Invoke-Lint.ps1/entrypoint.cmd homes;
+- **131 CLOSED 2026-08-21 by DECISION (see commit c92c5283): all three root files stay (cargo-retry is the consumer-CI class the 2026-08-08 sweep incident restored), language-lane dirs stay. Original:** Invoke-Lint.ps1/entrypoint.cmd homes;
   `cargo-retry.cmd` referenced ONLY by AGENTS.md — confirm dead or re-wire;
   certificates/ python/ rust/ are language-lane groupings that cut across the
   verb scheme — decide, don't drift.
