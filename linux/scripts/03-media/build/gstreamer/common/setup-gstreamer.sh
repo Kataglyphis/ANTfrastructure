@@ -484,6 +484,19 @@ echo "Using existing Python venv (expected at /opt/python/.venv)..."
 # Executor pins per supply-chain audit #18 (inline defaults = versions.env).
 uv pip install -U pip "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" "wheel==${PY_WHEEL_VERSION:-0.47.0}"
 uv pip install -U "meson==${PY_MESON_VERSION:-1.11.2}" "ninja==${PY_NINJA_VERSION:-1.13.0}"
+# MESON-GI (2026-08-21): meson 1.12.0 (B3 bump) resolves
+# gobject-introspection-1.84's `subproject('glib')` reference differently and
+# the riscv64 CROSS introspection build dies `Subproject "subprojects/glib"
+# required but not found` — reproduced WITH and WITHOUT the ports glib
+# package, exonerating the earlier poison theory. wave-3 built this exact
+# path on meson 1.11.2. Pin 1.11.2 for the riscv64 cross gst build ONLY
+# (amd64 native + arm64 no-introspection are fine on 1.12); re-bump when
+# meson/g-i fix the resolution (watch item MESON-GI).
+if command -v cross_target_arch >/dev/null 2>&1 \
+   && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
+  echo "riscv64 cross: pinning meson 1.11.2 for the g-i glib-subproject resolution (MESON-GI)"
+  uv pip install "meson==1.11.2"
+fi
 # pycairo is a host Python build dependency for pygobject fallback. Install it
 # only when Python bindings are enabled, since the cross-compiler CC/CXX env
 # vars leak into uv and cause Meson's "Could not invoke" in cross builds.
