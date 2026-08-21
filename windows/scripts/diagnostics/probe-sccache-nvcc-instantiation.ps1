@@ -19,7 +19,7 @@
     --dryrun plan. A symbol present bare but missing wrapped = the bug,
     localized to whichever dryrun step sccache skipped or mis-parsed.
 
-    Runs INSIDE a container (Dockerfile.nvcc-instantiation-probe). Compile
+    Runs INSIDE a container (Dockerfile.probe -ProbeScript this file). Compile
     only - no GPU needed.
 #>
 [CmdletBinding()]

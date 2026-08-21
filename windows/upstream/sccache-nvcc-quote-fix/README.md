@@ -38,7 +38,7 @@ quoting. One hunk in `fold_env_vars_or_split_into_exe_and_args`.
 ## Verification
 
 `windows/scripts/probe-sccache-patch-verify.ps1` (via
-`Dockerfile.sccache-patch-verify`): builds the pin + patch in-container and
+`Dockerfile.probe` with `-ProbeScript probe-sccache-patch-verify.ps1`): builds the pin + patch in-container and
 re-runs the single-TU replay (`probe-onnx-tu-replay.ps1`, which carries the
 full forensic chain: symbol diff, define delta, intermediate stub counts,
 tokenizer autopsy).

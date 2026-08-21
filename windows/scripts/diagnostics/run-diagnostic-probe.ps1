@@ -20,8 +20,15 @@
       * `probe complete` marker — a solve can succeed with the probe never
         executing; without the marker check that reads as a clean run.
 
+.PARAMETER ProbeScript
+    Script under windows/scripts/diagnostics/ (e.g. probe-sccache-2726-repro.ps1,
+    or archive/probe-x.ps1). Runs it through the shared Dockerfile.probe —
+    the normal way to run a probe since the 2026-08-21 consolidation.
+
 .PARAMETER Dockerfile
-    Filename under windows/ (e.g. Dockerfile.sccache-write-probe).
+    Filename under windows/ (e.g. Dockerfile.sccache-write-probe) — only for
+    the few probes with a bespoke Dockerfile (special ENV/mount shapes).
+    Mutually exclusive with -ProbeScript.
 
 .PARAMETER BaseImage
     Image the probe runs against. Probes measure a specific artifact — pass the
@@ -38,7 +45,8 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$Dockerfile,
+    [string]$ProbeScript = '',
+    [string]$Dockerfile = '',
     [Parameter(Mandatory)][string]$BaseImage,
     [string[]]$BuildArg = @(),
     [string]$VerdictPattern = '\[ OK \]|\[FAIL\]',
@@ -48,6 +56,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+
+if ([string]::IsNullOrWhiteSpace($ProbeScript) -eq [string]::IsNullOrWhiteSpace($Dockerfile)) {
+    throw 'pass exactly ONE of -ProbeScript (shared Dockerfile.probe) or -Dockerfile (bespoke probe Dockerfile)'
+}
+if ($ProbeScript) {
+    $probePath = Join-Path (Join-Path (Split-Path -Parent $PSScriptRoot) 'diagnostics') $ProbeScript
+    if (-not (Test-Path $probePath)) { throw "-ProbeScript '$ProbeScript' not found at $probePath" }
+    $Dockerfile = 'Dockerfile.probe'
+    $BuildArg = @("PROBE_SCRIPT=$ProbeScript") + $BuildArg
+    if (-not $LogName) { $LogName = (Split-Path $ProbeScript -Leaf) -replace '\.ps1$', '.log' }
+}
 
 # #108: repo layout is scripts/<group>/ while every container mount stays FLAT
 # (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
