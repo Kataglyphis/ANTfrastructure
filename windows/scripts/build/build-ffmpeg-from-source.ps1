@@ -371,8 +371,11 @@ if ($ffToolchain -eq 'clang-cl') {
     # config.mak). Opt out: FFMPEG_SCCACHE=0. Acceptance criterion is `Compile
     # requests` > 0 in the stage stats, NOT the hit rate (uncached components
     # are invisible in aggregate hit rates).
+    # Test-SccacheRemoteConfigured mirrors the cmake-side gate in
+    # Invoke-CmakeConfigure: remote backend only — a container-local cache
+    # would only bloat layers (same invariant, same reason).
     $ffSccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
-    $ffUseLauncher = [bool]($ffSccache -and $env:FFMPEG_SCCACHE -ne '0')
+    $ffUseLauncher = [bool]($ffSccache -and (Test-SccacheRemoteConfigured) -and $env:FFMPEG_SCCACHE -ne '0')
     Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
     $confFlags += '--toolchain=msvc', '--cc=clang-cl', '--ld=lld-link'
 } else {

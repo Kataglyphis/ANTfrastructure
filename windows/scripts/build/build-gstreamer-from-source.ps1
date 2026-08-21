@@ -689,8 +689,11 @@ int _isatty(int);
         $ortLib = Join-Path $ortRoot 'lib'
         $ortInclude = Join-Path $ortRoot 'include'
         if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
-        $ortVersion = ([string]$env:ONNX_VERSION).TrimStart('v')
-        if (-not $ortVersion) { $ortVersion = '1.28.0' }
+        # Same env-name order as build-onnx-from-source.ps1: ONNXRUNTIME_VERSION
+        # is what the BK lane sets; ONNX_VERSION only exists in the merge image.
+        # Reading only the latter wrote a 1.28.0 .pc against a 1.29.0 install in
+        # standalone runs — and passed the >= 1.16.1 constraint silently.
+        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.29.0' -StripVPrefix
         # ORT's headers sit at include\ AND include\onnxruntime\core\session on
         # some layouts; both are handed over so the plugin's #include resolves
         # either way.
