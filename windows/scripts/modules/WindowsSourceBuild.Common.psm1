@@ -1480,7 +1480,8 @@ Export-ModuleMember -Function @(
     'Complete-SourceBuildChain',
     'Start-SccacheServerSession',
     'Complete-SccacheServerSession',
-    'Stop-LingeringBuildProcess',
+    # Stop-LingeringBuildProcess: internal (chain + ninja retry) — unexported
+    # 2026-08-21, zero external callers.
     'Export-BuildHandoff',
     'Import-BuildHandoff',
     'Clear-BuildScratch',

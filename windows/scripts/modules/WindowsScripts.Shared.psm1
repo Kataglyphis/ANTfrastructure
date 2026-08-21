@@ -636,19 +636,29 @@ function Get-PreferredToolPath {
     return $null
 }
 
-function Resolve-PreferredTool {
+function Assert-Elevated {
+    <#
+    .SYNOPSIS
+        Throws (or, with -Interactive, prompts and exits) unless the current
+        process runs elevated. One home for the admin gate that existed as 13
+        hand-rolled copies with 9 different messages (2026-08-21 audit).
+        NB the module-free repair tools (reset-container-locks,
+        repair-windows-componentstore) keep their inline check BY DESIGN —
+        a wedged-stack repair must not depend on a module import.
+    #>
     param(
-        [Parameter(Mandatory)]
-        [string]$CommandName,
-        [string[]]$CandidatePaths = @()
+        [string]$Reason = '',
+        [switch]$Interactive
     )
-
-    $toolPath = Get-PreferredToolPath -CommandName $CommandName -CandidatePaths $CandidatePaths
-    if ($toolPath) {
-        Add-DirectoryToPath (Split-Path $toolPath -Parent)
+    $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { return }
+    $msg = if ($Reason) { "Run ELEVATED ($Reason)." } else { 'Run ELEVATED.' }
+    if ($Interactive) {
+        Write-Host $msg -ForegroundColor Red
+        Read-Host 'Enter'
+        exit 1
     }
-
-    return $toolPath
+    throw $msg
 }
 
 # ── Tool guards ───────────────────────────────────────────────────────────────
@@ -697,11 +707,13 @@ function ConvertTo-NormalizedVersion {
 
 Export-ModuleMember -Function @(
     'Assert-Command',
+    'Assert-Elevated',
     'ConvertTo-NormalizedVersion',
-    'Add-DirectoryToPath',
+    # Add-DirectoryToPath: internal helper of Add-DirectoriesToPath (unexported
+    # 2026-08-21, zero external callers). Resolve-PreferredTool deleted same
+    # day: fully dead (zero callers anywhere).
     'Add-DirectoriesToPath',
     'Get-PreferredToolPath',
-    'Resolve-PreferredTool',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

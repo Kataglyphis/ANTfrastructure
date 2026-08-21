@@ -113,23 +113,12 @@ if (-not $LogPath) { $LogPath = Join-Path $repoRoot 'out\rebuild-host-vhdx.log' 
 if (-not $NewVhdxPath) { $NewVhdxPath = [IO.Path]::ChangeExtension($VhdxPath, $null) + 'new.vhdx' }
 $oldVhdxPath = "$VhdxPath.old"
 
-$transcript = [System.Collections.Generic.List[string]]::new()
-function Write-Step {
-    param([string]$Message, [string]$Color = 'Gray')
-    $line = '[{0}] {1}' -f (Get-Date -Format 'HH:mm:ss'), $Message
-    $transcript.Add($line)
-    Write-Host $line -ForegroundColor $Color
-}
-
-function Save-Transcript {
-    try {
-        New-Item -ItemType Directory -Force -Path (Split-Path $LogPath -Parent) | Out-Null
-        Set-Content -Path $LogPath -Value ($transcript -join [Environment]::NewLine) -Encoding UTF8
-        Write-Host "log: $LogPath" -ForegroundColor DarkGray
-    } catch {
-        Write-Warning "could not write log to ${LogPath}: $($_.Exception.Message)"
-    }
-}
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
+$hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
+$LogPath = $hostLog.LogPath
+# Thin local wrappers so the existing call sites keep their signature.
+function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
+function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
 # Total bytes and file count under a root, used to compare source and copy.
 # Access errors are counted separately rather than swallowed: a mismatch that
@@ -304,13 +293,7 @@ if (-not $SwapOnly) {
 
 if (-not (Test-Path $NewVhdxPath)) { throw "no replacement to swap in: $NewVhdxPath" }
 
-Write-Step '--- stopping services ---'
-$stopped = [System.Collections.Generic.List[string]]::new()
-foreach ($s in $Service) {
-    try { Stop-Service $s -Force -ErrorAction Stop; $stopped.Add($s); Write-Step "$s stopped" }
-    catch { Write-Step ('{0} STOP ERROR: {1}' -f $s, $_.Exception.Message) 'Yellow' }
-}
-Start-Sleep -Seconds 3
+$stopped = Stop-HostServices -Log $hostLog -Service $Service
 
 Write-Step ('--- detaching the source ({0}:) ---' -f $sourceLetter)
 try {

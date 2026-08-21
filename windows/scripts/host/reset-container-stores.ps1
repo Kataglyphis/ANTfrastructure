@@ -12,18 +12,15 @@
 $ErrorActionPreference = 'Continue'
 Set-StrictMode -Off
 
-$principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host 'MUST run elevated' -ForegroundColor Red; Read-Host 'Enter'; exit 1
-}
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-
 # Tool resolution via the shared candidate-list owner (backlog #2).
 # #108: repo layout is scripts/<group>/ while every container mount stays FLAT
 # (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
 # beside this script in the flat layout and one level up in the repo layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1')
+
+Assert-Elevated -Interactive
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 function Say([string]$m, [string]$c = 'Gray') { Write-Host ('[{0}] {1}' -f (Get-Date -Format HH:mm:ss), $m) -ForegroundColor $c }
 
