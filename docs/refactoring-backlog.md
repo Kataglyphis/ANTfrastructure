@@ -43,8 +43,13 @@ rounds, absorbed by retries — heuristic adequate; PAR4-hard stays
 trigger-gated. PAR1 verdict: sdk 2.9× stands; media-parallel WORKS post-PAR2
 but a clean full-chain timing needs one undisturbed run (next rebuild).
 
-- **RV1-GST-PC — riscv64 cross pkg-config .pc expansion defect** [M·★★★,
-  ROOT-CAUSED across 6 live failures] ports' riscv64 glib-2.0.pc expands
+- **RV1-GST-PC — riscv64 cross pkg-config .pc expansion defect** [M·★★★ →
+  LARGELY DISSOLVED 2026-08-21, re-lift validating in wave5c: the
+  introspection break was actually MESON-GI (meson 1.12, reproduced with
+  clean sysroot — pin 1.11.2 scoped); with introspection back our
+  /opt/gstreamer exports working glib .pcs again and pass-2 gst SUCCEEDED
+  on riscv64 (videoio links gst libs). Remaining original scope = only the
+  ports-.pc wrapper IF ports gst-dev is ever wanted again + freetype-OFF.] ports' riscv64 glib-2.0.pc expands
   prefix/libdir EMPTY in cross pkg-config contexts and POISONS every glib
   lookup once installed (opencv imported targets, libcamera gst element
   compile+link). Additionally our introspection-less /opt/gstreamer exports
@@ -75,11 +80,15 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 
 ## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
 
-- **OCV-FF1 — opencv FindFFMPEG probe quirk** [M·★★, ROOT-CAUSED] shipped
-  /opt/ffmpeg HAS libswresample.so+.pc, but opencv-5.0.0's probe never emits
-  a swresample line → HAVE_FFMPEG=NO. Fix opencv-side (OPENCV_FFMPEG_* hints
-  or probe patch). SMK1's FFMPEG check stays advisory until then. NOTE:
-  check the wave-4 result first — new env may have changed the probe.
+- **OCV-FF1 — opencv FFMPEG try_compile link-dir gap** [M·★★, TRUE ROOT
+  FOUND 2026-08-21 → FIX STAGED, validating in wave5c] The swresample-probe
+  theory was WRONG (5.0.0 doesn't probe it): the wave-4 logs show
+  `WARNING: Can't build ffmpeg test code` — detect_ffmpeg's try_compile
+  gets the four -l names but no link dir for the custom /opt/ffmpeg prefix
+  → test link dies on transitive libswresample → HAVE_FFMPEG=FALSE. Fix:
+  LDFLAGS -L/-rpath-link (ffmpeg AND gstreamer libdirs) + a deterministic
+  last-wins -DCMAKE_EXE_LINKER_FLAGS (helpers' own -D beat env). On green:
+  promote SMK1's FFMPEG check from advisory to hard (amd64/arm64).
 - **D3+P5 — smoke-media gate scaffold + SMOKE_ENV contract** [M·★★] extract
   smoke_resolve_bin/assert_elf_magic/component_gate (6+2+4 dup sites) into
   smoke-common.sh; SMOKE_ENV=sandbox|runtime set by callers. Extend
