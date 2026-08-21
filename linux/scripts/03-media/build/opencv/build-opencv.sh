@@ -137,6 +137,16 @@ configure_opencv_build_env() {
     if [ -d "${FFMPEG_PREFIX:-/opt/ffmpeg}/lib" ]; then
         export LDFLAGS="${LDFLAGS} -L${FFMPEG_PREFIX:-/opt/ffmpeg}/lib -Wl,-rpath-link,${FFMPEG_PREFIX:-/opt/ffmpeg}/lib"
     fi
+    # Same class for GSTREAMER (2026-08-21, riscv64 pass-2): videoio links
+    # our /opt/gstreamer fine, but APP binaries (opencv_visualisation) then
+    # need the gst libdir on the rpath-link for transitive NEEDED
+    # resolution ("libgstapp-1.0.so.0 ... not found (try using
+    # -rpath-link)"). Resolve the real libdir (per-arch layouts differ).
+    local _gst_lib
+    _gst_lib="$(dirname "$(find /opt/gstreamer -name 'libgstreamer-1.0.so*' -not -type d 2>/dev/null | head -1)" 2>/dev/null || true)"
+    if [ -n "${_gst_lib}" ] && [ "${_gst_lib}" != "." ]; then
+        export LDFLAGS="${LDFLAGS} -L${_gst_lib} -Wl,-rpath-link,${_gst_lib}"
+    fi
 }
 
 configure_opencv_build_env
