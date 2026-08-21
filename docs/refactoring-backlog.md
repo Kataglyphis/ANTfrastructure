@@ -174,6 +174,11 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 - **post-restart base cache-miss** — observe at the next host reboot.
 - **LOG7 — sdkmanager CLI deprecated** — bit-rot watch before Google
   removes it.
+- **NODE-RV — riscv64 ships Node v22 (pin: 26.7)** [S·★, watch] ubuntu-ports
+  has no 26.x for riscv64; the install falls back fail-open with a WARN (by
+  design, seen in every wave-4 smoke log). Lift when ports ships 26.x —
+  check via `apt-cache policy nodejs` on the ports snapshot at each bump
+  window; until then the riscv64 image runs the distro v22.
 - **SV-residual — watch the first real `compose up`** — user-side.
 - **riscv64 isa-spec smoke on real hardware** — needs hardware.
 - **WEBUI_SECRET_KEY server-side rotation** — user action.
