@@ -2619,10 +2619,19 @@ Upstream follow-ups: see "Pending" at the bottom.
 > nightly/weekly chain run (would-be #111). Manual launches remain the
 > verification cadence — do not re-propose either.
 
-### P8 — 2026-08-21 REFACTOR AUDIT residue (four-agent deep audit; the guards,
-### dedups and driver-convergence items LANDED same day — commits c7d24907,
-### 9377c0ac, 1e38346e, 1dfbde2e, 48a87c15 + the 7-bug fix pair 48f5733f/5eb37c55.
-### These are the DEFERRED remainders, each with the reason it waited.)
+### P8 — 2026-08-21 REFACTOR AUDIT: FULLY LIQUIDATED same day
+### (four-agent deep audit → 7 bugs fixed + guards/dedups/driver-convergence
+### in c7d24907..48a87c15, the residue below in f1883cd9..891394c4; every
+### entry stamped DONE or CLOSED-with-reason.)
+###
+### >>> THE ONE OPEN ITEM: the P8 batch (13 commits total, suite 523→536) is
+### >>> test-verified but NOT yet ride-verified. The post-store-reset rebuild
+### >>> ride is the verification gate — its risk surfaces: classic-lane smoke
+### >>> gate (docker-run form), ffmpeg/onnx trap-phase tables, litert-lm 5a-5e,
+### >>> Dockerfile.probe consolidation, chain Invoke-stage shape (litert-all),
+### >>> Find-TensorRtZipIn newest-by-version, cpython props COPY, the 7 SHELL
+### >>> guard lines, merge sccache ARG parity. A green ride + smoke closes P8
+### >>> for good; a red one starts at these touchpoints.
 
 - **120 DONE 2026-08-21 (7 assert sites converted; the 3 $isAdmin FLAG sites are mode logic, untouched by design). Original: Assert-Elevated adoption, remaining ~9 host sites.** The
   function exists in Shared (2 adopters). The rest need a Shared import ADDED
