@@ -69,13 +69,13 @@ $ErrorActionPreference = 'Stop'
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $sharedPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
 if (-not (Test-Path $sharedPath)) { throw "Required module not found: $sharedPath" }
-Import-Module $sharedPath -Force
+if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sharedPath)))) { Import-Module $sharedPath }
 
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsInstaller.Common.psm1'
 if (-not (Test-Path $modulePath)) {
     throw "Required module not found: $modulePath"
 }
-Import-Module $modulePath -Force
+if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
 # The mandatory-plugin contract + pkg-config emitter. A separate module ON
 # PURPOSE: it is mounted by the merge builder only, so editing the plugin
@@ -83,11 +83,12 @@ Import-Module $modulePath -Force
 # five modules (see Dockerfile.media-merge-builder's buildmods comment).
 $gstPluginModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
 if (-not (Test-Path $gstPluginModule)) { throw "Required module not found: $gstPluginModule" }
-Import-Module $gstPluginModule -Force
+if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($gstPluginModule)))) { Import-Module $gstPluginModule }
 
 $sourceBuildModule = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
-Import-Module $sourceBuildModule -Force
+if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildModule)))) { Import-Module $sourceBuildModule }
+
 # (No Shared re-import needed anymore: every nested import — including
 # load-versions.ps1's, the last -Force holdout that killed this script twice
 # on 2026-08-05 — is guarded/un-Forced now, so the top-level import above
