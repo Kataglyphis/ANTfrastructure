@@ -48,6 +48,7 @@ Phases:
 - **C** — build-service tuning **[admin]** (debug flags, log limit, GC policy, Defender, sccache/dufs)
 - **D** — per-boot / per-run checks
 - **E** — first build + verification
+- **R** — recovering after a Stevedore reinstall / repair **[admin]**
 
 > **Fast path for Phase A5 + C: `setup-new-host.ps1`.** Once the interactive
 > steps are done (A1 Stevedore+reboot, A2 docker-users + a new shell, A3
@@ -591,6 +592,7 @@ the latter; then the Phase-D check below is what saves you). Verify:
 
 ---
 
+
 ## Phase D — Per-boot / per-run checks
 
 Run these before every chain launch (30 seconds; each one has cost a real run):
@@ -735,3 +737,100 @@ If the BK lane is unavailable, `windows\build.ps1 -Gpu` (docker-classic,
 Hyper-V run+commit) works with only Phases A, B and C4/C5 — see
 [Windows Build Image](windows-builds.md) § Build Commands and § Stevedore
 Setup Fixes.
+
+## Phase R — Recovering after a Stevedore reinstall / repair [admin]
+
+> Measured 2026-08-21, on a host where Stevedore had just been reinstalled.
+> A reinstall is NOT a no-op for this repo: it silently takes out four things,
+> and each of them fails LATER, in a way that does not name the reinstall.
+> Work through this before starting a chain on a freshly repaired host.
+
+| What the reinstall takes | How it fails later | Fix |
+|---|---|---|
+| The **patched runhcs shim** | `Assert-ShimPatch` refuses BOTH lanes at preflight (and without the gate: `hcsshim::ExportLayer 0x3` on a heavy media layer, after the compile is paid for) | Rebuild — see below. There is **no local rollback**: `.exe.orig` and every `.exe.bak-*` are stock too |
+| The **buildkitd service `Environment`** | `Assert-BuildkitdStepLogEnv` refuses the BK lane; ungated, the 2 MiB step-log clip buries build verdicts | § C2, or the registry Multi-String + `Restart-Service buildkitd` |
+| The **dufs `dufs-sccache-l2` task** *and* its `%USERPROFILE%\sccache-cache` serve directory | `Assert-SccacheEndpoint` fails the media stages at preflight, on an endpoint that never comes up | Re-create the serve directory FIRST, then § C5's `setup-dufs-service.ps1 -NoPrompt`. Without the directory the script has nothing to serve and the endpoint stays dead |
+| Nothing — but note the **containerd content store** can also be left inconsistent (e.g. by killing a `docker build` mid-pull) | `failed to resolve source metadata ... blob sha256:<config> ... blob not found` at `Dockerfile.base` | R2 below — and note a plain `pull` CANNOT fix it, see the warning there |
+| — likewise the **windows snapshotter** | `failed to create scratch layer: failed to open ...\io.containerd.snapshotter.v1.windows\snapshots\<n>\blank.vhdx: The system cannot find the path specified` at the first `RUN` | R4 — this one has no surgical fix; reset the stores |
+
+### R1. Rebuild + deploy the patched shim
+
+`deploy-shim-patch.ps1` installs a binary; it does not build one. Go is
+required (`scoop install go`):
+
+```powershell
+git clone --filter=blob:none https://github.com/microsoft/hcsshim.git D:\src\hcsshim
+cd D:\src\hcsshim
+git checkout 81e2e01                      # the verified base for the patch
+git apply D:\GitHub\Kataglyphis-ContainerHub\windows\upstream\hcsshim-teardown-timeout\local-45min-deployed.patch
+go build -o containerd-shim-runhcs-v1.exe .\cmd\containerd-shim-runhcs-v1
+```
+
+~15 s. The result was **25 937 920 bytes** with Go 1.27.0 against stock's
+23 279 616 — the exact size drifts with the Go release, which is why the gate
+keys on the SHA256 that `deploy-shim-patch.ps1` records at install time and
+treats the size table only as a fallback. Then, elevated:
+
+```powershell
+pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -ShimPath D:\src\hcsshim\containerd-shim-runhcs-v1.exe
+```
+
+Verify with `-ReportOnly`: the gate hash must match the live binary.
+
+### R2. Re-pull the pinned base into the buildkit namespace
+
+The BK lane solves every stage with `--opt image-resolve-mode=local` — correct
+for stage handoff, but it also forbids buildkit from fetching the PUBLIC pinned
+base from mcr. On an empty or damaged content store the base stage therefore
+cannot bootstrap itself. Elevated (containerd's pipe is admin-only), with the
+digest from `windows/Dockerfile.base`'s `ARG WINDOWS_BASE_DIGEST`:
+
+```powershell
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit pull `
+    mcr.microsoft.com/windows/servercore:ltsc2025@sha256:<WINDOWS_BASE_DIGEST>
+```
+
+> **A plain `pull` cannot repair a dangling content record.** Measured
+> 2026-08-21: the pull printed `index ... already exists`,
+> `manifest ... already exists`, `config ... already exists` and then died on
+> the missing file — containerd trusts its metadata and never re-fetches what
+> it believes it has. Delete the record first, then pull:
+>
+> ```powershell
+> & "$env:ProgramFiles\Stevedore\bin\ctr.exe" --namespace buildkit content delete sha256:<config-digest>
+> ```
+>
+> The config digest is the one named in the error. After the delete the same
+> pull ran to `config-... complete` / `Completed pull`. Note also that on this
+> host `ctr`/`nerdctl` reached containerd **non-elevated** — the "containerd's
+> pipe is admin-only" rule is not absolute here; check rather than assume.
+
+### R3. Do not reach for the classic lane as a fallback
+
+It cannot bootstrap a chain any more: twelve `windows/Dockerfile.*` use
+BuildKit-only `RUN --mount=type=bind` for their script closures and
+`build.ps1` never sets `DOCKER_BUILDKIT`, so the legacy builder dies at
+`Dockerfile.base` step 8 with *"the --mount option requires BuildKit"*. Use
+`build-buildkit.ps1`.
+
+### R4. When surgical repair is the wrong tool: reset the stores
+
+Two independent inconsistencies in one store (a content blob gone while the
+metadata claimed it, then the snapshotter missing `blank.vhdx`) mean the store
+is not worth repairing piece by piece. `reset-container-stores.ps1` (elevated)
+RENAMES `C:\ProgramData\{containerd,buildkitd,Docker}` aside as `.bak-<stamp>`
+— reversible, nothing is deleted — restarts the three services and re-applies
+the GC policy.
+
+Right after a reinstall this costs almost nothing: check first with
+`buildctl du` (it was ~123 MB on 2026-08-21). The caveat is that dockerd's
+store is parked too, so any non-repo docker images need re-pulling.
+
+**Always follow a reset with R2's re-seed pull.** A reset leaves the content
+store EMPTY, and `image-resolve-mode=local` means the BK lane cannot fetch the
+public base itself — without the re-seed the very next build fails at
+`Dockerfile.base` with the same `blob not found` class of error, which reads
+like the reset did not work.
+
+Afterwards the `.bak-<stamp>` husks are exactly what
+`windows/scripts/host/free-disk-space.ps1` is allow-listed to reclaim.
