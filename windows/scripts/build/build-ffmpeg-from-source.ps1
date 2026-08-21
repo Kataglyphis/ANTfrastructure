@@ -508,6 +508,12 @@ if (-not (Test-Path $builtFfmpeg)) {
 Write-Host 'Attempting install from source if built...'
 [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make install (verify below)' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make install`"")
 
+# STAGE stats right where the #100 acceptance criterion lives ("Compile
+# requests > 0 in the STAGE stats"): the chain-aggregate dump cannot
+# attribute per-stage, so this stage emitted its criterion nowhere (D3,
+# 2026-08-21 audit).
+if ($ffUseLauncher) { Write-SccacheStatsToStderr -Advanced -RequireRemote }
+
 # A --enable-shared build is only usable if the av*.dll runtime libraries were
 # installed next to the exes; exes alone die with STATUS_DLL_NOT_FOUND. Treat an
 # incomplete install as a failed source build so the fallback (or a loud error)
