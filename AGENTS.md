@@ -186,7 +186,7 @@ $nerdctl = "C:\Program Files\Rancher Desktop\resources\resources\win32\bin\nerdc
 - **Linux builds use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`,
   in CI *and* locally.** Not `:latest` — that tag went unrebuilt from 2026-04-16
   while the cross lane was refreshed (2026-07-20). Both publish amd64/arm64/
-  riscv64. `Linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
+  riscv64. `python-ci-linux.yml` sets `CONTAINER_IMAGE` to `:latest-cross`; if a local run
   uses a different tag, reproducing a CI failure proves nothing. Neither tag is
   digest-pinned, so both still float.
 
@@ -1308,13 +1308,23 @@ base ─┬─ onnxruntime ───────┐
   container runtime, the PowerShell 7 this repo's whole gate suite needs, all
   reinstalled by hand. Nothing in the loop said no, because a blanket delete
   rule had been allow-listed in `.claude/settings.local.json`. The rules now:
-  - **The reclaim script is the only sanctioned path.** It resolves candidates
-    from an ALLOWLIST (container-store husks left aside by
-    `reset-container-stores.ps1`, rotated host logs, repo `out/` scratch),
-    reports by default, and needs `-Apply` to touch anything. It aborts the
-    WHOLE run — not just the one target — if any resolved candidate lands on a
-    protected root, because a candidate that lands there means the resolution
-    logic is wrong and the rest of the plan is untrustworthy too.
+  - **The reclaim script is the only sanctioned path.** It cleans exactly the
+    regenerable classes — unused container layers (via the daemon's own GC),
+    dead `*.bak-<stamp>` store husks, user + Windows TEMP, rotated host logs,
+    repo `out/` scratch — resolved from an ALLOWLIST, reports by default, and
+    needs `-Apply` to touch anything. Every live-directory rule is AGE-GATED
+    (`-TempOlderThanDays`, default 7) so nothing in flight is deleted. It
+    aborts the WHOLE run — not just the one target — if any resolved candidate
+    lands on a protected root, because a candidate that lands there means the
+    resolution logic is wrong and the rest of the plan is untrustworthy too.
+  - **A name is not a target.** A candidate containing a junction or symlink is
+    skipped: every path check reasons about names, and a reparse point is
+    exactly where a name stops predicting what a recursive delete reaches — a
+    cleared candidate could otherwise tunnel straight into the profile.
+  - **The compile caches are NOT cleanup targets.** sccache/ccache/cargo/uv
+    read as "cache" and are the most expensive bytes on the disk (CACHE1: a
+    prune once traded ~1.5–2 h of cold LLVM rebuilds for a few GB). The
+    reclaim script never lists them, and neither should you.
   - **Daemon levers before filesystem levers, always.** `buildctl prune
     --free-storage`, `docker image prune`, the store-GC sequence in
     `docs/windows-builds.md` § Store GC. They hand back far more and they know

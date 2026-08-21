@@ -139,7 +139,89 @@ Start-Service buildkitd
     }
 }
 
-Describe 'free-disk-space.ps1: the reclaim script itself' {
+Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
+
+    # Dot-sourcing gives the functions without running anything.
+    $reclaim = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+    . $reclaim
+
+    It 'refuses every protected root, and the drive roots' {
+        foreach ($p in @('C:\', 'D:\', 'C:\Program Files', 'C:\Program Files (x86)', 'C:\Windows',
+                'C:\Users', 'C:\ProgramData', $env:USERPROFILE, $env:LOCALAPPDATA, $env:APPDATA)) {
+            Assert-True (Test-Protected $p) "protected root not refused: $p"
+        }
+    }
+
+    It 'still permits the genuinely reclaimable paths' {
+        foreach ($p in @('C:\ProgramData\containerd.bak-20260821-101500',
+                (Join-Path $env:TEMP 'some-stale-dir'),
+                'C:\Windows\Temp\stale')) {
+            Assert-False (Test-Protected $p) "reclaimable path wrongly refused: $p"
+        }
+    }
+
+    It 'the rule table covers temp and layers but never programs or compile caches' {
+        $rules = Get-ReclaimRules -TempAgeDays 7
+        $roots = ($rules | ForEach-Object { $_.Root }) -join ' | '
+        Assert-Match 'Temp' $roots 'no temp rule - the cleanup does not cover temp files'
+        Assert-Match 'ProgramData' $roots 'no container-store rule'
+        foreach ($never in @('Program Files', 'sccache', 'ccache', '\.cargo', '\.vscode', 'scoop', 'Downloads', 'Package Cache')) {
+            Assert-False ($roots -match $never) "the allowlist reaches something it must never touch: $never"
+        }
+        # Every live-directory rule must be age-gated; only the dead husks may be 0.
+        foreach ($r in ($rules | Where-Object { $_.Root -match 'Temp' })) {
+            Assert-True ($r.MinAgeDays -ge 1) "temp rule is not age-gated: $($r.Root)"
+        }
+    }
+
+    It 'age-gates: work in flight survives, stale entries are candidates' {
+        $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('reclaim-age-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
+        try {
+            $fresh = New-Item -ItemType Directory -Path (Join-Path $sandbox 'scratch-fresh') -Force
+            $stale = New-Item -ItemType Directory -Path (Join-Path $sandbox 'scratch-stale') -Force
+            $stale.LastWriteTime = (Get-Date).AddDays(-30)
+
+            $rules = @(@{ Root = $sandbox; Leaf = 'scratch-*'; Kind = 'Directory'; MinAgeDays = 7; What = 'fixture' })
+            $plan = Get-ReclaimPlan -Rules $rules
+            $paths = @($plan | ForEach-Object { $_.Path })
+
+            Assert-True ($paths -contains $stale.FullName) 'a 30-day-old entry was not offered'
+            Assert-False ($paths -contains $fresh.FullName) 'a FRESH entry was offered - work in flight would be deleted'
+        } finally {
+            if (Test-Path -LiteralPath $sandbox) { [IO.Directory]::Delete($sandbox, $true) }
+        }
+    }
+
+    It 'marks a candidate containing a junction so the delete skips it' {
+        $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('reclaim-link-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $husk = Join-Path $sandbox 'scratch-linked'
+        New-Item -ItemType Directory -Path $husk -Force | Out-Null
+        $link = Join-Path $husk 'tunnel'
+        try {
+            # A junction into a protected root: the exact tunnel shape.
+            $null = New-Item -ItemType Junction -Path $link -Target $env:USERPROFILE -ErrorAction Stop
+            (Get-Item -LiteralPath $husk -Force).LastWriteTime = (Get-Date).AddDays(-30)
+
+            Assert-True (Test-HasReparsePoint $husk) 'the junction inside the candidate was not detected'
+
+            $plan = Get-ReclaimPlan -Rules @(@{ Root = $sandbox; Leaf = 'scratch-*'; Kind = 'Directory'; MinAgeDays = 7; What = 'fixture' })
+            $entry = $plan | Where-Object { $_.Path -eq $husk } | Select-Object -First 1
+            Assert-NotNull $entry 'the fixture candidate did not resolve'
+            Assert-True $entry.Linked 'the candidate was NOT marked as linked - a delete would tunnel into the profile'
+        } finally {
+            # Remove the junction ITSELF first, never its contents.
+            if (Test-Path -LiteralPath $link) { [IO.Directory]::Delete($link) }
+            if (Test-Path -LiteralPath $sandbox) { [IO.Directory]::Delete($sandbox, $true) }
+        }
+    }
+
+    It 'the user profile is still intact after the junction fixture' {
+        # Paranoia with teeth: if the teardown above ever deleted THROUGH the
+        # junction, this is what would notice.
+        Assert-True (Test-Path -LiteralPath $env:USERPROFILE) 'the user profile is gone'
+        Assert-True (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.claude')) 'the profile was emptied through a junction'
+    }
 
     It 'is report-only by default and never deletes without -Apply' {
         $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
@@ -153,31 +235,17 @@ Describe 'free-disk-space.ps1: the reclaim script itself' {
         Assert-True ($delete -gt $applyGate) 'a delete now sits ABOVE the -Apply gate'
     }
 
-    It 'refuses a candidate that tunnels through a junction into a protected root' {
-        # The name-based checks all clear a junction; the recursive delete then
-        # walks through it. Build the real thing and prove it is skipped.
-        $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('guard-junction-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        $husk = Join-Path $sandbox 'containerd.bak-20260821-000000'
-        New-Item -ItemType Directory -Path $husk -Force | Out-Null
-        try {
-            $link = Join-Path $husk 'tunnel'
-            # A junction pointing at a protected root - the hazard shape.
-            $null = New-Item -ItemType Junction -Path $link -Target $env:USERPROFILE -ErrorAction Stop
+    It 'honours the linked flag at delete time, not just in the report' {
+        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+        $raw = Get-Content -Raw $script
+        Assert-Match 'Test-HasReparsePoint' $raw 'the reparse-point check is gone from the reclaim script'
+        Assert-Match '\$t\.Linked' $raw 'the delete loop no longer honours the reparse-point check'
+        Assert-Match 'Test-Protected \$t\.Path' $raw 'the delete loop no longer re-checks the protected roots'
+    }
 
-            $found = @(Get-ChildItem -LiteralPath $husk -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue)
-            Assert-True ($found.Count -gt 0) 'test setup: the junction was not created'
-
-            # Same predicate the script uses, run against the real subtree.
-            $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
-            $raw = Get-Content -Raw $script
-            Assert-Match 'Test-HasReparsePoint' $raw 'the reparse-point check is gone from the reclaim script'
-            Assert-Match '\$t\.Linked' $raw 'the delete loop no longer honours the reparse-point check'
-        } finally {
-            # Remove the junction ITSELF first (never its contents).
-            $link = Join-Path $husk 'tunnel'
-            if (Test-Path -LiteralPath $link) { [IO.Directory]::Delete($link) }
-            if (Test-Path -LiteralPath $sandbox) { [IO.Directory]::Delete($sandbox, $true) }
-        }
+    It 'runs on pwsh 7 like the rest of the repo' {
+        $script = Join-Path (Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent) 'windows\scripts\host\free-disk-space.ps1'
+        Assert-Match '(?m)^#requires -Version 7\.0' (Get-Content -Raw $script) 'the reclaim script is not pinned to pwsh 7'
     }
 }
 

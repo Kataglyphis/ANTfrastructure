@@ -1,6 +1,15 @@
-#requires -Version 5.1
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
+#
+# NOTE ON THE POWERSHELL VERSION: this is the one file in the repo that is NOT
+# `#requires -Version 7.0`. It is LAUNCHED with pwsh 7 (see the hook command in
+# .claude/settings.json) like everything else, but it is written to run under
+# Windows PowerShell 5.1 as well, and the hook falls back to it if pwsh cannot
+# start. Reason: a PreToolUse guard that fails to launch fails OPEN - the tool
+# call proceeds unguarded. pwsh is an installed program, and installed programs
+# are exactly what went missing on 2026-08-21. The always-present 5.1 fallback
+# is what makes this guard survive the failure mode it exists to prevent. Keep
+# it 5.1-safe: no ternaries, no ??, no pwsh-only cmdlets.
 #
 # PreToolUse guard: refuses destructive deletes / uninstalls that reach OUTSIDE
 # the reclaimable set.
