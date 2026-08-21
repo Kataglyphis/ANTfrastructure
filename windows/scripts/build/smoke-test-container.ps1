@@ -311,7 +311,7 @@ Assert-Test -Name 'Rust version (well-formed)' -Condition {
 # COMPILE + LINK (via the MSVC linker) + RUN -- catches a broken linker / missing target / std.
 Assert-Test -Name 'rustc compiles + links + runs a program' -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-rust'
-    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $d
     $src = Join-Path $d 'main.rs'
     'fn main() { println!("rust ok"); }' | Set-Content -Path $src -Encoding ASCII
     $exe = Join-Path $d 'main.exe'
@@ -380,7 +380,7 @@ Assert-EnvVarSet -Name 'VULKAN_SDK'
 # vulkaninfo, which we deliberately do NOT run headless), so it exercises the real toolchain.
 Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-glslc'
-    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $d
     $src = Join-Path $d 'smoke.vert'
     "#version 450`nvoid main() { gl_Position = vec4(0.0); }" | Set-Content -Path $src -Encoding ASCII
     $spv = Join-Path $d 'smoke.spv'
@@ -431,7 +431,7 @@ if ($script:gpuNvidia) {
     $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }
     Assert-Test -Name 'nvcc compiles a CUDA kernel to PTX' -Condition {
         $d = Join-Path $env:TEMP 'kataglyphis-smoke-cuda'
-        New-Item -Path $d -ItemType Directory -Force | Out-Null
+        Initialize-SmokeScratch -Path $d
         $src = Join-Path $d 'k.cu'
         "__global__ void k(float* a) { a[threadIdx.x] *= 2.0f; }`nint main() { return 0; }" | Set-Content -Path $src -Encoding ASCII
         $ptx = Join-Path $d 'k.ptx'
@@ -508,7 +508,7 @@ int main() {
         # ($script:identityOnnxBytes, also used by the python probe in section 20) --
         # no external files, no GPU device; exercises graph load, session init, Run().
         $ortModelDir = Join-Path $env:TEMP 'kataglyphis-smoke-ort-model'
-        New-Item -Path $ortModelDir -ItemType Directory -Force | Out-Null
+        Initialize-SmokeScratch -Path $ortModelDir
         [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), $script:identityOnnxBytes)
         $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($onnxCxxHdr) {
@@ -935,7 +935,7 @@ if (Test-Path $litertLmExe) {
 Write-TestHeader '14. Compiler smoke test (clang-cl builds C++)'
 # ============================================================================
 $tmpDir = Join-Path $env:TEMP 'kataglyphis-smoke-test'
-New-Item -Path $tmpDir -ItemType Directory -Force | Out-Null
+Initialize-SmokeScratch -Path $tmpDir
 
 $cppSource = @"
 #include <iostream>
@@ -971,7 +971,7 @@ Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 # intentional heap-buffer-overflow (output contains the report marker).
 Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
-    New-Item -Path $d -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $d
     try {
         $src = Join-Path $d 'main.cpp'
         Set-Content -Path $src -Encoding ASCII -Value @'
@@ -997,7 +997,7 @@ int main() {
 Write-TestHeader '15. CMake + Ninja + clang-cl integration'
 # ============================================================================
 $tmpDir2 = Join-Path $env:TEMP 'kataglyphis-smoke-cmake'
-New-Item -Path $tmpDir2 -ItemType Directory -Force | Out-Null
+Initialize-SmokeScratch -Path $tmpDir2
 
 $cmakeLists = @"
 cmake_minimum_required(VERSION 3.20)
@@ -1031,7 +1031,7 @@ Remove-Item $tmpDir2 -Recurse -Force -ErrorAction SilentlyContinue
 Write-TestHeader '16. VS MSBuild + ClangCL toolset integration'
 # ============================================================================
 $tmpDir3 = Join-Path $env:TEMP 'kataglyphis-smoke-msbuild'
-New-Item -Path $tmpDir3 -ItemType Directory -Force | Out-Null
+Initialize-SmokeScratch -Path $tmpDir3
 
 # NB: single-quoted here-string — a double-quoted form makes PowerShell evaluate
 # MSBuild's $(VCTargetsPath) as a subexpression. The template also needs the
@@ -1288,7 +1288,7 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     # onnxruntime: real python-side inference over the shared 63-byte Identity model.
     Assert-Test -Name "python onnxruntime inference end-to-end (CPU EP)" -Condition {
         $mdir = Join-Path $env:TEMP 'kataglyphis-smoke-pyort'
-        New-Item -Path $mdir -ItemType Directory -Force | Out-Null
+        Initialize-SmokeScratch -Path $mdir
         try {
             [IO.File]::WriteAllBytes((Join-Path $mdir 'identity.onnx'), $script:identityOnnxBytes)
             $out = & python -c "import os, numpy, onnxruntime as ort; s = ort.InferenceSession(os.path.join(os.environ['TEMP'], 'kataglyphis-smoke-pyort', 'identity.onnx'), providers=['CPUExecutionProvider']); y = s.run(['y'], {'x': numpy.array([42.0], numpy.float32)})[0]; print('py-ort', ort.__version__, float(y[0]))" 2>&1 | Out-String
@@ -1507,7 +1507,7 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
     } -FailMessage "iree-compile --version failed (tool or DLL chain broken)"
 
     $ireeDir = Join-Path $env:TEMP 'kataglyphis-smoke-iree'
-    New-Item -Path $ireeDir -ItemType Directory -Force | Out-Null
+    Initialize-SmokeScratch -Path $ireeDir
     $ireeMlir = Join-Path $ireeDir 'abs.mlir'
     $ireeVmfb = Join-Path $ireeDir 'abs-cpu.vmfb'
     Set-Content -Path $ireeMlir -Encoding ascii -Value $script:ireeGateMlir

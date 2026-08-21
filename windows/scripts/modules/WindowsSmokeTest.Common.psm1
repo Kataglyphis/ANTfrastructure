@@ -116,6 +116,20 @@ function Assert-Test {
     }
 }
 
+function Initialize-SmokeScratch {
+    <#
+    .SYNOPSIS
+        Scrub-then-create for a smoke scratch dir. A previous section's throw
+        can leak its scratch (3 of 10 sites had no try/finally, D6), and a
+        bare New-Item -Force then hands the NEXT run a dirty tree — stale
+        artifacts masquerading as fresh compile outputs. The trailing
+        Remove-Item in each section stays best-effort; THIS is the guarantee.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+    if (Test-Path $Path) { Remove-Item $Path -Recurse -Force -ErrorAction SilentlyContinue }
+    New-Item -Path $Path -ItemType Directory -Force | Out-Null
+}
+
 function Assert-PythonSnippet {
     <#
     .SYNOPSIS
@@ -375,6 +389,7 @@ Export-ModuleMember -Function @(
     'Write-TestHeader'
     'Assert-Test'
     'Assert-PythonSnippet'
+    'Initialize-SmokeScratch'
     'Request-SmokeAbort'
     'Assert-CommandExists'
     'Assert-FileExists'

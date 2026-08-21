@@ -53,7 +53,8 @@ if (-not $WorkDir) { $WorkDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pa
 
 # Map each patch subdirectory to its upstream repo + the pinned ref.
 # Read from versions.env (single source of truth) — no hand-synced duplicate.
-$versionsFile = Join-Path (Split-Path $PSScriptRoot -Parent | Split-Path -Parent | Split-Path -Parent) 'linux\scripts\01-core\versions.env'
+Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1') -Force -DisableNameChecking
+$versionsFile = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
 $defaultRefs = @{
     ONNXRUNTIME = 'v1.27.0'
     OPENCV      = '5.x'

@@ -20,14 +20,17 @@
 
 Describe 'canonical pin values (backlog #58, #60)' {
 
-    $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+    $repoRoot = Get-RepoRoot
     $versionsEnv = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
 
+    # Thin wrapper over the CANONICAL parser (#126, 2026-08-21): the previous
+    # hand-rolled regex loop handled no quoting/comments/continuations — a
+    # suite whose purpose is "pin the values a mechanical edit could quietly
+    # change" must not read the source of truth with a divergent parser.
+    $script:canonicalPins = ConvertFrom-VersionsEnv -Path $versionsEnv
     function Get-Pin {
         param([string]$Name)
-        foreach ($line in (Get-Content $versionsEnv)) {
-            if ($line -match "^\s*$([regex]::Escape($Name))=(.*)$") { return $Matches[1].Trim() }
-        }
+        if ($script:canonicalPins.Contains($Name)) { return $script:canonicalPins[$Name] }
         return $null
     }
 

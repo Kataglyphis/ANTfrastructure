@@ -1273,7 +1273,16 @@ function Invoke-SourceBuildChain {
             }
         }
         Write-Host "`n=== $Label stage: $($stage.Name) ($([string]::Format('{0:HH:mm:ss}', (Get-Date)))) ==="
-        & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
+        # A stage is either the standard shape (Script + SourceDir, invoked
+        # with the chain's -SourceDir/-InstallDir contract) or carries its own
+        # Invoke scriptblock for scripts with a DIFFERENT signature (#128:
+        # build-litert-lm-bazel takes -RepositoryCache and no -SourceDir; the
+        # wrapper used to reimplement the whole partition logic around it).
+        if ($stage.ContainsKey('Invoke')) {
+            & $stage.Invoke $ScriptDir $InstallDir
+        } else {
+            & (Join-Path $ScriptDir $stage.Script) -SourceDir $stage.SourceDir -InstallDir $InstallDir
+        }
         $exitCode = if (Test-Path Variable:\LASTEXITCODE) { $LASTEXITCODE } else { 0 }
         if ($exitCode) { throw "$($stage.Name) build failed (exit $exitCode)" }
         if ($Until -and ($stage.Name -eq $Until)) {

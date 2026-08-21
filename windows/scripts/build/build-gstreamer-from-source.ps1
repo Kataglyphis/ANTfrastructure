@@ -241,6 +241,12 @@ try {
     # this build ran completely uncached (~30 min hot) — the merge builder
     # simply never wired the endpoint through. Same gate as everywhere else:
     # remote backend only; a container-local cache would die with the layer.
+    # #128 (2026-08-21): this script runs OUTSIDE Invoke-SourceBuildChain (the
+    # merge stage invokes it directly), so it never got the chain prologue's
+    # fresh-server guarantee — without it the implicitly-started server may
+    # not have read SCCACHE_ERROR_LOG (#97) and the epilogue flush means
+    # nothing. Same call the chain makes, safe no-op without sccache.
+    Start-SccacheServerSession
     if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
         if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
         $env:CC  = 'sccache clang-cl'
@@ -1187,6 +1193,9 @@ int _isatty(int);
     # This script is not chain-run (no Invoke-SourceBuildChain tail), so dump
     # the sccache counters itself — they die with the container otherwise.
     Write-SccacheStats -Label 'gstreamer'
+    # ... and flush/stop the session server the #128 prologue started (the
+    # error-log dump only means something after a clean server stop, #107).
+    Complete-SccacheServerSession
 
     Complete-CurrentBuildPhase
     Write-BuildPhaseSummary -Label 'gstreamer'
