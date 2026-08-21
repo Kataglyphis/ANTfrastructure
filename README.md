@@ -42,7 +42,7 @@ expense of the others:
   CUDA 13.3). **The WebDAV L2 is only as available as the dufs server backing
   it:** while dufs ran as a user-session process it died mid-build and every
   cache WRITE failed silently — builds stayed green, just uncached. Run it as
-  the session-independent SYSTEM task (`windows\scripts\setup-dufs-service.ps1`)
+  the session-independent SYSTEM task (`windows\scripts\host\setup-dufs-service.ps1`)
   and treat a 0 % hit rate as an outage, not as a cold cache.
 - **Stability** — digest-pinned stage handoffs, machine-checked cross-run
   ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
@@ -219,7 +219,7 @@ Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-bas
 The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
 full host CPUs, real layer caching — one-time setup in
 [Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane;
-**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\setup-new-host.ps1`; `-ReportOnly` first):
+**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\host\setup-new-host.ps1`; `-ReportOnly` first):
 
 ```pwsh
 # BUILD (non-admin shell; buildctl against buildkitd):
@@ -238,7 +238,7 @@ setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
 
 > **Host with a broken BK lane (`hcsshim::ActivateLayer 0x20` on layer
 > commit/finalize)?** Run the committed probe first —
-> `windows\scripts\probe-build-copy.ps1 -Heavy` — and trust only a
+> `windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` — and trust only a
 > `-Heavy`-green verdict: the light lanes (BK lane exports
 > `type=image,...,unpack=true`, the same path the real build uses; exit code
 > names each failing lane) can be green while heavyweight RUN-layer finalize
