@@ -249,21 +249,31 @@ function Invoke-BoundedProvisionStep {
             Stop-Job -Job $job
             throw "$Label exceeded $TimeoutMinutes min - the #76 stall class (2h-mute network timeout); rerun or check egress."
         }
-        Receive-Job -Job $job -ErrorAction SilentlyContinue | Out-Null
+        # A job that ENDED in failure must fail the step too — the first cut
+        # only threw on timeout and silently discarded a failed scoop install,
+        # deferring the crash to an unrelated 'make: not found' hundreds of
+        # lines later (adversarial review, 2026-08-21). Keep the output for
+        # the log; a Failed state or an error record throws with the evidence.
+        $jobOut = Receive-Job -Job $job -ErrorAction SilentlyContinue -ErrorVariable jobErrs
+        if ($jobOut) { $jobOut | ForEach-Object { Write-Host "  [$Label] $_" } }
+        if ($job.State -ne 'Completed' -or ($jobErrs -and $jobErrs.Count -gt 0)) {
+            $reason = if ($jobErrs) { ($jobErrs | Select-Object -First 3) -join '; ' } else { "job state $($job.State)" }
+            throw "$Label FAILED: $reason"
+        }
     } finally {
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
 }
 # Ensure make is available
+Switch-BuildPhase '3. toolchain provisioning (make/gawk/nv-codec)'
 if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     Write-Host "Installing make via scoop..."
-    Switch-BuildPhase '3. toolchain provisioning (make/gawk/nv-codec)'
-    Invoke-BoundedProvisionStep -Label 'scoop install make' -Step { & scoop install main/make 2>&1 }
+    Invoke-BoundedProvisionStep -Label 'scoop install make' -Step { & scoop install main/make 2>&1; if ($LASTEXITCODE) { throw "scoop exit $LASTEXITCODE" } }
 }
 # Install gawk and replace MSYS2's broken awk
 if (-not (Get-Command gawk -ErrorAction SilentlyContinue)) {
     Write-Host "Installing gawk via scoop..."
-    Invoke-BoundedProvisionStep -Label 'scoop install gawk' -Step { & scoop install main/gawk 2>&1 }
+    Invoke-BoundedProvisionStep -Label 'scoop install gawk' -Step { & scoop install main/gawk 2>&1; if ($LASTEXITCODE) { throw "scoop exit $LASTEXITCODE" } }
 }
 # Replace MSYS2 awk with gawk for FFmpeg dep file processing
 $gitAwk = 'C:\Program Files\Git\usr\bin\awk.exe'
@@ -607,10 +617,10 @@ if (Test-Path $ffPkgConfigDir) {
 # treats an absent directory as the hard failure it is. The explicitly opted-in
 # prebuilt fallback (#68) ships NO .pc files BY DESIGN (the prefix is scrubbed,
 # nothing links against it) — that is the one legitimate skip.
+Switch-BuildPhase '6. pc gate + PyAV wheel'
 if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
     Write-Warning 'Prebuilt fallback active (FFMPEG_ALLOW_PREBUILT=1): no .pc files exist by design; downstream consumers (gst-libav, OpenCV chain-link, PyAV) will not find FFmpeg.'
 } else {
-    Switch-BuildPhase '6. pc gate + PyAV wheel'
     $null = Assert-FfmpegPkgConfig -PkgConfigDir $ffPkgConfigDir
 }
 

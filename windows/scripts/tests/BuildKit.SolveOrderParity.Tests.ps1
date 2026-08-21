@@ -106,6 +106,11 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
                 $names | ForEach-Object { [void]$classicSets[$stage].Add($_) }
             }
         }
+        # Scanner-rot guard (audit 2026-08-21): if the path regex stops
+        # matching (next layout move), both sets go empty and '' -eq ''
+        # would report green while checking nothing.
+        Assert-True ($classicSets.Count -ge 3) "classic COPY scan found only $($classicSets.Count) branch stages — scan broke or layout moved"
+        Assert-True ($bkSets.Count -ge 3) "BK mount scan found only $($bkSets.Count) stages — scan broke or layout moved"
         $branchMap = @{
             'media-core'   = @('media-core-built-onnx', 'media-core-built-ffmpeg', 'media-core-built-opencv', 'media-core-built')
             'media-litert' = @('media-litert-built')

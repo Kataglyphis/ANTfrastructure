@@ -18,7 +18,11 @@ Describe 'WindowsSourceBuild.Common re-export integrity (fresh session)' {
         # The export list, parsed from the file (self-updating: a name added
         # to Export-ModuleMember is automatically covered here).
         $raw = Get-Content -Raw $modPath
-        $names = [regex]::Matches($raw, "(?m)^\s*'([A-Za-z]+-[A-Za-z0-9]+)',?\s*$") |
+        # Scan only from the first Export-ModuleMember on (audit 2026-08-21:
+        # the unanchored form matched any bare quoted Verb-Noun line in the
+        # whole file) and allow multi-hyphen names.
+        $raw = $raw.Substring($raw.IndexOf('Export-ModuleMember'))
+        $names = [regex]::Matches($raw, "(?m)^\s*'([A-Za-z]+(?:-[A-Za-z0-9]+)+)',?\s*$") |
             ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
         Assert-True ($names.Count -ge 40) "parsed only $($names.Count) export names — the Export-ModuleMember layout changed; update this parser"
 

@@ -158,17 +158,29 @@ function Invoke-DockerWithRetry {
         }
         $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
         if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
-            if ($OnFailedAttempt) { & $OnFailedAttempt }
             # -AssumeTransient: this branch IS the classification; the cooldown
             # helper only owns the message + delay here. -PreviousTail arms the
             # determinism gate — the BK lane has passed it since 2026-08-07,
             # this shared loop silently never did (2026-08-21 audit), so the
             # classic lane paid full retries on byte-identical poisoned-
             # snapshot failures.
+            # ORDER IS LOAD-BEARING: the gate decides BEFORE OnFailedAttempt
+            # runs. A deterministic verdict is a FINAL failure, and the
+            # OnFailedAttempt contract (see param block) says final failures
+            # must not fire it — the first cut of this gate ran the cleanup
+            # first and deleted the preserved run+commit container, then
+            # printed a -ResumeFrom recipe for a container that no longer
+            # existed (adversarial review, 2026-08-21).
             if (-not (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -CooldownSeconds $CooldownSeconds -AssumeTransient -PreviousTail $previousTail)) {
                 if ($OnFinalFailure) { & $OnFinalFailure }
+                if ($tail) {
+                    Write-Host "`n--- [$Label] tail of the failing attempt ---" -ForegroundColor Yellow
+                    Write-Host $tail
+                    Write-Host "--- end of tail$(if ($LogFile) { " (full log: $LogFile)" }) ---`n" -ForegroundColor Yellow
+                }
                 throw "[$Label] docker step failed DETERMINISTICALLY (identical tail on attempt $attempt)$(if ($LogFile) { " — full log: $LogFile" })"
             }
+            if ($OnFailedAttempt) { & $OnFailedAttempt }
             $previousTail = $tail
             continue
         }

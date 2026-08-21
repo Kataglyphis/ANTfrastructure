@@ -430,7 +430,6 @@ function Get-MediaBranchSpecs {
             -Tag (Get-MediaBranchTag 'media-core') `
             -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-litert' `
             -BuilderDockerfile $builderDf `
@@ -440,7 +439,6 @@ function Get-MediaBranchSpecs {
             -Tag (Get-MediaBranchTag 'media-litert') `
             -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
         New-MediaBranchSpec -Name 'media-tvm' `
             -BuilderDockerfile $builderDf `
@@ -450,7 +448,6 @@ function Get-MediaBranchSpecs {
             -Tag (Get-MediaBranchTag 'media-tvm') `
             -BuildArgs ((Get-MediaBranchVersionArg -Branch 'media-tvm' -VersionTable $versions) + @{
                 BASE_IMAGE      = $script:ImageTag.toolchain
-                MEMORY_LIMIT_GB = $MediaMemoryGb
             } + $sccache)
     )
 }
@@ -734,6 +731,26 @@ if ($MediaMemoryGb -le 0) {
 
 $started = Get-Date
 
+# #51 parity (2026-08-21): MEMORY_LIMIT_GB is a SCHEDULING knob, not an image
+# ARG (the media Dockerfiles dropped the ARG; Get-BuildJobCount reads the
+# webdav preseed instead). The BK driver has published this since #51 — this
+# lane silently never did, so classic compiles read a STALE value from the
+# other lane's runs, or fell back to CIM host RAM (61 GB on the reference
+# host under process isolation -> ~30 onnx jobs, squarely in the documented
+# 53-GB-deadlock envelope).
+if ($SccacheEndpoint -and -not $NoSccache) {
+    try {
+        $memBody = Join-Path $env:TEMP 'memory-limit-gb.txt'
+        Set-Content -Path $memBody -Value "$([int]$MediaMemoryGb)" -Encoding ascii -NoNewline
+        & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf -T $memBody "$SccacheEndpoint/preseed/memory-limit-gb.txt"
+        if ($LASTEXITCODE -eq 0) { Write-Host "preseed: memory-limit-gb=$([int]$MediaMemoryGb) published" }
+        else { Write-Warning "memory-limit publish failed (exit $LASTEXITCODE) - containers fall back to CIM host RAM" }
+    } catch {
+        Write-Warning "memory-limit publish skipped: $($_.Exception.Message)"
+    }
+    $global:LASTEXITCODE = 0
+}
+
 # Resource sampler starts HERE, immediately before the try/finally that stops
 # it (backlog #63) — every preflight gate above is now past, so a rejected
 # launch can no longer orphan it. The preflight costs seconds, so nothing
@@ -865,7 +882,6 @@ try {
             CORE_IMAGE        = $branchTag['media-core']
             LITERT_IMAGE      = $branchTag['media-litert']
             TVM_IMAGE         = $branchTag['media-tvm']
-            MEMORY_LIMIT_GB   = $MediaMemoryGb
         }
         Invoke-RunCommitStage `
             -BuilderDockerfile 'windows/Dockerfile.media-merge-builder' `
@@ -928,12 +944,16 @@ try {
         # verified artifact is never modified by verifying it.
         if (-not $SkipSmokeGate) {
             $gateLog = Join-Path $script:LogDir 'stage-smoke-gate.log'
+            # DIRECTORY mount, never a file mount: hcsshim rejects single-file
+            # binds outright ("source path must be a directory", exit 125 —
+            # measured 2026-08-21 before this ever ran). Mounting scripts\ also
+            # makes $scriptAssetRoot resolve to C:\gate\scripts (modules\ one
+            # level up from build\), so no second mount is needed.
             $gateCmd = @('run', '--rm',
-                '-v', "$repoRoot\windows\scripts\build\smoke-test-container.ps1:C:\gate\smoke-test-container.ps1",
-                '-v', "$repoRoot\windows\scripts\modules:C:\gate\modules",
+                '-v', "$repoRoot\windows\scripts:C:\gate\scripts",
                 $FinalTag,
                 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass',
-                '-File', 'C:\gate\smoke-test-container.ps1',
+                '-File', 'C:\gate\scripts\build\smoke-test-container.ps1',
                 '-MinPassed', "$SmokeMinPassed", '-MaxSkipped', "$SmokeMaxSkipped")
             if ($Gpu) { $gateCmd += '-ExpectGpu' }
             Write-Host "`n==> [smoke-gate] docker run $FinalTag (log: $gateLog)" -ForegroundColor Cyan

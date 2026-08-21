@@ -1207,6 +1207,10 @@ int _isatty(int);
     # with a bare message; the phase table narrows it before the stack.
     Complete-CurrentBuildPhase -ErrorRecord $_
     Write-BuildPhaseSummary -Label 'gstreamer'
+    # Flush/stop the #128 session server on the FAILURE path too — the
+    # error-log dump only means something after a clean server stop, and the
+    # failing run is exactly the one whose log you want (audit 2026-08-21).
+    try { Complete-SccacheServerSession } catch { Write-Warning "sccache session flush failed in catch: $($_.Exception.Message)" }
     log "FATAL ERROR: $($_.Exception.Message)"
     if ($_.Exception.InnerException) {
         log "Inner: $($_.Exception.InnerException.Message)"

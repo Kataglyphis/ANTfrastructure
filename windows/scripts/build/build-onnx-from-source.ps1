@@ -398,10 +398,19 @@ if ($env:GPU_TYPE -eq 'nvidia') {
     # builds keep the intrinsic). Upstream candidate for NVIDIA/cutlass:
     # the guard should carry `&& !defined(__clang__)`.
     $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    Invoke-InlineRegexPatch -Path $cut `
-        -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
-        -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
-        -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
+    # Idempotency (audit 2026-08-21): the pattern is a PREFIX of its own
+    # replacement, so a resumed build (the _deps tree survives) re-appended
+    # '&& !defined(__clang__)' on every pass — and after the first patch the
+    # no-op drift warning could never fire again. Explicit already-applied
+    # skip keeps resumes quiet AND keeps the drift warning meaningful.
+    if ((Test-Path $cut) -and ((Get-Content -Raw $cut) -match '!defined\(__clang__\)')) {
+        Write-Host 'cutlass/uint128.h: __clang__ guard already applied (resumed tree) - skipping'
+    } else {
+        Invoke-InlineRegexPatch -Path $cut `
+            -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
+            -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
+            -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
+    }
     # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
 }
 

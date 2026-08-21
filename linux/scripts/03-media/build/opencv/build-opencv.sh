@@ -248,10 +248,14 @@ _opencv_target_adjustments() {
             # glib-2.0.pc sat in the sysroot; that package is gone (root-cause
             # revert) and riscv64 gstreamer builds with introspection again →
             # /opt/gstreamer exports working glib .pcs like wave-3. Pass-1
-            # (no FORCE_REBUILD) stays OFF (no system gstreamer to probe —
-            # deliberate); pass-2 probes OUR /opt/gstreamer. Target restored:
-            # cv2 GStreamer:YES on ALL THREE arches.
-            if [ "${FORCE_REBUILD:-0}" != "1" ]; then
+            # (OPENCV_GSTREAMER_PASS unset) stays OFF (no system gstreamer to
+            # probe — deliberate); pass-2 (Dockerfile.media exports
+            # OPENCV_GSTREAMER_PASS=2) probes OUR /opt/gstreamer. Target:
+            # cv2 GStreamer:YES on ALL THREE arches. Dedicated discriminator
+            # (2026-08-21): this used to key on FORCE_REBUILD, so forcing a
+            # PASS-1 rebuild silently flipped gstreamer ON with nothing to
+            # probe — FORCE_REBUILD keeps its one meaning (skip-override).
+            if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
             # RV1-FOLGE 4 (2026-08-20): the contrib freetype module now
