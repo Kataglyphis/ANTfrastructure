@@ -206,6 +206,20 @@ fetch_opencv() {
             "${OPENCV_SRC}" \
             "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
     fi
+
+    # OCV-FF1 phase 2 (2026-08-21): with the try_compile link gap fixed,
+    # HAVE_FFMPEG went TRUE for the first time — and exposed that opencv
+    # 5.0.0 still uses the AVCodec fields FFmpeg 8 removed (pix_fmts,
+    # supported_framerates; 4.x master already migrated, the 5.x branch has
+    # not). Backport shim: avcodec_get_supported_config() behind
+    # LIBAVCODEC_VERSION_MAJOR >= 62 guards — 2 sites, drops cleanly when a
+    # 5.x release lands the migration.
+    if [ -f "${OPENCV_SRC}/modules/videoio/src/cap_ffmpeg_impl.hpp" ]; then
+        bash /opt/scripts/core/apply-patch.sh \
+            /opt/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch \
+            "${OPENCV_SRC}" \
+            "OpenCV 5.0.0 FFmpeg-8 AVCodec config-API compat (OCV-FF1)"
+    fi
 }
 
 target_machine() {
