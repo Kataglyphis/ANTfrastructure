@@ -537,6 +537,9 @@ int _isatty(int);
             $cppStdPatched++
         }
     }
+    if ($cppStdPatched -eq 0) {
+        Write-Warning 'cpp_std patch matched 0 meson.build files — upstream likely bumped past c++11; verify and retire this patch (or the MSVC-14.51 STL build breaks return)'
+    }
     log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
 
     # ---- 5h. port gst-plugins-bad ext/opencv to the OpenCV 5 header layout ----

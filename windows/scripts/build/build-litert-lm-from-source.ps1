@@ -486,6 +486,9 @@ if ((Test-Path $tokenizersCmake) -and ((Get-Content -Raw $tokenizersCmake) -notm
         $tkPatchCmd = 'PATCH_COMMAND ${CMAKE_COMMAND} -DTK_SRC=<SOURCE_DIR> -P ${CMAKE_CURRENT_LIST_DIR}/tokenizers_libname_patch.cmake' + "`n    " + $tkCfgAnchor
         $tk = $tk.Replace($tkCfgAnchor, $tkPatchCmd)
         # (3b) litert-lm's own imports of the rust lib (leaves libtokenizers_cpp.a untouched)
+        if (-not $tk.Contains('libtokenizers_c.a')) {
+            Write-Warning 'tokenizers.cmake: libtokenizers_c.a not found — upstream renamed the rust lib import; the link will fail with unresolved tokenizers_c symbols'
+        }
         $tk = $tk.Replace('libtokenizers_c.a', 'tokenizers_c.lib')
         [System.IO.File]::WriteAllText($tokenizersCmake, $tk)
         Write-Host 'Patched tokenizers.cmake: -GNinja + cmake --build + rust lib -> tokenizers_c.lib'
@@ -727,15 +730,17 @@ if ($engineBridged -ne $engineTxt) {
 # on $SourceDir before the ExternalProject copies sources into generated/src (same phase as the
 # executor #if !defined(_WIN32) guards, which propagate fine).
 foreach ($rel in @('runtime\util\litert_util.cc', 'runtime\framework\resource_management\resource_manager.cc')) {
-    $p = Join-Path $SourceDir $rel
-    if ((Test-Path $p) -and ((Get-Content -Raw $p) -notmatch 'LiteRTLM-winfix kMinLoggerSeverity')) {
-        $t = [System.IO.File]::ReadAllText($p)
-        $t = [regex]::Replace($t,
-            '(if \(auto severity = GetMinLogSeverity\(\)\) \{[\s\S]*?kMinLoggerSeverity[\s\S]*?\)\}\);\s*\})',
-            "#if 0  // [LiteRTLM-winfix kMinLoggerSeverity] litert core pinned here has no such Tag`n      `$1`n#endif")
-        [System.IO.File]::WriteAllText($p, $t)
-        Write-Host "Patched $(Split-Path $rel -Leaf): compiled out kMinLoggerSeverity env option (absent in pinned litert core)"
-    }
+    # Edit-SourceFile (not raw write): the earlier raw form logged "Patched"
+    # even when the regex matched NOTHING — false green on upstream drift.
+    [void](Edit-SourceFile -Path (Join-Path $SourceDir $rel) `
+            -Marker 'LiteRTLM-winfix kMinLoggerSeverity' `
+            -Description "$(Split-Path $rel -Leaf) (compile out kMinLoggerSeverity env option, absent in pinned litert core)" `
+            -Transform {
+            param($t)
+            [regex]::Replace($t,
+                '(if \(auto severity = GetMinLogSeverity\(\)\) \{[\s\S]*?kMinLoggerSeverity[\s\S]*?\)\}\);\s*\})',
+                "#if 0  // [LiteRTLM-winfix kMinLoggerSeverity] litert core pinned here has no such Tag`n      `$1`n#endif")
+        })
 }
 
 # The Rust staticlib (litert_lm_deps) pulls in rust std, whose windows-msvc target needs system libs

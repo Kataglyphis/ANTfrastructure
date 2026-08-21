@@ -19,22 +19,13 @@ Describe 'WindowsAgenticLoop.Common' {
             Import-Module $modulePath -Force -DisableNameChecking
             Write-Host "Module loaded from: $modulePath"
         } else {
-            Write-Warning "Module not found at $modulePath — using mock functions"
-            function global:Write-AgenticLog { param([string]$Message, [string]$Level = 'INFO') }
-            function global:Write-AgenticSection { param([string]$Title) }
-            function global:Get-AgenticLogFile { return Join-Path $PSScriptRoot 'test.log' }
-            function global:Get-AgenticPlatform { if ($env:OS -eq 'Windows_NT') { 'windows' } else { 'linux' } }
-            function global:Test-IsWindows { return (Get-AgenticPlatform) -eq 'windows' }
-            function global:Initialize-AgenticLoop { param([string]$ConfigPath, [string]$RepoRoot, [switch]$DryRun) }
-            function global:Complete-AgenticLoop { param([int]$Iteration, [int]$TasksCompleted) }
-            function global:Invoke-OpenCode { param([string]$Agent, [string]$Model, [string]$Message) return '[DRY RUN]' }
-            function global:Get-UncheckedTaskCount { param([string]$BacklogPath = 'BACKLOG.md'); return 0 }
-            function global:Invoke-GitAutoCommit { param([string]$Message, [string]$RepoRoot, [bool]$Enabled) }
-            function global:Invoke-BuildCommand { param([string]$Command, [string]$Configuration) return $true }
-            function global:Invoke-TestCommand { param([string]$Command, [string]$RepoRoot) return $true }
-            function global:Invoke-QualityCommand { param([string]$Command, [string]$RepoRoot) }
-            function global:Invoke-AgenticLoop { param($Config, [string]$PlannerPrompt, [string]$ExecutorPrompt, [string[]]$BuildConfigs, [bool]$OnWindows, [string]$RepoRoot, [int]$MaxIterations, [switch]$SkipBuild, [switch]$SkipTests, [switch]$SkipQuality, [switch]$PlannerOnly, [switch]$ExecutorOnly) }
-            return
+            # A missing subject module must FAIL the suite, never soften it: an
+            # earlier revision installed 14 global: success-stubs here, which
+            # made all 601 assertion lines pass vacuously AND (because
+            # Invoke-Tests.ps1 dot-sources every suite into one session) would
+            # have shadowed the real cmdlets for every later suite. Same policy
+            # as the runner's own skipped-suite gate (Invoke-Tests.ps1).
+            throw "WindowsAgenticLoop.Common.psm1 not found at $modulePath — refusing to run against stubs"
         }
 
         # Mock opencode for all tests (no real API calls)

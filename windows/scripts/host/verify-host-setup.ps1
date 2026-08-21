@@ -39,6 +39,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 
+# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
+# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
+# beside this script in the flat layout and one level up in the repo layout.
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+
 $script:Fail = 0
 $script:Warn = 0
 

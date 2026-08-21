@@ -66,6 +66,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
+# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
+# beside this script in the flat layout and one level up in the repo layout.
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
 
 function Write-Step {

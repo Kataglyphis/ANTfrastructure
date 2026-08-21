@@ -174,6 +174,10 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 'build-ffmpeg-from-source.ps1|FFMPEG_VERSION',
                 'build-ffmpeg-from-source.ps1|PYAV_VERSION',
                 'build-gstreamer-from-source.ps1|GSTREAMER_VERSION',
+                # 2026-08-21: gstreamer's .pc writer used a variable-indirected
+                # fallback W1c cannot see and drifted to 1.28.0 — converted to
+                # Get-SourceBuildVersion; this pin keeps it under W1's eye.
+                'build-gstreamer-from-source.ps1|ONNXRUNTIME_VERSION',
                 'build-onnx-from-source.ps1|ONNXRUNTIME_VERSION',
                 'build-onnx-genai-from-source.ps1|ONNXRUNTIME_GENAI_VERSION')) {
             Assert-True $found.ContainsKey($expected) "known pin site [$expected] no longer discovered - default removed, key renamed, or scanner broke; update this suite deliberately"
