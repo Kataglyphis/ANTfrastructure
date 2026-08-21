@@ -165,7 +165,9 @@ either set `BUILD_MEM_DIVISOR=5` (or higher) explicitly, or exclude media from
 parallelism via `PARALLEL_STAGES=sdk,android`. sdk/android phases have not
 OOMed under 3-way (validated 2026-08-17/18).
 
-**The fix (PAR4, LANDED 2026-08-18, validates next parallel run):**
+**The fix (PAR4, LANDED 2026-08-18, VALIDATED through wave-4 2026-08-21 —
+ONE isolated OOM kill across ~12 parallel media rounds, absorbed by
+retries; plus the 2026-08-19 amend: SHARED stages get divisor 1):**
 `cross_build_mem_divisor` now multiplies the arch count by
 `PAR_INTRA_STEP_BUDGET` (default 2 = assumed concurrent heavy steps per
 build; observed 2-4, and an effective ×5 held through the android×3 recovery
