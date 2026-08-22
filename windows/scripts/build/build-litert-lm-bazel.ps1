@@ -189,6 +189,33 @@ try {
     }
     $global:LASTEXITCODE = 0
     Write-Host ("LiteRT-LM (bazel) INSTALLED: {0} ({1:N0} bytes, {2} DLL(s) co-located, --help OK)" -f $installedExe, $sz, $dllCount)
+
+    # CONTRACT GUARD (2026-08-22): the merge image declares LITERT_LM_ROOT /
+    # _INCLUDE / _BIN as a promise to consumers. Nothing verified that promise
+    # in-stage, so a shortfall surfaced only at the smoke gate — HOURS later,
+    # at the end of the whole chain — or not at all: LITERT_LM_LIB pointed at a
+    # directory that never existed for ELEVEN WEEKS before an assertion caught
+    # it (#127). The header copy above is deliberately best-effort
+    # (-ErrorAction SilentlyContinue), which is exactly how an EMPTY include\
+    # would slip through unnoticed. Assert the declared layout here, where the
+    # failure is cheap and names the stage that owns it.
+    $contract = @(
+        @{ Path = $binOut; Filter = '*.exe'; What = 'LITERT_LM_BIN executable' }
+        @{ Path = $binOut; Filter = '*.dll'; What = 'LITERT_LM_BIN runtime DLLs' }
+        @{ Path = $incOut; Filter = '*.h'; What = 'LITERT_LM_INCLUDE headers' }
+    )
+    $shortfall = @()
+    foreach ($c in $contract) {
+        $n = @(Get-ChildItem -LiteralPath $c.Path -Filter $c.Filter -File -Recurse -ErrorAction SilentlyContinue).Count
+        Write-Host ("  contract: {0,-28} {1,4} file(s) in {2}" -f $c.What, $n, $c.Path)
+        if ($n -lt 1) { $shortfall += ('{0} — nothing matching {1} in {2}' -f $c.What, $c.Filter, $c.Path) }
+    }
+    if ($shortfall.Count -gt 0) {
+        throw ("LiteRT-LM install does not satisfy the layout the merge image declares:`n  " +
+            ($shortfall -join "`n  ") +
+            "`nFix the install here, or correct the ENV in windows\Dockerfile.media-merge-builder — " +
+            'but never leave the image promising a path it does not ship.')
+    }
 } finally {
     Pop-Location
 }

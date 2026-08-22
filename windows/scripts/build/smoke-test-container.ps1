@@ -1638,7 +1638,12 @@ if ($summary.Aborted) {
 # (GPU-only branches subtracted). Update DELIBERATELY when adding assertions.
 $sectionFloors = @{
     '1' = @(13, 13); '2' = @(6, 6); '3' = @(8, 8); '4' = @(8, 8); '5' = @(4, 4)
-    '6' = @(4, 4); '7' = @(14, 0); '8' = @(11, 8); '9' = @(9, 6); '10' = @(7, 5)
+    # '7' was authored as 14 on 2026-08-21 and is 13: the GPU path runs nvcc-on-PATH,
+    # nvcc version, CUDA_ROOT, CUDA_PATH, CUDA_ROOT dir, nvcc.exe, CUDNN_ROOT,
+    # CUDNN_ROOT dir, cuDNN headers/libs/DLLs, the PTX compile and the cuDNN
+    # link+run — thirteen, with no conditional fourteenth (the only branch there
+    # picks link+run OR a Skip). Counted against a real -ExpectGpu run, not by eye.
+    '6' = @(4, 4); '7' = @(13, 0); '8' = @(11, 8); '9' = @(9, 6); '10' = @(7, 5)
     '11' = @(12, 12); '12' = @(9, 9); '13' = @(6, 6); '14' = @(3, 3); '15' = @(2, 2)
     '16' = @(1, 1); '17' = @(5, 5); '18' = @(8, 6); '19' = @(30, 26); '20' = @(22, 21)
     '21' = @(2, 2); '22' = @(7, 6)

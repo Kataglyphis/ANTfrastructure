@@ -1278,13 +1278,15 @@ else {
 
 Write-Host 'Installing...'
 & cmake --install $buildDir --config Release 2>&1
-# VACUOUS-PASS GUARD (2026-08-21): the exit code alone proved nothing. This
-# install exited 0 while writing ZERO files into $litertLmInstallDir — every
-# `-- Installing:` line in the log went to a nested dependency's own prefix
-# (flatbuffers-flatc/…), never here. The stage reported green, the merge image
-# then declared LITERT_LM_LIB pointing at a directory that did not exist, and
-# only the #127 smoke assertion caught it eleven weeks later. Report what
-# actually landed, so a silent no-op install is visible in the stage log.
+# VACUOUS-PASS DIAGNOSTIC (2026-08-21): the exit code alone proves nothing —
+# this install exited 0 while writing ZERO files into $litertLmInstallDir (every
+# `-- Installing:` line in the log went to a nested dependency's own prefix,
+# flatbuffers-flatc/… , never here). Report what actually landed.
+# NOTE THIS PATH IS DORMANT: the chain builds LiteRT-LM through
+# build-litert-lm-bazel.ps1 (see build-litert-all.ps1 — the cmake path and its
+# export bridge are kept in-tree as the fallback). The LIVE contract guard
+# therefore lives in the bazel script, next to its INSTALLED marker; this line
+# only earns its keep if the cmake path is ever reactivated. Keep both in sync.
 $installedNow = @(Get-ChildItem -LiteralPath $litertLmInstallDir -Recurse -File -ErrorAction SilentlyContinue)
 Write-Host ("cmake --install left {0} file(s) in {1}: {2}" -f $installedNow.Count, $litertLmInstallDir,
     (@($installedNow | ForEach-Object { $_.Directory.Name } | Sort-Object -Unique) -join ', '))
