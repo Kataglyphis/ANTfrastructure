@@ -744,9 +744,23 @@ if ($Stages -contains 'final') {
     # non-admin. -SkipSmokeGate exists for iterating on the chain itself; it is
     # NOT a way to ship an unverified image.
     if (-not $SkipSmokeGate) {
+        # LANE-AWARE FLOOR (2026-08-22). 160 is the CPU-lane number: it sits just
+        # under the sum of the per-section CPU floors (161). On the GPU lane the
+        # same 160 tolerated losing 60 of the 220 assertions a green run actually
+        # executes — a quarter of the surface — because CUDA/cuDNN, the CUDA EPs
+        # and the GPU-only halves of several sections all ride on -Gpu. Derived,
+        # not guessed: 190 is the sum of the GPU column of $sectionFloors in
+        # smoke-test-container.ps1 (measured green run: 220). An explicit
+        # -SmokeMinPassed always wins, so a lane with genuinely fewer sections
+        # still lowers it deliberately rather than by accident.
+        $effectiveMinPassed = $SmokeMinPassed
+        if ($Gpu -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
+            $effectiveMinPassed = 190
+            Write-Host "smoke gate: GPU lane floor $effectiveMinPassed (CPU default is $SmokeMinPassed)"
+        }
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.smoke-gate' -Label 'smoke-gate' -NoOutput -BuildArgs @{
             BASE_IMAGE  = Get-BkTag 'winamd64'
-            MIN_PASSED  = "$SmokeMinPassed"
+            MIN_PASSED  = "$effectiveMinPassed"
             MAX_SKIPPED = "$SmokeMaxSkipped"
             EXPECT_GPU  = $(if ($Gpu) { '1' } else { '0' })
         } -MaxAttempts 1

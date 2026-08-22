@@ -364,6 +364,44 @@ Set-BuildDriverIsolation -Isolation $script:BuildIsolation
 # BK lane).
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
+# BUILDKIT-ONLY GATE (2026-08-22). This lane drives the LEGACY docker builder,
+# which cannot execute `RUN --mount=...`. The chain moved its script closures to
+# bind mounts, so most windows/Dockerfile.* now carry that instruction and this
+# lane can no longer bootstrap them — `Dockerfile.base` dies at its first RUN
+# with "the --mount option requires BuildKit", but only AFTER pulling a ~2 GB
+# base and running every step before it (measured 2026-08-22: a full pull spent
+# for an error that was decidable up front). Nothing said so; the docs still
+# advertised this lane as a fallback.
+# Deliberately DATA-DRIVEN, not a hardcoded "this lane is dead": it scans the
+# Dockerfiles this invocation would actually build. If the closures ever go back
+# to COPY, or DOCKER_BUILDKIT becomes usable here, the gate stops firing on its
+# own instead of lying in the other direction.
+if (-not $env:DOCKER_BUILDKIT) {
+    $repoRootForScan = $PSScriptRoot
+    $bkOnly = @()
+    foreach ($df in @(Get-ChildItem -Path $repoRootForScan -Filter 'Dockerfile.*' -File -ErrorAction SilentlyContinue)) {
+        if (Select-String -LiteralPath $df.FullName -Pattern '^\s*RUN\s+--mount=' -Quiet) {
+            $bkOnly += $df.Name
+        }
+    }
+    if ($bkOnly.Count -gt 0) {
+        Write-Host ''
+        Write-Host 'CLASSIC LANE CANNOT BUILD THIS CHAIN' -ForegroundColor Red
+        Write-Host ("  {0} of the windows Dockerfiles use BuildKit-only `RUN --mount=` : {1}" -f
+            $bkOnly.Count, ($bkOnly -join ', ')) -ForegroundColor Red
+        Write-Host '  The legacy builder rejects that instruction, so this run would fail at the' -ForegroundColor Red
+        Write-Host '  first RUN of Dockerfile.base - after pulling the base image.' -ForegroundColor Red
+        Write-Host ''
+        Write-Host '  Use the preferred lane instead:' -ForegroundColor Yellow
+        Write-Host '    pwsh -File windows\build-buildkit.ps1 -Gpu' -ForegroundColor Yellow
+        Write-Host ''
+        Write-Host '  This lane remains valid for docker-side OPS (publish, docker run, -FinalTar' -ForegroundColor Gray
+        Write-Host '  handoff) - only the chain bootstrap moved to BuildKit. See AGENTS.md' -ForegroundColor Gray
+        Write-Host '  "LANE REALITY CHECK" and docs/windows-host-setup.md Phase R3.' -ForegroundColor Gray
+        exit 2
+    }
+}
+
 # Disk preflight (see Assert-DiskHeadroom): below the floor, hcsshim fails in
 # ways that do not look like a disk problem, hours into the run.
 # SHIM GATE (audit 2026-08-21 #10): the old claim 'BuildKit-lane only, this
