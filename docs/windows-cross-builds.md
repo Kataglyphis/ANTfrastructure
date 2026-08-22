@@ -1,0 +1,192 @@
+# Windows cross builds (arm64)
+
+The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers the
+`aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
+produce, and which gates keep it honest.
+
+## The constraint everything follows from
+
+**There is no arm64 Windows container base image, and there is no arm64 Windows Server.**
+`mcr.microsoft.com/windows/servercore` and `nanoserver` are published for amd64 only; Microsoft's
+tracking issue ([Windows-Containers#586](https://github.com/microsoft/Windows-Containers/issues/586))
+closed without one.
+
+So the question "build an arm64 Windows image" has no answer. What this lane does instead:
+
+- The build **host** and container stay `windows/amd64`.
+- Only the compile **target** changes, via `clang-cl --target=aarch64-pc-windows-msvc` + `lld-link`.
+- The product is a **versioned artifact bundle** (import libs, DLLs, headers), consumed on real
+  ARM64 Windows hardware — not a runnable container.
+
+Two corollaries worth stating plainly, because both have already been guessed wrong:
+
+1. **Never tag or push the output with `--platform windows/arm64`.** The image carrying the
+   payload is a `windows/amd64` image; an arm64 platform descriptor on it produces a manifest
+   nothing can run, and someone will `pull` it onto a Windows-on-ARM box and file a bug.
+2. **arm64 binaries cannot execute on the build host.** Windows x64 has no ARM64 emulation (only
+   the reverse). Every "run it and see" smoke in `smoke-test-container.ps1` is unavailable here,
+   which is why the static gates below carry so much weight.
+
+## Why clang-cl makes this cheap
+
+The whole Windows media chain already builds with **Ninja + clang-cl + lld-link** and explicit
+`-DCMAKE_C(XX)_COMPILER=` — there is no Visual Studio generator anywhere in the tree
+(`CMAKE_GENERATOR_PLATFORM` and `-A ARM64` have zero occurrences). clang-cl cross-targets aarch64
+natively, so this lane is a **target-triple change, not a toolchain replacement**.
+
+The rule is absolute: **clang-cl for every compile, lld-link for every link**, plus `llvm-lib`,
+`llvm-rc`, `llvm-mt`, `llvm-readobj`. On arm64 that costs nothing extra, because the one place the
+amd64 lane deliberately falls back to `cl.exe` — as **nvcc's host compiler**, since nvcc rejects
+clang-cl — does not exist here: there is no CUDA for Windows-on-ARM.
+
+**The MSVC ARM64 component is still required, but not for its compiler.** clang-cl targets the
+MSVC ABI, so an aarch64 link needs Microsoft's ARM64 CRT and import libraries
+(`VC\Tools\MSVC\<ver>\lib\arm64`), which ship only with
+`Microsoft.VisualStudio.Component.VC.Tools.ARM64`. Its `Hostx64\arm64\cl.exe` rides along unused.
+This is why `setup-vs.ps1` and `verify-toolchain.ps1` assert the **library** directories rather
+than the compiler binary — a `cl.exe` probe would pass even when the libraries, the part that is
+actually load-bearing, are absent.
+
+## Vulkan needs an optional component
+
+LunarG ships the aarch64 import libraries **inside the x64 Windows SDK**, but as an optional
+component the default install does not select:
+
+```
+com.lunarg.vulkan.arm64   ARM64 binaries for cross compiling on Windows x86_64
+Lib-ARM64 / Bin-ARM64     for cross compiling from Intel based development environments
+```
+
+scoop installs the SDK with the manifest's default component set, so a stock base image has **no**
+`$VULKAN_SDK\Lib-ARM64`. `setup-scoop-tools.ps1` adds it explicitly through the SDK's Qt Installer
+Framework `maintenancetool.exe` and fails loudly if it still is not there.
+
+Escape hatch (one, deliberately): `VULKAN_ARM64_OPTIONAL=1` downgrades that to a warning, for a
+knowingly amd64-only image. Do not set it to get a build green — the arm64 lane cannot link Vulkan
+without those libraries.
+
+## Cache discipline: the base image is shared
+
+`base` / `sdk` / `toolchain` install **host** tooling (VS, LLVM, scoop, vcpkg, rust, host CPython).
+None of it is target-specific, so **one base serves both lanes** and the arch fan-out starts at
+`media`:
+
+```
+base ─ sdk ─ toolchain ──┬─ media(amd64) ─ torch ─ final  → :winamd64  (image)
+   (shared, x64 host)    └─ media(arm64) ───────────────  → winarm64 artifact bundle
+```
+
+Consequently **`WINDOWS_TARGET_ARCH` is never declared in `Dockerfile.base`, `.nvidia`, or
+`.toolchain-builder`.** It first appears in `Dockerfile.media-builder`'s `common` stage. This is
+the file's own documented ARG discipline (`Dockerfile.base` — "every RUN after an ARG declaration
+keys its cache on the ARG's value"): declaring the arch ARG in base would re-pay the VS Build
+Tools install — the chain's most expensive layer — on **every lane switch**.
+
+For the same reason `WindowsTargetArch.Common.psm1` is COPY'd into base *below* the VS layer,
+immediately above its first consumer, rather than joining the three modules at the top.
+
+The one-time cost is a single base rebuild for the VS ARM64 component + the Vulkan component.
+**Batch them**, and see the sequencing warning below.
+
+## Where arch facts live
+
+`windows/scripts/modules/WindowsTargetArch.Common.psm1` is the single source of truth — the
+Windows twin of `linux/scripts/01-core/arch-mapping.sh`. It maps, per target: clang triple,
+VsDevCmd `-arch`, PE machine type, vcpkg triplet, MSVC lib/bin subdirs, Vulkan `Lib-ARM64`,
+CPython `-p` platform and `PCbuild\<dir>`, wheel tag, rust triple, NuGet RID, ffmpeg `--arch`,
+`lib /machine`, SIMD flag sets, and the CMake cross arguments.
+
+Two behaviours are deliberate and tested:
+
+- **An unknown arch throws.** Silently degrading to amd64 would emit an x64 build labelled arm64,
+  which no downstream gate would catch.
+- **`Get-CMakeCrossArgs` returns nothing for amd64**, so the existing lane's configure command line
+  is provably unchanged.
+
+It is re-exported through `WindowsSourceBuild.Common.psm1` on the same terms as
+`WindowsNative.Common.psm1`, so build scripts get it with their usual import. **Ship it in every
+Dockerfile COPY list that carries the module set** — an incomplete COPY list is a known failure
+mode, guarded here by a throwing stub.
+
+## SIMD: the failure that hides inside a green build
+
+`Get-WindowsX86Avx512Flags` was never an ordinary flag helper. `build-onnx-from-source.ps1`
+injects it **per-TU into `build.ninja` post-configure**, onto exactly the MLAS kernels matched by
+`qgemm_kernel_amx|intrinsics/avx512`. Globally-enabled AVX-512 was field-proven to crash protoc
+and `onnxruntime.dll`'s static initializers with `STATUS_ILLEGAL_INSTRUCTION`; entirely without
+the flags those TUs fail to compile. Per-TU is the only correct answer, because the kernels are
+runtime-dispatched.
+
+**On aarch64 that x86 pattern matches nothing — and a patch that matches nothing succeeds.** The
+build would go green with MLAS's NEON/dotprod/i8mm kernels compiled without their features:
+unoptimised at best, absent at worst, and undetectable from the build host.
+
+So the pattern is arch-parameterized (`Get-MlasKernelTuPattern`) alongside a **minimum match
+count** (`Get-MlasKernelTuMinimum`). The floor is the actual guard; the pattern alone is not.
+
+Note the asymmetry in the baseline flags: amd64 enables a broad SSE/AVX2 set globally, arm64
+enables **nothing** globally. AArch64 already mandates NEON, and its optional features
+(dotprod/i8mm/SVE) fault on hardware that lacks them — the same class of failure as AVX-512.
+Optional AArch64 features belong only on dispatched kernels.
+
+## Verification
+
+With nothing runnable on the build host, verification is layered:
+
+| Gate | Where | What it proves |
+|---|---|---|
+| `verify-toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
+| `verify-target-arch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
+| `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
+| native `windows-11-arm` CI | GitHub-hosted | the only proof the artifacts actually **run** |
+
+`verify-target-arch.ps1` is the Windows twin of the Linux lane's ELF check in
+`validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:
+
+- **A minimum inspected count.** A mis-pathed or empty tree otherwise passes green with zero files
+  checked — the failure `Dockerfile.smoke-gate`'s `MIN_PASSED` floor exists for. Allowlisting
+  everything therefore *also* fails, because it drives the inspected count to zero.
+- **`.lib` archives are not PE files.** A naive `bytes[0x3C]` walk over a COFF archive reads
+  whatever sits at that offset and can compare equal by accident. Archives are decoded from their
+  first member header, including the short-import header form.
+- **The host-tool allowlist is printed.** An over-broad allowlist is itself a defect, and the only
+  way to notice is to see what it swallowed.
+
+Usage:
+
+```powershell
+# strict: every binary must be arm64, at least 20 inspected
+windows\scripts\build\verify-target-arch.ps1 -Path C:\runtime -Arch arm64 -MinInspected 20
+
+# permit genuinely host-arch build tools that never ship to the target
+windows\scripts\build\verify-target-arch.ps1 -Path C:\runtime -Arch arm64 `
+    -HostToolPattern 'protoc\.exe|flatc\.exe|\\_deps\\'
+```
+
+Free native validation is available: this repo is public, so GitHub's `windows-11-arm` runners
+cost nothing. They are Windows 11 **client**, not Server Core — a caveat to state rather than a
+problem to solve, since no Server Core arm64 exists.
+
+## Sequencing: rebuild base twice, on purpose
+
+`setup-vs.ps1` deliberately does **not** SHA-pin the VS bootstrapper (the installer refreshes
+within a channel every few weeks; the hash is logged for provenance instead). Adding the ARM64
+component therefore also pulls whatever newer VS servicing build is current — and any regression
+it carries will look exactly like "the arm64 change broke the build".
+
+**Rebuild the base with no change at all first, confirm it is green, and only then add the
+components.** It is the single highest-value sequencing decision in this work.
+
+## What this lane cannot produce
+
+| Component | Status |
+|---|---|
+| CUDA / cuDNN / TensorRT | **Excluded.** No Windows-on-ARM support; CUDA 13.4 is an RTX-Spark-only developer preview. `Dockerfile.nvidia` is skipped and the arm64 lane always takes the CPU alias path. |
+| DirectML | **Unproven — do not advertise it.** DirectML supports ARM64 (≥1.15.4) and Microsoft ships ARM64 ONNX+DirectML builds for Copilot+ NPUs, but ONNX Runtime's own DML build docs list x64/x86 only, and Microsoft's Snapdragon guidance points at the **QNN** provider instead. Ship CPU first; spike DML separately. |
+| LiteRT-LM | **Blocked upstream.** Ships a prebuilt `prebuilt/windows_x86_64/libGemmaModelConstraintProvider.lib` with no arm64 counterpart. Not fixable downstream. |
+| Flutter | **Not cross-compilable.** windows-arm64 needs a native arm64 host; cross support is not upstream. |
+| PyTorch / the torch app stage | **Structurally impossible here.** `uv sync` must *run* the target interpreter. Independently, `PYTORCH_VERSION=v2.13.0` publishes no `win_arm64` wheel, the Windows-Arm wheels exist only as `+cpu` builds on `download.pytorch.org`, and upstream does not build them for Python 3.14 — which this repo pins. |
+
+Everything in that table is a **product gap to document, not an engineering problem to route
+around**. Where a coverage floor can encode it (CUDA sections in the smoke floors), encode it, so
+it can never be silently "fixed" by a skip.

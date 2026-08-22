@@ -36,7 +36,8 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # toolchain -> base) carries only Shared/ContainerImage/Installer in
 # C:\temp\scripts\modules — the merge stage's fuller module COPY is classic-lane
 # only, and the final image's whole-modules COPY comes one stage too late.
-COPY windows\scripts\modules\WindowsNative.Common.psm1 C:\temp\scripts\modules\
+COPY windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build\assemble-torch-app.ps1 C:\temp\scripts\
 # Wheel download cache (added 2026-08-08). Neither UV_CACHE_DIR nor
 # PIP_CACHE_DIR existed anywhere in the Windows lane, so this stage re-downloaded

@@ -45,6 +45,7 @@ The two halves of one topic often split:
 | Looking for | Read |
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
+| **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |

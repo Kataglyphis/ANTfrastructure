@@ -128,3 +128,98 @@ if (-not ($wixExtensions | Select-String -SimpleMatch "WixToolset.UI.wixext $wix
     throw "Required WiX extension not installed: WixToolset.UI.wixext $wixUiExtVersion"
 }
 
+
+# ---------------------------------------------------------------------------
+# ARM64 cross-target readiness (2026-08-22)
+#
+# The Windows build HOST is always amd64 (no arm64 Windows container base image
+# exists), so an arm64 lane is a CROSS build out of this same x64 image. Three
+# things must be true for that to work, and all three are cheap to check here
+# in the base -- where a failure costs one clear message instead of surfacing
+# hours into a media build as an opaque link error:
+#
+#   1. clang-cl can actually emit aarch64 code.
+#   2. Microsoft's ARM64 CRT/import libraries are present (clang-cl targets the
+#      MSVC ABI, so it links against them even though cl.exe is never invoked).
+#   3. The Windows SDK and Vulkan ARM64 import libraries are present.
+#
+# Compile-only on purpose: VsDevCmd has not run in this layer, so INCLUDE/LIB
+# are unset and a full link would fail for reasons unrelated to the toolchain.
+# The canonical compile+link+run-the-PE-gate check lives in the arch-gate stage,
+# which enters through entrypoint.cmd with -arch=arm64.
+# ---------------------------------------------------------------------------
+$archModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
+if (-not (Test-Path $archModulePath)) { throw "Required module not found: $archModulePath" }
+Import-Module $archModulePath -Force
+
+$armTriple  = Get-ClangTargetTriple -Arch 'arm64'
+$armMachine = Get-PeMachineType -Arch 'arm64'
+
+$probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ('archprobe-' + [guid]::NewGuid().ToString('N'))
+$null = New-Item -ItemType Directory -Force -Path $probeDir
+try {
+    $probeSrc = Join-Path $probeDir 'probe.c'
+    Set-Content -LiteralPath $probeSrc -Value 'int probe(int x) { return x + 1; }' -Encoding ASCII
+    $probeObj = Join-Path $probeDir 'probe.obj'
+
+    & clang-cl "--target=$armTriple" /c $probeSrc "/Fo$probeObj" 2>&1 | ForEach-Object { Write-Host "  $_" }
+    if ($LASTEXITCODE -ne 0) { throw "clang-cl failed to compile for $armTriple (exit $LASTEXITCODE)" }
+    if (-not (Test-Path $probeObj)) { throw "clang-cl produced no object file for $armTriple" }
+
+    # An unlinked COFF object begins with IMAGE_FILE_HEADER, so the first two
+    # bytes ARE the Machine field (little-endian) - no MZ/PE offset walk needed.
+    $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
+    if ($objBytes.Length -lt 2) { throw "clang-cl produced a truncated object file for $armTriple" }
+    $objMachine = $objBytes[0] -bor ($objBytes[1] -shl 8)
+    if ($objMachine -ne $armMachine) {
+        throw ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}). ' -f $objMachine, $armMachine, $armTriple)
+    }
+    Write-Host ('clang-cl cross-compiles to {0} (object machine 0x{1:X4}) OK' -f $armTriple, $objMachine)
+} finally {
+    Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# MSVC ARM64 CRT + import libraries (installed by VC.Tools.ARM64).
+$msvcRoot = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\$(Resolve-ContainerImageValue -EnvironmentVariable 'VISUAL_STUDIO_VERSION' -DefaultValue '18')\BuildTools\VC\Tools\MSVC"
+if (-not (Test-Path $msvcRoot)) {
+    $msvcRoot = Join-Path $env:ProgramFiles "Microsoft Visual Studio\$(Resolve-ContainerImageValue -EnvironmentVariable 'VISUAL_STUDIO_VERSION' -DefaultValue '18')\BuildTools\VC\Tools\MSVC"
+}
+$msvcArm64Lib = Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path $_.FullName 'lib\arm64\libcmt.lib' } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $msvcArm64Lib) {
+    throw ("MSVC ARM64 libraries missing under $msvcRoot (expected <ver>\lib\arm64\libcmt.lib). " +
+        'The VC.Tools.ARM64 component is not installed; clang-cl cannot link an aarch64 target without it.')
+}
+Write-Host "MSVC ARM64 libraries OK: $msvcArm64Lib"
+
+# Windows SDK ARM64 import libraries. The SDK component is architecture-complete,
+# so this asserts an expectation rather than a separate install step.
+$sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Lib'
+$sdkArm64 = Get-ChildItem -Path $sdkLibRoot -Directory -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path $_.FullName 'um\arm64\kernel32.lib' } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+if (-not $sdkArm64) {
+    throw ("Windows SDK ARM64 import libraries missing under $sdkLibRoot (expected <ver>\um\arm64\kernel32.lib). " +
+        'Reinstall the Windows 11 SDK component with ARM64 support.')
+}
+Write-Host "Windows SDK ARM64 libraries OK: $sdkArm64"
+
+# Vulkan ARM64 cross libraries (optional LunarG component com.lunarg.vulkan.arm64,
+# added by setup-scoop-tools.ps1). Same escape hatch as the install step.
+if ($env:VULKAN_SDK) {
+    $vkArmLib = Join-Path $env:VULKAN_SDK (Get-VulkanLibDirName -Arch 'arm64')
+    if (Test-Path (Join-Path $vkArmLib 'vulkan-1.lib')) {
+        Write-Host "Vulkan ARM64 import library OK: $vkArmLib"
+    } elseif ($env:VULKAN_ARM64_OPTIONAL -eq '1') {
+        Write-Warning "Vulkan ARM64 import library missing at $vkArmLib (VULKAN_ARM64_OPTIONAL=1)."
+    } else {
+        throw ("Vulkan ARM64 import library missing at $vkArmLib. The com.lunarg.vulkan.arm64 component " +
+            'is optional in the x64 SDK and setup-scoop-tools.ps1 must add it. ' +
+            'Set VULKAN_ARM64_OPTIONAL=1 only for a deliberately amd64-only image.')
+    }
+} else {
+    Write-Warning 'VULKAN_SDK is not set - skipping the Vulkan ARM64 import-library check.'
+}

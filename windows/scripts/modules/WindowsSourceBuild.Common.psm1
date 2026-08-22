@@ -18,6 +18,7 @@ if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath
 $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
 $cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
 $nativePath  = Join-Path $PSScriptRoot 'WindowsNative.Common.psm1'
+$targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if ((Test-Path $patchesPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Patches')) { Import-Module $patchesPath }
 if ((Test-Path $cudaPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Cuda')) { Import-Module $cudaPath }
 # Canonical stderr-shield for native calls (Invoke-ShieldedNative) — imported
@@ -30,6 +31,19 @@ if (Test-Path $nativePath) {
 } else {
     function Invoke-ShieldedNative {
         throw 'Invoke-ShieldedNative unavailable: WindowsNative.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
+    }
+}
+# Canonical TARGET-architecture facts (clang triple, PE machine, vcpkg triplet,
+# SIMD flag sets, CMake cross args) - imported and re-exported here on the same
+# terms as WindowsNative.Common above, so every source-build script gets them
+# with its usual SourceBuild.Common import. Ship WindowsTargetArch.Common.psm1
+# in every COPY list that carries this module; the stub keeps the failure loud
+# if a COPY list ever misses it.
+if (Test-Path $targetArchPath) {
+    if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
+} else {
+    function Get-WindowsTargetArch {
+        throw 'WindowsTargetArch.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
     }
 }
 
@@ -261,11 +275,18 @@ function Write-SccacheStats {
 }
 
 function Enter-VsDevCmdEnvironment {
+    # -Arch defaults to the resolved TARGET arch (WINDOWS_TARGET_ARCH, itself
+    # defaulting to amd64) rather than a literal, so every existing caller
+    # becomes cross-correct without a call-site change and the amd64 lane is
+    # unaffected. -HostArch stays a literal amd64 on purpose: the build host is
+    # always x64 because no arm64 Windows container base image exists.
     param(
-        [string]$Arch = 'amd64',
+        [string]$Arch = '',
         [string]$HostArch = 'amd64',
         [string]$VsDevCmdPath = ''
     )
+
+    if ([string]::IsNullOrWhiteSpace($Arch)) { $Arch = Get-VsDevCmdArch }
 
     if ([string]::IsNullOrWhiteSpace($VsDevCmdPath)) {
         # Direct call to Shared's finder (the old Get-VsInstallPath passthrough
@@ -385,7 +406,12 @@ function Initialize-SourceBuildScript {
 }
 
 function Get-WindowsX86SimdFlags {
-    return '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
+    # Back-compat shim (2026-08-22). The flag string now lives in
+    # WindowsTargetArch.Common as Get-WindowsTargetSimdFlags -Arch amd64 so it
+    # can vary by target. The x86 name is kept because both call sites
+    # (build-onnx / build-opencv) are still amd64-only; they move to the
+    # arch-aware helper when their lane learns arm64.
+    return Get-WindowsTargetSimdFlags -Arch 'amd64'
 }
 
 function Get-WindowsX86Avx512Flags {
@@ -399,7 +425,10 @@ function Get-WindowsX86Avx512Flags {
     # build-onnx-from-source.ps1 appends this string per-TU to exactly those
     # MLAS FLAGS lines in build.ninja post-configure — the only place the
     # features may be assumed, because those kernels are runtime-dispatched.
-    return '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
+    # Back-compat shim (2026-08-22): the flag string moved to
+    # WindowsTargetArch.Common (Get-WindowsTargetKernelSimdFlags), which
+    # also owns the aarch64 equivalent and the MLAS TU match pattern.
+    return Get-WindowsTargetKernelSimdFlags -Arch 'amd64'
 }
 
 function Install-CpythonPip {
@@ -1600,6 +1629,33 @@ Export-ModuleMember -Function @(
     'Get-NvccCudaCmakeArgs',
     'Get-WindowsX86SimdFlags',
     'Get-WindowsX86Avx512Flags',
+    'Get-WindowsTargetArch',
+    'Get-WindowsTargetArchInfo',
+    'Get-WindowsHostArch',
+    'Test-WindowsCrossTarget',
+    'Get-ClangTargetTriple',
+    'Get-VsDevCmdArch',
+    'Get-PeMachineType',
+    'Get-VcpkgTriplet',
+    'Get-MsvcTargetBinDir',
+    'Get-MsvcTargetLibDir',
+    'Get-VulkanLibDirName',
+    'Get-VulkanBinDirName',
+    'Get-PythonWheelTag',
+    'Get-PythonPlatformName',
+    'Get-CpythonBuildPlatform',
+    'Get-CpythonOutputDir',
+    'Get-RustTargetTriple',
+    'Get-OpenCvArchDir',
+    'Get-WindowsRuntimeIdentifier',
+    'Get-WindowsTargetTagSuffix',
+    'Get-FfmpegTargetArch',
+    'Get-LibMachineArg',
+    'Get-WindowsTargetSimdFlags',
+    'Get-WindowsTargetKernelSimdFlags',
+    'Get-MlasKernelTuPattern',
+    'Get-MlasKernelTuMinimum',
+    'Get-CMakeCrossArgs',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

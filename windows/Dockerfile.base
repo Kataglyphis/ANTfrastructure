@@ -147,6 +147,13 @@ ARG FLUTTER_VERSION=3.47.0
 # scoop's cache from there. Empty = direct (retried) vendor download. The
 # endpoint is a stable LAN URL, so it does not churn this layer's cache key.
 ARG VULKAN_PRESEED_ENDPOINT=""
+# Canonical target-arch facts (vcpkg triplet, Vulkan Lib-ARM64 dir, clang
+# triple, PE machine type). Deliberately COPY'd HERE, below the VS layer --
+# NOT up with the three modules near the top: those sit immediately before the
+# VS Build Tools RUN, so a fourth entry there would re-pay the chain's most
+# expensive layer on every edit to this module. Every consumer
+# (setup-scoop-tools, setup-vcpkg, verify-toolchain) runs below this point.
+COPY windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\host\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `

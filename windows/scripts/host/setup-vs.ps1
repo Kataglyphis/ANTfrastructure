@@ -166,6 +166,20 @@ try {
         '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.Clang',           # Clang compiler for Windows
         '--add', 'Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset',    # Clang-cl toolset
 
+        # ARM64 target support (2026-08-22)
+        #
+        # This is installed for its LIBRARIES, not its compiler. Every stage of
+        # this chain compiles with clang-cl and links with lld-link; the bundled
+        # Hostx64\arm64\cl.exe is never invoked. But clang-cl targets the MSVC
+        # ABI, so an aarch64-pc-windows-msvc build links against Microsoft's
+        # ARM64 CRT and import libraries (VC\Tools\MSVC\<v>\lib\arm64) -- which
+        # ship ONLY with this component. Without it, cross-compiling produces
+        # objects that cannot be linked.
+        #
+        # The Windows SDK component above is architecture-complete and already
+        # carries Lib\<ver>\um\arm64, so no SDK change is needed alongside this.
+        '--add', 'Microsoft.VisualStudio.Component.VC.Tools.ARM64',          # MSVC ARM64 CRT + import libs (cross target)
+
         # VC++ Analysis & Tools
         
         '--add', 'Microsoft.VisualStudio.Component.VC.ASAN',                 # AddressSanitizer (memory debugging)
@@ -224,6 +238,29 @@ try {
     $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $script:VsMajor
     if ($vsBuildToolsRoot) {
         Write-Host "VsDevCmd found ($vsBuildToolsRoot)."
+
+        # Hard gate on the ARM64 cross-target LIBRARIES (2026-08-22).
+        #
+        # Asserted here, in the layer that installs them, because a silently
+        # dropped VS component otherwise surfaces hours later as an opaque
+        # link error deep in a media build -- the failure class every gate in
+        # this repo exists to convert into one clear message.
+        #
+        # NB this deliberately checks lib\arm64, NOT bin\Hostx64\arm64\cl.exe:
+        # we never invoke that compiler (the chain is clang-cl + lld-link), and
+        # a cl.exe probe would pass even if the libraries -- the part that is
+        # actually load-bearing for a cross link -- were missing.
+        $msvcLibArm64 = Get-ChildItem -Path (Join-Path $vsBuildToolsRoot 'VC\Tools\MSVC') -Directory -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'lib\arm64\libcmt.lib' } |
+            Where-Object { Test-Path $_ } |
+            Select-Object -First 1
+        if (-not $msvcLibArm64) {
+            Write-InstallerLogDump -TempDir $TempDir
+            throw ('MSVC ARM64 libraries missing (no VC\Tools\MSVC\<ver>\lib\arm64\libcmt.lib under ' +
+                   "$vsBuildToolsRoot). The VC.Tools.ARM64 component did not install; " +
+                   'clang-cl cannot link an aarch64-pc-windows-msvc target without it.')
+        }
+        Write-Host "MSVC ARM64 cross libraries present ($msvcLibArm64)."
         # Success-path scrub: the installer leaves dd_setup_* / *vs_installer*.log
         # behind in $TempDir, and they would otherwise ride along in the committed
         # layer. Failure paths deliberately KEEP them — they are the evidence

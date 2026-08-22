@@ -52,6 +52,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      C:\bkmods\
@@ -184,6 +185,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      C:\temp\scripts\modules\
 COPY windows\scripts\build\build-gstreamer-from-source.ps1 C:\temp\scripts\

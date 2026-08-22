@@ -228,6 +228,57 @@ if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
 }
 Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
+# ARM64 cross-compile libraries for the Vulkan SDK (2026-08-22).
+#
+# LunarG ships the aarch64 import libraries INSIDE the x64 Windows SDK, but as
+# an OPTIONAL component that the default install does not select:
+#     com.lunarg.vulkan.arm64  "ARM64 binaries for cross compiling on Windows x86_64"
+#     Lib-ARM64 / Bin-ARM64    "for cross compiling from Intel based development environments"
+# scoop runs the installer with the manifest's default component set, so without
+# this step $VULKAN_SDK\Lib-ARM64 does not exist and an arm64 link against
+# vulkan-1.lib silently falls back to the x64 import library (or fails).
+#
+# The SDK is a Qt Installer Framework package, so components are added after the
+# fact through its maintenancetool. NB $env:VULKAN_SDK is not set yet -- that ENV
+# lands further down Dockerfile.base -- so the path is derived from the scoop root.
+#
+# Escape hatch (ONE, deliberately): VULKAN_ARM64_OPTIONAL=1 downgrades the hard
+# failure to a warning, for a deliberately amd64-only image. Do not set it to
+# "get the build green" -- the arm64 lane cannot link Vulkan without this.
+$vkRoot = Join-Path $env:USERPROFILE 'scoop\apps\vulkan\current'
+$vkArm64Lib = Join-Path $vkRoot 'Lib-ARM64'
+if (Test-Path $vkArm64Lib) {
+    Write-Host "Vulkan ARM64 cross libraries already present ($vkArm64Lib)."
+} else {
+    $maintenanceTool = Join-Path $vkRoot 'maintenancetool.exe'
+    if (Test-Path $maintenanceTool) {
+        # Two documented argument shapes: current Qt IFW long options first, the
+        # older short forms as a fallback (LunarG has shipped both).
+        $argSets = @(
+            @('--accept-licenses', '--default-answer', '--confirm-command', 'install', 'com.lunarg.vulkan.arm64'),
+            @('--al', '--am', '-c', 'install', 'com.lunarg.vulkan.arm64')
+        )
+        foreach ($argSet in $argSets) {
+            Write-Host "Adding Vulkan ARM64 component: maintenancetool $($argSet -join ' ')"
+            & $maintenanceTool @argSet 2>&1 | ForEach-Object { Write-Host "  $_" }
+            $global:LASTEXITCODE = 0
+            if (Test-Path $vkArm64Lib) { break }
+        }
+    } else {
+        Write-Warning "Vulkan maintenancetool.exe not found at $maintenanceTool - cannot add the ARM64 component."
+    }
+
+    if (Test-Path $vkArm64Lib) {
+        Write-Host "Vulkan ARM64 cross libraries installed ($vkArm64Lib)."
+    } elseif ($env:VULKAN_ARM64_OPTIONAL -eq '1') {
+        Write-Warning "Vulkan ARM64 component missing and VULKAN_ARM64_OPTIONAL=1 - continuing without arm64 Vulkan."
+    } else {
+        throw ("Vulkan ARM64 component (com.lunarg.vulkan.arm64) is not installed: $vkArm64Lib is missing. " +
+               'It is an optional component of the x64 SDK and is required to link an aarch64 target. ' +
+               'Set VULKAN_ARM64_OPTIONAL=1 only for a deliberately amd64-only image.')
+    }
+}
+
 # Flutter pinned to versions.env FLUTTER_VERSION (baked env) — previously the
 # ONLY versions.env-managed tool installed floating here, so the Windows image
 # could silently diverge from the Linux lane's Flutter. Empty env falls back to

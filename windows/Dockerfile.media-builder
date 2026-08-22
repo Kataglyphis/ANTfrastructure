@@ -181,6 +181,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      C:\temp\scripts\modules\
 
 # ── Mount source for the BK lane's module closure ────────────────────────────
@@ -212,6 +213,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      C:\bkmods\
 
 # ── media-core version env — CLASSIC-lane ancestor (since #49, 2026-08-19) ───

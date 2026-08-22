@@ -33,7 +33,17 @@ regressing the build.
 
 ## Container Architecture
 
-Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
+Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
+`windows/amd64` only; Windows **targets**: `amd64` (image) and `arm64` (cross-compiled artifact
+bundle — see below).
+
+> **There is no arm64 Windows container image, and there cannot be one.** Microsoft publishes no
+> arm64 `servercore`/`nanoserver` base image and Windows Server has no arm64 release
+> ([Windows-Containers#586](https://github.com/microsoft/Windows-Containers/issues/586)). The
+> Windows arm64 lane is therefore a **cross build out of the same `windows/amd64` container**
+> (`clang-cl --target=aarch64-pc-windows-msvc` + `lld-link`), and its product is an artifact
+> bundle, not a runnable image. Never pass `--platform windows/arm64` on its output — that
+> produces an unrunnable manifest.
 
 | Dockerfile | FROM | Produces |
 |------------|------|----------|
@@ -920,6 +930,7 @@ Apply the post-install fixes documented in `docs/windows-builds.md` § Stevedore
 | Runtime lane (stage 6) | Native or QEMU | `linux/amd64`, `linux/arm64`, `linux/riscv64` |
 | Final manifest | N/A | Multi-arch: `amd64`, `arm64`, `riscv64` |
 | Windows lane | `windows/amd64` | `windows/amd64` (native Windows Containers) |
+| Windows cross lane | `windows/amd64` | `arm64` artifact bundle (clang-cl `aarch64-pc-windows-msvc`; **not** a container image) |
 
 ### Expected Outputs
 
