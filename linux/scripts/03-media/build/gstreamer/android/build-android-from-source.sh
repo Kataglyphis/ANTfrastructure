@@ -91,6 +91,24 @@ patch_cerbero_system_m4_usage() {
       "Cerbero drop m4 dependency from autoconf/libtool recipes"
 }
 
+override_pkgconfig_dead_mirror() {
+    # PKGCFG-MIRROR (2026-08-22): cerbero bootstraps pkg-config-0.29.2 from
+    # gstreamer.freedesktop.org/src/mirror/ which now returns 404 (upstream
+    # restructure), and the original pkgconfig.freedesktop.org is unreachable
+    # — every COLD cerbero bootstrap dies on curl (22) across ALL arches.
+    # Point the recipe at the stable macports distfiles mirror (verified
+    # HTTP 200; same tarball, checksum in the recipe still guards the bytes).
+    local recipe
+    recipe="$(grep -rl "pkg-config-0.29.2\|pkgconfig" recipes/ packages/ 2>/dev/null | grep -m1 "pkg-config" || true)"
+    [ -n "${recipe}" ] || recipe="recipes/build-tools/pkg-config.recipe"
+    if [ -f "${recipe}" ]; then
+        sed -i           -e 's|https://gstreamer.freedesktop.org/src/mirror/pkg-config|https://distfiles.macports.org/pkgconfig/pkg-config|g'           -e 's|https://pkgconfig.freedesktop.org/releases|https://distfiles.macports.org/pkgconfig|g'           "${recipe}"
+        echo "cerbero: pkg-config source redirected to macports mirror (freedesktop 404, PKGCFG-MIRROR)"
+    else
+        echo "WARNING: pkg-config recipe not found for mirror override — cold bootstrap may 404" >&2
+    fi
+}
+
 override_soundtouch_codeberg_checksum() {
     # soundtouch is fetched from Codeberg's AUTO-GENERATED archive
     # (codeberg.org/soundtouch/soundtouch/archive/<version>.tar.gz). Forgejo
@@ -208,6 +226,7 @@ fi
 
 patch_cerbero_system_m4_usage
 override_soundtouch_codeberg_checksum
+override_pkgconfig_dead_mirror
 
 # 5. Setup Python Virtual Environment
 HOST_PYTHON="$(resolve_host_python)"
