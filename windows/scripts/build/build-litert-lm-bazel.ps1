@@ -158,14 +158,21 @@ try {
     # gather every .dll from both so the exe resolves standalone (the final
     # smoke runs it with only this bin\ on PATH).
     $dllSources = @('C:\llm\bazel-bin\runtime\engine', 'C:\llm\bazel-bin\runtime\engine\litert_lm_main.exe.runfiles')
-    $dllCount = 0
     foreach ($s in $dllSources) {
         if (Test-Path $s) {
             Get-ChildItem -Path $s -Filter '*.dll' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName $binOut -Force -ErrorAction SilentlyContinue; $dllCount++
+                Copy-Item $_.FullName $binOut -Force -ErrorAction SilentlyContinue
             }
         }
     }
+    # Count what LANDED, not what was attempted (2026-08-22). The old counter
+    # incremented once per source file found and never looked at the result:
+    # the two sources include the bazel RUNFILES tree, a symlink farm carrying
+    # the same DLL names repeatedly, and the copies are -ErrorAction
+    # SilentlyContinue. It reported "5 DLL(s) co-located" for a directory
+    # holding ONE — attempts dressed up as artifacts. The contract guard below
+    # counts the directory and disagreed, which is how this surfaced.
+    $dllCount = @(Get-ChildItem -LiteralPath $binOut -Filter '*.dll' -File -ErrorAction SilentlyContinue).Count
     # Headers are informational in the smoke (Test-Path-gated); stage the
     # public runtime headers best-effort so downstream apps can include them.
     $incOut = Join-Path $InstallDir 'lib\litert-lm\include'
