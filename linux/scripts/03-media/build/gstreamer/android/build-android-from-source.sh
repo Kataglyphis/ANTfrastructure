@@ -92,20 +92,34 @@ patch_cerbero_system_m4_usage() {
 }
 
 override_pkgconfig_dead_mirror() {
-    # PKGCFG-MIRROR (2026-08-22): cerbero bootstraps pkg-config-0.29.2 from
-    # gstreamer.freedesktop.org/src/mirror/ which now returns 404 (upstream
-    # restructure), and the original pkgconfig.freedesktop.org is unreachable
+    # PKGCFG-MIRROR (2026-08-22): recipes/pkg-config.recipe fetches from
+    # pkgconfig.freedesktop.org (host dead) and the DEFAULT_MIRRORS fallback
+    # gstreamer.freedesktop.org/src/mirror/ 404s too (upstream restructure)
     # — every COLD cerbero bootstrap dies on curl (22) across ALL arches.
-    # Point the recipe at the stable macports distfiles mirror (verified
-    # HTTP 200; same tarball, checksum in the recipe still guards the bytes).
-    local recipe
-    recipe="$(grep -rl "pkg-config-0.29.2\|pkgconfig" recipes/ packages/ 2>/dev/null | grep -m1 "pkg-config" || true)"
-    [ -n "${recipe}" ] || recipe="recipes/build-tools/pkg-config.recipe"
-    if [ -f "${recipe}" ]; then
-        sed -i           -e 's|https://gstreamer.freedesktop.org/src/mirror/pkg-config|https://distfiles.macports.org/pkgconfig/pkg-config|g'           -e 's|https://pkgconfig.freedesktop.org/releases|https://distfiles.macports.org/pkgconfig|g'           "${recipe}"
-        echo "cerbero: pkg-config source redirected to macports mirror (freedesktop 404, PKGCFG-MIRROR)"
+    # macports serves the byte-identical tarball (sha256 6fc69c01... equals
+    # the recipe's tarball_checksum, so the checksum still guards the bytes).
+    # v1 of this fix picked ONE file via `grep -rl | grep -m1` — readdir
+    # order is filesystem-dependent, so in-container it patched a stray
+    # patch-file instead of the recipe while still echoing success. Patch
+    # the known recipe explicitly PLUS every other file naming a dead host,
+    # and echo the resulting url line as proof.
+    local f patched=0
+    for f in recipes/pkg-config.recipe \
+             $(grep -rl "pkgconfig\.freedesktop\.org/releases\|gstreamer\.freedesktop\.org/src/mirror/pkg-config" recipes/ packages/ 2>/dev/null); do
+        [ -f "${f}" ] || continue
+        case " ${_pkgcfg_seen:-} " in *" ${f} "*) continue ;; esac
+        _pkgcfg_seen="${_pkgcfg_seen:-} ${f}"
+        sed -i \
+          -e 's|https://gstreamer.freedesktop.org/src/mirror/pkg-config|https://distfiles.macports.org/pkgconfig/pkg-config|g' \
+          -e 's|https://pkgconfig.freedesktop.org/releases|https://distfiles.macports.org/pkgconfig|g' \
+          "${f}"
+        patched=$((patched + 1))
+    done
+    unset _pkgcfg_seen
+    if [ -f recipes/pkg-config.recipe ]; then
+        echo "cerbero: pkg-config mirror override → $(grep -m1 "url = " recipes/pkg-config.recipe | tr -d ' ') (${patched} file(s) patched, PKGCFG-MIRROR)"
     else
-        echo "WARNING: pkg-config recipe not found for mirror override — cold bootstrap may 404" >&2
+        echo "WARNING: recipes/pkg-config.recipe missing — pkg-config mirror override patched ${patched} file(s) blind" >&2
     fi
 }
 
