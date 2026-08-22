@@ -42,9 +42,18 @@ if (Test-Path $nativePath) {
 if (Test-Path $targetArchPath) {
     if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
 } else {
-    function Get-WindowsTargetArch {
-        throw 'WindowsTargetArch.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
-    }
+    # THROW AT IMPORT, not a stub. The stub pattern used for
+    # Invoke-ShieldedNative above works because that is ONE function with one
+    # call site; here this module itself depends on Get-VsDevCmdArch
+    # (Enter-VsDevCmdEnvironment), Get-WindowsTargetSimdFlags and
+    # Get-WindowsTargetKernelSimdFlags, and re-exports ~29 names. Stubbing a
+    # single name left the rest unstubbed and Export-ModuleMember silently
+    # ignores names with no matching function, so a broken COPY list surfaced as
+    # a bare CommandNotFoundException deep inside the VsDevCmd bootstrap instead
+    # of naming the real cause. Failing here names it exactly once, immediately.
+    throw ("WindowsTargetArch.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 " +
+           "(looked at: $targetArchPath). This is an incomplete modules COPY list -- every " +
+           'Dockerfile that COPYs WindowsSourceBuild.Common.psm1 must COPY the arch module too.')
 }
 
 function Get-SourceBuildVersion {
@@ -173,6 +182,11 @@ function Invoke-CmakeConfigure {
         [string]$InstallPrefix,
         [string]$Generator = 'Ninja',
         [string]$Platform = '',
+        # [Alias('T')] is defensive, added with $TargetArch below: PowerShell
+        # resolves parameters by unambiguous PREFIX, and once a second parameter
+        # starts with 'T' a bare `-T v143` would fail to bind ("ambiguous").
+        # No caller passes -T today; the alias means none ever breaks.
+        [Alias('T')]
         [string]$Toolset = '',
         [string]$BuildType = 'Release',
         [string]$CCompiler = 'clang-cl',
@@ -180,6 +194,22 @@ function Invoke-CmakeConfigure {
         [string]$Linker = 'lld-link',
         [string]$Archiver = 'llvm-lib',
         [string[]]$ExtraArgs = @(),
+        # Per-call cross-target override. Empty (the default) means "resolve
+        # WINDOWS_TARGET_ARCH", so every existing call site is unchanged and the
+        # amd64 lane is byte-identical.
+        #
+        # Its reason to exist is the HOST-TOOL configure: a build whose product
+        # must RUN on the amd64 build host during a cross build.
+        # build-tvm-from-source.ps1 is exactly that shape -- a minimal LLVM
+        # configured through this helper only to produce a runnable
+        # llvm-config.exe. Without this parameter the choke point could only ever
+        # emit target-arch binaries and such a stage would have no way to ask for
+        # a runnable tool.
+        #
+        # NB necessary but not sufficient: a host-tool configure also needs a
+        # paired `Enter-VsDevCmdEnvironment -Arch amd64`, or the surrounding
+        # LIB/INCLUDE stay arm64-shaped.
+        [string]$TargetArch = '',
         [switch]$SkipOnFailure
     )
 
@@ -235,6 +265,25 @@ function Invoke-CmakeConfigure {
         }
     } else {
         Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
+    }
+
+    # Cross-compilation arguments (2026-08-22). THE choke point: nearly every
+    # library in the chain configures through this function, so wiring the arch
+    # abstraction here is what makes the whole media chain cross-capable instead
+    # of one script at a time.
+    #
+    # Get-CMakeCrossArgs returns an EMPTY array for the host arch, so the amd64
+    # lane's command line is provably unchanged - the @() wrapper is load-bearing
+    # under StrictMode, because PowerShell unrolls a returned empty array to
+    # $null and $null.Count would then be the bug this comment exists to prevent.
+    #
+    # Added BEFORE $ExtraArgs on purpose: a caller passing an explicit
+    # -DCMAKE_SYSTEM_PROCESSOR or its own --target still wins, because cmake
+    # honours the LAST occurrence of a -D flag.
+    $crossArgs = @(Get-CMakeCrossArgs -Arch $TargetArch)
+    if ($crossArgs.Count -gt 0) {
+        $cmakeArgs += $crossArgs
+        Write-Host "CMake cross-compiling for $(Get-WindowsTargetArch -Arch $TargetArch): $($crossArgs -join ' ')"
     }
 
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
@@ -355,13 +404,33 @@ function Copy-CpythonPyConfigHeader {
 }
 
 function Get-SourceBuildPython {
+    # HOST-PINNED, deliberately -- this resolves the BUILD interpreter, not a
+    # target one. Every call site EXECUTES .Exe (Install-CpythonPip,
+    # Invoke-CpythonPip, Test-PythonImport, Invoke-PythonWheelBuild, plus the
+    # onnx-genai / tvm / ffmpeg build scripts). An aarch64 python.exe cannot run
+    # on the x64 build host -- Windows x64 has no ARM64 emulation, only the
+    # reverse -- so the interpreter must follow Get-WindowsHostArch. The literal
+    # is replaced by the accessor so the host pin is a STATEMENT, not an accident.
+    #
+    # .LibDir/.Lib are the exception in waiting: they are LINK inputs (build-ffmpeg
+    # prepends .LibDir to $env:LIB so lld-link finds python314.lib for the PyAV
+    # wheel), so they belong to the TARGET the day a target CPython exists. Until
+    # then only the host import lib exists and lld-link will reject it for an
+    # aarch64 .pyd -- warn, so that failure is named HERE instead of surfacing as
+    # an unexplained machine-type error hours into a media build.
     param(
         [string]$CpythonDir = ''
     )
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
-    $exe = Join-Path $CpythonDir 'PCbuild\amd64\python.exe'
+    $hostOutDir = Get-CpythonOutputDir -Arch (Get-WindowsHostArch)
+    $exe = Join-Path $CpythonDir "PCbuild\$hostOutDir\python.exe"
     $include = Join-Path $CpythonDir 'Include'
-    $libDir = Join-Path $CpythonDir 'PCbuild\amd64'
+    $libDir = Join-Path $CpythonDir "PCbuild\$hostOutDir"
+    if (Test-WindowsCrossTarget) {
+        Write-Warning ("Get-SourceBuildPython: returning the HOST ($(Get-WindowsHostArch)) CPython at $exe -- " +
+            "no $(Get-WindowsTargetArch) CPython is built on this lane, so .LibDir/.Lib are HOST import libs. " +
+            'Any python extension module linked against them will fail with a machine-type mismatch.')
+    }
     $lib = if (Test-Path (Join-Path $libDir 'python314.lib')) { Join-Path $libDir 'python314.lib' } else { Join-Path $libDir 'python3.lib' }
     return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
 }
@@ -975,12 +1044,30 @@ function Initialize-PythonPlatformTag {
     # pip then resolves 32-bit wheels (numpy import dies on a cp314-win32 pyd)
     # and locally-built wheels get mis-tagged. _PYTHON_HOST_PLATFORM is POSIX-only,
     # so drop a sitecustomize.py shim forcing win-amd64 (verified 2026-07-12).
-    param([string]$CpythonDir = '')
+    #
+    # -Arch follows the TARGET (empty = resolved WINDOWS_TARGET_ARCH), NOT the
+    # host. This shim decides the PEP 425 tag stamped on every wheel this lane
+    # BUILDS, and a cross build must emit win_arm64 wheels even though the
+    # interpreter running setup.py is the x64 host one. A mis-tagged wheel is
+    # silent; the smoke gate's tag assert is the only thing that would catch it.
+    # Known consequence on a cross lane: pip also RESOLVES downloads against this
+    # tag, so `pip install numpy` looks for win_arm64. That is loud and correct --
+    # a win_amd64 numpy in a cross bundle is unusable on the target.
+    param(
+        [string]$CpythonDir = '',
+        [string]$Arch = ''
+    )
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
+    $platformName = Get-PythonPlatformName -Arch $Arch
+    $openCvArchDir = Get-OpenCvArchDir -Arch $Arch
     $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
     New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
     $shim = Join-Path $sitePackages 'sitecustomize.py'
-    Set-Content -Path $shim -Encoding ASCII -Value @'
+    # EXPANDING here-string (@" ... "@) since the arm64 lane: two arch facts are
+    # interpolated. The python body must therefore contain NO '$' and NO backtick
+    # -- it contains neither today. If you add one, escape it, or this shim
+    # silently ships a truncated path.
+    Set-Content -Path $shim -Encoding ASCII -Value @"
 # Written by Initialize-PythonPlatformTag (WindowsSourceBuild.Common.psm1).
 # 1) Clang-built CPython lacks the "64 bit (AMD64)" marker in sys.version, so
 #    sysconfig.get_platform() misreports win32 -> pip resolves 32-bit wheels and
@@ -992,7 +1079,7 @@ import os
 import sys
 import sysconfig
 if sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:
-    sysconfig.get_platform = lambda: 'win-amd64'
+    sysconfig.get_platform = lambda: '$platformName'
 if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
     _dirs = []
     for _env in ('CUDA_PATH', 'CUDNN_ROOT'):
@@ -1005,7 +1092,7 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
             if _n.startswith('TensorRT-'):
                 _dirs.append(os.path.join(_trt, _n, 'lib'))
     _dirs += [
-        r'C:\runtime\lib\opencv5\x64\vc18\bin',
+        r'C:\runtime\lib\opencv5\$openCvArchDir\vc18\bin',
         r'C:\runtime\lib\onnxruntime-source\bin',
         r'C:\runtime\lib\onnxruntime-source\lib',
         r'C:\runtime\lib\onnxruntime-genai-source\lib',
@@ -1019,8 +1106,8 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
                 os.add_dll_directory(_d)
             except OSError:
                 pass
-'@
-    Write-Host "Wrote python platform-tag + dll-directory shim: $shim"
+"@
+    Write-Host "Wrote python platform-tag ($platformName) + dll-directory shim: $shim"
     return $shim
 }
 
@@ -1097,13 +1184,24 @@ function Save-PythonWheel {
 }
 
 function Initialize-ToolchainPythonEnvironment {
+    # -Arch defaults to EMPTY, not 'amd64' (fixed 2026-08-22). Enter-VsDevCmdEnvironment
+    # resolves the target arch only when handed an empty string, so a literal
+    # default here silently defeated it for all five callers that route through
+    # this helper (build-gstreamer / build-iree / build-onnx / build-onnx-genai /
+    # build-opencv) - they would have entered an x64 developer environment even
+    # on an arm64 build, while the two callers using the bare form resolved
+    # correctly. -HostArch stays a literal: the build host is always x64.
     param(
-        [string]$Arch = 'amd64',
+        [string]$Arch = '',
         [string]$HostArch = 'amd64'
     )
     Enter-VsDevCmdEnvironment -Arch $Arch -HostArch $HostArch
     Copy-CpythonPyConfigHeader
-    Initialize-PythonPlatformTag | Out-Null
+    # Forward -Arch: the shim stamps the wheel platform tag, which follows the
+    # TARGET exactly like the VsDevCmd arch above. Not forwarding it would repeat
+    # the bug this function's own header documents -- a helper silently pinning
+    # its callers to x64.
+    Initialize-PythonPlatformTag -Arch $Arch | Out-Null
     return Get-SourceBuildPython
 }
 

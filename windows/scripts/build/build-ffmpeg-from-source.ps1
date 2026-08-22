@@ -26,6 +26,20 @@ $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariab
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
+# TARGET architecture. The build HOST is always windows/amd64; arm64 is a CROSS
+# target (clang-cl --target=aarch64-pc-windows-msvc + lld-link) whose output
+# cannot be executed here. Every arch-dependent literal below resolves through
+# WindowsTargetArch.Common (re-exported by WindowsSourceBuild.Common).
+# On amd64 $ffCross is $false and $ffCcTargetFlag is '', so every flag this
+# script emits stays byte-identical to the pre-arm64 script.
+$ffTargetArch = Get-WindowsTargetArch
+$ffCross      = Test-WindowsCrossTarget -Arch $ffTargetArch
+# Appended to clang-cl in BOTH places the compiler is named (configure's --cc
+# and the make-time CC override). configure's own probe compilations must target
+# the cross arch too, so the triple rides on --cc rather than --extra-cflags.
+$ffCcTargetFlag = if ($ffCross) { " --target=$(Get-ClangTargetTriple -Arch $ffTargetArch)" } else { '' }
+if ($ffCross) { Write-Host "FFmpeg: CROSS build for $ffTargetArch on an $(Get-WindowsHostArch) host" }
+
 # Windows -> MSYS path (C:\x\y -> /c/x/y). Every bash-facing path MUST go through
 # this: a half-converted path once collapsed to /cruntimeffmpeg and make install
 # silently delivered the whole tree into <git-root>\cruntimeffmpeg.
@@ -295,7 +309,11 @@ $bashExe = Join-Path $gitUsrBin 'bash.exe'
 # (which COMPILES CUDA *filters* and would need nvcc under the msvc toolchain) is deliberately left off.
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
-if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
+# -not $ffCross first: the x64 BUILD container may well carry a CUDA toolkit,
+# but the arm64 TARGET has none (no CUDA/cuDNN/TensorRT exists for
+# Windows-on-ARM), so nvenc/nvdec/cuvid must stay off there regardless of what
+# the host has installed.
+if ((-not $ffCross) -and $ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
     Write-Host 'NVIDIA CUDA detected -> enabling FFmpeg NVENC/NVDEC/CUVID via nv-codec-headers'
     # pkg-config is required by configure to locate ffnvcodec and is not present in the media build
     # image, so install it the same scoop way make/gawk are installed above.
@@ -329,6 +347,8 @@ if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))
     } else {
         Write-Warning 'nv-codec-headers install produced no ffnvcodec.pc -- FFmpeg will build without NVIDIA video accel.'
     }
+} elseif ($ffCross) {
+    Write-Host "FFmpeg: target $ffTargetArch -> no CUDA on Windows-on-ARM, building without NVENC/NVDEC (CPU + Vulkan lane)"
 } else {
     Write-Host 'FFmpeg: no nvidia CUDA toolkit -> building without NVENC/NVDEC (CPU-only lane)'
 }
@@ -397,10 +417,31 @@ if ($ffToolchain -eq 'clang-cl') {
     $ffSccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
     $ffUseLauncher = [bool]($ffSccache -and (Test-SccacheRemoteConfigured) -and $env:FFMPEG_SCCACHE -ne '0')
     Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
-    $confFlags += '--toolchain=msvc', '--cc=clang-cl', '--ld=lld-link'
+    $confFlags += '--toolchain=msvc', "--cc=clang-cl$ffCcTargetFlag", '--ld=lld-link'
 } else {
     Write-Host 'FFmpeg toolchain: msvc (cl.exe + link.exe)'
     $confFlags += '--toolchain=msvc'
+}
+if ($ffCross) {
+    # --enable-cross-compile stops configure RUNNING its probe binaries (they are
+    # aarch64 and cannot execute here); --arch selects the target's asm/optimisation
+    # tree.
+    #
+    # --target-os is DELIBERATELY NOT SET. It is tempting to pass win32, but this
+    # script drives configure through Git-bash/MSYS, so the amd64 lane's own
+    # TARGET_OS is the reference value and guessing here can silently select a
+    # different code path. The config.mak dump added below prints configure's
+    # actual verdict (TARGET_OS/ARCH/CPU/AS) on BOTH lanes -- read the amd64 line
+    # first, then set this explicitly if the cross lane disagrees.
+    #
+    # UNVERIFIED: no FFmpeg arm64 build has been run. FFmpeg's aarch64 assembly
+    # under an MSVC-ABI toolchain is the least-trodden path in this whole chain
+    # (upstream's own Windows-on-ARM guidance recommends llvm-mingw, which is
+    # incompatible with this repo's MSVC ABI). If the asm fails to assemble,
+    # add --disable-asm as a first step: correct but slower, and a deliberate
+    # follow-up rather than a silent default.
+    $confFlags += '--enable-cross-compile', "--arch=$(Get-FfmpegTargetArch -Arch $ffTargetArch)"
+    Write-Host "FFmpeg: cross flags -> --enable-cross-compile --arch=$(Get-FfmpegTargetArch -Arch $ffTargetArch)"
 }
 $confFlags += '--disable-x86asm'
 # vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
@@ -445,6 +486,14 @@ $configMak = Join-Path $srcDir 'ffbuild\config.mak'
 if (Test-Path $configMak) {
     $ccLine = (Select-String -Path $configMak -Pattern '^CC=' | Select-Object -First 1).Line
     Write-Host "config.mak: $ccLine (make-time sccache launcher: $ffUseLauncher)"
+    # configure's own verdict on arch/OS/cpu/assembler: the authoritative answer
+    # to "did the cross flags take?", and on the amd64 lane the reference
+    # TARGET_OS a cross lane would have to match. Array-wrapped so a non-matching
+    # pattern is an empty loop rather than a $null property under StrictMode.
+    # Log-only: emits no compiler or linker flag.
+    foreach ($m in @(Select-String -Path $configMak -Pattern '^(TARGET_OS|ARCH|CPU|AS)=' -ErrorAction SilentlyContinue)) {
+        Write-Host "config.mak: $($m.Line)"
+    }
 }
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
@@ -512,7 +561,7 @@ $makeJobs = Get-BuildJobCount -MemGBPerJob 2
 # configure stays bare (its own compiler tests still break through sccache,
 # "unknown file type" - measured 2026-08-19).
 Switch-BuildPhase '5. make + install'
-$makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl'" } else { '' }
+$makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl$ffCcTargetFlag'" } else { '' }
 # All three make calls are -Optional by design: a parallel-link race falls
 # through to the -j1 retry, and an incomplete build/install falls through to
 # the artifact verification + prebuilt fallback below (never throw here).
@@ -559,6 +608,14 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     if ($env:FFMPEG_ALLOW_PREBUILT -ne '1') {
         throw ('FFmpeg source build did not produce ffmpeg.exe and the prebuilt fallback is fail-closed (#68) - ' +
             'fix the source build (see the make output above) or opt in explicitly with FFMPEG_ALLOW_PREBUILT=1.')
+    }
+    # The BtbN release fetched below is win64 (x64) ONLY. Substituting it on the
+    # cross lane would drop x64 exes/DLLs into an arm64 bundle -- unrunnable on
+    # the target, and exactly the silent arch mismatch the PE gate exists to
+    # catch. FFMPEG_ALLOW_PREBUILT does not apply to a cross build.
+    if ($ffCross) {
+        throw ("FFmpeg source build did not produce ffmpeg.exe and the BtbN prebuilt fallback is win64/x64 only -- " +
+            "it cannot stand in for a $ffTargetArch build. Fix the cross build (see the make output above).")
     }
     Write-Warning 'FFmpeg source build failed -- falling back to pre-built BtbN MSVC FFmpeg (FFMPEG_ALLOW_PREBUILT=1). DNN/ONNX integration will NOT be available in the fallback binary.'
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '0', 'Process')
@@ -659,7 +716,10 @@ if (Test-Path "$ffmpegDir\ffmpeg.exe") {
         if (-not (Test-Path $libPath)) {
             Write-Host "regenerating $libName from $($defFile.Name)"
             # /name pins the DLL the import lib binds to (our makedef emits EXPORTS only)
-            [void](Invoke-ShieldedNative -Label "lib.exe /def $($defFile.Name)" -CommandLine "lib.exe /nologo /machine:x64 /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`"")
+            # /machine follows the TARGET: an import lib generated as x64 cannot
+            # be linked into an aarch64 binary. Get-LibMachineArg returns 'x64'
+            # for amd64, so this command line is byte-identical on that lane.
+            [void](Invoke-ShieldedNative -Label "lib.exe /def $($defFile.Name)" -CommandLine "lib.exe /nologo /machine:$(Get-LibMachineArg -Arch $ffTargetArch) /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`"")
         }
     }
     # Single authoritative inventory + assertion: the PyAV step (and any other

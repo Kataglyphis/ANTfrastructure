@@ -4,6 +4,20 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
+> **Status (2026-08-22): the lane is wired but has never been built or executed.**
+>
+> Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on both drivers,
+> `ARG WINDOWS_TARGET_ARCH` from the media stage onward, per-arch tags, the base-image ARM64
+> readiness checks, the MLAS kernel-flag floor, and the `verify-target-arch.ps1` PE gate wired
+> into the merge stage.
+>
+> **Not shipped:** a `windows-11-arm` CI job, and any per-library arm64 port beyond flag
+> plumbing — FFmpeg, OpenCV, GStreamer, LiteRT and CPython have *not* been cross-built yet.
+>
+> **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
+> Every arm64 signal here is a static PE machine-type check. The Vulkan `maintenancetool`
+> component install has also never run against a real base image.
+
 ## The constraint everything follows from
 
 **There is no arm64 Windows container base image, and there is no arm64 Windows Server.**
@@ -59,11 +73,23 @@ Lib-ARM64 / Bin-ARM64     for cross compiling from Intel based development envir
 
 scoop installs the SDK with the manifest's default component set, so a stock base image has **no**
 `$VULKAN_SDK\Lib-ARM64`. `setup-scoop-tools.ps1` adds it explicitly through the SDK's Qt Installer
-Framework `maintenancetool.exe` and fails loudly if it still is not there.
+Framework `maintenancetool.exe`.
 
-Escape hatch (one, deliberately): `VULKAN_ARM64_OPTIONAL=1` downgrades that to a warning, for a
-knowingly amd64-only image. Do not set it to get a build green — the arm64 lane cannot link Vulkan
-without those libraries.
+**That step warns, it does not fail — deliberately.** Every arm64 prerequisite in the base
+(Vulkan `Lib-ARM64`, the MSVC `lib\arm64` CRT, the Windows SDK `um\arm64` libs) is checked
+warn-only, because `base` is **shared by both lanes**: a hard failure over an arm64-only
+prerequisite would block the amd64 build too, and the `maintenancetool` invocation has never yet
+been executed against a real base image. An unverified installer call must not be able to kill the
+chain's most expensive layer.
+
+Set **`WINDOWS_ARM64_STRICT=1`** to turn all of them into hard gates — the same opt-in shape as
+`CUDA_STACK_STRICT=1` on the Linux side. Use it once the arm64 lane is real; it is the flag that
+says "this image claims a complete arm64 toolchain".
+
+It is plumbed as a real `ARG` in `Dockerfile.base` and forwarded as a script parameter. That
+matters: a bare `$env:` read is unreachable from `docker build`, and buildctl silently discards
+`--build-arg` for undeclared ARG names — an earlier version of this gate had an escape hatch that
+could not actually be set from anywhere.
 
 ## Cache discipline: the base image is shared
 
@@ -82,8 +108,12 @@ the file's own documented ARG discipline (`Dockerfile.base` — "every RUN after
 keys its cache on the ARG's value"): declaring the arch ARG in base would re-pay the VS Build
 Tools install — the chain's most expensive layer — on **every lane switch**.
 
-For the same reason `WindowsTargetArch.Common.psm1` is COPY'd into base *below* the VS layer,
-immediately above its first consumer, rather than joining the three modules at the top.
+For the same reason `WindowsTargetArch.Common.psm1` is COPY'd into base *below* the VS layer, in
+the same group as `verify-toolchain.ps1` — its only consumer there. The host provisioning scripts
+(`setup-scoop-tools`, `setup-vcpkg`) spell their few arm64 facts inline and import just the three
+modules that precede the VS layer. Placing the module higher invalidated scoop, vcpkg **and** the
+~30-minute rust layer on every edit to a file whose whole point is that adding a target is a
+one-line table edit.
 
 The one-time cost is a single base rebuild for the VS ARM64 component + the Vulkan component.
 **Batch them**, and see the sequencing warning below.
@@ -122,7 +152,9 @@ build would go green with MLAS's NEON/dotprod/i8mm kernels compiled without thei
 unoptimised at best, absent at worst, and undetectable from the build host.
 
 So the pattern is arch-parameterized (`Get-MlasKernelTuPattern`) alongside a **minimum match
-count** (`Get-MlasKernelTuMinimum`). The floor is the actual guard; the pattern alone is not.
+count** (`Get-MlasKernelTuMinimum`), and `build-onnx-from-source.ps1` **throws** when the tagged-TU
+count falls below that floor. The floor is the actual guard; the pattern alone is not — a warning
+there would have preserved exactly the failure mode this exists to prevent.
 
 Note the asymmetry in the baseline flags: amd64 enables a broad SSE/AVX2 set globally, arm64
 enables **nothing** globally. AArch64 already mandates NEON, and its optional features
@@ -138,7 +170,10 @@ With nothing runnable on the build host, verification is layered:
 | `verify-toolchain.ps1` arm64 section | base image | clang-cl emits aarch64 objects; MSVC/SDK/Vulkan arm64 libraries present |
 | `verify-target-arch.ps1` | any staged tree | every shipped `.dll`/`.exe` (optionally `.lib`) has PE machine `0xAA64`, with a **minimum inspected floor** |
 | `TargetArch.Common.Tests.ps1` | `Invoke-Tests.ps1` | the arch table, the amd64 byte-identity guarantee, and the MLAS pattern behaviour |
-| native `windows-11-arm` CI | GitHub-hosted | the only proof the artifacts actually **run** |
+
+The one gate that does **not** exist yet is native execution: a `windows-11-arm` CI job would be
+the only proof the artifacts actually **run**. Until it exists, treat every arm64 output as
+unvalidated — see the prose below.
 
 `verify-target-arch.ps1` is the Windows twin of the Linux lane's ELF check in
 `validate-media-runtime.sh`. Three design points, each learned from a gate that could not fail:

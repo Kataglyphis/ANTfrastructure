@@ -497,7 +497,15 @@ int _isatty(int);
         'uuid.lib', 'mfuuid.lib', 'strmiids.lib', 'ksuser.lib', 'dxguid.lib',
         'dmoguids.lib', 'wmcodecdspuuid.lib', 'mfplat.lib', 'mf.lib', 'mfreadwrite.lib'
     )
-    $linkArgElems = ((@('/FORCE:MULTIPLE', $rtFullPath) + $guidLibs) |
+    # Cross lane: resolved HERE because both the link args below and the meson
+    # cross file in phase 6 need it. The clang-cl driver defaults to the HOST
+    # triple, and meson passes c_link_args THROUGH the compiler driver -- so
+    # without --target on the link line lld-link is handed /machine:x64 and
+    # refuses the aarch64 objects. Empty string on amd64, dropped by the
+    # Where-Object below, so the emitted array is byte-identical on that lane.
+    $gstTargetArch = Get-WindowsTargetArch
+    $gstCrossArg = if (Test-WindowsCrossTarget -Arch $gstTargetArch) { "--target=$(Get-ClangTargetTriple -Arch $gstTargetArch)" } else { '' }
+    $linkArgElems = ((@('/FORCE:MULTIPLE', $gstCrossArg, $rtFullPath) + $guidLibs) |
         Where-Object { $_ } | ForEach-Object { "'$_'" }) -join ','
     log "Link args: [$linkArgElems]"
 
@@ -645,7 +653,10 @@ int _isatty(int);
 
         # opencv4.pc — describes the OpenCV 5 install under $OPENCV_ROOT.
         $ocvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
-        $ocvLib = if ($env:OPENCV_LIB) { $env:OPENCV_LIB } else { Join-Path $ocvRoot 'x64\vc18\lib' }
+        # OpenCV's Windows install layout is <root>\<arch>\vc18\{bin,lib}; the arch
+        # component is the one token that moves with the target, so it comes from
+        # the arch table ('x64' | 'arm64') instead of a literal.
+        $ocvLib = if ($env:OPENCV_LIB) { $env:OPENCV_LIB } else { Join-Path $ocvRoot "$(Get-OpenCvArchDir)\vc18\lib" }
         # Header root = the directory CONTAINING opencv2/, found rather than
         # assumed: OpenCV's Windows layout has moved between majors (include\
         # vs include\opencv4\) and guessing wrong yields a .pc that resolves but
@@ -811,6 +822,60 @@ int _isatty(int);
 
     Switch-BuildPhase '6. meson setup'
     # ---- 6. meson setup (retry with wrap cleanup) ----
+    # Meson cross file. Meson has NO per-target compiler property the way CMake
+    # has CMAKE_<LANG>_COMPILER_TARGET: --cross-file is the ONLY way to tell it
+    # host_machine != build_machine. Without one it probes clang-cl, gets x86_64
+    # back, and every `host_machine.cpu_family()` branch across the gst meson.build
+    # tree takes the x86 path -- a green configure producing an x86-shaped build.
+    #
+    # Written to the LOG dir, not the build dir: the retry below deletes the build
+    # dir wholesale, and a log-dir copy survives a failed solve.
+    #
+    # DELIBERATELY carries NO [built-in options] c_args/cpp_args: meson gives the
+    # command line HIGHER precedence than a machine file, so a --target placed
+    # here would be silently dropped. It rides in the -Dc_args/-Dcpp_args strings
+    # and in $linkArgElems instead.
+    $mesonCrossArgs = @()
+    if (Test-WindowsCrossTarget -Arch $gstTargetArch) {
+        $gstTriple = Get-ClangTargetTriple -Arch $gstTargetArch
+        # meson's own vocabulary, NOT this repo's arch names. A missing mapping
+        # THROWS: a cross file with the wrong cpu_family configures green and
+        # yields an x86-shaped build, which is the failure this exists to stop.
+        $gstCpuFamily = switch ($gstTargetArch) {
+            'arm64' { 'aarch64' }
+            default { throw "build-gstreamer: no meson cpu_family mapping for target arch '$gstTargetArch' - add one before building it." }
+        }
+        # CC/CXX may carry the sccache launcher ('sccache clang-cl'); meson's
+        # [binaries] entries take a LIST, so split rather than quote as one word.
+        $ccList = ((($env:CC -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $cxxList = ((($env:CXX -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $crossFile = Join-Path $resolvedLogDir "meson-cross-$gstTargetArch.ini"
+        Set-Content -Path $crossFile -Encoding ASCII -Value @"
+[binaries]
+c = [$ccList]
+cpp = [$cxxList]
+ar = 'llvm-lib'
+strip = 'llvm-strip'
+windres = 'llvm-rc'
+pkg-config = 'pkg-config'
+cmake = 'cmake'
+
+[properties]
+# Nothing built here can run on this windows/amd64 host, so every cc.run() and
+# subproject sanity exec must be REFUSED rather than silently answered with a
+# HOST result. No exe_wrapper is supplied on purpose: there is no emulator.
+needs_exe_wrapper = true
+
+[host_machine]
+system = 'windows'
+cpu_family = '$gstCpuFamily'
+cpu = '$gstCpuFamily'
+endian = 'little'
+"@
+        $mesonCrossArgs = @('--cross-file', $crossFile)
+        log "Meson cross file for $gstTargetArch ($gstTriple): $crossFile"
+        Get-Content $crossFile | ForEach-Object { log "  cross| $_" }
+    }
     $setupArgs = @(
         'setup', '--vsenv',
         $resolvedBuildDir, $gstSrcDir,
@@ -853,8 +918,15 @@ int _isatty(int);
         # `__GNUC__` in #if under a -Werror it brings along; clang-cl defines
         # no __GNUC__ in MSVC personality. Disabling the diagnostic beats
         # chasing where the -Werror comes from (verify13).
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef",
-        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types",
+        # $gstCrossArg is '--target=<triple>' on the cross lane and '' on amd64. It
+        # MUST live in these command-line -D options rather than in the cross
+        # file's [built-in options]: meson gives the command line higher
+        # precedence, so a c_args set in both places keeps only this one.
+        # The `if` guards the SEPARATOR too -- appending " $gstCrossArg"
+        # unguarded would leave a trailing space in the amd64 option value, which
+        # is a byte difference in the emitted configure command line.
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef$(if ($gstCrossArg) { " $gstCrossArg" })",
+        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
         # MF device provider) required by the Rust capture path. Needs the GUID
@@ -909,7 +981,7 @@ int _isatty(int);
                 '-Dgst-plugins-bad:tflite=enabled'
             )
         }
-    ) + $MesonSetupArgs
+    ) + $mesonCrossArgs + $MesonSetupArgs
 
     $setupArgsString = "meson $($setupArgs -join ' ')"
     $mesonSucceeded = $false
@@ -1116,6 +1188,12 @@ int _isatty(int);
     $env:GST_REGISTRY = Join-Path $env:TEMP_DIR 'gst-registry-verify.bin'
     Remove-Item $env:GST_REGISTRY -Force -ErrorAction SilentlyContinue
     $env:GST_DEBUG = 'GST_REGISTRY:4,GST_PLUGIN_LOADING:4'
+    # HOST tool -- deliberately NOT Get-MsvcTargetBinDir. dumpbin only READS the
+    # built DLLs here (/dependents is machine-type agnostic, so it inspects an
+    # arm64 DLL fine) and must itself RUN on the amd64 build host. Retargeting
+    # this glob would buy nothing and could resolve to NOTHING: the VC.Tools.ARM64
+    # component is only warn-gated in the shared base, and a $null $dumpbin blows
+    # up inside the dependency scan below.
     $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
     $dllSearchDirs = @($gstPluginDir) + @($env:PATH -split ';' | Where-Object { $_ }) + @("$env:SystemRoot\System32")
     # Recursively resolve a DLL's dependency tree and return the names that resolve

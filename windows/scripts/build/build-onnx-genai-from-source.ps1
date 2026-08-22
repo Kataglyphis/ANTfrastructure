@@ -215,11 +215,15 @@ if (Test-Path $altOutDir) {
 # own module dir at runtime (DmlHelpers -> D3D12SDKConfiguration), so stage it next to the genai DLL.
 # Needed whenever USE_DML=ON (independent of CUDA); the D3D12 FetchContent dir name floats, so resolve
 # by recursive find and no-op with a warning if absent (e.g. a hypothetical USE_DML=OFF build).
-# The Microsoft.Direct3D.D3D12 nuget ships D3D12Core.dll for x64/arm64/win32; MUST pick x64 (its
-# immediate parent dir is 'x64') -- an unqualified -Recurse|Select -First 1 grabs arm64 alphabetically,
-# which then fails to load on the x64 image at DML device init.
+# The Microsoft.Direct3D.D3D12 nuget ships D3D12Core.dll for x64/arm64/win32, one per immediate
+# parent dir, and those dir names ARE the RID arch component ('win-x64' -> 'x64',
+# 'win-arm64' -> 'arm64'). Pin the filter to the TARGET's dir: an unqualified
+# -Recurse|Select -First 1 grabs arm64 alphabetically and fails to load on an x64 image at DML
+# device init -- while hardcoding 'x64' threw away the arm64 payload the cross lane needs
+# (USE_DML=ON is unconditional here, so the arm64 lane stages this too).
+$d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
 Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
-    -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq 'x64' } `
+    -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq $d3d12ArchDir } `
     -Destination (Join-Path $genaiInstallDir 'lib') `
     -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
 

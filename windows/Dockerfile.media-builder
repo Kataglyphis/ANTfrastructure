@@ -30,6 +30,15 @@ FROM ${BASE_IMAGE} AS common
 # knob as image metadata was a CACHE KEY - toggling -ConcurrentAux
 # invalidated every litert/tvm compile. The driver publishes it on the
 # webdav; Get-BuildJobCount fetches it at RUN time (fail-open to CIM).
+# Compile TARGET architecture. FIRST declared here, deliberately: base/sdk/
+# toolchain install host tooling shared by both lanes, and an ARG there would
+# key their cache on it -- re-paying the VS Build Tools layer on every lane
+# switch (Dockerfile.base: "every RUN after an ARG declaration keys its cache
+# on the ARG's value"). Mirrored to ENV so the build scripts' arch resolution
+# (Get-WindowsTargetArch -> $env:WINDOWS_TARGET_ARCH) sees it at RUN time and
+# in every derived stage.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).

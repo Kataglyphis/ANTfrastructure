@@ -34,8 +34,9 @@ regressing the build.
 ## Container Architecture
 
 Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
-`windows/amd64` only; Windows **targets**: `amd64` (image) and `arm64` (cross-compiled artifact
-bundle — see below).
+`windows/amd64` only; Windows **targets**: `amd64` (image, production) and `arm64`
+(cross-compiled artifact bundle — plumbing landed 2026-08-22, **never built or executed yet**;
+`build-buildkit.ps1 -TargetArch arm64`, status banner in `docs/windows-cross-builds.md`).
 
 > **There is no arm64 Windows container image, and there cannot be one.** Microsoft publishes no
 > arm64 `servercore`/`nanoserver` base image and Windows Server has no arm64 release

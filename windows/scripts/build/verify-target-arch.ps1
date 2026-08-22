@@ -83,11 +83,24 @@ $machineNames = @{
     0x014C = 'I386'
     0x8664 = 'AMD64'
     0xAA64 = 'ARM64'
+    0xA641 = 'ARM64EC'
+    0xA64E = 'ARM64X'
     0x01C0 = 'ARM'
     0x01C4 = 'ARMNT'
     0x0200 = 'IA64'
     0x5032 = 'RISCV32'
     0x5064 = 'RISCV64'
+}
+
+# Machine types that legitimately satisfy a given target. ARM64EC and ARM64X are
+# part of the ARM64 family and DO appear in Microsoft's own SDK: on a stock
+# Windows Kit, ucrt\arm64\ucrt.osmode_permissive.lib reports 0xA641 while its
+# siblings report 0xAA64. Comparing against 0xAA64 alone rejects a perfectly
+# good Microsoft library and prints "UNRECOGNIZED", which names nothing and
+# sends the reader hunting a non-existent build defect.
+$acceptedMachines = @{
+    0x8664 = @(0x8664)
+    0xAA64 = @(0xAA64, 0xA641, 0xA64E)
 }
 function Format-Machine {
     param([int]$Value)
@@ -158,31 +171,52 @@ function Get-ArchiveMachine {
     $magic = [System.Text.Encoding]::ASCII.GetString($bytes, 0, 8)
     if ($magic -ne "!<arch>`n") { return $null }
 
-    $pos = 8
-    while (($pos + 60) -le $bytes.Length) {
-        $sizeText = [System.Text.Encoding]::ASCII.GetString($bytes, $pos + 48, 10).Trim()
-        [int]$size = 0
-        if (-not [int]::TryParse($sizeText, [ref]$size)) { return $null }
-        $name = [System.Text.Encoding]::ASCII.GetString($bytes, $pos, 16).Trim()
-        $dataStart = $pos + 60
+    # The whole member walk is guarded: a malformed or truncated archive must
+    # yield $null ("unreadable"), never an IndexOutOfRangeException. An escaping
+    # exception would abort the entire scan without naming the offending file -
+    # breaking the contract the caller relies on to separate "unreadable" from
+    # "wrong architecture".
+    try {
+        $pos = 8
+        while (($pos + 60) -le $bytes.Length) {
+            $sizeText = [System.Text.Encoding]::ASCII.GetString($bytes, $pos + 48, 10).Trim()
+            [int]$size = 0
+            if (-not [int]::TryParse($sizeText, [ref]$size)) { return $null }
+            if ($size -lt 0) { return $null }
+            $name = [System.Text.Encoding]::ASCII.GetString($bytes, $pos, 16).Trim()
+            $dataStart = $pos + 60
 
-        # Skip the linker members ("/", "//") that carry the symbol table.
-        if ($name -notmatch '^/{1,2}$' -and $size -ge 6 -and ($dataStart + 6) -le $bytes.Length) {
-            $m0 = [int]$bytes[$dataStart] -bor ([int]$bytes[$dataStart + 1] -shl 8)
-            if ($m0 -eq 0x0000 -and ([int]$bytes[$dataStart + 2] -bor ([int]$bytes[$dataStart + 3] -shl 8)) -eq 0xFFFF) {
-                # Short-import header: Sig1=0, Sig2=0xFFFF, then Version, Machine.
-                return [int]$bytes[$dataStart + 6] -bor ([int]$bytes[$dataStart + 7] -shl 8)
+            # Skip the linker members ("/", "//") and the ARM64EC symbol member.
+            # A short-import header is 20 bytes and its Machine field sits at
+            # offset 6..7, so the guard must cover $dataStart+7 - the previous
+            # +6 bound was two bytes short and threw on a small final member.
+            if ($name -notmatch '^/{1,2}$' -and $name -ne '<ECSYMBOLS>' -and
+                $size -ge 20 -and ($dataStart + 8) -le $bytes.Length) {
+                $m0 = [int]$bytes[$dataStart] -bor ([int]$bytes[$dataStart + 1] -shl 8)
+                if ($m0 -eq 0x0000 -and ([int]$bytes[$dataStart + 2] -bor ([int]$bytes[$dataStart + 3] -shl 8)) -eq 0xFFFF) {
+                    # Short-import header: Sig1=0, Sig2=0xFFFF, Version, Machine.
+                    return [int]$bytes[$dataStart + 6] -bor ([int]$bytes[$dataStart + 7] -shl 8)
+                }
+                if ($machineNames.ContainsKey($m0) -and $m0 -ne 0) { return $m0 }
             }
-            if ($machineNames.ContainsKey($m0) -and $m0 -ne 0) { return $m0 }
-        }
 
-        # Members are 2-byte aligned.
-        $pos = $dataStart + $size + ($size % 2)
+            # Members are 2-byte aligned.
+            $next = $dataStart + $size + ($size % 2)
+            if ($next -le $pos) { return $null }   # no forward progress: refuse to spin
+            $pos = $next
+        }
+    } catch {
+        return $null
     }
     return $null
 }
 
-$extensions = @('.dll', '.exe')
+# .pyd is a DLL with a different suffix and IS staged into the scanned tree
+# (build-onnx-genai copies *.pyd into C:\runtime\lib\...; opencv5 ships them
+# too). Omitting it meant native Python extensions were skipped SILENTLY and,
+# because they never incremented the inspected count, -MinInspected could not
+# notice either - a hole in the default mode with no flag to reveal it.
+$extensions = @('.dll', '.exe', '.pyd')
 if ($IncludeArchives) { $extensions += '.lib' }
 
 $inspected = 0
@@ -213,7 +247,8 @@ foreach ($root in $Path) {
                 return
             }
             $inspected++
-            if ($machine -ne $expected) {
+            $ok = if ($acceptedMachines.ContainsKey($expected)) { $acceptedMachines[$expected] -contains $machine } else { $machine -eq $expected }
+            if (-not $ok) {
                 $violations += [pscustomobject]@{ Path = $file.FullName; Machine = $machine }
             }
         }

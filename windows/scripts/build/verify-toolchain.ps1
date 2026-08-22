@@ -145,8 +145,9 @@ if (-not ($wixExtensions | Select-String -SimpleMatch "WixToolset.UI.wixext $wix
 #
 # Compile-only on purpose: VsDevCmd has not run in this layer, so INCLUDE/LIB
 # are unset and a full link would fail for reasons unrelated to the toolchain.
-# The canonical compile+link+run-the-PE-gate check lives in the arch-gate stage,
-# which enters through entrypoint.cmd with -arch=arm64.
+# The PE machine-type gate over the produced payload runs later, at the end of
+# Dockerfile.media-merge-builder's `built` stage (verify-target-arch.ps1 over
+# C:\runtime) -- that is the first point where the whole media tree exists.
 # ---------------------------------------------------------------------------
 $archModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
 if (-not (Test-Path $archModulePath)) { throw "Required module not found: $archModulePath" }
@@ -163,18 +164,30 @@ try {
     $probeObj = Join-Path $probeDir 'probe.obj'
 
     & clang-cl "--target=$armTriple" /c $probeSrc "/Fo$probeObj" 2>&1 | ForEach-Object { Write-Host "  $_" }
-    if ($LASTEXITCODE -ne 0) { throw "clang-cl failed to compile for $armTriple (exit $LASTEXITCODE)" }
-    if (-not (Test-Path $probeObj)) { throw "clang-cl produced no object file for $armTriple" }
-
-    # An unlinked COFF object begins with IMAGE_FILE_HEADER, so the first two
-    # bytes ARE the Machine field (little-endian) - no MZ/PE offset walk needed.
-    $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
-    if ($objBytes.Length -lt 2) { throw "clang-cl produced a truncated object file for $armTriple" }
-    $objMachine = $objBytes[0] -bor ($objBytes[1] -shl 8)
-    if ($objMachine -ne $armMachine) {
-        throw ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}). ' -f $objMachine, $armMachine, $armTriple)
+    $probeFailure = ''
+    if ($LASTEXITCODE -ne 0) {
+        $probeFailure = "clang-cl failed to compile for $armTriple (exit $LASTEXITCODE)"
+    } elseif (-not (Test-Path $probeObj)) {
+        $probeFailure = "clang-cl produced no object file for $armTriple"
+    } else {
+        # An unlinked COFF object begins with IMAGE_FILE_HEADER, so the first two
+        # bytes ARE the Machine field (little-endian) - no MZ/PE offset walk needed.
+        $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
+        if ($objBytes.Length -lt 2) {
+            $probeFailure = "clang-cl produced a truncated object file for $armTriple"
+        } else {
+            $objMachine = $objBytes[0] -bor ($objBytes[1] -shl 8)
+            if ($objMachine -ne $armMachine) {
+                $probeFailure = ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}).' -f $objMachine, $armMachine, $armTriple)
+            } else {
+                Write-Host ('clang-cl cross-compiles to {0} (object machine 0x{1:X4}) OK' -f $armTriple, $objMachine)
+            }
+        }
     }
-    Write-Host ('clang-cl cross-compiles to {0} (object machine 0x{1:X4}) OK' -f $armTriple, $objMachine)
+    if ($probeFailure) {
+        if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $probeFailure }
+        Write-Warning "$probeFailure (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)"
+    }
 } finally {
     Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -189,10 +202,12 @@ $msvcArm64Lib = Get-ChildItem -Path $msvcRoot -Directory -ErrorAction SilentlyCo
     Where-Object { Test-Path $_ } |
     Select-Object -First 1
 if (-not $msvcArm64Lib) {
-    throw ("MSVC ARM64 libraries missing under $msvcRoot (expected <ver>\lib\arm64\libcmt.lib). " +
+    $msg = ("MSVC ARM64 libraries missing under $msvcRoot (expected <ver>\lib\arm64\libcmt.lib). " +
         'The VC.Tools.ARM64 component is not installed; clang-cl cannot link an aarch64 target without it.')
+    if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $msg } else { Write-Warning "$msg (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)" }
+} else {
+    Write-Host "MSVC ARM64 libraries OK: $msvcArm64Lib"
 }
-Write-Host "MSVC ARM64 libraries OK: $msvcArm64Lib"
 
 # Windows SDK ARM64 import libraries. The SDK component is architecture-complete,
 # so this asserts an expectation rather than a separate install step.
@@ -202,23 +217,30 @@ $sdkArm64 = Get-ChildItem -Path $sdkLibRoot -Directory -ErrorAction SilentlyCont
     Where-Object { Test-Path $_ } |
     Select-Object -First 1
 if (-not $sdkArm64) {
-    throw ("Windows SDK ARM64 import libraries missing under $sdkLibRoot (expected <ver>\um\arm64\kernel32.lib). " +
+    $msg = ("Windows SDK ARM64 import libraries missing under $sdkLibRoot (expected <ver>\um\arm64\kernel32.lib). " +
         'Reinstall the Windows 11 SDK component with ARM64 support.')
+    if ($env:WINDOWS_ARM64_STRICT -eq '1') { throw $msg } else { Write-Warning "$msg (amd64 lane unaffected; WINDOWS_ARM64_STRICT=1 makes this fatal)" }
+} else {
+    Write-Host "Windows SDK ARM64 libraries OK: $sdkArm64"
 }
-Write-Host "Windows SDK ARM64 libraries OK: $sdkArm64"
 
 # Vulkan ARM64 cross libraries (optional LunarG component com.lunarg.vulkan.arm64,
 # added by setup-scoop-tools.ps1). Same escape hatch as the install step.
+# Warn-only by default, opt-in hard gate via WINDOWS_ARM64_STRICT=1 -- mirrors
+# setup-scoop-tools.ps1's install-side gate and the CUDA_STACK_STRICT idiom.
+# This must NOT throw by default: it runs in the shared base image, so a hard
+# failure here would block the amd64 lane over an arm64-only prerequisite.
 if ($env:VULKAN_SDK) {
     $vkArmLib = Join-Path $env:VULKAN_SDK (Get-VulkanLibDirName -Arch 'arm64')
     if (Test-Path (Join-Path $vkArmLib 'vulkan-1.lib')) {
         Write-Host "Vulkan ARM64 import library OK: $vkArmLib"
-    } elseif ($env:VULKAN_ARM64_OPTIONAL -eq '1') {
-        Write-Warning "Vulkan ARM64 import library missing at $vkArmLib (VULKAN_ARM64_OPTIONAL=1)."
-    } else {
+    } elseif ($env:WINDOWS_ARM64_STRICT -eq '1') {
         throw ("Vulkan ARM64 import library missing at $vkArmLib. The com.lunarg.vulkan.arm64 component " +
             'is optional in the x64 SDK and setup-scoop-tools.ps1 must add it. ' +
-            'Set VULKAN_ARM64_OPTIONAL=1 only for a deliberately amd64-only image.')
+            'WINDOWS_ARM64_STRICT=1 made this a hard gate.')
+    } else {
+        Write-Warning ("Vulkan ARM64 import library missing at $vkArmLib - an arm64 target cannot link Vulkan. " +
+            'The amd64 lane is unaffected. Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 } else {
     Write-Warning 'VULKAN_SDK is not set - skipping the Vulkan ARM64 import-library check.'

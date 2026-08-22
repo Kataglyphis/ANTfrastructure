@@ -255,12 +255,23 @@ try {
             Where-Object { Test-Path $_ } |
             Select-Object -First 1
         if (-not $msvcLibArm64) {
-            Write-InstallerLogDump -TempDir $TempDir
-            throw ('MSVC ARM64 libraries missing (no VC\Tools\MSVC\<ver>\lib\arm64\libcmt.lib under ' +
-                   "$vsBuildToolsRoot). The VC.Tools.ARM64 component did not install; " +
-                   'clang-cl cannot link an aarch64-pc-windows-msvc target without it.')
+            # WARN, not throw: this base image is SHARED by both lanes, so an
+            # arm64-only prerequisite must never block an amd64 build.
+            # WINDOWS_ARM64_STRICT=1 opts into the hard gate (same shape as
+            # CUDA_STACK_STRICT). The installer log dump is deliberately kept on
+            # the strict path only - it is multi-hundred lines and would drown
+            # a routine amd64 build in noise.
+            $msg = ('MSVC ARM64 libraries missing (no VC\Tools\MSVC\<ver>\lib\arm64\libcmt.lib under ' +
+                    "$vsBuildToolsRoot). The VC.Tools.ARM64 component did not install; " +
+                    'clang-cl cannot link an aarch64-pc-windows-msvc target without it.')
+            if ($env:WINDOWS_ARM64_STRICT -eq '1') {
+                Write-InstallerLogDump -TempDir $TempDir
+                throw $msg
+            }
+            Write-Warning "$msg (amd64 lane unaffected; set WINDOWS_ARM64_STRICT=1 to make this fatal)"
+        } else {
+            Write-Host "MSVC ARM64 cross libraries present ($msvcLibArm64)."
         }
-        Write-Host "MSVC ARM64 cross libraries present ($msvcLibArm64)."
         # Success-path scrub: the installer leaves dd_setup_* / *vs_installer*.log
         # behind in $TempDir, and they would otherwise ride along in the committed
         # layer. Failure paths deliberately KEEP them — they are the evidence

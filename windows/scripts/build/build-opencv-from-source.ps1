@@ -166,7 +166,26 @@ $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 # on Windows when the destination directory doesn't exist yet during configure).
 $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
-$simdFlags = Get-WindowsX86SimdFlags
+$ocvTargetArch = Get-WindowsTargetArch
+# Arch-aware. amd64 is byte-identical: Get-WindowsX86SimdFlags IS
+# `Get-WindowsTargetSimdFlags -Arch amd64` (back-compat shim), and
+# $crossTargetFlag below is EMPTY on the host arch. arm64 returns NO baseline
+# SIMD flags on purpose: NEON is mandatory in the AArch64 baseline, and
+# dotprod/i8mm/SVE are runtime-dispatch decisions, never a global -m flag.
+#
+# CPU_BASELINE / CPU_DISPATCH are deliberately NOT introduced for either lane:
+# this script has never passed them, so OpenCV's own defaults are what ships
+# today. Adding them on amd64 would change every emitted per-file command line,
+# which the arm64 work is not allowed to cost.
+$simdFlags = Get-WindowsTargetSimdFlags -Arch $ocvTargetArch
+# The clang target triple has to ride in THIS script's explicit CMAKE_C_FLAGS /
+# CMAKE_CXX_FLAGS strings, not only in Get-CMakeCrossArgs' CMAKE_*_FLAGS_INIT:
+# passing -DCMAKE_C_FLAGS on the command line DEFINES the cache variable, and
+# CMake then never applies CMAKE_C_FLAGS_INIT at all. Without this, an "arm64"
+# OpenCV would configure green and emit x86_64 objects -- the exact silent
+# wrong-arch failure the arch module exists to prevent.
+$crossTargetFlag = if (Test-WindowsCrossTarget -Arch $ocvTargetArch) { "--target=$(Get-ClangTargetTriple -Arch $ocvTargetArch)" } else { '' }
+$simdFlags = (@($simdFlags, $crossTargetFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
 # nvcc command lines go through CMake response files, which sccache passes
@@ -222,7 +241,11 @@ $cmakeExtra = $cudaRspArgs + @(
     # cv2 python module: cmake --install drops it into CPython's site-packages
     # (queried from the interpreter); the media merge fans site-packages into the
     # shipped image. numpy include dir resolved above.
-    '-DBUILD_opencv_python3=ON', '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
+    # Python bindings are OFF for a cross build: nothing can execute the target
+    # interpreter here, so an aarch64 cv2.pyd could never be imported by this
+    # container's x64 CPython, and OpenCV's binding generation is a host-
+    # interpreter fact that does not describe the target.
+    "-DBUILD_opencv_python3=$(if (Test-WindowsCrossTarget -Arch $ocvTargetArch) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     # opencv_contrib dnn_superres references ENGINE_CLASSIC removed in OpenCV 5.x DNN
     '-DBUILD_opencv_dnn_superres=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
@@ -334,7 +357,14 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
 # Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH; we only
 # need CUDACXX on top (CMake's built-in enable_language(CUDA) probe uses it).
 $gpuEnv = Get-GpuEnvironment
-if ($gpuEnv.HasCuda) {
+# Cross lane: NEVER take CUDA from a HOST probe. Get-GpuEnvironment answers "does
+# this windows/amd64 BUILD HOST have a CUDA toolkit", which says nothing about the
+# target -- and there is no CUDA/cuDNN/TensorRT for Windows-on-ARM at all. A bare
+# host probe here would enable_language(CUDA), point nvcc at x64 device libs and
+# link them into an "arm64" OpenCV. The driver already refuses -Gpu with a
+# non-amd64 -TargetArch; this enforces the same rule where the decision is
+# actually made, so a direct script invocation cannot bypass it.
+if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget -Arch $ocvTargetArch)) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
     $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
@@ -523,7 +553,15 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 # Fail HERE if cv2 didn't land + import -- a silently-skipped python3 module
 # otherwise only surfaces hours later in the final image's smoke test.
 # (Shared EAP=Stop-safe helper: exit-code based, stderr-noise tolerant.)
-Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
+if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
+    # Cross lane: cv2 was not built (BUILD_opencv_python3=OFF above) and an
+    # aarch64 .pyd could not be loaded by this x64 CPython even if it had been.
+    # Skipping is the only correct behaviour; the gate stays MANDATORY on the
+    # native lane, where it catches a silently-skipped python3 module.
+    Write-Host 'Skipping the cv2 import gate: cross build (python bindings off; the target interpreter cannot run on this host)'
+} else {
+    Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
+}
 
 Remove-SourceBuildTree -Path $SourceDir
 

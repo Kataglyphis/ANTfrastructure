@@ -27,7 +27,12 @@ param(
     [string]$NasmVersion = '',
     # Pinned 2026-08-08 for a FEATURE, not for output determinism: multi-tier
     # caching needs sccache >= v0.16.0 and degrades silently below it.
-    [string]$SccacheVersion = ''
+    [string]$SccacheVersion = '',
+    # '1' turns the Vulkan ARM64 component check into a HARD gate. Default is
+    # warn-only -- see the Vulkan ARM64 region below for why, and note this must
+    # arrive as a PARAMETER: a bare $env: read is unreachable from `docker build`
+    # unless the name is also declared as an ARG.
+    [string]$WindowsArm64Strict = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -242,9 +247,23 @@ Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 # fact through its maintenancetool. NB $env:VULKAN_SDK is not set yet -- that ENV
 # lands further down Dockerfile.base -- so the path is derived from the scoop root.
 #
-# Escape hatch (ONE, deliberately): VULKAN_ARM64_OPTIONAL=1 downgrades the hard
-# failure to a warning, for a deliberately amd64-only image. Do not set it to
-# "get the build green" -- the arm64 lane cannot link Vulkan without this.
+# WARN-ONLY BY DEFAULT, opt-in hard gate via WINDOWS_ARM64_STRICT=1 -- the same
+# shape as the CUDA stack check (verify-cuda-stack.sh / CUDA_STACK_STRICT=1).
+#
+# This started life as a hard `throw` with a WINDOWS_ARM64_STRICT=1 escape
+# hatch, which was wrong twice over (2026-08-22):
+#   1. The block is NOT arch-gated -- it runs on every base build, including a
+#      plain amd64 one. A throw here kills the chain's most expensive layer for
+#      BOTH lanes.
+#   2. The hatch was unreachable. $env:WINDOWS_ARM64_STRICT is never set during
+#      `docker build` unless the name is declared as an ARG, and buildctl
+#      silently discards --build-arg for undeclared ARG names. There was no way
+#      out except editing the Dockerfile.
+# Combined with the fact that the maintenancetool invocation below has never
+# been executed against a real base image, that made an unverified installer
+# call able to brick the whole chain. Warning is the correct default until the
+# step is observed working; flip a build to WINDOWS_ARM64_STRICT=1 once it is.
+$armStrict = if (-not [string]::IsNullOrWhiteSpace($WindowsArm64Strict)) { $WindowsArm64Strict } else { $env:WINDOWS_ARM64_STRICT }
 $vkRoot = Join-Path $env:USERPROFILE 'scoop\apps\vulkan\current'
 $vkArm64Lib = Join-Path $vkRoot 'Lib-ARM64'
 if (Test-Path $vkArm64Lib) {
@@ -270,12 +289,14 @@ if (Test-Path $vkArm64Lib) {
 
     if (Test-Path $vkArm64Lib) {
         Write-Host "Vulkan ARM64 cross libraries installed ($vkArm64Lib)."
-    } elseif ($env:VULKAN_ARM64_OPTIONAL -eq '1') {
-        Write-Warning "Vulkan ARM64 component missing and VULKAN_ARM64_OPTIONAL=1 - continuing without arm64 Vulkan."
-    } else {
+    } elseif ($armStrict -eq '1') {
         throw ("Vulkan ARM64 component (com.lunarg.vulkan.arm64) is not installed: $vkArm64Lib is missing. " +
                'It is an optional component of the x64 SDK and is required to link an aarch64 target. ' +
-               'Set VULKAN_ARM64_OPTIONAL=1 only for a deliberately amd64-only image.')
+               'WINDOWS_ARM64_STRICT=1 made this a hard gate.')
+    } else {
+        Write-Warning ("Vulkan ARM64 component (com.lunarg.vulkan.arm64) not installed: $vkArm64Lib is missing. " +
+                       'The amd64 lane is unaffected; an arm64 target cannot link Vulkan until this is resolved. ' +
+                       'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 }
 

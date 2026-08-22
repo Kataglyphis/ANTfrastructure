@@ -63,6 +63,11 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
 # the run+commit step) builds on top below.
 FROM ${BASE_IMAGE} AS merge-fanin
 
+# Compile TARGET architecture -- see Dockerfile.media-builder for why this is
+# declared at the media layer and never in base. Mirrored to ENV so the merge
+# stage's build scripts resolve the same arch as the branch builds did.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG GSTREAMER_VERSION=1.29.2
 # Component versions are consumed by the branch builds; re-declared here only so the
 # image carries the canonical version env vars (sync_versions.py verifies them).
@@ -258,3 +263,25 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\build-opencv-gstreamer-plugin.ps1' -InstallDir 'C:\runtime'
+
+# ── Target-architecture gate ────────────────────────────────────────────────
+# Asserts that everything staged into C:\runtime was actually built for
+# WINDOWS_TARGET_ARCH. This is the LAST stage that assembles the media payload,
+# so it is the right place: every library the chain produces is present.
+#
+# It matters most for a cross build, where NOTHING produced can be executed on
+# this x64 host -- the PE machine type is the only correctness signal available.
+# It is cheap and kept enabled for amd64 too, where it catches the mirror-image
+# defect: an aarch64 artifact leaking into the native lane.
+#
+# ARCH_GATE_MIN_INSPECTED is a floor, not a target: a run that inspects almost
+# nothing (mis-pathed tree, staging that silently produced no binaries) must
+# FAIL rather than report a clean pass over an empty set.
+# ARCH_GATE_HOST_TOOLS allowlists build-time tools that legitimately stay
+# host-arch because they are never shipped to the target.
+ARG ARCH_GATE_MIN_INSPECTED=10
+ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\"
+RUN --mount=type=bind,source=windows/scripts/build/verify-target-arch.ps1,target=C:\bkmnt\verify-target-arch.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\verify-target-arch.ps1' -Path 'C:\runtime' -Arch $env:WINDOWS_TARGET_ARCH `
+        -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) -HostToolPattern $env:ARCH_GATE_HOST_TOOLS

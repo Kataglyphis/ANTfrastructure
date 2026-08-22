@@ -26,6 +26,14 @@ Set-StrictMode -Version Latest
 # -Force -Global copy must not be displaced (see WindowsCMake.Common's header).
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
 
+# Get-WindowsRuntimeIdentifier, on the same unforced terms. This module is NOT
+# reached through WindowsSourceBuild.Common (which re-exports the arch
+# accessors) -- it is imported directly by the external Kataglyphis-Cpp-Inference
+# Build-Windows.ps1, so it cannot borrow that re-export and must import the arch
+# table itself. Both files live in windows\scripts\modules, which windows\Dockerfile
+# COPYs as a whole directory, so co-location is guaranteed.
+Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1')
+
 function Get-OnnxPackageLayout {
     param(
         [Parameter(Mandatory)]
@@ -38,7 +46,14 @@ function Get-OnnxPackageLayout {
         [string]$OnnxGenAiVersion,
 
         [Parameter(Mandatory)]
-        [string]$OnnxDirectMlVersion
+        [string]$OnnxDirectMlVersion,
+
+        # Target arch. '' delegates to Get-WindowsTargetArch's own precedence:
+        # explicit -Arch, then $env:WINDOWS_TARGET_ARCH, then 'amd64'. Appended
+        # LAST and optional so every existing caller -- including the external
+        # Kataglyphis-Cpp-Inference Build-Windows.ps1, named or positional --
+        # binds exactly as it does today and lands on win-x64.
+        [string]$Arch = ''
     )
 
     $normalizedRoot = Resolve-NormalizedPath -Path $OnnxRoot
@@ -49,47 +64,58 @@ function Get-OnnxPackageLayout {
     $genAiDirectMlPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntimeGenAI.DirectML.{0}" -f $OnnxGenAiVersion)
     $genAiCudaPackagePath = Join-Path $normalizedRoot ("Microsoft.ML.OnnxRuntimeGenAI.Cuda.{0}" -f $OnnxGenAiVersion)
 
+    # ONE derivation for all 23 native-payload paths. Every package here uses the
+    # standard NuGet native layout runtimes\<rid>\native, and the rid is the only
+    # arch-varying token in any of them -- so the 23 inline 'runtimes\win-x64\native'
+    # literals collapse to this single string instead of 23 separate arch calls.
+    # amd64 -> 'runtimes\win-x64\native', byte-for-byte what was spelled inline.
+    $rid = Get-WindowsRuntimeIdentifier -Arch $Arch
+    $nativeRelDir = 'runtimes\{0}\native' -f $rid
+
     return [pscustomobject]@{
         Root = $normalizedRoot
+        # Which lane this layout describes. Additive member; the caller has no
+        # other way to tell a win-x64 layout from a win-arm64 one.
+        RuntimeIdentifier = $rid
 
         RuntimePackagePath = $runtimePackagePath
         RuntimeIncludeDir = Join-Path $runtimePackagePath 'build\native\include'
         RuntimeHeaderPath = Join-Path $runtimePackagePath 'build\native\include\onnxruntime_cxx_api.h'
-        RuntimeNativeDir = Join-Path $runtimePackagePath 'runtimes\win-x64\native'
-        RuntimeLibPath = Join-Path $runtimePackagePath 'runtimes\win-x64\native\onnxruntime.lib'
-        RuntimeDllPath = Join-Path $runtimePackagePath 'runtimes\win-x64\native\onnxruntime.dll'
+        RuntimeNativeDir = Join-Path $runtimePackagePath $nativeRelDir
+        RuntimeLibPath = Join-Path $runtimePackagePath (Join-Path $nativeRelDir 'onnxruntime.lib')
+        RuntimeDllPath = Join-Path $runtimePackagePath (Join-Path $nativeRelDir 'onnxruntime.dll')
 
         DirectMlPackagePath = $directMlPackagePath
-        DirectMlNativeDir = Join-Path $directMlPackagePath 'runtimes\win-x64\native'
-        DirectMlDllPath = Join-Path $directMlPackagePath 'runtimes\win-x64\native\onnxruntime.dll'
-        DirectMlLibPath = Join-Path $directMlPackagePath 'runtimes\win-x64\native\onnxruntime.lib'
-        DirectMlSharedProviderPath = Join-Path $directMlPackagePath 'runtimes\win-x64\native\onnxruntime_providers_shared.dll'
+        DirectMlNativeDir = Join-Path $directMlPackagePath $nativeRelDir
+        DirectMlDllPath = Join-Path $directMlPackagePath (Join-Path $nativeRelDir 'onnxruntime.dll')
+        DirectMlLibPath = Join-Path $directMlPackagePath (Join-Path $nativeRelDir 'onnxruntime.lib')
+        DirectMlSharedProviderPath = Join-Path $directMlPackagePath (Join-Path $nativeRelDir 'onnxruntime_providers_shared.dll')
 
         CudaPackagePath = $cudaPackagePath
-        CudaNativeDir = Join-Path $cudaPackagePath 'runtimes\win-x64\native'
-        CudaDllPath = Join-Path $cudaPackagePath 'runtimes\win-x64\native\onnxruntime.dll'
-        CudaLibPath = Join-Path $cudaPackagePath 'runtimes\win-x64\native\onnxruntime.lib'
-        CudaProviderDllPath = Join-Path $cudaPackagePath 'runtimes\win-x64\native\onnxruntime_providers_cuda.dll'
-        CudaSharedProviderPath = Join-Path $cudaPackagePath 'runtimes\win-x64\native\onnxruntime_providers_shared.dll'
+        CudaNativeDir = Join-Path $cudaPackagePath $nativeRelDir
+        CudaDllPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime.dll')
+        CudaLibPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime.lib')
+        CudaProviderDllPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime_providers_cuda.dll')
+        CudaSharedProviderPath = Join-Path $cudaPackagePath (Join-Path $nativeRelDir 'onnxruntime_providers_shared.dll')
 
         GenAiPackagePath = $genAiPackagePath
         GenAiIncludeDir = Join-Path $genAiPackagePath 'build\native\include'
         GenAiHeaderPath = Join-Path $genAiPackagePath 'build\native\include\ort_genai.h'
-        GenAiNativeDir = Join-Path $genAiPackagePath 'runtimes\win-x64\native'
-        GenAiDllPath = Join-Path $genAiPackagePath 'runtimes\win-x64\native\onnxruntime-genai.dll'
-        GenAiLibPath = Join-Path $genAiPackagePath 'runtimes\win-x64\native\onnxruntime-genai.lib'
+        GenAiNativeDir = Join-Path $genAiPackagePath $nativeRelDir
+        GenAiDllPath = Join-Path $genAiPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.dll')
+        GenAiLibPath = Join-Path $genAiPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.lib')
 
         GenAiDirectMlPackagePath = $genAiDirectMlPackagePath
-        GenAiDirectMlNativeDir = Join-Path $genAiDirectMlPackagePath 'runtimes\win-x64\native'
-        GenAiDirectMlDllPath = Join-Path $genAiDirectMlPackagePath 'runtimes\win-x64\native\onnxruntime-genai.dll'
-        GenAiDirectMlLibPath = Join-Path $genAiDirectMlPackagePath 'runtimes\win-x64\native\onnxruntime-genai.lib'
+        GenAiDirectMlNativeDir = Join-Path $genAiDirectMlPackagePath $nativeRelDir
+        GenAiDirectMlDllPath = Join-Path $genAiDirectMlPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.dll')
+        GenAiDirectMlLibPath = Join-Path $genAiDirectMlPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.lib')
 
         GenAiCudaPackagePath = $genAiCudaPackagePath
-        GenAiCudaNativeDir = Join-Path $genAiCudaPackagePath 'runtimes\win-x64\native'
-        GenAiCudaDllPath = Join-Path $genAiCudaPackagePath 'runtimes\win-x64\native\onnxruntime-genai.dll'
-        GenAiCudaLibPath = Join-Path $genAiCudaPackagePath 'runtimes\win-x64\native\onnxruntime-genai.lib'
-        GenAiCudaProviderDllPath = Join-Path $genAiCudaPackagePath 'runtimes\win-x64\native\onnxruntime-genai-cuda.dll'
-        GenAiCudaProviderLibPath = Join-Path $genAiCudaPackagePath 'runtimes\win-x64\native\onnxruntime-genai-cuda.lib'
+        GenAiCudaNativeDir = Join-Path $genAiCudaPackagePath $nativeRelDir
+        GenAiCudaDllPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.dll')
+        GenAiCudaLibPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai.lib')
+        GenAiCudaProviderDllPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai-cuda.dll')
+        GenAiCudaProviderLibPath = Join-Path $genAiCudaPackagePath (Join-Path $nativeRelDir 'onnxruntime-genai-cuda.lib')
     }
 }
 

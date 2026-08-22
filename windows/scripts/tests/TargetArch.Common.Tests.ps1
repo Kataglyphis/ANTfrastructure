@@ -244,3 +244,31 @@ Describe 'CMake cross arguments' {
         Assert-False ($a -match 'CMAKE_GENERATOR_PLATFORM') 'cross args leaked a VS generator platform'
     }
 }
+
+Describe 'versions.env parity' {
+
+    # WINDOWS_TARGET_ARCHES mirrors the module's arch table. A mirrored key with
+    # no reader is a second source of truth that drifts silently, so it is read
+    # HERE and asserted against the table - the same shape as the versions.env
+    # parity assertions in Shared.VersionsEnv.Tests.ps1.
+    It 'WINDOWS_TARGET_ARCHES matches the module arch table' {
+        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
+        $v = ConvertFrom-VersionsEnv -Path $envPath
+        # OrderedDictionary exposes Contains(), not ContainsKey().
+        Assert-True ($v.Contains('WINDOWS_TARGET_ARCHES')) 'versions.env must declare WINDOWS_TARGET_ARCHES'
+        $declared = @(($v['WINDOWS_TARGET_ARCHES'] -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object)
+        $supported = @(Get-SupportedWindowsTargetArches)
+        Assert-Equal ($supported -join ',') ($declared -join ',') 'versions.env WINDOWS_TARGET_ARCHES drifted from the module table'
+    }
+
+    It 'WINDOWS_TARGET_ARCH is a supported arch and is the module default' {
+        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
+        $v = ConvertFrom-VersionsEnv -Path $envPath
+        Assert-True ($v.Contains('WINDOWS_TARGET_ARCH')) 'versions.env must declare WINDOWS_TARGET_ARCH'
+        $declared = $v['WINDOWS_TARGET_ARCH'].Trim()
+        Assert-True ((Get-SupportedWindowsTargetArches) -contains $declared) "WINDOWS_TARGET_ARCH '$declared' is not a supported arch"
+        # The host is always amd64, so the shipped default must be amd64 too:
+        # anything else would make a stock build cross-compile by accident.
+        Assert-Equal 'amd64' $declared
+    }
+}

@@ -927,7 +927,7 @@ def main() -> int:
     nonversion = re.compile(
         r"(SHA256|^ORT_|_ENABLE_|^USE_|^FAST_UBUNTU|^IMAGE_REGISTRY_PREFIX$"
         r"|^CROSS_DEFAULT_ARCHES$|^VENV_PATH$|_OUTPUT_DIR$|^GSTREAMER_PREFIX$"
-        r"|_COMMIT$|^CUDA_ARCHITECTURES$)"
+        r"|_COMMIT$|^CUDA_ARCHITECTURES$|^WINDOWS_TARGET_ARCH(ES)?$)"
     )
     unclassified = sorted(k for k in env if k not in covered and not nonversion.search(k))
     if unclassified:

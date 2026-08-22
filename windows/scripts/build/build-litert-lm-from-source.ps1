@@ -51,7 +51,10 @@ Invoke-LiteRtLmSupportGraft -SourceDir $SourceDir
 Switch-BuildPhase '2. Toolchain acquisition (vcpkg + host protoc 31.1 + Temurin JRE)'
 # vcpkg paths: prefer -VcpkgRoot param, then $env:VCPKG_ROOT, then the container default.
 $VcpkgRoot = Get-SourceBuildVersion -Value $VcpkgRoot -EnvironmentVariables @('VCPKG_ROOT') -DefaultValue 'C:\vcpkg'
-$vcpkgInstalledX64 = Join-Path $VcpkgRoot 'installed\x64-windows'
+# Triplet, not a literal: setup-vcpkg.ps1 installs BOTH x64-windows and
+# arm64-windows into the shared base image, so each lane just picks its own
+# tree. amd64 -> 'x64-windows', i.e. today's string.
+$vcpkgInstalledX64 = Join-Path $VcpkgRoot "installed\$(Get-VcpkgTriplet)"
 
 # ENV HYGIENE: media-chain stages run IN-PROCESS (Invoke-SourceBuildChain), so
 # every process-env mutation below -- the CMAKE_PREFIX_PATH prepend here, the
@@ -179,11 +182,15 @@ Write-Host "Wrote Windows <dlfcn.h> + <unistd.h> + <alloca.h> shims to $winShimD
 # those system dirs or kernel32.lib/libcmt.lib vanish and every link (even the configure
 # compiler check) fails. Glob them version-agnostically and put the shim dir first.
 $clangHome = Split-Path (Split-Path (Get-Command clang++.exe -ErrorAction Stop).Source)
+# One token for both trees: MSVC's VC\Tools\MSVC\<ver>\lib\<arch> and the SDK's
+# Windows Kits\10\Lib\<ver>\{ucrt,um}\<arch> use the same spelling ('x64' /
+# 'arm64'). amd64 resolves to 'x64', so these globs are unchanged.
+$msvcLibArch = Get-MsvcTargetLibDir
 $sysLibGlobs = @(
-    'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\lib\x64',
-    'C:\Program Files (x86)\Windows Kits\10\Lib\*\ucrt\x64',
-    'C:\Program Files (x86)\Windows Kits\10\Lib\*\um\x64',
-    (Join-Path $clangHome 'lib\clang\*\lib\x86_64-pc-windows-msvc'),
+    "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\lib\$msvcLibArch",
+    "C:\Program Files (x86)\Windows Kits\10\Lib\*\ucrt\$msvcLibArch",
+    "C:\Program Files (x86)\Windows Kits\10\Lib\*\um\$msvcLibArch",
+    (Join-Path $clangHome "lib\clang\*\lib\$(Get-ClangTargetTriple)"),
     (Join-Path $clangHome 'lib\clang\*\lib\windows')
 )
 $sysLibDirs = @(foreach ($g in $sysLibGlobs) {
@@ -1199,7 +1206,7 @@ if (Test-Path $mainExe) {
         }
     }
     # dynamic-CRT redist DLLs (targeted glob into the VS redist tree)
-    $redist = Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
+    $redist = Get-ChildItem "C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\$(Get-MsvcTargetLibDir)\Microsoft.VC*.CRT" -Directory -ErrorAction SilentlyContinue | Sort-Object FullName | Select-Object -Last 1
     if ($redist) { Copy-Item (Join-Path $redist.FullName '*.dll') $binOut -Force -ErrorAction SilentlyContinue }
     # vcruntime140_1.dll / msvcp140.dll are not in a bare Server Core System32; search the resolved MSVC
     # toolset (via Get-MsvcToolsRoot -- vswhere-based, ships them under bin\Hostx64\x64) rather than
