@@ -144,6 +144,18 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   lanes in one window. NET1-class fix: mirror fallback (github
   eigen-mirror / codeload tarball) for the eigen dep in the litert android
   build; also covers the media-lane litert eigen fetch.
+- **FD-OUTAGE — cerbero's mirror fallback single-homes on freedesktop
+  infra** [S·★★, BIT 2026-08-22] a freedesktop-WIDE 503 window (www.x.org
+  redirects included) killed all 3 android lanes on the pixman fetch —
+  and cerbero's DEFAULT_MIRRORS live on gstreamer.freedesktop.org, i.e.
+  the SAME infra as most primaries: zero redundancy, and the gst source
+  tarballs themselves come from there too (mirror-patching can't help).
+  Wave5k evidence: pkg-config macports override worked (v2 echo ×2),
+  pixman then 503'd on primary AND both mirror composions. Options:
+  pre-seed hot tarballs via cerbero's cached_sources dir
+  (`<checkout>/sources/<name>-<version>/<tarball>`, checksum-verified,
+  skips network entirely) for the top-N cold-bootstrap fetches; or just
+  accept + wait out outages (they're rare; this was the first).
 - **CERB-ICONV — cerbero riscv64-android cold-path link order** [S/M·★,
   BIT 2026-08-22] with NO cerbero cache, android-riscv64's glib links
   before the (lib)iconv product is staged → `undefined symbol:
