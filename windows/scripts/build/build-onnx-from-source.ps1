@@ -200,7 +200,17 @@ Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'numpy', 'setup
 # own diagnostics must stay visible. /WX- above already rules out warnings-as-
 # errors, so even an unrecognised -Wno- could not break this build.
 # Verify the count actually dropped: windows\scripts\diagnostics\Measure-BuildWarnings.ps1
-$cxxFlags = "/WX- $(Get-WindowsX86SimdFlags) /clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c /clang:-Wno-invalid-specialization /clang:-Wno-unused-value $(Get-WarningNoiseSuppressionFlags)"
+# Arch-aware (2026-08-22): the baseline SIMD set AND the four extra ISA flags
+# below are x86-only. On aarch64 clang-cl rejects them outright, so they are
+# gated rather than merely swapped -- Get-WindowsTargetSimdFlags returns empty
+# for arm64 by design (NEON is baseline; optional AArch64 features belong only
+# on the runtime-dispatched MLAS kernels, see the build.ninja pass further down).
+$onnxTargetArch = Get-WindowsTargetArch
+$baseSimdFlags = Get-WindowsTargetSimdFlags -Arch $onnxTargetArch
+$x86OnlyFlags = if ($onnxTargetArch -eq 'amd64') { '/clang:-mwaitpkg /clang:-maes /clang:-mpclmul /clang:-mf16c' } else { '' }
+$cxxFlags = (@('/WX-', $baseSimdFlags, $x86OnlyFlags,
+               '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value',
+               (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
 
 # CUDA stays BARE here - and everywhere: since 2026-08-10 night the CUDA
 # launcher is OPT-IN at the wiring site (Invoke-CmakeConfigure honors only
@@ -437,7 +447,20 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
 # So: nothing gets the features globally; ONLY the MLAS TUs whose object paths
 # name avx512/amx receive them — those kernels are runtime-dispatched and are
 # never executed on CPUs without the features.
-$mlasArchFlags = Get-WindowsX86Avx512Flags
+# Arch-parameterized (2026-08-22). The x86 pattern below used to be a literal,
+# which matches NOTHING in an aarch64 tree -- and a patch that matches nothing
+# SUCCEEDS. The build would have gone green with MLAS's NEON/dotprod/i8mm
+# kernels compiled without their features: unoptimised at best, absent at worst,
+# and undetectable from an x64 host that cannot execute the result.
+$targetArch    = Get-WindowsTargetArch
+$mlasArchFlags = Get-WindowsTargetKernelSimdFlags -Arch $targetArch
+$mlasTuPattern = Get-MlasKernelTuPattern -Arch $targetArch
+$mlasTuMinimum = Get-MlasKernelTuMinimum -Arch $targetArch
+# Marker that proves a FLAGS line was already tagged, so a re-run does not
+# append the set twice. Arch-specific for the same reason as the pattern:
+# 'avx512' never appears in an aarch64 flag set.
+$mlasTaggedMarker = if ($targetArch -eq 'amd64') { 'avx512' } else { 'dotprod' }
+
 $ninjaFile = "$buildDir\build.ninja"
 $ninjaLines = Get-Content $ninjaFile
 $inMlasArch = $false
@@ -445,19 +468,28 @@ $mlasTagged = 0
 for ($i = 0; $i -lt $ninjaLines.Count; $i++) {
     $line = $ninjaLines[$i]
     if ($line -match '^build ') {
-        $inMlasArch = ($line -match 'onnxruntime_mlas\.dir' -and $line -match '(avx512|_amx|amx_|sqnbitgemm|qgemm_kernel_amx)')
+        $inMlasArch = ($line -match 'onnxruntime_mlas\.dir' -and $line -match $mlasTuPattern)
     } elseif ($inMlasArch -and $line -match '^\s+FLAGS = ') {
-        if ($line -notmatch 'avx512') {
+        if ($line -notmatch $mlasTaggedMarker) {
             $ninjaLines[$i] = $line + ' ' + $mlasArchFlags
             $mlasTagged++
         }
     }
 }
-if ($mlasTagged -gt 0) {
+if ($mlasTagged -ge $mlasTuMinimum) {
     Set-Content -Path $ninjaFile -Value $ninjaLines
-    Write-Host "build.ninja: added AVX-512/AMX flags to $mlasTagged MLAS arch TU FLAGS line(s) (runtime-dispatched kernels)"
+    Write-Host "build.ninja: added $targetArch kernel SIMD flags to $mlasTagged MLAS arch TU FLAGS line(s) (runtime-dispatched kernels)"
 } else {
-    Write-Warning 'build.ninja: no MLAS avx512/amx FLAGS lines found to tag — if MLAS arch TUs fail to compile, the ninja layout no longer matches this pass.'
+    # HARD FAILURE, not a warning (2026-08-22). A zero/low match count means the
+    # ninja layout no longer matches this pass -- upstream renamed the kernels,
+    # or the pattern is wrong for this target. Either way the dispatched kernels
+    # silently lose their features, which nothing downstream can detect: on a
+    # cross build the artifacts cannot even be executed. The floor is the guard;
+    # the pattern alone is not.
+    throw ("build.ninja: tagged only $mlasTagged MLAS kernel TU FLAGS line(s) for $targetArch, expected at least " +
+           "$mlasTuMinimum (pattern: $mlasTuPattern). The MLAS ninja layout no longer matches this pass, so the " +
+           'runtime-dispatched kernels would be built WITHOUT their SIMD features. Update ' +
+           'Get-MlasKernelTuPattern in WindowsTargetArch.Common.psm1 to match the current upstream tree.')
 }
 
 # Memory-scaled parallelism: AVX-512/CUDA TUs under clang-cl peak at several GB each,

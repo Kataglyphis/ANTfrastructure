@@ -147,10 +147,18 @@ ARG FLUTTER_VERSION=3.47.0
 # scoop's cache from there. Empty = direct (retried) vendor download. The
 # endpoint is a stable LAN URL, so it does not churn this layer's cache key.
 ARG VULKAN_PRESEED_ENDPOINT=""
+# Opt-in hard gate for the arm64 prerequisites (MSVC lib\arm64, Windows SDK
+# um\arm64, Vulkan Lib-ARM64). Default EMPTY = warn-only, because this base is
+# SHARED by the amd64 and arm64 lanes: a hard failure over an arm64-only
+# prerequisite would block the amd64 build too. Declared as a real ARG on
+# purpose -- ARG values become env vars during this stage's RUNs, and buildctl
+# silently DISCARDS --build-arg for names no Dockerfile declares, so a bare
+# $env: read would be unreachable from `docker build`.
+ARG WINDOWS_ARM64_STRICT=""
 COPY windows\scripts\host\setup-scoop-tools.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\setup-scoop-tools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
-    -SccacheVersion $env:SCCACHE_WINDOWS_VERSION
+    -SccacheVersion $env:SCCACHE_WINDOWS_VERSION -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
 
 # #50: VCPKG_REF as ARG for the same reason (was baked env).
 ARG VCPKG_REF=2026.07.29
@@ -215,6 +223,13 @@ RUN & 'C:\temp\scripts\load-versions.ps1' 2>&1 | Out-Null
 # matched exactly this one file, but a future verify-* script would have
 # silently busted the layers above). Pure assertion pass + the tiny
 # finalize config step share one RUN (125-layer budget); both are seconds.
+# WindowsTargetArch.Common.psm1 rides in THIS layer group, not higher up:
+# verify-toolchain.ps1 is its ONLY consumer in the base (the host provisioning
+# scripts spell their few arm64 facts inline and import just the three modules
+# COPY'd before the VS layer). Placed above setup-scoop-tools it invalidated
+# scoop, vcpkg AND the ~30-min rust layer on every edit to a module whose whole
+# point is that adding a target is a one-line table edit.
+COPY windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build\verify-toolchain.ps1 `
      windows\scripts\build\finalize-container.ps1 `
      C:\temp\scripts\

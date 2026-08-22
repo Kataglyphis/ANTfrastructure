@@ -86,6 +86,15 @@ $env:NUGET_URL = $nugetUrl
 
 # PCbuild\build.bat drives MSBuild, which parallelizes across available CPUs — under
 # the run+commit container that is --cpu-count, not the 2-CPU docker build cap.
+#
+# `-p x64` is HOST-PINNED and STAYS x64 on the arm64 lane. This is the BUILD
+# interpreter: it runs meson, cython, setup.py and pip for every downstream media
+# stage, and an aarch64 python.exe cannot execute on the x64 build host. The
+# toolchain image is also SHARED by both lanes (which is why WINDOWS_TARGET_ARCH is
+# deliberately not declared in Dockerfile.toolchain-builder), so arch-keying this
+# compile would fork the chain's most expensive CPython layer per target for no
+# gain. A TARGET CPython is OUT OF SCOPE here and deferred to a separate cross
+# script; Get-CpythonBuildPlatform / Get-CpythonOutputDir already exist for it.
 & cmd /c "cd /d $src && PCbuild\build.bat -e -p x64 -c Release"
 if ($LASTEXITCODE -ne 0) { throw "CPython build.bat failed (exit $LASTEXITCODE)" }
 

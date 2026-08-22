@@ -74,9 +74,14 @@ Write-Host 'Installing dependencies via vcpkg...'
 # protoc), and LiteRT-LM even had to HIDE vcpkg's protobuf headers to avoid version
 # skew. It only cost ~15 min of vcpkg compile in the base image. zlib stays: it feeds
 # protobuf_external's HAVE_ZLIB via CMAKE_PREFIX_PATH in the LiteRT-LM build.
-foreach ($pkg in @('zlib:x64-windows')) {
+# Both triplets are installed UNCONDITIONALLY (arm64 added 2026-08-22): the base
+# image is single-variant and shared by both target lanes, so gating this on a
+# build ARG would make the arm64 lane re-pay base. zlib is cheap, and
+# arm64-windows resolves only because setup-vs.ps1 installs VC.Tools.ARM64.
+foreach ($triplet in @('x64-windows', 'arm64-windows')) {
+    $pkg = "zlib:$triplet"
     Write-Host "  Installing $pkg..."
-    $installOut = & "$VcpkgDir\vcpkg.exe" install $pkg --triplet x64-windows 2>&1
+    $installOut = & "$VcpkgDir\vcpkg.exe" install $pkg --triplet $triplet 2>&1
     # Fail loudly: a silently-missing zlib surfaces much later as an
     # opaque link error deep in a media build. Emit the captured transcript
     # only on failure (success output is multi-hundred-line noise).

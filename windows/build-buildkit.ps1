@@ -58,6 +58,14 @@
 [CmdletBinding()]
 param(
     [switch]$Gpu,
+    # Compile TARGET. The build host is always windows/amd64 (Microsoft ships no
+    # arm64 Windows container base image), so 'arm64' is a CROSS build out of the
+    # same x64 container whose product is an artifact bundle, not a runnable
+    # image. base/sdk/toolchain are host tooling and are SHARED by both targets;
+    # only media onward forks, which is why WINDOWS_TARGET_ARCH is forwarded to
+    # the media/merge/final stages and never to base.
+    [ValidateSet('amd64', 'arm64')]
+    [string]$TargetArch = 'amd64',
     [ValidateSet('base', 'sdk', 'toolchain', 'media', 'torch', 'final')]
     [string[]]$Stages = @('base', 'sdk', 'toolchain', 'media', 'torch', 'final'),
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
@@ -225,6 +233,28 @@ $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveG
 Write-Host "BuildKit lane: process isolation, all CPUs; memory budget $MediaMemoryGb GB (published via webdav, #51)" -ForegroundColor Cyan
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
 
+# --- cross-target gates: refuse the combinations that cannot work -------------
+# Fail HERE, in milliseconds, rather than hours into a stage that was never
+# going to produce anything usable.
+if ($TargetArch -ne 'amd64') {
+    if ($Gpu) {
+        throw ("-Gpu is not available for -TargetArch $TargetArch : CUDA, cuDNN and TensorRT have no " +
+               'Windows-on-ARM builds at all. The arm64 lane is CPU + Vulkan only.')
+    }
+    if ($Stages -contains 'torch') {
+        throw ("-Stages torch is not available for -TargetArch $TargetArch : the torch stage runs " +
+               "``uv sync``, which must EXECUTE the target interpreter - impossible in a cross build. " +
+               'Independently, the pinned PyTorch publishes no win_arm64 wheel for the pinned Python. ' +
+               'Re-run without torch, e.g. -Stages base,sdk,toolchain,media,final')
+    }
+    Write-Host ("[bk] TARGET ARCH: $TargetArch (CROSS build - host stays windows/amd64). " +
+                'Output is an artifact bundle, not a runnable image.') -ForegroundColor Yellow
+}
+# Forwarded to the stages AFTER the arch fork only. base/sdk/toolchain are host
+# tooling shared by both lanes; declaring this ARG there would re-pay the VS
+# Build Tools layer on every lane switch.
+$archArgs = @{ WINDOWS_TARGET_ARCH = $TargetArch }
+
 # --- host preflight: the two failures that cost HOURS when discovered late ---
 # Both were manual checklist items in docs/windows-host-setup.md § D3 until
 # 2026-08-07, and both bit on 2026-08-06: a chain ran 2.5 h before dying of a
@@ -242,7 +272,26 @@ Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 
 # --- tags: fully-qualified for containerd-store handoff; bk- namespaced so the
 # classic docker lane's local/kataglyphis:windows-* tags can never collide ---
-function Get-BkTag([string]$Name) { return "docker.io/local/kataglyphis:bk-$Name" }
+# amd64 keeps EXACTLY the historical names (no suffix) so the existing lane's
+# cache and any external reference to bk-windows-* stay valid; a cross target
+# appends its arch so the two lanes cannot collide in the local tag namespace.
+# The stages BEFORE the arch fork (base/sdk/toolchain) are shared host tooling
+# and deliberately keep the unsuffixed name for both targets - suffixing them
+# would fork the most expensive layers in the chain for no benefit.
+# Names exempt from the suffix: the pre-fork shared stages, and the final tags
+# which already spell their arch (winamd64 / winarm64) - suffixing those would
+# produce bk-winarm64-arm64.
+$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64')
+function Get-BkTag([string]$Name) {
+    $suffix = if ($TargetArch -eq 'amd64' -or $script:NoSuffixTags -contains $Name) { '' } else { "-$TargetArch" }
+    return "docker.io/local/kataglyphis:bk-$Name$suffix"
+}
+
+# The final image/bundle tag: winamd64 for the native lane, winarm64 for the
+# cross lane. NB winarm64 labels a windows/amd64 image carrying an aarch64
+# payload - never publish it with --platform windows/arm64, that yields a
+# manifest nothing can run.
+$script:FinalTagName = if ($TargetArch -eq 'arm64') { 'winarm64' } else { 'winamd64' }
 
 # Get-TorchAppRef / Get-BuildVcsRef now live in WindowsBuildDriver.Common
 # (Resolve-TorchAppRef / Get-BuildVcsRef) — shared with build.ps1.
@@ -551,7 +600,7 @@ if ($Stages -contains 'media') {
     foreach ($branch in $loopBranches) {
         $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
-        } + $branchArgs[$branch] + $sccache
+        } + $branchArgs[$branch] + $sccache + $archArgs
         if ($branch -eq 'media-core') {
             # DIRECT SOLVES (de-warmed 2026-08-06, round 2): every library
             # layer builds and exports in one solve. The former
@@ -684,7 +733,7 @@ if ($Stages -contains 'media') {
             CORE_IMAGE      = Get-BkTag 'windows-media-core'
             LITERT_IMAGE    = Get-BkTag 'windows-media-litert'
             TVM_IMAGE       = Get-BkTag 'windows-media-tvm'
-        }
+        } + $archArgs
         # Direct solve (de-warmed 2026-08-05 — see the media-core comment above).
         # -MaxAttempts 5: the fan-in stage mounts three branch trees and is the
         # only stage measured burning its whole 3-attempt budget (2026-08-06).
@@ -730,12 +779,15 @@ if ($Stages -contains 'torch') {
 }
 
 if ($Stages -contains 'final') {
-    $finalArgs = $stampArgs + @{ BASE_IMAGE = Get-BkTag 'windows-torch' }
+    # The arm64 lane skips the torch stage (guarded at launch), so its final
+    # image is based on the merged media stage directly.
+    $finalBase = if ($TargetArch -eq 'amd64') { Get-BkTag 'windows-torch' } else { Get-BkTag 'windows-media' }
+    $finalArgs = $stampArgs + @{ BASE_IMAGE = $finalBase } + $archArgs
     # -Label 'final' (audit 2026-08-21 #14): the default label is the
     # Dockerfile filename ('Dockerfile'), so -NoCacheStage final matched
     # only final-tar/final-push — busting the re-EXPORT while the owner
     # believed the final stage was rebuilt.
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag 'winamd64') -BuildArgs $finalArgs
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag $script:FinalTagName) -BuildArgs $finalArgs
     # SMOKE GATE (backlog #44). Until 2026-08-14 neither driver ran the smoke
     # test at all, so a multi-hour chain ended with "Done" and zero evidence the
     # image worked — in a repo whose defect history is dominated by "builds
@@ -759,7 +811,7 @@ if ($Stages -contains 'final') {
             Write-Host "smoke gate: GPU lane floor $effectiveMinPassed (CPU default is $SmokeMinPassed)"
         }
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.smoke-gate' -Label 'smoke-gate' -NoOutput -BuildArgs @{
-            BASE_IMAGE  = Get-BkTag 'winamd64'
+            BASE_IMAGE  = Get-BkTag $script:FinalTagName
             MIN_PASSED  = "$effectiveMinPassed"
             MAX_SKIPPED = "$SmokeMaxSkipped"
             EXPECT_GPU  = $(if ($Gpu) { '1' } else { '0' })
@@ -783,7 +835,7 @@ if ($Stages -contains 'final') {
     # Push auth: buildctl forwards THIS shell's docker credential store — run
     # `docker login <registry>` here first.
     if ($FinalTar) {
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-tar' -OutputSpec "type=docker,name=local/kataglyphis:winamd64,dest=$FinalTar" -BuildArgs $finalArgs
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-tar' -OutputSpec "type=docker,name=local/kataglyphis:$($script:FinalTagName),dest=$FinalTar" -BuildArgs $finalArgs
     }
     if ($PushRef) {
         Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec "type=image,name=$PushRef,push=true" -BuildArgs $finalArgs

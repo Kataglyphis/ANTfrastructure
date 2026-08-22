@@ -10,7 +10,13 @@ rem VS Build Tools can land under either Program Files root -- prefer the 64-bit
 rem root, fall back to (x86). Hardcoding only (x86) broke 64-bit-rooted installs.
 set "VSDEVCMD=C:\Program Files (x86)\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat"
 if exist "%ProgramFiles%\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat" set "VSDEVCMD=%ProgramFiles%\Microsoft Visual Studio\%VISUAL_STUDIO_VERSION%\BuildTools\Common7\Tools\VsDevCmd.bat"
-call "%VSDEVCMD%" -arch=amd64 >nul
+rem Target architecture of the developer environment. The HOST is always amd64 --
+rem there is no arm64 Windows container base image, so an arm64 lane is a CROSS
+rem build from this x64 container, not a native one. VSDEVCMD_ARCH is set as ENV
+rem by the arch-specific final stage; unset means amd64, which keeps this byte-
+rem identical to the pre-2026-08-22 behaviour for the existing lane.
+if not defined VSDEVCMD_ARCH set VSDEVCMD_ARCH=amd64
+call "%VSDEVCMD%" -arch=%VSDEVCMD_ARCH% -host_arch=amd64 >nul
 rem Fail loudly if the VS env did not load -- otherwise every downstream build fails
 rem confusingly with missing cl/link/msbuild instead of one clear message.
 if errorlevel 1 (echo [entrypoint] ERROR: VsDevCmd.bat failed with errorlevel %errorlevel% & exit /b 1)

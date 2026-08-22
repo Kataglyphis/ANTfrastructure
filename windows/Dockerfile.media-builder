@@ -30,6 +30,15 @@ FROM ${BASE_IMAGE} AS common
 # knob as image metadata was a CACHE KEY - toggling -ConcurrentAux
 # invalidated every litert/tvm compile. The driver publishes it on the
 # webdav; Get-BuildJobCount fetches it at RUN time (fail-open to CIM).
+# Compile TARGET architecture. FIRST declared here, deliberately: base/sdk/
+# toolchain install host tooling shared by both lanes, and an ARG there would
+# key their cache on it -- re-paying the VS Build Tools layer on every lane
+# switch (Dockerfile.base: "every RUN after an ARG declaration keys its cache
+# on the ARG's value"). Mirrored to ENV so the build scripts' arch resolution
+# (Get-WindowsTargetArch -> $env:WINDOWS_TARGET_ARCH) sees it at RUN time and
+# in every derived stage.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 ARG SCCACHE_WEBDAV_ENDPOINT=""
 # Overridable so a single stage can be re-run at debug level without editing
 # this file: build-buildkit.ps1 -BuildArg SCCACHE_LOG=debug (backlog #98).
@@ -181,6 +190,7 @@ COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      C:\temp\scripts\modules\
 
 # ── Mount source for the BK lane's module closure ────────────────────────────
@@ -212,6 +222,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
      windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
+     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      C:\bkmods\
 
 # ── media-core version env — CLASSIC-lane ancestor (since #49, 2026-08-19) ───

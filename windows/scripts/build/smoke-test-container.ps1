@@ -67,6 +67,15 @@ $ProgressPreference = 'SilentlyContinue'
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSmokeTest.Common.psm1') -Force
 
+# Canonical TARGET-arch facts (vcpkg triplet, PE machine, wheel tag). Imported
+# here because this script does NOT pull in WindowsSourceBuild.Common -- the
+# re-export route every build script uses. Safe to import directly: the module
+# is deliberately dependency-free, so it cannot drag the module graph into the
+# smoke test. windows/Dockerfile bakes ENV WINDOWS_TARGET_ARCH, so in-container
+# the lane resolves itself; unset, every accessor returns the amd64 value and
+# today's behaviour is unchanged.
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1') -Force
+
 # Must precede the first assertion: this both zeroes the counters and hands the
 # module the -ExitOnFirstFailure switch. Assert-Test used to read that switch
 # out of this script's scope, which a module cannot see (see the module header).
@@ -242,6 +251,10 @@ Assert-Test -Name "Python is $pyMajorMinor.x" -Condition {
 # TEMP_DIR is baked in-container but typically unset on a build host -- a bare
 # Join-Path $env:TEMP_DIR would throw there before any test ran.
 $cpythonDir = Join-Path ($env:TEMP_DIR ?? 'C:\temp') 'cpython'
+# PCbuild\amd64 is correct on BOTH lanes and must NOT be arch-parameterized: this
+# is the HOST interpreter the toolchain layer builds (build-toolchain-all.ps1's
+# `-p x64`), and it is what `python` on PATH resolves to in every image. Only the
+# wheel TAG follows WINDOWS_TARGET_ARCH.
 Assert-Test -Name "Python source-built from $cpythonDir" -Condition {
     (Test-Path "$cpythonDir\PCbuild\amd64\python.exe") -or
     (Test-Path "$cpythonDir\PCbuild\amd64\python3.dll")
@@ -1290,10 +1303,10 @@ $vcpkgRoot = $env:VCPKG_ROOT ?? 'C:\vcpkg'
 # stale. Accept either name rather than pinning whichever one is current, so the
 # next rename does not re-open this.
 Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
-    $libDir = Join-Path $vcpkgRoot 'installed\x64-windows\lib'
+    $libDir = Join-Path $vcpkgRoot "installed\$(Get-VcpkgTriplet)\lib"
     @(Get-ChildItem -Path $libDir -Filter 'z*.lib' -File -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in @('z.lib', 'zlib.lib', 'zlibstatic.lib') }).Count -gt 0
-} -FailMessage "no vcpkg zlib import lib (z.lib/zlib.lib) under $vcpkgRoot\installed\x64-windows\lib — vcpkg install genuinely broken"
+} -FailMessage "no vcpkg zlib import lib (z.lib/zlib.lib) under $vcpkgRoot\installed\$(Get-VcpkgTriplet)\lib — vcpkg install genuinely broken"
 # (A "vcpkg protoc runs IF present" assertion lived here for legacy base
 # images; vcpkg has shipped zlib-only since 2026-08-03 and every image in the
 # chain builds from that base, so the test could only ever pass vacuously —
@@ -1318,15 +1331,20 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         }.GetNewClosure() -FailMessage "no $wheelPattern found in $wheelStore"
     }
 
-    # All wheels must be tagged win_amd64 -- a win32 tag means the sitecustomize
-    # platform shim was missing at build time (clang-CPython self-reports win32).
-    Assert-Test -Name "all staged wheels are win_amd64-tagged" -Condition {
-        @(Get-ChildItem -Path $wheelStore -Filter '*.whl' | Where-Object { $_.Name -notmatch 'win_amd64|any\.whl$' }).Count -eq 0
-    } -FailMessage "wheel(s) with a non-win_amd64 platform tag in $wheelStore (platform-tag shim missing at build time?)"
+    # All wheels must carry THIS LANE'S platform tag. A win32 tag means the
+    # sitecustomize shim was missing at build time (clang-CPython self-reports
+    # win32); a win_amd64 tag on the arm64 lane means the shim ran host-pinned and
+    # every wheel in the bundle is mislabelled. Both values come from the arch
+    # table, so this assert and Initialize-PythonPlatformTag cannot drift apart.
+    $pyWheelTag = Get-PythonWheelTag
+    $pyPlatformName = Get-PythonPlatformName
+    Assert-Test -Name "all staged wheels are $pyWheelTag-tagged" -Condition {
+        @(Get-ChildItem -Path $wheelStore -Filter '*.whl' | Where-Object { $_.Name -notmatch ($pyWheelTag + '|any\.whl$') }).Count -eq 0
+    } -FailMessage "wheel(s) with a non-$pyWheelTag platform tag in $wheelStore (platform-tag shim missing at build time?)"
 
-    Assert-Test -Name "python platform tag is win-amd64 (sitecustomize shim)" -Condition {
-        (& python -c "import sysconfig; print(sysconfig.get_platform())" 2>&1 | Out-String) -match 'win-amd64'
-    } -FailMessage "sysconfig.get_platform() is not win-amd64 (shim missing -- pip resolves 32-bit wheels)"
+    Assert-Test -Name "python platform tag is $pyPlatformName (sitecustomize shim)" -Condition {
+        (& python -c "import sysconfig; print(sysconfig.get_platform())" 2>&1 | Out-String) -match $pyPlatformName
+    } -FailMessage "sysconfig.get_platform() is not $pyPlatformName (shim missing -- pip resolves 32-bit wheels)"
 
     # onnxruntime: real python-side inference over the shared 63-byte Identity model.
     Assert-Test -Name "python onnxruntime inference end-to-end (CPU EP)" -Condition {

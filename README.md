@@ -107,7 +107,18 @@ linux/
 **Runtime lane** (native/QEMU per arch): `base → package → wrapper`
 **Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), the docker-classic lane (`windows/build.ps1`) is **no longer a bootstrap fallback** — twelve Windows Dockerfiles use BuildKit-only `RUN --mount`, so the legacy builder cannot build `base` (measured 2026-08-21). The lane runs **direct solves** on every stage: the host snapshotter defect that used to break heavy media layers (`ExportLayer 0x3` on heavy-churn container finalize) was root-caused on 2026-08-06 to a hardcoded 30 s teardown timeout in the containerd runhcs shim — it terminated a teardown that takes ~117 s for OpenCV, permanently poisoning the scratch disk — and is fixed by a locally patched shim, submitted upstream as [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855). **Every Stevedore/containerd update reverts that patch**, so `windows/scripts/host/deploy-shim-patch.ps1 -ReportOnly` belongs in your post-update routine. The older warm/materialize workaround is retired (kept in git history as the rollback path), and the Defender exclusions remain load-bearing for a separate family of transient finalize flakes — see [`docs/windows-builds.md`](docs/windows-builds.md) § BuildKit/containerd lane and [`docs/windows-host-setup.md`](docs/windows-host-setup.md) C4. **Two client lanes are supported:** `buildctl` builds the chain from a normal shell (buildkitd is ACL'd to `docker-users`), while `nerdctl` — from an **admin** shell, since containerd's pipe is Administrator-only upstream — runs, inspects and administers the resulting images, and can build as well; recipes in [`docs/windows-builds.md`](docs/windows-builds.md) § nerdctl lane. On AMD RDNA4-GPU hosts, RUN-layer finalize is broken while the dGPU is ENABLED (`ActivateLayer 0x20`; the 2026-08-09 "faulty Adrenalin install" verdict was SUPERSEDED by a same-boot A/B on 2026-08-10 — disabling the dGPU for the build window is the proven fix, upstream docker/for-win#14977): build inside the toggle window (`toggle-rdna4-gpu.ps1 -Disable` → build → re-enable), which the drivers' `Assert-NoActiveRdna4Gpu` preflight enforces — see AGENTS.md Common Failure Modes "AMD Radeon host".
 
-Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows: `windows/amd64`.
+Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**: `windows/amd64`.
+Windows **targets**: `amd64` (container image, production) and `arm64`
+(cross-compiled artifact bundle, **wired but not yet built or executed** — see the status banner
+in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
+
+> **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no arm64
+> `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a `:winarm64`
+> container cannot exist. The arm64 lane builds inside the same `windows/amd64` container with
+> `clang-cl --target=aarch64-pc-windows-msvc` + `lld-link` and emits an artifact bundle
+> (libs/DLLs/headers) for use on real ARM64 Windows hardware. CUDA/cuDNN/TensorRT have no
+> Windows-on-ARM support and are excluded from that lane. See
+> [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md).
 
 ## Published Images
 

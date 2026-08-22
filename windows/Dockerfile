@@ -14,6 +14,18 @@ FROM ${BASE_IMAGE}
 ARG BUILD_DATE=""
 ARG VCS_REF=""
 
+# Compile TARGET architecture of this image's payload. VSDEVCMD_ARCH is what
+# entrypoint.cmd feeds to `VsDevCmd.bat -arch=`, so a container started from an
+# arm64 bundle image enters an arm64-TARGETING developer environment while the
+# host tools stay x64 (-host_arch=amd64 is fixed in entrypoint.cmd).
+#
+# NB for arm64 this image is still a windows/amd64 image carrying an aarch64
+# payload -- there is no arm64 Windows base image. Never publish it with
+# --platform windows/arm64: that produces a manifest nothing can run.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH} `
+    VSDEVCMD_ARCH=${WINDOWS_TARGET_ARCH}
+
 # Runtime DLL resolution: onnxruntime.dll lives in the install's bin\ (the media
 # PATH only carried lib\, which holds the provider DLLs) — without this, anything
 # linking ORT (e.g. ffmpeg) dies with STATUS_DLL_NOT_FOUND.
