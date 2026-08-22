@@ -138,6 +138,25 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   in tvm-python.sh never wired; do with the llvm-config pin.
 - **P3 note** [S] generalize the vulkan Multi-Arch drop-in into cross-apt.sh
   only if a SECOND dev-package skew appears.
+- **PKGCFG-MIRROR — cerbero pkg-config bootstrap 404, VALIDATING in
+  wave5l** [S·★★, fix ed0ea64] pkgconfig.freedesktop.org is dead and the
+  src/mirror fallback 404s → every cold android bootstrap died on
+  curl (22). Fix = macports redirect in recipes/pkg-config.recipe
+  (byte-identical tarball, recipe checksum still guards). v1 (7047558)
+  was a HEISENBUG: file picked via `grep -rl | grep -m1` — readdir order
+  is filesystem-dependent, in-container it sed'd a stray patch-file and
+  still echoed success. v2 patches the known recipe explicitly + all
+  other dead-host refs and echoes the patched url line as proof (echo
+  CONFIRMED ×2 in wave5k/5l; bootstrap passed the 404 point). DELETE
+  after android ×3 ships. LESSON for reviews: any `grep -rl | head/-m1`
+  file-pick is nondeterministic across filesystems.
+- **STALE-LOG — per-run log namespacing (re-filed; lost in the July
+  restructure)** [S/M·★★★, BIT again 2026-08-22] lane logs are opened
+  with `tee -a` and NEVER truncated between waves: android-*.log still
+  carried wave5j's 10/6/6 errors when wave5k launched → watcher raised
+  false NEW-error alarms; historically also caused stale-green reads.
+  Fix: namespace per run (out/build-logs/<run-id>/) or truncate at lane
+  start; watchers then need no baseline hack.
 - **EIGEN-NET — litert-android's eigen FetchContent single-homes on
   gitlab.com** [S·★★, BIT 2026-08-21] a momentary gitlab outage
   ('fatal: expected flush after ref listing') killed all three android
