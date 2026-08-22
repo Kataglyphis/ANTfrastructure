@@ -97,6 +97,15 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   smoke_resolve_bin/assert_elf_magic/component_gate (6+2+4 dup sites) into
   smoke-common.sh; SMOKE_ENV=sandbox|runtime set by callers. Extend
   test-smoke-arch-parity.sh.
+- **CERB-CACHE — cerbero state cachemount (android lanes)** [M·★★★,
+  2026-08-22] the whole cerbero bootstrap+package run is ONE Dockerfile
+  RUN: any failure (PKGCFG 404, FD-OUTAGE 503, CERB-ICONV) discards ALL
+  progress and the next attempt restarts COLD — today that repeated the
+  ~40-60 min bootstrap ×3 lanes ×3 waves for zero progress. Give
+  /opt/cerbero/sources (+ build-tools prefix) a per-arch cachemount like
+  ccache; cerbero's own checksums make reuse safe, and a failed attempt
+  then resumes in minutes. Biggest single wall-clock lever for the
+  android stage's failure path.
 - **Media source-cache mounts** [S/M·★★] version-keyed src mounts for
   opencv/gstreamer/ffmpeg/onnx clones — every rebuild re-clones today.
 - **DUP2 — GCC-prefix `16.2.0` literal sprawl (~25× / 11 files)** [M·★★]
