@@ -138,6 +138,24 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   in tvm-python.sh never wired; do with the llvm-config pin.
 - **P3 note** [S] generalize the vulkan Multi-Arch drop-in into cross-apt.sh
   only if a SECOND dev-package skew appears.
+- **EIGEN-NET — litert-android's eigen FetchContent single-homes on
+  gitlab.com** [S·★★, BIT 2026-08-21] a momentary gitlab outage
+  ('fatal: expected flush after ref listing') killed all three android
+  lanes in one window. NET1-class fix: mirror fallback (github
+  eigen-mirror / codeload tarball) for the eigen dep in the litert android
+  build; also covers the media-lane litert eigen fetch.
+- **CERB-ICONV — cerbero riscv64-android cold-path link order** [S/M·★,
+  BIT 2026-08-22] with NO cerbero cache, android-riscv64's glib links
+  before the (lib)iconv product is staged → `undefined symbol:
+  libiconv_open` (the lane only ever passed from warm cache before).
+  Verify recipe deps (glib ← libiconv) in our cerbero overlay; a worker
+  retry resuming cerbero state may mask it — cold-validate explicitly.
+- **PAR5 — divisor is static per launch; surviving lanes stay throttled**
+  [S/M·★★] BUILD_MEM_DIVISOR is computed at launch (n_arch × budget) and
+  never adapts when lanes finish — observed repeatedly: a single remaining
+  wheelhouse crawled at 1-2 jobs for HOURS while the host idled (wave4f
+  arm64, wave5h riscv64). Options: per-stage divisor from LIVE lane count
+  (flag-dir heartbeat), or accept + document. Pairs with PAR4-hard.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
@@ -167,8 +185,12 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 
 ## D. CI / infra / cache tiers (own triggers)
 
-- **S3 — per-stage registry cache refs (mode=max)** [M·★★] framework stages
-  never warm-start from registry; dodge the ghcr 400 blob limit; test.
+- **S3 — per-stage registry cache refs (mode=max)** [M·★★→★★★, BIT
+  2026-08-21] the system-prune wiped local caches and the inline (mode=min)
+  registry cache covers only final-image layers → the wave5h relaunch
+  COLD-REBUILT all media intermediates (~18 h: torch/IREE/litert ×3).
+  Per-stage mode=max refs would have made that a fast-forward. Dodge the
+  ghcr 400 blob limit; test.
 - **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
   (deliberately per-lane since PAR2 — revisit as shared+non-locked).
 - **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
