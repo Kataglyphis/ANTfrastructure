@@ -176,7 +176,12 @@ try {
         if ($objBytes.Length -lt 2) {
             $probeFailure = "clang-cl produced a truncated object file for $armTriple"
         } else {
-            $objMachine = $objBytes[0] -bor ($objBytes[1] -shl 8)
+            # [int] casts are LOAD-BEARING, not style. PowerShell's -shl keeps the
+            # LEFT operand's type: [byte]0xAA -shl 8 is 0, not 0xAA00. Without the
+            # casts this reads 0x0064 for a perfectly good ARM64 object and reports
+            # a false FAIL -- the single most damaging way this check could be
+            # wrong, since it would condemn a working cross toolchain.
+            $objMachine = [int]$objBytes[0] -bor ([int]$objBytes[1] -shl 8)
             if ($objMachine -ne $armMachine) {
                 $probeFailure = ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}).' -f $objMachine, $armMachine, $armTriple)
             } else {

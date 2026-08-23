@@ -151,6 +151,10 @@ Push-Location $repoRoot
 try {
 
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Shared.psm1') -Force
+# Canonical target-arch facts, so the driver derives the per-arch build-args it
+# forwards from the SAME table the in-container scripts read, instead of
+# re-spelling 'x64'/'arm64' here and letting the two drift.
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -Force
 # Shared transient-failure engine (unit-tested in BuildDriver.Retry.Tests) —
 # the BK lane classifies against its own pattern: ActivateLayer 0x20 snapshot
 # contention explicitly, NOT blanket 'hcsshim' (a genuine ExportLayer 0x3
@@ -253,7 +257,18 @@ if ($TargetArch -ne 'amd64') {
 # Forwarded to the stages AFTER the arch fork only. base/sdk/toolchain are host
 # tooling shared by both lanes; declaring this ARG there would re-pay the VS
 # Build Tools layer on every lane switch.
-$archArgs = @{ WINDOWS_TARGET_ARCH = $TargetArch }
+#
+# OPENCV_ARCH_DIR rides along because Dockerfile.media-merge-builder bakes
+# OPENCV_LIB/OPENCV_BIN as ENV, and an ENV WINS over the arch-aware fallback in
+# build-gstreamer-from-source.ps1 ($env:OPENCV_LIB is set, so the fallback never
+# runs). Without it the arm64 lane resolves OpenCV's import libs under
+# ...\opencv5\x64\vc18\lib, finds nothing, and dies with "no import libraries
+# found" deep in the GStreamer pkg-config step. A Dockerfile cannot branch on an
+# ARG, so the mapping is done here, from the same table the scripts read.
+$archArgs = @{
+    WINDOWS_TARGET_ARCH = $TargetArch
+    OPENCV_ARCH_DIR     = Get-OpenCvArchDir -Arch $TargetArch
+}
 
 # --- host preflight: the two failures that cost HOURS when discovered late ---
 # Both were manual checklist items in docs/windows-host-setup.md § D3 until

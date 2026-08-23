@@ -272,3 +272,44 @@ Describe 'versions.env parity' {
         Assert-Equal 'amd64' $declared
     }
 }
+
+Describe 'COFF machine decoding (byte-shift trap)' {
+
+    # PowerShell's -shl keeps the LEFT operand's TYPE. [byte]0xAA -shl 8 is 0,
+    # not 0xAA00, so `$bytes[0] -bor ($bytes[1] -shl 8)` silently reads only the
+    # low byte and reports 0x0064 for a genuine ARM64 object.
+    #
+    # That is the most damaging way an arch check can be wrong: a false FAIL on
+    # the very probe that decides whether the cross toolchain works at all. It
+    # was live in verify-toolchain.ps1 and the arm64 prereq probe on 2026-08-23.
+    It 'demonstrates why the [int] casts are load-bearing' {
+        $b = [byte[]](0x64, 0xAA)
+        Assert-Equal 0x0064 ($b[0] -bor ($b[1] -shl 8))            # the trap
+        Assert-Equal 0xAA64 ([int]$b[0] -bor ([int]$b[1] -shl 8))  # the fix
+    }
+
+    It 'no shipped script decodes a machine word without an [int] cast' {
+        # SHIPPED code only. This test file itself deliberately contains the
+        # broken form above to demonstrate the trap, and scanning tests/ would
+        # make the guard flag its own documentation.
+        $shipped = @('build', 'host', 'modules', 'diagnostics') |
+            ForEach-Object { Join-Path (Get-RepoRoot) "windows\scripts\$_" } |
+            Where-Object { Test-Path $_ }
+        $offenders = @()
+        foreach ($f in (Get-ChildItem $shipped -Recurse -Include '*.ps1', '*.psm1' -File)) {
+            foreach ($line in (Get-Content -LiteralPath $f.FullName)) {
+                # Comments explain the trap; only real code can fall into it.
+                if ($line.TrimStart().StartsWith('#')) { continue }
+                # A shift-by-8 combined with -bor is the machine-word idiom.
+                # Require an [int] cast on the shifted operand; anything else
+                # silently truncates to the low byte.
+                if ($line -match '-bor' -and $line -match '-shl\s+8') {
+                    if ($line -notmatch '\[int\][^-]*-shl\s+8') {
+                        $offenders += ('{0}: {1}' -f $f.Name, $line.Trim())
+                    }
+                }
+            }
+        }
+        Assert-Equal 0 $offenders.Count ("machine-word decode without [int] cast: " + ($offenders -join ' // '))
+    }
+}

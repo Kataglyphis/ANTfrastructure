@@ -20,8 +20,20 @@ $ErrorActionPreference = 'Stop'
 $dest = 'C:\cuda-rt'
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
 
+# The CUDA_ROOT guard is load-bearing, not defensive noise: with the variable
+# unset, `Join-Path $env:CUDA_ROOT 'bin'` throws ParameterBindingValidationException
+# ("Cannot bind argument to parameter 'Path' because it is null") under
+# $ErrorActionPreference='Stop' -- BEFORE the explanatory throw below can run.
+# The operator then sees an opaque binding error instead of "Is this stage
+# derived from the nvidia base?".
+#
+# That path is no longer hypothetical: every recorded chain run so far was
+# gpu=True, but the arm64 lane REFUSES -Gpu (there is no CUDA for
+# Windows-on-ARM), so this stage now has a lane on which CUDA_ROOT is
+# legitimately absent and the diagnostic is the whole point.
+$cudaBin = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
 $roots = @(
-    (Join-Path $env:CUDA_ROOT 'bin'),   # cudart64_*, cublas64_*, cufft64_*, ...
+    $cudaBin,                             # cudart64_*, cublas64_*, cufft64_*, ...
     $env:CUDNN_ROOT                       # cudnn64_9.dll + cudnn_*64_9 engines (under bin\<cuda-major>\)
 ) | Where-Object { $_ -and (Test-Path $_) }
 

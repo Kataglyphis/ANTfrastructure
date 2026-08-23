@@ -231,7 +231,16 @@ $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
 $gpuArgs = @()
 # if/elseif/else used in place of `switch ($gpuEnv.GpuType) { ... }` for broad compatibility
 # with Windows PowerShell 5.1 (the switch-on-property syntax can trigger parser errors in PS 5.1).
-if ($gpuEnv.HasCuda) {
+# Cross lane: NEVER take CUDA from a HOST probe. Get-GpuEnvironment answers
+# "does this windows/amd64 BUILD IMAGE carry a CUDA toolkit" -- and GPU-ness is
+# baked into the image (Dockerfile.nvidia's ENV GPU_TYPE), not passed per run.
+# The toolchain image is SHARED and unsuffixed, so an arm64 media build inherits
+# GPU_TYPE=nvidia with a valid CUDA_ROOT and would configure an aarch64 ONNX with
+# USE_CUDA=ON, linking x64 device libs into an "arm64" artifact. The driver's
+# arm64 -Gpu refusal cannot see this: it is image state, not an argument.
+# There is no CUDA/cuDNN/TensorRT for Windows-on-ARM at all. Same guard as
+# build-opencv-from-source.ps1's CUDA branch.
+if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
@@ -391,7 +400,10 @@ if (Test-Path $onnxScoped) {
 #     against a pinned tag would silently rot when the pinned SHA changes, so
 #     the `Edit-CppKeywordAlternatives` helper walks the fetched tree and
 #     the `_udiv128->udiv128` substitution targets `cutlass/uint128.h` directly.
-if ($env:GPU_TYPE -eq 'nvidia') {
+# Same cross guard as the CUDA branch above: GPU_TYPE is IMAGE state and the
+# toolchain image is shared by both lanes, so this CUTLASS patch pass would
+# otherwise run on an arm64 build that has no CUDA sources to patch.
+if ($env:GPU_TYPE -eq 'nvidia' -and -not (Test-WindowsCrossTarget)) {
     # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {
@@ -533,6 +545,20 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # --wheel_name_suffix: our CUDA+TensorRT+DML combo matches no upstream package
 # split, so it ships as plain `onnxruntime`. Must run BEFORE Remove-SourceBuildTree.
 Switch-BuildPhase '6. python wheel'
+if (Test-WindowsCrossTarget) {
+    # Unsatisfiable by construction on a cross lane, and expensive to discover
+    # late. Invoke-PythonWheelBuild stages the wheel, installs it into the BUILD
+    # interpreter and then asserts `import onnxruntime`. That interpreter is the
+    # x64 host CPython (Get-SourceBuildPython is host-pinned by design), so it
+    # cannot load an aarch64 extension module -- and the wheel's own link step
+    # would already have failed against the host python314.lib.
+    #
+    # Producing a target wheel needs a TARGET CPython, which this lane does not
+    # build. Skipping is therefore the correct behaviour, not a workaround; the
+    # gate stays mandatory on the native lane, where it is what guarantees the
+    # shipped image can `import onnxruntime` out of the box.
+    Write-Host 'Skipping the onnxruntime python wheel: cross build (no target CPython; the host interpreter cannot load an aarch64 extension)'
+} else {
 Write-Host 'Building onnxruntime python wheel...'
 # Shared wheel-build shape (was duplicated verbatim with the GenAI script):
 # stage + install (WITH pypi deps) + import-assert, so the shipped image can
@@ -543,6 +569,7 @@ Write-Host 'Building onnxruntime python wheel...'
 Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
     -Arguments """$SourceDir\setup.py"" bdist_wheel" `
     -ModuleName 'onnxruntime' | Out-Null
+}
 
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'onnx'
