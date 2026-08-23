@@ -42,6 +42,22 @@ t_assert_eq "9" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALL
 t_assert_eq "1" "$(PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=3 cross_build_mem_divisor shared)" \
   "shared stages (base/compiler) run alone -> divisor 1 (PAR4-amend 2026-08-19)"
 
+t_case "cross_build_mem_divisor is STATIC: only its env inputs move it (PAR5 verdict)"
+# Tripwire, not a feature test. PAR5 (2026-08-23) tried to shrink the divisor as
+# sibling lanes retired, by having this function count live-lane marker files in
+# PARALLEL_LOOP_FLAGDIR. It was REVERTED: the clamp could not fire where it was
+# meant to (all lane markers exist before any lane retires, and the divisor is
+# read once per lane at lane start), and where it could fire it made a RAM budget
+# depend on wall-clock sibling timing and could clamp DOWN below the PAR4 value —
+# the overcommit direction that OOM-killed cc1plus. The divisor must stay a pure
+# function of PARALLEL_ARCHS/TARGET_ARCHES/MAX_PARALLEL_ARCHS/PAR_INTRA_STEP_BUDGET.
+# See docs/build-parallelism-memory-tuning.md § PAR5 before re-attempting.
+_static_dir="$(mktemp -d)"
+: > "${_static_dir}/lane.amd64"
+t_assert_eq "6" "$(PARALLEL_LOOP_FLAGDIR="${_static_dir}" PARALLEL_ARCHS=1 TARGET_ARCHES=amd64,arm64,riscv64 MAX_PARALLEL_ARCHS=3 cross_build_mem_divisor)" \
+  "flag-dir state must NOT reach the divisor -- it stays 3 x budget(2)"
+rm -rf "${_static_dir}"
+
 t_case "stage graph validates clean"
 t_assert_ok cross_stage_validate_graph
 

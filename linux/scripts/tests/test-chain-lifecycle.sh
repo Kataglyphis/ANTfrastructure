@@ -75,4 +75,333 @@ t_assert_fails kill -0 "${leaf}"
 kill "${root}" 2>/dev/null || true
 wait "${root}" 2>/dev/null || true
 
+# ---------------------------------------------------------------------------
+# STALE-LOG (2026-08-23): the two log-hygiene guards are only as good as their
+# LOG_DIR default. Both live in build-cross-chain.sh, which runs `main "$@"` at
+# the bottom and therefore cannot be sourced — so the assertions below evaluate
+# the SHIPPED text of the pieces under test (never a copy that could drift).
+CHAIN_SH="${TESTS_DIR}/../build-cross-chain.sh"
+
+t_case "LOG_DIR defaults to out/build-logs so both guards are armed without --log-dir"
+# Regression: an empty default made the truncate marker AND the archiver inert
+# for every run launched without --log-dir — wave5j's failed android-*.log was
+# still in out/build-logs when wave5k ran, and a watcher read it as new errors.
+t_assert_eq "/repo/out/build-logs" "$(
+  unset LOG_DIR
+  REPO_ROOT=/repo
+  eval "$(grep -m1 '^LOG_DIR=' "${CHAIN_SH}")"
+  printf '%s' "${LOG_DIR}"
+)" "the default must land in the documented out/build-logs"
+
+t_case "an explicit LOG_DIR still wins over the default"
+t_assert_eq "/custom/logs" "$(
+  LOG_DIR=/custom/logs
+  REPO_ROOT=/repo
+  eval "$(grep -m1 '^LOG_DIR=' "${CHAIN_SH}")"
+  printf '%s' "${LOG_DIR}"
+)" "--log-dir / an exported LOG_DIR must not be overridden"
+
+# Pull the archiver in with its logging stubbed out (logging.sh is not sourced
+# here — the suite deliberately loads chain-lifecycle.sh only).
+log()  { :; }
+warn() { :; }
+eval "$(sed -n '/^_chain_archive_prev_logs() {$/,/^}$/p' "${CHAIN_SH}")"
+t_case "the archiver function was extracted from the shipped script"
+t_assert_eq "function" "$(type -t _chain_archive_prev_logs || true)"
+
+t_case "archiving moves marker-owned stage logs into archive/<prior-run>/"
+LOG_DIR="${workdir}/logs-a"; mkdir -p "${LOG_DIR}"
+printf 'wave5j android failure\n' > "${LOG_DIR}/android-amd64.log"
+printf '%s' '20260822-155127-8fd813db'  > "${LOG_DIR}/android-amd64.log.run"
+CROSS_RUN_ID="20260823-090000-deadbeef"
+_chain_archive_prev_logs
+t_assert_ok   test -f "${LOG_DIR}/archive/20260822-155127-8fd813db/android-amd64.log"
+t_assert_ok   test -f "${LOG_DIR}/archive/20260822-155127-8fd813db/android-amd64.log.run"
+t_assert_fails test -e "${LOG_DIR}/android-amd64.log"
+
+t_case "archiving leaves foreign logs (the operator's live tee transcript) alone"
+# LOG_DIR now defaults to out/build-logs, which is also where the nohup/tee
+# transcript of the RUNNING chain lives; mv'ing a file an open tee holds would
+# silently redirect the operator's terminal log into archive/.
+LOG_DIR="${workdir}/logs-b"; mkdir -p "${LOG_DIR}"
+printf 'stale stage log\n' > "${LOG_DIR}/media-arm64.log"
+printf '%s' 'prior-run'    > "${LOG_DIR}/media-arm64.log.run"
+printf 'operator transcript\n' > "${LOG_DIR}/cross-chain-wave5o.log"
+_chain_archive_prev_logs
+t_assert_ok   test -f "${LOG_DIR}/cross-chain-wave5o.log"
+t_assert_fails test -e "${LOG_DIR}/archive/prior-run/cross-chain-wave5o.log"
+t_assert_ok   test -f "${LOG_DIR}/archive/prior-run/media-arm64.log"
+
+t_case "a log dir holding no marker-owned logs is left untouched"
+LOG_DIR="${workdir}/logs-c"; mkdir -p "${LOG_DIR}"
+printf 'operator transcript\n' > "${LOG_DIR}/cross-chain-wave5p.log"
+_chain_archive_prev_logs
+t_assert_ok    test -f "${LOG_DIR}/cross-chain-wave5p.log"
+t_assert_fails test -d "${LOG_DIR}/archive"
+
+t_case "the CURRENT run's own logs are never archived"
+LOG_DIR="${workdir}/logs-d"; mkdir -p "${LOG_DIR}"
+printf 'current run\n' > "${LOG_DIR}/sdk-amd64.log"
+printf '%s' "${CROSS_RUN_ID}" > "${LOG_DIR}/sdk-amd64.log.run"
+_chain_archive_prev_logs
+t_assert_ok    test -f "${LOG_DIR}/sdk-amd64.log"
+t_assert_fails test -d "${LOG_DIR}/archive"
+
+# ---------------------------------------------------------------------------
+# The default only helps if the directory exists before the first writer runs:
+# _chain_status_emit skips a missing dir outright (no chain-status.json on a
+# fresh clone with no out/), and an uncreatable dir must DISABLE logging rather
+# than kill a multi-hour chain from inside a `set -e` command substitution.
+eval "$(sed -n '/^_chain_prepare_log_dir() {$/,/^}$/p' "${CHAIN_SH}")"
+REPO_ROOT="${TESTS_DIR}/../../.."
+
+t_case "preparing the log dir creates it (fresh clone has no out/)"
+LOG_DIR="${workdir}/fresh/out/build-logs"
+_chain_prepare_log_dir
+t_assert_ok test -d "${LOG_DIR}"
+t_assert_eq "${workdir}/fresh/out/build-logs" "${LOG_DIR}" "a writable dir must be kept"
+
+t_case "an uncreatable log dir disables logging instead of failing the run"
+mkdir -p "${workdir}/ro"
+if [ "$(id -u)" != "0" ] && chmod 500 "${workdir}/ro" 2>/dev/null; then
+  LOG_DIR="${workdir}/ro/logs"
+  _chain_prepare_log_dir
+  t_assert_eq "" "${LOG_DIR}" "an unwritable dir must fall back to no per-stage logs"
+  chmod 700 "${workdir}/ro" 2>/dev/null || true
+else
+  t_assert_eq "1" "1"   # root (or a permissionless fs) cannot exercise this
+fi
+
+# ---------------------------------------------------------------------------
+# The second guard: cross_stage_log_redirect truncates once per run id, so a
+# stage log only ever holds the CURRENT run (this is what the 575k-line media
+# log that spanned several rebuilds cost us).
+source "${CORE_DIR}/cross-stage-build.sh"
+
+t_case "cross_stage_log_redirect appends within a run and truncates a new one"
+LOG_DIR="${workdir}/logs-e"
+CROSS_RUN_ID="run-1"
+f="$(cross_stage_log_redirect media-arm64)"
+t_assert_eq "${LOG_DIR}/media-arm64.log" "${f}"
+printf 'run-1 line\n' >> "${f}"
+f="$(cross_stage_log_redirect media-arm64)"          # same run: must NOT wipe
+t_assert_contains "$(cat "${f}")" "run-1 line" "a second stage in the same run must append"
+CROSS_RUN_ID="run-2"
+f="$(cross_stage_log_redirect media-arm64)"          # new run: must wipe
+t_assert_eq "" "$(cat "${f}")" "a NEW run must start from an empty log"
+t_assert_eq "run-2" "$(cat "${f}.run")" "the marker must carry the new run id"
+
+t_case "an empty LOG_DIR (opt-out) still yields no log path"
+LOG_DIR=""
+t_assert_eq "" "$(cross_stage_log_redirect media-arm64)"
+
+# ---------------------------------------------------------------------------
+# Bounded archive retention. _chain_archive_prev_logs only ever ADDS, and it now
+# runs on EVERY chain start: when the default landed, out/build-logs was already
+# 13G — 12G of it archive/, 40 run dirs, the largest 6.3G — on a filesystem at
+# 92% used, i.e. the box whose builds die of ENOSPC. The assertions below pin
+# down BOTH halves: that retention prunes, and that it cannot prune anything it
+# does not own.
+log()  { :; }    # re-stub: sourcing cross-stage-build.sh may pull in the real ones
+warn() { :; }
+is_dry_run() { [ "${DRY_RUN:-0}" = "1" ]; }   # stands in for build-helpers.sh's
+eval "$(sed -n '/^_chain_prune_archived_logs() {$/,/^}$/p' "${CHAIN_SH}")"
+t_case "the retention function was extracted from the shipped script"
+t_assert_eq "function" "$(type -t _chain_prune_archived_logs || true)"
+
+# Build an archive/ tree: one dir per run id given, each with a file inside so a
+# removal has to be recursive to succeed. Retention orders by mtime (the two run
+# id shapes do not interleave lexically), so stamp the dirs oldest-first in
+# argument order — after writing their contents, which would bump the mtime.
+_mk_archive() {
+  local root="$1"; shift
+  local id i=0
+  for id in "$@"; do
+    mkdir -p "${root}/archive/${id}"
+    printf 'stage log\n' > "${root}/archive/${id}/media-amd64.log"
+    touch -m -d "@$(( 1700000000 + i * 3600 ))" "${root}/archive/${id}"
+    i=$(( i + 1 ))
+  done
+}
+
+t_case "retention keeps the newest N run dirs and removes the older ones"
+LOG_DIR="${workdir}/ret-a"
+_mk_archive "${LOG_DIR}" 20260101-000000-a1 20260102-000000-a2 \
+                         20260103-000000-a3 20260104-000000-a4
+CROSS_LOG_ARCHIVE_KEEP=2
+CROSS_RUN_ID="20260105-000000-current"
+_chain_prune_archived_logs
+t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-a1"
+t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-a2"
+t_assert_ok    test -f "${LOG_DIR}/archive/20260103-000000-a3/media-amd64.log"
+t_assert_ok    test -f "${LOG_DIR}/archive/20260104-000000-a4/media-amd64.log"
+
+t_case "the default keeps 5 run dirs with no env knob set at all"
+LOG_DIR="${workdir}/ret-f"
+_mk_archive "${LOG_DIR}" 20260101-000000-f1 20260102-000000-f2 20260103-000000-f3 \
+                         20260104-000000-f4 20260105-000000-f5 20260106-000000-f6 \
+                         20260107-000000-f7
+unset CROSS_LOG_ARCHIVE_KEEP
+_chain_prune_archived_logs
+t_assert_eq "5" "$(find "${LOG_DIR}/archive" -mindepth 1 -maxdepth 1 -type d | wc -l)" \
+  "the unset default must be a small, sane number of run dirs"
+t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-f2"
+t_assert_ok    test -d "${LOG_DIR}/archive/20260107-000000-f7"
+
+t_case "retention never touches a non-run-id sibling under archive/"
+# A dir nobody's run id could produce, and a loose file: neither may be a
+# candidate, and neither may count against the keep budget either (so the run
+# dirs are still pruned down to exactly ${keep}).
+LOG_DIR="${workdir}/ret-b"
+_mk_archive "${LOG_DIR}" 20260101-000000-b1 20260102-000000-b2 20260103-000000-b3
+mkdir -p "${LOG_DIR}/archive/wave5o-transcripts"
+printf 'x\n' > "${LOG_DIR}/archive/wave5o-transcripts/keep-me.log"
+printf 'x\n' > "${LOG_DIR}/archive/notes.txt"
+CROSS_LOG_ARCHIVE_KEEP=1
+_chain_prune_archived_logs
+t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-b1"
+t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-b2"
+t_assert_ok    test -d "${LOG_DIR}/archive/20260103-000000-b3"
+t_assert_ok    test -f "${LOG_DIR}/archive/wave5o-transcripts/keep-me.log"
+t_assert_ok    test -f "${LOG_DIR}/archive/notes.txt"
+
+t_case 'a PID-named run dir (the ${CROSS_RUN_ID:-$$} fallback) is prunable by age'
+# archive/365161 — 6.3G, the single biggest dir in the 13G tree — is named by
+# cross-stage-build.sh:48 `rid="${CROSS_RUN_ID:-$$}"`, i.e. by the orchestrator
+# PID. Two consequences this case pins down: such a dir IS a run dir (excluding
+# it from the pattern would leave the worst offender unreclaimable), and age
+# must come from mtime — sorted by NAME, a leading '3' files 365161 after every
+# 2026* id, so the biggest, oldest dir on the box would rank as the NEWEST and
+# survive forever while the small ones got pruned.
+LOG_DIR="${workdir}/ret-h"
+_mk_archive "${LOG_DIR}" 365161 20260101-000000-h1 1847483 20260102-000000-h2
+CROSS_LOG_ARCHIVE_KEEP=2
+_chain_prune_archived_logs
+t_assert_fails test -e "${LOG_DIR}/archive/365161"
+t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-h1"
+t_assert_ok    test -d "${LOG_DIR}/archive/1847483"
+t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-h2"
+
+t_case "retention skips a symlinked run dir instead of following it"
+# The link is named so it sorts OLDEST: a follow-the-symlink bug would eat it
+# (and its target's contents) first.
+LOG_DIR="${workdir}/ret-c"
+_mk_archive "${LOG_DIR}" 20260101-000000-c1 20260102-000000-c2
+mkdir -p "${workdir}/outside-c"
+printf 'precious\n' > "${workdir}/outside-c/precious.log"
+ln -s "${workdir}/outside-c" "${LOG_DIR}/archive/20260100-000000-link"
+CROSS_LOG_ARCHIVE_KEEP=1
+_chain_prune_archived_logs
+t_assert_ok    test -f "${workdir}/outside-c/precious.log"
+t_assert_ok    test -L "${LOG_DIR}/archive/20260100-000000-link"
+t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-c1"
+t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-c2"
+
+t_case "the run dir of the CURRENT run is never a retention candidate"
+LOG_DIR="${workdir}/ret-g"
+_mk_archive "${LOG_DIR}" 20260101-000000-g1 20260102-000000-g2 20260103-000000-g3
+CROSS_RUN_ID="20260101-000000-g1"      # oldest => first in line to be removed
+CROSS_LOG_ARCHIVE_KEEP=1
+_chain_prune_archived_logs
+t_assert_ok    test -d "${LOG_DIR}/archive/20260101-000000-g1"
+t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-g2"
+CROSS_RUN_ID="20260105-000000-current"
+
+t_case "an empty LOG_DIR can never become a delete of whatever cwd holds"
+# The path is built as ${LOG_DIR}/archive. An empty (or unset) LOG_DIR must
+# return before that is ever formed — never fall through to a relative
+# 'archive/*' resolved against the process's working directory.
+decoy="${workdir}/decoy"
+_mk_archive "${decoy}" 20260101-000000-d1 20260102-000000-d2 20260103-000000-d3
+CROSS_LOG_ARCHIVE_KEEP=1
+( cd "${decoy}" && LOG_DIR="" && _chain_prune_archived_logs )
+t_assert_ok test -f "${decoy}/archive/20260101-000000-d1/media-amd64.log"
+( cd "${decoy}" && unset LOG_DIR && _chain_prune_archived_logs )
+t_assert_ok test -f "${decoy}/archive/20260101-000000-d1/media-amd64.log"
+
+t_case "the removal is ATTEMPTED only for a validated run dir, never an empty path"
+# Stronger than "the decoy survived": shadow rm with a recorder, so the exact
+# argv of every removal the function would make is captured. An empty LOG_DIR
+# or an empty victim would show up here as `rm -rf -- /` or `rm -rf -- /archive`
+# long before it needed a directory to exist to do damage.
+rmlog="${workdir}/rm-calls.txt"; : > "${rmlog}"
+rm() { printf '%s\n' "$*" >> "${rmlog}"; }
+LOG_DIR=""
+( cd "${decoy}" && _chain_prune_archived_logs )
+( cd "${decoy}" && unset LOG_DIR && _chain_prune_archived_logs )
+LOG_DIR="${workdir}/ret-i"
+_mk_archive "${LOG_DIR}" 20260101-000000-i1 20260102-000000-i2
+_chain_prune_archived_logs
+unset -f rm      # MUST come back: the suite's EXIT trap cleans up with rm -rf
+t_assert_eq "-rf -- ${workdir}/ret-i/archive/20260101-000000-i1" "$(cat "${rmlog}")" \
+  "exactly one removal, of one validated run dir directly under archive/"
+
+t_case "--dry-run removes nothing (an rm -rf is not a recoverable preview)"
+LOG_DIR="${workdir}/ret-dry"
+_mk_archive "${LOG_DIR}" 20260101-000000-y1 20260102-000000-y2 20260103-000000-y3
+CROSS_LOG_ARCHIVE_KEEP=1
+DRY_RUN=1
+_chain_prune_archived_logs
+t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-y1"
+t_assert_ok test -d "${LOG_DIR}/archive/20260102-000000-y2"
+DRY_RUN=0
+_chain_prune_archived_logs                       # ... and the same call, for real
+t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-y1"
+t_assert_ok    test -d "${LOG_DIR}/archive/20260103-000000-y3"
+
+t_case "CROSS_LOG_ARCHIVE_KEEP=0 keeps everything, a non-numeric value is refused"
+LOG_DIR="${workdir}/ret-e"
+_mk_archive "${LOG_DIR}" 20260101-000000-e1 20260102-000000-e2 20260103-000000-e3
+CROSS_LOG_ARCHIVE_KEEP=0
+_chain_prune_archived_logs
+t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
+CROSS_LOG_ARCHIVE_KEEP="five"
+_chain_prune_archived_logs
+t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
+CROSS_LOG_ARCHIVE_KEEP=""
+_chain_prune_archived_logs
+t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
+
+# ---------------------------------------------------------------------------
+# chain-status.json must NOT follow LOG_DIR. The repo-root copy is git-TRACKED;
+# when LOG_DIR gained a default, a ${LOG_DIR}-relative path would have frozen
+# that tracked file at the last run's "ok" — a brand-new stale-GREEN artifact,
+# the exact class this item exists to kill.
+declare -A _CHAIN_STATUS=()
+CROSS_STAGE_ORDER=( runtime )
+cross_stage_pin_varname() { printf ''; }
+eval "$(sed -n '/^_chain_status_emit() {$/,/^}$/p' "${CHAIN_SH}")"
+
+t_case "chain-status.json is written to the repo root, not into LOG_DIR"
+REPO_ROOT="${workdir}/statusroot"; mkdir -p "${REPO_ROOT}"
+LOG_DIR="${workdir}/statuslogs";   mkdir -p "${LOG_DIR}"
+CROSS_RUN_ID="20260823-101010-status"
+unset CROSS_CHAIN_STATUS_FILE || true
+_chain_status_emit runtime ok
+t_assert_ok    test -f "${REPO_ROOT}/chain-status.json"
+t_assert_fails test -e "${LOG_DIR}/chain-status.json"
+t_assert_contains "$(cat "${REPO_ROOT}/chain-status.json")" "20260823-101010-status" \
+  "the tracked file must carry THIS run's id, not a frozen older one"
+
+t_case "CROSS_CHAIN_STATUS_FILE overrides the pinned repo-root path"
+CROSS_CHAIN_STATUS_FILE="${workdir}/statuslogs/elsewhere.json"
+_chain_status_emit runtime failed
+t_assert_ok test -f "${workdir}/statuslogs/elsewhere.json"
+t_assert_contains "$(cat "${workdir}/statuslogs/elsewhere.json")" "failed"
+unset CROSS_CHAIN_STATUS_FILE
+
+# ---------------------------------------------------------------------------
+# WIRING, not just the functions. Every assertion above exercises a function
+# lifted out of the shipped file — all of them stay green if the CALLS are
+# deleted from main(), which is how a guard ends up inert while its tests look
+# like coverage (the exporter flag that never tagged, the strip gate that never
+# ran). So assert the call sites themselves, in order, inside main().
+t_case "main() calls the log-hygiene guards, in order, before the build loop"
+t_assert_eq \
+  "_chain_prepare_log_dir,_chain_archive_prev_logs,_chain_prune_archived_logs,_chain_run_build_loop" \
+  "$(sed -n '/^main() {$/,/^}$/p' "${CHAIN_SH}" \
+      | grep -oE '^[[:space:]]+(_chain_prepare_log_dir|_chain_archive_prev_logs|_chain_prune_archived_logs|_chain_run_build_loop)([[:space:]]|$)' \
+      | sed 's/[[:space:]]//g' | paste -sd, -)" \
+  "a guard whose call is missing from main() is inert, whatever its unit tests say"
+
 t_summary

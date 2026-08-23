@@ -27,6 +27,12 @@ _CROSS_STAGE_BUILD_SH_LOADED=1
 #
 # Computes a log file path for the given label when LOG_DIR is set.
 # Usage: log_file="$(cross_stage_log_redirect "sdk-arm64")"
+#
+# build-cross-chain.sh DEFAULTS LOG_DIR to out/build-logs (STALE-LOG 2026-08-23),
+# so for the chain the truncate-per-run guard below is always armed; it is empty
+# only when that caller opted out with --log-dir "" or when a caller that has no
+# such flag (build-cross-stage.sh without --log-dir, build-cross-compiler.sh)
+# leaves it unset. Empty prints nothing and the caller builds unlogged.
 # ==============================================================================
 cross_stage_log_redirect() {
   local label="$1"

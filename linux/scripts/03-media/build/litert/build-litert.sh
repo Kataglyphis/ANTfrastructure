@@ -131,6 +131,18 @@ append_litert_cache_linker_args() {
   append_cmake_cache_linker_args "$@"
 }
 
+# EIGEN-NET (2026-08-21): mirrored eigen fetch (LITERT_EIGEN_FETCH_FLAGS +
+# litert_eigen_fetch_flags_str). Defined ONCE in the file below and sourced by
+# both LiteRT builds -- the flags used to be duplicated verbatim here and in the
+# android lane, which is exactly how a mirror silently goes missing from one of
+# them. That file sits under android/ because it is the only directory both
+# images ship (see its header); Dockerfile.media bind-mounts this whole litert
+# tree, so it is always next to us. Hard source: if it is ever missing, the
+# build stops here instead of quietly configuring without the fallback mirror.
+# shellcheck source=android/litert-eigen-fetch.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/android/litert-eigen-fetch.sh"
+
 litert_cross_wheel_platform_tag() {
     if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
         cross_wheel_platform_tag
@@ -224,6 +236,9 @@ configure_litert() {
         "-DPython3_EXECUTABLE=${HOST_PYTHON_BIN}"
     )
 
+    # EIGEN-NET: mirrored eigen fetch (this path still git-cloned it from gitlab).
+    cmake_args+=("${LITERT_EIGEN_FETCH_FLAGS[@]}")
+
     append_litert_preferred_cmake_compiler_args cmake_args
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
         append_cmake_cross_args cmake_args
@@ -281,8 +296,11 @@ _tflite_c_cmake_args() {
         "-DTF_SOURCE_DIR=${LITERT_SRC}"
         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
         "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-        "-DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
     )
+
+    # EIGEN-NET: the TO_URL knob used to live inline here; it now ships with its
+    # mirror fallback.
+    _tca_args+=("${LITERT_EIGEN_FETCH_FLAGS[@]}")
 
     append_litert_preferred_cmake_compiler_args _tca_args
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
@@ -421,7 +439,11 @@ _litert_wheel_prepare_env() {
 
     # Build base cmake flags early so EXTRA_CMAKE_FLAGS can be exported
     # before the patch is applied (the patch script reads this env var).
-    extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON} -DOVERRIDABLE_FETCH_CONTENT_GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON"
+    extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"
+    # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
+    # patched upstream build_pip_package_with_cmake.sh word-splits this string
+    # (`cmake ${EXTRA_CMAKE_FLAGS:-}`), so the flags must stay space-free.
+    extra_cmake_flags+=" $(litert_eigen_fetch_flags_str)"
     export EXTRA_CMAKE_FLAGS="${extra_cmake_flags}"
 
     # Patch upstream build_pip_package_with_cmake.sh so it honours the env vars

@@ -177,6 +177,93 @@ Escalation if a lane still OOMs: `PAR_INTRA_STEP_BUDGET=3` or
 `PARALLEL_STAGES=sdk,android`. The stronger options (systemd-run MemoryHigh
 per build, a global compile-job governor) stay on the backlog as PAR4-hard.
 
+## ⚠️⚠️⚠️ The third-order trap: the divisor outlives the lanes it was sized for (PAR5 — OPEN; the obvious fix was tried and REVERTED 2026-08-23)
+
+**The symptom (real, still unfixed).** PAR4 sizes the divisor from the
+**launch-time** lane count. Lanes do not finish together — amd64 media typically
+lands hours before riscv64 — so the survivor keeps dividing the whole host by 6
+long after it is alone on it. Observed twice and costed in hours: **wave4f
+(arm64) and wave5h (riscv64) each spent hours on a lone media wheelhouse at 1-2
+compile jobs while the rest of the machine idled.** `MemAvailable` recovers when
+a sibling exits; `/ 6` does not.
+
+### VERDICT: do not re-attempt "shrink the divisor when a sibling lane finishes"
+
+It cannot work at this layer. An attempt (PAR5: a live `lane.<arch>` marker
+registry in `run_parallel_arch_loop`'s flag dir, which `cross_build_mem_divisor`
+clamped to) was written, reviewed, reproduced and **reverted the same day**.
+Three findings, in the order that matters:
+
+**1. The divisor is fixed at lane start BY CONSTRUCTION.**
+`cross_build_mem_divisor()` has exactly ONE production call site —
+`cross_stage_build_args()` ← `cross-stage-build.sh:553` — and it runs *once per
+stage build*, to emit `--build-arg BUILD_MEM_DIVISOR=N`. Inside the image that
+value is `ARG` → `ENV` in the `base` stage of every Dockerfile
+(`Dockerfile.media:61,92`; likewise `.sdk`, `.android`, `.toolchain`) and
+`parallelism.sh` reads it at each `RUN`. **A build-arg is bound when the build
+starts; nothing on the host can move it afterwards.** The step that actually
+crawls — the app wheelhouse, `Dockerfile.media:~515` — is hours downstream of
+that `ENV`, inside the same build. So "adapt when lanes finish" is unachievable
+at this layer, no matter how the host-side number is computed.
+
+**2. The clamp could not fire where it was meant to.** The chain runs one
+`run_parallel_arch_loop` per stage and joins before the next
+(`build-cross-chain.sh:420`), and that loop starts every lane at t0. With
+`MAX_PARALLEL_ARCHS >= #arches` — the shipped 3-arch topology — all lanes are
+launched before any lane retires, so the lone survivor still reads the full
+static divisor. **The exact case PAR5 existed for was the one case it could not
+reach.**
+
+**3. Where it COULD fire it was worse than nothing.** Only with
+`MAX_PARALLEL_ARCHS < #arches` does a lane start after a sibling has retired.
+There the clamp made `BUILD_MEM_DIVISOR` a function of **wall-clock sibling
+timing** — nondeterministic between runs, and (see below) part of the BuildKit
+cache key — and it could land **below** the PAR4 value: clamping to one live
+lane skips the `× PAR_INTRA_STEP_BUDGET` multiplication entirely (6 → 1). That
+is an N-times RAM overcommit in exactly the direction PAR4 exists to prevent —
+the 2026-08-18 incident OOM-killed `cc1plus` in two lanes. Intra-build step
+concurrency is a property of ONE build; it does not shrink when siblings exit,
+so a live-lane count is the wrong input for it.
+
+Regression guard: `linux/scripts/tests/test-stage-defs.sh` asserts the divisor
+is a pure function of `PARALLEL_ARCHS` / `TARGET_ARCHES` / `MAX_PARALLEL_ARCHS`
+/ `PAR_INTRA_STEP_BUDGET` and that flag-dir state cannot reach it.
+
+### The cache-key coupling (why the manual workaround doesn't exist either)
+
+Every host→build channel (build-args, bind mounts) is part of the **BuildKit
+cache key**. `ENV BUILD_MEM_DIVISOR` sits in `base` (`Dockerfile.media:92`),
+above all 39 downstream `RUN` steps, so a divisor that varies with lane
+liveness would cache-miss the whole media chain on **every** run. The same
+coupling removes the obvious hand recovery: **killing the lone lane and
+relaunching it with a smaller divisor does not resume from cache** — the changed
+`ENV` invalidates its whole media chain, so you would trade a 6× throttle for a
+full rebuild.
+
+### What IS achievable (both unbuilt; pick one and validate with a real build)
+
+- **PAR4-hard — a host-level memory governor.** Stop encoding "how much RAM may
+  I use" in an immutable build-arg and enforce it from outside, where it *can*
+  change while a build runs: `systemd-run --scope -p MemoryHigh=…` per build, or
+  a global compile-job governor. This is the only real answer to "the host's
+  free RAM changed mid-build".
+- **Re-size at STAGE boundaries.** The only honest in-band re-sizing point is a
+  container-build boundary, and there is one at every stage (all lanes join, the
+  next stage's builds compute a fresh divisor). Finer granularity means
+  *splitting* the long stage (media) into more, smaller builds — Dockerfile
+  work, and each new boundary is a cache-key boundary too.
+- Anything that "tells the running build" a new number needs a channel that is
+  off the cache key (per-`RUN` secret mount, a divisor file in a `type=cache`
+  mount, a governor the container polls). Dockerfile-level work; it wants one
+  real build to validate. Not reachable from the shell layer.
+
+**Interim operator rule.** Both levers are launch-time — decide before the run,
+because there is no mid-run recovery that keeps the cache. If the arches desync
+predictably (riscv64 is always last), either run the slow arch as its **own**
+chain invocation from the start — it then gets its own correct sizing at t0 —
+or accept the throttle. Do not kill and relaunch a straggler to "fix" its
+divisor.
+
 ---
 
 ## How to tune safely (procedure for an agent)

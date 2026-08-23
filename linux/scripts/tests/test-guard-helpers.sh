@@ -87,4 +87,57 @@ t_assert_eq "${_CSV_SEEN}" "none"
 t_case "csv_each does NOT leak IFS to the caller"
 IFS_before="$IFS"; csv_each "x,y" _csv_collect; t_assert_eq "$IFS" "${IFS_before}"
 
+# ── run_priv (lives in 01-core/common.sh, where ${SUDO} does) ────────────────
+# Same named-idiom family as the four helpers above: it replaces the inline
+# SUDO-variable command prefix. That prefix is only safe when the next token is
+# a real command — put a sudo-only flag straight after it and, with SUDO empty
+# (already root: every foreign-arch cross container), the shell takes the FLAG
+# as the command and exits 127. That shipped as bug 7e6d627 and hid behind the
+# sdk cache until a no-cache run; test-invocation-lints.sh bans the spelling
+# tree-wide and run_priv is what it migrates to. Spelled out in words rather
+# than as the literal idiom on purpose: tests/ is exempt from that lint (these
+# suites quote patterns as fixtures), so a verbatim copy here would be a banned
+# form sitting in the one place nothing checks.
+mkdir -p "${_tmp}/bin"
+cat > "${_tmp}/bin/sudo" <<'FAKE'
+#!/usr/bin/env bash
+printf 'SUDO-ARGV:%s\n' "$*"
+FAKE
+chmod +x "${_tmp}/bin/sudo"
+
+# common.sh is sourced in a SUBSHELL per call: it loads versions.env and sets a
+# pile of globals this suite must not inherit (the pattern test-arch-mapping.sh
+# uses for cross_wheel_platform_tag).
+_run_priv() {  # _run_priv <SUDO-value> <run_priv args...>
+  local _sudo="$1"; shift
+  (
+    PATH="${_tmp}/bin:${PATH}"
+    # shellcheck disable=SC1091
+    source "${TESTS_DIR}/../01-core/common.sh" >/dev/null 2>&1
+    SUDO="${_sudo}"
+    run_priv "$@"
+  )
+}
+
+t_case "run_priv with an empty SUDO runs the command directly"
+t_assert_eq "hello" "$(_run_priv "" printf '%s' hello)"
+
+t_case "run_priv with an empty SUDO DROPS --preserve-env (the exit-127 bug)"
+t_assert_eq "hello" "$(_run_priv "" --preserve-env=PATH,CC printf '%s' hello)"
+
+t_case "run_priv with a real sudo prefixes it and passes --preserve-env through"
+t_assert_eq "SUDO-ARGV:--preserve-env=PATH,CC printf %s hello" \
+  "$(_run_priv sudo --preserve-env=PATH,CC printf '%s' hello)"
+
+t_case "run_priv without a command fails instead of executing a bare flag"
+_run_priv "" --preserve-env=PATH >/dev/null 2>&1
+t_assert_eq "1" "$?"
+
+t_case "run_priv propagates the command's exit status"
+_run_priv "" sh -c 'exit 5' >/dev/null 2>&1
+t_assert_eq "5" "$?"
+
+t_case "run_priv does not word-split arguments containing spaces"
+t_assert_eq "a b|c" "$(_run_priv "" printf '%s|%s' 'a b' 'c')"
+
 t_summary

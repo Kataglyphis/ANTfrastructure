@@ -90,6 +90,42 @@ APT_FLAGS=(-qq --no-install-recommends "${APT_OPTS[@]}")
 SUDO=""
 APT_UPDATED=""
 
+# ── run_priv — the safe replacement for the `${SUDO} cmd …` prefix idiom ──────
+# Usage: run_priv [--preserve-env[=VARS]]... <cmd> [args...]
+#
+# Runs <cmd> through ${SUDO} when a real sudo is in play, and DIRECTLY when SUDO
+# is empty (already root — which is every foreign-arch cross container). The
+# leading --preserve-env* flags are sudo-ONLY and are dropped on the direct
+# path, because there is no sudo there to strip the environment in the first
+# place.
+#
+# That drop is the whole point. The idiom this replaces expanded the SUDO
+# variable inline as a command prefix and put a sudo-only flag straight after
+# it; with SUDO empty the shell then took the FLAG as the command and exited
+# 127 — bug 7e6d627, which hid behind the sdk cache until a no-cache run.
+# test-invocation-lints.sh bans that spelling tree-wide (the ban is on CODE, not
+# prose — hence the deliberately flag-free wording here), and run_priv is what
+# the banned sites migrate to. The remaining ~32 inline SUDO-prefix call sites
+# in 02-toolchain/vulkan.sh are the rebuild-gated half of that migration.
+run_priv() {
+  local -a _preserve=()
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --preserve-env|--preserve-env=*) _preserve+=("$1"); shift ;;
+      *) break ;;
+    esac
+  done
+  if [ "$#" -eq 0 ]; then
+    printf 'run_priv: no command given\n' >&2
+    return 1
+  fi
+  if [ -n "${SUDO:-}" ]; then
+    "${SUDO}" ${_preserve[@]+"${_preserve[@]}"} "$@"
+  else
+    "$@"
+  fi
+}
+
 tool_version() {
   local cmd="$1"
   shift 2>/dev/null || true
@@ -139,14 +175,14 @@ detect_system() {
 
 apt_update_once() {
   if [ -z "${APT_UPDATED}" ]; then
-    $SUDO apt-get update -qq
+    run_priv apt-get update -qq
     APT_UPDATED=1
   fi
 }
 
 apt_install() {
   apt_update_once
-  $SUDO apt-get install -y "${APT_FLAGS[@]}" "$@"
+  run_priv apt-get install -y "${APT_FLAGS[@]}" "$@"
 }
 
 apt_has_package() {
@@ -319,9 +355,10 @@ ensure_ccache_env() {
 }
 
 # ── update-alternatives install + select ──────────────────────────────────────
-# Register an alternative and immediately select it. Honors ${SUDO}. The --set
-# is tolerant: a --set of the path just --installed effectively never fails, and
-# a spurious failure must not abort a build running under `set -e`.
+# Register an alternative and immediately select it. Runs privileged via
+# run_priv (honors ${SUDO}). The --set is tolerant: a --set of the path just
+# --installed effectively never fails, and a spurious failure must not abort a
+# build running under `set -e`.
 #
 # Usage: alt_install_and_set <name> <link> <path> [priority] \
 #            [--candidate <path>]...            # extra paths to search for the binary
@@ -390,8 +427,8 @@ alt_install_and_set() {
   local -a install_args=(--install "${link}" "${name}" "${resolved}" "${priority}")
   [ "${#slave_args[@]}" -eq 0 ] || install_args+=("${slave_args[@]}")
 
-  ${SUDO} update-alternatives "${install_args[@]}"
-  ${SUDO} update-alternatives --set "${name}" "${resolved}" || true
+  run_priv update-alternatives "${install_args[@]}"
+  run_priv update-alternatives --set "${name}" "${resolved}" || true
 }
 
 # ── pkg-config file generation ────────────────────────────────────────────────

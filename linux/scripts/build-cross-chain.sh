@@ -50,7 +50,27 @@ FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-LOG_DIR="${LOG_DIR:-}"
+# STALE-LOG (2026-08-23): both log-hygiene guards — cross_stage_log_redirect's
+# truncate-on-new-run marker and _chain_archive_prev_logs below — hang off
+# LOG_DIR, and while it defaulted EMPTY they were INERT for every run launched
+# without --log-dir: no per-stage log was written at all, so nothing was ever
+# truncated or archived. Wave5j's failed android-*.log (run
+# 20260822-155127-8fd813db) therefore still sat in out/build-logs while wave5k
+# and wave5o ran — both of those transcripts show the resource-monitor CSV
+# landing in the REPO ROOT, i.e. LOG_DIR empty — and a watcher grepping those
+# per-arch logs alarmed on wave5j's errors as if they were new (historically the
+# same append-forever behavior produced stale-GREEN reads). Default to the
+# location every doc already calls the standard one (README, AGENTS.md,
+# docs/linux-cross-builds.md: out/build-logs), so the guards are armed by
+# default and watchers need no mtime/baseline hack. `--log-dir ""` opts back
+# out: no per-stage logs, no per-run archiving, and the resource-monitor CSV
+# falls back to the repo root exactly as before. chain-status.json does NOT
+# move with LOG_DIR — it stays pinned to the repo root, see _chain_status_emit.
+#
+# Moving the logs here also made the archive a real disk consumer (it reached
+# 12G / 40 run dirs before anyone looked), so archiving is bounded by
+# CROSS_LOG_ARCHIVE_KEEP — see _chain_prune_archived_logs.
+LOG_DIR="${LOG_DIR:-${REPO_ROOT}/out/build-logs}"
 
 FROM_STAGE="base"
 TO_STAGE="runtime"
@@ -131,6 +151,14 @@ Options:
   --only STAGE             Shorthand for --from-stage STAGE --to-stage STAGE
   --vulkan-version VER     Vulkan SDK version for the sdk stage
   --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
+                           (default out/build-logs; the empty string disables
+                           per-stage logs and their per-run truncate/archive).
+                           The previous run's stage logs are moved to
+                           DIR/archive/<run-id>/ at start; only the newest
+                           CROSS_LOG_ARCHIVE_KEEP (default 5) of those run
+                           directories are kept, 0 keeps all of them.
+                           chain-status.json is NOT written here — it stays in
+                           the repo root (CROSS_CHAIN_STATUS_FILE overrides).
   --verify-chain           Resolve all upstream digests and warn if downstream images are stale
   --no-verify-ancestry     Skip the stale-ancestor check that guards partial runs
                            (--from-stage after base). By default the chain refuses
@@ -313,16 +341,30 @@ _chain_assert_ancestry() {
 # O3 (backlog 2026-08-10): machine-readable chain progress. Workers persist
 # pin/fail facts into PARALLEL_LOOP_FLAGDIR and the join DELETES them — until
 # now the only progress record was 3M-line build logs. Emit a small
-# ${LOG_DIR}/chain-status.json (atomic tmp+mv, best-effort — a status file
-# must never fail a build) at every stage start/ok/fail, with the digest pin
-# where one has been captured. Consumers: humans, watchers, future dashboards.
+# chain-status.json (atomic tmp+mv, best-effort — a status file must never fail
+# a build) at every stage start/ok/fail, with the digest pin where one has been
+# captured. Consumers: humans, watchers, future dashboards.
+#
+# The path is pinned to the REPO ROOT and is deliberately INDEPENDENT of LOG_DIR
+# (STALE-LOG 2026-08-23). It used to be ${LOG_DIR:-${REPO_ROOT}}/... — which,
+# the moment LOG_DIR gained its out/build-logs default, would have moved the
+# file and left the git-TRACKED repo-root copy frozen at whatever the previous
+# run wrote (today: run 20260823-100747, "runtime": "ok"). A tracked, forever-
+# green status file that no longer tracks anything is precisely the stale-GREEN
+# artifact this item exists to kill, so the status file gets ONE canonical home
+# that no --log-dir choice can move. CROSS_CHAIN_STATUS_FILE overrides it
+# wholesale (absolute path, for tests and for out-of-tree callers).
 declare -A _CHAIN_STATUS=()
 _chain_status_emit() {
   local stage="$1" status="$2"
   _CHAIN_STATUS["${stage}"]="${status}"
-  local out_dir="${LOG_DIR:-${REPO_ROOT:-.}}"
+  local out="${CROSS_CHAIN_STATUS_FILE:-${REPO_ROOT:-.}/chain-status.json}" tmp
+  # A bare filename has no "/" to strip, so ${out%/*} would expand to the
+  # filename itself and the -d test would silently reject every write. Treat a
+  # path with no directory component as "the current directory".
+  local out_dir="${out%/*}"
+  [ "${out_dir}" = "${out}" ] && out_dir="."
   [ -d "${out_dir}" ] || return 0
-  local out="${out_dir}/chain-status.json" tmp
   tmp="$(mktemp "${out}.XXXXXX" 2>/dev/null)" || return 0
   {
     printf '{\n'
@@ -626,19 +668,52 @@ _chain_install_lifecycle_traps() {
   trap '_chain_on_exit' EXIT
 }
 
+# LOG_DIR now has a real default (see its assignment near the top), so create it
+# ONCE, up front, and prove it is writable: the per-stage logs otherwise mkdir
+# it lazily inside a command substitution under `set -e`, where a failing
+# `: > ${f}` takes the whole orchestrator down instead of just skipping the log.
+# An unwritable dir therefore disables logging (back to the pre-default
+# behavior) rather than failing a multi-hour build.
+_chain_prepare_log_dir() {
+  [ -n "${LOG_DIR:-}" ] || return 0          # `--log-dir ""` = opt out
+  if ! mkdir -p "${LOG_DIR}" 2>/dev/null || [ ! -w "${LOG_DIR}" ]; then
+    warn "log dir ${LOG_DIR} is not writable — per-stage logs and their per-run archiving are disabled; the resource-monitor CSV falls back to ${REPO_ROOT}"
+    LOG_DIR=""
+    return 0
+  fi
+  log "per-stage build logs -> ${LOG_DIR}/<stage>[-<arch>].log (--log-dir '' disables)"
+}
+
 # Eager per-run log archiving (O2): the per-stage ${LOG_DIR}/<stage>.log files
 # are truncated LAZILY on first write of each run (cross_stage_log_redirect's
 # .run marker). A watcher that peeked BEFORE a stage first wrote saw the PREVIOUS
 # run's log and read a stale failure as current (the stale-watcher false-green
-# class). Fix: at chain start, move any prior run's logs out of the LOG_DIR root
-# into archive/<prior-run-id>/ so the root only ever holds the CURRENT run — the
-# stale files are namespaced away up front instead of overwritten in place.
+# class). Fix: at chain start, move any prior run's STAGE logs out of the
+# LOG_DIR root into archive/<prior-run-id>/ — the stale files are namespaced
+# away up front instead of overwritten in place.
+#
+# It does NOT empty the directory (it used to claim "the root only ever holds
+# the CURRENT run" — no longer true, and it was never true for anything but
+# stage logs). LOG_DIR is now also where the operator's own nohup/tee chain
+# transcripts and the resource-monitor CSVs live; only files this mechanism
+# owns — a *.log with a sibling *.log.run marker — are moved, everything else
+# is deliberately left where it is. See the marker-scoping note below.
 _chain_archive_prev_logs() {
   [ -n "${LOG_DIR:-}" ] && [ -d "${LOG_DIR}" ] || return 0
   shopt -s nullglob
-  local logs=( "${LOG_DIR}"/*.log ) markers=( "${LOG_DIR}"/*.log.run )
+  local markers=( "${LOG_DIR}"/*.log.run )
   shopt -u nullglob
-  [ "${#logs[@]}" -gt 0 ] || return 0
+  # Marker-scoped, NOT every *.log in the directory: now that LOG_DIR defaults
+  # to out/build-logs, that directory is also where the operator's own nohup/tee
+  # transcript of the RUNNING chain lives (cross-chain-wave5o.log, 488M and
+  # still growing while the chain runs). `mv`ing a file an open tee holds does
+  # not stop the tee — it silently redirects the operator's live transcript
+  # into archive/. A log this mechanism created always has a sibling
+  # <name>.log.run marker, the same ownership test resource-monitor.sh's MON1
+  # stage-log pick uses; a marker-less *.log belongs to somebody else. (A log
+  # whose marker was deleted by hand is still safe: cross_stage_log_redirect
+  # truncates on a missing marker.)
+  [ "${#markers[@]}" -gt 0 ] || return 0
   # Derive the prior run id from any surviving .run marker, else a timestamp.
   local prev="" m
   for m in "${markers[@]}"; do
@@ -651,10 +726,100 @@ _chain_archive_prev_logs() {
   local dest="${LOG_DIR}/archive/${prev}"
   mkdir -p "${dest}" 2>/dev/null || return 0
   local f
-  for f in "${logs[@]}" "${markers[@]}"; do
-    [ -e "${f}" ] && mv -f "${f}" "${dest}/" 2>/dev/null || true
+  for m in "${markers[@]}"; do
+    f="${m%.run}"
+    if [ -e "${f}" ]; then mv -f "${f}" "${dest}/" 2>/dev/null || true; fi
+    mv -f "${m}" "${dest}/" 2>/dev/null || true
   done
   log "archived previous run logs -> ${dest}"
+}
+
+# Bounded archive retention (STALE-LOG 2026-08-23). _chain_archive_prev_logs
+# above only ever ADDS, and now that LOG_DIR has a default it runs on EVERY
+# chain start instead of only on --log-dir runs. When this was written
+# out/build-logs was already 13G — 12G of that archive/, 40 run dirs, the
+# largest single one 6.3G — on a filesystem at 92% used, i.e. on the box whose
+# multi-hour builds die of ENOSPC. An unbounded archive is not log hygiene, it
+# is a slow disk leak, so keep only the newest CROSS_LOG_ARCHIVE_KEEP run
+# directories (default 5) and remove the older ones.
+#
+# THE DELETE IS DELIBERATELY BORING. Read the constraints, not the intent:
+#   * the parent is the FIXED path ${LOG_DIR}/archive, and LOG_DIR is proven
+#     non-empty before it is used anywhere in here;
+#   * candidates are enumerated at DEPTH 1 ONLY (-mindepth 1 -maxdepth 1 -type
+#     d), and find is used to READ names and mtimes — never -delete, never
+#     -exec, never a `rm` on a glob. Each candidate is reduced to its LEAF NAME,
+#     which must then match a RUN-ID shape, i.e. one of the two ids this
+#     codebase actually produces: cross_run_id_generate's 8 digits '-' 6 digits
+#     [-suffix], or a bare PID (cross-stage-build.sh writes the marker with
+#     `rid="${CROSS_RUN_ID:-$$}"`, which is where the 6.3G archive/365161 came
+#     from — the biggest dir on disk would be unreclaimable without it).
+#     A leaf that matches can contain no '/', no '..' and no whitespace, so
+#     "${arch_dir}/${leaf}" cannot address anything outside archive/ whatever
+#     the directory happens to hold;
+#   * every victim is re-tested immediately before removal: name non-empty,
+#     parent non-empty, still a real directory, and NOT a symlink (a symlinked
+#     run dir is skipped, never followed);
+#   * anything else under archive/ — a differently-named sibling, a loose file,
+#     a symlink, the current run — is never a candidate and never counts
+#     against the keep budget;
+#   * every removal is logged, so the transcript shows exactly what went.
+# CROSS_LOG_ARCHIVE_KEEP=0 turns retention off (keep everything). A non-numeric
+# value is refused rather than guessed at.
+_chain_prune_archived_logs() {
+  local keep="${CROSS_LOG_ARCHIVE_KEEP:-5}"
+  case "${keep}" in
+    ''|*[!0-9]*)
+      warn "CROSS_LOG_ARCHIVE_KEEP='${keep}' is not a non-negative integer — archive retention skipped"
+      return 0 ;;
+  esac
+  [ "${keep}" -gt 0 ] || return 0            # 0 = retention deliberately off
+  local root="${LOG_DIR:-}"
+  [ -n "${root}" ] || return 0               # `--log-dir ""` = opt out
+  local arch_dir="${root}/archive"
+  [ -d "${arch_dir}" ] && [ ! -L "${arch_dir}" ] || return 0
+
+  # Run-id directories DIRECTLY under archive/, NEWEST FIRST, ordered by mtime.
+  # Not by name: the two id shapes do not interleave lexically (a PID-named dir
+  # sorts by its leading digit, so 365161 lands after every 2026* id and
+  # 1847483 before them), and sorting the biggest, oldest dir on the box to the
+  # "newest" end is exactly how a retention policy quietly reclaims nothing.
+  # mtime is the same signal a human reads off `ls -lt`. `find` here only READS
+  # names+mtimes at depth 1; nothing is deleted through it.
+  local -a runs=()
+  local line leaf
+  while IFS= read -r line; do
+    leaf="${line#* }"                                  # strip the mtime key
+    [ -n "${leaf}" ] || continue
+    [[ "${leaf}" =~ ^([0-9]{8}-[0-9]{6}(-[A-Za-z0-9]+)?|[0-9]{1,10})$ ]] || continue
+    [ "${leaf}" = "${CROSS_RUN_ID:-}" ] && continue
+    runs+=( "${leaf}" )
+  done < <(find "${arch_dir}" -mindepth 1 -maxdepth 1 -type d ! -type l \
+             -printf '%T@ %f\n' 2>/dev/null | sort -rn)
+
+  local total="${#runs[@]}"
+  [ "${total}" -gt "${keep}" ] || return 0
+  local i victim target removed=0
+  for (( i = keep; i < total; i++ )); do              # index 0..keep-1 = kept
+    victim="${runs[i]}"
+    [ -n "${victim}" ] && [ -n "${arch_dir}" ] || continue
+    target="${arch_dir}/${victim}"
+    [ -d "${target}" ] && [ ! -L "${target}" ] || continue
+    # --dry-run prints what it would do and touches nothing. (The archiving mv
+    # above predates this and still runs in dry-run; a mv is recoverable, an
+    # `rm -rf` is not, so at minimum the irreversible half must be previewable.)
+    if is_dry_run; then
+      log "[DRY RUN] archive retention: would remove ${arch_dir}/${victim}"
+      continue
+    fi
+    if rm -rf -- "${target}" 2>/dev/null; then
+      removed=$(( removed + 1 ))
+      log "archive retention: removed ${arch_dir}/${victim}"
+    else
+      warn "archive retention: could not remove ${arch_dir}/${victim}"
+    fi
+  done
+  log "archive retention: ${removed} old run dir(s) removed, newest ${keep} kept (CROSS_LOG_ARCHIVE_KEEP=${keep})"
 }
 
 main() {
@@ -662,7 +827,9 @@ main() {
   cross_run_id_ensure          # O2: one canonical CROSS_RUN_ID for all consumers
   _chain_resolve_final_image
   _chain_validate_stages       # may exit 0 for --describe-chain / --verify-chain
+  _chain_prepare_log_dir       # STALE-LOG: create/verify LOG_DIR before anyone writes
   _chain_archive_prev_logs     # O2: eager per-run log archiving (before any write)
+  _chain_prune_archived_logs   # STALE-LOG: bound archive/ (CROSS_LOG_ARCHIVE_KEEP)
   _chain_write_pidfile         # O2: pidfile read by stop-cross-chain.sh
   _chain_install_lifecycle_traps  # O1: reap nerdctl/buildctl children on signal
   _chain_assert_ancestry

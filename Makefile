@@ -16,7 +16,12 @@
 #   ARCHES   = amd64,arm64,riscv64   target architectures
 #   STAGE    = base                  base|compiler|sdk|media|android|runtime
 #   REPO     = ghcr.io/kataglyphis/kataglyphis_beschleuniger
-#   LOG_DIR  = build-logs            per-stage build logs
+#   LOG_DIR  = out/build-logs        per-stage build logs (same default as
+#                                    build-cross-chain.sh — do NOT diverge:
+#                                    two defaults meant `make cross-build` and
+#                                    a bare script call wrote the same artifact
+#                                    to two places, and each looked stale from
+#                                    the other's directory)
 #
 # Environment knobs honored by the underlying scripts (export before make):
 #   NO_CACHE=1              disable ALL build cache (force full rebuild)
@@ -25,6 +30,8 @@
 #   MAX_PARALLEL_ARCHS=N    concurrent per-arch stage builds (with --parallel-archs)
 #   PARALLEL_ARCHS=1        build sdk/media/android arches in parallel
 #   RUNTIME_IMAGE_SMOKE=0   skip the host-side runtime-image boot smoke
+#   CROSS_LOG_ARCHIVE_KEEP=N  run dirs kept under LOG_DIR/archive (default 5;
+#                             0 = keep all — the archive reached 12G unbounded)
 #   BUILD_ATTEST=1          attach SLSA provenance + SBOM to pushed images (slower)
 #
 # Reproducibility pins (opt-in, see linux/scripts/01-core/versions.env):
@@ -35,7 +42,7 @@
 ARCHES  ?= amd64,arm64,riscv64
 STAGE   ?= base
 REPO    ?= ghcr.io/kataglyphis/kataglyphis_beschleuniger
-LOG_DIR ?= build-logs
+LOG_DIR ?= out/build-logs
 
 SCRIPTS := linux/scripts
 

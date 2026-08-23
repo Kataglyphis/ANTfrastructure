@@ -249,15 +249,23 @@ timing still needs one undisturbed run.
   race in cerbero's cold dependency order, not a deterministic bug. The
   real fix is a declared recipe dep (glib ← libiconv) in our overlay; until
   then a retry can mask it and a cold run can lose ~1h.
-- **PAR5 — divisor is static per launch; surviving lanes stay throttled**
-  [S/M·★★] BUILD_MEM_DIVISOR is computed at launch (n_arch × budget) and
-  never adapts when lanes finish — observed repeatedly: a single remaining
-  wheelhouse crawled at 1-2 jobs for HOURS while the host idled (wave4f
-  arm64, wave5h riscv64). Options: per-stage divisor from LIVE lane count
-  (flag-dir heartbeat), or accept + document. Pairs with PAR4-hard.
-
-## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
-
+- **PAR5 — a lone surviving lane stays throttled; the obvious fix is
+  DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
+  single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
+  idles (wave4f arm64, wave5h riscv64). DO NOT re-attempt the flag-dir
+  live-lane-count approach that this entry used to propose — it was built,
+  reviewed and reverted: BUILD_MEM_DIVISOR is a build-arg consumed as
+  `ENV BUILD_MEM_DIVISOR` when the container build STARTS, so it cannot
+  change while that build runs; the clamp could not fire at all in the
+  shipped topology (all lane markers exist before any lane retires), and
+  where it could fire it made the divisor depend on sibling timing and
+  could drop the intra-step multiplier entirely (6→1) — an overcommit in
+  exactly the direction PAR4 exists to prevent. A tripwire in
+  test-stage-defs.sh now fails if flag-dir state is wired back into the
+  divisor. Achievable options only: PAR4-hard (a host-level memory
+  governor: systemd-run MemoryHigh per build, or a global compile-job
+  server), or re-sizing at container-build/STAGE boundaries. Full verdict
+  in docs/build-parallelism-memory-tuning.md.
 - **C3 — android inline version fallbacks → `:?must be set`** [S·★★] incl.
   the two onnxruntime `:-v…` fallbacks (masks broken ARG-forwards).
 - **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,

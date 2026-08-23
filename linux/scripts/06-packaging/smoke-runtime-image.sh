@@ -12,6 +12,13 @@ set -euo pipefail
 #     image (under qemu for cross arches); torch-less sentinel is flagged.
 #     Skip with RUNTIME_FUNCTIONAL_SMOKE=0; accept torch-less with
 #     ALLOW_TORCHLESS_RUNTIME=1.
+#   - The DEFAULT entrypoint+CMD actually boots (not just the argv path)
+#   - One real InferenceSession on a generated ONNX graph
+#   - ARCH-PARITY: every /opt prefix and component wheel NAMED in the table is
+#     present on this arch, or its absence is documented (see _parity_exempt /
+#     _parity_ort_flavor). Single-image scope: it conforms this arch to the
+#     table, it does NOT diff one arch against another — a component missing
+#     from the table is outside the gate. See the table's own comment block.
 #
 # Usage:
 #   smoke-runtime-image.sh <image-tag> [target-arch]
@@ -93,6 +100,74 @@ check_entrypoint() {
     pass "Entrypoint configured: ${config}"
   else
     fail "No entrypoint configured"
+  fi
+  echo ""
+}
+
+# 3b. Boot the image the way a USER does (SMOKE-DEPTH b, 2026-08-23): with NO
+# command, so the shipped ENTRYPOINT runs the shipped CMD. Step 3 only reads the
+# configured string and every other check here passes an explicit argv, so
+# entrypoint.sh's own default path — the env sourcing, the one-time-setup hook
+# and the final `exec "$@"` — was never once executed by the gate: a broken
+# entrypoint.sh ships green. The probe script arrives on STDIN (`-i`, no
+# command) precisely so the default CMD /bin/bash is what reads it, and the
+# `exit 42` proves the exec chain hands the child's status back instead of
+# swallowing it (a wrapper that forgets `exec` returns its own 0).
+#
+# NOT covered, despite an earlier comment here claiming it: entrypoint.sh's
+# `[ $# -eq 0 ]` fallback. Dockerfile.torch declares CMD ["/bin/bash"], and the
+# container runtime always appends the image CMD to the ENTRYPOINT argv, so the
+# entrypoint runs with $# == 1 and that branch is dead on this image. Only an
+# image with NO CMD at all would take it (handled below).
+#
+# This is a GATE, so neither of its two "cannot run the probe" situations may
+# turn into a quiet skip:
+#   * inspect_image_config swallows every error into an empty string (`|| true`),
+#     so the CMD probe carries a CMDOK marker — no marker means inspect failed
+#     and that is a FAILURE, not a reason to stand down;
+#   * a CMD whose first word is not a shell FAILS too. This script smokes the
+#     runtime wrapper, whose contract is CMD ["/bin/bash"]; if that contract
+#     changes deliberately, this probe has to change with it. A gate that
+#     reconfigures itself out of existence is exactly the defect being fixed.
+# `CMD ["bash","-l"]` and friends still run the probe — only the FIRST word is
+# matched, and that used to skip the whole check.
+check_default_entrypoint_boot() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- Default ENTRYPOINT + CMD boot ---"
+  local raw cmd cmd0
+  raw="$(inspect_image_config "import sys,json; c=json.load(sys.stdin)[0].get('Config',{}) or {}; print('CMDOK ' + ' '.join(c.get('Cmd') or []))")"
+  case "${raw}" in
+    "CMDOK "*) cmd="${raw#CMDOK }" ;;
+    *)
+      fail "default ENTRYPOINT+CMD boot: could not read Config.Cmd from \`${NERDCTL_BIN} image inspect ${image_tag}\` (${target_arch}) -- the boot probe cannot be skipped just because inspect failed"
+      echo ""
+      return 0
+      ;;
+  esac
+  cmd0="${cmd%% *}"
+  case "${cmd0}" in
+    # Empty CMD is legitimate: entrypoint.sh's own `[ $# -eq 0 ]` fallback then
+    # supplies /bin/bash, which is still a shell reading our stdin.
+    ""|bash|sh|*/bash|*/sh) ;;
+    *)
+      fail "default ENTRYPOINT+CMD boot: image CMD is '${cmd}' but this probe needs a shell to read its stdin script (${target_arch}) -- Dockerfile.torch ships CMD [\"/bin/bash\"]; if the CMD changed on purpose, update this check instead of letting it self-disable"
+      echo ""
+      return 0
+      ;;
+  esac
+  local out rc
+  out="$(printf '%s\n' \
+           'echo "BOOT uid=$(id -u) gst=${GST_PLUGIN_PATH:+set} vulkan=${VULKAN_SDK:+set}"' \
+           'exit 42' \
+         | "${NERDCTL_BIN}" run --rm -i --platform "linux/${target_arch}" "${image_tag}" 2>/dev/null)" \
+    && rc=0 || rc=$?
+  if [ "${rc}" != "42" ]; then
+    fail "default ENTRYPOINT+CMD boot returned ${rc}, expected the script's 42 (${target_arch}) -- entrypoint.sh does not exec the CMD or died before it: ${out}"
+  elif ! printf '%s' "${out}" | grep -q "gst=set"; then
+    fail "default boot ran but the entrypoint exported no GStreamer env (${target_arch}): ${out} -- gstreamer-env.sh sourcing regressed"
+  else
+    pass "default ENTRYPOINT+CMD boot: ${out} (exit status propagated)"
   fi
   echo ""
 }
@@ -219,6 +294,62 @@ check_app_wheel_smoke() {
       else
         fail "onnxruntime/numpy failed to import in the runtime image (${target_arch})"
       fi
+    fi
+    echo ""
+}
+
+# SMOKE-DEPTH(c) 2026-08-23: run ONE real inference from THIS repo. The
+# in-image battery's session check used to build its model with
+# torch.onnx.export, which needs `onnxscript` — not in the venv — so it printed
+# "SKIP ort InferenceSession check" on all three shipped wave-5 arches: no
+# execution provider was ever proven to work by anything we own. (The app wheel
+# smoke above does run one, but it lives in ANOTHER repo and skips entirely on
+# torch-less images.) smoke_minimal_onnx_py emits a one-node Add graph as raw
+# protobuf — no `onnx` package, no network, ~110 model bytes — and is injected
+# as an env var rather than read from /opt/scripts so this gate also works
+# against images built before the check existed.
+#
+# EXIT STATUS IS NOT EVIDENCE HERE. The program crosses the container boundary
+# as an env var and is fed to `python -` on stdin: if SMOKE_ONNX_PY arrives
+# empty (env not forwarded, `-e` swallowed, a `bash -l` profile clobbering it,
+# a quoting regression in _rt_run), python reads an EMPTY program and exits 0
+# — the exact "green because nothing ran" class this repo has shipped three
+# times. So the check demands POSITIVE evidence from the program's OUTPUT: an
+# `ONNX-EP <verdict>:` sentinel that only smoke_minimal_onnx_py can print, and
+# for a pass specifically `ONNX-EP OK:` carrying the provider it actually used.
+# No sentinel => FAIL, whatever the exit status says. The in-image guard below
+# is the second half: it turns an empty program into a loud sentinel instead of
+# silence, so the failure names its own cause.
+check_onnx_execution_provider() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Functional: onnxruntime InferenceSession (generated Add graph) ---"
+    local out rc sentinel
+    out="$(_rt_run -e "SMOKE_ONNX_PY=$(smoke_minimal_onnx_py)" \
+             bash -lc 'if [ -z "${SMOKE_ONNX_PY:-}" ]; then
+  echo "ONNX-EP ABSENT: SMOKE_ONNX_PY is empty inside the container -- the program never crossed the boundary"
+  exit 4
+fi
+printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
+      && rc=0 || rc=$?
+    printf '%s\n' "${out}" | sed 's/^/  /'
+    sentinel="$(printf '%s\n' "${out}" | grep -Eo 'ONNX-EP (OK|FAIL|SKIP|ABSENT):.*' | head -1 || true)"
+    if [ -z "${sentinel}" ]; then
+      fail "onnxruntime session check exited ${rc} but printed NO ONNX-EP sentinel (${target_arch}) -- the generated program did not run; an exit 0 here means python got an EMPTY stdin, not a working provider"
+    elif [ "${rc}" = "0" ]; then
+      case "${sentinel}" in
+        "ONNX-EP OK:"*)
+          pass "onnxruntime executed a real graph on-target (${target_arch}) -- ${sentinel}" ;;
+        *)
+          fail "onnxruntime session check exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
+      esac
+    elif [ "${rc}" = "3" ]; then
+      # Not a skip in a WRAPPER: the image's own HEALTHCHECK is
+      # `python3 -c "import onnxruntime"`, so an unimportable onnxruntime here
+      # means every container would report unhealthy.
+      fail "onnxruntime/numpy not importable in the runtime image (${target_arch}) -- the HEALTHCHECK imports onnxruntime, so this is a defect: ${sentinel}"
+    else
+      fail "onnxruntime InferenceSession FAILED on the generated Add graph (${target_arch}, rc=${rc}): ${sentinel}"
     fi
     echo ""
 }
@@ -425,6 +556,154 @@ check_venv_bytecode() {
     echo ""
 }
 
+# ── ARCH-PARITY table (2026-08-23) ──────────────────────────────────────────
+# The three wrappers are supposed to be the same image with a different arch,
+# and verified live on the wave-5 ship they are not: riscv64 carries no
+# /opt/cmake (amd64 207M, arm64 130M), onnxruntime-genai ships on amd64+arm64
+# only, and the ORT flavour differs by arch. None of it was gated anywhere, so
+# every delta was silent.
+#
+# WHAT THIS ACTUALLY CHECKS — and what it does NOT. This smoke runs against ONE
+# image at a time (build-runtime-manifest.sh invokes it per arch), so it cannot
+# diff arch A against arch B. It is not a cross-arch differ; it is a
+# TABLE-CONFORMANCE check:
+#   * every component NAMED in _PARITY_PREFIXES/_PARITY_WHEELS must be present
+#     on this arch, unless _parity_exempt documents its absence  -> FAILS;
+#   * a documented exemption whose component turns out to be PRESENT is called
+#     out as a stale table entry                                  -> WARN;
+#   * exactly one onnxruntime distribution, the flavour the table names -> FAILS.
+# It therefore CANNOT see a one-sided EXTRA: a component that exists on one arch
+# and not another while being absent from the table above is invisible to the
+# loop, because the loop only iterates over names the table already lists. The
+# untracked /opt prefixes are printed (INFO) on every run so that diffing the
+# three per-arch smoke logs still surfaces such a delta by eye; making that
+# automatic needs a cross-arch step in the caller and is left on the ARCH-PARITY
+# backlog item. Adding a component to the table is what puts it under the gate.
+#
+# Prefix names are version-stripped (cmake-4.4.2 -> cmake) so a pin bump does
+# not need a table edit.
+_PARITY_PREFIXES="Kataglyphis-Orchestr-ANT-ion android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
+# Wheel names in dist-info form ('-' and '.' normalised to '_').
+_PARITY_WHEELS="torch torchvision ai_edge_litert iree_base_compiler iree_base_runtime onnxruntime_genai"
+
+# Documented per-arch absences. Each arm is a REVIEWED decision with its reason;
+# anything absent that is NOT listed here is drift and fails.
+_parity_exempt() {
+  case "$1:$2" in
+    # Kitware publishes no riscv64 CMake archive, so 02-toolchain/cmake.sh
+    # deliberately installs the distro cmake there (4.2.3) instead.
+    riscv64:cmake) return 0 ;;
+    # GEN1: upstream ships no riscv64 onnxruntime-genai wheel in any version
+    # and closed its one RISC-V request as not-planned; the producer skips the
+    # arch and verify-media-artifacts agrees. Policy, not drift.
+    riscv64:onnxruntime_genai) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Which onnxruntime flavour each arch is SUPPOSED to carry, and only one of
+# them: the 2026-08-21 version shadow shipped a PyPI onnxruntime 1.27 beside
+# the built one and broke every import with a VERS_1.29.0 symbol error. Wave-5
+# fixed it to exactly one distribution per image — dnnl on amd64, webgpu on
+# arm64/riscv64 — which is a decision, so it belongs in the table.
+_parity_ort_flavor() {
+  case "$1" in
+    amd64)         printf '%s' 'onnxruntime_dnnl' ;;
+    arm64|riscv64) printf '%s' 'onnxruntime_webgpu' ;;
+    *)             printf '%s' '' ;;
+  esac
+}
+
+# GStreamer plugins that are KNOWN not to load on a given arch. Same contract:
+# listed = reviewed, unlisted = new drift (reported, still non-fatal — a broken
+# optional plugin degrades gracefully; see check_gstreamer_plugin_health).
+_parity_gst_plugin_known() {
+  case "$1:$2" in
+    # arm64 only: the distro libgtk-4.so.1 resolves vkCreateWaylandSurfaceKHR
+    # against the system Vulkan loader, which the shipped /opt/vulkan loader
+    # does not export here. The gtk4 SINK is a desktop-display element with no
+    # role in a headless wrapper, so it is accepted rather than fixed.
+    arm64:libgstgtk4.so) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+check_arch_parity() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- ARCH-PARITY: /opt prefixes + component wheels (${target_arch}) ---"
+    local probe
+    if ! probe="$(_rt_run bash -lc 'set -uo pipefail
+for d in /opt/*/; do printf "PREFIX %s\n" "$(basename "$d")"; done
+for m in /opt/venv/lib/python*/site-packages/*.dist-info; do
+  [ -d "$m" ] || continue
+  printf "DIST %s\n" "$(basename "$m" | sed "s/-[^-]*\.dist-info$//")"
+done' 2>/dev/null)"; then
+      fail "ARCH-PARITY probe could not run in the ${target_arch} image"
+      echo ""
+      return 0
+    fi
+    local prefixes wheels
+    prefixes="$(printf '%s\n' "${probe}" | sed -n 's/^PREFIX //p' | sed -E 's/-[0-9][0-9.]*$//' | sort -u)"
+    wheels="$(printf '%s\n' "${probe}" | sed -n 's/^DIST //p' | tr '.-' '__' | sort -u)"
+
+    local want present
+    for want in ${_PARITY_PREFIXES} ${_PARITY_WHEELS}; do
+      case " ${_PARITY_PREFIXES} " in
+        *" ${want} "*) present="$(printf '%s\n' "${prefixes}" | grep -cxF -- "${want}" || true)" ;;
+        *)             present="$(printf '%s\n' "${wheels}"   | grep -cxF -- "${want}" || true)" ;;
+      esac
+      if [ "${present}" != "0" ]; then
+        if _parity_exempt "${target_arch}" "${want}"; then
+          echo "  WARN ${want} is PRESENT on ${target_arch} although the parity table exempts it -- drop the exemption (it is stale)"
+        fi
+      elif _parity_exempt "${target_arch}" "${want}"; then
+        echo "  ~~   ${want} absent (documented ${target_arch} exception)"
+      else
+        fail "ARCH-PARITY: ${want} missing on ${target_arch} and NOT in the documented exception list -- ship it or record the exception in _parity_exempt"
+      fi
+    done
+
+    # The blind spot, stated out loud and with the raw material next to it: the
+    # loop above can only judge names the table already carries, so a prefix
+    # that exists here and nowhere else is invisible to it. Print the untracked
+    # prefixes (a short list — /opt has ~13 entries) so comparing the three
+    # per-arch smoke logs still exposes a one-sided extra. INFO, never a gate:
+    # a gate would need to see all three images at once. Wheels are excluded on
+    # purpose — the venv has hundreds of dist-infos and the noise would bury it.
+    local untracked p
+    untracked=""
+    for p in ${prefixes}; do
+      case " ${_PARITY_PREFIXES} " in
+        *" ${p} "*) ;;
+        *) untracked="${untracked} ${p}" ;;
+      esac
+    done
+    if [ -n "${untracked}" ]; then
+      echo "  INFO /opt prefixes NOT in the parity table (${target_arch}):${untracked}"
+      echo "  INFO   -- untracked = outside the gate. If one of these is missing on another arch,"
+      echo "  INFO      only a human diff of the three smoke logs will see it; add it to"
+      echo "  INFO      _PARITY_PREFIXES to put it under the assert."
+    else
+      echo "  INFO every /opt prefix on ${target_arch} is tracked by the parity table"
+    fi
+
+    # ORT: exactly one distribution, and the one this arch is meant to have.
+    local ort_have ort_want
+    ort_have="$(printf '%s\n' "${wheels}" | grep -E '^onnxruntime(_[a-z0-9]+)?$' | grep -v '^onnxruntime_genai$' | tr '\n' ' ' || true)"
+    ort_want="$(_parity_ort_flavor "${target_arch}")"
+    case "$(printf '%s' "${ort_have}" | wc -w)" in
+      1) if [ "${ort_have% }" = "${ort_want}" ]; then
+           pass "ARCH-PARITY: exactly one onnxruntime distribution, ${ort_want} as the table expects (${target_arch})"
+         else
+           fail "ARCH-PARITY: onnxruntime flavour is '${ort_have% }' but the table says '${ort_want}' for ${target_arch} -- update _parity_ort_flavor if this was intended"
+         fi ;;
+      0) fail "ARCH-PARITY: no onnxruntime distribution at all in the ${target_arch} venv" ;;
+      *) fail "ARCH-PARITY: ${ort_have}-- MORE THAN ONE onnxruntime distribution in the ${target_arch} venv (the 2026-08-21 version-shadow class: the PyPI build shadows the built one and imports die on VERS_1.29.0)" ;;
+    esac
+    echo ""
+}
+
 # GStreamer plugin health -- WARN only. Unlike ffmpeg/opencv, a GStreamer
 # plugin whose runtime .so is absent degrades gracefully (the element is just
 # unavailable), so a broken optional plugin must not fail the gate. But surface
@@ -442,12 +721,63 @@ check_gstreamer_plugin_health() {
     # vkCreateWaylandSurfaceKHR) that ldd cannot see (the dep .so is present, just
     # missing a symbol). Still WARN-only: a broken OPTIONAL plugin degrades
     # gracefully; the functional pipeline check below is the fail-loud CORE gate.
-    _rt_run \
-      bash -lc '
-scan="$(gst-inspect-1.0 2>&1 >/dev/null || true)"
-printf "%s\n" "${scan}" | grep "Failed to load plugin" | sed "s/^.*Failed/  degraded: Failed/" | sort -u | head -40
-g="$(printf "%s\n" "${scan}" | grep -c "Failed to load plugin" || true)"
-echo "  GStreamer plugins that cannot load: ${g} (non-fatal)"' 2>/dev/null || true
+    # ARCH-PARITY (2026-08-23): classify the failures instead of only counting
+    # them. arm64 has shipped a gtk4 plugin that cannot load since wave-4
+    # (undefined symbol vkCreateWaylandSurfaceKHR) and the count line looked
+    # exactly like a healthy run with a different number in it. Known-and-
+    # reviewed failures now say so; anything else is called out as new drift.
+    #
+    # THE HEADLINE NUMBER IS STILL THE RAW LINE COUNT. Classification works on
+    # UNIQUE libgst*.so basenames, which is strictly fewer than the failure
+    # lines: a message that names no libgst*.so basename (a plugin outside the
+    # naming convention, or an error whose text never reaches the basename)
+    # contributes nothing, and the same basename failing from two plugin
+    # directories collapses to one. Reporting known+unknown as "plugins that
+    # cannot load" would have quietly LOWERED a regression metric that has been
+    # watched since wave-4, so the pre-classification count is kept verbatim
+    # and the classification is printed beside it, not instead of it.
+    local scan failed p known=0 unknown=0 total named unnamed
+    scan="$(_rt_run bash -lc 'command -v gst-inspect-1.0 >/dev/null 2>&1 || { echo "GST_SCAN_ABSENT"; exit 0; }
+gst-inspect-1.0 2>&1 >/dev/null || true
+echo "GST_SCAN_DONE"' 2>/dev/null)" || true
+    # An empty scan is AMBIGUOUS -- a perfectly healthy image also prints
+    # nothing here -- so the probe stamps its own completion. Without the
+    # stamp, "0 plugins cannot load" would be a false green for a probe that
+    # never ran.
+    if ! printf '%s\n' "${scan}" | grep -q '^GST_SCAN_DONE$'; then
+      if printf '%s\n' "${scan}" | grep -q '^GST_SCAN_ABSENT$'; then
+        echo "  WARN gst-inspect-1.0 is not on PATH in the ${target_arch} image -- plugin health UNKNOWN, not 0"
+      else
+        echo "  WARN the GStreamer plugin scan did not complete in the ${target_arch} image -- plugin health UNKNOWN, not 0"
+      fi
+      echo ""
+      return 0
+    fi
+    total="$(printf '%s\n' "${scan}" | grep -c "Failed to load plugin" || true)"
+    failed="$(printf '%s\n' "${scan}" | grep "Failed to load plugin" \
+                | grep -oE 'libgst[A-Za-z0-9_+-]+\.so' | sort -u || true)"
+    named="$(printf '%s\n' "${scan}" | grep "Failed to load plugin" \
+               | grep -cE 'libgst[A-Za-z0-9_+-]+\.so' || true)"
+    unnamed=$((total - named))
+    for p in ${failed}; do
+      if _parity_gst_plugin_known "${target_arch}" "${p}"; then
+        echo "  ~~   ${p} cannot load -- documented ${target_arch} exception (_parity_gst_plugin_known)"
+        known=$((known + 1))
+      else
+        echo "  WARN ${p} cannot load on ${target_arch} and is NOT in the parity table -- new drift; fix it or record it (non-fatal)"
+        unknown=$((unknown + 1))
+      fi
+    done
+    printf '%s\n' "${scan}" | grep "Failed to load plugin" \
+      | sed "s/^.*Failed/  degraded: Failed/" | sort -u | head -40 || true
+    # Line 1 = the metric as it has always been counted (comparable across runs).
+    echo "  GStreamer plugins that cannot load: ${total} (non-fatal)"
+    # Line 2 = the new detail, explicitly on a different denominator.
+    local unnamed_note=""
+    if [ "${unnamed}" -gt 0 ]; then
+      unnamed_note="; ${unnamed} failure line(s) name no libgst*.so and could not be classified"
+    fi
+    echo "  ... of those, by unique libgst*.so basename: ${known} documented, ${unknown} undocumented${unnamed_note}"
     echo ""
 }
 
@@ -705,6 +1035,7 @@ main() {
   check_image_availability "${image_tag}" "${target_arch}"
   check_trivial_command "${image_tag}" "${target_arch}"
   check_entrypoint "${image_tag}" "${target_arch}"
+  check_default_entrypoint_boot "${image_tag}" "${target_arch}"
   check_healthcheck_config "${image_tag}" "${target_arch}"
   check_kataglyphis_user "${image_tag}" "${target_arch}"
   check_workdir "${image_tag}" "${target_arch}"
@@ -721,6 +1052,7 @@ main() {
   if [ "${RUNTIME_FUNCTIONAL_SMOKE:-1}" = "1" ]; then
     check_torchless_sentinel "${image_tag}" "${target_arch}"
     check_app_wheel_smoke "${image_tag}" "${target_arch}"
+    check_onnx_execution_provider "${image_tag}" "${target_arch}"
     check_ml_version_pins "${image_tag}" "${target_arch}"
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
@@ -728,6 +1060,7 @@ main() {
     check_setuid_inventory "${image_tag}" "${target_arch}"
     check_size_observability "${image_tag}" "${target_arch}"
     check_venv_bytecode "${image_tag}" "${target_arch}"
+    check_arch_parity "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

@@ -4,6 +4,17 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 
+# EIGEN-NET (2026-08-21): LITERT_EIGEN_FETCH_FLAGS -- LiteRT's eigen fetch with a
+# fallback mirror. Defined ONCE in litert-eigen-fetch.sh next to this script and
+# shared with the cross build (03-media/build/litert/build-litert.sh); the flags
+# used to be duplicated verbatim in both, which is exactly how one lane quietly
+# loses the mirror. See that file's header for why it lives in this directory.
+# Hard source: a missing helper fails the stage instead of silently configuring
+# a single-homed fetch.
+# shellcheck source=litert-eigen-fetch.sh
+# shellcheck disable=SC1091
+source "$(dirname "${BASH_SOURCE[0]}")/litert-eigen-fetch.sh"
+
 if [ -f /opt/scripts/core/compiler-resolution.sh ]; then
   # shellcheck disable=SC1091
   source /opt/scripts/core/compiler-resolution.sh
@@ -54,6 +65,7 @@ mkdir -p litert/build-android && cd litert/build-android
 configure_litert_android() {
   cmake -GNinja \
     -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+    "${LITERT_EIGEN_FETCH_FLAGS[@]}" \
     -DANDROID_ABI="${ANDROID_ABI}" \
     -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
     -DCMAKE_BUILD_TYPE=Release \

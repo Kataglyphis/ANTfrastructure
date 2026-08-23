@@ -20,8 +20,17 @@ apt_sources_set_architectures() {
 
   [ -f "${sources_file}" ] || return 0
 
-  tmp="$(mktemp)"
-  awk -v archs="${arch_string}" '
+  # Temp file NEXT TO the target, not in $TMPDIR: several RUNs mount /tmp as a
+  # tmpfs (Dockerfile.sdk, Dockerfile.toolchain), which turns the final `mv`
+  # into a cross-device copy instead of an atomic rename. The random suffix
+  # keeps it out of apt's own *.sources/*.list globs — and out of
+  # cross_prune_foreign_arch_apt_sources' ubuntu-ports*.sources glob — for the
+  # moments it exists.
+  tmp="$(mktemp "${sources_file}.XXXXXX")" || {
+    printf 'apt_sources_set_architectures: mktemp failed beside %s\n' "${sources_file}" >&2
+    return 1
+  }
+  if ! awk -v archs="${arch_string}" '
     BEGIN { in_stanza=0; has_arch=0 }
     /^[[:space:]]*$/ {
       if (in_stanza && !has_arch) print "Architectures: " archs
@@ -48,7 +57,25 @@ apt_sources_set_architectures() {
     END {
       if (in_stanza && !has_arch) print "Architectures: " archs
     }
-  ' "${sources_file}" > "${tmp}"
+  ' "${sources_file}" > "${tmp}"; then
+    # Cleanup is EXPLICIT at every exit, never a trap: this file is SOURCED, and
+    # a trap armed inside a sourced function stays armed and re-fires on the
+    # CALLER's return (the parallel-loop.sh RETURN-trap incident, which turned a
+    # fully green chain into exit 1).
+    #
+    # Bailing out here is the load-bearing half. The old code ran `mv`
+    # unconditionally, so a failing awk (ENOSPC on the temp, a shadowed/broken
+    # awk) REPLACED the host sources file with awk's truncated output and still
+    # returned 0 — every later apt-get in that RUN then died with "Unable to
+    # locate package" and no trace of the real cause.
+    rm -f "${tmp}"
+    printf 'apt_sources_set_architectures: awk rewrite of %s failed; file left unchanged\n' \
+      "${sources_file}" >&2
+    return 1
+  fi
+  # mktemp creates 0600 and `mv` carries that mode onto the target; apt sources
+  # are 0644 root:root everywhere else in /etc/apt/sources.list.d.
+  chmod 0644 "${tmp}"
   mv "${tmp}" "${sources_file}"
 }
 
@@ -404,12 +431,30 @@ cross_pkg_config_libdir() {
     _build_multiarch="$(dpkg-architecture -qDEB_BUILD_MULTIARCH 2>/dev/null || true)"
   fi
   if [ -z "${_build_multiarch}" ]; then
-    _build_multiarch="$(uname -m)"
-    case "${_build_multiarch}" in
-      x86_64) _build_multiarch="x86_64-linux-gnu" ;;
-      aarch64) _build_multiarch="aarch64-linux-gnu" ;;
-      riscv64) _build_multiarch="riscv64-linux-gnu" ;;
-    esac
+    # DUP1: was a hand-rolled uname->triplet case here. platform.sh's
+    # arch_deb_multiarch_triplet_for is the SSOT and is co-mounted in every RUN
+    # that mounts this file (Dockerfile.toolchain 70/124/187/245/266,
+    # Dockerfile.media 351) and baked next to it in every image that COPYs it
+    # (Dockerfile.sdk:60, Dockerfile.android:59, Dockerfile.torch:51) — plus
+    # cross-env.sh and common.sh both source platform.sh before this file.
+    # (Only apt_sources_set_architectures is contracted to work when cross-apt.sh
+    # is sourced STANDALONE — see 02-toolchain/android-sdk.sh:8 — and it stays
+    # dependency-free.)
+    #
+    # The two ways this lookup can come back empty are NOT the same failure and
+    # must not degrade the same way. A single `... 2>/dev/null || true` collapsed
+    # both into silence:
+    #   * helper MISSING (rc 127, command not found) = a WIRING bug — platform.sh
+    #     was not co-mounted/sourced. Every host-arch pkgconfig dir silently
+    #     vanishes from PKG_CONFIG_LIBDIR and host tools (xcb & friends) start
+    #     failing to configure with no hint as to why. Say so, loudly.
+    #   * helper present, arch UNRECOGNISED (rc 1) = expected degradation. The
+    #     candidate is skipped and we stay quiet, exactly as before.
+    if ! command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
+      printf 'cross_pkg_config_libdir: WARNING: arch_deb_multiarch_triplet_for is not defined — 01-core/platform.sh was never sourced here. Dropping the host-arch pkgconfig dir; host-arch tools may fail to configure. Source/mount platform.sh alongside cross-apt.sh.\n' >&2
+    else
+      _build_multiarch="$(arch_deb_multiarch_triplet_for "$(uname -m)" 2>/dev/null || true)"
+    fi
   fi
   [ -n "${_build_multiarch}" ] && candidates+=("/usr/lib/${_build_multiarch}/pkgconfig")
 

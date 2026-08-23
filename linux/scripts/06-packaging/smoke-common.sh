@@ -323,3 +323,88 @@ validate_compiler_for_target() {
 smoke_arch_words() {
   printf '%s\n' "${1:-}" | tr ', ' '\n\n'
 }
+
+# ── generated ONNX fixture (SMOKE-DEPTH item c, 2026-08-23) ─────────────────
+# Print a self-contained Python program that BUILDS a one-node ONNX graph and
+# runs it through an InferenceSession. Until this existed nothing in the repo
+# ever executed an inference: the venv battery's session check went through
+# `torch.onnx.export`, which needs `onnxscript` — not in the venv — so it
+# printed "SKIP ort InferenceSession check" on all three shipped wave-5
+# arches. A green line with nothing behind it, and therefore no evidence that
+# ANY execution provider works.
+#
+# The model is emitted as RAW protobuf (~110 bytes, opset 13 `Add`) rather than
+# via the `onnx` package on purpose: `onnx` is not installed in the runtime
+# venv and pulling it in for a smoke would add a heavy build dependency to
+# every wrapper. Wire format only, no network, no temp files.
+#
+# Two consumers, one source of truth: smoke-torch-venv.sh pipes it into the
+# venv python in-image, and smoke-runtime-image.sh injects it as an env var
+# (so it also gates images that were built before this check existed).
+# Exit codes: 0 = ran, 1 = wrong result, 3 = onnxruntime/numpy unavailable.
+smoke_minimal_onnx_py() {
+  cat <<'ONNX_PY'
+import sys
+
+try:
+    import numpy as np
+    import onnxruntime as ort
+except Exception as exc:
+    print("ONNX-EP SKIP: onnxruntime/numpy unavailable (%s)" % exc)
+    sys.exit(3)
+
+
+# Minimal protobuf writers (onnx.proto field numbers in the callers below).
+def _varint(n):
+    out = bytearray()
+    while True:
+        b = n & 0x7F
+        n >>= 7
+        if n:
+            out.append(b | 0x80)
+        else:
+            out.append(b)
+            return bytes(out)
+
+
+def _msg(field, payload):
+    return _varint((field << 3) | 2) + _varint(len(payload)) + payload
+
+
+def _int(field, value):
+    return _varint(field << 3) + _varint(value)
+
+
+def _txt(field, value):
+    return _msg(field, value.encode())
+
+
+def _value_info(name, dims):
+    # ValueInfoProto{name=1, type=2} -> TypeProto{tensor_type=1}
+    #   -> Tensor{elem_type=1 (FLOAT), shape=2} -> Dimension{dim_value=1}
+    shape = b"".join(_msg(1, _int(1, d)) for d in dims)
+    return _txt(1, name) + _msg(2, _msg(1, _int(1, 1) + _msg(2, shape)))
+
+
+# NodeProto{input=1, output=2, name=3, op_type=4}
+node = _txt(1, "X") + _txt(1, "Y") + _txt(2, "Z") + _txt(3, "add") + _txt(4, "Add")
+# GraphProto{node=1, name=2, input=11, output=12}
+graph = (_msg(1, node) + _txt(2, "containerhub-smoke")
+         + _msg(11, _value_info("X", (1, 4)))
+         + _msg(11, _value_info("Y", (1, 4)))
+         + _msg(12, _value_info("Z", (1, 4))))
+# ModelProto{ir_version=1, producer_name=2, graph=7, opset_import=8}
+model = (_int(1, 7) + _txt(2, "containerhub-smoke") + _msg(7, graph)
+         + _msg(8, _int(2, 13)))
+
+sess = ort.InferenceSession(model, providers=["CPUExecutionProvider"])
+out = sess.run(None, {"X": np.array([[1, 2, 3, 4]], np.float32),
+                      "Y": np.array([[10, 20, 30, 40]], np.float32)})[0]
+if out.tolist() != [[11.0, 22.0, 33.0, 44.0]]:
+    print("ONNX-EP FAIL: Add graph returned %r" % (out.tolist(),))
+    sys.exit(1)
+print("ONNX-EP OK: onnxruntime %s served the graph on %s (available: %s)"
+      % (ort.__version__, ",".join(sess.get_providers()),
+         ",".join(ort.get_available_providers())))
+ONNX_PY
+}

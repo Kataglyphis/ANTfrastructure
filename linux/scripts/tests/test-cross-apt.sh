@@ -24,6 +24,10 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../01-core/cross-apt.sh"
+# platform.sh is sourced here for the same reason production does it before
+# cross-apt.sh (cross-env.sh:10, common.sh:22): cross_pkg_config_libdir's
+# host-multiarch fallback calls arch_deb_multiarch_triplet_for from it.
+source "${TESTS_DIR}/../01-core/platform.sh"
 
 # --- stubs: everything install_target_packages needs besides apt/dpkg -------
 cross_build_enabled() { return 0; }
@@ -167,5 +171,156 @@ t_case "a pkg=version spec is stripped to the bare name for the lookup"
 t_assert_ok cross_package_status_present "pkg-inst=1.2.3-1"
 t_assert_eq "pkg-inst" "$(tail -1 "${FAKE_LOG_DIR}/dpkg-query.log" | awk '{print $NF}')" \
   "dpkg-query must receive the bare package name, not name=version"
+
+# ---------------------------------------------------------------------------
+# apt_sources_set_architectures — the deb822 rewrite must be all-or-nothing.
+#
+# SH3 class. The old body ran a bare `mktemp` in $TMPDIR and then `mv`'d the awk
+# output onto the sources file UNCONDITIONALLY, so a failing awk (ENOSPC on the
+# temp, a broken/shadowed awk) replaced /etc/apt/sources.list.d/ubuntu.sources
+# with awk's truncated output — 0 bytes — and STILL returned 0. Every later
+# apt-get in that RUN then died with "Unable to locate package" and the real
+# cause was invisible. It also carried mktemp's 0600 onto a file that is 0644
+# everywhere else in /etc/apt/sources.list.d.
+_SRC_DIR="${FAKE_DIR}/sources.list.d"
+mkdir -p "${_SRC_DIR}"
+_SRC_FILE="${_SRC_DIR}/ubuntu.sources"
+
+# Two stanzas: one WITHOUT an Architectures line (must gain one) and one WITH a
+# stale value (must be overwritten) — the two branches of the awk program.
+_write_sources() {
+  cat > "${_SRC_FILE}" <<'SRC'
+Types: deb
+URIs: http://archive.ubuntu.com/ubuntu/
+Suites: resolute
+Components: main
+
+Types: deb
+URIs: http://archive.ubuntu.com/ubuntu/
+Suites: resolute-security
+Components: main
+Architectures: i386
+SRC
+  chmod 0644 "${_SRC_FILE}"
+}
+
+t_case "apt_sources_set_architectures pins Architectures in EVERY stanza"
+_write_sources
+t_assert_ok apt_sources_set_architectures "${_SRC_FILE}" "amd64"
+t_assert_eq "2" "$(grep -c '^Architectures: amd64$' "${_SRC_FILE}")" \
+  "the stanza without an Architectures line and the one with a stale value must both end up amd64"
+t_assert_eq "0" "$(grep -c '^Architectures: i386$' "${_SRC_FILE}")" "the stale value must be gone"
+
+t_case "the rewritten sources file stays 0644 (mktemp creates 0600)"
+t_assert_eq "644" "$(stat -c '%a' "${_SRC_FILE}")"
+
+t_case "the rewrite leaves no temp file beside the sources file"
+t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)" \
+  "the temp must be named out of apt's *.sources glob AND moved away"
+
+t_case "a missing sources file is a silent no-op"
+t_assert_ok apt_sources_set_architectures "${_SRC_DIR}/not-here.sources" "amd64"
+
+t_case "a FAILING awk leaves the sources file untouched and returns 1"
+_write_sources
+_before="$(cat "${_SRC_FILE}")"
+_AWK_DIR="${FAKE_DIR}/awkfail"
+mkdir -p "${_AWK_DIR}"
+printf '#!/usr/bin/env bash\nexit 2\n' > "${_AWK_DIR}/awk"
+chmod +x "${_AWK_DIR}/awk"
+( PATH="${_AWK_DIR}:${PATH}"; apt_sources_set_architectures "${_SRC_FILE}" "arm64" ) 2>/dev/null
+_rc=$?
+t_assert_eq "1" "${_rc}" "a failed rewrite must be reported, not swallowed as success"
+t_assert_eq "${_before}" "$(cat "${_SRC_FILE}")" \
+  "the sources file must survive intact (it used to be truncated to 0 bytes)"
+t_assert_eq "1" "$(find "${_SRC_DIR}" -type f | wc -l)" \
+  "the temp must be removed on the failure path too (no EXIT trap: this file is SOURCED)"
+
+# ---------------------------------------------------------------------------
+# DUP1: cross_pkg_config_libdir's host-multiarch fallback routes through
+# platform.sh instead of a hand-rolled uname->triplet case. The fallback only
+# fires when DEB_BUILD_MULTIARCH is unset AND dpkg-architecture is unusable, so
+# shadow both — and shadow uname too, so the expected answer does not depend on
+# the machine running the suite.
+_SHIM_DIR="${FAKE_DIR}/shim"
+mkdir -p "${_SHIM_DIR}"
+printf '#!/usr/bin/env bash\nexit 1\n' > "${_SHIM_DIR}/dpkg-architecture"
+printf '#!/usr/bin/env bash\necho aarch64\n' > "${_SHIM_DIR}/uname"
+chmod +x "${_SHIM_DIR}/dpkg-architecture" "${_SHIM_DIR}/uname"
+
+t_case "cross_pkg_config_libdir derives the build-arch pkgconfig dir via platform.sh"
+_libdir="$(
+  PATH="${_SHIM_DIR}:${PATH}"
+  unset DEB_BUILD_MULTIARCH PKG_CONFIG_PATH
+  cross_pkg_config_libdir riscv64-linux-gnu
+)"
+t_assert_contains "${_libdir}" "/usr/lib/aarch64-linux-gnu/pkgconfig" \
+  "host tools (xcb & friends) must still resolve during a cross build"
+t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
+  "the target triplet's own dirs must still be there"
+
+# Behaviour DELTA of the dedup, pinned deliberately: the old inline case fell
+# through to the raw `uname -m` for anything it did not recognise, so an exotic
+# machine got a nonsense "/usr/lib/sparc64/pkgconfig" candidate. platform.sh
+# returns non-zero instead, so the candidate is simply skipped. Both are inert
+# (the dir does not exist either way) — this pins which one we ship.
+t_case "an unrecognised build machine yields NO host pkgconfig dir (not a bogus one)"
+cat > "${_SHIM_DIR}/uname" <<'FAKE'
+#!/usr/bin/env bash
+echo sparc64
+FAKE
+_libdir="$(
+  PATH="${_SHIM_DIR}:${PATH}"
+  unset DEB_BUILD_MULTIARCH PKG_CONFIG_PATH
+  cross_pkg_config_libdir riscv64-linux-gnu
+)"
+_rc=$?
+t_assert_eq "0" "${_rc}" "the degraded lookup must still return success"
+case "${_libdir}" in
+  *"/usr/lib/sparc64/pkgconfig"*) _bogus="present" ;;
+  *) _bogus="absent" ;;
+esac
+t_assert_eq "absent" "${_bogus}" "no un-normalised uname value may reach the pkgconfig path"
+t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
+  "the target dirs must survive the degraded host lookup"
+
+# ---------------------------------------------------------------------------
+# The two ways the host-multiarch lookup comes back empty must NOT degrade
+# identically. A single `arch_deb_multiarch_triplet_for "$(uname -m)"
+# 2>/dev/null || true` swallowed both "unknown build arch" (rc 1 — expected)
+# and "platform.sh was never sourced" (rc 127, command not found — a WIRING
+# bug) into the same silent empty string. In the second case every host-arch
+# pkgconfig dir vanishes from PKG_CONFIG_LIBDIR and host-arch tools start
+# failing to configure with nothing in the log pointing at the cause.
+# uname still reports sparc64 from the shim written above.
+_PKGCONF_ERR="${FAKE_DIR}/pkgconf.err"
+
+t_case "an unrecognised build machine degrades QUIETLY (nothing on stderr)"
+: > "${_PKGCONF_ERR}"
+_libdir="$(
+  PATH="${_SHIM_DIR}:${PATH}"
+  unset DEB_BUILD_MULTIARCH PKG_CONFIG_PATH
+  cross_pkg_config_libdir riscv64-linux-gnu 2>"${_PKGCONF_ERR}"
+)"
+t_assert_eq "" "$(cat "${_PKGCONF_ERR}")" \
+  "an arch platform.sh does not know is expected degradation, not something to shout about"
+
+t_case "a MISSING arch_deb_multiarch_triplet_for is reported as the wiring bug it is"
+: > "${_PKGCONF_ERR}"
+_libdir="$(
+  PATH="${_SHIM_DIR}:${PATH}"
+  unset DEB_BUILD_MULTIARCH PKG_CONFIG_PATH
+  unset -f arch_deb_multiarch_triplet_for
+  cross_pkg_config_libdir riscv64-linux-gnu 2>"${_PKGCONF_ERR}"
+)"
+_rc=$?
+t_assert_contains "$(cat "${_PKGCONF_ERR}")" "arch_deb_multiarch_triplet_for" \
+  "the warning must name the helper that is missing"
+t_assert_contains "$(cat "${_PKGCONF_ERR}")" "platform.sh was never sourced" \
+  "a missing helper must name its cause — it used to be indistinguishable from an unknown arch"
+t_assert_eq "0" "${_rc}" \
+  "loud, but still not fatal: a degraded pkgconfig lookup must not fail the caller"
+t_assert_contains "${_libdir}" "/usr/lib/riscv64-linux-gnu/pkgconfig" \
+  "the target triplet dirs must survive the un-wired host lookup"
 
 t_summary

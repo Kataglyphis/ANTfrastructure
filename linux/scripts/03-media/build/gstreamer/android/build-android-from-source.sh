@@ -168,6 +168,55 @@ override_soundtouch_codeberg_checksum() {
     rm -f "${tmp}"
 }
 
+override_glib_libiconv_dep() {
+    # CERB-ICONV (2026-08-23): cerbero's glib recipe declares the libiconv dep
+    # only below API 28 ("Android only provides libiconv with API level >=28",
+    # recipes/glib.recipe), but on Android libiconv lands in the prefix ANYWAY
+    # -- fontconfig, zbar and libass append it for every Android target, flac
+    # adds it for riscv64 specifically. GNU libiconv's iconv.h #defines
+    # iconv_open -> libiconv_open, so whether glib compiles against bionic's
+    # iconv or against the renamed one depends purely on WHEN libiconv's header
+    # got installed relative to glib's configure/compile: nothing orders them.
+    # Lose that race and glib compiles the renamed symbol but links without
+    # -liconv -- "ld.lld: error: undefined symbol: libiconv_open" while linking
+    # libglib-2.0.so, which killed the cold riscv64 lane in wave5l and then
+    # passed unchanged in wave5m. Declaring the dep makes the order
+    # deterministic and adds no recipe to the build set (Android builds
+    # libiconv either way). Best-effort: on any surprise the recipe is left
+    # exactly as upstream shipped it.
+    local recipe="recipes/glib.recipe"
+    [ -f "${recipe}" ] || {
+        echo "WARNING: recipes/glib.recipe missing - glib<-libiconv dep NOT declared (CERB-ICONV)" >&2
+        return 0
+    }
+    if grep -q "CERB-ICONV" "${recipe}"; then
+        echo "cerbero: glib <- libiconv dep already declared (CERB-ICONV)"
+        return 0
+    fi
+
+    cp "${recipe}" "${recipe}.cerb-iconv.bak"
+    sed -i \
+      -e "s|^\([[:space:]]*\)if self.config.target_platform == Platform.ANDROID and DistroVersion.get_android_api_version(self.config.target_distro_version) < 28:|\1if self.config.target_platform == Platform.ANDROID:  # CERB-ICONV: declare on every API level (link-order race)|" \
+      "${recipe}"
+
+    if ! grep -q "CERB-ICONV" "${recipe}"; then
+        mv -f "${recipe}.cerb-iconv.bak" "${recipe}"
+        echo "WARNING: glib's API<28 libiconv guard not found (upstream reformat?) - dep NOT declared (CERB-ICONV)" >&2
+        return 0
+    fi
+    # A botched sed would surface hours later as an unreadable recipe; parse it
+    # now and roll back instead (recipes are exec'd python, so compile() is a
+    # real syntax gate).
+    if command -v python3 >/dev/null 2>&1 \
+       && ! python3 -c "import sys; compile(open(sys.argv[1]).read(), sys.argv[1], 'exec')" "${recipe}" 2>/dev/null; then
+        mv -f "${recipe}.cerb-iconv.bak" "${recipe}"
+        echo "WARNING: glib<-libiconv edit broke recipe syntax - reverted (CERB-ICONV)" >&2
+        return 0
+    fi
+    rm -f "${recipe}.cerb-iconv.bak"
+    echo "cerbero: glib <- libiconv dep -> $(grep -m1 "CERB-ICONV" "${recipe}" | sed 's/^[[:space:]]*//')"
+}
+
 # ------------------------------------------------------------------------------
 # Concurrency limiting (similar to the desktop GStreamer build)
 # ------------------------------------------------------------------------------
@@ -241,6 +290,7 @@ fi
 patch_cerbero_system_m4_usage
 override_soundtouch_codeberg_checksum
 override_pkgconfig_dead_mirror
+override_glib_libiconv_dep
 
 # 5. Setup Python Virtual Environment
 HOST_PYTHON="$(resolve_host_python)"
