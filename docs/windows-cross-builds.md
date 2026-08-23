@@ -236,6 +236,9 @@ amd64 command line stays byte-identical. All were measured on 2026-08-23 against
 | `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV) | An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. Full `/O2` is retained. See below. |
 | MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`) | The existing Windows skip was gated on `WIN32 AND _MLAS_REQUIRES_ASM`, and upstream derives that flag from `MLAS_X86_64` / `MLAS_ARM64` / … — whose detection does **not** fire for a `CMAKE_SYSTEM_PROCESSOR=ARM64` cross configure. The skip silently did nothing on the arm64 lane, MLAS built a C++-only subset whose objects still referenced the GAS-only assembly kernels, and it failed at **link** with `undefined symbol: MlasGemvFloatKernel` / `MlasHGemmSupported`. amd64 is unchanged — `_MLAS_REQUIRES_ASM` is TRUE there, so both forms of the condition fire identically, and that lane already skipped MLAS. |
 | `mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV) | Bundled MLAS assumes *"`_M_ARM64` implies the MSVC compiler"* and remaps two ACLE reduction intrinsics onto MSVC's private spellings: `#define vmaxvq_f32(src) neon_fmaxv(src)`. clang-cl defines `_M_ARM64` too, but implements the ACLE names and has no `neon_fmaxv` at all. The upstream `#ifndef vmaxvq_f32` guard does not help — clang provides it as a *function*, not a macro, so the guard is true and MLAS shadows the real intrinsic. The condition being corrected is *which compiler*, not *which architecture*, so each `#define` is wrapped rather than deleted. |
+| `have_sse`/`have_sse2` gated on `cpu_family` (gst-plugins-base) | **Upstream bug.** Its MSVC branch assumes *"not `x86_64`" means "x86 32-bit"* and never considers ARM64, so aarch64 falls into the `else` and gets `sse_args = '/arch:SSE'`. It then decides purely on `cc.has_argument(sse_args)` — and **clang-cl accepts `/arch:SSE` for an aarch64 target completely silently**, so the x86 SSE resampler sources are compiled for ARM and die in `mmintrin.h`. `have_sse41` already carries the `cpu_family` guard; the fix just extends it to its two siblings. Nothing is fixable on the meson side: `ClangClCompiler.has_arguments` already appends `-Werror=unknown-argument`, `-Werror=unknown-warning-option` **and** `-Werror=unused-command-line-argument`. |
+| Vulkan lib dir follows `host_machine` (gst-plugins-bad) | **Upstream bug, same class: the wrong machine is asked.** `vulkan/meson.build` picks `join_paths(vulkan_root, 'Lib')` when `build_machine.cpu_family() == 'x86_64'` — the machine doing the compiling, which is x86_64 here no matter the target. Because the directory is passed **explicitly** via `cc.find_library('vulkan-1', dirs: …)`, no `LIB` ordering can override it. meson itself already gets this right (`VulkanDependencySystem` maps build `x86_64` + host `aarch64` → `Lib-ARM64`); gst-plugins-bad simply computes the path by hand instead of using it. |
+| `-FIio.h` → assembly-safe shim (GStreamer) | meson hands `c_args` to `.S` files too, so a force-included C header lands in an **assembly** translation unit and is parsed as instructions (`vadefs.h: unrecognized instruction mnemonic — typedef char* va_list;`). The shim wraps the include in `#ifndef __ASSEMBLER__`, which clang defines only for `.S`. Beyond openh264 this matters for dav1d, libvpx and x264, which all ship aarch64 `.S` as well — fixing the flag beats disabling one subproject at a time. |
 | `--disable-asm` (FFmpeg) | aarch64 GAS assembly needs `gas-preprocessor.pl` driving `armasm64`. Correct but slower; enabling it is tracked follow-up work, not a blocker. |
 
 ### The OpenCV softfloat / NEON collision
@@ -321,6 +324,44 @@ slower:
 >
 > The observation that every offender was serialisation, parsing or decoding code was correct but
 > incidental: the common thread is **big `switch` statements**, not when the code runs.
+
+## The meson cross file: `--target` belongs in `[binaries]`
+
+The single most load-bearing line in the GStreamer cross setup is easy to get wrong, and getting it
+wrong produces a **green configure** followed by machine-type conflicts everywhere:
+
+```ini
+[binaries]
+c   = ['sccache', 'clang-cl', '--target=aarch64-pc-windows-msvc']
+cpp = ['sccache', 'clang-cl', '--target=aarch64-pc-windows-msvc']
+```
+
+`[host_machine] cpu_family` does **not** drive `/MACHINE` — that was the wrong assumption, and it
+only steers the `meson.build` tree's own arch branches. What actually decides is the triple the
+**compiler reports**. Verified against meson 1.12.0:
+
+| Where | What it does |
+|---|---|
+| `compilers/detect.py:439` | runs `<exelist> --version` and parses `^Target: (.*?)-` |
+| `compilers/mixins/visualstudio.py:114` | `elif 'aarch64' in target: self.machine = 'arm64'` |
+| `compilers/mixins/visualstudio.py:123` | `self.linker.machine = self.machine` — the dynamic linker inherits it |
+| `compilers/detect.py:224` | `VisualStudioLinker(linker, env, getattr(compiler, 'machine', None))` — and so does the archiver |
+
+With `--target` only in `-Dc_args`, `clang-cl --version` reports the **host** triple, meson
+canonicalises that to `x64`, and every static archive and DLL is built `/MACHINE:x64` while the
+objects are aarch64:
+
+```
+libgnulib.a.p/asnprintf.c.obj: file machine type arm64 conflicts with library machine type x64
+```
+
+Note meson skips `/MACHINE` entirely when the machine is unknown (`ClangClDynamicLinker.get_output_args`:
+*"If we're being driven indirectly by clang just skip /MACHINE, as clang's target triple will handle
+the machine selection"*), so a **missing** `/MACHINE` is fine — a **wrong** one is not.
+
+The duplicate `--target` in `-Dc_args`/`-Dcpp_args` stays deliberately: those keep the compile
+flags correct even for subprojects that rebuild the command line, and the command line beats a
+machine file's `[built-in options]`, which is why the triple cannot live there.
 
 ## The merge stage on arm64
 
@@ -414,6 +455,58 @@ Three details worth keeping:
 - **The URL must encode the `+` as `%2B`.** That is the canonical `browser_download_url` the GitHub release
   API returns, and the unencoded form 404s. Note also that GitHub refuses **HEAD** on release assets, so a
   failed HEAD is *not* evidence the asset is missing — verify with a ranged GET instead.
+
+## aarch64 OpenSSL is a base prerequisite too
+
+scoop installs **one architecture per app**, and that is the host's — so the image carries
+`lib\VC\x64\MD\libcrypto.lib` and nothing else. Four GStreamer targets link OpenSSL and all four
+failed identically: `ext/hls` (HTTP Live Streaming), `ext/dtls` (WebRTC), `ext/aes`, and
+glib-networking's OpenSSL TLS backend.
+
+`setup-scoop-tools.ps1` now installs the arm64 build **beside** the x64 one, using the same
+upstream artifact and the same SHA256 that scoop's own `openssl` manifest pins for its `arm64`
+entry. Three things about that step are load-bearing:
+
+- **Extract, never run.** The manifest is marked `"innosetup": true`, which is exactly how scoop
+  installs it — with `innounp`. Running the installer silently was tried first and is what *not*
+  to do: the whole step took 11.8 s including the 218 MB download, exited **0**, and produced no
+  files at all. A silent no-op that looks like success is the failure mode this repo exists to
+  gate against, and it was only caught because the step searches for `libcrypto.lib` afterwards
+  instead of trusting the exit code.
+- **Declare the dependency, don't inherit it from order.** `innounp` reaches this image only as a
+  side effect of scoop installing some innosetup package, and `scoop install main/openssl` runs
+  *later* in the same file (measured: this block at 349 s, openssl at 406 s). The block installs
+  `main/innounp` explicitly so it is position-independent.
+- **Find the layout, never compose it.** innounp extracts InnoSetup payloads under a literal
+  `{app}` directory, so the real paths are `…\{app}\lib\VC\arm64\MD\libcrypto.lib` and
+  `…\{app}\include\openssl\opensslv.h`. Both the lib dir and the include dir are located by
+  searching for a known file; a `Join-Path $root 'include'` would silently point at nothing.
+
+The package ships **no** `.pc` files, so the GStreamer build authors `libcrypto`, `libssl` and
+`openssl` with `Write-PkgConfigFile` — the same helper OpenCV and ONNX Runtime already need for
+the same reason — and puts that directory **first** on `PKG_CONFIG_PATH` so it wins over the
+image's x64 `openssl.pc`.
+
+## Two resilience fixes the merge stage needed
+
+Neither is arm64-specific; both were found by the arm64 work and apply to **both** lanes.
+
+**`win-pkgconfig` is the one subproject that fetches with no fallback.** Its `download-binary.py`
+has a single `MIRROR_URL`, one `urlopen`, and zero retries. When `gstreamer.freedesktop.org`
+returned `HTTP Error 503`, win-flex-bison fell back to GitHub and nasm to nasm.us — and this
+alone killed the merge, three separate runs. The same script opens with
+`if os.path.isfile(dest_path) and sha256 matches: sys.exit(0)`, so the archive is now pre-placed
+in phase 5 with `Invoke-DownloadWithRetry` (4 attempts, exponential backoff) and verified against
+the **same** hash meson checks. Version and hash are parsed out of the subproject's `meson.build`
+rather than hardcoded. A failure there is a warning, never a throw: meson still has its own
+attempt, and this must not become the thing that breaks a build.
+
+**A failed download wears a deterministic error's costume.** `meson setup`'s retry logic
+short-circuits on `meson.build:LINE:COL: ERROR`, correctly — a real configure error repeats
+identically and a retry costs a full wrap re-download. But a download failure is reported in
+exactly that form, so the classifier now also looks for a **network signature**
+(`HTTP Error …`, `Failed to download`, `URLError`, timeouts, refused connections) and retries when
+it finds one, without weakening the short-circuit for genuine errors.
 
 ## What this lane cannot produce
 

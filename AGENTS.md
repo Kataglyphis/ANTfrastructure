@@ -48,6 +48,16 @@ do not restate it here, it moves).
 > (`clang-cl --target=aarch64-pc-windows-msvc` + `lld-link`), and its product is an artifact
 > bundle, not a runnable image. Never pass `--platform windows/arm64` on its output — that
 > produces an unrunnable manifest.
+>
+> **The base carries THREE arm64-only prerequisites, all installed unconditionally** (gating them
+> on an arch ARG would re-pay the chain's most expensive layers on every lane switch): the MSVC
+> `VC.Tools.ARM64` CRT/import libs, Vulkan's optional `Lib-ARM64` component, `clang_rt.builtins-aarch64.lib`
+> (clang lowers 128-bit integer math to compiler-rt libcalls — without it GStreamer fails at link on
+> `__udivti3`), and an aarch64 OpenSSL beside the x64 one (scoop installs one arch per app; four
+> GStreamer targets link OpenSSL). `probe-arm64-prereqs.ps1` checks them; each is **warn-only** in the
+> base because that layer is shared and an arm64-only prerequisite must never break the amd64 build.
+> `WINDOWS_ARM64_STRICT=1` promotes all of them to hard gates. Details and the traps in
+> `docs/windows-cross-builds.md`.
 
 | Dockerfile | FROM | Produces |
 |------------|------|----------|
