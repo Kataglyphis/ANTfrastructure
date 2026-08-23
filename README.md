@@ -53,9 +53,14 @@ expense of the others:
   gitleaks secret scan), a fast preflight (`linux/scripts/preflight.sh`) that
   catches error classes in seconds instead of hours, and runtime smokes that
   assert real behavior against the pins. On the **Windows** lane the smoke test
-  is not optional: every chain ends with a gate that runs it against the image
-  it just built and fails the build if it does not pass — with coverage floors,
+  is not optional: every **amd64** chain ends with a gate that runs it against the
+  image it just built and fails the build if it does not pass — with coverage floors,
   so "nothing ran" is a distinct failure rather than a green "all tests passed".
+  The arm64 cross lane is the one exception, and deliberately so: that smoke test
+  verifies by *executing* the staged binaries, which an x64 host cannot do with ARM64
+  code, so the gate is reported NOT APPLICABLE rather than passed. Its floors are not
+  lowered to fake a run — the cross lane is verified statically instead, by a PE
+  machine-type gate over the whole install prefix.
   The tests that matter most there assert *loading*, not existence: this repo's
   defect history is dominated by libraries that build and link cleanly and then
   fail at load time.
@@ -109,12 +114,17 @@ linux/
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**: `windows/amd64`.
 Windows **targets**: `amd64` (container image, production) and `arm64`
-(cross-compiled artifact bundle, **wired but not yet built or executed** — see the status banner
-in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
+(cross-compiled artifact bundle — the media core is **built**: ONNX Runtime, ONNX GenAI, FFmpeg and
+OpenCV all cross-compile and link for `aarch64-pc-windows-msvc`. **Nothing it produces has ever been
+executed**, because Windows x64 cannot run ARM64 code; every arm64 signal is a static PE machine-type
+check. See the status banner in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no arm64
-> `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a `:winarm64`
-> container cannot exist. The arm64 lane builds inside the same `windows/amd64` container with
+> `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a **runnable**
+> arm64 Windows container cannot exist. The lane does emit a `:winarm64` tag — but that labels a
+> `windows/amd64` image carrying an aarch64 payload, so it must **never** be published with
+> `--platform windows/arm64`; that yields a manifest nothing can run. The arm64 lane builds inside
+> the same `windows/amd64` container with
 > `clang-cl --target=aarch64-pc-windows-msvc` + `lld-link` and emits an artifact bundle
 > (libs/DLLs/headers) for use on real ARM64 Windows hardware. CUDA/cuDNN/TensorRT have no
 > Windows-on-ARM support and are excluded from that lane. See

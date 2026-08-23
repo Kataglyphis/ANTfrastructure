@@ -11,12 +11,15 @@ produce, and which gates keep it honest.
 > readiness checks, the MLAS kernel-flag floor, and the `verify-target-arch.ps1` PE gate wired
 > into the merge stage.
 >
-> **Cross-built for `aarch64-pc-windows-msvc`:** ONNX Runtime (CPU, DML off, 25 MLAS fp16 TUs
-> tagged) and FFmpeg (`--disable-asm`, see below). OpenCV is in progress and carries three
-> upstream portability fixes. ONNX GenAI is wired but has not completed a build.
+> **Cross-built for `aarch64-pc-windows-msvc`:** the whole media core — ONNX Runtime (CPU; DML off;
+> 25 MLAS fp16 TUs tagged), ONNX GenAI (`ENABLE_PYTHON=OFF`), FFmpeg (`--disable-asm`) and OpenCV
+> (five upstream portability fixes, see below). GStreamer builds in the merge stage.
 >
-> **Not attempted:** GStreamer, LiteRT and a target CPython. There is no `windows-11-arm` CI job
-> — the user declined one.
+> **Cannot be cross-built at all:** `media-litert` and `media-tvm` — LiteRT-LM links a prebuilt
+> x86_64-only static library, and TVM builds its own LLVM with `X86;NVPTX` targets only. Both are
+> replaced by an empty stand-in; see "The merge stage on arm64". A target CPython is not attempted,
+> which is why no lane component builds Python bindings or wheels. There is no `windows-11-arm` CI
+> job — the repo owner declined one.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Every arm64 signal here is a static PE machine-type check. A green build is evidence that the
@@ -368,17 +371,49 @@ Both would have produced a **green** result:
 
 1. **compiler-rt was selected arch-blind.** The old code took `Select-Object -First 1` over every
    `*builtins*.lib` and handed the path straight to `lld-link`. LLVM ships one per target, and on the cross
-   lane the x86_64 one sorts first. Measured against the toolchain image
-   (`probe-arm64-prereqs.ps1` Q5): the install ships **only** `clang_rt.builtins-x86_64.lib` — there is no
-   aarch64 counterpart at all. The lane now links *nothing* rather than the host's library, and warns. If
-   the link later fails on `__udivti3`/`__umodti3`, that is the cause, and the fix is an aarch64
-   compiler-rt — never the x86_64 one.
+   lane the x86_64 one sorts first — so an aarch64 image would have been linked against the host's runtime.
+   The selection is now filtered by target, and when no match exists the lane links *nothing* rather than
+   the wrong thing. See the next section: the gap turned out to be real, and it is now filled.
 2. **The arch gate's coverage floor could silently disable itself.** It arrives as
    `-MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED)`, and `[int]$null` is `0`, which switches the floor
    off entirely — so a dropped build-arg would turn the gate into a clean pass over whatever it happened to
    find. "No floor" is now an explicit `-AllowEmptyTree` opt-in, and the cross lane raises the floor to 100
    (the Dockerfile default of 10 is far below what a complete bundle contains, and could not detect losing
    a whole component).
+
+## aarch64 compiler-rt is a base prerequisite
+
+scoop's `main/llvm` is the **x64** Windows release, and LLVM ships compiler-rt for the host architecture
+only: the install contains `clang_rt.builtins-x86_64.lib` and nothing else. `probe-arm64-prereqs.ps1` Q5
+has checked for the aarch64 counterpart since this lane was designed, and reported `[FAIL]` the whole time.
+
+That is not cosmetic. clang lowers 128-bit integer arithmetic to compiler-rt libcalls on aarch64, so the
+first component that does 64×64→128 math fails at **link**, not compile:
+
+```
+lld-link: error: undefined symbol: __udivti3
+>>> referenced by gstutils.c:670 (gst_util_uint64_scale)
+```
+
+ONNX Runtime, FFmpeg and OpenCV happen not to need it. GStreamer does — which is why the gap stayed
+invisible until the merge stage.
+
+`setup-scoop-tools.ps1` now fetches the official
+`clang+llvm-<ver>-aarch64-pc-windows-msvc.tar.xz`, extracts **only**
+`clang_rt.builtins-aarch64.lib` (280 KB out of a 704 MB archive), drops it beside the host library, and
+deletes the archive. Measured on the build host: 0.8 min to download, 0.4 min to extract.
+
+Three details worth keeping:
+
+- **The destination is derived from the host library's own directory**, never hardcoded. That is by
+  construction the directory clang and every consumer already search, so no discovery logic has to learn a
+  new path.
+- **It installs unconditionally**, like the MSVC ARM64 toolset and the Vulkan ARM64 component. Gating it on
+  an arch ARG would re-pay the chain's most expensive layers on every lane switch. It sits *after*
+  `setup-vs.ps1` in `Dockerfile.base`, so adding it does not invalidate the VS layer.
+- **The URL must encode the `+` as `%2B`.** That is the canonical `browser_download_url` the GitHub release
+  API returns, and the unencoded form 404s. Note also that GitHub refuses **HEAD** on release assets, so a
+  failed HEAD is *not* evidence the asset is missing — verify with a ranged GET instead.
 
 ## What this lane cannot produce
 

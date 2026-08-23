@@ -8,6 +8,18 @@ workflow (see "Pre-flight" below).
 The guiding principle: **every error we debugged interactively should become a
 check that fails in seconds, not after a 30–60 min emulated build.**
 
+> **Scope: this page is the LINUX cross lane.** Its failure classes come from the
+> `base→:latest-cross` campaigns and its checks assume QEMU, ELF and a runnable
+> target. The **Windows** arm64 cross lane is documented separately in
+> [`windows-cross-builds.md`](windows-cross-builds.md), and its verification story is
+> deliberately different in one decisive way: **nothing it produces can be executed at
+> all.** Windows x64 has no ARM64 emulation, so there is no Windows counterpart to the
+> "compile+link+RUN under qemu" half of class 4 below — only the static half. That lane's
+> equivalent of the per-arch ELF/machine check is `windows/scripts/build/verify-target-arch.ps1`
+> (PE `Machine` field over the whole install prefix, with a minimum-inspected floor so a
+> lane that staged nothing cannot pass green), and its smoke gate is reported
+> NOT APPLICABLE rather than skipped.
+
 ## Failure classes (from build history)
 
 | # | Class | Representative bug(s) | Fix commit(s) | Caught early by |

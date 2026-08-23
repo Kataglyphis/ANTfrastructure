@@ -878,6 +878,51 @@ int _isatty(int);
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
 
+    # ── gst-plugins-base x86 SIMD gate (ARM cross only) ──────────────────────
+    # Upstream bug. subprojects/gst-plugins-base/meson.build decides whether to
+    # build the x86 SSE resampler variants like this:
+    #     if cc.get_argument_syntax() == 'msvc'
+    #       if host_machine.cpu_family() == 'x86_64'
+    #         sse_args = '/arch:SSE2'
+    #       else
+    #         sse_args = '/arch:SSE'          <-- aarch64 lands HERE
+    #       endif
+    #       have_sse  = cc.has_argument(sse_args)      <-- NOT arch-guarded
+    #       have_sse2 = cc.has_argument(sse2_args)     <-- NOT arch-guarded
+    #       have_sse41 = cc.has_argument(sse41_args) and host_machine.cpu_family() == 'x86_64'
+    # The msvc branch assumes "not x86_64" means "x86 32-bit" and never considers
+    # ARM64. have_sse41 already carries the cpu_family guard; have_sse/have_sse2
+    # do not, and clang-cl ACCEPTS /arch:SSE for an aarch64 target completely
+    # silently -- no error, no warning. meson already tries to catch exactly this
+    # (ClangClCompiler.has_arguments appends -Werror=unknown-argument,
+    # -Werror=unknown-warning-option and -Werror=unused-command-line-argument),
+    # so there is nothing to fix on the meson side. Result (measured 2026-08-23):
+    #   audio-resampler-x86-sse.c -> mmintrin.h(14,2): error: "This header is
+    #   only meant to be used on x86 and x64 architecture"
+    # The fix simply extends the guard upstream already applies to have_sse41.
+    if ($script:GstCross) {
+        $gstBaseMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-base/meson.build'
+        if (-not (Test-Path $gstBaseMeson)) {
+            log "NOTE: $gstBaseMeson not found - skipping the x86 SIMD guard (layout changed?)"
+        } elseif ((Get-Content -LiteralPath $gstBaseMeson -Raw) -match "cpu_family\(\) in \['x86'") {
+            log 'gst-plugins-base x86 SIMD guard already applied.'
+        } else {
+            # 'have_sse2?' deliberately does NOT match have_sse41: after 'have_sse'
+            # the next character there is '4', which fails the '\s*=' that follows.
+            [void](Invoke-InlineRegexPatch -Path $gstBaseMeson -Guard 'have_sse\s*=\s*cc\.has_argument' `
+                    -Pattern 'have_sse2?\s*=\s*cc\.has_argument\(sse2?_args\)' `
+                    -Replacement "`$0 and host_machine.cpu_family() in ['x86', 'x86_64']" `
+                    -Description 'gst-plugins-base: gate x86 SSE resampler variants on cpu_family')
+            $gstBaseText = Get-Content -LiteralPath $gstBaseMeson -Raw
+            if ($gstBaseText -notmatch "cpu_family\(\) in \['x86'") {
+                throw ("gst-plugins-base meson.build: the have_sse/have_sse2 guard did not apply (upstream layout " +
+                       "changed?). Without it the x86 SSE resampler sources are compiled for aarch64 and die in " +
+                       "mmintrin.h. Re-check $gstBaseMeson.")
+            }
+            log 'Patched gst-plugins-base: x86 SSE resampler variants now gated on host_machine.cpu_family().'
+        }
+    }
+
     Switch-BuildPhase '6. meson setup'
     # ---- 6. meson setup (retry with wrap cleanup) ----
     # Meson cross file. Meson has NO per-target compiler property the way CMake
