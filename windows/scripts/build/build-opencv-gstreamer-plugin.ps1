@@ -96,6 +96,26 @@ $cmakeExtra = @(
     # WIN32 GStreamer detection walks GSTREAMER_DIR with find_path/find_library.
     "-DGSTREAMER_DIR=$($InstallDir -replace '\\', '/')"
 )
+
+# CROSS LANE: OpenCVConfig.cmake DETECTS the arch when it is not told, and this is
+# a fresh cmake process that knows nothing about how OpenCV was built. Its root
+# config composes the library search paths as
+#   list(APPEND candidates "${OpenCV_ARCH}/${OpenCV_RUNTIME}/lib")
+# and falls back to detecting the BUILD machine, which is x86_64 here — so it
+# looks under x64\vc18\lib, finds nothing (the install is arm64\vc18) and reports
+#   OpenCVConfig.cmake ... but it set OpenCV_FOUND to FALSE
+# rather than anything about architecture (measured 2026-08-23).
+#
+# The same override hook the OpenCV build itself uses is honoured here:
+#   OpenCVConfig.root-WIN32.cmake.in:96  if(DEFINED OpenCV_ARCH AND DEFINED OpenCV_RUNTIME)
+# BOTH must be defined or the branch does not fire, which is why the runtime is
+# passed too. Keep this in step with build-opencv-from-source.ps1 — the values
+# must be the ones OpenCV actually installed under.
+$plugTargetArch = Get-WindowsTargetArch
+if (Test-WindowsCrossTarget -Arch $plugTargetArch) {
+    $cmakeExtra += "-DOpenCV_ARCH=$(Get-OpenCvArchDir -Arch $plugTargetArch)", '-DOpenCV_RUNTIME=vc18'
+    Write-Host "OpenCV plugin cross ($plugTargetArch): find_package pinned to $(Get-OpenCvArchDir -Arch $plugTargetArch)\vc18 (OpenCVConfig would otherwise detect the build machine)"
+}
 Invoke-CmakeConfigure -SourceDir $pluginSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
 # GATE (the #94 lesson, applied on day one here): a configure that quietly

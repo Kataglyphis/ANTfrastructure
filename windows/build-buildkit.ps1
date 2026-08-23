@@ -245,11 +245,21 @@ if ($TargetArch -ne 'amd64') {
         throw ("-Gpu is not available for -TargetArch $TargetArch : CUDA, cuDNN and TensorRT have no " +
                'Windows-on-ARM builds at all. The arm64 lane is CPU + Vulkan only.')
     }
+    # Asking for torch EXPLICITLY is an error; inheriting it from the parameter
+    # default just drops it with a notice -- the same distinction $MediaBranches
+    # makes below. Throwing on the default made the documented invocation
+    # `build-buildkit.ps1 -TargetArch arm64` fail 100 % of the time, because
+    # $Stages defaults to @('base','sdk','toolchain','media','torch','final'):
+    # every caller had to know to pass -Stages explicitly, and the error told
+    # them so only after they had already hit it.
     if ($Stages -contains 'torch') {
-        throw ("-Stages torch is not available for -TargetArch $TargetArch : the torch stage runs " +
-               "``uv sync``, which must EXECUTE the target interpreter - impossible in a cross build. " +
-               'Independently, the pinned PyTorch publishes no win_arm64 wheel for the pinned Python. ' +
-               'Re-run without torch, e.g. -Stages base,sdk,toolchain,media,final')
+        $torchWhy = ('the torch stage runs ``uv sync``, which must EXECUTE the target interpreter - impossible in a ' +
+                     'cross build. Independently, the pinned PyTorch publishes no win_arm64 wheel for the pinned Python.')
+        if ($PSBoundParameters.ContainsKey('Stages')) {
+            throw "-Stages torch is not available for -TargetArch $TargetArch : $torchWhy Re-run without torch, e.g. -Stages base,sdk,toolchain,media,final"
+        }
+        $Stages = @($Stages | Where-Object { $_ -ne 'torch' })
+        Write-Host "[bk] stage 'torch' dropped for $TargetArch : $torchWhy" -ForegroundColor Yellow
     }
     # Branches that cannot be cross-built AT ALL - both blocked by binary
     # artifacts upstream, neither fixable here:

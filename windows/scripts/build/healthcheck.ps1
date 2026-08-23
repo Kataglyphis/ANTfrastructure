@@ -11,6 +11,30 @@ $ErrorActionPreference = 'Continue'
 Set-StrictMode -Version Latest
 $failed = $false
 
+# CROSS BUNDLE: every check below verifies by EXECUTING a staged binary
+# (gst-launch --version, ffmpeg -version, python -c "import cv2", ...). On the
+# arm64 lane those binaries are aarch64 while the container is windows/amd64,
+# and Windows x64 has no ARM64 emulation - so each one fails for a reason that
+# says nothing about the bundle's health.
+#
+# The Dockerfile's HEALTHCHECK is unconditional (a Dockerfile cannot branch on an
+# ARG), and the SAME final Dockerfile produces :winarm64, so without this the
+# shipped cross bundle would sit in a permanent `unhealthy` state and retry every
+# five minutes forever. Report the truth instead: this image is an ARTIFACT
+# BUNDLE, deliberately not runnable, and its verification is the static PE
+# machine-type gate that already ran in the merge stage.
+#
+# WINDOWS_TARGET_ARCH is baked as ENV from the media stage onward, so it is
+# present in the final image; anything other than the host arch means cross.
+$hcTargetArch = if ($env:WINDOWS_TARGET_ARCH) { $env:WINDOWS_TARGET_ARCH } else { 'amd64' }
+if ($hcTargetArch -ne 'amd64') {
+    Write-Host "[SKIP] health checks: this is a $hcTargetArch CROSS-COMPILED ARTIFACT BUNDLE, not a runnable image."
+    Write-Host '       Every check here verifies by executing a staged binary, and aarch64 code cannot run on this'
+    Write-Host '       windows/amd64 container. The bundle is verified statically instead, by verify-target-arch.ps1'
+    Write-Host '       (PE machine type over the whole install prefix) in the merge stage. See docs/windows-cross-builds.md.'
+    exit 0
+}
+
 function Check {
     param([string]$Label, [scriptblock]$Block)
     try {

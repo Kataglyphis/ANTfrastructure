@@ -37,7 +37,9 @@ Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows 
 `windows/amd64` only; Windows **targets**: `amd64` (image, production) and `arm64`
 (cross-compiled artifact bundle — plumbing landed 2026-08-22 and the lane **BUILDS** since
 2026-08-23; **nothing it produces has ever been RUN**, because Windows x64 has no ARM64 emulation,
-so every arm64 signal is a static PE machine-type check. `build-buildkit.ps1 -TargetArch arm64`.
+so every arm64 signal is a static PE machine-type check. `build-buildkit.ps1 -TargetArch arm64`
+just works: `torch` is dropped from the DEFAULT stage list with a notice (asking for it
+**explicitly** still throws — it runs `uv sync`, which must execute the target interpreter).
 Which components are through is tracked in the status banner of `docs/windows-cross-builds.md` —
 do not restate it here, it moves).
 
@@ -49,14 +51,19 @@ do not restate it here, it moves).
 > bundle, not a runnable image. Never pass `--platform windows/arm64` on its output — that
 > produces an unrunnable manifest.
 >
-> **The base carries THREE arm64-only prerequisites, all installed unconditionally** (gating them
+> **The base carries FOUR arm64-only prerequisites, all installed unconditionally** (gating them
 > on an arch ARG would re-pay the chain's most expensive layers on every lane switch): the MSVC
 > `VC.Tools.ARM64` CRT/import libs, Vulkan's optional `Lib-ARM64` component, `clang_rt.builtins-aarch64.lib`
 > (clang lowers 128-bit integer math to compiler-rt libcalls — without it GStreamer fails at link on
 > `__udivti3`), and an aarch64 OpenSSL beside the x64 one (scoop installs one arch per app; four
-> GStreamer targets link OpenSSL). `probe-arm64-prereqs.ps1` checks them; each is **warn-only** in the
-> base because that layer is shared and an arm64-only prerequisite must never break the amd64 build.
-> `WINDOWS_ARM64_STRICT=1` promotes all of them to hard gates. Details and the traps in
+> GStreamer targets link OpenSSL). `probe-arm64-prereqs.ps1` reports on all four. Each is
+> **warn-only** in the base because that layer is shared and an arm64-only prerequisite must never
+> break the amd64 build — but the GStreamer build **throws** on the ones it actually needs, so a
+> base missing them fails in the merge stage rather than shipping a bundle without them.
+> `WINDOWS_ARM64_STRICT=1` promotes the base checks to hard gates — **except `setup-vs.ps1`'s MSVC
+> `lib\arm64` check**, whose RUN sits above the `ARG WINDOWS_ARM64_STRICT` declaration in
+> `Dockerfile.base` and therefore never sees it. It must also be passed as a build-arg
+> (`-BuildArg WINDOWS_ARM64_STRICT=1`); a host env var alone does nothing. Details and the traps in
 > `docs/windows-cross-builds.md`.
 
 | Dockerfile | FROM | Produces |

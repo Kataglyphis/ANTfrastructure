@@ -6,14 +6,25 @@ produce, and which gates keep it honest.
 
 > **Status (2026-08-23): the lane builds; nothing it produces has ever been run.**
 >
-> Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on both drivers,
+> Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on the **BuildKit
+> driver only** (`build-buildkit.ps1`) — the classic `build.ps1` has no arm64 support at all and
+> never sees `WINDOWS_TARGET_ARCH`, so the cross lane is BuildKit-only,
 > `ARG WINDOWS_TARGET_ARCH` from the media stage onward, per-arch tags, the base-image ARM64
 > readiness checks, the MLAS kernel-flag floor, and the `verify-target-arch.ps1` PE gate wired
 > into the merge stage.
 >
-> **Cross-built for `aarch64-pc-windows-msvc`:** the whole media core — ONNX Runtime (CPU; DML off;
-> 25 MLAS fp16 TUs tagged), ONNX GenAI (`ENABLE_PYTHON=OFF`), FFmpeg (`--disable-asm`) and OpenCV
-> (five upstream portability fixes, see below). GStreamer builds in the merge stage.
+> **The chain completes end to end: `base → sdk → toolchain → media-core → merge → final` produces
+> `:winarm64`.** Cross-built for `aarch64-pc-windows-msvc`: the whole media core — ONNX Runtime
+> (CPU; DML off; 25 MLAS fp16 TUs tagged), ONNX GenAI (`ENABLE_PYTHON=OFF`), FFmpeg
+> (`--disable-asm`) and OpenCV (five upstream portability fixes, see below) — plus GStreamer with
+> its ~4960 targets and the out-of-tree `opencv_videoio_gstreamer` plugin, all in the merge stage.
+>
+> **The PE architecture gate has run and passed:** `389 binaries inspected, 0 violations`
+> (`verify-target-arch.ps1` over all of `C:\runtime`, floor raised to 100 on this lane). That is
+> the only positive evidence that exists — and it is worth noting what it ruled out: four separate
+> paths could have put host-arch artifacts into the bundle (arch-blind compiler-rt selection, the
+> x64 `vulkan-1.lib`, the x64 OpenSSL, and meson emitting `/MACHINE:x64`), and each would have
+> produced a "successful" bundle that fails to load on real hardware.
 >
 > **Cannot be cross-built at all:** `media-litert` and `media-tvm` — LiteRT-LM links a prebuilt
 > x86_64-only static library, and TVM builds its own LLVM with `X86;NVPTX` targets only. Both are
@@ -401,6 +412,13 @@ So on the cross lane:
 - The GStreamer gate asserts the plugin **DLL was produced**, and says so explicitly (`cross lane - load
   probe impossible on an x64 host`). Whether it is the right machine is `verify-target-arch.ps1`'s job.
 - The whole smoke gate is reported **NOT APPLICABLE**, not "passed".
+- `meson install` runs with `--destdir` so meson skips post-install scripts that would have to run
+  target binaries — see the DESTDIR section below.
+- The shipped image's **`HEALTHCHECK` short-circuits.** `windows/Dockerfile` declares it
+  unconditionally (a Dockerfile cannot branch on an ARG) and the same file produces `:winarm64`, so
+  without this the bundle would sit permanently `unhealthy`, retrying failing checks every five
+  minutes forever. `healthcheck.ps1` reads the baked `WINDOWS_TARGET_ARCH`, reports that this is a
+  cross-compiled **artifact bundle, deliberately not runnable**, and exits 0.
 
 **The smoke floors are deliberately not lowered for arm64.** A reduced `-SmokeMinPassed` would leave a
 number that a later amd64 change could quietly be measured against — which is exactly how the gate
@@ -487,19 +505,59 @@ The package ships **no** `.pc` files, so the GStreamer build authors `libcrypto`
 the same reason — and puts that directory **first** on `PKG_CONFIG_PATH` so it wins over the
 image's x64 `openssl.pc`.
 
-## Two resilience fixes the merge stage needed
+### `meson install` needs DESTDIR on the cross lane
+
+The last thing between a fully compiled GStreamer and an installed one is a **post-install script**:
+
+```
+ERROR: Failed to run install script gio-querymodules: Executable was not found
+ERROR: Install scripts failed to run
+```
+
+`gio-querymodules` indexes GIO modules, and doing that means **executing an aarch64 binary** on this
+x64 host — the same class as the `gst-inspect` gate and the smoke test. meson already has the escape
+hatch, and it is keyed on DESTDIR (`minstall.py:709-713`, `:729-731`):
+
+```python
+if not destdir and len(failing_scripts) > 0:  raise MesonException('Install scripts failed to run')
+if destdir and (isinstance(i, InstallScriptFailure) or i.skip_if_destdir):
+    self.log('Skipping custom install script because DESTDIR is set')
+```
+
+DESTDIR is meson's *"this is a staged/packaging install, do not try to run target binaries"* signal.
+
+**`--destdir C:\` is chosen so the files land exactly where they always did**, with no staging tree
+to move afterwards. From `mesonbuild/scripts/__init__.py`:
+
+```python
+def destdir_join(d1, d2): return str(PurePath(d1, *PurePath(d2).parts[1:]))
+```
+
+`PureWindowsPath('C:\runtime\bin').parts` is `('C:\','runtime','bin')`, so `parts[1:]` drops the
+drive and `PurePath('C:\', 'runtime', 'bin')` is once again `C:\runtime\bin` — byte-identical to the
+non-DESTDIR path. amd64 keeps the plain invocation: there every install script *can* run, and
+skipping `gio-querymodules` would ship an unindexed GIO module directory.
+
+## Three resilience fixes the merge stage needed
 
 Neither is arm64-specific; both were found by the arm64 work and apply to **both** lanes.
 
 **`win-pkgconfig` is the one subproject that fetches with no fallback.** Its `download-binary.py`
 has a single `MIRROR_URL`, one `urlopen`, and zero retries. When `gstreamer.freedesktop.org`
 returned `HTTP Error 503`, win-flex-bison fell back to GitHub and nasm to nasm.us — and this
-alone killed the merge, three separate runs. The same script opens with
-`if os.path.isfile(dest_path) and sha256 matches: sys.exit(0)`, so the archive is now pre-placed
-in phase 5 with `Invoke-DownloadWithRetry` (4 attempts, exponential backoff) and verified against
-the **same** hash meson checks. Version and hash are parsed out of the subproject's `meson.build`
-rather than hardcoded. A failure there is a warning, never a throw: meson still has its own
-attempt, and this must not become the thing that breaks a build.
+alone killed the merge, **four separate runs**. The same script opens with
+`if os.path.isfile(dest_path) and sha256 matches: sys.exit(0)`, so the archive is pre-placed in
+phase 5 and verified against the **same** hash meson checks. Version and hash are parsed out of the
+subproject's `meson.build` rather than hardcoded.
+
+**Retries were the wrong answer, and that took three failures to see.** Four attempts with
+exponential backoff still lost to a sustained outage — backoff helps against a blip, not against a
+server that is down for minutes. The fix is the one the repo already uses for the Vulkan SDK
+(*"Preseed the … exe onto the LAN webdav so containers never pull it from the vendor"*): the archive
+is fetched from `$SCCACHE_WEBDAV_ENDPOINT/preseed/` **first**, with upstream only as fallback — and
+whichever source works, it is PUT back to the preseed path, so the first successful run immunises
+every later one. Every step is fail-open: a preseed miss is not an error, and meson still has its
+own attempt. This must never become the thing that breaks a build.
 
 **A failed download wears a deterministic error's costume.** `meson setup`'s retry logic
 short-circuits on `meson.build:LINE:COL: ERROR`, correctly — a real configure error repeats

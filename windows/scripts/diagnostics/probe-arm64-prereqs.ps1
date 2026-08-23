@@ -173,6 +173,25 @@ Add-Finding -Question 'compiler-rt builtins for aarch64 available' `
     -Detail $(if ($builtinNames) { "found: $builtinNames" } else { "no clang_rt.builtins-*.lib under $llvmLibRoot" })
 
 # ---------------------------------------------------------------------------
+# Q5b -- is there an aarch64 OpenSSL beside the x64 one?
+#
+# scoop installs ONE architecture per app, so the image's openssl is the host's.
+# Four GStreamer targets link OpenSSL (gst-plugins-bad ext/hls, ext/dtls, ext/aes
+# and glib-networking's openssl TLS backend), and they fail at LINK -- ~25 minutes
+# into the merge stage -- not at configure. setup-scoop-tools.ps1 installs the
+# arm64 build beside the x64 one under C:\opt\openssl-arm64.
+#
+# Searched, never composed: innounp unpacks InnoSetup payloads under a literal
+# '{app}' directory, so the real path is {app}\lib\VC\arm64\MD\libcrypto.lib and
+# any hardcoded guess would report a false negative.
+# ---------------------------------------------------------------------------
+$sslArm64Root = 'C:\opt\openssl-arm64'
+$sslArm64Hit = @(Get-ChildItem $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue)
+Add-Finding -Question 'aarch64 OpenSSL available (gst hls/dtls/aes + glib-networking TLS)' `
+    -Ok ([bool]$sslArm64Hit.Count) `
+    -Detail $(if ($sslArm64Hit.Count) { "found: $($sslArm64Hit[0].FullName)" } else { "no libcrypto.lib under $sslArm64Root" })
+
+# ---------------------------------------------------------------------------
 # Q6 -- which vcpkg triplets are materialized right now?
 # ---------------------------------------------------------------------------
 $vcpkgInstalled = 'C:\vcpkg\installed'

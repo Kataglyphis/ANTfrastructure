@@ -526,9 +526,35 @@ int _isatty(int);
             if ($wpcHave) {
                 log "win-pkgconfig: pkg-config-$wpcVer.zip already present and matches $($wpcSha.Substring(0,12))..."
             } else {
-                $wpcUrl = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"
+                # LAN preseed FIRST, upstream second. Retries do not help against a
+                # sustained outage: gstreamer.freedesktop.org 503'd for long enough
+                # that four attempts with backoff still failed, and this one file
+                # blocked the merge on four separate runs. The same reasoning (and
+                # the same webdav) is already used for the Vulkan SDK in
+                # build-buildkit.ps1 -- "containers never pull it from the vendor".
+                #
+                # Self-seeding: whichever source works, the archive is PUT back to
+                # the preseed path, so the first successful run immunises the next
+                # one. Every step is fail-open; a preseed miss is not an error.
+                $wpcUpstream = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"
+                $wpcDav = if ($env:SCCACHE_WEBDAV_ENDPOINT) { "$($env:SCCACHE_WEBDAV_ENDPOINT.TrimEnd('/'))/preseed/pkg-config-$wpcVer.zip" } else { '' }
+                $wpcUrl = if ($wpcDav) { $wpcDav } else { $wpcUpstream }
                 try {
-                    Invoke-DownloadWithRetry -Url $wpcUrl -DestinationPath $wpcZip
+                    try {
+                        Invoke-DownloadWithRetry -Url $wpcUrl -DestinationPath $wpcZip -MaxAttempts 2
+                        if ($wpcDav) { log "win-pkgconfig: fetched from the LAN preseed ($wpcDav)" }
+                    } catch {
+                        if (-not $wpcDav) { throw }
+                        log "win-pkgconfig: preseed miss ($($_.Exception.Message)) - falling back to upstream"
+                        Invoke-DownloadWithRetry -Url $wpcUpstream -DestinationPath $wpcZip
+                        # Seed it for next time; failure here is irrelevant to this build.
+                        $wpcCurl = Join-Path $env:SystemRoot 'System32\curl.exe'
+                        if (Test-Path $wpcCurl) {
+                            & $wpcCurl -sf --retry 2 --retry-delay 3 -T $wpcZip $wpcDav *> $null
+                            if ($LASTEXITCODE -eq 0) { log "win-pkgconfig: seeded $wpcDav for future runs" }
+                            $global:LASTEXITCODE = 0
+                        }
+                    }
                     $got = (Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash
                     if ($got -ieq $wpcSha) {
                         log "win-pkgconfig: pre-placed pkg-config-$wpcVer.zip (sha256 verified) - meson will skip its own download"
@@ -1510,7 +1536,35 @@ endian = 'little'
     Switch-BuildPhase '8. install'
     # ---- 8. install ----
     log 'Installing GStreamer...'
-    & $mesonExe install -C $resolvedBuildDir 2>&1 | ForEach-Object { if ($_) { log $_ } }
+    # CROSS LANE: install with DESTDIR set, to the SAME location.
+    #
+    # A post-install script that cannot run aborts the whole install:
+    #   ERROR: Failed to run install script gio-querymodules: Executable was not found
+    #   ERROR: Install scripts failed to run
+    # gio-querymodules indexes GIO modules and would have to EXECUTE an aarch64
+    # binary on this x64 host. meson already has the escape hatch, and it is
+    # keyed on DESTDIR (mesonbuild/minstall.py:709-713 and :729-731):
+    #   if not destdir and len(failing_scripts) > 0:  raise 'Install scripts failed to run'
+    #   if destdir and (isinstance(i, InstallScriptFailure) or i.skip_if_destdir):
+    #       log('Skipping custom install script because DESTDIR is set')
+    # i.e. DESTDIR is meson's "this is a staged/packaging install, do not try to
+    # run target binaries" signal -- exactly this situation.
+    #
+    # DESTDIR is 'C:\' ON PURPOSE, so the files land where they always did and no
+    # staging tree has to be moved afterwards. From mesonbuild/scripts/__init__.py:
+    #   def destdir_join(d1, d2): return str(PurePath(d1, *PurePath(d2).parts[1:]))
+    # PureWindowsPath('C:\runtime\bin').parts is ('C:\','runtime','bin'), so
+    # parts[1:] drops the drive and PurePath('C:\','runtime','bin') is once again
+    # C:\runtime\bin -- byte-identical to the non-DESTDIR path.
+    #
+    # amd64 keeps the plain invocation: there every install script CAN run, and
+    # skipping gio-querymodules there would ship an unindexed GIO module dir.
+    $installArgs = @('install', '-C', $resolvedBuildDir)
+    if ($script:GstCross) {
+        $installArgs += @('--destdir', 'C:\')
+        log 'meson install --destdir C:\ (cross lane: makes meson SKIP install scripts that would have to run target binaries; the path is unchanged - see the comment above)'
+    }
+    & $mesonExe @installArgs 2>&1 | ForEach-Object { if ($_) { log $_ } }
     if ($LASTEXITCODE -ne 0) { throw 'meson install failed' }
     log 'Installation complete.'
 
