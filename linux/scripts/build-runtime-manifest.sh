@@ -89,7 +89,7 @@ _manifest_wrapper_gate() {
   if declare -F ancestry_run_ids_coherent >/dev/null 2>&1; then
     ancestry_run_ids_coherent "${run_ids[@]}" || coherent=0
   fi
-  [ "${missing}" -gt 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) carry no run-id annotation — generation provenance unverifiable (rebuild to enable the XC3 coherence gate)."
+  [ "${missing}" -gt 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) carry no run-id provenance — generation unverifiable."
 
   # XC2: verify each wrapper still descends from the CURRENT android. Advisory on
   # a normal build (BUILD_IMAGES=1, wrappers were just built this run); a hard
@@ -102,6 +102,14 @@ _manifest_wrapper_gate() {
   local refuse=0
   [ "${coherent}" -eq 0 ] && refuse=1
   [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
+  # XC3 honesty (2026-08-23): ancestry_run_ids_coherent DROPS empty ids, so a
+  # set like (R2,"","") reads as "coherent" and the gate printed OK — which is
+  # exactly how a mixed-generation index could ship under --repair, the very
+  # scenario XC3 was written for. Unverifiable is not the same as verified: on
+  # the repair path (BUILD_IMAGES=0), where the mutable tags are all we have,
+  # missing provenance REFUSES. On a normal build the wrappers were just built
+  # in this run, so it stays advisory and the happy path is untouched.
+  [ "${missing}" -gt 0 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
 
   if [ "${refuse}" -eq 0 ]; then
     log "[manifest] per-arch wrapper generation check: OK"
@@ -110,6 +118,7 @@ _manifest_wrapper_gate() {
 
   [ "${coherent}" -eq 0 ] && warn "[manifest] per-arch wrapper tags span multiple generations (run-ids: ${run_ids[*]}) — assembling ${IMAGE_NAME} would MIX releases."
   [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] a wrapper tag predates the current android artifact (see the [ancestry] lines above)."
+  [ "${missing}" -gt 0 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) have no readable generation stamp, so a mixed release CANNOT be ruled out — refusing rather than assuming."
 
   if [ "${FORCE_MANIFEST}" -eq 1 ]; then
     warn "[manifest] --force set: assembling ${IMAGE_NAME} despite the generation mismatch above."

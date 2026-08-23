@@ -113,6 +113,50 @@ ancestry_run_id_annotation() {
 }
 
 # ==============================================================================
+# ancestry_label_args
+#
+# Append `--label <key>=<value>` provenance args to the nameref array.
+#
+# XC3-INERT fix (2026-08-23): the runtime lane builds with plain `-t` (RTCACHE3
+# forced that — the `--output type=image` exporter never lands a local
+# containerd tag on rootless, which shipped five stale images), and `-t` cannot
+# carry exporter annotations. Labels can: they live in the image CONFIG blob,
+# so they survive `-t`, survive the later `nerdctl push`, and are readable back
+# with `nerdctl image inspect`. Same key constants as the annotation path, so
+# readers and tests keep ONE vocabulary.
+#
+# Unlike the annotation fragment there is no comma hazard here (no output-opt
+# parsing), but an embedded newline would still corrupt the arg list, so refuse
+# those. Emits nothing for empty values — callers may append unconditionally.
+#
+# Usage: local -a out=(); ancestry_label_args out "${pin}" android "${CROSS_RUN_ID}"
+# ==============================================================================
+ancestry_label_args() {
+  local -n _al_out="$1"
+  local parent_pin="${2:-}" parent_stage="${3:-}" run_id="${4:-}"
+
+  _ancestry_label_safe() {
+    case "${1:-}" in
+      "") return 1 ;;
+      *$'\n'*) warn "[ancestry] provenance value contains a newline, not recording"; return 1 ;;
+    esac
+    return 0
+  }
+
+  if _ancestry_label_safe "${run_id}"; then
+    _al_out+=(--label "${ANCESTRY_RUN_ID_KEY}=${run_id}")
+  fi
+  if _ancestry_label_safe "${parent_pin}"; then
+    _al_out+=(--label "${ANCESTRY_PARENT_DIGEST_KEY}=${parent_pin}")
+    if _ancestry_label_safe "${parent_stage}"; then
+      _al_out+=(--label "${ANCESTRY_PARENT_STAGE_KEY}=${parent_stage}")
+    fi
+  fi
+  unset -f _ancestry_label_safe
+  return 0
+}
+
+# ==============================================================================
 # ancestry_recorded_parent
 #
 # Print the parent reference recorded on <image_ref>.
@@ -136,14 +180,105 @@ ancestry_recorded_annotation() {
   printf '%s' "${manifest_json}" | python3 "${helper}" "${key}" 2>/dev/null
 }
 
+# Read a provenance value out of the image CONFIG labels (the runtime lane's
+# `-t` path stamps these; see ancestry_label_args). Exit 0 + value, 2 when the
+# label is absent, 1 when the image cannot be inspected at all.
+#
+# This reads the LOCAL image, whereas the annotation reader queries the
+# registry — and reading provenance off a STALE local tag is precisely the
+# class of bug that caused the RTCACHE3 stale-ship saga. So when the ref also
+# resolves in the registry, require the local bytes to BE the shipped bytes
+# before trusting their labels; on a mismatch report unreadable (1) and let the
+# caller fall through rather than answer from the wrong image.
+ancestry_recorded_label() {
+  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}"
+  local nerdctl="${NERDCTL_BIN:-nerdctl}"
+  local value
+
+  value="$("${nerdctl}" image inspect --format "{{index .Config.Labels \"${key}\"}}" \
+            "${image_ref}" 2>/dev/null)" || return 1
+  case "${value}" in
+    ""|"<no value>") return 2 ;;
+  esac
+
+  if declare -F registry_pin_ref >/dev/null 2>&1; then
+    local remote local_digests
+    remote="$(registry_pin_ref "${nerdctl}" "${image_ref}" 2>/dev/null || true)"
+    if [ -n "${remote}" ]; then
+      local_digests="$("${nerdctl}" image inspect --format '{{json .RepoDigests}}' \
+                        "${image_ref}" 2>/dev/null || true)"
+      case "${local_digests}" in
+        *"${remote##*@}"*) ;;
+        *) warn "[ancestry] ${image_ref}: local tag is not the registry copy (${remote##*@}) — ignoring its provenance labels"
+           return 1 ;;
+      esac
+    fi
+  fi
+
+  printf '%s' "${value}"
+}
+
+# Read a provenance label off the REGISTRY copy, without pulling the image
+# (manifest + config blob only, a few KB). This is what makes the XC3 gate work
+# in the case it exists for — a --repair / --manifest-only run, possibly on a
+# host that never built the wrappers, where the local store has no tag to
+# inspect. Same exit contract: 0 value, 2 absent, 1 unreadable.
+ancestry_recorded_registry_label() {
+  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}"
+  local helper="${_ANCESTRY_DIR}/registry-config-label.py"
+
+  command -v python3 >/dev/null 2>&1 || return 1
+  [ -f "${helper}" ] || return 1
+  python3 "${helper}" "${image_ref}" "${key}" 2>/dev/null
+}
+
+# Read a provenance value from wherever this image records it: config LABELS
+# first (runtime lane, `-t` path), then manifest ANNOTATIONS (cross lane, which
+# pushes through the exporter and so still carries them). Preserves the
+# exit-code contract callers branch on: 0 = value, 2 = absent, 1 = unreadable.
+ancestry_recorded_provenance() {
+  local image_ref="$1" key="$2"
+  local value label_rc=0 ann_rc=0
+
+  value="$(ancestry_recorded_label "${image_ref}" "${key}")" || label_rc=$?
+  if [ "${label_rc}" -eq 0 ] && [ -n "${value}" ]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+
+  # The local store could not answer (no such tag, or its bytes are not the
+  # shipped bytes). Ask the registry for the same label — the push carried it
+  # in the config blob.
+  local reg_rc=0
+  value="$(ancestry_recorded_registry_label "${image_ref}" "${key}")" || reg_rc=$?
+  if [ "${reg_rc}" -eq 0 ] && [ -n "${value}" ]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+
+  value="$(ancestry_recorded_annotation "${image_ref}" "${key}")" || ann_rc=$?
+  if [ "${ann_rc}" -eq 0 ] && [ -n "${value}" ]; then
+    printf '%s' "${value}"
+    return 0
+  fi
+
+  # Keep 2 ("absent") distinct from 1 ("could not read"): a caller must never
+  # mistake an auth or network problem for "this image has no provenance".
+  # Absent wins only if some reader actually got to look at the image.
+  if [ "${label_rc}" -eq 2 ] || [ "${reg_rc}" -eq 2 ]; then
+    return 2
+  fi
+  return "${ann_rc:-1}"
+}
+
 # Read the recorded parent digest (thin wrapper kept for existing callers).
 ancestry_recorded_parent() {
-  ancestry_recorded_annotation "$1" "${ANCESTRY_PARENT_DIGEST_KEY}"
+  ancestry_recorded_provenance "$1" "${ANCESTRY_PARENT_DIGEST_KEY}"
 }
 
 # Read the recorded orchestrator run id (empty/exit-2 when unstamped).
 ancestry_recorded_run_id() {
-  ancestry_recorded_annotation "$1" "${ANCESTRY_RUN_ID_KEY}"
+  ancestry_recorded_provenance "$1" "${ANCESTRY_RUN_ID_KEY}"
 }
 
 # Digest half of a `repo@sha256:...` reference.
@@ -275,11 +410,40 @@ ancestry_assert_chain() {
 runtime_ancestry_assert_wrappers() {
   local arches_csv="$1" arch rc=0 wrapper_ref android_ref
   declare -F runtime_stage_tag >/dev/null 2>&1 || return 0
+  local parent_stage
   for arch in $(arch_list_to_words "${arches_csv}"); do
     wrapper_ref="$(runtime_stage_tag wrapper "${arch}" 2>/dev/null || true)"
-    android_ref="$(runtime_stage_tag "$(runtime_stage_parent wrapper 2>/dev/null || printf 'android')" "${arch}" 2>/dev/null || true)"
-    [ -n "${wrapper_ref}" ] && [ -n "${android_ref}" ] || continue
-    _ancestry_check_link "${wrapper_ref}" "${android_ref}" "android→wrapper (${arch})" || rc=1
+    [ -n "${wrapper_ref}" ] || continue
+    # XC2-STAGE (2026-08-23): compare against the stage the WRITER actually
+    # stamped, never runtime_stage_parent's answer. append_runtime_image_output
+    # records the ANDROID pin (the artifact source the package COPYs from), but
+    # `runtime_stage_parent wrapper` returns "package" — so this used to resolve
+    # a PACKAGE tag and compare it against a recorded ANDROID digest. While
+    # provenance was inert that mismatch was invisible (the check bailed out at
+    # "records no parent digest"); the moment labels land it would have failed
+    # every single run with a false STALE ANCESTOR. Prefer the recorded
+    # parent-stage, fall back to the writer's constant.
+    parent_stage="$(ancestry_recorded_provenance "${wrapper_ref}" "${ANCESTRY_PARENT_STAGE_KEY}" 2>/dev/null || true)"
+    [ -n "${parent_stage}" ] || parent_stage=android
+    # Resolve the android ref the way the WRITER did, i.e. through the prefix
+    # that is threaded across the process boundary (--artifact-image-prefix →
+    # ARTIFACT_IMAGE_PREFIX). runtime_stage_tag android → cross_android_tag →
+    # "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}", and IMAGE_REPO is set ONLY by
+    # orchestrator_preamble and never exported — build-runtime-manifest.sh runs
+    # as a separate child that calls runtime_flow_preamble, so under
+    # --image-repo <fork> that helper silently returns the DEFAULT repo. The
+    # recorded pin would then be compared against a foreign repo's android tag
+    # and every --repair run would hard-refuse a perfectly good manifest
+    # (android_stale is a gate, not a warning, when BUILD_IMAGES=0).
+    android_ref=""
+    if [ "${parent_stage}" = "android" ] && declare -F runtime_artifact_image_ref >/dev/null 2>&1; then
+      android_ref="$(runtime_artifact_image_ref "${arch}" 2>/dev/null || true)"
+    fi
+    if [ -z "${android_ref}" ]; then
+      android_ref="$(runtime_stage_tag "${parent_stage}" "${arch}" 2>/dev/null || true)"
+    fi
+    [ -n "${android_ref}" ] || continue
+    _ancestry_check_link "${wrapper_ref}" "${android_ref}" "${parent_stage}→wrapper (${arch})" || rc=1
   done
   return "${rc}"
 }

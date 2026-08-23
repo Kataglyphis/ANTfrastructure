@@ -1,5 +1,90 @@
 # Changelog
 
+## 2026-08-23 - WAVE-5 SHIPPED: closure window 2 — cv2 media stack complete on all three arches
+
+`:latest-cross` = amd64 `54ab7f01` / arm64 `7bb70a4b` / riscv64 `fb701200`.
+**The window's goal is MET and verified on the SHIPPED BYTES** (local tag
+digests matched against the registry-side OCI index, plus a
+docker-content-digest HEAD — never the push log): cv2 5.0.0 reports
+**GStreamer:YES (1.29.2) and FFMPEG:YES (avcodec/avformat 63.1.100) on
+amd64, arm64 AND riscv64**. riscv64 had been stuck at wave-3 parity
+(GStreamer: NO). Verification went one level deeper than the gate: real
+one-frame GStreamer pipelines and an FFmpeg roundtrip were executed inside
+all three shipped images, so this is runtime-proven, not string-grepped.
+Runtime smokes: 0 failures x3. Wheel smokes: 13/15, 13/15, 11/15 (the
+riscv64 delta is genai-absent + freetype-OFF, both documented).
+
+What landed in this window:
+
+1. **OCV-FF1 (FFMPEG:NO -> YES)** - true root was detect_ffmpeg's
+   try_compile getting the four -l names but no link dir for the custom
+   /opt/ffmpeg prefix ("Can't build ffmpeg test code"), NOT the swresample
+   theory. Fix = LDFLAGS -L/-rpath-link for the ffmpeg AND gstreamer
+   libdirs + a deterministic last-wins -DCMAKE_EXE_LINKER_FLAGS (the
+   helpers' own -D beat the env). That exposed a second wall: opencv 5.0.0
+   has no FFmpeg-8 migration (AVCodec.pix_fmts / .supported_framerates were
+   removed; 4.x master has avcodec_get_supported_config, the 5.x branch does
+   not) -> new backport patch
+   `patches/opencv/002-ffmpeg8-avcodec-config-api.patch`, guarded by
+   LIBAVCODEC_VERSION_MAJOR >= 62.
+2. **riscv64 GStreamer re-lift (RV1-GST-PC largely closed)** - the
+   introspection break turned out to be MESON-GI (meson 1.12 breaks
+   g-i-1.84's `subproject('glib')`, reproduced on a clean sysroot, so the
+   ports-.pc poison theory was falsified). Scoped pin meson==1.11.2 for the
+   riscv64 cross gst build; with introspection back, /opt/gstreamer exports
+   usable glib .pcs again, pass-2 gst links into videoio, and the libcamera
+   gst element returns. Only freetype-OFF remains (RV1-FREETYPE).
+3. **PKGCFG-MIRROR** - cerbero bootstraps pkg-config-0.29.2 from
+   pkgconfig.freedesktop.org (host dead) with a src/mirror fallback that
+   404s, so every COLD android bootstrap died on curl (22). Redirected to
+   the macports distfiles mirror (byte-identical tarball; the recipe
+   checksum still guards). **v1 of this fix was a heisenbug**: it chose the
+   file to patch with `grep -rl … | grep -m1`, which is readdir-order
+   dependent — inside the container it sed'd a stray .patch file and still
+   echoed success, so the 404 kept happening while the host reproduced
+   "correct". v2 patches the known recipe explicitly plus every other
+   dead-host reference and echoes the RESULTING url line as proof.
+4. **ORT version-shadow (the runtime smoke failure)** - `import cv2` died
+   with `libonnxruntime.so.1.27.0: version VERS_1.29.0 not found`. The
+   locally built wheel is named `onnxruntime_dnnl-*.whl` (the DNNL EP
+   renames the dist) and `wheel_family()` listed gpu/migraphx/webgpu but not
+   _dnnl, so `have_onnx_family` stayed false: PyPI onnxruntime 1.27 was
+   neither skipped at `uv sync` nor uninstalled, and since both dists own
+   `site-packages/onnxruntime/`, the 1.27 capi lib survived next to the
+   1.29-linked cv2. Fix = classifier + uninstall list + skip-package on
+   sync. Verified in the shipped bytes: exactly ONE ORT distribution per
+   image (dnnl on amd64, webgpu on arm64/riscv64 - by design).
+
+Mines survived (external and self-inflicted):
+
+- **FD-OUTAGE** - a freedesktop-wide 503 window took all three android
+  lanes down twice (pixman, then gst-plugins-bad). Not patchable: cerbero's
+  DEFAULT_MIRRORS live on the SAME infra as its primaries. Filed with a
+  cached_sources pre-seed option.
+- **CERB-ICONV** - proven NONDETERMINISTIC: `undefined symbol:
+  libiconv_open` killed a cold riscv64 cerbero link in one wave and passed
+  in the next with no code change.
+- **ENOSPC** - a runtime-stage run fell 117G -> 2G and died on a layer
+  extract because nothing pruned mid-run. Cured with an auto-prune guard
+  (prune-safe.sh below 55G); it fired 4x in the successful run, always with
+  all 30 cachemount records surviving.
+
+Gate-truth findings from the post-ship audit (the release is real, three
+gates are not — all filed, none release-blocking):
+
+- **AP4-SIGPIPE** - the strip gate has NEVER executed: `nerdctl export |
+  tar --occurrence=1` under `set -o pipefail` returns non-zero when tar
+  exits early, so the check self-reports "skipped" on 3/3 arches while the
+  wrapper gate prints PASS. It hides ~1.9 GB of unstripped foreign
+  cross-compiler binaries in the amd64 wrapper.
+- **XC3-INERT** - run-id/parent-digest annotations are never written
+  (`append_runtime_image_output` is `-t` only), so the mixed-generation gate
+  cannot fail. Concretely: this manifest mixes two source revisions
+  (amd64 58e6c325, arm64+riscv64 5105da8f), visible only via image labels.
+- **SMK1-3ARCH** - smoke-torch-venv.sh still exempts riscv64 from the cv2
+  GStreamer assert and prints "riscv64: gstreamer OFF by design" on the same
+  line where the probe reports GStreamer=YES.
+
 ## 2026-08-21 - WAVE-4 SHIPPED: the 9-mine validating rebuild (closure window + 21 bumps)
 
 `:latest-cross` = amd64 `73927a45` / arm64 `345096db` / riscv64 `da763dc3`

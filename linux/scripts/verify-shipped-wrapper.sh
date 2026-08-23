@@ -117,9 +117,16 @@ fi
 _avc_path="$(grep -E 'opt/ffmpeg/lib/libavcodec\.so\.[0-9]+\.[0-9]+\.[0-9]+$' "${_listing}" | head -1 || true)"
 if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
   _xdir="$(mktemp -d)"
-  if "${_nerdctl}" export "${_cid}" 2>/dev/null \
-       | tar -xf - -C "${_xdir}" --occurrence=1 "${_avc_path}" 2>/dev/null \
-     && [ -f "${_xdir}/${_avc_path}" ]; then
+  # AP4-SIGPIPE (2026-08-23): `--occurrence=1` makes tar exit after the first
+  # match, which SIGPIPEs the still-streaming exporter; under `set -o pipefail`
+  # the whole pipeline then returns non-zero and this check silently reported
+  # "skipped" on 3/3 arches of every ship while the gate still printed PASS.
+  # Run the pipeline with pipefail OFF and let the extracted file be the sole
+  # verdict — an early tar exit is the DESIGN here, not a failure.
+  ( set +o pipefail
+    "${_nerdctl}" export "${_cid}" 2>/dev/null \
+      | tar -xf - -C "${_xdir}" --occurrence=1 "${_avc_path}" 2>/dev/null ) || true
+  if [ -f "${_xdir}/${_avc_path}" ]; then
     if [ "$(readelf -S "${_xdir}/${_avc_path}" 2>/dev/null | grep -c '\.symtab')" -eq 0 ]; then
       _advise "AP4 strip verified: $(basename "${_avc_path}") has no .symtab"
     else

@@ -12,8 +12,8 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-21. LIVE `:latest-cross` = WAVE-4 ship (73927a45/
-345096db/da763dc3, manifest 98d90db6) — see § WAVE-4 SHIPPED.
+Last groomed: 2026-08-23. LIVE `:latest-cross` = WAVE-5 ship (54ab7f01/
+7bb70a4b/fb701200) — see § WAVE-5 SHIPPED.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
 
@@ -34,37 +34,38 @@ Linux/cross-lane only.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
-## ✅ WAVE-4 SHIPPED 2026-08-21 (validating rebuild survived 9 real mines)
+## ✅ WAVE-5 SHIPPED 2026-08-23 (closure window 2 — cv2 media stack complete on 3/3)
 
-`:latest-cross` = amd64 `73927a45` / arm64 `345096db` / riscv64 `da763dc3`
-(manifest `98d90db6`), byte-gate PASS ×3, **cv2 GStreamer:YES verified on
-shipped amd64 AND arm64 bytes**. Everything from the closure window is LIVE:
-21 version bumps (ORT 1.29 incl. --no_telemetry, LITERT 2.2, TVM 0.26 …),
-NET1 mirrors, DF1-4, AP3-correct, PAR2/PAR4(+amend), ccache-content,
-prune-safe (12 flawless uses, ~1 TB reclaimed total). Full mine list +
-lessons in CHANGELOG. PAR4 verdict: ONE isolated OOM kill across ~12 media
-rounds, absorbed by retries — heuristic adequate; PAR4-hard stays
-trigger-gated. PAR1 verdict: sdk 2.9× stands; media-parallel WORKS post-PAR2
-but a clean full-chain timing needs one undisturbed run (next rebuild).
+`:latest-cross` = amd64 `54ab7f01` / arm64 `7bb70a4b` / riscv64 `fb701200`.
+**GOAL MET, verified on SHIPPED BYTES (registry-side digest match, not the
+push log): cv2 5.0.0 with GStreamer:YES (1.29.2) AND FFMPEG:YES
+(avcodec/avformat 63.1.100) on ALL THREE arches** — riscv64 included, which
+had been at wave-3 parity (gst: NO). Independently re-verified by executing
+real GStreamer + FFmpeg pipelines in the shipped images, not just reading
+`getBuildInformation()` strings. Runtime smokes 0 failures ×3; wheel smokes
+13/15, 13/15, 11/15 (riscv64 delta = genai + freetype, both documented).
+ORT version-shadow FIXED and proven: exactly ONE onnxruntime distribution
+per image (dnnl on amd64, webgpu on arm64/riscv64 — by design), no PyPI
+1.27 alongside. Landed this window: OCV-FF1 (try_compile link dirs +
+FFmpeg-8 avcodec_get_supported_config backport patch), RV1 riscv64 gst
+re-lift (+ MESON-GI meson pin), PKGCFG-MIRROR v2, ORT dnnl wheel-family
+fix. Mines survived: freedesktop-wide 503 outage, a readdir-nondeterministic
+override, an ENOSPC death. Full story in CHANGELOG.
 
-- **RV1-GST-PC — riscv64 cross pkg-config .pc expansion defect** [M·★★★ →
-  LARGELY DISSOLVED 2026-08-21, re-lift validating in wave5c: the
-  introspection break was actually MESON-GI (meson 1.12, reproduced with
-  clean sysroot — pin 1.11.2 scoped); with introspection back our
-  /opt/gstreamer exports working glib .pcs again and pass-2 gst SUCCEEDED
-  on riscv64 (videoio links gst libs). Remaining original scope = only the
-  ports-.pc wrapper IF ports gst-dev is ever wanted again + freetype-OFF.] ports' riscv64 glib-2.0.pc expands
-  prefix/libdir EMPTY in cross pkg-config contexts and POISONS every glib
-  lookup once installed (opencv imported targets, libcamera gst element
-  compile+link). Additionally our introspection-less /opt/gstreamer exports
-  no usable glib .pc for foreign consumers (headers repaired via
-  glibconfig-symlink; LIBS unreachable). Current shipped state on riscv64:
-  cv2 GStreamer NO (wave-3 parity), libcamera WITHOUT gst element (small
-  regression vs wave-3, documented), opencv freetype module OFF. FIX = cross
-  pkg-config wrapper that sysroot-prefixes ports .pc vars (or a
-  prefix-clean shim set) + optionally re-export glib .pcs from our
-  gstreamer install; then re-lift the three scoped OFFs + RV1-GI
-  (introspection) in one validated pass.
+**Wave-4 (2026-08-21, superseded):** amd64 `73927a45` / arm64 `345096db` /
+riscv64 `da763dc3`, cv2 GStreamer:YES on amd64+arm64 only. PAR4 verdict:
+ONE isolated OOM across ~12 media rounds — heuristic adequate, PAR4-hard
+stays trigger-gated. PAR1 verdict: sdk 2.9× stands; a clean full-chain
+timing still needs one undisturbed run.
+
+- **RV1-FREETYPE — riscv64 opencv freetype module still OFF** [S·★,
+  residue of RV1-GST-PC, which is otherwise CLOSED by wave-5] riscv64 gst
+  is fully recovered (cv2 GStreamer:YES on shipped bytes, libcamera gst
+  element back) — what remains is `-DBUILD_opencv_freetype=OFF` in
+  build-opencv.sh (harfbuzz "file in wrong format" in the cross link) and,
+  only if ports gst-dev is ever wanted again, the cross pkg-config wrapper
+  that sysroot-prefixes ports' empty-prefix .pc vars. Wheel smoke shows it
+  as the riscv64-only `opencv-freetype` warning.
 - **BKD1 — buildkitd session rot under multi-hour parallel load** [M·★★]
   sessions die after ~1-2h ("no active session", grpc cancels at export,
   DeadlineExceeded on cache reads) — cost ~6 retry cycles across the wave-4
@@ -72,27 +73,93 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   issue trackers / upgrade; interim playbook: restart between chain rounds
   (cachemounts provably survive).
 
-## Next up (recommended order, 2026-08-19)
+## Next up (recommended order, 2026-08-23)
 
-1. **GPU lane validation build** [★★★, cheap, anytime] — the last staged
+1. **Gate-truth pass** [★★★, no build to author, ONE build to validate] —
+   the three gates that currently lie: SMK1-3ARCH (riscv64 exemption on a
+   false premise), AP4-SIGPIPE (strip check never runs, prints PASS),
+   XC3-INERT (provenance never written). Fixing these before anything else
+   means the NEXT build's green is trustworthy.
+2. **GPU lane validation build** [★★★, cheap, anytime] — the last staged
    set (GPU1-7) still awaiting its one opt-in build.
-2. **Next closure window** — § A below (OCV-FF1 + RV1-GST-PC first).
-3. **Next pin-bump window** — § B riders.
-4. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
+3. **Next closure window** — § A, led by CERB-CACHE (the wall-clock lever:
+   wave5k/5l discarded a full cold cerbero each) + SMOKE-DEPTH.
+4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT, ORPHAN-PINS).
+5. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
 
 ---
 
 ## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
 
-- **OCV-FF1 — opencv FFMPEG try_compile link-dir gap** [M·★★, TRUE ROOT
-  FOUND 2026-08-21 → FIX STAGED, validating in wave5c] The swresample-probe
-  theory was WRONG (5.0.0 doesn't probe it): the wave-4 logs show
-  `WARNING: Can't build ffmpeg test code` — detect_ffmpeg's try_compile
-  gets the four -l names but no link dir for the custom /opt/ffmpeg prefix
-  → test link dies on transitive libswresample → HAVE_FFMPEG=FALSE. Fix:
-  LDFLAGS -L/-rpath-link (ffmpeg AND gstreamer libdirs) + a deterministic
-  last-wins -DCMAKE_EXE_LINKER_FLAGS (helpers' own -D beat env). On green:
-  promote SMK1's FFMPEG check from advisory to hard (amd64/arm64).
+- **SMK1-3ARCH — promote the cv2 media gate to a HARD assert on ALL
+  THREE arches** [S·★★★, EARNED 2026-08-23] OCV-FF1 is CLOSED (FFMPEG:YES
+  on 3/3 shipped bytes; fix = try_compile link dirs + the FFmpeg-8
+  avcodec_get_supported_config backport patch). Two gate bugs remain, and
+  both make a green line lie:
+  (a) smoke-torch-venv.sh:275-281 exempts riscv64 from the cv2/GStreamer
+      assert and PRINTS "riscv64: gstreamer OFF by design" on the very same
+      line where the probe reports `GStreamer=YES FFMPEG=YES` — the premise
+      is now false. Delete the exemption (or gate it on the probe) so all
+      three arches take the hard assert.
+  (b) the FFMPEG check is still advisory — make it a hard assert too.
+  Bonus (same file family): build-opencv.sh:146 finds the gstreamer libdir
+  via `find … -name 'libgstreamer-1.0.so*' | head -1`, which matches the
+  gdb auto-load helper first, so the OCV-FF1 gstreamer -L/-rpath-link half
+  is a silent no-op (benign today — pkg-config finds gst anyway).
+- **AP4-SIGPIPE — the strip gate has NEVER executed and still reports PASS**
+  [S·★★★, 2026-08-23] verify-shipped-wrapper.sh's `nerdctl export | tar
+  --occurrence=1` runs under `set -o pipefail`: tar exits after the first
+  match, SIGPIPEs the exporter, the pipeline returns non-zero and the check
+  self-reports "AP4 strip check skipped (could not extract …)" — on 3/3
+  arches — while the wrapper gate still prints PASS. It masks a real
+  defect: the shipped amd64 image carries ~1.9 GB of UNSTRIPPED foreign
+  cross-compiler binaries (`/opt/gcc-16.2.0/libexec/gcc/{aarch64,riscv64}
+  -linux-gnu/16.2.0/cc1plus` 444M/534M with symtab=1, vs 294M/558M total
+  for the other arches' whole /opt/gcc). Fix the SIGPIPE swallow FIRST
+  (cheap, turns a fake green into a real verdict), then extend the strip
+  pass to every triplet under libexec/gcc + /usr/libexec/gcc.
+- **SMOKE-DEPTH — the runtime smokes never execute anything real** [M·★★★,
+  2026-08-23] three gaps found while verifying wave-5, all "green line, no
+  proof": (a) media support is read from `cv2.getBuildInformation()`
+  STRINGS — compile-time linkage only; a manual one-frame
+  videotestsrc→appsink + FFmpeg roundtrip passed on all 3 shipped arches,
+  so promote that pipeline into the smoke instead of the string grep;
+  (b) the image ENTRYPOINT is never run (every check overrides it with
+  `--entrypoint /opt/venv/bin/python`) — a broken entrypoint.sh would ship
+  green; (c) no inference is ever executed and `onnx` is not even installed,
+  so no EP can be claimed working — ship a tiny .onnx fixture and run one
+  InferenceSession per arch.
+- **MIRROR-KNOB — USE_FAST_UBUNTU_MIRROR is a silent no-op at 2 build
+  sites** [S·★★] `ubuntu-mirror.sh:21` calls `is_truthy`, which lives in
+  platform.sh — not bind-mounted in Dockerfile.base:62 or
+  Dockerfile.package:281, so the log shows `is_truthy: command not found`
+  6× per run (2× per arch) and the fast-mirror path silently never
+  activates. Fix = add the platform.sh bind-mount at both sites (or inline
+  the helper). Pure build-time; no effect on shipped bytes.
+- **ARCH-PARITY — three per-arch gaps nobody gates** [S/M·★★, 2026-08-23]
+  verified live in the shipped images: (a) riscv64 has NO `/opt/cmake-4.4.2`
+  (amd64 207M, arm64 130M) and falls back to distro cmake 4.2.3;
+  (b) arm64's gtk4 GStreamer plugin cannot load (`libgtk-4.so.1: undefined
+  symbol: vkCreateWaylandSurfaceKHR` — distro GTK vs shipped Vulkan loader,
+  arm64 only); (c) `onnxruntime-webgpu` ships on arm64+riscv64 but not
+  amd64, and is untested everywhere. Add a cheap prefix/component parity
+  assert to the runtime smoke (the set of /opt/* prefixes + optional wheels
+  should match across wrappers modulo a documented exception list).
+- **GENAI-DRIFT — onnxruntime-genai differs per arch and the pin assert
+  says OK** [S·★★, 2026-08-23] versions.env pins v0.15.2; shipped reality is
+  amd64 0.15.2 (local wheel), arm64 0.14.0 (PyPI, from the app lock), riscv64
+  absent. The dual-authority union (lock ∪ pin) accepts all three, so the
+  assert cannot catch it. Tighten: when versions.env carries a BUILD pin for
+  a package, that pin — not the lock — is authoritative for every arch that
+  builds it; then find out why arm64's genai wheel never lands.
+- **ORPHAN-PINS — PyAV and TVM are pinned but built nowhere** [S·★★,
+  2026-08-23] `PYAV_VERSION=18.1.0` has no build step anywhere under linux/;
+  TVM is absent on ALL THREE arches although Dockerfile.media:392-394 states
+  amd64 "stages a wheel + libtvm into the final image so `import tvm`
+  works". Both show as permanent wheel-smoke warnings. Decide per component:
+  build it, or delete the orphaned pin — as-is both read as
+  intended-but-missing, and PyAV means every wrapper ships without the
+  FFmpeg→Python bridge.
 - **D3+P5 — smoke-media gate scaffold + SMOKE_ENV contract** [M·★★] extract
   smoke_resolve_bin/assert_elf_magic/component_gate (6+2+4 dup sites) into
   smoke-common.sh; SMOKE_ENV=sandbox|runtime set by callers. Extend
@@ -147,25 +214,15 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   in tvm-python.sh never wired; do with the llvm-config pin.
 - **P3 note** [S] generalize the vulkan Multi-Arch drop-in into cross-apt.sh
   only if a SECOND dev-package skew appears.
-- **PKGCFG-MIRROR — cerbero pkg-config bootstrap 404, VALIDATING in
-  wave5l** [S·★★, fix ed0ea64] pkgconfig.freedesktop.org is dead and the
-  src/mirror fallback 404s → every cold android bootstrap died on
-  curl (22). Fix = macports redirect in recipes/pkg-config.recipe
-  (byte-identical tarball, recipe checksum still guards). v1 (7047558)
-  was a HEISENBUG: file picked via `grep -rl | grep -m1` — readdir order
-  is filesystem-dependent, in-container it sed'd a stray patch-file and
-  still echoed success. v2 patches the known recipe explicitly + all
-  other dead-host refs and echoes the patched url line as proof (echo
-  CONFIRMED ×2 in wave5k/5l; bootstrap passed the 404 point). DELETE
-  after android ×3 ships. LESSON for reviews: any `grep -rl | head/-m1`
-  file-pick is nondeterministic across filesystems.
-- **STALE-LOG — per-run log namespacing (re-filed; lost in the July
-  restructure)** [S/M·★★★, BIT again 2026-08-22] lane logs are opened
-  with `tee -a` and NEVER truncated between waves: android-*.log still
-  carried wave5j's 10/6/6 errors when wave5k launched → watcher raised
-  false NEW-error alarms; historically also caused stale-green reads.
-  Fix: namespace per run (out/build-logs/<run-id>/) or truncate at lane
-  start; watchers then need no baseline hack.
+- **STALE-LOG — the two log-hygiene guards exist but are INERT** [S·★★★,
+  re-filed + sharpened 2026-08-23] not "namespacing is unwritten": both
+  `cross_stage_log_redirect()`'s truncate-on-new-run-marker
+  (cross-stage-build.sh:31-48) and `_chain_archive_prev_logs()` are gated
+  behind an opt-in `LOG_DIR` that defaults EMPTY, so in practice lane logs
+  are `tee -a`-appended forever — wave5j's 10/6/6 errors were still in
+  android-*.log when wave5k launched and tripped a watcher into false NEW-
+  error alarms. Fix: default LOG_DIR to out/build-logs (archiving on), or
+  per-run subdirs. Watchers then need no baseline hack.
 - **EIGEN-NET — litert-android's eigen FetchContent single-homes on
   gitlab.com** [S·★★, BIT 2026-08-21] a momentary gitlab outage
   ('fatal: expected flush after ref listing') killed all three android
@@ -184,12 +241,14 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   (`<checkout>/sources/<name>-<version>/<tarball>`, checksum-verified,
   skips network entirely) for the top-N cold-bootstrap fetches; or just
   accept + wait out outages (they're rare; this was the first).
-- **CERB-ICONV — cerbero riscv64-android cold-path link order** [S/M·★,
-  BIT 2026-08-22] with NO cerbero cache, android-riscv64's glib links
-  before the (lib)iconv product is staged → `undefined symbol:
-  libiconv_open` (the lane only ever passed from warm cache before).
-  Verify recipe deps (glib ← libiconv) in our cerbero overlay; a worker
-  retry resuming cerbero state may mask it — cold-validate explicitly.
+- **CERB-ICONV — cerbero riscv64-android cold link-order RACE** [S/M·★,
+  CONFIRMED NONDETERMINISTIC 2026-08-23] it bit for real in wave5l
+  (`ld.lld: error: undefined symbol: libiconv_open` while linking
+  glib/libglib-2.0.so) and then PASSED in wave5m with the same
+  glib-before-libiconv ordering and NO code change — so it is a scheduling
+  race in cerbero's cold dependency order, not a deterministic bug. The
+  real fix is a declared recipe dep (glib ← libiconv) in our overlay; until
+  then a retry can mask it and a cold run can lose ~1h.
 - **PAR5 — divisor is static per launch; surviving lanes stay throttled**
   [S/M·★★] BUILD_MEM_DIVISOR is computed at launch (n_arch × budget) and
   never adapts when lanes finish — observed repeatedly: a single remaining
@@ -216,10 +275,21 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
-- **RTCACHE3 provenance rider — re-embed ancestry annotations** [S·★★] the
-  `-t` fix dropped the exporter annotations (which never persisted anyway);
-  re-add via nerdctl annotate / manifest annotation. XC2/XC3's
-  verification half is inert until this emit path works.
+- **XC3-VALIDATE — provenance gates re-armed, needs ONE build to prove it**
+  [S·★★★, FIXED 2026-08-23 (1870118), validating] run-id/parent-digest/
+  parent-stage are stamped as image LABELS on the `-t` path (annotations can
+  never come back — RTCACHE3), read local→registry→annotation (new
+  registry-config-label.py fetches the config blob without pulling, so the
+  gate finally works on the --repair/other-host path it exists for), and the
+  gate now REFUSES on the repair path when provenance is unverifiable instead
+  of printing OK. A post-build self-check fails the lane if a requested label
+  did not land. Adversarial review caught two defects pre-commit (IMAGE_REPO
+  not exported → false STALE ANCESTOR under --image-repo; the recorded ANDROID
+  pin was compared against runtime_stage_parent's "package"). REMAINING: the
+  next full runtime build must show `[manifest] per-arch wrapper generation
+  check: OK` with 0 "carry no run-id" warnings and no [ancestry] STALE lines —
+  delete this item then. Also unstamped by design: the runtime BASE image
+  (hardcoded `-t`, no gate reads it).
 - **--no-push OCI-layout handoff + dual-path collapse** [M·★★] --no-push
   builds resolve parents against the REGISTRY (two runs lost historically).
 
@@ -231,6 +301,11 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   COLD-REBUILT all media intermediates (~18 h: torch/IREE/litert ×3).
   Per-stage mode=max refs would have made that a fast-forward. Dodge the
   ghcr 400 blob limit; test.
+- **LABEL-REPO — image labels still point at the old repository** [S·★]
+  all three shipped images carry
+  `org.opencontainers.image.source/url = …/Kataglyphis-DockerHub` while the
+  repo is Kataglyphis-ContainerHub — provenance links 404 for anyone
+  following them from the registry.
 - **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
   (deliberately per-lane since PAR2 — revisit as shared+non-locked).
 - **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
@@ -265,6 +340,15 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 - **WEBUI_SECRET_KEY server-side rotation** — user action.
 
 ## Verdicts (anti-re-sweep records — do NOT re-audit without new evidence)
+
+- **Nondeterministic file-picks (2026-08-22, PKGCFG-MIRROR post-mortem)**:
+  any `grep -rl … | head -1 / grep -m1` that CHOOSES a file to patch is
+  readdir-order dependent — it can pick a different file inside the
+  container than on the host and still echo success. The v1 pkg-config
+  mirror override did exactly that (patched a stray .patch file, cold
+  bootstraps kept 404ing) while the host reproduced "correct". Rule: patch
+  the KNOWN path explicitly, treat the grep as a supplement, and echo the
+  RESULT (the patched line) as proof, never the intent.
 
 - **CI sweep (2026-08-17)**: CI1-3 fixed same day (timeouts, ollama
   digest-pin, env-var login); otherwise CLEAN.

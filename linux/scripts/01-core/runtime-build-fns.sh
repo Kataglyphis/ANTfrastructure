@@ -86,9 +86,25 @@ runtime_image_output_arg() {
 append_runtime_image_output() {
   local -n _ario_out=$1
   local tag="$2"
-  # Args 3-5 (will_push, parent_pin, parent_stage) are accepted for call-site
-  # compatibility but intentionally ignored now that both paths use -t.
+  # Arg 3 (will_push) is accepted for call-site compatibility and deliberately
+  # unused: labels are free on the -t path, so provenance is stamped whether or
+  # not this image gets pushed.
+  local parent_pin="${4:-}" parent_stage="${5:-}"
+
   _ario_out+=(-t "${tag}")
+
+  # XC3-INERT fix (2026-08-23): args 4-5 used to be dropped on the floor, so
+  # every runtime image shipped WITHOUT provenance and the XC2/XC3 gates could
+  # never fail — wave-5 logged "3/3 wrapper tag(s) carry no run-id annotation"
+  # and still shipped a manifest mixing two source revisions. Annotations can't
+  # come back (RTCACHE3: the exporter that carries them doesn't tag locally),
+  # but LABELS ride the image config through `-t` and the later push, so stamp
+  # them here — this helper is the choke point for both live call sites
+  # (package + wrapper). CROSS_RUN_ID is exported by the orchestrator
+  # (chain-lifecycle.sh) and self-defaults in build-runtime-manifest.sh.
+  if declare -F ancestry_label_args >/dev/null 2>&1; then
+    ancestry_label_args _ario_out "${parent_pin}" "${parent_stage}" "${CROSS_RUN_ID:-}"
+  fi
 }
 
 _runtime_finish_stage() {
@@ -318,7 +334,48 @@ _runtime_build_wrapper() {
     "${_wrapper_build_args_out[@]}" \
     . || return 1
 
+  runtime_assert_provenance_stamped "${_wrapper_tag_out}" || return 1
+
   runtime_remove_stage_context package "${arch}"
+}
+
+# Verify the provenance we just ASKED for actually landed on the image we just
+# built. Composing a correct-looking flag that silently does nothing is the
+# exact failure class that cost this repo five stale ships (RTCACHE3: an
+# `--output type=image,name=X` spec that built no local tag) and then months of
+# inert XC2/XC3 gates (labels never emitted at all) — in both cases every log
+# line stayed green. One `image inspect` right after the build closes that loop
+# while the evidence is still fresh, instead of discovering it in an audit.
+#
+# Fails ONLY on a positive "the image is readable and the stamp is not there"
+# (rc 2). A reader that could not look at all (rc 1) warns and proceeds — a
+# transient inspect problem must not kill a multi-hour build. Escape hatch:
+# ANCESTRY_STAMP_ENFORCE=0.
+runtime_assert_provenance_stamped() {
+  local tag="$1" rc=0
+
+  is_dry_run && return 0
+  [ -n "${CROSS_RUN_ID:-}" ] || return 0          # nothing was asked for
+  declare -F ancestry_recorded_label >/dev/null 2>&1 || return 0
+
+  ancestry_recorded_label "${tag}" "${ANCESTRY_RUN_ID_KEY}" >/dev/null 2>&1 || rc=$?
+  case "${rc}" in
+    0) return 0 ;;
+    2)
+      if [ "${ANCESTRY_STAMP_ENFORCE:-1}" = "0" ]; then
+        warn "[ancestry] ${tag} carries no run-id label although one was requested (ANCESTRY_STAMP_ENFORCE=0, continuing)"
+        return 0
+      fi
+      warn "[ancestry] ${tag} was built WITHOUT the run-id label this build stamped (CROSS_RUN_ID=${CROSS_RUN_ID})"
+      warn "[ancestry]   the provenance mechanism is silently inert again — refusing to hand on an unverifiable image"
+      warn "[ancestry]   (set ANCESTRY_STAMP_ENFORCE=0 to override)"
+      return 1
+      ;;
+    *)
+      warn "[ancestry] could not read ${tag} back to confirm its provenance stamp — proceeding (inspect unavailable, not a missing stamp)"
+      return 0
+      ;;
+  esac
 }
 
 runtime_build_wrapper_image() {
