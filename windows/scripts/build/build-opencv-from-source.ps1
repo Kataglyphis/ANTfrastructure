@@ -482,8 +482,20 @@ if (Test-Path $ffProbe) {
     $savedPath = $env:PATH
     try {
         $env:PATH = ($probeDirs -join ';') + ';' + $env:PATH
-        $ffVer = & $ffProbe -version 2>&1 | Out-String
-        $ffExit = $LASTEXITCODE
+        if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
+            # ffmpeg.exe here is a TARGET binary; running it on this x64 host
+            # yields a loader error, not a version string. The value it produces
+            # ($chainAvcodecMajor) only feeds the FFmpeg-vs-OpenCV consistency
+            # gate below, so leaving it empty degrades that gate to the
+            # configure-log evidence it already reads -- rather than reporting a
+            # bogus 0xC0000135 as if it were a missing DLL.
+            Write-Host 'Skipping the ffmpeg.exe version probe: cross build (a target binary cannot execute on this host)'
+            $ffVer = ''
+            $ffExit = 0
+        } else {
+            $ffVer = & $ffProbe -version 2>&1 | Out-String
+            $ffExit = $LASTEXITCODE
+        }
     } finally { $env:PATH = $savedPath }
     if ($ffVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodecMajor = $Matches[1] }
     elseif ($ffExit -ne 0) {

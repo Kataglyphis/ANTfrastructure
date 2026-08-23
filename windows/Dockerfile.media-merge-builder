@@ -68,6 +68,14 @@ FROM ${BASE_IMAGE} AS merge-fanin
 # stage's build scripts resolve the same arch as the branch builds did.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
+# OpenCV's install layout is <root>\<arch>\vc18\{bin,lib}. This has to be its own
+# ARG because a Dockerfile cannot branch on WINDOWS_TARGET_ARCH, and the ENV
+# below is not decoration: it WINS over the arch-aware fallback in
+# build-gstreamer-from-source.ps1 (that fallback only runs when $env:OPENCV_LIB
+# is unset). Left at x64 on an arm64 build, GStreamer's pkg-config step looks for
+# import libs in the x64 tree, finds none, and throws. The driver derives it from
+# the arch table and forwards it alongside WINDOWS_TARGET_ARCH.
+ARG OPENCV_ARCH_DIR=x64
 ARG GSTREAMER_VERSION=1.29.2
 # Component versions are consumed by the branch builds; re-declared here only so the
 # image carries the canonical version env vars (sync_versions.py verifies them).
@@ -118,8 +126,8 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     # the ENV follows — not the other way round.
     OPENCV_ROOT="C:\runtime\lib\opencv5" `
     OPENCV_INCLUDE="C:\runtime\lib\opencv5\include" `
-    OPENCV_LIB="C:\runtime\lib\opencv5\x64\vc18\lib" `
-    OPENCV_BIN="C:\runtime\lib\opencv5\x64\vc18\bin" `
+    OPENCV_LIB="C:\runtime\lib\opencv5\${OPENCV_ARCH_DIR}\vc18\lib" `
+    OPENCV_BIN="C:\runtime\lib\opencv5\${OPENCV_ARCH_DIR}\vc18\bin" `
     FFMPEG_ROOT="C:\runtime\ffmpeg" `
     FFMPEG_BIN="C:\runtime\ffmpeg\bin" `
     FFMPEG_LIB="C:\runtime\ffmpeg\lib" `
