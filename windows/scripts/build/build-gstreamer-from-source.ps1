@@ -891,7 +891,18 @@ int _isatty(int);
                        'import library and fail with a machine-type conflict.')
             }
             $sslLibDir = $sslLibHit[0].Directory.FullName
-            $sslInc = Join-Path $sslRoot 'include'
+            # The include dir is FOUND, not composed. innounp extracts InnoSetup
+            # payloads under a literal '{app}' directory, so the real layout is
+            #   C:\opt\openssl-arm64\{app}\lib\VC\arm64\MD\libcrypto.lib
+            #   C:\opt\openssl-arm64\{app}\include\openssl\opensslv.h
+            # and `Join-Path $sslRoot 'include'` would silently point at a path
+            # that does not exist (measured 2026-08-23 from the base build log).
+            # opensslv.h sits at <include>\openssl\opensslv.h, hence two levels up.
+            $sslIncHit = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'opensslv.h' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($sslIncHit.Count -eq 0) {
+                throw "OpenSSL headers for $($script:GstTargetArch) not found under $sslRoot (no opensslv.h). The extracted package layout changed."
+            }
+            $sslInc = $sslIncHit[0].Directory.Parent.FullName
             $sslOwnPc = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'openssl.pc' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
             if ($sslOwnPc.Count -gt 0) {
                 $sslPcDirs = @($sslOwnPc[0].Directory.FullName)

@@ -452,7 +452,23 @@ if ($sslArm64Lib.Count -gt 0) {
         # Extraction is also the right shape here for a second reason: this must
         # land BESIDE the x64 install without touching the registry or the
         # Windows system directory, and an extractor cannot do either.
-        $innounp = (Get-Command innounp -ErrorAction SilentlyContinue).Source
+        # Declare the dependency instead of inheriting it from script ORDER.
+        # innounp arrives in this image only as a side effect of scoop installing
+        # an innosetup package, and `scoop install main/openssl` runs LATER in
+        # this file (measured 2026-08-23: this block at 349 s, openssl at 406 s),
+        # so the first attempt found no innounp and failed for a reason that had
+        # nothing to do with OpenSSL. Installing it explicitly makes the block
+        # position-independent; scoop no-ops if it is already there.
+        Install-ScoopPackage -Package 'main/innounp'
+
+        # @(...) + .Count, never `(Get-Command ...).Source`: this script runs under
+        # Set-StrictMode -Version Latest, where dereferencing a property on a NULL
+        # result throws "The property 'Source' cannot be found on this object" --
+        # which is what the first attempt did, turning "innounp is missing" into a
+        # misleading exception (measured 2026-08-23).
+        $innounp = $null
+        $innounpCmd = @(Get-Command 'innounp' -CommandType Application -ErrorAction SilentlyContinue)
+        if ($innounpCmd.Count -gt 0) { $innounp = $innounpCmd[0].Source }
         if (-not $innounp) {
             $cand = Join-Path $env:USERPROFILE 'scoop\apps\innounp\current\innounp.exe'
             if (Test-Path $cand) { $innounp = $cand }
