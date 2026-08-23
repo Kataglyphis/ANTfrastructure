@@ -275,21 +275,21 @@ timing still needs one undisturbed run.
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
-- **XC3-INERT — provenance annotations are never written; the coherence
-  gate is permanently blind** [S·★★★, CONFIRMED ON SHIPPED BYTES
-  2026-08-23] `append_runtime_image_output()` reduces to `-t "${tag}"` and
-  its own comment admits args 3-5 (will_push/parent_pin/parent_stage) are
-  "accepted for call-site compatibility but inert" — so every wave-5 image
-  shipped WITHOUT run-id or parent-digest, and the manifest step logged
-  `3/3 wrapper tag(s) carry no run-id annotation` + `records no parent
-  digest` ×3. The gate cannot ever fail, which is worse than not having it.
-  It is not hypothetical: this very manifest mixes TWO source revisions —
-  amd64 `org.opencontainers.image.revision=58e6c325`, arm64+riscv64
-  `5105da8f` (the ORT-fix commit) — visible only because I read the labels.
-  FIX: stamp run-id + parent digest as plain `--label`s on the `-t` path
-  (labels survive `-t`, unlike the `--output type=image` annotations that
-  caused RTCACHE3), and have the manifest gate read labels. Then a
-  mixed-generation ship is caught instead of inferred.
+- **XC3-VALIDATE — provenance gates re-armed, needs ONE build to prove it**
+  [S·★★★, FIXED 2026-08-23 (1870118), validating] run-id/parent-digest/
+  parent-stage are stamped as image LABELS on the `-t` path (annotations can
+  never come back — RTCACHE3), read local→registry→annotation (new
+  registry-config-label.py fetches the config blob without pulling, so the
+  gate finally works on the --repair/other-host path it exists for), and the
+  gate now REFUSES on the repair path when provenance is unverifiable instead
+  of printing OK. A post-build self-check fails the lane if a requested label
+  did not land. Adversarial review caught two defects pre-commit (IMAGE_REPO
+  not exported → false STALE ANCESTOR under --image-repo; the recorded ANDROID
+  pin was compared against runtime_stage_parent's "package"). REMAINING: the
+  next full runtime build must show `[manifest] per-arch wrapper generation
+  check: OK` with 0 "carry no run-id" warnings and no [ancestry] STALE lines —
+  delete this item then. Also unstamped by design: the runtime BASE image
+  (hardcoded `-t`, no gate reads it).
 - **--no-push OCI-layout handoff + dual-path collapse** [M·★★] --no-push
   builds resolve parents against the REGISTRY (two runs lost historically).
 
