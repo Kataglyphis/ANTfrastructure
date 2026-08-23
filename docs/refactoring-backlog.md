@@ -97,6 +97,15 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   smoke_resolve_bin/assert_elf_magic/component_gate (6+2+4 dup sites) into
   smoke-common.sh; SMOKE_ENV=sandbox|runtime set by callers. Extend
   test-smoke-arch-parity.sh.
+- **CERB-CACHE — cerbero state cachemount (android lanes)** [M·★★★,
+  2026-08-22] the whole cerbero bootstrap+package run is ONE Dockerfile
+  RUN: any failure (PKGCFG 404, FD-OUTAGE 503, CERB-ICONV) discards ALL
+  progress and the next attempt restarts COLD — today that repeated the
+  ~40-60 min bootstrap ×3 lanes ×3 waves for zero progress. Give
+  /opt/cerbero/sources (+ build-tools prefix) a per-arch cachemount like
+  ccache; cerbero's own checksums make reuse safe, and a failed attempt
+  then resumes in minutes. Biggest single wall-clock lever for the
+  android stage's failure path.
 - **Media source-cache mounts** [S/M·★★] version-keyed src mounts for
   opencv/gstreamer/ffmpeg/onnx clones — every rebuild re-clones today.
 - **DUP2 — GCC-prefix `16.2.0` literal sprawl (~25× / 11 files)** [M·★★]
@@ -138,6 +147,55 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
   in tvm-python.sh never wired; do with the llvm-config pin.
 - **P3 note** [S] generalize the vulkan Multi-Arch drop-in into cross-apt.sh
   only if a SECOND dev-package skew appears.
+- **PKGCFG-MIRROR — cerbero pkg-config bootstrap 404, VALIDATING in
+  wave5l** [S·★★, fix ed0ea64] pkgconfig.freedesktop.org is dead and the
+  src/mirror fallback 404s → every cold android bootstrap died on
+  curl (22). Fix = macports redirect in recipes/pkg-config.recipe
+  (byte-identical tarball, recipe checksum still guards). v1 (7047558)
+  was a HEISENBUG: file picked via `grep -rl | grep -m1` — readdir order
+  is filesystem-dependent, in-container it sed'd a stray patch-file and
+  still echoed success. v2 patches the known recipe explicitly + all
+  other dead-host refs and echoes the patched url line as proof (echo
+  CONFIRMED ×2 in wave5k/5l; bootstrap passed the 404 point). DELETE
+  after android ×3 ships. LESSON for reviews: any `grep -rl | head/-m1`
+  file-pick is nondeterministic across filesystems.
+- **STALE-LOG — per-run log namespacing (re-filed; lost in the July
+  restructure)** [S/M·★★★, BIT again 2026-08-22] lane logs are opened
+  with `tee -a` and NEVER truncated between waves: android-*.log still
+  carried wave5j's 10/6/6 errors when wave5k launched → watcher raised
+  false NEW-error alarms; historically also caused stale-green reads.
+  Fix: namespace per run (out/build-logs/<run-id>/) or truncate at lane
+  start; watchers then need no baseline hack.
+- **EIGEN-NET — litert-android's eigen FetchContent single-homes on
+  gitlab.com** [S·★★, BIT 2026-08-21] a momentary gitlab outage
+  ('fatal: expected flush after ref listing') killed all three android
+  lanes in one window. NET1-class fix: mirror fallback (github
+  eigen-mirror / codeload tarball) for the eigen dep in the litert android
+  build; also covers the media-lane litert eigen fetch.
+- **FD-OUTAGE — cerbero's mirror fallback single-homes on freedesktop
+  infra** [S·★★, BIT 2026-08-22] a freedesktop-WIDE 503 window (www.x.org
+  redirects included) killed all 3 android lanes on the pixman fetch —
+  and cerbero's DEFAULT_MIRRORS live on gstreamer.freedesktop.org, i.e.
+  the SAME infra as most primaries: zero redundancy, and the gst source
+  tarballs themselves come from there too (mirror-patching can't help).
+  Wave5k evidence: pkg-config macports override worked (v2 echo ×2),
+  pixman then 503'd on primary AND both mirror composions. Options:
+  pre-seed hot tarballs via cerbero's cached_sources dir
+  (`<checkout>/sources/<name>-<version>/<tarball>`, checksum-verified,
+  skips network entirely) for the top-N cold-bootstrap fetches; or just
+  accept + wait out outages (they're rare; this was the first).
+- **CERB-ICONV — cerbero riscv64-android cold-path link order** [S/M·★,
+  BIT 2026-08-22] with NO cerbero cache, android-riscv64's glib links
+  before the (lib)iconv product is staged → `undefined symbol:
+  libiconv_open` (the lane only ever passed from warm cache before).
+  Verify recipe deps (glib ← libiconv) in our cerbero overlay; a worker
+  retry resuming cerbero state may mask it — cold-validate explicitly.
+- **PAR5 — divisor is static per launch; surviving lanes stay throttled**
+  [S/M·★★] BUILD_MEM_DIVISOR is computed at launch (n_arch × budget) and
+  never adapts when lanes finish — observed repeatedly: a single remaining
+  wheelhouse crawled at 1-2 jobs for HOURS while the host idled (wave4f
+  arm64, wave5h riscv64). Options: per-stage divisor from LIVE lane count
+  (flag-dir heartbeat), or accept + document. Pairs with PAR4-hard.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
@@ -167,8 +225,12 @@ but a clean full-chain timing needs one undisturbed run (next rebuild).
 
 ## D. CI / infra / cache tiers (own triggers)
 
-- **S3 — per-stage registry cache refs (mode=max)** [M·★★] framework stages
-  never warm-start from registry; dodge the ghcr 400 blob limit; test.
+- **S3 — per-stage registry cache refs (mode=max)** [M·★★→★★★, BIT
+  2026-08-21] the system-prune wiped local caches and the inline (mode=min)
+  registry cache covers only final-image layers → the wave5h relaunch
+  COLD-REBUILT all media intermediates (~18 h: torch/IREE/litert ×3).
+  Per-stage mode=max refs would have made that a fast-forward. Dodge the
+  ghcr 400 blob limit; test.
 - **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
   (deliberately per-lane since PAR2 — revisit as shared+non-locked).
 - **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache

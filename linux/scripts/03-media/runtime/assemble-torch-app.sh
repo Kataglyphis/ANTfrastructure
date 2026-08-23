@@ -114,7 +114,7 @@ wheel_family() {
     iree-*.whl)               printf 'iree' ;;
     opencv_python-*.whl|opencv_python_headless-*.whl|opencv_contrib_python-*.whl|opencv_contrib_python_headless-*.whl)
                               printf 'opencv' ;;
-    onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl)
+    onnxruntime-*.whl|onnxruntime_gpu-*.whl|onnxruntime_migraphx-*.whl|onnxruntime_webgpu-*.whl|onnxruntime_dnnl-*.whl)
                               printf 'onnx' ;;
     apache_tvm-*.whl|apache-tvm-*.whl|tvm-*.whl|tvm_ffi-*.whl|apache_tvm_ffi-*.whl)
                               printf 'tvm' ;;
@@ -140,6 +140,11 @@ collect_locked_local_skip_packages() {
       iree-compiler) append_unique_arg out_packages_ref iree-base-compiler ;;
       iree-runtime)  append_unique_arg out_packages_ref iree-base-runtime ;;
       opencv)        append_unique_arg out_packages_ref opencv-python ;;
+      # A local ORT wheel (any variant, e.g. onnxruntime_dnnl) must beat the
+      # app lock's PyPI onnxruntime: both dists own site-packages/onnxruntime/,
+      # so letting uv sync install PyPI first leaves a version-skewed
+      # capi/libonnxruntime behind (VERS_1.29.0 ImportError, wave5m amd64).
+      onnx)          append_unique_arg out_packages_ref onnxruntime ;;
     esac
   done
   shopt -u nullglob
@@ -349,7 +354,7 @@ reconcile_local_wheels() {
   # torchvision/ai-edge-litert are purged here too for symmetry -- previously they
   # relied on build_uv_sync_args' --no-install-package + --force-reinstall alone.
   if [ "${have_onnx_family}" = "true" ]; then
-    uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu 2>/dev/null || true
+    uv pip uninstall onnxruntime onnxruntime-gpu onnxruntime-migraphx onnxruntime-webgpu onnxruntime-dnnl 2>/dev/null || true
   fi
   if [ "${have_opencv_family}" = "true" ]; then
     uv_uninstall_pip_opencv

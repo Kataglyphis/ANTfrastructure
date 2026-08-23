@@ -91,6 +91,38 @@ patch_cerbero_system_m4_usage() {
       "Cerbero drop m4 dependency from autoconf/libtool recipes"
 }
 
+override_pkgconfig_dead_mirror() {
+    # PKGCFG-MIRROR (2026-08-22): recipes/pkg-config.recipe fetches from
+    # pkgconfig.freedesktop.org (host dead) and the DEFAULT_MIRRORS fallback
+    # gstreamer.freedesktop.org/src/mirror/ 404s too (upstream restructure)
+    # — every COLD cerbero bootstrap dies on curl (22) across ALL arches.
+    # macports serves the byte-identical tarball (sha256 6fc69c01... equals
+    # the recipe's tarball_checksum, so the checksum still guards the bytes).
+    # v1 of this fix picked ONE file via `grep -rl | grep -m1` — readdir
+    # order is filesystem-dependent, so in-container it patched a stray
+    # patch-file instead of the recipe while still echoing success. Patch
+    # the known recipe explicitly PLUS every other file naming a dead host,
+    # and echo the resulting url line as proof.
+    local f patched=0
+    for f in recipes/pkg-config.recipe \
+             $(grep -rl "pkgconfig\.freedesktop\.org/releases\|gstreamer\.freedesktop\.org/src/mirror/pkg-config" recipes/ packages/ 2>/dev/null); do
+        [ -f "${f}" ] || continue
+        case " ${_pkgcfg_seen:-} " in *" ${f} "*) continue ;; esac
+        _pkgcfg_seen="${_pkgcfg_seen:-} ${f}"
+        sed -i \
+          -e 's|https://gstreamer.freedesktop.org/src/mirror/pkg-config|https://distfiles.macports.org/pkgconfig/pkg-config|g' \
+          -e 's|https://pkgconfig.freedesktop.org/releases|https://distfiles.macports.org/pkgconfig|g' \
+          "${f}"
+        patched=$((patched + 1))
+    done
+    unset _pkgcfg_seen
+    if [ -f recipes/pkg-config.recipe ]; then
+        echo "cerbero: pkg-config mirror override → $(grep -m1 "url = " recipes/pkg-config.recipe | tr -d ' ') (${patched} file(s) patched, PKGCFG-MIRROR)"
+    else
+        echo "WARNING: recipes/pkg-config.recipe missing — pkg-config mirror override patched ${patched} file(s) blind" >&2
+    fi
+}
+
 override_soundtouch_codeberg_checksum() {
     # soundtouch is fetched from Codeberg's AUTO-GENERATED archive
     # (codeberg.org/soundtouch/soundtouch/archive/<version>.tar.gz). Forgejo
@@ -208,6 +240,7 @@ fi
 
 patch_cerbero_system_m4_usage
 override_soundtouch_codeberg_checksum
+override_pkgconfig_dead_mirror
 
 # 5. Setup Python Virtual Environment
 HOST_PYTHON="$(resolve_host_python)"
