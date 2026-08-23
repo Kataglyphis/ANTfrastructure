@@ -118,6 +118,21 @@ timing still needs one undisturbed run.
   for the other arches' whole /opt/gcc). Fix the SIGPIPE swallow FIRST
   (cheap, turns a fake green into a real verdict), then extend the strip
   pass to every triplet under libexec/gcc + /usr/libexec/gcc.
+- **APT-HTTP — the base image may fetch packages over plaintext http** [S/M·★★★,
+  FOUND 2026-08-23, NOT fixed — needs a decision] base-image.sh:221
+  deliberately rewrites the fast-mirror URL `https://…` → `http://…` because a
+  fresh Ubuntu image has no trusted CA bundle yet ("bootstrap the archive over
+  HTTP first"). The standalone RUN in Dockerfile.base that is positioned to
+  restore https afterwards was found INERT during the wave-2 review (the
+  preceding bootstrap-ca RUN has already applied the mirror, so the later RUN
+  has nothing left to do). If that holds, the base image — and every stage
+  FROM it — ships apt sources on http, so package integrity rests on apt's
+  signature checking alone with no transport security. VERIFY first (which
+  sources file ends up with which scheme, at which stage), then decide:
+  re-point to https once ca-certificates is installed, or document that
+  signature verification is considered sufficient. Do not fold this into an
+  unrelated change — it is the one finding of this sweep with a security
+  dimension.
 - **SMOKE-DEPTH — the runtime smokes never execute anything real** [M·★★★,
   2026-08-23] three gaps found while verifying wave-5, all "green line, no
   proof": (a) media support is read from `cv2.getBuildInformation()`
