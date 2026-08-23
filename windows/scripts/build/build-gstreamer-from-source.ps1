@@ -89,6 +89,16 @@ $sourceBuildModule = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Comm
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildModule)))) { Import-Module $sourceBuildModule }
 
+# Target-arch state, resolved ONCE here rather than at first use. Several
+# decisions far apart in this file depend on it -- the compiler-rt builtins
+# selection, the mandatory-plugin contract, the tflite pre-flight, the meson
+# options and the post-install verification -- and resolving it late meant the
+# earliest of those ran arch-blind. Script scope so every phase block sees the
+# same answer. Both are inert on amd64: Test-WindowsCrossTarget compares against
+# the HOST arch, which is always amd64 here.
+$script:GstTargetArch = Get-WindowsTargetArch
+$script:GstCross      = Test-WindowsCrossTarget -Arch $script:GstTargetArch
+
 # (No Shared re-import needed anymore: every nested import — including
 # load-versions.ps1's, the last -Force holdout that killed this script twice
 # on 2026-08-05 — is guarded/un-Forced now, so the top-level import above
@@ -478,7 +488,39 @@ int _isatty(int);
     # than hardcoding the scoop app dir layout -- survives a LLVM/scoop install relocation.
     $clangClCmd = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
     $llvmRoot = if ($clangClCmd) { Split-Path (Split-Path $clangClCmd.Source) } else { Join-Path $env:USERPROFILE 'scoop\apps\llvm\current' }
-    $compilerRtLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue | Select-Object -First 1)
+    # ARCH-BLIND `Select-Object -First 1` was a latent wrong-machine bug: LLVM
+    # ships one builtins lib PER TARGET (clang_rt.builtins-x86_64.lib,
+    # clang_rt.builtins-aarch64.lib, ...), and this path is handed straight to
+    # lld-link. On the cross lane the x86_64 one sorts first and would be linked
+    # into an aarch64 image. Filtering only on the cross branch keeps the amd64
+    # selection -- and therefore its link line -- exactly what it is today.
+    $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue)
+    if ($script:GstCross) {
+        $wantRt = (Get-ClangTargetTriple -Arch $script:GstTargetArch) -replace '-.*$', ''   # aarch64-pc-windows-msvc -> aarch64
+        $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
+        if ($rtCandidates.Count -eq 0) {
+            # WARN, do not throw. Absence is already tolerated on amd64 -- if no
+            # builtins lib is found there, $rtFullPath simply stays empty and the
+            # link proceeds -- so throwing only here would apply a stricter policy
+            # to the cross lane than this file applies to itself, and would block
+            # a build that may not need these helpers at all.
+            #
+            # MEASURED 2026-08-23 (probe-arm64-prereqs.ps1 Q5 against the
+            # toolchain image): the LLVM install ships ONLY
+            # clang_rt.builtins-x86_64.lib. There is no aarch64 counterpart to
+            # link, so the honest outcome is to link nothing rather than to link
+            # the host's. If aarch64 GStreamer genuinely needs __udivti3 & co,
+            # lld-link says so by NAME, which is a precise and actionable error --
+            # unlike the machine-type conflict the unfiltered code would have
+            # produced, or a pre-emptive throw here.
+            Write-Warning ("compiler-rt builtins for '$wantRt' not found under $llvmRoot\lib\clang " +
+                           "(present: $((@(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue).Name | Sort-Object -Unique) -join ', ')). " +
+                           'Linking WITHOUT compiler-rt rather than linking the host-arch library. If the link ' +
+                           'later fails on __udivti3/__umodti3 & co, this is the cause and the fix is an aarch64 ' +
+                           'compiler-rt, not the x86_64 one.')
+        }
+    }
+    $compilerRtLib = @($rtCandidates | Select-Object -First 1)
     $rtFullPath = ''
     if ($compilerRtLib) {
         $rtFullPath = $compilerRtLib.FullName -replace '\\', '/'
@@ -503,8 +545,8 @@ int _isatty(int);
     # without --target on the link line lld-link is handed /machine:x64 and
     # refuses the aarch64 objects. Empty string on amd64, dropped by the
     # Where-Object below, so the emitted array is byte-identical on that lane.
-    $gstTargetArch = Get-WindowsTargetArch
-    $gstCrossArg = if (Test-WindowsCrossTarget -Arch $gstTargetArch) { "--target=$(Get-ClangTargetTriple -Arch $gstTargetArch)" } else { '' }
+    $gstTargetArch = $script:GstTargetArch   # resolved once at the top of this script
+    $gstCrossArg = if ($script:GstCross) { "--target=$(Get-ClangTargetTriple -Arch $gstTargetArch)" } else { '' }
     $linkArgElems = ((@('/FORCE:MULTIPLE', $gstCrossArg, $rtFullPath) + $guidLibs) |
         Where-Object { $_ } | ForEach-Object { "'$_'" }) -join ','
     log "Link args: [$linkArgElems]"
@@ -640,7 +682,11 @@ int _isatty(int);
     # minutes), and emitting a text file is not worth invalidating them. This
     # stage consumes the canonical env contract (OPENCV_ROOT / ONNX_ROOT / …)
     # that the merge image already defines, so nothing is hardcoded.
-    $requiredPlugins = @(Get-RequiredGstPlugin)
+    # -Arch is what drops 'tflite' on the cross lane, where LiteRT does not exist
+    # at all. Done in the CONTRACT, not here, so the smoke test and healthcheck
+    # get the same answer -- the three disagreeing is the documented 2026-07-11
+    # regression that shipped an image without plugins.
+    $requiredPlugins = @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)
     # Declared before the branch so the meson args below can interpolate it
     # unconditionally: with -SkipPluginGate no LiteRT include is added, and
     # StrictMode would otherwise fault on an undefined variable.
@@ -733,72 +779,84 @@ int _isatty(int);
             log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
         }
 
-        # ── tflite: the one integration that does NOT use pkg-config ──────────
-        # gst-plugins-bad ext/tflite probes the compiler directly:
-        #   cc.find_library('tensorflowlite_c') / fallback 'tensorflow-lite'
-        #   cc.has_header('tensorflow/lite/c/c_api.h')
-        # That header path is the PRE-RENAME TensorFlow one. Google renamed
-        # TFLite to LiteRT, and build-litert-from-source.ps1 stages the headers
-        # the way LiteRT ships them — under include\tflite\ — so upstream's
-        # probe cannot find them no matter what PKG_CONFIG_PATH says. This is a
-        # namespace mismatch, not a missing dependency, which is why it never
-        # looked like the opencv/onnx problem.
-        #
-        # Fix: mirror the header tree under the name upstream probes for. The
-        # copies' own #includes stay `tflite/...`, which still resolve because
-        # the SAME include root is on the path.
-        $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
-        $litertInclude = if ($env:LITERT_INCLUDE) { $env:LITERT_INCLUDE } else { Join-Path $litertRoot 'include' }
-        $litertLib = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $litertRoot 'lib' }
-        $tfliteHeaderTree = Join-Path $litertInclude 'tflite'
-        $tfAliasRoot = Join-Path $litertInclude 'tensorflow\lite'
-        $tfAliasProbe = Join-Path $litertInclude 'tensorflow\lite\c\c_api.h'
-        if (-not (Test-Path $tfAliasProbe)) {
-            if (-not (Test-Path (Join-Path $tfliteHeaderTree 'c\c_api.h'))) {
-                throw ("LiteRT headers not found: neither $tfAliasProbe nor $(Join-Path $tfliteHeaderTree 'c\c_api.h') exists. " +
-                    'The tflite plugin cannot be built without the TFLite C API headers — check that the media-litert ' +
-                    'branch image was fanned in (COPY --from=media-litert C:\runtime\lib\litert).')
+        # CROSS LANE: the entire tflite integration below is skipped. LiteRT is
+        # not built for arm64 at all (LiteRT-LM links a prebuilt x86_64-only
+        # static library), so C:\runtime\lib\litert is the empty stand-in from
+        # Dockerfile.media-builder's media-branch-absent stage. Both gates in the
+        # block would throw against it -- the header pre-flight first, then the
+        # import-library probe -- and neither is a real defect on that lane.
+        # Get-RequiredGstPlugin -Arch has already dropped 'tflite' from
+        # $requiredPlugins, so nothing downstream expects it either.
+        if ($script:GstCross) {
+            log "tflite integration skipped on the $script:GstTargetArch cross lane (LiteRT is absent by construction; see docs/windows-cross-builds.md)."
+        } else {
+            # ── tflite: the one integration that does NOT use pkg-config ──────────
+            # gst-plugins-bad ext/tflite probes the compiler directly:
+            #   cc.find_library('tensorflowlite_c') / fallback 'tensorflow-lite'
+            #   cc.has_header('tensorflow/lite/c/c_api.h')
+            # That header path is the PRE-RENAME TensorFlow one. Google renamed
+            # TFLite to LiteRT, and build-litert-from-source.ps1 stages the headers
+            # the way LiteRT ships them — under include\tflite\ — so upstream's
+            # probe cannot find them no matter what PKG_CONFIG_PATH says. This is a
+            # namespace mismatch, not a missing dependency, which is why it never
+            # looked like the opencv/onnx problem.
+            #
+            # Fix: mirror the header tree under the name upstream probes for. The
+            # copies' own #includes stay `tflite/...`, which still resolve because
+            # the SAME include root is on the path.
+            $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
+            $litertInclude = if ($env:LITERT_INCLUDE) { $env:LITERT_INCLUDE } else { Join-Path $litertRoot 'include' }
+            $litertLib = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $litertRoot 'lib' }
+            $tfliteHeaderTree = Join-Path $litertInclude 'tflite'
+            $tfAliasRoot = Join-Path $litertInclude 'tensorflow\lite'
+            $tfAliasProbe = Join-Path $litertInclude 'tensorflow\lite\c\c_api.h'
+            if (-not (Test-Path $tfAliasProbe)) {
+                if (-not (Test-Path (Join-Path $tfliteHeaderTree 'c\c_api.h'))) {
+                    throw ("LiteRT headers not found: neither $tfAliasProbe nor $(Join-Path $tfliteHeaderTree 'c\c_api.h') exists. " +
+                        'The tflite plugin cannot be built without the TFLite C API headers — check that the media-litert ' +
+                        'branch image was fanned in (COPY --from=media-litert C:\runtime\lib\litert).')
+                }
+                New-Item -ItemType Directory -Force -Path (Split-Path $tfAliasRoot -Parent) | Out-Null
+                Copy-Item -Path $tfliteHeaderTree -Destination $tfAliasRoot -Recurse -Force
+                log "Staged tensorflow/lite/ header alias from $tfliteHeaderTree (LiteRT ships the post-rename tflite/ layout; gst probes the old path)."
             }
-            New-Item -ItemType Directory -Force -Path (Split-Path $tfAliasRoot -Parent) | Out-Null
-            Copy-Item -Path $tfliteHeaderTree -Destination $tfAliasRoot -Recurse -Force
-            log "Staged tensorflow/lite/ header alias from $tfliteHeaderTree (LiteRT ships the post-rename tflite/ layout; gst probes the old path)."
+            if (-not (Test-Path $tfAliasProbe)) { throw "tensorflow/lite/c/c_api.h still missing at $tfAliasProbe after staging the alias tree." }
+    
+            # The link name upstream asks for, in preference order. If LiteRT's build
+            # produced neither, say exactly what IS there — a bare "not found" here
+            # would send someone hunting PKG_CONFIG_PATH for a plugin that never
+            # consults it.
+            $tfliteLibName = $null
+            foreach ($candidate in @($requiredPlugins | Where-Object { $_.Name -eq 'tflite' }).NeedsLib) {
+                if (Test-Path (Join-Path $litertLib "$candidate.lib")) { $tfliteLibName = $candidate; break }
+            }
+            if (-not $tfliteLibName) {
+                $present = @(Get-LibraryLinkName -LibDir $litertLib)
+                throw ("neither tensorflowlite_c.lib nor tensorflow-lite.lib is present in $litertLib, so gst's " +
+                    "cc.find_library() probe cannot succeed. Libraries actually staged there: $($present -join ', '). " +
+                    'If LiteRT now emits the C API under a different name, add it to NeedsLib in Get-RequiredGstPlugin ' +
+                    'rather than renaming the binary.')
+            }
+            log "TFLite C API library: $tfliteLibName.lib in $litertLib"
+    
+            # cc.find_library / cc.has_header consult the COMPILER's search paths,
+            # not meson options, so INCLUDE/LIB is the mechanism that actually works
+            # here. lld-link (invoked by clang-cl) reads LIB for its default library
+            # search path, so setting it below is sufficient for the tflite plugin's
+            # find_library AND its link. Do NOT also push the dir as a `/LIBPATH:`
+            # c_link_arg: clang-cl does not recognise `/LIBPATH:` as a driver flag
+            # and treats the whole token as an input filename ("no such file or
+            # directory: '/LIBPATH:...'"), which fails meson's compile+link sanity
+            # check before any plugin is even configured (regression fixed 2026-08-13,
+            # first surfaced once all three media branches fanned into the merge).
+            $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+            $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+            # Forward slashes inside the meson array literal: meson parses those
+            # strings with escape sequences, so a native C:\... path would mangle
+            # (\r, \t, ...). Same reason $rtFullPath above is converted.
+            $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
+            log "INCLUDE += $litertInclude ; LIB += $litertLib"
         }
-        if (-not (Test-Path $tfAliasProbe)) { throw "tensorflow/lite/c/c_api.h still missing at $tfAliasProbe after staging the alias tree." }
-
-        # The link name upstream asks for, in preference order. If LiteRT's build
-        # produced neither, say exactly what IS there — a bare "not found" here
-        # would send someone hunting PKG_CONFIG_PATH for a plugin that never
-        # consults it.
-        $tfliteLibName = $null
-        foreach ($candidate in @($requiredPlugins | Where-Object { $_.Name -eq 'tflite' }).NeedsLib) {
-            if (Test-Path (Join-Path $litertLib "$candidate.lib")) { $tfliteLibName = $candidate; break }
-        }
-        if (-not $tfliteLibName) {
-            $present = @(Get-LibraryLinkName -LibDir $litertLib)
-            throw ("neither tensorflowlite_c.lib nor tensorflow-lite.lib is present in $litertLib, so gst's " +
-                "cc.find_library() probe cannot succeed. Libraries actually staged there: $($present -join ', '). " +
-                'If LiteRT now emits the C API under a different name, add it to NeedsLib in Get-RequiredGstPlugin ' +
-                'rather than renaming the binary.')
-        }
-        log "TFLite C API library: $tfliteLibName.lib in $litertLib"
-
-        # cc.find_library / cc.has_header consult the COMPILER's search paths,
-        # not meson options, so INCLUDE/LIB is the mechanism that actually works
-        # here. lld-link (invoked by clang-cl) reads LIB for its default library
-        # search path, so setting it below is sufficient for the tflite plugin's
-        # find_library AND its link. Do NOT also push the dir as a `/LIBPATH:`
-        # c_link_arg: clang-cl does not recognise `/LIBPATH:` as a driver flag
-        # and treats the whole token as an input filename ("no such file or
-        # directory: '/LIBPATH:...'"), which fails meson's compile+link sanity
-        # check before any plugin is even configured (regression fixed 2026-08-13,
-        # first surfaced once all three media branches fanned into the merge).
-        $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
-        $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
-        # Forward slashes inside the meson array literal: meson parses those
-        # strings with escape sequences, so a native C:\... path would mangle
-        # (\r, \t, ...). Same reason $rtFullPath above is converted.
-        $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
-        log "INCLUDE += $litertInclude ; LIB += $litertLib"
 
         # Everything the required set needs must resolve NOW, not after an hour.
         $pcModules = @($requiredPlugins | Where-Object { $_.Detection -eq 'pkg-config' } |
@@ -847,8 +905,27 @@ int _isatty(int);
         }
         # CC/CXX may carry the sccache launcher ('sccache clang-cl'); meson's
         # [binaries] entries take a LIST, so split rather than quote as one word.
-        $ccList = ((($env:CC -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
-        $cxxList = ((($env:CXX -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        #
+        # --target BELONGS IN THE EXELIST, not only in c_args. This is meson's
+        # designed cross mechanism for clang-cl and the ONLY thing that gives the
+        # archiver and linker the right /MACHINE. Verified against meson 1.12.0:
+        #   compilers/detect.py:439  match = re.search('^Target: (.*?)-', out, re.MULTILINE)
+        # -- meson runs `<exelist> --version` and parses the reported triple, then
+        #   compilers/mixins/visualstudio.py:114  elif 'aarch64' in target: self.machine = 'arm64'
+        #   compilers/mixins/visualstudio.py:123  self.linker.machine = self.machine
+        # and the archiver picks it up via
+        #   compilers/detect.py:224  VisualStudioLinker(linker, env, getattr(compiler, 'machine', None))
+        # Without it clang-cl reports the HOST triple, meson canonicalises that to
+        # 'x64', and every static archive and DLL is built with /MACHINE:x64 while
+        # the objects are arm64 (measured 2026-08-23):
+        #   libgnulib.a.p/asnprintf.c.obj: file machine type arm64 conflicts with
+        #   library machine type x64 (from '/machine:x64' flag)
+        # [host_machine] cpu_family does NOT drive /MACHINE -- that was the wrong
+        # assumption; it only steers the meson.build tree's own arch branches.
+        # The duplicate --target in -Dc_args below is harmless and stays: it keeps
+        # the compile flags correct even for subprojects that rebuild the command.
+        $ccList = (((($env:CC -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $cxxList = (((($env:CXX -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
         $crossFile = Join-Path $resolvedLogDir "meson-cross-$gstTargetArch.ini"
         Set-Content -Path $crossFile -Encoding ASCII -Value @"
 [binaries]
@@ -978,7 +1055,12 @@ endian = 'little'
                 '-Dlibav=enabled',
                 '-Dgst-plugins-bad:opencv=enabled',
                 '-Dgst-plugins-bad:onnx=enabled',
-                '-Dgst-plugins-bad:tflite=enabled'
+                # 'disabled' EXPLICITLY on the cross lane, never omitted: the
+                # option's default is 'auto', which would probe, half-configure
+                # against the empty LiteRT stand-in and fail late instead of
+                # cleanly not building the plugin. amd64 keeps 'enabled' in the
+                # same array position, so its meson command line is unchanged.
+                $(if ($script:GstCross) { '-Dgst-plugins-bad:tflite=disabled' } else { '-Dgst-plugins-bad:tflite=enabled' })
             )
         }
     ) + $mesonCrossArgs + $MesonSetupArgs
@@ -1218,7 +1300,24 @@ endian = 'little'
         }
         return $missing
     }
-    foreach ($plugin in @(Get-RequiredGstPlugin)) {
+    # CROSS LANE: gst-inspect-1.0.exe is an aarch64 binary and this is an x64
+    # host with no ARM64 emulation, so RUNNING it is not "a check that fails" --
+    # it is a check that cannot exist. Substitute the strongest static evidence
+    # available: the plugin DLL must have been produced. Whether it is the right
+    # MACHINE is not this gate's job; verify-target-arch.ps1 asserts that over
+    # the whole install prefix at the end of the merge stage.
+    if ($script:GstCross) {
+        foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
+            $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($pluginDll) {
+                log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' built: $($pluginDll.Name) (cross lane - load probe impossible on an x64 host)"
+            } else {
+                log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' produced NO DLL in $gstPluginDir — $($plugin.Why)"
+                $missingPlugins += $plugin
+            }
+        }
+    } else {
+    foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
         $global:LASTEXITCODE = 0
         $null = & $gstInspect $plugin.Name 2>&1
         if ($LASTEXITCODE -eq 0) {
@@ -1243,6 +1342,7 @@ endian = 'little'
             $missingPlugins += $plugin
         }
     }
+    }
     if ($null -ne $prevGstDebug) { $env:GST_DEBUG = $prevGstDebug } else { Remove-Item Env:\GST_DEBUG -ErrorAction SilentlyContinue }
     if ($null -ne $prevGstReg) { $env:GST_REGISTRY = $prevGstReg } else { Remove-Item Env:\GST_REGISTRY -ErrorAction SilentlyContinue }
     $global:LASTEXITCODE = 0
@@ -1259,7 +1359,7 @@ endian = 'little'
                 'image without opencv and libav for months. Deliberate exception: -SkipPluginGate.')
         }
     } else {
-        log "All $(@(Get-RequiredGstPlugin).Count) mandatory GStreamer plugins verified present."
+        log "All $(@(Get-RequiredGstPlugin -Arch $script:GstTargetArch).Count) mandatory GStreamer plugins verified present."
     }
 
     Switch-BuildPhase '10. cleanup'

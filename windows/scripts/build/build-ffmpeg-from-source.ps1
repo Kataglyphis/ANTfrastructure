@@ -32,6 +32,16 @@ $ffmpegDir = Join-Path $prefix 'bin'
 # WindowsTargetArch.Common (re-exported by WindowsSourceBuild.Common).
 # On amd64 $ffCross is $false and $ffCcTargetFlag is '', so every flag this
 # script emits stays byte-identical to the pre-arm64 script.
+# Diagnostic: the arch resolution silently fell back to amd64 here once
+# (2026-08-23) because an ARG did not cross a stage boundary, and the only
+# symptom was FFmpeg configure reporting "libonnxruntime not found". Print the
+# raw inputs so a future mismatch names itself instead of hiding behind a
+# downstream error.
+Write-Host ("FFmpeg arch inputs: Process='{0}' Machine='{1}' Probe='{2}' -> resolved '{3}'" -f `
+    [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Process'),
+    [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Machine'),
+    $env:KATA_ARCH_PROBE,
+    (Get-WindowsTargetArch))
 $ffTargetArch = Get-WindowsTargetArch
 $ffCross      = Test-WindowsCrossTarget -Arch $ffTargetArch
 # Appended to clang-cl in BOTH places the compiler is named (configure's --cc
@@ -441,7 +451,119 @@ if ($ffCross) {
     # add --disable-asm as a first step: correct but slower, and a deliberate
     # follow-up rather than a silent default.
     $confFlags += '--enable-cross-compile', "--arch=$(Get-FfmpegTargetArch -Arch $ffTargetArch)"
-    Write-Host "FFmpeg: cross flags -> --enable-cross-compile --arch=$(Get-FfmpegTargetArch -Arch $ffTargetArch)"
+    # /machine on the LINKER is separate from --target on the compiler, and both
+    # are required. MEASURED 2026-08-23: with only --cc carrying the triple,
+    # configure's own link probes ran as x64 and every check against a
+    # cross-built library failed with
+    #   lld-link: error: onnxruntime.lib(onnxruntime.dll): machine type arm64
+    #             conflicts with x64
+    # which configure reports as the far less helpful "ERROR: libonnxruntime not
+    # found". FFmpeg drives --ld=lld-link directly, so the triple never reaches
+    # it; lld-link takes /machine instead.
+    $confFlags += "--extra-ldflags=/machine:$(Get-LibMachineArg -Arch $ffTargetArch)"
+    # HOST compiler for the build-time tools (bin2c and friends) that must RUN on
+    # this amd64 machine. Under --enable-cross-compile configure stops assuming
+    # cc==host_cc and falls back to plain `gcc`, which does not exist in a Windows
+    # container: "./configure: line 1037: gcc: command not found / Host compiler
+    # lacks C11 support" (measured 2026-08-23).
+    #
+    # `clang`, not `clang-cl`: configure drives host_cc with GNU-style flags
+    # (-std=c11 -c -o), which the clang driver accepts and the clang-cl driver
+    # does not. It is the same LLVM install either way, just the other driver,
+    # and NO --target is passed so it builds for the host by default -- which is
+    # the whole point of host_cc.
+    # Host tools must LINK against the HOST CRT. VsDevCmd has put the target's
+    # arm64 lib dirs on %LIB%, so a host tool built with plain clang picks up the
+    # arm64 libcmt.lib and dies with the mirror image of the target-side error:
+    #   lld-link: error: libcmt.lib(exe_main.obj): machine type arm64 conflicts with x64
+    # (measured 2026-08-23). Point host_ldflags at the x64 lib dirs explicitly so
+    # they win the search order; -Wl, is needed because host_cc is the GNU-style
+    # clang driver, not clang-cl.
+    $hostArchDir = Get-MsvcTargetLibDir -Arch (Get-WindowsHostArch)
+    $hostLibDirs = @()
+    if ($env:VCToolsInstallDir) { $hostLibDirs += (Join-Path $env:VCToolsInstallDir "lib\$hostArchDir") }
+    $sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Lib'
+    $sdkVerDir = Get-ChildItem $sdkLibRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { Test-Path (Join-Path $_.FullName "ucrt\$hostArchDir") } |
+        Sort-Object Name | Select-Object -Last 1
+    if ($sdkVerDir) {
+        $hostLibDirs += (Join-Path $sdkVerDir.FullName "ucrt\$hostArchDir")
+        $hostLibDirs += (Join-Path $sdkVerDir.FullName "um\$hostArchDir")
+    }
+    $hostLibDirs = @($hostLibDirs | Where-Object { Test-Path $_ })
+    if ($hostLibDirs.Count -eq 0) {
+        throw ("cross build: could not locate any $hostArchDir (host) lib directory for FFmpeg's host tools. " +
+               'VCToolsInstallDir=' + $env:VCToolsInstallDir + "; SDK root=$sdkLibRoot")
+    }
+    # 8.3 SHORT paths, not the long ones. FFmpeg pastes host_ldflags verbatim into
+    # a make recipe executed by MSYS sh, and the real directories contain BOTH
+    # spaces and parentheses:
+    #   sh: -c: line 1: syntax error near unexpected token `('
+    #   clang -Wl,-libpath:C:\Program Files (x86)\Microsoft Visual Studio\...
+    # (measured 2026-08-23). Quoting would have to survive configure -> make ->
+    # sh; short paths sidestep the whole quoting chain instead.
+    # Short paths FIRST, single-quoting as the fallback. Measured 2026-08-23:
+    # 8.3 name generation is DISABLED on the container's volume, so ShortPath
+    # returns the long path unchanged -- short paths work on many hosts but
+    # cannot be relied on here.
+    #
+    # The fallback wraps each path in SINGLE quotes with forward slashes. make
+    # hands the whole recipe line to sh, and sh treats a single-quoted word as
+    # one literal argument regardless of spaces or parentheses -- which is
+    # exactly what "C:/Program Files (x86)/..." needs. Forward slashes avoid any
+    # backslash interpretation on the way through MSYS; clang accepts either.
+    $fso = New-Object -ComObject Scripting.FileSystemObject
+    $hostLibArgs = foreach ($d in $hostLibDirs) {
+        $short = try { $fso.GetFolder($d).ShortPath } catch { $d }
+        if ($short -notmatch '[ ()]') {
+            "-Wl,-libpath:$short"
+        } else {
+            # DOUBLE quotes, not single: $confStr below already wraps any flag
+            # containing a space in SINGLE quotes, and a nested single quote
+            # terminates that wrapper early -- which is what produced
+            # "ffmpeg-configure-wrapper.sh: line 6: syntax error near unexpected
+            # token `('". Double quotes nest inside the single-quoted wrapper
+            # and still keep each path one word when make re-parses the value.
+            '-Wl,-libpath:"' + ($d -replace '\\', '/') + '"'
+        }
+    }
+    # TWO quoting levels, because a shell parses this value TWICE:
+    #   1. the configure wrapper runs `./configure <all flags on one line>`, so the
+    #      whole --host-ldflags value must survive as ONE word. $confStr below
+    #      ALREADY does that: it single-quotes any flag containing a space. Adding
+    #      quotes here as well is what broke it -- do not.
+    #   2. configure stores the value in config.mak, make pastes it into a recipe,
+    #      and sh parses it AGAIN, so each individual path must stay one word ->
+    #      the DOUBLE quotes around each path (above) do that, and they nest
+    #      safely inside $confStr's single quotes.
+    # Both failure modes print the SAME message, from different places:
+    # "syntax error near unexpected token `('" -- from make when level 2 is
+    # missing, from ffmpeg-configure-wrapper.sh when level 1 is broken. Read the
+    # filename in the error, not just the text. Measured 2026-08-23.
+    $confFlags += '--host-cc=clang'
+    $confFlags += ('--host-ldflags=' + ($hostLibArgs -join ' '))
+    Write-Host ("FFmpeg: host tools link against {0} libs -> {1}" -f $hostArchDir, ($hostLibArgs -join ' '))
+    # aarch64 assembly is OFF for now, deliberately and with a way back.
+    #
+    # MEASURED 2026-08-23: configure finds VS's armasm64 but rejects it with
+    #   "GNU assembler not found, install/update gas-preprocessor"
+    # FFmpeg's aarch64 asm is GAS syntax; under an MSVC-ABI toolchain it has to
+    # go through gas-preprocessor.pl, which translates it for armasm64. Upstream's
+    # own Windows-on-ARM guidance sidesteps this by recommending llvm-mingw, which
+    # is incompatible with this repo's MSVC ABI.
+    #
+    # --disable-asm gives a CORRECT but slower FFmpeg. That is the right first
+    # release: a working arm64 lane beats a fast one that does not exist. The
+    # follow-up is genuinely within reach now -- Git for Windows ships perl and
+    # the VS ARM64 tools (incl. armasm64) are installed as of this base -- so
+    # wiring gas-preprocessor.pl and dropping this flag is a contained,
+    # measurable next step, not a rewrite.
+    #
+    # Scope: this branch only. The amd64 lane keeps its full x86 asm.
+    $confFlags += '--disable-asm'
+    Write-Host 'FFmpeg: --disable-asm on the cross lane (aarch64 GAS asm needs gas-preprocessor.pl for armasm64; correct but slower)'
+    Write-Host ("FFmpeg: cross flags -> --enable-cross-compile --arch={0} --extra-ldflags=/machine:{1}" -f `
+        (Get-FfmpegTargetArch -Arch $ffTargetArch), (Get-LibMachineArg -Arch $ffTargetArch))
 }
 $confFlags += '--disable-x86asm'
 # vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
@@ -755,6 +877,23 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete
 # Compiles clean against ffmpeg master (verified 2026-07-13); OUR avdevice
 # imports only Server-Core-present system DLLs. The wheel's av* DLL deps
 # resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
+if ($ffCross) {
+    # Third site in this chain with the same root cause (after ONNX's wheel and
+    # OpenCV's python bindings): a cross lane has no TARGET CPython, so a native
+    # extension cannot be produced OR loaded here. Measured 2026-08-23 -- even
+    # `pip download --no-binary :all:` fails, because building the sdist's
+    # metadata imports a native module:
+    #   ImportError: DLL load failed while importing Utils:
+    #   %1 is not a valid Win32 application.
+    # ("not a valid Win32 application" is Windows' way of saying wrong machine
+    # type.) The FFmpeg C libraries above are the real deliverable of this stage
+    # and they are already built and installed; PyAV is a python binding on top
+    # and follows the target interpreter, not this one.
+    Write-Host 'Skipping the PyAV wheel: cross build (no target CPython; a native extension for the target cannot be built or imported on this host)'
+    Complete-CurrentBuildPhase
+    Write-BuildPhaseSummary -Label 'ffmpeg'
+    Complete-SourceBuild -Banner '=== FFmpeg cross build completed (PyAV skipped) ===' -SourceDir $SourceDir
+}
 if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne '1') {
     Write-Warning 'FFmpeg came from the prebuilt fallback (no headers/import libs) -- skipping the PyAV wheel build.'
     return

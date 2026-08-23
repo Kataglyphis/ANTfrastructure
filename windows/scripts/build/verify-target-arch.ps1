@@ -57,7 +57,11 @@ param(
     [string]$Arch = '',
     [int]$MinInspected = 1,
     [string]$HostToolPattern = '',
-    [switch]$IncludeArchives
+    [switch]$IncludeArchives,
+    # Opt-in for a tree that legitimately holds (almost) no binaries. Required
+    # whenever -MinInspected is 0 or less, so that "no coverage floor" can only
+    # ever be a deliberate statement rather than a dropped build-arg.
+    [switch]$AllowEmptyTree
 )
 
 $ErrorActionPreference = 'Stop'
@@ -282,6 +286,19 @@ if ($violations.Count -gt 0) {
     $failed = $true
 }
 
+# "No floor" must be an explicit CHOICE, never an accident. The caller passes
+# -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) from a Dockerfile ARG, and
+# [int]$null is 0 -- so the day that ARG stops reaching the RUN environment (a
+# renamed build-arg, an undeclared ARG silently dropped by buildctl, a stage that
+# forgot to redeclare it across a FROM boundary) this gate would quietly stop
+# being a gate and report a clean pass over whatever it happened to find. That is
+# the exact "verified nothing, said PASS" shape this script exists to prevent, so
+# it fails loudly instead.
+if ($MinInspected -le 0 -and -not $AllowEmptyTree) {
+    throw ("verify-target-arch: -MinInspected resolved to $MinInspected, which disables the coverage floor " +
+           'entirely. That is almost never intended -- it usually means the ARCH_GATE_MIN_INSPECTED build-arg ' +
+           'did not reach the RUN environment. Pass -AllowEmptyTree to accept a deliberately tiny tree.')
+}
 if ($MinInspected -gt 0 -and $inspected -lt $MinInspected) {
     # A clean result over an empty tree is indistinguishable from a broken scan.
     Write-Host ''

@@ -4,19 +4,23 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
-> **Status (2026-08-22): the lane is wired but has never been built or executed.**
+> **Status (2026-08-23): the lane builds; nothing it produces has ever been run.**
 >
 > Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on both drivers,
 > `ARG WINDOWS_TARGET_ARCH` from the media stage onward, per-arch tags, the base-image ARM64
 > readiness checks, the MLAS kernel-flag floor, and the `verify-target-arch.ps1` PE gate wired
 > into the merge stage.
 >
-> **Not shipped:** a `windows-11-arm` CI job, and any per-library arm64 port beyond flag
-> plumbing — FFmpeg, OpenCV, GStreamer, LiteRT and CPython have *not* been cross-built yet.
+> **Cross-built for `aarch64-pc-windows-msvc`:** ONNX Runtime (CPU, DML off, 25 MLAS fp16 TUs
+> tagged) and FFmpeg (`--disable-asm`, see below). OpenCV is in progress and carries three
+> upstream portability fixes. ONNX GenAI is wired but has not completed a build.
+>
+> **Not attempted:** GStreamer, LiteRT and a target CPython. There is no `windows-11-arm` CI job
+> — the user declined one.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
-> Every arm64 signal here is a static PE machine-type check. The Vulkan `maintenancetool`
-> component install has also never run against a real base image.
+> Every arm64 signal here is a static PE machine-type check. A green build is evidence that the
+> code compiles and links for the target, and nothing more.
 
 ## The constraint everything follows from
 
@@ -212,12 +216,176 @@ it carries will look exactly like "the arm64 change broke the build".
 **Rebuild the base with no change at all first, confirm it is green, and only then add the
 components.** It is the single highest-value sequencing decision in this work.
 
+## Upstream portability fixes this lane carries
+
+None of these are configuration mistakes — they are code paths that **only compile on ARM**, so
+no amount of amd64 testing could have surfaced them. Each is scoped to the cross branch so the
+amd64 command line stays byte-identical. All were measured on 2026-08-23 against LLVM 22.1.8.
+
+| Fix | Why it is needed |
+|---|---|
+| `/D_USE_MATH_DEFINES` (OpenCV) | `hal/carotene`, OpenCV's ARM NEON HAL, is compiled **only** for ARM targets. It uses `M_PI`, which the C standard does not mandate and the MSVC CRT withholds unless this macro is defined — carotene assumes POSIX. Symptom: `phase.cpp(121,5): use of undeclared identifier 'M_PI'`. |
+| `softfloat.cpp` typedef → macro (OpenCV) | **Genuine upstream bug**, see below. |
+| `WITH_IPP=OFF`, `BUILD_IPP_IW=OFF` (OpenCV) | IPP is Intel's x86-only primitives library; no AArch64 build exists. OpenCV still resolved and unpacked `3rdparty/ippicv/ippicv_win`, putting its headers on every core TU's include path, and the staged `.lib` is x64 COFF that lld-link would reject against an arm64 image. |
+| `WITH_DIRECTML=OFF` (OpenCV), `USE_DML=OFF` (ONNX Runtime **and** GenAI) | DirectML ships no arm64 import library. Keeping all three consistent matters: otherwise `cv::dnn` advertises a backend the runtime cannot load. |
+| `USE_CUDA=OFF` forced by **target**, not host (GenAI) | `Get-GpuEnvironment` probes the x64 *build host*. On a GPU-equipped host it answers "yes" and would switch nvcc on for an aarch64 target. There is no CUDA for Windows-on-ARM at all, so this decision belongs to the target. |
+| `BUILD_WHEEL=OFF` (GenAI), Python bindings off (ONNX, OpenCV), PyAV skipped (FFmpeg) | Every wheel links the **target** CPython, and no aarch64 CPython exists in this image — `Get-SourceBuildPython` is host-pinned by design. |
+| `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV) | An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. Full `/O2` is retained. See below. |
+| MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`) | The existing Windows skip was gated on `WIN32 AND _MLAS_REQUIRES_ASM`, and upstream derives that flag from `MLAS_X86_64` / `MLAS_ARM64` / … — whose detection does **not** fire for a `CMAKE_SYSTEM_PROCESSOR=ARM64` cross configure. The skip silently did nothing on the arm64 lane, MLAS built a C++-only subset whose objects still referenced the GAS-only assembly kernels, and it failed at **link** with `undefined symbol: MlasGemvFloatKernel` / `MlasHGemmSupported`. amd64 is unchanged — `_MLAS_REQUIRES_ASM` is TRUE there, so both forms of the condition fire identically, and that lane already skipped MLAS. |
+| `mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV) | Bundled MLAS assumes *"`_M_ARM64` implies the MSVC compiler"* and remaps two ACLE reduction intrinsics onto MSVC's private spellings: `#define vmaxvq_f32(src) neon_fmaxv(src)`. clang-cl defines `_M_ARM64` too, but implements the ACLE names and has no `neon_fmaxv` at all. The upstream `#ifndef vmaxvq_f32` guard does not help — clang provides it as a *function*, not a macro, so the guard is true and MLAS shadows the real intrinsic. The condition being corrected is *which compiler*, not *which architecture*, so each `#define` is wrapped rather than deleted. |
+| `--disable-asm` (FFmpeg) | aarch64 GAS assembly needs `gas-preprocessor.pl` driving `armasm64`. Correct but slower; enabling it is tracked follow-up work, not a blocker. |
+
+### The OpenCV softfloat / NEON collision
+
+Worth spelling out, because the fix looks like a stylistic nit and is not.
+
+`modules/core/src/softfloat.cpp:163` does, **inside `namespace cv`**:
+
+```cpp
+typedef softfloat  float32_t;
+typedef softdouble float64_t;
+```
+
+`intrin_neon.hpp` also lives in `namespace cv`, so unqualified lookup for `float32_t` finds
+`cv::float32_t` *before* the `::float32_t` (= `float`) that clang's `arm_neon.h` declares. Since
+clang 16 the NEON lane accessors are macros of the form
+
+```c
+__ret = __builtin_bit_cast(float32_t, __builtin_neon_vgetq_lane_f32(__s0, __p1));
+```
+
+and `cv::softfloat` has a user-provided copy constructor, so it is **not trivially copyable** —
+exactly what `__builtin_bit_cast` requires. Every `v_extract_n` instantiated in that translation
+unit fails with `'__builtin_bit_cast' destination type must be trivially copyable`. x86 is
+unaffected because the SSE intrinsics never mention `float32_t`, which is why this stayed
+invisible on the amd64 lane.
+
+The fix converts the two typedefs into **object-like macros**, and that distinction *is* the
+mechanism: `intrin_neon.hpp` is textually preprocessed at `#include "precomp.hpp"` on line 66,
+long before line 163, so the template bodies keep a bare `float32_t` token that a later `#define`
+can no longer rewrite. Removing the typedef leaves nothing named `cv::float32_t`, so that token
+resolves to `::float32_t` as clang intends — while every use *after* line 163, i.e. all of the
+ported Berkeley SoftFloat code, still expands to `softfloat` exactly as the typedef did. The file
+has no `#include` after line 163, so the macro cannot leak into a header.
+
+The patch carries a **throwing** drift assertion rather than a warning: a silent no-op here
+resurfaces as a wall of confusing `bit_cast` errors deep inside `arm_neon.h`, which is precisely
+the failure mode worth spending an explicit `throw` on.
+
+### AArch64 compressed jump tables
+
+Switch-heavy translation units abort the compile with a diagnostic that names **no source file**:
+
+```
+generated_message_reflection.cc: error: value evaluated as 284 is out of range.
+descriptor.cc:                   error: value evaluated as 262 is out of range.
+grfmt_tiff.cpp:                  error: value evaluated as 256 / 272 is out of range.
+gapi serialization.cpp:          error: value evaluated as 259 is out of range.
+```
+
+`AArch64AsmPrinter::emitJumpTableImpl` emits a *compressed* jump-table entry as `(LBB - Base) >> 2`
+through `MCObjectStreamer::emitValueImpl` with `Size = 1`, and that is the only producer of this
+message in LLVM. Every value measured lands just past `255 * 4 = 1020` bytes of table span:
+
+| Reported | × 4 | vs. 1020 |
+|---|---|---|
+| 256 | 1024 | just over |
+| 259 | 1036 | just over |
+| 262 | 1048 | just over |
+| 272 | 1088 | just over |
+| 284 | 1136 | just over |
+
+The fix is one arm64-only flag that keeps **full `/O2`** — uncompressed jump tables are larger, not
+slower:
+
+```
+-mllvm -aarch64-enable-compress-jump-tables=false
+```
+
+> **This corrects an earlier, wrong diagnosis recorded here.** The first explanation blamed an
+> 8-bit *Code Words* field in the `.xdata` unwind record, and the workaround was a per-TU `/Od`
+> pass over `build.ninja`. That story was refuted from primary source: `MCWin64EH.cpp` reports the
+> Code-Words ceiling as `report_fatal_error("SEH unwind data splitting is only implemented for
+> large functions ...")` — a different message entirely, and the string `is out of range` does not
+> appear in that file at all.
+>
+> The jump-table explanation also accounts for something the unwind story never did. Escalating
+> `/Ob2` → `/Ob1` → `/Ob0` kept *moving* which TU overflowed instead of fixing it, and only `/Od`
+> cleared every one. That is because `AArch64CompressJumpTables` is added only when
+> `getOptLevel() != None`: `/Od` disabled the pass as a **side effect** of turning optimisation off
+> wholesale, while the `/Ob*` levels merely reshuffled codegen. The right conclusion from that
+> measurement was "something only `/Od` switches off", not "something inlining drives".
+>
+> The observation that every offender was serialisation, parsing or decoding code was correct but
+> incidental: the common thread is **big `switch` statements**, not when the code runs.
+
+## The merge stage on arm64
+
+The merge fans three branch trees into one install prefix, builds GStreamer from source, and then runs the
+PE architecture gate. Two branches cannot exist on this lane at all:
+
+| Branch | Why it cannot be cross-built |
+|---|---|
+| `media-litert` | LiteRT-LM links `prebuilt\windows_x86_64\libGemmaModelConstraintProvider.lib` (`build-litert-lm-from-source.ps1:911`). It is a **binary blob** with no arm64 counterpart — not fixable downstream. |
+| `media-tvm` | TVM builds its own minimal LLVM with `-DLLVM_TARGETS_TO_BUILD=X86;NVPTX` (`build-tvm-from-source.ps1:141`), so its codegen cannot emit aarch64 at all. |
+
+`Dockerfile.media-merge-builder` copies from both with **unconditional** `COPY --from=media-litert` /
+`--from=media-tvm`, and a Dockerfile cannot make a `COPY` conditional. So the arm64 lane points both
+`LITERT_IMAGE` and `TVM_IMAGE` at a `media-branch-absent` stage that provides exactly those paths, empty.
+Copying an empty directory succeeds and contributes nothing, which is the intent. It also drops an
+`ABSENT-ON-ARM64.txt` into each, so somebody who opens the bundle and finds an empty `litert` directory
+gets the reason on the spot instead of assuming the build silently lost something.
+
+**The mandatory GStreamer plugin contract is arch-aware in ONE place.** `Get-RequiredGstPlugin -Arch`
+drops `tflite` on arm64, because its entire dependency (LiteRT) is the empty stand-in above — the plugin is
+not *missing*, it is structurally unavailable. That filtering lives in the contract rather than in the
+GStreamer build, because the contract has three consumers (build gate, smoke test, healthcheck) and
+*them disagreeing is the documented 2026-07-11 regression* that shipped an image without plugins. On amd64
+the filter is provably a no-op: no entry carries an `amd64` key, so all four entries come back in the same
+order.
+
+### Verification cannot mean "run it"
+
+Eight of the nineteen blockers found in the merge/final audit were the same class: **code that executes
+arm64 binaries on the x64 build host.** The GStreamer post-install gate runs `gst-inspect-1.0.exe`; the
+smoke test `LoadLibraryW`s every shipped DLL, compiles-and-runs a native probe, and calls `ffmpeg -version`.
+None of those are checks that *fail* on arm64 — they are checks that **cannot exist** there, all failing for
+the same uninformative reason.
+
+So on the cross lane:
+
+- The GStreamer gate asserts the plugin **DLL was produced**, and says so explicitly (`cross lane - load
+  probe impossible on an x64 host`). Whether it is the right machine is `verify-target-arch.ps1`'s job.
+- The whole smoke gate is reported **NOT APPLICABLE**, not "passed".
+
+**The smoke floors are deliberately not lowered for arm64.** A reduced `-SmokeMinPassed` would leave a
+number that a later amd64 change could quietly be measured against — which is exactly how the gate
+documented at backlog #44 became decorative once before.
+
+### Two silent failure modes the audit caught
+
+Both would have produced a **green** result:
+
+1. **compiler-rt was selected arch-blind.** The old code took `Select-Object -First 1` over every
+   `*builtins*.lib` and handed the path straight to `lld-link`. LLVM ships one per target, and on the cross
+   lane the x86_64 one sorts first. Measured against the toolchain image
+   (`probe-arm64-prereqs.ps1` Q5): the install ships **only** `clang_rt.builtins-x86_64.lib` — there is no
+   aarch64 counterpart at all. The lane now links *nothing* rather than the host's library, and warns. If
+   the link later fails on `__udivti3`/`__umodti3`, that is the cause, and the fix is an aarch64
+   compiler-rt — never the x86_64 one.
+2. **The arch gate's coverage floor could silently disable itself.** It arrives as
+   `-MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED)`, and `[int]$null` is `0`, which switches the floor
+   off entirely — so a dropped build-arg would turn the gate into a clean pass over whatever it happened to
+   find. "No floor" is now an explicit `-AllowEmptyTree` opt-in, and the cross lane raises the floor to 100
+   (the Dockerfile default of 10 is far below what a complete bundle contains, and could not detect losing
+   a whole component).
+
 ## What this lane cannot produce
 
 | Component | Status |
 |---|---|
 | CUDA / cuDNN / TensorRT | **Excluded.** No Windows-on-ARM support; CUDA 13.4 is an RTX-Spark-only developer preview. `Dockerfile.nvidia` is skipped and the arm64 lane always takes the CPU alias path. |
-| DirectML | **Unproven — do not advertise it.** DirectML supports ARM64 (≥1.15.4) and Microsoft ships ARM64 ONNX+DirectML builds for Copilot+ NPUs, but ONNX Runtime's own DML build docs list x64/x86 only, and Microsoft's Snapdragon guidance points at the **QNN** provider instead. Ship CPU first; spike DML separately. |
+| DirectML | **Excluded, now on evidence rather than doubt.** The nuget consumed by this chain ships no arm64 import library (no `bin/ARM64-win/DirectML.lib`), so ONNX Runtime, ONNX GenAI and OpenCV all build with DML off. DirectML itself supports ARM64 (≥1.15.4) and Microsoft ships ARM64 ONNX+DirectML builds for Copilot+ NPUs, so this is a packaging gap, not a platform one — but it is a hard blocker here today. Microsoft's Snapdragon guidance points at the **QNN** provider instead, which would pull in the Qualcomm AI Engine SDK this stack does not integrate. |
 | LiteRT-LM | **Blocked upstream.** Ships a prebuilt `prebuilt/windows_x86_64/libGemmaModelConstraintProvider.lib` with no arm64 counterpart. Not fixable downstream. |
 | Flutter | **Not cross-compilable.** windows-arm64 needs a native arm64 host; cross support is not upstream. |
 | PyTorch / the torch app stage | **Structurally impossible here.** `uv sync` must *run* the target interpreter. Independently, `PYTORCH_VERSION=v2.13.0` publishes no `win_arm64` wheel, the Windows-Arm wheels exist only as `+cpu` builds on `download.pytorch.org`, and upstream does not build them for Python 3.14 — which this repo pins. |

@@ -322,6 +322,79 @@ Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VE
 Install-ScoopPackage -Package 'main/llvm'  -Version $LlvmVersion
 Install-ScoopPackage -Package 'main/ninja' -Version $NinjaVersion
 Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
+
+# ── compiler-rt builtins for aarch64 (2026-08-23) ────────────────────────────
+# scoop's main/llvm is the x64 Windows RELEASE, and LLVM ships compiler-rt for
+# the HOST architecture only: the install contains clang_rt.builtins-x86_64.lib
+# and nothing else (measured via probe-arm64-prereqs.ps1 Q5, which has checked
+# for exactly this since the arm64 lane was designed and reported [FAIL]).
+#
+# That is not cosmetic. clang lowers 128-bit integer arithmetic to compiler-rt
+# libcalls on aarch64, so the first component that does 64x64->128 math fails at
+# LINK, not compile:
+#     lld-link: error: undefined symbol: __udivti3
+#     >>> referenced by gstutils.c:670 (gst_util_uint64_scale)
+# ONNX Runtime, FFmpeg and OpenCV happen not to need it; GStreamer does.
+#
+# Installed UNCONDITIONALLY, like the MSVC ARM64 toolset and the Vulkan ARM64
+# component: this is a shared layer, and gating it on an arch ARG would re-pay
+# the chain's most expensive layers on every lane switch. Only the one static
+# library is kept -- the archive is fetched, mined and deleted.
+$llvmAppRoot = Join-Path $env:USERPROFILE 'scoop\apps\llvm\current'
+$rtHost = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+$rtTarget = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+if ($rtTarget.Count -gt 0) {
+    Write-Host "compiler-rt builtins for aarch64 already present ($($rtTarget[0].FullName))."
+} elseif ($rtHost.Count -eq 0) {
+    Write-Warning ("clang_rt.builtins-x86_64.lib not found under $llvmAppRoot\lib\clang - cannot determine where to " +
+                   'place the aarch64 counterpart. The LLVM layout changed; arm64 links needing __udivti3 will fail.')
+} else {
+    # Destination is derived from the HOST library's own directory, never
+    # hardcoded: that is by construction the directory clang and every consumer
+    # already search, so no discovery logic anywhere needs to learn a new path.
+    $rtDestDir = $rtHost[0].Directory.FullName
+    $rtArchive = Join-Path $env:TEMP "clang+llvm-$LlvmVersion-aarch64-pc-windows-msvc.tar.xz"
+    # %2B, not a literal '+': that is the canonical browser_download_url GitHub's
+    # own release API returns for this asset, and the unencoded form 404s.
+    # Verified 2026-08-23 with a ranged GET (a HEAD is refused outright here, so
+    # "HEAD failed" is NOT evidence the asset is missing -- it cost one wrong
+    # conclusion already).
+    $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LlvmVersion/clang%2Bllvm-$LlvmVersion-aarch64-pc-windows-msvc.tar.xz"
+    $rtExtractDir = Join-Path $env:TEMP 'llvm-aarch64-rt'
+    try {
+        Write-Host "Fetching aarch64 compiler-rt from $rtUrl (large, one-time; only clang_rt.builtins-aarch64.lib is kept)"
+        Invoke-DownloadWithRetry -Url $rtUrl -DestinationPath $rtArchive
+        New-Item -Path $rtExtractDir -ItemType Directory -Force | Out-Null
+        # bsdtar (Windows built-in tar.exe) matches member PATTERNS, so the whole
+        # 700+ MB archive is streamed but only the one member lands on disk.
+        & tar.exe -xf $rtArchive -C $rtExtractDir '*clang_rt.builtins-aarch64.lib'
+        $global:LASTEXITCODE = 0
+        $rtFound = @(Get-ChildItem -Path $rtExtractDir -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($rtFound.Count -gt 0) {
+            Copy-Item -Path $rtFound[0].FullName -Destination $rtDestDir -Force
+            Write-Host "compiler-rt builtins for aarch64 installed -> $(Join-Path $rtDestDir 'clang_rt.builtins-aarch64.lib')"
+        } else {
+            Write-Warning "clang_rt.builtins-aarch64.lib was not found inside $rtArchive - the upstream archive layout changed."
+        }
+    } catch {
+        Write-Warning "aarch64 compiler-rt fetch failed: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $rtExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $rtTarget = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($rtTarget.Count -eq 0) {
+        # Same warn-by-default / opt-in-hard-gate shape as the Vulkan ARM64
+        # component above, and for the same reason: this is a shared layer, so an
+        # arm64-only prerequisite must not be able to break the amd64 build.
+        $msg = ('compiler-rt builtins for aarch64 are NOT installed under ' + $llvmAppRoot + '\lib\clang. ' +
+                'An arm64 target cannot link 128-bit integer arithmetic (__udivti3 / __umodti3 & co); ' +
+                'GStreamer is known to need it. The amd64 lane is unaffected.')
+        if ($armStrict -eq '1') { throw ($msg + ' WINDOWS_ARM64_STRICT=1 made this a hard gate.') }
+        Write-Warning ($msg + ' Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
+    }
+}
 # sccache is pinned for a DIFFERENT reason than the three above: it shapes no
 # compiled output whatsoever. It is here because multi-tier caching
 # (SCCACHE_MULTILEVEL_CHAIN, an ARG in Dockerfile.media-builder) requires

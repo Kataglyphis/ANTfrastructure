@@ -33,6 +33,11 @@ $contribSrc = Join-Path $SourceDir 'opencv_contrib'
 $contribOk = Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv_contrib.git' -Branch $OpenCvVersion -SourceDir $contribSrc -SkipOnFailure
 if (-not $contribOk) { $contribSrc = ''; Write-Host 'Continuing without contrib modules' }
 
+# Target arch is resolved HERE, before the patch block, because one patch below
+# is ARM-only (see the softfloat float32_t collision).
+$ocvTargetArch = Get-WindowsTargetArch
+$ocvCross      = Test-WindowsCrossTarget -Arch $ocvTargetArch
+
 # Source patches (idempotent git apply). These carry the Windows/clang-cl CUDA
 # fixes -- see docs/windows-builds.md "Source Patch Policy":
 #   opencv/001-cmake-clang-cl-compat.patch
@@ -96,6 +101,82 @@ if (Test-Path $mlasSrcDir) {
         }
     }
     Write-Host 'Patched mlas sources for clang-cl (added <cstring> include)'
+}
+
+# Inline patch, ARM targets ONLY (upstream bug, OpenCV 5.0.0 + clang aarch64).
+#
+# softfloat.cpp:163 does, INSIDE namespace cv:
+#     typedef softfloat  float32_t;
+#     typedef softdouble float64_t;
+# intrin_neon.hpp also lives in namespace cv, so unqualified lookup for
+# `float32_t` finds cv::float32_t BEFORE the ::float32_t (= float) that clang's
+# arm_neon.h declares. Since clang 16 the NEON lane accessors are macros of the
+# form `__ret = __builtin_bit_cast(float32_t, __builtin_neon_vgetq_lane_f32(..))`,
+# and cv::softfloat has a user-provided copy ctor, so it is NOT trivially
+# copyable -- which __builtin_bit_cast requires. Every v_extract_n instantiated
+# in this TU then fails (measured 2026-08-23, LLVM 22.1.8):
+#   intrin_neon.hpp(2202,1): error: '__builtin_bit_cast' destination type must
+#                                    be trivially copyable
+# x86 is unaffected: the SSE intrinsics never mention float32_t, which is why
+# this has stayed invisible on the amd64 lane. Scoped to ARM so amd64 is
+# byte-identical.
+#
+# The fix converts the two typedefs into OBJECT-LIKE MACROS. That is not a
+# cosmetic difference, it is the whole mechanism: intrin_neon.hpp is textually
+# preprocessed at `#include "precomp.hpp"` (line 66), long BEFORE line 163, so
+# the template bodies keep a bare `float32_t` token that a later #define can no
+# longer rewrite. Removing the typedef leaves nothing named cv::float32_t, so
+# that token now resolves to ::float32_t (= float) exactly as clang intends,
+# while every use AFTER line 163 -- i.e. all of the ported Berkeley SoftFloat
+# code -- still expands to `softfloat` precisely as the typedef did. The file
+# has no #include after line 163, so the macro cannot leak into a header.
+# Upstream issue to file: see out/upstream-issue-litert-lm-cmake.md for the
+# precedent this repo follows.
+if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemProcessor -match 'ARM64') {
+    $sfCpp = Join-Path $mainSrc 'modules\core\src\softfloat.cpp'
+    [void](Invoke-InlineRegexPatch -Path $sfCpp -Guard 'typedef softfloat float32_t;' `
+            -Pattern 'typedef\s+softfloat\s+float32_t;\s*\r?\n\s*typedef\s+softdouble\s+float64_t;' `
+            -Replacement "#define float32_t softfloat`n#define float64_t softdouble" `
+            -Description 'opencv softfloat.cpp: float32_t/float64_t typedef -> macro (NEON __builtin_bit_cast collision)')
+    # Load-bearing drift assertion: if upstream renames or moves these typedefs,
+    # a silent no-op here resurfaces as a wall of confusing bit_cast errors deep
+    # inside arm_neon.h. Fail now, with the reason, instead.
+    $sfText = [System.IO.File]::ReadAllText($sfCpp)
+    if ($sfText -notmatch '#define\s+float32_t\s+softfloat') {
+        throw "opencv softfloat.cpp: the float32_t/float64_t typedefs were not converted to macros (upstream layout changed?). intrin_neon.hpp will fail with '__builtin_bit_cast destination type must be trivially copyable'. Re-check $sfCpp."
+    }
+
+    # Third ARM-only inline patch, same class as 002/003: bundled MLAS assumes
+    # "_M_ARM64 implies the MSVC compiler" and remaps two ACLE reduction
+    # intrinsics onto MSVC's private spellings (mlasi.h):
+    #     #if defined(_M_ARM64)
+    #     #ifndef vmaxvq_f32
+    #     #define vmaxvq_f32(src) neon_fmaxv(src)
+    # clang-cl defines _M_ARM64 too, but implements the ACLE names and has no
+    # neon_fmaxv/neon_fminv at all. The #ifndef guard does not save us: clang
+    # provides vmaxvq_f32 as a FUNCTION, not a macro, so the guard is true and
+    # MLAS shadows the real intrinsic. Result (measured 2026-08-23):
+    #   mlasi.h(2771,12): error: use of undeclared identifier 'neon_fmaxv'
+    # Each #define is wrapped rather than deleted, so a genuine MSVC build keeps
+    # the mapping -- the condition being corrected is "which compiler", not
+    # "which architecture". Matched on the #define lines themselves because the
+    # upstream line numbers move between releases.
+    # Idempotence is explicit here rather than via -Guard: the guard string would
+    # still match AFTER patching (neon_fmaxv survives inside the wrapper), so a
+    # re-run would nest a second wrapper around the same #define.
+    $mlasiH = Join-Path $mainSrc '3rdparty\mlas\lib\mlasi.h'
+    if (-not (Test-Path $mlasiH)) { throw "opencv mlasi.h not found at $mlasiH -- the bundled MLAS layout changed." }
+    $mlasiText = [System.IO.File]::ReadAllText($mlasiH)
+    if ($mlasiText -notmatch '#if !defined\(__clang__\)') {
+        [void](Invoke-InlineRegexPatch -Path $mlasiH -Guard 'neon_fmaxv' `
+                -Pattern '#define\s+(vmaxvq_f32|vminvq_f32)\(src\)\s+neon_(fmaxv|fminv)\(src\)' `
+                -Replacement "#if !defined(__clang__)`n`$0`n#endif" `
+                -Description 'opencv mlasi.h: MSVC neon_* remap excluded under clang-cl')
+        $mlasiText = [System.IO.File]::ReadAllText($mlasiH)
+    }
+    if ($mlasiText -match 'neon_fmaxv' -and $mlasiText -notmatch '#if !defined\(__clang__\)') {
+        throw "opencv mlasi.h: the MSVC neon_* remap is present but was not guarded for clang (upstream layout changed?). MLAS will fail with ""use of undeclared identifier 'neon_fmaxv'"". Re-check $mlasiH."
+    }
 }
 
 # Canonical toolchain preamble: VsDevCmd (MSVC/SDK INCLUDE+LIB env — OpenCV
@@ -166,7 +247,7 @@ $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 # on Windows when the destination directory doesn't exist yet during configure).
 $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
-$ocvTargetArch = Get-WindowsTargetArch
+# $ocvTargetArch / $ocvCross are resolved above, before the patch block.
 # Arch-aware. amd64 is byte-identical: Get-WindowsX86SimdFlags IS
 # `Get-WindowsTargetSimdFlags -Arch amd64` (back-compat shim), and
 # $crossTargetFlag below is EMPTY on the host arch. arm64 returns NO baseline
@@ -184,8 +265,37 @@ $simdFlags = Get-WindowsTargetSimdFlags -Arch $ocvTargetArch
 # CMake then never applies CMAKE_C_FLAGS_INIT at all. Without this, an "arm64"
 # OpenCV would configure green and emit x86_64 objects -- the exact silent
 # wrong-arch failure the arch module exists to prevent.
-$crossTargetFlag = if (Test-WindowsCrossTarget -Arch $ocvTargetArch) { "--target=$(Get-ClangTargetTriple -Arch $ocvTargetArch)" } else { '' }
-$simdFlags = (@($simdFlags, $crossTargetFlag) | Where-Object { $_ }) -join ' '
+$crossTargetFlag = if ($ocvCross) { "--target=$(Get-ClangTargetTriple -Arch $ocvTargetArch)" } else { '' }
+# _USE_MATH_DEFINES is required by OpenCV's ARM NEON HAL (hal/carotene), which is
+# compiled ONLY for ARM targets and so has never been exercised on this chain.
+# It uses M_PI, which the C standard does not mandate and the MSVC CRT headers
+# withhold unless this macro is defined -- carotene assumes POSIX behaviour:
+#   hal\carotene\src\phase.cpp(121,5): error: use of undeclared identifier 'M_PI'
+# (measured 2026-08-23). Scoped to the cross branch so the amd64 command line is
+# untouched; carotene is not built there at all.
+$mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
+# AArch64 compressed jump tables overflow their one-byte entries in switch-heavy
+# code and abort the compile with a diagnostic that names no source file:
+#     error: value evaluated as 284 is out of range.
+# AArch64AsmPrinter::emitJumpTableImpl emits a compressed entry as
+# (LBB - Base) >> 2 through MCObjectStreamer::emitValueImpl with Size = 1, and
+# that is the ONLY producer of this message in LLVM. Every value measured here
+# lands just past 255*4 = 1020 bytes of table span: 256, 259, 262, 272, 284
+# (=1024/1036/1048/1088/1136). Disabling the compression pass keeps FULL /O2 --
+# uncompressed tables are merely larger, not slower.
+#
+# This replaced a per-TU /Od workaround that was based on a WRONG root cause
+# (an 8-bit .xdata "Code Words" unwind field). That story was refuted from
+# primary source: MCWin64EH.cpp reports the Code-Words ceiling as
+# report_fatal_error("SEH unwind data splitting is only implemented for large
+# functions ..."), which is a different message entirely. The jump-table
+# explanation also accounts for what /Od-vs-/Ob0 actually did:
+# AArch64CompressJumpTables only runs when getOptLevel() != None, so /Od
+# switched the pass off wholesale while /Ob0 merely reshuffled which TU
+# overflowed. Switch-heavy code is the common thread in every offender found
+# (protobuf descriptors, the TIFF decoder, G-API graph serialisation).
+$jumpTableFlag = if ($ocvCross) { '-mllvm -aarch64-enable-compress-jump-tables=false' } else { '' }
+$simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
 # nvcc command lines go through CMake response files, which sccache passes
@@ -245,7 +355,7 @@ $cmakeExtra = $cudaRspArgs + @(
     # interpreter here, so an aarch64 cv2.pyd could never be imported by this
     # container's x64 CPython, and OpenCV's binding generation is a host-
     # interpreter fact that does not describe the target.
-    "-DBUILD_opencv_python3=$(if (Test-WindowsCrossTarget -Arch $ocvTargetArch) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
+    "-DBUILD_opencv_python3=$(if ($ocvCross) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     # opencv_contrib dnn_superres references ENGINE_CLASSIC removed in OpenCV 5.x DNN
     '-DBUILD_opencv_dnn_superres=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
@@ -282,6 +392,53 @@ $cmakeExtra = $cudaRspArgs + @(
     # detected. Enabling it here unconditionally would make a CPU-only build enable_language(CUDA)
     # with no nvcc present and fail to configure.
 )
+
+# --- cross-lane deltas (a later -D of the same cache var wins) ----------------
+# Everything here is x86-only or has no ARM64 import library. Appended rather
+# than folded into the array above so the amd64 command line stays byte-identical
+# and the reason for each override stays attached to it.
+if ($ocvCross) {
+    # IPP is Intel's x86-only primitives library; there is no AArch64 build of it
+    # at all. OpenCV still resolved and unpacked 3rdparty/ippicv/ippicv_win here,
+    # so its headers were already on the include path of every core TU (visible in
+    # the failing include chain: private.hpp:220 -> ippicv.h). Even had that
+    # compiled, the staged .lib is x64 COFF and lld-link would reject it against an
+    # arm64 image. BUILD_IPP_IW builds the IPP integration wrapper, which is
+    # meaningless without IPP.
+    $cmakeExtra += '-DWITH_IPP=OFF', '-DBUILD_IPP_IW=OFF'
+    # DirectML ships no arm64 import library, which is the same evidence that put
+    # ONNX Runtime on USE_DML=OFF for this lane -- keep the two consistent, or
+    # cv::dnn would advertise a backend the runtime cannot load.
+    $cmakeExtra += '-DWITH_DIRECTML=OFF'
+    # INSTALL LAYOUT. OpenCV composes <root>\<OpenCV_ARCH>\<OpenCV_RUNTIME>\{bin,lib}
+    # and its ARM64 branch in OpenCVDetectCXXCompiler.cmake keys off
+    #     elseif("${CMAKE_GENERATOR_PLATFORM}" MATCHES "ARM64")
+    # which ONLY the Visual Studio generator sets. This chain is Ninja-only, so
+    # detection falls through to the x64 branch and an aarch64 build installs
+    # into ...\opencv5\x64\vc18\ -- while OPENCV_LIB/OPENCV_BIN (baked as ENV by
+    # Dockerfile.media-merge-builder) and build-gstreamer's fallback both look
+    # under the TARGET arch dir. GStreamer then dies with:
+    #   ERROR: no import libraries found in C:\runtime\lib\opencv5\arm64\vc18\lib
+    # Note this is the opposite of what build-buildkit.ps1's OPENCV_ARCH_DIR
+    # comment predicted: the consumers were right, the producer was wrong.
+    #
+    # OpenCV ships an explicit override for exactly this case, as the FIRST
+    # branch of the detection chain (OpenCVDetectCXXCompiler.cmake:150):
+    #     if(DEFINED OpenCV_ARCH AND DEFINED OpenCV_RUNTIME)
+    #       # custom overridden values
+    #     elseif(MSVC)
+    #       ...
+    # BOTH must be defined or the branch never fires and MSVC detection runs
+    # instead -- which is why the runtime is passed too, even though only the
+    # arch is wrong. CMake variable names are case-sensitive and these are the
+    # exact spellings, matching what OpenCVInstallLayout.cmake then reads.
+    # 'vc18' is what OpenCV's own MSVC_VERSION mapping picks for the pinned
+    # toolset (`elseif(MSVC_VERSION MATCHES "^195[0-9]$") set(OpenCV_RUNTIME vc18)`)
+    # and the literal already hardcoded in Dockerfile.media-merge-builder,
+    # build-gstreamer-from-source.ps1 and smoke-test-container.ps1.
+    $cmakeExtra += "-DOpenCV_ARCH=$(Get-OpenCvArchDir -Arch $ocvTargetArch)", '-DOpenCV_RUNTIME=vc18'
+    Write-Host "OpenCV cross ($ocvTargetArch): WITH_IPP=OFF (x86-only), BUILD_IPP_IW=OFF, WITH_DIRECTML=OFF (no arm64 import lib), install layout -> $(Get-OpenCvArchDir -Arch $ocvTargetArch)\vc18"
+}
 
 # --- FFmpeg discovery for videoio (backlog #94) -------------------------------
 # The chain builds FFmpeg BEFORE OpenCV (swapped 2026-08-16) and puts its .pc
@@ -549,6 +706,16 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
         "cv::VideoCapture would silently lose its FFmpeg path. The lines above are the reason; " +
         "PKG_CONFIG_PATH was '$env:PKG_CONFIG_PATH'. Backlog #94.")
 }
+
+# NOTE (2026-08-23): a per-TU `/Od` pass over build.ninja used to sit here as a
+# workaround for `error: value evaluated as <N> is out of range.` in the bundled
+# protobuf, the TIFF decoder and G-API serialisation. It was removed once the
+# real cause was traced to AArch64 COMPRESSED JUMP TABLES rather than the
+# .xdata unwind ceiling it was originally blamed on -- see $jumpTableFlag near
+# the top of this script, which fixes every offender build-wide while keeping
+# full /O2. Do not reintroduce a blanket /Od here without re-reading that
+# comment first: /Od "worked" only because it disables the compression pass as
+# a side effect of turning optimisation off entirely.
 
 # Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
 $buildLog = Get-PersistentBuildLogPath -Name 'opencv-build.log' -FallbackDir $buildDir

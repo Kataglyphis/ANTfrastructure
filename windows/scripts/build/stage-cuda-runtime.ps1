@@ -37,8 +37,29 @@ $roots = @(
     $env:CUDNN_ROOT                       # cudnn64_9.dll + cudnn_*64_9 engines (under bin\<cuda-major>\)
 ) | Where-Object { $_ -and (Test-Path $_) }
 
+# Two DIFFERENT situations end up with no roots, and conflating them is what
+# made this stage a hard blocker for every non-GPU merge:
+#
+#   (a) NEITHER variable is even set -> this image is not derived from the
+#       nvidia base, so CUDA cannot be here and its absence is CORRECT. That is
+#       the CPU lane and, permanently, the arm64 cross lane: there is no CUDA
+#       for Windows-on-ARM at all. Degrade cleanly - the empty C:\cuda-rt still
+#       satisfies the unconditional COPY in Dockerfile.media-merge-builder,
+#       which a Dockerfile cannot make conditional.
+#   (b) A variable IS set but does not resolve -> the nvidia base WAS expected
+#       and something is genuinely wrong. Keep throwing; that is the case the
+#       message below was written for.
+#
+# The comment above (and Dockerfile.media-merge-builder) already described this
+# degrade-cleanly behaviour before the code implemented it -- the throw fired
+# regardless, so the merge died here long before the arch gate or GStreamer.
+$cudaConfigured = [bool]$env:CUDA_ROOT -or [bool]$env:CUDNN_ROOT
 if ($roots.Count -eq 0) {
-    throw "Neither CUDA_ROOT\bin nor CUDNN_ROOT resolves (CUDA_ROOT='$env:CUDA_ROOT', CUDNN_ROOT='$env:CUDNN_ROOT'). Is this stage derived from the nvidia base?"
+    if ($cudaConfigured) {
+        throw "Neither CUDA_ROOT\bin nor CUDNN_ROOT resolves (CUDA_ROOT='$env:CUDA_ROOT', CUDNN_ROOT='$env:CUDNN_ROOT'). Is this stage derived from the nvidia base?"
+    }
+    Write-Host "No CUDA/cuDNN on this lane (CUDA_ROOT and CUDNN_ROOT are both unset) - staged an EMPTY $dest so the merge fan-in's unconditional COPY still succeeds."
+    exit 0
 }
 
 # TRIM (#54 re-scoped, 2026-08-20, probe-cuda-runtime-closure): the closure

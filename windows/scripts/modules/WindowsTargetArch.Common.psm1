@@ -393,7 +393,24 @@ function Get-MlasKernelTuPattern {
     $key = Get-WindowsTargetArch -Arch $Arch
     switch ($key) {
         'amd64' { return 'qgemm_kernel_amx|intrinsics[\\/]avx512' }
-        'arm64' { return 'sqnbitgemm_kernel_neon|hgemm_kernel_neon|qgemm_kernel_(udot|sdot|smmla|ummla)|halfgemm_kernel_neon|cast_kernel_neon' }
+        # MEASURED against ONNX Runtime v1.29.0's aarch64 MLAS tree (2026-08-23),
+        # not guessed. Three families need per-TU features:
+        #   *_fp16.cpp          -> FEAT_FP16 intrinsics (vaddq_f16, vfmaq_f16, ...)
+        #                          which clang gates behind target feature 'fullfp16'
+        #   *_kernel_neon*.cpp  -> the NEON kernel family (qgemm, qnbitgemm,
+        #                          sqnbitgemm, halfgemm, cast, qkv_quant,
+        #                          rotary_embedding)
+        #   qgemm_kernel_{udot,sdot,smmla,ummla} -> dotprod / i8mm kernels
+        #
+        # The first version of this pattern listed individual kernel names and
+        # matched 10 of 16, silently missing every *_fp16 TU. That did not fail
+        # the floor (then 2), it failed the COMPILE: activate_fp16.cpp and
+        # pooling_fp16.cpp died with "always_inline function 'vaddq_f16' requires
+        # target feature 'fullfp16'". Deliberately NOT matched: cast.cpp,
+        # halfconv.cpp, halfgemm.cpp -- those are the runtime DISPATCHERS and must
+        # stay feature-free, or the dispatch decision itself becomes unrunnable
+        # on hardware lacking the feature.
+        'arm64' { return '_fp16|_kernel_neon|qgemm_kernel_(udot|sdot|smmla|ummla)' }
     }
     throw "Get-MlasKernelTuPattern: no TU pattern defined for '$key'"
 }
@@ -416,7 +433,12 @@ function Get-MlasKernelTuMinimum {
     $key = Get-WindowsTargetArch -Arch $Arch
     switch ($key) {
         'amd64' { return 4 }
-        'arm64' { return 2 }
+        # 16 aarch64 kernel TUs matched in ONNX Runtime v1.29.0 (measured
+        # 2026-08-23). The floor is 12, not 16, so ordinary upstream churn does
+        # not fail the build -- but the 10 that the first, incomplete pattern
+        # matched WOULD now fail here instead of surfacing as a compile error
+        # 30 seconds later, which is the entire point of having a floor.
+        'arm64' { return 12 }
     }
     throw "Get-MlasKernelTuMinimum: no minimum defined for '$key'"
 }

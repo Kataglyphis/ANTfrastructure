@@ -30,6 +30,16 @@ FROM ${TVM_IMAGE} AS media-tvm
 # "C:\Program Files\..." (spaces) and cuDNN 9 buries its DLLs in a CUDA-major
 # subdir under bin\, so a recursive script is needed. See stage-cuda-runtime.ps1.
 FROM ${CORE_IMAGE} AS cuda-runtime-stage
+# Target arch, REDECLARED (ARGs do not cross a FROM boundary). This stage flattens
+# the CUDA/cuDNN runtime DLLs, which do not exist on Windows-on-ARM at all -- so it
+# needs to know the lane in order to degrade cleanly instead of hunting for a CUDA
+# install that cannot be there. stage-cuda-runtime.ps1 stages an EMPTY C:\cuda-rt
+# and exits 0 when neither CUDA_ROOT nor CUDNN_ROOT is set, so the COPY below still
+# succeeds; it throws only when one IS set but does not resolve (nvidia base
+# expected, layout broken). Until 2026-08-23 it threw in BOTH cases, which made
+# this stage a hard blocker for every non-GPU merge.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 COPY windows\scripts\build\stage-cuda-runtime.ps1 C:\stage-cuda-runtime.ps1
 RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
 

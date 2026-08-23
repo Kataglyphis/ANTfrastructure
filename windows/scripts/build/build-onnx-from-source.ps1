@@ -341,10 +341,45 @@ if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
 # The "[clang-cl DML fix]" patch applied above (out-of-lining AbstractOperatorDesc's tensor accessors)
 # makes it compile under clang-cl, so DirectML now builds on the clang-cl lane alongside CUDA/TensorRT.
 # USE_DML=ON makes cmake fetch the Microsoft.AI.DirectML redist via NuGet (nuget.exe is pre-seeded).
+# Python bindings are OFF on a cross lane, and the Python3_* hints are dropped
+# with them (measured 2026-08-23, first arm64 configure): $py resolves the HOST
+# x64 interpreter -- Get-SourceBuildPython is host-pinned by design, since an
+# aarch64 python.exe cannot run here -- so ENABLE_PYTHON=ON hands
+# onnxruntime_python.cmake an x64 python314.lib to link an aarch64 module
+# against. It fails at target_link_libraries with Python3_INCLUDE_DIR /
+# Python3_LIBRARY reported as unresolved, which reads like a missing-Python
+# problem and is really a wrong-architecture one.
+#
+# Producing a target binding needs a TARGET CPython, which this lane does not
+# build. Same call as build-opencv-from-source.ps1's BUILD_opencv_python3.
+$onnxCross = Test-WindowsCrossTarget
+$pythonArgs = if ($onnxCross) {
+    @('-Donnxruntime_ENABLE_PYTHON=OFF')
+} else {
+    @('-Donnxruntime_ENABLE_PYTHON=ON',
+      "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)")
+}
+if ($onnxCross) { Write-Host 'ONNX: python bindings OFF (cross build; no target CPython, and the host import lib is the wrong machine type)' }
+# DirectML is OFF on a cross lane. MEASURED 2026-08-23, first arm64 ninja run:
+# cmake correctly resolves the ARM64 payload path, then ninja dies with
+#   'packages/Microsoft.AI.DirectML.1.15.4/bin/ARM64-win/DirectML.lib' ...
+#   missing and no known rule to make it
+# i.e. the restored redist does not carry an ARM64 import library at the path
+# onnxruntime's DML integration expects. This is the concrete evidence behind
+# the "CPU + Vulkan" scope decision: DirectML's own runtime supports ARM64
+# (>= 1.15.4) and Microsoft ships ARM64 ONNX+DML builds for Copilot+ NPUs, but
+# ONNX Runtime's DML execution provider documents x64/x86 only -- and the
+# recommended accelerator on Snapdragon is the QNN EP, not DML.
+#
+# Turning it on for arm64 again is a deliberate spike, not a flag flip: it needs
+# a redist that actually ships bin\ARM64-win\DirectML.lib, and QNN is the more
+# promising path. Until then the arm64 lane is CPU + Vulkan, as documented.
+$dmlArg = if ($onnxCross) { '-Donnxruntime_USE_DML=OFF' } else { '-Donnxruntime_USE_DML=ON' }
+if ($onnxCross) { Write-Host 'ONNX: DirectML EP OFF (cross build; the DirectML redist ships no ARM64 import library for this EP)' }
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
-    '-Donnxruntime_USE_DML=ON', '-Donnxruntime_ENABLE_PYTHON=ON', '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
-    "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)"
+    $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
+) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs
 Switch-BuildPhase '3. cmake configure'
@@ -467,6 +502,30 @@ Update-NinjaFile -NinjaFile "$buildDir\build.ninja" -StripPatterns @(
 $targetArch    = Get-WindowsTargetArch
 $mlasArchFlags = Get-WindowsTargetKernelSimdFlags -Arch $targetArch
 $mlasTuPattern = Get-MlasKernelTuPattern -Arch $targetArch
+# SOURCE-DERIVED, not name-guessed (2026-08-23). Two rounds of extending the
+# name pattern each uncovered another TU: first the whole *_fp16 family, then
+# dwconv.cpp -- which carries neither 'fp16' nor 'kernel_neon' in its name yet
+# includes fp16_common.h and inlines MlasMultiplyAddFloat16. Chasing names is
+# whack-a-mole, and every miss is a compile error at best and an unoptimised
+# kernel at worst.
+#
+# So on a cross target the name pattern is UNIONED with the set of MLAS sources
+# that actually pull the fp16 intrinsic header. That set maintains itself across
+# upstream churn: a new fp16 consumer is tagged the day it appears.
+if (Test-WindowsCrossTarget -Arch $targetArch) {
+    $mlasLibDir = Join-Path $SourceDir 'onnxruntime\core\mlas\lib'
+    $fp16Consumers = @(
+        Get-ChildItem $mlasLibDir -Recurse -Filter '*.cpp' -File -ErrorAction SilentlyContinue |
+            Where-Object { (Get-Content -LiteralPath $_.FullName -Raw -ErrorAction SilentlyContinue) -match 'fp16_common\.h' } |
+            ForEach-Object { [regex]::Escape($_.Name) }
+    )
+    if ($fp16Consumers.Count -gt 0) {
+        $mlasTuPattern = '(' + $mlasTuPattern + ')|(' + ($fp16Consumers -join '|') + ')'
+        Write-Host "MLAS: $($fp16Consumers.Count) source(s) include fp16_common.h - unioned into the per-TU flag pattern"
+    } else {
+        Write-Warning "MLAS: no source under $mlasLibDir includes fp16_common.h - the tree layout changed; falling back to the name pattern alone"
+    }
+}
 $mlasTuMinimum = Get-MlasKernelTuMinimum -Arch $targetArch
 # Marker that proves a FLAGS line was already tagged, so a re-run does not
 # append the set twice. Arch-specific for the same reason as the pattern:

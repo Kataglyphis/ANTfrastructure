@@ -200,12 +200,40 @@ Describe 'MLAS per-TU patch targeting' {
         Assert-False ('build/x/mlas/lib/sqnbitgemm_kernel_neon.cpp.obj' -match $p)
     }
 
-    It 'the arm64 pattern matches aarch64 kernel TUs and not x86 ones' {
+    It 'the arm64 pattern matches every aarch64 kernel TU that needs per-TU features' {
+        # VERBATIM from ONNX Runtime v1.29.0's aarch64 MLAS build (measured
+        # 2026-08-23 in a real cross build), not invented names. The *_fp16
+        # entries are the ones the first pattern missed, which made
+        # activate_fp16.cpp fail to compile with "requires target feature
+        # 'fullfp16'".
         $p = Get-MlasKernelTuPattern -Arch 'arm64'
-        Assert-True  ('build/x/mlas/lib/sqnbitgemm_kernel_neon.cpp.obj' -match $p)
-        Assert-True  ('build/x/mlas/lib/qgemm_kernel_udot.cpp.obj' -match $p)
-        Assert-True  ('build/x/mlas/lib/qgemm_kernel_smmla.cpp.obj' -match $p)
+        foreach ($tu in @(
+                'activate_fp16.cpp', 'pooling_fp16.cpp',
+                'hqnbitgemm_kernel_neon_fp16.cpp', 'hqnbitgemm_kernel_neon_fp16_8bit.cpp',
+                'rotary_embedding_kernel_neon_fp16.cpp', 'rotary_embedding_kernel_neon.cpp',
+                'sqnbitgemm_kernel_neon_fp32.cpp', 'sqnbitgemm_kernel_neon_int8.cpp',
+                'sqnbitgemm_kernel_neon_int8_2bit.cpp', 'qnbitgemm_kernel_neon.cpp',
+                'qgemm_kernel_neon.cpp', 'qgemm_kernel_udot.cpp', 'qgemm_kernel_sdot.cpp',
+                'halfgemm_kernel_neon.cpp', 'cast_kernel_neon.cpp', 'qkv_quant_kernel_neon.cpp')) {
+            Assert-True ("build/x/mlas/lib/$tu.obj" -match $p) "arm64 pattern must match $tu"
+        }
+    }
+
+    It 'the arm64 pattern leaves the runtime DISPATCHERS alone' {
+        # These select a kernel at run time. Compiling them WITH the optional
+        # features would make the dispatch decision itself fault on hardware
+        # that lacks them - the exact failure the per-TU design prevents.
+        $p = Get-MlasKernelTuPattern -Arch 'arm64'
+        foreach ($tu in @('cast.cpp', 'halfconv.cpp', 'halfgemm.cpp', 'platform.cpp')) {
+            Assert-False ("build/x/mlas/lib/$tu.obj" -match $p) "arm64 pattern must NOT match the dispatcher $tu"
+        }
         Assert-False ('build/x/mlas/lib/qgemm_kernel_amx.cpp.obj' -match $p)
+    }
+
+    It 'the arm64 floor would have caught the incomplete first pattern' {
+        # The original pattern matched 10 of 16 TUs and passed a floor of 2,
+        # so the miss surfaced as a compile error instead of a gate failure.
+        Assert-True ((Get-MlasKernelTuMinimum -Arch 'arm64') -gt 10) 'the floor must reject a 10-TU match'
     }
 
     It 'declares a nonzero minimum match count per arch' {
@@ -261,15 +289,17 @@ Describe 'versions.env parity' {
         Assert-Equal ($supported -join ',') ($declared -join ',') 'versions.env WINDOWS_TARGET_ARCHES drifted from the module table'
     }
 
-    It 'WINDOWS_TARGET_ARCH is a supported arch and is the module default' {
+    It 'WINDOWS_TARGET_ARCH is NOT a versions.env key' {
+        # It is a per-BUILD switch, not a pin. Keeping it here made
+        # load-versions.ps1 rewrite the value in any stage where process and
+        # machine env agreed -- which is exactly what happens in a stage built
+        # FROM a previous arm64 stage, and it silently reverted the lane to
+        # amd64 (measured 2026-08-23; FFmpeg then failed as "libonnxruntime not
+        # found"). The Dockerfile ARG defaults supply the default instead.
         $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
         $v = ConvertFrom-VersionsEnv -Path $envPath
-        Assert-True ($v.Contains('WINDOWS_TARGET_ARCH')) 'versions.env must declare WINDOWS_TARGET_ARCH'
-        $declared = $v['WINDOWS_TARGET_ARCH'].Trim()
-        Assert-True ((Get-SupportedWindowsTargetArches) -contains $declared) "WINDOWS_TARGET_ARCH '$declared' is not a supported arch"
-        # The host is always amd64, so the shipped default must be amd64 too:
-        # anything else would make a stock build cross-compile by accident.
-        Assert-Equal 'amd64' $declared
+        Assert-False ($v.Contains('WINDOWS_TARGET_ARCH')) `
+            'versions.env must NOT define WINDOWS_TARGET_ARCH - load-versions.ps1 would overwrite the build-arg in inherited stages'
     }
 }
 
@@ -311,5 +341,53 @@ Describe 'COFF machine decoding (byte-shift trap)' {
             }
         }
         Assert-Equal 0 $offenders.Count ("machine-word decode without [int] cast: " + ($offenders -join ' // '))
+    }
+}
+
+Describe 'WINDOWS_TARGET_ARCH crosses stage boundaries' {
+
+    # ARGs do NOT cross a FROM boundary. Every stage that RUNs a build script has
+    # to redeclare WINDOWS_TARGET_ARCH, or it silently falls back to the amd64
+    # default while its parent image was built for arm64.
+    #
+    # Measured 2026-08-23: media-core-built-ffmpeg was FROM the arm64 onnx image
+    # but did not redeclare, so the FFmpeg cross block never ran, configure
+    # link-probed as x64, and lld-link rejected the arm64 onnxruntime.lib. The
+    # symptom configure prints -- "libonnxruntime not found" -- points nowhere
+    # near the cause, which is exactly why this needs a static gate.
+    It 'every stage built FROM an external image reference redeclares the ARG' {
+        # Derived, not listed: a stage whose FROM is `${SOMETHING}` starts from an
+        # image built by a SEPARATE solve, so nothing in this file's ENV chain
+        # reaches it. A stage whose FROM names an in-file stage (e.g. `FROM common`)
+        # inherits ENV normally and must NOT be required to redeclare -- requiring
+        # it there would be cargo cult.
+        $repo = Get-RepoRoot
+        $missing = @()
+        foreach ($rel in @('windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder')) {
+            $path = Join-Path $repo $rel
+            Assert-True (Test-Path $path) "missing Dockerfile: $rel"
+            $lines = @(Get-Content -LiteralPath $path)
+            # Index every stage header so a body can be bounded by the next one.
+            $headers = @()
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                if ($lines[$i] -match '^FROM\s+(\S+)(?:\s+AS\s+(\S+))?\s*$') {
+                    $headers += [pscustomobject]@{ Index = $i; Parent = $Matches[1]; Name = $Matches[2] }
+                }
+            }
+            for ($h = 0; $h -lt $headers.Count; $h++) {
+                $stage = $headers[$h]
+                if (-not $stage.Name) { continue }
+                # Only stages pulled from a build-arg image reference are at risk.
+                if ($stage.Parent -notmatch '^\$\{') { continue }
+                $end = if ($h + 1 -lt $headers.Count) { $headers[$h + 1].Index - 1 } else { $lines.Count - 1 }
+                $body = $lines[$stage.Index..$end]
+                # Only stages that actually RUN something can be affected.
+                if (-not ($body | Select-String -Pattern '^RUN ')) { continue }
+                if (-not ($body | Select-String -Pattern '^ARG\s+WINDOWS_TARGET_ARCH')) {
+                    $missing += "${rel}: stage '$($stage.Name)' is FROM $($stage.Parent) and RUNs, but does not redeclare ARG WINDOWS_TARGET_ARCH"
+                }
+            }
+        }
+        Assert-Equal 0 $missing.Count ($missing -join ' // ')
     }
 }

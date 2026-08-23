@@ -55,7 +55,24 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+# THREE levels up: this script lives at windows\scripts\diagnostics\.
+#
+# It was two until 2026-08-23. #108 (473e4359, "windows/scripts directory
+# convention - build/ host/ diagnostics/") moved the file one level deeper and
+# did not update this line, so $repoRoot became <repo>\windows and every solve
+# since then passed --local dockerfile=<repo>\windows\windows -- a doubled
+# segment that fails with "invalid local: resolve ... The system cannot find the
+# file specified". That is every probe through this shared runner.
+#
+# The assertion below is the actual fix: counting levels is what broke, so the
+# result is now VERIFIED against a file that only exists at the real repo root.
+# A future move fails here with one clear line instead of a cryptic buildctl
+# path error.
+$repoRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+if (-not (Test-Path (Join-Path $repoRoot 'windows\Dockerfile.probe'))) {
+    throw ("repo root resolved to '$repoRoot', which does not contain windows\Dockerfile.probe. " +
+           'This script moved without its level count being updated - fix the Split-Path chain above.')
+}
 
 if ([string]::IsNullOrWhiteSpace($ProbeScript) -eq [string]::IsNullOrWhiteSpace($Dockerfile)) {
     throw 'pass exactly ONE of -ProbeScript (shared Dockerfile.probe) or -Dockerfile (bespoke probe Dockerfile)'

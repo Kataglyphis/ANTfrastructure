@@ -22,6 +22,30 @@
 
 Set-StrictMode -Version Latest
 
+# Canonical TARGET-architecture facts. Needed because the contract below is no
+# longer arch-independent: tflite's entire dependency (LiteRT) cannot be built
+# for Windows-on-ARM, so on that lane the plugin is not "missing", it is
+# STRUCTURALLY UNAVAILABLE. Resolving that here rather than at each call site is
+# the whole point of this file -- the three consumers (GStreamer build gate,
+# smoke test, healthcheck) previously disagreed and shipped an image without
+# plugins on 2026-07-11. Teaching only one of them about arm64 would recreate
+# exactly that failure.
+#
+# Guarded, no -Force, per the module-scoping convention used by
+# WindowsSourceBuild.Common.psm1. Absence THROWS rather than stubbing: a silent
+# fallback here would answer "tflite is required" on a lane that cannot have it,
+# which is the bug this is fixing. Every COPY list that carries this module also
+# carries WindowsTargetArch.Common.psm1 (Dockerfile.media-merge-builder:65/67 and
+# :211/212), and the final image copies windows\scripts\modules wholesale.
+$gstTargetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
+if (Test-Path $gstTargetArchPath) {
+    if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $gstTargetArchPath }
+} else {
+    throw ("WindowsGstPlugins.Common: required sibling module not found at $gstTargetArchPath. " +
+           'Get-RequiredGstPlugin filters the contract per target arch and cannot answer correctly ' +
+           'without it. Add WindowsTargetArch.Common.psm1 to the COPY list that carries this module.')
+}
+
 function Get-RequiredGstPlugin {
     # THE contract for which GStreamer plugin integrations must exist in a
     # shipped image. One definition, three consumers: the GStreamer build gates
@@ -45,15 +69,25 @@ function Get-RequiredGstPlugin {
     #     in the old probe lists purely because the lying healthcheck "found" it.
     #     Requiring it would make every build fail forever. If NNStreamer is
     #     wanted, that is a new source-build stage, not a plugin gate entry.
+    # -Arch selects the TARGET lane. Empty resolves through Get-WindowsTargetArch,
+    # which answers 'amd64' whenever WINDOWS_TARGET_ARCH is unset -- so every
+    # existing caller and every existing test keeps getting the same four entries
+    # in the same order. UnavailableOn is keyed by arch and no entry carries an
+    # 'amd64' key, which makes the filter provably a no-op on the native lane.
     [CmdletBinding()]
-    param()
-    return @(
+    param([string]$Arch = '')
+
+    $gstArch = Get-WindowsTargetArch -Arch $Arch
+
+    $contract = @(
         [pscustomobject]@{
             Name      = 'libav'
             Provides  = 'avdec_* / avenc_* / avmux_* — the FFmpeg codec bridge'
             Detection = 'pkg-config'
             NeedsPc   = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
             Why       = 'the single largest codec surface in the image; without it GStreamer decodes almost nothing this build claims to support'
+            # FFmpeg is cross-built for every target this repo supports.
+            UnavailableOn = @{}
         },
         [pscustomobject]@{
             Name      = 'opencv'
@@ -61,6 +95,8 @@ function Get-RequiredGstPlugin {
             Detection = 'pkg-config'
             NeedsPc   = @('opencv4')
             Why       = 'the reason OpenCV 5 is built from source into this image at all — the CV pipeline elements are the consumer'
+            # OpenCV 5 is cross-built for aarch64 (NEON HAL included).
+            UnavailableOn = @{}
         },
         [pscustomobject]@{
             Name      = 'onnx'
@@ -68,6 +104,9 @@ function Get-RequiredGstPlugin {
             Detection = 'pkg-config'
             NeedsPc   = @('libonnxruntime')
             Why       = 'the inference path of the media stack; ORT is built with CUDA/DML/TensorRT EPs specifically so pipelines can use it'
+            # ORT is cross-built for aarch64 (CPU EP; CUDA and DML are off there,
+            # but the plugin only needs libonnxruntime itself).
+            UnavailableOn = @{}
         },
         [pscustomobject]@{
             Name      = 'tflite'
@@ -85,8 +124,21 @@ function Get-RequiredGstPlugin {
             NeedsHeader = 'tensorflow/lite/c/c_api.h'
             NeedsLib    = @('tensorflowlite_c', 'tensorflow-lite')
             Why         = 'LiteRT is built from source into this image; without this plugin nothing in a GStreamer pipeline can use it'
+            UnavailableOn = @{
+                arm64 = 'LiteRT is not built on the arm64 cross lane at all: LiteRT-LM links a prebuilt x86_64-only static library (build-litert-lm-from-source.ps1:911) with no arm64 counterpart, so the whole media-litert branch is replaced by the empty media-branch-absent stand-in. The plugin is not MISSING here, it is structurally unavailable - demanding it would make the arm64 build fail forever, which is exactly what the tensorfilter note above warns against.'
+            }
         }
     )
+
+    # Filter, then explain. A dropped entry is logged rather than silently
+    # vanishing: "the image shipped without the plugin and nothing failed" is the
+    # documented 2026-07-11 regression, so a REMOVAL must be visible in the log
+    # of whichever consumer asked.
+    $available = @($contract | Where-Object { -not $_.UnavailableOn.ContainsKey($gstArch) })
+    foreach ($dropped in @($contract | Where-Object { $_.UnavailableOn.ContainsKey($gstArch) })) {
+        Write-Verbose "Get-RequiredGstPlugin: '$($dropped.Name)' is not required on $gstArch - $($dropped.UnavailableOn[$gstArch])"
+    }
+    return $available
 }
 
 function Write-PkgConfigFile {

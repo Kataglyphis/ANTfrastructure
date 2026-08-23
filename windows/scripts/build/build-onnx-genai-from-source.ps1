@@ -21,6 +21,13 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
+# Cross-target state, resolved once. GenAI is the LAST media-core component (the
+# Dockerfile runs it in `media-core-built`, after OpenCV -- deliberately NOT the
+# order of the $components array in build-media-core-all.ps1), so by the time it
+# runs, ORT itself was already built with USE_DML=OFF on the cross lane.
+$genaiTargetArch = Get-WindowsTargetArch
+$genaiCross      = Test-WindowsCrossTarget -Arch $genaiTargetArch
+
 $OnnxGenAiVersion = Get-SourceBuildVersion -Value $OnnxGenAiVersion -EnvironmentVariables @('ONNXRUNTIME_GENAI_VERSION', 'ONNX_GENAI_VERSION') -DefaultValue '0.15.2' -StripVPrefix
 
 Write-Host "=== ONNX Runtime GenAI source build (v$OnnxGenAiVersion, Ninja+clang-cl) ==="
@@ -78,7 +85,12 @@ $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # path (USE_DML=ON) can be iterated fast -- DML is D3D12 host C++, unaffected by CUDA. Dev knob only
 # (mirrors ONNX_FORCE_CPU in build-onnx); the media-core build never sets it.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
-if ($gpuEnv.HasCuda) {
+# Cross lane: force CPU regardless of what the BUILD HOST has. Get-GpuEnvironment
+# probes the x64 host's toolkit, so on a GPU-equipped host it would answer "yes"
+# and switch on nvcc for an aarch64 target -- there is no CUDA for Windows-on-ARM
+# at all, so this must be decided by the TARGET, never by the host. Same guard as
+# build-onnx-from-source.ps1.
+if ($gpuEnv.HasCuda -and -not $genaiCross) {
     $cudaRoot  = $gpuEnv.CudaRoot
     $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
     # nvcc host = MSVC cl.exe (NOT clang-cl); C++ stays clang-cl. C++20 (std::span in cuda_topk.cu; 17
@@ -92,17 +104,63 @@ if ($gpuEnv.HasCuda) {
     Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
 } else {
     $genaiCudaArgs = @('-DUSE_CUDA=OFF')
-    Write-Host 'CUDA disabled for ONNX GenAI build (CPU-only lane -- no nvidia GPU detected)'
+    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- no CUDA exists for Windows-on-ARM" }
+                    else { 'CPU-only lane -- no nvidia GPU detected' }
+    Write-Host "CUDA disabled for ONNX GenAI build ($genaiCudaWhy)"
 }
+
+# -- cross-lane switches, each decided by the TARGET arch --
+# USE_DML: DirectML ships no arm64 import library (the nuget has no
+# bin/ARM64-win/DirectML.lib), and ORT itself was configured USE_DML=OFF on this
+# lane, so a DML GenAI would have nothing to link against on EITHER side.
+$genaiDmlArg = if ($genaiCross) { '-DUSE_DML=OFF' } else { '-DUSE_DML=ON' }
+# Python: no aarch64 CPython exists in this image (Get-SourceBuildPython is
+# host-pinned by design), so anything linking libpython would pull the x64
+# import library into an arm64 module. Same reason ORT's own wheel and PyAV are
+# skipped on this lane.
+#
+# ENABLE_PYTHON=OFF is the load-bearing switch, NOT BUILD_WHEEL=OFF. Upstream:
+#     option(ENABLE_PYTHON "Build the Python API." ON)
+#     cmake_dependent_option(BUILD_WHEEL "Build the python wheel" ON "ENABLE_PYTHON" OFF)
+# and CMakeLists.txt gates the module itself on the FORMER:
+#     if(ENABLE_PYTHON) add_subdirectory("${SRC_ROOT}/python") endif()
+# So BUILD_WHEEL=OFF alone only suppresses the packaging step; src/python still
+# built and the link failed (measured 2026-08-23):
+#   onnxruntime_genai.cp314-win_amd64.pyd
+#   lld-link: error: python314.lib(python314.dll): machine type x64 conflicts with arm64
+# BUILD_WHEEL=OFF is kept alongside it purely as documentation of intent -- as a
+# dependent option it is already forced OFF once ENABLE_PYTHON is OFF.
+$genaiPythonArgs = if ($genaiCross) { @('-DENABLE_PYTHON=OFF', '-DBUILD_WHEEL=OFF') } else { @('-DBUILD_WHEEL=ON') }
+# The clang target triple must ride in THIS script's explicit CMAKE_CXX_FLAGS
+# string: passing -DCMAKE_CXX_FLAGS on the command line DEFINES the cache
+# variable, so CMake never applies the CMAKE_CXX_FLAGS_INIT that
+# Get-CMakeCrossArgs sets. Identical trap to build-opencv-from-source.ps1.
+$genaiTargetFlag = if ($genaiCross) { " --target=$(Get-ClangTargetTriple -Arch $genaiTargetArch)" } else { '' }
+# The host CPython lib dir is x64. On an aarch64 link line it lets lld-link pick
+# up x64 import libs and fail with a machine-type conflict; it exists only to
+# resolve the python module's python*.lib, which is not built on the cross lane.
+#
+# -DPYTHON_LIBRARY below still points at the host x64 import library and is left
+# in place deliberately: with ENABLE_PYTHON=OFF nothing links it, while removing
+# it risks breaking a configure-time find_package(Python...) for no gain. The
+# rule this lane enforces is "no host-arch library on a LINK line", not "no
+# host-arch path anywhere in the cache".
+$genaiPyLinkArgs = if ($genaiCross) { @() } else { @("-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($py.LibDir)") }
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
 $cmakeExtraGenAi = @(
     '-DCMAKE_POSITION_INDEPENDENT_CODE=ON'
-    '-DUSE_TRT_RTX=OFF', '-DUSE_DML=ON'
+    '-DUSE_TRT_RTX=OFF', $genaiDmlArg
     # BUILD_WHEEL=ON: cmake configures build\wheel\setup.py and a POST_BUILD step
     # copies onnxruntime_genai.pyd + embed libs (incl. D3D12Core) into build\wheel;
     # the wheel itself is packed after the build below.
-    '-DENABLE_JAVA=OFF', '-DBUILD_WHEEL=ON', '-DUSE_GUIDANCE=OFF'
+    # NB: $genaiPythonArgs is appended with + below, NOT placed inline here.
+    # A comma-separated array literal does NOT flatten a nested array, and the
+    # [string[]] coercion then space-JOINS it into one argument -- CMake would
+    # have received a single "-DENABLE_PYTHON=OFF -DBUILD_WHEEL=OFF" token and
+    # silently ignored it. Newline-separated elements and + both flatten; commas
+    # do not. Measured, not assumed.
+    '-DENABLE_JAVA=OFF', '-DUSE_GUIDANCE=OFF'
     # GenAI 0.15 turned Microsoft 1DS telemetry (cpp_client_telemetry) ON by
     # default. OFF for two reasons: (a) its bundled zlib feeds GNU-style
     # `-std=c11` to clang-cl under -Werror -> hard build break; (b) we do not
@@ -110,12 +168,11 @@ $cmakeExtraGenAi = @(
     '-DENABLE_TELEMETRY=OFF'
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
-    "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE $(Get-WarningNoiseSuppressionFlags)"
+    "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE $(Get-WarningNoiseSuppressionFlags)$genaiTargetFlag"
     "-DPYTHON_EXECUTABLE=$($py.Exe)"
     "-DPYTHON_LIBRARY=$($py.Lib)"
     "-DPYTHON_INCLUDE_DIR=$($py.Include)"
-    "-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($py.LibDir)"
-) + $genaiCudaArgs
+) + $genaiPythonArgs + $genaiPyLinkArgs + $genaiCudaArgs
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi | Out-Null
 
 # Resolve MSVC tools path dynamically (avoid hardcoded version)
@@ -219,13 +276,20 @@ if (Test-Path $altOutDir) {
 # parent dir, and those dir names ARE the RID arch component ('win-x64' -> 'x64',
 # 'win-arm64' -> 'arm64'). Pin the filter to the TARGET's dir: an unqualified
 # -Recurse|Select -First 1 grabs arm64 alphabetically and fails to load on an x64 image at DML
-# device init -- while hardcoding 'x64' threw away the arm64 payload the cross lane needs
-# (USE_DML=ON is unconditional here, so the arm64 lane stages this too).
-$d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
-Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
-    -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq $d3d12ArchDir } `
-    -Destination (Join-Path $genaiInstallDir 'lib') `
-    -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
+# device init -- while hardcoding 'x64' threw away the arm64 payload a DML-enabled arm64 build
+# would need. Kept target-derived rather than re-hardcoded to 'x64', so this stays correct if
+# the cross lane ever gains DML (see $genaiDmlArg).
+# Skipped entirely on the cross lane: USE_DML=OFF means the D3D12 FetchContent never ran, so
+# there is no _deps payload to stage and Copy-SidecarDll would only emit a misleading warning.
+if (-not $genaiCross) {
+    $d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
+    Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
+        -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq $d3d12ArchDir } `
+        -Destination (Join-Path $genaiInstallDir 'lib') `
+        -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
+} else {
+    Write-Host "D3D12Core.dll staging skipped (USE_DML=OFF on the $genaiTargetArch cross lane)"
+}
 
 # -- Python wheel (onnxruntime-genai-cuda / onnxruntime-genai) --
 # BUILD_WHEEL=ON assembled build\wheel (configured setup.py + onnxruntime_genai
@@ -233,7 +297,14 @@ Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
 # uses the deps installed above instead of a fresh pip env. Must run BEFORE
 # Remove-SourceBuildTree.
 $genaiWheelDir = Join-Path $genaiBuildDir 'wheel'
-if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
+if ($genaiCross) {
+    # BUILD_WHEEL=OFF on the cross lane, so cmake configured no setup.py and there
+    # is nothing to pack. The hard gate in the final else MUST NOT fire here -- its
+    # entire premise is "BUILD_WHEEL=ON is set above", which is no longer true for
+    # every lane. Skipping also keeps a host-arch .pyd out of the arm64 bundle,
+    # which the PE arch gate would reject anyway.
+    Write-Host "genai python wheel skipped (BUILD_WHEEL=OFF on the $genaiTargetArch cross lane -- no aarch64 CPython to link)"
+} elseif (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
     Write-Host 'Building onnxruntime-genai python wheel...'
     # -NoDeps is LOAD-BEARING: genai-cuda's dependency metadata names
     # `onnxruntime-gpu`, and letting pip resolve it pulled PyPI's

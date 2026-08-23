@@ -1045,18 +1045,27 @@ function Initialize-PythonPlatformTag {
     # and locally-built wheels get mis-tagged. _PYTHON_HOST_PLATFORM is POSIX-only,
     # so drop a sitecustomize.py shim forcing win-amd64 (verified 2026-07-12).
     #
-    # -Arch follows the TARGET (empty = resolved WINDOWS_TARGET_ARCH), NOT the
-    # host. This shim decides the PEP 425 tag stamped on every wheel this lane
-    # BUILDS, and a cross build must emit win_arm64 wheels even though the
-    # interpreter running setup.py is the x64 host one. A mis-tagged wheel is
-    # silent; the smoke gate's tag assert is the only thing that would catch it.
-    # Known consequence on a cross lane: pip also RESOLVES downloads against this
-    # tag, so `pip install numpy` looks for win_arm64. That is loud and correct --
-    # a win_amd64 numpy in a cross bundle is unusable on the target.
+    # -Arch follows the HOST, and defaults to it. CORRECTED 2026-08-23: it briefly
+    # followed the TARGET, on the reasoning that wheels this lane BUILDS should
+    # carry the target tag. That was wrong twice over.
+    #
+    # First, this shim configures the interpreter that RUNS the builds -- the x64
+    # host CPython (Get-SourceBuildPython is host-pinned by design). pip resolves
+    # DOWNLOADS against the same tag, so stamping win-arm64 made the host
+    # interpreter demand arm64 packages it cannot load: OpenCV's build died on
+    # "numpy C-extensions failed ... platform 'win32'" because no usable numpy
+    # could be installed for it.
+    #
+    # Second, the premise no longer holds: a cross lane builds NO python wheels
+    # at all -- ONNX's wheel, OpenCV's bindings and PyAV are each skipped, since
+    # there is no target CPython to link or import them. Nothing on this lane
+    # needs a target tag. If a target CPython ever exists, the tag belongs to
+    # THAT interpreter's shim, not this one.
     param(
         [string]$CpythonDir = '',
         [string]$Arch = ''
     )
+    if ([string]::IsNullOrWhiteSpace($Arch)) { $Arch = Get-WindowsHostArch }
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $platformName = Get-PythonPlatformName -Arch $Arch
     $openCvArchDir = Get-OpenCvArchDir -Arch $Arch
@@ -1197,11 +1206,11 @@ function Initialize-ToolchainPythonEnvironment {
     )
     Enter-VsDevCmdEnvironment -Arch $Arch -HostArch $HostArch
     Copy-CpythonPyConfigHeader
-    # Forward -Arch: the shim stamps the wheel platform tag, which follows the
-    # TARGET exactly like the VsDevCmd arch above. Not forwarding it would repeat
-    # the bug this function's own header documents -- a helper silently pinning
-    # its callers to x64.
-    Initialize-PythonPlatformTag -Arch $Arch | Out-Null
+    # NOT forwarded on purpose: the platform-tag shim configures the HOST
+    # interpreter that runs the builds, so it must stay host-pinned even when
+    # this function has entered a target-arch VsDevCmd environment. See the
+    # correction note in Initialize-PythonPlatformTag.
+    Initialize-PythonPlatformTag | Out-Null
     return Get-SourceBuildPython
 }
 

@@ -309,6 +309,52 @@ COPY windows\scripts\build\build-litert-from-source.ps1 `
      windows\scripts\build\debug-litertlm-link.ps1 `
      C:\temp\scripts\
 
+# ── media-branch-absent: stand-in for branches that CANNOT be cross-built ────
+# Dockerfile.media-merge-builder fans in three branch trees with unconditional
+# COPY --from=media-litert / --from=media-tvm, and a Dockerfile has no way to
+# make a COPY conditional. On the arm64 cross lane neither branch can exist:
+#
+#   media-litert : LiteRT-LM links prebuilt\windows_x86_64\
+#                  libGemmaModelConstraintProvider.lib (build-litert-lm-from-
+#                  source.ps1:911). There is no arm64 counterpart and it is a
+#                  binary blob, so this is not fixable downstream.
+#   media-tvm    : TVM builds its own minimal LLVM with
+#                  -DLLVM_TARGETS_TO_BUILD=X86;NVPTX (build-tvm-from-
+#                  source.ps1:141), so its codegen cannot emit aarch64 at all.
+#
+# So the arm64 lane points BOTH LITERT_IMAGE and TVM_IMAGE at this stage, which
+# provides exactly the paths the merge copies from -- empty. Copying an empty
+# directory succeeds and contributes nothing, which is precisely the intent.
+#
+# The marker files are deliberate: they travel INTO the shipped bundle, so
+# somebody who opens it and finds an empty litert dir gets the reason on the
+# spot instead of assuming the build silently dropped something.
+FROM common AS media-branch-absent
+
+RUN $dirs = @( `
+        'C:\runtime\lib\litert', `
+        'C:\runtime\lib\litert-lm', `
+        'C:\runtime\lib\tvm', `
+        'C:\runtime\iree', `
+        'C:\runtime\wheels', `
+        'C:\temp\cpython\Lib\site-packages' `
+    ); `
+    foreach ($d in $dirs) { New-Item -Path $d -ItemType Directory -Force | Out-Null }; `
+    $note = @( `
+        'This component is intentionally ABSENT from the Windows arm64 (aarch64) bundle.', `
+        '', `
+        'LiteRT-LM links a prebuilt x86_64-only static library', `
+        '(prebuilt\windows_x86_64\libGemmaModelConstraintProvider.lib) for which upstream', `
+        'ships no arm64 counterpart; TVM builds its own LLVM with X86;NVPTX targets only,', `
+        'so its codegen cannot emit aarch64.', `
+        '', `
+        'Neither is fixable in this repository. See docs/windows-cross-builds.md.' `
+    ) -join [Environment]::NewLine; `
+    foreach ($d in @('C:\runtime\lib\litert', 'C:\runtime\lib\litert-lm', 'C:\runtime\lib\tvm', 'C:\runtime\iree')) { `
+        Set-Content -Path (Join-Path $d 'ABSENT-ON-ARM64.txt') -Value $note -Encoding utf8 `
+    }; `
+    Write-Host 'media-branch-absent: staged empty litert/litert-lm/tvm/iree trees for the arm64 merge fan-in'
+
 # ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
 FROM common AS media-tvm-env
 
@@ -434,6 +480,21 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # to pass only -ResumeFrom and rely on being LAST in the stage list; after the
 # swap that would have silently dragged OpenCV into the ffmpeg layer.
 FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
+# Target arch, REDECLARED: ARGs do not cross stage boundaries (same rule the
+# sccache block further down documents). Without this the stage falls back to
+# the amd64 default while its parent image was built for arm64 -- measured
+# 2026-08-23: the FFmpeg cross block never ran, configure link-probed as x64,
+# and lld-link rejected the arm64 onnxruntime.lib with "machine type arm64
+# conflicts with x64", which configure reports as "libonnxruntime not found".
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
+# DIAGNOSTIC (2026-08-23): a second ENV carrying the SAME ARG under a different
+# name. WINDOWS_TARGET_ARCH resolves to the amd64 default inside this stage even
+# though buildctl is demonstrably passed build-arg:WINDOWS_TARGET_ARCH=arm64 and
+# the ARG is declared right above. This discriminates between "the build-arg is
+# not reaching the ARG" (then this is amd64 too) and "something in the image
+# re-sets the WINDOWS_TARGET_ARCH name specifically" (then this is arm64).
+ENV KATA_ARCH_PROBE=${WINDOWS_TARGET_ARCH}
 # #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
 # never the ONNX stage above.
 ARG FFMPEG_VERSION=n9.0
@@ -452,6 +513,9 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'FFmpeg' -Until 'FFmpeg' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
+# Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # DEFAULT ON since 2026-08-17: OpenCV links the FFmpeg this chain builds
 # (avcodec 63) instead of downloading its own prebuilt one (avcodec 61,
 # avdevice NO). Verified by the full-chain smoke gate: 188 passed / 1 failed,
@@ -508,6 +572,9 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     & 'C:\bkmnt\build-media-core-all.ps1' -ResumeFrom 'OpenCV' -Until 'OpenCV' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 FROM ${MEDIA_CORE_OPENCV_IMAGE} AS media-core-built
+# Target arch, REDECLARED - see the media-core-built-ffmpeg stage above.
+ARG WINDOWS_TARGET_ARCH=amd64
+ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # #49: the genai key lives HERE - a GenAI bump re-runs this stage alone.
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
