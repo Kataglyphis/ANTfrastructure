@@ -442,12 +442,31 @@ if ($sslArm64Lib.Count -gt 0) {
         Invoke-DownloadWithRetry -Url $sslUrl -DestinationPath $sslExe
         $got = (Get-FileHash -LiteralPath $sslExe -Algorithm SHA256).Hash
         if ($got -ine $sslSha) { throw "sha256 mismatch: got $got, expected $sslSha (this is the hash scoop's own openssl manifest pins for the arm64 asset)" }
-        # InnoSetup silent switches. /DIR keeps it out of Program Files and away
-        # from the x64 install; /MERGETASKS with the negated copy tasks stops it
-        # dropping DLLs into the Windows system directory, which on this image
-        # would put ARM64 binaries on a host-arch search path.
-        & $sslExe '/VERYSILENT' '/SUPPRESSMSGBOXES' '/NORESTART' '/SP-' "/DIR=$sslArm64Root" '/MERGETASKS=!copytosystem' | Out-Null
+        # EXTRACT, do not run. The scoop manifest marks this asset
+        # `"innosetup": true`, which is exactly how scoop installs it: with
+        # innounp, never by executing the installer. Running it silently was
+        # tried first (2026-08-23) and is what NOT to do -- the whole step took
+        # 11.8 s including the 218 MB download, exited 0, and produced no files
+        # at all, so a silent no-op looked like success.
+        #
+        # Extraction is also the right shape here for a second reason: this must
+        # land BESIDE the x64 install without touching the registry or the
+        # Windows system directory, and an extractor cannot do either.
+        $innounp = (Get-Command innounp -ErrorAction SilentlyContinue).Source
+        if (-not $innounp) {
+            $cand = Join-Path $env:USERPROFILE 'scoop\apps\innounp\current\innounp.exe'
+            if (Test-Path $cand) { $innounp = $cand }
+        }
+        if (-not $innounp) { throw 'innounp not found (scoop installs it for innosetup manifests such as openssl) - cannot extract the aarch64 OpenSSL package.' }
+        New-Item -Path $sslArm64Root -ItemType Directory -Force | Out-Null
+        # -x extract, -y overwrite, -d<dir> destination. Output is logged rather
+        # than swallowed: the previous attempt failed silently precisely because
+        # nothing looked at it.
+        $unpOut = & $innounp -x -y "-d$sslArm64Root" $sslExe 2>&1
+        $unpCode = $LASTEXITCODE
         $global:LASTEXITCODE = 0
+        Write-Host "innounp exit=$unpCode; last lines:"
+        @($unpOut) | Select-Object -Last 6 | ForEach-Object { Write-Host "    $_" }
     } catch {
         Write-Warning "aarch64 OpenSSL fetch/install failed: $($_.Exception.Message)"
     } finally {
