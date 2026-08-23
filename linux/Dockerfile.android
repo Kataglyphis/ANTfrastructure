@@ -102,12 +102,90 @@ ARG ANDROID_LIB=gstreamer
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
+# CERB-CACHE: cerbero's whole state dir (/var/cache/cerbero = the home_dir the
+# .cbc sets; see build-android-from-source.sh section 8) on a cachemount.
+# bootstrap+package is ONE RUN, so before this ANY failure inside it — a dead
+# mirror (PKGCFG-MIRROR), an upstream 503 (FD-OUTAGE), the CERB-ICONV link-order
+# race — threw the entire tree away and the next attempt restarted COLD: this
+# session re-paid the ~40-60 min bootstrap three times for zero progress. With
+# the mount a retry resumes from cerbero's own cache-file.cache pickle.
+#
+# What resuming does NOT do is re-check anything (read against the pinned
+# cerbero 1.29.2): Oven._cook_recipe_step returns before calling the step
+# function for any step already recorded in the pickle (build/oven.py:511) and
+# _cook_recipe skips the recipe outright once needs_build is false (:554), and
+# Source.verify() — the sha256 against the recipe's tarball_checksum — is only
+# ever reached from inside the fetch step (build/source.py:366/378/458). So a
+# recipe whose fetch is recorded keeps whatever bytes are already in
+# sources/local, unexamined. The pickle self-invalidates on exactly two things:
+# a changed built_version, and a changed content hash of the recipe file plus
+# its patches (build/cookbook.py:426-440; Recipe.get_checksum hashes the recipe
+# FILES, not the tarball). It has no notion of the toolchain — which is what
+# forces the NDK/API pins into the id below rather than trusting cerbero to
+# notice.
+#
+# Every key in the id, and why:
+#   TARGET_ARCH — the state is arch-SPECIFIC (the dist/android_<arch> prefix,
+#     the build trees) and this is the per-lane --build-arg
+#     (stage-defs.sh append_per_arch_build_args). ${TARGETARCH} canNOT stand in
+#     for it: it is a BuildKit predefined arg, the `ARG TARGETARCH` above rebinds
+#     it to defaultArgs()'s value — the --platform linux/amd64 that
+#     cross-stage-build.sh passes on EVERY lane — and an ARG with a resolved
+#     value wins over the parent stage's ENV for later expansion in the stage
+#     (dockerfile2llb/convert.go dispatchArg does state.AddEnv). All three lanes
+#     would land in one store (PAR2).
+#   ANDROID_NDK_VERSION / ANDROID_API_LEVEL — bumping either re-executes this
+#     RUN, but cerbero would resume a tree built against the OLD NDK and, per
+#     the paragraph above, has no way to notice: a silently mis-built GStreamer,
+#     discovered hours later. Both are ENV in the android-sdk parent (lines
+#     34-56) and a stage starts from its base stage's state
+#     (convert.go: ds.state = ds.base.state), so they expand here with no ARG of
+#     their own — unlike an ARG-only name, which would expand to EMPTY and merge
+#     every generation into a single store, i.e. worse than not keying at all.
+#     ANDROID_API_LEVEL is the REQUESTED level; the per-arch raise
+#     (android_raise_api_level_if_needed) is a pure function of it and the arch,
+#     both of which the id already carries.
+#
+# The arch-INDEPENDENT half (downloaded tarballs) is deliberately NOT split into
+# a second shared id: cerbero keeps it in local_sources next to the LIVE git
+# working repos it checks out per lane (build/source.py: download_dir =
+# repo_dir = local_sources/<name>; config.py:1146-1151 puts local_sources inside
+# home_dir/sources because home_dir is not the default) and downloads
+# non-atomically (`curl -o <dest>` plus an exists() skip, utils/shell.py), so a
+# shared id would need sharing=locked — which holds its lock for the whole
+# multi-hour RUN and re-serializes the lanes, i.e. PAR2 again. Re-fetching the
+# tarballs per arch is the cheaper half of that trade.
+#
+# sharing=locked: the only writers of one id are two cerbero runs of the SAME
+# arch, which would share one home_dir — one dist prefix, one cache-file
+# pickle — and corrupt each other. Different lanes hold different ids and never
+# wait on one another.
+#
+# ${ANDROID_LIB} is in the id so this line can stay byte-identical across the
+# five stages (verify-android-stage-parity.sh) while the four non-cerbero lanes
+# get their own empty store instead of contending for gstreamer's lock.
+#
+# DISK, stated plainly because the host runs near-full: the script's prune runs
+# on the SUCCESS path only (build trees dropped, local sources + dist prefix
+# kept). A FAILED attempt keeps its ENTIRE tree — that IS the feature — costing
+# up to the ~10-15 GB the pre-cache cleanup used to free, per lane, so ~30-45 GB
+# if all three fail. That does not accumulate across retries (same id, same
+# paths, overwritten in place); GENERATIONS do — a pin bump starts a fresh store
+# and orphans the old one, which prune-safe.sh will NOT reclaim (it prunes
+# type==regular only and protects every cachemount, CACHE1); that needs a
+# deliberate duration-bounded cachemount prune on the host. CERBERO_CACHE_RESET=1
+# empties the current store on entry to force a lane cold.
+#
+# Nothing shipped lives here: the image gets /opt/android/gstreamer, untarred
+# from the package cerbero writes into its checkout, and the script deletes the
+# checkout (and the state too, whenever this mount is absent).
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/cerbero,sharing=locked,id=cerbero-state-${TARGET_ARCH}-${ANDROID_LIB}-gst${GSTREAMER_VERSION}-ndk${ANDROID_NDK_VERSION}-api${ANDROID_API_LEVEL} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
@@ -123,12 +201,18 @@ ARG ANDROID_LIB=onnxruntime
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
+# The cerbero cachemount below is inert in this stage — only the gstreamer lane
+# runs cerbero. It is present so the five library stages stay byte-identical for
+# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
+# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
+# cannot self-invalidate on): see the android-gstreamer stage.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/cerbero,sharing=locked,id=cerbero-state-${TARGET_ARCH}-${ANDROID_LIB}-gst${GSTREAMER_VERSION}-ndk${ANDROID_NDK_VERSION}-api${ANDROID_API_LEVEL} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
@@ -144,12 +228,18 @@ ARG ANDROID_LIB=litert
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
+# The cerbero cachemount below is inert in this stage — only the gstreamer lane
+# runs cerbero. It is present so the five library stages stay byte-identical for
+# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
+# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
+# cannot self-invalidate on): see the android-gstreamer stage.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/cerbero,sharing=locked,id=cerbero-state-${TARGET_ARCH}-${ANDROID_LIB}-gst${GSTREAMER_VERSION}-ndk${ANDROID_NDK_VERSION}-api${ANDROID_API_LEVEL} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
@@ -165,12 +255,18 @@ ARG ANDROID_LIB=opencv
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
+# The cerbero cachemount below is inert in this stage — only the gstreamer lane
+# runs cerbero. It is present so the five library stages stay byte-identical for
+# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
+# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
+# cannot self-invalidate on): see the android-gstreamer stage.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/cerbero,sharing=locked,id=cerbero-state-${TARGET_ARCH}-${ANDROID_LIB}-gst${GSTREAMER_VERSION}-ndk${ANDROID_NDK_VERSION}-api${ANDROID_API_LEVEL} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"
@@ -188,12 +284,18 @@ ARG ANDROID_LIB=iree
 
 COPY --chmod=755 linux/scripts/03-media/build/${ANDROID_LIB}/android/ /opt/scripts/03-media/${ANDROID_LIB}/android/
 
+# The cerbero cachemount below is inert in this stage — only the gstreamer lane
+# runs cerbero. It is present so the five library stages stay byte-identical for
+# verify-android-stage-parity.sh, and the ${ANDROID_LIB} key keeps it off
+# gstreamer's lock. Rationale for the id keys (arch + the NDK/API pins cerbero
+# cannot self-invalidate on): see the android-gstreamer stage.
 RUN --mount=type=bind,source=linux/scripts/01-core/apply-patch.sh,target=/opt/scripts/core/apply-patch.sh,ro \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
+    --mount=type=cache,target=/var/cache/cerbero,sharing=locked,id=cerbero-state-${TARGET_ARCH}-${ANDROID_LIB}-gst${GSTREAMER_VERSION}-ndk${ANDROID_NDK_VERSION}-api${ANDROID_API_LEVEL} \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
         /opt/scripts/03-media/android-dispatch.sh "${ANDROID_LIB}"

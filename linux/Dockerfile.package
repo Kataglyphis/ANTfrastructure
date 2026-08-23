@@ -270,16 +270,33 @@ RUN set -euo pipefail; \
 # rewrote them only in the media lane, so the package stage (arm64/riscv64, run
 # natively under QEMU) otherwise hits ports.ubuntu.com directly — which is often
 # unreachable and fails the whole runtime build. This is a host-only swap that
-# preserves the existing (already arch-correct) source layout; amd64 uses
-# archive.ubuntu.com and is untouched.
+# preserves the existing (already arch-correct) source layout. (amd64's
+# archive.ubuntu.com entries now go through the same canonical rewrite; before
+# 5d7a318's inline sed was replaced they were untouched.)
 # Canonical mirror rewrite (use-fast-ubuntu-mirror.sh) instead of the old
 # inline sed, which had TWO drifts from the canonical behavior: it ignored the
 # USE_FAST_UBUNTU_MIRROR gate entirely, and it never derived the ports URL
 # from the archive URL — so `--fast-ubuntu-mirror-url <mirror>` WITHOUT an
 # explicit ports URL left this stage on ports.ubuntu.com while base and media
 # had both moved to the mirror.
+# platform.sh is co-mounted BECAUSE ubuntu_mirror_is_truthy() is a thin alias
+# for is_truthy(), which lives in platform.sh — and ubuntu-mirror.sh resolves it
+# NEXT TO ITSELF (${_UBUNTU_MIRROR_SH_DIR}/platform.sh, no /opt fallback), i.e.
+# inside this /tmp/core mount dir. The baked /opt/scripts/core/platform.sh (COPY
+# above) is therefore NEVER reached from here: use-fast-ubuntu-mirror.sh's own
+# /opt fallback covers ubuntu-mirror.sh only. Without this mount the gate call
+# dies with `is_truthy: command not found`, ubuntu_mirror_is_truthy() returns
+# 127, and `if ! ...` sends main() straight to `exit 0` — i.e. THIS RUN was a
+# guaranteed no-op in every configuration, silently re-opening the very
+# ports.ubuntu.com failure it was added (7593ccb) to prevent. Scope note: the
+# SAME gap exists in Dockerfile.base's standalone mirror RUN, which also omits
+# platform.sh — it is only harmless there because the preceding bootstrap-ca
+# RUN already applied the mirror, so that RUN has nothing left to do. Fixing it
+# there would be inert, which is why it is deliberately NOT fixed (an earlier
+# attempt was reverted 2026-08-23 for exactly that reason).
 RUN --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/core/use-fast-ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/core/ubuntu-mirror.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/core/platform.sh,ro \
     set -euo pipefail; \
     bash /tmp/core/use-fast-ubuntu-mirror.sh
 RUN --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \

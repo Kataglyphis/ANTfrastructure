@@ -52,6 +52,28 @@ COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/ubuntu-
 COPY --chmod=755 linux/scripts/03-media/runtime/assemble-torch-app.sh /opt/scripts/03-media/final/assemble-torch-app.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-torch-venv.sh /opt/scripts/packaging/setup-torch-venv.sh
 
+# ORPHAN-PINS consumer half (2026-08-23): this mount is the ONLY channel by
+# which the media stage's optional frameworks reach /opt/venv — setup-torch-
+# venv.sh → assemble-torch-app.sh classifies every wheel (wheel_family) and
+# installs the tvm/iree ones best-effort. That half IS wired: TVM is missing
+# from all three shipped images because the media stage produces no tvm wheel
+# (tvm-python.sh's verdict), not because anything here drops one.
+# Its NATIVE half never arrives though. Stated without line numbers, because
+# the anchor this used to carry had already rotted: Dockerfile.media's FINAL
+# stage does `COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/`, so
+# libtvm*.so exists in the media (hence android) image — but THIS image's
+# libraries come from BASE_IMAGE, the package image, and nothing there carries
+# it over. Dockerfile.package's `COPY --link --from=artifact-source` lines name
+# only whole /opt trees plus rustup/cargo/llvm-target, and copy-media-payloads.sh
+# copies an EXPLICIT allowlist out of /usr/local/lib (onnxruntime-genai,
+# onnxruntime-gpu, LiteRT, tensorflow-lite, VVdec) with no libtvm entry, so
+# /usr/local/lib/libtvm*.so is dropped at the media→package boundary. Nothing
+# in this repo's Linux lane sets TVM_LIBRARY_PATH either. Fix it THERE (the
+# package image's payload set) if the wheel turns out not to bundle its own
+# runtime — a COPY glob here would hard-fail every build while the file is
+# absent ("no source files were specified"), which is the same trap the
+# drop-DIRECTORY COPY in Dockerfile.nvidia exists to dodge. (Not GPU7: that
+# label belongs to the `|| true` outside the $() in the same file.)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -134,6 +156,6 @@ LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.authors="Jonas Heinle <jonasheinle@googlemail.com>" \
-      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
-      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-DockerHub" \
+      org.opencontainers.image.url="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" \
+      org.opencontainers.image.source="https://github.com/Kataglyphis/Kataglyphis-ContainerHub" \
       org.opencontainers.image.licenses="MIT"

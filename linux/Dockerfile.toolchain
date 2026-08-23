@@ -289,9 +289,14 @@ RUN --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scri
 
 # Canonical venv path/env for downstream stages. The venv itself is deliberately
 # NOT created here: Dockerfile.media's base stage recreates it from scratch
-# (`uv venv --clear`) with its own package set, sdk's TVM build uses a private
-# venv, and the package image builds its own via setup-package-image.sh — a
-# toolchain-level pre-create was always discarded downstream.
+# (`uv venv --clear`) with its own package set, its `FROM base AS tvm` stage
+# builds in a throwaway venv of its own (tvm-python.sh `uv venv --seed
+# $tvm_dir/.venv`), and the package image builds its own via
+# setup-package-image.sh — a toolchain-level pre-create was always discarded
+# downstream. (This used to cite "sdk's TVM build"; that stage was deleted on
+# 2026-08-12 — see the "NO sdk-stage TVM build" note in Dockerfile.sdk, backlog
+# BS2 — so only the address changed, not the reason. Named, not line-numbered:
+# comment anchors rot, and this one already had.)
 ENV VIRTUAL_ENV=/opt/python/.venv \
     PATH=/opt/python/.venv/bin:${PATH} \
     UV_PYTHON=/opt/python/.venv/bin/python \

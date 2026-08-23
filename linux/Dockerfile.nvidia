@@ -88,10 +88,82 @@ COPY --link linux/nvidia-local-debs/ /tmp/tensorrt-staging/
 # the ` || true)` sat OUTSIDE the $() and became a LITERAL part of the value, so
 # with no staged deb _trt_deb=" || true)" (non-empty) → `mv` failed → set -e
 # killed this RUN: the default (no-EULA-deb) nvidia build could not get past
-# here. Correct form keeps the || true INSIDE the substitution.
+# here.
+# The `find … | head -1` that replaced it is gone too (2026-08-23): find emits
+# DIRECTORY order, which is not the operator's `ls` order once the drop dir has
+# been through a COPY layer — the PKGCFG-MIRROR class, where the same selector
+# picks a different file inside the container than it did on the host. With two
+# debs staged (a version bump dropped in beside the old one, or amd64 + arm64
+# side by side) it moved an arbitrary one into place and printed nothing about
+# the choice.
+# The replacement SELECTS deterministically rather than refusing to build. The
+# drop directory is documented as PLURAL ("Drop NVIDIA local-repo debs here",
+# linux/nvidia-local-debs/README.md) and ONE COPY feeds every lane, so a
+# hard-fail on 2+ debs would break setups that used to build fine. Rules, in
+# order:
+#   1. a name ending `_<dpkg arch>.deb` — the Debian arch suffix. dpkg/apt in
+#      install-tensorrt.sh can only install THAT arch, and it is the same key
+#      setup-cuda-repo.sh derives the CUDA repo URL from
+#      (`dpkg --print-architecture`), so the two agree by construction.
+#   2. otherwise the first name in LC_ALL=C glob order — bash sorts glob
+#      matches, so this is stable byte order: no readdir order, no pipe, no
+#      `head` anywhere in the pick. Byte order is NOT version order (11.10
+#      sorts before 11.9), so on a version bump this can keep the OLD deb —
+#      that is what the 2+-debs WARNING below is for: delete the stale one.
+# The chosen FILENAME, the rule that chose it and every candidate it was chosen
+# from are ECHOED (PKGCFG-MIRROR verdict: echo the RESULT, never the intent —
+# the 1-deb path used to print nothing at all), and 2+ candidates additionally
+# warn that the rest are discarded. Failure mode when the pick is wrong: an
+# ARCH mismatch is safe (dpkg refuses it, install-tensorrt.sh's `dpkg -i … ||
+# true` falls through to the NVIDIA apt-repo tier), but a wrong VERSION of the
+# right arch installs cleanly — so staging two same-arch local repos for
+# different TensorRT versions can ship the older one. The echoed filename is
+# what makes that visible in the log; the drop directory is documented plural,
+# so this is a real operator scenario, not a hypothetical. The
+# default path (no deb staged at all) falls through untouched — that is the
+# 3-tier fallback above, and it must never fail.
+# Finally: any staged .deb that does NOT match the pattern is REPORTED instead
+# of vanishing (otherwise the "none staged" line above would be an outright
+# false claim while a deb sat in the directory). The glob is deliberately left as-is here, but NVIDIA's
+# own artifact is `nv-tensorrt-local-repo-…deb`, which this pattern does not
+# match (the rest of the lane knows the real name: install-tensorrt.sh hunts
+# `nv-tensorrt-local-*-keyring.gpg`, and the hygiene RUN below rm's
+# `/var/nv-tensorrt-local-repo*`). Widening the glob changes WHICH bytes get
+# installed, so it is a deliberate decision, not a drive-by — until it is
+# taken, an `nv-`-prefixed drop at least says so in the log instead of being
+# silently skipped.
 RUN set -euo pipefail; \
-    _trt_deb="$(find /tmp/tensorrt-staging -maxdepth 1 -name 'tensorrt-local-repo*.deb' | head -1 || true)"; \
-    if [ -n "${_trt_deb}" ]; then mv "${_trt_deb}" /tmp/tensorrt-local-repo.deb; fi; \
+    export LC_ALL=C; \
+    shopt -s nullglob; \
+    _trt_debs=(/tmp/tensorrt-staging/tensorrt-local-repo*.deb); \
+    _trt_staged=(/tmp/tensorrt-staging/*.deb); \
+    shopt -u nullglob; \
+    _trt_arch="$(dpkg --print-architecture 2>/dev/null || true)"; \
+    _trt_pick=""; \
+    _trt_rule=""; \
+    if [ "${#_trt_debs[@]}" -gt 0 ]; then \
+        for _trt_cand in "${_trt_debs[@]}"; do \
+            case "${_trt_cand}" in \
+              *_"${_trt_arch:-__no_dpkg_arch__}".deb) \
+                _trt_pick="${_trt_cand}"; _trt_rule="arch-match ${_trt_arch}"; break ;; \
+            esac; \
+        done; \
+        if [ -z "${_trt_pick}" ]; then \
+            _trt_pick="${_trt_debs[0]}"; _trt_rule="first in LC_ALL=C glob order (no name carries _${_trt_arch:-?}.deb)"; \
+        fi; \
+    fi; \
+    if [ -n "${_trt_pick}" ]; then \
+        echo "TensorRT local-repo: SELECTED ${_trt_pick##*/} [${_trt_rule}] out of ${#_trt_debs[@]} pattern match(es): ${_trt_debs[*]##*/}"; \
+        if [ "${#_trt_debs[@]}" -gt 1 ]; then \
+            echo "WARNING: ${#_trt_debs[@]} TensorRT local-repo debs staged in linux/nvidia-local-debs/; installing ${_trt_pick##*/} and DISCARDING the rest — leave only the deb this lane should install." >&2; \
+        fi; \
+        mv "${_trt_pick}" /tmp/tensorrt-local-repo.deb; \
+    else \
+        echo "TensorRT local-repo: no linux/nvidia-local-debs/tensorrt-local-repo*.deb staged — falling through to the NVIDIA apt repo tier"; \
+    fi; \
+    if [ "${#_trt_staged[@]}" -gt "${#_trt_debs[@]}" ]; then \
+        echo "WARNING: $(( ${#_trt_staged[@]} - ${#_trt_debs[@]} )) of ${#_trt_staged[@]} deb(s) in linux/nvidia-local-debs/ do NOT match tensorrt-local-repo*.deb and were IGNORED (staged: ${_trt_staged[*]##*/}). NVIDIA ships this artifact as nv-tensorrt-local-repo-<os>-<ver>_1.0-1_<arch>.deb — rename it to match, or widen the glob here." >&2; \
+    fi; \
     rm -rf /tmp/tensorrt-staging
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/tmp/core-scripts,ro \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \

@@ -179,21 +179,78 @@ ENV TVM_REF=${TVM_REF} \
 # /opt/scripts/core/versions.env (FLUTTER_SDK_SHA256 pin) — both already
 # COPY'd above the vulkan RUN.
 COPY --chmod=755 linux/scripts/05-frameworks/flutter/setup-flutter.sh /opt/scripts/frameworks/flutter/setup-flutter.sh
-RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-cache-${TARGET_ARCH},sharing=locked \
+# The Flutter SDK cache id is keyed on FLUTTER_VERSION *and* ${TARGET_ARCH}.
+#   * VERSION — this is the bug fix. With the old arch-only id a
+#     FLUTTER_VERSION bump silently kept shipping the OLD SDK: the bump does
+#     re-run this RUN (the ARG is part of its cache key), but the re-run seeded
+#     /opt/flutter from the previous version's cache, found bin/flutter
+#     executable, skipped the install, and passed the gate. A wrong-version
+#     image that verifies green.
+#     Version-keyed ids work because BuildKit expands a mount id from the
+#     args/env in scope AT THIS INSTRUCTION, and `ARG FLUTTER_VERSION` is
+#     declared above in this same (single-FROM) stage — the same mechanism as
+#     id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION} in Dockerfile.media.
+#     Name a variable that is not in scope and the id silently degrades to the
+#     bare prefix, i.e. one store for every version.
+#   * ARCH — KEPT, even though the payload does not need it. setup-flutter.sh
+#     installs the same flutter_linux_<version>-stable.tar.xz on amd64 and
+#     arm64 (Google ships no linux-arm64 SDK: two ARCH_SUFFIX="" arms, one
+#     FLUTTER_SDK_SHA256 pin), so a lane-shared id would legitimately fetch it
+#     once instead of twice. It is not worth the coupling: sdk is a per-arch
+#     stage, so a lane-shared id has three concurrent writers under
+#     --parallel-archs, and every mode is a loss there — `locked` serializes
+#     the lanes on one download, `private` forks a NEW EMPTY dir per concurrent
+#     lane (so all three download anyway and the sharing buys nothing), and
+#     plain `shared` puts three writers in one dir. Per-lane means exactly ONE
+#     consumer per id per build, so the sharing mode stops mattering and a
+#     damaged cache can only ever cost the lane that damaged it. Revisit only
+#     with a real build behind it.
+# Seeding is ATOMIC and marked, and no copy error is swallowed. The tree is
+# copied to .staging, the completion marker is written last, and only then is
+# it renamed into place — so an interrupted copy (ENOSPC is this host's
+# recurring incident) can leave .staging behind but can NEVER publish a cache
+# that has bin/flutter and not the rest. Restore is gated on that marker. A
+# failed RESTORE fails the build (set -e, no `|| true`); a failed SEED warns
+# and discards .staging, because the image itself is complete either way.
+# riscv64 never touches the cache: seeding it would unpack an x86-64 SDK into a
+# riscv64 image and make it advertise a Flutter it cannot run, undoing the
+# /etc/profile.d honesty guard above. It still gets the empty /opt/flutter the
+# old code created.
+# Cost of the versioned id: a bump orphans the previous version's cache refs —
+# reclaim them with linux/host-config/prune-safe.sh.
+# The final gate is from audit round 2 (Flutter shipped with zero verification;
+# a failed install was only discovered by a user): every non-riscv64 lane must
+# end this RUN with an executable /opt/flutter/bin/flutter.
+RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSION}-${TARGET_ARCH} \
     set -euo pipefail; \
-    mkdir -p /var/cache/flutter; \
-    mkdir -p /opt/flutter && cp -an /var/cache/flutter/. /opt/flutter/ 2>/dev/null || true; \
-    if [ ! -x /opt/flutter/bin/flutter ]; then \
-        bash /opt/scripts/frameworks/flutter/setup-flutter.sh \
-          --arch "${TARGET_ARCH}" \
-          --version "${FLUTTER_VERSION}" \
-          --dir /opt; \
-        cp -an /opt/flutter/. /var/cache/flutter/ 2>/dev/null || true; \
-    fi; \
-    # Real gate (audit round 2: Flutter shipped with zero verification — a
-    # failed install was only discovered by a user). riscv64 is the documented
-    # skip; every other arch must end this RUN with a working flutter binary.
-    if [ "${TARGET_ARCH:-amd64}" != "riscv64" ]; then \
+    if [ "${TARGET_ARCH:-amd64}" = "riscv64" ]; then \
+        mkdir -p /opt/flutter; \
+        echo "Skipping Flutter on riscv64 (unsupported upstream); /opt/flutter left empty"; \
+    else \
+        _cached=/var/cache/flutter/sdk; \
+        _stage=/var/cache/flutter/.staging; \
+        _marker=.containerhub-cache-complete; \
+        mkdir -p /var/cache/flutter /opt; \
+        if [ -f "${_cached}/${_marker}" ]; then \
+            echo "Restoring Flutter ${FLUTTER_VERSION} from the SDK cache"; \
+            rm -rf /opt/flutter; \
+            cp -a "${_cached}" /opt/flutter; \
+            rm -f "/opt/flutter/${_marker}"; \
+        else \
+            bash /opt/scripts/frameworks/flutter/setup-flutter.sh \
+              --arch "${TARGET_ARCH}" \
+              --version "${FLUTTER_VERSION}" \
+              --dir /opt; \
+            rm -rf "${_stage}"; \
+            if cp -a /opt/flutter "${_stage}" && : > "${_stage}/${_marker}"; then \
+                rm -rf "${_cached}"; \
+                mv "${_stage}" "${_cached}"; \
+                echo "Seeded the Flutter ${FLUTTER_VERSION} SDK cache"; \
+            else \
+                echo "WARNING: could not populate the Flutter SDK cache; leaving it empty (this image is unaffected)" >&2; \
+                rm -rf "${_stage}"; \
+            fi; \
+        fi; \
         test -x /opt/flutter/bin/flutter || { echo "ERROR: /opt/flutter/bin/flutter missing/not executable after install" >&2; exit 1; }; \
     fi
 

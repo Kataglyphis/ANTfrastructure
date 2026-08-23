@@ -5,9 +5,46 @@
 #
 # BuildKit feature summary used in this file:
 #   # syntax=docker/dockerfile:1.24.0  — enables BuildKit frontend extensions.
-#   --mount=type=cache   — persistent cross-build cache (apt/ccache/sccache/uv/
-#                          pip/cargo) keyed per-arch via `id=...-${TARGETARCH}`.
-#                          `sharing=locked` serializes concurrent stage access.
+#   --mount=type=cache   — persistent cross-build cache. The ids are NOT keyed
+#                          uniformly; read the split off the mounts themselves,
+#                          not off a rule of thumb:
+#                          * ${TARGET_ARCH} — one store per LANE: apt
+#                            (/var/cache/apt, /var/lib/apt), the ffmpeg SDK
+#                            store, and the gstreamer stage's cargo
+#                            registry/git. Each for its own reason: apt is
+#                            `sharing=locked` AND holds arch-specific packages,
+#                            ffmpeg-sdks holds arch-specific SDK downloads
+#                            (tensorflow-c, openvino) plus the .pc files
+#                            synthesized for them, and the
+#                            cargo store — arch-independent content, but
+#                            MUTATED in place and unguarded across containers
+#                            (see the gstreamer RUN). A lane-COLLIDING id on
+#                            the locked apt mounts is what PAR2 fixed
+#                            (CHANGELOG 2026-08-18: ${TARGETARCH} resolved to
+#                            amd64 for every lane, so the lock became a lane
+#                            serializer).
+#                          * ${TARGETARCH} — ccache, sccache, uv, pip. Left as
+#                            they are ON PURPOSE: they are unlocked (default
+#                            sharing) and content-addressed (compiler/source
+#                            hashes, wheel filenames), so a lane collision is
+#                            free, while splitting them would triple the cold
+#                            compile. Do NOT "align" these with the apt ids.
+#                          * no arch at all — onnxruntime-web, keyed on
+#                            ONNXRUNTIME_VERSION. Its wasm output really is
+#                            arch-independent: one lane compiles it, the others
+#                            copy it out, so `sharing=locked` there is the
+#                            design and not an accident. Note the consequence
+#                            under --parallel-archs: the lanes DO serialize on
+#                            that one RUN. That is the trade being made (one
+#                            emscripten compile instead of three), not an
+#                            oversight — see the stage comment.
+#                          Mode semantics that decide the above: `locked`
+#                          serializes EVERY consumer of an id, concurrent lanes
+#                          included — use it only where the serialization
+#                          itself is the win. `private` hands each CONCURRENT
+#                          consumer a NEW EMPTY dir, so it never buys sharing;
+#                          it only bounds corruption, at the cost of the disk a
+#                          per-lane id would have used anyway.
 #   --mount=type=bind    — read-only mount of build scripts for a single RUN.
 #                          Unlike COPY, a bind mount does NOT create an image
 #                          layer, so editing a library's scripts invalidates
@@ -15,6 +52,30 @@
 #   --mount=type=tmpfs   — scratch /tmp wiped after the RUN (no layer bloat).
 #   COPY --link          — layer-parallel COPY that skips ordering against the
 #                          previous RUN, so independent stages build concurrently.
+#
+# Source checkouts are deliberately NOT cache-mounted. Investigated 2026-08-23
+# (backlog "Media source-cache mounts"); every candidate is blocked SCRIPT-side,
+# not here, so a mount added at these paths could never be populated:
+# build-opencv.sh and build-ffmpeg.sh both `rm -rf` their source dir in the
+# cleanup() their main() calls, setup-gstreamer.sh hard-assigns a PID-suffixed
+# BUILD_DIR=/opt/tmp/gstreamer-build-$$ (a plain assignment, not env-
+# overridable) and removes it, and ONNX Runtime does not re-clone on a cache hit
+# at all — ORT_SRC_DIR is /opt/onnxruntime, an IMAGE path, so the clone lives in
+# the deps+fetch layer and is only redone when that RUN re-executes. Whoever
+# revisits this must also key the id on the pinned version: clone_or_update_repo
+# (01-core/downloads.sh) deliberately WARNS-and-continues on a stale checkout,
+# so an unkeyed source cache would silently build the previous version's tree.
+# Version-keyed ids DO work, and the mechanism decides where the ARG must sit:
+# BuildKit expands a mount id from the args/env in scope AT THAT INSTRUCTION, so
+# `id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}` in the onnxruntime stage
+# below is a live, shipped example precisely because `ARG ONNXRUNTIME_VERSION`
+# is declared in that same stage above the RUN. Name a variable that is NOT in
+# scope and the id expands to the bare prefix, silently collapsing every version
+# onto one store — the failure the keying was meant to prevent.
+# Keying is necessary but not sufficient: whenever a ref is a BRANCH rather than
+# a tag — the script-side fallbacks are OPENCV_VERSION=5.x and
+# FFMPEG_VERSION=master, though versions.env currently pins the tags 5.0.0 and
+# n9.0 — even a version-keyed id serves one frozen branch tip forever.
 #
 # Stage dependency DAG — BuildKit parallelizes independent stages automatically:
 #
@@ -185,7 +246,8 @@ ENV NVIDIA_CODEC_HEADERS=auto \
 # ONNX Runtime stage
 # ==============================================================================
 FROM base AS onnxruntime
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 ARG ONNXRUNTIME_VERSION
@@ -333,7 +395,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # LiteRT stage (Critical Fix #2: abseil span.h copy lives in build-litert.sh)
 # ==============================================================================
 FROM base AS litert
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 ARG LITERT_VERSION
@@ -438,7 +501,8 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
 # OpenCV stage
 # ==============================================================================
 FROM base AS opencv
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 ARG OPENCV_VERSION
@@ -489,6 +553,17 @@ FROM base AS app-wheelhouse
 
 ARG TARGET_ARCH
 
+# NO cargo mount here, deliberately (verified 2026-08-23). This RUN executes
+# exactly one script, build-app-wheelhouse.sh, and that script never invokes
+# cargo: it drives pytorch / torchvision / IREE through setup.py + cmake and
+# `uv pip install`s only pure-python or C/C++ build executors (setuptools,
+# wheel, build, cmake, ninja, numpy, packaging, pyyaml, requests, six,
+# typing-extensions, sympy, filelock, networkx, jinja2) —
+# `grep -rniE 'cargo|maturin|setuptools[-_]rust' linux/scripts/05-frameworks/torch/`
+# is empty. The cargo registry/git mounts that used to sit on this RUN were
+# therefore inert; they now live on the gstreamer stage RUN, the one place this
+# image actually runs cargo (gst-plugins-rs + rice-proto). Do not add them back
+# here — an inert mount reads as coverage that does not exist.
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
@@ -496,8 +571,6 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -563,7 +636,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
 # FFmpeg stage
 # ==============================================================================
 FROM base AS ffmpeg
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 # Opt-in reproducibility: set FFMPEG_COMMIT to a 40-hex SHA to pin FFmpeg to an
@@ -677,12 +751,48 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/gstreamer/install-deps.sh
 
+# THE cargo consumer of this image, and the only one: build-gstreamer-stage.sh
+# runs install-rice-proto.sh (`cargo cinstall`) and, through setup-gstreamer.sh,
+# build-gst-plugins-rs.sh — several hundred crates. Without a mount every
+# re-execution of this RUN re-downloads and re-unpacks all of them into the
+# layer. build-gstreamer-monorepo.sh already assumes this mount exists: its
+# _gst_monorepo_compile patches csound-sys BEFORE compiling because "on warm
+# caches the csound-sys crate is already extracted in the persistent
+# cargo-registry mount" — a warm path that has never been reachable in the
+# media lane, because the mounts were sitting on two cargo-less RUNs instead.
+# CARGO_HOME is /usr/local/cargo (ENV from Dockerfile.toolchain, inherited
+# base -> compiler -> sdk -> media) and build RUNs are root, so the cargo-home
+# guard never redirects and these two paths are the real stores. SOURCE only:
+# cross-env.sh exports CARGO_TARGET_DIR=/opt/cargo-target/<target_arch>, so no
+# object files land here.
+# PER-LANE ids with default sharing, NOT one shared id:
+#   * the lanes MUTATE this store in place —
+#     patch_csound_sys_char_signedness seds registry/src/csound-sys-*/src/*.rs —
+#     and cargo's cross-process mutex is ${CARGO_HOME}/.package-cache, a file at
+#     the CARGO_HOME ROOT, OUTSIDE both mounted subtrees — so each container
+#     locks its own copy while writing one store. That is the premise the
+#     archived S5 item got wrong ("cargo's own flock makes a shared id safe");
+#     re-verify it in one command whenever this is revisited:
+#       CARGO_HOME=$(mktemp -d) cargo fetch --offline --manifest-path <any>
+#     and list CARGO_HOME — .package-cache appears at its root, next to
+#     registry/, never inside it (checked with cargo 1.96.0). A shared id would
+#     therefore hand three concurrent --parallel-archs lanes an UNGUARDED store,
+#     where one cargo re-unpacking a crate (delete the src dir, re-extract,
+#     write .cargo-ok) lands under another lane's in-flight compile.
+#   * `sharing=locked` on a shared id would serialize this multi-hour RUN across
+#     lanes: the PAR2 incident verbatim.
+#   * `sharing=private` on a shared id forks a NEW EMPTY dir per concurrent
+#     lane, i.e. the same disk as per-lane ids with none of the determinism.
+#   Per-lane means exactly one consumer per id per build, so the sharing mode
+#   stops mattering and each lane always reuses its own warm store.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/scripts/03-media/build/gstreamer,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -702,7 +812,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # libcamera stage
 # ==============================================================================
 FROM gstreamer AS libcamera
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
@@ -712,6 +823,12 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/libcamera/install-deps.sh
 
+# NO cargo mount here either (verified 2026-08-23): build-libcamera.sh is a
+# meson/ninja build that never invokes cargo — its only package installs are
+# setuptools, wheel, meson, ninja, jinja2, pyyaml, ply and pybind11, and
+# `grep -rniE 'cargo|maturin|setuptools[-_]rust' linux/scripts/03-media/build/libcamera/`
+# is empty. Same story as app-wheelhouse: the mounts that used to be here were
+# inert and now sit on the gstreamer stage RUN.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/scripts/03-media/build/libcamera,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
@@ -720,8 +837,6 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -747,7 +862,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # there (a deliberate, tolerated extra build for layout uniformity).
 # ==============================================================================
 FROM gstreamer AS opencv-gst
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 ARG OPENCV_VERSION
@@ -796,7 +912,8 @@ RUN --mount=type=tmpfs,target=/tmp \
 # persist in the published image (build scripts are NOT shipped).
 # ==============================================================================
 FROM media-inputs AS final
-# PAR2: stage-scoped ARG — mount ids below use ${TARGET_ARCH} (per-lane caches)
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+# (The ${TARGETARCH}-keyed ids below are deliberately NOT per-lane — see header.)
 ARG TARGET_ARCH
 
 ARG GSTREAMER_VERSION

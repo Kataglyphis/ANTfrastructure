@@ -335,10 +335,129 @@ case "$TARGET_ARCH" in
 esac
 
 # 8. Create Cerbero home directory structure
-CERBERO_HOME="/opt/cerbero"
+#
+# CERB-CACHE (2026-08-23): everything cerbero can resume from lives under
+# home_dir — sources/local (the downloaded tarballs AND the git working repos it
+# checks out), sources/<pkg> (extracted + compiled build trees), build-tools/
+# (the host bootstrap prefix), rust/ (rustup+cargo), dist/android_<arch>/ (the
+# target prefix) and the two pickles cache-file.cache / build-tools.cache that
+# record which recipes are already built (cerbero/build/cookbook.py:
+# _cache_file() = home_dir + cache_file). bootstrap+package is ONE Dockerfile
+# RUN, so any failure inside it discarded ALL of that and the next attempt
+# restarted COLD — the ~40-60 min bootstrap was re-paid three times in one
+# session for zero progress. home_dir therefore points at a per-arch BuildKit
+# cachemount (linux/Dockerfile.android, android-gstreamer RUN:
+# target=/var/cache/cerbero) so a retry resumes.
+#
+# What a resume is NOT: a re-verification. Read against the pinned cerbero
+# 1.29.2 — Oven._cook_recipe_step returns before it ever calls the step function
+# when that step is already recorded in the pickle (build/oven.py:511), and
+# _cook_recipe skips the whole recipe once needs_build is false (:554). The only
+# caller of Source.verify() (the sha256 against the recipe's tarball_checksum)
+# is the fetch step itself (build/source.py:366/378/458). So a recipe whose
+# fetch is already recorded reuses whatever bytes sit in sources/local WITHOUT
+# hashing them. What the pickle does guarantee is narrower: a recipe's status is
+# thrown away when its built_version changes or when the content hash of the
+# recipe file plus its patch files changes (build/cookbook.py:426-440;
+# Recipe.get_checksum = files_checksum over the recipe's own FILES, not over the
+# tarball) — so the sed-patched recipes in this script (PKGCFG-MIRROR,
+# soundtouch, glib libiconv) do invalidate themselves. Nothing in that pickle
+# knows about the toolchain, which is why ANDROID_NDK_VERSION and
+# ANDROID_API_LEVEL are part of the cachemount id: a pin bump must start a NEW
+# store, because cerbero would happily resume a tree built against the old NDK.
+#
+# The state dir is deliberately NOT /opt/cerbero, which stays the git CHECKOUT:
+# a mount target already exists when the RUN body starts, so the `[ ! -d
+# cerbero ]` guard in section 4 would skip the clone and `git clone` refuses a
+# non-empty destination anyway. Separating them also un-collides cerbero's
+# read-only seed dir cached_sources (= <checkout>/sources) from the live tree.
+CERBERO_HOME="${CERBERO_HOME:-/var/cache/cerbero}"
+
+# CERB-HOME-GUARD: CERBERO_HOME is an operator knob, and TWO paths below rm -rf
+# its CONTENTS (the CERBERO_CACHE_RESET escape hatch and the not-mounted
+# cleanup). The obvious "put it back the way it was" value — /opt/cerbero — is
+# the git CHECKOUT this script is running out of, and /opt is the SDK/NDK/GCC
+# tree; either one would be erased mid-build by a knob that reads like a path
+# preference. There is no way to guess intent here, so anything that is not a
+# dedicated state directory is refused loudly instead.
+cerbero_home_reject() {
+    echo "ERROR: CERBERO_HOME='${CERBERO_HOME}' is not a usable cerbero state dir: $1" >&2
+    echo "       Its CONTENTS are rm -rf'd on cleanup and on CERBERO_CACHE_RESET=1." >&2
+    echo "       Use a dedicated path, e.g. the default /var/cache/cerbero (the" >&2
+    echo "       BuildKit cachemount target); do NOT point it at the checkout." >&2
+    exit 1
+}
+case "${CERBERO_HOME}" in
+    /*) ;;
+    *) cerbero_home_reject "must be an absolute path" ;;
+esac
+case "${CERBERO_HOME}" in
+    *//*|*/./*|*/../*|*/.|*/..)
+        cerbero_home_reject "must be normalized (no '//', '.' or '..' components)" ;;
+esac
+CERBERO_HOME="${CERBERO_HOME%/}"
+[ -n "${CERBERO_HOME}" ] || cerbero_home_reject "must not be the filesystem root"
+[ "$(dirname "${CERBERO_HOME}")" != "/" ] \
+    || cerbero_home_reject "must not be a top-level directory (/opt would erase the SDK/NDK/GCC)"
+# The cerbero CHECKOUT of section 4 is /opt/cerbero and is rm -rf'd after the
+# build. Reject it and every ANCESTOR of it (this pattern matches when
+# ${CERBERO_HOME} is /opt/cerbero itself or contains it) ...
+# shellcheck disable=SC2194  # the constant subject is deliberate: the VARIABLE
+# is the pattern here, which is what tests "is CERBERO_HOME an ancestor of it?"
+case "/opt/cerbero/" in
+    "${CERBERO_HOME}"/*)
+        cerbero_home_reject "would delete the cerbero checkout at /opt/cerbero" ;;
+esac
+# ... and every path INSIDE it, which is not destructive but silently pointless:
+# the checkout removal takes the state with it, so nothing would ever resume.
+case "${CERBERO_HOME}/" in
+    /opt/cerbero/*)
+        cerbero_home_reject "must not live inside the cerbero checkout /opt/cerbero (deleted after the build)" ;;
+esac
+
 CERBERO_PREFIX="${CERBERO_HOME}/dist/android_${TARGET_ARCH}"
 mkdir -p "${CERBERO_HOME}"
 mkdir -p "${CERBERO_PREFIX}"
+
+cerbero_state_is_mounted() {
+    # PROVE the mount instead of assuming it: an earlier seed-cache attempt
+    # shipped inert because nothing ever mounted its directory. A BuildKit
+    # cachemount is a real bind mount inside the RUN, so it shows up in
+    # mountinfo and its st_dev differs from its parent's. Every uncertain answer
+    # is "not mounted", which is the safe direction — the cleanup then deletes
+    # the state instead of baking ~10-15 GB of it into the image layer.
+    [ -d "${CERBERO_HOME}" ] || return 1
+    grep -qF " ${CERBERO_HOME} " /proc/self/mountinfo 2>/dev/null && return 0
+    local dev_state dev_parent
+    dev_state="$(stat -c %d "${CERBERO_HOME}" 2>/dev/null)" || return 1
+    dev_parent="$(stat -c %d "$(dirname "${CERBERO_HOME}")" 2>/dev/null)" || return 1
+    [ -n "${dev_state}" ] && [ "${dev_state}" != "${dev_parent}" ]
+}
+
+# Cold-start escape hatch: a POISONED state dir (a half-installed prefix, a
+# recipe that only fails on a resumed tree) would otherwise wedge this lane on
+# every single retry. Contents only, never the mountpoint itself — rm -rf on a
+# mountpoint fails EBUSY and would kill the run under `set -e` AFTER emptying it.
+CERBERO_CACHE_RESET="${CERBERO_CACHE_RESET:-0}"
+if [ "${CERBERO_CACHE_RESET}" = "1" ]; then
+    echo "==> CERBERO_CACHE_RESET=1 — clearing ${CERBERO_HOME} for a cold cerbero build"
+    find "${CERBERO_HOME}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+fi
+
+if cerbero_state_is_mounted; then
+    # Print the size the store already occupies: this feature trades host disk
+    # for restartability on a host that runs near-full, so the price belongs in
+    # the log rather than in a comment nobody reads at 2am.
+    CERBERO_STATE_SIZE_ON_ENTRY="$(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo unknown)"
+    if [ -f "${CERBERO_HOME}/cache-file.cache" ]; then
+        echo "==> cerbero state cache HIT: resuming from ${CERBERO_HOME} (${CERBERO_STATE_SIZE_ON_ENTRY} on the cachemount, CERB-CACHE)"
+    else
+        echo "==> cerbero state cache MISS: ${CERBERO_HOME} is mounted but cold (${CERBERO_STATE_SIZE_ON_ENTRY}, CERB-CACHE)"
+    fi
+else
+    echo "WARNING: ${CERBERO_HOME} is NOT a cachemount — this run cannot resume, and its" >&2
+    echo "         state is deleted at the end instead of shipping in the layer (CERB-CACHE)" >&2
+fi
 
 # 9. Map API level to Cerbero's DistroVersion enum
 CERBERO_VARIANTS_OVERRIDE=""
@@ -499,11 +618,60 @@ echo "==> Installed to: $INSTALL_PATH"
 echo ""
 
 # ------------------------------------------------------------------------------
-# Cleanup Cerbero build directory (~10-15 GB)
-# The built GStreamer is now extracted to $INSTALL_PATH, so we no longer need
-# the Cerbero sources, build artifacts, and packaged tarballs.
+# Cleanup (CERB-CACHE)
+# The built GStreamer is extracted to $INSTALL_PATH by now, so the cerbero
+# CHECKOUT is dead weight in the image layer. The build STATE under
+# ${CERBERO_HOME} is the opposite: it is what the NEXT attempt resumes from, and
+# on the cachemount it is invisible to the image anyway (a cachemount is not
+# part of any layer). It is therefore only deleted when it is NOT mounted —
+# because then it really would ship as ~10-15 GB of layer.
+#
+# DISK TRADE-OFF, with the number, because the host runs near-full: this prune
+# is on the SUCCESS path ONLY. A failed attempt exits above and keeps its whole
+# tree — that is the entire point of the mount, and it costs up to the ~10-15 GB
+# this cleanup used to free before the cache existed, per lane, i.e. ~30-45 GB
+# with all three arch lanes sitting on failures. Pruning on ENTRY instead was
+# considered and REJECTED as unsafe: cerbero records progress per STEP, so a
+# recipe can be mid-flight with extract recorded and compile not (oven.py:511
+# then skips straight to a configure/compile on a directory this prune would
+# have deleted) — that wedges the lane on every retry instead of bounding disk.
+# What IS bounded: retries reuse the same cachemount id and the same paths, so a
+# failing lane overwrites in place rather than accumulating a tree per attempt.
+# GENERATIONS are the unbounded axis — the id carries the NDK/API pins, so a pin
+# bump starts a fresh store and ORPHANS the previous one, and nothing here can
+# reach it (a different cachemount id is simply not mounted into this RUN). Do
+# not expect linux/host-config/prune-safe.sh to clean it up either: that tool
+# prunes `type==regular` only and treats every cachemount as sacred by design
+# (CACHE1 — it aborts if the cachemount count drops). Reclaiming an orphan is a
+# deliberate host-side act, e.g. a duration-bounded `buildctl prune --filter
+# type==exec.cachemount --keep-duration <t>` chosen so the ccache/sccache mounts
+# a live build keeps warm stay above the cutoff — check what it would remove
+# before running it. That is the accepted price of not silently resuming a tree
+# built against the old NDK. CERBERO_CACHE_RESET=1 empties the CURRENT store on
+# entry when a lane must be forced cold.
 # ------------------------------------------------------------------------------
-echo "==> Cleaning up Cerbero build directory..."
+echo "==> Cleaning up the Cerbero checkout..."
 CERBERO_SIZE=$(du -sh /opt/cerbero 2>/dev/null | cut -f1 || echo "unknown")
+cd /
 rm -rf /opt/cerbero
-echo "==> Cleanup complete. Freed ${CERBERO_SIZE} of disk space."
+echo "==> Removed the Cerbero checkout (freed ${CERBERO_SIZE})."
+
+if cerbero_state_is_mounted; then
+    # SUCCESS path only (see the trade-off above). The package exists, so the
+    # extracted/compiled build trees — the bulk of the state — are dead weight:
+    # cache-file.cache marks those recipes built, so a later run skips them
+    # entirely (oven.py:554) and their results are already installed under
+    # dist/. Everything kept lives OUTSIDE sources/: the dist prefix, the
+    # build-tools prefix (config.py:1065 = home_dir/build-tools) and the two
+    # pickles. Inside sources/ only local/ survives — that is local_sources
+    # (config.py:1146-1151, because home_dir is non-default), i.e. the tarballs
+    # and git repos that make the next run cheap and network-independent
+    # (FD-OUTAGE). Those bytes are NOT re-hashed on reuse (see section 8), so
+    # what they buy is speed, not trust.
+    find "${CERBERO_HOME}/sources" -mindepth 1 -maxdepth 1 ! -name local -exec rm -rf {} + 2>/dev/null || true
+    echo "==> Kept cerbero state on the cachemount ${CERBERO_HOME} ($(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo unknown)) for the next attempt."
+else
+    CERBERO_STATE_SIZE=$(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo "unknown")
+    find "${CERBERO_HOME}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    echo "==> No cerbero cachemount: emptied ${CERBERO_HOME} (freed ${CERBERO_STATE_SIZE}) to keep it out of the image."
+fi

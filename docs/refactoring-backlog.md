@@ -309,11 +309,6 @@ timing still needs one undisturbed run.
   COLD-REBUILT all media intermediates (~18 h: torch/IREE/litert ×3).
   Per-stage mode=max refs would have made that a fast-forward. Dodge the
   ghcr 400 blob limit; test.
-- **LABEL-REPO — image labels still point at the old repository** [S·★]
-  all three shipped images carry
-  `org.opencontainers.image.source/url = …/Kataglyphis-DockerHub` while the
-  repo is Kataglyphis-ContainerHub — provenance links 404 for anyone
-  following them from the registry.
 - **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
   (deliberately per-lane since PAR2 — revisit as shared+non-locked).
 - **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
