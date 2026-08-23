@@ -244,18 +244,24 @@ timing still needs one undisturbed run.
   lanes in one window. NET1-class fix: mirror fallback (github
   eigen-mirror / codeload tarball) for the eigen dep in the litert android
   build; also covers the media-lane litert eigen fetch.
-- **FD-OUTAGE — cerbero's mirror fallback single-homes on freedesktop
-  infra** [S·★★, BIT 2026-08-22] a freedesktop-WIDE 503 window (www.x.org
-  redirects included) killed all 3 android lanes on the pixman fetch —
-  and cerbero's DEFAULT_MIRRORS live on gstreamer.freedesktop.org, i.e.
-  the SAME infra as most primaries: zero redundancy, and the gst source
-  tarballs themselves come from there too (mirror-patching can't help).
-  Wave5k evidence: pkg-config macports override worked (v2 echo ×2),
-  pixman then 503'd on primary AND both mirror composions. Options:
-  pre-seed hot tarballs via cerbero's cached_sources dir
-  (`<checkout>/sources/<name>-<version>/<tarball>`, checksum-verified,
-  skips network entirely) for the top-N cold-bootstrap fetches; or just
-  accept + wait out outages (they're rare; this was the first).
+- **FD-OUTAGE — cerbero's fallback mirrors are PERMANENTLY dead, not just
+  outage-prone** [M·★★★, SHARPENED 2026-08-23 with direct evidence] measured
+  during wave6a: a recipe's PRIMARY url
+  (`gstreamer.freedesktop.org/data/src/mirror/<name>/<file>`) returns **200**,
+  while cerbero's DEFAULT_MIRRORS path for the same artifact
+  (`gstreamer.freedesktop.org/src/mirror/<name>/<file>`, no `/data/`) returns
+  **503 unconditionally** — the same upstream restructure that killed
+  pkg-config. So the fallback is not "single-homed on the same infra", it is
+  ALWAYS dead: any transient blip on a primary kills the lane outright, with
+  nothing behind it. That is what took android down twice today (pixman,
+  gst-plugins-bad) and again in wave6a (pkg-config-dist).
+  FIX OPTIONS, in order of value: (a) point cerbero's `extra_mirrors` at a
+  mirror base that actually resolves (`.../data/src/mirror` answers 200 — a
+  one-line config override, and it is the mirror cerbero itself serves from);
+  (b) pre-seed hot tarballs into the cerbero sources dir, which now SURVIVES a
+  failure thanks to CERB-CACHE. Option (a) is cheap and testable with curl
+  before any build. NOTE the earlier seed-cache attempt was reverted for being
+  inert and for deriving wrong filenames — read that history before retrying it.
 - **CERB-ICONV — cerbero riscv64-android cold link-order RACE** [S/M·★,
   CONFIRMED NONDETERMINISTIC 2026-08-23] it bit for real in wave5l
   (`ld.lld: error: undefined symbol: libiconv_open` while linking
