@@ -190,23 +190,164 @@ t_case "runtime_image_output_arg with nothing recordable reduces to a plain -t e
 t_assert_eq "type=image,name=repo:runtime-arm64" \
             "$(runtime_image_output_arg "repo:runtime-arm64" "" "" "")"
 
-t_case "append_runtime_image_output uses plain -t when the image is NOT pushed"
+# XC3-INERT fix (2026-08-23): the contract is now `-t` PLUS provenance LABELS.
+# `-t` stays because RTCACHE3 proved the annotated `--output type=image,name=…`
+# exporter never creates a local containerd tag on this rootless host (the
+# freshly built wrapper was invisible; push/manifest resolved the STALE tag and
+# :latest-cross shipped byte-identical 5x). Labels are the way provenance comes
+# back on that path: they live in the image CONFIG blob, so unlike exporter
+# annotations they survive `-t` and the later push. Stamped on BOTH paths —
+# labels cost nothing on an unpushed image, and a local-only build that carries
+# its own provenance is strictly better than one that does not.
+t_case "append_runtime_image_output stamps -t plus provenance labels (not pushed)"
 _out=()
 append_runtime_image_output _out "repo:runtime-arm64" 0 "repo@sha256:android" android
-t_assert_eq "-t repo:runtime-arm64" "${_out[*]}"
+t_assert_eq "-t repo:runtime-arm64 --label org.kataglyphis.run-id=run-XYZ --label org.kataglyphis.parent-digest=repo@sha256:android --label org.kataglyphis.parent-stage=android" \
+            "${_out[*]}"
 
-# RTCACHE3 (2026-08-15): append_runtime_image_output now uses plain `-t` on BOTH
-# paths, including the push path. The old annotated `--output type=image,name=…`
-# exporter NEVER created a local containerd tag on this rootless host, so the
-# freshly built wrapper was invisible and push/manifest resolved the STALE tag —
-# :latest-cross shipped byte-identical 5×. The ancestry ANNOTATIONS never reached
-# the registry either (their persistence was the assumption this test encoded).
-# So the contract is now "use -t, drop the inert exporter"; provenance re-embed
-# via a locally-tagging method is a tracked follow-up. runtime_image_output_arg
-# (the annotation composer) is still exercised directly above.
-t_case "append_runtime_image_output uses -t on the push path too (RTCACHE3)"
+t_case "append_runtime_image_output stamps the same labels on the push path (RTCACHE3: still -t)"
 _out=()
 append_runtime_image_output _out "repo:runtime-arm64" 1 "repo@sha256:android" android
-t_assert_eq "${_out[*]}" "-t repo:runtime-arm64"
+t_assert_eq "-t repo:runtime-arm64 --label org.kataglyphis.run-id=run-XYZ --label org.kataglyphis.parent-digest=repo@sha256:android --label org.kataglyphis.parent-stage=android" \
+            "${_out[*]}"
+
+t_case "append_runtime_image_output emits -t alone when nothing is recordable"
+_out=()
+( CROSS_RUN_ID="" ; append_runtime_image_output _out "repo:runtime-arm64" 1 "" "" ; printf '%s' "${_out[*]}" ) \
+  > /tmp/_ario_none.$$ 2>/dev/null
+t_assert_eq "-t repo:runtime-arm64" "$(cat /tmp/_ario_none.$$)"
+rm -f /tmp/_ario_none.$$
+
+t_case "ancestry_label_args: run-id only, no parent -> no parent labels"
+_out=()
+ancestry_label_args _out "" "" "run-ONLY"
+t_assert_eq "--label org.kataglyphis.run-id=run-ONLY" "${_out[*]}"
+
+t_case "ancestry_label_args: parent-stage is dropped when the pin is empty"
+_out=()
+ancestry_label_args _out "" android ""
+t_assert_eq "" "${_out[*]}"
+
+# REGRESSION GUARD (found by this very test file, 2026-08-23): the newline guard
+# was first written as `case $v in *"$(printf '\n')"*)`. Command substitution
+# STRIPS trailing newlines, so that pattern collapsed to `*""*` — it matched
+# every value and silently suppressed ALL provenance labels while logging a
+# bogus "contains a newline" warning. A value with no newline must be recorded.
+t_case "ancestry_label_args: an ordinary value is NOT mistaken for a newline"
+_out=()
+ancestry_label_args _out "repo@sha256:deadbeef" android "run-1"
+t_assert_eq "--label org.kataglyphis.run-id=run-1 --label org.kataglyphis.parent-digest=repo@sha256:deadbeef --label org.kataglyphis.parent-stage=android" \
+            "${_out[*]}"
+
+t_case "ancestry_label_args: a genuine embedded newline IS refused"
+_out=()
+ancestry_label_args _out "$(printf 'repo@sha256:a\nevil')" android "run-1"
+t_assert_eq "--label org.kataglyphis.run-id=run-1" "${_out[*]}"
+
+t_case "ancestry_recorded_label reports absent (exit 2) for an unstamped image"
+NERDCTL_BIN="$(command -v true)" ancestry_recorded_label "repo:whatever" "org.kataglyphis.run-id" >/dev/null 2>&1
+t_assert_eq "2" "$?"
+
+# ---------------------------------------------------------------------------
+# Coverage for the label/registry reader layer (adversarial review 2026-08-23
+# proved these paths had ZERO exercise: the freshness guard never ran, the
+# unified reader was never called, and the wrapper assert had no test at all).
+# ---------------------------------------------------------------------------
+
+# A fake nerdctl whose behaviour is driven by files, so the freshness guard's
+# three outcomes (fresh / diverged / no-registry) are all reachable.
+_stub_nerdctl="$(mktemp)"
+cat >"${_stub_nerdctl}" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "image inspect")
+    case "$*" in
+      *RepoDigests*) printf '["repo@%s"]' "${STUB_LOCAL_DIGEST:-sha256:LOCAL}" ;;
+      *) printf '%s' "${STUB_LABEL_VALUE:-}" ;;
+    esac
+    ;;
+esac
+exit 0
+STUB
+chmod +x "${_stub_nerdctl}"
+
+# NOTE: the stub is an EXTERNAL script, so its knobs must be exported — and a
+# `VAR=x t_assert_eq "$(fn)"` prefix would not help anyway, because the command
+# substitution is expanded BEFORE the temporary environment is applied.
+export NERDCTL_BIN="${_stub_nerdctl}"
+
+t_case "ancestry_recorded_label returns the label when local bytes ARE the registry copy"
+registry_pin_ref() { printf 'repo@sha256:LOCAL'; }
+export STUB_LABEL_VALUE="run-FRESH" STUB_LOCAL_DIGEST="sha256:LOCAL"
+t_assert_eq "run-FRESH" "$(ancestry_recorded_label repo:tag org.kataglyphis.run-id)"
+
+t_case "ancestry_recorded_label REFUSES a stale local tag rather than answering from the wrong image"
+registry_pin_ref() { printf 'repo@sha256:REMOTE'; }
+export STUB_LABEL_VALUE="run-STALE" STUB_LOCAL_DIGEST="sha256:LOCAL"
+ancestry_recorded_label repo:tag org.kataglyphis.run-id >/dev/null 2>&1
+t_assert_eq "1" "$?"
+
+t_case "ancestry_recorded_label answers for a local-only image (registry unresolvable)"
+registry_pin_ref() { return 1; }
+export STUB_LABEL_VALUE="run-LOCALONLY"
+t_assert_eq "run-LOCALONLY" "$(ancestry_recorded_label repo:tag org.kataglyphis.run-id)"
+
+t_case "ancestry_recorded_label reports absent(2) when the image carries no such label"
+registry_pin_ref() { return 1; }
+export STUB_LABEL_VALUE=""
+ancestry_recorded_label repo:tag org.kataglyphis.run-id >/dev/null 2>&1
+t_assert_eq "2" "$?"
+
+t_case "ancestry_recorded_provenance falls back to the registry when the local store cannot answer"
+registry_pin_ref() { return 1; }
+ancestry_recorded_registry_label() { printf 'run-FROM-REGISTRY'; }
+export STUB_LABEL_VALUE=""
+t_assert_eq "run-FROM-REGISTRY" "$(ancestry_recorded_provenance repo:tag org.kataglyphis.run-id)"
+
+t_case "ancestry_recorded_provenance falls back to ANNOTATIONS (cross lane) when no label exists"
+ancestry_recorded_registry_label() { return 2; }
+ancestry_recorded_annotation() { printf 'run-FROM-ANNOTATION'; }
+export STUB_LABEL_VALUE=""
+t_assert_eq "run-FROM-ANNOTATION" "$(ancestry_recorded_provenance repo:tag org.kataglyphis.run-id)"
+
+t_case "ancestry_recorded_provenance keeps 'absent'(2) distinct from 'unreadable'(1)"
+ancestry_recorded_registry_label() { return 2; }
+ancestry_recorded_annotation() { return 1; }
+export STUB_LABEL_VALUE=""
+ancestry_recorded_provenance repo:tag org.kataglyphis.run-id >/dev/null 2>&1
+t_assert_eq "2" "$?"
+
+t_case "ancestry_recorded_provenance reports unreadable(1) when NO reader could look at the image"
+ancestry_recorded_label() { return 1; }
+ancestry_recorded_registry_label() { return 1; }
+ancestry_recorded_annotation() { return 1; }
+ancestry_recorded_provenance repo:tag org.kataglyphis.run-id >/dev/null 2>&1
+t_assert_eq "1" "$?"
+
+# The post-build self-check: a silently inert stamp mechanism must FAIL the
+# build, but an unreadable image must not (that is the RTCACHE3 lesson applied
+# to the fix itself — a correct-looking flag that does nothing ships green).
+t_case "runtime_assert_provenance_stamped FAILS when the requested label did not land"
+ancestry_recorded_label() { return 2; }
+CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
+t_assert_eq "1" "$?"
+
+t_case "runtime_assert_provenance_stamped PASSES when the label is there"
+ancestry_recorded_label() { printf 'run-XYZ'; }
+CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
+t_assert_eq "0" "$?"
+
+t_case "runtime_assert_provenance_stamped does NOT fail a build merely because inspect is unavailable"
+ancestry_recorded_label() { return 1; }
+CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
+t_assert_eq "0" "$?"
+
+t_case "runtime_assert_provenance_stamped is inert when no run id was requested"
+ancestry_recorded_label() { return 2; }
+CROSS_RUN_ID="" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
+t_assert_eq "0" "$?"
+
+unset NERDCTL_BIN STUB_LABEL_VALUE STUB_LOCAL_DIGEST
+rm -f "${_stub_nerdctl}"
 
 t_summary
