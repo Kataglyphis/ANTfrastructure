@@ -203,6 +203,73 @@ else
 fi
 
 echo ""
+echo "=== GCC toolchain default literal check ==="
+# DUP2: the source-built GCC version is re-spelled as an inline `:-`/`:=`
+# fallback in ~25 places across linux/ — shell scripts, the runtime .env path
+# table, and inline Dockerfile RUN env. Those sites CANNOT all be collapsed
+# into one helper: a mount audit found RUNs that bind the consuming script
+# WITHOUT common.sh or versions.env, so there the literal IS the value and
+# calling a shared helper would be the `is_truthy: command not found` class of
+# bug. What they CAN be is pinned. Every plain-literal fallback for
+# GCC_VERSION must equal versions.env GCC_VERSION, and every one for
+# GCC_WANTED (a major) must equal its major component. This is FATAL, not
+# advisory, because unlike the generic scan above there is no legitimate
+# divergence here: all of these name the same /opt/gcc-<ver> toolchain.
+# Skipped by construction: empty fallbacks and non-literal ones (another
+# expansion or a command substitution as the default) — the character class
+# below excludes braces and `$`. This file is excluded because it quotes the
+# pattern; the generic advisory scan above still covers both variables.
+GCC_LITERAL_ERRORS=0
+_gcc_env_full="${_version_values[GCC_VERSION]:-}"
+_gcc_env_full="${_gcc_env_full%\"}"; _gcc_env_full="${_gcc_env_full#\"}"
+if [ -z "${_gcc_env_full}" ]; then
+  echo "  ERROR: versions.env defines no GCC_VERSION - cannot pin the toolchain literals"
+  GCC_LITERAL_ERRORS=1
+else
+  _gcc_env_major="${_gcc_env_full%%.*}"
+  _gcc_sites=0
+  while IFS= read -r hit; do
+    [ -n "${hit}" ] || continue
+    _loc="${hit%%:\$\{*}"            # "<path>:<line>"
+    _expr="\${${hit#*:\$\{}"         # the matched expansion, re-prefixed
+    _var="${_expr#\$\{}"; _var="${_var%%:[-=]*}"
+    _lit="${_expr#*:[-=]}"; _lit="${_lit%\}}"
+    case "${_var}" in
+      GCC_VERSION) _want="${_gcc_env_full}" ;;
+      GCC_WANTED)  _want="${_gcc_env_major}" ;;
+      *) continue ;;
+    esac
+    _gcc_sites=$((_gcc_sites + 1))
+    if [ "${_lit}" != "${_want}" ]; then
+      echo "  ERROR: ${_loc#"${REPO_ROOT}/"}  ${_expr}  ≠  expected ${_var} default ${_want}"
+      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))
+    fi
+  done < <(grep -rnoP '\$\{(GCC_VERSION|GCC_WANTED):[-=][^{}$]+\}' \
+             "${REPO_ROOT}/linux" 2>/dev/null \
+           | grep -v '/verify-arg-consistency\.sh:' || true)
+  # A collapse to zero scanned sites would make this check silently vacuous
+  # (the stale-gate class this repo has been burned by twice); say the count.
+  # A scan that finds NOTHING must not report OK. If a refactor rewrites the
+  # literals into a form this pattern cannot see, the gate would silently go
+  # vacuous and the next GCC bump would drift unnoticed — exactly the
+  # "gate that cannot fail" class this repo keeps rediscovering. The floor is
+  # deliberately well below the current count so ordinary churn does not trip
+  # it, but a collapse to near-zero does.
+  if [ "${_gcc_sites}" -lt 10 ]; then
+    echo "[ERROR] GCC literal gate scanned only ${_gcc_sites} site(s) (expected >=10) — the scan pattern no longer matches the tree; fix the pattern rather than trusting this pass" >&2
+    GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))
+  fi
+  echo "Scanned ${_gcc_sites} inline GCC version default(s) under linux/"
+fi
+if [ "${GCC_LITERAL_ERRORS}" -gt 0 ]; then
+  echo "ERROR: ${GCC_LITERAL_ERRORS} inline GCC toolchain default(s) drifted from versions.env"
+  echo "Update every listed site to versions.env GCC_VERSION=${_gcc_env_full} (they all name /opt/gcc-<ver>)"
+  exit 1
+else
+  echo "All inline GCC toolchain defaults match versions.env"
+fi
+
+echo ""
 echo "=== hand-forward of auto-forwarded ARG check ==="
 # append_version_build_args auto-forwards EVERY non-`# noforward` versions.env
 # variable into every build (via append_common_build_args). A script that ALSO

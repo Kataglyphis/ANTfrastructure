@@ -14,7 +14,13 @@ echo "--- ONNX Runtime ---"
 _ort_lib_dir="${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}"
 if cross_build_is_active 2>/dev/null; then
   if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
-    pass "onnxruntime library present at ${_ort_lib_dir} (cross build — import skipped)"
+    # The gate re-tests cross_build_is_active, which is definitionally true
+    # inside this branch (nothing above changes BUILD_MODE/TARGET_ARCH), so it
+    # cannot decline here — it is called for the message, not the decision.
+    # Bare call under `set -e`: if the gate ever DID decline, the script would
+    # abort here with no diagnostic. Make the impossible case loud instead.
+    smoke_cross_presence_gate "onnxruntime" "${_ort_lib_dir}" "library" "import" \
+      || fail "onnxruntime presence gate declined inside the cross branch (BUILD_MODE/TARGET_ARCH changed mid-script?)"
   else
     fail "onnxruntime library not found at ${_ort_lib_dir}"
   fi
@@ -223,8 +229,8 @@ echo "--- OpenCV ---"
 if command -v python3 >/dev/null 2>&1; then
   cv2_pkg="$(find /opt/opencv5 -path "*/site-packages" -type d 2>/dev/null | head -1 || true)"
   if [ -n "${cv2_pkg}" ]; then
-    if cross_build_is_active 2>/dev/null; then
-      pass "opencv Python bindings present at ${cv2_pkg} (cross build — import skipped)"
+    if smoke_cross_presence_gate "opencv" "${cv2_pkg}" "Python bindings" "import"; then
+      :   # presence proven by the gate; the import half is deliberately skipped
     elif ! python3 -c "import numpy" 2>/dev/null; then
       # numpy is a packaging-stage dependency (installed into /opt/venv at
       # packaging), NOT present in the media build sandbox. cv2 cannot import
@@ -304,8 +310,8 @@ else
   _gst_inspect=""
 fi
 if [ -n "${_gst_inspect}" ]; then
-  if cross_build_is_active 2>/dev/null; then
-    pass "gst-inspect-1.0 binary present at ${_gst_inspect} (cross build — execution skipped)"
+  if smoke_cross_presence_gate "gst-inspect-1.0" "${_gst_inspect}"; then
+    :   # presence proven by the gate; execution is deliberately skipped
   elif "${_gst_inspect}" --version >/dev/null 2>&1; then
     gst_ver="$("${_gst_inspect}" --version 2>/dev/null | head -1 || echo '?')"
     pass "gst-inspect-1.0 functional: ${gst_ver}"
@@ -314,14 +320,11 @@ if [ -n "${_gst_inspect}" ]; then
     # in the BuildKit sandbox. Expected during Docker build (ldconfig + ENV land in
     # configure-runtime.sh) — but a broken binary must not count as a PASS: INFO,
     # plus an ELF-magic assertion so corrupt/wrong-format binaries still fail.
-    if [ "$(head -c4 "${_gst_inspect}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then
-      echo "  INFO: gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
-    else
-      fail "gst-inspect-1.0 at ${_gst_inspect} is not an ELF binary"
-    fi
+    smoke_deferred_if_elf "gst-inspect-1.0" "${_gst_inspect}" \
+      "gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
   fi
   if ! cross_build_is_active 2>/dev/null && "${_gst_inspect}" --version >/dev/null 2>&1; then
-    _gst_launch="$(command -v gst-launch-1.0 2>/dev/null || echo "${_gst_bin}/gst-launch-1.0")"
+    _gst_launch="$(smoke_resolve_bin gst-launch-1.0 "${_gst_bin}/gst-launch-1.0")"
     if "${_gst_launch}" videotestsrc num-buffers=1 ! fakesink 2>/dev/null; then
       pass "GStreamer pipeline: videotestsrc ! fakesink OK"
     else
@@ -345,7 +348,7 @@ if [ -n "${_gst_inspect}" ]; then
     # that is a real defect. opencv/onnx/tflite never link ffmpeg, so they stay
     # hard-gated unconditionally.
     _ffmpeg_execok=0
-    { _ff_probe="$(command -v ffmpeg 2>/dev/null || echo "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
+    { _ff_probe="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
       [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1
     _gst_missing=""
     for _p in libav opencv onnx tflite; do
@@ -384,10 +387,10 @@ fi
 # FFmpeg — version + encode/decode roundtrip
 # ---------------------------------------------------------------------------
 echo "--- FFmpeg ---"
-_ffmpeg_bin="$(command -v ffmpeg 2>/dev/null || echo "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"
+_ffmpeg_bin="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"
 if [ -x "${_ffmpeg_bin}" ]; then
-  if cross_build_is_active 2>/dev/null; then
-    pass "ffmpeg binary present at ${_ffmpeg_bin} (cross build — execution skipped)"
+  if smoke_cross_presence_gate "ffmpeg" "${_ffmpeg_bin}"; then
+    :   # presence proven by the gate; execution is deliberately skipped
   else
     ffmpeg_ver="$("${_ffmpeg_bin}" -version 2>/dev/null | head -1 || echo '?')"
     if [ "${ffmpeg_ver}" != "?" ]; then
@@ -397,11 +400,8 @@ if [ -x "${_ffmpeg_bin}" ]; then
       # configure-runtime.sh) — but a broken binary must not count as a PASS.
       # Downgrade to INFO and at least assert it is a real ELF, so a
       # zero-byte/corrupt/wrong-format ffmpeg still fails the smoke.
-      if [ "$(head -c4 "${_ffmpeg_bin}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then
-        echo "  INFO: ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
-      else
-        fail "ffmpeg at ${_ffmpeg_bin} is not an ELF binary"
-      fi
+      smoke_deferred_if_elf "ffmpeg" "${_ffmpeg_bin}" \
+        "ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
     fi
     tmpdir="$(mktemp -d)"
     if "${_ffmpeg_bin}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=1" \
@@ -473,10 +473,10 @@ if command -v pkg-config >/dev/null 2>&1; then
     echo "  INFO: libcamera not in pkg-config path (optional)"
   fi
 fi
-_cam_bin="$(command -v cam 2>/dev/null || echo "${_lc_prefix}/bin/cam")"
+_cam_bin="$(smoke_resolve_bin cam "${_lc_prefix}/bin/cam")"
 if [ -x "${_cam_bin}" ]; then
-  if cross_build_is_active 2>/dev/null; then
-    pass "cam binary present at ${_cam_bin} (cross build — execution skipped)"
+  if smoke_cross_presence_gate "cam" "${_cam_bin}"; then
+    :   # presence proven by the gate; execution is deliberately skipped
   elif "${_cam_bin}" --help 2>/dev/null | head -1 | grep -q .; then
     pass "cam binary functional"
   else

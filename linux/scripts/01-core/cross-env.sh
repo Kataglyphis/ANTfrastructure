@@ -402,7 +402,13 @@ _cross_env_resolve_identifiers() {
   _eri_out[rust_env_lower]="$(cross_target_lower_rust)"
   _eri_out[build_rust_lower]="$(cross_build_lower_rust 2>/dev/null || true)"
   _eri_out[gcc_prefix]="$(gcc_toolchain_prefix)"
-  _eri_out[gcc_major]="${GCC_WANTED:-${GCC_VERSION:-16.2.0}}"
+  # DUP2: the version default lives ONCE, in cross-gcc.sh's
+  # gcc_toolchain_version(). cross-env.sh hard-sources cross-gcc.sh above, and
+  # the line right before this one already calls gcc_toolchain_prefix()
+  # unguarded, so the helper is guaranteed to be defined here — this is not a
+  # new dependency. Semantics are unchanged: gcc_toolchain_version() expands to
+  # exactly the nested fallback this line used to spell out.
+  _eri_out[gcc_major]="${GCC_WANTED:-$(gcc_toolchain_version)}"
   _eri_out[gcc_major]="$(version_major "${_eri_out[gcc_major]}")"
   _eri_out[runtime_libdir]="${_eri_out[gcc_prefix]}/lib/gcc/${_eri_out[triplet]}/${_eri_out[gcc_major]}"
 }

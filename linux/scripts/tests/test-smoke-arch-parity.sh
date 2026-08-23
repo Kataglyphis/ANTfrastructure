@@ -445,4 +445,203 @@ t_assert_eq "1" "${_kd}" "KNOWN_DRIFT grew: every entry needs its own review, da
 t_assert_contains "$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")" \
   "2026-08-23"
 
+# ── D3: the shared binary/component gate helpers ────────────────────────────
+# smoke-media.sh hand-wrote four idioms at 5 + 4 + 2 sites (plus an 11th private
+# copy of the arch -> ELF-machine map in smoke-android.sh). They live in
+# smoke-common.sh now. Two separate things are pinned below, because either one
+# alone rots: (A) the helpers BEHAVE, including their FAILURE directions — an
+# idiom that can only ever pass is precisely what this repo keeps shipping by
+# accident; and (B) the call sites STAY deduplicated — a dedup that no test
+# protects drifts back apart at the next edit.
+
+_SMOKE_DIR="${TESTS_DIR}/../06-packaging"
+
+# Run an expression against smoke-common.sh in a CLEAN bash (so the fallback
+# cross_build_is_active is the one under test), merging stderr — fail() writes
+# there. _scf also reports the FAILURES counter, which is how "did this idiom
+# actually record a failure" is observed from outside.
+_sc()  { bash -c "source '${SMOKE_COMMON}' >/dev/null 2>&1; $1" 2>&1; }
+_scf() { bash -c "source '${SMOKE_COMMON}' >/dev/null 2>&1; $1; echo \"FAILURES=\${FAILURES}\"" 2>&1; }
+
+# ── A. behaviour ────────────────────────────────────────────────────────────
+
+t_case "smoke_resolve_bin prefers PATH and otherwise returns the fallback verbatim"
+t_assert_eq "$(command -v sh)" "$(_sc 'smoke_resolve_bin sh /nowhere/sh')"
+t_assert_eq "/opt/ffmpeg/bin/ffmpeg" \
+            "$(_sc 'smoke_resolve_bin containerhub-no-such-tool /opt/ffmpeg/bin/ffmpeg')"
+
+t_case "smoke_resolve_bin never trips errexit on the miss path"
+# The four call sites are `x="$(smoke_resolve_bin …)"` under `set -euo
+# pipefail`; a non-zero rc there would kill the smoke instead of falling back.
+t_assert_eq "reached" \
+  "$(_sc 'x="$(smoke_resolve_bin containerhub-no-such-tool /opt/x)"; [ "$x" = /opt/x ] && echo reached')"
+
+# ELF fixtures: a real magic header, a text file, an empty file.
+printf '\177ELF\002\001\001\000' > "${_RT_SANDBOX}/fake.elf"
+printf 'this is not an ELF binary' > "${_RT_SANDBOX}/fake.txt"
+: > "${_RT_SANDBOX}/empty.bin"
+
+t_case "smoke_is_elf accepts the magic and rejects text/empty/missing"
+t_assert_ok    bash -c "source '${SMOKE_COMMON}'; smoke_is_elf '${_RT_SANDBOX}/fake.elf'"
+t_assert_fails bash -c "source '${SMOKE_COMMON}'; smoke_is_elf '${_RT_SANDBOX}/fake.txt'"
+t_assert_fails bash -c "source '${SMOKE_COMMON}'; smoke_is_elf '${_RT_SANDBOX}/empty.bin'"
+t_assert_fails bash -c "source '${SMOKE_COMMON}'; smoke_is_elf '${_RT_SANDBOX}/no-such-file'"
+
+t_case "a missing file is a clean 'not ELF', not an errexit abort"
+# `head` failing inside the pipeline under `set -o pipefail` must be absorbed;
+# otherwise the ffmpeg/gst deferral paths would kill the whole smoke.
+t_assert_eq "reached" \
+  "$(_sc "smoke_is_elf '${_RT_SANDBOX}/no-such-file' || true; echo reached")"
+
+t_case "smoke_deferred_if_elf: a real ELF is INFO — deferred, never a PASS"
+_d_out="$(_scf "smoke_deferred_if_elf ffmpeg '${_RT_SANDBOX}/fake.elf' 'not executable in build sandbox'")"
+t_assert_contains "${_d_out}" "INFO: not executable in build sandbox"
+t_assert_contains "${_d_out}" "FAILURES=0"
+t_assert_eq "" "$(printf '%s' "${_d_out}" | grep -F 'PASS' || true)" \
+  "a deferral must not be reported as a pass"
+
+t_case "smoke_deferred_if_elf: a corrupt/non-ELF file FAILS (the gate has teeth)"
+_d_out="$(_scf "smoke_deferred_if_elf ffmpeg '${_RT_SANDBOX}/fake.txt' 'not executable in build sandbox'")"
+t_assert_contains "${_d_out}" "ffmpeg at ${_RT_SANDBOX}/fake.txt is not an ELF binary"
+t_assert_contains "${_d_out}" "FAILURES=1"
+
+t_case "smoke_cross_presence_gate fires only under a real cross build"
+_g_out="$(_scf 'BUILD_MODE=cross TARGET_ARCH=riscv64 BUILDARCH=x86_64 smoke_cross_presence_gate ffmpeg /opt/ffmpeg/bin/ffmpeg')"
+t_assert_contains "${_g_out}" "PASS ffmpeg binary present at /opt/ffmpeg/bin/ffmpeg (cross build — execution skipped)"
+t_assert_contains "${_g_out}" "FAILURES=0"
+
+t_case "the noun/action pair carries the library and Python-bindings wordings"
+t_assert_contains \
+  "$(_sc 'BUILD_MODE=cross TARGET_ARCH=arm64 BUILDARCH=x86_64 smoke_cross_presence_gate opencv /opt/opencv5/lib "Python bindings" import')" \
+  "opencv Python bindings present at /opt/opencv5/lib (cross build — import skipped)"
+t_assert_contains \
+  "$(_sc 'BUILD_MODE=cross TARGET_ARCH=arm64 BUILDARCH=x86_64 smoke_cross_presence_gate onnxruntime /usr/local/lib/onnxruntime-cpu library import')" \
+  "onnxruntime library present at /usr/local/lib/onnxruntime-cpu (cross build — import skipped)"
+
+t_case "on a NATIVE build the gate declines (rc 1) and prints NOTHING"
+# The smoke-media sites use it as an `if` head: a gate that returned 0, or that
+# printed a PASS here, would skip the functional checks on a native build —
+# which is exactly the silent-skip class smoke-common's own header records.
+t_assert_eq "DECLINED" \
+  "$(_sc 'BUILD_MODE=native smoke_cross_presence_gate ffmpeg /opt/ffmpeg/bin/ffmpeg || echo DECLINED')"
+
+t_case "a cross build whose target EQUALS the build arch is not cross either"
+t_assert_eq "DECLINED" \
+  "$(_sc 'BUILD_MODE=cross TARGET_ARCH=amd64 BUILDARCH=x86_64 smoke_cross_presence_gate ffmpeg /opt/ffmpeg/bin/ffmpeg || echo DECLINED')"
+
+t_case "smoke_elf_machine_of agrees with the canonical arch map on a real binary"
+if command -v readelf >/dev/null 2>&1; then
+  _self_bin="$(command -v bash)"
+  t_assert_contains "$(_sc "smoke_elf_machine_of '${_self_bin}'")" \
+    "$(arch_elf_machine_grep_for "$(arch_normalize "$(uname -m)")")" \
+    "the extracted readelf pipeline no longer matches platform.sh's map"
+  t_assert_eq "" "$(_sc "smoke_elf_machine_of '${_RT_SANDBOX}/fake.txt' || true")" \
+    "a non-ELF file must yield an empty machine string, not garbage"
+else
+  # No readelf on this host: still assert something, so the coverage count
+  # cannot silently collapse (run-tests.sh aggregates it for exactly this).
+  t_assert_eq "" "$(_sc "smoke_elf_machine_of '${_RT_SANDBOX}/fake.elf' || true")"
+fi
+
+# ── B. drift guard: the idioms must live ONLY in smoke-common.sh ────────────
+# Scope = the in-image smoke scripts under 06-packaging. smoke-runtime-image.sh
+# is excluded by review, not convenience: it is a HOST-side driver whose
+# `command -v … || echo …` sites sit inside `bash -lc '…'` payloads that execute
+# in ANOTHER container, where smoke-common.sh is not sourced and the helper
+# cannot exist. Every other smoke-*.sh is in scope automatically, so a NEW one
+# is covered the day it lands.
+_EXCLUDED_FROM_DEDUP="smoke-common.sh smoke-runtime-image.sh"
+
+_dedup_targets() {
+  local f
+  for f in "${_SMOKE_DIR}"/smoke-*.sh; do
+    case " ${_EXCLUDED_FROM_DEDUP} " in
+      *" $(basename "${f}") "*) continue ;;
+    esac
+    printf '%s\n' "${f}"
+  done
+}
+
+# Full-line comments are blanked before matching (same rationale as
+# test-invocation-lints.sh): these lints ban an idiom from EXECUTING, and prose
+# that merely describes it — including the comments explaining why the helper
+# exists — cannot run.
+_dedup_scan() {   # <extended-regex> -> "file:line: text" per hit
+  local re="$1" f
+  for f in $(_dedup_targets); do
+    sed 's/^[[:space:]]*#.*$//' "${f}" | grep -nE "${re}" \
+      | sed "s|^|$(basename "${f}"):|" || true
+  done
+}
+
+t_case "the drift scan actually reaches the smoke scripts (positive control)"
+# This repo has already shipped a lint that scanned ZERO files and reported
+# three green assertions for two weeks (see test-invocation-lints.sh's header).
+# "Found nothing" is what success looks like here, so prove the scan runs:
+# the file list is non-empty, includes smoke-media.sh, and a pattern that IS
+# still present in it is found.
+t_assert_ok test "$(_dedup_targets | wc -l)" -ge 4
+t_assert_contains "$(_dedup_targets)" "smoke-media.sh"
+t_assert_contains "$(_dedup_scan 'smoke_cross_presence_gate')" "smoke-media.sh:"
+
+t_case "no re-inlined smoke_resolve_bin (command -v … || echo <fallback>)"
+t_assert_eq "" "$(_dedup_scan 'command -v [^|]*\|\|[[:space:]]*echo')" \
+  "use smoke_resolve_bin from smoke-common.sh"
+
+t_case "no re-inlined ELF-magic test (head -c4 … | tail -c3)"
+t_assert_eq "" "$(_dedup_scan 'head -c ?4.*tail -c ?3')" \
+  "use smoke_is_elf / smoke_deferred_if_elf from smoke-common.sh"
+
+t_case "no re-inlined cross-presence PASS message"
+# Bans the template the helper owns: "<label> <noun> present at <path> (cross
+# build — <action> skipped)". The two deliberately different messages in
+# smoke-media.sh — the pathless genai one, and the opencv foreign-arch-extension
+# one — do not match this shape and stay out of the helper on purpose.
+t_assert_eq "" "$(_dedup_scan 'present at .*\(cross build — .* skipped\)')" \
+  "use smoke_cross_presence_gate from smoke-common.sh"
+
+t_case "no re-inlined readelf Machine: pipeline"
+t_assert_eq "" "$(_dedup_scan 'readelf -h')" \
+  "use smoke_elf_machine_of from smoke-common.sh"
+# …and smoke-common.sh itself must hold exactly ONE copy — the helper. It is
+# excluded from the scan above (it is where the idiom belongs), so without this
+# the two sites it feeds, _cc_check_binary_elf and _cc_check_object, could
+# quietly grow their own pipelines back.
+t_assert_eq "1" "$(sed 's/^[[:space:]]*#.*$//' "${SMOKE_COMMON}" | grep -c 'readelf -h')" \
+  "smoke-common.sh must define the readelf pipeline once, in smoke_elf_machine_of"
+
+t_case "no private copy of the arch -> ELF-machine map"
+t_assert_eq "" "$(_dedup_scan '\*(AArch64|X86-64|RISC-V)\*')" \
+  "use smoke_elf_machine_grep from smoke-common.sh"
+
+t_case "each banned pattern would still catch a re-inlined site (negative control)"
+# A regex that has quietly stopped matching is indistinguishable from a clean
+# tree. Feed each one the exact line it was written to ban.
+_dedup_probe() { printf '%s\n' "$2" | grep -qE "$1" && echo HIT || echo MISS; }
+t_assert_eq "HIT" "$(_dedup_probe 'command -v [^|]*\|\|[[:space:]]*echo' \
+  '_cam_bin="$(command -v cam 2>/dev/null || echo "${_lc_prefix}/bin/cam")"')"
+t_assert_eq "HIT" "$(_dedup_probe 'head -c ?4.*tail -c ?3' \
+  'if [ "$(head -c4 "${_ffmpeg_bin}" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then')"
+t_assert_eq "HIT" "$(_dedup_probe 'present at .*\(cross build — .* skipped\)' \
+  'pass "cam binary present at ${_cam_bin} (cross build — execution skipped)"')"
+t_assert_eq "HIT" "$(_dedup_probe 'readelf -h' \
+  'm="$(LC_ALL=C readelf -h "${o}" | sed -n "s/Machine://p" | head -1)"')"
+t_assert_eq "HIT" "$(_dedup_probe '\*(AArch64|X86-64|RISC-V)\*' \
+  '              aarch64:*AArch64*|x86_64:*X86-64*|riscv64:*RISC-V*)')"
+# …and must NOT flag the lines that legitimately survive.
+t_assert_eq "MISS" "$(_dedup_probe 'head -c ?4.*tail -c ?3' \
+  'magic="$(head -c4 "${wasm}" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d " \n")"')"
+t_assert_eq "MISS" "$(_dedup_probe 'present at .*\(cross build — .* skipped\)' \
+  'pass "onnxruntime_genai library present (cross build — import skipped)"')"
+t_assert_eq "MISS" "$(_dedup_probe 'present at .*\(cross build — .* skipped\)' \
+  'pass "opencv Python bindings present at ${p} (import skipped: foreign-arch extension under cross build — validated on-target by the runtime smoke)"')"
+
+t_case "every smoke script that uses a helper also sources smoke-common.sh"
+# The helpers are only defined by that source line; a script that grew a call
+# without it would die with "command not found" inside a container RUN.
+for _f in $(_dedup_scan 'smoke_(resolve_bin|is_elf|deferred_if_elf|cross_presence_gate|elf_machine_of)' \
+            | cut -d: -f1 | sort -u); do
+  t_assert_ok grep -q 'source "${_SCRIPT_DIR}/smoke-common.sh"' "${_SMOKE_DIR}/${_f}"
+done
+
 t_summary

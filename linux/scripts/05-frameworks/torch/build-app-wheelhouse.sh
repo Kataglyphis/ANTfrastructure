@@ -842,155 +842,155 @@ build_iree_wheels() {
     done
 
     if cross_build_is_active; then
-    # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====
-    # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
-    # NATIVE amd64 compiler. This produces iree-compile + iree-tblgen + llvm-link.
-    # This function runs inside the riscv64 cross environment, where
-    # CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross toolchain
-    # (set up for the torch build). The host tools MUST be native or they can't
-    # execute on the build host to drive the target build — the first run
-    # (2026-07-14) failed here precisely because the host cmake inherited the cross
-    # CC/CXX. So strip the cross env for BOTH the configure and the build, and pin
-    # the host compiler + both Python executables (FindPython/FindPython3 disagreed
-    # on the first run). The LLVM build is heavy; MAX_JOBS is already the
-    # cpp-heavy (≈4GB/job) count for this stage.
-    local host_cc="" host_cxx=""
-    for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
-    for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
-    rm -rf "${host_build}"
-    if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
-             -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
-            cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
-            "${ccache_cmake_args[@]}" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_COMPILER="${host_cc}" \
-            -DCMAKE_CXX_COMPILER="${host_cxx}" \
-            -DIREE_BUILD_COMPILER=ON \
-            -DIREE_BUILD_PYTHON_BINDINGS=OFF \
-            -DIREE_BUILD_SAMPLES=OFF \
-            -DIREE_BUILD_TESTS=OFF \
-            -DIREE_ENABLE_WERROR_FLAG=OFF \
-            -DCMAKE_INSTALL_PREFIX="${host_install}" \
-            -DPython_EXECUTABLE="${BUILD_PYTHON}" \
-            -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
-        warn "IREE host-compiler configure failed; skipping riscv64 runtime wheel"; return 1
-    fi
-    # Capture build output to a log and echo its tail on failure. BuildKit
-    # collapses the tens-of-thousands of ninja progress lines, so a bare failure
-    # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
-    # is the only way to see why the cross build actually died.
-    if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
-             -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
-            cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
-            > "${host_build}.log" 2>&1; then
-        warn "IREE host-compiler build failed; skipping riscv64 runtime wheel"
-        echo "----- IREE host build: last 80 log lines -----"
-        tail -n 80 "${host_build}.log" 2>/dev/null
-        echo "----- end IREE host build log -----"
-        return 1
-    fi
+        # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====
+        # Stage 1 — FULL host compiler build (LLVM) for IREE_HOST_BIN_DIR, with the
+        # NATIVE amd64 compiler. This produces iree-compile + iree-tblgen + llvm-link.
+        # This function runs inside the riscv64 cross environment, where
+        # CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross toolchain
+        # (set up for the torch build). The host tools MUST be native or they can't
+        # execute on the build host to drive the target build — the first run
+        # (2026-07-14) failed here precisely because the host cmake inherited the cross
+        # CC/CXX. So strip the cross env for BOTH the configure and the build, and pin
+        # the host compiler + both Python executables (FindPython/FindPython3 disagreed
+        # on the first run). The LLVM build is heavy; MAX_JOBS is already the
+        # cpp-heavy (≈4GB/job) count for this stage.
+        local host_cc="" host_cxx=""
+        for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
+        for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
+        rm -rf "${host_build}"
+        if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+                 -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+                cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
+                "${ccache_cmake_args[@]}" \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER="${host_cc}" \
+                -DCMAKE_CXX_COMPILER="${host_cxx}" \
+                -DIREE_BUILD_COMPILER=ON \
+                -DIREE_BUILD_PYTHON_BINDINGS=OFF \
+                -DIREE_BUILD_SAMPLES=OFF \
+                -DIREE_BUILD_TESTS=OFF \
+                -DIREE_ENABLE_WERROR_FLAG=OFF \
+                -DCMAKE_INSTALL_PREFIX="${host_install}" \
+                -DPython_EXECUTABLE="${BUILD_PYTHON}" \
+                -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
+            warn "IREE host-compiler configure failed; skipping riscv64 runtime wheel"; return 1
+        fi
+        # Capture build output to a log and echo its tail on failure. BuildKit
+        # collapses the tens-of-thousands of ninja progress lines, so a bare failure
+        # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
+        # is the only way to see why the cross build actually died.
+        if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+                 -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+                cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
+                > "${host_build}.log" 2>&1; then
+            warn "IREE host-compiler build failed; skipping riscv64 runtime wheel"
+            echo "----- IREE host build: last 80 log lines -----"
+            tail -n 80 "${host_build}.log" 2>/dev/null
+            echo "----- end IREE host build log -----"
+            return 1
+        fi
 
-    # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
-    # IREE_ENABLE_WERROR_FLAG=OFF is REQUIRED here (iree-0714g): the nanobind Python
-    # bindings pull in the cross Python 3.14 pyconfig.h, which defines _POSIX_C_SOURCE/
-    # _XOPEN_SOURCE to OLDER values than resolute's glibc features.h (already included
-    # via <optional>/<cstdint> in binding.h) — a benign macro redefinition that IREE's
-    # default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
-    # riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
-    # our side without patching IREE headers.)
-    # IREE_OUTPUT_FORMAT_C=OFF is REQUIRED here (iree-0714m). It is a
-    # cmake_dependent_option that defaults ON whenever IREE_BUILD_COMPILER=ON
-    # (CMakeLists.txt:517), enabling the EmitC "vm-c" output format. That pulls in
-    # runtime/src/iree/vm/test/emitc/CMakeLists.txt, which is gated on
-    # IREE_OUTPUT_FORMAT_C (NOT IREE_BUILD_TESTS — so TESTS=OFF does not stop it) and
-    # generates VM headers by RUNNING iree-compile at build time. With COMPILER=ON on
-    # the TARGET, the tool name 'iree-compile' resolves to the just-built riscv64
-    # binary, not the host tool in IREE_HOST_BIN_DIR, so the codegen tries to execute
-    # a riscv64 iree-compile on the amd64 host and dies with
-    # 'libIREECompiler.so: cannot open shared object file' (code 127). Turning the
-    # format OFF removes the only build-time consumer of the target compiler; the
-    # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
-    # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
-    # bytecode compilation, which the app's check_iree uses, is unaffected.
-    toolchain_file="$(write_cross_cmake_toolchain_file || true)"
-    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
-    append_common_cross_cmake_args cmake_args
+        # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
+        # IREE_ENABLE_WERROR_FLAG=OFF is REQUIRED here (iree-0714g): the nanobind Python
+        # bindings pull in the cross Python 3.14 pyconfig.h, which defines _POSIX_C_SOURCE/
+        # _XOPEN_SOURCE to OLDER values than resolute's glibc features.h (already included
+        # via <optional>/<cstdint> in binding.h) — a benign macro redefinition that IREE's
+        # default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
+        # riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
+        # our side without patching IREE headers.)
+        # IREE_OUTPUT_FORMAT_C=OFF is REQUIRED here (iree-0714m). It is a
+        # cmake_dependent_option that defaults ON whenever IREE_BUILD_COMPILER=ON
+        # (CMakeLists.txt:517), enabling the EmitC "vm-c" output format. That pulls in
+        # runtime/src/iree/vm/test/emitc/CMakeLists.txt, which is gated on
+        # IREE_OUTPUT_FORMAT_C (NOT IREE_BUILD_TESTS — so TESTS=OFF does not stop it) and
+        # generates VM headers by RUNNING iree-compile at build time. With COMPILER=ON on
+        # the TARGET, the tool name 'iree-compile' resolves to the just-built riscv64
+        # binary, not the host tool in IREE_HOST_BIN_DIR, so the codegen tries to execute
+        # a riscv64 iree-compile on the amd64 host and dies with
+        # 'libIREECompiler.so: cannot open shared object file' (code 127). Turning the
+        # format OFF removes the only build-time consumer of the target compiler; the
+        # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
+        # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
+        # bytecode compilation, which the app's check_iree uses, is unaffected.
+        toolchain_file="$(write_cross_cmake_toolchain_file || true)"
+        [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
+        append_common_cross_cmake_args cmake_args
 
-    # The cross-built iree-compile bakes in its DEFAULT codegen target triple at
-    # compile time via LLVM_HOST_TRIPLE (llvm::sys::getProcessTriple(), which IREE's
-    # llvm-cpu backend uses when --iree-llvmcpu-target-triple is unset). Bundled
-    # LLVM's CMake auto-detects that triple from the BUILD host during a cross-build,
-    # so without this override an arm64/riscv64 iree-compile defaults to the x86_64
-    # build host and emits `embedded-elf-x86_64` — iree-run-module on the target then
-    # fails "HAL device not found" (INCOMPATIBLE). Pin both triples to the actual
-    # target so the shipped compiler defaults to the arch it runs on. (iree-0714t:
-    # arm64 native iree-compile smoke failed exactly this way.)
-    iree_target_triple="$(cross_target_triplet 2>/dev/null || true)"
-    if [ -n "${iree_target_triple}" ]; then
-        cmake_args+=(
-            "-DLLVM_HOST_TRIPLE=${iree_target_triple}"
-            "-DLLVM_DEFAULT_TARGET_TRIPLE=${iree_target_triple}"
-        )
-    fi
+        # The cross-built iree-compile bakes in its DEFAULT codegen target triple at
+        # compile time via LLVM_HOST_TRIPLE (llvm::sys::getProcessTriple(), which IREE's
+        # llvm-cpu backend uses when --iree-llvmcpu-target-triple is unset). Bundled
+        # LLVM's CMake auto-detects that triple from the BUILD host during a cross-build,
+        # so without this override an arm64/riscv64 iree-compile defaults to the x86_64
+        # build host and emits `embedded-elf-x86_64` — iree-run-module on the target then
+        # fails "HAL device not found" (INCOMPATIBLE). Pin both triples to the actual
+        # target so the shipped compiler defaults to the arch it runs on. (iree-0714t:
+        # arm64 native iree-compile smoke failed exactly this way.)
+        iree_target_triple="$(cross_target_triplet 2>/dev/null || true)"
+        if [ -n "${iree_target_triple}" ]; then
+            cmake_args+=(
+                "-DLLVM_HOST_TRIPLE=${iree_target_triple}"
+                "-DLLVM_DEFAULT_TARGET_TRIPLE=${iree_target_triple}"
+            )
+        fi
 
-    # Build IREE's nanobind Python extensions with the TARGET Python's SOABI so the
-    # compiled module is named _runtime.cpython-314-<target>-linux-gnu.so, not the
-    # x86_64 build host's suffix. Without this, FindPython/nanobind introspect the
-    # host BUILD_PYTHON and stamp cpython-314-x86_64-linux-gnu.so, which the target
-    # (aarch64) Python cannot import — "cannot import name '_runtime' from
-    # 'iree._runtime_libs'" (iree-0714t). _PYTHON_SYSCONFIGDATA_NAME redirects the
-    # host interpreter's sysconfig to the target's EXT_SUFFIX, the same mechanism the
-    # torch/vision cross builds use (resolve_target_python_sysconfig_export). Applied
-    # only HERE — after the Stage-1 host tools build (bindings OFF) — so host binaries
-    # keep the x86_64 config; it stays in effect for the Stage-2 build + wheel pack.
-    local iree_sysconfig_export=""
-    iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
-    if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
+        # Build IREE's nanobind Python extensions with the TARGET Python's SOABI so the
+        # compiled module is named _runtime.cpython-314-<target>-linux-gnu.so, not the
+        # x86_64 build host's suffix. Without this, FindPython/nanobind introspect the
+        # host BUILD_PYTHON and stamp cpython-314-x86_64-linux-gnu.so, which the target
+        # (aarch64) Python cannot import — "cannot import name '_runtime' from
+        # 'iree._runtime_libs'" (iree-0714t). _PYTHON_SYSCONFIGDATA_NAME redirects the
+        # host interpreter's sysconfig to the target's EXT_SUFFIX, the same mechanism the
+        # torch/vision cross builds use (resolve_target_python_sysconfig_export). Applied
+        # only HERE — after the Stage-1 host tools build (bindings OFF) — so host binaries
+        # keep the x86_64 config; it stays in effect for the Stage-2 build + wheel pack.
+        local iree_sysconfig_export=""
+        iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
+        if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
 
-    # The bundled LLVM spawns a NATIVE sub-build (llvm-project/NATIVE) for the
-    # tblgen family, and LLVM's CrossCompile.cmake DEFAULTS that sub-build's
-    # compilers to the outer (CROSS) CMAKE_C(XX)_COMPILER — so llvm-min-tblgen
-    # came out arm64 and died "Exec format error" on the amd64 build host
-    # (media-arm64, 2026-08-08; riscv64 only ever survived this because host
-    # qemu binfmt silently emulated the wrong-arch tblgen — slowly). Pin the
-    # NATIVE sub-build to the true host compilers, with ccache so its objects
-    # cache like everything else. (';' is CMake's list separator — the whole
-    # value is ONE shell word.)
-    local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
-    if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
-        native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=ccache;-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-    fi
+        # The bundled LLVM spawns a NATIVE sub-build (llvm-project/NATIVE) for the
+        # tblgen family, and LLVM's CrossCompile.cmake DEFAULTS that sub-build's
+        # compilers to the outer (CROSS) CMAKE_C(XX)_COMPILER — so llvm-min-tblgen
+        # came out arm64 and died "Exec format error" on the amd64 build host
+        # (media-arm64, 2026-08-08; riscv64 only ever survived this because host
+        # qemu binfmt silently emulated the wrong-arch tblgen — slowly). Pin the
+        # NATIVE sub-build to the true host compilers, with ccache so its objects
+        # cache like everything else. (';' is CMake's list separator — the whole
+        # value is ONE shell word.)
+        local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
+        if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
+            native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=ccache;-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+        fi
 
-    rm -rf "${target_build}"
-    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
-            -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
-            "${cmake_args[@]}" \
-            "${ccache_cmake_args[@]}" \
-            -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
-            -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-            -DIREE_BUILD_COMPILER=ON \
-            -DIREE_BUILD_PYTHON_BINDINGS=ON \
-            -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
-            -DIREE_BUILD_SAMPLES=OFF \
-            -DIREE_BUILD_TESTS=OFF \
-            -DIREE_OUTPUT_FORMAT_C=OFF \
-            -DIREE_ENABLE_WERROR_FLAG=OFF \
-            -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
-            -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
-            -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
-        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
-        echo "----- IREE target configure: last 80 log lines -----"
-        tail -n 80 "${target_build}.cfg.log" 2>/dev/null
-        echo "----- end IREE target configure log -----"
-        return 1
-    fi
-    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
-        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
-        echo "----- IREE target build: last 80 log lines -----"
-        tail -n 80 "${target_build}.log" 2>/dev/null
-        echo "----- end IREE target build log -----"
-        return 1
-    fi
+        rm -rf "${target_build}"
+        if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+                -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
+                "${cmake_args[@]}" \
+                "${ccache_cmake_args[@]}" \
+                -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
+                -DIREE_HOST_BIN_DIR="${host_install}/bin" \
+                -DIREE_BUILD_COMPILER=ON \
+                -DIREE_BUILD_PYTHON_BINDINGS=ON \
+                -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
+                -DIREE_BUILD_SAMPLES=OFF \
+                -DIREE_BUILD_TESTS=OFF \
+                -DIREE_OUTPUT_FORMAT_C=OFF \
+                -DIREE_ENABLE_WERROR_FLAG=OFF \
+                -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+                -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+                -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
+            warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
+            echo "----- IREE target configure: last 80 log lines -----"
+            tail -n 80 "${target_build}.cfg.log" 2>/dev/null
+            echo "----- end IREE target configure log -----"
+            return 1
+        fi
+        if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
+            warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
+            echo "----- IREE target build: last 80 log lines -----"
+            tail -n 80 "${target_build}.log" 2>/dev/null
+            echo "----- end IREE target build log -----"
+            return 1
+        fi
 
     else
         # ===== amd64 NATIVE: single-stage build =====

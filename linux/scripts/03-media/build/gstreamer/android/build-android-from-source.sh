@@ -123,6 +123,14 @@ override_pkgconfig_dead_mirror() {
     fi
 }
 
+# Pull a plain string attribute out of a cerbero recipe ("attr = 'value'", also
+# the f-string form recipes increasingly use). Recipes are executable python, so
+# this is a TEXTUAL read and never an evaluation: callers must refuse whatever
+# they cannot make sense of instead of guessing at it.
+_cerbero_recipe_str() {
+    sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*f\\{0,1\\}['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$1" | head -1
+}
+
 override_soundtouch_codeberg_checksum() {
     # soundtouch is fetched from Codeberg's AUTO-GENERATED archive
     # (codeberg.org/soundtouch/soundtouch/archive/<version>.tar.gz). Forgejo
@@ -137,6 +145,19 @@ override_soundtouch_codeberg_checksum() {
     # immutable; only the archive's compression varies) -- the right trade-off
     # for a non-byte-stable auto-archive. Best-effort: on any failure the recipe
     # is left untouched and cerbero's own checksum step still guards the fetch.
+    #
+    # STILL LOAD-BEARING, measured 2026-08-23: cerbero 1.29.2 pins
+    # e07abf20...6733 while the live archive is 35d404e6...77ec, so WITHOUT this
+    # every cold android lane dies on soundtouch's checksum.
+    #
+    # NOT generalised into a checksums table, and that is a finding, not an
+    # omission: of the ~25 forge auto-archive URLs in cerbero 1.29.2, 13 were
+    # re-downloaded on 2026-08-23 and compared against their pins -- libffi and
+    # svt-av1 (GitLab /-/archive/), graphene, libsrtp, proxy-libintl, openjpeg,
+    # rice-proto, srt, libepoxy, libproxy, pycairo, vvdec, libvpx and ninja
+    # (GitHub /archive/) -- and ALL of them still hashed to the pinned value.
+    # Only Forgejo re-compresses. One case is a point fix (backlog standing rule
+    # P3: generalize only when a SECOND case appears).
     local recipe="recipes/soundtouch.recipe"
     [ -f "${recipe}" ] || return 0
     command -v curl >/dev/null 2>&1 && command -v sha256sum >/dev/null 2>&1 || {
@@ -144,19 +165,64 @@ override_soundtouch_codeberg_checksum() {
         return 0
     }
 
-    local ver cur url tmp actual
-    ver="$(sed -n "s/^[[:space:]]*version[[:space:]]*=[[:space:]]*['\"]\([^'\"]*\)['\"].*/\1/p" "${recipe}" | head -1)"
+    local ver nam cur url_tpl url tmp actual
+    ver="$(_cerbero_recipe_str "${recipe}" version)"
+    nam="$(_cerbero_recipe_str "${recipe}" name)"
+    url_tpl="$(_cerbero_recipe_str "${recipe}" url)"
     cur="$(sed -n "s/^[[:space:]]*tarball_checksum[[:space:]]*=[[:space:]]*['\"]\([0-9a-fA-F]*\)['\"].*/\1/p" "${recipe}" | head -1)"
-    if [ -z "${ver}" ] || [ -z "${cur}" ]; then
-        echo "WARNING: could not parse soundtouch version/checksum from recipe; leaving as-is" >&2
+    if [ -z "${ver}" ] || [ -z "${cur}" ] || [ -z "${nam}" ] || [ -z "${url_tpl}" ]; then
+        echo "WARNING: could not parse soundtouch name/version/url/checksum from recipe; leaving as-is" >&2
         return 0
     fi
+    # ver/nam are about to be spliced into a sed replacement and into a URL, so
+    # refuse anything outside a version/name charset (no delimiter, no '&', no
+    # backslash, no shell or URL metacharacter can reach either).
+    case "${ver}${nam}" in
+        *[!A-Za-z0-9._+-]*)
+            echo "WARNING: soundtouch name/version have unexpected characters ('${nam}' '${ver}'); leaving recipe as-is" >&2
+            return 0 ;;
+    esac
 
-    url="https://codeberg.org/soundtouch/soundtouch/archive/${ver}.tar.gz"
+    # Expand the recipe's OWN url instead of hardcoding one. A hardcoded URL is
+    # only correct while the recipe still points where we think it does: upstream
+    # ships a stale pin (see above), so this recipe WILL be rewritten, and if it
+    # is rewritten to a byte-stable source the hardcoded path would have fetched
+    # the Codeberg tarball and written ITS hash over a checksum that was correct
+    # -- breaking a recipe upstream had just fixed, silently, from inside a
+    # function whose contract is "leave it untouched on any failure".
+    # cerbero substitutes name/version/maj_ver (build/source.py
+    # replace_name_and_version) and recipes also write f-strings; anything left
+    # unexpanded means this script no longer understands the URL, so it stops.
+    url="$(printf '%s' "${url_tpl}" | sed \
+        -e "s|%(version)s|${ver}|g" -e "s|%(name)s|${nam}|g" \
+        -e "s|{version}|${ver}|g" -e "s|{name}|${nam}|g")"
+    case "${url}" in
+        *'%('*|*'{'*)
+            echo "WARNING: soundtouch url '${url_tpl}' has placeholders this script cannot expand; leaving recipe as-is" >&2
+            return 0 ;;
+    esac
+    # The Forgejo auto-archive endpoint IS the justification for trading a pinned
+    # hash for TLS+tag. Off that endpoint the trade is not ours to make, so the
+    # recipe's own checksum stands.
+    case "${url}" in
+        https://codeberg.org/*/archive/*) ;;
+        *)
+            echo "WARNING: soundtouch no longer fetches a Codeberg auto-archive (${url}); TOFU re-pin SKIPPED, upstream's tarball_checksum stands" >&2
+            return 0 ;;
+    esac
+
     tmp="$(mktemp)"
     if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then
-        actual="$(sha256sum "${tmp}" | awk '{print $1}')"
-        if [ -n "${actual}" ] && [ "${actual}" != "${cur}" ]; then
+        # `|| actual=""` is load-bearing: the script runs under
+        # `set -euo pipefail`, so a failing sha256sum makes the whole pipeline
+        # non-zero and the bare assignment would ABORT the build instead of
+        # reaching the guard below — the guard was written first without it and
+        # was therefore unreachable, i.e. exactly the kind of dead check this
+        # sweep keeps finding. Now an unhashable download degrades to a warning.
+        actual="$(sha256sum "${tmp}" | awk '{print $1}')" || actual=""
+        if [ -z "${actual}" ]; then
+            echo "WARNING: could not hash the fetched soundtouch archive; leaving recipe as-is" >&2
+        elif [ "${actual}" != "${cur}" ]; then
             sed -i "s/${cur}/${actual}/g" "${recipe}"
             echo "Re-pinned soundtouch tarball checksum ${cur} -> ${actual} (live Codeberg archive ${ver})"
         else

@@ -282,11 +282,38 @@ _opencv_target_adjustments() {
             if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
-            # RV1-FOLGE 4 (2026-08-20): the contrib freetype module now
-            # activates (RV1's dev packages) but resolves the HOST x86
-            # libharfbuzz in the riscv64 cross link ("file in wrong format").
-            # Text-rendering nicety, not core — off until the harfbuzz
-            # resolution is sysroot-clean (rides RV1-GST-PC's root cause).
+            # RV1-FREETYPE — STAYS OFF. Re-investigated 2026-08-23 against the
+            # SHIPPED wave-5 log (out/build-logs/media-riscv64.log), not from
+            # memory. The blocker is NOT the now-closed RV1-GST-PC glib
+            # poisoning, as the old note here implied ("rides RV1-GST-PC's root
+            # cause") — that reading invites a flip that costs a full media
+            # rebuild to disprove. The real blocker: riscv64 has no target
+            # harfbuzz DEV package in the sysroot at configure time.
+            #   * arm64 gets libharfbuzz-dev:arm64 for free — libpango1.0-dev
+            #     (gstreamer/install-deps.sh pre-setup) depends on it — and its
+            #     cmake dump accordingly carries
+            #     -DHARFBUZZ_LIBRARY=/usr/lib/aarch64-linux-gnu/libharfbuzz.so.
+            #   * riscv64 skips that whole chain (MEDIA_SKIP_CAIRO_PANGO_PIXBUF
+            #     =1) and opencv/install-deps.sh's own attempt sits behind
+            #     `if ! dpkg -l libfreetype-dev:<arch>` — already satisfied by
+            #     gstreamer's deps — so libharfbuzz-dev is never even requested.
+            #     Only the RUNTIME libharfbuzz0b:riscv64 lands: no .so dev
+            #     symlink, no headers. The riscv64 cmake dump therefore has
+            #     FREETYPE_LIBRARY but NO HARFBUZZ_LIBRARY line at all.
+            # With HARFBUZZ_LIBRARY unset and CMAKE_FIND_ROOT_PATH_MODE_LIBRARY
+            # =BOTH (appended later by the cross opts), find_library falls
+            # through to the host /usr/lib/x86_64-linux-gnu/libharfbuzz.so →
+            # "file in wrong format" at link. Re-enabling needs a TARGET
+            # harfbuzz FIRST, via either (a) libharfbuzz-dev:riscv64 — NOT a
+            # free apt line: it Depends on libglib2.0-dev, the exact ports
+            # package RV1-GST-PC banned from this sysroot — or (b) a
+            # source-built one through cross_compile_cmake_lib_from_source (the
+            # freetype/libpng pattern in install-deps.sh) plus staging
+            # libharfbuzz.so.0 into the runtime image. /opt/gstreamer is not a
+            # shortcut: its harfbuzz is a meson subproject and installs no
+            # headers into the prefix. Text rendering is a nicety, not core —
+            # the wheel smoke reports it as the riscv64-only opencv-freetype
+            # warning.
             _ota_cmake_opts+=("-DBUILD_opencv_freetype=OFF")
             # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop

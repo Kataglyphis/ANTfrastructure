@@ -663,13 +663,18 @@ and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
 
 ### Operational env knobs (not versions.env)
 
-Runtime/orchestration switches that are **not** pins or feature toggles:
+Runtime/orchestration switches that are **not** pins or feature toggles. The
+cache-related ones are only half the story — what each cache tier covers, what
+destroys it, and what replacing it costs is in
+[`docs/build-cache-tiers.md`](build-cache-tiers.md):
 
 | Knob | Effect |
 |---|---|
 | `NO_CACHE=1` | `--no-cache` across the whole chain. |
 | `RUNTIME_NO_CACHE=1` | `--no-cache` on just the runtime package + wrapper builds (use after a media toggle flip). |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
+| `NO_CACHE_EXPORT=1` | Drop everything registry-facing (inline cache export + registry cache reads). The manual recovery for the ghcr `DeadlineExceeded`/`httpReadSeeker` import flake — which the chain now also does by itself after two such failures. |
+| `CROSS_REGISTRY_CACHE=max` | **Pilot knob, off by default.** Adds a per-stage `<tag>-buildcache` registry cache with `mode=max`, the only tier that can carry intermediate (`COPY --from`) stage layers across a store wipe. Costs ~3 h of upload per media arch on this uplink — read [`build-cache-tiers.md` § S3](build-cache-tiers.md) and follow the pilot protocol there before using it, and use `build-cross-stage.sh`, not a full chain. |
 | `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
 | `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
 

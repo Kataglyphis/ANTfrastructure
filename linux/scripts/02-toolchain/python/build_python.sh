@@ -17,6 +17,15 @@ for _bs_path in \
 done
 
 source_module platform.sh
+# ubuntu_write_deb822_source() — the single source of truth for the deb822 apt
+# stanzas (TS8). Loaded EXPLICITLY, not left to cross-env.sh's tolerant load:
+# _python_cross_enable_multiarch_apt() below calls it, and a missing helper must
+# fail here (loud, at source time) rather than as a `command not found` in the
+# middle of the apt rewrite. It is available in every context that runs this
+# script: Dockerfile.toolchain bind-mounts linux/scripts/01-core/ubuntu-mirror.sh
+# to /opt/scripts/core/ubuntu-mirror.sh on the RUN that invokes build_python.sh,
+# and Dockerfile.{toolchain,package} COPY all of 01-core/ to /opt/scripts/core/.
+source_module ubuntu-mirror.sh
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
@@ -150,12 +159,18 @@ _python_cross_enable_multiarch_apt() {
     local _codename
     _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
-    printf 'Types: deb\nURIs: https://archive.ubuntu.com/ubuntu/\nSuites: %s %s-updates %s-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: amd64\n' \
-      "${_codename}" "${_codename}" "${_codename}" \
-      > /etc/apt/sources.list.d/ubuntu.sources
-    printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: %s %s-updates %s-backports %s-security\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\nArchitectures: arm64 riscv64\n' \
-      "${_codename}" "${_codename}" "${_codename}" "${_codename}" \
-      > /etc/apt/sources.list.d/ubuntu-ports.sources
+    # TS8: was the 4th hand-rolled copy of these two stanzas. Routed through the
+    # shared ubuntu-mirror.sh writer (same one cross-apt.sh:192 and
+    # Dockerfile.media:203/213 use) — byte-identical output: the helper emits
+    # "<codename> <codename>-updates <codename>-backports" plus "-security" only
+    # when its 5th arg is 1, which is exactly the archive(no-security)/ports(with)
+    # split this block had. The two URL defaults are the same constants the helper
+    # file already owns, so the literals are gone too. NOTE: deliberately NOT
+    # honouring USE_FAST_UBUNTU_MIRROR here — that would be a behaviour change.
+    ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources \
+      "$(ubuntu_default_archive_mirror_url)" "${_codename}" amd64 0
+    ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu-ports.sources \
+      "$(ubuntu_default_ports_mirror_url)" "${_codename}" "arm64 riscv64" 1
     apt-get update -qq 2>&1 || warn "apt-get update failed; multiarch repos may be unavailable"
   fi
 }

@@ -86,16 +86,28 @@ check_ndk() {
           # its creation; until 2026-08-08 it did not exist — everything above
           # is presence-only. The NDK clang is an x86_64 HOST binary, so it
           # executes on every branch; the emitted object is target-arch.
-          local ndk_tmp ndk_machine
+          local ndk_tmp ndk_machine ndk_want
           ndk_tmp="$(mktemp -d)"
           if printf 'int f(void){return 1;}\n' | "${cc}" -x c - -c -o "${ndk_tmp}/a.o" 2>/dev/null; then
-            ndk_machine="$(LC_ALL=C readelf -h "${ndk_tmp}/a.o" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -1 || true)"
-            case "${target_arch}:${ndk_machine}" in
-              aarch64:*AArch64*|x86_64:*X86-64*|riscv64:*RISC-V*)
-                pass "NDK clang ${target_arch}: compiles, object ELF machine=${ndk_machine}" ;;
-              *)
-                fail "NDK clang ${target_arch}: object ELF machine '${ndk_machine}' does not match target" ;;
-            esac
+            ndk_machine="$(smoke_elf_machine_of "${ndk_tmp}/a.o" || true)"
+            # The arch -> ELF-machine map is smoke-common's (which prefers
+            # 01-core/platform.sh when it is loaded); this file used to carry an
+            # 11th private copy of it as case globs. The loop keys are uname
+            # names, so normalize to OCI names first (aarch64 -> arm64, …).
+            ndk_want="$(smoke_elf_machine_grep "$(smoke_host_arch "${target_arch}")" 2>/dev/null || true)"
+            if [ -z "${ndk_want}" ]; then
+              # Never fall through to `case ... in *""*)`, which matches ANY
+              # string and would turn an unmapped arch into a silent pass —
+              # the exact fake-green class smoke-toolchain.sh already documents.
+              fail "NDK clang ${target_arch}: no ELF-machine mapping for this arch, object not verified"
+            else
+              case "${ndk_machine}" in
+                *"${ndk_want}"*)
+                  pass "NDK clang ${target_arch}: compiles, object ELF machine=${ndk_machine}" ;;
+                *)
+                  fail "NDK clang ${target_arch}: object ELF machine '${ndk_machine}' does not match target" ;;
+              esac
+            fi
           else
             fail "NDK clang for ${target_arch} exists but cannot compile a trivial object"
           fi

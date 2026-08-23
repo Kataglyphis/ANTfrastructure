@@ -141,6 +141,79 @@ smoke_load_platform() {
   return 0
 }
 
+# ── binary / component gate helpers (backlog D3) ────────────────────────────
+# Four idioms that smoke-media.sh had hand-written at 5 + 4 + 2 sites, each
+# spelling its message out inline — so a wording or semantics fix only ever
+# reached the copy that happened to be edited. They live here now; the drift
+# guard in tests/test-smoke-arch-parity.sh keeps them here.
+
+# Resolve a tool to the path the caller should use: its PATH location when it
+# has one, else the supplied fallback. ALWAYS succeeds (the fallback branch is
+# a printf), so `x="$(smoke_resolve_bin …)"` cannot trip errexit; deciding
+# whether the result is usable stays with the caller's [ -x ] test. The
+# fallback matters because a build-stage RUN inherits the ENV of the PREVIOUS
+# layer: tools that ship under /opt/<pkg>/bin are routinely off PATH there.
+smoke_resolve_bin() {
+  command -v "$1" 2>/dev/null || printf '%s' "$2"
+}
+
+# True when a file carries the ELF magic. Deliberately the same 3-byte test
+# (bytes 2-4 of the header) the smoke-media sites used, so lifting them here
+# cannot change a verdict. `head` failing on a missing/unreadable file is
+# absorbed, so this returns a clean "no" instead of killing the smoke under
+# `set -e -o pipefail`.
+smoke_is_elf() {
+  [ "$(head -c4 "$1" 2>/dev/null | tail -c3 || true)" = "ELF" ]
+}
+
+# A binary that is PRESENT but cannot execute *here* is the normal build-sandbox
+# state (ld paths and ENV land later, in configure-runtime.sh), so report it as
+# INFO — but never as a pass, and never let a zero-byte/truncated/wrong-format
+# file through: that is a real defect and fails.
+smoke_deferred_if_elf() {
+  local label="$1" path="$2" info="$3"
+  if smoke_is_elf "${path}"; then
+    echo "  INFO: ${info}"
+  else
+    fail "${label} at ${path} is not an ELF binary"
+  fi
+}
+
+# Cross build: the artifact is foreign-arch, so nothing in this container can
+# run or import it. Prove presence, say so, and report rc 0 = "handled, skip
+# the functional half"; rc 1 = "not a cross build — go run the real check".
+# The noun/action pair is what distinguishes the binary sites ("binary" /
+# "execution") from the library and Python-bindings sites ("import").
+smoke_cross_presence_gate() {
+  local label="$1" path="$2" noun="${3:-binary}" action="${4:-execution}"
+  cross_build_is_active 2>/dev/null || return 1
+  pass "${label} ${noun} present at ${path} (cross build — ${action} skipped)"
+}
+
+# ELF machine string of a file (the value after "Machine:" in `LC_ALL=C readelf
+# -h`). Reads foreign-arch binaries fine — nothing is executed. Kept as the raw
+# pipeline rather than delegating to platform.sh's elf_machine_name(): all three
+# call sites guard readelf/readability themselves and depend on THIS pipeline's
+# exit status under `set -o pipefail`, and platform.sh is not sourced at all in
+# smoke-android.sh.
+smoke_elf_machine_of() {
+  # Same thin-wrapper contract as the arch helpers above: prefer the canonical
+  # platform.sh implementation, keep the inline pipeline only as the fallback
+  # for smokes that run without platform.sh mounted. Written as a copy first,
+  # which would have made this the FOURTH instance of the same readelf|sed|head
+  # pipeline — the exact sprawl this helper block exists to end. Delegating
+  # also inherits platform.sh's readelf-present and file-readable guards.
+  if command -v elf_machine_name >/dev/null 2>&1; then
+    elf_machine_name "$1"
+    return
+  fi
+  command -v readelf >/dev/null 2>&1 || return 1
+  [ -r "$1" ] || return 1
+  LC_ALL=C readelf -h "$1" 2>/dev/null \
+    | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' \
+    | head -n1
+}
+
 # Check that a command's output contains an expected string.
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
 check_version() {
@@ -204,7 +277,7 @@ _cc_check_binary_elf() {
   local cc_path="$1" label="$2" expected_machine="$3"
   command -v readelf >/dev/null 2>&1 || return 0
   local cc_machine
-  cc_machine="$(LC_ALL=C readelf -h "${cc_path}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+  cc_machine="$(smoke_elf_machine_of "${cc_path}")"
   if [ -n "${cc_machine}" ]; then
     case "${cc_machine}" in
       *"${expected_machine}"*) pass "${label}: ELF machine=${cc_machine}" ;;
@@ -225,7 +298,7 @@ _cc_check_object() {
     pass "${label}: cc1 compile-to-object smoke OK"
     if command -v readelf >/dev/null 2>&1 && [ -f "${cc_obj}" ]; then
       local obj_machine
-      obj_machine="$(LC_ALL=C readelf -h "${cc_obj}" 2>/dev/null | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' | head -n1)"
+      obj_machine="$(smoke_elf_machine_of "${cc_obj}")"
       case "${obj_machine}" in
         *"${expected_machine}"*) pass "${label}: object ELF machine=${obj_machine}" ;;
         *) fail "${label}: object ELF machine=${obj_machine} != expected ${expected_machine}" ;;

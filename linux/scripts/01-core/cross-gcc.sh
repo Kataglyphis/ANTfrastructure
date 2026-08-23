@@ -11,8 +11,26 @@ fi
 [ -z "${_CROSS_GCC_LOADED:-}" ] || return 0
 _CROSS_GCC_LOADED=1
 
+# SSOT-of-the-default for the source-built GCC toolchain inside the cross-env
+# sourcing pass (backlog DUP2). cross-env.sh hard-sources this file (no `[ -f ]`
+# guard), so every consumer of that pass can call these helpers instead of
+# re-spelling the version.
+#
+# The fallback literal below stays an inline literal ON PURPOSE and must NOT be
+# routed through common.sh / versions.env: a mount audit of the RUNs that bind
+# cross-gcc.sh found two that mount NEITHER (Dockerfile.toolchain's RUN at line
+# 266 and Dockerfile.media's RUN at line 414), so there GCC_VERSION can only
+# come from the stage ARG/ENV and the literal IS the last-resort value. Keeping
+# it in the `VAR:-literal` expansion form is also what lets
+# verify-arg-consistency.sh's "GCC toolchain default literal check" pin it to
+# versions.env, which is how the ~25 sibling copies across linux/ are kept from
+# drifting on the next GCC bump.
+gcc_toolchain_version() {
+  printf '%s' "${GCC_VERSION:-16.2.0}"
+}
+
 gcc_toolchain_prefix() {
-  printf '%s' "/opt/gcc-${GCC_VERSION:-16.2.0}"
+  printf '%s' "/opt/gcc-$(gcc_toolchain_version)"
 }
 
 gcc_toolchain_bindir() {
