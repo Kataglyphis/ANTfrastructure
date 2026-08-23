@@ -411,6 +411,90 @@ if ($rtTarget.Count -gt 0) {
 # re-enabling it fail silently instead of loudly.
 Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
 
+# ── OpenSSL for aarch64 (2026-08-23) ─────────────────────────────────────────
+# scoop installs ONE architecture per app, and that is the host's: the image gets
+# lib\VC\x64\MD\libcrypto.lib and nothing else. Four GStreamer targets link
+# OpenSSL and therefore fail at link on the cross lane (measured 2026-08-23, all
+# four with the same error):
+#   gst-plugins-bad ext/hls, ext/dtls, ext/aes, and glib-networking's openssl TLS backend
+#   lld-link: error: libcrypto.lib(libcrypto-4-x64.dll): machine type x64 conflicts with arm64
+# Losing them would cost HTTP Live Streaming, DTLS/WebRTC and AES on arm64.
+#
+# The scoop manifest already knows an arm64 source, so this uses the SAME upstream
+# artifact scoop would, with the manifest's own SHA256:
+#   "arm64": { "url": "https://slproweb.com/download/Win64ARMOpenSSL-4_0_1.exe" }
+# It is installed ALONGSIDE the x64 one (never replacing it -- this layer is shared
+# with the amd64 lane) into a fixed directory that the GStreamer build points
+# pkg-config at on the cross lane.
+#
+# Warn-only, like the Vulkan ARM64 component above and for the same reason: an
+# arm64-only prerequisite must not be able to break the amd64 build.
+$sslArm64Root = 'C:\opt\openssl-arm64'
+$sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+if ($sslArm64Lib.Count -gt 0) {
+    Write-Host "OpenSSL (aarch64) already present ($($sslArm64Lib[0].FullName))."
+} else {
+    $sslUrl  = 'https://slproweb.com/download/Win64ARMOpenSSL-4_0_1.exe'
+    $sslSha  = '397146c4317e84dbad20f8a3222b0af6414db8db11a8a3bfe7de11990b39cbaa'
+    $sslExe  = Join-Path $env:TEMP 'Win64ARMOpenSSL.exe'
+    try {
+        Write-Host "Fetching aarch64 OpenSSL from $sslUrl (installed beside the x64 build, never replacing it)"
+        Invoke-DownloadWithRetry -Url $sslUrl -DestinationPath $sslExe
+        $got = (Get-FileHash -LiteralPath $sslExe -Algorithm SHA256).Hash
+        if ($got -ine $sslSha) { throw "sha256 mismatch: got $got, expected $sslSha (this is the hash scoop's own openssl manifest pins for the arm64 asset)" }
+        # EXTRACT, do not run. The scoop manifest marks this asset
+        # `"innosetup": true`, which is exactly how scoop installs it: with
+        # innounp, never by executing the installer. Running it silently was
+        # tried first (2026-08-23) and is what NOT to do -- the whole step took
+        # 11.8 s including the 218 MB download, exited 0, and produced no files
+        # at all, so a silent no-op looked like success.
+        #
+        # Extraction is also the right shape here for a second reason: this must
+        # land BESIDE the x64 install without touching the registry or the
+        # Windows system directory, and an extractor cannot do either.
+        $innounp = (Get-Command innounp -ErrorAction SilentlyContinue).Source
+        if (-not $innounp) {
+            $cand = Join-Path $env:USERPROFILE 'scoop\apps\innounp\current\innounp.exe'
+            if (Test-Path $cand) { $innounp = $cand }
+        }
+        if (-not $innounp) { throw 'innounp not found (scoop installs it for innosetup manifests such as openssl) - cannot extract the aarch64 OpenSSL package.' }
+        New-Item -Path $sslArm64Root -ItemType Directory -Force | Out-Null
+        # -x extract, -y overwrite, -d<dir> destination. Output is logged rather
+        # than swallowed: the previous attempt failed silently precisely because
+        # nothing looked at it.
+        $unpOut = & $innounp -x -y "-d$sslArm64Root" $sslExe 2>&1
+        $unpCode = $LASTEXITCODE
+        $global:LASTEXITCODE = 0
+        Write-Host "innounp exit=$unpCode; last lines:"
+        @($unpOut) | Select-Object -Last 6 | ForEach-Object { Write-Host "    $_" }
+    } catch {
+        Write-Warning "aarch64 OpenSSL fetch/install failed: $($_.Exception.Message)"
+    } finally {
+        Remove-Item -Path $sslExe -Force -ErrorAction SilentlyContinue
+    }
+
+    # Resolve by SEARCH, never by assuming slproweb's layout -- the same discipline
+    # the compiler-rt step uses. Whatever directory holds libcrypto.lib IS the lib
+    # dir, and the consumer is told about it rather than guessing.
+    $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($sslArm64Lib.Count -gt 0) {
+        Write-Host "OpenSSL (aarch64) installed -> $($sslArm64Lib[0].FullName)"
+        # Log the shape once so the consumer side can be written against FACT.
+        @('include', 'lib') | ForEach-Object {
+            $d = Join-Path $sslArm64Root $_
+            if (Test-Path $d) { Write-Host "  openssl-arm64/${_}: $((Get-ChildItem $d -Force | Select-Object -First 8 | ForEach-Object { $_.Name }) -join ', ')" }
+        }
+        $pcFound = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter '*.pc' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+        Write-Host "  openssl-arm64 pkgconfig files: $(if ($pcFound) { $pcFound -join ', ' } else { 'NONE (the consumer authors its own .pc)' })"
+    } elseif ($armStrict -eq '1') {
+        throw "OpenSSL for aarch64 is not installed under $sslArm64Root. gst-plugins-bad's hls/dtls/aes and glib-networking's openssl backend cannot link on the cross lane. WINDOWS_ARM64_STRICT=1 made this a hard gate."
+    } else {
+        Write-Warning ("OpenSSL for aarch64 is not installed under $sslArm64Root. The amd64 lane is unaffected; on arm64, " +
+                       "gst-plugins-bad's hls/dtls/aes and glib-networking's openssl TLS backend will fail to link. " +
+                       'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
+    }
+}
+
 # ── FLOATING (deliberate): tools the build only INVOKES ───────────────────────
 # None of these enter the compiled artifacts, so tracking scoop's current
 # manifest costs nothing and saves a pin-bump treadmill. Move a package UP to

@@ -470,6 +470,80 @@ int _isatty(int);
 #define fileno _fileno' | Out-File -FilePath $stubFile -Encoding ASCII
         log "Created stub unistd.h at $stubFile"
     }
+    # io.h force-include shim, used INSTEAD of a bare -FIio.h on the cross lane.
+    #
+    # meson hands `c_args` to .S files as well as to .c files -- assembly goes
+    # through the same compiler driver -- so a force-included C header lands in
+    # an ASSEMBLY translation unit, where it is parsed as instructions:
+    #   vadefs.h:76:9: error: unrecognized instruction mnemonic
+    #           typedef char* va_list;
+    # (measured 2026-08-23 on openh264's arm64_*_aarch64_neon.S). amd64 never
+    # hits it because the aarch64 .S files are only compiled for ARM targets --
+    # openh264 uses nasm .asm there.
+    #
+    # __ASSEMBLER__ is defined by clang for .S translation units and by nothing
+    # else, so this shim is a no-op exactly where the header is meaningless and
+    # byte-identical to -FIio.h everywhere else. It matters beyond openh264:
+    # dav1d, libvpx and x264 all ship aarch64 .S too, so fixing the flag beats
+    # disabling one subproject at a time.
+    $ioShim = Join-Path $stubDir 'gst-io-shim.h'
+    if (-not (Test-Path $ioShim)) {
+        '#pragma once
+/* See build-gstreamer-from-source.ps1: meson passes c_args to .S files too. */
+#ifndef __ASSEMBLER__
+#include <io.h>
+#endif' | Out-File -FilePath $ioShim -Encoding ASCII
+        log "Created io.h force-include shim at $ioShim (assembly-safe)"
+    }
+
+    # ---- 5b-bis. pre-place the win-pkgconfig binary (resilience, both lanes) ----
+    # win-pkgconfig is the ONE subproject that fetches with no fallback: its
+    # download-binary.py has a single MIRROR_URL, one urlopen, and zero retries.
+    # When gstreamer.freedesktop.org 503s, everything else survives -- win-flex-bison
+    # falls back to GitHub, nasm to nasm.us -- and this alone kills the merge.
+    # It cost three separate chain runs on 2026-08-23.
+    #
+    # download-binary.py opens with:
+    #     if os.path.isfile(dest_path) and sha256 matches: sys.exit(0)
+    # so pre-placing the archive removes the network from the critical path
+    # entirely. Invoke-DownloadWithRetry adds 4 attempts with exponential backoff
+    # where meson has none, and the hash is verified against the SAME constant
+    # meson checks, so a corrupt or truncated fetch cannot slip through.
+    #
+    # Deliberately NOT scoped to the cross lane: the outage hits amd64 identically,
+    # and this changes no compiler or linker command line -- only how a byte-identical
+    # archive arrives. A failure here is a WARNING, not a throw: meson still has its
+    # own attempt, and this must never be the thing that breaks a build.
+    $wpcDir = Join-Path $gstSrcDir 'subprojects/win-pkgconfig'
+    $wpcMeson = Join-Path $wpcDir 'meson.build'
+    if (Test-Path $wpcMeson) {
+        $wpcText = Get-Content -LiteralPath $wpcMeson -Raw
+        $wpcVer = ([regex]::Match($wpcText, "version\s*:\s*'([^']+)'")).Groups[1].Value
+        $wpcSha = ([regex]::Match($wpcText, "zip_hash\s*=\s*'([0-9a-fA-F]{64})'")).Groups[1].Value
+        if ($wpcVer -and $wpcSha) {
+            $wpcZip = Join-Path $wpcDir "pkg-config-$wpcVer.zip"
+            $wpcHave = (Test-Path $wpcZip) -and ((Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash -ieq $wpcSha)
+            if ($wpcHave) {
+                log "win-pkgconfig: pkg-config-$wpcVer.zip already present and matches $($wpcSha.Substring(0,12))..."
+            } else {
+                $wpcUrl = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"
+                try {
+                    Invoke-DownloadWithRetry -Url $wpcUrl -DestinationPath $wpcZip
+                    $got = (Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash
+                    if ($got -ieq $wpcSha) {
+                        log "win-pkgconfig: pre-placed pkg-config-$wpcVer.zip (sha256 verified) - meson will skip its own download"
+                    } else {
+                        Remove-Item -LiteralPath $wpcZip -Force -ErrorAction SilentlyContinue
+                        log "WARNING: win-pkgconfig prefetch sha256 mismatch (got $($got.Substring(0,12))..., want $($wpcSha.Substring(0,12))...) - removed; meson will retry the download itself"
+                    }
+                } catch {
+                    log "WARNING: win-pkgconfig prefetch failed ($($_.Exception.Message)) - meson will try its own single-shot download"
+                }
+            }
+        } else {
+            log "NOTE: could not parse version/zip_hash from $wpcMeson - skipping the win-pkgconfig prefetch"
+        }
+    }
     # (LLVM 22 mmintrin.h bug: cairo Win32 backend disabled via -Dcairo:win32=disabled)
     # (Cairo Win32 stubs handled in retry loop after meson downloads cairo)
 
@@ -525,6 +599,32 @@ int _isatty(int);
     if ($compilerRtLib) {
         $rtFullPath = $compilerRtLib.FullName -replace '\\', '/'
         log "Found compiler-rt: $rtFullPath"
+    }
+
+    # ---- 5d-bis. Vulkan import library must match the TARGET ----
+    # LunarG ships the aarch64 import libraries in a SEPARATE directory of the
+    # x64 SDK ($VULKAN_SDK\Lib-ARM64, an optional component that setup-scoop-tools.ps1
+    # installs), while $VULKAN_SDK\Lib holds the x64 ones and is what the image's
+    # environment already puts on LIB. Nothing pointed lld-link at the arm64 set,
+    # so gst-plugins-bad's Vulkan library linked the HOST import lib and died
+    # (measured 2026-08-23):
+    #   lld-link: error: vulkan-1.lib(vulkan-1.dll): machine type x64 conflicts with arm64
+    # Prepending is enough: LIB is searched in order, so the target's directory
+    # wins without having to remove the host's. amd64 resolves Get-VulkanLibDirName
+    # to 'Lib' and this block does not run at all.
+    if ($script:GstCross) {
+        if ([string]::IsNullOrWhiteSpace($env:VULKAN_SDK)) {
+            throw 'VULKAN_SDK is not set, so the target-arch Vulkan import library cannot be located. gst-plugins-bad would link the host vulkan-1.lib and fail with a machine-type conflict.'
+        }
+        $vkArchLib = Join-Path $env:VULKAN_SDK (Get-VulkanLibDirName -Arch $script:GstTargetArch)
+        if (-not (Test-Path (Join-Path $vkArchLib 'vulkan-1.lib'))) {
+            throw ("Vulkan import library for $($script:GstTargetArch) not found at $vkArchLib\vulkan-1.lib. " +
+                   'It ships as the OPTIONAL com.lunarg.vulkan.arm64 component of the x64 SDK and is installed by ' +
+                   'setup-scoop-tools.ps1 (warn-only there, so a base built before that step will lack it). ' +
+                   'Without it lld-link picks the x64 vulkan-1.lib and fails with a machine-type conflict.')
+        }
+        $env:LIB = (@($vkArchLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+        log "Vulkan: prepended $vkArchLib to LIB (target-arch import library)"
     }
 
     # ---- 5e. Windows SDK GUID import libs for clang-cl/lld-link ----
@@ -766,8 +866,57 @@ int _isatty(int);
                 -IncludeDir $ortIncludes -LibDir $ortLib -Library @('onnxruntime') `
                 -PkgConfigDir (Join-Path $ortLib 'pkgconfig'))
 
-        # Make the two new pkgconfig dirs visible to meson for THIS process.
-        $newPcDirs = @((Join-Path $ocvLib 'pkgconfig'), (Join-Path $ortLib 'pkgconfig'))
+        # OpenSSL for the TARGET arch (cross lane only).
+        # scoop installs one architecture per app -- the host's -- so the image's
+        # openssl is x64 only, and pkg-config finds its .pc first. Four targets
+        # link OpenSSL and all four died identically (measured 2026-08-23):
+        #   ext/hls, ext/dtls, ext/aes, glib-networking's openssl TLS backend
+        #   lld-link: error: libcrypto.lib(libcrypto-4-x64.dll): machine type x64 conflicts with arm64
+        # setup-scoop-tools.ps1 installs the arm64 build beside it at
+        # C:\opt\openssl-arm64; this points pkg-config there FIRST.
+        #
+        # The lib directory is found by SEARCH rather than assumed: slproweb's
+        # layout (lib\VC\<arch>\MD) is upstream's business, not a constant worth
+        # hardcoding here. If that tree ships its own .pc files they win; if not,
+        # they are authored with the same helper OpenCV and ORT already use --
+        # both of those ship no .pc either, so this is the established path.
+        $sslPcDirs = @()
+        if ($script:GstCross) {
+            $sslRoot = 'C:\opt\openssl-arm64'
+            $sslLibHit = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($sslLibHit.Count -eq 0) {
+                throw ("OpenSSL for $($script:GstTargetArch) not found under $sslRoot (no libcrypto.lib). " +
+                       'setup-scoop-tools.ps1 installs it warn-only, so a base built before that step will lack it. ' +
+                       "Without it gst-plugins-bad's hls/dtls/aes and glib-networking's openssl backend link the x64 " +
+                       'import library and fail with a machine-type conflict.')
+            }
+            $sslLibDir = $sslLibHit[0].Directory.FullName
+            $sslInc = Join-Path $sslRoot 'include'
+            $sslOwnPc = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'openssl.pc' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($sslOwnPc.Count -gt 0) {
+                $sslPcDirs = @($sslOwnPc[0].Directory.FullName)
+                log "OpenSSL ($($script:GstTargetArch)): using upstream pkgconfig at $($sslPcDirs[0])"
+            } else {
+                $sslPcDir = Join-Path $resolvedLogDir 'openssl-arm64-pkgconfig'
+                New-Item -Path $sslPcDir -ItemType Directory -Force | Out-Null
+                # Three modules: consumers ask for libcrypto, libssl or the
+                # umbrella 'openssl' depending on the plugin.
+                [void](Write-PkgConfigFile -Name 'libcrypto' -Version '4.0.1' -Description 'OpenSSL cryptography library (aarch64)' `
+                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libcrypto') -PkgConfigDir $sslPcDir)
+                [void](Write-PkgConfigFile -Name 'libssl' -Version '4.0.1' -Description 'OpenSSL TLS library (aarch64)' `
+                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libssl', 'libcrypto') -PkgConfigDir $sslPcDir)
+                [void](Write-PkgConfigFile -Name 'openssl' -Version '4.0.1' -Description 'OpenSSL (aarch64)' `
+                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libssl', 'libcrypto') -PkgConfigDir $sslPcDir)
+                $sslPcDirs = @($sslPcDir)
+                log "OpenSSL ($($script:GstTargetArch)): authored libcrypto/libssl/openssl .pc in $sslPcDir (lib dir $sslLibDir)"
+            }
+        }
+
+        # Make the new pkgconfig dirs visible to meson for THIS process. The
+        # OpenSSL ones go FIRST so they win over the image's x64 openssl.pc.
+        # NB the explicit @(...) + @(...): '+' binds tighter than ',', so
+        # @($a + $b, $c) would nest $a+$b as ONE element instead of flattening.
+        $newPcDirs = @($sslPcDirs) + @((Join-Path $ocvLib 'pkgconfig'), (Join-Path $ortLib 'pkgconfig'))
         $env:PKG_CONFIG_PATH = (@($newPcDirs + ($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })) | Select-Object -Unique) -join ';'
         log "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
 
@@ -923,6 +1072,53 @@ int _isatty(int);
         }
     }
 
+    # ── gst-plugins-bad Vulkan lib dir (ARM cross only) ──────────────────────
+    # Upstream bug, same class as the SSE gate above: the WRONG MACHINE is asked.
+    # subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build does
+    #     vulkan_root = os.environ.get("VK_SDK_PATH")
+    #     if build_machine.cpu_family() == 'x86_64'
+    #       vulkan_lib_dir = join_paths(vulkan_root, 'Lib')
+    #     else
+    #       vulkan_lib_dir = join_paths(vulkan_root, 'Lib32')
+    #     vulkan_lib = cc.find_library('vulkan-1', dirs: vulkan_lib_dir, ...)
+    # `build_machine` is the machine doing the compiling, which is x86_64 here no
+    # matter what we are targeting -- so an aarch64 build is pointed at the x64
+    # import library and dies at link (measured 2026-08-23):
+    #   lld-link: error: vulkan-1.lib(vulkan-1.dll): machine type x64 conflicts with arm64
+    # Because the directory is passed EXPLICITLY via `dirs:`, no amount of LIB
+    # ordering on our side can override it -- that was tried first and had no
+    # effect at all.
+    #
+    # meson itself already gets this right; gst-plugins-bad simply does not use
+    # it. mesonbuild/dependencies/ui.py:199-207 (VulkanDependencySystem) maps
+    # build x86_64 + host aarch64 -> 'Lib-ARM64', which is exactly the branch
+    # added here. LunarG ships those import libraries in that separate directory
+    # of the x64 SDK (the optional com.lunarg.vulkan.arm64 component).
+    if ($script:GstCross) {
+        $gstVkMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build'
+        if (-not (Test-Path $gstVkMeson)) {
+            log "NOTE: $gstVkMeson not found - skipping the Vulkan lib-dir fix (layout changed?)"
+        } elseif ((Get-Content -LiteralPath $gstVkMeson -Raw) -match "Lib-ARM64") {
+            log 'gst-plugins-bad Vulkan lib-dir fix already applied.'
+        } else {
+            $vkDirName = Get-VulkanLibDirName -Arch $script:GstTargetArch
+            $vkCpu = switch ($script:GstTargetArch) {
+                'arm64' { 'aarch64' }
+                default { throw "build-gstreamer: no meson cpu_family mapping for '$($script:GstTargetArch)' in the Vulkan lib-dir fix." }
+            }
+            [void](Invoke-InlineRegexPatch -Path $gstVkMeson `
+                    -Guard "build_machine\.cpu_family\(\) == 'x86_64'" `
+                    -Pattern "if build_machine\.cpu_family\(\) == 'x86_64'\r?\n(\s*)vulkan_lib_dir = join_paths\(vulkan_root, 'Lib'\)" `
+                    -Replacement "if host_machine.cpu_family() == '$vkCpu'`n`${1}vulkan_lib_dir = join_paths(vulkan_root, '$vkDirName')`n    elif build_machine.cpu_family() == 'x86_64'`n`${1}vulkan_lib_dir = join_paths(vulkan_root, 'Lib')" `
+                    -Description "gst-plugins-bad: Vulkan lib dir follows host_machine, not build_machine")
+            if ((Get-Content -LiteralPath $gstVkMeson -Raw) -notmatch [regex]::Escape($vkDirName)) {
+                throw ("gst-plugins-bad vulkan/meson.build: the lib-dir fix did not apply (upstream layout changed?). " +
+                       "Without it the aarch64 build links the x64 vulkan-1.lib and fails with a machine-type conflict. Re-check $gstVkMeson.")
+            }
+            log "Patched gst-plugins-bad: Vulkan lib dir -> $vkDirName (host_machine, not build_machine)."
+        }
+    }
+
     Switch-BuildPhase '6. meson setup'
     # ---- 6. meson setup (retry with wrap cleanup) ----
     # Meson cross file. Meson has NO per-target compiler property the way CMake
@@ -998,6 +1194,8 @@ endian = 'little'
         log "Meson cross file for $gstTargetArch ($gstTriple): $crossFile"
         Get-Content $crossFile | ForEach-Object { log "  cross| $_" }
     }
+    # amd64 keeps the literal '-FIio.h' so its configure command line is byte-identical.
+    $ioFI = if ($script:GstCross) { '-FIgst-io-shim.h' } else { '-FIio.h' }
     $setupArgs = @(
         'setup', '--vsenv',
         $resolvedBuildDir, $gstSrcDir,
@@ -1047,8 +1245,12 @@ endian = 'little'
         # The `if` guards the SEPARATOR too -- appending " $gstCrossArg"
         # unguarded would leave a trailing space in the amd64 option value, which
         # is a byte difference in the emitted configure command line.
-        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef$(if ($gstCrossArg) { " $gstCrossArg" })",
-        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg -FIio.h -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })",
+        #
+        # $ioFI is '-FIio.h' on amd64 (unchanged, byte for byte) and the
+        # assembly-safe shim on the cross lane -- see the gst-io-shim.h block in
+        # phase 5b for why a force-included C header breaks aarch64 .S files.
+        "-Dc_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Disatty=_isatty -Dfileno=_fileno -Dclose=_close -Dwrite=_write -DSTDOUT_FILENO=1 -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types -Wno-undef$(if ($gstCrossArg) { " $gstCrossArg" })",
+        "-Dcpp_args=-I$env:TEMP_DIR\includes $script:TfliteIncludeArg $ioFI -Wno-cast-function-type-mismatch -Wno-incompatible-function-pointer-types -Wno-incompatible-pointer-types$(if ($gstCrossArg) { " $gstCrossArg" })",
         # ── Maximum feature set (see also $guidLibs above for the GUID fix) ──
         # mediafoundation ENABLED: modern Windows webcam capture (mfvideosrc +
         # MF device provider) required by the Rust capture path. Needs the GUID
@@ -1145,9 +1347,25 @@ endian = 'little'
         # hit SSL retry backoff) is pure waste. Retry ONLY transient failures;
         # short-circuit on a hard `meson.build:LINE:COL: ERROR/Exception`.
         $hardError = @($mesonOut + $mesonLogLines) -match 'meson\.build:\d+:\d+: (ERROR|Exception)'
-        if ($hardError) {
+        # ... EXCEPT that a failed DOWNLOAD wears exactly that costume. Several
+        # subprojects fetch a binary during configure (win-pkgconfig,
+        # win-flex-bison, ...), and when the fetch fails meson reports it as
+        #   subprojects\win-pkgconfig\meson.build:13:6: ERROR: Command `...
+        #   download-binary.py 0.29.2 <sha>` failed
+        # which is formally indistinguishable from a real configure error. It is
+        # NOT deterministic: measured 2026-08-23, gstreamer.freedesktop.org
+        # answered `HTTP Error 503: Backend unavailable, connection timeout` and
+        # the very next subproject recovered by falling back to its GitHub
+        # mirror. Short-circuiting there cost a whole chain run for an outage on
+        # someone else's server, so a network-shaped failure is retried even when
+        # it arrives in meson.build:LINE:COL clothing.
+        $networkError = @($mesonOut + $mesonLogLines) -match 'HTTP Error \d+|Failed to download|URLError|SSLError|urlopen error|timed out|connection timeout|actively refused|Temporary failure in name resolution'
+        if ($hardError -and -not $networkError) {
             log "meson setup hit a deterministic configure error; NOT retrying (a retry repeats it identically after a full wrap re-download): $($hardError[-1].Trim())"
             break
+        }
+        if ($hardError) {
+            log "meson setup failed with a meson.build error that carries a NETWORK signature - treating as transient and retrying: $($networkError[-1].Trim())"
         }
 
         if ($attempt -eq 1) {
@@ -1233,6 +1451,18 @@ endian = 'little'
         log "Compiling GStreamer (attempt $cAttempt/2, may take 30-60 min)..."
         $gstStallGuard = Start-SccacheStallGuard -MarkerPath (Join-Path $resolvedLogDir 'gstreamer-stall-guard.marker')
         try {
+            # HOW THE HOST-ARCH LINK FAILURES WERE ENUMERATED (2026-08-23): ninja
+            # stops at the FIRST failing target, so each plugin that links a
+            # host-arch third-party library costs a full ~22-minute cycle to
+            # discover -- openh264, gstvulkan and gstaes were each found that way,
+            # one per run. Adding `--ninja-args=-k,0` keeps going and lists every
+            # remaining one in a single pass; that sweep returned exactly four
+            # targets, all OpenSSL (hls, dtls, aes, glib-networking's openssl
+            # backend), which is what justified fixing OpenSSL once rather than
+            # four plugins one at a time. Re-run that sweep after a GStreamer
+            # version bump. NB the value needs ONE token with '=': argparse
+            # refuses a separate value starting with '-', and meson parses it
+            # with listify_array_value, so '-k,0' becomes ['-k','0'].
             & $mesonExe compile -C $resolvedBuildDir -j $gstJobs 2>&1 | ForEach-Object { if ($_) { log $_ } }
         } finally {
             Stop-SccacheStallGuard -Guard $gstStallGuard
