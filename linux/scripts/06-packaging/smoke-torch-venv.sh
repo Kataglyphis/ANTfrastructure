@@ -272,13 +272,22 @@ try:
         return m.group(1) if m else "?"
     _gst = _backend("GStreamer")
     _ff  = _backend("FFMPEG")
-    if is_riscv64:
-        print("  --  cv2 videoio      GStreamer=%s FFMPEG=%s (riscv64: gstreamer OFF by design)" % (_gst, _ff))
-    elif _gst.upper().startswith("YES"):
-        print("  OK  cv2 videoio      GStreamer=%s (two-pass intact); FFMPEG=%s (advisory, OCV-FF1)" % (_gst, _ff))
+    # SMK1-3ARCH (2026-08-23): both backends are now HARD asserts on ALL three
+    # arches. The old riscv64 exemption printed "gstreamer OFF by design" on the
+    # very line where the probe said GStreamer=YES — wave-5 ships GStreamer:YES
+    # AND FFMPEG:YES on amd64/arm64/riscv64 (verified on shipped bytes, and by
+    # running real gst/ffmpeg pipelines in the images), so the premise is gone
+    # and FFMPEG no longer stays advisory (that was OCV-FF1's on-green rider).
+    _gst_ok = _gst.upper().startswith("YES")
+    _ff_ok = _ff.upper().startswith("YES")
+    if _gst_ok and _ff_ok:
+        print("  OK  cv2 videoio      GStreamer=%s; FFMPEG=%s" % (_gst, _ff))
     else:
-        fails.append("cv2 GStreamer backend=%s (two-pass regressed; expected YES)" % _gst)
-        print("  XX  cv2 videoio      GStreamer=%s — two-pass REGRESSED (expected YES)" % _gst)
+        if not _gst_ok:
+            fails.append("cv2 GStreamer backend=%s (two-pass regressed; expected YES)" % _gst)
+        if not _ff_ok:
+            fails.append("cv2 FFMPEG backend=%s (OCV-FF1 regressed; expected YES)" % _ff)
+        print("  XX  cv2 videoio      GStreamer=%s FFMPEG=%s — REGRESSED (both expected YES)" % (_gst, _ff))
 except Exception as e:
     if cv_required:
         fails.append("cv2 %s" % e)
