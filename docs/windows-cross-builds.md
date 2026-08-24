@@ -44,8 +44,8 @@ produce, and which gates keep it honest.
 > "The merge stage on arm64". TVM's `X86;NVPTX`-only LLVM is **this repo's own** target list —
 > adding `AArch64` is a one-token edit — and the real cross cost is that `USE_LLVM` must
 > *execute* `llvm-config` (backlog #116, which also covers IREE; its Phase 0 — LLVM built with
-> `X86;AArch64;NVPTX` — is part of the amd64 full regression currently **in progress**, not yet
-> green). `media-litert` left this list on 2026-08-24 (#115 done): plain **LiteRT** cross-builds,
+> `X86;AArch64;NVPTX` — **passed** in the 2026-08-24 amd64 full regression: media-tvm green, arch
+> gate 1134/0, smoke 220/0/0). `media-litert` left this list on 2026-08-24 (#115 done): plain **LiteRT** cross-builds,
 > and only LiteRT-**LM** stays genuinely blocked, twice over — no windows-arm64 config in its
 > `.bazelrc` AND the x86_64-only prebuilt `libGemmaModelConstraintProvider` in the default
 > Windows dependency graph — its stage self-skips and stages the empty `litert-lm` stand-in tree
@@ -521,7 +521,7 @@ it turned out, for the reason first recorded here:
 
 | Branch | Why it is still absent |
 |---|---|
-| `media-tvm` (also carries **IREE**) | **Corrected 2026-08-24: the reason recorded here was wrong.** This row said TVM's own LLVM is built with `-DLLVM_TARGETS_TO_BUILD=X86;NVPTX` "so its codegen cannot emit aarch64 at all" — as if that were upstream's constraint. The target list is **this repo's own array** in `build-tvm-from-source.ps1`; adding `AArch64` is a one-token edit. The real remaining cross cost is that `USE_LLVM=<path>` must **execute** `llvm-config`, which needs a host-tools/target-libs split — backlog #116. **IREE rides this same dropped branch** and went unnamed here until now; upstream supports `IREE_HOST_BIN_DIR` for exactly that split. **#116 Phase 0 is underway (2026-08-24):** the amd64 full regression now running builds TVM's LLVM with `X86;AArch64;NVPTX` — that run is **in progress**, not yet green. |
+| `media-tvm` (also carries **IREE**) | **Corrected 2026-08-24: the reason recorded here was wrong.** This row said TVM's own LLVM is built with `-DLLVM_TARGETS_TO_BUILD=X86;NVPTX` "so its codegen cannot emit aarch64 at all" — as if that were upstream's constraint. The target list is **this repo's own array** in `build-tvm-from-source.ps1`; adding `AArch64` is a one-token edit. The real remaining cross cost is that `USE_LLVM=<path>` must **execute** `llvm-config`, which needs a host-tools/target-libs split — backlog #116. **IREE rides this same dropped branch** and went unnamed here until now; upstream supports `IREE_HOST_BIN_DIR` for exactly that split. **#116 Phase 0 DONE (2026-08-24):** the amd64 full regression built TVM's LLVM with `X86;AArch64;NVPTX` and passed (media-tvm 21:17, arch gate 1134/0, smoke 220/0/0) — the x64 TVM can emit aarch64; the cross cost (executing llvm-config) is what remains. |
 
 `Dockerfile.media-merge-builder` copies from both with **unconditional** `COPY --from=media-litert` /
 `--from=media-tvm`, and a Dockerfile cannot make a `COPY` conditional. Since 2026-08-24 only

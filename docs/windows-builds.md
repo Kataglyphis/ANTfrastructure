@@ -2416,10 +2416,13 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   must be named wherever the absent branches are listed** (it was a silent casualty of TVM-only
   phrasings); upstream already supports the split there via `IREE_HOST_BIN_DIR`. Everything past
   Phase 0 (cross-capable minimal LLVM, IREE's in-tree LLVM and its host tools) is genuinely large.
-  **Status 2026-08-24:** Phase 0 is riding the amd64 full regression currently in flight — TVM's
-  LLVM building with `LLVM_TARGETS_TO_BUILD=X86;AArch64;NVPTX` in that run (media all-branches +
-  merge + final + smoke). It is **in progress, not yet green** — record the outcome here when the
-  run finishes, and never write "passed" before it is. The arm64 cross cost above is unchanged.
+  **Phase 0 DONE 2026-08-24, measured:** the amd64 full regression (media all-branches + merge +
+  final + smoke) built TVM's LLVM with `LLVM_TARGETS_TO_BUILD=X86;AArch64;NVPTX` and passed —
+  `media-tvm-built` green in 21:17 (sccache carried the LLVM rebuild; 9110 compile requests,
+  8388/8389 targets incl. IREE), then arch gate 1134/0 and smoke 220/0/0. The x64 image's TVM
+  can now emit aarch64 code. The arm64 cross cost above (executing `llvm-config`, the
+  host-tools/target-libs split, IREE's `IREE_HOST_BIN_DIR`) is unchanged and is what this entry
+  now consists of.
 
 - **#117 — the arch gate covers `C:\runtime` only; the CPython tree is outside it.** S · ★★ · ✅ **RESOLVED 2026-08-24 (see the resolution below; the question stands as history).**
   `Dockerfile.media-merge-builder:172` fans in `C:\temp\cpython\Lib\site-packages`, and the gate runs
