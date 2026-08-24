@@ -103,21 +103,31 @@ the ship whose post-audit found the three gates above.
   issue trackers / upgrade; interim playbook: restart between chain rounds
   (cachemounts provably survive).
 
-- **APT-HTTP — the base image may fetch packages over plaintext http** [S/M·★★★,
-  FOUND 2026-08-23, NOT fixed — needs a decision] base-image.sh:221
-  deliberately rewrites the fast-mirror URL `https://…` → `http://…` because a
-  fresh Ubuntu image has no trusted CA bundle yet ("bootstrap the archive over
-  HTTP first"). The standalone RUN in Dockerfile.base that is positioned to
-  restore https afterwards was found INERT during the wave-2 review (the
-  preceding bootstrap-ca RUN has already applied the mirror, so the later RUN
-  has nothing left to do). If that holds, the base image — and every stage
-  FROM it — ships apt sources on http, so package integrity rests on apt's
-  signature checking alone with no transport security. VERIFY first (which
-  sources file ends up with which scheme, at which stage), then decide:
-  re-point to https once ca-certificates is installed, or document that
-  signature verification is considered sufficient. Do not fold this into an
-  unrelated change — it is the one finding of this sweep with a security
-  dimension.
+- **APT-HTTP — CORRECTED 2026-08-24: the shipped http is UPSTREAM Ubuntu's
+  own default, not our downgrade. Severity drops ★★★ → ★. Two separate
+  things were conflated:**
+  (a) *What actually ships* (measured inside latest-cross-amd64):
+  `URIs: http://archive.ubuntu.com/ubuntu/` and
+  `http://security.ubuntu.com/ubuntu/` — the plain Ubuntu base-image default
+  (`FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST}`), reached with
+  `USE_FAST_UBUNTU_MIRROR=false` (Dockerfile.base:19), i.e. our mirror path
+  NEVER RAN. So no code of ours put it on http, and apt signature
+  verification is the designed protection — this is how virtually every
+  Ubuntu container ships. Hardening to https is a legitimate but OPTIONAL
+  policy choice, and it is now possible because ca-certificates IS installed
+  in the final image (verified). Decide deliberately; it is not a defect.
+  (b) *A real LATENT bug, still open* [S·★★]: when the fast mirror IS
+  enabled, base-image.sh:~221 rewrites `https://<mirror>` → `http://<mirror>`
+  for the CA bootstrap, and NOTHING restores https afterwards. The standalone
+  RUN at Dockerfile.base:62 that looks like the restore is provably INERT:
+  use-fast-ubuntu-mirror.sh only rewrites entries matching
+  `https?://…archive\.ubuntu\.com/ubuntu/?` (ubuntu-mirror.sh:33), and after
+  the first RUN the sources name the MIRROR, so the grep finds nothing and it
+  returns without writing. Fix = restore the original scheme explicitly after
+  ca-certificates is installed (base-image.sh:~256), and teach
+  verify-ubuntu-mirror-consistency.sh to assert the SCHEME — today it only
+  greps that use-fast-ubuntu-mirror.sh is *referenced*, which is why this
+  passed unnoticed.
 - **SMOKE-DEPTH — the runtime smokes never execute anything real** [M·★★★,
   2026-08-23] three gaps found while verifying wave-5, all "green line, no
   proof": (a) media support is read from `cv2.getBuildInformation()`
