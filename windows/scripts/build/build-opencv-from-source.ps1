@@ -406,9 +406,13 @@ if ($ocvCross) {
     # arm64 image. BUILD_IPP_IW builds the IPP integration wrapper, which is
     # meaningless without IPP.
     $cmakeExtra += '-DWITH_IPP=OFF', '-DBUILD_IPP_IW=OFF'
-    # DirectML ships no arm64 import library, which is the same evidence that put
-    # ONNX Runtime on USE_DML=OFF for this lane -- keep the two consistent, or
-    # cv::dnn would advertise a backend the runtime cannot load.
+    # DirectML: OFF here is SEQUENCING, not a platform gap. The claim recorded
+    # until 2026-08-23 -- that DirectML ships no arm64 import library -- was wrong:
+    # Microsoft.AI.DirectML 1.15.4 ships bin/arm64-win/DirectML.lib (machine
+    # 0xAA64). ONNX Runtime failed on an upper/lower-case path mismatch in its own
+    # CMake, patched under backlog #113, and now builds USE_DML=ON on this lane.
+    # OpenCV stays OFF until that is proven green: cv::dnn would otherwise
+    # advertise a backend whose runtime half of the stack is unverified.
     $cmakeExtra += '-DWITH_DIRECTML=OFF'
     # INSTALL LAYOUT. OpenCV composes <root>\<OpenCV_ARCH>\<OpenCV_RUNTIME>\{bin,lib}
     # and its ARM64 branch in OpenCVDetectCXXCompiler.cmake keys off

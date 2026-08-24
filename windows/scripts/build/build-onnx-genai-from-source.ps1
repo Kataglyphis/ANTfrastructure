@@ -110,9 +110,15 @@ if ($gpuEnv.HasCuda -and -not $genaiCross) {
 }
 
 # -- cross-lane switches, each decided by the TARGET arch --
-# USE_DML: DirectML ships no arm64 import library (the nuget has no
-# bin/ARM64-win/DirectML.lib), and ORT itself was configured USE_DML=OFF on this
-# lane, so a DML GenAI would have nothing to link against on EITHER side.
+# USE_DML: OFF here is SEQUENCING, not a platform gap. The claim recorded until
+# 2026-08-23 -- "the nuget has no bin/ARM64-win/DirectML.lib" -- was wrong:
+# Microsoft.AI.DirectML 1.15.4 does ship bin/arm64-win/DirectML.lib (COFF import
+# archive, machine 0xAA64). What actually failed was an upper/lower-case mismatch
+# in ONNX Runtime own CMake; backlog #113 patches it and ORT now builds USE_DML=ON
+# on this lane too. GenAI stays OFF until that ORT build is proven green, because
+# GenAI links ORT and a half-enabled DML produces link errors that read like a
+# GenAI bug when they are not. Flip this to ON in the same change that confirms
+# ORT arm64 DML, not before.
 $genaiDmlArg = if ($genaiCross) { '-DUSE_DML=OFF' } else { '-DUSE_DML=ON' }
 # Python: no aarch64 CPython exists in this image (Get-SourceBuildPython is
 # host-pinned by design), so anything linking libpython would pull the x64
