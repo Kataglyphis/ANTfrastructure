@@ -1527,8 +1527,12 @@ prints a clear verdict:
   assume it is fixed.
 
 To test a hypothetical newer *matching-build* base image, pass `-Base <image>`.
-Baseline as of Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
-`servercore:ltsc2025`: **BUG PRESENT**.
+Baseline history: Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
+`servercore:ltsc2025` measured **BUG PRESENT**; the 2026-08-21 re-probe (after a
+Stevedore reinstall) measured **BUG GONE — process isolation commits fine**, which
+is the current baseline AGENTS.md § Isolation policy operates on. Re-probe (delete
+the probe cache first) rather than trusting either verdict after any Docker/
+containerd/host update.
 
 ### Run-side wcifs symptoms (process isolation)
 
@@ -1880,9 +1884,12 @@ Three things about the gate are load-bearing:
 - **Coverage floors, not just "0 failures".** `-MinPassed` / `-MaxSkipped`
   (driver: `-SmokeMinPassed` / `-SmokeMaxSkipped`, defaults 40 / 24) make
   "nothing ran" a distinct failure, **exit 3 = INSUFFICIENT COVERAGE**.
-  These floors describe the **amd64** lane only, and must not be re-tuned to
-  accommodate arm64: that lane does not run this suite at all (see above), and a
-  lowered floor left lying around is how a gate silently stops gating. The
+  These defaults describe the **amd64** lane and must not be re-tuned to
+  accommodate arm64: that lane has its OWN floor column and driver defaults
+  (66/25 — see the smoke-gate paragraph above; this sentence claimed "does not
+  run this suite at all" until 2026-08-24, contradicting that same paragraph),
+  and a lowered amd64 floor left lying around is how a gate silently stops
+  gating. The
   verdict used to read only `$summary.Failed`, so a run where every section
   skipped printed "All smoke tests passed!" and exited 0. `-SkipSmokeGate`
   exists for iterating on the chain itself and says loudly that the image is
@@ -2048,7 +2055,7 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 | `apply-containerd-config.ps1` | `windows/scripts/host/` | HOST config (admin, never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`: containerd runs with NO `config.toml` on this host, so its settings live only in the service's `ImagePath`/`Environment` registry values and existed nowhere in the repo until 2026-08-07. Owns: `--log-level debug --log-file` (permanent owner policy — truncate the log, never disable the flags), `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits the SERVICE environment; a shim built from the upstream patch keeps its 30 s defaults and silently reverts to the 0x3 defect without it — `TASK_CLOSE_TIMEOUT` stays unset on purpose, the patch derives it as 2×teardown+30 s), and the load-bearing Defender exclusions (otherwise invisible: `Get-MpPreference` needs admin). `-ReportOnly` shows drift without admin and changes nothing |
 | `compact-host-vhdx.ps1` | `windows/scripts/host/` | HOST maintenance (admin, never while a build solves): reclaims disk when the checkout/store sits on a dynamically-expanding VHDX. Kills stale `buildctl`, stops the build services, detaches → compacts (`Optimize-VHD`) → reattaches read-write in a `finally`, restarts. `-ReportOnly` reports sizes/guest-fs/reclaim potential without touching anything. Machine-specific values are all parameters (`-VhdxPath` mandatory, `-Service`, `-BlockingProcess`, `-VerifyPath`, `-LogPath`, `-Mode`). Warns on ReFS guests, where compaction reclaims ~nothing (measured: 0.2 GB of a possible 254 GB) — see § Store GC. When it reports a near-zero reclaim, `rebuild-host-vhdx.ps1` is the answer |
 | `repro-sccache-cuda-llm-deadlock.ps1` | `windows/scripts/diagnostics/` | **Deliberately fails.** Reproduces the sccache nvcc server deadlock and collects a server-side trace for mozilla/sccache#2808. Sets `SCCACHE_REPRO_CUDA_LLM=1`, which makes `build-onnx-from-source.ps1` SKIP patch 006 so the sccache CUDA launcher stays on for `onnxruntime_providers_cuda_llm` — the target the workaround exists to protect. Expect the build to die ~80 min in; that failure IS the artifact. Refuses to start while another `buildctl` is running (a concurrent build shares the sccache server and the locked mount, so a wedge would be unattributable). Needs `ARG SCCACHE_REPRO_CUDA_LLM` wired into `Dockerfile.media-builder`'s media-core-env stage first — it checks and throws with instructions if absent. |
-| `Dockerfile.smoke-gate` | `windows/` | Not a script — the automatic verification stage (backlog #44). Solved against the finished `winamd64` image as the last step of every **amd64** BK chain; a smoke-test failure fails the chain. NOT run on `-TargetArch arm64` — it verifies by executing staged binaries, which an x64 host cannot do with ARM64 code; that lane uses `verify-target-arch.ps1` in the merge stage instead. Runs a buildctl solve rather than `nerdctl run` because containerd's pipe is admin-only while the driver is non-admin, invokes the test **through `entrypoint.cmd`** (a bare RUN bypasses ENTRYPOINT and loses VsDevCmd + the ASAN runtime dir), and **bind-mounts** the current script + modules so a smoke-test fix needs no image rebuild to re-verify. Knobs: `-SkipSmokeGate`, `-SmokeMinPassed`, `-SmokeMaxSkipped`. |
+| `Dockerfile.smoke-gate` | `windows/` | Not a script — the automatic verification stage (backlog #44). Solved against the finished image as the last step of every BK chain — **both lanes** since 2026-08-24 (this row said "NOT run on arm64" until then, contradicting § Smoke Testing): on arm64 the suite runs its host-toolchain sections against the lane's own floors (66/25) while the aarch64 payload stays verified by `verify-target-arch.ps1` in the merge stage. Runs a buildctl solve rather than `nerdctl run` because containerd's pipe is admin-only while the driver is non-admin, invokes the test **through `entrypoint.cmd`** (a bare RUN bypasses ENTRYPOINT and loses VsDevCmd + the ASAN runtime dir), and **bind-mounts** the current script + modules so a smoke-test fix needs no image rebuild to re-verify. Knobs: `-SkipSmokeGate`, `-SmokeMinPassed`, `-SmokeMaxSkipped`. |
 | `patches/litert-lm/patch-assert.cmake` | `windows/scripts/` | `patch_replace_required` / `patch_regex_replace_required` — replace-with-verification for the CMake source patchers (backlog #56). `FATAL_ERROR`s when a pattern matched NOTHING, instead of the old bare `string(REPLACE)` + unconditional "Patched …" message that let an upstream reformat silently restore a fixed defect. Lives INSIDE `litert-lm/` because the Dockerfile COPYs that directory specifically. Enforced by `Patches.CmakeNoOpGuards.Tests.ps1`; a legitimate non-source replace opts out with a `patch-assert-exempt` marker + reason. |
 | `normalize-tensorrt-tree.ps1` | `windows/scripts/build/` | Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted `TensorRT-<version>` tree to a stable **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift, and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Backlog #38: the old pin-derived PATH was wrong twice over — wrong version AND wrong dir (TensorRT 10+ moved the DLLs to `bin\`), so the ORT TensorRT EP could never load, silently, while builds stayed green. Absent zip stays a supported graceful skip; a half-extracted tree is a build failure. |
 | `bootstrap-pwsh.ps1` | `windows/scripts/host/` | Installs PowerShell 7 as the FIRST RUN of `Dockerfile.base`, BIND-MOUNTED (no layer). Runs under Windows PowerShell **5.1** — the SHELL is not switched to pwsh until after it — so keep it 5.1-safe and do not use `Invoke-DownloadWithRetry` (no module is mounted that early). Carries its own 3-attempt retry with an in-loop SHA256 check. Extracted from a 1214-char inline RUN (backlog #27). |

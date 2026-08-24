@@ -130,9 +130,12 @@ prerequisite would block the amd64 build too, and the `maintenancetool` invocati
 been executed against a real base image. An unverified installer call must not be able to kill the
 chain's most expensive layer.
 
-Set **`WINDOWS_ARM64_STRICT=1`** to turn all of them into hard gates — the same opt-in shape as
-`CUDA_STACK_STRICT=1` on the Linux side. Use it once the arm64 lane is real; it is the flag that
-says "this image claims a complete arm64 toolchain".
+Set **`WINDOWS_ARM64_STRICT=1`** to turn them into hard gates — the same opt-in shape as
+`CUDA_STACK_STRICT=1` on the Linux side. **All of them except one** (this sentence said "all"
+until 2026-08-24, disagreeing with AGENTS.md): `setup-vs.ps1`'s MSVC `lib\arm64` check runs in a
+RUN that sits *above* the `ARG WINDOWS_ARM64_STRICT` declaration in `Dockerfile.base` and
+therefore never sees the flag — that one check stays warn-only regardless. Use STRICT once the
+arm64 lane is real; it is the flag that says "this image claims a complete arm64 toolchain".
 
 It is plumbed as a real `ARG` in `Dockerfile.base` and forwarded as a script parameter. That
 matters: a bare `$env:` read is unreachable from `docker build`, and buildctl silently discards
@@ -591,6 +594,13 @@ Both would have produced a **green** result:
    lane the x86_64 one sorts first — so an aarch64 image would have been linked against the host's runtime.
    The selection is now filtered by target, and when no match exists the lane links *nothing* rather than
    the wrong thing. See the next section: the gap turned out to be real, and it is now filled.
+   **The mirror-image bug then bit amd64 (2026-08-24):** the first fix filtered only the cross branch, on
+   the rationale that this "keeps the amd64 selection exactly what it is today" — written while the x86_64
+   lib was the only one installed. Once the base started shipping `clang_rt.builtins-aarch64.lib` (the
+   #113 ride), amd64's alphabetical `-First 1` flipped to **a**arch64, and the first amd64 merge on that
+   base died linking `gstreamer-1.0-0.dll` with `machine type arm64 conflicts with x64` — caught by the
+   full-chain amd64 regression run, exactly what it exists for. The pick is now target-filtered on BOTH
+   lanes; a selection that depends on what happens to be installed is not a selection.
 2. **The arch gate's coverage floor could silently disable itself.** It arrives as
    `-MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED)`, and `[int]$null` is `0`, which switches the floor
    off entirely — so a dropped build-arg would turn the gate into a clean pass over whatever it happened to

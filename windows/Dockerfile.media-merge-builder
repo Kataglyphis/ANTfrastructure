@@ -313,8 +313,17 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # of this bundle -- onnxruntime.lib, onnxruntime-genai.lib, the OpenCV and
 # GStreamer import libs are exactly what a downstream link consumes. The COFF
 # archive decoder (incl. ARM64EC handling) existed unused in the script.
+# The distlib/setuptools alternations (2026-08-24, found by the FIRST amd64 run
+# of the extended gate): pip and setuptools vendor their console-script LAUNCHER
+# stubs for every architecture BY DESIGN (t32/w32/cli-32/gui-32 are I386,
+# w64-arm/cli-arm64/gui-arm64 are ARM64) -- they ship inside every Python
+# install on every platform and setuptools picks the matching one at
+# script-creation time. They are data payload of the packaging tools, not
+# shipped binaries of this image, and tripped the amd64 gate as 10 "violations"
+# out of 1148. On the cross lane the driver's whole-site-packages pattern
+# already covered them.
 ARG ARCH_GATE_MIN_INSPECTED=10
-ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\"
+ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
 RUN --mount=type=bind,source=windows/scripts/build/verify-target-arch.ps1,target=C:\bkmnt\verify-target-arch.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\verify-target-arch.ps1' -Path @('C:\runtime', 'C:\temp\cpython\Lib\site-packages') -Arch $env:WINDOWS_TARGET_ARCH `

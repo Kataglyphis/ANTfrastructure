@@ -1,6 +1,6 @@
 # Linux Build Basics
 
-> **Build logging:** All orchestrator scripts accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
+> **Build logging:** The two stage orchestrators (`build-cross-chain.sh`, `build-cross-stage.sh`) accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
 
 ## Image Hierarchy
 
