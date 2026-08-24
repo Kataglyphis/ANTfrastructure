@@ -144,22 +144,41 @@ $genaiDmlArg = '-DUSE_DML=ON'
 #   lld-link: error: python314.lib(python314.dll): machine type x64 conflicts with arm64
 # BUILD_WHEEL=OFF is kept alongside it purely as documentation of intent -- as a
 # dependent option it is already forced OFF once ENABLE_PYTHON is OFF.
-$genaiPythonArgs = if ($genaiCross) { @('-DENABLE_PYTHON=OFF', '-DBUILD_WHEEL=OFF') } else { @('-DBUILD_WHEEL=ON') }
+# #120 step 2 (2026-08-24): the paragraph above is HISTORY -- a target CPython
+# now exists (build-target-cpython.ps1, first stage of this chain), so the
+# bindings are ON for the cross lane, linked against the TARGET python314.lib.
+# The .Available guard keeps the OFF path for a -ResumeFrom entry that skipped
+# the cpython stage.
+$tpy = Get-TargetBuildPython
+$genaiPythonOn = (-not $genaiCross) -or $tpy.Available
+$genaiPythonArgs = if ($genaiPythonOn) { @('-DBUILD_WHEEL=ON') } else {
+    Write-Warning "GenAI: python bindings OFF -- no target CPython import lib at $($tpy.Lib)"
+    @('-DENABLE_PYTHON=OFF', '-DBUILD_WHEEL=OFF')
+}
 # The clang target triple must ride in THIS script's explicit CMAKE_CXX_FLAGS
 # string: passing -DCMAKE_CXX_FLAGS on the command line DEFINES the cache
 # variable, so CMake never applies the CMAKE_CXX_FLAGS_INIT that
 # Get-CMakeCrossArgs sets. Identical trap to build-opencv-from-source.ps1.
 $genaiTargetFlag = if ($genaiCross) { " --target=$(Get-ClangTargetTriple -Arch $genaiTargetArch)" } else { '' }
 # The host CPython lib dir is x64. On an aarch64 link line it lets lld-link pick
-# up x64 import libs and fail with a machine-type conflict; it exists only to
-# resolve the python module's python*.lib, which is not built on the cross lane.
-#
-# -DPYTHON_LIBRARY below still points at the host x64 import library and is left
-# in place deliberately: with ENABLE_PYTHON=OFF nothing links it, while removing
-# it risks breaking a configure-time find_package(Python...) for no gain. The
-# rule this lane enforces is "no host-arch library on a LINK line", not "no
-# host-arch path anywhere in the cache".
-$genaiPyLinkArgs = if ($genaiCross) { @() } else { @("-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($py.LibDir)") }
+# up x64 import libs and fail with a machine-type conflict. HISTORY (until
+# 2026-08-24): with the bindings OFF on the cross lane nothing linked it and a
+# host-pointing PYTHON_LIBRARY hint was tolerated in the cache. Since #120
+# step 2 the bindings are ON and every python-related path below names the
+# TARGET build (Get-TargetBuildPython). The rule is unchanged: "no host-arch
+# library on a LINK line".
+# #120 step 2: the LIBPATH now follows the TARGET import-lib dir on the cross
+# lane (host LibDir on amd64, where host == target). The python MODULE target's
+# auto-linked python314.lib resolves through $env:LIB (SHARED_LINKER_FLAGS do
+# not reach MODULE targets -- see the CUDA branch's note), so the target dir is
+# prepended there too. Rule unchanged: no host-arch library on a LINK line --
+# and on cross the host dir is NOT on LIB (the CUDA branch that added it never
+# runs here).
+$genaiPyLinkArgs = if ($genaiPythonOn) { @("-DCMAKE_SHARED_LINKER_FLAGS:STRING=/LIBPATH:$($tpy.LibDir)") } else { @() }
+if ($genaiCross -and $genaiPythonOn) {
+    $env:LIB = "$($tpy.LibDir);$env:LIB"
+    Write-Host "GenAI: python bindings ON for the cross lane (#120 step 2) -- TARGET import lib dir $($tpy.LibDir) on LIB + LIBPATH"
+}
 
 # Auto-detect correct Python library (python314.lib for full API, fallback to python3.lib)
 $cmakeExtraGenAi = @(
@@ -183,9 +202,27 @@ $cmakeExtraGenAi = @(
     '-DPUBLISH_JAVA_MAVEN_LOCAL=OFF'
     '-DBUILD_EXAMPLES=OFF', '-DBUILD_TESTING=OFF'
     "-DCMAKE_CXX_FLAGS:STRING=/GR /EHsc -D_SILENCE_CLANG_COROUTINE_MESSAGE $(Get-WarningNoiseSuppressionFlags)$genaiTargetFlag"
-    "-DPYTHON_EXECUTABLE=$($py.Exe)"
-    "-DPYTHON_LIBRARY=$($py.Lib)"
-    "-DPYTHON_INCLUDE_DIR=$($py.Include)"
+    # Host EXECUTABLE (it runs), TARGET library (it links) -- #120 step 2. On
+    # amd64 Get-TargetBuildPython collapses to the host values.
+    # `Python_*` (unversioned prefix): genai's src/python/CMakeLists.txt calls
+    # find_package(Python COMPONENTS Interpreter Development.Module) and
+    # derives its own PYTHON_EXECUTABLE from Python_EXECUTABLE. The legacy
+    # PYTHON_LIBRARY/PYTHON_INCLUDE_DIR hints passed until 2026-08-24 were
+    # never read by FindPython -- amd64 auto-detected the host interpreter;
+    # the cross lane must name the TARGET import lib explicitly (same lesson
+    # as ORT's Python3_* -> Python_* fix the same day).
+    "-DPython_EXECUTABLE=$($tpy.Exe)"
+    "-DPython_LIBRARY=$($tpy.Lib)"
+    "-DPython_INCLUDE_DIR=$($tpy.Include)"
+    # AND the legacy trio, for a SECOND consumer (arm64 run 2, 2026-08-24:
+    # "FindPythonLibsNew.cmake:265 Python libraries not found"): genai's
+    # vendored pybind11 runs in classic mode (PYBIND11_FINDPYTHON unset) and
+    # reads PYTHON_EXECUTABLE / PYTHON_LIBRARY / PYTHON_INCLUDE_DIR -- with the
+    # in-tree host CPython (no <prefix>\libs\ dir) it cannot find the import
+    # lib on its own. Same TARGET values; two spellings because two finders.
+    "-DPYTHON_EXECUTABLE=$($tpy.Exe)"
+    "-DPYTHON_LIBRARY=$($tpy.Lib)"
+    "-DPYTHON_INCLUDE_DIR=$($tpy.Include)"
 ) + $genaiPythonArgs + $genaiPyLinkArgs + $genaiCudaArgs
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi | Out-Null
 
@@ -310,13 +347,21 @@ Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
 # uses the deps installed above instead of a fresh pip env. Must run BEFORE
 # Remove-SourceBuildTree.
 $genaiWheelDir = Join-Path $genaiBuildDir 'wheel'
-if ($genaiCross) {
-    # BUILD_WHEEL=OFF on the cross lane, so cmake configured no setup.py and there
-    # is nothing to pack. The hard gate in the final else MUST NOT fire here -- its
-    # entire premise is "BUILD_WHEEL=ON is set above", which is no longer true for
-    # every lane. Skipping also keeps a host-arch .pyd out of the arm64 bundle,
-    # which the PE arch gate would reject anyway.
-    Write-Host "genai python wheel skipped (BUILD_WHEEL=OFF on the $genaiTargetArch cross lane -- no aarch64 CPython to link)"
+if (-not $genaiPythonOn) {
+    # BUILD_WHEEL=OFF (cross lane without a target CPython), so cmake configured
+    # no setup.py and there is nothing to pack. The hard gate in the final else
+    # MUST NOT fire here -- its premise is "BUILD_WHEEL=ON is set above".
+    Write-Host "genai python wheel skipped (BUILD_WHEEL=OFF -- no target CPython import lib on this $genaiTargetArch cross lane)"
+} elseif ($genaiCross -and (Test-Path (Join-Path $genaiWheelDir 'setup.py'))) {
+    # #120 step 2: BUILD + STAGE only, target-tagged. setup.py bdist_wheel is
+    # used instead of `pip wheel` because the tag must be forced with
+    # --plat-name (the host-pinned shim stamps win_amd64 otherwise) and pip
+    # offers no clean pass-through for that. No isolation either way -- deps
+    # come from the build interpreter, same as the native path.
+    Write-Host "Building onnxruntime-genai python wheel for the target (--plat-name $(Get-PythonWheelTag); staged, not installed)..."
+    Invoke-PythonWheelBuild -Python $py -WorkingDir $genaiWheelDir `
+        -Arguments "setup.py bdist_wheel --plat-name $(Get-PythonWheelTag) -d dist" `
+        -ModuleName 'onnxruntime_genai' -StageOnly | Out-Null
 } elseif (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
     Write-Host 'Building onnxruntime-genai python wheel...'
     # -NoDeps is LOAD-BEARING: genai-cuda's dependency metadata names

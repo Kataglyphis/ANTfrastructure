@@ -21,6 +21,7 @@ function New-WbtFakeMediaVersionTable {
         PYAV_VERSION              = 'av-5'
         NV_CODEC_HEADERS_REF      = 'nv-6'
         CUDA_ARCHITECTURES        = '89-fake'
+        QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
         LITERT_VERSION            = 'lrt-7'
         LITERT_LM_VERSION         = 'lm-8'
         TVM_REF                   = 'tvm-9'
@@ -56,6 +57,7 @@ Describe 'Get-MediaBranchVersionArg' {
                     NV_CODEC_HEADERS_REF      = 'nv-6'
                     CUDA_ARCHITECTURES        = '89-fake'
                     PYTHON_VERSION            = 'py-12'
+                    QNN_SDK_ZIP_SHA256        = 'qnnsha-13'
                 }
             }
             @{ Branch = 'media-litert'; Expected = @{

@@ -76,10 +76,11 @@ if (Test-WindowsCrossTarget) {
                 'plain LiteRT above is unaffected and builds).')
     # The merge fan-in COPYs C:\runtime\lib\litert-lm UNCONDITIONALLY
     # (Dockerfile.media-merge-builder:176 -- a Dockerfile cannot branch), and
-    # until #115 that path came from the media-branch-absent stand-in. Now this
-    # REAL image feeds the fan-in, so it must provide the same empty,
-    # marker-carrying tree the stand-in did, or the COPY fails on a path that
-    # legitimately does not exist here. Same convention, same marker name.
+    # until #115 that path came from a 'media-branch-absent' stand-in stage
+    # (retired 2026-08-24 once every cross branch became real). This REAL
+    # image feeds the fan-in, so it must provide an empty, marker-carrying
+    # tree, or the COPY fails on a path that legitimately does not exist here.
+    # This is now THE convention for anything a cross branch cannot build.
     $lmRoot = Join-Path $InstallDir 'lib\litert-lm'
     foreach ($d in @($lmRoot, (Join-Path $lmRoot 'include'), (Join-Path $lmRoot 'bin'))) {
         New-Item -Path $d -ItemType Directory -Force | Out-Null

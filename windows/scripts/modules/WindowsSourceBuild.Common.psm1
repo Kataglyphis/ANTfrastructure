@@ -370,6 +370,39 @@ function Enter-VsDevCmdEnvironment {
     }
 }
 
+function Invoke-WithHostArchLibraryEnvironment {
+    # Runs $ScriptBlock with LIB and LIBPATH rewritten from the TARGET arch's
+    # library directories to the HOST's, restoring both afterwards. This is the
+    # missing half of a host-tool pass on a cross lane (the choke point's own
+    # comment: "-TargetArch (Get-WindowsHostArch) is necessary but not
+    # sufficient"). Measured 2026-08-24 (IREE, arm64 run 3): VsDevCmd -arch=arm64
+    # leaves LIB pointing at ...\lib\arm64 and ...\um\arm64, lld-link reads ONLY
+    # LIB (no VS auto-detection -- CMake invokes it directly, not via the clang
+    # driver), and the host try-compile died with "msvcrtd.lib(exe_main.obj):
+    # machine type arm64 conflicts with x64". Rewriting the arch SEGMENT of each
+    # entry (VC lib\<arch>, UCRT/SDK um\<arch>, ATLMFC lib\<arch> all share that
+    # shape) is exactly what VsDevCmd -arch=amd64 would have produced, without
+    # re-entering VsDevCmd (whose second invocation appends rather than resets).
+    # No-op on the native lane (host == target).
+    param([Parameter(Mandatory)][scriptblock]$ScriptBlock)
+    $hostDir   = (Get-WindowsTargetArchInfo -Arch (Get-WindowsHostArch)).MsvcTargetLibDir
+    $targetDir = (Get-WindowsTargetArchInfo).MsvcTargetLibDir
+    if ($hostDir -eq $targetDir) { return (& $ScriptBlock) }
+    $saved = @{}
+    foreach ($name in 'LIB', 'LIBPATH') { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
+    try {
+        foreach ($name in 'LIB', 'LIBPATH') {
+            if ([string]::IsNullOrWhiteSpace($saved[$name])) { continue }
+            $swapped = @($saved[$name] -split ';' | ForEach-Object { $_ -replace "\\$targetDir(\\|$)", "\$hostDir`$1" }) -join ';'
+            [Environment]::SetEnvironmentVariable($name, $swapped, 'Process')
+        }
+        Write-Host "Host-arch library environment: LIB/LIBPATH \$targetDir -> \$hostDir for the duration of the host-tool pass"
+        & $ScriptBlock
+    } finally {
+        foreach ($name in 'LIB', 'LIBPATH') { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    }
+}
+
 # Both of these are the throwing face of the shared vswhere discovery in
 # WindowsScripts.Shared.psm1 (Get-VisualStudioInstallPath / Get-MsvcToolsRoots).
 # Source builds want the hard failure: no Visual Studio means no build, and the
@@ -603,7 +636,15 @@ function Invoke-PythonWheelBuild {
         [Parameter(Mandatory)] [string]$Arguments, # e.g. 'setup.py bdist_wheel'
         [Parameter(Mandatory)] [string]$ModuleName,
         [string]$DistDir = '',
-        [switch]$NoDeps
+        [switch]$NoDeps,
+        # CROSS LANE (#120 step 2, 2026-08-24): BUILD + STAGE only. bdist_wheel
+        # is the HOST interpreter zipping files it never imports, so the wheel
+        # can be produced here; installing it into the host CPython and
+        # import-asserting it cannot (the .pyd is aarch64). Instead the staged
+        # wheel is OPENED and every PE member is machine-checked against the
+        # target -- the merge arch gate cannot see inside a zip, so this is the
+        # only place a host-arch .pyd inside a win_arm64 wheel would be caught.
+        [switch]$StageOnly
     )
     if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
     Push-Location $WorkingDir
@@ -611,7 +652,50 @@ function Invoke-PythonWheelBuild {
         cmd.exe /c """$($Python.Exe)"" $Arguments 2>&1"
         if ($LASTEXITCODE -ne 0) { throw "python wheel build failed (exit $LASTEXITCODE): $Arguments" }
     } finally { Pop-Location }
+    if ($StageOnly) {
+        $staged = @(Save-PythonWheel -SourceDir $DistDir -Required)
+        foreach ($w in $staged) { Assert-WheelTargetArch -WheelPath $w }
+        return $staged[0]
+    }
     return Install-StagedPythonWheel -Python $Python -SourceDir $DistDir -ModuleName $ModuleName -NoDeps:$NoDeps
+}
+
+function Assert-WheelTargetArch {
+    # Opens a staged wheel and PE-checks every .pyd/.dll/.exe member against
+    # the TARGET machine; also asserts the filename carries the target's
+    # platform tag (a wheel tagged win_amd64 that holds aarch64 code would
+    # install on the wrong machine and fail at import -- the tag is part of
+    # the contract, not cosmetics). Throws with the offending member named.
+    param([Parameter(Mandatory)][string]$WheelPath)
+    $wantTag = Get-PythonWheelTag
+    $wantMachine = Get-PeMachineType
+    $name = Split-Path $WheelPath -Leaf
+    if ($name -notmatch [regex]::Escape($wantTag)) {
+        throw "wheel $name does not carry the target platform tag '$wantTag' -- pass --plat-name $wantTag to bdist_wheel"
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("wheelcheck-" + [guid]::NewGuid().ToString('N'))
+    New-Item -Path $tmp -ItemType Directory -Force | Out-Null
+    try {
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($WheelPath, $tmp)
+        $pe = @(Get-ChildItem -Path $tmp -Recurse -File -Include '*.pyd', '*.dll', '*.exe')
+        if ($pe.Count -eq 0) { throw "wheel $name contains no native modules at all -- the binding was not built" }
+        foreach ($f in $pe) {
+            # The EXT_SUFFIX tag is part of the import contract: a target
+            # interpreter only loads `<mod>.cp314-<its own platform>.pyd` (or a
+            # bare `<mod>.pyd`). A member stamped with the HOST tag is unloadable
+            # on the target however correct its machine field is (found on the
+            # first cv2 cross build: `cv2.cp314-win_amd64.pyd`, machine 0xAA64).
+            if ($f.Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $f.Name -notmatch [regex]::Escape($wantTag)) {
+                throw "wheel ${name}: member $($f.Name) carries a host EXT_SUFFIX tag, expected '$wantTag' -- the target interpreter would never import it (the sitecustomize shim pins EXT_SUFFIX to the target; is it active?)"
+            }
+            $m = Get-PeFileMachine -Path $f.FullName
+            if ($m -ne $wantMachine) {
+                throw ('wheel {0}: member {1} is machine 0x{2:X4}, expected 0x{3:X4} -- a host-arch binary inside a {4} wheel' -f $name, $f.Name, $m, $wantMachine, $wantTag)
+            }
+        }
+        Write-Host ('Wheel arch check OK: {0} -- {1} native member(s), all 0x{2:X4}' -f $name, $pe.Count, $wantMachine)
+    } finally { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 function Complete-SourceBuild {
@@ -948,7 +1032,11 @@ function Invoke-NinjaBuildWithRetry {
         [string]$InstallConfig = 'Release',
         [int]$StallRetries = 3,
         # Injectable for tests; default lives beside the build dir.
-        [string]$StallMarkerPath = ''
+        [string]$StallMarkerPath = '',
+        # Explicit ninja targets (default: the whole graph). Added 2026-08-24
+        # for the runtime-only TVM cross build (#116): `tvm_runtime` alone,
+        # so tvm_compiler is never built. Every retry rung passes the same list.
+        [string[]]$Targets = @()
     )
     $env:NINJA_STATUS = "[%f/%t] "
     $jobs = Get-BuildJobCount -MemGBPerJob $MemGBPerJob
@@ -967,8 +1055,8 @@ function Invoke-NinjaBuildWithRetry {
         # check for a later, unrelated failure. Lines are printed when
         # consumed (below), so truncation never swallows a kill report.
         Remove-Item -Path $StallMarkerPath -Force -ErrorAction SilentlyContinue
-        if ($LogFile) { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 | Tee-Object -FilePath $LogFile -Append }
-        else { ninja -j $jobCount @ninjaKeep -C $BuildDir 2>&1 }
+        if ($LogFile) { ninja -j $jobCount @ninjaKeep -C $BuildDir @Targets 2>&1 | Tee-Object -FilePath $LogFile -Append }
+        else { ninja -j $jobCount @ninjaKeep -C $BuildDir @Targets 2>&1 }
     }
 
     Write-Host "Building with ninja -j$jobs..."
@@ -1090,11 +1178,16 @@ function Initialize-PythonPlatformTag {
     # "numpy C-extensions failed ... platform 'win32'" because no usable numpy
     # could be installed for it.
     #
-    # Second, the premise no longer holds: a cross lane builds NO python wheels
-    # at all -- ONNX's wheel, OpenCV's bindings and PyAV are each skipped, since
-    # there is no target CPython to link or import them. Nothing on this lane
-    # needs a target tag. If a target CPython ever exists, the tag belongs to
-    # THAT interpreter's shim, not this one.
+    # Second (HISTORY -- superseded by #120 step 2 on 2026-08-24): a cross lane
+    # used to build NO python wheels at all. It now builds them FOR THE TARGET
+    # with this host interpreter (bdist_wheel --plat-name <target>). That
+    # split is encoded below as two DIFFERENT facts: get_platform() stays HOST
+    # (pip resolves downloads with it), while EXT_SUFFIX is pinned to the
+    # TARGET on a cross lane -- it is what setuptools/OpenCV/pybind11 use to
+    # NAME the .pyd they produce, and a target interpreter imports only
+    # `<mod>.cp314-<its own tag>.pyd` (or a bare `<mod>.pyd`). Found on the
+    # first cv2 cross build: `cv2.cp314-win_amd64.pyd`, machine 0xAA64 --
+    # right bytes, unloadable name.
     param(
         [string]$CpythonDir = '',
         [string]$Arch = '',
@@ -1113,6 +1206,9 @@ function Initialize-PythonPlatformTag {
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $platformName = Get-PythonPlatformName -Arch $Arch
     $openCvArchDir = Get-OpenCvArchDir -Arch $StagedOpenCvArch
+    # Cross lane only: the EXT_SUFFIX pin (see the header). Empty on amd64, so
+    # the native lane's shim is byte-identical to before #120 step 2.
+    $crossExtTag = if (Test-WindowsCrossTarget) { Get-PythonWheelTag } else { '' }
     $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
     New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
     $shim = Join-Path $sitePackages 'sitecustomize.py'
@@ -1133,6 +1229,21 @@ import sys
 import sysconfig
 if sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:
     sysconfig.get_platform = lambda: '$platformName'
+# 3) Cross lane only (empty tag = native lane, nothing happens): extension
+#    modules BUILT by this interpreter are for the TARGET interpreter, and
+#    setuptools / OpenCV / pybind11 take the .pyd filename tag from this
+#    interpreter's EXT_SUFFIX. Pin it to the target so the module is named for
+#    the machine that will import it. get_platform() above stays HOST on
+#    purpose: pip resolves downloads with it. Importing this interpreter's OWN
+#    extensions is unaffected (the import system reads the C-level suffix
+#    list, not sysconfig). sysconfig.get_config_vars() returns the live cache,
+#    so get_config_var('EXT_SUFFIX') sees the pin too.
+_target_tag = '$crossExtTag'
+if _target_tag:
+    _ext = '.cp%d%d-%s.pyd' % (sys.version_info[0], sys.version_info[1], _target_tag)
+    _cv = sysconfig.get_config_vars()
+    _cv['EXT_SUFFIX'] = _ext
+    _cv['SO'] = _ext
 if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
     _dirs = []
     for _env in ('CUDA_PATH', 'CUDNN_ROOT'):
@@ -1742,6 +1853,9 @@ Export-ModuleMember -Function @(
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
     'Get-TargetBuildPython',
+    'Invoke-WithHostArchLibraryEnvironment',
+    'Assert-WheelTargetArch',
+    'Get-PeFileMachine',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
@@ -1794,6 +1908,7 @@ Export-ModuleMember -Function @(
     'Get-VulkanLibDirName',
     'Get-VulkanBinDirName',
     'Get-PythonWheelTag',
+    'Get-QnnSdkLibDirName',
     'Get-PythonPlatformName',
     'Get-CpythonBuildPlatform',
     'Get-CpythonOutputDir',

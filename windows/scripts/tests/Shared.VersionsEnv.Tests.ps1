@@ -152,6 +152,13 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
         }
     }
 
+    It 'forwards the QNN SDK zip pin to media-core (empty allowed: no zip staged = EP off, #121)' {
+        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
+        $args_ = Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $v
+        Assert-True ($args_.ContainsKey('QNN_SDK_ZIP_SHA256')) 'media-core must forward QNN_SDK_ZIP_SHA256 (build-onnx-from-source.ps1 reads it)'
+        Assert-True ($v.Contains('QNN_SDK_ZIP_SHA256')) 'versions.env must declare QNN_SDK_ZIP_SHA256 (may be empty)'
+    }
+
     It 'passes the litert keys INCLUDING the protoc/JRE pins' {
         # PROTOC_VERSION must match LiteRT-LM's internal protobuf; a stale value
         # emits gencode the pinned headers #error on.

@@ -363,7 +363,10 @@ $cmakeExtra = $cudaRspArgs + @(
     # interpreter here, so an aarch64 cv2.pyd could never be imported by this
     # container's x64 CPython, and OpenCV's binding generation is a host-
     # interpreter fact that does not describe the target.
-    "-DBUILD_opencv_python3=$(if ($ocvCross) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
+    # #120 step 2 (2026-08-24): ON for the cross lane too, whenever the target
+    # CPython import lib exists (see the PYTHON3_* block below for the
+    # host-exe / target-lib split and the target site-packages destination).
+    "-DBUILD_opencv_python3=$(if ($ocvCross -and -not (Get-TargetBuildPython).Available) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     # opencv_contrib dnn_superres references ENGINE_CLASSIC removed in OpenCV 5.x DNN
     '-DBUILD_opencv_dnn_superres=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
@@ -512,8 +515,15 @@ if (Test-Path $ffPkgConfig) {
 # wrapped in `if(NOT PYTHON3INTERP_FOUND)`, so preset EVERY output it would
 # produce and skip detection wholesale (forward slashes for CMake).
 $numpyVersion = Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import numpy; print(numpy.__version__)' -Label 'numpy version'
-$pyLibFwd = ($ocvPy.Lib) -replace '\\', '/'
-$pyIncFwd = ($ocvPy.Include) -replace '\\', '/'
+# #120 step 2: on the cross lane the LIBRARY comes from the TARGET build
+# (Get-TargetBuildPython: host .Exe, arch-neutral .Include, target .Lib) and
+# the cv2 install destination is the SHIPPED target interpreter's site-packages
+# under C:\runtime\python -- inside the merge arch gate's scan root, so a
+# wrong-arch cv2*.pyd fails the merge instead of shipping. amd64 keeps its
+# host paths (host == target there, the accessor collapses to the same values).
+$ocvTargetPy = Get-TargetBuildPython
+$pyLibFwd = ($ocvTargetPy.Lib) -replace '\\', '/'
+$pyIncFwd = ($ocvTargetPy.Include) -replace '\\', '/'
 $cmakeExtra += '-DPYTHON3INTERP_FOUND=TRUE'
 $cmakeExtra += "-DPYTHON3_EXECUTABLE=$pyExePath"
 $cmakeExtra += "-DPYTHON3_VERSION_STRING=$pyVersion"
@@ -528,6 +538,12 @@ $cmakeExtra += "-DPYTHON3_INCLUDE_PATH=$pyIncFwd"
 # site-packages derived from the python handle (Include = <cpython>\Include),
 # not hardcoded to C:/temp -- the cpython tree location is owned by the toolchain.
 $pySitePackagesFwd = (Join-Path (Split-Path $ocvPy.Include -Parent) 'Lib\site-packages') -replace '\\', '/'
+if ($ocvCross -and $ocvTargetPy.Available) {
+    $targetSitePackages = Join-Path $InstallDir 'python\Lib\site-packages'
+    New-Item -Path $targetSitePackages -ItemType Directory -Force | Out-Null
+    $pySitePackagesFwd = $targetSitePackages -replace '\\', '/'
+    Write-Host "OpenCV cross: cv2 will install into the TARGET interpreter's site-packages ($targetSitePackages)"
+}
 $cmakeExtra += "-DPYTHON3_PACKAGES_PATH=$pySitePackagesFwd"
 $cmakeExtra += "-DPYTHON3_NUMPY_INCLUDE_DIRS=$numpyInclude"
 $cmakeExtra += "-DPYTHON3_NUMPY_VERSION=$numpyVersion"
@@ -784,11 +800,32 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 # otherwise only surfaces hours later in the final image's smoke test.
 # (Shared EAP=Stop-safe helper: exit-code based, stderr-noise tolerant.)
 if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
-    # Cross lane: cv2 was not built (BUILD_opencv_python3=OFF above) and an
-    # aarch64 .pyd could not be loaded by this x64 CPython even if it had been.
-    # Skipping is the only correct behaviour; the gate stays MANDATORY on the
-    # native lane, where it catches a silently-skipped python3 module.
-    Write-Host 'Skipping the cv2 import gate: cross build (python bindings off; the target interpreter cannot run on this host)'
+    if ($ocvTargetPy.Available) {
+        # #120 step 2: the import gate is replaced by the strongest STATIC
+        # equivalent -- cv2's .pyd must exist in the target site-packages and be
+        # target-machine. An aarch64 .pyd cannot be imported by this x64 host,
+        # but "silently skipped python3 module" (the failure this gate exists
+        # for) is fully detectable without importing anything.
+        $cv2Pyd = Get-ChildItem -Path (Join-Path $InstallDir 'python\Lib\site-packages') -Recurse -Filter 'cv2*.pyd' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $cv2Pyd) { throw "cv2 python module did NOT land in the target site-packages ($(Join-Path $InstallDir 'python\Lib\site-packages')) although BUILD_opencv_python3=ON -- the python3 module was silently skipped" }
+        $cv2Machine = Get-PeFileMachine -Path $cv2Pyd.FullName
+        if ($cv2Machine -ne (Get-PeMachineType -Arch $ocvTargetArch)) {
+            throw ('cv2 module {0} is machine 0x{1:X4}, expected 0x{2:X4} -- linked against the wrong python import lib' -f $cv2Pyd.Name, $cv2Machine, (Get-PeMachineType -Arch $ocvTargetArch))
+        }
+        # The EXT_SUFFIX tag in the NAME is the other half of the import contract
+        # (arm64 run 2, 2026-08-24: `cv2.cp314-win_amd64.pyd`, machine 0xAA64 --
+        # right bytes, unloadable name: a win_arm64 interpreter matches only
+        # `.cp314-win_arm64.pyd` or bare `.pyd`). OpenCV takes the suffix from the
+        # build interpreter's sysconfig, which the sitecustomize shim pins to the
+        # TARGET tag on the cross lane; this asserts the pin actually reached cv2.
+        $cv2WantTag = Get-PythonWheelTag -Arch $ocvTargetArch
+        if ($cv2Pyd.Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $cv2Pyd.Name -notmatch [regex]::Escape($cv2WantTag)) {
+            throw "cv2 module $($cv2Pyd.Name) carries a host EXT_SUFFIX tag, expected '$cv2WantTag' -- the target interpreter would never import it (sitecustomize EXT_SUFFIX pin missing?)"
+        }
+        Write-Host ('cv2 static gate OK (cross lane): {0} present, machine 0x{1:X4}; import deferred to the target host' -f $cv2Pyd.Name, $cv2Machine)
+    } else {
+        Write-Host 'Skipping the cv2 gate: cross build without a target CPython (python bindings were OFF)'
+    }
 } else {
     Test-PythonImport -Python $ocvPy -ModuleName 'cv2'
 }

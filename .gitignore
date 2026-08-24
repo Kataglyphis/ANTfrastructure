@@ -32,3 +32,8 @@ linux/nextcloud-aio/.env
 # Throwaway litert-lm fast-rebuild harness (overlays the build script onto a local
 # windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)
 .cxxtest.Dockerfile
+
+# Qualcomm AI Engine Direct (QAIRT/QNN) SDK zip, staged by hand for the ORT QNN EP (backlog #121):
+# login-gated + EULA-bound, never committed. Only the README rides along.
+windows/qnn-sdk/*
+!windows/qnn-sdk/README.md

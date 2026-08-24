@@ -413,13 +413,38 @@ if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
 # Producing a target binding needs a TARGET CPython, which this lane does not
 # build. Same call as build-opencv-from-source.ps1's BUILD_opencv_python3.
 $onnxCross = Test-WindowsCrossTarget
-$pythonArgs = if ($onnxCross) {
+# #120 step 2 (2026-08-24): the paragraph above is HISTORY. A target CPython
+# now exists (build-target-cpython.ps1 runs first in this chain), so the
+# bindings are ON for the cross lane too -- composed the only correct way:
+#   Python3_EXECUTABLE -> the HOST interpreter (pybind11/numpy probes RUN it)
+#   Python3_INCLUDE_DIR -> arch-neutral headers
+#   Python3_LIBRARY     -> the TARGET python314.lib (the .pyd LINKS it)
+# Get-TargetBuildPython encodes exactly that split. Its .Available guard keeps
+# the OFF path for a -ResumeFrom entry that skipped the cpython stage.
+$tpy = Get-TargetBuildPython
+$pythonArgs = if ($onnxCross -and -not $tpy.Available) {
+    Write-Warning "ONNX: python bindings OFF -- no target CPython import lib at $($tpy.Lib) (build-target-cpython.ps1 did not run?)"
     @('-Donnxruntime_ENABLE_PYTHON=OFF')
 } else {
+    # `Python_*`, NOT `Python3_*`: ORT's CMake calls find_package(Python ...)
+    # with the UNVERSIONED prefix. The Python3_* names this script passed until
+    # 2026-08-24 were silently ignored on every lane ("Manually-specified
+    # variables were not used by the project") -- amd64 only worked because
+    # FindPython auto-detected the host interpreter and its numpy. The first
+    # cross configure exposed it: `Target "onnxruntime_pybind11_state" links to
+    # Python::NumPy but the target was not found`. The numpy include dir is
+    # probed here by RUNNING the host interpreter (numpy headers are arch-
+    # neutral) and handed over explicitly, so FindPython's own probing under
+    # CMAKE_CROSSCOMPILING is not on the critical path.
+    $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($tpy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
+    if (-not $numpyInc -or -not (Test-Path (Join-Path $numpyInc 'numpy\arrayobject.h'))) {
+        throw "ONNX: numpy include dir not usable ('$numpyInc') -- numpy must be importable by the build interpreter $($tpy.Exe) before configure"
+    }
     @('-Donnxruntime_ENABLE_PYTHON=ON',
-      "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)")
+      "-DPython_EXECUTABLE=$($tpy.Exe)", "-DPython_INCLUDE_DIR=$($tpy.Include)", "-DPython_LIBRARY=$($tpy.Lib)",
+      "-DPython_NumPy_INCLUDE_DIR=$numpyInc")
 }
-if ($onnxCross) { Write-Host 'ONNX: python bindings OFF (cross build; no target CPython, and the host import lib is the wrong machine type)' }
+if ($onnxCross -and $tpy.Available) { Write-Host "ONNX: python bindings ON for the cross lane (#120 step 2) -- host interpreter $($tpy.Exe), TARGET import lib $($tpy.Lib)" }
 # HISTORY, CORRECTED -- nothing in this block is current policy. The mistaken
 # measurement, the mistaken scope note, and their retractions are kept together
 # so the wrong reading cannot come back; the CURRENT paragraph at the end is
@@ -458,12 +483,49 @@ if ($onnxCross) { Write-Host 'ONNX: python bindings OFF (cross build; no target 
 # record of what was believed, and corrected -- not as current fact.
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
+# -- QNN EP (Qualcomm AI Engine Direct / QAIRT SDK) -- backlog #121. OPT-IN by
+# staging the login-gated SDK zip in windows\qnn-sdk\ (bind-mounted at
+# C:\temp\qnn-sdk by the onnx RUN). No zip = EP off with one notice -- the same
+# graceful-skip contract as the TensorRT zip. SCAFFOLD, UNPROVEN: this host has
+# never held the SDK, so every step asserts what it expects and the first
+# staged zip proves or breaks it loudly, never silently. The EP is enabled on
+# BOTH lanes (arm64: HTP/NPU + CPU backends, the point of the EP; amd64: CPU
+# backend only, useful for graph-compatibility checks).
+$qnnArgs = @()
+$qnnRuntimeHome = $null
+$qnnDrop = 'C:\temp\qnn-sdk'
+$qnnZips = @(Get-ChildItem -Path $qnnDrop -Filter '*.zip' -File -ErrorAction SilentlyContinue)
+if ($qnnZips.Count -gt 1) { throw "ONNX/QNN: exactly one SDK zip may sit in windows\qnn-sdk (found $($qnnZips.Count)): $($qnnZips.Name -join ', ')" }
+if ($qnnZips.Count -eq 1) {
+    $qnnZip = $qnnZips[0].FullName
+    $qnnSha = "$env:QNN_SDK_ZIP_SHA256".Trim()
+    if ($qnnSha) {
+        $qnnActual = (Get-FileHash -Algorithm SHA256 -Path $qnnZip).Hash
+        if (-not [string]::Equals($qnnActual, $qnnSha, [StringComparison]::OrdinalIgnoreCase)) { throw "ONNX/QNN: SDK zip SHA256 mismatch for ${qnnZip}: expected $qnnSha, got $qnnActual" }
+        Write-Host 'ONNX/QNN: SDK zip SHA256 verified (QNN_SDK_ZIP_SHA256).'
+    } else {
+        Write-Warning 'ONNX/QNN: QNN_SDK_ZIP_SHA256 is empty -- extracting the staged SDK zip UNVERIFIED (pin it in versions.env, same contract as TENSORRT_ZIP_SHA256)'
+    }
+    $qnnExtract = Join-Path $env:TEMP_DIR 'qnn-sdk-extract'
+    if (Test-Path $qnnExtract) { Remove-Item $qnnExtract -Recurse -Force }
+    Expand-Archive -Path $qnnZip -DestinationPath $qnnExtract -Force
+    # The SDK root is wherever include\QNN\QnnInterface.h lives (qairt\<version>\ in every SDK layout seen).
+    $qnnAnchor = Get-ChildItem -Path $qnnExtract -Recurse -Filter 'QnnInterface.h' -File | Where-Object { $_.Directory.Name -eq 'QNN' } | Select-Object -First 1
+    if (-not $qnnAnchor) { throw "ONNX/QNN: include\QNN\QnnInterface.h not found under the extracted SDK ($qnnExtract) -- not a QAIRT SDK zip?" }
+    $qnnRuntimeHome = $qnnAnchor.Directory.Parent.Parent.FullName
+    $qnnLibDir = Join-Path $qnnRuntimeHome "lib\$(Get-QnnSdkLibDirName)"
+    if (-not (Test-Path (Join-Path $qnnLibDir 'QnnCpu.dll'))) { throw "ONNX/QNN: $qnnLibDir\QnnCpu.dll missing -- the SDK carries no $(Get-QnnSdkLibDirName) backend set for this target" }
+    $qnnArgs = @('-Donnxruntime_USE_QNN=ON', "-Donnxruntime_QNN_HOME=$($qnnRuntimeHome -replace '\\', '/')")
+    Write-Host "ONNX: QNN EP ON (SDK root $qnnRuntimeHome, backends from lib\$(Get-QnnSdkLibDirName)) -- backlog #121"
+} else {
+    Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)'
+}
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
-) + $gpuArgs
+) + $gpuArgs + $qnnArgs
 Switch-BuildPhase '3. cmake configure'
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs | Out-Null
 Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
@@ -688,6 +750,23 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
     -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
     -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
 
+# QNN EP runtime (#121): the provider DLL is installed by cmake; the SDK's
+# backend DLLs are NOT (they are redist, like DirectML.dll). Stage the whole
+# per-arch backend set plus the hexagon skel dirs beside onnxruntime.dll, so a
+# target host finds them on the DLL search path with no PATH surgery.
+if ($qnnRuntimeHome) {
+    $qnnBinOut = Split-Path (Get-ChildItem -Path $ortInstallDir -Recurse -Filter 'onnxruntime.dll' -File | Select-Object -First 1).FullName -Parent
+    $qnnProvider = Get-ChildItem -Path $ortInstallDir -Recurse -Filter 'onnxruntime_providers_qnn.dll' -File | Select-Object -First 1
+    if (-not $qnnProvider) { throw "ONNX/QNN: onnxruntime_providers_qnn.dll was not installed under $ortInstallDir although USE_QNN=ON -- the EP did not build" }
+    $qnnSdkLib = Join-Path $qnnRuntimeHome "lib\$(Get-QnnSdkLibDirName)"
+    $qnnStaged = @(Get-ChildItem -Path $qnnSdkLib -Filter '*.dll' -File)
+    foreach ($d in $qnnStaged) { Copy-Item $d.FullName -Destination $qnnBinOut -Force }
+    foreach ($skel in @(Get-ChildItem -Path (Join-Path $qnnRuntimeHome 'lib') -Directory -Filter 'hexagon-v*')) {
+        Copy-Item $skel.FullName -Destination (Join-Path $qnnBinOut $skel.Name) -Recurse -Force
+    }
+    Write-Host "ONNX/QNN: staged $($qnnStaged.Count) backend DLL(s) from $qnnSdkLib + hexagon skel dirs beside $($qnnProvider.Name) in $qnnBinOut"
+}
+
 # -- Python wheel (onnxruntime) --
 # ENABLE_PYTHON=ON made cmake assemble the full python package tree at
 # $buildDir\onnxruntime (onnxruntime_python.cmake); the upstream wheel is just the
@@ -695,19 +774,26 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # --wheel_name_suffix: our CUDA+TensorRT+DML combo matches no upstream package
 # split, so it ships as plain `onnxruntime`. Must run BEFORE Remove-SourceBuildTree.
 Switch-BuildPhase '6. python wheel'
-if (Test-WindowsCrossTarget) {
-    # Unsatisfiable by construction on a cross lane, and expensive to discover
-    # late. Invoke-PythonWheelBuild stages the wheel, installs it into the BUILD
-    # interpreter and then asserts `import onnxruntime`. That interpreter is the
-    # x64 host CPython (Get-SourceBuildPython is host-pinned by design), so it
-    # cannot load an aarch64 extension module -- and the wheel's own link step
-    # would already have failed against the host python314.lib.
-    #
-    # Producing a target wheel needs a TARGET CPython, which this lane does not
-    # build. Skipping is therefore the correct behaviour, not a workaround; the
-    # gate stays mandatory on the native lane, where it is what guarantees the
-    # shipped image can `import onnxruntime` out of the box.
-    Write-Host 'Skipping the onnxruntime python wheel: cross build (no target CPython; the host interpreter cannot load an aarch64 extension)'
+# $onnxCross (a variable), NOT `Test-WindowsCrossTarget -and ...`: a condition
+# that STARTS with a command name is parsed in command mode, so `-and -not
+# $tpy.Available` became three ARGUMENTS to the function and the branch fired
+# with the bindings ON (arm64 run 2, 2026-08-24: "python wheel 0s"). Same trap
+# family as `-ExtraArgs @(...) + (...)`.
+if ($onnxCross -and -not $tpy.Available) {
+    Write-Host 'Skipping the onnxruntime python wheel: cross build without a target CPython (bindings were OFF above)'
+} elseif ($onnxCross) {
+    # #120 step 2: BUILD + STAGE the wheel; never install/import it here (the
+    # .pyd is aarch64, the interpreter that would import it is x64). bdist_wheel
+    # is the HOST python zipping files -- no target code executes -- but it
+    # stamps the platform tag from the HOST's sysconfig (host-pinned shim, see
+    # Initialize-PythonPlatformTag), so the target tag must be passed
+    # explicitly. -StageOnly then opens the wheel and PE-checks every native
+    # member, which is the only place a host-arch .pyd inside the zip would be
+    # caught (the merge arch gate does not look into archives).
+    Write-Host "Building onnxruntime python wheel for the target (--plat-name $(Get-PythonWheelTag); staged, not installed)..."
+    Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
+        -Arguments """$SourceDir\setup.py"" bdist_wheel --plat-name $(Get-PythonWheelTag)" `
+        -ModuleName 'onnxruntime' -StageOnly | Out-Null
 } else {
 Write-Host 'Building onnxruntime python wheel...'
 # Shared wheel-build shape (was duplicated verbatim with the GenAI script):

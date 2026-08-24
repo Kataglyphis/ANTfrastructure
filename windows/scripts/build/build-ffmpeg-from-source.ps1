@@ -582,20 +582,37 @@ if ($ffCross) {
     # configure-wrapper single-quotes any flag containing a space (see $confStr
     # below); that is the same mechanism the --cc flag already relies on.
     #
-    # Scope: this branch only, so the amd64 lane is untouched. Note what that does
-    # NOT mean: amd64 does not "assemble with nasm" here -- $confFlags gets an
-    # UNCONDITIONAL --disable-x86asm a few lines below (since bd6adca4, 2026-06-25),
-    # so FFmpeg builds no external x86 assembly on either lane and nasm assembles
-    # nothing for FFmpeg at all. The pinned nasm is consumed by GStreamer's
-    # openh264 instead (see build-gstreamer-from-source.ps1:482). Corrected
-    # 2026-08-24; the older wording claimed the opposite and had spread into two
-    # docs and verify-toolchain.ps1.
+    # Scope: this branch only, so the amd64 lane is untouched. History of the
+    # amd64 side: --disable-x86asm was UNCONDITIONAL from bd6adca4 (2026-06-25)
+    # until 2026-08-24, when backlog #119 found it had no recorded reason and
+    # enabled nasm-assembled x86 SIMD on the amd64 lane (see the #119 block
+    # below). The pinned nasm was, until then, consumed only by GStreamer's
+    # openh264 (build-gstreamer-from-source.ps1:482).
     $confFlags += "--as=clang$ffCcTargetFlag"
     Write-Host "FFmpeg: aarch64 asm ENABLED via clang's integrated assembler (--as=clang$ffCcTargetFlag); configure assembles test fragments but never runs them"
     Write-Host ("FFmpeg: cross flags -> --enable-cross-compile --arch={0} --extra-ldflags=/machine:{1}" -f `
         (Get-FfmpegTargetArch -Arch $ffTargetArch), (Get-LibMachineArg -Arch $ffTargetArch))
 }
-$confFlags += '--disable-x86asm'
+# Backlog #119 (2026-08-24): x86asm is ENABLED on the amd64 lane. Archaeology
+# on the flag's origin (bd6adca4, 2026-06-25, a bare "fix" commit that added
+# the whole FFmpeg script) turned up NO recorded reason for --disable-x86asm:
+# no failing configure, no nasm/lld-link incompatibility, nothing. It was a
+# first-bring-up simplification that then got documented as a fact. The
+# pinned nasm (NASM_WINDOWS_VERSION, asserted by verify-toolchain.ps1) is on
+# PATH in every build container, and FFmpeg's x86 SIMD (the bulk of its
+# hand-written codec kernels) is worth having. The cross lane keeps the flag
+# EXPLICITLY: x86asm is x86-only and configure would ignore it for aarch64,
+# but stating it keeps the two lanes' intent readable side by side. Proof of
+# the enabled state: the next amd64 media-core-built-ffmpeg run (configure
+# prints "x86asm: yes" only when nasm assembled its test fragment).
+if ($ffCross) {
+    $confFlags += '--disable-x86asm'
+} else {
+    $nasmCmd = Get-Command nasm.exe -ErrorAction SilentlyContinue
+    if (-not $nasmCmd) { throw 'FFmpeg: x86asm is enabled on the amd64 lane (backlog #119) but nasm.exe is not on PATH -- verify-toolchain.ps1 asserts it; the toolchain layer is incomplete' }
+    $confFlags += "--x86asmexe=$($nasmCmd.Source -replace '\\', '/')"
+    Write-Host "FFmpeg: x86asm ENABLED (nasm $($nasmCmd.Source); backlog #119 -- --disable-x86asm had no recorded reason)"
+}
 # vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
 # Windows Server Core containers: every process loading avdevice would die
 # with STATUS_DLL_NOT_FOUND. DirectShow capture (dshow) remains available.
@@ -911,23 +928,25 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete
 # Compiles clean against ffmpeg master (verified 2026-07-13); OUR avdevice
 # imports only Server-Core-present system DLLs. The wheel's av* DLL deps
 # resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
-if ($ffCross) {
-    # Third site in this chain with the same root cause (after ONNX's wheel and
-    # OpenCV's python bindings): a cross lane has no TARGET CPython, so a wheel
-    # built here cannot be imported or verified on this host. RETRACTED
-    # 2026-08-24: the 2026-08-23 measurement this note used to cite as proof
-    # PyAV cannot be BUILT (`pip download --no-binary :all:` dying with
-    # "ImportError: DLL load failed while importing Utils: %1 is not a valid
-    # Win32 application") was taken under the since-fixed target-tag shim and is
-    # retracted as build evidence; only the cannot-be-IMPORTED half stands. The
-    # FFmpeg C libraries above are the real deliverable of this stage and they
-    # are already built and installed; PyAV is a python binding on top and
-    # follows the target interpreter, not this one. Backlog #120 (target CPython
-    # built from source via PCbuild -p ARM64) is what retires this skip.
-    Write-Host 'Skipping the PyAV wheel: cross build (no target CPython to import/verify a target extension here; backlog #120 will retire this skip)'
+# #120 step 2 (2026-08-24): the cross skip that lived here is RETIRED. A target
+# CPython now exists (build-target-cpython.ps1, first stage of this chain), so
+# the wheel is BUILT for the target and STAGED -- never installed or imported
+# on this host (the .pyd is aarch64). Two things differ from the native path:
+#   * link inputs: python314.lib comes from the TARGET build (Get-TargetBuildPython
+#     .LibDir), never the host one;
+#   * arch selection: PyAV is a setuptools extension, i.e. the ONE consumer in
+#     this chain compiled by MSVC cl.exe (setuptools' compiler, the documented
+#     PyAV-shaped hole in the clang-cl rule). `build_ext --plat-name win-arm64`
+#     makes setuptools pick the x86_arm64 cross tools; `bdist_wheel --plat-name`
+#     stamps the matching wheel tag. Assert-WheelTargetArch then PE-checks
+#     every native member of the staged wheel -- the gate that replaces the
+#     import.
+$ffTargetPy = Get-TargetBuildPython
+if ($ffCross -and -not $ffTargetPy.Available) {
+    Write-Host "Skipping the PyAV wheel: cross build without a target CPython import lib ($($ffTargetPy.Lib) missing -- did build-target-cpython.ps1 run?)"
     Complete-CurrentBuildPhase
     Write-BuildPhaseSummary -Label 'ffmpeg'
-    Complete-SourceBuild -Banner '=== FFmpeg cross build completed (PyAV skipped) ===' -SourceDir $SourceDir
+    Complete-SourceBuild -Banner '=== FFmpeg cross build completed (PyAV skipped: no target CPython) ===' -SourceDir $SourceDir
 }
 if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne '1') {
     Write-Warning 'FFmpeg came from the prebuilt fallback (no headers/import libs) -- skipping the PyAV wheel build.'
@@ -948,12 +967,25 @@ $pyavSdist = Get-ChildItem $pyavSrcRoot -Filter 'av-*.tar.gz' | Select-Object -F
 if (-not $pyavSdist) { throw "PyAV sdist not downloaded to $pyavSrcRoot" }
 [void](Invoke-ShieldedNative -Label 'PyAV sdist extract' -CommandLine """$($py.Exe)"" -m tarfile -e ""$($pyavSdist.FullName)"" ""$pyavSrcRoot""")
 $pyavDir = (Get-ChildItem $pyavSrcRoot -Directory | Select-Object -First 1).FullName
-$env:LIB = "$($py.LibDir);$env:LIB"
+# TARGET import-lib dir on LIB (host == target on amd64; the aarch64 python314.lib on cross).
+$env:LIB = "$($ffTargetPy.LibDir);$env:LIB"
+$pyavBuildCmd = if ($ffCross) {
+    $distutilsPlat = (Get-PythonWheelTag) -replace '_', '-'   # win_arm64 -> win-arm64 (distutils spelling)
+    "setup.py --ffmpeg-dir=""$prefix"" build_ext --plat-name $distutilsPlat bdist_wheel --plat-name $(Get-PythonWheelTag)"
+} else {
+    "setup.py --ffmpeg-dir=""$prefix"" bdist_wheel"
+}
 Push-Location $pyavDir
 try {
-    [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" setup.py --ffmpeg-dir=""$prefix"" bdist_wheel")
+    [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" $pyavBuildCmd")
 } finally { Pop-Location }
-Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
+if ($ffCross) {
+    $pyavStaged = @(Save-PythonWheel -SourceDir (Join-Path $pyavDir 'dist') -Required)
+    foreach ($w in $pyavStaged) { Assert-WheelTargetArch -WheelPath $w }
+    Write-Host "PyAV wheel staged for the target (not installed on this host): $($pyavStaged[0])"
+} else {
+    Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
+}
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'ffmpeg'
 Complete-SourceBuild -Banner '=== PyAV wheel build completed ===' -SourceDir $pyavSrcRoot  # cleanup + banner + exit 0 (see module help)

@@ -43,10 +43,12 @@ if ($expectedLlvm -and $clangBanner -notmatch [regex]::Escape($expectedLlvm)) {
 
 # ninja + nasm are pinned for the same reason (build-graph executor and the x86 SIMD
 # assembler both shape what ships). Cheap asserts, same failure economics.
-# CORRECTED 2026-08-24: nasm is NOT FFmpeg's assembler -- FFmpeg passes an
-# unconditional --disable-x86asm. Its real consumer is GStreamer's openh264
-# (build-gstreamer-from-source.ps1:482). The pin still shapes shipped object
-# code, so the assert stays; only the attribution was wrong.
+# Attribution, twice corrected on 2026-08-24: until that day FFmpeg passed an
+# unconditional --disable-x86asm (nasm assembled nothing for it; GStreamer's
+# openh264 was its only consumer, build-gstreamer-from-source.ps1:482). Since
+# backlog #119 the amd64 FFmpeg build enables x86asm again (the flag had no
+# recorded reason -- see build-ffmpeg-from-source.ps1's #119 block), so nasm
+# now shapes FFmpeg's x86 SIMD too and this assert is load-bearing for both.
 #
 # sccache is here for a DIFFERENT reason and it is the important one to keep:
 # it shapes nothing that ships, but multi-tier caching

@@ -333,6 +333,10 @@ function Get-MediaBranchVersionArg {
                 OPENCV_VERSION            = Get-VersionTableValue $VersionTable 'OPENCV_VERSION'
                 FFMPEG_VERSION            = Get-VersionTableValue $VersionTable 'FFMPEG_VERSION'
                 PYAV_VERSION              = Get-VersionTableValue $VersionTable 'PYAV_VERSION'
+                # Integrity pin for the hand-staged QAIRT SDK zip (ORT QNN EP,
+                # #121). Empty by default (no zip = EP off) -- same contract
+                # as TENSORRT_ZIP_SHA256 on the nvidia stage.
+                QNN_SDK_ZIP_SHA256        = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
                 NV_CODEC_HEADERS_REF      = Get-VersionTableValue $VersionTable 'NV_CODEC_HEADERS_REF'
                 CUDA_ARCHITECTURES        = Get-VersionTableValue $VersionTable 'CUDA_ARCHITECTURES'
                 # build-opencv resolves the CPython it builds bindings against.
@@ -376,6 +380,7 @@ function Get-MediaMergeVersionArg {
     $branchOnly = @(
         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES',
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
+        'QNN_SDK_ZIP_SHA256',                 # media-core: ORT QNN EP zip pin (#121), onnx stage only
         'PROTOC_VERSION', 'JRE_VERSION'       # media-litert: litert-lm toolchain pins
     )
     $merge = @{}

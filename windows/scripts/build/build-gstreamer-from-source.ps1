@@ -984,9 +984,10 @@ int _isatty(int);
             log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
         }
 
-        # CROSS LANE: the entire tflite integration below is skipped. LiteRT is
-        # not yet built for arm64, so C:\runtime\lib\litert is the empty
-        # stand-in from Dockerfile.media-builder's media-branch-absent stage.
+        # CROSS LANE, HISTORY (superseded by the PRESENCE-DRIVEN note below):
+        # until #115 the entire tflite integration below was skipped, because
+        # C:\runtime\lib\litert was an empty tree from a 'media-branch-absent'
+        # stand-in stage (itself retired 2026-08-24, #116).
         # Both gates in the block would throw against it -- the header
         # pre-flight first, then the import-library probe -- and neither is a
         # real defect on that lane. Get-RequiredGstPlugin -Arch has already

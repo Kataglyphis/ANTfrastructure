@@ -1333,9 +1333,10 @@ if ($smokeCross) {
     # The torch stage is default-dropped on the cross lane (uv sync must RUN the
     # target interpreter), so TORCH_APP_DIR names a stage that never built --
     # asserting it would fail every arm64 run for a documented non-defect. All
-    # other pointers stay asserted: the absent branches (litert/tvm/iree) get
-    # EMPTY stub dirs from media-branch-absent, so their pointers must still
-    # resolve -- a dangling pointer is a real defect on either lane.
+    # other pointers stay asserted: every branch is real on arm64 since
+    # 2026-08-24 (#115 litert, #116 tvm/iree runtime-only) and whatever a
+    # branch cannot build ships an EMPTY marker-carrying dir (litert-lm), so
+    # the pointers must still resolve -- a dangling one is a defect on either lane.
     $envPointerNames = @($envPointerNames | Where-Object { $_ -ne 'TORCH_APP_DIR' })
     Skip-Test 'TORCH_APP_DIR pointer check skipped on the cross lane (torch stage is default-dropped; see docs/windows-cross-builds.md)'
 }

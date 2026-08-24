@@ -847,6 +847,9 @@ def audit_sha_pairs() -> int:
         # EULA-gated manual download — deliberately empty, documented in
         # versions.env next to the key.
         "TENSORRT_ZIP_SHA256",
+        # Same contract for the Qualcomm AI Engine Direct SDK zip (ORT QNN EP,
+        # backlog #121): login-gated, staged by hand in windows/qnn-sdk/.
+        "QNN_SDK_ZIP_SHA256",
         # F6: unversioned bootstrap installer scripts — their upstream URL is
         # always-latest (no release tag to bump in step with), so they cannot be
         # tracked by a version bump. The hash is pinned and re-reviewed BY HAND

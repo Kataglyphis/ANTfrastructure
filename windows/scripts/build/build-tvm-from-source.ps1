@@ -102,9 +102,21 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
 # rightly refuses against this /MD chain (SPIRV-Tools et al.). sccache makes
 # the ~2000 extra TUs a one-time cost. Build-time only: TVM links LLVM
 # statically, and Clear-BuildScratch scrubs the tree afterwards.
-$llvmCmd = Get-Command llvm-config.exe -ErrorAction SilentlyContinue
+# #116 (2026-08-24): RUNTIME-ONLY on the cross lane. USE_LLVM=<path> makes TVM
+# EXECUTE llvm-config at configure time and link TARGET-arch LLVM libraries
+# into tvm_compiler.dll -- a host-tools/target-libs split this repo does not
+# build. The arm64 bundle therefore ships tvm_runtime.dll (+ tvm_ffi.dll and
+# the headers): everything needed to LOAD and RUN compiled modules on the
+# target. The compiler (tvm_compiler.dll, the tvm python package) stays
+# amd64-only and is named ABSENT in the bundle. The #47 "no codegen" refusal
+# below is a rule about SHIPPING a compiler without codegen; the cross lane
+# ships no compiler at all.
+$tvmCross = Test-WindowsCrossTarget
+$llvmCmd = if ($tvmCross) { $null } else { Get-Command llvm-config.exe -ErrorAction SilentlyContinue }
 $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
-if (-not $llvmConfig) {
+if ($tvmCross) {
+    Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler, no python) -- backlog #116; see docs/windows-cross-builds.md'
+} elseif (-not $llvmConfig) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '22.1.8'
     # SHA pins per version - extend when LLVM_WINDOWS_VERSION moves. An unknown
     # version must THROW, never download unpinned (repo download policy).
@@ -181,12 +193,16 @@ if (-not $llvmConfig) {
     Remove-Item (Join-Path $llvmDevRoot 'build') -Recurse -Force -ErrorAction SilentlyContinue
     Remove-Item (Join-Path $llvmDevRoot "llvm-project-$llvmDevVersion.src") -Recurse -Force -ErrorAction SilentlyContinue
 }
-Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
-# A PATH (forward slashes) is TVM's documented USE_LLVM form; plain ON only
-# works when llvm-config is already on PATH, which is exactly what is absent.
-$useLLVM = $llvmConfig -replace '\\', '/'
+$useLLVM = if ($tvmCross) { 'OFF' } else {
+    Write-Host "LLVM detected via llvm-config: $llvmConfig - enabling TVM LLVM codegen"
+    # A PATH (forward slashes) is TVM's documented USE_LLVM form; plain ON only
+    # works when llvm-config is already on PATH, which is exactly what is absent.
+    $llvmConfig -replace '\\', '/'
+}
 
-$pythonModule = if ($SkipPython) { 'OFF' } else { 'ON' }
+# Python OFF on the cross lane too: the tvm package drives tvm_compiler.dll,
+# which is not built there (and the target interpreter cannot run here).
+$pythonModule = if ($SkipPython -or $tvmCross) { 'OFF' } else { 'ON' }
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
@@ -212,7 +228,9 @@ $cmakeExtra += $cudnnArgs
 
 if ($useVulkan -eq 'ON') {
     $cmakeExtra += "-DVulkan_INCLUDE_DIR=$(Join-Path $vulkanSdk 'Include')"
-    $vulkanLib = Join-Path $vulkanSdk 'Lib'
+    # Arch-aware: Lib on amd64, Lib-ARM64 on the cross lane (the x64 SDK's
+    # optional arm64 component; verify-toolchain.ps1 asserts it is installed).
+    $vulkanLib = Join-Path $vulkanSdk (Get-VulkanLibDirName)
     if (Test-Path $vulkanLib) {
         $cmakeExtra += "-DVulkan_LIBRARY=$(Join-Path $vulkanLib 'vulkan-1.lib')"
     }
@@ -229,7 +247,62 @@ $buildLog = Get-PersistentBuildLogPath -Name 'tvm-build.log' -FallbackDir $build
 # MemGBPerJob 2, not 4 (backlog #74) — see the note in build-onnx-genai. The
 # sibling build-iree, which compiles LLVM in-tree in this same branch, has used
 # 2 all along, so the LLVM-class TUs are covered by evidence, not optimism.
-Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install -InstallConfig $BuildType
+if ($tvmCross) {
+    # Runtime-only (#116): build exactly the runtime target graph (tvm_runtime
+    # pulls tvm_ffi_shared) and stage by hand -- `cmake --install` would try to
+    # install tvm_compiler, which is never built here. Layout mirrors the amd64
+    # install (DLLs + import libs in lib\, headers in include\) so the merge's
+    # TVM_LIBRARY_PATH=...\tvm\lib pointer is real on both lanes.
+    Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Targets @('tvm_runtime')
+    $tvmLibOut = Join-Path $tvmInstallDir 'lib'
+    $tvmIncOut = Join-Path $tvmInstallDir 'include'
+    New-Item -Path $tvmLibOut, $tvmIncOut -ItemType Directory -Force | Out-Null
+    $runtimeBins = @(Get-ChildItem -Path $buildDir -Recurse -Include 'tvm_runtime*.dll', 'tvm_runtime*.lib', 'tvm_ffi*.dll', 'tvm_ffi*.lib' -File)
+    if (-not ($runtimeBins | Where-Object { $_.Name -eq 'tvm_runtime.dll' })) { throw "TVM cross: tvm_runtime.dll was not produced under $buildDir" }
+    foreach ($b in $runtimeBins) { Copy-Item $b.FullName -Destination $tvmLibOut -Force }
+    # Header trees of the 0.26 layout (measured 2026-08-24, first cross run):
+    # TVM's own include\tvm, the FFI split's include\tvm (tvm\ffi\*, MERGED
+    # into the same include\tvm -- copy CONTENTS, or PowerShell nests a second
+    # tvm\ under the existing dir), and dlpack, which now lives inside the
+    # tvm-ffi submodule's own 3rdparty. dmlc-core is gone from this TVM.
+    $dlpackHeader = Get-ChildItem -Path (Join-Path $SourceDir '3rdparty\tvm-ffi') -Recurse -Filter 'dlpack.h' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $headerTrees = @(
+        @{ Src = (Join-Path $SourceDir 'include\tvm');                 Dest = 'tvm' }
+        @{ Src = (Join-Path $SourceDir '3rdparty\tvm-ffi\include\tvm'); Dest = 'tvm' }
+    )
+    if ($dlpackHeader) { $headerTrees += @{ Src = $dlpackHeader.DirectoryName; Dest = 'dlpack' } }
+    else { Write-Warning 'TVM cross: dlpack.h not found under 3rdparty\tvm-ffi (upstream layout drift?) -- the runtime headers will not compile standalone' }
+    foreach ($tree in $headerTrees) {
+        if (-not (Test-Path $tree.Src)) { throw "TVM cross: header tree $($tree.Src) not found (upstream layout drift?)" }
+        $dest = Join-Path $tvmIncOut $tree.Dest
+        New-Item -Path $dest -ItemType Directory -Force | Out-Null
+        Copy-Item -Path (Join-Path $tree.Src '*') -Destination $dest -Recurse -Force
+    }
+    # Anchors checked against the v0.26.0 tree (2026-08-24): c_runtime_api.h is
+    # GONE with the FFI split (its C surface is tvm\ffi\c_api.h now);
+    # c_backend_api.h is the runtime's surviving C header.
+    foreach ($mustExist in @('tvm\runtime\c_backend_api.h', 'tvm\runtime\device_api.h', 'tvm\ffi\c_api.h', 'dlpack\dlpack.h')) {
+        if (-not (Test-Path (Join-Path $tvmIncOut $mustExist))) { throw "TVM cross: staged include tree is missing $mustExist -- the header copy above did not produce a usable runtime SDK" }
+    }
+    # Static gate (the import gate below is OFF on this lane): every staged DLL
+    # is the TARGET machine. A host-arch tvm_ffi.dll picked up from the wrong
+    # build dir would otherwise ship and fail only at load time on the target.
+    foreach ($pe in @(Get-ChildItem -Path $tvmLibOut -Include '*.dll' -Recurse -File)) {
+        $m = Get-PeFileMachine -Path $pe.FullName
+        if ($m -ne (Get-PeMachineType)) { throw ('TVM cross: {0} is PE machine 0x{1:X4}, expected 0x{2:X4}' -f $pe.Name, $m, (Get-PeMachineType)) }
+    }
+    Write-Host ('TVM cross: staged {0} runtime binaries into {1} (all PE machine 0x{2:X4}); compiler + python ABSENT by design (#116)' -f $runtimeBins.Count, $tvmLibOut, (Get-PeMachineType))
+    Set-Content -Path (Join-Path $tvmInstallDir 'COMPILER-ABSENT-ON-ARM64.txt') -Encoding ASCII -Value @(
+        'tvm_compiler.dll and the tvm python package are intentionally ABSENT from the Windows arm64 bundle.',
+        'They need TARGET-arch LLVM libraries plus a HOST llvm-config at configure time (backlog #116).',
+        'tvm_runtime.dll + tvm_ffi.dll (+ import libs) in lib\ and the headers in include\ are the shipped runtime.',
+        'See docs/windows-cross-builds.md.'
+    )
+    # The merge fans in C:\runtime\wheels from this branch unconditionally; no wheel is built here.
+    New-Item -Path (Join-Path (Split-Path $InstallDir -Parent) 'runtime\wheels') -ItemType Directory -Force | Out-Null
+} else {
+    Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install -InstallConfig $BuildType
+}
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 

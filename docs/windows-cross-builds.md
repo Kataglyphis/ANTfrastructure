@@ -298,14 +298,14 @@ collision, flagged dead where it appears.
 | `WITH_IPP=OFF`, `BUILD_IPP_IW=OFF` (OpenCV) | IPP is Intel's x86-only primitives library; no AArch64 build exists. OpenCV still resolved and unpacked `3rdparty/ippicv/ippicv_win`, putting its headers on every core TU's include path, and the staged `.lib` is x64 COFF that lld-link would reject against an arm64 image. |
 | `USE_DML=ON` (ONNX Runtime, and GenAI since #118), `WITH_DIRECTML=ON` (OpenCV) — all three initially OFF on this lane | **The original justification was wrong and is retracted:** the nuget *does* ship an arm64 import library. `Microsoft.AI.DirectML` 1.15.4 contains `bin/arm64-win/DirectML.lib`, a COFF import archive whose machine field is `0xAA64`. The real defect was a **case mismatch inside ONNX Runtime's own CMake**: `cmake/external/dml.cmake` declares the download's outputs with a lower-case `bin/arm64-win`, while `cmake/onnxruntime_providers_dml.cmake` composes its consumer paths as `bin/${onnxruntime_target_platform}-win` — and `onnxruntime_target_platform` is the verbatim, upper-case `ARM64`. The two spellings never meet, so the arm64 lane failed with `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`, and that was misread as "no arm64 package". A cross-scoped inline patch lower-cases the redist directory once (`string(TOLOWER … onnxruntime_dml_redist_platform)`) and routes both consumers through it. The sequencing hold has since cleared: as of #118 (2026-08-24) GenAI builds `USE_DML=ON` on both lanes and stages `D3D12Core.dll` through a target-derived filter, and OpenCV's `WITH_DIRECTML` is ON on both lanes — it feeds contrib G-API's ONNX DirectML EP, not `cv::dnn`. |
 | `USE_CUDA=OFF` forced by **target**, not host (GenAI) | `Get-GpuEnvironment` probes the x64 *build host*. On a GPU-equipped host it answers "yes" and would switch nvcc on for an aarch64 target. This lane ships no CUDA (wiring the Windows ARM64 CUDA preview is backlog work, see the exclusion table) — and even then the decision belongs to the target, never to a host GPU probe. |
-| `BUILD_WHEEL=OFF` (GenAI), Python bindings off (ONNX, OpenCV), PyAV skipped (FFmpeg) | Every wheel links the **target** CPython. When this row was written no aarch64 CPython existed in the image; since 2026-08-24 one does (`C:\runtime\python`, #120 step 1) — the switches stay OFF because the consumers are #120 **step 2**, deliberately sequenced after the first green, and `Get-SourceBuildPython` stays host-pinned (build tooling) by design. |
+| Python bindings **ON** everywhere since #120 step 2 (2026-08-24 evening): ORT wheel, GenAI wheel, `cv2`, PyAV — built for the target, **staged, never imported** | Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) while the **host** interpreter runs the build — `Get-TargetBuildPython` returns exactly that split (`.Exe` host, `.Include` arch-neutral, `.Lib`/`.LibDir` target) and `Get-SourceBuildPython` stays host-pinned. Wheels are tagged with an explicit `--plat-name win_arm64`, then `Invoke-PythonWheelBuild -StageOnly` hands them to `Assert-WheelTargetArch` (PE machine **and** `EXT_SUFFIX` name tag of every native member); cv2 gets a static gate on `cv2.cp314-win_arm64.pyd` in the target site-packages. The `sitecustomize` shim pins `EXT_SUFFIX` to the target on this lane (the name a target interpreter will import) while `get_platform()` stays host (what pip resolves downloads with). See § "#120 step 2" below for the three findings this took. |
 | `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV) | An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. Full `/O2` is retained. See below. |
 | MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`) | The existing Windows skip was gated on `WIN32 AND _MLAS_REQUIRES_ASM`, and upstream derives that flag from `MLAS_X86_64` / `MLAS_ARM64` / … — whose detection does **not** fire for a `CMAKE_SYSTEM_PROCESSOR=ARM64` cross configure. The skip silently did nothing on the arm64 lane, MLAS built a C++-only subset whose objects still referenced the GAS-only assembly kernels, and it failed at **link** with `undefined symbol: MlasGemvFloatKernel` / `MlasHGemmSupported`. amd64 is unchanged — `_MLAS_REQUIRES_ASM` is TRUE there, so both forms of the condition fire identically, and that lane already skipped MLAS. |
 | `mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV) | Bundled MLAS assumes *"`_M_ARM64` implies the MSVC compiler"* and remaps two ACLE reduction intrinsics onto MSVC's private spellings: `#define vmaxvq_f32(src) neon_fmaxv(src)`. clang-cl defines `_M_ARM64` too, but implements the ACLE names and has no `neon_fmaxv` at all. The upstream `#ifndef vmaxvq_f32` guard does not help — clang provides it as a *function*, not a macro, so the guard is true and MLAS shadows the real intrinsic. The condition being corrected is *which compiler*, not *which architecture*, so each `#define` is wrapped rather than deleted. **Dead code (audited 2026-08-24):** patch `003`'s `WIN32` `return()` fires first, so OpenCV never compiles MLAS — or this header — on either lane; the patch is retained as documentation of the collision, not as a live fix. |
 | `have_sse`/`have_sse2` gated on `cpu_family` (gst-plugins-base) | **Upstream bug.** Its MSVC branch assumes *"not `x86_64`" means "x86 32-bit"* and never considers ARM64, so aarch64 falls into the `else` and gets `sse_args = '/arch:SSE'`. It then decides purely on `cc.has_argument(sse_args)` — and **clang-cl accepts `/arch:SSE` for an aarch64 target completely silently**, so the x86 SSE resampler sources are compiled for ARM and die in `mmintrin.h`. `have_sse41` already carries the `cpu_family` guard; the fix just extends it to its two siblings. Nothing is fixable on the meson side: `ClangClCompiler.has_arguments` already appends `-Werror=unknown-argument`, `-Werror=unknown-warning-option` **and** `-Werror=unused-command-line-argument`. |
 | Vulkan lib dir follows `host_machine` (gst-plugins-bad) | **Upstream bug, same class: the wrong machine is asked.** `vulkan/meson.build` picks `join_paths(vulkan_root, 'Lib')` when `build_machine.cpu_family() == 'x86_64'` — the machine doing the compiling, which is x86_64 here no matter the target. Because the directory is passed **explicitly** via `cc.find_library('vulkan-1', dirs: …)`, no `LIB` ordering can override it. meson itself already gets this right (`VulkanDependencySystem` maps build `x86_64` + host `aarch64` → `Lib-ARM64`); gst-plugins-bad simply computes the path by hand instead of using it. |
 | `-FIio.h` → assembly-safe shim (GStreamer) | meson hands `c_args` to `.S` files too, so a force-included C header lands in an **assembly** translation unit and is parsed as instructions (`vadefs.h: unrecognized instruction mnemonic — typedef char* va_list;`). The shim wraps the include in `#ifndef __ASSEMBLER__`, which clang defines only for `.S`. Beyond openh264 this matters for dav1d, libvpx and x264, which all ship aarch64 `.S` as well — fixing the flag beats disabling one subproject at a time. |
-| `--as=clang --target=aarch64-pc-windows-msvc` (FFmpeg) | **Assembly is ENABLED, and this row used to say the opposite.** Until 2026-08-24 the lane passed `--disable-asm` on the assumption that aarch64 GAS needed `gas-preprocessor.pl` driving `armasm64`. It does not: clang's *integrated* assembler accepts FFmpeg's aarch64 GAS directly, so pointing `--as` at clang with the target triple is the whole fix. The precondition that makes it safe on a host which cannot execute aarch64 is that `--enable-cross-compile` disables configure's runtime probes — configure only ever *assembles* its test fragments. Measured: `NEON enabled yes`, and 99 distinct `aarch64/*.o` objects built through real `AS` steps. `gas-preprocessor.pl` + `armasm64` remains the documented fallback if a future FFmpeg lands a `.S` file clang rejects; reaching for a different toolchain does not. **amd64 is untouched because the flag lives in a cross-only branch — not because it has an assembler of its own:** `--disable-x86asm` is appended unconditionally, so FFmpeg builds no external x86 assembly on either lane, and the pinned nasm is consumed by GStreamer's openh264 rather than by FFmpeg. The resulting asymmetry (arm64 FFmpeg has NEON asm, amd64 FFmpeg has none) is filed as backlog #119. |
+| `--as=clang --target=aarch64-pc-windows-msvc` (FFmpeg) | **Assembly is ENABLED, and this row used to say the opposite.** Until 2026-08-24 the lane passed `--disable-asm` on the assumption that aarch64 GAS needed `gas-preprocessor.pl` driving `armasm64`. It does not: clang's *integrated* assembler accepts FFmpeg's aarch64 GAS directly, so pointing `--as` at clang with the target triple is the whole fix. The precondition that makes it safe on a host which cannot execute aarch64 is that `--enable-cross-compile` disables configure's runtime probes — configure only ever *assembles* its test fragments. Measured: `NEON enabled yes`, and 99 distinct `aarch64/*.o` objects built through real `AS` steps. `gas-preprocessor.pl` + `armasm64` remains the documented fallback if a future FFmpeg lands a `.S` file clang rejects; reaching for a different toolchain does not. **amd64 is untouched by this row because the flag lives in a cross-only branch.** When this row was written amd64 had no assembler path of its own (`--disable-x86asm` was appended unconditionally; nasm served only GStreamer's openh264); backlog #119 closed that asymmetry the same day by enabling nasm-assembled x86asm on the amd64 lane, while the cross lane keeps `--disable-x86asm` explicitly — it is an x86-only knob. |
 
 ### The OpenCV softfloat / NEON collision
 
@@ -448,9 +448,56 @@ copy dropped the **x64** one into the ARM64 output; the gate flagged it as the s
 in a 932-binary run, and the stage now self-polices every staged binary's PE machine and drops
 exactly that file, under a tightly-guarded rule rather than a pattern that could grow.
 
-**What this deliberately does not include: the consumers.** The ORT wheel, the GenAI bindings,
-`cv2` and PyAV are #120 **step 2**, sequenced after this green on purpose — so
-`C:\runtime\wheels` still ships empty on arm64 until step 2 lands.
+**What this deliberately did not include at first: the consumers.** They followed the same
+evening as step 2.
+
+## The Python consumers are built for the target (#120 step 2)
+
+Since 2026-08-24 evening (arm64 run 3) the four consumers build against the target CPython:
+`onnxruntime-1.29.0-cp314-cp314-win_arm64.whl` (4 native members), `onnxruntime_genai_directml-0.15.2-cp314-cp314-win_arm64.whl`
+(3), `av-18.1.0-cp314-cp314-win_arm64.whl` (49) — all members `0xAA64`, all staged in
+`C:\runtime\wheels` — and `cv2.cp314-win_arm64.pyd` installed into `C:\runtime\python\Lib\site-packages`.
+None of it is installed into, or imported by, any interpreter in the build: the only interpreter
+that can run here is x64.
+
+**The split that makes it correct.** One interpreter *runs* the builds (host, x64 — pybind11 and
+numpy probes execute it, `bdist_wheel` zips with it); a different one is *linked* (target —
+`python314.lib` from `PCbuild\arm64`). `Get-TargetBuildPython` encodes that as `.Exe` (host),
+`.Include` (arch-neutral headers), `.Lib`/`.LibDir` (target) with an `.Available` guard, and every
+consumer passes exactly those. On amd64 the accessor collapses to the host values, so the native
+lane is byte-identical.
+
+**Three findings from the two failed runs before the green one — each now pinned in code or test:**
+
+1. **ORT's CMake reads `Python_*`, not `Python3_*`.** The `Python3_EXECUTABLE/INCLUDE_DIR/LIBRARY`
+   hints passed for months were ignored on *every* lane — CMake printed "Manually-specified
+   variables were not used by the project" each time — and amd64 only worked because FindPython
+   auto-detected the host interpreter and its numpy. Cross had no luck to fall back on: `Target
+   "onnxruntime_pybind11_state" links to Python::NumPy but the target was not found`. The script now
+   passes `Python_*` plus an explicit `Python_NumPy_INCLUDE_DIR` probed by running the host
+   interpreter. GenAI needs **both** spellings: `Python_*` for its own `find_package(Python)`, and
+   the legacy `PYTHON_*` trio for its vendored pybind11 in classic mode (`FindPythonLibsNew.cmake:
+   Python libraries not found` without it). `SourceBuild.FindPythonPrefix.Tests.ps1` pins the
+   spellings **case-sensitively** (`-cmatch` — PowerShell's `-match` would call `Python_` and
+   `PYTHON_` the same name).
+2. **`if (Test-WindowsCrossTarget -and -not $tpy.Available)` is parsed in command mode.** A
+   condition whose first token is a command name makes `-and`, `-not` and `$tpy.Available` *arguments*
+   of that command; no error, the branch fires. Run 2 reported "6. python wheel 0s" with the bindings
+   ON. Fix: a variable first (`$onnxCross -and …`). Probed and confirmed on the host before fixing.
+3. **The host-pinned `sitecustomize` shim stamped the host `EXT_SUFFIX` on target modules.**
+   `cv2.cp314-win_amd64.pyd`, machine `0xAA64` — right bytes, a name no arm64 interpreter will ever
+   import (`_imp.extension_suffixes()` there is `.cp314-win_arm64.pyd` / `.pyd`). The shim now sets
+   `sysconfig.get_config_vars()['EXT_SUFFIX']` to the target suffix on the cross lane and leaves
+   `get_platform()` host-pinned, because those are two different facts: the first names what this
+   interpreter *builds*, the second what pip may *download* for it. Verified standalone under a host
+   python (`EXT_SUFFIX = .cp314-win_arm64.pyd`, `get_platform = win-amd64`, import suffixes untouched)
+   before the run, and `Assert-WheelTargetArch` + the cv2 gate now check the name tag as well as the
+   machine field.
+
+Two more facts worth keeping: PyAV is a setuptools extension, so it is compiled by **`cl.exe`** via
+setuptools' `x86_arm64` vcvars spec (`build_ext --plat-name win-arm64` selects it) — the documented
+PyAV-shaped hole in the clang-cl rule, on both lanes; and the `-StageOnly` path is the cross lane's
+replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which stay mandatory on amd64.
 
 ## Cross machinery the LiteRT branch added
 
@@ -524,15 +571,92 @@ it turned out, for the reason first recorded here:
 | `media-tvm` (also carries **IREE**) | **Corrected 2026-08-24: the reason recorded here was wrong.** This row said TVM's own LLVM is built with `-DLLVM_TARGETS_TO_BUILD=X86;NVPTX` "so its codegen cannot emit aarch64 at all" — as if that were upstream's constraint. The target list is **this repo's own array** in `build-tvm-from-source.ps1`; adding `AArch64` is a one-token edit. The real remaining cross cost is that `USE_LLVM=<path>` must **execute** `llvm-config`, which needs a host-tools/target-libs split — backlog #116. **IREE rides this same dropped branch** and went unnamed here until now; upstream supports `IREE_HOST_BIN_DIR` for exactly that split. **#116 Phase 0 DONE (2026-08-24):** the amd64 full regression built TVM's LLVM with `X86;AArch64;NVPTX` and passed (media-tvm 21:17, arch gate 1134/0, smoke 220/0/0) — the x64 TVM can emit aarch64; the cross cost (executing llvm-config) is what remains. |
 
 `Dockerfile.media-merge-builder` copies from both with **unconditional** `COPY --from=media-litert` /
-`--from=media-tvm`, and a Dockerfile cannot make a `COPY` conditional. Since 2026-08-24 only
-`TVM_IMAGE` points at the `media-branch-absent` stage — `LITERT_IMAGE` points at the real branch —
-and the stand-in provides exactly the expected paths, empty. That includes `tvm\lib` and `iree\bin`:
-the merge bakes `TVM_LIBRARY_PATH` / `IREE_BIN` pointing there, and an env var aimed at a missing
-directory was exactly the pair of pointer failures in the first arm64 smoke run. Copying an empty
-directory succeeds and contributes nothing, which is the intent. It also drops an
-`ABSENT-ON-ARM64.txt` into each provided directory, so somebody who opens the bundle and finds an
-empty `tvm` directory gets the reason on the spot instead of assuming the build silently lost
-something.
+`--from=media-tvm`, and a Dockerfile cannot make a `COPY` conditional. Until 2026-08-24 evening a
+`media-branch-absent` stand-in stage stood in for whatever the lane could not build (first both
+branches, then only `media-tvm`), providing the expected paths empty plus an `ABSENT-ON-ARM64.txt`
+marker in each. **That stage is retired** (#116 made `media-tvm` real, runtime-only — see the next
+section): `$script:MergeRequiredBranches` is the same three-branch list on both lanes, and the
+surviving convention is that **a branch which cannot build a component ships its own empty,
+marker-carrying tree** — `build-litert-all.ps1` does exactly that for LiteRT-LM, and
+`build-tvm-from-source.ps1` / `build-iree-from-source.ps1` drop `COMPILER-ABSENT-ON-ARM64.txt` next to
+their runtime installs. The merge's pointer contract is unchanged: `TVM_LIBRARY_PATH` / `IREE_BIN`
+must resolve on both lanes, and smoke section 19 asserts it (the first arm64 smoke run found
+exactly that pair dangling).
+
+## TVM and IREE cross-build runtime-only (#116, 2026-08-24)
+
+The blocker recorded for `media-tvm` was real but narrower than "the branch": `USE_LLVM=<path>`
+makes TVM **execute** `llvm-config` at configure time and link target-arch LLVM libraries into
+`tvm_compiler.dll`, and IREE's compiler needs its in-tree LLVM for the target too. Neither is needed
+to **run** compiled modules. So the cross lane builds the runtimes and names the compilers absent:
+
+| Component | arm64 cross build | Shipped | Named ABSENT |
+|---|---|---|---|
+| TVM | `USE_LLVM=OFF`, `TVM_BUILD_PYTHON_MODULE=OFF`, `ninja tvm_runtime` only (the `-Targets` parameter added to `Invoke-NinjaBuildWithRetry` for this), manual stage: `lib\tvm_runtime*.dll/.lib`, `lib\tvm_ffi*.dll/.lib`, `include\{tvm,dlpack,dmlc}`; Vulkan lib dir arch-aware (`Get-VulkanLibDirName`) | `C:\runtime\lib\tvm\{lib,include}` — every DLL PE-gated in-stage | `tvm_compiler.dll`, the `tvm`/`tvm_ffi` python packages (`COMPILER-ABSENT-ON-ARM64.txt`) |
+| IREE | **Two configures of the same tree**, upstream's documented recipe: (A) a native x64 runtime-only build into `build-host\`, installed, asserted to contain `iree-flatcc-cli.exe` + `iree-c-embed-data.exe`; (B) the target configure with `IREE_HOST_BIN_DIR=<A>/install/bin`, `IREE_BUILD_COMPILER=OFF`, python OFF, Vulkan HAL ON | `C:\runtime\iree\{bin,lib,include}` — every `.exe`/`.dll` under `bin\` PE-gated in-stage (a host tool leaking into the target install is the failure this catches) | `iree-compile.exe`, `iree.compiler` / `iree.runtime` wheels (`COMPILER-ABSENT-ON-ARM64.txt`) |
+
+The functional compile+run gate (`iree-compile` → `iree-run-module`, `abs(-5)=5`) runs only on
+amd64; on arm64 it is replaced by the static PE gate, and the execution proof stays owed to a
+native host like every other arm64 signal.
+
+Four findings from the first runs (3–6), each fixed in code and, where it is a rule, in a test:
+
+- **TVM 0.26 header layout:** `dmlc-core` is gone, `dlpack` lives inside the `tvm-ffi` submodule's
+  own `3rdparty`, and `c_runtime_api.h` no longer exists (its C surface is `tvm\ffi\c_api.h`). The
+  copy is layout-searched and asserts `tvm\runtime\c_backend_api.h`, `tvm\runtime\device_api.h`,
+  `tvm\ffi\c_api.h`, `dlpack\dlpack.h`.
+- **The host pass needs the HOST's `LIB`, not just the host target.** VsDevCmd `-arch=arm64`
+  leaves `LIB` on the ARM64 CRT, CMake invokes lld-link directly (no clang-driver auto-detection),
+  and the first try-compile died with `msvcrtd.lib(exe_main.obj): machine type arm64 conflicts
+  with x64`. `Invoke-WithHostArchLibraryEnvironment` rewrites the arch segment of every
+  `LIB`/`LIBPATH` entry for the block and restores it (`SourceBuild.HostArchLibEnv.Tests.ps1`).
+  Exactly the "necessary but not sufficient" the choke point's comment predicted for
+  `-TargetArch (Get-WindowsHostArch)`.
+- **IREE 3.x host tool names:** `iree-c-embed-data.exe`, not `generate_embed_data`.
+- **Upstream gap — `IREE_HOST_BIN_DIR` on a Windows host:** IREE composes
+  `${IREE_HOST_BIN_DIR}/iree-flatcc-cli` without `.exe`, and ninja wants that exact file
+  (`missing and no known rule to make it`). The script stages a suffix-less twin beside each host
+  `.exe`; `CreateProcess` appends `.exe` for an extension-less full path, so both names run the
+  same bytes. Draft issue: `out/upstream-issue-iree-host-bin-dir-exe.md`.
+- **IREE's arm_64 ukernels need per-TU feature flags under clang-cl** — the third instance of the
+  MLAS/XNNPACK class. Upstream hands `mmt4d_arm_64_{fullfp16,fp16fml,bf16,dotprod,i8mm}.c` their
+  `-march=armv8.2-a+<feat>` via `iree_select_compiler_opts(CLANG_OR_GCC …)`; clang-cl is
+  classified as MSVC there, the flags vanish, and the kernels die with `always_inline function
+  'vfmaq_f16' requires target feature 'fullfp16'`. `mmt4d_arm_64_fp16fml.c` additionally uses the
+  bare GNU `asm` keyword, which MS compat turns off. Post-configure `build.ninja` tagging appends
+  `/clang:-march=armv8.2-a+<feat>` to exactly those five TUs (floor 5; the pre-fix state tags 0)
+  and `-Dasm=__asm__` to every arm_64 ukernel TU.
+- **Upstream bug — `ARM64` matches `MATCHES 64`:** `hal/local/elf/CMakeLists.txt` adds the
+  x86-64 MASM trampoline object (`arch/x86_64_msvc.obj`) whenever `MSVC_C_ARCHITECTURE_ID MATCHES
+  64`, so the ARM64 archive got an x64 object (`file machine type x64 conflicts with library
+  machine type arm64`). Same "MSVC implies x86" class as gst-plugins-base's `have_sse`. Inline
+  patch to an exact x64 match, on both lanes, verified after applying. Draft issue:
+  `out/upstream-issue-iree-elf-arch-arm64-msvc.md`.
+- **C99 `inline` linkage in one ukernel:** with everything compiled, the tools failed to link on
+  `iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm` — the single non-static C `inline` definition
+  in the arm_64 set (checked file by file), whose address the entry point takes; C99 inline
+  semantics emit no external symbol for it. `-fgnu89-inline` on that TU did not help under
+  clang-cl (run 10); the definition is inline-patched to a plain external function (`inline`
+  buys nothing for a function used by address), verified post-patch. (How upstream links this
+  on Linux/clang was not verified — a question, not a claim.)
+
+**First full run: 2026-08-24 evening (arm64 run 11) — see the status banner for the result.**
+
+## QNN execution provider scaffold (#121, 2026-08-24)
+
+The Qualcomm AI Engine Direct SDK is login-gated, so the wiring is **opt-in by staging a zip**:
+drop it into `windows/qnn-sdk/` (git-ignored except its README; bind-mounted into the media-core
+`onnx` RUN at `C:\temp\qnn-sdk`), optionally pin it with `QNN_SDK_ZIP_SHA256` in `versions.env`
+(forwarded as a `media-core-env` ARG/ENV, `bump_versions.py` allowlist, same contract as
+`TENSORRT_ZIP_SHA256`). `build-onnx-from-source.ps1` then extracts it, anchors the SDK root on
+`include\QNN\QnnInterface.h`, asserts `lib\<arch>\QnnCpu.dll` exists for the target
+(`Get-QnnSdkLibDirName`: `aarch64-windows-msvc` / `x86_64-windows-msvc`), configures
+`-Donnxruntime_USE_QNN=ON -Donnxruntime_QNN_HOME=<root>` on **both** lanes, and after install
+asserts `onnxruntime_providers_qnn.dll` landed and stages the per-arch backend DLLs plus the
+`hexagon-v*` skel directories beside `onnxruntime.dll`. **No zip = EP off with one notice** —
+the state every run so far has exercised. The SDK-present path is a scaffold that has **never
+run** on this host (it never held the SDK); its asserts are written so the first staged zip
+proves or breaks it loudly. The verification ceiling is DirectML's: bytes, never NPU execution.
 
 **The mandatory GStreamer plugin contract demands all four plugins on BOTH lanes again.** The
 `UnavailableOn.arm64` entry that dropped `tflite` while LiteRT was a stand-in was deleted on

@@ -247,6 +247,11 @@ ARG CUDA_ARCHITECTURES="80;86;89;90"
 # stage comment; a key missing from this list silently uses the base-baked value.
 ARG OPENCV_VERSION=5.0.0
 ARG PYTHON_VERSION=3.14.7
+# Integrity pin for the hand-staged Qualcomm AI Engine Direct SDK zip (ORT QNN
+# EP, backlog #121; windows/qnn-sdk/ is bind-mounted into the onnx RUN). Empty
+# = unpinned; no zip staged = EP off. Declared here, not in `common`, so a pin
+# change re-keys media-core only (#49/#103 discipline).
+ARG QNN_SDK_ZIP_SHA256=""
 
 # ONE ENV instruction: the classic builder pays a layer per instruction and the
 # chain runs against Docker's 125-layer cap (see docs/windows-builds.md § layer
@@ -259,7 +264,8 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
     OPENCV_VERSION="${OPENCV_VERSION}" `
-    PYTHON_VERSION="${PYTHON_VERSION}"
+    PYTHON_VERSION="${PYTHON_VERSION}" `
+    QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 
 # ── media-core builder, classic lane (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg)
 FROM media-core-env AS media-core
@@ -311,84 +317,13 @@ COPY windows\scripts\build\build-litert-from-source.ps1 `
      windows\scripts\build\debug-litertlm-link.ps1 `
      C:\temp\scripts\
 
-# ── media-branch-absent: stand-in for branches absent on the cross lane ──────
-# Dockerfile.media-merge-builder fans in three branch trees with unconditional
-# COPY --from=media-litert / --from=media-tvm, and a Dockerfile has no way to
-# make a COPY conditional. On the arm64 cross lane neither branch is built:
-#
-#   media-litert : LiteRT-LM's ACTIVE build path is Bazel, and TWO blockers
-#                  are real: (a) upstream's .bazelrc has no windows-arm64
-#                  config (only android/macos/ios arm64) and (b) the prebuilt
-#                  x86_64-only libGemmaModelConstraintProvider.lib IS in the
-#                  default Windows dependency graph via gemma3_data_processor
-#                  -- severable with the litert_lm_fst_constraints_disabled
-#                  config_setting (model_data_processor/BUILD:26-33), but not
-#                  yet severed here. CORRECTED 2026-08-24: the 2026-08-23 note
-#                  here dismissed the prebuilt as "OPTIONAL ... never was what
-#                  stood in the way" -- wrong for the Bazel path we actually
-#                  run (the stub substitute exists only on upstream's CMake
-#                  path). The original claim blamed only the prebuilt, the
-#                  2026-08-23 one only the bazelrc; each was half the story.
-#                  Plain LiteRT (pure CMake, no Bazel, no prebuilt) shares
-#                  neither blocker -- its one cross obstacle is upstream's
-#                  TFLITE_HOST_TOOLS_DIR host-flatc requirement; its cross
-#                  build is backlog #115.
-#   media-tvm    : CORRECTED 2026-08-24: this line claimed the X86;NVPTX LLVM
-#                  target list means TVM's "codegen cannot emit aarch64 at
-#                  all" -- wrong since first written: build-tvm-from-source.ps1
-#                  sets that list itself, an array this repo fully controls
-#                  (AArch64 added 2026-08-24, #116 Phase 0). The REAL cross
-#                  cost is that USE_LLVM=<path> must EXECUTE llvm-config,
-#                  which needs a host-tools/target-libs split -- backlog #116.
-#                  IREE rides this same dropped branch (upstream supports
-#                  IREE_HOST_BIN_DIR for exactly this split) and went unnamed
-#                  here before -- a silent casualty of the same fan-in.
-#
-# So the arm64 lane points BOTH LITERT_IMAGE and TVM_IMAGE at this stage, which
-# provides exactly the paths the merge copies from -- empty. Copying an empty
-# directory succeeds and contributes nothing, which is precisely the intent.
-#
-# The marker files are deliberate: they travel INTO the shipped bundle, so
-# somebody who opens it and finds an empty litert dir gets the reason on the
-# spot instead of assuming the build silently dropped something.
-FROM common AS media-branch-absent
-
-# The SUBDIR pointers are in the list too (2026-08-24, first arm64 smoke run):
-# the merge bakes TVM_LIBRARY_PATH=...\tvm\lib and IREE_BIN=...\iree\bin, and
-# smoke section 19 asserts every baked pointer resolves. The stand-in created
-# only the roots, so those two assertions were the sole pointer failures out
-# of 35. (No inline comments inside the RUN below -- the escape joins it into
-# ONE pwsh line and a '#' would comment out everything after it.)
-RUN $dirs = @( `
-        'C:\runtime\lib\litert', `
-        'C:\runtime\lib\litert-lm', `
-        'C:\runtime\lib\tvm', `
-        'C:\runtime\lib\tvm\lib', `
-        'C:\runtime\iree', `
-        'C:\runtime\iree\bin', `
-        'C:\runtime\wheels', `
-        'C:\temp\cpython\Lib\site-packages' `
-    ); `
-    foreach ($d in $dirs) { New-Item -Path $d -ItemType Directory -Force | Out-Null }; `
-    $note = @( `
-        'This component is intentionally ABSENT from the Windows arm64 (aarch64) bundle.', `
-        '', `
-        'LiteRT-LM: its Bazel build hits two real blockers -- the upstream .bazelrc has no', `
-        'windows-arm64 config, and the x86_64-only prebuilt libGemmaModelConstraintProvider', `
-        'sits in the default Windows dependency graph (severable, but not yet severed here).', `
-        'Plain LiteRT (pure CMake) shares neither blocker; its cross build is backlog #115.', `
-        '', `
-        'TVM and IREE: absent because USE_LLVM / the IREE build must EXECUTE host tools at', `
-        'configure time, which needs a host-tools/target-libs split -- backlog #116. The', `
-        'LLVM target list is set by this repo (X86;AArch64;NVPTX), so codegen is NOT the', `
-        'blocker; an earlier version of this note wrongly called aarch64 codegen unfixable.', `
-        '', `
-        'See docs/windows-cross-builds.md.' `
-    ) -join [Environment]::NewLine; `
-    foreach ($d in @('C:\runtime\lib\litert', 'C:\runtime\lib\litert-lm', 'C:\runtime\lib\tvm', 'C:\runtime\iree')) { `
-        Set-Content -Path (Join-Path $d 'ABSENT-ON-ARM64.txt') -Value $note -Encoding utf8 `
-    }; `
-    Write-Host 'media-branch-absent: staged empty litert/litert-lm/tvm/iree trees for the arm64 merge fan-in'
+# (A `media-branch-absent` stand-in stage lived here from 2026-08-23 to
+# 2026-08-24: an empty-tree substitute for cross branches the merge's
+# unconditional COPY --from=... needed but the lane could not build. Retired
+# once every branch became real on arm64 -- #115 litert, #116 tvm/iree
+# runtime-only. The surviving convention: a branch that cannot build a
+# component ships its own empty, marker-carrying tree; see the LiteRT-LM
+# skip in build-litert-all.ps1.)
 
 # ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
 FROM common AS media-tvm-env
@@ -458,9 +393,13 @@ FROM common AS media-core-built-onnx
 ARG ONNXRUNTIME_VERSION=v1.29.0
 ARG CUDA_ARCHITECTURES="80;86;89;90"
 ARG PYTHON_VERSION=3.14.7
+# QNN SDK zip integrity pin (#121) -- read by build-onnx-from-source.ps1 only,
+# so it keys THIS stage alone (#49 discipline). Empty = unpinned / no EP.
+ARG QNN_SDK_ZIP_SHA256=""
 ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
     CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
-    PYTHON_VERSION="${PYTHON_VERSION}"
+    PYTHON_VERSION="${PYTHON_VERSION}" `
+    QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # Both DORMANT by default (empty ARG = inert; the scripts test for -eq '1').
 # Declared in the CONSUMING stage per the #103 lesson, and declared AT ALL
 # because buildctl silently DISCARDS a --opt build-arg no Dockerfile ARG
@@ -501,6 +440,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
+    --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
     & 'C:\bkmnt\build-media-core-all.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # FFMPEG BEFORE OPENCV (swapped 2026-08-16, backlog #94). OpenCV's videoio

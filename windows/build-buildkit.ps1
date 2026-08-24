@@ -295,45 +295,44 @@ if ($TargetArch -ne 'amd64') {
     #                  only cross obstacle is upstream's TFLITE_HOST_TOOLS_DIR
     #                  host-flatc requirement. Plain-LiteRT cross is backlog
     #                  #115.
-    #   media-tvm    : also carries IREE, which this list dropped silently
-    #                  alongside TVM until it was first named here 2026-08-24.
-    #                  CORRECTED 2026-08-24: "its codegen cannot emit aarch64"
-    #                  framed a choice as a fact -- LLVM_TARGETS_TO_BUILD=
-    #                  X86;NVPTX is an array THIS repo sets in
-    #                  build-tvm-from-source.ps1; adding AArch64 is a one-token
-    #                  edit. The real remaining cost: USE_LLVM=<path> makes TVM
-    #                  EXECUTE llvm-config at configure time, so a cross build
-    #                  needs a host-tools/target-libs split (backlog #116).
-    #                  IREE has the same shape; upstream supports
-    #                  IREE_HOST_BIN_DIR for exactly this.
+    #   media-tvm    : LEFT this list on 2026-08-24 as well (#116): the branch
+    #                  cross-builds RUNTIME-ONLY -- tvm_runtime.dll (+ffi,
+    #                  headers) with USE_LLVM=OFF, and IREE's runtime tools
+    #                  through upstream's IREE_HOST_BIN_DIR split (host tools
+    #                  built natively first). The compilers (tvm_compiler.dll,
+    #                  iree-compile) and the python packages stay amd64-only
+    #                  and are named ABSENT inside the bundle. (History: the
+    #                  branch was blocked here because USE_LLVM=<path> must
+    #                  EXECUTE llvm-config; an even older note wrongly claimed
+    #                  aarch64 codegen was impossible.)
+    #   The list is EMPTY today and kept as the mechanism for the next
+    #   genuinely blocked branch.
     # Asking for one EXPLICITLY is an error (say so, do not silently do nothing);
     # inheriting them from the parameter default just drops them with a notice.
     # media-litert LEFT this list on 2026-08-24 (#115): plain LiteRT cross-builds
     # (build-litert-all.ps1 skips only the LiteRT-LM stage on cross, with the
     # Bazel reasons printed there), so the branch now RUNS on arm64 and its
     # tensorflowlite_c feeds the tflite GStreamer plugin in the merge.
-    $crossBlockedBranches = @('media-tvm')
+    $crossBlockedBranches = @()
     $blockedRequested = @($MediaBranches | Where-Object { $_ -in $crossBlockedBranches })
     if ($blockedRequested.Count -gt 0) {
         if ($PSBoundParameters.ContainsKey('MediaBranches')) {
-            throw ("-MediaBranches $($blockedRequested -join ',') cannot be built for -TargetArch $TargetArch yet: " +
-                   'TVM (and IREE, same branch) must execute llvm-config at configure time, which needs the ' +
-                   'host-tools split of backlog #116. See docs/windows-cross-builds.md. ' +
-                   'Re-run with -MediaBranches media-core,media-litert.')
+            throw ("-MediaBranches $($blockedRequested -join ',') cannot be built for -TargetArch $TargetArch yet " +
+                   '(see the blocker recorded next to $crossBlockedBranches and docs/windows-cross-builds.md).')
         }
         $MediaBranches = @($MediaBranches | Where-Object { $_ -notin $crossBlockedBranches })
-        Write-Host ("[bk] media branches dropped for $TargetArch : $($blockedRequested -join ', ') " +
-                    '(tvm+iree: llvm-config must run at configure time, #116; the merge fans in ' +
-                    'an empty tree instead)') -ForegroundColor Yellow
+        Write-Host "[bk] media branches dropped for $TargetArch : $($blockedRequested -join ', ') (see `$crossBlockedBranches)" -ForegroundColor Yellow
     }
     Write-Host ("[bk] TARGET ARCH: $TargetArch (CROSS build - host stays windows/amd64). " +
                 'Output is an artifact bundle, not a runnable image.') -ForegroundColor Yellow
 }
-# Which branches the merge fan-in requires before it may run. amd64 needs all
-# three; the cross lane needs what it can actually build (media-core AND
-# media-litert since #115), and substitutes the 'media-branch-absent' stage for
-# the rest.
-$script:MergeRequiredBranches = if ($TargetArch -eq 'amd64') { @('media-core', 'media-litert', 'media-tvm') } else { @('media-core', 'media-litert') }
+# Which branches the merge fan-in requires before it may run: all three on
+# BOTH lanes since 2026-08-24 (#115 made media-litert real on arm64, #116
+# made media-tvm real -- runtime-only -- the same day). The former
+# 'media-branch-absent' stand-in stage is retired; a cross branch that can
+# not build ships its OWN empty, marker-carrying tree (litert-lm is the
+# surviving example, see build-litert-all.ps1).
+$script:MergeRequiredBranches = @('media-core', 'media-litert', 'media-tvm')
 # Forwarded to the stages AFTER the arch fork only. base/sdk/toolchain are host
 # tooling shared by both lanes; declaring this ARG there would re-pay the VS
 # Build Tools layer on every lane switch.
@@ -847,22 +846,13 @@ if ($Stages -contains 'media') {
     $allBranches = $script:MergeRequiredBranches
     $runMerge = @($allBranches | Where-Object { $_ -notin $MediaBranches }).Count -eq 0
     if ($runMerge) {
-        # On the cross lane the two blocked branches have no image at all, and
-        # the merge Dockerfile's COPY --from=media-litert / --from=media-tvm are
-        # unconditional (a Dockerfile cannot branch). Build the stand-in stage
-        # once and point BOTH at it: it provides exactly those paths, empty, so
-        # each COPY succeeds and contributes nothing.
+        # Both lanes fan in REAL branch images since 2026-08-24 (#115 litert,
+        # #116 tvm/iree runtime-only). The 'media-branch-absent' stand-in that
+        # used to substitute for unbuildable cross branches is retired; the
+        # merge Dockerfile's unconditional COPY --from=... lines are satisfied
+        # by each branch shipping its own (possibly empty, marker-carrying) tree.
         $litertImage = Get-BkTag 'windows-media-litert'
         $tvmImage    = Get-BkTag 'windows-media-tvm'
-        if ($TargetArch -ne 'amd64') {
-            $absentTag = Get-BkTag 'windows-media-branch-absent'
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-branch-absent' -Tag $absentTag -BuildArgs (@{ BASE_IMAGE = Get-BkTag 'windows-toolchain' } + $archArgs)
-            # Since #115 only TVM(+IREE) needs the stand-in: media-litert is a
-            # required cross branch with a REAL image (plain LiteRT; the LM
-            # stage inside it self-skips with its Bazel reasons).
-            $tvmImage    = $absentTag
-            Write-Host "[bk] merge: TVM_IMAGE -> $absentTag (empty stand-in; LITERT_IMAGE is the real $litertImage since #115); see docs/windows-cross-builds.md" -ForegroundColor Yellow
-        }
         # Canonical merge version env (WindowsBuildDriver.Common) + BK tag wiring.
         $mergeArgs = (Get-MediaMergeVersionArg -VersionTable $versions) + @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'

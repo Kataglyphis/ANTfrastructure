@@ -65,7 +65,9 @@ BeforeAll {
     # version keys, so a single-component bump re-runs that stage + downstream
     # instead of the full ~75-min ONNX build.
     $script:coreComponentKeys = @{
-        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')
+        # QNN_SDK_ZIP_SHA256 (#121): the hand-staged QAIRT zip's integrity pin, read
+        # by build-onnx-from-source.ps1 only -- so it keys the onnx stage alone.
+        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION', 'QNN_SDK_ZIP_SHA256')
         'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF')
         'media-core-built-opencv' = @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION')
         'media-core-built'        = @('ONNXRUNTIME_GENAI_VERSION')

@@ -43,6 +43,52 @@ if (-not (Test-Path (Join-Path $SourceDir 'third_party\llvm-project\llvm\CMakeLi
     throw 'IREE submodules incomplete: third_party/llvm-project missing after clone'
 }
 
+# UPSTREAM BUG (arm64 run 8, 2026-08-24): runtime/src/iree/hal/local/elf/CMakeLists.txt
+# adds the x86-64 MASM trampoline object (arch/x86_64_msvc.obj) whenever
+# `MSVC_C_ARCHITECTURE_ID MATCHES 64` -- and "ARM64" matches "64". An ARM64
+# target then gets an x64 object handed to llvm-lib /machine:ARM64: "file
+# machine type x64 conflicts with library machine type arm64". Tighten the
+# match to the x64 spellings. Applied on BOTH lanes: on amd64 the ID is "x64",
+# which the new regex matches exactly as before, so nothing changes there and
+# a correctness fix has no business being arch-conditional. Draft issue:
+# out/upstream-issue-iree-elf-arch-arm64-msvc.md.
+$ireeElfCmake = Join-Path $SourceDir 'runtime\src\iree\hal\local\elf\CMakeLists.txt'
+if (Test-Path $ireeElfCmake) {
+    [void](Invoke-InlineRegexPatch -Path $ireeElfCmake `
+            -Guard 'MSVC_C_ARCHITECTURE_ID MATCHES 64 OR MSVC_CXX_ARCHITECTURE_ID MATCHES 64' `
+            -Pattern 'MSVC_C_ARCHITECTURE_ID MATCHES 64 OR MSVC_CXX_ARCHITECTURE_ID MATCHES 64' `
+            -Replacement 'MSVC_C_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$" OR MSVC_CXX_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$"' `
+            -Description 'IREE elf loader: x86_64_msvc.obj only for x64 targets (ARM64 matched "64")')
+    if ((Get-Content -LiteralPath $ireeElfCmake -Raw) -match 'MATCHES 64') {
+        throw "IREE: the elf-loader arch fix did not apply cleanly ($ireeElfCmake still matches 'MATCHES 64'; upstream layout changed?). An ARM64 build would fail archiving iree_hal_local_elf_arch.lib with an x64 object."
+    }
+    Write-Host 'Patched IREE elf loader CMake: x86_64_msvc.obj is added for x64 targets only (ARM64 used to match "64")'
+}
+
+# C `inline` linkage in ONE arm_64 ukernel (arm64 runs 9-10, 2026-08-24: the
+# whole runtime compiled, every tool failed to LINK with "undefined symbol:
+# iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm"). Checked file by file, that
+# is upstream's single non-static C `inline` definition in the arm_64 set,
+# and the entry point takes its ADDRESS; under C99 inline semantics (clang's
+# default in C mode) an `inline` definition without `extern` emits no
+# external symbol. Per-TU -fgnu89-inline was tried first (run 10) and did NOT
+# produce the symbol under clang-cl, so the definition itself is made a plain
+# external function -- `inline` buys nothing for a function used by address.
+# The arm_64 dir is not compiled on amd64 (IREE_ARCH x86_64), so this is
+# inert there; guarded on the file, verified after applying.
+$ireeI8mm = Join-Path $SourceDir 'runtime\src\iree\builtins\ukernel\arch\arm_64\mmt4d_arm_64_i8mm.c'
+if (Test-Path $ireeI8mm) {
+    [void](Invoke-InlineRegexPatch -Path $ireeI8mm `
+            -Guard 'IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+            -Pattern 'IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void(\s*\r?\n)iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+            -Replacement 'void$1iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(' `
+            -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition')
+    if ((Get-Content -LiteralPath $ireeI8mm -Raw) -match 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(') {
+        throw "IREE: the s8s4s32 i8mm tile linkage fix did not apply cleanly ($ireeI8mm; upstream layout changed?). An ARM64 build would fail to link every tool on that symbol."
+    }
+    Write-Host 'Patched IREE ukernel: iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm is a plain external definition (C99 inline emitted no symbol)'
+}
+
 # Canonical preamble: VsDevCmd + pyconfig.h into Include\ (in-tree Windows
 # CPython keeps it at PC\pyconfig.h, which CMake's FindPython cannot see —
 # configure died there on the first spike) + platform-tag shim + python handle.
@@ -51,8 +97,18 @@ $py = Initialize-ToolchainPythonEnvironment
 $buildDir = Join-Path $SourceDir 'build'
 $ireeInstallDir = Join-Path $InstallDir 'iree'
 
+# #116 (2026-08-24): RUNTIME-ONLY on the cross lane. IREE's build EXECUTES
+# host tools (iree-flatcc-cli, generate_embed_data) while compiling the
+# runtime, and the compiler would need target-arch LLVM libs as well. Upstream
+# supports exactly this split: build the host tools natively, then point the
+# TARGET configure at them with IREE_HOST_BIN_DIR. The bundle ships the
+# runtime tools + libs (iree-run-module & co.); iree-compile and the python
+# packages stay amd64-only and are named ABSENT next to the install.
+$ireeCross = Test-WindowsCrossTarget
 $pythonBindings = 'OFF'
-if (-not $SkipPython) {
+if ($ireeCross) {
+    Write-Host 'IREE cross: RUNTIME-ONLY build (compiler OFF, python OFF); host tools first, then the target runtime via IREE_HOST_BIN_DIR (#116)'
+} elseif (-not $SkipPython) {
     # Python bindings are EXPECTED on this lane: a missing interpreter must fail
     # loudly, not silently ship an image without iree.compiler/iree.runtime
     # (only an explicit -SkipPython legitimately turns the bindings off).
@@ -72,14 +128,61 @@ $gpuEnv = Get-GpuEnvironment
 $cudaFlag = if ($gpuEnv.HasCuda) { 'ON' } else { 'OFF' }
 if ($cudaFlag -eq 'ON') { Write-Host 'NVIDIA lane -> enabling IREE CUDA HAL driver + CUDA target backend (PTX via NVPTX, no nvcc)' }
 
+$ireeEhscInclude = (Join-Path $scriptAssetRoot 'patches\iree\enable-ehsc.cmake') -replace '\\', '/'
+$ireeHostBinDir = $null
+if ($ireeCross) {
+    # Phase A: HOST tools. A native (x64) runtime-only configure of the SAME
+    # tree into build-host\, installed to build-host\install -- upstream's
+    # documented cross recipe. -TargetArch (Get-WindowsHostArch) is the
+    # per-call override that keeps every cross arg out of this configure
+    # (same mechanism as LiteRT's host-flatc pass).
+    $hostBuildDir   = Join-Path $SourceDir 'build-host'
+    $hostInstallDir = Join-Path $hostBuildDir 'install'
+    Write-Host 'IREE cross: building HOST tools (native x64, runtime-only) for IREE_HOST_BIN_DIR...'
+    $hostArgs = @(
+        "-DCMAKE_BUILD_TYPE=$BuildType"
+        "-DCMAKE_PROJECT_INCLUDE=$ireeEhscInclude"
+        '-DIREE_BUILD_COMPILER=OFF', '-DIREE_BUILD_TESTS=OFF', '-DIREE_BUILD_SAMPLES=OFF'
+        '-DIREE_BUILD_PYTHON_BINDINGS=OFF', '-DLLVM_ENABLE_DIA_SDK=OFF'
+    )
+    $hostArgs += Get-LlvmArchiverCmakeArg
+    # The host pass needs the HOST's LIB/LIBPATH as well as the host target
+    # (arm64 run 3: "msvcrtd.lib(exe_main.obj): machine type arm64 conflicts
+    # with x64" in the very first try-compile) -- the helper swaps and restores.
+    Invoke-WithHostArchLibraryEnvironment {
+        Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $hostBuildDir -InstallPrefix $hostInstallDir -ExtraArgs $hostArgs -TargetArch (Get-WindowsHostArch) | Out-Null
+        $hostLog = Get-PersistentBuildLogPath -Name 'iree-host-tools-build.log' -FallbackDir $hostBuildDir
+        Invoke-NinjaBuildWithRetry -BuildDir $hostBuildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $hostLog -Install -InstallConfig $BuildType
+    }
+    $ireeHostBinDir = Join-Path $hostInstallDir 'bin'
+    # The two tools the target build executes -- named as IREE 3.x looks them up
+    # under IREE_HOST_BIN_DIR (iree_c_embed_data.cmake: "iree-c-embed-data";
+    # arm64 run 5 asserted the pre-rename `generate_embed_data` and died). A
+    # missing one here is a loud layout-drift signal, not a late "program not
+    # found" deep in ninja.
+    foreach ($tool in @('iree-flatcc-cli.exe', 'iree-c-embed-data.exe')) {
+        $toolPath = Join-Path $ireeHostBinDir $tool
+        if (-not (Test-Path $toolPath)) { throw "IREE cross: host tool $tool missing in $ireeHostBinDir after the host install (upstream install layout drift?)" }
+        # UPSTREAM GAP (arm64 run 6): IREE composes "${IREE_HOST_BIN_DIR}/<tool>"
+        # WITHOUT the .exe suffix (Linux-shaped), and ninja then wants that exact
+        # FILE as a dependency: "'.../bin/iree-flatcc-cli', needed by
+        # '.../dummy_reader.h', missing and no known rule to make it". A
+        # suffix-less twin satisfies the dependency, and CreateProcess appends
+        # .exe when it launches an extension-less full path -- both copies are
+        # the same bytes, so either resolution runs the same tool.
+        Copy-Item -Path $toolPath -Destination (Join-Path $ireeHostBinDir ([IO.Path]::GetFileNameWithoutExtension($tool))) -Force
+    }
+    Write-Host "IREE cross: host tools ready at $ireeHostBinDir"
+}
+
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
     # nanobind EH port: see patches\iree\enable-ehsc.cmake (directory-scope
     # /EHsc for every project; the only injection point that survives LLVM's
     # flag stripping without leaking into the ukernel bitcode cross-clang).
-    "-DCMAKE_PROJECT_INCLUDE=$((Join-Path $scriptAssetRoot 'patches\iree\enable-ehsc.cmake') -replace '\\', '/')"
+    "-DCMAKE_PROJECT_INCLUDE=$ireeEhscInclude"
     '-DLLVM_ENABLE_RTTI=ON'
-    '-DIREE_BUILD_COMPILER=ON'
+    "-DIREE_BUILD_COMPILER=$(if ($ireeCross) { 'OFF' } else { 'ON' })"
     '-DIREE_BUILD_TESTS=OFF'
     '-DIREE_BUILD_SAMPLES=OFF'
     # The BuildTools image ships the DIA SDK headers but NOT ATL -- LLVM
@@ -95,8 +198,62 @@ if ($pythonBindings -eq 'ON') {
     $cmakeExtra += "-DPython3_EXECUTABLE=$($py.Exe -replace '\\', '/')"
 }
 $cmakeExtra += Get-LlvmArchiverCmakeArg
+if ($ireeHostBinDir) { $cmakeExtra += "-DIREE_HOST_BIN_DIR=$($ireeHostBinDir -replace '\\', '/')" }
 
+# Phase B (or the only phase on amd64): the TARGET configure. Cross args come
+# from Invoke-CmakeConfigure's choke point.
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $ireeInstallDir -ExtraArgs $cmakeExtra | Out-Null
+
+if ($ireeCross) {
+    # Per-TU feature flags for the arm_64 ukernels (arm64 run 7, 2026-08-24):
+    # upstream's CMakeLists hands each feature kernel its -march via
+    # iree_select_compiler_opts(CLANG_OR_GCC ...), and clang-cl is classified
+    # as MSVC there, so the flags are dropped and the TUs die with "always_inline
+    # function 'vfmaq_f16' requires target feature 'fullfp16'". Same remedy and
+    # same discipline as LiteRT/XNNPACK and MLAS: append the feature per-TU in
+    # build.ninja post-configure -- these are dispatcher-gated microkernels, the
+    # only code allowed to assume the feature -- and THROW below a floor, because
+    # a pattern that matches nothing succeeds silently. Second clang-cl gap in
+    # the same files: bare `asm(...)` (GNU keyword, off under MS compat) --
+    # -Dasm=__asm__ on every arm_64 ukernel TU restores it without touching
+    # the tree.
+    $ireeUkFeatureMap = [ordered]@{
+        'mmt4d_arm_64_fullfp16' = 'fp16'
+        'mmt4d_arm_64_fp16fml'  = 'fp16fml'
+        'mmt4d_arm_64_bf16'     = 'bf16'
+        'mmt4d_arm_64_dotprod'  = 'dotprod'
+        'mmt4d_arm_64_i8mm'     = 'i8mm'
+    }
+    $ninjaFile = Join-Path $buildDir 'build.ninja'
+    $ninjaLines = Get-Content $ninjaFile
+    $ukFeature = ''; $ukArm64 = $false; $ukTagged = 0; $ukAsmTagged = 0
+    for ($i = 0; $i -lt $ninjaLines.Count; $i++) {
+        $line = $ninjaLines[$i]
+        if ($line -match '^build ') {
+            $ukFeature = ''
+            $ukArm64 = ($line -match 'ukernel[\\/]arch[\\/]arm_64[\\/]' -and $line -match '\.c\.obj')
+            if ($ukArm64) {
+                foreach ($tok in $ireeUkFeatureMap.Keys) {
+                    if ($line -match "$tok\.c\.obj") { $ukFeature = $ireeUkFeatureMap[$tok]; break }
+                }
+            }
+        } elseif ($ukArm64 -and $line -match '^\s+FLAGS = ') {
+            $extra = ' -Dasm=__asm__'
+            $ukAsmTagged++
+            if ($ukFeature -and $line -notmatch 'armv8\.2-a') { $extra += " /clang:-march=armv8.2-a+$ukFeature"; $ukTagged++ }
+            $ninjaLines[$i] = $line + $extra
+            $ukArm64 = $false
+        }
+    }
+    # Floor = the five feature kernels upstream lists (fullfp16, fp16fml, bf16,
+    # dotprod, i8mm). The pre-fix state tags 0, which is exactly what must trip.
+    if ($ukTagged -lt 5) {
+        throw ("build.ninja: tagged only $ukTagged IREE arm_64 ukernel feature TU(s), expected 5 (fullfp16/fp16fml/bf16/dotprod/i8mm). " +
+               'The ukernel ninja layout or filenames changed; without the flags those kernels fail under clang-cl. Update $ireeUkFeatureMap.')
+    }
+    Set-Content -Path $ninjaFile -Value $ninjaLines
+    Write-Host "build.ninja: aarch64 feature flags on $ukTagged IREE ukernel TU(s), -Dasm=__asm__ on $ukAsmTagged arm_64 ukernel TU(s)"
+}
 
 Write-Host 'Building IREE (LLVM in-tree -- this may take 60-120 minutes)...'
 # Persistent log (backlog #43): a 60-120 min build whose log used to die with
@@ -110,7 +267,9 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 # existence check (Server Core taught us binaries can exist and still not run).
 $ireeCompile = Join-Path $ireeInstallDir 'bin\iree-compile.exe'
 $ireeRun     = Join-Path $ireeInstallDir 'bin\iree-run-module.exe'
-foreach ($tool in @($ireeCompile, $ireeRun)) {
+# Cross lane: the compiler is OFF by design, so only the runtime tool is required.
+$ireeRequiredTools = if ($ireeCross) { @($ireeRun) } else { @($ireeCompile, $ireeRun) }
+foreach ($tool in $ireeRequiredTools) {
     if (-not (Test-Path $tool)) { throw "IREE install incomplete: $tool missing" }
 }
 # ONE test module for both gates (native + python); MLIR is whitespace-
@@ -121,6 +280,26 @@ func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
   return %result : tensor<f32>
 }
 '@
+if ($ireeCross) {
+    # Static gate: nothing installed here can execute on this host, but the
+    # failure this gate exists for ("a host tool leaked into the target
+    # install", or "nothing was installed at all") is fully detectable from
+    # the PE headers. The functional compile+run proof is deferred to the
+    # native arm64 validation job (docs/windows-cross-builds.md).
+    $ireeBins = @(Get-ChildItem -Path (Join-Path $ireeInstallDir 'bin') -Include '*.exe', '*.dll' -Recurse -File)
+    if ($ireeBins.Count -lt 1) { throw "IREE cross: no binaries installed under $ireeInstallDir\bin" }
+    foreach ($pe in $ireeBins) {
+        $m = Get-PeFileMachine -Path $pe.FullName
+        if ($m -ne (Get-PeMachineType)) { throw ('IREE cross: {0} is PE machine 0x{1:X4}, expected 0x{2:X4} -- a host tool leaked into the target install' -f $pe.Name, $m, (Get-PeMachineType)) }
+    }
+    Set-Content -Path (Join-Path $ireeInstallDir 'COMPILER-ABSENT-ON-ARM64.txt') -Encoding ASCII -Value @(
+        'iree-compile.exe and the iree.compiler / iree.runtime python packages are intentionally ABSENT from the Windows arm64 bundle.',
+        'The compiler needs TARGET-arch LLVM libraries; the python packages need the target interpreter (backlog #116).',
+        'bin\ carries the runtime tools (iree-run-module & co.), lib\ the runtime libraries, include\ the headers.',
+        'See docs/windows-cross-builds.md.'
+    )
+    Write-Host ('iree static gate OK (cross lane): {0} target binaries under bin\, all PE machine 0x{1:X4}; iree-compile + python ABSENT by design (#116)' -f $ireeBins.Count, (Get-PeMachineType))
+} else {
 $mlirPath = Join-Path $env:TEMP 'iree-gate.mlir'
 $vmfbPath = Join-Path $env:TEMP 'iree-gate.vmfb'
 $gateMlir | Set-Content -Path $mlirPath -Encoding ascii
@@ -129,6 +308,7 @@ $runOut = (Invoke-ShieldedNative -Label 'iree-run-module gate' -CommandLine """$
 if ($runOut -notmatch 'f32=5') { throw 'iree-run-module gate failed (abs(-5) != 5)' }
 Write-Host 'iree native gate OK (llvm-cpu compile + local-task run, abs(-5)=5)'
 Remove-Item $mlirPath, $vmfbPath -Force -ErrorAction SilentlyContinue
+}
 
 # Python wheels: with IREE_BUILD_PYTHON_BINDINGS=ON the build tree synthesizes
 # pip-installable packages at <build>/compiler and <build>/runtime that reuse

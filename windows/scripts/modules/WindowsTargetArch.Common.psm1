@@ -67,6 +67,9 @@ $script:TargetArchTable = @{
         LibMachine = 'x64'
         # CMAKE_SYSTEM_PROCESSOR
         CMakeSystemProcessor = 'AMD64'
+        # Qualcomm AI Engine Direct (QAIRT) SDK: lib\<this>\ holds the per-arch
+        # QNN backend DLLs (QnnCpu on x64; QnnHtp/NPU + QnnCpu on arm64). #121.
+        QnnLibDir = 'x86_64-windows-msvc'
     }
     arm64 = @{
         Arch = 'arm64'
@@ -91,6 +94,7 @@ $script:TargetArchTable = @{
         FfmpegArch = 'aarch64'
         LibMachine = 'arm64'
         CMakeSystemProcessor = 'ARM64'
+        QnnLibDir = 'aarch64-windows-msvc'
     }
 }
 
@@ -214,6 +218,33 @@ function Get-PeMachineType {
     return (Get-WindowsTargetArchInfo -Arch $Arch).PeMachine
 }
 
+<#
+.SYNOPSIS
+    Reads IMAGE_FILE_HEADER.Machine from a PE file (.exe/.dll/.pyd).
+.DESCRIPTION
+    The one 12-line read that was inlined in three places (verify-target-arch,
+    build-target-cpython, smoke sections 14/15) before 2026-08-24. Lives here
+    because this module is dependency-free and every arch decision already
+    resolves through it. Returns the raw UInt16 (0x8664 / 0xAA64 / 0x014C);
+    compare against Get-PeMachineType. Throws on a non-PE file rather than
+    returning 0, so a caller can never mistake "not a PE" for "matches nothing".
+#>
+function Get-PeFileMachine {
+    param([Parameter(Mandatory)][string]$Path)
+    $fs = [System.IO.File]::OpenRead($Path)
+    try {
+        $br = New-Object System.IO.BinaryReader($fs)
+        if ($fs.Length -lt 0x40) { throw "Get-PeFileMachine: $Path is too small to be a PE file" }
+        $fs.Seek(0x3C, 'Begin') | Out-Null
+        $peOff = $br.ReadUInt32()
+        if ($peOff + 6 -gt $fs.Length) { throw "Get-PeFileMachine: $Path has no PE header at the e_lfanew offset" }
+        $fs.Seek($peOff, 'Begin') | Out-Null
+        $sig = $br.ReadUInt32()
+        if ($sig -ne 0x00004550) { throw "Get-PeFileMachine: $Path is not a PE file (signature 0x$($sig.ToString('X8')))" }
+        return $br.ReadUInt16()
+    } finally { $fs.Dispose() }
+}
+
 function Get-VcpkgTriplet {
     param([string]$Arch = '')
     return (Get-WindowsTargetArchInfo -Arch $Arch).VcpkgTriplet
@@ -242,6 +273,11 @@ function Get-VulkanBinDirName {
 function Get-PythonWheelTag {
     param([string]$Arch = '')
     return (Get-WindowsTargetArchInfo -Arch $Arch).PythonWheelTag
+}
+
+function Get-QnnSdkLibDirName {
+    param([string]$Arch = '')
+    return (Get-WindowsTargetArchInfo -Arch $Arch).QnnLibDir
 }
 
 function Get-PythonPlatformName {
@@ -534,12 +570,14 @@ Export-ModuleMember -Function @(
     'Get-ClangTargetTriple',
     'Get-VsDevCmdArch',
     'Get-PeMachineType',
+    'Get-PeFileMachine',
     'Get-VcpkgTriplet',
     'Get-MsvcTargetBinDir',
     'Get-MsvcTargetLibDir',
     'Get-VulkanLibDirName',
     'Get-VulkanBinDirName',
     'Get-PythonWheelTag',
+    'Get-QnnSdkLibDirName',
     'Get-PythonPlatformName',
     'Get-CpythonBuildPlatform',
     'Get-CpythonOutputDir',
