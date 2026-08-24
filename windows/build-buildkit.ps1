@@ -263,9 +263,13 @@ if ($TargetArch -ne 'amd64') {
     }
     # Branches that cannot be cross-built AT ALL - both blocked by binary
     # artifacts upstream, neither fixable here:
-    #   media-litert : LiteRT-LM links prebuilt\windows_x86_64\
-    #                  libGemmaModelConstraintProvider.lib with no arm64 twin
-    #                  (build-litert-lm-from-source.ps1:911)
+    #   media-litert : LiteRT-LM's ACTIVE build path is Bazel, and its .bazelrc
+    #                  carries no windows-arm64 configuration at all. CORRECTED
+    #                  2026-08-23: this used to blame prebuilt\windows_x86_64\
+    #                  libGemmaModelConstraintProvider.lib. That was the first
+    #                  plausible blocker in the file, not the real one -- the blob
+    #                  is OPTIONAL (upstream's CMake path compiles a stub instead),
+    #                  so it never was the thing standing in the way.
     #   media-tvm    : TVM's own minimal LLVM is built -DLLVM_TARGETS_TO_BUILD=
     #                  X86;NVPTX (build-tvm-from-source.ps1:141), so its codegen
     #                  cannot emit aarch64

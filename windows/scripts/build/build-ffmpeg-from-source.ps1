@@ -444,12 +444,13 @@ if ($ffCross) {
     # actual verdict (TARGET_OS/ARCH/CPU/AS) on BOTH lanes -- read the amd64 line
     # first, then set this explicitly if the cross lane disagrees.
     #
-    # UNVERIFIED: no FFmpeg arm64 build has been run. FFmpeg's aarch64 assembly
-    # under an MSVC-ABI toolchain is the least-trodden path in this whole chain
-    # (upstream's own Windows-on-ARM guidance recommends llvm-mingw, which is
-    # incompatible with this repo's MSVC ABI). If the asm fails to assemble,
-    # add --disable-asm as a first step: correct but slower, and a deliberate
-    # follow-up rather than a silent default.
+    # FFmpeg's aarch64 assembly under an MSVC-ABI toolchain is the least-trodden
+    # path in this whole chain (upstream's own Windows-on-ARM guidance recommends
+    # llvm-mingw, which is incompatible with this repo's MSVC ABI). It is enabled
+    # via clang's integrated assembler -- see the --as= block below. If a future
+    # FFmpeg drops a .S file that clang's assembler rejects, the contained
+    # fallback is --disable-asm (correct but slower), NOT reaching for a
+    # different toolchain.
     $confFlags += '--enable-cross-compile', "--arch=$(Get-FfmpegTargetArch -Arch $ffTargetArch)"
     # /machine on the LINKER is separate from --target on the compiler, and both
     # are required. MEASURED 2026-08-23: with only --cc carrying the triple,
@@ -552,16 +553,29 @@ if ($ffCross) {
     # own Windows-on-ARM guidance sidesteps this by recommending llvm-mingw, which
     # is incompatible with this repo's MSVC ABI.
     #
-    # --disable-asm gives a CORRECT but slower FFmpeg. That is the right first
-    # release: a working arm64 lane beats a fast one that does not exist. The
-    # follow-up is genuinely within reach now -- Git for Windows ships perl and
-    # the VS ARM64 tools (incl. armasm64) are installed as of this base -- so
-    # wiring gas-preprocessor.pl and dropping this flag is a contained,
-    # measurable next step, not a rewrite.
+    # RESOLVED 2026-08-23 (backlog #112) -- the asm is ENABLED, and it needs no
+    # new tooling. The paragraph above assumed the only route was
+    # gas-preprocessor.pl driving armasm64. There is a shorter one: clang's
+    # INTEGRATED ASSEMBLER already understands aarch64 GAS syntax, so pointing
+    # configure's --as at clang with the target triple assembles FFmpeg's .S
+    # files directly. gas-preprocessor.pl remains the fallback if a specific
+    # file ever needs armasm64, not the plan.
     #
-    # Scope: this branch only. The amd64 lane keeps its full x86 asm.
-    $confFlags += '--disable-asm'
-    Write-Host 'FFmpeg: --disable-asm on the cross lane (aarch64 GAS asm needs gas-preprocessor.pl for armasm64; correct but slower)'
+    # This is safe to attempt precisely because --enable-cross-compile above
+    # disables configure's RUNTIME probes: configure decides asm support by
+    # ASSEMBLING test fragments, never by running them, so nothing here depends
+    # on executing aarch64 code on this x64 host.
+    #
+    # --as, not --x86asmexe: the latter is FFmpeg's nasm/yasm knob and is x86-only.
+    # $ffCcTargetFlag is ' --target=aarch64-pc-windows-msvc' (note the leading
+    # space) and the value therefore contains one -- which is fine, because the
+    # configure-wrapper single-quotes any flag containing a space (see $confStr
+    # below); that is the same mechanism the --cc flag already relies on.
+    #
+    # Scope: this branch only. The amd64 lane assembles with NASM and is untouched;
+    # do not "unify" the two, they are different assemblers for different ISAs.
+    $confFlags += "--as=clang$ffCcTargetFlag"
+    Write-Host "FFmpeg: aarch64 asm ENABLED via clang's integrated assembler (--as=clang$ffCcTargetFlag); configure assembles test fragments but never runs them"
     Write-Host ("FFmpeg: cross flags -> --enable-cross-compile --arch={0} --extra-ldflags=/machine:{1}" -f `
         (Get-FfmpegTargetArch -Arch $ffTargetArch), (Get-LibMachineArg -Arch $ffTargetArch))
 }
