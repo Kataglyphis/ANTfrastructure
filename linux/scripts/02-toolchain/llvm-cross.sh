@@ -116,7 +116,23 @@ _llvm_cross_retrieve_source() {
 
   # --- Source retrieval ---
   mkdir -p "${source_root}" "${build_root}"
-  if [ ! -d "${source_dir}/.git" ]; then
+  # TS4 (2026-08-24): the dir name is version-keyed (llvm-project-<release>),
+  # which covers the bump case — but a TRUNCATED clone (ENOSPC, killed build)
+  # leaves a .git that the old bare test accepted forever. Require a resolvable
+  # HEAD and a populated worktree, and evict superseded generations so ~2 GB
+  # per LLVM release does not accumulate unbounded on the shared cachemount.
+  local _src_ok=0 _old_src
+  if [ -d "${source_dir}/.git" ] \
+     && git -C "${source_dir}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
+     && [ -f "${source_dir}/llvm/CMakeLists.txt" ]; then
+    _src_ok=1
+  fi
+  if [ "${_src_ok}" != "1" ]; then
+    for _old_src in "${source_root}"/llvm-project-*; do
+      [ -d "${_old_src}" ] && [ "${_old_src}" != "${source_dir}" ] || continue
+      log "Evicting stale llvm checkout $(basename "${_old_src}") (superseded by ${tag})"
+      rm -rf "${_old_src}"
+    done
     rm -rf "${source_dir}"
     log "Cloning llvm-project ${tag} for ${mode} ${target_label}"
     git clone --depth 1 --branch "${tag}" https://github.com/llvm/llvm-project.git "${source_dir}"
