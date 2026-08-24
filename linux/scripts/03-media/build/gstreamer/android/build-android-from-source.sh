@@ -583,6 +583,24 @@ cache_file = os.path.join(home_dir, "cache-file.cache")
 ${CERBERO_VARIANTS_OVERRIDE}
 interactive = False
 
+# FD-OUTAGE (2026-08-24): give every tarball fetch a second freedesktop mirror
+# base. Cerbero 1.29.2 hardcodes DEFAULT_MIRRORS =
+# ['https://gstreamer.freedesktop.org/src/mirror'] (cerbero/config.py:46) as the
+# ONLY fallback, and that base has been flapping 503 since the upstream
+# restructure (measured 503-unconditional 2026-08-23; measured intermittent
+# 503/200 2026-08-24 — and .../data/src/mirror flaps too, but independently, so
+# two bases beat one). extra_mirrors is a first-class config property
+# (config.py:321, default [] at :745) that _parse() picks up from this .cbc
+# (config.py:956ff) and that ALSO propagates to build_tools_config
+# (config.py:908) — so build-tools recipes like pkg-config-dist are covered.
+# Fallback order per source.py get_fallback_urls() (:100-114): extra_mirrors
+# namespaced ({mirror}/{name}/{fname}) come FIRST, then DEFAULT_MIRRORS
+# namespaced (skipped when the primary already starts with it), then
+# extra_mirrors flat ({mirror}/{fname}); shell.py download() (:368) tries the
+# primary URL first and then walks that list, 2 tries each. Net effect: a
+# transient 503 on any single path no longer kills the lane.
+extra_mirrors = ['https://gstreamer.freedesktop.org/data/src/mirror']
+
 # Toolchain configuration
 allow_system_libs = False
 use_ccache = True if os.path.exists('/usr/bin/ccache') else False
@@ -594,6 +612,9 @@ echo "    Target: ${CERBERO_TARGET_ARCH}"
 echo "    API Level: ${ANDROID_API_LEVEL} (using ${DISTRO_VERSION})"
 echo "    Cerbero Home: ${CERBERO_HOME}"
 echo "    Prefix: ${CERBERO_PREFIX}"
+# Proof-of-effect: echo the mirror line as WRITTEN into the .cbc (not the
+# heredoc source), so a build log shows whether the fallback actually landed.
+echo "    Extra mirrors: $(grep -m1 '^extra_mirrors = ' "${CONFIG_NAME}.cbc" || echo 'MISSING — FD-OUTAGE fallback NOT configured') (FD-OUTAGE)"
 
 # Try to pass the job limit through Cerbero's CLI if supported (different Cerbero versions vary).
 CERBERO_JOBS_ARGS=()
