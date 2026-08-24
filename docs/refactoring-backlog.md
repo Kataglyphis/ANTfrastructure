@@ -79,19 +79,25 @@ the ship whose post-audit found the three gates above.
   issue trackers / upgrade; interim playbook: restart between chain rounds
   (cachemounts provably survive).
 
-## Next up (recommended order, 2026-08-23)
+## Next up (recommended order, 2026-08-24)
 
-1. **Gate-truth pass** [★★★, no build to author, ONE build to validate] —
-   the three gates that currently lie: SMK1-3ARCH (riscv64 exemption on a
-   false premise), AP4-SIGPIPE (strip check never runs, prints PASS),
-   XC3-INERT (provenance never written). Fixing these before anything else
-   means the NEXT build's green is trustworthy.
-2. **GPU lane validation build** [★★★, cheap, anytime] — the last staged
-   set (GPU1-7) still awaiting its one opt-in build.
-3. **Next closure window** — § A, led by CERB-CACHE (the wall-clock lever:
-   wave5k/5l discarded a full cold cerbero each) + SMOKE-DEPTH.
-4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT, ORPHAN-PINS).
+1. **APT-HTTP** [★★★] — the only open finding with a security dimension.
+   VERIFY first (which sources file ends up on which scheme, at which stage),
+   then decide. No build needed to establish the facts.
+2. **GPU lane validation build** [★★★, cheap, anytime] — the staged GPU1-7 set
+   still awaits its one opt-in build.
+3. **Full rebuild from MEDIA** — wave-6 validated only android→runtime, so the
+   wave-3 media/toolchain work (DUP2 SSOT + drift gate, TS8, media source
+   caches) is still unproven by a real build.
+4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT producer half,
+   ORPHAN-PINS).
 5. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
+
+> **Editing note (learned the hard way 2026-08-24):** deleting an item with a
+> script that seeks the next `- **` will SWALLOW a following `## ` section
+> header — that is how all of § B silently vanished for four commits. When
+> removing a validated item, bound the deletion at the next item OR the next
+> header, whichever comes first, and re-count the sections afterwards.
 
 ---
 
@@ -257,6 +263,23 @@ the ship whose post-audit found the three gates above.
   governor: systemd-run MemoryHigh per build, or a global compile-job
   server), or re-sizing at container-build/STAGE boundaries. Full verdict
   in docs/build-parallelism-memory-tuning.md.
+- **C3 — android inline version fallbacks → `:?must be set`** [S·★★] incl.
+  the two onnxruntime `:-v…` fallbacks (masks broken ARG-forwards).
+- **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
+  measure in the validating rebuild, or document the decision.
+- **TS4 — version-key build-clang.sh's cached llvm-project checkout** [S·★★]
+  fires exactly on the next LLVM bump (stale-tag rebuild for hours).
+- **F6 — remaining stray SHA pins: 2** [M] (was 3 — VULKAN_SDK solved by
+  BT1's spec_vulkan stream-hash 2026-08-19): ABSEIL_TARBALL (github archive
+  SHA non-deterministic → needs codeload-by-commit or content verify),
+  ANDROID_CMDLINE_TOOLS (no published checksums). Co-locate scattered pairs.
+- Small riders [S each]: pyav dead-pin check (Windows consumer?),
+  LLVM_COMMIT opt-in key, setup-package-image residual pins (:283-285),
+  peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token
+  scope), TS1 APPIMAGETOOL_*_SHA256 keys, RUFF_PIN → versions.env (C4).
+
+## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
+
 - **C3 — android inline version fallbacks → `:?must be set`** [S·★★] incl.
   the two onnxruntime `:-v…` fallbacks (masks broken ARG-forwards).
 - **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
