@@ -122,15 +122,14 @@ the ship whose post-audit found the three gates above.
   build it, or delete the orphaned pin — as-is both read as
   intended-but-missing, and PyAV means every wrapper ships without the
   FFmpeg→Python bridge.
-- **DUP2 residual — wire verify-arg-consistency.sh into the chain preflight**
-  [S·★★] the SSOT helper + fatal GCC-literal gate LANDED (2276c8c) and the
-  C3 conflict is resolved (:?-guarded ARGs exempted, mutation-proven,
-  rc=0 standalone with 32 sites scanned) — but the evidence audit proved the
-  CHAIN never runs it: build-cross-chain.sh invokes only
-  _chain_disk_preflight, so the gate exists and is reachable yet is not on
-  the path that guards real builds. Wire it into preflight.sh (which the
-  operator runs) AND/OR the chain start; until then it only fires when
-  invoked by hand.
+- **DUP2 residual — SETTLED 2026-08-24, one operator habit remains** [S·★]
+  the gate IS wired: preflight.sh:140 runs verify-arg-consistency.sh as the
+  `arg-consistency` check, and with the C3 exemption it passes rc=0 with 32
+  sites scanned. The evidence audit's "chain never runs it" observation is
+  BY DESIGN — build-cross-chain.sh performs only the disk preflight, the
+  full gate battery is the operator-run preflight.sh. Residual: nothing to
+  build — just run preflight.sh before launch (AGENTS.md already says so).
+  Delete on the next groom if no counter-evidence appears.
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
   positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
   build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
