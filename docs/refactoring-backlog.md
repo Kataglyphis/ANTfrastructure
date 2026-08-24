@@ -12,7 +12,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-24. LIVE `:latest-cross` = WAVE-6 ship (a25a38c5/
+Last groomed: 2026-08-24 (CLOSURE WINDOW 3 declared — see the 🎯 plan). LIVE `:latest-cross` = WAVE-6 ship (a25a38c5/
 bd9953a9/d3710282, run id 20260823-223111-d0336283) — see § WAVE-6 SHIPPED.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
@@ -64,29 +64,70 @@ on the new bytes. Runtime smokes 0 failures x3.
 riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
 the ship whose post-audit found the three gates above.
 
-## Next up (recommended order, 2026-08-24)
+## 🎯 CLOSURE WINDOW 3 — OPEN (declared 2026-08-24): pre-build wave, then a FULL validating rebuild
 
-1. **APT-HTTP** [★★★] — the only open finding with a security dimension.
-   VERIFY first (which sources file ends up on which scheme, at which stage),
-   then decide. No build needed to establish the facts.
-2. **GPU lane validation build** [★★★, cheap, anytime] — the staged GPU1-7 set
-   still awaits its one opt-in build.
-3. **Full rebuild from MEDIA** — wave-6 validated only android→runtime, so the
-   wave-3 media/toolchain work (DUP2 SSOT + drift gate, TS8, media source
-   caches) is still unproven by a real build.
-4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT producer half,
-   ORPHAN-PINS).
-5. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
+The operator has committed to a fresh build, so the versions.env lock is OPEN
+and build-validated items are IN SCOPE. Work the wave in this order; the
+rebuild then validates everything at once (that is the whole point of a
+closure window — ONE rebuild pays for all).
 
-> **Editing note (learned the hard way 2026-08-24):** deleting an item with a
-> script that seeks the next `- **` will SWALLOW a following `## ` section
-> header — that is how all of § B silently vanished for four commits. When
-> removing a validated item, bound the deletion at the next item OR the next
-> header, whichever comes first, and re-count the sections afterwards.
+**Phase 0 — host prep (no-build window, do FIRST):**
+- Optional BKD1 rider: upgrade buildkitd to v0.32.2 (concurrency-stress fixes
+  #6916/#6955; not a session-rot fix — the restart playbook stays).
+- Apply the staged buildkitd.toml gcpolicy (linux/host-config/, needs a
+  buildkitd restart — this is the no-build window it has waited for).
+- Disk: prune-safe to ≥150G free (full-rebuild appetite per the playbook);
+  the 215G kata-buildcache trim is the operator's call, not the agent's.
+- Run preflight.sh (the full gate battery incl. the GCC-literal gate).
 
----
+**Phase 1 — pin-bump pass (versions.env window):**
+- bump_versions.py sweep (the wave-4 ritual; BT1/BT2 guards are in).
+- § B riders: AP6 (decide/flip ORT_ENABLE_LTO per-arch-gated — this rebuild
+  is the measuring event), F6 (ABSEIL → decompressed-stream hash;
+  cmdline-tools sha1 cross-check vs repository2-3.xml), small riders
+  (RUFF_PIN → versions.env, LLVM_COMMIT opt-in key, TS1 APPIMAGETOOL keys,
+  setup-package-image residual pins).
+- MESON-GI probe: if meson >1.12 resolves g-i's glib subproject again, lift
+  the riscv64 pin in this window; else it stays with its reason.
 
-## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
+**Phase 2 — producer fixes (media/android lane):**
+- GENAI-DRIFT producer half: make the arm64 genai wheel land; then DELETE the
+  dated tolerance line in smoke-torch-venv.sh (it re-arms the assert).
+- ORPHAN-PINS producer: make Dockerfile.media's `import tvm works on amd64`
+  promise TRUE (the staging chain is diagnosed, loudly failing since wave 1)
+  or retract the promise; PyAV: build it or DROP the orphan pin (drop =
+  versions.env edit — in window).
+- RV1-FREETYPE: fix the host-vs-target harfbuzz cross-link and re-enable
+  `-DBUILD_opencv_freetype` on riscv64 — closing the last documented
+  ARCH-PARITY exception.
+- LOG2 open half: build the wasm asyncify/jspi flavors.
+
+**Phase 3 — toolchain trims (from-base rebuild validates):**
+- TG1 residual (fuller toolchain-closure trim) + TG3 residual (collapse the
+  two toolchain RUNs). Both were bitten before — implement + adversarial
+  review + the rebuild as the only accepted proof.
+
+**Phase 4 — decision items (need the operator's word, not work):**
+- S3 registry cache mode=max: design ready (docs/build-cache-tiers.md), cost
+  ~12-13 GB extra registry traffic per run — YES/NO from the operator.
+- USE_FAST_UBUNTU_MIRROR: the APT-HTTP restore is built but only exercises
+  when the knob is ON — decide whether to enable a fast mirror for the
+  rebuild.
+
+**The rebuild itself:** from BASE, all three arches, --parallel-archs
+--max-parallel-archs 3, launched CLEAN — it doubles as the long-owed PAR1
+timing run. It auto-validates the already-landed-but-unproven set (media
+source-caches, TS8, DUP2 SSOT, cerbero extra_mirrors, C3 :?-guards, TS4 llvm
+keying, CERB-CACHE warm behaviour) and fires the § E triggers:
+GCC_PARALLEL_TARGETS, gcc-prereq facets, post-restart base cache-miss.
+
+**After the ship:** evidence-audit the logs (the wave-6 ritual), fold
+validated items with quotes, THEN: GPU lane opt-in build (GPU1-7), first
+compose up + WEBUI_SECRET_KEY rotation (user-side).
+
+## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
+
+### A1. Work items (all referenced by the phase plan above)
 
 - **RV1-FREETYPE — riscv64 opencv freetype module still OFF** [S·★,
   residue of RV1-GST-PC, which is otherwise CLOSED by wave-5] riscv64 gst
@@ -96,17 +137,6 @@ the ship whose post-audit found the three gates above.
   only if ports gst-dev is ever wanted again, the cross pkg-config wrapper
   that sysroot-prefixes ports' empty-prefix .pc vars. Wheel smoke shows it
   as the riscv64-only `opencv-freetype` warning.
-- **BKD1 — buildkitd session rot: RESEARCHED, no upstream fix exists** [M·★,
-  downgraded from ★★ 2026-08-24] host runs buildkit v0.31.1 (nerdctl 2.3.4,
-  containerd 2.3.2). The symptom IS a known open upstream issue —
-  moby/buildkit#6422 ("no active session … context deadline exceeded", open,
-  no linked PR) and #5624 (same class during cache-export registry auth) —
-  and NO release through v0.32.2 (2026-08-04) mentions a session/keepalive
-  fix. VERDICT: keep the restart playbook (stop chain → restart
-  buildkit.service → relaunch; cachemounts survive). OPTIONAL, no-build
-  window: upgrade to v0.32.2 for its concurrency-stress fixes (#6916 daemon
-  crash during concurrent builds, #6955 parallel-build cache-miss) — adjacent
-  to our load profile, but not a fix for the session rot itself.
 - **GENAI-DRIFT — onnxruntime-genai differs per arch and the pin assert
   says OK** [S·★★, 2026-08-23] versions.env pins v0.15.2; shipped reality is
   amd64 0.15.2 (local wheel), arm64 0.14.0 (PyPI, from the app lock), riscv64
@@ -122,14 +152,6 @@ the ship whose post-audit found the three gates above.
   build it, or delete the orphaned pin — as-is both read as
   intended-but-missing, and PyAV means every wrapper ships without the
   FFmpeg→Python bridge.
-- **DUP2 residual — SETTLED 2026-08-24, one operator habit remains** [S·★]
-  the gate IS wired: preflight.sh:140 runs verify-arg-consistency.sh as the
-  `arg-consistency` check, and with the C3 exemption it passes rc=0 with 32
-  sites scanned. The evidence audit's "chain never runs it" observation is
-  BY DESIGN — build-cross-chain.sh performs only the disk preflight, the
-  full gate battery is the operator-run preflight.sh. Residual: nothing to
-  build — just run preflight.sh before launch (AGENTS.md already says so).
-  Delete on the next groom if no counter-evidence appears.
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
   positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
   build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
@@ -138,8 +160,6 @@ the ship whose post-audit found the three gates above.
   per-RUN mount audit + real toolchain rebuild.
 - **TG3 residual — collapse the two toolchain RUNs** [S·★] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
-- **TS8 + shared apt-source include** [S] build_python.sh hand-rolls the 4th
-  apt-sources copy; one include, five consumers (nvidia/amd/android too).
 - **LOG2 open half — build the wasm asyncify/jspi flavors** [S/M·★★] so
   onnxruntime-web ships its webgpu JS backend (exclusion is documented in
   versions.env since wave-3; this is the build half).
@@ -148,23 +168,35 @@ the ship whose post-audit found the three gates above.
   real generate() smoke.
 - **TVM arm64/riscv64 cross-build** [L·★★] media:369 placeholder; cross path
   in tvm-python.sh never wired; do with the llvm-config pin.
-- **PAR5 — a lone surviving lane stays throttled; the obvious fix is
-  DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
-  single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
-  idles (wave4f arm64, wave5h riscv64). DO NOT re-attempt the flag-dir
-  live-lane-count approach that this entry used to propose — it was built,
-  reviewed and reverted: BUILD_MEM_DIVISOR is a build-arg consumed as
-  `ENV BUILD_MEM_DIVISOR` when the container build STARTS, so it cannot
-  change while that build runs; the clamp could not fire at all in the
-  shipped topology (all lane markers exist before any lane retires), and
-  where it could fire it made the divisor depend on sibling timing and
-  could drop the intra-step multiplier entirely (6→1) — an overcommit in
-  exactly the direction PAR4 exists to prevent. A tripwire in
-  test-stage-defs.sh now fails if flag-dir state is wired back into the
-  divisor. Achievable options only: PAR4-hard (a host-level memory
-  governor: systemd-run MemoryHigh per build, or a global compile-job
-  server), or re-sizing at container-build/STAGE boundaries. Full verdict
-  in docs/build-parallelism-memory-tuning.md.
+### A2. Already landed, validated by the rebuild alone (watch, no work)
+
+- Media source-cache mounts, cerbero extra_mirrors fallback, C3 `:?`
+  guards, TS4 llvm checkout keying, CERB-CACHE warm/evict behaviour,
+  APT-HTTP restore (only if the fast-mirror knob is ON), DUP2 SSOT +
+  literal gate — each shipped and reviewed; the rebuild is their proof.
+  Fold them with log quotes in the post-ship evidence audit.
+
+- **TS8 + shared apt-source include** [S] build_python.sh hand-rolls the 4th
+  apt-sources copy; one include, five consumers (nvidia/amd/android too).
+- **DUP2 residual — SETTLED 2026-08-24, one operator habit remains** [S·★]
+  the gate IS wired: preflight.sh:140 runs verify-arg-consistency.sh as the
+  `arg-consistency` check, and with the C3 exemption it passes rc=0 with 32
+  sites scanned. The evidence audit's "chain never runs it" observation is
+  BY DESIGN — build-cross-chain.sh performs only the disk preflight, the
+  full gate battery is the operator-run preflight.sh. Residual: nothing to
+  build — just run preflight.sh before launch (AGENTS.md already says so).
+  Delete on the next groom if no counter-evidence appears.
+- **BKD1 — buildkitd session rot: RESEARCHED, no upstream fix exists** [M·★,
+  downgraded from ★★ 2026-08-24] host runs buildkit v0.31.1 (nerdctl 2.3.4,
+  containerd 2.3.2). The symptom IS a known open upstream issue —
+  moby/buildkit#6422 ("no active session … context deadline exceeded", open,
+  no linked PR) and #5624 (same class during cache-export registry auth) —
+  and NO release through v0.32.2 (2026-08-04) mentions a session/keepalive
+  fix. VERDICT: keep the restart playbook (stop chain → restart
+  buildkit.service → relaunch; cachemounts survive). OPTIONAL, no-build
+  window: upgrade to v0.32.2 for its concurrency-stress fixes (#6916 daemon
+  crash during concurrent builds, #6955 parallel-build cache-miss) — adjacent
+  to our load profile, but not a fix for the session rot itself.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
@@ -234,6 +266,25 @@ the ship whose post-audit found the three gates above.
 - **WEBUI_SECRET_KEY server-side rotation** — user action.
 
 ## Verdicts (anti-re-sweep records — do NOT re-audit without new evidence)
+
+- **PAR5 — a lone surviving lane stays throttled; the obvious fix is
+  DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
+  single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
+  idles (wave4f arm64, wave5h riscv64). DO NOT re-attempt the flag-dir
+  live-lane-count approach that this entry used to propose — it was built,
+  reviewed and reverted: BUILD_MEM_DIVISOR is a build-arg consumed as
+  `ENV BUILD_MEM_DIVISOR` when the container build STARTS, so it cannot
+  change while that build runs; the clamp could not fire at all in the
+  shipped topology (all lane markers exist before any lane retires), and
+  where it could fire it made the divisor depend on sibling timing and
+  could drop the intra-step multiplier entirely (6→1) — an overcommit in
+  exactly the direction PAR4 exists to prevent. A tripwire in
+  test-stage-defs.sh now fails if flag-dir state is wired back into the
+  divisor. Achievable options only: PAR4-hard (a host-level memory
+  governor: systemd-run MemoryHigh per build, or a global compile-job
+  server), or re-sizing at container-build/STAGE boundaries. Full verdict
+  in docs/build-parallelism-memory-tuning.md.
+
 
 - **Nondeterministic file-picks (2026-08-22, PKGCFG-MIRROR post-mortem)**:
   any `grep -rl … | head -1 / grep -m1` that CHOOSES a file to patch is
