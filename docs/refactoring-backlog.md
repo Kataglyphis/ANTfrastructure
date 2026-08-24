@@ -107,12 +107,13 @@ closure window — ONE rebuild pays for all).
   two toolchain RUNs). Both were bitten before — implement + adversarial
   review + the rebuild as the only accepted proof.
 
-**Phase 4 — decision items (need the operator's word, not work):**
-- S3 registry cache mode=max: design ready (docs/build-cache-tiers.md), cost
-  ~12-13 GB extra registry traffic per run — YES/NO from the operator.
-- USE_FAST_UBUNTU_MIRROR: the APT-HTTP restore is built but only exercises
-  when the knob is ON — decide whether to enable a fast mirror for the
-  rebuild.
+**Phase 4 — DECIDED by the operator 2026-08-24:**
+- S3 registry cache mode=max: **NO** — inline stays; the design doc
+  (docs/build-cache-tiers.md) remains for a future revisit. S3 moves to § D
+  as decision-recorded, do not re-pitch without new evidence (e.g. another
+  cold-rebuild incident).
+- USE_FAST_UBUNTU_MIRROR: **YES** — the rebuild launches with the knob ON,
+  which exercises the APT-HTTP https-restore for real (its validator).
 
 **The rebuild itself:** from BASE, all three arches, --parallel-archs
 --max-parallel-archs 3, launched CLEAN — it doubles as the long-owed PAR1
@@ -226,12 +227,12 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 
 ## D. CI / infra / cache tiers (own triggers)
 
-- **S3 — per-stage registry cache refs (mode=max)** [M·★★→★★★, BIT
-  2026-08-21] the system-prune wiped local caches and the inline (mode=min)
-  registry cache covers only final-image layers → the wave5h relaunch
-  COLD-REBUILT all media intermediates (~18 h: torch/IREE/litert ×3).
-  Per-stage mode=max refs would have made that a fast-forward. Dodge the
-  ghcr 400 blob limit; test.
+- **S3 — per-stage registry cache refs: operator DECLINED 2026-08-24**
+  [decision recorded] design stays at docs/build-cache-tiers.md (DESIGN ONLY
+  banner); cost ~12-13 GB registry upload per run was judged not worth it
+  while prune-safe + local caches hold. Re-open ONLY on new evidence (another
+  cold-rebuild loss). v1 implementation history: reverted twice (fix7 gate
+  token; inert-by-default with no coverage) — read the doc before any retry.
 - **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
   (deliberately per-lane since PAR2 — revisit as shared+non-locked).
 - **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
