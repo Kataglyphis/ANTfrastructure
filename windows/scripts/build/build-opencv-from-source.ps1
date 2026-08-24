@@ -441,7 +441,7 @@ if ($ocvCross) {
     # and the literal already hardcoded in Dockerfile.media-merge-builder,
     # build-gstreamer-from-source.ps1 and smoke-test-container.ps1.
     $cmakeExtra += "-DOpenCV_ARCH=$(Get-OpenCvArchDir -Arch $ocvTargetArch)", '-DOpenCV_RUNTIME=vc18'
-    Write-Host "OpenCV cross ($ocvTargetArch): WITH_IPP=OFF (x86-only), BUILD_IPP_IW=OFF, WITH_DIRECTML=OFF (no arm64 import lib), install layout -> $(Get-OpenCvArchDir -Arch $ocvTargetArch)\vc18"
+    Write-Host "OpenCV cross ($ocvTargetArch): WITH_IPP=OFF (x86-only), BUILD_IPP_IW=OFF, WITH_DIRECTML=OFF (sequencing: ORT arm64 DML unverified, backlog #113 -- NOT a missing import lib), install layout -> $(Get-OpenCvArchDir -Arch $ocvTargetArch)\vc18"
 }
 
 # --- FFmpeg discovery for videoio (backlog #94) -------------------------------
