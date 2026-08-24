@@ -40,13 +40,26 @@ _tvm_wheel_setup() {
     # Build-executor pins (supply-chain audit #18): these packages EXECUTE code
     # at build time; unpinned installs made every build resolve them fresh.
     # Inline defaults mirror versions.env (safety-net convention).
+    # mlc-z3-static is NOT a build executor — it ships the PIC static libz3 +
+    # headers — but it sits in TVM v0.26.0's [build-system].requires
+    # ("mlc-z3-static>=4.16.0"), and under --no-isolation NOTHING installs
+    # build-requires: its absence aborted EVERY wheel build at "Getting build
+    # dependencies for wheel" (wave-5 2026-08-21/22, all three arches — the
+    # exact line _tvm_wheel_missing_build_requires echoes back), always AFTER
+    # the hours-long native compile had succeeded. It must be pre-installed
+    # here for the same reason the executors are. PyPI ships py3-none
+    # manylinux_2_28 wheels for x86_64/aarch64; this venv is ALWAYS the amd64
+    # host python (also in cross mode), so the x86_64 wheel resolves in every
+    # lane. versions.env may pin PY_MLC_Z3_STATIC_VERSION; inline default
+    # mirrors it (safety-net convention).
     uv pip install -U pip \
-      "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" \
-      "wheel==${PY_WHEEL_VERSION:-0.47.0}" \
+      "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" \
+      "wheel==${PY_WHEEL_VERSION:-0.48.0}" \
       build \
       "scikit-build-core==${PY_SCIKIT_BUILD_CORE_VERSION:-1.0.3}" \
       "cython==${PY_CYTHON_VERSION:-3.2.9}" \
-      "setuptools-scm==${PY_SETUPTOOLS_SCM_VERSION:-10.2.1}"
+      "setuptools-scm==${PY_SETUPTOOLS_SCM_VERSION:-10.2.1}" \
+      "mlc-z3-static==${PY_MLC_Z3_STATIC_VERSION:-4.16.0}"
     uv pip install -U numpy cloudpickle decorator psutil scipy attrs
 
     TVM_WHEEL_DIR="${prefix}/wheels"
@@ -75,8 +88,15 @@ _tvm_wheel_setup() {
 
 # Run `python -m build` for one mode, mirroring its output into a log file so a
 # failure can be EXPLAINED and not merely announced. Returns the builder's rc.
+# $3 (optional) selects the source tree — default is the main TVM checkout;
+# _tvm_stage_ffi_wheel passes 3rdparty/tvm-ffi. Any further args are extra
+# `-C` config-settings for the build backend (config-settings outrank the
+# source tree's own [tool.scikit-build] pyproject values — the cross path
+# relies on that to force USE_Z3=OFF past pyproject's USE_Z3=AUTO).
 _tvm_run_wheel_build() {
-    local build_dir_suffix="$1" build_log="$2"
+    local build_dir_suffix="$1" build_log="$2" src_dir="${3:-$tvm_dir}"
+    shift 2
+    [ $# -eq 0 ] || shift
     # pipefail is LOAD-BEARING for every diagnostic in this file. `... | tee LOG`
     # reports TEE's status (always 0) unless pipefail is on, so `if !
     # _tvm_run_wheel_build` would never fire, TVM_WHEEL_SKIP_REASON would never
@@ -93,7 +113,40 @@ _tvm_run_wheel_build() {
     "$venv_python" -m build --wheel --no-isolation \
       --outdir "$TVM_WHEEL_DIR" \
       -Cbuild-dir="${tvm_dir}/build-wheel-${build_dir_suffix}" \
-      "$tvm_dir" 2>&1 | tee "$build_log"
+      "$@" \
+      "$src_dir" 2>&1 | tee "$build_log"
+}
+
+# Stage the apache-tvm-ffi wheel NEXT TO the main one. `import tvm`'s first
+# statement is `from tvm_ffi import ...`, and the consumer half
+# (assemble-torch-app.sh) installs the staged wheels with --no-deps into an
+# /opt/venv whose app lock does not carry apache-tvm-ffi — so a staged
+# apache_tvm wheel WITHOUT its ffi sibling ships an unimportable tvm
+# (ModuleNotFoundError: tvm_ffi), the same silent breakage this file exists to
+# end. wheel_family already classifies apache_tvm_ffi-*.whl into the tvm
+# family, so the consumer needs no change. tvm-ffi's build-requires
+# (scikit-build-core, cython>=3.2.8, setuptools-scm) are all in
+# _tvm_wheel_setup's pin list, so --no-isolation is satisfied. Call this ONLY
+# after the MAIN wheel is known to exist: the verdict's "wheel staged" must
+# keep implying a usable tvm, and an ffi wheel alone would be dead weight that
+# reads as green. Never fatal (TVM stays best-effort) but LOUD on failure.
+# $1 = build-dir/log suffix (native | cross-<platform>); extra args pass
+# through to _tvm_run_wheel_build as -C settings.
+_tvm_stage_ffi_wheel() {
+    local mode="$1"; shift
+    local ffi_dir="${tvm_dir}/3rdparty/tvm-ffi"
+    if [ ! -f "${ffi_dir}/pyproject.toml" ]; then
+      warn "tvm-ffi source tree has no pyproject.toml (${ffi_dir}) — cannot stage the ffi wheel; the staged apache-tvm wheel will NOT import in the shipped venv (consumer installs --no-deps and tvm_ffi is import #1)"
+      return 0
+    fi
+    local build_log="${tvm_dir}/tvm-ffi-wheel-build-${mode}.log"
+    log "Building apache-tvm-ffi wheel into ${TVM_WHEEL_DIR}"
+    if ! _tvm_run_wheel_build "ffi-${mode}" "${build_log}" "${ffi_dir}" "$@"; then
+      local missing
+      missing="$(_tvm_wheel_missing_build_requires "${build_log}")"
+      warn "apache-tvm-ffi wheel build failed${missing:+; missing build-requires: ${missing}} — the staged apache-tvm wheel will NOT import in the shipped venv (consumer installs --no-deps and tvm_ffi is import #1)"
+    fi
+    return 0
 }
 
 # `--no-isolation` is deliberate (an isolated tree would refetch and recompile
@@ -153,7 +206,16 @@ _tvm_build_wheel_cross() {
 
     local build_log="${tvm_dir}/tvm-wheel-build-cross.log"
     log "Building cross TVM wheel into $TVM_WHEEL_DIR"
-    if ! _tvm_run_wheel_build "${wheel_platform}" "${build_log}"; then
+    # USE_Z3=OFF (cross only): TVM's cmake/modules/contrib/Z3.cmake locates the
+    # mlc-z3-static package by EXECUTING the venv python (`-m
+    # mlc_z3_static.config --cmake-dir`) — and this venv is the amd64 HOST
+    # interpreter, so pyproject's USE_Z3=AUTO would statically link the
+    # HOST-arch libz3.a into the TARGET libtvm and die at link time. A `-C`
+    # config-setting is used (not CMAKE_ARGS) because config-settings outrank
+    # the pyproject define; the native path keeps AUTO and links the
+    # correct-arch static z3.
+    if ! _tvm_run_wheel_build "${wheel_platform}" "${build_log}" "$tvm_dir" \
+         -Ccmake.define.USE_Z3=OFF; then
       local missing
       missing="$(_tvm_wheel_missing_build_requires "${build_log}")"
       TVM_WHEEL_SKIP_REASON="cross wheel build failed${missing:+ — unsatisfied build-requires under --no-isolation: ${missing}}"
@@ -169,6 +231,11 @@ _tvm_build_wheel_cross() {
       warn "cross TVM wheel build succeeded but produced no wheel artifact"
       return 0
     fi
+    # Main wheel exists — stage its ffi sibling BEFORE the retag so both get
+    # retagged for the target platform (the ffi ext cross-compiles via the same
+    # CMAKE_ARGS toolchain; its compiled ext is the arch-agnostic-named
+    # core.abi3.so, only the ELF inside is target-arch).
+    _tvm_stage_ffi_wheel "cross-${wheel_platform}"
     log "Retagging cross TVM wheel(s) in ${TVM_WHEEL_DIR} for ${wheel_platform}"
     # Canonical retag helper from 01-core/common.sh (sourced via tvm.sh).
     retag_directory_wheels "${TVM_WHEEL_DIR}" "*" "${wheel_platform}" "$venv_python"
@@ -192,6 +259,9 @@ _tvm_build_wheel_native() {
     fi
 
     if [ -f "$tvm_dir/3rdparty/tvm-ffi/pyproject.toml" ]; then
+      # BUILD-venv install only (feeds verify_python_import at the end); the
+      # SHIPPED tvm_ffi comes from _tvm_stage_ffi_wheel below — this venv dies
+      # with the stage.
       log "Installing Apache TVM FFI Python package from source tree"
       uv pip install "$tvm_dir/3rdparty/tvm-ffi"
     else
@@ -203,6 +273,9 @@ _tvm_build_wheel_native() {
     shopt -u nullglob
 
     if [ "${#built_wheels[@]}" -gt 0 ]; then
+      # built_wheels was globbed BEFORE the ffi wheel lands, so [0] is always
+      # the main apache_tvm wheel — do not move this glob below the staging.
+      _tvm_stage_ffi_wheel native
       log "Installing TVM Python wheel ${built_wheels[0]}"
       uv pip install "${built_wheels[0]}"
     else

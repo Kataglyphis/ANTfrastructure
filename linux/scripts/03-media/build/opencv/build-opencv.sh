@@ -282,39 +282,61 @@ _opencv_target_adjustments() {
             if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
-            # RV1-FREETYPE — STAYS OFF. Re-investigated 2026-08-23 against the
-            # SHIPPED wave-5 log (out/build-logs/media-riscv64.log), not from
-            # memory. The blocker is NOT the now-closed RV1-GST-PC glib
-            # poisoning, as the old note here implied ("rides RV1-GST-PC's root
-            # cause") — that reading invites a flip that costs a full media
-            # rebuild to disprove. The real blocker: riscv64 has no target
-            # harfbuzz DEV package in the sysroot at configure time.
-            #   * arm64 gets libharfbuzz-dev:arm64 for free — libpango1.0-dev
-            #     (gstreamer/install-deps.sh pre-setup) depends on it — and its
-            #     cmake dump accordingly carries
-            #     -DHARFBUZZ_LIBRARY=/usr/lib/aarch64-linux-gnu/libharfbuzz.so.
-            #   * riscv64 skips that whole chain (MEDIA_SKIP_CAIRO_PANGO_PIXBUF
-            #     =1) and opencv/install-deps.sh's own attempt sits behind
-            #     `if ! dpkg -l libfreetype-dev:<arch>` — already satisfied by
-            #     gstreamer's deps — so libharfbuzz-dev is never even requested.
-            #     Only the RUNTIME libharfbuzz0b:riscv64 lands: no .so dev
-            #     symlink, no headers. The riscv64 cmake dump therefore has
-            #     FREETYPE_LIBRARY but NO HARFBUZZ_LIBRARY line at all.
-            # With HARFBUZZ_LIBRARY unset and CMAKE_FIND_ROOT_PATH_MODE_LIBRARY
-            # =BOTH (appended later by the cross opts), find_library falls
-            # through to the host /usr/lib/x86_64-linux-gnu/libharfbuzz.so →
-            # "file in wrong format" at link. Re-enabling needs a TARGET
-            # harfbuzz FIRST, via either (a) libharfbuzz-dev:riscv64 — NOT a
-            # free apt line: it Depends on libglib2.0-dev, the exact ports
-            # package RV1-GST-PC banned from this sysroot — or (b) a
-            # source-built one through cross_compile_cmake_lib_from_source (the
-            # freetype/libpng pattern in install-deps.sh) plus staging
-            # libharfbuzz.so.0 into the runtime image. /opt/gstreamer is not a
-            # shortcut: its harfbuzz is a meson subproject and installs no
-            # headers into the prefix. Text rendering is a nicety, not core —
-            # the wheel smoke reports it as the riscv64-only opencv-freetype
-            # warning.
-            _ota_cmake_opts+=("-DBUILD_opencv_freetype=OFF")
+            # RV1-FREETYPE — FIXED (2026-08-24); the coming rebuild is the
+            # final validator. History (2026-08-23 investigation, still true):
+            # riscv64 had no TARGET harfbuzz dev surface at configure time —
+            # pass-2 (FROM gstreamer, libfreetype-dev pre-satisfied) got only
+            # the RUNTIME libharfbuzz0b — so ocv_check_modules(HARFBUZZ
+            # harfbuzz) resolved a HOST harfbuzz (find_library fall-through
+            # under CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH) → "file in wrong
+            # format" at link. The ports dev package stays banned
+            # (libharfbuzz-dev:riscv64 → Depends: libglib2.0-dev = RV1-GST-PC
+            # poison), so install-deps.sh now stages a PIC STATIC target
+            # harfbuzz (HB_HAVE_FREETYPE=ON, hb-ft glue included) at
+            # /usr/<triplet> with a cmake-generated absolute-prefix
+            # harfbuzz.pc whose freetype dep is promoted to Requires: pkg-config
+            # then emits `-lharfbuzz -lfreetype`, so HARFBUZZ_LIBRARIES becomes
+            # [libharfbuzz.a, target libfreetype.so] and the module link
+            # (<objects> FREETYPE_LIBRARIES HARFBUZZ_LIBRARIES) still resolves
+            # the archive's FT_* refs under -Wl,--no-undefined — a DSO BEFORE
+            # the archive alone does NOT (proven by a local link experiment
+            # 2026-08-24: objects+ft.so+hb.a fails; +ft.so after the archive
+            # links clean). Determinism, both passes:
+            #   * our pkgconfig dir is prepended to PKG_CONFIG_PATH, which
+            #     outranks PKG_CONFIG_LIBDIR — pass-2 puts /opt/gstreamer
+            #     first in PKG_CONFIG_PATH and its meson-subproject harfbuzz
+            #     may export a competing harfbuzz.pc; ours must win;
+            #   * the pkgcfg_lib_* cache vars FindPkgConfig/ocv_check_modules
+            #     resolve libraries through are pre-seeded with absolute
+            #     TARGET paths, so no find_library ever runs, let alone falls
+            #     through to a host lib (OCV-FF1's determinism discipline,
+            #     pinned by file path instead of -L ordering).
+            # Static harfbuzz keeps the runtime surface: the only new NEEDED
+            # is libfreetype.so.6, which validate-media-runtime's
+            # so-package-map already resolves to libfreetype6 (and the
+            # gstreamer stack pulls it in on riscv64 today anyway). If
+            # install-deps could NOT stage the static harfbuzz, keep the
+            # module hard-OFF rather than let detection wander back to host
+            # libs — absence then still surfaces as the wheel smoke's
+            # riscv64-only opencv-freetype warning, and after a green rebuild
+            # that warning's "expected on riscv64" status is STALE (parity
+            # follow-up for the orchestrator).
+            local _hb_triplet _hb_a _hb_inc _hb_pc _ft_so
+            _hb_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
+            _hb_a="/usr/${_hb_triplet}/lib/libharfbuzz.a"
+            _hb_inc="/usr/${_hb_triplet}/include/harfbuzz/hb-ft.h"
+            _hb_pc="/usr/${_hb_triplet}/lib/pkgconfig/harfbuzz.pc"
+            _ft_so="/usr/lib/${_hb_triplet}/libfreetype.so"
+            if [ -f "${_hb_a}" ] && [ -f "${_hb_inc}" ] && [ -f "${_hb_pc}" ] && [ -f "${_ft_so}" ]; then
+                echo "riscv64 OpenCV: freetype module ENABLED against static target harfbuzz (${_hb_a}) + ${_ft_so}"
+                export PKG_CONFIG_PATH="/usr/${_hb_triplet}/lib/pkgconfig${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}"
+                _ota_cmake_opts+=("-Dpkgcfg_lib_HARFBUZZ_harfbuzz:FILEPATH=${_hb_a}")
+                _ota_cmake_opts+=("-Dpkgcfg_lib_HARFBUZZ_freetype:FILEPATH=${_ft_so}")
+                _ota_cmake_opts+=("-Dpkgcfg_lib_FREETYPE_freetype:FILEPATH=${_ft_so}")
+            else
+                echo "[WARN] riscv64 OpenCV: static target harfbuzz not staged (libharfbuzz.a=$([ -f "${_hb_a}" ] && echo ok || echo MISSING) hb-ft.h=$([ -f "${_hb_inc}" ] && echo ok || echo MISSING) harfbuzz.pc=$([ -f "${_hb_pc}" ] && echo ok || echo MISSING) libfreetype.so=$([ -f "${_ft_so}" ] && echo ok || echo MISSING)); keeping BUILD_opencv_freetype=OFF"
+                _ota_cmake_opts+=("-DBUILD_opencv_freetype=OFF")
+            fi
             # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
             # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
             # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL

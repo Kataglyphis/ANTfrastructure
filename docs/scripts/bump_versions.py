@@ -142,6 +142,27 @@ def _vkey(name: str) -> list[int]:
     return [int(x) for x in re.findall(r"\d+", name)]
 
 
+def ls_remote_tag_commit(repo: str, tag: str) -> str:
+    """Peeled commit SHA of a tag via git ls-remote (annotated tags resolve
+    through ^{}; lightweight tags fall back to the tag ref itself)."""
+    out = subprocess.run(
+        ["git", "ls-remote", f"https://github.com/{repo}.git",
+         f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}"],
+        capture_output=True, text=True, timeout=120, check=False,
+    )
+    if out.returncode:
+        raise RuntimeError(f"git ls-remote failed for {repo} {tag}: {out.stderr.strip()[:200]}")
+    shas = {}
+    for line in out.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) == 2:
+            shas[parts[1]] = parts[0]
+    sha = shas.get(f"refs/tags/{tag}^{{}}") or shas.get(f"refs/tags/{tag}")
+    if not sha:
+        raise RuntimeError(f"tag {tag} not found on {repo}")
+    return sha
+
+
 def gh_latest(repo: str, pattern: str | None = None) -> str:
     """Newest version tag of a GitHub repo via ls-remote. `pattern` restricts
     the tag shape (default: plain version tags); prerelease-looking tags are
@@ -570,6 +591,47 @@ def spec_vulkan(cur):
     return v, extras
 
 
+def spec_abseil(cur):
+    """F6(a): ABSEIL_VERSION rides with TWO paired pins (abseil-headers.sh):
+    ABSEIL_COMMIT — the tag resolved to an immutable SHA, because the
+    /archive/<commit>.tar.gz form is byte-stable while the tag form is not —
+    and ABSEIL_TARBALL_SHA256, the byte hash of that archive (see the
+    stream-hash note next to the key in versions.env before changing HOW it
+    hashes). Refresh both in step so a version bump can't freeze them stale.
+    REPORT-tier like before: the tarball feeds cross-compile fallbacks."""
+    v = gh_latest("abseil/abseil-cpp")  # tags are bare datestamps (20260817.0)
+    extras = {}
+    if v != cur and WRITE_MODE:
+        commit = ls_remote_tag_commit("abseil/abseil-cpp", v)
+        extras["ABSEIL_COMMIT"] = commit
+        extras["ABSEIL_TARBALL_SHA256"] = sha256_of_url(
+            f"https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz")
+    return v, extras
+
+
+def spec_appimagetool(cur):
+    """TS1: immutable release tag (never `continuous`, which re-uploads assets
+    in place); one AppImage per supported host arch, verified at install time
+    by packaging-deps.sh ensure_appimagetool. Upstream publishes no sums file,
+    so asset_sha256 falls back to download-and-hash (~9 MB each; all four
+    1.9.1 digests verified against the live assets 2026-08-24). REPORT-tier
+    deliberately: packaging-deps.sh still carries the four sha256 pins as
+    case-arm literals and reads only APPIMAGETOOL_VERSION from its env, so an
+    automated bump would desync versions.env from the literals actually
+    enforced. Move to SAFE once the consumer reads the *_SHA256 keys."""
+    v = gh_latest("AppImage/appimagetool")
+    extras = {}
+    if v != cur and WRITE_MODE:
+        for env_key, asset in [
+            ("APPIMAGETOOL_X86_64_SHA256", "appimagetool-x86_64.AppImage"),
+            ("APPIMAGETOOL_AARCH64_SHA256", "appimagetool-aarch64.AppImage"),
+            ("APPIMAGETOOL_ARMHF_SHA256", "appimagetool-armhf.AppImage"),
+            ("APPIMAGETOOL_I686_SHA256", "appimagetool-i686.AppImage"),
+        ]:
+            extras[env_key] = asset_sha256("AppImage/appimagetool", v, asset)
+    return v, extras
+
+
 def spec_app_ref(cur):
     # The app repo publishes TAGS, not GitHub releases — same tag-scan
     # build.ps1's -LatestApp uses via ls-remote.
@@ -691,7 +753,7 @@ REPORT: list[tuple[str, Callable]] = [
     ("ARMNN_VERSION", _r("ARM-software/armnn", strip_v=False, pattern=r"^v\d+\.\d+$")),
     ("ACL_VERSION", _r("ARM-software/ComputeLibrary", strip_v=False, pattern=r"^v\d+\.\d+(\.\d+)?$")),
     ("RICE_VERSION", _r("ystreet/librice", strip_v=False, pattern=r"^v\d+\.\d+\.\d+$")),
-    ("ABSEIL_VERSION", _r("abseil/abseil-cpp", strip_v=False)),
+    ("ABSEIL_VERSION", spec_abseil),
     ("FREETYPE_VERSION", lambda cur: (
         gh_latest("freetype/freetype", pattern=r"^VER-\d+-\d+-\d+$")
         .removeprefix("VER-").replace("-", "."), {})),
@@ -729,6 +791,22 @@ REPORT: list[tuple[str, Callable]] = [
     ("PY_WHEEL_VERSION", _pypi("wheel")),
     ("LIBCAMERA_VERSION", lambda cur: (
         gitlab_latest_tag("gitlab.freedesktop.org", "camera/libcamera", r"^v\d+\.\d+\.\d+$"), {})),
+    # -- package-image runtime-venv executor pins (setup-package-image.sh
+    #    create_runtime_venv; added 2026-08-24 closing its last bare installs).
+    #    That script sources platform.sh/package-lists.sh only (not common.sh),
+    #    so nothing loads versions.env into its env and its ${VAR:-literal}
+    #    fallbacks are the live values — a bump must update BOTH sites (the
+    #    verify-arg-consistency drift check compares them). --
+    ("PY_CMAKE_VERSION", _pypi("cmake")),
+    ("PY_NUMPY_VERSION", _pypi("numpy")),
+    ("PY_PACKAGING_VERSION", _pypi("packaging")),
+    # -- report-only until their consumers read the keys (C4 / TS1 riders):
+    #    lint-python.sh still hardcodes RUFF_PIN, packaging-deps.sh still
+    #    hardcodes the four appimagetool sha256 case-arms — an automated bump
+    #    today would desync versions.env from the literal actually enforced.
+    #    Move each to SAFE when its consumer wiring lands. --
+    ("RUFF_VERSION", _r("astral-sh/ruff")),
+    ("APPIMAGETOOL_VERSION", spec_appimagetool),
 ]
 
 MANUAL = [
@@ -778,6 +856,16 @@ def audit_sha_pairs() -> int:
         "RUSTUP_INIT_SHA256",   # sh.rustup.rs
         "UV_INSTALL_SH_SHA256",  # astral.sh/uv/install.sh
         "SCOOP_INSTALLER_SHA256",  # get.scoop.sh
+        # F6 (2026-08-24): pins paired with MANUAL-tier version keys that no
+        # spec can track — re-derived BY HAND on their deliberate bumps:
+        # ANDROID_SDK_VERSION is MANUAL (the repository XML is a moving
+        # matrix); the fetch recipe AND the repository2-3.xml sha1 cross-check
+        # live next to the key in versions.env.
+        "ANDROID_CMDLINE_TOOLS_SHA256",
+        # Slaved to LLVM_WINDOWS_VERSION (MANUAL, F7: Windows-lane — bumped
+        # via the Windows backlog, "Bump BOTH lines together" per the
+        # versions.env comment; an unknown version without a sha throws).
+        "LLVM_WINDOWS_SRC_SHA256",
     }
     src = Path(__file__).read_text(encoding="utf-8")
     stray: list[str] = []

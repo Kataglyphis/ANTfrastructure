@@ -27,7 +27,9 @@ expense of the others:
   sccache for Rust; layer cache and compiler cache multiply, they don't
   compete — pinned buildkitd GC budget whose policies spare compile-cache
   mounts, plus `linux/host-config/prune-safe.sh` for manual reclaim that
-  provably keeps them; cross-stage pushes ship zstd-compressed layers) and
+  provably keeps them, and `linux/host-config/ghcr-prune-package.sh` for
+  safe ghcr package cleanup (keep-set = tags + index children + age guard;
+  dry-run by default); cross-stage pushes ship zstd-compressed layers) and
   opt-in parallelism levers (per-arch `--parallel-archs` with per-stage
   control and OOM-aware job sizing). Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
@@ -225,10 +227,10 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 | Target | Source-controlled defaults |
 | --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.0 |
+| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.1 |
 | Android layer | Android SDK 15859902, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.0, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
+| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.1, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
 <!-- generated:version-snapshot:end -->
 
 ## Quick Start 🏁

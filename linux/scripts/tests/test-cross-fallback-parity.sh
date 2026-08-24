@@ -57,4 +57,93 @@ for f in "${FILES[@]}"; do
   t_assert_eq "DELEGATED" "${out}" "authoritative predicate must win over the approximation"
 done
 
+# ---------------------------------------------------------------------------
+# APT-HTTP restore parity (2026-08-24): bootstrap_ca deliberately downgrades a
+# https fast-mirror to http:// for the CA bootstrap; restore_mirror_https_scheme
+# (base-image.sh, exposed as the restore-mirror-scheme subcommand) must undo
+# EXACTLY that — and nothing else. Exercised here against fixture sources via
+# UBUNTU_SOURCES_ROOT with the REAL scripts, mirroring the in-image sequence:
+# downgrade -> ca-install marker -> restore.
+# ---------------------------------------------------------------------------
+CORE_DIR="${TESTS_DIR}/../01-core"
+_MIRROR_TMP="$(mktemp -d)"
+trap 'rm -rf "${_MIRROR_TMP}"' EXIT
+
+_mirror_fixture() {
+  # $1 = root dir, $2 = URIs value for the archive stanza
+  mkdir -p "$1/etc/apt/sources.list.d"
+  printf 'Types: deb\nURIs: %s\nSuites: resolute\nComponents: main\n\nTypes: deb\nURIs: http://security.ubuntu.com/ubuntu/\nSuites: resolute-security\nComponents: main\n' \
+    "$2" > "$1/etc/apt/sources.list.d/ubuntu.sources"
+}
+
+_mirror_downgrade() {
+  # $1 = root; runs the REAL bootstrap-style rewrite with the http URL that
+  # bootstrap_ca passes (security rewrite on, as the worst case)
+  USE_FAST_UBUNTU_MIRROR=true FAST_UBUNTU_MIRROR_URL=http://mirror.invalid/ubuntu/ \
+  FAST_UBUNTU_REWRITE_SECURITY=true UBUNTU_SOURCES_ROOT="$1" \
+    bash "${CORE_DIR}/use-fast-ubuntu-mirror.sh" >/dev/null 2>&1
+}
+
+_mirror_restore() {
+  # $1 = root, $2 = configured mirror URL, $3 = knob (default true)
+  USE_FAST_UBUNTU_MIRROR="${3:-true}" FAST_UBUNTU_MIRROR_URL="$2" \
+  UBUNTU_SOURCES_ROOT="$1" \
+    bash "${CORE_DIR}/base-image.sh" restore-mirror-scheme >/dev/null 2>&1
+}
+
+_mirror_uris() { grep '^URIs:' "$1/etc/apt/sources.list.d/ubuntu.sources" | tr '\n' '|'; }
+
+# -- happy path: downgrade -> install marker -> restore -> https ------------
+R="${_MIRROR_TMP}/happy"
+_mirror_fixture "${R}" "http://archive.ubuntu.com/ubuntu/"
+t_case "apt-http: bootstrap downgrade lands http mirror (archive+security)"
+t_assert_ok _mirror_downgrade "${R}"
+t_assert_eq "URIs: http://mirror.invalid/ubuntu/|URIs: http://mirror.invalid/ubuntu/|" "$(_mirror_uris "${R}")"
+
+# The ordering contract lives in base-image.sh itself: bootstrap-ca installs
+# ca-certificates and THEN calls restore_mirror_https_scheme. Assert that
+# ordering statically on the production file — the first version of this case
+# touched a marker file and asserted its own touch, which could never fail
+# (caught by adversarial review 2026-08-24).
+t_case "apt-http: base-image.sh restores the scheme AFTER installing ca-certificates"
+_bi="${CORE_DIR}/base-image.sh"
+_ca_line="$(grep -n 'install -y --no-install-recommends ca-certificates' "${_bi}" | head -1 | cut -d: -f1)"
+_rs_line="$(grep -n '^  restore_mirror_https_scheme$' "${_bi}" | head -1 | cut -d: -f1)"
+if [ -n "${_ca_line}" ] && [ -n "${_rs_line}" ] && [ "${_rs_line}" -gt "${_ca_line}" ]; then
+  t_assert_eq ok ok
+else
+  t_assert_eq "restore after ca-install" "ordering broken (ca=${_ca_line:-none}, restore=${_rs_line:-none})"
+fi
+
+t_case "apt-http: restore puts archive AND security entries back on https"
+t_assert_ok _mirror_restore "${R}" "https://mirror.invalid/ubuntu/"
+t_assert_eq "URIs: https://mirror.invalid/ubuntu/|URIs: https://mirror.invalid/ubuntu/|" "$(_mirror_uris "${R}")"
+
+t_case "apt-http: restore is idempotent (second run leaves file byte-identical)"
+_before="$(cat "${R}/etc/apt/sources.list.d/ubuntu.sources")"
+t_assert_ok _mirror_restore "${R}" "https://mirror.invalid/ubuntu/"
+t_assert_eq "${_before}" "$(cat "${R}/etc/apt/sources.list.d/ubuntu.sources")"
+
+# -- derived ports URL (arm64/riscv64-shaped sources) -----------------------
+R="${_MIRROR_TMP}/ports"
+mkdir -p "${R}/etc/apt/sources.list.d"
+printf 'Types: deb\nURIs: http://ports.ubuntu.com/ubuntu-ports/\nSuites: resolute\nComponents: main\n' \
+  > "${R}/etc/apt/sources.list.d/ubuntu.sources"
+t_case "apt-http: derived ports mirror is restored to https too"
+_mirror_downgrade "${R}"
+t_assert_ok _mirror_restore "${R}" "https://mirror.invalid/ubuntu/"
+t_assert_eq "URIs: https://mirror.invalid/ubuntu-ports/|" "$(_mirror_uris "${R}")"
+
+# -- no-op cases ------------------------------------------------------------
+R="${_MIRROR_TMP}/knoboff"
+_mirror_fixture "${R}" "http://mirror.invalid/ubuntu/"
+_before="$(cat "${R}/etc/apt/sources.list.d/ubuntu.sources")"
+t_case "apt-http: knob off => rc 0 and sources untouched"
+t_assert_ok _mirror_restore "${R}" "https://mirror.invalid/ubuntu/" false
+t_assert_eq "${_before}" "$(cat "${R}/etc/apt/sources.list.d/ubuntu.sources")"
+
+t_case "apt-http: user explicitly chose an http mirror => rc 0 and untouched"
+t_assert_ok _mirror_restore "${R}" "http://mirror.invalid/ubuntu/" true
+t_assert_eq "${_before}" "$(cat "${R}/etc/apt/sources.list.d/ubuntu.sources")"
+
 t_summary

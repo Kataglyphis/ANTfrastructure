@@ -161,7 +161,13 @@ if [ "${WD}" = "/" ]; then
     WD="${AUTO_WORKDIR}"
 fi
 
-SRC_DIR="${WD}/llvm-project"
+# TS4 (2026-08-24): the checkout lives on the /var/cache/llvm-src cachemount
+# and used to sit at a version-LESS path, guarded only by `[ ! -d SRC_DIR ]` —
+# so after an LLVM bump the mount still held the OLD tag, the guard skipped
+# the fetch, and cmake silently built last release's sources while the log
+# announced the new version (the cerbero-cache defect class; llvm-cross.sh:71
+# already keys its dir as llvm-project-${release}, this follows that pattern).
+SRC_DIR="${WD}/llvm-project-${LLVM_TAG}"
 BUILD_DIR="${WD}/llvm-build"
 INSTALL_DIR="${PREFIX}"
 
@@ -213,7 +219,27 @@ fi
 
 run_preflight_checks
 
-if [[ ! -d "${SRC_DIR}" ]]; then
+# A dir that exists but does not hold the pinned tag is treated as ABSENT: a
+# truncated clone (ENOSPC, killed build) leaves a .git that would otherwise
+# pass a bare directory test forever. rev-parse must succeed AND the worktree
+# must be non-empty for the reuse branch.
+_src_valid=0
+if [[ -d "${SRC_DIR}/.git" ]] \
+   && git -C "${SRC_DIR}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
+   && [[ -f "${SRC_DIR}/llvm/CMakeLists.txt" ]]; then
+    _src_valid=1
+fi
+if [[ "${_src_valid}" != "1" ]]; then
+    # Evict OTHER generations first: the mount is shared across rebuilds and a
+    # ~2 GB checkout per LLVM version would otherwise accumulate unbounded on a
+    # host that keeps running out of disk. Only siblings matching our own
+    # naming pattern are touched, and never the one we are about to (re)use.
+    for _old_src in "${WD}"/llvm-project-*; do
+        [[ -d "${_old_src}" && "${_old_src}" != "${SRC_DIR}" ]] || continue
+        info "Evicting stale llvm checkout $(basename "${_old_src}") (superseded by ${LLVM_TAG})"
+        rm -rf "${_old_src}"
+    done
+    rm -rf "${SRC_DIR}"
     info "Fetching llvm-project ${LLVM_TAG}..."
     git init -q "${SRC_DIR}"
     git -C "${SRC_DIR}" remote add origin https://github.com/llvm/llvm-project.git

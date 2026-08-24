@@ -63,9 +63,18 @@ ENV BUILD_MODE=${BUILD_MODE} \
 # ------------------------------------------------------------------------------
 # 1. GCC (Heavy Layer)
 # If this succeeds, it is cached forever unless GCC_VERSION changes.
-# Per-file bind mounts = the transitive source-closure of setup-dependencies.sh
-# (identical for the GCC, LLVM, and target-clang RUNs — keep the three lists in
-# sync). versions.env is mounted because common.sh load_versions_env()-reads it
+# Per-file bind mounts = the transitive source-closure of the dockerfile-gcc
+# path ONLY (TG1-residual 2026-08-24): llvm.sh is now sourced lazily in the
+# llvm-needing dispatch arms (see the header note in setup-dependencies.sh),
+# so this RUN mounts NO llvm file — audit: every function defined in
+# llvm.sh/llvm-cross.sh/llvm-validate.sh grepped against the eager closure
+# has exactly 3 consumers (install_llvm_clang, install_target_clang_toolchain,
+# verify_cross_llvm_targets), none reachable from dockerfile-gcc; build-clang.sh
+# is only exec'd via llvm.sh's llvm_build_script; vulkan-env.sh is sourced only
+# by vulkan.sh (not mounted here since TG1-bounded). An llvm/vulkan-family edit
+# therefore no longer invalidates this multi-hour layer. The LLVM RUN below
+# keeps the llvm family — the two lists deliberately DIFFER now.
+# versions.env is mounted because common.sh load_versions_env()-reads it
 # at runtime (env/ARG values still win; the file is only the fallback).
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
@@ -90,16 +99,11 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
-    --mount=type=bind,source=linux/scripts/01-core/vulkan-env.sh,target=/opt/scripts/core/vulkan-env.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-cross.sh,target=/opt/scripts/toolchain/llvm-cross.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-validate.sh,target=/opt/scripts/toolchain/llvm-validate.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
     --mount=type=tmpfs,target=/tmp \
@@ -120,7 +124,32 @@ ENV PATH="/opt/gcc-${GCC_VERSION}/bin:${PATH}" \
 
 # 3. LLVM / CLANG (Heavy Layer)
 # If this fails, Docker restores the image state at 'Step 2' instantly.
-# Per-file bind mounts: same setup-dependencies.sh closure as the GCC RUN above.
+# Per-file bind mounts = the GCC RUN's closure PLUS the llvm family
+# (llvm.sh -> llvm-cross.sh + llvm-validate.sh, sourced by the
+# dockerfile-llvm dispatch arm; build-clang.sh is exec'd by
+# llvm_build_script on the source-build fallback path). vulkan-env.sh is
+# NOT mounted: its only consumer is vulkan.sh, which this RUN never sources
+# (TG1-residual audit — see setup-dependencies.sh header).
+#
+# This RUN's unified superset build (TG3, llvm-cross.sh) produces BOTH
+# /opt/llvm-cross/<triplet> AND /opt/llvm-target-<arch> per cross arch —
+# the former dedicated target-clang RUN (3d) is deleted (TG3-residual
+# 2026-08-24): since the TG3 unification, `mode` selects nothing but a log
+# string in llvm-cross.sh (grep '_r\[mode\]\|${mode}' — one log line), so
+# 3d could only ever early-return or redo the IDENTICAL build. Its
+# early-return probe (`clang --version` on a foreign-arch ELF) failed in
+# practice, forcing a full ccache-absorbed recompile (~97s) AND baking the
+# multi-GB /var/tmp build tree into the 3d layer (3d had no /var/tmp
+# tmpfs). The trees 3d re-verified stay gated: RUN 3's post-build hooks
+# die on a missing clang/cmake package, RUN 3c runs the qemu llvm-config +
+# CMake link smoke, and sdk's materialize-llvm-target.sh asserts the ELF
+# arch of /opt/llvm-target-<arch>/bin/clang.
+#
+# binutils-dev is installed HARD here (hoisted from the deleted RUN 3d):
+# the superset build links LLVMgold against /usr/include/plugin-api.h, and
+# the in-script _llvm_cross_ensure_host_binutils_dev helper is
+# best-effort/WARN-only — without this line a transient apt failure would
+# silently ship a target clang without the gold plugin.
 RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -144,7 +173,6 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
-    --mount=type=bind,source=linux/scripts/01-core/vulkan-env.sh,target=/opt/scripts/core/vulkan-env.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
     --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
@@ -160,6 +188,8 @@ RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${T
     --mount=type=tmpfs,target=/tmp \
     --mount=type=tmpfs,target=/var/tmp \
     set -euo pipefail; \
+    apt-get update -qq && \
+    apt-get install -y --no-install-recommends binutils-dev; \
     SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
     LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
     bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-llvm
@@ -179,63 +209,16 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,ro \
     set -euo pipefail; \
     bash /opt/scripts/toolchain/setup-dependencies.sh verify
 
-# 3d. Target-architecture Clang/LLD/compiler-rt (for arm64, riscv64)
-# Cross-compile a native clang 22.1.8 for each target arch so the final
-# runtime image ships with clang on every architecture.
-# Uses the LLVM source cache from the host LLVM build above.
-# Per-file bind mounts: same setup-dependencies.sh closure as the GCC RUN above.
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/llvm-src,id=llvm-src-${TARGETARCH} \
-    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/opt/scripts/core/arch-mapping.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/build-helpers.sh,target=/opt/scripts/core/build-helpers.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \
-    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \
-    --mount=type=bind,source=linux/scripts/01-core/vulkan-env.sh,target=/opt/scripts/core/vulkan-env.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-cross.sh,target=/opt/scripts/toolchain/llvm-cross.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/llvm-validate.sh,target=/opt/scripts/toolchain/llvm-validate.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/llvm.sh,target=/opt/scripts/toolchain/llvm.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \
-    --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \
-    --mount=type=tmpfs,target=/tmp \
-    set -euo pipefail; \
-    apt-get update -qq && \
-    apt-get install -y --no-install-recommends binutils-dev; \
-    for _target in $(echo ${CROSS_TARGETS} | tr ',' ' '); do \
-      [ "${_target}" = "amd64" ] && continue; \
-      SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \
-      LLVM_CROSS_SOURCE_ROOT=/var/cache/llvm-src \
-      bash /opt/scripts/toolchain/setup-dependencies.sh --arch "${_target}" target-clang; \
-    done
+# (RUN 3d deleted — TG3-residual 2026-08-24. The unified superset build in
+# RUN 3 already installs /opt/llvm-target-<arch> for every cross arch; see
+# the RUN 3 comment above for the full rationale and the gates that still
+# verify those trees.)
 
 # 4. RUST / CARGO
 # Install the host Rust toolchain in the compiler layer and add the target stdlibs
 # plus Cargo linker hints needed by the amd64-hosted cross build lane.
 # Pins from versions.env (auto-forwarded as build args by the orchestrator).
-ARG RUST_VERSION=1.97.1
+ARG RUST_VERSION=1.98.0
 ARG CARGO_C_VERSION=0.10.24
 ARG RUST_NIGHTLY_TOOLCHAIN=nightly-2026-06-28
 # Per-file bind mounts = the transitive source-closure of install-rust.sh

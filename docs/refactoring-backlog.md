@@ -12,7 +12,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-24. LIVE `:latest-cross` = WAVE-6 ship (a25a38c5/
+Last groomed: 2026-08-24 (CLOSURE WINDOW 3 declared — see the 🎯 plan). LIVE `:latest-cross` = WAVE-6 ship (a25a38c5/
 bd9953a9/d3710282, run id 20260823-223111-d0336283) — see § WAVE-6 SHIPPED.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
@@ -64,29 +64,71 @@ on the new bytes. Runtime smokes 0 failures x3.
 riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
 the ship whose post-audit found the three gates above.
 
-## Next up (recommended order, 2026-08-24)
+## 🎯 CLOSURE WINDOW 3 — OPEN (declared 2026-08-24): pre-build wave, then a FULL validating rebuild
 
-1. **APT-HTTP** [★★★] — the only open finding with a security dimension.
-   VERIFY first (which sources file ends up on which scheme, at which stage),
-   then decide. No build needed to establish the facts.
-2. **GPU lane validation build** [★★★, cheap, anytime] — the staged GPU1-7 set
-   still awaits its one opt-in build.
-3. **Full rebuild from MEDIA** — wave-6 validated only android→runtime, so the
-   wave-3 media/toolchain work (DUP2 SSOT + drift gate, TS8, media source
-   caches) is still unproven by a real build.
-4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT producer half,
-   ORPHAN-PINS).
-5. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
+The operator has committed to a fresh build, so the versions.env lock is OPEN
+and build-validated items are IN SCOPE. Work the wave in this order; the
+rebuild then validates everything at once (that is the whole point of a
+closure window — ONE rebuild pays for all).
 
-> **Editing note (learned the hard way 2026-08-24):** deleting an item with a
-> script that seeks the next `- **` will SWALLOW a following `## ` section
-> header — that is how all of § B silently vanished for four commits. When
-> removing a validated item, bound the deletion at the next item OR the next
-> header, whichever comes first, and re-count the sections afterwards.
+**Phase 0 — host prep (no-build window, do FIRST):**
+- Optional BKD1 rider: upgrade buildkitd to v0.32.2 (concurrency-stress fixes
+  #6916/#6955; not a session-rot fix — the restart playbook stays).
+- Apply the staged buildkitd.toml gcpolicy (linux/host-config/, needs a
+  buildkitd restart — this is the no-build window it has waited for).
+- Disk: prune-safe to ≥150G free (full-rebuild appetite per the playbook);
+  the 215G kata-buildcache trim is the operator's call, not the agent's.
+- Run preflight.sh (the full gate battery incl. the GCC-literal gate).
 
----
+**Phase 1 — pin-bump pass (versions.env window):**
+- bump_versions.py sweep (the wave-4 ritual; BT1/BT2 guards are in).
+- § B riders: AP6 (decide/flip ORT_ENABLE_LTO per-arch-gated — this rebuild
+  is the measuring event), F6 (ABSEIL → decompressed-stream hash;
+  cmdline-tools sha1 cross-check vs repository2-3.xml), small riders
+  (RUFF_PIN → versions.env, LLVM_COMMIT opt-in key, TS1 APPIMAGETOOL keys,
+  setup-package-image residual pins).
+- MESON-GI probe: if meson >1.12 resolves g-i's glib subproject again, lift
+  the riscv64 pin in this window; else it stays with its reason.
 
-## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
+**Phase 2 — producer fixes (media/android lane):**
+- GENAI-DRIFT producer half: make the arm64 genai wheel land; then DELETE the
+  dated tolerance line in smoke-torch-venv.sh (it re-arms the assert).
+- ORPHAN-PINS producer: make Dockerfile.media's `import tvm works on amd64`
+  promise TRUE (the staging chain is diagnosed, loudly failing since wave 1)
+  or retract the promise; PyAV: build it or DROP the orphan pin (drop =
+  versions.env edit — in window).
+- RV1-FREETYPE: fix the host-vs-target harfbuzz cross-link and re-enable
+  `-DBUILD_opencv_freetype` on riscv64 — closing the last documented
+  ARCH-PARITY exception.
+- LOG2 open half: build the wasm asyncify/jspi flavors.
+
+**Phase 3 — toolchain trims (from-base rebuild validates):**
+- TG1 residual (fuller toolchain-closure trim) + TG3 residual (collapse the
+  two toolchain RUNs). Both were bitten before — implement + adversarial
+  review + the rebuild as the only accepted proof.
+
+**Phase 4 — DECIDED by the operator 2026-08-24:**
+- S3 registry cache mode=max: **NO** — inline stays; the design doc
+  (docs/build-cache-tiers.md) remains for a future revisit. S3 moves to § D
+  as decision-recorded, do not re-pitch without new evidence (e.g. another
+  cold-rebuild incident).
+- USE_FAST_UBUNTU_MIRROR: **YES** — the rebuild launches with the knob ON,
+  which exercises the APT-HTTP https-restore for real (its validator).
+
+**The rebuild itself:** from BASE, all three arches, --parallel-archs
+--max-parallel-archs 3, launched CLEAN — it doubles as the long-owed PAR1
+timing run. It auto-validates the already-landed-but-unproven set (media
+source-caches, TS8, DUP2 SSOT, cerbero extra_mirrors, C3 :?-guards, TS4 llvm
+keying, CERB-CACHE warm behaviour) and fires the § E triggers:
+GCC_PARALLEL_TARGETS, gcc-prereq facets, post-restart base cache-miss.
+
+**After the ship:** evidence-audit the logs (the wave-6 ritual), fold
+validated items with quotes, THEN: GPU lane opt-in build (GPU1-7), first
+compose up + WEBUI_SECRET_KEY rotation (user-side).
+
+## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
+
+### A1. Work items (all referenced by the phase plan above)
 
 - **RV1-FREETYPE — riscv64 opencv freetype module still OFF** [S·★,
   residue of RV1-GST-PC, which is otherwise CLOSED by wave-5] riscv64 gst
@@ -96,65 +138,6 @@ the ship whose post-audit found the three gates above.
   only if ports gst-dev is ever wanted again, the cross pkg-config wrapper
   that sysroot-prefixes ports' empty-prefix .pc vars. Wheel smoke shows it
   as the riscv64-only `opencv-freetype` warning.
-- **BKD1 — buildkitd session rot under multi-hour parallel load** [M·★★]
-  sessions die after ~1-2h ("no active session", grpc cancels at export,
-  DeadlineExceeded on cache reads) — cost ~6 retry cycles across the wave-4
-  saga; cure each time = daemon restart. Investigate buildkit v0.31.1
-  issue trackers / upgrade; interim playbook: restart between chain rounds
-  (cachemounts provably survive).
-
-- **APT-HTTP — CORRECTED 2026-08-24: the shipped http is UPSTREAM Ubuntu's
-  own default, not our downgrade. Severity drops ★★★ → ★. Two separate
-  things were conflated:**
-  (a) *What actually ships* (measured inside latest-cross-amd64):
-  `URIs: http://archive.ubuntu.com/ubuntu/` and
-  `http://security.ubuntu.com/ubuntu/` — the plain Ubuntu base-image default
-  (`FROM ubuntu:${UBUNTU_VERSION}@${UBUNTU_DIGEST}`), reached with
-  `USE_FAST_UBUNTU_MIRROR=false` (Dockerfile.base:19), i.e. our mirror path
-  NEVER RAN. So no code of ours put it on http, and apt signature
-  verification is the designed protection — this is how virtually every
-  Ubuntu container ships. Hardening to https is a legitimate but OPTIONAL
-  policy choice, and it is now possible because ca-certificates IS installed
-  in the final image (verified). Decide deliberately; it is not a defect.
-  (b) *A real LATENT bug, still open* [S·★★]: when the fast mirror IS
-  enabled, base-image.sh:~221 rewrites `https://<mirror>` → `http://<mirror>`
-  for the CA bootstrap, and NOTHING restores https afterwards. The standalone
-  RUN at Dockerfile.base:62 that looks like the restore is provably INERT:
-  use-fast-ubuntu-mirror.sh only rewrites entries matching
-  `https?://…archive\.ubuntu\.com/ubuntu/?` (ubuntu-mirror.sh:33), and after
-  the first RUN the sources name the MIRROR, so the grep finds nothing and it
-  returns without writing. Fix = restore the original scheme explicitly after
-  ca-certificates is installed (base-image.sh:~256), and teach
-  verify-ubuntu-mirror-consistency.sh to assert the SCHEME — today it only
-  greps that use-fast-ubuntu-mirror.sh is *referenced*, which is why this
-  passed unnoticed.
-- **SMOKE-DEPTH — the runtime smokes never execute anything real** [M·★★★,
-  2026-08-23] three gaps found while verifying wave-5, all "green line, no
-  proof": (a) media support is read from `cv2.getBuildInformation()`
-  STRINGS — compile-time linkage only; a manual one-frame
-  videotestsrc→appsink + FFmpeg roundtrip passed on all 3 shipped arches,
-  so promote that pipeline into the smoke instead of the string grep;
-  (b) the image ENTRYPOINT is never run (every check overrides it with
-  `--entrypoint /opt/venv/bin/python`) — a broken entrypoint.sh would ship
-  green; (c) no inference is ever executed and `onnx` is not even installed,
-  so no EP can be claimed working — ship a tiny .onnx fixture and run one
-  InferenceSession per arch.
-- **MIRROR-KNOB — USE_FAST_UBUNTU_MIRROR is a silent no-op at 2 build
-  sites** [S·★★] `ubuntu-mirror.sh:21` calls `is_truthy`, which lives in
-  platform.sh — not bind-mounted in Dockerfile.base:62 or
-  Dockerfile.package:281, so the log shows `is_truthy: command not found`
-  6× per run (2× per arch) and the fast-mirror path silently never
-  activates. Fix = add the platform.sh bind-mount at both sites (or inline
-  the helper). Pure build-time; no effect on shipped bytes.
-- **ARCH-PARITY — three per-arch gaps nobody gates** [S/M·★★, 2026-08-23]
-  verified live in the shipped images: (a) riscv64 has NO `/opt/cmake-4.4.2`
-  (amd64 207M, arm64 130M) and falls back to distro cmake 4.2.3;
-  (b) arm64's gtk4 GStreamer plugin cannot load (`libgtk-4.so.1: undefined
-  symbol: vkCreateWaylandSurfaceKHR` — distro GTK vs shipped Vulkan loader,
-  arm64 only); (c) `onnxruntime-webgpu` ships on arm64+riscv64 but not
-  amd64, and is untested everywhere. Add a cheap prefix/component parity
-  assert to the runtime smoke (the set of /opt/* prefixes + optional wheels
-  should match across wrappers modulo a documented exception list).
 - **GENAI-DRIFT — onnxruntime-genai differs per arch and the pin assert
   says OK** [S·★★, 2026-08-23] versions.env pins v0.15.2; shipped reality is
   amd64 0.15.2 (local wheel), arm64 0.14.0 (PyPI, from the app lock), riscv64
@@ -170,41 +153,14 @@ the ship whose post-audit found the three gates above.
   build it, or delete the orphaned pin — as-is both read as
   intended-but-missing, and PyAV means every wrapper ships without the
   FFmpeg→Python bridge.
-- **D3+P5 — smoke-media gate scaffold + SMOKE_ENV contract** [M·★★] extract
-  smoke_resolve_bin/assert_elf_magic/component_gate (6+2+4 dup sites) into
-  smoke-common.sh; SMOKE_ENV=sandbox|runtime set by callers. Extend
-  test-smoke-arch-parity.sh.
-- **Media source-cache mounts** [S/M·★★] version-keyed src mounts for
-  opencv/gstreamer/ffmpeg/onnx clones — every rebuild re-clones today.
-- **DUP2 — GCC-prefix `16.2.0` literal sprawl (~25× / 11 files)** [M·★★]
-  NOT a site-by-site call swap (scope investigation 2026-08-15: mount-gap
-  hazard, native-suffix variants, deliberate fallback at llvm.sh:297) — fix
-  = SSOT-of-the-default tied to the common.sh sourcing pass.
-- **DUP1 residual — uname→triplet inline in cross-apt.sh** [S·★] keep the
-  self-contained inline UNTIL platform.sh is confirmed mounted in every
-  cross-apt RUN, or route via the guard-helpers migration.
-- **codec runtime-list + so-package-map convergence** [M] two hand lists vs
-  the ffmpeg manifest (third truth); D4 gives the substrate.
-- **cerbero checksums.env class fix + soundtouch TOFU re-hash** [M+S] the
-  forge auto-archive re-pin needs the general table. (litert-web npm
-  dist.integrity verification is DONE and validated.)
-- **SUDO run_priv helper** [M·★] append --preserve-env only when sudo is
-  real; ~32 sites in vulkan.sh alone (lint half landed).
-- **NVIDIA-lane helper sweep** [S] find|head sites, Dockerfile.nvidia:88,
-  cross_gpp, verify-patch-integrity:59, lint-shell empty-array.
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
   positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
   build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
-- **SH3 residual — mktemp trap in 3 SOURCED libs** [S·★] cross-env.sh:635,
-  downloads.sh:64, cmake.sh:44 — needs a collision-safe idiom (EXIT-trap
-  clobbering in sourced contexts = the RETURN-trap lesson class).
 - **TG1 residual — fuller toolchain-closure trim** [M·★★] llvm-cross/
   llvm-validate lazy + true per-RUN closures; no COPY fallback → needs a
   per-RUN mount audit + real toolchain rebuild.
 - **TG3 residual — collapse the two toolchain RUNs** [S·★] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
-- **TS8 + shared apt-source include** [S] build_python.sh hand-rolls the 4th
-  apt-sources copy; one include, five consumers (nvidia/amd/android too).
 - **LOG2 open half — build the wasm asyncify/jspi flavors** [S/M·★★] so
   onnxruntime-web ships its webgpu JS backend (exclusion is documented in
   versions.env since wave-3; this is the build half).
@@ -213,79 +169,52 @@ the ship whose post-audit found the three gates above.
   real generate() smoke.
 - **TVM arm64/riscv64 cross-build** [L·★★] media:369 placeholder; cross path
   in tvm-python.sh never wired; do with the llvm-config pin.
-- **P3 note** [S] generalize the vulkan Multi-Arch drop-in into cross-apt.sh
-  only if a SECOND dev-package skew appears.
-- **STALE-LOG — the two log-hygiene guards exist but are INERT** [S·★★★,
-  re-filed + sharpened 2026-08-23] not "namespacing is unwritten": both
-  `cross_stage_log_redirect()`'s truncate-on-new-run-marker
-  (cross-stage-build.sh:31-48) and `_chain_archive_prev_logs()` are gated
-  behind an opt-in `LOG_DIR` that defaults EMPTY, so in practice lane logs
-  are `tee -a`-appended forever — wave5j's 10/6/6 errors were still in
-  android-*.log when wave5k launched and tripped a watcher into false NEW-
-  error alarms. Fix: default LOG_DIR to out/build-logs (archiving on), or
-  per-run subdirs. Watchers then need no baseline hack.
-- **EIGEN-NET — litert-android's eigen FetchContent single-homes on
-  gitlab.com** [S·★★, BIT 2026-08-21] a momentary gitlab outage
-  ('fatal: expected flush after ref listing') killed all three android
-  lanes in one window. NET1-class fix: mirror fallback (github
-  eigen-mirror / codeload tarball) for the eigen dep in the litert android
-  build; also covers the media-lane litert eigen fetch.
-- **FD-OUTAGE — cerbero's fallback mirrors are PERMANENTLY dead, not just
-  outage-prone** [M·★★★, SHARPENED 2026-08-23 with direct evidence] measured
-  during wave6a: a recipe's PRIMARY url
-  (`gstreamer.freedesktop.org/data/src/mirror/<name>/<file>`) returns **200**,
-  while cerbero's DEFAULT_MIRRORS path for the same artifact
-  (`gstreamer.freedesktop.org/src/mirror/<name>/<file>`, no `/data/`) returns
-  **503 unconditionally** — the same upstream restructure that killed
-  pkg-config. So the fallback is not "single-homed on the same infra", it is
-  ALWAYS dead: any transient blip on a primary kills the lane outright, with
-  nothing behind it. That is what took android down twice today (pixman,
-  gst-plugins-bad) and again in wave6a (pkg-config-dist).
-  FIX OPTIONS, in order of value: (a) point cerbero's `extra_mirrors` at a
-  mirror base that actually resolves (`.../data/src/mirror` answers 200 — a
-  one-line config override, and it is the mirror cerbero itself serves from);
-  (b) pre-seed hot tarballs into the cerbero sources dir, which now SURVIVES a
-  failure thanks to CERB-CACHE. Option (a) is cheap and testable with curl
-  before any build. NOTE the earlier seed-cache attempt was reverted for being
-  inert and for deriving wrong filenames — read that history before retrying it.
-- **CERB-ICONV — cerbero riscv64-android cold link-order RACE** [S/M·★,
-  CONFIRMED NONDETERMINISTIC 2026-08-23] it bit for real in wave5l
-  (`ld.lld: error: undefined symbol: libiconv_open` while linking
-  glib/libglib-2.0.so) and then PASSED in wave5m with the same
-  glib-before-libiconv ordering and NO code change — so it is a scheduling
-  race in cerbero's cold dependency order, not a deterministic bug. The
-  real fix is a declared recipe dep (glib ← libiconv) in our overlay; until
-  then a retry can mask it and a cold run can lose ~1h.
-- **PAR5 — a lone surviving lane stays throttled; the obvious fix is
-  DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
-  single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
-  idles (wave4f arm64, wave5h riscv64). DO NOT re-attempt the flag-dir
-  live-lane-count approach that this entry used to propose — it was built,
-  reviewed and reverted: BUILD_MEM_DIVISOR is a build-arg consumed as
-  `ENV BUILD_MEM_DIVISOR` when the container build STARTS, so it cannot
-  change while that build runs; the clamp could not fire at all in the
-  shipped topology (all lane markers exist before any lane retires), and
-  where it could fire it made the divisor depend on sibling timing and
-  could drop the intra-step multiplier entirely (6→1) — an overcommit in
-  exactly the direction PAR4 exists to prevent. A tripwire in
-  test-stage-defs.sh now fails if flag-dir state is wired back into the
-  divisor. Achievable options only: PAR4-hard (a host-level memory
-  governor: systemd-run MemoryHigh per build, or a global compile-job
-  server), or re-sizing at container-build/STAGE boundaries. Full verdict
-  in docs/build-parallelism-memory-tuning.md.
+### A2. Already landed, validated by the rebuild alone (watch, no work)
+
+- Media source-cache mounts, cerbero extra_mirrors fallback, C3 `:?`
+  guards, TS4 llvm checkout keying, CERB-CACHE warm/evict behaviour,
+  APT-HTTP restore (only if the fast-mirror knob is ON), DUP2 SSOT +
+  literal gate — each shipped and reviewed; the rebuild is their proof.
+  Fold them with log quotes in the post-ship evidence audit.
+
+- **TS8 + shared apt-source include** [S] build_python.sh hand-rolls the 4th
+  apt-sources copy; one include, five consumers (nvidia/amd/android too).
+- **DUP2 residual — SETTLED 2026-08-24, one operator habit remains** [S·★]
+  the gate IS wired: preflight.sh:140 runs verify-arg-consistency.sh as the
+  `arg-consistency` check, and with the C3 exemption it passes rc=0 with 32
+  sites scanned. The evidence audit's "chain never runs it" observation is
+  BY DESIGN — build-cross-chain.sh performs only the disk preflight, the
+  full gate battery is the operator-run preflight.sh. Residual: nothing to
+  build — just run preflight.sh before launch (AGENTS.md already says so).
+  Delete on the next groom if no counter-evidence appears.
+- **BKD1 — buildkitd session rot: RESEARCHED, no upstream fix exists** [M·★,
+  downgraded from ★★ 2026-08-24] host runs buildkit v0.31.1 (nerdctl 2.3.4,
+  containerd 2.3.2). The symptom IS a known open upstream issue —
+  moby/buildkit#6422 ("no active session … context deadline exceeded", open,
+  no linked PR) and #5624 (same class during cache-export registry auth) —
+  and NO release through v0.32.2 (2026-08-04) mentions a session/keepalive
+  fix. VERDICT: keep the restart playbook (stop chain → restart
+  buildkit.service → relaunch; cachemounts survive). OPTIONAL, no-build
+  window: upgrade to v0.32.2 for its concurrency-stress fixes (#6916 daemon
+  crash during concurrent builds, #6955 parallel-build cache-miss) — adjacent
+  to our load profile, but not a fix for the session rot itself.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
-- **C3 — android inline version fallbacks → `:?must be set`** [S·★★] incl.
-  the two onnxruntime `:-v…` fallbacks (masks broken ARG-forwards).
 - **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
   measure in the validating rebuild, or document the decision.
-- **TS4 — version-key build-clang.sh's cached llvm-project checkout** [S·★★]
-  fires exactly on the next LLVM bump (stale-tag rebuild for hours).
-- **F6 — remaining stray SHA pins: 2** [M] (was 3 — VULKAN_SDK solved by
-  BT1's spec_vulkan stream-hash 2026-08-19): ABSEIL_TARBALL (github archive
-  SHA non-deterministic → needs codeload-by-commit or content verify),
-  ANDROID_CMDLINE_TOOLS (no published checksums). Co-locate scattered pairs.
+- **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
+  recorded** [S, was M] (a) ABSEIL: codeload-by-commit VERIFIED byte-stable
+  (two sequential fetches, identical sha256 7f4240fe…, matches the pin at
+  versions.env:194) — but GitHub only pledges byte stability "no less than a
+  year", so the durable form is a STREAM hash of the decompressed tar
+  (gunzip -c | sha256sum = ec28d875…); switch the pin to that at the next
+  bump. (b) ANDROID_CMDLINE_TOOLS: Google DOES publish checksums —
+  repository2-3.xml carries sha1 040d3996… for
+  commandlinetools-linux-15859902_latest.zip; verified against the real zip,
+  and our sha256 pin (versions.env:503) matches the same bytes. Bump-window
+  change: cross-check the manifest sha1 when regenerating the sha256 pin.
+  Both edits touch versions.env → pin-bump window only.
 - Small riders [S each]: pyav dead-pin check (Windows consumer?),
   LLVM_COMMIT opt-in key, setup-package-image residual pins (:283-285),
   peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token
@@ -298,12 +227,12 @@ the ship whose post-audit found the three gates above.
 
 ## D. CI / infra / cache tiers (own triggers)
 
-- **S3 — per-stage registry cache refs (mode=max)** [M·★★→★★★, BIT
-  2026-08-21] the system-prune wiped local caches and the inline (mode=min)
-  registry cache covers only final-image layers → the wave5h relaunch
-  COLD-REBUILT all media intermediates (~18 h: torch/IREE/litert ×3).
-  Per-stage mode=max refs would have made that a fast-forward. Dodge the
-  ghcr 400 blob limit; test.
+- **S3 — per-stage registry cache refs: operator DECLINED 2026-08-24**
+  [decision recorded] design stays at docs/build-cache-tiers.md (DESIGN ONLY
+  banner); cost ~12-13 GB registry upload per run was judged not worth it
+  while prune-safe + local caches hold. Re-open ONLY on new evidence (another
+  cold-rebuild loss). v1 implementation history: reverted twice (fix7 gate
+  token; inert-by-default with no coverage) — read the doc before any retry.
 - **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
   (deliberately per-lane since PAR2 — revisit as shared+non-locked).
 - **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
@@ -312,6 +241,13 @@ the ship whose post-audit found the three gates above.
   unblock". Full switch rejected (owner decision 2026-08-17).
 
 ## E. Waiting on a TRIGGER (not on work)
+
+- **GHCR-LEGACY-TAGS — six dangling legacy tags need an operator decision**
+  [S, user-side, found 2026-08-24] `android`, `compiler`, `latest`, `media`,
+  `sdk`, `torch` are docker manifest lists whose 18 children ALL 404 —
+  unpullable since before ghcr-prune-package.sh existed (old retention or a
+  past manual prune). Decide: delete the six tags, or re-point them at
+  current digests. The prune tool deliberately keeps them (tagged = kept).
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
@@ -338,6 +274,25 @@ the ship whose post-audit found the three gates above.
 - **WEBUI_SECRET_KEY server-side rotation** — user action.
 
 ## Verdicts (anti-re-sweep records — do NOT re-audit without new evidence)
+
+- **PAR5 — a lone surviving lane stays throttled; the obvious fix is
+  DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
+  single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
+  idles (wave4f arm64, wave5h riscv64). DO NOT re-attempt the flag-dir
+  live-lane-count approach that this entry used to propose — it was built,
+  reviewed and reverted: BUILD_MEM_DIVISOR is a build-arg consumed as
+  `ENV BUILD_MEM_DIVISOR` when the container build STARTS, so it cannot
+  change while that build runs; the clamp could not fire at all in the
+  shipped topology (all lane markers exist before any lane retires), and
+  where it could fire it made the divisor depend on sibling timing and
+  could drop the intra-step multiplier entirely (6→1) — an overcommit in
+  exactly the direction PAR4 exists to prevent. A tripwire in
+  test-stage-defs.sh now fails if flag-dir state is wired back into the
+  divisor. Achievable options only: PAR4-hard (a host-level memory
+  governor: systemd-run MemoryHigh per build, or a global compile-job
+  server), or re-sizing at container-build/STAGE boundaries. Full verdict
+  in docs/build-parallelism-memory-tuning.md.
+
 
 - **Nondeterministic file-picks (2026-08-22, PKGCFG-MIRROR post-mortem)**:
   any `grep -rl … | head -1 / grep -m1` that CHOOSES a file to patch is

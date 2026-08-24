@@ -44,7 +44,7 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 | GPU acceleration | NVIDIA CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN, TensorRT | ✔️ |
 | GPU acceleration | DirectML (Windows, vendor-agnostic — ONNX Runtime + GenAI DML EP) | ✔️ |
 | GPU acceleration | AMD MIGraphX | ✔️ |
-| GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.357.0<!-- /generated:vulkan --> | ✔️ |
+| GPU acceleration | Vulkan SDK <!-- generated:vulkan -->1.4.357.1<!-- /generated:vulkan --> | ✔️ |
 | Media | ONNX Runtime <!-- generated:onnx -->1.29.0<!-- /generated:onnx --> | ✔️ |
 | Media | GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.0.0<!-- /generated:opencv -->, LiteRT | ✔️ |
 | Media | libcamera, FFmpeg | ✔️ |
@@ -52,7 +52,7 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 | Language runtime | Python <!-- generated:python -->3.14.7<!-- /generated:python -->, Node.js <!-- generated:node -->26.7.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
-| Windows | Vulkan SDK <!-- generated:vulkan -->1.4.357.0<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.29.0<!-- /generated:onnx --> | ✔️ |
+| Windows | Vulkan SDK <!-- generated:vulkan -->1.4.357.1<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.29.0<!-- /generated:onnx --> | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 

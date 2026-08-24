@@ -77,4 +77,24 @@ for _lib in onnxruntime litert iree; do
   fi
 done
 
+# TS4 REGRESSION GUARD (2026-08-24): the llvm-project checkout lives on a
+# shared cachemount. build-clang.sh used a version-LESS path behind a bare
+# directory-exists guard, so an LLVM bump silently rebuilt LAST release's
+# sources. Assert the path is keyed on the tag and the reuse test verifies
+# CONTENT (rev-parse + populated worktree), in both toolchain entry points.
+_bc="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/scripts/02-toolchain/build-clang.sh"
+_lc="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/scripts/02-toolchain/llvm-cross.sh"
+t_case "build-clang.sh keys its llvm checkout dir on the LLVM tag"
+if grep -qE 'SRC_DIR="\$\{WD\}/llvm-project-\$\{LLVM_TAG\}"' "${_bc}"; then t_assert_eq ok ok; else
+  t_assert_eq "version-keyed" "version-less" "SRC_DIR lost its \${LLVM_TAG} suffix — a bump would rebuild stale sources"; fi
+t_case "build-clang.sh verifies checkout CONTENT before reuse (not just -d)"
+if grep -q 'rev-parse -q --verify HEAD' "${_bc}" && grep -q 'llvm/CMakeLists.txt' "${_bc}"; then t_assert_eq ok ok; else
+  t_assert_eq "content-verified" "bare -d test" "the reuse guard regressed to a directory-exists test"; fi
+t_case "llvm-cross.sh verifies checkout CONTENT before reuse (not just .git)"
+if grep -q 'rev-parse -q --verify HEAD' "${_lc}" && grep -q 'llvm/CMakeLists.txt' "${_lc}"; then t_assert_eq ok ok; else
+  t_assert_eq "content-verified" "bare .git test" "the reuse guard regressed"; fi
+t_case "both entry points evict superseded llvm generations"
+if [ "$(grep -l 'Evicting stale llvm checkout' "${_bc}" "${_lc}" | wc -l)" -eq 2 ]; then t_assert_eq ok ok; else
+  t_assert_eq "eviction in both" "missing" "unbounded ~2GB-per-release growth on the shared cachemount"; fi
+
 t_summary

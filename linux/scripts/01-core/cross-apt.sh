@@ -432,11 +432,20 @@ cross_pkg_config_libdir() {
   fi
   if [ -z "${_build_multiarch}" ]; then
     # DUP1: was a hand-rolled uname->triplet case here. platform.sh's
-    # arch_deb_multiarch_triplet_for is the SSOT and is co-mounted in every RUN
-    # that mounts this file (Dockerfile.toolchain 70/124/187/245/266,
-    # Dockerfile.media 351) and baked next to it in every image that COPYs it
-    # (Dockerfile.sdk:60, Dockerfile.android:59, Dockerfile.torch:51) — plus
-    # cross-env.sh and common.sh both source platform.sh before this file.
+    # arch_deb_multiarch_triplet_for is the SSOT. Mount/bake map independently
+    # RE-AUDITED 2026-08-24 (grep of every RUN/COPY block referencing this
+    # file — do not re-litigate without re-running that grep): platform.sh is
+    # co-mounted in ALL 5 Dockerfile.toolchain RUNs that mount this file
+    # (blocks at 70/124/187/245/266) and in both Dockerfile.media litert RUNs
+    # (per-file mounts @414, whole-01-core mount @432). Dockerfile.sdk is the
+    # ONLY image that bakes this file (COPY block @91) and bakes platform.sh
+    # beside it (:60). Dockerfile.android and Dockerfile.torch do NOT ship
+    # cross-apt.sh at all (an earlier note listed them; that was vacuous —
+    # torch bakes cross-env.sh WITHOUT this file, so sourcing cross-env.sh
+    # there dies loudly at its `source cross-apt.sh`, never reaching this
+    # fallback silently). Plus cross-env.sh:10 and 01-core/common.sh:22 both
+    # source platform.sh before this file, and the missing-helper branch below
+    # still warns loudly if a future RUN forgets the co-mount.
     # (Only apt_sources_set_architectures is contracted to work when cross-apt.sh
     # is sourced STANDALONE — see 02-toolchain/android-sdk.sh:8 — and it stays
     # dependency-free.)

@@ -107,6 +107,23 @@ for name in "${DOCKERFILES[@]}"; do
   while IFS= read -r var; do
     [ -n "$var" ] || continue
     [ -n "${_version_values[$var]:-}" ] || continue
+    # C3 exemption (2026-08-24): a default-less ARG is DELIBERATE when its
+    # consumer is `:?`-guarded — the guard makes an unforwarded value a LOUD
+    # build failure, which is strictly stronger than a default (a default is
+    # how android silently built onnxruntime v1.28.0 against a v1.29.0 pin;
+    # see commit aea9871). Exempt exactly the ARGs whose Dockerfile promotes
+    # them to ENV and whose build scripts carry the :?-guard; anything else
+    # default-less is still the LITERTJS_VERSION failure class and errors.
+    case "${df}:${var}" in
+      linux/Dockerfile.android:ONNXRUNTIME_VERSION|\
+      linux/Dockerfile.android:LITERT_VERSION|\
+      linux/Dockerfile.android:IREE_VERSION)
+        if grep -rqF "\${${var}:?" "${REPO_ROOT}/linux/scripts/03-media/build/" 2>/dev/null \
+           || grep -rqF "\${1:?${var}" "${REPO_ROOT}/linux/scripts/03-media/build/" 2>/dev/null; then
+          continue  # :?-guarded consumer exists — deliberate, loud-by-design
+        fi
+        ;;
+    esac
     if ! grep -qP "^\s*ARG\s+${var}=" "$df_path"; then
       echo "  ERROR: ${df} declares ARG ${var} with no default anywhere in the file"
       echo "         (a plain 'docker build' silently gets an empty value; add ARG ${var}=<versions.env value>)"

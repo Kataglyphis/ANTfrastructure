@@ -50,6 +50,7 @@ Usage: base-image.sh <command> [options]
 
 Commands:
   bootstrap-ca
+  restore-mirror-scheme
   configure-fast-mirror [--archive-url URL] [--ports-url URL] [--rewrite-security true|false]
   install-os-packages
   install-shared-build-tooling [--cmake-version VERSION]
@@ -189,7 +190,7 @@ parse_options() {
         esac
       done
       ;;
-    bootstrap-ca|install-os-packages)
+    bootstrap-ca|restore-mirror-scheme|install-os-packages)
       [ "$#" -eq 0 ] || die "${cmd} does not accept extra arguments"
       ;;
     *)
@@ -263,6 +264,112 @@ bootstrap_ca() {
   }
   update-ca-certificates || \
     log "WARNING: update-ca-certificates failed (non-fatal during emulated build)"
+
+  # THE restore point for the deliberate http downgrade above (APT-HTTP): the
+  # CA store now exists, so put the mirror entries back on the https scheme
+  # the user actually configured. The standalone use-fast-ubuntu-mirror.sh RUN
+  # in Dockerfile.base can NOT do this for a custom mirror — its regexes only
+  # match upstream archive/security/ports hosts, and by this point the sources
+  # name the MIRROR, so it returns without writing (latent since the bootstrap
+  # downgrade was introduced; caught 2026-08-24).
+  restore_mirror_https_scheme
+}
+
+# Undo the CA-bootstrap http downgrade: bootstrap_ca() rewrites the fast-mirror
+# URL to http:// so apt can fetch ca-certificates before a CA store exists, and
+# nothing downstream restores https for a custom (non-upstream-host) mirror.
+# This function is the restore. It is TARGETED — a fixed-string rewrite of the
+# exact downgraded URL the bootstrap wrote (plus the ports URL derived from
+# it), never a regex over upstream hosts — and safe to call any time:
+#   - no-op when USE_FAST_UBUNTU_MIRROR is off (no downgrade ever happened);
+#   - no-op when the configured mirror is already http:// (the user's explicit
+#     scheme choice is respected, not "fixed");
+#   - idempotent (once restored, the downgraded string no longer matches);
+#   - loud: echoes the resulting URI/deb lines of every sources file — the
+#     PKGCFG-MIRROR verdict discipline: echo the RESULT, never the intent.
+# Security entries need no separate pair: when FAST_UBUNTU_REWRITE_SECURITY
+# was on, the bootstrap pointed them at the SAME downgraded archive URL, so the
+# archive pair restores them too. An explicit FAST_UBUNTU_PORTS_MIRROR_URL was
+# passed through the bootstrap unchanged, so it needs no restore either.
+# Exposed as the `restore-mirror-scheme` subcommand (honoring
+# UBUNTU_SOURCES_ROOT like use-fast-ubuntu-mirror.sh) so host-side gates and
+# tests can assert the scheme OUTCOME on a fixture instead of trusting wiring.
+restore_mirror_https_scheme() {
+  local use_fast_mirror archive_url downgraded_url sources_root
+  local ports_wanted ports_downgraded
+  local sources_file content new_content i changed=0 line
+  local -a rewrite_from=() rewrite_to=() source_files=()
+
+  use_fast_mirror="${USE_FAST_UBUNTU_MIRROR:-false}"
+  sources_root="${UBUNTU_SOURCES_ROOT:-/}"
+
+  if ! ubuntu_mirror_is_truthy "${use_fast_mirror}"; then
+    log "restore-mirror-scheme: USE_FAST_UBUNTU_MIRROR is off — bootstrap never downgraded anything, no-op"
+    return 0
+  fi
+
+  archive_url="$(ubuntu_mirror_normalize_url "${FAST_UBUNTU_MIRROR_URL:-$(ubuntu_default_archive_mirror_url)}")"
+
+  case "${archive_url}" in
+    https://*) ;;
+    *)
+      log "restore-mirror-scheme: configured mirror ${archive_url} is not https — respecting the user's explicit scheme, no-op"
+      return 0
+      ;;
+  esac
+
+  # Pair 1: the exact URL bootstrap_ca wrote -> the URL the user configured.
+  downgraded_url="http://${archive_url#https://}"
+  rewrite_from+=("${downgraded_url}")
+  rewrite_to+=("${archive_url}")
+
+  # Pair 2: the ports URL DERIVED from the downgraded archive URL (only when no
+  # explicit ports URL was given — an explicit one was never downgraded). For
+  # the official archive both derivations collapse to the upstream ports
+  # default and no pair is added.
+  if [ -z "${FAST_UBUNTU_PORTS_MIRROR_URL:-}" ]; then
+    ports_wanted="$(ubuntu_effective_ports_mirror_url "${archive_url}" "")"
+    ports_downgraded="$(ubuntu_effective_ports_mirror_url "${downgraded_url}" "")"
+    case "${ports_wanted}" in
+      https://*)
+        if [ "${ports_downgraded}" != "${ports_wanted}" ]; then
+          rewrite_from+=("${ports_downgraded}")
+          rewrite_to+=("${ports_wanted}")
+        fi
+        ;;
+    esac
+  fi
+
+  shopt -s nullglob
+  source_files=(
+    "${sources_root%/}/etc/apt/sources.list"
+    "${sources_root%/}/etc/apt/sources.list.d/"*.list
+    "${sources_root%/}/etc/apt/sources.list.d/"*.sources
+  )
+  shopt -u nullglob
+
+  for sources_file in "${source_files[@]}"; do
+    [ -f "${sources_file}" ] || continue
+    content="$(cat "${sources_file}")"
+    new_content="${content}"
+    for i in "${!rewrite_from[@]}"; do
+      new_content="${new_content//"${rewrite_from[$i]}"/"${rewrite_to[$i]}"}"
+    done
+    if [ "${new_content}" != "${content}" ]; then
+      printf '%s\n' "${new_content}" > "${sources_file}"
+      changed=1
+    fi
+    # PKGCFG-MIRROR verdict: the lines apt will actually read, post-restore.
+    while IFS= read -r line; do
+      log "PKGCFG-MIRROR verdict ${sources_file}: ${line}"
+    done < <(grep -hE '^(URIs:|deb )' "${sources_file}" || true)
+  done
+
+  if [ "${changed}" -eq 1 ]; then
+    log "restore-mirror-scheme: restored https scheme (${rewrite_from[*]} -> ${rewrite_to[*]})"
+  else
+    log "restore-mirror-scheme: no downgraded mirror entries present (already restored or never rewritten) — no-op"
+  fi
 }
 
 configure_fast_mirror() {
@@ -466,6 +573,9 @@ main() {
   case "${cmd}" in
     bootstrap-ca)
       bootstrap_ca
+      ;;
+    restore-mirror-scheme)
+      restore_mirror_https_scheme
       ;;
     configure-fast-mirror)
       configure_fast_mirror
