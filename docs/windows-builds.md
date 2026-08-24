@@ -95,7 +95,7 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | Component | Generator | Compiler | Notes |
 |-----------|-----------|----------|-------|
 | CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset |
-| ONNX Runtime (pin: `ONNXRUNTIME_VERSION`) | Ninja | clang-cl, lld-link | **amd64 lane** (on `-TargetArch arm64` DirectML, CUDA, TensorRT and the Python bindings are all OFF — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsX86Avx512Flags`) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`. |
+| ONNX Runtime (pin: `ONNXRUNTIME_VERSION`) | Ninja | clang-cl, lld-link | **both lanes** (on `-TargetArch arm64` CUDA, TensorRT and the Python bindings are OFF, but DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsX86Avx512Flags`) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`. |
 | ONNX GenAI 0.15.2 | CMake (Ninja) | clang-cl, lld-link | Source-built directly via CMake (bypasses `build.py` which always builds examples). DirectML **enabled** (`USE_DML=ON`) — compiled straight into `onnxruntime-genai.dll` with 0 source patches (`src/dml` is clang-clean; the `RESTORE_PACKAGES` DXC nuget dep is pruned since shaders are pre-generated DXIL; the x64 `D3D12Core.dll` is staged beside the DLL). CUDA **enabled** (`USE_CUDA=ON`) — builds a separate `onnxruntime-genai-cuda.dll`; CUDA and DML are independent CMake blocks so they coexist. `-DENABLE_TELEMETRY=OFF` (0.15 defaults MS 1DS telemetry ON; its bundled zlib also breaks clang-cl under -Werror). VsDevCmd environment loaded for MSVC STL headers. |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | Global SIMD flags: AVX2, SSSE3, SSE4.1/4.2. CUDA auto-detected. Custom `CMAKE_AR` path fix. |
 | LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. Also builds the TFLite **C-API** shared lib `tensorflowlite_c` (target injected into the main build, `WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) that gst-plugins-bad's tflite plugin links. |
@@ -2075,12 +2075,27 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   `--enable-cross-compile` disables configure's runtime probes, which is why this is tractable at
   all. Risk to amd64: that lane assembles with **nasm** and must not be touched.
 
-- **#113 — DirectML on arm64 (`USE_DML=OFF` in ORT, GenAI and OpenCV).** M · ★★
-  This is a **packaging/case bug, not a platform gap**: the DirectML redist path is composed from
-  `onnxruntime_target_platform` without lower-casing, so the arm64 redist directory is missed.
-  Fix as a reviewable patch (`windows/scripts/patches/onnxruntime/006-dml-arm64-nuget-path-case.patch`,
-  005 is taken). **Strict ordering: ORT first, and only turn GenAI on once ORT's arm64 DML is green** —
-  GenAI links ORT, so a half-enabled DML there produces confusing link errors.
+- **#113 — DirectML on arm64.** M · ★★ — **ORT side implemented 2026-08-24, build not yet run.**
+  Confirmed by byte inspection, not inference: `Microsoft.AI.DirectML` 1.15.4 *does* ship
+  `bin/arm64-win/DirectML.lib` (COFF import archive, machine `0xAA64`). This was never a packaging
+  gap. `cmake/external/dml.cmake` declares the download's outputs lower-case as `bin/arm64-win`,
+  while `cmake/onnxruntime_providers_dml.cmake` composes its consumer paths as
+  `bin/${onnxruntime_target_platform}-win` — and `onnxruntime_target_platform` holds the verbatim,
+  upper-case `ARM64`. The two spellings never meet, so the lane failed with
+  `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`.
+  **Implemented** as two `Invoke-InlineRegexPatch` edits in `build-onnx-from-source.ps1` rather than
+  a static `.patch` file: one inserts `string(TOLOWER "${onnxruntime_target_platform}"
+  onnxruntime_dml_redist_platform)` above the `if (NOT onnxruntime_USE_CUSTOM_DIRECTML)` block, the
+  other reroutes both consumers through the new variable; a re-read then throws if either edit
+  missed, so upstream drift fails loudly instead of silently reverting to the broken path.
+  A static patch was written first and deleted — its hunk line counts were hand-computed, and the
+  inline patcher is already the repo's drift-tolerant mechanism. `USE_DML` is now **ON
+  unconditionally** in ORT (was cross-conditional OFF).
+  **Remaining:** run the arm64 media-core build and confirm the DML EP links; only then flip GenAI
+  (`build-onnx-genai-from-source.ps1`) and OpenCV (`WITH_DIRECTML`), which are still OFF **purely as
+  sequencing** — GenAI links ORT, so a half-enabled DML there yields link errors that read like a
+  GenAI bug. Note the arch gate must stay green: `DirectML.dll` from the redist is a *shipped*
+  binary and must be the arm64 one.
 
 - **#114 — aarch64 CPython, and the Python bindings it unblocks.** L · ★★★
   The highest-leverage item: it is what keeps `cv2`, the ONNX Runtime wheel, ONNX GenAI's bindings

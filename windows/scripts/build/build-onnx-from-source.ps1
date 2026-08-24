@@ -175,6 +175,53 @@ $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'p
     -FallbackNote 'falling back to inline regex patcher' `
     -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
 
+# DirectML redist path is CASE-SENSITIVE to ninja, and upstream mixes the cases.
+#
+# The nuget lays its redist out in LOWER case -- bin/x64-win, bin/arm64-win --
+# and cmake/external/dml.cmake declares its add_custom_command OUTPUTs with those
+# exact lower-case names. But detect_onnxruntime_target_platform.cmake leaves
+# onnxruntime_target_platform VERBATIM ("Do nothing. We'll just use the current
+# value"), so on ARM64 it is upper case and the two consumers in
+# onnxruntime_providers_dml.cmake compose bin/ARM64-win/... . Under Ninja that is
+# a DIFFERENT node name than the one dml.cmake declared, and the build dies with
+#   'packages/Microsoft.AI.DirectML.1.15.4/bin/ARM64-win/DirectML.lib' missing
+#   and no known rule to make it
+# which reads exactly like a missing package -- and was misread that way here on
+# 2026-08-23, becoming the stated reason for scoping the lane to "CPU + Vulkan".
+# It is not missing: 1.15.4 ships bin/arm64-win/DirectML.lib, a COFF import
+# archive whose IMPORT_OBJECT_HEADER carries machine 0xAA64 and which imports
+# DMLCreateDevice from DirectML.dll.
+#
+# amd64 is untouched by construction: 'x64' is already lower case, so both the
+# TOLOWER and the substitution are no-ops there. Applied unconditionally anyway --
+# a case-correctness fix has no business being arch-conditional.
+$dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
+if (Test-Path $dmlProviders) {
+    $dmlText = Get-Content -LiteralPath $dmlProviders -Raw
+    if ($dmlText -notmatch 'onnxruntime_dml_redist_platform') {
+        # Define the lower-cased variable just above the first consumer, then
+        # point both consumers at it. Two separate edits so a future upstream
+        # move of either line degrades to a loud warning, not a silent miss.
+        [void](Invoke-InlineRegexPatch -Path $dmlProviders `
+                -Guard 'if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
+                -Pattern '(?m)^(\s*)if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
+                -Replacement "`${1}string(TOLOWER `"`${onnxruntime_target_platform}`" onnxruntime_dml_redist_platform)`n`${1}if (NOT onnxruntime_USE_CUSTOM_DIRECTML)" `
+                -Description 'onnxruntime DML: lower-case the redist platform dir (define)')
+        [void](Invoke-InlineRegexPatch -Path $dmlProviders `
+                -Guard 'bin/\$\{onnxruntime_target_platform\}-win' `
+                -Pattern 'bin/\$\{onnxruntime_target_platform\}-win' `
+                -Replacement 'bin/${onnxruntime_dml_redist_platform}-win' `
+                -Description 'onnxruntime DML: lower-case the redist platform dir (consumers)')
+        $dmlText = Get-Content -LiteralPath $dmlProviders -Raw
+        if ($dmlText -match 'bin/\$\{onnxruntime_target_platform\}-win' -or $dmlText -notmatch 'string\(TOLOWER') {
+            throw ("onnxruntime_providers_dml.cmake: the DirectML redist path-case fix did not apply cleanly " +
+                   "(upstream layout changed?). On ARM64 the build will fail with 'bin/ARM64-win/DirectML.lib " +
+                   "missing and no known rule to make it', which looks like a missing package but is not. Re-check $dmlProviders.")
+        }
+        Write-Host 'Patched onnxruntime DML: redist platform dir lower-cased (fixes bin/ARM64-win vs bin/arm64-win)'
+    }
+}
+
 $py = Initialize-ToolchainPythonEnvironment
 
 # Python bindings ride this build (onnxruntime_ENABLE_PYTHON=ON below): pybind11
@@ -360,22 +407,35 @@ $pythonArgs = if ($onnxCross) {
       "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)")
 }
 if ($onnxCross) { Write-Host 'ONNX: python bindings OFF (cross build; no target CPython, and the host import lib is the wrong machine type)' }
-# DirectML is OFF on a cross lane. MEASURED 2026-08-23, first arm64 ninja run:
-# cmake correctly resolves the ARM64 payload path, then ninja dies with
+# HISTORY, CORRECTED -- do not act on the first paragraph, it is the mistake.
+#
+# MEASURED 2026-08-23, first arm64 ninja run: the build died with
 #   'packages/Microsoft.AI.DirectML.1.15.4/bin/ARM64-win/DirectML.lib' ...
 #   missing and no known rule to make it
-# i.e. the restored redist does not carry an ARM64 import library at the path
-# onnxruntime's DML integration expects. This is the concrete evidence behind
-# the "CPU + Vulkan" scope decision: DirectML's own runtime supports ARM64
-# (>= 1.15.4) and Microsoft ships ARM64 ONNX+DML builds for Copilot+ NPUs, but
-# ONNX Runtime's DML execution provider documents x64/x86 only -- and the
-# recommended accelerator on Snapdragon is the QNN EP, not DML.
+# and that was read as "the redist carries no ARM64 import library", which became
+# the stated evidence for scoping the whole lane to "CPU + Vulkan".
+#
+# THAT READING WAS WRONG (2026-08-23, same day). The nuget does ship it -- 1.15.4
+# contains bin/arm64-win/DirectML.lib, machine 0xAA64 -- in a LOWER-case directory,
+# while onnxruntime composed an UPPER-case one. A missing ninja node and a missing
+# package produce the same message; only one of them was true. The fix is the
+# path-case patch above, and DML is now ON for both lanes.
+#
+# What remains true from the old note, and is worth keeping: Microsoft's guidance
+# for Snapdragon devices points at the QNN execution provider rather than DML, so
+# DML working here does not make it the best accelerator on that hardware -- it
+# makes it an available one. QNN would need the Qualcomm AI Engine SDK, which this
+# stack does not integrate.
 #
 # Turning it on for arm64 again is a deliberate spike, not a flag flip: it needs
 # a redist that actually ships bin\ARM64-win\DirectML.lib, and QNN is the more
 # promising path. Until then the arm64 lane is CPU + Vulkan, as documented.
-$dmlArg = if ($onnxCross) { '-Donnxruntime_USE_DML=OFF' } else { '-Donnxruntime_USE_DML=ON' }
-if ($onnxCross) { Write-Host 'ONNX: DirectML EP OFF (cross build; the DirectML redist ships no ARM64 import library for this EP)' }
+# ENABLED ON BOTH LANES since 2026-08-23 (backlog #113). The redist-path case fix
+# applied above is what unblocked it; see that comment for why the old failure
+# looked like a missing package. The scope note below is kept as the record of
+# what was believed, and corrected -- not as current fact.
+$dmlArg = '-Donnxruntime_USE_DML=ON'
+if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
