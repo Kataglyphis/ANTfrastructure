@@ -67,8 +67,8 @@
 # so an unkeyed source cache would silently build the previous version's tree.
 # Version-keyed ids DO work, and the mechanism decides where the ARG must sit:
 # BuildKit expands a mount id from the args/env in scope AT THAT INSTRUCTION, so
-# `id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}` in the onnxruntime stage
-# below is a live, shipped example precisely because `ARG ONNXRUNTIME_VERSION`
+# `id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu1` in the onnxruntime
+# stage below is a live, shipped example precisely because `ARG ONNXRUNTIME_VERSION`
 # is declared in that same stage above the RUN. Name a variable that is NOT in
 # scope and the id expands to the bare prefix, silently collapsing every version
 # onto one store — the failure the keying was meant to prevent.
@@ -353,11 +353,15 @@ RUN --mount=type=tmpfs,target=/tmp \
 # chain, same buildkitd) READ the assets from it instead of recompiling. Output dir
 # is always created so the final-stage COPY stays valid on every arch. Versioned id
 # means an ONNXRUNTIME_VERSION bump invalidates the shared cache and recompiles.
+# The -wgpu1 suffix is a FLAVOR-SET epoch (LOG2): the flavor set grew (.asyncify +
+# .jspi WebGPU wasm added by 40-build-wasm.sh) without an ORT version bump, and the
+# reuse check below ("any *.wasm present") would happily serve a pre-flavor cache
+# forever. Bump the suffix whenever the built flavor set changes again.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
-    --mount=type=cache,target=/var/cache/onnxruntime-web-shared,id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION},sharing=locked \
+    --mount=type=cache,target=/var/cache/onnxruntime-web-shared,id=onnxruntime-web-shared-${ONNXRUNTIME_VERSION}-wgpu1,sharing=locked \
     --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     _ortweb=/usr/local/lib/onnxruntime-web; _shared=/var/cache/onnxruntime-web-shared; \
@@ -452,11 +456,16 @@ RUN --mount=type=tmpfs,target=/tmp \
 
 # ==============================================================================
 # TVM stage — Apache TVM ML compiler.
-# amd64 builds natively (tvm.sh) and stages a wheel + libtvm into the final image
-# so `import tvm` works in /opt/venv. arm64/riscv64 are a no-op placeholder for now
-# (TVM's LLVM cross-build is a tracked follow-up — see refactoring-backlog P6); the
-# always-present empty /opt/tvm/{wheels,lib} dirs keep the final-stage COPYs valid
-# across arches. The build is BEST-EFFORT: a failure warns and continues so it can
+# amd64 builds natively (tvm.sh) and stages the apache-tvm AND apache-tvm-ffi
+# wheels + libtvm into the final image so `import tvm` works in /opt/venv. BOTH
+# wheels are load-bearing for that promise: the consumer half
+# (assemble-torch-app.sh) installs the tvm wheel family --no-deps into a venv
+# whose app lock has no apache-tvm-ffi, and `import tvm`'s first statement is
+# `from tvm_ffi import ...` — a lone apache_tvm wheel ships an unimportable tvm.
+# arm64/riscv64 attempt the same wheels through the cross toolchain (best-effort,
+# newly exercised — see the RUN comment below); the always-present
+# /opt/tvm/{wheels,lib} dirs keep the final-stage COPYs valid across arches.
+# The build is BEST-EFFORT: a failure warns and continues so it can
 # never break the media image (TVM was absent before this stage existed).
 # ==============================================================================
 FROM base AS tvm

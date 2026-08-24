@@ -325,9 +325,21 @@ create_runtime_venv() {
             python3-numpy python3-meson python3-ninja python3-cmake \
             python3-wheel python3-setuptools python3-packaging 2>/dev/null || true
         uv venv --seed --system-site-packages --python "/usr/local/bin/python${python_mm}" "${VIRTUAL_ENV}"
-        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.47.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" cmake packaging
+        # Executor pins per supply-chain audit #18; the :- fallbacks below ARE
+        # the live values (this script sources platform.sh/package-lists.sh
+        # only, not common.sh, so nothing loads the baked versions.env into
+        # its env) and must stay equal to versions.env's PY_* keys —
+        # verify-arg-consistency's drift check compares them. 2026-08-24:
+        # fallbacks re-synced (wheel
+        # 0.47.0->0.48.0, setuptools 83->84, meson 1.11.2->1.12.0) and the
+        # last three BARE installs pinned (cmake/packaging here, +numpy below;
+        # pip cmake 4.4.2 ships a riscv64 manylinux wheel, packaging is a
+        # pure-python `any` wheel — both safe on this QEMU branch).
+        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
     else
-        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.47.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-83.0.0}" numpy "meson==${PY_MESON_VERSION:-1.11.2}" "ninja==${PY_NINJA_VERSION:-1.13.0}" cmake packaging
+        # numpy pinned here only (riscv64 gets apt python3-numpy above);
+        # 2.5.2 ships cp314 manylinux wheels for x86_64 and aarch64.
+        uv pip install --python "${VIRTUAL_ENV}/bin/python" "wheel==${PY_WHEEL_VERSION:-0.48.0}" "setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}" "numpy==${PY_NUMPY_VERSION:-2.5.2}" "meson==${PY_MESON_VERSION:-1.12.0}" "ninja==${PY_NINJA_VERSION:-1.13.0}" "cmake==${PY_CMAKE_VERSION:-4.4.2}" "packaging==${PY_PACKAGING_VERSION:-26.3}"
     fi
 }
 

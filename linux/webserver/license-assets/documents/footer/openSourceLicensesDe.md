@@ -20,7 +20,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | CMake | 4.4.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.7.0 | [nodejs.org](https://nodejs.org/) | MIT |
 | uv | 0.12.5 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
-| Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.357.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
 
@@ -90,7 +90,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | --- | --- | --- | --- |
 | PyTorch | v2.13.0 | [pytorch.org](https://pytorch.org/) | BSD-3-Clause |
 | TorchVision | v0.28.0 | [github.com/pytorch/vision](https://github.com/pytorch/vision) | BSD-3-Clause |
-| Flutter SDK | 3.47.0 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### Runtime (`Dockerfile.torch`)
 
@@ -102,7 +102,7 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.32.14 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.32.15 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -138,10 +138,10 @@ vorgelagerte Komponente gelten die jeweiligen Lizenzbedingungen.
 | Python (source-built, ClangCL) | 3.14.7 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
 | CMake | 4.4.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
+| Vulkan SDK | 1.4.357.1 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
-| Flutter SDK | 3.47.0 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
+| Flutter SDK | 3.47.1 | [flutter.dev](https://flutter.dev/) | BSD 3-Clause |
 
 ### GPU Layer
 

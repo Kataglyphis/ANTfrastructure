@@ -98,8 +98,13 @@ init_defaults() {
   CMAKE_POLICY_VERSION_MINIMUM="${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
 
   SKIP_DEP_INSTALL="${SKIP_DEP_INSTALL:-false}"
-  ENABLE_ASYNCIFY="${ENABLE_ASYNCIFY:-false}"
-  ASYNCIFY_STACK_SIZE="${ASYNCIFY_STACK_SIZE:-5242880}"
+  # LOG2: build the browser-WebGPU wasm flavors (.asyncify + .jspi) in
+  # 40-build-wasm.sh so 50-build-js.sh can emit the ort.webgpu*/ort.jspi* JS
+  # bundles. Default ON; set false as the kill-switch if the flavor passes
+  # ever have to be shed (the js step then trims those bundles, pre-LOG2
+  # behavior). Replaces the removed ENABLE_ASYNCIFY/ASYNCIFY_STACK_SIZE knobs,
+  # whose pass aliased a plain (WebGPU-less) build to the .asyncify filenames.
+  ORT_WASM_WEBGPU_FLAVORS="${ORT_WASM_WEBGPU_FLAVORS:-true}"
 }
 
 parse_common_args() {
@@ -161,7 +166,7 @@ parse_common_args() {
   export BUILD_GENAI GENAI_VERSION GENAI_REPO GENAI_SRC_DIR GENAI_BUILD_DIR GENAI_OUTPUT_DIR GENAI_CONFIG
   export USE_UV_VENV UV_VENV_DIR
   export CMAKE_POLICY_VERSION_MINIMUM
-  export SKIP_DEP_INSTALL ENABLE_ASYNCIFY ASYNCIFY_STACK_SIZE
+  export SKIP_DEP_INSTALL ORT_WASM_WEBGPU_FLAVORS
 }
 
 validate_build_type() {
