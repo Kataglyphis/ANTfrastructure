@@ -12,8 +12,8 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-23. LIVE `:latest-cross` = WAVE-5 ship (54ab7f01/
-7bb70a4b/fb701200) — see § WAVE-5 SHIPPED.
+Last groomed: 2026-08-24. LIVE `:latest-cross` = WAVE-6 ship (a25a38c5/
+bd9953a9/d3710282, run id 20260823-223111-d0336283) — see § WAVE-6 SHIPPED.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
 
@@ -43,18 +43,18 @@ from the REGISTRY (not the local store). cv2 GStreamer:YES + FFMPEG:YES holds
 on the new bytes. Runtime smokes 0 failures x3.
 
 **What this build proved** (each had been silently broken for months):
-- **XC3** — provenance is written and READ. `per-arch wrapper generation check:
+  - **XC3** — provenance is written and READ. `per-arch wrapper generation check:
   OK` with NO "carry no run-id" warning (it was 3/3 in every prior run), and
   `[ancestry] android→wrapper (<arch>): OK` with real digests on all three.
   The label also says *android*, confirming the XC2-STAGE fix: the writer
   stamped android while the check resolved "package", which would have thrown a
   false STALE ANCESTOR on every run the moment provenance returned.
-- **AP4** — `AP4 strip verified: libavcodec.so.63.1.100 has no .symtab`.
+  - **AP4** — `AP4 strip verified: libavcodec.so.63.1.100 has no .symtab`.
   Every previous ship printed `check skipped (could not extract ...)` while the
   wrapper gate said PASS: `tar --occurrence=1` exits early, SIGPIPEs the
   exporter, and pipefail turned that into a failure.
-- **SMK1** — the cv2 media assert is hard on all three arches.
-- **CERB-CACHE** — validated the hard way. wave6a lost all three lanes to five
+  - **SMK1** — the cv2 media assert is hard on all three arches.
+  - **CERB-CACHE** — validated the hard way. wave6a lost all three lanes to five
   freedesktop 503/404 flaps, but the cerbero state survived (15.7 GB / 14.5 GB
   on the cachemounts); wave6b restarted WARM (`HIT: resuming ... 13G / 20G`)
   and completed with ZERO fetch failures. Before this, wave5k and 5l discarded
@@ -63,6 +63,30 @@ on the new bytes. Runtime smokes 0 failures x3.
 **Wave-5 (2026-08-23, superseded):** amd64 `54ab7f01` / arm64 `7bb70a4b` /
 riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
 the ship whose post-audit found the three gates above.
+
+## Next up (recommended order, 2026-08-24)
+
+1. **APT-HTTP** [★★★] — the only open finding with a security dimension.
+   VERIFY first (which sources file ends up on which scheme, at which stage),
+   then decide. No build needed to establish the facts.
+2. **GPU lane validation build** [★★★, cheap, anytime] — the staged GPU1-7 set
+   still awaits its one opt-in build.
+3. **Full rebuild from MEDIA** — wave-6 validated only android→runtime, so the
+   wave-3 media/toolchain work (DUP2 SSOT + drift gate, TS8, media source
+   caches) is still unproven by a real build.
+4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT producer half,
+   ORPHAN-PINS).
+5. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
+
+> **Editing note (learned the hard way 2026-08-24):** deleting an item with a
+> script that seeks the next `- **` will SWALLOW a following `## ` section
+> header — that is how all of § B silently vanished for four commits. When
+> removing a validated item, bound the deletion at the next item OR the next
+> header, whichever comes first, and re-count the sections afterwards.
+
+---
+
+## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
 
 - **RV1-FREETYPE — riscv64 opencv freetype module still OFF** [S·★,
   residue of RV1-GST-PC, which is otherwise CLOSED by wave-5] riscv64 gst
@@ -78,24 +102,6 @@ the ship whose post-audit found the three gates above.
   saga; cure each time = daemon restart. Investigate buildkit v0.31.1
   issue trackers / upgrade; interim playbook: restart between chain rounds
   (cachemounts provably survive).
-
-## Next up (recommended order, 2026-08-23)
-
-1. **Gate-truth pass** [★★★, no build to author, ONE build to validate] —
-   the three gates that currently lie: SMK1-3ARCH (riscv64 exemption on a
-   false premise), AP4-SIGPIPE (strip check never runs, prints PASS),
-   XC3-INERT (provenance never written). Fixing these before anything else
-   means the NEXT build's green is trustworthy.
-2. **GPU lane validation build** [★★★, cheap, anytime] — the last staged
-   set (GPU1-7) still awaiting its one opt-in build.
-3. **Next closure window** — § A, led by CERB-CACHE (the wall-clock lever:
-   wave5k/5l discarded a full cold cerbero each) + SMOKE-DEPTH.
-4. **Next pin-bump window** — § B riders (+ GENAI-DRIFT, ORPHAN-PINS).
-5. **Clean PAR1 timing run** — one undisturbed full parallel rebuild.
-
----
-
-## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
 
 - **APT-HTTP — the base image may fetch packages over plaintext http** [S/M·★★★,
   FOUND 2026-08-23, NOT fixed — needs a decision] base-image.sh:221
@@ -257,6 +263,9 @@ the ship whose post-audit found the three gates above.
   governor: systemd-run MemoryHigh per build, or a global compile-job
   server), or re-sizing at container-build/STAGE boundaries. Full verdict
   in docs/build-parallelism-memory-tuning.md.
+
+## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
+
 - **C3 — android inline version fallbacks → `:?must be set`** [S·★★] incl.
   the two onnxruntime `:-v…` fallbacks (masks broken ARG-forwards).
 - **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
