@@ -235,3 +235,178 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 ```bash
 sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd
 ```
+
+## Edge accelerators
+
+Neither of these has an image chain in this repo yet — they are host/device
+procedures for the boards the runtime artifacts get deployed to. Host-side
+driver and performance setup is [Linux Host Setup](linux-host-setup.md).
+
+### Hailo-8: compiling an ONNX model to `.hef`
+
+The Hailo toolchain does not consume ONNX at runtime. A model goes through
+three stages — parse, quantize, compile — and each emits an intermediate `.har`.
+
+**1. Parse.** Let the parser infer the graph boundaries first:
+
+```bash
+hailo parser onnx /local/shared_with_docker/model.onnx --hw-arch hailo8
+```
+
+If it cannot resolve the ends of the graph, pin them explicitly. The node names
+are model-specific — read them off the failure message or a Netron dump:
+
+```bash
+hailo parser onnx /local/shared_with_docker/model.onnx \
+  --hw-arch hailo8 \
+  --start-node-names images \
+  --end-node-names Conv_1058 Conv_1065 Conv_1088 \
+  --tensor-shapes "[1,3,640,640]"
+```
+
+**2. Quantize.** Needs a model script (`.alls`) and a calibration set:
+
+```bash
+hailo optimize /local/shared_with_docker/model.har \
+  --hw-arch hailo8 \
+  --output /local/shared_with_docker/model_quantized.har \
+  --model-script /local/shared_with_docker/model.alls \
+  --use-random-calib-set
+```
+
+A minimal `.alls`:
+
+```
+post_quantization_optimization(finetune, policy=enabled, learning_rate=1e-5, epochs=3, batch_size=16, dataset_size=64)
+performance_param(compiler_optimization_level=2)
+```
+
+`--use-random-calib-set` is for smoke-testing the pipeline only — accuracy will
+be poor. For a real run, supply images:
+
+```bash
+wget http://images.cocodataset.org/zips/val2017.zip
+mkdir -p /local/shared_with_docker/coco/
+unzip val2017.zip -d /local/shared_with_docker/coco/
+```
+
+Some tools want a single `.npy` instead of a directory:
+
+```python
+import os
+import numpy as np
+from PIL import Image
+
+image_dir = "./images_for_calibration"
+output_file = "calib_data.npy"
+image_size = (640, 640)   # match the model input
+num_images = 100
+
+all_images = []
+for i, file in enumerate(sorted(os.listdir(image_dir))):
+    if i >= num_images:
+        break
+    if file.lower().endswith((".jpg", ".jpeg", ".png")):
+        img = Image.open(os.path.join(image_dir, file)).convert("RGB")
+        img = img.resize(image_size)
+        all_images.append(np.array(img, dtype=np.uint8))   # uint8 for Hailo
+
+np.save(output_file, np.stack(all_images))
+print(f"Saved {len(all_images)} images to {output_file}")
+```
+
+**3. Compile:**
+
+```bash
+hailo compiler /local/shared_with_docker/model_quantized.har \
+  --output-dir /local/shared_with_docker/
+```
+
+For a model the Hailo Model Zoo already knows, the three steps collapse into one:
+
+```bash
+hailomz compile yolov9c \
+  --ckpt /local/shared_with_docker/yolov9c.onnx \
+  --classes 80 --hw-arch hailo8 \
+  --calib-path /local/shared_with_docker/coco/val2017/val2017
+```
+
+Inspect a compiled graph with `hailo visualizer /path/to/model.har`.
+
+For a calibration set in TFRecord form rather than a directory of images, the
+Model Zoo ships the converters:
+
+```bash
+python hailo_model_zoo/datasets/create_coco_tfrecord.py val2017
+python hailo_model_zoo/datasets/create_coco_tfrecord.py calib2017
+```
+
+Format reference:
+[hailo_model_zoo DATA.rst](https://github.com/hailo-ai/hailo_model_zoo/blob/master/docs/DATA.rst).
+
+### Hailo-8: the driver
+
+The PCIe module is not loaded automatically — after every reboot:
+
+```bash
+sudo modprobe hailo_pci
+```
+
+Before installing a **new** driver version, remove the old one or the DKMS build
+will collide with the loaded module:
+
+```bash
+lsmod | grep hailo
+sudo modprobe -r hailo_pci
+sudo dkms status
+sudo dkms remove <module>/<version> --all
+```
+
+On a Raspberry Pi this sometimes requires a kernel built from source — see the
+[Raspberry Pi kernel documentation](https://www.raspberrypi.com/documentation/computers/linux_kernel.html).
+
+### NVIDIA Jetson
+
+Identify the board and capture a full spec dump before filing anything:
+
+```bash
+cat /proc/device-tree/model     # e.g. NVIDIA Jetson Orin NX ...
+inxi -Fxxx > jetson-specs.txt
+```
+
+Power mode gates clock speeds and therefore every benchmark number:
+
+```bash
+sudo nvpmodel -q                # query the active mode
+```
+
+**Never let unattended-upgrades touch Docker on a Jetson.** In
+`/etc/apt/apt.conf.d/50unattended-upgrades`, the `"Nvidia:jetson"` origin is
+fine; adding `"Docker:jammy"` is not — the upgrade breaks the Jetson container
+runtime integration and `docker` fails to start
+([NVIDIA forum thread](https://forums.developer.nvidia.com/t/failed-to-start-docker/324791/3)).
+
+If it already happened, pin back:
+
+```bash
+sudo apt-get install -y --allow-downgrades \
+  docker-ce=5:27.5.1-1~ubuntu.22.04~jammy \
+  docker-ce-cli=5:27.5.1-1~ubuntu.22.04~jammy
+```
+
+**torchvision must be built from source.** The Jetson PyTorch wheels come from
+NVIDIA, not PyPI, and the matching torchvision is not published — installing it
+with pip pulls a build against the wrong torch:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libjpeg-dev zlib1g-dev
+# check the pytorch site for the torchvision tag matching your torch version
+git clone --branch v0.20.0 https://github.com/pytorch/vision.git
+cd vision
+pip3 install -r requirements.txt
+python3 setup.py install
+```
+
+If the board cannot reach any host, its resolver is the usual cause — see
+[TLS handshake failures](linux-host-setup.md#b5-tls-handshake-failures-inside-containers).

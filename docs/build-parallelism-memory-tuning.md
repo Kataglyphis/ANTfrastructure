@@ -307,3 +307,123 @@ divisor.
   slow push), and single-threaded serial work (GCC mega-TUs, final links).
 
 **Do not "free up" the torch estimate. If torch speed matters, add RAM.**
+
+---
+
+## Capping CPU so the host stays usable
+
+The levers above size work to fit RAM. A separate problem is a build saturating
+every core and making the machine unusable for anything else. That is a
+**container** limit, not a job-count setting — the job counts stay as calibrated
+and the runtime throttles the whole build.
+
+For a one-off `docker build`:
+
+```bash
+docker build --cpus=1.0 -t my-image .
+docker build --cpuset-cpus="0" -t my-image .   # pin to a specific core
+```
+
+`--cpus` is a share of total CPU time; `--cpuset-cpus` pins to physical cores.
+Prefer `--cpuset-cpus` when you want the *remaining* cores genuinely free, since
+a `--cpus` share still spreads across every core.
+
+For BuildKit builds the flags do not apply — the work happens inside the
+builder container, not the client. Create a dedicated builder, then constrain
+that container:
+
+```bash
+# create a dedicated builder on the container driver
+docker buildx create --name sixteen --driver docker-container --use
+docker buildx inspect sixteen --bootstrap
+
+# find the buildkit container backing it
+docker ps --filter "name=buildx_buildkit" --format "{{.Names}}"
+
+# constrain it (adjust the cpuset to the host's core count)
+docker update --cpus=16 --cpuset-cpus="0-15" buildx_buildkit_sixteen0
+```
+
+`docker update` applies to a **running** container, so the builder must be
+bootstrapped first. The limit persists for the life of that builder — every
+subsequent `buildx build --builder sixteen` inherits it.
+
+> Interaction with `--parallel-archs`: the CPU cap is applied to the shared
+> builder, so N parallel arch lanes divide the *capped* budget, not the host's.
+> Capping to half the cores and running three arches in parallel gives each lane
+> roughly a sixth of the machine. Size the cap for the whole run, not per lane.
+
+---
+
+## The other end: building on a memory-constrained host
+
+Everything above assumes a large build host and tunes *down* from core count.
+On an SBC or a small VM the problem inverts — the machine hangs or the OOM
+killer fires before the build gets anywhere. The levers are different.
+
+### Give it swap before touching job counts
+
+A build that hangs under load on a Raspberry Pi is usually swap-starved rather
+than genuinely out of memory. On Raspberry Pi OS, swap is managed by
+`dphys-swapfile`:
+
+```bash
+sudo dphys-swapfile swapoff
+sudo nano /etc/dphys-swapfile      # CONF_SWAPSIZE=2048 (or 4096)
+sudo dphys-swapfile setup
+sudo dphys-swapfile swapon
+```
+
+On a generic distro, a plain swapfile:
+
+```bash
+sudo fallocate -l 8G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+Removing it again:
+
+```bash
+sudo swapoff /swapfile && sudo rm -f /swapfile
+```
+
+If the board uses `zram` instead, resize the compressed device rather than
+adding a file — writing to flash to back a swap file wears it out:
+
+```bash
+sudo swapoff /dev/zram0
+echo $((2 * 1024 * 1024 * 1024)) | sudo tee /sys/block/zram0/disksize   # 2 GiB
+sudo mkswap /dev/zram0
+sudo swapon /dev/zram0
+swapon --show && zramctl
+```
+
+`/tmp` fills on these hosts too — see
+[Linux Host Setup § `/tmp` is full during a build](linux-host-setup.md#tmp-is-full-during-a-build).
+
+### Then serialize, per tool
+
+Swap buys headroom; it does not stop N parallel compilers from all being
+resident at once. Force the job count down at the tool that spawns them, since
+each has its own knob:
+
+```bash
+meson compile -C build -j1        # ninja via meson
+cmake --build build -j1           # ninja/make via cmake
+UV_THREADPOOL_SIZE=1 npm run build
+```
+
+Pinning to a single core is the blunt version, and it works for tools with no
+job flag at all:
+
+```bash
+sudo taskset -c 0 apt install <package>
+taskset -c 0 ./build.sh
+```
+
+`taskset` constrains *placement*, not memory, so it helps only where the memory
+pressure comes from concurrency. If one single translation unit does not fit,
+neither `-j1` nor `taskset` saves it — that needs more RAM or more swap.

@@ -44,6 +44,12 @@ build cross-architecture artifacts, enable GPU variants, use runtime services, o
 
       NVIDIA, AMD, and Torch variants on top of the standard Linux image chain.
 
+   .. grid-item-card:: Linux Host Setup
+      :link: linux-host-setup
+      :link-type: doc
+
+      GPU drivers, CUDA, container runtime config, performance mode, and boot recovery on the host.
+
    .. grid-item-card:: Runtime Services and Streaming
       :link: runtime-services
       :link-type: doc
@@ -104,6 +110,7 @@ Common development targets:
    linux-cross-builds
    linux-accelerator-images
    runtime-services
+   linux-host-setup
    windows-builds
    windows-cross-builds
    windows-host-setup
@@ -116,6 +123,7 @@ Common development targets:
 
    cross-build-verification
    build-parallelism-memory-tuning
+   build-secrets
    build-resource-monitoring
    code-quality-tooling
    adopting-in-a-new-project

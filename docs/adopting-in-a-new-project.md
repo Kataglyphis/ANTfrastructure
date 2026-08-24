@@ -22,6 +22,61 @@ submodule; bump the pin and the consuming change in the same commit, and push
 ContainerHub `main` **before** the consumer, because CI resolves composite
 actions at `@main`.
 
+## Submodule maintenance
+
+### Bumping the pin
+
+```bash
+git submodule update --remote --merge --recursive
+```
+
+Commit the resulting pointer change together with the consuming change, and push
+ContainerHub `main` **first** — CI resolves composite actions at `@main`.
+
+### Resolving a submodule conflict on merge
+
+Merges that touch the pin from both sides leave `ExternalLib/` paths unmerged,
+and `git checkout --theirs` alone does not resolve them: the conflict is over
+*which commit the superproject records*, not over file contents.
+
+```bash
+# what is actually unmerged
+git diff --name-only --diff-filter=U
+
+# take the incoming side's commit for every conflicted submodule
+for p in $(git diff --name-only --diff-filter=U | grep '^ExternalLib/' || true); do
+  echo "Resolving submodule conflict: $p"
+  git submodule update --init --recursive "$p" || true
+  git checkout --theirs -- "$p"
+  git add "$p"
+done
+
+# then the ordinary file conflicts
+git checkout --theirs -- .
+git add -A
+git commit
+
+# and materialize the commits that were just recorded
+git submodule update --init --recursive
+```
+
+Run `git submodule update --init --recursive` **after** committing as well as
+before. Staging the pointer does not check the submodule out at that commit, so
+skipping it leaves a working tree that does not match what you just recorded.
+
+> `-X theirs` on the merge itself resolves file contents but still leaves
+> submodule pointers conflicted. The loop above is the part that is easy to
+> forget, and the resulting "resolved" merge silently pins the wrong commit.
+
+### Shallow fetches
+
+Full history of every submodule is rarely needed on a build agent:
+
+```bash
+git fetch --depth=1 origin <branch>
+git reset --hard FETCH_HEAD
+```
+
 ## 1. The one file that cannot live here
 
 Each consumer needs a tiny bootstrap that *finds* this submodule, since it runs

@@ -1,5 +1,68 @@
 # Changelog
 
+## 2026-08-24 - docs: personal Linux ops notes folded into `docs/` (38 of 94), two new pages
+
+`C:\Users\jsh\Nextcloud\Dokumente\Linux` had accumulated 94 markdown notes
+(~8,700 words) of Linux administration knowledge, unversioned and outside any
+review. The subset that is genuinely this repo's domain is now in `docs/`,
+English, deduplicated against what the repo already owns, and reachable from
+`docs/INDEX.md`. +649 lines across 9 files, plus two new pages.
+
+**New: `docs/linux-host-setup.md` (618 lines).** The counterpart to the 836-line
+`docs/windows-host-setup.md`, which had no Linux equivalent — probes confirmed
+`scaling_governor`, `rocm-smi`, `ubuntu-drivers`, `journalctl`,
+`nvidia-container-runtime` appeared NOWHERE in the repo before this. Phases A–E:
+NVIDIA driver + CUDA install and the full purge/recovery path, AMD firmware,
+container runtime host config (nvidia `default-runtime`, log rotation,
+`nerdctl-full` verification, resolver fixes), CPU governor + `rocm-smi`
+performance mode, GCC/clang alternatives, apt mirror + unattended-upgrade
+policy. Troubleshooting covers `journalctl -b -1`, the PSU-starved dual-GPU
+`nvidia-smi` failure, GRUB rescue, disk and `/tmp` exhaustion.
+
+**New: `docs/build-secrets.md`.** BuildKit `--secret` + `.netrc` for private
+clones. `mount=type=secret` had zero hits repo-wide despite `secret-scan` being
+an enforcing gate — the sanctioned pattern was undocumented.
+
+**Extended:** edge accelerators (Hailo ONNX→HEF pipeline, Jetson) in
+`linux-accelerator-images.md`; raw `gst-launch-1.0` pipelines and device
+source-builds in `runtime-services.md`; detached containers + tmux and
+bind-mount ownership in `rancher-desktop-linux-containers.md`; CPU capping and a
+memory-constrained-host section (swap/zram/`-j1`) in
+`build-parallelism-memory-tuning.md`; build-log failure mining in
+`build-resource-monitoring.md`; submodule maintenance in
+`adopting-in-a-new-project.md`.
+
+**Two findings worth keeping.** (1) A measured incident now in § E1: `apt update`
+took 107 s on a 254 Mbit/s link because `security.ubuntu.com` round-robin DNS
+resolved to an unhealthy node; the regional mirror took it under 3 s. That cost
+is paid on every uncached image layer, not just the host. (2) `-X theirs` on a
+merge resolves file contents but leaves submodule POINTERS conflicted — a merge
+can look resolved while pinning the wrong ContainerHub commit. The resolution
+loop is now in `adopting-in-a-new-project.md` § Submodule maintenance.
+
+**Nothing sensitive crossed over.** The source tree holds live secrets — two
+`.pfx` private keys (one an Elster tax certificate), `.smbcredentials`, a
+WireGuard config with a private key, a `Save.keyx`, a GitLab `.env` — and this
+repo is public. None were transferred, referenced or quoted. Verified by the
+enforcing gate (gitleaks 8.30.1, repo config, working tree: **no leaks found**,
+`.gitleaksignore` unchanged) plus a manual sweep for LAN IPs, usernames, home
+paths, a MAC address and personal machine names, which gitleaks does not flag.
+Also scrubbed: `?utm_source=chatgpt.com` tracking params on ~8 GRUB links and
+the LLM-conversation tails ("Want me to drop this into a markdown file?") that
+two notes ended with.
+
+**Deliberately NOT transferred**, per the `docs/INDEX.md` anti-duplication rule:
+`buildx imagetools create` multi-arch tagging, already owned by
+`linux/scripts/build-runtime-manifest.sh` and `docs/linux-cross-builds.md`. The
+remaining 56 notes are homelab (NAS, Mail, RustDesk, WireGuard, WOL,
+RemoteDesktop) or one-line stubs, and stay out.
+
+**Open:** the source notes are not yet stubbed to point here, so that content
+exists in two places until they are — the exact drift `docs/INDEX.md` documents.
+`.claude/hooks/guard-destructive-deletes.ps1` blocks agent writes under
+`C:\Users`, so this is an operator step; mapping for all 38 files was handed
+over separately.
+
 ## 2026-08-24 - ghcr registry cleanup: 771 -> 167 package versions, zero failures
 
 New operator tool `linux/host-config/ghcr-prune-package.sh` (adversarially

@@ -136,6 +136,8 @@ bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,ri
 linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
 ```
 
+**Fresh Linux host?** GPU driver + CUDA install, the NVIDIA default-runtime `daemon.json`, CPU/GPU performance mode, and GRUB recovery are `docs/linux-host-setup.md` — the Linux counterpart to `docs/windows-host-setup.md`.
+
 > **See also:** [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the full stage graph, digest pinning, and single-stage build details. [`docs/linux-build-basics.md`](docs/linux-build-basics.md) for build fundamentals, caching, and troubleshooting.
 
 ### Windows Container Build

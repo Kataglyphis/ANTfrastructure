@@ -61,6 +61,12 @@ The two halves of one topic often split:
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
+| **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
+| Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |
+| Raw `gst-launch-1.0` pipelines, and building GStreamer from source on a device | [`runtime-services.md`](runtime-services.md#raw-gst-launch-10-pipelines-debugging-below-the-app) |
+| Detached containers, tmux, and bind-mount file ownership | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#long-running-work-detached-containers--tmux) |
+| Slow `apt update`, unattended-upgrade policy, excluding Docker from auto-upgrades | [`linux-host-setup.md`](linux-host-setup.md#phase-e--package-sources-and-automatic-updates) |
+| What filled the disk, and `/tmp` exhaustion during a build | [`linux-host-setup.md`](linux-host-setup.md#finding-what-filled-the-disk) |
 
 ### Build, CI and tooling
 
@@ -71,6 +77,11 @@ The two halves of one topic often split:
 | clang-format / clang-tidy / cmake-format, and the shared configs | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |
 | Watching resource use during a build | [`build-resource-monitoring.md`](build-resource-monitoring.md) |
+| **Giving a build a credential** without baking it into a layer | [`build-secrets.md`](build-secrets.md) |
+| Finding the real error in a large build log | [`build-resource-monitoring.md`](build-resource-monitoring.md#mining-a-build-log-for-the-actual-failure) |
+| Capping CPU so a build leaves the host usable | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#capping-cpu-so-the-host-stays-usable) |
+| Building on an SBC or small VM: swap, zram, forcing `-j1` | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#the-other-end-building-on-a-memory-constrained-host) |
+| **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
 | Opting a commit into the heavy CI lanes | [`ci-build-triggers.md`](ci-build-triggers.md) |
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 
