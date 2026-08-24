@@ -76,3 +76,37 @@ with `--near-oom-mb` (default 4096) and `--low-disk-gb` (default 20).
 
 > The CSV is **rewritten** on each start, so give each build a distinct
 > `--run-id` (the orchestrator passes `CROSS_RUN_ID`) to preserve history.
+
+## Mining a build log for the actual failure
+
+The monitoring above tells you what a build *consumed*. When one fails, the
+complementary problem is finding the real error in tens of thousands of lines,
+where the last line printed is usually a downstream symptom rather than the
+cause.
+
+Capture the log in the first place — every orchestrator script takes
+`--log-dir`, and a hand-run build should be teed:
+
+```bash
+docker build -t <tag> -f linux/Dockerfile . 2>&1 | tee out/build-logs/build.log
+```
+
+Then pull out the lines that actually mark failures:
+
+```bash
+grep -nE '(^| )FAILED: |ninja: build stopped|error:|fatal error:|undefined reference|collect2: error|ld\.lld: error|permission denied|no space left on device|exit code [1-9]' out/build-logs/build.log
+```
+
+Reading the hits, in order of what they mean:
+
+| Match | What it usually means |
+|---|---|
+| `FAILED:` | The ninja edge that broke — **start here**, it names the target |
+| `fatal error:` / `error:` | The compiler diagnostic; the first one is the cause, later ones are fallout |
+| `undefined reference` / `collect2: error` / `ld.lld: error` | Link stage — a missing library or an ABI mismatch, not a source bug |
+| `no space left on device` | Host disk, not the build. See [Linux Host Setup § B3](linux-host-setup.md#b3-cap-container-log-growth) |
+| `permission denied` | Usually a bind-mount uid mismatch rather than a real permission problem |
+| `ninja: build stopped` | Terminator line only — the cause is above it |
+
+`-n` matters: it gives you the line number to seek to, which is the point of the
+exercise on a log too large to read.

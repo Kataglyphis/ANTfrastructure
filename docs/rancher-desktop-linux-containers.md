@@ -154,3 +154,92 @@ into a Windows path and the run fails with "expected an absolute path".
 
 After the first build the registry and compiled dependencies are reused and
 subsequent runs are dramatically faster.
+
+## Long-running work: detached containers + tmux
+
+A build or training run that outlives your terminal should not be tied to it.
+Start the container detached, then use tmux *inside* it so the process survives
+both disconnects.
+
+```bash
+nerdctl run -dit --gpus '"device=0"' -p 8501:8501 \
+  -v "$PWD:/workspace" -w /workspace \
+  --name work ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+```
+
+| Flag | Why |
+|---|---|
+| `-d` | Detached — runs in the background |
+| `-i` | Keeps STDIN open, so a shell attached later is usable |
+| `-t` | Allocates a pseudo-TTY |
+| `--name` | Stable handle; without it you are copying container ids around |
+
+Attach, start a tmux session, run the job, then leave:
+
+```bash
+nerdctl exec -it work bash
+tmux                      # then start the long job, e.g. python train.py
+# detach from tmux with Ctrl+B then D, or just `exit` the shell
+```
+
+The container and the tmux session keep running. Reconnect later with:
+
+```bash
+nerdctl exec -it work bash
+tmux attach
+```
+
+Useful handles:
+
+```bash
+nerdctl ps                # what is running
+nerdctl stop work
+nerdctl start work
+nerdctl rm work
+tmux ls                   # inside the container: list sessions
+```
+
+Name the session when you run more than one at a time — `tmux` alone gives
+you an unnamed session that is awkward to pick out later:
+
+```bash
+tmux new -s build          # create
+# Ctrl+B then D to detach
+tmux attach -t build       # come back to that specific one
+```
+
+Two alternatives to tmux, for reference: `Ctrl+P` then `Ctrl+Q` detaches from an
+attached container without stopping it (this is a container-level detach, not a
+process-level one), and `nohup cmd > cmd.log 2>&1 &` backgrounds a single
+process without a session manager. tmux is preferable when you want to look at
+the running output again.
+
+> `nerdctl` is largely command-compatible with `docker`. In most cases
+> substituting one for the other is enough — but see the namespace caveat above.
+
+## Fixing file ownership after a container writes to a bind mount
+
+A container running as a different uid than your host user leaves files you
+cannot edit. Rather than chowning from the host, do it from inside the container
+where you have root.
+
+Find the host uid/gid you want the files to end up as:
+
+```bash
+id -u && id -g
+# ...or read it out of /etc/passwd:
+grep "^$USER:" /etc/passwd
+# youruser:x:1000:1000::/home/youruser:/bin/bash
+#            ^^^^ ^^^^  uid  gid
+```
+
+Then, inside the container:
+
+```bash
+chown -R 1000:1000 /workspace/some/path
+```
+
+The same trick applies to named volumes — see
+[Persisting the cargo cache](#persisting-the-cargo-cache), which chowns
+`cargo-cache` to the image's uid 1001 once instead of running everything as
+root.
