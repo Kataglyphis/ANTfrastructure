@@ -218,6 +218,21 @@ else
   ORT_HOME="${NATIVE_CPU_OUTPUT_DIR}"
   info "Building onnxruntime-genai with CPU ORT from ${ORT_HOME}"
 
+  # HOST-LINK LEAK (wave7b 2026-08-24, first live run of the arm64 cross
+  # build): setup_linux_cross_env exports LIBRARY_PATH with the TARGET libdirs
+  # (cross-env.sh ~:534), and gcc's host `cc` honors LIBRARY_PATH for -m64
+  # links too — so cargo's HOST build scripts (proc-macro2, anyhow, zerocopy,
+  # rustversion…) died with "aarch64 libgcc_s.so.1 is incompatible with
+  # elf64-x86-64" on every retry. The TARGET half never needed LIBRARY_PATH
+  # here: cmake gets explicit cross compilers/sysroot flags and cargo links
+  # the target through CARGO_TARGET_<T>_LINKER (Rust_CARGO_TARGET above). So
+  # scrub it for the build.py invocation only — everything else in the cross
+  # env stays untouched.
+  if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
+    info "GenAI cross: clearing LIBRARY_PATH for the build (host build-script links; was: ${LIBRARY_PATH:-<unset>})"
+    unset LIBRARY_PATH
+  fi
+
   info "GenAI build args: ${GENAI_BASE_ARGS[*]}"
   retry 3 10 "ONNX Runtime GenAI CPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \
