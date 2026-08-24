@@ -1398,6 +1398,21 @@ base ─┬─ onnxruntime ───────┐
   chain runs — "unused" means not-container-referenced, so it deletes TAGGED
   cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
   registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
+- **ghcr REGISTRY hygiene: `linux/host-config/ghcr-prune-package.sh`**
+  (2026-08-24). The container package accumulates one untagged version per
+  re-pushed moving tag; it had grown to 771 versions (~85% dead). NEVER
+  "delete all untagged" by hand — the per-arch entries of a multi-arch index
+  are themselves untagged manifests, and a chain that is pushing creates
+  untagged manifests seconds before tagging them. The script's keep-set is
+  tags + every index CHILD (resolved live, abort on any unresolvable tag) +
+  the digest each tag currently resolves to + everything younger than
+  `KEEP_DAYS` (default 7). Dry-run by default; `GHCR_PRUNE_CONFIRM=1`
+  deletes, re-checking each version's tags immediately before its DELETE.
+  First confirmed run: 604 deleted, 0 failed, `:latest-cross` + all
+  cross-stage tags verified 200 afterwards, running build untouched. Known
+  pre-existing damage it did NOT cause: legacy tags android/compiler/latest/
+  media/sdk/torch were already dangling (children 404) before the tool
+  existed.
 - **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
   `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
   the worst incident this repo has produced). A "let's free some space"

@@ -27,7 +27,9 @@ expense of the others:
   sccache for Rust; layer cache and compiler cache multiply, they don't
   compete — pinned buildkitd GC budget whose policies spare compile-cache
   mounts, plus `linux/host-config/prune-safe.sh` for manual reclaim that
-  provably keeps them; cross-stage pushes ship zstd-compressed layers) and
+  provably keeps them, and `linux/host-config/ghcr-prune-package.sh` for
+  safe ghcr package cleanup (keep-set = tags + index children + age guard;
+  dry-run by default); cross-stage pushes ship zstd-compressed layers) and
   opt-in parallelism levers (per-arch `--parallel-archs` with per-stage
   control and OOM-aware job sizing). Map: [`docs/linux-build-basics.md`
   § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).

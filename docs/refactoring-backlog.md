@@ -242,6 +242,13 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 
 ## E. Waiting on a TRIGGER (not on work)
 
+- **GHCR-LEGACY-TAGS — six dangling legacy tags need an operator decision**
+  [S, user-side, found 2026-08-24] `android`, `compiler`, `latest`, `media`,
+  `sdk`, `torch` are docker manifest lists whose 18 children ALL 404 —
+  unpullable since before ghcr-prune-package.sh existed (old retention or a
+  past manual prune). Decide: delete the six tags, or re-point them at
+  current digests. The prune tool deliberately keeps them (tagged = kept).
+
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
 - **GCC_PARALLEL_TARGETS validation** — next compiler-stage rebuild.

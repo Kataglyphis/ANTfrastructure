@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-08-24 - ghcr registry cleanup: 771 -> 167 package versions, zero failures
+
+New operator tool `linux/host-config/ghcr-prune-package.sh` (adversarially
+reviewed before first use; three found defects fixed pre-commit, including a
+SIGPIPE that made the dry run exit 141 and a fail-open zero-tag path that
+would have turned a collapsed keep-set into a registry wipe). First confirmed
+run deleted 604 stale untagged versions — the residue of every re-pushed
+moving tag since June — with 0 failures and 0 skips; afterwards the
+`:latest-cross` index, all three arch manifests and every cross-stage tag
+verified HTTP 200, and the concurrently running wave7b build was untouched
+(its pushes sat inside the KEEP_DAYS=7 in-flight guard, visibly counted by
+the tool). Incidental finding: legacy tags android/compiler/latest/media/
+sdk/torch were ALREADY dangling (all 18 index children 404) before any
+pruning — pre-existing damage, operator decision pending on whether to
+delete or re-point them.
+
 ## 2026-08-24 - WAVE-6 SHIPPED: the gate-truth build (three blind gates now actually work)
 
 `:latest-cross` = amd64 `a25a38c5` / arm64 `bd9953a9` / riscv64 `d3710282`,
