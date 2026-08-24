@@ -596,16 +596,23 @@ int _isatty(int);
     # than hardcoding the scoop app dir layout -- survives a LLVM/scoop install relocation.
     $clangClCmd = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
     $llvmRoot = if ($clangClCmd) { Split-Path (Split-Path $clangClCmd.Source) } else { Join-Path $env:USERPROFILE 'scoop\apps\llvm\current' }
-    # ARCH-BLIND `Select-Object -First 1` was a latent wrong-machine bug: LLVM
-    # ships one builtins lib PER TARGET (clang_rt.builtins-x86_64.lib,
-    # clang_rt.builtins-aarch64.lib, ...), and this path is handed straight to
-    # lld-link. On the cross lane the x86_64 one sorts first and would be linked
-    # into an aarch64 image. Filtering only on the cross branch keeps the amd64
-    # selection -- and therefore its link line -- exactly what it is today.
+    # TARGET-FILTERED ON BOTH LANES (2026-08-24, found by the amd64 regression
+    # run): LLVM ships one builtins lib PER TARGET and this path goes straight
+    # to lld-link. The previous shape filtered only on the cross branch, on the
+    # rationale "keeps the amd64 selection exactly what it is today" -- which
+    # was written while clang_rt.builtins-x86_64.lib was the ONLY lib present.
+    # The moment setup-scoop-tools.ps1 started installing the aarch64
+    # counterpart (the #113 base ride), amd64's arch-blind alphabetical
+    # `-First 1` flipped to aarch64 ('a' < 'x') and the FIRST amd64 merge on
+    # that base died linking gstreamer-1.0-0.dll:
+    #   lld-link: error: clang_rt.builtins-aarch64.lib(udivti3.c.obj):
+    #             machine type arm64 conflicts with x64
+    # The host-vs-target lesson, one more time: a selection that depends on
+    # what happens to be installed is not a selection.
     $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue)
+    $wantRt = (Get-ClangTargetTriple -Arch $script:GstTargetArch) -replace '-.*$', ''   # x86_64/aarch64-pc-windows-msvc -> x86_64/aarch64
+    $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
     if ($script:GstCross) {
-        $wantRt = (Get-ClangTargetTriple -Arch $script:GstTargetArch) -replace '-.*$', ''   # aarch64-pc-windows-msvc -> aarch64
-        $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
         if ($rtCandidates.Count -eq 0) {
             # WARN, do not throw. Absence is already tolerated on amd64 -- if no
             # builtins lib is found there, $rtFullPath simply stays empty and the

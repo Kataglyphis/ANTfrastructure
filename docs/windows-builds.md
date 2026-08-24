@@ -1927,8 +1927,9 @@ resolved compiler, skipping on images built before the manifest existed.
 **Python bindings are built, shipped, and functionally verified (since
 2026-07-13) — on the amd64 lane.** On the arm64 cross lane the wheel store
 `C:\runtime\wheels` is **empty** today even though `PYTHON_WHEELS` is
-advertised; the target aarch64 CPython and the bindings it unblocks are in
-progress as backlog #120. On amd64, the media branches build python bindings
+advertised; the target aarch64 CPython itself SHIPS since 2026-08-24 (#120
+step 1, source-built at `C:\runtime\python`) — the bindings it unblocks are
+the open half, in progress as #120 step 2. On amd64, the media branches build python bindings
 for every source-built library that supports them and stage the wheels
 centrally at **`C:\runtime\wheels`** (`PYTHON_WHEELS` env): `onnxruntime` (CUDA+TRT+DML EPs,
 `ENABLE_PYTHON=ON`), `onnxruntime-genai-cuda` (`BUILD_WHEEL=ON`),
@@ -2128,8 +2129,9 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   necessarily among the 390 — so the shipped DirectML is arm64.
   **Honest limit:** this proves the right *bytes* ship, not that the DML EP *runs*. Nothing arm64
   executes on this x64 host; only the `windows-11-arm` CI job can show that.
-  **Follow-up, still open:** GenAI (`-DUSE_DML`) and OpenCV (`WITH_DIRECTML`) remain OFF. Their
-  gating reason is now satisfied, so flipping them is tracked as **#118**. Worth recording so the
+  **Follow-up — closed by #118 (2026-08-24):** GenAI (`-DUSE_DML`) and OpenCV (`WITH_DIRECTML`)
+  were OFF when this entry was written; both are ON on both lanes since #118 landed the same
+  day. Worth recording so the
   next reader does not re-investigate it: GenAI's `D3D12Core.dll` staging is *already* correct for
   arm64 — `$d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''` resolves through
   `Get-WindowsTargetArch`, i.e. the **target**, giving `arm64` on this lane, and the nuget's

@@ -17,8 +17,10 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 > "compile+link+RUN under qemu" half of class 4 below — only the static half. That lane's
 > equivalent of the per-arch ELF/machine check is `windows/scripts/build/verify-target-arch.ps1`
 > (PE `Machine` field over the whole install prefix, with a minimum-inspected floor so a
-> lane that staged nothing cannot pass green), and its smoke gate is reported
-> NOT APPLICABLE rather than skipped.
+> lane that staged nothing cannot pass green), and its smoke gate runs the host-toolchain
+> sections against an arm64-specific floor column (66/25, measured green 97/0/15), reporting
+> only the payload-execution sections NOT APPLICABLE (since 2026-08-24 — before that the whole
+> gate was reported NOT APPLICABLE).
 
 ## Failure classes (from build history)
 
