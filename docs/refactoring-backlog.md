@@ -276,12 +276,8 @@ the ship whose post-audit found the three gates above.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
-- **C3 — android inline version fallbacks → `:?must be set`** [S·★★] incl.
-  the two onnxruntime `:-v…` fallbacks (masks broken ARG-forwards).
 - **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
   measure in the validating rebuild, or document the decision.
-- **TS4 — version-key build-clang.sh's cached llvm-project checkout** [S·★★]
-  fires exactly on the next LLVM bump (stale-tag rebuild for hours).
 - **F6 — remaining stray SHA pins: 2** [M] (was 3 — VULKAN_SDK solved by
   BT1's spec_vulkan stream-hash 2026-08-19): ABSEIL_TARBALL (github archive
   SHA non-deterministic → needs codeload-by-commit or content verify),
