@@ -63,6 +63,38 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         }
     }
 
+    It 'is arch-aware and, since #115, demands the SAME four entries on both lanes' {
+        # The ONLY arch-conditional logic this module carries had ZERO test
+        # coverage until 2026-08-24. The mechanism (UnavailableOn filtering)
+        # stays tested even while its current key set is empty: #115 restored
+        # tflite on arm64 (plain LiteRT cross-builds; the plugin is enabled
+        # presence-driven), so a re-appearing arm64 key -- someone re-dropping
+        # the plugin "temporarily" -- must fail HERE first.
+        $amd = @(Get-RequiredGstPlugin -Arch 'amd64' | ForEach-Object { $_.Name })
+        $arm = @(Get-RequiredGstPlugin -Arch 'arm64' | ForEach-Object { $_.Name })
+        Assert-Equal 4 $amd.Count 'amd64 keeps the full contract'
+        Assert-Equal 4 $arm.Count 'arm64 demands the full contract again since #115 (tflite restored)'
+        foreach ($n in 'libav', 'opencv', 'onnx', 'tflite') {
+            Assert-True ($arm -contains $n) "'$n' must be mandatory on arm64"
+        }
+        # The bare call must equal the amd64 view when WINDOWS_TARGET_ARCH is
+        # unset -- the compatibility guarantee the module header promises.
+        if (-not $env:WINDOWS_TARGET_ARCH) {
+            $bare = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
+            Assert-Equal ($amd -join ',') ($bare -join ',') 'bare call defaults to the amd64 contract'
+        }
+    }
+
+    It 'explains every UnavailableOn entry and names no arch outside the supported set' {
+        $supported = @(Get-SupportedWindowsTargetArches)
+        foreach ($p in @(Get-RequiredGstPlugin -Arch 'amd64')) {
+            foreach ($k in $p.UnavailableOn.Keys) {
+                Assert-True ($supported -contains $k) "$($p.Name): UnavailableOn key '$k' must be a supported arch"
+                Assert-True ([bool]$p.UnavailableOn[$k]) "$($p.Name): UnavailableOn['$k'] must carry a reason"
+            }
+        }
+    }
+
     It 'maps each plugin to the pkg-config name its upstream meson actually looks up' {
         # Verified against gstreamer 1.29.2 sources: gst-plugins-bad resolves
         # dependency('opencv4') and dependency('libonnxruntime'); gst-libav

@@ -100,7 +100,8 @@ because the lying healthcheck "found" it. It is deliberately excluded from the
 mandatory set; wanting it means adding an NNStreamer source-build stage.
 
 **Gating (the actual fix).** The contract is now data —
-`Get-RequiredGstPlugin` in `WindowsScripts.Shared.psm1` — enforced at four
+`Get-RequiredGstPlugin`, since 2026-08-08 in `WindowsGstPlugins.Common.psm1`
+(it debuted in `WindowsScripts.Shared.psm1`) — enforced at four
 points that previously disagreed: a pre-flight that resolves every required
 pkg-config module in seconds, meson features set to `enabled` (not `auto`, which
 means *skip silently*), a post-install `gst-inspect` gate that **throws**, and

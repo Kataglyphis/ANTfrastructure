@@ -435,6 +435,40 @@ function Get-SourceBuildPython {
     return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
 }
 
+function Get-TargetBuildPython {
+    # The TARGET-arch complement to Get-SourceBuildPython (backlog #120).
+    # Composition rule, stated once so every consumer inherits it:
+    #   .Exe      -> the HOST interpreter (runs build steps; never target)
+    #   .Include  -> arch-neutral headers (Include\ + PC\pyconfig.h, which
+    #                selects by compiler macros at include time)
+    #   .LibDir/.Lib -> the TARGET import library (what a .pyd LINKS against)
+    #   .Available   -> whether the target build exists yet. Consumers MUST
+    #                check it and keep their skip path when it is false --
+    #                build-target-cpython.ps1 runs first in the media-core
+    #                chain, but -ResumeFrom can legitimately enter later.
+    # On amd64 host == target and this collapses to Get-SourceBuildPython with
+    # Available always true (mirrors that function's existence checks).
+    param(
+        [string]$CpythonDir = ''
+    )
+    if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
+    $hostPy = Get-SourceBuildPython -CpythonDir $CpythonDir
+    if (-not (Test-WindowsCrossTarget)) {
+        return @{ Exe = $hostPy.Exe; Include = $hostPy.Include; LibDir = $hostPy.LibDir; Lib = $hostPy.Lib
+                  Available = (Test-Path $hostPy.Lib) }
+    }
+    $tgtOutDir = Join-Path $CpythonDir "PCbuild\$(Get-CpythonOutputDir)"
+    $tgtLib = Get-ChildItem -Path $tgtOutDir -Filter 'python3*.lib' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^python3\d+\.lib$' } | Select-Object -First 1
+    return @{
+        Exe       = $hostPy.Exe
+        Include   = $hostPy.Include
+        LibDir    = $tgtOutDir
+        Lib       = if ($tgtLib) { $tgtLib.FullName } else { Join-Path $tgtOutDir 'python314.lib' }
+        Available = [bool]$tgtLib
+    }
+}
+
 function Initialize-SourceBuildEnvironment {
     param(
         [string]$InstallDir = ''
@@ -1063,12 +1097,22 @@ function Initialize-PythonPlatformTag {
     # THAT interpreter's shim, not this one.
     param(
         [string]$CpythonDir = '',
-        [string]$Arch = ''
+        [string]$Arch = '',
+        # SPLIT 2026-08-24: one $Arch knob was controlling two INDEPENDENT facts.
+        # The platform tag belongs to the interpreter this shim configures (the
+        # HOST build python -- see the correction history above). The OpenCV DLL
+        # directory registered below is a fact about what this image STAGED,
+        # which on a cross lane is the TARGET's arm64\vc18 tree -- the host-arch
+        # path pointed at a directory that does not exist there. Inert while
+        # guarded by os.path.isdir, but a lie in a shipped file. Defaults to the
+        # TARGET arch; -Arch keeps steering only the tag.
+        [string]$StagedOpenCvArch = ''
     )
     if ([string]::IsNullOrWhiteSpace($Arch)) { $Arch = Get-WindowsHostArch }
+    if ([string]::IsNullOrWhiteSpace($StagedOpenCvArch)) { $StagedOpenCvArch = Get-WindowsTargetArch }
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $platformName = Get-PythonPlatformName -Arch $Arch
-    $openCvArchDir = Get-OpenCvArchDir -Arch $Arch
+    $openCvArchDir = Get-OpenCvArchDir -Arch $StagedOpenCvArch
     $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
     New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
     $shim = Join-Path $sitePackages 'sitecustomize.py'
@@ -1697,6 +1741,7 @@ Export-ModuleMember -Function @(
     'Get-MsvcToolsRoot',
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
+    'Get-TargetBuildPython',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',

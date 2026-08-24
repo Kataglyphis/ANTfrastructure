@@ -11,28 +11,28 @@ $ErrorActionPreference = 'Continue'
 Set-StrictMode -Version Latest
 $failed = $false
 
-# CROSS BUNDLE: every check below verifies by EXECUTING a staged binary
-# (gst-launch --version, ffmpeg -version, python -c "import cv2", ...). On the
-# arm64 lane those binaries are aarch64 while the container is windows/amd64,
-# and Windows x64 has no ARM64 emulation - so each one fails for a reason that
-# says nothing about the bundle's health.
-#
-# The Dockerfile's HEALTHCHECK is unconditional (a Dockerfile cannot branch on an
-# ARG), and the SAME final Dockerfile produces :winarm64, so without this the
-# shipped cross bundle would sit in a permanent `unhealthy` state and retry every
-# five minutes forever. Report the truth instead: this image is an ARTIFACT
-# BUNDLE, deliberately not runnable, and its verification is the static PE
-# machine-type gate that already ran in the merge stage.
+# CROSS BUNDLE: the checks below split into two kinds (split 2026-08-24 -- the
+# original blanket exit-0 skipped everything on the false premise that "every
+# check executes a staged binary"; 4 of 7 do not).
+#   HOST-TOOL checks (python/cmake/clang-cl are the image's amd64 toolchain, and
+#   the onnxruntime check is a Get-ChildItem, no execution at all): these verify
+#   the container's own machinery and run identically on the cross lane -- an
+#   emptied C:\runtime or a broken toolchain now makes the arm64 bundle image
+#   report unhealthy instead of unconditionally healthy.
+#   PAYLOAD-EXECUTION checks (ffmpeg -version, gst-launch, gst-inspect): those
+#   binaries are aarch64 on the cross lane and Windows x64 has no ARM64
+#   emulation, so each would fail for a reason that says nothing about bundle
+#   health. Skipped with a printed reason; the bundle's static verification is
+#   verify-target-arch.ps1 in the merge stage.
 #
 # WINDOWS_TARGET_ARCH is baked as ENV from the media stage onward, so it is
 # present in the final image; anything other than the host arch means cross.
 $hcTargetArch = if ($env:WINDOWS_TARGET_ARCH) { $env:WINDOWS_TARGET_ARCH } else { 'amd64' }
-if ($hcTargetArch -ne 'amd64') {
-    Write-Host "[SKIP] health checks: this is a $hcTargetArch CROSS-COMPILED ARTIFACT BUNDLE, not a runnable image."
-    Write-Host '       Every check here verifies by executing a staged binary, and aarch64 code cannot run on this'
-    Write-Host '       windows/amd64 container. The bundle is verified statically instead, by verify-target-arch.ps1'
-    Write-Host '       (PE machine type over the whole install prefix) in the merge stage. See docs/windows-cross-builds.md.'
-    exit 0
+$hcCross = $hcTargetArch -ne 'amd64'
+if ($hcCross) {
+    Write-Host "[NOTE] $hcTargetArch cross bundle: host-tool checks run; payload-execution checks are skipped"
+    Write-Host '       (aarch64 code cannot run on this windows/amd64 container; the payload is verified statically'
+    Write-Host '       by verify-target-arch.ps1 in the merge stage - see docs/windows-cross-builds.md).'
 }
 
 function Check {
@@ -80,23 +80,31 @@ Check "python --version" {
 }
 
 # FFmpeg -- prefer $env:FFMPEG_BIN, fall back to Get-Command (env-driven, no hardcoded C:\runtime\ffmpeg\bin).
-Check "ffmpeg --version" {
-    $ffmpegExe = Resolve-ToolPath -BinEnvVar 'FFMPEG_BIN' -ExeName 'ffmpeg.exe'
-    if (-not $ffmpegExe) { throw 'ffmpeg.exe not found (FFMPEG_BIN env var unset and ffmpeg.exe not on PATH)' }
-    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
-    $v = & $ffmpegExe -version 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "ffmpeg -version failed (exit code [$LASTEXITCODE]): $v" }
-    if (-not $v) { throw "ffmpeg not found or failed" }
+if ($hcCross) {
+    Write-Host '[SKIP] ffmpeg --version (payload execution; ffmpeg.exe is aarch64 on this lane)'
+} else {
+    Check "ffmpeg --version" {
+        $ffmpegExe = Resolve-ToolPath -BinEnvVar 'FFMPEG_BIN' -ExeName 'ffmpeg.exe'
+        if (-not $ffmpegExe) { throw 'ffmpeg.exe not found (FFMPEG_BIN env var unset and ffmpeg.exe not on PATH)' }
+        $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
+        $v = & $ffmpegExe -version 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "ffmpeg -version failed (exit code [$LASTEXITCODE]): $v" }
+        if (-not $v) { throw "ffmpeg not found or failed" }
+    }
 }
 
 # GStreamer -- prefer $env:GSTREAMER_BIN, fall back to Get-Command.
-Check "gst-launch-1.0 --version" {
-    $gstLaunch = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-launch-1.0.exe'
-    if (-not $gstLaunch) { throw 'gst-launch-1.0.exe not found (GSTREAMER_BIN env var unset and gst-launch-1.0.exe not on PATH)' }
-    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
-    $v = & $gstLaunch --version 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "gst-launch-1.0 --version failed (exit code [$LASTEXITCODE]): $v" }
-    if (-not $v) { throw "gst-launch-1.0 not found or failed" }
+if ($hcCross) {
+    Write-Host '[SKIP] gst-launch-1.0 --version (payload execution; gst-launch-1.0.exe is aarch64 on this lane)'
+} else {
+    Check "gst-launch-1.0 --version" {
+        $gstLaunch = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-launch-1.0.exe'
+        if (-not $gstLaunch) { throw 'gst-launch-1.0.exe not found (GSTREAMER_BIN env var unset and gst-launch-1.0.exe not on PATH)' }
+        $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
+        $v = & $gstLaunch --version 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "gst-launch-1.0 --version failed (exit code [$LASTEXITCODE]): $v" }
+        if (-not $v) { throw "gst-launch-1.0 not found or failed" }
+    }
 }
 
 # Mandatory GStreamer plugin integrations. The set is Get-RequiredGstPlugin's —
@@ -115,14 +123,22 @@ $gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-
 # beside this script in the flat layout and one level up in the repo layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $gstPluginModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
+# -Arch is REQUIRED here (fixed 2026-08-24; a bare call resolved the contract for
+# the module's default and would probe amd64's plugin set on an arm64 image).
+# The hardcoded fallback list is gone for the same reason: it was arch-blind
+# (it always named tflite, which the arm64 contract deliberately drops) and it
+# had already re-diverged from the module once before (2026-08-21). An image
+# too old to carry the module gets a printed SKIP, not a wrong contract.
 $requiredGstPlugins = if (Test-Path $gstPluginModule) {
     Import-Module $gstPluginModule -Force -DisableNameChecking
-    @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
+    @(Get-RequiredGstPlugin -Arch $hcTargetArch | ForEach-Object { $_.Name })
 } else {
-    # Older image without the module: fall back to the literal contract rather
-    # than silently probing nothing. MUST mirror Get-RequiredGstPlugin — this
-    # list re-diverged once already (tflite missing, caught 2026-08-21).
-    @('libav', 'opencv', 'onnx', 'tflite')
+    Write-Host '[SKIP] gst-plugin contract not probed (WindowsGstPlugins.Common.psm1 absent in this image)'
+    @()
+}
+if ($hcCross -and $requiredGstPlugins.Count -gt 0) {
+    Write-Host "[SKIP] gst-plugin probes for: $($requiredGstPlugins -join ', ') (payload execution; gst-inspect-1.0.exe is aarch64 on this lane)"
+    $requiredGstPlugins = @()
 }
 foreach ($gstPlugin in $requiredGstPlugins) {
     # Guard the invoke: with $gstInspect null/missing, `& $null` throws a statement-terminating

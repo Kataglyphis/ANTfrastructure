@@ -8,9 +8,17 @@
     Build GStreamer from source on Windows using Meson with clang-cl.
 
 .DESCRIPTION
-    Alternative to the binary BITS installer. Clones the GStreamer monorepo
-    and builds everything from source via Meson wraps. Uses clang-cl as the
-    compiler (msvc-compatible ABI) with Visual Studio SDK paths.
+    Builds the GStreamer monorepo from source via Meson wraps: downloads the
+    GitHub /archive/ release tarball, extracts it with 7z, and compiles with
+    clang-cl (msvc-compatible ABI) against Visual Studio SDK paths.
+
+    CORRECTED 2026-08-24: this used to read "Alternative to the binary BITS
+    installer. Clones the GStreamer monorepo." The first half went stale when
+    setup-gstreamer.ps1 (the BITS-downloaded MSI path) was deleted
+    (f0d12ff2, 2026-06-24) -- no binary GStreamer install path exists under
+    windows/ any more. The "clones" half was wrong from day one (2d84dedf,
+    2026-06-16): this script has only ever fetched the tarball, never run
+    git clone.
 
 .PARAMETER GstVersion
     Git tag or branch to build (default: 1.29.2).
@@ -19,7 +27,7 @@
     Target install prefix (default: empty -> resolves to C:\runtime via Initialize-SourceBuildEnvironment).
 
 .PARAMETER SourceDir
-    Temporary directory for the git clone (default: C:\temp\gst-source).
+    Temporary directory for the extracted source tarball (default: C:\temp\gst-source).
 
 .PARAMETER BuildDir
     Meson build directory (default: C:\temp\gst-builddir).
@@ -605,14 +613,18 @@ int _isatty(int);
             # to the cross lane than this file applies to itself, and would block
             # a build that may not need these helpers at all.
             #
-            # MEASURED 2026-08-23 (probe-arm64-prereqs.ps1 Q5 against the
-            # toolchain image): the LLVM install ships ONLY
-            # clang_rt.builtins-x86_64.lib. There is no aarch64 counterpart to
-            # link, so the honest outcome is to link nothing rather than to link
-            # the host's. If aarch64 GStreamer genuinely needs __udivti3 & co,
-            # lld-link says so by NAME, which is a precise and actionable error --
-            # unlike the machine-type conflict the unfiltered code would have
-            # produced, or a pre-emptive throw here.
+            # The 2026-08-23 measurement here (probe-arm64-prereqs.ps1 Q5:
+            # "the LLVM install ships ONLY clang_rt.builtins-x86_64.lib, there
+            # is no aarch64 counterpart") stopped being true once
+            # setup-scoop-tools.ps1 (:344-397) started downloading
+            # clang_rt.builtins-aarch64.lib into the LLVM lib dir. On a current
+            # image the filter finds it and this branch does not run; landing
+            # here means that download was skipped or failed. The honest
+            # outcome is still to link nothing rather than the host's lib: if
+            # aarch64 GStreamer genuinely needs __udivti3 & co, lld-link says
+            # so by NAME, which is a precise and actionable error -- unlike the
+            # machine-type conflict the unfiltered code would have produced, or
+            # a pre-emptive throw here.
             Write-Warning ("compiler-rt builtins for '$wantRt' not found under $llvmRoot\lib\clang " +
                            "(present: $((@(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue).Name | Sort-Object -Unique) -join ', ')). " +
                            'Linking WITHOUT compiler-rt rather than linking the host-arch library. If the link ' +
@@ -966,15 +978,41 @@ int _isatty(int);
         }
 
         # CROSS LANE: the entire tflite integration below is skipped. LiteRT is
-        # not built for arm64 at all (LiteRT-LM links a prebuilt x86_64-only
-        # static library), so C:\runtime\lib\litert is the empty stand-in from
-        # Dockerfile.media-builder's media-branch-absent stage. Both gates in the
-        # block would throw against it -- the header pre-flight first, then the
-        # import-library probe -- and neither is a real defect on that lane.
-        # Get-RequiredGstPlugin -Arch has already dropped 'tflite' from
-        # $requiredPlugins, so nothing downstream expects it either.
-        if ($script:GstCross) {
-            log "tflite integration skipped on the $script:GstTargetArch cross lane (LiteRT is absent by construction; see docs/windows-cross-builds.md)."
+        # not yet built for arm64, so C:\runtime\lib\litert is the empty
+        # stand-in from Dockerfile.media-builder's media-branch-absent stage.
+        # Both gates in the block would throw against it -- the header
+        # pre-flight first, then the import-library probe -- and neither is a
+        # real defect on that lane. Get-RequiredGstPlugin -Arch has already
+        # dropped 'tflite' from $requiredPlugins, so nothing downstream expects
+        # it either.
+        # WHY LiteRT is absent (corrected 2026-08-24 -- the blame here has been
+        # wrong twice: this comment pinned ONLY the x86_64-only prebuilt, the
+        # 2026-08-23 sweep elsewhere pinned ONLY the bazelrc; both halves are
+        # real): LiteRT-LM's Bazel path has (a) no windows-arm64 config in its
+        # .bazelrc (only android/macos/ios arm64) AND (b) the prebuilt
+        # x86_64-only libGemmaModelConstraintProvider in the default Windows
+        # dependency graph via gemma3_data_processor -- severable with the
+        # litert_lm_fst_constraints_disabled config_setting
+        # (model_data_processor/BUILD:26-33). Neither applies to PLAIN LiteRT
+        # (pure CMake, no Bazel, no prebuilt); its only cross obstacle is
+        # upstream's TFLITE_HOST_TOOLS_DIR host-flatc requirement.
+        # Cross-building plain LiteRT -- which would restore this plugin on the
+        # arm64 lane -- is backlog #115.
+        # PRESENCE-DRIVEN since #115 (2026-08-24): the cross lane now BUILDS
+        # plain LiteRT (media-litert runs on arm64; only its LiteRT-LM stage
+        # self-skips with the Bazel reasons above), so "cross implies no LiteRT"
+        # stopped being true. The decision input is the artifact itself --
+        # tensorflowlite_c.lib in the fanned-in tree -- never the lane: a cross
+        # merge from an older media-litert-less core degrades to
+        # disabled-with-reason instead of throwing, and amd64 is unchanged (the
+        # lib is always present there; a genuinely missing one still hits the
+        # block's own hard gates).
+        $script:GstTfliteLibDir = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $resolvedInstallDir 'lib\litert\lib' }
+        $script:GstTfliteAvailable = (-not $script:GstCross) -or (Test-Path (Join-Path $script:GstTfliteLibDir 'tensorflowlite_c.lib'))
+        if (-not $script:GstTfliteAvailable) {
+            log ("tflite integration skipped: no tensorflowlite_c.lib in $script:GstTfliteLibDir -- this cross image " +
+                 'predates the #115 LiteRT cross build (or media-litert was not fanned in). The meson feature is set ' +
+                 'to disabled EXPLICITLY below, never auto.')
         } else {
             # ── tflite: the one integration that does NOT use pkg-config ──────────
             # gst-plugins-bad ext/tflite probes the compiler directly:
@@ -1339,12 +1377,15 @@ endian = 'little'
                 '-Dlibav=enabled',
                 '-Dgst-plugins-bad:opencv=enabled',
                 '-Dgst-plugins-bad:onnx=enabled',
-                # 'disabled' EXPLICITLY on the cross lane, never omitted: the
-                # option's default is 'auto', which would probe, half-configure
-                # against the empty LiteRT stand-in and fail late instead of
-                # cleanly not building the plugin. amd64 keeps 'enabled' in the
-                # same array position, so its meson command line is unchanged.
-                $(if ($script:GstCross) { '-Dgst-plugins-bad:tflite=disabled' } else { '-Dgst-plugins-bad:tflite=enabled' })
+                # NEVER 'auto' (the repo-wide rule): 'auto' would probe,
+                # half-configure against an empty LiteRT tree and fail late
+                # instead of cleanly not building the plugin. Since #115 the
+                # switch is ARTIFACT presence ($script:GstTfliteAvailable, set
+                # where the integration block runs), not the lane: enabled
+                # wherever tensorflowlite_c exists -- which now includes the
+                # arm64 cross lane -- and explicit disabled otherwise. amd64's
+                # meson command line is unchanged (always enabled there).
+                $(if ($script:GstTfliteAvailable) { '-Dgst-plugins-bad:tflite=enabled' } else { '-Dgst-plugins-bad:tflite=disabled' })
             )
         }
     ) + $mesonCrossArgs + $MesonSetupArgs
@@ -1642,17 +1683,53 @@ endian = 'little'
     }
     # CROSS LANE: gst-inspect-1.0.exe is an aarch64 binary and this is an x64
     # host with no ARM64 emulation, so RUNNING it is not "a check that fails" --
-    # it is a check that cannot exist. Substitute the strongest static evidence
-    # available: the plugin DLL must have been produced. Whether it is the right
-    # MACHINE is not this gate's job; verify-target-arch.ps1 asserts that over
-    # the whole install prefix at the end of the merge stage.
+    # it is a check that cannot exist. But "the DLL exists" was weaker than what
+    # this host can actually verify (found 2026-08-24: the machinery below was
+    # built, said of itself that dumpbin reads arm64 DLLs fine, and was then
+    # never called on this branch). Static checks that DO run here:
+    #   (a) dependency-tree walk via dumpbin /dependents -- catches the
+    #       0xC0000135 class (a plugin whose import can never resolve) that the
+    #       old filename glob waved through;
+    #   (b) dumpbin /exports must show gst_plugin_desc -- the one export every
+    #       real GStreamer plugin carries; its absence means "a DLL with the
+    #       right name that is not a plugin".
+    # Whether it is the right MACHINE is still verify-target-arch.ps1's job in
+    # the merge stage.
     if ($script:GstCross) {
         foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
             $pluginDll = Get-ChildItem -Path $gstPluginDir -Filter "gst*$($plugin.Name)*.dll" -File -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($pluginDll) {
-                log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' built: $($pluginDll.Name) (cross lane - load probe impossible on an x64 host)"
-            } else {
+            if (-not $pluginDll) {
                 log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' produced NO DLL in $gstPluginDir — $($plugin.Why)"
+                $missingPlugins += $plugin
+                continue
+            }
+            $staticProblems = @()
+            if ($dumpbin) {
+                $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
+                if ($unresolved) { $staticProblems += ($unresolved | ForEach-Object { "unresolved dependency: $_" }) }
+                # Export marker: MEASURED, then hardened (both 2026-08-24). The
+                # first version asserted the legacy `gst_plugin_desc` symbol and
+                # failed ALL FOUR plugins including three proven loadable on
+                # amd64 -- modern GStreamer (>=1.14 per-plugin registration)
+                # exports gst_plugin_<name>_get_desc + gst_plugin_<name>_register
+                # instead, confirmed by dumping the real export tables of all
+                # four (libav/opencv/onnx/tflite showed exactly this pair). Now a
+                # HARD assert again, on the measured, per-plugin marker.
+                $exports = @(& $dumpbin /exports $pluginDll.FullName 2>&1)
+                $marker = "gst_plugin_$($plugin.Name)_get_desc"
+                if (-not ($exports -match [regex]::Escape($marker))) {
+                    $exportNames = @($exports | Select-String '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]{8}\s+(\S+)' |
+                        ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 6)
+                    $staticProblems += "$marker export missing (exports seen: $($exportNames -join ', '))"
+                }
+            } else {
+                log '    (dumpbin unavailable - dependency/export checks skipped, DLL presence only)'
+            }
+            if ($staticProblems.Count -eq 0) {
+                log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' built: $($pluginDll.Name) (cross lane - deps resolve, gst_plugin_$($plugin.Name)_get_desc exported; load probe impossible on an x64 host)"
+            } else {
+                $staticProblems | ForEach-Object { log "    $_" }
+                log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' built but statically broken — $($plugin.Why)"
                 $missingPlugins += $plugin
             }
         }

@@ -273,6 +273,8 @@ COPY windows\scripts\build\build-onnx-from-source.ps1 `
      windows\scripts\build\build-onnx-genai-from-source.ps1 `
      windows\scripts\build\build-opencv-from-source.ps1 `
      windows\scripts\build\build-ffmpeg-from-source.ps1 `
+     windows\scripts\build\build-target-cpython.ps1 `
+     windows\scripts\build\cpython-Directory.Build.props `
      windows\scripts\build\build-media-core-all.ps1 `
      C:\temp\scripts\
 
@@ -309,21 +311,38 @@ COPY windows\scripts\build\build-litert-from-source.ps1 `
      windows\scripts\build\debug-litertlm-link.ps1 `
      C:\temp\scripts\
 
-# ── media-branch-absent: stand-in for branches that CANNOT be cross-built ────
+# ── media-branch-absent: stand-in for branches absent on the cross lane ──────
 # Dockerfile.media-merge-builder fans in three branch trees with unconditional
 # COPY --from=media-litert / --from=media-tvm, and a Dockerfile has no way to
-# make a COPY conditional. On the arm64 cross lane neither branch can exist:
+# make a COPY conditional. On the arm64 cross lane neither branch is built:
 #
-#   media-litert : LiteRT-LM's ACTIVE build path is Bazel and its .bazelrc has
-#                  no windows-arm64 configuration at all. CORRECTED 2026-08-23:
-#                  this previously blamed prebuilt\windows_x86_64\
-#                  libGemmaModelConstraintProvider.lib -- the first plausible
-#                  blocker spotted in the file, but the wrong one. That blob is
-#                  OPTIONAL (upstream's CMake path compiles a stub in its place),
-#                  so it never was what stood in the way.
-#   media-tvm    : TVM builds its own minimal LLVM with
-#                  -DLLVM_TARGETS_TO_BUILD=X86;NVPTX (build-tvm-from-
-#                  source.ps1:141), so its codegen cannot emit aarch64 at all.
+#   media-litert : LiteRT-LM's ACTIVE build path is Bazel, and TWO blockers
+#                  are real: (a) upstream's .bazelrc has no windows-arm64
+#                  config (only android/macos/ios arm64) and (b) the prebuilt
+#                  x86_64-only libGemmaModelConstraintProvider.lib IS in the
+#                  default Windows dependency graph via gemma3_data_processor
+#                  -- severable with the litert_lm_fst_constraints_disabled
+#                  config_setting (model_data_processor/BUILD:26-33), but not
+#                  yet severed here. CORRECTED 2026-08-24: the 2026-08-23 note
+#                  here dismissed the prebuilt as "OPTIONAL ... never was what
+#                  stood in the way" -- wrong for the Bazel path we actually
+#                  run (the stub substitute exists only on upstream's CMake
+#                  path). The original claim blamed only the prebuilt, the
+#                  2026-08-23 one only the bazelrc; each was half the story.
+#                  Plain LiteRT (pure CMake, no Bazel, no prebuilt) shares
+#                  neither blocker -- its one cross obstacle is upstream's
+#                  TFLITE_HOST_TOOLS_DIR host-flatc requirement; its cross
+#                  build is backlog #115.
+#   media-tvm    : CORRECTED 2026-08-24: this line claimed the X86;NVPTX LLVM
+#                  target list means TVM's "codegen cannot emit aarch64 at
+#                  all" -- wrong since first written: build-tvm-from-source.ps1
+#                  sets that list itself, an array this repo fully controls
+#                  (AArch64 added 2026-08-24, #116 Phase 0). The REAL cross
+#                  cost is that USE_LLVM=<path> must EXECUTE llvm-config,
+#                  which needs a host-tools/target-libs split -- backlog #116.
+#                  IREE rides this same dropped branch (upstream supports
+#                  IREE_HOST_BIN_DIR for exactly this split) and went unnamed
+#                  here before -- a silent casualty of the same fan-in.
 #
 # So the arm64 lane points BOTH LITERT_IMAGE and TVM_IMAGE at this stage, which
 # provides exactly the paths the merge copies from -- empty. Copying an empty
@@ -334,11 +353,19 @@ COPY windows\scripts\build\build-litert-from-source.ps1 `
 # spot instead of assuming the build silently dropped something.
 FROM common AS media-branch-absent
 
+# The SUBDIR pointers are in the list too (2026-08-24, first arm64 smoke run):
+# the merge bakes TVM_LIBRARY_PATH=...\tvm\lib and IREE_BIN=...\iree\bin, and
+# smoke section 19 asserts every baked pointer resolves. The stand-in created
+# only the roots, so those two assertions were the sole pointer failures out
+# of 35. (No inline comments inside the RUN below -- the escape joins it into
+# ONE pwsh line and a '#' would comment out everything after it.)
 RUN $dirs = @( `
         'C:\runtime\lib\litert', `
         'C:\runtime\lib\litert-lm', `
         'C:\runtime\lib\tvm', `
+        'C:\runtime\lib\tvm\lib', `
         'C:\runtime\iree', `
+        'C:\runtime\iree\bin', `
         'C:\runtime\wheels', `
         'C:\temp\cpython\Lib\site-packages' `
     ); `
@@ -346,11 +373,17 @@ RUN $dirs = @( `
     $note = @( `
         'This component is intentionally ABSENT from the Windows arm64 (aarch64) bundle.', `
         '', `
-        'LiteRT-LM is built through Bazel here, and its .bazelrc carries no windows-arm64', `
-        'configuration; TVM builds its own LLVM with X86;NVPTX targets only, so its codegen', `
-        'cannot emit aarch64.', `
+        'LiteRT-LM: its Bazel build hits two real blockers -- the upstream .bazelrc has no', `
+        'windows-arm64 config, and the x86_64-only prebuilt libGemmaModelConstraintProvider', `
+        'sits in the default Windows dependency graph (severable, but not yet severed here).', `
+        'Plain LiteRT (pure CMake) shares neither blocker; its cross build is backlog #115.', `
         '', `
-        'Neither is fixable in this repository. See docs/windows-cross-builds.md.' `
+        'TVM and IREE: absent because USE_LLVM / the IREE build must EXECUTE host tools at', `
+        'configure time, which needs a host-tools/target-libs split -- backlog #116. The', `
+        'LLVM target list is set by this repo (X86;AArch64;NVPTX), so codegen is NOT the', `
+        'blocker; an earlier version of this note wrongly called aarch64 codegen unfixable.', `
+        '', `
+        'See docs/windows-cross-builds.md.' `
     ) -join [Environment]::NewLine; `
     foreach ($d in @('C:\runtime\lib\litert', 'C:\runtime\lib\litert-lm', 'C:\runtime\lib\tvm', 'C:\runtime\iree')) { `
         Set-Content -Path (Join-Path $d 'ABSENT-ON-ARM64.txt') -Value $note -Encoding utf8 `
@@ -463,6 +496,8 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-target-cpython.ps1,target=C:\bkmnt\build-target-cpython.ps1 `
+    --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `

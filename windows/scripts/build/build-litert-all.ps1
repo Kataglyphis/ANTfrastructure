@@ -56,15 +56,51 @@ Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -F
 # -ResumeFrom/-Until partition logic (26 lines) around that split. The chain's
 # Invoke-stage shape carries the odd signature now; the chain also owns the
 # banner + native-exit check + partition validation + the sccache stats dump.
-Invoke-SourceBuildChain -Label 'media-litert' -InstallDir $InstallDir -ScriptDir $ScriptDir `
-    -StartAt $ResumeFrom -Until $Until -Stages @(
+# PER-STAGE cross split (#115, 2026-08-24). The two phases have entirely
+# different cross stories and the old BRANCH-level drop threw both away:
+#   * plain LiteRT is pure CMake through the shared cross choke point, links no
+#     prebuilt blob and needs only a host flatc (TFLITE_HOST_TOOLS_DIR) — it
+#     cross-builds, and restoring it also restores the tflite GStreamer plugin.
+#   * LiteRT-LM's bazel path is genuinely blocked on the cross lane: no
+#     windows-arm64 config in upstream's .bazelrc AND the x86_64-only
+#     libGemmaModelConstraintProvider prebuilt sits in the default Windows
+#     dependency graph (severable only via litert_lm_fst_constraints_disabled).
+#     That is real porting work, tracked in the backlog — skipped here with the
+#     reason printed, never silently.
+$litertStages = @(
     @{ Name = 'LiteRT'; Script = 'build-litert-from-source.ps1'; SourceDir = 'C:\temp\litert-src' }
-    @{ Name = 'LiteRT-LM'; Invoke = { param($sd, $id)
+)
+if (Test-WindowsCrossTarget) {
+    Write-Host ("media-litert: LiteRT-LM stage SKIPPED on the $(Get-WindowsTargetArch) cross lane -- upstream's bazel " +
+                'path has no windows-arm64 config and default-links an x86_64-only prebuilt (see backlog; ' +
+                'plain LiteRT above is unaffected and builds).')
+    # The merge fan-in COPYs C:\runtime\lib\litert-lm UNCONDITIONALLY
+    # (Dockerfile.media-merge-builder:176 -- a Dockerfile cannot branch), and
+    # until #115 that path came from the media-branch-absent stand-in. Now this
+    # REAL image feeds the fan-in, so it must provide the same empty,
+    # marker-carrying tree the stand-in did, or the COPY fails on a path that
+    # legitimately does not exist here. Same convention, same marker name.
+    $lmRoot = Join-Path $InstallDir 'lib\litert-lm'
+    foreach ($d in @($lmRoot, (Join-Path $lmRoot 'include'), (Join-Path $lmRoot 'bin'))) {
+        New-Item -Path $d -ItemType Directory -Force | Out-Null
+    }
+    Set-Content -Path (Join-Path $lmRoot 'ABSENT-ON-ARM64.txt') -Encoding ASCII -Value @(
+        'LiteRT-LM is not built on the arm64 cross lane. Its ACTIVE build path is Bazel, where two'
+        'blockers are real: upstream''s .bazelrc has no windows-arm64 config, and the x86_64-only'
+        'libGemmaModelConstraintProvider prebuilt sits in the default Windows dependency graph'
+        '(severable via the litert_lm_fst_constraints_disabled config_setting). Plain LiteRT IS'
+        'built on this lane (see C:\runtime\lib\litert). See docs/windows-cross-builds.md.'
+    )
+    Write-Host "media-litert: staged empty litert-lm stand-in tree at $lmRoot (merge fan-in COPY contract)"
+} else {
+    $litertStages += @{ Name = 'LiteRT-LM'; Invoke = { param($sd, $id)
             # Repository cache mount (optional) for cross-run reuse; the bazel
             # output_base stays container-local (see the script's header).
             & (Join-Path $sd 'build-litert-lm-bazel.ps1') -InstallDir $id -RepositoryCache ([string]$env:BAZEL_REPO_CACHE)
         } }
-)
+}
+Invoke-SourceBuildChain -Label 'media-litert' -InstallDir $InstallDir -ScriptDir $ScriptDir `
+    -StartAt $ResumeFrom -Until $Until -Stages $litertStages
 
 Complete-SourceBuildChain -Label 'media-litert' -ScrubAfter:$ScrubAfter
 

@@ -346,7 +346,15 @@ $cmakeExtra = $cudaRspArgs + @(
                          # BUILD_opencv_world=OFF: avoids FFmpeg/ONNX importing issues
                          '-DBUILD_opencv_world=OFF',
     '-DBUILD_JPEG=ON', '-DBUILD_PNG=ON', '-DBUILD_TIFF=ON', '-DBUILD_WEBP=ON',
-    '-DBUILD_OPENJPEG=ON', '-DBUILD_HARFBUZZ=ON', '-DBUILD_TBB=OFF',  # source build only on ARM Windows
+    '-DBUILD_OPENJPEG=ON', '-DBUILD_HARFBUZZ=ON',
+    # BUILD_TBB=OFF on BOTH lanes -- this line is unconditional and always was.
+    # The old inline note "source build only on ARM Windows" (2026-08-07) was
+    # wrong: the flag has never been arch-gated. ON would have CMake fetch
+    # OpenCV's own TBB from GitHub at configure time, an unpinned mid-configure
+    # download of exactly the kind #94 removed for FFmpeg. Nothing else in the
+    # chain provisions TBB either -- see the WITH_OPENMP note below for what
+    # that means for cv::parallel.
+    '-DBUILD_TBB=OFF',
     '-DBUILD_CLAPACK=ON', '-DBUILD_IPP_IW=ON',
     # cv2 python module: cmake --install drops it into CPython's site-packages
     # (queried from the interpreter); the media merge fans site-packages into the
@@ -382,8 +390,17 @@ $cmakeExtra = $cudaRspArgs + @(
     # on PKG_CONFIG_FOUND, which is never set on this platform. Backlog #94.
     # WITH_OPENMP=OFF: clang-cl compiles `#pragma omp` (e.g. contrib surface_matching)
     # into __kmpc_* runtime calls but the generated link line never includes libomp.lib
-    # -> lld-link "undefined symbol: __kmpc_fork_call". TBB (WITH_TBB=ON above) is
-    # OpenCV's preferred cv::parallel backend anyway, so no parallelism is lost.
+    # -> lld-link "undefined symbol: __kmpc_fork_call". OFF stays.
+    # RETRACTED 2026-08-24: the follow-on claim "TBB (WITH_TBB=ON above) is
+    # OpenCV's preferred cv::parallel backend anyway, so no parallelism is lost"
+    # (2026-08-07) was wrong. Nothing in this chain provisions TBB at all
+    # (BUILD_TBB=OFF above, no TBB staged anywhere), so WITH_TBB=ON almost
+    # certainly resolves to NO and cv::parallel falls back to whatever OpenCV
+    # detects on its own (MS Concurrency runtime, or nothing). The configure
+    # summary is the only place OpenCV states its parallel framework; it was
+    # kept out of the streamed build log until 2026-08-24 -- see the Tee-Object
+    # note at the configure call. Read it there before repeating any
+    # parallelism claim.
     '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=OFF',
     # NVCUVID/NVCUVENC require the NVIDIA Video Codec SDK (separate download, not in container)
     '-DWITH_NVCUVID=OFF', '-DWITH_NVCUVENC=OFF'
@@ -402,18 +419,28 @@ if ($ocvCross) {
     # at all. OpenCV still resolved and unpacked 3rdparty/ippicv/ippicv_win here,
     # so its headers were already on the include path of every core TU (visible in
     # the failing include chain: private.hpp:220 -> ippicv.h). Even had that
-    # compiled, the staged .lib is x64 COFF and lld-link would reject it against an
-    # arm64 image. BUILD_IPP_IW builds the IPP integration wrapper, which is
-    # meaningless without IPP.
+    # compiled, the staged .lib could never link -- though not for the reason
+    # given here on 2026-08-23. CORRECTED 2026-08-24: "the staged .lib is x64
+    # COFF" was wrong; upstream's ippicv.cmake selects the blob by x86 checks
+    # its Windows branch never guards against ARM, so a win-arm64 configure
+    # would actually pull the 32-bit ia32 blob (an upstream bug worth filing).
+    # Either flavour is x86 COFF that lld-link rejects against an arm64 image,
+    # so IPP stays OFF regardless. BUILD_IPP_IW builds the IPP integration
+    # wrapper, which is meaningless without IPP.
     $cmakeExtra += '-DWITH_IPP=OFF', '-DBUILD_IPP_IW=OFF'
-    # DirectML: OFF here is SEQUENCING, not a platform gap. The claim recorded
-    # until 2026-08-23 -- that DirectML ships no arm64 import library -- was wrong:
-    # Microsoft.AI.DirectML 1.15.4 ships bin/arm64-win/DirectML.lib (machine
-    # 0xAA64). ONNX Runtime failed on an upper/lower-case path mismatch in its own
-    # CMake, patched under backlog #113, and now builds USE_DML=ON on this lane.
-    # OpenCV stays OFF until that is proven green: cv::dnn would otherwise
-    # advertise a backend whose runtime half of the stack is unverified.
-    $cmakeExtra += '-DWITH_DIRECTML=OFF'
+    # DirectML: ON for the cross lane too (#118, 2026-08-24), restoring parity
+    # with amd64. Two facts, both verified rather than assumed:
+    #   (1) What this flag actually feeds is NOT a cv::dnn backend -- HAVE_DIRECTML
+    #       is consumed only by contrib G-API's ONNX DirectML EP
+    #       (cv::gapi::onnx::ep::DirectML), and only when HAVE_ONNX_DML also
+    #       holds, i.e. dml_provider_factory.h is found in the ORT install.
+    #   (2) Since #113 puts USE_DML=ON on both lanes, upstream ORT's
+    #       get_c_cxx_api_headers() GLOBs include/onnxruntime/core/providers/dml/*.h
+    #       into the public-header install set, so that factory header IS
+    #       installed here. Detection itself is a try_compile against the Windows
+    #       SDK's arm64 d3d12/dxcore/directml import libs, which ship with the SDK.
+    # The earlier OFF (and the "no arm64 import library" claim before it) is
+    # retracted history -- see backlog #113/#118.
     # INSTALL LAYOUT. OpenCV composes <root>\<OpenCV_ARCH>\<OpenCV_RUNTIME>\{bin,lib}
     # and its ARM64 branch in OpenCVDetectCXXCompiler.cmake keys off
     #     elseif("${CMAKE_GENERATOR_PLATFORM}" MATCHES "ARM64")
@@ -441,7 +468,7 @@ if ($ocvCross) {
     # and the literal already hardcoded in Dockerfile.media-merge-builder,
     # build-gstreamer-from-source.ps1 and smoke-test-container.ps1.
     $cmakeExtra += "-DOpenCV_ARCH=$(Get-OpenCvArchDir -Arch $ocvTargetArch)", '-DOpenCV_RUNTIME=vc18'
-    Write-Host "OpenCV cross ($ocvTargetArch): WITH_IPP=OFF (x86-only), BUILD_IPP_IW=OFF, WITH_DIRECTML=OFF (sequencing: ORT arm64 DML unverified, backlog #113 -- NOT a missing import lib), install layout -> $(Get-OpenCvArchDir -Arch $ocvTargetArch)\vc18"
+    Write-Host "OpenCV cross ($ocvTargetArch): WITH_IPP=OFF (x86-only), BUILD_IPP_IW=OFF, WITH_DIRECTML=ON (parity restored, #118 -- feeds G-API's ONNX DirectML EP, not cv::dnn), install layout -> $(Get-OpenCvArchDir -Arch $ocvTargetArch)\vc18"
 }
 
 # --- FFmpeg discovery for videoio (backlog #94) -------------------------------
@@ -520,11 +547,18 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
 $gpuEnv = Get-GpuEnvironment
 # Cross lane: NEVER take CUDA from a HOST probe. Get-GpuEnvironment answers "does
 # this windows/amd64 BUILD HOST have a CUDA toolkit", which says nothing about the
-# target -- and there is no CUDA/cuDNN/TensorRT for Windows-on-ARM at all. A bare
-# host probe here would enable_language(CUDA), point nvcc at x64 device libs and
-# link them into an "arm64" OpenCV. The driver already refuses -Gpu with a
-# non-amd64 -TargetArch; this enforces the same rule where the decision is
-# actually made, so a direct script invocation cannot bypass it.
+# target. CORRECTED 2026-08-24: this note claimed since 2026-08-23 that "there
+# is no CUDA/cuDNN/TensorRT for Windows-on-ARM at all" -- false. cuDNN ships a
+# windows-arm64 archive at this repo's exact 9.25.0.15 pin (verified, lib/arm64
+# inside), CUDA 13.4 (preview) advertises Windows ARM64 incl. x86_64-hosted
+# cross-compile, and TensorRT-RTX publishes Windows-on-Arm packages for CUDA
+# 13.4; only classic TensorRT is genuinely x64-only. None of that is wired into
+# this chain yet -- backlog work, not fiction -- so the guard stands on the
+# reason that was always sound: a bare host probe here would
+# enable_language(CUDA), point nvcc at x64 device libs and link them into an
+# "arm64" OpenCV. The driver already refuses -Gpu with a non-amd64 -TargetArch;
+# this enforces the same rule where the decision is actually made, so a direct
+# script invocation cannot bypass it.
 if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget -Arch $ocvTargetArch)) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
@@ -599,9 +633,14 @@ if ($env:OPENCV_LINK_CHAIN_FFMPEG -eq '1' -and (Test-Path $ocvShim)) {
 # When the FFmpeg gate below first fired there was literally nothing to read,
 # which is a "never swallow logs" violation at exactly the moment the log
 # matters. Tee to a persistent path instead (survives the failed solve, #43).
+# The Tee kept a trailing `| Out-Null` that repeated half the mistake: the
+# file survived, but the streamed build log still lost the configure summary
+# -- the only place OpenCV states its CPU dispatch set and its parallel
+# framework (which the WITH_OPENMP note above depends on). Dropped 2026-08-24;
+# the configure output now streams AND lands in $cfgLog.
 $cfgLog = Get-PersistentBuildLogPath -Name 'opencv-configure.log' -FallbackDir $buildDir
 Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra 2>&1 |
-    Tee-Object -FilePath $cfgLog | Out-Null
+    Tee-Object -FilePath $cfgLog
 Write-Host "CMake configure log: $cfgLog"
 
 # GATE: prove FFmpeg was actually detected before spending ~20 min compiling.
@@ -645,14 +684,22 @@ if (Test-Path $ffProbe) {
         $env:PATH = ($probeDirs -join ';') + ';' + $env:PATH
         if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
             # ffmpeg.exe here is a TARGET binary; running it on this x64 host
-            # yields a loader error, not a version string. The value it produces
-            # ($chainAvcodecMajor) only feeds the FFmpeg-vs-OpenCV consistency
-            # gate below, so leaving it empty degrades that gate to the
-            # configure-log evidence it already reads -- rather than reporting a
-            # bogus 0xC0000135 as if it were a missing DLL.
-            Write-Host 'Skipping the ffmpeg.exe version probe: cross build (a target binary cannot execute on this host)'
+            # yields a loader error, not a version string. But the provenance
+            # gate does NOT need execution (corrected 2026-08-24 -- until then
+            # this branch set $ffVer='' and the gate degraded to "provenance
+            # unverified" on every cross build): the chain-side avcodec major is
+            # a STATIC fact, readable from the staged avcodec-<N>.dll filename,
+            # exactly the number `ffmpeg -version` would have printed.
+            $avcodecDll = Get-ChildItem -Path $ffBinDir -Filter 'avcodec-*.dll' -File -ErrorAction SilentlyContinue | Select-Object -First 1
             $ffVer = ''
             $ffExit = 0
+            if ($avcodecDll -and $avcodecDll.Name -match '^avcodec-(\d+)\.dll$') {
+                # Feed the same variable the runnable probe fills, in its shape.
+                $ffVer = "libavcodec $($Matches[1]).0.0"
+                Write-Host "ffmpeg.exe version probe replaced by a static read on the cross lane: $($avcodecDll.Name) -> avcodec major $($Matches[1])"
+            } else {
+                Write-Host "NOTE: no avcodec-<N>.dll in $ffBinDir - chain avcodec major unknown, provenance gate degrades to configure-log evidence"
+            }
         } else {
             $ffVer = & $ffProbe -version 2>&1 | Out-String
             $ffExit = $LASTEXITCODE

@@ -75,6 +75,16 @@ Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSmokeTest.Common.psm1'
 # the lane resolves itself; unset, every accessor returns the amd64 value and
 # today's behaviour is unchanged.
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1') -Force
+# CROSS LANE (2026-08-24): the suite used to not run AT ALL on arm64 ("NOT
+# APPLICABLE"), which forfeited ~49 assertions that never touch the payload --
+# sections 1-6 and 14-16 exercise the amd64 HOST toolchain inside this amd64
+# container (rustc/clang-cl compile+link+RUN, ASAN, CMake+Ninja, MSBuild) and
+# pass identically on a cross image. What genuinely cannot run is the PAYLOAD:
+# every staged binary is aarch64 and Windows x64 has no ARM64 emulation. So the
+# payload sections (8-13, 17, 18, 20-22) are skipped as SECTIONS with a printed
+# reason, §7 keeps its own CUDA self-skip, and §19's pointer list is
+# arch-filtered. Floors: the arm64 column in $sectionFloors.
+$smokeCross = Test-WindowsCrossTarget
 
 # Must precede the first assertion: this both zeroes the counters and hands the
 # module the -ExitOnFirstFailure switch. Assert-Test used to read that switch
@@ -480,6 +490,9 @@ int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
 
 # ============================================================================
 Write-TestHeader '8. ONNX Runtime (source-built)'
+if ($smokeCross) {
+    Skip-Test "section 8 (ONNX Runtime (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
 if ($onnxRoot) {
@@ -626,8 +639,12 @@ int main() {
     Skip-Test 'ONNX_ROOT not set'
 }
 
+}
 # ============================================================================
 Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
+if ($smokeCross) {
+    Skip-Test "section 9 (ONNX Runtime GenAI (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
 if ($genaiRoot) {
@@ -708,15 +725,22 @@ if ($genaiRoot) {
     Skip-Test 'ONNX_GENAI_ROOT not set'
 }
 
+}
 # ============================================================================
 Write-TestHeader '10. OpenCV 5 (source-built)'
+if ($smokeCross) {
+    Skip-Test "section 10 (OpenCV 5 (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $opencvInclude = [Environment]::GetEnvironmentVariable('OPENCV_INCLUDE')
 $opencvRoot = [Environment]::GetEnvironmentVariable('OPENCV_ROOT')
 # This build installs OpenCV as per-module libs (opencv_core510.*, ...) under
-# <root>\x64\vc18\{bin,lib} -- NOT a single opencv_world, and NOT where OPENCV_BIN/
-# OPENCV_LIB point (<root>\bin|lib, which don't exist on disk). Search the whole
-# root so the module-vs-world layout and the misdirected env vars don't matter.
+# <root>\<arch>\vc18\{bin,lib} -- <arch> per lane (Get-OpenCvArchDir: x64 here,
+# arm64 on the cross lane via the OpenCV_ARCH override in
+# build-opencv-from-source.ps1) -- NOT a single opencv_world, and NOT where
+# OPENCV_BIN/OPENCV_LIB point (<root>\bin|lib, which don't exist on disk).
+# Search the whole root so the arch dir, the module-vs-world layout and the
+# misdirected env vars all don't matter.
 $opencvSearchRoot = if ($opencvRoot -and (Test-Path $opencvRoot)) { $opencvRoot } elseif ($opencvInclude -and (Test-Path $opencvInclude)) { Split-Path $opencvInclude -Parent } else { $null }
 
 if ($opencvInclude -and (Test-Path $opencvInclude)) {
@@ -784,8 +808,12 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
         -FailMessage 'OPENCV_ROOT exists but opencv_core lib/dll or core.hpp are not all found — the install shrank'
 }
 
+}
 # ============================================================================
 Write-TestHeader '11. GStreamer (source-built)'
+if ($smokeCross) {
+    Skip-Test "section 11 (GStreamer (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 Assert-CommandExists 'gst-launch-1.0'
 Assert-CommandExists 'gst-inspect-1.0'
@@ -844,7 +872,10 @@ Assert-Test -Name "GStreamer real pipeline runs (videotestsrc ! videoconvert ! f
 $requiredGstModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
 if (Test-Path $requiredGstModule) {
     Import-Module $requiredGstModule -Force -DisableNameChecking
-    foreach ($plugin in @(Get-RequiredGstPlugin)) {
+    # Explicit -Arch (2026-08-24): the bare call resolves through the env var and
+    # was arch-correct in-container, but only by that coincidence -- on a build
+    # host without WINDOWS_TARGET_ARCH it silently probes the amd64 contract.
+    foreach ($plugin in @(Get-RequiredGstPlugin -Arch (Get-WindowsTargetArch))) {
         Assert-Test -Name "gst-plugin '$($plugin.Name)' is present and loadable" -Condition {
             $global:LASTEXITCODE = 0
             & gst-inspect-1.0 $plugin.Name 2>&1 | Out-Null
@@ -857,8 +888,12 @@ if (Test-Path $requiredGstModule) {
     Skip-Test "mandatory gst-plugin assertions (WindowsGstPlugins.Common.psm1 not found at $requiredGstModule -- image predates the contract)"
 }
 
+}
 # ============================================================================
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
+if ($smokeCross) {
+    Skip-Test "section 12 (LiteRT (AI Edge runtime, source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { 'C:\runtime\lib\litert' }
 $litertInclude = Join-Path $litertRoot 'include'
@@ -908,8 +943,12 @@ if (Test-Path $litertBinDir) {
     Assert-ArtifactPresent -Root $litertBinDir -Filter '*.dll' -Description 'LiteRT DLL files' -Informational
 }
 
+}
 # ============================================================================
 Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
+if ($smokeCross) {
+    Skip-Test "section 13 (LiteRT-LM (on-device LLM inference, source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $litertLmRoot = if ($env:LITERT_LM_ROOT) { $env:LITERT_LM_ROOT } else { 'C:\runtime\lib\litert-lm' }
 $litertLmInclude = Join-Path $litertLmRoot 'include'
@@ -960,6 +999,7 @@ if (Test-Path $litertLmExe) {
     } -FailMessage 'litert_lm_main.exe did not run cleanly (abseil flag ODR abort, missing DLL, or no flag output)'
 }
 
+}
 # ============================================================================
 Write-TestHeader '14. Compiler smoke test (clang-cl builds C++)'
 # ============================================================================
@@ -981,15 +1021,40 @@ $srcFile = Join-Path $tmpDir 'smoke.cpp'
 $exeFile = Join-Path $tmpDir 'smoke.exe'
 Set-Content -Path $srcFile -Value $cppSource -Encoding ASCII
 
+# CROSS LANE (measured 2026-08-24, first arm64 smoke run): the final image
+# bakes VSDEVCMD_ARCH=arm64, so LIB/INCLUDE here are the ARM64 CRT -- a bare
+# clang-cl (default target x64) links against them and fails with machine-type
+# conflicts. "This section runs unchanged on the cross image" was therefore
+# wrong. The honest cross form is BETTER, not weaker: compile FOR the target
+# against the env the image actually provides, then assert the produced PE's
+# machine -- a real end-to-end cross-toolchain probe. Only the RUN half is
+# impossible here.
+$smokeCompileTargetFlag = if ($smokeCross) { "/clang:--target=$(Get-ClangTargetTriple)" } else { $null }
 Assert-Test -Name "clang-cl compiles C++ program" -Condition {
-    & clang-cl $srcFile /Fe$exeFile /std:c++17 2>&1 | Out-Null
+    if ($smokeCompileTargetFlag) { & clang-cl $srcFile $smokeCompileTargetFlag /Fe$exeFile /std:c++17 2>&1 | Out-Null }
+    else { & clang-cl $srcFile /Fe$exeFile /std:c++17 2>&1 | Out-Null }
     return $LASTEXITCODE -eq 0
 } -FailMessage "clang-cl failed to compile simple C++ program"
 
-Assert-Test -Name "Compiled program runs" -Condition {
-    $output = & $exeFile 2>&1 | Out-String
-    return $output.Trim() -eq 'smoke test ok'
-} -FailMessage "Compiled program produced wrong output"
+if ($smokeCross) {
+    Assert-Test -Name "Compiled program is target-arch (PE machine)" -Condition {
+        if (-not (Test-Path $exeFile)) { return $false }
+        $fs = [System.IO.File]::OpenRead($exeFile)
+        try {
+            $br = New-Object System.IO.BinaryReader($fs)
+            $fs.Seek(0x3C, 'Begin') | Out-Null
+            $peOff = $br.ReadUInt32()
+            $fs.Seek($peOff + 4, 'Begin') | Out-Null
+            return ($br.ReadUInt16() -eq (Get-PeMachineType))
+        } finally { $fs.Dispose() }
+    } -FailMessage "cross-compiled smoke.exe has the wrong PE machine type"
+    Skip-Test 'Compiled program runs: skipped on the cross lane (aarch64 exe cannot execute on this x64 host; PE machine asserted instead)'
+} else {
+    Assert-Test -Name "Compiled program runs" -Condition {
+        $output = & $exeFile 2>&1 | Out-String
+        return $output.Trim() -eq 'smoke test ok'
+    } -FailMessage "Compiled program produced wrong output"
+}
 
 Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -998,6 +1063,12 @@ Remove-Item $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
 # /fsanitize=address to prove the ASAN runtime DLLs resolve in-container. The
 # probe must also DETECT a real bug: it exits 0 only if ASAN reports the
 # intentional heap-buffer-overflow (output contains the report marker).
+# Cross lane: skipped outright -- LLVM's Windows x64 package ships no
+# aarch64-windows ASAN runtime, and the probe's whole point is RUNNING the
+# instrumented exe, which is impossible here anyway.
+if ($smokeCross) {
+    Skip-Test 'ASAN probe skipped on the cross lane (no aarch64-windows ASAN runtime in the LLVM package; the probe must execute the instrumented exe)'
+} else {
 Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
     $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
     Initialize-SmokeScratch -Path $d
@@ -1021,6 +1092,7 @@ int main() {
         return ($LASTEXITCODE -ne 0) -and ($out -match 'AddressSanitizer: heap-buffer-overflow')
     } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
 } -FailMessage "ASAN probe failed: /fsanitize=address did not compile, or the runtime did not detect the intentional overflow (ASAN runtime DLLs missing?)"
+}
 
 # ============================================================================
 Write-TestHeader '15. CMake + Ninja + clang-cl integration'
@@ -1044,8 +1116,16 @@ Set-Content -Path (Join-Path $tmpDir2 'CMakeLists.txt') -Value $cmakeLists -Enco
 Set-Content -Path (Join-Path $tmpDir2 'smoke_cmake.cpp') -Value $cppSource2 -Encoding ASCII
 
 $buildDir2 = Join-Path $tmpDir2 'build'
+# Cross lane: same VSDEVCMD_ARCH=arm64 reality as section 14 -- the configure
+# must carry the target triple or clang-cl's x64 default fights the ARM64 env
+# libs. Passed via the same COMPILER_TARGET/FLAGS_INIT shape the build scripts'
+# choke point uses; amd64 gets the empty array and stays byte-identical.
+$smokeCmakeCrossArgs = if ($smokeCross) {
+    @("-DCMAKE_C_COMPILER_TARGET=$(Get-ClangTargetTriple)", "-DCMAKE_CXX_COMPILER_TARGET=$(Get-ClangTargetTriple)",
+      "-DCMAKE_C_FLAGS_INIT=--target=$(Get-ClangTargetTriple)", "-DCMAKE_CXX_FLAGS_INIT=--target=$(Get-ClangTargetTriple)")
+} else { @() }
 Assert-Test -Name "CMake+Ninja+clang-cl configure" -Condition {
-    & cmake -S $tmpDir2 -B $buildDir2 -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl 2>&1 | Out-Null
+    & cmake -S $tmpDir2 -B $buildDir2 -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl @smokeCmakeCrossArgs 2>&1 | Out-Null
     return $LASTEXITCODE -eq 0
 } -FailMessage "CMake configure with Ninja+clang-cl failed"
 
@@ -1053,6 +1133,21 @@ Assert-Test -Name "CMake+Ninja+clang-cl build" -Condition {
     & cmake --build $buildDir2 2>&1 | Out-Null
     return $LASTEXITCODE -eq 0
 } -FailMessage "CMake build with Ninja+clang-cl failed"
+
+if ($smokeCross) {
+    Assert-Test -Name "CMake-built exe is target-arch (PE machine)" -Condition {
+        $exe2 = Join-Path $buildDir2 'smoke_cmake.exe'
+        if (-not (Test-Path $exe2)) { return $false }
+        $fs = [System.IO.File]::OpenRead($exe2)
+        try {
+            $br = New-Object System.IO.BinaryReader($fs)
+            $fs.Seek(0x3C, 'Begin') | Out-Null
+            $peOff = $br.ReadUInt32()
+            $fs.Seek($peOff + 4, 'Begin') | Out-Null
+            return ($br.ReadUInt16() -eq (Get-PeMachineType))
+        } finally { $fs.Dispose() }
+    } -FailMessage "CMake-built smoke_cmake.exe has the wrong PE machine type"
+}
 
 Remove-Item $tmpDir2 -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -1107,6 +1202,9 @@ Remove-Item $tmpDir3 -Recurse -Force -ErrorAction SilentlyContinue
 
 # ============================================================================
 Write-TestHeader '17. TVM (source-built)'
+if ($smokeCross) {
+    Skip-Test "section 17 (TVM (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { Join-Path 'C:\runtime\lib' 'tvm' }
 if (Test-Path $tvmRoot) {
@@ -1137,8 +1235,12 @@ if (Test-Path $tvmRoot) {
     Skip-Test 'TVM not installed (C:\runtime\lib\tvm not found)'
 }
 
+}
 # ============================================================================
 Write-TestHeader '18. FFmpeg (source-built with DNN/ONNX)'
+if ($smokeCross) {
+    Skip-Test "section 18 (FFmpeg (source-built with DNN/ONNX)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 $ffmpegBin = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
 if (Test-Path $ffmpegBin) {
@@ -1193,6 +1295,7 @@ if (Test-Path $ffmpegBin) {
     Skip-Test 'FFmpeg not installed (C:\runtime\ffmpeg\bin not found)'
 }
 
+}
 # ============================================================================
 Write-TestHeader '19. Environment pointer integrity'
 # ============================================================================
@@ -1225,6 +1328,16 @@ $envPointerNames = @(
 )
 if ($script:gpuNvidia) {
     $envPointerNames += @('CUDA_ROOT', 'CUDA_PATH', 'CUDNN_ROOT', 'TENSORRT_ROOT')
+}
+if ($smokeCross) {
+    # The torch stage is default-dropped on the cross lane (uv sync must RUN the
+    # target interpreter), so TORCH_APP_DIR names a stage that never built --
+    # asserting it would fail every arm64 run for a documented non-defect. All
+    # other pointers stay asserted: the absent branches (litert/tvm/iree) get
+    # EMPTY stub dirs from media-branch-absent, so their pointers must still
+    # resolve -- a dangling pointer is a real defect on either lane.
+    $envPointerNames = @($envPointerNames | Where-Object { $_ -ne 'TORCH_APP_DIR' })
+    Skip-Test 'TORCH_APP_DIR pointer check skipped on the cross lane (torch stage is default-dropped; see docs/windows-cross-builds.md)'
 }
 foreach ($envPointer in $envPointerNames) {
     $pointerName = $envPointer
@@ -1314,6 +1427,9 @@ Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
 
 # ============================================================================
 Write-TestHeader '20. Python bindings (wheels + imports + inference)'
+if ($smokeCross) {
+    Skip-Test "section 20 (Python bindings (wheels + imports + inference)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 # The media branches build python bindings for the source-built libraries, stage
 # the wheels centrally (PYTHON_WHEELS = C:\runtime\wheels) and install them into
@@ -1333,9 +1449,19 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
 
     # All wheels must carry THIS LANE'S platform tag. A win32 tag means the
     # sitecustomize shim was missing at build time (clang-CPython self-reports
-    # win32); a win_amd64 tag on the arm64 lane means the shim ran host-pinned and
-    # every wheel in the bundle is mislabelled. Both values come from the arch
-    # table, so this assert and Initialize-PythonPlatformTag cannot drift apart.
+    # win32); a win_amd64 tag on the arm64 lane means a host-built wheel leaked
+    # into the target store. CORRECTED 2026-08-24: the rest of this note
+    # (2026-08-23) claimed the assert and Initialize-PythonPlatformTag "cannot
+    # drift apart" because both read the arch table -- wrong since ed2a04d4
+    # (same day) host-pinned the shim: this assert resolves the TARGET arch,
+    # while the shim now deliberately stamps the HOST build interpreter (see
+    # its own correction note). They CAN diverge on the cross lane, and that is
+    # correct, because they answer different questions: the shim describes the
+    # build-host python, which never ships; this assert polices what the image
+    # SHIPS, where only target-tagged (or -any-) wheels may appear. Today the
+    # divergence is unexercised there: this section is cross-skipped and the
+    # arm64 wheel store stays empty until an aarch64 CPython exists (backlog
+    # #120).
     $pyWheelTag = Get-PythonWheelTag
     $pyPlatformName = Get-PythonPlatformName
     Assert-Test -Name "all staged wheels are $pyWheelTag-tagged" -Condition {
@@ -1518,8 +1644,12 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     Skip-Test 'Python bindings (PYTHON_WHEELS unset or missing -- image predates the wheel feature)'
 }
 
+}
 # ============================================================================
 Write-TestHeader '21. Orchestr-ANT-ion app environment (torch step)'
+if ($smokeCross) {
+    Skip-Test "section 21 (Orchestr-ANT-ion app environment (torch step)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 # The final image bakes the runtime orchestrator (clone + uv sync + reconcile
 # with this lane's wheels -- see assemble-torch-app.ps1). Verification re-runs
@@ -1550,8 +1680,12 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     Skip-Test 'Orchestr-ANT-ion app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
 }
 
+}
 # ============================================================================
 Write-TestHeader '22. IREE (source-built ML compiler + runtime)'
+if ($smokeCross) {
+    Skip-Test "section 22 (IREE (source-built ML compiler + runtime)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
+} else {
 # ============================================================================
 # Native tools live at IREE_BIN (on PATH via the media merge); the python
 # bindings ship as self-contained wheels (asserted in section 20). Real work,
@@ -1611,6 +1745,7 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
     Skip-Test 'IREE (IREE_BIN unset or missing -- image predates the IREE step)'
 }
 
+}
 # ============================================================================
 Write-TestHeader '== SUMMARY =='
 # ============================================================================
@@ -1654,19 +1789,31 @@ if ($summary.Aborted) {
 # below its floor is now a NAMED hole. Baseline = the measured per-section
 # counts of the 2026-08-20 green ride; second value = the CPU-lane floor
 # (GPU-only branches subtracted). Update DELIBERATELY when adding assertions.
+# Third slot (2026-08-24): the arm64 cross lane. Sections 1-6 and 14-16 exercise
+# the amd64 HOST toolchain and keep their CPU floors verbatim. Every payload
+# section (8-13, 17, 18, 20-22) is skipped as a section on cross, so its floor is
+# 0 -- and MUST stay 0 rather than being "fixed" by a skip, the same rule the
+# CPU column applies to '7'. §19 runs arch-filtered; its arm64 floor is
+# PROVISIONAL (static count of the assertions that cannot be conditional there:
+# the pointer loop minus TORCH_APP_DIR, PATH membership, cuda-runtime PATH,
+# vcpkg zlib) and deliberately a touch under that count -- recalibrate against
+# the first green arm64 run, like every other measured floor here.
 $sectionFloors = @{
-    '1' = @(13, 13); '2' = @(6, 6); '3' = @(8, 8); '4' = @(8, 8); '5' = @(4, 4)
+    '1' = @(13, 13, 13); '2' = @(6, 6, 6); '3' = @(8, 8, 8); '4' = @(8, 8, 8); '5' = @(4, 4, 4)
     # '7' was authored as 14 on 2026-08-21 and is 13: the GPU path runs nvcc-on-PATH,
     # nvcc version, CUDA_ROOT, CUDA_PATH, CUDA_ROOT dir, nvcc.exe, CUDNN_ROOT,
     # CUDNN_ROOT dir, cuDNN headers/libs/DLLs, the PTX compile and the cuDNN
     # link+run — thirteen, with no conditional fourteenth (the only branch there
     # picks link+run OR a Skip). Counted against a real -ExpectGpu run, not by eye.
-    '6' = @(4, 4); '7' = @(13, 0); '8' = @(11, 8); '9' = @(9, 6); '10' = @(7, 5)
-    '11' = @(12, 12); '12' = @(9, 9); '13' = @(6, 6); '14' = @(3, 3); '15' = @(2, 2)
-    '16' = @(1, 1); '17' = @(5, 5); '18' = @(8, 6); '19' = @(30, 26); '20' = @(22, 21)
-    '21' = @(2, 2); '22' = @(7, 6)
+    '6' = @(4, 4, 4); '7' = @(13, 0, 0); '8' = @(11, 8, 0); '9' = @(9, 6, 0); '10' = @(7, 5, 0)
+    '11' = @(12, 12, 0); '12' = @(9, 9, 0); '13' = @(6, 6, 0); '14' = @(3, 3, 2); '15' = @(2, 2, 2)
+    # '14' arm64 is 2, not 3: on cross the run-assert becomes a PE-machine
+    # assert (1:1) but ASAN is a SKIP (no aarch64-windows ASAN runtime), so the
+    # section's cross ceiling is compile + machine = 2. Measured, run 15.
+    '16' = @(1, 1, 1); '17' = @(5, 5, 0); '18' = @(8, 6, 0); '19' = @(30, 26, 24); '20' = @(22, 21, 0)
+    '21' = @(2, 2, 0); '22' = @(7, 6, 0)
 }
-$floorIdx = if ($ExpectGpu) { 0 } else { 1 }
+$floorIdx = if ($ExpectGpu) { 0 } elseif ($smokeCross) { 2 } else { 1 }
 foreach ($sec in $sectionFloors.Keys) {
     $floor = $sectionFloors[$sec][$floorIdx]
     if ($floor -le 0) { continue }

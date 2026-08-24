@@ -24,7 +24,9 @@ $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $
 # Cross-target state, resolved once. GenAI is the LAST media-core component (the
 # Dockerfile runs it in `media-core-built`, after OpenCV -- deliberately NOT the
 # order of the $components array in build-media-core-all.ps1), so by the time it
-# runs, ORT itself was already built with USE_DML=OFF on the cross lane.
+# runs, ORT is already built -- since #113 with USE_DML=ON on BOTH lanes, which
+# is what allows the DML flip below (#118). (Until 2026-08-23 this line claimed
+# the cross-lane ORT was USE_DML=OFF; that stopped being true with #113.)
 $genaiTargetArch = Get-WindowsTargetArch
 $genaiCross      = Test-WindowsCrossTarget -Arch $genaiTargetArch
 
@@ -104,22 +106,28 @@ if ($gpuEnv.HasCuda -and -not $genaiCross) {
     Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
 } else {
     $genaiCudaArgs = @('-DUSE_CUDA=OFF')
-    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- no CUDA exists for Windows-on-ARM" }
+    # NB the cross reason is deliberately "not wired", not "does not exist": CUDA
+    # 13.4 (preview) DOES advertise Windows-on-ARM incl. x64-hosted cross-compile,
+    # and the arm64 cuDNN 9.25.0.15 archive exists at this repo's exact pin
+    # (verified 2026-08-24, HTTP 200). Enabling it is backlog work, not fiction.
+    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- the arm64 CUDA path is not wired up (CUDA 13.4 preview only; see backlog)" }
                     else { 'CPU-only lane -- no nvidia GPU detected' }
     Write-Host "CUDA disabled for ONNX GenAI build ($genaiCudaWhy)"
 }
 
 # -- cross-lane switches, each decided by the TARGET arch --
-# USE_DML: OFF here is SEQUENCING, not a platform gap. The claim recorded until
-# 2026-08-23 -- "the nuget has no bin/ARM64-win/DirectML.lib" -- was wrong:
-# Microsoft.AI.DirectML 1.15.4 does ship bin/arm64-win/DirectML.lib (COFF import
-# archive, machine 0xAA64). What actually failed was an upper/lower-case mismatch
-# in ONNX Runtime own CMake; backlog #113 patches it and ORT now builds USE_DML=ON
-# on this lane too. GenAI stays OFF until that ORT build is proven green, because
-# GenAI links ORT and a half-enabled DML produces link errors that read like a
-# GenAI bug when they are not. Flip this to ON in the same change that confirms
-# ORT arm64 DML, not before.
-$genaiDmlArg = if ($genaiCross) { '-DUSE_DML=OFF' } else { '-DUSE_DML=ON' }
+# USE_DML: ON for BOTH lanes (backlog #118, 2026-08-24). The sequencing reason
+# that kept the cross lane OFF has expired: ORT's arm64 DML EP is built, linked
+# and arch-gate-verified (backlog #113, 390 binaries / 0 violations), so GenAI
+# has a real aarch64 onnxruntime with DML to link against. Every upstream path
+# was verified before this flip: DirectML's nuget ships bin/arm64-win/
+# {DirectML.lib,DirectML.dll}; genai's ortlib.cmake falls back to
+# CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64" under Ninja (which this repo passes
+# verbatim); the ORT DirectML nuget has runtimes/win-arm64/native; the D3D12
+# Agility nuget has build/native/bin/arm64/D3D12Core.dll. The historical claim
+# "the nuget has no bin/ARM64-win/DirectML.lib" (recorded until 2026-08-23) was
+# a misread of a path-case failure inside ORT's CMake -- see backlog #113.
+$genaiDmlArg = '-DUSE_DML=ON'
 # Python: no aarch64 CPython exists in this image (Get-SourceBuildPython is
 # host-pinned by design), so anything linking libpython would pull the x64
 # import library into an arm64 module. Same reason ORT's own wheel and PyAV are
@@ -285,17 +293,16 @@ if (Test-Path $altOutDir) {
 # device init -- while hardcoding 'x64' threw away the arm64 payload a DML-enabled arm64 build
 # would need. Kept target-derived rather than re-hardcoded to 'x64', so this stays correct if
 # the cross lane ever gains DML (see $genaiDmlArg).
-# Skipped entirely on the cross lane: USE_DML=OFF means the D3D12 FetchContent never ran, so
-# there is no _deps payload to stage and Copy-SidecarDll would only emit a misleading warning.
-if (-not $genaiCross) {
-    $d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
-    Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
-        -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq $d3d12ArchDir } `
-        -Destination (Join-Path $genaiInstallDir 'lib') `
-        -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
-} else {
-    Write-Host "D3D12Core.dll staging skipped (USE_DML=OFF on the $genaiTargetArch cross lane)"
-}
+# Runs on BOTH lanes since #118 (USE_DML=ON everywhere, so the D3D12 FetchContent
+# populated a _deps payload everywhere). On arm64 the filter picks the nuget's
+# bin/arm64 D3D12Core.dll -- exactly the eventuality the comment above was
+# written for -- and the staged sidecar then falls inside verify-target-arch.ps1's
+# scan root, so a wrong-arch pick fails the merge gate instead of shipping.
+$d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
+Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
+    -SidecarFilter { $_.FullName -match '_deps' -and $_.Directory.Name -eq $d3d12ArchDir } `
+    -Destination (Join-Path $genaiInstallDir 'lib') `
+    -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 FetchContent'
 
 # -- Python wheel (onnxruntime-genai-cuda / onnxruntime-genai) --
 # BUILD_WHEEL=ON assembled build\wheel (configured setup.py + onnxruntime_genai

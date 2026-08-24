@@ -56,11 +56,14 @@ expense of the others:
   is not optional: every **amd64** chain ends with a gate that runs it against the
   image it just built and fails the build if it does not pass — with coverage floors,
   so "nothing ran" is a distinct failure rather than a green "all tests passed".
-  The arm64 cross lane is the one exception, and deliberately so: that smoke test
-  verifies by *executing* the staged binaries, which an x64 host cannot do with ARM64
-  code, so the gate is reported NOT APPLICABLE rather than passed. Its floors are not
-  lowered to fake a run — the cross lane is verified statically instead, by a PE
-  machine-type gate over the whole install prefix.
+  The arm64 cross lane runs the gate too (since 2026-08-24), with its own floor
+  column: the sections that exercise the amd64 *host* toolchain run as-is, the
+  compiler probes compile **for the target** and assert the produced PE's machine
+  type instead of executing it, and the sections that would have to *run* the
+  aarch64 payload are skipped as sections with a printed reason — an x64 host
+  cannot execute ARM64 code, so the payload itself stays verified statically, by
+  a PE machine-type gate over the whole install prefix (including import-library
+  archives and the fanned-in site-packages).
   The tests that matter most there assert *loading*, not existence: this repo's
   defect history is dominated by libraries that build and link cleanly and then
   fail at load time.
@@ -114,10 +117,14 @@ linux/
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**: `windows/amd64`.
 Windows **targets**: `amd64` (container image, production) and `arm64`
-(cross-compiled artifact bundle — the media core is **built**: ONNX Runtime, ONNX GenAI, FFmpeg and
-OpenCV all cross-compile and link for `aarch64-pc-windows-msvc`. **Nothing it produces has ever been
-executed**, because Windows x64 cannot run ARM64 code; every arm64 signal is a static PE machine-type
-check. See the status banner in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
+(cross-compiled artifact bundle — the full chain is **built and gated**: ONNX Runtime (CPU +
+DirectML), ONNX GenAI (DirectML incl. the arm64 `D3D12Core.dll`), FFmpeg with NEON assembly,
+OpenCV, plain LiteRT with the `tflite` GStreamer plugin, GStreamer with all four mandatory
+plugins, and a source-built target CPython at `C:\runtime\python` — all for
+`aarch64-pc-windows-msvc`, PE-gated at 931 binaries / 0 violations with the smoke gate green at
+97/0/15. Python *bindings/wheels* are the open half (backlog #120 step 2). **Nothing it produces
+has ever been executed**, because Windows x64 cannot run ARM64 code; every arm64 signal is
+static. See the status banner in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no arm64
 > `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a **runnable**
@@ -126,8 +133,10 @@ check. See the status banner in [`docs/windows-cross-builds.md`](docs/windows-cr
 > `--platform windows/arm64`; that yields a manifest nothing can run. The arm64 lane builds inside
 > the same `windows/amd64` container with
 > `clang-cl --target=aarch64-pc-windows-msvc` + `lld-link` and emits an artifact bundle
-> (libs/DLLs/headers) for use on real ARM64 Windows hardware. CUDA/cuDNN/TensorRT have no
-> Windows-on-ARM support and are excluded from that lane. See
+> (libs/DLLs/headers) for use on real ARM64 Windows hardware. GPU inference on that lane is
+> **DirectML**; the NVIDIA stack is not wired up there — classic TensorRT genuinely has no
+> Windows-on-ARM build, while CUDA 13.4 (preview) and the arm64 cuDNN archive do exist upstream
+> and remain unscheduled backlog work, not an impossibility (corrected 2026-08-24). See
 > [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md).
 
 ## Published Images

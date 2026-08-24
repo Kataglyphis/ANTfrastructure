@@ -93,10 +93,11 @@ if ($vulkanSdk -and (Test-Path $vulkanSdk)) {
 # So every prior Windows TVM was silently USE_LLVM=OFF - no CPU codegen at all
 # (`tvm.build` for any llvm target dies at RUNTIME).
 #
-# Self-heal: build a MINIMAL LLVM (X86+NVPTX, no tests/docs/xml2/zlib) from the
-# pinned source release and point USE_LLVM at its llvm-config. Building it
-# ourselves is not gold-plating - it is the only ABI that works: the official
-# clang+llvm-*-windows-msvc dev tarball was tried first (verify6, same day) and
+# Self-heal: build a MINIMAL LLVM (X86+AArch64+NVPTX, no tests/docs/xml2/zlib)
+# from the pinned source release and point USE_LLVM at its llvm-config.
+# Building it ourselves is not gold-plating - it is the only ABI that works:
+# the official clang+llvm-*-windows-msvc dev tarball was tried first (verify6,
+# same day) and
 # its static libs are /MT (MT_StaticRelease) + want xml2s.lib, which lld-link
 # rightly refuses against this /MD chain (SPIRV-Tools et al.). sccache makes
 # the ~2000 extra TUs a one-time cost. Build-time only: TVM links LLVM
@@ -132,13 +133,20 @@ if (-not $llvmConfig) {
     if ($LASTEXITCODE -ne 0) { throw "TVM: extracting the LLVM source tarball failed (tar exit $LASTEXITCODE) (#47)." }
     Remove-Item $llvmSrcTar -Force  # keep the scratch tier lean; the tree is scrubbed post-build anyway
     $llvmInstall = Join-Path $llvmDevRoot 'install'
-    Write-Host 'Building minimal LLVM (X86+NVPTX, Release, /MD) - ~20-40 min cold, sccache-cached after'
+    Write-Host 'Building minimal LLVM (X86+AArch64+NVPTX, Release, /MD) - ~20-40 min cold, sccache-cached after'
     # Build the arg list in a VARIABLE: `-ExtraArgs @(...) + (...)` in argument
     # position does not concatenate - the parser fed `+` to -Generator and the
     # archiver arg to -Platform (verify8: "Could not create named generator +").
     $llvmCmakeArgs = @(
-            # X86 for host codegen, NVPTX so TVM's llvm path can feed the CUDA lane.
-            '-DLLVM_TARGETS_TO_BUILD=X86;NVPTX'
+            # X86 for host codegen, NVPTX so TVM's llvm path can feed the CUDA
+            # lane. AArch64 added 2026-08-24 (#116 Phase 0): the shipped
+            # "codegen cannot emit aarch64 - not fixable in this repository"
+            # claim was wrong from the start - this list is ours to set, and
+            # the extra backend costs only minimal LLVM build time on the
+            # amd64 lane. The real cross cost is unchanged and stays #116:
+            # USE_LLVM must EXECUTE llvm-config, i.e. a host-tools/target-libs
+            # split.
+            '-DLLVM_TARGETS_TO_BUILD=X86;AArch64;NVPTX'
             # No compression/xml deps: nothing here needs them, and each one is
             # another import the /MD-vs-/MT tarball failure taught us to distrust.
             '-DLLVM_ENABLE_LIBXML2=OFF', '-DLLVM_ENABLE_ZLIB=OFF', '-DLLVM_ENABLE_ZSTD=OFF'

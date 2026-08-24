@@ -319,11 +319,16 @@ $bashExe = Join-Path $gitUsrBin 'bash.exe'
 # (which COMPILES CUDA *filters* and would need nvcc under the msvc toolchain) is deliberately left off.
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
-# -not $ffCross first: the x64 BUILD container may well carry a CUDA toolkit,
-# but the arm64 TARGET has none (no CUDA/cuDNN/TensorRT exists for
-# Windows-on-ARM), so nvenc/nvdec/cuvid must stay off there regardless of what
-# the host has installed.
-if ((-not $ffCross) -and $ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
+# No cross-lane exclusion -- corrected 2026-08-24. This gate used to lead with
+# `-not $ffCross`, claiming "the arm64 TARGET has none (no CUDA/cuDNN/TensorRT
+# exists for Windows-on-ARM)" -- eight lines below the note above saying these
+# paths are header-only. That was wrong on both counts: upstream configure has
+# NO arch guard on nvenc/nvdec/cuvid (detection is a check_pkg_config on the
+# ffnvcodec headers), encoding needs only a dlopen of the NVIDIA driver at
+# runtime, and NVIDIA shipped its first native Arm64 Windows GeForce driver
+# (616.00). The cross lane therefore follows the same rule as amd64: gated on
+# the CUDA toolkit check below, nothing else.
+if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
     Write-Host 'NVIDIA CUDA detected -> enabling FFmpeg NVENC/NVDEC/CUVID via nv-codec-headers'
     # pkg-config is required by configure to locate ffnvcodec and is not present in the media build
     # image, so install it the same scoop way make/gawk are installed above.
@@ -358,7 +363,7 @@ if ((-not $ffCross) -and $ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRo
         Write-Warning 'nv-codec-headers install produced no ffnvcodec.pc -- FFmpeg will build without NVIDIA video accel.'
     }
 } elseif ($ffCross) {
-    Write-Host "FFmpeg: target $ffTargetArch -> no CUDA on Windows-on-ARM, building without NVENC/NVDEC (CPU + Vulkan lane)"
+    Write-Host "FFmpeg: no nvidia CUDA toolkit -> cross build for $ffTargetArch without NVENC/NVDEC (CPU-only FFmpeg; FFmpeg has no Vulkan hwaccel on either lane)"
 } else {
     Write-Host 'FFmpeg: no nvidia CUDA toolkit -> building without NVENC/NVDEC (CPU-only lane)'
 }
@@ -395,7 +400,10 @@ $confFlags += "--prefix=$cygPrefix"
 $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
 # No --enable-nonfree: nothing in this build needs it, and nonfree builds are
-# not redistributable (the images are published). GPL+version3 covers x264 etc.
+# not redistributable (the images are published). --enable-gpl/--enable-version3
+# cover FFmpeg's OWN GPL-licensed components only: no x264 or any other external
+# GPL codec is enabled on either Windows lane (the old "covers x264 etc."
+# justification here was wrong -- corrected 2026-08-24).
 $confFlags += '--enable-gpl', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
 if ($onnxHeaderCopied) {
@@ -440,9 +448,11 @@ if ($ffCross) {
     # --target-os is DELIBERATELY NOT SET. It is tempting to pass win32, but this
     # script drives configure through Git-bash/MSYS, so the amd64 lane's own
     # TARGET_OS is the reference value and guessing here can silently select a
-    # different code path. The config.mak dump added below prints configure's
-    # actual verdict (TARGET_OS/ARCH/CPU/AS) on BOTH lanes -- read the amd64 line
-    # first, then set this explicitly if the cross lane disagrees.
+    # different code path. The config.mak dump added below greps for
+    # TARGET_OS/ARCH/CPU/AS, but measured cross-lane runs print only ARCH= and
+    # AS= (corrected 2026-08-24; this note used to promise all four keys on
+    # both lanes) -- read the amd64 line first, then set this explicitly if the
+    # cross lane disagrees.
     #
     # FFmpeg's aarch64 assembly under an MSVC-ABI toolchain is the least-trodden
     # path in this whole chain (upstream's own Windows-on-ARM guidance recommends
@@ -572,8 +582,14 @@ if ($ffCross) {
     # configure-wrapper single-quotes any flag containing a space (see $confStr
     # below); that is the same mechanism the --cc flag already relies on.
     #
-    # Scope: this branch only. The amd64 lane assembles with NASM and is untouched;
-    # do not "unify" the two, they are different assemblers for different ISAs.
+    # Scope: this branch only, so the amd64 lane is untouched. Note what that does
+    # NOT mean: amd64 does not "assemble with nasm" here -- $confFlags gets an
+    # UNCONDITIONAL --disable-x86asm a few lines below (since bd6adca4, 2026-06-25),
+    # so FFmpeg builds no external x86 assembly on either lane and nasm assembles
+    # nothing for FFmpeg at all. The pinned nasm is consumed by GStreamer's
+    # openh264 instead (see build-gstreamer-from-source.ps1:482). Corrected
+    # 2026-08-24; the older wording claimed the opposite and had spread into two
+    # docs and verify-toolchain.ps1.
     $confFlags += "--as=clang$ffCcTargetFlag"
     Write-Host "FFmpeg: aarch64 asm ENABLED via clang's integrated assembler (--as=clang$ffCcTargetFlag); configure assembles test fragments but never runs them"
     Write-Host ("FFmpeg: cross flags -> --enable-cross-compile --arch={0} --extra-ldflags=/machine:{1}" -f `
@@ -745,13 +761,17 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
         throw ('FFmpeg source build did not produce ffmpeg.exe and the prebuilt fallback is fail-closed (#68) - ' +
             'fix the source build (see the make output above) or opt in explicitly with FFMPEG_ALLOW_PREBUILT=1.')
     }
-    # The BtbN release fetched below is win64 (x64) ONLY. Substituting it on the
-    # cross lane would drop x64 exes/DLLs into an arm64 bundle -- unrunnable on
-    # the target, and exactly the silent arch mismatch the PE gate exists to
-    # catch. FFMPEG_ALLOW_PREBUILT does not apply to a cross build.
+    # No prebuilt on the cross lane -- for chain provenance, NOT availability.
+    # The old claim here that the BtbN release is "win64 (x64) ONLY" was wrong
+    # (corrected 2026-08-24: winarm64 assets exist, e.g.
+    # ffmpeg-master-latest-winarm64-gpl.zip). The refusal stands anyway: a
+    # foreign prebuilt breaks the source-chain promise on ANY lane (not our
+    # avcodec, no --enable-libonnxruntime, not the FFmpeg OpenCV links against),
+    # so FFMPEG_ALLOW_PREBUILT does not apply to a cross build.
     if ($ffCross) {
-        throw ("FFmpeg source build did not produce ffmpeg.exe and the BtbN prebuilt fallback is win64/x64 only -- " +
-            "it cannot stand in for a $ffTargetArch build. Fix the cross build (see the make output above).")
+        throw ("FFmpeg source build did not produce ffmpeg.exe -- and the cross lane has no prebuilt escape hatch: " +
+            "a foreign BtbN binary would break the source-chain promise (a winarm64 asset exists; availability is " +
+            "not the reason). Fix the cross build (see the make output above).")
     }
     Write-Warning 'FFmpeg source build failed -- falling back to pre-built BtbN MSVC FFmpeg (FFMPEG_ALLOW_PREBUILT=1). DNN/ONNX integration will NOT be available in the fallback binary.'
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '0', 'Process')
@@ -893,17 +913,18 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete
 # resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
 if ($ffCross) {
     # Third site in this chain with the same root cause (after ONNX's wheel and
-    # OpenCV's python bindings): a cross lane has no TARGET CPython, so a native
-    # extension cannot be produced OR loaded here. Measured 2026-08-23 -- even
-    # `pip download --no-binary :all:` fails, because building the sdist's
-    # metadata imports a native module:
-    #   ImportError: DLL load failed while importing Utils:
-    #   %1 is not a valid Win32 application.
-    # ("not a valid Win32 application" is Windows' way of saying wrong machine
-    # type.) The FFmpeg C libraries above are the real deliverable of this stage
-    # and they are already built and installed; PyAV is a python binding on top
-    # and follows the target interpreter, not this one.
-    Write-Host 'Skipping the PyAV wheel: cross build (no target CPython; a native extension for the target cannot be built or imported on this host)'
+    # OpenCV's python bindings): a cross lane has no TARGET CPython, so a wheel
+    # built here cannot be imported or verified on this host. RETRACTED
+    # 2026-08-24: the 2026-08-23 measurement this note used to cite as proof
+    # PyAV cannot be BUILT (`pip download --no-binary :all:` dying with
+    # "ImportError: DLL load failed while importing Utils: %1 is not a valid
+    # Win32 application") was taken under the since-fixed target-tag shim and is
+    # retracted as build evidence; only the cannot-be-IMPORTED half stands. The
+    # FFmpeg C libraries above are the real deliverable of this stage and they
+    # are already built and installed; PyAV is a python binding on top and
+    # follows the target interpreter, not this one. Backlog #120 (target CPython
+    # built from source via PCbuild -p ARM64) is what retires this skip.
+    Write-Host 'Skipping the PyAV wheel: cross build (no target CPython to import/verify a target extension here; backlog #120 will retire this skip)'
     Complete-CurrentBuildPhase
     Write-BuildPhaseSummary -Label 'ffmpeg'
     Complete-SourceBuild -Banner '=== FFmpeg cross build completed (PyAV skipped) ===' -SourceDir $SourceDir

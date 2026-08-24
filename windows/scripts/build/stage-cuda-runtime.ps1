@@ -28,9 +28,10 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 # derived from the nvidia base?".
 #
 # That path is no longer hypothetical: every recorded chain run so far was
-# gpu=True, but the arm64 lane REFUSES -Gpu (there is no CUDA for
-# Windows-on-ARM), so this stage now has a lane on which CUDA_ROOT is
-# legitimately absent and the diagnostic is the whole point.
+# gpu=True, but the arm64 lane REFUSES -Gpu (arm64 CUDA is not wired into this
+# stack -- see (a) below for the corrected upstream picture), so this stage now
+# has a lane on which CUDA_ROOT is legitimately absent and the diagnostic is
+# the whole point.
 $cudaBin = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
 $roots = @(
     $cudaBin,                             # cudart64_*, cublas64_*, cufft64_*, ...
@@ -42,10 +43,17 @@ $roots = @(
 #
 #   (a) NEITHER variable is even set -> this image is not derived from the
 #       nvidia base, so CUDA cannot be here and its absence is CORRECT. That is
-#       the CPU lane and, permanently, the arm64 cross lane: there is no CUDA
-#       for Windows-on-ARM at all. Degrade cleanly - the empty C:\cuda-rt still
-#       satisfies the unconditional COPY in Dockerfile.media-merge-builder,
-#       which a Dockerfile cannot make conditional.
+#       the CPU lane and, today, the arm64 cross lane. CORRECTED 2026-08-24:
+#       this used to read "permanently ... there is no CUDA for Windows-on-ARM
+#       at all", and that absolute was WRONG when written -- cuDNN ships a
+#       windows-arm64 archive at this repo's exact 9.25.0.15 pin (verified
+#       HTTP 200, lib/arm64 inside), CUDA 13.4 (preview) advertises Windows
+#       ARM64 incl. x86_64-hosted cross-compile, and TensorRT-RTX publishes
+#       Windows-on-Arm packages (only classic TensorRT is x64-only). arm64
+#       CUDA is unwired backlog work, not nonexistent. Degrade cleanly - the
+#       empty C:\cuda-rt still satisfies the unconditional COPY in
+#       Dockerfile.media-merge-builder, which a Dockerfile cannot make
+#       conditional.
 #   (b) A variable IS set but does not resolve -> the nvidia base WAS expected
 #       and something is genuinely wrong. Keep throwing; that is the case the
 #       message below was written for.

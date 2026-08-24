@@ -285,8 +285,16 @@ $gpuArgs = @()
 # GPU_TYPE=nvidia with a valid CUDA_ROOT and would configure an aarch64 ONNX with
 # USE_CUDA=ON, linking x64 device libs into an "arm64" artifact. The driver's
 # arm64 -Gpu refusal cannot see this: it is image state, not an argument.
-# There is no CUDA/cuDNN/TensorRT for Windows-on-ARM at all. Same guard as
-# build-opencv-from-source.ps1's CUDA branch.
+# CORRECTED 2026-08-24: this note used to close with "there is no CUDA/cuDNN/
+# TensorRT for Windows-on-ARM at all" -- that absolute was WRONG when written.
+# cuDNN publishes a windows-arm64 archive at this repo's exact 9.25.0.15 pin
+# (verified HTTP 200, lib/arm64 inside), CUDA 13.4 (preview) advertises Windows
+# ARM64 incl. x86_64-hosted cross-compile, and TensorRT-RTX ships Windows-on-Arm
+# packages for CUDA 13.4 (only classic TensorRT is genuinely x64-only -- no
+# ARM64 row in NVIDIA's support matrix). Wiring an arm64 CUDA is backlog work,
+# not fiction. The guard STAYS regardless: the toolkit baked into this x64
+# image is x64, and a HOST GPU probe must never decide a TARGET flag. Same
+# guard as build-opencv-from-source.ps1's CUDA branch.
 if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
@@ -376,7 +384,12 @@ if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
-} elseif ($gpuEnv.GpuType -eq 'amd') {
+} elseif ($gpuEnv.GpuType -eq 'amd' -and -not (Test-WindowsCrossTarget)) {
+    # The cross guard mirrors the CUDA branch above (hardened 2026-08-23; this
+    # sibling was missed until 2026-08-24): Get-GpuEnvironment probes the x64
+    # BUILD HOST, and a host GPU must never decide a TARGET flag. The branch is
+    # dead today (GPU_TYPE=amd is never set), which is exactly when a latent
+    # host-vs-target confusion survives longest.
     Write-Host 'AMD GPU detected: enabling ROCm'
     $gpuArgs += '-Donnxruntime_USE_ROCM=ON'
 } else {
@@ -407,7 +420,10 @@ $pythonArgs = if ($onnxCross) {
       "-DPython3_EXECUTABLE=$($py.Exe)", "-DPython3_INCLUDE_DIR=$($py.Include)", "-DPython3_LIBRARY=$($py.Lib)")
 }
 if ($onnxCross) { Write-Host 'ONNX: python bindings OFF (cross build; no target CPython, and the host import lib is the wrong machine type)' }
-# HISTORY, CORRECTED -- do not act on the first paragraph, it is the mistake.
+# HISTORY, CORRECTED -- nothing in this block is current policy. The mistaken
+# measurement, the mistaken scope note, and their retractions are kept together
+# so the wrong reading cannot come back; the CURRENT paragraph at the end is
+# the only part to act on.
 #
 # MEASURED 2026-08-23, first arm64 ninja run: the build died with
 #   'packages/Microsoft.AI.DirectML.1.15.4/bin/ARM64-win/DirectML.lib' ...
@@ -427,13 +443,19 @@ if ($onnxCross) { Write-Host 'ONNX: python bindings OFF (cross build; no target 
 # makes it an available one. QNN would need the Qualcomm AI Engine SDK, which this
 # stack does not integrate.
 #
-# Turning it on for arm64 again is a deliberate spike, not a flag flip: it needs
-# a redist that actually ships bin\ARM64-win\DirectML.lib, and QNN is the more
-# promising path. Until then the arm64 lane is CPU + Vulkan, as documented.
-# ENABLED ON BOTH LANES since 2026-08-23 (backlog #113). The redist-path case fix
-# applied above is what unblocked it; see that comment for why the old failure
-# looked like a missing package. The scope note below is kept as the record of
-# what was believed, and corrected -- not as current fact.
+# RETRACTED SCOPE NOTE (wrong from the day it was written, 2026-08-23): "turning
+# it on for arm64 again is a deliberate spike, not a flag flip: it needs a
+# redist that actually ships bin\ARM64-win\DirectML.lib ... until then the
+# arm64 lane is CPU + Vulkan". The redist ALWAYS shipped that library (in the
+# lower-case dir, see above), so no spike was needed and the lane was never
+# DML-incapable -- and the lane scope is CPU + DirectML + Vulkan, not
+# CPU + Vulkan.
+#
+# CURRENT: ENABLED ON BOTH LANES since 2026-08-23 (backlog #113); GenAI's build
+# followed with USE_DML=ON on both lanes in #118 (2026-08-24). The redist-path
+# case fix applied above is what unblocked it; see that comment for why the old
+# failure looked like a missing package. The scope note ABOVE is kept as the
+# record of what was believed, and corrected -- not as current fact.
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
 $cmakeArgs = @(
@@ -653,7 +675,16 @@ Write-SccacheStatsToStderr -Advanced -RequireRemote
 # --install does not stage that redist, so a DML session would fail (0xC0000135) in the final image.
 # Copy it next to the installed onnxruntime.dll (mirrors the tvm_ffi.dll staging). Must run BEFORE
 # Remove-SourceBuildTree deletes the build tree. Verified by the smoke-test DmlExecutionProvider probe.
+#
+# -SidecarFilter (2026-08-24): the nuget unpacks DirectML.dll for EVERY platform
+# (bin/x64-win, bin/x86-win, bin/arm-win, bin/arm64-win) and an unfiltered
+# recursive pick takes whichever enumerates first -- the same arch-blind -First 1
+# GenAI's D3D12Core staging already fixed. Pin it to the TARGET's redist dir;
+# the merge arch gate then proves the pick, since the sidecar lands in its scan
+# root. NB the dir name is the lower-cased platform (see the TOLOWER patch above).
+$ortDmlArchDir = "$(Get-WindowsTargetArch)" -replace '^amd64$', 'x64'
 Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
+    -SidecarFilter { $_.Directory.Name -eq "$ortDmlArchDir-win" } `
     -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
     -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
 

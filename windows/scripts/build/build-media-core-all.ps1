@@ -57,6 +57,12 @@ Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -F
 # -ResumeFrom and -Until; relying on a component's POSITION here is what made
 # the old ffmpeg invocation (-ResumeFrom only) order-dependent.
 $stages = @(
+    # Target CPython FIRST (backlog #120): on the cross lane it produces the
+    # aarch64 interpreter + python3XY.lib that the ORT wheel / GenAI bindings /
+    # cv2 consumers need; on amd64 it is an explicit no-op (host == target).
+    # It reuses C:\temp\cpython — the toolchain layer's source tree — so its
+    # SourceDir is NOT a clone target and the script never deletes it.
+    @{ Name = 'Target CPython'; Script = 'build-target-cpython.ps1';       SourceDir = 'C:\temp\cpython' }
     @{ Name = 'ONNX Runtime'; Script = 'build-onnx-from-source.ps1';       SourceDir = 'C:\temp\onnx-src' }
     @{ Name = 'ONNX GenAI';   Script = 'build-onnx-genai-from-source.ps1'; SourceDir = 'C:\temp\onnx-genai-src' }
     @{ Name = 'FFmpeg';       Script = 'build-ffmpeg-from-source.ps1';     SourceDir = 'C:\temp\ffmpeg-src' }

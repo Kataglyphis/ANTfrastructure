@@ -242,8 +242,21 @@ Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoScca
 # going to produce anything usable.
 if ($TargetArch -ne 'amd64') {
     if ($Gpu) {
-        throw ("-Gpu is not available for -TargetArch $TargetArch : CUDA, cuDNN and TensorRT have no " +
-               'Windows-on-ARM builds at all. The arm64 lane is CPU + Vulkan only.')
+        # CORRECTED 2026-08-24: this throw used to say CUDA, cuDNN and TensorRT
+        # "have no Windows-on-ARM builds at all" and the lane was "CPU + Vulkan
+        # only". Both halves were wrong, and already false at this repo's
+        # current pins when checked: the cuDNN windows-arm64 9.25.0.15 archive
+        # exists at the exact pin this file reads (fetched it: HTTP 200, 421 MB,
+        # lib/arm64 inside), CUDA 13.4 (preview) advertises Windows ARM64
+        # including x86_64-hosted cross-compile, and TensorRT-RTX publishes
+        # Windows-on-Arm packages for CUDA 13.4. Only classic TensorRT is
+        # genuinely x64-only (no ARM64 row in NVIDIA's support matrix). And the
+        # arm64 lane has shipped DirectML since #113/#118. The refusal stays
+        # because none of the CUDA stack is WIRED into this lane yet -- backlog
+        # work, not fiction.
+        throw ("-Gpu is not available for -TargetArch $TargetArch yet: the CUDA/cuDNN stack is not wired " +
+               'for the cross lane (cuDNN and TensorRT-RTX do ship Windows-on-ARM packages; classic ' +
+               'TensorRT does not). The arm64 lane is CPU + DirectML + Vulkan today.')
     }
     # Asking for torch EXPLICITLY is an error; inheriting it from the parameter
     # default just drops it with a notice -- the same distinction $MediaBranches
@@ -261,40 +274,66 @@ if ($TargetArch -ne 'amd64') {
         $Stages = @($Stages | Where-Object { $_ -ne 'torch' })
         Write-Host "[bk] stage 'torch' dropped for $TargetArch : $torchWhy" -ForegroundColor Yellow
     }
-    # Branches that cannot be cross-built AT ALL - both blocked by binary
-    # artifacts upstream, neither fixable here:
-    #   media-litert : LiteRT-LM's ACTIVE build path is Bazel, and its .bazelrc
-    #                  carries no windows-arm64 configuration at all. CORRECTED
-    #                  2026-08-23: this used to blame prebuilt\windows_x86_64\
-    #                  libGemmaModelConstraintProvider.lib. That was the first
-    #                  plausible blocker in the file, not the real one -- the blob
-    #                  is OPTIONAL (upstream's CMake path compiles a stub instead),
-    #                  so it never was the thing standing in the way.
-    #   media-tvm    : TVM's own minimal LLVM is built -DLLVM_TARGETS_TO_BUILD=
-    #                  X86;NVPTX (build-tvm-from-source.ps1:141), so its codegen
-    #                  cannot emit aarch64
+    # Branches the cross lane drops. Real obstacles, but NOT "blocked by binary
+    # artifacts upstream, neither fixable here" as this header claimed until
+    # 2026-08-24 -- wrong on both counts, see the per-branch notes:
+    #   media-litert : LiteRT-LM's ACTIVE build path is Bazel, and TWO blockers
+    #                  are real there: (a) its .bazelrc carries no windows-arm64
+    #                  config (only android/macos/ios arm64), and (b) the
+    #                  prebuilt x86_64-only libGemmaModelConstraintProvider.lib
+    #                  IS in the default Windows dependency graph via
+    #                  gemma3_data_processor -- severable with the
+    #                  litert_lm_fst_constraints_disabled config_setting
+    #                  (model_data_processor/BUILD:26-33). CORRECTION HISTORY:
+    #                  the original note blamed ONLY the prebuilt; the
+    #                  2026-08-23 rewrite over-corrected to blame ONLY the
+    #                  bazelrc, calling the blob "OPTIONAL ... never the thing
+    #                  standing in the way" -- true for upstream's CMake stub
+    #                  path, false for the Bazel path used here, where it sits
+    #                  in the default graph. Both halves stand. Neither applies
+    #                  to PLAIN LiteRT (pure CMake, no Bazel, no prebuilt): its
+    #                  only cross obstacle is upstream's TFLITE_HOST_TOOLS_DIR
+    #                  host-flatc requirement. Plain-LiteRT cross is backlog
+    #                  #115.
+    #   media-tvm    : also carries IREE, which this list dropped silently
+    #                  alongside TVM until it was first named here 2026-08-24.
+    #                  CORRECTED 2026-08-24: "its codegen cannot emit aarch64"
+    #                  framed a choice as a fact -- LLVM_TARGETS_TO_BUILD=
+    #                  X86;NVPTX is an array THIS repo sets in
+    #                  build-tvm-from-source.ps1; adding AArch64 is a one-token
+    #                  edit. The real remaining cost: USE_LLVM=<path> makes TVM
+    #                  EXECUTE llvm-config at configure time, so a cross build
+    #                  needs a host-tools/target-libs split (backlog #116).
+    #                  IREE has the same shape; upstream supports
+    #                  IREE_HOST_BIN_DIR for exactly this.
     # Asking for one EXPLICITLY is an error (say so, do not silently do nothing);
     # inheriting them from the parameter default just drops them with a notice.
-    $crossBlockedBranches = @('media-litert', 'media-tvm')
+    # media-litert LEFT this list on 2026-08-24 (#115): plain LiteRT cross-builds
+    # (build-litert-all.ps1 skips only the LiteRT-LM stage on cross, with the
+    # Bazel reasons printed there), so the branch now RUNS on arm64 and its
+    # tensorflowlite_c feeds the tflite GStreamer plugin in the merge.
+    $crossBlockedBranches = @('media-tvm')
     $blockedRequested = @($MediaBranches | Where-Object { $_ -in $crossBlockedBranches })
     if ($blockedRequested.Count -gt 0) {
         if ($PSBoundParameters.ContainsKey('MediaBranches')) {
-            throw ("-MediaBranches $($blockedRequested -join ',') cannot be built for -TargetArch $TargetArch : " +
-                   'LiteRT-LM links a prebuilt x86_64-only static library and TVM builds its LLVM with ' +
-                   'X86;NVPTX targets only. Neither is fixable downstream - see docs/windows-cross-builds.md. ' +
-                   'Re-run with -MediaBranches media-core.')
+            throw ("-MediaBranches $($blockedRequested -join ',') cannot be built for -TargetArch $TargetArch yet: " +
+                   'TVM (and IREE, same branch) must execute llvm-config at configure time, which needs the ' +
+                   'host-tools split of backlog #116. See docs/windows-cross-builds.md. ' +
+                   'Re-run with -MediaBranches media-core,media-litert.')
         }
         $MediaBranches = @($MediaBranches | Where-Object { $_ -notin $crossBlockedBranches })
         Write-Host ("[bk] media branches dropped for $TargetArch : $($blockedRequested -join ', ') " +
-                    '(upstream x86-only binaries; the merge fans in empty trees instead)') -ForegroundColor Yellow
+                    '(tvm+iree: llvm-config must run at configure time, #116; the merge fans in ' +
+                    'an empty tree instead)') -ForegroundColor Yellow
     }
     Write-Host ("[bk] TARGET ARCH: $TargetArch (CROSS build - host stays windows/amd64). " +
                 'Output is an artifact bundle, not a runnable image.') -ForegroundColor Yellow
 }
 # Which branches the merge fan-in requires before it may run. amd64 needs all
-# three; the cross lane needs only what it can actually build, and substitutes
-# the 'media-branch-absent' stage for the rest.
-$script:MergeRequiredBranches = if ($TargetArch -eq 'amd64') { @('media-core', 'media-litert', 'media-tvm') } else { @('media-core') }
+# three; the cross lane needs what it can actually build (media-core AND
+# media-litert since #115), and substitutes the 'media-branch-absent' stage for
+# the rest.
+$script:MergeRequiredBranches = if ($TargetArch -eq 'amd64') { @('media-core', 'media-litert', 'media-tvm') } else { @('media-core', 'media-litert') }
 # Forwarded to the stages AFTER the arch fork only. base/sdk/toolchain are host
 # tooling shared by both lanes; declaring this ARG there would re-pay the VS
 # Build Tools layer on every lane switch.
@@ -317,7 +356,15 @@ $archArgs = @{
 # handful of files that survived and report green, which is precisely the
 # "verified nothing, said PASS" failure Dockerfile.smoke-gate exists to document.
 # Raised for the cross lane only, so the amd64 solve's build-args are unchanged.
-if ($TargetArch -ne 'amd64') { $archArgs['ARCH_GATE_MIN_INSPECTED'] = '100' }
+if ($TargetArch -ne 'amd64') {
+    $archArgs['ARCH_GATE_MIN_INSPECTED'] = '100'
+    # #117: the merge fans the HOST CPython's site-packages into the image, and
+    # the gate now scans that tree too. On the cross lane every .pyd in it is
+    # the x64 build interpreter's -- legitimately host-arch, but it must show up
+    # as a REPORTED allowlist skip, never as silent out-of-scope. Appended to
+    # the Dockerfile default rather than replacing it.
+    $archArgs['ARCH_GATE_HOST_TOOLS'] = 'protoc\.exe|flatc\.exe|\\_deps\\|\\cpython\\Lib\\site-packages\\'
+}
 
 # --- host preflight: the two failures that cost HOURS when discovered late ---
 # Both were manual checklist items in docs/windows-host-setup.md § D3 until
@@ -810,9 +857,11 @@ if ($Stages -contains 'media') {
         if ($TargetArch -ne 'amd64') {
             $absentTag = Get-BkTag 'windows-media-branch-absent'
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-branch-absent' -Tag $absentTag -BuildArgs (@{ BASE_IMAGE = Get-BkTag 'windows-toolchain' } + $archArgs)
-            $litertImage = $absentTag
+            # Since #115 only TVM(+IREE) needs the stand-in: media-litert is a
+            # required cross branch with a REAL image (plain LiteRT; the LM
+            # stage inside it self-skips with its Bazel reasons).
             $tvmImage    = $absentTag
-            Write-Host "[bk] merge: LITERT_IMAGE and TVM_IMAGE -> $absentTag (empty stand-in; see docs/windows-cross-builds.md)" -ForegroundColor Yellow
+            Write-Host "[bk] merge: TVM_IMAGE -> $absentTag (empty stand-in; LITERT_IMAGE is the real $litertImage since #115); see docs/windows-cross-builds.md" -ForegroundColor Yellow
         }
         # Canonical merge version env (WindowsBuildDriver.Common) + BK tag wiring.
         $mergeArgs = (Get-MediaMergeVersionArg -VersionTable $versions) + @{
@@ -882,26 +931,41 @@ if ($Stages -contains 'final') {
     # because containerd's pipe is admin-only and this driver is deliberately
     # non-admin. -SkipSmokeGate exists for iterating on the chain itself; it is
     # NOT a way to ship an unverified image.
-    if ($TargetArch -ne 'amd64') {
-        # CROSS LANE: the smoke gate is not "skipped because it is inconvenient",
-        # it is INAPPLICABLE. smoke-test-container.ps1 verifies by EXECUTING the
-        # staged binaries -- ffmpeg -version, gst-inspect, LoadLibraryW over every
-        # shipped DLL, a compile-and-run native probe, `import cv2` -- and this is
-        # an x64 host with no ARM64 emulation, so every one of those fails for the
-        # same uninformative reason regardless of whether the bundle is good.
+    if ($TargetArch -ne 'amd64' -and -not $SkipSmokeGate) {
+        # CROSS LANE (re-scoped 2026-08-24; until then this branch skipped the
+        # gate entirely as "NOT APPLICABLE"). That blanket verdict was over-broad:
+        # ~49 of the suite's assertions never touch the payload -- sections 1-6
+        # and 14-16 exercise the amd64 HOST toolchain inside this amd64 container
+        # (rustc/clang-cl compile+link+RUN, ASAN, CMake+Ninja, MSBuild) and §19's
+        # pointer checks are pure filesystem reads. smoke-test-container.ps1 now
+        # skips the payload sections itself (it resolves the lane from the baked
+        # WINDOWS_TARGET_ARCH) and applies the arm64 column of $sectionFloors.
         #
-        # The floors are deliberately NOT lowered to compensate. Dropping
-        # -SmokeMinPassed for arm64 would leave a number that a future amd64
-        # change could quietly be measured against, which is the exact way the
-        # gate documented at #44 became decorative before. The cross lane's
-        # verification is the PE machine-type gate that already ran inside the
-        # merge stage (verify-target-arch.ps1), plus the fact that every artifact
-        # linked at all. Neither proves the code RUNS -- nothing available here
-        # can, and docs/windows-cross-builds.md says so in the status banner.
-        Write-Host ("[bk:smoke-gate] NOT APPLICABLE for -TargetArch $TargetArch — the smoke test verifies by " +
-                    'EXECUTING staged binaries, and arm64 code cannot run on this x64 host. Static verification ' +
-                    'came from verify-target-arch.ps1 in the merge stage.') -ForegroundColor Yellow
-        Write-Host '[bk:smoke-gate] the arm64 bundle is STATICALLY verified only — it has never been executed.' -ForegroundColor Yellow
+        # The floors here are the ARM64 lane's own numbers, not lowered amd64
+        # ones: 66 sits just under the arm64 per-section floor sum (73), the same
+        # relationship the CPU 160/161 pair has. An explicit -SmokeMinPassed
+        # still wins. What this gate can NEVER prove on this host is that the
+        # aarch64 payload RUNS -- that stays with verify-target-arch.ps1 (static
+        # PE gate in the merge stage) and is impossible until a windows-11-arm
+        # runner exists.
+        # Distinctly named so Smoke.FloorCalibration.Tests.ps1 can pin the arm64
+        # floor against the arm64 section-floor sum without colliding with the
+        # GPU lane's $effectiveMinPassed below.
+        $armMinPassed = 66
+        $armMaxSkipped = 25
+        if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
+        if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
+        Write-Host ("[bk:smoke-gate] cross lane: HOST-toolchain sections run (floors: MIN_PASSED=$armMinPassed, " +
+                    "MAX_SKIPPED=$armMaxSkipped); payload sections are skipped in-suite — the aarch64 payload " +
+                    'itself remains statically verified only (verify-target-arch.ps1, merge stage).') -ForegroundColor Yellow
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.smoke-gate' -Label 'smoke-gate' -NoOutput -BuildArgs @{
+            BASE_IMAGE  = Get-BkTag $script:FinalTagName
+            MIN_PASSED  = "$armMinPassed"
+            MAX_SKIPPED = "$armMaxSkipped"
+            EXPECT_GPU  = '0'
+        } -MaxAttempts 1
+    } elseif ($TargetArch -ne 'amd64') {
+        Write-Host '[bk:smoke-gate] skipped (-SkipSmokeGate). NB the arm64 payload is statically verified only.' -ForegroundColor Yellow
     } elseif (-not $SkipSmokeGate) {
         # LANE-AWARE FLOOR (2026-08-22). 160 is the CPU-lane number: it sits just
         # under the sum of the per-section CPU floors (161). On the GPU lane the

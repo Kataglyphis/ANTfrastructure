@@ -5,8 +5,10 @@
 # (media -> torch -> final; the Orchestr-ANT-ion app env is assembled by
 # windows/Dockerfile.torch, this stage adds only the cheap dev trimmings).
 # Contains: VS Build Tools, LLVM/clang-cl, CUDA/cuDNN, CPython 3.14,
-# ONNX Runtime + GenAI, OpenCV 5, LiteRT, LiteRT-LM, TVM, FFmpeg, GStreamer,
-# plus the app env at C:\opt\Kataglyphis-Orchestr-ANT-ion.
+# ONNX Runtime + GenAI, OpenCV 5, FFmpeg, GStreamer on both lanes; LiteRT,
+# LiteRT-LM, TVM and IREE on the amd64 lane only (empty marker stubs on arm64
+# -- see docs/windows-cross-builds.md), plus the app env at
+# C:\opt\Kataglyphis-Orchestr-ANT-ion.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-torch
 FROM ${BASE_IMAGE}
@@ -61,8 +63,12 @@ VOLUME ["C:\\workspace"]
 HEALTHCHECK --interval=5m --timeout=15s --start-period=60s --retries=3 `
   CMD pwsh -NoProfile -ExecutionPolicy Bypass -File C:\temp\scripts\healthcheck.ps1
 
+# Description corrected 2026-08-24: it named LiteRT/LiteRT-LM/TVM
+# unconditionally -- empty marker stubs in :winarm64 for as long as the cross
+# lane has existed -- and omitted IREE, which the amd64 lane ships. One LABEL
+# serves both lanes (no ARG branching), so it must be worded to be true on both.
 LABEL org.opencontainers.image.title="kataglyphis_beschleuniger" `
-      org.opencontainers.image.description="Windows developer image with ONNX Runtime, OpenCV, LiteRT, LiteRT-LM, TVM, GStreamer, FFmpeg" `
+      org.opencontainers.image.description="Windows developer image with ONNX Runtime, OpenCV, GStreamer, FFmpeg; LiteRT, LiteRT-LM, TVM, IREE on the amd64 lane (empty markers on arm64 -- see docs/windows-cross-builds.md)" `
       org.opencontainers.image.version="latest" `
       org.opencontainers.image.revision="${VCS_REF}" `
       org.opencontainers.image.created="${BUILD_DATE}" `

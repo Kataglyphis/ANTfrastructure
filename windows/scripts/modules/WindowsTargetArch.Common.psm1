@@ -392,7 +392,30 @@ function Get-MlasKernelTuPattern {
 
     $key = Get-WindowsTargetArch -Arch $Arch
     switch ($key) {
-        'amd64' { return 'qgemm_kernel_amx|intrinsics[\\/]avx512' }
+        # MEASURED against ONNX Runtime v1.29.0's x86 MLAS tree (2026-08-24), not
+        # guessed -- and the previous value was WRONG, which broke the amd64 lane.
+        #
+        # The old pattern was 'qgemm_kernel_amx|intrinsics[\\/]avx512'. It matched
+        # exactly 5 ninja lines: qgemm_kernel_amx.cpp plus the four files under
+        # lib/intrinsics/avx512/. That was complete for an older ORT, but v1.29.0
+        # keeps six more AVX-512 kernel TUs directly in lib/, outside the
+        # intrinsics/ subtree:
+        #     q4gemm_avx512.cpp                      sqnbitgemm_kernel_avx512.cpp
+        #     qkv_quant_kernel_avx512vnni.cpp        sqnbitgemm_kernel_avx512_2bit.cpp
+        #     sqnbitgemm_kernel_avx512vnni.cpp       sqnbitgemm_kernel_avx512vnni_2bit.cpp
+        # Five of those failed to COMPILE ("always_inline function '_mm512_set1_ps'
+        # requires target feature 'avx512f'"), and the floor of 4 did not catch it
+        # because 5 >= 4. Same failure shape the arm64 branch below already
+        # documents: the pattern silently under-matches, the floor rubber-stamps it,
+        # and the compiler is what tells you 30 seconds later.
+        #
+        # The third alternative is deliberately anchored to \.cpp. lib/amd64/ holds
+        # MASM kernels with names like QgemmU8X8KernelAvx512Core.asm, and -match is
+        # case-INSENSITIVE in PowerShell; anchoring on .cpp makes it structurally
+        # impossible to tag an ASM_MASM FLAGS line and hand ml64 a /clang: flag,
+        # rather than relying on none of those names happening to contain an
+        # underscore before "Avx512".
+        'amd64' { return 'qgemm_kernel_amx|intrinsics[\\/]avx512|_avx512[a-z0-9_]*\.cpp' }
         # MEASURED against ONNX Runtime v1.29.0's aarch64 MLAS tree (2026-08-23),
         # not guessed. Three families need per-TU features:
         #   *_fp16.cpp          -> FEAT_FP16 intrinsics (vaddq_f16, vfmaq_f16, ...)
@@ -432,7 +455,16 @@ function Get-MlasKernelTuMinimum {
 
     $key = Get-WindowsTargetArch -Arch $Arch
     switch ($key) {
-        'amd64' { return 4 }
+        # 11 x86 kernel TUs matched in ONNX Runtime v1.29.0 (measured 2026-08-24):
+        # 4 under lib/intrinsics/avx512/, qgemm_kernel_amx.cpp, and 6 *_avx512*.cpp
+        # in lib/ itself. The floor is 8, leaving room for ordinary upstream churn.
+        #
+        # RAISED FROM 4 on 2026-08-24, and the old value is why this exists. With a
+        # floor of 4 the stale pattern's 5 matches sailed through, and the amd64
+        # build then died compiling sqnbitgemm_kernel_avx512.cpp. A floor only earns
+        # its keep if it is high enough that the PREVIOUS broken state would trip
+        # it: 5 < 8, so this specific regression can no longer pass silently.
+        'amd64' { return 8 }
         # 16 aarch64 kernel TUs matched in ONNX Runtime v1.29.0 (measured
         # 2026-08-23). The floor is 12, not 16, so ordinary upstream churn does
         # not fail the build -- but the 10 that the first, incomplete pattern
@@ -479,7 +511,17 @@ function Get-CMakeCrossArgs {
         "-DCMAKE_C_COMPILER_TARGET=$triple",
         "-DCMAKE_CXX_COMPILER_TARGET=$triple",
         "-DCMAKE_C_FLAGS_INIT=--target=$triple",
-        "-DCMAKE_CXX_FLAGS_INIT=--target=$triple"
+        "-DCMAKE_CXX_FLAGS_INIT=--target=$triple",
+        # ASM too (added 2026-08-24, found by LiteRT/XNNPACK's .S kernels): a
+        # project that enables the ASM language gets a clang-cl whose DEFAULT
+        # target is the x64 host, and every aarch64 assembly file then dies in
+        # the X86 assembler ("brackets expression not supported on this
+        # target") -- with the extra trap that an -march=armv8.2-a+... handed
+        # to that x86 driver is misread as a CPU name ("unknown target CPU"),
+        # which pointed the first diagnosis at a nonexistent driver gap.
+        # Projects that never enable ASM simply ignore these.
+        "-DCMAKE_ASM_COMPILER_TARGET=$triple",
+        "-DCMAKE_ASM_FLAGS_INIT=--target=$triple"
     )
 }
 

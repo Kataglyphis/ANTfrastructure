@@ -124,9 +124,16 @@ function Get-RequiredGstPlugin {
             NeedsHeader = 'tensorflow/lite/c/c_api.h'
             NeedsLib    = @('tensorflowlite_c', 'tensorflow-lite')
             Why         = 'LiteRT is built from source into this image; without this plugin nothing in a GStreamer pipeline can use it'
-            UnavailableOn = @{
-                arm64 = 'LiteRT is not built on the arm64 cross lane at all: LiteRT-LM links a prebuilt x86_64-only static library (build-litert-lm-from-source.ps1:911) with no arm64 counterpart, so the whole media-litert branch is replaced by the empty media-branch-absent stand-in. The plugin is not MISSING here, it is structurally unavailable - demanding it would make the arm64 build fail forever, which is exactly what the tensorfilter note above warns against.'
-            }
+            # arm64 key REMOVED 2026-08-24 (#115): media-litert now RUNS on the
+            # cross lane (plain LiteRT is pure CMake; only the LiteRT-LM stage
+            # self-skips for its Bazel reasons), tensorflowlite_c.lib is fanned
+            # into the merge, and build-gstreamer-from-source.ps1 enables the
+            # tflite feature presence-driven. The contract is 4 on BOTH lanes
+            # again -- and per the never-auto doctrine, a cross merge where the
+            # plugin fails to build must go RED here, not quietly ship 3.
+            # (History: this key existed 2026-08-21..24 while the branch was
+            # dropped wholesale; its stated reason was corrected twice.)
+            UnavailableOn = @{}
         }
     )
 
