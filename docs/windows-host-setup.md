@@ -834,3 +834,96 @@ like the reset did not work.
 
 Afterwards the `.bak-<stamp>` husks are exactly what
 `windows/scripts/host/free-disk-space.ps1` is allow-listed to reclaim.
+
+---
+
+## Appendix — host odds and ends
+
+Small host-level settings that are not part of the ordered bring-up above but
+come up often enough to be worth writing down.
+
+### Defender performance mode (Dev Drive)
+
+Complements the exclusions applied in the phases above. Performance mode defers
+scanning of trusted Dev Drive content instead of excluding it outright, so you
+keep protection while losing the build-time cost:
+
+```powershell
+Set-MpPreference -PerformanceModeStatus Enabled
+```
+
+See Microsoft's
+[antivirus performance mode](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-antivirus-performance-mode)
+reference. A slow build with no obvious cause is worth checking here first —
+realtime scanning of a build tree is the usual answer.
+
+### Running scripts in a fresh shell
+
+The repo's scripts are signed for nothing and the default policy blocks them.
+Scope the bypass to the session rather than the machine:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+### Picking up a PATH change without logging out
+
+After installing a toolchain, existing shells keep the old environment. Rebuild
+`PATH` in place instead of opening a new session:
+
+```powershell
+$env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" +
+            [System.Environment]::GetEnvironmentVariable("Path", "User")
+```
+
+### Updating Visual Studio non-interactively
+
+```powershell
+& 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe' `
+    update --passive --norestart `
+    --installPath 'C:\Program Files\Microsoft Visual Studio\2022\Community'
+```
+
+Needs an elevated shell. Pair with `winget upgrade --all --silent
+--accept-source-agreements --accept-package-agreements --include-unknown` for
+everything else.
+
+To force a **specific** version of a pinned SDK — the usual case when a gate
+requires an exact toolchain — winget needs both flags:
+
+```powershell
+winget install --id KhronosGroup.VulkanSDK --version 1.4.341.1 --force
+```
+
+### Opening a port for a service running in WSL
+
+```powershell
+New-NetFirewallRule -DisplayName "WSL Port 4173" -Direction Inbound `
+    -Protocol TCP -LocalPort 4173 -Action Allow
+```
+
+### Dual-boot: boot into the other OS exactly once
+
+The Windows counterpart to
+[`grub-reboot`](linux-host-setup.md#choosing-the-default-boot-entry) — useful
+when a host serves both lanes and you want the next boot only:
+
+```cmd
+bcdedit /enum
+bcdedit /bootsequence {identifier}
+```
+
+`/bootsequence` applies to the next boot only and does not change the default.
+
+### Removing a driver that will not uninstall
+
+Occasionally relevant on a GPU host where a stale driver blocks memory
+integrity / core isolation:
+
+```cmd
+pnputil /enum-drivers
+pnputil /delete-driver oemXX.inf /uninstall /force
+```
+
+Elevated Command Prompt, then reboot. Identify `oemXX.inf` from the enum output
+before deleting anything.

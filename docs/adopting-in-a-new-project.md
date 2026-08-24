@@ -68,6 +68,54 @@ skipping it leaves a working tree that does not match what you just recorded.
 > submodule pointers conflicted. The loop above is the part that is easy to
 > forget, and the resulting "resolved" merge silently pins the wrong commit.
 
+### Recovering a broken submodule checkout
+
+When a clone left submodules half-initialised — wrong commit, empty directory,
+or a `.git` file pointing nowhere — reset them rather than deleting the tree:
+
+```bash
+git submodule deinit -f --all
+git submodule update --init --recursive
+```
+
+`deinit -f` discards local submodule working trees, so commit or stash anything
+inside them first.
+
+### Long paths (Windows consumers)
+
+This repo's nesting plus a deep build directory exceeds `MAX_PATH` quickly.
+Beyond the host-level `LongPathsEnabled` setting in
+[`windows-host-setup.md`](windows-host-setup.md), git needs telling separately:
+
+```bash
+git config --global core.longpaths true
+```
+
+Without it, clone or checkout fails with `Filename too long` on files that are
+perfectly legal for the filesystem.
+
+### Resetting to a clean tree
+
+```bash
+git clean -fdx
+git reset --hard
+```
+
+`-x` also removes ignored files — build outputs, `.venv`, cached toolchains.
+That is usually the point, but it means a rebuild from cold.
+
+### `git pull` hanging in PowerShell
+
+An SSH remote needs the agent running as a Windows service; without it the
+client waits on a passphrase prompt nothing is displaying:
+
+```powershell
+Start-Service ssh-agent
+ssh-add "$env:USERPROFILE\.ssh\id_ed25519"
+```
+
+`Set-Service -Name ssh-agent -StartupType Automatic` makes it stick.
+
 ### Shallow fetches
 
 Full history of every submodule is rarely needed on a build agent:
