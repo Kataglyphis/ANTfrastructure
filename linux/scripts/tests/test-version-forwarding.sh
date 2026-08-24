@@ -51,4 +51,30 @@ case "${joined}" in
   *) t_assert_eq "ok" "ok" ;;
 esac
 
+# C3 REGRESSION GUARD (2026-08-24): a build-arg that the orchestrator PASSES but
+# the Dockerfile never DECLARES is silently dropped by BuildKit, and the build
+# script then falls back to an inline literal. That was live, not theoretical:
+# android shipped onnxruntime v1.28.0 against a v1.29.0 pin and litert v2.1.6
+# against a v2.2.0 pin. Two halves must both hold, so assert both.
+_dfa="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/Dockerfile.android"
+for _v in ONNXRUNTIME_VERSION LITERT_VERSION IREE_VERSION; do
+  t_case "Dockerfile.android DECLARES ARG ${_v} (else BuildKit drops the forward)"
+  if grep -qE "^ARG ${_v}\b" "${_dfa}"; then t_assert_eq "ok" "ok"; else
+    t_assert_eq "declared" "missing" "ARG ${_v} absent — the passed build-arg would be dropped"; fi
+  t_case "Dockerfile.android promotes ${_v} to ENV (so all android-<lib> stages inherit it)"
+  if grep -qE "^[[:space:]]*${_v}=\\\$\{${_v}\}" "${_dfa}"; then t_assert_eq "ok" "ok"; else
+    t_assert_eq "in ENV" "missing" "${_v} not promoted to ENV — the library stages will not see it"; fi
+done
+
+# The other half: no android build script may carry a silent version literal.
+for _lib in onnxruntime litert iree; do
+  _f="${REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}/linux/scripts/03-media/build/${_lib}/android/build-android.sh"
+  t_case "${_lib} android build has no silent version fallback"
+  if [ -f "${_f}" ] && grep -qE ':-[[:space:]]*v?[0-9]+\.[0-9]+(\.[0-9]+)?[[:space:]]*\}' "${_f}"; then
+    t_assert_eq "no literal fallback" "literal fallback present" "${_lib}: a :-<version> literal masks a broken forward"
+  else
+    t_assert_eq "ok" "ok"
+  fi
+done
+
 t_summary

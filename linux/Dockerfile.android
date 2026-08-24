@@ -27,6 +27,23 @@ ARG ANDROID_COMPILE_SDK=36
 ARG ANDROID_BUILD_TOOLS=36.0.0
 ARG ANDROID_CMAKE_VERSION=4.1.2
 ARG ANDROID_API_LEVEL=34
+# C3 (2026-08-24): DECLARE the library version build-args the orchestrator
+# already passes. It passes --build-arg ONNXRUNTIME_VERSION / LITERT_VERSION /
+# IREE_VERSION on every android build (verified in the wave6b command line),
+# but this Dockerfile never declared them, so BuildKit DROPPED them and the
+# per-library build scripts fell back to their inline literals. That was not a
+# latent risk, it was live: android shipped onnxruntime v1.28.0 against a
+# v1.29.0 pin and litert v2.1.6 against a v2.2.0 pin (IREE matched only by
+# coincidence). OPENCV_VERSION was unaffected because the media final stage
+# happens to export it as ENV. NO DEFAULTS here on purpose: an unpassed value
+# must expand empty so the scripts' `:?` guards fail loudly instead of
+# silently building last release. Declared in the PARENT stage and promoted to
+# ENV below so all five android-<lib> stages inherit it without touching their
+# RUN blocks — verify-android-stage-parity.sh requires those to stay identical
+# modulo ANDROID_LIB.
+ARG ONNXRUNTIME_VERSION
+ARG LITERT_VERSION
+ARG IREE_VERSION
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
@@ -39,6 +56,9 @@ ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
     ANDROID_CMAKE_VERSION=${ANDROID_CMAKE_VERSION} \
     ANDROID_API_LEVEL=${ANDROID_API_LEVEL} \
+    ONNXRUNTIME_VERSION=${ONNXRUNTIME_VERSION} \
+    LITERT_VERSION=${LITERT_VERSION} \
+    IREE_VERSION=${IREE_VERSION} \
     ANDROID_NDK_HOME=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
     ANDROID_NDK_ROOT=/opt/android-sdk/ndk/${ANDROID_NDK_VERSION} \
     GSTREAMER_ROOT_ANDROID=/opt/android/gstreamer \
