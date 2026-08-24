@@ -1,5 +1,56 @@
 # Changelog
 
+## 2026-08-24 - WAVE-6 SHIPPED: the gate-truth build (three blind gates now actually work)
+
+`:latest-cross` = amd64 `a25a38c5` / arm64 `bd9953a9` / riscv64 `d3710282`,
+run id `20260823-223111-d0336283`. cv2 GStreamer:YES + FFMPEG:YES holds on the
+new bytes; runtime smokes 0 failures x3.
+
+This build existed to validate the three gates the wave-5 post-audit found
+INERT. All three now produce real verdicts:
+
+1. **XC3 provenance** — `per-arch wrapper generation check: OK` with NO
+   "wrapper tag(s) carry no run-id" warning; that line read 3/3 on every
+   previous ship. All three wrappers carry run-id / parent-stage /
+   parent-digest as image LABELS, verified by reading the REGISTRY copy's
+   config blob (registry-config-label.py), not the local store. Ancestry now
+   reports `android→wrapper (<arch>): OK` with real digests on 3/3 — it used
+   to bail at "records no parent digest". The label saying *android* also
+   confirms the XC2-STAGE fix: the writer stamped the android pin while the
+   check resolved runtime_stage_parent's answer ("package"), which would have
+   produced a false STALE ANCESTOR on every run the moment provenance came
+   back.
+2. **AP4 strip gate** — `AP4 strip verified: libavcodec.so.63.1.100 has no
+   .symtab`. Every prior ship printed `check skipped (could not extract ...)`
+   while the wrapper gate still said PASS, because `tar --occurrence=1` exits
+   after the first match, SIGPIPEs the exporter, and `pipefail` turned the
+   early exit into a failure.
+3. **SMK1** — the cv2 media assert is now hard on all three arches, including
+   riscv64, which used to be exempted with the printed rationale "gstreamer OFF
+   by design" on the very line where the probe reported YES.
+
+**CERB-CACHE validated the hard way.** wave6a lost all three lanes to five
+freedesktop 503/404 flaps (an outage that also proved cerbero's DEFAULT_MIRRORS
+path 503s unconditionally while the `/data/` primary answers 200 — the fallback
+is not merely single-homed, it is always dead). But the cerbero state survived
+on the cachemounts (15.7 GB / 14.5 GB), so wave6b restarted WARM
+(`HIT: resuming from /var/cache/cerbero ... 13G / 20G`) and completed with ZERO
+fetch failures. Before this, wave5k and 5l discarded the entire ~50-minute
+bootstrap on every flap.
+
+Also in this window (backlog sweep waves 1-3, commits ee8de5e / ece1c37 /
+2276c8c): log hygiene armed by default, smoke depth (a real GStreamer pipeline
+and an ONNX InferenceSession instead of string greps), per-arch component
+parity, a GCC-default SSOT plus a fatal drift gate with a site floor, TS8, the
+NVIDIA deb pick made deterministic and self-reporting, and eigen/cerbero
+network resilience. Five mechanisms were REVERTED rather than shipped after
+review proved them inert or unsafe: PAR5's live-lane divisor (a build-arg
+cannot change mid-build), the cerbero seed cache (nothing mounted it), two
+cargo mounts on RUNs that never invoke cargo, and S3 (it reintroduced the
+`${tag}-buildcache` ref that fix7 forbids — the preflight failed on it).
+
+Tests grew 417 -> 638 assertions across 25 suites over this window.
+
 ## 2026-08-23 - WAVE-5 SHIPPED: closure window 2 — cv2 media stack complete on all three arches
 
 `:latest-cross` = amd64 `54ab7f01` / arm64 `7bb70a4b` / riscv64 `fb701200`.

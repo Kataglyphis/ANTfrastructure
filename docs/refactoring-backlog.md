@@ -34,29 +34,35 @@ Linux/cross-lane only.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
-## ✅ WAVE-5 SHIPPED 2026-08-23 (closure window 2 — cv2 media stack complete on 3/3)
+## ✅ WAVE-6 SHIPPED 2026-08-24 (the gate-truth build — three blind gates now actually work)
 
-`:latest-cross` = amd64 `54ab7f01` / arm64 `7bb70a4b` / riscv64 `fb701200`.
-**GOAL MET, verified on SHIPPED BYTES (registry-side digest match, not the
-push log): cv2 5.0.0 with GStreamer:YES (1.29.2) AND FFMPEG:YES
-(avcodec/avformat 63.1.100) on ALL THREE arches** — riscv64 included, which
-had been at wave-3 parity (gst: NO). Independently re-verified by executing
-real GStreamer + FFmpeg pipelines in the shipped images, not just reading
-`getBuildInformation()` strings. Runtime smokes 0 failures ×3; wheel smokes
-13/15, 13/15, 11/15 (riscv64 delta = genai + freetype, both documented).
-ORT version-shadow FIXED and proven: exactly ONE onnxruntime distribution
-per image (dnnl on amd64, webgpu on arm64/riscv64 — by design), no PyPI
-1.27 alongside. Landed this window: OCV-FF1 (try_compile link dirs +
-FFmpeg-8 avcodec_get_supported_config backport patch), RV1 riscv64 gst
-re-lift (+ MESON-GI meson pin), PKGCFG-MIRROR v2, ORT dnnl wheel-family
-fix. Mines survived: freedesktop-wide 503 outage, a readdir-nondeterministic
-override, an ENOSPC death. Full story in CHANGELOG.
+`:latest-cross` = amd64 `a25a38c5` / arm64 `bd9953a9` / riscv64 `d3710282`.
+Run id `20260823-223111-d0336283` — and for the FIRST time that is a
+verifiable statement: all three wrappers carry it as an image LABEL, read back
+from the REGISTRY (not the local store). cv2 GStreamer:YES + FFMPEG:YES holds
+on the new bytes. Runtime smokes 0 failures x3.
 
-**Wave-4 (2026-08-21, superseded):** amd64 `73927a45` / arm64 `345096db` /
-riscv64 `da763dc3`, cv2 GStreamer:YES on amd64+arm64 only. PAR4 verdict:
-ONE isolated OOM across ~12 media rounds — heuristic adequate, PAR4-hard
-stays trigger-gated. PAR1 verdict: sdk 2.9× stands; a clean full-chain
-timing still needs one undisturbed run.
+**What this build proved** (each had been silently broken for months):
+- **XC3** — provenance is written and READ. `per-arch wrapper generation check:
+  OK` with NO "carry no run-id" warning (it was 3/3 in every prior run), and
+  `[ancestry] android→wrapper (<arch>): OK` with real digests on all three.
+  The label also says *android*, confirming the XC2-STAGE fix: the writer
+  stamped android while the check resolved "package", which would have thrown a
+  false STALE ANCESTOR on every run the moment provenance returned.
+- **AP4** — `AP4 strip verified: libavcodec.so.63.1.100 has no .symtab`.
+  Every previous ship printed `check skipped (could not extract ...)` while the
+  wrapper gate said PASS: `tar --occurrence=1` exits early, SIGPIPEs the
+  exporter, and pipefail turned that into a failure.
+- **SMK1** — the cv2 media assert is hard on all three arches.
+- **CERB-CACHE** — validated the hard way. wave6a lost all three lanes to five
+  freedesktop 503/404 flaps, but the cerbero state survived (15.7 GB / 14.5 GB
+  on the cachemounts); wave6b restarted WARM (`HIT: resuming ... 13G / 20G`)
+  and completed with ZERO fetch failures. Before this, wave5k and 5l discarded
+  the full ~50-minute bootstrap on every flap.
+
+**Wave-5 (2026-08-23, superseded):** amd64 `54ab7f01` / arm64 `7bb70a4b` /
+riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
+the ship whose post-audit found the three gates above.
 
 - **RV1-FREETYPE — riscv64 opencv freetype module still OFF** [S·★,
   residue of RV1-GST-PC, which is otherwise CLOSED by wave-5] riscv64 gst
@@ -91,33 +97,6 @@ timing still needs one undisturbed run.
 
 ## A. Next CLOSURE WINDOW (01-core / 03-media / Dockerfile closure — ONE rebuild pays for all)
 
-- **SMK1-3ARCH — promote the cv2 media gate to a HARD assert on ALL
-  THREE arches** [S·★★★, EARNED 2026-08-23] OCV-FF1 is CLOSED (FFMPEG:YES
-  on 3/3 shipped bytes; fix = try_compile link dirs + the FFmpeg-8
-  avcodec_get_supported_config backport patch). Two gate bugs remain, and
-  both make a green line lie:
-  (a) smoke-torch-venv.sh:275-281 exempts riscv64 from the cv2/GStreamer
-      assert and PRINTS "riscv64: gstreamer OFF by design" on the very same
-      line where the probe reports `GStreamer=YES FFMPEG=YES` — the premise
-      is now false. Delete the exemption (or gate it on the probe) so all
-      three arches take the hard assert.
-  (b) the FFMPEG check is still advisory — make it a hard assert too.
-  Bonus (same file family): build-opencv.sh:146 finds the gstreamer libdir
-  via `find … -name 'libgstreamer-1.0.so*' | head -1`, which matches the
-  gdb auto-load helper first, so the OCV-FF1 gstreamer -L/-rpath-link half
-  is a silent no-op (benign today — pkg-config finds gst anyway).
-- **AP4-SIGPIPE — the strip gate has NEVER executed and still reports PASS**
-  [S·★★★, 2026-08-23] verify-shipped-wrapper.sh's `nerdctl export | tar
-  --occurrence=1` runs under `set -o pipefail`: tar exits after the first
-  match, SIGPIPEs the exporter, the pipeline returns non-zero and the check
-  self-reports "AP4 strip check skipped (could not extract …)" — on 3/3
-  arches — while the wrapper gate still prints PASS. It masks a real
-  defect: the shipped amd64 image carries ~1.9 GB of UNSTRIPPED foreign
-  cross-compiler binaries (`/opt/gcc-16.2.0/libexec/gcc/{aarch64,riscv64}
-  -linux-gnu/16.2.0/cc1plus` 444M/534M with symtab=1, vs 294M/558M total
-  for the other arches' whole /opt/gcc). Fix the SIGPIPE swallow FIRST
-  (cheap, turns a fake green into a real verdict), then extend the strip
-  pass to every triplet under libexec/gcc + /usr/libexec/gcc.
 - **APT-HTTP — the base image may fetch packages over plaintext http** [S/M·★★★,
   FOUND 2026-08-23, NOT fixed — needs a decision] base-image.sh:221
   deliberately rewrites the fast-mirror URL `https://…` → `http://…` because a
@@ -179,15 +158,6 @@ timing still needs one undisturbed run.
   smoke_resolve_bin/assert_elf_magic/component_gate (6+2+4 dup sites) into
   smoke-common.sh; SMOKE_ENV=sandbox|runtime set by callers. Extend
   test-smoke-arch-parity.sh.
-- **CERB-CACHE — cerbero state cachemount (android lanes)** [M·★★★,
-  2026-08-22] the whole cerbero bootstrap+package run is ONE Dockerfile
-  RUN: any failure (PKGCFG 404, FD-OUTAGE 503, CERB-ICONV) discards ALL
-  progress and the next attempt restarts COLD — today that repeated the
-  ~40-60 min bootstrap ×3 lanes ×3 waves for zero progress. Give
-  /opt/cerbero/sources (+ build-tools prefix) a per-arch cachemount like
-  ccache; cerbero's own checksums make reuse safe, and a failed attempt
-  then resumes in minutes. Biggest single wall-clock lever for the
-  android stage's failure path.
 - **Media source-cache mounts** [S/M·★★] version-keyed src mounts for
   opencv/gstreamer/ffmpeg/onnx clones — every rebuild re-clones today.
 - **DUP2 — GCC-prefix `16.2.0` literal sprawl (~25× / 11 files)** [M·★★]
@@ -304,21 +274,6 @@ timing still needs one undisturbed run.
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
-- **XC3-VALIDATE — provenance gates re-armed, needs ONE build to prove it**
-  [S·★★★, FIXED 2026-08-23 (1870118), validating] run-id/parent-digest/
-  parent-stage are stamped as image LABELS on the `-t` path (annotations can
-  never come back — RTCACHE3), read local→registry→annotation (new
-  registry-config-label.py fetches the config blob without pulling, so the
-  gate finally works on the --repair/other-host path it exists for), and the
-  gate now REFUSES on the repair path when provenance is unverifiable instead
-  of printing OK. A post-build self-check fails the lane if a requested label
-  did not land. Adversarial review caught two defects pre-commit (IMAGE_REPO
-  not exported → false STALE ANCESTOR under --image-repo; the recorded ANDROID
-  pin was compared against runtime_stage_parent's "package"). REMAINING: the
-  next full runtime build must show `[manifest] per-arch wrapper generation
-  check: OK` with 0 "carry no run-id" warnings and no [ancestry] STALE lines —
-  delete this item then. Also unstamped by design: the runtime BASE image
-  (hardcoded `-t`, no gate reads it).
 - **--no-push OCI-layout handoff + dual-path collapse** [M·★★] --no-push
   builds resolve parents against the REGISTRY (two runs lost historically).
 
