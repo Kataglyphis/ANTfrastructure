@@ -40,7 +40,13 @@ fi
 
 android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 
-LITERT_VERSION="${LITERT_VERSION:-${1:-v2.1.6}}"
+# C3 (2026-08-24): NO silent version fallback. The literal that used to sit
+# here masked a broken ARG-forward and was actively wrong -- Dockerfile.android
+# never declared this build-arg, so BuildKit dropped it and this script built
+# v2.1.6 while versions.env pinned v2.2.0. An explicit `$1` still wins (manual
+# invocation), otherwise the forwarded value is REQUIRED and a missing one is a
+# loud failure instead of last release.
+LITERT_VERSION="${LITERT_VERSION:-${1:?LITERT_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
 
 apt-get update && apt-get install -y --no-install-recommends \

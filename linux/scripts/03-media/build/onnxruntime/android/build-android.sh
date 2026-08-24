@@ -12,7 +12,13 @@ case "${TARGET_ARCH}" in
     ;;
 esac
 
-ORT_VERSION="${1:-${ONNXRUNTIME_VERSION:-v1.28.0}}"
+# C3 (2026-08-24): NO silent version fallback. The literal that used to sit
+# here masked a broken ARG-forward and was actively wrong -- Dockerfile.android
+# never declared this build-arg, so BuildKit dropped it and this script built
+# v1.28.0 while versions.env pinned v1.29.0. An explicit `$1` still wins (manual
+# invocation), otherwise the forwarded value is REQUIRED and a missing one is a
+# loud failure instead of last release.
+ORT_VERSION="${1:-${ONNXRUNTIME_VERSION:?ONNXRUNTIME_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${ONNXRUNTIME_ROOT_ANDROID:-/opt/android/onnxruntime}"
 
 apt-get update && apt-get install -y --no-install-recommends \

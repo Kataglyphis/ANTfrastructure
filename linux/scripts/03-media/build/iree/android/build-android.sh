@@ -53,7 +53,13 @@ android_build_preamble_init "Android IREE build" "${ANDROID_API_LEVEL:-34}"
 
 # Inline default mirrors versions.env IREE_VERSION (the android stage does not
 # source versions.env; same pattern as LITERT_VERSION in the litert build).
-IREE_VERSION="${IREE_VERSION:-${1:-v3.11.0}}"
+# C3 (2026-08-24): NO silent version fallback. The literal that used to sit
+# here masked a broken ARG-forward and was actively wrong -- Dockerfile.android
+# never declared this build-arg, so BuildKit dropped it and this script built
+# v3.11.0 (matched the pin only by coincidence) while versions.env pinned v3.11.0. An explicit `$1` still wins (manual
+# invocation), otherwise the forwarded value is REQUIRED and a missing one is a
+# loud failure instead of last release.
+IREE_VERSION="${IREE_VERSION:-${1:?IREE_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${IREE_ROOT_ANDROID:-/opt/android/iree}"
 
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
