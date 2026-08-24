@@ -677,6 +677,8 @@ destroys it, and what replacing it costs is in
 | `CROSS_REGISTRY_CACHE=max` | **Pilot knob, off by default.** Adds a per-stage `<tag>-buildcache` registry cache with `mode=max`, the only tier that can carry intermediate (`COPY --from`) stage layers across a store wipe. Costs ~3 h of upload per media arch on this uplink — read [`build-cache-tiers.md` § S3](build-cache-tiers.md) and follow the pilot protocol there before using it, and use `build-cross-stage.sh`, not a full chain. |
 | `WRAPPER_CONTENT_GATE=0` | Downgrade the shipped-wrapper byte gate to advisory. |
 | `MEDIA_STRIP=0` | Disable the media-prefix symbol-strip pass (default on; ffmpeg/gstreamer/libcamera). |
+| `VULKAN_CROSS_STRICT=1` | Promote the Vulkan cross-components gate (`vulkan.sh`) from advisory WARN to fatal. It fires when all three cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause. |
+| `WHEEL_SOABI_STRICT=1` | Promote the vendored-wheel SOABI gate (`verify-wheels.sh`) from advisory WARN to fatal. It fires when a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`. The triple is derived from `TARGET_ARCH`, not the running interpreter. |
 
 ### IREE (Linux lane)
 

@@ -78,6 +78,36 @@ deliberately reduced image, never to "get the build green":
 | TVM presence/version per arch | `smoke-torch-venv.sh` (report only — TVM is best-effort by design) | `EXP_TVM=<version>` turns the report into a hard pin assertion |
 | ELF architecture of shipped binaries | `validate-media-runtime.sh` — runs on EVERY scan since 2026-08-08 (a clean dependency scan used to `exit 0` before it) | `MEDIA_ELF_MISMATCH_FATAL=0` downgrades to warning |
 | litert / genai / opencv-core produce real artifacts | `verify-media-artifacts.sh` | none — these verify stage-specific files now; genai mirrors its producer's legitimate cross-build skip |
+| Vulkan cross-components (loader / SPIRV-Tools / glslang) — all three failing at once is an env-shaped toolchain cause | `vulkan.sh` | default is advisory (WARN); `VULKAN_CROSS_STRICT=1` is the OPT-IN promotion to fatal |
+| Vendored-wheel SOABI vs target triple — a native `.cpython-*.so` carrying a SOABI for a different arch than the target triple is a host-SOABI leak that only fails at `import` | `verify-wheels.sh` (triple derived from `TARGET_ARCH`, **not** the running interpreter) | default is advisory (WARN); `WHEEL_SOABI_STRICT=1` is the OPT-IN promotion to fatal |
+| Clean stop of a running chain — reaps the orphaned nerdctl/buildctl child subtree; **never `pkill` the orchestrator, that orphans them** | `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep) | n/a — operational tool, not a gate |
+
+**Verify the shipped BYTES, never the push** (backlog RTCACHE3; 2026-08-15 →
+2026-08-16). The 2026-08-15 S2 saga shipped `:latest-cross` STALE five times
+with every static gate and all smokes GREEN — the manifest, smokes, and push
+were all byte-identical to a prior run. The real cause was the
+`--output type=image` tagging bug (see
+[`linux-cross-builds.md` § versions.env feature toggles](linux-cross-builds.md#versionsenv-feature-toggles-linux-lane),
+"Why the explicit `RUNTIME_NO_CACHE`"), NOT a cache; media+android were always
+fresh. This is now GATED automatically: `verify-shipped-wrapper.sh` runs in
+`build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled —
+it lists each wrapper's rootfs (`nerdctl export | tar -t`, arch-agnostic, no
+emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env
+toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact).
+A mismatch aborts before `:latest-cross` goes live; `WRAPPER_CONTENT_GATE=0`
+makes it advisory. To spot-check by hand: pull the wrapper and grep for the
+expected lib set. **`:latest-cross` was re-shipped 2026-08-16** (fresh amd64
+`509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) carrying the
+Batch-2 fixes; that full-media rebuild flushed out two bugs the runtime-lane
+validations miss because they skip smoke-media — (1) smoke-media's native cv2
+import must be gated on numpy being importable (numpy is a `/opt/venv`
+packaging dep, absent in the media BUILD sandbox → defer to the runtime smoke,
+like onnxruntime), and (2) `configure-runtime.sh` runs a SECOND time in the
+package stage, so its gstreamer-multiarch resolver must drop/skip the
+pre-existing `lib/multiarch` symlink before resolving or it re-points it at
+itself — and its dev-surface check must be a WARN, not a fail-loud exit (a
+script that runs twice must not carry a build-breaking assert; the pkg-config
+`verify_consumer_dev_surface` gate is the authority).
 
 | Check | Script | Catches (class) |
 |-------|--------|-----------------|

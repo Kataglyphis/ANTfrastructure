@@ -164,7 +164,7 @@ fallbacks), builds the stages in order, and applies the correct tags:
 .\windows\build.ps1
 
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
-# Requires a TensorRT zip in windows/downloads/ (see AGENTS.md § TensorRT Setup).
+# Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
 .\windows\build.ps1 -Gpu
 
 # Iterate on a single stage (layer cache makes this cheap):
@@ -193,6 +193,69 @@ Stevedore install locations, then `docker` on PATH). Set
 Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
 each build script removes its source tree after installing so the trees don't
 bloat the image layers.
+
+### TensorRT setup (GPU lane, optional)
+
+> **Ownership note (2026-08-24):** this subsection is the authoritative home of
+> the TensorRT setup procedure and the `current/` rationale (it previously lived
+> in AGENTS.md § TensorRT Setup, with this doc pointing back at it — that
+> pointer is now flipped: AGENTS.md keeps the operational rules and links
+> here). Update THIS section, never a copy.
+
+TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's
+EULA. To include TensorRT:
+
+1. Download from https://developer.nvidia.com/tensorrt (e.g.,
+   `TensorRT-Enterprise-11.2.1.2-Windows-amd64-cuda-13.3-Release-external.zip`).
+   **OWNER DIRECTIVE: always take the NEWEST release.** Never resolve a
+   pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip.
+2. Place the zip in `windows/downloads/` and **delete the superseded one**. The
+   extract step version-sorts and takes the highest (a `[version]` cast, so
+   `11.10.0.1` beats `11.2.1.2` — plain string sort gets that backwards), but a
+   stale ~2 GB zip still bloats the `COPY downloads` layer.
+3. Set `TENSORRT_ZIP_SHA256` in `versions.env` to the new zip's hash
+   (`Get-FileHash -Algorithm SHA256 windows\downloads\TensorRT-*.zip`,
+   lowercase). It was EMPTY until 2026-08-14, so ~2 GB of EULA-gated payload
+   entered the image unverified. A stale hash now fails the build loudly — that
+   is intended, not a bug.
+4. It is auto-detected during the `Dockerfile.nvidia` build. `TENSORRT_VERSION`
+   never derives a **filesystem** path — the tree is resolved from disk and
+   normalized to `current` — and is otherwise used for drift REPORTING. One
+   exception, so the claim is not read as absolute: `setup-tensorrt.ps1` still
+   builds its NVIDIA CDN fallback URLs out of the pin, used only when no zip is
+   staged.
+
+If no zip is found, the build **skips TensorRT gracefully** (CUDA + cuDNN still
+work; `setup-tensorrt.ps1` warns and returns, ORT auto-disables the TensorRT
+EP, and the smoke test's `TENSORRT_ROOT` pointer passes on the guaranteed-empty
+`C:\tensorrt`). This zip-less configuration is the NORMAL state of this host's
+GPU lane. Do NOT re-harden this into a fail-fast: a 2026-08-04 "fail-fast"
+variant (premised on the wrong claim that the smoke test would reject a
+TensorRT-less nvidia image) broke the first hardened `-Gpu` rebuild and was
+reverted on 2026-08-05. The ORT build script auto-detects `$env:TENSORRT_ROOT`
+and enables the TensorRT EP when available.
+
+**A PRESENT zip is a different matter and now fails CLOSED.**
+`normalize-tensorrt-tree.ps1` (bind-mounted into the `trt-extract` stage)
+renames the extracted `TensorRT-<version>` tree to a stable **`current`** and
+throws if it carries no runtime DLLs. Absent zip = supported; half-extracted
+tree = build failure. `Resolve-TensorRtRoot` prefers `current` and falls back
+to the versioned glob for older images.
+
+**Why `current` exists — two silent defects, both green for their whole life
+(fixed 2026-08-14, backlog #38):** `Dockerfile.nvidia` used to build the
+runtime PATH as `$TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib`, which was
+wrong twice over. (1) The VERSION came from the pin, so it named a nonexistent
+directory the moment the pin and the staged zip disagreed. (2) The DIRECTORY
+was `lib\` — **TensorRT 10+ ships the runtime DLLs in `bin\`; `lib\` holds
+only link-time `.lib` import libraries** (measured: 14 DLLs vs 6 `.lib`). So
+even a correctly pinned image could never load the EP. Neither failed a build,
+because ORT resolves its BUILD-time root with a glob and compiles the EP fine —
+only the RUNTIME lookup broke, and ORT drops an EP with unreachable DLLs
+**silently**. PATH now carries `current\bin` first, `current\lib` after it for
+the 8.x/9.x layout. **Never derive that PATH from the pin again**, and note a
+Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
+`ENV PATH=` and the image config wins.
 
 ### Mandatory GStreamer plugins (the contract)
 
@@ -551,7 +614,8 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 > **AMD RDNA4-GPU host (RX 9xxx)?** An ENABLED RDNA4 dGPU makes every
 > process-isolated RUN-layer finalize fail with `hcsshim::ActivateLayer 0x20`
 > (docker/for-win#14977; A/B-proven 2026-08-10 — see
-> `docs/windows-host-setup.md` and AGENTS.md Common Failure Modes). The
+> `docs/windows-host-setup.md` and § RDNA4 dGPU layer-lock (A/B history and
+> diagnostics) below). The
 > preflight gate `Assert-NoActiveRdna4Gpu` refuses to start while it is
 > enabled. Build window: elevated
 > `pwsh -File windows\scripts\host\toggle-rdna4-gpu.ps1 -Disable` → build (display
@@ -1396,12 +1460,15 @@ IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
 `docker commit` preserves the builder image's ENV, so each result image is a
 drop-in replacement for the old single-Dockerfile output.
 
+#### RDNA4 dGPU layer-lock (A/B history and diagnostics)
+
 **Diagnostic / partial-alternative on hosts where build-`COPY` is broken.**
 Measured 2026-08-09 — root cause RESOLVED 2026-08-10: the ENABLED AMD RDNA4
-dGPU locks fresh container layers (see AGENTS.md Common Failure Modes "AMD
-Radeon host" row; build with the dGPU disabled via `toggle-rdna4-gpu.ps1` —
-the earlier "Adrenaline reinstall fixes it, GPU-disable does not" verdict is
-SUPERSEDED):
+dGPU locks fresh container layers (full A/B history + falsification list at
+the end of this subsection — since 2026-08-24 THIS doc owns that story and
+AGENTS.md's Common Failure Modes rows link here; build with the dGPU disabled
+via `toggle-rdna4-gpu.ps1` — the earlier "Adrenaline reinstall fixes it,
+GPU-disable does not" verdict is SUPERSEDED):
 on a host where *every* `docker build`/`buildctl build` `COPY` commits fail
 (`hcsshim::ActivateLayer 0x20` on buildkit, `mkdir \\?\Volume{<GUID>}\C:.` on the
 docker legacy builder — while `FROM`+`RUN` layers commit fine), the **`CommitLayer`
@@ -1443,6 +1510,63 @@ coincided with patch/reboot changes):**
   unkillable by design and the identical Stevedore+OS stack builds the BK lane
   fine on the working machine. ⇒ host-residual; use the classic lane there or
   the healthy host.
+
+**The full A/B history and falsification list (moved here from AGENTS.md's
+Common Failure Modes "AMD Radeon host" row on 2026-08-24 — this doc owns the
+story now):**
+
+- **2026-08-09 final verdict of that day (measured; superseded as a root-cause
+  claim the next day, kept as history):** "the BK build lane is UNUSABLE ON
+  THE DISCOVERED HOST" — the reimport/double-activation `0x20` persisted
+  identically on buildkit 0.32.0 AND a throwaway v0.32.2 daemon (instrumented
+  A/B, pristine Stevedore reinstall, every host lever tried incl. AMD
+  GPU-disable + driver/chipset reinstall); read as host-level
+  hcs/windows-snapshotter behavior, NOT engine/config/OS-version (the working
+  machine is the same 26200 build). dockerd (classic lane) committed the same
+  shapes fine there, and `nerdctl run` of pre-built images was unaffected.
+  Practical note that survives: buildkit 0.32.x includes the upstream retry
+  fix (#5885) — it does not help a persistently-held VHD. HVCI/Memory
+  Integrity was falsified too (off + reboot + retest = identical `0x20`).
+- **2026-08-10 morning: LIGHT-probe-green but NOT chain-green.** The fixed
+  3-layer probe (now exporting `type=image,...,unpack=true`, the same output
+  path as `build-buildkit.ps1`) passed commit + export + unpack — but the real
+  chain's first COPY after the heavy pwsh-install RUN died deterministically
+  (`ActivateLayer 0x20` at child finalize/reimport, FRESH snapshot IDs under
+  `-NoCache` — not poisoned cache). This is why probe verdict discipline says
+  only a `-Heavy`-green `probe-build-copy.ps1` verdict counts.
+- **RESOLVED 2026-08-10 by same-boot A/B: the holder is the ENABLED RDNA4 dGPU
+  itself (RX 9070 XT + Adrenalin), upstream docker/for-win#14977 (RDNA3.5/4,
+  open).** Disable the dGPU → tiny AND heavy RUN-layer finalize green, first
+  try; enable → red. Severity tracks the WINDOWS PATCH LEVEL: pre-KB5101684
+  only heavyweight RUN layers tripped (light probes green — exactly why the
+  host looked probe-healthy while the chain died); post-KB5101684 even
+  10-byte RUN layers fail. COPY-only layers finalize fine either way (no
+  container involved). The 2026-08-09 Adrenaline-reinstall and in-place-repair
+  "fixes" above are SUPERSEDED as root-cause claims — each coincided with a
+  patch-level/reboot change that moved the trigger threshold.
+- **Falsified on the way (all still-red):** Defender (full exclusion set incl.
+  the snapshotter root + `MsMpEng.exe`; realtime-off blocked by tamper
+  protection), WSearch/SysMain, daemon bounces, vmcompute restart, non-core
+  minifilter detaches (no third-party filters exist on C:), fresh IDs under
+  `--no-cache`, settle delays, reboots, nanoserver base, split solves.
+- **Failed finalizes additionally WEDGE hcs state until a REBOOT** (survives
+  service bounces + vmcompute restarts; after one red finalize even tiny RUN
+  finalizes fail). This cascade is what made every earlier session's A/Bs
+  contradict each other — after ANY red finalize, REBOOT before further A/Bs;
+  a wedged host falsifies every experiment.
+- **Order of operations on any weird host:** (1)
+  `windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` (the committed
+  probe; only `-Heavy`-green counts), (2) RDNA4 dGPU present? elevated
+  `toggle-rdna4-gpu.ps1 -Disable` → re-probe `-Heavy` → build → re-enable
+  (display falls back to the iGPU; DirectML-on-host is unavailable during the
+  window; `build-buildkit.ps1`'s `Assert-NoActiveRdna4Gpu` preflight enforces
+  this — `-SkipHostChecks` overrides, and a verified-healthy host can bypass
+  just this gate via `-SkipRdna4Gate`), (3) after ANY red finalize: REBOOT
+  before further A/Bs.
+- The docker-classic legacy builder's `COPY` defect on that host is presumably
+  the same interaction (untested with the GPU off). And note the probe itself
+  had two pwsh bugs masking all of this until 2026-08-10 (the ArgQuoting traps
+  in AGENTS.md § Windows Build Invariants).
 
 The `litert`/`tvm` aux branches **also** run+commit at `-MediaCoreCpus` cores (via
 their `Dockerfile.media-builder` targets): media-core is already committed when they
@@ -1533,6 +1657,36 @@ Stevedore reinstall) measured **BUG GONE — process isolation commits fine**, w
 is the current baseline AGENTS.md § Isolation policy operates on. Re-probe (delete
 the probe cache first) rather than trusting either verdict after any Docker/
 containerd/host update.
+
+**The 2026-08-21 incident — how a broken PROBE manufactured a "host defect"
+(the ProbeShell story; moved here from AGENTS.md § Isolation policy on
+2026-08-24 — no other doc carried it before):** the probe's own
+`Dockerfile.isolation-probe` set `SHELL ["pwsh", ...]` on the PUBLIC
+`servercore` base — which ships Windows PowerShell 5.1 only — so every `RUN`
+died with `hcs::System::CreateProcess ... The system cannot find the file
+specified`, for a reason that had nothing to do with wcifs. The driver read
+that manufactured verdict as a host defect and silently fell back to Hyper-V:
+**2 CPUs on a 32-core host**, behind a warning that looked legitimate. After
+the Dockerfile fix, the SAME host re-probed **BUG GONE — process isolation
+commits fine** (the current baseline above). Regression guard:
+`windows/scripts/tests/Dockerfile.ProbeShell.Tests.ps1` — no `pwsh` SHELL on a
+public base before pwsh is installed; comments do not count as an install.
+
+Two operational lessons from that incident:
+
+- **`BUILD FAILED (exit 1) but NOT with the known signature -- investigate` in
+  the probe log means the VERDICT IS WORTHLESS, not that the host is broken.**
+  Trust the driver's Hyper-V-fallback warning only after reading the probe log
+  (`out\windows-build-logs\isolation-probe.log`) — the probe distinguishes the
+  known `wcifs`/`ActivateLayer 0x20` signature from every other failure
+  exactly so that an unrelated breakage cannot masquerade as the known bug
+  (the exit-2 verdict in the list above is the same rule seen from the exit
+  code).
+- **Force a re-probe by deleting the cached verdict.** The verdict is cached
+  per host build + docker version in
+  `out\windows-build-logs\isolation-probe-cache.json`; a stale (or
+  manufactured) verdict lives there until the file is deleted. Recipe after
+  any fix or doubt: delete the cache file, re-run the probe, read the log.
 
 ### Run-side wcifs symptoms (process isolation)
 
@@ -1784,6 +1938,44 @@ when the remote backend is configured). FFmpeg (MSVC/make) remains uncached.
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
 
+**Why sccache is BUILT FROM SOURCE at `SCCACHE_GIT_REV`, not installed from
+scoop (decision history moved here 2026-08-24; it previously lived only in
+AGENTS.md and a closed backlog archive):** released sccache cannot wrap nvcc
+on CUDA 13.3 — it parses `nvcc --dryrun` positionally, 13.3.33 moved
+`--simt-only` after the input file, and the build DIES with `fatbinary fatal:
+Could not open input file '<tu>.compute_80.cubin'` (mozilla/sccache#2722,
+merged 2026-08-04, five days AFTER v0.17.0 shipped). `verify-toolchain.ps1`
+asserts sccache resolves from `CARGO_BIN`, because `--version` cannot tell the
+fixed and broken builds apart — main still reports 0.17.0. Never bump
+`SCCACHE_GIT_REV` without checking the local patch series still applies (the
+base rust layer THROWS if not).
+
+**The CUDA launcher (`CMAKE_CUDA_COMPILER_LAUNCHER`) is ON BY DEFAULT since
+2026-08-18** (`SCCACHE_CUDA_LAUNCHER="1"` in the media-core-built-onnx stage),
+after a decision history worth keeping:
+
+- The 2026-08-10 miscompile (dropped instantiations, `lld-link: undefined
+  symbol`) was root-caused to sccache's Windows dryrun quote-collapse — `\"`
+  escapes flattened before tokenization packed ~30 `-D` pairs into one
+  493-char token, so the cpp4 preprocess lost `USE_CUDA` & friends. Fixed
+  upstream (mozilla/sccache#2811, MERGED 2026-08-19 = `SCCACHE_GIT_REV`
+  ffac4a5).
+- The local series in `windows/upstream/sccache-nvcc-quote-fix/` now carries
+  only 0003 (`--diag-suppress` separated form, OpenCV #115 — its own PR is
+  drafted, owner submits), applied by the base rust layer (#114).
+- The three-canary bar passed on the evening of 2026-08-18: fused_moe compile
+  green, providers_cuda link green COLD (153 CUDA device writes), link green
+  on the HIT run at **100.00% CUDA/PTX/CUBIN hit rate** (207/816 hits) —
+  onnx's CUDA portion drops from ~60 to ~33 min warm. The canaries are
+  `verify-cuda-cache.ps1` + a fused_moe compile + a full providers_cuda LINK —
+  the miscompile class is invisible until link, which is why all three are
+  required before trusting any new sccache with the launcher.
+- The #2808 DEADLOCK separately proved to be #99 collateral (gone under a
+  healthy backend). Patch 006 (bare fused_moe) was RETIRED 2026-08-18 (moe
+  compiles through the launcher, link green).
+- Opt out per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`; **never flip the
+  default off silently.**
+
 > **Note (.dockerignore):** The repo `.dockerignore` must NOT contain a `windows/` exclusion — the Windows Dockerfiles COPY from the `windows/scripts/` directory within the build context. If `windows/` is added to `.dockerignore`, the COPY steps will fail with "file not found in build context". This exclusion is safe for Linux builds (which use `linux/` context) but breaks Windows builds.
 
 ## Stevedore Setup Fixes
@@ -1869,6 +2061,14 @@ measured against a lowered number. The aarch64 payload itself remains verified s
 `verify-target-arch.ps1` in the merge stage. Before that, neither driver invoked the smoke test at all — a
 multi-hour build ended with "Done" and zero evidence the image worked, in a repo
 whose defect history is dominated by "builds fine, fails to LOAD".
+
+**The CLASSIC driver (`build.ps1`) gates too, since 2026-08-21** — as a
+`docker run` with a DIRECTORY mount of `windows\scripts`: its dockerd has no
+BuildKit `RUN --mount`, and Windows containers reject single-FILE bind mounts
+outright, so the whole scripts directory is mounted instead; `docker run` also
+enters through the ENTRYPOINT naturally (no bare-`RUN` bypass to compensate
+for). Between 2026-08-14 and 2026-08-21 only the BK driver gated — a classic
+chain in that window still ended unverified.
 
 Three things about the gate are load-bearing:
 
