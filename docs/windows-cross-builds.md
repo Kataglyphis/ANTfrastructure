@@ -381,7 +381,7 @@ PE architecture gate. Two branches cannot exist on this lane at all:
 
 | Branch | Why it cannot be cross-built |
 |---|---|
-| `media-litert` | LiteRT-LM links `prebuilt\windows_x86_64\libGemmaModelConstraintProvider.lib` (`build-litert-lm-from-source.ps1:911`). It is a **binary blob** with no arm64 counterpart — not fixable downstream. |
+| `media-litert` | LiteRT-LM's **active build path is Bazel**, and its `.bazelrc` carries no windows-arm64 configuration at all. **Corrected 2026-08-23:** this line previously blamed the prebuilt `libGemmaModelConstraintProvider.lib` — the first plausible blocker spotted in the file, but the wrong one. That blob is *optional*; upstream's CMake path compiles `cmake/patches/stubs/gemma_model_constraint_provider.cc` in its place. Plain **LiteRT** (not `-LM`) is a separate question — see the backlog. |
 | `media-tvm` | TVM builds its own minimal LLVM with `-DLLVM_TARGETS_TO_BUILD=X86;NVPTX` (`build-tvm-from-source.ps1:141`), so its codegen cannot emit aarch64 at all. |
 
 `Dockerfile.media-merge-builder` copies from both with **unconditional** `COPY --from=media-litert` /
@@ -572,7 +572,7 @@ it finds one, without weakening the short-circuit for genuine errors.
 |---|---|
 | CUDA / cuDNN / TensorRT | **Excluded.** No Windows-on-ARM support; CUDA 13.4 is an RTX-Spark-only developer preview. `Dockerfile.nvidia` is skipped and the arm64 lane always takes the CPU alias path. |
 | DirectML | **Excluded, now on evidence rather than doubt.** The nuget consumed by this chain ships no arm64 import library (no `bin/ARM64-win/DirectML.lib`), so ONNX Runtime, ONNX GenAI and OpenCV all build with DML off. DirectML itself supports ARM64 (≥1.15.4) and Microsoft ships ARM64 ONNX+DirectML builds for Copilot+ NPUs, so this is a packaging gap, not a platform one — but it is a hard blocker here today. Microsoft's Snapdragon guidance points at the **QNN** provider instead, which would pull in the Qualcomm AI Engine SDK this stack does not integrate. |
-| LiteRT-LM | **Blocked upstream.** Ships a prebuilt `prebuilt/windows_x86_64/libGemmaModelConstraintProvider.lib` with no arm64 counterpart. Not fixable downstream. |
+| LiteRT-LM | **Blocked upstream — but not for the reason recorded until 2026-08-23.** The blocker is that the active path is **Bazel** and LiteRT-LM's `.bazelrc` has no windows-arm64 configuration. The prebuilt `libGemmaModelConstraintProvider.lib` that this table used to blame is *optional* (the CMake path compiles an upstream stub instead) and was never the obstacle. Whether plain **LiteRT** can be cross-built without `-LM` — which would also restore the `tflite` GStreamer plugin — is tracked in the backlog. |
 | Flutter | **Not cross-compilable.** windows-arm64 needs a native arm64 host; cross support is not upstream. |
 | PyTorch / the torch app stage | **Structurally impossible here.** `uv sync` must *run* the target interpreter. Independently, `PYTORCH_VERSION=v2.13.0` publishes no `win_arm64` wheel, the Windows-Arm wheels exist only as `+cpu` builds on `download.pytorch.org`, and upstream does not build them for Python 3.14 — which this repo pins. |
 

@@ -314,10 +314,13 @@ COPY windows\scripts\build\build-litert-from-source.ps1 `
 # COPY --from=media-litert / --from=media-tvm, and a Dockerfile has no way to
 # make a COPY conditional. On the arm64 cross lane neither branch can exist:
 #
-#   media-litert : LiteRT-LM links prebuilt\windows_x86_64\
-#                  libGemmaModelConstraintProvider.lib (build-litert-lm-from-
-#                  source.ps1:911). There is no arm64 counterpart and it is a
-#                  binary blob, so this is not fixable downstream.
+#   media-litert : LiteRT-LM's ACTIVE build path is Bazel and its .bazelrc has
+#                  no windows-arm64 configuration at all. CORRECTED 2026-08-23:
+#                  this previously blamed prebuilt\windows_x86_64\
+#                  libGemmaModelConstraintProvider.lib -- the first plausible
+#                  blocker spotted in the file, but the wrong one. That blob is
+#                  OPTIONAL (upstream's CMake path compiles a stub in its place),
+#                  so it never was what stood in the way.
 #   media-tvm    : TVM builds its own minimal LLVM with
 #                  -DLLVM_TARGETS_TO_BUILD=X86;NVPTX (build-tvm-from-
 #                  source.ps1:141), so its codegen cannot emit aarch64 at all.
@@ -343,10 +346,9 @@ RUN $dirs = @( `
     $note = @( `
         'This component is intentionally ABSENT from the Windows arm64 (aarch64) bundle.', `
         '', `
-        'LiteRT-LM links a prebuilt x86_64-only static library', `
-        '(prebuilt\windows_x86_64\libGemmaModelConstraintProvider.lib) for which upstream', `
-        'ships no arm64 counterpart; TVM builds its own LLVM with X86;NVPTX targets only,', `
-        'so its codegen cannot emit aarch64.', `
+        'LiteRT-LM is built through Bazel here, and its .bazelrc carries no windows-arm64', `
+        'configuration; TVM builds its own LLVM with X86;NVPTX targets only, so its codegen', `
+        'cannot emit aarch64.', `
         '', `
         'Neither is fixable in this repository. See docs/windows-cross-builds.md.' `
     ) -join [Environment]::NewLine; `

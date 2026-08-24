@@ -2060,6 +2060,82 @@ The **authoritative per-script table** for the Windows lane (AGENTS.md § Window
 
 ### OPEN
 
+#### ARM64 parity (opened 2026-08-23)
+
+The `:winarm64` cross lane completes end to end and its PE gate passes (389 binaries,
+0 violations), but it is **not** at feature parity with amd64. Each item below carries a
+**verified** blocker — every one was researched against the actual code and upstream, then
+adversarially re-checked, because an optimistic "solvable" here costs 25 min to several hours
+of build time per attempt. Ordered by leverage ÷ risk, which is the order they should be done in.
+
+- **#112 — FFmpeg aarch64 assembly (`--disable-asm` today).** M · ★★
+  Route A needs **no new tooling**: `--as=clang --target=aarch64-pc-windows-msvc`, letting clang's
+  integrated assembler handle the GAS syntax. `gas-preprocessor.pl` + `armasm64` (Route B) is the
+  fallback, not the plan. Verify first that nothing in the FFmpeg build *runs* a produced binary —
+  `--enable-cross-compile` disables configure's runtime probes, which is why this is tractable at
+  all. Risk to amd64: that lane assembles with **nasm** and must not be touched.
+
+- **#113 — DirectML on arm64 (`USE_DML=OFF` in ORT, GenAI and OpenCV).** M · ★★
+  This is a **packaging/case bug, not a platform gap**: the DirectML redist path is composed from
+  `onnxruntime_target_platform` without lower-casing, so the arm64 redist directory is missed.
+  Fix as a reviewable patch (`windows/scripts/patches/onnxruntime/006-dml-arm64-nuget-path-case.patch`,
+  005 is taken). **Strict ordering: ORT first, and only turn GenAI on once ORT's arm64 DML is green** —
+  GenAI links ORT, so a half-enabled DML there produces confusing link errors.
+
+- **#114 — aarch64 CPython, and the Python bindings it unblocks.** L · ★★★
+  The highest-leverage item: it is what keeps `cv2`, the ONNX Runtime wheel, ONNX GenAI's bindings
+  and PyAV off the lane. **Do Phase 0 first** — a ~20 min probe (no chain rebuild) answering exactly
+  three questions: does the image's VS ship `Platforms\ARM64\PlatformToolsets\ClangCL`, does
+  `Hostx86\arm64\cl.exe` exist (setuptools' `x86_arm64` spec needs it for PyAV), and does
+  `PCbuild\build.bat -p ARM64` actually run to completion. Could not be answered up front because
+  `ctr`/`docker` need elevation on this host. **The decisive distinction** is between *compiling and
+  linking a `.pyd` against the target's headers and import lib* (no execution, feasible) and
+  *setuptools/pip wheel packaging*, which normally runs the interpreter (not feasible here).
+  `Get-SourceBuildPython` must stay HOST-pinned — the cross lane runs builds with the host
+  interpreter while linking against the target one. Those two must never be conflated again.
+
+- **#115 — plain LiteRT without LiteRT-LM (would also restore the `tflite` GStreamer plugin).** L · ★★
+  **The recorded blocker was wrong and is corrected in the tree:** the prebuilt
+  `libGemmaModelConstraintProvider.lib` is *optional* — upstream's CMake path compiles
+  `cmake/patches/stubs/gemma_model_constraint_provider.cc` instead. The real blocker is that
+  LiteRT-**LM**'s active path is **Bazel**, whose `.bazelrc` has no windows-arm64 configuration.
+  That says nothing about plain **LiteRT**, which the branch builds *first* and by a different
+  route. Establish whether LiteRT alone can ship with only `-LM` dropped; if it can, the
+  `media-branch-absent` stand-in shrinks and `Get-RequiredGstPlugin -Arch` can stop dropping `tflite`.
+
+- **#116 — TVM + IREE on arm64.** XL · ★
+  Lowest priority: highest cost, narrowest benefit, medium confidence. **Phase 0 is worth doing on
+  its own merits and is amd64-only:** adding `AArch64` to TVM's minimal-LLVM `LLVM_TARGETS_TO_BUILD`
+  lets the **x64** image's TVM emit aarch64 code (`tvm.build(target='llvm -mtriple=aarch64-…')`) for
+  one extra LLVM target of build time. It does **not** unblock the arm64 branch — do not conflate
+  the two. Everything after that (cross-capable minimal LLVM, IREE's in-tree LLVM and its host
+  tools) is genuinely large.
+
+- **#117 — the arch gate covers `C:\runtime` only; the CPython tree is outside it.** S · ★★
+  `Dockerfile.media-merge-builder:172` fans in `C:\temp\cpython\Lib\site-packages`, and the gate runs
+  `-Path 'C:\runtime'`. So the arm64 image carries the **host x64 CPython and its site-packages**, and
+  the 389 binaries the gate reported were all genuinely arm64 — they just were not *everything*.
+  **Not obviously a defect, which is why this is a question and not a fix:** that interpreter is the
+  HOST tool that *runs* the builds and is legitimately x64, so simply adding `C:\temp\cpython` to
+  `-Path` turns a correct build red. Decide first what `C:\temp` *is* — build residue or shipped
+  payload — then either exclude it from the image on the cross lane or gate it with the host-tool
+  allowlist. A first attempt at "just gate it too" was written and reverted on 2026-08-23 for exactly
+  this reason. Resolve together with #114, which changes the answer.
+
+**Permanently out of reach — do not re-litigate without new upstream facts:** CUDA / cuDNN /
+TensorRT (no Windows-on-ARM builds exist at all), and the `torch` app stage (`uv sync` must execute
+the target interpreter, and the pinned PyTorch publishes no `win_arm64` wheel for the pinned Python).
+
+**One measurement in the tree is unreliable and must be re-taken, not trusted:** the PyAV note in
+`build-ffmpeg-from-source.ps1` ("`ImportError: DLL load failed while importing Utils`") was recorded
+while `Initialize-PythonPlatformTag` was still stamping the **target** tag on the **host**
+interpreter — so pip resolved a `win_arm64` Cython into the x64 host Python. The bug and its fix
+landed in the same commit (`ed2a04d4`). That evidence shows the shim was wrong at the time; it does
+**not** show PyAV cannot be cross-built. Re-measure before citing it. (setuptools does support this:
+`_get_vcvars_spec('win-amd64', 'win-arm64')` → `x86_arm64` — which also means today's amd64 PyAV
+wheel is already built by `cl.exe`, so the "everything is clang-cl" rule has a PyAV-shaped hole.)
+
+
 - **VERIFY RIDE (the gate for everything landed 2026-08-20/21).** The
   post-store-reset rebuild ride verifies, in one pass: the #108 layout, the
   refactor-audit batch and the P8 liquidation (17 commits, suite 523->536 —
