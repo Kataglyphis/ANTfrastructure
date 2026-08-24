@@ -1,5 +1,61 @@
 # Changelog
 
+## 2026-08-24 - docs: Windows ops notes folded in; second Linux pass
+
+Same treatment as the Linux notes folder, applied to
+`Nextcloud\Dokumente\Windows` (30 files), plus a second Linux pass that caught
+what a first triage-by-directory-name had missed. +518 lines across 7 docs.
+
+**Windows.** The Windows lane already owned long paths, `core.longpaths`,
+`Optimize-VHD`, MSIX signing and `dumpbin`, so those were left alone. What was
+genuinely absent:
+
+- **`docker login ghcr.io` fails on Windows with `--password-stdin`** — the
+  documented form for the registry this repo publishes to. Fix is clearing
+  `credsStore` (the same helper whose SYSTEM-context failure AGENTS.md already
+  lists) or writing the base64 auth entry directly. Now in `windows-builds.md`
+  along with `--network=host` being Linux-only, `host.docker.internal`,
+  `--memory` for heavy Windows containers, DNS via `daemon.json`, service
+  recovery, and the WinGet/MSBuildTools image gotchas.
+- **WSL2 setup** in `rancher-desktop-linux-containers.md`: store-less install via
+  DISM + `wsl --import` from a cloud rootfs, `appendWindowsPath=false` (Windows
+  binaries shadowing Linux ones inside a build script), `ext4.vhdx` reclaim, the
+  VPN no-network fix, and `usbipd` passthrough including the modprobe/bind step
+  that attaching alone does not do.
+- **Host odds and ends** in `windows-host-setup.md`: Defender *performance mode*
+  (complements the existing exclusions), `Set-ExecutionPolicy -Scope Process`,
+  in-place `PATH` reload, non-interactive VS update, `winget --force --version`
+  for an exact SDK pin, a WSL firewall rule, `bcdedit /bootsequence` (the
+  counterpart to `grub-reboot`), and `pnputil` driver removal.
+- **Git recovery** in `adopting-in-a-new-project.md`: `submodule deinit -f --all`
+  for a half-initialised checkout, `core.longpaths`, `git clean -fdx`, and the
+  `ssh-agent` service that a hanging `git pull` in PowerShell is waiting on.
+
+**Second Linux pass.** Three more transfers, all previously misjudged by folder
+name rather than content — the same mistake twice over:
+
+- **UFW drops container traffic** unless `DEFAULT_FORWARD_POLICY="ACCEPT"`. This
+  is the Linux twin of the Windows CNI `.conf` requirement AGENTS.md records as
+  "without it RUN steps have NO network": same failure, same invisibility.
+- **Host suspend kills a multi-hour chain.** `logind.conf` covers only keys and
+  the lid; the sleep *targets* need masking separately.
+- **APT pinning** as the other half of `Package-Blacklist` — blacklist stops
+  upgrades, pinning forces the source. Carries a real trap: APT preferences need
+  each field on its own line, and a single-line `echo` writes a file APT ignores
+  with no error.
+
+Plus the two stranded residues: the riscv64 `libgst*.so*` cleanup and the
+prebuilt Android GStreamer tarball, both in `runtime-services.md`.
+
+**Excluded, as before.** `ProductKey.md` holds a real OEM licence key; a
+scheduled-task XML carries an employer domain account and a machine SID; several
+notes carry hostnames, a device public key and personal paths. None transferred.
+Verified with gitleaks (working tree, repo config: no leaks, `.gitleaksignore`
+unchanged) plus a manual sweep for those identifiers, which gitleaks does not
+flag. Incidental find: `Nextcloud\...\GenerateCertificateMSIX.ps1` is an older,
+weaker copy of `windows/scripts/certificates/GenerateCertificateMSIX.ps1` — the
+repo's is parameterized, uses a KSP provider and exports AES256_SHA256.
+
 ## 2026-08-24 - docs: personal Linux ops notes folded into `docs/` (38 of 94), two new pages
 
 `C:\Users\jsh\Nextcloud\Dokumente\Linux` had accumulated 94 markdown notes

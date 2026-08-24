@@ -225,6 +225,22 @@ FallbackDNS=1.1.1.1
 sudo systemctl restart systemd-resolved
 ```
 
+### B6. UFW silently breaks container networking
+
+If the firewall is enabled, containers can lose outbound networking entirely —
+image pulls hang, `apt` inside a build reaches nothing. UFW defaults to dropping
+forwarded traffic, which is exactly what a container bridge relies on.
+
+```bash
+sudo nano /etc/default/ufw
+# DEFAULT_FORWARD_POLICY="ACCEPT"
+sudo ufw reload
+```
+
+This is the Linux counterpart to the Windows lane's CNI `.conf` requirement —
+in both cases the build looks correctly configured and the RUN steps simply have
+no network. Check this before debugging a mirror or a DNS resolver.
+
 ---
 
 ## Phase C — Performance mode
@@ -286,6 +302,52 @@ rocm-smi --showperflevel   # current performance level
 rocm-smi --showprofile     # available performance profiles
 ```
 
+
+### C3. Stop the host suspending mid-build
+
+A machine that suspends during a multi-hour cross chain kills the run. Desktop
+installs enable idle suspend by default, so this is a required step on any host
+that builds unattended — not an optimization.
+
+In `/etc/systemd/logind.conf`:
+
+```ini
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+HandleLidSwitch=ignore
+HandleLidSwitchExternalPower=ignore
+HandleLidSwitchDocked=ignore
+```
+
+```bash
+sudo systemctl restart systemd-logind
+```
+
+`logind` only covers keys and the lid. Block the sleep targets themselves as
+well, or something else can still trigger a suspend:
+
+```bash
+sudo systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
+```
+
+And belt-and-braces in `/etc/systemd/sleep.conf`:
+
+```ini
+[Sleep]
+AllowSuspend=no
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
+```
+
+Verify:
+
+```bash
+systemctl status sleep.target      # should read: masked
+```
+
+On laptop-class hardware also check that TLP is not overriding the governor set
+in [C1](#c1-cpu-frequency-governor): `systemctl status tlp`.
 ---
 
 ## Phase D — Host toolchain
@@ -465,6 +527,53 @@ sudo systemctl mask    apt-daily.timer apt-daily-upgrade.timer
 
 Masking, not just disabling — a dependency can re-enable a merely disabled unit.
 
+
+### E4. Pinning a package to a specific source or version
+
+`Package-Blacklist` in [E2](#e2-unattended-upgrades) stops a package being
+upgraded. Pinning is the other half: it forces which source a package comes
+from, which is what you want when the distro's version is wrong for the host
+(an older driver branch, a vendor repo, a PPA).
+
+```bash
+sudo tee /etc/apt/preferences.d/my-pin >/dev/null <<'PIN'
+Package: somepackage*
+Pin: release o=LP-PPA-somevendor
+Pin-Priority: 1001
+PIN
+```
+
+A priority above 1000 permits a *downgrade* to that source, which is the point —
+anything at or below 1000 will not pull a package backwards. To exclude a source
+entirely, pin it negative:
+
+```bash
+sudo tee /etc/apt/preferences.d/no-distro-version >/dev/null <<'PIN'
+Package: somepackage*
+Pin: release o=Ubuntu
+Pin-Priority: -1
+PIN
+```
+
+Always verify which candidate actually won — pinning fails quietly:
+
+```bash
+sudo apt update
+apt-cache policy somepackage
+```
+
+> **The trap:** APT preferences require **each field on its own line**. A
+> single-line `echo "Package: x Pin: ... Pin-Priority: ..."` writes a file APT
+> parses as garbage and ignores, with no error. The symptom is a pin that simply
+> does nothing, which reads as "pinning doesn't work here".
+
+If the pinned package comes from a PPA and you want unattended-upgrades to keep
+it current, that origin has to be allowed explicitly:
+
+```bash
+echo 'Unattended-Upgrade::Allowed-Origins:: "LP-PPA-somevendor:${distro_codename}";' \
+  | sudo tee /etc/apt/apt.conf.d/51unattended-upgrades-somevendor
+```
 ---
 
 ## Troubleshooting

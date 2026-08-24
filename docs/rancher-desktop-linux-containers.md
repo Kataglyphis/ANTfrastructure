@@ -243,3 +243,116 @@ The same trick applies to named volumes — see
 [Persisting the cargo cache](#persisting-the-cargo-cache), which chowns
 `cargo-cache` to the image's uid 1001 once instead of running everything as
 root.
+
+## Setting up WSL2 itself
+
+Rancher Desktop supplies its own distro, but a second WSL distro is often
+wanted — for a Linux-side toolchain, or to reproduce a CI step outside the
+container.
+
+### Installing without the Microsoft Store
+
+Store-less installs are the norm on managed or offline machines:
+
+```powershell
+dism.exe /online /enable-feature /featurename:Microsoft-Windows-Subsystem-Linux /all /norestart
+dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart
+```
+
+Reboot, then import a rootfs tarball from
+[Ubuntu Cloud Images](https://cloud-images.ubuntu.com/wsl/):
+
+```powershell
+mkdir C:\WSL\Ubuntu24.04
+wsl --import Ubuntu24.04 C:\WSL\Ubuntu24.04 .\ubuntu-24.04-wsl-rootfs.tar.gz
+wsl -d Ubuntu24.04
+```
+
+An imported distro starts as root with no user account:
+
+```bash
+passwd
+adduser <youruser>
+usermod -aG sudo <youruser>
+```
+
+```powershell
+wsl -d Ubuntu24.04 -u <youruser>
+wsl --set-default Ubuntu24.04
+```
+
+### Stop Windows executables shadowing Linux ones
+
+By default WSL appends the whole Windows `PATH`, so `python`, `node` or `cmake`
+can resolve to a Windows binary inside a Linux shell — with confusing results in
+a build script. In `/etc/wsl.conf`:
+
+```ini
+[interop]
+enabled=true
+appendWindowsPath=false
+```
+
+Windows executables remain callable by full path; they just stop winning `PATH`
+lookups. Restart the distro (`wsl --shutdown`) for it to take effect.
+
+### The virtual disk only grows
+
+WSL2's ext4 disk never shrinks on its own. Reclaim it the same way as the
+[Docker VHD](windows-builds.md):
+
+```powershell
+wsl --shutdown
+cd C:\WSL\Ubuntu24.04
+Optimize-VHD -Path .\ext4.vhdx -Mode Full
+```
+
+### No network inside WSL once a VPN connects
+
+A known WSL networking interaction rather than a VPN misconfiguration. Install
+the latest WSL from [its releases](https://github.com/microsoft/WSL/releases)
+rather than relying on the inbox version:
+
+```powershell
+Add-AppxPackage .\Microsoft.WSL_<version>_x64_ARM64.msixbundle
+```
+
+Then set the networking mode in WSL Settings. Microsoft's
+[troubleshooting note](https://learn.microsoft.com/en-us/windows/wsl/troubleshooting#wsl-has-no-network-connectivity-once-connected-to-a-vpn)
+covers the remaining cases.
+
+### USB passthrough (cameras, probes, boards)
+
+Needed whenever a device has to be visible to a Linux toolchain — see
+[Microsoft's guide](https://learn.microsoft.com/en-us/windows/wsl/connect-usb):
+
+```powershell
+usbipd list
+usbipd attach --wsl --busid 1-1.2
+```
+
+Attaching is not the whole story: the device appears on the USB bus but the
+kernel module still has to claim it. For a UVC camera that shows up with no
+`/dev/video*`:
+
+```bash
+sudo modprobe uvcvideo videodev
+lsmod | grep -E 'uvcvideo|videodev'
+ls -l /dev/video*
+v4l2-ctl --list-devices
+dmesg | tail -n 40
+```
+
+If the device is listed but still unbound, bind its interfaces by hand — replace
+the vendor id with your own from `lsusb`:
+
+```bash
+for d in /sys/bus/usb/devices/*; do
+  [ -f "$d/idVendor" ] || continue
+  [ "$(cat "$d/idVendor")" = "174f" ] || continue
+  for iface in "$d"/*:*; do
+    [ -e "$iface" ] || continue
+    echo -n "$(basename "$iface")" | sudo tee /sys/bus/usb/drivers/uvcvideo/bind
+  done
+done
+```

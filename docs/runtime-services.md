@@ -277,3 +277,34 @@ Confirm the plugin is actually visible before debugging a pipeline that uses it:
 ```bash
 gst-inspect-1.0 webrtcsink
 ```
+
+### Removing a previous source install
+
+`meson install` scatters files across the prefix, and `ninja uninstall` is often
+unavailable by the time you need it. On a cross rootfs the stale copies are also
+arch-specific, so they sit in the triplet directory rather than `/usr/local/lib`:
+
+```bash
+# preview first — the -print before -delete is deliberate
+sudo find /usr/local/lib/riscv64-linux-gnu -type f -name 'libgst*.so*' -print
+sudo find /usr/local/lib/riscv64-linux-gnu -type f -name 'libgst*.so*' -print -delete
+sudo ldconfig
+```
+
+Swap the triplet for the target you built (`aarch64-linux-gnu`,
+`x86_64-linux-gnu`). Leaving stale `libgst*.so*` behind is a common cause of a
+pipeline that loads the wrong plugin version and fails with a caps error that
+makes no sense against the source you are reading.
+
+### Prebuilt Android GStreamer
+
+The Android lane consumes the upstream universal tarball rather than building
+it. Unpack it where `Dockerfile.android` expects to find it:
+
+```bash
+sudo mkdir -p /opt/android/gstreamer
+sudo tar -xf gstreamer-1.0-android-universal-1.26.7.tar.xz -C /opt/android/gstreamer
+```
+
+Keep the version aligned with the pin in `linux/scripts/01-core/versions.env` —
+a mismatch here surfaces much later as a link error in the Android stage.

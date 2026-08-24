@@ -2030,6 +2030,124 @@ remains the classic-lane tool and needs no CNI plugin:
 "D:\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
 ```
 
+## Docker on Windows: registry auth, networking, service recovery
+
+Traps that are specific to running the Docker CLI/daemon on a Windows host, as
+opposed to the BuildKit/containerd lane above.
+
+### `--password-stdin` does not work — ghcr.io login
+
+The documented login form silently fails on Windows:
+
+```powershell
+# does NOT work here
+echo $CR_PAT | docker login ghcr.io -u USERNAME --password-stdin
+```
+
+Two ways through. First, the credential helper is often the real culprit — open
+`$env:USERPROFILE\.docker\config.json` and clear `credsStore` (typically
+`wincred` or `desktop`), then retry an interactive `docker login`. See also the
+`error getting credentials - err: exit status 1` row in
+[`AGENTS.md`](../AGENTS.md) § Common Failure Modes, which is the same helper
+failing for dockerd-as-SYSTEM.
+
+If that is not an option, write the auth entry directly:
+
+```powershell
+$username = "<user>"
+$token    = "<GITHUB_PAT>"
+$auth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${username}:${token}"))
+```
+
+```json
+{
+  "auths": {
+    "ghcr.io": {
+      "auth": "<the base64 string>"
+    }
+  }
+}
+```
+
+The value is base64, **not** encryption — treat that file as a credential. Prefer
+a short-lived PAT, and see [Build secrets](build-secrets.md) for getting a token
+into a *build* without it landing in a layer.
+
+### `--network=host` is Linux-only
+
+On Windows it is silently not what you want — ports must be mapped explicitly:
+
+```powershell
+docker run -p 9090:9090 <image>
+```
+
+And from inside a container, `127.0.0.1` is the *container's* loopback, not the
+host's. To reach a service running on the host, use the Docker Desktop-provided
+name:
+
+```
+host.docker.internal
+```
+
+### Heavy Windows container workloads
+
+Windows containers do not get the host's full memory by default. For a heavy
+build or test run:
+
+```powershell
+docker run --memory=48g <image>
+```
+
+### DNS: "could not resolve host" inside containers
+
+Edit `C:\ProgramData\Docker\config\daemon.json`:
+
+```json
+{
+  "experimental": false,
+  "hosts": ["npipe:////./pipe/docker_engine_windows"],
+  "dns": ["8.8.8.8", "8.8.4.4"]
+}
+```
+
+```powershell
+Restart-Service -Name com.docker.service
+Restart-Service docker
+```
+
+### When the service is wedged
+
+```powershell
+Restart-Service -Name com.docker.service
+Restart-Service docker
+```
+
+If the daemon is unreachable rather than merely stopped, the desktop app's
+backend processes have to go first:
+
+```powershell
+'com.docker.backend','Docker Desktop','dockerd' | ForEach-Object {
+    Get-Process -Name $_ -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
+}
+Start-Sleep -Seconds 5
+Start-Process -FilePath "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+```
+
+A version rollback is a legitimate fix when an update breaks the lane — the
+installer accepts an explicit downgrade:
+
+```powershell
+.\DockerDesktopInstaller.exe install --disable-version-check
+```
+
+### Two container-image gotchas
+
+- **MSBuild Tools** are not in the base images; see
+  [Microsoft's build-tools container guidance](https://learn.microsoft.com/en-us/visualstudio/install/build-tools-container?view=vs-2022).
+- **WinGet is only available on Windows Server Core 2025 images.** Anything
+  older has to install packages another way.
+
 ## Running the Image
 
 Run with **process isolation** to get the host's full CPU count (Hyper-V

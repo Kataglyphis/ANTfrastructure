@@ -50,6 +50,8 @@ The two halves of one topic often split:
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
+| **ghcr.io login failing on Windows** (`--password-stdin`, `credsStore`), `--network=host`, `host.docker.internal` | [`windows-builds.md`](windows-builds.md#docker-on-windows-registry-auth-networking-service-recovery) |
+| Defender performance mode, `ExecutionPolicy`, PATH reload, VS/winget updates, `bcdedit` one-time boot | [`windows-host-setup.md`](windows-host-setup.md#appendix--host-odds-and-ends) |
 | Build matrix and sanitizer env for the loop | [`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md) |
 
 ### Linux
@@ -58,15 +60,18 @@ The two halves of one topic often split:
 |---|---|
 | Building in the Linux image, presets, the basics | [`linux-build-basics.md`](linux-build-basics.md) |
 | Running Linux containers on a Windows host | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md) |
+| **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |
 | Raw `gst-launch-1.0` pipelines, and building GStreamer from source on a device | [`runtime-services.md`](runtime-services.md#raw-gst-launch-10-pipelines-debugging-below-the-app) |
+| Removing a stale GStreamer source install; the prebuilt Android tarball | [`runtime-services.md`](runtime-services.md#removing-a-previous-source-install) |
 | Detached containers, tmux, and bind-mount file ownership | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#long-running-work-detached-containers--tmux) |
 | Slow `apt update`, unattended-upgrade policy, excluding Docker from auto-upgrades | [`linux-host-setup.md`](linux-host-setup.md#phase-e--package-sources-and-automatic-updates) |
 | What filled the disk, and `/tmp` exhaustion during a build | [`linux-host-setup.md`](linux-host-setup.md#finding-what-filled-the-disk) |
+| **UFW dropping container traffic**, host suspend during a build, APT pinning | [`linux-host-setup.md`](linux-host-setup.md#b6-ufw-silently-breaks-container-networking) |
 
 ### Build, CI and tooling
 
@@ -82,6 +87,7 @@ The two halves of one topic often split:
 | Capping CPU so a build leaves the host usable | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#capping-cpu-so-the-host-stays-usable) |
 | Building on an SBC or small VM: swap, zram, forcing `-j1` | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md#the-other-end-building-on-a-memory-constrained-host) |
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
+| Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
 | Opting a commit into the heavy CI lanes | [`ci-build-triggers.md`](ci-build-triggers.md) |
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 
