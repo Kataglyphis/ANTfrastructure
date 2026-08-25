@@ -124,6 +124,54 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def check_overlay_reaches_the_served_path() -> int:
+    """Generating the file is worthless if the image serves a different copy.
+
+    `dist/` ships its own build-time copy of the same licence page, and the
+    webserver Dockerfile overlays `license-assets/` on top. Until 2026-08-25 the
+    overlay landed one directory too shallow, so the generated file sat at a URL
+    the app never requests and the image served a copy last refreshed months
+    earlier, missing ~25 components. Nothing caught it: both files existed, both
+    were valid Markdown, and only the URL distinguished them.
+
+    Flutter serves declared assets under its own `assets/` root, so an asset
+    declared `assets/documents/footer/x.md` is fetched from
+    `/assets/assets/documents/footer/x.md`. This asserts the overlay targets
+    that layout, and that every licence file the built app carries is covered
+    by one the generator owns.
+    """
+    dockerfile = REPO_ROOT / "linux/webserver/Dockerfile"
+    if not dockerfile.exists():
+        print(f"Error: {dockerfile} not found", file=sys.stderr)
+        return 1
+
+    want = "/var/www/html/assets/assets/"
+    copies = [
+        line for line in dockerfile.read_text(encoding="utf-8").split("\n")
+        if line.startswith("COPY") and "license-assets/" in line
+    ]
+    if len(copies) != 1:
+        print(f"Error: expected exactly one license-assets COPY in {dockerfile.name}, "
+              f"found {len(copies)}", file=sys.stderr)
+        return 1
+    if not copies[0].rstrip().endswith(want):
+        print(f"Error: the license overlay must target {want} so it lands on the path the "
+              f"built app requests (Flutter nests declared assets under its own assets/ root).\n"
+              f"       Found: {copies[0].strip()}", file=sys.stderr)
+        return 1
+
+    served = REPO_ROOT / "linux/webserver/dist/assets/assets/documents/footer"
+    if served.is_dir():
+        generated = {p.name for p in ASSETS_DIR.rglob("openSourceLicenses*.md")}
+        shipped = {p.name for p in served.glob("openSourceLicenses*.md")}
+        uncovered = shipped - generated
+        if uncovered:
+            print(f"Error: dist/ ships licence page(s) the generator does not own, so nothing "
+                  f"refreshes them: {', '.join(sorted(uncovered))}", file=sys.stderr)
+            return 1
+    return 0
+
+
 def main() -> int:
     if not DEPS_JSON.exists():
         print(f"Error: {DEPS_JSON} not found", file=sys.stderr)
@@ -140,14 +188,21 @@ def main() -> int:
     # Default is CHECK (matching sync_versions.py): a flagless invocation used
     # to fall through to the WRITE branch and rewrite tracked files.
     if not args.write:
+        rc = check_overlay_reaches_the_served_path()
         if check_current(en_content, de_content):
-            print("Website license files are up to date.")
-            return 0
+            if rc == 0:
+                print("Website license files are up to date, and the image serves them.")
+            return rc
         print("Website license files are out of date.", file=sys.stderr)
         print("Run: python docs/scripts/generate-website-licenses.py --write", file=sys.stderr)
         return 1
 
+    # The overlay path is a correctness property of the image, not of the file
+    # contents, so --write cannot fix it and must not mask it either.
+    rc = check_overlay_reaches_the_served_path()
     paths = write_files(en_content, de_content)
+    if rc:
+        return rc
     for p in paths:
         print(f"Written: {p.relative_to(REPO_ROOT)}")
     return 0

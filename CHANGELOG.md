@@ -5,6 +5,48 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (fifth pass) — the published webserver was serving a stale licence list
+
+Asked whether the open-source licence lists are current and whether anything
+keeps them current. The generated ones were current. The **served** one was not,
+and nothing was watching the difference.
+
+- **`docs/third-party-licenses.md` and
+  `linux/webserver/license-assets/documents/footer/openSourceLicenses{En,De}.md`
+  are generated** from `docs/deps/deps.json` + `versions.env` by
+  `generate-website-licenses.py`, and they **are** gated: `sync_versions.py
+  --check` shells out to it and ORs the result, so the `version-snapshot`
+  preflight slug covers them — in `.githooks/pre-commit`, `build-docs.yml` and
+  the weekly `stale-docs-check.yml`. That half was working.
+- **The webserver image did not serve those files.** `linux/webserver/dist/`
+  ships its own build-time copy of the same page, and the Dockerfile overlays
+  `license-assets/` on top — but the overlay targeted `/var/www/html/assets/`,
+  one directory too shallow. Flutter serves declared assets under its own
+  `assets/` root, so the app fetches `/assets/assets/documents/footer/…`. The
+  generated file landed at a URL nothing requests, and the image served the
+  `dist/` copy: **last regenerated 2026-07-22, 142 lines against the current
+  236, missing ~25 components** — Arm NN, BuildKit, CPython, Emscripten, GNU,
+  Ghostscript, ImageMagick, LiteRT-LM, Meson, Ninja, Ollama, Pandoc, Pygments,
+  Scoop and more.
+  Nothing caught it because nothing *could*: both files existed, both were valid
+  Markdown, both were tracked, and only the URL told them apart. The generator
+  writes `license-assets/` only, so no amount of regeneration would have fixed
+  the served page.
+- **Fixed** by pointing the overlay at `/var/www/html/assets/assets/`, and
+  **gated** so it cannot drift back: `generate-website-licenses.py` now asserts
+  the Dockerfile's overlay target, and that every `openSourceLicenses*.md` the
+  `dist/` bundle ships is one the generator owns. That check runs on `--write`
+  as well as `--check`, because an overlay path is a property of the image that
+  regenerating file contents cannot fix — and must not mask. Negative-tested:
+  restoring the old target fails the gate with the exact remedy.
+  `dist/`'s stale copy is left in place deliberately — it is a vendored build
+  artifact from the app repo, and the overlay is the designed mechanism for
+  superseding it. The new check is what guarantees the overlay still covers it.
+
+**Answering the question directly:** the lists themselves were up to date and
+are kept so automatically. What was not automatic — and is now — is that the
+*shipped* page is the generated one.
+
 ## 2026-08-25 (fourth pass) — the gates reach the pre-commit hook; the guard stops denying prose
 
 Clearing what the third pass left open, plus one defect the newly-runnable
