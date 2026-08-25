@@ -84,7 +84,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "NCSA": (KEEP_NOTICE, INCLUDE_TEXT),
     "FTL": (KEEP_NOTICE, INCLUDE_TEXT),
     "Apache-2.0": (KEEP_NOTICE, INCLUDE_TEXT, STATE_CHANGES, NOTICE_FILE),
-    "Apache-2.0-with-LLVM-exception": (KEEP_NOTICE, INCLUDE_TEXT, STATE_CHANGES, NOTICE_FILE),
+    "Apache-2.0 WITH LLVM-exception": (KEEP_NOTICE, INCLUDE_TEXT, STATE_CHANGES, NOTICE_FILE),
     "ImageMagick": (KEEP_NOTICE, INCLUDE_TEXT, STATE_CHANGES),
     "LPPL-1.3c": (KEEP_NOTICE, INCLUDE_TEXT, STATE_CHANGES),
     "MS-RL": (KEEP_NOTICE, INCLUDE_TEXT, SAME_LICENCE),
@@ -101,7 +101,7 @@ OBLIGATIONS: dict[str, tuple[str, ...]] = {
     "GPL-3.0-or-later": (KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE),
     # The Runtime Library Exception covers programs COMPILED with GCC. It does
     # not cover shipping GCC itself, which this project's runtime image does.
-    "GPL-3.0-or-later-with-GCC-exception": (
+    "GPL-3.0-or-later WITH GCC-exception-3.1": (
         KEEP_NOTICE, INCLUDE_TEXT, OFFER_SOURCE, STATE_CHANGES, SAME_LICENCE,
     ),
     "AGPL-3.0-or-later": (
@@ -131,6 +131,9 @@ def obligations_for(expression: str) -> tuple[str, ...]:
     stricter reading is the honest one to display. Record an election in
     deps.json (a single spdx id) to narrow it.
     """
+    # Split on the AND/OR operators only. A `X WITH Y` pair is ONE licence id
+    # in SPDX and must survive intact -- splitting it would look up a base id
+    # whose obligations differ from the exception-bearing one.
     parts = [
         p.strip()
         for p in expression.replace(" OR ", " AND ").split(" AND ")

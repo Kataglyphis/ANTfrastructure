@@ -5,6 +5,56 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (seventh pass) — SBOM, in two halves, because one cannot cover the image
+
+An image scanner catalogues components that carry package METADATA: dpkg/apt,
+Python site-packages, npm, Go and Rust binaries. It cannot see a C/C++ library
+built from source into `/opt` — ONNX Runtime, OpenCV, FFmpeg, GStreamer and
+libcamera leave no manifest behind. Those are also the components under copyleft
+licences here, so a scan alone would produce an SBOM that silently omits every
+entry carrying a corresponding-source obligation.
+
+Hence two halves, both published, deliberately distinguishable by
+`creationInfo.creators`:
+
+- **`docs/scripts/generate_sbom.py` (new)** emits `docs/deps/sbom-curated.spdx.json`
+  — SPDX 2.3, 97 packages, from `deps.json` + `versions.env`. Each package
+  carries its SPDX licence expression, its upstream download location, and
+  `licenseComments` naming the obligations it triggers, the corresponding-source
+  upstream and revision, the build flags where those determine the licence, and
+  any patches applied. The two coarse buckets are declared properly as
+  `hasExtractedLicensingInfos` rather than smuggled in as invalid ids.
+  The document is **byte-reproducible** (fixed timestamp, stable namespace, a
+  digest-suffixed SPDXID so `FFmpeg` in two sections cannot collide), which is
+  what lets it be gated at all.
+- **`.github/workflows/sbom.yml` (new)** runs `syft` against the **published**
+  image, per architecture, emitting SPDX and CycloneDX. It reads from ghcr
+  directly (`registry:`), so it needs no build host, no daemon and no disk for
+  the rootfs — which matters because these images are built on a workstation,
+  not in this repository's pipelines. `:latest-cross` is a manifest list, so
+  each arch is scanned explicitly; a scan without `--platform` silently picks
+  one. A result under 50 packages fails the job rather than publishing it: that
+  means a broken reference or a cataloguer regression, not a clean image.
+
+- **Valid SPDX syntax, corrected.** `Apache-2.0-with-LLVM-exception` and
+  `GPL-3.0-or-later-with-GCC-exception` are not SPDX ids. They are now
+  `Apache-2.0 WITH LLVM-exception` and `GPL-3.0-or-later WITH GCC-exception-3.1`,
+  and the expression splitter keeps a `WITH` pair intact — splitting it would
+  look up a base id whose obligations differ from the exception-bearing one.
+- **Gated** as preflight slug `sbom`, in the pre-commit hook and
+  `stale-docs-check.yml`. Negative-tested: dropping a package from the committed
+  document fails with the regeneration command.
+- **Routed** from `docs/INDEX.md`, and the Sphinx landing page regained its
+  **Third-Party Licences** card — the 2026-08-25 `index.rst` rewrite had dropped
+  it, leaving the page reachable only from the toctree. It is the page a
+  production or procurement question lands on first.
+
+**Verified here:** the curated document validates structurally (unique
+well-formed SPDXIDs, 97 packages, 26 flagged source-required), regenerates
+byte-identically across runs, and the gate fails on drift. **Not verified here:**
+the `syft` job has never run — syft is not installed on this workstation and the
+published image is not present, so its first CI run is its first real test.
+
 ## 2026-08-25 (sixth pass) — the licence list now says what each licence REQUIRES
 
 A list that names licences answers "what is in here". It does not answer the

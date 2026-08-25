@@ -261,7 +261,7 @@ If a link ever fails to resolve, the obligation stands: request the correspondin
 
 ### GCC (host + cross) — Linux Images
 
-- **Licence:** GPL-3.0-or-later-with-GCC-exception
+- **Licence:** GPL-3.0-or-later WITH GCC-exception-3.1
 - **Source:** <https://ftp.gnu.org/gnu/gcc/>
 - **Revision:** 16.2.0
 - Built unmodified from the GNU release tarball. The Runtime Library Exception covers programs COMPILED with GCC; it does not cover shipping GCC itself, which the runtime image does.

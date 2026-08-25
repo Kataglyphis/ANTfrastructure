@@ -59,7 +59,7 @@
                             "var": "GCC_VERSION",
                             "url": "https://gcc.gnu.org/",
                             "license": "GPLv3+ with GCC Runtime Library Exception",
-                            "spdx": "GPL-3.0-or-later-with-GCC-exception",
+                            "spdx": "GPL-3.0-or-later WITH GCC-exception-3.1",
                             "source": {
                                 "kind": "upstream-release",
                                 "url": "https://ftp.gnu.org/gnu/gcc/",
@@ -72,7 +72,7 @@
                             "var": "LLVM_RELEASE",
                             "url": "https://llvm.org/",
                             "license": "Apache 2.0 with LLVM Exceptions",
-                            "spdx": "Apache-2.0-with-LLVM-exception"
+                            "spdx": "Apache-2.0 WITH LLVM-exception"
                         },
                         {
                             "name": "Python",
