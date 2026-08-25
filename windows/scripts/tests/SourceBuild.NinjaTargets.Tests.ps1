@@ -53,4 +53,34 @@ Describe 'Invoke-NinjaBuildWithRetry -Targets' {
         Assert-Equal 1 $calls.Count
         Assert-True ($calls[0] -match "-C $([regex]::Escape($script:tmp))\s*$") "no trailing targets: $($calls[0])"
     }
+
+    # Invoke-HostToolCmakeBuild (arm64 run 18, 2026-08-25): the helper's block
+    # tees every ninja line onto the pipeline, so without `| Out-Host` its
+    # return value was [ninja lines..., path] and IREE's `Join-Path $dir $tool`
+    # died with "A drive with the name 'ninja' does not exist". A CHATTY fake
+    # ninja + a fake cmake reproduce it: the return must be exactly one string.
+    It 'Invoke-HostToolCmakeBuild returns exactly the directory path, not the build output' {
+        $env:WBT_NINJA_FAILONCE = ''
+        $chatty = Join-Path $script:tmp 'chatty'
+        New-Item -Path $chatty -ItemType Directory -Force | Out-Null
+        @('@echo off', 'echo ninja: Entering directory %2', 'echo [1/1] Linking fake', 'exit /b 0') -join "`r`n" |
+            Set-Content -LiteralPath (Join-Path $chatty 'ninja.bat') -Encoding ASCII
+        @('@echo off', 'echo -- Configuring done (fake cmake)', 'exit /b 0') -join "`r`n" |
+            Set-Content -LiteralPath (Join-Path $chatty 'cmake.bat') -Encoding ASCII
+        $savedPath = $env:PATH; $savedArch = $env:WINDOWS_TARGET_ARCH
+        $env:PATH = "$chatty;$env:PATH"; $env:WINDOWS_TARGET_ARCH = 'amd64'
+        try {
+            $src = Join-Path $script:tmp 'src'; $bld = Join-Path $script:tmp 'bld'; $pfx = Join-Path $script:tmp 'pfx'
+            New-Item -Path $src -ItemType Directory -Force | Out-Null
+            $result = @(Invoke-HostToolCmakeBuild -SourceDir $src -BuildDir $bld -InstallPrefix $pfx -Targets @('flatc') -Label 'fake host tools' -LogName 'fake-host.log')
+            Assert-Equal 1 $result.Count "one return value, no build-log lines on the pipeline: $($result -join ' | ')"
+            Assert-Equal $bld $result[0] 'returns the build dir when not installing'
+            $withInstall = @(Invoke-HostToolCmakeBuild -SourceDir $src -BuildDir $bld -InstallPrefix $pfx -Install -Label 'fake host tools' -LogName 'fake-host.log')
+            Assert-Equal (Join-Path $pfx 'bin') $withInstall[-1] 'returns <prefix>\bin when installing'
+            Assert-Equal 1 $withInstall.Count 'still exactly one value with -Install'
+        } finally {
+            $env:PATH = $savedPath
+            if ($null -eq $savedArch) { Remove-Item Env:WINDOWS_TARGET_ARCH -ErrorAction SilentlyContinue } else { $env:WINDOWS_TARGET_ARCH = $savedArch }
+        }
+    }
 }

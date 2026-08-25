@@ -652,7 +652,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   with the env dump that now stays in the script) — `Remove-Item Env:` on a null snapshot, same
   fix applied to the LiteRT-LM snapshot restore, its bazel NDK unset and the agentic-loop sanitizer
   restore; pin `SourceBuild.HostArchLibEnv.Tests.ps1`, invariant (d) in
-  `docs/windows-build-invariants.md`. arm64 run 18 carries the proof.
+  `docs/windows-build-invariants.md`. Run 18 then passed LiteRT (XNNPACK 569 + 335, MLAS 25 through
+  the helpers) and exposed (3): `Invoke-HostToolCmakeBuild` returned its block's whole pipeline
+  output — every teed ninja line, path last — so IREE's `Join-Path $ireeHostBinDir $tool` died with
+  "A drive with the name 'ninja' does not exist" (LiteRT never noticed: it `[void]`s the call).
+  `| Out-Host` inside the helper keeps the lines in the log and off the pipeline; pin: the
+  chatty-ninja case in `SourceBuild.NinjaTargets.Tests.ps1`. arm64 run 19 carries the proof.
 
 - **VERIFY RIDE — MOSTLY CLOSED 2026-08-24 by the amd64 full regression** (media all
   branches + merge + final + smoke: arch gate 1134/0, smoke 220/0/0, `[bk] Done`), **and

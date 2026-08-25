@@ -736,11 +736,19 @@ function Invoke-HostToolCmakeBuild {
         [string]$Label = 'host tools'
     )
     Write-Host "$Label`: native $(Get-WindowsHostArch) configure + build into $BuildDir"
+    # `| Out-Host` is LOAD-BEARING: the block's pipeline output (every ninja
+    # line Invoke-NinjaBuildWithRetry tees) would otherwise become part of THIS
+    # function's return value, and a caller doing `$dir = Invoke-HostToolCmakeBuild
+    # ...` gets an array of build-log lines with the path last -- IREE's
+    # `Join-Path $ireeHostBinDir $tool` then died with "A drive with the name
+    # 'ninja' does not exist" (arm64 run 18, 2026-08-25). Out-Host keeps the
+    # lines on the console/log and off the pipeline; the path below is the only
+    # thing returned.
     Invoke-WithHostArchLibraryEnvironment {
         Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallPrefix -ExtraArgs $ExtraArgs -TargetArch (Get-WindowsHostArch) | Out-Null
         $log = Get-PersistentBuildLogPath -Name $LogName -FallbackDir $BuildDir
         Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -RetryJobs 1 -MemGBPerJob $MemGBPerJob -LogFile $log -Targets $Targets -Install:$Install -InstallConfig $InstallConfig
-    }
+    } | Out-Host
     if ($Install) { return (Join-Path $InstallPrefix 'bin') }
     return $BuildDir
 }
