@@ -11,7 +11,9 @@ the part usually left out — **what you can do with the result**.
 
 Licence obligations are a different question and live in
 [`third-party-licenses.md`](third-party-licenses.md). The SBOM tells you *what
-is in the image*; that page tells you *what each licence requires of you*.
+is in the image*; that page tells you *what each licence requires of you*, and
+its [Maintaining this list](third-party-licenses.md#maintaining-this-list)
+section is the procedure for adding a component to the curated half.
 
 ## Why there are two halves
 

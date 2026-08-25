@@ -9,6 +9,101 @@ file, the `SPDX-License-Identifier: MIT` header on every source file, and the
 `org.opencontainers.image.licenses="MIT"` label on the published images.  Each
 upstream component below carries its own license terms.
 
+## Maintaining this list
+
+Everything below the marker is **generated**. Editing it by hand is lost on the
+next build. The sources are:
+
+| File | Holds |
+|---|---|
+| [`deps/deps.json`](deps/deps.json) | every component: name, licence, URL, and which image it is in |
+| [`../linux/scripts/01-core/versions.env`](../linux/scripts/01-core/versions.env) | the version, so the list can never disagree with the build |
+
+Regenerate after any change:
+
+```bash
+python3 docs/scripts/sync_versions.py --write     # this page + the website pages
+python3 docs/scripts/generate_sbom.py --write     # docs/deps/sbom-curated.spdx.json
+```
+
+### Adding a component
+
+Add one object to the right `subsections[].entries[]` array in `deps.json`:
+
+```jsonc
+{
+  "name": "libfoo",                       // shown in the table
+  "var": "LIBFOO_VERSION",                // key in versions.env -- preferred
+  // "version_fixed": "Ubuntu apt",       // ...only when there is no pin
+  "url": "https://github.com/example/libfoo",
+  "license": "LGPLv2.1+",                 // free text, for humans
+  "spdx": "LGPL-2.1-or-later"             // REQUIRED -- machine-readable
+}
+```
+
+**`spdx` is not optional.** A licence *name* cannot be turned into an
+obligation; an SPDX id can. If the id is new, add it to
+[`scripts/license_obligations.py`](scripts/license_obligations.py) with what it
+requires, or the gate fails with the id it could not map.
+
+### If it is copyleft, it also needs a source pointer
+
+GPL, LGPL, MPL and AGPL require the corresponding source to accompany the
+binary. The gate refuses a copyleft component without one:
+
+```jsonc
+"source": {
+  "kind": "upstream-tag",
+  "url": "https://git.example.org/libfoo.git",
+  "ref_var": "LIBFOO_VERSION",            // resolved from versions.env, so it cannot drift
+  // "ref": "default branch",             // ...when there is no pin
+  "build_flags": "--enable-gpl",          // ONLY when flags decide the licence
+  "patches": ["path/to/0001-fix.patch"],  // if this repo patches it
+  "note": "Anything a reader needs to know."
+}
+```
+
+`build_flags` matters more than it looks: FFmpeg is LGPL by default and becomes
+**GPLv3** because this project builds it `--enable-gpl --enable-version3`. The
+flags are the reason for the obligation, so they are recorded next to it.
+
+### If this repo patches it
+
+Add `"modified"` as well. Apache-2.0 §4(b) and the GPL family both require
+stating that a redistributed component was changed:
+
+```jsonc
+"modified": {
+  "patches": ["windows/upstream/sccache-nvcc-quote-fix/"],
+  "note": "Built from source at the pinned git rev with a local patch series."
+}
+```
+
+### What the gate checks
+
+`preflight.sh` slugs `version-snapshot` and `sbom` run in the pre-commit hook
+and in CI. Together they fail when:
+
+- an entry has no `spdx`;
+- an `spdx` id has no obligation mapping;
+- a copyleft component has no `source` block;
+- the rendered pages or the curated SBOM have drifted from `deps.json`;
+- the webserver Dockerfile stops overlaying the generated page onto the path the
+  site actually requests.
+
+Run them yourself before committing:
+
+```bash
+PREFLIGHT_ONLY=version-snapshot,sbom bash linux/scripts/preflight.sh
+```
+
+### What this list is NOT
+
+It is the **curated** half: components this project chooses and builds. It does
+not enumerate transitive dependencies — the apt closure, cargo crates, Python
+wheels. Those come from an image scan; see [`sbom.md`](sbom.md) for how the two
+halves fit together and why neither is sufficient alone.
+
 <!-- generated:deps-table:start -->
 
 ## Linux Images (`ghcr.io/kataglyphis/kataglyphis_beschleuniger`)
