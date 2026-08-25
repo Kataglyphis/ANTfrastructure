@@ -457,8 +457,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   in its ASM_MASM/assembler lines; IREE's `COMMAND ml64` custom command is patched to
   `${IREE_MASM_COMPILER}` (fail-loud when neither form is present) and both its configures
   (host tools and target) pass `-DIREE_MASM_COMPILER=<llvm-ml>` — on the cross lane the HOST tools
-  pass assembles the x86_64 trampoline through it, so arm64 run 20 is the first proof of the IREE
-  half; the MLAS half needs the amd64 lane.
+  pass assembles the x86_64 trampoline through it, so the arm64 run is the first proof of the IREE
+  half; the MLAS half needs the amd64 lane. **First measurement (arm64 run 22, host pass):**
+  `llvm-ml /nologo /Zi /c /Fo … x86_64_msvc.asm` → `.seh_* directives are not supported on this
+  target` — not a dialect gap: llvm-ml assembles for **i386 unless told `-m64`**, and the file's
+  x64 frame directives (`.PUSHREG`/`.SETFRAME`, which llvm-ml lowers to `.seh_*`) need the x86_64
+  target. `-m64` is now part of the IREE command and of ORT's `CMAKE_ASM_MASM_FLAGS`.
 
 - **#124 — the target CPython cannot start on a clean Windows-on-ARM machine: `vcruntime140.dll`
   is staged into `DLLs\`, not beside `python.exe`.** S · ★★★ (opened 2026-08-25, consumer-side audit)
@@ -608,6 +612,16 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   dispatch SET stays upstream's AArch64 default (`NEON_FP16;NEON_BF16;NEON_DOTPROD`). The gate
   parses `opencv-configure.log`: an empty `Dispatched code generation:` line fails BOTH lanes, and
   the cross lane must additionally list `NEON_FP16`.
+  ✅ **DONE 2026-08-25 (arm64 run 22).** The flags alone were not enough: runs 20/21 dispatched
+  `NEON_BF16` only (0 files), and the gate's `CMakeError.log` excerpt showed why — the probes
+  `cmake/checks/cpu_neon_fp16.cpp` / `cpu_neon_dotprod.cpp` compile only under `__GNUC__ &&
+  (__arm__ || __aarch64__)`; the `_MSC_VER && _M_ARM64` alternative is commented out upstream
+  (opencv/opencv#25052: MSVC's `arm_neon.h`), so under clang-cl every probe ended in `#error "... is
+  not supported"` whatever the flags. clang-cl ships clang's own `arm_neon.h`, so the cross branch
+  now patches the probes to also accept `__clang__ && _M_ARM64` (search over `cmake/checks`, floor
+  2 files). Result: `Dispatched code generation: NEON_DOTPROD NEON_FP16 NEON_BF16`, the OpenCV stage
+  green in 4:54 with the dispatched kernels compiled. Still baseline-only: the scalar `FP16` probe
+  (`cpu_fp16.cpp`, a different guard shape) — the fp16 conversions ride the NEON_FP16 dispatch.
 
 - **#130 — bundle contract and small consumer-facing gaps.** S · ★ (opened 2026-08-25)
   (a) No file in the bundle names its own layout: all pointers are Dockerfile ENV of a

@@ -346,7 +346,11 @@ $cmakeArgs = @(
 # compatibility is the question this wiring answers by building. The cross
 # lane assembles nothing through ASM_MASM (arm64 MLAS is .S / intrinsics), so
 # the argument is native-only and its configure command line stays as it was.
-if (-not $onnxCross) { $cmakeArgs += Get-LlvmMasmCmakeArg }
+# `-m64` is load-bearing: llvm-ml assembles for i386 unless told otherwise and
+# MLAS's x64 kernels use the x64 frame directives (.PUSHREG/.SETFRAME ->
+# .seh_*), which then fail with ".seh_* directives are not supported on this
+# target" (measured on IREE's trampoline, arm64 run 22 host pass).
+if (-not $onnxCross) { $cmakeArgs += Get-LlvmMasmCmakeArg; $cmakeArgs += '-DCMAKE_ASM_MASM_FLAGS:STRING=-m64' }
 Switch-BuildPhase '3. cmake configure'
 # Tee'd (not | Out-Null): the ASM_MASM identification lines are the proof #123
 # needs, and a swallowed configure log is a "never swallow logs" violation.

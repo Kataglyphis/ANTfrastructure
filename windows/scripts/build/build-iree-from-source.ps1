@@ -66,10 +66,14 @@ if (Test-Path $ireeElfCmake) {
     # `ml64` in an add_custom_command -- the last MSVC tool in this build (on
     # the cross lane it still runs, for the HOST tools pass). Point it at the
     # assembler the configure line names (-DIREE_MASM_COMPILER, llvm-ml).
+    # `-m64` is load-bearing: llvm-ml assembles for i386 unless told otherwise,
+    # and the file's x64 frame directives (.PUSHREG/.SETFRAME -> .seh_*) then
+    # fail with ".seh_* directives are not supported on this target" (measured
+    # arm64 run 22, the host-tools pass).
     if (-not (Invoke-InlineRegexPatch -Path $ireeElfCmake `
                 -SkipIfMatch 'IREE_MASM_COMPILER' `
                 -Pattern 'COMMAND ml64 ' `
-                -Replacement 'COMMAND ${IREE_MASM_COMPILER} ' `
+                -Replacement 'COMMAND ${IREE_MASM_COMPILER} -m64 ' `
                 -AssertGone 'COMMAND ml64 ' `
                 -Description 'IREE elf loader: x86_64_msvc.asm assembled by ${IREE_MASM_COMPILER} (llvm-ml) instead of a literal ml64 (#123)')) {
         if (-not (Select-String -Path $ireeElfCmake -Pattern 'IREE_MASM_COMPILER' -Quiet)) {
