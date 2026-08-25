@@ -47,10 +47,9 @@ The full `:latest-cross` pipeline:
 2. **Runtime lane** (stage 6, target platform via QEMU/binfmt for foreign arches):
    - `base` → `package` → `torch`/`wrapper` → `manifest`
 
-The cross-lane stage chain is defined declaratively in `linux/scripts/01-core/stage-defs.sh`
-as `CROSS_STAGE_ORDER`. Stage orchestration (build, push, pin) is handled by shared functions
-in `linux/scripts/01-core/cross-stage-build.sh`.  See `docs/linux-cross-builds.md` for the
-full stage graph API and digest-pinning details.
+The stage graph itself — `CROSS_STAGE_ORDER`, the orchestration helpers, and
+the digest-pinning API — is owned by
+[`linux-cross-builds.md`](linux-cross-builds.md#stage-graph-management-functions-stage-defssh).
 
 See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
 
