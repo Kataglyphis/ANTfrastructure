@@ -109,7 +109,22 @@ $protectedPatterns = @(
     @{ Rx = '\\\.vscode|\\scoop|\\\.ssh|\\\.gitconfig|\\\.claude|\\\.aws|\\\.docker'; What = 'a per-user tool or config directory' }
     @{ Rx = '(^|[\s''"=])[a-z]:\\(\*|\s|$|''|")'; What = 'a drive root' }
     @{ Rx = '(^|\s)-(r|rf|fr)\s+\\(\s|$)'; What = 'the filesystem root' }
-    @{ Rx = 'nvidia|adrenalin|radeon'; What = 'a GPU driver installation' }
+    # Near = only counts when a delete verb sits within N characters of the
+    # match. Every other pattern above is PATH-SHAPED (it carries a `\` or a
+    # drive letter), so it cannot collide with prose. This one is bare English
+    # words, and the repo's own documentation is full of them: a page that says
+    # "an ENABLED AMD RDNA4 dGPU" and, three thousand characters later, shows a
+    # `nerdctl run --rm` example was denied, because `--rm` matches \brm\b and
+    # the vendor word matched anywhere in the same text. That fired on ordinary
+    # docs edits six times on 2026-08-25.
+    #
+    # Proximity is the right primitive here, NOT same-line matching: a real
+    # script assigns the path on one line and deletes on the next, and a
+    # line-scoped rule would stop seeing it. 200 characters comfortably spans
+    # that shape while excluding unrelated prose. The window is measured on the
+    # quote-retaining text, so a QUOTED verb near the token still denies --
+    # deliberately the conservative direction for a safety gate.
+    @{ Rx = 'nvidia|adrenalin|radeon'; What = 'a GPU driver installation'; Near = 200 }
 )
 
 function Test-DestructiveText {
@@ -136,8 +151,20 @@ function Test-DestructiveText {
     foreach ($ok in $reclaimable) { $norm = $norm.Replace($ok.ToLowerInvariant(), ' <reclaimable> ') }
 
     foreach ($p in $protectedPatterns) {
-        if ([regex]::IsMatch($norm, $p.Rx)) {
-            return @{ Decision = 'deny'; Reason = ('deletes from ' + $p.What) }
+        if (-not $p.ContainsKey('Near')) {
+            if ([regex]::IsMatch($norm, $p.Rx)) {
+                return @{ Decision = 'deny'; Reason = ('deletes from ' + $p.What) }
+            }
+            continue
+        }
+        # Proximity-scoped pattern: every occurrence is checked, so a token that
+        # appears once in prose and once beside a delete still denies.
+        foreach ($m in [regex]::Matches($norm, $p.Rx)) {
+            $lo = [Math]::Max(0, $m.Index - $p.Near)
+            $hi = [Math]::Min($norm.Length, $m.Index + $m.Length + $p.Near)
+            if ([regex]::IsMatch($norm.Substring($lo, $hi - $lo), $verbPattern)) {
+                return @{ Decision = 'deny'; Reason = ('deletes from ' + $p.What) }
+            }
         }
     }
 

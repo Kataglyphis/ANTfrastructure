@@ -5,6 +5,56 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (fourth pass) — the gates reach the pre-commit hook; the guard stops denying prose
+
+Clearing what the third pass left open, plus one defect the newly-runnable
+PowerShell suite surfaced.
+
+- **`doc-links` and `doc-dupes` now run in `.githooks/pre-commit`**, not only in
+  CI. Both were added the same day and wired into `stale-docs-check.yml` and
+  `build-docs.yml` — but a broken anchor or a copied passage still reached a
+  commit locally and waited for a pipeline round trip to be noticed. They add
+  ~2 s together, so deferring them bought nothing.
+- **The delete guard no longer denies documentation.** `nvidia|adrenalin|radeon`
+  was the only protected pattern that is not path-shaped — every other one
+  carries a `\` or a drive letter — so it matched bare English anywhere in a
+  text. A page saying "an ENABLED AMD RDNA4 dGPU" that also showed a
+  `nerdctl run --rm` example was denied, because `--rm` matches `\brm\b`. That
+  fired on six ordinary edits in one day, including the changelog entry
+  describing it.
+  The fix is **proximity, not same-line**: the vendor pattern now requires a
+  delete verb within 200 characters. Same-line was considered and rejected —
+  a real script assigns the path on one line and deletes on the next, and a
+  line-scoped rule would stop seeing exactly the shape that matters. Every other
+  pattern stays unscoped, and the window is measured on quote-retaining text, so
+  a quoted verb nearby still denies: the conservative direction.
+  Six cases pinned in `Guard.DestructiveDeletes.Tests.ps1`, which previously had
+  **no coverage of this pattern at all** — including the 2026-08-21 paste-a-script
+  vector, the multi-line variant, and the false positive itself.
+- **The last smear tables are gone.** `windows-cross-builds.md` (14 long rows)
+  and `build-cache-tiers.md` (4) got the same treatment as
+  `windows-builds.md` earlier: two-column tables became linkable definition
+  sections, the four-column one kept its scannable columns and moved the long
+  free-text column into per-row detail. Repo-wide, rows over 400 characters fell
+  from 39+18 to 8, and every remainder is a genuine multi-column row.
+- **Pester installed (user scope)** so `windows/scripts/tests/Invoke-Tests.ps1`
+  actually runs. It had been exiting 0 while silently skipping every test, which
+  reads as green — the suite had not executed once all day, including against
+  the `verify-target-arch.ps1` change that arrived with the merge. **668 tests
+  now run: 667 pass.** The one remaining failure is environmental, not code:
+  `Assert-ShimPatch` finds no patched containerd shim installed on this host.
+- **Three patch files were CRLF in the worktree against an LF index**
+  (`windows/scripts/patches/README.md`, `iree/enable-ehsc.cmake`,
+  `litert-lm/cpu-affinity-rust-syslibs.cc`), failing
+  `Dockerfile.EolAttributes.Tests.ps1`. Re-materialised from the index with the
+  remedy `preflight.sh` already prescribes for `.sh` files. This is the class
+  AGENTS.md warns about: an EOL flip busts a media layer and costs hours.
+
+**Still open, and not ours to close:** whether `VULKAN_VERSION` should be
+`1.4.357.0` (what `versions.env` says, and therefore what every doc now says) or
+`1.4.357.1` (what the docs claimed before the sync). If `.1` was intended,
+`versions.env` is the file to change.
+
 ## 2026-08-25 (third pass) — docs: a duplication gate, and the copies three manual passes missed
 
 `docs/INDEX.md` opens with the reason this matters: one Dev Drive command in

@@ -85,14 +85,21 @@ else
 fi
 
 # 1. Fast subset of the canonical gate list in linux/scripts/preflight.sh
-#    (version snapshot, ARG consistency, critical fixes, script COPY coverage).
-#    The shellcheck gate below runs on staged files only; the full gate runs in
-#    CI. (Do not start this comment with the word "shellcheck" — ShellCheck
-#    parses `# shellcheck …` as a directive and SC1072/SC1073 then abort the
-#    parse of this whole file, which is how it stayed unlinted until 2026-08-08:
-#    lint-shell.sh only matches *.sh, and this file has no extension.)
+#    (version snapshot, ARG consistency, critical fixes, script COPY coverage,
+#    plus the two docs gates). The shellcheck gate below runs on staged files
+#    only; the full gate runs in CI. (Do not start this comment with the word
+#    "shellcheck" — ShellCheck parses `# shellcheck …` as a directive and
+#    SC1072/SC1073 then abort the parse of this whole file, which is how it
+#    stayed unlinted until 2026-08-08: lint-shell.sh only matches *.sh, and this
+#    file has no extension.)
+#
+#    doc-links and doc-dupes belong HERE and not only in CI: both were added on
+#    2026-08-25 after a restructure that moved ~5,000 lines, and both catch
+#    edits — a renamed heading, a passage pasted into a second page — whose cost
+#    is a stale reference nobody notices for weeks. They run in ~2 s together,
+#    so there is no reason to defer them to a pipeline round trip.
 echo "=== preflight subset ==="
-PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage \
+PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes \
   bash linux/scripts/preflight.sh && pass "preflight subset" || fail "preflight subset failed"
 
 # 2. Shell syntax + shellcheck gate on changed .sh files

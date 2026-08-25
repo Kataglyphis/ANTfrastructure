@@ -326,10 +326,26 @@ are outside this change's scope):
 
 | target | gate | state | recommendation |
 |---|---|---|---|
-| **rustc** (gst-plugins-rs, the monorepo's Rust) | `ENABLE_SCCACHE_RUST=1` | wiring exists, default OFF; the wrapper is additionally hard-cleared for the monorepo build | **The one genuine win.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. Re-enable only as a *measured* experiment: `ENABLE_SCCACHE_RUST=1` **plus** removing the hard clear at `build-gstreamer-monorepo.sh:681`, with `SCCACHE_IDLE_TIMEOUT=0` set (the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` captured, and `sccache --show-stats` printed **to stderr** — the stream buildkit's 2 MiB step-log clip never cuts. Bar to flip the default: two consecutive green cross-arch media runs with a non-zero hit rate. |
-| **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:509`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | **Do not flip on the strength of the hit-rate argument alone.** The theoretical win is large (`CUDA_ARCHITECTURES` compiles each kernel 4×) but a sibling lane produced an evidence-backed verdict that the pinned sccache's **nvcc decomposition silently drops device-conditional code** — a byte-identical link failure across two runs, falsified as cache poisoning, i.e. *silent wrong code*, disqualifying regardless of hit rate (CHANGELOG 2026-08-10/11). Any re-enable needs the three-canary bar recorded there: verify probe + a real kernel compile + a full link canary, on the sccache version actually installed. |
+| **rustc** (gst-plugins-rs, the monorepo's Rust) | `ENABLE_SCCACHE_RUST=1` | wiring exists, default OFF; the wrapper is additionally hard-cleared for the monorepo build | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
+| **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:509`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
 | **C/C++** | — | ccache, always on | leave it. sccache's C/C++ path is strictly worse here (§ 5.1) and the launchers are already owned. |
-| **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | Out of scope for this document. Note only that the mechanism is real and version-gated: on an older sccache the chain variable is **ignored silently**, which is exactly the failure shape this repo keeps eliminating — so it would need a pinned sccache and a hit-rate assertion before it could be considered on the Linux lane. |
+| **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
+
+### Per-target detail
+
+The targets whose recommendation needs more than a table cell.
+
+#### **rustc** (gst-plugins-rs, the monorepo's Rust)
+
+**The one genuine win.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. Re-enable only as a *measured* experiment: `ENABLE_SCCACHE_RUST=1` **plus** removing the hard clear at `build-gstreamer-monorepo.sh:681`, with `SCCACHE_IDLE_TIMEOUT=0` set (the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` captured, and `sccache --show-stats` printed **to stderr** — the stream buildkit's 2 MiB step-log clip never cuts. Bar to flip the default: two consecutive green cross-arch media runs with a non-zero hit rate.
+
+#### **nvcc / hipcc**
+
+**Do not flip on the strength of the hit-rate argument alone.** The theoretical win is large (`CUDA_ARCHITECTURES` compiles each kernel 4×) but a sibling lane produced an evidence-backed verdict that the pinned sccache's **nvcc decomposition silently drops device-conditional code** — a byte-identical link failure across two runs, falsified as cache poisoning, i.e. *silent wrong code*, disqualifying regardless of hit rate (CHANGELOG 2026-08-10/11). Any re-enable needs the three-canary bar recorded there: verify probe + a real kernel compile + a full link canary, on the sccache version actually installed.
+
+#### **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2)
+
+Out of scope for this document. Note only that the mechanism is real and version-gated: on an older sccache the chain variable is **ignored silently**, which is exactly the failure shape this repo keeps eliminating — so it would need a pinned sccache and a hit-rate assertion before it could be considered on the Linux lane.
 
 ### 5.5 The one-line answer to "does sccache fight ccache?"
 

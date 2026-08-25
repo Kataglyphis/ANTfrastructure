@@ -275,3 +275,51 @@ Describe 'guard-destructive-deletes: the hook is actually registered' {
         }
     }
 }
+
+Describe 'guard-destructive-deletes: the GPU-driver pattern is proximity-scoped' {
+
+    # Added 2026-08-25. The vendor-word pattern (nvidia|adrenalin|radeon) is the
+    # only protected pattern that is not path-shaped, so it matched bare English
+    # anywhere in a text and denied ordinary documentation edits - six times in
+    # one day, on prose whose only delete-shaped token was a container run flag.
+    # It is now scoped to a delete verb within 200 characters. These tests pin
+    # BOTH halves: the false positives stop, and every real shape still dies.
+    # Proximity, not same-line: a real script assigns the path on one line and
+    # deletes on the next, and a line-scoped rule would stop seeing it.
+
+    It 'denies deleting a GPU driver directory outside the standard roots' {
+        $c = 'Remove-Item -Recurse -Force D:\NVIDIA\DisplayDriver'
+        Assert-Equal 'deny' (Get-GuardDecision -Tool 'PowerShell' -Command $c)
+    }
+
+    It 'denies it when the path is assigned on an earlier line (why not same-line)' {
+        $c = "`$stale = `"D:\AMD\Adrenalin\cache`"`nRemove-Item -Recurse -Force `$stale"
+        Assert-Equal 'deny' (Get-GuardDecision -Tool 'PowerShell' -Command $c)
+    }
+
+    It 'denies a script written for the user to paste (the 2026-08-21 vector)' {
+        $c = "# free some space`nRemove-Item -Recurse -Force 'C:\Program Files\NVIDIA Corporation'"
+        Assert-Equal 'deny' (Get-GuardDecision -Tool 'Write' -FilePath 'cleanup.ps1' -Content $c)
+    }
+
+    It 'allows prose naming a GPU vendor far from an unrelated delete-shaped flag' {
+        # The exact shape that blocked six documentation edits: a container run
+        # example whose --rm matches \brm\b, and a vendor word far away.
+        $c = 'An ENABLED AMD RDNA4 dGPU makes every RUN-layer finalize fail.' +
+             ("`nfiller prose to push the two apart. " * 40) +
+             "`n    nerdctl run -it --rm ghcr.io/example/image:tag"
+        Assert-Equal 'allow' (Get-GuardDecision -Tool 'Write' -FilePath 'docs\notes.md' -Content $c)
+    }
+
+    It 'still denies when the vendor word and the delete are close together' {
+        $c = 'To reclaim space, Remove-Item -Recurse C:\radeon-cache and reboot.'
+        Assert-Equal 'deny' (Get-GuardDecision -Tool 'Write' -FilePath 'docs\notes.md' -Content $c)
+    }
+
+    It 'keeps the path-shaped patterns unscoped (a profile delete needs no proximity)' {
+        $c = '$target = "C:\Users\jonas\AppData\Local\Programs"' +
+             ("`n# commentary " * 60) +
+             "`nRemove-Item -Recurse -Force `$target"
+        Assert-Equal 'deny' (Get-GuardDecision -Tool 'PowerShell' -Command $c)
+    }
+}
