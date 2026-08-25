@@ -595,6 +595,27 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   (and so pango) out because its win32 backend crashes LLVM 22's clang-cl (`mmintrin.h
   __builtin_shufflevector`), and `-Dgst-devtools:dots-viewer=disabled` keeps a Rust dev tool whose
   crates.io fetch fails offline out; both stay as they are, now with that reason recorded here.
+  **Measured on arm64 run 23:** (a) the native file alone was not enough — meson detected the
+  build-machine `clang-cl`, but its sanity check LINKED against the target's CRT (`msvcrt.lib
+  (exe_main.obj): machine type arm64 conflicts with x64`; the RUN's `LIB` names `lib\arm64` /
+  `um\arm64` and lld-link reads only `LIB`), so the build-machine C compiler stayed "not found",
+  glib's build-machine configure died, and that failure poisoned the by-name `glib` lookup that
+  libnice's anonymous `dependency('', fallback: ['glib', …])` needs (the gio-2.0 lookup works via
+  override, the anonymous one cannot). First fix attempt (run 24): `[built-in options]
+  c_link_args = ['/LIBPATH:<x64 dir>', …]` in the native file — **measured wrong**: meson hands
+  the build machine's link args to the clang-cl DRIVER also *before* `/link` (the sanity check
+  command carries them twice), and clang-cl reads a path-shaped `/LIBPATH:C:/…` there as an input
+  file (`no such file or directory`) — `/LIBPATH` can never ride `c_link_args` with clang-cl.
+  Fix: `c_link_args/cpp_link_args = ['/vctoolsdir:<VC\Tools\MSVC\<ver>>', '/winsdkdir:<Windows
+  Kits\10>', '/winsdkversion:<ver>']` — options BOTH the driver and lld-link understand; lld-link
+  adds their `lib\<machine>` dirs to the search path AHEAD of the `LIB` entries and picks the arch
+  from `/machine:`, so the build machine links x64 while the host (arm64) compiles of the same meson
+  run keep `LIB` as it is. Both roots are derived from the RUN's `LIB` entries, not assumed. (b) The
+  rust probe failed as
+  designed and stayed out of the cross file: `rustup target add aarch64-pc-windows-msvc` pulls from
+  the image's OFFLINE dist mirror (`file:///…/rustup-dist/…`), which carries the x64 std only —
+  `gst-ptp-helper` stays absent on arm64 until the base image preseeds the aarch64 `rust-std`
+  (a base rebuild; owner's call).
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**

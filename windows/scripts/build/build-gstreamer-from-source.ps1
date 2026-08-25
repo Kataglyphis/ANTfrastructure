@@ -1291,6 +1291,36 @@ endian = 'little'
         # the --target, i.e. exactly what the amd64 lane runs.
         $nccList = ((($env:CC -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
         $ncxxList = ((($env:CXX -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        # The build machine's LIBRARY dirs (arm64 runs 23/24): the native compiler
+        # was detected, then its sanity check LINKED against the arm64 CRT --
+        # "msvcrt.lib(exe_main.obj): machine type arm64 conflicts with x64" --
+        # because the RUN's LIB names the target's lib\arm64 / um\arm64 dirs and
+        # lld-link reads only LIB. Meson has no per-machine LIB; a native file's
+        # [built-in options] link args are the BUILD machine's. BUT meson hands
+        # those args to the clang-cl DRIVER also BEFORE `/link` (sanity check,
+        # run 24), and clang-cl reads a path-shaped `/LIBPATH:C:/...` there as an
+        # input file ("no such file or directory") -- /LIBPATH can never ride
+        # c_link_args with clang-cl. `/vctoolsdir:` + `/winsdkdir:` (+
+        # `/winsdkversion:`) are understood by BOTH the driver and lld-link, and
+        # lld-link adds their lib\<machine> dirs to the search path AHEAD of the
+        # LIB entries, selecting the arch from /machine: -- so the build machine
+        # links x64 while the host (arm64) compiles of the same meson run keep
+        # LIB as it is. Both roots are derived from the RUN's LIB (the entries
+        # VsDevCmd wrote), not assumed.
+        $vcToolsDir = $null; $winSdkDir = $null; $winSdkVer = $null
+        foreach ($entry in @(($env:LIB -split ';') | Where-Object { $_ })) {
+            if (-not $vcToolsDir -and $entry -match '^(.*\\VC\\Tools\\MSVC\\[^\\]+)\\+lib\\') { $vcToolsDir = $Matches[1] }
+            if (-not $winSdkDir -and $entry -match '^(.*\\Windows Kits\\10)\\+lib\\+([^\\]+)\\+(um|ucrt)\\') { $winSdkDir = $Matches[1]; $winSdkVer = $Matches[2] }
+        }
+        if (-not $vcToolsDir) { $vcToolsDir = Get-MsvcToolsRoot }
+        $buildLinkArgList = @()
+        if ($vcToolsDir -and (Test-Path $vcToolsDir)) { $buildLinkArgList += "/vctoolsdir:$($vcToolsDir -replace '\\', '/')" }
+        if ($winSdkDir -and (Test-Path $winSdkDir)) {
+            $buildLinkArgList += "/winsdkdir:$($winSdkDir -replace '\\', '/')"
+            if ($winSdkVer) { $buildLinkArgList += "/winsdkversion:$winSdkVer" }
+        }
+        $buildLibDirs = $buildLinkArgList   # logged below under the old name
+        $buildLinkArgs = (($buildLinkArgList | ForEach-Object { "'" + $_ + "'" }) -join ', ')
         $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
         Set-Content -Path $nativeFile -Encoding ASCII -Value @"
 [binaries]
@@ -1302,7 +1332,12 @@ windres = 'llvm-rc'
 pkg-config = 'pkg-config'
 cmake = 'cmake'
 $(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })
+
+[built-in options]
+c_link_args = [$buildLinkArgs]
+cpp_link_args = [$buildLinkArgs]
 "@
+        if ($buildLibDirs.Count -eq 0) { log "WARNING: neither a VC tools root nor a Windows SDK root could be derived from LIB for the build machine -- native links will rely on LIB as-is (expect the build-machine sanity check to fail if LIB is the target's)" }
         $mesonCrossArgs = @('--cross-file', $crossFile, '--native-file', $nativeFile)
         log "Meson cross file for $gstTargetArch ($gstTriple): $crossFile"
         Get-Content $crossFile | ForEach-Object { log "  cross| $_" }
