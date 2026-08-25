@@ -107,7 +107,7 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   directory names are exactly those RID arch components. That was made target-derived deliberately
   (see the comment at `build-onnx-genai-from-source.ps1:286`) precisely for this eventuality.
 
-- **#114 — aarch64 CPython, and the Python bindings it unblocks.** L · ★★★ · **SUPERSEDED-BY #120** (its Phase-0 questions still apply — answer them there first)
+- **#114 — aarch64 CPython, and the Python bindings it unblocks.** L · ★★★ · **SUPERSEDED-BY #120** (its Phase-0 questions still apply — answer them there first) · ✅ **CLOSED 2026-08-25 through #120** (target CPython from source, all four bindings staged, proven by arm64 run 14)
   The highest-leverage item: it is what keeps `cv2`, the ONNX Runtime wheel, ONNX GenAI's bindings
   and PyAV off the lane. **Do Phase 0 first** — a ~20 min probe (no chain rebuild) answering exactly
   three questions: does the image's VS ship `Platforms\ARM64\PlatformToolsets\ClangCL`, does
@@ -164,7 +164,7 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   allowlist. That plain-LiteRT cross build is exactly this item. If it lands, the
   `media-branch-absent` stand-in shrinks and `Get-RequiredGstPlugin -Arch` can stop dropping `tflite`.
 
-- **#116 — TVM + IREE on arm64.** XL · ★
+- **#116 — TVM + IREE on arm64.** XL · ★ · ✅ **DONE 2026-08-24/25 as RUNTIME-ONLY** (tvm_runtime + IREE target tools/libs in the bundle, compilers named `COMPILER-ABSENT-ON-ARM64`; proven arm64 runs 11–19 — the measured findings are the body below)
   Lowest priority: highest cost, narrowest benefit, medium confidence. First, a retraction: an
   earlier note claimed TVM's "codegen cannot emit aarch64 … not fixable in this repository" — false
   since it was written, because `LLVM_TARGETS_TO_BUILD=X86;NVPTX` is set **by this repo** in
@@ -450,6 +450,15 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   ml64 and say so). **Unverified until built:** whether MLAS's MASM dialect is fully within
   llvm-ml's compatibility — that is the whole question this item answers. Ordering: after the
   current amd64 regression; it touches the ~50-min ORT stage.
+  **Implemented 2026-08-25, proof pending the next amd64 regression:** `Get-LlvmMasmCmakeArg`
+  (`WindowsSourceBuild.Common.psm1`, throws when `llvm-ml` is absent — a silent ml64 fallback is the
+  exception this removes) → `-DCMAKE_ASM_MASM_COMPILER:FILEPATH=<llvm-ml>` on the native ORT
+  configure, whose output is now tee'd to `onnxruntime-configure.log` and asserted to name llvm-ml
+  in its ASM_MASM/assembler lines; IREE's `COMMAND ml64` custom command is patched to
+  `${IREE_MASM_COMPILER}` (fail-loud when neither form is present) and both its configures
+  (host tools and target) pass `-DIREE_MASM_COMPILER=<llvm-ml>` — on the cross lane the HOST tools
+  pass assembles the x86_64 trampoline through it, so arm64 run 20 is the first proof of the IREE
+  half; the MLAS half needs the amd64 lane.
 
 - **#124 — the target CPython cannot start on a clean Windows-on-ARM machine: `vcruntime140.dll`
   is staged into `DLLs\`, not beside `python.exe`.** S · ★★★ (opened 2026-08-25, consumer-side audit)
@@ -567,6 +576,21 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   not parity:** `-Dcairo:win32=disabled` and `-Dgst-devtools:dots-viewer=disabled` are *unknown
   options* in these versions and disable cairo, pango and gst-devtools everywhere; amd64 builds
   562 glib **test** targets (`tests: true`) that ship nothing.
+  **Implemented 2026-08-25, proof pending arm64 run 20 + the next amd64 regression:** (1) the
+  cross branch now also writes a meson **native file** (`meson-native-amd64.ini`: the same
+  clang-cl/llvm-lib/llvm-rc without `--target`, i.e. what amd64 runs) so the build machine has a
+  C compiler; (2) **rust for the target** is probed, not assumed — `rustup target add
+  aarch64-pc-windows-msvc` (idempotent, the container has network) then a one-line staticlib
+  compile; only a passing probe puts `rust = [rustc, --target=…]` into the cross file (a declared
+  but broken rust compiler fails meson setup, an absent one merely skips `gst-ptp-helper`, and
+  either outcome is logged); (3) `webrtc` and `nice` joined the plugin contract on BOTH lanes as
+  `Detection = 'meson'` entries carrying their meson option (`gst-plugins-bad:webrtc`,
+  `libnice:gstreamer`), which the build passes as `=enabled` and the DLL + gst-inspect gate proves
+  like every other entry; (4) `-Dglib:tests=false`. **Correction to the finding above:** the two
+  "unknown options" are deliberate — `-Dcairo:win32=disabled` is the documented way to keep cairo
+  (and so pango) out because its win32 backend crashes LLVM 22's clang-cl (`mmintrin.h
+  __builtin_shufflevector`), and `-Dgst-devtools:dots-viewer=disabled` keeps a Rust dev tool whose
+  crates.io fetch fails offline out; both stay as they are, now with that reason recorded here.
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**
@@ -577,6 +601,13 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   NEON + carotene). **Fix:** on cross pass `CPU_DISPATCH=NEON_FP16;NEON_DOTPROD;NEON_BF16` with the
   `/clang:-march=armv8.2-a+…` spellings (OpenCV's `OPENCV_CPU_*` flag overrides or an inline patch
   of `OpenCVCompilerOptimizations.cmake`) and **gate on a non-empty dispatch line**.
+  **Implemented 2026-08-25, proof pending arm64 run 20:** no source patch needed — upstream sets
+  the per-feature flag variables with `ocv_update` (set-if-unset) and its `if(MSVC)` branch blanks
+  them to `""` under clang-cl, so three cache definitions on the cross configure win:
+  `-DCPU_NEON_FP16_FLAGS_ON=/clang:-march=armv8.2-a+fp16` (+ `_DOTPROD_`, `_BF16_`); the
+  dispatch SET stays upstream's AArch64 default (`NEON_FP16;NEON_BF16;NEON_DOTPROD`). The gate
+  parses `opencv-configure.log`: an empty `Dispatched code generation:` line fails BOTH lanes, and
+  the cross lane must additionally list `NEON_FP16`.
 
 - **#130 — bundle contract and small consumer-facing gaps.** S · ★ (opened 2026-08-25)
   (a) No file in the bundle names its own layout: all pointers are Dockerfile ENV of a
@@ -588,6 +619,15 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   and header still call TVM/IREE/LiteRT "empty markers on arm64", the merge Dockerfile says the
   arm64 site-packages "wait on #120", `WindowsGstPlugins.Common.psm1` says LiteRT "cannot be built
   for Windows-on-ARM", `healthcheck.ps1` says the arm64 contract drops tflite.
+  **Implemented 2026-08-25, proof pending arm64 run 20:** (a)+(b) `write-bundle-manifest.ps1`
+  runs in the merge stage on both lanes and writes `C:\runtime\BUNDLE-ENV.cmd`, `BUNDLE-ENV.ps1`
+  (every existing DLL home from the merge ENV plus `C:\runtime\bin`, the target python and the
+  wheel store) and `BUNDLE-README.md` (the arch facts, the `--no-index --find-links` install
+  line, the one-time `gio-querymodules` run on a device, the plugin contract, and every
+  `ABSENT-ON-*` / `COMPILER-ABSENT-*` marker in the branches' own words); (c)
+  `Assert-WheelTargetArch` now logs the native member NAMES; (d) all four stale texts rewritten
+  (the final Dockerfile header + LABEL, the merge fan-in comment, the plugin module header, the
+  healthcheck fallback comment).
 
 - **#131 — post-cross-phase cleanup (refactoring).** M · ★★ (opened 2026-08-25, owner's request) ·
   ✅ **DONE 2026-08-25 in four waves, developed in an isolated worktree, 662/662 tests, proof = the

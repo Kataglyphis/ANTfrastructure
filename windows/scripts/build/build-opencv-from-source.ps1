@@ -257,7 +257,9 @@ $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 # CPU_BASELINE / CPU_DISPATCH are deliberately NOT introduced for either lane:
 # this script has never passed them, so OpenCV's own defaults are what ships
 # today. Adding them on amd64 would change every emitted per-file command line,
-# which the arm64 work is not allowed to cost.
+# which the arm64 work is not allowed to cost. (What the cross lane DOES pass,
+# since #129, is the clang-cl SPELLING of the per-feature dispatch flags --
+# see the block above the configure call; the dispatch SET stays upstream's.)
 $simdFlags = Get-WindowsTargetSimdFlags -Arch $ocvTargetArch
 # The clang target triple has to ride in THIS script's explicit CMAKE_C_FLAGS /
 # CMAKE_CXX_FLAGS strings, not only in Get-CMakeCrossArgs' CMAKE_*_FLAGS_INIT:
@@ -650,10 +652,40 @@ if ($env:OPENCV_LINK_CHAIN_FFMPEG -eq '1' -and (Test-Path $ocvShim)) {
 # -- the only place OpenCV states its CPU dispatch set and its parallel
 # framework (which the WITH_OPENMP note above depends on). Dropped 2026-08-24;
 # the configure output now streams AND lands in $cfgLog.
+# #129 (2026-08-25): OpenCV's AArch64 feature probes hand the compiler
+# `-march=armv8.2-a+fp16` (GCC/Clang spelling) -- and under clang-cl the
+# `if(MSVC)` branch of OpenCVCompilerOptimizations.cmake blanks those flags to
+# "" outright, so every probe compiles the fp16/dotprod/bf16 test source
+# WITHOUT the feature, fails, and the configure summary printed an EMPTY
+# `Dispatched code generation:` line: zero NEON_FP16/DOTPROD/BF16 kernels
+# shipped, silently, while amd64 dispatches SSE4_1..AVX512_SKX. The flag
+# variables are `ocv_update`d (set-if-unset), so a cache definition wins over
+# both branches; the clang-cl spelling of the same feature flags is the fix,
+# and CPU_DISPATCH itself stays at OpenCV's AArch64 default
+# (NEON_FP16;NEON_BF16;NEON_DOTPROD) -- the same per-TU feature model as the
+# MLAS/XNNPACK/IREE tagging, expressed through OpenCV's own dispatcher.
+if ($ocvCross) {
+    $cmakeExtra += @(
+        '-DCPU_NEON_FP16_FLAGS_ON=/clang:-march=armv8.2-a+fp16',
+        '-DCPU_NEON_DOTPROD_FLAGS_ON=/clang:-march=armv8.2-a+dotprod',
+        '-DCPU_NEON_BF16_FLAGS_ON=/clang:-march=armv8.2-a+bf16'
+    )
+}
 $cfgLog = Get-PersistentBuildLogPath -Name 'opencv-configure.log' -FallbackDir $buildDir
 Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra 2>&1 |
     Tee-Object -FilePath $cfgLog
 Write-Host "CMake configure log: $cfgLog"
+
+# GATE (#129): the dispatch line must not be empty on either lane. On cross it
+# must name NEON_FP16 (the probe that failed first); amd64 keeps whatever it
+# reports today (SSE4_1 ... AVX512_SKX) but may never regress to nothing. An
+# empty line is exactly the silent degradation the audit found -- a build that
+# "succeeds" with every optional kernel dropped.
+$dispatchLine = @(Get-Content $cfgLog | Where-Object { $_ -match 'Dispatched code generation:\s*(.*)$' } | Select-Object -Last 1)
+$dispatched = if ($dispatchLine.Count -gt 0 -and $dispatchLine[0] -match 'Dispatched code generation:\s*(.*)$') { $Matches[1].Trim() } else { '' }
+if (-not $dispatched) { throw "OpenCV configure reports NO dispatched code generation (the 'Dispatched code generation:' summary line is empty or missing in $cfgLog) -- every optional SIMD kernel would be dropped silently (#129)" }
+if ($ocvCross -and $dispatched -notmatch '\bNEON_FP16\b') { throw "OpenCV cross configure dispatches '$dispatched' but not NEON_FP16 -- the clang-cl feature-flag override (#129) is not taking effect; check the CPU_NEON_*_FLAGS_ON cache values in $cfgLog" }
+Write-Host "OpenCV dispatched code generation: $dispatched"
 
 # GATE: prove FFmpeg was actually detected before spending ~20 min compiling.
 # Without this the failure mode is silent — a configure that quietly drops the

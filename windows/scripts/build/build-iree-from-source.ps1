@@ -62,7 +62,26 @@ if (Test-Path $ireeElfCmake) {
             -Replacement 'MSVC_C_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$" OR MSVC_CXX_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$"' `
             -AssertGone 'MATCHES 64' `
             -Description 'IREE elf loader: x86_64_msvc.obj only for x64 targets (ARM64 matched "64")')
+    # #123 (2026-08-25): the x86_64 ELF trampoline is assembled by a literal
+    # `ml64` in an add_custom_command -- the last MSVC tool in this build (on
+    # the cross lane it still runs, for the HOST tools pass). Point it at the
+    # assembler the configure line names (-DIREE_MASM_COMPILER, llvm-ml).
+    if (-not (Invoke-InlineRegexPatch -Path $ireeElfCmake `
+                -SkipIfMatch 'IREE_MASM_COMPILER' `
+                -Pattern 'COMMAND ml64 ' `
+                -Replacement 'COMMAND ${IREE_MASM_COMPILER} ' `
+                -AssertGone 'COMMAND ml64 ' `
+                -Description 'IREE elf loader: x86_64_msvc.asm assembled by ${IREE_MASM_COMPILER} (llvm-ml) instead of a literal ml64 (#123)')) {
+        if (-not (Select-String -Path $ireeElfCmake -Pattern 'IREE_MASM_COMPILER' -Quiet)) {
+            throw "IREE elf CMakeLists: neither the literal ml64 command nor the IREE_MASM_COMPILER form is present -- upstream layout changed (#123); check $ireeElfCmake"
+        }
+    }
 }
+# Resolved once, THROWING when absent (a silent ml64 fallback is the exception
+# #123 removes). Forward slashes: consumed inside CMake's own string expansion.
+$ireeMasm = Resolve-LlvmMasm
+if (-not $ireeMasm) { throw 'llvm-ml not found on PATH -- the pinned LLVM ships it (bin\llvm-ml.exe); IREE''s x86_64 ELF trampoline would fall back to ml64 (#123)' }
+$ireeMasm = $ireeMasm -replace '\\', '/'
 
 # C `inline` linkage in ONE arm_64 ukernel (arm64 runs 9-10, 2026-08-24: the
 # whole runtime compiled, every tool failed to LINK with "undefined symbol:
@@ -144,6 +163,9 @@ if ($ireeCross) {
         '-DIREE_BUILD_PYTHON_BINDINGS=OFF', '-DLLVM_ENABLE_DIA_SDK=OFF'
     )
     $hostArgs += Get-LlvmArchiverCmakeArg
+    # The host tools include the x86_64 ELF trampoline (MASM) -- assembled by
+    # llvm-ml through the IREE_MASM_COMPILER patch above (#123).
+    $hostArgs += "-DIREE_MASM_COMPILER=$ireeMasm"
     # Shared host-tool shape: host target on the choke point AND the host's
     # LIB/LIBPATH for the pass (arm64 run 3: "msvcrtd.lib(exe_main.obj): machine
     # type arm64 conflicts with x64" in the very first try-compile without it).
@@ -192,6 +214,9 @@ if ($pythonBindings -eq 'ON') {
     $cmakeExtra += "-DPython3_EXECUTABLE=$($py.Exe -replace '\\', '/')"
 }
 $cmakeExtra += Get-LlvmArchiverCmakeArg
+# Native lane: the x86_64 trampoline is assembled in THIS configure; cross lane:
+# the ARM64 branch never reaches the custom command, the value is merely unused.
+$cmakeExtra += "-DIREE_MASM_COMPILER=$ireeMasm"
 if ($ireeHostBinDir) { $cmakeExtra += "-DIREE_HOST_BIN_DIR=$($ireeHostBinDir -replace '\\', '/')" }
 
 # Phase B (or the only phase on amd64): the TARGET configure. Cross args come

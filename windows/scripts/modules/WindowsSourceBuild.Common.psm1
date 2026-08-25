@@ -908,7 +908,11 @@ function Assert-WheelTargetArch {
                 throw ('wheel {0}: member {1} is machine 0x{2:X4}, expected 0x{3:X4} -- a host-arch binary inside a {4} wheel' -f $name, $f.Name, $m, $wantMachine, $wantTag)
             }
         }
-        Write-Host ('Wheel arch check OK: {0} -- {1} native member(s), all 0x{2:X4}' -f $name, $pe.Count, $wantMachine)
+        # Names, not only a count (#130c): whether the GenAI wheel embeds
+        # onnxruntime.dll, or PyAV carries its 49 .pyd and no DLL, is a fact a
+        # consumer needs and a count cannot give.
+        $names = @($pe | ForEach-Object { $_.FullName.Substring($tmp.Length).TrimStart('\', '/') } | Sort-Object)
+        Write-Host ('Wheel arch check OK: {0} -- {1} native member(s), all 0x{2:X4}: {3}' -f $name, $pe.Count, $wantMachine, (($names | Select-Object -First 60) -join ', ') + $(if ($names.Count -gt 60) { ", ... (+$($names.Count - 60))" } else { '' }))
     } finally { Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
@@ -1372,6 +1376,29 @@ function Get-LlvmArchiverCmakeArg {
     $llvmLib = Resolve-LlvmArchiver
     if ($llvmLib) { return @("-DCMAKE_AR:FILEPATH=$llvmLib") }
     return @()
+}
+
+# #123 (2026-08-25): the MASM-syntax assembler for amd64. `ml64.exe` was the
+# one MSVC tool still in the build on the native lane -- CMake's ASM_MASM
+# default (ONNX Runtime's mlas/lib/amd64/*.asm) and IREE's ELF trampoline
+# custom command. `llvm-ml` is LLVM's MASM-compatible assembler and ships with
+# the pinned LLVM; wiring it is the clang-cl rule applied to the last exception.
+# Unlike the archiver this THROWS when absent: the callers are the two scripts
+# that assemble MASM on purpose, and a silent fallback to ml64 would be exactly
+# the untracked exception the item exists to remove.
+function Resolve-LlvmMasm {
+    $llvmMl = (Get-Command 'llvm-ml' -ErrorAction SilentlyContinue).Source
+    if (-not $llvmMl) { $llvmMl = (Get-Command 'llvm-ml.exe' -ErrorAction SilentlyContinue).Source }
+    return $llvmMl
+}
+function Get-LlvmMasmCmakeArg {
+    # Returns the ASM_MASM compiler definition for CMake (`.asm` sources) --
+    # CMake's own rule is `<compiler> <DEFINES> <INCLUDES> <FLAGS> -c -Fo <OBJECT>
+    # <SOURCE>`, which llvm-ml accepts. Forward slashes: the value is also
+    # consumed inside CMake string expansions (IREE's custom command).
+    $llvmMl = Resolve-LlvmMasm
+    if (-not $llvmMl) { throw 'llvm-ml not found on PATH -- the pinned LLVM ships it (bin\llvm-ml.exe); without it the MASM sources would silently fall back to ml64 (#123)' }
+    return @("-DCMAKE_ASM_MASM_COMPILER:FILEPATH=$($llvmMl -replace '\\', '/')")
 }
 
 function Initialize-PythonPlatformTag {
@@ -2189,6 +2216,8 @@ Export-ModuleMember -Function @(
     'Get-CudaToolkitRootArg',
     'Get-CudnnLibrary',
     'Get-LlvmArchiverCmakeArg',
+    'Resolve-LlvmMasm',
+    'Get-LlvmMasmCmakeArg',
     'Initialize-SourceBuildEnvironment',
     'Initialize-SourceBuildScript',
     'Initialize-ToolchainPythonEnvironment',

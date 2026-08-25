@@ -169,8 +169,10 @@ COPY --from=cuda-runtime-stage C:\cuda-rt C:\runtime\cuda-runtime\bin
 # bindings (onnxruntime + onnxruntime-genai wheels, cv2 from cmake --install)
 # plus their pypi deps (numpy, ...) and the platform-tag sitecustomize shim —
 # fan them in so `import onnxruntime/cv2` works in this image's CPython. On the
-# arm64 cross lane they hold host pip deps + the shim ONLY — the aarch64
-# bindings wait on the target-CPython work (backlog #120, PCbuild -p ARM64).
+# arm64 cross lane this HOST tree holds host pip deps + the host shim only; the
+# aarch64 bindings live in the TARGET tree (C:\runtime\python\Lib\site-packages:
+# cv2 + its own shim) and in C:\runtime\wheels (ORT/GenAI/PyAV + their staged
+# win_arm64 deps) since #120/#125/#126.
 COPY --from=media-core C:\temp\cpython\Lib\site-packages C:\temp\cpython\Lib\site-packages
 COPY --from=media-litert C:\runtime\lib\litert C:\runtime\lib\litert
 COPY --from=media-litert C:\runtime\lib\litert-lm C:\runtime\lib\litert-lm
@@ -324,6 +326,14 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # already covered them.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
+# #130 (2026-08-25): the bundle describes ITSELF -- BUNDLE-ENV.cmd/.ps1 (every
+# DLL home, the target python, the wheel store) and BUNDLE-README.md (install
+# steps, the one-time gio-querymodules run on a device, what is absent on this
+# lane in the branches' own words). Both lanes, same facts; three text files,
+# invisible to the arch gate below.
+RUN --mount=type=bind,source=windows/scripts/build/write-bundle-manifest.ps1,target=C:\bkmnt\write-bundle-manifest.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\write-bundle-manifest.ps1' -ScriptDir 'C:\bkmnt'
 # #126 (2026-08-25): on a cross lane, stage the PyPI runtime deps of the
 # bundle's wheels for the TARGET tag (host pip in download mode) and gate that
 # every Requires-Dist resolves inside C:\runtime\wheels. Native lane: notice

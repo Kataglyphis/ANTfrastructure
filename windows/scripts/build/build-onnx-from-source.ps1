@@ -339,8 +339,30 @@ $cmakeArgs = @(
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs + $qnnArgs
+# #123 (2026-08-25): MLAS's amd64 kernels are MASM sources (mlas/lib/amd64/*.asm,
+# "Building ASM_MASM object" in every amd64 log) and CMake's ASM_MASM default is
+# MSVC's ml64 -- the last MSVC tool in the native build. llvm-ml is LLVM's
+# MASM-compatible assembler; whether MLAS's macro-heavy dialect is inside its
+# compatibility is the question this wiring answers by building. The cross
+# lane assembles nothing through ASM_MASM (arm64 MLAS is .S / intrinsics), so
+# the argument is native-only and its configure command line stays as it was.
+if (-not $onnxCross) { $cmakeArgs += Get-LlvmMasmCmakeArg }
 Switch-BuildPhase '3. cmake configure'
-Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs | Out-Null
+# Tee'd (not | Out-Null): the ASM_MASM identification lines are the proof #123
+# needs, and a swallowed configure log is a "never swallow logs" violation.
+$ortCfgLog = Get-PersistentBuildLogPath -Name 'onnxruntime-configure.log' -FallbackDir $buildDir
+Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs 2>&1 |
+    Tee-Object -FilePath $ortCfgLog
+if (-not $onnxCross) {
+    # CMake reports the assembler it found ("-- Found assembler: <path>" /
+    # "The ASM_MASM compiler identification is ..."). It must be llvm-ml; a
+    # silent fallback to ml64 is the exception this item removes.
+    $masmLines = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'ASM_MASM|Found assembler' })
+    if ($masmLines.Count -eq 0 -or -not ($masmLines -join "`n" | Select-String -Pattern 'llvm-ml' -Quiet)) {
+        throw "ORT configure did not report llvm-ml as the ASM_MASM assembler (#123). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
+    }
+    Write-Host "ASM_MASM assembler (#123): $($masmLines -join ' | ')"
+}
 Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
 # -- Post-configure patches (fetched _deps trees; inline, NOT .patch files —

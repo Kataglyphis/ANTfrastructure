@@ -126,9 +126,10 @@ $gstPluginModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.
 # -Arch is REQUIRED here (fixed 2026-08-24; a bare call resolved the contract for
 # the module's default and would probe amd64's plugin set on an arm64 image).
 # The hardcoded fallback list is gone for the same reason: it was arch-blind
-# (it always named tflite, which the arm64 contract deliberately drops) and it
-# had already re-diverged from the module once before (2026-08-21). An image
-# too old to carry the module gets a printed SKIP, not a wrong contract.
+# (a lane can declare a plugin structurally unavailable -- the arm64 contract
+# did that for tflite until LiteRT cross-built in #115) and it had already
+# re-diverged from the module once before (2026-08-21). An image too old to
+# carry the module gets a printed SKIP, not a wrong contract.
 $requiredGstPlugins = if (Test-Path $gstPluginModule) {
     Import-Module $gstPluginModule -Force -DisableNameChecking
     @(Get-RequiredGstPlugin -Arch $hcTargetArch | ForEach-Object { $_.Name })

@@ -12,18 +12,20 @@
 
 Describe 'Get-RequiredGstPlugin (the contract)' {
 
-    It 'names the four integrations the media stack is built around' {
+    It 'names the six integrations the media stack is built around' {
         $names = @(Get-RequiredGstPlugin | ForEach-Object { $_.Name })
-        Assert-Equal 4 $names.Count 'the required set is libav, opencv, onnx, tflite'
-        foreach ($expected in 'libav', 'opencv', 'onnx', 'tflite') {
+        Assert-Equal 6 $names.Count 'the required set is libav, opencv, onnx, tflite, webrtc, nice'
+        foreach ($expected in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice') {
             Assert-True ($names -contains $expected) "'$expected' must be mandatory"
         }
     }
 
     It 'records HOW each dependency is detected, because it is not uniform' {
         # opencv/onnx/libav go through pkg-config; tflite probes the compiler
-        # (cc.find_library + cc.has_header) and consults no .pc at all. Checking
-        # the wrong way would pass vacuously or demand a file nothing reads.
+        # (cc.find_library + cc.has_header) and consults no .pc at all; webrtc
+        # and nice are meson-native subprojects switched on by a meson option
+        # (#128). Checking the wrong way would pass vacuously or demand a file
+        # nothing reads.
         $byName = @{}
         foreach ($p in @(Get-RequiredGstPlugin)) { $byName[$p.Name] = $p }
         foreach ($n in 'libav', 'opencv', 'onnx') {
@@ -31,6 +33,10 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         }
         Assert-Equal 'compiler' $byName['tflite'].Detection 'tflite is resolved by compiler probes'
         Assert-Equal 0 $byName['tflite'].NeedsPc.Count 'tflite must not claim pkg-config modules'
+        Assert-Equal 'meson' $byName['webrtc'].Detection 'webrtc is a meson feature of gst-plugins-bad'
+        Assert-Equal 'gst-plugins-bad:webrtc' $byName['webrtc'].MesonOption 'the option the build passes as =enabled'
+        Assert-Equal 'meson' $byName['nice'].Detection 'nice is the libnice subproject gstreamer plugin'
+        Assert-Equal 'libnice:gstreamer' $byName['nice'].MesonOption 'the option the build passes as =enabled'
     }
 
     It 'pins the tflite probe details upstream actually uses' {
@@ -55,26 +61,34 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         foreach ($p in @(Get-RequiredGstPlugin)) {
             Assert-True ([bool]$p.Why) "$($p.Name) must say WHY it is mandatory"
             Assert-True ([bool]$p.Provides) "$($p.Name) must say what it provides"
-            # Every entry must be checkable SOMEHOW — either it names pkg-config
-            # modules or it names the header/library the compiler probe needs.
-            # An entry with neither would sail through the pre-flight unchecked.
-            $checkable = ($p.NeedsPc.Count -gt 0) -or ([bool]$p.NeedsHeader -and $p.NeedsLib.Count -gt 0)
-            Assert-True $checkable "$($p.Name) must declare either pkg-config modules or a header+library probe"
+            # Every entry must be checkable SOMEHOW — it names pkg-config
+            # modules, or the header/library the compiler probe needs, or (a
+            # meson-native subproject) the meson option the build switches to
+            # `enabled`, which makes meson itself the pre-flight. An entry with
+            # none of these would sail through unchecked.
+            # Property-presence guards: the entries are shaped per Detection kind
+            # and StrictMode throws on a missing member (measured on the first
+            # meson entry, 2026-08-25).
+            $hasHeaderProbe = [bool]$p.PSObject.Properties['NeedsHeader'] -and [bool]$p.NeedsHeader -and [bool]$p.PSObject.Properties['NeedsLib'] -and $p.NeedsLib.Count -gt 0
+            $hasMesonOption = ($p.Detection -eq 'meson') -and [bool]$p.PSObject.Properties['MesonOption'] -and [bool]$p.MesonOption
+            $checkable = ($p.NeedsPc.Count -gt 0) -or $hasHeaderProbe -or $hasMesonOption
+            Assert-True $checkable "$($p.Name) must declare pkg-config modules, a header+library probe, or a meson option"
         }
     }
 
-    It 'is arch-aware and, since #115, demands the SAME four entries on both lanes' {
+    It 'is arch-aware and, since #115/#128, demands the SAME six entries on both lanes' {
         # The ONLY arch-conditional logic this module carries had ZERO test
         # coverage until 2026-08-24. The mechanism (UnavailableOn filtering)
         # stays tested even while its current key set is empty: #115 restored
         # tflite on arm64 (plain LiteRT cross-builds; the plugin is enabled
-        # presence-driven), so a re-appearing arm64 key -- someone re-dropping
-        # the plugin "temporarily" -- must fail HERE first.
+        # presence-driven) and #128 made webrtc/nice a both-lane requirement,
+        # so a re-appearing arm64 key -- someone re-dropping a plugin
+        # "temporarily" -- must fail HERE first.
         $amd = @(Get-RequiredGstPlugin -Arch 'amd64' | ForEach-Object { $_.Name })
         $arm = @(Get-RequiredGstPlugin -Arch 'arm64' | ForEach-Object { $_.Name })
-        Assert-Equal 4 $amd.Count 'amd64 keeps the full contract'
-        Assert-Equal 4 $arm.Count 'arm64 demands the full contract again since #115 (tflite restored)'
-        foreach ($n in 'libav', 'opencv', 'onnx', 'tflite') {
+        Assert-Equal 6 $amd.Count 'amd64 keeps the full contract'
+        Assert-Equal 6 $arm.Count 'arm64 demands the full contract (tflite since #115, webrtc/nice since #128)'
+        foreach ($n in 'libav', 'opencv', 'onnx', 'tflite', 'webrtc', 'nice') {
             Assert-True ($arm -contains $n) "'$n' must be mandatory on arm64"
         }
         # The bare call must equal the amd64 view when WINDOWS_TARGET_ARCH is

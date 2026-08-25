@@ -1229,6 +1229,34 @@ int _isatty(int);
         # the compile flags correct even for subprojects that rebuild the command.
         $ccList = (((($env:CC -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
         $cxxList = (((($env:CXX -split '\s+') | Where-Object { $_ }) + @("--target=$gstTriple")) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        # Rust for the TARGET (#128): gst-ptp-helper is a Rust program and meson
+        # only builds it when the cross file names a rust compiler for the host
+        # machine. The image's rustup carries the x64 toolchain only, so the
+        # aarch64 std is added here (idempotent, ~30 MB, the container has
+        # network) and PROVEN with a one-line staticlib before it is declared:
+        # a rust entry in the cross file that fails meson's sanity check fails
+        # the whole setup, whereas an absent entry just skips the helper (the
+        # option stays auto). Either outcome is logged -- never a silent skip.
+        $rustTargetLine = ''
+        $rustTriple = Get-RustTargetTriple -Arch $gstTargetArch
+        $rustup = (Get-Command rustup -ErrorAction SilentlyContinue).Source
+        $rustc = (Get-Command rustc -ErrorAction SilentlyContinue).Source
+        if ($rustup -and $rustc) {
+            & $rustup target add $rustTriple 2>&1 | ForEach-Object { log "  rustup| $_" }
+            $rustProbeDir = Join-Path $resolvedLogDir 'rust-cross-probe'
+            New-Item -Path $rustProbeDir -ItemType Directory -Force | Out-Null
+            Set-Content -Path (Join-Path $rustProbeDir 'probe.rs') -Encoding ASCII -Value '#[no_mangle] pub extern "C" fn kata_probe() -> i32 { 42 }'
+            & $rustc --target $rustTriple --crate-type staticlib -o (Join-Path $rustProbeDir 'probe.lib') (Join-Path $rustProbeDir 'probe.rs') 2>&1 | ForEach-Object { log "  rustc| $_" }
+            if ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $rustProbeDir 'probe.lib'))) {
+                $rustTargetLine = "rust = ['$($rustc -replace '\\', '/')', '--target=$rustTriple']"
+                log "Rust cross target ${rustTriple}: staticlib probe OK -- gst-ptp-helper will be built for the target"
+            } else {
+                log "Rust cross target ${rustTriple}: probe FAILED (exit $LASTEXITCODE) -- rust stays OUT of the cross file; gst-ptp-helper is skipped on this lane (a PTP clock helper, not a media feature)"
+            }
+            $global:LASTEXITCODE = 0
+        } else {
+            log 'Rust cross target: rustup/rustc not on PATH -- rust stays out of the cross file; gst-ptp-helper is skipped on this lane'
+        }
         $crossFile = Join-Path $resolvedLogDir "meson-cross-$gstTargetArch.ini"
         Set-Content -Path $crossFile -Encoding ASCII -Value @"
 [binaries]
@@ -1239,6 +1267,7 @@ strip = 'llvm-strip'
 windres = 'llvm-rc'
 pkg-config = 'pkg-config'
 cmake = 'cmake'
+$rustTargetLine
 
 [properties]
 # Nothing built here can run on this windows/amd64 host, so every cc.run() and
@@ -1252,9 +1281,33 @@ cpu_family = '$gstCpuFamily'
 cpu = '$gstCpuFamily'
 endian = 'little'
 "@
-        $mesonCrossArgs = @('--cross-file', $crossFile)
+        # NATIVE file (#128, 2026-08-25): a cross file alone tells meson about
+        # the HOST machine only; the BUILD machine had no C compiler at all
+        # ("Compiler for language c for the build machine not found", 93x per
+        # setup), so the build-machine glib fallback died and libnice's by-name
+        # `subprojects/glib` lookup failed -- the webrtc plugin, gstwebrtcnice
+        # and libnice were the whole difference between the two lanes' plugin
+        # inventories (measured run 11 vs amd64 merge). Same compilers without
+        # the --target, i.e. exactly what the amd64 lane runs.
+        $nccList = ((($env:CC -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $ncxxList = ((($env:CXX -split '\s+') | Where-Object { $_ }) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
+        $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
+        Set-Content -Path $nativeFile -Encoding ASCII -Value @"
+[binaries]
+c = [$nccList]
+cpp = [$ncxxList]
+ar = 'llvm-lib'
+strip = 'llvm-strip'
+windres = 'llvm-rc'
+pkg-config = 'pkg-config'
+cmake = 'cmake'
+$(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })
+"@
+        $mesonCrossArgs = @('--cross-file', $crossFile, '--native-file', $nativeFile)
         log "Meson cross file for $gstTargetArch ($gstTriple): $crossFile"
         Get-Content $crossFile | ForEach-Object { log "  cross| $_" }
+        log "Meson native file for the amd64 build machine: $nativeFile"
+        Get-Content $nativeFile | ForEach-Object { log "  native| $_" }
     }
     # amd64 keeps the literal '-FIio.h' so its configure command line is byte-identical.
     $ioFI = if ($script:GstCross) { '-FIgst-io-shim.h' } else { '-FIio.h' }
@@ -1373,8 +1426,22 @@ endian = 'little'
                 # arm64 cross lane -- and explicit disabled otherwise. amd64's
                 # meson command line is unchanged (always enabled there).
                 $(if ($script:GstTfliteAvailable) { '-Dgst-plugins-bad:tflite=enabled' } else { '-Dgst-plugins-bad:tflite=disabled' })
+            ) + @(
+                # Meson-native contract entries (#128, 2026-08-25: webrtc + nice
+                # -- the one plugin-inventory difference between the lanes).
+                # Derived from the contract, `enabled` each, so a lane that
+                # cannot build libnice fails meson setup in seconds instead of
+                # shipping one plugin short; the arm64 lane did exactly that
+                # until the native file above gave meson a build-machine
+                # compiler for libnice's glib fallback.
+                $requiredPlugins | Where-Object { $_.Detection -eq 'meson' } | ForEach-Object { "-D$($_.MesonOption)=enabled" }
             )
         }
+    ) + @(
+        # glib's own test suite: 562 test targets on amd64 (measured 2026-08-25)
+        # that ship nothing. The top-level -Dtests=disabled covers the GStreamer
+        # modules only; glib is a wrap with its own option.
+        '-Dglib:tests=false'
     ) + $mesonCrossArgs + $MesonSetupArgs
 
     $setupArgsString = "meson $($setupArgs -join ' ')"

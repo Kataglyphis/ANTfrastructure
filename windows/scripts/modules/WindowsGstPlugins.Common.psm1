@@ -22,10 +22,12 @@
 
 Set-StrictMode -Version Latest
 
-# Canonical TARGET-architecture facts. Needed because the contract below is no
-# longer arch-independent: tflite's entire dependency (LiteRT) cannot be built
-# for Windows-on-ARM, so on that lane the plugin is not "missing", it is
-# STRUCTURALLY UNAVAILABLE. Resolving that here rather than at each call site is
+# Canonical TARGET-architecture facts. The contract is arch-aware by design:
+# an entry can declare itself STRUCTURALLY UNAVAILABLE on a lane (UnavailableOn)
+# so that "not required there" is a stated fact rather than a silent miss. As
+# of #115 (2026-08-24) no entry uses it -- LiteRT builds for Windows-on-ARM, so
+# tflite is required on both lanes -- but the mechanism stays, and the
+# arch-resolution lives here rather than at each call site because that is
 # the whole point of this file -- the three consumers (GStreamer build gate,
 # smoke test, healthcheck) previously disagreed and shipped an image without
 # plugins on 2026-07-11. Teaching only one of them about arm64 would recreate
@@ -106,6 +108,30 @@ function Get-RequiredGstPlugin {
             Why       = 'the inference path of the media stack; ORT is built with CUDA/DML/TensorRT EPs specifically so pipelines can use it'
             # ORT is cross-built for aarch64 (CPU EP; CUDA and DML are off there,
             # but the plugin only needs libonnxruntime itself).
+            UnavailableOn = @{}
+        },
+        # webrtc + nice (#128, 2026-08-25): the one plugin-inventory difference
+        # between the lanes (webrtc only on amd64; libnice's build-machine glib
+        # fallback needed a meson native file on cross). Both are meson-native
+        # subprojects (no external .pc, no header probe): the pre-flight has
+        # nothing to check, meson gets `enabled` for each, and the post-build
+        # DLL + gst-inspect gate proves them like every other entry.
+        [pscustomobject]@{
+            Name      = 'webrtc'
+            Provides  = 'webrtcbin — WebRTC peer connection inside a pipeline (gst-plugins-bad ext/webrtc)'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'gst-plugins-bad:webrtc'
+            Why       = 'the only contract plugin that was silently lane-specific; a WebRTC pipeline on the arm64 bundle would have had no webrtcbin'
+            UnavailableOn = @{}
+        },
+        [pscustomobject]@{
+            Name      = 'nice'
+            Provides  = 'nicesrc / nicesink — ICE transport for webrtcbin (libnice gstreamer plugin)'
+            Detection = 'meson'
+            NeedsPc   = @()
+            MesonOption = 'libnice:gstreamer'
+            Why       = 'webrtcbin cannot negotiate a connection without the ICE elements'
             UnavailableOn = @{}
         },
         [pscustomobject]@{
