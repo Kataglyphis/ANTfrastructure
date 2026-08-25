@@ -5,6 +5,200 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (eighth pass) — SBOM run for real, on both images, and documented
+
+The SBOM machinery landed the pass before with an honest caveat: the `syft` job
+had never run. It has now, locally, against both published images — and the
+results correct something the previous entry asserted.
+
+- **`docs/sbom.md` (new)** — how to generate both halves, and, the part usually
+  left out, **what to do with the result**: CVE scanning with `grype` straight
+  off the SBOM (seconds instead of a multi-gigabyte pull), answering a
+  procurement request, diffing two releases to catch a dependency nobody chose
+  to add, policy gates, Dependency-Track for the "image did not change, the
+  world did" case, and CRA context. Plus what it cannot tell you.
+
+**Linux `:latest-cross` (linux/amd64):** 4,112 packages, 2,202 distinct names —
+maven 1,340, deb 1,255, cargo 1,072, pypi 228, npm 149, go 13. Breadth no human
+maintains by hand. But **73 % declare no licence and 94 % conclude none**, and
+for the copyleft components the scan reports the DISTRO copy at a different
+version: FFmpeg as `62.x`/`7:8.0.1-3ubuntu2` rather than the source-built `n9.0`
+GPLv3 build, GStreamer as Ubuntu's `1.28.2-1` rather than `1.29.2`. OpenCV, TVM,
+Abseil and VVdeC are absent entirely. **A source-offer question cannot be
+answered from the scanner SBOM** — which is a far stronger justification for the
+curated half than the previous entry gave.
+
+**Windows `:winamd64`:** 26,253 packages, six times the Linux count and mostly
+noise — 14,014 are PE version resources read out of every DLL ("Microsoft®
+Windows Repair Disc", "JP Japanese Keyboard Layout for NEC PC-9800"), i.e.
+operating-system files, not chosen dependencies. **98.5 % carry no licence.**
+The earlier prediction that Windows would yield FEWER packages was wrong in the
+opposite direction; package count is not a quality signal.
+
+> **The Windows scan also caught real drift.** It reports ONNX Runtime `1.27.0`,
+> TVM `0.25.0` and FFmpeg `8.0.git` while `versions.env` pins `v1.29.0`,
+> `v0.26.0` and `n9.0`. **The published `:winamd64` is behind the current pins**,
+> so the curated SBOM and both licence pages — all generated from `versions.env`
+> — describe the next build rather than the published tag. Recorded as a limit
+> on the SBOM page.
+
+- **`docs/scripts/compare_sbom.py` (new)** measures the blind spot instead of
+  asserting it. Two bugs were found in it before its output was trusted: it
+  conflated package count with distinct names, and it compared a Linux scan
+  against the Windows and Documentation-image rows, which reported Ghostscript
+  and TeX Live as "invisible to the scanner" when they are simply not in that
+  image. Its name matcher also failed on `GStreamer` vs `gstreamer1.0` and
+  `PyTorch` vs `torch`; letters-only containment fixes that while still
+  correctly refusing to match OpenCV against anything.
+
+Routed from `docs/INDEX.md` and the Sphinx toctree. Sphinx build warning-free;
+`doc-links`, `doc-dupes`, `sbom` and `version-snapshot` green; ruff clean.
+
+## 2026-08-25 (seventh pass) — SBOM, in two halves, because one cannot cover the image
+
+An image scanner catalogues components that carry package METADATA: dpkg/apt,
+Python site-packages, npm, Go and Rust binaries. It cannot see a C/C++ library
+built from source into `/opt` — ONNX Runtime, OpenCV, FFmpeg, GStreamer and
+libcamera leave no manifest behind. Those are also the components under copyleft
+licences here, so a scan alone would produce an SBOM that silently omits every
+entry carrying a corresponding-source obligation.
+
+Hence two halves, both published, deliberately distinguishable by
+`creationInfo.creators`:
+
+- **`docs/scripts/generate_sbom.py` (new)** emits `docs/deps/sbom-curated.spdx.json`
+  — SPDX 2.3, 97 packages, from `deps.json` + `versions.env`. Each package
+  carries its SPDX licence expression, its upstream download location, and
+  `licenseComments` naming the obligations it triggers, the corresponding-source
+  upstream and revision, the build flags where those determine the licence, and
+  any patches applied. The two coarse buckets are declared properly as
+  `hasExtractedLicensingInfos` rather than smuggled in as invalid ids.
+  The document is **byte-reproducible** (fixed timestamp, stable namespace, a
+  digest-suffixed SPDXID so `FFmpeg` in two sections cannot collide), which is
+  what lets it be gated at all.
+- **`.github/workflows/sbom.yml` (new)** runs `syft` against the **published**
+  image, per architecture, emitting SPDX and CycloneDX. It reads from ghcr
+  directly (`registry:`), so it needs no build host, no daemon and no disk for
+  the rootfs — which matters because these images are built on a workstation,
+  not in this repository's pipelines. `:latest-cross` is a manifest list, so
+  each arch is scanned explicitly; a scan without `--platform` silently picks
+  one. A result under 50 packages fails the job rather than publishing it: that
+  means a broken reference or a cataloguer regression, not a clean image.
+
+- **Valid SPDX syntax, corrected.** `Apache-2.0-with-LLVM-exception` and
+  `GPL-3.0-or-later-with-GCC-exception` are not SPDX ids. They are now
+  `Apache-2.0 WITH LLVM-exception` and `GPL-3.0-or-later WITH GCC-exception-3.1`,
+  and the expression splitter keeps a `WITH` pair intact — splitting it would
+  look up a base id whose obligations differ from the exception-bearing one.
+- **Gated** as preflight slug `sbom`, in the pre-commit hook and
+  `stale-docs-check.yml`. Negative-tested: dropping a package from the committed
+  document fails with the regeneration command.
+- **Routed** from `docs/INDEX.md`, and the Sphinx landing page regained its
+  **Third-Party Licences** card — the 2026-08-25 `index.rst` rewrite had dropped
+  it, leaving the page reachable only from the toctree. It is the page a
+  production or procurement question lands on first.
+
+**Verified here:** the curated document validates structurally (unique
+well-formed SPDXIDs, 97 packages, 26 flagged source-required), regenerates
+byte-identically across runs, and the gate fails on drift. **Not verified here:**
+the `syft` job has never run — syft is not installed on this workstation and the
+published image is not present, so its first CI run is its first real test.
+
+## 2026-08-25 (sixth pass) — the licence list now says what each licence REQUIRES
+
+A list that names licences answers "what is in here". It does not answer the
+question that matters when you publish to a public registry: **what does each
+of those licences oblige me to do?** The published runtime image ships a GPLv3
+FFmpeg (`--enable-gpl --enable-version3`) and a GPLv3 GCC, and carried no
+corresponding-source offer at all.
+
+- **`docs/scripts/license_obligations.py` (new)** maps SPDX id → the concrete
+  things a distributor must do: keep the notice, ship the text, state changes,
+  propagate NOTICE, offer corresponding source, allow relinking, AGPL section 13
+  network source, same-licence for derivatives, and "this is a vendor EULA, the
+  question is whether you may redistribute at all". Dual licences render as the
+  UNION of both arms, not the cheaper one, because the project has not recorded
+  an election — record a single SPDX id to narrow it.
+- **Every one of the 97 `deps.json` entries now carries an `spdx` field**,
+  mapped from the 43 free-text licence strings by a reviewed table. Free text
+  cannot be turned into an obligation; an SPDX id can.
+- **All 26 copyleft components now carry a corresponding-source pointer** — the
+  exact upstream, the revision (resolved from the same `versions.env` pin the
+  build uses, so it cannot drift), the patches applied on top, and, where the
+  build configuration is what *determines* the licence, the configure flags.
+  FFmpeg's entry says in as many words that `--enable-gpl --enable-version3`
+  is what makes the shipped binary GPLv3 rather than LGPL. GCC's says the
+  Runtime Library Exception covers programs compiled with GCC, not shipping
+  GCC itself — which the runtime image does.
+- **Three components are now marked as modified** (sccache, and the Windows
+  FFmpeg and GStreamer builds, which carry patches). Apache-2.0 section 4(b)
+  and the GPL family both require saying so. This also corrects a factual
+  error: sccache was listed as coming from "Ubuntu apt" when it is built from
+  source at a pinned git rev with a local patch series.
+- **Both pages carry all of it** — the published website page and the repo's
+  own `third-party-licenses.md`. A developer reading the repo is exactly the
+  person who needs to know that shipping the image carries a source-offer duty,
+  so splitting that across two pages is how it gets missed.
+- **Gated.** `generate-website-licenses.py` now fails when an entry has no
+  `spdx`, when an SPDX id has no obligation mapping, or when a copyleft
+  component has no `source` block. It runs on `--write` as well as `--check`,
+  and reaches the pre-commit hook and both docs workflows through the existing
+  `version-snapshot` slug. Negative-tested: removing FFmpeg's source pointer
+  fails with both its Linux and Windows entries named.
+
+**Not addressed, and it is the bigger question.** The published `:winamd64`
+image contains CUDA, Visual Studio Build Tools and Windows Server Core under
+vendor EULAs. Those entries are now flagged `eula-review`, but a flag is not an
+answer: whether they may be redistributed in a public image at all is a legal
+question, and no amount of documentation changes it.
+
+Still open too: licence **texts** are not yet shipped inside the images. The
+obligations page now says they must be, which makes the gap visible rather than
+invisible — collecting `LICENSE`/`COPYING` into `/usr/share/licenses/` during
+packaging is the next step.
+
+## 2026-08-25 (fifth pass) — the published webserver was serving a stale licence list
+
+Asked whether the open-source licence lists are current and whether anything
+keeps them current. The generated ones were current. The **served** one was not,
+and nothing was watching the difference.
+
+- **`docs/third-party-licenses.md` and
+  `linux/webserver/license-assets/documents/footer/openSourceLicenses{En,De}.md`
+  are generated** from `docs/deps/deps.json` + `versions.env` by
+  `generate-website-licenses.py`, and they **are** gated: `sync_versions.py
+  --check` shells out to it and ORs the result, so the `version-snapshot`
+  preflight slug covers them — in `.githooks/pre-commit`, `build-docs.yml` and
+  the weekly `stale-docs-check.yml`. That half was working.
+- **The webserver image did not serve those files.** `linux/webserver/dist/`
+  ships its own build-time copy of the same page, and the Dockerfile overlays
+  `license-assets/` on top — but the overlay targeted `/var/www/html/assets/`,
+  one directory too shallow. Flutter serves declared assets under its own
+  `assets/` root, so the app fetches `/assets/assets/documents/footer/…`. The
+  generated file landed at a URL nothing requests, and the image served the
+  `dist/` copy: **last regenerated 2026-07-22, 142 lines against the current
+  236, missing ~25 components** — Arm NN, BuildKit, CPython, Emscripten, GNU,
+  Ghostscript, ImageMagick, LiteRT-LM, Meson, Ninja, Ollama, Pandoc, Pygments,
+  Scoop and more.
+  Nothing caught it because nothing *could*: both files existed, both were valid
+  Markdown, both were tracked, and only the URL told them apart. The generator
+  writes `license-assets/` only, so no amount of regeneration would have fixed
+  the served page.
+- **Fixed** by pointing the overlay at `/var/www/html/assets/assets/`, and
+  **gated** so it cannot drift back: `generate-website-licenses.py` now asserts
+  the Dockerfile's overlay target, and that every `openSourceLicenses*.md` the
+  `dist/` bundle ships is one the generator owns. That check runs on `--write`
+  as well as `--check`, because an overlay path is a property of the image that
+  regenerating file contents cannot fix — and must not mask. Negative-tested:
+  restoring the old target fails the gate with the exact remedy.
+  `dist/`'s stale copy is left in place deliberately — it is a vendored build
+  artifact from the app repo, and the overlay is the designed mechanism for
+  superseding it. The new check is what guarantees the overlay still covers it.
+
+**Answering the question directly:** the lists themselves were up to date and
+are kept so automatically. What was not automatic — and is now — is that the
+*shipped* page is the generated one.
+
 ## 2026-08-25 (fourth pass) — the gates reach the pre-commit hook; the guard stops denying prose
 
 Clearing what the third pass left open, plus one defect the newly-runnable

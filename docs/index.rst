@@ -104,6 +104,12 @@ documentation index, which maps every topic to the page that owns it.
 
       Prerequisites, installation, tests, roadmap, troubleshooting, contribution, contact, and references.
 
+   .. grid-item-card:: Third-Party Licences
+      :link: third-party-licenses
+      :link-type: doc
+
+      Every bundled component, what its licence obliges this project to do, and the corresponding source for the copyleft ones.
+
 Linux image flow
 ----------------
 
@@ -182,6 +188,8 @@ Common development targets:
 
    project-info
    third-party-licenses
+   sbom
+   vulnerability-scanning
    upstream-libstdcxx-c++23-nostdinc++
    upstream/hcsshim-lost-shutdown-notification-issue
 

@@ -32,9 +32,24 @@ COPY ./webserver/security-headers.conf /etc/nginx/security-headers.conf
 # Copy entrypoint script to generate self-signed cert if none exists
 COPY --chmod=755 ./webserver/entrypoint.sh /docker-entrypoint.sh
 
-# Copy website files and license assets
+# Copy website files, then overlay the GENERATED license list on top.
+#
+# The overlay target is `/var/www/html/assets/assets/`, with the doubled
+# segment, and that is not a typo. Flutter web serves declared assets under its
+# own `assets/` root, so an asset declared as `assets/documents/footer/x.md`
+# is fetched from `/assets/assets/documents/footer/x.md` — which is exactly the
+# layout `dist/` already carries.
+#
+# Until 2026-08-25 this line targeted `/var/www/html/assets/`, one level too
+# shallow. The generated file landed at a URL the app never requests, so the
+# image served the copy baked into `dist/` — last regenerated 2026-07-22 and
+# missing ~25 components (Arm NN, BuildKit, CPython, Emscripten, Ghostscript,
+# ImageMagick, LiteRT-LM, Meson, Ninja, Ollama, Pandoc, Pygments, Scoop, …).
+# `generate-website-licenses.py` writes only `license-assets/`, so nothing
+# refreshed the served copy and nothing noticed: both files existed, both were
+# valid Markdown, and only the URL told them apart.
 COPY --chown=nginx:nginx --chmod=755 ./webserver/dist/ /var/www/html/
-COPY --chown=nginx:nginx --chmod=755 ./webserver/license-assets/ /var/www/html/assets/
+COPY --chown=nginx:nginx --chmod=755 ./webserver/license-assets/ /var/www/html/assets/assets/
 
 EXPOSE 80 443
 

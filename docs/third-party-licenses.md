@@ -9,6 +9,101 @@ file, the `SPDX-License-Identifier: MIT` header on every source file, and the
 `org.opencontainers.image.licenses="MIT"` label on the published images.  Each
 upstream component below carries its own license terms.
 
+## Maintaining this list
+
+Everything below the marker is **generated**. Editing it by hand is lost on the
+next build. The sources are:
+
+| File | Holds |
+|---|---|
+| [`deps/deps.json`](deps/deps.json) | every component: name, licence, URL, and which image it is in |
+| [`../linux/scripts/01-core/versions.env`](../linux/scripts/01-core/versions.env) | the version, so the list can never disagree with the build |
+
+Regenerate after any change:
+
+```bash
+python3 docs/scripts/sync_versions.py --write     # this page + the website pages
+python3 docs/scripts/generate_sbom.py --write     # docs/deps/sbom-curated.spdx.json
+```
+
+### Adding a component
+
+Add one object to the right `subsections[].entries[]` array in `deps.json`:
+
+```json5
+{
+  "name": "libfoo",                       // shown in the table
+  "var": "LIBFOO_VERSION",                // key in versions.env -- preferred
+  // "version_fixed": "Ubuntu apt",       // ...only when there is no pin
+  "url": "https://github.com/example/libfoo",
+  "license": "LGPLv2.1+",                 // free text, for humans
+  "spdx": "LGPL-2.1-or-later"             // REQUIRED -- machine-readable
+}
+```
+
+**`spdx` is not optional.** A licence *name* cannot be turned into an
+obligation; an SPDX id can. If the id is new, add it to
+[`scripts/license_obligations.py`](scripts/license_obligations.py) with what it
+requires, or the gate fails with the id it could not map.
+
+### If it is copyleft, it also needs a source pointer
+
+GPL, LGPL, MPL and AGPL require the corresponding source to accompany the
+binary. The gate refuses a copyleft component without one:
+
+```json5
+"source": {
+  "kind": "upstream-tag",
+  "url": "https://git.example.org/libfoo.git",
+  "ref_var": "LIBFOO_VERSION",            // resolved from versions.env, so it cannot drift
+  // "ref": "default branch",             // ...when there is no pin
+  "build_flags": "--enable-gpl",          // ONLY when flags decide the licence
+  "patches": ["path/to/0001-fix.patch"],  // if this repo patches it
+  "note": "Anything a reader needs to know."
+}
+```
+
+`build_flags` matters more than it looks: FFmpeg is LGPL by default and becomes
+**GPLv3** because this project builds it `--enable-gpl --enable-version3`. The
+flags are the reason for the obligation, so they are recorded next to it.
+
+### If this repo patches it
+
+Add `"modified"` as well. Apache-2.0 §4(b) and the GPL family both require
+stating that a redistributed component was changed:
+
+```json5
+"modified": {
+  "patches": ["windows/upstream/sccache-nvcc-quote-fix/"],
+  "note": "Built from source at the pinned git rev with a local patch series."
+}
+```
+
+### What the gate checks
+
+`preflight.sh` slugs `version-snapshot` and `sbom` run in the pre-commit hook
+and in CI. Together they fail when:
+
+- an entry has no `spdx`;
+- an `spdx` id has no obligation mapping;
+- a copyleft component has no `source` block;
+- the rendered pages or the curated SBOM have drifted from `deps.json`;
+- the webserver Dockerfile stops overlaying the generated page onto the path the
+  site actually requests.
+
+Run them yourself before committing:
+
+```bash
+PREFLIGHT_ONLY=version-snapshot,sbom bash linux/scripts/preflight.sh
+```
+
+### What this list is NOT
+
+It is the **curated** half: components this project chooses and builds. It does
+not enumerate transitive dependencies — the apt closure, cargo crates, Python
+wheels. Those come from an image scan; see [`sbom.md`](sbom.md) for how the two
+halves fit together and why neither is sufficient alone.
+
 <!-- generated:deps-table:start -->
 
 ## Linux Images (`ghcr.io/kataglyphis/kataglyphis_beschleuniger`)
@@ -226,6 +321,222 @@ upstream component below carries its own license terms.
 | containerd | host install | [containerd.io](https://containerd.io/) | Apache 2.0 |
 | BuildKit (buildkitd) | host install | [github.com/moby/buildkit](https://github.com/moby/buildkit) | Apache 2.0 |
 | Stevedore (Windows builds — bundled docker.exe) | host install | [github.com/slonopotamus/stevedore](https://github.com/slonopotamus/stevedore) | Apache 2.0 |
+
+
+---
+
+## What these licences require
+
+Every obligation below is triggered by at least one component actually shipped in an image on this page. This is a structured reading of the licence texts, not legal advice.
+
+- **keep-notice** — Reproduce the upstream copyright notice with the distributed binary.
+- **include-text** — Ship the full licence text alongside the binary.
+- **state-changes** — Mark modified files as changed, and say what was changed.
+- **notice-file** — Propagate the upstream NOTICE file if one exists.
+- **offer-source** — Provide the complete corresponding source, or a written offer valid for three years. Publishing the binary without either is the obligation most often missed.
+- **allow-relink** — Let the recipient replace the library and relink. Shipping it as a shared object, as this project does, satisfies the mechanism; the notice and text are still required.
+- **network-source** — AGPL section 13: users interacting with the software OVER A NETWORK must be offered its source. This reaches further than the GPL and is worth checking against how the component is actually exposed.
+- **same-licence** — Derivative works of this component must carry the same licence.
+- **eula-review** — Proprietary terms. Redistribution is NOT automatically granted -- the vendor EULA decides whether this component may ship in a published image at all. This is a legal question, not a documentation one.
+
+
+---
+
+## Corresponding source
+
+The components below are copyleft-licensed, so their source must accompany the binaries. Each entry names the exact upstream and the revision this project builds, any patches applied on top, and — where the build configuration is what determines the licence — the flags used.
+
+If a link ever fails to resolve, the obligation stands: request the corresponding source and it will be provided.
+
+### Ubuntu — Linux Images
+
+- **Licence:** LicenseRef-Distro-Bundle
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### GCC (host + cross) — Linux Images
+
+- **Licence:** GPL-3.0-or-later WITH GCC-exception-3.1
+- **Source:** <https://ftp.gnu.org/gnu/gcc/>
+- **Revision:** 16.2.0
+- Built unmodified from the GNU release tarball. The Runtime Library Exception covers programs COMPILED with GCC; it does not cover shipping GCC itself, which the runtime image does.
+
+### GStreamer — Linux Images
+
+- **Licence:** LGPL-2.0-or-later
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/gstreamer>
+- **Revision:** 1.29.2
+
+### GStreamer Rust plugins (gst-plugins-rs) — Linux Images
+
+- **Licence:** MPL-2.0
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs>
+- **Revision:** 1.29.2
+
+### FFmpeg — Linux Images
+
+- **Licence:** GPL-3.0-or-later
+- **Source:** <https://git.ffmpeg.org/ffmpeg.git>
+- **Revision:** n9.0
+- **Build configuration:** `--enable-gpl --enable-version3 --enable-libx264 --enable-libx265`
+- Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.
+
+### FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame) — Linux Images
+
+- **Licence:** GPL-2.0-or-later AND LGPL-2.1-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### libcamera — Linux Images
+
+- **Licence:** LGPL-2.1-or-later
+- **Source:** <https://git.libcamera.org/libcamera/libcamera.git>
+- **Revision:** v0.7.2
+
+### FreeType — Linux Images
+
+- **Licence:** GPL-2.0-or-later OR FTL
+- **Source:** <https://download.savannah.gnu.org/releases/freetype/>
+- **Revision:** 2.14.3
+- Dual-licensed. This project elects the FTL, which needs only notice and text; the source pointer is provided anyway.
+
+### GObject-Introspection — Linux Images
+
+- **Licence:** LGPL-2.0-or-later
+- **Source:** <https://gitlab.gnome.org/GNOME/gobject-introspection>
+- **Revision:** 1.86.0
+
+### Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer — Linux Images
+
+- **Licence:** Apache-2.0 AND MIT AND LGPL-2.0-or-later
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/gstreamer>
+- **Revision:** same refs as the Media Layer rows above
+
+### ccache — Linux Images
+
+- **Licence:** GPL-3.0-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### cerbero (GStreamer Android build system) — Linux Images
+
+- **Licence:** LGPL-2.1-or-later
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/cerbero>
+- **Revision:** default branch
+- Build-time only; never shipped in a runtime image.
+
+### Ubuntu — Webserver Image
+
+- **Licence:** LicenseRef-Distro-Bundle
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) — Windows Image
+
+- **Licence:** LicenseRef-Distro-Bundle
+- **Source:** <https://github.com/python/cpython-source-deps>
+- **Revision:** as bundled by the pinned CPython
+- Redistributed unmodified as part of the CPython build.
+
+### GStreamer — Windows Image
+
+- **Licence:** LGPL-2.0-or-later
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/gstreamer>
+- **Revision:** 1.29.2
+- **Patches applied:** `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`
+
+### GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …) — Windows Image
+
+- **Licence:** LGPL-2.0-or-later AND GPL-2.0-or-later AND BSD-2-Clause
+- **Source:** <https://gitlab.freedesktop.org/gstreamer/gstreamer/-/tree/main/subprojects>
+- **Revision:** pinned by the GStreamer release's wrap files
+- x264 is GPL, so its presence is what makes this subproject set copyleft.
+
+### FFmpeg — Windows Image
+
+- **Licence:** GPL-3.0-or-later
+- **Source:** <https://git.ffmpeg.org/ffmpeg.git>
+- **Revision:** n9.0
+- **Build configuration:** `--enable-gpl --enable-version3 --enable-libx264 --enable-libx265`
+- **Patches applied:** `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`
+- Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.
+
+### Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet) — Windows Image
+
+- **Licence:** LicenseRef-Distro-Bundle
+- **Source:** <https://scoop.sh/>
+- **Revision:** —
+- Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is built from patched source.
+
+### Ubuntu — Documentation Image
+
+- **Licence:** LicenseRef-Distro-Bundle
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### Pandoc — Documentation Image
+
+- **Licence:** GPL-2.0-or-later
+- **Source:** <https://github.com/jgm/pandoc>
+- **Revision:** 3.10.2
+
+### TeX Live (texlive-full) — Documentation Image
+
+- **Licence:** LicenseRef-Distro-Bundle
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### Ghostscript — Documentation Image
+
+- **Licence:** AGPL-3.0-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive. AGPL section 13 also reaches network-exposed use -- check how this component is exposed.
+
+### GNU C Library locales (locales) — Documentation Image
+
+- **Licence:** LGPL-2.1-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### GNU Wget — Documentation Image
+
+- **Licence:** GPL-3.0-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### ca-certificates — Documentation Image
+
+- **Licence:** MPL-2.0 AND GPL-2.0-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+### less — Documentation Image
+
+- **Licence:** GPL-3.0-or-later
+- **Source:** <https://archive.ubuntu.com/ubuntu/>
+- **Revision:** —
+- Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive.
+
+
+## Modified components
+
+This project patches the following upstreams before redistributing them. Both the Apache-2.0 and the GPL families require that modification be stated.
+
+- **sccache — Linux Images** — Built from source at the pinned git rev with a local patch series, NOT installed from a package manager. Patches: `windows/upstream/sccache-nvcc-quote-fix/`.
+- **GStreamer — Windows Image** — The Windows build patches a GES symbol rename. Patches: `windows/scripts/patches/gstreamer/001-ges-commit-rename.patch`.
+- **FFmpeg — Windows Image** — The Windows build patches configure to allow MSYS2 builds. Patches: `windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch`.
+
+Each patch is in this repository at the path shown, and travels with the corresponding source above.
 
 <!-- generated:deps-table:end -->
 

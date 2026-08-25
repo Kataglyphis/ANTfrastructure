@@ -60,7 +60,7 @@ export PYTHONUTF8=1
 KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
-             doc-links doc-dupes)
+             doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
@@ -173,6 +173,18 @@ if [ -f docs/scripts/verify_doc_dupes.py ]; then
   run_check doc-dupes "docs duplication"          ${PREFLIGHT_PYTHON} docs/scripts/verify_doc_dupes.py
 else
   run_check doc-dupes "docs duplication"          bash -c 'echo "docs/scripts/verify_doc_dupes.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
+fi
+
+# 5a3. The curated SBOM (docs/deps/sbom-curated.spdx.json) is generated from
+# deps.json + versions.env and COMMITTED, so it can drift from them. It is the
+# half an image scanner cannot produce: components built from source leave no
+# package metadata for syft to read, and those are exactly the copyleft ones.
+# The scanner half runs in .github/workflows/sbom.yml against the published
+# image.
+if [ -f docs/scripts/generate_sbom.py ]; then
+  run_check sbom "curated SBOM"                   ${PREFLIGHT_PYTHON} docs/scripts/generate_sbom.py --check
+else
+  run_check sbom "curated SBOM"                   bash -c 'echo "docs/scripts/generate_sbom.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
 # 5b. A1: env-knob registry — every consumed ${VAR:-} knob must have an owner

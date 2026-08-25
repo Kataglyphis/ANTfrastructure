@@ -13,7 +13,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -83,9 +82,28 @@ def render_table(versions: dict[str, str]) -> str:
     # copy — which carried the loud-KeyError fix that sync_versions' copy
     # LACKED — was promoted into deps_table.py; both scripts now consume the
     # single source of truth, so the missing-var behavior cannot diverge again.
-    from deps_table import render_deps_table_lines
+    #
+    # Since 2026-08-25 the page is more than an inventory. A list that only
+    # NAMES licences never answers the question that matters when you publish
+    # to a public registry — what does each one oblige you to do — so the
+    # obligations, the corresponding-source pointers and the modified-component
+    # notices are rendered from the same data and cannot drift from the pins.
+    from deps_table import (
+        render_deps_table_lines,
+        render_modified_lines,
+        render_obligations_lines,
+        render_source_offer_lines,
+    )
 
-    return "\n".join(render_deps_table_lines(versions))
+    parts = (
+        render_deps_table_lines(versions)
+        + ["", "---"]
+        + render_obligations_lines()
+        + ["", "---"]
+        + render_source_offer_lines(versions)
+        + render_modified_lines()
+    )
+    return "\n".join(parts)
 
 
 def generate_content(versions: dict[str, str]) -> tuple[str, str]:
@@ -124,6 +142,103 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def check_obligations_are_discharged() -> int:
+    """Every component must say which licence it is under, and copyleft ones
+    must carry a corresponding-source pointer.
+
+    The list used to name licences without saying what they require. Meanwhile
+    the published runtime image shipped a GPLv3 FFmpeg and a GPLv3 GCC with no
+    source offer anywhere. This makes that state unreachable: add a component
+    under a copyleft licence and the gate fails until its source is recorded.
+    """
+    import license_obligations as lo
+    from deps_table import load_deps_metadata
+
+    metadata = load_deps_metadata()
+    no_spdx: list[str] = []
+    no_source: list[str] = []
+    for section in metadata["sections"]:
+        for subsection in section["subsections"]:
+            for entry in subsection["entries"]:
+                name = f"{entry.get('name')} ({section['title']})"
+                spdx = entry.get("spdx")
+                if not spdx:
+                    no_spdx.append(name)
+                    continue
+                try:
+                    needs = lo.requires_source(spdx)
+                except KeyError as exc:
+                    print(f"Error: {name}: {exc}", file=sys.stderr)
+                    return 1
+                if needs and not entry.get("source"):
+                    no_source.append(f"{name} [{spdx}]")
+
+    rc = 0
+    if no_spdx:
+        print("Error: deps.json entries with no `spdx` field — a licence name alone cannot be "
+              "mapped to an obligation:", file=sys.stderr)
+        for n in no_spdx:
+            print(f"       {n}", file=sys.stderr)
+        rc = 1
+    if no_source:
+        print("Error: copyleft components with no `source` pointer. GPL/LGPL/MPL require the "
+              "corresponding source to accompany the binary:", file=sys.stderr)
+        for n in no_source:
+            print(f"       {n}", file=sys.stderr)
+        print("       Add a \"source\" block (url + ref/ref_var, plus patches and build_flags "
+              "where they apply) to the entry in docs/deps/deps.json.", file=sys.stderr)
+        rc = 1
+    return rc
+
+
+def check_overlay_reaches_the_served_path() -> int:
+    """Generating the file is worthless if the image serves a different copy.
+
+    `dist/` ships its own build-time copy of the same licence page, and the
+    webserver Dockerfile overlays `license-assets/` on top. Until 2026-08-25 the
+    overlay landed one directory too shallow, so the generated file sat at a URL
+    the app never requests and the image served a copy last refreshed months
+    earlier, missing ~25 components. Nothing caught it: both files existed, both
+    were valid Markdown, and only the URL distinguished them.
+
+    Flutter serves declared assets under its own `assets/` root, so an asset
+    declared `assets/documents/footer/x.md` is fetched from
+    `/assets/assets/documents/footer/x.md`. This asserts the overlay targets
+    that layout, and that every licence file the built app carries is covered
+    by one the generator owns.
+    """
+    dockerfile = REPO_ROOT / "linux/webserver/Dockerfile"
+    if not dockerfile.exists():
+        print(f"Error: {dockerfile} not found", file=sys.stderr)
+        return 1
+
+    want = "/var/www/html/assets/assets/"
+    copies = [
+        line for line in dockerfile.read_text(encoding="utf-8").split("\n")
+        if line.startswith("COPY") and "license-assets/" in line
+    ]
+    if len(copies) != 1:
+        print(f"Error: expected exactly one license-assets COPY in {dockerfile.name}, "
+              f"found {len(copies)}", file=sys.stderr)
+        return 1
+    if not copies[0].rstrip().endswith(want):
+        print(f"Error: the license overlay must target {want} so it lands on the path the "
+              f"built app requests (Flutter nests declared assets under its own assets/ root).\n"
+              f"       Found: {copies[0].strip()}", file=sys.stderr)
+        return 1
+
+    served = REPO_ROOT / "linux/webserver/dist/assets/assets/documents/footer"
+    if served.is_dir():
+        generated = {p.name for p in ASSETS_DIR.rglob("openSourceLicenses*.md")}
+        shipped = {p.name for p in served.glob("openSourceLicenses*.md")}
+        uncovered = shipped - generated
+        if uncovered:
+            print(f"Error: dist/ ships licence page(s) the generator does not own, so nothing "
+                  f"refreshes them: {', '.join(sorted(uncovered))}", file=sys.stderr)
+            return 1
+    return 0
+
+
 def main() -> int:
     if not DEPS_JSON.exists():
         print(f"Error: {DEPS_JSON} not found", file=sys.stderr)
@@ -140,14 +255,21 @@ def main() -> int:
     # Default is CHECK (matching sync_versions.py): a flagless invocation used
     # to fall through to the WRITE branch and rewrite tracked files.
     if not args.write:
+        rc = check_overlay_reaches_the_served_path() | check_obligations_are_discharged()
         if check_current(en_content, de_content):
-            print("Website license files are up to date.")
-            return 0
+            if rc == 0:
+                print("Website license files are up to date, and the image serves them.")
+            return rc
         print("Website license files are out of date.", file=sys.stderr)
         print("Run: python docs/scripts/generate-website-licenses.py --write", file=sys.stderr)
         return 1
 
+    # The overlay path is a correctness property of the image, not of the file
+    # contents, so --write cannot fix it and must not mask it either.
+    rc = check_overlay_reaches_the_served_path() | check_obligations_are_discharged()
     paths = write_files(en_content, de_content)
+    if rc:
+        return rc
     for p in paths:
         print(f"Written: {p.relative_to(REPO_ROOT)}")
     return 0

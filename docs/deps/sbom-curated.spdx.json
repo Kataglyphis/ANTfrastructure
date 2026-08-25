@@ -1,0 +1,1777 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "Kataglyphis-ContainerHub-curated",
+  "documentNamespace": "https://github.com/Kataglyphis/Kataglyphis-ContainerHub/spdx/curated",
+  "creationInfo": {
+    "created": "1970-01-01T00:00:00Z",
+    "creators": [
+      "Tool: docs/scripts/generate_sbom.py",
+      "Organization: Kataglyphis"
+    ],
+    "comment": "CURATED half of the inventory: components built from source, which an image scanner cannot see because they carry no package metadata. The scanner half is produced by .github/workflows/sbom.yml. The fixed timestamp keeps this document reproducible so it can be gated in CI."
+  },
+  "hasExtractedLicensingInfos": [
+    {
+      "licenseId": "LicenseRef-Distro-Bundle",
+      "extractedText": "A distribution or tool bundle comprising many packages under many licences (an Ubuntu base image, a TeX Live installation, a scoop tool set). Per-package licence texts travel inside the image itself; this id marks the bundle rather than asserting a single licence over it.",
+      "name": "LicenseRef-Distro-Bundle"
+    },
+    {
+      "licenseId": "LicenseRef-Proprietary-EULA",
+      "extractedText": "Proprietary vendor EULA (NVIDIA CUDA/cuDNN/TensorRT, Microsoft Visual Studio Build Tools and Windows base images). Redistribution is governed by the vendor's terms, not by an open-source grant.",
+      "name": "LicenseRef-Proprietary-EULA"
+    }
+  ],
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Ubuntu-12114676",
+      "name": "Ubuntu",
+      "versionInfo": "26.04",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Distro-Bundle",
+      "licenseConcluded": "LicenseRef-Distro-Bundle",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Base Layer (Dockerfile.base)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-CMake-9859bdff",
+      "name": "CMake",
+      "versionInfo": "4.4.2",
+      "downloadLocation": "https://cmake.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Base Layer (Dockerfile.base)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Node.js-2c735d35",
+      "name": "Node.js",
+      "versionInfo": "26.7.0",
+      "downloadLocation": "https://nodejs.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Base Layer (Dockerfile.base)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-uv-758d77ac",
+      "name": "uv",
+      "versionInfo": "0.12.5",
+      "downloadLocation": "https://github.com/astral-sh/uv",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 OR MIT",
+      "licenseConcluded": "Apache-2.0 OR MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Base Layer (Dockerfile.base)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Vulkan-SDK-8a2ee2bf",
+      "name": "Vulkan SDK",
+      "versionInfo": "1.4.357.0",
+      "downloadLocation": "https://vulkan.lunarg.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Base Layer (Dockerfile.base)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-GCC-host-cross-94d4613e",
+      "name": "GCC (host + cross)",
+      "versionInfo": "16.2.0",
+      "downloadLocation": "https://ftp.gnu.org/gnu/gcc/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "licenseConcluded": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Compiler Toolchain (Dockerfile.toolchain)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://ftp.gnu.org/gnu/gcc/ at 16.2.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-LLVM-Clang-c755ff77",
+      "name": "LLVM / Clang",
+      "versionInfo": "22.1.8",
+      "downloadLocation": "https://llvm.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 WITH LLVM-exception",
+      "licenseConcluded": "Apache-2.0 WITH LLVM-exception",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Compiler Toolchain (Dockerfile.toolchain)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Python-5a7bc9ea",
+      "name": "Python",
+      "versionInfo": "3.14.7",
+      "downloadLocation": "https://python.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "PSF-2.0",
+      "licenseConcluded": "PSF-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Compiler Toolchain (Dockerfile.toolchain)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Rust-toolchain-0168bdcc",
+      "name": "Rust toolchain",
+      "versionInfo": "latest stable",
+      "downloadLocation": "https://rust-lang.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "licenseConcluded": "MIT OR Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Compiler Toolchain (Dockerfile.toolchain)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Apache-TVM-536dd752",
+      "name": "Apache TVM",
+      "versionInfo": "v0.26.0",
+      "downloadLocation": "https://tvm.apache.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / SDK Layer (Dockerfile.sdk)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-53539972",
+      "name": "ONNX Runtime",
+      "versionInfo": "v1.29.0",
+      "downloadLocation": "https://github.com/microsoft/onnxruntime",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ONNX-Runtime-GenAI-e3739e26",
+      "name": "ONNX Runtime GenAI",
+      "versionInfo": "v0.15.2",
+      "downloadLocation": "https://github.com/microsoft/onnxruntime-genai",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-LiteRT-TensorFlow-Lite-2f6ea741",
+      "name": "LiteRT (TensorFlow Lite)",
+      "versionInfo": "v2.2.0",
+      "downloadLocation": "https://www.tensorflow.org/lite",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63",
+      "name": "OpenCV",
+      "versionInfo": "5.0.0",
+      "downloadLocation": "https://opencv.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-GStreamer-72d3d11b",
+      "name": "GStreamer",
+      "versionInfo": "1.29.2",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.0-or-later",
+      "licenseConcluded": "LGPL-2.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at 1.29.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-GStreamer-Rust-plugins-gst-plugins-rs-8db8642e",
+      "name": "GStreamer Rust plugins (gst-plugins-rs)",
+      "versionInfo": "1.29.2",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0",
+      "licenseConcluded": "MPL-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs at 1.29.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-librice-rice-proto-webrtcbin2-50548428",
+      "name": "librice / rice-proto (webrtcbin2)",
+      "versionInfo": "v0.4.3",
+      "downloadLocation": "https://github.com/ystreet/librice",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-FFmpeg-d47a4e0a",
+      "name": "FFmpeg",
+      "versionInfo": "n9.0",
+      "downloadLocation": "https://git.ffmpeg.org/ffmpeg.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "licenseConcluded": "GPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-FFmpeg-codec-libraries-x264-x265-libvpx-aom-dav-f869ef9c",
+      "name": "FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame)",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "licenseConcluded": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence, allow-relink | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-VVdeC-VVC-H.266-decoder-2ba0edbd",
+      "name": "VVdeC (VVC/H.266 decoder)",
+      "versionInfo": "v3.2.0",
+      "downloadLocation": "https://github.com/fraunhoferhhi/vvdec",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause-Clear",
+      "licenseConcluded": "BSD-3-Clause-Clear",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ArmNN-arm64-37e6a94d",
+      "name": "ArmNN (arm64)",
+      "versionInfo": "v26.07",
+      "downloadLocation": "https://github.com/ARM-software/armnn",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Arm-Compute-Library-arm64-58a2fa34",
+      "name": "Arm Compute Library (arm64)",
+      "versionInfo": "v53.2.0",
+      "downloadLocation": "https://github.com/ARM-software/ComputeLibrary",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-libcamera-a3693942",
+      "name": "libcamera",
+      "versionInfo": "v0.7.2",
+      "downloadLocation": "https://git.libcamera.org/libcamera/libcamera.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseConcluded": "LGPL-2.1-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://git.libcamera.org/libcamera/libcamera.git at v0.7.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Abseil-a3d7e39f",
+      "name": "Abseil",
+      "versionInfo": "20260817.0",
+      "downloadLocation": "https://github.com/abseil/abseil-cpp",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-FreeType-fa7cf36e",
+      "name": "FreeType",
+      "versionInfo": "2.14.3",
+      "downloadLocation": "https://download.savannah.gnu.org/releases/freetype/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-2.0-or-later OR FTL",
+      "licenseConcluded": "GPL-2.0-or-later OR FTL",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://download.savannah.gnu.org/releases/freetype/ at 2.14.3"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-nv-codec-headers-909a557e",
+      "name": "nv-codec-headers",
+      "versionInfo": "n13.1.15.0",
+      "downloadLocation": "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-GObject-Introspection-b7f00b0f",
+      "name": "GObject-Introspection",
+      "versionInfo": "1.86.0",
+      "downloadLocation": "https://gitlab.gnome.org/GNOME/gobject-introspection",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.0-or-later",
+      "licenseConcluded": "LGPL-2.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.gnome.org/GNOME/gobject-introspection at 1.86.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-SDK-88e6bae5",
+      "name": "Android SDK",
+      "versionInfo": "15859902",
+      "downloadLocation": "https://developer.android.com/studio",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "Apache-2.0 AND LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-NDK-fcb2e0bc",
+      "name": "Android NDK",
+      "versionInfo": "29.0.14206865",
+      "downloadLocation": "https://developer.android.com/ndk",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-Build-Tools-f56203a0",
+      "name": "Android Build Tools",
+      "versionInfo": "36.0.0",
+      "downloadLocation": "https://developer.android.com/studio/releases/build-tools",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-CMake-ac9c5642",
+      "name": "Android CMake",
+      "versionInfo": "4.1.2",
+      "downloadLocation": "https://cmake.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Android-builds-of-LiteRT-ONNX-Runtime-OpenCV-GS-96c346fb",
+      "name": "Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer",
+      "versionInfo": "same versions as Media Layer",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND MIT AND LGPL-2.0-or-later",
+      "licenseConcluded": "Apache-2.0 AND MIT AND LGPL-2.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Android Layer (Dockerfile.android)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at same refs as the Media Layer rows above"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-CUDA-Toolkit-9221b61d",
+      "name": "CUDA Toolkit",
+      "versionInfo": "13.3.1",
+      "downloadLocation": "https://developer.nvidia.com/cuda-toolkit",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — NVIDIA (Dockerfile.nvidia)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-cuDNN-5abf555b",
+      "name": "cuDNN",
+      "versionInfo": "9.25.0.15",
+      "downloadLocation": "https://developer.nvidia.com/cudnn",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — NVIDIA (Dockerfile.nvidia)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-TensorRT-49ee4087",
+      "name": "TensorRT",
+      "versionInfo": "11.2.1.2",
+      "downloadLocation": "https://developer.nvidia.com/tensorrt",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — NVIDIA (Dockerfile.nvidia)",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ROCm-812b560b",
+      "name": "ROCm",
+      "versionInfo": "7.2.4",
+      "downloadLocation": "https://rocm.docs.amd.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 AND MIT",
+      "licenseConcluded": "Apache-2.0 AND MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-MIGraphX-34c80120",
+      "name": "MIGraphX",
+      "versionInfo": "2.14.0",
+      "downloadLocation": "https://github.com/ROCm/AMDMIGraphX",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Optional GPU — AMD (Dockerfile.amd)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0",
+      "name": "PyTorch",
+      "versionInfo": "v2.13.0",
+      "downloadLocation": "https://pytorch.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Frameworks (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-TorchVision-f7194265",
+      "name": "TorchVision",
+      "versionInfo": "v0.28.0",
+      "downloadLocation": "https://github.com/pytorch/vision",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Frameworks (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425",
+      "name": "Flutter SDK",
+      "versionInfo": "3.47.1",
+      "downloadLocation": "https://flutter.dev/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Frameworks (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Kataglyphis-Orchestr-ANT-ion-72de4079",
+      "name": "Kataglyphis Orchestr-ANT-ion",
+      "versionInfo": "v0.0.27",
+      "downloadLocation": "https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Runtime (Dockerfile.torch)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
+      "name": "Ollama",
+      "versionInfo": "0.32.15",
+      "downloadLocation": "https://github.com/ollama/ollama",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / LLM Stack (llm-stack/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Emscripten-emsdk-ONNX-Runtime-WASM-build-8213a7f5",
+      "name": "Emscripten / emsdk (ONNX Runtime WASM build)",
+      "versionInfo": "pinned by ONNX Runtime",
+      "downloadLocation": "https://emscripten.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT AND NCSA",
+      "licenseConcluded": "MIT AND NCSA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-ccache-24ca8f40",
+      "name": "ccache",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "licenseConcluded": "GPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-sccache-146aae37",
+      "name": "sccache",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://github.com/mozilla/sccache",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file | MODIFIED before redistribution: Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Meson-4142d77c",
+      "name": "Meson",
+      "versionInfo": "latest (PyPI)",
+      "downloadLocation": "https://mesonbuild.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-Ninja-502610b6",
+      "name": "Ninja",
+      "versionInfo": "latest (PyPI)",
+      "downloadLocation": "https://ninja-build.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-cargo-c-C-ABI-build-of-gst-plugins-rs-ddc09f73",
+      "name": "cargo-c (C-ABI build of gst-plugins-rs)",
+      "versionInfo": "latest (crates.io)",
+      "downloadLocation": "https://github.com/lu-zero/cargo-c",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "licenseConcluded": "MIT OR Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-cerbero-GStreamer-Android-build-system-a7e5fe28",
+      "name": "cerbero (GStreamer Android build system)",
+      "versionInfo": "git default branch",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/cerbero",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseConcluded": "LGPL-2.1-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/cerbero at default branch"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Webserver-Image-Ubuntu-cb81c003",
+      "name": "Ubuntu",
+      "versionInfo": "26.04",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Distro-Bundle",
+      "licenseConcluded": "LicenseRef-Distro-Bundle",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Webserver Image / Packages",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Webserver-Image-nginx-c7d9ef58",
+      "name": "nginx",
+      "versionInfo": "latest (apt)",
+      "downloadLocation": "https://nginx.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-2-Clause",
+      "licenseConcluded": "BSD-2-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Webserver Image / Packages",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Windows-Server-Core-b232f29a",
+      "name": "Windows Server Core",
+      "versionInfo": "2025",
+      "downloadLocation": "https://www.microsoft.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Visual-Studio-Build-Tools-0cf400a5",
+      "name": "Visual Studio Build Tools",
+      "versionInfo": "18",
+      "downloadLocation": "https://visualstudio.microsoft.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Python-source-built-ClangCL-cf357141",
+      "name": "Python (source-built, ClangCL)",
+      "versionInfo": "3.14.7",
+      "downloadLocation": "https://python.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "PSF-2.0",
+      "licenseConcluded": "PSF-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-CPython-bundled-externals-OpenSSL-SQLite-libff-dbd120bb",
+      "name": "CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal)",
+      "versionInfo": "bundled with Python",
+      "downloadLocation": "https://github.com/python/cpython-source-deps",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Distro-Bundle",
+      "licenseConcluded": "LicenseRef-Distro-Bundle",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://github.com/python/cpython-source-deps at as bundled by the pinned CPython"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-CMake-5d133173",
+      "name": "CMake",
+      "versionInfo": "4.4.2",
+      "downloadLocation": "https://cmake.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Vulkan-SDK-adb42f39",
+      "name": "Vulkan SDK",
+      "versionInfo": "1.4.357.0",
+      "downloadLocation": "https://vulkan.lunarg.com/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Rust-toolchain-bba67d60",
+      "name": "Rust toolchain",
+      "versionInfo": "latest stable",
+      "downloadLocation": "https://rust-lang.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT OR Apache-2.0",
+      "licenseConcluded": "MIT OR Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-WiX-Toolset-431566df",
+      "name": "WiX Toolset",
+      "versionInfo": "latest",
+      "downloadLocation": "https://wixtoolset.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MS-RL",
+      "licenseConcluded": "MS-RL",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text, same-licence"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed",
+      "name": "Flutter SDK",
+      "versionInfo": "3.47.1",
+      "downloadLocation": "https://flutter.dev/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Base Toolchain",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-CUDA-9080d584",
+      "name": "CUDA",
+      "versionInfo": "13.3.1",
+      "downloadLocation": "https://developer.nvidia.com/cuda-toolkit",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-cuDNN-e1729940",
+      "name": "cuDNN",
+      "versionInfo": "9.25.0.15",
+      "downloadLocation": "https://developer.nvidia.com/cudnn",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-TensorRT-5571ddd1",
+      "name": "TensorRT",
+      "versionInfo": "11.2.1.2",
+      "downloadLocation": "https://developer.nvidia.com/tensorrt",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Proprietary-EULA",
+      "licenseConcluded": "LicenseRef-Proprietary-EULA",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / GPU Layer",
+      "licenseComments": "Obligations: eula-review"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-63679160",
+      "name": "GStreamer",
+      "versionInfo": "1.29.2",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.0-or-later",
+      "licenseConcluded": "LGPL-2.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer at 1.29.2 | Patched in this repository: windows/scripts/patches/gstreamer/001-ges-commit-rename.patch | MODIFIED before redistribution: The Windows build patches a GES symbol rename."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-GStreamer-meson-subprojects-glib-orc-libnice-x-217f040b",
+      "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)",
+      "versionInfo": "per wrap files",
+      "downloadLocation": "https://gitlab.freedesktop.org/gstreamer/gstreamer/-/tree/main/subprojects",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.0-or-later AND GPL-2.0-or-later AND BSD-2-Clause",
+      "licenseConcluded": "LGPL-2.0-or-later AND GPL-2.0-or-later AND BSD-2-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink, state-changes, same-licence | Corresponding source required. Upstream: https://gitlab.freedesktop.org/gstreamer/gstreamer/-/tree/main/subprojects at pinned by the GStreamer release's wrap files"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-bf008cdb",
+      "name": "ONNX Runtime",
+      "versionInfo": "v1.29.0",
+      "downloadLocation": "https://github.com/microsoft/onnxruntime",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-ONNX-Runtime-GenAI-d82447c7",
+      "name": "ONNX Runtime GenAI",
+      "versionInfo": "v0.15.2",
+      "downloadLocation": "https://github.com/microsoft/onnxruntime-genai",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-OpenCV-55c3e88e",
+      "name": "OpenCV",
+      "versionInfo": "5.0.0",
+      "downloadLocation": "https://opencv.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-FFmpeg-d6e7671b",
+      "name": "FFmpeg",
+      "versionInfo": "n9.0",
+      "downloadLocation": "https://git.ffmpeg.org/ffmpeg.git",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "licenseConcluded": "GPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://git.ffmpeg.org/ffmpeg.git at n9.0 | Build configuration: --enable-gpl --enable-version3 --enable-libx264 --enable-libx265 | Patched in this repository: windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch | MODIFIED before redistribution: The Windows build patches configure to allow MSYS2 builds."
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-TensorFlow-Lite-a0c4d270",
+      "name": "LiteRT (TensorFlow Lite)",
+      "versionInfo": "v2.2.0",
+      "downloadLocation": "https://www.tensorflow.org/lite",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-LiteRT-LM-52b13bdc",
+      "name": "LiteRT-LM",
+      "versionInfo": "0.16.1",
+      "downloadLocation": "https://github.com/google-ai-edge/LiteRT-LM",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Apache-TVM-fdf9f6ec",
+      "name": "Apache TVM",
+      "versionInfo": "v0.26.0",
+      "downloadLocation": "https://tvm.apache.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Media Layer",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Scoop-package-manager-12fd2091",
+      "name": "Scoop package manager",
+      "versionInfo": "latest",
+      "downloadLocation": "https://scoop.sh/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Unlicense OR MIT",
+      "licenseConcluded": "Unlicense OR MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Build Tooling (build-time only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-scc-c8e9215b",
+      "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
+      "versionInfo": "latest (scoop)",
+      "downloadLocation": "https://scoop.sh/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Distro-Bundle",
+      "licenseConcluded": "LicenseRef-Distro-Bundle",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Build Tooling (build-time only)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://scoop.sh/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-vcpkg-61e4fb57",
+      "name": "vcpkg",
+      "versionInfo": "master",
+      "downloadLocation": "https://github.com/microsoft/vcpkg",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Build Tooling (build-time only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Windows-Image-vcpkg-packages-zlib-protobuf-linked-into-build-256befe3",
+      "name": "vcpkg packages (zlib, protobuf — linked into builds)",
+      "versionInfo": "vcpkg baseline",
+      "downloadLocation": "https://github.com/microsoft/vcpkg",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Zlib AND BSD-3-Clause",
+      "licenseConcluded": "Zlib AND BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Windows Image / Build Tooling (build-time only)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-Ubuntu-18f75d9d",
+      "name": "Ubuntu",
+      "versionInfo": "26.04",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Distro-Bundle",
+      "licenseConcluded": "LicenseRef-Distro-Bundle",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-Pandoc-127df2cb",
+      "name": "Pandoc",
+      "versionInfo": "3.10.2",
+      "downloadLocation": "https://github.com/jgm/pandoc",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-2.0-or-later",
+      "licenseConcluded": "GPL-2.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://github.com/jgm/pandoc at 3.10.2"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-TeX-Live-texlive-full-543e12e7",
+      "name": "TeX Live (texlive-full)",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LicenseRef-Distro-Bundle",
+      "licenseConcluded": "LicenseRef-Distro-Bundle",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-Latin-Modern-fonts-lmodern-03237aec",
+      "name": "Latin Modern fonts (lmodern)",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "http://www.gust.org.pl/projects/e-foundry/latin-modern",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LPPL-1.3c",
+      "licenseConcluded": "LPPL-1.3c",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-Ghostscript-88d82fa7",
+      "name": "Ghostscript",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "AGPL-3.0-or-later",
+      "licenseConcluded": "AGPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence, network-source | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-ImageMagick-5c616997",
+      "name": "ImageMagick",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://imagemagick.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "ImageMagick",
+      "licenseConcluded": "ImageMagick",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Document Toolchain (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-Python-d94ced91",
+      "name": "Python",
+      "versionInfo": "Ubuntu apt (python3-full)",
+      "downloadLocation": "https://python.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "PSF-2.0",
+      "licenseConcluded": "PSF-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Python (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-uv-53092da1",
+      "name": "uv",
+      "versionInfo": "0.12.5",
+      "downloadLocation": "https://github.com/astral-sh/uv",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 OR MIT",
+      "licenseConcluded": "Apache-2.0 OR MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Python (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-Pygments-7ea509a5",
+      "name": "Pygments",
+      "versionInfo": "pinned by uv.lock",
+      "downloadLocation": "https://pygments.org/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-2-Clause",
+      "licenseConcluded": "BSD-2-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Python (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-GNU-C-Library-locales-locales-f25168d6",
+      "name": "GNU C Library locales (locales)",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "LGPL-2.1-or-later",
+      "licenseConcluded": "LGPL-2.1-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-curl-51e9b012",
+      "name": "curl",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://curl.se/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "curl",
+      "licenseConcluded": "curl",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-GNU-Wget-90b3462b",
+      "name": "GNU Wget",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "licenseConcluded": "GPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-ca-certificates-6c88a24a",
+      "name": "ca-certificates",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MPL-2.0 AND GPL-2.0-or-later",
+      "licenseConcluded": "MPL-2.0 AND GPL-2.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-less-723f4314",
+      "name": "less",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://archive.ubuntu.com/ubuntu/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "GPL-3.0-or-later",
+      "licenseConcluded": "GPL-3.0-or-later",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text, offer-source, state-changes, same-licence | Corresponding source required. Upstream: https://archive.ubuntu.com/ubuntu/"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-sudo-b490bfcc",
+      "name": "sudo",
+      "versionInfo": "Ubuntu apt",
+      "downloadLocation": "https://www.sudo.ws/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "ISC AND BSD-2-Clause AND BSD-3-Clause",
+      "licenseConcluded": "ISC AND BSD-2-Clause AND BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Base Utilities (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-awesome-beamer-fork-of-LukasPietzschmann-ee7b9c1a",
+      "name": "awesome-beamer (fork of LukasPietzschmann/awesome-beamer)",
+      "versionInfo": "git submodule",
+      "downloadLocation": "https://github.com/Kataglyphis/awesome-beamer",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Vendored LaTeX Themes (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Documentation-Image-smile-fork-of-LukasPietzschmann-smile-dd12d1ed",
+      "name": "smile (fork of LukasPietzschmann/smile)",
+      "versionInfo": "git submodule",
+      "downloadLocation": "https://github.com/Kataglyphis/smile",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Documentation Image / Vendored LaTeX Themes (external/Kataglyphis-DocumANTation/Dockerfile)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--3661f830",
+      "name": "nerdctl (Linux builds & container runs)",
+      "versionInfo": "host install",
+      "downloadLocation": "https://github.com/containerd/nerdctl",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--cb1b5f9d",
+      "name": "containerd",
+      "versionInfo": "host install",
+      "downloadLocation": "https://containerd.io/",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--4b8fae79",
+      "name": "BuildKit (buildkitd)",
+      "versionInfo": "host install",
+      "downloadLocation": "https://github.com/moby/buildkit",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--05cce0d0",
+      "name": "Stevedore (Windows builds — bundled docker.exe)",
+      "versionInfo": "host install",
+      "downloadLocation": "https://github.com/slonopotamus/stevedore",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0",
+      "licenseConcluded": "Apache-2.0",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Ubuntu-12114676"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-CMake-9859bdff"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Node.js-2c735d35"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-uv-758d77ac"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Vulkan-SDK-8a2ee2bf"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-GCC-host-cross-94d4613e"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-LLVM-Clang-c755ff77"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Python-5a7bc9ea"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Rust-toolchain-0168bdcc"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Apache-TVM-536dd752"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-Runtime-53539972"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ONNX-Runtime-GenAI-e3739e26"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-LiteRT-TensorFlow-Lite-2f6ea741"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-OpenCV-e51e1f63"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-GStreamer-72d3d11b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-GStreamer-Rust-plugins-gst-plugins-rs-8db8642e"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-librice-rice-proto-webrtcbin2-50548428"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-FFmpeg-d47a4e0a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-FFmpeg-codec-libraries-x264-x265-libvpx-aom-dav-f869ef9c"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-VVdeC-VVC-H.266-decoder-2ba0edbd"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ArmNN-arm64-37e6a94d"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Arm-Compute-Library-arm64-58a2fa34"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-libcamera-a3693942"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Abseil-a3d7e39f"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-FreeType-fa7cf36e"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-nv-codec-headers-909a557e"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-GObject-Introspection-b7f00b0f"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-SDK-88e6bae5"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-NDK-fcb2e0bc"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-Build-Tools-f56203a0"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-CMake-ac9c5642"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Android-builds-of-LiteRT-ONNX-Runtime-OpenCV-GS-96c346fb"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-CUDA-Toolkit-9221b61d"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-cuDNN-5abf555b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TensorRT-49ee4087"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ROCm-812b560b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-MIGraphX-34c80120"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-PyTorch-dd6999e0"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-TorchVision-f7194265"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Flutter-SDK-36007425"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Kataglyphis-Orchestr-ANT-ion-72de4079"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Ollama-229f7e80"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Emscripten-emsdk-ONNX-Runtime-WASM-build-8213a7f5"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-ccache-24ca8f40"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-sccache-146aae37"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Meson-4142d77c"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Ninja-502610b6"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-cargo-c-C-ABI-build-of-gst-plugins-rs-ddc09f73"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-cerbero-GStreamer-Android-build-system-a7e5fe28"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Webserver-Image-Ubuntu-cb81c003"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Webserver-Image-nginx-c7d9ef58"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Windows-Server-Core-b232f29a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Visual-Studio-Build-Tools-0cf400a5"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Python-source-built-ClangCL-cf357141"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-CPython-bundled-externals-OpenSSL-SQLite-libff-dbd120bb"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-CMake-5d133173"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Vulkan-SDK-adb42f39"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Rust-toolchain-bba67d60"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-WiX-Toolset-431566df"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Flutter-SDK-0ac793ed"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-CUDA-9080d584"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-cuDNN-e1729940"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-TensorRT-5571ddd1"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-GStreamer-63679160"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-GStreamer-meson-subprojects-glib-orc-libnice-x-217f040b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-Runtime-bf008cdb"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-ONNX-Runtime-GenAI-d82447c7"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-OpenCV-55c3e88e"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-FFmpeg-d6e7671b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-TensorFlow-Lite-a0c4d270"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-LiteRT-LM-52b13bdc"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Apache-TVM-fdf9f6ec"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Scoop-package-manager-12fd2091"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-Scoop-installed-tools-7-Zip-Git-LLVM-ninja-scc-c8e9215b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-vcpkg-61e4fb57"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Windows-Image-vcpkg-packages-zlib-protobuf-linked-into-build-256befe3"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-Ubuntu-18f75d9d"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-Pandoc-127df2cb"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-TeX-Live-texlive-full-543e12e7"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-Latin-Modern-fonts-lmodern-03237aec"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-Ghostscript-88d82fa7"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-ImageMagick-5c616997"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-Python-d94ced91"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-uv-53092da1"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-Pygments-7ea509a5"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-GNU-C-Library-locales-locales-f25168d6"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-curl-51e9b012"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-GNU-Wget-90b3462b"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-ca-certificates-6c88a24a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-less-723f4314"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-sudo-b490bfcc"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-awesome-beamer-fork-of-LukasPietzschmann-ee7b9c1a"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Documentation-Image-smile-fork-of-LukasPietzschmann-smile-dd12d1ed"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--3661f830"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--cb1b5f9d"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--4b8fae79"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--05cce0d0"
+    }
+  ]
+}

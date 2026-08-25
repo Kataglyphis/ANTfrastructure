@@ -48,6 +48,110 @@ def resolve_dep_version(entry: dict, versions: dict[str, str]) -> str:
     return "—"
 
 
+def _resolve_ref(src: dict, versions: dict[str, str]) -> str:
+    if src.get("ref_var"):
+        return versions.get(src["ref_var"], "—")
+    return src.get("ref", "—")
+
+
+def render_obligations_lines() -> list[str]:
+    """What the licences present in this tree require of the distributor."""
+    import license_obligations as lo
+
+    metadata = load_deps_metadata()
+    present: dict[str, list[str]] = {}
+    for section in metadata["sections"]:
+        for subsection in section["subsections"]:
+            for entry in subsection["entries"]:
+                for ob in lo.obligations_for(entry["spdx"]):
+                    present.setdefault(ob, []).append(entry["name"])
+
+    order = [o for o in lo.DESCRIPTIONS if o in present]
+    lines = ["", "## What these licences require", "",
+             "Every obligation below is triggered by at least one component actually shipped in "
+             "an image on this page. This is a structured reading of the licence texts, not legal "
+             "advice.", ""]
+    for ob in order:
+        lines.append(f"- **{ob}** — {lo.DESCRIPTIONS[ob]}")
+    lines.append("")
+    return lines
+
+
+def render_source_offer_lines(versions: dict[str, str]) -> list[str]:
+    """The corresponding-source pointers for every copyleft component.
+
+    GPL/LGPL/MPL require the complete corresponding source, or a written offer,
+    to accompany the binary. Publishing the image without either is the single
+    obligation most often missed, so the pointers are generated from the same
+    pins the build uses and cannot drift from them.
+    """
+    import license_obligations as lo
+
+    metadata = load_deps_metadata()
+    rows: list[tuple[str, str, dict]] = []
+    for section in metadata["sections"]:
+        for subsection in section["subsections"]:
+            for entry in subsection["entries"]:
+                if lo.requires_source(entry["spdx"]) and entry.get("source"):
+                    # Qualified by image: FFmpeg and GStreamer appear in both the
+                    # Linux and Windows sections with DIFFERENT patch sets, so an
+                    # unqualified heading would collide and hide one of them.
+                    label = f"{entry['name']} — {section['title']}"
+                    rows.append((label, entry["spdx"], entry["source"]))
+
+    lines = ["", "## Corresponding source", "",
+             "The components below are copyleft-licensed, so their source must accompany the "
+             "binaries. Each entry names the exact upstream and the revision this project builds, "
+             "any patches applied on top, and — where the build configuration is what determines "
+             "the licence — the flags used.", "",
+             "If a link ever fails to resolve, the obligation stands: request the corresponding "
+             "source and it will be provided.", ""]
+    for name, spdx, src in rows:
+        ref = _resolve_ref(src, versions)
+        url = src.get("url", "")
+        lines.append(f"### {name}")
+        lines.append("")
+        lines.append(f"- **Licence:** {spdx}")
+        if url:
+            lines.append(f"- **Source:** <{url}>")
+        lines.append(f"- **Revision:** {ref}")
+        if src.get("build_flags"):
+            lines.append(f"- **Build configuration:** `{src['build_flags']}`")
+        if src.get("patches"):
+            lines.append(f"- **Patches applied:** {', '.join(f'`{p}`' for p in src['patches'])}")
+        if src.get("note"):
+            lines.append(f"- {src['note']}")
+        lines.append("")
+    return lines
+
+
+def render_modified_lines() -> list[str]:
+    """Components this project patches before redistributing.
+
+    Apache-2.0 section 4(b) and the GPL family both require saying so.
+    """
+    metadata = load_deps_metadata()
+    rows = [
+        (f"{e['name']} — {s['title']}", e["modified"])
+        for s in metadata["sections"] for sub in s["subsections"] for e in sub["entries"]
+        if e.get("modified")
+    ]
+    if not rows:
+        return []
+    lines = ["", "## Modified components", "",
+             "This project patches the following upstreams before redistributing them. Both the "
+             "Apache-2.0 and the GPL families require that modification be stated.", ""]
+    for name, mod in rows:
+        patches = ", ".join(f"`{p}`" for p in mod.get("patches", []))
+        lines.append(f"- **{name}** — {mod.get('note', '')}"
+                     + (f" Patches: {patches}." if patches else ""))
+    lines.append("")
+    lines.append("Each patch is in this repository at the path shown, and travels with the "
+                 "corresponding source above.")
+    lines.append("")
+    return lines
+
+
 def render_deps_table_lines(versions: dict[str, str]) -> list[str]:
     """Render the table body as a list of lines (no surrounding markers).
 

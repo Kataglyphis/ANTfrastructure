@@ -99,7 +99,7 @@ fi
 #    is a stale reference nobody notices for weeks. They run in ~2 s together,
 #    so there is no reason to defer them to a pipeline round trip.
 echo "=== preflight subset ==="
-PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes \
+PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes,sbom \
   bash linux/scripts/preflight.sh && pass "preflight subset" || fail "preflight subset failed"
 
 # 2. Shell syntax + shellcheck gate on changed .sh files

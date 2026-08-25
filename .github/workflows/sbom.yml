@@ -1,0 +1,127 @@
+# Scanner half of the SBOM. See docs/scripts/generate_sbom.py for the other
+# half and why there are two.
+#
+# syft catalogues components that carry package METADATA -- dpkg/apt, Python
+# site-packages, npm, Go and Rust binaries. It cannot see the C/C++ stack this
+# project builds from source into /opt (ONNX Runtime, OpenCV, FFmpeg,
+# GStreamer, libcamera), because those leave no manifest behind. Those are also
+# the components under copyleft licences, so a scan alone would produce an SBOM
+# missing every entry that carries a corresponding-source obligation.
+#
+# Hence: this job covers the thousands of packaged components no human can
+# maintain by hand, and docs/deps/sbom-curated.spdx.json covers the source-built
+# ones. Publish both.
+#
+# It scans the PUBLISHED image straight from ghcr, so it needs no build host and
+# no daemon -- which is what makes it runnable in CI at all, since the images
+# are built on a workstation rather than in this repository's pipelines.
+name: SBOM
+
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC, an hour before the stale-docs check
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Image reference to scan"
+        required: false
+        default: "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  scan:
+    name: syft ${{ matrix.platform }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # :latest-cross is a manifest list; a scan without --platform silently
+        # picks one arch, so each is scanned explicitly and published separately.
+        platform: [linux/amd64, linux/arm64, linux/riscv64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install syft
+        env:
+          SYFT_VERSION: v1.20.0
+        run: |
+          set -euo pipefail
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh \
+            | sh -s -- -b "${RUNNER_TEMP}/bin" "${SYFT_VERSION}"
+          "${RUNNER_TEMP}/bin/syft" version
+
+      - name: Log in to ghcr
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | \
+          docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Scan the published image
+        id: scan
+        env:
+          IMAGE: ${{ inputs.image || 'ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross' }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          arch="${PLATFORM##*/}"
+          mkdir -p out/sbom
+          # `registry:` reads the image directly from ghcr: no pull into a
+          # daemon, no disk for the full rootfs, and it works for arches this
+          # runner cannot execute.
+          "${RUNNER_TEMP}/bin/syft" "registry:${IMAGE}" \
+            --platform "${PLATFORM}" \
+            -o "spdx-json=out/sbom/scanned-${arch}.spdx.json" \
+            -o "cyclonedx-json=out/sbom/scanned-${arch}.cdx.json"
+          python3 - "$arch" <<'PY'
+          import json, sys
+          arch = sys.argv[1]
+          doc = json.load(open(f"out/sbom/scanned-{arch}.spdx.json", encoding="utf-8"))
+          n = len(doc.get("packages", []))
+          print(f"{arch}: {n} packages catalogued")
+          # A scan that finds almost nothing means a broken reference or a
+          # cataloguer regression, not a clean image. Fail rather than publish it.
+          if n < 50:
+              raise SystemExit(f"only {n} packages catalogued for {arch} -- refusing to publish")
+          PY
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-${{ strategy.job-index }}
+          path: out/sbom/
+          retention-days: 90
+          if-no-files-found: error
+
+  curated:
+    name: curated SBOM is current
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      # The curated document is generated from deps.json + versions.env and is
+      # committed, so it can drift. This is the same contract the other
+      # generators in docs/scripts/ carry.
+      - name: Verify the curated SBOM matches deps.json
+        run: python3 docs/scripts/generate_sbom.py --check
+
+      - name: Upload curated SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-curated
+          path: docs/deps/sbom-curated.spdx.json
+          retention-days: 90
+          if-no-files-found: error
