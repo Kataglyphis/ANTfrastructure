@@ -133,6 +133,29 @@ if (Test-Path $mlasSrcDir) {
 # Upstream issue to file: see out/upstream-issue-litert-lm-cmake.md for the
 # precedent this repo follows.
 if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemProcessor -match 'ARM64') {
+    # #129 (2026-08-25): OpenCV's AArch64 feature PROBES (cmake/checks/cpu_neon_fp16.cpp,
+    # cpu_neon_dotprod.cpp, ...) compile only `#if (defined __GNUC__ && (__arm__ ||
+    # __aarch64__))` -- the `_MSC_VER && _M_ARM64` alternative is commented out
+    # upstream because MSVC's arm_neon.h lacked the intrinsics (opencv/opencv#25052).
+    # clang-cl defines neither __GNUC__ nor takes that branch, so every probe
+    # ends in `#error "... is not supported"` REGARDLESS of the dispatch flags
+    # (measured arm64 runs 20/21: FP16, NEON_FP16 and NEON_DOTPROD "not supported
+    # by C++ compiler" with the flags correctly passed; only the guard-free BF16
+    # probe passed). clang-cl uses clang's own arm_neon.h, which has them all, so
+    # the honest guard is `__clang__ && _M_ARM64`. Patched by SEARCH over the
+    # checks directory (every probe carrying that exact commented-out clause),
+    # floored: fewer than two patched files means the probes moved.
+    $checksDir = Join-Path $mainSrc 'cmake\checks'
+    $probePattern = '\(defined __GNUC__ && \(defined __arm__ \|\| defined __aarch64__\)\)\s*/\*\s*\|\|\s*\(defined _MSC_VER && \(defined _M_ARM64 \|\| defined _M_ARM64EC\)\)\s*\*/'
+    $probeReplacement = '(defined __GNUC__ && (defined __arm__ || defined __aarch64__)) || (defined __clang__ && (defined _M_ARM64 || defined _M_ARM64EC)) /* clang-cl: clang''s arm_neon.h carries the intrinsics (#129) */'
+    $probesPatched = 0
+    foreach ($probe in @(Get-ChildItem -Path $checksDir -Filter 'cpu_*.cpp' -File -ErrorAction SilentlyContinue)) {
+        if (Invoke-InlineRegexPatch -Path $probe.FullName -SkipIfMatch '__clang__ && \(defined _M_ARM64' `
+                -Pattern $probePattern -Replacement $probeReplacement `
+                -Description "opencv feature probe $($probe.Name): accept clang-cl on ARM64 (#129)") { $probesPatched++ }
+    }
+    if ($probesPatched -lt 2) { throw "opencv cmake/checks: only $probesPatched probe file(s) carried the commented-out Windows-ARM64 guard (expected >= 2: cpu_neon_fp16.cpp, cpu_neon_dotprod.cpp) -- upstream changed the probes; the NEON_FP16/DOTPROD dispatch would fail silently (#129). Check $checksDir." }
+    Write-Host "OpenCV feature probes: $probesPatched file(s) now accept clang-cl on ARM64 (#129)"
     $sfCpp = Join-Path $mainSrc 'modules\core\src\softfloat.cpp'
     [void](Invoke-InlineRegexPatch -Path $sfCpp -Guard 'typedef softfloat float32_t;' `
             -Pattern 'typedef\s+softfloat\s+float32_t;\s*\r?\n\s*typedef\s+softdouble\s+float64_t;' `
@@ -683,8 +706,28 @@ Write-Host "CMake configure log: $cfgLog"
 # "succeeds" with every optional kernel dropped.
 $dispatchLine = @(Get-Content $cfgLog | Where-Object { $_ -match 'Dispatched code generation:\s*(.*)$' } | Select-Object -Last 1)
 $dispatched = if ($dispatchLine.Count -gt 0 -and $dispatchLine[0] -match 'Dispatched code generation:\s*(.*)$') { $Matches[1].Trim() } else { '' }
-if (-not $dispatched) { throw "OpenCV configure reports NO dispatched code generation (the 'Dispatched code generation:' summary line is empty or missing in $cfgLog) -- every optional SIMD kernel would be dropped silently (#129)" }
-if ($ocvCross -and $dispatched -notmatch '\bNEON_FP16\b') { throw "OpenCV cross configure dispatches '$dispatched' but not NEON_FP16 -- the clang-cl feature-flag override (#129) is not taking effect; check the CPU_NEON_*_FLAGS_ON cache values in $cfgLog" }
+# Never throw blind: the probe RESULT is in the configure log, the probe's
+# compiler ERRORS are only in CMakeFiles\CMakeError.log (arm64 run 20 measured
+# `NEON_BF16` alone dispatching while FP16/DOTPROD still failed -- the log line
+# cannot say why, the error log can).
+function Write-OpenCvProbeDiagnostics {
+    $errLog = Join-Path $buildDir 'CMakeFiles\CMakeError.log'
+    Write-Host '--- CPU feature probe lines from the configure log ---'
+    Get-Content $cfgLog | Where-Object { $_ -match 'HAVE_CPU_(NEON|SSE|AVX)|CPU_[A-Z0-9_]+_FLAGS|is not supported by|Dispatched|requested:' } | ForEach-Object { Write-Host "  $_" }
+    if (Test-Path $errLog) {
+        Write-Host "--- CMakeError.log excerpts for the NEON probes ($errLog) ---"
+        $lines = @(Get-Content $errLog)
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match 'cpu_neon_(fp16|dotprod|bf16)|NEON_(FP16|DOTPROD|BF16)') {
+                $from = [math]::Max(0, $i - 2); $to = [math]::Min($lines.Count - 1, $i + 40)
+                $lines[$from..$to] | ForEach-Object { Write-Host "  $_" }
+                $i = $to
+            }
+        }
+    } else { Write-Host "  (no $errLog)" }
+}
+if (-not $dispatched) { Write-OpenCvProbeDiagnostics; throw "OpenCV configure reports NO dispatched code generation (the 'Dispatched code generation:' summary line is empty or missing in $cfgLog) -- every optional SIMD kernel would be dropped silently (#129)" }
+if ($ocvCross -and $dispatched -notmatch '\bNEON_FP16\b') { Write-OpenCvProbeDiagnostics; throw "OpenCV cross configure dispatches '$dispatched' but not NEON_FP16 -- the clang-cl feature-flag override (#129) is not taking effect for that probe; see the diagnostics above and $cfgLog" }
 Write-Host "OpenCV dispatched code generation: $dispatched"
 
 # GATE: prove FFmpeg was actually detected before spending ~20 min compiling.
