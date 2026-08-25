@@ -1323,10 +1323,13 @@ else { Remove-SourceBuildTree -Path $SourceDir }
     Write-BuildPhaseSummary -Label 'litert-lm'
     throw
 } finally {
-    # Restore the process env snapshot taken in Phase 2 (stages run in-process;
-    # a $null snapshot value removes the variable again).
+    # Restore the process env snapshot taken in Phase 2 (stages run in-process).
+    # A $null snapshot value must REMOVE the variable: SetEnvironmentVariable
+    # with $null from PowerShell binds '' and leaves it defined-empty, which a
+    # native child sees as SET (the lld-link LIB lesson of arm64 runs 16/17).
     foreach ($envName in @($litertLmEnvSnapshot.Keys)) {
-        [Environment]::SetEnvironmentVariable($envName, $litertLmEnvSnapshot[$envName])
+        if ($null -eq $litertLmEnvSnapshot[$envName]) { Remove-Item -Path "Env:$envName" -ErrorAction SilentlyContinue }
+        else { [Environment]::SetEnvironmentVariable($envName, $litertLmEnvSnapshot[$envName]) }
     }
 }
 

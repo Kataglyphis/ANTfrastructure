@@ -859,8 +859,12 @@ function Invoke-SanitizerTestCommand {
     try {
         return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot
     } finally {
+        # A variable that was unset must end up unset -- SetEnvironmentVariable
+        # with a $null from PowerShell leaves it defined-empty (native children
+        # then see it as SET; the lld-link LIB lesson of arm64 runs 16/17).
         foreach ($key in $savedVars.Keys) {
-            [Environment]::SetEnvironmentVariable($key, $savedVars[$key])
+            if ($null -eq $savedVars[$key]) { Remove-Item -Path "Env:$key" -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($key, $savedVars[$key]) }
         }
     }
 }

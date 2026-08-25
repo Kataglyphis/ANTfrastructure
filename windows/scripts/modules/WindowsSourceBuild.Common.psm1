@@ -396,7 +396,19 @@ function Invoke-WithHostArchLibraryEnvironment {
         Write-Host "Host-arch library environment: LIB/LIBPATH \$targetDir -> \$hostDir for the duration of the host-tool pass"
         & $ScriptBlock
     } finally {
-        foreach ($name in 'LIB', 'LIBPATH') { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+        # A variable that was UNSET must end up unset again -- not defined-empty.
+        # `[Environment]::SetEnvironmentVariable($name, $null, 'Process')` does
+        # NOT do that from PowerShell: $null binds as an empty string and pwsh
+        # 7.6 leaves `LIB=` in the process block (Test-Path env:LIB -> True). A
+        # native child then sees LIB as SET: lld-link skips its MSVC/SDK
+        # auto-detection and the very next try-compile dies with "could not
+        # open 'kernel32.lib'". Measured arm64 runs 16/17 (2026-08-25) in the
+        # LiteRT stage, the one cross script that never enters VsDevCmd (LIB
+        # unset by design) -- IREE/TVM restore a real value and never noticed.
+        foreach ($name in 'LIB', 'LIBPATH') {
+            if ($null -eq $saved[$name]) { Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue }
+            else { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+        }
     }
 }
 

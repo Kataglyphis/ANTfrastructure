@@ -173,8 +173,16 @@ if (Test-WindowsCrossTarget) {
     # host's LIB for the pass (a no-op here -- this script never enters VsDevCmd,
     # which is the only reason the plain configure worked before), with the
     # retry ladder and a persistent log the raw `cmake --build` never had.
+    # Environment probe (arm64 run 17, 2026-08-25): run 16 died in the TARGET
+    # configure right after this host pass ("could not open kernel32.lib") with
+    # a configure line byte-identical to the green run 14 -- so the difference
+    # is the process environment. Print the link-relevant variables around the
+    # pass so the log carries the answer instead of a guess.
+    $probeVars = @('LIB', 'LIBPATH', 'VCToolsInstallDir', 'VSCMD_ARG_TGT_ARCH', 'WindowsSdkDir', 'UniversalCRTSdkDir')
+    Write-Host ('LiteRT env probe BEFORE host pass: ' + (($probeVars | ForEach-Object { "$_=[$([Environment]::GetEnvironmentVariable($_, 'Process'))]" }) -join ' '))
     [void](Invoke-HostToolCmakeBuild -SourceDir $tfliteSrc -BuildDir $hostToolsBuild -InstallPrefix (Join-Path $SourceDir 'host-tools-prefix') `
         -ExtraArgs $hostToolArgs -Targets @('flatbuffers-flatc') -LogName 'litert-host-flatc-build.log' -Label 'LiteRT host flatc')
+    Write-Host ('LiteRT env probe AFTER host pass: ' + (($probeVars | ForEach-Object { "$_=[$([Environment]::GetEnvironmentVariable($_, 'Process'))]" }) -join ' '))
     $flatc = Get-ChildItem -Path $hostToolsBuild -Recurse -Filter 'flatc.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $flatc) { throw "LiteRT cross: flatc.exe not found under $hostToolsBuild after the host-tools build" }
     Write-Host "LiteRT cross: host flatc at $($flatc.FullName)"

@@ -118,7 +118,10 @@ try {
 
     Write-Host '=== [4/6] bazel env ==='
     [Environment]::SetEnvironmentVariable('ANDROID_NDK_VERSION', $null, 'Machine')
-    [Environment]::SetEnvironmentVariable('ANDROID_NDK_VERSION', $null, 'Process')
+    # Process scope: Remove-Item, not SetEnvironmentVariable($null) -- the latter
+    # leaves the variable defined-empty from PowerShell, which a native child
+    # (bazel here) still sees as set.
+    Remove-Item -Path Env:ANDROID_NDK_VERSION -ErrorAction SilentlyContinue
     $bazelArgs = @('--output_base=C:\bzl')
     $buildArgs = @('--config=windows', '--repo_env=ANDROID_NDK_VERSION=')
     # DELIBERATELY NO --repository_cache on the mount: bazel's

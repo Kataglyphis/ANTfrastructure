@@ -51,4 +51,20 @@ Describe 'Invoke-WithHostArchLibraryEnvironment' {
         $inside = Invoke-WithHostArchLibraryEnvironment { $env:LIB }
         Assert-Equal 'C:\VS\lib\x64;C:\weird\arm64' $inside 'nothing rewritten when the host is the target'
     }
+
+    # arm64 runs 16/17 (2026-08-25): the LiteRT stage never enters VsDevCmd, so
+    # LIB is UNSET there and lld-link auto-detects the MSVC/SDK dirs. The old
+    # restore wrote the captured $null back with SetEnvironmentVariable, which
+    # binds $null as '' and leaves `LIB=` DEFINED-EMPTY in the process block;
+    # lld-link then treats LIB as set, skips auto-detection, and the target
+    # configure right after the host pass died with "could not open kernel32.lib".
+    It 'leaves LIB and LIBPATH UNSET after the block when they were unset before (not defined-empty)' {
+        $env:WINDOWS_TARGET_ARCH = 'arm64'
+        Remove-Item -Path Env:LIB -ErrorAction SilentlyContinue
+        Remove-Item -Path Env:LIBPATH -ErrorAction SilentlyContinue
+        [void](Invoke-WithHostArchLibraryEnvironment { 'ran' })
+        Assert-False (Test-Path Env:LIB) 'LIB must not exist after the block (a defined-empty LIB switches off lld-link auto-detection)'
+        Assert-False (Test-Path Env:LIBPATH) 'LIBPATH must not exist after the block'
+        Assert-False ([Environment]::GetEnvironmentVariables().Contains('LIB')) 'LIB absent from the process block a native child would inherit'
+    }
 }

@@ -28,7 +28,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [Never put double quotes inside shell-form `RUN` lines](#never-put-double-quotes-inside-shell-form-run-lines)
 - [`Import-Module -Force` only at entry-script top level](#import-module--force-only-at-entry-script-top-level)
 - [Never splat a string array of `-Param`-shaped tokens](#never-splat-a-string-array-of--param-shaped-tokens)
-- [Three more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens](#three-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens)
+- [Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores](#four-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens-null-env-restores)
 - [Windows stage scripts must end with an explicit `exit 0`](#windows-stage-scripts-must-end-with-an-explicit-exit-0)
 
 **Gates that must stay armed**
@@ -168,12 +168,13 @@ process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
 re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
 HASHTABLE. Splatting arrays onto native executables stays fine.
 
-### Three more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens
+### Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores
 
-**Three more pwsh traps — (a) and (b) found live 2026-08-10 in
-`probe-build-copy.ps1`, (c) on 2026-08-25 in the arm64 target-cpython stage
-(regression pin: `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`; all three
-are AST traps in `Invoke-Lint.ps1`):**
+**Four more pwsh traps — (a) and (b) found live 2026-08-10 in
+`probe-build-copy.ps1`, (c) and (d) on 2026-08-25 in the arm64 target-cpython
+and LiteRT stages (regression pins: `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`
+for (a)–(c), which are AST traps in `Invoke-Lint.ps1`, and
+`SourceBuild.HostArchLibEnv.Tests.ps1` for (d)):**
 (c) A parameter token glued to its argument PARSES: `Get-PeFileMachine
 -Path$staged.FullName` is a parameter literally NAMED `Path$staged` (the
 `.FullName` becomes a positional argument) and dies at runtime with "A
@@ -183,6 +184,18 @@ accident. Four such calls survived a refactor, the parse gate and 662 tests and
 surfaced 90 s into the arm64 regression. Native tools are exempt — for
 clang-cl/nasm the glued token IS the syntax (`-Fotiny.o`, `-I<dir>`) — the
 detector inspects Verb-Noun commands with an approved verb plus `Assert-*`.
+(d) **Restoring a captured `$null` with `[Environment]::SetEnvironmentVariable`
+does not unset the variable.** PowerShell binds `$null` to the `string`
+parameter as `''`, and pwsh 7.6 then leaves `NAME=` DEFINED-EMPTY in the
+process block (`Test-Path env:NAME` → True, and every native child inherits
+it as *set*). Measured 2026-08-25, arm64 runs 16/17: the LiteRT stage never
+enters VsDevCmd, so `LIB` is unset there and lld-link auto-detects the MSVC/SDK
+directories — until the host-flatc pass "restored" `LIB=` and the very next
+target try-compile died with `could not open 'kernel32.lib'` (IREE/TVM restore
+a real value and never noticed). Save-and-restore code must branch:
+`if ($null -eq $saved) { Remove-Item Env:NAME } else { SetEnvironmentVariable }`
+(`[NullString]::Value` also works); pin:
+`windows/scripts/tests/SourceBuild.HostArchLibEnv.Tests.ps1`.
 (a) a BAREWORD comma-attribute native argument
 (`buildctl --output type=local,dest=$outDir`) parses as an ArrayLiteral and
 the exe receives the VERBATIM SOURCE TEXT — no variable expansion, no comma

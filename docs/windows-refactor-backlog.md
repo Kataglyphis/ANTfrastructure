@@ -640,6 +640,19 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   proven by one bundled amd64 + arm64 regression against today's recorded counts (MLAS 11/25,
   XNNPACK 569 + 335, IREE 5; gates 1134/0 and 950/0; smoke 220/0/0 and 97/0/15) → wave 3
   structural extractions.
+  **Proof, after landing on `main` (2026-08-25):** amd64 regression run 5 green (`[bk] Done in
+  02:01:31`, arch gate 1134/0, smoke 220/0/0, MLAS 11 through the new helper, 158 x86asm object
+  lines, GenAI `setup.py` patch, Windows-Update guard in every RUN). The arm64 regression found
+  two defects the worktree's 662 tests and the parse gate could not see, both fixed and pinned:
+  (1) four `Get-PeFileMachine -Path$x` calls (no space — a parameter literally named `Path$x`;
+  now the third AST lint trap, `Native.ArgQuoting.Tests.ps1`); (2) `Invoke-WithHostArchLibraryEnvironment`
+  "restoring" a captured `$null` with `SetEnvironmentVariable` left `LIB=` defined-empty, so
+  lld-link skipped its MSVC/SDK auto-detection in the one cross script that never enters VsDevCmd
+  (LiteRT: "could not open 'kernel32.lib'" right after the host flatc pass; runs 16/17, probed
+  with the env dump that now stays in the script) — `Remove-Item Env:` on a null snapshot, same
+  fix applied to the LiteRT-LM snapshot restore, its bazel NDK unset and the agentic-loop sanitizer
+  restore; pin `SourceBuild.HostArchLibEnv.Tests.ps1`, invariant (d) in
+  `docs/windows-build-invariants.md`. arm64 run 18 carries the proof.
 
 - **VERIFY RIDE — MOSTLY CLOSED 2026-08-24 by the amd64 full regression** (media all
   branches + merge + final + smoke: arch gate 1134/0, smoke 220/0/0, `[bk] Done`), **and
