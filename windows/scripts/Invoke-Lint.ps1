@@ -63,6 +63,9 @@ foreach ($file in $targets) {
     foreach ($v in @(Get-SwitchShadowViolation -Ast $ast -Label $rel)) {
         [void]$astViolations.Add("[switch] parameter shadowed by non-boolean assignment (rename the local): $v")
     }
+    foreach ($v in @(Get-GluedParameterViolation -Ast $ast -Label $rel)) {
+        [void]$astViolations.Add("parameter token glued to its argument (-Path`$x / -Path(...) parse but bind wrong): $v")
+    }
 }
 
 if ($parseErrors.Count -gt 0) {
@@ -78,7 +81,7 @@ if ($astViolations.Count -gt 0) {
     Write-Host "AST TRAPS: $($astViolations.Count) violation(s)" -ForegroundColor Red
     foreach ($v in $astViolations) { Write-Host "  $v" -ForegroundColor Red }
 } else {
-    Write-Host 'AST TRAPS: none (comma-attr quoting + switch shadowing)' -ForegroundColor Green
+    Write-Host 'AST TRAPS: none (comma-attr quoting + switch shadowing + glued parameter tokens)' -ForegroundColor Green
 }
 
 # ---- Pass 2: PSScriptAnalyzer (optional) ----

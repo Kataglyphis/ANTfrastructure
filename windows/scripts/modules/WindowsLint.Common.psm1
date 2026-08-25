@@ -76,7 +76,54 @@ function Get-SwitchShadowViolation {
     return $out
 }
 
+# Resolved once per import (module scope, StrictMode-safe): the approved-verb
+# set decides which commands Get-GluedParameterViolation inspects.
+$script:ApprovedVerbs = @((Get-Verb).Verb) + @('Assert')
+
+function Get-GluedParameterViolation {
+    # GLUED PARAMETER ARGUMENT: `Get-PeFileMachine -Path$staged.FullName` and
+    # `-Path(Join-Path ...)` both PARSE. The first is a parameter literally
+    # NAMED `Path$staged` (the `.FullName` becomes a positional argument) and
+    # dies at runtime with "A parameter cannot be found that matches parameter
+    # name 'Path$staged'"; the second binds the paren expression positionally,
+    # which is right by accident only while the parameter is also the first
+    # positional one. Measured 2026-08-25: four such calls survived a refactor,
+    # the parse gate and 662 tests, and surfaced 90 s into the arm64 regression
+    # (target-cpython phase 4). Returns "label:line: text" for every parameter
+    # token whose name carries a `$` and for every parameter token whose next
+    # command element starts exactly where the token ends (no whitespace).
+    # `-Name:$value` is the supported colon form (the parser stores $value as
+    # the parameter's Argument) and passes. NATIVE commands are exempt: for
+    # clang-cl, cl, lld-link, nasm... a glued token IS the syntax (`-Fotiny.o`,
+    # `-I<dir>`, `-DFOO=1`; the first repo sweep flagged exactly such a probe).
+    # A command counts as PowerShell when its name is Verb-Noun with an
+    # approved verb (`Get-Verb`) or the repo's `Assert-*` family; `& $exe`
+    # (variable command) and bare tool names never match.
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast, [string]$Label = '<text>')
+    $out = @()
+    $cmds = $Ast.FindAll({ param($a) $a -is [System.Management.Automation.Language.CommandAst] }, $true)
+    foreach ($cmd in $cmds) {
+        $name = $cmd.GetCommandName()
+        if (-not $name -or $name -notmatch '^([A-Za-z]+)-[A-Za-z][A-Za-z0-9]*$') { continue }
+        if ($script:ApprovedVerbs -notcontains $Matches[1]) { continue }
+        $els = @($cmd.CommandElements)
+        for ($i = 0; $i -lt $els.Count; $i++) {
+            $el = $els[$i]
+            if ($el -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
+            if ($el.ParameterName -match '\$') {
+                $out += "${Label}:$($el.Extent.StartLineNumber): $($el.Extent.Text) (parameter name swallowed a variable -- add the space)"
+                continue
+            }
+            if ($null -eq $el.Argument -and ($i + 1) -lt $els.Count -and $els[$i + 1].Extent.StartOffset -eq $el.Extent.EndOffset) {
+                $out += "${Label}:$($el.Extent.StartLineNumber): $($el.Extent.Text)$($els[$i + 1].Extent.Text) (argument glued to the parameter -- add the space)"
+            }
+        }
+    }
+    return $out
+}
+
 Export-ModuleMember -Function @(
     'Get-BarewordCommaAttrViolation',
-    'Get-SwitchShadowViolation'
+    'Get-SwitchShadowViolation',
+    'Get-GluedParameterViolation'
 )
