@@ -1,0 +1,23 @@
+# Deliberate overlap between docs pages, with a budget and a reason.
+#
+# Format:  fileA | fileB | max shared 8-word shingles | why this is correct
+#
+# Read verify_doc_dupes.py first. An entry here is a CLAIM that two pages must
+# talk about the same thing, not a way to silence the gate. The budget is a
+# ratchet: growth past it fails, and an entry whose overlap has disappeared
+# fails too, so this file cannot quietly rot into a blanket exemption.
+#
+# Before adding one, try the alternative: give the passage ONE owner and link to
+# it. docs/INDEX.md decides which page owns what. Almost every entry below is a
+# RULE page and a MECHANISM page naming the same script, flag or failure -- that
+# repetition is unavoidable, and each side says something the other does not.
+
+docs/windows-build-invariants.md | docs/windows-builds.md      | 22 | the smoke-gate rule vs the smoke-gate mechanism; both must name the gate, its flags and its floors
+docs/windows-build-invariants.md | docs/windows-cross-builds.md| 20 | the same gate rules restated for the arm64 lane, where the floors and skips differ
+docs/windows-build-invariants.md | docs/windows-build-lanes.md | 20 | rule ("always commit with --change CMD") vs mechanism (what `docker commit` captures and why)
+AGENTS.md                        | docs/windows-builds.md      | 19 | the disk-reclaim guardrails an agent must obey vs the reclaim script's own reference entry
+AGENTS.md                        | docs/linux-cross-builds.md  | 18 | the ancestry/digest-pinning rules vs the stage-handoff mechanism they describe
+docs/failure-modes.md            | docs/windows-host-setup.md  | 18 | the RDNA4 triage entry and the host FIRST-CHECK box: two entry points, same three actions, on purpose
+docs/adopting-in-a-new-project.md| docs/linux-build-basics.md  | 17 | the consumer checklist quotes the `app-runner.sh` surface it is telling you to adopt
+docs/windows-build-lanes.md      | docs/windows-build-resources.md | 17 | isolation policy and cache-mount budgets are adjacent decisions and cite the same flags
+docs/cross-build-verification.md | docs/linux-cross-builds.md  | 16 | the QEMU/binfmt prerequisite appears as a verification precondition and as a lane step

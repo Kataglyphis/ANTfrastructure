@@ -4,6 +4,8 @@
 
 > Build-time download speed: the cross-compiler/SDK builds fetch the LLVM source with `git` inside a `RUN` step. On this host that is fast because rootless BuildKit runs with `--oci-worker-net=host` (host networking for `RUN` steps). Registry mirrors do not help that `git fetch`; the host-net setting does. See `docs/project-info.md` for the drop-in config and `AGENTS.md` for the do-not-regress note. For repeated LLVM rebuilds, prefer caching the source on the host over re-fetching.
 
+<a id="build-logging"></a>
+
 > **Build logging:** `build-cross-chain.sh` and `build-cross-stage.sh` accept `--log-dir ./out/build-logs` to write per-stage build logs. The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not — capture their output, and any manual `nerdctl build`, with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
 
 ## Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)

@@ -74,83 +74,29 @@ Phases:
 > understand, run the script to execute.
 
 > **⚠️ FIRST CHECK on any Windows host doing container builds.**
-> The build-`COPY`-commit failure `hcsshim::ActivateLayer 0x20` (buildkit) /
-> `mkdir \\?\Volume{<GUID>}\C:.` — "Der Verzeichnisname ist ungültig" (docker
-> legacy) hits BOTH engines, deterministically, and survives `-NoCache`,
-> service restarts, Defender exclusions, a full store reset and a reboot.
-> **Root cause (RESOLVED 2026-08-10, superseding the 2026-08-09 "faulty
-> Adrenaline install" verdict): an ENABLED AMD RDNA4 dGPU + Adrenalin driver
-> locks freshly-written container layers** (upstream docker/for-win#14977;
-> A/B-proven on the RX 9070 XT host — dGPU off → green, on → red, same
-> boot). Probe and repair order: **(1)**
-> `pwsh -File windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` (the committed
-> probe; only a `-Heavy`-green verdict counts — light lanes can be green
-> while RUN-layer finalize is broken), then **(2)** on RDNA4 hosts:
-> elevated `toggle-rdna4-gpu.ps1 -Disable` → re-probe `-Heavy` → build →
-> re-enable (the `Assert-NoActiveRdna4Gpu` preflight enforces this), and
-> **(3)** after ANY red finalize: REBOOT before further experiments —
-> failed finalizes wedge hcs state and falsify every later A/B. NOT an
-> ISO/OS-corruption problem: `sfc`/`DISM` report 0 components corrupt, but
-> the severity DOES move with Windows updates (post-KB5101684 even tiny RUN
-> layers trip). The Linux cross lane and all repo gates are unaffected.
-> Remaining-valid diagnostics: while build-COPY fails in both engines
-> (ApplyDiff), `docker run` + `docker commit` still works (CommitLayer OK) —
-> so the classic lane's run+commit stages stay viable once a FROM image
-> exists; full bootstrap still needs a working BK lane (every Dockerfile has
-> a COPY).
+> Layer commit/finalize failing as `hcsshim::ActivateLayer 0x20` (BuildKit) or
+> `mkdir \?\Volume{<GUID>}\C:.` (docker classic) is **an ENABLED AMD RDNA4
+> dGPU locking freshly-written container layers** — not a Defender, disk,
+> driver-install or OS-corruption problem, and it survives `-NoCache`, service
+> restarts, a full store reset and a reboot (upstream docker/for-win#14977,
+> A/B-proven on an RX 9070 XT host on 2026-08-10).
 >
-> **[2026-08-09 end-of-session narrative — SUPERSEDED by the 2026-08-10 update
-> below; kept as history. Its closing "repair order" is obsolete: the modern
-> order is in the FIRST paragraph above.]** With Adrenaline fixed + pristine
-> Stevedore the buildkit lane
-> on the discovered host STILL refused multi-level commits (any layer writing
-> into an existing parent dir: `ActivateLayer 0x20` at snapshotter reimport,
-> identical on buildkit 0.32.0 and 0.32.2, on `windowcon`/`native`/`windowssvm`
-> snapshotter names). It was only cleared by a **Windows in-place repair
-> upgrade** (official ISO, same build 26200/25H2, "keep files and apps") —
-> after it **every layer commits**, including writes into existing dirs. Only
-> the FINAL export (reimport of the committed snapshot) still trips 0x20 on
-> that host, where Defender's engine (`MsMpEng`) is unkillable by design and
-> the identical Stevedore+OS stack builds the BK lane fine on the working
-> machine. Order on a host with this symptom: probe → reinstall AMD Adrenaline
-> → probe → if commits still fail, **in-place-repair Windows → probe** → BK
-> lane commits; residual export 0x20 = host-residual (classic lane or the
-> healthy host).
+> Order of operations:
 >
-> **Update (2026-08-10):** the 2026-08-09 export-residual verdict was polluted
-> by two bugs in the probe itself (unquoted `dest=$outDir` sent buildctl a
-> literal `$outDir`; the `-Docker` lane crashed on a `$docker`/`[switch]$Docker`
-> collision — AGENTS.md § Windows Build Invariants, ArgQuoting traps). With the
-> fixed probe (now exporting `type=image,...,unpack=true`, the same output path
-> `build-buildkit.ps1` uses, and exiting non-zero per failing lane), the
-> discovered host's LIGHT probe lanes are green on buildkit (commit + export +
-> unpack) — **but a light-green probe is NOT chain-green**: the real chain's
-> first COPY after the heavy pwsh-install RUN still died deterministically
-> (`ActivateLayer 0x20` at child-snapshot finalize/reimport, FRESH snapshot IDs
-> under `-NoCache`, so not poisoned cache). Minimal repro, now committed as the
-> probe's **`-Heavy` lane** (`Dockerfile.heavy`): `RUN` writing 2×100 MB, then
-> a one-file `COPY` — the COPY's finalize fails while the fresh heavy parent
-> layer is still held. **RESOLVED the same day by a same-boot A/B: the holder
-> is the ENABLED RDNA4 dGPU (RX 9070 XT + Adrenalin) — disable it and both
-> tiny and heavy RUN-layer finalize go green on the first try** (upstream:
-> docker/for-win#14977, RDNA3.5/4, open). Severity tracks the Windows patch
-> level: pre-KB5101684 only heavyweight RUN layers tripped; after it, even
-> 10-byte RUN layers. COPY-only layers are safe either way. Falsified on the
-> way (all still-red at the time): Defender exclusions/toggles, WSearch/
-> SysMain, daemon bounces, a vmcompute restart, minifilter detaches (no
-> third-party filters exist), `--no-cache`, settle delays, reboots, a
-> nanoserver base and split solves. Failed finalizes additionally WEDGE hcs
-> state — after one, even tiny RUN layers fail until a reboot, which is why
-> earlier A/B rounds contradicted each other. **Build workflow on RDNA4
-> hosts:** elevated `toggle-rdna4-gpu.ps1 -Disable` → build (display falls
-> back to the iGPU; DirectML-on-host is unavailable during the window) →
-> re-enable. `build-buildkit.ps1` refuses to start while the dGPU is enabled
-> (`Assert-NoActiveRdna4Gpu`; `-SkipHostChecks` overrides). The 2026-08-09
-> Adrenaline-reinstall / in-place-repair root-cause claims are SUPERSEDED —
-> they coincided with patch/reboot changes that moved the trigger threshold.
-> Also: never judge a host by a `type=local` export of a Windows image — the
-> local exporter itself dies mid-receive (`error from receiver: ... file
-> already closed`) even on a healthy host.
+> 1. `pwsh -File windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` —
+>    only a `-Heavy`-green verdict counts; the light lanes can pass while
+>    RUN-layer finalize is broken.
+> 2. RDNA4 present? Elevated `toggle-rdna4-gpu.ps1 -Disable` → re-probe
+>    `-Heavy` → build → re-enable. `build-buildkit.ps1` enforces this via its
+>    `Assert-NoActiveRdna4Gpu` preflight.
+> 3. **After ANY red finalize, REBOOT before testing anything else** — a
+>    failed finalize wedges hcs state and falsifies every later experiment.
+>    This is why early A/B rounds contradicted each other.
+>
+> The full A/B history, the list of things falsified along the way, and the
+> superseded 2026-08-09 "faulty Adrenaline install" verdict are owned by
+> [`windows-build-lanes.md`](windows-build-lanes.md#rdna4-dgpu-layer-lock-ab-history-and-diagnostics).
+> The Linux cross lane and every repo gate are unaffected.
 
 ---
 
@@ -263,18 +209,13 @@ new subnet (the driver's preflight fail-fasts on drift with the exact fix).
 **Install BOTH forms — conf AND conflist (corrected 2026-08-07, same day, after
 the conflist-only state cost a launched chain).** Same content, two filenames:
 
-- **`0-containerd-nat.conflist`** is required by **nerdctl**, which cannot parse
-  a bare `.conf` — it indexes `plugins[0]` with no length check and PANICS with
-  `index out of range [0] with length 0`, both in `network create`
-  (`netutil_windows.go:40`) and in `run` (`container_network_manager.go:857`).
-- **`0-containerd-nat.conf`** is required by **buildkitd**. With only the
-  conflist present, BuildKit RUN steps get **no network adapter at all**: a probe
-  container showed an empty `ipconfig`, DNS failed, and a raw TCP connect to a
-  literal GitHub IP returned *"unreachable network"*. The containerd debug log
-  showed the `HcsCreateComputeSystem` spec for `buildkitsandbox` with no
-  networking block. Restoring the `.conf` and `Restart-Service buildkitd -Force`
-  fixed it on the spot: IPv4 `172.31.44.107`, gateway `172.31.32.1`, DNS
-  `192.168.188.1`, `github.com` resolved.
+- **`0-containerd-nat.conflist`** is required by **nerdctl**; **`.conf`** is
+  required by **buildkitd**. Both files must exist, and neither client fails in
+  a way that names the missing one — nerdctl panics on an index, buildkitd
+  silently gives RUN steps no network adapter at all. Never "convert" one into
+  the other. The two failure signatures, the debug-log evidence and the day this
+  cost a launched chain:
+  [`windows-build-invariants.md`](windows-build-invariants.md#the-cni-nat-config-must-exist-as-both-conf-and-conflist).
 
 The earlier claim here that "containerd and BuildKit read either form" was
 wrong. The 2026-08-07 conversion fixed nerdctl and silently killed the buildctl

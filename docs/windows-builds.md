@@ -289,8 +289,9 @@ EULA. To include TensorRT:
 
 1. Download from https://developer.nvidia.com/tensorrt (e.g.,
    `TensorRT-Enterprise-11.2.1.2-Windows-amd64-cuda-13.3-Release-external.zip`).
-   **OWNER DIRECTIVE: always take the NEWEST release.** Never resolve a
-   pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip.
+   The owner directive that governs this — always take the newest release,
+   never lower the pin to match a zip — is
+   [`../AGENTS.md`](../AGENTS.md) § TensorRT Setup.
 2. Place the zip in `windows/downloads/` and **delete the superseded one**. The
    extract step version-sorts and takes the highest (a `[version]` cast, so
    `11.10.0.1` beats `11.2.1.2` — plain string sort gets that backwards), but a
@@ -819,7 +820,7 @@ The machine-checkable form of `docs/windows-host-setup.md` — run it FIRST on a
 
 #### `apply-containerd-config.ps1`
 
-HOST config (admin, never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`: containerd runs with NO `config.toml` on this host, so its settings live only in the service's `ImagePath`/`Environment` registry values and existed nowhere in the repo until 2026-08-07. Owns: `--log-level debug --log-file` (permanent owner policy — truncate the log, never disable the flags), `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT` (the runhcs shim inherits the SERVICE environment; a shim built from the upstream patch keeps its 30 s defaults and silently reverts to the 0x3 defect without it — `TASK_CLOSE_TIMEOUT` stays unset on purpose, the patch derives it as 2×teardown+30 s), and the load-bearing Defender exclusions (otherwise invisible: `Get-MpPreference` needs admin). `-ReportOnly` shows drift without admin and changes nothing
+HOST config (admin; never while a build solves — applying restarts containerd and kills in-flight solves). The containerd counterpart to `apply-buildkitd-gcpolicy.ps1`. It owns the debug-log flags, the runhcs shim teardown timeout, the GC policy and the CNI `.conf`/`.conflist` pair — all of which live only in the service's registry values, because containerd runs with no `config.toml` here. What each setting is for, and why a script is the only reproducible way to hold them: [`windows-host-setup.md`](windows-host-setup.md#c1-permanent-debug-flags-on-containerd--buildkitd-owner-policy).
 
 #### `compact-host-vhdx.ps1`
 

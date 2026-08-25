@@ -3,17 +3,12 @@
 General Windows and PowerShell commands — the ones that get looked up,
 forgotten and looked up again.
 
-**This page is different from the rest of `docs/`.** Everywhere else, an entry
-exists because something in this repo's lanes broke and the fix is recorded with
-its incident. Here the entries are ordinary Windows knowledge: correct, useful,
-and *not* specific to this repo. Nothing on this page is verified against a
-build lane, so do not treat it with the same authority as
-[Fresh Windows Host Bring-Up](windows-host-setup.md) or
-[Windows Build Image](windows-builds.md).
+> **Unverified by design** — ordinary Windows/PowerShell commands, not checked
+> against any build lane, so they do not carry the authority of
+> [Fresh Windows Host Bring-Up](windows-host-setup.md). Promotion rules:
+> [`INDEX.md`](INDEX.md).
 
-If an entry here turns out to be load-bearing for a lane, move it to the owning
-page in [`INDEX.md`](INDEX.md) and give it the *why*. This page's Linux
-counterpart is [Linux Reference](linux-reference.md).
+The Linux counterpart is [Linux Reference](linux-reference.md).
 
 ---
 

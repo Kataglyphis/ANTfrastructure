@@ -1,6 +1,14 @@
 # Linux Build Basics
 
-> **Build logging:** The two stage orchestrators (`build-cross-chain.sh`, `build-cross-stage.sh`) accept `--log-dir ./out/build-logs` to write per-stage build logs. For manual `nerdctl build` commands, capture output with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
+**Building in and against the Linux images**: the stage hierarchy, single-image
+builds, multi-arch runs, the caching map, and the apt-mirror workaround. The
+cross-compiler lane that produces these images is
+[`linux-cross-builds.md`](linux-cross-builds.md); a specific error message is
+[`failure-modes.md`](failure-modes.md).
+
+> **Build logging** — which orchestrators accept `--log-dir`, and how to capture
+> the ones that do not:
+> [`linux-cross-builds.md`](linux-cross-builds.md#build-logging).
 
 ## Image Hierarchy
 

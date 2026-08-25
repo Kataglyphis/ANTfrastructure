@@ -35,7 +35,7 @@ jobs:
       - name: Check version/docs consistency
         id: check
         continue-on-error: true
-        run: PREFLIGHT_ONLY=version-snapshot,arg-consistency,mirror-consistency,doc-links bash linux/scripts/preflight.sh
+        run: PREFLIGHT_ONLY=version-snapshot,arg-consistency,mirror-consistency,doc-links,doc-dupes bash linux/scripts/preflight.sh
 
       - name: Create issue if stale
         if: steps.check.outcome != 'success'

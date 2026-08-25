@@ -3,17 +3,10 @@
 A working set of general Linux commands — the ones that get looked up, forgotten
 and looked up again.
 
-**This page is different from the rest of `docs/`.** Everywhere else, an entry
-exists because something in this repo's lanes broke and the fix is recorded with
-its incident. Here the entries are ordinary Linux knowledge: correct, useful, and
-*not* specific to this repo. Nothing on this page is verified against a build
-lane, so do not treat it with the same authority as
-[Linux Host Setup](linux-host-setup.md) or the caching and parallelism rules.
-
-If a command here turns out to be load-bearing for a lane — it caused an
-incident, or a gate depends on it — move it to the owning page in
-[`INDEX.md`](INDEX.md) and give it the *why*. That promotion is the point of
-keeping the two separated.
+> **Unverified by design** — ordinary Linux commands, not checked against any
+> build lane, so they do not carry the authority of
+> [Linux Host Setup](linux-host-setup.md). Promotion rules:
+> [`INDEX.md`](INDEX.md).
 
 ---
 

@@ -5,6 +5,53 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (third pass) — docs: a duplication gate, and the copies three manual passes missed
+
+`docs/INDEX.md` opens with the reason this matters: one Dev Drive command in
+three places, all three wrong the same way. That rule was written down and
+enforced by nobody. Three manual de-duplication passes in one day each declared
+the tree clean — and each measured **verbatim lines**, which is the wrong
+instrument, because prose gets reflowed. A paragraph reworded across two pages
+shares no whole line while still being the same paragraph.
+
+- **`docs/scripts/verify_doc_dupes.py` (new) — preflight slug `doc-dupes`,**
+  wired into `stale-docs-check.yml` and `build-docs.yml`. Every paragraph is
+  reduced to its 8-word shingles; two paragraphs in different files sharing more
+  than 12 are reported. Shingles owned by many files are ignored as shared
+  vocabulary. Records (archives, backlogs, `CHANGELOG.md`) are excluded — they
+  narrate the same work on purpose and must never be edited to satisfy a gate.
+  Negative-tested both ways: a paragraph copied between pages fails it, and so
+  does an allowlist entry whose overlap has disappeared.
+- **It found 27 copied passages** on a tree that had just been declared clean.
+  The largest was a **3,673-character single paragraph** in `AGENTS.md`
+  § Quick Reference that also duplicated `cross-build-verification.md` in full —
+  flagged as a wall of text in the very first review of this work and walked
+  past three times since. It is now build logs, chain stopping, a three-row
+  cache-knob table, and a two-sentence summary of the shipped-BYTES saga that
+  points at the page which owns it.
+- **Reduced to 9 pairs, all deliberate**, each recorded in
+  `docs/scripts/doc-dupes.allow` with a budget and a reason — almost all of them
+  a RULE page and a MECHANISM page naming the same script or failure. The
+  allowlist is a ratchet, not an exemption: growth past a budget fails, and so
+  does a stale entry.
+- **What got one owner along the way:** the RDNA4 layer-lock story (the
+  `windows-host-setup.md` copy ran 78 lines of superseded history; it is now a
+  24-line actionable check that links to the lane doc — the same duplication a
+  previous pass reported as fixed without re-measuring), the CNI
+  `.conf`/`.conflist` rule, the TensorRT owner directive, the sccache wiring
+  block, the containerd host-config entry, the apt-mirror advice (stated twice
+  in one file), the CI trigger markers, three over-long `failure-modes.md` fix
+  cells, and the twin preambles on the two reference pages.
+- **`linux-build-basics.md` now opens by saying what it is** instead of with a
+  build-logging admonition — it was the only page of 38 without orientation in
+  its first line.
+
+**Verified:** `doc-dupes` and `doc-links` both green; preflight green across
+doc-links, doc-dupes, version-snapshot, arg-consistency, mirror-consistency,
+crlf-guard, shellcheck, dockerfile-lint, workflow-lint, python-lint; Sphinx
+build warning-free; ruff clean on the full ruleset; every distinctive fact from
+the 55 removed lines confirmed still present in its owning page.
+
 ## 2026-08-25 (later) — docs: a gate that keeps the structure honest, plus the leftovers
 
 The structural pass earlier today fixed the *state* and nothing kept it fixed.

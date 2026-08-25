@@ -118,7 +118,42 @@ The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`,
 
 ## Quick Reference
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh` (the two orchestrators that tee each stage build; the Makefile wraps these). The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not accept `--log-dir` — capture their output with `2>&1 | tee ./out/build-logs/<name>.log`. To stop a running chain cleanly (reaps the orphaned nerdctl/buildctl child subtree — never `pkill` the orchestrator, that orphans them), use `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep). Cache knobs (three distinct, do not conflate): `NO_CACHE=1` disables ALL `--cache-from` (local + registry) for the whole chain; `RUNTIME_NO_CACHE=1` gates `--no-cache` on only the runtime package+wrapper builds (`runtime-build-fns.sh`) — a targeted guarantee against BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer; `CROSS_NO_LOCAL_CACHE_EXPORT=1` only stops WRITING the local buildcache but STILL reads the registry inline cache. **Verify the shipped BYTES, never the push** (backlog RTCACHE3): the 2026-08-15 S2 saga shipped `:latest-cross` STALE five times with every static gate and all smokes GREEN — the manifest, smokes, and push were all byte-identical to a prior run. The real cause was the `--output type=image` tagging bug (see "Cross Chain Stage Handoff"), NOT a cache; media+android were always fresh. This is now GATED automatically: `verify-shipped-wrapper.sh` runs in `build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled — it lists each wrapper's rootfs (`nerdctl export | tar -t`, arch-agnostic, no emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact). A mismatch aborts before `:latest-cross` goes live. `WRAPPER_CONTENT_GATE=0` makes it advisory. `MEDIA_STRIP=0` disables the media-prefix symbol-strip pass (`strip_media_prefixes`, default ON, wired into build-ffmpeg/build-gstreamer-stage/build-libcamera; uses the cross `${STRIP}` and `--strip-all` which keeps `.dynsym` so runtime linking is unaffected). **:latest-cross was re-shipped 2026-08-16** (fresh amd64 `509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) carrying the Batch-2 fixes; that full-media rebuild flushed out two bugs the runtime-lane validations miss because they skip smoke-media — (1) smoke-media's native cv2 import must be gated on numpy being importable (numpy is a /opt/venv packaging dep, absent in the media BUILD sandbox → defer to the runtime smoke, like onnxruntime), and (2) `configure-runtime.sh` runs a SECOND time in the package stage, so its gstreamer-multiarch resolver must drop/skip the pre-existing `lib/multiarch` symlink before resolving or it re-points it at itself — and its dev-surface check must be a WARN, not a fail-loud exit (a script that runs twice must not carry a build-breaking assert; the pkg-config `verify_consumer_dev_surface` gate is the authority). To spot-check by hand: pull the wrapper and grep for the expected lib set. Two sibling gates default to advisory (WARN) and promote to fatal only on opt-in: `VULKAN_CROSS_STRICT=1` (all three Vulkan cross-components — loader/SPIRV-Tools/glslang — failed, an env-shaped toolchain cause; `vulkan.sh`) and `WHEEL_SOABI_STRICT=1` (a vendored wheel's native `.cpython-*.so` carries a SOABI for a different arch than the target triple — a host-SOABI leak that only fails at `import`; `verify-wheels.sh`, triple derived from `TARGET_ARCH` not the running interpreter).
+**Build logs.** `--log-dir ./out/build-logs` is accepted by
+`build-cross-chain.sh` and `build-cross-stage.sh` — the two that tee each stage
+build (the Makefile wraps them). The other three orchestrators
+(`build-cross-compiler.sh`, `build-runtime-manifest.sh`,
+`build-runtime-artifacts.sh`) do **not** take it: pipe them through
+`2>&1 | tee ./out/build-logs/<name>.log`.
+
+**Stopping a chain.** Use `bash linux/scripts/stop-cross-chain.sh` — it finds
+the run via its pidfile (falling back to a bracket-trick pgrep) and reaps the
+orphaned nerdctl/buildctl subtree. **Never `pkill` the orchestrator**; that
+orphans its children.
+
+**Cache knobs — three distinct things, never conflate them:**
+
+| Knob | What it actually does |
+|---|---|
+| `NO_CACHE=1` | disables ALL `--cache-from`, local **and** registry, for the whole chain |
+| `RUNTIME_NO_CACHE=1` | `--no-cache` on only the runtime package+wrapper builds (`runtime-build-fns.sh`) — a targeted guarantee against BuildKit worker-cache reuse of a stale `COPY /opt/ffmpeg` layer |
+| `CROSS_NO_LOCAL_CACHE_EXPORT=1` | stops **writing** the local buildcache, but still **reads** the registry inline cache |
+
+**Verify the shipped BYTES, never the push.** `:latest-cross` shipped STALE five
+times with every static gate and every smoke GREEN, because they all checked the
+push rather than the content. `verify-shipped-wrapper.sh` now gates this
+automatically in `build-runtime-manifest.sh`'s per-arch loop, before the manifest
+is assembled; `WRAPPER_CONTENT_GATE=0` downgrades it to advisory. The saga, its
+real root cause and the two bugs the re-ship flushed out are owned by
+[`docs/cross-build-verification.md`](docs/cross-build-verification.md#verify-the-shipped-bytes).
+
+**Three more knobs**, all detailed in
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § versions.env feature
+toggles: `MEDIA_STRIP=0` turns off the media-prefix symbol-strip pass (default
+ON; `--strip-all` keeps `.dynsym`, so runtime linking is unaffected), while
+`VULKAN_CROSS_STRICT=1` and `WHEEL_SOABI_STRICT=1` promote two advisory WARN
+gates to fatal — the second catches a vendored wheel whose native
+`.cpython-*.so` carries a SOABI for the wrong arch, which otherwise fails only
+at `import`.
 
 Most common build commands:
 
@@ -182,12 +217,10 @@ linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
 
 ### Windows Container Build
 
-**Fresh Windows machine?** Follow the ordered bring-up in
-[`docs/windows-host-setup.md`](docs/windows-host-setup.md) instead of
-reconstructing the sequence. Once the interactive steps are done (Stevedore +
-reboot + docker-users + repo clone), the scriptable half is **ONE elevated
-run**: `windows/scripts/host/setup-new-host.ps1` (`-ReportOnly` first; it is
-idempotent and refuses while a build is live).
+**Fresh Windows machine?** Follow
+[`docs/windows-host-setup.md`](docs/windows-host-setup.md) rather than
+reconstructing the sequence — after the interactive steps, the scriptable half
+is one elevated `setup-new-host.ps1` run.
 
 All stages use **Ninja + clang-cl + lld-link**. The container toolchain is
 **containerd + BuildKit + nerdctl**. Role split — each tool where its pipe ACL
@@ -268,10 +301,9 @@ Requires the nvidia-container-toolkit on any host that wants GPU mode.
 
 ### Triggering the opt-in CI lanes
 
-The Linux x86 lane runs on every push; **Windows and ARM are opt-in per commit**.
-Put `[build-win]` and/or `[build-arm]` in the pushed HEAD commit message. A green
-tick without `[build-win]` says nothing about Windows - the workflow reports
-`skipped`. Full detail:
+The Linux x86 lane runs on every push; **Windows and ARM are opt-in per
+commit** — and a green tick without the opt-in says nothing about them, because
+the workflow reports `skipped`. Which markers, and what each lane runs:
 [`docs/ci-build-triggers.md`](docs/ci-build-triggers.md).
 
 ```
@@ -410,27 +442,23 @@ The three most often regressed by someone who skipped that page:
 
 ### TensorRT Setup (Optional)
 
-TensorRT is **not downloaded automatically** — it requires accepting NVIDIA's
-EULA. The full staging procedure, the `current/` layout rationale and the #38
-history live in `docs/windows-builds.md` § TensorRT setup (GPU lane, optional).
-The directives:
+TensorRT is **not downloaded automatically** — it needs an accepted NVIDIA EULA.
+[`docs/windows-builds.md`](docs/windows-builds.md) § TensorRT setup owns the
+staging procedure, the `current/` rationale and the reasoning behind each rule
+below. The rules themselves:
 
 - **OWNER DIRECTIVE: always take the NEWEST release.** Never resolve a
-  pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip in
-  `windows/downloads/` and **delete the superseded one**.
-- Set `TENSORRT_ZIP_SHA256` in `versions.env` to the new zip's hash. A stale
-  hash fails the build loudly — that is intended, not a bug.
-- `TENSORRT_VERSION` never derives a **filesystem** path (the tree is resolved
-  from disk and normalized to `current`), and **never derive the runtime PATH
-  from the pin again**.
-- **No zip staged = the build skips TensorRT gracefully, and that zip-less
-  configuration is the NORMAL state of this host's GPU lane. Do NOT re-harden
-  it into a fail-fast** — the 2026-08-04 fail-fast variant broke the first
-  hardened `-Gpu` rebuild and was reverted on 2026-08-05.
-- **A PRESENT zip is a different matter and fails CLOSED**:
-  `normalize-tensorrt-tree.ps1` renames the extracted tree to a stable
-  **`current`** and throws if it carries no runtime DLLs. Absent zip =
-  supported; half-extracted tree = build failure.
+  pin-vs-zip mismatch by lowering `TENSORRT_VERSION` — stage a newer zip and
+  delete the superseded one.
+- Set `TENSORRT_ZIP_SHA256` in `versions.env` for the new zip. A stale hash
+  failing the build loudly is intended.
+- `TENSORRT_VERSION` must never derive a **filesystem** path or the runtime
+  PATH; the tree is resolved from disk and normalised to `current`.
+- **No zip staged is the NORMAL state of this host's GPU lane — do NOT
+  re-harden the graceful skip into a fail-fast.** That was tried on 2026-08-04
+  and reverted the next day.
+- **A PRESENT zip fails CLOSED**: a half-extracted tree is a build failure,
+  while an absent one is supported.
 
 ### Windows Build Notes
 
@@ -697,32 +725,24 @@ The rules an agent must never violate:
    moving a COPY above the VS layer, or widening the module COPY, costs hours
    per bump.
 
-   **Wired** (current state; full rationale and measurements:
-   `docs/windows-build-resources.md` § Persistent compile cache (sccache)):
-   - **sccache — WebDAV remote ONLY since 2026-08-16, until #99 is re-proven.**
-     `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in
-     `Dockerfile.media-builder`'s `common` stage AND in the merge builder (not a
-     descendant, so the ENV is repeated — **change BOTH or neither**). It is off
-     because BuildKit cache mounts on Windows lose writes once the directory
-     holds objects an EARLIER RUN wrote; restore `disk,webdav` only after
-     re-verifying against a newer buildkit (measurement + the two-step recipe:
-     `docs/windows-builds.md` #99).
-     `SCCACHE_DIR` ALONE DOES NOTHING — without the chain variable sccache is in
-     single-level mode, and with a remote configured that means remote-only.
-   - **sccache is BUILT FROM SOURCE** at `SCCACHE_GIT_REV`, not installed from
-     scoop, and this is load-bearing: released sccache cannot wrap nvcc on CUDA
-     13.3. `verify-toolchain.ps1` asserts sccache resolves from `CARGO_BIN`,
-     because `--version` cannot tell the fixed and broken builds apart.
-     **Never bump `SCCACHE_GIT_REV` without checking the local patch series
-     (`windows/upstream/sccache-nvcc-quote-fix/`) still applies** — the rust
-     layer THROWS if not.
-   - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18**
-     (`SCCACHE_CUDA_LAUNCHER="1"` in the media-core-built-onnx stage). Opt out
-     per run with `-BuildArg SCCACHE_CUDA_LAUNCHER=`; **never flip the default
-     off silently**, and never export the launcher onto a new sccache without
-     all THREE canaries (§ Common Failure Modes, sccache-nvcc row). The
-     miscompile root cause and the canary measurements:
-     `docs/windows-build-resources.md` § Persistent compile cache (sccache).
+   **Wired**, with the rules an agent must not break. Full rationale,
+   measurements and decision history:
+   [`docs/windows-build-resources.md`](docs/windows-build-resources.md)
+   § Persistent compile cache (sccache).
+   - **sccache runs WebDAV-remote-only since 2026-08-16.**
+     `SCCACHE_MULTILEVEL_CHAIN` defaults to `""` in **both**
+     `Dockerfile.media-builder`'s `common` stage and the merge builder (not a
+     descendant, so the ENV is repeated — **change BOTH or neither**). Restore
+     `disk,webdav` only after re-verifying against a newer buildkit.
+     **`SCCACHE_DIR` alone does nothing** without the chain variable.
+   - **sccache is BUILT FROM SOURCE at `SCCACHE_GIT_REV`** — load-bearing, not a
+     preference. **Never bump that pin without checking the local patch series
+     (`windows/upstream/sccache-nvcc-quote-fix/`) still applies**; the rust layer
+     throws if it does not.
+   - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18.** Never
+     flip that default off silently, and never export the launcher onto a new
+     sccache without all THREE canaries — the miscompile it once caused is
+     invisible until the DLL link.
    - **uv/pip wheel cache** in `Dockerfile.torch`, set INSIDE the RUN (an `ENV`
      would bake a build-only mount path into the shipped image).
 

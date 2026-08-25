@@ -34,7 +34,7 @@ The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and 
 
 **Sequential build (nerdctl):**
 
-If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
+If apt is slow in this chain, the two mirror build-args apply here too — see [`linux-build-basics.md` § Optional Ubuntu Apt Mirror Workaround](linux-build-basics.md#optional-ubuntu-apt-mirror-workaround), which owns them.
 
 ```bash
 LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-nvidia"
@@ -172,7 +172,7 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 
 **Sequential build (nerdctl):**
 
-If apt is slow in this chain, add `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/` to each Ubuntu-based build command below. The helper rewrites archive mirror entries only by default and leaves `security.ubuntu.com` untouched.
+If apt is slow in this chain, the two mirror build-args apply here too — see [`linux-build-basics.md` § Optional Ubuntu Apt Mirror Workaround](linux-build-basics.md#optional-ubuntu-apt-mirror-workaround), which owns them.
 
 ```bash
 LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-amd"

@@ -82,6 +82,8 @@ deliberately reduced image, never to "get the build green":
 | Vendored-wheel SOABI vs target triple — a native `.cpython-*.so` carrying a SOABI for a different arch than the target triple is a host-SOABI leak that only fails at `import` | `verify-wheels.sh` (triple derived from `TARGET_ARCH`, **not** the running interpreter) | default is advisory (WARN); `WHEEL_SOABI_STRICT=1` is the OPT-IN promotion to fatal |
 | Clean stop of a running chain — reaps the orphaned nerdctl/buildctl child subtree; **never `pkill` the orchestrator, that orphans them** | `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep) | n/a — operational tool, not a gate |
 
+<a id="verify-the-shipped-bytes"></a>
+
 **Verify the shipped BYTES, never the push** (backlog RTCACHE3; 2026-08-15 →
 2026-08-16). The 2026-08-15 S2 saga shipped `:latest-cross` STALE five times
 with every static gate and all smokes GREEN — the manifest, smokes, and push
