@@ -5,6 +5,59 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (sixth pass) — the licence list now says what each licence REQUIRES
+
+A list that names licences answers "what is in here". It does not answer the
+question that matters when you publish to a public registry: **what does each
+of those licences oblige me to do?** The published runtime image ships a GPLv3
+FFmpeg (`--enable-gpl --enable-version3`) and a GPLv3 GCC, and carried no
+corresponding-source offer at all.
+
+- **`docs/scripts/license_obligations.py` (new)** maps SPDX id → the concrete
+  things a distributor must do: keep the notice, ship the text, state changes,
+  propagate NOTICE, offer corresponding source, allow relinking, AGPL section 13
+  network source, same-licence for derivatives, and "this is a vendor EULA, the
+  question is whether you may redistribute at all". Dual licences render as the
+  UNION of both arms, not the cheaper one, because the project has not recorded
+  an election — record a single SPDX id to narrow it.
+- **Every one of the 97 `deps.json` entries now carries an `spdx` field**,
+  mapped from the 43 free-text licence strings by a reviewed table. Free text
+  cannot be turned into an obligation; an SPDX id can.
+- **All 26 copyleft components now carry a corresponding-source pointer** — the
+  exact upstream, the revision (resolved from the same `versions.env` pin the
+  build uses, so it cannot drift), the patches applied on top, and, where the
+  build configuration is what *determines* the licence, the configure flags.
+  FFmpeg's entry says in as many words that `--enable-gpl --enable-version3`
+  is what makes the shipped binary GPLv3 rather than LGPL. GCC's says the
+  Runtime Library Exception covers programs compiled with GCC, not shipping
+  GCC itself — which the runtime image does.
+- **Three components are now marked as modified** (sccache, and the Windows
+  FFmpeg and GStreamer builds, which carry patches). Apache-2.0 section 4(b)
+  and the GPL family both require saying so. This also corrects a factual
+  error: sccache was listed as coming from "Ubuntu apt" when it is built from
+  source at a pinned git rev with a local patch series.
+- **Both pages carry all of it** — the published website page and the repo's
+  own `third-party-licenses.md`. A developer reading the repo is exactly the
+  person who needs to know that shipping the image carries a source-offer duty,
+  so splitting that across two pages is how it gets missed.
+- **Gated.** `generate-website-licenses.py` now fails when an entry has no
+  `spdx`, when an SPDX id has no obligation mapping, or when a copyleft
+  component has no `source` block. It runs on `--write` as well as `--check`,
+  and reaches the pre-commit hook and both docs workflows through the existing
+  `version-snapshot` slug. Negative-tested: removing FFmpeg's source pointer
+  fails with both its Linux and Windows entries named.
+
+**Not addressed, and it is the bigger question.** The published `:winamd64`
+image contains CUDA, Visual Studio Build Tools and Windows Server Core under
+vendor EULAs. Those entries are now flagged `eula-review`, but a flag is not an
+answer: whether they may be redistributed in a public image at all is a legal
+question, and no amount of documentation changes it.
+
+Still open too: licence **texts** are not yet shipped inside the images. The
+obligations page now says they must be, which makes the gap visible rather than
+invisible — collecting `LICENSE`/`COPYING` into `/usr/share/licenses/` during
+packaging is the next step.
+
 ## 2026-08-25 (fifth pass) — the published webserver was serving a stale licence list
 
 Asked whether the open-source licence lists are current and whether anything

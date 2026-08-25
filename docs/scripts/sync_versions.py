@@ -355,7 +355,12 @@ def write_inline_markers(versions: dict[str, str]) -> int:
 # written (this file's old copy silently em-dashed — and in --write mode had
 # already written the degraded table when the rc finally went 1).
 
-from deps_table import render_deps_table_lines  # noqa: E402
+from deps_table import (  # noqa: E402
+    render_deps_table_lines,
+    render_modified_lines,
+    render_obligations_lines,
+    render_source_offer_lines,
+)
 
 DEPS_START_MARKER = "<!-- generated:deps-table:start -->"
 DEPS_END_MARKER = "<!-- generated:deps-table:end -->"
@@ -363,7 +368,21 @@ DEPS_TABLE_FILE = REPO_ROOT / "docs/third-party-licenses.md"
 
 
 def render_deps_table(versions: dict[str, str]) -> str:
-    lines = [DEPS_START_MARKER, *render_deps_table_lines(versions), DEPS_END_MARKER]
+    # The repo-facing page carries the SAME obligations and corresponding-source
+    # sections as the published website page. A developer reading this file is
+    # exactly the person who needs to see that shipping the image carries a
+    # source-offer duty; splitting that knowledge across two pages is how it
+    # gets missed.
+    lines = [
+        DEPS_START_MARKER,
+        *render_deps_table_lines(versions),
+        "", "---",
+        *render_obligations_lines(),
+        "", "---",
+        *render_source_offer_lines(versions),
+        *render_modified_lines(),
+        DEPS_END_MARKER,
+    ]
     return "\n".join(lines)
 
 
