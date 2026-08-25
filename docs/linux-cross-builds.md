@@ -759,3 +759,69 @@ opt in per scope via `cross_bare_bin_path()`:
 ```bash
 bare="$(cross_bare_bin_path)" && exec "${CC}" -B"${bare}/" "$@"
 ```
+
+## Runtime lane helper commands
+
+Building and publishing the per-arch wrappers and the multi-arch manifest, plus manifest repair. The canonical chain commands are in [`../AGENTS.md`](../AGENTS.md) § Quick Reference; these are the runtime-lane half.
+
+```bash
+# Build and push per-arch wrappers + manifest
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 \
+  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
+  --push
+
+# Build local artifacts only (no push)
+bash linux/scripts/build-runtime-artifacts.sh \
+  --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64
+
+# Dry-run: print what would be built without executing
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 --dry-run
+
+# Manifest repair (rebuild manifest from existing per-arch wrappers)
+nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
+nerdctl manifest create "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" \
+  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-amd64" \
+  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64" \
+  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-riscv64"
+nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
+
+# Or use the helper: rebuild just the manifest (no image rebuilds)
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
+
+# Shorthand: --repair is an alias for --manifest-only
+bash linux/scripts/build-runtime-manifest.sh \
+  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
+  --target-arches amd64,arm64,riscv64 --repair --push-manifest
+```
+
+## Orchestrator stage selection
+
+Resuming mid-chain, building one stage, and the parallel-arch knobs.
+
+```bash
+# Resume mid-chain (e.g., after rebuilding compiler)
+bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+
+# Build only one stage for one architecture
+bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
+
+# Build per-arch stages in parallel (faster on multi-core machines).
+# PAR4 (VALIDATED through wave-4, 2026-08-21): cross_build_mem_divisor
+# multiplies the arch count by PAR_INTRA_STEP_BUDGET (default 2) for
+# PER-ARCH stages, and uses divisor 1 for SHARED stages (base/compiler run
+# alone — the ×budget throttled the compiler to 1/3 jobs once). Across ~12
+# parallel media rounds: ONE isolated OOM kill, absorbed by retries. If a
+# lane OOMs repeatedly raise PAR_INTRA_STEP_BUDGET=3 or use
+# PARALLEL_STAGES=sdk,android. Details: docs/build-parallelism-memory-tuning.md.
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
+
+# Build a single cross stage standalone (with digest-pinned parent when --push)
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+```

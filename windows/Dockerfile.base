@@ -140,7 +140,7 @@ ARG GIT_INSTALLER_URL=""
 ARG SCOOP_INSTALLER_SHA256=84242117fbd6cf80c1f1767e590a681257db47e8e0e6864dc445ce6c7fd6980e
 ARG WIX_VERSION=4.0.6
 ARG WIX_UI_EXT_VERSION=4.0.6
-ARG FLUTTER_VERSION=3.47.0
+ARG FLUTTER_VERSION=3.47.1
 # LAN preseed source for the 275 MB vulkan SDK exe: sdk.lunarg.com stalls out
 # reproducibly from inside containers (2026-08-19, 3x ~20-min deaths), so the
 # driver stages the exe on the webdav and setup-scoop-tools pulls it into

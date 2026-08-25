@@ -117,13 +117,11 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    non-admin builds possible. containerd's own pipe stays admin-only (only
    `nerdctl` needs it; `docker`/`buildctl` don't).
 
-1. **Services**: all three must run; set them to delayed-auto so reboots
-   self-heal:
-
-   ```powershell
-   Get-Service stevedore, containerd, buildkitd | Set-Service -StartupType AutomaticDelayedStart
-   Start-Service stevedore, containerd, buildkitd
-   ```
+1. **Services**: all three must run, set to delayed-auto so reboots
+   self-heal. The command and its verification live in
+   [`windows-host-setup.md`](windows-host-setup.md) § A3. That page owns host
+   bring-up, and a second copy here is how the Dev Drive filter command ended
+   up wrong in three places (see [`INDEX.md`](INDEX.md)).
 
    buildkitd's service must carry `--group docker-users` in its ImagePath
    (Stevedore's default registration does:
@@ -1304,12 +1302,12 @@ To test a hypothetical newer *matching-build* base image, pass `-Base <image>`.
 Baseline history: Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
 `servercore:ltsc2025` measured **BUG PRESENT**; the 2026-08-21 re-probe (after a
 Stevedore reinstall) measured **BUG GONE — process isolation commits fine**, which
-is the current baseline AGENTS.md § Isolation policy operates on. Re-probe (delete
+is the current baseline § Driver preflight gates and isolation policy operates on. Re-probe (delete
 the probe cache first) rather than trusting either verdict after any Docker/
 containerd/host update.
 
 **The 2026-08-21 incident — how a broken PROBE manufactured a "host defect"
-(the ProbeShell story; moved here from AGENTS.md § Isolation policy on
+(the ProbeShell story; see § Driver preflight gates and isolation policy on
 2026-08-24 — no other doc carried it before):** the probe's own
 `Dockerfile.isolation-probe` set `SHELL ["pwsh", ...]` on the PUBLIC
 `servercore` base — which ships Windows PowerShell 5.1 only — so every `RUN`
@@ -1394,7 +1392,7 @@ Pass `-Base <image>` to probe the built developer image's own layers.
 
 ---
 
-## Driver behaviour and lane selection (from AGENTS.md)
+## Driver preflight gates and isolation policy
 
 The preflight gates, isolation policy, lane reality check and the classic
 lane's run+commit path — the operational half an agent needs before launching

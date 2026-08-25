@@ -5,6 +5,66 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (later) — docs: a gate that keeps the structure honest, plus the leftovers
+
+The structural pass earlier today fixed the *state* and nothing kept it fixed.
+This closes that, and clears the items that pass deliberately left open.
+
+- **`docs/scripts/verify_doc_links.py` (new) — preflight slug `doc-links`.**
+  Checks the four ways this tree rots silently: a relative link whose target
+  moved, a `file.md#heading` deep link whose heading was renamed, the repo's own
+  `file.md § Heading` prose convention (the worst of them — nothing renders
+  those, so nothing complains), and index coverage against BOTH `docs/INDEX.md`
+  and the Sphinx toctree. Wired into `stale-docs-check.yml` and
+  `build-docs.yml`. Archives and `CHANGELOG.md` are exempt from the anchor and
+  section checks by design: they are dated records, and a heading renamed later
+  must not force an edit to history. Negative-tested — a renamed heading, a
+  dropped toctree entry and a renamed section target each fail it; ruff-clean on
+  the full ruleset.
+  **It immediately earned its place**: 10 real stale references, two of them
+  introduced by the morning's split (`docs/upstream/` was outside the first
+  rewrite pass; two lane refs still pointed at `AGENTS.md § Isolation policy`
+  after that content moved INTO the lane doc). It then rejected two references
+  in prose written for this very entry.
+- **The smear tables are gone.** `windows-builds.md` had 39 table rows over 400
+  characters — the exact defect called out in the failure-modes table and then
+  walked past in its twin. § Windows Script Reference (47 entries) is now
+  grouped, linkable sections with a scan list; Component Build Matrix and Source
+  Patch Policy keep their scannable columns and move the long free-text column
+  into per-row subsections. 39 → 1.
+- **Zero verbatim duplicate prose lines** across all non-archive docs. The last
+  two were commands — a `gh --jq` recipe and a `Set-Service` line — which is the
+  exact class the Dev Drive incident in `INDEX.md` is about. Each now has one
+  owner and a pointer.
+- **The provenance heading is gone.** `windows-build-lanes.md` carried a section
+  named "Driver behaviour and lane selection (from AGENTS.md)" — named after
+  where the content came from, not what it is. Now "Driver preflight gates and
+  isolation policy".
+- **`AGENTS.md` 1,205 → 1,110 lines** by moving reference out to the pages that
+  own it: the runtime-lane and orchestrator command blocks to
+  `linux-cross-builds.md`, `WindowsContainerBuild.Reuse` to `windows-builds.md`,
+  the Sphinx theme package to `project-info.md`, and the build-performance
+  summary down to its motivating number plus a pointer.
+- **Version drift cleared** via the sanctioned `sync_versions.py --write`.
+  Note two real corrections it made: `windows/Dockerfile.base`'s
+  `FLUTTER_VERSION` default was 3.47.0 while `versions.env` says 3.47.1 (the ARG
+  sits BELOW the VS Build Tools layer, so this costs a scoop re-run, not the
+  expensive layer — the ARG-placement rule doing its job), and the docs claimed
+  Vulkan 1.4.357.1 while `versions.env` says 1.4.357.0. The SSOT won. **If .1
+  was the intent, `versions.env` is the file to change — not the docs.**
+- **The Sphinx build is warning-free** (was 29). Four code blocks used an
+  unknown `cmd` lexer; the 2026-08-21 backlog archive jumped H1 to H3 in 26
+  places. The archive's heading levels were corrected and a dated editorial note
+  added where it points at content this morning's split moved — the entries
+  themselves are untouched, because it is the record.
+
+**Not fixed, and why.** `AGENTS.md` is 1,110 lines, not the ~600 previously
+proposed. That number was wrong: what remains is rules, not reference, and
+cutting further would delete hard-won knowledge to hit an arbitrary target.
+`windows-build-lanes.md` is 1,461 lines and remains the largest non-archive
+page; it is one coherent topic and splitting it again would scatter a story that
+reads in order. `windows-cross-builds.md` still has 14 long table rows.
+
 ## 2026-08-25 - docs: structural pass — one index, five new pages, AGENTS.md halved
 
 A review of `AGENTS.md`, `README.md` and `docs/` found the content strong but

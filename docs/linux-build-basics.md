@@ -223,7 +223,7 @@ nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.2 --no
   . 2>&1 | tee ./out/build-logs/riscv64-build.log
 ```
 
-`linux/Dockerfile.torch` is the final wrapper image; build it through the orchestrator or via the `wrapper-smoke` target in `Dockerfile.package` for cheaper packaging validation (see `docs/linux-cross-builds.md` § "Single-Stage Builds").
+`linux/Dockerfile.torch` is the final wrapper image; build it through the orchestrator or via the `wrapper-smoke` target in `Dockerfile.package` for cheaper packaging validation (see `docs/linux-cross-builds.md` § "Local wrapper smoke validation").
 
 For media-build validation before kicking off the slow gstreamer+libcamera serial tail, `Dockerfile.media` exposes a `media-smoke` alias that stops at the `media-inputs` aggregation stage:
 

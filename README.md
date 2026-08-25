@@ -210,10 +210,10 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 | Target | Source-controlled defaults |
 | --- | --- |
-| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.1 |
+| Linux base image | Ubuntu 26.04, LLVM/Clang 22.1.8, GCC 16, CMake 4.4.2, Vulkan SDK 1.4.357.0 |
 | Android layer | Android SDK 15859902, NDK 29.0.14206865, CMake 4.1.2 |
 | Webserver image | Ubuntu 26.04 |
-| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.1, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
+| Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.0, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
 <!-- generated:version-snapshot:end -->
 
 ## License

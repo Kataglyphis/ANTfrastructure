@@ -59,7 +59,8 @@ export PYTHONUTF8=1
 
 KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
-             dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph)
+             dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
+             doc-links)
 
 _in_csv() {  # _in_csv needle csv
   local needle="$1" csv="$2" item
@@ -149,6 +150,18 @@ if [ -f docs/scripts/sync_versions.py ]; then
   run_check version-snapshot "version snapshot"   ${PREFLIGHT_PYTHON} docs/scripts/sync_versions.py --check
 else
   run_check version-snapshot "version snapshot"   bash -c 'echo "docs/scripts/sync_versions.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
+fi
+
+# 5a. Docs cross-references: relative links, deep-link anchors, the `file.md § Heading`
+# prose convention, and index coverage (docs/INDEX.md + the Sphinx toctree).
+# The 2026-08-25 structural pass moved ~5,000 lines and rewrote ~50 references by
+# hand; nothing kept that verified afterwards. Same [ -f ] FAIL-not-skip contract
+# as the version-snapshot check below it — a renamed script must not silently
+# leave build-docs.yml and stale-docs-check.yml green with the gate gone.
+if [ -f docs/scripts/verify_doc_links.py ]; then
+  run_check doc-links "docs cross-references"     ${PREFLIGHT_PYTHON} docs/scripts/verify_doc_links.py
+else
+  run_check doc-links "docs cross-references"     bash -c 'echo "docs/scripts/verify_doc_links.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
 # 5b. A1: env-knob registry — every consumed ${VAR:-} knob must have an owner

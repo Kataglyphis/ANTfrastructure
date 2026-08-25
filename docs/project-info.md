@@ -207,3 +207,28 @@ Some very helpful literature, tutorials, etc.
 
 - [Rancher Desktop](https://rancherdesktop.io/)
 - [containerd](https://github.com/containerd/containerd)
+
+## Reusable Sphinx theme package
+
+The shared theme lives in the Kataglyphis-DocumANTation repo and is vendored here as a submodule.
+
+The shared theme now lives in the **Kataglyphis-DocumANTation** repo, vendored here
+as a submodule at `external/Kataglyphis-DocumANTation`. `requirements.txt` installs it
+editable (`-e ./external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme`), so
+`docs/conf.py` just imports it:
+
+```python
+from sphinx_kataglyphis import setup_theme
+setup_theme(globals(), repository_url="https://github.com/org/repo")
+```
+
+`setup_theme()` provides all shared Sphinx config and loads the canonical CSS from the
+package's `_static/` directory.
+
+**For other projects** — add the DocumANTation submodule and the same `-e` line to
+their `requirements.txt`, then use the `conf.py` snippet above.
+
+The canonical CSS lives in the submodule at
+`external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
+— edit it **in the DocumANTation repo** to change the global look. The project's own
+`docs/_static/css/` can hold additional per-project overrides.

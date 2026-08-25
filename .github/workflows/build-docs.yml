@@ -64,7 +64,7 @@ jobs:
       # job already carries the FULL gate, so re-running everything here just
       # doubled the work on every PR/push.
       - name: Run preflight verification (docs-relevant subset)
-        run: PREFLIGHT_ONLY=version-snapshot,mirror-consistency bash linux/scripts/preflight.sh
+        run: PREFLIGHT_ONLY=version-snapshot,mirror-consistency,doc-links bash linux/scripts/preflight.sh
 
       - name: Check shell script syntax
         run: find linux/scripts -name '*.sh' -exec bash -n {} +

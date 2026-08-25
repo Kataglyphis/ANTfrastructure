@@ -532,7 +532,7 @@ container churn and finalize/export operations flake constantly (the
 hcs-temp sharing-violation family). They also tame — but do NOT cure — the
 `ExportLayer 0x3` heavy-churn finalize defect (TVM-class finalizes became
 reliable with them; OpenCV-class still trips it, which is why the
-warm/materialize pattern stays — full story: windows-build-lanes.md § roadmap).
+warm/materialize pattern stays — full story: windows-build-lanes.md § BuildKit/containerd lane).
 Skipping this step on a new machine makes builds flaky across the board.
 The full set (the [`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going step-3 list plus the process exclusions
 added 2026-08-05 after the hcs-temp sharing-violation flake family):
@@ -908,7 +908,7 @@ The Windows counterpart to
 [`grub-reboot`](linux-host-setup.md#choosing-the-default-boot-entry) — useful
 when a host serves both lanes and you want the next boot only:
 
-```cmd
+```bat
 bcdedit /enum
 bcdedit /bootsequence {identifier}
 ```
@@ -920,7 +920,7 @@ bcdedit /bootsequence {identifier}
 Occasionally relevant on a GPU host where a stale driver blocks memory
 integrity / core isolation:
 
-```cmd
+```bat
 pnputil /enum-drivers
 pnputil /delete-driver oemXX.inf /uninstall /force
 ```

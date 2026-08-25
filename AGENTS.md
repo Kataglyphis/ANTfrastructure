@@ -134,7 +134,7 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 
 # Single cross stage — the canonical way to rebuild one stage for one arch.
 # Handles parent digest pinning, build-arg assembly, log capture, and push.
-# See docs/linux-cross-builds.md § "Single-Stage Builds" for details.
+# See docs/linux-cross-builds.md § "Recommended: digest-pinned orchestrator".
 bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
@@ -286,8 +286,11 @@ work.** `gh` is installed (winget) and authenticated; see
 
 ```pwsh
 gh run list --limit 10
-gh run view <run-id> --json jobs --jq '.jobs[] | .name + " => " + .conclusion, (.steps[] | select(.conclusion=="failure") | "   FAILED STEP: " + .name)'
 ```
+
+To go from a run id to the failing STEP, use the `--jq` recipe in
+[`docs/github-cli-pipeline-monitoring.md`](docs/github-cli-pipeline-monitoring.md)
+— that page owns the query, so it is maintained in one place.
 
 Three things that will otherwise cost you an hour:
 
@@ -367,49 +370,25 @@ When adding here:
 
 ### Reusable Module: WindowsContainerBuild.Reuse
 
-`windows/scripts/modules/WindowsContainerBuild.Reuse.psm1` implements the
-container-reuse pattern so consumers do not each reinvent it:
-
-- `Get-ReusableBuildContainer` - reuse/start/recreate a named build container,
-  recreating it when the image ID changes. Returns whether an existing
-  container was reused.
-- `Copy-IntoBuildContainer` / `Copy-FromBuildContainer` - tar-pipe transfers
-  with exclusion support (mandatory for deep paths; one over-long path aborts
-  the whole transfer).
-- `Remove-StaleContainerSources` - prune non-build directories from a reused
-  workspace (tar extracts over the tree but never deletes).
-- `Initialize-ContainerPwsh` - ensure PS 7 exists in a running container
-  (scoop install fallback).
-- `Test-BuildArtifactsDelivered` - throw when a green build produced no
-  executables or the outbound transfer silently delivered nothing.
-- `Resolve-DockerExe`, `Get-ContainerIsolationArgs`, `Test-ContainerBindMount`,
-  `Remove-BuildContainerSafe` - docker discovery, isolation args, bind-mount
-  probing, wcifs-tolerant removal.
-
-Consumers resolve it ContainerHub-first with a vendored fallback (see
-BeschleunigerBallett's `scripts/windows/Resolve-BuildModule.ps1`).
+The container-reuse API consumers build on:
+[`docs/windows-builds.md`](docs/windows-builds.md) § Reusable module: WindowsContainerBuild.Reuse.
 
 ### Building Projects Inside the Windows Image (performance)
 
 Consumers building large projects in this image should read
-`docs/windows-container-build-performance.md`. Measured on a ~690-object C++23
-modules project: **9.6 s ninja / 44 s wall** for a no-change incremental build
-vs **352-484 s** when every build got a fresh container. Headlines:
+[`docs/windows-container-build-performance.md`](docs/windows-container-build-performance.md)
+before hand-rolling anything. The number that motivates it, measured on a
+~690-object C++23 modules project: **9.6 s ninja / 44 s wall** for a no-change
+incremental build against a reused container, versus **352-484 s** when every
+build got a fresh one.
 
-- **Reuse ONE container** (recreate it when the image ID changes); stream
-  sources in and only executables/logs out - never the intermediate build tree.
-- **Two transports, both supported**: tar-pipe (no host setup) and bind mount
-  (needs an elevated `fsutil` allow-list plus a reboot on a Dev Drive). The
-  bind mount measured *slower* on that host - 32.7 s ninja vs 9.6 s - because
-  the build tree then sits behind a filesystem filter. Host-specific: measure
-  before choosing. Setup for both is in the doc.
-- **sccache does not work on C++20/23 modules builds** - measured 0.00 % hit
-  rate, 0 bytes stored. It remains useful for non-module codebases.
-- **A named volume cannot be a CMake build directory** - configure fails with
-  `ninja: error: loading 'build.ninja'`, even with a fresh volume.
-- **Deep paths abort tar transfers.** One over-long path (Rust `cxxbridge`
-  output) fails the whole transfer with `Can't create ...: Invalid argument`;
-  exclude such subtrees.
+The rule that follows: **reuse ONE container**, recreating it only when the
+image ID changes; stream sources in and executables/logs out, never the
+intermediate build tree. Transport choice, the Dev Drive filter setup, and the
+four traps that cost measurable time (bind mount slower behind a filesystem
+filter, sccache useless on C++20/23 modules, a named volume unusable as a CMake
+build dir, deep paths aborting tar transfers) are all in that page.
+
 
 ### Windows Build Invariants (do not regress)
 
@@ -465,65 +444,13 @@ Update those tables in `docs/windows-builds.md` — this section stays a pointer
 
 ### Orchestrator Stage Selection
 
-```bash
-# Resume mid-chain (e.g., after rebuilding compiler)
-bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
-
-# Build only one stage for one architecture
-bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
-
-# Build per-arch stages in parallel (faster on multi-core machines).
-# PAR4 (VALIDATED through wave-4, 2026-08-21): cross_build_mem_divisor
-# multiplies the arch count by PAR_INTRA_STEP_BUDGET (default 2) for
-# PER-ARCH stages, and uses divisor 1 for SHARED stages (base/compiler run
-# alone — the ×budget throttled the compiler to 1/3 jobs once). Across ~12
-# parallel media rounds: ONE isolated OOM kill, absorbed by retries. If a
-# lane OOMs repeatedly raise PAR_INTRA_STEP_BUDGET=3 or use
-# PARALLEL_STAGES=sdk,android. Details: docs/build-parallelism-memory-tuning.md.
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
-
-# Build a single cross stage standalone (with digest-pinned parent when --push)
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
-```
+Resume mid-chain, build one stage, or use `--parallel-archs`:
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Orchestrator stage selection.
 
 ### Runtime Helpers
 
-```bash
-# Build and push per-arch wrappers + manifest
-bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 \
-  --artifact-image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-android \
-  --push
-
-# Build local artifacts only (no push)
-bash linux/scripts/build-runtime-artifacts.sh \
-  --image-prefix ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64
-
-# Dry-run: print what would be built without executing
-bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --dry-run
-
-# Manifest repair (rebuild manifest from existing per-arch wrappers)
-nerdctl manifest rm "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" >/dev/null 2>&1 || true
-nerdctl manifest create "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross" \
-  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-amd64" \
-  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64" \
-  "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-riscv64"
-nerdctl manifest push --purge "ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross"
-
-# Or use the helper: rebuild just the manifest (no image rebuilds)
-bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --manifest-only --push-manifest
-
-# Shorthand: --repair is an alias for --manifest-only
-bash linux/scripts/build-runtime-manifest.sh \
-  --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross \
-  --target-arches amd64,arm64,riscv64 --repair --push-manifest
-```
+Wrapper builds, manifest publishing and manifest repair:
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Runtime lane helper commands.
 
 ---
 
@@ -1100,7 +1027,6 @@ the store · Stevedore and the docker service · build content and toolchain.
 3. **After ANY red finalize, REBOOT before further A/B tests.** A wedged hcs
    state falsifies every experiment run after it.
 
-
 ---
 
 ## Version Bumping
@@ -1172,26 +1098,8 @@ root-context builds and must not be copied over.
 
 ## Reusable Sphinx Theme Package
 
-The shared theme now lives in the **Kataglyphis-DocumANTation** repo, vendored here
-as a submodule at `external/Kataglyphis-DocumANTation`. `requirements.txt` installs it
-editable (`-e ./external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme`), so
-`docs/conf.py` just imports it:
-
-```python
-from sphinx_kataglyphis import setup_theme
-setup_theme(globals(), repository_url="https://github.com/org/repo")
-```
-
-`setup_theme()` provides all shared Sphinx config and loads the canonical CSS from the
-package's `_static/` directory.
-
-**For other projects** — add the DocumANTation submodule and the same `-e` line to
-their `requirements.txt`, then use the `conf.py` snippet above.
-
-The canonical CSS lives in the submodule at
-`external/Kataglyphis-DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
-— edit it **in the DocumANTation repo** to change the global look. The project's own
-`docs/_static/css/` can hold additional per-project overrides.
+The shared theme and its `conf.py` snippet:
+[`docs/project-info.md`](docs/project-info.md) § Reusable Sphinx theme package.
 
 ## Documentation Maintenance
 

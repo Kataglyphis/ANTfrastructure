@@ -117,7 +117,7 @@ in [Fresh Windows Host Bring-Up § Appendix](windows-host-setup.md#appendix--hos
 
 ## Restart, shutdown, recovery
 
-```cmd
+```bat
 shutdown /r /t 0
 shutdown /s /t 0
 ```
@@ -134,7 +134,7 @@ offers recovery options on the next boot.
 
 Temporarily, in a `cmd` session:
 
-```cmd
+```bat
 set PATH=C:\tools\bin;%PATH%
 ```
 

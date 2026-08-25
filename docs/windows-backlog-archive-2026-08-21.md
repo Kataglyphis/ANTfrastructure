@@ -11,7 +11,14 @@ these entries live on in `windows-builds.md` — this file is the record, not
 the rulebook. Earlier tranches: windows-backlog-archive-2026-08-11.md,
 windows-backlog-archive-2026-08-17.md.
 
-### CURRENT SEQUENCE (the one list — batches A–D/G completed, see archive)
+> **Editorial note (2026-08-25).** `windows-builds.md` was split on that date.
+> The standing directives this file points at now live in
+> [`windows-refactor-backlog.md`](windows-refactor-backlog.md); the lane
+> mechanics moved to [`windows-build-lanes.md`](windows-build-lanes.md). The
+> entries below are left exactly as written -- this is the record, not the
+> rulebook.
+
+## CURRENT SEQUENCE (the one list — batches A–D/G completed, see archive)
 
 > Ordered by what unblocks what; the verification chain is the bottleneck, not
 > the code. One experiment per build.
@@ -57,13 +64,13 @@ windows-backlog-archive-2026-08-17.md.
 >    bind-mounts / merge CUDA-runtime dedup — each wants its own verify build,
 >    #54 carries a load-bearing warning).
 
-### P0 — LIVE DEFECTS (not refactors; the chain is green *and* wrong)
+## P0 — LIVE DEFECTS (not refactors; the chain is green *and* wrong)
 
 > Found by the 2026-08-14 deep audit (static sweep of 151 scripts + 6
 > Dockerfiles + 102 build logs). Each was verified against the tree/logs, not
 > inferred. These ship broken today — do them before any refactor below.
 
-### P0d — RESOLVED 2026-08-16 (stub; full narrative in windows-backlog-archive-2026-08-17.md)
+## P0d — RESOLVED 2026-08-16 (stub; full narrative in windows-backlog-archive-2026-08-17.md)
 
 sccache lost 100 % of L0 cache writes (`os error 3`). ROOT CAUSE: BuildKit WCOW
 cache mounts lose writes into a directory an EARLIER RUN populated (158/250 on
@@ -75,7 +82,7 @@ AGENTS.md (probe-reproduces-environment-not-failure; probe-destroys-own-
 experiment). Trail items #89–#99 (verbatim, with every measurement): archive.
 Upstream follow-ups: see "Pending" at the bottom.
 
-### P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
+## P0b — Confirmed by log forensics (49 runs, 185 MB; 2026-08-14)
 
 > The corpus predates the step-log fix, so 28 of these logs are CLIPPED
 > (the green reference run is 49 % blind in its merge step; historical ONNX
@@ -203,7 +210,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   removing. FIX: suppress the top-5 noise classes at build-script level so CI
   can see the rest.
 
-### P0e — status 2026-08-17 (stub; full narrative in windows-backlog-archive-2026-08-17.md)
+## P0e — status 2026-08-17 (stub; full narrative in windows-backlog-archive-2026-08-17.md)
 
 - **#94 RESOLVED, DEFAULT ON** — OpenCV links the chain''s FFmpeg (avcodec 63,
   avdevice YES; was prebuilt 61/NO). Four parts, all required: stage swap
@@ -221,7 +228,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   (compile-time string; plugin is runtime) — the smoke guard asserts
   `hasBackend(CAP_GSTREAMER)` + an actual videotestsrc frame read instead.
 
-### P2 — Fail-open gates & silent degradation (green build, crippled image)
+## P2 — Fail-open gates & silent degradation (green build, crippled image)
 
 - **45 [S·★★★, none] DONE 2026-08-19 (module edit, next media rebuild): Get-GpuEnvironment THROWS on GPU_TYPE=nvidia with no resolvable CUDA root; FORCE_CPU opt-outs short-circuit before the gate (2 unit tests).** Original finding: a mis-plumbed CUDA path yields a fully green, CPU-ONLY
   media chain — discovered hours later. `WindowsSourceBuild.Cuda.psm1:47`
@@ -246,7 +253,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   entirely: build green, `import tvm` green, and every `tvm.build` for an LLVM
   target fails at runtime in the shipped image. An LLVM/scoop bump that drops
   `llvm-config.exe` off PATH is a plausible one-line regression.
-### P2b — Per-component build-script gaps (sibling scripts that drifted apart)
+## P2b — Per-component build-script gaps (sibling scripts that drifted apart)
 
 - **65 [S·★★★, none] DONE 2026-08-17 (verify in the next merge build) — GStreamer compiles with NO job budget, NO retry ladder and
   NO sccache stall guard — while using sccache.** Verified: 0 hits for
@@ -318,7 +325,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   stats is unconditionally safe; whether FFmpeg's `configure` tolerates
   `--cc="sccache clang-cl"` needs a configure-only probe first.
 
-### P3 — Cache tiering (pure rebuild-time cost; no correctness change)
+## P3 — Cache tiering (pure rebuild-time cost; no correctness change)
 
 - **49 [M·★★★, media-core once] LANDED 2026-08-19, riding the full ride (verify: a later PYAV-only bump must NOT re-run onnx): per-component ARG/ENV blocks in the BK stages, media-core-env is classic-lane-only, TwinParity suite carries the new contract. Original finding: nine version ARGs share ONE ENV layer directly
   above the ~75-min ONNX compile.** `Dockerfile.media-builder:142-168` declares
@@ -430,14 +437,14 @@ Upstream follow-ups: see "Pending" at the bottom.
   cache as evidence: a stage with 0 misses writes nothing and proves nothing
   (that trap cost two stages' worth of "0 write errors" in this very run).
 
-### P4 — Missing regression tests (each maps to a bug that already cost hours)
+## P4 — Missing regression tests (each maps to a bug that already cost hours)
 
 - **59 [S·★★, none] CLOSED 2026-08-17 — owner decision: no branch protection wanted. Lint/tests are advisory, not gating.** `main` is not
   branch-protected (`gh api …/protection` → 404); `windows-scripts.yml:50` runs
   the linter WITHOUT `-FailOnAnalyzer`; `.githooks/pre-commit` runs the Linux
   preflight but neither `Invoke-Lint.ps1` nor `Invoke-Tests.ps1`. The gate is
   currently human discipline plus a post-hoc notification.
-### P5 — Observability (makes everything above measurable)
+## P5 — Observability (makes everything above measurable)
 
 - **61 [M·★★★, none] DONE 2026-08-17 (first manifest lands with the next driver run) — stage logs now carry a per-run id (bk-<runid>-<label>.log; the Keep-80 rotation finally has something to rotate), each stage prints its duration, and a machine-readable per-stage manifest is written at the end. Original finding: No per-stage timing, no run manifest, and stage logs are
   OVERWRITTEN every run.** `build-buildkit.ps1:284` names logs by label only —
@@ -449,7 +456,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   comparison is done by hand in CHANGELOG prose. FIX: stamp logs with a run id;
   emit `run-<id>.json` (stage, tag, attempts, seconds, exit, disk before/after);
   print the table at the end AND in a `finally` on failure.
-### P6 — 2026-08-17 static audit, OPEN remainder (done items #101/#102/#103/#105 + methodology: archive)
+## P6 — 2026-08-17 static audit, OPEN remainder (done items #101/#102/#103/#105 + methodology: archive)
 
 - **104 [S·★, none] DONE 2026-08-17 — with a finding: the corpse was ALREADY GONE.** `clean-sccache-mount.ps1` (+ `Dockerfile.cache-mount-clean`, via the shared probe runner, network-free) found the mount root holding only KB-scale bucket remnants — **no v2, no v3, no v4** — and freed just 0.1 MiB. v4 (~63 MiB, experiment B) verifiably existed yesterday; something reclaimed the mount contents during today's build churn, most plausibly buildkitd GC treating the exec.cachemount as reclaimable under the shared tier-0 budget. RELEVANT LATER: when the disk,webdav tier returns (#99 restore), do not assume cache-mount contents survive GC pressure between runs. Fixtures probe-persist/bulk-inherit kept (the #99 repro). Original finding: The sccache cache mount carries dead weight that no build will ever read again.** The damaged original root tree (buckets `0..f`,
   ~114 MiB — the #99 corpse), the empty `v3`, experiment B''s `v4` (~63 MiB),
@@ -528,7 +535,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   Original finding: the chain functions carried 134/158 lines of inline
   sccache choreography accreted through #97–#99.
 
-### P7 — PERFECTION CAMPAIGN (owner mandate 2026-08-17: "drastische Maßnahmen erlaubt")
+## P7 — PERFECTION CAMPAIGN (owner mandate 2026-08-17: "drastische Maßnahmen erlaubt")
 
 > Sequenced by the verification chain — every tranche lands with the build that
 > proves it, never blind. Tranche 1 (uniform `#requires`, zero build cost)
@@ -586,19 +593,19 @@ Upstream follow-ups: see "Pending" at the bottom.
 > nightly/weekly chain run (would-be #111). Manual launches remain the
 > verification cadence — do not re-propose either.
 
-### P8 — 2026-08-21 REFACTOR AUDIT: FULLY LIQUIDATED same day
-### (four-agent deep audit → 7 bugs fixed + guards/dedups/driver-convergence
-### in c7d24907..48a87c15, the residue below in f1883cd9..891394c4; every
-### entry stamped DONE or CLOSED-with-reason.)
+## P8 — 2026-08-21 REFACTOR AUDIT: FULLY LIQUIDATED same day
+## (four-agent deep audit → 7 bugs fixed + guards/dedups/driver-convergence
+## in c7d24907..48a87c15, the residue below in f1883cd9..891394c4; every
+## entry stamped DONE or CLOSED-with-reason.)
 ###
-### >>> THE ONE OPEN ITEM: the P8 batch (13 commits total, suite 523→536) is
-### >>> test-verified but NOT yet ride-verified. The post-store-reset rebuild
-### >>> ride is the verification gate — its risk surfaces: classic-lane smoke
-### >>> gate (docker-run form), ffmpeg/onnx trap-phase tables, litert-lm 5a-5e,
-### >>> Dockerfile.probe consolidation, chain Invoke-stage shape (litert-all),
-### >>> Find-TensorRtZipIn newest-by-version, cpython props COPY, the 7 SHELL
-### >>> guard lines, merge sccache ARG parity. A green ride + smoke closes P8
-### >>> for good; a red one starts at these touchpoints.
+## >>> THE ONE OPEN ITEM: the P8 batch (13 commits total, suite 523→536) is
+## >>> test-verified but NOT yet ride-verified. The post-store-reset rebuild
+## >>> ride is the verification gate — its risk surfaces: classic-lane smoke
+## >>> gate (docker-run form), ffmpeg/onnx trap-phase tables, litert-lm 5a-5e,
+## >>> Dockerfile.probe consolidation, chain Invoke-stage shape (litert-all),
+## >>> Find-TensorRtZipIn newest-by-version, cpython props COPY, the 7 SHELL
+## >>> guard lines, merge sccache ARG parity. A green ride + smoke closes P8
+## >>> for good; a red one starts at these touchpoints.
 
 - **120 DONE 2026-08-21 (7 assert sites converted; the 3 $isAdmin FLAG sites are mode logic, untouched by design). Original: Assert-Elevated adoption, remaining ~9 host sites.** The
   function exists in Shared (2 adopters). The rest need a Shared import ADDED
@@ -664,8 +671,8 @@ ride (commits 72d92fb1, e680fb4b), outer-ring/setup/module-tail fixes, and
 the P9 residue below, liquidated the same day (f5f6de07) with consumer
 contracts VERIFIED against the local repos. Suite 523 -> 547 over the day.
 
-### P9 — 2026-08-21 audit ROUND 2 residue (deferred with reasons; the fixes
-### themselves landed same day in 72d92fb1 + e680fb4b, suite 523->537)
+## P9 — 2026-08-21 audit ROUND 2 residue (deferred with reasons; the fixes
+## themselves landed same day in 72d92fb1 + e680fb4b, suite 523->537)
 
 - **140 DONE 2026-08-21: ZERO callers verified across ALL local consumer repos (BeschleunigerBallett/Inference-Engine/Orchestr-ANT-ion/RustProjectTemplate/WebDavClient/jotrockenmitlocken + the reusable workflows) — the comment was wrong, the code was unowned. Comment now states the truth (ContainerHub checkout root) + explicit -RepoRoot override for vendored consumers. Original: [M·decision] `Initialize-CiEnvironment.ps1` repo-root depth vs its own
   comment.** `..\..\..` from scripts/python resolves to the ContainerHub
