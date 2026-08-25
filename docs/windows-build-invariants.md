@@ -28,7 +28,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [Never put double quotes inside shell-form `RUN` lines](#never-put-double-quotes-inside-shell-form-run-lines)
 - [`Import-Module -Force` only at entry-script top level](#import-module--force-only-at-entry-script-top-level)
 - [Never splat a string array of `-Param`-shaped tokens](#never-splat-a-string-array-of--param-shaped-tokens)
-- [Two more pwsh traps: bareword comma-attributes, switch-name collisions](#two-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions)
+- [Three more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens](#three-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens)
 - [Windows stage scripts must end with an explicit `exit 0`](#windows-stage-scripts-must-end-with-an-explicit-exit-0)
 
 **Gates that must stay armed**
@@ -168,10 +168,21 @@ process instead (`& pwsh -NoProfile -File $script @argv` — native argv is
 re-parsed into named parameters; `bk-warm.ps1` is the reference), or splat a
 HASHTABLE. Splatting arrays onto native executables stays fine.
 
-### Two more pwsh traps: bareword comma-attributes, switch-name collisions
+### Three more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens
 
-**Two more pwsh traps, both found live 2026-08-10 in `probe-build-copy.ps1`
-(regression pin: `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`):**
+**Three more pwsh traps — (a) and (b) found live 2026-08-10 in
+`probe-build-copy.ps1`, (c) on 2026-08-25 in the arm64 target-cpython stage
+(regression pin: `windows/scripts/tests/Native.ArgQuoting.Tests.ps1`; all three
+are AST traps in `Invoke-Lint.ps1`):**
+(c) A parameter token glued to its argument PARSES: `Get-PeFileMachine
+-Path$staged.FullName` is a parameter literally NAMED `Path$staged` (the
+`.FullName` becomes a positional argument) and dies at runtime with "A
+parameter cannot be found that matches parameter name 'Path$staged'";
+`-Path(Join-Path ...)` binds the paren expression positionally, right only by
+accident. Four such calls survived a refactor, the parse gate and 662 tests and
+surfaced 90 s into the arm64 regression. Native tools are exempt — for
+clang-cl/nasm the glued token IS the syntax (`-Fotiny.o`, `-I<dir>`) — the
+detector inspects Verb-Noun commands with an approved verb plus `Assert-*`.
 (a) a BAREWORD comma-attribute native argument
 (`buildctl --output type=local,dest=$outDir`) parses as an ArrayLiteral and
 the exe receives the VERBATIM SOURCE TEXT — no variable expansion, no comma
