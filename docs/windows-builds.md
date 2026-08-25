@@ -3039,9 +3039,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   that file's alternate stream. Retries cannot help — the RUN result is cached, only the finalize
   re-runs. **Fix:** `Disable-ContainerWindowsUpdate` (`WindowsSourceBuild.Common.psm1`) stops and
   disables both services and sets `NoAutoUpdate=1` as the first step of every build script
-  (`Initialize-SourceBuildEnvironment`), warning if the spool already holds items. Deliberately
-  prevention only: no script deletes under `C:\Windows` (protected-root rule); a poisoned layer is
-  fixed by re-running its RUN with the guard in place (the module edit re-keys it).
+  (`Initialize-SourceBuildEnvironment`) and reports the spool count — an entry inherited from the
+  parent image (1 item at RUN start on every media stage) is harmless, only a file written during
+  the RUN lands in the diff. Deliberately prevention only: no script deletes under `C:\Windows`
+  (protected-root rule); a poisoned layer is fixed by re-running its RUN with the guard in place
+  (the module edit re-keys it). **Proven on the amd64 regression run 4:** the same
+  `media-core-onnx` RUN finalized in 5:32 with the guard active at 4.7 s.
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
   (#59 branch protection was DECLINED, #31 was not).

@@ -1981,12 +1981,13 @@ function Disable-ContainerWindowsUpdate {
         if (-not (Test-Path $au)) { New-Item -Path $au -Force | Out-Null }
         New-ItemProperty -Path $au -Name 'NoAutoUpdate' -Value 1 -PropertyType DWord -Force | Out-Null
     } catch { Write-Warning "Disable-ContainerWindowsUpdate: could not set the NoAutoUpdate policy -- $($_.Exception.Message)" }
+    # The spool count is informational: an entry inherited from the parent
+    # image sits in a layer that already finalized (measured: 1 item at 4.7 s
+    # into every media RUN, and the ONNX layer finalized fine with the guard in
+    # place). Only a file WRITTEN during this RUN lands in the diff.
     $spool = Join-Path $env:SystemRoot 'SoftwareDistribution\Download'
     $spoolItems = if (Test-Path $spool) { @(Get-ChildItem -LiteralPath $spool -Force -ErrorAction SilentlyContinue).Count } else { 0 }
-    if ($spoolItems -gt 0) {
-        Write-Warning ("Disable-ContainerWindowsUpdate: {0} item(s) already sit in {1} -- a download landed before this guard ran; the layer finalize may fail on them (unknown stream ID). Re-run the stage." -f $spoolItems, $spool)
-    }
-    Write-Host ("Disable-ContainerWindowsUpdate: services disabled [{0}], NoAutoUpdate=1, spool items: {1}" -f ($touched -join ', '), $spoolItems)
+    Write-Host ("Disable-ContainerWindowsUpdate: services disabled [{0}], NoAutoUpdate=1; spool holds {1} item(s) at RUN start (inherited -- only files written during this RUN can poison the layer)" -f ($touched -join ', '), $spoolItems)
     $global:LASTEXITCODE = 0
 }
 
