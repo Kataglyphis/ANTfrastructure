@@ -146,13 +146,13 @@ Get-ChildItem $cpyOutDir -Filter '*.dll' -File | Where-Object { $_.Name -notmatc
 # a name, instead of 40 minutes later in the merge.
 $redistArm64 = Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\arm64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
 foreach ($staged in (Get-ChildItem -Path $pyRoot -Recurse -Include '*.dll', '*.exe', '*.pyd' -File)) {
-    $m = Get-PeFileMachine -Path$staged.FullName
+    $m = Get-PeFileMachine -Path $staged.FullName
     if ($m -eq $wantMachine) { continue }
     $replacement = if ($redistArm64) { Join-Path $redistArm64.FullName $staged.Name } else { $null }
-    if ($replacement -and (Test-Path $replacement) -and ((Get-PeFileMachine -Path$replacement) -eq $wantMachine)) {
+    if ($replacement -and (Test-Path $replacement) -and ((Get-PeFileMachine -Path $replacement) -eq $wantMachine)) {
         Copy-Item $replacement $staged.FullName -Force
         Write-Host ('Target CPython: replaced host-arch {0} (0x{1:X4}) with the VS ARM64 redist copy' -f $staged.Name, $m)
-    } elseif ($staged.Name -ieq 'vcruntime140_1.dll' -and (Test-Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -and ((Get-PeFileMachine -Path(Join-Path $staged.DirectoryName 'vcruntime140.dll')) -eq $wantMachine)) {
+    } elseif ($staged.Name -ieq 'vcruntime140_1.dll' -and (Test-Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -and ((Get-PeFileMachine -Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -eq $wantMachine)) {
         # vcruntime140_1.dll has NO ARM64 edition BY DESIGN: it exists only to
         # carry the x64 FH4 exception helpers (__CxxFrameHandler4); on ARM64
         # everything lives in vcruntime140.dll, which is staged here and IS
@@ -200,7 +200,7 @@ $crtStaged = 0
 foreach ($crt in $crtNames) {
     $src = if (Test-Path (Join-Path "$pyRoot\DLLs" $crt)) { Join-Path "$pyRoot\DLLs" $crt } elseif ($redistArm64 -and (Test-Path (Join-Path $redistArm64.FullName $crt))) { Join-Path $redistArm64.FullName $crt } else { $null }
     if (-not $src) { continue }
-    if ((Get-PeFileMachine -Path$src) -ne $wantMachine) { throw "Target CPython: CRT candidate $src is not target-arch -- refusing to stage it" }
+    if ((Get-PeFileMachine -Path $src) -ne $wantMachine) { throw "Target CPython: CRT candidate $src is not target-arch -- refusing to stage it" }
     Copy-Item $src (Join-Path $pyRoot $crt) -Force
     Copy-Item $src (Join-Path $bundleBin $crt) -Force
     $crtStaged++
