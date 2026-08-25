@@ -15,6 +15,7 @@ what you are about to do:
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
 | Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
+| **Add or bump a dependency** | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both |
 
 ## Contents
 
@@ -42,7 +43,7 @@ what you are about to do:
 - [Repo Map](#repo-map) — what lives where, including the consumer surface
 - [Code Organization](#code-organization-key-shared-utilities) — the shared helpers to use instead of hand-rolling
 - [Dockerfile.media BuildKit Strategy](#dockerfilemedia-buildkit-strategy)
-- [Reusable Sphinx Theme Package](#reusable-sphinx-theme-package) · [Documentation Maintenance](#documentation-maintenance)
+- [Reusable Sphinx Theme Package](#reusable-sphinx-theme-package) · [Documentation Maintenance](#documentation-maintenance) — the four docs gates, and why adding a dependency is a docs change
 
 ## Project priorities (owner directive — optimize for ALL THREE, always)
 
@@ -1123,7 +1124,32 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, and shell syntax before each commit — the same checks CI enforces.
+- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the three docs gates below — the same checks CI enforces.
+- **Four gates guard the docs; none of them is optional.** They exist because
+  this tree lost a licence page, a doc index and ~50 cross-references to silent
+  drift on a single day. Run them with
+  `PREFLIGHT_ONLY=doc-links,doc-dupes,sbom,version-snapshot bash linux/scripts/preflight.sh`.
+  - `doc-links` — every relative link, deep-link anchor, `file.md § Heading`
+    prose reference, and index coverage against BOTH `docs/INDEX.md` and the
+    Sphinx toctree. **Rename a heading and this fails**, which is the point.
+  - `doc-dupes` — a passage copied into a second page. Deliberate rule-page /
+    mechanism-page overlap is budgeted in `docs/scripts/doc-dupes.allow`, which
+    also fails when an entry goes stale, so it cannot decay into a blanket
+    exemption. **Do not add an entry to silence a finding**; give the passage one
+    owner and link to it. `docs/INDEX.md` decides which page owns what.
+  - `sbom` / `version-snapshot` — the generated licence pages and the curated
+    SBOM must match `deps.json` + `versions.env`.
+- **Adding a dependency is a docs change.** A new component needs an entry in
+  `docs/deps/deps.json` with an `spdx` id, and — if that licence is copyleft — a
+  `source` block, or the build fails. If this repo patches it, a `modified`
+  marker too. The procedure, schema and worked examples are
+  [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining
+  this list. Regenerate with `sync_versions.py --write` and
+  `generate_sbom.py --write`.
+- **Never hand-edit a generated block.** The licence tables, the version
+  snapshot and `docs/deps/sbom-curated.spdx.json` are all rewritten from
+  `deps.json` + `versions.env`; edits between the `generated:` markers are lost
+  on the next run and the gate will say so.
 - If Dockerfiles or Linux helpers change, update `docs/linux-cross-builds.md`, `docs/linux-build-basics.md`, `docs/project-info.md`.
 - If Windows Dockerfiles/scripts change, update `docs/windows-builds.md`.
 - If version defaults change, run `python3 docs/scripts/sync_versions.py --write` then `python3 docs/scripts/generate-website-licenses.py --write`.

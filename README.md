@@ -94,6 +94,7 @@ The five entry points people actually want:
 | Build the Linux images | [docs/linux-build-basics.md](docs/linux-build-basics.md) |
 | Build the Windows image | [docs/windows-builds.md](docs/windows-builds.md) |
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
+| Know what is inside an image, and under which licence | [docs/third-party-licenses.md](docs/third-party-licenses.md) · [docs/sbom.md](docs/sbom.md) · [docs/vulnerability-scanning.md](docs/vulnerability-scanning.md) |
 
 **Working on this repo as an automated agent?** [`AGENTS.md`](AGENTS.md) holds
 the guardrails: project priorities, the canonical build commands, shell-safety
