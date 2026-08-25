@@ -101,7 +101,7 @@ The **authoritative per-library build reference** for the Windows lane (AGENTS.m
 | LiteRT 2.1.6 | Ninja | clang-cl, lld-link | GPU delegate enabled (Vulkan + OpenCL backends). XNNPACK enabled. CUDA paths exposed for external delegate. Also builds the TFLite **C-API** shared lib `tensorflowlite_c` (target injected into the main build, `WINDOWS_EXPORT_ALL_SYMBOLS` + `/EXPORT:TfLiteXNNPackDelegate*`) that gst-plugins-bad's tflite plugin links. |
 | LiteRT-LM 0.15.0 | **Bazel** | clang-cl, lld-link | On-device LLM inference, built via `build-litert-lm-bazel.ps1` (bazelisk + Temurin JDK, `bazelisk build //runtime/engine:litert_lm_main --config=windows`) → `litert_lm_main.exe`, through the smoke-RUN gate. Bazel is the only path Google CI-tests, so it survives version bumps. The old CMake export-bridge path (`build-litert-lm-from-source.ps1`, 5 condition-gated self-retiring patches for v0.14's never-functional OSS CMake export — see § Source Patch Policy #7) is a **frozen fallback**. |
 | TVM 0.25.0 | Ninja | clang-cl, lld-link | Auto-detects CUDA/Vulkan. **Builds its own minimal LLVM from pinned source** (#47 heal 2026-08-17: scoop LLVM ships no llvm-config/dev-libs, the official dev tarball is /MT — X86+NVPTX, DIA off, RTTI on, `USE_LLVM=<path>/llvm-config.exe`; SHA pins in `$llvmSrcSha`, ~6 min sccache-warm). Builds a Python wheel. VsDevCmd environment loaded for MSVC STL headers. |
-| FFmpeg `n9.0` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | Source build from the pinned release tag (`FFMPEG_VERSION=n9.0` in `versions.env`; a release TAG since 2026-08-04 — previously tracked `master`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). **x86asm ENABLED on amd64 since 2026-08-24** (#119: nasm-assembled x86 SIMD via `--x86asmexe`; the old unconditional `--disable-x86asm` had no recorded reason — proof of the enabled state is the next amd64 FFmpeg run's `x86asm: yes`). The arm64 cross lane keeps `--disable-x86asm` explicitly (an x86-only knob) and assembles its NEON kernels through clang's integrated assembler. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set). |
+| FFmpeg `n9.0` | MSYS2 `make` (MSVC toolchain) | clang-cl via `--toolchain=msvc` | Source build from the pinned release tag (`FFMPEG_VERSION=n9.0` in `versions.env`; a release TAG since 2026-08-04 — previously tracked `master`). `--enable-libonnxruntime` links FFmpeg's DNN filter against the source-built ONNX Runtime so ONNX models can run inside `ffmpeg` filters (DNN filters ship with the backend; no separate `--enable-dnn` flag). **x86asm ENABLED on amd64 since 2026-08-24** (#119: nasm-assembled x86 SIMD via `--x86asmexe`; the old unconditional `--disable-x86asm` had no recorded reason — proven the same evening: configure names nasm as the x86 assembler, 154 `X86ASM` objects linked under lld-link). The arm64 cross lane keeps `--disable-x86asm` explicitly (an x86-only knob) and assembles its NEON kernels through clang's integrated assembler. Falls back to a BtbN pre-built GPL binary if the source build fails (the sentinel env var `FFMPEG_SOURCE_BUILD=0` is then set). |
 | GStreamer 1.29.2 | Meson | clang-cl | Downloaded as tarball + subproject wraps. CUDA auto-detected. |
 
 ## Prerequisites
@@ -2401,8 +2401,12 @@ The `:winarm64` cross lane completes end to end — since 2026-08-24 that includ
 target CPython, plain LiteRT and the restored `tflite` GStreamer plugin, with all four mandatory
 plugins shipping on BOTH lanes again — its arch gate passes **931 binaries, 0 violations** (the
 390 recorded at opening predates those additions), and the smoke gate now RUNS on this lane:
-**97 passed / 0 failed / 15 skipped** against floors 66/25. It is still **not** at full feature
-parity with amd64: the Python-binding consumers (#120 step 2) and TVM/IREE (#116) remain open.
+**97 passed / 0 failed / 15 skipped** against floors 66/25. **As of 2026-08-24 evening (arm64 run
+11: all three media branches, arch gate 950/0, smoke 97/0/15) the remaining gaps are named, not
+open:** the Python-binding consumers landed (#120 step 2) and TVM/IREE ship as runtimes (#116);
+what stays amd64-only by construction is the TVM/IREE *compilers* and their python packages,
+LiteRT-LM (Bazel), CUDA (#122, deferred by the owner) and the torch app stage — each marked
+ABSENT inside the bundle. The QNN EP is wired but needs a hand-staged SDK (#121).
 Each item below carries a
 **verified** blocker — every one was researched against the actual code and upstream, then
 adversarially re-checked, because an optimistic "solvable" here costs 25 min to several hours
@@ -2599,8 +2603,13 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   inline-patched to a plain `void …(` — `inline` buys nothing for a function used by address;
   verified after applying, inert on amd64 (the arm_64 dir is not compiled there). How upstream's
   own Linux/clang builds link this is not verified here; flagged as a question, not asserted.
-  **Result of the first full run (arm64 run 11): see the status banner in
-  `docs/windows-cross-builds.md`.**
+  ✅ **DONE 2026-08-24 evening, measured (arm64 run 11):** `media-tvm-built` green in 7:59 —
+  TVM runtime 4 binaries, IREE 14 target binaries under `bin\`, every one PE `0xAA64` in-stage;
+  merge 34:50 with the arch gate at **950 inspected / 0 violations** (up from 931: the TVM/IREE
+  runtimes are now in the bundle); final + smoke **97/0/15**. Runtime-only is the shipped scope;
+  the compilers and python packages stay amd64-only and are named ABSENT in
+  `COMPILER-ABSENT-ON-ARM64.txt`. Execution proof, as for everything on this lane, is owed to a
+  native host.
 
 - **#117 — the arch gate covers `C:\runtime` only; the CPython tree is outside it.** S · ★★ · ✅ **RESOLVED 2026-08-24 (see the resolution below; the question stands as history).**
   `Dockerfile.media-merge-builder:172` fans in `C:\temp\cpython\Lib\site-packages`, and the gate runs
@@ -2643,7 +2652,11 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   execution still owed to the `windows-11-arm` CI job.
 
 - **#119 — amd64 FFmpeg ships with NO external x86 assembly, and arm64 now has more SIMD than it.** M · ★★
-  ✅ **CODE DONE 2026-08-24 — proof owed to the next amd64 FFmpeg run.**
+  ✅ **DONE 2026-08-24, proven the same evening on the amd64 regression:** configure reports
+  `x86 assembler  …/nasm.exe`, the build assembled **154** `X86ASM` objects (`libavcodec/x86`,
+  `libavfilter/x86`, `libswscale/x86`, …) and linked them under lld-link into `ffmpeg.exe` + the
+  7 DLLs; the stage went green in 6:15 including the PyAV wheel and its `import av` gate. The
+  lld-link-vs-nasm-object question the original entry raised is answered by that link step.
   Found 2026-08-24 while checking whether #112 could regress amd64. It cannot — but the check turned
   up something else: `build-ffmpeg-from-source.ps1` appended `--disable-x86asm` **unconditionally**
   (present since `bd6adca4`, 2026-06-25 -- it entered with the file itself; an earlier note here blamed `8c5c50e7`, which is only the relicense commit that MOVED the file), so FFmpeg built none of its hand-written x86 SIMD
@@ -2659,11 +2672,10 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   `build-ffmpeg-from-source.ps1:410` no longer calls the disabled state a premise of the toolchain
   choice; it was never load-bearing for the msvc-preset-plus-compiler-override approach (configure
   assembles nasm fragments independently of `--cc`).
-  **What "proof" means here:** configure prints `x86asm: yes` only when nasm assembled its test
-  fragment, and the build log then carries `AS` lines for `libavcodec/x86/*.asm`. The first amd64
-  `media-core-built-ffmpeg` solve after 2026-08-24 19:30 is the deciding artifact — until it runs,
-  treat the enabled state as unproven (the lld-link-vs-nasm-object question the old text raised is
-  answered by that link step, not by this entry).
+  **What "proof" meant here, and what delivered it:** configure names the x86 assembler only when
+  nasm assembled its test fragment, and the build log then carries `X86ASM` lines for the `.asm`
+  kernels. The deciding artifact was the amd64 `media-core-built-ffmpeg` solve of 2026-08-24
+  ~23:10 (see the DONE line above) — nasm invoked through its scoop shim, 154 objects, clean link.
   **The misattribution this uncovered** (three places claimed nasm was *FFmpeg's* assembler: the pins
   table, `verify-toolchain.ps1`, the old #112 text) was corrected the same morning — and then
   re-corrected the same evening, because the flip made the original attribution *true again*: nasm
@@ -2783,9 +2795,32 @@ cross-builds.** `setup.py --ffmpeg-dir=<arm64 ffmpeg> build_ext --plat-name win-
 confirms the second half of the old parenthesis too: PyAV is the one consumer compiled by `cl.exe`
 on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 
+- **#123 — `llvm-ml` for the MASM-syntax assembly on amd64 (MLAS x64 kernels, IREE's
+  `x86_64_msvc.asm`).** S–M · ★ (opened 2026-08-24 evening, owner's request)
+  The "clang-cl everywhere" rule holds for compilers and linkers on both lanes and for every
+  assembly path on arm64 (clang's integrated assembler: FFmpeg `--as=clang`, XNNPACK/MLAS `.S`,
+  IREE inline `asm`). On amd64 two other assemblers are in the build: **nasm** for NASM-syntax
+  kernels (FFmpeg since #119 — 154 objects, libjpeg-turbo in OpenCV, openh264 in GStreamer) and
+  **MSVC's `ml64.exe`** for MASM-syntax sources — ONNX Runtime's `mlas/lib/amd64/*.asm`
+  (`Building ASM_MASM object` in every ORT log; the assembler is CMake's default `ASM_MASM` search,
+  `ml64` before `ml`, no `CMAKE_ASM_MASM_COMPILER` is set anywhere in this repo) and IREE's ELF
+  trampoline (`add_custom_command COMMAND ml64` upstream). nasm has no LLVM replacement (LLVM
+  ships no NASM-syntax assembler; dropping it means dropping the kernels). `ml64` does:
+  **`llvm-ml`** is LLVM's MASM-compatible assembler and ships with the pinned LLVM. The work:
+  `-DCMAKE_ASM_MASM_COMPILER=<llvm-ml.exe>` in `Invoke-CmakeConfigure` (same shape as the
+  `CMAKE_AR=llvm-lib` archiver arg), an assert that the ORT configure reports `llvm-ml` as the
+  ASM_MASM compiler, an amd64 ORT build proving MLAS's macro-heavy `.asm` files assemble and link
+  under it, and for IREE a small patch of the `ml64` custom command (or leave that one file on
+  ml64 and say so). **Unverified until built:** whether MLAS's MASM dialect is fully within
+  llvm-ml's compatibility — that is the whole question this item answers. Ordering: after the
+  current amd64 regression; it touches the ~50-min ORT stage.
 
 - **VERIFY RIDE — MOSTLY CLOSED 2026-08-24 by the amd64 full regression** (media all
-  branches + merge + final + smoke: arch gate 1134/0, smoke 220/0/0, `[bk] Done`). That ride
+  branches + merge + final + smoke: arch gate 1134/0, smoke 220/0/0, `[bk] Done`), **and
+  re-confirmed by a second full amd64 regression the same night** (2026-08-25 01:2x, `[bk] Done in
+  02:15:51`, arch gate 1134/0, smoke 220/0/0) after the evening's changes — the `Python_*`
+  FindPython fix, #119 x86asm, the QNN off-path, the IREE inline patches, the `-Targets` and
+  host-arch-LIB module additions. That ride
   covered, on the BuildKit lane, every risk surface the 2026-08-20/21 landings listed:
   ffmpeg/onnx trap-phase tables, litert-lm phases 5a-5e, the chain Invoke-stage shape
   (build-litert-all), Find-TensorRtZipIn newest-by-version (zip-less skip path), the checked-in

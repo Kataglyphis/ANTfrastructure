@@ -14,21 +14,29 @@ produce, and which gates keep it honest.
 > readiness checks, the MLAS and XNNPACK kernel-flag floors, the ASM-language cross triple in
 > `Get-CMakeCrossArgs`, and the `verify-target-arch.ps1` PE gate wired into the merge stage.
 >
-> **The chain completes end to end: `base → sdk → toolchain → media-core → media-litert → merge →
-> final` produces `:winarm64`** (green run 16, 2026-08-24, `[bk] Done` at 00:33:33). Cross-built
-> for `aarch64-pc-windows-msvc`: a target CPython **built from source and shipped at
-> `C:\runtime\python`** (#120 step 1 — see its own section), ONNX Runtime
-> (CPU **+ DirectML** as of 2026-08-24, backlog #113; 25 MLAS fp16 TUs tagged), ONNX GenAI
-> (`ENABLE_PYTHON=OFF`; `USE_DML=ON` on both lanes since #118, 2026-08-24, staging `D3D12Core.dll`
-> through a target-derived filter), FFmpeg (**NEON assembly enabled** via clang's
-> integrated assembler, backlog #112 — 56 of 99 `aarch64/*.o` objects truly assembled), OpenCV (four live upstream
-> portability fixes, see below), plain **LiteRT** (backlog #115, **done 2026-08-24** — 146 libs
+> **The chain completes end to end with all three media branches: `base → sdk → toolchain →
+> media-core → media-litert → media-tvm → merge → final` produces `:winarm64`** (green run 11 of
+> 2026-08-24 evening, `[bk] Done in 00:44:45`; the morning's run 16 was the first green chain,
+> still without `media-tvm` and without Python bindings). Cross-built for
+> `aarch64-pc-windows-msvc`: a target CPython **built from source and shipped at
+> `C:\runtime\python`** (#120 step 1) **with its consumers** — the `onnxruntime`,
+> `onnxruntime_genai_directml` and `av` wheels tagged `cp314-win_arm64` staged in
+> `C:\runtime\wheels`, and `cv2.cp314-win_arm64.pyd` installed into the target site-packages (#120
+> step 2 — see its own section); ONNX Runtime (CPU **+ DirectML** as of 2026-08-24, backlog #113;
+> 25 MLAS fp16 TUs tagged; QNN EP wired but opt-in, #121), ONNX GenAI (`USE_DML=ON` on both lanes
+> since #118, staging `D3D12Core.dll` through a target-derived filter), FFmpeg (**NEON assembly
+> enabled** via clang's integrated assembler, backlog #112 — 56 of 99 `aarch64/*.o` objects truly
+> assembled), OpenCV (four live upstream portability fixes, see below), the **TVM and IREE
+> runtimes** (#116, runtime-only: `tvm_runtime.dll` + headers, 14 IREE target tools/libs under
+> `C:\runtime\iree\bin`; the compilers and their python packages are amd64-only and named ABSENT
+> in the bundle), plain **LiteRT** (backlog #115, **done 2026-08-24** — 146 libs
 > staged, `tensorflowlite_c.lib` verified aarch64) — plus GStreamer with its ~4965 targets, **all
 > four mandatory plugins including `tflite`**, and the out-of-tree
 > `opencv_videoio_gstreamer` plugin, all in the merge stage.
 >
-> **The PE architecture gate has run and passed over the whole image:** `931 binaries inspected,
-> 0 violations` (2026-08-24; 390 when media-core stood alone)
+> **The PE architecture gate has run and passed over the whole image:** `950 binaries inspected,
+> 0 violations` (2026-08-24 evening, run 11, with the TVM/IREE runtimes and the Python consumers
+> in the bundle; 931 that morning before them, 390 when media-core stood alone)
 > (`verify-target-arch.ps1` over all of `C:\runtime` **and** the host CPython's site-packages,
 > `-IncludeArchives`, floor raised to 100 on this lane; the 58 host `.pyd`s appear as *reported*
 > allowlist skips). That, plus the smoke sections that now compile for the target and assert the
@@ -39,21 +47,17 @@ produce, and which gates keep it honest.
 > output — the single violation in a 932-binary run, see the CPython section), and each would
 > have produced a "successful" bundle that fails to load on real hardware.
 >
-> **Not yet cross-built:** only `media-tvm` (whose branch also carries **IREE** — a silent
-> casualty every earlier version of this list omitted). It is replaced by an empty stand-in; see
-> "The merge stage on arm64". TVM's `X86;NVPTX`-only LLVM is **this repo's own** target list —
-> adding `AArch64` is a one-token edit — and the real cross cost is that `USE_LLVM` must
-> *execute* `llvm-config` (backlog #116, which also covers IREE; its Phase 0 — LLVM built with
-> `X86;AArch64;NVPTX` — **passed** in the 2026-08-24 amd64 full regression: media-tvm green, arch
-> gate 1134/0, smoke 220/0/0). `media-litert` left this list on 2026-08-24 (#115 done): plain **LiteRT** cross-builds,
-> and only LiteRT-**LM** stays genuinely blocked, twice over — no windows-arm64 config in its
-> `.bazelrc` AND the x86_64-only prebuilt `libGemmaModelConstraintProvider` in the default
-> Windows dependency graph — its stage self-skips and stages the empty `litert-lm` stand-in tree
-> for the merge COPY. The target CPython **landed** (#120 step 1, built from source via
-> `PCbuild` `-e -p ARM64`); its consumers — the ORT wheel, GenAI bindings, `cv2`, PyAV — are
-> #120 **step 2**, deliberately sequenced after this green, so no lane component builds Python
-> bindings or wheels yet and the advertised `C:\runtime\wheels` store still ships empty on
-> arm64. There is no `windows-11-arm` CI job — the repo owner declined one.
+> **What is absent from the bundle, by construction, each named inside it:** the TVM and IREE
+> **compilers** (`tvm_compiler.dll`, `iree-compile.exe`) and their python packages — they need
+> target-arch LLVM libraries plus host tools at configure time, and a cross lane ships the
+> *runtimes* instead (#116, `COMPILER-ABSENT-ON-ARM64.txt`); LiteRT-**LM** — genuinely blocked
+> twice over, no windows-arm64 config in its `.bazelrc` AND the x86_64-only prebuilt
+> `libGemmaModelConstraintProvider` in the default Windows dependency graph — its stage
+> self-skips and stages an empty `litert-lm` tree with `ABSENT-ON-ARM64.txt`; CUDA (#122, deferred
+> by the owner); the torch app stage (`uv sync` must run the target interpreter). The former
+> `media-branch-absent` stand-in stage is retired: every branch is real on arm64 and ships its own
+> markers. `Get-SourceBuildPython` stays host-pinned (build tooling); `Get-TargetBuildPython` names
+> what gets linked. There is no `windows-11-arm` CI job — the repo owner declined one.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,
@@ -563,12 +567,12 @@ Since 2026-08-24 (#115) `media-litert` is a **real branch on this lane** — pla
 cross-builds; see the machinery section above. Inside it, the LiteRT-**LM** stage self-skips
 (its two real Bazel blockers are recorded in the exclusion table) and stages the empty
 `litert-lm` stand-in tree itself — `build-litert-all.ps1`'s skip path — so the merge's
-unconditional `COPY` still finds every path it expects. One branch remains absent — though not,
-it turned out, for the reason first recorded here:
-
-| Branch | Why it is still absent |
-|---|---|
-| `media-tvm` (also carries **IREE**) | **Corrected 2026-08-24: the reason recorded here was wrong.** This row said TVM's own LLVM is built with `-DLLVM_TARGETS_TO_BUILD=X86;NVPTX` "so its codegen cannot emit aarch64 at all" — as if that were upstream's constraint. The target list is **this repo's own array** in `build-tvm-from-source.ps1`; adding `AArch64` is a one-token edit. The real remaining cross cost is that `USE_LLVM=<path>` must **execute** `llvm-config`, which needs a host-tools/target-libs split — backlog #116. **IREE rides this same dropped branch** and went unnamed here until now; upstream supports `IREE_HOST_BIN_DIR` for exactly that split. **#116 Phase 0 DONE (2026-08-24):** the amd64 full regression built TVM's LLVM with `X86;AArch64;NVPTX` and passed (media-tvm 21:17, arch gate 1134/0, smoke 220/0/0) — the x64 TVM can emit aarch64; the cross cost (executing llvm-config) is what remains. |
+unconditional `COPY` still finds every path it expects. **No branch is absent any more** (2026-08-24
+evening): `media-tvm` — which also carries **IREE** — cross-builds runtime-only (#116, see its own
+section), so the merge fans in three real images on both lanes. History of this paragraph, kept
+because it was wrong twice: the first version said TVM's codegen "cannot emit aarch64" (false — the
+LLVM target list is this repo's own array), the second said the branch was blocked on executing
+`llvm-config` (true for the *compiler*, irrelevant for the *runtime* the lane now ships).
 
 `Dockerfile.media-merge-builder` copies from both with **unconditional** `COPY --from=media-litert` /
 `--from=media-tvm`, and a Dockerfile cannot make a `COPY` conditional. Until 2026-08-24 evening a

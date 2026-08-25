@@ -119,14 +119,16 @@ linux/
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**: `windows/amd64`.
 Windows **targets**: `amd64` (container image, production) and `arm64`
-(cross-compiled artifact bundle — the full chain is **built and gated**: ONNX Runtime (CPU +
-DirectML), ONNX GenAI (DirectML incl. the arm64 `D3D12Core.dll`), FFmpeg with NEON assembly,
-OpenCV, plain LiteRT with the `tflite` GStreamer plugin, GStreamer with all four mandatory
-plugins, and a source-built target CPython at `C:\runtime\python` — all for
-`aarch64-pc-windows-msvc`, PE-gated at 931 binaries / 0 violations with the smoke gate green at
-97/0/15. Python *bindings/wheels* are the open half (backlog #120 step 2). **Nothing it produces
-has ever been executed**, because Windows x64 cannot run ARM64 code; every arm64 signal is
-static. See the status banner in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
+(cross-compiled artifact bundle — the full chain is **built and gated**, all three media
+branches: ONNX Runtime (CPU + DirectML) with its `win_arm64` wheel, ONNX GenAI (DirectML incl.
+the arm64 `D3D12Core.dll`) with its wheel, FFmpeg with NEON assembly plus the PyAV wheel, OpenCV
+with `cv2` installed into the target interpreter, plain LiteRT with the `tflite` GStreamer plugin,
+GStreamer with all four mandatory plugins, the TVM and IREE **runtimes** (compilers stay
+amd64-only), and a source-built target CPython at `C:\runtime\python` — all for
+`aarch64-pc-windows-msvc`, PE-gated at 950 binaries / 0 violations with the smoke gate green at
+97/0/15 (2026-08-24 evening). **Nothing it produces has ever been executed**, because Windows x64
+cannot run ARM64 code; every arm64 signal is static — the wheels ship staged, not installed. See
+the status banner in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no arm64
 > `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a **runnable**
