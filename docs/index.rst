@@ -14,11 +14,29 @@ Multi-stage Linux container images for GPU development stacks, a slim nginx webs
 - Windows toolchain container for CI and local builds
 - Optional media and Android layers for specialized workloads
 
-Choose the guide that matches the task you want to do: inspect the image catalog, run a local Linux image,
-build cross-architecture artifacts, enable GPU variants, use runtime services, or build the Windows image.
+Choose the guide that matches the task you want to do — or start from the
+documentation index, which maps every topic to the page that owns it.
 
 .. grid:: 2
    :gutter: 2
+
+   .. grid-item-card:: Documentation Index
+      :link: INDEX
+      :link-type: doc
+
+      Topic to owning document, for this repo and every project that consumes it. **Start here.**
+
+   .. grid-item-card:: Common Failure Modes
+      :link: failure-modes
+      :link-type: doc
+
+      Symptom, cause and fix for every failure hit live on the Linux and Windows lanes.
+
+   .. grid-item-card:: Adopting In A New Project
+      :link: adopting-in-a-new-project
+      :link-type: doc
+
+      Wiring a new project to this repo: submodule, module resolver, container builds, CI actions.
 
    .. grid-item-card:: Project Overview
       :link: overview
@@ -50,35 +68,41 @@ build cross-architecture artifacts, enable GPU variants, use runtime services, o
 
       GPU drivers, CUDA, container runtime config, performance mode, and boot recovery on the host.
 
+   .. grid-item-card:: Windows Build Image
+      :link: windows-builds
+      :link-type: doc
+
+      What is installed, the build commands, the patch policy, and the smoke gate.
+
+   .. grid-item-card:: Windows Build Lanes
+      :link: windows-build-lanes
+      :link-type: doc
+
+      BuildKit, nerdctl and classic docker: which to use, isolation policy, preflight gates.
+
+   .. grid-item-card:: Windows Build Invariants
+      :link: windows-build-invariants
+      :link-type: doc
+
+      44 load-bearing rules, each with the incident that produced it. Read before editing ``windows/``.
+
+   .. grid-item-card:: Windows Host Setup
+      :link: windows-host-setup
+      :link-type: doc
+
+      Ordered bring-up for a brand-new Windows host, host gates included.
+
    .. grid-item-card:: Runtime Services and Streaming
       :link: runtime-services
       :link-type: doc
 
       Webserver, display forwarding, Raspberry Pi camera notes, and WebRTC signalling and streaming.
 
-   .. grid-item-card:: Windows Build Performance
-      :link: windows-container-build-performance
-      :link-type: doc
-
-      Making container builds incremental: what works, what does not, and why.
-
-   .. grid-item-card:: Windows Build Image
-      :link: windows-builds
-      :link-type: doc
-
-      Windows container build command, antivirus warning, and memory notes.
-
    .. grid-item-card:: Project Information
       :link: project-info
       :link-type: doc
 
       Prerequisites, installation, tests, roadmap, troubleshooting, contribution, contact, and references.
-
-   .. grid-item-card:: Third-Party Licenses
-      :link: third-party-licenses
-      :link-type: doc
-
-      Complete list of bundled software components, their versions, repositories, and licenses.
 
 Linux image flow
 ----------------
@@ -102,37 +126,73 @@ Common development targets:
 
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Start here:
 
+   INDEX
+   failure-modes
+   adopting-in-a-new-project
    overview
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Linux:
+
    linux-build-basics
    linux-cross-builds
    linux-accelerator-images
-   runtime-services
    linux-host-setup
+   runtime-services
+   rancher-desktop-linux-containers
+   linux-reference
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Windows:
+
    windows-builds
+   windows-build-lanes
+   windows-build-invariants
+   windows-build-resources
    windows-cross-builds
    windows-host-setup
+   windows-stevedore-and-docker
    windows-container-build-performance
-   github-cli-pipeline-monitoring
+   windows-reference
 
 .. toctree::
    :maxdepth: 1
-   :caption: Operations & Reference:
+   :caption: Build, CI and tooling:
 
-   cross-build-verification
+   build-cache-tiers
    build-parallelism-memory-tuning
-   build-secrets
    build-resource-monitoring
+   build-secrets
+   cross-build-verification
    code-quality-tooling
-   adopting-in-a-new-project
+   python-ci
+   ci-build-triggers
+   github-cli-pipeline-monitoring
    agentic-loop-build-matrix
    windows-agentic-loop
-   refactoring-backlog
-   upstream-libstdcxx-c++23-nostdinc++
-   upstream/hcsshim-lost-shutdown-notification-issue
-   ci-build-triggers
-   rancher-desktop-linux-containers
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Project:
+
    project-info
    third-party-licenses
+   upstream-libstdcxx-c++23-nostdinc++
+   upstream/hcsshim-lost-shutdown-notification-issue
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Backlogs and archives:
+
+   refactoring-backlog
+   windows-refactor-backlog
+   changelog-archive-2026-08-13
+   refactoring-backlog-archive-2026-08-10
+   windows-backlog-archive-2026-08-11
+   windows-backlog-archive-2026-08-17
+   windows-backlog-archive-2026-08-21

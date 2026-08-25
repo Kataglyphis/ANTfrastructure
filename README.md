@@ -8,99 +8,131 @@
   <h4>Docker templates for GPU-friendly Linux dev stacks, a slim nginx webserver, and a Windows build image.</h4>
 </div>
 
-> add the current user to the docker group so you can push to ghcr.io without sudo:
-> `sudo usermod -aG docker $USER`
-
 [![CI](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ubuntu24.04.yml)
 [![ghcr-cleanup](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml/badge.svg)](https://github.com/Kataglyphis/Kataglyphis-ContainerHub/actions/workflows/ghcr-cleanup.yml)
 [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/paypalme/JonasHeinle)
 
 ---
 
-## Engineering principles
+Prebuilt container images and the build system that produces them: a multi-arch
+Linux stack (`amd64`/`arm64`/`riscv64`) carrying GCC, LLVM/Clang, Vulkan and a
+full media/inference layer (ONNX Runtime, OpenCV, FFmpeg, GStreamer, LiteRT,
+TVM, IREE); a slim nginx webserver; and a Windows Server Core build image with
+MSVC, CUDA and the same media stack.
 
-This build system optimizes for three goals **at once** — never one at the
-expense of the others:
+Pull an image and start working, or build the chain yourself — both are below.
 
-- **Speed** — layered caching end-to-end (BuildKit layers with narrow cache
-  keys, local cache exports, the ccache/sccache HYBRID — ccache for C/C++,
-  sccache for Rust; layer cache and compiler cache multiply, they don't
-  compete — pinned buildkitd GC budget whose policies spare compile-cache
-  mounts, plus `linux/host-config/prune-safe.sh` for manual reclaim that
-  provably keeps them, and `linux/host-config/ghcr-prune-package.sh` for
-  safe ghcr package cleanup (keep-set = tags + index children + age guard;
-  dry-run by default); cross-stage pushes ship zstd-compressed layers) and
-  opt-in parallelism levers (per-arch `--parallel-archs` with per-stage
-  control and OOM-aware job sizing). Map: [`docs/linux-build-basics.md`
-  § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where).
-  That map is the **Linux** lane. The **Windows** lane caches by deliberate
-  layer ordering plus an sccache WebDAV remote covering C/C++, and a uv/pip
-  wheel cache. A local disk tier in front of that remote is wired but **off by
-  default**, because BuildKit's Windows cache mounts lose writes into a
-  directory an earlier build step populated; CUDA is deliberately not routed
-  through sccache at all. Both are measured, not assumed — see
-  [`AGENTS.md` § Caching discipline](AGENTS.md) rule 5, which also records why
-  sccache is built from source there (released builds cannot wrap `nvcc` on
-  CUDA 13.3). **The WebDAV L2 is only as available as the dufs server backing
-  it:** while dufs ran as a user-session process it died mid-build and every
-  cache WRITE failed silently — builds stayed green, just uncached. Run it as
-  the session-independent SYSTEM task (`windows\scripts\host\setup-dufs-service.ps1`)
-  and treat a 0 % hit rate as an outage, not as a cold cache.
-- **Stability** — digest-pinned stage handoffs, machine-checked cross-run
-  ancestry (`org.kataglyphis.parent-digest` manifest annotations), verified
-  version pins in a single source of truth (`linux/scripts/01-core/versions.env`),
-  and gates that fail loudly instead of passing on fallbacks.
-- **Tests** — unit suites (`linux/scripts/tests/`, `windows/scripts/tests/`),
-  lint gates (shellcheck, IFS-safety, hadolint, actionlint, ruff for Python,
-  gitleaks secret scan), a fast preflight (`linux/scripts/preflight.sh`) that
-  catches error classes in seconds instead of hours, and runtime smokes that
-  assert real behavior against the pins. On the **Windows** lane the smoke test
-  is not optional: every **amd64** chain ends with a gate that runs it against the
-  image it just built and fails the build if it does not pass — with coverage floors,
-  so "nothing ran" is a distinct failure rather than a green "all tests passed".
-  The arm64 cross lane runs the gate too (since 2026-08-24), with its own floor
-  column: the sections that exercise the amd64 *host* toolchain run as-is, the
-  compiler probes compile **for the target** and assert the produced PE's machine
-  type instead of executing it, and the sections that would have to *run* the
-  aarch64 payload are skipped as sections with a printed reason — an x64 host
-  cannot execute ARM64 code, so the payload itself stays verified statically, by
-  a PE machine-type gate over the whole install prefix (including import-library
-  archives and the fanned-in site-packages).
-  The tests that matter most there assert *loading*, not existence: this repo's
-  defect history is dominated by libraries that build and link cleanly and then
-  fail at load time.
+## Quick Start 🏁
 
-Rules an automated agent must follow live in [`AGENTS.md`](AGENTS.md)
-(§ Project priorities, § Shell safety conventions, § Caching discipline).
+### Linux 🐧
+
+```bash
+nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+
+# with the webserver port exposed
+nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
+```
+
+Needs `sudo` on a rootful host. To push to ghcr.io without it, add yourself to
+the docker group once — `sudo usermod -aG docker $USER` — and re-login.
+
+Build workflows: [Linux Build Basics](docs/linux-build-basics.md) ·
+[Linux Cross Builds](docs/linux-cross-builds.md) ·
+[Linux Accelerator Images](docs/linux-accelerator-images.md).
+**Fresh host?** Start at [Linux Host Setup](docs/linux-host-setup.md).
+
+### Windows 🪟
+
+The toolchain is **containerd + BuildKit + nerdctl** with process isolation.
+
+```pwsh
+# BUILD — non-admin shell, buildctl against buildkitd
+.\windows\build-buildkit.ps1 -Gpu
+
+# INSPECT / RUN — ADMIN shell; containerd's pipe is admin-only upstream
+& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
+```
+
+**Fresh machine?** Start at [Windows Host Setup](docs/windows-host-setup.md) —
+after Stevedore and a reboot, the scriptable half of bring-up is one elevated
+run of `windows\scripts\host\setup-new-host.ps1` (`-ReportOnly` first).
+
+Lane mechanics, the classic-docker fallback and every host gate:
+[Windows Build Lanes](docs/windows-build-lanes.md).
+
+### Clone the repository
+
+```bash
+git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
+```
+
+### If something fails on first touch
+
+Look the error message up in
+**[docs/failure-modes.md](docs/failure-modes.md)** — symptom, cause and fix for
+every failure this repo has hit live, on both lanes. The two that catch people
+first:
+
+- `exec format error` on a foreign arch — QEMU/binfmt is not registered
+  ([fix](docs/failure-modes.md#exec-format-error-on-a-foreign-arch-build)).
+- `hcsshim::ActivateLayer 0x20` on a Windows host with an **AMD RDNA4 dGPU** —
+  build inside the toggle window
+  ([fix](docs/failure-modes.md#hcsshimactivatelayer-0x20-on-an-amd-radeon-host)).
+
+## Documentation
+
+**[docs/INDEX.md](docs/INDEX.md) is the map** — topic to owning document, for
+this repo and for every project that consumes it. Start there; it is also what
+a consumer repo should link to instead of restating a procedure.
+
+The five entry points people actually want:
+
+| I want to… | Read |
+|---|---|
+| **Wire a new project to this repo** | [docs/adopting-in-a-new-project.md](docs/adopting-in-a-new-project.md) |
+| See what is published and what is in it | [docs/overview.md](docs/overview.md) |
+| Build the Linux images | [docs/linux-build-basics.md](docs/linux-build-basics.md) |
+| Build the Windows image | [docs/windows-builds.md](docs/windows-builds.md) |
+| Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
+
+**Working on this repo as an automated agent?** [`AGENTS.md`](AGENTS.md) holds
+the guardrails: project priorities, the canonical build commands, shell-safety
+conventions, caching discipline and the repo map. Windows-specific rules are
+[docs/windows-build-invariants.md](docs/windows-build-invariants.md).
+
+## Published images
+
+Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
+
+| Tag | What |
+|-----|------|
+| `:latest-cross` | Multi-arch release (amd64/arm64/riscv64) — the stable API |
+| `:latest-cross-<arch>` | Per-architecture wrapper |
+| `:cross-media-<arch>` | Media libraries layer |
+| `:webserver` | Slim nginx webserver |
+| `:winamd64` | Windows build image |
+
+Full matrix with platforms, tag hints and per-stage intermediates:
+[docs/overview.md](docs/overview.md).
 
 ## Architecture
 
-Four-tier dependency chain with shared script tree:
+Multi-stage chain, one Dockerfile per stage, so BuildKit caches the expensive
+layers and rebuilds only what changed.
 
 ```
 linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
-├── Dockerfile.toolchain     GCC 16.2.0 + LLVM/Clang 22.1.8 + Python 3.14 (FROM base)
+├── Dockerfile.toolchain     GCC + LLVM/Clang + Python (FROM base)
 ├── Dockerfile.sdk           Vulkan SDK + TVM (FROM toolchain)
-├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN · app-wheelhouse (FROM sdk)
+├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
 ├── Dockerfile.package       lean runtime assembly + validation (FROM base + android)
 ├── Dockerfile.torch         final wrapper: entrypoint, labels, runtime scripts (FROM package)
 ├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
 ├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
-└── scripts/
-    ├── 01-core/             shared utilities — the maintained list lives in AGENTS.md § Repo Map
-    ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
-    ├── 03-media/            media library build scripts
-    │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
-    │   ├── build/           per-library build scripts (onnxruntime, litert, opencv, ffmpeg, gstreamer, libcamera)
-    │   └── runtime/         artifact collection, runtime config, verification, media-env.sh
-    ├── 04-runtime/          entrypoint + env scripts
-    ├── 05-frameworks/       TVM, Torch, Flutter
-    └── 06-packaging/        assembly + smoke tests
+└── scripts/                 01-core … 06-packaging — see AGENTS.md § Repo Map
 ```
-
-### 4-Tier Build Dependency Graph
 
 ```
   Phase 1     Phase 2      Phase 3       Phase 4
@@ -113,121 +145,63 @@ linux/
                                      Package + Torch (optional)
 ```
 
-**Cross lane** (`linux/amd64` host, cross-compiles all arches): `base → compiler → sdk → media → android → package → torch`
-**Runtime lane** (native/QEMU per arch): `base → package → wrapper`
-**Windows lane** (native Windows Containers): `base → sdk → toolchain → media → torch → final` — built via **BuildKit + containerd with process isolation** (the preferred lane since 2026-08: full host CPUs, real layer caching; `windows/build-buildkit.ps1`), the docker-classic lane (`windows/build.ps1`) is **no longer a bootstrap fallback** — twelve Windows Dockerfiles use BuildKit-only `RUN --mount`, so the legacy builder cannot build `base` (measured 2026-08-21). The lane runs **direct solves** on every stage: the host snapshotter defect that used to break heavy media layers (`ExportLayer 0x3` on heavy-churn container finalize) was root-caused on 2026-08-06 to a hardcoded 30 s teardown timeout in the containerd runhcs shim — it terminated a teardown that takes ~117 s for OpenCV, permanently poisoning the scratch disk — and is fixed by a locally patched shim, submitted upstream as [microsoft/hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855). **Every Stevedore/containerd update reverts that patch**, so `windows/scripts/host/deploy-shim-patch.ps1 -ReportOnly` belongs in your post-update routine. The older warm/materialize workaround is retired (kept in git history as the rollback path), and the Defender exclusions remain load-bearing for a separate family of transient finalize flakes — see [`docs/windows-builds.md`](docs/windows-builds.md) § BuildKit/containerd lane and [`docs/windows-host-setup.md`](docs/windows-host-setup.md) C4. **Two client lanes are supported:** `buildctl` builds the chain from a normal shell (buildkitd is ACL'd to `docker-users`), while `nerdctl` — from an **admin** shell, since containerd's pipe is Administrator-only upstream — runs, inspects and administers the resulting images, and can build as well; recipes in [`docs/windows-builds.md`](docs/windows-builds.md) § nerdctl lane. On AMD RDNA4-GPU hosts, RUN-layer finalize is broken while the dGPU is ENABLED (`ActivateLayer 0x20`; the 2026-08-09 "faulty Adrenalin install" verdict was SUPERSEDED by a same-boot A/B on 2026-08-10 — disabling the dGPU for the build window is the proven fix, upstream docker/for-win#14977): build inside the toggle window (`toggle-rdna4-gpu.ps1 -Disable` → build → re-enable), which the drivers' `Assert-NoActiveRdna4Gpu` preflight enforces — see AGENTS.md Common Failure Modes "AMD Radeon host".
+Three lanes:
 
-Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**: `windows/amd64`.
-Windows **targets**: `amd64` (container image, production) and `arm64`
-(cross-compiled artifact bundle — the full chain is **built and gated**, all three media
-branches: ONNX Runtime (CPU + DirectML) with its `win_arm64` wheel, ONNX GenAI (DirectML incl.
-the arm64 `D3D12Core.dll`) with its wheel, FFmpeg with NEON assembly plus the PyAV wheel, OpenCV
-with `cv2` installed into the target interpreter, plain LiteRT with the `tflite` GStreamer plugin,
-GStreamer with all four mandatory plugins, the TVM and IREE **runtimes** (compilers stay
-amd64-only), and a source-built target CPython at `C:\runtime\python` — all for
-`aarch64-pc-windows-msvc`, PE-gated at 970 binaries / 0 violations, every import table walked
-(571 files / 0 unresolved), with the smoke gate green at 97/0/15 (2026-08-25, run 14). **Nothing it
-produces has ever been executed**, because Windows x64 cannot run ARM64 code; every arm64 signal
-is static — the wheels ship staged, not installed. A 2026-08-25 consumer-side audit found the
-Python surface **not usable at first touch** on a clean device (CRT placement, no target
-`sitecustomize`, no runtime deps, no import gate — backlog #124–#127); all four were fixed and
-proven the same day: the CRT sits beside `python.exe`, the target site-packages has its own DLL
-shim, `C:\runtime\wheels` holds the bundle wheels plus their resolved `win_arm64` deps (numpy,
-protobuf, flatbuffers, packaging), and the merge gate fails on any import the device loader could
-not satisfy. See the status banner in
-[`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
+- **Cross** (`linux/amd64` host, cross-compiles every arch):
+  `base → compiler → sdk → media → android → package → torch`
+- **Runtime** (native or QEMU per arch): `base → package → wrapper`
+- **Windows** (native Windows Containers):
+  `base → sdk → toolchain → media → torch → final`
 
-> **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no arm64
-> `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a **runnable**
-> arm64 Windows container cannot exist. The lane does emit a `:winarm64` tag — but that labels a
-> `windows/amd64` image carrying an aarch64 payload, so it must **never** be published with
-> `--platform windows/arm64`; that yields a manifest nothing can run. The arm64 lane builds inside
-> the same `windows/amd64` container with
-> `clang-cl --target=aarch64-pc-windows-msvc` + `lld-link` and emits an artifact bundle
-> (libs/DLLs/headers) for use on real ARM64 Windows hardware. GPU inference on that lane is
-> **DirectML**; the NVIDIA stack is not wired up there — classic TensorRT genuinely has no
-> Windows-on-ARM build, while CUDA 13.4 (preview) and the arm64 cuDNN archive do exist upstream
-> and remain unscheduled backlog work, not an impossibility (corrected 2026-08-24). See
-> [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md).
+Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
+`windows/amd64`.
 
-## Published Images
+> **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no
+> arm64 `servercore`/`nanoserver` base and Windows Server has no arm64 release,
+> so a *runnable* arm64 Windows container cannot exist
+> ([Windows-Containers#586](https://github.com/microsoft/Windows-Containers/issues/586)).
+> The lane cross-compiles inside the same `windows/amd64` container with
+> `clang-cl --target=aarch64-pc-windows-msvc` and emits an **artifact bundle**.
+> Its `:winarm64` tag labels a `windows/amd64` image, so it must never be
+> published with `--platform windows/arm64`. Current status, coverage and gates:
+> [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 
-Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
+## Engineering principles
 
-| Tag | What |
-|-----|------|
-| `:latest-cross` | Multi-arch release (amd64/arm64/riscv64) — the stable API |
-| `:latest-cross-<arch>` | Per-architecture wrapper |
-| `:cross-media-<arch>` | Media libraries layer (ONNX Runtime, LiteRT, OpenCV, FFmpeg, GStreamer, libcamera, TVM, IREE, Arm NN on arm64, app wheelhouse) |
-| `:webserver` | Slim nginx webserver |
-| `:winamd64` | Windows build image |
+Three goals, optimized **at once** — never one at the expense of the others:
+**speed** (layered caching end-to-end plus opt-in parallelism levers),
+**stability** (digest-pinned handoffs, machine-checked ancestry, gates that
+fail loudly instead of passing on fallbacks) and **tests** (unit suites, lint
+gates, a fast preflight, and runtime smokes that assert real behavior against
+the pins).
 
-## Build the Full Cross Chain Locally
+The rules that implement them — each carrying the incident that produced it —
+are [`AGENTS.md` § Project priorities](AGENTS.md).
+Caching is mapped in
+[docs/linux-build-basics.md § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where)
+for Linux and in
+[docs/windows-build-resources.md](docs/windows-build-resources.md) for Windows.
 
-Build logs are written to `out/build-logs/` by passing `--log-dir` to `build-cross-chain.sh` or `build-cross-stage.sh`; for the other orchestrators, pipe output through `2>&1 | tee ./out/build-logs/<name>.log`.
-See `AGENTS.md` § Quick Reference for the canonical build commands (orchestrator, single-stage, compiler, verification, dry-run).
-
-Caching is layered end-to-end (BuildKit layers, per-stage local cache exports,
-ccache for GCC/LLVM/media, apt/cargo/uv mounts, shared source caches, and a
-pinned buildkitd GC budget) — see
-[`docs/linux-build-basics.md` § Caching Layers](docs/linux-build-basics.md#caching-layers-what-is-cached-where)
-for the full map and the one process rule that matters: freeze the toolchain
-closures between chain runs that should cache-hit each other. (Note:
-`--no-push` full-chain runs are broken on OCI-worker hosts — see
-[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) for the correct
-push-mode flow.)
-
-## Reinstall QEMU/binfmt After a Host Reboot
-
-If foreign-architecture builds fail with `exec format error`:
-
-- **Rootless hosts (this repo's primary dev host):** run
-  `linux/scripts/setup-rootless-binfmt.sh` (idempotent; `--install-service`
-  makes it persistent). A plain `nerdctl run --privileged tonistiigi/binfmt`
-  does **not** work rootless — it registers inside its own ephemeral user
-  namespace, which vanishes on exit. `build-runtime-manifest.sh` invokes the
-  helper automatically for non-native target arches.
-- **Rootful Docker/containerd hosts:** the classic
-  `docker run --rm --privileged tonistiigi/binfmt --install all` works.
-
-Details: [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) § Host prerequisite.
-
-## LLM Stack
+## LLM stack
 
 An Ollama + Open WebUI serving stack lives in
 [`linux/llm-stack/`](linux/llm-stack/README.md) — CPU-only by default, with an
-opt-in GPU override (`docker-compose.gpu.yml`) for NVIDIA machines. Docs
-include a VRAM/context sizing table so a 256K-listed model is only configured
-at a context the GPUs can actually hold.
+opt-in GPU override for NVIDIA machines, and a VRAM/context sizing table so a
+256K-listed model is only configured at a context the GPUs can actually hold.
 
 ## CI
 
 | Workflow | Purpose |
 |----------|---------|
-| `ubuntu24.04.yml` | Trigger on push/PR: Sphinx docs + version-consistency checks |
+| `ubuntu24.04.yml` | On push/PR: Sphinx docs + version-consistency checks |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `ghcr-cleanup.yml` | Retains last 3 per tag, 14-day safety net |
 | `stale-docs-check.yml` | Scheduled scan for stale doc references and broken script paths |
 
-## Documentation
-
-| Topic | Doc |
-|-------|-----|
-| **Wiring a new project to this repo (start here)** | [docs/adopting-in-a-new-project.md](docs/adopting-in-a-new-project.md) |
-| Published images, feature snapshot | [docs/overview.md](docs/overview.md) |
-| Local runs, multi-arch, buildx, mirrors | [docs/linux-build-basics.md](docs/linux-build-basics.md) |
-| Cross-compiler lane, artifacts, manifest publishing | [docs/linux-cross-builds.md](docs/linux-cross-builds.md) |
-| NVIDIA / AMD / Torch variants | [docs/linux-accelerator-images.md](docs/linux-accelerator-images.md) |
-| Webserver, display forwarding, WebRTC | [docs/runtime-services.md](docs/runtime-services.md) |
-| Windows containers | [docs/windows-builds.md](docs/windows-builds.md) |
-| **New Windows machine? Ordered bring-up checklist (host + gates)** | [docs/windows-host-setup.md](docs/windows-host-setup.md) |
-| Building consumer projects inside the Windows image (reuse pattern, transports) | [docs/windows-container-build-performance.md](docs/windows-container-build-performance.md) |
-| Reusable CI composite actions (run-in-*-container, cleanup-disk-space) | [.github/actions/README.md](.github/actions/README.md) |
-| MSIX certificates: generation, import, WebDAV retrieval | [windows/scripts/certificates/README.md](windows/scripts/certificates/README.md) |
-| Prerequisites, tests, troubleshooting | [docs/project-info.md](docs/project-info.md) |
-| Third-party licenses | [docs/third-party-licenses.md](docs/third-party-licenses.md) |
-
-**Agent context:** see [AGENTS.md](AGENTS.md) for the build-system guardrails, critical fixes, and script-organization rules that LLM agents must follow.
+Windows and ARM lanes are **opt-in per commit** — put `[build-win]` and/or
+`[build-arm]` in the pushed HEAD commit message. A green tick without them says
+nothing about those targets; see
+[docs/ci-build-triggers.md](docs/ci-build-triggers.md).
 
 <!-- generated:version-snapshot:start -->
 ## Source-Controlled Version Snapshot
@@ -242,67 +216,11 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 | Windows build image | Windows Server Core LTSC 2025, Visual Studio Build Tools 18, Vulkan SDK 1.4.357.1, GStreamer 1.29.2, CUDA 13.3.1, ONNX Runtime v1.29.0 |
 <!-- generated:version-snapshot:end -->
 
-## Quick Start 🏁
-
-### Linux 🐧
-
-```bash
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
-```
-
-If you run the container from Windows, expose required ports explicitly, for example with `-p 8443:8443`.
-
-Detailed Linux build workflows live in [Linux Build Basics](docs/linux-build-basics.md), [Linux Cross Builds](docs/linux-cross-builds.md), and [Linux Accelerator Images](docs/linux-accelerator-images.md).
-
-### Windows 🪟
-
-The Windows toolchain is **containerd + BuildKit + nerdctl** (process isolation,
-full host CPUs, real layer caching — one-time setup in
-[Windows Build Image](docs/windows-builds.md) § BuildKit/containerd lane;
-**fresh machine? start at [docs/windows-host-setup.md](docs/windows-host-setup.md)** — once Stevedore is in and the host rebooted, the scriptable half of bring-up is one elevated run (`windows\scripts\host\setup-new-host.ps1`; `-ReportOnly` first):
-
-```pwsh
-# BUILD (non-admin shell; buildctl against buildkitd):
-.\windows\build-buildkit.ps1 -Gpu
-
-# INSPECT / RUN the built images (ADMIN shell; nerdctl against containerd —
-# containerd's pipe is admin-only upstream, build stays non-admin):
-& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit images
-& "$env:ProgramFiles\Stevedore\bin\nerdctl.exe" --namespace buildkit run --rm `
-    docker.io/local/kataglyphis:bk-windows-media-core pwsh -c "python -c 'import onnxruntime'"
-```
-
-Fallback (docker classic, Hyper-V run+commit — for hosts without the BuildKit
-setup) and all further commands: [Windows Build Image](docs/windows-builds.md)
-§ Build Commands.
-
-> **Host with a broken BK lane (`hcsshim::ActivateLayer 0x20` on layer
-> commit/finalize)?** Run the committed probe first —
-> `windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` — and trust only a
-> `-Heavy`-green verdict: the light lanes (BK lane exports
-> `type=image,...,unpack=true`, the same path the real build uses; exit code
-> names each failing lane) can be green while heavyweight RUN-layer finalize
-> still dies. **On AMD RDNA4-GPU hosts that failure is the enabled dGPU
-> itself** (docker/for-win#14977; A/B-proven 2026-08-10, superseding the
-> earlier Adrenaline-reinstall / in-place-repair advice) — build with the
-> dGPU disabled via `windows\scripts\toggle-rdna4-gpu.ps1`
-> (build-buildkit.ps1's preflight enforces this; details in
-> docs/windows-host-setup.md). A host can also be lane-asymmetric
-> (BK green, docker-classic `COPY` broken) — prefer the lane that probes
-> green. Full evidence: AGENTS.md Common Failure Modes.
-
-### Clone The Repository
-
-```bash
-git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerHub.git
-```
-
-### License
+## License
 
 MIT — see [`LICENSE`](LICENSE). Every source file carries a matching
 `SPDX-License-Identifier: MIT` header and the published images declare
 `org.opencontainers.image.licenses="MIT"`.
 
-Bundled upstream software keeps its own terms: see
+Bundled upstream software keeps its own terms:
 [docs/third-party-licenses.md](docs/third-party-licenses.md).

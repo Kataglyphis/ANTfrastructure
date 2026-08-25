@@ -77,9 +77,38 @@ EOF
 - **Requires BuildKit.** Both `docker buildx build` and `nerdctl build` use it;
   a legacy `DOCKER_BUILDKIT=0` build rejects `--secret`.
 
+## Runtime secrets: Compose, not BuildKit
+
+Everything above is **build**-time. A secret a *running* container needs is a
+different mechanism — Compose mounts it at the same `/run/secrets/<id>` path,
+but from a `secrets:` block rather than a `--secret` flag:
+
+```yaml
+services:
+  myservice:
+    image: example/image
+    secrets:
+      - account_token
+    environment:
+      - ACCOUNT_TOKEN=/run/secrets/account_token
+
+secrets:
+  account_token:
+    file: account_token.txt
+```
+
+Note what the environment variable holds: the **path** to the secret, not the
+secret. Services that expect the value inline need reading from that path
+instead, and passing the value directly through `environment:` puts it in
+`docker inspect` — which is the thing this avoids.
+
+The backing file (`account_token.txt` here) sits next to the Compose file and
+must be covered by [`.gitignore`](../.gitignore) before it is created.
+
 ## See also
 
 - [Code quality tooling](code-quality-tooling.md) — the gate list, including the
   secret scan
 - [`.gitleaksignore`](../.gitleaksignore) — every suppression needs a written
   justification; needing a new one usually means a real secret got committed
+

@@ -40,18 +40,35 @@ The two halves of one topic often split:
 
 ## Topic → owning document
 
+### Start here
+
+| Looking for | Read |
+|---|---|
+| **An error message** — symptom → cause → fix, both lanes | [`failure-modes.md`](failure-modes.md) |
+| **Wiring a new project to this repo** | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
+| What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
+| Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |
+| Licenses of bundled upstream software | [`third-party-licenses.md`](third-party-licenses.md) |
+| Rules an automated agent must follow | [`../AGENTS.md`](../AGENTS.md) |
+
 ### Windows
 
 | Looking for | Read |
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
+| **Rules you must not regress** when editing the Windows chain (44, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
+| **Which lane to build on**: BuildKit, nerdctl, classic docker; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
+| CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
+| Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
+| Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
-| **ghcr.io login failing on Windows** (`--password-stdin`, `credsStore`), `--network=host`, `host.docker.internal` | [`windows-builds.md`](windows-builds.md#docker-on-windows-registry-auth-networking-service-recovery) |
+| **ghcr.io login failing on Windows** (`--password-stdin`, `credsStore`), `--network=host`, `host.docker.internal` | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md#docker-on-windows-registry-auth-networking-service-recovery) |
 | Defender performance mode, `ExecutionPolicy`, PATH reload, VS/winget updates, `bcdedit` one-time boot | [`windows-host-setup.md`](windows-host-setup.md#appendix--host-odds-and-ends) |
+| **General Windows / PowerShell commands** — disk, exe debugging, SSH server, WoL, media capture. Not repo-specific | [`windows-reference.md`](windows-reference.md) |
 | Build matrix and sanitizer env for the loop | [`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md) |
 
 ### Linux
@@ -65,6 +82,7 @@ The two halves of one topic often split:
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
+| **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |
 | Raw `gst-launch-1.0` pipelines, and building GStreamer from source on a device | [`runtime-services.md`](runtime-services.md#raw-gst-launch-10-pipelines-debugging-below-the-app) |
 | Removing a stale GStreamer source install; the prebuilt Android tarball | [`runtime-services.md`](runtime-services.md#removing-a-previous-source-install) |
@@ -77,6 +95,7 @@ The two halves of one topic often split:
 
 | Looking for | Read |
 |---|---|
+| **What is cached where**, and which tier a miss came from | [`build-cache-tiers.md`](build-cache-tiers.md) |
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | Python CI: the shared lanes, and the two `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv) | [`python-ci.md`](python-ci.md) |
 | clang-format / clang-tidy / cmake-format, and the shared configs | [`code-quality-tooling.md`](code-quality-tooling.md) |
@@ -103,6 +122,22 @@ The two halves of one topic often split:
 | Canonical `.clang-format`, `.clang-tidy`, `gcovr.cfg`, `.pre-commit-config.yaml` | [`../shared/config/README.md`](../shared/config/README.md) |
 | Copy-and-edit templates (`Resolve-BuildModule.ps1`, `containerhub.sh`, `AGENTS.md` skeleton, agentic-loop config) | [`../shared/windows/templates/`](../shared/windows/templates/README.md), [`../shared/linux/templates/`](../shared/linux/templates/README.md), `../shared/templates/`, `../shared/agentic-loop/templates/` |
 | Reusable CI workflows (`workflow_call`) — the Python Linux lane, docs build | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml), `../.github/workflows/build-docs.yml` |
+
+### Backlogs, history and archives
+
+Everything here is *record*, not instruction. If you find a live rule that
+exists only in one of these, promote it to its owning page above.
+
+| Looking for | Read |
+|---|---|
+| Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
+| Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
+| What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
+| Changelog entries through 2026-08-13 | [`changelog-archive-2026-08-13.md`](changelog-archive-2026-08-13.md) |
+| Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) |
+| Settled Linux refactor items | [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md) |
+| Upstream submissions and issue drafts | [`upstream/`](upstream/), `../windows/upstream/` |
+| The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 
 ## If you are about to write a procedure in a consumer repo
 

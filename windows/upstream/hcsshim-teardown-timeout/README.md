@@ -17,7 +17,7 @@ overwrites it and brings the defect back.**
 | [`PR.md`](PR.md) | PR description: what changes, why, verification, reviewer notes |
 | [`0001-shim-configurable-teardown-timeouts.patch`](0001-shim-configurable-teardown-timeouts.patch) | `git format-patch` output, applies to `microsoft/hcsshim` `main` |
 
-Background and the full defect history: `docs/windows-builds.md` § BuildKit lane.
+Background and the full defect history: `docs/windows-build-lanes.md` § BuildKit lane.
 
 ## The two patches are NOT the same thing
 

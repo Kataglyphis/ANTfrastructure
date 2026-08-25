@@ -73,3 +73,19 @@ windows/scripts/certificates/
 # never COPY'd by any chain Dockerfile — keep it out of every root context
 # upload (~9 per full classic run).
 external/
+
+# Scratch and one-shot helpers — mirrors the block at the end of .gitignore.
+# These are untracked by design, so git cannot keep them out of the BUILD
+# CONTEXT: a stray root-level probe script still gets uploaded with every root
+# solve and changes the context that ~9 builds send per full classic run.
+# NB: a bare `*.py` matches only root-LEVEL files (the same Docker pattern
+# semantics documented for *.zip and *.log above) — which is exactly the scope
+# wanted here. Verified 2026-08-25: no Dockerfile COPYs a root-level script;
+# every COPY source sits under linux/, windows/, shared/ or downloads/.
+.scratch/
+*.py
+*.sh
+*.ps1
+*.psm1
+*.tmp
+*.bak

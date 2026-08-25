@@ -39,6 +39,19 @@ Merges that touch the pin from both sides leave `ExternalLib/` paths unmerged,
 and `git checkout --theirs` alone does not resolve them: the conflict is over
 *which commit the superproject records*, not over file contents.
 
+The situation this arises in: two branches whose histories diverged far enough
+that you want one side wholesale. Set the merge up so it stages nothing
+automatically, then resolve:
+
+```bash
+git fetch origin
+git checkout main
+git reset --hard origin/main
+
+# take develop's content, but stop before committing
+git merge --allow-unrelated-histories --no-commit -X theirs develop
+```
+
 ```bash
 # what is actually unmerged
 git diff --name-only --diff-filter=U
@@ -358,3 +371,24 @@ Match the repo you are in.
 - [ ] `BACKLOG.md` + loop config + thin runners in place, prompts left upstream
 - [ ] Workflows call the composite actions
 - [ ] Consumer AGENTS.md links to these docs instead of restating them
+
+### When the push is refused
+
+`main` is usually protected, so the merge above cannot be pushed directly. Do
+not force it — put the result on a branch and open a PR:
+
+```bash
+git push origin main || {
+  git branch overwrite-main-from-develop
+  git push origin overwrite-main-from-develop
+}
+```
+
+### Repointing a remote
+
+After a rename, a transfer, or moving from HTTPS to SSH:
+
+```bash
+git remote set-url origin git@github.com:<org>/<repo>.git
+git remote -v
+```

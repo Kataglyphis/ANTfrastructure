@@ -208,8 +208,8 @@ Verify: `Get-Service stevedore, containerd, buildkitd` → all `Running`.
 
 - **`stevedore` service won't start / 1053 timeout** → a stale Docker Desktop
   `C:\ProgramData\docker\config\daemon.json` conflicts with the service's
-  `--host` flags. Remove/rename it: [Windows Build Image](windows-builds.md)
-  § Stevedore Setup Fixes, Fix 1.
+  `--host` flags. Remove/rename it: [Windows Build Image](windows-stevedore-and-docker.md)
+  [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) § Stevedore Setup Fixes, Fix 1.
 - **`docker build` fails `runtime "com.docker.hcsshim.v1" binary not installed`**
   → apply Fix 2 (re-register with `--default-runtime=io.containerd.runhcs.v1`).
   Note: current Stevedore releases may not need this — the reference host runs
@@ -222,7 +222,7 @@ Verify: `& "$env:ProgramFiles\Stevedore\bin\docker.exe" info` succeeds.
 `nat.exe` already ships in `C:\Program Files\containerd\cni\bin`; only the
 conf is missing on a fresh host. Install it as a **`.conflist`** (plugin-list
 form), NOT a bare `.conf` — see the format note below — using the subnet from
-[Windows Build Image](windows-builds.md) § Getting it going, step 2. The
+[Windows Build Image](windows-build-lanes.md) § Getting it going, step 2. The
 `ipam.subnet`/`GW` values MUST match the live `vEthernet (nat)` adapter
 (`ipconfig`), and dockerd restarts can silently re-create that network on a
 new subnet (the driver's preflight fail-fasts on drift with the exact fix).
@@ -317,8 +317,8 @@ MACHINE path, so only shells opened AFTER the Stevedore install see it — open 
 new window rather than editing `$env:Path`.
 
 Full recipe set (interactive shell into an image, `nerdctl build`, the
-`ENTRYPOINT` trap, zombie cleanup): [Windows Build Image](windows-builds.md)
-§ nerdctl lane.
+`ENTRYPOINT` trap, zombie cleanup): [Windows Build Image](windows-build-lanes.md)
+[`windows-build-lanes.md`](windows-build-lanes.md) § nerdctl lane.
 
 ---
 
@@ -434,7 +434,7 @@ while a build is solving.**
 Debug logging stays PERMANENTLY ON on build hosts, so the next snapshotter
 incident carries its evidence immediately (owner decision 2026-08-04; if the
 log grows huge, truncate it — never disable the flags). Recipe and rationale:
-[Windows Build Image](windows-builds.md) § BuildKit/containerd lane ("How to
+[Windows Build Image](windows-build-lanes.md) § BuildKit/containerd lane ("How to
 capture the debug evidence again").
 
 **Use the script — it is the source of truth for the containerd side:**
@@ -477,7 +477,7 @@ host state):
 ### C2. Disable buildkitd's per-step log limit (REQUIRED for compile stages)
 
 Without this, heavy steps deadlock silently at the 2 MiB clip
-([Windows Build Image](windows-builds.md) § Getting it going, step 4).
+([Windows Build Image](windows-build-lanes.md) § Getting it going, step 4).
 Since 2026-08-10 this is ENFORCED: `build-buildkit.ps1`'s
 `Assert-BuildkitdStepLogEnv` preflight refuses to launch while the value is
 missing (a Stevedore repair once wiped it silently); `-SkipStepLogGate` is
@@ -532,9 +532,9 @@ container churn and finalize/export operations flake constantly (the
 hcs-temp sharing-violation family). They also tame — but do NOT cure — the
 `ExportLayer 0x3` heavy-churn finalize defect (TVM-class finalizes became
 reliable with them; OpenCV-class still trips it, which is why the
-warm/materialize pattern stays — full story: windows-builds.md § roadmap).
+warm/materialize pattern stays — full story: windows-build-lanes.md § roadmap).
 Skipping this step on a new machine makes builds flaky across the board.
-The full set (the § Getting it going step-3 list plus the process exclusions
+The full set (the [`windows-build-lanes.md`](windows-build-lanes.md) § Getting it going step-3 list plus the process exclusions
 added 2026-08-05 after the hcs-temp sharing-violation flake family):
 
 ```pwsh
@@ -627,7 +627,7 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
    flakes). Reclaim levers, non-admin first: `buildctl prune --free-storage <MB>`
    (see the target trap below), then `buildctl prune-histories`,
    `buildctl prune --free-storage <MB>`, `docker image prune -f`; the full
-   playbook is [Windows Build Image](windows-builds.md) § Store GC. Two traps
+   playbook is [Windows Build Image](windows-build-lanes.md) § Store GC. Two traps
    that make the levers look broken: `--free-storage` is a **minimum-free
    target**, so it deletes nothing once the disk is already above it (ask for
    more free space than the disk has to drain everything unpinned), and a
@@ -644,7 +644,7 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
 
    Without `-ReportOnly` it stops the build services, compacts and restores
    the disk — **admin, and never while a build solves.** Read the ReFS
-   caveat in § Store GC first: on ReFS guests compaction reclaims ~nothing,
+   caveat in [`windows-build-lanes.md`](windows-build-lanes.md) § Store GC first: on ReFS guests compaction reclaims ~nothing,
    and the reclaim that does work is `rebuild-host-vhdx.ps1`, which rebuilds
    the disk around its live data. Run its `-CopyOnly` phase whenever you like
    — it touches nothing live — but the swap detaches the volume, so nothing

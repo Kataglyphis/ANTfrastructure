@@ -37,3 +37,31 @@ linux/nextcloud-aio/.env
 # login-gated + EULA-bound, never committed. Only the README rides along.
 windows/qnn-sdk/*
 !windows/qnn-sdk/README.md
+
+# ---------------------------------------------------------------------------
+# Scratch and one-shot helpers — never committed
+# ---------------------------------------------------------------------------
+# Ad-hoc drivers (a refactor script, a probe, a generated fragment) land in the
+# repo ROOT because that is where a `uv run` / `bash` invocation resolves
+# relative paths — and that is exactly where `git add -A` sweeps them into a
+# commit. NO tracked file at the root is a script, so root-level scripts are
+# ignored outright; put anything else throwaway under .scratch/.
+#
+# Safe against every gate, checked 2026-08-25: lint-shell.sh and lint-python.sh
+# both discover from explicit directory allowlists (linux/scripts, docs/scripts,
+# linux/llm-stack, linux/webserver) that exclude the root and .scratch/, and
+# crlf-guard reads `git ls-files`, so it never sees an ignored file. No
+# Dockerfile COPYs a root-level script either — the mirrored entries in
+# .dockerignore keep a stray one out of the build context, where it would
+# otherwise change the root context ~9 builds upload per full run.
+#
+# If a helper earns a SECOND use it is not scratch any more: move it to
+# linux/scripts/ or docs/scripts/, give it a header and a test, and commit it
+# there. Committing one deliberately is still `git add -f <file>`.
+/.scratch/
+/*.py
+/*.sh
+/*.ps1
+/*.psm1
+/*.tmp
+/*.bak

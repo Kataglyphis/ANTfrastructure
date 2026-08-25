@@ -493,6 +493,43 @@ Unattended-Upgrade::Mail "root";
 Unattended-Upgrade::MailOnlyOnError "true";
 ```
 
+`Unattended-Upgrade::Mail` needs a working MTA on the host, or the notification
+is silently dropped. `msmtp` is the least-effort option — it relays to an
+existing mailbox rather than running a mail server:
+
+```bash
+sudo apt install -y mailutils msmtp msmtp-mta
+```
+
+Configure it per-user in `~/.msmtprc` — **create this without sudo**, and give
+it mode 600 or msmtp refuses to use it:
+
+```
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        ~/.msmtp.log
+
+account        mymail
+host           smtp.example.com
+port           587
+from           builder@example.com
+user           builder@example.com
+password       <APP_PASSWORD>
+
+account default : mymail
+```
+
+```bash
+chmod 600 ~/.msmtprc
+echo "test" | mail -s "Test from $(hostname)" you@example.com
+```
+
+For a provider with 2FA, this needs an **app password**, not the account
+password. The file holds that credential in plaintext, so it belongs in the
+build user's home on the host, never in a repo.
+
 Automatic reboots interrupt long builds — leave it off on a machine that runs
 the chain unattended.
 
