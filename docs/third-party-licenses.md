@@ -30,7 +30,7 @@ python3 docs/scripts/generate_sbom.py --write     # docs/deps/sbom-curated.spdx.
 
 Add one object to the right `subsections[].entries[]` array in `deps.json`:
 
-```jsonc
+```json5
 {
   "name": "libfoo",                       // shown in the table
   "var": "LIBFOO_VERSION",                // key in versions.env -- preferred
@@ -51,7 +51,7 @@ requires, or the gate fails with the id it could not map.
 GPL, LGPL, MPL and AGPL require the corresponding source to accompany the
 binary. The gate refuses a copyleft component without one:
 
-```jsonc
+```json5
 "source": {
   "kind": "upstream-tag",
   "url": "https://git.example.org/libfoo.git",
@@ -72,7 +72,7 @@ flags are the reason for the obligation, so they are recorded next to it.
 Add `"modified"` as well. Apache-2.0 §4(b) and the GPL family both require
 stating that a redistributed component was changed:
 
-```jsonc
+```json5
 "modified": {
   "patches": ["windows/upstream/sccache-nvcc-quote-fix/"],
   "note": "Built from source at the pinned git rev with a local patch series."

@@ -94,17 +94,21 @@ verifies the curated document has not drifted from `deps.json`.
 
 ### 1. Find vulnerabilities without rebuilding
 
-The immediate payoff. `grype` consumes an SBOM directly, so you can re-check a
-*published* image against today's CVE feed without pulling or rebuilding it:
+The immediate payoff. `grype` reads an SBOM directly, so a *published* image can
+be re-checked against today's CVE feed in seconds instead of a multi-gigabyte
+pull — which is what makes it viable on a schedule:
 
 ```bash
-grype sbom:out/sbom/scanned-linux-amd64.spdx.json
-grype sbom:out/sbom/scanned-linux-amd64.spdx.json --fail-on high
+grype sbom:out/sbom/scanned-linux-amd64.spdx.json -o json --file out/sbom/vulns-linux-amd64.json
 ```
 
-Scanning the SBOM rather than the image is the difference between seconds and a
-multi-gigabyte pull, which is what makes it viable to run on a schedule against
-every published tag.
+**Read [`vulnerability-scanning.md`](vulnerability-scanning.md) before acting on
+the output.** On these images the raw count is close to meaningless: 98.5 % of
+the Linux matches are `deb` packages that grype could not version-match because
+Ubuntu 26.04 is not in its database, and 87 % of the Windows matches are CPE
+guesses against DLL version resources. That page has the filter that extracts
+the real findings, a measured baseline to compare against, and why
+`--fail-on high` is the wrong gate here.
 
 ### 2. Answer a customer or procurement request
 

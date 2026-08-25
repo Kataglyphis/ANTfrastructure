@@ -189,6 +189,7 @@ Common development targets:
    project-info
    third-party-licenses
    sbom
+   vulnerability-scanning
    upstream-libstdcxx-c++23-nostdinc++
    upstream/hcsshim-lost-shutdown-notification-issue
 
