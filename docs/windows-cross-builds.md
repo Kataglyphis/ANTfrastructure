@@ -6,7 +6,9 @@ produce, and which gates keep it honest.
 
 > **Status (2026-08-25): the lane builds end to end — `media-litert` included — the bundle's
 > Python surface is now staged so a clean device can use it at first touch (#124–#127, run 14),
-> and nothing it produces has ever been run.**
+> the post-cross refactor (#131) is on `main` and re-proved on both lanes the same day (amd64
+> run 5: 1134/0, 220/0/0; arm64 run 19: 970/0, walk 571/0, smoke 97/0/15, every tagging count
+> identical to run 14), and nothing it produces has ever been run.**
 >
 > Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on the **BuildKit
 > driver only** (`build-buildkit.ps1`) — the classic `build.ps1` has no arm64 support at all and

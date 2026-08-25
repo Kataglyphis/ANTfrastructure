@@ -657,7 +657,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   output — every teed ninja line, path last — so IREE's `Join-Path $ireeHostBinDir $tool` died with
   "A drive with the name 'ninja' does not exist" (LiteRT never noticed: it `[void]`s the call).
   `| Out-Host` inside the helper keeps the lines in the log and off the pipeline; pin: the
-  chatty-ninja case in `SourceBuild.NinjaTargets.Tests.ps1`. arm64 run 19 carries the proof.
+  chatty-ninja case in `SourceBuild.NinjaTargets.Tests.ps1`. **arm64 run 19 is the proof** (`[bk]
+  Done in 01:10:51`): MLAS 25, XNNPACK 569 + 335, IREE 15 + 5 through the helpers; OpenSSL 2
+  runtime DLLs staged (deduplicated from 8 package copies); deps 7 wheels / 0 unresolved; arch gate
+  970/0; import walk 571 / 0 unresolved / 3 external / 6 device-OS; smoke 97/0/15 — every number
+  identical to the pre-refactor run 14. With amd64 run 5 (1134/0, 220/0/0) the refactor is proven
+  on both lanes; the worktree is removed.
 
 - **VERIFY RIDE — MOSTLY CLOSED 2026-08-24 by the amd64 full regression** (media all
   branches + merge + final + smoke: arch gate 1134/0, smoke 220/0/0, `[bk] Done`), **and
