@@ -4,8 +4,9 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
-> **Status (2026-08-24): the lane builds end to end — `media-litert` included — and nothing it
-> produces has ever been run.**
+> **Status (2026-08-25): the lane builds end to end — `media-litert` included — the bundle's
+> Python surface is now staged so a clean device can use it at first touch (#124–#127, run 14),
+> and nothing it produces has ever been run.**
 >
 > Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on the **BuildKit
 > driver only** (`build-buildkit.ps1`) — the classic `build.ps1` has no arm64 support at all and
@@ -34,9 +35,12 @@ produce, and which gates keep it honest.
 > four mandatory plugins including `tflite`**, and the out-of-tree
 > `opencv_videoio_gstreamer` plugin, all in the merge stage.
 >
-> **The PE architecture gate has run and passed over the whole image:** `950 binaries inspected,
-> 0 violations` (2026-08-24 evening, run 11, with the TVM/IREE runtimes and the Python consumers
-> in the bundle; 931 that morning before them, 390 when media-core stood alone)
+> **The PE architecture gate has run and passed over the whole image:** `970 binaries inspected,
+> 0 violations` (2026-08-25, run 14, with the staged CRT, OpenSSL runtime and target deps; 950 on
+> run 11 of 2026-08-24 with the TVM/IREE runtimes and the Python consumers, 931 that morning
+> before them, 390 when media-core stood alone) — and since run 14 the same gate walks every PE's
+> import table (`-ImportWalk`, #127): `571 file(s) walked, 0 unresolved import(s), 3 allowlisted
+> external(s), 6 device-OS (client SKU) import(s)`
 > (`verify-target-arch.ps1` over all of `C:\runtime` **and** the host CPython's site-packages,
 > `-IncludeArchives`, floor raised to 100 on this lane; the 58 host `.pyd`s appear as *reported*
 > allowlist skips). That, plus the smoke sections that now compile for the target and assert the
@@ -59,10 +63,30 @@ produce, and which gates keep it honest.
 > markers. `Get-SourceBuildPython` stays host-pinned (build tooling); `Get-TargetBuildPython` names
 > what gets linked. There is no `windows-11-arm` CI job — the repo owner declined one.
 >
+> **Built was not usable — the 2026-08-25 consumer-side audit (re-checked against code and
+> configure logs) found the bundle's Python surface failing on a clean Windows-on-ARM machine
+> before any user code runs:** `python.exe` could not find its own `vcruntime140.dll` (staged into
+> `DLLs\`, #124), no `sitecustomize` registered the DLL directories for the *target* interpreter
+> (#125), no numpy/pip/runtime deps were staged for it (#126), and no gate looked at what the
+> loader would resolve (#127). **Fixed the same day, proven by run 14** (`[bk] Done in 01:26:50`):
+> the target-arch CRT sits beside `python.exe` and in `C:\runtime\bin` (9 DLLs, including the
+> `vcruntime140_threads.dll` LiteRT imports); the target site-packages carries its own DLL-directory
+> shim; `stage-target-python-deps.ps1` downloads the target's deps with the host pip
+> (`--platform win_arm64`) and gates that every `Requires-Dist` resolves inside `C:\runtime\wheels`
+> (7 wheels, 0 unresolved — after the GenAI wheel's requirement was rewritten from the
+> non-existent `onnxruntime-directml` to the bundle's `onnxruntime`); and the arch gate walks every
+> PE's import table. That walk's first run found 13 real unresolved imports — the OpenSSL runtime
+> DLLs nobody had installed (now staged from `C:\opt\openssl-arm64`), `vcruntime140_threads.dll`,
+> and six client-OS names Server Core lacks (`dsound`, `mf*`, `winspool.drv`; classified, not
+> counted). Two silent degradations remain open, watched but not blocking: GStreamer arm64 lacks
+> `webrtc`/`nice` and `gst-ptp-helper` (#128, a build-machine-compiler gap in the cross file), and
+> OpenCV arm64 ships **zero dispatched NEON kernels** (#129, its feature probe hands clang-cl
+> GCC-style flags). Backlog `docs/windows-builds.md`.
+>
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,
 > arch-filtered) on this lane — measured **97 passed / 0 failed / 15 skipped** against this
-> lane's own floors (66/25) — and the healthcheck runs its four host-tool checks; but those
+> lane's own floors (66/25), unchanged on run 14 of 2026-08-25 — and the healthcheck runs its four host-tool checks; but those
 > validate the x64 host toolchain, not the payload, and sections 14/15 now compile **for** the
 > target and assert the produced PE machine rather than run anything. Every arm64 signal is
 > still a static PE machine-type check. A green build is evidence that the code compiles and
@@ -302,7 +326,7 @@ collision, flagged dead where it appears.
 | `WITH_IPP=OFF`, `BUILD_IPP_IW=OFF` (OpenCV) | IPP is Intel's x86-only primitives library; no AArch64 build exists. OpenCV still resolved and unpacked `3rdparty/ippicv/ippicv_win`, putting its headers on every core TU's include path, and the staged `.lib` is x64 COFF that lld-link would reject against an arm64 image. |
 | `USE_DML=ON` (ONNX Runtime, and GenAI since #118), `WITH_DIRECTML=ON` (OpenCV) — all three initially OFF on this lane | **The original justification was wrong and is retracted:** the nuget *does* ship an arm64 import library. `Microsoft.AI.DirectML` 1.15.4 contains `bin/arm64-win/DirectML.lib`, a COFF import archive whose machine field is `0xAA64`. The real defect was a **case mismatch inside ONNX Runtime's own CMake**: `cmake/external/dml.cmake` declares the download's outputs with a lower-case `bin/arm64-win`, while `cmake/onnxruntime_providers_dml.cmake` composes its consumer paths as `bin/${onnxruntime_target_platform}-win` — and `onnxruntime_target_platform` is the verbatim, upper-case `ARM64`. The two spellings never meet, so the arm64 lane failed with `bin/ARM64-win/DirectML.lib ... missing and no known rule to make it`, and that was misread as "no arm64 package". A cross-scoped inline patch lower-cases the redist directory once (`string(TOLOWER … onnxruntime_dml_redist_platform)`) and routes both consumers through it. The sequencing hold has since cleared: as of #118 (2026-08-24) GenAI builds `USE_DML=ON` on both lanes and stages `D3D12Core.dll` through a target-derived filter, and OpenCV's `WITH_DIRECTML` is ON on both lanes — it feeds contrib G-API's ONNX DirectML EP, not `cv::dnn`. |
 | `USE_CUDA=OFF` forced by **target**, not host (GenAI) | `Get-GpuEnvironment` probes the x64 *build host*. On a GPU-equipped host it answers "yes" and would switch nvcc on for an aarch64 target. This lane ships no CUDA (wiring the Windows ARM64 CUDA preview is backlog work, see the exclusion table) — and even then the decision belongs to the target, never to a host GPU probe. |
-| Python bindings **ON** everywhere since #120 step 2 (2026-08-24 evening): ORT wheel, GenAI wheel, `cv2`, PyAV — built for the target, **staged, never imported** | Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) while the **host** interpreter runs the build — `Get-TargetBuildPython` returns exactly that split (`.Exe` host, `.Include` arch-neutral, `.Lib`/`.LibDir` target) and `Get-SourceBuildPython` stays host-pinned. Wheels are tagged with an explicit `--plat-name win_arm64`, then `Invoke-PythonWheelBuild -StageOnly` hands them to `Assert-WheelTargetArch` (PE machine **and** `EXT_SUFFIX` name tag of every native member); cv2 gets a static gate on `cv2.cp314-win_arm64.pyd` in the target site-packages. The `sitecustomize` shim pins `EXT_SUFFIX` to the target on this lane (the name a target interpreter will import) while `get_platform()` stays host (what pip resolves downloads with). See § "#120 step 2" below for the three findings this took. |
+| Python bindings **ON** everywhere since #120 step 2 (2026-08-24 evening): ORT wheel, GenAI wheel, `cv2`, PyAV — built for the target, **staged, never imported** | Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) while the **host** interpreter runs the build — `Get-TargetBuildPython` returns exactly that split (`.Exe` host, `.Include` arch-neutral, `.Lib`/`.LibDir` target) and `Get-SourceBuildPython` stays host-pinned. Wheels go through `Invoke-PythonWheelBuild -CrossStage` (one call for both lanes: on cross it appends the target `--plat-name`, stages, and hands the wheel to `Assert-WheelTargetArch` (PE machine **and** `EXT_SUFFIX` name tag of every native member); cv2 gets a static gate on `cv2.cp314-win_arm64.pyd` in the target site-packages. The `sitecustomize` shim pins `EXT_SUFFIX` to the target on this lane (the name a target interpreter will import) while `get_platform()` stays host (what pip resolves downloads with). See § "#120 step 2" below for the three findings this took. |
 | `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV) | An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. Full `/O2` is retained. See below. |
 | MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`) | The existing Windows skip was gated on `WIN32 AND _MLAS_REQUIRES_ASM`, and upstream derives that flag from `MLAS_X86_64` / `MLAS_ARM64` / … — whose detection does **not** fire for a `CMAKE_SYSTEM_PROCESSOR=ARM64` cross configure. The skip silently did nothing on the arm64 lane, MLAS built a C++-only subset whose objects still referenced the GAS-only assembly kernels, and it failed at **link** with `undefined symbol: MlasGemvFloatKernel` / `MlasHGemmSupported`. amd64 is unchanged — `_MLAS_REQUIRES_ASM` is TRUE there, so both forms of the condition fire identically, and that lane already skipped MLAS. |
 | `mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV) | Bundled MLAS assumes *"`_M_ARM64` implies the MSVC compiler"* and remaps two ACLE reduction intrinsics onto MSVC's private spellings: `#define vmaxvq_f32(src) neon_fmaxv(src)`. clang-cl defines `_M_ARM64` too, but implements the ACLE names and has no `neon_fmaxv` at all. The upstream `#ifndef vmaxvq_f32` guard does not help — clang provides it as a *function*, not a macro, so the guard is true and MLAS shadows the real intrinsic. The condition being corrected is *which compiler*, not *which architecture*, so each `#define` is wrapped rather than deleted. **Dead code (audited 2026-08-24):** patch `003`'s `WIN32` `return()` fires first, so OpenCV never compiles MLAS — or this header — on either lane; the patch is retained as documentation of the collision, not as a live fix. |
@@ -500,8 +524,9 @@ lane is byte-identical.
 
 Two more facts worth keeping: PyAV is a setuptools extension, so it is compiled by **`cl.exe`** via
 setuptools' `x86_arm64` vcvars spec (`build_ext --plat-name win-arm64` selects it) — the documented
-PyAV-shaped hole in the clang-cl rule, on both lanes; and the `-StageOnly` path is the cross lane's
-replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which stay mandatory on amd64.
+PyAV-shaped hole in the clang-cl rule, on both lanes; and the `-CrossStage` staging path is the cross
+lane's replacement for `Install-StagedPythonWheel`/`Test-PythonImport`, which stay mandatory on amd64
+(the same switch takes that native path there).
 
 ## Cross machinery the LiteRT branch added
 

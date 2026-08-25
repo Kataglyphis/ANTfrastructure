@@ -245,6 +245,169 @@ function Get-PeFileMachine {
     } finally { $fs.Dispose() }
 }
 
+<#
+.SYNOPSIS
+    Lists the DLL names a PE file imports (import directory, optionally the
+    delay-load directory), by parsing the file -- no dumpbin, no admin.
+.DESCRIPTION
+    Backlog #127 (2026-08-25): the merge arch gate answered "is every byte the
+    right machine?" and nothing answered "can the loader resolve this file on
+    the target?" -- which is how an arm64 python.exe shipped with its CRT in a
+    directory the loader never searches (#124). This is the primitive for a
+    whole-tree static import walk; dependency-free like the rest of this
+    module so the gate can use it. PE32 and PE32+ (x64/ARM64). Throws on a
+    non-PE, like Get-PeFileMachine.
+.PARAMETER IncludeDelayLoad
+    Also list DataDirectory[13] (delay-load) imports. Delay-loaded DLLs are
+    resolved at first call, so a missing one is a runtime failure too.
+.OUTPUTS
+    [string[]] DLL names as written in the file (case preserved), unique.
+#>
+function Get-PeImportNames {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$IncludeDelayLoad
+    )
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Length -lt 0x40) { throw "Get-PeImportNames: $Path is too small to be a PE file" }
+    $peOff = [BitConverter]::ToUInt32($bytes, 0x3C)
+    if ($peOff + 24 -gt $bytes.Length -or [BitConverter]::ToUInt32($bytes, $peOff) -ne 0x00004550) {
+        throw "Get-PeImportNames: $Path is not a PE file"
+    }
+    $numSections = [BitConverter]::ToUInt16($bytes, $peOff + 6)
+    $optSize     = [BitConverter]::ToUInt16($bytes, $peOff + 20)
+    $optOff      = $peOff + 24
+    $isPlus      = ([BitConverter]::ToUInt16($bytes, $optOff) -eq 0x20B)
+    $numDD       = [BitConverter]::ToUInt32($bytes, $optOff + $(if ($isPlus) { 108 } else { 92 }))
+    $ddOff       = $optOff + $(if ($isPlus) { 112 } else { 96 })
+    $secOff      = $optOff + $optSize
+    $sections = @(for ($i = 0; $i -lt $numSections; $i++) {
+        $s = $secOff + $i * 40
+        [pscustomobject]@{
+            VA      = [BitConverter]::ToUInt32($bytes, $s + 12)
+            VSize   = [BitConverter]::ToUInt32($bytes, $s + 8)
+            Raw     = [BitConverter]::ToUInt32($bytes, $s + 20)
+            RawSize = [BitConverter]::ToUInt32($bytes, $s + 16)
+        }
+    })
+    $rvaToOffset = {
+        param([uint32]$rva)
+        foreach ($s in $sections) {
+            $span = [Math]::Max($s.VSize, $s.RawSize)
+            if ($rva -ge $s.VA -and $rva -lt ($s.VA + $span)) { return [int]($s.Raw + ($rva - $s.VA)) }
+        }
+        return -1
+    }
+    $readAscii = {
+        param([int]$off)
+        $end = $off
+        while ($end -lt $bytes.Length -and $bytes[$end] -ne 0) { $end++ }
+        return [System.Text.Encoding]::ASCII.GetString($bytes, $off, $end - $off)
+    }
+    $names = [System.Collections.Generic.List[string]]::new()
+    # DataDirectory[1] = imports: IMAGE_IMPORT_DESCRIPTOR is 20 bytes, Name RVA at +12, all-zero terminator.
+    if ($numDD -gt 1) {
+        $impRva = [BitConverter]::ToUInt32($bytes, $ddOff + 8)
+        if ($impRva -ne 0) {
+            $off = & $rvaToOffset $impRva
+            while ($off -ge 0 -and $off + 20 -le $bytes.Length) {
+                $nameRva = [BitConverter]::ToUInt32($bytes, $off + 12)
+                if ($nameRva -eq 0) { break }
+                $nOff = & $rvaToOffset $nameRva
+                if ($nOff -ge 0) { $names.Add((& $readAscii $nOff)) }
+                $off += 20
+            }
+        }
+    }
+    # DataDirectory[13] = delay-load: IMAGE_DELAYLOAD_DESCRIPTOR is 32 bytes, DllNameRVA at +4.
+    if ($IncludeDelayLoad -and $numDD -gt 13) {
+        $dRva = [BitConverter]::ToUInt32($bytes, $ddOff + 13 * 8)
+        if ($dRva -ne 0) {
+            $off = & $rvaToOffset $dRva
+            while ($off -ge 0 -and $off + 32 -le $bytes.Length) {
+                $nameRva = [BitConverter]::ToUInt32($bytes, $off + 4)
+                if ($nameRva -eq 0) { break }
+                $nOff = & $rvaToOffset $nameRva
+                if ($nOff -ge 0) { $names.Add((& $readAscii $nOff)) }
+                $off += 32
+            }
+        }
+    }
+    return @($names | Select-Object -Unique)
+}
+
+<#
+.SYNOPSIS
+    Asserts every given PE file is the TARGET machine; throws naming the first
+    offender with both machine values. Returns the number checked.
+.DESCRIPTION
+    The static gate that used to be re-inlined per script (TVM/IREE installs,
+    cv2, cpython staging, smoke sections 14/15) -- #131, 2026-08-25.
+#>
+function Assert-PeTargetMachine {
+    param(
+        [Parameter(Mandatory)][string[]]$Path,
+        [string]$Arch = '',
+        [string]$Context = ''
+    )
+    $want = Get-PeMachineType -Arch $Arch
+    $label = if ($Context) { "$Context`: " } else { '' }
+    foreach ($p in $Path) {
+        $got = Get-PeFileMachine -Path $p
+        if ($got -ne $want) {
+            throw ('{0}{1} is PE machine 0x{2:X4}, expected 0x{3:X4}' -f $label, $p, $got, $want)
+        }
+    }
+    return $Path.Count
+}
+
+<#
+.SYNOPSIS
+    Asserts every PE under a directory is the TARGET machine and that at least
+    -MinCount files were found (an empty tree is a failure, never a pass).
+    Returns the count.
+#>
+function Assert-DirectoryTargetArch {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [string[]]$Include = @('*.dll', '*.exe', '*.pyd'),
+        [int]$MinCount = 1,
+        [string]$Arch = '',
+        [string]$Context = ''
+    )
+    $label = if ($Context) { $Context } else { $Path }
+    if (-not (Test-Path -LiteralPath $Path)) { throw "$label`: directory not found: $Path" }
+    $files = @(Get-ChildItem -LiteralPath $Path -Recurse -File -Include $Include)
+    if ($files.Count -lt $MinCount) {
+        throw "$label`: found $($files.Count) native file(s) under $Path, expected at least $MinCount -- nothing (or too little) was staged"
+    }
+    [void](Assert-PeTargetMachine -Path @($files.FullName) -Arch $Arch -Context $label)
+    return $files.Count
+}
+
+<#
+.SYNOPSIS
+    Asserts a python extension module NAME carries the target's EXT_SUFFIX tag
+    when it carries one at all (`<mod>.cp314-win_arm64.pyd`); bare `<mod>.pyd`
+    passes. A host-tagged name is unloadable on the target however correct the
+    machine field is (measured 2026-08-24: cv2.cp314-win_amd64.pyd, 0xAA64).
+#>
+function Assert-PythonExtensionTag {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [string]$Arch = '',
+        [string]$Context = ''
+    )
+    $leaf = [System.IO.Path]::GetFileName($Name)
+    if ($leaf -notmatch '\.cp\d+-win_(amd64|arm64)\.pyd$') { return $true }
+    $want = Get-PythonWheelTag -Arch $Arch
+    if ($leaf -notmatch [regex]::Escape($want)) {
+        $label = if ($Context) { "$Context`: " } else { '' }
+        throw "$label$leaf carries a host EXT_SUFFIX tag, expected '$want' -- the target interpreter would never import it"
+    }
+    return $true
+}
+
 function Get-VcpkgTriplet {
     param([string]$Arch = '')
     return (Get-WindowsTargetArchInfo -Arch $Arch).VcpkgTriplet
@@ -571,6 +734,10 @@ Export-ModuleMember -Function @(
     'Get-VsDevCmdArch',
     'Get-PeMachineType',
     'Get-PeFileMachine',
+    'Get-PeImportNames',
+    'Assert-PeTargetMachine',
+    'Assert-DirectoryTargetArch',
+    'Assert-PythonExtensionTag',
     'Get-VcpkgTriplet',
     'Get-MsvcTargetBinDir',
     'Get-MsvcTargetLibDir',

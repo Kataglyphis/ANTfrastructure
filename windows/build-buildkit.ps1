@@ -274,55 +274,13 @@ if ($TargetArch -ne 'amd64') {
         $Stages = @($Stages | Where-Object { $_ -ne 'torch' })
         Write-Host "[bk] stage 'torch' dropped for $TargetArch : $torchWhy" -ForegroundColor Yellow
     }
-    # Branches the cross lane drops. Real obstacles, but NOT "blocked by binary
-    # artifacts upstream, neither fixable here" as this header claimed until
-    # 2026-08-24 -- wrong on both counts, see the per-branch notes:
-    #   media-litert : LiteRT-LM's ACTIVE build path is Bazel, and TWO blockers
-    #                  are real there: (a) its .bazelrc carries no windows-arm64
-    #                  config (only android/macos/ios arm64), and (b) the
-    #                  prebuilt x86_64-only libGemmaModelConstraintProvider.lib
-    #                  IS in the default Windows dependency graph via
-    #                  gemma3_data_processor -- severable with the
-    #                  litert_lm_fst_constraints_disabled config_setting
-    #                  (model_data_processor/BUILD:26-33). CORRECTION HISTORY:
-    #                  the original note blamed ONLY the prebuilt; the
-    #                  2026-08-23 rewrite over-corrected to blame ONLY the
-    #                  bazelrc, calling the blob "OPTIONAL ... never the thing
-    #                  standing in the way" -- true for upstream's CMake stub
-    #                  path, false for the Bazel path used here, where it sits
-    #                  in the default graph. Both halves stand. Neither applies
-    #                  to PLAIN LiteRT (pure CMake, no Bazel, no prebuilt): its
-    #                  only cross obstacle is upstream's TFLITE_HOST_TOOLS_DIR
-    #                  host-flatc requirement. Plain-LiteRT cross is backlog
-    #                  #115.
-    #   media-tvm    : LEFT this list on 2026-08-24 as well (#116): the branch
-    #                  cross-builds RUNTIME-ONLY -- tvm_runtime.dll (+ffi,
-    #                  headers) with USE_LLVM=OFF, and IREE's runtime tools
-    #                  through upstream's IREE_HOST_BIN_DIR split (host tools
-    #                  built natively first). The compilers (tvm_compiler.dll,
-    #                  iree-compile) and the python packages stay amd64-only
-    #                  and are named ABSENT inside the bundle. (History: the
-    #                  branch was blocked here because USE_LLVM=<path> must
-    #                  EXECUTE llvm-config; an even older note wrongly claimed
-    #                  aarch64 codegen was impossible.)
-    #   The list is EMPTY today and kept as the mechanism for the next
-    #   genuinely blocked branch.
-    # Asking for one EXPLICITLY is an error (say so, do not silently do nothing);
-    # inheriting them from the parameter default just drops them with a notice.
-    # media-litert LEFT this list on 2026-08-24 (#115): plain LiteRT cross-builds
-    # (build-litert-all.ps1 skips only the LiteRT-LM stage on cross, with the
-    # Bazel reasons printed there), so the branch now RUNS on arm64 and its
-    # tensorflowlite_c feeds the tflite GStreamer plugin in the merge.
-    $crossBlockedBranches = @()
-    $blockedRequested = @($MediaBranches | Where-Object { $_ -in $crossBlockedBranches })
-    if ($blockedRequested.Count -gt 0) {
-        if ($PSBoundParameters.ContainsKey('MediaBranches')) {
-            throw ("-MediaBranches $($blockedRequested -join ',') cannot be built for -TargetArch $TargetArch yet " +
-                   '(see the blocker recorded next to $crossBlockedBranches and docs/windows-cross-builds.md).')
-        }
-        $MediaBranches = @($MediaBranches | Where-Object { $_ -notin $crossBlockedBranches })
-        Write-Host "[bk] media branches dropped for $TargetArch : $($blockedRequested -join ', ') (see `$crossBlockedBranches)" -ForegroundColor Yellow
-    }
+    # Every media branch builds on the cross lane since 2026-08-24 (#115 plain
+    # LiteRT, #116 TVM/IREE runtime-only). What a branch cannot build for the
+    # target is decided INSIDE the branch and shipped as an empty, marker-carrying
+    # tree (LiteRT-LM, the TVM/IREE compilers) -- see build-litert-all.ps1 and the
+    # exclusion table in docs/windows-cross-builds.md. A driver-level "blocked
+    # branches" refusal list lived here until 2026-08-25 and was removed once it
+    # had been empty for a day: two mechanisms for one fact.
     Write-Host ("[bk] TARGET ARCH: $TargetArch (CROSS build - host stays windows/amd64). " +
                 'Output is an artifact bundle, not a runnable image.') -ForegroundColor Yellow
 }

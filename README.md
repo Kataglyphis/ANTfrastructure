@@ -125,10 +125,17 @@ the arm64 `D3D12Core.dll`) with its wheel, FFmpeg with NEON assembly plus the Py
 with `cv2` installed into the target interpreter, plain LiteRT with the `tflite` GStreamer plugin,
 GStreamer with all four mandatory plugins, the TVM and IREE **runtimes** (compilers stay
 amd64-only), and a source-built target CPython at `C:\runtime\python` — all for
-`aarch64-pc-windows-msvc`, PE-gated at 950 binaries / 0 violations with the smoke gate green at
-97/0/15 (2026-08-24 evening). **Nothing it produces has ever been executed**, because Windows x64
-cannot run ARM64 code; every arm64 signal is static — the wheels ship staged, not installed. See
-the status banner in [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
+`aarch64-pc-windows-msvc`, PE-gated at 970 binaries / 0 violations, every import table walked
+(571 files / 0 unresolved), with the smoke gate green at 97/0/15 (2026-08-25, run 14). **Nothing it
+produces has ever been executed**, because Windows x64 cannot run ARM64 code; every arm64 signal
+is static — the wheels ship staged, not installed. A 2026-08-25 consumer-side audit found the
+Python surface **not usable at first touch** on a clean device (CRT placement, no target
+`sitecustomize`, no runtime deps, no import gate — backlog #124–#127); all four were fixed and
+proven the same day: the CRT sits beside `python.exe`, the target site-packages has its own DLL
+shim, `C:\runtime\wheels` holds the bundle wheels plus their resolved `win_arm64` deps (numpy,
+protobuf, flatbuffers, packaging), and the merge gate fails on any import the device loader could
+not satisfy. See the status banner in
+[`docs/windows-cross-builds.md`](docs/windows-cross-builds.md)).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no arm64
 > `servercore`/`nanoserver` base image and Windows Server has no arm64 release, so a **runnable**

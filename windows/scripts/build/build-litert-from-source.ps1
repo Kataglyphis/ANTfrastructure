@@ -169,10 +169,12 @@ if (Test-WindowsCrossTarget) {
         '-DTFLITE_ENABLE_INSTALL=OFF', '-DTFLITE_ENABLE_XNNPACK=OFF', '-DTFLITE_ENABLE_GPU=OFF',
         '-DTFLITE_ENABLE_RUY=OFF', '-DTFLITE_ENABLE_LABEL_IMAGE=OFF', '-DTFLITE_ENABLE_BENCHMARK_MODEL=OFF'
     ) + @(Get-LlvmArchiverCmakeArg)
-    Invoke-CmakeConfigure -SourceDir $tfliteSrc -BuildDir $hostToolsBuild -InstallPrefix (Join-Path $SourceDir 'host-tools-prefix') `
-        -TargetArch (Get-WindowsHostArch) -ExtraArgs $hostToolArgs | Out-Null
-    & cmake --build $hostToolsBuild --target flatbuffers-flatc
-    if ($LASTEXITCODE -ne 0) { throw 'LiteRT cross: host flatbuffers-flatc build failed' }
+    # Shared host-tool shape (#131): host target on the choke point AND the
+    # host's LIB for the pass (a no-op here -- this script never enters VsDevCmd,
+    # which is the only reason the plain configure worked before), with the
+    # retry ladder and a persistent log the raw `cmake --build` never had.
+    [void](Invoke-HostToolCmakeBuild -SourceDir $tfliteSrc -BuildDir $hostToolsBuild -InstallPrefix (Join-Path $SourceDir 'host-tools-prefix') `
+        -ExtraArgs $hostToolArgs -Targets @('flatbuffers-flatc') -LogName 'litert-host-flatc-build.log' -Label 'LiteRT host flatc')
     $flatc = Get-ChildItem -Path $hostToolsBuild -Recurse -Filter 'flatc.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $flatc) { throw "LiteRT cross: flatc.exe not found under $hostToolsBuild after the host-tools build" }
     Write-Host "LiteRT cross: host flatc at $($flatc.FullName)"
@@ -259,44 +261,24 @@ if (Test-WindowsCrossTarget) {
         'neonsme2'      = ''   # SME needs armv9 + streaming mode: skip, dispatcher-gated out
         'neonsme'       = ''
     }
-    $ninjaFile = Join-Path $buildDir 'build.ninja'
-    $ninjaLines = Get-Content $ninjaFile
-    $xnnTagged = 0
-    $xnnFeature = ''
-    for ($i = 0; $i -lt $ninjaLines.Count; $i++) {
-        $line = $ninjaLines[$i]
-        if ($line -match '^build ') {
-            $xnnFeature = ''
-            # .S statements are EXCLUDED. CORRECTED ROOT CAUSE (2026-08-24,
-            # same day, two diagnoses later): the "unknown target CPU
-            # 'armv8.2-a+fp16'" that this exclusion first blamed on a driver
-            # gap was really the X86 driver reading an aarch64 -march value --
-            # CMake's ASM language had no cross target at all until
-            # Get-CMakeCrossArgs gained CMAKE_ASM_COMPILER_TARGET/FLAGS_INIT.
-            # With the triple fixed the flags would work here too; the
-            # in-source `.arch` directives (prepended below) are kept as the
-            # feature mechanism because they survive independent of driver
-            # translation, and double-tagging buys nothing.
-            if ($line -match 'xnnpack-' -and $line -notmatch '\.S\.obj') {
-                foreach ($tok in $xnnFeatureMap.Keys) {
-                    if ($line -match "-$tok[.-]") { $xnnFeature = $xnnFeatureMap[$tok]; break }
-                }
+    # .S statements are EXCLUDED from the C-flag tagging. CORRECTED ROOT CAUSE
+    # (2026-08-24, two diagnoses later): the "unknown target CPU
+    # 'armv8.2-a+fp16'" first blamed on a driver gap was the X86 driver reading
+    # an aarch64 -march value -- CMake's ASM language had no cross target until
+    # Get-CMakeCrossArgs gained CMAKE_ASM_COMPILER_TARGET/FLAGS_INIT. The
+    # in-source `.arch` directives (prepended below) stay the feature mechanism
+    # for .S: they survive independent of driver translation, and double-tagging
+    # buys nothing. Floor 100: the first measured run tags several hundred TUs,
+    # far over "the pattern matches nothing" (the MLAS lesson).
+    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') -Label 'XNNPACK microkernel' -Floor 100 -AlreadyTaggedPattern 'armv8\.2-a' -Select {
+        param($line)
+        if ($line -match 'xnnpack-' -and $line -notmatch '\.S\.obj') {
+            foreach ($tok in $xnnFeatureMap.Keys) {
+                if ($line -match "-$tok[.-]") { if ($xnnFeatureMap[$tok]) { return "/clang:-march=armv8.2-a+$($xnnFeatureMap[$tok])" } else { return '' } }
             }
-        } elseif ($xnnFeature -and $line -match '^\s+FLAGS = ' -and $line -notmatch 'armv8\.2-a') {
-            $ninjaLines[$i] = $line + " /clang:-march=armv8.2-a+$xnnFeature"
-            $xnnTagged++
         }
-    }
-    # Floor rule (the one that failed amd64 MLAS when set too low): the first
-    # measured run tags several hundred TUs; 100 is far under normal churn but
-    # far over "the pattern matches nothing".
-    if ($xnnTagged -lt 100) {
-        throw ("build.ninja: tagged only $xnnTagged XNNPACK microkernel TU(s) with aarch64 feature flags, expected >= 100. " +
-               'The XNNPACK ninja layout or filename convention changed; without these flags every neonfp16arith/neondot/' +
-               'neoni8mm kernel fails to compile under clang-cl. Update the token map in build-litert-from-source.ps1.')
-    }
-    Set-Content -Path $ninjaFile -Value $ninjaLines
-    Write-Host "build.ninja: added per-family aarch64 feature flags to $xnnTagged XNNPACK microkernel TU FLAGS line(s)"
+        return ''
+    })
 
     # The .S half of the same problem (see the exclusion note above): give each
     # hand-written aarch64 assembly kernel its feature set as an IN-SOURCE

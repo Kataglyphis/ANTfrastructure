@@ -287,17 +287,12 @@ if ($tvmCross) {
     # Static gate (the import gate below is OFF on this lane): every staged DLL
     # is the TARGET machine. A host-arch tvm_ffi.dll picked up from the wrong
     # build dir would otherwise ship and fail only at load time on the target.
-    foreach ($pe in @(Get-ChildItem -Path $tvmLibOut -Include '*.dll' -Recurse -File)) {
-        $m = Get-PeFileMachine -Path $pe.FullName
-        if ($m -ne (Get-PeMachineType)) { throw ('TVM cross: {0} is PE machine 0x{1:X4}, expected 0x{2:X4}' -f $pe.Name, $m, (Get-PeMachineType)) }
-    }
-    Write-Host ('TVM cross: staged {0} runtime binaries into {1} (all PE machine 0x{2:X4}); compiler + python ABSENT by design (#116)' -f $runtimeBins.Count, $tvmLibOut, (Get-PeMachineType))
-    Set-Content -Path (Join-Path $tvmInstallDir 'COMPILER-ABSENT-ON-ARM64.txt') -Encoding ASCII -Value @(
-        'tvm_compiler.dll and the tvm python package are intentionally ABSENT from the Windows arm64 bundle.',
+    $tvmDlls = Assert-DirectoryTargetArch -Path $tvmLibOut -Include @('*.dll') -MinCount 2 -Context 'TVM cross'
+    Write-Host ('TVM cross: staged {0} runtime binaries ({1} DLLs, all PE machine 0x{2:X4}) into {3}; compiler + python ABSENT by design (#116)' -f $runtimeBins.Count, $tvmDlls, (Get-PeMachineType), $tvmLibOut)
+    [void](Write-AbsentOnCrossMarker -Root $tvmInstallDir -Component 'tvm_compiler.dll and the tvm python package' -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
         'They need TARGET-arch LLVM libraries plus a HOST llvm-config at configure time (backlog #116).',
-        'tvm_runtime.dll + tvm_ffi.dll (+ import libs) in lib\ and the headers in include\ are the shipped runtime.',
-        'See docs/windows-cross-builds.md.'
-    )
+        'tvm_runtime.dll + tvm_ffi.dll (+ import libs) in lib\ and the headers in include\ are the shipped runtime.'
+    ))
     # The merge fans in C:\runtime\wheels from this branch unconditionally; no wheel is built here.
     New-Item -Path (Join-Path (Split-Path $InstallDir -Parent) 'runtime\wheels') -ItemType Directory -Force | Out-Null
 } else {

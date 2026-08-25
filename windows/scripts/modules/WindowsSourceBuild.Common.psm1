@@ -206,9 +206,11 @@ function Invoke-CmakeConfigure {
         # emit target-arch binaries and such a stage would have no way to ask for
         # a runnable tool.
         #
-        # NB necessary but not sufficient: a host-tool configure also needs a
-        # paired `Enter-VsDevCmdEnvironment -Arch amd64`, or the surrounding
-        # LIB/INCLUDE stay arm64-shaped.
+        # NB necessary but not sufficient: a host-tool configure also needs the
+        # HOST's LIB/LIBPATH, or lld-link keeps searching the arm64 CRT. That is
+        # Invoke-WithHostArchLibraryEnvironment's job (measured 2026-08-24, IREE
+        # host pass) -- NOT a second Enter-VsDevCmdEnvironment, which appends
+        # rather than resets.
         [string]$TargetArch = '',
         [switch]$SkipOnFailure
     )
@@ -236,26 +238,21 @@ function Invoke-CmakeConfigure {
             if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
             $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            # CUDA launcher: OPT-IN ONLY since 2026-08-10 night (flipped from
-            # opt-out the same night, review find #1: build-onnx's
-            # process-wide opt-out env var leaked into later stages of a
-            # same-process classic-lane chain while the BK lane kept
-            # wrapping OpenCV/GenAI CUDA - the two lanes disagreed, and one
-            # of them still ran the disqualified path). The pinned sccache's
-            # nvcc decomposition is disqualified for ALL CUDA targets on
-            # this pin: deterministic server crash (fused_moe launchers,
-            # os error 10054, runs 6+7 at ~4910 s) AND silently dropped
-            # arch/define-guarded instantiations (runs 10/11 wrapped failed
-            # the link identically, runs 5/12 bare linked green; poisoning
-            # excluded on both cache levels). Wrapping CUDA again requires
-            # exporting SCCACHE_CUDA_LAUNCHER=1 - and doing that is only
-            # legitimate after a candidate sccache passes ALL THREE
-            # canaries: verify-cuda-cache.ps1, a fused_moe compile, and a
-            # full providers_cuda LINK (the miscompile is invisible until
-            # link). C/CXX launchers stay on unconditionally - that path is
-            # proven safe (the CUDA-13.3 dryrun-parser fix #2722 that our
-            # pinned source build carries is still required for the day the
-            # opt-in returns).
+            # CUDA launcher: gated on SCCACHE_CUDA_LAUNCHER=1 at THIS wiring site
+            # only (since 2026-08-10: a per-script opt-out env var leaked
+            # process-wide on the classic lane while the BK lane kept wrapping
+            # other CUDA stages -- one switch, one place). HISTORY, resolved: the
+            # nvcc decomposition was disqualified on 2026-08-10 (fused_moe server
+            # crash, runs 6+7; silently dropped guarded instantiations, runs
+            # 10/11) and REHABILITATED on 2026-08-18 -- root cause the dryrun
+            # quote-collapse, fixed by the #114 patch series carried in our
+            # pinned source build (mozilla/sccache#2811) and proven by the
+            # three-canary bar (verify-cuda-cache.ps1, a fused_moe compile, a
+            # full providers_cuda link with 100% CUDA hits). The media-core
+            # Dockerfile therefore sets SCCACHE_CUDA_LAUNCHER=1 by default; the
+            # stall guard + retry ladder stay armed. C/CXX launchers are
+            # unconditional. Until 2026-08-25 this comment still described the
+            # disqualified state -- the ORT script's note was the current one.
             if ($env:SCCACHE_CUDA_LAUNCHER -eq '1') {
                 $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
                 Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers + CUDA OPT-IN ACTIVE - three-canary bar applies)"
@@ -445,12 +442,12 @@ function Get-SourceBuildPython {
     # reverse -- so the interpreter must follow Get-WindowsHostArch. The literal
     # is replaced by the accessor so the host pin is a STATEMENT, not an accident.
     #
-    # .LibDir/.Lib are the exception in waiting: they are LINK inputs (build-ffmpeg
-    # prepends .LibDir to $env:LIB so lld-link finds python314.lib for the PyAV
-    # wheel), so they belong to the TARGET the day a target CPython exists. Until
-    # then only the host import lib exists and lld-link will reject it for an
-    # aarch64 .pyd -- warn, so that failure is named HERE instead of surfacing as
-    # an unexplained machine-type error hours into a media build.
+    # .LibDir/.Lib here are the HOST import libs -- right for anything that runs
+    # or links on the host, wrong for a target extension module. LINK inputs for
+    # the target come from Get-TargetBuildPython (which wraps this for .Exe and
+    # .Include); a consumer that links python*.lib must use that accessor. (A
+    # cross-lane warning lived here until 2026-08-25; it fired on every green
+    # arm64 run because Get-TargetBuildPython itself calls this function.)
     param(
         [string]$CpythonDir = ''
     )
@@ -459,11 +456,6 @@ function Get-SourceBuildPython {
     $exe = Join-Path $CpythonDir "PCbuild\$hostOutDir\python.exe"
     $include = Join-Path $CpythonDir 'Include'
     $libDir = Join-Path $CpythonDir "PCbuild\$hostOutDir"
-    if (Test-WindowsCrossTarget) {
-        Write-Warning ("Get-SourceBuildPython: returning the HOST ($(Get-WindowsHostArch)) CPython at $exe -- " +
-            "no $(Get-WindowsTargetArch) CPython is built on this lane, so .LibDir/.Lib are HOST import libs. " +
-            'Any python extension module linked against them will fail with a machine-type mismatch.')
-    }
     $lib = if (Test-Path (Join-Path $libDir 'python314.lib')) { Join-Path $libDir 'python314.lib' } else { Join-Path $libDir 'python3.lib' }
     return @{ Exe = $exe; Include = $include; LibDir = $libDir; Lib = $lib }
 }
@@ -523,6 +515,10 @@ function Initialize-SourceBuildEnvironment {
             $null = New-Item -ItemType Directory -Force -Path $errLogDir -ErrorAction SilentlyContinue
         }
     }
+    # First thing in every build RUN (2026-08-25): keep Windows Update from
+    # dropping an .msu into the layer -- see the function for the measured
+    # finalize failure. No-op outside a container.
+    Disable-ContainerWindowsUpdate
     return $InstallDir
 }
 
@@ -539,32 +535,6 @@ function Initialize-SourceBuildScript {
     $resolved = Initialize-SourceBuildEnvironment -InstallDir $InstallDir
     Import-CanonicalVersions -ScriptRoot $ScriptRoot
     return $resolved
-}
-
-function Get-WindowsX86SimdFlags {
-    # Back-compat shim (2026-08-22). The flag string now lives in
-    # WindowsTargetArch.Common as Get-WindowsTargetSimdFlags -Arch amd64 so it
-    # can vary by target. The x86 name is kept because both call sites
-    # (build-onnx / build-opencv) are still amd64-only; they move to the
-    # arch-aware helper when their lane learns arm64.
-    return Get-WindowsTargetSimdFlags -Arch 'amd64'
-}
-
-function Get-WindowsX86Avx512Flags {
-    # NEVER put these in global CXX flags. Field-proven on 2026-08-03 (ORT
-    # v1.28, AVX2-only 5950X): globally, clang may emit AVX-512 anywhere — the
-    # in-tree protoc AND onnxruntime.dll's static initializers both crashed at
-    # RUN/LOAD time with STATUS_ILLEGAL_INSTRUCTION. But entirely without them
-    # MLAS's arch TUs (qgemm_kernel_amx, intrinsics/avx512/*) fail to COMPILE:
-    # clang-cl gates intrinsics behind target features and ORT's mlas.cmake
-    # adds no per-file -m flags on its MSVC branch. The settled design:
-    # build-onnx-from-source.ps1 appends this string per-TU to exactly those
-    # MLAS FLAGS lines in build.ninja post-configure — the only place the
-    # features may be assumed, because those kernels are runtime-dispatched.
-    # Back-compat shim (2026-08-22): the flag string moved to
-    # WindowsTargetArch.Common (Get-WindowsTargetKernelSimdFlags), which
-    # also owns the aarch64 equivalent and the MLAS TU match pattern.
-    return Get-WindowsTargetKernelSimdFlags -Arch 'amd64'
 }
 
 function Install-CpythonPip {
@@ -625,6 +595,220 @@ function Copy-BuildArtifact {
 # 2026-08-03: FFmpeg was its only consumer, ever, and keeping it here forced
 # all three media branches to rebuild whenever the FFmpeg-specific fixup moved.)
 
+<#
+.SYNOPSIS
+    Appends per-TU flags to build.ninja FLAGS lines chosen by a selector, with a
+    coverage floor. ONE implementation for MLAS (ORT), XNNPACK (LiteRT) and the
+    IREE arm_64 ukernels (#131, 2026-08-25; the three copies had drifted only in
+    their selectors).
+.DESCRIPTION
+    Walks build.ninja once. On every `build ...` statement -Select runs with the
+    line and returns the flags to append to that target's FLAGS line -- or
+    ''/$null to leave it alone. The floor is load-bearing: a selector that
+    matches nothing SUCCEEDS silently and the compiler tells you 30 seconds
+    later (the MLAS lesson, twice-learned), so below -Floor the file is left
+    untouched and the call throws with the count. -AlreadyTaggedPattern makes
+    a re-run idempotent (a FLAGS line matching it is counted but not re-tagged).
+.OUTPUTS
+    [int] tagged FLAGS lines.
+#>
+function Add-NinjaPerTuFlags {
+    param(
+        [Parameter(Mandatory)][string]$NinjaFile,
+        [Parameter(Mandatory)][scriptblock]$Select,
+        [Parameter(Mandatory)][int]$Floor,
+        [Parameter(Mandatory)][string]$Label,
+        [string]$AlreadyTaggedPattern = ''
+    )
+    if (-not (Test-Path -LiteralPath $NinjaFile)) { throw "Add-NinjaPerTuFlags ($Label): $NinjaFile not found -- configure did not run?" }
+    $lines = @(Get-Content -LiteralPath $NinjaFile)
+    $tagged = 0
+    $pending = $null
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        $line = $lines[$i]
+        if ($line -match '^build ') {
+            $pending = & $Select $line
+            if ([string]::IsNullOrWhiteSpace("$pending")) { $pending = $null }
+        } elseif ($null -ne $pending -and $line -match '^\s+FLAGS = ') {
+            if ($AlreadyTaggedPattern -and $line -match $AlreadyTaggedPattern) { $tagged++ }
+            else { $lines[$i] = $line + ' ' + "$pending".Trim(); $tagged++ }
+            $pending = $null
+        }
+    }
+    if ($tagged -lt $Floor) {
+        throw ("build.ninja: tagged only $tagged $Label TU(s), expected >= $Floor. The ninja layout or filename convention " +
+               "changed and the per-TU flags would silently go missing; the file was left untouched ($NinjaFile).")
+    }
+    Set-Content -LiteralPath $NinjaFile -Value $lines
+    Write-Host "build.ninja: per-TU flags on $tagged $Label TU FLAGS line(s) (floor $Floor)"
+    return $tagged
+}
+
+<#
+.SYNOPSIS
+    Writes the standard ABSENT-ON-<ARCH>.txt marker for a component a cross
+    branch cannot build, creating the (empty) directories the merge's
+    unconditional COPY expects. Returns the marker path.
+.DESCRIPTION
+    The one convention for "not built for the target": LiteRT-LM, the TVM/IREE
+    compilers (#131 unified three writers). The marker travels INTO the shipped
+    bundle so whoever opens an empty directory reads the reason on the spot.
+#>
+function Write-AbsentOnCrossMarker {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Component,
+        [Parameter(Mandatory)][string[]]$Reason,
+        [string[]]$EnsureDirs = @(),
+        [string]$FileName = ''
+    )
+    if (-not $FileName) { $FileName = "ABSENT-ON-$((Get-WindowsTargetArch).ToUpperInvariant()).txt" }
+    foreach ($d in @($Root) + @($EnsureDirs | ForEach-Object { Join-Path $Root $_ })) { New-Item -Path $d -ItemType Directory -Force | Out-Null }
+    $marker = Join-Path $Root $FileName
+    $body = @("$Component is intentionally ABSENT from the Windows $(Get-WindowsTargetArch) bundle.") + @($Reason) + @('See docs/windows-cross-builds.md.')
+    Set-Content -Path $marker -Encoding ASCII -Value $body
+    Write-Host "$Component`: named ABSENT for $(Get-WindowsTargetArch) at $marker"
+    return $marker
+}
+
+<#
+.SYNOPSIS
+    Composes the CMake FindPython hint trio (EXECUTABLE / INCLUDE_DIR /
+    LIBRARY) for one or more variable prefixes from a Get-TargetBuildPython
+    object -- host interpreter to RUN, target import lib to LINK.
+.DESCRIPTION
+    Each consumer reads a different spelling and the spellings are not
+    interchangeable (2026-08-24: ORT's `Python3_*` hints were silently ignored
+    for months): ORT -> 'Python'; GenAI -> 'Python' AND the pybind11-classic
+    'PYTHON'; OpenCV -> 'PYTHON3' with forward slashes. -NumPyIncludeDir adds
+    `<first prefix>_NumPy_INCLUDE_DIR` (ORT's find_package(Python ... NumPy)).
+#>
+function Get-PythonCMakeHintArgs {
+    param(
+        [Parameter(Mandatory)]$Python,
+        [Parameter(Mandatory)][string[]]$Prefix,
+        [switch]$ForwardSlash,
+        [string]$NumPyIncludeDir = ''
+    )
+    $fmt = { param($p) if ($ForwardSlash) { "$p" -replace '\\', '/' } else { "$p" } }
+    $args_ = @()
+    foreach ($p in $Prefix) {
+        $args_ += "-D${p}_EXECUTABLE=$(& $fmt $Python.Exe)"
+        $args_ += "-D${p}_INCLUDE_DIR=$(& $fmt $Python.Include)"
+        $args_ += "-D${p}_LIBRARY=$(& $fmt $Python.Lib)"
+    }
+    if ($NumPyIncludeDir) { $args_ += "-D$($Prefix[0])_NumPy_INCLUDE_DIR=$(& $fmt $NumPyIncludeDir)" }
+    return $args_
+}
+
+<#
+.SYNOPSIS
+    Configures and builds a HOST-tool tree on a cross lane: host target on the
+    choke point AND the host's LIB/LIBPATH for the duration -- the pair that
+    LiteRT's flatc pass (by luck: no VsDevCmd in that script) and IREE's host
+    pass (measured, run 3) both need. Native lane: a plain configure + build.
+.DESCRIPTION
+    Returns the install prefix's bin dir when -Install, else the build dir.
+#>
+function Invoke-HostToolCmakeBuild {
+    param(
+        [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$BuildDir,
+        [Parameter(Mandatory)][string]$InstallPrefix,
+        [string[]]$ExtraArgs = @(),
+        [string[]]$Targets = @(),
+        [switch]$Install,
+        [string]$InstallConfig = 'Release',
+        [string]$LogName = 'host-tools-build.log',
+        [int]$MemGBPerJob = 2,
+        [string]$Label = 'host tools'
+    )
+    Write-Host "$Label`: native $(Get-WindowsHostArch) configure + build into $BuildDir"
+    Invoke-WithHostArchLibraryEnvironment {
+        Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallPrefix -ExtraArgs $ExtraArgs -TargetArch (Get-WindowsHostArch) | Out-Null
+        $log = Get-PersistentBuildLogPath -Name $LogName -FallbackDir $BuildDir
+        Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -RetryJobs 1 -MemGBPerJob $MemGBPerJob -LogFile $log -Targets $Targets -Install:$Install -InstallConfig $InstallConfig
+    }
+    if ($Install) { return (Join-Path $InstallPrefix 'bin') }
+    return $BuildDir
+}
+
+<#
+.SYNOPSIS
+    Locates and verifies a hand-staged Qualcomm AI Engine Direct (QAIRT/"QNN")
+    SDK zip and extracts it; returns the facts the ONNX build needs, or $null
+    when no zip is staged (the default, supported state).
+.DESCRIPTION
+    Backlog #121, extracted from build-onnx-from-source.ps1 in #131 so the
+    resolution logic is fixture-testable (a fake zip) instead of only running
+    when a real, login-gated SDK is present. Contract (same as the TensorRT
+    zip): exactly one *.zip in -DropDir; optional -ExpectedSha256 (empty =
+    unverified, with a warning); the SDK root is wherever
+    include\QNN\QnnInterface.h lives; the target's lib\<arch>\QnnCpu.dll must
+    exist. Throws on two zips, a hash mismatch, a non-SDK zip or a missing
+    backend set -- the scaffold fails loudly, never silently.
+.OUTPUTS
+    $null, or @{ Home; LibDir; CmakeArgs } (CmakeArgs = the two -D switches).
+#>
+function Resolve-QnnSdk {
+    param(
+        [Parameter(Mandatory)][string]$DropDir,
+        [string]$ExpectedSha256 = '',
+        [string]$ExtractDir = '',
+        [string]$Arch = ''
+    )
+    $zips = @(Get-ChildItem -Path $DropDir -Filter '*.zip' -File -ErrorAction SilentlyContinue)
+    if ($zips.Count -gt 1) { throw "QNN: exactly one SDK zip may sit in $DropDir (found $($zips.Count)): $($zips.Name -join ', ')" }
+    if ($zips.Count -eq 0) { return $null }
+    $zip = $zips[0].FullName
+    $sha = "$ExpectedSha256".Trim()
+    if ($sha) {
+        $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash
+        if (-not [string]::Equals($actual, $sha, [StringComparison]::OrdinalIgnoreCase)) { throw "QNN: SDK zip SHA256 mismatch for ${zip}: expected $sha, got $actual" }
+        Write-Host 'QNN: SDK zip SHA256 verified (QNN_SDK_ZIP_SHA256).'
+    } else {
+        Write-Warning 'QNN: QNN_SDK_ZIP_SHA256 is empty -- extracting the staged SDK zip UNVERIFIED (pin it in versions.env, same contract as TENSORRT_ZIP_SHA256)'
+    }
+    if (-not $ExtractDir) { $ExtractDir = Join-Path $env:TEMP_DIR 'qnn-sdk-extract' }
+    if (Test-Path $ExtractDir) { Remove-Item $ExtractDir -Recurse -Force }
+    Expand-Archive -Path $zip -DestinationPath $ExtractDir -Force
+    $anchor = Get-ChildItem -Path $ExtractDir -Recurse -Filter 'QnnInterface.h' -File | Where-Object { $_.Directory.Name -eq 'QNN' } | Select-Object -First 1
+    if (-not $anchor) { throw "QNN: include\QNN\QnnInterface.h not found under the extracted SDK ($ExtractDir) -- not a QAIRT SDK zip?" }
+    $home_ = $anchor.Directory.Parent.Parent.FullName
+    $libDir = Join-Path $home_ "lib\$(Get-QnnSdkLibDirName -Arch $Arch)"
+    if (-not (Test-Path (Join-Path $libDir 'QnnCpu.dll'))) { throw "QNN: $libDir\QnnCpu.dll missing -- the SDK carries no $(Get-QnnSdkLibDirName -Arch $Arch) backend set for this target" }
+    return @{
+        Home      = $home_
+        LibDir    = $libDir
+        CmakeArgs = @('-Donnxruntime_USE_QNN=ON', "-Donnxruntime_QNN_HOME=$($home_ -replace '\\', '/')")
+    }
+}
+
+<#
+.SYNOPSIS
+    Stages the QNN runtime beside onnxruntime.dll: the per-arch backend DLLs and
+    the hexagon-v* skel directories, after asserting the provider DLL was
+    installed. Returns the number of DLLs staged.
+#>
+function Copy-QnnRuntime {
+    param(
+        [Parameter(Mandatory)]$Sdk,            # Resolve-QnnSdk result
+        [Parameter(Mandatory)][string]$OrtInstallDir
+    )
+    $ortDll = Get-ChildItem -Path $OrtInstallDir -Recurse -Filter 'onnxruntime.dll' -File | Select-Object -First 1
+    if (-not $ortDll) { throw "QNN: onnxruntime.dll not found under $OrtInstallDir -- nothing to stage the backends beside" }
+    $provider = Get-ChildItem -Path $OrtInstallDir -Recurse -Filter 'onnxruntime_providers_qnn.dll' -File | Select-Object -First 1
+    if (-not $provider) { throw "QNN: onnxruntime_providers_qnn.dll was not installed under $OrtInstallDir although USE_QNN=ON -- the EP did not build" }
+    $binOut = $ortDll.DirectoryName
+    $staged = @(Get-ChildItem -Path $Sdk.LibDir -Filter '*.dll' -File)
+    foreach ($d in $staged) { Copy-Item $d.FullName -Destination $binOut -Force }
+    foreach ($skel in @(Get-ChildItem -Path (Join-Path $Sdk.Home 'lib') -Directory -Filter 'hexagon-v*')) {
+        Copy-Item $skel.FullName -Destination (Join-Path $binOut $skel.Name) -Recurse -Force
+    }
+    Write-Host "QNN: staged $($staged.Count) backend DLL(s) from $($Sdk.LibDir) + hexagon skel dirs beside $($provider.Name) in $binOut"
+    return $staged.Count
+}
+
 function Invoke-PythonWheelBuild {
     # Shared wheel-build shape used by the ONNX + GenAI scripts (was duplicated
     # verbatim): cd into the source dir, run python through the cmd.exe stderr
@@ -644,8 +828,18 @@ function Invoke-PythonWheelBuild {
         # wheel is OPENED and every PE member is machine-checked against the
         # target -- the merge arch gate cannot see inside a zip, so this is the
         # only place a host-arch .pyd inside a win_arm64 wheel would be caught.
-        [switch]$StageOnly
+        [switch]$StageOnly,
+        # ONE call for both lanes (#131): on a cross lane this implies -StageOnly
+        # and appends `--plat-name <target tag>` to a bdist_wheel invocation
+        # (the host-pinned shim stamps win_amd64 otherwise); on the native lane
+        # it is a no-op and the wheel is installed + import-asserted as always.
+        [switch]$CrossStage
     )
+    if ($CrossStage -and (Test-WindowsCrossTarget)) {
+        $StageOnly = $true
+        if ($Arguments -match '\bbdist_wheel\b' -and $Arguments -notmatch '--plat-name') { $Arguments = "$Arguments --plat-name $(Get-PythonWheelTag)" }
+        Write-Host "python wheel ($ModuleName): cross lane -- building for $(Get-PythonWheelTag), staging only (never installed or imported here)"
+    }
     if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
     Push-Location $WorkingDir
     try {
@@ -1210,35 +1404,77 @@ function Initialize-PythonPlatformTag {
     # the native lane's shim is byte-identical to before #120 step 2.
     $crossExtTag = if (Test-WindowsCrossTarget) { Get-PythonWheelTag } else { '' }
     $sitePackages = Join-Path $CpythonDir 'Lib\site-packages'
-    New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
-    $shim = Join-Path $sitePackages 'sitecustomize.py'
-    # EXPANDING here-string (@" ... "@) since the arm64 lane: two arch facts are
-    # interpolated. The python body must therefore contain NO '$' and NO backtick
-    # -- it contains neither today. If you add one, escape it, or this shim
-    # silently ships a truncated path.
+    $shim = Write-PythonDllDirectoryShim -SitePackages $sitePackages -OpenCvArchDir $openCvArchDir `
+        -PlatformName $platformName -CrossExtTag $crossExtTag -WrittenBy 'Initialize-PythonPlatformTag (HOST build interpreter)'
+    Write-Host "Wrote python platform-tag ($platformName) + dll-directory shim: $shim"
+    return $shim
+}
+
+<#
+.SYNOPSIS
+    Writes the sitecustomize.py shim that registers this bundle's native DLL
+    directories (and, for the HOST build interpreter, the platform-tag fixes).
+.DESCRIPTION
+    ONE writer for two interpreters (#125, 2026-08-25). Until then the shim
+    existed only in the HOST tree (Initialize-PythonPlatformTag), so the
+    TARGET interpreter shipped at C:\runtime\python had nothing registering the
+    DLL directories -- Python >= 3.8 ignores PATH for extension-module
+    dependencies, so `import cv2` (-> opencv_videoio -> avcodec) and `import av`
+    would have failed on the device at first touch. build-target-cpython.ps1
+    now writes the same shim into the target site-packages with -PlatformName
+    and -CrossExtTag EMPTY: the target reports its platform itself
+    (PC/pyconfig.h's _M_ARM64 branch has no clang special case, so sys.version
+    carries "64 bit (ARM64)" and sysconfig.get_platform() says win-arm64), and
+    the EXT_SUFFIX pin is a build-time concern of the host interpreter only.
+    EXPANDING here-string: the python body must contain NO '$' and NO backtick.
+.PARAMETER SitePackages
+    Directory that receives sitecustomize.py (created if missing).
+.PARAMETER OpenCvArchDir
+    The opencv5\<this>\vc18\bin directory the bundle STAGED (target arch).
+.PARAMETER PlatformName
+    When non-empty, patch sysconfig.get_platform() from 'win32' to this value
+    (the clang-built HOST CPython marker bug). Empty = leave it alone.
+.PARAMETER CrossExtTag
+    When non-empty, pin sysconfig EXT_SUFFIX to this wheel tag (host-side cross
+    build of target modules). Empty = leave it alone.
+.OUTPUTS
+    [string] the shim path.
+#>
+function Write-PythonDllDirectoryShim {
+    param(
+        [Parameter(Mandatory)][string]$SitePackages,
+        [Parameter(Mandatory)][string]$OpenCvArchDir,
+        [string]$PlatformName = '',
+        [string]$CrossExtTag = '',
+        [string]$WrittenBy = 'WindowsSourceBuild.Common.psm1'
+    )
+    New-Item -Path $SitePackages -ItemType Directory -Force | Out-Null
+    $shim = Join-Path $SitePackages 'sitecustomize.py'
     Set-Content -Path $shim -Encoding ASCII -Value @"
-# Written by Initialize-PythonPlatformTag (WindowsSourceBuild.Common.psm1).
-# 1) Clang-built CPython lacks the "64 bit (AMD64)" marker in sys.version, so
+# Written by $WrittenBy.
+# 1) HOST build interpreter only (empty name = nothing happens): clang-built
+#    CPython lacks the "64 bit (AMD64)" marker in sys.version, so
 #    sysconfig.get_platform() misreports win32 -> pip resolves 32-bit wheels and
 #    locally-built wheels get mis-tagged.
 # 2) Python 3.8+ ignores PATH when resolving extension-module dependencies;
-#    register this image's native DLL homes (CUDA 13 keeps its runtime libs in
-#    bin\x64, cuDNN 9 likewise) so cv2/onnxruntime/tvm pyds import cleanly.
+#    register this bundle's native DLL homes (CUDA 13 keeps its runtime libs in
+#    bin\x64, cuDNN 9 likewise) so cv2/onnxruntime/av/tvm pyds import cleanly.
 import os
 import sys
 import sysconfig
-if sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:
-    sysconfig.get_platform = lambda: '$platformName'
-# 3) Cross lane only (empty tag = native lane, nothing happens): extension
-#    modules BUILT by this interpreter are for the TARGET interpreter, and
-#    setuptools / OpenCV / pybind11 take the .pyd filename tag from this
-#    interpreter's EXT_SUFFIX. Pin it to the target so the module is named for
-#    the machine that will import it. get_platform() above stays HOST on
-#    purpose: pip resolves downloads with it. Importing this interpreter's OWN
-#    extensions is unaffected (the import system reads the C-level suffix
-#    list, not sysconfig). sysconfig.get_config_vars() returns the live cache,
-#    so get_config_var('EXT_SUFFIX') sees the pin too.
-_target_tag = '$crossExtTag'
+_platform_name = '$PlatformName'
+if _platform_name and sysconfig.get_platform() == 'win32' and sys.maxsize > 2**32:
+    sysconfig.get_platform = lambda: _platform_name
+# 3) HOST cross build only (empty tag = nothing happens): extension modules
+#    BUILT by this interpreter are for the TARGET interpreter, and setuptools /
+#    OpenCV / pybind11 take the .pyd filename tag from this interpreter's
+#    EXT_SUFFIX. Pin it to the target so the module is named for the machine
+#    that will import it. get_platform() above stays HOST on purpose: pip
+#    resolves downloads with it. Importing this interpreter's OWN extensions is
+#    unaffected (the import system reads the C-level suffix list, not
+#    sysconfig). sysconfig.get_config_vars() returns the live cache, so
+#    get_config_var('EXT_SUFFIX') sees the pin too.
+_target_tag = '$CrossExtTag'
 if _target_tag:
     _ext = '.cp%d%d-%s.pyd' % (sys.version_info[0], sys.version_info[1], _target_tag)
     _cv = sysconfig.get_config_vars()
@@ -1256,7 +1492,7 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
             if _n.startswith('TensorRT-'):
                 _dirs.append(os.path.join(_trt, _n, 'lib'))
     _dirs += [
-        r'C:\runtime\lib\opencv5\$openCvArchDir\vc18\bin',
+        r'C:\runtime\lib\opencv5\$OpenCvArchDir\vc18\bin',
         r'C:\runtime\lib\onnxruntime-source\bin',
         r'C:\runtime\lib\onnxruntime-source\lib',
         r'C:\runtime\lib\onnxruntime-genai-source\lib',
@@ -1271,7 +1507,6 @@ if os.name == 'nt' and hasattr(os, 'add_dll_directory'):
             except OSError:
                 pass
 "@
-    Write-Host "Wrote python platform-tag ($platformName) + dll-directory shim: $shim"
     return $shim
 }
 
@@ -1707,6 +1942,54 @@ function Clear-BuildScratch {
     $global:LASTEXITCODE = 0
 }
 
+function Disable-ContainerWindowsUpdate {
+    # Windows Update runs INSIDE a process-isolated build container (servercore
+    # ships wuauserv + the Update Orchestrator, both trigger-started, and the
+    # container has network). Measured 2026-08-25, amd64 media-core-onnx: during
+    # a 150 s RUN the client downloaded Windows11.0-KB5120233-x64.msu into
+    # C:\Windows\SoftwareDistribution\Download, and the layer finalize died
+    # DETERMINISTICALLY on it -- `failed to reimport snapshot: Files/Windows/
+    # SoftwareDistribution/Download/<id>/<KB>.msu: unknown stream ID 9` (the
+    # BuildKit Windows layer writer cannot carry that file's alternate stream),
+    # identical on every retry because the RUN result was already cached.
+    # PREVENTION ONLY: stop + disable the services and set the NoAutoUpdate
+    # policy as the first thing every build script does, so nothing arrives in
+    # the spool during the RUN. Nothing under C:\Windows is ever deleted here
+    # (repo rule: protected roots are off limits to scripts); a layer that
+    # already carries a download is fixed by re-running its RUN with this guard
+    # in place. Best-effort by contract (a service that does not exist is fine
+    # -- nanoserver has none). Host-guarded like Stop-LingeringBuildProcess:
+    # outside a container this would switch off the developer's Windows Update.
+    [CmdletBinding()]
+    param([switch]$Force)
+    if (-not $Force -and -not (Get-Service -Name 'cexecsvc' -ErrorAction SilentlyContinue)) {
+        Write-Host 'Disable-ContainerWindowsUpdate: not inside a Windows container (no cexecsvc) -- skipped'
+        return
+    }
+    $touched = @()
+    foreach ($svc in @('wuauserv', 'UsoSvc')) {
+        $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if (-not $s) { continue }
+        try {
+            if ($s.Status -ne 'Stopped') { Stop-Service -Name $svc -Force -ErrorAction Stop }
+            Set-Service -Name $svc -StartupType Disabled -ErrorAction Stop
+            $touched += $svc
+        } catch { Write-Warning "Disable-ContainerWindowsUpdate: could not disable $svc -- $($_.Exception.Message)" }
+    }
+    try {
+        $au = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
+        if (-not (Test-Path $au)) { New-Item -Path $au -Force | Out-Null }
+        New-ItemProperty -Path $au -Name 'NoAutoUpdate' -Value 1 -PropertyType DWord -Force | Out-Null
+    } catch { Write-Warning "Disable-ContainerWindowsUpdate: could not set the NoAutoUpdate policy -- $($_.Exception.Message)" }
+    $spool = Join-Path $env:SystemRoot 'SoftwareDistribution\Download'
+    $spoolItems = if (Test-Path $spool) { @(Get-ChildItem -LiteralPath $spool -Force -ErrorAction SilentlyContinue).Count } else { 0 }
+    if ($spoolItems -gt 0) {
+        Write-Warning ("Disable-ContainerWindowsUpdate: {0} item(s) already sit in {1} -- a download landed before this guard ran; the layer finalize may fail on them (unknown stream ID). Re-run the stage." -f $spoolItems, $spool)
+    }
+    Write-Host ("Disable-ContainerWindowsUpdate: services disabled [{0}], NoAutoUpdate=1, spool items: {1}" -f ($touched -join ', '), $spoolItems)
+    $global:LASTEXITCODE = 0
+}
+
 function Stop-LingeringBuildProcess {
     # MSVC keeps helper daemons alive after the compiler exits (mspdbsrv serves
     # PDB writes, vctip phones telemetry home, VBCSCompiler is the managed
@@ -1832,6 +2115,7 @@ Export-ModuleMember -Function @(
     'Export-BuildHandoff',
     'Import-BuildHandoff',
     'Clear-BuildScratch',
+    'Disable-ContainerWindowsUpdate',
     'Invoke-ShieldedNative',
     'Invoke-GitClone',
     'Reset-SourceBuildDirectory',
@@ -1853,12 +2137,24 @@ Export-ModuleMember -Function @(
     'Copy-CpythonPyConfigHeader',
     'Get-SourceBuildPython',
     'Get-TargetBuildPython',
+    'Write-PythonDllDirectoryShim',
     'Invoke-WithHostArchLibraryEnvironment',
+    'Add-NinjaPerTuFlags',
+    'Resolve-QnnSdk',
+    'Copy-QnnRuntime',
+    'Write-AbsentOnCrossMarker',
+    'Get-PythonCMakeHintArgs',
+    'Invoke-HostToolCmakeBuild',
+    'Assert-PeTargetMachine',
+    'Assert-DirectoryTargetArch',
+    'Assert-PythonExtensionTag',
+    'Get-PeImportNames',
     'Assert-WheelTargetArch',
     'Get-PeFileMachine',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',
+    'Invoke-OnnxDmlClangClPatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Add-FileBlockOnce',
@@ -1893,8 +2189,6 @@ Export-ModuleMember -Function @(
     'Copy-BuildArtifact',
     'Copy-SidecarDll',
     'Get-NvccCudaCmakeArgs',
-    'Get-WindowsX86SimdFlags',
-    'Get-WindowsX86Avx512Flags',
     'Get-WindowsTargetArch',
     'Get-WindowsTargetArchInfo',
     'Get-WindowsHostArch',

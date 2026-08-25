@@ -975,17 +975,10 @@ $pyavBuildCmd = if ($ffCross) {
 } else {
     "setup.py --ffmpeg-dir=""$prefix"" bdist_wheel"
 }
-Push-Location $pyavDir
-try {
-    [void](Invoke-ShieldedNative -Label 'PyAV setup.py bdist_wheel' -CommandLine """$($py.Exe)"" $pyavBuildCmd")
-} finally { Pop-Location }
-if ($ffCross) {
-    $pyavStaged = @(Save-PythonWheel -SourceDir (Join-Path $pyavDir 'dist') -Required)
-    foreach ($w in $pyavStaged) { Assert-WheelTargetArch -WheelPath $w }
-    Write-Host "PyAV wheel staged for the target (not installed on this host): $($pyavStaged[0])"
-} else {
-    Install-StagedPythonWheel -Python $py -SourceDir (Join-Path $pyavDir 'dist') -ModuleName 'av' -NoDeps | Out-Null
-}
+# One call for both lanes: -CrossStage stages + PE/name-checks on a cross lane
+# (the --plat-name is already in $pyavBuildCmd, so the helper does not append a
+# second one) and installs + import-asserts natively.
+Invoke-PythonWheelBuild -Python $py -WorkingDir $pyavDir -Arguments $pyavBuildCmd -ModuleName 'av' -NoDeps -CrossStage | Out-Null
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'ffmpeg'
 Complete-SourceBuild -Banner '=== PyAV wheel build completed ===' -SourceDir $pyavSrcRoot  # cleanup + banner + exit 0 (see module help)

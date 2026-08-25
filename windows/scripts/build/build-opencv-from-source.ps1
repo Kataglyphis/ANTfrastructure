@@ -248,8 +248,8 @@ $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
 # $ocvTargetArch / $ocvCross are resolved above, before the patch block.
-# Arch-aware. amd64 is byte-identical: Get-WindowsX86SimdFlags IS
-# `Get-WindowsTargetSimdFlags -Arch amd64` (back-compat shim), and
+# Arch-aware: Get-WindowsTargetSimdFlags -Arch amd64 is the historical x86
+# string byte for byte (pinned by TargetArch.Common.Tests), and
 # $crossTargetFlag below is EMPTY on the host arch. arm64 returns NO baseline
 # SIMD flags on purpose: NEON is mandatory in the AArch64 baseline, and
 # dotprod/i8mm/SVE are runtime-dispatch decisions, never a global -m flag.
@@ -358,14 +358,10 @@ $cmakeExtra = $cudaRspArgs + @(
     '-DBUILD_CLAPACK=ON', '-DBUILD_IPP_IW=ON',
     # cv2 python module: cmake --install drops it into CPython's site-packages
     # (queried from the interpreter); the media merge fans site-packages into the
-    # shipped image. numpy include dir resolved above.
-    # Python bindings are OFF for a cross build: nothing can execute the target
-    # interpreter here, so an aarch64 cv2.pyd could never be imported by this
-    # container's x64 CPython, and OpenCV's binding generation is a host-
-    # interpreter fact that does not describe the target.
-    # #120 step 2 (2026-08-24): ON for the cross lane too, whenever the target
-    # CPython import lib exists (see the PYTHON3_* block below for the
-    # host-exe / target-lib split and the target site-packages destination).
+    # shipped image. numpy include dir resolved above. ON on both lanes (#120
+    # step 2) whenever the target CPython import lib exists -- see the PYTHON3_*
+    # block below for the host-exe / target-lib split and the target
+    # site-packages destination.
     "-DBUILD_opencv_python3=$(if ($ocvCross -and -not (Get-TargetBuildPython).Available) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     # opencv_contrib dnn_superres references ENGINE_CLASSIC removed in OpenCV 5.x DNN
     '-DBUILD_opencv_dnn_superres=OFF',
@@ -808,21 +804,14 @@ if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
         # for) is fully detectable without importing anything.
         $cv2Pyd = Get-ChildItem -Path (Join-Path $InstallDir 'python\Lib\site-packages') -Recurse -Filter 'cv2*.pyd' -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $cv2Pyd) { throw "cv2 python module did NOT land in the target site-packages ($(Join-Path $InstallDir 'python\Lib\site-packages')) although BUILD_opencv_python3=ON -- the python3 module was silently skipped" }
-        $cv2Machine = Get-PeFileMachine -Path $cv2Pyd.FullName
-        if ($cv2Machine -ne (Get-PeMachineType -Arch $ocvTargetArch)) {
-            throw ('cv2 module {0} is machine 0x{1:X4}, expected 0x{2:X4} -- linked against the wrong python import lib' -f $cv2Pyd.Name, $cv2Machine, (Get-PeMachineType -Arch $ocvTargetArch))
-        }
-        # The EXT_SUFFIX tag in the NAME is the other half of the import contract
-        # (arm64 run 2, 2026-08-24: `cv2.cp314-win_amd64.pyd`, machine 0xAA64 --
-        # right bytes, unloadable name: a win_arm64 interpreter matches only
-        # `.cp314-win_arm64.pyd` or bare `.pyd`). OpenCV takes the suffix from the
-        # build interpreter's sysconfig, which the sitecustomize shim pins to the
-        # TARGET tag on the cross lane; this asserts the pin actually reached cv2.
-        $cv2WantTag = Get-PythonWheelTag -Arch $ocvTargetArch
-        if ($cv2Pyd.Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $cv2Pyd.Name -notmatch [regex]::Escape($cv2WantTag)) {
-            throw "cv2 module $($cv2Pyd.Name) carries a host EXT_SUFFIX tag, expected '$cv2WantTag' -- the target interpreter would never import it (sitecustomize EXT_SUFFIX pin missing?)"
-        }
-        Write-Host ('cv2 static gate OK (cross lane): {0} present, machine 0x{1:X4}; import deferred to the target host' -f $cv2Pyd.Name, $cv2Machine)
+        # Machine AND name: the EXT_SUFFIX tag in the NAME is the other half of
+        # the import contract (arm64 run 2, 2026-08-24: `cv2.cp314-win_amd64.pyd`,
+        # machine 0xAA64 -- right bytes, unloadable name). OpenCV takes the suffix
+        # from the build interpreter's sysconfig, which the host sitecustomize
+        # shim pins to the TARGET tag; this asserts the pin actually reached cv2.
+        [void](Assert-PeTargetMachine -Path $cv2Pyd.FullName -Arch $ocvTargetArch -Context 'cv2 module (linked against the wrong python import lib?)')
+        [void](Assert-PythonExtensionTag -Name $cv2Pyd.Name -Arch $ocvTargetArch -Context 'cv2 module (sitecustomize EXT_SUFFIX pin missing?)')
+        Write-Host ('cv2 static gate OK (cross lane): {0} present, machine 0x{1:X4}; import deferred to the target host' -f $cv2Pyd.Name, (Get-PeMachineType -Arch $ocvTargetArch))
     } else {
         Write-Host 'Skipping the cv2 gate: cross build without a target CPython (python bindings were OFF)'
     }

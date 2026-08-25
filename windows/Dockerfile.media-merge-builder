@@ -324,7 +324,19 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # already covered them.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
+# #126 (2026-08-25): on a cross lane, stage the PyPI runtime deps of the
+# bundle's wheels for the TARGET tag (host pip in download mode) and gate that
+# every Requires-Dist resolves inside C:\runtime\wheels. Native lane: notice
+# only (deps are installed into the shipped interpreter itself). Runs BEFORE
+# the arch gate so the downloaded wheels are machine-checked and import-walked
+# like everything else.
+RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,target=C:\bkmnt\stage-target-python-deps.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\stage-target-python-deps.ps1' -ScriptDir 'C:\bkmnt'
+# -ImportWalk (#127): every shipped PE + every wheel's native members must
+# resolve their imports against the bundle, the loader's API sets or this
+# container's System32 names -- CRT excluded from System32 on a cross lane.
 RUN --mount=type=bind,source=windows/scripts/build/verify-target-arch.ps1,target=C:\bkmnt\verify-target-arch.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\verify-target-arch.ps1' -Path @('C:\runtime', 'C:\temp\cpython\Lib\site-packages') -Arch $env:WINDOWS_TARGET_ARCH `
-        -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) -HostToolPattern $env:ARCH_GATE_HOST_TOOLS -IncludeArchives
+        -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) -HostToolPattern $env:ARCH_GATE_HOST_TOOLS -IncludeArchives -ImportWalk

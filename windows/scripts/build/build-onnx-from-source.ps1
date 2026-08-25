@@ -36,134 +36,19 @@ Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$
 $cmakeSrc = if (Test-Path "$SourceDir\cmake\CMakeLists.txt") { "$SourceDir\cmake" } else { $SourceDir }
 $buildDir = "$SourceDir\build"
 $ortInstallDir = "$InstallDir\lib\onnxruntime-source"
+# Resolved ONCE, as a variable (#131): every cross decision below reads it,
+# and a condition that starts with the command name is parsed in command mode
+# (the run-2 "python wheel 0s" trap).
+$onnxCross = Test-WindowsCrossTarget
 
 # Inline patch (kept inline, NOT a .patch file): llvm-rc rejects non-ASCII bytes in the .rc resource.
 # This is a binary byte-filter (`-le 127`), not a textual diff -- not expressible as a unified diff.
 $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
 [System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
 
-function Invoke-OnnxDmlClangClPatch {
-    param([Parameter(Mandatory)][string]$SourceDir)
-
-    $dmlHelpers  = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\External\DirectMLHelpers"
-    $dmlAbstract = Join-Path $dmlHelpers 'AbstractOperatorDesc.h'
-    $dmlTypes    = Join-Path $dmlHelpers 'GeneratedSchemaTypes.h'
-    if ((Test-Path $dmlAbstract) -and (Test-Path $dmlTypes)) {
-        $abs = [System.IO.File]::ReadAllText($dmlAbstract)
-        if ($abs -notmatch '\[clang-cl DML fix\]') {
-            $ctorRx = 'AbstractOperatorDesc\(\) = default;\r?\n\s*AbstractOperatorDesc\(const DML_OPERATOR_SCHEMA\* schema, std::vector<OperatorField>&& fields\)\r?\n\s*: schema\(schema\)\r?\n\s*, fields\(std::move\(fields\)\)\r?\n\s*\{\}'
-            $accessorRx = '(?s)(std::vector<[^\r\n]+?> Get(?:Input|Output)Tensors\(\)(?: const)?)\r?\n\s*\{\r?\n\s*return GetTensors<[^\r\n]+?>\(\);\r?\n\s*\}'
-            $getTensorsRx = '(?s)template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>\r?\n\s*std::vector<TensorType\*> GetTensors\(\) const\r?\n\s*\{.*?return tensors;\r?\n\s*\}'
-            $ctorHit = [regex]::IsMatch($abs, $ctorRx)
-            $accHit  = ([regex]::Matches($abs, $accessorRx)).Count
-            $gtHit   = ([regex]::Matches($abs, $getTensorsRx)).Count
-            if ($ctorHit -and $accHit -eq 4 -and $gtHit -eq 1) {
-                $ctorDecls = @'
-AbstractOperatorDesc();
-    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields);
-    AbstractOperatorDesc(const AbstractOperatorDesc&);
-    AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept;
-    AbstractOperatorDesc& operator=(const AbstractOperatorDesc&);
-    AbstractOperatorDesc& operator=(AbstractOperatorDesc&&) noexcept;
-    ~AbstractOperatorDesc();
-'@
-                $gtDecl = @'
-template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
-    std::vector<TensorType*> GetTensors() const;
-'@
-                $abs = [regex]::Replace($abs, $ctorRx, $ctorDecls)
-                $abs = [regex]::Replace($abs, $accessorRx, '$1;')
-                $abs = [regex]::Replace($abs, $getTensorsRx, $gtDecl)
-                $abs = $abs -replace '(class OperatorField;)', "`$1`r`n// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h"
-                [System.IO.File]::WriteAllText($dmlAbstract, $abs)
-                $outOfLine = @'
-
-// [clang-cl DML fix] Out-of-line AbstractOperatorDesc members. Defined here, AFTER OperatorField is
-// complete, so the std::vector<OperatorField> special members (dtor/move), GetTensors<>() and the 4
-// tensor accessors instantiate against a complete type. Left inline they instantiate via
-// optional<AbstractOperatorDesc> while OperatorField is still forward-declared, which clang-cl rejects
-// (MSVC defers method/special-member instantiation to end-of-TU, where the type is complete).
-inline AbstractOperatorDesc::AbstractOperatorDesc() = default;
-inline AbstractOperatorDesc::AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields)
-    : schema(schema), fields(std::move(fields)) {}
-inline AbstractOperatorDesc::AbstractOperatorDesc(const AbstractOperatorDesc&) = default;
-inline AbstractOperatorDesc::AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept = default;
-inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(const AbstractOperatorDesc&) = default;
-inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(AbstractOperatorDesc&&) noexcept = default;
-inline AbstractOperatorDesc::~AbstractOperatorDesc() = default;
-template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
-std::vector<TensorType*> AbstractOperatorDesc::GetTensors() const
-{
-    std::vector<TensorType*> tensors;
-    for (auto& field : fields)
-    {
-        const DML_SCHEMA_FIELD* fieldSchema = field.GetSchema();
-        if (fieldSchema->Kind != Kind)
-        {
-            continue;
-        }
-
-        if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
-        {
-            auto& tensor = field.AsTensorDesc();
-            tensors.push_back(tensor ? const_cast<TensorType*>(&*tensor) : nullptr);
-        }
-        else if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
-        {
-            auto& tensorArray = field.AsTensorDescArray();
-            if (tensorArray)
-            {
-                for (auto& tensor : *tensorArray)
-                {
-                    tensors.push_back(const_cast<TensorType*>(&tensor));
-                }
-            }
-        }
-    }
-    return tensors;
-}
-inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors()
-{
-    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
-}
-inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors() const
-{
-    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
-}
-inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors()
-{
-    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
-}
-inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors() const
-{
-    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
-}
-'@
-                [System.IO.File]::AppendAllText($dmlTypes, $outOfLine)
-                Write-Host 'Applied [clang-cl DML fix]: out-of-lined AbstractOperatorDesc special members + GetTensors + 4 tensor accessors'
-            } else {
-                Write-Warning "[clang-cl DML fix] anchors not found (ctor=$ctorHit accessors=$accHit gettensors=$gtHit) -- DirectML may fail under clang-cl. Verify $dmlAbstract."
-            }
-        }
-    } else {
-        Write-Warning 'DirectMLHelpers headers not found -- skipping the clang-cl DML fix (USE_DML build may fail).'
-    }
-
-    $dmlAuthorImpl = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\MLOperatorAuthorImpl.cpp"
-    [void](Invoke-InlineRegexPatch -Path $dmlAuthorImpl `
-            -Pattern '(initializer)\.##Z\(\)' -Replacement '$1.Z()' `
-            -Description 'clang-cl DML fix #2 (dropped spurious `.##Z` token-paste in MLOperatorAuthorImpl.cpp CASE_PROTO)' `
-            -WarnMessage '[clang-cl DML fix #2] `.##Z` token-paste not found in MLOperatorAuthorImpl.cpp (already fixed upstream?) -- skipping.')
-
-    $dmlOps = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\Operators"
-    foreach ($opHeader in @('DmlDFT.h', 'DmlGridSample.h')) {
-        [void](Invoke-InlineRegexPatch -Path (Join-Path $dmlOps $opHeader) `
-                -Pattern 'template <typename TConstants, uint32_t TSize>' `
-                -Replacement 'template <typename TConstants, size_t TSize>' `
-                -Description "clang-cl DML fix #3 (widened Dispatch<TSize> to size_t in $opHeader)" `
-                -WarnMessage "[clang-cl DML fix #3] uint32_t TSize decl not found in $opHeader (already fixed upstream?) -- skipping.")
-    }
-}
+# The DirectML clang-cl regex fallback (Invoke-OnnxDmlClangClPatch, 80 lines of
+# embedded C++) lives in WindowsSourceBuild.Patches.psm1 since #131; it is
+# the drift fallback for the checked-in .patch below.
 
 # -- DirectML EP clang-cl fixes (needed because we build ONNX with clang-cl + USE_DML=ON) --
 # Applied via a reviewable, upstreamable .patch (003-dml-clangcl-compat.patch). The delicate inline regex
@@ -197,28 +82,26 @@ $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'p
 # a case-correctness fix has no business being arch-conditional.
 $dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
 if (Test-Path $dmlProviders) {
-    $dmlText = Get-Content -LiteralPath $dmlProviders -Raw
-    if ($dmlText -notmatch 'onnxruntime_dml_redist_platform') {
-        # Define the lower-cased variable just above the first consumer, then
-        # point both consumers at it. Two separate edits so a future upstream
-        # move of either line degrades to a loud warning, not a silent miss.
-        [void](Invoke-InlineRegexPatch -Path $dmlProviders `
-                -Guard 'if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
-                -Pattern '(?m)^(\s*)if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
-                -Replacement "`${1}string(TOLOWER `"`${onnxruntime_target_platform}`" onnxruntime_dml_redist_platform)`n`${1}if (NOT onnxruntime_USE_CUSTOM_DIRECTML)" `
-                -Description 'onnxruntime DML: lower-case the redist platform dir (define)')
-        [void](Invoke-InlineRegexPatch -Path $dmlProviders `
-                -Guard 'bin/\$\{onnxruntime_target_platform\}-win' `
-                -Pattern 'bin/\$\{onnxruntime_target_platform\}-win' `
-                -Replacement 'bin/${onnxruntime_dml_redist_platform}-win' `
-                -Description 'onnxruntime DML: lower-case the redist platform dir (consumers)')
-        $dmlText = Get-Content -LiteralPath $dmlProviders -Raw
-        if ($dmlText -match 'bin/\$\{onnxruntime_target_platform\}-win' -or $dmlText -notmatch 'string\(TOLOWER') {
-            throw ("onnxruntime_providers_dml.cmake: the DirectML redist path-case fix did not apply cleanly " +
-                   "(upstream layout changed?). On ARM64 the build will fail with 'bin/ARM64-win/DirectML.lib " +
-                   "missing and no known rule to make it', which looks like a missing package but is not. Re-check $dmlProviders.")
-        }
-        Write-Host 'Patched onnxruntime DML: redist platform dir lower-cased (fixes bin/ARM64-win vs bin/arm64-win)'
+    # Define the lower-cased variable just above the first consumer, then point
+    # both consumers at it. Two separate edits so a future upstream move of
+    # either line fails loudly (-AssertGone), never as a silent miss: on ARM64
+    # that miss surfaces as 'bin/ARM64-win/DirectML.lib missing and no known
+    # rule to make it', which looks like a missing package but is not.
+    # -SkipIfMatch makes a re-run idempotent.
+    [void](Invoke-InlineRegexPatch -Path $dmlProviders `
+            -SkipIfMatch 'onnxruntime_dml_redist_platform' `
+            -Guard 'if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
+            -Pattern '(?m)^(\s*)if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
+            -Replacement "`${1}string(TOLOWER `"`${onnxruntime_target_platform}`" onnxruntime_dml_redist_platform)`n`${1}if (NOT onnxruntime_USE_CUSTOM_DIRECTML)" `
+            -Description 'onnxruntime DML: lower-case the redist platform dir (define)')
+    [void](Invoke-InlineRegexPatch -Path $dmlProviders `
+            -Guard 'bin/\$\{onnxruntime_target_platform\}-win' `
+            -Pattern 'bin/\$\{onnxruntime_target_platform\}-win' `
+            -Replacement 'bin/${onnxruntime_dml_redist_platform}-win' `
+            -AssertGone 'bin/\$\{onnxruntime_target_platform\}-win' `
+            -Description 'onnxruntime DML: lower-case the redist platform dir (consumers)')
+    if ((Get-Content -LiteralPath $dmlProviders -Raw) -notmatch 'string\(TOLOWER') {
+        throw "onnxruntime_providers_dml.cmake: the redist platform lower-casing define is missing after patching (upstream layout changed?). Re-check $dmlProviders."
     }
 }
 
@@ -295,7 +178,7 @@ $gpuArgs = @()
 # not fiction. The guard STAYS regardless: the toolkit baked into this x64
 # image is x64, and a HOST GPU probe must never decide a TARGET flag. Same
 # guard as build-opencv-from-source.ps1's CUDA branch.
-if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
+if ($gpuEnv.HasCuda -and -not $onnxCross) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $cudaRoot = $gpuEnv.CudaRoot
     $cudnnRoot = $gpuEnv.CudnnRoot
@@ -384,7 +267,7 @@ if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
     $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
     $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnRoot\lib\x64", "-DCUDNN_LIBRARY=$cudnnLib"
     $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
-} elseif ($gpuEnv.GpuType -eq 'amd' -and -not (Test-WindowsCrossTarget)) {
+} elseif ($gpuEnv.GpuType -eq 'amd' -and -not $onnxCross) {
     # The cross guard mirrors the CUDA branch above (hardened 2026-08-23; this
     # sibling was missed until 2026-08-24): Get-GpuEnvironment probes the x64
     # BUILD HOST, and a host GPU must never decide a TARGET flag. The branch is
@@ -401,26 +284,12 @@ if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget)) {
 # The "[clang-cl DML fix]" patch applied above (out-of-lining AbstractOperatorDesc's tensor accessors)
 # makes it compile under clang-cl, so DirectML now builds on the clang-cl lane alongside CUDA/TensorRT.
 # USE_DML=ON makes cmake fetch the Microsoft.AI.DirectML redist via NuGet (nuget.exe is pre-seeded).
-# Python bindings are OFF on a cross lane, and the Python3_* hints are dropped
-# with them (measured 2026-08-23, first arm64 configure): $py resolves the HOST
-# x64 interpreter -- Get-SourceBuildPython is host-pinned by design, since an
-# aarch64 python.exe cannot run here -- so ENABLE_PYTHON=ON hands
-# onnxruntime_python.cmake an x64 python314.lib to link an aarch64 module
-# against. It fails at target_link_libraries with Python3_INCLUDE_DIR /
-# Python3_LIBRARY reported as unresolved, which reads like a missing-Python
-# problem and is really a wrong-architecture one.
-#
-# Producing a target binding needs a TARGET CPython, which this lane does not
-# build. Same call as build-opencv-from-source.ps1's BUILD_opencv_python3.
-$onnxCross = Test-WindowsCrossTarget
-# #120 step 2 (2026-08-24): the paragraph above is HISTORY. A target CPython
-# now exists (build-target-cpython.ps1 runs first in this chain), so the
-# bindings are ON for the cross lane too -- composed the only correct way:
-#   Python3_EXECUTABLE -> the HOST interpreter (pybind11/numpy probes RUN it)
-#   Python3_INCLUDE_DIR -> arch-neutral headers
-#   Python3_LIBRARY     -> the TARGET python314.lib (the .pyd LINKS it)
-# Get-TargetBuildPython encodes exactly that split. Its .Available guard keeps
-# the OFF path for a -ResumeFrom entry that skipped the cpython stage.
+# Python bindings are ON on both lanes (#120 step 2). The HOST interpreter RUNS
+# the build (pybind11/numpy probes execute it), the TARGET python314.lib is what
+# the .pyd LINKS; Get-TargetBuildPython encodes that split (.Exe host, .Include
+# arch-neutral, .Lib target) and its .Available guard keeps the OFF path for a
+# -ResumeFrom entry that skipped the cpython stage. History of the cross skip:
+# docs/windows-cross-builds.md, "#120 step 2".
 $tpy = Get-TargetBuildPython
 $pythonArgs = if ($onnxCross -and -not $tpy.Available) {
     Write-Warning "ONNX: python bindings OFF -- no target CPython import lib at $($tpy.Lib) (build-target-cpython.ps1 did not run?)"
@@ -440,47 +309,16 @@ $pythonArgs = if ($onnxCross -and -not $tpy.Available) {
     if (-not $numpyInc -or -not (Test-Path (Join-Path $numpyInc 'numpy\arrayobject.h'))) {
         throw "ONNX: numpy include dir not usable ('$numpyInc') -- numpy must be importable by the build interpreter $($tpy.Exe) before configure"
     }
-    @('-Donnxruntime_ENABLE_PYTHON=ON',
-      "-DPython_EXECUTABLE=$($tpy.Exe)", "-DPython_INCLUDE_DIR=$($tpy.Include)", "-DPython_LIBRARY=$($tpy.Lib)",
-      "-DPython_NumPy_INCLUDE_DIR=$numpyInc")
+    @('-Donnxruntime_ENABLE_PYTHON=ON') + @(Get-PythonCMakeHintArgs -Python $tpy -Prefix 'Python' -NumPyIncludeDir $numpyInc)
 }
 if ($onnxCross -and $tpy.Available) { Write-Host "ONNX: python bindings ON for the cross lane (#120 step 2) -- host interpreter $($tpy.Exe), TARGET import lib $($tpy.Lib)" }
-# HISTORY, CORRECTED -- nothing in this block is current policy. The mistaken
-# measurement, the mistaken scope note, and their retractions are kept together
-# so the wrong reading cannot come back; the CURRENT paragraph at the end is
-# the only part to act on.
-#
-# MEASURED 2026-08-23, first arm64 ninja run: the build died with
-#   'packages/Microsoft.AI.DirectML.1.15.4/bin/ARM64-win/DirectML.lib' ...
-#   missing and no known rule to make it
-# and that was read as "the redist carries no ARM64 import library", which became
-# the stated evidence for scoping the whole lane to "CPU + Vulkan".
-#
-# THAT READING WAS WRONG (2026-08-23, same day). The nuget does ship it -- 1.15.4
-# contains bin/arm64-win/DirectML.lib, machine 0xAA64 -- in a LOWER-case directory,
-# while onnxruntime composed an UPPER-case one. A missing ninja node and a missing
-# package produce the same message; only one of them was true. The fix is the
-# path-case patch above, and DML is now ON for both lanes.
-#
-# What remains true from the old note, and is worth keeping: Microsoft's guidance
-# for Snapdragon devices points at the QNN execution provider rather than DML, so
-# DML working here does not make it the best accelerator on that hardware -- it
-# makes it an available one. QNN would need the Qualcomm AI Engine SDK, which this
-# stack does not integrate.
-#
-# RETRACTED SCOPE NOTE (wrong from the day it was written, 2026-08-23): "turning
-# it on for arm64 again is a deliberate spike, not a flag flip: it needs a
-# redist that actually ships bin\ARM64-win\DirectML.lib ... until then the
-# arm64 lane is CPU + Vulkan". The redist ALWAYS shipped that library (in the
-# lower-case dir, see above), so no spike was needed and the lane was never
-# DML-incapable -- and the lane scope is CPU + DirectML + Vulkan, not
-# CPU + Vulkan.
-#
-# CURRENT: ENABLED ON BOTH LANES since 2026-08-23 (backlog #113); GenAI's build
-# followed with USE_DML=ON on both lanes in #118 (2026-08-24). The redist-path
-# case fix applied above is what unblocked it; see that comment for why the old
-# failure looked like a missing package. The scope note ABOVE is kept as the
-# record of what was believed, and corrected -- not as current fact.
+# DirectML: ON on BOTH lanes since 2026-08-23 (#113; GenAI followed in #118).
+# The one cross obstacle was the redist path-case mismatch patched above -- the
+# nuget always shipped bin/arm64-win/DirectML.lib. The full measurement-and-
+# retraction record (the "no ARM64 import library" misreading and the retracted
+# "CPU + Vulkan" scope note) lives in docs/windows-cross-builds.md, DirectML row.
+# On Snapdragon devices Microsoft points at the QNN EP rather than DML: DML is
+# an available accelerator there, not the best one (QNN: opt-in below, #121).
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
 # -- QNN EP (Qualcomm AI Engine Direct / QAIRT SDK) -- backlog #121. OPT-IN by
@@ -491,35 +329,10 @@ if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backl
 # staged zip proves or breaks it loudly, never silently. The EP is enabled on
 # BOTH lanes (arm64: HTP/NPU + CPU backends, the point of the EP; amd64: CPU
 # backend only, useful for graph-compatibility checks).
-$qnnArgs = @()
-$qnnRuntimeHome = $null
-$qnnDrop = 'C:\temp\qnn-sdk'
-$qnnZips = @(Get-ChildItem -Path $qnnDrop -Filter '*.zip' -File -ErrorAction SilentlyContinue)
-if ($qnnZips.Count -gt 1) { throw "ONNX/QNN: exactly one SDK zip may sit in windows\qnn-sdk (found $($qnnZips.Count)): $($qnnZips.Name -join ', ')" }
-if ($qnnZips.Count -eq 1) {
-    $qnnZip = $qnnZips[0].FullName
-    $qnnSha = "$env:QNN_SDK_ZIP_SHA256".Trim()
-    if ($qnnSha) {
-        $qnnActual = (Get-FileHash -Algorithm SHA256 -Path $qnnZip).Hash
-        if (-not [string]::Equals($qnnActual, $qnnSha, [StringComparison]::OrdinalIgnoreCase)) { throw "ONNX/QNN: SDK zip SHA256 mismatch for ${qnnZip}: expected $qnnSha, got $qnnActual" }
-        Write-Host 'ONNX/QNN: SDK zip SHA256 verified (QNN_SDK_ZIP_SHA256).'
-    } else {
-        Write-Warning 'ONNX/QNN: QNN_SDK_ZIP_SHA256 is empty -- extracting the staged SDK zip UNVERIFIED (pin it in versions.env, same contract as TENSORRT_ZIP_SHA256)'
-    }
-    $qnnExtract = Join-Path $env:TEMP_DIR 'qnn-sdk-extract'
-    if (Test-Path $qnnExtract) { Remove-Item $qnnExtract -Recurse -Force }
-    Expand-Archive -Path $qnnZip -DestinationPath $qnnExtract -Force
-    # The SDK root is wherever include\QNN\QnnInterface.h lives (qairt\<version>\ in every SDK layout seen).
-    $qnnAnchor = Get-ChildItem -Path $qnnExtract -Recurse -Filter 'QnnInterface.h' -File | Where-Object { $_.Directory.Name -eq 'QNN' } | Select-Object -First 1
-    if (-not $qnnAnchor) { throw "ONNX/QNN: include\QNN\QnnInterface.h not found under the extracted SDK ($qnnExtract) -- not a QAIRT SDK zip?" }
-    $qnnRuntimeHome = $qnnAnchor.Directory.Parent.Parent.FullName
-    $qnnLibDir = Join-Path $qnnRuntimeHome "lib\$(Get-QnnSdkLibDirName)"
-    if (-not (Test-Path (Join-Path $qnnLibDir 'QnnCpu.dll'))) { throw "ONNX/QNN: $qnnLibDir\QnnCpu.dll missing -- the SDK carries no $(Get-QnnSdkLibDirName) backend set for this target" }
-    $qnnArgs = @('-Donnxruntime_USE_QNN=ON', "-Donnxruntime_QNN_HOME=$($qnnRuntimeHome -replace '\\', '/')")
-    Write-Host "ONNX: QNN EP ON (SDK root $qnnRuntimeHome, backends from lib\$(Get-QnnSdkLibDirName)) -- backlog #121"
-} else {
-    Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)'
-}
+$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
+$qnnArgs = if ($qnnSdk) { $qnnSdk.CmakeArgs } else { @() }
+if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
+else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
@@ -582,7 +395,7 @@ if (Test-Path $onnxScoped) {
 # Same cross guard as the CUDA branch above: GPU_TYPE is IMAGE state and the
 # toolchain image is shared by both lanes, so this CUTLASS patch pass would
 # otherwise run on an arm64 build that has no CUDA sources to patch.
-if ($env:GPU_TYPE -eq 'nvidia' -and -not (Test-WindowsCrossTarget)) {
+if ($env:GPU_TYPE -eq 'nvidia' -and -not $onnxCross) {
     # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
     $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
     if (Test-Path $cutlassInclude) {
@@ -656,7 +469,7 @@ $mlasTuPattern = Get-MlasKernelTuPattern -Arch $targetArch
 # So on a cross target the name pattern is UNIONED with the set of MLAS sources
 # that actually pull the fp16 intrinsic header. That set maintains itself across
 # upstream churn: a new fp16 consumer is tagged the day it appears.
-if (Test-WindowsCrossTarget -Arch $targetArch) {
+if ($onnxCross) {
     $mlasLibDir = Join-Path $SourceDir 'onnxruntime\core\mlas\lib'
     $fp16Consumers = @(
         Get-ChildItem $mlasLibDir -Recurse -Filter '*.cpp' -File -ErrorAction SilentlyContinue |
@@ -676,36 +489,16 @@ $mlasTuMinimum = Get-MlasKernelTuMinimum -Arch $targetArch
 # 'avx512' never appears in an aarch64 flag set.
 $mlasTaggedMarker = if ($targetArch -eq 'amd64') { 'avx512' } else { 'dotprod' }
 
-$ninjaFile = "$buildDir\build.ninja"
-$ninjaLines = Get-Content $ninjaFile
-$inMlasArch = $false
-$mlasTagged = 0
-for ($i = 0; $i -lt $ninjaLines.Count; $i++) {
-    $line = $ninjaLines[$i]
-    if ($line -match '^build ') {
-        $inMlasArch = ($line -match 'onnxruntime_mlas\.dir' -and $line -match $mlasTuPattern)
-    } elseif ($inMlasArch -and $line -match '^\s+FLAGS = ') {
-        if ($line -notmatch $mlasTaggedMarker) {
-            $ninjaLines[$i] = $line + ' ' + $mlasArchFlags
-            $mlasTagged++
-        }
-    }
-}
-if ($mlasTagged -ge $mlasTuMinimum) {
-    Set-Content -Path $ninjaFile -Value $ninjaLines
-    Write-Host "build.ninja: added $targetArch kernel SIMD flags to $mlasTagged MLAS arch TU FLAGS line(s) (runtime-dispatched kernels)"
-} else {
-    # HARD FAILURE, not a warning (2026-08-22). A zero/low match count means the
-    # ninja layout no longer matches this pass -- upstream renamed the kernels,
-    # or the pattern is wrong for this target. Either way the dispatched kernels
-    # silently lose their features, which nothing downstream can detect: on a
-    # cross build the artifacts cannot even be executed. The floor is the guard;
-    # the pattern alone is not.
-    throw ("build.ninja: tagged only $mlasTagged MLAS kernel TU FLAGS line(s) for $targetArch, expected at least " +
-           "$mlasTuMinimum (pattern: $mlasTuPattern). The MLAS ninja layout no longer matches this pass, so the " +
-           'runtime-dispatched kernels would be built WITHOUT their SIMD features. Update ' +
-           'Get-MlasKernelTuPattern in WindowsTargetArch.Common.psm1 to match the current upstream tree.')
-}
+# The floor (Get-MlasKernelTuMinimum) is the guard, the pattern alone is not:
+# a zero/low match means upstream renamed the kernels or the pattern is wrong
+# for this target, and the dispatched kernels would silently lose their SIMD
+# features -- undetectable downstream, and on a cross build the artifacts
+# cannot even be executed. Below the floor the helper throws with the count and
+# leaves build.ninja untouched (HARD FAILURE since 2026-08-22).
+[void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" -Label "MLAS $targetArch kernel (pattern: $mlasTuPattern)" -Floor $mlasTuMinimum -AlreadyTaggedPattern $mlasTaggedMarker -Select {
+    param($line)
+    if ($line -match 'onnxruntime_mlas\.dir' -and $line -match $mlasTuPattern) { $mlasArchFlags } else { '' }
+})
 
 # Memory-scaled parallelism: AVX-512/CUDA TUs under clang-cl peak at several GB each,
 # so full -j<cores> can OOM the container. jobs = min(cores, memGB/4), floor 2
@@ -754,18 +547,7 @@ Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
 # backend DLLs are NOT (they are redist, like DirectML.dll). Stage the whole
 # per-arch backend set plus the hexagon skel dirs beside onnxruntime.dll, so a
 # target host finds them on the DLL search path with no PATH surgery.
-if ($qnnRuntimeHome) {
-    $qnnBinOut = Split-Path (Get-ChildItem -Path $ortInstallDir -Recurse -Filter 'onnxruntime.dll' -File | Select-Object -First 1).FullName -Parent
-    $qnnProvider = Get-ChildItem -Path $ortInstallDir -Recurse -Filter 'onnxruntime_providers_qnn.dll' -File | Select-Object -First 1
-    if (-not $qnnProvider) { throw "ONNX/QNN: onnxruntime_providers_qnn.dll was not installed under $ortInstallDir although USE_QNN=ON -- the EP did not build" }
-    $qnnSdkLib = Join-Path $qnnRuntimeHome "lib\$(Get-QnnSdkLibDirName)"
-    $qnnStaged = @(Get-ChildItem -Path $qnnSdkLib -Filter '*.dll' -File)
-    foreach ($d in $qnnStaged) { Copy-Item $d.FullName -Destination $qnnBinOut -Force }
-    foreach ($skel in @(Get-ChildItem -Path (Join-Path $qnnRuntimeHome 'lib') -Directory -Filter 'hexagon-v*')) {
-        Copy-Item $skel.FullName -Destination (Join-Path $qnnBinOut $skel.Name) -Recurse -Force
-    }
-    Write-Host "ONNX/QNN: staged $($qnnStaged.Count) backend DLL(s) from $qnnSdkLib + hexagon skel dirs beside $($qnnProvider.Name) in $qnnBinOut"
-}
+if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }
 
 # -- Python wheel (onnxruntime) --
 # ENABLE_PYTHON=ON made cmake assemble the full python package tree at
@@ -781,30 +563,19 @@ Switch-BuildPhase '6. python wheel'
 # family as `-ExtraArgs @(...) + (...)`.
 if ($onnxCross -and -not $tpy.Available) {
     Write-Host 'Skipping the onnxruntime python wheel: cross build without a target CPython (bindings were OFF above)'
-} elseif ($onnxCross) {
-    # #120 step 2: BUILD + STAGE the wheel; never install/import it here (the
-    # .pyd is aarch64, the interpreter that would import it is x64). bdist_wheel
-    # is the HOST python zipping files -- no target code executes -- but it
-    # stamps the platform tag from the HOST's sysconfig (host-pinned shim, see
-    # Initialize-PythonPlatformTag), so the target tag must be passed
-    # explicitly. -StageOnly then opens the wheel and PE-checks every native
-    # member, which is the only place a host-arch .pyd inside the zip would be
-    # caught (the merge arch gate does not look into archives).
-    Write-Host "Building onnxruntime python wheel for the target (--plat-name $(Get-PythonWheelTag); staged, not installed)..."
-    Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
-        -Arguments """$SourceDir\setup.py"" bdist_wheel --plat-name $(Get-PythonWheelTag)" `
-        -ModuleName 'onnxruntime' -StageOnly | Out-Null
 } else {
-Write-Host 'Building onnxruntime python wheel...'
-# Shared wheel-build shape (was duplicated verbatim with the GenAI script):
-# stage + install (WITH pypi deps) + import-assert, so the shipped image can
-# `import onnxruntime` out of the box (the media merge fans CPython's
-# site-packages into the image). The helper also encapsulates the
-# single-element array-unwrap footgun (the c-0.0.1 incident) and the
-# EAP=Stop-safe import check.
-Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
-    -Arguments """$SourceDir\setup.py"" bdist_wheel" `
-    -ModuleName 'onnxruntime' | Out-Null
+    # One call for both lanes: -CrossStage builds + STAGES on a cross lane
+    # (target --plat-name, every native member PE- and name-checked, never
+    # imported here) and installs + import-asserts on the native lane.
+    # Native lane: stage + install (WITH pypi deps) + import-assert, so the
+    # shipped image can `import onnxruntime` out of the box (the media merge
+    # fans CPython's site-packages into the image). The helper also
+    # encapsulates the single-element array-unwrap footgun (the c-0.0.1
+    # incident) and the EAP=Stop-safe import check.
+    Write-Host 'Building onnxruntime python wheel...'
+    Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
+        -Arguments """$SourceDir\setup.py"" bdist_wheel" `
+        -ModuleName 'onnxruntime' -CrossStage | Out-Null
 }
 
 Complete-CurrentBuildPhase

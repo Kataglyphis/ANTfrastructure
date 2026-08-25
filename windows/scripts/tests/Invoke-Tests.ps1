@@ -87,6 +87,9 @@ foreach ($f in $pesterFiles) {
         -ForegroundColor $(if ($pesterRun.FailedCount -gt 0) { 'Red' } else { 'Green' })
     foreach ($ft in @($pesterRun.Failed)) {
         Write-Host "   FAIL $($ft.ExpandedPath)" -ForegroundColor Red
+        # The assertion text is the diagnosis; without it a red suite costs a
+        # second run under Invoke-Pester -Output Detailed (2026-08-25).
+        foreach ($er in @($ft.ErrorRecord)) { if ($er) { Write-Host "        $(($er.Exception.Message -split "`r?`n")[0])" -ForegroundColor DarkRed } }
     }
     $pesterFailures += $pesterRun.FailedCount
     $pesterPassed += $pesterRun.PassedCount

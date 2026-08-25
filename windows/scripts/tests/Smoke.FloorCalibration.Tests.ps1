@@ -26,17 +26,21 @@ Describe 'smoke gate: the global floor is calibrated against the section floors'
         $s = Join-Path $root 'scripts\build\smoke-test-container.ps1'
         if (-not (Test-Path $s)) { throw "smoke test not found: $s" }
         $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
-        $script:floorTriples = [regex]::Matches($block, "'(\d+)'\s*=\s*@\((\d+),\s*(\d+),\s*(\d+)\)")
+        # Named columns since #131 (2026-08-25): '<sec>' = @{ Gpu = n; Cpu = n; Arm64 = n }.
+        # Groups 2/3/4 keep the GPU/CPU/ARM64 order the assertions below rely on.
+        $script:floorTriples = [regex]::Matches($block, "'(\d+)'\s*=\s*@\{\s*Gpu\s*=\s*(\d+);\s*Cpu\s*=\s*(\d+);\s*Arm64\s*=\s*(\d+)\s*\}")
         $script:driver = Get-Content -Raw (Join-Path $root 'build-buildkit.ps1')
     }
 
     It 'section floors parse and cover all three lanes' {
         Assert-True ($script:floorTriples.Count -ge 20) "expected the full three-column section floor table, parsed $($script:floorTriples.Count) entries"
-        # A stray two-value tuple means one section silently has no arm64 floor.
+        # A section entry without an Arm64 key means one section silently has no arm64 floor.
         $s = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\smoke-test-container.ps1'
         $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
-        $twoValueTuples = @([regex]::Matches($block, "@\(\s*\d+\s*,\s*\d+\s*\)"))
-        Assert-Equal 0 $twoValueTuples.Count 'every section must carry GPU, CPU and ARM64 floors (a two-value tuple has no arm64 column)'
+        $entries = @([regex]::Matches($block, "'(\d+)'\s*=\s*@\{[^}]*\}"))
+        $incomplete = @($entries | Where-Object { $_.Value -notmatch 'Gpu\s*=' -or $_.Value -notmatch 'Cpu\s*=' -or $_.Value -notmatch 'Arm64\s*=' })
+        Assert-Equal 0 $incomplete.Count "every section must carry Gpu, Cpu and Arm64 floors (incomplete: $(($incomplete | ForEach-Object { $_.Value }) -join ' | '))"
+        Assert-Equal $entries.Count $script:floorTriples.Count 'every entry parses in the canonical Gpu/Cpu/Arm64 order'
     }
 
     It 'the GPU and CPU floors the driver sends match their section sums' {

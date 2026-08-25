@@ -707,11 +707,7 @@ if ($genaiRoot) {
             # fails HERE, not silently at DML device init (a naive recursive copy can grab arm64 first).
             Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll is x64 (PE machine 0x8664)' `
                 -Condition {
-                    try {
-                        $bytes = [System.IO.File]::ReadAllBytes($d3d12Core.FullName)
-                        $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
-                        ([BitConverter]::ToUInt16($bytes, $peOff + 4)) -eq 0x8664
-                    } catch { $false }
+                    try { (Get-PeFileMachine -Path $d3d12Core.FullName) -eq 0x8664 } catch { $false }
                 } `
                 -FailMessage "D3D12Core.dll at $($d3d12Core.FullName) is not an x64 PE -- wrong-arch stage would fail DML device init on the x64 image"
         } else {
@@ -1138,14 +1134,7 @@ if ($smokeCross) {
     Assert-Test -Name "CMake-built exe is target-arch (PE machine)" -Condition {
         $exe2 = Join-Path $buildDir2 'smoke_cmake.exe'
         if (-not (Test-Path $exe2)) { return $false }
-        $fs = [System.IO.File]::OpenRead($exe2)
-        try {
-            $br = New-Object System.IO.BinaryReader($fs)
-            $fs.Seek(0x3C, 'Begin') | Out-Null
-            $peOff = $br.ReadUInt32()
-            $fs.Seek($peOff + 4, 'Begin') | Out-Null
-            return ($br.ReadUInt16() -eq (Get-PeMachineType))
-        } finally { $fs.Dispose() }
+        try { (Get-PeFileMachine -Path $exe2) -eq (Get-PeMachineType) } catch { $false }
     } -FailMessage "CMake-built smoke_cmake.exe has the wrong PE machine type"
 }
 
@@ -1799,24 +1788,30 @@ if ($summary.Aborted) {
 # the pointer loop minus TORCH_APP_DIR, PATH membership, cuda-runtime PATH,
 # vcpkg zlib) and deliberately a touch under that count -- recalibrate against
 # the first green arm64 run, like every other measured floor here.
+# Columns are NAMED (#131, 2026-08-25): the old positional triple was read
+# through a 0/2/1 index whose order (GPU, CPU, ARM64) differed from the lane
+# order in the selector, which is exactly the kind of table a reader misreads.
 $sectionFloors = @{
-    '1' = @(13, 13, 13); '2' = @(6, 6, 6); '3' = @(8, 8, 8); '4' = @(8, 8, 8); '5' = @(4, 4, 4)
+    '1' = @{ Gpu = 13; Cpu = 13; Arm64 = 13 }; '2' = @{ Gpu = 6; Cpu = 6; Arm64 = 6 }; '3' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }
+    '4' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 };    '5' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }; '6' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }
     # '7' was authored as 14 on 2026-08-21 and is 13: the GPU path runs nvcc-on-PATH,
     # nvcc version, CUDA_ROOT, CUDA_PATH, CUDA_ROOT dir, nvcc.exe, CUDNN_ROOT,
     # CUDNN_ROOT dir, cuDNN headers/libs/DLLs, the PTX compile and the cuDNN
     # link+run — thirteen, with no conditional fourteenth (the only branch there
     # picks link+run OR a Skip). Counted against a real -ExpectGpu run, not by eye.
-    '6' = @(4, 4, 4); '7' = @(13, 0, 0); '8' = @(11, 8, 0); '9' = @(9, 6, 0); '10' = @(7, 5, 0)
-    '11' = @(12, 12, 0); '12' = @(9, 9, 0); '13' = @(6, 6, 0); '14' = @(3, 3, 2); '15' = @(2, 2, 2)
+    '7' = @{ Gpu = 13; Cpu = 0; Arm64 = 0 };  '8' = @{ Gpu = 11; Cpu = 8; Arm64 = 0 };  '9' = @{ Gpu = 9; Cpu = 6; Arm64 = 0 }
+    '10' = @{ Gpu = 7; Cpu = 5; Arm64 = 0 };  '11' = @{ Gpu = 12; Cpu = 12; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
+    '13' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
     # '14' arm64 is 2, not 3: on cross the run-assert becomes a PE-machine
     # assert (1:1) but ASAN is a SKIP (no aarch64-windows ASAN runtime), so the
     # section's cross ceiling is compile + machine = 2. Measured, run 15.
-    '16' = @(1, 1, 1); '17' = @(5, 5, 0); '18' = @(8, 6, 0); '19' = @(30, 26, 24); '20' = @(22, 21, 0)
-    '21' = @(2, 2, 0); '22' = @(7, 6, 0)
+    '14' = @{ Gpu = 3; Cpu = 3; Arm64 = 2 };  '15' = @{ Gpu = 2; Cpu = 2; Arm64 = 2 };  '16' = @{ Gpu = 1; Cpu = 1; Arm64 = 1 }
+    '17' = @{ Gpu = 5; Cpu = 5; Arm64 = 0 };  '18' = @{ Gpu = 8; Cpu = 6; Arm64 = 0 };  '19' = @{ Gpu = 30; Cpu = 26; Arm64 = 24 }
+    '20' = @{ Gpu = 22; Cpu = 21; Arm64 = 0 }; '21' = @{ Gpu = 2; Cpu = 2; Arm64 = 0 }; '22' = @{ Gpu = 7; Cpu = 6; Arm64 = 0 }
 }
-$floorIdx = if ($ExpectGpu) { 0 } elseif ($smokeCross) { 2 } else { 1 }
+$floorLane = if ($ExpectGpu) { 'Gpu' } elseif ($smokeCross) { 'Arm64' } else { 'Cpu' }
 foreach ($sec in $sectionFloors.Keys) {
-    $floor = $sectionFloors[$sec][$floorIdx]
+    $floor = $sectionFloors[$sec][$floorLane]
     if ($floor -le 0) { continue }
     $got = if ($summary.SectionPassed.Contains($sec)) { [int]$summary.SectionPassed[$sec] } else { 0 }
     if ($got -lt $floor) {

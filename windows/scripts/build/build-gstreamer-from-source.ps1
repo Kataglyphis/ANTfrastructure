@@ -984,32 +984,11 @@ int _isatty(int);
             log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
         }
 
-        # CROSS LANE, HISTORY (superseded by the PRESENCE-DRIVEN note below):
-        # until #115 the entire tflite integration below was skipped, because
-        # C:\runtime\lib\litert was an empty tree from a 'media-branch-absent'
-        # stand-in stage (itself retired 2026-08-24, #116).
-        # Both gates in the block would throw against it -- the header
-        # pre-flight first, then the import-library probe -- and neither is a
-        # real defect on that lane. Get-RequiredGstPlugin -Arch has already
-        # dropped 'tflite' from $requiredPlugins, so nothing downstream expects
-        # it either.
-        # WHY LiteRT is absent (corrected 2026-08-24 -- the blame here has been
-        # wrong twice: this comment pinned ONLY the x86_64-only prebuilt, the
-        # 2026-08-23 sweep elsewhere pinned ONLY the bazelrc; both halves are
-        # real): LiteRT-LM's Bazel path has (a) no windows-arm64 config in its
-        # .bazelrc (only android/macos/ios arm64) AND (b) the prebuilt
-        # x86_64-only libGemmaModelConstraintProvider in the default Windows
-        # dependency graph via gemma3_data_processor -- severable with the
-        # litert_lm_fst_constraints_disabled config_setting
-        # (model_data_processor/BUILD:26-33). Neither applies to PLAIN LiteRT
-        # (pure CMake, no Bazel, no prebuilt); its only cross obstacle is
-        # upstream's TFLITE_HOST_TOOLS_DIR host-flatc requirement.
-        # Cross-building plain LiteRT -- which would restore this plugin on the
-        # arm64 lane -- is backlog #115.
-        # PRESENCE-DRIVEN since #115 (2026-08-24): the cross lane now BUILDS
-        # plain LiteRT (media-litert runs on arm64; only its LiteRT-LM stage
-        # self-skips with the Bazel reasons above), so "cross implies no LiteRT"
-        # stopped being true. The decision input is the artifact itself --
+        # PRESENCE-DRIVEN since #115 (2026-08-24): the cross lane BUILDS plain
+        # LiteRT (media-litert runs on arm64; only its LiteRT-LM stage self-skips,
+        # with the Bazel reasons recorded in build-litert-all.ps1 and the
+        # exclusion table of docs/windows-cross-builds.md), so "cross implies no
+        # LiteRT" stopped being true. The decision input is the artifact itself --
         # tensorflowlite_c.lib in the fanned-in tree -- never the lane: a cross
         # merge from an older media-litert-less core degrades to
         # disabled-with-reason instead of throwing, and amd64 is unchanged (the
@@ -1616,6 +1595,42 @@ endian = 'little'
     & $mesonExe @installArgs 2>&1 | ForEach-Object { if ($_) { log $_ } }
     if ($LASTEXITCODE -ne 0) { throw 'meson install failed' }
     log 'Installation complete.'
+
+    # OpenSSL RUNTIME for the target (cross lane only; #127, measured arm64 run 13,
+    # 2026-08-25). The link step above resolves libcrypto/libssl from the
+    # C:\opt\openssl-arm64 import libs, but nothing installs the matching DLLs:
+    # gsthls/gstdtls/gstaes and gio's openssl TLS module shipped importing
+    # libcrypto-4-arm64.dll / libssl-4-arm64.dll that existed nowhere in the
+    # bundle -- 6 of the 13 unresolved imports of the first whole-tree walk. On
+    # amd64 the same plugins resolve scoop's x64 OpenSSL from the image PATH, an
+    # image-level fact the artifact bundle cannot rely on: a clean device has
+    # no OpenSSL at all. Stage the target DLLs into the bundle's DLL home
+    # (C:\runtime\bin), PE-checked, found by NAME PATTERN rather than an assumed
+    # slproweb layout ({app}\bin is where 4.0.1 keeps them today).
+    if ($script:GstCross) {
+        $sslRuntimeRoot = 'C:\opt\openssl-arm64'
+        $sslDlls = @(Get-ChildItem -Path $sslRuntimeRoot -Recurse -File -Include 'libcrypto-*.dll', 'libssl-*.dll' -ErrorAction SilentlyContinue)
+        if ($sslDlls.Count -eq 0) {
+            throw "OpenSSL runtime DLLs (libcrypto-*/libssl-*) not found under $sslRuntimeRoot -- the hls/dtls/aes plugins and gio's TLS module would import a DLL the bundle does not carry (#127)"
+        }
+        # The package carries each DLL several times (4.0.1: four copies of
+        # libcrypto/libssl, measured arm64 run 14) -- one per name is staged,
+        # the copy under a \bin directory preferred, so the log and the bundle
+        # say the same thing.
+        $sslByName = @{}
+        foreach ($dll in ($sslDlls | Sort-Object { if ($_.DirectoryName -match '\\bin$') { 0 } else { 1 } }, FullName)) {
+            if (-not $sslByName.ContainsKey($dll.Name.ToLowerInvariant())) { $sslByName[$dll.Name.ToLowerInvariant()] = $dll }
+        }
+        $sslWant = Get-PeMachineType -Arch $script:GstTargetArch
+        $sslBinDir = Join-Path $resolvedInstallDir 'bin'
+        New-Item -Path $sslBinDir -ItemType Directory -Force | Out-Null
+        foreach ($dll in @($sslByName.Values | Sort-Object Name)) {
+            $m = Get-PeFileMachine -Path $dll.FullName
+            if ($m -ne $sslWant) { throw ('OpenSSL runtime {0} is machine 0x{1:X4}, expected 0x{2:X4} -- refusing to stage a wrong-arch DLL into the bundle' -f $dll.FullName, $m, $sslWant) }
+            Copy-Item -Path $dll.FullName -Destination (Join-Path $sslBinDir $dll.Name) -Force
+        }
+        log ("OpenSSL ($($script:GstTargetArch)): staged {0} runtime DLL(s) into {1} ({2} candidate file(s) in the package): {3}" -f $sslByName.Count, $sslBinDir, $sslDlls.Count, (@($sslByName.Values | Sort-Object Name | ForEach-Object { "$($_.Name) <- $($_.DirectoryName)" }) -join '; '))
+    }
 
     Switch-BuildPhase '9. verify (plugin + pc gates)'
     # ---- 9. verify ----

@@ -157,11 +157,6 @@ Describe 'SIMD flag sets' {
         Assert-True ((Get-WindowsTargetKernelSimdFlags -Arch 'amd64') -ceq $expected) 'amd64 kernel flags drifted'
     }
 
-    It 'the legacy x86 helpers still return the same strings' {
-        Assert-True ((Get-WindowsX86SimdFlags)   -ceq (Get-WindowsTargetSimdFlags       -Arch 'amd64'))
-        Assert-True ((Get-WindowsX86Avx512Flags) -ceq (Get-WindowsTargetKernelSimdFlags -Arch 'amd64'))
-    }
-
     It 'arm64 adds NO global optional features' {
         # AArch64 baseline already mandates NEON, and a globally-enabled optional
         # feature (dotprod/i8mm/SVE) produces SIGILL on hardware without it -

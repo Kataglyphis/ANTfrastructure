@@ -2401,12 +2401,25 @@ The `:winarm64` cross lane completes end to end — since 2026-08-24 that includ
 target CPython, plain LiteRT and the restored `tflite` GStreamer plugin, with all four mandatory
 plugins shipping on BOTH lanes again — its arch gate passes **931 binaries, 0 violations** (the
 390 recorded at opening predates those additions), and the smoke gate now RUNS on this lane:
-**97 passed / 0 failed / 15 skipped** against floors 66/25. **As of 2026-08-24 evening (arm64 run
-11: all three media branches, arch gate 950/0, smoke 97/0/15) the remaining gaps are named, not
-open:** the Python-binding consumers landed (#120 step 2) and TVM/IREE ship as runtimes (#116);
-what stays amd64-only by construction is the TVM/IREE *compilers* and their python packages,
-LiteRT-LM (Bazel), CUDA (#122, deferred by the owner) and the torch app stage — each marked
-ABSENT inside the bundle. The QNN EP is wired but needs a hand-staged SDK (#121).
+**97 passed / 0 failed / 15 skipped** against floors 66/25. As of 2026-08-24 evening (arm64 run
+11: all three media branches, arch gate 950/0, smoke 97/0/15) every component **builds** for the
+target: the Python-binding consumers landed (#120 step 2) and TVM/IREE ship as runtimes (#116);
+amd64-only by construction are the TVM/IREE *compilers* and their python packages, LiteRT-LM
+(Bazel), CUDA (#122, deferred by the owner) and the torch app stage — each marked ABSENT inside
+the bundle; the QNN EP is wired but needs a hand-staged SDK (#121). **CORRECTED 2026-08-25
+(consumer-side audit, three reviewers, claims re-checked against code and configure logs): "built"
+is not "usable at first touch".** The bundle's Python surface would fail on a clean
+Windows-on-ARM machine before any user code runs — `python.exe` cannot find its own
+`vcruntime140.dll` (#124), no `sitecustomize` registers the DLL directories for the target
+interpreter (#125), no numpy/pip/runtime deps are staged for the target (#126) — and two
+silent degradations no gate watches: GStreamer arm64 lacks `webrtc`/`nice` (#128) and OpenCV arm64
+ships **zero dispatched NEON kernels** (#129). Entries #124–#131 below carry the evidence and the
+fixes; every one is host-side and statically gateable. **FIXED 2026-08-25 (arm64 run 14, `[bk]
+Done in 01:26:50`): #124–#127 are closed** — CRT beside `python.exe` and in `C:\runtime\bin`
+(9 DLLs), a target `sitecustomize`, 7 wheels with every `Requires-Dist` resolving in the store, and
+a whole-tree import walk as a hard merge gate (`970 inspected / 0 violations; 571 walked / 0
+unresolved`); its first run had found 13 real gaps (OpenSSL runtime DLLs, `vcruntime140_threads`,
+client-OS names), all now staged or classified. #128/#129 stay open as degradations, not blockers.
 Each item below carries a
 **verified** blocker — every one was researched against the actual code and upstream, then
 adversarially re-checked, because an optimistic "solvable" here costs 25 min to several hours
@@ -2557,7 +2570,7 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   host build installed to `build-host\install` (asserted to hold `iree-flatcc-cli.exe` +
   `iree-c-embed-data.exe` (IREE 3.x's name; the pre-rename `generate_embed_data` was asserted first and run 5 caught it)), then the target configure with `IREE_HOST_BIN_DIR`,
   `IREE_BUILD_COMPILER=OFF`, python OFF — with a static PE gate replacing the compile+run gate.
-  `media-tvm` left `$crossBlockedBranches` (now empty, mechanism kept), all three branches are
+  `media-tvm` left `$crossBlockedBranches` (the driver-level refusal list, removed altogether on 2026-08-25 in #131 once empty), all three branches are
   merge-required on both lanes, and the `media-branch-absent` stand-in stage is retired. Full
   description in `docs/windows-cross-builds.md` § "TVM and IREE cross-build runtime-only".
   **Measured on the way (arm64 runs 3–4):** (1) TVM runtime cross-builds in under a minute — 4
@@ -2715,7 +2728,7 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   work, in one line each — full detail in `docs/windows-cross-builds.md` § "#120 step 2":
   the HOST interpreter *runs* every build (`Get-TargetBuildPython .Exe`), the TARGET import lib is
   what gets *linked* (`.Lib`/`.LibDir`); wheels are built with an explicit `--plat-name win_arm64`
-  and **staged, never installed or imported** here (`Invoke-PythonWheelBuild -StageOnly` →
+  and **staged, never installed or imported** here (`Invoke-PythonWheelBuild -StageOnly`, since #131 the one-call `-CrossStage` →
   `Assert-WheelTargetArch`, which opens the wheel and PE-checks every native member **and** its
   `EXT_SUFFIX` name tag); cv2 gets the static equivalent of its import gate. Three findings the
   runs produced, each now pinned by code or test: (1) ORT's CMake reads `Python_*`, not
@@ -2815,6 +2828,191 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   llvm-ml's compatibility — that is the whole question this item answers. Ordering: after the
   current amd64 regression; it touches the ~50-min ORT stage.
 
+- **#124 — the target CPython cannot start on a clean Windows-on-ARM machine: `vcruntime140.dll`
+  is staged into `DLLs\`, not beside `python.exe`.** S · ★★★ (opened 2026-08-25, consumer-side audit)
+  `build-target-cpython.ps1:133-138` copies `python*.exe`/`python*.dll` to the root and every
+  other DLL — the CRT included — into `DLLs\`. `python314.dll` imports `vcruntime140.dll` through
+  the normal loader search (exe dir, System32, PATH); `DLLs\` is a *Python* search path, not a
+  loader one. On a box with the ARM64 VC redist it works by accident; on a clean box the
+  interpreter dies with 0xC0000135 before any Python runs. python.org's own layout keeps the CRT
+  next to the exe. **Fix:** stage `vcruntime140.dll` (+ `msvcp140*.dll` when present) beside
+  `python.exe`, keep the copy in `DLLs\` for the `.pyd`s, and extend the stage's self-check; the
+  whole-tree import walk of #127 is what would have caught it.
+  **DONE 2026-08-25 (arm64 run 14):** `build-target-cpython.ps1` stages the target-arch CRT set —
+  `vcruntime140.dll`, `vcruntime140_threads.dll` (added after run 13's import walk), `msvcp140*.dll`,
+  `concrt140.dll`, `vccorlib140.dll` — from the build output or the VS ARM64 redist, PE-checked,
+  beside `python.exe` **and** into `C:\runtime\bin`; throws if `vcruntime140.dll` cannot be staged.
+  Measured: `staged 9 CRT DLL(s)`; the #127 walk resolves every CRT import inside the bundle.
+
+- **#125 — no `sitecustomize` for the TARGET interpreter: every first `import` of cv2/av/ORT on the
+  device fails to find its DLLs.** S · ★★★ (opened 2026-08-25)
+  `Initialize-PythonPlatformTag` writes the shim into the **host** tree only
+  (`WindowsSourceBuild.Common.psm1`, `$CpythonDir\Lib\site-packages` = `C:\temp\cpython`); nothing
+  writes one into `C:\runtime\python\Lib\site-packages`. Python ≥ 3.8 ignores `PATH` for
+  extension-module dependencies, so `cv2.pyd → opencv_videoio500.dll → avcodec-63.dll` and
+  `opencv_gapi → onnxruntime.dll` cannot resolve, and the PyAV wheel (49 `.pyd`, 0 bundled DLLs) is
+  built on the same assumption (`build-ffmpeg-from-source.ps1` says its DLLs "resolve via the
+  sitecustomize shim"). **Fix:** emit a second shim — DLL directories only, no `get_platform`
+  override (the target reports `win-arm64` itself) — into the target site-packages at the
+  target-cpython stage (arch-aware paths from the same table), and assert its presence in the
+  merge.
+  **DONE 2026-08-25 (arm64 run 14):** the shim writer is one function
+  (`Write-PythonDllDirectoryShim`, used by `Initialize-PythonPlatformTag` for the host tree);
+  `build-target-cpython.ps1` calls it for `C:\runtime\python\Lib\site-packages` with the arch-aware
+  DLL homes and no platform/`EXT_SUFFIX` override, after emptying the target site-packages of the
+  host tree's pip/setuptools. Measured in-stage: `wrote the DLL-directory sitecustomize shim for
+  the target interpreter`.
+
+- **#126 — no runtime deps and no pip for the target: numpy (ORT `import_array`, cv2), packaging,
+  flatbuffers, protobuf, sympy, coloredlogs are absent; `C:\runtime\wheels` holds only our three
+  wheels.** M · ★★★ (opened 2026-08-25)
+  Every pip call in the chain runs the host interpreter; the cross wheel staging (`-CrossStage`) never resolves dependencies;
+  no `pip download --platform win_arm64` exists anywhere. **Fix:** a `requirements-winarm64.txt`
+  resolved on the host with `pip download --only-binary=:all: --platform win_arm64
+  --python-version 3.14 -d C:\runtime\wheels` (pure wheels + the `win_arm64` numpy/protobuf —
+  verify each pin publishes one for cp314 before relying on it), a bundle install note (`python
+  -m ensurepip` works offline — `Lib\ensurepip\_bundled` ships with the stdlib copy; install ours
+  with `--no-deps` so PyPI's `onnxruntime` never shadows the staged one), and a static gate that
+  every `Requires-Dist` of the staged wheels resolves inside the wheel store.
+  **Implemented 2026-08-25** as `windows/scripts/build/stage-target-python-deps.ps1`, a cross-only
+  merge step before the arch gate: it reads `Requires-Dist` from every wheel in `C:\runtime\wheels`
+  (extras dropped, numpy added for cv2), downloads with the HOST pip
+  (`--only-binary=:all: --platform win_arm64 --python-version 3.14 --abi cp314/none/abi3`) only
+  what the bundle does not provide itself, then gates that every wheel is pure or `win_arm64`
+  (PE-checked) and that every requirement edge resolves inside the store. **Measured on arm64
+  run 12:** the first `pip download` died on `onnxruntime-directml>=v1.29.0` ("from versions:
+  none") — onnxruntime-genai's `setup.py.in` derives its ORT requirement from the package name
+  (`onnxruntime-genai-directml` → `onnxruntime-directml`, `-cuda` → `onnxruntime-gpu`), but this
+  bundle ships its combined CPU+DML(+CUDA) ORT wheel as plain `onnxruntime` (build-onnx passes no
+  `--wheel_name_suffix` on purpose). Microsoft publishes no `win_arm64` `onnxruntime-directml`, and
+  on amd64 the same edge makes a consumer's `pip install` pull a *second* onnxruntime over ours (the
+  2026-07-13 DmlExecutionProvider loss that the build's `-NoDeps` only papers over). **Fix, both
+  lanes:** `build-onnx-genai-from-source.ps1` rewrites the configured `build\wheel\setup.py`
+  mapping to `dependency = "onnxruntime"` before packing (fail-loud when the pattern is gone), so
+  the wheel declares `onnxruntime>=v1.29.0` — the package the store actually holds. numpy 2.5.2
+  publishes a `cp314-win_arm64` wheel; flatbuffers, packaging, protobuf resolve as pure wheels.
+  **DONE 2026-08-25 (arm64 run 14):** `store holds 7 wheel(s); 0 requirement edge(s) unresolved` —
+  the three bundle wheels plus `numpy-2.5.2-cp314-cp314-win_arm64` (PE-checked),
+  `flatbuffers-25.12.19`, `packaging-26.3`, `protobuf-7.36.0` (pure); pip itself comes from the
+  target stdlib's `ensurepip\_bundled` (asserted in-stage). Install on the device with
+  `python -m ensurepip` then `pip install --no-index --find-links C:\runtime\wheels <name>`.
+
+- **#127 — whole-tree static import walk for the arm64 bundle.** M · ★★★ (opened 2026-08-25)
+  Today `Get-UnresolvedDeps` runs for the four mandatory GStreamer plugins only; every other
+  shipped `.dll/.exe/.pyd` and every wheel member gets a PE-machine check and nothing else. #124 is
+  exactly the class that a dependency walk catches. **Fix:** run the same `dumpbin /dependents`
+  (or `llvm-readobj --coff-imports`) walk over everything under `C:\runtime` plus extracted wheel
+  members, resolving against the bundle and a Windows 11 ARM64 `System32` name list; report
+  unresolved imports per file, floor on the file count, fail on any unresolved non-system import.
+  **Implemented 2026-08-25** as `verify-target-arch.ps1 -ImportWalk` (merge arch gate, cross lane):
+  a dependency-free PE import-table parser (`Get-PeImportNames`, import + delay-load directories,
+  PE32/PE32+) walks every inspected PE plus the native members of every wheel and resolves each
+  name against the bundle, the loader's `api-ms-`/`ext-ms-` API sets, this container's `System32`
+  list (CRT family excluded from it on cross — a clean device has no redist), a driver/toolkit
+  allowlist (`-ImportAllowlist`: nvcuda, vulkan-1, opengl32, d3d12core, Qnn*) and a **client-OS
+  list** (`-ClientOsPattern`: `dsound`, `mf`/`mfplat`/`mfreadwrite`/`mfcore`, `winspool.drv` —
+  DLLs every Windows client SKU ships but the Server Core reference does not). **Measured, arm64
+  run 13 — the first walk over 567 files found 13 unresolved imports in three classes, all real:**
+  (1) 6× `libcrypto-4-arm64.dll`/`libssl-4-arm64.dll` from `gsthls`/`gstdtls`/`gstaes` and gio's
+  openssl TLS module — linked against `C:\opt\openssl-arm64`'s import libs, but the DLLs were never
+  installed (amd64 gets scoop's x64 OpenSSL from the image PATH, which a bundle cannot rely on);
+  fix: the GStreamer cross branch now stages them, PE-checked, into `C:\runtime\bin`. (2) 6×
+  client-OS names (`DSOUND.dll` ← gstdirectsound*, `MF.dll`/`MFPlat`/`MFReadWrite` ←
+  gstmediafoundation, `WINSPOOL.DRV` ← tcl9tk90.dll) — present on the device, absent on Server
+  Core; classified, reported, not counted. (3) 1× `VCRUNTIME140_THREADS.dll` ← LiteRT's
+  `tensorflowlite_c.dll` — the one CRT member missing from #124's staging list; added.
+  **DONE 2026-08-25 (arm64 run 14):** `inspected 970, violations 0; import walk: 571 file(s)
+  walked, 0 unresolved import(s), 3 allowlisted external(s), 6 device-OS (client SKU) import(s)` —
+  the walk is a hard merge gate on the cross lane (`Dockerfile.media-merge-builder`, `-ImportWalk`).
+
+- **#128 — GStreamer arm64 lacks `webrtc`/`nice` and `gst-ptp-helper`; two lane-identical Meson
+  bugs found on the way.** M · ★★ (opened 2026-08-25, from a log diff of the two merge stages)
+  Measured (amd64 `bk-…-merge…` vs arm64 run 11): plugin lists identical except **`webrtc` only on
+  amd64** (104 vs 105 in gst-plugins-bad), `gstwebrtcnice-1.0-0.dll` + libnice + gst-examples only
+  on amd64. Cause: the cross file defines host `[binaries]` only, meson finds no **build-machine**
+  C compiler (`Compiler for language c for the build machine not found`, 93×), the build-machine
+  glib fallback dies, and libnice's by-name `subprojects/glib` lookup then fails although the host
+  glib configured fine (`glib-2.0 for host machine found: YES 2.86.3 (overridden)`).
+  `gst-ptp-helper` is Rust and has no `rustc --target=aarch64-pc-windows-msvc` in the cross file.
+  **Fix:** a native file with the x64 compilers for the build machine (and the rust target), then
+  add `nice`/`webrtc` to the plugin contract or a lane plugin-inventory diff gate. **Both lanes,
+  not parity:** `-Dcairo:win32=disabled` and `-Dgst-devtools:dots-viewer=disabled` are *unknown
+  options* in these versions and disable cairo, pango and gst-devtools everywhere; amd64 builds
+  562 glib **test** targets (`tests: true`) that ship nothing.
+
+- **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
+  The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**
+  `Dispatched code generation:` — `HAVE_CPU_NEON_FP16_SUPPORT / _DOTPROD_ / _BF16_ - Failed`,
+  "NEON_FP16 is not supported by C++ compiler": OpenCV's feature probe hands clang-cl GCC-style
+  flags it rejects. amd64 gets `SSE4_1 SSE4_2 AVX FP16 AVX2 AVX512_SKX`. Same failure class as the
+  MLAS/XNNPACK/IREE per-TU fixes, degrading silently (fp16/dotprod paths fall back to baseline
+  NEON + carotene). **Fix:** on cross pass `CPU_DISPATCH=NEON_FP16;NEON_DOTPROD;NEON_BF16` with the
+  `/clang:-march=armv8.2-a+…` spellings (OpenCV's `OPENCV_CPU_*` flag overrides or an inline patch
+  of `OpenCVCompilerOptimizations.cmake`) and **gate on a non-empty dispatch line**.
+
+- **#130 — bundle contract and small consumer-facing gaps.** S · ★ (opened 2026-08-25)
+  (a) No file in the bundle names its own layout: all pointers are Dockerfile ENV of a
+  windows/amd64 image, `PATH`'s python is the host x64 one, `C:\runtime\python` appears in no ENV —
+  emit `C:\runtime\BUNDLE-ENV.cmd/.ps1` from the same table plus a bundle README. (b) GIO module
+  cache absent (`gio-querymodules` skipped under DESTDIR) — document the one-time on-device run.
+  (c) `Assert-WheelTargetArch` logs only a member *count* — log the names, so it is known whether
+  the GenAI wheel embeds `onnxruntime.dll`. (d) Stale labels/comments: `windows\Dockerfile` LABEL
+  and header still call TVM/IREE/LiteRT "empty markers on arm64", the merge Dockerfile says the
+  arm64 site-packages "wait on #120", `WindowsGstPlugins.Common.psm1` says LiteRT "cannot be built
+  for Windows-on-ARM", `healthcheck.ps1` says the arm64 contract drops tflite.
+
+- **#131 — post-cross-phase cleanup (refactoring).** M · ★★ (opened 2026-08-25, owner's request) ·
+  ✅ **DONE 2026-08-25 in four waves, developed in an isolated worktree, 662/662 tests, proof = the
+  bundled amd64 + arm64 regression that followed.** What landed: **helpers** `Add-NinjaPerTuFlags`
+  (one per-TU tagging pass with floor + idempotency marker, replacing the MLAS/XNNPACK/IREE copies),
+  `Assert-PeTargetMachine` / `Assert-DirectoryTargetArch` / `Assert-PythonExtensionTag` (the static
+  PE gates, in the dependency-free arch module), `Write-AbsentOnCrossMarker` (one marker convention),
+  `Get-PythonCMakeHintArgs` (the FindPython trio per prefix), `Invoke-HostToolCmakeBuild` (host
+  target + host LIB + retry ladder — LiteRT's flatc pass gained the LIB swap and a persistent log),
+  `Invoke-PythonWheelBuild -CrossStage` (ORT/GenAI/PyAV wheels through one call),
+  `Invoke-InlineRegexPatch -SkipIfMatch/-AssertGone` (the six hand-rolled verify pairs),
+  `Resolve-QnnSdk` / `Copy-QnnRuntime` (the QNN block, now fixture-tested with a fake SDK zip),
+  `Invoke-OnnxDmlClangClPatch` moved into the Patches module (80 lines of embedded C++ out of the
+  build script). **Deleted:** the dead `Get-WindowsX86SimdFlags`/`Get-WindowsX86Avx512Flags`, the
+  false "no arm64 CPython" warning, the unreachable `$crossBlockedBranches` mechanism, the cpython
+  script's private PE reader and the two inline reads in the smoke test, ~120 lines of HISTORY
+  comments now pointing at the docs, the stale nvcc-launcher comment. **Structure:** named
+  `Gpu/Cpu/Arm64` smoke-floor columns (the calibration test parses the new shape), `$onnxCross`
+  resolved once at the top of the ORT script. **Tests added:** `SourceBuild.CrossHelpers`
+  (tagging, marker, hints, target python fixture, patch guards, PE asserts), `SourceBuild.NinjaTargets`,
+  `SourceBuild.Qnn`, `TargetArch.CrossArgs`, `TargetArch.PeInspection`; `FindPythonPrefix` rewritten
+  against the helper; the test runner now prints the assertion message under a red `FAIL` line.
+  Original findings, kept for the record: **duplication** — per-TU `build.ninja` FLAGS
+  tagging with a floor exists three times (MLAS `build-onnx`, XNNPACK `build-litert`, IREE ukernels
+  `build-iree`) → one `Add-NinjaPerTuFlags -NinjaFile -Select -Floor -Label` helper; static PE
+  gates over directories/lists exist in tvm, iree, cv2, `Assert-WheelTargetArch`, cpython (a
+  private `Get-StagedPeMachine` clone of `Get-PeFileMachine`) and two inline reads in the smoke
+  test → `Assert-PeTargetMachine` / `Assert-DirectoryTargetArch` in the dependency-free arch
+  module; ABSENT markers written three ways → `Write-AbsentOnCrossMarker`; `Invoke-InlineRegexPatch`
+  + hand-rolled "verify gone or throw" pairs (six sites) → `-AssertGone`/`-SkipIfMatch`; the
+  Python CMake hint trio composed three ways → `Get-PythonCMakeHintArgs -Prefix`; the cross
+  wheel build/stage/assert shape (ORT, GenAI, hand-rolled PyAV) → `Invoke-PythonWheelBuild
+  -CrossStage`; the host-tool pass (IREE with the LIB swap, LiteRT's flatc **without** it — safe
+  today only because that script never enters VsDevCmd) → `Invoke-HostToolCmakeBuild`.
+  **Dead/false:** `Get-WindowsX86SimdFlags`/`Get-WindowsX86Avx512Flags` have no callers (comment
+  mentions only); `Get-SourceBuildPython`'s "no arm64 CPython is built on this lane" warning is
+  now false and fires twice per green arm64 run (via `Get-TargetBuildPython`);
+  `WindowsTargetArch.Common.psm1` claims the inline PE reads were removed — they were not;
+  `$crossBlockedBranches = @()` is an unreachable mechanism contradicting the "ship your own marker"
+  convention (drop it); the LiteRT-LM Bazel blocker paragraph lives in five places; 36-line
+  HISTORY comments in the ORT/GenAI/OpenCV scripts restate `docs/windows-cross-builds.md`.
+  **Hot spots:** `build-onnx-from-source.ps1` (811 lines: DML patch fn, QNN block, python args,
+  MLAS tagging → move the DML patch into the Patches module and QNN into a `WindowsSourceBuild.Qnn`
+  module with a fake-zip test); the IREE cross branch; the TVM cross branch; the positional
+  three-column smoke floor table (→ named `Gpu/Cpu/Arm64` keys). **Test gaps:** `Get-PeFileMachine`,
+  `Assert-WheelTargetArch`, `Get-TargetBuildPython`, `-Targets`, `Get-QnnSdkLibDirName`, the QNN
+  block, the tagging helper, `Get-CMakeCrossArgs`' ASM pair — all cheaply fixture-testable
+  (synthetic 0x46-byte PE header, fake `build.ninja`, fake SDK zip, stub ninja). **Order:** wave 0
+  deletions → wave 1 helpers + fixture tests (no call-site change) → wave 2 call-site migration
+  proven by one bundled amd64 + arm64 regression against today's recorded counts (MLAS 11/25,
+  XNNPACK 569 + 335, IREE 5; gates 1134/0 and 950/0; smoke 220/0/0 and 97/0/15) → wave 3
+  structural extractions.
+
 - **VERIFY RIDE — MOSTLY CLOSED 2026-08-24 by the amd64 full regression** (media all
   branches + merge + final + smoke: arch gate 1134/0, smoke 220/0/0, `[bk] Done`), **and
   re-confirmed by a second full amd64 regression the same night** (2026-08-25 01:2x, `[bk] Done in
@@ -2831,6 +3029,19 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   Follow-ups that were chained to this: re-measure the at-scale sccache hit rate (the 2026-08-24
   runs show warm hits on every rebuild — e.g. TVM's LLVM rebuild in 21 min), and the log
   forensics against the first fully-captured chain (details under Pending).
+- **#132 — Windows Update inside the build container poisons a layer.** S · ★★★ (opened and
+  **DONE 2026-08-25**, measured on the amd64 regression after #131)
+  The `media-core-onnx` stage finished its 150 s RUN and then died in finalize, byte-identical on
+  both retries: `failed to reimport snapshot: Files/Windows/SoftwareDistribution/Download/<id>/
+  Windows11.0-KB5120233-x64.msu: unknown stream ID 9`. servercore ships `wuauserv` and the Update
+  Orchestrator (`UsoSvc`), both trigger-started; the container has network; the client downloaded a
+  cumulative update into the spool during the RUN, and BuildKit's Windows layer writer cannot carry
+  that file's alternate stream. Retries cannot help — the RUN result is cached, only the finalize
+  re-runs. **Fix:** `Disable-ContainerWindowsUpdate` (`WindowsSourceBuild.Common.psm1`) stops and
+  disables both services and sets `NoAutoUpdate=1` as the first step of every build script
+  (`Initialize-SourceBuildEnvironment`), warning if the spool already holds items. Deliberately
+  prevention only: no script deletes under `C:\Windows` (protected-root rule); a poisoned layer is
+  fixed by re-running its RUN with the guard in place (the module edit re-keys it).
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
   (#59 branch protection was DECLINED, #31 was not).

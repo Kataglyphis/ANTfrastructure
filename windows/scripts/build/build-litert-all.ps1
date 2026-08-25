@@ -82,17 +82,12 @@ if (Test-WindowsCrossTarget) {
     # tree, or the COPY fails on a path that legitimately does not exist here.
     # This is now THE convention for anything a cross branch cannot build.
     $lmRoot = Join-Path $InstallDir 'lib\litert-lm'
-    foreach ($d in @($lmRoot, (Join-Path $lmRoot 'include'), (Join-Path $lmRoot 'bin'))) {
-        New-Item -Path $d -ItemType Directory -Force | Out-Null
-    }
-    Set-Content -Path (Join-Path $lmRoot 'ABSENT-ON-ARM64.txt') -Encoding ASCII -Value @(
-        'LiteRT-LM is not built on the arm64 cross lane. Its ACTIVE build path is Bazel, where two'
-        'blockers are real: upstream''s .bazelrc has no windows-arm64 config, and the x86_64-only'
-        'libGemmaModelConstraintProvider prebuilt sits in the default Windows dependency graph'
-        '(severable via the litert_lm_fst_constraints_disabled config_setting). Plain LiteRT IS'
-        'built on this lane (see C:\runtime\lib\litert). See docs/windows-cross-builds.md.'
-    )
-    Write-Host "media-litert: staged empty litert-lm stand-in tree at $lmRoot (merge fan-in COPY contract)"
+    [void](Write-AbsentOnCrossMarker -Root $lmRoot -Component 'LiteRT-LM' -EnsureDirs @('include', 'bin') -Reason @(
+        'Its ACTIVE build path is Bazel, where two blockers are real: upstream''s .bazelrc has no'
+        'windows-arm64 config, and the x86_64-only libGemmaModelConstraintProvider prebuilt sits in the'
+        'default Windows dependency graph (severable via the litert_lm_fst_constraints_disabled'
+        'config_setting). Plain LiteRT IS built on this lane (see C:\runtime\lib\litert).'
+    ))
 } else {
     $litertStages += @{ Name = 'LiteRT-LM'; Invoke = { param($sd, $id)
             # Repository cache mount (optional) for cross-run reuse; the bazel

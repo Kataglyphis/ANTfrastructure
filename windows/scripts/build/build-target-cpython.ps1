@@ -144,25 +144,15 @@ Get-ChildItem $cpyOutDir -Filter '*.dll' -File | Where-Object { $_.Name -notmatc
 # staged binary itself: a wrong-arch CRT redist DLL is replaced from the VS
 # installation's ARM64 redist tree; anything else wrong-arch throws HERE, with
 # a name, instead of 40 minutes later in the merge.
-function Get-StagedPeMachine([string]$Path) {
-    $s = [System.IO.File]::OpenRead($Path)
-    try {
-        $r = New-Object System.IO.BinaryReader($s)
-        $s.Seek(0x3C, 'Begin') | Out-Null
-        $off = $r.ReadUInt32()
-        $s.Seek($off + 4, 'Begin') | Out-Null
-        return $r.ReadUInt16()
-    } finally { $s.Dispose() }
-}
 $redistArm64 = Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\arm64\Microsoft.VC*.CRT' -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
 foreach ($staged in (Get-ChildItem -Path $pyRoot -Recurse -Include '*.dll', '*.exe', '*.pyd' -File)) {
-    $m = Get-StagedPeMachine $staged.FullName
+    $m = Get-PeFileMachine -Path$staged.FullName
     if ($m -eq $wantMachine) { continue }
     $replacement = if ($redistArm64) { Join-Path $redistArm64.FullName $staged.Name } else { $null }
-    if ($replacement -and (Test-Path $replacement) -and ((Get-StagedPeMachine $replacement) -eq $wantMachine)) {
+    if ($replacement -and (Test-Path $replacement) -and ((Get-PeFileMachine -Path$replacement) -eq $wantMachine)) {
         Copy-Item $replacement $staged.FullName -Force
         Write-Host ('Target CPython: replaced host-arch {0} (0x{1:X4}) with the VS ARM64 redist copy' -f $staged.Name, $m)
-    } elseif ($staged.Name -ieq 'vcruntime140_1.dll' -and (Test-Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -and ((Get-StagedPeMachine (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -eq $wantMachine)) {
+    } elseif ($staged.Name -ieq 'vcruntime140_1.dll' -and (Test-Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -and ((Get-PeFileMachine -Path(Join-Path $staged.DirectoryName 'vcruntime140.dll')) -eq $wantMachine)) {
         # vcruntime140_1.dll has NO ARM64 edition BY DESIGN: it exists only to
         # carry the x64 FH4 exception helpers (__CxxFrameHandler4); on ARM64
         # everything lives in vcruntime140.dll, which is staged here and IS
@@ -182,10 +172,58 @@ Copy-Item $tgtLib.FullName "$pyRoot\libs" -Force
 # macros at INCLUDE time, so one copy serves the target.
 Copy-Item "$SourceDir\Include\*" "$pyRoot\include" -Recurse -Force
 Copy-Item "$SourceDir\PC\pyconfig.h" "$pyRoot\include" -Force
-# Stdlib: pure-python, arch-neutral.
+# Stdlib: pure-python, arch-neutral. site-packages is NOT: the source tree's
+# is the HOST interpreter's (pip/setuptools with x64 launcher stubs, and later
+# every host-installed package), so the target starts with an EMPTY one -- cv2
+# is installed into it by the OpenCV stage, the wheels + their deps live in
+# C:\runtime\wheels, and pip comes from ensurepip's bundled wheel (below).
 Copy-Item "$SourceDir\Lib" "$pyRoot\Lib" -Recurse -Force
+$tgtSitePackages = Join-Path $pyRoot 'Lib\site-packages'
+if (Test-Path $tgtSitePackages) { Get-ChildItem -LiteralPath $tgtSitePackages -Force | Remove-Item -Recurse -Force }
+New-Item -Path $tgtSitePackages -ItemType Directory -Force | Out-Null
+
+# #124 (2026-08-25, consumer-side audit): the CRT must sit BESIDE python.exe.
+# python3xy.dll imports vcruntime140.dll through the LOADER's search order (exe
+# directory, System32, PATH) -- DLLs\ is a *Python* search path, invisible to
+# the loader -- so on a clean device without the ARM64 VC redist the
+# interpreter died with 0xC0000135 before any Python ran. python.org's own
+# layout keeps the CRT next to the exe. The same target-arch CRT set also goes
+# to C:\runtime\bin, the bundle-wide DLL home every consumer registers, so
+# opencv/onnxruntime/ffmpeg resolve it without a redist install.
+# vcruntime140_threads.dll (C11 <threads.h> support, VS 17.10+ redist) joined the
+# list after arm64 run 13's import walk (#127, 2026-08-25): LiteRT's
+# tensorflowlite_c.dll imports it, and it was the one CRT member not staged.
+$crtNames = @('vcruntime140.dll', 'vcruntime140_threads.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'concrt140.dll', 'vccorlib140.dll')
+$bundleBin = Join-Path $InstallDir 'bin'
+New-Item -Path $bundleBin -ItemType Directory -Force | Out-Null
+$crtStaged = 0
+foreach ($crt in $crtNames) {
+    $src = if (Test-Path (Join-Path "$pyRoot\DLLs" $crt)) { Join-Path "$pyRoot\DLLs" $crt } elseif ($redistArm64 -and (Test-Path (Join-Path $redistArm64.FullName $crt))) { Join-Path $redistArm64.FullName $crt } else { $null }
+    if (-not $src) { continue }
+    if ((Get-PeFileMachine -Path$src) -ne $wantMachine) { throw "Target CPython: CRT candidate $src is not target-arch -- refusing to stage it" }
+    Copy-Item $src (Join-Path $pyRoot $crt) -Force
+    Copy-Item $src (Join-Path $bundleBin $crt) -Force
+    $crtStaged++
+}
+if (-not (Test-Path (Join-Path $pyRoot 'vcruntime140.dll'))) {
+    throw "Target CPython: vcruntime140.dll (target-arch) could not be staged beside python.exe -- neither the build output nor the VS ARM64 redist tree ($($redistArm64.FullName)) had it; the interpreter would not start on a clean device"
+}
+Write-Host "Target CPython: staged $crtStaged CRT DLL(s) beside python.exe and in $bundleBin (loader-visible; #124)"
+
+# #125: the DLL-directory shim for the TARGET interpreter -- the same writer as
+# the host's, without the host-only platform/EXT_SUFFIX patches.
+$tgtShim = Write-PythonDllDirectoryShim -SitePackages $tgtSitePackages -OpenCvArchDir (Get-OpenCvArchDir -Arch $tgtArch) `
+    -WrittenBy 'build-target-cpython.ps1 (TARGET interpreter, #125)'
+Write-Host "Target CPython: wrote the DLL-directory sitecustomize shim for the target interpreter: $tgtShim"
+
+# pip on the device: `python -m ensurepip` installs from the stdlib's bundled
+# wheel, offline. Assert the wheel travelled with the Lib copy.
+$ensurepipWheel = Get-ChildItem -Path (Join-Path $pyRoot 'Lib\ensurepip\_bundled') -Filter 'pip-*.whl' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $ensurepipWheel) { throw "Target CPython: Lib\ensurepip\_bundled\pip-*.whl missing -- the device would have no way to install the staged wheels" }
+Write-Host "Target CPython: ensurepip bundle present ($($ensurepipWheel.Name)) -- `python -m ensurepip` works offline on the device"
+
 $staged = @(Get-ChildItem $pyRoot -Recurse -File).Count
-Write-Host "Target CPython: staged $staged files -> $pyRoot (interpreter + import lib + headers + stdlib)"
+Write-Host "Target CPython: staged $staged files -> $pyRoot (interpreter + CRT + import lib + headers + stdlib + shim)"
 
 Switch-BuildPhase '5. scrub'
 # Mirror the toolchain layer's slimming: externals and ARM64 obj are build

@@ -182,17 +182,35 @@ function Invoke-InlineRegexPatch {
         [string]$Guard = '',
         [string]$WarnMessage = '',
         [switch]$Require,
-        [string]$Description = ''
+        [string]$Description = '',
+        # Idempotency (#131): when the file already matches this regex the patch
+        # is considered applied -- return $true, touch nothing, say so. Replaces
+        # the hand-rolled `elseif ((Get-Content ...) -match <new>)` at call sites.
+        [string]$SkipIfMatch = '',
+        # Load-bearing patches (#131): after writing, the file must NOT match
+        # this regex any more -- otherwise throw with -Description. Also throws
+        # when the pattern was never found and the file still matches it (the
+        # "did not apply cleanly, upstream layout changed" case every consumer
+        # used to re-read the file to detect).
+        [string]$AssertGone = ''
     )
     if (-not (Test-Path $Path)) {
-        if ($Require) { throw "Invoke-InlineRegexPatch: file not found: $Path" }
+        if ($Require -or $AssertGone) { throw "Invoke-InlineRegexPatch: file not found: $Path" }
         return $false
     }
     if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
     $text = [System.IO.File]::ReadAllText($Path)
-    if ($Guard -and ($text -notmatch $Guard)) { return $false }
+    if ($SkipIfMatch -and ($text -match $SkipIfMatch)) {
+        Write-Host "$Description already applied ($Path)"
+        return $true
+    }
+    if ($Guard -and ($text -notmatch $Guard)) {
+        if ($AssertGone -and ($text -match $AssertGone)) { throw "$Description : guard not found but the pattern it protects is still present in $Path -- upstream layout changed, refusing to continue" }
+        return $false
+    }
     $patched = $text -replace $Pattern, $Replacement
     if ($patched -eq $text) {
+        if ($AssertGone -and ($text -match $AssertGone)) { throw "$Description : pattern not found and '$AssertGone' still present in $Path -- upstream layout changed, refusing to continue" }
         if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
             $WarnMessage = "$Description : pattern not found; upstream layout may have changed. Verify $Path."
         }
@@ -200,8 +218,147 @@ function Invoke-InlineRegexPatch {
         return $false
     }
     [System.IO.File]::WriteAllText($Path, $patched)
+    if ($AssertGone -and ($patched -match $AssertGone)) { throw "$Description : '$AssertGone' still present after patching $Path -- the replacement did not remove it" }
     Write-Host "Patched $Description ($Path)"
     return $true
+}
+
+<#
+.SYNOPSIS
+    ONNX Runtime DirectML EP clang-cl fix: moves AbstractOperatorDesc's special
+    members, GetTensors<>() and the four tensor accessors out of line into
+    GeneratedSchemaTypes.h, after OperatorField is complete.
+.DESCRIPTION
+    OperatorField is an incomplete type at the point where MSVC (which defers
+    special-member instantiation to end-of-TU) is fine and clang-cl (correctly,
+    llvm #57700) is not. This is the regex fallback behind the checked-in
+    .patch file; it lived inside build-onnx-from-source.ps1 until #131
+    (2026-08-25) -- 80 lines of embedded C++ in a build script. Idempotent
+    ("[clang-cl DML fix]" marker); silently a no-op when the upstream layout
+    no longer matches all three anchors (the caller's patch-file path is the
+    primary route and reports its own outcome).
+#>
+function Invoke-OnnxDmlClangClPatch {
+    param([Parameter(Mandatory)][string]$SourceDir)
+
+    $dmlHelpers  = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\External\DirectMLHelpers"
+    $dmlAbstract = Join-Path $dmlHelpers 'AbstractOperatorDesc.h'
+    $dmlTypes    = Join-Path $dmlHelpers 'GeneratedSchemaTypes.h'
+    if ((Test-Path $dmlAbstract) -and (Test-Path $dmlTypes)) {
+        $abs = [System.IO.File]::ReadAllText($dmlAbstract)
+        if ($abs -notmatch '\[clang-cl DML fix\]') {
+            $ctorRx = 'AbstractOperatorDesc\(\) = default;\r?\n\s*AbstractOperatorDesc\(const DML_OPERATOR_SCHEMA\* schema, std::vector<OperatorField>&& fields\)\r?\n\s*: schema\(schema\)\r?\n\s*, fields\(std::move\(fields\)\)\r?\n\s*\{\}'
+            $accessorRx = '(?s)(std::vector<[^\r\n]+?> Get(?:Input|Output)Tensors\(\)(?: const)?)\r?\n\s*\{\r?\n\s*return GetTensors<[^\r\n]+?>\(\);\r?\n\s*\}'
+            $getTensorsRx = '(?s)template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>\r?\n\s*std::vector<TensorType\*> GetTensors\(\) const\r?\n\s*\{.*?return tensors;\r?\n\s*\}'
+            $ctorHit = [regex]::IsMatch($abs, $ctorRx)
+            $accHit  = ([regex]::Matches($abs, $accessorRx)).Count
+            $gtHit   = ([regex]::Matches($abs, $getTensorsRx)).Count
+            if ($ctorHit -and $accHit -eq 4 -and $gtHit -eq 1) {
+                $ctorDecls = @'
+AbstractOperatorDesc();
+    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields);
+    AbstractOperatorDesc(const AbstractOperatorDesc&);
+    AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept;
+    AbstractOperatorDesc& operator=(const AbstractOperatorDesc&);
+    AbstractOperatorDesc& operator=(AbstractOperatorDesc&&) noexcept;
+    ~AbstractOperatorDesc();
+'@
+                $gtDecl = @'
+template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
+    std::vector<TensorType*> GetTensors() const;
+'@
+                $abs = [regex]::Replace($abs, $ctorRx, $ctorDecls)
+                $abs = [regex]::Replace($abs, $accessorRx, '$1;')
+                $abs = [regex]::Replace($abs, $getTensorsRx, $gtDecl)
+                $abs = $abs -replace '(class OperatorField;)', "`$1`r`n// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h"
+                [System.IO.File]::WriteAllText($dmlAbstract, $abs)
+                $outOfLine = @'
+
+// [clang-cl DML fix] Out-of-line AbstractOperatorDesc members. Defined here, AFTER OperatorField is
+// complete, so the std::vector<OperatorField> special members (dtor/move), GetTensors<>() and the 4
+// tensor accessors instantiate against a complete type. Left inline they instantiate via
+// optional<AbstractOperatorDesc> while OperatorField is still forward-declared, which clang-cl rejects
+// (MSVC defers method/special-member instantiation to end-of-TU, where the type is complete).
+inline AbstractOperatorDesc::AbstractOperatorDesc() = default;
+inline AbstractOperatorDesc::AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields)
+    : schema(schema), fields(std::move(fields)) {}
+inline AbstractOperatorDesc::AbstractOperatorDesc(const AbstractOperatorDesc&) = default;
+inline AbstractOperatorDesc::AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept = default;
+inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(const AbstractOperatorDesc&) = default;
+inline AbstractOperatorDesc& AbstractOperatorDesc::operator=(AbstractOperatorDesc&&) noexcept = default;
+inline AbstractOperatorDesc::~AbstractOperatorDesc() = default;
+template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
+std::vector<TensorType*> AbstractOperatorDesc::GetTensors() const
+{
+    std::vector<TensorType*> tensors;
+    for (auto& field : fields)
+    {
+        const DML_SCHEMA_FIELD* fieldSchema = field.GetSchema();
+        if (fieldSchema->Kind != Kind)
+        {
+            continue;
+        }
+
+        if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC)
+        {
+            auto& tensor = field.AsTensorDesc();
+            tensors.push_back(tensor ? const_cast<TensorType*>(&*tensor) : nullptr);
+        }
+        else if (fieldSchema->Type == DML_SCHEMA_FIELD_TYPE_TENSOR_DESC_ARRAY)
+        {
+            auto& tensorArray = field.AsTensorDescArray();
+            if (tensorArray)
+            {
+                for (auto& tensor : *tensorArray)
+                {
+                    tensors.push_back(const_cast<TensorType*>(&tensor));
+                }
+            }
+        }
+    }
+    return tensors;
+}
+inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors()
+{
+    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
+}
+inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetInputTensors() const
+{
+    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_INPUT_TENSOR>();
+}
+inline std::vector<DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors()
+{
+    return GetTensors<DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
+}
+inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTensors() const
+{
+    return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
+}
+'@
+                [System.IO.File]::AppendAllText($dmlTypes, $outOfLine)
+                Write-Host 'Applied [clang-cl DML fix]: out-of-lined AbstractOperatorDesc special members + GetTensors + 4 tensor accessors'
+            } else {
+                Write-Warning "[clang-cl DML fix] anchors not found (ctor=$ctorHit accessors=$accHit gettensors=$gtHit) -- DirectML may fail under clang-cl. Verify $dmlAbstract."
+            }
+        }
+    } else {
+        Write-Warning 'DirectMLHelpers headers not found -- skipping the clang-cl DML fix (USE_DML build may fail).'
+    }
+
+    $dmlAuthorImpl = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\MLOperatorAuthorImpl.cpp"
+    [void](Invoke-InlineRegexPatch -Path $dmlAuthorImpl `
+            -Pattern '(initializer)\.##Z\(\)' -Replacement '$1.Z()' `
+            -Description 'clang-cl DML fix #2 (dropped spurious `.##Z` token-paste in MLOperatorAuthorImpl.cpp CASE_PROTO)' `
+            -WarnMessage '[clang-cl DML fix #2] `.##Z` token-paste not found in MLOperatorAuthorImpl.cpp (already fixed upstream?) -- skipping.')
+
+    $dmlOps = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\Operators"
+    foreach ($opHeader in @('DmlDFT.h', 'DmlGridSample.h')) {
+        [void](Invoke-InlineRegexPatch -Path (Join-Path $dmlOps $opHeader) `
+                -Pattern 'template <typename TConstants, uint32_t TSize>' `
+                -Replacement 'template <typename TConstants, size_t TSize>' `
+                -Description "clang-cl DML fix #3 (widened Dispatch<TSize> to size_t in $opHeader)" `
+                -WarnMessage "[clang-cl DML fix #3] uint32_t TSize decl not found in $opHeader (already fixed upstream?) -- skipping.")
+    }
 }
 
 function Add-FileBlockOnce {
@@ -268,6 +425,7 @@ function Edit-SourceFile {
 }
 
 Export-ModuleMember -Function @(
+    'Invoke-OnnxDmlClangClPatch',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
     'Invoke-SourcePatch',

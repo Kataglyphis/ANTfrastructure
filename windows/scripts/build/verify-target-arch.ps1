@@ -58,6 +58,28 @@ param(
     [int]$MinInspected = 1,
     [string]$HostToolPattern = '',
     [switch]$IncludeArchives,
+    # #127 (2026-08-25): after the machine check, walk every inspected PE's
+    # import table (plus the native members of every wheel under the roots)
+    # and resolve each imported DLL name against (a) the bundle itself, (b) the
+    # loader's virtual API sets (api-ms-*/ext-ms-*), (c) the OS DLL name list of
+    # this container's System32. On a CROSS lane the CRT family
+    # (vcruntime/msvcp/concrt/...) is NOT accepted from System32: a clean device
+    # has no redist, so the bundle must carry it. An unresolved import is the
+    # 0xC0000135-at-first-touch class the machine check cannot see (#124).
+    [switch]$ImportWalk,
+    # Regex of import names that are legitimately external to both bundle and
+    # OS (driver/toolkit-provided). Reported, never counted.
+    [string]$ImportAllowlist = '^(nvcuda|nvml|nvapi64|cudart64_[0-9]+|cublas|cublasLt|cudnn|nvinfer|nvonnxparser|nvrtc|cufft|curand|cusparse|cusolver|nvjitlink|nvcomp|vulkan-1|opengl32|d3d12core|QnnHtp|QnnCpu|QnnSystem)[A-Za-z0-9_-]*\.dll$',
+    # Regex of OS DLLs that a Windows CLIENT SKU ships but this Server Core
+    # reference container does not, so they never appear in (c) above yet are
+    # on every device the bundle targets. Measured arm64 run 13 (2026-08-25),
+    # each name a real import of a shipped plugin: DirectSound (gstdirectsound*),
+    # Media Foundation (gstmediafoundation -- MF is absent on Server Core, the
+    # same fact behind OpenCV's WITH_MSMF=OFF), and the print spooler
+    # (tcl9tk90.dll -> winspool.drv). Reported as "device OS", never counted.
+    # Keep it to names the client SKU carries unconditionally -- an optional
+    # feature (e.g. a Media Feature Pack SKU) would belong in -ImportAllowlist.
+    [string]$ClientOsPattern = '^(dsound|mf|mfplat|mfreadwrite|mfcore|winspool)\.(dll|drv)$',
     # Opt-in for a tree that legitimately holds (almost) no binaries. Required
     # whenever -MinInspected is 0 or less, so that "no coverage floor" can only
     # ever be a deliberate statement rather than a dropped build-arg.
@@ -227,6 +249,7 @@ $inspected = 0
 $skippedHostTools = @()
 $unreadable = @()
 $violations = @()
+$script:peFiles = @()
 
 foreach ($root in $Path) {
     if (-not (Test-Path $root)) {
@@ -255,7 +278,53 @@ foreach ($root in $Path) {
             if (-not $ok) {
                 $violations += [pscustomobject]@{ Path = $file.FullName; Machine = $machine }
             }
+            if ($file.Extension -ine '.lib') { $script:peFiles += $file.FullName }
         }
+}
+
+# ── #127: static import walk ─────────────────────────────────────────────────
+$importUnresolved = @()
+$importWalked = 0
+$importExternal = @()
+$importClientOs = @()
+if ($ImportWalk) {
+    $walkFiles = [System.Collections.Generic.List[string]]::new()
+    foreach ($f in $script:peFiles) { $walkFiles.Add($f) }
+    # Wheels: their native members are what `pip install` puts into the device's
+    # site-packages; walk them exactly like shipped files.
+    $wheelTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('archgate-wheels-' + [guid]::NewGuid().ToString('N'))
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($root in $Path) {
+        foreach ($whl in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.whl' -File -ErrorAction SilentlyContinue)) {
+            $dest = Join-Path $wheelTmp ([IO.Path]::GetFileNameWithoutExtension($whl.Name))
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($whl.FullName, $dest)
+            foreach ($m in @(Get-ChildItem -Path $dest -Recurse -File -Include '*.dll', '*.pyd', '*.exe')) { $walkFiles.Add($m.FullName) }
+        }
+    }
+    # Name universes. Bundle = every DLL/PYD/EXE file name under the roots and
+    # inside the wheels (consumers register the bundle's DLL homes; the device's
+    # loader only needs the NAME to exist somewhere it is told to look).
+    $bundleNames = @{}
+    foreach ($f in $walkFiles) { $bundleNames[([IO.Path]::GetFileName($f)).ToLowerInvariant()] = $true }
+    $systemNames = @{}
+    foreach ($d in @(Get-ChildItem -Path (Join-Path $env:SystemRoot 'System32') -Filter '*.dll' -File -ErrorAction SilentlyContinue)) { $systemNames[$d.Name.ToLowerInvariant()] = $true }
+    $crossLane = Test-WindowsCrossTarget -Arch $targetArch
+    $crtPattern = '^(vcruntime|msvcp|concrt|vcomp|vccorlib|vcamp|msvcr|mfc)[0-9]'
+    foreach ($f in $walkFiles) {
+        $imports = try { Get-PeImportNames -Path $f -IncludeDelayLoad } catch { $unreadable += $f; continue }
+        $importWalked++
+        foreach ($imp in $imports) {
+            $n = $imp.ToLowerInvariant()
+            if ($n -match '^(api|ext)-ms-') { continue }
+            if ($bundleNames.ContainsKey($n)) { continue }
+            if ($ImportAllowlist -and $imp -match $ImportAllowlist) { $importExternal += "$f -> $imp"; continue }
+            $isCrt = ($n -match $crtPattern)
+            if ($systemNames.ContainsKey($n) -and -not ($crossLane -and $isCrt)) { continue }
+            if ($ClientOsPattern -and $n -match $ClientOsPattern) { $importClientOs += "$f -> $imp"; continue }
+            $importUnresolved += [pscustomobject]@{ File = $f; Import = $imp; Crt = $isCrt }
+        }
+    }
+    Remove-Item -Path $wheelTmp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host ''
@@ -263,6 +332,18 @@ Write-Host "=== target-arch verification ($targetArch / $expectedName) ==="
 Write-Host ("  roots      : {0}" -f ($Path -join ', '))
 Write-Host ("  inspected  : {0}" -f $inspected)
 Write-Host ("  violations : {0}" -f $violations.Count)
+if ($ImportWalk) {
+    Write-Host ("  import walk: {0} file(s) walked, {1} unresolved import(s), {2} allowlisted external(s), {3} device-OS (client SKU) import(s)" -f $importWalked, $importUnresolved.Count, $importExternal.Count, $importClientOs.Count)
+    foreach ($e in ($importExternal | Select-Object -First 20)) { Write-Host "    external (driver/toolkit): $e" }
+    foreach ($e in ($importClientOs | Select-Object -First 20)) { Write-Host "    device OS (client SKU, not on this Server Core reference): $e" }
+    if ($importUnresolved.Count -gt 0) {
+        Write-Host '  UNRESOLVED IMPORTS (the device loader could not satisfy these):' -ForegroundColor Red
+        foreach ($u in $importUnresolved) {
+            $why = if ($u.Crt) { ' [CRT: must ship inside the bundle on a cross lane -- a clean device has no redist]' } else { '' }
+            Write-Host ("    - {0}  imports  {1}{2}" -f $u.File, $u.Import, $why) -ForegroundColor Red
+        }
+    }
+}
 
 if ($skippedHostTools.Count -gt 0) {
     # Printed, never silent: an over-broad allowlist is itself a defect, and the
@@ -277,6 +358,12 @@ if ($unreadable.Count -gt 0) {
 
 $failed = $false
 
+if ($ImportWalk -and $importUnresolved.Count -gt 0) {
+    throw "target-arch verification FAILED for $targetArch`: $($importUnresolved.Count) unresolved import(s) across $importWalked walked file(s) -- see the list above (#127)"
+}
+if ($ImportWalk -and $MinInspected -gt 0 -and $importWalked -lt $MinInspected) {
+    throw "target-arch verification FAILED: the import walk covered only $importWalked file(s), below the -MinInspected floor of $MinInspected"
+}
 if ($violations.Count -gt 0) {
     Write-Host ''
     Write-Host 'ARCHITECTURE VIOLATIONS:' -ForegroundColor Red
