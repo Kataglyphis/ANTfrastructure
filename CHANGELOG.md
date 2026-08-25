@@ -5,6 +5,55 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-25 (eighth pass) — SBOM run for real, on both images, and documented
+
+The SBOM machinery landed the pass before with an honest caveat: the `syft` job
+had never run. It has now, locally, against both published images — and the
+results correct something the previous entry asserted.
+
+- **`docs/sbom.md` (new)** — how to generate both halves, and, the part usually
+  left out, **what to do with the result**: CVE scanning with `grype` straight
+  off the SBOM (seconds instead of a multi-gigabyte pull), answering a
+  procurement request, diffing two releases to catch a dependency nobody chose
+  to add, policy gates, Dependency-Track for the "image did not change, the
+  world did" case, and CRA context. Plus what it cannot tell you.
+
+**Linux `:latest-cross` (linux/amd64):** 4,112 packages, 2,202 distinct names —
+maven 1,340, deb 1,255, cargo 1,072, pypi 228, npm 149, go 13. Breadth no human
+maintains by hand. But **73 % declare no licence and 94 % conclude none**, and
+for the copyleft components the scan reports the DISTRO copy at a different
+version: FFmpeg as `62.x`/`7:8.0.1-3ubuntu2` rather than the source-built `n9.0`
+GPLv3 build, GStreamer as Ubuntu's `1.28.2-1` rather than `1.29.2`. OpenCV, TVM,
+Abseil and VVdeC are absent entirely. **A source-offer question cannot be
+answered from the scanner SBOM** — which is a far stronger justification for the
+curated half than the previous entry gave.
+
+**Windows `:winamd64`:** 26,253 packages, six times the Linux count and mostly
+noise — 14,014 are PE version resources read out of every DLL ("Microsoft®
+Windows Repair Disc", "JP Japanese Keyboard Layout for NEC PC-9800"), i.e.
+operating-system files, not chosen dependencies. **98.5 % carry no licence.**
+The earlier prediction that Windows would yield FEWER packages was wrong in the
+opposite direction; package count is not a quality signal.
+
+> **The Windows scan also caught real drift.** It reports ONNX Runtime `1.27.0`,
+> TVM `0.25.0` and FFmpeg `8.0.git` while `versions.env` pins `v1.29.0`,
+> `v0.26.0` and `n9.0`. **The published `:winamd64` is behind the current pins**,
+> so the curated SBOM and both licence pages — all generated from `versions.env`
+> — describe the next build rather than the published tag. Recorded as a limit
+> on the SBOM page.
+
+- **`docs/scripts/compare_sbom.py` (new)** measures the blind spot instead of
+  asserting it. Two bugs were found in it before its output was trusted: it
+  conflated package count with distinct names, and it compared a Linux scan
+  against the Windows and Documentation-image rows, which reported Ghostscript
+  and TeX Live as "invisible to the scanner" when they are simply not in that
+  image. Its name matcher also failed on `GStreamer` vs `gstreamer1.0` and
+  `PyTorch` vs `torch`; letters-only containment fixes that while still
+  correctly refusing to match OpenCV against anything.
+
+Routed from `docs/INDEX.md` and the Sphinx toctree. Sphinx build warning-free;
+`doc-links`, `doc-dupes`, `sbom` and `version-snapshot` green; ruff clean.
+
 ## 2026-08-25 (seventh pass) — SBOM, in two halves, because one cannot cover the image
 
 An image scanner catalogues components that carry package METADATA: dpkg/apt,
