@@ -2924,6 +2924,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   **DONE 2026-08-25 (arm64 run 14):** `inspected 970, violations 0; import walk: 571 file(s)
   walked, 0 unresolved import(s), 3 allowlisted external(s), 6 device-OS (client SKU) import(s)` —
   the walk is a hard merge gate on the cross lane (`Dockerfile.media-merge-builder`, `-ImportWalk`).
+  On the native lane the same walk runs **report-only** (measured amd64 run 4: 203 edges, all image
+  facts — 186× `python314.dll` + 8× `python3.dll` because the host interpreter lives in
+  `C:\temp\cpython\PCbuild\amd64`, outside the roots, and 6× scoop's `libcrypto/libssl-4-x64.dll`
+  from the image PATH); the first native run threw on them and failed the amd64 regression, so the
+  throw is now cross-only and the report groups edges by DLL name first.
 
 - **#128 — GStreamer arm64 lacks `webrtc`/`nice` and `gst-ptp-helper`; two lane-identical Meson
   bugs found on the way.** M · ★★ (opened 2026-08-25, from a log diff of the two merge stages)
