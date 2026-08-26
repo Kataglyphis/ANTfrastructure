@@ -797,10 +797,27 @@ build_iree_wheels() {
         # the target cross-LLVM), which together overflow a 25G cache and evict each
         # other (0714p thrashed — app-wheelhouse took 3.5h with a warm-but-too-small
         # cache). 64G comfortably holds both so reruns actually hit.
-        export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-64G}"
+        # MEASURED 2026-08-26 (wave7e, riscv64): this used to read
+        # `${CCACHE_MAXSIZE:-64G}` — but Dockerfile.base:87 already exports
+        # CCACHE_MAXSIZE=30G, so `:-` NEVER applied the 64G this comment
+        # promises, and the two LLVM object sets evicted each other exactly as
+        # warned. Live evidence from the riscv64 lane: "Cacheable calls 42888
+        # (95%), Hits 28319 (66%), cache size limit 30.0 GB" — every third
+        # compile a MISS, which is why the bundled-LLVM build stayed a ~7-9h
+        # cost per run instead of becoming one-time. Two fixes, both needed:
+        # (1) override UNCONDITIONALLY (IREE_CCACHE_MAXSIZE is the escape
+        # hatch, not the inherited base value), and (2) actually APPLY it —
+        # the on-disk limit lives in the cache's own config and only changes
+        # via `ccache -M`; exporting the env var alone leaves a 30G cache 30G.
+        export CCACHE_MAXSIZE="${IREE_CCACHE_MAXSIZE:-64G}"
         export CCACHE_COMPRESS=1
         export CCACHE_SLOPPINESS="pch_defines,time_macros,include_file_mtime,include_file_ctime"
         mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
+        # Apply it to the on-disk cache (see (2) above) and report what the
+        # cache ACTUALLY carries afterwards, so a future run's log proves the
+        # limit rather than restating the intent.
+        ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || warn "could not set ccache max size to ${CCACHE_MAXSIZE}"
+        echo "[INFO] IREE ccache limit now: $(ccache -p 2>/dev/null | awk '/max_size/{print $2, $3}' || echo unknown)"
         ccache_cmake_args=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
         echo "[INFO] IREE ccache ON: CCACHE_DIR=${CCACHE_DIR} MAXSIZE=${CCACHE_MAXSIZE} (LLVM rebuild is one-time; reruns cache-hit)"
     else
