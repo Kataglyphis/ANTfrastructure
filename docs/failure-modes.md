@@ -431,16 +431,32 @@ does not fit its instruction field, most likely a pc-relative branch (tbz/tbnz �
 CPU-DISPATCH TUs, the largest functions in the module. LLVM prints no fixup kind, so pinning this
 down needs a reduced case or a disassembly (backlog #135).
 
-**NOT the compressed-jump-table ceiling**, which produces `error: value evaluated as <N> is out of
-range.` from `AArch64AsmPrinter::emitJumpTableImpl` and is already fixed build-wide by
-`-mllvm -aarch64-enable-compress-jump-tables=false`. Verify before assuming: that flag is still on
-the command line and LLVM 23 still accepts it (no "Unknown command line argument" in the log).
+**THE TWIN CEILING, and they are MUTUALLY EXCLUSIVE under LLVM 23.** The other one produces
+`error: value evaluated as <N> is out of range.` from `AArch64AsmPrinter::emitJumpTableImpl` and is
+suppressed by `-mllvm -aarch64-enable-compress-jump-tables=false`. Measured one run each, and they
+trade places on DIFFERENT files:
 
-**Fix.** `/O1` on exactly the offending TUs via `Add-NinjaPerTuFlags`, cross-lane only, with the
-floor set to the name count so a rename or a fourth offender throws instead of silently shipping an
-untagged TU. The hot SIMD kernels are not in these TUs (they are generated per-ISA from
-`*.simd.hpp` and keep `/O2`). Do NOT reach for a blanket `/Od` — see the note above the block in
-`build-opencv-from-source.ps1` for why that was removed once before.
+| | compression OFF (the LLVM 22 fix) | compression ON |
+| --- | --- | --- |
+| `value evaluated as N` | 0 | **4** (258/260/281/284) |
+| `fixup value out of range` | **4** | 0 |
+| offenders | opencv `*.dispatch.cpp` | libprotobuf `descriptor.cc`, `generated_message_reflection.cc`, `wire_format.cc` |
+
+Disabling compression makes every jump table ~4x larger, which grows the switch-heavy OpenCV
+dispatch functions until their branches no longer reach; enabling it puts the protobuf descriptor
+tables back over the 255-entry span the compressed encoding can address. **Neither setting is
+globally correct**, so a longer list of `/O1` TUs on the OpenCV side cannot work — that was
+attempt 5, which fixed the three TUs it named and then failed on a fourth.
+
+**Fix.** Compression stays ON (`$jumpTableFlag` empty) and the protobuf side is handled per-TU:
+`/O1` over the whole `libprotobuf` target via `Add-NinjaPerTuFlags`, cross-lane only, floor 30 of
+42 TUs. That direction and not the reverse — with compression ON the OpenCV dispatch TUs keep full
+`/O2`, and on aarch64 those files carry the NEON **baseline** path, so they are where optimisation
+matters; protobuf descriptor/reflection is cold model-loading code. The whole target is tagged
+rather than named files, because naming files is what lost attempt 5. libtiff and G-API — the other
+two families the 2026-08-23 note records for this class — are not built in this configuration.
+Do NOT reach for a blanket `/Od` — see the note above the block in `build-opencv-from-source.ps1`
+for why that was removed once before.
 
 ### A build script dies with `The term ... is not recognized`, in the container only
 

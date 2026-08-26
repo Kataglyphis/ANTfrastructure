@@ -304,7 +304,7 @@ Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) whil
 
 ### `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)
 
-An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. Full `/O2` is retained. See below.
+An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **WITHDRAWN on LLVM 23.1.0 (2026-08-26): the flag is no longer set** — it turned out to cause the twin ceiling (`error: fixup value out of range`) by quadrupling table size. Heading kept because it is a live anchor target; the current handling is per-TU `/O1` over `libprotobuf` with compression left ON. See below.
 
 ### MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)
 
@@ -390,12 +390,22 @@ message in LLVM. Every value measured lands just past `255 * 4 = 1020` bytes of 
 | 272 | 1088 | just over |
 | 284 | 1136 | just over |
 
-The fix is one arm64-only flag that keeps **full `/O2`** — uncompressed jump tables are larger, not
-slower:
+Under **LLVM 22** the fix was one arm64-only flag that keeps **full `/O2`** — uncompressed jump
+tables are larger, not slower:
 
 ```
 -mllvm -aarch64-enable-compress-jump-tables=false
 ```
+
+> **SUPERSEDED on LLVM 23.1.0 (2026-08-26). The flag is no longer set.** Making tables ~4x larger
+> grows the switch-heavy OpenCV dispatch functions until their pc-relative branches no longer
+> reach, which surfaces as the twin diagnostic `error: fixup value out of range`. Measured one run
+> each: compression OFF gives 4 fixup errors in opencv `*.dispatch.cpp` and 0 of these; compression
+> ON gives 0 fixup errors and 4 of these, all in `libprotobuf`. The two ceilings are mutually
+> exclusive on this compiler and hit different files, so the table below still describes a real
+> mechanism — it is just no longer the one being suppressed. Current handling: compression ON,
+> `/O1` per-TU over the whole `libprotobuf` target (cold model-loading code), OpenCV dispatch TUs
+> back at full `/O2`. Symptom-first write-up: `failure-modes.md` § AArch64 cross compile aborts.
 
 > **This corrects an earlier, wrong diagnosis recorded here.** The first explanation blamed an
 > 8-bit *Code Words* field in the `.xdata` unwind record, and the workaround was a per-TU `/Od`
