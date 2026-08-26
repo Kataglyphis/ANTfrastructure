@@ -10,7 +10,7 @@ ARG BUILD_MODE=native
 # Divide usable RAM by this in parallelism.sh so N concurrent per-arch builds
 # (--parallel-archs) don't collectively overcommit the host. 1 = serial default.
 ARG BUILD_MEM_DIVISOR=1
-ARG VULKAN_VERSION=1.4.357.0
+ARG VULKAN_VERSION=1.4.357.1
 ARG LLVM_RELEASE=23.1.0
 ARG TARGET_ARCH
 ARG TARGETARCH

@@ -70,7 +70,7 @@ if ($versionsEnvFile) {
 $nugetExe = Join-Path $src 'externals\nuget.exe'
 # Versioned URL + SHA256 pin (NUGET_VERSION / NUGET_EXE_SHA256 in versions.env, baked
 # env) instead of the floating /latest/ URL, so the seeded binary is reproducible.
-$nugetVer = if ($env:NUGET_VERSION) { $env:NUGET_VERSION } else { '7.6.0' }
+$nugetVer = if ($env:NUGET_VERSION) { $env:NUGET_VERSION } else { '7.9.0' }
 $nugetUrl = "https://dist.nuget.org/win-x86-commandline/v$nugetVer/nuget.exe"
 if (-not (Test-Path $nugetExe)) {
     # -ExpectSignature MZ rejects AND retries an HTML error page served in place of the binary

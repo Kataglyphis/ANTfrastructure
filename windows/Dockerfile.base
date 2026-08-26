@@ -10,7 +10,7 @@ ARG WINDOWS_LTSC=2025
 # Microsoft's monthly patch releases; the digest makes a from-base rebuild
 # reproducible and base OS revisions deliberate (they matter here — the wcifs
 # commit bug is version-skew-sensitive). The digest wins over the tag.
-ARG WINDOWS_BASE_DIGEST=sha256:d5bbb83057f6bc2b6aeba5d01ec80a53003aba9bc84a6b1ebe780570cd52558a
+ARG WINDOWS_BASE_DIGEST=sha256:eeaa17aefe5d949f03b1db17182f5855cf40e757533468cf5b50e07c7c385ada
 # NB the tag part is COSMETIC — the digest wins (see above); a WINDOWS_LTSC
 # bump without a matching digest bump changes nothing. Single default only
 # (the inline :-2025 fallback duplicated the ARG default, #127).
@@ -20,8 +20,8 @@ FROM mcr.microsoft.com/windows/servercore:ltsc${WINDOWS_LTSC}@${WINDOWS_BASE_DIG
 # as the default container shell instead of Windows PowerShell 5.1.
 # The zip's SHA256 rides along as an ARG because this bootstrap runs before any
 # shared module (Invoke-DownloadWithRetry) or versions.env baking is available.
-ARG PWSH_VERSION=7.6.4
-ARG PWSH_ZIP_SHA256=80832551c52809301e6071c8bac977beb5a2f1ec953eb4db9f94deb953333793
+ARG PWSH_VERSION=7.6.5
+ARG PWSH_ZIP_SHA256=32eb8f6cdce08f86e987d625a2733e54ac3e289ae7e1621b14c0b5bcec2434ea
 
 # GStreamer version lives in Dockerfile.media (nothing in this stage consumes it).
 # TEMP_DIR must sit above the VS layer (the pwsh bootstrap RUN below reads it);
@@ -122,7 +122,7 @@ RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 # VS layer made a Vulkan/CMake/LLVM bump re-pay the VS Build Tools install.
 # Declared here they can only invalidate scoop and the tail (their sole
 # consumers).
-ARG VULKAN_VERSION=1.4.357.0
+ARG VULKAN_VERSION=1.4.357.1
 ARG CMAKE_VERSION=4.4.3
 ARG LLVM_WINDOWS_VERSION=22.1.8
 ARG NINJA_WINDOWS_VERSION=1.13.2
