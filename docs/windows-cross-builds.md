@@ -37,11 +37,14 @@ produce, and which gates keep it honest.
 > six contract plugins — `libav`, `opencv`, `onnx`, `tflite`, and since run 28 (2026-08-26)
 > `webrtc` and `nice`** (#128) — and the out-of-tree `opencv_videoio_gstreamer` plugin, all in
 > the merge stage. **The linked plugin-DLL sets of the two lanes are identical — 200 each**
-> (diffed from the ninja logs of arm64 run 28 and amd64 run 7, 2026-08-26). Two GStreamer pieces
-> are absent on BOTH lanes, so they are not a parity gap: `gst-ptp-helper` (Rust; never linked on
-> either lane — on arm64 additionally because the image's offline rustup mirror has no aarch64
-> `rust-std`) and the optional `gdkpixbuf` plugin (gdk-pixbuf's meson.build fails on arm64 for
-> `glib-compile-resources` — a build-machine glib tool — and on amd64 for missing `rst2man`).
+> (diffed from the ninja logs of arm64 run 28 and amd64 run 7, 2026-08-26). `gst-ptp-helper`
+> (Rust) ships on BOTH lanes since arm64 run 29 (2026-08-26): amd64 always had it; arm64 got it
+> once the aarch64 `rust-std` the image's pinned channel manifest names is fetched from upstream
+> into the mirror path the manifest points at (`Install-RustTargetStdFromPinnedManifest`, #133),
+> so `rustup target add` verifies it against the pin — `gst-ptp-helper.exe` is PE-checked
+> `0xAA64` (gate 981/0, walk 578/0). The optional `gdkpixbuf` plugin is absent on BOTH lanes
+> (gdk-pixbuf's meson.build fails on arm64 for `glib-compile-resources` — a build-machine glib
+> tool — and on amd64 for missing `rst2man`), so it is not a parity gap either.
 >
 > **The PE architecture gate has run and passed over the whole image:** `980 binaries inspected,
 > 0 violations` (2026-08-26, run 28, with libnice and the webrtc/nice plugins; 970 on run 14 of
@@ -99,8 +102,8 @@ produce, and which gates keep it honest.
 > first two are patched before `meson setup`, the third is left to fail glib(build) cleanly
 > (nothing consumes it). **Closed on run 28 (2026-08-26):** `gstwebrtc.dll` and `gstnice.dll`
 > built, exported and import-resolved, `All 6 mandatory GStreamer plugins verified present`.
-> `gst-ptp-helper` stays absent by design: the image's offline rustup mirror carries the x64
-> `rust-std` only. Backlog `docs/windows-refactor-backlog.md`.
+> `gst-ptp-helper` followed on run 29 (2026-08-26) once the aarch64 `rust-std` is pre-seeded from
+> the pinned manifest (#133). Backlog `docs/windows-refactor-backlog.md`.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,

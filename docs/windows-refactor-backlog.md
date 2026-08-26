@@ -711,9 +711,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   arch gate `980 inspected, 0 violations` (run 19: 970 — the ten new PEs are libnice and the two
   plugins), import walk `577 walked, 0 unresolved` (571), deps 7/0, smoke 97/0/15. **Plugin
   inventory diff (ninja "Linking target" DLLs, run 28 vs amd64 run 7): 200 = 200, no name on
-  one side only.** `gst-ptp-helper` is linked on NEITHER lane, and `gdkpixbuf` is absent on
-  BOTH — arm64 for `glib-compile-resources` (a build-machine glib C tool), amd64 for a missing
-  `rst2man` — so neither is a lane difference. **amd64 regression (run 7,
+  one side only.** `gdkpixbuf` is absent on BOTH lanes — arm64 for `glib-compile-resources` (a
+  build-machine glib C tool), amd64 for a missing `rst2man` — so it is not a lane difference.
+  (`gst-ptp-helper`: first recorded here as "linked on neither lane" — wrong, a grep for "Linking
+  target" misses Rust links; amd64 run 7 installs `gst-ptp-helper.exe`, arm64 got it on run 29
+  via #133 (a). Corrected 2026-08-26.) **amd64 regression (run 7,
   2026-08-26, `[bk] Done 02:12:20`):** the same script and contract on the native lane — the meson
   patch applies and is inert (no build-only subprojects without a cross file), `meson setup
   completed` at 465 s, the gate loads all six plugins through `gst-inspect` (`webrtcbin`,
@@ -915,6 +917,18 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   the image's *pinned* channel manifest already names (with upstream's sha256) from
   static.rust-lang.org into the `file:///…rustup-dist/…` path the manifest points at, so
   `rustup target add` verifies and installs it; proof = `gst-ptp-helper` on arm64 (run 29).
+  ✅ **(a) DONE 2026-08-26 (arm64 run 29, `[bk] Done 01:24:55`):** `rust-std aarch64-pc-windows-msvc:
+  fetched …/dist/2026-08-20/rust-std-1.98.0-aarch64-pc-windows-msvc.tar.xz (22 MB)` → `rustup:
+  downloading component rust-std` (hash-verified against the pin) → `staticlib probe OK` → meson
+  `Rust compiler for the host machine: rustc --target=aarch64-pc-windows-msvc -C linker=link` →
+  `gst-ptp-helper.exe` compiled (5056 targets, 5051 before) and installed to
+  `C:\runtime\libexec\gstreamer-1.0`; arch gate **981/0** (+1 = the helper), walk **578/0**,
+  plugins 6/6, deps 7/0, smoke 97/0/15. amd64 had the helper all along (run 7 installs it) — both
+  lanes now ship it. Rust for the target is thereby available to any later stage (LiteRT-LM).
+  (b)/(c) did NOT run on run 29: the tvm branch starts from the media-core fan-in, not from the
+  ONNX layer that builds the target CPython, so `Get-TargetBuildPython.Available` was false in
+  both scripts — `build-media-tvm-all.ps1` now runs `build-target-cpython.ps1` first (~90 s, same
+  contract as media-core; BK mounts + classic COPY carry it, parity test B6). Proof: run 30.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed
