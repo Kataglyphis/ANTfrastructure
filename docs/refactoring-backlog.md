@@ -201,6 +201,15 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
+- **QUEUED BUMPS (checked 2026-08-26, operator requested — apply the moment
+  wave7e ships, NOT while it runs):** OLLAMA 0.33.0 (llm-stack only, cheap),
+  CARGO_C 0.10.25 (toolchain), UV 0.12.6 + CMAKE 4.4.3 (both hit linux BASE →
+  full-chain rebuild; bundle them with the NEXT window's riders so one rebuild
+  pays for all). VULKAN 1.4.357.1 re-probed and STILL blocked (windows.txt
+  answers .0; shared key). Command: `python3 docs/scripts/bump_versions.py
+  --write --only OLLAMA_VERSION,CARGO_C_VERSION,UV_VERSION,CMAKE_VERSION`
+  then sync_versions --write + the check battery.
+
 - **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
   measure in the validating rebuild, or document the decision.
 - **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
