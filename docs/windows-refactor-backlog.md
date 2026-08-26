@@ -982,6 +982,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   deps gate reads **10** first-touch requirements (7 before), `apache-tvm-ffi>=0.1.13.post2` is
   resolved from the bundle's own wheel and `typing_extensions` is downloaded for the target
   (store 12 wheels), `0 requirement edge(s) unresolved`; arch gate 992/0, walk 606/0.
+  **amd64 regression (run 8, 2026-08-26):** the native paths are untouched by all of this —
+  `iree native gate OK (llvm-cpu compile + local-task run, abs(-5)=5)`, `iree python gate OK:
+  abs(-5) = 5.0` (both wheels installed and interoperating), `import tvm` green, tvm branch 23:45,
+  plugin gate 6/6, manifest 6 wheels / 0 markers, arch gate **1134/0**, smoke **222/0/0** —
+  every number identical to run 7.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed
