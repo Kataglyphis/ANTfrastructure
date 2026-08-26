@@ -413,6 +413,41 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `$jumpTableFlag` did. The failure is fast and unambiguous (~3 min into the opencv stage), so the
   re-test is cheap. Worth an upstream report if the reduced case materialises.
 
+- **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
+  iteration cost.** M · ★★★ (opened 2026-08-26)
+  Every launch replays `#9 RUN setup-vs.ps1` — ~22 min of build plus ~7 min of layer export — while
+  `#6` (a RUN with a bind mount), `#7` and `#8` (the COPY of that very script) all report CACHED.
+  Reproducible across four consecutive launches on 2026-08-26. During the #135 opencv iteration
+  this meant ~30 minutes of base before each ~3-minute answer.
+  **Ruled out by measurement, not by reasoning:** GC eviction (`buildctl du` reports
+  `Reclaimable: 4.27MB` of a 499.9 GB store, and the two ~37.6/37.8 GB VS-class records are
+  present); a build-arg that varies per run (the driver passes only version pins — no timestamp,
+  VCS ref or GUID reaches this stage); `-NoCache`/`-NoCacheStage` (not passed); and a changed COPY
+  input, since `#8` — the COPY of `setup-vs.ps1` itself — is CACHED, so its parent chain and that
+  file are byte-identical.
+  **Still to check:** whether an ARG/ENV in scope at `#9` differs between solves in a way the log
+  does not print; whether a ~37 GB layer exceeds something in the Windows snapshotter's reuse path;
+  and whether the step is cached but the EXPORT is what re-runs (the log's `DONE`-vs-`CACHED`
+  wording would not distinguish those). Compare two consecutive runs' `buildctl --debug` solve
+  output before theorising further.
+  **Worth the effort** because it multiplies every future Windows experiment by ~30 minutes.
+
+- **#137 — sccache: the local patch and the source build may both be droppable (owner's PRs were
+  accepted upstream).** S–M · ★★ (opened 2026-08-26, owner's news)
+  `Dockerfile.base` builds sccache from source at `SCCACHE_GIT_REV=ffac4a59` and applies
+  `windows/upstream/sccache-nvcc-quote-fix/0003-nvcc-accept-the-diag-error-diag-suppress-diag-warn-f.patch`
+  on top (`setup-rust-toolchain.ps1`). With the PRs merged upstream, the patch is redundant, and if
+  a RELEASE contains them the source build can collapse back to the pinned binary
+  (`SCCACHE_WINDOWS_VERSION` / `SCCACHE_LINUX_VERSION`, both 0.17.0) — removing a cargo build from
+  the base entirely.
+  **Order matters:** confirm the fixes are in the target rev/release FIRST (the patch header names
+  what it fixes; `probe-sccache-patch-verify.ps1` and `probe-sccache-2726-repro.ps1` exist for
+  exactly this), then drop the patch, then decide rev-vs-release. Do NOT fold this into an
+  acceptance run — it is a base-layer change and would confound #134/#135, which are already
+  carrying a forced compiler bump. Give it its own window. Files: `versions.env` (3 pins),
+  `setup-rust-toolchain.ps1`, `windows/upstream/sccache-nvcc-quote-fix/`, and the four probe
+  scripts under `windows/scripts/diagnostics/`.
+
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
   (#59 branch protection was DECLINED, #31 was not).
