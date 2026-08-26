@@ -122,57 +122,95 @@ function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
 }
 
-# meson 1.12.0 (master identical, checked 2026-08-26): summary() inside a
-# build-machine subproject collides with the host configure of the same
-# subproject and kills every by-name consumer of it.
+# meson 1.12.0 (master identical, checked 2026-08-26) mishandles "build-only"
+# subprojects -- the copy of a subproject meson configures for the BUILD machine
+# when a cross build asks for `native: true`. Nothing in this monorepo asks for
+# that explicitly; meson's own gnome module does (`gnome.mkenums_simple` ->
+# find_tool -> dependency('glib-2.0', native: true, required: false)), so under
+# forcefallback every cross configure runs glib's meson.build a second time for
+# the build machine. That copy is never needed (glib-mkenums/genmarshal are
+# python scripts resolved through the host glib's override), but three meson
+# bugs turn its mere ATTEMPT into missing plugins -- measured arm64 runs 25-27:
 #
-# Interpreter.summary is keyed by subproject NAME and shared by every nested
-# interpreter, while Interpreter.subprojects is keyed [machine][name]. A cross
-# build that configures one subproject for BOTH machines runs its meson.build
-# twice; the second (build-machine) run's
-#     summary({'host cpu': ...}, section: 'Build environment')
-# throws "Summary section 'Build environment' already have key 'host cpu'"
-# (glib-2.86.3/meson.build:2777 -- gstreamer core asks for glib-2.0
-# `native: true`), meson marks glib(build) "buildable: NO", and every consumer
-# that reaches glib by NAME instead of by override -- libnice's anonymous
-# dependency('', fallback: ['glib', 'libglib_dep']) -- dies with 'Subproject
-# "subprojects/glib" required but not found', taking webrtc and nice with it.
-# Measured: arm64 cross run 25 (2026-08-26). Even the print path would KeyError
-# on a build-only key (_print_summary indexes subprojects.host by that name), so
-# the summary bookkeeping is simply skipped in build-machine interpreters:
-# Build.for_machine is BUILD only for the copy Build.copy_for_build_machine()
-# hands a `native: true` subproject, non-cross lanes never create one, and
-# summaries are cosmetic. Idempotent (marker); throws when the meson layout no
-# longer matches -- load-bearing on the cross lane, a silent miss would
-# reappear as the libnice error two hours later. Upstream draft:
-# out/upstream-issue-meson-summary-build-subproject.md.
+#  (1) Interpreter.summary is keyed by NAME and shared across interpreters, so
+#      the second glib configure throws "Summary section 'Build environment'
+#      already have key 'host cpu'" (glib meson.build:2777) and glib(build)
+#      fails. Left in place on purpose: a build-machine glib that configures
+#      is a build-machine glib that COMPILES (run 26/27: 5772 targets, then
+#      'glibconfig.h' file not found), and nothing consumes it.
+#  (2) do_subproject's failure paths call disabled_subproject(subp_name,
+#      exception=e) WITHOUT for_machine, whose default is HOST -- the failed
+#      build-machine holder overwrites the healthy HOST glib holder. That is
+#      the poison: libnice's anonymous dependency('', fallback: ['glib',
+#      'libglib_dep']) reaches glib by name and gets 'Subproject
+#      "subprojects/glib" required but not found' (the gio-2.0 lookup survives
+#      because overrides are a different table), webrtc/nice vanish, and every
+#      later native:true request re-runs the whole failing configure because
+#      the BUILD key never received the disabled entry (30+ times on run 25).
+#      PATCHED: pass for_machine at both sites.
+#  (3) Targets and include dirs of a build-only subproject live under
+#      `build.<subdir>` (build.py: BuildProject.prefix), but configure_file
+#      writes to the UNprefixed self.subdir -- the build machine's
+#      glibconfig.h/config.h/fficonfig.h land in, and overwrite, the HOST
+#      subproject's build dir (run 27: the build compile could not find them
+#      where its -I pointed; the host compile silently used x64 configs).
+#      PATCHED: configure_file's output path and returned File carry the
+#      project prefix, exactly like targets do.
+#
+# Net effect: glib(build) still dies at (1), is now recorded under BUILD only,
+# clobbers nothing, gnome.find_tool falls through to the host override as
+# designed, libnice and webrtc configure. Idempotent (one marker per fix);
+# throws when either site count is off -- load-bearing on the cross lane, a
+# silent miss reappears as the libnice error two hours later. Upstream draft:
+# out/upstream-issue-meson-summary-build-subproject.md (all three).
 #
 # Lives HERE, not in a module, on purpose: `/bkmods` (the whole modules dir) is
 # bind-mounted into all six media RUNs and BuildKit keys each RUN on the mount's
 # content, so a one-line module edit rebuilds every media branch on both lanes;
 # this script is mounted into the merge RUN only. The fixture test
-# (SourceBuild.MesonSummaryPatch.Tests.ps1) extracts the function from this
-# file's AST.
-function Invoke-MesonBuildSubprojectSummaryPatch {
+# (SourceBuild.MesonBuildSubprojectPatch.Tests.ps1) extracts the function from
+# this file's AST.
+function Invoke-MesonBuildSubprojectPatch {
     param(
         [Parameter(Mandatory)]
         [string]$InterpreterPath
     )
-    $marker = '[kataglyphis meson build-subproject summary fix]'
-    $nl = "`n"
-    $replacement = '$1' +
-        '        if self.subproject and self.build.for_machine is MachineChoice.BUILD:' + $nl +
-        "            return  # $marker" + $nl +
-        '$2'
-    $ok = Invoke-InlineRegexPatch -Path $InterpreterPath `
-        -Pattern '(?m)^(    def summary_impl\([^\r\n]*\) -> None:\r?\n)(        if self\.subproject not in self\.summary:)' `
-        -Replacement $replacement `
-        -SkipIfMatch ([regex]::Escape($marker)) `
-        -AssertGone '(?m)^    def summary_impl\([^\r\n]*\) -> None:\r?\n        if self\.subproject not in self\.summary:' `
-        -Require `
-        -Description 'meson build-subproject summary fix'
-    if (-not $ok) {
-        throw "meson build-subproject summary fix did not apply to $InterpreterPath -- summary_impl layout changed (new meson?); the cross lane would fail at libnice without it"
+    if (-not (Test-Path $InterpreterPath -PathType Leaf)) { throw "Invoke-MesonBuildSubprojectPatch: $InterpreterPath not found" }
+    $text = [System.IO.File]::ReadAllText($InterpreterPath)
+    $applied = @()
+
+    # (2) failed build-only subprojects must be recorded under THEIR machine.
+    $markerKey = '[kataglyphis meson build-subproject machine-key fix]'
+    if ($text -notmatch [regex]::Escape($markerKey)) {
+        # [ \t] rather than \s in the line anchors: \s matches the newline and a
+        # trailing `\s*$` swallows the blank line after a site (measured in the
+        # fixture test -- one line fewer after patching).
+        $rxKey = '(?m)^([ \t]+return self\.disabled_subproject\(subp_name, exception=e)\)[ \t]*$'
+        $hits = [regex]::Matches($text, $rxKey).Count
+        if ($hits -ne 2) { throw "Invoke-MesonBuildSubprojectPatch: expected exactly 2 'disabled_subproject(subp_name, exception=e)' sites in $InterpreterPath, found $hits -- meson layout changed; the cross lane would lose webrtc/nice without this fix" }
+        $text = [regex]::Replace($text, $rxKey, ('$1, for_machine=for_machine)  # ' + $markerKey))
+        $applied += 'machine-key'
+    }
+
+    # (3) configure_file outputs of a build-only subproject go to its prefixed dir.
+    $markerCf = '[kataglyphis meson build-subproject configure_file fix]'
+    if ($text -notmatch [regex]::Escape($markerCf)) {
+        $rxCfPath = '(?m)^(        ofile_rpath = os\.path\.join\()self\.subdir(, build_subdir, output\))[ \t]*$'
+        $rxCfFile = '(?m)^(        return mesonlib\.File\.from_built_file\()self\.subdir(, output\))[ \t]*$'
+        foreach ($rx in @($rxCfPath, $rxCfFile)) {
+            $n = [regex]::Matches($text, $rx).Count
+            if ($n -ne 1) { throw "Invoke-MesonBuildSubprojectPatch: expected exactly 1 configure_file site for '$rx' in $InterpreterPath, found $n -- meson layout changed" }
+        }
+        $text = [regex]::Replace($text, $rxCfPath, ('$1self.current_build_project().prefix + self.subdir$2  # ' + $markerCf))
+        $text = [regex]::Replace($text, $rxCfFile, ('$1self.current_build_project().prefix + self.subdir$2  # ' + $markerCf))
+        $applied += 'configure_file'
+    }
+
+    if ($applied.Count -gt 0) {
+        [System.IO.File]::WriteAllText($InterpreterPath, $text)
+        Write-Host "Patched meson build-subproject fixes ($($applied -join ', ')) ($InterpreterPath)"
+    } else {
+        Write-Host "meson build-subproject fixes already applied ($InterpreterPath)"
     }
     return $true
 }
@@ -400,18 +438,18 @@ try {
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
 
-    # meson 1.12.0: summary() in a build-machine subproject collides with the
-    # host configure of the same subproject (glib -> libnice -> webrtc/nice
-    # gone; arm64 cross run 25, 2026-08-26). Located through the interpreter
-    # module itself so a relocated site-packages cannot silently skip it; the
-    # patch is a no-op on amd64 (no build-machine interpreters without a cross
-    # file) and throws on layout drift. See Invoke-MesonBuildSubprojectSummaryPatch.
+    # meson 1.12.0 build-only subproject fixes (glib(build) poisoning the host
+    # glib -> libnice -> webrtc/nice gone; arm64 cross runs 25-27, 2026-08-26).
+    # Located through the interpreter module itself so a relocated site-packages
+    # cannot silently skip it; both fixes are no-ops on amd64 (no build-only
+    # subprojects without a cross file) and throw on layout drift. See
+    # Invoke-MesonBuildSubprojectPatch.
     $mesonInterp = (cmd.exe /c """$pyExe"" -c ""import mesonbuild.interpreter.interpreter as m; print(m.__file__)""" | Select-Object -First 1)
     if ($mesonInterp) { $mesonInterp = "$mesonInterp".Trim() }
     if (-not $mesonInterp -or -not (Test-Path $mesonInterp)) {
-        throw "mesonbuild.interpreter.interpreter is not importable from $pyExe (got '$mesonInterp') -- cannot apply the build-subproject summary fix"
+        throw "mesonbuild.interpreter.interpreter is not importable from $pyExe (got '$mesonInterp') -- cannot apply the build-subproject fixes"
     }
-    [void](Invoke-MesonBuildSubprojectSummaryPatch -InterpreterPath $mesonInterp)
+    [void](Invoke-MesonBuildSubprojectPatch -InterpreterPath $mesonInterp)
 
     Switch-BuildPhase '3. clang-cl toolchain + sccache'
     # ---- 3. set clang-cl as the compiler ----

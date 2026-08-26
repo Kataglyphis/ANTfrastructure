@@ -85,10 +85,14 @@ produce, and which gates keep it honest.
 > plus a probe-guard patch, gated on a non-empty `Dispatched code generation:` line). The other,
 > GStreamer arm64 lacking `webrtc`/`nice` (#128), peeled in three layers: no build-machine compiler
 > in the cross file (native file, run 23), the build machine linking the target's CRT (`/vctoolsdir`
-> + `/winsdkdir`, run 25 — proven), and a meson 1.12.0 bug that kills any subproject configured
-> for both machines (`Summary section … already have key`, patched before `meson setup`,
-> proof pending run 26). `gst-ptp-helper` stays absent by design: the image's offline rustup
-> mirror carries the x64 `rust-std` only. Backlog `docs/windows-refactor-backlog.md`.
+> + `/winsdkdir`, run 25 — proven), and three meson 1.12.0 defects around the build-machine glib
+> that meson's gnome module requests on every cross configure: a failed build-only subproject
+> is recorded under the HOST key and overwrites the host glib (the actual poison), its
+> `configure_file` outputs land in the host's build dir, and its `summary()` collides — the
+> first two are patched before `meson setup`, the third is left to fail glib(build) cleanly
+> (nothing consumes it); proof pending run 28. `gst-ptp-helper` stays absent by design: the
+> image's offline rustup mirror carries the x64 `rust-std` only. Backlog
+> `docs/windows-refactor-backlog.md`.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,

@@ -665,7 +665,26 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   libffi is fine: it wants the ARM64 cl + `armasm64`). Fix: the native file's `[binaries]` now
   names `cl` and `ml64` explicitly as `<VC tools root>/bin/HostX64/x64/…` (meson consults the
   machine file before PATH); `Resolve-BuildMachineMsvcTool` (gst script, fixture-tested) throws
-  when the x64 pair is missing instead of failing 40 min later in ninja. Proof: run 27.
+  when the x64 pair is missing instead of failing 40 min later in ninja.
+  **Measured on arm64 run 27 (2026-08-26):** cl/ml64 resolved from the native file, libffi(build)
+  fine — and the build-machine **glib** compile died next: `'glibconfig.h' file not found` for
+  every `build.subprojects/glib-2.86.3/glib/*.obj`. Third meson bug of the family: targets and
+  include dirs of a build-only subproject live under `build.<subdir>` (`BuildProject.prefix`),
+  but `configure_file` writes to the unprefixed `self.subdir` — the build machine's
+  `glibconfig.h`/`config.h`/`fficonfig.h` land in, and overwrite, the **host** subproject's build
+  dir. Reading meson for that surfaced the actual poison behind run 25 too: `do_subproject`'s
+  failure paths call `disabled_subproject(subp_name, exception=e)` **without `for_machine`**
+  (default HOST), so a failed glib(build) overwrote the healthy host glib holder — hence
+  libnice's by-name failure and the 30+ re-configures. And nothing ever *needs* a build-machine
+  glib: the only requester is meson's gnome module (`mkenums_simple` → `find_tool` →
+  `dependency('glib-2.0', native: true, required: false)`), which falls through to the host
+  override (python scripts) when it is absent. **Strategy change:** the summary patch is
+  withdrawn (a glib(build) that configures is one that compiles, into meson's unprefixed
+  `current_build_dir()` next); `Invoke-MesonBuildSubprojectPatch` now applies two fixes —
+  `for_machine=for_machine` at both `disabled_subproject` failure sites, and the project prefix on
+  `configure_file`'s output path + returned File — so glib(build) still fails at the summary bug,
+  is recorded under BUILD only, clobbers nothing, and libnice/webrtc configure against the host
+  glib. Fixture test `SourceBuild.MesonBuildSubprojectPatch.Tests.ps1` (5 tests). Proof: run 28.
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**
