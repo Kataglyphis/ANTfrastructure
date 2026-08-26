@@ -2,19 +2,20 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Consolidated builder image for all three media run+commit branches
-# (windows/build.ps1). A multi-stage build where each stage name matches
-# the branch name (media-core / media-litert / media-tvm). The orchestrator
-# selects the target stage via `--target <name>`.
+# Consolidated builder image for the three media branches, driven by
+# windows/build-buildkit.ps1. Each branch is a `*-built` target that runs its
+# heavy compile as a plain LAYER with real per-stage caching:
+#   media-core-built-onnx -> -ffmpeg -> -opencv -> media-core-built  (chained)
+#   media-litert-built, media-tvm-built                              (parallel)
+# Heavy-lane RUNs bind-mount their script closure per file rather than COPYing
+# it, so a script edit re-keys only the RUN that mounts it.
 #
-# Each stage carries its build scripts + patches but runs NO heavy compile,
-# so layers commit reliably under Hyper-V `docker build`. The heavy compile
-# runs via:
-#   docker run --isolation hyperv --cpu-count N --memory Mg <--target image> \
-#       pwsh -File C:\temp\scripts\<build-*-all.ps1>
-#   docker commit <container> local/kataglyphis:windows-media-<branch>
-# because `docker build` on this host is capped at 2 CPUs and process isolation
-# cannot commit layers (see build.ps1 CPU note).
+# The docker-classic lane's stages (media-core-env, media-core, media-litert,
+# media-tvm — COPY-only shells whose compile ran via `docker run` + `docker
+# commit` because dockerd is capped at 2 CPUs here) were DELETED on 2026-08-26
+# with that lane; see docs/windows-build-lanes.md § The classic lane was
+# retired. Nothing in this file should grow a COPY of a build script again:
+# if a RUN needs a script, it mounts it.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 # Solve-chain handoff images for the BuildKit media-core lane (see the
@@ -61,6 +62,18 @@ ARG SCCACHE_LOG="warn"
 # genai reports 0 write errors — not by assuming a newer buildkit fixed it.
 # `windows/scripts/diagnostics/probe-sccache-write.ps1` answers it in ~2 minutes.
 ARG SCCACHE_MULTILEVEL_CHAIN=""
+#
+# THE C:\sccache CACHE MOUNTS BELOW USE sharing=shared, NOT locked (#134,
+# 2026-08-26). `locked` serialises every RUN that mounts the same id — and
+# -ConcurrentAux runs media-litert and media-tvm as CONCURRENT child solves, so
+# the lock made two parallel branches take turns. It bought nothing in exchange:
+# with the chain empty (the default above) sccache runs remote-only and never
+# touches this mount at all — SCCACHE_DIR alone does nothing, see the note below.
+# IF YOU RE-ENABLE THE DISK LEVEL (`-BuildArg SCCACHE_MULTILEVEL_CHAIN=disk,webdav`),
+# re-examine this: `shared` then means two concurrent sccache servers on one
+# directory. That is what sccache's local backend is built for, but it has never
+# been measured here, and #99's write-loss history on WCOW cache mounts is the
+# reason to measure rather than assume.
 
 # Also an ARG so an experiment can start from a GUARANTEED-EMPTY cache dir:
 #   -BuildArg SCCACHE_DIR=C:\sccache\v3
@@ -184,15 +197,6 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # Get-MediaBranchVersionArg. Anything missing silently falls back to the
 # base-baked value — audit with the greps documented at that function.
 
-# Common modules for all builder images.
-COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
-     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
-     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
-     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
-     windows\scripts\modules\WindowsNative.Common.psm1 `
-     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
-     C:\temp\scripts\modules\
-
 # ── Mount source for the BK lane's module closure ────────────────────────────
 # Every compile RUN below needs the SAME five modules (the in-container closure
 # of the build scripts: SourceBuild.Common + its imports Shared, Patches, Cuda,
@@ -225,66 +229,26 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      C:\bkmods\
 
-# ── media-core version env — CLASSIC-lane ancestor (since #49, 2026-08-19) ───
-# The classic `media-core` stage runs the whole chain in one stage and takes
-# its version keys from here. The BK compile stages deliberately do NOT
-# descend from this (they declare their component keys per stage, see
-# media-core-built-onnx below, so a single-component bump no longer cascades
-# through the whole branch); TwinParity asserts the two key SETS stay equal.
-# History: both lanes once shared this ancestor (and before that, a hand-kept
-# media-core-bk twin) — see git log on this header for the evolution.
-FROM common AS media-core-env
+# ── TVM-private module closure (#134) ────────────────────────────────────────
+# Derived FROM buildmods, so it is the same six modules PLUS the TVM leaf, and
+# it re-solves only when buildmods or the leaf changes. ONLY media-tvm-built
+# mounts this; every other compile RUN keeps mounting `buildmods` directly.
+#
+# THE POINT: before this stage existed, the six buildmods modules were the only
+# module home on this lane, and they are mounted into every media RUN — so a
+# TVM-only constant could not live in a module without re-keying the ~75 min
+# ONNX branch, the OpenCV branch and the FFmpeg branch. media-tvm runs parallel
+# to media-core, so a TVM-private module costs nothing on the long pole.
+# Editing WindowsTvm.Common.psm1 re-runs the TVM branch alone.
+#
+# Do NOT mount tvmmods from a second RUN. A module two branches need belongs in
+# buildmods, and quietly widening this stage would spend the cache win while
+# leaving the comment above claiming it.
+# BuildKit.ModuleClosure.Tests.ps1 enforces both halves.
+FROM buildmods AS tvmmods
+COPY windows\scripts\modules\WindowsTvm.Common.psm1 C:\bkmods\
 
-ARG ONNXRUNTIME_VERSION=v1.29.0
-ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
-ARG OPENCV_SOURCE_VERSION=5.0.0
-ARG FFMPEG_VERSION=n9.0
-ARG PYAV_VERSION=18.1.0
-ARG NV_CODEC_HEADERS_REF=n13.1.15.0
-ARG CUDA_ARCHITECTURES="80;86;89;90"
-# Consumed by build-opencv-from-source.ps1 (bindings target + its own version
-# alias). Present here because the versions.env COPY is gone — see the `common`
-# stage comment; a key missing from this list silently uses the base-baked value.
-ARG OPENCV_VERSION=5.0.0
-ARG PYTHON_VERSION=3.14.7
-# Integrity pin for the hand-staged Qualcomm AI Engine Direct SDK zip (ORT QNN
-# EP, backlog #121; windows/qnn-sdk/ is bind-mounted into the onnx RUN). Empty
-# = unpinned; no zip staged = EP off. Declared here, not in `common`, so a pin
-# change re-keys media-core only (#49/#103 discipline).
-ARG QNN_SDK_ZIP_SHA256=""
-
-# ONE ENV instruction: the classic builder pays a layer per instruction and the
-# chain runs against Docker's 125-layer cap (see docs/windows-builds.md § layer
-# budget). Plain ARG passthroughs, no interdependency.
-ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
-    ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}" `
-    OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
-    FFMPEG_VERSION="${FFMPEG_VERSION}" `
-    PYAV_VERSION="${PYAV_VERSION}" `
-    NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}" `
-    CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" `
-    OPENCV_VERSION="${OPENCV_VERSION}" `
-    PYTHON_VERSION="${PYTHON_VERSION}" `
-    QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
-
-# ── media-core builder, classic lane (ONNX Runtime -> GenAI -> OpenCV -> FFmpeg)
-FROM media-core-env AS media-core
-
-COPY windows\scripts\patches\onnxruntime     C:\temp\scripts\patches\onnxruntime
-COPY windows\scripts\patches\opencv          C:\temp\scripts\patches\opencv
-COPY windows\scripts\patches\opencv_contrib  C:\temp\scripts\patches\opencv_contrib
-COPY windows\scripts\patches\ffmpeg          C:\temp\scripts\patches\ffmpeg
-
-COPY windows\scripts\build\build-onnx-from-source.ps1 `
-     windows\scripts\build\build-onnx-genai-from-source.ps1 `
-     windows\scripts\build\build-opencv-from-source.ps1 `
-     windows\scripts\build\build-ffmpeg-from-source.ps1 `
-     windows\scripts\build\build-target-cpython.ps1 `
-     windows\scripts\build\cpython-Directory.Build.props `
-     windows\scripts\build\build-media-core-all.ps1 `
-     C:\temp\scripts\
-
-# ── media-litert version env — SHARED ANCESTOR of both lanes (see media-core-env)
+# ── media-litert version env — the branch's shared version ancestor
 FROM common AS media-litert-env
 
 ARG LITERT_VERSION=v2.2.0
@@ -301,30 +265,6 @@ ENV LITERT_VERSION="${LITERT_VERSION}" `
     PROTOC_VERSION="${PROTOC_VERSION}" `
     JRE_VERSION="${JRE_VERSION}"
 
-# ── media-litert builder, classic lane (LiteRT -> LiteRT-LM) ─────────────────
-FROM media-litert-env AS media-litert
-
-# LiteRT-LM's Windows shims (POSIX headers + CRT-compat source) and CMake patch
-# snippets -- the build script stages them from these $PSScriptRoot-relative dirs.
-COPY windows\scripts\shims C:\temp\scripts\shims
-COPY windows\scripts\patches\litert-lm C:\temp\scripts\patches\litert-lm
-
-COPY windows\scripts\build\build-litert-from-source.ps1 `
-     windows\scripts\build\build-litert-lm-bazel.ps1 `
-     windows\scripts\build\build-litert-lm-from-source.ps1 `
-     windows\scripts\build\litert-lm-export-bridge.ps1 `
-     windows\scripts\build\build-litert-all.ps1 `
-     windows\scripts\build\debug-litertlm-link.ps1 `
-     C:\temp\scripts\
-
-# (A `media-branch-absent` stand-in stage lived here from 2026-08-23 to
-# 2026-08-24: an empty-tree substitute for cross branches the merge's
-# unconditional COPY --from=... needed but the lane could not build. Retired
-# once every branch became real on arm64 -- #115 litert, #116 tvm/iree
-# runtime-only. The surviving convention: a branch that cannot build a
-# component ships its own empty, marker-carrying tree; see the LiteRT-LM
-# skip in build-litert-all.ps1.)
-
 # ── media-tvm version env — SHARED ANCESTOR of both lanes (see media-core-env)
 FROM common AS media-tvm-env
 
@@ -334,63 +274,14 @@ ARG IREE_VERSION=v3.11.0
 ENV TVM_REF="${TVM_REF}" `
     IREE_VERSION="${IREE_VERSION}"
 
-# ── media-tvm builder, classic lane (TVM -> IREE) ────────────────────────────
-FROM media-tvm-env AS media-tvm
-
-COPY windows\scripts\patches\iree C:\temp\scripts\patches\iree
-
-COPY windows\scripts\build\build-tvm-from-source.ps1 `
-     windows\scripts\build\build-iree-from-source.ps1 `
-     windows\scripts\build\build-media-tvm-all.ps1 `
-     windows\scripts\build\build-target-cpython.ps1 `
-     windows\scripts\build\cpython-Directory.Build.props `
-     C:\temp\scripts\
-
-# ── BuildKit lane (buildctl --opt target=media-<branch>-built) ───────────────
-# Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
-# steps see all host CPUs, so each branch compile is a plain LAYER — no
-# run+commit. The classic docker lane always passes --target media-<branch>
-# (build.ps1 Get-MediaBranchSpecs) and never executes these RUNs.
-#
-# BIND-MOUNTED SCRIPTS, NOT COPYs (2026-08-04): the *-bk stages below carry NO
-# script/patch COPY layers — every RUN bind-mounts exactly its transitive
-# script closure from the build context at C:\bkmnt (single-file mounts probed
-# working on WCOW buildkitd v0.32). Cache consequence: editing a build script
-# re-runs ONLY the RUNs that mount it — an OpenCV script fix no longer
-# invalidates the 75-minute ONNX layer (with COPY layers it invalidated every
-# RUN downstream of the COPY). Modules are mounted PER FILE too (the in-
-# container closure is exactly: SourceBuild.Common + its imports Shared,
-# SourceBuild.Patches, SourceBuild.Cuda, Native.Common — plus Installer.Common
-# for GStreamer in the merge builder): a whole-dir modules/ mount let edits to
-# the 24 host-only modules (BuildDriver, BuildKit, Flutter, …) bust every
-# compile RUN in the chain. load-versions.ps1 is mounted into every BUILD run
-# so Initialize-SourceBuildScript re-reads the freshly COPY'd versions.env
-# instead of silently falling back to the base image's baked Machine env
-# (stale after a versions.env edit + -Stages media iteration). The wrappers
-# receive -ScriptDir C:\bkmnt so chain + leaf scripts resolve
-# modules/patches/shims via their usual $PSScriptRoot-relative paths.
-#
-# DIRECT SOLVES (de-warmed 2026-08-06, round 2): every library layer builds
-# AND exports in one plain RUN. The former warm/materialize pairs existed
-# for the ExportLayer-0x3 defect — ROOT CAUSE: the runhcs shim's hardcoded
-# 30s tearDownTimeout terminated the measured ~117s heavy-churn silo
-# teardown mid-hive-flush, permanently poisoning the scratch. FIXED by the
-# patched shim (45min timeouts) in Stevedore\bin — proven by 3x consecutive
-# direct OpenCV finalizes (docs/windows-builds.md § roadmap "DEFECT
-# SOLVED", incl. the maintenance rule: Stevedore updates overwrite the
-# patched binary). If the canary ever 0x3s again (e.g. shim reverted),
-# restore the warm/materialize pattern from git history (c9586c1^) —
-# bk-warm.ps1/bk-materialize.ps1 and the handoff helpers remain in the
-# tree for exactly that case.
-
 # #49 (2026-08-19): the BK compile stages NO LONGER descend from the shared
 # media-core-env ancestor - each stage declares exactly the version keys its
 # component consumes, so a PyAV/FFmpeg bump re-runs ffmpeg+downstream instead
 # of the full ~75-min ONNX build, and a GenAI bump re-runs genai alone.
 # ENV (not bare ARG) so the values persist into the downstream stages via the
 # image config: CUDA_ARCHITECTURES/PYTHON_VERSION set here are inherited by
-# ffmpeg/opencv/genai. media-core-env remains for the CLASSIC lane only,
-# which runs the whole chain in one stage and has no granularity to gain.
+# ffmpeg/opencv/genai. (media-core-env, the classic lane's single-stage
+# ancestor, was deleted with that lane on 2026-08-26 — #134.)
 FROM common AS media-core-built-onnx
 ARG ONNXRUNTIME_VERSION=v1.29.0
 ARG CUDA_ARCHITECTURES="80;86;89;90"
@@ -433,7 +324,7 @@ ENV ONNXRUNTIME_VERSION="${ONNXRUNTIME_VERSION}" `
 # 2026-08-18: the opencv experiment's launcher leaked into genai's build).
 ARG SCCACHE_CUDA_LAUNCHER="1"
 ARG SCCACHE_REPRO_CUDA_LLM=""
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-onnx-from-source.ps1,target=C:\bkmnt\build-onnx-from-source.ps1 `
@@ -467,13 +358,12 @@ FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
 # conflicts with x64", which configure reports as "libonnxruntime not found".
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# DIAGNOSTIC (2026-08-23): a second ENV carrying the SAME ARG under a different
-# name. WINDOWS_TARGET_ARCH resolves to the amd64 default inside this stage even
-# though buildctl is demonstrably passed build-arg:WINDOWS_TARGET_ARCH=arm64 and
-# the ARG is declared right above. This discriminates between "the build-arg is
-# not reaching the ARG" (then this is amd64 too) and "something in the image
-# re-sets the WINDOWS_TARGET_ARCH name specifically" (then this is arm64).
-ENV KATA_ARCH_PROBE=${WINDOWS_TARGET_ARCH}
+# (A KATA_ARCH_PROBE ENV sat here from 2026-08-23: a second ENV carrying the same
+# ARG under a different name, to discriminate "the build-arg never reached the
+# ARG" from "something re-sets the WINDOWS_TARGET_ARCH name specifically". It was
+# the former. Removed 2026-08-26 with its reader in build-ffmpeg-from-source.ps1
+# (#134) — a diagnostic left in place after its question is answered becomes a
+# thing future readers must first prove is not load-bearing.)
 # #49: ffmpeg-component keys live HERE - a bump re-runs ffmpeg+downstream,
 # never the ONNX stage above.
 ARG FFMPEG_VERSION=n9.0
@@ -482,7 +372,7 @@ ARG NV_CODEC_HEADERS_REF=n13.1.15.0
 ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     PYAV_VERSION="${PYAV_VERSION}" `
     NV_CODEC_HEADERS_REF="${NV_CODEC_HEADERS_REF}"
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-ffmpeg-from-source.ps1,target=C:\bkmnt\build-ffmpeg-from-source.ps1 `
@@ -539,7 +429,7 @@ ARG OPENCV_VERSION=5.0.0
 ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
     OPENCV_VERSION="${OPENCV_VERSION}"
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-opencv-from-source.ps1,target=C:\bkmnt\build-opencv-from-source.ps1 `
@@ -557,7 +447,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # #49: the genai key lives HERE - a GenAI bump re-runs this stage alone.
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-onnx-genai-from-source.ps1,target=C:\bkmnt\build-onnx-genai-from-source.ps1 `
@@ -573,7 +463,7 @@ FROM media-litert-env AS media-litert-built
 # frozen CMake litert-lm fallback (build-litert-lm-from-source.ps1 + export
 # bridge + link diag + litert-lm patches/shims) stays bind-mounted so a
 # BAZEL_REPO_CACHE-less / fallback run still has it.
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/build-litert-all.ps1,target=C:\bkmnt\build-litert-all.ps1 `
@@ -590,7 +480,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-target-cpython.ps1,target=C:\bkmnt\build-target-cpython.ps1 `
@@ -598,6 +488,6 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,from=tvmmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/iree,target=C:\bkmnt\patches\iree `
     & 'C:\bkmnt\build-media-tvm-all.ps1' -ScriptDir 'C:\bkmnt' -ScrubAfter

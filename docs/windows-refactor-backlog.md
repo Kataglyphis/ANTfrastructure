@@ -163,7 +163,32 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md).
 - **#134 — post-#133 cleanup wave: unshare the module closure, de-duplicate the AST test
   boilerplate, condense the docs.** M · ★★ (opened 2026-08-26, owner's request; planned against the
-  Dockerfiles, not against memory — see the correction below) · NOT STARTED
+  Dockerfiles, not against memory — see the correction below) · **CODE LANDED 2026-08-26
+  (`2752685f`); the two-lane regression that accepts it has NOT run.**
+  **What landed.** Three leaf modules, each mounted only by the RUNs that call it:
+  `WindowsMeson.Common` (the 3 meson helpers + `Invoke-WrapDownload` + `Expand-SubprojectArchive`)
+  and `WindowsRustToolchain.Common` (`Install-RustTargetStdFromPinnedManifest`) in the merge
+  `buildmods`; `WindowsTvm.Common` (`Get-VendoredTvmFfiVersion`) behind a new
+  `FROM buildmods AS tvmmods` that `media-tvm-built` alone mounts. Two helpers promoted to the
+  shared closure deliberately (`Write-AssembledWheelDistInfo` + `Get-PyprojectDependencies` are
+  generic to any cross consumer scikit-build-core cannot build; `Resolve-BuildMachineMsvcTool` is a
+  TARGET-vs-BUILD fact, so `WindowsTargetArch.Common`). Bodies byte-identical except the two
+  admitted deltas (`-Logger`, plus `-Generator` on the wheel writer). Classic surface deleted:
+  `media-core-env`, `media-core`, `media-litert`, `media-tvm`, `merge`, `builder-classic`, and the
+  six-module COPY into `common` — media-builder 603→462 lines. All five ride-alongs landed
+  (`sharing=shared`, `cuda-runtime-stage` on `${BASE_IMAGE}` after verifying CUDA_ROOT/CUDNN_ROOT
+  come from `Dockerfile.nvidia` via `windows-sdk`, `ARCH_GATE_*` moved below the two RUNs that
+  never read them, arch gate mounts 1 module not 10, `KATA_ARCH_PROBE` removed together with its
+  reader). New `BuildKit.ModuleClosure.Tests.ps1` (4 tests, scanner-rot floor) — **mutation-proven**:
+  TVM leaf into `buildmods` → 1 failure, a second `tvmmods` consumer → 3. TwinParity lost its two
+  classic tests; the one that mattered was REPLACED, not deleted — the per-stage key union is now
+  checked against `Get-MediaBranchVersionArg`'s map (a cross-FILE check) instead of against the
+  deleted `media-core-env`. Suite 704/704, LINT OK.
+  **What remains: the acceptance run** (below), plus the follow-ups this wave deliberately did not
+  take: merging `Expand-SubprojectArchive` with `Expand-ArchiveSubdirectory`/`Expand-SourceTarball`,
+  and B4 following `FROM buildmods AS <x>` chains (ModuleClosure covers that property now, and
+  making B4 chain-aware would break its superset assertion, since `tvmmods` legitimately holds a
+  module the merge closure does not).
   **Root cause, corrected.** Six helper functions ended up inside `build-gstreamer-from-source.ps1`
   (now 2246 lines, 9 functions) and three inside `build-tvm-from-source.ps1` during #128/#133,
   each with a comment claiming "the whole modules dir is bind-mounted into every media RUN". **That

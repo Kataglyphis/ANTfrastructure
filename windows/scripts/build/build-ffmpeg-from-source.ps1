@@ -37,10 +37,13 @@ $ffmpegDir = Join-Path $prefix 'bin'
 # symptom was FFmpeg configure reporting "libonnxruntime not found". Print the
 # raw inputs so a future mismatch names itself instead of hiding behind a
 # downstream error.
-Write-Host ("FFmpeg arch inputs: Process='{0}' Machine='{1}' Probe='{2}' -> resolved '{3}'" -f `
+# (The third field used to be KATA_ARCH_PROBE, an ENV mirrored purely to answer
+# "did the ARG cross the stage boundary?". It did; the ENV and this field were
+# removed together on 2026-08-26 (#134) rather than left printing a value nobody
+# reads. Process-vs-Machine below is the half that still diagnoses.)
+Write-Host ("FFmpeg arch inputs: Process='{0}' Machine='{1}' -> resolved '{2}'" -f `
     [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Process'),
     [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Machine'),
-    $env:KATA_ARCH_PROBE,
     (Get-WindowsTargetArch))
 $ffTargetArch = Get-WindowsTargetArch
 $ffCross      = Test-WindowsCrossTarget -Arch $ffTargetArch

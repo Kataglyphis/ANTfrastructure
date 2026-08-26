@@ -13,8 +13,6 @@
 Describe 'Select-MesonLogExcerpt' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
-                                       -FunctionName 'Select-MesonLogExcerpt')
 
         $script:fixture = @(
             'Build started at 2026-08-26T02:07:07',                                         # 1

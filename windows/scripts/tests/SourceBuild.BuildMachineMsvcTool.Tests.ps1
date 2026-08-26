@@ -13,8 +13,6 @@
 Describe 'Resolve-BuildMachineMsvcTool' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
-                                       -FunctionName 'Resolve-BuildMachineMsvcTool')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-vctools-' + [guid]::NewGuid().ToString('N'))
         $script:vc = Join-Path $script:tmp 'VC\Tools\MSVC\14.51.36231'

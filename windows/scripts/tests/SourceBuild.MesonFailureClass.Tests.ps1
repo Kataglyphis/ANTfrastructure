@@ -13,8 +13,6 @@
 Describe 'Get-MesonSetupFailureClass' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
-                                       -FunctionName 'Get-MesonSetupFailureClass')
 
         $script:hardLine = 'temp\gst-source\gstreamer-1.29.2\subprojects\gst-plugins-bad\gst-libs\gst\webrtc\nice\meson.build:16:14: ERROR: Subproject "subprojects/libnice" required but not found.'
         $script:sdkLine  = '    BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE = 0x2000000,'

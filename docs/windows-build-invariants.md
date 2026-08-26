@@ -592,7 +592,8 @@ Build Tools, RTTI ON, full-`:FILEPATH` archiver) and passes
 
 **freedesktop/videolan GitLab downloads MUST go through
 `Invoke-WrapDownload`** (curl-native UA + gzip/bzip2 magic-byte check, in
-`build-gstreamer-from-source.ps1`) — the Anubis anti-scraper in front of
+`WindowsMeson.Common.psm1` since #134 — a merge-lane leaf module, NOT in the
+shared `buildmods` closure) — the Anubis anti-scraper in front of
 those hosts answers browser UAs without JS with an HTTP-200 HTML challenge
 page, which is exactly what the shared `Invoke-DownloadWithRetry` sends.
 Also strip `.git` from GitLab `/-/archive/` URLs (with it, GitLab serves

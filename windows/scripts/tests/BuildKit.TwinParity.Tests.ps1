@@ -52,13 +52,19 @@ BeforeAll {
         }
     }
 
-    # branch -> the shared env stage, plus the two lanes that must descend from
-    # it. media-core is NOT in this list since #49 (2026-08-19): its BK lane is
+    # branch -> the shared env stage and the BK stage that must descend from it.
+    # media-core is NOT in this list since #49 (2026-08-19): its BK lane is
     # partitioned per component and carries per-stage version blocks - the
     # dedicated Describe below asserts that contract instead.
+    #
+    # The `Classic = 'media-litert' / 'media-tvm'` column was dropped on
+    # 2026-08-26 (#134) with the docker-classic lane and its COPY-only stages.
+    # The env stages themselves stay: they are still the shared ancestors, now
+    # of one descendant each, and they are still where a version bump must land
+    # so it re-keys the branch exactly once.
     $script:branches = @(
-        @{ Env = 'media-litert-env'; Classic = 'media-litert'; Bk = 'media-litert-built' }
-        @{ Env = 'media-tvm-env';    Classic = 'media-tvm';    Bk = 'media-tvm-built' }
+        @{ Env = 'media-litert-env'; Bk = 'media-litert-built' }
+        @{ Env = 'media-tvm-env';    Bk = 'media-tvm-built' }
     )
 
     # #49 contract: each BK media-core stage declares EXACTLY its component's
@@ -92,37 +98,30 @@ Describe 'Dockerfile.media-builder version-env contract' {
         }
     }
 
-    It 'descends BOTH lanes from the shared env stage' {
+    It 'descends the branch build from the shared env stage' {
         foreach ($b in $script:branches) {
-            $script:stages.Keys | Should -Contain $b.Classic
-            $script:stages[$b.Classic].Parent | Should -Be $b.Env `
-                -Because 'the classic builder must inherit the shared version env, not restate it'
-
             $script:stages.Keys | Should -Contain $b.Bk
             # The BK head stage inherits directly; later partitions chain from
             # handoff images (${MEDIA_CORE_*_IMAGE}) built off that same head.
             $script:stages[$b.Bk].Parent | Should -Be $b.Env `
-                -Because 'the BK lane must inherit the shared version env, not restate it'
+                -Because 'the branch build must inherit the shared version env, not restate it'
         }
     }
 
     It 'never re-declares a shared version ARG in a descendant stage' {
         foreach ($b in $script:branches) {
             $shared = @($script:stages[$b.Env].Args | Sort-Object -Unique)
-            foreach ($name in @($b.Classic, $b.Bk)) {
-                $redeclared = @($script:stages[$name].Args | Where-Object { $_ -in $shared })
-                $redeclared | Should -BeNullOrEmpty `
-                    -Because "$name re-declaring $($redeclared -join ', ') reintroduces the twin this refactor removed"
-            }
+            $redeclared = @($script:stages[$b.Bk].Args | Where-Object { $_ -in $shared })
+            $redeclared | Should -BeNullOrEmpty `
+                -Because "$($b.Bk) re-declaring $($redeclared -join ', ') shadows the shared env stage and re-keys the branch twice"
         }
     }
 }
 
 Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
-    It 'keeps the classic lane on the shared media-core-env ancestor' {
-        $script:stages['media-core'].Parent | Should -Be 'media-core-env' `
-            -Because 'the classic lane runs the whole chain in one stage and inherits the full version set'
-    }
+    # ('keeps the classic lane on the shared media-core-env ancestor' was removed
+    # on 2026-08-26 with the docker-classic lane: media-core and media-core-env
+    # are both gone from Dockerfile.media-builder — #134.)
 
     It 'starts the BK partition from common, not the shared env stage' {
         $script:stages['media-core-built-onnx'].Parent | Should -Be 'common' `
@@ -147,10 +146,32 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
         }
     }
 
-    It 'covers the full classic version set with the per-stage union (no drift)' {
-        $union = @($script:coreComponentKeys.Values | ForEach-Object { $_ }) | Sort-Object -Unique
-        $classic = @($script:stages['media-core-env'].Args) | Sort-Object -Unique
-        ($union -join ',') | Should -Be ($classic -join ',') `
-            -Because 'a key present in one lane but not the other is exactly the twin drift this suite polices'
+    It 'covers the driver''s whole media-core version-arg set with the per-stage union (no drift)' {
+        # WHAT THIS REPLACED, AND WHY IT IS NOT THE SAME TEST (#134, 2026-08-26).
+        # This used to compare the per-stage union against media-core-env's ARG
+        # block. That stage was the classic lane's single-stage ancestor and was
+        # deleted with the lane — but the property it proved is load-bearing and
+        # had no other gate: a key the DRIVER forwards that NO stage declares is
+        # silently dropped, and the branch's build scripts fall back to the value
+        # baked into the base image, possibly months old
+        # (WindowsBuildDriver.Common.psm1:315 "COMPLETENESS IS LOAD-BEARING").
+        # The union is therefore now checked against the driver's own map. That
+        # is a cross-FILE check between the two things that must agree, where the
+        # old one compared two blocks of the same Dockerfile.
+        #
+        # The table below is the versions.env-side key set the media-core map
+        # reads (note the deliberate OPENCV_VERSION -> OPENCV_SOURCE_VERSION
+        # rename on the way out). If the driver grows a key that is not here,
+        # Get-VersionTableValue throws "versions.env has no key X" and this test
+        # fails — which is the correct outcome: a new key needs a home in
+        # $script:coreComponentKeys and in a stage.
+        $table = @{}
+        foreach ($k in @('ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_VERSION',
+                         'FFMPEG_VERSION', 'PYAV_VERSION', 'QNN_SDK_ZIP_SHA256',
+                         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }
+        $driverKeys = @((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $table).Keys) | Sort-Object -Unique
+        $union      = @($script:coreComponentKeys.Values | ForEach-Object { $_ }) | Sort-Object -Unique
+        ($union -join ',') | Should -Be ($driverKeys -join ',') `
+            -Because 'a version the driver forwards but no stage declares falls back to the base image''s baked value, silently'
     }
 }
