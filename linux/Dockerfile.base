@@ -19,9 +19,9 @@ ARG VULKAN_VERSION=1.4.357.0
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL
-ARG CMAKE_VERSION=4.4.2
+ARG CMAKE_VERSION=4.4.3
 ARG NODE_VERSION=26.7.0
-ARG UV_VERSION=0.12.5
+ARG UV_VERSION=0.12.6
 
 # ------------------------------------------------------------------------------
 # Shell
