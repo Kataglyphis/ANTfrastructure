@@ -12,8 +12,6 @@
 Describe 'TVM assembled-wheel helpers' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-tvm-from-source.ps1' `
-                                       -FunctionName 'Write-AssembledWheelDistInfo', 'Get-VendoredTvmFfiVersion', 'Get-PyprojectDependencies')
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-tvmwheel-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force -Path (Join-Path $script:tmp 'root\tvm_ffi\lib') | Out-Null
         Set-Content (Join-Path $script:tmp 'root\tvm_ffi\__init__.py') '# pkg'

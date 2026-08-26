@@ -27,6 +27,13 @@ Import-Module (Join-Path $modDir 'WindowsTesting.Common.psm1') -Force -DisableNa
 Import-Module (Join-Path $modDir 'WindowsClang.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
+# Merge-lane and TVM leaf modules (#134). They are NOT in the buildmods closure
+# -- that is the point of them -- but the suite loads every module it tests, and
+# six fixture suites used to reach these functions through the stage scripts'
+# ASTs instead.
+Import-Module (Join-Path $modDir 'WindowsMeson.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $modDir 'WindowsRustToolchain.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $modDir 'WindowsTvm.Common.psm1') -Force -DisableNameChecking
 
 Reset-TestState
 

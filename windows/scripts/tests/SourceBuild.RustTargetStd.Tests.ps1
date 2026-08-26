@@ -15,8 +15,6 @@
 Describe 'Install-RustTargetStdFromPinnedManifest' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
-                                       -FunctionName 'Install-RustTargetStdFromPinnedManifest')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-ruststd-' + [guid]::NewGuid().ToString('N'))
         $script:rustupHome = Join-Path $script:tmp 'rustup'

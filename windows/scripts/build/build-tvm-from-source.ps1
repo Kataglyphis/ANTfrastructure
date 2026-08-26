@@ -23,100 +23,25 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
-# --- Cross-lane python wheels (#133, 2026-08-26) -------------------------------
+# --- Cross-lane python wheels (#133, 2026-08-26; modularised by #134) ---------
 # TVM 0.26 supports a runtime-only python package natively (tvm/base.py:
 # _RUNTIME_ONLY falls back when tvm_compiler is absent), and tvm_ffi's Cython
 # `core` module cross-builds through the tvm-ffi CMake target. What does NOT
 # cross is the packaging: scikit-build-core would rebuild the compiler and
 # stamps the wheel from the HOST interpreter. So the cross lane assembles the
-# two wheels itself from the package sources + the cross-built binaries; these
-# three pure helpers pin the metadata shape (fixture test
-# SourceBuild.TvmAssembledWheel.Tests.ps1). They live here, not in a module,
-# because the mounted module set is ONE closure shared by every branch (the
-# `buildmods` stage's six .psm1, which the classic lane also COPYs into
-# `common`, the ancestor of every BK compile stage) -- editing any module
-# re-keys every media branch on both lanes. Backlog #134 splits that.
-
-# Writes the dist-info a binary wheel needs (METADATA, WHEEL, top_level.txt)
-# into an already-laid-out package tree; `python -m wheel pack` then produces
-# RECORD + the archive and names it from WHEEL's Tag line.
-function Write-AssembledWheelDistInfo {
-    param(
-        [Parameter(Mandatory)][string]$Name,        # distribution name, e.g. apache-tvm-ffi
-        [Parameter(Mandatory)][string]$Version,     # PEP 440
-        [Parameter(Mandatory)][string]$PackageRoot, # dir whose child dirs are the top-level packages
-        [string]$PythonTag = 'cp314',
-        [string]$AbiTag = 'cp314',
-        [string]$PlatformTag = 'win_arm64',
-        [string[]]$RequiresDist = @(),
-        [string]$RequiresPython = '',
-        [string]$Summary = ''
-    )
-    if (-not (Test-Path $PackageRoot -PathType Container)) { throw "Write-AssembledWheelDistInfo: package root $PackageRoot does not exist" }
-    $distName = ($Name -replace '[-_.]+', '_')
-    $distInfo = Join-Path $PackageRoot "$distName-$Version.dist-info"
-    New-Item -Path $distInfo -ItemType Directory -Force | Out-Null
-    $meta = @('Metadata-Version: 2.1', "Name: $Name", "Version: $Version")
-    if ($Summary) { $meta += "Summary: $Summary" }
-    if ($RequiresPython) { $meta += "Requires-Python: $RequiresPython" }
-    foreach ($r in $RequiresDist) { if ($r) { $meta += "Requires-Dist: $r" } }
-    [System.IO.File]::WriteAllText((Join-Path $distInfo 'METADATA'), (($meta -join "`n") + "`n"))
-    $wheelMeta = @('Wheel-Version: 1.0', 'Generator: kataglyphis-assembled-wheel (build-tvm-from-source.ps1)', 'Root-Is-Purelib: false', "Tag: $PythonTag-$AbiTag-$PlatformTag")
-    [System.IO.File]::WriteAllText((Join-Path $distInfo 'WHEEL'), (($wheelMeta -join "`n") + "`n"))
-    $top = @(Get-ChildItem -Path $PackageRoot -Directory | Where-Object { $_.Name -notlike '*.dist-info' } | ForEach-Object { $_.Name })
-    if ($top.Count -eq 0) { throw "Write-AssembledWheelDistInfo: no top-level package directory under $PackageRoot" }
-    [System.IO.File]::WriteAllText((Join-Path $distInfo 'top_level.txt'), (($top -join "`n") + "`n"))
-    return $distInfo
-}
-
-# The vendored tvm-ffi's own version: the nearest v* tag of the submodule
-# checkout (PEP 440-normalised: v0.1.13-post3 -> 0.1.13.post3), else the lower
-# bound TVM's pyproject demands (apache-tvm-ffi>=X) -- the version that makes
-# the two assembled wheels resolve against each other.
-function Get-VendoredTvmFfiVersion {
-    param(
-        [string]$DescribeOutput = '',
-        [string]$TvmPyprojectText = ''
-    )
-    $d = "$DescribeOutput".Trim()
-    if ($d -match '^v?(\d+(?:\.\d+)*)(?:[-.]?(post\d+|rc\d+|a\d+|b\d+))?$') {
-        $v = $Matches[1]
-        if ($Matches[2]) { $v += '.' + $Matches[2] }
-        return $v
-    }
-    $m = [regex]::Match($TvmPyprojectText, 'apache-tvm-ffi\s*>=\s*([0-9][0-9A-Za-z.+!-]*)')
-    if ($m.Success) { return $m.Groups[1].Value }
-    throw 'Get-VendoredTvmFfiVersion: neither a v* tag on the tvm-ffi submodule nor an apache-tvm-ffi>= bound in TVM''s pyproject.toml'
-}
-
-# A pyproject's [project] dependencies = [...] block, read from the source
-# tree at build time (never hardcoded here).
-function Get-PyprojectDependencies {
-    param([Parameter(Mandatory)][string]$PyprojectText)
-    # The list closes at the first `]` that ends a line (optionally followed by a
-    # comment) -- this covers the one-line form `dependencies = ["x>=1"]` (tvm-ffi)
-    # and the multi-line form (TVM) alike, and never runs past the list into
-    # [project.urls] / [project.optional-dependencies] (arm64 run 33: the
-    # assembled tvm-ffi wheel declared its Homepage URL, ninja and torch as
-    # requirements). An extras marker like "pkg[cuda]" has its `]` followed by
-    # a quote, not the end of line, so it stays inside the capture.
-    # Two steps (run 34): first the [project] table body -- up to the next
-    # table header at a line start ([project.urls], [tool.*]) or the end -- then
-    # the list inside it. The one-regex form that forbade any `[` between the
-    # header and `dependencies` matched nothing once `classifiers = [`,
-    # `authors = [{...}]` or `keywords = [` preceded the list (both pyprojects
-    # do), and the assembled wheels shipped with NO requirements: a defect the
-    # deps gate cannot see, because fewer requirements only ever make it greener.
-    # `\r?` before every `$`: .NET's multiline `$` matches only immediately
-    # before `\n`, so a CRLF file (git checks these out with core.autocrlf on
-    # Windows -- arm64 runs 34/35, while the same text parses locally with LF)
-    # never satisfies `...[ \t]*$` and the whole list silently comes back empty.
-    $tbl = [regex]::Match($PyprojectText, '(?ms)^\[project\][ \t]*(?:#[^\r\n]*)?\r?$(.*?)(?=^\[|\z)')
-    if (-not $tbl.Success) { return @() }
-    $m = [regex]::Match($tbl.Groups[1].Value, '(?ms)^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\r\n]*)?\r?$')
-    if (-not $m.Success) { return @() }
-    return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
-}
+# two wheels itself from the package sources + the cross-built binaries.
+#
+# The three helpers that pin the metadata shape used to be defined here, with a
+# comment explaining that a module was the wrong home because the mounted set
+# was ONE closure shared by every branch. #134 removed that constraint:
+#   Write-AssembledWheelDistInfo / Get-PyprojectDependencies -> WindowsSourceBuild.Common
+#     (generic: any cross consumer scikit-build-core cannot build needs both)
+#   Get-VendoredTvmFfiVersion                                -> WindowsTvm.Common
+#     (TVM-only, mounted through the `tvmmods` stage by the media-tvm RUN alone,
+#      so editing it re-runs this branch and nothing else)
+$tvmLeafModule = Join-Path $scriptAssetRoot 'modules\WindowsTvm.Common.psm1'
+if (-not (Test-Path $tvmLeafModule)) { throw "Required module not found: $tvmLeafModule -- the media-tvm RUN must mount the tvmmods stage (Dockerfile.media-builder)" }
+if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($tvmLeafModule)))) { Import-Module $tvmLeafModule }
 
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.26.0'
 

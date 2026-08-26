@@ -2,18 +2,18 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Thin builder image for the media-merge run+commit path (windows/build.ps1
-# Invoke-RunCommitStage). It performs the fan-in (COPY --from of the three media
-# branch trees) and sets the canonical env layout + GStreamer scripts, but does NOT
-# run the GStreamer compile. The fan-in MUST be a `docker build` (docker run cannot
-# COPY --from) and is only IO, so 2 CPUs is fine. The CPU-bound GStreamer build then
-# runs via:
-#   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
-#       pwsh -File C:\temp\scripts\build-gstreamer-from-source.ps1 -InstallDir C:\runtime -LogDir C:\temp\logs
-#   docker commit <container> local/kataglyphis:windows-media
-# `docker commit` preserves the ENV set below. This file IS the former
-# Dockerfile.media (since removed) minus the final GStreamer RUN, which moved to
-# the run+commit step above.
+# The media fan-in: COPY --from of the three media branch trees, the canonical env
+# layout, then the GStreamer build and the four bundle gates — all as plain layers
+# in the `built` target, driven by windows/build-buildkit.ps1.
+#
+# It used to end at a `merge` target that only staged scripts, because the compile
+# then ran as `docker run` + `docker commit` on the docker-classic lane (dockerd is
+# capped at 2 CPUs here and process isolation could not commit layers). That lane
+# was retired on 2026-08-26 and the `merge` target went with it — see
+# docs/windows-build-lanes.md § The classic lane was retired. The gates that make
+# this stage the arm64 bundle's proof (plugin build, bundle manifest, target python
+# deps, arch gate + import walk) all live AFTER the old split point and were never
+# reachable from `merge`, which is why that lane could not pass its own smoke gate.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-toolchain
 ARG CORE_IMAGE=local/kataglyphis:windows-media-core
@@ -25,11 +25,18 @@ FROM ${LITERT_IMAGE} AS media-litert
 FROM ${TVM_IMAGE} AS media-tvm
 
 # Flatten the CUDA/cuDNN runtime DLLs into one dir the merge image can put on
-# PATH. Derived from media-core (built on the nvidia base -> carries CUDA_ROOT /
-# CUDNN_ROOT + the actual DLLs). A COPY cannot do this: the sources are under
-# "C:\Program Files\..." (spaces) and cuDNN 9 buries its DLLs in a CUDA-major
-# subdir under bin\, so a recursive script is needed. See stage-cuda-runtime.ps1.
-FROM ${CORE_IMAGE} AS cuda-runtime-stage
+# PATH. A COPY cannot do this: the sources are under "C:\Program Files\..."
+# (spaces) and cuDNN 9 buries its DLLs in a CUDA-major subdir under bin\, so a
+# recursive script is needed. See stage-cuda-runtime.ps1.
+#
+# FROM ${BASE_IMAGE}, not ${CORE_IMAGE} (#134, 2026-08-26). Both carry the CUDA
+# install — the GPU lane's chain is base -> Dockerfile.nvidia (= windows-sdk,
+# where CUDA_ROOT/CUDNN_ROOT are ENV'd) -> toolchain, and CORE_IMAGE descends
+# from toolchain — so this stage reads nothing that media-core adds. Hanging it
+# off the branch image made it re-run on EVERY media-core rebuild, and it feeds
+# the fan-in, already the flakiest stage here (-MaxAttempts 5). Anchoring on the
+# toolchain base means it re-runs only when the toolchain does.
+FROM ${BASE_IMAGE} AS cuda-runtime-stage
 # Target arch, REDECLARED (ARGs do not cross a FROM boundary). This stage flattens
 # the CUDA/cuDNN runtime DLLs, which do not exist on Windows-on-ARM at all -- so it
 # needs to know the lane in order to degrade cleanly instead of hunting for a CUDA
@@ -47,15 +54,19 @@ RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\stage-cuda-runtime.ps1
 # Same pattern (and same reasoning) as Dockerfile.media-builder's `buildmods`:
 # one stage holding exactly the in-container module closure, mounted as a single
 # --mount line instead of six that had to be kept in lockstep by hand. This
-# closure carries Installer.Common and GstPlugins.Common on top of the
-# media-builder five — GStreamer's script is the only consumer of both.
-# GstPlugins.Common (the mandatory-plugin contract + the pkg-config emitter)
-# exists as its OWN module precisely so it can live here and NOT in the
-# media-builder's five: those five are mounted into all six media compile RUNs,
-# so putting the plugin contract in Shared/SourceBuild.Common would make every
-# edit to it re-run ONNX (~75 min), OpenCV, FFmpeg, GenAI, litert and tvm — for
-# code none of them call. Parent is BASE_IMAGE so the fan-in COPYs (and
-# therefore the three branch images) never key into it.
+# closure carries FOUR merge-only modules on top of the media-builder six:
+# Installer.Common, GstPlugins.Common, and (since #134) Meson.Common and
+# RustToolchain.Common. GStreamer's script is the only consumer of all four.
+#
+# THEY EXIST AS SEPARATE MODULES PRECISELY SO THEY CAN LIVE HERE. The
+# media-builder six are mounted into every media compile RUN, so putting the
+# plugin contract, the meson interpreter patch or the rust-std repair into
+# Shared/SourceBuild.Common would make every edit to them re-run ONNX (~75 min),
+# OpenCV, FFmpeg, GenAI, litert and tvm — for code none of them call. Meson and
+# RustToolchain were stage-local functions inside build-gstreamer-from-source.ps1
+# until #134 for exactly that reason; the leaf-module split is what let them out.
+# Parent is BASE_IMAGE so the fan-in COPYs (and therefore the three branch
+# images) never key into it.
 FROM ${BASE_IMAGE} AS buildmods
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -65,12 +76,16 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
+     windows\scripts\modules\WindowsMeson.Common.psm1 `
+     windows\scripts\modules\WindowsRustToolchain.Common.psm1 `
      C:\bkmods\
 
-# Fan-in WITHOUT the script COPYs: the BK warm/built stages chain from here so
-# a GStreamer script edit re-runs only the RUN that bind-mounts it, never the
-# fan-in COPY layers. The classic `merge` target (fan-in + baked scripts for
-# the run+commit step) builds on top below.
+# Fan-in WITHOUT the script COPYs: the `built` stage chains from here so a
+# GStreamer script edit re-runs only the RUN that bind-mounts it, never the
+# fan-in COPY layers. (A `merge` target used to build on top of this with the
+# scripts baked in, for the retired classic lane's run+commit step. Do not
+# re-introduce baked script COPYs here — mounting is what keeps the fan-in
+# layers out of every script's cache key.)
 FROM ${BASE_IMAGE} AS merge-fanin
 
 # Compile TARGET architecture -- see Dockerfile.media-builder for why this is
@@ -202,30 +217,13 @@ ENV PATH=C:\runtime\cuda-runtime\bin;$GSTREAMER_BIN;$FFMPEG_BIN;$ONNX_ROOT\bin;$
 # See the identical pattern in Dockerfile.media-builder (common stage).
 COPY linux\scripts\01-core\versions.env C:\temp\versions.env
 
-# ── Classic run+commit target: fan-in + baked GStreamer scripts ──────────────
-# (the compile itself runs in the run+commit step, NOT here; the BK lane's
-# warm/built stages chain from merge-fanin and bind-mount the scripts instead)
-FROM merge-fanin AS merge
-COPY windows\scripts\modules\WindowsScripts.Shared.psm1 `
-     windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
-     windows\scripts\modules\WindowsSourceBuild.Patches.psm1 `
-     windows\scripts\modules\WindowsSourceBuild.Cuda.psm1 `
-     windows\scripts\modules\WindowsInstaller.Common.psm1 `
-     windows\scripts\modules\WindowsNative.Common.psm1 `
-     windows\scripts\modules\WindowsTargetArch.Common.psm1 `
-     windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
-     C:\temp\scripts\modules\
-COPY windows\scripts\build\build-gstreamer-from-source.ps1 C:\temp\scripts\
-COPY windows\scripts\patches\gstreamer C:\temp\scripts\patches\gstreamer
-
 # ── BuildKit lane (direct solve, de-warmed 2026-08-06 round 2) ──────────────
 # GStreamer builds AND exports in one plain RUN. The former warm/materialize
 # pair existed for the ExportLayer-0x3 defect — root cause was the runhcs
 # shim's hardcoded 30s tearDownTimeout killing the minutes-long heavy-churn
 # silo teardown; fixed by the patched shim in Stevedore\bin (see
 # Dockerfile.media-builder's BK header + docs/windows-builds.md § roadmap
-# "DEFECT SOLVED"). The classic docker lane always passes --target merge
-# (build.ps1) and never executes this RUN.
+# "DEFECT SOLVED").
 FROM merge-fanin AS built
 # ARGs do not cross stage boundaries — redeclare for sccache.
 ARG SCCACHE_WEBDAV_ENDPOINT=""
@@ -260,7 +258,7 @@ ENV SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}" `
     SCCACHE_IDLE_TIMEOUT="0"
 # Same cache id as the media builder on purpose: GStreamer compiles the same
 # clang-cl TUs against the same headers, so a shared L0 is a hit, not a conflict.
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-gstreamer-from-source.ps1,target=C:\bkmnt\build-gstreamer-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
@@ -279,12 +277,30 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # string is compile-time; the runtime truth is
 # `cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER)` (asserted by the smoke
 # test since 2026-08-17).
-RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
+RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-opencv-gstreamer-plugin.ps1,target=C:\bkmnt\build-opencv-gstreamer-plugin.ps1 `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\build-opencv-gstreamer-plugin.ps1' -InstallDir 'C:\runtime'
+
+# #130 (2026-08-25): the bundle describes ITSELF -- BUNDLE-ENV.cmd/.ps1 (every
+# DLL home, the target python, the wheel store) and BUNDLE-README.md (install
+# steps, the one-time gio-querymodules run on a device, what is absent on this
+# lane in the branches' own words). Both lanes, same facts; three text files,
+# invisible to the arch gate below.
+RUN --mount=type=bind,source=windows/scripts/build/write-bundle-manifest.ps1,target=C:\bkmnt\write-bundle-manifest.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\write-bundle-manifest.ps1' -ScriptDir 'C:\bkmnt'
+# #126 (2026-08-25): on a cross lane, stage the PyPI runtime deps of the
+# bundle's wheels for the TARGET tag (host pip in download mode) and gate that
+# every Requires-Dist resolves inside C:\runtime\wheels. Native lane: notice
+# only (deps are installed into the shipped interpreter itself). Runs BEFORE
+# the arch gate so the downloaded wheels are machine-checked and import-walked
+# like everything else.
+RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,target=C:\bkmnt\stage-target-python-deps.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\stage-target-python-deps.ps1' -ScriptDir 'C:\bkmnt'
 
 # ── Target-architecture gate ────────────────────────────────────────────────
 # Asserts that everything staged into C:\runtime was actually built for
@@ -326,27 +342,14 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
 # already covered them.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
-# #130 (2026-08-25): the bundle describes ITSELF -- BUNDLE-ENV.cmd/.ps1 (every
-# DLL home, the target python, the wheel store) and BUNDLE-README.md (install
-# steps, the one-time gio-querymodules run on a device, what is absent on this
-# lane in the branches' own words). Both lanes, same facts; three text files,
-# invisible to the arch gate below.
-RUN --mount=type=bind,source=windows/scripts/build/write-bundle-manifest.ps1,target=C:\bkmnt\write-bundle-manifest.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\write-bundle-manifest.ps1' -ScriptDir 'C:\bkmnt'
-# #126 (2026-08-25): on a cross lane, stage the PyPI runtime deps of the
-# bundle's wheels for the TARGET tag (host pip in download mode) and gate that
-# every Requires-Dist resolves inside C:\runtime\wheels. Native lane: notice
-# only (deps are installed into the shipped interpreter itself). Runs BEFORE
-# the arch gate so the downloaded wheels are machine-checked and import-walked
-# like everything else.
-RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,target=C:\bkmnt\stage-target-python-deps.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\stage-target-python-deps.ps1' -ScriptDir 'C:\bkmnt'
 # -ImportWalk (#127): every shipped PE + every wheel's native members must
 # resolve their imports against the bundle, the loader's API sets or this
 # container's System32 names -- CRT excluded from System32 on a cross lane.
+# Mounts ONE module, not the buildmods closure: verify-target-arch.ps1 imports
+# exactly WindowsTargetArch.Common.psm1 (and that module is dependency-free by
+# design). Mounting ten to use one is how a script silently grows a dependency
+# nobody declared — this way an added import fails the gate loudly instead.
 RUN --mount=type=bind,source=windows/scripts/build/verify-target-arch.ps1,target=C:\bkmnt\verify-target-arch.ps1 `
-    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     & 'C:\bkmnt\verify-target-arch.ps1' -Path @('C:\runtime', 'C:\temp\cpython\Lib\site-packages') -Arch $env:WINDOWS_TARGET_ARCH `
         -MinInspected ([int]$env:ARCH_GATE_MIN_INSPECTED) -HostToolPattern $env:ARCH_GATE_HOST_TOOLS -IncludeArchives -ImportWalk

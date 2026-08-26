@@ -724,6 +724,31 @@ function Get-CMakeCrossArgs {
     )
 }
 
+# The x64-targeting MSVC program the BUILD machine needs by name (cl.exe,
+# ml64.exe -- see the native-file comment at the GStreamer call site, arm64
+# run 26). Returns the forward-slash path meson's [binaries] wants; throws when
+# the tool is not under <VC tools root>\bin\HostX64\x64, because a silent
+# fallback to PATH is exactly the ARM64-cl failure this exists to prevent.
+#
+# Here rather than in the merge-lane leaf modules (#134): this is a TARGET-vs-
+# BUILD machine fact, the same axis as every other accessor in this file, and
+# the next cross consumer that needs a build-machine tool by name will look
+# here first. Pure function, no dependency -- it does not break the
+# dependency-free rule above. Fixture test:
+# SourceBuild.BuildMachineMsvcTool.Tests.ps1.
+function Resolve-BuildMachineMsvcTool {
+    param(
+        [Parameter(Mandatory)]
+        [string]$VcToolsDir,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+    if ([string]::IsNullOrWhiteSpace($VcToolsDir)) { throw "Resolve-BuildMachineMsvcTool: no VC tools root (LIB carried no VC\Tools\MSVC entry and Get-MsvcToolsRoot found none) -- cannot name the build machine's $Name" }
+    $tool = Join-Path $VcToolsDir "bin\HostX64\x64\$Name"
+    if (-not (Test-Path $tool -PathType Leaf)) { throw "Resolve-BuildMachineMsvcTool: $tool not found -- the build machine's libffi needs the x64-targeting $Name (VC.Tools.x86.x64 component)" }
+    return ($tool -replace '\\', '/')
+}
+
 Export-ModuleMember -Function @(
     'Get-SupportedWindowsTargetArches',
     'Get-WindowsTargetArch',
@@ -758,5 +783,6 @@ Export-ModuleMember -Function @(
     'Get-WindowsTargetKernelSimdFlags',
     'Get-MlasKernelTuPattern',
     'Get-MlasKernelTuMinimum',
-    'Get-CMakeCrossArgs'
+    'Get-CMakeCrossArgs',
+    'Resolve-BuildMachineMsvcTool'
 )

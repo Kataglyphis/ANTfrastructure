@@ -41,22 +41,6 @@ COPY windows/scripts/build/cpython-Directory.Build.props C:\temp\cpython\PCbuild
 ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
 ENV PATH=$PYTHON_BUILD_BIN;$PATH
 
-# ── classic-lane target (docker run + commit) ────────────────────────────────
-# #52 (2026-08-19): the script/module/versions.env COPYs moved OUT of the
-# shared `builder` ancestry into this classic-only stage - docker run has no
-# bind mounts, so the run+commit path needs the files IN the image, but the BK
-# lane's `built` stage must not re-pay the CPython compile whenever one of
-# them is edited (the module is shared by ~30 scripts). build.ps1 pins
-# `--target builder-classic`.
-FROM builder AS builder-classic
-# Shared module for build-toolchain-all.ps1's nuget pre-seed (Invoke-DownloadWithRetry).
-COPY windows\scripts\modules\WindowsScripts.Shared.psm1 C:\temp\scripts\modules\
-# Re-COPY versions.env (same pattern as the media builders): base bakes a copy
-# at ITS build time, so NUGET_VERSION/NUGET_EXE_SHA256 bumps would silently lag
-# until a base rebuild — build-toolchain-all.ps1 re-reads this file at run time.
-COPY linux\scripts\01-core\versions.env C:\temp\versions.env
-COPY windows\scripts\build\build-toolchain-all.ps1 C:\temp\scripts\
-
 # ── BuildKit lane (buildctl --opt target=built) ──────────────────────────────
 # Under buildkitd/containerd this host commits PROCESS-isolated layers and RUN
 # steps see all host CPUs, so the heavy compile can be a plain LAYER — no

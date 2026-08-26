@@ -19,8 +19,6 @@
 Describe 'Invoke-MesonBuildSubprojectPatch' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
-                                       -FunctionName 'Invoke-MesonBuildSubprojectPatch')
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-meson-' + [guid]::NewGuid().ToString('N'))
         New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
 

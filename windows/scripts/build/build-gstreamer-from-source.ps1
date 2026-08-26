@@ -97,6 +97,21 @@ $sourceBuildModule = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Comm
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildModule)))) { Import-Module $sourceBuildModule }
 
+# Merge-lane leaf modules (#134). These carry the meson plumbing and the rust
+# repair that used to be defined in this file. They are mounted by
+# Dockerfile.media-merge-builder ONLY -- NOT by media-builder's `buildmods` --
+# so editing them costs the GStreamer layer and nothing else. That is the whole
+# point of the move: while these bodies lived here they were stage-local and
+# cheap, but they were also untestable except through this script's AST, and
+# three of them are pure functions with fixture tests. Do not "simplify" this
+# by folding them into WindowsSourceBuild.Common -- that module is in the
+# 6-module closure mounted into all 11 media/merge RUNs.
+foreach ($leafModule in @('WindowsMeson.Common.psm1', 'WindowsRustToolchain.Common.psm1')) {
+    $leafPath = Join-Path $scriptAssetRoot "modules\$leafModule"
+    if (-not (Test-Path $leafPath)) { throw "Required module not found: $leafPath" }
+    if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($leafPath)))) { Import-Module $leafPath }
+}
+
 # Target-arch state, resolved ONCE here rather than at first use. Several
 # decisions far apart in this file depend on it -- the compiler-rt builtins
 # selection, the mandatory-plugin contract, the tflite pre-flight, the meson
@@ -120,331 +135,6 @@ Start-StructuredLogging -Context $logContext
 
 function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
-}
-
-# meson 1.12.0 (master identical, checked 2026-08-26) mishandles "build-only"
-# subprojects -- the copy of a subproject meson configures for the BUILD machine
-# when a cross build asks for `native: true`. Nothing in this monorepo asks for
-# that explicitly; meson's own gnome module does (`gnome.mkenums_simple` ->
-# find_tool -> dependency('glib-2.0', native: true, required: false)), so under
-# forcefallback every cross configure runs glib's meson.build a second time for
-# the build machine. That copy is never needed (glib-mkenums/genmarshal are
-# python scripts resolved through the host glib's override), but three meson
-# bugs turn its mere ATTEMPT into missing plugins -- measured arm64 runs 25-27:
-#
-#  (1) Interpreter.summary is keyed by NAME and shared across interpreters, so
-#      the second glib configure throws "Summary section 'Build environment'
-#      already have key 'host cpu'" (glib meson.build:2777) and glib(build)
-#      fails. Left in place on purpose: a build-machine glib that configures
-#      is a build-machine glib that COMPILES (run 26/27: 5772 targets, then
-#      'glibconfig.h' file not found), and nothing consumes it.
-#  (2) do_subproject's failure paths call disabled_subproject(subp_name,
-#      exception=e) WITHOUT for_machine, whose default is HOST -- the failed
-#      build-machine holder overwrites the healthy HOST glib holder. That is
-#      the poison: libnice's anonymous dependency('', fallback: ['glib',
-#      'libglib_dep']) reaches glib by name and gets 'Subproject
-#      "subprojects/glib" required but not found' (the gio-2.0 lookup survives
-#      because overrides are a different table), webrtc/nice vanish, and every
-#      later native:true request re-runs the whole failing configure because
-#      the BUILD key never received the disabled entry (30+ times on run 25).
-#      PATCHED: pass for_machine at both sites.
-#  (3) Targets and include dirs of a build-only subproject live under
-#      `build.<subdir>` (build.py: BuildProject.prefix), but configure_file
-#      writes to the UNprefixed self.subdir -- the build machine's
-#      glibconfig.h/config.h/fficonfig.h land in, and overwrite, the HOST
-#      subproject's build dir (run 27: the build compile could not find them
-#      where its -I pointed; the host compile silently used x64 configs).
-#      PATCHED: configure_file's output path and returned File carry the
-#      project prefix, exactly like targets do.
-#
-# Net effect: glib(build) still dies at (1), is now recorded under BUILD only,
-# clobbers nothing, gnome.find_tool falls through to the host override as
-# designed, libnice and webrtc configure. Idempotent (one marker per fix);
-# throws when either site count is off -- load-bearing on the cross lane, a
-# silent miss reappears as the libnice error two hours later. Upstream draft:
-# out/upstream-issue-meson-summary-build-subproject.md (all three).
-#
-# Lives HERE, not in a module, on purpose -- and the reason is NOT that a whole
-# modules dir is mounted (it never was; `buildmods` is a curated 6-module stage,
-# see Dockerfile.media-builder). It is that those six ARE the closure
-# (WindowsSourceBuild.Common imports the other five), they are mounted into all
-# 11 media/merge RUNs, AND the classic lane COPYs the same six into `common`,
-# the ancestor of every BK compile stage -- so editing ANY module re-keys every
-# media branch on both lanes, twice over. A stage script is mounted per FILE
-# into the RUNs that need it; this one only reaches the merge RUN. Backlog #134
-# is the wave that makes per-branch modules possible. The fixture test
-# (SourceBuild.MesonBuildSubprojectPatch.Tests.ps1) extracts the function from
-# this file's AST.
-function Invoke-MesonBuildSubprojectPatch {
-    param(
-        [Parameter(Mandatory)]
-        [string]$InterpreterPath
-    )
-    if (-not (Test-Path $InterpreterPath -PathType Leaf)) { throw "Invoke-MesonBuildSubprojectPatch: $InterpreterPath not found" }
-    $text = [System.IO.File]::ReadAllText($InterpreterPath)
-    $applied = @()
-
-    # (2) failed build-only subprojects must be recorded under THEIR machine.
-    $markerKey = '[kataglyphis meson build-subproject machine-key fix]'
-    if ($text -notmatch [regex]::Escape($markerKey)) {
-        # [ \t] rather than \s in the line anchors: \s matches the newline and a
-        # trailing `\s*$` swallows the blank line after a site (measured in the
-        # fixture test -- one line fewer after patching).
-        $rxKey = '(?m)^([ \t]+return self\.disabled_subproject\(subp_name, exception=e)\)[ \t]*$'
-        $hits = [regex]::Matches($text, $rxKey).Count
-        if ($hits -ne 2) { throw "Invoke-MesonBuildSubprojectPatch: expected exactly 2 'disabled_subproject(subp_name, exception=e)' sites in $InterpreterPath, found $hits -- meson layout changed; the cross lane would lose webrtc/nice without this fix" }
-        $text = [regex]::Replace($text, $rxKey, ('$1, for_machine=for_machine)  # ' + $markerKey))
-        $applied += 'machine-key'
-    }
-
-    # (3) configure_file outputs of a build-only subproject go to its prefixed dir.
-    $markerCf = '[kataglyphis meson build-subproject configure_file fix]'
-    if ($text -notmatch [regex]::Escape($markerCf)) {
-        $rxCfPath = '(?m)^(        ofile_rpath = os\.path\.join\()self\.subdir(, build_subdir, output\))[ \t]*$'
-        $rxCfFile = '(?m)^(        return mesonlib\.File\.from_built_file\()self\.subdir(, output\))[ \t]*$'
-        foreach ($rx in @($rxCfPath, $rxCfFile)) {
-            $n = [regex]::Matches($text, $rx).Count
-            if ($n -ne 1) { throw "Invoke-MesonBuildSubprojectPatch: expected exactly 1 configure_file site for '$rx' in $InterpreterPath, found $n -- meson layout changed" }
-        }
-        $text = [regex]::Replace($text, $rxCfPath, ('$1self.current_build_project().prefix + self.subdir$2  # ' + $markerCf))
-        $text = [regex]::Replace($text, $rxCfFile, ('$1self.current_build_project().prefix + self.subdir$2  # ' + $markerCf))
-        $applied += 'configure_file'
-    }
-
-    if ($applied.Count -gt 0) {
-        [System.IO.File]::WriteAllText($InterpreterPath, $text)
-        Write-Host "Patched meson build-subproject fixes ($($applied -join ', ')) ($InterpreterPath)"
-    } else {
-        Write-Host "meson build-subproject fixes already applied ($InterpreterPath)"
-    }
-    return $true
-}
-
-# meson-log.txt for the monorepo is 400k-800k lines (every subproject's cached
-# probe sources are inlined) and streaming all of it through `log` after a failed
-# `meson setup` took 30-60 min per attempt on arm64 runs 23-25 -- longer than the
-# configure itself, and the diagnosis was always in a handful of lines. Keep
-# what carries a diagnosis: every ERROR / Exception / "required but not found" /
-# "conflicts with" / "buildable: NO" / "Cannot run cross" line with its 1-based
-# line number, the $BlockContext lines after a "Sanity check compile stderr:" or
-# "Sanity check compiler command line:" header (the block runs 23 and 24 hid
-# in), and the last $TailLines lines. Deliberately NOT `error:`/`WARNING`: every
-# feature probe that legitimately fails leaves `error:` lines, and they would
-# fill the cap before the real failure. The full file stays at its path inside
-# the preserved failed container; the caller's retry classification still scans
-# every line. Pure function (fixture test SourceBuild.MesonLogExcerpt.Tests.ps1).
-function Select-MesonLogExcerpt {
-    param(
-        [AllowEmptyCollection()]
-        [string[]]$Lines = @(),
-        [int]$TailLines = 300,
-        [int]$MaxDiagnostics = 400,
-        [int]$BlockContext = 12
-    )
-    $diagPattern  = 'ERROR|Exception|required but not found|conflicts with|is buildable: NO|Cannot run cross'
-    $blockPattern = 'Sanity check compile stderr:|Sanity check compiler command line:'
-    $picked = New-Object 'System.Collections.Generic.List[string]'
-    $total = @($Lines).Count
-    $keepUntil = -1
-    $diagCount = 0
-    # -cmatch on purpose: -match is case-insensitive and `ERROR` would catch every
-    # probe's `error:` line (the noise this excerpt exists to drop).
-    for ($i = 0; $i -lt $total; $i++) {
-        $line = $Lines[$i]
-        $isBlock = $line -cmatch $blockPattern
-        $isDiag  = $isBlock -or ($line -cmatch $diagPattern)
-        if ($isBlock) { $keepUntil = $i + $BlockContext }
-        if ($isDiag) { $diagCount++ }
-        if (($isDiag -or $i -le $keepUntil) -and $picked.Count -lt $MaxDiagnostics) {
-            $picked.Add(('{0,7}: {1}' -f ($i + 1), $line))
-        }
-    }
-    $tailCount = [Math]::Min($TailLines, $total)
-    # Explicit empty array: `$x = if (...) { } else { @() }` hands back $null.
-    [string[]]$tail = @()
-    if ($tailCount -gt 0) { $tail = @($Lines[($total - $tailCount)..($total - 1)]) }
-    [pscustomobject]@{
-        Total           = $total
-        DiagnosticTotal = $diagCount
-        Diagnostics     = [string[]]@($picked.ToArray())
-        Tail            = $tail
-    }
-}
-
-# Classifies a failed `meson setup` for the retry decision (the two costumes are
-# explained at the call site): HardError = `meson.build:LINE:COL: ERROR/Exception`
-# lines anywhere; NetworkError = download/DNS/TLS signatures. The network scan
-# covers meson's stdout plus only the LAST $NetworkTail lines of meson-log.txt,
-# with word boundaries on the exception names -- meson-log.txt inlines every
-# probe's source, and on arm64 run 25 the unbounded case-insensitive `SSLError`
-# matched the SDK constant `BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE` (urlmon.h)
-# inside one of them, turning a deterministic failure into a "transient" retry:
-# a full wrap re-download, the identical failure, a second log dump -- an hour
-# for nothing. A real download failure is fatal to configure, so its text sits
-# at the end of the log. Pure function (SourceBuild.MesonFailureClass.Tests.ps1).
-function Get-MesonSetupFailureClass {
-    param(
-        [AllowEmptyCollection()]
-        [string[]]$Output = @(),
-        [AllowEmptyCollection()]
-        [string[]]$LogLines = @(),
-        [int]$NetworkTail = 400
-    )
-    $all = @($Output) + @($LogLines)
-    [string[]]$hard = @($all -match 'meson\.build:\d+:\d+: (ERROR|Exception)')
-    $logTotal = @($LogLines).Count
-    $tailCount = [Math]::Min($NetworkTail, $logTotal)
-    [string[]]$scan = @($Output)
-    if ($tailCount -gt 0) { $scan += @($LogLines[($logTotal - $tailCount)..($logTotal - 1)]) }
-    [string[]]$network = @($scan -match 'HTTP Error \d+|Failed to download|\bURLError\b|\bSSLError\b|urlopen error|\btimed out\b|connection timeout|actively refused|Temporary failure in name resolution')
-    [pscustomobject]@{
-        HardError    = $hard
-        NetworkError = $network
-    }
-}
-
-# The x64-targeting MSVC program the BUILD machine needs by name (cl.exe,
-# ml64.exe -- see the native-file comment at the call site, arm64 run 26).
-# Returns the forward-slash path meson's [binaries] wants; throws when the tool
-# is not under <VC tools root>\bin\HostX64\x64, because a silent fallback to
-# PATH is exactly the ARM64-cl failure this exists to prevent. Pure function
-# (fixture test SourceBuild.BuildMachineMsvcTool.Tests.ps1).
-function Resolve-BuildMachineMsvcTool {
-    param(
-        [Parameter(Mandatory)]
-        [string]$VcToolsDir,
-        [Parameter(Mandatory)]
-        [string]$Name
-    )
-    if ([string]::IsNullOrWhiteSpace($VcToolsDir)) { throw "Resolve-BuildMachineMsvcTool: no VC tools root (LIB carried no VC\Tools\MSVC entry and Get-MsvcToolsRoot found none) -- cannot name the build machine's $Name" }
-    $tool = Join-Path $VcToolsDir "bin\HostX64\x64\$Name"
-    if (-not (Test-Path $tool -PathType Leaf)) { throw "Resolve-BuildMachineMsvcTool: $tool not found -- the build machine's libffi needs the x64-targeting $Name (VC.Tools.x86.x64 component)" }
-    return ($tool -replace '\\', '/')
-}
-
-# Makes `rustup target add <triple>` possible in an image whose rustup was fed
-# from a local mirror that is gone (#128 / #133). setup-rust-toolchain.ps1
-# rewrote the channel manifest's URLs to file:///<mirror>/dist/<date>/<file>
-# and deleted the mirror after the install; the cached manifest under
-# <rustup home>\toolchains\<tc>\lib\rustlib\multirust-channel-manifest.toml
-# still names every component with that URL AND upstream's sha256. Fetching
-# exactly that tarball from static.rust-lang.org into the path the manifest
-# expects gives rustup a file it can hash-verify against the pinned manifest
-# -- the pin stays the authority, the network only supplies the bytes.
-# Returns a one-line verdict (never throws): the caller's staticlib probe is
-# the gate. -Downloader is injectable for the fixture test.
-function Install-RustTargetStdFromPinnedManifest {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Triple,
-        [string]$RustupHome = '',
-        [string]$UpstreamRoot = 'https://static.rust-lang.org',
-        [scriptblock]$Downloader = $null
-    )
-    if ([string]::IsNullOrWhiteSpace($RustupHome)) {
-        $RustupHome = if ($env:RUSTUP_HOME) { $env:RUSTUP_HOME } else { Join-Path $env:USERPROFILE '.rustup' }
-    }
-    $manifests = @(Get-ChildItem -Path (Join-Path $RustupHome 'toolchains') -Recurse -Filter 'multirust-channel-manifest.toml' -File -ErrorAction SilentlyContinue)
-    if ($manifests.Count -eq 0) { return "rust-std ${Triple}: no cached channel manifest under $RustupHome -- leaving `rustup target add` to its own devices" }
-    $manifest = [System.IO.File]::ReadAllText($manifests[0].FullName)
-    # The rust-std package block names its per-target tarball; take the xz one.
-    $rx = '(?s)\[pkg\.rust-std\.target\.' + [regex]::Escape($Triple) + '\](.*?)(?=\r?\n\[pkg\.)'
-    $m = [regex]::Match($manifest, $rx)
-    if (-not $m.Success) { return "rust-std ${Triple}: the pinned manifest has no [pkg.rust-std.target.$Triple] block -- upstream ships no std for it" }
-    $block = $m.Groups[1].Value
-    $urlM = [regex]::Match($block, 'xz_url\s*=\s*"([^"]+)"')
-    if (-not $urlM.Success) { return "rust-std ${Triple}: no xz_url in the manifest block" }
-    $url = $urlM.Groups[1].Value
-    if ($url -notmatch '^file:///') { return "rust-std ${Triple}: manifest URL is not a file:// mirror path ($url) -- nothing to pre-seed" }
-    # file:///C:/.../rustup-dist/dist/<date>/<file> -> local path + dist-relative part
-    $local = [uri]::UnescapeDataString(($url -replace '^file:///', '')) -replace '/', '\'
-    $relM = [regex]::Match($url, '/(dist/[^/]+/[^/]+\.tar\.xz)$')
-    if (-not $relM.Success) { return "rust-std ${Triple}: cannot derive the dist-relative path from $url" }
-    $upstream = "$($UpstreamRoot.TrimEnd('/'))/$($relM.Groups[1].Value)"
-    if (Test-Path $local -PathType Leaf) { return "rust-std ${Triple}: $local already present" }
-    New-Item -Path (Split-Path $local -Parent) -ItemType Directory -Force | Out-Null
-    try {
-        if ($Downloader) { & $Downloader $upstream $local }
-        else { Invoke-DownloadWithRetry -Url $upstream -DestinationPath $local -Description "rust-std $Triple (pinned manifest, upstream bytes)" }
-    } catch {
-        return "rust-std ${Triple}: download of $upstream failed ($($_.Exception.Message)) -- rustup will report the missing mirror file"
-    }
-    if (-not (Test-Path $local -PathType Leaf)) { return "rust-std ${Triple}: downloader produced no file at $local" }
-    return "rust-std ${Triple}: fetched $upstream -> $local ($([math]::Round((Get-Item $local).Length / 1MB, 1)) MB); rustup verifies it against the pinned manifest hash"
-}
-
-# Downloads one wrap source archive with curl (see the UA note inside) and
-# writes it to $DestinationPath. Shared by the wrap pre-extraction loop and the
-# libffi force-download below, which used to carry two copies of this body.
-# (The block that used to sit here described Expand-SubprojectArchive, 40 lines
-# down, and read as if THIS function extracted — corrected 2026-08-26.)
-function Invoke-WrapDownload {
-    param(
-        [Parameter(Mandatory)][string]$Url,
-        [Parameter(Mandatory)][string]$DestinationPath,
-        [string]$Description = ''
-    )
-    # freedesktop/videolan GitLab sit behind the Anubis anti-scraper: browser
-    # User-Agents without JS get an HTML challenge page, plain curl UAs pass.
-    # The shared Invoke-DownloadWithRetry sends a browser UA (right for the
-    # CDNs it serves) - on verify10 it "downloaded" 7 challenge pages and the
-    # #88 gate refused them all (correctly, but for the wrong-looking reason:
-    # "extraction failed"). Verified 2026-08-17: same URL, browser UA = 7.5 KB
-    # HTML, curl UA = 400 KB BZh. So wraps go through curl.exe with its native
-    # UA + a magic-byte check. Deliberately NOT a Shared.psm1 change: the
-    # module is frozen mid-chain (an edit there busts every media stage cache).
-    $label = if ($Description) { $Description } else { $Url }
-    for ($attempt = 1; $attempt -le 4; $attempt++) {
-        # --fail: 4xx/5xx exit non-zero instead of saving the error body.
-        $curlOut = & curl.exe --fail --location --silent --show-error --connect-timeout 30 -o $DestinationPath $Url 2>&1
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $DestinationPath) -and (Get-Item $DestinationPath).Length -ge 3) {
-            $head = [byte[]](Get-Content -Path $DestinationPath -AsByteStream -TotalCount 3)
-            $isGzip  = ($head[0] -eq 0x1f -and $head[1] -eq 0x8b)
-            $isBzip2 = ($head[0] -eq 0x42 -and $head[1] -eq 0x5a -and $head[2] -eq 0x68)  # 'BZh'
-            if ($isGzip -or $isBzip2) { return }
-            log "attempt ${attempt}: $label returned non-archive bytes ($($head -join ' ')) - likely an HTML challenge/error page"
-        } else {
-            log "attempt ${attempt}: curl exit $LASTEXITCODE for $label - $curlOut"
-        }
-        Remove-Item -Path $DestinationPath -Force -ErrorAction SilentlyContinue
-        if ($attempt -lt 4) { Start-Sleep -Seconds (3 * $attempt) }
-    }
-    throw "download failed after 4 attempts: $label"
-}
-
-# Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
-# beside $Target (7z two-pass: decompress, then untar the LARGEST inner .tar --
-# the module's Expand-SourceTarball takes the first instead), then moves the
-# single top-level source dir onto $Target. Returns $true when a directory was
-# moved. Both 7z passes are exit-checked; see the note inside.
-function Expand-SubprojectArchive {
-    param(
-        [Parameter(Mandatory)][string]$Archive,
-        [Parameter(Mandatory)][string]$Target
-    )
-    $extractDir = Join-Path (Split-Path -Parent $Target) ('_ext_' + (Split-Path -Leaf $Target))
-    New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
-    # Both passes are exit-checked (2026-08-26 audit): they used to swallow
-    # stdout AND stderr with no check, so a truncated or HTML-instead-of-archive
-    # download surfaced far downstream as "meson could not find the subproject"
-    # instead of naming the extraction failure -- the exact symptom
-    # Expand-SourceTarball's comment records having fixed once already.
-    cmd.exe /c "7z.exe x ""$Archive"" -o""$extractDir"" -y >nul 2>&1"
-    if ($LASTEXITCODE -ne 0) { throw "Expand-SubprojectArchive: 7z failed (exit $LASTEXITCODE) on $Archive -- truncated download or not an archive (size $((Get-Item $Archive -ErrorAction SilentlyContinue).Length) bytes)" }
-    $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
-    if ($tarFile) {
-        cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
-        if ($LASTEXITCODE -ne 0) { throw "Expand-SubprojectArchive: 7z failed (exit $LASTEXITCODE) on the inner tar of $Archive" }
-        Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
-    }
-    $extracted = @(Get-ChildItem -Path $extractDir -Directory)
-    $moved = $false
-    if ($extracted.Count -ge 1) {
-        Move-Item -Path $extracted[0].FullName -Destination $Target -Force
-        $moved = $true
-    }
-    Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-    return $moved
 }
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available
@@ -680,7 +370,10 @@ try {
             $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
             log "Pre-extracting $fname..."
             try {
-                Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)"
+                # -Logger: `log` is a closure over $logContext and could not follow
+                # the function into WindowsMeson.Common (#134). Without it the
+                # per-attempt lines would go to Write-Host and miss the structured log.
+                Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)" -Logger { param($m) log $m }
                 if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
                     Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
                     log "Pre-extracted $fname to $target"
@@ -705,7 +398,7 @@ try {
         $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
         $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
         try {
-            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer"
+            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer" -Logger { param($m) log $m }
             if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
                 log 'Force-pre-extracted libffi'
             } else {

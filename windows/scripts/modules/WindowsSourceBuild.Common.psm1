@@ -874,6 +874,73 @@ function Invoke-PythonWheelBuild {
     return Install-StagedPythonWheel -Python $Python -SourceDir $DistDir -ModuleName $ModuleName -NoDeps:$NoDeps
 }
 
+# Writes the dist-info a binary wheel needs (METADATA, WHEEL, top_level.txt)
+# into an already-laid-out package tree; `python -m wheel pack` then produces
+# RECORD + the archive and names it from WHEEL's Tag line.
+#
+# Here rather than in a TVM leaf module (#134): assembling a wheel by hand is
+# what every cross consumer scikit-build-core cannot build has to do, and TVM
+# was simply the first. Generic in every parameter -- nothing TVM-shaped
+# survives in the body. Fixture test: SourceBuild.TvmAssembledWheel.Tests.ps1.
+function Write-AssembledWheelDistInfo {
+    param(
+        [Parameter(Mandatory)][string]$Name,        # distribution name, e.g. apache-tvm-ffi
+        [Parameter(Mandatory)][string]$Version,     # PEP 440
+        [Parameter(Mandatory)][string]$PackageRoot, # dir whose child dirs are the top-level packages
+        [string]$PythonTag = 'cp314',
+        [string]$AbiTag = 'cp314',
+        [string]$PlatformTag = 'win_arm64',
+        [string[]]$RequiresDist = @(),
+        [string]$RequiresPython = '',
+        [string]$Summary = '',
+        [string]$Generator = 'kataglyphis-assembled-wheel'
+    )
+    if (-not (Test-Path $PackageRoot -PathType Container)) { throw "Write-AssembledWheelDistInfo: package root $PackageRoot does not exist" }
+    $distName = ($Name -replace '[-_.]+', '_')
+    $distInfo = Join-Path $PackageRoot "$distName-$Version.dist-info"
+    New-Item -Path $distInfo -ItemType Directory -Force | Out-Null
+    $meta = @('Metadata-Version: 2.1', "Name: $Name", "Version: $Version")
+    if ($Summary) { $meta += "Summary: $Summary" }
+    if ($RequiresPython) { $meta += "Requires-Python: $RequiresPython" }
+    foreach ($r in $RequiresDist) { if ($r) { $meta += "Requires-Dist: $r" } }
+    [System.IO.File]::WriteAllText((Join-Path $distInfo 'METADATA'), (($meta -join "`n") + "`n"))
+    $wheelMeta = @('Wheel-Version: 1.0', "Generator: $Generator", 'Root-Is-Purelib: false', "Tag: $PythonTag-$AbiTag-$PlatformTag")
+    [System.IO.File]::WriteAllText((Join-Path $distInfo 'WHEEL'), (($wheelMeta -join "`n") + "`n"))
+    $top = @(Get-ChildItem -Path $PackageRoot -Directory | Where-Object { $_.Name -notlike '*.dist-info' } | ForEach-Object { $_.Name })
+    if ($top.Count -eq 0) { throw "Write-AssembledWheelDistInfo: no top-level package directory under $PackageRoot" }
+    [System.IO.File]::WriteAllText((Join-Path $distInfo 'top_level.txt'), (($top -join "`n") + "`n"))
+    return $distInfo
+}
+
+# A pyproject's [project] dependencies = [...] block, read from the source
+# tree at build time (never hardcoded here).
+function Get-PyprojectDependencies {
+    param([Parameter(Mandatory)][string]$PyprojectText)
+    # The list closes at the first `]` that ends a line (optionally followed by a
+    # comment) -- this covers the one-line form `dependencies = ["x>=1"]` (tvm-ffi)
+    # and the multi-line form (TVM) alike, and never runs past the list into
+    # [project.urls] / [project.optional-dependencies] (arm64 run 33: the
+    # assembled tvm-ffi wheel declared its Homepage URL, ninja and torch as
+    # requirements). An extras marker like "pkg[cuda]" has its `]` followed by
+    # a quote, not the end of line, so it stays inside the capture.
+    # Two steps (run 34): first the [project] table body -- up to the next
+    # table header at a line start ([project.urls], [tool.*]) or the end -- then
+    # the list inside it. The one-regex form that forbade any `[` between the
+    # header and `dependencies` matched nothing once `classifiers = [`,
+    # `authors = [{...}]` or `keywords = [` preceded the list (both pyprojects
+    # do), and the assembled wheels shipped with NO requirements: a defect the
+    # deps gate cannot see, because fewer requirements only ever make it greener.
+    # `\r?` before every `$`: .NET's multiline `$` matches only immediately
+    # before `\n`, so a CRLF file (git checks these out with core.autocrlf on
+    # Windows -- arm64 runs 34/35, while the same text parses locally with LF)
+    # never satisfies `...[ \t]*$` and the whole list silently comes back empty.
+    $tbl = [regex]::Match($PyprojectText, '(?ms)^\[project\][ \t]*(?:#[^\r\n]*)?\r?$(.*?)(?=^\[|\z)')
+    if (-not $tbl.Success) { return @() }
+    $m = [regex]::Match($tbl.Groups[1].Value, '(?ms)^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\r\n]*)?\r?$')
+    if (-not $m.Success) { return @() }
+    return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+}
+
 function Assert-WheelTargetArch {
     # Opens a staged wheel and PE-checks every .pyd/.dll/.exe member against
     # the TARGET machine; also asserts the filename carries the target's
@@ -2198,6 +2265,8 @@ Export-ModuleMember -Function @(
     'Assert-PythonExtensionTag',
     'Get-PeImportNames',
     'Assert-WheelTargetArch',
+    'Write-AssembledWheelDistInfo',
+    'Get-PyprojectDependencies',
     'Get-PeFileMachine',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
