@@ -183,6 +183,30 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   The host suite structurally cannot see what these check: #131's ride found three defects the
   tests could not, which is why the bundled regression is the acceptance criterion and 704/704 is
   only the entry ticket.
+  **RUN 37 (arm64, 2026-08-26) FAILED — and it proved the point above.** media-core, media-litert
+  and media-tvm ALL BUILT (so `tvmmods`, the leaf modules and the deleted classic stages are
+  sound); the merge stage then died two hours in at `PHASE: 6. meson setup` with
+  `The term 'Resolve-BuildMachineMsvcTool' is not recognized`. Cause: promoting that function into
+  `WindowsTargetArch.Common` and exporting it THERE, while `build-gstreamer-from-source.ps1` reaches
+  the arch API through `WindowsSourceBuild.Common`'s RE-EXPORT list, which I did not extend.
+  `Modules.ReExport.Tests.ps1` checks the opposite direction only. Fixed in `9bf0ef41`, together
+  with a gate for the class — `Modules.ScriptCallClosure.Tests.ps1` proves, in a FRESH pwsh
+  importing only what each script imports, that every module function a build script CALLS resolves.
+  It immediately found a second, unplanted instance: `build-tvm-from-source.ps1` calls
+  `Get-PreferredToolPath`, latent because its call site sits in `elseif (-not $llvmConfig)` — skipped
+  on cross (runtime-only) and on amd64 (scoop puts llvm-config on PATH). Note the gate replaced a
+  2 h build with a 7 s check for this defect class: it reproduces the container's exact condition
+  (cold session, only the declared imports). 705/705.
+  **The run plan changed after run 37.** A version bump landed mid-run (`4665bad4` + `51b0768b`):
+  `CMAKE_VERSION` 4.4.2→4.4.3 and `PWSH_VERSION` 7.6.4→7.6.5 both hit `Dockerfile.base`, and
+  `smoke-test-container.ps1:242` HARD-asserts cmake against the pin — so every Windows build fails
+  its own smoke gate until the base is rebuilt, and PWSH is layer 1, which invalidates the whole
+  chain anyway. There is therefore no cheap re-run: the fix itself is in `WindowsSourceBuild.Common`,
+  a tier-1 module mounted into every media RUN. Acceptance is now ONE full chain from `base`
+  (arm64 first — it exercises more of the new code), then amd64 `media,final` on the shared base.
+  This confounds #134 with the bumps; the mitigation is that the compiler is unchanged
+  (`LLVM_WINDOWS_VERSION` stays 22.1.8 — upstream ships no win64 installer for 23.1.0, verified
+  404), so nothing that shapes compiled output moved.
   **What landed.** Three leaf modules, each mounted only by the RUNs that call it:
   `WindowsMeson.Common` (the 3 meson helpers + `Invoke-WrapDownload` + `Expand-SubprojectArchive`)
   and `WindowsRustToolchain.Common` (`Install-RustTargetStdFromPinnedManifest`) in the merge
