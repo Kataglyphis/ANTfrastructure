@@ -720,6 +720,58 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   classic lane's chained merge and never wired it. Deleting it is free; wiring it needs a
   `merge`-stage COPY plus a `-RunCommand` change. Either is fine — leaving a dead fix script for
   a known-broken lane is not.
+  **DECIDED 2026-08-26 (owner): the classic lane is RETIRED.** Landed free, no rebuild:
+  `build.ps1` throws unless `-AcceptRetiredLane` (the four structural reasons are in its header
+  and in `docs/windows-build-lanes.md` § The classic lane was retired); `build-merge-all.ps1`
+  deleted; parity check **B6 removed** from `BuildKit.SolveOrderParity.Tests.ps1` (702→701 tests,
+  floor 690 unchanged) because its only possible failure became "the retired lane would break";
+  AGENTS.md, README.md, `docs/{overview,project-info,windows-builds,windows-build-lanes,
+  windows-host-setup}.md` corrected — `windows-builds.md` had said the lane "remains fully
+  supported". Verified while landing: the four missing steps sit behind `FROM merge-fanin AS built`
+  (`Dockerfile.media-merge-builder:229`) while classic pins `merge` (`:208`), AND all four are
+  `RUN --mount=type=bind`, which dockerd cannot execute — so reviving the lane is a redesign into
+  COPY stages, not a target-pin move. That closes finding (iii): **step (1) collapses** (no classic
+  leaves to re-anchor on `buildmods`) and the wave is now step (2) `tvmmods` plus the ride-alongs.
+  **New ride-along, PAID (re-keys media layers, hence #134 and not free):** delete the now-unpoliced
+  classic-only surface from `Dockerfile.media-builder` — the `--target media-core|media-litert|
+  media-tvm` COPY stages — and the `builder-classic` and `merge` targets in
+  `Dockerfile.toolchain-builder` / `Dockerfile.media-merge-builder`. Until that lands the COPY
+  lists are dead code with no gate on them; the removal comment in the B6 slot says so.
+  **Exact cut list (mapped 2026-08-26, every line verified against the tree).** Dockerfile stages
+  that become unreachable: `builder-classic` (`Dockerfile.toolchain-builder:51`), `media-core`
+  (`media-builder:271`), **`media-core-env`** (`:236`), `media-litert` (`:305`), `media-tvm`
+  (`:338`), `merge` (`media-merge-builder:208`). **Do NOT cut** the shared parents —
+  `media-litert-env` (`:288`), `media-tvm-env` (`:329`), `builder`
+  (`toolchain-builder:17`), `merge-fanin` (`media-merge-builder:74`) — nor either `buildmods`
+  stage, which is BK-only, not classic (this corrects the "B4/B6 are twins" framing). One excision
+  inside a SHARED stage: `media-builder:188-194` COPYs six `.psm1` into `C:\temp\scripts\modules`
+  in `common` for the classic leaves only, so it currently re-keys BK's cache for a retired lane's
+  benefit. Driver-side: eight local functions in `build.ps1` (`Invoke-RunCommitStage:589`,
+  `Invoke-MediaBranchRunCommit:736`, `Invoke-ResumeRunCommit:791`, …) and six
+  `WindowsBuildDriver.Common.psm1` exports with no BK caller (`Set-BuildDriverIsolation:54`,
+  `Invoke-DockerWithRetry:124`, `Get-DockerBuildArgList:201`, `Assert-ImageExists:227`,
+  `Resolve-BuildIsolation:245`, `Assert-DockerDaemon:518`; trim the export list at `:943-951`).
+  `Test-TransientDockerFailure`/`Invoke-TransientCooldown` are SHARED — keep. The isolation-probe
+  chain (`diagnostics/test-process-isolation-commit.ps1`, `Dockerfile.isolation-probe`) is
+  classic-only; `toggle-rdna4-gpu.ps1` is NOT — both lanes reach it.
+  Tests: ~15 fully classic-specific tests survive the free half — whole file
+  `Driver.PreflightParity.Tests.ps1` (4/4), `BuildDriver.Retry.Tests.ps1` `Invoke-DockerWithRetry`
+  + `Get-DockerBuildArgList` (6/17), `BuildKit.TwinParity.Tests.ps1` `:122` + `:150` (plus `:95`
+  and `:109` need the `Classic` key dropped from the `$branches` table at `:59-62`),
+  `Driver.ClosureScope.Tests.ps1:91`, `Dockerfile.ProbeShell.Tests.ps1:66`, and
+  `BuildDriver.HostGates.Tests.ps1:235` needs its classic label shapes trimmed. **Do not simply
+  delete `TwinParity:150`** — it is the LAST gate proving the four BK per-component version-key
+  sets are collectively complete (it reads `media-core-env`'s ARG union). Killing `media-core-env`
+  without a replacement gate silently removes that coverage; write the replacement against the BK
+  stage union in the same commit. CI impact is zero except through `Invoke-Tests.ps1`
+  auto-discovery — no workflow invokes `build.ps1`. Housekeeping: four stale allowlist entries in
+  `.claude/settings.local.json:9,10,14,15`.
+  **Capability actually lost, needs an owner call:** the per-run resource CSV
+  (`out\windows-build-logs\resources-<ts>.csv`) is wired into `build.ps1:910` and NOWHERE else, so
+  no building driver produces it today; `build-resource-sampler.ps1` still works by hand. Wiring it
+  into `build-buildkit.ps1` is a free driver-only change — do it, or drop the sampler. Likewise
+  `-ResumeStage` (15 refs, classic-only): BK's per-stage layer cache covers the common case, but
+  the preserved-container recovery path has no BK equivalent.
   Ride along (all PAID, none worth its own rebuild): **`sharing=locked` on the sccache mount**
   (`Dockerfile.media-builder:576,593`) serialises the two branches `-ConcurrentAux` runs as
   concurrent child solves (`build-buildkit.ps1:669-712`) — and the mount is inert anyway

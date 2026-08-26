@@ -128,7 +128,12 @@ faster configuration to unlock, and the full-chain rebuild of 2026-07-12
   `SCCACHE_WEBDAV_ENDPOINT`) to make *re*builds warm — cold full-chain is
   ~5–6 h with ~2.5 h of that in the media fan-out.
 
-**Per-run resource log.** Every `build.ps1` run samples host CPU / free RAM /
+**Per-run resource log — classic-lane only, and therefore currently unreachable.**
+The sampler is wired into `build.ps1:910` and nowhere else; that driver was retired
+on 2026-08-26, so no *building* driver produces this CSV today. The tool itself
+still works by hand (`build-resource-sampler.ps1 -Summarize -CsvPath <csv>`) on any
+CSV you already have. Wiring it into `build-buildkit.ps1` is an open follow-up
+(backlog #134). What it did, while it ran: every `build.ps1` run samples host CPU / free RAM /
 commit charge / container-VM (`vmmem`) size every 20 s into
 `out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
 phase (`build:<dockerfile>`, `run:<stage>`, `commit:<stage>`), and prints a
@@ -173,7 +178,7 @@ dufs C:\sccache-cache -A -p 5000
 
 # then build with the endpoint (use an IP reachable from inside containers,
 # e.g. the host's LAN IP — not localhost)
-.\windows\build.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
+.\windows\build-buildkit.ps1 -Gpu -SccacheEndpoint http://192.168.1.10:5000
 ```
 
 CMake-based builds (ONNX, GenAI, OpenCV, LiteRT, LiteRT-LM, TVM) then route

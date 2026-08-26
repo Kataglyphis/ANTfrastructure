@@ -86,47 +86,19 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
         Assert-True ($drift.Count -eq 0) ('sccache ARG defaults drifted on shared names: ' + ($drift -join '; '))
     }
 
-    It 'classic COPY and BK mount reference the same build scripts per branch (B6)' {
-        # A script added to the BK mount list and forgotten in the classic COPY
-        # (or vice versa) fails only at the OTHER lane's runtime. Documented
-        # exception: load-versions.ps1 is BK-only — the classic lane gets its
-        # versions through the media-core-env ENV mirror, not the script.
-        $joined = $dfText -replace ('`' + "`r?`n"), ' '
-        $stage = ''
-        $classicSets = @{}; $bkSets = @{}
-        foreach ($line in ($joined -split "`n")) {
-            if ($line -match '^FROM \S+ AS ([\w-]+)') { $stage = $Matches[1] }
-            $names = [regex]::Matches($line, 'windows.scripts.build.([\w.-]+\.ps1)') | ForEach-Object { $_.Groups[1].Value }
-            if (-not $names) { continue }
-            if ($line -match '--mount' -and $line -match 'source=') {
-                if (-not $bkSets.ContainsKey($stage)) { $bkSets[$stage] = [System.Collections.Generic.HashSet[string]]::new() }
-                $names | ForEach-Object { [void]$bkSets[$stage].Add($_) }
-            } elseif ($line.TrimStart().StartsWith('COPY')) {
-                if (-not $classicSets.ContainsKey($stage)) { $classicSets[$stage] = [System.Collections.Generic.HashSet[string]]::new() }
-                $names | ForEach-Object { [void]$classicSets[$stage].Add($_) }
-            }
-        }
-        # Scanner-rot guard (audit 2026-08-21): if the path regex stops
-        # matching (next layout move), both sets go empty and '' -eq ''
-        # would report green while checking nothing.
-        Assert-True ($classicSets.Count -ge 3) "classic COPY scan found only $($classicSets.Count) branch stages — scan broke or layout moved"
-        Assert-True ($bkSets.Count -ge 3) "BK mount scan found only $($bkSets.Count) stages — scan broke or layout moved"
-        $branchMap = @{
-            'media-core'   = @('media-core-built-onnx', 'media-core-built-ffmpeg', 'media-core-built-opencv', 'media-core-built')
-            'media-litert' = @('media-litert-built')
-            'media-tvm'    = @('media-tvm-built')
-        }
-        $bad = @()
-        foreach ($branch in $branchMap.Keys) {
-            $classic = @($classicSets[$branch]) | Sort-Object
-            $bkUnion = @($branchMap[$branch] | ForEach-Object { @($bkSets[$_]) }) |
-                Where-Object { $_ -and $_ -ne 'load-versions.ps1' } | Sort-Object -Unique
-            if (($classic -join ',') -ne ($bkUnion -join ',')) {
-                $bad += "$branch : classic [$($classic -join ', ')] vs bk [$($bkUnion -join ', ')]"
-            }
-        }
-        Assert-True ($bad.Count -eq 0) ("lane script-set drift:`n  " + ($bad -join "`n  "))
-    }
+    # B6 ('classic COPY and BK mount reference the same build scripts per branch')
+    # was REMOVED on 2026-08-26 with the retirement of the docker-classic lane
+    # (windows/build.ps1 — see docs/windows-build-lanes.md § The classic lane was
+    # retired). It policed the classic `--target media-*` COPY lists against the BK
+    # `*-built` bind-mount lists; with no driver able to build those targets, its
+    # only possible failure was "the retired lane would break at a runtime nobody
+    # reaches" — a green gate over dead code, which is the shape this suite exists
+    # to prevent, not to embody.
+    #
+    # The classic COPY stages themselves are still in Dockerfile.media-builder and
+    # are now UNPOLICED. Deleting them re-keys media layers, so it is a ride-along
+    # on the next paid rebuild (backlog #134), not a free change. Until then, treat
+    # any drift between them and the BK mount lists as expected and harmless.
 
     It 'merge-builder buildmods is a superset of media-builder buildmods (B4)' {
         # The 5-module core must stay in step by hand across the two files

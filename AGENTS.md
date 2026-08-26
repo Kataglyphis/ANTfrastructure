@@ -251,9 +251,12 @@ run+commit path, mid-chain failure recovery, and the RDNA4 A/B history.
 
 Four things an agent gets wrong without reading it:
 
-- **The classic lane is NOT a fallback any more.** Twelve Windows Dockerfiles
-  use BuildKit-only `RUN --mount`, so `build.ps1` cannot build `base`
-  (measured 2026-08-21). Reviving it is a deliberate decision.
+- **The classic lane is RETIRED (2026-08-26), not merely a non-fallback.**
+  `build.ps1` refuses to start without `-AcceptRetiredLane`. Two independent
+  structural defects, both verified; reviving it is a redesign, not a target-pin
+  change. Use `build-buildkit.ps1`. Reasoning and the cut list live in
+  [`windows-build-lanes.md`](docs/windows-build-lanes.md) — that page owns this
+  topic; do not restate the reasons here.
 - **`nerdctl` needs an ADMIN shell** — containerd's pipe is Administrator-only
   upstream, and there is no `--group` equivalent. Do not attempt pipe-ACL
   hacks and do not re-litigate it.
@@ -497,7 +500,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `local/kataglyphis:windows-torch`, and final builds FROM it) driven by `windows/build.ps1`, which uses Stevedore's `docker.exe` for builds (`nerdctl build` has broken DNS on Windows). The `windows-sdk` tag is either a plain re-tag of `windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `local/kataglyphis:windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 — see § the classic lane above). The `windows-sdk` tag is either a plain re-tag of `windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 

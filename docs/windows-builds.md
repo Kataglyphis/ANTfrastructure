@@ -131,7 +131,7 @@ The Windows container build uses [Stevedore](https://github.com/slonopotamus/ste
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.4.2, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
 - `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.2.1.2 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
-- The **media stage fans out into three branch images** by `windows/build.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
+- The **media stage fans out into three branch images** by `windows/build-buildkit.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
   - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.2 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `n9.0` (pinned release tag, `FFMPEG_VERSION` in versions.env since 2026-08-04; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
   - **media-litert** (`--target media-litert` + `build-litert-all.ps1`) — LiteRT 2.1.6 (CMake+Ninja; also builds the TFLite C-API lib `tensorflowlite_c`) → LiteRT-LM 0.15.0 (independent of ONNX; built via **Bazel** with `build-litert-lm-bazel.ps1` → `litert_lm_main.exe`. The former CMake export-bridge path (`build-litert-lm-from-source.ps1`) is a frozen fallback, see § Source Patch Policy #7).
   - **media-tvm** (`--target media-tvm` + `build-media-tvm-all.ps1`) — TVM 0.25.0 → IREE (both LLVM-heavy ML compilers; each installs its Python wheels into the source-built CPython; IREE native tools land at `C:\runtime\iree`, `IREE_ROOT`/`IREE_BIN`).
@@ -230,12 +230,16 @@ plugin "nat"` and `nerdctl build` had broken DNS is historical.
 
 ## Build Commands
 
-> **Preferred since 2026-08: the BuildKit/containerd lane** —
-> `.\windows\build-buildkit.ps1 -Gpu` builds the same Dockerfiles with **process
-> isolation** (full host CPUs, no Hyper-V 2-CPU cap, no run+commit) and real
-> per-stage layer caching. One-time host setup + launch: see § BuildKit/containerd
-> lane below. The `build.ps1` commands here are the docker-classic fallback lane
-> (Hyper-V + run+commit) and remain fully supported.
+> **Use the BuildKit/containerd lane** — `.\windows\build-buildkit.ps1 -Gpu` builds
+> the Dockerfiles with **process isolation** (full host CPUs, no Hyper-V 2-CPU cap,
+> no run+commit) and real per-stage layer caching. One-time host setup + launch:
+> see § BuildKit/containerd lane below.
+>
+> **The docker-classic lane (`build.ps1`) was RETIRED on 2026-08-26** and refuses to
+> start without `-AcceptRetiredLane` — why, in
+> [windows-build-lanes.md](windows-build-lanes.md). The `build.ps1` commands below
+> are kept as a record of the retired lane; translate them to `build-buildkit.ps1`,
+> which takes the same `-Stages`/`-MediaBranches`/`-Gpu`.
 
 Use the driver script from the repository root. It parses `linux/scripts/01-core/versions.env`
 and passes every version as `--build-arg` (the Dockerfile ARG defaults are only
@@ -530,13 +534,16 @@ measured against a lowered number. The aarch64 payload itself remains verified s
 multi-hour build ended with "Done" and zero evidence the image worked, in a repo
 whose defect history is dominated by "builds fine, fails to LOAD".
 
-**The CLASSIC driver (`build.ps1`) gates too, since 2026-08-21** — as a
-`docker run` with a DIRECTORY mount of `windows\scripts`: its dockerd has no
-BuildKit `RUN --mount`, and Windows containers reject single-FILE bind mounts
-outright, so the whole scripts directory is mounted instead; `docker run` also
-enters through the ENTRYPOINT naturally (no bare-`RUN` bypass to compensate
-for). Between 2026-08-14 and 2026-08-21 only the BK driver gated — a classic
-chain in that window still ended unverified.
+**The CLASSIC driver (`build.ps1`) gated too, from 2026-08-21 until the lane was
+retired on 2026-08-26** — as a `docker run` with a DIRECTORY mount of
+`windows\scripts`: its dockerd has no BuildKit `RUN --mount`, and Windows
+containers reject single-FILE bind mounts outright, so the whole scripts directory
+was mounted instead; `docker run` also enters through the ENTRYPOINT naturally (no
+bare-`RUN` bypass to compensate for). Between 2026-08-14 and 2026-08-21 only the BK
+driver gated — a classic chain in that window still ended unverified. Retirement
+came from the opposite direction: the gate worked, and it was the gate that proved
+the lane could never pass it (`cv2.CAP_GSTREAMER`, see
+[windows-build-lanes.md](windows-build-lanes.md) § The classic lane was retired).
 
 Three things about the gate are load-bearing:
 
