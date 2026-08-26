@@ -2336,10 +2336,26 @@ Export-ModuleMember -Function @(
     'Get-MlasKernelTuPattern',
     'Get-MlasKernelTuMinimum',
     'Get-CMakeCrossArgs',
+    # Called DIRECTLY by build-gstreamer-from-source.ps1's meson native file
+    # (#134). Omitting it here is invisible to Modules.ReExport.Tests.ps1 --
+    # that suite checks the other direction, that every LISTED name resolves --
+    # and cost arm64 run 37 two hours: media-core, litert and tvm all built,
+    # then the merge stage died at "PHASE: 6. meson setup" with
+    # CommandNotFound. Same class as the #113/verify12 note below.
+    # Modules.ScriptCallClosure.Tests.ps1 now gates it.
+    'Resolve-BuildMachineMsvcTool',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',
     'Invoke-DownloadWithRetry',
+    # Called directly by build-tvm-from-source.ps1's LLVM-source fallback
+    # (#47). LATENT until now, which is why no run ever caught it: that call
+    # sits in `elseif (-not $llvmConfig)`, skipped on the cross lane (runtime
+    # only) and skipped on amd64 (scoop puts llvm-config.exe on PATH). The day
+    # llvm-config is absent, the stage would die with CommandNotFound AFTER
+    # downloading a ~150 MB tarball. Found by Modules.ScriptCallClosure.Tests.ps1
+    # on the run that added it (2026-08-26), not by a build.
+    'Get-PreferredToolPath',
     # #113: used directly by build-gstreamer-from-source.ps1; their omission
     # threw CommandNotFound at compile start (verify12) because module-internal
     # use never needs the export list - direct script calls do.
