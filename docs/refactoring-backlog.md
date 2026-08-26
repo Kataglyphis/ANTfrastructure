@@ -146,6 +146,96 @@ GCC_PARALLEL_TARGETS, gcc-prereq facets, post-restart base cache-miss.
 validated items with quotes, THEN: GPU lane opt-in build (GPU1-7), first
 compose up + WEBUI_SECRET_KEY rotation (user-side).
 
+## F. Refactor candidates found while switching ccache -> sccache (2026-08-26)
+
+Collected DURING the switch and the staged rebuild, each with the evidence that
+produced it. None of these blocks the current run; they are the debt the switch
+either created or exposed.
+
+- **`preflight.sh` exits 0 on failure** [S·★★★] Observed live: it printed
+  `3 check(s) failed` AND `Fix these before a multi-hour rebuild.` and then
+  `exited with code 0`. Anything that calls it non-interactively and trusts the
+  exit code gets a green light on a red result. This is the highest-value item
+  here because it silently disarms the one gate standing between a bad tree and
+  a many-hour rebuild.
+- **stdout-as-return-value is a live footgun** [M·★★★] `compiler_cache_launcher`
+  returns the launcher NAME on stdout while `info()` writes to fd 1
+  (logging.sh:77). The leak produced
+  `CC="[INFO] Using sccache ...sccache gcc"` and GCC died as
+  `configure: error: C compiler cannot create executables` -- a message pointing
+  nowhere near the cause. Fixed there + regression-tested
+  (test-compiler-cache-launcher.sh, with a mutation case). **The refactor is the
+  CLASS, not the instance:** sweep every function whose stdout callers capture
+  with `$(...)`, and either route all logging to stderr repo-wide or return
+  values through a nameref instead.
+- **The compiler-cache abstraction is split across seven places** [L·★★]
+  compiler-cache.sh:4-8 already warns "the 02-toolchain GCC/LLVM builds do NOT
+  source this module ... that misread hid a dead ccache mount for months". The
+  sccache switch had to touch build-gcc.sh, build-clang.sh, llvm-cross.sh,
+  compiler-cache.sh, cmake-cache-linker.sh, build-app-wheelhouse.sh and the
+  onnxruntime build lib SEPARATELY, and one of them (cmake-cache-linker.sh, a
+  SHARED helper) would have silently overridden the switch for every consumer.
+  Consolidate onto one resolver; the launcher helper is the seam to build on.
+- **Two compiler caches are now installed and mounted** [M·★★] ccache stays as
+  the fallback for invocations sccache refuses, so every stage carries both
+  mounts (5/5, 1/1, 13/13, 3/3) and the ~27 GB warm ccache still occupies disk
+  while contributing nothing. DECIDE after the switch is proven: drop ccache and
+  delete the fallback branches, or keep it and document why. Do not leave it
+  ambiguous -- ambiguous is how the dead mount survived months last time.
+- **`--ccache` no longer means ccache** [S·★] build-gcc.sh and build-clang.sh
+  keep the flag name (llvm.sh:28 passes it) while it now selects whichever cache
+  is usable. Rename to `--compiler-cache` with `--ccache` as a deprecated alias,
+  or the next reader will believe it forces ccache.
+- **sccache stats are per-build-window only** [S·★★] build-gcc.sh zeroes stats
+  before each GCC and reports after, so a run yields N disjoint windows (this
+  run: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and NO aggregate. That makes the one
+  question the switch has to answer -- "did the hit rate improve on a warm
+  build?" -- unanswerable without hand-summing logs. Emit a per-stage aggregate.
+- **Mount-id keys are inconsistent** [S·★★] cache-mount ids mix `${TARGETARCH}`
+  and `${TARGET_ARCH}`; PAR2 is the documented bug class where the wrong one
+  silently shares or splits caches across lanes. Audit all ~43 mount lines and
+  pick one, with a test.
+- **`RUSTC_WRAPPER=""` is now an unexplained exception** [S·★★] After "sccache
+  everywhere", build-gstreamer-monorepo.sh:681 still hard-clears the Rust
+  wrapper. The reason is real (the sccache SERVER died mid-compile in three
+  media rounds, killing green builds at 99%) but it now reads as an oversight.
+  Either revalidate against the bar in docs/build-cache-tiers.md:340 or promote
+  the comment into a Verdict entry so nobody "fixes" it.
+- **versions.env mis-attributes a watch note** [XS·★] The LLVM 23 block lists
+  the `-nostdinc++` libstdc++ c++23 patch as something to watch for the LLVM
+  bump. That patch lives in GCC's `src/c++23/Makefile.in` and is a GCC concern;
+  it ran clean in this build's GCC stage. Move the note, or it sends the next
+  reader looking in the wrong stage.
+
+**Folded in from the 2026-08-26 backlog truth-audit (15 agents), corrections
+that were verified but not yet applied above:**
+
+- **GCC_PARALLEL_TARGETS has now been missed TWICE** [S·★★] The § E entry says
+  "next compiler-stage rebuild", but the flag defaults to 0, so the 2026-08-24
+  and 2026-08-25 compiler rebuilds both took the sequential path and validated
+  nothing. It must go on the LAUNCH COMMAND or it will be missed a third time.
+- **LLVM_COMMIT is present but INERT** (versions.env:41) -- the consumers
+  (build-clang.sh / llvm-cross.sh) do not read it. The key landed; the wiring
+  did not. Re-word the rider to the residual work.
+- **TS1 is half-landed and CAN break a build** [S·★★] The
+  APPIMAGETOOL_*_SHA256 keys exist in versions.env, but packaging-deps.sh:156-174
+  still uses its own case-arm literals. Bumping APPIMAGETOOL_VERSION alone would
+  therefore break. This is the only rider whose half-state has teeth.
+- **S5 premise is falsified** -- media cargo ids are already per-lane by design
+  (Dockerfile.media:856-857). Move to Verdicts as declined-with-evidence rather
+  than leaving it as open work.
+- **3 UNOWNED env knobs** (HARFBUZZ_VERSION, IREE_CCACHE_MAXSIZE,
+  PY_MLC_Z3_STATIC_VERSION), two introduced 2026-08-24/26. Register them in
+  lint-env-knobs.allow before anyone flips KNOB_GATE=1.
+- **docs/build-cache-tiers.md still advertises CROSS_REGISTRY_CACHE=max** as a
+  live knob with line refs that no longer exist (5 sites). S3 was declined and
+  the code reverted; setting it today is a no-op. Mark those sites DESIGN ONLY.
+
+**Do NOT close (closure attempts were reviewed and REJECTED):** the § B QUEUED
+BUMPS bullet (closing as written drops real in-scope work), the § E gcc-prereq
+measurement facets, and A1's TG1 residual (the proposed replacement text was
+wrong in both directions).
+
 ## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
 
 ### A1. Work items (all referenced by the phase plan above)
