@@ -945,8 +945,29 @@ build_iree_wheels() {
         for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
         for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
 
-        # Tools the target stage actually imports from IREE_HOST_BIN_DIR (see above).
-        local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli)
+        # Tools the target stage needs from IREE_HOST_BIN_DIR.
+        #
+        # iree-tblgen IS REQUIRED HERE (regression fix 2026-08-27). The original
+        # list held only the two LLVM-free codegen helpers, on the reading that
+        # tools/CMakeLists.txt gates host-tool imports behind
+        # `IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER` and our target sets
+        # COMPILER=ON, so nothing else is imported. That is true -- and it is
+        # exactly the problem: nothing being imported means the TARGET build
+        # builds its own iree-tblgen, FOR THE TARGET ARCH, and then tries to RUN
+        # it during the build. On a cross lane that is an arm64 binary on an
+        # amd64 host:
+        #     /…/iree-build-target/tools/iree-tblgen: Exec format error
+        #     FAILED: [code=126] …/VMOpEncoder.cpp.inc
+        # It cannot show up on amd64, where host and target are the same arch --
+        # which is why the amd64 media stage passed cleanly and arm64 died.
+        #
+        # Listing it here makes the OFF pass fail its own check and escalate to
+        # COMPILER=ON, which is precisely what the fallback loop exists for. The
+        # cost is that CROSS lanes go back to building the bundled LLVM in the
+        # host stage; the native lane keeps the win. A cheap COMPILER=OFF probe
+        # first is still worth it: if upstream ever installs tblgen without the
+        # compiler, the saving returns automatically and nothing needs editing.
+        local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli iree-tblgen)
         local host_stage_ok=0 host_compiler_mode="" host_tool="" host_tools_missing=""
         for host_compiler_mode in OFF ON; do
             rm -rf "${host_build}" "${host_install}"
