@@ -72,35 +72,54 @@ rebuild then validates everything at once (that is the whole point of a
 closure window — ONE rebuild pays for all).
 
 **Phase 0 — host prep (no-build window, do FIRST):**
-- Optional BKD1 rider: upgrade buildkitd to v0.32.2 (concurrency-stress fixes
-  #6916/#6955; not a session-rot fix — the restart playbook stays).
-- Apply the staged buildkitd.toml gcpolicy (linux/host-config/, needs a
-  buildkitd restart — this is the no-build window it has waited for).
-- Disk: prune-safe to ≥150G free (full-rebuild appetite per the playbook);
-  the 215G kata-buildcache trim is the operator's call, not the agent's.
-- Run preflight.sh (the full gate battery incl. the GCC-literal gate).
+- ✅ **DONE 2026-08-26 — buildkitd upgraded, but READ THE VERSION.** The host
+  went nerdctl 2.3.4 → **2.3.5**, buildctl/buildkitd v0.31.1 → **v0.31.2**,
+  containerd 2.3.2 → **2.3.3**, daemons confirmed reporting the new versions,
+  51 cache-mount records unchanged. CORRECTION to this item's original text:
+  **v0.32.2 was not reachable this way.** buildkitd here comes from the
+  nerdctl-full bundle, and 2.3.5 — the newest release — ships BuildKit
+  **0.31.2**. So #6916 (daemon crash under concurrent builds, v0.31.2) WAS
+  obtained; **#6955 (parallel-build cache miss) was NOT** — it landed in
+  v0.32.0 and no nerdctl-full ships it. Getting it would mean installing
+  buildkit outside the bundle, i.e. breaking the version-matched set. Not
+  worth it; revisit when a nerdctl-full bundles 0.32.x. Tooling:
+  `linux/host-config/install-nerdctl-full.sh` (needs
+  `NERDCTL_INCLUDE_ROOTFUL=1` on this host — see docs/linux-host-setup.md
+  § B3b for why, and for the reference run).
+- ✅ **DONE — buildkitd.toml gcpolicy is live.** Repo and
+  `~/.config/buildkit/buildkitd.toml` are in sync and the daemon restarted
+  during the upgrade above, which is the event it was waiting for.
+- ⛔ **OPEN AND BLOCKING — disk.** 72G free; the playbook wants **≥150G** for a
+  full from-base rebuild. prune-safe first; the 215G kata-buildcache trim
+  stays the operator's call, not the agent's. **Do not launch the rebuild on
+  72G** — ENOSPC mid-lane is the expensive way to learn this.
+- ⬜ Run preflight.sh (the full gate battery incl. the GCC-literal gate).
 
-**Phase 1 — pin-bump pass (versions.env window):**
-- bump_versions.py sweep (the wave-4 ritual; BT1/BT2 guards are in).
-- § B riders: AP6 (decide/flip ORT_ENABLE_LTO per-arch-gated — this rebuild
-  is the measuring event), F6 (ABSEIL → decompressed-stream hash;
-  cmdline-tools sha1 cross-check vs repository2-3.xml), small riders
-  (RUFF_PIN → versions.env, LLVM_COMMIT opt-in key, TS1 APPIMAGETOOL keys,
-  setup-package-image residual pins).
+**Phase 1 — pin-bump pass (versions.env window): ✅ DONE (7a2639e)**
+- Swept: CMAKE 4.4.3, UV 0.12.6, CARGO_C 0.10.25, OLLAMA 0.33.0 (+ SHA
+  pairs). VULKAN deliberately held at 1.4.357.0 with a documented reason
+  (1.4.357.1 is a Linux-only republish; windows.txt still says .0 and the key
+  is shared — bumping it would break the Windows lane, which is out of scope
+  here).
+- Riders landed: **AP6** decided → `ORT_ENABLE_LTO=false`; `LLVM_COMMIT=`
+  opt-in key added; `RUFF_VERSION`, `APPIMAGETOOL_VERSION`, `ABSEIL_VERSION`
+  and the `PY_*` keys now live in versions.env.
+- Still open in this phase: the **MESON-GI probe** — if meson >1.12 resolves
+  g-i's glib subproject again, lift the riscv64 pin in this window; else it
+  stays with its reason (tracked in § E).
 - MESON-GI probe: if meson >1.12 resolves g-i's glib subproject again, lift
   the riscv64 pin in this window; else it stays with its reason.
 
-**Phase 2 — producer fixes (media/android lane):**
-- GENAI-DRIFT producer half: make the arm64 genai wheel land; then DELETE the
-  dated tolerance line in smoke-torch-venv.sh (it re-arms the assert).
-- ORPHAN-PINS producer: make Dockerfile.media's `import tvm works on amd64`
-  promise TRUE (the staging chain is diagnosed, loudly failing since wave 1)
-  or retract the promise; PyAV: build it or DROP the orphan pin (drop =
-  versions.env edit — in window).
-- RV1-FREETYPE: fix the host-vs-target harfbuzz cross-link and re-enable
-  `-DBUILD_opencv_freetype` on riscv64 — closing the last documented
-  ARCH-PARITY exception.
-- LOG2 open half: build the wasm asyncify/jspi flavors.
+**Phase 2 — producer fixes (media/android lane): ✅ mostly DONE**
+- ✅ GENAI-DRIFT producer half — the arm64 genai wheel builds. The tolerance
+  line at smoke-torch-venv.sh:179 must be deleted AFTER the rebuild proves
+  0.15.2 ships, not before.
+- ✅ ORPHAN-PINS — PyAV is built (own stage + own script dir); the TVM half
+  closed by 202634c.
+- ✅ RV1-FREETYPE — freetype ENABLED against staged static target harfbuzz;
+  OFF survives only as the not-staged fallback.
+- ⬜ **LOG2 open half — build the wasm asyncify/jspi flavors.** The only
+  Phase-2 item still outstanding.
 
 **Phase 3 — toolchain trims (from-base rebuild validates):**
 - TG1 residual (fuller toolchain-closure trim) + TG3 residual (collapse the
@@ -130,29 +149,18 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 
 ### A1. Work items (all referenced by the phase plan above)
 
-- **RV1-FREETYPE — riscv64 opencv freetype module still OFF** [S·★,
-  residue of RV1-GST-PC, which is otherwise CLOSED by wave-5] riscv64 gst
-  is fully recovered (cv2 GStreamer:YES on shipped bytes, libcamera gst
-  element back) — what remains is `-DBUILD_opencv_freetype=OFF` in
-  build-opencv.sh (harfbuzz "file in wrong format" in the cross link) and,
-  only if ports gst-dev is ever wanted again, the cross pkg-config wrapper
-  that sysroot-prefixes ports' empty-prefix .pc vars. Wheel smoke shows it
-  as the riscv64-only `opencv-freetype` warning.
 - **GENAI-DRIFT — onnxruntime-genai differs per arch and the pin assert
   says OK** [S·★★, 2026-08-23] versions.env pins v0.15.2; shipped reality is
   amd64 0.15.2 (local wheel), arm64 0.14.0 (PyPI, from the app lock), riscv64
   absent. The dual-authority union (lock ∪ pin) accepts all three, so the
-  assert cannot catch it. Tighten: when versions.env carries a BUILD pin for
-  a package, that pin — not the lock — is authoritative for every arch that
-  builds it; then find out why arm64's genai wheel never lands.
-- **ORPHAN-PINS — PyAV and TVM are pinned but built nowhere** [S·★★,
-  2026-08-23] `PYAV_VERSION=18.1.0` has no build step anywhere under linux/;
-  TVM is absent on ALL THREE arches although Dockerfile.media:392-394 states
-  amd64 "stages a wheel + libtvm into the final image so `import tvm`
-  works". Both show as permanent wheel-smoke warnings. Decide per component:
-  build it, or delete the orphaned pin — as-is both read as
-  intended-but-missing, and PyAV means every wrapper ships without the
-  FFmpeg→Python bridge.
+  assert cannot catch it. **PRODUCER HALF DONE** (wave-6): the arm64
+  `onnxruntime_genai-0.15.2-cp314-cp314-linux_aarch64.whl` now builds. What
+  REMAINS is consumer-side and rebuild-gated: once the rebuild proves 0.15.2
+  ships on arm64, DELETE the dated tolerance entry at
+  smoke-torch-venv.sh:179 (`("onnxruntime-genai", "arm64", "0.14.0",
+  "0.15.2", …)`) — leaving it in place silently re-disarms the assert. Also
+  still open: make a versions.env BUILD pin authoritative over the lock for
+  every arch that builds the package.
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
   positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
   build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
@@ -167,9 +175,37 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
-- **TVM arm64/riscv64 cross-build** [L·★★] media:369 placeholder; cross path
-  in tvm-python.sh never wired; do with the llvm-config pin.
 ### A2. Already landed, validated by the rebuild alone (watch, no work)
+
+**Added 2026-08-26 (pre-rebuild wave + its adversarial review, commit 9a86d2f
+— static review only, NO build has exercised these):**
+
+- **IREE host stage no longer builds LLVM** [was never tracked here — the win
+  the wave went looking for]. `-DIREE_BUILD_COMPILER=ON` on the HOST stage was
+  a leftover; the target reads only `iree-c-embed-data` + `iree-flatcc-cli`
+  out of `IREE_HOST_BIN_DIR`, both LLVM-free, so the host stage runs
+  COMPILER=OFF. Review corrected the fallback: a failed *build* now fails fast
+  instead of escalating to a multi-hour LLVM compile that provably cannot
+  succeed where OFF failed. **Watch in the rebuild:** the riscv64/arm64 IREE
+  host stage must NOT show clang/MLIR compilation, and both tools must exist.
+- **ORPHAN-PINS closed** — PyAV is BUILT (new
+  `linux/scripts/03-media/build/pyav/build-pyav.sh` + a `pyav` stage landing
+  `av-<ver>-cp314-cp314-linux_<arch>.whl` in /opt/wheels); the TVM half was
+  already closed by 202634c. **Watch:** the PyAV wheel must appear on all
+  three arches and the wheel-smoke warning must disappear.
+- **RV1-FREETYPE fixed** — riscv64 opencv freetype is ENABLED against staged
+  static target harfbuzz; `-DBUILD_opencv_freetype=OFF` survives only as the
+  not-staged fallback. **Watch:** the riscv64 `opencv-freetype` wheel-smoke
+  warning must be gone — if it is not, the static-harfbuzz staging is what
+  failed, not the module.
+- **TVM ffi honesty** — a failed `tvm-ffi` wheel build now WITHDRAWS the wheel
+  set instead of leaving an apache-tvm wheel that dies at `import tvm`.
+  **Watch:** either a complete tvm+tvm_ffi pair, or an explicit skip reason —
+  never "python wheel staged" alone.
+- **GStreamer known-broken guard repaired** — it compared space-delimited
+  against a newline-separated list, so it stopped firing as soon as TWO
+  plugins failed, with a new hard FAIL resting on it. **Watch:** no spurious
+  ARCH-PARITY abort at the end of a green build.
 
 - Media source-cache mounts, cerbero extra_mirrors fallback, C3 `:?`
   guards, TS4 llvm checkout keying, CERB-CACHE warm/evict behaviour,
@@ -188,16 +224,20 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   build — just run preflight.sh before launch (AGENTS.md already says so).
   Delete on the next groom if no counter-evidence appears.
 - **BKD1 — buildkitd session rot: RESEARCHED, no upstream fix exists** [M·★,
-  downgraded from ★★ 2026-08-24] host runs buildkit v0.31.1 (nerdctl 2.3.4,
-  containerd 2.3.2). The symptom IS a known open upstream issue —
+  downgraded from ★★ 2026-08-24; host figures refreshed 2026-08-26] host runs
+  buildkit **v0.31.2** (nerdctl 2.3.5, containerd 2.3.3) since the 2026-08-26
+  upgrade — see Phase 0. The session rot is UNAFFECTED by that upgrade. The symptom IS a known open upstream issue —
   moby/buildkit#6422 ("no active session … context deadline exceeded", open,
   no linked PR) and #5624 (same class during cache-export registry auth) —
   and NO release through v0.32.2 (2026-08-04) mentions a session/keepalive
   fix. VERDICT: keep the restart playbook (stop chain → restart
-  buildkit.service → relaunch; cachemounts survive). OPTIONAL, no-build
-  window: upgrade to v0.32.2 for its concurrency-stress fixes (#6916 daemon
-  crash during concurrent builds, #6955 parallel-build cache-miss) — adjacent
-  to our load profile, but not a fix for the session rot itself.
+  buildkit.service → relaunch; cachemounts survive) — this is still the cure
+  and the upgrade did not change that. The concurrency rider is now PARTLY
+  taken: #6916 (daemon crash under concurrent builds) came with v0.31.2;
+  **#6955 (parallel-build cache miss) did not** — it needs v0.32.0, which no
+  nerdctl-full bundle ships. Do NOT chase it by installing buildkit outside
+  the bundle: the pieces are version-matched. Re-open when a nerdctl-full
+  carries 0.32.x.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
