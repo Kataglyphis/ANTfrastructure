@@ -41,6 +41,15 @@ Import-Module (Join-Path $ScriptDir 'modules\WindowsSourceBuild.Common.psm1') -F
 # builds with the same toolchain needs. Sequential: one sccache + one ninja at
 # a time keeps the memory-per-job model valid.
 $stages = @(
+    # Target CPython FIRST (#133, 2026-08-26): the tvm and IREE cross wheels
+    # link the aarch64 python3XY.lib exactly like ORT/GenAI/cv2 do in
+    # media-core -- but this branch starts from the media-core FAN-IN, not from
+    # the ONNX layer that built it (arm64 run 29: "no target CPython import lib
+    # at C:\temp\cpython\PCbuild\arm64\python314.lib"). Re-running the ~90 s
+    # build here keeps the branch self-contained (no cross-branch COPY). Same
+    # contract as media-core: reuses the toolchain layer's C:\temp\cpython, never
+    # deletes it, explicit no-op on amd64 (host == target).
+    @{ Name = 'Target CPython'; Script = 'build-target-cpython.ps1'; SourceDir = 'C:\temp\cpython' }
     @{ Name = 'TVM';  Script = 'build-tvm-from-source.ps1';  SourceDir = 'C:\temp\tvm-src' }
     @{ Name = 'IREE'; Script = 'build-iree-from-source.ps1'; SourceDir = 'C:\temp\iree-src' }
 )

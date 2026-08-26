@@ -342,6 +342,8 @@ COPY windows\scripts\patches\iree C:\temp\scripts\patches\iree
 COPY windows\scripts\build\build-tvm-from-source.ps1 `
      windows\scripts\build\build-iree-from-source.ps1 `
      windows\scripts\build\build-media-tvm-all.ps1 `
+     windows\scripts\build\build-target-cpython.ps1 `
+     windows\scripts\build\cpython-Directory.Build.props `
      C:\temp\scripts\
 
 # ── BuildKit lane (buildctl --opt target=media-<branch>-built) ───────────────
@@ -591,6 +593,8 @@ FROM media-tvm-env AS media-tvm-built
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `
+    --mount=type=bind,source=windows/scripts/build/build-target-cpython.ps1,target=C:\bkmnt\build-target-cpython.ps1 `
+    --mount=type=bind,source=windows/scripts/build/cpython-Directory.Build.props,target=C:\bkmnt\cpython-Directory.Build.props `
     --mount=type=bind,source=windows/scripts/build/build-tvm-from-source.ps1,target=C:\bkmnt\build-tvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build/build-iree-from-source.ps1,target=C:\bkmnt\build-iree-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/build/load-versions.ps1,target=C:\bkmnt\load-versions.ps1 `
