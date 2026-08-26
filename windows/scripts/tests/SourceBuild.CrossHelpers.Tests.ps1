@@ -274,3 +274,60 @@ Describe 'AArch64 fixup-range per-TU selector (opencv, LLVM 23)' {
         Assert-True $threw 'a floor that cannot be met must throw, not ship an untagged TU'
     }
 }
+
+# The BRANCH-range selector after it was widened from a name list to the whole
+# *.dispatch.cpp family (#135, attempt 8). Three attempts named files and each
+# time the next-largest TU failed instead, so the family is the unit -- and the
+# selector must therefore cover dispatch TUs in BOTH opencv_core and
+# opencv_imgproc while leaving the same filenames in other modules alone.
+Describe 'AArch64 branch-range per-TU selector (opencv dispatch family)' {
+
+    BeforeAll {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+        $script:brTmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-branch-' + [guid]::NewGuid().ToString('N'))
+        New-Item -Path $script:brTmp -ItemType Directory -Force | Out-Null
+        $script:brNinja = Join-Path $script:brTmp 'build.ninja'
+        @(
+            'build modules/core/CMakeFiles/opencv_core.dir/src/arithm.dispatch.cpp.obj: CXX_COMPILER src/arithm.dispatch.cpp',
+            '  FLAGS = /O2 /MD',
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/median_blur.dispatch.cpp.obj: CXX_COMPILER src/median_blur.dispatch.cpp',
+            '  FLAGS = /O2 /MD',
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/imgwarp.cpp.obj: CXX_COMPILER src/imgwarp.cpp',
+            '  FLAGS = /O2 /MD',
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/stb_truetype.cpp.obj: CXX_COMPILER src/stb_truetype.cpp',
+            '  FLAGS = /O2 /MD',
+            # dispatch TU in a module OUTSIDE the two: must NOT be tagged.
+            'build modules/gapi/CMakeFiles/opencv_gapi.dir/src/foo.dispatch.cpp.obj: CXX_COMPILER src/foo.dispatch.cpp',
+            '  FLAGS = /O2 /MD',
+            # named offender's filename in another module: must NOT be tagged.
+            'build modules/gapi/CMakeFiles/opencv_gapi.dir/src/imgwarp.cpp.obj: CXX_COMPILER src/imgwarp.cpp',
+            '  FLAGS = /O2 /MD',
+            # ordinary TU in a covered module: must NOT be tagged.
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/histogram.cpp.obj: CXX_COMPILER src/histogram.cpp',
+            '  FLAGS = /O2 /MD'
+        ) | Set-Content -Path $script:brNinja -Encoding ASCII
+    }
+    AfterAll { Remove-Item $script:brTmp -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'tags every dispatch TU in core+imgproc plus the two named offenders, and nothing else' {
+        $fixupNamedTus = @('imgwarp.cpp', 'stb_truetype.cpp')
+        $n = Add-NinjaPerTuFlags -NinjaFile $script:brNinja -Label 'fixture' -Floor 4 `
+            -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+                param($line)
+                if ($line -notmatch 'opencv_(core|imgproc)\.dir') { return '' }
+                if ($line -match '\.dispatch\.cpp') { return '/O1' }
+                if ($fixupNamedTus | Where-Object { $line -match [regex]::Escape($_) }) { return '/O1' }
+                ''
+            }
+        Assert-Equal 4 $n 'two dispatch TUs + the two named offenders'
+        $lines = @(Get-Content $script:brNinja)
+        Assert-True ($lines[1] -eq '  FLAGS = /O2 /MD /O1') 'core arithm.dispatch tagged'
+        Assert-True ($lines[3] -eq '  FLAGS = /O2 /MD /O1') 'imgproc median_blur.dispatch tagged'
+        Assert-True ($lines[5] -eq '  FLAGS = /O2 /MD /O1') 'imgwarp tagged'
+        Assert-True ($lines[7] -eq '  FLAGS = /O2 /MD /O1') 'stb_truetype tagged'
+        Assert-True ($lines[9] -eq '  FLAGS = /O2 /MD') 'gapi dispatch TU NOT tagged (module outside the two)'
+        Assert-True ($lines[11] -eq '  FLAGS = /O2 /MD') 'gapi imgwarp.cpp NOT tagged (same name, other module)'
+        Assert-True ($lines[13] -eq '  FLAGS = /O2 /MD') 'imgproc histogram.cpp NOT tagged (not an offender)'
+    }
+}

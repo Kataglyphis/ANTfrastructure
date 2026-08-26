@@ -946,19 +946,40 @@ if ($ocvCross) {
             if ($line -match 'libprotobuf\.dir') { '/Od' } else { '' }
         })
 
-    # (b) The BRANCH-range ceiling. With compression ON this may already be
-    # unnecessary -- the run that produced the table above had compression ON and
-    # reported ZERO fixup errors, including for median_blur.dispatch.cpp, which
-    # was NOT tagged. Kept anyway because a cross iteration costs ~50 minutes and
-    # these three are the measured offenders; dropping it is a cheap experiment
-    # for a quiet moment, not something to gamble an acceptance run on. If it goes,
-    # these TUs get their /O2 back, which is where it matters (NEON baseline).
-    $fixupTus = @('imgwarp.cpp', 'smooth.dispatch.cpp', 'stb_truetype.cpp')
+    # (b) The BRANCH-range ceiling: `error: fixup value out of range`, a
+    # pc-relative branch (tbz/tbnz ±32 KB, b.cond ±1 MB) that no longer reaches
+    # because LLVM 23 grew the function past what 22 emitted.
+    #
+    # THE WHOLE *.dispatch.cpp FAMILY, not a name list. Three attempts named
+    # files and each time the next-largest TU failed instead: imgwarp +
+    # smooth.dispatch + stb_truetype fixed, then median_blur.dispatch. These are
+    # OpenCV's CPU-DISPATCH TUs -- each one inlines several ISA variants' glue
+    # and they are the largest functions in their modules, so the family is the
+    # unit, not its current members. 28 of them across opencv_core and
+    # opencv_imgproc; floor 28 catches a layout change, and the two non-dispatch
+    # offenders are named alongside.
+    #
+    # (An earlier revision of this comment said compression ON might make this
+    # unnecessary, because a run with compression ON reported zero fixup errors
+    # including for the untagged median_blur. That reading was wrong: ninja had
+    # stopped at libprotobuf in that run, before OpenCV's own modules were
+    # reached. Progress past one ceiling is not proof about the next.)
+    #
+    # Cost, stated honestly: on aarch64 the BASELINE path in these files is NEON,
+    # so /O1 here is not free. It is bounded, though -- the NEON_FP16/DOTPROD/BF16
+    # variants live in separate objects generated from *.simd.hpp and keep /O2,
+    # so on hardware with those features the dispatched path is unaffected and
+    # only the fallback is slower. Unmeasured; revisit if a later clang-cl
+    # compiles these at /O2 again (#135).
+    $fixupNamedTus = @('imgwarp.cpp', 'stb_truetype.cpp')
     [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
-        -Label "AArch64 branch-range belt-and-braces (LLVM 23; $($fixupTus -join ', '))" `
-        -Floor $fixupTus.Count -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+        -Label 'AArch64 branch-range (LLVM 23; opencv *.dispatch.cpp family + imgwarp/stb_truetype)' `
+        -Floor 28 -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
             param($line)
-            if ($line -match 'opencv_imgproc\.dir' -and ($fixupTus | Where-Object { $line -match [regex]::Escape($_) })) { '/O1' } else { '' }
+            if ($line -notmatch 'opencv_(core|imgproc)\.dir') { return '' }
+            if ($line -match '\.dispatch\.cpp') { return '/O1' }
+            if ($fixupNamedTus | Where-Object { $line -match [regex]::Escape($_) }) { return '/O1' }
+            ''
         })
 }
 
