@@ -411,7 +411,44 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # UPSTREAM: the estimate/emission mismatch is an LLVM bug and should be reported
 # (out/ has the drafts from previous ones). This flag is the workaround, not the
 # fix, and it is a workaround that costs no code quality.
-$jumpTableFlag = ''
+# FORCE 32-BIT JUMP TABLE ENTRIES. This is the AArch64 subtarget feature the
+# compression pass itself consults (`force32BitJumpTables()`), not an -mllvm
+# debug knob, and it is the one configuration that survives BOTH LLVM 23 defects
+# this tree hits. Verified locally against clang-cl 23.1.0 before landing:
+#
+#   default                       .hword (.LBB0_2-.LBB0_2)>>2   ldrh  (ceiling 1020 B)
+#   +force-32bit-jump-tables      .word  .LBB0_2-.Ltmp0         ldrsw (range +-2 GB)
+#
+# WHY THIS AND NOT `-aarch64-enable-compress-jump-tables=false`, which also
+# yields .word entries: that flag DISABLES THE PASS, and the pass carries a
+# second check -- it verifies the ADR to the table's base block is within +-1 MB
+# and bails out when it is not. Turning the pass off removes that check too,
+# which is why the cross build then failed with `fixup value out of range` in
+# opencv's largest dispatch TUs. The feature keeps the pass running (ADR check
+# intact) while taking the entry-width decision out of its hands.
+#
+# THE TWO DEFECTS IT ROUTES AROUND, both LLVM's own:
+#   * the pass estimates block offsets, picks 1-byte entries, and emission then
+#     finds the real value does not fit -> "value evaluated as <N> is out of
+#     range". Every N measured here sits JUST past the 1020-byte ceiling
+#     (256 = 1024 B, then 258, 259, 260, 262, 272, 281, 284), which is an
+#     estimate a few bytes short, not an oversized table. protobuf on
+#     Windows-arm64 is known-fragile in this area (protocolbuffers/protobuf#24758).
+#   * with the pass off, nothing checks ADR reachability -> the fixup error.
+#
+# COST, measured on the local reproducer: 4522 -> 4650 bytes of object, ~2.8%,
+# and it is jump-table DATA, not code. Every TU keeps /O2, every instruction is
+# the one -O2 emits, and dispatch stays O(1) through a table. That is the
+# difference from /Od, /O1 or -fno-jump-tables, all of which pay in code quality.
+#
+# DO NOT reach for `-align-all-*` here: alignment padding makes the function
+# length unevaluable for the Windows SEH unwind writer and clang-cl dies with
+# `Failed to evaluate function length in SEH unwind info` (llvm#122707, a
+# duplicate of the long-standing llvm#47432). Measured, not assumed.
+#
+# Revisit when a later clang-cl fixes the estimate; the feature is then just a
+# small size cost with no purpose. Both defects deserve upstream reports.
+$jumpTableFlag = if ($ocvCross) { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
