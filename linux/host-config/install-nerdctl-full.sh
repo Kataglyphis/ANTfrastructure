@@ -22,7 +22,12 @@
 #   - DRY RUN by default: prints the version delta and the exact plan.
 #     NERDCTL_INSTALL_CONFIRM=1 performs it.
 #   - Verifies the release SHA256 before touching anything.
-#   - Backs up the current binaries so a bad upgrade is reversible (--rollback).
+#   - Backs up the current bin/ binaries so a bad upgrade is reversible
+#     (--rollback). SCOPE: bin/ only -- the bundle also ships libexec/ (CNI),
+#     lib/systemd units and share/. Those stay at the NEW version after a
+#     rollback, which is fine for the build path (nerdctl/buildkitd/containerd/
+#     runc all live in bin/) but is not a full restore. To go all the way back,
+#     re-run with NERDCTL_VERSION=<previous> instead.
 #   - Stops the user services first and restarts them after, then PROVES the
 #     stack answers (nerdctl version / buildctl du) instead of assuming.
 #   - Cache mounts live in buildkit's state dir (~/.local/share/buildkit), NOT
@@ -55,7 +60,9 @@ err()  { printf '[nerdctl-full] ERROR: %s\n' "$*" >&2; exit 1; }
 # ── rollback ─────────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--rollback" ]; then
   [ -d "${BACKUP_DIR}" ] || err "no backup at ${BACKUP_DIR}"
-  log "restoring binaries from ${BACKUP_DIR}"
+  log "restoring bin/ binaries from ${BACKUP_DIR}"
+  log "note: libexec/ (CNI), systemd units and share/ stay at the installed version;"
+  log "      for a full downgrade re-run with NERDCTL_VERSION=<previous> instead"
   systemctl --user stop buildkit.service containerd.service 2>/dev/null || true
   sudo cp -a "${BACKUP_DIR}/bin/." "${PREFIX}/bin/" \
     || err "restore failed — binaries may be inconsistent, re-run the installer"
