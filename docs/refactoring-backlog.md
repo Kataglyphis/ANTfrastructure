@@ -146,6 +146,89 @@ GCC_PARALLEL_TARGETS, gcc-prereq facets, post-restart base cache-miss.
 validated items with quotes, THEN: GPU lane opt-in build (GPU1-7), first
 compose up + WEBUI_SECRET_KEY rotation (user-side).
 
+## F. Refactor candidates found while switching ccache -> sccache (2026-08-26)
+
+Collected DURING the switch and the staged rebuild, each with the evidence that
+produced it. None of these blocks the current run; they are the debt the switch
+either created or exposed.
+
+- **`preflight.sh` exits 0 on failure** [S·★★★] Observed live: it printed
+  `3 check(s) failed` AND `Fix these before a multi-hour rebuild.` and then
+  `exited with code 0`. Anything that calls it non-interactively and trusts the
+  exit code gets a green light on a red result. This is the highest-value item
+  here because it silently disarms the one gate standing between a bad tree and
+  a many-hour rebuild.
+- **stdout-as-return-value is a live footgun** [M·★★★] `compiler_cache_launcher`
+  returns the launcher NAME on stdout while `info()` writes to fd 1
+  (logging.sh:77). The leak produced
+  `CC="[INFO] Using sccache ...sccache gcc"` and GCC died as
+  `configure: error: C compiler cannot create executables` -- a message pointing
+  nowhere near the cause. Fixed there + regression-tested
+  (test-compiler-cache-launcher.sh, with a mutation case). **The refactor is the
+  CLASS, not the instance:** sweep every function whose stdout callers capture
+  with `$(...)`, and either route all logging to stderr repo-wide or return
+  values through a nameref instead.
+- **The compiler-cache abstraction is split across seven places** [L·★★]
+  compiler-cache.sh:4-8 already warns "the 02-toolchain GCC/LLVM builds do NOT
+  source this module ... that misread hid a dead ccache mount for months". The
+  sccache switch had to touch build-gcc.sh, build-clang.sh, llvm-cross.sh,
+  compiler-cache.sh, cmake-cache-linker.sh, build-app-wheelhouse.sh and the
+  onnxruntime build lib SEPARATELY, and one of them (cmake-cache-linker.sh, a
+  SHARED helper) would have silently overridden the switch for every consumer.
+  Consolidate onto one resolver; the launcher helper is the seam to build on.
+- **Two compiler caches are now installed and mounted** [M·★★] ccache stays as
+  the fallback for invocations sccache refuses, so every stage carries both
+  mounts (5/5, 1/1, 13/13, 3/3) and the ~27 GB warm ccache still occupies disk
+  while contributing nothing. DECIDE after the switch is proven: drop ccache and
+  delete the fallback branches, or keep it and document why. Do not leave it
+  ambiguous -- ambiguous is how the dead mount survived months last time.
+- **`--ccache` no longer means ccache** [S·★] build-gcc.sh and build-clang.sh
+  keep the flag name (llvm.sh:28 passes it) while it now selects whichever cache
+  is usable. Rename to `--compiler-cache` with `--ccache` as a deprecated alias,
+  or the next reader will believe it forces ccache.
+- **sccache stats are per-build-window only** [S·★★] build-gcc.sh zeroes stats
+  before each GCC and reports after, so a run yields N disjoint windows (this
+  run: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and NO aggregate. That makes the one
+  question the switch has to answer -- "did the hit rate improve on a warm
+  build?" -- unanswerable without hand-summing logs. Emit a per-stage aggregate.
+- **Mount-id keys are inconsistent** [S·★★] cache-mount ids mix `${TARGETARCH}`
+  and `${TARGET_ARCH}`; PAR2 is the documented bug class where the wrong one
+  silently shares or splits caches across lanes. Audit all ~43 mount lines and
+  pick one, with a test.
+- **`RUSTC_WRAPPER=""` is now an unexplained exception** [S·★★] After "sccache
+  everywhere", build-gstreamer-monorepo.sh:681 still hard-clears the Rust
+  wrapper. The reason is real (the sccache SERVER died mid-compile in three
+  media rounds, killing green builds at 99%) but it now reads as an oversight.
+  Either revalidate against the bar in docs/build-cache-tiers.md:340 or promote
+  the comment into a Verdict entry so nobody "fixes" it.
+- **versions.env mis-attributes a watch note** [XS·★] The LLVM 23 block lists
+  the `-nostdinc++` libstdc++ c++23 patch as something to watch for the LLVM
+  bump. That patch lives in GCC's `src/c++23/Makefile.in` and is a GCC concern;
+  it ran clean in this build's GCC stage. Move the note, or it sends the next
+  reader looking in the wrong stage.
+
+**Audit corrections were APPLIED AT SOURCE, not duplicated here** (2026-08-26).
+The verified findings of the 15-agent truth-audit now live in the sections that
+own them -- § B (TS1 and LLVM_COMMIT are half-landed; four riders closed), § E
+(GCC_PARALLEL_TARGETS has missed its trigger twice), § D (S5's premise is
+falsified; build-cache-tiers.md still advertises a reverted knob) -- because a
+finding described in two places drifts in two directions. Two items are still
+unowned by any section and are recorded here until someone files them:
+
+- **3 UNOWNED env knobs** [XS·★] HARFBUZZ_VERSION, IREE_CCACHE_MAXSIZE,
+  PY_MLC_Z3_STATIC_VERSION (two introduced 2026-08-24/26) have live readers but
+  no entry in lint-env-knobs.allow. Register them before anyone flips
+  KNOB_GATE=1, or that gate fails on its first real use.
+- **docs/build-cache-tiers.md advertises CROSS_REGISTRY_CACHE=max** [XS·★] as a
+  live pilot knob at five sites, with code line refs that no longer exist. S3
+  was declined and the code reverted; setting it today is a silent no-op. Mark
+  those sites DESIGN ONLY.
+
+**Do NOT close (closure attempts were reviewed and REJECTED):** the § B QUEUED
+BUMPS bullet (closing as written drops real in-scope work), the § E gcc-prereq
+measurement facets, and A1's TG1 residual (the proposed replacement text was
+wrong in both directions).
+
 ## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
 
 ### A1. Work items (all referenced by the phase plan above)
@@ -209,7 +292,11 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   ARCH-PARITY abort at the end of a green build.
 
 - Media source-cache mounts, cerbero extra_mirrors fallback, C3 `:?`
-  guards, TS4 llvm checkout keying, CERB-CACHE warm/evict behaviour,
+  guards, TS4 llvm checkout keying (**PROVEN LIVE 2026-08-26**, log
+  quote: `[INFO] Evicting stale llvm checkout llvm-project-22.1.8 (superseded
+  by llvmorg-23.1.0)` — the LLVM 23 bump found a 22.1.8 tree in the cache mount
+  and evicted it instead of silently reusing it, which would have shipped an
+  image claiming 23.1.0 while containing 22.1.8; fold on ship), CERB-CACHE warm/evict behaviour,
   APT-HTTP restore (only if the fast-mirror knob is ON), DUP2 SSOT +
   literal gate — each shipped and reviewed; the rebuild is their proof.
   Fold them with log quotes in the post-ship evidence audit.
@@ -251,8 +338,6 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   --write --only OLLAMA_VERSION,CARGO_C_VERSION,UV_VERSION,CMAKE_VERSION`
   then sync_versions --write + the check battery.
 
-- **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
-  measure in the validating rebuild, or document the decision.
 - **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
   recorded** [S, was M] (a) ABSEIL: codeload-by-commit VERIFIED byte-stable
   (two sequential fetches, identical sha256 7f4240fe…, matches the pin at
@@ -265,10 +350,21 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   and our sha256 pin (versions.env:503) matches the same bytes. Bump-window
   change: cross-check the manifest sha1 when regenerating the sha256 pin.
   Both edits touch versions.env → pin-bump window only.
-- Small riders [S each]: pyav dead-pin check (Windows consumer?),
-  LLVM_COMMIT opt-in key, setup-package-image residual pins (:283-285),
-  peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token
-  scope), TS1 APPIMAGETOOL_*_SHA256 keys, RUFF_PIN → versions.env (C4).
+- Small riders — **groomed 2026-08-26, four of six CLOSED** (pyav dead-pin:
+  the pin has a Windows consumer AND, since 9a86d2f, a linux producer;
+  setup-package-image residual pins: closed by 202634c; RUFF_PIN → versions.env
+  (C4): lint-python.sh:33 now reads `${RUFF_VERSION:-0.16.4}`; AP6 decided as
+  ORT_ENABLE_LTO=false, recorded at versions.env:118-133).
+  What actually REMAINS, and note both are HALF-landed — key present, consumer
+  not wired, which is worse than untouched because it reads as done:
+  - **TS1** [S·★★, has teeth] versions.env:812-816 carries
+    APPIMAGETOOL_VERSION + the four SHA256 keys, but packaging-deps.sh:156-174
+    still uses its own case-arm literals. **Bumping APPIMAGETOOL_VERSION alone
+    would break the build.** Wire the consumer, or never bump it alone.
+  - **LLVM_COMMIT** [S·★] versions.env:41 exists and is INERT — build-clang.sh
+    and llvm-cross.sh clone via LLVM_TAG and never read it. Wire it so a
+    non-empty 40-hex commit wins over llvmorg-${LLVM_RELEASE}, or drop the key.
+  - peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token scope).
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
@@ -283,12 +379,25 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   while prune-safe + local caches hold. Re-open ONLY on new evidence (another
   cold-rebuild loss). v1 implementation history: reverted twice (fix7 gate
   token; inert-by-default with no coverage) — read the doc before any retry.
-- **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
-  (deliberately per-lane since PAR2 — revisit as shared+non-locked).
-- **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
-  ONLY for rustc (wiring exists, flip controlled) + nvcc + the webdav
-  cross-machine tier. Absorbs "ccache remote_storage" + "Rust sccache
-  unblock". Full switch rejected (owner decision 2026-08-17).
+- **SCC1 — SUPERSEDED 2026-08-26: the full switch was ORDERED and DONE**
+  [M·★★] This entry recorded "full switch rejected (owner decision
+  2026-08-17)". The owner REVERSED that on 2026-08-26 and the C/C++ half is
+  implemented (5d94a37, c42091e, d5bafe8): sccache 0.17.0 pinned for linux
+  because the distro 0.13.0 has no SCCACHE_BASEDIRS, a config file baked into
+  Dockerfile.base for the settings sccache cannot take from the environment,
+  and every C/C++ launcher routed through one resolver with ccache as the
+  fallback. What SURVIVES of the hybrid design, and why:
+  - **Rust is still NOT cached.** build-gstreamer-monorepo.sh:681 hard-clears
+    RUSTC_WRAPPER because the sccache SERVER died mid-compile in three separate
+    media rounds, each killing a green gstreamer build at 99%. Revalidate
+    against the bar in docs/build-cache-tiers.md:340 (SCCACHE_IDLE_TIMEOUT=0,
+    error log captured, two consecutive green cross-arch media runs with a
+    non-zero hit rate) before removing the clear.
+  - **nvcc is untouched**, and the Windows lane records that RELEASED sccache
+    breaks the build around nvcc (versions.env, SCCACHE_GIT_REV block) — so
+    "sccache everywhere" must not be read as including nvcc without that
+    evidence being re-examined.
+  - **The webdav cross-machine tier** remains unbuilt.
 
 ## E. Waiting on a TRIGGER (not on work)
 
@@ -301,7 +410,12 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS validation** — next compiler-stage rebuild.
+- **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
+  passed TWICE without validating anything: the flag defaults to 0, so the
+  2026-08-24 and 2026-08-25 compiler rebuilds both took the sequential path.
+  It is not waiting on a rebuild, it is waiting on someone putting
+  `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
+  a third time.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).
@@ -325,6 +439,13 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
 
 ## Verdicts (anti-re-sweep records — do NOT re-audit without new evidence)
 
+
+- **S5 — shared cargo cache ids: DECLINED, premise falsified 2026-08-26.** The
+  entry claimed "cargo cache ids arch-independent". They are not: the media
+  lane uses `id=cargo-registry-${TARGET_ARCH}` / `id=cargo-git-${TARGET_ARCH}`
+  (Dockerfile.media:857-858), i.e. already per-lane BY DESIGN since PAR2. The
+  3x crate duplication is the accepted cost of lane isolation. Re-open only
+  with new evidence that cargo guards a shared store safely.
 - **PAR5 — a lone surviving lane stays throttled; the obvious fix is
   DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
   single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
