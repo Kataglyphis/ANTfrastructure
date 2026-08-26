@@ -929,6 +929,14 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   ONNX layer that builds the target CPython, so `Get-TargetBuildPython.Available` was false in
   both scripts — `build-media-tvm-all.ps1` now runs `build-target-cpython.ps1` first (~90 s, same
   contract as media-core; BK mounts + classic COPY carry it, parity test B6). Proof: run 30.
+  **Run 30 (2026-08-26):** the target CPython now builds in the branch (91 s, `python.exe`
+  0xAA64) and the wheel path switched on — then `ninja: unknown target 'tvm_ffi_cython'`:
+  tvm-ffi's CMakeLists `return()`s as soon as it is a **subproject** ("only triggered when the
+  project is the root"), so `TVM_FFI_BUILD_PYTHON_MODULE` on TVM's configure was never read
+  (CMake: "Manually-specified variables were not used"). Fix: the cross python block configures
+  `3rdparty/tvm-ffi` as its own root project (cross args from the choke point, `Python_*` hints,
+  tests off), builds `tvm_ffi_cython`, and ships that build's `tvm_ffi.dll`/`.lib` beside
+  `core.<target>.pyd`; TVM's own configure carries no python knobs again. Proof: run 31.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed
