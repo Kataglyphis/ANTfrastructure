@@ -374,7 +374,44 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # attempts. To restore the LLVM 22 behaviour if a future clang makes that
 # correct again:
 #   '-mllvm -aarch64-enable-compress-jump-tables=false'
-$jumpTableFlag = if ($ocvCross) { '-mllvm -max-jump-table-size=100' } else { '' }
+#
+# WHY -max-jump-table-size DID NOT WORK (measured, run L): it caps the ENTRY
+# COUNT, and the ceiling is a BYTE SPAN. A 100-entry table still spans 1032
+# bytes when the case bodies average 10 bytes. The flag was accepted (no
+# "Unknown command line argument" in the log) and changed nothing.
+#
+# WHAT THE NUMBERS SAY. AArch64CompressJumpTables picks the entry width from an
+# ESTIMATE of the block offsets:
+#     span>>2 fits in  8 bits -> 1-byte entries (ceiling 1020 B)
+#                     16 bits -> 2-byte entries (ceiling ~256 KB)
+# Every failure measured tonight sits just past the 1-byte ceiling -- 256 (1024
+# B, FOUR bytes over), 258, 259, 260, 262, 272, 281, 284 -- so the pass is not
+# facing a wildly oversized table. It picks 1-byte because its estimate lands
+# under 1020, and the real layout comes out a handful of bytes above. The gap is
+# an estimate error, not a code-size problem, which is exactly why shrinking the
+# code "fixed" some TUs and not others.
+#
+# SO PUSH IT ONTO 2-BYTE ENTRIES INSTEAD OF SHRINKING ANYTHING.
+# -align-all-nofallthru-blocks=3 aligns branch-target blocks to 8 bytes. The
+# pass reads MachineBasicBlock::getAlignment() when it estimates, so the padding
+# is visible to it: offsets go over 1020, it selects 2-byte entries, and the
+# ceiling moves from 1020 bytes to ~256 KB -- 250x headroom, which no protobuf
+# or OpenCV generation is going to walk back into.
+#
+# THE COST IS PADDING, NOT OPTIMISATION. Every TU keeps /O2, every instruction
+# is still the one -O2 would emit; some branch targets gain up to 4 bytes of
+# alignment. Aligned branch targets are the common recommendation on AArch64
+# anyway. This is the difference that matters versus /Od or /O1, which removed
+# optimisation to dodge the pass.
+#
+# Compression stays ON: it is what keeps the table small enough for the
+# pc-relative reference to reach, and turning it off is what pushed the same
+# defect onto the branch-range side for three attempts.
+#
+# UPSTREAM: the estimate/emission mismatch is an LLVM bug and should be reported
+# (out/ has the drafts from previous ones). This flag is the workaround, not the
+# fix, and it is a workaround that costs no code quality.
+$jumpTableFlag = if ($ocvCross) { '-mllvm -align-all-nofallthru-blocks=3' } else { '' }
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
