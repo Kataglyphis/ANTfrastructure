@@ -18,7 +18,9 @@ set -euo pipefail
 #     present on this arch, or its absence is documented (see _parity_exempt /
 #     _parity_ort_flavor). Single-image scope: it conforms this arch to the
 #     table, it does NOT diff one arch against another — a component missing
-#     from the table is outside the gate. See the table's own comment block.
+#     from the table is outside the gate. A documented absence that stops being
+#     true FAILS ("exception no longer applies"), so the table cannot rot in
+#     place. See the table's own comment block.
 #
 # Usage:
 #   smoke-runtime-image.sh <image-tag> [target-arch]
@@ -385,7 +387,24 @@ check_ml_version_pins() {
         # only so this host-side gate can still pass the PRE-window wrappers
         # (e.g. the shipped 2026-08-12 :latest-cross) whose baked assert
         # predates the policy. DELETE after the next validated full rebuild.
-        pass "ML-stack versions match pins (${target_arch}; genai absent = documented riscv64 exemption)"
+        #
+        # SELF-CORRECTING (2026-08-26). "Delete after the next rebuild" is a
+        # note to a human, and notes rot: the branch would have gone on
+        # printing PASS forever on images that no longer need it. The image
+        # carries the evidence of which side of the window it is on — a
+        # PRE-window wrapper bakes a smoke-torch-venv.sh with no arch policy,
+        # a POST-window one bakes the STV_REQUIRE_GENAI re-arm. Ask the image.
+        # Only a POSITIVE answer flips the verdict: if the grep cannot run at
+        # all (no such file, container failed to start) we still take the
+        # tolerant branch, so this can never fail an image it merely failed to
+        # interrogate.
+        if _rt_run bash -lc \
+             'grep -q STV_REQUIRE_GENAI /opt/scripts/packaging/smoke-torch-venv.sh' \
+             >/dev/null 2>&1; then
+          fail "ML-stack version-pin assertion FAILED (${target_arch}) and the TRANSITIONAL genai exemption NO LONGER APPLIES: this image's own /opt/scripts/packaging/smoke-torch-venv.sh carries the post-2026-08-12 arch policy (STV_REQUIRE_GENAI), so it must have exempted genai itself and returned 0. Two edits, in this order: fix why the baked policy did not fire, then delete the transitional 'elif' branch in check_ml_version_pins (linux/scripts/06-packaging/smoke-runtime-image.sh)."
+        else
+          pass "ML-stack versions match pins (${target_arch}; genai absent = documented riscv64 exemption for a PRE-2026-08-12 wrapper)"
+        fi
       else
         fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
       fi
@@ -569,8 +588,8 @@ check_venv_bytecode() {
 # TABLE-CONFORMANCE check:
 #   * every component NAMED in _PARITY_PREFIXES/_PARITY_WHEELS must be present
 #     on this arch, unless _parity_exempt documents its absence  -> FAILS;
-#   * a documented exemption whose component turns out to be PRESENT is called
-#     out as a stale table entry                                  -> WARN;
+#   * a documented exemption whose component turns out to be PRESENT is a STALE
+#     table entry — the exception no longer applies             -> FAILS;
 #   * exactly one onnxruntime distribution, the flavour the table names -> FAILS.
 # It therefore CANNOT see a one-sided EXTRA: a component that exists on one arch
 # and not another while being absent from the table above is invisible to the
@@ -580,6 +599,17 @@ check_venv_bytecode() {
 # automatic needs a cross-arch step in the caller and is left on the ARCH-PARITY
 # backlog item. Adding a component to the table is what puts it under the gate.
 #
+# WHY THE STALE ARM FAILS (2026-08-26). It used to WARN, which meant a table
+# entry could stop being true while the smoke kept printing PASS underneath the
+# warning — the table rots and nothing forces the edit. An exemption is a CLAIM
+# about this image ("this component is absent here, on purpose"); when the claim
+# is falsified the table is wrong, and a wrong table is a defect of the same
+# kind as a missing component. Failing is also the only thing that makes the
+# table SELF-CORRECTING: the fix is a one-line deletion, the message names the
+# exact line, and once it is gone the component is asserted on that arch like
+# everywhere else. The asymmetry with the blind spot above is deliberate — a
+# FALSIFIED claim fails; a component nobody ever wrote down still cannot.
+#
 # Prefix names are version-stripped (cmake-4.4.2 -> cmake) so a pin bump does
 # not need a table edit.
 _PARITY_PREFIXES="Kataglyphis-Orchestr-ANT-ion android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
@@ -588,6 +618,13 @@ _PARITY_WHEELS="torch torchvision ai_edge_litert iree_base_compiler iree_base_ru
 
 # Documented per-arch absences. Each arm is a REVIEWED decision with its reason;
 # anything absent that is NOT listed here is drift and fails.
+#
+# EVERY ARM IS A DELETION CANDIDATE. The arm asserts the component is absent on
+# that arch; the moment the component appears, check_arch_parity FAILS and tells
+# the reader to delete the arm (see the WHY THE STALE ARM FAILS note above). So
+# an arm may only encode a reason that is still true TODAY — never "not built
+# yet", which turns the table into a wish list that fails the day the producer
+# lands. Both arms below are upstream-availability facts, not schedule notes.
 _parity_exempt() {
   case "$1:$2" in
     # Kitware publishes no riscv64 CMake archive, so 02-toolchain/cmake.sh
@@ -617,13 +654,25 @@ _parity_ort_flavor() {
 # GStreamer plugins that are KNOWN not to load on a given arch. Same contract:
 # listed = reviewed, unlisted = new drift (reported, still non-fatal — a broken
 # optional plugin degrades gracefully; see check_gstreamer_plugin_health).
+#
+# Entries are "<arch>:<libgst*.so>" in ONE list rather than case arms, because
+# check_gstreamer_plugin_health needs both directions of the same fact: given a
+# plugin, is its failure documented (the predicate below), and given the arch,
+# WHICH plugins does the table still claim are broken (so a claim that stopped
+# being true can be caught). A predicate cannot be enumerated, and keeping a
+# second per-arch list beside a case statement is a drift surface of its own —
+# one table, two readers.
+#
+# arm64:libgstgtk4.so — the distro libgtk-4.so.1 resolves
+# vkCreateWaylandSurfaceKHR against the system Vulkan loader, which the shipped
+# /opt/vulkan loader does not export here. The gtk4 SINK is a desktop-display
+# element with no role in a headless wrapper, so it is accepted rather than
+# fixed.
+_PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
+
 _parity_gst_plugin_known() {
-  case "$1:$2" in
-    # arm64 only: the distro libgtk-4.so.1 resolves vkCreateWaylandSurfaceKHR
-    # against the system Vulkan loader, which the shipped /opt/vulkan loader
-    # does not export here. The gtk4 SINK is a desktop-display element with no
-    # role in a headless wrapper, so it is accepted rather than fixed.
-    arm64:libgstgtk4.so) return 0 ;;
+  case " ${_PARITY_GST_KNOWN_BROKEN} " in
+    *" $1:$2 "*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -655,7 +704,7 @@ done' 2>/dev/null)"; then
       esac
       if [ "${present}" != "0" ]; then
         if _parity_exempt "${target_arch}" "${want}"; then
-          echo "  WARN ${want} is PRESENT on ${target_arch} although the parity table exempts it -- drop the exemption (it is stale)"
+          fail "ARCH-PARITY: the documented ${target_arch} exception for ${want} NO LONGER APPLIES -- ${want} is PRESENT in this image. Delete the '${target_arch}:${want})' arm from _parity_exempt in linux/scripts/06-packaging/smoke-runtime-image.sh; the table then asserts ${want} on ${target_arch} like on every other arch."
         fi
       elif _parity_exempt "${target_arch}" "${want}"; then
         echo "  ~~   ${want} absent (documented ${target_arch} exception)"
@@ -778,6 +827,48 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
       unnamed_note="; ${unnamed} failure line(s) name no libgst*.so and could not be classified"
     fi
     echo "  ... of those, by unique libgst*.so basename: ${known} documented, ${unknown} undocumented${unnamed_note}"
+
+    # The OTHER direction, and the reason the table is a list: a documented
+    # failure that stopped failing. The loop above can only speak about
+    # plugins that DID fail, so an exception whose plugin quietly started
+    # loading again was invisible and the entry rotted in place. Walk the
+    # table's own claims for this arch instead.
+    #
+    # POSITIVE EVIDENCE ONLY, two independent signals that must agree:
+    #   1. the basename is absent from the scanner's failure list, AND
+    #   2. gst-inspect-1.0 loads the plugin FILE directly and exits 0.
+    # Absence alone proves nothing (the plugin may simply not be shipped, or
+    # the scan may never have reached it), and (2) alone cannot outvote a
+    # scanner that did report the failure. Only both together mean the plugin
+    # loads on this arch — at which point the table entry is false, which is a
+    # defect in the same sense as the stale _parity_exempt arm above, and
+    # fails for the same reason. Reached only after GST_SCAN_DONE, so a scan
+    # that never ran cannot get here.
+    local _kb_entry _kb_plugin
+    for _kb_entry in ${_PARITY_GST_KNOWN_BROKEN}; do
+      [ "${_kb_entry%%:*}" = "${target_arch}" ] || continue
+      _kb_plugin="${_kb_entry#*:}"
+      # `failed` is NEWLINE-separated (built at :806 via printf '%s\n' | grep),
+      # so the old `case " ${failed} " in *" plugin "*` matched only while
+      # exactly ONE plugin failed: with two or more, neither is bracketed by
+      # spaces and the guard silently stopped firing — taking the hard fail
+      # below with it. Match on the delimiter the list actually uses.
+      if printf '%s\n' "${failed}" | grep -qxF -- "${_kb_plugin}"; then
+        continue   # still failing = entry still true
+      fi
+      if _rt_run bash -lc '
+p="$1"
+command -v gst-inspect-1.0 >/dev/null 2>&1 || exit 1
+for d in $(printf "%s" "${GST_PLUGIN_PATH:-}" | tr ":" " ") /usr/lib/*/gstreamer-1.0 /usr/local/lib/gstreamer-1.0; do
+  [ -f "${d}/${p}" ] || continue
+  gst-inspect-1.0 "${d}/${p}" >/dev/null 2>&1 && exit 0
+done
+exit 1' _ "${_kb_plugin}" >/dev/null 2>&1; then
+        fail "ARCH-PARITY: the documented ${target_arch} exception for ${_kb_plugin} NO LONGER APPLIES -- it is absent from the scanner's failure list AND gst-inspect-1.0 loads the plugin file directly. Delete '${target_arch}:${_kb_plugin}' from _PARITY_GST_KNOWN_BROKEN in linux/scripts/06-packaging/smoke-runtime-image.sh."
+      else
+        echo "  INFO ${_kb_plugin}: not in this run's failure list and not directly loadable either (not shipped, or unloadable without a scanner message) -- ${target_arch} exception retained"
+      fi
+    done
     echo ""
 }
 

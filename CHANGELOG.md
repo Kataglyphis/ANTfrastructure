@@ -5,6 +5,67 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
+
+`buildctl` on this host comes from the `nerdctl-full` bundle — there is no
+separate BuildKit package — so bumping buildkitd means replacing the bundle.
+That was a hand-run sequence of stop/extract/restart steps whose half-done
+state fails much later with a confusing symptom. It is now
+**`linux/host-config/install-nerdctl-full.sh`**: dry-run by default, SHA256
+verified against the published `SHA256SUMS`, backup + `--rollback`, refuses
+while a build is running, and a cache-mount census around the swap.
+
+**Then a 20-agent audit against the LIVE host layout — every finding
+adversarially refuted — found 13 real defects in it, and the worst were not the
+expected ones.**
+
+The host runs the rootless stack (`systemd --user`) *and* a rootful
+containerd + buildkitd, all executing the same `/usr/local/bin` binaries plus
+the unit files the bundle ships in `/usr/local/lib/systemd/system`. The
+installer only stopped the `--user` units. Measured rather than assumed: GNU
+tar 1.35 and `cp -a` **both unlink-and-recreate**, so there is no `ETXTBSY` and
+no error at all — the root daemons keep executing the now-deleted inode, and
+`Restart=always` then performs the real version jump unattended. One audit lens
+called this a critical `ETXTBSY` abort; a running-binary experiment refuted
+that, and the claim was dropped instead of shipped. The script now refuses
+until the operator picks `NERDCTL_INCLUDE_ROOTFUL=1` or
+`NERDCTL_IGNORE_ROOTFUL=1` — blocking the act, not the look: a dry run still
+prints the plan and the choice.
+
+Gates that could not fail, now able to:
+
+- The cache census counted `buildctl du`'s **header row** (51 records read as
+  52) and returned 0 for an unreachable daemon — indistinguishable from "caches
+  gone", and a before-count of 0 made `after >= before` unfailable.
+- Cache-mount **loss only warned**, so an upgrade that ate hours of
+  ccache/sccache still exited 0 and printed `done.` It now fails the run.
+- `systemctl is-active` on a `Type=simple` wrapper was the only BuildKit
+  assertion: a daemon with no usable worker passed. Now polls `buildctl debug
+  workers`.
+- The version proof read **on-disk client** binaries, which only prove `tar`
+  ran. Now compares **daemon-reported** versions captured before and after.
+- The "already on target" early-out compared `2.3.4` to `v2.3.5` — dead code.
+  Worse than a wasted re-install: a second run overwrote the backup with the
+  already-new binaries, destroying the only way back.
+- The refuse guard missed a `buildctl build` solve; widened, and it now honours
+  the repo's own `CROSS_CHAIN_PIDFILE` (read defensively, so an empty file
+  cannot become `kill -0 0` and refuse every run).
+
+**The upgrade then ran for real** (`NERDCTL_INCLUDE_ROOTFUL=1`): nerdctl
+2.3.4 → **2.3.5**, buildctl v0.31.1 → **v0.31.2**, and — the part the old script
+could not have shown — the *daemons themselves* report v0.31.2 and containerd
+**v2.3.3**. Cache-mount records **51 → 51**, one worker, all four services
+active, both rootful daemons back on new pids (not stranded on deleted inodes),
+`NeedDaemonReload=no`. The driver was moby/buildkit#6915, a
+"concurrent map iteration and map write" daemon crash that reproduces under
+concurrent builds — this chain runs three arch lanes at once. It does **not**
+cure BKD1 session rot (no upstream fix; still stop-chain → restart), and the
+parallel-build cache-miss fix (moby/buildkit#6954) is in v0.32.0, which no
+nerdctl-full ships yet.
+
+Reference run, both gotchas that bit during it, and the rootful knobs are in
+[`docs/linux-host-setup.md` § B3b](docs/linux-host-setup.md).
+
 ## 2026-08-25 (eighth pass) — SBOM run for real, on both images, and documented
 
 The SBOM machinery landed the pass before with an honest caveat: the `syft` job

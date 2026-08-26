@@ -17,9 +17,9 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
-| CMake | 4.4.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Node.js | 26.7.0 | [nodejs.org](https://nodejs.org/) | MIT |
-| uv | 0.12.5 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.6 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 
 ### Compiler Toolchain (`Dockerfile.toolchain`)
@@ -102,7 +102,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
-| Ollama | 0.32.15 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
+| Ollama | 0.33.0 | [github.com/ollama/ollama](https://github.com/ollama/ollama) | MIT |
 
 ### Build Tooling (build-time only, not in runtime images)
 
@@ -137,7 +137,7 @@ its own license terms.
 | Visual Studio Build Tools | 18 | [visualstudio.microsoft.com](https://visualstudio.microsoft.com/) | Microsoft EULA |
 | Python (source-built, ClangCL) | 3.14.7 | [python.org](https://python.org/) | PSF License |
 | CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal) | bundled with Python | [github.com/python/cpython-source-deps](https://github.com/python/cpython-source-deps) | various (Apache 2.0, MIT, PD, …) |
-| CMake | 4.4.2 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
+| CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 | WiX Toolset | latest | [wixtoolset.org](https://wixtoolset.org/) | MS-RL |
@@ -193,7 +193,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | Python | Ubuntu apt (python3-full) | [python.org](https://python.org/) | PSF License |
-| uv | 0.12.5 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
+| uv | 0.12.6 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Pygments | pinned by uv.lock | [pygments.org](https://pygments.org/) | BSD 2-Clause |
 
 ### Base Utilities (`external/Kataglyphis-DocumANTation/Dockerfile`)

@@ -24,6 +24,72 @@ require_toolchain_python() {
   printf '%s' "$python_bin"
 }
 
+# ── target-Python sysconfig redirect (cross only) ─────────────────────────────
+# apache-tvm ITSELF ships no CPython extension: its pyproject sets
+# `wheel.py-api = "py3"` and its CMakeLists only install()s libtvm_compiler /
+# libtvm_runtime into the wheel's lib/, so the MAIN wheel never touches the
+# Python C API and cross-builds cleanly. Its REQUIRED sibling apache-tvm-ffi
+# does touch it: tvm-ffi's CMakeLists builds the Cython core with
+#   python_add_library(tvm_ffi_cython MODULE "${_core_cpp}" WITH_SOABI)
+# and its pyproject rules the stable ABI out in as many words ("Per-Python-
+# version wheels (no abi3 / limited API): the core extension builds against the
+# full per-version Python C API (WITH_SOABI in CMakeLists.txt)"). WITH_SOABI
+# names the file from Python_SOABI, which CMake's FindPython reads out of the
+# interpreter it found — and that is ALWAYS the amd64 build venv, cross mode
+# included. So a cross build emits core.cpython-3XX-x86_64-linux-gnu.so.
+# retag_directory_wheels rewrites the wheel FILENAME and never a member name,
+# and the target CPython only accepts .cpython-3XX-<target-triplet>.so,
+# .abi3.so or plain .so — so such a wheel installs cleanly and then `import
+# tvm` (statement #1 is `from tvm_ffi import ...`) dies on-target. That is the
+# host-SOABI class IREE hit (iree-0714t), and this is the same mechanism
+# build-app-wheelhouse.sh uses for torch/vision/IREE: point the HOST
+# interpreter's sysconfig at the TARGET's _sysconfigdata module so
+# get_config_var('SOABI'/'EXT_SUFFIX') answers for the target.
+#
+# Echoes an eval-able export string, or NOTHING when the target sysconfigdata
+# is absent — setting _PYTHON_SYSCONFIGDATA_NAME without putting the module on
+# PYTHONPATH is an instant ModuleNotFoundError, so both halves ship together or
+# neither does. On the empty path the wheel build runs exactly as it does
+# today and _tvm_reject_wrong_soabi_wheels is what keeps the verdict honest.
+#
+# The staged target Python this reads is /opt/python-target -> /opt/python-cross/
+# <arch> (Dockerfile.toolchain builds it, Dockerfile.media's base stage
+# activates the symlink via 03-media/activate-cross-python.sh), so it is
+# present in this stage for every cross lane.
+#
+# DUPLICATION, deliberate and bounded: 05-frameworks/torch/build-app-wheelhouse.sh
+# carries the same lookup as resolve_target_python_sysconfig_export. tvm.sh does
+# not source that file, and 01-core was out of scope for this change; fold the
+# two into 01-core/cross-python.sh the next time both are in scope.
+_tvm_target_python_sysconfig_export() {
+    cross_build_is_active || return 0
+
+    local triplet="" name="" stage_root="" dir="" search_root=""
+
+    triplet="$(cross_target_triplet 2>/dev/null || true)"
+    [ -n "${triplet}" ] || return 0
+    name="_sysconfigdata__linux_${triplet}"
+    stage_root="$(cross_target_python_root 2>/dev/null || true)"
+
+    for search_root in ${stage_root:+"${stage_root}/lib"} "/usr/lib"; do
+      [ -d "${search_root}" ] || continue
+      dir="$(find "${search_root}" -maxdepth 2 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
+      [ -n "${dir}" ] && break
+    done
+
+    if [ -z "${dir}" ]; then
+      # Explicit >&2 even though logging.sh's warn() already emits on fd 2:
+      # this function's STDOUT is eval'd by the caller, so any stray byte on it
+      # becomes a command. Same defensive convention as tvm-llvm-compat.sh's
+      # capture-stdout helpers.
+      warn "Target Python sysconfigdata ${name}.py not found under ${stage_root:-<no staged target python>}/lib or /usr/lib; the apache-tvm-ffi extension would be stamped with the amd64 host SOABI and the staged wheels will be withdrawn below" >&2
+      return 0
+    fi
+
+    printf 'export _PYTHON_SYSCONFIGDATA_NAME=%q; export PYTHONPATH=%q${PYTHONPATH:+:${PYTHONPATH}}' \
+      "${name}" "${dir}"
+}
+
 # Create the venv + install build deps, and assemble the wheel CMake args string.
 # Sets venv_python / TVM_WHEEL_DIR / wheel_cmake_args_string in tvm_build_wheel's
 # scope (dynamic scoping); reads main()'s build config locals the same way.
@@ -84,6 +150,10 @@ _tvm_wheel_setup() {
       "$vulkan_library" \
       "$vulkan_include"
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
+
+    # Cross only; empty string on native and whenever the target sysconfigdata
+    # is missing. Read by _tvm_run_wheel_build (see the helper's header).
+    tvm_wheel_sysconfig_export="$(_tvm_target_python_sysconfig_export)"
 }
 
 # Run `python -m build` for one mode, mirroring its output into a log file so a
@@ -108,13 +178,24 @@ _tvm_run_wheel_build() {
     if [[ ! -o pipefail ]]; then
       die "tvm-python.sh: 'set -o pipefail' is not enabled; the tee'd wheel build would mask its own failure and every TVM diagnostic below would be dead code"
     fi
-    CMAKE_GENERATOR=Ninja \
-    CMAKE_ARGS="${wheel_cmake_args_string}" \
-    "$venv_python" -m build --wheel --no-isolation \
-      --outdir "$TVM_WHEEL_DIR" \
-      -Cbuild-dir="${tvm_dir}/build-wheel-${build_dir_suffix}" \
-      "$@" \
-      "$src_dir" 2>&1 | tee "$build_log"
+    # The sysconfig redirect lives in a SUBSHELL, not this function's scope: it
+    # rewrites what `sysconfig` answers for the whole process tree (the target
+    # stdlib directory goes on PYTHONPATH), and nothing outside the wheel build
+    # — uv, the verdict, verify_python_import — should ever see it. The
+    # subshell is also what `2>&1 | tee` now reports on, so pipefail still
+    # surfaces a failed build exactly as before.
+    (
+      if [ -n "${tvm_wheel_sysconfig_export:-}" ]; then
+        eval "${tvm_wheel_sysconfig_export}"
+      fi
+      CMAKE_GENERATOR=Ninja \
+      CMAKE_ARGS="${wheel_cmake_args_string}" \
+      "$venv_python" -m build --wheel --no-isolation \
+        --outdir "$TVM_WHEEL_DIR" \
+        -Cbuild-dir="${tvm_dir}/build-wheel-${build_dir_suffix}" \
+        "$@" \
+        "$src_dir"
+    ) 2>&1 | tee "$build_log"
 }
 
 # Stage the apache-tvm-ffi wheel NEXT TO the main one. `import tvm`'s first
@@ -136,7 +217,15 @@ _tvm_stage_ffi_wheel() {
     local mode="$1"; shift
     local ffi_dir="${tvm_dir}/3rdparty/tvm-ffi"
     if [ ! -f "${ffi_dir}/pyproject.toml" ]; then
-      warn "tvm-ffi source tree has no pyproject.toml (${ffi_dir}) — cannot stage the ffi wheel; the staged apache-tvm wheel will NOT import in the shipped venv (consumer installs --no-deps and tvm_ffi is import #1)"
+      warn "tvm-ffi source tree has no pyproject.toml (${ffi_dir}) — cannot stage the ffi wheel"
+      # Both exits below used to warn and return 0, leaving the main wheel
+      # staged so _tvm_wheel_verdict announced "python wheel staged" minutes
+      # after this warning — and the image shipped an apache-tvm whose very
+      # first import (`from tvm_ffi import ...`) dies. Withdraw instead, the
+      # same way _tvm_reject_wrong_soabi_wheels does; TVM_WHEEL_SKIP_REASON is
+      # a local of tvm_build_wheel and is reachable from here by dynamic scope.
+      rm -f "${TVM_WHEEL_DIR}"/*.whl
+      TVM_WHEEL_SKIP_REASON="tvm-ffi ships no pyproject.toml (${ffi_dir}); an apache-tvm wheel without its tvm_ffi companion cannot import (consumer installs --no-deps and tvm_ffi is import #1), so the set was withdrawn"
       return 0
     fi
     local build_log="${tvm_dir}/tvm-ffi-wheel-build-${mode}.log"
@@ -144,7 +233,9 @@ _tvm_stage_ffi_wheel() {
     if ! _tvm_run_wheel_build "ffi-${mode}" "${build_log}" "${ffi_dir}" "$@"; then
       local missing
       missing="$(_tvm_wheel_missing_build_requires "${build_log}")"
-      warn "apache-tvm-ffi wheel build failed${missing:+; missing build-requires: ${missing}} — the staged apache-tvm wheel will NOT import in the shipped venv (consumer installs --no-deps and tvm_ffi is import #1)"
+      warn "apache-tvm-ffi wheel build failed${missing:+; missing build-requires: ${missing}}"
+      rm -f "${TVM_WHEEL_DIR}"/*.whl
+      TVM_WHEEL_SKIP_REASON="apache-tvm-ffi wheel build failed${missing:+ — unsatisfied build-requires under --no-isolation: ${missing}}; an apache-tvm wheel without its tvm_ffi companion cannot import, so the set was withdrawn"
     fi
     return 0
 }
@@ -185,6 +276,70 @@ _tvm_wheel_missing_build_requires() {
       }
       END { if (deps != "") printf "%s", deps }
     ' "$build_log"
+}
+
+# Withdraw staged cross wheels whose native CPython extensions carry the WRONG
+# SOABI — the wheels that install fine on the target and then fail at `import`.
+# The rule is the one 03-media/runtime/verify-wheels.sh already applies to the
+# collected wheelhouse: only members that actually look like a CPython
+# extension (`.cpython-<n>-...so`) are judged, while `.abi3.so` and plain `.so`
+# (the bundled C libraries libtvm_ffi.so / libtvm_runtime.so / libtvm_compiler.so)
+# are not extensions and are skipped. That check is deliberately ADVISORY and
+# runs at the far end of the media build, after `uv pip install` has already
+# taken the wheel; this one runs at the PRODUCER, where the artifact can still
+# be withdrawn and the reason is still known.
+#
+# Every staged wheel goes, not just the offender: `import tvm` needs BOTH the
+# apache-tvm and the apache-tvm-ffi wheel (see _tvm_stage_ffi_wheel), so a
+# surviving apache-tvm wheel would be dead weight that reads as green in
+# _tvm_wheel_verdict — the exact silence this file exists to end. Never fatal
+# (TVM stays best-effort); the verdict does the shouting.
+_tvm_reject_wrong_soabi_wheels() {
+    local triplet="" py_tag="" expected="" bad="" entry=""
+
+    triplet="$(cross_target_triplet 2>/dev/null || true)"
+    py_tag="$("$venv_python" -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")' 2>/dev/null || true)"
+    if [ -z "${triplet}" ] || [ -z "${py_tag}" ]; then
+      warn "TVM cross wheel SOABI check SKIPPED (triplet='${triplet}' python-tag='${py_tag}'); the staged wheels are NOT proven importable on the target"
+      return 0
+    fi
+    # Host and target Python are the same version by construction (the staged
+    # target interpreter is built from the same PYTHON_VERSION), so only the
+    # arch triple has to come from the cross env.
+    expected=".cpython-${py_tag}-${triplet}.so"
+
+    bad="$("$venv_python" -c '
+import glob, os, re, sys, zipfile
+expected, wheel_dir = sys.argv[1], sys.argv[2]
+for wheel in sorted(glob.glob(os.path.join(wheel_dir, "*.whl"))):
+    try:
+        members = zipfile.ZipFile(wheel).namelist()
+    except Exception:
+        continue
+    for name in members:
+        base = name.rsplit("/", 1)[-1]
+        if not base.endswith(".so") or not re.search(r"\.cpython-\d+-", base):
+            continue
+        if not base.endswith(expected):
+            print(os.path.basename(wheel) + " :: " + name)
+' "${expected}" "${TVM_WHEEL_DIR}")" || {
+      # A scanner failure must NOT read as "clean": that is precisely how a
+      # silent green gets manufactured. Say the check did not run.
+      warn "TVM cross wheel SOABI check FAILED to run (zip scan errored); the staged wheels are NOT proven importable on the target"
+      return 0
+    }
+
+    if [ -z "${bad}" ]; then
+      log "TVM cross wheels: every native CPython extension carries ${expected}"
+      return 0
+    fi
+
+    while IFS= read -r entry; do
+      [ -n "${entry}" ] || continue
+      warn "cross TVM wheel carries a wrong-SOABI extension (expected ${expected}): ${entry}"
+    done <<< "${bad}"
+    rm -f "${TVM_WHEEL_DIR}"/*.whl
+    TVM_WHEEL_SKIP_REASON="cross wheels were stamped with the build-host SOABI instead of ${expected} — they install on $(cross_target_arch 2>/dev/null || echo "the target") and then fail at 'import tvm_ffi'; withdrawn so the image does not ship an unimportable tvm"
 }
 
 # Cross mode: build the wheel for the target platform and retag it. Guard clauses
@@ -233,12 +388,23 @@ _tvm_build_wheel_cross() {
     fi
     # Main wheel exists — stage its ffi sibling BEFORE the retag so both get
     # retagged for the target platform (the ffi ext cross-compiles via the same
-    # CMAKE_ARGS toolchain; its compiled ext is the arch-agnostic-named
-    # core.abi3.so, only the ELF inside is target-arch).
+    # CMAKE_ARGS toolchain).
+    #
+    # CORRECTION (this comment previously claimed the ffi extension is "the
+    # arch-agnostic-named core.abi3.so, only the ELF inside is target-arch",
+    # and Dockerfile.media's tvm stage repeated it): it is NOT abi3. tvm-ffi
+    # builds it WITH_SOABI and its pyproject rules the limited API out
+    # explicitly, so the file name carries the BUILDING interpreter's SOABI.
+    # _tvm_target_python_sysconfig_export is what makes that name come out as
+    # the target's, and _tvm_reject_wrong_soabi_wheels below refuses to ship
+    # the wheels when it does not.
     _tvm_stage_ffi_wheel "cross-${wheel_platform}"
     log "Retagging cross TVM wheel(s) in ${TVM_WHEEL_DIR} for ${wheel_platform}"
     # Canonical retag helper from 01-core/common.sh (sourced via tvm.sh).
     retag_directory_wheels "${TVM_WHEEL_DIR}" "*" "${wheel_platform}" "$venv_python"
+    # Retagging fixed the FILENAME; prove the wheel CONTENTS are target-arch
+    # too, or withdraw them. Runs last so it judges the final staged set.
+    _tvm_reject_wrong_soabi_wheels
 }
 
 # Native mode: build the wheel, then install tvm-ffi + the built wheel (or the
@@ -334,6 +500,8 @@ _tvm_wheel_verdict() {
 tvm_build_wheel() {
     # Shared across the phase helpers below (assigned by _tvm_wheel_setup).
     local venv_python="" TVM_WHEEL_DIR="" wheel_cmake_args_string=""
+    # Cross-only sysconfig redirect for the wheel builds; "" on native.
+    local tvm_wheel_sysconfig_export=""
     # Filled in by whichever guard clause fired; read by _tvm_wheel_verdict.
     local TVM_WHEEL_SKIP_REASON=""
     _tvm_wheel_setup

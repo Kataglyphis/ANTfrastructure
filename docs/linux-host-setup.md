@@ -172,6 +172,113 @@ Restart Docker afterwards. Disk exhaustion mid-build surfaces as
 `no space left on device` deep inside a compile step — see
 [Build resource monitoring](build-resource-monitoring.md).
 
+### B3b. Install or upgrade `nerdctl-full`
+
+`nerdctl-full` ships nerdctl together with the whole stack it drives —
+containerd, BuildKit (`buildkitd` + `buildctl`), runc, the CNI plugins, the
+snapshotters and the rootless helpers. They are version-matched, so on this
+host **upgrading buildkitd means upgrading the bundle**; there is no separate
+buildkit package to bump.
+
+```bash
+bash linux/host-config/install-nerdctl-full.sh                    # dry run: version delta + plan
+NERDCTL_INSTALL_CONFIRM=1 bash linux/host-config/install-nerdctl-full.sh
+bash linux/host-config/install-nerdctl-full.sh --rollback         # restore the backup
+```
+
+Knobs: `NERDCTL_VERSION=x.y.z` pins a release (default: latest),
+`NERDCTL_PREFIX` (default `/usr/local`), `NERDCTL_BACKUP_DIR`, `NERDCTL_FORCE=1`
+(re-install the version already present), `NERDCTL_SKIP_CACHE_CENSUS=1` (proceed
+without a cache baseline when buildkitd is down).
+
+**This host runs rootless AND rootful side by side, and that changes the
+procedure.** The `systemd --user` units are the rootless stack the chain builds
+with; but a rootful `containerd.service` *and* `buildkit.service` also run, and
+they execute the same `/usr/local/bin` binaries plus unit files the bundle
+ships in `/usr/local/lib/systemd/system`. Extracting the bundle replaces all of
+that underneath them. Measured on this host: GNU tar 1.35 and `cp -a` both
+unlink-and-recreate rather than failing with `ETXTBSY`, so there is **no error
+at all** — the root daemons simply keep executing the now-deleted old inode,
+and because both units are `Restart=always` the real version jump then happens
+unattended at some later moment. The script therefore refuses unless you choose:
+
+```bash
+NERDCTL_INCLUDE_ROOTFUL=1 ...   # stop, upgrade and restart them too — no skew
+NERDCTL_IGNORE_ROOTFUL=1  ...   # rootless only; accept the documented skew
+```
+
+A dry run always shows the plan and the choice — only the actual install is
+blocked.
+
+What the script guarantees, and why each guard exists:
+
+- **It refuses while a build runs.** Extracting over live binaries mid-chain
+  kills the run; chains here regularly last 10+ hours.
+- **It verifies the release SHA256** against the published `SHA256SUMS` before
+  touching anything, and refuses if the checksum is missing.
+- **It backs up exactly the `bin/` binaries the bundle ships**, so
+  `--rollback` puts nerdctl, buildkitd/buildctl, containerd and runc back.
+  Know its scope: the bundle also ships `libexec/` (CNI), systemd units and
+  `share/`, and those stay at the newly installed version. That is harmless
+  for the build path, but a rollback is *not* a full downgrade — for that,
+  re-run with `NERDCTL_VERSION=<previous>`.
+- **It counts BuildKit cache-mount records before and after.** Compile caches
+  (ccache/sccache/uv/cargo/cerbero) live in `~/.local/share/buildkit`, not in
+  `/usr/local`, so an upgrade must not change that number — see
+  [`prune-safe.sh`](../linux/host-config/prune-safe.sh) for why those records
+  are the thing worth protecting.
+- **It proves the stack came back up** (`nerdctl images`, `buildctl du`,
+  service active) instead of assuming, and tells you the rollback command if
+  it did not.
+
+**Why this was done, and what it bought** — BuildKit `v0.31.0` introduced a
+daemon crash, *"concurrent map iteration and map write"*
+([moby/buildkit#6915][bk6915]), that reproduces under **concurrent** builds,
+which is exactly how this chain drives it with three arch lanes at once. The
+fix ships in BuildKit `v0.31.2`, bundled by nerdctl-full `2.3.5`. Two caveats,
+so nobody upgrades expecting the wrong thing: it does **not** cure
+[BKD1](failure-modes.md) — the buildkitd session rot (export hangs, `no active
+session`, lost layer blobs) has no upstream fix and is still cured by stopping
+the chain and restarting the service — and the parallel-build cache-miss fix
+([moby/buildkit#6954][bk6954]) landed in `v0.32.0`, which no nerdctl-full
+release ships yet.
+
+**Performed on this host, 2026-08-26** (the reference run, with what was
+actually proven afterwards rather than assumed):
+
+| | before | after |
+|---|---|---|
+| `nerdctl` on disk | 2.3.4 | **2.3.5** |
+| `buildctl` on disk | v0.31.1 | **v0.31.2** |
+| buildkitd **daemon** reports | v0.31.1 | **v0.31.2** |
+| containerd **Server Version** | v2.3.2 | **v2.3.3** |
+| cache-mount records | 51 | **51** (unchanged) |
+| buildkitd workers | — | 1 |
+
+Run as `NERDCTL_INCLUDE_ROOTFUL=1 NERDCTL_INSTALL_CONFIRM=1`, so the rootful
+pair was stopped and restarted with the rootless one. Verified afterwards: the
+rootful daemons came back on NEW pids (1982/1983 → 30591/30592, i.e. they are
+not stranded on the deleted old inodes), no daemon's `/proc/<pid>/exe` reads
+`(deleted)`, and both root units report `NeedDaemonReload=no` — the system
+`daemon-reload` took, so nothing flips over unattended later.
+
+Two gotchas worth repeating, both hit during that run:
+
+- The env vars must be on **one line** with the `bash` call. Split across two
+  lines they are set in the parent shell, never exported, and the script runs
+  as a plain dry run that changes nothing — which is exactly what happened on
+  the first attempt.
+- Installing needs `sudo` (the bundle is root-owned), so it cannot be driven
+  from a non-interactive session. "Rootless" describes how the daemons **run**,
+  not how the bundle is **installed**.
+
+[bk6915]: https://github.com/moby/buildkit/issues/6915
+[bk6954]: https://github.com/moby/buildkit/issues/6954
+
+Afterwards run `linux/host-config/verify-host-config.sh` and
+`linux/scripts/preflight.sh` before starting the next chain — the daemon
+restart is also the moment the staged `buildkitd.toml` gcpolicy takes effect.
+
 ### B4. Verify a `nerdctl-full` install
 
 The `nerdctl-full` tarball bundles containerd, BuildKit, runc, snapshotters and

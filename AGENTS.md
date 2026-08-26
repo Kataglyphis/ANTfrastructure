@@ -969,6 +969,34 @@ base ─┬─ onnxruntime ───────┐
   chain runs — "unused" means not-container-referenced, so it deletes TAGGED
   cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
   registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
+- **Host toolchain: `linux/host-config/install-nerdctl-full.sh`** (2026-08-26).
+  There is NO separate buildkit package on this host — nerdctl-full bundles
+  nerdctl + containerd + buildkitd/buildctl + runc + CNI + rootless helpers,
+  version-matched, so bumping buildkitd means installing a newer bundle from
+  github.com/containerd/nerdctl releases. The script dry-runs by default
+  (`NERDCTL_INSTALL_CONFIRM=1` performs), verifies the release SHA256, backs up
+  the exact binaries the bundle ships (`--rollback`), REFUSES while a build is
+  running, and counts BuildKit cache-mount records before/after — the compile
+  caches live in `~/.local/share/buildkit`, not `/usr/local`, so that number
+  must not move. It also REFUSES until you choose how to treat the ROOTFUL
+  containerd+buildkitd that run from the same `/usr/local` on this host
+  (`NERDCTL_INCLUDE_ROOTFUL=1` upgrades them too, `NERDCTL_IGNORE_ROOTFUL=1`
+  accepts the skew): tar and `cp -a` both unlink-and-recreate, measured here,
+  so replacing a live root daemon's binary raises NO error — it keeps executing
+  the deleted inode until `Restart=always` swaps it unattended. Motivation,
+  DONE 2026-08-26 — the host was on buildctl
+  v0.31.1 and is now on v0.31.2 (nerdctl 2.3.5, containerd 2.3.3), daemons
+  confirmed reporting the new versions, 51 cache-mount records unchanged. The
+  driver was moby/buildkit#6915 — a "concurrent map iteration and map write"
+  daemon CRASH that reproduces under concurrent builds, introduced in v0.31.0,
+  fixed in v0.31.2. Three parallel
+  arch lanes is precisely that load class. Do NOT expect it to cure BKD1 (the
+  session rot: export hangs, "no active session", lost layer blobs) — that has
+  no upstream fix, and the cure remains stop-chain → restart buildkit. The
+  parallel-build cache-miss fix (moby/buildkit#6954) landed in v0.32.0, which
+  NO nerdctl-full ships yet, so this upgrade does not deliver it. A daemon
+  restart is also when the staged `buildkitd.toml` gcpolicy takes effect — do
+  both in the same no-build window.
 - **ghcr REGISTRY hygiene: `linux/host-config/ghcr-prune-package.sh`**
   (2026-08-24). The container package accumulates one untagged version per
   re-pushed moving tag; it had grown to 771 versions (~85% dead). NEVER

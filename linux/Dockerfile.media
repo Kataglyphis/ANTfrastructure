@@ -82,7 +82,8 @@
 #   base ─┬─ onnxruntime ───────┐
 #         ├─ litert ────────────┤
 #         ├─ opencv ────────────┼─ media-inputs ─ gstreamer ─ libcamera ─ final
-#         ├─ ffmpeg ────────────┤
+#         ├─ ffmpeg ──┬─────────┤                                          │
+#         │           └─ pyav ──────────────── (av wheel) ─────────────────┘
 #         └─ app-wheelhouse ────┘
 #
 # Ordering is least-likely-to-change (base/OS, shared core) → most-likely-to-
@@ -487,9 +488,31 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-
     # cross (arm64/riscv64, BUILD_MODE=cross inherited from base) via its own
     # cross-env: detect_cross_llvm_cmake_dir finds the target LLVM from the cross-sdk
     # base, append_cmake_cross_args wires the cross toolchain, and _tvm_build_wheel_cross
-    # produces a target-arch wheel (TVM's compiled ext is tvm_ffi/core.abi3.so — an
-    # arch-agnostic abi3 FILENAME, so no host-SOABI-naming bug like IREE/litert; only
-    # the ELF must be the target arch, which the cross toolchain handles).
+    # produces a target-arch wheel.
+    #
+    # Why USE_LLVM=ON is even reachable cross (the classic trap is a host-runnable
+    # llvm-config for the TARGET triple): TVM's FindLLVM only EXECUTES llvm-config on
+    # the fallback path, and tvm.sh's patch_tvm_findllvm_dylib_fallback rewrites that
+    # fallback to link the imported LLVM dylib target instead. The target package at
+    # /opt/llvm-cross/<triplet> is built LLVM_LINK_LLVM_DYLIB=ON (02-toolchain/
+    # llvm-cross.sh), so libtvm_compiler.so ends up with a DT_NEEDED on libLLVM.so.<ver>
+    # rather than static LLVM archives. That soname RESOLVES at runtime: the same
+    # unified build installs /opt/llvm-target-<arch>, Dockerfile.package COPYs it to
+    # /usr/local/llvm-target, and 06-packaging/copy-media-payloads.sh writes
+    # /etc/ld.so.conf.d/000-llvm-target.conf + ldconfig. Do not "simplify" either half
+    # away: dropping the dylib package makes CMake exec a foreign-arch llvm-config,
+    # dropping the ld.so.conf entry makes `import tvm` die on a missing libLLVM.
+    #
+    # CORRECTED 2026-08-26 (this comment used to claim "TVM's compiled ext is
+    # tvm_ffi/core.abi3.so — an arch-agnostic abi3 FILENAME, so no host-SOABI-naming
+    # bug like IREE/litert"). Verified false against the pinned sources: apache-tvm
+    # ships NO extension at all (pyproject wheel.py-api="py3"; CMake only installs the
+    # libs), while apache-tvm-ffi builds its Cython core with
+    # python_add_library(... WITH_SOABI) and its pyproject rules abi3 out in writing.
+    # It IS the IREE/litert host-SOABI class. tvm-python.sh now redirects the build
+    # interpreter's sysconfig to the staged target Python and then PROVES the staged
+    # wheels carry .cpython-<ver>-<target-triplet>.so, withdrawing them (loud verdict,
+    # still non-fatal) when they do not.
     # BEST-EFFORT on EVERY arch: a build failure ships the media image without TVM
     # python (WARN) exactly as before — it can never break the media build. The cross
     # path is newly exercised here. Visibility (NOT a gate — TVM stays best-effort):
@@ -693,6 +716,36 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
 RUN --mount=type=tmpfs,target=/tmp \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh ffmpeg
+
+# ==============================================================================
+# PyAV stage - the FFmpeg->Python bridge (`import av`).
+#
+# ORPHAN-PINS: versions.env pinned PYAV_VERSION while nothing under linux/ built
+# it, so every runtime smoke reported "No module named 'av'". PyAV is a plain
+# setuptools+Cython C extension over libav*, so it belongs next to the FFmpeg it
+# links against - see build-pyav.sh for the cross contract.
+#
+# Layered ON `ffmpeg` rather than appended to it, deliberately: /opt/ffmpeg stays
+# byte-identical, so media-inputs/gstreamer/opencv-gst keep their cache and the
+# wheel dir does not ride inside /opt/ffmpeg into every downstream image. The
+# stage never fails the lane - build-pyav.sh degrades to an EMPTY
+# /opt/pyav/wheels, which is exactly today's behaviour (app smoke check_pyav
+# optional-fails).
+# ==============================================================================
+FROM ffmpeg AS pyav
+# PAR2: stage-scoped ARG so the ${TARGET_ARCH} mount ids below expand per lane.
+ARG TARGET_ARCH
+ARG PYAV_VERSION=18.1.0
+
+ENV PYAV_VERSION=${PYAV_VERSION}
+
+RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/build/pyav,target=/opt/scripts/03-media/build/pyav,readonly \
+    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
+    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
+    --mount=type=tmpfs,target=/tmp \
+    set -euo pipefail; \
+    bash /opt/scripts/03-media/build/pyav/build-pyav.sh
 
 # ==============================================================================
 # Shared media build inputs stage — aggregates all library outputs.
@@ -974,6 +1027,13 @@ COPY --link --from=app-wheelhouse /opt/app-wheels /opt/app-wheels
 # Dir-to-dir COPYs are tolerant of the empty (non-amd64 / build-failed) case.
 COPY --link --from=tvm /opt/tvm/wheels /opt/tvm-wheels
 COPY --link --from=tvm /opt/tvm/lib/ /usr/local/lib/
+# PyAV: straight into the canonical wheelhouse. collect-artifacts.sh only
+# `mkdir -p`s /opt/wheels and MOVES the other components' wheels into it, so a
+# wheel already sitting there is preserved and then flows through the normal
+# repair-wheels.sh (strip + retag) / verify-wheels.sh (tag + SOABI) /
+# reconcile_local_wheels (venv install) path with its siblings. Dir-to-dir COPY,
+# so an empty (build-skipped) /opt/pyav/wheels is tolerated.
+COPY --link --from=pyav /opt/pyav/wheels /opt/wheels
 # OpenCV two-pass: OVERWRITE the pass-1 OpenCV inherited from media-inputs with
 # the pass-2 tree (opencv-gst), which linked the source-built GStreamer videoio.
 # Must come AFTER any media-inputs-inherited /opt/opencv5 content; a dir COPY
