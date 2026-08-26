@@ -188,7 +188,7 @@ $tvmCross = Test-WindowsCrossTarget
 $llvmCmd = if ($tvmCross) { $null } else { Get-Command llvm-config.exe -ErrorAction SilentlyContinue }
 $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
 if ($tvmCross) {
-    Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler, no python) -- backlog #116; see docs/windows-cross-builds.md'
+    Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
 } elseif (-not $llvmConfig) {
     $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '22.1.8'
     # SHA pins per version - extend when LLVM_WINDOWS_VERSION moves. An unknown
@@ -333,13 +333,12 @@ if ($useVulkan -eq 'ON') {
 
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
-if ($tvmCrossPython) {
-    # tvm-ffi's CMake: find_package(Python COMPONENTS Interpreter Development.Module)
-    # -- the unversioned prefix; every value handed over (host exe, neutral
-    # include, TARGET import lib) so nothing is probed under CMAKE_CROSSCOMPILING.
-    $cmakeExtra += '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
-    $cmakeExtra += Get-PythonCMakeHintArgs -Python $tvmTargetPy -Prefix 'Python' -ForwardSlash
-}
+# (#133) NO python knobs on THIS configure: tvm-ffi's CMakeLists `return()`s as
+# soon as it is a subproject ("only triggered when the project is the root"),
+# so TVM_FFI_BUILD_PYTHON_MODULE handed to TVM's configure is simply never read
+# (arm64 run 30: "Manually-specified variables were not used", then
+# `ninja: unknown target 'tvm_ffi_cython'`). The Cython module comes from a
+# standalone tvm-ffi configure in the cross python block below.
 
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
@@ -355,8 +354,7 @@ if ($tvmCross) {
     # install tvm_compiler, which is never built here. Layout mirrors the amd64
     # install (DLLs + import libs in lib\, headers in include\) so the merge's
     # TVM_LIBRARY_PATH=...\tvm\lib pointer is real on both lanes.
-    $crossTargets = @('tvm_runtime') + $(if ($tvmCrossPython) { @('tvm_ffi_cython') } else { @() })
-    Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Targets $crossTargets
+    Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Targets @('tvm_runtime')
     $tvmLibOut = Join-Path $tvmInstallDir 'lib'
     $tvmIncOut = Join-Path $tvmInstallDir 'include'
     New-Item -Path $tvmLibOut, $tvmIncOut -ItemType Directory -Force | Out-Null
@@ -409,13 +407,34 @@ if ($tvmCross) {
         # `python -m wheel pack` writes RECORD + the archive; the wheel is then
         # staged and PE/name-checked exactly like the ORT/GenAI/av cross wheels.
         Switch-BuildPhase '5b. runtime python wheels (cross, assembled)'
-        $corePyd = @(Get-ChildItem -Path $buildDir -Recurse -Filter 'core*.pyd' -File)
-        if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $buildDir, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
+        $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
+        # tvm-ffi's Cython module exists only when tvm-ffi is the ROOT project
+        # (its CMakeLists returns early as a subproject), so it gets its own
+        # small configure + build: cross args from Invoke-CmakeConfigure's
+        # choke point, find_package(Python COMPONENTS Interpreter
+        # Development.Module) fed with the host exe / neutral include / TARGET
+        # import lib, and `python_add_library(... WITH_SOABI)` naming the module
+        # with the EXT_SUFFIX the sitecustomize shim pinned to the target. The
+        # tvm_ffi.dll shipped in the wheel is THIS build's -- the one core.pyd
+        # linked against; tvm_runtime.dll (linked against TVM's own copy of the
+        # same source at the same flags) resolves it through the package's
+        # add_dll_directory at import.
+        $ffiPyBuild = Join-Path $buildDir 'tvm-ffi-py'
+        $ffiPyArgs = @(
+            "-DCMAKE_BUILD_TYPE=$BuildType"
+            "-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
+            '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
+            '-DTVM_FFI_BUILD_TESTS=OFF'
+        ) + @(Get-PythonCMakeHintArgs -Python $tvmTargetPy -Prefix 'Python' -ForwardSlash) + @(Get-LlvmArchiverCmakeArg)
+        Invoke-CmakeConfigure -SourceDir $tvmFfiSrc -BuildDir $ffiPyBuild -InstallPrefix (Join-Path $ffiPyBuild 'install') -ExtraArgs $ffiPyArgs | Out-Null
+        Invoke-NinjaBuildWithRetry -BuildDir $ffiPyBuild -RetryJobs 1 -MemGBPerJob 2 -LogFile (Get-PersistentBuildLogPath -Name 'tvm-ffi-python-build.log' -FallbackDir $ffiPyBuild) -Targets @('tvm_ffi_cython')
+        $corePyd = @(Get-ChildItem -Path $ffiPyBuild -Recurse -Filter 'core*.pyd' -File)
+        if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $ffiPyBuild, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
         $wantExt = Get-PythonWheelTag
         if ($corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- expected the target EXT_SUFFIX tag '$wantExt' (Initialize-PythonPlatformTag shim not in effect?)" }
-        $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
-        $tvmFfiLibs = @(Get-ChildItem -Path $tvmLibOut -Filter 'tvm_ffi.*' -File | Where-Object { $_.Extension -in '.dll', '.lib' })
-        if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq 'tvm_ffi.dll' })) { throw "TVM cross: tvm_ffi.dll not among the staged runtime binaries in $tvmLibOut" }
+        $tvmFfiLibs = @(Get-ChildItem -Path $ffiPyBuild -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
+        if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq 'tvm_ffi.dll' })) { throw "TVM cross: tvm_ffi.dll not produced by the standalone tvm-ffi build under $ffiPyBuild" }
+        [void](Assert-DirectoryTargetArch -Path $corePyd[0].DirectoryName -Include @('core*.pyd') -MinCount 1 -Context 'tvm_ffi core module')
         $describe = & git -C $tvmFfiSrc describe --tags --abbrev=0 --match 'v*' 2>&1 | Out-String
         $global:LASTEXITCODE = 0
         $tvmPyproject = [System.IO.File]::ReadAllText((Join-Path $SourceDir 'pyproject.toml'))
