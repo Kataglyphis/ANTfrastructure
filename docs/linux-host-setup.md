@@ -172,6 +172,59 @@ Restart Docker afterwards. Disk exhaustion mid-build surfaces as
 `no space left on device` deep inside a compile step — see
 [Build resource monitoring](build-resource-monitoring.md).
 
+### B3b. Install or upgrade `nerdctl-full`
+
+`nerdctl-full` ships nerdctl together with the whole stack it drives —
+containerd, BuildKit (`buildkitd` + `buildctl`), runc, the CNI plugins, the
+snapshotters and the rootless helpers. They are version-matched, so on this
+host **upgrading buildkitd means upgrading the bundle**; there is no separate
+buildkit package to bump.
+
+```bash
+bash linux/host-config/install-nerdctl-full.sh                    # dry run: version delta + plan
+NERDCTL_INSTALL_CONFIRM=1 bash linux/host-config/install-nerdctl-full.sh
+bash linux/host-config/install-nerdctl-full.sh --rollback         # restore the backup
+```
+
+Knobs: `NERDCTL_VERSION=x.y.z` pins a release (default: latest),
+`NERDCTL_PREFIX` (default `/usr/local`), `NERDCTL_BACKUP_DIR`.
+
+What the script guarantees, and why each guard exists:
+
+- **It refuses while a build runs.** Extracting over live binaries mid-chain
+  kills the run; chains here regularly last 10+ hours.
+- **It verifies the release SHA256** against the published `SHA256SUMS` before
+  touching anything, and refuses if the checksum is missing.
+- **It backs up exactly the binaries the bundle ships**, so `--rollback`
+  restores like-for-like.
+- **It counts BuildKit cache-mount records before and after.** Compile caches
+  (ccache/sccache/uv/cargo/cerbero) live in `~/.local/share/buildkit`, not in
+  `/usr/local`, so an upgrade must not change that number — see
+  [`prune-safe.sh`](../linux/host-config/prune-safe.sh) for why those records
+  are the thing worth protecting.
+- **It proves the stack came back up** (`nerdctl images`, `buildctl du`,
+  service active) instead of assuming, and tells you the rollback command if
+  it did not.
+
+**When it is worth upgrading** (checked 2026-08-26): this host runs buildctl
+`v0.31.1`. BuildKit `v0.31.0` introduced a daemon crash — *"concurrent map
+iteration and map write"* ([moby/buildkit#6915][bk6915]) — that reproduces
+under **concurrent** builds, which is exactly how this chain drives it with
+three arch lanes at once. The fix ships in BuildKit `v0.31.2`, bundled by
+nerdctl-full `2.3.5`. Two caveats, so nobody upgrades expecting the wrong
+thing: it will **not** cure [BKD1](failure-modes.md) — the buildkitd session
+rot (export hangs, `no active session`, lost layer blobs) has no upstream fix
+and is still cured by stopping the chain and restarting the service — and the
+parallel-build cache-miss fix ([moby/buildkit#6954][bk6954]) landed in
+`v0.32.0`, which no nerdctl-full release ships yet.
+
+[bk6915]: https://github.com/moby/buildkit/issues/6915
+[bk6954]: https://github.com/moby/buildkit/issues/6954
+
+Afterwards run `linux/host-config/verify-host-config.sh` and
+`linux/scripts/preflight.sh` before starting the next chain — the daemon
+restart is also the moment the staged `buildkitd.toml` gcpolicy takes effect.
+
 ### B4. Verify a `nerdctl-full` install
 
 The `nerdctl-full` tarball bundles containerd, BuildKit, runc, snapshotters and
