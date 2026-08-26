@@ -447,12 +447,28 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   VCS ref or GUID reaches this stage); `-NoCache`/`-NoCacheStage` (not passed); and a changed COPY
   input, since `#8` — the COPY of `setup-vs.ps1` itself — is CACHED, so its parent chain and that
   file are byte-identical.
-  **Still to check:** whether an ARG/ENV in scope at `#9` differs between solves in a way the log
-  does not print; whether a ~37 GB layer exceeds something in the Windows snapshotter's reuse path;
-  and whether the step is cached but the EXPORT is what re-runs (the log's `DONE`-vs-`CACHED`
-  wording would not distinguish those). Compare two consecutive runs' `buildctl --debug` solve
-  output before theorising further.
-  **Worth the effort** because it multiplies every future Windows experiment by ~30 minutes.
+  **SOLVED 2026-08-26 (`916c91f0`) — it was the GC reserve, and the answer was inside
+  `buildkitd.toml` itself.** Its sizing note concludes "150GB is the floor this file's own sizing
+  note gives" and "keep reservedSpace >= 150 GB regardless"; the value directly beneath it read
+  **40GB** — below the single ~37 GB VS-class layer, so the spine could not survive between runs.
+  `maxUsedSpace` compounded it: the store had grown to 545 GB, above BOTH ceilings (400/450 GB), so
+  GC was evicting on every run no matter what the reserve said. My earlier "GC ruled out because
+  `du` reports `Reclaimable: 0B`" was the wrong reading — `0B` is what a store already pruned to
+  its floor looks like, not a store that is never pruned. That inversion is the lesson worth
+  keeping.
+  **Fixed:** reservedSpace 40→150 GB, maxUsedSpace 400→650 GB (tier 1) and 450→700 GB (tier 2).
+  Arithmetic at edit time: C: 824 GB free of 1861 GB, store 545 GB, other content ~492 GB — so
+  150 GB is comfortably satisfiable, unlike the 2026-08-08 deadlock at 214.75 GB when only ~294 GB
+  was available to buildkit. Three docs claimed a third number (200 GB) matching neither the config
+  nor `windows-build-lanes.md`'s own "150GB now"; all aligned.
+  **This was the second half of a fix only half-made on 2026-08-11**, which raised `maxUsedSpace`
+  after GC evicted "the base/sdk/toolchain spine between driver runs → every run re-solved the
+  prefix" — verbatim this symptom — and left the reserve alone.
+  **Still owed:** the deployment. `apply-buildkitd-gcpolicy.ps1` needs admin and restarts buildkitd,
+  so it must run in a no-build window, and **its effect must be verified, not its exit code**
+  (`buildctl debug workers -v | Select-String reservedSpace` must read 150GB) — that script has
+  reported success while leaving the old value before (2026-08-08). Until it is deployed, every
+  Windows run still pays the cold prefix.
 
 - **#137 — sccache: the local patch and the source build may both be droppable (owner's PRs were
   accepted upstream).** S–M · ★★ (opened 2026-08-26, owner's news)
