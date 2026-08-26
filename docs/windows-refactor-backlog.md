@@ -909,6 +909,30 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   The permanent walls stay: CUDA/cuDNN/TensorRT/NVENC (no Windows-on-ARM CUDA), the torch app
   stage (`uv sync` must run the target interpreter), and — orthogonal to all of this — no arm64
   binary has ever been *executed*; the `windows-11-arm` runner is the only path to that proof.
+  **In progress 2026-08-26 ("solve them, as easy as possible"), smallest viable path per item:**
+  (a) **Rust for the target** — the actual blocker under both `gst-ptp-helper` and LiteRT-LM:
+  `Install-RustTargetStdFromPinnedManifest` (gst script) fetches the aarch64 `rust-std` tarball
+  the image's *pinned* channel manifest already names (with upstream's sha256) from
+  static.rust-lang.org into the `file:///…rustup-dist/…` path the manifest points at, so
+  `rustup target add` verifies and installs it; proof = `gst-ptp-helper` on arm64 (run 29).
+  (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
+  branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
+  `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed
+  numpy headers), then the build tree's synthesized `runtime/setup.py bdist_wheel --plat-name
+  win_arm64` via `Invoke-PythonWheelBuild -CrossStage` (staged + PE/name-checked). The compiler
+  package stays ABSENT (proof: run 29). (c) **TVM runtime python** — next: TVM 0.26 supports a
+  runtime-only mode natively (`_RUNTIME_ONLY` falls back when `tvm_compiler` is absent);
+  `tvm_ffi`'s Cython `core` module cross-builds through the tvm-ffi CMake target
+  (`TVM_FFI_BUILD_PYTHON_MODULE`, `python_add_library WITH_SOABI` → target EXT_SUFFIX), and both
+  `apache-tvm-ffi` and `apache-tvm` wheels are assembled from the package sources + the cross-built
+  binaries (scikit-build-core would rebuild the compiler and cannot tag win_arm64 from a host
+  interpreter). (d) **LiteRT-LM** — stays a port, not a switch, after reading upstream `v0.16.1`:
+  its CMake path is an ExternalProject orchestrator with a host prebuild phase, Unix-flavoured link
+  flags plus an MSVC branch, and a Rust crate (`tokenizers`+`onig`, `llguidance`, `antlr4rust`,
+  `minijinja`, `cxx`) that must be built for the target through corrosion; (a) is its
+  prerequisite, the rest is days of iteration at ~1 h per attempt — deferred, not declared
+  impossible. The compilers (TVM, IREE) stay out: a cross-built LLVM for aarch64-windows, no
+  upstream precedent.
 
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
