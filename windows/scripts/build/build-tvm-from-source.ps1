@@ -31,9 +31,11 @@ $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $
 # stamps the wheel from the HOST interpreter. So the cross lane assembles the
 # two wheels itself from the package sources + the cross-built binaries; these
 # three pure helpers pin the metadata shape (fixture test
-# SourceBuild.TvmAssembledWheel.Tests.ps1). They live here, not in a module:
-# /bkmods is bind-mounted into every media RUN and a module edit re-keys all
-# branches on both lanes.
+# SourceBuild.TvmAssembledWheel.Tests.ps1). They live here, not in a module,
+# because the mounted module set is ONE closure shared by every branch (the
+# `buildmods` stage's six .psm1, which the classic lane also COPYs into
+# `common`, the ancestor of every BK compile stage) -- editing any module
+# re-keys every media branch on both lanes. Backlog #134 splits that.
 
 # Writes the dist-info a binary wheel needs (METADATA, WHEEL, top_level.txt)
 # into an already-laid-out package tree; `python -m wheel pack` then produces

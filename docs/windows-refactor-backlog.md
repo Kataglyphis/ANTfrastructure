@@ -646,9 +646,13 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   glib(build) `buildable: NO`, the same by-name libnice lookup fails as in run 23, and webrtc/nice
   take gst-plugins-bad down (`gst-libs/gst/webrtc/nice/meson.build:16:14: ERROR: Subproject
   "subprojects/libnice" required but not found`). **Fix:** `Invoke-MesonBuildSubprojectSummaryPatch`
-  (defined in `build-gstreamer-from-source.ps1` — deliberately NOT in a module: `/bkmods` is
-  bind-mounted whole into all six media RUNs, so a one-line module edit re-keys every branch on
-  both lanes, while the gst script is mounted into the merge RUN only) rewrites the pip-installed
+  (defined in `build-gstreamer-from-source.ps1` — deliberately NOT in a module. **Correction
+  2026-08-26:** this was first recorded here as "`/bkmods` is bind-mounted whole"; it is not —
+  `buildmods` is a curated 6-module stage. The real reason is that those six ARE the import
+  closure, they are mounted into all 11 media/merge RUNs, and the classic lane COPYs the same six
+  into `common`, the ancestor of every BK compile stage, so any module edit re-keys every branch
+  on both lanes twice over; a stage script is mounted per file, this one only into the merge RUN.
+  #134 splits that) rewrites the pip-installed
   `mesonbuild/interpreter/interpreter.py` before
   `meson setup` — `summary_impl` returns early when `self.build.for_machine is MachineChoice.BUILD`
   (set only by `Build.copy_for_build_machine()` for `native: true` subprojects; summaries are
@@ -1005,6 +1009,64 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   prerequisite, the rest is days of iteration at ~1 h per attempt — deferred, not declared
   impossible. The compilers (TVM, IREE) stay out: a cross-built LLVM for aarch64-windows, no
   upstream precedent.
+
+- **#134 — post-#133 cleanup wave: unshare the module closure, de-duplicate the AST test
+  boilerplate, condense the docs.** M · ★★ (opened 2026-08-26, owner's request; planned against the
+  Dockerfiles, not against memory — see the correction below) · NOT STARTED
+  **Root cause, corrected.** Six helper functions ended up inside `build-gstreamer-from-source.ps1`
+  (now 2246 lines, 9 functions) and three inside `build-tvm-from-source.ps1` during #128/#133,
+  each with a comment claiming "the whole modules dir is bind-mounted into every media RUN". **That
+  is false** — `windows/Dockerfile.media-builder` builds `FROM ${BASE_IMAGE} AS buildmods` and
+  COPYs exactly SIX `.psm1` (the merge Dockerfile: eight), and its own comment says a whole-dir
+  mount "remains wrong". The true cause is twofold: (a) those six ARE the import closure
+  (`WindowsSourceBuild.Common.psm1` imports the other five; every mounted script imports it), so
+  the mounted set cannot be shrunk and all **11** media/merge RUNs key on all six; and (b) the
+  classic lane COPYs the same six into the **`common`** stage, which is the ancestor of every BK
+  compile stage — so a module edit re-keys the branches a second time through the image graph.
+  No branch can have a private module today.
+  **Mechanism.** (1) Move the module COPY out of `common` into the three classic leaf stages that
+  already COPY scripts (`media-core`, `media-litert`, `media-tvm`). (2) Add `FROM buildmods AS
+  tvmmods` + the TVM leaf module, and point ONLY the `media-tvm-built` RUN at it — that branch is
+  parallel to ONNX, so a TVM-private module costs zero on the ~75 min ONNX branch. (3) In the merge
+  Dockerfile extend `buildmods` directly: all five of its RUNs are sequential layers in ONE stage
+  with GStreamer first, so a derived stage there would buy nothing.
+  **Moves.** New merge-lane leaves `WindowsMeson.Common.psm1` (`Invoke-MesonBuildSubprojectPatch`,
+  `Select-MesonLogExcerpt`, `Get-MesonSetupFailureClass`, `Invoke-WrapDownload`,
+  `Expand-SubprojectArchive`) and `WindowsRustToolchain.Common.psm1`
+  (`Install-RustTargetStdFromPinnedManifest`); promote `Resolve-BuildMachineMsvcTool` to
+  `WindowsTargetArch.Common.psm1` and `Write-AssembledWheelDistInfo` +
+  `Get-PyprojectDependencies` to `WindowsSourceBuild.Common.psm1`. Stay stage-local: `log` (a
+  closure over `$logContext`), the nested `Get-UnresolvedDeps`, `Get-VendoredTvmFfiVersion` (TVM
+  leaf). One semantic hazard: `Invoke-WrapDownload` calls `log` — give it `-Logger [scriptblock]`
+  like `Install-RustTargetStdFromPinnedManifest`'s `-Downloader`. `Expand-SubprojectArchive` is a
+  near-duplicate of `Expand-ArchiveSubdirectory`/`Expand-SourceTarball` — NOT merged in this wave,
+  recorded as its follow-up.
+  **Tests.** `Get-ScriptFunctionDefinition -ScriptPath -FunctionName` in `TestHarness.psm1`
+  (returns a scriptblock; callers keep the dot-source, because `.` inside a module function defines
+  into module scope) — 8 files, 9 lift sites (`Driver.ClosureScope` and `SourceBuild.PinParity`
+  SCAN files rather than lift functions and must not be converted). Extend
+  `BuildKit.SolveOrderParity.Tests.ps1` B6 (blind to `.psm1` today) and B4 (must follow
+  `FROM buildmods AS <x>` chains), and add `BuildKit.ModuleClosure.Tests.ps1`: the transitive
+  `Import-Module` closure of every mounted script ⊆ its stage's COPY list — the Windows analogue of
+  `linux/scripts/verify-script-copy-coverage.py`, which globs `linux/Dockerfile.*` only and never
+  policed this.
+  **Docs.** #128 (138 lines), #133 (124), #131 (91), #116 (83) collapse to verdict + numbers, with
+  the run-by-run narrative moved to a dated archive (the convention exists: three such archives,
+  and this file's header already says a bare #N not found here resolves there). Same for the
+  status banner of `docs/windows-cross-builds.md` (990 lines), which has become a changelog.
+  **Ordering — one paid rebuild.** FREE (verified by `Invoke-Tests.ps1` alone, no mount content
+  changes): the test harness helper + conversions, the doc condensation, CREATING the new leaf
+  modules and their fixture tests without touching any Dockerfile list, and the new/extended
+  parity tests. PAID (one bundled amd64 + arm64 regression): the `common` unshare, `tvmmods`, the
+  merge `buildmods` extension, deleting the stage-local bodies, `-Logger`, the core promotions,
+  and the three stale comments — because that landing changes `common`'s digest, the full media
+  rebuild is already bought, so the core promotions must ride along rather than pay it twice.
+  **Acceptance:** amd64 arch gate 1134/0 and smoke 222/0/0; arm64 992/0, walk 606/0/3/6, deps
+  12/0, smoke 97/0/15, plugins 6/6, 200 = 200 linked plugin DLLs; plus a cache-key proof (edit one
+  byte of the TVM leaf → only `media-tvm-built` re-runs, everything else CACHED) and byte-identical
+  function extents for every move except the two admitted deltas (`-Logger`, `Export-ModuleMember`).
+  Develop in an isolated worktree like #131 — whose ride found three defects the host tests
+  structurally could not see, which is why the bundled regression, not the suite, is the proof.
 
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it

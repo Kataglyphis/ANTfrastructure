@@ -164,10 +164,15 @@ function log($text) {
 # silent miss reappears as the libnice error two hours later. Upstream draft:
 # out/upstream-issue-meson-summary-build-subproject.md (all three).
 #
-# Lives HERE, not in a module, on purpose: `/bkmods` (the whole modules dir) is
-# bind-mounted into all six media RUNs and BuildKit keys each RUN on the mount's
-# content, so a one-line module edit rebuilds every media branch on both lanes;
-# this script is mounted into the merge RUN only. The fixture test
+# Lives HERE, not in a module, on purpose -- and the reason is NOT that a whole
+# modules dir is mounted (it never was; `buildmods` is a curated 6-module stage,
+# see Dockerfile.media-builder). It is that those six ARE the closure
+# (WindowsSourceBuild.Common imports the other five), they are mounted into all
+# 11 media/merge RUNs, AND the classic lane COPYs the same six into `common`,
+# the ancestor of every BK compile stage -- so editing ANY module re-keys every
+# media branch on both lanes, twice over. A stage script is mounted per FILE
+# into the RUNs that need it; this one only reaches the merge RUN. Backlog #134
+# is the wave that makes per-branch modules possible. The fixture test
 # (SourceBuild.MesonBuildSubprojectPatch.Tests.ps1) extracts the function from
 # this file's AST.
 function Invoke-MesonBuildSubprojectPatch {

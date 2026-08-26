@@ -11,8 +11,10 @@
 # regexes must (a) hit the real 1.12.0 layout, (b) rewrite exactly those lines,
 # (c) be idempotent per fix, and (d) THROW on layout drift rather than warn.
 # The function lives in build-gstreamer-from-source.ps1 (NOT a module: the
-# whole modules dir is bind-mounted into every media RUN, so a module edit
-# re-keys all branches on both lanes). Lifted out of the script's AST.
+# mounted module set is one shared closure -- `buildmods`' six .psm1, which the
+# classic lane also COPYs into `common`, every BK compile stage's ancestor --
+# so a module edit re-keys all branches on both lanes; #134 splits that).
+# Lifted out of the script's AST.
 
 Describe 'Invoke-MesonBuildSubprojectPatch' {
 
