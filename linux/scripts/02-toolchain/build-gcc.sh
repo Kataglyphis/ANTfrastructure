@@ -208,20 +208,38 @@ fi
 # without it, identical translation units from different target build dirs can
 # never hit. SLOPPINESS drops __DATE__/locale/mtime noise for the same reason.
 if [ "${USE_CCACHE}" = "1" ]; then
-  ensure_ccache_env
-  if [ -n "${HOST_TRIPLET}" ]; then
-    export CC="ccache ${CC:-${HOST_TRIPLET}-gcc}"
-    export CXX="ccache ${CXX:-${HOST_TRIPLET}-g++}"
-  else
-    export CC="ccache gcc"
-    export CXX="ccache g++"
+  # 2026-08-26: the launcher is now sccache, with ccache as the fallback when
+  # sccache is missing or its server will not answer. The flag stays --ccache
+  # so callers (llvm.sh:28) keep working; it means "use the compiler cache".
+  CC_LAUNCHER="$(compiler_cache_launcher || true)"
+  if [ -n "${CC_LAUNCHER}" ]; then
+    if [ -n "${HOST_TRIPLET}" ]; then
+      export CC="${CC_LAUNCHER} ${CC:-${HOST_TRIPLET}-gcc}"
+      export CXX="${CC_LAUNCHER} ${CXX:-${HOST_TRIPLET}-g++}"
+    else
+      export CC="${CC_LAUNCHER} gcc"
+      export CXX="${CC_LAUNCHER} g++"
+    fi
   fi
+
+  # Relativize the per-target BUILD_DIRs out of the hash inputs. Without it,
+  # identical translation units from different target build dirs can never hit.
+  #   ccache : CCACHE_BASEDIR (single dir)
+  #   sccache: SCCACHE_BASEDIRS (comma-separated LIST, and it only exists from
+  #            v0.14.0 — versions.env pins 0.17.0 precisely for this).
+  # sccache also hashes the working directory by default; the config baked in
+  # Dockerfile.base turns that off, or the relativization would be undone.
   export CCACHE_BASEDIR="${BUILD_DIR}"
+  export SCCACHE_BASEDIRS="${BUILD_DIR}"
   export CCACHE_SLOPPINESS="locale,time_macros,include_file_mtime,include_file_ctime"
   # CCACHE-CONTENT (2026-08-19): hash the compiler BINARY CONTENT, not
   # mtime/size — a base-image bump rebuilds GCC and the default check then
   # invalidates EVERY downstream cache entry even though the binary is
   # byte-identical in behavior (bit wave4: warm LLVM cache, 0% hits).
+  # sccache needs NO counterpart: it does not key on mtime+size the way ccache
+  # does by default, so the invalidation this setting exists to prevent does
+  # not arise there. If a rebuild ever shows ~0% sccache hits right after a
+  # compiler rebuild, THIS is the assumption to re-test first.
   export CCACHE_COMPILERCHECK=content
 fi
 
@@ -687,6 +705,7 @@ echo "Building (this will take a long time)..."
 # absent/failing ccache must never fail the build.
 if [ "${USE_CCACHE}" = "1" ]; then
   ccache -z >/dev/null 2>&1 || true
+  sccache --zero-stats >/dev/null 2>&1 || true
 fi
 if [ -n "${TARGET_TRIPLET}" ]; then
   make -j"${JOBS}" all-gcc all-target-libgcc all-target-libstdc++-v3 all-target-libatomic
@@ -697,7 +716,12 @@ fi
 # stage1 goes through ccache — see the ccache wiring note above). House style
 # matches 01-core/compiler-cache.sh; best-effort, never fails the build.
 if [ "${USE_CCACHE}" = "1" ]; then
-  ccache --show-stats 2>/dev/null | head -5 || true
+  # Whichever launcher actually ran: report it. A zero-hit report here is the
+  # cheapest early warning that the cache silently stopped working.
+  case "${CC_LAUNCHER:-}" in
+    sccache) sccache --show-stats 2>/dev/null | head -12 || true ;;
+    *)       ccache --show-stats 2>/dev/null | head -5 || true ;;
+  esac
 fi
 
 echo "Installing to ${PREFIX}..."

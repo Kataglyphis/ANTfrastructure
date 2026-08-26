@@ -355,6 +355,52 @@ ensure_ccache_env() {
   info "Using ccache with CCACHE_DIR=${CCACHE_DIR}"
 }
 
+# sccache counterpart of ensure_ccache_env (2026-08-26, the ccache->sccache
+# switch). Returns NON-ZERO when sccache cannot be used, so every caller can
+# fall back to ccache instead of losing caching silently -- the failure mode
+# this repo keeps paying for.
+#
+# The server matters here in a way ccache has no analogue for: sccache is a
+# client/daemon pair, and a dead server is a HARD compile failure, not a miss.
+# It is started explicitly and then PROVEN to answer, rather than assumed.
+ensure_sccache_env() {
+  command -v sccache >/dev/null 2>&1 || {
+    warn "sccache not found — caller should fall back to ccache"
+    return 1
+  }
+  SCCACHE_DIR="${SCCACHE_DIR:-/var/cache/sccache}"
+  mkdir -p "${SCCACHE_DIR}" 2>/dev/null || true
+  export SCCACHE_DIR
+  # A server that idles out mid-build is one of the recorded failure shapes.
+  export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
+  export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
+  sccache --start-server >/dev/null 2>&1 || true
+  if ! sccache --show-stats >/dev/null 2>&1; then
+    warn "sccache server did not answer — caller should fall back to ccache"
+    return 1
+  fi
+  info "Using sccache with SCCACHE_DIR=${SCCACHE_DIR} (cap ${SCCACHE_CACHE_SIZE:-unset})"
+  return 0
+}
+
+# Name of the compiler-cache launcher to prefix onto CC/CXX, echoed on stdout.
+# Prefers sccache (the 2026-08-26 decision) and falls back to ccache when
+# sccache is absent or its server will not answer. Returns non-zero when
+# neither is usable, so callers can build uncached rather than break.
+compiler_cache_launcher() {
+  if [ "${USE_SCCACHE:-1}" != "0" ] && ensure_sccache_env; then
+    printf '%s' sccache
+    return 0
+  fi
+  if ensure_ccache_env 2>/dev/null && command -v ccache >/dev/null 2>&1; then
+    warn "falling back to ccache for this stage"
+    printf '%s' ccache
+    return 0
+  fi
+  warn "no usable compiler cache (neither sccache nor ccache) — building uncached"
+  return 1
+}
+
 # ── update-alternatives install + select ──────────────────────────────────────
 # Register an alternative and immediately select it. Runs privileged via
 # run_priv (honors ${SUDO}). The --set is tolerant: a --set of the path just

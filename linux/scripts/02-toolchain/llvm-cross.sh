@@ -199,16 +199,16 @@ _llvm_cross_setup_and_build() {
     esac
     export PATH="${wrapper_dir}:${PATH}"
 
+    # 2026-08-26: preference INVERTED — sccache first, ccache only as the
+    # fallback. This chain previously preferred ccache and would therefore
+    # never have reached the sccache arm on an image that has both.
     local -a extra_cmake_args=()
-    if command -v ccache >/dev/null 2>&1; then
+    local _xc_launcher
+    _xc_launcher="$(compiler_cache_launcher || true)"
+    if [ -n "${_xc_launcher}" ]; then
       extra_cmake_args+=(
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-      )
-    elif command -v sccache >/dev/null 2>&1; then
-      extra_cmake_args+=(
-        -DCMAKE_C_COMPILER_LAUNCHER=sccache
-        -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+        "-DCMAKE_C_COMPILER_LAUNCHER=${_xc_launcher}"
+        "-DCMAKE_CXX_COMPILER_LAUNCHER=${_xc_launcher}"
       )
     fi
 
@@ -242,9 +242,9 @@ _llvm_cross_setup_and_build() {
       -DLLVM_USE_HOST_TOOLS=ON
       # LLVM-ccache-launcher (2026-08-18): the NESTED native tablegen build
       # compiled launcher-less — the only uncached compile in the toolchain
-      # lane (its cold rebuild after the CACHE1 prune cost ~2h). Wire ccache
-      # when present; harmless no-op flags otherwise absent.
-      "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}$(command -v ccache >/dev/null 2>&1 && printf ';%s;%s' '-DCMAKE_C_COMPILER_LAUNCHER=ccache' '-DCMAKE_CXX_COMPILER_LAUNCHER=ccache')"
+      # lane (its cold rebuild after the CACHE1 prune cost ~2h). Carries whichever launcher this stage resolved (sccache first,
+      # ccache fallback); empty when no cache is usable.
+      "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}${_xc_launcher:+;-DCMAKE_C_COMPILER_LAUNCHER=${_xc_launcher};-DCMAKE_CXX_COMPILER_LAUNCHER=${_xc_launcher}}"
       -DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"
     )
 

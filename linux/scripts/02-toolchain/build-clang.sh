@@ -292,12 +292,20 @@ if [ -n "${LINKER_FLAG}" ]; then
 fi
 
 if [ "$USE_CCACHE" = "1" ]; then
-    # Let CMake call the real compiler directly and inject ccache as a launcher.
-    # Exporting CC="ccache gcc" makes CMake generate broken ASM rules for .S files.
-    CMAKE_FLAGS+=(
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-    )
+    # Let CMake call the real compiler directly and inject the cache as a
+    # LAUNCHER. Exporting CC="<launcher> gcc" makes CMake generate broken ASM
+    # rules for .S files -- that applies to sccache exactly as it did to ccache,
+    # so the launcher form is not a style choice here.
+    # 2026-08-26: prefer sccache, fall back to ccache if its server will not
+    # answer, and add NEITHER if there is no usable cache (an empty launcher
+    # would make CMake try to exec "" for every TU).
+    _clang_launcher="$(compiler_cache_launcher || true)"
+    if [ -n "${_clang_launcher}" ]; then
+        CMAKE_FLAGS+=(
+            "-DCMAKE_C_COMPILER_LAUNCHER=${_clang_launcher}"
+            "-DCMAKE_CXX_COMPILER_LAUNCHER=${_clang_launcher}"
+        )
+    fi
 fi
 
 echo "==> Configuring: LTO=${ENABLE_LTO}, Bootstrap=${BOOTSTRAP}, Targets=${LLVM_TARGETS}"
