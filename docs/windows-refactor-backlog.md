@@ -393,9 +393,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `imgwarp.cpp`, `smooth.dispatch.cpp`, `stb_truetype.cpp` — with `error: fixup value out of range`
   and no source location or fixup kind.
   **Ruled out, not assumed:** this is NOT the compressed-jump-table ceiling that
-  `-mllvm -aarch64-enable-compress-jump-tables=false` already fixes build-wide. That flag is on the
-  command line (6 occurrences in the failing log), LLVM 23 accepts it (no "Unknown command line
-  argument"), and the two diagnostics come from different LLVM code paths —
+  `-mllvm -aarch64-enable-compress-jump-tables=false` fixes build-wide. That flag WAS on the
+  command line when this failure first appeared (6 occurrences in the failing log) and LLVM 23
+  accepts it (no "Unknown command line argument"), so the two are not the same ceiling — but see
+  the UPDATE below: the flag is now suspected of CAUSING this one, and is off for a test run.
+  The two diagnostics come from different LLVM code paths —
   `AArch64AsmPrinter::emitJumpTableImpl` via `MCObjectStreamer::emitValueImpl` for the old one, the
   AArch64 asm BACKEND rejecting an over-long fixup for this one.
   **Hypothesis (unproven):** a pc-relative branch overflowing its field (tbz/tbnz ±32 KB, b.cond
@@ -403,6 +405,22 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   CPU-DISPATCH TUs — the largest functions in the module — which fits a size-driven overflow but
   does not establish it. LLVM prints no fixup kind, so this needs either a reduced test case or a
   disassembly of the offending object.
+  **UPDATE, attempt 5 (2026-08-26 evening): the name list is losing a whack-a-mole, and that is
+  itself evidence.** The injection ran correctly (`per-TU flags on 3 … (floor 3)` in the log) and
+  fixed all three named TUs — then a FOURTH overflowed, `median_blur.dispatch.cpp`. So `/O1` is the
+  right lever and an explicit list is the wrong applicator. The full family is 28 `*.dispatch.cpp`
+  TUs across `opencv_core` and `opencv_imgproc`; blanket `/O1` over all of them is the heavy
+  fallback, heavy because **on aarch64 the BASELINE path in those files is NEON**, not scalar.
+  **Currently under test instead — the two ceilings may be in TENSION.**
+  `-aarch64-enable-compress-jump-tables=false` was added for LLVM 22, where the COMPRESSED path
+  overflowed its 1-byte entries; it makes every jump table ~4x larger, which grows exactly the
+  switch-heavy dispatch functions whose branches now overflow. The LLVM 22 fix may be what pushes
+  LLVM 23 over the other edge. One cross run with compression left ON decides it
+  (`caf561c1`), decision rule at the call site:
+  neither error → the flag was obsolete AND harmful, delete it and keep `/O2` everywhere;
+  `value evaluated as <N>` returns → compressed path still broken, restore the flag and take the
+  28-TU route; `fixup value out of range` unchanged → table size was not the lever, look elsewhere.
+  The per-TU `/O1` block stays either way — it is proven to fix the three TUs it names.
   **Workaround shipped:** `/O1` on exactly those three TUs via `Add-NinjaPerTuFlags`, cross-lane
   only, floor = the name count so a rename or a fourth offender throws. The hot SIMD kernels are
   NOT in these TUs (they are generated per-ISA from `*.simd.hpp` and keep `/O2`), so the cost
@@ -415,10 +433,14 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 
 - **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
   iteration cost.** M · ★★★ (opened 2026-08-26)
-  Every launch replays `#9 RUN setup-vs.ps1` — ~22 min of build plus ~7 min of layer export — while
-  `#6` (a RUN with a bind mount), `#7` and `#8` (the COPY of that very script) all report CACHED.
-  Reproducible across four consecutive launches on 2026-08-26. During the #135 opencv iteration
-  this meant ~30 minutes of base before each ~3-minute answer.
+  Every launch replays `#9 RUN setup-vs.ps1` while `#6` (a RUN with a bind mount), `#7` and `#8`
+  (the COPY of that very script) all report CACHED. Reproducible across five consecutive launches
+  on 2026-08-26.
+  **The cost is NOT constant, and the first version of this entry overstated it.** Cold it was
+  ~22 min of build plus ~7 min of export; on the very next launch the same step reported
+  `#9 DONE 363.2s` — six minutes — because the VS installer finds its downloads already present.
+  So the tax per iteration is roughly 6–10 min warm and ~30 min cold, not a flat 30. Still worth
+  fixing (it multiplies every Windows experiment), but do not plan around the cold figure.
   **Ruled out by measurement, not by reasoning:** GC eviction (`buildctl du` reports
   `Reclaimable: 4.27MB` of a 499.9 GB store, and the two ~37.6/37.8 GB VS-class records are
   present); a build-arg that varies per run (the driver passes only version pins — no timestamp,
