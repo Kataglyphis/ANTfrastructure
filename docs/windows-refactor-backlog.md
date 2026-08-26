@@ -478,7 +478,9 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `build-onnx-from-source.ps1`: no ASM_MASM override on the native configure, the tee'd
   configure log now asserts **ml64** (a drift stops at configure, not 40 min into ninja), the
   reason sits beside the check. `Resolve-LlvmMasm`/`Get-LlvmMasmCmakeArg` stay in the module for
-  IREE. AGENTS' assembler paragraph names the split. Proof of the reverted amd64 path: run 7.
+  IREE. AGENTS' assembler paragraph names the split. **amd64 run 7 (2026-08-26, `[bk] Done
+  02:12:20`):** the configure log reports `The ASM_MASM compiler identification is MSVC … ml64.exe`,
+  the ORT stage passes in 4:58 (sccache warm), arch gate 1134/0, smoke 222/0/0.
 
 - **#124 — the target CPython cannot start on a clean Windows-on-ARM machine: `vcruntime140.dll`
   is staged into `DLLs\`, not beside `python.exe`.** S · ★★★ (opened 2026-08-25, consumer-side audit)
@@ -710,8 +712,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   plugins), import walk `577 walked, 0 unresolved` (571), deps 7/0, smoke 97/0/15. Still absent
   on arm64, by design or unchanged: `gst-ptp-helper` (rust std for the target is not in the
   image's offline mirror) and `gdkpixbuf` (gdk-pixbuf's meson.build wants the build-machine glib
-  for real — optional, not in the contract, noted in the banner). amd64 regression: the run after
-  this one (same script, same contract).
+  for real — optional, not in the contract, noted in the banner). **amd64 regression (run 7,
+  2026-08-26, `[bk] Done 02:12:20`):** the same script and contract on the native lane — the meson
+  patch applies and is inert (no build-only subprojects without a cross file), `meson setup
+  completed` at 465 s, the gate loads all six plugins through `gst-inspect` (`webrtcbin`,
+  `nicesrc`/`nicesink` among them), manifest 6 DLL homes / image CPython / 6 wheels / 0 absent,
+  arch gate 1134/0 (unchanged), smoke **222/0/0** (220 before — the two new contract entries).
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**
@@ -763,7 +769,8 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   home(s), python=C:\runtime\python, 3 wheel(s), 3 absent marker(s), plugins [libav opencv onnx
   webrtc nice tflite] -> C:\runtime\BUNDLE-ENV.cmd, BUNDLE-ENV.ps1, BUNDLE-README.md`, followed by
   the deps store (7/0), the arch gate (980/0, walk 577/0) and the smoke gate (97/0/15) over the
-  same tree. amd64 side of the manifest: the regression run after this one.
+  same tree. amd64 side (run 7, 2026-08-26): `Bundle manifest (amd64): 6 DLL home(s), python=image
+  CPython, 6 wheel(s), 0 absent marker(s), plugins [libav opencv onnx webrtc nice tflite]`.
 
 - **#131 — post-cross-phase cleanup (refactoring).** M · ★★ (opened 2026-08-25, owner's request) ·
   ✅ **DONE 2026-08-25 in four waves, developed in an isolated worktree, 662/662 tests, proof = the
