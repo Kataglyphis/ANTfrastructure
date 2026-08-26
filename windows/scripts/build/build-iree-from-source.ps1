@@ -127,8 +127,31 @@ $ireeInstallDir = Join-Path $InstallDir 'iree'
 # packages stay amd64-only and are named ABSENT next to the install.
 $ireeCross = Test-WindowsCrossTarget
 $pythonBindings = 'OFF'
-if ($ireeCross) {
-    Write-Host 'IREE cross: RUNTIME-ONLY build (compiler OFF, python OFF); host tools first, then the target runtime via IREE_HOST_BIN_DIR (#116)'
+# Cross lane (#133, 2026-08-26): the RUNTIME python package (iree.runtime, a
+# nanobind extension over the runtime this pass cross-builds anyway) follows
+# the #120 pattern -- the HOST interpreter runs the build and nanobind's
+# probes, the TARGET python314.lib is what _runtime.pyd links, the wheel is
+# stamped win_arm64 and PE-checked, never imported here. The compiler package
+# stays ABSENT (it needs a target-arch LLVM). Same .Available guard as ORT.
+$ireeTargetPy = $null
+$ireeNumpyInc = ''
+if ($ireeCross -and -not $SkipPython) {
+    $ireeTargetPy = Get-TargetBuildPython
+    if ($ireeTargetPy.Available) {
+        $pythonBindings = 'ON'
+        Install-CpythonPip -Python $py
+        Initialize-PythonPlatformTag | Out-Null   # EXT_SUFFIX -> target tag for the .pyd name
+        Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'wheel', 'setuptools', 'numpy')
+        $ireeNumpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($py.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
+        if (-not $ireeNumpyInc -or -not (Test-Path (Join-Path $ireeNumpyInc 'numpy\arrayobject.h'))) {
+            throw "IREE: numpy include dir not usable ('$ireeNumpyInc') -- numpy must be importable by the build interpreter $($py.Exe) before configure"
+        }
+        Write-Host "IREE cross: RUNTIME build + iree.runtime python bindings for the target (#133) -- host interpreter $($py.Exe), TARGET import lib $($ireeTargetPy.Lib); compiler + iree.compiler stay ABSENT"
+    } else {
+        Write-Host "IREE cross: RUNTIME-ONLY build, python OFF -- no target CPython import lib at $($ireeTargetPy.Lib) (build-target-cpython.ps1 did not run?)"
+    }
+} elseif ($ireeCross) {
+    Write-Host 'IREE cross: RUNTIME-ONLY build (compiler OFF, python OFF by -SkipPython); host tools first, then the target runtime via IREE_HOST_BIN_DIR (#116)'
 } elseif (-not $SkipPython) {
     # Python bindings are EXPECTED on this lane: a missing interpreter must fail
     # loudly, not silently ship an image without iree.compiler/iree.runtime
@@ -214,7 +237,14 @@ $cmakeExtra = @(
     "-DIREE_HAL_DRIVER_CUDA=$cudaFlag"
     "-DIREE_TARGET_BACKEND_CUDA=$cudaFlag"
 )
-if ($pythonBindings -eq 'ON') {
+if ($pythonBindings -eq 'ON' -and $ireeCross) {
+    # Both prefixes: IREE bootstraps FindPython3 first and then FindPython
+    # (nanobind wants the latter) from the SAME executable; under
+    # CMAKE_CROSSCOMPILING neither may probe the target, so every value is
+    # handed over -- host exe, arch-neutral include, TARGET import lib, and
+    # the numpy headers probed above with the host interpreter.
+    $cmakeExtra += Get-PythonCMakeHintArgs -Python $ireeTargetPy -Prefix @('Python3', 'Python') -ForwardSlash -NumPyIncludeDir $ireeNumpyInc
+} elseif ($pythonBindings -eq 'ON') {
     $cmakeExtra += "-DPython3_EXECUTABLE=$($py.Exe -replace '\\', '/')"
 }
 $cmakeExtra += Get-LlvmArchiverCmakeArg
@@ -297,8 +327,10 @@ if ($ireeCross) {
     # the PE headers. The functional compile+run proof is deferred to the
     # native arm64 validation job (docs/windows-cross-builds.md).
     $ireeBinCount = Assert-DirectoryTargetArch -Path (Join-Path $ireeInstallDir 'bin') -Include @('*.exe', '*.dll') -MinCount 1 -Context 'IREE cross (a host tool leaked into the target install?)'
-    [void](Write-AbsentOnCrossMarker -Root $ireeInstallDir -Component 'iree-compile.exe and the iree.compiler / iree.runtime python packages' -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
-        'The compiler needs TARGET-arch LLVM libraries; the python packages need the target interpreter (backlog #116).',
+    $absentComponent = if ($pythonBindings -eq 'ON') { 'iree-compile.exe and the iree.compiler python package' } else { 'iree-compile.exe and the iree.compiler / iree.runtime python packages' }
+    [void](Write-AbsentOnCrossMarker -Root $ireeInstallDir -Component $absentComponent -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
+        'The compiler needs TARGET-arch LLVM libraries (an LLVM cross-built for aarch64-windows; backlog #116/#133) -- not attempted.',
+        $(if ($pythonBindings -eq 'ON') { 'The iree.runtime python package IS built for the target (#133) and staged as a win_arm64 wheel in C:\runtime\wheels; only iree.compiler is missing.' } else { 'The python packages were not built on this pass (no target CPython import lib or -SkipPython).' }),
         'bin\ carries the runtime tools (iree-run-module & co.), lib\ the runtime libraries, include\ the headers.'
     ))
     Write-Host ('iree static gate OK (cross lane): {0} target binaries under bin\, all PE machine 0x{1:X4}; iree-compile + python ABSENT by design (#116)' -f $ireeBinCount, (Get-PeMachineType))
@@ -336,6 +368,19 @@ if ($pythonBindings -eq 'ON') {
             }
         }
     }
+    if ($ireeCross) {
+        # Cross lane (#133): ONLY the runtime package exists (compiler OFF), and
+        # it is built + STAGED, never installed or imported here. The build tree's
+        # synthesized runtime/setup.py is IS_CONFIGURED (source/binary dirs baked
+        # in): its build_py step runs `cmake --build` (a no-op on the finished
+        # tree) and installs the IreePythonPackage-runtime component, then
+        # bdist_wheel zips it -- --plat-name via -CrossStage stamps win_arm64 and
+        # Assert-WheelTargetArch PE-checks _runtime*.pyd and the runtime DLLs.
+        $pkgDir = Join-Path $buildDir 'runtime'
+        if (-not (Test-Path (Join-Path $pkgDir 'setup.py'))) { throw "IREE python package dir missing setup.py: $pkgDir" }
+        Write-Host 'Building IREE runtime wheel for the target (cross lane; compiler package ABSENT by design)...'
+        Invoke-PythonWheelBuild -Python $py -WorkingDir $pkgDir -Arguments 'setup.py bdist_wheel' -ModuleName 'iree.runtime' -NoDeps -CrossStage | Out-Null
+    } else {
     foreach ($pkg in @(
         @{ Dir = 'compiler'; Module = 'iree.compiler' },
         @{ Dir = 'runtime';  Module = 'iree.runtime' }
@@ -349,8 +394,13 @@ if ($pythonBindings -eq 'ON') {
         Invoke-CpythonPip -Python $py -Arguments @('wheel', $pkgDir, '--no-deps', '--no-build-isolation', '-w', $wheelOut)
         Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName $pkg.Module | Out-Null
     }
+    }
     # End-to-end binding gate: compile MLIR through the python compiler API and
     # execute it on the python runtime -- proves the two wheels interoperate.
+    # Native lane only: on the cross lane there is no compiler package and the
+    # runtime .pyd is aarch64 -- nothing here could import it (the staged wheel
+    # was PE- and name-checked instead).
+    if (-not $ireeCross) {
     $pyGate = Join-Path $env:TEMP 'iree-py-gate.py'
     @"
 import numpy as np
@@ -367,6 +417,7 @@ print("iree python gate OK: abs(-5) =", value)
 "@ | Set-Content -Path $pyGate -Encoding ascii
     [void](Invoke-ShieldedNative -Label 'IREE python end-to-end gate' -CommandLine """$($py.Exe)"" ""$pyGate""")
     Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Remove-SourceBuildTree -Path $SourceDir
