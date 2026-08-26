@@ -374,24 +374,32 @@ ensure_sccache_env() {
   # A server that idles out mid-build is one of the recorded failure shapes.
   export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
 
-  # ONE SERVER PER CONTAINER (2026-08-26). sccache's server listens on a FIXED
-  # port (4226 by default) and clients connect to whatever answers there.
-  # BuildKit builds the media stages CONCURRENTLY, in separate containers that
-  # share a network namespace under rootless buildkitd — so the first container
-  # to start a server owns port 4226, and every other container's client talks
-  # to THAT server. It happily accepts the job ("Server sent CompileStarted")
-  # and then cannot find the source, because the path only exists in the
-  # caller's container:
-  #     sccache: caused by: No such file or directory (os error 2)
-  # That is why the sequential compiler stage was clean, why it only starts
-  # once parallel media steps overlap, why it moved between opencv/onnxruntime/
-  # litert, and why it never reproduced inside a single container.
-  # $HOSTNAME is the per-RUN container id, so hashing it gives each step its
-  # own server. Fall back to the default port when it is unset.
-  if [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
-    _scp_seed="${HOSTNAME:-$$}"
-    _scp_off="$(printf '%s' "${_scp_seed}" | cksum | awk '{print $1 % 20000}')"
-    export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+  # ── ONE SERVER PER CONTAINER, BY CONSTRUCTION ────────────────────────────
+  # sccache is a client/SERVER pair and the compiler runs in the SERVER's
+  # context. That is the structural difference from ccache, and every failure
+  # this migration hit comes out of it. The server is found by ADDRESS, and the
+  # default address is a fixed TCP port (4226) -- which is not container-local:
+  # BuildKit builds the media stages concurrently in containers that share a
+  # network namespace under rootless buildkitd, so a client can reach ANOTHER
+  # container's server. That server accepts the job ("Server sent
+  # CompileStarted") and then cannot find the source, because the path exists
+  # only in the caller:  No such file or directory (os error 2).
+  #
+  # Hashing the port per container narrows the odds but does not remove them.
+  # A UNIX SOCKET does: its address is a filesystem path, and /tmp is part of
+  # the container's own filesystem (only bind and cache mounts are shared), so
+  # the address space is private BY CONSTRUCTION rather than by luck.
+  # SCCACHE_SERVER_UDS needs sccache >= 0.14 (versions.env pins 0.17.0); the
+  # port hash stays as the fallback for the distro 0.13 build.
+  if [ -z "${SCCACHE_SERVER_UDS:-}" ] && [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
+    _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
+    _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
+    if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
+      export SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
+    else
+      _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
+      export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+    fi
   fi
   # PREPROCESSOR CACHE MODE OFF (2026-08-26, after it broke two builds).
   # In that mode sccache re-reads the INPUT FILE to store the cache entry AFTER
