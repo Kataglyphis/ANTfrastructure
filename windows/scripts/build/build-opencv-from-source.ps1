@@ -924,15 +924,26 @@ if ($ocvCross) {
     # see the table beside $jumpTableFlag. Every offender measured lands just past
     # 255*4 = 1020 bytes of table span (258, 260, 281, 284), and all of them are
     # in the bundled protobuf's descriptor/reflection/wire-format code. The whole
-    # libprotobuf target is tagged rather than the three named files: it is 42 TUs
-    # of cold model-loading code where /O1 costs nothing measurable, and naming
-    # three files is exactly the whack-a-mole that cost attempt 5 (fixed three,
-    # then a fourth TU failed).
+    # libprotobuf target is tagged rather than the three named files: 42 TUs of
+    # cold model-loading code, and naming files is exactly the whack-a-mole that
+    # cost attempt 5 (fixed three, then a fourth TU failed).
+    #
+    # /Od, NOT /O1, and the reason is mechanical rather than a matter of degree.
+    # /O1 was tried first and got 3 of the 4 values (260, 281, 284 gone) while
+    # descriptor.cc still overflowed at 258 -- because /O1 only SHRINKS the table,
+    # and 258 is barely over the 255-entry ceiling. /Od removes the ceiling
+    # instead: AArch64CompressJumpTables only runs when getOptLevel() != None, so
+    # at /Od the compression pass does not run at all. That is stated in the
+    # $jumpTableFlag note above, which records it as the reason the ORIGINAL
+    # per-TU /Od workaround worked before 2026-08-23 -- this is a return to it,
+    # scoped to the one target that needs it.
+    # The cost is bounded and cold: protobuf descriptor/reflection runs at model
+    # load, not in any media path. Do not widen /Od beyond libprotobuf.
     [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
         -Label 'AArch64 compressed-jump-table span (libprotobuf)' `
-        -Floor 30 -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+        -Floor 30 -AlreadyTaggedPattern '(^|\s)/Od(\s|$)' -Select {
             param($line)
-            if ($line -match 'libprotobuf\.dir') { '/O1' } else { '' }
+            if ($line -match 'libprotobuf\.dir') { '/Od' } else { '' }
         })
 
     # (b) The BRANCH-range ceiling. With compression ON this may already be
