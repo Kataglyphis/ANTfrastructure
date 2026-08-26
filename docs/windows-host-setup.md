@@ -441,7 +441,7 @@ Set-ItemProperty -Path HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd `
 Skipping this cost this project twice: buildkitd's computed defaults evicted
 the multi-hour VS Build Tools layer between two runs, and unlimited build
 history pinned a 414 GB store at `Reclaimable: 0B`. The repo policy
-(`windows/buildkitd.toml`: three GC tiers, `reservedSpace = 200GB`, plus the
+(`windows/buildkitd.toml`: three GC tiers, `reservedSpace = 150GB`, plus the
 `[history] maxAge/maxEntries` cap) is deployed by:
 
 ```pwsh
@@ -463,7 +463,7 @@ lane, "Store GC" bullet. Verify:
 
 ```pwsh
 & "$env:ProgramFiles\Stevedore\bin\buildctl.exe" debug workers -v | Select-String 'reservedSpace|maxUsedSpace|minFreeSpace'
-# must show reservedSpace=200GB tiers, NOT the computed defaults (maxUsedSpace 100GB / minFreeSpace 187GB)
+# must show reservedSpace=150GB tiers, NOT the computed defaults (maxUsedSpace 100GB / minFreeSpace 187GB)
 ```
 
 ### C4. Windows Defender exclusions — LOAD-BEARING, not hygiene

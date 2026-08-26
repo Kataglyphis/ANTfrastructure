@@ -320,28 +320,34 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # overflowed. Switch-heavy code is the common thread in every offender found
 # (protobuf descriptors, the TIFF decoder, G-API graph serialisation).
 #
-# EXPERIMENT, 2026-08-26 (#135), and the reason is that THESE TWO CEILINGS ARE IN
-# TENSION. Disabling compression makes every jump table ~4x larger (4-byte
-# entries instead of 1), which grows exactly the switch-heavy dispatch functions
-# whose pc-relative branches now overflow under LLVM 23 with
-# `error: fixup value out of range`. The flag was added for LLVM 22, where the
-# compressed path was the broken one.
+# MEASURED 2026-08-26 (#135): UNDER LLVM 23 THESE TWO CEILINGS ARE MUTUALLY
+# EXCLUSIVE, and they hit DIFFERENT files. One cross run each settled it:
 #
-# So: run the cross lane ONCE with compression left ON (this line empty) and read
-# which diagnostic appears.
-#   * NEITHER error  -> LLVM 23 fixed the compressed path; the flag was obsolete
-#                       AND was causing the new overflow. Delete it and this note.
-#   * `value evaluated as <N> is out of range` returns -> the compressed path is
-#                       still broken; restore the flag below and take the other
-#                       route (/O1 across the *.dispatch.cpp family, ~28 TUs --
-#                       heavier, because on aarch64 the BASELINE path in those
-#                       files is NEON).
-#   * `fixup value out of range` persists unchanged -> table size was not the
-#                       lever; restore the flag and look elsewhere.
-# The per-TU /O1 block further down stays either way: it demonstrably fixed the
-# first three offenders (verified: "per-TU flags on 3 ... (floor 3)" in the run
-# that then failed on a FOURTH TU, median_blur.dispatch.cpp).
-# To restore, put this back:
+#   compression OFF (the LLVM 22 fix)   compression ON (this setting)
+#   -------------------------------   ------------------------------
+#   `value evaluated as N`   0        `value evaluated as N`   4  (258/260/281/284)
+#   `fixup value out of range` 4      `fixup value out of range` 0
+#   offenders: opencv *.dispatch.cpp  offenders: libprotobuf descriptor.cc,
+#                                     generated_message_reflection.cc, wire_format.cc
+#
+# Disabling compression makes every jump table ~4x larger (4-byte entries instead
+# of 1), which grows the switch-heavy OpenCV dispatch functions until their
+# pc-relative branches no longer reach. Enabling it puts the protobuf descriptor
+# tables back over the 255-entry span the compressed encoding can address.
+#
+# SO THE FLAG STAYS OFF (compression ON) and the protobuf side is handled per-TU
+# below. That direction was chosen deliberately: with compression ON the OpenCV
+# dispatch TUs compile at full /O2 -- and on aarch64 those files carry the NEON
+# BASELINE path, so they are the ones where optimisation actually matters.
+# protobuf descriptor/reflection is cold model-loading code where /O1 costs
+# nothing measurable.
+#
+# This is also a RETURN to the shape the script had before 2026-08-23: a per-TU
+# pass over exactly the protobuf class of offender. The global flag replaced it
+# because it was cleaner under LLVM 22; under LLVM 23 the global flag has a side
+# effect the per-TU pass never had.
+#
+# To restore the LLVM 22 behaviour if a future clang makes that correct again:
 #   $jumpTableFlag = if ($ocvCross) { '-mllvm -aarch64-enable-compress-jump-tables=false' } else { '' }
 $jumpTableFlag = ''
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
@@ -914,9 +920,31 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
 # $jumpTableFlag did. Re-test by removing the block and running the cross lane;
 # the failure is fast (~3 min into the opencv stage) and unambiguous.
 if ($ocvCross) {
+    # (a) The COMPRESSED-jump-table span, which compression ON reintroduces --
+    # see the table beside $jumpTableFlag. Every offender measured lands just past
+    # 255*4 = 1020 bytes of table span (258, 260, 281, 284), and all of them are
+    # in the bundled protobuf's descriptor/reflection/wire-format code. The whole
+    # libprotobuf target is tagged rather than the three named files: it is 42 TUs
+    # of cold model-loading code where /O1 costs nothing measurable, and naming
+    # three files is exactly the whack-a-mole that cost attempt 5 (fixed three,
+    # then a fourth TU failed).
+    [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
+        -Label 'AArch64 compressed-jump-table span (libprotobuf)' `
+        -Floor 30 -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+            param($line)
+            if ($line -match 'libprotobuf\.dir') { '/O1' } else { '' }
+        })
+
+    # (b) The BRANCH-range ceiling. With compression ON this may already be
+    # unnecessary -- the run that produced the table above had compression ON and
+    # reported ZERO fixup errors, including for median_blur.dispatch.cpp, which
+    # was NOT tagged. Kept anyway because a cross iteration costs ~50 minutes and
+    # these three are the measured offenders; dropping it is a cheap experiment
+    # for a quiet moment, not something to gamble an acceptance run on. If it goes,
+    # these TUs get their /O2 back, which is where it matters (NEON baseline).
     $fixupTus = @('imgwarp.cpp', 'smooth.dispatch.cpp', 'stb_truetype.cpp')
     [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
-        -Label "AArch64 fixup-range workaround (LLVM 23; $($fixupTus -join ', '))" `
+        -Label "AArch64 branch-range belt-and-braces (LLVM 23; $($fixupTus -join ', '))" `
         -Floor $fixupTus.Count -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
             param($line)
             if ($line -match 'opencv_imgproc\.dir' -and ($fixupTus | Where-Object { $line -match [regex]::Escape($_) })) { '/O1' } else { '' }

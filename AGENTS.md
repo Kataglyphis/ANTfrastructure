@@ -762,9 +762,22 @@ The rules an agent must never violate:
    Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
    PYTHON_VERSION bump, and they were the expensive ones), (b) TIERED
    in-container module closures so host-only module edits cannot bust a compile
-   layer, and (c) sccache. **Preserve (a) and (b) in any Dockerfile edit** —
-   moving a COPY above the VS layer, or widening a module stage, costs hours
-   per bump.
+   layer, (c) sccache, and (d) **buildkitd's GC reserve**. **Preserve (a) and (b)
+   in any Dockerfile edit** — moving a COPY above the VS layer, or widening a
+   module stage, costs hours per bump.
+
+   **(d) is the one that fails SILENTLY and looks like a Dockerfile problem.**
+   `reservedSpace` in `windows/buildkitd.toml` is the only floor GC will not
+   prune below, and it must exceed the **fresh chain spine** (~120–150 GB: base
+   incl. VS + sdk + toolchain + branch images). Set below that, the ~37 GB
+   VS-class layer is evicted between driver runs and every run re-solves the
+   prefix — `#9 RUN setup-vs.ps1` re-executing for 4–7 min while `#8`, the COPY
+   of that very script, reports CACHED. It has happened twice (2026-08-11,
+   2026-08-26). **Before blaming a cache key, check the reserve against
+   `buildctl du`'s Total and against the store size**: `Reclaimable: 0B` is not
+   "nothing to clean", it is what a store already pruned to its floor looks
+   like. `maxUsedSpace` below the working-set size has the same effect, because
+   it forces eviction regardless of what the reserve says.
 
    **The three module tiers (#134, 2026-08-26) — check which one a module is in
    before editing it, because the cost differs by hours:**
