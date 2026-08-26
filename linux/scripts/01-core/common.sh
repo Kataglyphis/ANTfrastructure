@@ -373,6 +373,21 @@ ensure_sccache_env() {
   export SCCACHE_DIR
   # A server that idles out mid-build is one of the recorded failure shapes.
   export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
+  # PREPROCESSOR CACHE MODE OFF (2026-08-26, after it broke two builds).
+  # In that mode sccache re-reads the INPUT FILE to store the cache entry AFTER
+  # the compile. CMake's TryCompile probes create a scratch dir, compile in it,
+  # and DELETE it immediately -- so the re-read hits ENOENT and sccache treats
+  # it as FATAL:
+  #   sccache: error: while hashing the input file
+  #     '.../CMakeFiles/CMakeScratch/TryCompile-XXXX/testCCompiler.c'
+  #   caused by: No such file or directory (os error 2)
+  # It killed OpenCV's compiler test, then onnxruntime's, three times running.
+  # The mode is OFF by default in sccache; enabling it was our change, so this
+  # reverts to upstream behaviour rather than working around a bug. Cost is hit
+  # rate (sccache preprocesses instead of hashing inputs directly), not
+  # correctness. Set SCCACHE_DIRECT=true to re-enable once the ephemeral-dir
+  # interaction is understood.
+  export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
   export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
   sccache --start-server >/dev/null 2>&1 || true
   if ! sccache --show-stats >/dev/null 2>&1; then

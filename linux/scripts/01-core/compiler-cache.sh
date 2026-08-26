@@ -106,6 +106,9 @@ setup_ccache() {
   _cc_launcher="ccache"
   if ! _flag_disabled "${USE_SCCACHE}" && command -v sccache >/dev/null 2>&1; then
     export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
+    # See common.sh:ensure_sccache_env -- preprocessor cache mode re-reads the
+    # input file AFTER the compile and dies on CMake's deleted TryCompile dirs.
+    export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
     export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
     sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
