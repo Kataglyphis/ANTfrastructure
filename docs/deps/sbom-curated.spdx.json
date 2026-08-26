@@ -80,7 +80,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Vulkan-SDK-8a2ee2bf",
       "name": "Vulkan SDK",
-      "versionInfo": "1.4.357.1",
+      "versionInfo": "1.4.357.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -756,7 +756,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-Vulkan-SDK-adb42f39",
       "name": "Vulkan SDK",
-      "versionInfo": "1.4.357.1",
+      "versionInfo": "1.4.357.0",
       "downloadLocation": "https://vulkan.lunarg.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

@@ -549,17 +549,51 @@ $sccache = @{ SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint }
 # host pulls the same file fine. Fail-open at every step - a failure here
 # just leaves the container on its own (retried) direct-download path.
 if ($SccacheEndpoint) {
+    $vkVer = Get-Ver 'VULKAN_VERSION'
+    $vkName = "vulkansdk-windows-X64-$vkVer.exe"
+    $vkOnDav = "$SccacheEndpoint/preseed/$vkName"
+    $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
+    $vkUrl = "https://sdk.lunarg.com/sdk/download/$vkVer/windows/$vkName"
+
+    # A 404 on the pinned installer is NOT transient, so it must NOT take the
+    # fail-open path below: it means VULKAN_VERSION names a file LunarG does not
+    # publish FOR WINDOWS. LunarG versions the SDK per platform and Windows lags
+    # -- latest.json on 2026-08-26 read linux 1.4.357.1 / windows 1.4.357.0, and
+    # the bump tool (which read linux.txt alone, fixed since) wrote .1. The
+    # preseed warned and skipped; setup-scoop-tools.ps1 then hit the identical
+    # 404 inside the container FOURTEEN MINUTES later, after the VS Build Tools
+    # layer. Checking here costs one HEAD and names the bad pin instead.
+    # ONLY 404 is fatal -- 403/5xx/timeouts stay fail-open, so a LunarG outage
+    # cannot block a build the container could still complete.
+    #
+    # TWO TRAPS, both measured while writing this (the first draft was a gate
+    # that could not fire, which is the thing this repo keeps paying for):
+    #   * `-I` prints the response HEADERS to stdout, so -w's status code came
+    #     back buried in a header block and `-eq '404'` never matched. Use a
+    #     one-byte RANGE request instead: 206 on success, 404 on a missing file,
+    #     and no 287 MB download either way.
+    #   * `-o $null` does NOT mean /dev/null here. PowerShell renders $null as an
+    #     EMPTY STRING for a native command, so curl wrote the body to stdout and
+    #     the probe returned 'M' (the MZ header's first byte) for the good pin.
+    #     The Windows null device is spelled NUL.
+    $vkProbe = (& $curlExe -sS -o NUL -w '%{http_code}' -L --max-time 30 -r 0-0 $vkUrl 2>$null)
+    $global:LASTEXITCODE = 0
+    if ("$vkProbe".Trim() -eq '404') {
+        throw ("VULKAN_VERSION=$vkVer has no Windows installer: $vkUrl returns 404. LunarG versions the " +
+               'SDK per platform and Windows can lag behind linux/mac -- check ' +
+               'https://vulkan.lunarg.com/sdk/latest.json and pin the version its "windows" field names ' +
+               '(VULKAN_VERSION feeds BOTH lanes, so it can only carry a version that exists on both). ' +
+               'Failing here rather than 14 minutes into Dockerfile.base, where the same 404 surfaces as ' +
+               'a scoop install error.')
+    }
+
     try {
-        $vkVer = Get-Ver 'VULKAN_VERSION'
-        $vkName = "vulkansdk-windows-X64-$vkVer.exe"
-        $vkOnDav = "$SccacheEndpoint/preseed/$vkName"
-        $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
         & $curlExe -sfI $vkOnDav *> $null
         if ($LASTEXITCODE -ne 0) {
             $vkLocal = Join-Path $PSScriptRoot 'downloads' $vkName
             if (-not (Test-Path $vkLocal)) {
                 Write-Host "preseed: downloading $vkName host-side..."
-                & $curlExe -sfL --retry 3 --retry-delay 5 --retry-all-errors "https://sdk.lunarg.com/sdk/download/$vkVer/windows/$vkName" -o $vkLocal
+                & $curlExe -sfL --retry 3 --retry-delay 5 --retry-all-errors $vkUrl -o $vkLocal
                 if ($LASTEXITCODE -ne 0) { throw "host download failed (exit $LASTEXITCODE)" }
             }
             & $curlExe -sf --retry 3 --retry-delay 5 --retry-all-errors -T $vkLocal $vkOnDav

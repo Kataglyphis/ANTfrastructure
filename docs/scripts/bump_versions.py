@@ -578,7 +578,34 @@ def spec_python(cur):
 
 
 def spec_vulkan(cur):
-    v = http_text("https://vulkan.lunarg.com/sdk/latest/linux.txt").strip()
+    # ONE key, TWO lanes: VULKAN_VERSION feeds the linux base/sdk AND the windows
+    # scoop layer (see its SPECS row). LunarG versions the SDK PER PLATFORM and
+    # Windows lags -- latest.json on 2026-08-26 read
+    # {"linux":"1.4.357.1","mac":"1.4.357.1","windows":"1.4.357.0"}.
+    #
+    # This used to read linux.txt alone. The 2026-08-26 bump therefore wrote
+    # 1.4.357.1, and the Windows base build died in setup-scoop-tools.ps1 with a
+    # 404 on vulkansdk-windows-X64-1.4.357.1.exe -- after the VS Build Tools
+    # layer, i.e. the expensive way to find out. Same shape as LLVM_WINDOWS_VERSION,
+    # which cannot follow LLVM_RELEASE to 23.1.0 because upstream ships no
+    # win64 installer for it: an upstream "latest" is not a per-platform "exists".
+    #
+    # So: take the OLDEST of the platforms this repo actually installs. A shared
+    # key can only carry a version that exists on every lane consuming it.
+    latest = json.loads(http_text("https://vulkan.lunarg.com/sdk/latest.json"))
+    consumed = {p: str(latest[p]).strip() for p in ("linux", "windows") if latest.get(p)}
+    if not consumed:
+        raise RuntimeError("vulkan: latest.json carried neither a linux nor a windows version")
+
+    def _key(s):
+        return tuple(int(x) for x in re.findall(r"\d+", s))
+
+    v = min(consumed.values(), key=_key)
+    if len(set(consumed.values())) > 1:
+        print(
+            f"  note: vulkan platforms disagree ({', '.join(f'{p}={x}' for p, x in sorted(consumed.items()))})"
+            f" -- pinning the oldest ({v}), since VULKAN_VERSION feeds both lanes"
+        )
     extras = {}
     # BT1 (2026-08-19): VULKAN_SDK_SHA256 is a manually-paired pin ("bump
     # together" recipe in versions.env) that sat OUTSIDE the tool's refresh
