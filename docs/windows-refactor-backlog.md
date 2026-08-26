@@ -164,7 +164,25 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 - **#134 — post-#133 cleanup wave: unshare the module closure, de-duplicate the AST test
   boilerplate, condense the docs.** M · ★★ (opened 2026-08-26, owner's request; planned against the
   Dockerfiles, not against memory — see the correction below) · **CODE LANDED 2026-08-26
-  (`2752685f`); the two-lane regression that accepts it has NOT run.**
+  (`2752685f` + docs `80f2258f`); ACCEPTANCE RUN IN FLIGHT — nothing below is proven until it
+  reports.**
+  **The acceptance run, and why it is the proof rather than the suite.** Three runs off
+  `80f2258f`, in this order (arm64 first: it exercises more of the new code — the cross paths, all
+  three leaf modules, `tvmmods` — and costs ~40 min against amd64's ~2 h 20, so a defect surfaces
+  cheap). Preconditions verified before launch: sccache `http://192.168.188.116:5000` HTTP 200,
+  RDNA4 dGPU DISABLED (`ConfigManagerErrorCode 22` — an enabled one fails every process-isolated
+  layer commit), buildkitd Running, 875 GB free on C:.
+  (A) `build-buildkit.ps1 -TargetArch arm64 -Stages media,final` → arch gate **992/0**, import walk
+  **606/0** (3 allowlisted externals), target python deps **12 wheels / 0 unresolved edges**,
+  bundle **6 wheels + 3 ABSENT markers**, contract plugins **6/6**, smoke **97/0/15**.
+  (B) the CACHE-KEY PROOF, the one thing only a build can answer: touch one byte of
+  `WindowsTvm.Common.psm1`, re-run arm64 `media` — **only `media-tvm-built` may re-run**; ONNX,
+  FFmpeg, OpenCV, media-core-built and media-litert-built must all report CACHED. If any of them
+  re-runs, `tvmmods` bought nothing and the whole wave is decoration.
+  (C) `build-buildkit.ps1 -Stages media,final` → arch gate **1134/0**, smoke **222/0/0**.
+  The host suite structurally cannot see what these check: #131's ride found three defects the
+  tests could not, which is why the bundled regression is the acceptance criterion and 704/704 is
+  only the entry ticket.
   **What landed.** Three leaf modules, each mounted only by the RUNs that call it:
   `WindowsMeson.Common` (the 3 meson helpers + `Invoke-WrapDownload` + `Expand-SubprojectArchive`)
   and `WindowsRustToolchain.Common` (`Install-RustTargetStdFromPinnedManifest`) in the merge
