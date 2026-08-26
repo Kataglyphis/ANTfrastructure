@@ -20,9 +20,11 @@ The Linux-side equivalent is [`refactoring-backlog.md`](refactoring-backlog.md).
 
 ### ARM64 parity (opened 2026-08-23)
 
-**CURRENT STATE — measured 2026-08-26, both lanes, numbers re-read from the run logs rather than
-carried forward.** The `:winarm64` cross lane is at runtime parity with `:winamd64` apart from the
-four exclusions listed below.
+**LAST MEASURED STATE — arm64 run 36 / amd64 run 8, both on 2026-08-26 midday, numbers re-read
+from the run logs rather than carried forward.** On that tree the `:winarm64` cross lane reached
+runtime parity with `:winamd64` apart from the four exclusions listed below. **HEAD is not that
+tree** — see #134 for what has landed since and why none of the four acceptance attempts has
+completed. Read the table as the last known good.
 
 | | arm64 cross (`bk-20260826-122019`) | amd64 native (`bk-20260826-130136`) |
 |---|---|---|
