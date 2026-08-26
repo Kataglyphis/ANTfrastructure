@@ -105,9 +105,13 @@ function Get-PyprojectDependencies {
     # `authors = [{...}]` or `keywords = [` preceded the list (both pyprojects
     # do), and the assembled wheels shipped with NO requirements: a defect the
     # deps gate cannot see, because fewer requirements only ever make it greener.
-    $tbl = [regex]::Match($PyprojectText, '(?ms)^\[project\][ \t]*(?:#[^\n]*)?$(.*?)(?=^\[|\z)')
+    # `\r?` before every `$`: .NET's multiline `$` matches only immediately
+    # before `\n`, so a CRLF file (git checks these out with core.autocrlf on
+    # Windows -- arm64 runs 34/35, while the same text parses locally with LF)
+    # never satisfies `...[ \t]*$` and the whole list silently comes back empty.
+    $tbl = [regex]::Match($PyprojectText, '(?ms)^\[project\][ \t]*(?:#[^\r\n]*)?\r?$(.*?)(?=^\[|\z)')
     if (-not $tbl.Success) { return @() }
-    $m = [regex]::Match($tbl.Groups[1].Value, '(?ms)^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\n]*)?$')
+    $m = [regex]::Match($tbl.Groups[1].Value, '(?ms)^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\r\n]*)?\r?$')
     if (-not $m.Success) { return @() }
     return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
 }

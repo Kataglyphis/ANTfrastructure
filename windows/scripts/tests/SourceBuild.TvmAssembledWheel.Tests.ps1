@@ -70,6 +70,12 @@ Describe 'TVM assembled-wheel helpers' {
         $deps = @(Get-PyprojectDependencies -PyprojectText $py)
         Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' ($deps -join ',') 'exact list, torch extra excluded'
         Assert-Equal 0 (@(Get-PyprojectDependencies -PyprojectText '[project]`nname = "x"')).Count 'no block -> empty'
+        # CRLF: the container's git checkout converts line endings, and .NET's
+        # multiline `$` matches only immediately before `\n` -- runs 34/35 shipped
+        # wheels with NO Requires-Dist because of exactly this (the same text
+        # parsed fine with LF on the host).
+        Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' `
+            ((Get-PyprojectDependencies -PyprojectText ($py -replace "`n", "`r`n")) -join ',') 'CRLF file parses identically'
     }
 
     It 'stops at the one-line list and never runs into [project.urls] / optional-dependencies (tvm-ffi shape, run 33)' {
@@ -84,6 +90,7 @@ Describe 'TVM assembled-wheel helpers' {
         ) -join "`n"
         $deps = @(Get-PyprojectDependencies -PyprojectText $py)
         Assert-Equal 'typing-extensions>=4.5' ($deps -join ',') 'only the real dependency'
+        Assert-Equal 'typing-extensions>=4.5' ((Get-PyprojectDependencies -PyprojectText ($py -replace "`n", "`r`n")) -join ',') 'one-line list, CRLF'
         # An extras marker keeps its own brackets inside the list.
         $py2 = "[project]`nname = ""x""`ndependencies = [`n  ""torch[cuda]>=2"",`n  ""numpy"",`n]`n[project.urls]`nHome = ""https://x""`n"
         Assert-Equal 'torch[cuda]>=2,numpy' ((Get-PyprojectDependencies -PyprojectText $py2) -join ',') 'extras brackets survive'

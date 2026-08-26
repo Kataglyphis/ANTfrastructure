@@ -968,6 +968,17 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   tvm-ffi links the Cython module against and upstream's own wheel ships beside `tvm_ffi.dll`;
   the assembled wheel now stages it too (both DLLs asserted present). Deps gate itself passed:
   `store holds 11 wheel(s); 0 requirement edge(s) unresolved`. Proof: run 35.
+  ✅ **(b)+(c) DONE 2026-08-26 (arm64 run 35, `[bk] Done 00:41:22`).** The bundle now ships
+  `apache_tvm_ffi-0.1.13.post2-cp314-cp314-win_arm64.whl` (3 native members: `core.pyd`,
+  `tvm_ffi.dll`, `tvm_ffi_testing.dll`), `apache_tvm-0.26.0-cp314-cp314-win_arm64.whl`
+  (`tvm_runtime.dll`) and `iree_base_runtime-3.11.0.dev0+…-cp312-abi3-win_arm64.whl` (11 members,
+  `_runtime.pyd` + the runtime tools) — every member `0xAA64`. Manifest **6 wheels** (= amd64),
+  deps store **11 wheels / 0 unresolved edges**, arch gate **992 / 0** with `606 walked, 0
+  unresolved import(s)`, smoke 97/0/15. One metadata defect survived to be fixed after the fact:
+  the two assembled wheels' `Requires-Dist` were EMPTY because .NET's multiline `$` matches only
+  before `\n` and the container's git checkout is CRLF (the same text parsed correctly on the
+  host, and the deps gate cannot see missing requirements — fewer edges only make it greener).
+  Every anchor is `\r?$` now and the fixture asserts the CRLF variant; proof: run 36.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed
