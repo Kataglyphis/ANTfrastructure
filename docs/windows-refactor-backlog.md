@@ -386,50 +386,37 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   is disputed — docs say ~108/125, the audit computes ~78; settle it with one elevated
   `ctr`/`nerdctl` inspect before anyone plans around either number.
 
-- **#135 — AArch64 `fixup value out of range` on LLVM 23.1.0: worked around, root cause NOT
-  pinned.** S–M · ★★ (opened 2026-08-26)
-  The forced Windows clang-cl bump (22.1.8 → 23.1.0; upstream reshaped the artifact and scoop can
-  no longer install the old pin) aborts the CROSS build of `opencv_imgproc` on three TUs —
-  `imgwarp.cpp`, `smooth.dispatch.cpp`, `stb_truetype.cpp` — with `error: fixup value out of range`
-  and no source location or fixup kind.
-  **Ruled out, not assumed:** this is NOT the compressed-jump-table ceiling that
-  `-mllvm -aarch64-enable-compress-jump-tables=false` fixes build-wide. That flag WAS on the
-  command line when this failure first appeared (6 occurrences in the failing log) and LLVM 23
-  accepts it (no "Unknown command line argument"), so the two are not the same ceiling — but see
-  the UPDATE below: the flag is now suspected of CAUSING this one, and is off for a test run.
-  The two diagnostics come from different LLVM code paths —
-  `AArch64AsmPrinter::emitJumpTableImpl` via `MCObjectStreamer::emitValueImpl` for the old one, the
-  AArch64 asm BACKEND rejecting an over-long fixup for this one.
-  **Hypothesis (unproven):** a pc-relative branch overflowing its field (tbz/tbnz ±32 KB, b.cond
-  ±1 MB) in a function LLVM 23 grew past what 22 emitted. All three offenders are OpenCV
-  CPU-DISPATCH TUs — the largest functions in the module — which fits a size-driven overflow but
-  does not establish it. LLVM prints no fixup kind, so this needs either a reduced test case or a
-  disassembly of the offending object.
-  **UPDATE, attempt 5 (2026-08-26 evening): the name list is losing a whack-a-mole, and that is
-  itself evidence.** The injection ran correctly (`per-TU flags on 3 … (floor 3)` in the log) and
-  fixed all three named TUs — then a FOURTH overflowed, `median_blur.dispatch.cpp`. So `/O1` is the
-  right lever and an explicit list is the wrong applicator. The full family is 28 `*.dispatch.cpp`
-  TUs across `opencv_core` and `opencv_imgproc`; blanket `/O1` over all of them is the heavy
-  fallback, heavy because **on aarch64 the BASELINE path in those files is NEON**, not scalar.
-  **Currently under test instead — the two ceilings may be in TENSION.**
-  `-aarch64-enable-compress-jump-tables=false` was added for LLVM 22, where the COMPRESSED path
-  overflowed its 1-byte entries; it makes every jump table ~4x larger, which grows exactly the
-  switch-heavy dispatch functions whose branches now overflow. The LLVM 22 fix may be what pushes
-  LLVM 23 over the other edge. One cross run with compression left ON decides it
-  (`caf561c1`), decision rule at the call site:
-  neither error → the flag was obsolete AND harmful, delete it and keep `/O2` everywhere;
-  `value evaluated as <N>` returns → compressed path still broken, restore the flag and take the
-  28-TU route; `fixup value out of range` unchanged → table size was not the lever, look elsewhere.
-  The per-TU `/O1` block stays either way — it is proven to fix the three TUs it names.
-  **Workaround shipped:** `/O1` on exactly those three TUs via `Add-NinjaPerTuFlags`, cross-lane
-  only, floor = the name count so a rename or a fourth offender throws. The hot SIMD kernels are
-  NOT in these TUs (they are generated per-ISA from `*.simd.hpp` and keep `/O2`), so the cost
-  should be dispatch glue rather than filter throughput — **should**, unmeasured. Three fixture
-  tests cover hit, non-hit (same filename in another module), idempotence and the floor.
-  **Close this by** deleting the block and re-running the cross lane once a later clang-cl compiles
-  these at `/O2` again, or once the real ceiling is identified and earns a build-wide flag the way
-  `$jumpTableFlag` did. The failure is fast and unambiguous (~3 min into the opencv stage), so the
-  re-test is cheap. Worth an upstream report if the reduced case materialises.
+- **#135 — LLVM 23.1.0 AArch64 codegen: jump-table entry width solved, `adr` reach still open.**
+  M · ★★ (opened 2026-08-26)
+  The forced clang-cl bump to 23.1.0 broke the cross build of OpenCV in two places. Both are LLVM
+  defects, both live in `AArch64CompressJumpTables`, and they are NOT the same problem — the entry
+  in `docs/failure-modes.md` § AArch64 cross compile aborts carries the full symptom-first
+  write-up, the two "do NOT" traps and the local-reproduction recipe.
+  **(1) Entry width — SOLVED (`eb13d2a2`).** The pass estimates block offsets, picks 1-byte entries,
+  and emission finds the real value does not fit. Every `N` measured sat just past the 1020-byte
+  ceiling (256 = 1024 B, 258, 259, 260, 262, 272, 281, 284) — an estimate a few bytes short.
+  `-Xclang -target-feature -Xclang +force-32bit-jump-tables` takes the width decision away from the
+  pass while LEAVING THE PASS ENABLED. Verified locally against clang-cl 23.1.0 (`.hword`/`ldrh` →
+  `.word`/`ldrsw`, ±2 GB) and then in the cross build: `value evaluated as` went 4 → **0**.
+  Cost 4522 → 4650 bytes of object, ~2.8 %, all of it jump-table DATA; full `/O2` retained.
+  **(2) `adr` reach — OPEN.** `median_blur.dispatch.cpp` still aborts with `fixup value out of
+  range`: in a function over ~1 MB the `adr` that materialises the table's base block cannot be
+  encoded. Forcing 4-byte entries does not help — the entries were never the problem. Note the
+  LLVM logic gap worth reporting: the pass DOES check `adr` reach and "bails out to 4-byte", but
+  4-byte entries still use `adr`, so the bail-out does not address the case it is checking for.
+  Candidates, none applied: `-fno-jump-tables` on that one TU (a lowering change, not an
+  optimisation level — the dispatch switch runs once per filter call, so an if-else chain is
+  negligible against a >1 MB function, but it is still a change the owner rejected in spirit);
+  reducing what makes that function >1 MB, which is a de-optimisation; or an upstream fix.
+  **Ruled out by measurement, keep them ruled out:**
+  `-mllvm -aarch64-enable-compress-jump-tables=false` disables the whole pass INCLUDING the `adr`
+  check, which is how (2) appeared where it had not been — it was correct on LLVM 22 and is a trap
+  on 23; `-max-jump-table-size` caps entry COUNT while the ceiling is a BYTE SPAN (accepted, no
+  effect); `-align-all-*` kills clang-cl outright via the SEH unwind writer (llvm#122707 /
+  llvm#47432); `-mcmodel=large` needs `-fno-pic` on Windows and `tiny` is ELF-only; `/Od` and `/O1`
+  move the failure to the next TU and cost code quality (measured three times).
+  **Both defects deserve upstream reports** — `out/` holds the drafts from previous ones, and the
+  local reproduction recipe in failure-modes.md is most of what a report needs.
 
 - **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
   iteration cost.** M · ★★★ (opened 2026-08-26)

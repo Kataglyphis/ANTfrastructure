@@ -304,7 +304,7 @@ Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) whil
 
 ### `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)
 
-An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **WITHDRAWN on LLVM 23.1.0 (2026-08-26): the flag is no longer set** — it turned out to cause the twin ceiling (`error: fixup value out of range`) by quadrupling table size. Heading kept because it is a live anchor target; the current handling is per-TU `/O1` over `libprotobuf` with compression left ON. See below.
+An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)**: the flag is no longer set -- disabling the pass also removes its `adr`-reach check, which introduced a second failure. The current setting is `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, which keeps the pass enabled and only takes the entry-width decision from it. Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts.
 
 ### MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)
 
@@ -397,15 +397,21 @@ tables are larger, not slower:
 -mllvm -aarch64-enable-compress-jump-tables=false
 ```
 
-> **SUPERSEDED on LLVM 23.1.0 (2026-08-26). The flag is no longer set.** Making tables ~4x larger
-> grows the switch-heavy OpenCV dispatch functions until their pc-relative branches no longer
-> reach, which surfaces as the twin diagnostic `error: fixup value out of range`. Measured one run
-> each: compression OFF gives 4 fixup errors in opencv `*.dispatch.cpp` and 0 of these; compression
-> ON gives 0 fixup errors and 4 of these, all in `libprotobuf`. The two ceilings are mutually
-> exclusive on this compiler and hit different files, so the table below still describes a real
-> mechanism — it is just no longer the one being suppressed. Current handling: compression ON,
-> `/O1` per-TU over the whole `libprotobuf` target (cold model-loading code), OpenCV dispatch TUs
-> back at full `/O2`. Symptom-first write-up: `failure-modes.md` § AArch64 cross compile aborts.
+> **SUPERSEDED on LLVM 23.1.0 (2026-08-26). The flag is no longer set — and disabling it is now a
+> TRAP.** `AArch64CompressJumpTables` does two jobs: it picks the entry width AND it checks that the
+> `adr` materialising the table's base block stays within ±1 MB. `=false` disables the whole pass,
+> taking that check with it, which is how `error: fixup value out of range` appeared in OpenCV's
+> largest dispatch TUs where it had not been before. An earlier revision of this note called the two
+> diagnostics "mutually exclusive ceilings" — that was wrong: one of them was a guard rail removed
+> by this very flag.
+>
+> **Current handling:** `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget
+> feature the pass itself consults. The pass stays ENABLED (`adr` check intact) and only the width
+> decision is taken from it. Verified against clang-cl 23.1.0: `.hword (…)>>2` / `ldrh` becomes
+> `.word …-.Ltmp0` / `ldrsw`, range ±2 GB; cost 4522 → 4650 bytes of object (~2.8 %), all of it
+> jump-table DATA, with full `/O2` everywhere. The measurement table below still describes a real
+> mechanism — it is simply no longer the one being suppressed. Symptom-first write-up, including
+> the traps and a local-reproduction recipe: `failure-modes.md` § AArch64 cross compile aborts.
 
 > **This corrects an earlier, wrong diagnosis recorded here.** The first explanation blamed an
 > 8-bit *Code Words* field in the `.xdata` unwind record, and the workaround was a per-TU `/Od`

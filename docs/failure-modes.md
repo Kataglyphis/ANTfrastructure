@@ -420,43 +420,54 @@ failed (exit 22)" and fallen through by design; a 404 is a wrong pin, not an out
 
 ### AArch64 cross compile aborts with `error: fixup value out of range`
 
-**Symptom.** The cross build of `opencv_imgproc` aborts three TUs (`imgwarp.cpp`,
-`smooth.dispatch.cpp`, `stb_truetype.cpp`) with `error: fixup value out of range` and
-`7 warnings and 1 error generated.` — no source location, no fixup kind. Appeared with clang-cl
-23.1.0; 22.1.8 compiled the same tree.
+**Symptom.** A cross TU aborts with `error: fixup value out of range`, or with
+`error: value evaluated as <N> is out of range.` — no source location, no fixup kind. Appeared
+with clang-cl 23.1.0; 22.1.8 compiled the same tree. Observed in OpenCV's CPU-dispatch TUs and in
+the bundled protobuf.
 
-**Cause — hypothesis, not established.** The AArch64 asm BACKEND rejects a fixup whose displacement
-does not fit its instruction field, most likely a pc-relative branch (tbz/tbnz ±32 KB, b.cond
-±1 MB) in a function LLVM 23 grew past what 22 emitted. All three offenders are OpenCV
-CPU-DISPATCH TUs, the largest functions in the module. LLVM prints no fixup kind, so pinning this
-down needs a reduced case or a disassembly (backlog #135).
+**Cause — two separate LLVM defects, and the second one is easy to cause yourself.**
+`AArch64CompressJumpTables` does TWO jobs: it picks the jump-table entry width (1/2/4 bytes from an
+ESTIMATE of block offsets), **and** it checks that the `adr` materialising the table's base block
+stays within ±1 MB.
 
-**THE TWIN CEILING, and they are MUTUALLY EXCLUSIVE under LLVM 23.** The other one produces
-`error: value evaluated as <N> is out of range.` from `AArch64AsmPrinter::emitJumpTableImpl` and is
-suppressed by `-mllvm -aarch64-enable-compress-jump-tables=false`. Measured one run each, and they
-trade places on DIFFERENT files:
+1. **Entry-width estimate.** The pass picks 1-byte entries, then emission finds the real value does
+   not fit → `value evaluated as <N> is out of range`. Every `N` measured here sits JUST past the
+   1020-byte ceiling (256 = 1024 B, then 258, 259, 260, 262, 272, 281, 284) — an estimate a few
+   bytes short, not an oversized table. protobuf on windows-arm64 is known-fragile in this area
+   ([protobuf#24758](https://github.com/protocolbuffers/protobuf/issues/24758)).
+2. **`adr` reach.** In a function larger than ~1 MB the base-block `adr` cannot be encoded →
+   `fixup value out of range`. Forcing 4-byte ENTRIES does not help: the entries were never the
+   problem, the base reference is.
 
-| | compression OFF (the LLVM 22 fix) | compression ON |
-| --- | --- | --- |
-| `value evaluated as N` | 0 | **4** (258/260/281/284) |
-| `fixup value out of range` | **4** | 0 |
-| offenders | opencv `*.dispatch.cpp` | libprotobuf `descriptor.cc`, `generated_message_reflection.cc`, `wire_format.cc` |
+**Fix.** `-Xclang -target-feature -Xclang +force-32bit-jump-tables` (cross lane only). This is the
+subtarget feature the pass itself consults, `force32BitJumpTables()`. Verified against clang-cl
+23.1.0: entries go from `.hword (.LBB0_2-.LBB0_2)>>2` / `ldrh` to `.word .LBB0_2-.Ltmp0` / `ldrsw`,
+range ±2 GB. Cost measured on a reproducer: 4522 → 4650 bytes of object, ~2.8 %, and it is
+jump-table DATA. Full `/O2` everywhere, dispatch still O(1). It closes (1) completely.
 
-Disabling compression makes every jump table ~4x larger, which grows the switch-heavy OpenCV
-dispatch functions until their branches no longer reach; enabling it puts the protobuf descriptor
-tables back over the 255-entry span the compressed encoding can address. **Neither setting is
-globally correct**, so a longer list of `/O1` TUs on the OpenCV side cannot work — that was
-attempt 5, which fixed the three TUs it named and then failed on a fourth.
+**Do NOT use `-mllvm -aarch64-enable-compress-jump-tables=false`** even though it also yields
+`.word` entries: it disables the whole PASS, taking the `adr` check with it, which is how (2) gets
+introduced where it was not present before. That flag was correct on LLVM 22 and is a trap on 23.
 
-**Fix.** Compression stays ON (`$jumpTableFlag` empty) and the protobuf side is handled per-TU:
-`/O1` over the whole `libprotobuf` target via `Add-NinjaPerTuFlags`, cross-lane only, floor 30 of
-42 TUs. That direction and not the reverse — with compression ON the OpenCV dispatch TUs keep full
-`/O2`, and on aarch64 those files carry the NEON **baseline** path, so they are where optimisation
-matters; protobuf descriptor/reflection is cold model-loading code. The whole target is tagged
-rather than named files, because naming files is what lost attempt 5. libtiff and G-API — the other
-two families the 2026-08-23 note records for this class — are not built in this configuration.
-Do NOT reach for a blanket `/Od` — see the note above the block in `build-opencv-from-source.ps1`
-for why that was removed once before.
+**Do NOT use `-align-all-blocks` / `-align-all-nofallthru-blocks`** to nudge the estimate: the
+padding makes the function length unevaluable for the Windows SEH unwind writer and clang-cl dies
+with `Failed to evaluate function length in SEH unwind info`
+([llvm#122707](https://github.com/llvm/llvm-project/issues/122707), duplicate of
+[llvm#47432](https://github.com/llvm/llvm-project/issues/47432)). Measured, not assumed.
+
+**Do NOT lower the optimisation level** (`/Od`, `/O1`, `-fno-jump-tables`) to dodge the pass. It
+"works" only by suppressing the code that builds the table, it moves the failure to the next TU
+(measured three times), and it costs code quality on a lane whose whole point is a real build.
+
+**Diagnose it in seconds, not in build-hours.** Download the matching toolchain and reproduce
+locally — this is what turned a night of 15-minute cross runs into 2-second experiments:
+```pwsh
+curl -sSfL -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-<ver>/clang+llvm-<ver>-x86_64-pc-windows-msvc.tar.xz
+tar -xf llvm.tar.xz
+.\clang+llvm-<ver>-x86_64-pc-windows-msvc\bin\clang-cl.exe --target=aarch64-pc-windows-msvc /O2 /c t.cpp /FAs /Fat.asm
+```
+Then read the jump table in `t.asm`: `.byte`/`.hword`/`.word` tells you which width was chosen, and
+`adr` vs `adrp` tells you how the base is reached.
 
 ### A build script dies with `The term ... is not recognized`, in the container only
 
