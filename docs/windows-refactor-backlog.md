@@ -978,7 +978,10 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   the two assembled wheels' `Requires-Dist` were EMPTY because .NET's multiline `$` matches only
   before `\n` and the container's git checkout is CRLF (the same text parsed correctly on the
   host, and the deps gate cannot see missing requirements — fewer edges only make it greener).
-  Every anchor is `\r?$` now and the fixture asserts the CRLF variant; proof: run 36.
+  Every anchor is `\r?$` now and the fixture asserts the CRLF variant. **Proven on run 36:** the
+  deps gate reads **10** first-touch requirements (7 before), `apache-tvm-ffi>=0.1.13.post2` is
+  resolved from the bundle's own wheel and `typing_extensions` is downloaded for the target
+  (store 12 wheels), `0 requirement edge(s) unresolved`; arch gate 992/0, walk 606/0.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed
