@@ -124,11 +124,16 @@ done
 
 # The -B shape, which is the one with the open upstream bug. Only meaningful
 # when a staged toolchain dir exists to point at.
-for bdir in /usr/local/llvm-target/bin /usr/local/gcc-*/bin; do
+# The -B directories in THIS chain live under /opt, not /usr/local. The first
+# version of this loop globbed only /usr/local/gcc-*/bin and therefore never
+# fired -- a guard that cannot run, which is the exact class this repo keeps
+# getting bitten by. Verified 2026-08-26 against the real toolchain image:
+# /opt/gcc-16.2.0/bin, /opt/gcc-16.2.0-native-arm64/bin,
+# /opt/gcc-16.2.0-native-riscv64/bin.
+for bdir in /opt/gcc-*/bin /usr/local/llvm-target/bin /usr/local/gcc-*/bin; do
   if [ -d "${bdir}" ] && command -v gcc >/dev/null 2>&1; then
-    say "probing the -B shape (mozilla/sccache#1102)"
+    say "probing the -B shape (mozilla/sccache#1102): ${bdir}"
     probe_one gcc "-B${bdir}"
-    break
   fi
 done
 
