@@ -64,4 +64,21 @@ Describe 'TVM assembled-wheel helpers' {
         Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' ($deps -join ',') 'exact list, torch extra excluded'
         Assert-Equal 0 (@(Get-PyprojectDependencies -PyprojectText '[project]`nname = "x"')).Count 'no block -> empty'
     }
+
+    It 'stops at the one-line list and never runs into [project.urls] / optional-dependencies (tvm-ffi shape, run 33)' {
+        # arm64 run 33: the assembled tvm-ffi wheel declared its Homepage URL,
+        # ninja, torch and setuptools as requirements because the capture ran past
+        # the one-line `dependencies = [...]` to the next `]` at a line start.
+        $py = @(
+            '[project]', 'name = "apache-tvm-ffi"', 'requires-python = ">=3.9"',
+            'dependencies = ["typing-extensions>=4.5"]',
+            '', '[project.urls]', 'Homepage = "https://github.com/apache/tvm-ffi"',
+            '', '[project.optional-dependencies]', 'torch = [', '  "ninja",', '  "torch; python_version < ''3.14''",', '  "setuptools",', ']'
+        ) -join "`n"
+        $deps = @(Get-PyprojectDependencies -PyprojectText $py)
+        Assert-Equal 'typing-extensions>=4.5' ($deps -join ',') 'only the real dependency'
+        # An extras marker keeps its own brackets inside the list.
+        $py2 = "[project]`nname = ""x""`ndependencies = [`n  ""torch[cuda]>=2"",`n  ""numpy"",`n]`n[project.urls]`nHome = ""https://x""`n"
+        Assert-Equal 'torch[cuda]>=2,numpy' ((Get-PyprojectDependencies -PyprojectText $py2) -join ',') 'extras brackets survive'
+    }
 }

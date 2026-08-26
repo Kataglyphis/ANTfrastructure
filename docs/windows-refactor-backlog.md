@@ -946,6 +946,17 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   WITH_SOABI)` appends nothing (amd64 produces the same name). That is a valid import name the
   target interpreter loads; only my name check was over-strict (it demanded the target tag). It
   now rejects a HOST-tagged name only; the PE machine check is the arch gate. Proof: run 33.
+  **Run 33:** the tvm branch is green — `apache_tvm_ffi-0.1.13.post2-cp314-cp314-win_arm64.whl`
+  (`tvm_ffi\core.pyd` + `tvm_ffi\lib\tvm_ffi.dll`, 0xAA64), `apache_tvm-0.26.0-cp314-cp314-
+  win_arm64.whl` (`tvm\lib\tvm_runtime.dll`), `iree_base_runtime-3.11.0.dev0+…-cp312-abi3-
+  win_arm64.whl` (11 native members, `_runtime.pyd` + the runtime tools); manifest 6 wheels.
+  The merge's deps gate then refused the tvm-ffi wheel's metadata — and rightly so:
+  `Get-PyprojectDependencies` captured past tvm-ffi's ONE-LINE `dependencies = ["typing-
+  extensions>=4.5"]` to the next `]` at a line start, i.e. through `[project.urls]` and the
+  optional-dependencies, and the wheel declared its Homepage URL, `ninja`, `torch` and
+  `setuptools` as requirements (`pip download` fails on the URL). The capture now closes at the
+  first `]` that ends a line; fixture test covers the one-line shape and an extras marker.
+  Proof: run 34.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed

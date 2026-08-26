@@ -91,7 +91,14 @@ function Get-VendoredTvmFfiVersion {
 # tree at build time (never hardcoded here).
 function Get-PyprojectDependencies {
     param([Parameter(Mandatory)][string]$PyprojectText)
-    $m = [regex]::Match($PyprojectText, '(?ms)^\[project\].*?^dependencies\s*=\s*\[(.*?)^\]')
+    # The list closes at the first `]` that ends a line (optionally followed by a
+    # comment) -- this covers the one-line form `dependencies = ["x>=1"]` (tvm-ffi)
+    # and the multi-line form (TVM) alike, and never runs past the list into
+    # [project.urls] / [project.optional-dependencies] (arm64 run 33: the
+    # assembled tvm-ffi wheel declared its Homepage URL, ninja and torch as
+    # requirements). An extras marker like "pkg[cuda]" has its `]` followed by
+    # a quote, not the end of line, so it stays inside the capture.
+    $m = [regex]::Match($PyprojectText, '(?ms)^\[project\][^\[]*?^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\n]*)?$')
     if (-not $m.Success) { return @() }
     return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
 }
