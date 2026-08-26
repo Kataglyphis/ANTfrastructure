@@ -653,6 +653,19 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   (gst script, fixture-tested against exactly that line and the two measured real network
   shapes) now scans meson's stdout plus only the log's last 400 lines for network signatures,
   with `\b` around the exception names; a fatal download error always ends the log.
+  **Measured on arm64 run 26 (2026-08-26):** the meson patch holds — `Patched meson
+  build-subproject summary fix` at 15 s, glib(build) configures (gstreamer core 219 targets vs
+  124 on run 25; glib 198), libnice passes its lines 214–219 with warnings only, `meson setup
+  completed` at 550 s with 5772 ninja targets. The compile then died at target 694 in the
+  **build-machine libffi**: the libffi meson port preprocesses `x86_win64_intel.S` with `cl /EP`
+  and assembles with `ml64`, both `find_program`'d, and on the build-machine subproject both
+  resolved through PATH — which under `VsDevCmd -arch=arm64` leads with `bin\HostX64\ARM64`. An
+  ARM64-targeting `cl.exe` defines `_M_ARM64`, `ffitarget.h` never enters its `X86_WIN64`
+  branch, and ml64 stops on `A2006: undefined symbol : FFI_TYPE_SMALL_STRUCT_4B` (the host
+  libffi is fine: it wants the ARM64 cl + `armasm64`). Fix: the native file's `[binaries]` now
+  names `cl` and `ml64` explicitly as `<VC tools root>/bin/HostX64/x64/…` (meson consults the
+  machine file before PATH); `Resolve-BuildMachineMsvcTool` (gst script, fixture-tested) throws
+  when the x64 pair is missing instead of failing 40 min later in ninja. Proof: run 27.
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**

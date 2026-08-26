@@ -260,6 +260,25 @@ function Get-MesonSetupFailureClass {
     }
 }
 
+# The x64-targeting MSVC program the BUILD machine needs by name (cl.exe,
+# ml64.exe -- see the native-file comment at the call site, arm64 run 26).
+# Returns the forward-slash path meson's [binaries] wants; throws when the tool
+# is not under <VC tools root>\bin\HostX64\x64, because a silent fallback to
+# PATH is exactly the ARM64-cl failure this exists to prevent. Pure function
+# (fixture test SourceBuild.BuildMachineMsvcTool.Tests.ps1).
+function Resolve-BuildMachineMsvcTool {
+    param(
+        [Parameter(Mandatory)]
+        [string]$VcToolsDir,
+        [Parameter(Mandatory)]
+        [string]$Name
+    )
+    if ([string]::IsNullOrWhiteSpace($VcToolsDir)) { throw "Resolve-BuildMachineMsvcTool: no VC tools root (LIB carried no VC\Tools\MSVC entry and Get-MsvcToolsRoot found none) -- cannot name the build machine's $Name" }
+    $tool = Join-Path $VcToolsDir "bin\HostX64\x64\$Name"
+    if (-not (Test-Path $tool -PathType Leaf)) { throw "Resolve-BuildMachineMsvcTool: $tool not found -- the build machine's libffi needs the x64-targeting $Name (VC.Tools.x86.x64 component)" }
+    return ($tool -replace '\\', '/')
+}
+
 # Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
 # beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
 # then moves the single top-level source dir onto $Target. Returns $true when a
@@ -1464,6 +1483,19 @@ endian = 'little'
             if (-not $winSdkDir -and $entry -match '^(.*\\Windows Kits\\10)\\+lib\\+([^\\]+)\\+(um|ucrt)\\') { $winSdkDir = $Matches[1]; $winSdkVer = $Matches[2] }
         }
         if (-not $vcToolsDir) { $vcToolsDir = Get-MsvcToolsRoot }
+        # The build machine's MSVC PROGRAMS (arm64 run 26): the libffi meson port
+        # preprocesses its x86_win64_intel.S with `cl /EP` and assembles it with
+        # `ml64` -- both via find_program, which on the build-machine libffi
+        # resolved through PATH, and under `VsDevCmd -arch=arm64` PATH leads with
+        # bin\HostX64\ARM64: an ARM64-targeting cl.exe defines _M_ARM64, not
+        # _M_X64, ffitarget.h never enters its X86_WIN64 branch, and ml64 dies
+        # on "undefined symbol : FFI_TYPE_SMALL_STRUCT_4B". Meson consults the
+        # machine file's [binaries] BEFORE PATH, so the native file names the
+        # x64-targeting pair explicitly; the host libffi keeps finding the ARM64
+        # cl/armasm64 on PATH as before. Missing tools throw here rather than
+        # 40 minutes later in ninja.
+        $buildCl   = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'cl.exe'
+        $buildMl64 = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'ml64.exe'
         $buildLinkArgList = @()
         if ($vcToolsDir -and (Test-Path $vcToolsDir)) { $buildLinkArgList += "/vctoolsdir:$($vcToolsDir -replace '\\', '/')" }
         if ($winSdkDir -and (Test-Path $winSdkDir)) {
@@ -1482,6 +1514,8 @@ strip = 'llvm-strip'
 windres = 'llvm-rc'
 pkg-config = 'pkg-config'
 cmake = 'cmake'
+cl = '$buildCl'
+ml64 = '$buildMl64'
 $(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })
 
 [built-in options]
