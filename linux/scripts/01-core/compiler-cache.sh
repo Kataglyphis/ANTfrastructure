@@ -111,6 +111,14 @@ setup_ccache() {
     # See common.sh:ensure_sccache_env -- preprocessor cache mode re-reads the
     # input file AFTER the compile and dies on CMake's deleted TryCompile dirs.
     export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
+    # DIAGNOSTIC (2026-08-26, temporary): sccache fails to spawn the compiler
+    # for every object in some CMake sub-builds (opencv 3rdparty/ippicv,
+    # onnxruntime _deps/*), reporting ENOENT although both the compiler and the
+    # cwd demonstrably exist. TWELVE isolated hypotheses have been disproven, so
+    # stop guessing and let sccache report what it resolved. Default-on because
+    # a run that reproduces the failure WITHOUT the log is a wasted run; set
+    # SCCACHE_LOG= to silence it. Remove once the cause is known.
+    export SCCACHE_LOG="${SCCACHE_LOG:-sccache=debug}"
     export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
     sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
