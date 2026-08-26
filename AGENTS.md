@@ -946,7 +946,13 @@ base ─┬─ onnxruntime ───────┐
   the exact binaries the bundle ships (`--rollback`), REFUSES while a build is
   running, and counts BuildKit cache-mount records before/after — the compile
   caches live in `~/.local/share/buildkit`, not `/usr/local`, so that number
-  must not move. Motivation, verified 2026-08-26: this host runs buildctl
+  must not move. It also REFUSES until you choose how to treat the ROOTFUL
+  containerd+buildkitd that run from the same `/usr/local` on this host
+  (`NERDCTL_INCLUDE_ROOTFUL=1` upgrades them too, `NERDCTL_IGNORE_ROOTFUL=1`
+  accepts the skew): tar and `cp -a` both unlink-and-recreate, measured here,
+  so replacing a live root daemon's binary raises NO error — it keeps executing
+  the deleted inode until `Restart=always` swaps it unattended. Motivation,
+  verified 2026-08-26: this host runs buildctl
   v0.31.1, and moby/buildkit#6915 — a "concurrent map iteration and map write"
   daemon CRASH that reproduces under concurrent builds, introduced in v0.31.0 —
   is fixed only in v0.31.2, which nerdctl-full 2.3.5 bundles. Three parallel

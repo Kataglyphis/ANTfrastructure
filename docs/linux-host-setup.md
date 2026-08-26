@@ -187,7 +187,28 @@ bash linux/host-config/install-nerdctl-full.sh --rollback         # restore the 
 ```
 
 Knobs: `NERDCTL_VERSION=x.y.z` pins a release (default: latest),
-`NERDCTL_PREFIX` (default `/usr/local`), `NERDCTL_BACKUP_DIR`.
+`NERDCTL_PREFIX` (default `/usr/local`), `NERDCTL_BACKUP_DIR`, `NERDCTL_FORCE=1`
+(re-install the version already present), `NERDCTL_SKIP_CACHE_CENSUS=1` (proceed
+without a cache baseline when buildkitd is down).
+
+**This host runs rootless AND rootful side by side, and that changes the
+procedure.** The `systemd --user` units are the rootless stack the chain builds
+with; but a rootful `containerd.service` *and* `buildkit.service` also run, and
+they execute the same `/usr/local/bin` binaries plus unit files the bundle
+ships in `/usr/local/lib/systemd/system`. Extracting the bundle replaces all of
+that underneath them. Measured on this host: GNU tar 1.35 and `cp -a` both
+unlink-and-recreate rather than failing with `ETXTBSY`, so there is **no error
+at all** — the root daemons simply keep executing the now-deleted old inode,
+and because both units are `Restart=always` the real version jump then happens
+unattended at some later moment. The script therefore refuses unless you choose:
+
+```bash
+NERDCTL_INCLUDE_ROOTFUL=1 ...   # stop, upgrade and restart them too — no skew
+NERDCTL_IGNORE_ROOTFUL=1  ...   # rootless only; accept the documented skew
+```
+
+A dry run always shows the plan and the choice — only the actual install is
+blocked.
 
 What the script guarantees, and why each guard exists:
 
