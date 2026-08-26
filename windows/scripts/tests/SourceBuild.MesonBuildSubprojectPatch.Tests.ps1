@@ -11,22 +11,16 @@
 # regexes must (a) hit the real 1.12.0 layout, (b) rewrite exactly those lines,
 # (c) be idempotent per fix, and (d) THROW on layout drift rather than warn.
 # The function lives in build-gstreamer-from-source.ps1 (NOT a module: the
-# whole modules dir is bind-mounted into every media RUN, so a module edit
-# re-keys all branches on both lanes). Lifted out of the script's AST.
+# mounted module set is one shared closure -- `buildmods`' six .psm1, which the
+# classic lane also COPYs into `common`, every BK compile stage's ancestor --
+# so a module edit re-keys all branches on both lanes; #134 splits that).
+# Lifted out of the script's AST.
 
 Describe 'Invoke-MesonBuildSubprojectPatch' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $gstScript = Join-Path $root 'scripts\build\build-gstreamer-from-source.ps1'
-        $tokens = $null; $parseErrors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($gstScript, [ref]$tokens, [ref]$parseErrors)
-        if ($parseErrors -and $parseErrors.Count -gt 0) { throw "parse errors in $gstScript : $($parseErrors[0].Message)" }
-        $fnAst = @($ast.FindAll({ param($n)
-            $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-            $n.Name -eq 'Invoke-MesonBuildSubprojectPatch' }, $true)) | Select-Object -First 1
-        if (-not $fnAst) { throw "Invoke-MesonBuildSubprojectPatch not defined in $gstScript" }
-        . ([scriptblock]::Create($fnAst.Extent.Text))
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
+                                       -FunctionName 'Invoke-MesonBuildSubprojectPatch')
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-meson-' + [guid]::NewGuid().ToString('N'))
         New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
 

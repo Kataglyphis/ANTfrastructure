@@ -31,9 +31,11 @@ $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $
 # stamps the wheel from the HOST interpreter. So the cross lane assembles the
 # two wheels itself from the package sources + the cross-built binaries; these
 # three pure helpers pin the metadata shape (fixture test
-# SourceBuild.TvmAssembledWheel.Tests.ps1). They live here, not in a module:
-# /bkmods is bind-mounted into every media RUN and a module edit re-keys all
-# branches on both lanes.
+# SourceBuild.TvmAssembledWheel.Tests.ps1). They live here, not in a module,
+# because the mounted module set is ONE closure shared by every branch (the
+# `buildmods` stage's six .psm1, which the classic lane also COPYs into
+# `common`, the ancestor of every BK compile stage) -- editing any module
+# re-keys every media branch on both lanes. Backlog #134 splits that.
 
 # Writes the dist-info a binary wheel needs (METADATA, WHEEL, top_level.txt)
 # into an already-laid-out package tree; `python -m wheel pack` then produces
@@ -98,7 +100,20 @@ function Get-PyprojectDependencies {
     # assembled tvm-ffi wheel declared its Homepage URL, ninja and torch as
     # requirements). An extras marker like "pkg[cuda]" has its `]` followed by
     # a quote, not the end of line, so it stays inside the capture.
-    $m = [regex]::Match($PyprojectText, '(?ms)^\[project\][^\[]*?^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\n]*)?$')
+    # Two steps (run 34): first the [project] table body -- up to the next
+    # table header at a line start ([project.urls], [tool.*]) or the end -- then
+    # the list inside it. The one-regex form that forbade any `[` between the
+    # header and `dependencies` matched nothing once `classifiers = [`,
+    # `authors = [{...}]` or `keywords = [` preceded the list (both pyprojects
+    # do), and the assembled wheels shipped with NO requirements: a defect the
+    # deps gate cannot see, because fewer requirements only ever make it greener.
+    # `\r?` before every `$`: .NET's multiline `$` matches only immediately
+    # before `\n`, so a CRLF file (git checks these out with core.autocrlf on
+    # Windows -- arm64 runs 34/35, while the same text parses locally with LF)
+    # never satisfies `...[ \t]*$` and the whole list silently comes back empty.
+    $tbl = [regex]::Match($PyprojectText, '(?ms)^\[project\][ \t]*(?:#[^\r\n]*)?\r?$(.*?)(?=^\[|\z)')
+    if (-not $tbl.Success) { return @() }
+    $m = [regex]::Match($tbl.Groups[1].Value, '(?ms)^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\r\n]*)?\r?$')
     if (-not $m.Success) { return @() }
     return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
 }
@@ -447,8 +462,14 @@ if ($tvmCross) {
         # that any interpreter loads. Only a HOST-tagged name is wrong; the PE
         # machine check right below is the arch gate.
         if ($corePyd[0].Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- a HOST EXT_SUFFIX tag, the target interpreter would never import it (expected '$wantExt' or a bare core.pyd)" }
-        $tvmFfiLibs = @(Get-ChildItem -Path $ffiPyBuild -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
-        if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq 'tvm_ffi.dll' })) { throw "TVM cross: tvm_ffi.dll not produced by the standalone tvm-ffi build under $ffiPyBuild" }
+        # tvm_ffi_testing.dll too: tvm-ffi links the Cython module against its
+        # tvm_ffi_testing shared library (core.pyd imports it -- the merge's arch
+        # gate unpacks every staged wheel and walks the .pyd's imports, arm64
+        # run 34), and upstream's wheel ships it beside tvm_ffi.dll for that reason.
+        $tvmFfiLibs = @(Get-ChildItem -Path $ffiPyBuild -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib', 'tvm_ffi_testing.dll' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
+        foreach ($must in 'tvm_ffi.dll', 'tvm_ffi_testing.dll') {
+            if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq $must })) { throw "TVM cross: $must not produced by the standalone tvm-ffi build under $ffiPyBuild" }
+        }
         [void](Assert-DirectoryTargetArch -Path $corePyd[0].DirectoryName -Include @('core*.pyd') -MinCount 1 -Context 'tvm_ffi core module')
         $describe = & git -C $tvmFfiSrc describe --tags --abbrev=0 --match 'v*' 2>&1 | Out-String
         $global:LASTEXITCODE = 0

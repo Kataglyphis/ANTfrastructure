@@ -13,16 +13,8 @@
 Describe 'Get-MesonSetupFailureClass' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $gstScript = Join-Path $root 'scripts\build\build-gstreamer-from-source.ps1'
-        $tokens = $null; $parseErrors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($gstScript, [ref]$tokens, [ref]$parseErrors)
-        if ($parseErrors -and $parseErrors.Count -gt 0) { throw "parse errors in $gstScript : $($parseErrors[0].Message)" }
-        $fnAst = @($ast.FindAll({ param($n)
-            $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-            $n.Name -eq 'Get-MesonSetupFailureClass' }, $true)) | Select-Object -First 1
-        if (-not $fnAst) { throw "Get-MesonSetupFailureClass not defined in $gstScript" }
-        . ([scriptblock]::Create($fnAst.Extent.Text))
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
+                                       -FunctionName 'Get-MesonSetupFailureClass')
 
         $script:hardLine = 'temp\gst-source\gstreamer-1.29.2\subprojects\gst-plugins-bad\gst-libs\gst\webrtc\nice\meson.build:16:14: ERROR: Subproject "subprojects/libnice" required but not found.'
         $script:sdkLine  = '    BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE = 0x2000000,'

@@ -134,6 +134,52 @@ function Get-RepoRoot {
     return (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 }
 
-Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, `
+<#
+.SYNOPSIS
+    Returns the named functions of a build script as ONE scriptblock, for a
+    suite to dot-source (#134).
+.DESCRIPTION
+    Several helpers live inside build scripts rather than modules, because the
+    mounted module set is a single shared closure (see the #134 entry in
+    docs/windows-refactor-backlog.md). Their fixture suites therefore lift them
+    out of the script's AST instead of running the script -- 9 sites had grown
+    the same ~12 lines of Parser::ParseFile boilerplate, each with its own
+    spelling of the repo-root walk.
+
+    RETURNS a scriptblock; it does NOT dot-source. `.` inside a module function
+    defines into the MODULE's scope, invisible to the caller, so the dot stays
+    at the call site:
+
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-tvm-from-source.ps1' `
+                                        -FunctionName 'Write-AssembledWheelDistInfo', 'Get-PyprojectDependencies')
+
+    Throws with the script and function named when a parse fails or a function
+    is gone (the "did it move?" signal every suite carried by hand).
+.PARAMETER ScriptPath
+    Repo-relative path; resolved against Get-RepoRoot.
+.PARAMETER FunctionName
+    One or more function names. Order is preserved in the emitted scriptblock.
+#>
+function Get-ScriptFunctionDefinition {
+    [OutputType([scriptblock])]
+    param(
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string[]]$FunctionName
+    )
+    $full = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
+    if (-not (Test-Path $full -PathType Leaf)) { throw "Get-ScriptFunctionDefinition: script not found: $full" }
+    $tokens = $null; $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($full, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors -and $parseErrors.Count -gt 0) { throw "Get-ScriptFunctionDefinition: parse errors in ${full}: $($parseErrors[0].Message)" }
+    $bodies = foreach ($name in $FunctionName) {
+        $fn = @($ast.FindAll({ param($n)
+            $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)) | Select-Object -First 1
+        if (-not $fn) { throw "Get-ScriptFunctionDefinition: $name not defined in $full (renamed, or moved into a module?)" }
+        $fn.Extent.Text
+    }
+    return [scriptblock]::Create(($bodies -join "`n"))
+}
+
+Export-ModuleMember -Function Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-ScriptFunctionDefinition, `
     Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir

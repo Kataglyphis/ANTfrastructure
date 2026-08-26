@@ -53,6 +53,7 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 | Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.357.0<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.29.0<!-- /generated:onnx --> | ✔️ |
+| Windows-on-ARM | Cross-built **artifact bundle** (`:winarm64` labels a `windows/amd64` image — never publish it as `windows/arm64`): media + inference at runtime parity with amd64 since 2026-08-26, statically verified only. Not included: CUDA, the TVM/IREE compilers, LiteRT-LM, the torch app. [Details](windows-cross-builds.md) | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 

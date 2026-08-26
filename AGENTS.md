@@ -82,7 +82,13 @@ so every arm64 signal is a static PE machine-type check. `build-buildkit.ps1 -Ta
 just works: `torch` is dropped from the DEFAULT stage list with a notice (asking for it
 **explicitly** still throws — it runs `uv sync`, which must execute the target interpreter).
 Which components are through is tracked in the status banner of `docs/windows-cross-builds.md` —
-do not restate it here, it moves).
+do not restate it here, it moves). **Since 2026-08-26 the two lanes are at RUNTIME parity**: same
+GStreamer plugin set (200 DLLs, six contract plugins, `gst-ptp-helper`), same media/inference
+surface, and the same six python wheels — the TVM/IREE **runtime** python packages are
+cross-built and assembled on this lane (#133). What stays amd64-only is a short, closed list:
+CUDA/cuDNN/TensorRT, the TVM and IREE **compilers** (target-arch LLVM), LiteRT-LM, the torch app
+stage — each named in the bundle by an `ABSENT-ON-ARM64.txt` / `COMPILER-ABSENT-ON-ARM64.txt`
+marker, so a consumer never has to guess.
 
 > **Never publish the arm64 lane's output with `--platform windows/arm64`.** It
 > is a cross build out of the same `windows/amd64` container and its product is
