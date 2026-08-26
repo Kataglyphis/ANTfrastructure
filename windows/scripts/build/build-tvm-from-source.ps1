@@ -137,7 +137,7 @@ $llvmConfig = if ($llvmCmd) { $llvmCmd.Source } else { $null }
 if ($tvmCross) {
     Write-Host 'TVM cross: RUNTIME-ONLY build (USE_LLVM=OFF, no tvm_compiler; runtime python wheels decided below, #133) -- backlog #116; see docs/windows-cross-builds.md'
 } elseif (-not $llvmConfig) {
-    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '22.1.8'
+    $llvmDevVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
     # SHA pins per version - extend when LLVM_WINDOWS_VERSION moves. An unknown
     # version must THROW, never download unpinned (repo download policy).
     # versions.env can pre-seed the CURRENT version's sha via
@@ -145,6 +145,7 @@ if ($tvmCross) {
     # two-line versions.env edit; the table stays as record + fallback.
     $llvmSrcSha = @{
         '22.1.8' = '922f1817a0df7b1489272d18134ee0087a8b068828f87ac63b9861b1a9965888'
+        '23.1.0' = 'ab1f0e3ec52448c33e8782eaf0422504b87c7b016b22514653ee0d8fcee479ff'
     }
     if ($env:LLVM_WINDOWS_SRC_SHA256) { $llvmSrcSha[$llvmDevVersion] = $env:LLVM_WINDOWS_SRC_SHA256 }
     if (-not $llvmSrcSha.ContainsKey($llvmDevVersion)) {

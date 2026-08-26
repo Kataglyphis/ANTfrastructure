@@ -124,7 +124,7 @@ RUN & 'C:\temp\scripts\setup-vs.ps1' -TempDir $env:TEMP_DIR
 # consumers).
 ARG VULKAN_VERSION=1.4.357.0
 ARG CMAKE_VERSION=4.4.3
-ARG LLVM_WINDOWS_VERSION=22.1.8
+ARG LLVM_WINDOWS_VERSION=23.1.0
 ARG NINJA_WINDOWS_VERSION=1.13.2
 ARG NASM_WINDOWS_VERSION=3.02
 # sccache joined the pinned set 2026-08-08 -- for a FEATURE gate, not output
