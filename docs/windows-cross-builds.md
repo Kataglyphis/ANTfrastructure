@@ -32,7 +32,11 @@ produce, and which gates keep it honest.
 > assembled), OpenCV (four live upstream portability fixes, see below), the **TVM and IREE
 > runtimes** (#116, runtime-only: `tvm_runtime.dll` + headers, 14 IREE target tools/libs under
 > `C:\runtime\iree\bin`; the compilers and their python packages are amd64-only and named ABSENT
-> in the bundle), plain **LiteRT** (backlog #115, **done 2026-08-24** — 146 libs
+> in the bundle — **their RUNTIME python packages ship since #133, 2026-08-26**:
+> `apache_tvm` + `apache_tvm_ffi` (assembled from the package sources plus the cross-built
+> `tvm_runtime.dll` / `tvm_ffi.dll` / Cython `core.pyd`; `import tvm` takes upstream's
+> `_RUNTIME_ONLY` path) and `iree_base_runtime` (nanobind `_runtime.pyd` + the runtime tools),
+> all members `0xAA64`), plain **LiteRT** (backlog #115, **done 2026-08-24** — 146 libs
 > staged, `tensorflowlite_c.lib` verified aarch64) — plus GStreamer with its ~5000 targets, **all
 > six contract plugins — `libav`, `opencv`, `onnx`, `tflite`, and since run 28 (2026-08-26)
 > `webrtc` and `nice`** (#128) — and the out-of-tree `opencv_videoio_gstreamer` plugin, all in
@@ -46,13 +50,16 @@ produce, and which gates keep it honest.
 > (gdk-pixbuf's meson.build fails on arm64 for `glib-compile-resources` — a build-machine glib
 > tool — and on amd64 for missing `rst2man`), so it is not a parity gap either.
 >
-> **The PE architecture gate has run and passed over the whole image:** `980 binaries inspected,
-> 0 violations` (2026-08-26, run 28, with libnice and the webrtc/nice plugins; 970 on run 14 of
-> 2026-08-25 with the staged CRT, OpenSSL runtime and target deps, 950 on run 11 of 2026-08-24
-> with the TVM/IREE runtimes and the Python consumers, 931 that morning before them, 390 when
-> media-core stood alone) — and since run 14 the same gate walks every PE's import table
-> (`-ImportWalk`, #127): `577 file(s) walked, 0 unresolved import(s), 3 allowlisted external(s),
-> 6 device-OS (client SKU) import(s)` (571 on run 14)
+> **The PE architecture gate has run and passed over the whole image:** `992 binaries inspected,
+> 0 violations` (2026-08-26, run 36, with the TVM/IREE runtime python wheels and
+> `gst-ptp-helper`; 981 on run 29 with the helper, 980 on run 28 with libnice and the webrtc/nice
+> plugins, 970 on run 14 of 2026-08-25 with the staged CRT, OpenSSL runtime and target deps, 950
+> on run 11 of 2026-08-24 with the TVM/IREE runtimes and the Python consumers, 931 that morning
+> before them, 390 when media-core stood alone) — and since run 14 the same gate walks every PE's
+> import table (`-ImportWalk`, #127): `606 file(s) walked, 0 unresolved import(s), 3 allowlisted
+> external(s), 6 device-OS (client SKU) import(s)` (578 on run 29, 571 on run 14) — the walk
+> unpacks every staged wheel too, which is how it caught `core.pyd`'s missing
+> `tvm_ffi_testing.dll` on run 34
 > (`verify-target-arch.ps1` over all of `C:\runtime` **and** the host CPython's site-packages,
 > `-IncludeArchives`, floor raised to 100 on this lane; the 58 host `.pyd`s appear as *reported*
 > allowlist skips). That, plus the smoke sections that now compile for the target and assert the
@@ -64,12 +71,15 @@ produce, and which gates keep it honest.
 > have produced a "successful" bundle that fails to load on real hardware.
 >
 > **What is absent from the bundle, by construction, each named inside it:** the TVM and IREE
-> **compilers** (`tvm_compiler.dll`, `iree-compile.exe`) and their python packages — they need
-> target-arch LLVM libraries plus host tools at configure time, and a cross lane ships the
-> *runtimes* instead (#116, `COMPILER-ABSENT-ON-ARM64.txt`); LiteRT-**LM** — genuinely blocked
-> twice over, no windows-arm64 config in its `.bazelrc` AND the x86_64-only prebuilt
-> `libGemmaModelConstraintProvider` in the default Windows dependency graph — its stage
-> self-skips and stages an empty `litert-lm` tree with `ABSENT-ON-ARM64.txt`; CUDA (#122, deferred
+> **compilers** (`tvm_compiler.dll`, `iree-compile.exe`) and the `iree.compiler` python package —
+> they need target-arch LLVM libraries plus host tools at configure time, and a cross lane ships
+> the *runtimes* instead, since #133 including their runtime **python** packages (#116/#133,
+> `COMPILER-ABSENT-ON-ARM64.txt` names exactly what is and is not there); LiteRT-**LM** — blocked
+> twice over on its ACTIVE Bazel path, no windows-arm64 config in its `.bazelrc` AND the
+> x86_64-only prebuilt `libGemmaModelConstraintProvider` in the default Windows dependency graph
+> — its stage self-skips and stages an empty `litert-lm` tree with `ABSENT-ON-ARM64.txt`
+> (upstream's *CMake* path with its constraint-provider stub is a possible port, unattempted —
+> backlog #133(d)); CUDA (#122, deferred
 > by the owner); the torch app stage (`uv sync` must run the target interpreter). The former
 > `media-branch-absent` stand-in stage is retired: every branch is real on arm64 and ships its own
 > markers. `Get-SourceBuildPython` stays host-pinned (build tooling); `Get-TargetBuildPython` names
@@ -85,7 +95,9 @@ produce, and which gates keep it honest.
 > `vcruntime140_threads.dll` LiteRT imports); the target site-packages carries its own DLL-directory
 > shim; `stage-target-python-deps.ps1` downloads the target's deps with the host pip
 > (`--platform win_arm64`) and gates that every `Requires-Dist` resolves inside `C:\runtime\wheels`
-> (7 wheels, 0 unresolved — after the GenAI wheel's requirement was rewritten from the
+> (**12 wheels, 0 unresolved** on run 36 — 6 bundle wheels declaring 10 first-touch requirements,
+> of which `apache-tvm-ffi` and `onnxruntime` are satisfied by the bundle's own wheels; 7 before
+> the TVM/IREE runtime packages, after the GenAI wheel's requirement was rewritten from the
 > non-existent `onnxruntime-directml` to the bundle's `onnxruntime`); and the arch gate walks every
 > PE's import table. That walk's first run found 13 real unresolved imports — the OpenSSL runtime
 > DLLs nobody had installed (now staged from `C:\opt\openssl-arm64`), `vcruntime140_threads.dll`,
