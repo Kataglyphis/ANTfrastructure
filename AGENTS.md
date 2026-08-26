@@ -729,11 +729,34 @@ The rules an agent must never violate:
    It relies on (a) deliberate layer ORDERING — `setup-vs.ps1` sits ABOVE the
    `versions.env` COPY in `Dockerfile.base` so a pin bump cannot re-pay VS
    Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
-   PYTHON_VERSION bump, and they were the expensive ones), (b) a five-file
-   in-container module closure so host-only module edits cannot bust a compile
+   PYTHON_VERSION bump, and they were the expensive ones), (b) TIERED
+   in-container module closures so host-only module edits cannot bust a compile
    layer, and (c) sccache. **Preserve (a) and (b) in any Dockerfile edit** —
-   moving a COPY above the VS layer, or widening the module COPY, costs hours
+   moving a COPY above the VS layer, or widening a module stage, costs hours
    per bump.
+
+   **The three module tiers (#134, 2026-08-26) — check which one a module is in
+   before editing it, because the cost differs by hours:**
+   1. `Dockerfile.media-builder`'s **`buildmods`** six (SourceBuild.Common +
+      Shared, Patches, Cuda, Native.Common, TargetArch.Common). They ARE the
+      import closure — SourceBuild.Common imports the other five and every
+      mounted build script imports it — so the set cannot be shrunk and **every
+      media/merge RUN keys on all six**. A one-line edit costs a full media
+      rebuild on both lanes.
+   2. **`tvmmods`** (`FROM buildmods AS tvmmods` + `WindowsTvm.Common.psm1`),
+      mounted by `media-tvm-built` alone. That branch runs parallel to
+      media-core, so an edit costs nothing on the long pole.
+   3. The **merge leaves** in `Dockerfile.media-merge-builder`'s `buildmods`:
+      `WindowsGstPlugins.Common`, `WindowsMeson.Common`,
+      `WindowsRustToolchain.Common`, `WindowsInstaller.Common`. An edit costs
+      the GStreamer layer.
+
+   Do NOT move a helper into `WindowsSourceBuild.Common` because "that is where
+   helpers go" — if one branch is its only consumer, it belongs in a leaf.
+   `BuildKit.ModuleClosure.Tests.ps1` enforces both directions (a mounted
+   script's transitive closure must be mounted; leaves must stay out of
+   `buildmods`, and `tvmmods` must keep exactly one consumer). It is
+   mutation-proven — trust it over reading the Dockerfile.
 
    **Wired**, with the rules an agent must not break. Full rationale,
    measurements and decision history:
