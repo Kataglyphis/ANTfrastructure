@@ -957,6 +957,17 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `setuptools` as requirements (`pip download` fails on the URL). The capture now closes at the
   first `]` that ends a line; fixture test covers the one-line shape and an extras marker.
   Proof: run 34.
+  **Run 34 — two more, both found by gates, not by luck:** (i) the corrected regex forbade any
+  `[` between `[project]` and `dependencies`, but `classifiers = [` / `authors = [{…}]` /
+  `keywords = [` precede the list in BOTH pyprojects, so it matched nothing and the two wheels
+  shipped with **no** `Requires-Dist` at all — a defect the deps gate structurally cannot catch
+  (fewer requirements only make it greener; it showed up as `7 first-touch requirement(s)` where
+  run 33 had 14). The parse is now two steps: isolate the `[project]` table body (up to the next
+  `^[` header), then find the list inside it. (ii) With the metadata right, the **arch gate**
+  caught the real hole: `1 unresolved import` — `core.pyd` imports `tvm_ffi_testing.dll`, which
+  tvm-ffi links the Cython module against and upstream's own wheel ships beside `tvm_ffi.dll`;
+  the assembled wheel now stages it too (both DLLs asserted present). Deps gate itself passed:
+  `store holds 11 wheel(s); 0 requirement edge(s) unresolved`. Proof: run 35.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed

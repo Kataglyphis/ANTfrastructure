@@ -55,8 +55,15 @@ Describe 'TVM assembled-wheel helpers' {
     }
 
     It 'reads the [project] dependencies block and nothing else' {
+        # Lists BEFORE dependencies (classifiers, authors, keywords) are the
+        # shape both real pyprojects have -- run 34: a regex that forbade any `[`
+        # between [project] and the list matched nothing and both wheels
+        # shipped with NO requirements (a defect the deps gate cannot see).
         $py = @(
             '[build-system]', 'requires = ["scikit-build-core>=0.11"]', '[project]', 'name = "apache-tvm"',
+            'authors = [{ name = "Apache TVM Community", email = "dev@tvm.apache.org" }]',
+            'keywords = ["machine learning", "compiler"]',
+            'classifiers = [', '  "Development Status :: 4 - Beta",', '  "Programming Language :: Python :: 3",', ']',
             'dependencies = [', '  "apache-tvm-ffi>=0.1.13.post2",', '  "ml_dtypes",', '  "numpy",', '  "typing_extensions",', ']',
             '[project.optional-dependencies]', 'torch = ["torch"]'
         ) -join "`n"
