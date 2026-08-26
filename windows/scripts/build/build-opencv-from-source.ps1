@@ -347,9 +347,34 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # because it was cleaner under LLVM 22; under LLVM 23 the global flag has a side
 # effect the per-TU pass never had.
 #
-# To restore the LLVM 22 behaviour if a future clang makes that correct again:
-#   $jumpTableFlag = if ($ocvCross) { '-mllvm -aarch64-enable-compress-jump-tables=false' } else { '' }
-$jumpTableFlag = ''
+# THE FIX IS A TABLE-SIZE CAP, NOT AN OPTIMISATION LEVEL. Both diagnostics are
+# the same defect seen from two sides -- ONE jump table whose span is too large:
+#
+#   compression ON   the entry is (LBB - Base) >> 2 in ONE byte, so a span over
+#                    255*4 = 1020 bytes cannot be encoded ->
+#                    "value evaluated as <N> is out of range" (measured N:
+#                    256, 258, 259, 260, 262, 272, 281, 284 -- all just past 255)
+#   compression OFF  entries grow to 4 bytes, the function grows with them, and
+#                    the pc-relative reference no longer reaches ->
+#                    "fixup value out of range"
+#
+# `-max-jump-table-size` makes LLVM SPLIT an oversized switch into several
+# smaller tables instead of emitting one it cannot encode. Dispatch stays O(1)
+# through a jump table, every TU keeps full /O2, and nothing is compiled less
+# optimally. Lowering the optimisation level "worked" only by suppressing the
+# pass that builds the table -- that is refusing the problem, not solving it,
+# and it is not an option in this tree.
+#
+# 100 against a 255-entry ceiling is ~2.5x margin, so a protobuf or OpenCV
+# generation that grows its switches does not walk straight back into this.
+#
+# Compression stays ON (the flag below is no longer set). The compressed
+# encoding is what keeps tables small; disabling it is what pushed the SAME
+# defect onto the branch-range side, which is how this was misread for three
+# attempts. To restore the LLVM 22 behaviour if a future clang makes that
+# correct again:
+#   '-mllvm -aarch64-enable-compress-jump-tables=false'
+$jumpTableFlag = if ($ocvCross) { '-mllvm -max-jump-table-size=100' } else { '' }
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
@@ -885,103 +910,6 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
 # comment first: /Od "worked" only because it disables the compression pass as
 # a side effect of turning optimisation off entirely.
 
-# A DIFFERENT AArch64 codegen ceiling, arrived with LLVM 23.1.0 (2026-08-26).
-# The Windows clang-cl pin had to move 22.1.8 -> 23.1.0 because upstream
-# reshaped the artifact (.exe -> .msi) and scoop can no longer install the old
-# version at all; see versions.env's LLVM_WINDOWS_VERSION block. On that
-# compiler the cross build of opencv_imgproc aborts three TUs with:
-#     error: fixup value out of range
-#     7 warnings and 1 error generated.
-#
-# WHAT THIS IS NOT. It is not the compressed-jump-table ceiling above: that
-# flag is still on the command line (verified present 6x in the failing log)
-# and LLVM 23 still accepts it -- no "Unknown command line argument". The
-# message is also different, and comes from a different place in LLVM: the
-# jump-table one is AArch64AsmPrinter::emitJumpTableImpl via
-# MCObjectStreamer::emitValueImpl, this one is the AArch64 asm BACKEND
-# rejecting a fixup whose displacement does not fit its instruction field.
-#
-# WHAT IT PROBABLY IS, stated as a hypothesis because LLVM prints no fixup kind
-# and no source location: a pc-relative branch (tbz/tbnz is ±32 KB, b.cond
-# ±1 MB) overflowing inside a function that LLVM 23 grew past what 22 produced.
-# All three offenders are OpenCV's CPU-DISPATCH TUs, which compile several ISA
-# variants' glue into one object and are the largest functions in the module --
-# consistent with a size-driven range overflow, but NOT proven.
-#
-# THE WORKAROUND, and its cost. /O1 on exactly these three TUs: smaller code,
-# shorter branches. The hot SIMD kernels are NOT here -- they live in the
-# per-ISA objects generated from *.simd.hpp, which keep full /O2 -- so this
-# should cost dispatch glue, not filter throughput. "Should": unmeasured.
-# The floor is the count of names below, so a rename or a fourth offender
-# throws instead of silently shipping an untagged TU.
-#
-# WHEN TO DELETE THIS: when a later clang-cl compiles these TUs at /O2 again,
-# or when the real ceiling is identified and gets a build-wide flag like
-# $jumpTableFlag did. Re-test by removing the block and running the cross lane;
-# the failure is fast (~3 min into the opencv stage) and unambiguous.
-if ($ocvCross) {
-    # (a) The COMPRESSED-jump-table span, which compression ON reintroduces --
-    # see the table beside $jumpTableFlag. Every offender measured lands just past
-    # 255*4 = 1020 bytes of table span (258, 260, 281, 284), and all of them are
-    # in the bundled protobuf's descriptor/reflection/wire-format code. The whole
-    # libprotobuf target is tagged rather than the three named files: 42 TUs of
-    # cold model-loading code, and naming files is exactly the whack-a-mole that
-    # cost attempt 5 (fixed three, then a fourth TU failed).
-    #
-    # /Od, NOT /O1, and the reason is mechanical rather than a matter of degree.
-    # /O1 was tried first and got 3 of the 4 values (260, 281, 284 gone) while
-    # descriptor.cc still overflowed at 258 -- because /O1 only SHRINKS the table,
-    # and 258 is barely over the 255-entry ceiling. /Od removes the ceiling
-    # instead: AArch64CompressJumpTables only runs when getOptLevel() != None, so
-    # at /Od the compression pass does not run at all. That is stated in the
-    # $jumpTableFlag note above, which records it as the reason the ORIGINAL
-    # per-TU /Od workaround worked before 2026-08-23 -- this is a return to it,
-    # scoped to the one target that needs it.
-    # The cost is bounded and cold: protobuf descriptor/reflection runs at model
-    # load, not in any media path. Do not widen /Od beyond libprotobuf.
-    [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
-        -Label 'AArch64 compressed-jump-table span (libprotobuf)' `
-        -Floor 30 -AlreadyTaggedPattern '(^|\s)/Od(\s|$)' -Select {
-            param($line)
-            if ($line -match 'libprotobuf\.dir') { '/Od' } else { '' }
-        })
-
-    # (b) The BRANCH-range ceiling: `error: fixup value out of range`, a
-    # pc-relative branch (tbz/tbnz ±32 KB, b.cond ±1 MB) that no longer reaches
-    # because LLVM 23 grew the function past what 22 emitted.
-    #
-    # THE WHOLE *.dispatch.cpp FAMILY, not a name list. Three attempts named
-    # files and each time the next-largest TU failed instead: imgwarp +
-    # smooth.dispatch + stb_truetype fixed, then median_blur.dispatch. These are
-    # OpenCV's CPU-DISPATCH TUs -- each one inlines several ISA variants' glue
-    # and they are the largest functions in their modules, so the family is the
-    # unit, not its current members. 28 of them across opencv_core and
-    # opencv_imgproc; floor 28 catches a layout change, and the two non-dispatch
-    # offenders are named alongside.
-    #
-    # (An earlier revision of this comment said compression ON might make this
-    # unnecessary, because a run with compression ON reported zero fixup errors
-    # including for the untagged median_blur. That reading was wrong: ninja had
-    # stopped at libprotobuf in that run, before OpenCV's own modules were
-    # reached. Progress past one ceiling is not proof about the next.)
-    #
-    # Cost, stated honestly: on aarch64 the BASELINE path in these files is NEON,
-    # so /O1 here is not free. It is bounded, though -- the NEON_FP16/DOTPROD/BF16
-    # variants live in separate objects generated from *.simd.hpp and keep /O2,
-    # so on hardware with those features the dispatched path is unaffected and
-    # only the fallback is slower. Unmeasured; revisit if a later clang-cl
-    # compiles these at /O2 again (#135).
-    $fixupNamedTus = @('imgwarp.cpp', 'stb_truetype.cpp')
-    [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
-        -Label 'AArch64 branch-range (LLVM 23; opencv *.dispatch.cpp family + imgwarp/stb_truetype)' `
-        -Floor 28 -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
-            param($line)
-            if ($line -notmatch 'opencv_(core|imgproc)\.dir') { return '' }
-            if ($line -match '\.dispatch\.cpp') { return '/O1' }
-            if ($fixupNamedTus | Where-Object { $line -match [regex]::Escape($_) }) { return '/O1' }
-            ''
-        })
-}
 
 # Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
 $buildLog = Get-PersistentBuildLogPath -Name 'opencv-build.log' -FallbackDir $buildDir
