@@ -119,6 +119,15 @@ setup_ccache() {
     # a run that reproduces the failure WITHOUT the log is a wasted run; set
     # SCCACHE_LOG= to silence it. Remove once the cause is known.
     export SCCACHE_LOG="${SCCACHE_LOG:-sccache=debug}"
+    # One server per CONTAINER — see common.sh:ensure_sccache_env for the full
+    # reasoning. BuildKit runs the media stages concurrently in containers that
+    # share a network namespace, so a fixed server port means every step talks
+    # to the FIRST container's server, which cannot see their files.
+    if [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
+      _ccp_seed="${HOSTNAME:-$$}"
+      _ccp_off="$(printf '%s' "${_ccp_seed}" | cksum | awk '{print $1 % 20000}')"
+      export SCCACHE_SERVER_PORT="$(( 20000 + _ccp_off ))"
+    fi
     export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
     sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then

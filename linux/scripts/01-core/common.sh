@@ -373,6 +373,26 @@ ensure_sccache_env() {
   export SCCACHE_DIR
   # A server that idles out mid-build is one of the recorded failure shapes.
   export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
+
+  # ONE SERVER PER CONTAINER (2026-08-26). sccache's server listens on a FIXED
+  # port (4226 by default) and clients connect to whatever answers there.
+  # BuildKit builds the media stages CONCURRENTLY, in separate containers that
+  # share a network namespace under rootless buildkitd — so the first container
+  # to start a server owns port 4226, and every other container's client talks
+  # to THAT server. It happily accepts the job ("Server sent CompileStarted")
+  # and then cannot find the source, because the path only exists in the
+  # caller's container:
+  #     sccache: caused by: No such file or directory (os error 2)
+  # That is why the sequential compiler stage was clean, why it only starts
+  # once parallel media steps overlap, why it moved between opencv/onnxruntime/
+  # litert, and why it never reproduced inside a single container.
+  # $HOSTNAME is the per-RUN container id, so hashing it gives each step its
+  # own server. Fall back to the default port when it is unset.
+  if [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
+    _scp_seed="${HOSTNAME:-$$}"
+    _scp_off="$(printf '%s' "${_scp_seed}" | cksum | awk '{print $1 % 20000}')"
+    export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+  fi
   # PREPROCESSOR CACHE MODE OFF (2026-08-26, after it broke two builds).
   # In that mode sccache re-reads the INPUT FILE to store the cache entry AFTER
   # the compile. CMake's TryCompile probes create a scratch dir, compile in it,
