@@ -46,8 +46,27 @@ function It {
 }
 
 function Assert-Equal {
+    # Two can't-fail shapes, both MEASURED by running them (2026-08-26 audit),
+    # in the primitive under every assertion in this suite:
+    #   Assert-Equal @() 'completely-different'  -> PASSED. `-ne` against a
+    #     collection returns the FILTERED collection, and an empty result is
+    #     falsy, so any comparison whose expected side is an array silently
+    #     succeeded. Callers must join first: Assert-Equal 'a,b' ($x -join ',').
+    #   Assert-Equal 'tvm_ffi' 'TVM_FFI'         -> PASSED. `-ne` is
+    #     case-INSENSITIVE, and this repo compares case-sensitive facts for a
+    #     living (EXT_SUFFIX tags, CMake's Python_ vs PYTHON_, PE names).
+    # Type coercion (0 vs '0') is deliberately still tolerated: counts arrive
+    # as int and are written as int, and tightening it produced only noise.
     param($Expected, $Actual, [string]$Message = '')
-    if ($Expected -ne $Actual) { throw "Assert-Equal: expected [$Expected] but got [$Actual]. $Message" }
+    foreach ($side in @(@{ n = 'Expected'; v = $Expected }, @{ n = 'Actual'; v = $Actual })) {
+        if ($null -ne $side.v -and $side.v -isnot [string] -and $side.v -is [System.Collections.IEnumerable]) {
+            throw "Assert-Equal: $($side.n) is a collection ($($side.v.GetType().Name)) -- join it first, e.g. (`$x -join ','), or the comparison cannot fail. $Message"
+        }
+    }
+    $differs = if ($Expected -is [string] -and $Actual -is [string]) {
+        [string]::CompareOrdinal($Expected, $Actual) -ne 0
+    } else { $Expected -ne $Actual }
+    if ($differs) { throw "Assert-Equal: expected [$Expected] but got [$Actual]. $Message" }
 }
 function Assert-True {
     param($Condition, [string]$Message = '')
