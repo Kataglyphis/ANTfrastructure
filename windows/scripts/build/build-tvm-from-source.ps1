@@ -23,6 +23,79 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
+# --- Cross-lane python wheels (#133, 2026-08-26) -------------------------------
+# TVM 0.26 supports a runtime-only python package natively (tvm/base.py:
+# _RUNTIME_ONLY falls back when tvm_compiler is absent), and tvm_ffi's Cython
+# `core` module cross-builds through the tvm-ffi CMake target. What does NOT
+# cross is the packaging: scikit-build-core would rebuild the compiler and
+# stamps the wheel from the HOST interpreter. So the cross lane assembles the
+# two wheels itself from the package sources + the cross-built binaries; these
+# three pure helpers pin the metadata shape (fixture test
+# SourceBuild.TvmAssembledWheel.Tests.ps1). They live here, not in a module:
+# /bkmods is bind-mounted into every media RUN and a module edit re-keys all
+# branches on both lanes.
+
+# Writes the dist-info a binary wheel needs (METADATA, WHEEL, top_level.txt)
+# into an already-laid-out package tree; `python -m wheel pack` then produces
+# RECORD + the archive and names it from WHEEL's Tag line.
+function Write-AssembledWheelDistInfo {
+    param(
+        [Parameter(Mandatory)][string]$Name,        # distribution name, e.g. apache-tvm-ffi
+        [Parameter(Mandatory)][string]$Version,     # PEP 440
+        [Parameter(Mandatory)][string]$PackageRoot, # dir whose child dirs are the top-level packages
+        [string]$PythonTag = 'cp314',
+        [string]$AbiTag = 'cp314',
+        [string]$PlatformTag = 'win_arm64',
+        [string[]]$RequiresDist = @(),
+        [string]$RequiresPython = '',
+        [string]$Summary = ''
+    )
+    if (-not (Test-Path $PackageRoot -PathType Container)) { throw "Write-AssembledWheelDistInfo: package root $PackageRoot does not exist" }
+    $distName = ($Name -replace '[-_.]+', '_')
+    $distInfo = Join-Path $PackageRoot "$distName-$Version.dist-info"
+    New-Item -Path $distInfo -ItemType Directory -Force | Out-Null
+    $meta = @('Metadata-Version: 2.1', "Name: $Name", "Version: $Version")
+    if ($Summary) { $meta += "Summary: $Summary" }
+    if ($RequiresPython) { $meta += "Requires-Python: $RequiresPython" }
+    foreach ($r in $RequiresDist) { if ($r) { $meta += "Requires-Dist: $r" } }
+    [System.IO.File]::WriteAllText((Join-Path $distInfo 'METADATA'), (($meta -join "`n") + "`n"))
+    $wheelMeta = @('Wheel-Version: 1.0', 'Generator: kataglyphis-assembled-wheel (build-tvm-from-source.ps1)', 'Root-Is-Purelib: false', "Tag: $PythonTag-$AbiTag-$PlatformTag")
+    [System.IO.File]::WriteAllText((Join-Path $distInfo 'WHEEL'), (($wheelMeta -join "`n") + "`n"))
+    $top = @(Get-ChildItem -Path $PackageRoot -Directory | Where-Object { $_.Name -notlike '*.dist-info' } | ForEach-Object { $_.Name })
+    if ($top.Count -eq 0) { throw "Write-AssembledWheelDistInfo: no top-level package directory under $PackageRoot" }
+    [System.IO.File]::WriteAllText((Join-Path $distInfo 'top_level.txt'), (($top -join "`n") + "`n"))
+    return $distInfo
+}
+
+# The vendored tvm-ffi's own version: the nearest v* tag of the submodule
+# checkout (PEP 440-normalised: v0.1.13-post3 -> 0.1.13.post3), else the lower
+# bound TVM's pyproject demands (apache-tvm-ffi>=X) -- the version that makes
+# the two assembled wheels resolve against each other.
+function Get-VendoredTvmFfiVersion {
+    param(
+        [string]$DescribeOutput = '',
+        [string]$TvmPyprojectText = ''
+    )
+    $d = "$DescribeOutput".Trim()
+    if ($d -match '^v?(\d+(?:\.\d+)*)(?:[-.]?(post\d+|rc\d+|a\d+|b\d+))?$') {
+        $v = $Matches[1]
+        if ($Matches[2]) { $v += '.' + $Matches[2] }
+        return $v
+    }
+    $m = [regex]::Match($TvmPyprojectText, 'apache-tvm-ffi\s*>=\s*([0-9][0-9A-Za-z.+!-]*)')
+    if ($m.Success) { return $m.Groups[1].Value }
+    throw 'Get-VendoredTvmFfiVersion: neither a v* tag on the tvm-ffi submodule nor an apache-tvm-ffi>= bound in TVM''s pyproject.toml'
+}
+
+# A pyproject's [project] dependencies = [...] block, read from the source
+# tree at build time (never hardcoded here).
+function Get-PyprojectDependencies {
+    param([Parameter(Mandatory)][string]$PyprojectText)
+    $m = [regex]::Match($PyprojectText, '(?ms)^\[project\].*?^dependencies\s*=\s*\[(.*?)^\]')
+    if (-not $m.Success) { return @() }
+    return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
+}
+
 $TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.26.0'
 
 Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
@@ -203,6 +276,28 @@ $useLLVM = if ($tvmCross) { 'OFF' } else {
 # Python OFF on the cross lane too: the tvm package drives tvm_compiler.dll,
 # which is not built there (and the target interpreter cannot run here).
 $pythonModule = if ($SkipPython -or $tvmCross) { 'OFF' } else { 'ON' }
+# Cross lane (#133): TVM_BUILD_PYTHON_MODULE stays OFF (that is scikit-build's
+# knob), but tvm-ffi's own TVM_FFI_BUILD_PYTHON_MODULE builds the Cython `core`
+# extension through CMake -- #120 pattern: host interpreter runs cython and the
+# probes, TARGET python314.lib is linked, EXT_SUFFIX pinned to the target tag
+# by the sitecustomize shim so `python_add_library(... WITH_SOABI)` names
+# core.cp314-win_arm64.pyd. Guarded by .Available like ORT/IREE.
+$tvmTargetPy = if ($tvmCross) { Get-TargetBuildPython } else { $null }
+$tvmCrossPython = [bool]($tvmCross -and -not $SkipPython -and $tvmTargetPy -and $tvmTargetPy.Available)
+if ($tvmCross -and -not $tvmCrossPython -and -not $SkipPython) {
+    Write-Host "TVM cross: runtime python wheels OFF -- no target CPython import lib at $($tvmTargetPy.Lib) (build-target-cpython.ps1 did not run?)"
+}
+$py = Get-SourceBuildPython
+if ($tvmCrossPython) {
+    Install-CpythonPip -Python $py
+    Initialize-PythonPlatformTag | Out-Null
+    # cython transpiles core.pyx (CMake custom command runs `python -m cython`);
+    # wheel supplies `python -m wheel pack` for the assembled archives.
+    Invoke-CpythonPip -Python $py -Arguments @('install', '--quiet', 'cython', 'wheel')
+    # FindPython reads Include\pyconfig.h; the in-tree CPython keeps it at PC\.
+    Copy-CpythonPyConfigHeader
+    Write-Host "TVM cross: runtime python wheels ON (#133) -- host interpreter $($py.Exe), TARGET import lib $($tvmTargetPy.Lib); the compiler and its codegen stay ABSENT"
+}
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
@@ -238,6 +333,13 @@ if ($useVulkan -eq 'ON') {
 
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
+if ($tvmCrossPython) {
+    # tvm-ffi's CMake: find_package(Python COMPONENTS Interpreter Development.Module)
+    # -- the unversioned prefix; every value handed over (host exe, neutral
+    # include, TARGET import lib) so nothing is probed under CMAKE_CROSSCOMPILING.
+    $cmakeExtra += '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
+    $cmakeExtra += Get-PythonCMakeHintArgs -Python $tvmTargetPy -Prefix 'Python' -ForwardSlash
+}
 
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $buildDir -InstallPrefix $tvmInstallDir -ExtraArgs $cmakeExtra | Out-Null
 
@@ -253,7 +355,8 @@ if ($tvmCross) {
     # install tvm_compiler, which is never built here. Layout mirrors the amd64
     # install (DLLs + import libs in lib\, headers in include\) so the merge's
     # TVM_LIBRARY_PATH=...\tvm\lib pointer is real on both lanes.
-    Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Targets @('tvm_runtime')
+    $crossTargets = @('tvm_runtime') + $(if ($tvmCrossPython) { @('tvm_ffi_cython') } else { @() })
+    Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Targets $crossTargets
     $tvmLibOut = Join-Path $tvmInstallDir 'lib'
     $tvmIncOut = Join-Path $tvmInstallDir 'include'
     New-Item -Path $tvmLibOut, $tvmIncOut -ItemType Directory -Force | Out-Null
@@ -288,13 +391,81 @@ if ($tvmCross) {
     # is the TARGET machine. A host-arch tvm_ffi.dll picked up from the wrong
     # build dir would otherwise ship and fail only at load time on the target.
     $tvmDlls = Assert-DirectoryTargetArch -Path $tvmLibOut -Include @('*.dll') -MinCount 2 -Context 'TVM cross'
-    Write-Host ('TVM cross: staged {0} runtime binaries ({1} DLLs, all PE machine 0x{2:X4}) into {3}; compiler + python ABSENT by design (#116)' -f $runtimeBins.Count, $tvmDlls, (Get-PeMachineType), $tvmLibOut)
-    [void](Write-AbsentOnCrossMarker -Root $tvmInstallDir -Component 'tvm_compiler.dll and the tvm python package' -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
-        'They need TARGET-arch LLVM libraries plus a HOST llvm-config at configure time (backlog #116).',
+    Write-Host ('TVM cross: staged {0} runtime binaries ({1} DLLs, all PE machine 0x{2:X4}) into {3}; compiler ABSENT by design (#116)' -f $runtimeBins.Count, $tvmDlls, (Get-PeMachineType), $tvmLibOut)
+    # The merge fans in C:\runtime\wheels from this branch unconditionally.
+    $wheelStore = Join-Path (Split-Path $InstallDir -Parent) 'runtime\wheels'
+    New-Item -Path $wheelStore -ItemType Directory -Force | Out-Null
+    if ($tvmCrossPython) {
+        # (#133) Two wheels assembled from the package sources + the binaries this
+        # pass just cross-built. Layouts follow what the packages LOOK for:
+        #  * apache-tvm-ffi: tvm_ffi/ (sources) + core.<target-tag>.pyd beside them
+        #    (registry.py: `from . import core`) + lib/tvm_ffi.dll + tvm_ffi.lib
+        #    (libinfo._find_library_by_basename walks the distribution's RECORD) +
+        #    include/ and 3rdparty/dlpack/include (find_include_path & co.).
+        #  * apache-tvm: tvm/ (sources) + _version.py (setuptools_scm would have
+        #    written it) + lib/tvm_runtime.dll (libinfo.package_lib_paths: the
+        #    wheel layout `python/tvm/lib`). No tvm_compiler.dll -> tvm/base.py
+        #    falls back to _RUNTIME_ONLY at import, upstream's supported mode.
+        # `python -m wheel pack` writes RECORD + the archive; the wheel is then
+        # staged and PE/name-checked exactly like the ORT/GenAI/av cross wheels.
+        Switch-BuildPhase '5b. runtime python wheels (cross, assembled)'
+        $corePyd = @(Get-ChildItem -Path $buildDir -Recurse -Filter 'core*.pyd' -File)
+        if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $buildDir, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
+        $wantExt = Get-PythonWheelTag
+        if ($corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- expected the target EXT_SUFFIX tag '$wantExt' (Initialize-PythonPlatformTag shim not in effect?)" }
+        $tvmFfiSrc = Join-Path $SourceDir '3rdparty\tvm-ffi'
+        $tvmFfiLibs = @(Get-ChildItem -Path $tvmLibOut -Filter 'tvm_ffi.*' -File | Where-Object { $_.Extension -in '.dll', '.lib' })
+        if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq 'tvm_ffi.dll' })) { throw "TVM cross: tvm_ffi.dll not among the staged runtime binaries in $tvmLibOut" }
+        $describe = & git -C $tvmFfiSrc describe --tags --abbrev=0 --match 'v*' 2>&1 | Out-String
+        $global:LASTEXITCODE = 0
+        $tvmPyproject = [System.IO.File]::ReadAllText((Join-Path $SourceDir 'pyproject.toml'))
+        $ffiPyproject = [System.IO.File]::ReadAllText((Join-Path $tvmFfiSrc 'pyproject.toml'))
+        $ffiVersion = Get-VendoredTvmFfiVersion -DescribeOutput $describe -TvmPyprojectText $tvmPyproject
+        $tvmPyVersion = ($TvmVersion -replace '^v', '')
+        $stage = Join-Path $buildDir 'py-stage'
+        if (Test-Path $stage) { Remove-Item -Path $stage -Recurse -Force }
+        # apache-tvm-ffi
+        $ffiRoot = Join-Path $stage 'ffi'
+        New-Item -Path (Join-Path $ffiRoot 'tvm_ffi\lib') -ItemType Directory -Force | Out-Null
+        Copy-Item -Path (Join-Path $tvmFfiSrc 'python\tvm_ffi\*') -Destination (Join-Path $ffiRoot 'tvm_ffi') -Recurse -Force
+        Copy-Item -Path $corePyd[0].FullName -Destination (Join-Path $ffiRoot 'tvm_ffi') -Force
+        foreach ($l in $tvmFfiLibs) { Copy-Item -Path $l.FullName -Destination (Join-Path $ffiRoot 'tvm_ffi\lib') -Force }
+        foreach ($inc in @(@{ Src = 'include'; Dest = 'include' }, @{ Src = '3rdparty\dlpack\include'; Dest = '3rdparty\dlpack\include' })) {
+            $srcDir = Join-Path $tvmFfiSrc $inc.Src
+            if (Test-Path $srcDir) {
+                $dst = Join-Path $ffiRoot "tvm_ffi\$($inc.Dest)"
+                New-Item -Path $dst -ItemType Directory -Force | Out-Null
+                Copy-Item -Path (Join-Path $srcDir '*') -Destination $dst -Recurse -Force
+            }
+        }
+        [void](Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version $ffiVersion -PackageRoot $ffiRoot -PlatformTag $wantExt `
+            -RequiresDist (Get-PyprojectDependencies -PyprojectText $ffiPyproject) -RequiresPython '>=3.9' `
+            -Summary "tvm-ffi runtime for $wantExt, assembled from the tvm-ffi submodule TVM $TvmVersion vendors (Kataglyphis cross build)")
+        # apache-tvm (runtime-only)
+        $tvmRoot = Join-Path $stage 'tvm'
+        New-Item -Path (Join-Path $tvmRoot 'tvm\lib') -ItemType Directory -Force | Out-Null
+        Copy-Item -Path (Join-Path $SourceDir 'python\tvm\*') -Destination (Join-Path $tvmRoot 'tvm') -Recurse -Force
+        [System.IO.File]::WriteAllText((Join-Path $tvmRoot 'tvm\_version.py'), "__version__ = `"$tvmPyVersion`"`n__version_tuple__ = ($($tvmPyVersion -replace '\.', ', '))`n")
+        Copy-Item -Path (Join-Path $tvmLibOut 'tvm_runtime.dll') -Destination (Join-Path $tvmRoot 'tvm\lib') -Force
+        [void](Write-AssembledWheelDistInfo -Name 'apache-tvm' -Version $tvmPyVersion -PackageRoot $tvmRoot -PlatformTag $wantExt `
+            -RequiresDist (Get-PyprojectDependencies -PyprojectText $tvmPyproject) -RequiresPython '>=3.10' `
+            -Summary "Apache TVM $TvmVersion RUNTIME-ONLY python package for $wantExt (no tvm_compiler; Kataglyphis cross build)")
+        $wheelOut = Join-Path $stage 'dist'
+        New-Item -Path $wheelOut -ItemType Directory -Force | Out-Null
+        foreach ($root in @($ffiRoot, $tvmRoot)) {
+            [void](Invoke-ShieldedNative -Label "wheel pack $(Split-Path $root -Leaf)" -CommandLine """$($py.Exe)"" -m wheel pack ""$root"" --dest-dir ""$wheelOut""")
+        }
+        $stagedWheels = @(Save-PythonWheel -SourceDir $wheelOut -WheelDir $wheelStore -Required)
+        if ($stagedWheels.Count -ne 2) { throw "TVM cross: expected 2 assembled wheels staged into $wheelStore, got $($stagedWheels.Count)" }
+        foreach ($w in $stagedWheels) { Assert-WheelTargetArch -WheelPath $w }
+        Write-Host "TVM cross: staged $($stagedWheels.Count) runtime python wheel(s) for $wantExt into ${wheelStore}: $(($stagedWheels | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')"
+    }
+    $absentComponent = if ($tvmCrossPython) { 'tvm_compiler.dll (and with it every tvm codegen / relax build path)' } else { 'tvm_compiler.dll and the tvm python package' }
+    [void](Write-AbsentOnCrossMarker -Root $tvmInstallDir -Component $absentComponent -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
+        'The compiler needs TARGET-arch LLVM libraries plus a HOST llvm-config at configure time (backlog #116/#133) -- not attempted.',
+        $(if ($tvmCrossPython) { 'The tvm + tvm_ffi python packages ARE shipped as win_arm64 wheels in C:\runtime\wheels (#133), runtime-only: `import tvm` takes tvm/base.py''s _RUNTIME_ONLY path.' } else { 'The python packages were not built on this pass (no target CPython import lib or -SkipPython).' }),
         'tvm_runtime.dll + tvm_ffi.dll (+ import libs) in lib\ and the headers in include\ are the shipped runtime.'
     ))
-    # The merge fans in C:\runtime\wheels from this branch unconditionally; no wheel is built here.
-    New-Item -Path (Join-Path (Split-Path $InstallDir -Parent) 'runtime\wheels') -ItemType Directory -Force | Out-Null
 } else {
     Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install -InstallConfig $BuildType
 }
