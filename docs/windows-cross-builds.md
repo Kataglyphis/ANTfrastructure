@@ -36,9 +36,12 @@ produce, and which gates keep it honest.
 > staged, `tensorflowlite_c.lib` verified aarch64) — plus GStreamer with its ~5000 targets, **all
 > six contract plugins — `libav`, `opencv`, `onnx`, `tflite`, and since run 28 (2026-08-26)
 > `webrtc` and `nice`** (#128) — and the out-of-tree `opencv_videoio_gstreamer` plugin, all in
-> the merge stage. Two GStreamer pieces stay absent on this lane: `gst-ptp-helper` (Rust; the
-> image's offline rustup mirror has no aarch64 `rust-std`) and the optional `gdkpixbuf` plugin
-> (gdk-pixbuf's meson.build really wants a build-machine glib, which nothing else needs).
+> the merge stage. **The linked plugin-DLL sets of the two lanes are identical — 200 each**
+> (diffed from the ninja logs of arm64 run 28 and amd64 run 7, 2026-08-26). Two GStreamer pieces
+> are absent on BOTH lanes, so they are not a parity gap: `gst-ptp-helper` (Rust; never linked on
+> either lane — on arm64 additionally because the image's offline rustup mirror has no aarch64
+> `rust-std`) and the optional `gdkpixbuf` plugin (gdk-pixbuf's meson.build fails on arm64 for
+> `glib-compile-resources` — a build-machine glib tool — and on amd64 for missing `rst2man`).
 >
 > **The PE architecture gate has run and passed over the whole image:** `980 binaries inspected,
 > 0 violations` (2026-08-26, run 28, with libnice and the webrtc/nice plugins; 970 on run 14 of

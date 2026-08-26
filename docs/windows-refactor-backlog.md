@@ -709,10 +709,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   **all six** contract entries — `gstwebrtc.dll` and `gstnice.dll` with `gst_plugin_*_get_desc`
   exported and their imports resolving — `All 6 mandatory GStreamer plugins verified present`;
   arch gate `980 inspected, 0 violations` (run 19: 970 — the ten new PEs are libnice and the two
-  plugins), import walk `577 walked, 0 unresolved` (571), deps 7/0, smoke 97/0/15. Still absent
-  on arm64, by design or unchanged: `gst-ptp-helper` (rust std for the target is not in the
-  image's offline mirror) and `gdkpixbuf` (gdk-pixbuf's meson.build wants the build-machine glib
-  for real — optional, not in the contract, noted in the banner). **amd64 regression (run 7,
+  plugins), import walk `577 walked, 0 unresolved` (571), deps 7/0, smoke 97/0/15. **Plugin
+  inventory diff (ninja "Linking target" DLLs, run 28 vs amd64 run 7): 200 = 200, no name on
+  one side only.** `gst-ptp-helper` is linked on NEITHER lane, and `gdkpixbuf` is absent on
+  BOTH — arm64 for `glib-compile-resources` (a build-machine glib C tool), amd64 for a missing
+  `rst2man` — so neither is a lane difference. **amd64 regression (run 7,
   2026-08-26, `[bk] Done 02:12:20`):** the same script and contract on the native lane — the meson
   patch applies and is inert (no build-only subprojects without a cross file), `meson setup
   completed` at 465 s, the gate loads all six plugins through `gst-inspect` (`webrtcbin`,
