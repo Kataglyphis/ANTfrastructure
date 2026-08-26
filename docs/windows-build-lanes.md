@@ -411,7 +411,7 @@ Housekeeping and sharing:
   triggers fired on every GC pass and everything reclaimable — including the
   multi-hour VS layer — was evicted the moment a build's references dropped).
   The policy lives in the repo at `windows/buildkitd.toml` (three tiers; the
-  load-bearing knob is `reservedSpace = 200GB`, below which GC never prunes —
+  load-bearing knob is `reservedSpace = 150GB`, below which GC never prunes —
   that is what protects the ~35GB VS-class layers; v0.32 key names are
   `reservedSpace`/`maxUsedSpace`/`minFreeSpace`, NOT the legacy
   `gckeepstorage`). Deploy/refresh it with

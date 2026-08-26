@@ -500,7 +500,7 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 > deploy = #34, poisoned probe-chain prune, diagnostic tag cleanup) and the dufs
 > SYSTEM-service migration were APPLIED by the owner 2026-08-13 — see the archive
 > addendum. Sanity-check the GC deploy with `buildctl debug workers -v`
-> (reservedSpace must read 200GB).
+> (reservedSpace must read 150GB).
 
 - **UPSTREAM, consolidated 2026-08-17 (was scattered across #99''s body and two
   Open-items entries):**
