@@ -958,10 +958,12 @@ base ─┬─ onnxruntime ───────┐
   accepts the skew): tar and `cp -a` both unlink-and-recreate, measured here,
   so replacing a live root daemon's binary raises NO error — it keeps executing
   the deleted inode until `Restart=always` swaps it unattended. Motivation,
-  verified 2026-08-26: this host runs buildctl
-  v0.31.1, and moby/buildkit#6915 — a "concurrent map iteration and map write"
-  daemon CRASH that reproduces under concurrent builds, introduced in v0.31.0 —
-  is fixed only in v0.31.2, which nerdctl-full 2.3.5 bundles. Three parallel
+  DONE 2026-08-26 — the host was on buildctl
+  v0.31.1 and is now on v0.31.2 (nerdctl 2.3.5, containerd 2.3.3), daemons
+  confirmed reporting the new versions, 51 cache-mount records unchanged. The
+  driver was moby/buildkit#6915 — a "concurrent map iteration and map write"
+  daemon CRASH that reproduces under concurrent builds, introduced in v0.31.0,
+  fixed in v0.31.2. Three parallel
   arch lanes is precisely that load class. Do NOT expect it to cure BKD1 (the
   session rot: export hangs, "no active session", lost layer blobs) — that has
   no upstream fix, and the cure remains stop-chain → restart buildkit. The

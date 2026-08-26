@@ -231,17 +231,46 @@ What the script guarantees, and why each guard exists:
   service active) instead of assuming, and tells you the rollback command if
   it did not.
 
-**When it is worth upgrading** (checked 2026-08-26): this host runs buildctl
-`v0.31.1`. BuildKit `v0.31.0` introduced a daemon crash — *"concurrent map
-iteration and map write"* ([moby/buildkit#6915][bk6915]) — that reproduces
-under **concurrent** builds, which is exactly how this chain drives it with
-three arch lanes at once. The fix ships in BuildKit `v0.31.2`, bundled by
-nerdctl-full `2.3.5`. Two caveats, so nobody upgrades expecting the wrong
-thing: it will **not** cure [BKD1](failure-modes.md) — the buildkitd session
-rot (export hangs, `no active session`, lost layer blobs) has no upstream fix
-and is still cured by stopping the chain and restarting the service — and the
-parallel-build cache-miss fix ([moby/buildkit#6954][bk6954]) landed in
-`v0.32.0`, which no nerdctl-full release ships yet.
+**Why this was done, and what it bought** — BuildKit `v0.31.0` introduced a
+daemon crash, *"concurrent map iteration and map write"*
+([moby/buildkit#6915][bk6915]), that reproduces under **concurrent** builds,
+which is exactly how this chain drives it with three arch lanes at once. The
+fix ships in BuildKit `v0.31.2`, bundled by nerdctl-full `2.3.5`. Two caveats,
+so nobody upgrades expecting the wrong thing: it does **not** cure
+[BKD1](failure-modes.md) — the buildkitd session rot (export hangs, `no active
+session`, lost layer blobs) has no upstream fix and is still cured by stopping
+the chain and restarting the service — and the parallel-build cache-miss fix
+([moby/buildkit#6954][bk6954]) landed in `v0.32.0`, which no nerdctl-full
+release ships yet.
+
+**Performed on this host, 2026-08-26** (the reference run, with what was
+actually proven afterwards rather than assumed):
+
+| | before | after |
+|---|---|---|
+| `nerdctl` on disk | 2.3.4 | **2.3.5** |
+| `buildctl` on disk | v0.31.1 | **v0.31.2** |
+| buildkitd **daemon** reports | v0.31.1 | **v0.31.2** |
+| containerd **Server Version** | v2.3.2 | **v2.3.3** |
+| cache-mount records | 51 | **51** (unchanged) |
+| buildkitd workers | — | 1 |
+
+Run as `NERDCTL_INCLUDE_ROOTFUL=1 NERDCTL_INSTALL_CONFIRM=1`, so the rootful
+pair was stopped and restarted with the rootless one. Verified afterwards: the
+rootful daemons came back on NEW pids (1982/1983 → 30591/30592, i.e. they are
+not stranded on the deleted old inodes), no daemon's `/proc/<pid>/exe` reads
+`(deleted)`, and both root units report `NeedDaemonReload=no` — the system
+`daemon-reload` took, so nothing flips over unattended later.
+
+Two gotchas worth repeating, both hit during that run:
+
+- The env vars must be on **one line** with the `bash` call. Split across two
+  lines they are set in the parent shell, never exported, and the script runs
+  as a plain dry run that changes nothing — which is exactly what happened on
+  the first attempt.
+- Installing needs `sudo` (the bundle is root-owned), so it cannot be driven
+  from a non-interactive session. "Rootless" describes how the daemons **run**,
+  not how the bundle is **installed**.
 
 [bk6915]: https://github.com/moby/buildkit/issues/6915
 [bk6954]: https://github.com/moby/buildkit/issues/6954
