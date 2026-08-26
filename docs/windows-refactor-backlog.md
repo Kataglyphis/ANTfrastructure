@@ -714,7 +714,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   smoke gate that hard-asserts `cv2.videoio_registry.hasBackend(CAP_GSTREAMER)`
   (`smoke-test-container.ps1:1527`) — a backend only the BK lane''s plugin provides. So B6 polices
   COPY lists for a lane that cannot pass its own gate. **Decide the classic lane''s status before
-  spending the rebuild**; if it is retired, steps (1) and (iii) collapse.
+  spending the rebuild**; if it is retired, steps (1) and (iii) collapse. Corroborating find:
+  `windows/scripts/build/build-merge-all.ps1` exists, is referenced by **nothing** (no Dockerfile,
+  no driver, no doc), and its own header describes fixing exactly this gap — somebody wrote the
+  classic lane's chained merge and never wired it. Deleting it is free; wiring it needs a
+  `merge`-stage COPY plus a `-RunCommand` change. Either is fine — leaving a dead fix script for
+  a known-broken lane is not.
   Ride along (all PAID, none worth its own rebuild): **`sharing=locked` on the sccache mount**
   (`Dockerfile.media-builder:576,593`) serialises the two branches `-ConcurrentAux` runs as
   concurrent child solves (`build-buildkit.ps1:669-712`) — and the mount is inert anyway

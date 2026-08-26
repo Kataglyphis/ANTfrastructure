@@ -373,11 +373,11 @@ function Install-RustTargetStdFromPinnedManifest {
     return "rust-std ${Triple}: fetched $upstream -> $local ($([math]::Round((Get-Item $local).Length / 1MB, 1)) MB); rustup verifies it against the pinned manifest hash"
 }
 
-# Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
-# beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
-# then moves the single top-level source dir onto $Target. Returns $true when a
-# directory was moved. Shared by the wrap pre-extraction loop and the libffi
-# force-download below, which used to carry two copies of this body.
+# Downloads one wrap source archive with curl (see the UA note inside) and
+# writes it to $DestinationPath. Shared by the wrap pre-extraction loop and the
+# libffi force-download below, which used to carry two copies of this body.
+# (The block that used to sit here described Expand-SubprojectArchive, 40 lines
+# down, and read as if THIS function extracted — corrected 2026-08-26.)
 function Invoke-WrapDownload {
     param(
         [Parameter(Mandatory)][string]$Url,
@@ -412,6 +412,11 @@ function Invoke-WrapDownload {
     throw "download failed after 4 attempts: $label"
 }
 
+# Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
+# beside $Target (7z two-pass: decompress, then untar the LARGEST inner .tar --
+# the module's Expand-SourceTarball takes the first instead), then moves the
+# single top-level source dir onto $Target. Returns $true when a directory was
+# moved. Both 7z passes are exit-checked; see the note inside.
 function Expand-SubprojectArchive {
     param(
         [Parameter(Mandatory)][string]$Archive,
@@ -419,10 +424,17 @@ function Expand-SubprojectArchive {
     )
     $extractDir = Join-Path (Split-Path -Parent $Target) ('_ext_' + (Split-Path -Leaf $Target))
     New-Item -Path $extractDir -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+    # Both passes are exit-checked (2026-08-26 audit): they used to swallow
+    # stdout AND stderr with no check, so a truncated or HTML-instead-of-archive
+    # download surfaced far downstream as "meson could not find the subproject"
+    # instead of naming the extraction failure -- the exact symptom
+    # Expand-SourceTarball's comment records having fixed once already.
     cmd.exe /c "7z.exe x ""$Archive"" -o""$extractDir"" -y >nul 2>&1"
+    if ($LASTEXITCODE -ne 0) { throw "Expand-SubprojectArchive: 7z failed (exit $LASTEXITCODE) on $Archive -- truncated download or not an archive (size $((Get-Item $Archive -ErrorAction SilentlyContinue).Length) bytes)" }
     $tarFile = @(Get-ChildItem -Path $extractDir -Filter '*.tar' | Sort-Object Length -Descending | Select-Object -First 1)
     if ($tarFile) {
         cmd.exe /c "7z.exe x ""$($tarFile[0].FullName)"" -o""$extractDir"" -y >nul 2>&1"
+        if ($LASTEXITCODE -ne 0) { throw "Expand-SubprojectArchive: 7z failed (exit $LASTEXITCODE) on the inner tar of $Archive" }
         Remove-Item $tarFile[0].FullName -Force -ErrorAction SilentlyContinue
     }
     $extracted = @(Get-ChildItem -Path $extractDir -Directory)
@@ -475,7 +487,11 @@ try {
     log 'Installing Meson via pip...'
     $pipLog = Join-Path $resolvedLogDir 'pip-install.log'
     & cmd.exe /c """$pyExe"" -m pip install meson > ""$pipLog"" 2>&1"
+    $pipExit = $LASTEXITCODE
     Get-Content $pipLog | ForEach-Object { if ($_) { log $_ } }
+    # Exit-checked (2026-08-26 audit): a pip failure used to surface eight lines
+    # later as the misleading 'meson.exe not found after pip install'.
+    if ($pipExit -ne 0) { throw "pip install meson failed (exit $pipExit) -- see $pipLog (logged above)" }
 
     # Find meson.exe: ask Python where console scripts land. The in-tree PCbuild
     # layout (sys.prefix = the source root) puts them at C:\temp\cpython\Scripts,
@@ -2144,7 +2160,14 @@ cpp_link_args = [$buildLinkArgs]
                     $staticProblems += "$marker export missing (exports seen: $($exportNames -join ', '))"
                 }
             } else {
-                log '    (dumpbin unavailable - dependency/export checks skipped, DLL presence only)'
+                # A gate that verified NOTHING must not report PASS (2026-08-26
+                # audit): this branch used to log "checks skipped" and fall
+                # through to the PASS line below, which claims "deps resolve,
+                # ..._get_desc exported" -- a claim nothing made. dumpbin is the
+                # x64 host tool from the MSVC install that every other stage
+                # depends on, so its absence is a broken environment, not an
+                # optional check. On the cross lane this IS the plugin proof.
+                $staticProblems += "dumpbin.exe not found under any VC\Tools\MSVC\*\bin\Hostx64\x64 -- the dependency and export checks could not run, so nothing about this plugin was verified beyond the file existing"
             }
             if ($staticProblems.Count -eq 0) {
                 log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' built: $($pluginDll.Name) (cross lane - deps resolve, gst_plugin_$($plugin.Name)_get_desc exported; load probe impossible on an x64 host)"
