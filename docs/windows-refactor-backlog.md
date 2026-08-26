@@ -941,6 +941,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   with exceptions disabled`: an explicit `CMAKE_CXX_FLAGS` replaces CMake's MSVC init flags
   (`/EHsc` among them) and, unlike TVM's own CMake, tvm-ffi as a root project does not add it
   back. `/EHsc` is now explicit on that configure. Proof: run 32.
+  **Run 32:** tvm-ffi compiles, Cython transpiles `core.pyx`, the module links — as a bare
+  `core.pyd`: FindPython reports no SOABI for CPython on Windows, so `python_add_library(...
+  WITH_SOABI)` appends nothing (amd64 produces the same name). That is a valid import name the
+  target interpreter loads; only my name check was over-strict (it demanded the target tag). It
+  now rejects a HOST-tagged name only; the PE machine check is the arch gate. Proof: run 33.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed

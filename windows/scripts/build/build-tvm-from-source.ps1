@@ -435,7 +435,11 @@ if ($tvmCross) {
         $corePyd = @(Get-ChildItem -Path $ffiPyBuild -Recurse -Filter 'core*.pyd' -File)
         if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $ffiPyBuild, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
         $wantExt = Get-PythonWheelTag
-        if ($corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- expected the target EXT_SUFFIX tag '$wantExt' (Initialize-PythonPlatformTag shim not in effect?)" }
+        # FindPython reports no SOABI for CPython on Windows, so WITH_SOABI yields
+        # a bare `core.pyd` (run 32; amd64 is the same) -- a valid import name
+        # that any interpreter loads. Only a HOST-tagged name is wrong; the PE
+        # machine check right below is the arch gate.
+        if ($corePyd[0].Name -match '\.cp\d+-win_(amd64|arm64)\.pyd$' -and $corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- a HOST EXT_SUFFIX tag, the target interpreter would never import it (expected '$wantExt' or a bare core.pyd)" }
         $tvmFfiLibs = @(Get-ChildItem -Path $ffiPyBuild -Recurse -File | Where-Object { $_.Name -in 'tvm_ffi.dll', 'tvm_ffi.lib' } | Group-Object Name | ForEach-Object { $_.Group | Select-Object -First 1 })
         if (-not ($tvmFfiLibs | Where-Object { $_.Name -eq 'tvm_ffi.dll' })) { throw "TVM cross: tvm_ffi.dll not produced by the standalone tvm-ffi build under $ffiPyBuild" }
         [void](Assert-DirectoryTargetArch -Path $corePyd[0].DirectoryName -Include @('core*.pyd') -MinCount 1 -Context 'tvm_ffi core module')
