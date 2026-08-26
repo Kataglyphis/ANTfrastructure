@@ -387,12 +387,22 @@ ensure_sccache_env() {
 # Prefers sccache (the 2026-08-26 decision) and falls back to ccache when
 # sccache is absent or its server will not answer. Returns non-zero when
 # neither is usable, so callers can build uncached rather than break.
+# CRITICAL: this function's STDOUT is its return value -- callers capture it
+# with $(...) and put the result straight into CC/CXX. Every helper it calls
+# must therefore be redirected to stderr, because info() writes to fd 1
+# (logging.sh:77) while warn() writes to fd 2.
+#
+# This bit for real on 2026-08-26: ensure_sccache_env's info() line leaked into
+# the substitution and GCC was configured with
+#   CC="[INFO] Using sccache with SCCACHE_DIR=... (cap 30G)sccache gcc"
+# which surfaced as the maximally unhelpful "configure: error: C compiler
+# cannot create executables". Keep the >&2 redirects.
 compiler_cache_launcher() {
-  if [ "${USE_SCCACHE:-1}" != "0" ] && ensure_sccache_env; then
+  if [ "${USE_SCCACHE:-1}" != "0" ] && ensure_sccache_env >&2; then
     printf '%s' sccache
     return 0
   fi
-  if ensure_ccache_env 2>/dev/null && command -v ccache >/dev/null 2>&1; then
+  if ensure_ccache_env >&2 2>/dev/null && command -v ccache >/dev/null 2>&1; then
     warn "falling back to ccache for this stage"
     printf '%s' ccache
     return 0
