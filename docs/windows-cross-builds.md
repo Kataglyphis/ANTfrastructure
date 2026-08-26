@@ -80,10 +80,15 @@ produce, and which gates keep it honest.
 > PE's import table. That walk's first run found 13 real unresolved imports — the OpenSSL runtime
 > DLLs nobody had installed (now staged from `C:\opt\openssl-arm64`), `vcruntime140_threads.dll`,
 > and six client-OS names Server Core lacks (`dsound`, `mf*`, `winspool.drv`; classified, not
-> counted). Two silent degradations remain open, watched but not blocking: GStreamer arm64 lacks
-> `webrtc`/`nice` and `gst-ptp-helper` (#128, a build-machine-compiler gap in the cross file), and
-> OpenCV arm64 ships **zero dispatched NEON kernels** (#129, its feature probe hands clang-cl
-> GCC-style flags). Backlog `docs/windows-builds.md`.
+> counted). Of the two silent degradations that walk surfaced, one is closed: OpenCV arm64 now
+> dispatches `NEON_DOTPROD NEON_FP16 NEON_BF16` (#129, run 22 of 2026-08-25 — three cache flags
+> plus a probe-guard patch, gated on a non-empty `Dispatched code generation:` line). The other,
+> GStreamer arm64 lacking `webrtc`/`nice` (#128), peeled in three layers: no build-machine compiler
+> in the cross file (native file, run 23), the build machine linking the target's CRT (`/vctoolsdir`
+> + `/winsdkdir`, run 25 — proven), and a meson 1.12.0 bug that kills any subproject configured
+> for both machines (`Summary section … already have key`, patched before `meson setup`,
+> proof pending run 26). `gst-ptp-helper` stays absent by design: the image's offline rustup
+> mirror carries the x64 `rust-std` only. Backlog `docs/windows-refactor-backlog.md`.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,
