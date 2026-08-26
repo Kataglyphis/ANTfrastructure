@@ -243,6 +243,19 @@ try {
     $mesonVer = & $mesonExe --version 2>&1 | Select-Object -First 1
     log "Meson version: $mesonVer"
 
+    # meson 1.12.0: summary() in a build-machine subproject collides with the
+    # host configure of the same subproject (glib -> libnice -> webrtc/nice
+    # gone; arm64 cross run 25, 2026-08-26). Located through the interpreter
+    # module itself so a relocated site-packages cannot silently skip it; the
+    # patch is a no-op on amd64 (no build-machine interpreters without a cross
+    # file) and throws on layout drift. See Invoke-MesonBuildSubprojectSummaryPatch.
+    $mesonInterp = (cmd.exe /c """$pyExe"" -c ""import mesonbuild.interpreter.interpreter as m; print(m.__file__)""" | Select-Object -First 1)
+    if ($mesonInterp) { $mesonInterp = "$mesonInterp".Trim() }
+    if (-not $mesonInterp -or -not (Test-Path $mesonInterp)) {
+        throw "mesonbuild.interpreter.interpreter is not importable from $pyExe (got '$mesonInterp') -- cannot apply the build-subproject summary fix"
+    }
+    [void](Invoke-MesonBuildSubprojectSummaryPatch -InterpreterPath $mesonInterp)
+
     Switch-BuildPhase '3. clang-cl toolchain + sccache'
     # ---- 3. set clang-cl as the compiler ----
     log 'Setting CC/CXX to clang-cl...'

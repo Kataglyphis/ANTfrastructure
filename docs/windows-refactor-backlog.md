@@ -616,6 +616,26 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   the image's OFFLINE dist mirror (`file:///…/rustup-dist/…`), which carries the x64 std only —
   `gst-ptp-helper` stays absent on arm64 until the base image preseeds the aarch64 `rust-std`
   (a base rebuild; owner's call).
+  **Measured on arm64 run 25 (2026-08-26):** `/vctoolsdir`+`/winsdkdir` work — every subproject
+  logs `C compiler for the build machine: clang-cl (clang-cl 22.1.8)` / `C linker … lld-link`, the
+  C and C++ sanity checks link x64, and glib's build-machine configure runs to its LAST statement.
+  There it dies on a **meson bug**, not a toolchain one: `glib-2.86.3/meson.build:2777:0:
+  Exception: Summary section 'Build environment' already have key 'host cpu'`. meson 1.12.0 (and
+  `master`, checked the same day) keys `Interpreter.summary` by subproject **name** and shares it
+  across nested interpreters, while `Interpreter.subprojects` is keyed `[machine][name]` — so the
+  build-machine run of a subproject that the host already configured re-adds the same summary keys
+  and throws; `_print_summary` would then `KeyError` on a build-only name anyway. Meson marks
+  glib(build) `buildable: NO`, the same by-name libnice lookup fails as in run 23, and webrtc/nice
+  take gst-plugins-bad down (`gst-libs/gst/webrtc/nice/meson.build:16:14: ERROR: Subproject
+  "subprojects/libnice" required but not found`). **Fix:** `Invoke-MesonBuildSubprojectSummaryPatch`
+  (Patches module) rewrites the pip-installed `mesonbuild/interpreter/interpreter.py` before
+  `meson setup` — `summary_impl` returns early when `self.build.for_machine is MachineChoice.BUILD`
+  (set only by `Build.copy_for_build_machine()` for `native: true` subprojects; summaries are
+  cosmetic; non-cross lanes never create such an interpreter, so amd64 is untouched). Located via
+  `python -c "import mesonbuild.interpreter.interpreter as m; print(m.__file__)"`, idempotent by
+  marker, throws on layout drift (load-bearing on the cross lane). Fixture test
+  `SourceBuild.MesonSummaryPatch.Tests.ps1` pins the 1.12.0 layout + indentation; upstream draft
+  `out/upstream-issue-meson-summary-build-subproject.md` (not filed — owner's call). Proof: run 26.
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**

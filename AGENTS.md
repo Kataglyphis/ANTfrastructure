@@ -1032,7 +1032,7 @@ base ─┬─ onnxruntime ───────┐
 
 ## Common Failure Modes
 
-Symptom → cause → fix for 34 failures seen live on both lanes, keyed by the
+Symptom → cause → fix for 35 failures seen live on both lanes, keyed by the
 error message you actually get:
 [`docs/failure-modes.md`](docs/failure-modes.md). Grouped as Linux/cross-lane ·
 the Windows layer store (hcsshim) · container networking (CNI) · buildkitd and
