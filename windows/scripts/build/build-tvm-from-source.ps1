@@ -514,6 +514,12 @@ if ($tvmCross) {
         if ($stagedWheels.Count -ne 2) { throw "TVM cross: expected 2 assembled wheels staged into $wheelStore, got $($stagedWheels.Count)" }
         foreach ($w in $stagedWheels) { Assert-WheelTargetArch -WheelPath $w }
         Write-Host "TVM cross: staged $($stagedWheels.Count) runtime python wheel(s) for $wantExt into ${wheelStore}: $(($stagedWheels | ForEach-Object { Split-Path $_ -Leaf }) -join ', ')"
+        # Close the phase opened above (2026-08-26 audit): this was the only
+        # Switch-BuildPhase in the file and it never completed, so the phase
+        # printed its header but never its duration and left
+        # $script:CurrentBuildPhase set for the rest of the media-tvm session --
+        # the next script's first phase would have inherited it.
+        Complete-CurrentBuildPhase
     }
     $absentComponent = if ($tvmCrossPython) { 'tvm_compiler.dll (and with it every tvm codegen / relax build path)' } else { 'tvm_compiler.dll and the tvm python package' }
     [void](Write-AbsentOnCrossMarker -Root $tvmInstallDir -Component $absentComponent -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(

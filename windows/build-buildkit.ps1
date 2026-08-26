@@ -312,9 +312,15 @@ $archArgs = @{
 # that low cannot detect losing an entire component -- the gate would inspect the
 # handful of files that survived and report green, which is precisely the
 # "verified nothing, said PASS" failure Dockerfile.smoke-gate exists to document.
-# Raised for the cross lane only, so the amd64 solve's build-args are unchanged.
+# BOTH LANES since 2026-08-26 (audit): raising it for the cross lane only left
+# amd64 running at the Dockerfile default of 10 against a MEASURED 1134 -- that
+# lane could have lost 99% of the bundle and still cleared its floor, which is
+# the same defect this comment describes, on the lane that ships. The numbers
+# below are the measured counts minus ~15% headroom (amd64 run 8: 1134; arm64
+# run 36: 992, import walk 606). Raise them when the bundle grows; never lower
+# one to make a red run green -- a drop IS the finding.
+$archArgs['ARCH_GATE_MIN_INSPECTED'] = if ($TargetArch -eq 'amd64') { '950' } else { '840' }
 if ($TargetArch -ne 'amd64') {
-    $archArgs['ARCH_GATE_MIN_INSPECTED'] = '100'
     # #117: the merge fans the HOST CPython's site-packages into the image, and
     # the gate now scans that tree too. On the cross lane every .pyd in it is
     # the x64 build interpreter's -- legitimately host-arch, but it must show up

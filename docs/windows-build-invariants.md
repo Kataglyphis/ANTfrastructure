@@ -504,6 +504,12 @@ the global default.
 
 ### The classic lane's fallback needs a RUNNING dockerd
 
+> **HISTORICAL since 2026-08-26** — this no longer guards a usable lane; `build.ps1`
+> was retired (rationale: [windows-build-lanes.md](windows-build-lanes.md)). Kept
+> because the *host* observation below is still true and still bites `docker.exe`
+> publish/inspect work: a Stevedore host can have `docker` on PATH with the daemon
+> Stopped. Heading unchanged on purpose — it is a live anchor target.
+
 **The classic docker lane's "always-working fallback" needs a RUNNING
 daemon, and on a Stevedore host that daemon is the `stevedore` SERVICE.**
 `stevedore` IS dockerd (`...\Stevedore\dockerd.exe --run-service

@@ -21,7 +21,7 @@ Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://gith
 
 - 🔥 `linux/Dockerfile.torch`: Final Linux wrapper image — Torch/Python layer + runtime scripts + entrypoint.
 - 🌐 `linux/webserver/Dockerfile`: Minimal nginx static webserver (config at `linux/webserver/nginx.conf`).
-- 🪟 `windows/Dockerfile.base`, `windows/Dockerfile.nvidia` (optional GPU layer), `windows/Dockerfile.toolchain`, `windows/Dockerfile.media-merge-builder` (+ per-branch media builders), `windows/Dockerfile` (driven by `windows/build.ps1`): Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
+- 🪟 `windows/Dockerfile.base`, `windows/Dockerfile.nvidia` (optional GPU layer), `windows/Dockerfile.toolchain`, `windows/Dockerfile.media-merge-builder` (+ per-branch media builders), `windows/Dockerfile` (driven by `windows/build-buildkit.ps1`): Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
 ## Linux Image Chain
 

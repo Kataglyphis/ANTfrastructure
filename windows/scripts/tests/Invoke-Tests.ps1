@@ -125,5 +125,19 @@ if ($skippedSuites.Count -gt 0) {
     Write-Host '  Install it with: Install-Module Pester -MinimumVersion 5.7 -Scope CurrentUser -Force -SkipPublisherCheck' -ForegroundColor Red
 }
 
+# MINIMUM COUNT (2026-08-26 audit): the checks above fire on failures and on
+# skipped suites, but a run that DISCOVERED nothing -- a glob that matched no
+# file, a wrong working directory, a suite dir that moved -- printed
+# "0 tests | 0 passed | 0 failed" and exited 0. That is the same
+# "verified nothing, reported PASS" shape MIN_PASSED guards in the smoke gate
+# and -MinInspected in the arch gate. The floor is measured (702 on
+# 2026-08-26) with headroom for a suite that is legitimately retired; raise it
+# when the suite count grows, and never lower it to make a red run green.
+$minTests = 690
+if ($total -lt $minTests) {
+    Write-Host "  FLOOR: only $total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
+    exit 1
+}
+
 if ($failed.Count -gt 0 -or $pesterFailures -gt 0 -or $skippedSuites.Count -gt 0) { exit 1 }
 exit 0

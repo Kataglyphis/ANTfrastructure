@@ -57,7 +57,7 @@ The toolchain is **containerd + BuildKit + nerdctl** with process isolation.
 after Stevedore and a reboot, the scriptable half of bring-up is one elevated
 run of `windows\scripts\host\setup-new-host.ps1` (`-ReportOnly` first).
 
-Lane mechanics, the classic-docker fallback and every host gate:
+Lane mechanics, why the classic-docker lane is retired, and every host gate:
 [Windows Build Lanes](docs/windows-build-lanes.md).
 
 ### Clone the repository
@@ -167,21 +167,12 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > published with `--platform windows/arm64`. Current status, coverage and gates:
 > [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 >
-> **Runtime parity reached 2026-08-26.** The bundle carries the same media and
-> inference surface as `:winamd64` — GStreamer with an identical plugin set
-> (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`, plus
-> `gst-ptp-helper`), ONNX Runtime + GenAI with DirectML, OpenCV 5, FFmpeg +
-> PyAV, LiteRT, and the TVM/IREE **runtimes together with their python
-> packages** (6 wheels, same count as amd64). Gates: `992 binaries inspected,
-> 0 violations`, `606 files walked, 0 unresolved imports`, `12 wheels, 0
-> unresolved requirement edges`.
-> **Still amd64-only:** CUDA/cuDNN/TensorRT (no Windows-on-ARM CUDA), the TVM
-> and IREE **compilers** (they need an LLVM cross-built for aarch64-windows),
-> LiteRT-LM, and the torch app stage (`uv sync` must execute the target
-> interpreter). Each is named in the bundle by an `ABSENT-ON-ARM64.txt` marker.
-> **And the honest caveat:** nothing the arm64 lane produces has ever been
-> *executed* — its wheels ship staged, not installed, and every verdict is a
-> static check (PE machine type, import resolution, exported symbols).
+> **Runtime parity reached 2026-08-26**, with one honest caveat: nothing the arm64
+> lane produces has ever been *executed*. Its wheels ship staged, not installed, and
+> every verdict is a static check (PE machine type, import resolution, exported
+> symbols). What is in the bundle, what stays amd64-only (CUDA, the TVM/IREE
+> compilers, LiteRT-LM, the torch app stage) and the measured gate numbers are on
+> the page above, which owns this topic.
 
 ## Engineering principles
 

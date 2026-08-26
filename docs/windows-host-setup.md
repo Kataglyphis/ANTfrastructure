@@ -672,12 +672,15 @@ OS-build skew).
 
 ---
 
-## Classic-lane fallback
+## Classic-lane fallback — there is none any more
 
-If the BK lane is unavailable, `windows\build.ps1 -Gpu` (docker-classic,
-Hyper-V run+commit) works with only Phases A, B and C4/C5 — see
-[Windows Build Image](windows-builds.md) § Build Commands and § Stevedore
-Setup Fixes.
+`windows\build.ps1` (docker-classic, Hyper-V run+commit) was **retired on
+2026-08-26** and refuses to run without `-AcceptRetiredLane`. It cannot build
+`base`, and its `merge` target cannot pass the smoke gate — the reasoning is in
+[Windows build lanes](windows-build-lanes.md) § The classic lane was retired.
+
+So if the BK lane is unavailable, the fix is to repair the BK host setup (Phases
+A–C here, then § Phase R for a Stevedore reinstall), **not** to switch drivers.
 
 ## Phase R — Recovering after a Stevedore reinstall / repair [admin]
 
@@ -746,13 +749,16 @@ digest from `windows/Dockerfile.base`'s `ARG WINDOWS_BASE_DIGEST`:
 > host `ctr`/`nerdctl` reached containerd **non-elevated** — the "containerd's
 > pipe is admin-only" rule is not absolute here; check rather than assume.
 
-### R3. Do not reach for the classic lane as a fallback
+### R3. There is no classic lane to reach for — it was retired 2026-08-26
 
-It cannot bootstrap a chain any more: twelve `windows/Dockerfile.*` use
-BuildKit-only `RUN --mount=type=bind` for their script closures and
-`build.ps1` never sets `DOCKER_BUILDKIT`, so the legacy builder dies at
-`Dockerfile.base` step 8 with *"the --mount option requires BuildKit"*. Use
-`build-buildkit.ps1`.
+`build.ps1` now refuses to start without `-AcceptRetiredLane`, and the refusal is
+not conservatism. It cannot bootstrap a chain: twelve `windows/Dockerfile.*` use
+BuildKit-only `RUN --mount=type=bind` for their script closures and `build.ps1`
+never sets `DOCKER_BUILDKIT`, so the legacy builder dies at `Dockerfile.base` step 8
+with *"the --mount option requires BuildKit"*. And even given a chain, its `merge`
+target skips the OpenCV GStreamer plugin, so the smoke gate that ends the run
+hard-fails on `cv2.CAP_GSTREAMER`. Use `build-buildkit.ps1`; full reasoning in
+[windows-build-lanes.md](windows-build-lanes.md) § The classic lane was retired.
 
 ### R4. When surgical repair is the wrong tool: reset the stores
 

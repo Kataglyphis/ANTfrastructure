@@ -14,7 +14,38 @@ still meet them.
 |---|---|---|---|
 | BuildKit + containerd | `windows\build-buildkit.ps1` → `buildctl` | non-admin | **Preferred since 2026-08** |
 | nerdctl | `nerdctl --namespace buildkit` | **admin** | Run / inspect / administer; can also build |
-| docker classic | `windows\build.ps1` | non-admin | **No longer a bootstrap fallback** — cannot build `base` |
+| docker classic | `windows\build.ps1` | non-admin | **RETIRED 2026-08-26** — refuses to run without `-AcceptRetiredLane`; cannot build `base`, and its `merge` target cannot pass the smoke gate |
+
+## The classic lane was retired on 2026-08-26
+
+`windows/build.ps1` throws on start unless `-AcceptRetiredLane` is passed. This was
+an owner decision on the pre-rebuild audit's finding, and it rests on two
+independent structural defects — neither is a bug someone forgot to fix:
+
+1. **It cannot build `base`.** Twelve Windows Dockerfiles use BuildKit-only
+   `RUN --mount` (measured 2026-08-21). This is why the lane stopped being a
+   bootstrap fallback.
+2. **Its `merge` target cannot pass the smoke gate.**
+   `Dockerfile.media-merge-builder` splits at `FROM merge-fanin AS merge` (~line 208,
+   the target this driver pins) and `FROM merge-fanin AS built` (~line 229, the
+   BuildKit target). `build-opencv-gstreamer-plugin.ps1`, `write-bundle-manifest.ps1`,
+   `stage-target-python-deps.ps1` and `verify-target-arch.ps1` all run *after* the
+   split, so `merge` gets none of them — and all four use `RUN --mount=type=bind`,
+   which docker classic cannot execute anyway. The chain then ends in
+   `smoke-test-container.ps1`, which hard-asserts
+   `cv2.videoio_registry.hasBackend(CAP_GSTREAMER)` (~line 1527) — a backend only the
+   plugin from (2) provides. The lane rejects its own output, after a multi-hour chain.
+
+**Reviving it is not a target-pin change.** Those four RUNs would have to be
+redesigned as COPY stages, and a fifth (`base`) would need the same for every
+BuildKit-only mount in the chain. A partial attempt already existed and was never
+wired: `windows/scripts/build/build-merge-all.ps1`, added 2026-08-21, referenced by
+no Dockerfile, driver or doc — deleted with this retirement rather than left as a
+half-fix for a lane nobody can run.
+
+`-AcceptRetiredLane` exists for salvage on a host that already holds a chain
+(reading logs, poking a preserved container, the cheap torch/final tail). It
+suppresses the refusal, not the defects.
 
 What lives elsewhere:
 
@@ -97,8 +128,11 @@ Consequences: every stage can be a plain build — the heavy compiles run as
 `*-built` Dockerfile targets (toolchain-builder `built`, media-builder
 `media-<branch>-built`, merge-builder `built`) with real per-stage layer
 caching, and the run+commit machinery is unnecessary on this lane. The classic
-lane is untouched: `build.ps1` pins `--target builder` / `--target merge`, so
-docker never executes those targets.
+lane was untouched by this split: `build.ps1` pinned `--target builder-classic` /
+`--target merge`, so docker never executed the `*-built` targets. Since the classic
+lane's retirement (2026-08-26) those classic-only targets are unreachable — they are
+still in the Dockerfiles, now unpoliced, and slated for deletion on the next paid
+rebuild (backlog #134).
 
 ### Getting it going — Stevedore + BuildKit host setup (from scratch)
 

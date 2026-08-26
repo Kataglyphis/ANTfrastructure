@@ -8,9 +8,28 @@
 
 <#
 .SYNOPSIS
-    Builds the Windows container image chain: base -> [nvidia] -> toolchain -> media -> torch -> final.
+    RETIRED 2026-08-26. The docker-classic driver for the Windows image chain.
+    Use windows/build-buildkit.ps1 instead -- this lane cannot pass its own smoke gate.
 
 .DESCRIPTION
+    *** RETIRED LANE -- refuses to run without -AcceptRetiredLane. ***
+
+    This driver is kept for reference and salvage, not for building. It pins
+    `--target merge` on Dockerfile.media-merge-builder, which stops short of the
+    OpenCV GStreamer plugin, the bundle manifest, the target python deps and the
+    arch gate -- all four live in the BuildKit-only `built` target and use
+    BuildKit-only bind mounts. The chain then ends in a smoke gate that hard-asserts
+    cv2.CAP_GSTREAMER, which only that plugin provides, so the lane rejects its own
+    output after several hours. It also cannot build `base` (same reason). The
+    retirement gate near the top of the script carries the full reasoning.
+
+    Preferred driver: windows/build-buildkit.ps1 -- same Dockerfiles, same
+    versions.env, same tags, same -Stages/-MediaBranches/-Gpu surface, plus process
+    isolation and real per-stage layer caching. Host setup and the lane comparison
+    live in docs/windows-build-lanes.md.
+
+    Everything below describes the lane as it was when it still built.
+
     Single driver for the staged Windows build (see docs/windows-builds.md).
     Reads canonical versions from linux/scripts/01-core/versions.env and passes
     them as --build-arg so the Dockerfile ARG defaults can never drift from the
@@ -31,6 +50,12 @@
       - GPU lane (-Gpu):    Dockerfile.nvidia builds FROM windows-base and is
                             tagged windows-sdk (requires the TensorRT zip in
                             windows/downloads/, see versions.env).
+
+.PARAMETER AcceptRetiredLane
+    Acknowledge that this lane is retired and run anyway. Intended for salvage on a
+    host that already holds a chain (reading logs, poking a preserved container, the
+    torch/final tail). It suppresses the refusal, not the four defects -- nothing
+    produced with it should be shipped.
 
 .PARAMETER Gpu
     Build the NVIDIA GPU layer (CUDA + cuDNN + TensorRT) as the sdk stage.
@@ -137,6 +162,12 @@ param(
     # ValidateSet must be literal; keep in lockstep with Get-MediaBranchSpecs -Name values
     [ValidateSet('media-core', 'media-litert', 'media-tvm')]
     [string[]]$MediaBranches = @('media-core', 'media-litert', 'media-tvm'),
+    # RETIRED LANE (2026-08-26). This driver refuses to run without this switch --
+    # see the throw below for the four structural reasons and what to use instead.
+    # The switch exists for salvage work (reading logs, poking a preserved
+    # container, the torch/final tail on a host that already has the images), NOT
+    # to make the lane produce a shippable image again. It cannot.
+    [switch]$AcceptRetiredLane,
     [string]$Docker = '',
     [string]$FinalTag = '',
     [int]$MediaMemoryGb = 0,
@@ -219,6 +250,44 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 # #8): ~550 lines of throwing preflight sat between push and try, so any
 # preflight throw left the caller's CWD changed. Preflight uses absolute
 # paths; only the docker-build context upload needs the cwd.
+
+# RETIRED 2026-08-26 -- this gate fires FIRST, before every other check, because
+# the cheapest possible failure for a retired lane is one that costs no minutes at
+# all. Retirement was an owner decision taken on the pre-rebuild audit's finding
+# that this lane cannot pass its own smoke gate; the four reasons are structural,
+# not bugs someone forgot to fix:
+#
+#   1. windows/Dockerfile.media-merge-builder splits at `FROM merge-fanin AS merge`
+#      (the target THIS driver pins, line ~208) and `FROM merge-fanin AS built`
+#      (the BuildKit target, line ~229). build-opencv-gstreamer-plugin.ps1,
+#      write-bundle-manifest.ps1, stage-target-python-deps.ps1 and
+#      verify-target-arch.ps1 all run AFTER the split, so `merge` gets none of them.
+#   2. Those four RUNs use `RUN --mount=type=bind`, which is BuildKit-only. docker
+#      classic cannot execute them even if the target pin moved -- closing the gap
+#      means redesigning them as COPY stages, not moving a line.
+#   3. The chain then ends in smoke-test-container.ps1, which hard-asserts
+#      cv2.videoio_registry.hasBackend(CAP_GSTREAMER) (~line 1527) -- a backend only
+#      the plugin from (1) provides. So the lane's own gate rejects the lane's own
+#      output, after a multi-hour chain.
+#   4. It already could not build `base` (same BuildKit-only --mount), so it has not
+#      been a bootstrap fallback for some time.
+#
+# Use windows/build-buildkit.ps1: same Dockerfiles, same versions.env, same tags,
+# same -Stages/-MediaBranches/-Gpu surface, plus process isolation and real layer
+# caching. docs/windows-build-lanes.md has the host setup.
+if (-not $AcceptRetiredLane) {
+    throw (
+        'windows/build.ps1 (docker-classic lane) was RETIRED on 2026-08-26 and cannot produce a ' +
+        'shippable image: its `merge` target skips the OpenCV GStreamer plugin, the bundle manifest, ' +
+        'the target python deps and the arch gate (they live in the BuildKit-only `built` target and ' +
+        'use BuildKit-only bind mounts), so the smoke gate that ends the chain hard-fails on ' +
+        'cv2.CAP_GSTREAMER after several hours. Use: .\windows\build-buildkit.ps1 ' +
+        '(same -Stages/-MediaBranches/-Gpu surface; see docs/windows-build-lanes.md). ' +
+        'Pass -AcceptRetiredLane only for salvage work on an existing local chain -- it suppresses ' +
+        'this message, not any of the four defects.')
+}
+Write-Warning ('windows/build.ps1 is a RETIRED lane and cannot pass its own smoke gate (-AcceptRetiredLane ' +
+               'given). Nothing it produces should be shipped. Preferred driver: windows/build-buildkit.ps1.')
 
 # Cross-parameter validation (audit 2026-08-21 #3/#7) — fail in seconds,
 # not hours:
