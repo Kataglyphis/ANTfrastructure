@@ -256,22 +256,58 @@ shipped behaviour. Nothing else in the chain reads it.
 
 ## 5. SCC1 — the ccache/sccache hybrid
 
-### 5.1 The division of labour, and why it is not negotiable
+### 5.1 The division of labour — REVERSED 2026-08-26
 
-ccache cannot wrap `rustc`, `nvcc` device compiles, or `hipcc`; sccache can.
-sccache's C/C++ path always preprocesses and silently declines to cache on
-unsupported flags, where ccache's direct/depend mode hashes through an include
-manifest. So the split is: **ccache owns C/C++, sccache owns rustc + the GPU
-compilers, and neither is a replacement for the other.** A full switch to
-sccache was rejected by the owner on 2026-08-17; this section is about *where
-sccache is worth turning on*, not about replacing ccache.
+> **This section previously read "ccache owns C/C++, sccache owns rustc + the
+> GPU compilers … a full switch to sccache was rejected by the owner on
+> 2026-08-17". The owner reversed that on 2026-08-26 and the C/C++ switch is
+> implemented and built (5d94a37, c42091e, d5bafe8).** The old text is kept
+> nowhere but in git history, because a design doc that states a superseded
+> decision reads authoritative and gets followed.
+
+**sccache is the C/C++ compiler cache. ccache is the automatic fallback.**
+There is no per-language split any more: every C/C++ launcher resolves at
+runtime through `compiler_cache_launcher()` (`01-core/common.sh`) — sccache if
+its server answers, else ccache, else build uncached.
+
+Two things from the old rationale survive, and one does not:
+
+- **Still true:** ccache cannot wrap `rustc`, `nvcc` or `hipcc`; sccache can.
+- **Still true, and now the operating constraint:** sccache HARD-FAILS on a
+  compiler it cannot identify (`bail!("Compiler not supported")`), where ccache
+  simply execs it. That is why ccache stays installed and mounted, and why
+  `probe-sccache.sh` exists — it asserts, per compiler SHAPE this chain feeds a
+  launcher, that the compile survives AND that cache activity was recorded.
+- **No longer true:** "sccache's C/C++ path always preprocesses". It does when
+  preprocessor-cache mode is off, which is the DEFAULT — so the base image
+  turns it on explicitly. `/etc/sccache/config.toml` (baked in
+  `Dockerfile.base`, reached via `SCCACHE_CONF`) sets
+  `use_preprocessor_cache_mode = true` plus `file_stat_matches` /
+  `use_ctime_for_stat`. Those knobs have NO environment-variable path in
+  sccache, which is why the config file exists at all. `ignore_time_macros`
+  stays **false** on purpose: ccache's sloppiness list included it, but that
+  trades correctness for hit rate and this chain ships compilers.
+
+Two knobs have no counterpart and must not be looked for: there is no
+`sccache -M` (the cap is `SCCACHE_CACHE_SIZE`), and `CCACHE_COMPILERCHECK=content`
+needs none — sccache does not key on mtime+size the way ccache does by default,
+so the invalidation that setting prevents does not arise.
+
+**Rust and nvcc are NOT part of this.** `RUSTC_WRAPPER` is still hard-cleared in
+`build-gstreamer-monorepo.sh`, earned by the sccache server dying mid-compile in
+three separate media rounds, each killing a green gstreamer build at 99%; see
+§ 5.4 for the bar to clear before removing it. nvcc is untouched, and the
+Windows lane records that released sccache breaks the build around it.
 
 ### 5.2 Does the current setup double-cache or fight ccache? No — verified
 
 The precedence is explicit and correct:
 
-- `setup_ccache` (`01-core/compiler-cache.sh:77-120`) sets
-  `CMAKE_C/CXX_COMPILER_LAUNCHER=ccache` unconditionally.
+- `setup_ccache` (`01-core/compiler-cache.sh`) sets
+  `CMAKE_C/CXX_COMPILER_LAUNCHER` to **sccache** when `USE_SCCACHE` is not
+  disabled, sccache is on `PATH`, and its server answers `--show-stats`;
+  otherwise it falls back to **ccache** and says why. (Before 2026-08-26 it set
+  ccache unconditionally.)
 - `setup_sccache` (`:124-157`) sets those two launchers **only if they are
   empty** (`:147`), and otherwise touches only `RUSTC_WRAPPER`.
 - `media_common_init` (`03-media/core/common.sh:134-149`) always runs

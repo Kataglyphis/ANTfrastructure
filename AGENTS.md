@@ -720,17 +720,38 @@ The rules an agent must never violate:
    so the multi-hour layers survive between runs. Restart buildkitd only
    BETWEEN runs (`systemctl --user restart buildkit`), never while a build
    solves. Do not delete this file.
-3. **The compiler-cache HYBRID is doctrine, keep it wired**: ccache for C/C++
-   (GCC via `--ccache` in `gcc.sh`'s three `build-gcc.sh` call sites, LLVM via
-   cmake launchers + the ccache/sccache cache mounts on BOTH heavy RUNs in
-   `Dockerfile.toolchain`), sccache for Rust + the GPU
-   compilers (`ENABLE_SCCACHE_RUST`, `ENABLE_SCCACHE_CUDA` — gated until
-   validated; ccache can wrap neither rustc nor nvcc/hipcc, while sccache's
-   plain-C/C++ path loses to ccache's direct mode). Never "simplify" to a single tool; see
-   docs/linux-build-basics.md § Why the HYBRID. The failure mode
-   this replaced (mount without wiring, wiring without mount) was invisible —
-   builds stayed green, just slow. When touching these paths, verify with
-   `grep -c ccache <stage>.log` on the next build.
+3. **sccache is the C/C++ compiler cache; ccache is its FALLBACK. Keep both
+   wired.** Owner directive 2026-08-26 (c42091e), REVERSING the earlier "full
+   switch rejected (2026-08-17)". This is no longer a per-language split:
+   every C/C++ launcher resolves at RUNTIME through `compiler_cache_launcher()`
+   (`01-core/common.sh`), which returns sccache when its server answers, else
+   ccache, else fails so the caller builds uncached. Call sites: build-gcc.sh
+   (CC/CXX prefix), build-clang.sh and llvm-cross.sh (`CMAKE_*_COMPILER_LAUNCHER`),
+   compiler-cache.sh, cmake-cache-linker.sh, the onnxruntime build lib, and
+   build-app-wheelhouse.sh (IREE).
+   - Do NOT hardcode `ccache` as a launcher anywhere. `cmake-cache-linker.sh` is
+     SHARED; a literal there silently overrides the decision for every consumer.
+   - `--ccache` on build-gcc.sh/build-clang.sh is a historical FLAG NAME. It
+     means "use the compiler cache", not "use ccache". llvm.sh passes it.
+   - Both mounts stay on every heavy RUN (ccache AND sccache), because the
+     fallback needs somewhere to persist.
+   - **Rust stays UNCACHED** (`RUSTC_WRAPPER=""`, build-gstreamer-monorepo.sh):
+     earned by the sccache SERVER dying mid-compile in three media rounds,
+     killing green builds at 99%. nvcc likewise untouched — the Windows lane
+     records that released sccache breaks around it. "sccache everywhere" is
+     about C/C++ only.
+   - sccache-specific knobs live in `/etc/sccache/config.toml` (baked in
+     `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
+     and preprocessor/direct mode have NO env-var path in sccache. The size cap
+     is `SCCACHE_CACHE_SIZE`; there is no `sccache -M` to call.
+   The failure mode this replaced (mount without wiring, wiring without mount)
+   was invisible — builds stayed green, just slow. Before committing a
+   multi-hour run to a change here, run
+   `bash linux/scripts/02-toolchain/probe-sccache.sh` INSIDE the compiler image:
+   it costs seconds and asserts, per compiler shape this chain actually feeds a
+   launcher, both that the compile survives AND that sccache recorded cache
+   activity. sccache HARD-FAILS on a compiler it cannot identify where ccache
+   would simply exec it, so "it compiles" is not the whole question.
 4. **Never edit a running orchestrator's main script** (`build-cross-chain.sh`
    while a chain runs): bash reads it incrementally by byte offset; an edit can
    corrupt the in-flight process. Sourced library files are safe to edit for

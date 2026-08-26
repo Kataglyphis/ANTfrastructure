@@ -67,7 +67,7 @@ The chain caches at every level it can; know the map before "optimizing":
 | Cross-run stage cache | `--cache-to type=local` exports under `~/.cache/kata-buildcache/<stage-slug>` | Written by every chain stage; the between-stage disk guard LRU-prunes but PROTECTS slugs of stages still to run. |
 | Other hosts | inline registry cache (`--cache-to type=inline` on push) | Embedded in the image config — immune to ghcr's oversized-blob 400s. |
 | Rust | sccache — wiring landed 2026-08-08, GATED off (`ENABLE_SCCACHE_RUST=1` on the media stage) | `RUSTC_WRAPPER` was defensively cleared for cross builds in May 2026 (undocumented); activate for a controlled validation build, then flip the default. Full multi-tier design (ccache `remote_storage` for C/C++ + shared backend with the Windows lane's sccache) is specced in the backlog. |
-| C/C++ objects | ccache: GCC via `build-gcc.sh --ccache` (+ `CCACHE_BASEDIR`/`SLOPPINESS`), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh` | All three RUN groups mount `/var/cache/ccache`. Wired end-to-end since 2026-08-08 — before that the GCC mount saw zero traffic and LLVM wrote into the image layer. Host GCC bootstrap stages 2/3 are structurally uncacheable (GCC 16 has no `bootstrap-ccache` build config; `GCC_HOST_BOOTSTRAP=0` trades the self-check for full cacheability). |
+| C/C++ objects | **sccache** since 2026-08-26 (owner decision, reversing the 2026-08-17 "full switch rejected"), with **ccache as the automatic fallback** — every launcher resolves through `compiler_cache_launcher()` in `01-core/common.sh`: GCC via `build-gcc.sh --ccache` (the flag name is historical; it means "use the compiler cache"), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh`. Relativization is launcher-specific: `CCACHE_BASEDIR` for ccache, `SCCACHE_BASEDIRS` for sccache (which is why `SCCACHE_LINUX_VERSION` is pinned at 0.17.0 — the distro 0.13.0 lacks it). sccache's sloppiness/direct-mode knobs have no env path and live in `/etc/sccache/config.toml`, baked into `Dockerfile.base`. Both cache mounts are present on every heavy RUN, because the fallback needs somewhere to persist. |
 | Package managers | apt / cargo / uv / pip cache mounts | `sharing=locked` throughout. |
 | Sources | GCC tarball shared across host+targets (`GCC_TARBALL_CACHE_DIR`); LLVM source under `/var/cache/llvm-src`; ONNX-web + ffmpeg-sdks version-keyed mounts | The remaining media clones (opencv/gstreamer/ffmpeg/onnx) re-fetch on a cache bust — see the backlog item before adding mounts: `clone_or_update_repo` needs corrupt-dir hardening first, or a killed run poisons the shared source cache. |
 | GC budget | `~/.config/buildkit/buildkitd.toml` pins `gckeepstorage` | Without it, buildkit's DEFAULT GC decided whether the multi-hour layers survive between runs. Restart buildkitd BETWEEN runs only (`systemctl --user restart buildkit`) — never while a build solves. |
@@ -92,12 +92,25 @@ blind spots; neither replaces the other:
   2026-08-08 unexplained base cache-miss), and a remote tier survives even
   cache-mount loss and extends across hosts.
 
-### Why the HYBRID (ccache for C/C++, sccache for Rust) beats all-sccache
+### Why sccache for C/C++, with ccache kept as the fallback (SUPERSEDES the old HYBRID)
 
-- **ccache wins C/C++ on GCC**: direct/depend mode hashes via an include
-  manifest without full preprocessing → higher hit rates and faster hits;
-  broader flag tolerance. sccache's C/C++ path always preprocesses and
-  silently declines to cache on unsupported flags.
+> This section used to argue that ccache should own C/C++ and sccache only Rust.
+> The owner reversed that on 2026-08-26 and the C/C++ switch shipped. The
+> arguments below are updated rather than deleted, because two of the three
+> still hold and one is now simply false.
+
+- **The old "ccache wins C/C++" argument was conditional, and the condition is
+  now met.** It rested on sccache's C/C++ path "always preprocessing". That is
+  true only with preprocessor-cache mode OFF, which is sccache's default — so
+  the base image turns it ON explicitly in `/etc/sccache/config.toml`
+  (`SCCACHE_CONF`), sccache's analogue of ccache's direct mode. Those knobs have
+  no environment-variable path, which is the whole reason that file exists.
+- **The real operating difference is failure behaviour, not hit rate.** sccache
+  HARD-FAILS on a compiler it cannot identify; ccache just execs it. That is why
+  ccache stays installed and mounted as the fallback, and why
+  `linux/scripts/02-toolchain/probe-sccache.sh` exists: run it inside the
+  compiler image before committing hours to a change, and it asserts per
+  compiler shape that the compile survives AND that cache activity was recorded.
 - **sccache is irreplaceable for Rust AND the GPU compilers**: ccache cannot
   wrap rustc, and nvcc's device compiles (plus hipcc for ROCm) are equally out
   of its reach — sccache handles all three first-class. With
