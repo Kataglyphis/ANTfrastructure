@@ -177,6 +177,57 @@ function Invoke-MesonBuildSubprojectSummaryPatch {
     return $true
 }
 
+# meson-log.txt for the monorepo is 400k-800k lines (every subproject's cached
+# probe sources are inlined) and streaming all of it through `log` after a failed
+# `meson setup` took 30-60 min per attempt on arm64 runs 23-25 -- longer than the
+# configure itself, and the diagnosis was always in a handful of lines. Keep
+# what carries a diagnosis: every ERROR / Exception / "required but not found" /
+# "conflicts with" / "buildable: NO" / "Cannot run cross" line with its 1-based
+# line number, the $BlockContext lines after a "Sanity check compile stderr:" or
+# "Sanity check compiler command line:" header (the block runs 23 and 24 hid
+# in), and the last $TailLines lines. Deliberately NOT `error:`/`WARNING`: every
+# feature probe that legitimately fails leaves `error:` lines, and they would
+# fill the cap before the real failure. The full file stays at its path inside
+# the preserved failed container; the caller's retry classification still scans
+# every line. Pure function (fixture test SourceBuild.MesonLogExcerpt.Tests.ps1).
+function Select-MesonLogExcerpt {
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$Lines = @(),
+        [int]$TailLines = 300,
+        [int]$MaxDiagnostics = 400,
+        [int]$BlockContext = 12
+    )
+    $diagPattern  = 'ERROR|Exception|required but not found|conflicts with|is buildable: NO|Cannot run cross'
+    $blockPattern = 'Sanity check compile stderr:|Sanity check compiler command line:'
+    $picked = New-Object 'System.Collections.Generic.List[string]'
+    $total = @($Lines).Count
+    $keepUntil = -1
+    $diagCount = 0
+    # -cmatch on purpose: -match is case-insensitive and `ERROR` would catch every
+    # probe's `error:` line (the noise this excerpt exists to drop).
+    for ($i = 0; $i -lt $total; $i++) {
+        $line = $Lines[$i]
+        $isBlock = $line -cmatch $blockPattern
+        $isDiag  = $isBlock -or ($line -cmatch $diagPattern)
+        if ($isBlock) { $keepUntil = $i + $BlockContext }
+        if ($isDiag) { $diagCount++ }
+        if (($isDiag -or $i -le $keepUntil) -and $picked.Count -lt $MaxDiagnostics) {
+            $picked.Add(('{0,7}: {1}' -f ($i + 1), $line))
+        }
+    }
+    $tailCount = [Math]::Min($TailLines, $total)
+    # Explicit empty array: `$x = if (...) { } else { @() }` hands back $null.
+    [string[]]$tail = @()
+    if ($tailCount -gt 0) { $tail = @($Lines[($total - $tailCount)..($total - 1)]) }
+    [pscustomobject]@{
+        Total           = $total
+        DiagnosticTotal = $diagCount
+        Diagnostics     = [string[]]@($picked.ToArray())
+        Tail            = $tail
+    }
+}
+
 # Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
 # beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
 # then moves the single top-level source dir onto $Target. Returns $true when a
@@ -1569,8 +1620,13 @@ cpp_link_args = [$buildLinkArgs]
         $mesonLogLines = @()
         if (Test-Path $mesonLog) {
             $mesonLogLines = @(Get-Content $mesonLog)
-            log "---- meson-log.txt (attempt $attempt, exit $mesonExitCode) ----"
-            $mesonLogLines | ForEach-Object { if ($_) { log $_ } }
+            # Excerpt, not the whole file: see Select-MesonLogExcerpt. The
+            # retry classification below still scans every line.
+            $excerpt = Select-MesonLogExcerpt -Lines $mesonLogLines
+            log "---- meson-log.txt excerpt (attempt $attempt, exit $mesonExitCode): $($excerpt.Total) lines; $($excerpt.DiagnosticTotal) diagnostic line(s), showing $($excerpt.Diagnostics.Count) with line numbers + the last $($excerpt.Tail.Count); full file: $mesonLog ----"
+            $excerpt.Diagnostics | ForEach-Object { log $_ }
+            log "---- meson-log.txt tail (last $($excerpt.Tail.Count) lines) ----"
+            $excerpt.Tail | ForEach-Object { if ($_) { log $_ } }
             log '---- end meson-log.txt ----'
         } else {
             log "meson-log.txt not found at $mesonLog"

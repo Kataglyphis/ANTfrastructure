@@ -639,6 +639,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   marker, throws on layout drift (load-bearing on the cross lane). Fixture test
   `SourceBuild.MesonSummaryPatch.Tests.ps1` pins the 1.12.0 layout + indentation; upstream draft
   `out/upstream-issue-meson-summary-build-subproject.md` (not filed — owner's call). Proof: run 26.
+  Side fix from the same run: a failed `meson setup` used to stream the whole `meson-log.txt`
+  through `log` — 425k lines on runs 23/24, 800k+ on run 25, i.e. 30–60 min per failed attempt,
+  longer than the configure itself. `Select-MesonLogExcerpt` (gst script, fixture-tested) now
+  logs the diagnostic lines with numbers (ERROR/Exception/"required but not found"/"conflicts
+  with"/"buildable: NO"), the block after each "Sanity check" header, and the last 300 lines;
+  the full file stays in the preserved container and the retry classification still scans it all.
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**
