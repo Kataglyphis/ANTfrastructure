@@ -414,6 +414,18 @@ ensure_sccache_env() {
 # cannot create executables". Keep the >&2 redirects.
 compiler_cache_launcher() {
   if [ "${USE_SCCACHE:-1}" != "0" ] && ensure_sccache_env >&2; then
+    # Prefer the guarded launcher when it is mounted: it runs sccache exactly
+    # as before, but survives sccache's OWN fatal errors (CMake TryCompile
+    # deletes its scratch dir, sccache then spawns with a cwd that no longer
+    # exists -> ENOENT -> build break). See sccache-launcher.sh for the proof.
+    # Bare `sccache` remains the answer where the helper is not mounted, so
+    # nothing regresses in stages that do not carry 01-core.
+    for _scl in "${_COMMON_SH_DIR}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
+      if [ -x "${_scl}" ]; then
+        printf '%s' "${_scl}"
+        return 0
+      fi
+    done
     printf '%s' sccache
     return 0
   fi
