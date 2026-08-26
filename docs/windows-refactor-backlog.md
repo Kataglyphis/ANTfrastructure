@@ -644,7 +644,15 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   longer than the configure itself. `Select-MesonLogExcerpt` (gst script, fixture-tested) now
   logs the diagnostic lines with numbers (ERROR/Exception/"required but not found"/"conflicts
   with"/"buildable: NO"), the block after each "Sanity check" header, and the last 300 lines;
-  the full file stays in the preserved container and the retry classification still scans it all.
+  the full file stays in the preserved container and the retry classification still scans it all
+  for the hard error. Second side fix, same run: the transient-vs-deterministic classifier
+  matched `SSLError` case-insensitively and without word boundaries, and the SDK constant
+  `BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE` (urlmon.h, inlined from a probe source into
+  meson-log.txt) turned run 25's deterministic failure into a "transient" retry — full wrap
+  re-download, identical failure, second dump, ~1 h for nothing. `Get-MesonSetupFailureClass`
+  (gst script, fixture-tested against exactly that line and the two measured real network
+  shapes) now scans meson's stdout plus only the log's last 400 lines for network signatures,
+  with `\b` around the exception names; a fatal download error always ends the log.
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**

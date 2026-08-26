@@ -228,6 +228,38 @@ function Select-MesonLogExcerpt {
     }
 }
 
+# Classifies a failed `meson setup` for the retry decision (the two costumes are
+# explained at the call site): HardError = `meson.build:LINE:COL: ERROR/Exception`
+# lines anywhere; NetworkError = download/DNS/TLS signatures. The network scan
+# covers meson's stdout plus only the LAST $NetworkTail lines of meson-log.txt,
+# with word boundaries on the exception names -- meson-log.txt inlines every
+# probe's source, and on arm64 run 25 the unbounded case-insensitive `SSLError`
+# matched the SDK constant `BINDINFO_OPTIONS_IGNORE_SSLERRORS_ONCE` (urlmon.h)
+# inside one of them, turning a deterministic failure into a "transient" retry:
+# a full wrap re-download, the identical failure, a second log dump -- an hour
+# for nothing. A real download failure is fatal to configure, so its text sits
+# at the end of the log. Pure function (SourceBuild.MesonFailureClass.Tests.ps1).
+function Get-MesonSetupFailureClass {
+    param(
+        [AllowEmptyCollection()]
+        [string[]]$Output = @(),
+        [AllowEmptyCollection()]
+        [string[]]$LogLines = @(),
+        [int]$NetworkTail = 400
+    )
+    $all = @($Output) + @($LogLines)
+    [string[]]$hard = @($all -match 'meson\.build:\d+:\d+: (ERROR|Exception)')
+    $logTotal = @($LogLines).Count
+    $tailCount = [Math]::Min($NetworkTail, $logTotal)
+    [string[]]$scan = @($Output)
+    if ($tailCount -gt 0) { $scan += @($LogLines[($logTotal - $tailCount)..($logTotal - 1)]) }
+    [string[]]$network = @($scan -match 'HTTP Error \d+|Failed to download|\bURLError\b|\bSSLError\b|urlopen error|\btimed out\b|connection timeout|actively refused|Temporary failure in name resolution')
+    [pscustomobject]@{
+        HardError    = $hard
+        NetworkError = $network
+    }
+}
+
 # Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
 # beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
 # then moves the single top-level source dir onto $Target. Returns $true when a
@@ -1637,7 +1669,8 @@ cpp_link_args = [$buildLinkArgs]
         # attempt-2 cleanup + full wrap re-download (~hours when the wrapdb fetches
         # hit SSL retry backoff) is pure waste. Retry ONLY transient failures;
         # short-circuit on a hard `meson.build:LINE:COL: ERROR/Exception`.
-        $hardError = @($mesonOut + $mesonLogLines) -match 'meson\.build:\d+:\d+: (ERROR|Exception)'
+        $failureClass = Get-MesonSetupFailureClass -Output @($mesonOut) -LogLines $mesonLogLines
+        $hardError = $failureClass.HardError
         # ... EXCEPT that a failed DOWNLOAD wears exactly that costume. Several
         # subprojects fetch a binary during configure (win-pkgconfig,
         # win-flex-bison, ...), and when the fetch fails meson reports it as
@@ -1650,7 +1683,8 @@ cpp_link_args = [$buildLinkArgs]
         # mirror. Short-circuiting there cost a whole chain run for an outage on
         # someone else's server, so a network-shaped failure is retried even when
         # it arrives in meson.build:LINE:COL clothing.
-        $networkError = @($mesonOut + $mesonLogLines) -match 'HTTP Error \d+|Failed to download|URLError|SSLError|urlopen error|timed out|connection timeout|actively refused|Temporary failure in name resolution'
+        # (Signatures and their scope live in Get-MesonSetupFailureClass.)
+        $networkError = $failureClass.NetworkError
         if ($hardError -and -not $networkError) {
             log "meson setup hit a deterministic configure error; NOT retrying (a retry repeats it identically after a full wrap re-download): $($hardError[-1].Trim())"
             break
