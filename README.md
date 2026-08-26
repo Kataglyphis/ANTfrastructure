@@ -167,12 +167,19 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > published with `--platform windows/arm64`. Current status, coverage and gates:
 > [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 >
-> **Runtime parity reached 2026-08-26**, with one honest caveat: nothing the arm64
-> lane produces has ever been *executed*. Its wheels ship staged, not installed, and
-> every verdict is a static check (PE machine type, import resolution, exported
-> symbols). What is in the bundle, what stays amd64-only (CUDA, the TVM/IREE
-> compilers, LiteRT-LM, the torch app stage) and the measured gate numbers are on
-> the page above, which owns this topic.
+> **Runtime parity was measured on 2026-08-26** (arm64 run 36), with one standing
+> caveat: nothing the arm64 lane produces has ever been *executed*. Its wheels ship
+> staged, not installed, and every verdict is a static check (PE machine type,
+> import resolution, exported symbols). What is in the bundle, what stays
+> amd64-only (CUDA, the TVM/IREE compilers, LiteRT-LM, the torch app stage) and the
+> measured gate numbers are on the page above, which owns this topic.
+>
+> **That measurement is older than this tree.** Since it was taken, the Windows
+> lane picked up a module-closure refactor, a forced clang-cl bump to 23.1.0
+> (upstream reshaped the artifact, so the previous pin can no longer be installed)
+> and a per-TU codegen workaround it required. No completed build of the current
+> tree exists yet, so treat the numbers as the last known good, not as a statement
+> about HEAD.
 
 ## Engineering principles
 

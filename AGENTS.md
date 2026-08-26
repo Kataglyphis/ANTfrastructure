@@ -398,6 +398,16 @@ When adding here:
   consumers resolve it ContainerHub-first with a vendored fallback. The resolver
   itself is a copied template:
   [`shared/windows/templates/Resolve-BuildModule.ps1`](shared/windows/templates/README.md).
+- **Exporting a function is TWO edits when a build script calls it directly.**
+  `Export-ModuleMember` in the owning module is only half; if the script reaches it
+  through `WindowsSourceBuild.Common`'s re-export list, it must be added there too.
+  Module-INTERNAL use never needs either, so the omission is invisible on a dev box
+  and surfaces as a bare `CommandNotFound` inside a container, typically well into a
+  compile stage — it has cost two incidents (#113, and #134 at two hours in).
+  `Modules.ScriptCallClosure.Tests.ps1` now proves, in a fresh pwsh importing only
+  what each script imports, that every module function a build script CALLS
+  resolves. `Modules.ReExport.Tests.ps1` checks the opposite direction (every LISTED
+  name exists); you need both, and neither replaces the other.
 - **The two-consumer test.** If a second consumer needs it, it belongs here — not
   vendored twice. That test is what moved `WindowsTesting.Common` (test-exe
   discovery, ctest driving, scoped ASAN_OPTIONS, ASan-runtime discovery) and
@@ -901,7 +911,7 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
 - Use `nerdctl` first on this host. `buildctl`/`ctr` commonly fail with permission errors.
 - Keep both the QEMU/binfmt multi-platform lane and the cross-build lane working.
 - `build-cross-compiler.sh` builds one `linux/amd64` compiler image with cross toolchains for all arches. Not a multi-arch compiler manifest.
-- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`). Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
+- Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.0), not the Ubuntu distro clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
 - **Supply-chain discipline (audit 2026-08-08).** Every network fetch is verified: trust anchors (CUDA keyring, ROCm key), toolchains (Vulkan SDK, Android cmdline-tools, Flutter, rustup/uv installers) and header tarballs carry sha256 pins in versions.env; `download_verified_file` is the default fetch, `download_file` needs a reason. Python **build executors** (meson/ninja/cython/pybind11/setuptools/wheel/auditwheel/patchelf — anything that runs code at build time or rewrites shipped binaries) are pinned via the `PY_*_VERSION` family; bump them TOGETHER, deliberately, with a real build — never let an install site float back to `-U pkg`. Never `curl | sh`; clone at tags with `--depth 1 --branch` and hard-fail on a missing tag rather than falling back to a branch.
 - Preserve optional runtime payloads and LLVM normalization in `Dockerfile.package`. Do not drop `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
 
@@ -1087,7 +1097,7 @@ base ─┬─ onnxruntime ───────┐
   the linter WITHOUT `-FailOnAnalyzer` while `main` is not branch-protected, so
   this gate is advisory (backlog #59).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
-- Confirm on all arches: `clang --version` reports `22.1.8`; `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
+- Confirm on all arches: `clang --version` reports clang 23.1.0 (`LLVM_RELEASE`); `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
 
 ## Common Failure Modes

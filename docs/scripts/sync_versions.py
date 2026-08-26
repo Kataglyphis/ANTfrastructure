@@ -702,8 +702,17 @@ DOC_LITERAL_ALLOWLIST = (
     # the PR100017 / upstream-fix narrative referencing the era it happened
     re.compile(r"war story|historisch|previously|the old ", re.IGNORECASE),
     # deliberate source-built-vs-DISTRO contrast ("... not Ubuntu `clang X`"):
-    # the Ubuntu version is descriptive, not a pin. Line-level allowlist —
-    # the pinned 22.1.x mentions on other lines stay covered.
+    # the Ubuntu version is descriptive, not a pin.
+    #
+    # CAUTION, measured 2026-08-26: this allowlist is LINE-level, and the line it
+    # was written for carried BOTH the descriptive Ubuntu version AND the real
+    # pin ("must keep source-built `clang 22.1.8` (not Ubuntu `clang 22.1.2`)").
+    # So the exemption swallowed the pin too, and AGENTS.md still claimed 22.1.8
+    # after LLVM_RELEASE went to 23.1.0 -- while this gate reported green. The
+    # note that used to sit here ("the pinned mentions on other lines stay
+    # covered") was true and beside the point. That line has since been rewritten
+    # to name the KEY instead of a literal, which is the durable fix: a doc that
+    # says `LLVM_RELEASE` cannot go stale. Prefer that over adding exemptions.
     re.compile(r"not Ubuntu"),
 )
 
@@ -712,7 +721,17 @@ def check_doc_literals(versions: dict[str, str]) -> int:
     gcc = versions.get("GCC_VERSION", "")
     llvm = versions.get("LLVM_RELEASE", "")
     gcc_rx = re.compile(r"/opt/gcc-(\d+\.\d+\.\d+)")
+    # Two shapes, because ADJACENCY was the other blind spot (2026-08-26):
+    #   1. "clang 22.1.8" / "clang-22.1.8"  -- the original.
+    #   2. "`clang --version` reports `22.1.8`" -- AGENTS.md's verification
+    #      checklist, where prose sits between the tool name and the version.
+    #      Shape 1 never matched it, so it survived the LLVM_RELEASE bump with
+    #      this gate green.
+    # Shape 2 is deliberately narrow (it requires the words in that order within
+    # one line) rather than "any 2x.y.z near the word clang", which would fire on
+    # every changelog line that mentions a past version.
     llvm_rx = re.compile(r"[Cc]lang[- ]?(2\d\.\d+\.\d+)")
+    llvm_reports_rx = re.compile(r"[Cc]lang[^`\n]{0,40}--version[^`\n]{0,40}reports?[^0-9\n]{0,20}(2\d\.\d+\.\d+)")
     bad = 0
     for rel in DOC_LITERAL_FILES:
         path = REPO_ROOT / rel
@@ -725,10 +744,11 @@ def check_doc_literals(versions: dict[str, str]) -> int:
                 if gcc and m.group(1) != gcc:
                     print(f"{rel}:{lineno}: stale gcc literal /opt/gcc-{m.group(1)} (pin: {gcc})")
                     bad = 1
-            for m in llvm_rx.finditer(line):
-                if llvm and m.group(1) != llvm:
-                    print(f"{rel}:{lineno}: stale clang literal {m.group(1)} (pin: {llvm})")
-                    bad = 1
+            for rx in (llvm_rx, llvm_reports_rx):
+                for m in rx.finditer(line):
+                    if llvm and m.group(1) != llvm:
+                        print(f"{rel}:{lineno}: stale clang literal {m.group(1)} (pin: {llvm})")
+                        bad = 1
     if not bad:
         print("Doc version literals match versions.env pins.")
     return bad
