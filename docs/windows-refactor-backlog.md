@@ -880,6 +880,36 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   (protected-root rule); a poisoned layer is fixed by re-running its RUN with the guard in place
   (the module edit re-keys it). **Proven on the amd64 regression run 4:** the same
   `media-core-onnx` RUN finalized in 5:32 with the guard active at 4.7 s.
+- **#133 — the three amd64-only components, re-verified 2026-08-26 (owner asked "are you sure?").**
+  M–L · ★ (opened 2026-08-26, not started — owner's call). What the arm64 bundle names ABSENT is
+  three things, and only one of them is a real upstream wall:
+  (1) **LiteRT-LM** — the wall is the *active Bazel path* (no windows-arm64 config in `.bazelrc`,
+  the x86_64-only `libGemmaModelConstraintProvider` prebuilt in the default Windows graph; upstream
+  `v0.16.1` ships prebuilts for `windows_x86_64`, `linux_arm64`, `macos_arm64`, `android_arm64` —
+  no `windows_arm64`, verified against the tree). It is NOT "not fixable downstream": upstream's
+  own **CMake path** (root `CMakeLists.txt` + `CMakePresets.json` + `cmake/`, present at `v0.16.1`)
+  carries `cmake/patches/stubs/gemma_model_constraint_provider.cc`, a no-op provider that prints
+  "Gemma Constraint Provider is STUBBED/DISABLED" — i.e. upstream itself builds without the
+  prebuilt at the price of grammar-constrained decoding. A cross-build of `litert_lm_main` for
+  arm64 through that path (clang-cl, our LiteRT core from #115, WebGPU/dawn prebuilts absent →
+  CPU only) is a **work item**, unproven, with the repo's retired CMake builder
+  (`build-litert-lm-from-source.ps1`) as the starting point.
+  (2) **TVM compiler + `tvm` python** — needs an LLVM built FOR aarch64-windows (cross-building
+  LLVM with clang-cl is feasible, ~hours) plus a host `llvm-config`; the python package is pure
+  python + DLLs, so a `win_arm64` wheel can be assembled on the host exactly like the ORT/av
+  wheels (#120) — the ABSENT marker's "needs the target interpreter" is imprecise: it needs the
+  target's *link inputs*, which the aarch64 CPython provides. Not attempted; PyPI `apache-tvm`
+  0.26.0 has `win_amd64` only (verified).
+  (3) **IREE compiler + `iree.compiler` / `iree.runtime` python** — the compiler is LLVM/MLIR for
+  the target (same cross-LLVM cost as (2), no upstream precedent for win_arm64: PyPI
+  `iree-base-compiler`/`iree-base-runtime` 3.11.0 ship `win_amd64` only, verified); the *runtime*
+  python package is a pybind extension against the runtime we already cross-build, so it is the
+  #120 pattern again. Not attempted.
+  Everything else in the bundle is at parity with amd64 (GStreamer plugin-DLL sets 200 = 200).
+  The permanent walls stay: CUDA/cuDNN/TensorRT/NVENC (no Windows-on-ARM CUDA), the torch app
+  stage (`uv sync` must run the target interpreter), and — orthogonal to all of this — no arm64
+  binary has ever been *executed*; the `windows-11-arm` runner is the only path to that proof.
+
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
   (#59 branch protection was DECLINED, #31 was not).
