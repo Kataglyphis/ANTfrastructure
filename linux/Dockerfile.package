@@ -179,6 +179,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     VULKAN_SDK=/opt/vulkan/active \
     VK_LAYER_PATH=/opt/vulkan/active/etc/vulkan/explicit_layer.d \
     CCACHE_DIR=/workspace/.ccache \
+    SCCACHE_DIR=/workspace/.sccache \
     # Media paths: extends linux/scripts/03-media/runtime/media-env.sh with
     # additional runtime paths (vulkan, gcc, python, cargo) for the full image.
     # RP6: /root/.local/bin dropped — final image is uid-1001 (kataglyphis),

@@ -36,8 +36,12 @@ append_cmake_cache_linker_args() {
 
   if command -v ccache >/dev/null 2>&1 && ! _flag_disabled "${USE_CCACHE:-true}"; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-      _accla_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
-      _accla_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+      # 2026-08-26: sccache when usable, ccache otherwise. Hardcoding ccache
+      # here would have quietly overridden the switch for every consumer of
+      # this shared helper.
+      _accla_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
+      _accla_args+=("-DCMAKE_C_COMPILER_LAUNCHER=${_accla_launcher}")
+      _accla_args+=("-DCMAKE_CXX_COMPILER_LAUNCHER=${_accla_launcher}")
       _accla_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")
     else
       _accla_args+=("-DCMAKE_ASM_COMPILER_LAUNCHER=")

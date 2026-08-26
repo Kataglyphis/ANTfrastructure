@@ -1059,7 +1059,7 @@ build_iree_wheels() {
         # value is ONE shell word.)
         local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
         if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
-            native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=ccache;-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+            native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher:-ccache};-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher:-ccache}"
         fi
 
         rm -rf "${target_build}"
