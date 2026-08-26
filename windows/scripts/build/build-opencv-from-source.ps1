@@ -319,7 +319,31 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # switched the pass off wholesale while /Ob0 merely reshuffled which TU
 # overflowed. Switch-heavy code is the common thread in every offender found
 # (protobuf descriptors, the TIFF decoder, G-API graph serialisation).
-$jumpTableFlag = if ($ocvCross) { '-mllvm -aarch64-enable-compress-jump-tables=false' } else { '' }
+#
+# EXPERIMENT, 2026-08-26 (#135), and the reason is that THESE TWO CEILINGS ARE IN
+# TENSION. Disabling compression makes every jump table ~4x larger (4-byte
+# entries instead of 1), which grows exactly the switch-heavy dispatch functions
+# whose pc-relative branches now overflow under LLVM 23 with
+# `error: fixup value out of range`. The flag was added for LLVM 22, where the
+# compressed path was the broken one.
+#
+# So: run the cross lane ONCE with compression left ON (this line empty) and read
+# which diagnostic appears.
+#   * NEITHER error  -> LLVM 23 fixed the compressed path; the flag was obsolete
+#                       AND was causing the new overflow. Delete it and this note.
+#   * `value evaluated as <N> is out of range` returns -> the compressed path is
+#                       still broken; restore the flag below and take the other
+#                       route (/O1 across the *.dispatch.cpp family, ~28 TUs --
+#                       heavier, because on aarch64 the BASELINE path in those
+#                       files is NEON).
+#   * `fixup value out of range` persists unchanged -> table size was not the
+#                       lever; restore the flag and look elsewhere.
+# The per-TU /O1 block further down stays either way: it demonstrably fixed the
+# first three offenders (verified: "per-TU flags on 3 ... (floor 3)" in the run
+# that then failed on a FOURTH TU, median_blur.dispatch.cpp).
+# To restore, put this back:
+#   $jumpTableFlag = if ($ocvCross) { '-mllvm -aarch64-enable-compress-jump-tables=false' } else { '' }
+$jumpTableFlag = ''
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
