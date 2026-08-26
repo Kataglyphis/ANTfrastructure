@@ -85,7 +85,11 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
     PATH=/root/.local/bin:$PATH \
     CCACHE_DIR=/var/cache/ccache \
     CCACHE_MAXSIZE=30G \
-    SCCACHE_DIR=/var/cache/sccache
+    SCCACHE_DIR=/var/cache/sccache \
+    SCCACHE_CACHE_SIZE=30G \
+    SCCACHE_CONF=/etc/sccache/config.toml \
+    SCCACHE_IDLE_TIMEOUT=0 \
+    SCCACHE_ERROR_LOG=/tmp/sccache.log
 
 # The cache dirs must be writable at RUNTIME for non-root users too — the
 # BuildKit cache mounts only make them writable during image builds. Without
@@ -95,6 +99,35 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
 # 1777 = world-writable with sticky bit, same trust model as /tmp.
 RUN mkdir -p /var/cache/ccache /var/cache/sccache \
     && chmod 1777 /var/cache/ccache /var/cache/sccache
+
+# sccache tuning that has NO environment-variable path (2026-08-26, the
+# ccache->sccache switch). ccache took CCACHE_SLOPPINESS and the direct-mode
+# knobs from the environment; sccache reads them ONLY from a config file
+# (SCCACHE_CONF), so the switch needs this artifact or those settings quietly
+# do not exist. Baked into base so every descendant stage inherits it.
+#
+#   preprocessor_cache_mode  = sccache's analogue of ccache's DIRECT mode. Off
+#     by default; without it every C/C++ TU pays a full preprocess even on a
+#     hit, which is most of what ccache's speed advantage was here.
+#   file_stat_matches/use_ctime_for_stat = the honest half of what
+#     CCACHE_SLOPPINESS bought: trust size+mtime for INCLUDE files rather than
+#     re-hashing each one, without ignoring ctime entirely.
+#   ignore_time_macros = false deliberately: __DATE__/__TIME__ in a TU must
+#     still bust the entry. ccache's sloppiness list here included time_macros,
+#     but that trades correctness for hit rate and this chain ships compilers.
+RUN mkdir -p /etc/sccache \
+    && printf '%s\n' \
+        '[cache.disk]' \
+        'dir = "/var/cache/sccache"' \
+        'size = 32212254720' \
+        '' \
+        '[cache.disk.preprocessor_cache_mode]' \
+        'use_preprocessor_cache_mode = true' \
+        'file_stat_matches = true' \
+        'use_ctime_for_stat = true' \
+        'ignore_time_macros = false' \
+        'hash_working_directory = false' \
+        > /etc/sccache/config.toml
 
 WORKDIR /workspace
 

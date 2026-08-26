@@ -810,6 +810,17 @@ REPORT: list[tuple[str, Callable]] = [
 ]
 
 MANUAL = [
+    # sccache for the LINUX lane. Pinned deliberately at the version that has
+    # SCCACHE_BASEDIRS (>=0.14.0); the distro package is older and lacks it.
+    # MANUAL rather than SAFE because a bump must be paired with fresh SHA256s
+    # for both targets, which the sweep cannot compute.
+    "SCCACHE_LINUX_VERSION",
+    "SCCACHE_LINUX_X86_64_SHA256",
+    "SCCACHE_LINUX_AARCH64_SHA256",
+    # Slaved to LiteRT's vendored protobuf commit (versions.env carries the
+    # bump:hold and the re-derivation recipe), so it has no upstream feed of
+    # its own. Listed here so the registry reports zero UNCLASSIFIED keys.
+    "LITERT_TFLITE_PROTOC_VERSION",
     # No reliable programmatic source, platform choices, or deliberate pins:
     # TensorRT (EULA portal), MIGraphX (rides the ROCm release), Android
     # cmdline-tools/NDK (repository XML is a moving matrix), host/base platform
