@@ -464,11 +464,20 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   **This was the second half of a fix only half-made on 2026-08-11**, which raised `maxUsedSpace`
   after GC evicted "the base/sdk/toolchain spine between driver runs → every run re-solved the
   prefix" — verbatim this symptom — and left the reserve alone.
-  **Still owed:** the deployment. `apply-buildkitd-gcpolicy.ps1` needs admin and restarts buildkitd,
-  so it must run in a no-build window, and **its effect must be verified, not its exit code**
-  (`buildctl debug workers -v | Select-String reservedSpace` must read 150GB) — that script has
-  reported success while leaving the old value before (2026-08-08). Until it is deployed, every
-  Windows run still pays the cold prefix.
+  **DEPLOYED AND PROVEN 2026-08-26 23:10 (owner ran the elevated apply).** Verified by effect, not
+  exit code, as that script has reported success while leaving the old value before (2026-08-08):
+  the live daemon reports `Reserved space: 161.0612736GB` on rules 1 and 2 with
+  `Maximum used space` 697.93/751.62GB. **The proof is the next build**, not the config dump — the
+  very first launch afterwards reported `#6 #7 #8 #9 #10 CACHED`, the first time `#9` had cached in
+  six attempts that day. Base went from ~4–7 min of VS install plus ~7 min of export to under a
+  minute. Six attempts on 2026-08-26 would have cost ~2.5 h in cold prefix alone.
+  My "this run probably will not benefit yet, the records were already evicted" caveat was wrong:
+  the previous run's records were still present, and the raised ceiling simply stopped GC from
+  taking them.
+  **One doc trap this exposed, now fixed:** `buildctl debug workers -v` prints GB while the toml
+  takes GiB, and uses different labels (`Reserved space:` vs `reservedSpace`). A 150 GiB pin shows
+  as `161.0612736GB`, so the verification instruction "must read 150GB" — which I had just written
+  into two pages — would make a correct deploy look failed.
 
 - **#137 — sccache: the local patch and the source build may both be droppable (owner's PRs were
   accepted upstream).** S–M · ★★ (opened 2026-08-26, owner's news)
@@ -515,8 +524,9 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 > The elevated between-runs window (buildkitd step-log env restore, GC-budget
 > deploy = #34, poisoned probe-chain prune, diagnostic tag cleanup) and the dufs
 > SYSTEM-service migration were APPLIED by the owner 2026-08-13 — see the archive
-> addendum. Sanity-check the GC deploy with `buildctl debug workers -v`
-> (reservedSpace must read 150GB).
+> addendum. Sanity-check the GC deploy with `buildctl debug workers -v` — the
+> output says `Reserved space: 161.0612736GB` for a healthy 150 GiB pin, NOT
+> "150GB": the toml takes GiB and buildctl prints GB, and the labels differ too.
 
 - **UPSTREAM, consolidated 2026-08-17 (was scattered across #99''s body and two
   Open-items entries):**

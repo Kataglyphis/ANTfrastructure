@@ -462,8 +462,18 @@ Full story: [Windows Build Image](windows-builds.md) § BuildKit/containerd
 lane, "Store GC" bullet. Verify:
 
 ```pwsh
-& "$env:ProgramFiles\Stevedore\bin\buildctl.exe" debug workers -v | Select-String 'reservedSpace|maxUsedSpace|minFreeSpace'
-# must show reservedSpace=150GB tiers, NOT the computed defaults (maxUsedSpace 100GB / minFreeSpace 187GB)
+& "$env:ProgramFiles\Stevedore\bin\buildctl.exe" debug workers -v | Select-String 'Reserved space|Maximum used|Minimum free'
+# WATCH THE UNITS AND THE LABELS -- both differ from the toml, and both have
+# already fooled a reader (2026-08-26):
+#   * the toml takes GiB, buildctl prints GB. reservedSpace = "150GB" in the file
+#     shows up as `Reserved space: 161.0612736GB`. Grepping for "150GB" finds
+#     NOTHING on a perfectly deployed policy.
+#   * the keys are `reservedSpace`/`maxUsedSpace` in the toml but
+#     `Reserved space:`/`Maximum used space:` in the output -- a grep for the
+#     toml spelling matches only the tier-0 `Filters:` line.
+# Expected (2026-08-26): rules 1 and 2 both at Reserved space 161.06GB, Maximum
+# used space 697.93GB and 751.62GB. What FAILURE looks like: the computed
+# defaults, maxUsedSpace ~100GB / minFreeSpace ~187GB, i.e. no policy loaded.
 ```
 
 ### C4. Windows Defender exclusions — LOAD-BEARING, not hygiene
