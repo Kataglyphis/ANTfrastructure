@@ -95,10 +95,27 @@ setup_ccache() {
   # Create cache directory if it doesn't exist
   mkdir -p "${CCACHE_DIR}" 2>/dev/null || true
 
-  # For CMake-based builds, use the compiler launcher (preferred)
-  # This avoids double-wrapping issues when CC/CXX already contain ccache
-  export CMAKE_C_COMPILER_LAUNCHER="ccache"
-  export CMAKE_CXX_COMPILER_LAUNCHER="ccache"
+  # For CMake-based builds, use the compiler LAUNCHER (preferred).
+  # This avoids double-wrapping issues when CC/CXX already contain a cache.
+  #
+  # 2026-08-26 (ccache->sccache switch): pick sccache when it is present AND
+  # its server answers, else stay on ccache. The server check is not ceremony:
+  # sccache is a client/daemon pair and a dead server is a HARD compile
+  # failure, not a miss -- this repo has recorded that exact death killing
+  # media builds at 99%.
+  _cc_launcher="ccache"
+  if ! _flag_disabled "${USE_SCCACHE}" && command -v sccache >/dev/null 2>&1; then
+    export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
+    export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
+    sccache --start-server >/dev/null 2>&1 || true
+    if sccache --show-stats >/dev/null 2>&1; then
+      _cc_launcher="sccache"
+    else
+      _cc_warn "sccache present but its server does not answer -- using ccache for C/C++"
+    fi
+  fi
+  export CMAKE_C_COMPILER_LAUNCHER="${_cc_launcher}"
+  export CMAKE_CXX_COMPILER_LAUNCHER="${_cc_launcher}"
 
   # NOTE: We intentionally do NOT set CC="ccache gcc" here.
   # Setting CC/CXX to "ccache <compiler>" causes CMake to detect "ccache"
@@ -108,15 +125,23 @@ setup_ccache() {
   # For non-CMake builds (autoconf, make), users should use ccache symlinks
   # or set CC/CXX manually.
 
-  _cc_info "ccache enabled: CCACHE_DIR=${CCACHE_DIR}, MAXSIZE=${CCACHE_MAXSIZE}"
+  _cc_info "compiler cache enabled: launcher=${_cc_launcher}, CCACHE_DIR=${CCACHE_DIR}, MAXSIZE=${CCACHE_MAXSIZE}"
   _cc_info "CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}"
 
   # Apply the max-size limit to the on-disk cache. Without this, ccache
   # uses its compiled-in default (~5G), not the CCACHE_MAXSIZE env var.
+  # sccache has NO equivalent command: its cap comes from SCCACHE_CACHE_SIZE
+  # plus the config file baked into Dockerfile.base, which is exactly why that
+  # ENV must not be forgotten -- there is nothing here that could set it.
   ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || true
 
-  # Print cache stats if available
-  ccache --show-stats 2>/dev/null | head -5 || true
+  # Print cache stats. A zero-hit report is the cheapest early warning that
+  # caching silently stopped working after this switch.
+  if [ "${_cc_launcher}" = "sccache" ]; then
+    sccache --show-stats 2>/dev/null | head -12 || true
+  else
+    ccache --show-stats 2>/dev/null | head -5 || true
+  fi
 }
 
 # Setup sccache for Rust and C/C++ compilation

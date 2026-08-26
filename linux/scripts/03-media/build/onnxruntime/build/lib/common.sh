@@ -512,12 +512,14 @@ append_onnx_ccache_build_args() {
 
   if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
+      # 2026-08-26: resolve the launcher instead of hardcoding ccache.
+      _ort_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
       build_args_ref+=(
         --cmake_extra_defines
-        CMAKE_C_COMPILER_LAUNCHER=ccache
-        CMAKE_CXX_COMPILER_LAUNCHER=ccache
+        "CMAKE_C_COMPILER_LAUNCHER=${_ort_launcher}"
+        "CMAKE_CXX_COMPILER_LAUNCHER=${_ort_launcher}"
       )
-      info "Using ccache for faster compilation (via cmake_extra_defines)"
+      info "Using ${_ort_launcher} for faster compilation (via cmake_extra_defines)"
     else
       info "ccache already configured via environment (CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER})"
     fi

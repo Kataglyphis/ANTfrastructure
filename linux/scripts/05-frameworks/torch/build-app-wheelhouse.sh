@@ -138,7 +138,7 @@ install_build_dependencies() {
         # build_iree_wheels/build_torch_wheel already wire the ccache launcher
         # behind `command -v ccache`. This omission was the sole reason those
         # multi-hour cross builds never cache-hit (amd64-native path already had it).
-        install_host_packages git ninja-build cmake pkg-config unzip rsync ccache
+        install_host_packages git ninja-build cmake pkg-config unzip rsync ccache sccache
         install_host_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev
         if ! install_target_packages libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev; then
             warn "Some riscv64 target build dependencies are unavailable; continuing with the staged sysroot"
@@ -161,7 +161,7 @@ install_build_dependencies() {
     fi
 
     apt-get install -y --no-install-recommends \
-        git ninja-build cmake pkg-config unzip rsync ccache \
+        git ninja-build cmake pkg-config unzip rsync ccache sccache \
         libopenblas-dev liblapack-dev zlib1g-dev libjpeg-dev libpng-dev libtiff-dev libwebp-dev
 }
 
@@ -172,7 +172,7 @@ install_native_build_dependencies() {
     # image; this is a best-effort top-up. No cross apt mirror needed (native).
     apt-get update -y || true
     apt-get install -y --no-install-recommends \
-        git ninja-build cmake pkg-config unzip rsync ccache || return 1
+        git ninja-build cmake pkg-config unzip rsync ccache sccache || return 1
 }
 
 prepare_build_environment() {
@@ -591,8 +591,9 @@ build_torch_wheel() {
     # rebuilds. The launcher works with the cross compiler; CCACHE_DIR is pointed
     # at the persistent /var/cache/ccache mount in _torch_run_setup_py. Guarded so
     # a host without ccache still builds (plain, no launcher).
-    if command -v ccache >/dev/null 2>&1; then
-        cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=ccache" "-DCMAKE_CXX_COMPILER_LAUNCHER=ccache")
+    _cc_l="$(compiler_cache_launcher 2>/dev/null || true)"
+    if [ -n "${_cc_l}" ]; then
+        cmake_args+=("-DCMAKE_C_COMPILER_LAUNCHER=${_cc_l}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_cc_l}")
     fi
     cmake_args_string="$(shell_quote_args "${cmake_args[@]}")"
 
@@ -822,7 +823,18 @@ build_iree_wheels() {
         # limit rather than restating the intent.
         ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || warn "could not set ccache max size to ${CCACHE_MAXSIZE}"
         echo "[INFO] IREE ccache limit now: $(ccache -p 2>/dev/null | awk '/max_size/{print $2, $3}' || echo unknown)"
-        ccache_cmake_args=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+        # 2026-08-26 (ccache->sccache switch): use whichever cache is actually
+        # usable. sccache takes its cap from SCCACHE_CACHE_SIZE, NOT from a
+        # `-M` call -- so the IREE_CCACHE_MAXSIZE override above has to be
+        # mirrored into the sccache env or IREE silently runs on the 30G
+        # inherited from Dockerfile.base, which is the bug fefce7d just fixed
+        # for ccache. Same fix, other tool.
+        _iree_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
+        if [ "${_iree_launcher}" = "sccache" ]; then
+            export SCCACHE_CACHE_SIZE="${IREE_CCACHE_MAXSIZE:-64G}"
+            echo "[INFO] IREE sccache cap: SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE}"
+        fi
+        ccache_cmake_args=("-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher}")
         echo "[INFO] IREE ccache ON: CCACHE_DIR=${CCACHE_DIR} MAXSIZE=${CCACHE_MAXSIZE} (LLVM rebuild is one-time; reruns cache-hit)"
     else
         warn "ccache not found — IREE bundled LLVM will rebuild from scratch every run (no cross-run cache)"
@@ -1047,7 +1059,7 @@ build_iree_wheels() {
         # value is ONE shell word.)
         local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
         if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
-            native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=ccache;-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+            native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher:-ccache};-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher:-ccache}"
         fi
 
         rm -rf "${target_build}"

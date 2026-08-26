@@ -550,9 +550,67 @@ install_uv() {
   uv --version
 }
 
+# Install the PINNED sccache over whatever apt provided (2026-08-26, the
+# ccache->sccache switch).
+#
+# Why not just use the apt package: Ubuntu 26.04 ships sccache 0.13.0, which has
+# no SCCACHE_BASEDIRS. The GCC lane relies on CCACHE_BASEDIR="${BUILD_DIR}" so
+# the three arch lanes -- whose build dirs differ only by triplet -- can share
+# entries for identical translation units. Without basedir relativization they
+# never share, and sccache additionally hashes the working directory. That
+# failure is SILENT: the build stays green and simply stops hitting cache.
+# SCCACHE_BASEDIRS first shipped in v0.14.0, so the distro build is on the
+# wrong side of it. versions.env pins 0.17.0, the release the Windows lane
+# already uses.
+#
+# Non-fatal by design: upstream publishes no riscv64 asset, and a missing
+# sccache must degrade to "no compiler cache", never fail the base image.
+install_sccache_pinned() {
+  local ver="${SCCACHE_LINUX_VERSION:-}"
+  if [ -z "${ver}" ]; then
+    warn "SCCACHE_LINUX_VERSION unset -- keeping the apt sccache"
+    return 0
+  fi
+
+  local machine target sha
+  machine="$(uname -m)"
+  case "${machine}" in
+    x86_64)  target="x86_64-unknown-linux-musl";  sha="${SCCACHE_LINUX_X86_64_SHA256:-}" ;;
+    aarch64) target="aarch64-unknown-linux-musl"; sha="${SCCACHE_LINUX_AARCH64_SHA256:-}" ;;
+    *) log "No pinned sccache asset for ${machine} -- keeping the apt sccache"; return 0 ;;
+  esac
+  if [ -z "${sha}" ]; then
+    warn "no SHA256 pinned for sccache/${target} -- refusing to install unverified bytes"
+    return 0
+  fi
+
+  local url="https://github.com/mozilla/sccache/releases/download/v${ver}/sccache-v${ver}-${target}.tar.gz"
+  local tmp="/tmp/sccache-${ver}.tar.gz"
+  local dir="/tmp/sccache-${ver}"
+  if ! download_verified_file "${url}" "${sha}" "${tmp}"; then
+    warn "pinned sccache ${ver} could not be fetched/verified -- keeping the apt sccache"
+    return 0
+  fi
+  mkdir -p "${dir}"
+  if tar -xf "${tmp}" -C "${dir}" --strip-components=1 \
+     && install -m 0755 "${dir}/sccache" /usr/local/bin/sccache; then
+    log "sccache pinned: $(/usr/local/bin/sccache --version 2>/dev/null || echo unknown)"
+  else
+    warn "pinned sccache ${ver} failed to unpack -- keeping the apt sccache"
+  fi
+  rm -rf "${tmp}" "${dir}"
+}
+
 init_compiler_caches() {
   log "Initializing compiler cache settings"
+  # ccache stays installed through the transition: it is the fallback for any
+  # invocation sccache refuses. sccache HARD-FAILS on a compiler it cannot
+  # identify, where ccache would simply run it.
   ccache -M "${BASE_IMAGE_CCACHE_MAXSIZE}" || true
+  install_sccache_pinned
+  # sccache takes its cap from SCCACHE_CACHE_SIZE plus the config file baked in
+  # Dockerfile.base; there is no `ccache -M` equivalent to call here.
+  log "sccache dir=${SCCACHE_DIR:-unset} cap=${SCCACHE_CACHE_SIZE:-unset} conf=${SCCACHE_CONF:-unset}"
 }
 
 main() {
