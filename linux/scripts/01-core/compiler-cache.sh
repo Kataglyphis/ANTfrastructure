@@ -30,6 +30,8 @@
 [ -n "${_COMPILER_CACHE_LOADED:-}" ] && return 0
 _COMPILER_CACHE_LOADED=1
 
+_CC_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 # Default settings
 : "${USE_CCACHE:=true}"
 : "${USE_SCCACHE:=true}"
@@ -112,7 +114,15 @@ setup_ccache() {
     export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
     sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
+      # Use the GUARDED launcher when it is reachable. Bare sccache aborts the
+      # build on its own fatal errors (CMake deletes TryCompile scratch dirs,
+      # sccache then spawns with a cwd that no longer exists -> ENOENT). This
+      # module resolved the launcher itself and hardcoded "sccache", which is
+      # why the guard did not take effect on the first attempt.
       _cc_launcher="sccache"
+      for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
+        if [ -x "${_scl}" ]; then _cc_launcher="${_scl}"; break; fi
+      done
     else
       _cc_warn "sccache present but its server does not answer -- using ccache for C/C++"
     fi
