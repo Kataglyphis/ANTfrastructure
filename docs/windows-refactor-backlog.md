@@ -401,9 +401,15 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   Cost 4522 → 4650 bytes of object, ~2.8 %, all of it jump-table DATA; full `/O2` retained.
   **(2) `adr` reach — OPEN.** `median_blur.dispatch.cpp` still aborts with `fixup value out of
   range`: in a function over ~1 MB the `adr` that materialises the table's base block cannot be
-  encoded. Forcing 4-byte entries does not help — the entries were never the problem. Note the
-  LLVM logic gap worth reporting: the pass DOES check `adr` reach and "bails out to 4-byte", but
-  4-byte entries still use `adr`, so the bail-out does not address the case it is checking for.
+  encoded. Forcing 4-byte entries does not help — the entries were never the problem.
+  **Whose defect this is, is NOT settled, and the entry should not pretend otherwise.** Two
+  readings, and the evidence does not yet separate them: (a) LLVM is missing a fallback — the pass
+  checks `adr` reach and "bails out to 4-byte", but 4-byte entries still use `adr` (confirmed in
+  locally emitted asm), so the bail-out does not address the case it checks for; or (b) a single
+  function over 1 MB is pathological and the real defect is OpenCV's — `median_blur.dispatch.cpp`
+  inlines a lot of templated baseline code, and no other TU in the tree comes near that size.
+  Settling it needs the actual function size, which means dumping the asm for that one TU. Until
+  then this is "unexplained", not "an LLVM bug".
   Candidates, none applied: `-fno-jump-tables` on that one TU (a lowering change, not an
   optimisation level — the dispatch switch runs once per filter call, so an if-else chain is
   negligible against a >1 MB function, but it is still a change the owner rejected in spirit);
@@ -415,8 +421,13 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   effect); `-align-all-*` kills clang-cl outright via the SEH unwind writer (llvm#122707 /
   llvm#47432); `-mcmodel=large` needs `-fno-pic` on Windows and `tiny` is ELF-only; `/Od` and `/O1`
   move the failure to the next TU and cost code quality (measured three times).
-  **Both defects deserve upstream reports** — `out/` holds the drafts from previous ones, and the
-  local reproduction recipe in failure-modes.md is most of what a report needs.
+  **On upstream: (1) is worth reporting, (2) is not yet.** Defect (1) is internally inconsistent —
+  the pass chooses an encoding it then cannot emit — and that holds regardless of how large the
+  switch is, so it is reportable on the evidence already in hand. (2) is not established as LLVM's
+  at all (see above). Neither is a PREREQUISITE for this repo: `+force-32bit-jump-tables` closes
+  (1) here today, and a report buys a future where the workaround can be dropped, not a build.
+  `out/` holds the drafts from previous ones, and the local reproduction recipe in
+  failure-modes.md is most of what a report needs.
 
 - **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
   iteration cost.** M · ★★★ (opened 2026-08-26)
