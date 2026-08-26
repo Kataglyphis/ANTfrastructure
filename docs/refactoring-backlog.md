@@ -207,29 +207,22 @@ either created or exposed.
   it ran clean in this build's GCC stage. Move the note, or it sends the next
   reader looking in the wrong stage.
 
-**Folded in from the 2026-08-26 backlog truth-audit (15 agents), corrections
-that were verified but not yet applied above:**
+**Audit corrections were APPLIED AT SOURCE, not duplicated here** (2026-08-26).
+The verified findings of the 15-agent truth-audit now live in the sections that
+own them -- § B (TS1 and LLVM_COMMIT are half-landed; four riders closed), § E
+(GCC_PARALLEL_TARGETS has missed its trigger twice), § D (S5's premise is
+falsified; build-cache-tiers.md still advertises a reverted knob) -- because a
+finding described in two places drifts in two directions. Two items are still
+unowned by any section and are recorded here until someone files them:
 
-- **GCC_PARALLEL_TARGETS has now been missed TWICE** [S·★★] The § E entry says
-  "next compiler-stage rebuild", but the flag defaults to 0, so the 2026-08-24
-  and 2026-08-25 compiler rebuilds both took the sequential path and validated
-  nothing. It must go on the LAUNCH COMMAND or it will be missed a third time.
-- **LLVM_COMMIT is present but INERT** (versions.env:41) -- the consumers
-  (build-clang.sh / llvm-cross.sh) do not read it. The key landed; the wiring
-  did not. Re-word the rider to the residual work.
-- **TS1 is half-landed and CAN break a build** [S·★★] The
-  APPIMAGETOOL_*_SHA256 keys exist in versions.env, but packaging-deps.sh:156-174
-  still uses its own case-arm literals. Bumping APPIMAGETOOL_VERSION alone would
-  therefore break. This is the only rider whose half-state has teeth.
-- **S5 premise is falsified** -- media cargo ids are already per-lane by design
-  (Dockerfile.media:856-857). Move to Verdicts as declined-with-evidence rather
-  than leaving it as open work.
-- **3 UNOWNED env knobs** (HARFBUZZ_VERSION, IREE_CCACHE_MAXSIZE,
-  PY_MLC_Z3_STATIC_VERSION), two introduced 2026-08-24/26. Register them in
-  lint-env-knobs.allow before anyone flips KNOB_GATE=1.
-- **docs/build-cache-tiers.md still advertises CROSS_REGISTRY_CACHE=max** as a
-  live knob with line refs that no longer exist (5 sites). S3 was declined and
-  the code reverted; setting it today is a no-op. Mark those sites DESIGN ONLY.
+- **3 UNOWNED env knobs** [XS·★] HARFBUZZ_VERSION, IREE_CCACHE_MAXSIZE,
+  PY_MLC_Z3_STATIC_VERSION (two introduced 2026-08-24/26) have live readers but
+  no entry in lint-env-knobs.allow. Register them before anyone flips
+  KNOB_GATE=1, or that gate fails on its first real use.
+- **docs/build-cache-tiers.md advertises CROSS_REGISTRY_CACHE=max** [XS·★] as a
+  live pilot knob at five sites, with code line refs that no longer exist. S3
+  was declined and the code reverted; setting it today is a silent no-op. Mark
+  those sites DESIGN ONLY.
 
 **Do NOT close (closure attempts were reviewed and REJECTED):** the § B QUEUED
 BUMPS bullet (closing as written drops real in-scope work), the § E gcc-prereq
@@ -341,8 +334,6 @@ wrong in both directions).
   --write --only OLLAMA_VERSION,CARGO_C_VERSION,UV_VERSION,CMAKE_VERSION`
   then sync_versions --write + the check battery.
 
-- **AP6 — ORT_ENABLE_LTO never set/decided** [S·★★] flip per-arch-gated,
-  measure in the validating rebuild, or document the decision.
 - **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
   recorded** [S, was M] (a) ABSEIL: codeload-by-commit VERIFIED byte-stable
   (two sequential fetches, identical sha256 7f4240fe…, matches the pin at
@@ -355,10 +346,21 @@ wrong in both directions).
   and our sha256 pin (versions.env:503) matches the same bytes. Bump-window
   change: cross-check the manifest sha1 when regenerating the sha256 pin.
   Both edits touch versions.env → pin-bump window only.
-- Small riders [S each]: pyav dead-pin check (Windows consumer?),
-  LLVM_COMMIT opt-in key, setup-package-image residual pins (:283-285),
-  peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token
-  scope), TS1 APPIMAGETOOL_*_SHA256 keys, RUFF_PIN → versions.env (C4).
+- Small riders — **groomed 2026-08-26, four of six CLOSED** (pyav dead-pin:
+  the pin has a Windows consumer AND, since 9a86d2f, a linux producer;
+  setup-package-image residual pins: closed by 202634c; RUFF_PIN → versions.env
+  (C4): lint-python.sh:33 now reads `${RUFF_VERSION:-0.16.4}`; AP6 decided as
+  ORT_ENABLE_LTO=false, recorded at versions.env:118-133).
+  What actually REMAINS, and note both are HALF-landed — key present, consumer
+  not wired, which is worse than untouched because it reads as done:
+  - **TS1** [S·★★, has teeth] versions.env:812-816 carries
+    APPIMAGETOOL_VERSION + the four SHA256 keys, but packaging-deps.sh:156-174
+    still uses its own case-arm literals. **Bumping APPIMAGETOOL_VERSION alone
+    would break the build.** Wire the consumer, or never bump it alone.
+  - **LLVM_COMMIT** [S·★] versions.env:41 exists and is INERT — build-clang.sh
+    and llvm-cross.sh clone via LLVM_TAG and never read it. Wire it so a
+    non-empty 40-hex commit wins over llvmorg-${LLVM_RELEASE}, or drop the key.
+  - peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token scope).
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
@@ -391,7 +393,12 @@ wrong in both directions).
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS validation** — next compiler-stage rebuild.
+- **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
+  passed TWICE without validating anything: the flag defaults to 0, so the
+  2026-08-24 and 2026-08-25 compiler rebuilds both took the sequential path.
+  It is not waiting on a rebuild, it is waiting on someone putting
+  `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
+  a third time.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).
