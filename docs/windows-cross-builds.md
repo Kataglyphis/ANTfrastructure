@@ -33,16 +33,20 @@ produce, and which gates keep it honest.
 > runtimes** (#116, runtime-only: `tvm_runtime.dll` + headers, 14 IREE target tools/libs under
 > `C:\runtime\iree\bin`; the compilers and their python packages are amd64-only and named ABSENT
 > in the bundle), plain **LiteRT** (backlog #115, **done 2026-08-24** — 146 libs
-> staged, `tensorflowlite_c.lib` verified aarch64) — plus GStreamer with its ~4965 targets, **all
-> four mandatory plugins including `tflite`**, and the out-of-tree
-> `opencv_videoio_gstreamer` plugin, all in the merge stage.
+> staged, `tensorflowlite_c.lib` verified aarch64) — plus GStreamer with its ~5000 targets, **all
+> six contract plugins — `libav`, `opencv`, `onnx`, `tflite`, and since run 28 (2026-08-26)
+> `webrtc` and `nice`** (#128) — and the out-of-tree `opencv_videoio_gstreamer` plugin, all in
+> the merge stage. Two GStreamer pieces stay absent on this lane: `gst-ptp-helper` (Rust; the
+> image's offline rustup mirror has no aarch64 `rust-std`) and the optional `gdkpixbuf` plugin
+> (gdk-pixbuf's meson.build really wants a build-machine glib, which nothing else needs).
 >
-> **The PE architecture gate has run and passed over the whole image:** `970 binaries inspected,
-> 0 violations` (2026-08-25, run 14, with the staged CRT, OpenSSL runtime and target deps; 950 on
-> run 11 of 2026-08-24 with the TVM/IREE runtimes and the Python consumers, 931 that morning
-> before them, 390 when media-core stood alone) — and since run 14 the same gate walks every PE's
-> import table (`-ImportWalk`, #127): `571 file(s) walked, 0 unresolved import(s), 3 allowlisted
-> external(s), 6 device-OS (client SKU) import(s)`
+> **The PE architecture gate has run and passed over the whole image:** `980 binaries inspected,
+> 0 violations` (2026-08-26, run 28, with libnice and the webrtc/nice plugins; 970 on run 14 of
+> 2026-08-25 with the staged CRT, OpenSSL runtime and target deps, 950 on run 11 of 2026-08-24
+> with the TVM/IREE runtimes and the Python consumers, 931 that morning before them, 390 when
+> media-core stood alone) — and since run 14 the same gate walks every PE's import table
+> (`-ImportWalk`, #127): `577 file(s) walked, 0 unresolved import(s), 3 allowlisted external(s),
+> 6 device-OS (client SKU) import(s)` (571 on run 14)
 > (`verify-target-arch.ps1` over all of `C:\runtime` **and** the host CPython's site-packages,
 > `-IncludeArchives`, floor raised to 100 on this lane; the 58 host `.pyd`s appear as *reported*
 > allowlist skips). That, plus the smoke sections that now compile for the target and assert the
@@ -90,9 +94,10 @@ produce, and which gates keep it honest.
 > is recorded under the HOST key and overwrites the host glib (the actual poison), its
 > `configure_file` outputs land in the host's build dir, and its `summary()` collides — the
 > first two are patched before `meson setup`, the third is left to fail glib(build) cleanly
-> (nothing consumes it); proof pending run 28. `gst-ptp-helper` stays absent by design: the
-> image's offline rustup mirror carries the x64 `rust-std` only. Backlog
-> `docs/windows-refactor-backlog.md`.
+> (nothing consumes it). **Closed on run 28 (2026-08-26):** `gstwebrtc.dll` and `gstnice.dll`
+> built, exported and import-resolved, `All 6 mandatory GStreamer plugins verified present`.
+> `gst-ptp-helper` stays absent by design: the image's offline rustup mirror carries the x64
+> `rust-std` only. Backlog `docs/windows-refactor-backlog.md`.
 >
 > **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
 > Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,

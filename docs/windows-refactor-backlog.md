@@ -685,6 +685,17 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `configure_file`'s output path + returned File — so glib(build) still fails at the summary bug,
   is recorded under BUILD only, clobbers nothing, and libnice/webrtc configure against the host
   glib. Fixture test `SourceBuild.MesonBuildSubprojectPatch.Tests.ps1` (5 tests). Proof: run 28.
+  ✅ **DONE 2026-08-26 (arm64 run 28, `[bk] Done in 00:29:32`).** glib(build) attempted exactly
+  **once** per configure (run 25: 30+), `required but not found`: **0**, libnice's anonymous host
+  fallback `found: YES 2.86.3`, libnice 340 targets, gst-plugins-bad 603; the plugin gate passed
+  **all six** contract entries — `gstwebrtc.dll` and `gstnice.dll` with `gst_plugin_*_get_desc`
+  exported and their imports resolving — `All 6 mandatory GStreamer plugins verified present`;
+  arch gate `980 inspected, 0 violations` (run 19: 970 — the ten new PEs are libnice and the two
+  plugins), import walk `577 walked, 0 unresolved` (571), deps 7/0, smoke 97/0/15. Still absent
+  on arm64, by design or unchanged: `gst-ptp-helper` (rust std for the target is not in the
+  image's offline mirror) and `gdkpixbuf` (gdk-pixbuf's meson.build wants the build-machine glib
+  for real — optional, not in the contract, noted in the banner). amd64 regression: the run after
+  this one (same script, same contract).
 
 - **#129 — OpenCV arm64 ships zero dispatched NEON kernels.** M · ★★ (opened 2026-08-25)
   The arm64 configure log (run of 2026-08-24 20:50) prints `Baseline: NEON` and an **empty**
@@ -732,6 +743,11 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `Assert-WheelTargetArch` now logs the native member NAMES; (d) all four stale texts rewritten
   (the final Dockerfile header + LABEL, the merge fan-in comment, the plugin module header, the
   healthcheck fallback comment).
+  ✅ **DONE 2026-08-26 (arm64 run 28).** In-container proof: `Bundle manifest (arm64): 6 DLL
+  home(s), python=C:\runtime\python, 3 wheel(s), 3 absent marker(s), plugins [libav opencv onnx
+  webrtc nice tflite] -> C:\runtime\BUNDLE-ENV.cmd, BUNDLE-ENV.ps1, BUNDLE-README.md`, followed by
+  the deps store (7/0), the arch gate (980/0, walk 577/0) and the smoke gate (97/0/15) over the
+  same tree. amd64 side of the manifest: the regression run after this one.
 
 - **#131 — post-cross-phase cleanup (refactoring).** M · ★★ (opened 2026-08-25, owner's request) ·
   ✅ **DONE 2026-08-25 in four waves, developed in an isolated worktree, 662/662 tests, proof = the

@@ -414,6 +414,13 @@ directory so an OpenCV module-list change cannot rot into a link error.
 > runtime so opencv's `cudnn64_9.dll` resolves (see the merge-stage notes above
 > and the `gstreamer-merge-winfix` build memory). `-SkipPluginGate` still exists
 > as the deliberate escape hatch; an image built with it is not shippable.
+> **Six entries since 2026-08-25 (#128):** `webrtc` (gst-plugins-bad) and `nice`
+> (libnice's GStreamer plugin) joined the contract on both lanes as meson-native
+> entries — the build passes their meson options as `=enabled`, the gate proves
+> the DLL and (natively) the load. Proven on the arm64 lane on run 28
+> (2026-08-26) after three meson build-only-subproject defects were patched
+> around (`docs/windows-refactor-backlog.md` #128); the amd64 proof is the
+> regression run that follows it.
 
 ### Toolchain pins and the provenance manifest
 
