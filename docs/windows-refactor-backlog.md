@@ -701,6 +701,40 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   function extents for every move except the two admitted deltas (`-Logger`, `Export-ModuleMember`).
   Develop in an isolated worktree like #131 — whose ride found three defects the host tests
   structurally could not see, which is why the bundled regression, not the suite, is the proof.
+  **Pre-rebuild audit, 2026-08-26 — three findings correct the plan above and five more ride
+  along.** Corrections first: (i) **step (1) as written turns ONE module list into THREE.** Use
+  `COPY --from=buildmods C:\bkmods C:\temp\scripts\modules` in the three classic leaves instead —
+  same result, one list, and it anchors the classic lane on `buildmods`. (ii) **Step (1) alone buys
+  no cache granularity**: every build script imports `WindowsSourceBuild.Common.psm1`, which hard-
+  requires all five siblings, so all six RUNs legitimately mount all six modules before AND after.
+  The entire win is step (2), `tvmmods`. Land (1) as the enabler, not as a saving. (iii) **The
+  classic merge lane is structurally red** and that changes this wave''s shape: its `merge` stage
+  runs none of `build-opencv-gstreamer-plugin.ps1`, `write-bundle-manifest.ps1`,
+  `stage-target-python-deps.ps1`, `verify-target-arch.ps1`, while `build.ps1` ends the chain in a
+  smoke gate that hard-asserts `cv2.videoio_registry.hasBackend(CAP_GSTREAMER)`
+  (`smoke-test-container.ps1:1527`) — a backend only the BK lane''s plugin provides. So B6 polices
+  COPY lists for a lane that cannot pass its own gate. **Decide the classic lane''s status before
+  spending the rebuild**; if it is retired, steps (1) and (iii) collapse.
+  Ride along (all PAID, none worth its own rebuild): **`sharing=locked` on the sccache mount**
+  (`Dockerfile.media-builder:576,593`) serialises the two branches `-ConcurrentAux` runs as
+  concurrent child solves (`build-buildkit.ps1:669-712`) — and the mount is inert anyway
+  (`SCCACHE_MULTILEVEL_CHAIN=""`), so the lock is pure loss; **`cuda-runtime-stage`**
+  (`Dockerfile.media-merge-builder:32`) descends from the media-core branch image although the
+  toolchain base carries the same CUDA install — it makes the fan-in, already the flakiest stage
+  (`-MaxAttempts 5`), re-run on every branch rebuild; **`ARCH_GATE_*` ARGs** (`:327-328`) sit above
+  a manifest write and a network `pip download` that never read them; **the arch-gate RUN mounts
+  all 8 modules** while `verify-target-arch.ps1` imports exactly one; and **`KATA_ARCH_PROBE`**
+  (`Dockerfile.media-builder:470-476`), a diagnostic ENV whose question was answered.
+  Free follow-ups the audit found, not yet done: no suite covers `verify-target-arch.ps1`,
+  `stage-target-python-deps.ps1` or `write-bundle-manifest.ps1` (the arm64 lane''s primary
+  correctness signal is untested, and its `Get-ArchiveMachine` bound was fixed in production, not
+  by a test); `stage-target-python-deps.ps1` still gets greener as requirements DISAPPEAR (the
+  run-34/35 defect class — needs `-MinFirstTouchRequirements`/`-MinBundleWheels`); the arm64 smoke
+  floor tolerates losing 32% of its assertions and §19''s floor is still marked PROVISIONAL after
+  three green runs; two TVM fixtures use single-quoted `` `n `` and prove nothing; `Assert-Equal`,
+  the test-count floor and the amd64 arch-gate floor are FIXED (commit `ebc7e525`). Layer headroom
+  is disputed — docs say ~108/125, the audit computes ~78; settle it with one elevated
+  `ctr`/`nerdctl` inspect before anyone plans around either number.
 
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
