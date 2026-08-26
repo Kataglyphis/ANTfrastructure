@@ -202,3 +202,75 @@ Describe 'PE asserts over a real system DLL' {
         Assert-True $threw 'host tag on a target module must throw'
     }
 }
+
+# The AArch64 fixup-range workaround's SELECTOR (build-opencv-from-source.ps1,
+# LLVM 23.1.0). Lifted here rather than trusted: the selector closes over a
+# variable in the SCRIPT's scope while Add-NinjaPerTuFlags invokes it from
+# MODULE scope, and it must hit exactly the three opencv_imgproc dispatch TUs
+# without catching same-named files in other modules. A silent miss would ship
+# an untagged TU and fail the cross build 3 minutes into the opencv stage.
+Describe 'AArch64 fixup-range per-TU selector (opencv, LLVM 23)' {
+
+    BeforeAll {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+        $script:fxTmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-fixup-' + [guid]::NewGuid().ToString('N'))
+        New-Item -Path $script:fxTmp -ItemType Directory -Force | Out-Null
+        $script:fxNinja = Join-Path $script:fxTmp 'build.ninja'
+        @(
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/imgwarp.cpp.obj: CXX_COMPILER src/imgwarp.cpp',
+            '  FLAGS = /O2 /MD',
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/smooth.dispatch.cpp.obj: CXX_COMPILER src/smooth.dispatch.cpp',
+            '  FLAGS = /O2 /MD',
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/stb_truetype.cpp.obj: CXX_COMPILER src/stb_truetype.cpp',
+            '  FLAGS = /O2 /MD',
+            # same TU name, DIFFERENT module: must NOT be tagged.
+            'build modules/gapi/CMakeFiles/opencv_gapi.dir/src/imgwarp.cpp.obj: CXX_COMPILER src/imgwarp.cpp',
+            '  FLAGS = /O2 /MD',
+            # imgproc, but not an offender: must NOT be tagged.
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/histogram.cpp.obj: CXX_COMPILER src/histogram.cpp',
+            '  FLAGS = /O2 /MD'
+        ) | Set-Content -Path $script:fxNinja -Encoding ASCII
+    }
+    AfterAll { Remove-Item $script:fxTmp -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'tags exactly the three imgproc dispatch TUs and nothing else' {
+        $fixupTus = @('imgwarp.cpp', 'smooth.dispatch.cpp', 'stb_truetype.cpp')
+        $n = Add-NinjaPerTuFlags -NinjaFile $script:fxNinja -Label 'fixture' -Floor $fixupTus.Count `
+            -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+                param($line)
+                if ($line -match 'opencv_imgproc\.dir' -and ($fixupTus | Where-Object { $line -match [regex]::Escape($_) })) { '/O1' } else { '' }
+            }
+        Assert-Equal 3 $n 'exactly the three offenders'
+        $lines = @(Get-Content $script:fxNinja)
+        Assert-True ($lines[1] -eq '  FLAGS = /O2 /MD /O1') 'imgwarp tagged'
+        Assert-True ($lines[3] -eq '  FLAGS = /O2 /MD /O1') 'smooth.dispatch tagged'
+        Assert-True ($lines[5] -eq '  FLAGS = /O2 /MD /O1') 'stb_truetype tagged'
+        Assert-True ($lines[7] -eq '  FLAGS = /O2 /MD') 'gapi imgwarp.cpp NOT tagged (different module)'
+        Assert-True ($lines[9] -eq '  FLAGS = /O2 /MD') 'imgproc histogram.cpp NOT tagged (not an offender)'
+    }
+
+    It 'is idempotent - a second pass re-counts without appending /O1 twice' {
+        $fixupTus = @('imgwarp.cpp', 'smooth.dispatch.cpp', 'stb_truetype.cpp')
+        $n = Add-NinjaPerTuFlags -NinjaFile $script:fxNinja -Label 'fixture' -Floor $fixupTus.Count `
+            -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+                param($line)
+                if ($line -match 'opencv_imgproc\.dir' -and ($fixupTus | Where-Object { $line -match [regex]::Escape($_) })) { '/O1' } else { '' }
+            }
+        Assert-Equal 3 $n 'still three'
+        Assert-True (@(Get-Content $script:fxNinja)[1] -eq '  FLAGS = /O2 /MD /O1') 'no double-append'
+    }
+
+    It 'THROWS when an offender is renamed away (the floor is the whole point)' {
+        $threw = $false
+        try {
+            $fixupTus = @('imgwarp.cpp', 'smooth.dispatch.cpp', 'stb_truetype.cpp', 'a-fourth-that-does-not-exist.cpp')
+            [void](Add-NinjaPerTuFlags -NinjaFile $script:fxNinja -Label 'fixture' -Floor $fixupTus.Count `
+                -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+                    param($line)
+                    if ($line -match 'opencv_imgproc\.dir' -and ($fixupTus | Where-Object { $line -match [regex]::Escape($_) })) { '/O1' } else { '' }
+                })
+        } catch { $threw = $true }
+        Assert-True $threw 'a floor that cannot be met must throw, not ship an untagged TU'
+    }
+}

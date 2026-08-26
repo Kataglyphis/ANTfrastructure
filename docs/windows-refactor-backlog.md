@@ -378,6 +378,33 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   is disputed — docs say ~108/125, the audit computes ~78; settle it with one elevated
   `ctr`/`nerdctl` inspect before anyone plans around either number.
 
+- **#135 — AArch64 `fixup value out of range` on LLVM 23.1.0: worked around, root cause NOT
+  pinned.** S–M · ★★ (opened 2026-08-26)
+  The forced Windows clang-cl bump (22.1.8 → 23.1.0; upstream reshaped the artifact and scoop can
+  no longer install the old pin) aborts the CROSS build of `opencv_imgproc` on three TUs —
+  `imgwarp.cpp`, `smooth.dispatch.cpp`, `stb_truetype.cpp` — with `error: fixup value out of range`
+  and no source location or fixup kind.
+  **Ruled out, not assumed:** this is NOT the compressed-jump-table ceiling that
+  `-mllvm -aarch64-enable-compress-jump-tables=false` already fixes build-wide. That flag is on the
+  command line (6 occurrences in the failing log), LLVM 23 accepts it (no "Unknown command line
+  argument"), and the two diagnostics come from different LLVM code paths —
+  `AArch64AsmPrinter::emitJumpTableImpl` via `MCObjectStreamer::emitValueImpl` for the old one, the
+  AArch64 asm BACKEND rejecting an over-long fixup for this one.
+  **Hypothesis (unproven):** a pc-relative branch overflowing its field (tbz/tbnz ±32 KB, b.cond
+  ±1 MB) in a function LLVM 23 grew past what 22 emitted. All three offenders are OpenCV
+  CPU-DISPATCH TUs — the largest functions in the module — which fits a size-driven overflow but
+  does not establish it. LLVM prints no fixup kind, so this needs either a reduced test case or a
+  disassembly of the offending object.
+  **Workaround shipped:** `/O1` on exactly those three TUs via `Add-NinjaPerTuFlags`, cross-lane
+  only, floor = the name count so a rename or a fourth offender throws. The hot SIMD kernels are
+  NOT in these TUs (they are generated per-ISA from `*.simd.hpp` and keep `/O2`), so the cost
+  should be dispatch glue rather than filter throughput — **should**, unmeasured. Three fixture
+  tests cover hit, non-hit (same filename in another module), idempotence and the floor.
+  **Close this by** deleting the block and re-running the cross lane once a later clang-cl compiles
+  these at `/O2` again, or once the real ceiling is identified and earns a build-wide flag the way
+  `$jumpTableFlag` did. The failure is fast and unambiguous (~3 min into the opencv stage), so the
+  re-test is cheap. Worth an upstream report if the reduced case materialises.
+
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
   (#59 branch protection was DECLINED, #31 was not).

@@ -855,6 +855,50 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
 # comment first: /Od "worked" only because it disables the compression pass as
 # a side effect of turning optimisation off entirely.
 
+# A DIFFERENT AArch64 codegen ceiling, arrived with LLVM 23.1.0 (2026-08-26).
+# The Windows clang-cl pin had to move 22.1.8 -> 23.1.0 because upstream
+# reshaped the artifact (.exe -> .msi) and scoop can no longer install the old
+# version at all; see versions.env's LLVM_WINDOWS_VERSION block. On that
+# compiler the cross build of opencv_imgproc aborts three TUs with:
+#     error: fixup value out of range
+#     7 warnings and 1 error generated.
+#
+# WHAT THIS IS NOT. It is not the compressed-jump-table ceiling above: that
+# flag is still on the command line (verified present 6x in the failing log)
+# and LLVM 23 still accepts it -- no "Unknown command line argument". The
+# message is also different, and comes from a different place in LLVM: the
+# jump-table one is AArch64AsmPrinter::emitJumpTableImpl via
+# MCObjectStreamer::emitValueImpl, this one is the AArch64 asm BACKEND
+# rejecting a fixup whose displacement does not fit its instruction field.
+#
+# WHAT IT PROBABLY IS, stated as a hypothesis because LLVM prints no fixup kind
+# and no source location: a pc-relative branch (tbz/tbnz is ±32 KB, b.cond
+# ±1 MB) overflowing inside a function that LLVM 23 grew past what 22 produced.
+# All three offenders are OpenCV's CPU-DISPATCH TUs, which compile several ISA
+# variants' glue into one object and are the largest functions in the module --
+# consistent with a size-driven range overflow, but NOT proven.
+#
+# THE WORKAROUND, and its cost. /O1 on exactly these three TUs: smaller code,
+# shorter branches. The hot SIMD kernels are NOT here -- they live in the
+# per-ISA objects generated from *.simd.hpp, which keep full /O2 -- so this
+# should cost dispatch glue, not filter throughput. "Should": unmeasured.
+# The floor is the count of names below, so a rename or a fourth offender
+# throws instead of silently shipping an untagged TU.
+#
+# WHEN TO DELETE THIS: when a later clang-cl compiles these TUs at /O2 again,
+# or when the real ceiling is identified and gets a build-wide flag like
+# $jumpTableFlag did. Re-test by removing the block and running the cross lane;
+# the failure is fast (~3 min into the opencv stage) and unambiguous.
+if ($ocvCross) {
+    $fixupTus = @('imgwarp.cpp', 'smooth.dispatch.cpp', 'stb_truetype.cpp')
+    [void](Add-NinjaPerTuFlags -NinjaFile "$buildDir\build.ninja" `
+        -Label "AArch64 fixup-range workaround (LLVM 23; $($fixupTus -join ', '))" `
+        -Floor $fixupTus.Count -AlreadyTaggedPattern '(^|\s)/O1(\s|$)' -Select {
+            param($line)
+            if ($line -match 'opencv_imgproc\.dir' -and ($fixupTus | Where-Object { $line -match [regex]::Escape($_) })) { '/O1' } else { '' }
+        })
+}
+
 # Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
 $buildLog = Get-PersistentBuildLogPath -Name 'opencv-build.log' -FallbackDir $buildDir
 # Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
