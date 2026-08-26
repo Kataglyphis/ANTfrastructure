@@ -937,6 +937,10 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `3rdparty/tvm-ffi` as its own root project (cross args from the choke point, `Python_*` hints,
   tests off), builds `tvm_ffi_cython`, and ships that build's `tvm_ffi.dll`/`.lib` beside
   `core.<target>.pyd`; TVM's own configure carries no python knobs again. Proof: run 31.
+  **Run 31:** the root configure works and compiles tvm-ffi — every TU with `cannot use 'throw'
+  with exceptions disabled`: an explicit `CMAKE_CXX_FLAGS` replaces CMake's MSVC init flags
+  (`/EHsc` among them) and, unlike TVM's own CMake, tvm-ffi as a root project does not add it
+  back. `/EHsc` is now explicit on that configure. Proof: run 32.
   (b) **IREE runtime python** — `iree.runtime` is a nanobind extension over the runtime the tvm
   branch already cross-builds: `IREE_BUILD_PYTHON_BINDINGS=ON` on the target configure with
   `Python3_*`+`Python_*` hints (host exe / neutral include / TARGET `python314.lib` / host-probed

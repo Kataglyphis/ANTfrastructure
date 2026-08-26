@@ -422,7 +422,11 @@ if ($tvmCross) {
         $ffiPyBuild = Join-Path $buildDir 'tvm-ffi-py'
         $ffiPyArgs = @(
             "-DCMAKE_BUILD_TYPE=$BuildType"
-            "-DCMAKE_CXX_FLAGS:STRING=-Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
+            # /EHsc explicitly: an explicit CMAKE_CXX_FLAGS replaces CMake's MSVC
+            # init flags (which carry /EHsc), and unlike TVM's own CMake, tvm-ffi
+            # as a root project does not add it back -- run 31: "cannot use
+            # 'throw' with exceptions disabled" in every TU.
+            "-DCMAKE_CXX_FLAGS:STRING=/EHsc -Wno-unknown-attributes $(Get-WarningNoiseSuppressionFlags)"
             '-DTVM_FFI_BUILD_PYTHON_MODULE=ON'
             '-DTVM_FFI_BUILD_TESTS=OFF'
         ) + @(Get-PythonCMakeHintArgs -Python $tvmTargetPy -Prefix 'Python' -ForwardSlash) + @(Get-LlvmArchiverCmakeArg)
