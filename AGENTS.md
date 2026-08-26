@@ -744,6 +744,28 @@ The rules an agent must never violate:
      `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
      and preprocessor/direct mode have NO env-var path in sccache. The size cap
      is `SCCACHE_CACHE_SIZE`; there is no `sccache -M` to call.
+   - **Never point a launcher at bare `sccache`. Use
+     `01-core/sccache-launcher.sh`.** sccache ABORTS the compile on its own
+     internal errors where ccache would just exec the compiler, and that is not
+     theoretical: CMake creates a TryCompile scratch dir, compiles in it, and
+     DELETES it; sccache then spawns the compiler with that dir as cwd, and
+     spawning with a removed cwd fails with ENOENT. Measured directly (spawn
+     /bin/true with cwd=<deleted dir> -> errno 2). It killed the media stage
+     three times, moving between OpenCV, onnxruntime and litert depending on
+     which probe lost the race, and it does NOT reproduce against directories
+     that persist — nine isolated attempts came back clean. The launcher runs
+     sccache for every compile and only bypasses on
+     "sccache: encountered fatal error"; a REAL compile error is passed through
+     untouched, because blindly retrying would hide genuine failures.
+   - **Preprocessor cache mode stays OFF** (`SCCACHE_DIRECT=false`, set in
+     ensure_sccache_env and compiler-cache.sh, mirrored in Dockerfile.base's
+     config.toml). We turned it on to recover ccache's direct-mode hit rate; it
+     re-reads the input file AFTER the compile to store the entry and therefore
+     dies on the same deleted scratch dirs. It is off by default upstream.
+   - **Resolve the launcher through `compiler_cache_launcher()`.** compiler-
+     cache.sh used to resolve it itself and hardcode the string, so the guard
+     shipped and had NO effect on the media lane for three runs. If you add a
+     new cache call site, route it through the helper.
    The failure mode this replaced (mount without wiring, wiring without mount)
    was invisible — builds stayed green, just slow. Before committing a
    multi-hour run to a change here, run

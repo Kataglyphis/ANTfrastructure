@@ -152,6 +152,21 @@ Collected DURING the switch and the staged rebuild, each with the evidence that
 produced it. None of these blocks the current run; they are the debt the switch
 either created or exposed.
 
+- **sccache caches NOTHING in the OpenCV step** [M·★★★, OPEN 2026-08-26] The
+  TryCompile root cause is fixed and the guarded launcher keeps the build alive
+  (1451 saves, 0 aborts), but in the opencv step sccache fails on EVERY compile
+  — now with the main build dir `/tmp/opencv-1/build` as cwd, not a deleted
+  scratch dir. So OpenCV builds fully UNCACHED while every other step caches
+  normally. The guard makes this survivable and VISIBLE; it does not fix it.
+  Do not re-run these nine disproven hypotheses: missing compiler; dangling
+  update-alternatives (never ran in that stage); apt reinstalling sccache
+  (it did not); the two sccache versions (0.13 apt vs 0.17 pinned — both work,
+  PATH prefers the pinned one); our own `rm -rf` (targets iree-build-HOST);
+  a cleared environment; the custom-prefix GCC without LD_LIBRARY_PATH; a
+  214-variable environment plus a 120-flag command line; memory or disk
+  pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
+  cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
+  regex failure that appears in no real chain log.
 - **`preflight.sh` exits 0 on failure** [S·★★★] Observed live: it printed
   `3 check(s) failed` AND `Fix these before a multi-hour rebuild.` and then
   `exited with code 0`. Anything that calls it non-interactively and trusts the

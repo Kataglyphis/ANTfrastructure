@@ -273,9 +273,32 @@ its server answers, else ccache, else build uncached.
 Two things from the old rationale survive, and one does not:
 
 - **Still true:** ccache cannot wrap `rustc`, `nvcc` or `hipcc`; sccache can.
-- **Still true, and now the operating constraint:** sccache HARD-FAILS on a
-  compiler it cannot identify (`bail!("Compiler not supported")`), where ccache
-  simply execs it. That is why ccache stays installed and mounted, and why
+- **Still true, and now the operating constraint:** sccache HARD-FAILS where
+  ccache simply execs the compiler. That is not limited to unidentifiable
+  compilers, and it bit hard during the switch:
+
+  > **The TryCompile trap (root cause, 2026-08-26).** CMake creates a
+  > `CMakeScratch/TryCompile-XXXX` directory, compiles a probe in it, and
+  > DELETES it. sccache then spawns the compiler with that directory as the
+  > working directory — and spawning a process whose cwd no longer exists fails
+  > with `ENOENT`. Measured directly: spawning `/bin/true` with `cwd` set to a
+  > removed directory returns errno 2, exactly what sccache reports. The same
+  > trap in preprocessor-cache mode surfaces earlier, as
+  > `while hashing the input file`, because that mode re-reads the source after
+  > the compile.
+  >
+  > It killed the media stage three times, MOVING between OpenCV, onnxruntime
+  > and litert depending on which probe lost the race — and it does not
+  > reproduce against directories that persist. Nine isolated attempts came
+  > back clean before the pattern was read correctly.
+
+  The answer is `01-core/sccache-launcher.sh`: sccache runs for every compile,
+  and only its OWN fatal errors ("sccache: encountered fatal error") fall
+  through to running the compiler directly. A real compile error is passed
+  through untouched — retrying blindly would hide genuine failures. In the run
+  that proved it, the guard fired 1451 times with ZERO build aborts.
+
+  ccache stays installed and mounted as the deeper fallback, and
   `probe-sccache.sh` exists — it asserts, per compiler SHAPE this chain feeds a
   launcher, that the compile survives AND that cache activity was recorded.
 - **No longer true:** "sccache's C/C++ path always preprocesses". It does when
