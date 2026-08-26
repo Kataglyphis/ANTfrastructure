@@ -628,7 +628,10 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   glib(build) `buildable: NO`, the same by-name libnice lookup fails as in run 23, and webrtc/nice
   take gst-plugins-bad down (`gst-libs/gst/webrtc/nice/meson.build:16:14: ERROR: Subproject
   "subprojects/libnice" required but not found`). **Fix:** `Invoke-MesonBuildSubprojectSummaryPatch`
-  (Patches module) rewrites the pip-installed `mesonbuild/interpreter/interpreter.py` before
+  (defined in `build-gstreamer-from-source.ps1` — deliberately NOT in a module: `/bkmods` is
+  bind-mounted whole into all six media RUNs, so a one-line module edit re-keys every branch on
+  both lanes, while the gst script is mounted into the merge RUN only) rewrites the pip-installed
+  `mesonbuild/interpreter/interpreter.py` before
   `meson setup` — `summary_impl` returns early when `self.build.for_machine is MachineChoice.BUILD`
   (set only by `Build.copy_for_build_machine()` for `native: true` subprojects; summaries are
   cosmetic; non-cross lanes never create such an interpreter, so amd64 is untouched). Located via

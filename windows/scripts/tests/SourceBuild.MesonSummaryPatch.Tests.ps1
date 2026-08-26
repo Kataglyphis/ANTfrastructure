@@ -10,12 +10,26 @@
 # regex must (a) hit the real 1.12.0 layout byte-for-byte, (b) insert at the
 # right Python indentation, (c) be idempotent, and (d) THROW on layout drift
 # rather than warn. Pure fixture; no meson, no python needed.
+#
+# The function lives in build-gstreamer-from-source.ps1 (NOT a module: the
+# whole modules dir is bind-mounted into every media RUN, so a module edit
+# re-keys all branches on both lanes). The suite lifts it out of the script's
+# AST instead of running the script -- same function text, no build.
 
 Describe 'Invoke-MesonBuildSubprojectSummaryPatch' {
 
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
+        $gstScript = Join-Path $root 'scripts\build\build-gstreamer-from-source.ps1'
+        $tokens = $null; $parseErrors = $null
+        $ast = [System.Management.Automation.Language.Parser]::ParseFile($gstScript, [ref]$tokens, [ref]$parseErrors)
+        if ($parseErrors -and $parseErrors.Count -gt 0) { throw "parse errors in $gstScript : $($parseErrors[0].Message)" }
+        $fnAst = @($ast.FindAll({ param($n)
+            $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+            $n.Name -eq 'Invoke-MesonBuildSubprojectSummaryPatch' }, $true)) | Select-Object -First 1
+        if (-not $fnAst) { throw "Invoke-MesonBuildSubprojectSummaryPatch not defined in $gstScript" }
+        . ([scriptblock]::Create($fnAst.Extent.Text))
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-meson-' + [guid]::NewGuid().ToString('N'))
         New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
 

@@ -122,6 +122,61 @@ function log($text) {
     Write-StructuredLogEntry -Context $logContext -Text $text
 }
 
+# meson 1.12.0 (master identical, checked 2026-08-26): summary() inside a
+# build-machine subproject collides with the host configure of the same
+# subproject and kills every by-name consumer of it.
+#
+# Interpreter.summary is keyed by subproject NAME and shared by every nested
+# interpreter, while Interpreter.subprojects is keyed [machine][name]. A cross
+# build that configures one subproject for BOTH machines runs its meson.build
+# twice; the second (build-machine) run's
+#     summary({'host cpu': ...}, section: 'Build environment')
+# throws "Summary section 'Build environment' already have key 'host cpu'"
+# (glib-2.86.3/meson.build:2777 -- gstreamer core asks for glib-2.0
+# `native: true`), meson marks glib(build) "buildable: NO", and every consumer
+# that reaches glib by NAME instead of by override -- libnice's anonymous
+# dependency('', fallback: ['glib', 'libglib_dep']) -- dies with 'Subproject
+# "subprojects/glib" required but not found', taking webrtc and nice with it.
+# Measured: arm64 cross run 25 (2026-08-26). Even the print path would KeyError
+# on a build-only key (_print_summary indexes subprojects.host by that name), so
+# the summary bookkeeping is simply skipped in build-machine interpreters:
+# Build.for_machine is BUILD only for the copy Build.copy_for_build_machine()
+# hands a `native: true` subproject, non-cross lanes never create one, and
+# summaries are cosmetic. Idempotent (marker); throws when the meson layout no
+# longer matches -- load-bearing on the cross lane, a silent miss would
+# reappear as the libnice error two hours later. Upstream draft:
+# out/upstream-issue-meson-summary-build-subproject.md.
+#
+# Lives HERE, not in a module, on purpose: `/bkmods` (the whole modules dir) is
+# bind-mounted into all six media RUNs and BuildKit keys each RUN on the mount's
+# content, so a one-line module edit rebuilds every media branch on both lanes;
+# this script is mounted into the merge RUN only. The fixture test
+# (SourceBuild.MesonSummaryPatch.Tests.ps1) extracts the function from this
+# file's AST.
+function Invoke-MesonBuildSubprojectSummaryPatch {
+    param(
+        [Parameter(Mandatory)]
+        [string]$InterpreterPath
+    )
+    $marker = '[kataglyphis meson build-subproject summary fix]'
+    $nl = "`n"
+    $replacement = '$1' +
+        '        if self.subproject and self.build.for_machine is MachineChoice.BUILD:' + $nl +
+        "            return  # $marker" + $nl +
+        '$2'
+    $ok = Invoke-InlineRegexPatch -Path $InterpreterPath `
+        -Pattern '(?m)^(    def summary_impl\([^\r\n]*\) -> None:\r?\n)(        if self\.subproject not in self\.summary:)' `
+        -Replacement $replacement `
+        -SkipIfMatch ([regex]::Escape($marker)) `
+        -AssertGone '(?m)^    def summary_impl\([^\r\n]*\) -> None:\r?\n        if self\.subproject not in self\.summary:' `
+        -Require `
+        -Description 'meson build-subproject summary fix'
+    if (-not $ok) {
+        throw "meson build-subproject summary fix did not apply to $InterpreterPath -- summary_impl layout changed (new meson?); the cross lane would fail at libnice without it"
+    }
+    return $true
+}
+
 # Extracts a downloaded .tar.gz/.tar.bz2 subproject archive into a scratch dir
 # beside $Target (7z two-pass: decompress, then untar the largest inner .tar),
 # then moves the single top-level source dir onto $Target. Returns $true when a

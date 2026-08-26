@@ -2203,7 +2203,6 @@ Export-ModuleMember -Function @(
     'Update-NinjaFile',
     'Invoke-SourcePatch',
     'Invoke-OnnxDmlClangClPatch',
-    'Invoke-MesonBuildSubprojectSummaryPatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Add-FileBlockOnce',
