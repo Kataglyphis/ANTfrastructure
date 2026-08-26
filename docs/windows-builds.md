@@ -160,7 +160,7 @@ The components whose notes do not fit a table cell. Each is linkable, so another
 
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)
 
-**both lanes** (on `-TargetArch arm64` CUDA, TensorRT and the Python bindings are OFF, but DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` name survives only as a zero-caller compat shim; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.
+**both lanes** (on `-TargetArch arm64` CUDA and TensorRT are OFF, the Python bindings are ON since #120 step 2, and DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` name survives only as a zero-caller compat shim; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.
 
 #### ONNX GenAI 0.15.2
 
@@ -600,14 +600,18 @@ gate. It does assert that `C:\toolchain-manifest.json` exists and records a
 resolved compiler, skipping on images built before the manifest existed.
 
 **Python bindings are built, shipped, and functionally verified (since
-2026-07-13) — on the amd64 lane.** On the arm64 cross lane the same set minus TVM/IREE
-ships since 2026-08-24 evening (#120 step 2): the target aarch64 CPython
+2026-07-13) — on the amd64 lane.** On the arm64 cross lane the same set ships
+since 2026-08-24 evening (#120 step 2) and, since 2026-08-26, **including the
+TVM and IREE runtime packages** (#133): the target aarch64 CPython
 (source-built at `C:\runtime\python`, step 1), the `onnxruntime`,
-`onnxruntime_genai_directml` and `av` wheels tagged `cp314-win_arm64` in
-`C:\runtime\wheels` (staged, **not** installed — nothing here can import them),
-and `cv2.cp314-win_arm64.pyd` installed into the target interpreter's
-site-packages. TVM/IREE python packages are absent on arm64 by design (they
-drive the compilers, which are amd64-only; #116). On amd64, the media branches build python bindings
+`onnxruntime_genai_directml`, `av`, `apache_tvm`, `apache_tvm_ffi` and
+`iree_base_runtime` wheels in `C:\runtime\wheels` (staged, **not** installed —
+nothing here can import them), and `cv2.cp314-win_arm64.pyd` installed into the
+target interpreter's site-packages. Six wheels on each lane; the sets differ in
+exactly two entries — amd64 additionally has `iree_base_compiler`, and installs
+`tvm_ffi` from the vendored source instead of shipping it as a wheel. The
+**compiler** packages (`iree.compiler`, TVM codegen) stay amd64-only: they need
+an LLVM cross-built for aarch64-windows (#116/#133). On amd64, the media branches build python bindings
 for every source-built library that supports them and stage the wheels
 centrally at **`C:\runtime\wheels`** (`PYTHON_WHEELS` env): `onnxruntime` (CUDA+TRT+DML EPs,
 `ENABLE_PYTHON=ON`), `onnxruntime-genai-cuda` (`BUILD_WHEEL=ON`),

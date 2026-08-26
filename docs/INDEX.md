@@ -65,7 +65,7 @@ The two halves of one topic often split:
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
-| **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates | [`windows-cross-builds.md`](windows-cross-builds.md) |
+| **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates, what reached runtime parity with amd64 and what stays amd64-only | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
