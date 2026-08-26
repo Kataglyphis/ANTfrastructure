@@ -292,7 +292,11 @@ wrong in both directions).
   ARCH-PARITY abort at the end of a green build.
 
 - Media source-cache mounts, cerbero extra_mirrors fallback, C3 `:?`
-  guards, TS4 llvm checkout keying, CERB-CACHE warm/evict behaviour,
+  guards, TS4 llvm checkout keying (**PROVEN LIVE 2026-08-26**, log
+  quote: `[INFO] Evicting stale llvm checkout llvm-project-22.1.8 (superseded
+  by llvmorg-23.1.0)` — the LLVM 23 bump found a 22.1.8 tree in the cache mount
+  and evicted it instead of silently reusing it, which would have shipped an
+  image claiming 23.1.0 while containing 22.1.8; fold on ship), CERB-CACHE warm/evict behaviour,
   APT-HTTP restore (only if the fast-mirror knob is ON), DUP2 SSOT +
   literal gate — each shipped and reviewed; the rebuild is their proof.
   Fold them with log quotes in the post-ship evidence audit.
@@ -375,12 +379,25 @@ wrong in both directions).
   while prune-safe + local caches hold. Re-open ONLY on new evidence (another
   cold-rebuild loss). v1 implementation history: reverted twice (fix7 gate
   token; inert-by-default with no coverage) — read the doc before any retry.
-- **S5 — cargo cache ids arch-independent** [S·★] downloads duplicated 3×
-  (deliberately per-lane since PAR2 — revisit as shared+non-locked).
-- **SCC1 — sccache hybrid design** [M·★★] ccache stays for C/C++; sccache
-  ONLY for rustc (wiring exists, flip controlled) + nvcc + the webdav
-  cross-machine tier. Absorbs "ccache remote_storage" + "Rust sccache
-  unblock". Full switch rejected (owner decision 2026-08-17).
+- **SCC1 — SUPERSEDED 2026-08-26: the full switch was ORDERED and DONE**
+  [M·★★] This entry recorded "full switch rejected (owner decision
+  2026-08-17)". The owner REVERSED that on 2026-08-26 and the C/C++ half is
+  implemented (5d94a37, c42091e, d5bafe8): sccache 0.17.0 pinned for linux
+  because the distro 0.13.0 has no SCCACHE_BASEDIRS, a config file baked into
+  Dockerfile.base for the settings sccache cannot take from the environment,
+  and every C/C++ launcher routed through one resolver with ccache as the
+  fallback. What SURVIVES of the hybrid design, and why:
+  - **Rust is still NOT cached.** build-gstreamer-monorepo.sh:681 hard-clears
+    RUSTC_WRAPPER because the sccache SERVER died mid-compile in three separate
+    media rounds, each killing a green gstreamer build at 99%. Revalidate
+    against the bar in docs/build-cache-tiers.md:340 (SCCACHE_IDLE_TIMEOUT=0,
+    error log captured, two consecutive green cross-arch media runs with a
+    non-zero hit rate) before removing the clear.
+  - **nvcc is untouched**, and the Windows lane records that RELEASED sccache
+    breaks the build around nvcc (versions.env, SCCACHE_GIT_REV block) — so
+    "sccache everywhere" must not be read as including nvcc without that
+    evidence being re-examined.
+  - **The webdav cross-machine tier** remains unbuilt.
 
 ## E. Waiting on a TRIGGER (not on work)
 
@@ -422,6 +439,13 @@ wrong in both directions).
 
 ## Verdicts (anti-re-sweep records — do NOT re-audit without new evidence)
 
+
+- **S5 — shared cargo cache ids: DECLINED, premise falsified 2026-08-26.** The
+  entry claimed "cargo cache ids arch-independent". They are not: the media
+  lane uses `id=cargo-registry-${TARGET_ARCH}` / `id=cargo-git-${TARGET_ARCH}`
+  (Dockerfile.media:857-858), i.e. already per-lane BY DESIGN since PAR2. The
+  3x crate duplication is the accepted cost of lane isolation. Re-open only
+  with new evidence that cargo guards a shared store safely.
 - **PAR5 — a lone surviving lane stays throttled; the obvious fix is
   DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
   single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host
