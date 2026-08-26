@@ -4,8 +4,15 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
-> **Status (2026-08-26): the lane builds end to end and is at RUNTIME PARITY with `:winamd64` —
-> and nothing it produces has ever been run.** Same media and inference surface: GStreamer with
+> **Status — read the date. The numbers below are arm64 run 36 (2026-08-26 midday), and the tree
+> has moved since.** What that run established stands: the lane built end to end and reached
+> RUNTIME PARITY with `:winamd64`, and nothing it produces has ever been run. What it does NOT
+> cover: the module-closure refactor (#134), the forced clang-cl bump to 23.1.0 — upstream reshaped
+> the Windows artifact, so the previous pin can no longer be installed at all — and the per-TU
+> AArch64 codegen workaround that bump required (#135). **No completed build of the current tree
+> exists yet**, so treat every figure here as the last known good rather than a claim about HEAD.
+>
+> Same media and inference surface: GStreamer with
 > an identical plugin set (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`,
 > plus `gst-ptp-helper`), ONNX Runtime + GenAI with DirectML, OpenCV 5 (NEON dispatch:
 > `NEON_DOTPROD NEON_FP16 NEON_BF16`), FFmpeg with NEON asm + PyAV, LiteRT with the `tflite`

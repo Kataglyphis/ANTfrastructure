@@ -76,6 +76,9 @@ Two neighbours, so you land on the right page:
 - [`TVM: llvm-config.exe not found on PATH`](#tvm-llvm-configexe-not-found-on-path)
 - [`lld-link: error: undefined symbol` for template instantiations after a green compile](#lld-link-error-undefined-symbol-for-template-instantiations-after-a-green-compile)
 - [meson cross: `Summary section 'Build environment' already have key 'host cpu'`, then `Subproject "subprojects/glib" required but not found`](#meson-cross-summary-section-build-environment-already-have-key-host-cpu-then-subproject-subprojectsglib-required-but-not-found)
+- [Windows base: scoop cannot install a pinned tool, 404 on the installer](#windows-base-scoop-cannot-install-a-pinned-tool-404-on-the-installer)
+- [AArch64 cross compile aborts with `error: fixup value out of range`](#aarch64-cross-compile-aborts-with-error-fixup-value-out-of-range)
+- [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
 
 
 ---
@@ -381,3 +384,80 @@ Two neighbours, so you land on the right page:
 **Cause.** Three meson bugs around "build-only" subprojects (1.12.0 and `master`, checked 2026-08-26). Nothing in the monorepo asks for a build-machine glib; meson's gnome module does (`mkenums_simple` → `find_tool` → `dependency('glib-2.0', native: true, required: false)`), so under forcefallback glib's `meson.build` runs a second time for the build machine. (1) `Interpreter.summary` is keyed by NAME and shared across interpreters → the second run throws at its `summary({'host cpu': …})`. (2) `do_subproject`'s failure paths call `disabled_subproject(subp_name, exception=e)` without `for_machine` (default HOST) → the failed build-machine holder **overwrites the healthy host glib holder** — that is the poison: libnice's anonymous `dependency('', fallback: ['glib', 'libglib_dep'])` reaches glib by NAME and inherits the failure (the `gio-2.0` lookup survives through the override table), and every later `native: true` request re-runs the whole failing configure because the BUILD key never got the disabled entry. (3) `configure_file` writes to the unprefixed `self.subdir` while targets/include dirs of a build-only subproject live under `build.<subdir>` → the build machine's `glibconfig.h`/`config.h`/`fficonfig.h` overwrite the host's, and a build-machine compile cannot find them (run 27). Not a toolchain problem — the build-machine sanity checks link x64 via `/vctoolsdir`+`/winsdkdir` and its libffi assembles with the x64 `cl`/`ml64` named in the native file (backlog #128 runs 23–27 for the earlier costumes of this chain).
 
 **Fix.** `Invoke-MesonBuildSubprojectPatch` (in `WindowsMeson.Common.psm1` since #134, 2026-08-26 — a merge-lane leaf module mounted by `Dockerfile.media-merge-builder` only, so editing it costs the GStreamer layer and not the whole media chain; it lived inside `build-gstreamer-from-source.ps1` until then because the only module home was the shared `buildmods` six) patches the pip-installed `mesonbuild/interpreter/interpreter.py` before `meson setup`: `for_machine=for_machine` at both `disabled_subproject` failure sites, and the project prefix on `configure_file`'s output path and returned File. Bug (1) is deliberately left alone — a build-machine glib that configures is one that compiles (5772 targets) into more unprefixed paths, and nothing consumes it; with (2) fixed its failure is recorded under BUILD only, with (3) fixed it clobbers nothing, gnome's `find_tool` falls through to the host override as designed, and libnice/webrtc configure against the host glib. Idempotent by marker; THROWS when a site count is off so a newer meson cannot silently skip it and resurface as the libnice error two hours later. Fixture test `SourceBuild.MesonBuildSubprojectPatch.Tests.ps1`; upstream draft `out/upstream-issue-meson-summary-build-subproject.md` (all three). If you see this on a meson newer than 1.12.0, check whether upstream fixed it before re-anchoring the regexes.
+
+### Windows base: scoop cannot install a pinned tool, 404 on the installer
+
+**Symptom.** `Dockerfile.base` dies in the scoop layer, ~14 minutes in (i.e. after the Visual
+Studio Build Tools layer), with `The remote server returned an error: (404) Not Found.` naming an
+installer URL, then `Where-Object: Cannot bind argument to parameter 'AppName' because it is an
+empty string` — scoop's own follow-on error, not the cause. Both halves of this hit on 2026-08-26,
+twenty minutes apart.
+
+**Cause.** The pin names a version whose WINDOWS artifact does not exist. Two distinct ways in:
+
+- **The upstream reshaped the artifact.** LLVM changed its Windows packaging at 23.1.0 from `.exe`
+  to `.msi`, and the scoop `main/llvm` manifest followed within the hour. `scoop install app@<ver>`
+  synthesises its URL from the CURRENT manifest's autoupdate template, so the still-valid 22.1.8
+  pin began asking for `LLVM-22.1.8-win64.msi`, which was never published. Measured:
+  `LLVM-22.1.8-win64.exe` 206 / `.msi` 404; `LLVM-23.1.0-win64.exe` 404 / `.msi` 206. **A pin can
+  go uninstallable without the pinned version changing.**
+- **The upstream versions per platform and the key is shared.** LunarG publishes the Vulkan SDK per
+  platform and Windows lags: `https://vulkan.lunarg.com/sdk/latest.json` read
+  `{"linux":"1.4.357.1","mac":"1.4.357.1","windows":"1.4.357.0"}`. `VULKAN_VERSION` feeds the linux
+  base/sdk AND the windows scoop layer, and the bump tool resolved it from `latest/linux.txt`.
+
+**Fix.** Check the artifact, not the version number:
+```bash
+curl -sS -o NUL -w '%{http_code}' -L --max-time 30 -r 0-0 <installer-url>   # 206 = there, 404 = not
+curl -s https://raw.githubusercontent.com/ScoopInstaller/Main/master/bucket/<app>.json | grep -A2 autoupdate
+```
+`spec_vulkan` in `bump_versions.py` now reads `latest.json` and pins the OLDEST platform this repo
+installs — a shared key can only carry a version that exists on every lane consuming it — and
+prints the disagreement. `build-buildkit.ps1`'s Vulkan preseed probes the installer URL before any
+solve and throws on 404 ONLY (403/5xx/timeouts stay fail-open, so a LunarG outage cannot block a
+build the container could still complete). Note the preseed had ALREADY warned "host download
+failed (exit 22)" and fallen through by design; a 404 is a wrong pin, not an outage.
+
+### AArch64 cross compile aborts with `error: fixup value out of range`
+
+**Symptom.** The cross build of `opencv_imgproc` aborts three TUs (`imgwarp.cpp`,
+`smooth.dispatch.cpp`, `stb_truetype.cpp`) with `error: fixup value out of range` and
+`7 warnings and 1 error generated.` — no source location, no fixup kind. Appeared with clang-cl
+23.1.0; 22.1.8 compiled the same tree.
+
+**Cause — hypothesis, not established.** The AArch64 asm BACKEND rejects a fixup whose displacement
+does not fit its instruction field, most likely a pc-relative branch (tbz/tbnz ±32 KB, b.cond
+±1 MB) in a function LLVM 23 grew past what 22 emitted. All three offenders are OpenCV
+CPU-DISPATCH TUs, the largest functions in the module. LLVM prints no fixup kind, so pinning this
+down needs a reduced case or a disassembly (backlog #135).
+
+**NOT the compressed-jump-table ceiling**, which produces `error: value evaluated as <N> is out of
+range.` from `AArch64AsmPrinter::emitJumpTableImpl` and is already fixed build-wide by
+`-mllvm -aarch64-enable-compress-jump-tables=false`. Verify before assuming: that flag is still on
+the command line and LLVM 23 still accepts it (no "Unknown command line argument" in the log).
+
+**Fix.** `/O1` on exactly the offending TUs via `Add-NinjaPerTuFlags`, cross-lane only, with the
+floor set to the name count so a rename or a fourth offender throws instead of silently shipping an
+untagged TU. The hot SIMD kernels are not in these TUs (they are generated per-ISA from
+`*.simd.hpp` and keep `/O2`). Do NOT reach for a blanket `/Od` — see the note above the block in
+`build-opencv-from-source.ps1` for why that was removed once before.
+
+### A build script dies with `The term ... is not recognized`, in the container only
+
+**Symptom.** A build script dies with `FATAL ERROR: The term 'Resolve-BuildMachineMsvcTool' is not
+recognized as a name of a cmdlet, function, script file, or executable program.` — well into a
+compile stage, on the build host only. The same script runs fine on a dev box.
+
+**Cause.** The function exists and is exported by its owning module, but the script reaches that
+module INDIRECTLY through `WindowsSourceBuild.Common`'s re-export list, and the name was never
+added there. Module-internal use never needs an export entry; a direct script call does. On a dev
+box the whole modules directory is on disk and earlier imports pollute the session, so nothing
+fails. `Export-ModuleMember` also silently ignores names with no matching function, so the reverse
+mistake is equally quiet. This class has cost two incidents (#113/verify12, and #134 two hours into
+arm64 run 37).
+
+**Fix.** Exporting is TWO edits: `Export-ModuleMember` in the owning module AND the re-export list
+in `WindowsSourceBuild.Common.psm1`. `Modules.ScriptCallClosure.Tests.ps1` proves in a fresh pwsh —
+importing only what the script itself imports — that every module function a build script CALLS
+resolves; `Modules.ReExport.Tests.ps1` checks the other direction. Neither replaces the other, and
+the check takes seconds where the build takes hours.

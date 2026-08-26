@@ -164,8 +164,14 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 - **#134 — post-#133 cleanup wave: unshare the module closure, de-duplicate the AST test
   boilerplate, condense the docs.** M · ★★ (opened 2026-08-26, owner's request; planned against the
   Dockerfiles, not against memory — see the correction below) · **CODE LANDED 2026-08-26
-  (`2752685f` + docs `80f2258f`); ACCEPTANCE RUN IN FLIGHT — nothing below is proven until it
-  reports.**
+  (`2752685f` + docs `80f2258f`); STILL UNPROVEN — four acceptance attempts on 2026-08-26, none
+  completed, and only ONE died of a #134 defect.**
+  Run 37 found the re-export omission (fixed, `9bf0ef41`). The next three died of things that moved
+  underneath the tree, not of this wave: a Vulkan pin with no Windows installer (`0dfd7c47`), an
+  LLVM pin scoop could no longer install after upstream reshaped the artifact (`6bbcea65`), and the
+  AArch64 `fixup value out of range` that the forced clang bump brought with it (#135, `20c4fc7e`).
+  Each is in `docs/failure-modes.md`. The current attempt has cleared base, sdk, toolchain, onnx
+  and ffmpeg; opencv is the next gate.
   **The acceptance run, and why it is the proof rather than the suite.** Three runs off
   `80f2258f`, in this order (arm64 first: it exercises more of the new code — the cross paths, all
   three leaf modules, `tvmmods` — and costs ~40 min against amd64's ~2 h 20, so a defect surfaces
