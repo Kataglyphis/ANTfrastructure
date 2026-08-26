@@ -137,10 +137,17 @@ if ($skippedSuites.Count -gt 0) {
 # file, a wrong working directory, a suite dir that moved -- printed
 # "0 tests | 0 passed | 0 failed" and exited 0. That is the same
 # "verified nothing, reported PASS" shape MIN_PASSED guards in the smoke gate
-# and -MinInspected in the arch gate. The floor is measured (702 on
-# 2026-08-26) with headroom for a suite that is legitimately retired; raise it
-# when the suite count grows, and never lower it to make a red run green.
-$minTests = 690
+# and -MinInspected in the arch gate. The floor is measured with headroom for a
+# suite that is legitimately retired; raise it when the suite count grows, and
+# never lower it to make a red run green.
+#
+# 690 -> 700 (2026-08-26 evening): the suite went 702 -> 708 the same day
+# (+4 BuildKit.ModuleClosure, +1 Modules.ScriptCallClosure, +3 the AArch64
+# fixup-range selector fixtures, -1 the retired B6 parity check) while the floor
+# stayed where 702 had put it. That is the drift this comment's own instruction
+# exists to prevent: at 690 against 708 the gate tolerated losing 18 tests.
+# ~1% headroom is the standing ratio.
+$minTests = 700
 if ($total -lt $minTests) {
     Write-Host "  FLOOR: only $total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
     exit 1
