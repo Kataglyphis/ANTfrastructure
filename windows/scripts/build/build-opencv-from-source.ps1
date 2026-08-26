@@ -411,7 +411,7 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # UPSTREAM: the estimate/emission mismatch is an LLVM bug and should be reported
 # (out/ has the drafts from previous ones). This flag is the workaround, not the
 # fix, and it is a workaround that costs no code quality.
-$jumpTableFlag = if ($ocvCross) { '-mllvm -align-all-nofallthru-blocks=3' } else { '' }
+$jumpTableFlag = ''
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
