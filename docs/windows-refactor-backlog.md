@@ -463,6 +463,22 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   target` — not a dialect gap: llvm-ml assembles for **i386 unless told `-m64`**, and the file's
   x64 frame directives (`.PUSHREG`/`.SETFRAME`, which llvm-ml lowers to `.seh_*`) need the x86_64
   target. `-m64` is now part of the IREE command and of ORT's `CMAKE_ASM_MASM_FLAGS`.
+  ✅ **DONE 2026-08-26 as a split, not a sweep — IREE on llvm-ml (arm64 run 23), MLAS stays on
+  `ml64.exe` by measurement (amd64 run 6):** with `-DCMAKE_ASM_MASM_COMPILER=llvm-ml -m64` ORT's
+  configure did report `Found assembler: …/llvm-ml.exe`, and then all four MLAS `.asm` kernels
+  ninja reached failed on their **first line** — `.xlist` → `expected section directive before
+  assembly directive` — followed by `INCLUDE mlasi.inc` → `Could not find include file` and ~6400
+  cascaded errors. Root causes read from LLVM 22's `MasmParser.cpp` (release/22.x): it implements
+  **no listing directives** (`.list`/`.xlist`/`.nolist` are absent from the directive map), and
+  `INCLUDE` resolves through `SourceMgr.AddIncludeFile` with the `-I` dirs only — ml64 also
+  searches the includer's directory, which is how `mlas/lib/amd64/*.asm` finds `mlasi.inc` without
+  any `/I`. Behind that include sits the Windows SDK's MASM macro layer (`macamd64.inc`:
+  `NESTED_ENTRY`, `rex_push_reg`, …). That is missing MASM coverage, not a flag, and rewriting ~40
+  upstream kernels plus SDK includes is not this repo's job. Reverted in
+  `build-onnx-from-source.ps1`: no ASM_MASM override on the native configure, the tee'd
+  configure log now asserts **ml64** (a drift stops at configure, not 40 min into ninja), the
+  reason sits beside the check. `Resolve-LlvmMasm`/`Get-LlvmMasmCmakeArg` stay in the module for
+  IREE. AGENTS' assembler paragraph names the split. Proof of the reverted amd64 path: run 7.
 
 - **#124 — the target CPython cannot start on a clean Windows-on-ARM machine: `vcruntime140.dll`
   is staged into `DLLs\`, not beside `python.exe`.** S · ★★★ (opened 2026-08-25, consumer-side audit)

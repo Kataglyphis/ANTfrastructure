@@ -339,33 +339,36 @@ $cmakeArgs = @(
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs + $qnnArgs
-# #123 (2026-08-25): MLAS's amd64 kernels are MASM sources (mlas/lib/amd64/*.asm,
+# #123 (2026-08-25/26): MLAS's amd64 kernels are MASM sources (mlas/lib/amd64/*.asm,
 # "Building ASM_MASM object" in every amd64 log) and CMake's ASM_MASM default is
-# MSVC's ml64 -- the last MSVC tool in the native build. llvm-ml is LLVM's
-# MASM-compatible assembler; whether MLAS's macro-heavy dialect is inside its
-# compatibility is the question this wiring answers by building. The cross
-# lane assembles nothing through ASM_MASM (arm64 MLAS is .S / intrinsics), so
-# the argument is native-only and its configure command line stays as it was.
-# `-m64` is load-bearing: llvm-ml assembles for i386 unless told otherwise and
-# MLAS's x64 kernels use the x64 frame directives (.PUSHREG/.SETFRAME ->
-# .seh_*), which then fail with ".seh_* directives are not supported on this
-# target" (measured on IREE's trampoline, arm64 run 22 host pass).
-if (-not $onnxCross) { $cmakeArgs += Get-LlvmMasmCmakeArg; $cmakeArgs += '-DCMAKE_ASM_MASM_FLAGS:STRING=-m64' }
+# MSVC's ml64 -- the one MSVC tool that stays in the native build, ON PURPOSE.
+# llvm-ml was wired here (Get-LlvmMasmCmakeArg + `-m64`) and measured on amd64
+# run 6 (2026-08-26): every MLAS .asm dies at its first line -- `.xlist` ->
+# "expected section directive before assembly directive" (LLVM 22's MasmParser
+# has no listing directives at all), then `INCLUDE mlasi.inc` -> "Could not
+# find include file" (llvm-ml searches only -I dirs, ml64 also the includer's
+# directory), and everything behind that include is the Windows SDK's MASM
+# macro layer (macamd64.inc: NESTED_ENTRY, rex_push_reg, ...). That is missing
+# MASM coverage, not a flag; a source rewrite of ~40 kernels + SDK includes is
+# not this repo's job. IREE's single trampoline (x86_64_msvc.asm) IS inside
+# llvm-ml's coverage and uses it (build-iree-from-source.ps1). The cross lane
+# assembles nothing through ASM_MASM (arm64 MLAS is .S / intrinsics).
 Switch-BuildPhase '3. cmake configure'
-# Tee'd (not | Out-Null): the ASM_MASM identification lines are the proof #123
-# needs, and a swallowed configure log is a "never swallow logs" violation.
+# Tee'd (not | Out-Null): the ASM_MASM identification lines stay in the log so
+# the assembler in use is a fact, not an assumption; a swallowed configure log
+# is a "never swallow logs" violation.
 $ortCfgLog = Get-PersistentBuildLogPath -Name 'onnxruntime-configure.log' -FallbackDir $buildDir
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs 2>&1 |
     Tee-Object -FilePath $ortCfgLog
 if (-not $onnxCross) {
-    # CMake reports the assembler it found ("-- Found assembler: <path>" /
-    # "The ASM_MASM compiler identification is ..."). It must be llvm-ml; a
-    # silent fallback to ml64 is the exception this item removes.
+    # CMake reports the assembler it found ("-- Found assembler: <path>"). It
+    # must be MSVC's ml64 (see above); anything else here is a toolchain drift
+    # worth stopping on rather than a 40-minute ninja run away.
     $masmLines = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'ASM_MASM|Found assembler' })
-    if ($masmLines.Count -eq 0 -or -not ($masmLines -join "`n" | Select-String -Pattern 'llvm-ml' -Quiet)) {
-        throw "ORT configure did not report llvm-ml as the ASM_MASM assembler (#123). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
+    if ($masmLines.Count -eq 0 -or -not ($masmLines -join "`n" | Select-String -Pattern 'ml64' -Quiet)) {
+        throw "ORT configure did not report ml64 as the ASM_MASM assembler (#123: MLAS needs MSVC's MASM, llvm-ml 22 cannot assemble it). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
     }
-    Write-Host "ASM_MASM assembler (#123): $($masmLines -join ' | ')"
+    Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
 }
 Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
