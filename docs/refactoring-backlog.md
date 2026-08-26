@@ -84,8 +84,9 @@ closure window — ONE rebuild pays for all).
   buildkit outside the bundle, i.e. breaking the version-matched set. Not
   worth it; revisit when a nerdctl-full bundles 0.32.x. Tooling:
   `linux/host-config/install-nerdctl-full.sh` (needs
-  `NERDCTL_INCLUDE_ROOTFUL=1` on this host — see docs/linux-host-setup.md
-  § B3b for why, and for the reference run).
+  `NERDCTL_INCLUDE_ROOTFUL=1` on this host; see
+  docs/linux-host-setup.md § B3b. That section carries the rationale and
+  the reference run).
 - ✅ **DONE — buildkitd.toml gcpolicy is live.** Repo and
   `~/.config/buildkit/buildkitd.toml` are in sync and the daemon restarted
   during the upgrade above, which is the event it was waiting for.

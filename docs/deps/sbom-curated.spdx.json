@@ -41,7 +41,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-CMake-9859bdff",
       "name": "CMake",
-      "versionInfo": "4.4.2",
+      "versionInfo": "4.4.3",
       "downloadLocation": "https://cmake.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -67,7 +67,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-uv-758d77ac",
       "name": "uv",
-      "versionInfo": "0.12.5",
+      "versionInfo": "0.12.6",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -106,7 +106,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-LLVM-Clang-c755ff77",
       "name": "LLVM / Clang",
-      "versionInfo": "22.1.8",
+      "versionInfo": "23.1.0",
       "downloadLocation": "https://llvm.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -561,7 +561,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Ollama-229f7e80",
       "name": "Ollama",
-      "versionInfo": "0.32.15",
+      "versionInfo": "0.33.0",
       "downloadLocation": "https://github.com/ollama/ollama",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -743,7 +743,7 @@
     {
       "SPDXID": "SPDXRef-Package-Windows-Image-CMake-5d133173",
       "name": "CMake",
-      "versionInfo": "4.4.2",
+      "versionInfo": "4.4.3",
       "downloadLocation": "https://cmake.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -1107,7 +1107,7 @@
     {
       "SPDXID": "SPDXRef-Package-Documentation-Image-uv-53092da1",
       "name": "uv",
-      "versionInfo": "0.12.5",
+      "versionInfo": "0.12.6",
       "downloadLocation": "https://github.com/astral-sh/uv",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

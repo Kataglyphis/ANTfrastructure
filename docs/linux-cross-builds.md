@@ -581,7 +581,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-Validated for both `arm64` and `riscv64`: `gcc 16.2.0`, `clang 22.1.8`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, and optional runtime payloads under `/usr/local/lib/onnxruntime-*`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, `/usr/local/lib/pkgconfig/litert.pc`.
+Previously validated for both `arm64` and `riscv64` (2026-08 runs, before the LLVM 23.1.0 bump): `gcc 16.2.0`, `clang 22.1.8`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, and optional runtime payloads under `/usr/local/lib/onnxruntime-*`, `/usr/local/include/tflite`, `/usr/local/include/tensorflow`, `/usr/local/lib/pkgconfig/litert.pc`.
 
 After the runtime helper cleanup, validated for `amd64` with:
 
@@ -598,7 +598,7 @@ bash linux/scripts/build-runtime-artifacts.sh \
   --fast-ubuntu-ports-mirror-url http://ports.ubuntu.com/ubuntu-ports/
 ```
 
-Result: `gcc 16.2.0`, `clang 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, `/usr/bin/clang → /etc/alternatives/clang → /usr/local/llvm-target/bin/clang`.
+Result at the time (previously, on the LLVM 22 pin): `gcc 16.2.0`, `clang 22.1.8`, target `x86_64-unknown-linux-gnu`, `/usr/bin/cc → /etc/alternatives/cc → /opt/gcc-16.2.0/bin/gcc`, `/usr/bin/clang → /etc/alternatives/clang → /usr/local/llvm-target/bin/clang`.
 
 ### Local wrapper smoke validation
 
