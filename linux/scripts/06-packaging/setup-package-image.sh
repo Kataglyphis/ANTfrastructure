@@ -117,6 +117,22 @@ select_dev_packages() {
         _sdp_out+=("gcc-${gcc_major}" "g++-${gcc_major}")
     fi
 
+    # LLVM apt packages. The major MUST track LLVM_RELEASE, because
+    # pin_clang_alternatives below looks for /usr/lib/llvm-${LLVM_RELEASE%%.*}
+    # -- a hard-coded major here would install llvm-22 while that search asks
+    # for llvm-23, and the apt candidate could then never win.
+    # append_available_packages SKIPS packages apt does not have, which is the
+    # trap: on a distro that has not published the new major yet, asking only
+    # for it installs NOTHING and silently drops the libLLVM/libclang dev libs
+    # this stage needs. So ask for the wanted major AND keep 22 as a floor --
+    # whichever exists is taken, and having both is harmless.
+    local _pkg_llvm_major
+    _pkg_llvm_major="${LLVM_RELEASE%%.*}"
+    [ -n "${_pkg_llvm_major}" ] || _pkg_llvm_major=22
+    append_available_packages _sdp_out \
+        "clang-${_pkg_llvm_major}" "lld-${_pkg_llvm_major}" \
+        "llvm-${_pkg_llvm_major}" "llvm-${_pkg_llvm_major}-dev" \
+        "libclang-rt-${_pkg_llvm_major}-dev" "libfuzzer-${_pkg_llvm_major}-dev"
     append_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
 

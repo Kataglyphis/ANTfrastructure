@@ -24,7 +24,13 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}" || exit 1
 
-RUFF_PIN="0.14.4"   # versions.env rider — see header
+# C4 (2026-08-26): read the pin from versions.env instead of duplicating it.
+# The literal here silently drifted from RUFF_VERSION the moment that key was
+# bumped; sourcing it is the one-line fix the backlog asked for.
+_venv="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/01-core/versions.env"
+# shellcheck disable=SC1090
+[ -f "${_venv}" ] && . "${_venv}"
+RUFF_PIN="${RUFF_VERSION:-0.16.4}"
 GATE_SELECT="E9,F63,F7,F82"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }

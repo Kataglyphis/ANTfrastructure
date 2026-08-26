@@ -249,19 +249,20 @@ append_cross_idirafter() {
 }
 
 llvm_release_version() {
-  local version="${1:-${LLVM_WANTED:-${CLANG_WANTED:-22}}}"
+  local version="${1:-${LLVM_WANTED:-${CLANG_WANTED:-23}}}"
   if [ -n "${LLVM_RELEASE:-}" ]; then
     printf '%s' "${LLVM_RELEASE}"
     return 0
   fi
   case "${version}" in
+    23) printf '%s' "23.1.0" ;;
     22) printf '%s' "22.1.8" ;;
     *) printf '%s' "${version}.1.0" ;;
   esac
 }
 
 # Single source of truth for the "wanted" LLVM major. Use instead of the
-# ${LLVM_WANTED:-${CLANG_WANTED:-22}} fallback chain so a future LLVM bump
+# ${LLVM_WANTED:-${CLANG_WANTED:-23}} fallback chain so a future LLVM bump
 # (versions.env LLVM_RELEASE) only needs to update common.sh's literal above
 # (the `22` literal there is loaded into LLVM_WANTED at module-load time via
 # the block above this function).
@@ -274,7 +275,7 @@ llvm_wanted_major() {
     printf '%s' "${CLANG_WANTED}"
     return 0
   fi
-  printf '%s' "22"
+  printf '%s' "23"
 }
 
 llvm_git_tag() {

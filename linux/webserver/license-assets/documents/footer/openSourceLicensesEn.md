@@ -27,7 +27,7 @@ its own license terms.
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
 | GCC (host + cross) | 16.2.0 | [gcc.gnu.org](https://gcc.gnu.org/) | GPLv3+ with GCC Runtime Library Exception |
-| LLVM / Clang | 22.1.8 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
+| LLVM / Clang | 23.1.0 | [llvm.org](https://llvm.org/) | Apache 2.0 with LLVM Exceptions |
 | Python | 3.14.7 | [python.org](https://python.org/) | PSF License |
 | Rust toolchain | latest stable | [rust-lang.org](https://rust-lang.org/) | MIT / Apache 2.0 |
 

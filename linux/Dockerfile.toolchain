@@ -19,7 +19,7 @@ SHELL ["bash", "-lc"]
 # is plain COPY (content-keyed, cheap tail), so downstream stages still see the
 # full script set without touching the compiler layers.
 
-ARG LLVM_RELEASE=22.1.8
+ARG LLVM_RELEASE=23.1.0
 ARG GCC_VERSION=16.2.0
 ARG TARGETARCH
 ARG TARGETPLATFORM

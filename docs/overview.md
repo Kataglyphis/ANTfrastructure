@@ -48,7 +48,7 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 | Media | ONNX Runtime <!-- generated:onnx -->1.29.0<!-- /generated:onnx --> | ✔️ |
 | Media | GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer -->, OpenCV <!-- generated:opencv -->5.0.0<!-- /generated:opencv -->, LiteRT | ✔️ |
 | Media | libcamera, FFmpeg | ✔️ |
-| Compiler | GCC <!-- generated:gcc -->16.2.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->22.1.8<!-- /generated:llvm --> | ✔️ |
+| Compiler | GCC <!-- generated:gcc -->16.2.0<!-- /generated:gcc -->, LLVM/Clang <!-- generated:llvm -->23.1.0<!-- /generated:llvm --> | ✔️ |
 | Language runtime | Python <!-- generated:python -->3.14.7<!-- /generated:python -->, Node.js <!-- generated:node -->26.7.0<!-- /generated:node --> | ✔️ |
 | Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
