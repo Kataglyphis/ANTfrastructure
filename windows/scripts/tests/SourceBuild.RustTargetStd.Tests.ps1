@@ -15,16 +15,8 @@
 Describe 'Install-RustTargetStdFromPinnedManifest' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $gstScript = Join-Path $root 'scripts\build\build-gstreamer-from-source.ps1'
-        $tokens = $null; $parseErrors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($gstScript, [ref]$tokens, [ref]$parseErrors)
-        if ($parseErrors -and $parseErrors.Count -gt 0) { throw "parse errors in $gstScript : $($parseErrors[0].Message)" }
-        $fnAst = @($ast.FindAll({ param($n)
-            $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-            $n.Name -eq 'Install-RustTargetStdFromPinnedManifest' }, $true)) | Select-Object -First 1
-        if (-not $fnAst) { throw "Install-RustTargetStdFromPinnedManifest not defined in $gstScript" }
-        . ([scriptblock]::Create($fnAst.Extent.Text))
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
+                                       -FunctionName 'Install-RustTargetStdFromPinnedManifest')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-ruststd-' + [guid]::NewGuid().ToString('N'))
         $script:rustupHome = Join-Path $script:tmp 'rustup'

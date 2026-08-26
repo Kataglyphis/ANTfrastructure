@@ -57,12 +57,7 @@ Describe 'Remove-MakefileShowIncludes' {
     # These tests keep pinning the PRODUCTION definition: extract exactly the
     # function's AST from the script (dot-sourcing the whole script would start
     # a build) and load it into this scope.
-    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build\build-ffmpeg-from-source.ps1'
-    $tokens = $null; $errors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($ffmpegScript, [ref]$tokens, [ref]$errors)
-    $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Remove-MakefileShowIncludes' }, $true) | Select-Object -First 1
-    if (-not $fnAst) { throw "Remove-MakefileShowIncludes not found in $ffmpegScript — did it move again? Update this suite." }
-    . ([scriptblock]::Create($fnAst.Extent.Text))
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-ffmpeg-from-source.ps1' -FunctionName 'Remove-MakefileShowIncludes')
 
     It 'strips /showIncludes and the awk dep pipeline, keeping unrelated lines' {
         Invoke-InTestDir { param($dir)
@@ -99,12 +94,7 @@ Describe 'Remove-MakefileShowIncludes' {
 Describe 'Assert-FfmpegPkgConfig' {
     # Same AST-extraction rationale as above: the gate lives in the FFmpeg script
     # so it stays out of the three media branches' compile closure.
-    $ffmpegScript = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'build\build-ffmpeg-from-source.ps1'
-    $tokens = $null; $errors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($ffmpegScript, [ref]$tokens, [ref]$errors)
-    $fnAst = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Assert-FfmpegPkgConfig' }, $true) | Select-Object -First 1
-    if (-not $fnAst) { throw "Assert-FfmpegPkgConfig not found in $ffmpegScript — did it move? Update this suite." }
-    . ([scriptblock]::Create($fnAst.Extent.Text))
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-ffmpeg-from-source.ps1' -FunctionName 'Assert-FfmpegPkgConfig')
 
     # Shape of a healthy file, as FFmpeg's configure emits it once the VERSION
     # file exists and the MSYS prefix has been rewritten.

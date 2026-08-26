@@ -4,127 +4,43 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
-> **Status (2026-08-25): the lane builds end to end — `media-litert` included — the bundle's
-> Python surface is now staged so a clean device can use it at first touch (#124–#127, run 14),
-> the post-cross refactor (#131) is on `main` and re-proved on both lanes the same day (amd64
-> run 5: 1134/0, 220/0/0; arm64 run 19: 970/0, walk 571/0, smoke 97/0/15, every tagging count
-> identical to run 14), and nothing it produces has ever been run.**
+> **Status (2026-08-26): the lane builds end to end and is at RUNTIME PARITY with `:winamd64` —
+> and nothing it produces has ever been run.** Same media and inference surface: GStreamer with
+> an identical plugin set (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`,
+> plus `gst-ptp-helper`), ONNX Runtime + GenAI with DirectML, OpenCV 5 (NEON dispatch:
+> `NEON_DOTPROD NEON_FP16 NEON_BF16`), FFmpeg with NEON asm + PyAV, LiteRT with the `tflite`
+> plugin, and the TVM/IREE **runtimes together with their python packages** — 6 wheels, the same
+> count as amd64.
 >
-> Shipped: the arch-fact module (`WindowsTargetArch.Common.psm1`), `-TargetArch` on the **BuildKit
-> driver only** (`build-buildkit.ps1`) — the classic `build.ps1` has no arm64 support at all and
-> never sees `WINDOWS_TARGET_ARCH`, so the cross lane is BuildKit-only,
-> `ARG WINDOWS_TARGET_ARCH` from the media stage onward, per-arch tags, the base-image ARM64
-> readiness checks, the MLAS and XNNPACK kernel-flag floors, the ASM-language cross triple in
-> `Get-CMakeCrossArgs`, and the `verify-target-arch.ps1` PE gate wired into the merge stage.
+> | Gate (arm64 run 36) | Result | amd64 (run 8) |
+> | --- | --- | --- |
+> | PE arch gate over `C:\runtime` + host site-packages | **992 inspected / 0 violations** | 1134 / 0 |
+> | Import walk (`-ImportWalk`, unpacks staged wheels) | **606 walked / 0 unresolved** (3 allowlisted, 6 device-OS) | report-only |
+> | Target python deps | **12 wheels / 0 unresolved requirement edges** | installed natively |
+> | Mandatory GStreamer plugins | **6 / 6** | 6 / 6 |
+> | Smoke | 97 passed / 0 failed / 15 skipped (floors 66/25) | 222 / 0 / 0 |
 >
-> **The chain completes end to end with all three media branches: `base → sdk → toolchain →
-> media-core → media-litert → media-tvm → merge → final` produces `:winarm64`** (green run 11 of
-> 2026-08-24 evening, `[bk] Done in 00:44:45`; the morning's run 16 was the first green chain,
-> still without `media-tvm` and without Python bindings). Cross-built for
-> `aarch64-pc-windows-msvc`: a target CPython **built from source and shipped at
-> `C:\runtime\python`** (#120 step 1) **with its consumers** — the `onnxruntime`,
-> `onnxruntime_genai_directml` and `av` wheels tagged `cp314-win_arm64` staged in
-> `C:\runtime\wheels`, and `cv2.cp314-win_arm64.pyd` installed into the target site-packages (#120
-> step 2 — see its own section); ONNX Runtime (CPU **+ DirectML** as of 2026-08-24, backlog #113;
-> 25 MLAS fp16 TUs tagged; QNN EP wired but opt-in, #121), ONNX GenAI (`USE_DML=ON` on both lanes
-> since #118, staging `D3D12Core.dll` through a target-derived filter), FFmpeg (**NEON assembly
-> enabled** via clang's integrated assembler, backlog #112 — 56 of 99 `aarch64/*.o` objects truly
-> assembled), OpenCV (four live upstream portability fixes, see below), the **TVM and IREE
-> runtimes** (#116, runtime-only: `tvm_runtime.dll` + headers, 14 IREE target tools/libs under
-> `C:\runtime\iree\bin`; the compilers and their python packages are amd64-only and named ABSENT
-> in the bundle — **their RUNTIME python packages ship since #133, 2026-08-26**:
-> `apache_tvm` + `apache_tvm_ffi` (assembled from the package sources plus the cross-built
-> `tvm_runtime.dll` / `tvm_ffi.dll` / Cython `core.pyd`; `import tvm` takes upstream's
-> `_RUNTIME_ONLY` path) and `iree_base_runtime` (nanobind `_runtime.pyd` + the runtime tools),
-> all members `0xAA64`), plain **LiteRT** (backlog #115, **done 2026-08-24** — 146 libs
-> staged, `tensorflowlite_c.lib` verified aarch64) — plus GStreamer with its ~5000 targets, **all
-> six contract plugins — `libav`, `opencv`, `onnx`, `tflite`, and since run 28 (2026-08-26)
-> `webrtc` and `nice`** (#128) — and the out-of-tree `opencv_videoio_gstreamer` plugin, all in
-> the merge stage. **The linked plugin-DLL sets of the two lanes are identical — 200 each**
-> (diffed from the ninja logs of arm64 run 28 and amd64 run 7, 2026-08-26). `gst-ptp-helper`
-> (Rust) ships on BOTH lanes since arm64 run 29 (2026-08-26): amd64 always had it; arm64 got it
-> once the aarch64 `rust-std` the image's pinned channel manifest names is fetched from upstream
-> into the mirror path the manifest points at (`Install-RustTargetStdFromPinnedManifest`, #133),
-> so `rustup target add` verifies it against the pin — `gst-ptp-helper.exe` is PE-checked
-> `0xAA64` (gate 981/0, walk 578/0). The optional `gdkpixbuf` plugin is absent on BOTH lanes
-> (gdk-pixbuf's meson.build fails on arm64 for `glib-compile-resources` — a build-machine glib
-> tool — and on amd64 for missing `rst2man`), so it is not a parity gap either.
+> **Absent by construction, each named inside the bundle** (`ABSENT-ON-ARM64.txt` /
+> `COMPILER-ABSENT-ON-ARM64.txt`): the TVM and IREE **compilers** and `iree.compiler` — they need
+> an LLVM cross-built for aarch64-windows, with no upstream precedent (PyPI ships `win_amd64`
+> only); **LiteRT-LM**, whose active Bazel path has no windows-arm64 config and default-links an
+> x86_64-only prebuilt (upstream's CMake path with its constraint-provider stub is an unattempted
+> port, backlog #133(d)); **CUDA/cuDNN/TensorRT**, which do not exist for Windows-on-ARM (#122);
+> and the **torch app stage**, because `uv sync` must execute the target interpreter. Two
+> GStreamer pieces are absent on BOTH lanes and so are not parity gaps: the optional `gdkpixbuf`
+> plugin (arm64: `glib-compile-resources`; amd64: `rst2man`) and anything needing `cargo-cbuild`.
 >
-> **The PE architecture gate has run and passed over the whole image:** `992 binaries inspected,
-> 0 violations` (2026-08-26, run 36, with the TVM/IREE runtime python wheels and
-> `gst-ptp-helper`; 981 on run 29 with the helper, 980 on run 28 with libnice and the webrtc/nice
-> plugins, 970 on run 14 of 2026-08-25 with the staged CRT, OpenSSL runtime and target deps, 950
-> on run 11 of 2026-08-24 with the TVM/IREE runtimes and the Python consumers, 931 that morning
-> before them, 390 when media-core stood alone) — and since run 14 the same gate walks every PE's
-> import table (`-ImportWalk`, #127): `606 file(s) walked, 0 unresolved import(s), 3 allowlisted
-> external(s), 6 device-OS (client SKU) import(s)` (578 on run 29, 571 on run 14) — the walk
-> unpacks every staged wheel too, which is how it caught `core.pyd`'s missing
-> `tvm_ffi_testing.dll` on run 34
-> (`verify-target-arch.ps1` over all of `C:\runtime` **and** the host CPython's site-packages,
-> `-IncludeArchives`, floor raised to 100 on this lane; the 58 host `.pyd`s appear as *reported*
-> allowlist skips). That, plus the smoke sections that now compile for the target and assert the
-> produced PE machine, is the only positive evidence that exists — and it is worth noting what
-> the gate has ruled out: five separate paths could have put host-arch artifacts into the bundle
-> (arch-blind compiler-rt selection, the x64 `vulkan-1.lib`, the x64 OpenSSL, meson emitting
-> `/MACHINE:x64`, and MSBuild's host-blind copy of the x64 `vcruntime140_1.dll` into the CPython
-> output — the single violation in a 932-binary run, see the CPython section), and each would
-> have produced a "successful" bundle that fails to load on real hardware.
+> **Never verified — the asymmetry that outranks every number above:** no arm64 binary produced
+> by this repo has ever been *executed*, anywhere. Its wheels ship **staged, not installed**; the
+> smoke gate runs only host-toolchain sections (1-6, 14-16, 19, arch-filtered), and sections
+> 14/15 compile **for** the target and assert the produced PE machine rather than run anything.
+> A green build proves the code compiles and links for the target, and nothing more. The
+> `windows-11-arm` runner remains the only path to execution proof; the repo owner declined one.
 >
-> **What is absent from the bundle, by construction, each named inside it:** the TVM and IREE
-> **compilers** (`tvm_compiler.dll`, `iree-compile.exe`) and the `iree.compiler` python package —
-> they need target-arch LLVM libraries plus host tools at configure time, and a cross lane ships
-> the *runtimes* instead, since #133 including their runtime **python** packages (#116/#133,
-> `COMPILER-ABSENT-ON-ARM64.txt` names exactly what is and is not there); LiteRT-**LM** — blocked
-> twice over on its ACTIVE Bazel path, no windows-arm64 config in its `.bazelrc` AND the
-> x86_64-only prebuilt `libGemmaModelConstraintProvider` in the default Windows dependency graph
-> — its stage self-skips and stages an empty `litert-lm` tree with `ABSENT-ON-ARM64.txt`
-> (upstream's *CMake* path with its constraint-provider stub is a possible port, unattempted —
-> backlog #133(d)); CUDA (#122, deferred
-> by the owner); the torch app stage (`uv sync` must run the target interpreter). The former
-> `media-branch-absent` stand-in stage is retired: every branch is real on arm64 and ships its own
-> markers. `Get-SourceBuildPython` stays host-pinned (build tooling); `Get-TargetBuildPython` names
-> what gets linked. There is no `windows-11-arm` CI job — the repo owner declined one.
->
-> **Built was not usable — the 2026-08-25 consumer-side audit (re-checked against code and
-> configure logs) found the bundle's Python surface failing on a clean Windows-on-ARM machine
-> before any user code runs:** `python.exe` could not find its own `vcruntime140.dll` (staged into
-> `DLLs\`, #124), no `sitecustomize` registered the DLL directories for the *target* interpreter
-> (#125), no numpy/pip/runtime deps were staged for it (#126), and no gate looked at what the
-> loader would resolve (#127). **Fixed the same day, proven by run 14** (`[bk] Done in 01:26:50`):
-> the target-arch CRT sits beside `python.exe` and in `C:\runtime\bin` (9 DLLs, including the
-> `vcruntime140_threads.dll` LiteRT imports); the target site-packages carries its own DLL-directory
-> shim; `stage-target-python-deps.ps1` downloads the target's deps with the host pip
-> (`--platform win_arm64`) and gates that every `Requires-Dist` resolves inside `C:\runtime\wheels`
-> (**12 wheels, 0 unresolved** on run 36 — 6 bundle wheels declaring 10 first-touch requirements,
-> of which `apache-tvm-ffi` and `onnxruntime` are satisfied by the bundle's own wheels; 7 before
-> the TVM/IREE runtime packages, after the GenAI wheel's requirement was rewritten from the
-> non-existent `onnxruntime-directml` to the bundle's `onnxruntime`); and the arch gate walks every
-> PE's import table. That walk's first run found 13 real unresolved imports — the OpenSSL runtime
-> DLLs nobody had installed (now staged from `C:\opt\openssl-arm64`), `vcruntime140_threads.dll`,
-> and six client-OS names Server Core lacks (`dsound`, `mf*`, `winspool.drv`; classified, not
-> counted). Of the two silent degradations that walk surfaced, one is closed: OpenCV arm64 now
-> dispatches `NEON_DOTPROD NEON_FP16 NEON_BF16` (#129, run 22 of 2026-08-25 — three cache flags
-> plus a probe-guard patch, gated on a non-empty `Dispatched code generation:` line). The other,
-> GStreamer arm64 lacking `webrtc`/`nice` (#128), peeled in three layers: no build-machine compiler
-> in the cross file (native file, run 23), the build machine linking the target's CRT (`/vctoolsdir`
-> + `/winsdkdir`, run 25 — proven), and three meson 1.12.0 defects around the build-machine glib
-> that meson's gnome module requests on every cross configure: a failed build-only subproject
-> is recorded under the HOST key and overwrites the host glib (the actual poison), its
-> `configure_file` outputs land in the host's build dir, and its `summary()` collides — the
-> first two are patched before `meson setup`, the third is left to fail glib(build) cleanly
-> (nothing consumes it). **Closed on run 28 (2026-08-26):** `gstwebrtc.dll` and `gstnice.dll`
-> built, exported and import-resolved, `All 6 mandatory GStreamer plugins verified present`.
-> `gst-ptp-helper` followed on run 29 (2026-08-26) once the aarch64 `rust-std` is pre-seeded from
-> the pinned manifest (#133). Backlog `docs/windows-refactor-backlog.md`.
->
-> **Never verified:** no arm64 binary produced by this repo has ever been executed, anywhere.
-> Since 2026-08-24 the smoke gate runs its host-toolchain sections (1-6, 14-16, 19,
-> arch-filtered) on this lane — measured **97 passed / 0 failed / 15 skipped** against this
-> lane's own floors (66/25), unchanged on run 14 of 2026-08-25 — and the healthcheck runs its four host-tool checks; but those
-> validate the x64 host toolchain, not the payload, and sections 14/15 now compile **for** the
-> target and assert the produced PE machine rather than run anything. Every arm64 signal is
-> still a static PE machine-type check. A green build is evidence that the code compiles and
-> links for the target, and nothing more.
+> How the lane got here, run by run (#116, #128, #131, #133 narratives, including the three meson
+> build-only-subproject defects and the seven fix-and-rerun cycles of the runtime-python work):
+> [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md). Open items:
+> [`windows-refactor-backlog.md`](windows-refactor-backlog.md).
 
 ## The constraint everything follows from
 

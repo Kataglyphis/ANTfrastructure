@@ -12,17 +12,8 @@
 Describe 'TVM assembled-wheel helpers' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $tvmScript = Join-Path $root 'scripts\build\build-tvm-from-source.ps1'
-        $tokens = $null; $parseErrors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($tvmScript, [ref]$tokens, [ref]$parseErrors)
-        if ($parseErrors -and $parseErrors.Count -gt 0) { throw "parse errors in $tvmScript : $($parseErrors[0].Message)" }
-        foreach ($fn in 'Write-AssembledWheelDistInfo', 'Get-VendoredTvmFfiVersion', 'Get-PyprojectDependencies') {
-            $fnAst = @($ast.FindAll({ param($n)
-                $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $fn }, $true)) | Select-Object -First 1
-            if (-not $fnAst) { throw "$fn not defined in $tvmScript" }
-            . ([scriptblock]::Create($fnAst.Extent.Text))
-        }
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-tvm-from-source.ps1' `
+                                       -FunctionName 'Write-AssembledWheelDistInfo', 'Get-VendoredTvmFfiVersion', 'Get-PyprojectDependencies')
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-tvmwheel-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Force -Path (Join-Path $script:tmp 'root\tvm_ffi\lib') | Out-Null
         Set-Content (Join-Path $script:tmp 'root\tvm_ffi\__init__.py') '# pkg'
