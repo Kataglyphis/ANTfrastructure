@@ -830,6 +830,19 @@ build_iree_wheels() {
         # inherited from Dockerfile.base, which is the bug fefce7d just fixed
         # for ccache. Same fix, other tool.
         _iree_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
+        # DIAGNOSTIC (2026-08-26, temporary): the IREE target build is the one
+        # place sccache died with "failed to spawn Command ... No such file or
+        # directory", and eight isolated reproduction attempts all failed to
+        # trigger it -- an out-of-band `nerdctl run` cannot recreate BuildKit's
+        # cache mounts, so the environment is never faithful. Ask the tool
+        # itself instead: SCCACHE_LOG makes the client print what it resolved
+        # and why the spawn failed, in the real stage. IREE_SCCACHE_LOG can
+        # raise it to debug; default is the quiet-but-useful level. Remove this
+        # block once the spawn failure is understood.
+        if [ "${_iree_launcher}" = "sccache" ]; then
+            export SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"
+            export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache-iree.log}"
+        fi
         if [ "${_iree_launcher}" = "sccache" ]; then
             export SCCACHE_CACHE_SIZE="${IREE_CCACHE_MAXSIZE:-64G}"
             echo "[INFO] IREE sccache cap: SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE}"
