@@ -167,17 +167,17 @@ either created or exposed.
   pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
   cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
   regex failure that appears in no real chain log.
-- **`preflight.sh` exits 0 on failure** [S·★★★] Re-confirmed 2026-08-27: a full
-  run printed `2 check(s) failed` and still exited 0 — and those two were the
-  shellcheck suite that had been inert since 2026-08-26 and a secret scan
-  drowning in gitignored logs. Neither would have been noticed without reading
-  the summary by hand, which is exactly the cost of this bug. Originally
-  observed: it printed
-  `3 check(s) failed` AND `Fix these before a multi-hour rebuild.` and then
-  `exited with code 0`. Anything that calls it non-interactively and trusts the
-  exit code gets a green light on a red result. This is the highest-value item
-  here because it silently disarms the one gate standing between a bad tree and
-  a many-hour rebuild.
+- ✅ **`preflight.sh` exits 0 on failure — RETRACTED 2026-08-27, the bug is not
+  real.** The script's summary block ends `exit 0` / `exit 1` / `exit 2` and
+  those propagate correctly: `PREFLIGHT_ONLY=<unknown-slug>` returns 2 when run
+  directly. Both "observations" were the same measurement error —
+  `bash preflight.sh | tail | sed; echo $?` reports SED's status, not the
+  script's. Demonstrated: `(exit 1) | tail -1 | sed 's/^//'; echo $?` prints 0,
+  while `(exit 1); echo $?` prints 1. I added the "re-confirmed 2026-08-27"
+  note to this entry on the strength of that artifact, so the retraction is
+  mine to make. `exit 1` has been in place since 928e745 (2026-08-25).
+  LESSON worth keeping: when checking an exit code, do not pipe.
+
 - **stdout-as-return-value is a live footgun** [M·★★★] `compiler_cache_launcher`
   returns the launcher NAME on stdout while `info()` writes to fd 1
   (logging.sh:77). The leak produced
@@ -215,24 +215,16 @@ either created or exposed.
   and `${TARGET_ARCH}`; PAR2 is the documented bug class where the wrong one
   silently shares or splits caches across lanes. Audit all ~43 mount lines and
   pick one, with a test.
-- **versions.env mis-attributes a watch note** [XS·★] The LLVM 23 block lists
-  the `-nostdinc++` libstdc++ c++23 patch as something to watch for the LLVM
-  bump. That patch lives in GCC's `src/c++23/Makefile.in` and is a GCC concern;
-  it ran clean in this build's GCC stage. Move the note, or it sends the next
-  reader looking in the wrong stage.
+- ✅ **versions.env watch note MOVED 2026-08-27.** The -nostdinc++ libstdc++
+  c++23 patch note now sits at the GCC_VERSION pin, where the patch actually
+  lives (src/c++23/Makefile.in), instead of under LLVM_RELEASE.
 
-**Audit corrections were APPLIED AT SOURCE, not duplicated here** (2026-08-26).
-The verified findings of the 15-agent truth-audit now live in the sections that
-own them -- § B (TS1 and LLVM_COMMIT are half-landed; four riders closed), § E
-(GCC_PARALLEL_TARGETS has missed its trigger twice), § D (S5's premise is
-falsified; build-cache-tiers.md still advertises a reverted knob) -- because a
-finding described in two places drifts in two directions. Two items are still
-unowned by any section and are recorded here until someone files them:
+- ✅ **UNOWNED env knobs — CLOSED 2026-08-27.** All five (HARFBUZZ_VERSION,
+  IREE_CCACHE_MAXSIZE, IREE_SCCACHE_LOG, PY_MLC_Z3_STATIC_VERSION,
+  SCCACHE_CONF) are registered in lint-env-knobs.allow with their reason and
+  reader. Verified under KNOB_GATE=1, which is the failure the entry warned
+  about: the gate now passes on its first strict use instead of failing.
 
-- **3 UNOWNED env knobs** [XS·★] HARFBUZZ_VERSION, IREE_CCACHE_MAXSIZE,
-  PY_MLC_Z3_STATIC_VERSION (two introduced 2026-08-24/26) have live readers but
-  no entry in lint-env-knobs.allow. Register them before anyone flips
-  KNOB_GATE=1, or that gate fails on its first real use.
 ## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
 
 ### A1. Work items (all referenced by the phase plan above)
@@ -437,15 +429,13 @@ unowned by any section and are recorded here until someone files them:
   assertions are individually blind to a wholesale-stale ship — EXPECT_RUN_ID is
   the one that actually pins it, so the wiring must pass it.
 
-- **BINFMT-UNIT-REINSTALL — one host command, needed once**
-  [XS, user-side, 2026-08-27] `setup-rootless-binfmt.sh`'s unit template now
-  sets `PartOf=containerd.service`, but the unit already installed on the dev
-  host predates that: it last ran 2026-08-09, survived the 2026-08-26 containerd
-  restart untouched, and its registration was gone for 17 days while systemd
-  reported `Result=success`. Re-install once to pick the change up:
-  `bash linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service`.
-  NOT done during the rebuild — re-registering handlers under a running
-  emulated build is not worth it for a fix that only matters at the next restart.
+- ✅ **BINFMT-UNIT-REINSTALL — DONE 2026-08-27, and PROVEN.** The unit was
+  re-installed so it carries PartOf=containerd.service, then the fix was
+  tested against the exact failure that cost half a day: `systemctl --user
+  restart containerd` at 19:50:44 re-ran rootless-binfmt.service in the SAME
+  second (it had last run 2026-08-09), and both emulators still answered
+  afterwards (arm64 -> aarch64, riscv64 -> riscv64). A daemon restart no
+  longer silently strips foreign-arch emulation.
 
 - **XC2-PARTIAL-RUN — a resumed run ships without its ancestry stamp**
   [M, found 2026-08-27 on the shipped :latest-cross] The wrapper build stamps
