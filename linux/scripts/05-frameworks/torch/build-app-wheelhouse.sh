@@ -844,14 +844,14 @@ build_iree_wheels() {
         # and why the spawn failed, in the real stage. IREE_SCCACHE_LOG can
         # raise it to debug; default is the quiet-but-useful level. Remove this
         # block once the spawn failure is understood.
-        if [ "${_iree_launcher}" = "sccache" ]; then
+        case "${_iree_launcher}" in *sccache*)
             export SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"
-            export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache-iree.log}"
-        fi
-        if [ "${_iree_launcher}" = "sccache" ]; then
+            export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache-iree.log}" ;;
+        esac
+        case "${_iree_launcher}" in *sccache*)
             export SCCACHE_CACHE_SIZE="${IREE_CCACHE_MAXSIZE:-64G}"
-            echo "[INFO] IREE sccache cap: SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE}"
-        fi
+            echo "[INFO] IREE sccache cap: SCCACHE_CACHE_SIZE=${SCCACHE_CACHE_SIZE}" ;;
+        esac
         ccache_cmake_args=("-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher}" "-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher}")
         echo "[INFO] IREE ccache ON: CCACHE_DIR=${CCACHE_DIR} MAXSIZE=${CCACHE_MAXSIZE} (LLVM rebuild is one-time; reruns cache-hit)"
     else

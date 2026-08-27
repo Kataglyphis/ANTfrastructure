@@ -132,6 +132,17 @@ SHELL ["bash", "-c"]
 # ARGs before the first FROM are scope-limited. All version ARGs below are passed
 # by the orchestrator from versions.env; defaults here are safety nets.
 ARG BUILD_MODE TARGET_ARCH TARGETARCH TARGETPLATFORM
+# FFMPEG_PREFIX / LIBCAMERA_PREFIX must be ARGs, not only ENV assignments.
+# They were set at :177-178 INSIDE the same ENV instruction that consumes them
+# below, and Docker substitutes a variable within one instruction using the
+# value it had BEFORE that instruction -- i.e. empty. Measured on the shipped
+# amd64 image: PATH carried two phantom `/bin` entries, PKG_CONFIG_PATH two
+# `/lib/pkgconfig`, LD_LIBRARY_PATH two `/lib`, and GST_PLUGIN_PATH pointed at
+# `/lib/gstreamer-1.0` -- so libcamera's GStreamer plugin was unreachable via
+# the standard variables. GSTREAMER_PREFIX/OPENCV_OUTPUT_DIR escaped it only
+# because they are declared on the line below. Found 2026-08-27.
+ARG FFMPEG_PREFIX=/opt/ffmpeg
+ARG LIBCAMERA_PREFIX=/opt/libcamera
 ARG GSTREAMER_VERSION OPENCV_OUTPUT_DIR ONNXRUNTIME_OUTPUT_DIR ONNXRUNTIME_GENAI_OUTPUT_DIR GSTREAMER_PREFIX
 ARG ANDROID_SDK_VERSION ANDROID_NDK_VERSION ANDROID_COMPILE_SDK ANDROID_BUILD_TOOLS ANDROID_CMAKE_VERSION ANDROID_API_LEVEL
 ARG ENABLE_NVIDIA ENABLE_AMD

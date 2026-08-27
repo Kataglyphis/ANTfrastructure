@@ -38,6 +38,11 @@ android_apply_patch \
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 
 ./build.sh \
+  # --no_telemetry, same as the native build (30-build-native.sh:63). Upstream
+  # compiles Microsoft's 1DS telemetry SDK in unless this is passed, and the
+  # android lane never passed it -- so the shipped amd64/arm64 Android ONNX
+  # Runtime carried it. Found 2026-08-27 in the shipped payload.
+  --no_telemetry \
   --allow_running_as_root \
   --android \
   --android_sdk_path "${ANDROID_HOME}" \

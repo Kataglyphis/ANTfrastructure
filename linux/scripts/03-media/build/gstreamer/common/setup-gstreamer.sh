@@ -572,9 +572,14 @@ enforce_gst_rs_meson_args
 # still built and linked. Since PTP clock sync needs setuid and is useless in a
 # container image, disable the helper entirely on ALL cross targets (previously
 # only riscv64 did this via build-gstreamer-monorepo.sh; arm64 hit the failure).
-if cross_build_is_active; then
-  append_meson_arg "-Dgstreamer:ptp-helper=disabled"
-fi
+# UNCONDITIONAL since 2026-08-27, previously `if cross_build_is_active`. The
+# rationale above -- "PTP clock sync needs setuid and is useless in a container
+# image" -- is arch-independent, so gating it on cross builds meant amd64 alone
+# still shipped /opt/gstreamer/libexec/gstreamer-1.0/gst-ptp-helper AS A SETUID
+# ROOT BINARY. That was a per-arch security asymmetry nobody chose: the cross
+# arches got the hardening as a side effect of a link-failure workaround, and
+# the native arch did not. Verified on the shipped images.
+append_meson_arg "-Dgstreamer:ptp-helper=disabled"
 
 echo "=========================================="
 echo "Building GStreamer ${GSTREAMER_VERSION}"

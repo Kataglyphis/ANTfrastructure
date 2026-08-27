@@ -188,11 +188,16 @@ setup_ccache() {
 
   # Print cache stats. A zero-hit report is the cheapest early warning that
   # caching silently stopped working after this switch.
-  if [ "${_cc_launcher}" = "sccache" ]; then
-    sccache --show-stats 2>/dev/null | head -12 || true
-  else
-    ccache --show-stats 2>/dev/null | head -5 || true
-  fi
+  # SUBSTRING, not identity (fixed 2026-08-27). _cc_launcher stopped being the
+  # literal "sccache" the moment the guarded launcher landed -- it is now a PATH
+  # like /opt/scripts/core/sccache-launcher.sh -- so this compared unequal every
+  # time and the sccache branch became dead code. The stats print is the cheapest
+  # early warning that caching silently stopped working, which makes a warning
+  # that cannot fire exactly the wrong thing to have.
+  case "${_cc_launcher}" in
+    *sccache*) sccache --show-stats 2>/dev/null | head -12 || true ;;
+    *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
+  esac
 }
 
 # Setup sccache for Rust and C/C++ compilation
