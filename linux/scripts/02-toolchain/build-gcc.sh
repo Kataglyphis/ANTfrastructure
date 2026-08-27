@@ -703,9 +703,17 @@ echo "Building (this will take a long time)..."
 # Zero ccache stats so the post-build block below reports THIS build's hit rate
 # (media builds already print these; the compiler stage was silent). Best-effort:
 # absent/failing ccache must never fail the build.
-if [ "${USE_CCACHE}" = "1" ]; then
+# ZEROED ONCE PER RUN, not once per GCC (fixed 2026-08-27). This used to reset
+# before every compiler, so a run that builds five GCCs produced five disjoint
+# windows (measured: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and no aggregate --
+# leaving the one question the sccache migration exists to answer, "did the hit
+# rate improve on a warm cache", unanswerable. The marker lives in /tmp so it
+# spans every compiler inside one RUN step, which is also the lifetime of the
+# sccache server whose counters we are reading.
+if [ "${USE_CCACHE}" = "1" ] && [ ! -e /tmp/.gcc-cache-stats-zeroed ]; then
   ccache -z >/dev/null 2>&1 || true
   sccache --zero-stats >/dev/null 2>&1 || true
+  : > /tmp/.gcc-cache-stats-zeroed 2>/dev/null || true
 fi
 if [ -n "${TARGET_TRIPLET}" ]; then
   make -j"${JOBS}" all-gcc all-target-libgcc all-target-libstdc++-v3 all-target-libatomic
@@ -718,9 +726,15 @@ fi
 if [ "${USE_CCACHE}" = "1" ]; then
   # Whichever launcher actually ran: report it. A zero-hit report here is the
   # cheapest early warning that the cache silently stopped working.
+  # SUBSTRING, not identity (fixed 2026-08-27). CC_LAUNCHER comes from
+  # compiler_cache_launcher, which returns a PATH like
+  # /opt/scripts/core/sccache-launcher.sh -- so `sccache)` matched nothing and
+  # every GCC stage silently reported CCACHE stats while sccache did the work.
+  # Third site of this exact trap in one day; the other two were
+  # compiler-cache.sh and build-app-wheelhouse.sh.
   case "${CC_LAUNCHER:-}" in
-    sccache) sccache --show-stats 2>/dev/null | head -12 || true ;;
-    *)       ccache --show-stats 2>/dev/null | head -5 || true ;;
+    *sccache*) sccache --show-stats 2>/dev/null | head -12 || true ;;
+    *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
   esac
 fi
 

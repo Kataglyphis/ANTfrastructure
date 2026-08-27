@@ -211,10 +211,22 @@ either created or exposed.
   run: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and NO aggregate. That makes the one
   question the switch has to answer -- "did the hit rate improve on a warm
   build?" -- unanswerable without hand-summing logs. Emit a per-stage aggregate.
-- **Mount-id keys are inconsistent** [S·★★] cache-mount ids mix `${TARGETARCH}`
-  and `${TARGET_ARCH}`; PAR2 is the documented bug class where the wrong one
-  silently shares or splits caches across lanes. Audit all ~43 mount lines and
-  pick one, with a test.
+- ✅ **Mount-id keys — RESOLVED 2026-08-27, but NOT by unifying all of them.**
+  Investigated rather than swept. The two conventions are mostly principled:
+  `${TARGETARCH}` is BuildKit's automatic value and resolves to amd64 for every
+  cross lane, so the caches keyed on it are SHARED across targets --
+  pip/uv/rustup, cargo, ccache/sccache, llvm-src. That is correct and desirable:
+  wheels carry a platform tag, sccache keys on compiler+flags, crate sources and
+  LLVM sources are arch-independent, so sharing raises the hit rate and splitting
+  them would only cost a cold rebuild. `${TARGET_ARCH}` is the explicit per-target
+  value and keys the caches whose CONTENT is arch-specific (apt debs,
+  ffmpeg-sdks). Also correct.
+  The one real defect was cargo: Dockerfile.toolchain:228-229 used
+  `${TARGETARCH}` while Dockerfile.media:863-864 used `${TARGET_ARCH}`, so the
+  same registry/git caches carried two different ids and the toolchain's copy
+  could never help the media stage. Aligned on the shared convention, since
+  crate sources are arch-independent.
+
 - ✅ **versions.env watch note MOVED 2026-08-27.** The -nostdinc++ libstdc++
   c++23 patch note now sits at the GCC_VERSION pin, where the patch actually
   lives (src/c++23/Makefile.in), instead of under LLVM_RELEASE.

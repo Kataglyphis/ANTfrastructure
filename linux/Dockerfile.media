@@ -860,8 +860,14 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
     --mount=type=bind,source=linux/scripts/04-runtime/gstreamer-env.sh,target=/usr/local/bin/gstreamer-env.sh,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
-    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGET_ARCH} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGET_ARCH} \
+    # ${TARGETARCH}, matching Dockerfile.toolchain:228-229 (fixed 2026-08-27).
+    # These two lines used to say ${TARGET_ARCH}, so the SAME cargo caches got
+    # two different ids: cargo-registry-amd64 from the toolchain stage and
+    # cargo-registry-<target> here. Cargo's registry/git hold crate SOURCES,
+    # which are arch-independent, so the split bought nothing and cost three
+    # copies plus a toolchain cache that could never help this stage.
+    --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
