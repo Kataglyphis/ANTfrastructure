@@ -487,9 +487,21 @@ unowned by any section and are recorded here until someone files them:
   yields no wheel on the cross arches while still exiting 0 — that is the
   thing to debug.
   What makes it a ★★★ is the silence. Every layer had a chance:
-    1. `tvm.sh` exits 0 having produced nothing.
-    2. Dockerfile.media:525 then prints "TVM build OK; wheel(s):" and `ls`
-       an EMPTY directory. The log actively asserts success.
+    1. CORRECTION (2026-08-27, same day): tvm.sh does NOT exit 0 having
+       produced nothing, and Dockerfile.media does NOT assert success. The
+       build genuinely FAILS (`ninja: build stopped: subcommand failed`) and
+       the else-branch prints "WARNING: TVM build failed for target=arm64;
+       shipping media image without TVM python (non-fatal)". The earlier claim
+       here came from a grep that matched the Dockerfile SOURCE echoed in
+       BuildKit's step header, not runtime output. The layers reported
+       correctly; the failure is simply non-fatal by design.
+    2. ROOT CAUSE: LLVM 23 removed TargetOptions::{NoInfsFPMath,NoNaNsFPMath},
+       renamed SubtargetSubTypeKV::Key and SubtargetFeatureKV::Key to key(),
+       and changed getMCSubtargetInfo() from pointer to reference. TVM v0.26.0
+       predates all four. amd64 escapes it by building against the DISTRO
+       llvm-config-21; the cross path links the chain's own LLVM_RELEASE=23.1.0.
+       FIXED by patch_tvm_for_llvm_23 (tvm.sh), reproducing upstream main's
+       TVM_LLVM_VERSION >= 230 guards verbatim -- no release carries them yet.
     3. smoke-torch-venv.sh reports "not importable (best-effort)" — a WARN.
     4. ARCH-PARITY cannot see it: `tvm`/`apache_tvm` is absent from
        `_PARITY_WHEELS` (smoke-runtime-image.sh:617), which is EXACTLY the

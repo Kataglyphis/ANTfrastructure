@@ -371,6 +371,57 @@ patch_tvm_findllvm_dylib_fallback() {
   log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
 }
 
+# LLVM 23 removed/renamed three things TVM v0.26.0 still uses, so the CROSS path
+# (which links the chain's own LLVM_RELEASE, unlike amd64 which takes the distro
+# llvm-config-21) fails to compile src/target/llvm/llvm_instance.cc:
+#   TargetOptions::{NoInfsFPMath,NoNaNsFPMath}   removed
+#   SubtargetSubTypeKV::Key / SubtargetFeatureKV::Key -> key()
+#   TargetMachine::getMCSubtargetInfo()          pointer -> reference
+# Result: "TVM build failed for target=arm64 ... (non-fatal)" and a shipped image
+# with no `import tvm` on arm64/riscv64, while amd64 kept working. Measured
+# 2026-08-27 on the shipped :latest-cross.
+#
+# These are NOT invented fixes: upstream apache/tvm main already guards all three
+# with TVM_LLVM_VERSION >= 230, and this reproduces those exact edits. No release
+# carries them yet (v0.26.0 is the newest tag and lacks them), which is why it is
+# a patch rather than a TVM_REF bump.
+#
+# Same lifecycle as the removed patch_tvm_for_llvm_22 (see the note above main):
+# DELETE this function the moment TVM_REF moves to a release that ships the 230
+# guards. The `already patched` check keeps it idempotent; every anchor is
+# asserted so a TVM bump that changes the file FAILS here instead of silently
+# patching nothing.
+patch_tvm_for_llvm_23() {
+  local f="${tvm_dir}/src/target/llvm/llvm_instance.cc"
+
+  [ -f "$f" ] || die "TVM llvm_instance.cc not found at ${f}"
+  if grep -q 'TVM_LLVM_VERSION >= 230' "$f"; then
+    log "TVM llvm_instance.cc already carries the LLVM 23 guards"
+    return 0
+  fi
+
+  grep -q '^  target_options_\.NoInfsFPMath = false;$' "$f" \
+    || die "TVM llvm_instance.cc: NoInfsFPMath anchor not found (TVM ${ref} layout changed?)"
+  grep -q '^      if (cpu == desc\.Key) {$' "$f" \
+    || die "TVM llvm_instance.cc: desc.Key anchor not found (TVM ${ref} layout changed?)"
+  grep -q '^  const auto MCInfo = target_machine->getMCSubtargetInfo();$' "$f" \
+    || die "TVM llvm_instance.cc: MCInfo anchor not found (TVM ${ref} layout changed?)"
+  grep -q 'std::string(feat\.Key)' "$f" \
+    || die "TVM llvm_instance.cc: feat.Key anchor not found (TVM ${ref} layout changed?)"
+
+  sed -i \
+    -e 's|^  target_options_\.NoInfsFPMath = false;$|#if TVM_LLVM_VERSION < 230\n  target_options_.NoInfsFPMath = false;|' \
+    -e 's|^  target_options_\.NoNaNsFPMath = true;$|  target_options_.NoNaNsFPMath = true;\n#endif|' \
+    -e 's|^      if (cpu == desc\.Key) {$|#if TVM_LLVM_VERSION >= 230\n      if (cpu == desc.key()) {\n#else\n      if (cpu == desc.Key) {\n#endif|' \
+    -e 's|^  const auto MCInfo = target_machine->getMCSubtargetInfo();$|#if TVM_LLVM_VERSION >= 230\n  const auto* MCInfo = \&target_machine->getMCSubtargetInfo();\n#else\n  const auto MCInfo = target_machine->getMCSubtargetInfo();\n#endif|' \
+    -e 's|^    if (MCInfo->checkFeatures("+" + std::string(feat\.Key))) {$|#if TVM_LLVM_VERSION >= 230\n    if (MCInfo->checkFeatures("+" + std::string(feat.key()))) {\n      cpu_features.Set(feat.key(), "");\n#else\n    if (MCInfo->checkFeatures("+" + std::string(feat.Key))) {|' \
+    -e 's|^      cpu_features\.Set(feat\.Key, "");$|      cpu_features.Set(feat.Key, "");\n#endif|' \
+    "$f"
+
+  grep -q 'TVM_LLVM_VERSION >= 230' "$f" || die "Failed to patch TVM llvm_instance.cc for LLVM 23"
+  log "Patched TVM llvm_instance.cc for LLVM 23 (upstream main's TVM_LLVM_VERSION >= 230 guards)"
+}
+
 main() {
   # Option locals (populated by parse_tvm_args).
   local workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
@@ -410,6 +461,7 @@ main() {
   require_toolchain_compilers
   fetch_tvm_source
   patch_tvm_findllvm_dylib_fallback
+  patch_tvm_for_llvm_23
   resolve_tvm_llvm
 
   if [ "$do_clean" -eq 1 ]; then
