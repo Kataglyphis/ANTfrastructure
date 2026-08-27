@@ -176,7 +176,6 @@ def pin_set(val):
 #
 # (dist_name, arch, installed_base, expected, why)
 KNOWN_DRIFT = [
-    ("onnxruntime-genai", "arm64", "0.14.0", "0.15.2", "GENAI-DRIFT [opened 2026-08-23, docs/refactoring-backlog.md]: versions.env pins v0.15.2 and amd64 installs that local wheel, but the arm64 genai wheel never lands, so the app uv.lock fills in PyPI 0.14.0. PRODUCER half open -- delete this line once arm64 builds 0.15.2"),
 ]
 
 def tolerated_drift(dist_name, arch, installed_base, expected):

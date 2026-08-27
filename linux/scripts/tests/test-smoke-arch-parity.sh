@@ -391,12 +391,16 @@ _stv_drive() {
     bash -c "source '${_STV}/stv.sh' >/dev/null 2>&1; FAILURES=0; assert_pinned_versions 2>&1; echo \"FAILURES=\${FAILURES}\""
 }
 
-t_case "the arm64 genai case is TOLERATED, loudly, and does not block the release"
+t_case "the arm64 genai drift is a FAILURE again -- the tolerance was earned away"
+# Until 2026-08-27 this asserted the opposite: arm64 at 0.14.0 was TOLERATED
+# because the producer could not build the wheel. It can now, and today's run
+# shipped 0.15.2 on amd64 AND arm64 with no drift message at all, so the
+# KNOWN_DRIFT arm was deleted and the assert is armed again. Pinning the
+# re-arming matters more than pinning the tolerance did: a silent regression to
+# 0.14.0 is exactly what the tolerance used to hide.
 _stv_out="$(_stv_drive arm64 0.14.0)"
-t_assert_contains "${_stv_out}" "FAILURES=0"
-t_assert_contains "${_stv_out}" "TOLERATED DRIFT"
-t_assert_contains "${_stv_out}" "GENAI-DRIFT"
-t_assert_contains "${_stv_out}" "1 TOLERATED DRIFT(s)"
+t_assert_contains "${_stv_out}" "FAILURES=1"
+t_assert_ok test -z "$(printf '%s\n' "${_stv_out}" | grep -F 'TOLERATED' || true)"
 
 # REGRESSION GUARD (adversarial review 2026-08-23): every case above runs with
 # a NON-EXISTENT uv.lock, so `from_lock` is always empty — which makes the new
@@ -437,13 +441,19 @@ _stv_out="$(_stv_drive arm64 0.15.2)"
 t_assert_contains "${_stv_out}" "FAILURES=0"
 t_assert_ok test -z "$(printf '%s\n' "${_stv_out}" | grep -F 'TOLERATED' || true)"
 
-t_case "KNOWN_DRIFT is one line per case, and only the reviewed case is in it"
-# Deleting that single line must be all it takes to re-arm the assert.
-_kd="$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh" \
-        | grep -c '^    ("' || true)"
-t_assert_eq "1" "${_kd}" "KNOWN_DRIFT grew: every entry needs its own review, date and backlog item"
-t_assert_contains "$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")" \
-  "2026-08-23"
+t_case "KNOWN_DRIFT: every entry is reviewed, dated and backlog-linked"
+# The previous version asserted the COUNT was exactly 1, while its own comment
+# said "deleting that single line must be all it takes to re-arm the assert".
+# Those contradict: on 2026-08-27 arm64 shipped onnxruntime-genai 0.15.2 by
+# itself, the arm was correctly deleted -- and this test went red for doing the
+# thing it asked for. Assert the SHAPE of whatever is present instead. Empty is
+# the desired steady state and passes vacuously; a sloppy new arm still fails.
+_kd_block="$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")"
+_kd="$(printf '%s\n' "${_kd_block}" | grep -c '^    ("' || true)"
+t_assert_ok test "${_kd}" -le 2
+_kd_bad="$(printf '%s\n' "${_kd_block}" | grep '^    ("' \
+            | grep -cv '20[0-9][0-9]-[01][0-9]-[0-3][0-9]' || true)"
+t_assert_eq "0" "${_kd_bad}" "a KNOWN_DRIFT arm without a review date"
 
 # ── D3: the shared binary/component gate helpers ────────────────────────────
 # smoke-media.sh hand-wrote four idioms at 5 + 4 + 2 sites (plus an 11th private

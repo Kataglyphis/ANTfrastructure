@@ -634,6 +634,19 @@ _parity_exempt() {
     # and closed its one RISC-V request as not-planned; the producer skips the
     # arch and verify-media-artifacts agrees. Policy, not drift.
     riscv64:onnxruntime_genai) return 0 ;;
+    # The IREE COMPILER cannot be cross-built, and upstream publishes no
+    # riscv64 wheel. IREE's own CMake gate is
+    #   if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
+    # so a cross target with COMPILER=ON never imports the host tools and ends
+    # up trying to RUN freshly built amd64 iree-tblgen on the target -- "Exec
+    # format error". The cross target is therefore runtime-only
+    # (IREE_CROSS_BUILD_COMPILER defaults OFF, build-app-wheelhouse.sh:1130-1133),
+    # which is what upstream does too. amd64 builds natively and keeps both
+    # wheels, so this arm is riscv64-only ON PURPOSE -- arm64 carries the
+    # compiler wheel and must keep asserting it.
+    # Added 2026-08-27 after f266634 restored runtime-only and this gate
+    # correctly reported the component it removed.
+    riscv64:iree_base_compiler) return 0 ;;
     *) return 1 ;;
   esac
 }
