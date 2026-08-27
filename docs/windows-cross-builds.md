@@ -304,7 +304,7 @@ Every wheel links the **target** CPython (`C:\runtime\python`, #120 step 1) whil
 
 ### `-mllvm -aarch64-enable-compress-jump-tables=false` (OpenCV)
 
-An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)**: the flag is no longer set -- disabling the pass also removes its `adr`-reach check, which introduced a second failure. The current setting is `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, which keeps the pass enabled and only takes the entry-width decision from it. Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts.
+An **LLVM AArch64 codegen limitation**, not a bug in any of the affected libraries. Switch-heavy TUs overflow a one-byte compressed jump-table entry. **REPLACED on LLVM 23.1.0 (2026-08-26)**: the current setting is `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget feature the pass itself consults. It **disables the compression pass exactly as this flag does** — byte-identical output, verified 2026-08-27 — and is preferred only because a target feature is a supported spelling where `-mllvm` is a debug knob. The separate branch-range failure in `median_blur.dispatch.cpp` is handled per-TU with `/Ob1` and by no jump-table setting at all. Heading kept as a live anchor target; see below and `failure-modes.md` § AArch64 cross compile aborts.
 
 ### MLAS skip re-gated on `WIN32` alone (OpenCV, patch `003`)
 
@@ -397,21 +397,18 @@ tables are larger, not slower:
 -mllvm -aarch64-enable-compress-jump-tables=false
 ```
 
-> **SUPERSEDED on LLVM 23.1.0 (2026-08-26). The flag is no longer set — and disabling it is now a
-> TRAP.** `AArch64CompressJumpTables` does two jobs: it picks the entry width AND it checks that the
-> `adr` materialising the table's base block stays within ±1 MB. `=false` disables the whole pass,
-> taking that check with it, which is how `error: fixup value out of range` appeared in OpenCV's
-> largest dispatch TUs where it had not been before. An earlier revision of this note called the two
-> diagnostics "mutually exclusive ceilings" — that was wrong: one of them was a guard rail removed
-> by this very flag.
+> **SUPERSEDED on LLVM 23.1.0 (2026-08-26); this note CORRECTED 2026-08-27.** The flag above is no
+> longer set; the lane now passes `-Xclang -target-feature -Xclang +force-32bit-jump-tables`
+> instead, which reaches the same end state by a supported spelling. The measurement table above
+> still describes a real mechanism — it is simply no longer the one being suppressed.
 >
-> **Current handling:** `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, the subtarget
-> feature the pass itself consults. The pass stays ENABLED (`adr` check intact) and only the width
-> decision is taken from it. Verified against clang-cl 23.1.0: `.hword (…)>>2` / `ldrh` becomes
-> `.word …-.Ltmp0` / `ldrsw`, range ±2 GB; cost 4522 → 4650 bytes of object (~2.8 %), all of it
-> jump-table DATA, with full `/O2` everywhere. The measurement table below still describes a real
-> mechanism — it is simply no longer the one being suppressed. Symptom-first write-up, including
-> the traps and a local-reproduction recipe: `failure-modes.md` § AArch64 cross compile aborts.
+> **Two claims this note used to make were disproved on 2026-08-27, and both had cost runs:** that
+> the feature and the `-mllvm` flag differ in what they leave enabled, and that the difference
+> explained a second failure in OpenCV's largest dispatch TUs. It did not — that failure is a
+> branch-range defect with no jump table in it, fixed per-TU with `/Ob1`.
+> **`failure-modes.md` § AArch64 cross compile aborts owns the whole account**: both diagnostics,
+> what each flag actually does to the pass, the four "do NOT"s and the local-reproduction recipe.
+> Read it there rather than trusting a summary here.
 
 > **This corrects an earlier, wrong diagnosis recorded here.** The first explanation blamed an
 > 8-bit *Code Words* field in the `.xdata` unwind record, and the workaround was a per-TU `/Od`

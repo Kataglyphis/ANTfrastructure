@@ -55,6 +55,52 @@ Describe 'Add-NinjaPerTuFlags' {
     }
 }
 
+Describe 'OpenCV AArch64 branch-range per-TU /Ob1 selector (#135 defect 2)' {
+
+    # The cross lane appends /Ob1 to the two OpenCV TUs whose /O2 inlining
+    # produces a function past the 14-bit conditional-branch range (see
+    # build-opencv-from-source.ps1 and docs/failure-modes.md). The Floor
+    # already turns a no-match into a configure-time throw; this catches the
+    # same drift a suite run earlier. The pattern is READ OUT OF THE SCRIPT so
+    # there is only ever one definition of it.
+
+    BeforeAll {
+        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+        $script:ocvScript = Join-Path $root 'scripts\build\build-opencv-from-source.ps1'
+        $script:tmp2 = Join-Path ([IO.Path]::GetTempPath()) ('wbt-ocvjt-' + [guid]::NewGuid().ToString('N'))
+        New-Item -Path $script:tmp2 -ItemType Directory -Force | Out-Null
+    }
+    AfterAll { Remove-Item $script:tmp2 -Recurse -Force -ErrorAction SilentlyContinue }
+
+    It 'matches OpenCV''s real ninja target lines, and only those TUs' {
+        $sel = @(Get-Content $script:ocvScript | Where-Object { $_ -like "*'/Ob1'*" -and $_ -like '*-match*' })
+        Assert-Equal 1 $sel.Count 'exactly one /Ob1 selector line in build-opencv-from-source.ps1'
+        Assert-True ($sel[0] -match "-match '([^']+)'") 'the selector carries a quoted pattern'
+        $pattern = $Matches[1]
+
+        # Shapes taken from the cross lane's generated build.ninja. The third
+        # entry is the control: a sibling dispatch TU that must stay untouched.
+        $ninja = Join-Path $script:tmp2 'build.ninja'
+        @(
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/median_blur.dispatch.cpp.obj: CXX_COMPILER__opencv_imgproc_unscanned_ C$:/temp/opencv-src/opencv/modules/imgproc/src/median_blur.dispatch.cpp || cmake_object_order_depends_target_opencv_imgproc',
+            '  FLAGS = /DWIN32 /O2 /Ob2 /DNDEBUG -std:c++17',
+            'build modules/calib/CMakeFiles/opencv_calib.dir/src/multiview_calibration.cpp.obj: CXX_COMPILER__opencv_calib_unscanned_ C$:/temp/opencv-src/opencv/modules/calib/src/multiview_calibration.cpp',
+            '  FLAGS = /DWIN32 /O2 /Ob2 /DNDEBUG -std:c++17',
+            'build modules/imgproc/CMakeFiles/opencv_imgproc.dir/src/box_filter.dispatch.cpp.obj: CXX_COMPILER__opencv_imgproc_unscanned_ C$:/temp/opencv-src/opencv/modules/imgproc/src/box_filter.dispatch.cpp',
+            '  FLAGS = /DWIN32 /O2 /Ob2 /DNDEBUG -std:c++17'
+        ) | Set-Content -Path $ninja -Encoding ASCII
+
+        $n = Add-NinjaPerTuFlags -NinjaFile $ninja -Label 'branch-range fixture' -Floor 2 -AlreadyTaggedPattern '/Ob1' `
+            -Select ([scriptblock]::Create("param(`$line) if (`$line -match '$pattern') { '/Ob1' } else { '' }"))
+        Assert-Equal 2 $n 'both census TUs are selected'
+        $lines = Get-Content $ninja
+        Assert-True ($lines[1] -eq '  FLAGS = /DWIN32 /O2 /Ob2 /DNDEBUG -std:c++17 /Ob1') 'median_blur tagged, /Ob1 LAST so it wins over /O2'
+        Assert-True ($lines[3] -eq '  FLAGS = /DWIN32 /O2 /Ob2 /DNDEBUG -std:c++17 /Ob1') 'multiview_calibration tagged'
+        Assert-True ($lines[5] -eq '  FLAGS = /DWIN32 /O2 /Ob2 /DNDEBUG -std:c++17') 'the sibling dispatch TU is untouched'
+    }
+}
+
 Describe 'Write-AbsentOnCrossMarker' {
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
