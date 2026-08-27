@@ -153,3 +153,9 @@ VULKAN_ENV_STRICT
 VULKAN_KEEP_SDK_LIBS
 WASM_OPT_CACHE_DIR
 WORKSPACE
+# Age threshold (hours, default 24) for _runtime_sweep_orphaned_contexts in
+# 01-core/context-management.sh. Stage-context trees are only reclaimed once
+# they are older than this, so a concurrent chain's young workdir is never
+# robbed. Added 2026-08-27 after a 3.3 GB orphan from 2026-07-25 was found
+# still on disk after 33 days.
+RUNTIME_CONTEXT_KEEP_HOURS

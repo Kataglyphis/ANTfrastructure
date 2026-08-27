@@ -93,6 +93,66 @@ above), and `nerdctl compose build webserver` turned out to be broken —
 `security-headers.conf` was the one COPY source without a `.dockerignore`
 negation, found by running the documented command instead of reading it.
 
+### Later the same day — the pre-rebuild sweep, and what it cost to be sure
+
+Before committing to another multi-hour run, a 12-agent sweep plus five
+targeted 42-second tvm-stage probes went looking for whatever would break it.
+Seven things would have.
+
+**TVM had not shipped on arm64 or riscv64 for some time, and four separate
+causes were stacked on top of each other** — each only visible once the one
+before it was fixed:
+1. v0.26.0 does not compile against LLVM 23 (three files, two API redesigns).
+   amd64 escaped it by linking the distro `llvm-config-21`.
+2. Pinning `TVM_COMMIT` to upstream's fix exposed that the SHA clone path
+   never initialised submodules — it clones without `--recursive` and the
+   submodule update only fires when the checkout MOVES `HEAD`, which pinning
+   the default-branch HEAD does not. CMake died on an empty `3rdparty/tvm-ffi`.
+3. The target-Python sysconfigdata lookup used `-maxdepth 2` while this chain
+   stages the file at depth 3. The miss is silent in effect: the wheel then
+   carries the BUILD-HOST SOABI and is correctly withdrawn, so the stage
+   reported "TVM build OK" and shipped an image without `import tvm`.
+4. A hand-written LLVM-23 patch, tried first, fixed four of five sites in one
+   of three files and logged success. Removed rather than grown — a patch that
+   cannot succeed but says it did is worse than none.
+
+Result, measured: `apache_tvm-0.26.dev1-py3-none-linux_aarch64.whl` plus its
+correctly-stamped `cp314` ffi sibling, where the stage previously died at
+object 334.
+
+**Two defects would have aborted the chain outright.** `build-cross-chain.sh`
+ran `du … | cut -f1` twice without `|| true`, which under `set -euo pipefail`
+kills the orchestrator with a bare exit 1 right after a stage SUCCEEDS — the
+identical bug was already found and fixed 86 lines above, comment and all.
+And the runtime package OCI export dropped its exit status while the next line
+deleted the local image, so a ~27 GB `nerdctl save | tar -x` dying on ENOSPC
+was reported as a successful build with its only copy destroyed. errexit cannot
+help there: `run_parallel_arch_loop` disables it for the whole call tree, which
+is exactly why the base path 42 lines below already carried `|| return 1`.
+
+**The shipped Node.js is an alpha.** `node --version` in the published amd64
+image returns `26.8.0-alpha.0.0.0`, and the bundled npm 11.19.0 refuses it —
+semver puts a prerelease outside `^20.17.0 || >=22.9.0`. The binary is the
+official tarball, so this is an upstream stamping bug in that one release;
+v26.8.1 reports cleanly. Bumped, with both SHA256s from the published
+SHASUMS256.txt. The gate that should have caught it used
+`grep "^v${NODE_VERSION}"`, and `^v26.8.0` matches `v26.8.0-alpha.0.0.0`
+happily — the suffix being the entire point. Now an exact compare.
+
+**Orphaned stage contexts are reclaimed.** `runtime_cleanup_local_context_chain`
+only removed the workdir the current process created, so any hard kill leaked
+its tree; a 3.3 GB `runtime-flow.*` from 2026-07-25 had survived 33 days on a
+filesystem at 93%. The new sweep is age-based so a concurrent chain's young
+workdir is never robbed, and was proven selective in isolation.
+
+One reported defect was **refuted rather than fixed**: arm64 ships a PyPI
+`iree-base-compiler 3.11.0` beside a source-built
+`iree-base-runtime 3.11.0.dev0+e4a3b04`, which looks like a version skew and is
+not one — `refs/tags/v3.11.0^{}` resolves to that same commit. No gate was
+added; a version-equality assert would fail on a cosmetic difference. The
+comment claiming "amd64/arm64 install the PyPI compiler+runtime" was the thing
+actually wrong, and now describes the real per-arch split.
+
 ## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
 
 `buildctl` on this host comes from the `nerdctl-full` bundle — there is no

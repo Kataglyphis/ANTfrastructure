@@ -663,6 +663,33 @@ and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
 > to plain `-t`; the byte gate above is the belt-and-suspenders check. Always
 > verify shipped bytes, not just that the manifest pushed.
 
+### TVM is pinned by COMMIT, not by tag
+
+`TVM_REF=v0.26.0` is not what the build clones. `TVM_COMMIT` in `versions.env`
+wins over the tag (`tvm.sh`'s `${TVM_COMMIT:-$ref}`) and is currently set,
+because **TVM v0.26.0 does not compile against `LLVM_RELEASE=23.1.0`** — LLVM 23
+dropped `TargetOptions::{NoInfsFPMath,NoNaNsFPMath}`, renamed
+`SubtargetSubTypeKV::Key`/`SubtargetFeatureKV::Key` to `key()`, and changed
+`getMCSubtargetInfo()` from pointer to reference, across three files. amd64
+never hit it because it links the *distro* `llvm-config-21`; only the cross
+lane links the chain's own LLVM.
+
+Upstream `main` carries `TVM_LLVM_VERSION >= 230` guards for all of it and no
+tagged release does, so the commit is pinned rather than the port reproduced. A
+hand-written patch was tried first and removed: measured on a real arm64 build
+it fixed four of five sites in one of the three files while logging success.
+
+Two things follow, both proven on 2026-08-27:
+
+* `RUNTIME_CONTEXT_KEEP_HOURS` (default 24) governs the orphaned-stage-context
+  sweep — unrelated to TVM, but the other knob added the same day.
+* Setting `TVM_COMMIT` for the first time exposed that the SHA clone path never
+  initialised submodules: it clones **without** `--recursive` and the submodule
+  update only fired when the checkout MOVED `HEAD`. Pinning the default-branch
+  HEAD moves nothing, so CMake died on an empty `3rdparty/tvm-ffi`. Fixed.
+
+Drop `TVM_COMMIT` back to empty the moment a TVM release ships the guards.
+
 ### Operational env knobs (not versions.env)
 
 Runtime/orchestration switches that are **not** pins or feature toggles. The
