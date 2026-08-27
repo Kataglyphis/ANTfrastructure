@@ -5,6 +5,64 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-27 (second pass) — #135 was two bugs wearing one signature; one is fixed upstream and nobody backported it
+
+**The "one defect at two sites" reading was wrong, and it cost an investigation.**
+`fixup value out of range` and `value evaluated as <N> is out of range` share a
+sentence — *LLVM lays a function out a few bytes short* — and nothing else.
+
+**The `tbnz` half: root cause found, fix already exists.**
+[llvm#202716](https://github.com/llvm/llvm-project/pull/202716) (`c6e184686cd7`)
+creates trampoline blocks with offset **zero**, so `isBlockInRange()` decides
+branch reach from offsets the code itself calls "slight underestimates". On
+`main` since 2026-07-21 — but `release/23.x` forked **2026-07-14**, one week
+earlier, so 23.1.0 ships without it, and no cherry-pick exists on the branch.
+Checked by subject AND PR number, not just SHA ancestry: a cherry-pick carries a
+different SHA, and that hole produced one wrong "not backported" claim before it
+was closed properly. **Proven load-bearing rather than assumed** — reverting only
+that commit and re-running its own `branch-relax-tbz.mir` changes the output: with
+the fix the `TBZW` survives onto a trampoline chain, without it the branch is
+inverted and the layout moves.
+
+**The jump-table half: NOT fixed on `main`, and narrowed to one number.**
+`AArch64CompressJumpTables.cpp` is **byte-identical** between 23.1.0 and `main`.
+The pass is provably sound *given correct instruction sizes* — offsets are upper
+bounds, the inflation accumulates in layout order, so `Span` is over-estimated,
+which picks a **larger** entry. It can only fail on an instruction that reports
+**fewer** bytes than it emits, and the measured `N` bound that under-count to
+**4–116 bytes**.
+
+**LLVM already ships the tool that would name it — and AArch64 never turned it
+on.** `AsmPrinter` verifies reported size against emitted bytes and aborts naming
+the instruction, but `getInstSizeVerifyMode()` defaults to `NoVerify` and only
+AMDGPU and PowerPC override it. The AArch64 opt-in is written and committed
+locally (`aarch64-instsize-verify`, `65a5bd5601fe`, unpushed). Over the **2,925**
+`.ll` files in `test/CodeGen/AArch64` at `aarch64-pc-windows-msvc` (2,049 compiled):
+**zero under-counts**; a separate signature scan over 3,347 files (`.ll` + `.mir`)
+found **zero genuine reproductions**. So the culprit is a construct LLVM's own
+tests never build — it needs the real `descriptor.cc`, in the container. The one
+apparent hit was self-inflicted, a Linux/PIC test forced onto a Windows triple.
+
+**A third bug fell out of that scan:** every `SEH_*` pseudo reports 4 bytes and
+emits **0** (538 of the 2,925). Over-estimate, so it is conservative and causes
+neither failure — but it inflates every Windows-AArch64 estimate.
+
+**Decision (owner): move the Windows toolchain to LLVM `main`; do not request a
+`release/23.x` backport.** A request was drafted and deliberately not filed. The
+consequence to plan around: the fix reaches a tagged release only in **24.1.0**
+(~Feb–Mar 2027 on the observed 6-month major cadence), so `/Ob1` stays until the
+toolchain actually moves, and **`+force-32bit-jump-tables` stays regardless**.
+
+**Also landed:** `repro-llvm-aarch64-layout.ps1`, the A/B that settles "does this
+compiler retire the workaround" in seconds instead of a lane run — the real
+offenders frozen as preprocessed `.i`, gated on control arms that must reproduce
+the abort and then suppress it, so a stale corpus reports `INVALID` instead of a
+false green. Its command-line surgery is pinned by
+`Diagnostics.Llvm135Repro.Tests.ps1` against the real ninja command line; writing
+those tests caught two live bugs in it, both the case-insensitive `-match` trap.
+The `:lo12:` catchret PR ([llvm#219200](https://github.com/llvm/llvm-project/pull/219200))
+was rebased onto latest `main`.
+
 ## 2026-08-27 — the registry gets a second tool, and Rust caching turns out to have been bare all along
 
 **Registry: 81 -> 34 tags, 204 -> 134 versions, 0 failures.**
