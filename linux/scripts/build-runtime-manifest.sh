@@ -201,6 +201,48 @@ ensure_foreign_binfmt() {
     warn "no-sudo QEMU binfmt registration failed for [${foreign}] — foreign-arch smokes may report 'exec format error'."
     warn "  On a rootless host: ensure containerd-rootless-setuptool.sh is on PATH. On a rootful/CI host qemu is usually pre-registered."
   fi
+  verify_foreign_binfmt "${foreign}"
+  _BINFMT_ENSURED=1
+}
+
+# Prove the emulator is really there. Registration above is best-effort, and a
+# silent failure surfaces HOURS later as a BuildKit step with no output at all:
+#   #8 ERROR: process "/dev/.buildkit_qemu_emulator bash -lc ..." exit code: 1
+# That happened on 2026-08-27 -- both the arm64 and riscv64 wrapper builds died
+# exactly that way. Cause: the nerdctl-full upgrade the day before restarted the
+# rootless daemons and rebuilt the rootlesskit namespace, and the binfmt
+# registration lives INSIDE that namespace, so it went with it. Nothing caught
+# it, because the only call to ensure_foreign_binfmt sat in the SMOKE block --
+# after the builds that need it.
+#
+# A missing emulator cannot produce a readable error later, so it is fatal here.
+_binfmt_qemu_name() {
+  case "$1" in
+    arm64|aarch64) printf 'qemu-aarch64' ;;
+    riscv64)       printf 'qemu-riscv64' ;;
+    *)             printf 'qemu-%s' "$1" ;;
+  esac
+}
+
+verify_foreign_binfmt() {
+  local arches="$1" a handler missing="" tool
+  tool="$(command -v containerd-rootless-setuptool.sh 2>/dev/null || true)"
+  for a in $(arch_list_to_words "${arches}"); do
+    handler="$(_binfmt_qemu_name "${a}")"
+    # Rootful / CI hosts register in the HOST namespace (update-binfmts).
+    grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && continue
+    # Rootless: containerd and buildkitd share one persistent rootlesskit
+    # namespace and the registration lives THERE -- the host's own
+    # /proc/sys/fs/binfmt_misc will not show it. Checking only the host is how
+    # this looked "unregistered" even on a working machine.
+    if [ -n "${tool}" ] && "${tool}" nsenter -- \
+         grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null; then
+      continue
+    fi
+    missing="${missing:+${missing}, }${a} (${handler})"
+  done
+  [ -z "${missing}" ] || err "no QEMU binfmt handler for: ${missing} -- foreign-arch wrappers are built ON the target platform, so this fails as an empty BuildKit step error hours from now. Fix first: bash linux/scripts/setup-rootless-binfmt.sh  (RUNTIME_REGISTER_BINFMT=0 skips registration entirely)"
+  log "QEMU binfmt verified for: ${arches}"
 }
 
 main() {
@@ -238,6 +280,12 @@ main() {
     log "Creating manifest only for architectures: ${TARGET_ARCHES}"
   fi
 
+  # Foreign-arch wrappers are built ON the target platform under QEMU, so the
+  # emulators must exist BEFORE the build loop -- not merely before the smokes.
+  if [ "${BUILD_IMAGES}" -eq 1 ]; then
+    ensure_foreign_binfmt "${TARGET_ARCHES}"
+  fi
+
   local arch
   if [ "${BUILD_IMAGES}" -eq 1 ]; then
     run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
@@ -263,7 +311,7 @@ main() {
     # if registration is unavailable (non-rootless host, no nsenter tool) we warn
     # and let the per-arch smokes surface "exec format error" themselves. Opt out
     # with RUNTIME_REGISTER_BINFMT=0 (e.g. host already has qemu via update-binfmts).
-    ensure_foreign_binfmt "${TARGET_ARCHES}"
+    [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
     local wrapper_tag
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
