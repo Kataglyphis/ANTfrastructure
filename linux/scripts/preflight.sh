@@ -57,7 +57,7 @@ fi
 # dies on those. Force UTF-8 mode (no-op on Linux).
 export PYTHONUTF8=1
 
-KNOWN_SLUGS=(crlf-guard shellcheck copy-coverage critical-fixes patch-integrity artifact-parity \
+KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
              doc-links doc-dupes sbom)
@@ -125,6 +125,11 @@ run_check crlf-guard "working-tree CRLF guard"    check_crlf_guard
 run_check shellcheck "shellcheck gate"            bash linux/scripts/lint-shell.sh
 
 # 2. Every referenced /opt/scripts path is COPY'd/mounted into its image.
+# The stdout-as-return-value class: log()/info() reach fd 1, so a function
+# consumed as `x="$(f)"` returns its log lines glued to its value. Shipped
+# twice -- CC="[INFO] ...gcc" in the GCC stage, and a latent one in
+# normalize_llvm_cmake_dir. A unit test pins one function; this pins the class.
+run_check stdout-returns "stdout-as-return-value" ${PREFLIGHT_PYTHON} linux/scripts/verify-stdout-returns.py
 run_check copy-coverage "script COPY coverage"    ${PREFLIGHT_PYTHON} linux/scripts/verify-script-copy-coverage.py
 
 # 3. Critical-fix source integrity (incl. fix6: native-GCC system paths, bugs D/E).

@@ -85,7 +85,12 @@ normalize_llvm_cmake_dir() {
   if [ -n "${config_path}" ] && [ -f "${config_path}" ]; then
     resolved_dir="$(dirname "${config_path}")"
     if [ "${resolved_dir}" != "${dir}" ]; then
-      log "Normalizing LLVM CMake package path from ${dir} to ${resolved_dir}"
+      # >&2 is load-bearing: this function's STDOUT is its RETURN VALUE
+      # (tvm-detect.sh:208, tvm.sh:210/215 all consume it via $( )), and
+      # log() routes to info() which writes to fd 1 (logging.sh:77,82).
+      # Unredirected, llvm_dir would become "[INFO] Normalizing...\n/path" --
+      # the same shape that produced CC="[INFO] ...gcc" on 2026-08-26.
+      log "Normalizing LLVM CMake package path from ${dir} to ${resolved_dir}" >&2
     fi
     printf '%s' "${resolved_dir}"
     return 0
@@ -103,7 +108,11 @@ normalize_llvm_cmake_dir() {
   config_path="$(readlink -f "${alt}/LLVMConfig.cmake" 2>/dev/null || true)"
   if [ -n "${alt}" ] && [ -n "${config_path}" ] && [ -f "${config_path}" ]; then
     resolved_dir="$(dirname "${config_path}")"
-    log "Correcting LLVM CMake package path from ${dir} to ${resolved_dir}"
+    # >&2: this function's stdout is its RETURN VALUE (three call sites use
+    # $( )), and log() -> info() writes to fd 1. Caught by
+    # verify-stdout-returns.py, which found this second occurrence after the
+    # first one in the same function had been fixed by hand.
+    log "Correcting LLVM CMake package path from ${dir} to ${resolved_dir}" >&2
     printf '%s' "${resolved_dir}"
     return 0
   fi

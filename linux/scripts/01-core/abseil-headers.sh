@@ -58,9 +58,9 @@ install_abseil_headers() {
   # warn-and-return-1 path as before instead of download_file's hard die().
   local absl_tar_resolved=""
   if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
-    if [ -n "${absl_commit}" ] && [ -n "${ABSEIL_TARBALL_SHA256:-}" ]; then
+    if [ -n "${absl_commit}" ] && [ -n "${ABSEIL_TARBALL_STREAM_SHA256:-}" ]; then
       # Verified path: commit-pinned archive + sha (both in versions.env).
-      if download_verified_file "${absl_url}" "${ABSEIL_TARBALL_SHA256}" "${absl_tar}" 2>/dev/null; then
+      if download_verified_file "${absl_url}" "${ABSEIL_TARBALL_STREAM_SHA256}" "${absl_tar}" stream 2>/dev/null; then
         absl_tar_resolved="${absl_tar}"
       fi
     elif download_file "${absl_url}" "${absl_tar}" 2>/dev/null; then

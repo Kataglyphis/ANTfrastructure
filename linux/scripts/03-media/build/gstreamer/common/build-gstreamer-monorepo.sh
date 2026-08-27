@@ -698,9 +698,16 @@ build_gstreamer_monorepo() {
         break
       fi
     done
-    # No guarded launcher reachable -> stay uncached rather than risk bare
-    # sccache, which is what produced the 99% failures.
-    export RUSTC_WRAPPER="${RUSTC_WRAPPER:-}"
+    # OWNER DECISION 2026-08-27: "benutze immer sccache". When the guarded
+    # launcher is not reachable, fall back to BARE sccache rather than to no
+    # cache at all -- the same answer common.sh:449-450 already gives for
+    # stages that do not carry 01-core, so the three writers now agree instead
+    # of two choosing bare and one choosing uncached.
+    # The risk is understood and accepted: bare sccache ABORTS a compile on its
+    # own internal errors where the launcher would fall through. That is what
+    # the guarded launcher exists for, and it IS reachable on every stage that
+    # mounts 01-core -- this arm only covers the ones that do not.
+    export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"
   fi
 
   _gst_monorepo_env_setup

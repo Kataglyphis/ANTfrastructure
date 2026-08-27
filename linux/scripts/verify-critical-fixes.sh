@@ -224,10 +224,20 @@ fix7_hardening_2026_07() {
     # setup_sccache exporting RUSTC_WRAPPER="sccache" ahead of the gstreamer
     # monorepo's unset-guard), so it gets a gate rather than another comment.
     local ccsh="${REPO_ROOT}/linux/scripts/01-core/compiler-cache.sh"
-    if grep -qE '^[[:space:]]*export (RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER)="sccache"' "${ccsh}" 2>/dev/null; then
-      fail "compiler-cache.sh points a launcher at bare sccache (use 01-core/sccache-launcher.sh)"
+    # ASSERT THE DECISION, not the spelling (rewritten 2026-08-27). The old
+    # regex matched a literal `export ...="sccache"` and therefore could not see
+    # `="${_sc_launcher}"` with a bare default -- filed as SCC-BARE-FALLBACK.
+    # The owner has since decided the question it was hedging: ALWAYS sccache,
+    # guarded where 01-core is mounted and bare where it is not. So the property
+    # worth gating is no longer "never bare" but "never UNCACHED": every writer
+    # must resolve to some sccache, and none may fall back to an empty launcher.
+    if grep -qE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER)="\$\{[A-Za-z_]+:-\}"' "${ccsh}" 2>/dev/null; then
+      fail "compiler-cache.sh can leave a launcher EMPTY; the standing decision is always-sccache"
+    elif grep -q '_sc_launcher="sccache"' "${ccsh}" 2>/dev/null \
+         && grep -q 'sccache-launcher.sh' "${ccsh}" 2>/dev/null; then
+      pass "compiler-cache.sh resolves the guarded launcher and falls back to sccache, never to uncached"
     else
-      pass "compiler-cache.sh routes launchers through the guarded sccache launcher"
+      fail "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback"
     fi
   # Base: the only floating external base must be digest-pinned (multi-arch list).
   if grep -qE '^FROM ubuntu:\$\{UBUNTU_VERSION\}@\$\{UBUNTU_DIGEST\}' "${dbase}" 2>/dev/null && \

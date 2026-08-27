@@ -148,7 +148,8 @@ orphans its children.
 **Verify the shipped BYTES, never the push.** `:latest-cross` shipped STALE five
 times with every static gate and every smoke GREEN, because they all checked the
 push rather than the content. `verify-shipped-wrapper.sh` now gates this
-automatically in `build-runtime-manifest.sh`'s per-arch loop, before the manifest
+automatically in `build-runtime-manifest.sh`, in its own pass over every arch
+that runs BEFORE the boot smokes and before the manifest
 is assembled; `WRAPPER_CONTENT_GATE=0` downgrades it to advisory. The saga, its
 real root cause and the two bugs the re-ship flushed out are owned by
 [`docs/cross-build-verification.md`](docs/cross-build-verification.md#verify-the-shipped-bytes).
@@ -523,8 +524,12 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
   restart. Measured 2026-08-27 on the dev host: unit last ran 2026-08-09,
   containerd restarted 2026-08-26, and the runtime stage then failed BOTH
   foreign arches with an empty BuildKit error. The template now sets
-  `PartOf=containerd.service`; an already-installed unit must be re-installed
-  once to pick that up. Registration is lost
+  `PartOf=containerd.service`, and the dev host's unit was re-installed to pick
+  it up on 2026-08-27. PROVEN rather than assumed: `systemctl --user restart
+  containerd` re-ran rootless-binfmt.service in the SAME second (it had last
+  run 2026-08-09) and both emulators still answered afterwards. A daemon
+  restart no longer silently strips foreign-arch emulation. Registration is
+  still lost
   on host reboot **and on `systemctl --user restart containerd`** (it lives in the
   rootlesskit namespace — that's how it silently vanished on 2026-08-08 after the
   shim-failure restart). On this rootless host the privileged

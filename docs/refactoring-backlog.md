@@ -34,7 +34,38 @@ Linux/cross-lane only.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
-## ✅ WAVE-6 SHIPPED 2026-08-24 (the gate-truth build — three blind gates now actually work)
+## ✅ SHIPPED 2026-08-27 — and the audit that followed it
+
+`:latest-cross` = index `a26bf2f4dbc8`, children amd64 `a0d1a144` / arm64
+`2d354459` / riscv64 `7e0ed041`, run id `20260827-073226-d491cb10`. Freshness
+VERIFIED against the registry: every index child matches its per-arch tag and
+all three share this run's id.
+
+The ship itself needed two rescues. The chain died after 5.5 hours on a QEMU
+binfmt registration that the 2026-08-26 daemon restart had silently taken with
+it — the guard for exactly that existed but sat AFTER the builds it protects.
+Resumed with `--only runtime`, it then died again on an ARCH-PARITY arm that
+correctly reported the IREE compiler wheel the same day's IREE fix had removed.
+
+**Then two audits read the result rather than the code, and between them found
+24 defects** — of which 22 were fixed, one refuted, and one retracted as my own
+measurement error. The ones that had SHIPPED: Dockerfile.package expanded two
+prefixes to empty inside their own ENV, so PATH carried `/bin` twice and
+GST_PLUGIN_PATH pointed at `/lib/gstreamer-1.0`; the Android ONNX Runtime
+carried Microsoft's 1DS telemetry because only the native lane passed
+`--no_telemetry`; amd64 alone shipped a setuid-root gst-ptp-helper; Node.js was
+an alpha its own npm refuses; and TVM had been missing from both cross arches
+behind four stacked causes.
+
+Three gates were reporting success over things they never tested, and are
+fixed: `check_ffmpeg` fell back to an absolute path exactly when PATH
+reachability broke, the app-wheel smoke printed one identical PASS over 15/15,
+14/15 and 12/15, and the shipped-content byte gate hid behind a boot smoke so
+riscv64's wrapper reached the index unchecked.
+
+### The previous entry, for the record
+
+**WAVE-6 SHIPPED 2026-08-24** (the gate-truth build — three blind gates now actually work)
 
 `:latest-cross` = amd64 `a25a38c5` / arm64 `bd9953a9` / riscv64 `d3710282`.
 Run id `20260823-223111-d0336283` — and for the FIRST time that is a
@@ -64,7 +95,25 @@ on the new bytes. Runtime smokes 0 failures x3.
 riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
 the ship whose post-audit found the three gates above.
 
-## 🎯 CLOSURE WINDOW 3 — OPEN (declared 2026-08-24): pre-build wave, then a FULL validating rebuild
+## 🎯 CLOSURE WINDOW 3 — PRE-BUILD WAVE DONE 2026-08-27, rebuild still owed
+
+STATUS as of 2026-08-27: the pre-build wave is worked through. Preflight is
+32/32 with a real exit code of 0, 27 unit suites / 677 assertions green,
+shellcheck clean over 263 files, and the backlog is down from 46 open entries
+to 30. versions.env stays OPEN until the validating rebuild runs.
+
+Two fixes in this wave are proven by EXECUTION, not inspection: TVM now
+compiles and stages its arm64 wheels (four stacked causes, each only visible
+once the one before it was fixed), and `PartOf=containerd.service` was tested
+against a real `systemctl --user restart containerd` — the unit re-ran in the
+same second and both emulators still answered, so the failure that cost this
+morning 5.5 hours now self-heals.
+
+What the rebuild still has to prove is everything static analysis cannot: today
+showed three separate times that a defect only becomes visible after the one in
+front of it is gone.
+
+### Original declaration (2026-08-24)
 
 The operator has committed to a fresh build, so the versions.env lock is OPEN
 and build-validated items are IN SCOPE. Work the wave in this order; the
@@ -167,27 +216,30 @@ either created or exposed.
   pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
   cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
   regex failure that appears in no real chain log.
-- **`preflight.sh` exits 0 on failure** [S·★★★] Re-confirmed 2026-08-27: a full
-  run printed `2 check(s) failed` and still exited 0 — and those two were the
-  shellcheck suite that had been inert since 2026-08-26 and a secret scan
-  drowning in gitignored logs. Neither would have been noticed without reading
-  the summary by hand, which is exactly the cost of this bug. Originally
-  observed: it printed
-  `3 check(s) failed` AND `Fix these before a multi-hour rebuild.` and then
-  `exited with code 0`. Anything that calls it non-interactively and trusts the
-  exit code gets a green light on a red result. This is the highest-value item
-  here because it silently disarms the one gate standing between a bad tree and
-  a many-hour rebuild.
-- **stdout-as-return-value is a live footgun** [M·★★★] `compiler_cache_launcher`
-  returns the launcher NAME on stdout while `info()` writes to fd 1
-  (logging.sh:77). The leak produced
-  `CC="[INFO] Using sccache ...sccache gcc"` and GCC died as
-  `configure: error: C compiler cannot create executables` -- a message pointing
-  nowhere near the cause. Fixed there + regression-tested
-  (test-compiler-cache-launcher.sh, with a mutation case). **The refactor is the
-  CLASS, not the instance:** sweep every function whose stdout callers capture
-  with `$(...)`, and either route all logging to stderr repo-wide or return
-  values through a nameref instead.
+- ✅ **`preflight.sh` exits 0 on failure — RETRACTED 2026-08-27, the bug is not
+  real.** The script's summary block ends `exit 0` / `exit 1` / `exit 2` and
+  those propagate correctly: `PREFLIGHT_ONLY=<unknown-slug>` returns 2 when run
+  directly. Both "observations" were the same measurement error —
+  `bash preflight.sh | tail | sed; echo $?` reports SED's status, not the
+  script's. Demonstrated: `(exit 1) | tail -1 | sed 's/^//'; echo $?` prints 0,
+  while `(exit 1); echo $?` prints 1. I added the "re-confirmed 2026-08-27"
+  note to this entry on the strength of that artifact, so the retraction is
+  mine to make. `exit 1` has been in place since 928e745 (2026-08-25).
+  LESSON worth keeping: when checking an exit code, do not pipe.
+
+- ✅ **stdout-as-return-value — CLOSED 2026-08-27 with a GATE, not a sweep.**
+  The exposure turned out to be small and the risk structural, so the fix is
+  `linux/scripts/verify-stdout-returns.py`, wired into preflight as
+  `stdout-returns`. It cross-references every function consumed via `$( )`
+  (411 of them) against every `log`/`info` call inside one, because those reach
+  fd 1 while `warn`/`err` reach fd 2 (logging.sh:77-83).
+  Found exactly one live offender: `normalize_llvm_cmake_dir` (tvm-detect.sh),
+  whose stdout is a path consumed at three call sites — latent, firing only
+  when an LLVM CMake path actually needs normalising. Both of its log lines are
+  redirected now; the gate found the SECOND one after the first had been fixed
+  by hand, which is the whole argument for having it. Mutation-checked in both
+  directions.
+
 - **The compiler-cache abstraction is split across seven places** [L·★★]
   compiler-cache.sh:4-8 already warns "the 02-toolchain GCC/LLVM builds do NOT
   source this module ... that misread hid a dead ccache mount for months". The
@@ -202,37 +254,44 @@ either created or exposed.
   while contributing nothing. DECIDE after the switch is proven: drop ccache and
   delete the fallback branches, or keep it and document why. Do not leave it
   ambiguous -- ambiguous is how the dead mount survived months last time.
-- **`--ccache` no longer means ccache** [S·★] build-gcc.sh and build-clang.sh
-  keep the flag name (llvm.sh:28 passes it) while it now selects whichever cache
-  is usable. Rename to `--compiler-cache` with `--ccache` as a deprecated alias,
-  or the next reader will believe it forces ccache.
-- **sccache stats are per-build-window only** [S·★★] build-gcc.sh zeroes stats
-  before each GCC and reports after, so a run yields N disjoint windows (this
-  run: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and NO aggregate. That makes the one
-  question the switch has to answer -- "did the hit rate improve on a warm
-  build?" -- unanswerable without hand-summing logs. Emit a per-stage aggregate.
-- **Mount-id keys are inconsistent** [S·★★] cache-mount ids mix `${TARGETARCH}`
-  and `${TARGET_ARCH}`; PAR2 is the documented bug class where the wrong one
-  silently shares or splits caches across lanes. Audit all ~43 mount lines and
-  pick one, with a test.
-- **versions.env mis-attributes a watch note** [XS·★] The LLVM 23 block lists
-  the `-nostdinc++` libstdc++ c++23 patch as something to watch for the LLVM
-  bump. That patch lives in GCC's `src/c++23/Makefile.in` and is a GCC concern;
-  it ran clean in this build's GCC stage. Move the note, or it sends the next
-  reader looking in the wrong stage.
+- ✅ **`--ccache` renamed 2026-08-27.** build-gcc.sh and build-clang.sh now take
+  `--compiler-cache` ("sccache first, ccache fallback"), with `--ccache` kept as
+  a DEPRECATED alias so llvm.sh:28 and any operator habit keep working. Both
+  spellings verified to parse; an unknown flag still warns.
 
-**Audit corrections were APPLIED AT SOURCE, not duplicated here** (2026-08-26).
-The verified findings of the 15-agent truth-audit now live in the sections that
-own them -- § B (TS1 and LLVM_COMMIT are half-landed; four riders closed), § E
-(GCC_PARALLEL_TARGETS has missed its trigger twice), § D (S5's premise is
-falsified; build-cache-tiers.md still advertises a reverted knob) -- because a
-finding described in two places drifts in two directions. Two items are still
-unowned by any section and are recorded here until someone files them:
+- ✅ **sccache stats — FIXED 2026-08-27.** build-gcc.sh zeroed the counters
+  before EVERY compiler, so five GCCs produced five disjoint windows and no
+  aggregate. Zeroed once per run now, via a /tmp marker whose lifetime matches
+  the sccache server's. Fixed alongside the third dead `= "sccache"` identity
+  check in the same file, which had every GCC stage reporting CCACHE stats
+  while sccache did the work.
 
-- **3 UNOWNED env knobs** [XS·★] HARFBUZZ_VERSION, IREE_CCACHE_MAXSIZE,
-  PY_MLC_Z3_STATIC_VERSION (two introduced 2026-08-24/26) have live readers but
-  no entry in lint-env-knobs.allow. Register them before anyone flips
-  KNOB_GATE=1, or that gate fails on its first real use.
+- ✅ **Mount-id keys — RESOLVED 2026-08-27, but NOT by unifying all of them.**
+  Investigated rather than swept. The two conventions are mostly principled:
+  `${TARGETARCH}` is BuildKit's automatic value and resolves to amd64 for every
+  cross lane, so the caches keyed on it are SHARED across targets --
+  pip/uv/rustup, cargo, ccache/sccache, llvm-src. That is correct and desirable:
+  wheels carry a platform tag, sccache keys on compiler+flags, crate sources and
+  LLVM sources are arch-independent, so sharing raises the hit rate and splitting
+  them would only cost a cold rebuild. `${TARGET_ARCH}` is the explicit per-target
+  value and keys the caches whose CONTENT is arch-specific (apt debs,
+  ffmpeg-sdks). Also correct.
+  The one real defect was cargo: Dockerfile.toolchain:228-229 used
+  `${TARGETARCH}` while Dockerfile.media:863-864 used `${TARGET_ARCH}`, so the
+  same registry/git caches carried two different ids and the toolchain's copy
+  could never help the media stage. Aligned on the shared convention, since
+  crate sources are arch-independent.
+
+- ✅ **versions.env watch note MOVED 2026-08-27.** The -nostdinc++ libstdc++
+  c++23 patch note now sits at the GCC_VERSION pin, where the patch actually
+  lives (src/c++23/Makefile.in), instead of under LLVM_RELEASE.
+
+- ✅ **UNOWNED env knobs — CLOSED 2026-08-27.** All five (HARFBUZZ_VERSION,
+  IREE_CCACHE_MAXSIZE, IREE_SCCACHE_LOG, PY_MLC_Z3_STATIC_VERSION,
+  SCCACHE_CONF) are registered in lint-env-knobs.allow with their reason and
+  reader. Verified under KNOB_GATE=1, which is the failure the entry warned
+  about: the gate now passes on its first strict use instead of failing.
+
 ## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
 
 ### A1. Work items (all referenced by the phase plan above)
@@ -256,7 +315,7 @@ unowned by any section and are recorded here until someone files them:
 **Added 2026-08-26 (pre-rebuild wave + its adversarial review, commit 9a86d2f
 — static review only, NO build has exercised these):**
 
-- **IREE host stage no longer builds LLVM** [was never tracked here — the win
+- ✅ **IREE host stage no longer builds LLVM** [was never tracked here — the win
   the wave went looking for]. `-DIREE_BUILD_COMPILER=ON` on the HOST stage was
   a leftover; the target reads only `iree-c-embed-data` + `iree-flatcc-cli`
   out of `IREE_HOST_BIN_DIR`, both LLVM-free, so the host stage runs
@@ -264,21 +323,21 @@ unowned by any section and are recorded here until someone files them:
   instead of escalating to a multi-hour LLVM compile that provably cannot
   succeed where OFF failed. **Watch in the rebuild:** the riscv64/arm64 IREE
   host stage must NOT show clang/MLIR compilation, and both tools must exist.
-- **ORPHAN-PINS closed** — PyAV is BUILT (new
+- ✅ **ORPHAN-PINS closed** — PyAV is BUILT (new
   `linux/scripts/03-media/build/pyav/build-pyav.sh` + a `pyav` stage landing
   `av-<ver>-cp314-cp314-linux_<arch>.whl` in /opt/wheels); the TVM half was
   already closed by 202634c. **Watch:** the PyAV wheel must appear on all
   three arches and the wheel-smoke warning must disappear.
-- **RV1-FREETYPE fixed** — riscv64 opencv freetype is ENABLED against staged
+- ✅ **RV1-FREETYPE fixed** — riscv64 opencv freetype is ENABLED against staged
   static target harfbuzz; `-DBUILD_opencv_freetype=OFF` survives only as the
   not-staged fallback. **Watch:** the riscv64 `opencv-freetype` wheel-smoke
   warning must be gone — if it is not, the static-harfbuzz staging is what
   failed, not the module.
-- **TVM ffi honesty** — a failed `tvm-ffi` wheel build now WITHDRAWS the wheel
+- ✅ **TVM ffi honesty** — a failed `tvm-ffi` wheel build now WITHDRAWS the wheel
   set instead of leaving an apache-tvm wheel that dies at `import tvm`.
   **Watch:** either a complete tvm+tvm_ffi pair, or an explicit skip reason —
   never "python wheel staged" alone.
-- **GStreamer known-broken guard repaired** — it compared space-delimited
+- ✅ **GStreamer known-broken guard repaired** — it compared space-delimited
   against a newline-separated list, so it stopped firing as soon as TWO
   plugins failed, with a new hard FAIL resting on it. **Watch:** no spurious
   ARCH-PARITY abort at the end of a green build.
@@ -321,42 +380,28 @@ unowned by any section and are recorded here until someone files them:
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
-- **QUEUED BUMPS (checked 2026-08-26, operator requested — apply the moment
-  wave7e ships, NOT while it runs):** OLLAMA 0.33.0 (llm-stack only, cheap),
-  CARGO_C 0.10.25 (toolchain), UV 0.12.6 + CMAKE 4.4.3 (both hit linux BASE →
-  full-chain rebuild; bundle them with the NEXT window's riders so one rebuild
-  pays for all). VULKAN 1.4.357.1 re-probed and STILL blocked (windows.txt
-  answers .0; shared key). Command: `python3 docs/scripts/bump_versions.py
-  --write --only OLLAMA_VERSION,CARGO_C_VERSION,UV_VERSION,CMAKE_VERSION`
-  then sync_versions --write + the check battery.
+- ✅ **QUEUED BUMPS — CLOSED 2026-08-27, three of four were already applied.**
+  Re-checked with the tool rather than trusted: UV 0.12.6, CMAKE 4.4.3 and
+  CARGO_C 0.10.25 all report "up to date", so they landed in an earlier wave and
+  this entry had gone stale. Only OLLAMA had moved — 0.33.0 -> 0.33.1, both
+  SHA256s written by bump_versions.py, "rebuilds: llm-stack image only" so it
+  costs nothing on the cross chain. Followed by sync_versions --write and the
+  check battery: version-snapshot, arg-consistency, env-knobs and (after
+  regeneration) the curated SBOM are all green. VULKAN 1.4.357.1 stays blocked
+  on the shared-key problem recorded above.
 
-- **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
-  recorded** [S, was M] (a) ABSEIL: codeload-by-commit VERIFIED byte-stable
-  (two sequential fetches, identical sha256 7f4240fe…, matches the pin at
-  versions.env:194) — but GitHub only pledges byte stability "no less than a
-  year", so the durable form is a STREAM hash of the decompressed tar
-  (gunzip -c | sha256sum = ec28d875…); switch the pin to that at the next
-  bump. (b) ANDROID_CMDLINE_TOOLS: Google DOES publish checksums —
-  repository2-3.xml carries sha1 040d3996… for
-  commandlinetools-linux-15859902_latest.zip; verified against the real zip,
-  and our sha256 pin (versions.env:503) matches the same bytes. Bump-window
-  change: cross-check the manifest sha1 when regenerating the sha256 pin.
-  Both edits touch versions.env → pin-bump window only.
-- Small riders — **groomed 2026-08-26, four of six CLOSED** (pyav dead-pin:
-  the pin has a Windows consumer AND, since 9a86d2f, a linux producer;
-  setup-package-image residual pins: closed by 202634c; RUFF_PIN → versions.env
-  (C4): lint-python.sh:33 now reads `${RUFF_VERSION:-0.16.4}`; AP6 decided as
-  ORT_ENABLE_LTO=false, recorded at versions.env:118-133).
-  What actually REMAINS, and note both are HALF-landed — key present, consumer
-  not wired, which is worse than untouched because it reads as done:
-  - **TS1** [S·★★, has teeth] versions.env:812-816 carries
-    APPIMAGETOOL_VERSION + the four SHA256 keys, but packaging-deps.sh:156-174
-    still uses its own case-arm literals. **Bumping APPIMAGETOOL_VERSION alone
-    would break the build.** Wire the consumer, or never bump it alone.
-  - **LLVM_COMMIT** [S·★] versions.env:41 exists and is INERT — build-clang.sh
-    and llvm-cross.sh clone via LLVM_TAG and never read it. Wire it so a
-    non-empty 40-hex commit wins over llvmorg-${LLVM_RELEASE}, or drop the key.
-  - peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token scope).
+- ✅ **F6 — DONE 2026-08-27, both halves.** (a) ABSEIL now pins the
+  DECOMPRESSED-STREAM hash (`ABSEIL_TARBALL_STREAM_SHA256=ec28d875…`), which
+  outlives GitHub's "no less than a year" byte-stability pledge because the
+  gzip container may be re-encoded while the stream cannot. BOTH sides moved
+  together, as the old note demanded: `download_verified_file()` grew a
+  `stream` mode, abseil-headers.sh passes it, and bump_versions.py writes the
+  stream form under the new key via a new `sha256_of_gz_stream()`. Verified
+  end to end — the tool computes exactly the pinned value, the shell accepts
+  the right hash, rejects a wrong one, and rejects the stream hash in FILE
+  mode, so the two modes cannot be confused. (b) ANDROID_CMDLINE_TOOLS needed
+  no change: the repository2-3.xml sha1 cross-check is already written beside
+  the key and the pin sits in the tool's manual-tier allowlist.
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
@@ -371,105 +416,52 @@ unowned by any section and are recorded here until someone files them:
   while prune-safe + local caches hold. Re-open ONLY on new evidence (another
   cold-rebuild loss). v1 implementation history: reverted twice (fix7 gate
   token; inert-by-default with no coverage) — read the doc before any retry.
-- **SCC1 — SUPERSEDED 2026-08-26: the full switch was ORDERED and DONE**
-  [M·★★] This entry recorded "full switch rejected (owner decision
-  2026-08-17)". The owner REVERSED that on 2026-08-26 and the C/C++ half is
-  implemented (5d94a37, c42091e, d5bafe8): sccache 0.17.0 pinned for linux
-  because the distro 0.13.0 has no SCCACHE_BASEDIRS, a config file baked into
-  Dockerfile.base for the settings sccache cannot take from the environment,
-  and every C/C++ launcher routed through one resolver with ccache as the
-  fallback. What SURVIVES of the hybrid design, and why:
-  - **Rust is still NOT cached.** build-gstreamer-monorepo.sh:681 hard-clears
-    RUSTC_WRAPPER because the sccache SERVER died mid-compile in three separate
-    media rounds, each killing a green gstreamer build at 99%. Revalidate
-    against the bar in docs/build-cache-tiers.md:340 (SCCACHE_IDLE_TIMEOUT=0,
-    error log captured, two consecutive green cross-arch media runs with a
-    non-zero hit rate) before removing the clear.
-  - **nvcc is untouched**, and the Windows lane records that RELEASED sccache
-    breaks the build around nvcc (versions.env, SCCACHE_GIT_REV block) — so
-    "sccache everywhere" must not be read as including nvcc without that
-    evidence being re-examined.
-  - **The webdav cross-machine tier** remains unbuilt.
+- ✅ **SCC1 — SUPERSEDED, closed 2026-08-27.** The entry already recorded that
+  the owner reversed the 2026-08-17 rejection and that the C/C++ half is
+  implemented; it was only ever still open because nobody ticked it. The Rust
+  half followed on 2026-08-27 with the always-sccache decision.
 
 ## E. Waiting on a TRIGGER (not on work)
 
-- **SCC-BARE-FALLBACK — the bare-sccache gate matches the SHAPE, not the
-  BEHAVIOUR** [S, found 2026-08-27 by the doc-repair verifiers, reviewing my own
-  54fc1df] Both resolvers initialise their launcher to the literal `sccache`
-  (`compiler-cache.sh:108` setup_ccache, `:229` setup_sccache) and only upgrade
-  it when `sccache-launcher.sh` is executable. When 01-core is not mounted,
-  they therefore export BARE sccache — the thing AGENTS.md forbids, and which
-  ABORTS a compile on sccache's own internal errors. `build-gstreamer-monorepo.sh`
-  :702-703 makes the opposite choice and goes UNCACHED instead. Both behaviours
-  are defensible; having both silently is not.
-  The gate added in 54fc1df (`verify-critical-fixes.sh:227`) cannot see this:
-  its regex matches a literal `export ...="sccache"`, not `="${_sc_launcher}"`
-  with a bare default. Fifth instance of "a guard that ships but cannot fire",
-  this time inside the commit that named the pattern.
-  DECIDE (operator): is bare sccache the intended fallback for stages without
-  01-core, or should they go uncached like the gstreamer lane? Then make the
-  gate assert the decision instead of the spelling.
+- ✅ **SCC-BARE-FALLBACK — DECIDED and implemented 2026-08-27.** The owner's
+  answer is "benutze immer sccache": guarded launcher where 01-core is
+  mounted, bare sccache where it is not, never uncached.
+  build-gstreamer-monorepo.sh was the one writer choosing uncached and now
+  agrees with common.sh:449-450. The gate this entry produced was rewritten to
+  assert the DECISION rather than the spelling -- the property is "never
+  uncached", mutation-checked in both directions.
 
-- **SCC-DIAG-LEFTOVERS — the temporary sccache diagnostics outlived their
-  investigation** [XS, found 2026-08-27, deferred to the next closure window]
-  Two remnants of the 2026-08-26 ENOENT hunt are still in the tree now that the
-  cause is known (wrong sccache server via TCP port; cured by
-  SCCACHE_SERVER_UDS):
-    * `01-core/compiler-cache.sh:120` still says "Remove once the cause is
-      known". The knob itself already defaults to silent, so this is a stale
-      comment, not live noise.
-    * `05-frameworks/torch/build-app-wheelhouse.sh:848` defaults
-      `SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"` — still ARMED, so every
-      IREE build stays verbose.
-  Keep both knobs; only the defaults and the comment need changing. NOT done
-  on the spot: 01-core is inside the bind-mount closure the running wrapper
-  builds read, and flipping a cache key there to quieten a log would risk hours
-  of rebuild for nothing. Do it in a no-build window.
+- ✅ **SCC-DIAG-LEFTOVERS — CLOSED 2026-08-27.** build-app-wheelhouse.sh no
+  longer defaults SCCACHE_LOG to sccache=info, so IREE builds are quiet again
+  (IREE_SCCACHE_LOG still turns it back on), and compiler-cache.sh's "Remove
+  once the cause is known" note now states the cause: concurrent BuildKit RUN
+  steps shared one sccache server because the port is not container-local,
+  cured by SCCACHE_SERVER_UDS.
 
-- **MANIFEST-FRESHNESS-WIRING — the index gate exists but nothing runs it**
-  [S, 2026-08-27] `linux/scripts/verify-manifest-freshness.sh` asserts every
-  `:latest-cross` child equals its per-arch tag and that all children share one
-  run-id. It was written and sensitivity-checked against a genuinely stale live
-  index, but deliberately NOT wired: adding a gate that can abort the final step
-  of a four-hour run, during that run's final step, is not a trade worth making.
-  Wire it into `build-runtime-manifest.sh` after `create_manifest` (with
-  `EXPECT_RUN_ID="${CROSS_RUN_ID}"`) in a no-build window. NOTE both of its
-  assertions are individually blind to a wholesale-stale ship — EXPECT_RUN_ID is
-  the one that actually pins it, so the wiring must pass it.
+- ✅ **MANIFEST-FRESHNESS-WIRING — WIRED 2026-08-27.** verify-manifest-freshness.sh
+  now runs from build-runtime-manifest.sh right after create_manifest, with
+  EXPECT_RUN_ID threaded from CROSS_RUN_ID. Deliberately ADVISORY: it runs
+  after the push, so failing hard could not unpublish anything and would only
+  turn a finished run red; MANIFEST_FRESHNESS_STRICT=1 makes it fatal for CI,
+  MANIFEST_FRESHNESS_GATE=0 skips it. Sensitivity-checked against the live
+  index: PASS with this run's id, FAIL with any other.
 
-- **BINFMT-UNIT-REINSTALL — one host command, needed once**
-  [XS, user-side, 2026-08-27] `setup-rootless-binfmt.sh`'s unit template now
-  sets `PartOf=containerd.service`, but the unit already installed on the dev
-  host predates that: it last ran 2026-08-09, survived the 2026-08-26 containerd
-  restart untouched, and its registration was gone for 17 days while systemd
-  reported `Result=success`. Re-install once to pick the change up:
-  `bash linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service`.
-  NOT done during the rebuild — re-registering handlers under a running
-  emulated build is not worth it for a fix that only matters at the next restart.
+- ✅ **BINFMT-UNIT-REINSTALL — DONE 2026-08-27.** The dev host's unit now
+  carries `PartOf=containerd.service` and the fix was verified against a real
+  containerd restart. The mechanism and the measurement live in AGENTS.md
+  § Prerequisites (QEMU/binfmt) — one owner, not two.
 
-- **XC2-PARTIAL-RUN — a resumed run ships without its ancestry stamp**
-  [M, found 2026-08-27 on the shipped :latest-cross] The wrapper build stamps
-  `org.kataglyphis.parent-digest` / `parent-stage` from
-  `RUNTIME_ANDROID_PIN_<arch>`, exported at `cross-stage-build.sh:648-656` —
-  but only when the `ANDROID_PIN` array is populated, which happens when the
-  ANDROID STAGE RUNS. A `--only runtime` resume never runs it, so line 652
-  `continue`s, no label is emitted, and the wrapper ships carrying run-id and
-  build-type alone.
-  Verified on today's bytes: all three shipped wrappers carry
-  `org.kataglyphis.run-id=20260827-073226-d491cb10` and NO parent-digest, while
-  the full-chain run earlier the same day emitted
-  `--label org.kataglyphis.parent-digest` for every arch. So the mechanism
-  works; resuming loses it.
-  The information is not missing — the same run's ancestry preflight PRINTED
-  the digests (`media→android (amd64): OK (sha256:286d5410…)`). They are simply
-  never threaded into ANDROID_PIN when the stage is skipped. Fix: populate
-  ANDROID_PIN for skipped-but-resolved stages from the ancestry resolution,
-  so a resume is stamped exactly like a full run.
-  Consequence if left: every future ancestry check on these images reports
-  "records no parent digest — provenance unverifiable" and can never verify the
-  wrapper→android link for anything shipped by a resumed run.
-  NOTE `--manifest-only`/`--repair` losing the pin IS documented and intended
-  (`runtime-build-fns.sh:36-38`); this entry is about the CHAIN path.
+- ✅ **XC2-PARTIAL-RUN — FIXED 2026-08-27 at the consumer, not the orchestrator.**
+  runtime_android_pin returned empty whenever the android stage had not built
+  in this run, so a `--only runtime` resume shipped wrappers carrying run-id
+  and build-type but no parent-digest — which is what today's published index
+  did. It now resolves the mutable android tag to a digest itself when the
+  threaded pin is absent. Chosen over re-threading ANDROID_PIN through the
+  orchestrator because that is a wide change with no validating run available;
+  this is one function. Guarded on both halves (needs registry_pin_ref AND a
+  configured repo), so a --no-push run behaves exactly as before. The unit
+  test now pins the new contract and caught an unbound-variable crash in the
+  first version of the fix.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
@@ -491,11 +483,16 @@ unowned by any section and are recorded here until someone files them:
   setup-gstreamer.sh for riscv64 cross only. Re-bump when upstream
   meson/g-i fix the `subproject('glib')` resolution — retest by removing
   the pin in a closure window.
-- **NODE-RV — riscv64 ships Node v22 (pin: 26.7)** [S·★, watch] ubuntu-ports
+- **NODE-RV — riscv64 ships Node v22 (pin: 26.8.1)** [S·★, watch] ubuntu-ports
   has no 26.x for riscv64; the install falls back fail-open with a WARN (by
   design, seen in every wave-4 smoke log). Lift when ports ships 26.x —
   check via `apt-cache policy nodejs` on the ports snapshot at each bump
   window; until then the riscv64 image runs the distro v22.
+  NB (2026-08-27): the pin moved 26.8.0 -> 26.8.1 because the OFFICIAL
+  v26.8.0 tarball self-reports `26.8.0-alpha.0.0.0` and its own bundled npm
+  then refuses it (semver puts a prerelease outside `>=22.9.0`). Re-check the
+  reported version, not just the tarball name, at every bump — the gate that
+  missed it compared a PREFIX and has since been tightened to an exact match.
 - **SV-residual — watch the first real `compose up`** — user-side.
 - **riscv64 isa-spec smoke on real hardware** — needs hardware.
 - **WEBUI_SECRET_KEY server-side rotation** — user action.

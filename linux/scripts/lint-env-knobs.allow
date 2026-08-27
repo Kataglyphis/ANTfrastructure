@@ -159,3 +159,21 @@ WORKSPACE
 # robbed. Added 2026-08-27 after a 3.3 GB orphan from 2026-07-25 was found
 # still on disk after 33 days.
 RUNTIME_CONTEXT_KEEP_HOURS
+# HarfBuzz source-build version for the OpenCV media deps
+# (03-media/build/opencv/install-deps.sh). Not in versions.env because it is a
+# build-local fallback, not a shipped pin.
+HARFBUZZ_VERSION
+# Compiler-cache size cap for the IREE build only
+# (05-frameworks/torch/build-app-wheelhouse.sh). Named *_CCACHE_* for history;
+# it now feeds SCCACHE_CACHE_SIZE. Default 64G — the LLVM rebuild is one-time.
+IREE_CCACHE_MAXSIZE
+# sccache log level for the IREE build only, kept from the 2026-08-26 ENOENT
+# hunt. Default sccache=info. See SCC-DIAG-LEFTOVERS — this default should go
+# back to quiet in the next no-build window.
+IREE_SCCACHE_LOG
+# mlc-z3-static wheel version for TVM's optional Z3 dependency
+# (05-frameworks/tvm-python.sh). Cross builds force USE_Z3=OFF regardless.
+PY_MLC_Z3_STATIC_VERSION
+# Path to the sccache config baked into the base image (Dockerfile.base,
+# 01-core/base-image.sh). Set once at image build; operators do not override it.
+SCCACHE_CONF

@@ -649,7 +649,7 @@ flips re-run the affected media compiles — batch them with planned pin bumps
 a fresh runtime wrapper build with **`RUNTIME_NO_CACHE=1`** (scoped to the
 runtime package + wrapper; lighter than whole-chain `NO_CACHE=1`) so the shipped
 image actually reflects the new media. The shipped **bytes** are now checked
-automatically: `verify-shipped-wrapper.sh` runs in the per-arch manifest loop
+automatically: `verify-shipped-wrapper.sh` runs in its own pass over every arch
 and asserts the shipped `/opt/ffmpeg` lib set matches the versions.env toggles
 (so `FFMPEG_ENABLE_TF=0` ⇒ `libtensorflow*` must be absent). Set
 `WRAPPER_CONTENT_GATE=0` to downgrade that gate to advisory.
