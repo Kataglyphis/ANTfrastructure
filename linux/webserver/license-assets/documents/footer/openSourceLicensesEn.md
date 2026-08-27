@@ -18,7 +18,7 @@ its own license terms.
 | --- | --- | --- | --- |
 | Ubuntu | 26.04 | [ubuntu.com](https://ubuntu.com/) | GPLv2 / various (individual packages) |
 | CMake | 4.4.3 | [cmake.org](https://cmake.org/) | BSD 3-Clause |
-| Node.js | 26.8.0 | [nodejs.org](https://nodejs.org/) | MIT |
+| Node.js | 26.8.1 | [nodejs.org](https://nodejs.org/) | MIT |
 | uv | 0.12.6 | [github.com/astral-sh/uv](https://github.com/astral-sh/uv) | Apache 2.0 / MIT |
 | Vulkan SDK | 1.4.357.0 | [vulkan.lunarg.com](https://vulkan.lunarg.com/) | Apache 2.0 |
 

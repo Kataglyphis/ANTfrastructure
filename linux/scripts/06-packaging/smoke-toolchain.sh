@@ -156,7 +156,11 @@ check_node() {
     return 0
   fi
   if [ -n "${NODE_VERSION:-}" ]; then
-    if node --version 2>/dev/null | grep -q "^v${NODE_VERSION}"; then
+    # EXACT match, not a prefix (tightened 2026-08-27). `grep "^v26.8.0"` also
+    # matched `v26.8.0-alpha.0.0.0`, so the gate passed while the image shipped
+    # a prerelease whose own npm refused to support it -- and it would equally
+    # have matched v26.8.01 or v26.8.0x. The suffix is the whole point here.
+    if [ "$(node --version 2>/dev/null)" = "v${NODE_VERSION}" ]; then
       pass "node version matches pin (v${NODE_VERSION})"
     else
       fail "node $(node --version 2>/dev/null || echo '?') != pinned v${NODE_VERSION}"
