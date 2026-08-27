@@ -177,3 +177,7 @@ PY_MLC_Z3_STATIC_VERSION
 # Path to the sccache config baked into the base image (Dockerfile.base,
 # 01-core/base-image.sh). Set once at image build; operators do not override it.
 SCCACHE_CONF
+# Advisory gate added 2026-08-27 with verify-manifest-freshness.sh: set to 0 to
+# skip the post-create_manifest freshness assertion (index children == per-arch
+# tags, one shared run-id). Read in build-runtime-manifest.sh.
+MANIFEST_FRESHNESS_GATE
