@@ -331,14 +331,15 @@ either created or exposed.
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
-- **QUEUED BUMPS (checked 2026-08-26, operator requested — apply the moment
-  wave7e ships, NOT while it runs):** OLLAMA 0.33.0 (llm-stack only, cheap),
-  CARGO_C 0.10.25 (toolchain), UV 0.12.6 + CMAKE 4.4.3 (both hit linux BASE →
-  full-chain rebuild; bundle them with the NEXT window's riders so one rebuild
-  pays for all). VULKAN 1.4.357.1 re-probed and STILL blocked (windows.txt
-  answers .0; shared key). Command: `python3 docs/scripts/bump_versions.py
-  --write --only OLLAMA_VERSION,CARGO_C_VERSION,UV_VERSION,CMAKE_VERSION`
-  then sync_versions --write + the check battery.
+- ✅ **QUEUED BUMPS — CLOSED 2026-08-27, three of four were already applied.**
+  Re-checked with the tool rather than trusted: UV 0.12.6, CMAKE 4.4.3 and
+  CARGO_C 0.10.25 all report "up to date", so they landed in an earlier wave and
+  this entry had gone stale. Only OLLAMA had moved — 0.33.0 -> 0.33.1, both
+  SHA256s written by bump_versions.py, "rebuilds: llm-stack image only" so it
+  costs nothing on the cross chain. Followed by sync_versions --write and the
+  check battery: version-snapshot, arg-consistency, env-knobs and (after
+  regeneration) the curated SBOM are all green. VULKAN 1.4.357.1 stays blocked
+  on the shared-key problem recorded above.
 
 - **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
   recorded** [S, was M] (a) ABSEIL: codeload-by-commit VERIFIED byte-stable
