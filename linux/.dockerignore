@@ -5,8 +5,15 @@
 #
 # NOTE: webserver/dist MUST stay included here. The root .dockerignore excludes
 # **/dist/ for root-context builds; do not copy that rule into this file.
+#
+# Every COPY source in webserver/Dockerfile needs a negation below. Verified
+# 2026-08-27: security-headers.conf had none, so `nerdctl compose -f
+# linux/docker-compose.yml build webserver` failed at Dockerfile:30 with
+# `"/webserver/security-headers.conf": not found` — the file is on disk and
+# tracked; only the context filter hid it.
 *
 !webserver/nginx.conf
+!webserver/security-headers.conf
 !webserver/entrypoint.sh
 !webserver/dist/
 !webserver/license-assets/
