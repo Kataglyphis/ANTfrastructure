@@ -1047,6 +1047,27 @@ build_iree_wheels() {
         # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
         # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
         # bytecode compilation, which the app's check_iree uses, is unaffected.
+        # CROSS TARGET IS RUNTIME-ONLY (2026-08-27, restored). IREE_BUILD_COMPILER
+        # is OFF here, and that is not a preference -- it is the only configuration
+        # upstream supports for a cross target.
+        #
+        # IREE imports host tools only under
+        #     if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)  (tools/CMakeLists.txt)
+        # so with COMPILER=ON the target IGNORES IREE_HOST_BIN_DIR entirely, builds
+        # its own iree-tblgen FOR THE TARGET ARCH, and then runs it during the build:
+        #     /.../iree-build-target/tools/iree-tblgen: Exec format error
+        #     FAILED: [code=126] .../Dialect/VM/IR/VMOpEncoder.cpp.inc
+        # Proven NOT to be a host-side problem: the host stage completed with
+        # COMPILER=ON and reported "tools present: iree-c-embed-data iree-flatcc-cli
+        # iree-tblgen", and the target still used its own. Upstream's build_riscv.sh
+        # sets the target to COMPILER=OFF for exactly this reason. The same class is
+        # already documented below for iree-compile (IREE_OUTPUT_FORMAT_C=OFF).
+        #
+        # WHAT THIS COSTS, plainly: arm64 and riscv64 ship the IREE RUNTIME wheel but
+        # NOT iree_base_compiler. Commit 9b238e7 wanted both on cross; it set the flag
+        # without providing a native tblgen, and that configuration cannot build.
+        # amd64 is NATIVE, never enters this branch, and keeps both wheels.
+        # IREE_CROSS_BUILD_COMPILER=ON re-tries it once IREE supports the combination.
         toolchain_file="$(write_cross_cmake_toolchain_file || true)"
         [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
         append_common_cross_cmake_args cmake_args
@@ -1103,7 +1124,7 @@ build_iree_wheels() {
                 "${ccache_cmake_args[@]}" \
                 -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
                 -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-                -DIREE_BUILD_COMPILER=ON \
+                -DIREE_BUILD_COMPILER="${IREE_CROSS_BUILD_COMPILER:-OFF}" \
                 -DIREE_BUILD_PYTHON_BINDINGS=ON \
                 -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
                 -DIREE_BUILD_SAMPLES=OFF \
