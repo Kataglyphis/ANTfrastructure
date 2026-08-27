@@ -40,41 +40,25 @@
 # ==============================================================================
 set -euo pipefail
 
-GHCR_PKG="${GHCR_PKG:-kataglyphis_beschleuniger}"
-GHCR_OWNER="${GHCR_OWNER:-kataglyphis}"
+_GHCR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=linux/host-config/ghcr-common.sh
+. "${_GHCR_SH_DIR}/ghcr-common.sh"
+
 KEEP_DAYS="${KEEP_DAYS:-7}"
 CONFIRM="${GHCR_PRUNE_CONFIRM:-0}"
-API="https://api.github.com"
+API="${GHCR_API}"
 
 log()  { printf '[ghcr-prune] %s\n' "$*"; }
 err()  { printf '[ghcr-prune] ERROR: %s\n' "$*" >&2; exit 1; }
 
-# ── auth ─────────────────────────────────────────────────────────────────────
-_token() {
-  if [ -n "${GHCR_TOKEN:-}" ]; then printf '%s' "${GHCR_TOKEN}"; return; fi
-  python3 - <<'PY'
-import json, base64, os, sys
-p = os.path.expanduser("~/.docker/config.json")
-try:
-    auth = json.load(open(p))["auths"]["ghcr.io"]["auth"]
-except Exception:
-    sys.exit(1)
-print(base64.b64decode(auth).decode().split(":", 1)[1])
-PY
-}
-TOKEN="$(_token)" || err "no ghcr credential (docker login ghcr.io, or set GHCR_TOKEN)"
+# ── auth (shared: ghcr-common.sh) ─────────────
+TOKEN="$(ghcr_pat)" || err "no ghcr credential (docker login ghcr.io, or set GHCR_TOKEN)"
 [ -n "${TOKEN}" ] || err "empty ghcr token"
 
 _api() { curl -fsS -H "Authorization: Bearer ${TOKEN}" \
               -H "Accept: application/vnd.github+json" "$@"; }
 
-# Registry-side Bearer for manifest reads (ghcr token exchange with the PAT).
-_registry_token() {
-  curl -fsS -u "x:${TOKEN}" \
-    "https://ghcr.io/token?service=ghcr.io&scope=repository:${GHCR_OWNER}/${GHCR_PKG}:pull" \
-    | python3 -c 'import sys,json;print(json.load(sys.stdin)["token"])'
-}
-REG_TOKEN="$(_registry_token)" || err "registry token exchange failed"
+REG_TOKEN="$(ghcr_registry_token "${TOKEN}")" || err "registry token exchange failed"
 
 # ── 1) inventory: every package version ──────────────────────────────────────
 WORK="$(mktemp -d)"
@@ -114,7 +98,7 @@ MIN_TAGS="${MIN_TAGS:-10}"
 [ "${#ALL_TAGS[@]}" -ge "${MIN_TAGS}" ] \
   || err "only ${#ALL_TAGS[@]} tag(s) visible (MIN_TAGS=${MIN_TAGS}) — inventory looks broken, refusing"
 log "resolving ${#ALL_TAGS[@]} tag(s) against the registry for child digests…"
-ACCEPT='application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json'
+ACCEPT="${GHCR_MANIFEST_ACCEPT}"
 for tag in "${ALL_TAGS[@]}"; do
   m="$(curl -fsS -H "Authorization: Bearer ${REG_TOKEN}" -H "Accept: ${ACCEPT}" \
         "https://ghcr.io/v2/${GHCR_OWNER}/${GHCR_PKG}/manifests/${tag}")" \

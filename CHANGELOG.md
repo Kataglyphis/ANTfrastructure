@@ -5,74 +5,49 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
-## 2026-08-27 — the arm64 OpenCV blocker was a `tbnz` just out of reach, not a jump table
+## 2026-08-27 — the registry gets a second tool, and Rust caching turns out to have been bare all along
 
-`median_blur.dispatch.cpp` had been failing the cross build with `error: fixup
-value out of range` since the forced clang-cl bump to 23.1.0. It is fixed, and
-the diagnosis it was filed under — recorded in three documents — was wrong in
-every part.
+**Registry: 81 -> 34 tags, 204 -> 134 versions, 0 failures.**
+`ghcr-prune-package.sh` deliberately keeps every TAGGED version, which left the
+other half of the mess untouched. New sibling **`ghcr-delete-tags.sh`** deletes
+NAMED tags from an explicit list — it never decides what is legacy — with the
+same fail-closed keep-set: abort if any kept tag is unreadable, skip a version
+that shares a digest with a kept index child, carries a tag not on the list, or
+is younger than `KEEP_DAYS`.
 
-**What it actually is.** At `/O2` the inliner collapses the whole baseline
-median filter into ONE function, `cv::cpu_baseline::medianBlur`, 8,465
-instructions ≈ 33,860 bytes. Inside it, `tbnz w9, #31, .LBB546_847` has to reach
-a block ~32,916 bytes away. `tbz`/`tbnz` carry a 14-bit displacement — ±32,768
-bytes — so it **misses by roughly 150 bytes** (~32,916 counted from the emitted
-listing, instructions × 4). LLVM's `BranchRelaxation` pass exists to
-catch exactly that and rewrite the branch; it did not, because its layout
-estimate came out short. That is the same signature as the compressed
-jump-table failures fixed the day before (an estimate a few bytes under the
-emitted reality), which is why every flag tried against it appeared to work or
-fail at random: a 148-byte miss flips on any perturbation.
+What went: 22 `*-buildcache` tags that nothing has written since the cache
+self-defeat fix (`verify-critical-fixes.sh` already *forbids* their return), 19
+tags from a naming scheme the chain abandoned (`media-cross-amd64` ->
+`cross-media-amd64`, `latest-cross-runtime-*` -> `latest-cross-*`), and the six
+long-dangling index tags. All 47 had zero references anywhere in the repo.
 
-**The fix** is `/Ob1` on the offending translation units, appended to their
-`build.ninja` FLAGS lines (`Add-NinjaPerTuFlags`, with a floor — a selector that
-matches nothing throws at configure time). No optimisation level is lowered:
-every kernel keeps `/O2`, vectorisation and unrolling. It stops the inliner
-gluing the file-static baseline helpers into one function, and the largest
-function in the TU drops from 33,860 bytes to 10,620
-(`medianBlur_SortNet<MinMax8u>`) — **3.1× headroom under the ceiling** instead
-of a 148-byte miss. The cost is one call per `medianBlur()`, once per image.
-`-mllvm -inline-threshold=100` and `=25` do NOT achieve this and were measured
-failing: those helpers have a single call site and are inlined regardless of
-threshold.
+**`:latest` was already broken and is now gone.** Its three children had been
+404 for months — `python-ci-linux.yml:118` had quietly worked around it. Worth
+stating plainly: it will not come back by itself. Every orchestrator under
+`linux/scripts/` is a `build-cross-*` script, so the native lane has no build
+path any more; keeping it means writing one, not running one.
 
-**What the previous diagnosis got wrong**, corrected in
-`docs/failure-modes.md`, `docs/windows-cross-builds.md` and the backlog. It
-described the failure as an `adr` that cannot reach its jump-table base "in a
-function larger than ~1 MB", and explained it as a guard rail removed by
-`-mllvm -aarch64-enable-compress-jump-tables=false`, with
-`+force-32bit-jump-tables` credited for "keeping the pass enabled". Measured
-against a local clang-cl 23.1.0 and read out of the 23.1.0 source:
+Both tools now source **`ghcr-common.sh`**. The thirteen byte-identical lines
+were the visible half; the important half is that the Accept header is now
+defined ONCE. Listing the index media types makes a multi-arch tag resolve to
+its index so its children are visible — omit them and the tag collapses to one
+platform manifest, which is precisely how a prune tool builds a short keep-set
+and deletes something it should not.
 
-* the feature makes the pass `return false` before it scans anything, and emits
-  **byte-identical** assembly to `=false` — the two are the same thing;
-* with the pass off, the `adr` in question is self-relative (`.Ltmp0:` sits on
-  the `adr`), so it cannot go out of range at all;
-* the largest function in the TU is 33 KB, not >1 MB;
-* the failing instruction is a `tbnz`, and no jump table is involved —
-  `-fno-jump-tables` fails identically.
+**`setup_sccache` pointed `RUSTC_WRAPPER` at BARE sccache.** The Rust caching
+reinstated in 4200f7b never took effect: `build-gstreamer-monorepo.sh` only
+assigns the wrapper when the variable is UNSET, and `setup-gstreamer.sh:50`
+calls `setup_sccache` first, which exported `RUSTC_WRAPPER="sccache"`
+unconditionally. Measured on the live media lane — the run logged
+`RUSTC_WRAPPER=sccache`. Every Rust compile in gst-plugins-rs went through the
+one thing AGENTS.md forbids; an sccache hiccup would have aborted the build at
+99% instead of costing cache hits. Third time this class has shipped inert, so
+it now has a gate in `verify-critical-fixes.sh` rather than another comment,
+mutation-checked in both directions.
 
-**Method, which is the reusable part.** The message carries no source location
-because it comes from the MC layer after codegen. `/FA` makes clang-cl assemble
-its own listing, which puts a `file:line` and the instruction on the error —
-except that on 23.1.0 the listing does not round-trip: a catch funclet's block
-address prints as `add x0, x0, .LBB0_903` with the `:lo12:` specifier MISSING,
-so assembly stops there, short of the fixup being chased. Object emission is
-unaffected. Repairing that one printed form and assembling the result produced
-the line number, the instruction and the distance to its target. Both LLVM bugs
-— the short layout estimate and the dropped specifier (reproduced locally in 15
-lines) — are written up in backlog #135 for upstream.
-
-**The list is a census, not a guess.** `NINJA_KEEP_GOING=1` — already honoured
-by `Invoke-NinjaBuildWithRetry`, now written down in `failure-modes.md` —
-turns the stage into `ninja -k 0`, so one run compiles all 1,870 objects and
-names every offender instead of stopping at the first. It closed the list at
-two: `median_blur.dispatch.cpp` and `multiview_calibration.cpp`. Finding the
-second one rebuild at a time would have cost a run each.
-
-Regression test: `SourceBuild.CrossHelpers.Tests.ps1` reads the selector out of
-the build script and asserts it still matches OpenCV's real ninja target lines,
-so a rename cannot silently go back to tagging nothing.
+A 12-agent documentation audit (every finding adversarially refuted, 71 raw ->
+**40 confirmed**) is recorded in the backlog. `docs/build-cache-tiers.md` alone
+carries 11 and still argues from the ccache world.
 
 ## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
 

@@ -21,7 +21,18 @@ source "${TESTS_DIR}/test-harness.sh"
 
 # Load only the function under test, with stub helpers around it, so the suite
 # stays a pure unit test (no apt, no sccache server, no network).
+# $1 (optional): a directory to present as _COMMON_SH_DIR. The function under
+# test looks for its guarded launcher there, and common.sh:6 sets that variable
+# when the module is really sourced. Extracting the function with sed leaves it
+# UNSET, and the suite runs under `set -u` -- so from c42091e (2026-08-26, the
+# commit that added the launcher lookup) every case died on
+#   _COMMON_SH_DIR: unbound variable
+# and reported an empty stdout instead of testing anything. The suite written to
+# catch a stdout leak was itself dead the day after it landed; caught 2026-08-27
+# by preflight, which the `2 check(s) failed` / exit-0 bug had also been hiding.
 _load_launcher() {
+  _COMMON_SH_DIR="${1:-${TMPDIR:-/tmp}/ccl-empty.$$}"
+  mkdir -p "${_COMMON_SH_DIR}"
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
   eval "$(sed -n '/^compiler_cache_launcher() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh")"
@@ -48,6 +59,21 @@ t_case "ccache fallback: stdout carries ONLY the launcher name"
 ) > "${TMPDIR:-/tmp}/ccl_out2.$$" 2>/dev/null
 _out2="$(cat "${TMPDIR:-/tmp}/ccl_out2.$$")"; rm -f "${TMPDIR:-/tmp}/ccl_out2.$$"
 t_assert_eq "${_out2}" "ccache"
+
+# ── the preference the whole migration rests on ──────────────────────────────
+t_case "guarded launcher WINS over bare sccache when it is reachable"
+_gl_dir="${TMPDIR:-/tmp}/ccl-guarded.$$"
+mkdir -p "${_gl_dir}"
+printf '#!/bin/sh\nexec sccache "$@"\n' > "${_gl_dir}/sccache-launcher.sh"
+chmod +x "${_gl_dir}/sccache-launcher.sh"
+(
+  _load_launcher "${_gl_dir}"
+  ensure_sccache_env() { info "Using sccache"; return 0; }
+  compiler_cache_launcher 2>/dev/null
+) > "${TMPDIR:-/tmp}/ccl_out3.$$" 2>/dev/null
+_out3="$(cat "${TMPDIR:-/tmp}/ccl_out3.$$")"; rm -f "${TMPDIR:-/tmp}/ccl_out3.$$"
+t_assert_eq "${_out3}" "${_gl_dir}/sccache-launcher.sh"
+rm -rf "${_gl_dir}"
 
 # ── the property that matters, stated directly ───────────────────────────────
 t_case "output is a single bare token — never a log line, never multi-word"

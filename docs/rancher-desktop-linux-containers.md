@@ -59,23 +59,28 @@ in the other engine's store.
 **Use `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross` for Linux
 builds, in CI and locally.** Not `:latest`.
 
-Both tags publish `linux/amd64`, `linux/arm64` and `linux/riscv64`. The
-difference is that they are maintained on different schedules:
+`:latest-cross` is the only published 3-arch tag: `linux/amd64`, `linux/arm64`
+and `linux/riscv64`, re-shipped with fresh per-arch digests on every validating
+rebuild (see the CHANGELOG entries that name them).
 
-| Tag | amd64 image built | Layers |
-|---|---|---|
-| `:latest-cross` | 2026-07-20 | 49 |
-| `:latest` | 2026-04-16 | 60 |
+`:latest` is not a staler alternative — it is a dead tag, and pulling it fails
+outright. Its three per-platform children had 404'd for months while the index
+itself still resolved, so a pull reports only "manifest unknown"; that is why
+`.github/workflows/python-ci-linux.yml:118` spells out "Do NOT fall back to plain
+`:latest`". The dangling index was then deleted in the 2026-08-27 registry
+cleanup (81 -> 34 tags). It will not come back on its own: every orchestrator
+under `linux/scripts/` is a `build-cross-*` script, so the native lane has no
+build path that could republish it.
 
-`:latest` had gone three months without a rebuild while the cross lane was
-rebuilt routinely. Building against a toolchain nobody refreshes is how a lane
-drifts away from every other environment, and it makes "works on my machine"
-unfalsifiable. `.github/workflows/Linux.yml` sets `CONTAINER_IMAGE` to
-`:latest-cross` for exactly this reason — **keep local runs on the same tag**,
-or reproducing a CI failure locally proves nothing.
+`.github/workflows/python-ci-linux.yml` runs its containerized steps — static
+analysis, tests, docs, packaging — in `:latest-cross` on both the x64 and arm64
+runners (`CONTAINER_IMAGE` at :103, fed by the matrix at :126/:130 and consumed
+by the `run-in-linux-container` action; the permission-fix and upload steps run
+on the host). **Keep local runs on the same tag**, or reproducing a CI failure
+locally proves nothing.
 
-Neither tag is pinned by digest, so both still float. Pinning would make CI
-properly reproducible and is worth doing; it is not done yet.
+`:latest-cross` is not pinned by digest, so it still floats. Pinning would make
+CI properly reproducible and is worth doing; it is not done yet.
 
 ## Reproducing a CI step locally
 

@@ -416,12 +416,51 @@ wrong in both directions).
 
 ## E. Waiting on a TRIGGER (not on work)
 
-- **GHCR-LEGACY-TAGS — six dangling legacy tags need an operator decision**
-  [S, user-side, found 2026-08-24] `android`, `compiler`, `latest`, `media`,
-  `sdk`, `torch` are docker manifest lists whose 18 children ALL 404 —
-  unpullable since before ghcr-prune-package.sh existed (old retention or a
-  past manual prune). Decide: delete the six tags, or re-point them at
-  current digests. The prune tool deliberately keeps them (tagged = kept).
+- **DOCS-CURRENCY-40 — 40 confirmed documentation defects after the sccache
+  migration** [M, found 2026-08-27 by a 12-agent audit, 71 raw -> 40 confirmed
+  after adversarial refutation] 23 wrong, 16 stale, 1 missing, across 16 files;
+  Windows docs excluded per the owner directive. Concentration is
+  `docs/build-cache-tiers.md` (11) — it still argues from the ccache world and
+  states flatly at :340 "on the media lane there is exactly one C/C++ launcher,
+  and it is ccache". That file wants a REWRITE of its cache section, not
+  patches. Then `docs/cross-build-verification.md` (6), `AGENTS.md` (3,
+  including a Repo Map missing `pyav/`, `iree/`, `armnn/`), and eleven files
+  with 1-2 each. Per-finding fixes with proving file:line are in the audit
+  output; the AGENTS.md Rust bullet was the thread that led to the bare-sccache
+  bug fixed in 54fc1df.
+
+- **SCC-BARE-FALLBACK — the bare-sccache gate matches the SHAPE, not the
+  BEHAVIOUR** [S, found 2026-08-27 by the doc-repair verifiers, reviewing my own
+  54fc1df] Both resolvers initialise their launcher to the literal `sccache`
+  (`compiler-cache.sh:108` setup_ccache, `:229` setup_sccache) and only upgrade
+  it when `sccache-launcher.sh` is executable. When 01-core is not mounted,
+  they therefore export BARE sccache — the thing AGENTS.md forbids, and which
+  ABORTS a compile on sccache's own internal errors. `build-gstreamer-monorepo.sh`
+  :702-703 makes the opposite choice and goes UNCACHED instead. Both behaviours
+  are defensible; having both silently is not.
+  The gate added in 54fc1df (`verify-critical-fixes.sh:227`) cannot see this:
+  its regex matches a literal `export ...="sccache"`, not `="${_sc_launcher}"`
+  with a bare default. Fifth instance of "a guard that ships but cannot fire",
+  this time inside the commit that named the pattern.
+  DECIDE (operator): is bare sccache the intended fallback for stages without
+  01-core, or should they go uncached like the gstreamer lane? Then make the
+  gate assert the decision instead of the spelling.
+
+- **SCC-DIAG-LEFTOVERS — the temporary sccache diagnostics outlived their
+  investigation** [XS, found 2026-08-27, deferred to the next closure window]
+  Two remnants of the 2026-08-26 ENOENT hunt are still in the tree now that the
+  cause is known (wrong sccache server via TCP port; cured by
+  SCCACHE_SERVER_UDS):
+    * `01-core/compiler-cache.sh:120` still says "Remove once the cause is
+      known". The knob itself already defaults to silent, so this is a stale
+      comment, not live noise.
+    * `05-frameworks/torch/build-app-wheelhouse.sh:848` defaults
+      `SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"` — still ARMED, so every
+      IREE build stays verbose.
+  Keep both knobs; only the defaults and the comment need changing. NOT done
+  on the spot: 01-core is inside the bind-mount closure the running wrapper
+  builds read, and flipping a cache key there to quieten a log would risk hours
+  of rebuild for nothing. Do it in a no-build window.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.

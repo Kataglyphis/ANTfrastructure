@@ -43,3 +43,17 @@ regexTarget = "secret"
 regexes = [
   '''2de99e2354646a90d9903e2a669fc4e36b02c1bbff7075c481e12d7edab2c88b''',
 ]
+
+[[allowlists]]
+description = """
+out/ — build logs and artefacts, which this gate should never have been reading.
+.gitignore:4 excludes out/**/*, so nothing under it can reach a commit, while
+lint-secrets.sh's own header states the scope as "what the NEXT commit would
+ship". Measured 2026-08-27: scanning it cost 5m39s over 5.32 GB and produced
+the gate's ONLY failures — nine hits on ROCM_GPG_KEY_SHA256, i.e. the very
+checksum already allowlisted by value above. The value-pinned entry misses
+there because gitleaks extracts a different span from a log line than from the
+versions.env assignment, which is exactly why chasing regenerable output with
+per-value allowlists is the wrong repair.
+"""
+paths = ['''^out/''']

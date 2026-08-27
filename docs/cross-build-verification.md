@@ -42,8 +42,13 @@ check that fails in seconds, not after a 30–60 min emulated build.**
   Used by `build-libcamera.sh`, `build-gstreamer-monorepo.sh`. (The torch-venv fix
   should adopt this — see task #16.)
 - **Compiler validation (class 4):** `06-packaging/validate-compilers.sh` emits
-  `ARTIFACT COMPILER VERIFICATION PASSED for <arch>`; validates GCC 16.2.0 + Clang
-  22.1.8 chain and per-arch ELF machine type. Extend here for the compile smoke test.
+  `ARTIFACT COMPILER VERIFICATION PASSED for <arch>`; validates the
+  `versions.env`-pinned GCC/Clang chain and per-arch ELF machine type. The
+  versions are *not* baked into the script — it reads `GCC_VERSION` and
+  `LLVM_RELEASE` from the environment, which the wrapper-smoke stage passes in
+  as build ARGs (`Dockerfile.package:339-346`); the `${LLVM_RELEASE:-…}`
+  fallback literal at `validate-compilers.sh:189` is dead in the build path.
+  Extend here for the compile smoke test.
 - **Smoke framework:** `06-packaging/smoke-common.sh` (`pass`/`fail`/`FAILURES`);
   smoke tests are `06-packaging/smoke-<thing>.sh` and `source smoke-common.sh`.
 - **Static host verifiers wired into `.githooks/pre-commit`:** `verify-critical-fixes.sh`,
@@ -60,9 +65,14 @@ exits non-zero if any did.
 Since 2026-08-08 preflight also validates the stage graph itself (slug
 `stage-graph` — parent refs, dockerfile existence, tag resolution, cycles);
 previously that ran only at build kickoff. The script-tests slug now prints an
-assertion aggregate ("11 suites, 120 assertions") — a sudden drop in that
-number is the alarm it looks like: the harness fails suites that run zero
-assertions, and the aggregate makes shrinking coverage visible.
+assertion aggregate (`<N> suites, <M> assertions`, `run-tests.sh:36`) — a
+sudden drop in those numbers is the alarm it looks like: the harness fails
+suites that run zero assertions, and the aggregate makes shrinking coverage
+visible. The current figures are deliberately not restated here — they grow
+with every suite that lands, so a stale baseline in this doc would make a real
+collapse read as growth (`run-tests.sh:34-35` picks a deliberately absurd
+"24 suites, 3 assertions" as its own example for that reason). Read them with
+`bash linux/scripts/tests/run-tests.sh`.
 
 ### In-image verification gates & their escape hatches (audit round 2)
 
@@ -111,19 +121,45 @@ itself — and its dev-surface check must be a WARN, not a fail-loud exit (a
 script that runs twice must not carry a build-breaking assert; the pkg-config
 `verify_consumer_dev_surface` gate is the authority).
 
-| Check | Script | Catches (class) |
-|-------|--------|-----------------|
-| shellcheck gate | `lint-shell.sh` | 6, 7 |
-| script COPY coverage | `verify-script-copy-coverage.py` | 1 |
-| critical fixes (incl. fix6) | `verify-critical-fixes.sh` | 2, 3 (+ prior fixes) |
-| ARG consistency | `01-core/verify-arg-consistency.sh` | 8 |
-| version snapshot | `docs/scripts/sync_versions.py --check` | 8 |
-| ubuntu mirror consistency | `01-core/verify-ubuntu-mirror-consistency.sh` | 8 |
-| runtime path consistency | `04-runtime/verify-runtime-paths.sh` | 8 |
+`preflight.sh` keeps its check list in one place — the `KNOWN_SLUGS` array
+(`preflight.sh:60-63`), which is also the vocabulary `PREFLIGHT_ONLY=` and
+`PREFLIGHT_SKIP=` accept. That array is the authority; the table below is its
+contents in run order.
 
-Each is runnable standalone (same commands). The pre-commit hook
-(`.githooks/pre-commit`) runs the shellcheck gate (staged files), script COPY
-coverage, and critical-fixes checks on every commit.
+| Slug | Script | Catches |
+|------|--------|---------|
+| `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` materialised with CRLF endings |
+| `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 262 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
+| `copy-coverage` | `verify-script-copy-coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
+| `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
+| `patch-integrity` | `verify-patch-integrity.sh` | a malformed unified diff, or an orphaned patch nothing references |
+| `artifact-parity` | `verify-artifact-copy-parity.sh` | `Dockerfile.package`'s artifact-COPY lane — missing artifact-source stage, undocumented src/dst relocation |
+| `arg-consistency` | `01-core/verify-arg-consistency.sh` | class 8 — ARG names/values vs `versions.env`, plus their forwarding |
+| `version-snapshot` | `docs/scripts/sync_versions.py --check` | class 8 — version snapshots / inline markers / deps table out of sync |
+| `doc-links` | `docs/scripts/verify_doc_links.py` | broken relative links, dead anchors, `file.md § Heading` refs, missing `INDEX.md`/toctree coverage |
+| `doc-dupes` | `docs/scripts/verify_doc_dupes.py` | a passage copied into a second page; deliberate overlap is budgeted in `docs/scripts/doc-dupes.allow`, which itself fails when an entry goes stale |
+| `sbom` | `docs/scripts/generate_sbom.py --check` | the committed curated SBOM drifting from `deps.json` + `versions.env` |
+| `env-knobs` | `lint-env-knobs.sh` | a consumed `${VAR:-}` knob with no owner; advisory unless `KNOB_GATE=1` |
+| `mirror-consistency` | `01-core/verify-ubuntu-mirror-consistency.sh` | class 8 — a Dockerfile missing the canonical Ubuntu mirror ARGs |
+| `runtime-paths` | `04-runtime/verify-runtime-paths.sh` | class 8 — `PATH`/`LD_LIBRARY_PATH`/`PKG_CONFIG_PATH` drifting from `runtime-paths.env` |
+| `dockerfile-lint` | `lint-dockerfiles.sh` | hadolint findings (policy in `.hadolint.yaml`; bootstraps a pinned, SHA-verified binary when none is on PATH) |
+| `workflow-lint` | `lint-workflows.sh` | actionlint findings in workflows and composite actions |
+| `python-lint` | `lint-python.sh` | ruff — hard-fails on the real-error classes (syntax, undefined names); the full ruleset is advisory |
+| `secret-scan` | `lint-secrets.sh` | gitleaks over the working tree (`detect --no-git`), ENFORCING — triaged false positives are value-pinned allowlist entries in `.gitleaks.toml`, each carrying a written justification (`.gitleaksignore` is a superseded, deliberately empty stub: its `file:rule:line` fingerprints stopped matching on the first unrelated edit) |
+| `android-parity` | `01-core/verify-android-stage-parity.sh` | the five parallel Android library stages diverging beyond `ANDROID_LIB` |
+| `script-tests` | `linux/scripts/tests/run-tests.sh` | unit-test regressions in the tag/build-arg/disk-guard logic; prints the assertion aggregate above |
+| `stage-graph` | inline `cross_stage_validate_graph` | bad parent refs, missing dockerfiles, unresolvable tags, cycles |
+
+Every check with a script is runnable standalone (same command); `crlf-guard`
+and `stage-graph` are inline in `preflight.sh` and have no separate entry
+point. The pre-commit hook
+(`.githooks/pre-commit`) runs a fast subset of the same gates —
+`PREFLIGHT_ONLY=version-snapshot,arg-consistency,critical-fixes,copy-coverage,doc-links,doc-dupes,sbom`
+(`:102-103`) — plus four checks of its own scoped to the STAGED content: an
+unresolved merge-conflict-marker scan (`:69-85`), `bash -n` (`:109`), the
+shellcheck gate restricted to staged `.sh` files (`:112`), and hadolint on
+staged Dockerfiles (`:122`). It closes with a Sphinx `-W` docs build (`:137`),
+which skips when the repo `.venv` has no `sphinx_kataglyphis`.
 
 ### In-image smoke tests (need a built image, not part of preflight)
 
@@ -158,12 +194,25 @@ These validate a built/pulled image and also run during the build to fail fast:
   - ML imports (`onnxruntime`, `numpy`, `torch`) + `ffmpeg -version` (pipefail-guarded
     so a missing `.so` can't pass silently); torch-less sentinel flagged.
   - **ML version-pin assertion** (fail) — not just *importable* but the *correct
-    versions*. Delegates to `smoke-torch-venv.sh` (assert-only), which asserts each
-    ML package's installed version equals one of **{uv.lock} ∪ {versions.env pin}**:
-    uv.lock is authoritative for the uv-resolved packages (numpy/pillow/contourpy +
-    the amd64/arm64 torch/vision/onnx wheels), versions.env for the ones we build or
+    versions*. Delegates to `smoke-torch-venv.sh` (assert-only). Two authorities,
+    but since GENAI-DRIFT (2026-08-23) they are **no longer unioned** — whichever
+    one OWNS the package decides (`smoke-torch-venv.sh:73`, implemented at `:254`
+    as `allowed = pin_set(build_pin) if build_pin else set(from_lock)`). A
+    versions.env **build pin** wins outright for everything we build or
     force-reinstall from a **local wheel** (riscv64 torch/vision, the source-built
-    onnxruntime whose `__version__` 1.27.0 ≠ its pip dist 1.24.4, ai-edge-litert).
+    onnxruntime, ai-edge-litert, onnxruntime-genai) on every arch that builds it;
+    the lock's opinion is printed (`[uv.lock says …; build pin wins]`) but not
+    accepted. uv.lock governs only what uv resolves and we do not build
+    (numpy/pillow/contourpy + the amd64/arm64 torch/vision/onnx wheels when
+    unpinned). The comparison uses each module's `__version__`, which for the
+    source-built onnxruntime intentionally differs from its pip dist metadata —
+    the build pin (`ONNXRUNTIME_VERSION` in `versions.env`) is what governs. The
+    old union is exactly how arm64 shipped onnxruntime-genai 0.14.0 (from the
+    lock) against a `v0.15.2` build pin and still printed OK. One carve-out
+    survives: `KNOWN_DRIFT` (`smoke-torch-venv.sh:178-180`) is a dated, exact
+    `(dist, arch, installed, expected)` quadruple, printed as a loud `!!` and
+    counted in the summary; anything that is not that exact quadruple still
+    FAILS, and a new version on either side re-arms the assert by itself.
     Also checks the `+cpu`/`+cu130` build variant vs `PYTORCH_EXTRA` and the OpenCV
     major. Catches a wrong version silently slipping in (lock drift, a stale local
     wheel, a floated index) — the class a presence/import check can't see.
@@ -265,9 +314,18 @@ largely **deliberate** and should not be "fixed":
   `PIPESTATUS` so a failing build's log tail is flushed and its true exit code
   returned; `parallel-loop.sh` names the failed arch.
 - **Smokes** — every previously-orphaned smoke now runs: `smoke-toolchain`
-  (toolchain), `smoke-vulkan`+`smoke-android` (android), `smoke-vulkan`+
-  `smoke-torch-venv` (package wrapper-smoke), and host-side `smoke-runtime-image`
+  (toolchain, `Dockerfile.toolchain:314`), `smoke-android` (android,
+  `Dockerfile.android:361`), the wrapper-smoke set `validate-compilers` +
+  `smoke-media` + `smoke-torch-venv` + `smoke-cross-all-arches`
+  (`Dockerfile.package:344-356`), and host-side `smoke-runtime-image`
   (in `build-runtime-manifest.sh`, `RUNTIME_IMAGE_SMOKE=0` to skip).
+  The one deliberate exception is `smoke-vulkan`, which is wired into **no**
+  stage: it probes the full Vulkan *SDK* (`/opt/vulkan/active`,
+  `vulkan/vulkan.h`, `libvulkan.so`) while this cross build installs only the
+  Vulkan *runtime* (`libvulkan.so.1` + ICD/layer JSONs), so it can never pass
+  here. `verify-critical-fixes.sh:262-265` hard-fails preflight if any
+  Dockerfile RUNs it; it is retained as a standalone host tool for image
+  variants that DO ship the SDK (see the tail note in `Dockerfile.package:357`).
 - **Reproducibility (opt-in)** — `clone_or_update_repo` and `build-ffmpeg.sh`
   accept a 40-hex commit SHA; `OPENCV_COMMIT`/`OPENCV_CONTRIB_COMMIT`/
   `FFMPEG_COMMIT` (empty by default = track the bleeding-edge branch) freeze

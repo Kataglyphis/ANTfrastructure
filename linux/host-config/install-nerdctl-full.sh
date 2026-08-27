@@ -22,9 +22,10 @@
 #   - DRY RUN by default: prints the version delta and the exact plan.
 #     NERDCTL_INSTALL_CONFIRM=1 performs it.
 #   - Verifies the release SHA256 before touching anything.
-#   - Backs up the current bin/ binaries so a bad upgrade is reversible
-#     (--rollback). SCOPE: bin/ only -- the bundle also ships libexec/ (CNI),
-#     lib/systemd units and share/. Those stay at the NEW version after a
+#   - Backs up the current bin/ binaries AND the lib/systemd/system units the
+#     bundle rewrites, so --rollback puts both back (it stops the rootful
+#     services first and runs a system daemon-reload). SCOPE: the bundle also
+#     ships libexec/ (CNI) and share/, and those stay at the NEW version after a
 #     rollback, which is fine for the build path (nerdctl/buildkitd/containerd/
 #     runc all live in bin/) but is not a full restore. To go all the way back,
 #     re-run with NERDCTL_VERSION=<previous> instead.
@@ -70,8 +71,8 @@ if [ "${1:-}" = "--rollback" ]; then
     # shellcheck disable=SC2086  # deliberate split: unit LIST
     sudo systemctl stop ${_rb_rootful} || warn "could not stop ${_rb_rootful}"
   fi
-  log "restoring bin/ binaries from ${BACKUP_DIR}"
-  log "note: libexec/ (CNI), systemd units and share/ stay at the installed version;"
+  log "restoring bin/ binaries (+ lib/systemd/system units, if backed up) from ${BACKUP_DIR}"
+  log "note: libexec/ (CNI) and share/ stay at the installed version;"
   log "      for a full downgrade re-run with NERDCTL_VERSION=<previous> instead"
   systemctl --user stop buildkit.service containerd.service 2>/dev/null || true
   sudo cp -a "${BACKUP_DIR}/bin/." "${PREFIX}/bin/" \
@@ -386,4 +387,34 @@ if [ "${_ok}" != "1" ]; then
   warn "the stack did not come up cleanly. Roll back with: bash $0 --rollback"
   exit 1
 fi
+
+# ── QEMU binfmt: restarting the rootless stack DESTROYS it ────────────────────
+# Learned the expensive way on 2026-08-27. Restarting containerd/buildkit
+# rebuilds the rootlesskit namespace, and the QEMU binfmt registration lives
+# INSIDE that namespace -- so it goes with it. Nothing complains: cross-compiled
+# stages (media, android) never touch an emulator and ran green for 5.5 hours.
+# The runtime stage then builds each wrapper ON its target platform, and both
+# the arm64 and riscv64 builds died with a BuildKit step that emitted no output
+# at all:
+#   #8 ERROR: process "/dev/.buildkit_qemu_emulator bash -lc ..." exit code: 1
+# Checking the HOST's /proc/sys/fs/binfmt_misc does not reveal this -- the
+# registration is not there even on a perfectly healthy machine.
+_binfmt_missing=""
+for _h in qemu-aarch64 qemu-riscv64; do
+  grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue
+  if [ -n "${_SETUPTOOL:-$(command -v containerd-rootless-setuptool.sh 2>/dev/null)}" ]; then
+    "${_SETUPTOOL:-containerd-rootless-setuptool.sh}" nsenter -- \
+      grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue
+  fi
+  _binfmt_missing="${_binfmt_missing:+${_binfmt_missing} }${_h}"
+done
+if [ -n "${_binfmt_missing}" ]; then
+  warn "QEMU binfmt handlers are GONE after the restart: ${_binfmt_missing}"
+  warn "  Foreign-arch builds (the runtime stage) will fail with an EMPTY BuildKit error."
+  warn "  Re-register now -- no sudo needed:"
+  warn "      bash linux/scripts/setup-rootless-binfmt.sh"
+else
+  log "QEMU binfmt handlers survived the restart (or were never registered here)."
+fi
+
 log "done. Re-run linux/host-config/verify-host-config.sh and preflight.sh before the next chain."
