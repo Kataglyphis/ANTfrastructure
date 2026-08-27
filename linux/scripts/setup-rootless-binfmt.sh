@@ -47,6 +47,7 @@ NERDCTL="${NERDCTL_BIN:-nerdctl}"
 FORCE=0
 INSTALL_SERVICE=0
 VERIFY_ONLY=0
+BINFMT_NS_WAIT_SECS="${BINFMT_NS_WAIT_SECS:-90}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -118,6 +119,41 @@ extract_emulators() {
 }
 
 # ---------------------------------------------------------------------------
+# 1b. Wait for the rootlesskit namespace to actually exist.
+#
+#   `After=containerd.service` orders only the *unit* start. containerd-rootless
+#   then needs time to unshare and write its `child_pid`; on a fresh boot this
+#   service otherwise wins the race and `nsenter` dies with
+#       cat: /run/user/<uid>/containerd-rootless/child_pid: No such file
+#   leaving both foreign arches unregistered until someone re-runs this by hand.
+#   Observed on the 2026-08-27 reboots (21:39 and 21:46) — see AGENTS.md.
+# ---------------------------------------------------------------------------
+wait_for_namespace() {
+  local pidfile="/run/user/$(id -u)/containerd-rootless/child_pid"
+  local waited=0
+  while [ ! -s "${pidfile}" ]; do
+    if [ "${waited}" -ge "${BINFMT_NS_WAIT_SECS}" ]; then
+      echo "[wait] namespace pid file never appeared: ${pidfile}" >&2
+      echo "       is the rootless containerd running? (systemctl --user status containerd)" >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  # The file can exist a moment before the namespace is joinable.
+  while ! containerd-rootless-setuptool.sh nsenter -- true 2>/dev/null; do
+    if [ "${waited}" -ge "${BINFMT_NS_WAIT_SECS}" ]; then
+      echo "[wait] namespace present but not joinable after ${waited}s" >&2
+      return 1
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  [ "${waited}" -gt 0 ] && echo "[wait] rootlesskit namespace ready after ${waited}s"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # 2 + 3. Register in the shared rootlesskit namespace (via nsenter).
 # ---------------------------------------------------------------------------
 register() {
@@ -180,6 +216,11 @@ PartOf=containerd.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
+# Belt-and-braces for the boot race: wait_for_namespace() already polls, but if
+# containerd is slower than BINFMT_NS_WAIT_SECS we retry rather than leaving the
+# machine with no emulators (on-failure is the one Restart= mode oneshot allows).
+Restart=on-failure
+RestartSec=10
 ExecStart=/usr/bin/env bash ${self} --arches ${ARCHES}
 
 [Install]
@@ -194,6 +235,7 @@ EOF
 main() {
   if [ "${VERIFY_ONLY}" = 1 ]; then verify; exit $?; fi
   extract_emulators
+  wait_for_namespace
   register
   verify
   echo "OK: rootless QEMU emulation registered for [${ARCHES}] with flags POCF."
