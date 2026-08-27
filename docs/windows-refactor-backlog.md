@@ -437,6 +437,22 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   the `/FA` diagnostic route that `failure-modes.md` prescribes, until you repair the listing
   (the recipe there does).
   Check upstream HEAD before filing either — `out/` holds the drafts of previous reports.
+  **(b) FILED 2026-08-27: [llvm/llvm-project#219200](https://github.com/llvm/llvm-project/pull/219200)**,
+  from `Kataglyphis/llvm-project` branch `aarch64-catchret-lo12` — one commit ahead of `llvm/main`
+  (the fork's `main` is 0 ahead / 12 behind, and that branch is its only non-upstream work).
+  **It does NOT retire either workaround, and the tempting inference that it does is wrong.**
+  The commit's own verification says so: the relocations were always correct
+  (`PAGEBASE_REL21` + `PAGEOFFSET_12A`, checked by assembling the fixed output against
+  `-filetype=obj`) and the change is `-S` / `/FA` only. Both #135 aborts happen during OBJECT
+  emission, which that patch leaves byte-identical. What it buys is the diagnostic route:
+  `failure-modes.md` prescribes `/FA` for exactly these no-source-location errors, and on
+  Windows-on-ARM with C++ exceptions that route was closed. **(a) is still unfiled and unfixed,
+  and (a) is the one that would let the two settings go.**
+  **Settling any future candidate:** don't reason about it, run
+  `windows\scripts\diagnostics\repro-llvm-aarch64-layout.ps1` — the five real offenders frozen as
+  preprocessed `.i`, compiled with the workaround OFF, with the stock compiler's reproduce-and-
+  suppress arms gating the verdict so a stale corpus reports `INVALID` instead of a false fix.
+  A `FIXED` verdict licenses the `NINJA_KEEP_GOING=1` census; it does not replace it.
 
 - **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
   iteration cost.** M · ★★★ (opened 2026-08-26)

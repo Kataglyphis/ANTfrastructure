@@ -528,6 +528,26 @@ Then read the listing: `.byte`/`.hword`/`.word` says which jump-table width was 
 `adrp` says how a base is reached, and the instruction count between a branch and its target
 label — ×4 for bytes — says whether relaxation failed and by how much.
 
+**Deciding whether a new compiler retires these two settings.** Do not answer that from a lane
+run, and do not answer it from a synthetic reproducer — a 148-byte miss flips on any perturbation,
+so a hand-written test case proves nothing about these TUs.
+[`repro-llvm-aarch64-layout.ps1`](../windows/scripts/diagnostics/repro-llvm-aarch64-layout.ps1) is
+the A/B: it freezes the five real offenders as preprocessed `.i` files (`-Capture`, once per
+OpenCV bump) and then compiles them with the workaround OFF against any candidate `clang-cl`.
+Because a frozen `.i` has no `#include`s left, the run phase needs no OpenCV tree, no VsDevCmd and
+no container — only a compiler that can target `aarch64-pc-windows-msvc`.
+
+It **gates every verdict on its own control arms**: the stock compiler must still reproduce the
+abort with the workaround off, and must still compile clean with it on. If either fails the run
+reports `INVALID` and exits 2, because a green candidate under a broken control is not evidence —
+it is a stale corpus. A `FIXED` verdict is necessary and **not sufficient**: the frozen set is a
+census taken at one commit, and the ceiling is a property of what the inliner produces, so
+removing anything from `build-opencv-from-source.ps1` still requires the full
+`NINJA_KEEP_GOING=1` run over all ~1,870 objects. Its command-line surgery — in particular that
+*both* spellings of the jump-table workaround are stripped, so the "off" arm is genuinely off — is
+pinned by `windows/scripts/tests/Diagnostics.Llvm135Repro.Tests.ps1` against the real ninja
+command line.
+
 ### A build script dies with `The term ... is not recognized`, in the container only
 
 **Symptom.** A build script dies with `FATAL ERROR: The term 'Resolve-BuildMachineMsvcTool' is not
