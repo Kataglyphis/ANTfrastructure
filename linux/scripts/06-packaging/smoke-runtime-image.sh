@@ -282,9 +282,28 @@ check_app_wheel_smoke() {
   local target_arch="$2"
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
       echo "--- Functional: app wheel smoke (python -m orchestr_ant_ion.smoke) ---"
-      if _rt_run \
-           /opt/venv/bin/python -m orchestr_ant_ion.smoke; then
-        pass "app wheel smoke passed on-target (${target_arch})"
+      # RATCHET on the ok-count, not just the exit status (added 2026-08-27). The
+      # smoke exits 0 whenever failures==0, and a component that stops shipping is
+      # reported as a WARNING -- so one identical PASS covered 15/15 (amd64),
+      # 14/15 (arm64) and 12/15 (riscv64) on the shipped run. These floors may only
+      # ever go UP: raise one when an arch gains a component, never lower one to
+      # make a red run green. Today's TVM fix should lift arm64 and riscv64 on the
+      # next full build -- raise them then.
+      local _wheel_floor _wheel_out _wheel_ok
+      case "${target_arch}" in
+        amd64)   _wheel_floor=15 ;;
+        arm64)   _wheel_floor=14 ;;
+        riscv64) _wheel_floor=12 ;;
+        *)       _wheel_floor=0  ;;
+      esac
+      if _wheel_out="$(_rt_run /opt/venv/bin/python -m orchestr_ant_ion.smoke 2>&1)"; then
+        printf '%s\n' "${_wheel_out}"
+        _wheel_ok="$(printf '%s\n' "${_wheel_out}" | sed -n 's/.*=== \([0-9]\{1,\}\)\/[0-9]\{1,\} ok.*/\1/p' | tail -1)"
+        if [ -n "${_wheel_ok}" ] && [ "${_wheel_ok}" -lt "${_wheel_floor}" ] 2>/dev/null; then
+          fail "app wheel smoke degraded on ${target_arch}: ${_wheel_ok} ok, floor ${_wheel_floor}"
+        else
+          pass "app wheel smoke passed on-target (${target_arch}, ${_wheel_ok:-?} ok >= ${_wheel_floor})"
+        fi
       else
         fail "app wheel smoke FAILED in the runtime image (${target_arch})"
       fi

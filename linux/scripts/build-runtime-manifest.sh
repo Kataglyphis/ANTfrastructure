@@ -263,6 +263,18 @@ main() {
   : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"
   export CROSS_RUN_ID
 
+  # Resolve BUILD_DATE/VCS_REF ONCE, for the same reason CROSS_RUN_ID is:
+  # every child of one index must agree. runtime-build-fns.sh used to run
+  # `git rev-parse HEAD` per arch INSIDE the build loop, so a commit landing
+  # between two arch builds split the index. That is not hypothetical -- the
+  # index shipped 2026-08-27 carries org.opencontainers.image.revision
+  # fdbde9a9 on amd64/arm64 and e17a8cf9 on riscv64. Exported (not passed as
+  # flags) because run_parallel_arch_loop runs each arch in a subshell, so a
+  # value computed there could never be shared. Found 2026-08-27.
+  : "${CROSS_BUILD_DATE:=$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+  : "${CROSS_VCS_REF:=$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
+  export CROSS_BUILD_DATE CROSS_VCS_REF
+
   # Belt-and-suspenders for --no-push orchestrator runs (CROSS_NO_PUSH=1): the
   # per-arch wrapper tags are never pushed, so a registry-based `nerdctl manifest
   # create` has no descriptors to reference and fails "no such manifest" at the
@@ -314,6 +326,34 @@ main() {
     [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
     local wrapper_tag
+    # The CONTENT gate now runs for EVERY arch FIRST, then the boot smokes.
+    # Both used to sit in ONE loop with the smoke first, so a smoke failure on
+    # arch N skipped the byte-gate for arch N *and every arch after it*. On
+    # 2026-08-27 riscv64's smoke failed on an ARCH-PARITY arm, so the riscv64
+    # wrapper that later shipped in the index was never content-checked at all.
+    # Safe in this order: verify-shipped-wrapper.sh is a tar listing -- no boot,
+    # no emulation -- so it is both cheaper and more universally runnable than
+    # the smoke it used to hide behind.
+    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
+      log "Wrapper content gate: ${wrapper_tag} (${arch})"
+      # Ensure the image is present locally (the build may not have loaded it) —
+      # but only pull when it is actually MISSING. The old unconditional pull
+      # re-pointed the tag to the previously PUBLISHED image whenever that tag
+      # exists in the registry, so a --no-push validation run smoked the stale
+      # release instead of the wrapper it had just built (false green, plus a
+      # multi-GB download that --no-push exists to avoid).
+      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
+        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
+      fi
+      # RTCACHE3 content byte-gate: the boot smoke proves the wrapper RUNS, but a
+      # STALE wrapper (see verify-shipped-wrapper.sh) boots green too. Re-derive
+      # the expected /opt/ffmpeg lib set from versions.env toggles and assert the
+      # shipped bytes match — this fires BEFORE the manifest is assembled, so
+      # stale/toggle-mismatched content can never reach :latest-cross. Arch-
+      # agnostic (tar listing, no emulation). WRAPPER_CONTENT_GATE=0 → advisory.
+      run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
+    done
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
       wrapper_tag="$(runtime_wrapper_tag "${arch}")"
       log "Runtime-image smoke: ${wrapper_tag} (${arch})"
@@ -328,12 +368,10 @@ main() {
       fi
       run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
       # RTCACHE3 content byte-gate: the boot smoke proves the wrapper RUNS, but a
-      # STALE wrapper (see verify-shipped-wrapper.sh) boots green too. Re-derive
       # the expected /opt/ffmpeg lib set from versions.env toggles and assert the
       # shipped bytes match — this fires BEFORE the manifest is assembled, so
       # stale/toggle-mismatched content can never reach :latest-cross. Arch-
       # agnostic (tar listing, no emulation). WRAPPER_CONTENT_GATE=0 → advisory.
-      run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
     done
   fi
 

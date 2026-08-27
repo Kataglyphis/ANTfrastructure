@@ -277,9 +277,26 @@ build_uv_sync_args() {
 # force-install carry the venv. On amd64/arm64 a lock failure is a genuine error
 # and still aborts (set -e).
 uv_lock_regen() {
-  if uv lock --find-links /opt/wheels; then
+  local _ulr_log
+  _ulr_log="$(mktemp)"
+  if uv lock --find-links /opt/wheels 2>&1 | tee "${_ulr_log}"; then
+    rm -f "${_ulr_log}"
     return 0
   fi
+  # NARROWED 2026-08-27. The riscv64 arm below was written for one failure
+  # class -- a workspace extra that cannot RESOLVE under QEMU -- but it used to
+  # swallow every failure uv could produce. The shipped run hit
+  #   "Timeout (300s) when waiting for lock on ..."
+  # twice, which is a stale/contended lock FILE, not an unresolvable package,
+  # and the riscv64 venv was then assembled with no regenerated lock while the
+  # log said "expected". A timeout is infrastructure, not architecture: it must
+  # stay fatal so it gets retried or investigated.
+  if grep -qiE 'Timeout \([0-9]+s\) when waiting for lock|Failed to acquire lock' "${_ulr_log}" 2>/dev/null; then
+    echo "ERROR: uv lock TIMED OUT waiting for a lock file — that is not the riscv64 resolution exemption and is not tolerated." >&2
+    rm -f "${_ulr_log}"
+    return 1
+  fi
+  rm -f "${_ulr_log}"
   if [ "$(uname -m)" = "riscv64" ]; then
     # EXPECTED on riscv64: some workspace extras (e.g. a pytorch backend whose
     # torch has no lockable upstream riscv64 source) can't fully resolve under

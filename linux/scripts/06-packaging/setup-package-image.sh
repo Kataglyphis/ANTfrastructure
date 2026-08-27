@@ -78,6 +78,16 @@ install_staged_target_python() {
                 cp -a "${staged_python_root}/usr/local/include"/python* /usr/local/include/
                 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-local.conf"
                 ldconfig
+            else
+                # LOUD no-op (2026-08-27). This used to fall through in silence, and the
+                # consequence is not visible until someone runs the image: the shipped
+                # amd64 wrapper advertises PYTHON_VERSION=3.14.7 in its OCI env while
+                # every interpreter in it -- /opt/venv, /opt/python/.venv, /usr/local/bin
+                # -- is Ubuntu's 3.14.4, because the runtime wrapper builds FROM
+                # ubuntu:26.04 and never sees /opt/python-cross. Both are cp314 so the
+                # wheels are fine; the ADVERTISEMENT is what is wrong. Say so here rather
+                # than let the label speak for an interpreter that is not present.
+                echo "WARNING: no staged target Python at ${staged_python_root} — this image will carry the DISTRO python, not the pinned ${python_mm}.x build; PYTHON_VERSION in its env is then an advertisement, not a fact." >&2
             fi
             ;;
     esac

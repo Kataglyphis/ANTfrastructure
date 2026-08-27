@@ -206,8 +206,11 @@ append_wrapper_build_args() {
   # wrapper carried EMPTY provenance (the concrete half of the RTCACHE3
   # provenance follow-up). Best-effort: outside a git checkout VCS_REF stays "".
   local _prov_date _prov_ref
-  _prov_date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  _prov_ref="$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
+  # Prefer the run-level values (build-runtime-manifest.sh resolves them once so
+  # every child of one index agrees); fall back to resolving here for standalone
+  # helper invocations that never went through main().
+  _prov_date="${CROSS_BUILD_DATE:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+  _prov_ref="${CROSS_VCS_REF:-$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
   # AP3 (2026-08-18): the wheelhouse is bind-mounted into Dockerfile.torch's
   # venv RUN from a wheels-source stage instead of being baked into package —
   # pass the digest-pinned android ref (the wrapper's registry-resident
