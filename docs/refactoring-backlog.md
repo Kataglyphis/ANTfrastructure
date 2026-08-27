@@ -446,6 +446,22 @@ wrong in both directions).
   01-core, or should they go uncached like the gstreamer lane? Then make the
   gate assert the decision instead of the spelling.
 
+- **SCC-DIAG-LEFTOVERS — the temporary sccache diagnostics outlived their
+  investigation** [XS, found 2026-08-27, deferred to the next closure window]
+  Two remnants of the 2026-08-26 ENOENT hunt are still in the tree now that the
+  cause is known (wrong sccache server via TCP port; cured by
+  SCCACHE_SERVER_UDS):
+    * `01-core/compiler-cache.sh:120` still says "Remove once the cause is
+      known". The knob itself already defaults to silent, so this is a stale
+      comment, not live noise.
+    * `05-frameworks/torch/build-app-wheelhouse.sh:848` defaults
+      `SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"` — still ARMED, so every
+      IREE build stays verbose.
+  Keep both knobs; only the defaults and the comment need changing. NOT done
+  on the spot: 01-core is inside the bind-mount closure the running wrapper
+  builds read, and flipping a cache key there to quieten a log would risk hours
+  of rebuild for nothing. Do it in a no-build window.
+
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
 - **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
