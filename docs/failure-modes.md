@@ -421,53 +421,112 @@ failed (exit 22)" and fallen through by design; a 404 is a wrong pin, not an out
 ### AArch64 cross compile aborts with `error: fixup value out of range`
 
 **Symptom.** A cross TU aborts with `error: fixup value out of range`, or with
-`error: value evaluated as <N> is out of range.` — no source location, no fixup kind. Appeared
-with clang-cl 23.1.0; 22.1.8 compiled the same tree. Observed in OpenCV's CPU-dispatch TUs and in
-the bundled protobuf.
+`error: value evaluated as <N> is out of range.` — no source location, no fixup kind, no
+instruction. Appeared with clang-cl 23.1.0; 22.1.8 compiled the same tree. Observed in OpenCV's
+CPU-dispatch TUs and in the bundled protobuf.
 
-**Cause — two separate LLVM defects, and the second one is easy to cause yourself.**
-`AArch64CompressJumpTables` does TWO jobs: it picks the jump-table entry width (1/2/4 bytes from an
-ESTIMATE of block offsets), **and** it checks that the `adr` materialising the table's base block
-stays within ±1 MB.
+**Cause — ONE signature at two sites: LLVM lays a function out a few bytes SHORT of what it then
+emits.** Both diagnostics come from a pass that picks an encoding from an ESTIMATE of block
+offsets and is then contradicted by the assembler.
 
-1. **Entry-width estimate.** The pass picks 1-byte entries, then emission finds the real value does
-   not fit → `value evaluated as <N> is out of range`. Every `N` measured here sits JUST past the
-   1020-byte ceiling (256 = 1024 B, then 258, 259, 260, 262, 272, 281, 284) — an estimate a few
-   bytes short, not an oversized table. protobuf on windows-arm64 is known-fragile in this area
-   ([protobuf#24758](https://github.com/protocolbuffers/protobuf/issues/24758)).
-2. **`adr` reach.** In a function larger than ~1 MB the base-block `adr` cannot be encoded →
-   `fixup value out of range`. Forcing 4-byte ENTRIES does not help: the entries were never the
-   problem, the base reference is.
+1. **Jump-table entry width** → `value evaluated as <N> is out of range`.
+   `AArch64CompressJumpTables` selects 1-byte entries whenever `span>>2` fits in 8 bits — a
+   ceiling of 255×4 = 1020 bytes. Every `N` measured here sits JUST past it: 256 (= 1024 B, four
+   bytes over), then 258, 259, 260, 262, 272, 281, 284. Offender class: the bundled libprotobuf
+   (descriptor.cc, generated_message_reflection.cc, wire_format.cc), which is known-fragile on
+   windows-arm64 ([protobuf#24758](https://github.com/protocolbuffers/protobuf/issues/24758)).
+2. **Branch relaxation** → `fixup value out of range`. In `median_blur.dispatch.cpp`, `/O2`
+   collapses the whole baseline median filter into ONE function — `cv::cpu_baseline::medianBlur`,
+   8,465 instructions ≈ 33,860 bytes — and inside it
 
-**Fix.** `-Xclang -target-feature -Xclang +force-32bit-jump-tables` (cross lane only). This is the
-subtarget feature the pass itself consults, `force32BitJumpTables()`. Verified against clang-cl
-23.1.0: entries go from `.hword (.LBB0_2-.LBB0_2)>>2` / `ldrh` to `.word .LBB0_2-.Ltmp0` / `ldrsw`,
-range ±2 GB. Cost measured on a reproducer: 4522 → 4650 bytes of object, ~2.8 %, and it is
-jump-table DATA. Full `/O2` everywhere, dispatch still O(1). It closes (1) completely.
+   ```asm
+   tbnz  w9, #31, .LBB546_847
+   ```
 
-**Do NOT use `-mllvm -aarch64-enable-compress-jump-tables=false`** even though it also yields
-`.word` entries: it disables the whole PASS, taking the `adr` check with it, which is how (2) gets
-introduced where it was not present before. That flag was correct on LLVM 22 and is a trap on 23.
+   has to reach a block ~32,916 bytes away (counted from the emitted listing, instructions × 4).
+   `tbz`/`tbnz` carry a 14-bit displacement: ±32,768 bytes. **It misses by roughly 150 bytes** —
+   a hair, not an order of magnitude. LLVM's `BranchRelaxation` pass exists to catch exactly this
+   and rewrite the branch; it did not, because its layout estimate came out short — the same
+   defect signature as (1).
 
-**Do NOT use `-align-all-blocks` / `-align-all-nofallthru-blocks`** to nudge the estimate: the
-padding makes the function length unevaluable for the Windows SEH unwind writer and clang-cl dies
-with `Failed to evaluate function length in SEH unwind info`
-([llvm#122707](https://github.com/llvm/llvm-project/issues/122707), duplicate of
-[llvm#47432](https://github.com/llvm/llvm-project/issues/47432)). Measured, not assumed.
+**Fix — two settings, one per site, both cross-lane only.**
 
-**Do NOT lower the optimisation level** (`/Od`, `/O1`, `-fno-jump-tables`) to dodge the pass. It
-"works" only by suppressing the code that builds the table, it moves the failure to the next TU
-(measured three times), and it costs code quality on a lane whose whole point is a real build.
+* **(1)** `-Xclang -target-feature -Xclang +force-32bit-jump-tables`, whole build. This
+  **disables the compression pass** — `if (ST.force32BitJumpTables() && !MF->getFunction().hasMinSize()) return false;`
+  (AArch64CompressJumpTables.cpp, 23.1.0) — so every table keeps 4-byte entries:
+  `.word .LBB0_2-.Ltmp0` / `ldrsw`, ±2 GB, instead of `.hword (.LBB0_2-.LBB0_2)>>2` / `ldrh`.
+  Cost on a reproducer: 4522 → 4650 bytes of object, ~2.8 %, all of it jump-table DATA; full
+  `/O2` retained.
+* **(2)** `/Ob1` on the two offending TUs — `median_blur.dispatch.cpp` and
+  `multiview_calibration.cpp` — appended to their `build.ninja` FLAGS lines by
+  `build-opencv-from-source.ps1`. It does **not** lower the optimisation level: every kernel keeps
+  `/O2`, vectorisation and unrolling. It stops the inliner from gluing file-static helpers into
+  one oversized function; on `median_blur` the largest function drops 33,860 → 10,620 bytes, i.e.
+  3.1× headroom under the ceiling instead of a 148-byte miss. `-mllvm -inline-threshold=100` and
+  `=25` do NOT achieve this (measured, both still fail): those helpers have a single call site and
+  are inlined regardless of threshold.
 
-**Diagnose it in seconds, not in build-hours.** Download the matching toolchain and reproduce
-locally — this is what turned a night of 15-minute cross runs into 2-second experiments:
+  **Get the list by census, not one rebuild at a time.** `NINJA_KEEP_GOING=1` (honoured by
+  `Invoke-NinjaBuildWithRetry`) turns the stage into `ninja -k 0`, so one run compiles all 1,870
+  objects and reports EVERY offender instead of stopping at the first. That is how the list above
+  was closed at two. Re-run it that way after an OpenCV bump: the ceiling is a property of what
+  the inliner produces, so a new offender is one source change away, and the per-TU floor only
+  catches the reverse (a TU that vanishes or is renamed).
+
+**`+force-32bit-jump-tables` and `-mllvm -aarch64-enable-compress-jump-tables=false` are the same
+thing** — byte-identical `.asm` from clang-cl 23.1.0, verified locally on 2026-08-27. An earlier
+version of this page claimed the feature "keeps the pass enabled with its `adr` check intact"
+while the `-mllvm` flag removes it, and used that difference to explain (2). Both halves were
+wrong. With the pass off, the `adr` that materialises a table base is self-relative (`.Ltmp0:`
+sits on the `adr` itself, displacement 0) and cannot go out of range. The target feature is
+preferred only because it is a supported spelling where `-mllvm` is a debug knob.
+
+**Do NOT** reach for these — each one cost a run:
+
+* **`-fno-jump-tables` for (2)**: no jump table is involved; it fails identically (measured).
+* **`-align-all-*`** to nudge an estimate: the padding makes the function length unevaluable for
+  the Windows SEH unwind writer and clang-cl dies with `Failed to evaluate function length in SEH
+  unwind info` ([llvm#122707](https://github.com/llvm/llvm-project/issues/122707), a duplicate of
+  [llvm#47432](https://github.com/llvm/llvm-project/issues/47432)).
+* **`/Od` or `/O1`** to dodge a pass: they move the failure to the next TU (measured three times)
+  and cost code quality on a lane whose point is a real build. A 148-byte miss flips on ANY
+  perturbation, which is exactly why blunt flags keep appearing to "work".
+* **`-max-jump-table-size`**: caps the entry COUNT while the ceiling is a BYTE SPAN. Accepted by
+  the driver, no effect.
+
+**Diagnose it in minutes, not in build-hours.** The message carries no location because it comes
+from the MC layer, after codegen. `/FA` makes clang-cl assemble its own listing, which puts a
+`file:line` and the offending instruction on the error:
+
+```pwsh
+clang-cl.exe --target=aarch64-pc-windows-msvc /O2 /c /FA /Fat.asm /Fot.obj t.cpp
+```
+
+**One trap on 23.1.0: that listing does not round-trip.** A catch funclet's block address prints
+as `add x0, x0, .LBB0_903` with the `:lo12:` specifier MISSING, so LLVM's own assembler stops
+there with `expected compatible register, symbol or integer in range [0, 4095]` — before reaching
+the fixup you are chasing. Direct object emission is unaffected (it gets the specifier right), so
+repair the listing and assemble that instead:
+
+```pwsh
+(Get-Content t.asm) -replace '^\s*add\s+(x\d+),\s*(x\d+),\s*(\.L\S+)\s*$', "`tadd`t`$1, `$2, :lo12:`$3" | Set-Content t2.s
+clang.exe --target=aarch64-pc-windows-msvc -c t2.s -o t2.obj    # the error now has a line number
+```
+
+That printing bug reproduces in 15 lines — one `try`/`catch` with a body big enough to push the
+continuation block past 4 KB — and deserves its own upstream report.
+
+Work against a LOCAL toolchain, not the container: it turns 4-minute lane runs into 2-second
+experiments.
+
 ```pwsh
 curl -sSfL -o llvm.tar.xz https://github.com/llvm/llvm-project/releases/download/llvmorg-<ver>/clang+llvm-<ver>-x86_64-pc-windows-msvc.tar.xz
 tar -xf llvm.tar.xz
-.\clang+llvm-<ver>-x86_64-pc-windows-msvc\bin\clang-cl.exe --target=aarch64-pc-windows-msvc /O2 /c t.cpp /FAs /Fat.asm
 ```
-Then read the jump table in `t.asm`: `.byte`/`.hword`/`.word` tells you which width was chosen, and
-`adr` vs `adrp` tells you how the base is reached.
+
+Then read the listing: `.byte`/`.hword`/`.word` says which jump-table width was chosen, `adr` vs
+`adrp` says how a base is reached, and the instruction count between a branch and its target
+label — ×4 for bytes — says whether relaxation failed and by how much.
 
 ### A build script dies with `The term ... is not recognized`, in the container only
 

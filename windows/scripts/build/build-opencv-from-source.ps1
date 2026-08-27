@@ -299,155 +299,78 @@ $crossTargetFlag = if ($ocvCross) { "--target=$(Get-ClangTargetTriple -Arch $ocv
 # (measured 2026-08-23). Scoped to the cross branch so the amd64 command line is
 # untouched; carotene is not built there at all.
 $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
-# AArch64 compressed jump tables overflow their one-byte entries in switch-heavy
-# code and abort the compile with a diagnostic that names no source file:
-#     error: value evaluated as 284 is out of range.
-# AArch64AsmPrinter::emitJumpTableImpl emits a compressed entry as
-# (LBB - Base) >> 2 through MCObjectStreamer::emitValueImpl with Size = 1, and
-# that is the ONLY producer of this message in LLVM. Every value measured here
-# lands just past 255*4 = 1020 bytes of table span: 256, 259, 262, 272, 284
-# (=1024/1036/1048/1088/1136). Disabling the compression pass keeps FULL /O2 --
-# uncompressed tables are merely larger, not slower.
+# AArch64 CROSS: TWO LLVM 23.1.0 CODEGEN DEFECTS WITH ONE SIGNATURE. Both abort
+# the compile with a diagnostic that names no source file, and both come from
+# LLVM estimating a function's layout a few bytes SHORT of what it then emits:
 #
-# This replaced a per-TU /Od workaround that was based on a WRONG root cause
-# (an 8-bit .xdata "Code Words" unwind field). That story was refuted from
-# primary source: MCWin64EH.cpp reports the Code-Words ceiling as
-# report_fatal_error("SEH unwind data splitting is only implemented for large
-# functions ..."), which is a different message entirely. The jump-table
-# explanation also accounts for what /Od-vs-/Ob0 actually did:
-# AArch64CompressJumpTables only runs when getOptLevel() != None, so /Od
-# switched the pass off wholesale while /Ob0 merely reshuffled which TU
-# overflowed. Switch-heavy code is the common thread in every offender found
-# (protobuf descriptors, the TIFF decoder, G-API graph serialisation).
+#     error: value evaluated as 284 is out of range.   <- compressed jump table
+#     error: fixup value out of range                  <- a branch out of reach
 #
-# MEASURED 2026-08-26 (#135): UNDER LLVM 23 THESE TWO CEILINGS ARE MUTUALLY
-# EXCLUSIVE, and they hit DIFFERENT files. One cross run each settled it:
+# (1) COMPRESSED JUMP TABLES -- what $jumpTableFlag below is for.
+#     AArch64AsmPrinter::emitJumpTableImpl writes a compressed entry as
+#     (LBB - Base) >> 2 through emitValueImpl with Size = 1, the only producer
+#     of that message in LLVM. AArch64CompressJumpTables picks the entry width
+#     from an ESTIMATE of block offsets -- span>>2 in 8 bits -> 1-byte entries,
+#     ceiling 255*4 = 1020 bytes. Every value measured here sits JUST past it:
+#     256 (= 1024 B, four bytes over), 258, 259, 260, 262, 272, 281, 284. These
+#     are not oversized tables; the estimate lands under 1020 and the emitted
+#     layout comes out a handful of bytes above. Offenders: the bundled
+#     libprotobuf (descriptor.cc, generated_message_reflection.cc,
+#     wire_format.cc) -- protobuf on windows-arm64 is known-fragile in this
+#     area, protocolbuffers/protobuf#24758.
 #
-#   compression OFF (the LLVM 22 fix)   compression ON (this setting)
-#   -------------------------------   ------------------------------
-#   `value evaluated as N`   0        `value evaluated as N`   4  (258/260/281/284)
-#   `fixup value out of range` 4      `fixup value out of range` 0
-#   offenders: opencv *.dispatch.cpp  offenders: libprotobuf descriptor.cc,
-#                                     generated_message_reflection.cc, wire_format.cc
+# (2) A `tbnz` ~150 BYTES OUT OF REACH in median_blur.dispatch.cpp. Handled
+#     per-TU further down, NOT by any jump-table setting -- it is a
+#     branch-range defect and no jump table is involved (`-fno-jump-tables`
+#     does not fix it; measured). Read that call site before touching this one.
 #
-# Disabling compression makes every jump table ~4x larger (4-byte entries instead
-# of 1), which grows the switch-heavy OpenCV dispatch functions until their
-# pc-relative branches no longer reach. Enabling it puts the protobuf descriptor
-# tables back over the 255-entry span the compressed encoding can address.
+# THE FLAG. `-Xclang -target-feature -Xclang +force-32bit-jump-tables` is the
+# subtarget feature the pass itself consults, and it makes the pass bail out
+# before it scans anything:
 #
-# SO THE FLAG STAYS OFF (compression ON) and the protobuf side is handled per-TU
-# below. That direction was chosen deliberately: with compression ON the OpenCV
-# dispatch TUs compile at full /O2 -- and on aarch64 those files carry the NEON
-# BASELINE path, so they are the ones where optimisation actually matters.
-# protobuf descriptor/reflection is cold model-loading code where /O1 costs
-# nothing measurable.
+#     if (ST.force32BitJumpTables() && !MF->getFunction().hasMinSize())
+#       return false;        -- AArch64CompressJumpTables.cpp, LLVM 23.1.0
 #
-# This is also a RETURN to the shape the script had before 2026-08-23: a per-TU
-# pass over exactly the protobuf class of offender. The global flag replaced it
-# because it was cleaner under LLVM 22; under LLVM 23 the global flag has a side
-# effect the per-TU pass never had.
+# so every table keeps 4-byte entries and the 1-byte overflow cannot happen:
 #
-# THE FIX IS A TABLE-SIZE CAP, NOT AN OPTIMISATION LEVEL. Both diagnostics are
-# the same defect seen from two sides -- ONE jump table whose span is too large:
+#     default                    .hword (.LBB0_2-.LBB0_2)>>2   ldrh  (1020 B)
+#     +force-32bit-jump-tables   .word  .LBB0_2-.Ltmp0         ldrsw (+-2 GB)
 #
-#   compression ON   the entry is (LBB - Base) >> 2 in ONE byte, so a span over
-#                    255*4 = 1020 bytes cannot be encoded ->
-#                    "value evaluated as <N> is out of range" (measured N:
-#                    256, 258, 259, 260, 262, 272, 281, 284 -- all just past 255)
-#   compression OFF  entries grow to 4 bytes, the function grows with them, and
-#                    the pc-relative reference no longer reaches ->
-#                    "fixup value out of range"
+# IT IS THE SAME THING AS `-mllvm -aarch64-enable-compress-jump-tables=false`:
+# byte-identical .asm from clang-cl 23.1.0, verified locally 2026-08-27. An
+# earlier version of this comment claimed the feature "keeps the pass running
+# with its adr check intact" while the -mllvm flag removes it -- that was
+# WRONG, both disable the pass outright, and the difference it claimed was used
+# to explain (2). The feature is preferred only because a target feature is a
+# supported spelling where `-mllvm` is a debug knob. Neither flag can cause
+# (2): with the pass off, the ADR that materialises a table base is
+# self-relative (`.Ltmp0:` sits on the ADR itself, displacement 0) and cannot
+# go out of range.
 #
-# `-max-jump-table-size` makes LLVM SPLIT an oversized switch into several
-# smaller tables instead of emitting one it cannot encode. Dispatch stays O(1)
-# through a jump table, every TU keeps full /O2, and nothing is compiled less
-# optimally. Lowering the optimisation level "worked" only by suppressing the
-# pass that builds the table -- that is refusing the problem, not solving it,
-# and it is not an option in this tree.
+# COST, measured on a reproducer: 4522 -> 4650 bytes of object, ~2.8 %, all of
+# it jump-table DATA. Every TU keeps /O2, every instruction is the one -O2
+# emits, and dispatch stays O(1) through a table. That is the difference from
+# /Od, /O1 and -fno-jump-tables, which pay in code quality -- and which only
+# ever "worked" by perturbing a layout estimate that misses by a few bytes.
 #
-# 100 against a 255-entry ceiling is ~2.5x margin, so a protobuf or OpenCV
-# generation that grows its switches does not walk straight back into this.
+# RULED OUT BY MEASUREMENT, keep them ruled out:
+#   * `-max-jump-table-size` caps the entry COUNT while the ceiling is a BYTE
+#     SPAN -- a 100-entry table still spans 1032 bytes at 10 bytes per case.
+#     Accepted by the driver, no effect.
+#   * `-align-all-*` to nudge the estimate: the padding makes the function
+#     length unevaluable for the Windows SEH unwind writer and clang-cl dies
+#     with `Failed to evaluate function length in SEH unwind info`
+#     (llvm#122707, a duplicate of llvm#47432).
+#   * /Od and /O1 (and the per-TU /Od pass this replaced): they move the
+#     failure to the next TU, measured three times. That pass was also built on
+#     a refuted root cause -- an 8-bit .xdata "Code Words" unwind field --
+#     which MCWin64EH.cpp reports as a report_fatal_error with an entirely
+#     different message.
 #
-# Compression stays ON (the flag below is no longer set). The compressed
-# encoding is what keeps tables small; disabling it is what pushed the SAME
-# defect onto the branch-range side, which is how this was misread for three
-# attempts. To restore the LLVM 22 behaviour if a future clang makes that
-# correct again:
-#   '-mllvm -aarch64-enable-compress-jump-tables=false'
-#
-# WHY -max-jump-table-size DID NOT WORK (measured, run L): it caps the ENTRY
-# COUNT, and the ceiling is a BYTE SPAN. A 100-entry table still spans 1032
-# bytes when the case bodies average 10 bytes. The flag was accepted (no
-# "Unknown command line argument" in the log) and changed nothing.
-#
-# WHAT THE NUMBERS SAY. AArch64CompressJumpTables picks the entry width from an
-# ESTIMATE of the block offsets:
-#     span>>2 fits in  8 bits -> 1-byte entries (ceiling 1020 B)
-#                     16 bits -> 2-byte entries (ceiling ~256 KB)
-# Every failure measured tonight sits just past the 1-byte ceiling -- 256 (1024
-# B, FOUR bytes over), 258, 259, 260, 262, 272, 281, 284 -- so the pass is not
-# facing a wildly oversized table. It picks 1-byte because its estimate lands
-# under 1020, and the real layout comes out a handful of bytes above. The gap is
-# an estimate error, not a code-size problem, which is exactly why shrinking the
-# code "fixed" some TUs and not others.
-#
-# SO PUSH IT ONTO 2-BYTE ENTRIES INSTEAD OF SHRINKING ANYTHING.
-# -align-all-nofallthru-blocks=3 aligns branch-target blocks to 8 bytes. The
-# pass reads MachineBasicBlock::getAlignment() when it estimates, so the padding
-# is visible to it: offsets go over 1020, it selects 2-byte entries, and the
-# ceiling moves from 1020 bytes to ~256 KB -- 250x headroom, which no protobuf
-# or OpenCV generation is going to walk back into.
-#
-# THE COST IS PADDING, NOT OPTIMISATION. Every TU keeps /O2, every instruction
-# is still the one -O2 would emit; some branch targets gain up to 4 bytes of
-# alignment. Aligned branch targets are the common recommendation on AArch64
-# anyway. This is the difference that matters versus /Od or /O1, which removed
-# optimisation to dodge the pass.
-#
-# Compression stays ON: it is what keeps the table small enough for the
-# pc-relative reference to reach, and turning it off is what pushed the same
-# defect onto the branch-range side for three attempts.
-#
-# UPSTREAM: the estimate/emission mismatch is an LLVM bug and should be reported
-# (out/ has the drafts from previous ones). This flag is the workaround, not the
-# fix, and it is a workaround that costs no code quality.
-# FORCE 32-BIT JUMP TABLE ENTRIES. This is the AArch64 subtarget feature the
-# compression pass itself consults (`force32BitJumpTables()`), not an -mllvm
-# debug knob, and it is the one configuration that survives BOTH LLVM 23 defects
-# this tree hits. Verified locally against clang-cl 23.1.0 before landing:
-#
-#   default                       .hword (.LBB0_2-.LBB0_2)>>2   ldrh  (ceiling 1020 B)
-#   +force-32bit-jump-tables      .word  .LBB0_2-.Ltmp0         ldrsw (range +-2 GB)
-#
-# WHY THIS AND NOT `-aarch64-enable-compress-jump-tables=false`, which also
-# yields .word entries: that flag DISABLES THE PASS, and the pass carries a
-# second check -- it verifies the ADR to the table's base block is within +-1 MB
-# and bails out when it is not. Turning the pass off removes that check too,
-# which is why the cross build then failed with `fixup value out of range` in
-# opencv's largest dispatch TUs. The feature keeps the pass running (ADR check
-# intact) while taking the entry-width decision out of its hands.
-#
-# THE TWO DEFECTS IT ROUTES AROUND, both LLVM's own:
-#   * the pass estimates block offsets, picks 1-byte entries, and emission then
-#     finds the real value does not fit -> "value evaluated as <N> is out of
-#     range". Every N measured here sits JUST past the 1020-byte ceiling
-#     (256 = 1024 B, then 258, 259, 260, 262, 272, 281, 284), which is an
-#     estimate a few bytes short, not an oversized table. protobuf on
-#     Windows-arm64 is known-fragile in this area (protocolbuffers/protobuf#24758).
-#   * with the pass off, nothing checks ADR reachability -> the fixup error.
-#
-# COST, measured on the local reproducer: 4522 -> 4650 bytes of object, ~2.8%,
-# and it is jump-table DATA, not code. Every TU keeps /O2, every instruction is
-# the one -O2 emits, and dispatch stays O(1) through a table. That is the
-# difference from /Od, /O1 or -fno-jump-tables, all of which pay in code quality.
-#
-# DO NOT reach for `-align-all-*` here: alignment padding makes the function
-# length unevaluable for the Windows SEH unwind writer and clang-cl dies with
-# `Failed to evaluate function length in SEH unwind info` (llvm#122707, a
-# duplicate of the long-standing llvm#47432). Measured, not assumed.
-#
-# Revisit when a later clang-cl fixes the estimate; the feature is then just a
-# small size cost with no purpose. Both defects deserve upstream reports.
+# UPSTREAM: the estimate-vs-emission gap is LLVM's own and is worth reporting
+# (out/ holds drafts of previous ones). It is not a prerequisite for this repo:
+# the flag closes (1) here today, a report buys a future where it can be
+# dropped.
 $jumpTableFlag = if ($ocvCross) { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
@@ -983,6 +906,56 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
 # full /O2. Do not reintroduce a blanket /Od here without re-reading that
 # comment first: /Od "worked" only because it disables the compression pass as
 # a side effect of turning optimisation off entirely.
+
+# CROSS ONLY (#135 defect 2, 2026-08-27): keep two functions out of the AArch64
+# 14-bit conditional-branch range.
+#
+# THE FAILURE, measured -- not the jump-table story this was filed under. At
+# /O2 the whole baseline median filter collapses into a single function,
+# `cv::cpu_baseline::medianBlur`, 8,465 instructions = 33,860 bytes. Inside it
+#
+#     tbnz w9, #31, .LBB546_847
+#
+# has to reach a block ~32,916 bytes away (counted from the emitted listing,
+# instructions x 4). `tbz`/`tbnz` carry a 14-bit displacement -- 16,384
+# instructions, +-32,768 bytes -- so it misses by ROUGHLY 150 BYTES and the
+# assembler stops the build with `error: fixup value out of range` and no
+# source location. LLVM's BranchRelaxation pass exists to catch exactly this
+# and relax the branch, and it did not: its layout estimate came out short.
+# That is the SAME defect signature as the compressed-jump-table entries above
+# (an estimate a few bytes under the emitted reality), which is why every flag
+# tried against it "worked" or "failed" by luck -- a miss that small flips on
+# any perturbation.
+#
+# THE FIX: /Ob1 on the offending TUs. It does not lower the optimisation level
+# -- every kernel keeps /O2, vectorisation and unrolling. It stops the inliner
+# from gluing file-static helpers (single call site, so an -inline-threshold
+# does NOT hold them back -- measured on median_blur: 100 and 25 both still
+# fail) into one oversized function. Measured on median_blur: the largest
+# function drops 33,860 -> 10,620 bytes, so 3.1x headroom under the ceiling
+# instead of a 148-byte miss. The cost is one call per medianBlur() -- once per
+# image.
+#
+# THE LIST IS A CENSUS, NOT A GUESS. `NINJA_KEEP_GOING=1` compiled all 1,870
+# objects in one run (2026-08-27) and exactly these two TUs failed; a third
+# would have shown up there rather than one rebuild at a time. Re-run that way
+# after an OpenCV bump -- the ceiling is a property of what the inliner
+# produces, so a new offender is a source change away, and the Floor below only
+# catches the reverse (a TU that disappears or gets renamed).
+#
+# RULED OUT BY MEASUREMENT on median_blur, keep them ruled out:
+# `-fno-jump-tables` (fails -- no jump table is involved), dropping
+# $jumpTableFlag (fails the same way), `-mllvm -inline-threshold=100` and `=25`
+# (both fail). See docs/failure-modes.md for the /FA + repair recipe that
+# located the branch.
+if ($ocvCross) {
+    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') `
+            -Label 'OpenCV AArch64 branch-range TUs (#135)' `
+            -Floor 2 -AlreadyTaggedPattern '/Ob1' -Select {
+            param($line) if ($line -match '(median_blur\.dispatch|multiview_calibration)\.cpp\.obj') { '/Ob1' } else { '' }
+        })
+}
+
 
 
 # Persistent log (backlog #43): inside $buildDir it dies with the failed solve.

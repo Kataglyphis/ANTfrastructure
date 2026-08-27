@@ -198,6 +198,8 @@ Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
         $husk = Join-Path $sandbox 'scratch-linked'
         New-Item -ItemType Directory -Path $husk -Force | Out-Null
         $link = Join-Path $husk 'tunnel'
+        # Counted BEFORE the tunnel exists, for the canary test below.
+        $script:profileEntriesBefore = @(Get-ChildItem -LiteralPath $env:USERPROFILE -Force -ErrorAction SilentlyContinue).Count
         try {
             # A junction into a protected root: the exact tunnel shape.
             $null = New-Item -ItemType Junction -Path $link -Target $env:USERPROFILE -ErrorAction Stop
@@ -219,8 +221,20 @@ Describe 'free-disk-space.ps1: what it cleans, and what it refuses to' {
     It 'the user profile is still intact after the junction fixture' {
         # Paranoia with teeth: if the teardown above ever deleted THROUGH the
         # junction, this is what would notice.
+        #
+        # The canary is the profile's own ENTRY COUNT, taken before the tunnel
+        # was created, plus AppData -- which every Windows profile has. It used
+        # to be `.claude`, which exists on a developer box and NOT on a CI
+        # runner, so this test failed there for a reason that had nothing to do
+        # with deleting anything (2026-08-27). A count that only has to be
+        # >= the earlier one tolerates files appearing mid-run while still
+        # catching the wholesale emptying this exists to catch.
         Assert-True (Test-Path -LiteralPath $env:USERPROFILE) 'the user profile is gone'
-        Assert-True (Test-Path -LiteralPath (Join-Path $env:USERPROFILE '.claude')) 'the profile was emptied through a junction'
+        Assert-True (Test-Path -LiteralPath (Join-Path $env:USERPROFILE 'AppData')) 'the profile was emptied through a junction'
+        Assert-NotNull $script:profileEntriesBefore 'the junction fixture never ran, so this canary proves nothing'
+        $after = @(Get-ChildItem -LiteralPath $env:USERPROFILE -Force -ErrorAction SilentlyContinue).Count
+        Assert-True ($after -ge $script:profileEntriesBefore) `
+            "the profile lost entries through the junction ($script:profileEntriesBefore -> $after)"
     }
 
     It 'is report-only by default and never deletes without -Apply' {
