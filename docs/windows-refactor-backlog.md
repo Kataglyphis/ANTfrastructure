@@ -446,13 +446,119 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `-filetype=obj`) and the change is `-S` / `/FA` only. Both #135 aborts happen during OBJECT
   emission, which that patch leaves byte-identical. What it buys is the diagnostic route:
   `failure-modes.md` prescribes `/FA` for exactly these no-source-location errors, and on
-  Windows-on-ARM with C++ exceptions that route was closed. **(a) is still unfiled and unfixed,
-  and (a) is the one that would let the two settings go.**
+  Windows-on-ARM with C++ exceptions that route was closed. **(a) turned out to be TWO independent
+  defects, not one — see the root-cause block below.**
   **Settling any future candidate:** don't reason about it, run
   `windows\scripts\diagnostics\repro-llvm-aarch64-layout.ps1` — the five real offenders frozen as
   preprocessed `.i`, compiled with the workaround OFF, with the stock compiler's reproduce-and-
   suppress arms gating the verdict so a stale corpus reports `INVALID` instead of a false fix.
   A `FIXED` verdict licenses the `NINJA_KEEP_GOING=1` census; it does not replace it.
+
+  ### 2026-08-27 root cause: (a) is TWO defects, and this entry's "one signature at two sites" framing was wrong
+
+  They do not share a cause. One is a known upstream bug with an existing fix; the other is still
+  open but is now narrowed to a single measurable quantity.
+
+  **(a1) `tbnz` / `fixup value out of range` — ROOT CAUSE FOUND, FIX EXISTS UPSTREAM.**
+  [`c6e184686cd7` — *[AArch64][CodeGen] Fix trampoline basic block offset*](https://github.com/llvm/llvm-project/pull/202716),
+  on `main` since 2026-07-21. Trampoline blocks are created with offset **zero**, so
+  `isBlockInRange()` decides reach from offsets the code itself calls "slight underestimates" — a
+  branch judged in range that is not, left unrelaxed, rejected at the MC layer.
+  **Not in 23.1.0:** `release/23.x` forked 2026-07-14, one week *before* it landed. **Not
+  cherry-picked onto `release/23.x`** either — checked by subject AND by PR number, because a
+  cherry-pick carries a different SHA and SHA-ancestry alone cannot answer this (that hole cost one
+  wrong "not backported" claim before it was closed properly).
+  **Proven load-bearing, not assumed:** reverting only that commit on `main` and re-running its own
+  `llvm/test/CodeGen/AArch64/branch-relax-tbz.mir` changes the result — with the fix the `TBZW`
+  survives and targets a trampoline chain; without it the branch is inverted and the block layout
+  changes.
+  **Decision 2026-08-27 (owner): move the Windows toolchain to LLVM `main`; do NOT request a
+  `release/23.x` backport.** A backport request was drafted and deliberately not filed. Note the
+  timing that follows from that: the fix reaches a tagged release only in **24.1.0** (~Feb–Mar 2027
+  at the observed 6-month major cadence — 22.1.0 was 2026-02-24, 23.1.0 was 2026-08-25); **no
+  23.1.x will carry it unasked**, so `/Ob1` stays until the toolchain actually moves.
+
+  **(a2) Jump-table entry width — NOT fixed on `main`, and now narrowed to one thing.**
+  `AArch64CompressJumpTables.cpp` is **byte-identical** between `llvmorg-23.1.0` and `main`; the
+  AsmPrinter's jump-table emission is untouched (its one commit since 23.1.0 is PAC-only);
+  `getInstSizeInBytes`'s body is unchanged and no pseudo's `.td` `Size` moved. **Moving to `main`
+  will not retire `+force-32bit-jump-tables`.**
+  The pass is **sound given correct instruction sizes**: offsets are upper bounds, that inflation
+  accumulates monotonically in layout order, so `Span = MaxOffset - MinOffset` is *over*-estimated,
+  which selects a LARGER entry. It can therefore only fail if some instruction reports **fewer**
+  bytes than it emits. The measured values (256, 258, 259, 260, 262, 272, 281, 284) put that
+  under-count at **4–116 bytes**, between the table's lowest and highest target block.
+
+  **The tool that will name it.** LLVM's AsmPrinter already verifies reported size against emitted
+  bytes and aborts printing the function, the `MachineInstr` and both sizes — but the check is
+  **inert on AArch64**: `TargetInstrInfo::getInstSizeVerifyMode()` defaults to `NoVerify` and
+  AArch64 never overrides it (only AMDGPU and PowerPC do). The opt-in is written and committed:
+  `D:\GitHub\llvm-project`, branch `aarch64-instsize-verify`, commit `65a5bd5601fe` — **local only,
+  unpushed**. Build clang with it and compile
+  `3rdparty/protobuf/.../descriptor.cc` in the container; the abort names the instruction and the
+  fix is then a one-line `Size`.
+  Two scans, both at `aarch64-pc-windows-msvc`, and keep them distinct: the **size verifier** over
+  the 2,925 `.ll` files (2,049 compiled) reported **zero under-counts**; a separate **signature
+  scan** over 3,347 files (`.ll` + `.mir`) reported **zero genuine reproductions** of either
+  abort. So the offending construct is one LLVM's own tests never build. The single apparent
+  `fixup value out of range` hit was an artifact of forcing a Linux/PIC test onto a Windows triple
+  (it produces an `:abs_g3:` relocation COFF cannot encode); under its own triple it compiles clean.
+  **Ruled out by reading the code, keep them ruled out:** `JumpTableDest8/16/32` (declares
+  `Size = 12`, pessimistic BY DESIGN — the `.td` comment says "optimization occurs after branch
+  relaxation so be pessimistic"); block alignment (modelled by `BasicBlockInfo::postOffset`);
+  EH-funclet alignment (`beginCodeAlignment` is implemented only by `DwarfDebug`, emits no code
+  bytes, unused on COFF); `CATCHRET` (lowers to a single 4-byte `RET`, and its ADRP/ADD are already
+  real instructions before the estimating passes run).
+
+  **A third LLVM bug, found on the way, and NOT the cause of either failure — now FIXED.** Every
+  `SEH_*` pseudo reported **4 bytes and emitted 0** (538 of the 2,925 `.ll` files). That is the
+  *over*-estimate direction, so it is conservative for both consumers — but it inflated every
+  Windows-AArch64 size estimate by 4 bytes per SEH directive, and a prologue emits one per saved
+  register. Two commits, **local and unpushed**, on `D:\GitHub\llvm-project` branch
+  `aarch64-instsize-verify`: `1e6148bc4b9c` (the fix) and `f533c8e88038` (the verifier opt-in that
+  found it). Mismatches **558 → 45**, all 45 remaining being over-estimates in unrelated pseudos;
+  `check-llvm-codegen-aarch64` 4197 passed / 0 failed. **The `.td` route does not work** — the
+  default case tests `if (Desc.getSize())`, so a declared `Size = 0` is indistinguishable from
+  "unset" and still yields 4; it must be a C++ early return on `isSEHInstruction`. Full PR handover,
+  including the two build-environment traps that each cost a run:
+  [`out/upstream-llvm-aarch64-seh-instsize.md`](../out/upstream-llvm-aarch64-seh-instsize.md).
+  **It does not retire `+force-32bit-jump-tables`**: removing an over-count moves the estimate
+  toward the true value but never below it.
+
+  ### 2026-08-27, second attempt at (a2): a sensitive detector, and it still did not fire
+
+  The error-signature scans could only ever catch the defect if a span landed on the 1020-byte
+  knife edge. The defect itself is `Span_est < Span_true` at ANY magnitude, so the pass was
+  instrumented to dump its estimate and a checker computes the TRUE span from the emitted assembly
+  — making every jump table a test. Instrumentation patch (not upstreamable, keep it):
+  `D:\llvm-patches\jtspan-instrumentation.patch`.
+
+  **Measured, all at `aarch64-pc-windows-msvc`, all with a validity gate that fails the run when
+  nothing was actually measured:**
+
+  | corpus | jump tables measured | `Span_est < Span_true` |
+  |---|---|---|
+  | 598 real C++ modules (LLVM's own sources) | 1,902 | 0 |
+  | 400 synthetic MSVC-EH funclet + jump-table modules | 400 | 0 |
+  | **the three real offenders** (`descriptor.cc`, `generated_message_reflection.cc`, `wire_format.cc`, from OpenCV's own bundled protobuf) | **28** | **0** |
+
+  So the estimate held as an upper bound on ~2,350 real jump tables, including the exact source
+  files that fail in the lane. **The one remaining difference is the one that cannot be closed on a
+  host without MSVC:** that IR was produced by clang targeting `x86_64-w64-windows-gnu` (libstdc++,
+  Itanium EH), because the Windows SDK is not present. The lane compiles it with clang-cl for
+  `aarch64-pc-windows-msvc` under `/EHa` — MSVC STL, MSVC EH, different functions, different jump
+  tables. **That gap is the whole remaining hypothesis space, and closing it needs the container.**
+
+  **The one command that would settle it.** No patched clang is needed in the container — the
+  scoop clang-cl can emit the IR, and the instrumented `llc` here does the codegen: add
+  `-Xclang -emit-llvm -S` to the ninja command for `descriptor.cc`, keep the `.ll`, and run it
+  through `D:\llvm-build\bin\llc.exe -mtriple=aarch64-pc-windows-msvc -filetype=obj`. If the
+  under-count is real it aborts naming the instruction, and the fix is a one-line `Size`.
+
+  **Local build assets (not in this repo):** `D:\GitHub\llvm-project` (blobless clone) and
+  `D:\llvm-build` (`llc`/`llvm-objdump`/`llvm-nm`, Release+assertions, AArch64-only, built with the
+  Strawberry MinGW g++ 13.2 that ships with this host — there is no MSVC here, which is also why a
+  Windows-ARM64 object cannot be produced outside the container).
 
 - **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
   iteration cost.** M · ★★★ (opened 2026-08-26)

@@ -316,8 +316,15 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 #     are not oversized tables; the estimate lands under 1020 and the emitted
 #     layout comes out a handful of bytes above. Offenders: the bundled
 #     libprotobuf (descriptor.cc, generated_message_reflection.cc,
-#     wire_format.cc) -- protobuf on windows-arm64 is known-fragile in this
-#     area, protocolbuffers/protobuf#24758.
+#     wire_format.cc). protocolbuffers/protobuf#24758 gets cited here as
+#     "protobuf is fragile on windows-arm64", but it is a LOOSER match than it
+#     reads: Ruby/upb, not descriptor.cc, and its symptom is "Failed to evaluate
+#     function length in SEH unwind info" (llvm#47432) -- NOT this overflow. It
+#     is still the useful precedent, because it was closed as an LLVM bug with
+#     nothing to fix in protobuf: the offender library is the TRIGGER, not the
+#     defect. Same conclusion holds here -- see docs/windows-refactor-backlog.md
+#     § #135: this pass cannot overflow a 1-byte entry unless some instruction
+#     reports fewer bytes than it emits, so no OpenCV-side change fixes it.
 #
 # (2) A `tbnz` ~150 BYTES OUT OF REACH in median_blur.dispatch.cpp. Handled
 #     per-TU further down, NOT by any jump-table setting -- it is a

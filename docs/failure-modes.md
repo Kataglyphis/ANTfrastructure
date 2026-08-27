@@ -425,16 +425,34 @@ failed (exit 22)" and fallen through by design; a 404 is a wrong pin, not an out
 instruction. Appeared with clang-cl 23.1.0; 22.1.8 compiled the same tree. Observed in OpenCV's
 CPU-dispatch TUs and in the bundled protobuf.
 
-**Cause — ONE signature at two sites: LLVM lays a function out a few bytes SHORT of what it then
-emits.** Both diagnostics come from a pass that picks an encoding from an ESTIMATE of block
-offsets and is then contradicted by the assembler.
+**Cause — two passes that pick an encoding from an ESTIMATE of block offsets and are then
+contradicted by the assembler.** They look like one defect and are not; **corrected 2026-08-27**,
+after the earlier "one signature at two sites" reading sent one investigation down the wrong path.
+The two have separate root causes and separate fates — in particular **moving the toolchain to
+LLVM `main` fixes (2) and does nothing for (1)**. Full evidence in
+[`windows-refactor-backlog.md`](windows-refactor-backlog.md) § #135.
 
 1. **Jump-table entry width** → `value evaluated as <N> is out of range`.
    `AArch64CompressJumpTables` selects 1-byte entries whenever `span>>2` fits in 8 bits — a
    ceiling of 255×4 = 1020 bytes. Every `N` measured here sits JUST past it: 256 (= 1024 B, four
    bytes over), then 258, 259, 260, 262, 272, 281, 284. Offender class: the bundled libprotobuf
    (descriptor.cc, generated_message_reflection.cc, wire_format.cc), which is known-fragile on
-   windows-arm64 ([protobuf#24758](https://github.com/protocolbuffers/protobuf/issues/24758)).
+   windows-arm64 — but **read that citation carefully**
+   ([protobuf#24758](https://github.com/protocolbuffers/protobuf/issues/24758) is a LOOSER match
+   than it looks: Ruby/upb, not `descriptor.cc`, and its symptom is
+   `Failed to evaluate function length in SEH unwind info`, i.e.
+   [llvm#47432](https://github.com/llvm/llvm-project/issues/47432) — the same bug this page already
+   warns about under `-align-all-*`, and NOT the jump-table overflow). It was closed as an LLVM
+   bug with nothing to fix in protobuf, which is the useful precedent: **the offender library is
+   the trigger, not the defect.**
+   **Root cause, 2026-08-27: still open, but narrowed.** The pass is sound *given correct
+   instruction sizes* — its offsets are upper bounds and that inflation accumulates in layout
+   order, so `Span` is over-estimated, which picks a LARGER entry. It can only fail if some
+   instruction reports FEWER bytes than it emits; the measured `N` put that under-count at
+   **4–116 bytes**. `AArch64CompressJumpTables.cpp` is byte-identical between 23.1.0 and `main`,
+   so **a toolchain move does not fix this** — keep `+force-32bit-jump-tables`. To name the
+   instruction, build clang with the AArch64 opt-in to LLVM's AsmPrinter size verifier (the check
+   exists but is inert on AArch64) and compile `descriptor.cc`; it aborts naming the culprit.
 2. **Branch relaxation** → `fixup value out of range`. In `median_blur.dispatch.cpp`, `/O2`
    collapses the whole baseline median filter into ONE function — `cv::cpu_baseline::medianBlur`,
    8,465 instructions ≈ 33,860 bytes — and inside it
@@ -446,8 +464,13 @@ offsets and is then contradicted by the assembler.
    has to reach a block ~32,916 bytes away (counted from the emitted listing, instructions × 4).
    `tbz`/`tbnz` carry a 14-bit displacement: ±32,768 bytes. **It misses by roughly 150 bytes** —
    a hair, not an order of magnitude. LLVM's `BranchRelaxation` pass exists to catch exactly this
-   and rewrite the branch; it did not, because its layout estimate came out short — the same
-   defect signature as (1).
+   and rewrite the branch; it did not, because its layout estimate came out short.
+   **Root cause, 2026-08-27: FOUND, and fixed upstream.**
+   [`c6e184686cd7`](https://github.com/llvm/llvm-project/pull/202716) creates trampoline blocks
+   with offset **zero**, so `isBlockInRange()` decides reach from underestimated offsets. It is on
+   `main` since 2026-07-21 but **not in 23.1.0** (`release/23.x` forked 2026-07-14) and was never
+   backported, so **only a toolchain move to `main` retires the `/Ob1` setting** — nothing reaches
+   a 23.1.x release unasked.
 
 **Fix — two settings, one per site, both cross-lane only.**
 
