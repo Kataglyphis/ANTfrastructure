@@ -38,9 +38,33 @@ runtime_push_tag() {
 # mutable cross-android tag. Used both as the ARTIFACT_IMAGE the package copies
 # from AND as the parent-digest annotation recorded on the package/wrapper push.
 runtime_android_pin() {
-  local arch="$1" var
+  local arch="$1" var pin
   var="$(runtime_android_pin_varname "${arch}")"
-  printf '%s' "${!var:-}"
+  pin="${!var:-}"
+  if [ -n "${pin}" ]; then
+    printf '%s' "${pin}"
+    return 0
+  fi
+  # XC2-PARTIAL-RUN (2026-08-27): the pin is only ever SET by the android stage
+  # actually building, so a resumed run (`--only runtime`, or the --repair
+  # helper path) had none -- and the wrapper then shipped with run-id and
+  # build-type but NO parent-digest. That is exactly what happened to the index
+  # published earlier today. The information was never missing: the same run's
+  # ancestry preflight had already printed the android digests. Resolve the
+  # mutable tag ourselves rather than let provenance quietly drop out.
+  # Best-effort by design: on a --no-push validation run, or before the android
+  # tag exists, this returns empty and behaviour is exactly as before.
+  # Guarded on BOTH halves: cross_android_tag needs IMAGE_REPO or
+  # IMAGE_REGISTRY_PREFIX and dies under `set -u` without them, which a unit
+  # test caught immediately. No repo configured -> behave exactly as before.
+  local _rap_tag=""
+  if declare -F registry_pin_ref >/dev/null 2>&1 \
+     && declare -F cross_android_tag >/dev/null 2>&1 \
+     && [ -n "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX:-}}" ]; then
+    _rap_tag="$(cross_android_tag "${arch}" 2>/dev/null || true)"
+    [ -z "${_rap_tag}" ] || pin="$(registry_pin_ref "${NERDCTL_BIN:-nerdctl}" "${_rap_tag}" 2>/dev/null || true)"
+  fi
+  printf '%s' "${pin}"
 }
 
 # XC2/XC3: compose the buildkit image-exporter spec for a runtime build, folding

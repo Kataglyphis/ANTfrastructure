@@ -169,9 +169,16 @@ t_assert_eq "RUNTIME_ANDROID_PIN_amd64"   "$(runtime_android_pin_varname amd64)"
 t_assert_eq "RUNTIME_ANDROID_PIN_riscv64" "$(runtime_android_pin_varname riscv64)"
 t_assert_eq "RUNTIME_ANDROID_PIN_a_b"     "$(runtime_android_pin_varname "a-b")"
 
-t_case "runtime_android_pin reads the threaded env var (empty when unset)"
+t_case "runtime_android_pin: threaded pin wins, and a resume resolves instead of dropping"
+# Contract CHANGED 2026-08-27 (XC2-PARTIAL-RUN). The threaded env var still
+# wins outright. What changed is the UNSET case: it used to return empty, which
+# is how a `--only runtime` resume shipped wrappers with no parent-digest at
+# all. It now resolves the mutable android tag itself -- but only when a repo is
+# actually configured, so the no-repo case stays empty and callers that never
+# had provenance still behave as before.
 unset RUNTIME_ANDROID_PIN_arm64 || true
-t_assert_eq "" "$(runtime_android_pin arm64)"
+( unset IMAGE_REPO IMAGE_REGISTRY_PREFIX 2>/dev/null || true
+  t_assert_eq "" "$(runtime_android_pin arm64)" )
 RUNTIME_ANDROID_PIN_arm64="repo@sha256:android"
 t_assert_eq "repo@sha256:android" "$(runtime_android_pin arm64)"
 unset RUNTIME_ANDROID_PIN_arm64

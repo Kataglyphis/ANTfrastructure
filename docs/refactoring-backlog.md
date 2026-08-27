@@ -205,15 +205,18 @@ either created or exposed.
   while contributing nothing. DECIDE after the switch is proven: drop ccache and
   delete the fallback branches, or keep it and document why. Do not leave it
   ambiguous -- ambiguous is how the dead mount survived months last time.
-- **`--ccache` no longer means ccache** [S·★] build-gcc.sh and build-clang.sh
-  keep the flag name (llvm.sh:28 passes it) while it now selects whichever cache
-  is usable. Rename to `--compiler-cache` with `--ccache` as a deprecated alias,
-  or the next reader will believe it forces ccache.
-- **sccache stats are per-build-window only** [S·★★] build-gcc.sh zeroes stats
-  before each GCC and reports after, so a run yields N disjoint windows (this
-  run: 3.02 / 2.50 / 1.81 / 6.45 / 2.00 %) and NO aggregate. That makes the one
-  question the switch has to answer -- "did the hit rate improve on a warm
-  build?" -- unanswerable without hand-summing logs. Emit a per-stage aggregate.
+- ✅ **`--ccache` renamed 2026-08-27.** build-gcc.sh and build-clang.sh now take
+  `--compiler-cache` ("sccache first, ccache fallback"), with `--ccache` kept as
+  a DEPRECATED alias so llvm.sh:28 and any operator habit keep working. Both
+  spellings verified to parse; an unknown flag still warns.
+
+- ✅ **sccache stats — FIXED 2026-08-27.** build-gcc.sh zeroed the counters
+  before EVERY compiler, so five GCCs produced five disjoint windows and no
+  aggregate. Zeroed once per run now, via a /tmp marker whose lifetime matches
+  the sccache server's. Fixed alongside the third dead `= "sccache"` identity
+  check in the same file, which had every GCC stage reporting CCACHE stats
+  while sccache did the work.
+
 - ✅ **Mount-id keys — RESOLVED 2026-08-27, but NOT by unifying all of them.**
   Investigated rather than swept. The two conventions are mostly principled:
   `${TARGETARCH}` is BuildKit's automatic value and resolves to amd64 for every
@@ -449,29 +452,17 @@ either created or exposed.
   containerd restart. The mechanism and the measurement live in AGENTS.md
   § Prerequisites (QEMU/binfmt) — one owner, not two.
 
-- **XC2-PARTIAL-RUN — a resumed run ships without its ancestry stamp**
-  [M, found 2026-08-27 on the shipped :latest-cross] The wrapper build stamps
-  `org.kataglyphis.parent-digest` / `parent-stage` from
-  `RUNTIME_ANDROID_PIN_<arch>`, exported at `cross-stage-build.sh:648-656` —
-  but only when the `ANDROID_PIN` array is populated, which happens when the
-  ANDROID STAGE RUNS. A `--only runtime` resume never runs it, so line 652
-  `continue`s, no label is emitted, and the wrapper ships carrying run-id and
-  build-type alone.
-  Verified on today's bytes: all three shipped wrappers carry
-  `org.kataglyphis.run-id=20260827-073226-d491cb10` and NO parent-digest, while
-  the full-chain run earlier the same day emitted
-  `--label org.kataglyphis.parent-digest` for every arch. So the mechanism
-  works; resuming loses it.
-  The information is not missing — the same run's ancestry preflight PRINTED
-  the digests (`media→android (amd64): OK (sha256:286d5410…)`). They are simply
-  never threaded into ANDROID_PIN when the stage is skipped. Fix: populate
-  ANDROID_PIN for skipped-but-resolved stages from the ancestry resolution,
-  so a resume is stamped exactly like a full run.
-  Consequence if left: every future ancestry check on these images reports
-  "records no parent digest — provenance unverifiable" and can never verify the
-  wrapper→android link for anything shipped by a resumed run.
-  NOTE `--manifest-only`/`--repair` losing the pin IS documented and intended
-  (`runtime-build-fns.sh:36-38`); this entry is about the CHAIN path.
+- ✅ **XC2-PARTIAL-RUN — FIXED 2026-08-27 at the consumer, not the orchestrator.**
+  runtime_android_pin returned empty whenever the android stage had not built
+  in this run, so a `--only runtime` resume shipped wrappers carrying run-id
+  and build-type but no parent-digest — which is what today's published index
+  did. It now resolves the mutable android tag to a digest itself when the
+  threaded pin is absent. Chosen over re-threading ANDROID_PIN through the
+  orchestrator because that is a wide change with no validating run available;
+  this is one function. Guarded on both halves (needs registry_pin_ref AND a
+  configured repo), so a --no-push run behaves exactly as before. The unit
+  test now pins the new contract and caught an unbound-variable crash in the
+  first version of the fix.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.

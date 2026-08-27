@@ -36,7 +36,8 @@ Options:
   --keep-build      Keep build directory after install
   --jobs N          Number of parallel jobs (auto-detected if not specified)
   --targets LIST    LLVM targets to build (default: native; e.g., "RISCV;X86;AArch64")
-  --ccache          Use ccache for faster rebuilds
+  --compiler-cache          Enable the compiler cache (sccache first, ccache fallback)
+  --ccache                  DEPRECATED alias for --compiler-cache
   -h, --help        Show this help message
 
 Examples:
@@ -95,7 +96,7 @@ while [ "$#" -gt 0 ]; do
             KEEP_BUILD="1"; shift ;;
         --targets)
             LLVM_TARGETS="$2"; shift 2 ;;
-        --ccache)
+        --compiler-cache|--ccache)
             USE_CCACHE="1"; shift ;;
         --jobs|-j)
             if [ -n "${2:-}" ] && [[ "$2" =~ ^[0-9]+$ ]]; then

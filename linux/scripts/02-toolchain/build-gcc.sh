@@ -41,7 +41,8 @@ Options:
   --skip-system-registration
                             Skip update-alternatives, loader, and profile updates
   --no-strip                Do not strip binaries after install
-  --ccache                  Use ccache for faster rebuilds
+  --compiler-cache                  Enable the compiler cache (sccache first, ccache fallback)
+  --ccache                          DEPRECATED alias for --compiler-cache
   -h, --help                Show this help
 
 Environment (used as defaults when CLI args are omitted):
@@ -126,7 +127,7 @@ while [ "$#" -gt 0 ]; do
       DO_STRIP="0"
       shift
       ;;
-    --ccache)
+    --compiler-cache|--ccache)
       USE_CCACHE="1"
       shift
       ;;
