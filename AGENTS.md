@@ -524,8 +524,12 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
   restart. Measured 2026-08-27 on the dev host: unit last ran 2026-08-09,
   containerd restarted 2026-08-26, and the runtime stage then failed BOTH
   foreign arches with an empty BuildKit error. The template now sets
-  `PartOf=containerd.service`; an already-installed unit must be re-installed
-  once to pick that up. Registration is lost
+  `PartOf=containerd.service`, and the dev host's unit was re-installed to pick
+  it up on 2026-08-27. PROVEN rather than assumed: `systemctl --user restart
+  containerd` re-ran rootless-binfmt.service in the SAME second (it had last
+  run 2026-08-09) and both emulators still answered afterwards. A daemon
+  restart no longer silently strips foreign-arch emulation. Registration is
+  still lost
   on host reboot **and on `systemctl --user restart containerd`** (it lives in the
   rootlesskit namespace — that's how it silently vanished on 2026-08-08 after the
   shim-failure restart). On this rootless host the privileged

@@ -204,6 +204,34 @@ Refuted rather than fixed: "riscv64 exports ONNXRUNTIME_ROOT_ANDROID at an empty
 directory". The variable is set on no arch at all, so the empty directory points
 nowhere.
 
+### Closing the day: four backlog items, one of them retracted
+
+The highest-rated open item, "`preflight.sh` exits 0 on failure" (★★★), turned
+out **not to be a bug** — and I had re-confirmed it earlier the same day, so the
+retraction is mine. The summary block ends `exit 0` / `exit 1` / `exit 2` and
+those propagate: an unknown `PREFLIGHT_ONLY` slug returns 2 when the script runs
+directly. Both "observations" were one measurement error —
+`bash preflight.sh | tail | sed; echo $?` reports SED's status, not the
+script's. Demonstrated: `(exit 1) | tail -1 | sed 's/^//'; echo $?` prints 0
+while `(exit 1); echo $?` prints 1. `exit 1` has been in place since 928e745.
+The lesson is worth more than the entry was: **never measure an exit code
+through a pipe.**
+
+All five UNOWNED env knobs are registered in `lint-env-knobs.allow` with reader
+and reason, and verified under `KNOB_GATE=1` — which is precisely the failure
+the entry predicted for its first strict use. The `-nostdinc++` libstdc++ c++23
+watch note moved from the LLVM block to the GCC pin, where the patch lives.
+
+And the binfmt unit was re-installed and then **tested against the exact
+failure that cost this morning 5.5 hours**: restarting containerd re-ran
+rootless-binfmt.service in the same second, with both emulators answering
+afterwards. `PartOf=containerd.service` works; a daemon restart no longer
+strips foreign-arch emulation.
+
+Final state: preflight 31/31 with a real exit code of 0 (measured directly,
+not through a pipe), 27 unit-test suites / 678 assertions green, shellcheck
+clean over 263 files.
+
 ## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
 
 `buildctl` on this host comes from the `nerdctl-full` bundle — there is no

@@ -429,13 +429,10 @@ either created or exposed.
   assertions are individually blind to a wholesale-stale ship — EXPECT_RUN_ID is
   the one that actually pins it, so the wiring must pass it.
 
-- ✅ **BINFMT-UNIT-REINSTALL — DONE 2026-08-27, and PROVEN.** The unit was
-  re-installed so it carries PartOf=containerd.service, then the fix was
-  tested against the exact failure that cost half a day: `systemctl --user
-  restart containerd` at 19:50:44 re-ran rootless-binfmt.service in the SAME
-  second (it had last run 2026-08-09), and both emulators still answered
-  afterwards (arm64 -> aarch64, riscv64 -> riscv64). A daemon restart no
-  longer silently strips foreign-arch emulation.
+- ✅ **BINFMT-UNIT-REINSTALL — DONE 2026-08-27.** The dev host's unit now
+  carries `PartOf=containerd.service` and the fix was verified against a real
+  containerd restart. The mechanism and the measurement live in AGENTS.md
+  § Prerequisites (QEMU/binfmt) — one owner, not two.
 
 - **XC2-PARTIAL-RUN — a resumed run ships without its ancestry stamp**
   [M, found 2026-08-27 on the shipped :latest-cross] The wrapper build stamps
