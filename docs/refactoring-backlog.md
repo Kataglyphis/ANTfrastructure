@@ -390,33 +390,18 @@ either created or exposed.
   regeneration) the curated SBOM are all green. VULKAN 1.4.357.1 stays blocked
   on the shared-key problem recorded above.
 
-- **F6 — remaining stray SHA pins: RESEARCHED, exact bump-window changes
-  recorded** [S, was M] (a) ABSEIL: codeload-by-commit VERIFIED byte-stable
-  (two sequential fetches, identical sha256 7f4240fe…, matches the pin at
-  versions.env:194) — but GitHub only pledges byte stability "no less than a
-  year", so the durable form is a STREAM hash of the decompressed tar
-  (gunzip -c | sha256sum = ec28d875…); switch the pin to that at the next
-  bump. (b) ANDROID_CMDLINE_TOOLS: Google DOES publish checksums —
-  repository2-3.xml carries sha1 040d3996… for
-  commandlinetools-linux-15859902_latest.zip; verified against the real zip,
-  and our sha256 pin (versions.env:503) matches the same bytes. Bump-window
-  change: cross-check the manifest sha1 when regenerating the sha256 pin.
-  Both edits touch versions.env → pin-bump window only.
-- Small riders — **groomed 2026-08-26, four of six CLOSED** (pyav dead-pin:
-  the pin has a Windows consumer AND, since 9a86d2f, a linux producer;
-  setup-package-image residual pins: closed by 202634c; RUFF_PIN → versions.env
-  (C4): lint-python.sh:33 now reads `${RUFF_VERSION:-0.16.4}`; AP6 decided as
-  ORT_ENABLE_LTO=false, recorded at versions.env:118-133).
-  What actually REMAINS, and note both are HALF-landed — key present, consumer
-  not wired, which is worse than untouched because it reads as done:
-  - **TS1** [S·★★, has teeth] versions.env:812-816 carries
-    APPIMAGETOOL_VERSION + the four SHA256 keys, but packaging-deps.sh:156-174
-    still uses its own case-arm literals. **Bumping APPIMAGETOOL_VERSION alone
-    would break the build.** Wire the consumer, or never bump it alone.
-  - **LLVM_COMMIT** [S·★] versions.env:41 exists and is INERT — build-clang.sh
-    and llvm-cross.sh clone via LLVM_TAG and never read it. Wire it so a
-    non-empty 40-hex commit wins over llvmorg-${LLVM_RELEASE}, or drop the key.
-  - peripheral pins (renovate hints, ollama ALLOW_UNVERIFIED, ghcr token scope).
+- ✅ **F6 — DONE 2026-08-27, both halves.** (a) ABSEIL now pins the
+  DECOMPRESSED-STREAM hash (`ABSEIL_TARBALL_STREAM_SHA256=ec28d875…`), which
+  outlives GitHub's "no less than a year" byte-stability pledge because the
+  gzip container may be re-encoded while the stream cannot. BOTH sides moved
+  together, as the old note demanded: `download_verified_file()` grew a
+  `stream` mode, abseil-headers.sh passes it, and bump_versions.py writes the
+  stream form under the new key via a new `sha256_of_gz_stream()`. Verified
+  end to end — the tool computes exactly the pinned value, the shell accepts
+  the right hash, rejects a wrong one, and rejects the stream hash in FILE
+  mode, so the two modes cannot be confused. (b) ANDROID_CMDLINE_TOOLS needed
+  no change: the repository2-3.xml sha1 cross-check is already written beside
+  the key and the pin sits in the tool's manual-tier allowlist.
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
@@ -431,25 +416,10 @@ either created or exposed.
   while prune-safe + local caches hold. Re-open ONLY on new evidence (another
   cold-rebuild loss). v1 implementation history: reverted twice (fix7 gate
   token; inert-by-default with no coverage) — read the doc before any retry.
-- **SCC1 — SUPERSEDED 2026-08-26: the full switch was ORDERED and DONE**
-  [M·★★] This entry recorded "full switch rejected (owner decision
-  2026-08-17)". The owner REVERSED that on 2026-08-26 and the C/C++ half is
-  implemented (5d94a37, c42091e, d5bafe8): sccache 0.17.0 pinned for linux
-  because the distro 0.13.0 has no SCCACHE_BASEDIRS, a config file baked into
-  Dockerfile.base for the settings sccache cannot take from the environment,
-  and every C/C++ launcher routed through one resolver with ccache as the
-  fallback. What SURVIVES of the hybrid design, and why:
-  - **Rust is still NOT cached.** build-gstreamer-monorepo.sh:681 hard-clears
-    RUSTC_WRAPPER because the sccache SERVER died mid-compile in three separate
-    media rounds, each killing a green gstreamer build at 99%. Revalidate
-    against the bar in docs/build-cache-tiers.md:340 (SCCACHE_IDLE_TIMEOUT=0,
-    error log captured, two consecutive green cross-arch media runs with a
-    non-zero hit rate) before removing the clear.
-  - **nvcc is untouched**, and the Windows lane records that RELEASED sccache
-    breaks the build around nvcc (versions.env, SCCACHE_GIT_REV block) — so
-    "sccache everywhere" must not be read as including nvcc without that
-    evidence being re-examined.
-  - **The webdav cross-machine tier** remains unbuilt.
+- ✅ **SCC1 — SUPERSEDED, closed 2026-08-27.** The entry already recorded that
+  the owner reversed the 2026-08-17 rejection and that the C/C++ half is
+  implemented; it was only ever still open because nobody ticked it. The Rust
+  half followed on 2026-08-27 with the always-sccache decision.
 
 ## E. Waiting on a TRIGGER (not on work)
 

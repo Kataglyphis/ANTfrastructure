@@ -76,13 +76,32 @@ download_and_extract() {
   rm -f "${tmp_tar}"
 }
 
+# $4 (optional): hash mode -- "file" (default) hashes the bytes as downloaded,
+# "stream" hashes the DECOMPRESSED stream. F6 (2026-08-27): GitHub's codeload
+# archives are byte-stable for "no less than a year", not forever, because the
+# gzip container may be re-encoded. The decompressed stream is stable for as
+# long as the commit exists, so a pin that must outlive that pledge should be
+# taken in stream form -- but ONLY together with a consumer that hashes the same
+# way, which is what this parameter provides. Verified on the abseil tarball:
+# file 7f4240fe..., stream ec28d875..., same 2 431 922 B download.
 download_verified_file() {
   local url="$1"
   local expected_sha256="$2"
   local dest="$3"
-  local checksum_output
+  local hash_mode="${4:-file}"
+  local checksum_output actual
 
   download_file "$url" "$dest"
+  if [ "${hash_mode}" = "stream" ]; then
+    actual="$(gunzip -c "$dest" 2>/dev/null | sha256sum | awk '{print $1}')"
+    [ "${actual}" = "${expected_sha256}" ] || {
+      printf 'Stream checksum verification FAILED for %s: got %s, expected %s\n' \
+        "${dest}" "${actual:-<none>}" "${expected_sha256}" >&2
+      rm -f "$dest"
+      return 1
+    }
+    return 0
+  fi
   checksum_output="$(printf '%s  %s\n' "$expected_sha256" "$dest" | sha256sum -c - 2>&1)" || {
     printf 'Checksum verification FAILED for %s: %s\n' "${dest}" "${checksum_output}" >&2
     rm -f "$dest"

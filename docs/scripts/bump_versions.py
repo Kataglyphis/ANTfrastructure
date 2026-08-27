@@ -90,6 +90,24 @@ def http_header(url: str, header: str, accept: str, auth: str | None = None) -> 
 _EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
 
+def sha256_of_gz_stream(url: str) -> str:
+    """Hash the DECOMPRESSED stream of a .tar.gz (F6, 2026-08-27).
+
+    GitHub pledges codeload archive byte-stability for "no less than a year",
+    not forever, because the gzip container may be re-encoded. The decompressed
+    stream is stable for as long as the commit exists, so pins meant to outlive
+    that pledge are taken this way -- matched by download_verified_file()'s
+    "stream" mode on the consuming side. Never change one side alone.
+    """
+    import gzip
+    h = hashlib.sha256()
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=600) as r:
+        with gzip.GzipFile(fileobj=r) as gz:
+            for chunk in iter(lambda: gz.read(1 << 20), b""):
+                h.update(chunk)
+    return h.hexdigest()
+
+
 def sha256_of_url(url: str) -> str:
     """Stream-download and hash (for artifacts without a published digest)."""
     h = hashlib.sha256()
@@ -622,16 +640,16 @@ def spec_abseil(cur):
     """F6(a): ABSEIL_VERSION rides with TWO paired pins (abseil-headers.sh):
     ABSEIL_COMMIT — the tag resolved to an immutable SHA, because the
     /archive/<commit>.tar.gz form is byte-stable while the tag form is not —
-    and ABSEIL_TARBALL_SHA256, the byte hash of that archive (see the
-    stream-hash note next to the key in versions.env before changing HOW it
-    hashes). Refresh both in step so a version bump can't freeze them stale.
+    and ABSEIL_TARBALL_STREAM_SHA256, the hash of the DECOMPRESSED stream
+    (F6, 2026-08-27) -- durable past GitHub's one-year byte-stability pledge,
+    and matched by download_verified_file()'s "stream" mode. Refresh both in step so a version bump can't freeze them stale.
     REPORT-tier like before: the tarball feeds cross-compile fallbacks."""
     v = gh_latest("abseil/abseil-cpp")  # tags are bare datestamps (20260817.0)
     extras = {}
     if v != cur and WRITE_MODE:
         commit = ls_remote_tag_commit("abseil/abseil-cpp", v)
         extras["ABSEIL_COMMIT"] = commit
-        extras["ABSEIL_TARBALL_SHA256"] = sha256_of_url(
+        extras["ABSEIL_TARBALL_STREAM_SHA256"] = sha256_of_gz_stream(
             f"https://github.com/abseil/abseil-cpp/archive/{commit}.tar.gz")
     return v, extras
 
