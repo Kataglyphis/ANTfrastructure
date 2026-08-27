@@ -34,7 +34,38 @@ Linux/cross-lane only.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
-## ✅ WAVE-6 SHIPPED 2026-08-24 (the gate-truth build — three blind gates now actually work)
+## ✅ SHIPPED 2026-08-27 — and the audit that followed it
+
+`:latest-cross` = index `a26bf2f4dbc8`, children amd64 `a0d1a144` / arm64
+`2d354459` / riscv64 `7e0ed041`, run id `20260827-073226-d491cb10`. Freshness
+VERIFIED against the registry: every index child matches its per-arch tag and
+all three share this run's id.
+
+The ship itself needed two rescues. The chain died after 5.5 hours on a QEMU
+binfmt registration that the 2026-08-26 daemon restart had silently taken with
+it — the guard for exactly that existed but sat AFTER the builds it protects.
+Resumed with `--only runtime`, it then died again on an ARCH-PARITY arm that
+correctly reported the IREE compiler wheel the same day's IREE fix had removed.
+
+**Then two audits read the result rather than the code, and between them found
+24 defects** — of which 22 were fixed, one refuted, and one retracted as my own
+measurement error. The ones that had SHIPPED: Dockerfile.package expanded two
+prefixes to empty inside their own ENV, so PATH carried `/bin` twice and
+GST_PLUGIN_PATH pointed at `/lib/gstreamer-1.0`; the Android ONNX Runtime
+carried Microsoft's 1DS telemetry because only the native lane passed
+`--no_telemetry`; amd64 alone shipped a setuid-root gst-ptp-helper; Node.js was
+an alpha its own npm refuses; and TVM had been missing from both cross arches
+behind four stacked causes.
+
+Three gates were reporting success over things they never tested, and are
+fixed: `check_ffmpeg` fell back to an absolute path exactly when PATH
+reachability broke, the app-wheel smoke printed one identical PASS over 15/15,
+14/15 and 12/15, and the shipped-content byte gate hid behind a boot smoke so
+riscv64's wrapper reached the index unchecked.
+
+### The previous entry, for the record
+
+**WAVE-6 SHIPPED 2026-08-24** (the gate-truth build — three blind gates now actually work)
 
 `:latest-cross` = amd64 `a25a38c5` / arm64 `bd9953a9` / riscv64 `d3710282`.
 Run id `20260823-223111-d0336283` — and for the FIRST time that is a
@@ -64,7 +95,25 @@ on the new bytes. Runtime smokes 0 failures x3.
 riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
 the ship whose post-audit found the three gates above.
 
-## 🎯 CLOSURE WINDOW 3 — OPEN (declared 2026-08-24): pre-build wave, then a FULL validating rebuild
+## 🎯 CLOSURE WINDOW 3 — PRE-BUILD WAVE DONE 2026-08-27, rebuild still owed
+
+STATUS as of 2026-08-27: the pre-build wave is worked through. Preflight is
+32/32 with a real exit code of 0, 27 unit suites / 677 assertions green,
+shellcheck clean over 263 files, and the backlog is down from 46 open entries
+to 30. versions.env stays OPEN until the validating rebuild runs.
+
+Two fixes in this wave are proven by EXECUTION, not inspection: TVM now
+compiles and stages its arm64 wheels (four stacked causes, each only visible
+once the one before it was fixed), and `PartOf=containerd.service` was tested
+against a real `systemctl --user restart containerd` — the unit re-ran in the
+same second and both emulators still answered, so the failure that cost this
+morning 5.5 hours now self-heals.
+
+What the rebuild still has to prove is everything static analysis cannot: today
+showed three separate times that a defect only becomes visible after the one in
+front of it is gone.
+
+### Original declaration (2026-08-24)
 
 The operator has committed to a fresh build, so the versions.env lock is OPEN
 and build-validated items are IN SCOPE. Work the wave in this order; the
