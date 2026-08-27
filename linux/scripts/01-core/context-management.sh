@@ -115,7 +115,37 @@ runtime_prepare_local_context_chain() {
     return 0
   fi
   mkdir -p "${RUNTIME_CONTEXT_ROOT}"
+  _runtime_sweep_orphaned_contexts
   RUNTIME_CONTEXT_WORKDIR="$(mktemp -d "${RUNTIME_CONTEXT_ROOT}/runtime-flow.XXXXXX")"
+}
+
+# Reclaim stage-context trees left behind by runs that never got to clean up.
+#
+# runtime_cleanup_local_context_chain only removes the workdir THIS process
+# mktemp'd, so anything killed hard -- SIGKILL, an OOM, or the chain's own
+# `chain_terminate_descendants ... KILL` -- leaks its entire tree. Found
+# 2026-08-27 on the dev host: runtime-flow.c3d3B6, dated 2026-07-25, holding a
+# full base-amd64 rootfs at 3.3 GB, survived 33 days and every disk guard on a
+# filesystem sitting at 93% used. A leak can be far larger than that: the
+# runtime stage holds a base rootfs plus a package OCI layout PER ARCH, which
+# build-cross-chain.sh itself budgets at ~30 GB.
+#
+# Deliberately age-based rather than "delete every sibling": a concurrent
+# second chain has a young workdir of its own and must not be robbed. Anything
+# older than RUNTIME_CONTEXT_KEEP_HOURS cannot belong to a live run, because a
+# run that lived that long would have refreshed its contexts.
+_runtime_sweep_orphaned_contexts() {
+  local keep_hours="${RUNTIME_CONTEXT_KEEP_HOURS:-24}"
+  local d freed=0
+  [ -d "${RUNTIME_CONTEXT_ROOT}" ] || return 0
+  while IFS= read -r d; do
+    [ -n "${d}" ] || continue
+    [ "${d}" = "${RUNTIME_CONTEXT_WORKDIR:-}" ] && continue
+    log "[context] reclaiming orphaned stage-context $(basename "${d}") ($(du -sh "${d}" 2>/dev/null | cut -f1 || true), older than ${keep_hours}h)"
+    rm -rf "${d}" && freed=$((freed + 1))
+  done < <(find "${RUNTIME_CONTEXT_ROOT}" -mindepth 1 -maxdepth 1 -type d \
+             -name 'runtime-flow.*' -mmin "+$((keep_hours * 60))" 2>/dev/null || true)
+  [ "${freed}" -eq 0 ] || log "[context] reclaimed ${freed} orphaned stage-context tree(s)"
 }
 
 runtime_cleanup_local_context_chain() {
