@@ -54,7 +54,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-Node.js-2c735d35",
       "name": "Node.js",
-      "versionInfo": "26.8.0",
+      "versionInfo": "26.8.1",
       "downloadLocation": "https://nodejs.org/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
