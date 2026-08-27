@@ -100,10 +100,17 @@ function Invoke-SourcePatch {
         } else {
             $patchExe = (Get-Command patch.exe -ErrorAction SilentlyContinue).Source
             if (-not $patchExe) { throw "patch.exe not found and source is not a git repo -- cannot apply $PatchFile" }
+            # -i is LOAD-BEARING. A bare path is the file to PATCH, not the
+            # patch; without -i, patch.exe reads an empty patch from stdin,
+            # changes nothing and exits 0 -- so the reverse-check below reads as
+            # "already applied" and EVERY patch is silently skipped. Measured
+            # 2026-08-27 on the LLVM tarball, which is the first non-git source
+            # tree to use this branch (OpenCV and contrib are git clones and
+            # take the git apply path above, which is why this never showed).
             $tool         = 'patch.exe'
-            $reverseCheck = { & $patchExe $pFlag --dry-run --reverse $PatchFile 2>&1 }
-            $forwardCheck = { & $patchExe $pFlag --dry-run $PatchFile 2>&1 }
-            $applyPatch   = { & $patchExe $pFlag $PatchFile 2>&1 }
+            $reverseCheck = { & $patchExe $pFlag --dry-run --reverse -i $PatchFile 2>&1 }
+            $forwardCheck = { & $patchExe $pFlag --dry-run -i $PatchFile 2>&1 }
+            $applyPatch   = { & $patchExe $pFlag -i $PatchFile 2>&1 }
         }
 
         $null = & $reverseCheck

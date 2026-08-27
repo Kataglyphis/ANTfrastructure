@@ -1,0 +1,48 @@
+From c03f827dc49f51f79465f363648d40cdcbcb137c Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Thu, 27 Aug 2026 21:06:53 +0200
+Subject: [PATCH] [AArch64] Count the async-EH nop that follows an EH_LABEL
+
+Under /EHa the AsmPrinter emits a nop after an EH_LABEL when the next
+instruction can fault, so the fault lands in the right EH region.
+getInstSizeInBytes says EH_LABEL is a meta-instruction and reports 0, so
+every block-size estimate on the MIR level is 4 bytes short per label.
+
+That is not cosmetic on AArch64. BranchRelaxation and
+AArch64CompressJumpTables both pick an encoding from that estimate, and
+both then get contradicted by the assembler:
+
+    error: fixup value out of range
+    error: value evaluated as <N> is out of range.
+
+Neither diagnostic names a source location or an instruction.
+
+Assisted-by: Claude (Anthropic)
+---
+ llvm/lib/Target/AArch64/AArch64InstrInfo.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+index 43aab1400e81..aa8ea56e6801 100644
+--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
++++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+@@ -216,6 +216,16 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
+       return getInlineAsmLength(MI.getOperand(0).getSymbolName(), MAI);
+   }
+ 
++  // Under async EH the AsmPrinter emits a nop after an EH_LABEL when the next
++  // instruction can fault, so this has to come before the meta check below.
++  if (MI.getOpcode() == TargetOpcode::EH_LABEL &&
++      F.getParent()->getModuleFlag("eh-asynch")) {
++    auto Next = std::next(MI.getIterator());
++    if (Next != MBB.end() &&
++        (Next->mayLoadOrStore() || Next->mayRaiseFPException()))
++      return 4;
++  }
++
+   // Meta-instructions emit no code.
+   if (MI.isMetaInstruction())
+     return 0;
+-- 
+2.55.0.windows.3
+

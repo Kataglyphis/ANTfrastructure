@@ -52,3 +52,32 @@ RUN --mount=type=bind,source=windows/scripts/build/build-toolchain-all.ps1,targe
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
     & 'C:\bkmnt\build-toolchain-all.ps1'
+
+# ── clang/LLVM at the pin, plus the two AArch64 instruction-size fixes ───────
+# OPT-IN (BUILD_PATCHED_LLVM=1). This rebuilds clang from the SAME pinned
+# 23.1.0 tarball the TVM stage already uses and applies two upstream commits
+# (llvm/llvm-project#219275 and #219276) that remove the OpenCV/protobuf aarch64
+# aborts -- see docs/windows-refactor-backlog.md § #135 (a2).
+#
+# Off by default on purpose: it is a large compile, and until those PRs land the
+# lane is still correct with the workarounds in build-opencv-from-source.ps1.
+# Turning it ON is what lets those workarounds be tested for removal.
+#
+# The banner still reads 23.1.0, so verify-toolchain.ps1's provenance gate
+# passes unchanged and every clang-cl-shaped source patch stays valid -- which
+# is exactly why this builds the release plus patches and not an LLVM main
+# snapshot.
+FROM built AS patched-llvm
+ARG BUILD_PATCHED_LLVM=0
+RUN --mount=type=bind,source=windows/scripts/build/build-llvm-from-source.ps1,target=C:\bkmnt\build-llvm-from-source.ps1 `
+    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/patches/llvm,target=C:\bkmnt\patches\llvm `
+    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
+    if ($env:BUILD_PATCHED_LLVM -eq '1') { & 'C:\bkmnt\build-llvm-from-source.ps1' -SkipIfPresent } `
+    else { Write-Host 'BUILD_PATCHED_LLVM != 1 - keeping the scoop clang-cl' }
+
+# Ahead of the scoop shims: every build script resolves the compiler by bare
+# name ($env:CC = 'clang-cl', --cc=clang-cl), so shadowing is the whole
+# integration and no build script changes. Harmless when the stage was skipped,
+# because the directory simply does not exist.
+ENV PATH="C:\llvm-patched\bin;$PATH"

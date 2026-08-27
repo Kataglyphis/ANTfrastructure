@@ -1,0 +1,43 @@
+From 40f1b36c642e7e5ea552b82976a2e5e31a0313d8 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Thu, 27 Aug 2026 21:07:22 +0200
+Subject: [PATCH] [AArch64] Report SEH pseudos as zero-size
+
+The SEH_* pseudos only emit unwind opcodes into .xdata, never a code
+byte. They are not meta-instructions, so getInstSizeInBytes fell through
+to the default case and reported each one as a normal 4-byte
+instruction. A prologue emits one per saved register, so on Windows
+every function's size estimate was inflated.
+
+This one is conservative, not a miscompile: BranchRelaxation relaxes
+branches it does not need to, and AArch64CompressJumpTables leaves jump
+tables wider than they have to be.
+
+Size = 0 in AArch64InstrInfo.td cannot express this. The default case
+tests `if (Desc.getSize())`, so a declared zero reads as "unset" and
+still gives 4. I tried that first and measured no change at all.
+
+Assisted-by: Claude (Anthropic)
+---
+ llvm/lib/Target/AArch64/AArch64InstrInfo.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+index 43aab1400e81..673ee8bd5949 100644
+--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
++++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+@@ -220,6 +220,11 @@ unsigned AArch64InstrInfo::getInstSizeInBytes(const MachineInstr &MI) const {
+   if (MI.isMetaInstruction())
+     return 0;
+ 
++  // SEH pseudos only emit unwind opcodes into .xdata. Size = 0 in the .td does
++  // not work: the default case below treats getSize() == 0 as "unset".
++  if (isSEHInstruction(MI))
++    return 0;
++
+   // FIXME: We currently only handle pseudoinstructions that don't get expanded
+   //        before the assembly printer.
+   unsigned NumBytes = 0;
+-- 
+2.55.0.windows.3
+

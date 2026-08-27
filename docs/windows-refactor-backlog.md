@@ -549,11 +549,74 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `aarch64-pc-windows-msvc` under `/EHa` — MSVC STL, MSVC EH, different functions, different jump
   tables. **That gap is the whole remaining hypothesis space, and closing it needs the container.**
 
-  **The one command that would settle it.** No patched clang is needed in the container — the
-  scoop clang-cl can emit the IR, and the instrumented `llc` here does the codegen: add
-  `-Xclang -emit-llvm -S` to the ninja command for `descriptor.cc`, keep the `.ll`, and run it
-  through `D:\llvm-build\bin\llc.exe -mtriple=aarch64-pc-windows-msvc -filetype=obj`. If the
-  under-count is real it aborts naming the instruction, and the fix is a one-line `Size`.
+  ### 2026-08-27 — (a2) SOLVED. `EH_LABEL` under `/EHa` emits a 4-byte nop counted as zero
+
+  **Root cause.** `AsmPrinter::emitFunctionBody()`, in the `EH_LABEL` case, emits a **NOP** when the
+  module flag `eh-asynch` is set and the next instruction may load/store or raise an FP exception —
+  so an async fault lands in the right EH region. `EH_LABEL` is a meta-instruction, so
+  `getInstSizeInBytes` returns **0** for it while **4 bytes** are emitted. Every consumer of
+  MIR-level block sizes is then short by 4 bytes per such label. That is the under-count this entry
+  predicted, and its magnitude (4–116 bytes) is exactly 1–29 labels.
+
+  **How it was isolated, and where the earlier corpora went wrong.** The whole hunt over LLVM's
+  tests, synthetic IR and 598 real modules missed it for one reason: that IR was produced by clang
+  targeting `x86_64-w64-windows-gnu`, which never sets `eh-asynch`. The lane compiles with `/EHa`.
+  Flag bisection on the real TUs shows **`/EHa` is the sole trigger** — `/EHsc` plus any combination
+  of `/Gy /Oi /bigobj /fp:precise -TP` compiles clean.
+
+  **Measured A/B, one binary, same bitcode, toggling only the fix:**
+
+  | TU | fix OFF | fix ON |
+  |---|---|---|
+  | `descriptor.cc` | `value evaluated as` **258**, **281** | clean, 1,457,567-byte object |
+  | `generated_message_reflection.cc` | **284** | clean, 335,461-byte object |
+  | `wire_format.cc` | **260** | clean, 233,801-byte object |
+
+  Those are this entry's own recorded values. **The fix is committed** as `f072f90a9e37` on
+  `aarch64-instsize-verify` (local, unpushed); `check-llvm-codegen-aarch64` 4197 passed / 0 failed.
+
+  **Reproducing it costs ~10 seconds, not a lane run.** The
+  `bk-windows-media-core-opencv-arm64` image already carries clang-cl 23.1.0, MSVC and the ARM64
+  SDK; `buildctl` reaches buildkitd over `npipe:////./pipe/buildkitd` **without elevation**. Copy
+  OpenCV's `3rdparty/protobuf/src` into a build context and compile one TU with
+  `--target=aarch64-pc-windows-msvc /O2 /Ob2 /EHa`. Dockerfiles kept in `D:\pb-probe`.
+
+  ### 2026-08-27 — a way to get the fixes into the lane without waiting for a release
+
+  Both fixes **apply cleanly to the pinned `llvmorg-23.1.0`** (verified with
+  `git apply --check`), which is what makes this cheap. Building the pinned release
+  plus the two patches keeps the banner at `clang version 23.1.0`, so
+  `verify-toolchain.ps1`'s provenance gate passes with `LLVM_WINDOWS_VERSION`
+  untouched and every clang-cl-shaped source patch (`#129` probes, `mlasi.h`,
+  `softfloat`) stays valid. Moving to LLVM `main` would disturb all of that for no
+  extra benefit — the fixes are the only delta that matters.
+
+  * `windows/scripts/patches/llvm/001-aarch64-ehlabel-size.patch` and
+    `002-aarch64-seh-pseudo-size.patch` — the two upstream commits
+    ([llvm#219275](https://github.com/llvm/llvm-project/pull/219275),
+    [llvm#219276](https://github.com/llvm/llvm-project/pull/219276)).
+  * `windows/scripts/build/build-llvm-from-source.ps1` — downloads the SAME pinned
+    tarball and SHA256 the TVM stage already uses (so the no-unpinned-download rule,
+    #47, is satisfied by a pin already in the repo), applies both patches through
+    `Invoke-SourcePatch`, builds clang+lld, and **throws if the patched source does
+    not carry `eh-asynch`** — a silently unpatched compiler would rebuild the exact
+    bug this stage removes and only resurface hours later in the OpenCV stage.
+  * `Dockerfile.toolchain-builder` gains an **opt-in** `patched-llvm` stage
+    (`BUILD_PATCHED_LLVM=1`, off by default) and prepends `C:\llvm-patched\bin` to
+    `PATH`. That is the entire integration: every build script resolves the compiler
+    by bare name (`$env:CC = 'clang-cl'`, `--cc=clang-cl`), so shadowing the scoop
+    shim needs no build-script change.
+
+  **Not yet run end-to-end.** The stage is written and lints clean, but no full lane
+  build has used it — and one cannot happen until the runhcs shim patch is
+  redeployed after the Stevedore upgrade, or heavy media layers die at finalize with
+  `ExportLayer 0x3` after paying the whole compile.
+
+  **Strong open hypothesis — this may also be (a1), i.e. `/Ob1`.** `BranchRelaxation` consumes the
+  same size function, `median_blur.dispatch.cpp` and `multiview_calibration.cpp` are also compiled
+  with `/EHa`, and the miss there was ~150 bytes ≈ 37 labels. If so this single fix retires **both**
+  workarounds and llvm#202716 is a separate, additional defect rather than the explanation. Test it
+  the same way before assuming either.
 
   **Local build assets (not in this repo):** `D:\GitHub\llvm-project` (blobless clone) and
   `D:\llvm-build` (`llc`/`llvm-objdump`/`llvm-nm`, Release+assertions, AArch64-only, built with the
