@@ -764,6 +764,11 @@ build_torchvision_wheel() {
 # IREE is required on every arch — so each stage dumps its log tail before
 # returning. This cannot be validated on the amd64 dev host.
 build_iree_wheels() {
+    # Wheel projects this run expects. Set by the cross branch (runtime-only
+    # unless IREE_CROSS_BUILD_COMPILER=ON); the native branch leaves it empty
+    # and the packaging step defaults to both. Declared here so `set -u` does
+    # not trip on the native path.
+    local -a iree_wheel_projects=()
     local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/iree"
     local host_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host"
     local host_install="${host_build}/install"
@@ -945,8 +950,29 @@ build_iree_wheels() {
         for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
         for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
 
-        # Tools the target stage actually imports from IREE_HOST_BIN_DIR (see above).
-        local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli)
+        # Tools the target stage needs from IREE_HOST_BIN_DIR.
+        #
+        # iree-tblgen IS REQUIRED HERE (regression fix 2026-08-27). The original
+        # list held only the two LLVM-free codegen helpers, on the reading that
+        # tools/CMakeLists.txt gates host-tool imports behind
+        # `IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER` and our target sets
+        # COMPILER=ON, so nothing else is imported. That is true -- and it is
+        # exactly the problem: nothing being imported means the TARGET build
+        # builds its own iree-tblgen, FOR THE TARGET ARCH, and then tries to RUN
+        # it during the build. On a cross lane that is an arm64 binary on an
+        # amd64 host:
+        #     /…/iree-build-target/tools/iree-tblgen: Exec format error
+        #     FAILED: [code=126] …/VMOpEncoder.cpp.inc
+        # It cannot show up on amd64, where host and target are the same arch --
+        # which is why the amd64 media stage passed cleanly and arm64 died.
+        #
+        # Listing it here makes the OFF pass fail its own check and escalate to
+        # COMPILER=ON, which is precisely what the fallback loop exists for. The
+        # cost is that CROSS lanes go back to building the bundled LLVM in the
+        # host stage; the native lane keeps the win. A cheap COMPILER=OFF probe
+        # first is still worth it: if upstream ever installs tblgen without the
+        # compiler, the saving returns automatically and nothing needs editing.
+        local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli iree-tblgen)
         local host_stage_ok=0 host_compiler_mode="" host_tool="" host_tools_missing=""
         for host_compiler_mode in OFF ON; do
             rm -rf "${host_build}" "${host_install}"
@@ -1026,6 +1052,27 @@ build_iree_wheels() {
         # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
         # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
         # bytecode compilation, which the app's check_iree uses, is unaffected.
+        # CROSS TARGET IS RUNTIME-ONLY (2026-08-27, restored). IREE_BUILD_COMPILER
+        # is OFF here, and that is not a preference -- it is the only configuration
+        # upstream supports for a cross target.
+        #
+        # IREE imports host tools only under
+        #     if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)  (tools/CMakeLists.txt)
+        # so with COMPILER=ON the target IGNORES IREE_HOST_BIN_DIR entirely, builds
+        # its own iree-tblgen FOR THE TARGET ARCH, and then runs it during the build:
+        #     /.../iree-build-target/tools/iree-tblgen: Exec format error
+        #     FAILED: [code=126] .../Dialect/VM/IR/VMOpEncoder.cpp.inc
+        # Proven NOT to be a host-side problem: the host stage completed with
+        # COMPILER=ON and reported "tools present: iree-c-embed-data iree-flatcc-cli
+        # iree-tblgen", and the target still used its own. Upstream's build_riscv.sh
+        # sets the target to COMPILER=OFF for exactly this reason. The same class is
+        # already documented below for iree-compile (IREE_OUTPUT_FORMAT_C=OFF).
+        #
+        # WHAT THIS COSTS, plainly: arm64 and riscv64 ship the IREE RUNTIME wheel but
+        # NOT iree_base_compiler. Commit 9b238e7 wanted both on cross; it set the flag
+        # without providing a native tblgen, and that configuration cannot build.
+        # amd64 is NATIVE, never enters this branch, and keeps both wheels.
+        # IREE_CROSS_BUILD_COMPILER=ON re-tries it once IREE supports the combination.
         toolchain_file="$(write_cross_cmake_toolchain_file || true)"
         [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
         append_common_cross_cmake_args cmake_args
@@ -1076,13 +1123,21 @@ build_iree_wheels() {
         fi
 
         rm -rf "${target_build}"
+        # Which wheel projects this configuration will actually produce.
+        # The cross target is runtime-only unless IREE_CROSS_BUILD_COMPILER=ON,
+        # so demanding a compiler wheel afterwards would fail a build that did
+        # exactly what it was told to do.
+        case "${IREE_CROSS_BUILD_COMPILER:-OFF}" in
+          [Oo][Nn]|1|[Tt][Rr][Uu][Ee]) iree_wheel_projects=(compiler runtime) ;;
+          *)                           iree_wheel_projects=(runtime) ;;
+        esac
         if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
                 -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
                 "${cmake_args[@]}" \
                 "${ccache_cmake_args[@]}" \
                 -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
                 -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-                -DIREE_BUILD_COMPILER=ON \
+                -DIREE_BUILD_COMPILER="${IREE_CROSS_BUILD_COMPILER:-OFF}" \
                 -DIREE_BUILD_PYTHON_BINDINGS=ON \
                 -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
                 -DIREE_BUILD_SAMPLES=OFF \
@@ -1151,12 +1206,15 @@ build_iree_wheels() {
         fi
     fi
 
-    # The build tree exposes compiler/ and runtime/ wheel projects (COMPILER=ON
-    # cross-builds LLVM/MLIR for riscv64 so iree-compile + iree.compiler ship too,
-    # not just iree.runtime). Package BOTH — both are REQUIRED on riscv64.
+    # Which wheel projects the build tree actually exposes depends on how the
+    # target was configured. The NATIVE branch builds both; the CROSS branch is
+    # runtime-only (IREE ignores IREE_HOST_BIN_DIR while COMPILER=ON and then
+    # cannot cross-build its own tblgen — see the note at the cross configure).
+    # Default to both so the native path is unchanged.
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     local _proj _pkg
-    for _proj in compiler runtime; do
+    [ "${#iree_wheel_projects[@]}" -gt 0 ] || iree_wheel_projects=(compiler runtime)
+    for _proj in "${iree_wheel_projects[@]}"; do
         _pkg="iree_base_${_proj}"
         if [ ! -d "${target_build}/${_proj}" ]; then
             warn "IREE target build produced no ${_proj}/ wheel project"; return 1
@@ -1174,8 +1232,8 @@ build_iree_wheels() {
     shopt -s nullglob
     local -a wheels=("${dist_dir}"/iree_base_compiler-*.whl "${dist_dir}"/iree_base_runtime-*.whl "${dist_dir}"/iree-*.whl)
     shopt -u nullglob
-    if [ "${#wheels[@]}" -lt 2 ]; then
-        warn "IREE build did not produce BOTH compiler+runtime wheels (got ${#wheels[@]})"; return 1
+    if [ "${#wheels[@]}" -lt "${#iree_wheel_projects[@]}" ]; then
+        warn "IREE build produced ${#wheels[@]} wheel(s), expected ${#iree_wheel_projects[@]} (${iree_wheel_projects[*]})"; return 1
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
     log "Built IREE wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"

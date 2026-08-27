@@ -670,15 +670,38 @@ build_gstreamer_monorepo() {
   # stale value into a later native/amd64 call in the same shell process.
   local gtk_feature="enabled"
 
-  # SCCACHE-RUST OFF (2026-08-20): the toolchain cargo config wires sccache as
+  # SCCACHE-RUST: OFF 2026-08-20, RE-ENABLED 2026-08-27 — but GUARDED.
+  #
+  # The 2026-08-20 note read: the toolchain cargo config wires sccache as
   # rustc-wrapper; its in-container server died mid-compile in THREE separate
-  # media rounds this session ("Failed to send/receive data from server" /
-  # "No such file or directory" fatals on trivial crates) and killed otherwise
-  # green gstreamer builds at 99%. Empty RUSTC_WRAPPER beats the cargo config
-  # (env > config precedence; empty = no wrapper). ccache keeps covering
-  # C/C++; sccache-for-rust returns via the controlled ENABLE_SCCACHE_RUST /
-  # SCC1 validation, not as a silent default.
-  export RUSTC_WRAPPER=""
+  # media rounds ("Failed to send/receive data from server" / "No such file or
+  # directory" fatals on trivial crates) and killed otherwise green gstreamer
+  # builds at 99%.
+  #
+  # Read that signature again: "No such file or directory", server dying
+  # mid-build. That is the SAME failure the C/C++ side spent 2026-08-26 chasing,
+  # and its cause is now known and fixed: sccache's server is located by a fixed
+  # TCP port, which is not container-local, so concurrent BuildKit steps reached
+  # each OTHER's server — one that cannot see their files. The cure is
+  # SCCACHE_SERVER_UDS (a filesystem path is private by construction); it took
+  # the media stage from 2359 sccache faults to ZERO.
+  #
+  # So Rust caching comes back — but pointed at the GUARDED launcher rather than
+  # bare sccache. cargo invokes "$RUSTC_WRAPPER rustc <args>"; the launcher runs
+  # sccache and, if sccache fails on its OWN account, execs rustc directly. A
+  # server hiccup therefore costs cache hits, never a build at 99% again. Set
+  # RUSTC_WRAPPER="" in the environment to go back to uncached Rust.
+  if [ -z "${RUSTC_WRAPPER+x}" ]; then
+    for _rw in /opt/scripts/core/sccache-launcher.sh; do
+      if [ -x "${_rw}" ]; then
+        export RUSTC_WRAPPER="${_rw}"
+        break
+      fi
+    done
+    # No guarded launcher reachable -> stay uncached rather than risk bare
+    # sccache, which is what produced the 99% failures.
+    export RUSTC_WRAPPER="${RUSTC_WRAPPER:-}"
+  fi
 
   _gst_monorepo_env_setup
   _gst_monorepo_python_config
