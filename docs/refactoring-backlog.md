@@ -302,7 +302,7 @@ either created or exposed.
 - **TG1 residual — fuller toolchain-closure trim** [M·★★] llvm-cross/
   llvm-validate lazy + true per-RUN closures; no COPY fallback → needs a
   per-RUN mount audit + real toolchain rebuild.
-- **TG3 residual — collapse the two toolchain RUNs** [S·★] RUN-3d recompiles
+- **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD — see phase 3: "implement + adversarial review + the rebuild as the only accepted proof"] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
 - **LOG2 open half — build the wasm asyncify/jspi flavors** [S/M·★★] so
   onnxruntime-web ships its webgpu JS backend (exclusion is documented in
@@ -352,16 +352,18 @@ either created or exposed.
   literal gate — each shipped and reviewed; the rebuild is their proof.
   Fold them with log quotes in the post-ship evidence audit.
 
-- **TS8 + shared apt-source include** [S] build_python.sh hand-rolls the 4th
-  apt-sources copy; one include, five consumers (nvidia/amd/android too).
-- **DUP2 residual — SETTLED 2026-08-24, one operator habit remains** [S·★]
-  the gate IS wired: preflight.sh:140 runs verify-arg-consistency.sh as the
-  `arg-consistency` check, and with the C3 exemption it passes rc=0 with 32
-  sites scanned. The evidence audit's "chain never runs it" observation is
-  BY DESIGN — build-cross-chain.sh performs only the disk preflight, the
-  full gate battery is the operator-run preflight.sh. Residual: nothing to
-  build — just run preflight.sh before launch (AGENTS.md already says so).
-  Delete on the next groom if no counter-evidence appears.
+- ✅ **TS8 — ALREADY DONE, closed 2026-08-27.** Verified in the source rather
+  than assumed: build_python.sh calls `ubuntu_write_deb822_source` from the
+  shared ubuntu-mirror.sh writer, with a comment recording that the hand-rolled
+  stanzas are gone and the output is byte-identical. Eight files now use that
+  writer. The entry had simply gone stale.
+
+- ✅ **DUP2 — deleted 2026-08-27 as its own text instructed.** The entry ended
+  "Residual: nothing to build — just run preflight.sh before launch (AGENTS.md
+  already says so). Delete on the next groom if no counter-evidence appears."
+  This is that groom, preflight ran repeatedly today at 32/32, and no
+  counter-evidence appeared.
+
 - **BKD1 — buildkitd session rot: RESEARCHED, no upstream fix exists** [M·★,
   downgraded from ★★ 2026-08-24; host figures refreshed 2026-08-26] host runs
   buildkit **v0.31.2** (nerdctl 2.3.5, containerd 2.3.3) since the 2026-08-26
