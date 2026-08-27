@@ -49,6 +49,50 @@ A 12-agent documentation audit (every finding adversarially refuted, 71 raw ->
 **40 confirmed**) is recorded in the backlog. `docs/build-cache-tiers.md` alone
 carries 11 and still argues from the ccache world.
 
+**The runtime stage died on a missing emulator, and the guard that should have
+caught it sat after the builds it protects.** The 2026-08-26 nerdctl-full
+upgrade restarted the rootless daemons; the QEMU binfmt registration lives in
+the rootlesskit namespace and went with it. Media and android never noticed —
+they cross-compile on amd64. Both foreign-arch wrappers then died with a
+BuildKit step that printed nothing at all. `ensure_foreign_binfmt()` already
+existed and was correct; it was called from the SMOKE block. Moved before the
+build loop and upgraded from best-effort registration to a hard verify that
+looks inside the rootlesskit namespace, because the host's own
+`/proc/sys/fs/binfmt_misc` shows nothing even on a healthy machine.
+
+The durable cause was one line deeper. `setup-rootless-binfmt.sh
+--install-service` writes a unit with `After=`/`Wants=` only — startup ordering,
+no restart propagation — and `Type=oneshot` + `RemainAfterExit=yes` makes
+systemd treat it as permanently done. On this host the unit last ran
+2026-08-09 while containerd restarted 2026-08-26: enabled, "successful", and
+its effect gone for seventeen days. The template now sets
+`PartOf=containerd.service`.
+
+**The index was never gated for freshness.** `verify-shipped-wrapper.sh` gates
+each wrapper's content and the chain runs it; the only manifest check was
+`nerdctl manifest inspect >/dev/null`. New
+`linux/scripts/verify-manifest-freshness.sh` asserts every index child equals
+its per-arch tag and that all children share one run-id. Sensitivity-checked
+against a genuinely stale live index, which showed both assertions are
+individually blind: child and tag agreed because both were old, and the run-ids
+matched because all three came from the previous run. Agreement is not
+freshness; only `EXPECT_RUN_ID` pins it. Not yet wired into the chain.
+
+**Gate hygiene, three findings.** The shellcheck sweep never covered
+`linux/host-config` — seven scripts outside it, including the one that replaces
+the container daemon and the two that delete from the registry (263 files now).
+`test-compiler-cache-launcher.sh` had been inert since the day after it landed
+(`_COMMON_SH_DIR` unset under `set -u`), so the suite written to catch a stdout
+leak caught nothing; fixed and extended with the guarded-launcher preference
+case. And the secret scan was reading 5.3 GB of gitignored build logs, where
+its only nine "leaks" were one public GPG-key checksum — scoped out, 2.42 GB
+and clean.
+
+Documentation: the 40 confirmed defects from the audit are repaired (see
+above), and `nerdctl compose build webserver` turned out to be broken —
+`security-headers.conf` was the one COPY source without a `.dockerignore`
+negation, found by running the documented command instead of reading it.
+
 ## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
 
 `buildctl` on this host comes from the `nerdctl-full` bundle — there is no

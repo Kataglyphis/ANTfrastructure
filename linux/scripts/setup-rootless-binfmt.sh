@@ -166,6 +166,16 @@ install_service() {
 Description=Register QEMU binfmt emulators in the rootless containerd/BuildKit namespace
 After=containerd.service buildkit.service
 Wants=containerd.service
+# PartOf is the load-bearing line, added 2026-08-27. After= and Wants= order
+# STARTUP only; they do not propagate a restart. Combined with Type=oneshot +
+# RemainAfterExit=yes, systemd considered this unit permanently satisfied while
+# its actual effect -- a registration inside the rootlesskit namespace -- died
+# with every containerd restart. Measured on the dev host: the unit last ran
+# 2026-08-09, containerd restarted 2026-08-26 for the nerdctl-full upgrade, and
+# the runtime stage then failed both foreign arches with an EMPTY BuildKit
+# error. PartOf makes systemd stop/restart this unit together with containerd,
+# so the registration is re-made into the NEW namespace.
+PartOf=containerd.service
 
 [Service]
 Type=oneshot

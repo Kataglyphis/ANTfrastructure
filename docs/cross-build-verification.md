@@ -108,7 +108,22 @@ emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env
 toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact).
 A mismatch aborts before `:latest-cross` goes live; `WRAPPER_CONTENT_GATE=0`
 makes it advisory. To spot-check by hand: pull the wrapper and grep for the
-expected lib set. **`:latest-cross` was re-shipped 2026-08-16** (fresh amd64
+expected lib set.
+
+That gate covers each wrapper's CONTENT. The INDEX went ungated until
+2026-08-27: the only manifest check in the chain is
+`nerdctl manifest inspect >/dev/null` (`build-runtime-manifest.sh:149`), which
+proves existence, not freshness — so an index can be created, pushed and
+reported green while one child still points at a previous run.
+`linux/scripts/verify-manifest-freshness.sh` closes that, registry-only (no
+pull, no emulation): it asserts each index child equals the digest its per-arch
+tag resolves to, and that all children share one `org.kataglyphis.run-id`.
+Run it with `EXPECT_RUN_ID` — measured on a live stale index, neither
+assertion suffices alone, because a wholesale-stale ship is perfectly
+self-consistent: child and tag agreed (both old), and all three run-ids
+matched (all from the previous run). Only pinning to the run that just built
+distinguishes the two. It is deliberately NOT yet wired into preflight or the
+chain. **`:latest-cross` was re-shipped 2026-08-16** (fresh amd64
 `509027696e16` / arm64 `bdb46c953954` / riscv64 `28e3ded96f72`) carrying the
 Batch-2 fixes; that full-media rebuild flushed out two bugs the runtime-lane
 validations miss because they skip smoke-media — (1) smoke-media's native cv2
@@ -129,7 +144,7 @@ contents in run order.
 | Slug | Script | Catches |
 |------|--------|---------|
 | `crlf-guard` | inline (`git ls-files --eol`) | a tracked `*.sh` materialised with CRLF endings |
-| `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 262 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
+| `shellcheck` | `lint-shell.sh` | classes 6, 7 — `shellcheck -S error` over 263 files; `linux/host-config`'s operator tools joined the sweep on 2026-08-27, before that seven scripts sat outside it |
 | `copy-coverage` | `verify-script-copy-coverage.py` | class 1 — a referenced `/opt/scripts` path never COPY'd/mounted into its image |
 | `critical-fixes` | `verify-critical-fixes.sh` | classes 2, 3 (+ prior fixes; incl. fix6 native-GCC system paths) |
 | `patch-integrity` | `verify-patch-integrity.sh` | a malformed unified diff, or an orphaned patch nothing references |

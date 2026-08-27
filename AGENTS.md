@@ -515,7 +515,16 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
 ### Prerequisites
 
 - **nerdctl** with BuildKit backend
-- **QEMU/binfmt** for foreign-architecture runtime builds. Registration is lost
+- **QEMU/binfmt** — and `--install-service` is NOT enough on its own. The unit
+  it writes used `After=`/`Wants=` only, which order STARTUP and do not
+  propagate a restart; combined with `Type=oneshot` + `RemainAfterExit=yes`,
+  systemd holds the unit permanently satisfied while its effect — a
+  registration inside the rootlesskit namespace — dies with every containerd
+  restart. Measured 2026-08-27 on the dev host: unit last ran 2026-08-09,
+  containerd restarted 2026-08-26, and the runtime stage then failed BOTH
+  foreign arches with an empty BuildKit error. The template now sets
+  `PartOf=containerd.service`; an already-installed unit must be re-installed
+  once to pick that up. Registration is lost
   on host reboot **and on `systemctl --user restart containerd`** (it lives in the
   rootlesskit namespace — that's how it silently vanished on 2026-08-08 after the
   shim-failure restart). On this rootless host the privileged
