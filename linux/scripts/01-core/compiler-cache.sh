@@ -215,14 +215,27 @@ setup_sccache() {
   # Create cache directory if it doesn't exist
   mkdir -p "${SCCACHE_DIR}" 2>/dev/null || true
 
-  # Set up Rust wrapper
-  export RUSTC_WRAPPER="sccache"
+  # Set up Rust wrapper.
+  #
+  # NEVER bare sccache (AGENTS.md: "Never point a launcher at bare sccache").
+  # sccache ABORTS the compile on its own internal errors where ccache would
+  # simply exec the compiler. This function exported RUSTC_WRAPPER="sccache"
+  # unconditionally, and setup-gstreamer.sh:50 calls it BEFORE
+  # build-gstreamer-monorepo.sh tests `[ -z "${RUSTC_WRAPPER+x}" ]` -- so the
+  # bare value was always already set and the guarded launcher wired up in
+  # 4200f7b never took effect. Measured 2026-08-27 on the live media lane: the
+  # run logged RUSTC_WRAPPER=sccache. Same shape as the setup_ccache bug above:
+  # a guard that ships but cannot fire.
+  _sc_launcher="sccache"
+  for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
+    if [ -x "${_scl}" ]; then _sc_launcher="${_scl}"; break; fi
+  done
+  export RUSTC_WRAPPER="${_sc_launcher}"
 
   # Note: If ccache is already set up, we don't override CMAKE_*_COMPILER_LAUNCHER
-  # sccache for Rust, ccache for C/C++ is the recommended setup
   if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
-    export CMAKE_C_COMPILER_LAUNCHER="sccache"
-    export CMAKE_CXX_COMPILER_LAUNCHER="sccache"
+    export CMAKE_C_COMPILER_LAUNCHER="${_sc_launcher}"
+    export CMAKE_CXX_COMPILER_LAUNCHER="${_sc_launcher}"
   fi
 
   _cc_info "sccache enabled: SCCACHE_DIR=${SCCACHE_DIR}, CACHE_SIZE=${SCCACHE_CACHE_SIZE}"

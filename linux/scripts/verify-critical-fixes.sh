@@ -217,6 +217,18 @@ fix7_hardening_2026_07() {
   else
     fail "cross-stage-build.sh reverted to the self-defeating registry -buildcache"
   fi
+    # Cache: no launcher may point at BARE sccache. sccache aborts the compile
+    # on its own internal errors where ccache execs the compiler, so a bare
+    # launcher turns an sccache hiccup into a build break at 99%. This class has
+    # now shipped inert three times (setup_ccache hardcoding "sccache";
+    # setup_sccache exporting RUSTC_WRAPPER="sccache" ahead of the gstreamer
+    # monorepo's unset-guard), so it gets a gate rather than another comment.
+    local ccsh="${REPO_ROOT}/linux/scripts/01-core/compiler-cache.sh"
+    if grep -qE '^[[:space:]]*export (RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER)="sccache"' "${ccsh}" 2>/dev/null; then
+      fail "compiler-cache.sh points a launcher at bare sccache (use 01-core/sccache-launcher.sh)"
+    else
+      pass "compiler-cache.sh routes launchers through the guarded sccache launcher"
+    fi
   # Base: the only floating external base must be digest-pinned (multi-arch list).
   if grep -qE '^FROM ubuntu:\$\{UBUNTU_VERSION\}@\$\{UBUNTU_DIGEST\}' "${dbase}" 2>/dev/null && \
      grep -qE '^UBUNTU_DIGEST=sha256:' "${venv}" 2>/dev/null; then
