@@ -614,7 +614,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
   --build-arg GCC_VERSION=16.2.0 \
-  --build-arg LLVM_RELEASE=22.1.8 \
+  --build-arg LLVM_RELEASE=23.1.0 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
@@ -685,16 +685,34 @@ destroys it, and what replacing it costs is in
 ### IREE (Linux lane)
 
 IREE (`IREE_VERSION` in versions.env, currently v3.11.0) ships 3-arch in the
-media image since 2026-07-14, with a deliberately split strategy per arch:
+media image since 2026-07-14, with a deliberately split strategy per arch.
 
-- **amd64 / arm64** — upstream PyPI `cp312-abi3` wheels, installed into the
-  Python 3.14 venv (abi3 makes the cp312 tag valid there). No source build.
-- **riscv64** — no upstream wheel exists; IREE is **source-built,
-  RUNTIME-ONLY** (`IREE_BUILD_COMPILER=OFF` for the target — consistent with
-  upstream's own riscv64 stance). The compiler tools come from a companion
-  **host** build (`IREE_BUILD_COMPILER=ON`, full LLVM — the long compile you
-  see in the `app-wheelhouse` stage); models are compiled on the host and
-  *executed* on riscv64.
+No arch installs an upstream wheel: PyPI ships `iree-base-{compiler,runtime}`
+as `cp312-abi3` for x86_64+aarch64 only, riscv64 has none, and we need
+version-specific `cp314` everywhere — so every arch source-builds
+(`build-app-wheelhouse.sh:744-749`). What differs is *which* wheels come out:
+
+- **amd64** — NATIVE build (target arch == build arch), `IREE_BUILD_COMPILER=ON`
+  (`build-app-wheelhouse.sh:1183`): ships **both** `iree_base_compiler` and
+  `iree_base_runtime`.
+- **arm64 / riscv64** — CROSS build, **RUNTIME-ONLY**
+  (`-DIREE_BUILD_COMPILER=${IREE_CROSS_BUILD_COMPILER:-OFF}`,
+  `build-app-wheelhouse.sh:1140`), so only `iree_base_runtime` ships. This is
+  not a preference: IREE imports host tools only under
+  `if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)`, so `COMPILER=ON` makes
+  the target ignore `IREE_HOST_BIN_DIR`, build its own `iree-tblgen` **for the
+  target arch**, and then run it on the amd64 host — `Exec format error`,
+  `[code=126]` on `VMOpEncoder.cpp.inc` (`build-app-wheelhouse.sh:1055-1074`).
+  Set `IREE_CROSS_BUILD_COMPILER=ON` to re-try both wheels once IREE supports
+  the combination. Models are compiled on amd64 and *executed* on the cross
+  arches.
+
+The cross path's companion **host** stage (amd64 has none — one cmake
+configure does everything) supplies `iree-c-embed-data`, `iree-flatcc-cli`
+and `iree-tblgen` via `IREE_HOST_BIN_DIR`. It probes `IREE_BUILD_COMPILER=OFF`
+first and escalates to `ON` (the full-LLVM compile you see in the
+`app-wheelhouse` stage) only when a required tool is missing
+(`build-app-wheelhouse.sh:975-1026`).
 
 Build home: `linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh`
 (`build_iree_wheels`), which stages host tools + target runtime and is smoked

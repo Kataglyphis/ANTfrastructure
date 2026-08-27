@@ -91,7 +91,7 @@ Two neighbours, so you land on the right page:
 
 **Cause.** QEMU/binfmt not registered after host reboot
 
-**Fix.** `linux/host-config/setup-rootless-binfmt.sh` — NOT the tonistiigi container: that installs into the wrong namespace under rootless nerdctl (see § Prerequisites; this row prescribed exactly that dead-end until 2026-08-24)
+**Fix.** `linux/scripts/setup-rootless-binfmt.sh` — NOT the tonistiigi container: that installs into the wrong namespace under rootless nerdctl (see *Host prerequisite: QEMU/binfmt* in `docs/linux-cross-builds.md`; this row prescribed exactly that dead-end until 2026-08-24)
 
 ### `no space left on device`
 

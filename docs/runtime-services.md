@@ -6,12 +6,26 @@ The webserver serves the **Kataglyphis web frontend** — a Flutter app with pag
 for AI chat, blog posts, personal data, and an
 open source license overview at `/openSourceLicenses`.
 
+The maintained path is compose, which builds it with `linux/` as the context
+(`linux/docker-compose.yml:3-5`):
+
 ```bash
-nerdctl build -t kataglyphis-webserver:latest -f linux/webserver/Dockerfile .
-docker run -d --name kataglyphis-webserver \
+nerdctl compose -f linux/docker-compose.yml up -d webserver
+```
+
+By hand, the context must still be `linux/` — the Dockerfile's COPY sources are
+context-relative `./webserver/nginx.conf` and `./webserver/security-headers.conf`
+(`linux/webserver/Dockerfile:27,30`), and the repo root cannot stand in for it
+because `.dockerignore:18` excludes `linux/webserver` from the root context
+outright:
+
+```bash
+cd linux
+nerdctl build -t kataglyphis-webserver:latest -f webserver/Dockerfile .
+nerdctl run -d --name kataglyphis-webserver \
   -p 8080:80 \
-  -v "$(pwd)/linux/webserver/dist:/var/www/html" \
-  -v "$(pwd)/linux/webserver/nginx.conf:/etc/nginx/nginx.conf:ro" \
+  -v "$(pwd)/webserver/dist:/var/www/html" \
+  -v "$(pwd)/webserver/nginx.conf:/etc/nginx/nginx.conf:ro" \
   kataglyphis-webserver:latest
 ```
 
@@ -211,8 +225,15 @@ The images build GStreamer through
 This section is for the case that script does not cover: building on a target
 board to get a plugin the packaged runtime lacks.
 
+Build the version the packaged runtime ships, not a fixed number: the tag is
+`GSTREAMER_VERSION` from `linux/scripts/01-core/versions.env` (1.29.2), which is
+what `setup-gstreamer.sh:606-629` checks out for the image. A build from an older
+branch installs its own `libgst*.so*` over the prefix and lands you in the
+stale-library case described under [Removing a previous source
+install](#removing-a-previous-source-install).
+
 ```bash
-git clone -b 1.24.10 https://gitlab.freedesktop.org/gstreamer/gstreamer.git
+git clone -b 1.29.2 https://gitlab.freedesktop.org/gstreamer/gstreamer.git
 cd gstreamer
 ```
 
@@ -303,8 +324,12 @@ it. Unpack it where `Dockerfile.android` expects to find it:
 
 ```bash
 sudo mkdir -p /opt/android/gstreamer
-sudo tar -xf gstreamer-1.0-android-universal-1.26.7.tar.xz -C /opt/android/gstreamer
+sudo tar -xf gstreamer-1.0-android-universal-1.29.2.tar.xz -C /opt/android/gstreamer
 ```
 
-Keep the version aligned with the pin in `linux/scripts/01-core/versions.env` —
-a mismatch here surfaces much later as a link error in the Android stage.
+Keep the version aligned with `GSTREAMER_VERSION` in
+`linux/scripts/01-core/versions.env`: the Android stage derives the tarball name
+from it (`linux/scripts/03-media/build/gstreamer/android/build-gstreamer.sh:38`)
+and verifies the download against `GSTREAMER_ANDROID_UNIVERSAL_SHA256`, which is
+pinned for that exact tarball. A hand-unpacked tree of any other version surfaces
+much later as a link error in the Android stage.

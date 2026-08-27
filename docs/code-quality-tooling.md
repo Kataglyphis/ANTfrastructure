@@ -23,9 +23,22 @@ $CF = 'C:\Program Files\LLVM\bin\clang-format.exe'
 $CT = 'C:\Program Files\LLVM\bin\clang-tidy.exe'
 ```
 
-On Linux the wrapper `linux/scripts/lib/code-quality.sh` resolves them for you
-and additionally runs `cmake-format`, provisioning it through `uv` +
-`requirements.txt` when absent.
+On Linux there is no equivalent resolution step, and
+`linux/scripts/lib/code-quality.sh` is not one: it is a **library you source**,
+not a wrapper that locates binaries. It invokes bare `clang-format -i`
+(`code-quality.sh:285`) and bare `clang-tidy` (`code-quality.sh:405`) straight
+off `PATH`, and there is no `CODE_QUALITY_*_BIN` knob among the variables it
+documents (`code-quality.sh:69-104`). Nothing checks for the binaries first
+either: the library *defines* a fallback `require_tools` (`code-quality.sh:140-150`)
+but never calls it, so a missing LLVM tool surfaces as the shell's own
+`command not found` at the call site. Put LLVM on `PATH` yourself.
+
+`cmake-format` is the one tool the library will provision:
+`code_quality_ensure_cmake_format` (`code-quality.sh:164-199`) creates a venv
+with `uv` and installs the project's requirements — but only when the consuming
+project has set both `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and
+`CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`. Without them it hard-errors
+(`code-quality.sh:176`) instead of bootstrapping anything.
 
 ## clang-format
 
@@ -99,9 +112,15 @@ consistent by construction.
 - **Per change:** format the files you touched (the `git diff` variant).
 - **Weekly / before a PR:** full check across your own sources; fix what is
   yours.
-- **Periodically:** a clang-tidy pass over the non-module TUs, plus
-  `linux/scripts/lib/code-quality.sh` on Linux — it adds `scan-build` static
-  analysis on top.
+- **Periodically:** a clang-tidy pass over the non-module TUs. On Linux, drive it
+  from `linux/scripts/lib/code-quality.sh` — a library your project's own quality
+  script sources, exposing `code_quality_run_clang_format`,
+  `code_quality_check_clang_format`, `code_quality_prepare_compile_db`,
+  `code_quality_run_clang_tidy` and `code_quality_run_cmake_format` as separate
+  steps to call in whatever order it wants. It is not a command you run: it has
+  no `main`, and nothing in this repo sources it — per
+  [`shared/config/README.md`](../shared/config/README.md) the consumers are the
+  downstream C++ projects.
 
 ## The failure mode to watch for
 

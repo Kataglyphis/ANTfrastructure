@@ -59,11 +59,14 @@ The smoke test validates (1) build tools, (2) Python 3.14, (3) Rust, (4) LLVM/Cl
 
 **Symptom:** caching is weird or files cannot be found.
 
-**Solution:** If sccache is interfering with builds, unset the wrapper:
+**Solution:** If sccache is interfering with builds, turn it off explicitly. `USE_SCCACHE=0` is the blanket switch in `linux/scripts/01-core/compiler-cache.sh`: `setup_sccache` returns early, so no Rust wrapper is wired, and `setup_ccache` picks plain ccache for `CMAKE_*_COMPILER_LAUNCHER` instead of the sccache launcher — C/C++ stays cached, on the documented ccache fallback. An *exported empty* `RUSTC_WRAPPER` is the Rust-only opt-out:
 
 ```bash
-RUSTC_WRAPPER=
+export USE_SCCACHE=0      # no sccache at all; C/C++ falls back to ccache
+export RUSTC_WRAPPER=""   # Rust only
 ```
+
+Do not write a bare `RUSTC_WRAPPER=`. An *unset* `RUSTC_WRAPPER` is the opposite signal: `build-gstreamer-monorepo.sh` tests set-ness (`[ -z "${RUSTC_WRAPPER+x}" ]`), and on unset it points the wrapper at the guarded launcher `/opt/scripts/core/sccache-launcher.sh`. A bare assignment at a shell prompt also creates an unexported shell variable that the build process never sees. `linux/Dockerfile.toolchain` and `linux/Dockerfile.package` both ship the exported-empty `ENV RUSTC_WRAPPER=""`. On the GStreamer lane that alone does not hold: `setup-gstreamer.sh` calls `setup_sccache`, which re-exports the launcher unconditionally and overwrites an empty value inherited from the environment — use `USE_SCCACHE=0` there.
 
 ### No space left on this device
 
@@ -84,7 +87,7 @@ RUSTC_WRAPPER=
 **Solution:**
 
 - On this host, do not rely on plain local image tags as reusable `FROM` sources for the runtime packaging chain.
-- Keep the helper default local-context handoff for `base -> package -> torch`, and for saved runtime artifact images pass `ARTIFACT_CONTEXT_ROOT=...` with `ARTIFACT_CONTEXT_MODE=oci` instead of expecting `FROM opencode-local:*` to stay local. The helper still runs the Torch stage natively on `linux/<arch>` so the final runtime image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the native Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels before falling back to source builds. If a reused cross artifact has an empty `/opt/wheels` the Torch install step now keeps the packages that `uv sync` already resolved instead of trying to install a literal `/opt/wheels/*.whl` glob. The foreign-arch package stage must keep `/usr/bin/clang` wired to the copied target-native `/usr/local/llvm-target/bin/clang` while prioritizing the custom `/opt/gcc-16.2.0` as the default system native compiler, rather than falling back to distro `/usr/local/llvm-22`.
+- Keep the helper default local-context handoff for `base -> package -> torch`, and for saved runtime artifact images pass `ARTIFACT_CONTEXT_ROOT=...` with `ARTIFACT_CONTEXT_MODE=oci` instead of expecting `FROM opencode-local:*` to stay local. The helper still runs the Torch stage natively on `linux/<arch>` so the final runtime image includes `/opt/venv`. In cross mode, the media artifact lane now also makes a best-effort `riscv64` app wheelhouse on the amd64 host for the locked `torch`, `torchvision`, and `opencv-python` git-source dependencies used by `Kataglyphis-Orchestr-ANT-ion`, and the native Torch install keeps the upstream `uv.lock` when present so it can reuse those local wheels before falling back to source builds. If a reused cross artifact has an empty `/opt/wheels` the Torch install step now keeps the packages that `uv sync` already resolved instead of trying to install a literal `/opt/wheels/*.whl` glob. The foreign-arch package stage must keep `/usr/bin/clang` wired to the copied target-native `/usr/local/llvm-target/bin/clang` while prioritizing the custom `/opt/gcc-16.2.0` as the default system native compiler, rather than falling back to the distro clang at `/usr/lib/llvm-<major>` (major taken from `LLVM_RELEASE`).
 - `docs/linux-cross-builds.md` documents the verified mixed `OCI artifact + plain rootfs base` workaround.
 
 ### Rebuilt SDK artifact still reports old clang

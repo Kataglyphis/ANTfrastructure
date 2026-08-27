@@ -66,8 +66,8 @@ The chain caches at every level it can; know the map before "optimizing":
 | Image layers | BuildKit layer cache (per RUN/COPY vertex) | The foundation. The expensive compiler RUNs bind-mount ONLY their per-file source closure so unrelated edits don't bust them. |
 | Cross-run stage cache | `--cache-to type=local` exports under `~/.cache/kata-buildcache/<stage-slug>` | Written by every chain stage; the between-stage disk guard LRU-prunes but PROTECTS slugs of stages still to run. |
 | Other hosts | inline registry cache (`--cache-to type=inline` on push) | Embedded in the image config — immune to ghcr's oversized-blob 400s. |
-| Rust | sccache — wiring landed 2026-08-08, GATED off (`ENABLE_SCCACHE_RUST=1` on the media stage) | `RUSTC_WRAPPER` was defensively cleared for cross builds in May 2026 (undocumented); activate for a controlled validation build, then flip the default. Full multi-tier design (ccache `remote_storage` for C/C++ + shared backend with the Windows lane's sccache) is specced in the backlog. |
-| C/C++ objects | **sccache** since 2026-08-26 (owner decision, reversing the 2026-08-17 "full switch rejected"), with **ccache as the automatic fallback** — every launcher resolves through `compiler_cache_launcher()` in `01-core/common.sh`: GCC via `build-gcc.sh --ccache` (the flag name is historical; it means "use the compiler cache"), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh`. Relativization is launcher-specific: `CCACHE_BASEDIR` for ccache, `SCCACHE_BASEDIRS` for sccache (which is why `SCCACHE_LINUX_VERSION` is pinned at 0.17.0 — the distro 0.13.0 lacks it). sccache's sloppiness/direct-mode knobs have no env path and live in `/etc/sccache/config.toml`, baked into `Dockerfile.base`. Both cache mounts are present on every heavy RUN, because the fallback needs somewhere to persist. |
+| Rust | sccache through the guarded launcher (`01-core/sccache-launcher.sh`), ON by default since 2026-08-27 | `setup_sccache` exports `RUSTC_WRAPPER=<launcher>` (`compiler-cache.sh:233`) and `setup-gstreamer.sh:50` runs it before `build-gstreamer-monorepo.sh:694` tests `[ -z "${RUSTC_WRAPPER+x}" ]`, so gst-plugins-rs is wired without `ENABLE_SCCACHE_RUST` — that gate now only covers the `media_common_init` copy of the call (`03-media/core/common.sh:144`). The 2026-08-20 disable (server dying at 99%) was the shared-TCP-port server reaching a sibling step's daemon; `SCCACHE_SERVER_UDS` cured it, and the launcher makes a hiccup cost hits rather than the build. Opt out by exporting `RUSTC_WRAPPER=""` — what `Dockerfile.toolchain:58` and `Dockerfile.package:173` do. Full multi-tier design (ccache `remote_storage` for C/C++ + shared backend with the Windows lane's sccache) is specced in the backlog. |
+| C/C++ objects | **sccache** since 2026-08-26 (owner decision, reversing the 2026-08-17 "full switch rejected"), with **ccache as the automatic fallback** — every launcher resolves through `compiler_cache_launcher()` in `01-core/common.sh`: GCC via `build-gcc.sh --ccache` (the flag name is historical; it means "use the compiler cache"), LLVM via `CMAKE_*_COMPILER_LAUNCHER`, media via `compiler-cache.sh`. Relativization is launcher-specific: `CCACHE_BASEDIR` for ccache, `SCCACHE_BASEDIRS` for sccache (which is why `SCCACHE_LINUX_VERSION` is pinned at 0.17.0 — the distro 0.13.0 lacks it). sccache's sloppiness knobs (`file_stat_matches`, `ignore_time_macros`) have no env path and live in `/etc/sccache/config.toml`, baked into `Dockerfile.base`; direct mode does have one, `SCCACHE_DIRECT`, and `common.sh:418` sets it to `false` — which overrides the `use_preprocessor_cache_mode = true` in that file. Both cache mounts are present on every heavy RUN, because the fallback needs somewhere to persist. |
 | Package managers | apt / cargo / uv / pip cache mounts | `sharing=locked` throughout. |
 | Sources | GCC tarball shared across host+targets (`GCC_TARBALL_CACHE_DIR`); LLVM source under `/var/cache/llvm-src`; ONNX-web + ffmpeg-sdks version-keyed mounts | The remaining media clones (opencv/gstreamer/ffmpeg/onnx) re-fetch on a cache bust — see the backlog item before adding mounts: `clone_or_update_repo` needs corrupt-dir hardening first, or a killed run poisons the shared source cache. |
 | GC budget | `~/.config/buildkit/buildkitd.toml` pins `gckeepstorage` | Without it, buildkit's DEFAULT GC decided whether the multi-hour layers survive between runs. Restart buildkitd BETWEEN runs only (`systemctl --user restart buildkit`) — never while a build solves. |
@@ -96,15 +96,24 @@ blind spots; neither replaces the other:
 
 > This section used to argue that ccache should own C/C++ and sccache only Rust.
 > The owner reversed that on 2026-08-26 and the C/C++ switch shipped. The
-> arguments below are updated rather than deleted, because two of the three
-> still hold and one is now simply false.
+> arguments below are updated rather than deleted, because all three still
+> hold — the hit-rate one included. The switch accepted that cost rather than
+> refuting it.
 
-- **The old "ccache wins C/C++" argument was conditional, and the condition is
-  now met.** It rested on sccache's C/C++ path "always preprocessing". That is
-  true only with preprocessor-cache mode OFF, which is sccache's default — so
-  the base image turns it ON explicitly in `/etc/sccache/config.toml`
-  (`SCCACHE_CONF`), sccache's analogue of ccache's direct mode. Those knobs have
-  no environment-variable path, which is the whole reason that file exists.
+- **The old "ccache wins C/C++" argument was conditional, and its condition
+  holds today.** It rested on sccache's C/C++ path "always preprocessing",
+  which is true whenever preprocessor-cache mode (sccache's analogue of
+  ccache's direct mode) is off — and it is off. `Dockerfile.base:118-130` still
+  writes `use_preprocessor_cache_mode = true` into `/etc/sccache/config.toml`
+  (`SCCACHE_CONF`), but `01-core/common.sh:418` exports
+  `SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"` on every launcher resolution, and
+  the environment wins over the file. The mode was turned off on 2026-08-26
+  after it broke two builds: it re-reads the INPUT FILE to store the entry
+  AFTER the compile, CMake's TryCompile probes delete their scratch dir
+  immediately, and the re-read's ENOENT is FATAL to sccache — it killed
+  OpenCV's compiler test, then onnxruntime's, three times running. Cost is hit
+  rate, not correctness; `SCCACHE_DIRECT=true` re-enables it. So sccache's C/C++
+  hit costs a preprocess that ccache's direct-mode hit does not.
 - **The real operating difference is failure behaviour, not hit rate.** sccache
   HARD-FAILS on a compiler it cannot identify; ccache just execs it. That is why
   ccache stays installed and mounted as the fallback, and why
@@ -116,17 +125,21 @@ blind spots; neither replaces the other:
   of its reach — sccache handles all three first-class. With
   `CUDA_ARCHITECTURES="80;86;89;90"` every CUDA kernel compiles FOUR times;
   for the GPU onnxruntime/opencv builds this is the single biggest cache
-  lever in the repo. Gates: `ENABLE_SCCACHE_RUST` (media rust),
-  `ENABLE_SCCACHE_CUDA` (one gate for nvcc + hipcc launchers in the ONNX
-  GPU/AMD builds and OpenCV's CUDA config).
+  lever in the repo. Gates: `ENABLE_SCCACHE_RUST` (only the
+  `media_common_init` call — the gstreamer lane wires Rust regardless, see the
+  Rust row above), `ENABLE_SCCACHE_CUDA` (one gate for nvcc + hipcc launchers
+  in the ONNX GPU/AMD builds and OpenCV's CUDA config; default 0, so nvcc
+  stays uncached).
 - Both need **measurement to stderr** (the stream the 2MiB step-log clip never
   cuts) — an unmeasured cache regresses invisibly (proved live: the launcher
   never reached LLVM's nested sub-builds, 0% gain on identical inputs).
 - `compiler-cache.sh::setup_sccache` has documented this exact division of
-  labor all along; 2026-08-08 finally wired the Rust half (gated).
+  labor all along; 2026-08-08 wired the Rust half behind a gate, and
+  2026-08-27 put it on by default through the guarded launcher (4200f7b, plus
+  54fc1df — `setup_sccache` had been exporting bare `sccache` unconditionally,
+  which defeated the wiring entirely).
 
-**Roadmap to "everything cached" (all specced, closure-batched):** flip
-`ENABLE_SCCACHE_RUST` after a controlled cross-arch validation → ccache
+**Roadmap to "everything cached" (all specced, closure-batched):** ccache
 `remote_storage` + `SCCACHE_REDIS` against one host-local backend (shared
 infra with the Windows lane's sccache; no cross-OS hits, shared plumbing) →
 launcher forwarding into LLVM's nested sub-builds → version-keyed source-tree

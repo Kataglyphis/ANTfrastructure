@@ -1,14 +1,16 @@
 # Build cache tiers (Linux cross lane)
 
-> **STATUS 2026-08-23: DESIGN ONLY — the code change was written, reviewed and
-> REVERTED.** The first implementation reintroduced the literal
-> `${tag}-buildcache` cache ref, which `verify-critical-fixes.sh` has forbidden
+> **STATUS 2026-08-23: § 4 (S3 / T4) is DESIGN ONLY — that code change was
+> written, reviewed and REVERTED.** The first implementation reintroduced the
+> literal `${tag}-buildcache` cache ref, which `verify-critical-fixes.sh` has forbidden
 > since fix7 (2026-07) precisely because that ref was self-defeating; the
 > preflight gate failed on it immediately. It was also inert by default and had
 > no regression coverage, so a future "just turn it on" edit would have flipped
 > ~12-13 GB of extra registry traffic per run with nothing asserting the
-> behaviour. What follows is the design and the constraints any implementation
+> behaviour. § 4 is therefore the design and the constraints any implementation
 > must satisfy — read the flake-recovery interaction below before writing code.
+> § 5 is not covered by this banner: the ccache→sccache switch it describes is
+> shipped and running.
 
 
 **Audience:** anyone about to "add a registry cache", "turn on `mode=max`",
@@ -32,9 +34,9 @@ its own docs; nothing here proposes work there.
 |---|---|---|---|---|---|
 | T0 | BuildKit layer/history cache | implicit (the worker) | **every** vertex, including intermediate `FROM … AS x` stages | the buildkitd store | `nerdctl system prune`; buildkitd GC (`gckeepstorage` in `~/.config/buildkit/buildkitd.toml`) |
 | T1 | exec cache mounts (ccache, sccache, apt, cargo, uv, pip, source trees) | `--mount=type=cache,…` in the Dockerfiles | compiler/package output at translation-unit / file granularity | the buildkitd store (`exec.cachemount` records) | `nerdctl system prune` (**35 → 1 records observed 2026-08-21**). Survives `linux/host-config/prune-safe.sh` and a daemon restart — both proven repeatedly |
-| T2 | local stage cache export | `cross-stage-build.sh:178-188` (`--cache-to type=local,…,mode=max`) | **every** vertex of that stage's Dockerfile | `~/.cache/kata-buildcache/<tag-slug>/` — *outside* the buildkit store | our own disk guard (LRU below `CROSS_DISK_GUARD_GB`=40 G free, plus the `CROSS_CACHE_MAX_GB`=250 G total cap, `build-cross-chain.sh:513-562`); the disk-preflight's `rm -rf` hint (`build-cross-chain.sh:467`); `CROSS_NO_LOCAL_CACHE_EXPORT=1` stops new writes |
-| T3 | inline registry cache | `cross-stage-build.sh:194-198` (`--cache-to type=inline` + `--cache-from type=registry,ref=<tag>`) | **only the final image's own layers** (`mode=min`) | inside the pushed image config — no separate blob, so no ghcr 400 | `ghcr-cleanup.yml` (keeps 3 versions per tag, 14-day floor) |
-| T4 | per-stage registry cache, `mode=max` | **not enabled** — pilot knob `CROSS_REGISTRY_CACHE=max`, `cross-stage-build.sh:30` + `:199-234` | every vertex, off-host | a `<tag>-buildcache` ref on ghcr | see § 4 — the cost, not the mechanism, is the blocker |
+| T2 | local stage cache export | `cross-stage-build.sh:177-181` (`--cache-to type=local,…,mode=max`) | **every** vertex of that stage's Dockerfile | `~/.cache/kata-buildcache/<tag-slug>/` — *outside* the buildkit store | our own disk guard (LRU below `CROSS_DISK_GUARD_GB`=40 G free, plus the `CROSS_CACHE_MAX_GB`=250 G total cap, `build-cross-chain.sh:513-562`); the disk-preflight's `rm -rf` hint (`build-cross-chain.sh:467`); `CROSS_NO_LOCAL_CACHE_EXPORT=1` stops new writes |
+| T3 | inline registry cache | `cross-stage-build.sh:187-192` (`--cache-to type=inline` + `--cache-from type=registry,ref=<tag>`) | **only the final image's own layers** (`mode=min`) | inside the pushed image config — no separate blob, so no ghcr 400 | `ghcr-cleanup.yml` (keeps 3 versions per tag, 14-day floor) |
+| T4 | per-stage registry cache, `mode=max` | **not enabled, and DESIGN ONLY** — the pilot knob `CROSS_REGISTRY_CACHE=max` was written and reverted with the rest of S3; no code reads it (`cross-stage-build.sh:162-192` adds the local `mode=max` export and, when pushing, `type=registry` cache-from + `type=inline` cache-to, and nothing else) | every vertex, off-host | a `<tag>-buildcache` ref on ghcr | see § 4 — the cost, not the mechanism, is the blocker |
 
 Two properties are worth internalising because they are counter-intuitive:
 
@@ -53,11 +55,11 @@ that end up **in the exported image** and nothing else.
 
 The media stage's expensive work is not in those layers. `Dockerfile.media`
 builds onnxruntime / litert / tvm / opencv / app-wheelhouse / armnn / ffmpeg /
-gstreamer / opencv-gst as **named intermediate stages** (`FROM base AS …`,
-`:248-914`) and lifts the results out with `COPY --link --from=…`
-(`:705-712`, `:950-974`). The layers those COPYs produce are in the image; the
-RUN vertices that *built* them are not, and a `mode=min` export carries no
-cache record for them. So:
+pyav / gstreamer / opencv-gst as **named intermediate stages**
+(`FROM base AS …`, `:249-976`) and lifts the results out with
+`COPY --link --from=…` (`:768-775`, `:1013-1056`). The layers those COPYs
+produce are in the image; the RUN vertices that *built* them are not, and a
+`mode=min` export carries no cache record for them. So:
 
 > A host that still has the pushed image, and reads the inline cache back from
 > it, will still recompile every framework.
@@ -80,11 +82,11 @@ and today the only `mode=max` tier is the local one (T2).
 
 | Symptom | Cause | What the code does by itself | Operator knob |
 |---|---|---|---|
-| `DeadlineExceeded: failed to compute cache key: … httpReadSeeker … no active session` | ghcr cache **import** flake (killed 6 attempts across 2 lanes in one afternoon, 2026-08-18) | retry; after **2** such failures drop the registry cache-from + inline cache-to and finish on the local tier (`cross-stage-build.sh:309-341`) | `NO_CACHE_EXPORT=1` does the same thing up front |
+| `DeadlineExceeded: failed to compute cache key: … httpReadSeeker … no active session` | ghcr cache **import** flake (killed 6 attempts across 2 lanes in one afternoon, 2026-08-18) | retry; after **2** such failures drop the registry cache-from + inline cache-to and finish on the local tier (`cross-stage-build.sh:266-294`) | `NO_CACHE_EXPORT=1` does the same thing up front |
 | `error writing layer blob: 400 Bad Request` on cache push | ghcr rejecting an oversized `mode=max` cache blob (why T4 was removed in `4f27634`; `195285f` replaced it with T2+T3) | **nothing** — 400 is not in the transient class (`_cross_stage_push_error_is_transient`), so the stage fails | `NO_CACHE_EXPORT=1` |
-| A stage fails after hours of completed work → T2 exports **nothing** | `--cache-to type=local` only materialises on a successful solve (~8 h of arm64 media work exported ZERO once) | S1 salvage: re-drive the same build per named `--target`, each a pure cache hit, so the export lands anyway (`cross-stage-build.sh:273-304`) | `SALVAGE_CACHE_EXPORT=0` |
+| A stage fails after hours of completed work → T2 exports **nothing** | `--cache-to type=local` only materialises on a successful solve (~8 h of arm64 media work exported ZERO once) | S1 salvage: re-drive the same build per named `--target`, each a pure cache hit, so the export lands anyway (`cross-stage-build.sh:230-262`) | `SALVAGE_CACHE_EXPORT=0` |
 | Disk below 40 G between stages | T2 growth (209 G measured today) | LRU-prune unprotected slugs; stages still to run in **this** chain are protected; if still short, stop writing new exports | `CROSS_DISK_GUARD_GB`, `CROSS_CACHE_MAX_GB`, `CROSS_NO_LOCAL_CACHE_EXPORT=1` |
-| `could not read …/kata-buildcache/…` | empty slug dir, i.e. a clean miss | suppressed: cache-from is only added when `index.json` is non-empty (`cross-stage-build.sh:176-180`) | — |
+| `could not read …/kata-buildcache/…` | empty slug dir, i.e. a clean miss | suppressed: cache-from is only added when `index.json` is non-empty (`cross-stage-build.sh:171-173`) | — |
 | Sessions die after 1–2 h of parallel load | BKD1 (buildkitd session rot) | — | restart buildkitd between rounds; cachemounts provably survive |
 
 **The rule any new cache tier has to obey:** it must be *droppable on the flake
@@ -121,7 +123,7 @@ Measured on this host, 2026-08-23 (`du -sh ~/.cache/kata-buildcache/*`):
 | **total** | **209 G** |
 
 The measured uplink is **~4–5 MB/s** (the PUSH1 note at
-`cross-stage-build.sh:133-139`; PUSH1 also measured a media *image* push at
+`cross-stage-build.sh:126-132`; PUSH1 also measured a media *image* push at
 ~10 min with zstd, i.e. ~2.7 GB of new layers).
 
 At 4.5 MB/s:
@@ -195,15 +197,19 @@ Cheaper still, and worth doing first because it costs zero bytes:
    this change's scope.)*
 2. **Never `nerdctl system prune`** — Standing rule 3, already sharpened.
 
-### 4.5 The pilot knob, and the rules it obeys
+### 4.5 The pilot knob, and the rules it must obey
 
-`CROSS_REGISTRY_CACHE=max` (`cross-stage-build.sh:229-234`) exists so the
-experiment above can be run **without editing code mid-wave**. It is off by
-default and the default path is byte-identical to what shipped before it
-existed (verified by dry-running the old and new function side by side and
-diffing the assembled command).
+`CROSS_REGISTRY_CACHE=max` is **DESIGN ONLY** — read the STATUS banner at the
+top. It was written so the experiment above could be run **without editing
+code mid-wave**, and it was reverted along with the rest of S3;
+`grep -rn CROSS_REGISTRY_CACHE` over the tree matches these docs and nothing
+else, so setting it today is a silent no-op. What follows is the shape a
+re-implementation has to take. In the reverted version it was off by default
+and the default path was byte-identical to what shipped before it existed
+(verified by dry-running the old and new function side by side and diffing the
+assembled command) — keep that property.
 
-When set to `max` the stage additionally gets:
+When set to `max` the stage would additionally get:
 
 ```
 --cache-from type=registry,ref=<tag>-buildcache
@@ -215,18 +221,21 @@ exported as a plain OCI image manifest rather than the index shape that
 motivated the original ghcr 400. **That is a hypothesis this repo has not yet
 tested** — proving or disproving it is the first job of the pilot.
 
-Rules the knob already satisfies, and that any future implementation must keep:
+Rules the reverted implementation satisfied, and that any future one must keep:
 
 - **It composes with the flake auto-recovery.** The DeadlineExceeded/
-  `httpReadSeeker` handler now strips `--cache-to type=registry*` alongside the
+  `httpReadSeeker` handler must strip `--cache-to type=registry*` alongside the
   registry cache-from and the inline cache-to, so two import flakes still
   degrade the build to local-only instead of leaving a multi-GB export pointed
-  at a registry that is timing out. Verified by driving the real
-  `_cross_stage_build_impl` through four failing attempts: attempts 1–2 carry
-  all four registry/inline arguments, attempts 3–4 carry only the local
-  `--cache-to`.
+  at a registry that is timing out. The reverted implementation was verified by
+  driving the real `_cross_stage_build_impl` through four failing attempts:
+  attempts 1–2 carried all four registry/inline arguments, attempts 3–4 only
+  the local `--cache-to`. **The handler that ships today strips only
+  `--cache-from type=registry*` and `--cache-to type=inline*`
+  (`cross-stage-build.sh:275-291`)** — because there is no registry export left
+  to strip. Re-adding one means re-adding its case arm.
 - **`NO_CACHE_EXPORT=1` still turns everything registry-facing off**, because
-  the knob lives inside that guard.
+  the knob lived inside that guard.
 - **A missing `-buildcache` ref on the first run is a miss, not a fatal.**
   In-repo evidence: `195285f`'s post-mortem of the never-written `-buildcache`
   ref — the importer failed and the stages rebuilt, the solve continued.
@@ -236,7 +245,8 @@ repo before):
 
 1. Pick `compiler`, and use `build-cross-stage.sh` — **not** a full chain. A
    cache-export 400 is non-transient and will fail the stage.
-2. Run 1 (cold ref): `CROSS_REGISTRY_CACHE=max`. Confirm the build *accepts*
+2. Run 1 (cold ref): re-implement the knob, then set
+   `CROSS_REGISTRY_CACHE=max`. Confirm the build *accepts*
    the flags (nerdctl/buildkit here must support `image-manifest`), that the
    `-buildcache` ref appears in the ghcr package list, and record the wall time
    the export added.
@@ -248,9 +258,11 @@ repo before):
 5. Only after 3 green runs, and only for the stages in the § 4.3 "plausible"
    row, consider making it a default.
 
-Revert is `CROSS_REGISTRY_CACHE=inline` — or unsetting it, or
-`NO_CACHE_EXPORT=1`; any value other than the literal `max` gives exactly the
-shipped behaviour. Nothing else in the chain reads it.
+In the reverted implementation, revert was `CROSS_REGISTRY_CACHE=inline` — or
+unsetting it, or `NO_CACHE_EXPORT=1`; any value other than the literal `max`
+gave exactly the shipped behaviour, and nothing else in the chain read it. That
+is the property to preserve in a re-implementation, not a knob to reach for
+today.
 
 ---
 
@@ -266,11 +278,22 @@ shipped behaviour. Nothing else in the chain reads it.
 > decision reads authoritative and gets followed.
 
 **sccache is the C/C++ compiler cache. ccache is the automatic fallback.**
-There is no per-language split any more: every C/C++ launcher resolves at
-runtime through `compiler_cache_launcher()` (`01-core/common.sh`) — sccache if
-its server answers, else ccache, else build uncached.
+There is no per-language split any more, and two resolvers implement the same
+preference: `compiler_cache_launcher()` (`01-core/common.sh:443-467`) for the
+02-toolchain GCC/LLVM builds and the CMake/onnxruntime/wheelhouse call sites,
+and `setup_ccache`'s own inline copy of it on the media lane
+(`01-core/compiler-cache.sh:108-169`). Either way: the guarded launcher if
+sccache's server answers, else ccache, else build uncached.
 
-Two things from the old rationale survive, and one does not:
+It is never *bare* sccache in a stage that mounts `01-core`: each site starts
+at `sccache` and upgrades to `sccache-launcher.sh` as soon as one is
+executable, keeping the bare name only where the helper is absent
+(`common.sh:451-458`, `compiler-cache.sh:161-163`, `:230-232`). The gate at
+`verify-critical-fixes.sh:220-231` is what stops the *hardcoded* bare form
+coming back — that is how the first cut shipped inert.
+
+All three load-bearing points of the old rationale still hold — the last one
+only after a detour through the config file:
 
 - **Still true:** ccache cannot wrap `rustc`, `nvcc` or `hipcc`; sccache can.
 - **Still true, and now the operating constraint:** sccache HARD-FAILS where
@@ -301,45 +324,74 @@ Two things from the old rationale survive, and one does not:
   ccache stays installed and mounted as the deeper fallback, and
   `probe-sccache.sh` exists — it asserts, per compiler SHAPE this chain feeds a
   launcher, that the compile survives AND that cache activity was recorded.
-- **No longer true:** "sccache's C/C++ path always preprocesses". It does when
-  preprocessor-cache mode is off, which is the DEFAULT — so the base image
-  turns it on explicitly. `/etc/sccache/config.toml` (baked in
-  `Dockerfile.base`, reached via `SCCACHE_CONF`) sets
-  `use_preprocessor_cache_mode = true` plus `file_stat_matches` /
-  `use_ctime_for_stat`. Those knobs have NO environment-variable path in
-  sccache, which is why the config file exists at all. `ignore_time_macros`
-  stays **false** on purpose: ccache's sloppiness list included it, but that
-  trades correctness for hit rate and this chain ships compilers.
+- **True again, and on purpose:** "sccache's C/C++ path always preprocesses".
+  The base image *does* bake `use_preprocessor_cache_mode = true` plus
+  `file_stat_matches` / `use_ctime_for_stat` into `/etc/sccache/config.toml`
+  (`Dockerfile.base:118-130`, reached via `SCCACHE_CONF`, `:90`) — those knobs
+  have NO environment-variable path in sccache, which is why the config file
+  exists at all. But the runtime turns the mode back off: both entry points
+  export `SCCACHE_DIRECT=false` (`01-core/common.sh:404-418`,
+  `01-core/compiler-cache.sh:111-113`), and the environment variable wins over
+  the config file. That is the TryCompile trap seen from the other end —
+  preprocessor-cache mode re-reads the INPUT FILE *after* the compile in order
+  to store the entry, so a deleted scratch dir surfaces as `while hashing the
+  input file` and is fatal. It killed OpenCV's compiler test, then
+  onnxruntime's, three times running. **Effective state today:
+  preprocessor-cache mode is OFF and every TU is preprocessed.** The cost is
+  hit rate, not correctness; set `SCCACHE_DIRECT=true` to re-test it once the
+  ephemeral-dir interaction is understood. `ignore_time_macros` stays **false**
+  on purpose: ccache's sloppiness list included it, but that trades correctness
+  for hit rate and this chain ships compilers.
 
 Two knobs have no counterpart and must not be looked for: there is no
 `sccache -M` (the cap is `SCCACHE_CACHE_SIZE`), and `CCACHE_COMPILERCHECK=content`
 needs none — sccache does not key on mtime+size the way ccache does by default,
 so the invalidation that setting prevents does not arise.
 
-**Rust and nvcc are NOT part of this.** `RUSTC_WRAPPER` is still hard-cleared in
-`build-gstreamer-monorepo.sh`, earned by the sccache server dying mid-compile in
-three separate media rounds, each killing a green gstreamer build at 99%; see
-§ 5.4 for the bar to clear before removing it. nvcc is untouched, and the
-Windows lane records that released sccache breaks the build around it.
+**Rust rejoined this on 2026-08-27; nvcc did not.** The hard clear that used to
+sit in `build-gstreamer-monorepo.sh` is gone. `RUSTC_WRAPPER` resolves to the
+same guarded launcher from two places: `setup_sccache` exports it
+(`01-core/compiler-cache.sh:229-233`), and `build_gstreamer_monorepo` installs
+it for any process where the variable was never set at all
+(`build-gstreamer-monorepo.sh:694-703`). What made that safe is the UDS fix in
+§ 5.4 (`compiler-cache.sh:142-151`, `common.sh:394-403`), not optimism — the
+deaths at 99 % were the *wrong server* answering, and the launcher is the
+second belt that turns a remaining sccache hiccup into lost hits instead of a
+lost build. To go back to uncached Rust, export
+`RUSTC_WRAPPER=""`; that is what `Dockerfile.toolchain:58` and
+`Dockerfile.package:173` do, and it holds for every stage that never calls
+`setup_sccache`. Where `setup_sccache` *does* run it overwrites the empty value
+(`compiler-cache.sh:233`), so the off switch on that lane is `USE_SCCACHE=0` —
+which also drops C/C++ back to ccache (`compiler-cache.sh:109`). nvcc and hipcc
+stay untouched (§ 5.4), and the Windows lane records that released sccache
+breaks the build around them.
 
 ### 5.2 Does the current setup double-cache or fight ccache? No — verified
 
 The precedence is explicit and correct:
 
-- `setup_ccache` (`01-core/compiler-cache.sh`) sets
-  `CMAKE_C/CXX_COMPILER_LAUNCHER` to **sccache** when `USE_SCCACHE` is not
-  disabled, sccache is on `PATH`, and its server answers `--show-stats`;
+- `setup_ccache` (`01-core/compiler-cache.sh:108-169`) sets
+  `CMAKE_C/CXX_COMPILER_LAUNCHER` to the **guarded launcher**
+  (`01-core/sccache-launcher.sh`, resolved at `:160-163`) when `USE_SCCACHE` is
+  not disabled, sccache is on `PATH`, and its server answers `--show-stats`;
   otherwise it falls back to **ccache** and says why. (Before 2026-08-26 it set
-  ccache unconditionally.)
-- `setup_sccache` (`:124-157`) sets those two launchers **only if they are
-  empty** (`:147`), and otherwise touches only `RUSTC_WRAPPER`.
+  ccache unconditionally. Its first cut at the switch hardcoded *bare*
+  `sccache` here, which shipped inert; `verify-critical-fixes.sh:220-231` now
+  fails any launcher in this file pointed at bare sccache.)
+- `setup_sccache` (`:200-246`) sets those two launchers **only if they are
+  empty** (`:236`), and otherwise touches only `RUSTC_WRAPPER` (`:233`) —
+  resolved the same way (`:229-232`): the guarded launcher where it is mounted,
+  bare `sccache` only where it is not.
 - `media_common_init` (`03-media/core/common.sh:134-149`) always runs
   `setup_ccache` **first**, then `setup_sccache` only under
   `ENABLE_SCCACHE_RUST=1`.
 
-So on the media lane there is exactly one C/C++ launcher, and it is ccache.
-The LLVM cross build picks the same way round (`02-toolchain/llvm-cross.sh:187-196`:
-ccache if present, sccache only as a fallback).
+So on the media lane there is exactly one C/C++ launcher, and it is the guarded
+sccache launcher; ccache is used only when sccache's server does not answer.
+The LLVM cross build picks the same way round
+(`02-toolchain/llvm-cross.sh:202-207`, commented "preference INVERTED": it asks
+`compiler_cache_launcher` (`01-core/common.sh:443-467`), i.e. sccache first,
+ccache only as the fallback).
 
 The cache **mounts** do not collide either: `/var/cache/ccache` and
 `/var/cache/sccache` are separate ids. Their `${TARGETARCH}` (not
@@ -354,40 +406,44 @@ Found while reading for this document; all filed, none fixed here (the files
 are outside this change's scope):
 
 1. **The `ENABLE_SCCACHE_RUST` gate is not the single control point it says it
-   is.** `setup-gstreamer.sh:50` calls `setup_sccache` **unconditionally**, and
-   `USE_SCCACHE` defaults to `true` (`compiler-cache.sh:35`, `Dockerfile.media`
-   `ARG USE_SCCACHE=true`). So in that process `RUSTC_WRAPPER=sccache` is
-   exported even with `ENABLE_SCCACHE_RUST=0`, and an sccache server is
-   started. What actually saves the build is the explicit
-   `export RUSTC_WRAPPER=""` inside `build_gstreamer_monorepo`
-   (`build-gstreamer-monorepo.sh:673-681`, sourced into the same process at
-   `setup-gstreamer.sh:557-563` and only *called* at `:640`) — the fix for the
-   server that died at 99 % in three separate media rounds. Impact today is
-   nil: between `:50` and `:640` the only cargo touch is `cargo --version`
-   (`:447`), and the one real Rust build that precedes it, `install-rice-proto.sh`'s
-   `cargo cinstall`, runs in a *different* process
+   is — and since 2026-08-27 it barely controls anything.**
+   `setup-gstreamer.sh:50` calls `setup_sccache` **unconditionally**, and
+   `USE_SCCACHE` defaults to `true` (`compiler-cache.sh:37`, `Dockerfile.media`
+   `ARG USE_SCCACHE=true`). So in that process `RUSTC_WRAPPER` is exported even
+   with `ENABLE_SCCACHE_RUST=0`, and an sccache server is started. The
+   counterweight used to be an explicit `export RUSTC_WRAPPER=""` inside
+   `build_gstreamer_monorepo`; it is gone. That block is now the opposite — it
+   *installs* the guarded launcher when `RUSTC_WRAPPER` is unset
+   (`build-gstreamer-monorepo.sh:673-703`, sourced into the same process at
+   `setup-gstreamer.sh:559-563` and only *called* at `:640`). The monorepo's
+   Rust is therefore cached deliberately, and the gate does not gate it.
+   What the gate still decides is one thing: `media_common_init` runs
+   `setup_sccache` only under `ENABLE_SCCACHE_RUST=1`
+   (`03-media/core/common.sh:144-149`), and that is the path
+   `install-rice-proto.sh`'s `cargo cinstall` takes — a *different* process
    (`build-gstreamer-stage.sh:112`, before `setup-gstreamer.sh` is invoked at
-   `:144`) and therefore inherits the image's `RUSTC_WRAPPER=""`
-   (`Dockerfile.toolchain:58`). But the gate reads as OFF while the wrapper is
-   ON, and the next `cargo` call added ahead of `build_gstreamer_monorepo`
-   would silently inherit it.
+   `:144`), which therefore still inherits the image's `RUSTC_WRAPPER=""`
+   (`Dockerfile.toolchain:58`) and builds uncached. Between `:50` and `:640`
+   the only cargo touch is `cargo --version` (`:447`). So the knob's name
+   promises the monorepo and delivers rice-proto; read the two together before
+   trusting either.
 2. **A dead parameter.** `source_build_acceleration_helpers` takes
-   `include_sccache` (`03-media/build/onnxruntime/build/lib/common.sh:188-200`),
+   `include_sccache` (`03-media/build/onnxruntime/build/lib/common.sh:193-213`),
    but all three call sites (`30-build-native.sh:7`, `-amd.sh:11`,
    `-nvidia.sh:26`) pass nothing, so the `true` branch has never run.
 3. **`USE_CCACHE=false` does not disable compile caching — it migrates C/C++ to
    sccache.** With ccache off (or simply absent from `PATH`), `setup_ccache`
    returns early leaving the launchers unset, and any later `setup_sccache`
-   fills them (`compiler-cache.sh:147-150`). There is no log line that
+   fills them (`compiler-cache.sh:236-239`). There is no log line that
    distinguishes "ccache disabled" from "sccache silently took over C/C++".
 
 ### 5.4 Where sccache is actually worth it
 
 | target | gate | state | recommendation |
 |---|---|---|---|
-| **rustc** (gst-plugins-rs, the monorepo's Rust) | `ENABLE_SCCACHE_RUST=1` | wiring exists, default OFF; the wrapper is additionally hard-cleared for the monorepo build | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
-| **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:509`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
-| **C/C++** | — | ccache, always on | leave it. sccache's C/C++ path is strictly worse here (§ 5.1) and the launchers are already owned. |
+| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:229-233`, `build-gstreamer-monorepo.sh:694-703`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
+| **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:558`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
+| **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
 
 ### Per-target detail
@@ -396,7 +452,7 @@ The targets whose recommendation needs more than a table cell.
 
 #### **rustc** (gst-plugins-rs, the monorepo's Rust)
 
-**The one genuine win.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. Re-enable only as a *measured* experiment: `ENABLE_SCCACHE_RUST=1` **plus** removing the hard clear at `build-gstreamer-monorepo.sh:681`, with `SCCACHE_IDLE_TIMEOUT=0` set (the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` captured, and `sccache --show-stats` printed **to stderr** — the stream buildkit's 2 MiB step-log clip never cuts. Bar to flip the default: two consecutive green cross-arch media runs with a non-zero hit rate.
+**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:673-703`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:110`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:152`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
 
 #### **nvcc / hipcc**
 
@@ -408,10 +464,13 @@ Out of scope for this document. Note only that the mechanism is real and version
 
 ### 5.5 The one-line answer to "does sccache fight ccache?"
 
-No — but the *gates* lie about who is on. The honest summary is: C/C++ is
-ccache everywhere; Rust is ccache-less and currently uncached by deliberate
-choice; the GPU compilers are uncached by a correctness verdict, not by
-oversight. Any change to that should be a measurement, not a default flip.
+No — but the *gates* still lie about who is on. The honest summary is: C/C++
+runs through the guarded sccache launcher everywhere, with ccache as the
+automatic fallback for a server that will not answer; Rust runs through that
+same guarded launcher since 2026-08-27, which `ENABLE_SCCACHE_RUST=0` does not
+stop (§ 5.3 item 1); only the GPU compilers are uncached, and that is a
+correctness verdict, not an oversight. Any change to that should be a
+measurement, not a default flip.
 
 ---
 
@@ -423,16 +482,20 @@ oversight. Any change to that should be a measurement, not a default flip.
 | `RUNTIME_NO_CACHE=1` | unset | `--no-cache` on just the runtime package + wrapper builds |
 | `NO_CACHE_EXPORT=1` | unset | drops everything registry-facing (T3, and T4 when enabled); keeps T2 |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | unset (set by the disk guard) | stop *writing* T2; still read it |
-| `CROSS_REGISTRY_CACHE` | `inline` | `max` adds the T4 pilot pair — read § 4 first |
 | `SALVAGE_CACHE_EXPORT=0` | `1` | disable the per-`--target` salvage re-drive after a failed stage |
 | `SALVAGE_TARGET_TIMEOUT` | `600` | per-target timeout for that salvage pass |
 | `CROSS_DISK_GUARD_GB` | `40` | free-space floor that triggers T2 LRU pruning (`0` disables) |
 | `CROSS_CACHE_MAX_GB` | `250` | total T2 size cap (`0` disables) |
 | `BUILDKIT_CACHE_DIR` | `~/.cache/kata-buildcache` | where T2 lives |
 | `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_BASE_SECS` | `4` / `15` | transient-push retry budget |
-| `ENABLE_SCCACHE_RUST` | `0` | sccache as `RUSTC_WRAPPER` on the media lane (§ 5.4) |
+| `ENABLE_SCCACHE_RUST` | `0` | **not** the monorepo's Rust switch any more — it only adds `setup_sccache` to `media_common_init`, i.e. it caches `install-rice-proto.sh`'s `cargo cinstall` (§ 5.3 item 1) |
 | `ENABLE_SCCACHE_CUDA` | `0` | sccache as the CUDA/HIP compiler launcher (§ 5.4) |
 | `USE_CCACHE` / `USE_SCCACHE` / `USE_LLD` | `true` | per-tool switches in `compiler-cache.sh`; note § 5.3 item 3 |
+
+`CROSS_REGISTRY_CACHE` is deliberately **not** in this table. The T4 pilot knob
+was written and reverted, nothing in `cross-stage-build.sh` reads it, and
+listing it beside live knobs is how an operator ends up setting a no-op. § 4.5
+keeps the design.
 
 ---
 

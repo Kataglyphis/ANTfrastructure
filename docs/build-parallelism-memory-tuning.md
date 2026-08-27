@@ -199,12 +199,13 @@ Three findings, in the order that matters:
 `cross_stage_build_args()` ← `cross-stage-build.sh:553` — and it runs *once per
 stage build*, to emit `--build-arg BUILD_MEM_DIVISOR=N`. Inside the image that
 value is `ARG` → `ENV` in the `base` stage of every Dockerfile
-(`Dockerfile.media:61,92`; likewise `.sdk`, `.android`, `.toolchain`) and
-`parallelism.sh` reads it at each `RUN`. **A build-arg is bound when the build
-starts; nothing on the host can move it afterwards.** The step that actually
-crawls — the app wheelhouse, `Dockerfile.media:~515` — is hours downstream of
-that `ENV`, inside the same build. So "adapt when lanes finish" is unachievable
-at this layer, no matter how the host-side number is computed.
+(`Dockerfile.media:123,154`; likewise `.sdk:12,26`, `.android:15,70`,
+`.toolchain:31,45`) and `parallelism.sh` reads it at each `RUN`. **A build-arg
+is bound when the build starts; nothing on the host can move it afterwards.**
+The step that actually crawls — the app wheelhouse, `Dockerfile.media:584` —
+is hours downstream of that `ENV`, inside the same build. So "adapt when lanes
+finish" is unachievable at this layer, no matter how the host-side number is
+computed.
 
 **2. The clamp could not fire where it was meant to.** The chain runs one
 `run_parallel_arch_loop` per stage and joins before the next
@@ -232,8 +233,8 @@ is a pure function of `PARALLEL_ARCHS` / `TARGET_ARCHES` / `MAX_PARALLEL_ARCHS`
 ### The cache-key coupling (why the manual workaround doesn't exist either)
 
 Every host→build channel (build-args, bind mounts) is part of the **BuildKit
-cache key**. `ENV BUILD_MEM_DIVISOR` sits in `base` (`Dockerfile.media:92`),
-above all 39 downstream `RUN` steps, so a divisor that varies with lane
+cache key**. `ENV BUILD_MEM_DIVISOR` sits in `base` (`Dockerfile.media:154`),
+above all 40 downstream `RUN` steps, so a divisor that varies with lane
 liveness would cache-miss the whole media chain on **every** run. The same
 coupling removes the obvious hand recovery: **killing the lone lane and
 relaunching it with a smaller divisor does not resume from cache** — the changed

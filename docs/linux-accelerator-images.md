@@ -133,10 +133,17 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 | NVTX | Not installed | Installed |
 | GStreamer nvcodec | Auto-detected (off in builds) | Always enabled |
 | ORT native EP | CPU only | CPU + CUDA + TensorRT + cuDNN |
-| ORT Python Package | `onnxruntime-webgpu` | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
+| ORT Python Package | `onnxruntime` (the `ONNX_PACKAGE` default, `linux/Dockerfile.torch:42`) | `onnxruntime-gpu` (via `ONNX_PACKAGE`) |
 | PyTorch Extra | `pytorch-cpu` | `pytorch-cu130` (via `PYTORCH_EXTRA`) |
 | ORT output dir | `/usr/local/lib/onnxruntime-cpu` | Both cpu and `/usr/local/lib/onnxruntime-gpu` |
-| Image tag | `:latest` | `:nvidia` |
+| Image tag | `:latest-cross` (3-arch manifest) | `:nvidia` |
+
+The standard build's release target is the multi-arch manifest `:latest-cross`
+([`linux-build-basics.md` § Image Hierarchy](linux-build-basics.md#image-hierarchy)
+owns the tag scheme). Plain `:latest` is not an older second option — it was deleted
+in the 2026-08-27 registry cleanup, and no orchestrator under `linux/scripts/` can
+republish it; details in
+[`rancher-desktop-linux-containers.md` § The image: always `:latest-cross`](rancher-desktop-linux-containers.md#the-image-always-latest-cross).
 
 ## Torch Add-on (Linux)
 
@@ -149,7 +156,7 @@ nerdctl build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Do
 ## AMD GPU Build (Linux)
 
 > **Requirements:**
-> - Host driver >= 6.0 (for ROCm 7.1).
+> - Host driver >= 6.0 (for ROCm 7.2.4).
 > - `--device=/dev/kfd --device=/dev/dri` passed to `docker run`.
 
 The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_AMD=true`.
@@ -158,13 +165,19 @@ The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.amd` | Installs ROCm 7.1 + MIGraphX 2.14 from AMD repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
+| `linux/Dockerfile.amd` | Installs ROCm 7.2.4 + MIGraphX 2.14 from AMD repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with MIGraphX EP when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
 | `linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with MIGraphX EP |
 
 **Notes:**
+- The ROCm version is pinned by `ROCM_VERSION` in `linux/scripts/01-core/versions.env` and is
+  load-bearing: `linux/scripts/01-core/setup-rocm-repo.sh:54` builds the apt source as
+  `https://repo.radeon.com/rocm/apt/${ROCM_VERSION} noble main`. It is held at 7.2.4
+  deliberately (2026-08-08) — AMD's newer "TheRock" releases have no path under that apt
+  layout, so a bump has to migrate `setup-rocm-repo.sh` first, with `MIGRAPHX_VERSION`
+  moving together with it.
 - MIGraphX packages come from the AMD ROCm repository (`repo.radeon.com`) targeting Ubuntu 24.04 (noble), compatible with Ubuntu 26.04 (resolute). The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages to avoid noble-vs-resolute apt version conflicts.
 - The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home /opt/rocm` instead of `--use_rocm`.
 - The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`).

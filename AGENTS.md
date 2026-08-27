@@ -575,7 +575,10 @@ linux/scripts/
 │   │   ├── opencv/        OpenCV 5.x
 │   │   ├── ffmpeg/        FFmpeg (build-ffmpeg.sh has fixed host compiler wrapper)
 │   │   ├── gstreamer/     GStreamer monorepo (common/ has patch-gstreamer-sources.sh — Critical Fix #5)
-│   │   └── libcamera/     libcamera
+│   │   ├── libcamera/     libcamera
+│   │   ├── pyav/          PyAV wheel (`import av`), built in a stage layered on the FFmpeg it links against (Dockerfile.media `FROM ffmpeg AS pyav`); versions.env pinned PYAV_VERSION while nothing built it until 2026-08
+│   │   ├── armnn/         Arm NN + Arm Compute Library — arm64 ONLY; other arches get empty /opt/armnn + /opt/acl
+│   │   └── iree/          android/ ONLY (dispatched via android-dispatch.sh); the Linux-lane IREE is built by 05-frameworks/torch/build-app-wheelhouse.sh
 │   └── runtime/         artifact collection, runtime config, wheel repair, verification, media-env.sh (canonical ENV)
 ├── 04-runtime/          entrypoint + env scripts (gstreamer-env.sh, etc.)
 ├── 05-frameworks/       TVM, Torch, Flutter
@@ -727,19 +730,40 @@ The rules an agent must never violate:
    (`01-core/common.sh`), which returns sccache when its server answers, else
    ccache, else fails so the caller builds uncached. Call sites: build-gcc.sh
    (CC/CXX prefix), build-clang.sh and llvm-cross.sh (`CMAKE_*_COMPILER_LAUNCHER`),
-   compiler-cache.sh, cmake-cache-linker.sh, the onnxruntime build lib, and
-   build-app-wheelhouse.sh (IREE).
+   cmake-cache-linker.sh, the onnxruntime build lib, and build-app-wheelhouse.sh
+   (IREE). `compiler-cache.sh` is the ONE exception — it sources nothing, so it
+   cannot assume `01-core/common.sh` is loaded and cannot rely on the helper;
+   both `setup_ccache` (:108-166) and `setup_sccache` (:229-233) repeat the
+   resolution inline. Keep the two in step, or fold compiler-cache.sh into the
+   helper.
    - Do NOT hardcode `ccache` as a launcher anywhere. `cmake-cache-linker.sh` is
      SHARED; a literal there silently overrides the decision for every consumer.
    - `--ccache` on build-gcc.sh/build-clang.sh is a historical FLAG NAME. It
      means "use the compiler cache", not "use ccache". llvm.sh passes it.
    - Both mounts stay on every heavy RUN (ccache AND sccache), because the
      fallback needs somewhere to persist.
-   - **Rust stays UNCACHED** (`RUSTC_WRAPPER=""`, build-gstreamer-monorepo.sh):
-     earned by the sccache SERVER dying mid-compile in three media rounds,
-     killing green builds at 99%. nvcc likewise untouched — the Windows lane
-     records that released sccache breaks around it. "sccache everywhere" is
-     about C/C++ only.
+   - **Rust IS cached again (2026-08-27, 4200f7b + 54fc1df) — through the
+     guarded launcher.** The 2026-08-20 "Rust stays UNCACHED" rule was earned by
+     the sccache SERVER dying mid-compile in three media rounds, killing green
+     builds at 99% — but that signature was the wrong-server-by-fixed-TCP-port
+     bug, cured by `SCCACHE_SERVER_UDS` (2359 media-stage sccache faults → 0).
+     Two places set the wrapper, in this order: `setup_sccache`
+     (compiler-cache.sh:229-233), which setup-gstreamer.sh:50 runs
+     unconditionally for the Rust-heavy gstreamer lane, and
+     build-gstreamer-monorepo.sh:694-704, which only fires when
+     `RUSTC_WRAPPER` is still UNSET. Both PREFER
+     `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
+     a build at 99%. Their FALLBACKS differ, and only one is safe: with no
+     executable launcher the monorepo goes uncached
+     (build-gstreamer-monorepo.sh:702-703), while `setup_sccache` keeps its
+     `_sc_launcher="sccache"` default (compiler-cache.sh:229) and would ship
+     BARE sccache — a hole the literal-`export` gate below cannot see. The
+     launcher is only reachable because 01-core is bind-mounted at
+     `/opt/scripts/core` on every heavy media RUN; keep it on those mount
+     lists.
+     Exporting `RUSTC_WRAPPER=""` is the opt-out — `Dockerfile.toolchain:58` and
+     `Dockerfile.package:173` do exactly that. nvcc stays untouched — the
+     Windows lane records that released sccache breaks around it.
    - sccache-specific knobs live in `/etc/sccache/config.toml` (baked in
      `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
      and preprocessor/direct mode have NO env-var path in sccache. The size cap
@@ -747,13 +771,11 @@ The rules an agent must never violate:
    - **Never point a launcher at bare `sccache`. Use
      `01-core/sccache-launcher.sh`.** sccache ABORTS the compile on its own
      internal errors where ccache would just exec the compiler, and that is not
-     theoretical: CMake creates a TryCompile scratch dir, compiles in it, and
-     DELETES it; sccache then spawns the compiler with that dir as cwd, and
-     spawning with a removed cwd fails with ENOENT. Measured directly (spawn
-     /bin/true with cwd=<deleted dir> -> errno 2). It killed the media stage
-     three times, moving between OpenCV, onnxruntime and litert depending on
-     which probe lost the race, and it does NOT reproduce against directories
-     that persist — nine isolated attempts came back clean. The launcher runs
+     theoretical: it killed the media stage three times. The root cause —
+     CMake creates a TryCompile scratch dir, compiles in it, DELETES it, and
+     sccache then spawns the compiler with that dir as cwd (ENOENT) — is
+     written up ONCE, in [build-cache-tiers.md](docs/build-cache-tiers.md)
+     § 5.1, with the measurements. Read it there. The launcher runs
      sccache for every compile and only bypasses on
      "sccache: encountered fatal error"; a REAL compile error is passed through
      untouched, because blindly retrying would hide genuine failures.
@@ -762,10 +784,18 @@ The rules an agent must never violate:
      config.toml). We turned it on to recover ccache's direct-mode hit rate; it
      re-reads the input file AFTER the compile to store the entry and therefore
      dies on the same deleted scratch dirs. It is off by default upstream.
-   - **Resolve the launcher through `compiler_cache_launcher()`.** compiler-
-     cache.sh used to resolve it itself and hardcode the string, so the guard
-     shipped and had NO effect on the media lane for three runs. If you add a
-     new cache call site, route it through the helper.
+   - **Resolve the launcher through `compiler_cache_launcher()`.** If you add a
+     new cache call site, route it through the helper. The duplicated
+     resolution in compiler-cache.sh is why this class shipped INERT twice:
+     `setup_ccache` hardcoded the string `sccache`, so the guard had no effect
+     on the media lane for three runs (fixed c5b17ce); then `setup_sccache`
+     exported `RUSTC_WRAPPER="sccache"` unconditionally, and because
+     setup-gstreamer.sh:50 runs it BEFORE build-gstreamer-monorepo.sh's
+     `[ -z "${RUSTC_WRAPPER+x}" ]` test, every gst-plugins-rs crate went through
+     bare sccache (measured on the live media lane 2026-08-27; fixed 54fc1df).
+     Because the class shipped inert twice, `verify-critical-fixes.sh` now
+     GATES compiler-cache.sh against
+     `export RUSTC_WRAPPER|CMAKE_C{,XX}_COMPILER_LAUNCHER="sccache"`.
    The failure mode this replaced (mount without wiring, wiring without mount)
    was invisible — builds stayed green, just slow. Before committing a
    multi-hour run to a change here, run

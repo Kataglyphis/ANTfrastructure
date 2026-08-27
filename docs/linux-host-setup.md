@@ -216,10 +216,13 @@ What the script guarantees, and why each guard exists:
   kills the run; chains here regularly last 10+ hours.
 - **It verifies the release SHA256** against the published `SHA256SUMS` before
   touching anything, and refuses if the checksum is missing.
-- **It backs up exactly the `bin/` binaries the bundle ships**, so
-  `--rollback` puts nerdctl, buildkitd/buildctl, containerd and runc back.
-  Know its scope: the bundle also ships `libexec/` (CNI), systemd units and
-  `share/`, and those stay at the newly installed version. That is harmless
+- **It backs up exactly the `bin/` binaries the bundle ships, plus the
+  `/usr/local/lib/systemd/system` unit files it rewrites**, so `--rollback`
+  puts nerdctl, buildkitd/buildctl, containerd and runc back *and* restores the
+  rootful unit definitions — it stops the root services first, copies the units
+  back and runs a system `daemon-reload`, so a rollback does not strand them on
+  the new definitions. Know its scope: the bundle also ships `libexec/` (CNI)
+  and `share/`, and those stay at the newly installed version. That is harmless
   for the build path, but a rollback is *not* a full downgrade — for that,
   re-run with `NERDCTL_VERSION=<previous>`.
 - **It counts BuildKit cache-mount records before and after.** Compile caches

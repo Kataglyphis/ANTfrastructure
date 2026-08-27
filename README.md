@@ -125,7 +125,7 @@ layers and rebuilds only what changed.
 linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
 ├── Dockerfile.toolchain     GCC + LLVM/Clang + Python (FROM base)
-├── Dockerfile.sdk           Vulkan SDK + TVM (FROM toolchain)
+├── Dockerfile.sdk           Vulkan SDK + Flutter (FROM toolchain)
 ├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
 ├── Dockerfile.package       lean runtime assembly + validation (FROM base + android)
