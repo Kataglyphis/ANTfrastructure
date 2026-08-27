@@ -471,6 +471,41 @@ unowned by any section and are recorded here until someone files them:
   NOTE `--manifest-only`/`--repair` losing the pin IS documented and intended
   (`runtime-build-fns.sh:36-38`); this entry is about the CHAIN path.
 
+- **TVM-2OF3 — TVM ships on amd64 only, and FIVE mechanisms each declined to
+  say so** [M·★★★, found 2026-08-27 on the shipped :latest-cross] The wheel
+  directory listing from the archived media run is unambiguous:
+    amd64    apache_tvm-0.26.1.dev0-py3-none-linux_x86_64.whl + apache_tvm_ffi
+    arm64    no tvm wheel
+    riscv64  no tvm wheel
+  and the runtime smoke confirms it on the shipped images: amd64
+  `[PASS] tvm 0.26.1.dev0`, arm64 and riscv64 `ModuleNotFoundError: No module
+  named 'tvm'`.
+  This is NOT a build that fails. The tvm stage ends DONE on all three
+  (`#25/#50/#26`), cross mode is selected correctly
+  (`TVM build: target=arm64 BUILD_MODE=cross`), and `_tvm_build_wheel_cross`
+  (tvm-python.sh:348, called at :509) is a real code path. Something in it
+  yields no wheel on the cross arches while still exiting 0 — that is the
+  thing to debug.
+  What makes it a ★★★ is the silence. Every layer had a chance:
+    1. `tvm.sh` exits 0 having produced nothing.
+    2. Dockerfile.media:525 then prints "TVM build OK; wheel(s):" and `ls`
+       an EMPTY directory. The log actively asserts success.
+    3. smoke-torch-venv.sh reports "not importable (best-effort)" — a WARN.
+    4. ARCH-PARITY cannot see it: `tvm`/`apache_tvm` is absent from
+       `_PARITY_WHEELS` (smoke-runtime-image.sh:617), which is EXACTLY the
+       one-sided-EXTRA blind spot that file documents at :594-600.
+    5. `EXP_TVM=<ver>` exists to turn the report into a hard assertion
+       (smoke-torch-venv.sh:310-319) and is set NOWHERE in the repo.
+  Fix in three parts, cheapest first:
+    (a) smoke-runtime-image.sh: add `apache_tvm` to `_PARITY_WHEELS`. Cheap,
+        no build-context change — but it turns the next run RED until (c) is
+        decided, which is the point.
+    (b) Dockerfile.media:523-530: stop printing "TVM build OK" when the wheel
+        dir is empty. Closure change, so it needs a no-build window.
+    (c) Decide the product question: is TVM meant to ship on all three? If
+        yes, debug the cross wheel path; if no, record the exception in
+        `_parity_exempt` with a reason and set `EXP_TVM` for amd64.
+
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
 - **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
