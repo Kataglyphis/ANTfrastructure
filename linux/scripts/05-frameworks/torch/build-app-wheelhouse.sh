@@ -845,7 +845,11 @@ build_iree_wheels() {
         # raise it to debug; default is the quiet-but-useful level. Remove this
         # block once the spawn failure is understood.
         case "${_iree_launcher}" in *sccache*)
-            export SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"
+            # QUIET by default since 2026-08-27. This defaulted to sccache=info during
+            # the 2026-08-26 ENOENT hunt, which is over -- the cause was a shared
+            # sccache server, cured by SCCACHE_SERVER_UDS. Every IREE build has been
+            # verbose since. Set IREE_SCCACHE_LOG=sccache=info to bring it back.
+            export SCCACHE_LOG="${IREE_SCCACHE_LOG:-}"
             export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache-iree.log}" ;;
         esac
         case "${_iree_launcher}" in *sccache*)

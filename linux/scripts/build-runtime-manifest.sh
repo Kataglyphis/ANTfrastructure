@@ -379,6 +379,27 @@ main() {
   # the multi-arch manifest.
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
+    # FRESHNESS GATE (wired 2026-08-27). Everything above proves each per-arch
+    # wrapper is sound; nothing proved the INDEX points at them. On 2026-08-27
+    # the published index carried two different org.opencontainers.image.revision
+    # values because provenance was resolved per arch, and while riscv64 was
+    # still building the registry served a :latest-cross-riscv64 from three days
+    # earlier -- an index cut at that moment would have shipped two fresh arches
+    # and one stale one with every other gate green.
+    # ADVISORY by default: this runs AFTER the push, so failing hard here cannot
+    # unpublish anything and would only turn a completed run red. Set
+    # MANIFEST_FRESHNESS_STRICT=1 to make it fatal in CI.
+    if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
+       && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
+      if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
+         bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh"; then
+        log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
+      elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
+        err "[manifest] freshness check FAILED and MANIFEST_FRESHNESS_STRICT=1"
+      else
+        warn "[manifest] freshness check FAILED — the published index does not match this run (advisory; set MANIFEST_FRESHNESS_STRICT=1 to make this fatal)"
+      fi
+    fi
   fi
 }
 

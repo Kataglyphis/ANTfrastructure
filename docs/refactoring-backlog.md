@@ -266,7 +266,7 @@ either created or exposed.
 **Added 2026-08-26 (pre-rebuild wave + its adversarial review, commit 9a86d2f
 — static review only, NO build has exercised these):**
 
-- **IREE host stage no longer builds LLVM** [was never tracked here — the win
+- ✅ **IREE host stage no longer builds LLVM** [was never tracked here — the win
   the wave went looking for]. `-DIREE_BUILD_COMPILER=ON` on the HOST stage was
   a leftover; the target reads only `iree-c-embed-data` + `iree-flatcc-cli`
   out of `IREE_HOST_BIN_DIR`, both LLVM-free, so the host stage runs
@@ -274,21 +274,21 @@ either created or exposed.
   instead of escalating to a multi-hour LLVM compile that provably cannot
   succeed where OFF failed. **Watch in the rebuild:** the riscv64/arm64 IREE
   host stage must NOT show clang/MLIR compilation, and both tools must exist.
-- **ORPHAN-PINS closed** — PyAV is BUILT (new
+- ✅ **ORPHAN-PINS closed** — PyAV is BUILT (new
   `linux/scripts/03-media/build/pyav/build-pyav.sh` + a `pyav` stage landing
   `av-<ver>-cp314-cp314-linux_<arch>.whl` in /opt/wheels); the TVM half was
   already closed by 202634c. **Watch:** the PyAV wheel must appear on all
   three arches and the wheel-smoke warning must disappear.
-- **RV1-FREETYPE fixed** — riscv64 opencv freetype is ENABLED against staged
+- ✅ **RV1-FREETYPE fixed** — riscv64 opencv freetype is ENABLED against staged
   static target harfbuzz; `-DBUILD_opencv_freetype=OFF` survives only as the
   not-staged fallback. **Watch:** the riscv64 `opencv-freetype` wheel-smoke
   warning must be gone — if it is not, the static-harfbuzz staging is what
   failed, not the module.
-- **TVM ffi honesty** — a failed `tvm-ffi` wheel build now WITHDRAWS the wheel
+- ✅ **TVM ffi honesty** — a failed `tvm-ffi` wheel build now WITHDRAWS the wheel
   set instead of leaving an apache-tvm wheel that dies at `import tvm`.
   **Watch:** either a complete tvm+tvm_ffi pair, or an explicit skip reason —
   never "python wheel staged" alone.
-- **GStreamer known-broken guard repaired** — it compared space-delimited
+- ✅ **GStreamer known-broken guard repaired** — it compared space-delimited
   against a newline-separated list, so it stopped firing as soon as TWO
   plugins failed, with a new hard FAIL resting on it. **Watch:** no spurious
   ARCH-PARITY abort at the end of a green build.
@@ -403,49 +403,28 @@ either created or exposed.
 
 ## E. Waiting on a TRIGGER (not on work)
 
-- **SCC-BARE-FALLBACK — the bare-sccache gate matches the SHAPE, not the
-  BEHAVIOUR** [S, found 2026-08-27 by the doc-repair verifiers, reviewing my own
-  54fc1df] Both resolvers initialise their launcher to the literal `sccache`
-  (`compiler-cache.sh:108` setup_ccache, `:229` setup_sccache) and only upgrade
-  it when `sccache-launcher.sh` is executable. When 01-core is not mounted,
-  they therefore export BARE sccache — the thing AGENTS.md forbids, and which
-  ABORTS a compile on sccache's own internal errors. `build-gstreamer-monorepo.sh`
-  :702-703 makes the opposite choice and goes UNCACHED instead. Both behaviours
-  are defensible; having both silently is not.
-  The gate added in 54fc1df (`verify-critical-fixes.sh:227`) cannot see this:
-  its regex matches a literal `export ...="sccache"`, not `="${_sc_launcher}"`
-  with a bare default. Fifth instance of "a guard that ships but cannot fire",
-  this time inside the commit that named the pattern.
-  DECIDE (operator): is bare sccache the intended fallback for stages without
-  01-core, or should they go uncached like the gstreamer lane? Then make the
-  gate assert the decision instead of the spelling.
+- ✅ **SCC-BARE-FALLBACK — DECIDED and implemented 2026-08-27.** The owner's
+  answer is "benutze immer sccache": guarded launcher where 01-core is
+  mounted, bare sccache where it is not, never uncached.
+  build-gstreamer-monorepo.sh was the one writer choosing uncached and now
+  agrees with common.sh:449-450. The gate this entry produced was rewritten to
+  assert the DECISION rather than the spelling -- the property is "never
+  uncached", mutation-checked in both directions.
 
-- **SCC-DIAG-LEFTOVERS — the temporary sccache diagnostics outlived their
-  investigation** [XS, found 2026-08-27, deferred to the next closure window]
-  Two remnants of the 2026-08-26 ENOENT hunt are still in the tree now that the
-  cause is known (wrong sccache server via TCP port; cured by
-  SCCACHE_SERVER_UDS):
-    * `01-core/compiler-cache.sh:120` still says "Remove once the cause is
-      known". The knob itself already defaults to silent, so this is a stale
-      comment, not live noise.
-    * `05-frameworks/torch/build-app-wheelhouse.sh:848` defaults
-      `SCCACHE_LOG="${IREE_SCCACHE_LOG:-sccache=info}"` — still ARMED, so every
-      IREE build stays verbose.
-  Keep both knobs; only the defaults and the comment need changing. NOT done
-  on the spot: 01-core is inside the bind-mount closure the running wrapper
-  builds read, and flipping a cache key there to quieten a log would risk hours
-  of rebuild for nothing. Do it in a no-build window.
+- ✅ **SCC-DIAG-LEFTOVERS — CLOSED 2026-08-27.** build-app-wheelhouse.sh no
+  longer defaults SCCACHE_LOG to sccache=info, so IREE builds are quiet again
+  (IREE_SCCACHE_LOG still turns it back on), and compiler-cache.sh's "Remove
+  once the cause is known" note now states the cause: concurrent BuildKit RUN
+  steps shared one sccache server because the port is not container-local,
+  cured by SCCACHE_SERVER_UDS.
 
-- **MANIFEST-FRESHNESS-WIRING — the index gate exists but nothing runs it**
-  [S, 2026-08-27] `linux/scripts/verify-manifest-freshness.sh` asserts every
-  `:latest-cross` child equals its per-arch tag and that all children share one
-  run-id. It was written and sensitivity-checked against a genuinely stale live
-  index, but deliberately NOT wired: adding a gate that can abort the final step
-  of a four-hour run, during that run's final step, is not a trade worth making.
-  Wire it into `build-runtime-manifest.sh` after `create_manifest` (with
-  `EXPECT_RUN_ID="${CROSS_RUN_ID}"`) in a no-build window. NOTE both of its
-  assertions are individually blind to a wholesale-stale ship — EXPECT_RUN_ID is
-  the one that actually pins it, so the wiring must pass it.
+- ✅ **MANIFEST-FRESHNESS-WIRING — WIRED 2026-08-27.** verify-manifest-freshness.sh
+  now runs from build-runtime-manifest.sh right after create_manifest, with
+  EXPECT_RUN_ID threaded from CROSS_RUN_ID. Deliberately ADVISORY: it runs
+  after the push, so failing hard could not unpublish anything and would only
+  turn a finished run red; MANIFEST_FRESHNESS_STRICT=1 makes it fatal for CI,
+  MANIFEST_FRESHNESS_GATE=0 skips it. Sensitivity-checked against the live
+  index: PASS with this run's id, FAIL with any other.
 
 - ✅ **BINFMT-UNIT-REINSTALL — DONE 2026-08-27.** The dev host's unit now
   carries `PartOf=containerd.service` and the fix was verified against a real

@@ -117,7 +117,10 @@ setup_ccache() {
     # cwd demonstrably exist. TWELVE isolated hypotheses have been disproven, so
     # stop guessing and let sccache report what it resolved. Default-on because
     # a run that reproduces the failure WITHOUT the log is a wasted run; set
-    # SCCACHE_LOG= to silence it. Remove once the cause is known.
+    # SCCACHE_LOG= to silence it. The cause IS known (2026-08-27): concurrent
+    # BuildKit RUN steps shared ONE sccache server because the port is not
+    # container-local; cured by SCCACHE_SERVER_UDS. The knob stays as an escape
+    # hatch, defaulting to quiet.
     # Debug logging served its purpose (it produced the "Server sent
     # CompileStarted" line that identified the wrong-server problem) and is
     # very loud; set SCCACHE_LOG=sccache=debug to bring it back.
