@@ -178,16 +178,19 @@ either created or exposed.
   mine to make. `exit 1` has been in place since 928e745 (2026-08-25).
   LESSON worth keeping: when checking an exit code, do not pipe.
 
-- **stdout-as-return-value is a live footgun** [M·★★★] `compiler_cache_launcher`
-  returns the launcher NAME on stdout while `info()` writes to fd 1
-  (logging.sh:77). The leak produced
-  `CC="[INFO] Using sccache ...sccache gcc"` and GCC died as
-  `configure: error: C compiler cannot create executables` -- a message pointing
-  nowhere near the cause. Fixed there + regression-tested
-  (test-compiler-cache-launcher.sh, with a mutation case). **The refactor is the
-  CLASS, not the instance:** sweep every function whose stdout callers capture
-  with `$(...)`, and either route all logging to stderr repo-wide or return
-  values through a nameref instead.
+- ✅ **stdout-as-return-value — CLOSED 2026-08-27 with a GATE, not a sweep.**
+  The exposure turned out to be small and the risk structural, so the fix is
+  `linux/scripts/verify-stdout-returns.py`, wired into preflight as
+  `stdout-returns`. It cross-references every function consumed via `$( )`
+  (411 of them) against every `log`/`info` call inside one, because those reach
+  fd 1 while `warn`/`err` reach fd 2 (logging.sh:77-83).
+  Found exactly one live offender: `normalize_llvm_cmake_dir` (tvm-detect.sh),
+  whose stdout is a path consumed at three call sites — latent, firing only
+  when an LLVM CMake path actually needs normalising. Both of its log lines are
+  redirected now; the gate found the SECOND one after the first had been fixed
+  by hand, which is the whole argument for having it. Mutation-checked in both
+  directions.
+
 - **The compiler-cache abstraction is split across seven places** [L·★★]
   compiler-cache.sh:4-8 already warns "the 02-toolchain GCC/LLVM builds do NOT
   source this module ... that misread hid a dead ccache mount for months". The
