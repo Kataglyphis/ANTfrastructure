@@ -491,11 +491,16 @@ unowned by any section and are recorded here until someone files them:
   setup-gstreamer.sh for riscv64 cross only. Re-bump when upstream
   meson/g-i fix the `subproject('glib')` resolution — retest by removing
   the pin in a closure window.
-- **NODE-RV — riscv64 ships Node v22 (pin: 26.7)** [S·★, watch] ubuntu-ports
+- **NODE-RV — riscv64 ships Node v22 (pin: 26.8.1)** [S·★, watch] ubuntu-ports
   has no 26.x for riscv64; the install falls back fail-open with a WARN (by
   design, seen in every wave-4 smoke log). Lift when ports ships 26.x —
   check via `apt-cache policy nodejs` on the ports snapshot at each bump
   window; until then the riscv64 image runs the distro v22.
+  NB (2026-08-27): the pin moved 26.8.0 -> 26.8.1 because the OFFICIAL
+  v26.8.0 tarball self-reports `26.8.0-alpha.0.0.0` and its own bundled npm
+  then refuses it (semver puts a prerelease outside `>=22.9.0`). Re-check the
+  reported version, not just the tarball name, at every bump — the gate that
+  missed it compared a PREFIX and has since been tightened to an exact match.
 - **SV-residual — watch the first real `compose up`** — user-side.
 - **riscv64 isa-spec smoke on real hardware** — needs hardware.
 - **WEBUI_SECRET_KEY server-side rotation** — user action.
