@@ -110,6 +110,40 @@ for _ff_extra_pkg in "${ffmpeg_extra_feature_packages[@]}"; do
     install_optional_target_packages "${_ff_extra_pkg}"
 done
 
+# vid.stab needs BOTH halves, and the shipped 2026-08-27 build had neither on
+# the cross arches -- amd64 linked libvidstab, arm64/riscv64 silently did not,
+# and FFmpeg dropped --enable-libvidstab without failing anything.
+#
+#   1. libvidstab-dev for the TARGET. It is available for arm64 and riscv64
+#      alike (Candidate 1.1.0-2.1 on both, checked against ubuntu-ports), so
+#      the install below is a straightforward retry that also SAYS something
+#      when it does not land.
+#   2. a libgomp.so DEV SYMLINK for the target. vidstab.pc lists -lgomp, but
+#      libgomp1:<arch> ships only libgomp.so.1, and the cross toolchain carries
+#      a libgomp for the HOST (/opt/gcc-*/lib64) and none for the target --
+#      `aarch64-linux-gnu-gcc -print-search-dirs` shows no target libgomp path
+#      at all. Without the symlink the probe's link step dies on
+#      "cannot find -lgomp" even once libvidstab-dev IS installed.
+#
+# Both verified in the real cross-media-arm64 image: installing the dev package
+# alone still failed on -lgomp; adding the symlink turned the link green.
+_ffmpeg_ensure_vidstab_linkable() {
+    is_cross || return 0
+    local _tri _libdir
+    _tri="$(cross_target_triplet 2>/dev/null || true)"
+    [ -n "${_tri}" ] || return 0
+    _libdir="/usr/lib/${_tri}"
+    [ -d "${_libdir}" ] || return 0
+    if [ ! -e "${_libdir}/libgomp.so" ] && [ -e "${_libdir}/libgomp.so.1" ]; then
+        echo "Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink; the cross toolchain has no target libgomp)"
+        ln -sf libgomp.so.1 "${_libdir}/libgomp.so"
+    fi
+    if [ ! -e "${_libdir}/libvidstab.so" ]; then
+        echo "NOTE: ${_libdir}/libvidstab.so still absent after the optional install; --enable-libvidstab will be probe-skipped for this arch"
+    fi
+}
+_ffmpeg_ensure_vidstab_linkable
+
 if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     echo "Installing nv-codec-headers for FFmpeg NVIDIA acceleration..."
     nv_codec_ref="${NV_CODEC_HEADERS_REF:-n13.1.15.0}"
