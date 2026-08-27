@@ -447,6 +447,30 @@ unowned by any section and are recorded here until someone files them:
   NOT done during the rebuild — re-registering handlers under a running
   emulated build is not worth it for a fix that only matters at the next restart.
 
+- **XC2-PARTIAL-RUN — a resumed run ships without its ancestry stamp**
+  [M, found 2026-08-27 on the shipped :latest-cross] The wrapper build stamps
+  `org.kataglyphis.parent-digest` / `parent-stage` from
+  `RUNTIME_ANDROID_PIN_<arch>`, exported at `cross-stage-build.sh:648-656` —
+  but only when the `ANDROID_PIN` array is populated, which happens when the
+  ANDROID STAGE RUNS. A `--only runtime` resume never runs it, so line 652
+  `continue`s, no label is emitted, and the wrapper ships carrying run-id and
+  build-type alone.
+  Verified on today's bytes: all three shipped wrappers carry
+  `org.kataglyphis.run-id=20260827-073226-d491cb10` and NO parent-digest, while
+  the full-chain run earlier the same day emitted
+  `--label org.kataglyphis.parent-digest` for every arch. So the mechanism
+  works; resuming loses it.
+  The information is not missing — the same run's ancestry preflight PRINTED
+  the digests (`media→android (amd64): OK (sha256:286d5410…)`). They are simply
+  never threaded into ANDROID_PIN when the stage is skipped. Fix: populate
+  ANDROID_PIN for skipped-but-resolved stages from the ancestry resolution,
+  so a resume is stamped exactly like a full run.
+  Consequence if left: every future ancestry check on these images reports
+  "records no parent digest — provenance unverifiable" and can never verify the
+  wrapper→android link for anything shipped by a resumed run.
+  NOTE `--manifest-only`/`--repair` losing the pin IS documented and intended
+  (`runtime-build-fns.sh:36-38`); this entry is about the CHAIN path.
+
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
 - **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
