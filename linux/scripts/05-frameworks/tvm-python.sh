@@ -73,7 +73,17 @@ _tvm_target_python_sysconfig_export() {
 
     for search_root in ${stage_root:+"${stage_root}/lib"} "/usr/lib"; do
       [ -d "${search_root}" ] || continue
-      dir="$(find "${search_root}" -maxdepth 2 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
+      # -maxdepth 4, not 2 (fixed 2026-08-27). CPython normally drops
+      # _sysconfigdata_*.py straight into lib/python3.X/ (depth 2), but this
+      # chain's staged cross interpreter puts it in lib/python3.X/lib-dynload/
+      # -- depth 3, one level past the old limit. Measured on the arm64 tvm
+      # stage: the file is at
+      #   /opt/python-cross/arm64/usr/local/lib/python3.14/lib-dynload/
+      #     _sysconfigdata__linux_aarch64-linux-gnu.py
+      # The miss is SILENT in effect: the wheel then builds with the BUILD-HOST
+      # SOABI and _tvm_reject_wrong_soabi_wheels withdraws it, so TVM shipped
+      # without `import tvm` on every cross arch while the stage reported OK.
+      dir="$(find "${search_root}" -maxdepth 4 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
       [ -n "${dir}" ] && break
     done
 

@@ -546,7 +546,13 @@ _chain_stage_disk_guard() {
   local cap_gb="${CROSS_CACHE_MAX_GB:-250}"
   [ "${cap_gb}" -gt 0 ] 2>/dev/null || return 0
   local total_gb
-  total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1)"
+  # `|| true` for the same reason as the bc_gb line ~86 lines above: `du` on a
+  # missing cache dir exits non-zero, pipefail propagates it, and set -e kills
+  # the orchestrator with a bare exit 1 right AFTER a stage succeeded. That fix
+  # was applied there and missed here (found 2026-08-27). Live triggers:
+  # NO_CACHE=1 (the mkdir is gated on it), a relocated BUILDKIT_CACHE_DIR, or a
+  # --only runtime resume. The `[ -n ... ] || return 0` below handles empty.
+  total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
   [ -n "${total_gb}" ] && [ "${total_gb}" -gt "${cap_gb}" ] || return 0
   [ -n "${protected}" ] || protected="$(_disk_guard_protected_slugs "${completed_stage}")"
   log "[disk-guard] cache exports total ${total_gb}G > cap ${cap_gb}G — LRU-pruning ${bc_dir} down to the cap (protected: ${protected:-none})"
@@ -555,7 +561,7 @@ _chain_stage_disk_guard() {
     [ -n "${victim}" ] || break
     log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
     rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-    total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1)"
+    total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
     [ -n "${total_gb}" ] || return 0
   done
   log "[disk-guard] cache exports now ${total_gb}G (cap ${cap_gb}G)"

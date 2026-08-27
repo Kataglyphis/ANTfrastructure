@@ -472,6 +472,12 @@ RUN --mount=type=tmpfs,target=/tmp \
 FROM base AS tvm
 
 ARG TVM_REF=v0.26.0
+# CORRECTION to this comment's first version: tvm.sh DOES see versions.env --
+# common.sh:12-14 sources load-versions-env.sh against the bind-mounted copy --
+# so TVM_COMMIT was reachable all along and was simply always EMPTY. This ARG is
+# belt-and-braces so an explicit --build-arg also lands, not the thing that made
+# the pin work.
+ARG TVM_COMMIT=
 ARG TARGET_ARCH
 ARG TARGETARCH
 

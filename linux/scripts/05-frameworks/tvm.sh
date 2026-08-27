@@ -165,6 +165,13 @@ install_tvm_deps_phase() {
 # submodules on a fresh clone or when the checkout moved.
 fetch_tvm_source() {
   local _tvm_cloned=0
+  # Set when we took the NON-recursive fallback clone below, which leaves every
+  # submodule empty. Tracked separately because the HEAD-moved test alone is not
+  # enough: pinning TVM_COMMIT to the DEFAULT BRANCH HEAD checks out the commit
+  # that is already checked out, so HEAD does not move and the submodule update
+  # was skipped -- CMake then died at `add_subdirectory` on an empty
+  # 3rdparty/tvm-ffi. Measured 2026-08-27, the first time TVM_COMMIT was ever set.
+  local _tvm_needs_submodules=0
   # TVM_COMMIT (versions.env, opt-in) beats the tag: tags are MOVABLE refs and
   # TVM is a COMPILER whose output ships in the images (supply-chain audit,
   # class b). Also clone SHALLOW AT THE REF now — the old bare
@@ -181,6 +188,7 @@ fetch_tvm_source() {
       rm -rf "$tvm_dir"
       git clone https://github.com/apache/tvm.git "$tvm_dir"
       _tvm_cloned=1
+      _tvm_needs_submodules=1
     fi
   fi
 
@@ -188,7 +196,8 @@ fetch_tvm_source() {
   log "Fetching + checking out ref: ${_tvm_want}"
   git -C "$tvm_dir" fetch --depth 1 origin "${_tvm_want}" 2>/dev/null || git -C "$tvm_dir" fetch --depth 1 --tags 2>/dev/null || true
   git -C "$tvm_dir" checkout "${_tvm_want}"
-  if [ "$_tvm_cloned" -eq 0 ] || [ "$_curr_ref" != "$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)" ]; then
+  if [ "$_tvm_cloned" -eq 0 ] || [ "$_tvm_needs_submodules" -eq 1 ] \
+     || [ "$_curr_ref" != "$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)" ]; then
     git -C "$tvm_dir" submodule update --init --recursive
   fi
 }
@@ -371,56 +380,19 @@ patch_tvm_findllvm_dylib_fallback() {
   log "Patched TVM FindLLVM.cmake: link imported LLVM dylib target when components resolve empty"
 }
 
-# LLVM 23 removed/renamed three things TVM v0.26.0 still uses, so the CROSS path
-# (which links the chain's own LLVM_RELEASE, unlike amd64 which takes the distro
-# llvm-config-21) fails to compile src/target/llvm/llvm_instance.cc:
-#   TargetOptions::{NoInfsFPMath,NoNaNsFPMath}   removed
-#   SubtargetSubTypeKV::Key / SubtargetFeatureKV::Key -> key()
-#   TargetMachine::getMCSubtargetInfo()          pointer -> reference
-# Result: "TVM build failed for target=arm64 ... (non-fatal)" and a shipped image
-# with no `import tvm` on arm64/riscv64, while amd64 kept working. Measured
-# 2026-08-27 on the shipped :latest-cross.
+# NO patch_tvm_for_llvm_23 HERE — and that is deliberate (2026-08-27).
 #
-# These are NOT invented fixes: upstream apache/tvm main already guards all three
-# with TVM_LLVM_VERSION >= 230, and this reproduces those exact edits. No release
-# carries them yet (v0.26.0 is the newest tag and lacks them), which is why it is
-# a patch rather than a TVM_REF bump.
+# TVM v0.26.0 does not compile against LLVM 23. A hand-written patch was tried
+# and MEASURED on a real arm64 tvm-stage build: it fixed four of the five
+# TVM_LLVM_VERSION >= 230 sites in llvm_instance.cc and none of the two OTHER
+# files upstream had to guard, so the build still died —
+#   codegen_llvm.cc  Intrinsic::matchIntrinsicSignature + MatchIntrinsicTypes_*
+#   llvm_module.cc   the ORC JIT lambda signature
+# — while the patch function logged success. A patch that cannot succeed but
+# reports that it did is worse than none, so it was removed rather than grown.
 #
-# Same lifecycle as the removed patch_tvm_for_llvm_22 (see the note above main):
-# DELETE this function the moment TVM_REF moves to a release that ships the 230
-# guards. The `already patched` check keeps it idempotent; every anchor is
-# asserted so a TVM bump that changes the file FAILS here instead of silently
-# patching nothing.
-patch_tvm_for_llvm_23() {
-  local f="${tvm_dir}/src/target/llvm/llvm_instance.cc"
-
-  [ -f "$f" ] || die "TVM llvm_instance.cc not found at ${f}"
-  if grep -q 'TVM_LLVM_VERSION >= 230' "$f"; then
-    log "TVM llvm_instance.cc already carries the LLVM 23 guards"
-    return 0
-  fi
-
-  grep -q '^  target_options_\.NoInfsFPMath = false;$' "$f" \
-    || die "TVM llvm_instance.cc: NoInfsFPMath anchor not found (TVM ${ref} layout changed?)"
-  grep -q '^      if (cpu == desc\.Key) {$' "$f" \
-    || die "TVM llvm_instance.cc: desc.Key anchor not found (TVM ${ref} layout changed?)"
-  grep -q '^  const auto MCInfo = target_machine->getMCSubtargetInfo();$' "$f" \
-    || die "TVM llvm_instance.cc: MCInfo anchor not found (TVM ${ref} layout changed?)"
-  grep -q 'std::string(feat\.Key)' "$f" \
-    || die "TVM llvm_instance.cc: feat.Key anchor not found (TVM ${ref} layout changed?)"
-
-  sed -i \
-    -e 's|^  target_options_\.NoInfsFPMath = false;$|#if TVM_LLVM_VERSION < 230\n  target_options_.NoInfsFPMath = false;|' \
-    -e 's|^  target_options_\.NoNaNsFPMath = true;$|  target_options_.NoNaNsFPMath = true;\n#endif|' \
-    -e 's|^      if (cpu == desc\.Key) {$|#if TVM_LLVM_VERSION >= 230\n      if (cpu == desc.key()) {\n#else\n      if (cpu == desc.Key) {\n#endif|' \
-    -e 's|^  const auto MCInfo = target_machine->getMCSubtargetInfo();$|#if TVM_LLVM_VERSION >= 230\n  const auto* MCInfo = \&target_machine->getMCSubtargetInfo();\n#else\n  const auto MCInfo = target_machine->getMCSubtargetInfo();\n#endif|' \
-    -e 's|^    if (MCInfo->checkFeatures("+" + std::string(feat\.Key))) {$|#if TVM_LLVM_VERSION >= 230\n    if (MCInfo->checkFeatures("+" + std::string(feat.key()))) {\n      cpu_features.Set(feat.key(), "");\n#else\n    if (MCInfo->checkFeatures("+" + std::string(feat.Key))) {|' \
-    -e 's|^      cpu_features\.Set(feat\.Key, "");$|      cpu_features.Set(feat.Key, "");\n#endif|' \
-    "$f"
-
-  grep -q 'TVM_LLVM_VERSION >= 230' "$f" || die "Failed to patch TVM llvm_instance.cc for LLVM 23"
-  log "Patched TVM llvm_instance.cc for LLVM 23 (upstream main's TVM_LLVM_VERSION >= 230 guards)"
-}
+# The mechanism is versions.env's TVM_COMMIT, pinned to an upstream commit that
+# already carries every guard. See the WATCH note there for when to drop it.
 
 main() {
   # Option locals (populated by parse_tvm_args).
@@ -461,7 +433,6 @@ main() {
   require_toolchain_compilers
   fetch_tvm_source
   patch_tvm_findllvm_dylib_fallback
-  patch_tvm_for_llvm_23
   resolve_tvm_llvm
 
   if [ "$do_clean" -eq 1 ]; then

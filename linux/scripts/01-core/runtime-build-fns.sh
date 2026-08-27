@@ -116,7 +116,14 @@ _runtime_finish_stage() {
   if runtime_use_local_stage_context_outputs; then
     local context_dir
     context_dir="$(runtime_stage_context_dir "${kind}" "${arch}")"
-    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}"
+    # rc propagation, same rule as _export_container_rootfs further below: this
+    # runs under run_parallel_arch_loop, which DISABLES errexit for the whole
+    # call tree, so a failure must be RETURNED. Unguarded, a ~27GB
+    # `nerdctl save | tar -x` dying on ENOSPC was reported as a SUCCESSFUL
+    # package build -- and the very next line deleted the only remaining copy
+    # of the image. The wrapper then failed hours later on a truncated
+    # oci-layout build-context, real cause long scrolled away. Found 2026-08-27.
+    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${context_dir}" || return 1
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
   else
     if runtime_pushes_intermediate_images; then
