@@ -98,11 +98,19 @@ shellcheck_ensure() {
 shellcheck_ensure
 info "shellcheck: ${SHELLCHECK_BIN} ($("${SHELLCHECK_BIN}" --version | sed -n 's/^version: //p'))"
 
-# Default target set: every tracked .sh under linux/scripts plus the runtime
-# service scripts (llm-stack, webserver) that ship their own entrypoints.
+# Default target set: every tracked .sh under linux/scripts, the runtime service
+# scripts (llm-stack, webserver) that ship their own entrypoints, and the
+# host-config operator tools.
+#
+# host-config was NOT swept until 2026-08-27. Seven scripts sat outside the
+# gate -- including install-nerdctl-full.sh and the two ghcr tools, i.e. the
+# ones that upgrade the daemon and DELETE from the registry. They happened to
+# be clean, which is luck, not coverage: this repo's recurring failure is a
+# gate whose scope quietly excludes the thing it was meant to protect.
 if [ "${#FILES[@]}" -eq 0 ]; then
   mapfile -t FILES < <(find \
     "${REPO_ROOT}/linux/scripts" \
+    "${REPO_ROOT}/linux/host-config" \
     "${REPO_ROOT}/linux/llm-stack" \
     "${REPO_ROOT}/linux/webserver" \
     -name '*.sh' -type f | sort)
