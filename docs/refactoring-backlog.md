@@ -237,18 +237,6 @@ unowned by any section and are recorded here until someone files them:
 
 ### A1. Work items (all referenced by the phase plan above)
 
-- **GENAI-DRIFT — onnxruntime-genai differs per arch and the pin assert
-  says OK** [S·★★, 2026-08-23] versions.env pins v0.15.2; shipped reality is
-  amd64 0.15.2 (local wheel), arm64 0.14.0 (PyPI, from the app lock), riscv64
-  absent. The dual-authority union (lock ∪ pin) accepts all three, so the
-  assert cannot catch it. **PRODUCER HALF DONE** (wave-6): the arm64
-  `onnxruntime_genai-0.15.2-cp314-cp314-linux_aarch64.whl` now builds. What
-  REMAINS is consumer-side and rebuild-gated: once the rebuild proves 0.15.2
-  ships on arm64, DELETE the dated tolerance entry at
-  smoke-torch-venv.sh:179 (`("onnxruntime-genai", "arm64", "0.14.0",
-  "0.15.2", …)`) — leaving it in place silently re-disarms the assert. Also
-  still open: make a versions.env BUILD pin authoritative over the lock for
-  every arch that builds the package.
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
   positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
   build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
