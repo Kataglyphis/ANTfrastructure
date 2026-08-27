@@ -148,7 +148,8 @@ orphans its children.
 **Verify the shipped BYTES, never the push.** `:latest-cross` shipped STALE five
 times with every static gate and every smoke GREEN, because they all checked the
 push rather than the content. `verify-shipped-wrapper.sh` now gates this
-automatically in `build-runtime-manifest.sh`'s per-arch loop, before the manifest
+automatically in `build-runtime-manifest.sh`, in its own pass over every arch
+that runs BEFORE the boot smokes and before the manifest
 is assembled; `WRAPPER_CONTENT_GATE=0` downgrades it to advisory. The saga, its
 real root cause and the two bugs the re-ship flushed out are owned by
 [`docs/cross-build-verification.md`](docs/cross-build-verification.md#verify-the-shipped-bytes).

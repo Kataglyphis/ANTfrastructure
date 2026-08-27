@@ -153,6 +153,57 @@ added; a version-equality assert would fail on a cosmetic difference. The
 comment claiming "amd64/arm64 install the PyPI compiler+runtime" was the thing
 actually wrong, and now describes the real per-arch split.
 
+### And then the shipped IMAGES were audited, not just the code
+
+A second 10-agent sweep read the shipped run's logs rather than the tree, and
+every claim was re-checked against the published bytes before being acted on.
+Eleven defects, one refutation.
+
+**Four things shipped wrong.** `Dockerfile.package` set FFMPEG_PREFIX and
+LIBCAMERA_PREFIX inside the same ENV instruction that consumes them, and Docker
+substitutes within one instruction using the value from BEFORE it -- empty. The
+published amd64 image therefore carried two phantom `/bin` entries in PATH, two
+`/lib/pkgconfig`, two `/lib`, and a GST_PLUGIN_PATH pointing at
+`/lib/gstreamer-1.0`, so libcamera's GStreamer plugin was unreachable through
+the standard variables. The Android ONNX Runtime shipped with Microsoft's 1DS
+telemetry SDK compiled in, because ORT 1.29 defaults it ON and only the native
+lane passed `--no_telemetry`. amd64 alone shipped a setuid-root
+`gst-ptp-helper`, since its disable was gated on `cross_build_is_active` while
+its own rationale ("useless in a container image") is arch-independent -- the
+cross arches got that hardening as a side effect of a link-failure workaround.
+And Node.js was an alpha: the official v26.8.0 tarball self-reports
+`26.8.0-alpha.0.0.0`, which puts it outside its own npm's supported range.
+
+**Three gates reported success over things they never tested.** `check_ffmpeg`
+resolved the binary as `command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg` --
+falling back to the absolute path exactly when PATH reachability, the thing it
+checks, is broken. The app-wheel smoke exits 0 whenever failures==0 and counts a
+missing component as a warning, so one identical PASS covered 15/15, 14/15 and
+12/15; it now carries a per-arch ratchet that may only be raised. The
+shipped-content byte gate shared a loop with the boot smoke and ran second, so
+riscv64's smoke failure meant the riscv64 wrapper in the index was never
+content-checked; the two are separate passes now, content first.
+
+**Two silent swallows.** Provenance was resolved per arch inside the build loop,
+so a commit landing between two arch builds split the index -- today's carries
+two different `org.opencontainers.image.revision` values. And a riscv64 uv
+exemption written for "extras that cannot resolve under QEMU" swallowed
+`Timeout (300s) when waiting for lock` twice, assembling the venv with no
+regenerated lock while the log said "expected".
+
+**libvidstab needed two fixes, not one.** amd64 shipped 31 FFmpeg libraries and
+arm64 30, the delta being `--enable-libvidstab`. Diagnosed against the real
+cross-media image because the logs were inconclusive (the install layer was
+CACHED and printed nothing): `libvidstab-dev` was never installed for the
+target even though it exists for both cross arches, AND `-lgomp` has no dev
+symlink there -- `libgomp1:<arch>` ships only the versioned file and the cross
+toolchain carries a libgomp for the HOST only. Installing the dev package alone
+still failed on `cannot find -lgomp`; both together link.
+
+Refuted rather than fixed: "riscv64 exports ONNXRUNTIME_ROOT_ANDROID at an empty
+directory". The variable is set on no arch at all, so the empty directory points
+nowhere.
+
 ## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
 
 `buildctl` on this host comes from the `nerdctl-full` bundle — there is no

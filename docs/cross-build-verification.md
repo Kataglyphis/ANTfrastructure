@@ -102,13 +102,23 @@ were all byte-identical to a prior run. The real cause was the
 [`linux-cross-builds.md` § versions.env feature toggles](linux-cross-builds.md#versionsenv-feature-toggles-linux-lane),
 "Why the explicit `RUNTIME_NO_CACHE`"), NOT a cache; media+android were always
 fresh. This is now GATED automatically: `verify-shipped-wrapper.sh` runs in
-`build-runtime-manifest.sh`'s per-arch loop BEFORE the manifest is assembled —
+`build-runtime-manifest.sh` in its OWN pass over every arch, before the boot
+smokes and before the manifest is assembled —
 it lists each wrapper's rootfs (`nerdctl export | tar -t`, arch-agnostic, no
 emulation) and asserts the `/opt/ffmpeg` lib set matches the versions.env
 toggles (`FFMPEG_ENABLE_TF` → `libtensorflow` present/absent, ffmpeg intact).
 A mismatch aborts before `:latest-cross` goes live; `WRAPPER_CONTENT_GATE=0`
 makes it advisory. To spot-check by hand: pull the wrapper and grep for the
 expected lib set.
+
+The two-pass order is load-bearing and was learned the hard way. Both checks
+used to share ONE loop with the boot smoke first, so a smoke failure on arch N
+skipped the content gate for arch N *and every arch after it*. On 2026-08-27
+riscv64's smoke failed on an ARCH-PARITY arm, and the riscv64 wrapper that then
+shipped in the index had never been content-checked at all. Content gate first
+is also simply cheaper: `verify-shipped-wrapper.sh` is a tar listing — no boot,
+no emulation — so it runs anywhere, while the smoke needs QEMU for foreign
+arches.
 
 That gate covers each wrapper's CONTENT. The INDEX went ungated until
 2026-08-27: the only manifest check in the chain is
