@@ -1063,21 +1063,30 @@ base ─┬─ onnxruntime ───────┐
   NO nerdctl-full ships yet, so this upgrade does not deliver it. A daemon
   restart is also when the staged `buildkitd.toml` gcpolicy takes effect — do
   both in the same no-build window.
-- **ghcr REGISTRY hygiene: `linux/host-config/ghcr-prune-package.sh`**
-  (2026-08-24). The container package accumulates one untagged version per
-  re-pushed moving tag; it had grown to 771 versions (~85% dead). NEVER
-  "delete all untagged" by hand — the per-arch entries of a multi-arch index
-  are themselves untagged manifests, and a chain that is pushing creates
-  untagged manifests seconds before tagging them. The script's keep-set is
-  tags + every index CHILD (resolved live, abort on any unresolvable tag) +
-  the digest each tag currently resolves to + everything younger than
-  `KEEP_DAYS` (default 7). Dry-run by default; `GHCR_PRUNE_CONFIRM=1`
-  deletes, re-checking each version's tags immediately before its DELETE.
-  First confirmed run: 604 deleted, 0 failed, `:latest-cross` + all
-  cross-stage tags verified 200 afterwards, running build untouched. Known
-  pre-existing damage it did NOT cause: legacy tags android/compiler/latest/
-  media/sdk/torch were already dangling (children 404) before the tool
-  existed.
+- **ghcr REGISTRY hygiene: TWO tools over `ghcr-common.sh`** (2026-08-24,
+  reorganised 2026-08-27). `ghcr-prune-package.sh` deletes UNTAGGED versions;
+  `ghcr-delete-tags.sh` deletes NAMED tags from an explicit list and never
+  guesses what is legacy. Both source `ghcr-common.sh` for the PAT (docker
+  login, or `GHCR_TOKEN`), the registry Bearer exchange, and — the part that
+  is a SAFETY property, not tidiness — the one Accept header. Listing the
+  index media types makes a multi-arch tag resolve to its INDEX so its
+  children are visible; omitting them collapses the tag to a single platform
+  manifest, and an incomplete keep-set is exactly how a prune tool deletes
+  something it should not.
+  NEVER "delete all untagged" by hand: the per-arch entries of a multi-arch
+  index are themselves untagged manifests, and a chain that is pushing creates
+  untagged manifests seconds before tagging them. Keep-set = tags + every
+  index CHILD (resolved live, abort on any unresolvable tag) + everything
+  younger than `KEEP_DAYS`. Dry-run by default; `GHCR_PRUNE_CONFIRM=1` /
+  `GHCR_DELETE_TAGS_CONFIRM=1` delete.
+  Runs: 604 deleted (2026-08-24); then 2026-08-27 23 untagged + 47 tags,
+  0 failed, **81 -> 34 tags, 204 -> 134 versions**, `:latest-cross` verified
+  3/3 children HTTP 200 afterwards, running build untouched.
+  The six long-dangling legacy tags (`android`, `compiler`, `latest`, `media`,
+  `sdk`, `torch` — children all 404 since before either tool existed) were
+  DELETED on 2026-08-27 by operator decision. Note `:latest` is therefore gone
+  and will not return by itself: every orchestrator in `linux/scripts/` is a
+  `build-cross-*` script, so the native lane has no build path any more.
 - **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
   `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
   the worst incident this repo has produced). A "let's free some space"

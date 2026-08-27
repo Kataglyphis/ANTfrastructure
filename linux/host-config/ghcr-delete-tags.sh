@@ -39,8 +39,10 @@
 # ==============================================================================
 set -uo pipefail
 
-GHCR_PKG="${GHCR_PKG:-kataglyphis_beschleuniger}"
-GHCR_OWNER="${GHCR_OWNER:-kataglyphis}"
+_GHCR_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=linux/host-config/ghcr-common.sh
+. "${_GHCR_SH_DIR}/ghcr-common.sh"
+
 KEEP_DAYS="${KEEP_DAYS:-2}"
 CONFIRM="${GHCR_DELETE_TAGS_CONFIRM:-0}"
 
@@ -58,25 +60,12 @@ while [ "$#" -gt 0 ]; do
 done
 [ "${#DELETE_TAGS[@]}" -gt 0 ] || err "no tags given — this script never guesses"
 
-_token() {
-  if [ -n "${GHCR_TOKEN:-}" ]; then printf '%s' "${GHCR_TOKEN}"; return; fi
-  python3 - <<'PY'
-import json, base64, os, sys
-p = os.path.expanduser("~/.docker/config.json")
-try: auth = json.load(open(p))["auths"]["ghcr.io"]["auth"]
-except Exception: sys.exit(1)
-print(base64.b64decode(auth).decode().split(":", 1)[1])
-PY
-}
-TOKEN="$(_token)" || err "no ghcr credential (docker login ghcr.io, or set GHCR_TOKEN)"
+TOKEN="$(ghcr_pat)" || err "no ghcr credential (docker login ghcr.io, or set GHCR_TOKEN)"
 [ -n "${TOKEN}" ] || err "empty ghcr token"
 
-REG_TOKEN="$(curl -fsS -u "x:${TOKEN}" \
-  "https://ghcr.io/token?service=ghcr.io&scope=repository:${GHCR_OWNER}/${GHCR_PKG}:pull" \
-  | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')" \
-  || err "registry token exchange failed"
+REG_TOKEN="$(ghcr_registry_token "${TOKEN}")" || err "registry token exchange failed"
 
-export TOKEN REG_TOKEN GHCR_OWNER GHCR_PKG KEEP_DAYS CONFIRM
+export TOKEN REG_TOKEN GHCR_OWNER GHCR_PKG KEEP_DAYS CONFIRM GHCR_MANIFEST_ACCEPT
 printf '%s\n' "${DELETE_TAGS[@]}" > /tmp/ghcr-del-list.$$
 export DEL_FILE="/tmp/ghcr-del-list.$$"
 trap 'rm -f "${DEL_FILE}"' EXIT
@@ -86,8 +75,7 @@ import json, os, subprocess, sys, datetime
 TOK=os.environ["TOKEN"]; RTOK=os.environ["REG_TOKEN"]
 OWN=os.environ["GHCR_OWNER"]; PKG=os.environ["GHCR_PKG"]
 KEEP_DAYS=int(os.environ["KEEP_DAYS"]); CONFIRM=os.environ["CONFIRM"]=="1"
-ACC=("application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,"
-     "application/vnd.docker.distribution.manifest.list.v2+json,application/vnd.docker.distribution.manifest.v2+json")
+ACC=os.environ["GHCR_MANIFEST_ACCEPT"]
 delete_tags=set(l.strip() for l in open(os.environ["DEL_FILE"]) if l.strip())
 
 def api(path, method="GET"):

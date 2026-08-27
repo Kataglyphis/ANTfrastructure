@@ -416,12 +416,18 @@ wrong in both directions).
 
 ## E. Waiting on a TRIGGER (not on work)
 
-- **GHCR-LEGACY-TAGS — six dangling legacy tags need an operator decision**
-  [S, user-side, found 2026-08-24] `android`, `compiler`, `latest`, `media`,
-  `sdk`, `torch` are docker manifest lists whose 18 children ALL 404 —
-  unpullable since before ghcr-prune-package.sh existed (old retention or a
-  past manual prune). Decide: delete the six tags, or re-point them at
-  current digests. The prune tool deliberately keeps them (tagged = kept).
+- **DOCS-CURRENCY-40 — 40 confirmed documentation defects after the sccache
+  migration** [M, found 2026-08-27 by a 12-agent audit, 71 raw -> 40 confirmed
+  after adversarial refutation] 23 wrong, 16 stale, 1 missing, across 16 files;
+  Windows docs excluded per the owner directive. Concentration is
+  `docs/build-cache-tiers.md` (11) — it still argues from the ccache world and
+  states flatly at :340 "on the media lane there is exactly one C/C++ launcher,
+  and it is ccache". That file wants a REWRITE of its cache section, not
+  patches. Then `docs/cross-build-verification.md` (6), `AGENTS.md` (3,
+  including a Repo Map missing `pyav/`, `iree/`, `armnn/`), and eleven files
+  with 1-2 each. Per-finding fixes with proving file:line are in the audit
+  output; the AGENTS.md Rust bullet was the thread that led to the bare-sccache
+  bug fixed in 54fc1df.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.

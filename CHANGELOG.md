@@ -5,6 +5,50 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-27 — the registry gets a second tool, and Rust caching turns out to have been bare all along
+
+**Registry: 81 -> 34 tags, 204 -> 134 versions, 0 failures.**
+`ghcr-prune-package.sh` deliberately keeps every TAGGED version, which left the
+other half of the mess untouched. New sibling **`ghcr-delete-tags.sh`** deletes
+NAMED tags from an explicit list — it never decides what is legacy — with the
+same fail-closed keep-set: abort if any kept tag is unreadable, skip a version
+that shares a digest with a kept index child, carries a tag not on the list, or
+is younger than `KEEP_DAYS`.
+
+What went: 22 `*-buildcache` tags that nothing has written since the cache
+self-defeat fix (`verify-critical-fixes.sh` already *forbids* their return), 19
+tags from a naming scheme the chain abandoned (`media-cross-amd64` ->
+`cross-media-amd64`, `latest-cross-runtime-*` -> `latest-cross-*`), and the six
+long-dangling index tags. All 47 had zero references anywhere in the repo.
+
+**`:latest` was already broken and is now gone.** Its three children had been
+404 for months — `python-ci-linux.yml:118` had quietly worked around it. Worth
+stating plainly: it will not come back by itself. Every orchestrator under
+`linux/scripts/` is a `build-cross-*` script, so the native lane has no build
+path any more; keeping it means writing one, not running one.
+
+Both tools now source **`ghcr-common.sh`**. The thirteen byte-identical lines
+were the visible half; the important half is that the Accept header is now
+defined ONCE. Listing the index media types makes a multi-arch tag resolve to
+its index so its children are visible — omit them and the tag collapses to one
+platform manifest, which is precisely how a prune tool builds a short keep-set
+and deletes something it should not.
+
+**`setup_sccache` pointed `RUSTC_WRAPPER` at BARE sccache.** The Rust caching
+reinstated in 4200f7b never took effect: `build-gstreamer-monorepo.sh` only
+assigns the wrapper when the variable is UNSET, and `setup-gstreamer.sh:50`
+calls `setup_sccache` first, which exported `RUSTC_WRAPPER="sccache"`
+unconditionally. Measured on the live media lane — the run logged
+`RUSTC_WRAPPER=sccache`. Every Rust compile in gst-plugins-rs went through the
+one thing AGENTS.md forbids; an sccache hiccup would have aborted the build at
+99% instead of costing cache hits. Third time this class has shipped inert, so
+it now has a gate in `verify-critical-fixes.sh` rather than another comment,
+mutation-checked in both directions.
+
+A 12-agent documentation audit (every finding adversarially refuted, 71 raw ->
+**40 confirmed**) is recorded in the backlog. `docs/build-cache-tiers.md` alone
+carries 11 and still argues from the ccache world.
+
 ## 2026-08-26 — host toolchain: scripted nerdctl-full upgrade, and the audit that rewrote it
 
 `buildctl` on this host comes from the `nerdctl-full` bundle — there is no
