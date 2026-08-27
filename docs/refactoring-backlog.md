@@ -167,7 +167,12 @@ either created or exposed.
   pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
   cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
   regex failure that appears in no real chain log.
-- **`preflight.sh` exits 0 on failure** [S·★★★] Observed live: it printed
+- **`preflight.sh` exits 0 on failure** [S·★★★] Re-confirmed 2026-08-27: a full
+  run printed `2 check(s) failed` and still exited 0 — and those two were the
+  shellcheck suite that had been inert since 2026-08-26 and a secret scan
+  drowning in gitignored logs. Neither would have been noticed without reading
+  the summary by hand, which is exactly the cost of this bug. Originally
+  observed: it printed
   `3 check(s) failed` AND `Fix these before a multi-hour rebuild.` and then
   `exited with code 0`. Anything that calls it non-interactively and trusts the
   exit code gets a green light on a red result. This is the highest-value item
@@ -210,12 +215,6 @@ either created or exposed.
   and `${TARGET_ARCH}`; PAR2 is the documented bug class where the wrong one
   silently shares or splits caches across lanes. Audit all ~43 mount lines and
   pick one, with a test.
-- **`RUSTC_WRAPPER=""` is now an unexplained exception** [S·★★] After "sccache
-  everywhere", build-gstreamer-monorepo.sh:681 still hard-clears the Rust
-  wrapper. The reason is real (the sccache SERVER died mid-compile in three
-  media rounds, killing green builds at 99%) but it now reads as an oversight.
-  Either revalidate against the bar in docs/build-cache-tiers.md:340 or promote
-  the comment into a Verdict entry so nobody "fixes" it.
 - **versions.env mis-attributes a watch note** [XS·★] The LLVM 23 block lists
   the `-nostdinc++` libstdc++ c++23 patch as something to watch for the LLVM
   bump. That patch lives in GCC's `src/c++23/Makefile.in` and is a GCC concern;
@@ -234,16 +233,6 @@ unowned by any section and are recorded here until someone files them:
   PY_MLC_Z3_STATIC_VERSION (two introduced 2026-08-24/26) have live readers but
   no entry in lint-env-knobs.allow. Register them before anyone flips
   KNOB_GATE=1, or that gate fails on its first real use.
-- **docs/build-cache-tiers.md advertises CROSS_REGISTRY_CACHE=max** [XS·★] as a
-  live pilot knob at five sites, with code line refs that no longer exist. S3
-  was declined and the code reverted; setting it today is a silent no-op. Mark
-  those sites DESIGN ONLY.
-
-**Do NOT close (closure attempts were reviewed and REJECTED):** the § B QUEUED
-BUMPS bullet (closing as written drops real in-scope work), the § E gcc-prereq
-measurement facets, and A1's TG1 residual (the proposed replacement text was
-wrong in both directions).
-
 ## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
 
 ### A1. Work items (all referenced by the phase plan above)
@@ -416,19 +405,6 @@ wrong in both directions).
 
 ## E. Waiting on a TRIGGER (not on work)
 
-- **DOCS-CURRENCY-40 — 40 confirmed documentation defects after the sccache
-  migration** [M, found 2026-08-27 by a 12-agent audit, 71 raw -> 40 confirmed
-  after adversarial refutation] 23 wrong, 16 stale, 1 missing, across 16 files;
-  Windows docs excluded per the owner directive. Concentration is
-  `docs/build-cache-tiers.md` (11) — it still argues from the ccache world and
-  states flatly at :340 "on the media lane there is exactly one C/C++ launcher,
-  and it is ccache". That file wants a REWRITE of its cache section, not
-  patches. Then `docs/cross-build-verification.md` (6), `AGENTS.md` (3,
-  including a Repo Map missing `pyav/`, `iree/`, `armnn/`), and eleven files
-  with 1-2 each. Per-finding fixes with proving file:line are in the audit
-  output; the AGENTS.md Rust bullet was the thread that led to the bare-sccache
-  bug fixed in 54fc1df.
-
 - **SCC-BARE-FALLBACK — the bare-sccache gate matches the SHAPE, not the
   BEHAVIOUR** [S, found 2026-08-27 by the doc-repair verifiers, reviewing my own
   54fc1df] Both resolvers initialise their launcher to the literal `sccache`
@@ -461,6 +437,27 @@ wrong in both directions).
   on the spot: 01-core is inside the bind-mount closure the running wrapper
   builds read, and flipping a cache key there to quieten a log would risk hours
   of rebuild for nothing. Do it in a no-build window.
+
+- **MANIFEST-FRESHNESS-WIRING — the index gate exists but nothing runs it**
+  [S, 2026-08-27] `linux/scripts/verify-manifest-freshness.sh` asserts every
+  `:latest-cross` child equals its per-arch tag and that all children share one
+  run-id. It was written and sensitivity-checked against a genuinely stale live
+  index, but deliberately NOT wired: adding a gate that can abort the final step
+  of a four-hour run, during that run's final step, is not a trade worth making.
+  Wire it into `build-runtime-manifest.sh` after `create_manifest` (with
+  `EXPECT_RUN_ID="${CROSS_RUN_ID}"`) in a no-build window. NOTE both of its
+  assertions are individually blind to a wholesale-stale ship — EXPECT_RUN_ID is
+  the one that actually pins it, so the wiring must pass it.
+
+- **BINFMT-UNIT-REINSTALL — one host command, needed once**
+  [XS, user-side, 2026-08-27] `setup-rootless-binfmt.sh`'s unit template now
+  sets `PartOf=containerd.service`, but the unit already installed on the dev
+  host predates that: it last ran 2026-08-09, survived the 2026-08-26 containerd
+  restart untouched, and its registration was gone for 17 days while systemd
+  reported `Result=success`. Re-install once to pick the change up:
+  `bash linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service`.
+  NOT done during the rebuild — re-registering handlers under a running
+  emulated build is not worth it for a fix that only matters at the next restart.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
