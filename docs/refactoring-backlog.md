@@ -429,6 +429,23 @@ wrong in both directions).
   output; the AGENTS.md Rust bullet was the thread that led to the bare-sccache
   bug fixed in 54fc1df.
 
+- **SCC-BARE-FALLBACK — the bare-sccache gate matches the SHAPE, not the
+  BEHAVIOUR** [S, found 2026-08-27 by the doc-repair verifiers, reviewing my own
+  54fc1df] Both resolvers initialise their launcher to the literal `sccache`
+  (`compiler-cache.sh:108` setup_ccache, `:229` setup_sccache) and only upgrade
+  it when `sccache-launcher.sh` is executable. When 01-core is not mounted,
+  they therefore export BARE sccache — the thing AGENTS.md forbids, and which
+  ABORTS a compile on sccache's own internal errors. `build-gstreamer-monorepo.sh`
+  :702-703 makes the opposite choice and goes UNCACHED instead. Both behaviours
+  are defensible; having both silently is not.
+  The gate added in 54fc1df (`verify-critical-fixes.sh:227`) cannot see this:
+  its regex matches a literal `export ...="sccache"`, not `="${_sc_launcher}"`
+  with a bare default. Fifth instance of "a guard that ships but cannot fire",
+  this time inside the commit that named the pattern.
+  DECIDE (operator): is bare sccache the intended fallback for stages without
+  01-core, or should they go uncached like the gstreamer lane? Then make the
+  gate assert the decision instead of the spelling.
+
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
 - **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
