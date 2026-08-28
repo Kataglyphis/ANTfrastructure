@@ -1,48 +1,13 @@
 #!/usr/bin/env bash
-# ==============================================================================
 # verify-manifest-freshness.sh — does :latest-cross index the bytes THIS run built?
+# Registry-only: no pull, no emulation. Why both assertions are needed, and why
+# neither suffices alone: docs/cross-build-verification.md.
 #
-# WHY (2026-08-27)
-# ----------------
-# verify-shipped-wrapper.sh gates each per-arch wrapper's CONTENT, and the chain
-# runs it (build-runtime-manifest.sh:336). Nothing gates the INDEX. The only
-# manifest check in the chain is `nerdctl manifest inspect >/dev/null` at :149 —
-# existence, not freshness.
-#
-# That is the RTCACHE3 shape one level up: an index can be created, pushed and
-# reported green while one of its children still points at a PREVIOUS run's
-# digest. Observed live during this very run — while riscv64 was still building,
-# ghcr already served a :latest-cross-riscv64 from 2026-08-24. If the index had
-# been cut at that moment it would have shipped two fresh arches and one stale
-# one, with every gate green.
-#
-# TWO independent assertions, because either alone can be fooled:
-#   1. each index child digest == the digest its per-arch TAG resolves to, and
-#   2. all children carry the SAME org.kataglyphis.run-id label.
-# (1) catches an index cut against stale tags; (2) catches a per-arch tag that
-# was itself never moved — the original RTCACHE3 bug, where the push kept
-# re-uploading a frozen image under a fresh-looking name.
-#
-# NEITHER IS ENOUGH ALONE, and measured proof of that came from running this
-# against the live :latest-cross on 2026-08-27 while a rebuild was mid-flight:
-#   (1) PASSED riscv64 — index child and per-arch tag agreed perfectly, because
-#       BOTH were still the 2026-08-24 digest. Agreement is not freshness.
-#   (2) PASSED outright — all three children shared one run-id. They shared the
-#       run-id of 2026-08-23, three days old. Consistency is not freshness.
-# A wholesale-stale ship satisfies both. Only EXPECT_RUN_ID pins the index to
-# THIS run, so pass it in CI and after every manual ship:
-#   EXPECT_RUN_ID="${CROSS_RUN_ID}" linux/scripts/verify-manifest-freshness.sh
-#
-# Registry-only: no pull, no emulation, works for every arch from any host.
-#
-# Usage:
-#   linux/scripts/verify-manifest-freshness.sh [--repo OWNER/PKG] [--tag latest-cross]
-# Env:
-#   EXPECT_RUN_ID   assert the shared run-id equals this exact value
-#   STALE_RISCV64 / STALE_ARM64 / STALE_AMD64
-#                   assert the child digest is NOT this known-previous digest
-# Exit: 0 all assertions hold, 1 otherwise.
-# ==============================================================================
+# Usage: linux/scripts/verify-manifest-freshness.sh [--repo OWNER/PKG] [--tag latest-cross]
+# Env:   EXPECT_RUN_ID  assert the shared run-id equals this exact value
+#        STALE_RISCV64 / STALE_ARM64 / STALE_AMD64
+#                       assert the child digest is NOT this known-previous digest
+# Exit:  0 all assertions hold, 1 otherwise.
 set -uo pipefail
 
 REPO="kataglyphis/kataglyphis_beschleuniger"

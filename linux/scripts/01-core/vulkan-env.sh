@@ -1,45 +1,22 @@
 #!/usr/bin/env bash
 # vulkan-env.sh - locate and source a Vulkan SDK's setup-env.sh.
 #
-# Single home for a resolver that had grown two overlapping copies with
-# OPPOSITE miss contracts:
-#   * 02-toolchain/vulkan.sh::source_vulkan_sdk_env  - returns 1 on a miss; its
-#     callers gate on that (04-runtime/entrypoint.sh, 05-frameworks/tvm-detect.sh,
-#     03-media/build/gstreamer/install-deps.sh and .../common/pre-setup.sh).
-#   * project launchers (e.g. BeschleunigerBallett scripts/linux/lib/common.sh::
-#     source_vulkan_env) - warn and return 0 so a dev box without an installed
-#     SDK still proceeds, and carry four extra fallbacks the installer copy
-#     lacked (explicit $VULKAN_SETUP_SCRIPT, ${HOME}/vulkan, an arch-subdirectory
-#     glob, $VULKAN_SDK/setup-env.sh) plus a glslc-on-PATH short circuit.
+# One home for a resolver that had two copies with OPPOSITE miss contracts, so
+# the contract is now per call, not per copy:
+#   strict=1  search only the caller's prefix, return 1 on a miss, stay SILENT
+#             (some callers capture stdout).
+#   strict=0  also sweep /opt/vulkan and ~/vulkan, fall back to glslc on PATH,
+#             then warn and return 0. The default.
 #
-# This module implements the UNION of both search strategies; the contract is
-# selected per call instead of per copy:
+# Strictness is POSITIONAL (default ${VULKAN_ENV_STRICT:-0}), not env-only: the
+# image-side callers must keep `return 1` regardless of a stray export.
 #
-#   strict=1 -> search ONLY the prefix the caller passed, return 1 when nothing
-#               was found, and stay completely silent (stdout must stay clean:
-#               some callers capture it).
-#   strict=0 -> additionally sweep /opt/vulkan and ~/vulkan, fall back to a
-#               glslc-on-PATH short circuit, then warn and return 0 (the
-#               launcher contract; this is the default).
+# Dependency-free on purpose -- no set -e/-u at file scope, no downloads.sh -- so
+# a dev launcher can source it for one function without the SDK installer's
+# shell options.
 #
-# Strictness is a POSITIONAL argument defaulting to ${VULKAN_ENV_STRICT:-0}, not
-# an environment variable alone: the image-side callers must keep their `return
-# 1` contract no matter what the ambient environment says, so they pass 1
-# explicitly and are immune to a stray export.
-#
-# Deliberately dependency-free: no `set -e`/`set -u` at file scope and no
-# 01-core/downloads.sh, so a dev launcher can source this to get one function
-# without inheriting the 23 KB SDK installer's shell options.
-#
-# Exposes:
-#   vulkan_env_find_setup_script [prefix] [include_default_roots]
-#       prints the first usable setup-env.sh, returns 1 when there is none.
-#       include_default_roots defaults to 1 (also sweep /opt/vulkan + ~/vulkan).
-#   vulkan_env_source [prefix] [sanitize_mode] [strict]
-#       resolves, sources, and optionally sanitizes; see the contract above.
-#       sanitize_mode is passed through to sanitize_vulkan_sdk_env
-#       (02-toolchain/vulkan.sh) when that helper happens to be loaded.
-
+# vulkan_env_find_setup_script [prefix] [include_default_roots]  -> path, or 1
+# vulkan_env_source [prefix] [sanitize_mode] [strict]            -> resolve+source
 [ -n "${_VULKAN_ENV_SH_LOADED:-}" ] && return 0
 _VULKAN_ENV_SH_LOADED=1
 
