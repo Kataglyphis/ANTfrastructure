@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (code fixes: LOG10,11,15,16,20,22,23,25,29,30,36,37,38,39,40,41 closed and moved to archive)
+Last groomed: 2026-08-28 (closed: LOG10,11,15,16,20,22,23,25,29,30,33,36,37,38,39,40,41 + LOG31-preflight + Section C guard; see archives)
 
 ## Standing rules (read first)
 
@@ -219,11 +219,6 @@ was fixed as LOG29 — closed 2026-08-28.)
   worth re-checking (`Dockerfile.package:368-373`). Action: lift the three
   cheapest checks into the runtime smoke — `active` resolves,
   `vulkan/vulkan.h` present, one `glslangValidator` invocation.
-- **LOG33 — `verify-shipped-wrapper.sh`, the ONLY gate on shipped bytes, had
-  exactly two hard assertions** [S·★★, CLOSED 2026-08-28] Promoted onnxruntime
-  presence and AP4 strip to hard assertions. See
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (host-only
-  fixes)".
 - **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
   `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
   remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
@@ -235,13 +230,6 @@ was fixed as LOG29 — closed 2026-08-28.)
   `verify-media-artifacts.sh`'s media-inputs lib→lib64 fallback is the exact
   broken idiom the same file fixed elsewhere; the app-wheel-smoke ratchet added
   for one incident is narrower than the class it was meant to catch.
-
-## I. Doc claims that drifted (2026-08-28 maximality audit) — all closed
-
-All items in this section (LOG37-LOG41) were fixed and moved to
-[`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md)
-§ "Closed 2026-08-28 (code fixes)".
-
 
 ## A. Window inventory — A1 needs WORK in the wave
 
