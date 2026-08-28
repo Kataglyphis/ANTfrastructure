@@ -16,8 +16,8 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (§ G + the § B riders added from the 2026-08-27/28
-from-base run; CLOSURE WINDOW 3 still declared — see the 🎯 plan). LIVE
+Last groomed: 2026-08-28 (§ G + § H + § I: the maximality audit of the same
+from-base run — features, optimizations, smoke coverage, doc claims; CLOSURE WINDOW 3 still declared — see the 🎯 plan). LIVE
 `:latest-cross` = index `a26bf2f4dbc8`, children amd64 `a0d1a144` / arm64
 `2d354459` / riscv64 `7e0ed041`, run id `20260827-073226-d491cb10` — see
 § SHIPPED 2026-08-27. Re-verified against the registry 2026-08-28. (This line
@@ -330,6 +330,155 @@ closure, so they are ONE closure window's work.
   (`GCC_HOST_BOOTSTRAP=0` for validating rebuilds, `=1` only when the GCC pin
   moves) has sat there since 2026-08-10; only the number is new. Decide it or
   strike it there.
+
+- **LOG20 — FFmpeg ships no `drawtext` filter on any arch** [S·★★, OPEN 2026-08-28]
+  libharfbuzz is never enabled anywhere in the tree, so the single most-used
+  overlay filter is missing on all three arches. Action: add the harfbuzz dev
+  package to `ffmpeg_extra_feature_packages` (same shape as the libwebp/libvmaf
+  fix of 2026-08-28) and assert `drawtext` in the per-feature ffmpeg smoke.
+- **LOG21 — OpenCV on arm64/riscv64 ships with NO highgui window backend**
+  [S·★★, OPEN 2026-08-28] `GUI: NONE` on both cross arches vs `GTK3` on amd64,
+  so `cv2.imshow()` raises at runtime on two of three shipped images. Decide
+  whether the cross images are headless BY DESIGN — if yes, write that down and
+  assert it; if no, the GTK dev packages have to reach the cross lanes.
+- **LOG22 — FFmpeg enables Vulkan but ships zero `*_vulkan` filters**
+  [S·★, OPEN 2026-08-28] no SPIR-V compiler is available at ffmpeg configure
+  time, although the sdk stage cross-builds `libglslang.a` for EVERY arch. The
+  pieces exist and never meet. Action: wire glslang into the ffmpeg stage, or
+  drop the Vulkan enable and say why.
+- **LOG23 — the shipped Pythons have no readline (all arches) and no curses
+  (cross arches)** [S·★, OPEN 2026-08-28] both are single dev-package rows in
+  `_CPYTHON_EXT_DEV_PKG_TABLE`. readline is what makes an interactive `python3`
+  in the image usable at all. Same table-gap class as LOG18 (libmpdec) — do them
+  in one pass.
+- **LOG24 — OpenCV's ONNX Runtime DNN backend is OFF on all three arches**
+  [S·★★, OPEN 2026-08-28] in an image that ships a source-built ONNX Runtime.
+  `cv2.dnn` therefore cannot use the very runtime the image is built around.
+  Action: turn the backend on and assert it in the cv2 smoke; the library it
+  needs is already in the image.
+- **LOG25 — LiteRT is built with the GPU delegate and NPU support hard-off, with
+  no rationale comment** [S·★, OPEN 2026-08-28] every other deliberate exclusion
+  in these scripts carries a why. Either enable, or write the reason down so the
+  next audit stops re-finding it.
+- **LOG26 — three single-row OpenCV gaps and two riscv64 torch gaps, all
+  undocumented** [S·★, OPEN 2026-08-28] OpenCV: AVIF, HDF5 and the non-free
+  algorithms are absent. riscv64 PyTorch is built feature-minimal AND with
+  `USE_OPENMP=0` (build-app-wheelhouse.sh:525) while arm64/amd64 are not, with
+  no written rationale for either. FFmpeg additionally has no PulseAudio device.
+  Action: one pass — enable what is cheap, document what stays off.
+
+## H. Smoke & gate coverage (one coherent PR — 2026-08-28 maximality audit)
+
+The audit's sharpest finding: what runs is deep and genuinely functional, but
+several gates cannot fail, and one whole smoke STAGE has never been built.
+
+- **LOG29 — the `wrapper-smoke` package stage has never been built, in any run**
+  [M·★★★, OPEN 2026-08-28, DO IMMEDIATELY AFTER THE RUNNING BUILD]
+  `PACKAGE_DOCKERFILE_TARGET` occurs exactly ONCE in the whole repo — as its own
+  default in `runtime-build-fns.sh:317` (`--target "${PACKAGE_DOCKERFILE_TARGET:-package}"`).
+  So `--target package` is always used and `Dockerfile.package:346`
+  (`FROM package AS wrapper-smoke`) is pruned by BuildKit: **0 occurrences of
+  `wrapper-smoke` in either chain log** (20260827-220128 and 20260828-083002).
+  Consequence: the four smokes in that stage — including the ENTIRE FFmpeg codec
+  battery — have never executed. No externally linked codec (x264, x265, vpx,
+  dav1d, svtav1, opus, webp, aom) is functionally proven in shipped bytes on any
+  arch; the only runtime check is `ffmpeg -version | head -1`. This re-arms
+  ~1150 lines of already-written, already-reviewed test code. Blocked while the
+  chain runs (needs Dockerfile.package + 01-core/runtime-build-fns.sh).
+- **LOG30 — nothing anywhere asserts an OPTIMIZATION property** [S·★★★, OPEN
+  2026-08-28] this is WHY both -O defects of 2026-08-28 (riscv64 torchvision
+  built with no `-O` at all, cross CPython at `-O2` instead of `-O3`) survived 27
+  unit suites, 31 preflight checks and every runtime smoke. Action: one assertion
+  on shipped bytes per arch — e.g. the torchvision `_C` extension and the
+  interpreter must not be unoptimized. Cheapest high-value gate in the list.
+- **LOG31 — three gates report every failure class as a WARNING and never exit
+  non-zero** [M·★★, OPEN 2026-08-28] `validate-media-runtime.sh:265,279,286`
+  (unresolved deps, unmappable, and the new DENIED class), `smoke-android.sh`
+  (five presence checks with no failing branch — a missing NDK clang or apksigner
+  passes), and two preflight checks that are structurally incapable of failing.
+  Action: start with the DENIED class, which is meant to be empty by
+  construction; the broader `.so` sweep needs the vendor trees excluded first.
+- **LOG32 — 3.3 GB of shipped Android artifacts and 1.8-5.7 GB of Vulkan SDK
+  carry no gate that can fail** [M·★★, OPEN 2026-08-28] together ~7 GB of a
+  16-17 GB image. The Vulkan smoke that would test it is disabled on a premise
+  worth re-checking (`Dockerfile.package:368-373`). Action: lift the three
+  cheapest checks into the runtime smoke — `active` resolves,
+  `vulkan/vulkan.h` present, one `glslangValidator` invocation.
+- **LOG33 — `verify-shipped-wrapper.sh`, the ONLY gate on shipped bytes, has
+  exactly two hard assertions** [S·★★, OPEN 2026-08-28] everything else it prints
+  is advisory. Given the owner rule "verify shipped BYTES, never trust the push",
+  this is the highest-leverage script in the repo and the thinnest.
+- **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
+  `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
+  remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
+  raise the floors — but only AFTER the in-flight rebuild proves TVM ships on all
+  three arches.
+- **LOG35 — smaller gate gaps, one pass** [S·★, OPEN 2026-08-28] vvdec (VVC/H.266)
+  is built and shipped with no smoke of any kind; the shipped-image `.so` closure
+  is capped and silently truncates; `/opt/cmake` ships unasserted;
+  `verify-media-artifacts.sh`'s media-inputs lib→lib64 fallback is the exact
+  broken idiom the same file fixed elsewhere; the app-wheel-smoke ratchet added
+  for one incident is narrower than the class it was meant to catch.
+- **LOG36 — `libtvm*.so` is dropped at the media→package COPY** [S·★★, OPEN
+  2026-08-28] built in the media stage (`Dockerfile.media:1049`), not in the
+  package COPY set. Verify whether the python wheel carries its own copy; if not,
+  TVM is shipped broken and the disarmed assert (LOG34) is why nobody noticed.
+
+## I. Doc claims that drifted (one coherent PR — 2026-08-28 maximality audit)
+
+Every version NUMBER in the docs is machine-gated and green. Every sentence about
+BEHAVIOUR is ungated, and that is where all of these sit.
+
+- **LOG37 — the docs say the "strict" packaging smoke set closed the
+  orphaned-smoke class; it lives in a stage nothing builds** [M·★★, OPEN
+  2026-08-28] `docs/cross-build-verification.md`, `docs/linux-cross-builds.md`.
+  Same root cause as LOG29 — fix together, and make the doc state which target
+  the smokes run under.
+- **LOG38 — AGENTS.md still carries the `PartOf` binfmt claim the backlog
+  corrected on 2026-08-28** [S·★★, OPEN 2026-08-28] the real fix is
+  `wait_for_namespace()` + `Restart=on-failure` (afefdfc); `After=` orders only
+  the unit start, so a cold boot loses the race. AGENTS.md § Prerequisites still
+  describes the superseded understanding.
+- **LOG39 — the only written NVIDIA/AMD build recipes are broken** [M·★★, OPEN
+  2026-08-28] `docs/linux-accelerator-images.md`, `docs/overview.md`. A reader
+  following them fails. Either repair or mark them explicitly unsupported.
+- **LOG40 — license/SBOM docs have drifted from the generator** [M·★★, OPEN
+  2026-08-28] `docs/third-party-licenses.md`, `docs/deps/deps.json`,
+  `docs/deps/sbom-curated.spdx.json`. These are the documents an external
+  consumer would actually rely on.
+- **LOG41 — `:latest` was deleted from the registry, the docs still reference
+  it** [S·★, OPEN 2026-08-28] `docs/overview.md`, `AGENTS.md`,
+  `docs/linux-cross-builds.md`. Plus four coverage tables that each declare more
+  than they cover, and the `KNOWN_DRIFT` carve-out that
+  `docs/cross-build-verification.md:236-240` says "survives" but does not.
+
+### What the 2026-08-28 maximality audit found ALREADY MAXIMAL (anti-re-sweep)
+
+Recorded so a future sweep does not re-litigate settled ground:
+
+- **FFmpeg is feature-identical across all three arches.** The `External
+  libraries` block is byte-identical on amd64/arm64/riscv64 (45 libraries), and
+  so is the hwaccel block. A riscv64 cross build that loses ZERO codecs against
+  amd64 is rare — do not "improve" this.
+- **Runtime SIMD dispatch is maximal and justifies the conservative `-march`
+  baselines**: FFmpeg reaches AVX-512ICL (amd64), SVE/SVE2/SME/SME2 (arm64) and
+  `RISC-V Vector enabled yes` + CBO prefetch (riscv64), each with runtime CPU
+  detection. OpenCV dispatches to AVX512_SKX / NEON_BF16.
+- **Declarative optimization is clean**: 41× `CMAKE_BUILD_TYPE=Release` and 0×
+  Debug/RelWithDebInfo across all three media logs; meson `Optimization: 3`,
+  `Debugging: false`; stripping centralized and proven on shipped bytes;
+  `--gc-sections --as-needed -z now`; amd64 CPython is PGO+LTO.
+- **GStreamer is the full monorepo on all three lanes**, Rust plugins included
+  (riscv64 builds them in 3m44s), 220/229/222 plugins, amd64−arm64 difference
+  empty.
+- **The smokes that DO run are functional, not cosmetic**, and run per-arch under
+  QEMU on the real shipped bytes: a real `InferenceSession` on a generated ONNX
+  protobuf, `iree-compile` + `iree-run-module` with result checking, cv2
+  GStreamer appsink with frame shape, torch forward+backward, torchvision
+  `ops.nms` through the `._C` extension, an 8-case compiler battery.
+- **The anti-fake-green discipline is first-rate**: scan-done stamps, EP
+  sentinels, CMDOK markers, SIGPIPE fixes, and parity tables that fail when a
+  documented exception STOPS applying.
 
 ## A. Window inventory — A1 needs WORK in the wave, A2 is validated by the rebuild ALONE
 

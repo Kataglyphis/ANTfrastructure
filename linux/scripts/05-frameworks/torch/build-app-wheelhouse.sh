@@ -630,6 +630,12 @@ patch_torchvision_setup() {
 # cross env + staged libtorch paths. Reads src_dir/cmake_args_string/
 # wheel_platform/python_sysconfig_export/target_torch_* via dynamic scope.
 # Returns non-zero on build failure.
+# -O3 -DNDEBUG is explicit because setuptools REPLACES the interpreter's
+# sysconfig CFLAGS once $CFLAGS/$CXXFLAGS are set (_distutils compilers/C/
+# unix.py: `cxxflags = os.environ.get('CXXFLAGS', cxxflags)`) -- exporting only
+# the -idirafter fallbacks left all 34 extension TUs at gcc's default -O0
+# (media-riscv64.log 2026-08-27). torchvision appends just `-g0 -DTORCH_*
+# -std=c++20` after these (DEBUG=0 branch), so this stays the last -O.
 _torchvision_run_setup_py() {
     (
         cd "${src_dir}" && \
@@ -646,8 +652,8 @@ _torchvision_run_setup_py() {
         export TORCHVISION_INCLUDE="${target_torch_include}:${target_torch_csrc}" && \
         export TORCHVISION_LIBRARY="${target_torch_lib}" && \
         _vis_multiarch="$(cross_target_triplet 2>/dev/null || true)" && \
-        export CFLAGS="${CFLAGS:+${CFLAGS} }${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
-        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
+        export CFLAGS="${CFLAGS:+${CFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
+        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
         "${BUILD_PYTHON}" setup.py bdist_wheel --plat-name "${wheel_platform}" -d "${dist_dir}"
     )
 }
