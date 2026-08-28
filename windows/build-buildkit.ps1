@@ -101,6 +101,10 @@ param(
     # clip stays active, so chatty step middles are lost (causal errors still
     # reach stderr); restore properly via setup-new-host.ps1.
     [switch]$SkipStepLogGate,
+    # Disable the per-run resource CSV sampler (build-resource-sampler.ps1).
+    # The sampler is a detached process writing CPU/RAM/commit/vmmem every 20s,
+    # phase-tagged; disable it only when you do not want the overhead.
+    [switch]$NoResourceLog,
     # Free-space floor for the preflight gate; below ~25 GB hcsshim misbehaves
     # in ways that do not look like a disk problem.
     [int]$MinFreeGb = 40
@@ -127,6 +131,17 @@ New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 $script:RunId = (Get-Date).ToString('yyyyMMdd-HHmmss')
 # Stage -> seconds; the run manifest below is the only record of per-stage cost.
 $script:StageTimings = [ordered]@{}
+# Resource sampler (#134 free follow-up): the classic driver wired this; the BK
+# driver did not, so no building driver produced the per-run resource CSV. The
+# sampler is a detached process (build-resource-sampler.ps1) that appends
+# CPU/RAM/commit/vmmem every 20s, phase-tagged from $script:PhaseFile.
+$script:PhaseFile = Join-Path $script:LogDir 'current-phase.txt'
+$script:ResourceCsv = $null
+$script:SamplerProc = $null
+function Set-BuildPhase {
+    param([Parameter(Mandatory)][string]$Name)
+    try { Set-Content -Path $script:PhaseFile -Value $Name -ErrorAction Stop } catch { Write-Verbose "phase write skipped: $_" }
+}
 # Retention (backlog #30): ~80 files is several full chains of forensics.
 Limit-DiagnosticLogs -Directory $script:LogDir -Keep 80
 
@@ -331,6 +346,7 @@ function Invoke-BkStage {
         $bkArgs += @('--opt', "build-arg:$extra")
     }
     $stageLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-" + ($Label -replace '[:\\/]', '-') + ".log")
+    Set-BuildPhase $Label
     $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
     # Retries on transient infra failures; a third attempt is cheap because
@@ -432,6 +448,19 @@ if ($SccacheEndpoint) {
 }
 
 $started = Get-Date
+
+# Resource sampler (#134): start HERE, after every preflight gate has passed,
+# so a rejected launch cannot orphan the detached process. Mirrors build.ps1's
+# placement (backlog #63).
+if (-not $NoResourceLog) {
+    $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + $script:RunId + ".csv")
+    Set-BuildPhase 'init'
+    $samplerScript = Join-Path $repoRoot 'windows\scripts\build\build-resource-sampler.ps1'
+    $script:SamplerProc = Start-Process -FilePath ((Get-Process -Id $PID).Path) -PassThru -WindowStyle Hidden -ArgumentList @(
+        '-NoProfile', '-File', $samplerScript,
+        '-CsvPath', $script:ResourceCsv, '-PhaseFile', $script:PhaseFile, '-IntervalSeconds', '20')
+    Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
+}
 
 if ($Stages -contains 'base') {
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.base' -Tag (Get-BkTag 'windows-base') -BuildArgs @{
@@ -566,6 +595,9 @@ if ($Stages -contains 'media') {
             if ($SkipRdna4Gate) { $auxArgs += '-SkipRdna4Gate' }
             if ($SkipStepLogGate) { $auxArgs += '-SkipStepLogGate' }
             if ($NoSccache) { $auxArgs += '-NoSccache' }
+            # Children must NOT start their own resource sampler: the parent's
+            # sampler already covers the whole machine (#134).
+            $auxArgs += '-NoResourceLog'
             if ($PSBoundParameters.ContainsKey('MinFreeGb')) { $auxArgs += @('-MinFreeGb', $MinFreeGb) }
             if ($PSBoundParameters.ContainsKey('HostReserveGb')) { $auxArgs += @('-HostReserveGb', $HostReserveGb) }
             # Forward -BuildArg: the litert/tvm solves are the CHILDREN's, so a
@@ -666,10 +698,10 @@ if ($Stages -contains 'final') {
     # because containerd's pipe is admin-only and this driver is non-admin.
     if ($TargetArch -ne 'amd64' -and -not $SkipSmokeGate) {
         # CROSS LANE: the suite runs its host-toolchain sections and skips the
-        # payload ones itself. These are arm64's OWN floors -- 66 sits just under
-        # its section-floor sum of 73 (name kept distinct for
-        # Smoke.FloorCalibration.Tests.ps1); no gate here proves the payload RUNS.
-        $armMinPassed = 85
+        # payload ones itself. 66 sits just under the arm64 section-floor sum of
+        # 72 (Smoke.FloorCalibration.Tests.ps1 pins the ≤-sum and ≥-90% bounds);
+        # no gate here proves the payload RUNS.
+        $armMinPassed = 66
         $armMaxSkipped = 20
         if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
         if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
@@ -748,4 +780,21 @@ if ($script:StageTimings.Count -gt 0) {
 }
 Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Gpu) { ' (GPU)' } else { ' (CPU)' })) -ForegroundColor Green
 
-} finally { Pop-Location }
+} finally {
+    # Stop the resource sampler and print the per-phase exhaustion summary —
+    # ALSO on failure (that is when you most want to know which step ate the
+    # machine). WHOLE BODY guarded: a throw here must not replace the real
+    # stage exception or skip Pop-Location.
+    try {
+        Set-BuildPhase 'done'
+        if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
+            Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
+        }
+        if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
+            & (Join-Path $repoRoot 'windows\scripts\build\build-resource-sampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+        }
+    } catch {
+        Write-Warning "resource-sampler teardown failed (build verdict above is unaffected): $($_.Exception.Message)"
+    }
+    Pop-Location
+}

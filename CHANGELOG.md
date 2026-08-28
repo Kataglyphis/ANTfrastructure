@@ -5,6 +5,79 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — Windows backlog #134 free follow-ups: smoke floor, pin parity, TVM fixtures, resource sampler
+
+
+### Resource sampler wired into build-buildkit.ps1 (#134 free follow-up)
+
+The per-run resource CSV (`build-resource-sampler.ps1`) was wired into the
+classic `build.ps1` but not the BK driver, so no building driver produced it.
+The BK driver now starts the detached sampler after preflight gates pass,
+writes phase transitions at each `Invoke-BkStage` via `Set-BuildPhase`, and
+stops it with a per-phase exhaustion summary in the `finally` block.
+`-NoResourceLog` disables it; `-ConcurrentAux` children inherit
+`-NoResourceLog` (the parent's sampler covers the whole machine). Pinned by
+`BuildDriver.ResourceSampler.Tests.ps1` (6 tests).
+
+## 2026-08-28 — Windows backlog #134 free follow-ups: smoke floor, pin parity, TVM fixtures
+
+### Arm64 smoke floor RECALIBRATED — 85 was above the section sum (#134)
+
+The arm64 global smoke floor was raised 66 → 85 in the earlier "tightened"
+entry below, but 85 EXCEEDS the arm64 section-floor sum of 72
+(`Smoke.FloorCalibration.Tests.ps1` enforces `armFloor ≤ armSum`). A run
+sitting exactly at every section floor — a legitimate result — would have
+FAILED the global gate. Reverted to 66 (≤ 72, ≥ 90% of 72). The §19 PROVISIONAL
+marker in `smoke-test-container.ps1` removed: three green arm64 runs confirmed
+the floor.
+
+### SourceBuild.PinParity — TVM_REF → TVM_COMMIT (#134 follow-up)
+
+`build-tvm-from-source.ps1` now reads `TVM_COMMIT` first (the commit-hash
+override for the LLVM 23.1.0 break). The pin-parity scanner-rot guard still
+expected `TVM_REF` as the resolved key and compared the `-DefaultValue 'v0.26.0'`
+against `TVM_COMMIT=994e0216...` (a commit hash, not a tag). Fixed: the
+scanner-rot guard expects `TVM_COMMIT`; a `DefaultValueKeyOverride` map
+redirects the DefaultValue comparison to `TVM_REF` (the tag the fallback is
+actually baked from), so the tag-fallback semantics are preserved.
+
+### TVM assembled-wheel fixtures — single-quoted backtick-n fixed (#134 follow-up)
+
+Two `SourceBuild.TvmAssembledWheel.Tests.ps1` fixtures passed single-quoted
+`` `n `` to `Get-VendoredTvmFfiVersion` and `Get-PyprojectDependencies`. In
+single-quoted PowerShell strings `` `n `` is the literal two characters
+backtick-n, NOT a newline — the pyproject parse was never exercised against
+its real input shape. Converted to double-quoted strings with real newlines.
+
+### Merge-stage script test coverage (#134 free follow-up — the last open item)
+
+The three arm64 cross-lane correctness scripts had no dedicated test suite.
+All three now do (39 tests total, all green):
+
+- `SourceBuild.VerifyTargetArch.Tests.ps1` (20 tests) — lifts
+  `Get-CoffMachine`, `Get-ArchiveMachine`, `Format-Machine` out of the
+  script's AST and tests against synthetic PE/COFF/archive fixtures. Covers
+  AMD64/ARM64/ARM64EC PE images, COFF objects, short-import and raw-object
+  archives, linker-member skipping, and the malformed/truncated/missing-file
+  null paths — including the `Get-ArchiveMachine` bound that was fixed in
+  production (the +6 bound was two bytes short), not by a test.
+- `SourceBuild.StageTargetPythonDeps.Tests.ps1` (10 tests) — lifts
+  `Get-WheelDistName`, `Get-RequirementName`, `Get-WheelRequirements` and
+  tests PEP 427 name extraction, requirement parsing (version bounds,
+  parenthesised versions, extras-dropping), and wheel METADATA reading via
+  synthetic .whl ZIP archives.
+- `SourceBuild.BundleManifest.Tests.ps1` (9 tests) — runs
+  `write-bundle-manifest.ps1` against a synthetic bundle tree with
+  `WINDOWS_TARGET_ARCH` set, verifying the three output files
+  (`BUNDLE-ENV.cmd`, `BUNDLE-ENV.ps1`, `BUNDLE-README.md`) for both amd64
+  and arm64, including ENV-var registration, the cross-build caveat, and
+  ABSENT-marker recording.
+
+Suite total: 726 → 765 tests (764 pass; 1 pre-existing environmental
+`Assert-ShimPatch` #48 failure — the shim IS installed on this host, so the
+"no shim" branch can't throw).
+
+
 ## 2026-08-28 — TVM-vs-LLVM-23.1.0 fix, sccache pin bump, deps gate floor, smoke floor tightened
 
 ### TVM LLVM 23.1.0 API break — FIXED (code, not yet rebuilt)

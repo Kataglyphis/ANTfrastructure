@@ -149,7 +149,12 @@ if ($skippedSuites.Count -gt 0) {
 # ~1% headroom is the standing ratio.
 # 700 -> 714 (2026-08-28): caught a -Force harness import that silently dropped
 # 104 assertions. 714 -> 718 with BuildKit.PatchedLlvm; suite is 725.
-$minTests = 718
+# 718 -> 757 (2026-08-28): the three merge-stage script suites
+# (VerifyTargetArch 20 + StageTargetPythonDeps 10 + BundleManifest 9) took the
+# suite to 765; floor at ~1% headroom.
+# 757 -> 763 (2026-08-28): BuildDriver.ResourceSampler (6 tests) took the suite
+# to 771.
+$minTests = 763
 if ($total -lt $minTests) {
     Write-Host "  FLOOR: only $total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
     exit 1

@@ -157,6 +157,22 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         return $null
     }
 
+    # #134: when a commit-hash override (TVM_COMMIT) wins key resolution, the
+    # -DefaultValue is still the TAG fallback (v0.26.0) -- it is what the script
+    # builds when no env pin is forwarded, and a commit hash is not a sensible
+    # default. The DefaultValue comparison must therefore check it against the
+    # TAG pin (TVM_REF), not the commit override. Maps "<script>|<resolved key>"
+    # to the versions.env key the DefaultValue is actually baked from.
+    $script:DefaultValueKeyOverride = @{
+        'build-tvm-from-source.ps1|TVM_COMMIT' = 'TVM_REF'
+    }
+    function Resolve-DefaultValueKey {
+        param($Site, $ResolvedKey)
+        $id = "$($Site.Script)|$ResolvedKey"
+        if ($script:DefaultValueKeyOverride.ContainsKey($id)) { return $script:DefaultValueKeyOverride[$id] }
+        return $ResolvedKey
+    }
+
     It 'parses versions.env and discovers a plausible number of pin sites' {
         $pins = Get-PinParityPins
         Assert-True ($pins.Count -gt 0) 'versions.env parsed to a non-empty table'
@@ -173,7 +189,10 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
             if ($null -ne $key) { $found["$($s.Script)|$key"] = $true }
         }
         foreach ($expected in @(
-                'build-tvm-from-source.ps1|TVM_REF',
+                # #134: TVM_COMMIT (a commit-hash override for the LLVM 23 break)
+                # is first in the array and wins the key resolution; the DefaultValue
+                # is the tag fallback, compared against TVM_REF below.
+                'build-tvm-from-source.ps1|TVM_COMMIT',
                 'build-iree-from-source.ps1|IREE_VERSION',
                 'build-litert-from-source.ps1|LITERT_VERSION',
                 'litert-lm-export-bridge.ps1|LITERT_VERSION',
@@ -204,10 +223,13 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 $failures += "$($s.Script):$($s.Line): -DefaultValue for $key is not a string literal ($($s.Default)) - parity cannot be verified statically; use a literal"
                 continue
             }
-            $expected = [string]$pins[$key]
+            # #134: a commit-hash override (TVM_COMMIT) wins resolution but the
+            # DefaultValue is the tag fallback, so compare it against the TAG pin.
+            $defaultKey = Resolve-DefaultValueKey -Site $s -ResolvedKey $key
+            $expected = [string]$pins[$defaultKey]
             $cmpExpected = $expected
             $cmpActual = $s.Default
-            $note = ''
+            $note = if ($defaultKey -ne $key) { " (DefaultValue is the $defaultKey tag fallback, not the $key commit override)" } else { '' }
             if ($s.StripV) {
                 # The script strips the leading v from whichever value wins, so
                 # parity for -StripVPrefix sites is defined on the stripped forms.
@@ -216,7 +238,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 $note = " (compared after StripVPrefix: '$cmpActual' vs '$cmpExpected')"
             }
             if ($cmpActual -cne $cmpExpected) {
-                $failures += "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $key=$expected$note - update the script default (and any twin site) to the canonical pin"
+                $failures += "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $defaultKey=$expected$note - update the script default (and any twin site) to the canonical pin"
             }
         }
         Assert-True ($failures.Count -eq 0) ("hardcoded default(s) drifted from versions.env:`n  " + ($failures -join "`n  "))

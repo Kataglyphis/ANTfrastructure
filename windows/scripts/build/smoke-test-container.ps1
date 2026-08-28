@@ -1531,8 +1531,8 @@ if ($summary.Aborted) {
 # PER-SECTION floors: the global floor left 34 points of anonymous slack -- deleting
 # onnxruntime.lib alone silently dropped 7 of the strongest assertions and stayed green.
 # Every floor is MEASURED per lane and updated DELIBERATELY; a payload section skipped on cross
-# MUST stay 0 rather than be "fixed" by a skip, and §19's arm64 floor is provisional. Columns
-# are NAMED (#131): the old positional triple's index order differed from the selector's.
+# MUST stay 0 rather than be "fixed" by a skip. Columns are NAMED (#131): the old positional
+# triple's index order differed from the selector's.
 $sectionFloors = @{
     '1' = @{ Gpu = 13; Cpu = 13; Arm64 = 13 }; '2' = @{ Gpu = 6; Cpu = 6; Arm64 = 6 }; '3' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 }
     '4' = @{ Gpu = 8; Cpu = 8; Arm64 = 8 };    '5' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }; '6' = @{ Gpu = 4; Cpu = 4; Arm64 = 4 }

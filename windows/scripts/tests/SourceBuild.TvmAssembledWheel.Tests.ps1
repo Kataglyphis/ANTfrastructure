@@ -37,7 +37,7 @@ Describe 'TVM assembled-wheel helpers' {
     It 'normalises the submodule tag and falls back to the pyproject bound' {
         Assert-Equal '0.1.13.post3' (Get-VendoredTvmFfiVersion -DescribeOutput 'v0.1.13-post3') 'dash-post tag'
         Assert-Equal '0.1.13' (Get-VendoredTvmFfiVersion -DescribeOutput "v0.1.13`n") 'plain tag, trailing newline'
-        Assert-Equal '0.1.13.post2' (Get-VendoredTvmFfiVersion -DescribeOutput 'fatal: No names found' -TvmPyprojectText 'dependencies = [`n  "apache-tvm-ffi>=0.1.13.post2",`n  "numpy",`n]') 'falls back to the >= bound'
+        Assert-Equal '0.1.13.post2' (Get-VendoredTvmFfiVersion -DescribeOutput 'fatal: No names found' -TvmPyprojectText "dependencies = [`n  ""apache-tvm-ffi>=0.1.13.post2"",`n  ""numpy"",`n]") 'falls back to the >= bound'
         $threw = $false
         try { Get-VendoredTvmFfiVersion -DescribeOutput '' -TvmPyprojectText 'nothing here' | Out-Null } catch { $threw = $true }
         Assert-True $threw 'no tag and no bound must throw'
@@ -58,7 +58,7 @@ Describe 'TVM assembled-wheel helpers' {
         ) -join "`n"
         $deps = @(Get-PyprojectDependencies -PyprojectText $py)
         Assert-Equal 'apache-tvm-ffi>=0.1.13.post2,ml_dtypes,numpy,typing_extensions' ($deps -join ',') 'exact list, torch extra excluded'
-        Assert-Equal 0 (@(Get-PyprojectDependencies -PyprojectText '[project]`nname = "x"')).Count 'no block -> empty'
+        Assert-Equal 0 (@(Get-PyprojectDependencies -PyprojectText "[project]`nname = ""x""")).Count 'no block -> empty'
         # CRLF: the container's git checkout converts line endings, and .NET's
         # multiline `$` matches only immediately before `\n` -- runs 34/35 shipped
         # wheels with NO Requires-Dist because of exactly this (the same text
