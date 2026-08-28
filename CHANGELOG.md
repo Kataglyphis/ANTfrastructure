@@ -5,6 +5,56 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — Closure window: 01-core/02-toolchain backlog batch
+
+Closed six backlog items (LOG8, LOG13, LOG14, LOG17, LOG18, LOG19) plus the
+ffmpeg/pyav compiler-cache resolution, all in one commit. These touch files
+in the 01-core / 02-toolchain / 03-media bind-mount closure, so batching
+minimizes cache invalidation (one edit re-runs hours of compiles). LOG12 was
+documented (reference-backend-only by design) but remains OPEN as a decision
+item.
+
+- **LOG8** — `Dockerfile.media`: added per-stage apt mount ids to the six
+  parallel media head stages (onnx, litert, tvm, opencv, app-wheelhouse,
+  ffmpeg). Each head vertex now holds its own apt lock instead of a shared
+  one, so they no longer serialize the intra-lane fan-out. The memory
+  caveat (peak 43.6 GB) still applies — PAR4-hard remains the real cap.
+- **LOG13** — `android-build-preamble.sh`: `android_build_preamble_init` now
+  sources `compiler-cache.sh`, calls `setup_ccache` + `setup_lld_linker`. The
+  android stage gets the same `compiler_cache_launcher()` resolution as the
+  media lane; android-iree (was the only genuinely uncached android lib) now
+  resolves through the launcher. RUN blocks stay byte-identical.
+- **LOG14** — `vulkan.sh`: added nine host-only Vulkan components to the
+  `_vulkan_skip` map for cross builds (ValidationLayers, shaderc,
+  SPIRV-Cross, SPIRV-Reflect, Vulkan-Profiles, Vulkan-ExtensionLayer, volk,
+  VMA, vul). Cross lanes no longer build ~390 s/lane of host x86_64 components
+  with no cross consumer.
+- **LOG17** — `versions.env`: added `ANDROID_AGP_VERSION=8.3.1` and
+  `ANDROID_GRADLE_VERSION=8.7` as visibility pins. The actual version still
+  lives in the ORT AGP patch; a bump must sync both. The Gradle 9.0
+  deprecation warning is now visible to `bump_versions.py --check`.
+- **LOG18** — `cpython-dev-packages.sh`: added `libmpdec-dev optional _decimal`
+  row to `_CPYTHON_EXT_DEV_PKG_TABLE`. Marked OPTIONAL because promoting to
+  required flips all three arches to dynamic `libmpdec.so` with so-package-map
+  consequences. Documents the gap; harmless until Python 3.16 (~Oct 2027).
+- **LOG19** — Replaced positional `head -N` with `grep -E` for sccache stats
+  in `compiler-cache.sh`, `build-gcc.sh`, `probe-sccache.sh`,
+  `03-media/core/common.sh`. Added `dump_compiler_cache_stats()` to
+  `compiler-cache.sh` (post-build stats dump with dead-cache WARN), wired via
+  an EXIT trap in `media_common_init` so every media step reports cache
+  telemetry at END of build, not at t≈0.165 s before the first object.
+- **ffmpeg/pyav** — `build-ffmpeg.sh` and `build-pyav.sh`: replaced hardcoded
+  `ccache ${CC}` with `compiler_cache_launcher()` resolution so sccache is
+  actually asked (was always ccache).
+- **LOG12** — `build-armnn.sh`: added documentation comment explaining the
+  reference-backend-only design. The decision (turn on backends or drop ACL)
+  remains OPEN.
+
+Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (closure window — 01-core/02-toolchain batch)".
+
+
 ## 2026-08-28 — Closure window: 03-media/06-packaging backlog batch
 
 Closed seven backlog items (LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32,

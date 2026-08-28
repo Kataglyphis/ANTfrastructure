@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (closed: LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32, LOG35 + prior LOG10,11,15,16,20,22,23,25,29,30,33,36,37,38,39,40,41 + LOG31-preflight + Section C guard; see archives)
+Last groomed: 2026-08-28 (closed: LOG8, LOG13, LOG14, LOG17, LOG18, LOG19 + LOG12 documented; prior: LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32, LOG35 + LOG10,11,15,16,20,22,23,25,29,30,33,36,37,38,39,40,41 + LOG31-preflight + Section C guard; see archives)
 
 ## Standing rules (read first)
 
@@ -42,20 +42,9 @@ produced it. None of these blocks the current run; they are the debt the switch
 either created or exposed.
 
 - **LOG19 — the media lane reports zero cache telemetry, and the report is
-  truncated where it counts** [S·★★, from the 2026-08-27/28 run; BLOCKED until
-  the running runtime stage ends — compiler-cache.sh is inside its live
-  bind-mount closure, DO IT FIRST once it does] All 72 sccache stats blocks
-  across the three media logs say `Compile requests 0`: they are printed at
-  t≈0.165 s as the last act of `setup_ccache` (01-core/compiler-cache.sh:191-203),
-  i.e. before the first object. On top of that, `head -12` (:201, likewise
-  build-gcc.sh:737, probe-sccache.sh:141, 03-media/core/common.sh:147) cuts off
-  exactly the lines that matter (`Non-cacheable compilations`, `Unsupported
-  compiler calls`) — positional slicing over a variable-length report. Action:
-  a post-build `--show-stats` at the end of each media step (the seam exists at
-  03-media/core/common.sh:147), select lines with `grep -E` instead of `head`,
-  and WARN on `requests > 0 && hits == 0`. Until this exists, both the entry
-  below and the documented Rust re-enable (build-cache-tiers.md:455: "judge it
-  by the stats line") stay undecidable.
+  truncated where it counts** [CLOSED 2026-08-28] See
+  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 01-core/02-toolchain batch)".
 - **sccache caches NOTHING in the OpenCV step** [M·★★★, OPEN 2026-08-26] The
   TryCompile root cause is fixed and the guarded launcher keeps the build alive
   (1451 saves, 0 aborts), but in the opencv step sccache fails on EVERY compile
@@ -107,58 +96,32 @@ duplicated here. Nearly all of these sit in the 03-media / android bind-mount
 closure, so they are ONE closure window's work.
 
 - **LOG8 — the locked apt mounts serialize the entire intra-lane fan-out**
-  [M·★★★, OPEN 2026-08-28] Seven media head vertices are scheduled together and
-  then run strictly one after another; riscv64 handover chain `opencv
-  0.2→106.3 · onnxruntime →159.0 · app-wheelhouse →1718.3 · ffmpeg →2070.1 ·
-  litert →2172.3 · armnn →2172.4 · tvm →3259.4`. litert, the longest downstream
-  chain, got the lock LAST — ~33 min of pure waiting on the critical path;
-  android has the same shape. NOT max-parallelism=4: onnxruntime 2/9 and opencv
-  2/3 ran concurrently, and neither mounts apt. Action: (i) shorten the hold —
-  tvm and app-wheelhouse do apt AND a 15-25 min compile in ONE RUN (`#28 94.14
-  apt … #28 DONE 1030.2s`) while litert/opencv/ffmpeg have split them for
-  ages; (ii) per-STAGE mount ids (leaves PAR2 alone, that is the lane axis).
-  The cheap slice is already taken — the armnn no-op now has its own ids
-  (Dockerfile.media:654-655). ⚠ The lock has been doing PAR4's job unnoticed:
-  peak was 43.6 GB used / 18.5 GB free with only tvm+litert live. Needs a
-  memory plan, not just the lock removed.
+  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
+  2026-08-28 (closure window — 01-core/02-toolchain batch)".
 - **LOG9 — arm64 GStreamer introspection enabled** [CLOSED 2026-08-28]
   See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
   window — 03-media/06-packaging batch)".
 - **LOG12 — ArmNN ships the reference backend only; the whole ACL wiring is
-  inert** [M·★★, OPEN 2026-08-28] `media-arm64.log:15264-15269 "CL backend is
-  disabled" / "NEON backend is disabled" / "TOSA Reference backend is
-  disabled"`, and the proof that ArmNN never read the ACL variables:
+  inert** [M·★★, OPEN 2026-08-28, documented] `media-arm64.log:15264-15269 "CL
+  backend is disabled" / "NEON backend is disabled" / "TOSA Reference backend
+  is disabled"`, and the proof that ArmNN never read the ACL variables:
   `:15283-15287 CMake Warning (unused-cli): ARMCOMPUTE_BUILD_DIR /
   ARMCOMPUTE_LIBS / ARMCOMPUTE_ROOT`. build-armnn.sh:61-73 passes no
   `-DARMCOMPUTENEON=1` / `-DARMCOMPUTECL=1`, yet ACL is rebuilt every run
-  (`#33 DONE 408.6s`). Action: a DECISION, not a flag — nothing in the repo
-  consumes ArmNN (the ORT EP is gone upstream, 30-build-native.sh:89-92). Turn
-  the backends on (a real ACL cross-link break may then surface — that would be
-  the actual news) or drop the ACL build plus the `ARMNN_VERSION`/`ACL_VERSION`
-  pins. As it stands it is 7 min/lane for an artifact with no consumer.
+  (`#33 DONE 408.6s`). The build script now carries a comment documenting this
+  as reference-backend-only by design. A DECISION still owed: nothing in the
+  repo consumes ArmNN (the ORT EP is gone upstream, 30-build-native.sh:89-92).
+  Turn the backends on (a real ACL cross-link break may then surface — that
+  would be the actual news) or drop the ACL build plus the
+  `ARMNN_VERSION`/`ACL_VERSION` pins. As it stands it is 7 min/lane for an
+  artifact with no consumer.
 - **LOG13 — the android stage does not know sccache exists; android-iree caches
-  nothing** [M·★, OPEN 2026-08-28] 0× `COMPILER_LAUNCHER` in all four android
-  logs, and "sccache" appears only as the mount declaration
-  (Dockerfile.android:207,234,261,288,317) — android-build-preamble.sh:7-27
-  never sources compiler-cache.sh. Four of the five libs still cache anyway,
-  because `CCACHE_DIR=/var/cache/ccache` is inherited (Dockerfile.base:86) and
-  the vendored projects find `/usr/bin/ccache` themselves; genuinely uncached
-  is only **android-iree** (524 s amd64 / 386 s arm64). Action: export
-  `compiler_cache_launcher` from `android_build_preamble_init` — the five RUN
-  blocks must stay byte-identical (verify-android-stage-parity.sh,
-  Dockerfile.android:41-42).
+  nothing** [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md`
+  § "Closed 2026-08-28 (closure window — 01-core/02-toolchain batch)".
 - **LOG14 — the cross SDK lanes build host x86_64 Vulkan components nobody
-  consumes** [M·★, OPEN 2026-08-28] `sdk-arm64.log #17` runs `68.4 → 657.3`
-  before `"[INFO] Cross-building Vulkan loader for aarch64"` appears, with 345
-  `Installing: /opt/vulkan/1.4.357.0/x86_64/…` lines (riscv64 identical; amd64
-  `#17 DONE 44.1s`). Part of it is required — the clones fill
-  `source/SPIRV-Tools|glslang|Vulkan-Loader` that `_build_vulkan_targets`
-  needs. Actually trimmable: ValidationLayers (153 s), shaderc (109 s),
-  SPIRV-Cross (57 s), Profiles (26 s), ExtensionLayer/volk/VMA/SPIRV-Reflect
-  (~45 s) ≈ **390 s/lane, ~13 min/run**. Action: those components into the
-  `_vulkan_skip` map under `cross_build_enabled` (vulkan.sh:290-297). The proof
-  that is still missing first: diff the amd64 image's `/opt/vulkan/<ver>/x86_64/`
-  against a trimmed arm64 image.
+  consumes** [CLOSED 2026-08-28] See
+  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 01-core/02-toolchain batch)".
 - **GCC_HOST_BOOTSTRAP — not new, but now quantified** [decision owed] NOT a
   new item: an update to the "NOT TAKEN this round (offered, user deferred) —
   still open" toolchain-speed line in
@@ -228,26 +191,12 @@ was fixed as LOG29 — closed 2026-08-28.)
 
 ## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
 
-- **LOG17 — lift the Android AGP/Gradle versions into versions.env** [S·★,
-  watch, from the 2026-08-27/28 run] `android-arm64.log:5996 "Deprecated Gradle
-  features were used in this build, making it incompatible with Gradle 9.0."`
-  (+ a `docs.gradle.org/8.7/` link). The AGP version lives inside
-  patches/onnxruntime/001-android-gradle-agp8-compat.patch:10,37
-  (`com.android.tools.build:gradle:8.3.1`), so `grep -i gradle versions.env` is
-  empty and `bump_versions.py --check` can never see it. Action:
-  `ANDROID_AGP_VERSION` / `ANDROID_GRADLE_VERSION` into versions.env; run once
-  with `--warning-mode all` so the log names WHICH features. No silent break —
-  apply-patch.sh:60-68 fails loudly.
-- **LOG18 — CPython falls back to bundled libmpdec on all three arches** [S·★,
-  rider, from the 2026-08-27/28 run] `compiler.log:121643-121644 "no system
-  libmpdec found; falling back to bundled libmpdec (deprecated and scheduled
-  for removal in Python 3.16)"`, three times (host/arm64/riscv64).
-  `_CPYTHON_EXT_DEV_PKG_TABLE` (01-core/cpython-dev-packages.sh:31-49) has no
-  `libmpdec-dev` row — the same gap the table was built for after the
-  libsqlite3-dev incident. Harmless today (3.14.7 pinned, 3.16 is ~Oct 2027)
-  and the row is NOT free: it flips all three arches from bundled-static to a
-  dynamic `libmpdec.so`, i.e. a byte change with so-package-map consequences.
-  Hence a rider, and the file is inside the 01-core closure.
+- **LOG17 — lift the Android AGP/Gradle versions into versions.env**
+  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
+  2026-08-28 (closure window — 01-core/02-toolchain batch)".
+- **LOG18 — CPython falls back to bundled libmpdec on all three arches**
+  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
+  2026-08-28 (closure window — 01-core/02-toolchain batch)".
 
 ## C. Orchestrator lifecycle (one coherent PR)
 

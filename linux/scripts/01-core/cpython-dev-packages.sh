@@ -52,6 +52,12 @@ _CPYTHON_EXT_DEV_PKG_TABLE=(
   "libncurses-dev optional _curses"
   # The uuid stdlib module falls back to pure Python without _uuid.
   "uuid-dev optional _uuid"
+  # LOG18: CPython 3.14 falls back to bundled libmpdec (deprecated, removal
+  # scheduled for 3.16) when libmpdec-dev is absent. Optional for now — the
+  # row is NOT free: promoting to required flips all three arches from
+  # bundled-static to a dynamic libmpdec.so, with so-package-map consequences.
+  # Harmless today (3.14.7 pinned, 3.16 ~Oct 2027); promote before 3.16.
+  "libmpdec-dev optional _decimal"
 )
 
 # All parsing below pins IFS=' ' on the read builtin: several consumers

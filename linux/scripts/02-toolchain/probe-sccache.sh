@@ -138,7 +138,7 @@ for bdir in /opt/gcc-*/bin /usr/local/llvm-target/bin /usr/local/gcc-*/bin; do
 done
 
 say "result: ${pass} cached, ${nocache} compiled-but-uncached, ${fail} failed"
-sccache --show-stats 2>/dev/null | head -8
+sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true
 
 if [ "${fail}" -gt 0 ] && [ "${STRICT}" = "1" ]; then
   say "FAILURES present and PROBE_STRICT=1 — do not launch a full rebuild on this"

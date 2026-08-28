@@ -115,8 +115,10 @@ setup_ccache() {
 
   # SUBSTRING, not identity: _cc_launcher is a PATH to the guarded launcher, not the
   # literal "sccache". A zero-hit report is the cheapest early warning of a dead cache.
+  # LOG19: grep -E selects the lines that matter (Compile requests, Cache hits, etc.)
+  # instead of head -12, which cuts off Non-cacheable/Unsupported on variable-length output.
   case "${_cc_launcher}" in
-    *sccache*) sccache --show-stats 2>/dev/null | head -12 || true ;;
+    *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true ;;
     *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
   esac
 }
@@ -204,4 +206,25 @@ setup_lld_linker() {
   fi
 
   _cc_info "lld linker enabled: LDFLAGS contains ${lld_flag}"
+}
+
+# LOG19: Post-build stats dump. Call at the END of each media build step (after
+# the compile finishes) so the report reflects actual activity, not the t≈0
+# snapshot setup_ccache prints before the first object. WARNs on
+# requests > 0 && hits == 0 (a dead cache). Goes to STDERR (survives the 2MiB
+# step-log clip).
+dump_compiler_cache_stats() {
+  if command -v sccache >/dev/null 2>&1; then
+    local _req _hits
+    _req="$(sccache --show-stats 2>/dev/null | sed -n 's/^Compile requests *\([0-9]*\)/\1/p' || true)"
+    _hits="$(sccache --show-stats 2>/dev/null | sed -n 's/^Cache hits *\([0-9]*\)/\1/p' || true)"
+    _req="${_req:-0}"
+    _hits="${_hits:-0}"
+    sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' >&2 || true
+    if [ "${_req}" -gt 0 ] && [ "${_hits}" -eq 0 ]; then
+      _cc_warn "sccache: ${_req} compile requests, 0 cache hits — cache may be dead"
+    fi
+  elif command -v ccache >/dev/null 2>&1; then
+    ccache --show-stats 2>/dev/null | head -5 >&2 || true
+  fi
 }

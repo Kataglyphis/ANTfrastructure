@@ -101,11 +101,18 @@ pyav_fetch() {
     info "PyAV source: ${PYAV_SRC} (version $(sed -n 's/^__version__ = "\(.*\)"/\1/p' "${PYAV_SRC}/av/about.py" 2>/dev/null || echo '?'))"
 }
 
-# ccache wraps the COMPILE command only; the link keeps the bare compiler.
+# ccache/sccache wraps the COMPILE command only; the link keeps the bare compiler.
+# Routes through compiler_cache_launcher() so sccache is asked when it's active.
 pyav_compile_cc() {
     local cc="$1"
-    if command -v ccache >/dev/null 2>&1 && is_truthy "${USE_CCACHE:-true}"; then
-        printf '%s' "ccache ${cc}"
+    local _launcher=""
+    if command -v compiler_cache_launcher >/dev/null 2>&1; then
+        _launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+    elif command -v ccache >/dev/null 2>&1 && is_truthy "${USE_CCACHE:-true}"; then
+        _launcher="ccache"
+    fi
+    if [ -n "${_launcher}" ]; then
+        printf '%s' "${_launcher} ${cc}"
         return 0
     fi
     printf '%s' "${cc}"

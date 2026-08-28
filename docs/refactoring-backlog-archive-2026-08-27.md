@@ -623,3 +623,66 @@ on any edit).
   not coinstallable in the riscv64 sysroot; amd64/arm64 get PyPI wheels with
   OpenMP). Added `libpulse-dev` to FFmpeg install-deps.sh for the
   PulseAudio input/output device.
+
+## Closed 2026-08-28 (closure window — 01-core/02-toolchain batch)
+
+All edits in this section were batched into ONE commit to minimize cache
+invalidation (the 01-core / 02-toolchain / 03-media closure re-runs hours of
+compiles on any edit). LOG12 was documented but remains OPEN as a decision
+item (see backlog).
+
+- **LOG8 — the locked apt mounts serialize the entire intra-lane fan-out**
+  [CLOSED] Added per-stage apt mount ids to the six parallel media head stages
+  in `Dockerfile.media` (onnx `-onnx`, litert `-litert`, tvm `-tvm`, opencv
+  `-opencv`, app-wheelhouse `-wheelhouse`, ffmpeg `-ffmpeg`). Each head vertex
+  now holds its own apt lock instead of a shared one, so they no longer
+  serialize. Armnn already had its own ids. Leaves PAR2 (lane axis) alone. The
+  memory caveat from the original finding (peak 43.6 GB with only tvm+litert
+  live) still applies — this removes the lock contention, not the memory
+  pressure; PAR4-hard remains the real cap.
+- **LOG13 — the android stage does not know sccache exists** [CLOSED]
+  `android-build-preamble.sh`: `android_build_preamble_init` now sources
+  `compiler-cache.sh`, calls `setup_ccache`, and `setup_lld_linker`, so the
+  android stage gets the same `compiler_cache_launcher()` resolution as the
+  media lane. android-iree (previously the only genuinely uncached android
+  lib, 524 s amd64 / 386 s arm64) now resolves through the launcher. The five
+  RUN blocks in `Dockerfile.android` stay byte-identical
+  (verify-android-stage-parity.sh).
+- **LOG14 — the cross SDK lanes build host x86_64 Vulkan components nobody
+  consumes** [CLOSED] `vulkan.sh`: added nine host-only Vulkan components to
+  the `_vulkan_skip` map for cross builds: ValidationLayers, shaderc,
+  SPIRV-Cross, SPIRV-Reflect, Vulkan-Profiles, Vulkan-ExtensionLayer, volk,
+  VMA, vul. The cross lanes no longer build ~390 s of host x86_64 components
+  that have no cross consumer. The clones that fill
+  `source/SPIRV-Tools|glslang|Vulkan-Loader` (needed by `_build_vulkan_targets`)
+  are preserved.
+- **LOG17 — lift the Android AGP/Gradle versions into versions.env** [CLOSED]
+  Added `ANDROID_AGP_VERSION=8.3.1` and `ANDROID_GRADLE_VERSION=8.7` to
+  `versions.env` after `ANDROID_API_LEVEL=34`. These are visibility pins —
+  `bump_versions.py --check` can now see them. The actual version still lives
+  inside `patches/onnxruntime/001-android-gradle-agp8-compat.patch:10,37`, so
+  a bump must sync BOTH the pin and the patch. The Gradle 9.0 deprecation
+  warning (`android-arm64.log:5996`) is now visible to the bump tool.
+- **LOG18 — CPython falls back to bundled libmpdec on all three arches**
+  [CLOSED] Added `libmpdec-dev optional _decimal` row to
+  `_CPYTHON_EXT_DEV_PKG_TABLE` in `cpython-dev-packages.sh`. Marked OPTIONAL
+  (not required) because promoting to required flips all three arches from
+  bundled-static to a dynamic `libmpdec.so` with so-package-map consequences.
+  Harmless until Python 3.16 (~Oct 2027); the row documents the gap and makes
+  the switch a one-line change when the time comes.
+- **LOG19 — the media lane reports zero cache telemetry, and the report is
+  truncated where it counts** [CLOSED] Replaced positional `head -N` with
+  `grep -E` for sccache stats in four files: `compiler-cache.sh:201`,
+  `build-gcc.sh:737`, `probe-sccache.sh:141`, `03-media/core/common.sh:147`.
+  The grep selects the lines that matter (`Compile requests`, `Cache hits`,
+  `Non-cacheable compilations`, `Unsupported compiler calls`) instead of
+  slicing a variable-length report. Added `dump_compiler_cache_stats()` to
+  `compiler-cache.sh` — a post-build stats dump with a WARN on
+  `requests > 0 && hits == 0` (dead cache). Wired it via an EXIT trap in
+  `media_common_init` so every media step reports its cache telemetry at the
+  END of the build, not at t≈0.165 s before the first object.
+- **ffmpeg/pyav compiler-cache resolution** [CLOSED alongside LOG19]
+  `build-ffmpeg.sh:390-403` and `build-pyav.sh:104-112` hardcoded `ccache ${CC}`
+  instead of resolving through `compiler_cache_launcher()`. Replaced with the
+  helper so sccache is actually asked (was always ccache —
+  `media-amd64.log:111146 "Using ccache for faster compilation"`).

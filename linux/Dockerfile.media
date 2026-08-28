@@ -287,8 +287,8 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/10-deps.sh,target=/opt/scripts/03-media/build/onnxruntime/build/10-deps.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh,target=/opt/scripts/03-media/build/onnxruntime/build/20-fetch.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime/build/lib,target=/opt/scripts/03-media/build/onnxruntime/build/lib,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-onnx \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-onnx \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     set -euo pipefail; \
@@ -424,8 +424,8 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/litert/install-deps.sh
     --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,readonly \
     --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-litert \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-litert \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/litert/install-deps.sh
 
@@ -483,8 +483,8 @@ ARG TARGETARCH
 
 RUN --mount=type=bind,source=linux/scripts/05-frameworks,target=/opt/scripts/05-frameworks,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-tvm \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-tvm \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -558,8 +558,8 @@ ENV PKG_CONFIG_PATH="${OPENCV_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH}"
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/opencv,target=/opt/scripts/03-media/build/opencv,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-opencv \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-opencv \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/opencv/install-deps.sh
 
@@ -605,8 +605,8 @@ ARG TARGET_ARCH
 RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scripts/frameworks/torch,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-wheelhouse \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-wheelhouse \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
@@ -705,8 +705,8 @@ ENV FFMPEG_PREFIX=/opt/ffmpeg \
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/ffmpeg,target=/opt/scripts/03-media/build/ffmpeg,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-ffmpeg \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-ffmpeg \
     set -euo pipefail; \
     bash /opt/scripts/03-media/build/ffmpeg/install-deps.sh
 
