@@ -656,14 +656,27 @@ smoke_test_ffmpeg() {
         failures=$((failures + 1))
     fi
 
-    # Check enabled backends from configure
+    # Check enabled backends from configure, ONE FEATURE AT A TIME. This was a
+    # single grep -E alternation over -buildconf, which reported "linked" as soon
+    # as ANY one matched -- libonnxruntime alone kept it green while libwebp and
+    # libvmaf were absent from every shipped arch (media-*.log 2026-08-27). Per
+    # feature the miss is visible in the log. Deliberately NON-fatal per feature:
+    # these come from probe-gated, best-effort apt packages (install-deps.sh) that
+    # legitimately degrade per arch (libvmaf has no Ubuntu package at all), so only
+    # "not one of them linked" stays a failure, exactly as before.
     echo "  Enabled backends:"
-    local backends
-    backends="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null | grep -E "libonnx|libtensorflow|libopenvino|libwebp|libvmaf|nvenc|nvdec|cuda|cuvid" || true)"
-    if [ -n "${backends}" ]; then
-        echo "${backends}" | while IFS= read -r line; do echo "    ${line}"; done
-    else
-        echo "    (none of the DNN/CUDA/media backends were linked)"
+    local buildconf feat linked=0
+    buildconf="$("${ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
+    for feat in libonnxruntime libtensorflow libopenvino libwebp libvmaf nvenc nvdec cuda cuvid; do
+        if printf '%s\n' "${buildconf}" | grep -q -- "--enable-${feat}"; then
+            echo "    ${feat}: YES"
+            linked=$((linked + 1))
+        else
+            echo "    ${feat}: no"
+        fi
+    done
+    if [ "${linked}" -eq 0 ]; then
+        echo "    FAIL: none of the DNN/CUDA/media backends were linked"
         failures=$((failures + 1))
     fi
 

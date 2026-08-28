@@ -642,10 +642,17 @@ FROM base AS armnn
 ARG TARGET_ARCH
 ARG BUILD_MODE
 
+# The apt ids carry an `-armnn` suffix instead of joining the lane-wide store:
+# on every non-arm64 lane this RUN only echoes, yet it still queued for the
+# `sharing=locked` lane store — 2026-08-27 riscv64 spent 36 min there
+# ("#25 2172.4 Skipping Arm NN deps (arm64 only, got riscv64)" / "#25 DONE
+# 2172.4s"). Own id = no contenders. Cost is arm64-only and one-time: an empty
+# store means one extra list+deb download, and install-deps.sh opens with
+# install_deps_preamble → apt_update_smart, which always runs apt-get update.
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
-    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH} \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH} \
+    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGET_ARCH}-armnn \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGET_ARCH}-armnn \
     set -euo pipefail; \
     case "${TARGET_ARCH:-${TARGETARCH:-}}" in \
         arm64|aarch64) bash /opt/scripts/03-media/build/armnn/install-deps.sh ;; \

@@ -67,6 +67,11 @@ known_so_packages_load() {
         ""|\#*) continue ;;
       esac
       KNOWN_SO_PACKAGES["${so_name}"]="${pkg}"
+      # Wildcard keys cover a whole SONAME family; kept in file order because
+      # the assoc array itself is unordered (hash order).
+      case "${so_name}" in
+        *[*?[]*) KNOWN_SO_GLOBS+=("${so_name}") ;;
+      esac
     done < "${map_file}"
     return 0
   fi
@@ -75,6 +80,10 @@ known_so_packages_load() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 declare -A KNOWN_SO_PACKAGES=()
+declare -a KNOWN_SO_GLOBS=()
+# Reserved map target: the library comes from this repo's OWN build, so a miss
+# must never be "repaired" from apt (which would shadow it). See so-package-map.txt.
+SO_PACKAGE_DENY=source-built
 known_so_packages_load || {
   echo "WARNING: so-package-map.txt not found; continuing with an empty known-so map (dpkg-query/apt-cache lookups only)" >&2
 }
@@ -99,11 +108,23 @@ find_missing_needed() {
   fi
 }
 
+# rc 0 + package name on stdout; rc 1 unmappable; rc 2 DENIED (source-built).
 resolve_package_for_so() {
   local so_name="$1"
-  local pkg=""
+  local pkg="" glob
 
   pkg="${KNOWN_SO_PACKAGES[${so_name}]:-}"
+
+  if [ -z "${pkg}" ] && [ ${#KNOWN_SO_GLOBS[@]} -gt 0 ]; then
+    for glob in "${KNOWN_SO_GLOBS[@]}"; do
+      # shellcheck disable=SC2254  # the pattern is meant to glob, that is the point
+      case "${so_name}" in
+        ${glob}) pkg="${KNOWN_SO_PACKAGES[${glob}]}"; break ;;
+      esac
+    done
+  fi
+
+  [ "${pkg}" = "${SO_PACKAGE_DENY}" ] && return 2
 
   if [ -n "${pkg}" ]; then
     echo "${pkg}"
@@ -192,10 +213,15 @@ echo "=== Resolving ${#UNIQ_MISSING[@]} missing dependencies ==="
 
 PACKAGES_TO_INSTALL=()
 STILL_MISSING=()
+DENIED_MISSING=()
 
 for so_name in "${UNIQ_MISSING[@]}"; do
-  pkg="$(resolve_package_for_so "${so_name}" || true)"
-  if [ -n "${pkg}" ]; then
+  rc=0
+  pkg="$(resolve_package_for_so "${so_name}")" || rc=$?
+  if [ "${rc}" = "2" ]; then
+    echo "  ${so_name} -> DENIED (source-built; an apt copy would shadow our build)"
+    DENIED_MISSING+=("${so_name}")
+  elif [ -n "${pkg}" ]; then
     echo "  ${so_name} -> ${pkg}"
     PACKAGES_TO_INSTALL+=("${pkg}")
   else
@@ -253,6 +279,15 @@ if [ ${#STILL_MISSING[@]} -gt 0 ]; then
   echo "=== WARNING: ${#STILL_MISSING[@]} dependencies have no known apt package ==="
   printf '  %s\n' "${STILL_MISSING[@]}"
   echo "Add entries to so-package-map.txt (next to validate-media-runtime.sh)."
+fi
+
+if [ ${#DENIED_MISSING[@]} -gt 0 ]; then
+  echo ""
+  echo "=== WARNING: ${#DENIED_MISSING[@]} source-built dependencies unresolved (apt repair denied) ==="
+  printf '  %s\n' "${DENIED_MISSING[@]}"
+  echo "These ship from this repo's own build; a miss means the builder did not"
+  echo "install the SONAME link. Fix the builder — do NOT map them to a distro"
+  echo "package, which is what silently downgraded ONNX Runtime before 2026-08-28."
 fi
 
 fi  # end of the dirty-scan resolution branch — ELF validation runs either way

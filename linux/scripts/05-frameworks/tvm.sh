@@ -348,7 +348,12 @@ configure_tvm_cmake() {
     "$vulkan_library" \
     "$vulkan_include"
 
-  cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}"
+  # 2>&1 | tee, with pipefail (line 2) keeping a failed configure fatal: the log is
+  # where TVM prints TVM_LLVM_VERSION, the only proof of which LLVM it really found.
+  local configure_log="${build_dir}/cmake-configure.log"
+  cmake -S "$tvm_dir" -B "$build_dir" "${cmake_args[@]}" 2>&1 | tee "$configure_log"
+
+  [ "$llvm_cmake_value" = "OFF" ] || assert_tvm_llvm_version_matches_pin "$configure_log"
 }
 
 # TVM's FindLLVM does find_package(LLVM CONFIG) then

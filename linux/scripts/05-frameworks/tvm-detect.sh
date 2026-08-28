@@ -9,12 +9,17 @@ detect_llvm_config() {
     return 0
   fi
 
+  # Keyed on the LLVM_RELEASE pin (as register-llvm-alternatives.sh is), not on a
+  # hardcoded descending list: that list tried the bare name LAST, so amd64 picked
+  # Ubuntu's llvm-config-21 and built TVM against LLVM 21 while arm64/riscv64 got
+  # the pinned 23.1.0 — media-amd64.log:1652/1688 of run 20260827-200128. The bare
+  # name is the update-alternatives link 01-core/verify.sh already asserts equals
+  # that major, so it stays as the fallback for a source-built tree.
+  local major=""
+  major="$(llvm_wanted_major)"
+
   local candidates=(
-    "llvm-config-22"
-    "llvm-config-21"
-    "llvm-config-20"
-    "llvm-config-19"
-    "llvm-config-18"
+    "llvm-config-${major}"
     "llvm-config"
   )
 
@@ -27,6 +32,28 @@ detect_llvm_config() {
   done
 
   echo ""
+}
+
+# TVM_LLVM_VERSION (major*10 + minor) is CMake's verdict on which LLVM FindLLVM
+# actually resolved — the only place the truth appears, since USE_LLVM=ON lets
+# CMake keep searching on its own. Assert it against the LLVM_RELEASE pin: amd64
+# built TVM against LLVM 21 under a 23.1.0 pin and nothing said a word
+# (media-amd64.log:1688, run 20260827-200128). $1 = the tee'd cmake configure log.
+assert_tvm_llvm_version_matches_pin() {
+  local configure_log="$1"
+  local want_major="" found="" got_major=""
+
+  want_major="$(llvm_wanted_major)"
+  [ -n "${want_major}" ] || return 0
+
+  found="$(sed -n 's/.*TVM_LLVM_VERSION=\([0-9][0-9]*\).*/\1/p' "${configure_log}" 2>/dev/null | tail -1)"
+  [ -n "${found}" ] || \
+    die "TVM was configured with USE_LLVM but printed no TVM_LLVM_VERSION (TVM CMake output changed?); cannot prove it linked the pinned LLVM ${want_major}"
+
+  got_major=$(( found / 10 ))
+  [ "${got_major}" = "${want_major}" ] || \
+    die "TVM linked LLVM ${got_major} (TVM_LLVM_VERSION=${found}) but versions.env pins LLVM_RELEASE major ${want_major}"
+  log "TVM_LLVM_VERSION=${found} matches the pinned LLVM ${want_major}"
 }
 
 sanitize_llvm_config_for_target() {

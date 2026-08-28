@@ -341,14 +341,42 @@ copy_onnx_libraries_to_output() {
 
 ensure_onnxruntime_symlink() {
   local output_dir="${1:?output dir required}"
-  local onnx_lib=""
+  local onnx_lib="" onnx_base="" onnx_soname=""
 
   # Guarded: an absent lib dir must fall through to the warn below, not abort
   # the caller via set -e/pipefail (the GPU call site passes an unchecked dir).
   onnx_lib="$(find "${output_dir}/lib" -maxdepth 1 -name 'libonnxruntime.so.*' -type f 2>/dev/null | head -1 || true)"
-  if [ -n "${onnx_lib}" ] && [ ! -e "${output_dir}/lib/libonnxruntime.so" ]; then
-    ln -sf "$(basename "${onnx_lib}")" "${output_dir}/lib/libonnxruntime.so"
-    info "Created symlink: libonnxruntime.so -> $(basename "${onnx_lib}")"
+  if [ -n "${onnx_lib}" ]; then
+    onnx_base="$(basename "${onnx_lib}")"
+    if [ ! -e "${output_dir}/lib/libonnxruntime.so" ]; then
+      ln -sf "${onnx_base}" "${output_dir}/lib/libonnxruntime.so"
+      info "Created symlink: libonnxruntime.so -> ${onnx_base}"
+    fi
+
+    # The DT_SONAME link too. A consumer's NEEDED entry is the SONAME
+    # (libonnxruntime.so.1), never the real file (libonnxruntime.so.1.29.0) nor
+    # the linker name, so without this link validate-media-runtime.sh finds
+    # nothing in LIB_DIRS and "repairs" the miss out of apt: media-arm64
+    # 2026-08-27 logged "libonnxruntime.so.1 -> libonnxruntime1.23" and pulled
+    # 12 packages / 62.9 MB of a three-releases-old ORT over our build. amd64
+    # hid it because a NATIVE ldconfig synthesises the link; on cross the host
+    # ldconfig skips the foreign-arch ELF. objdump first for the same reason
+    # elf_needed_sonames prefers it: it reads foreign-arch ELF.
+    if command -v objdump >/dev/null 2>&1; then
+      onnx_soname="$({ objdump -p "${onnx_lib}" 2>/dev/null || true; } | awk '/^[[:space:]]*SONAME/ { print $2; exit }')"
+    elif command -v readelf >/dev/null 2>&1; then
+      onnx_soname="$({ LC_ALL=C readelf -d "${onnx_lib}" 2>/dev/null || true; } | sed -n 's/.*(SONAME)[^[]*\[\(.*\)\].*/\1/p' | head -1)"
+    fi
+    # An unreadable or path-bearing SONAME degrades to the previous behaviour
+    # (linker name only) instead of ln-ing into an unintended directory.
+    case "${onnx_soname}" in ""|*/*) onnx_soname="" ;; esac
+
+    if [ -z "${onnx_soname}" ]; then
+      warn "No DT_SONAME readable from ${onnx_base}; SONAME symlink not created"
+    elif [ "${onnx_soname}" != "${onnx_base}" ] && [ ! -e "${output_dir}/lib/${onnx_soname}" ]; then
+      ln -sf "${onnx_base}" "${output_dir}/lib/${onnx_soname}"
+      info "Created SONAME symlink: ${onnx_soname} -> ${onnx_base}"
+    fi
   fi
 }
 

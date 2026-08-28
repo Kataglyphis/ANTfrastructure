@@ -23,6 +23,8 @@
 #          `SONAME<TAB>package`, and no soname maps to two DIFFERENT packages
 #          (known_so_packages_load is last-wins, so a conflicting duplicate is
 #          a SILENT override). Byte-identical duplicate lines are ratcheted.
+#          The SONAME field may carry `*` — a family key such as
+#          `libonnxruntime.so.*`, matched as a glob after the exact keys.
 #   INV-2  every versioned runtime lib package hardcoded in the codec baseline
 #          appears as a mapping target in so-package-map.txt — both hand lists
 #          must agree which Ubuntu package provides each media library. When a
@@ -120,7 +122,7 @@ t_case "INV-1: every map data line is SONAME<TAB>package"
 # known_so_packages_load splits on TAB only: a space-separated line puts the
 # WHOLE line into so_name and an empty string into pkg — a silent dead entry.
 bad_lines="$(printf '%s\n' "${map_lines}" \
-  | grep -vE $'^[A-Za-z0-9._+-]+\\.so[A-Za-z0-9.]*\t[a-z0-9][a-z0-9.+-]+$' || true)"
+  | grep -vE $'^[A-Za-z0-9._+-]+\\.so[A-Za-z0-9.*]*\t[a-z0-9][a-z0-9.+-]+$' || true)"
 t_assert_eq "" "${bad_lines}" "malformed so-package-map.txt line(s) — must be SONAME<TAB>debian-package"
 
 t_case "INV-1: no soname maps to two different packages (loader is last-wins)"

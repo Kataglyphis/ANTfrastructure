@@ -105,6 +105,13 @@ ffmpeg_extra_feature_packages=(
     librsvg2-dev             # SVG rasterization
     libgsm1-dev              # GSM 06.10 speech
     libxvidcore-dev          # Xvid MPEG-4 ASP encoder
+    # The ffmpeg stage is isolated (Dockerfile.media: FROM base AS ffmpeg), so
+    # the libwebp-dev opencv/gstreamer install never reached it — "Skipping
+    # libwebp: pkg-config cannot resolve libwebp." on all three arches
+    # (media-*.log 2026-08-27). No libvmaf counterpart on purpose: Ubuntu ships
+    # NO vmaf package in any suite or arch (packages.ubuntu.com name+contents
+    # search 2026-08-28), so that probe skip is expected, not a missing install.
+    libwebp-dev              # WebP image codec (-dev also ships libwebpmux.pc)
 )
 for _ff_extra_pkg in "${ffmpeg_extra_feature_packages[@]}"; do
     install_optional_target_packages "${_ff_extra_pkg}"

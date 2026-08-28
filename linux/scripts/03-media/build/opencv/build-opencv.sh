@@ -142,10 +142,47 @@ configure_opencv_build_env() {
     # need the gst libdir on the rpath-link for transitive NEEDED
     # resolution ("libgstapp-1.0.so.0 ... not found (try using
     # -rpath-link)"). Resolve the real libdir (per-arch layouts differ).
-    local _gst_lib
-    _gst_lib="$(dirname "$(find /opt/gstreamer -name 'libgstreamer-1.0.so*' -not -type d 2>/dev/null | head -1)" 2>/dev/null || true)"
-    if [ -n "${_gst_lib}" ] && [ "${_gst_lib}" != "." ]; then
+    #
+    # 2026-08-28: the plain `find ... -name 'libgstreamer-1.0.so*' | head -1`
+    # this used to do picked meson's gdb pretty-printer FIRST (readdir order is
+    # not sorted), so ALL THREE arches of run 20260827-200128 got
+    # -L/opt/gstreamer/share/gdb/auto-load/opt/gstreamer/lib/... — a directory
+    # that holds no .so at all, i.e. the repair above has been inert and the
+    # riscv64 pass-2 failure it was written for is unprotected. Ask pkg-config
+    # first (Dockerfile.media's opencv-gst step already prepends the gstreamer
+    # pkgconfig dir to PKG_CONFIG_PATH), then the two known layouts; the
+    # triplet dir EXISTS-but-is-EMPTY on cross (build-gstreamer-stage.sh
+    # mkdir -p's it for the lib/multiarch symlink while meson installs into
+    # plain lib/), so a candidate only counts once it actually holds a
+    # libgstreamer-1.0.so*.
+    local _gst_prefix="${GSTREAMER_PREFIX:-/opt/gstreamer}"
+    local _gst_triplet _gst_cand _gst_lib=""
+    _gst_triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH:-${TARGETARCH:-amd64}}" 2>/dev/null || true)"
+    for _gst_cand in \
+        "$(pkg-config --variable=libdir gstreamer-1.0 2>/dev/null || true)" \
+        "${_gst_prefix}/lib/${_gst_triplet}" \
+        "${_gst_prefix}/lib"; do
+        [ -n "${_gst_cand}" ] || continue
+        if compgen -G "${_gst_cand}/libgstreamer-1.0.so*" >/dev/null 2>&1; then
+            _gst_lib="${_gst_cand}"
+            break
+        fi
+    done
+    if [ -z "${_gst_lib}" ]; then
+        # Last resort for an unexpected layout — prune share/gdb so the
+        # pretty-printer mirror can never win the race again.
+        _gst_lib="$(dirname "$(find "${_gst_prefix}" -path '*/share/gdb' -prune -o -name 'libgstreamer-1.0.so*' -not -type d -print 2>/dev/null | head -1)" 2>/dev/null || true)"
+        [ "${_gst_lib}" = "." ] && _gst_lib=""
+    fi
+    if [ -n "${_gst_lib}" ]; then
+        echo "OpenCV: gstreamer libdir resolved to ${_gst_lib} (-L + -rpath-link)"
         export LDFLAGS="${LDFLAGS} -L${_gst_lib} -Wl,-rpath-link,${_gst_lib}"
+    elif [ ! -d "${_gst_prefix}" ]; then
+        # Pass 1 of the cross lanes runs before the gstreamer prefix exists at all.
+        # Warning there is a false alarm on every arm64/riscv64 run.
+        :
+    else
+        echo "[WARN] OpenCV: no gstreamer libdir found under ${_gst_prefix}; app links may fail on transitive libgst* (\"try using -rpath-link\")"
     fi
 }
 
