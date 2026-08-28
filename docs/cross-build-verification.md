@@ -246,6 +246,22 @@ These validate a built/pulled image and also run during the build to fail fast:
     check to the whole native stack (the class that shipped libopencore-amrwb.so.0-
     broken ffmpeg). Venv Python extensions are excluded (import-time lib paths defeat
     bare `ldd`; the import checks are their gate).
+  - **ARCH-PARITY table** (fail) — `smoke-runtime-image.sh` sees ONE image at a time
+    (`build-runtime-manifest.sh` invokes it per arch), so this is **table
+    conformance, not a cross-arch diff**. Every `/opt` prefix and component wheel
+    NAMED in `_PARITY_PREFIXES`/`_PARITY_WHEELS` must be present on this arch unless
+    `_parity_exempt` documents its absence; exactly one `onnxruntime` distribution,
+    the flavour `_parity_ort_flavor` names, may be installed. The **blind spot** is a
+    one-sided EXTRA: a component present on one arch and absent from the table is
+    invisible to the loop, so the untracked `/opt` prefixes are printed (INFO) every
+    run and a human diff of the three per-arch logs is what catches it — putting a
+    component under the gate means adding it to the table. A documented exemption
+    whose component turns out to be PRESENT **fails**, and so does a
+    `_PARITY_GST_KNOWN_BROKEN` entry whose plugin starts loading again (two
+    independent signals must agree: absent from the scanner's failure list AND
+    `gst-inspect-1.0` loads the file directly). Warning there instead would let the
+    table rot underneath a green run; failing makes it self-correcting, since the fix
+    is the one-line deletion the message names.
   - **GStreamer plugin health** (warn) — lists plugins whose runtime `.so` is absent
     (they degrade gracefully); surfaces app-critical regressions like
     `webrtcbin2`→`librice-proto.so.0`. **GStreamer core pipeline** (fail) —

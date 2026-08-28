@@ -12,86 +12,51 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# #108: container mounts are FLAT (C:\bkmnt, C:\temp\scripts) while the repo is
+# scripts/<group>/ -- shared assets sit beside this script or one level up.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
 
-# Shared helpers (Invoke-DownloadWithRetry, etc.) come through SourceBuild.Common's re-export.
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $FfmpegVersion = Get-SourceBuildVersion -Value $FfmpegVersion -EnvironmentVariables @('FFMPEG_VERSION') -DefaultValue 'n9.0'
 $prefix = Join-Path $InstallDir 'ffmpeg'
 $ffmpegDir = Join-Path $prefix 'bin'
 
-# TARGET architecture. The build HOST is always windows/amd64; arm64 is a CROSS
-# target (clang-cl --target=aarch64-pc-windows-msvc + lld-link) whose output
-# cannot be executed here. Every arch-dependent literal below resolves through
-# WindowsTargetArch.Common (re-exported by WindowsSourceBuild.Common).
-# On amd64 $ffCross is $false and $ffCcTargetFlag is '', so every flag this
+# TARGET arch: the build HOST is always windows/amd64; arm64 is a CROSS target whose output
+# cannot run here. On amd64 $ffCross is $false and $ffCcTargetFlag is '', so every flag this
 # script emits stays byte-identical to the pre-arm64 script.
-# Diagnostic: the arch resolution silently fell back to amd64 here once
-# (2026-08-23) because an ARG did not cross a stage boundary, and the only
-# symptom was FFmpeg configure reporting "libonnxruntime not found". Print the
-# raw inputs so a future mismatch names itself instead of hiding behind a
-# downstream error.
-# (The third field used to be KATA_ARCH_PROBE, an ENV mirrored purely to answer
-# "did the ARG cross the stage boundary?". It did; the ENV and this field were
-# removed together on 2026-08-26 (#134) rather than left printing a value nobody
-# reads. Process-vs-Machine below is the half that still diagnoses.)
+# Print the raw inputs: the resolution once fell back to amd64 silently (an ARG that did not
+# cross a stage boundary) and the only symptom was "libonnxruntime not found".
 Write-Host ("FFmpeg arch inputs: Process='{0}' Machine='{1}' -> resolved '{2}'" -f `
     [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Process'),
     [Environment]::GetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'Machine'),
     (Get-WindowsTargetArch))
 $ffTargetArch = Get-WindowsTargetArch
 $ffCross      = Test-WindowsCrossTarget -Arch $ffTargetArch
-# Appended to clang-cl in BOTH places the compiler is named (configure's --cc
-# and the make-time CC override). configure's own probe compilations must target
-# the cross arch too, so the triple rides on --cc rather than --extra-cflags.
+# Rides on --cc, not --extra-cflags, and in BOTH places the compiler is named: configure's own
+# probe compilations must target the cross arch too.
 $ffCcTargetFlag = if ($ffCross) { " --target=$(Get-ClangTargetTriple -Arch $ffTargetArch)" } else { '' }
 if ($ffCross) { Write-Host "FFmpeg: CROSS build for $ffTargetArch on an $(Get-WindowsHostArch) host" }
 
-# Windows -> MSYS path (C:\x\y -> /c/x/y). Every bash-facing path MUST go through
-# this: a half-converted path once collapsed to /cruntimeffmpeg and make install
-# silently delivered the whole tree into <git-root>\cruntimeffmpeg.
+# Every bash-facing path MUST go through this: a half-converted one collapsed to /cruntimeffmpeg
+# and make install silently delivered the whole tree into <git-root>\cruntimeffmpeg.
 function ConvertTo-MsysPath([string]$Path) {
     return '/' + $Path.Substring(0, 1).ToLower() + ($Path.Substring(2) -replace '\\', '/')
 }
 
-# FFmpeg-only Makefile fixup (moved here from WindowsSourceBuild.Common.psm1 on
-# 2026-08-03 — this script was its only consumer, ever, and hosting it in the
-# shared module rebuilt all three media branches whenever it changed): strips
-# MSVC's -showIncludes + the awk dep-file pipelines from configure-generated
-# *.mak files (clang-cl emits GNU-style deps; the awk pass both breaks and
-# is superseded).
 function Assert-FfmpegPkgConfig {
-    # Gate on the .pc files `make install` produced. Both defects it guards were
-    # silent for MONTHS because the files were PRESENT and looked fine:
-    #
-    #   Version: ..          configure found neither a VERSION file nor git tags
-    #                        (GitHub auto-tarballs ship no VERSION, and the
-    #                        git-init done after extraction carries no tags), so
-    #                        its version substitutions expanded to nothing. No
-    #                        consumer version constraint can match that, and
-    #                        gst-libav is skipped without a word.
-    #   prefix=/c/runtime    configure MUST get an MSYS --prefix or `make install`
-    #                        lands in the wrong place, and FFmpeg copies that
-    #                        string into every .pc. clang-cl and lld-link cannot
-    #                        resolve /c/... , so the -I/-L flags are unusable.
-    #
-    # Lives in this script, not WindowsSourceBuild.Common.psm1: that module is in
-    # the compile closure of all three media branches, so an FFmpeg-only helper
-    # there rebuilds all of them on every edit. Same reasoning that moved
-    # Remove-MakefileShowIncludes down here. Tests reach it by AST extraction
-    # (SourceBuild.Artifact.Tests.ps1) rather than by importing a module.
+    # Gates the .pc files `make install` produced. Both defects it guards stayed silent for
+    # MONTHS because the files were PRESENT and looked fine: `Version: ..` (configure found
+    # neither a VERSION file nor git tags) and `prefix=/c/runtime` (an MSYS path clang-cl and
+    # lld-link cannot resolve). This helper and Remove-MakefileShowIncludes are kept OUT of
+    # WindowsSourceBuild.Common.psm1 on purpose -- that module re-keys all three media branches
+    # on every edit; the tests reach them by AST extraction instead.
     param(
         [Parameter(Mandatory)][string]$PkgConfigDir,
-        # gst-libav's own floors: libavcodec >= 58.18.100, libavformat >=
-        # 58.12.100, libavutil >= 56.14.100, libavfilter >= 7.16.100. Presence
-        # and well-formedness are checked here; the floors themselves are
-        # enforced where gst-libav is configured (Assert-PkgConfigModule).
+        # Presence and well-formedness only; gst-libav's version floors are enforced where it
+        # is configured (Assert-PkgConfigModule).
         [string[]]$RequiredModule = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
     )
     if (-not (Test-Path $PkgConfigDir -PathType Container)) {
@@ -130,15 +95,13 @@ function Remove-MakefileShowIncludes {
     if (-not (Test-Path $Path)) { return }
     $c = [System.IO.File]::ReadAllText($Path)
     $c = $c -replace '-showIncludes', ''
-    # -options:strict is cl.exe's strict-options flag; clang-cl does NOT
-    # implement it and parses the prefix as the deprecated -o (output file!).
-    # Bare builds survived only by argument ORDER (the later -Fo wins);
-    # sccache rebuilds the command with -Fo FIRST, the hijack wins, and the
-    # object lands invisibly in an NTFS alternate data stream
-    # (ptions:strict.obj) at exit 0 -> "failed to zip up compiler outputs".
-    # Stripping it is a correctness fix either way (probe-sccache-options-
-    # strict.ps1 rounds 1-5, 2026-08-20) and unblocks the #100 launcher.
+    # -options:strict is cl.exe-only; clang-cl parses its prefix as the deprecated -o. Bare
+    # builds survived by argument ORDER, but sccache reorders -Fo first, the hijack wins, and
+    # the object lands in an NTFS alternate data stream at exit 0 -> "failed to zip up compiler
+    # outputs". Stripping it is a correctness fix either way, and unblocks the #100 launcher.
     $c = $c -replace '-options:strict\s*', ''
+    # The awk dep-file pipelines below parse MSVC -showIncludes output; clang-cl emits GNU-style
+    # deps instead, so they both break and are superseded.
     $c = $c -replace '\|.*awk.*including.*>.*\.d["\s]', ''
     $c = $c -replace '\s*\|\s*\$\(AWK\).*', ''
     $c = $c -replace '\s*\|\s*awk.*', ''
@@ -149,24 +112,18 @@ function Remove-MakefileShowIncludes {
 Write-Host "=== FFmpeg source build ($FfmpegVersion, clang-cl+lld-link default; FFMPEG_TOOLCHAIN=msvc to override) ==="
 
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
-    # #68: trust but VERIFY on re-entry. A -ResumeFrom after a failed run
-    # used to take this return and inherit whatever the failure left -
-    # incl. a prebuilt-fallback MIX (foreign exes/dlls over our import
-    # libs/.pc) - with every gate below skipped. Run the .pc gate before
-    # trusting; it throws on the mixed/broken shapes.
+    # #68: trust but VERIFY on re-entry. A -ResumeFrom used to take this return and inherit
+    # whatever a failed run left -- incl. a prebuilt/source MIX -- with every gate below skipped.
     $null = Assert-FfmpegPkgConfig -PkgConfigDir (Join-Path $prefix 'lib\pkgconfig')
     Write-Host "FFmpeg already installed at $prefix - .pc gate passed, skipping"; return
 }
 
-# Download and extract
 $tarballPath = "$SourceDir\ffmpeg.tar.gz"
 if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 
-# #122 (2026-08-21): phase brackets via trap, not a whole-body try/catch —
-# same failure-names-its-phase contract as gstreamer/litert-lm (#109)
-# without indenting 570 lines. EAP=Stop makes every failure terminating, so
-# the trap stamps the open phase and rethrows.
+# #122: phase brackets via trap, not a whole-body try/catch -- the same failure-names-its-phase
+# contract as gstreamer/litert-lm (#109) without indenting 570 lines.
 trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'ffmpeg'; break }
 
 Switch-BuildPhase '1. download + extract'
@@ -187,49 +144,29 @@ Write-Host "Extracting tarball..."
 $srcDir = Expand-SourceTarball -Archive $tarballPath -Destination $SourceDir
 Write-Host "Source at: $srcDir"
 
-# git-init the extracted tarball so Invoke-SourcePatch takes its .git fast-path (git
-# apply). Without this its git-repo probe writes to stderr, which PS 5.1 under EAP=Stop
-# turns into a terminating NativeCommandError; the helper shields git output via cmd.exe.
+# git-init so Invoke-SourcePatch takes its git-apply fast-path: without a repo its probe writes
+# to stderr, which PS 5.1 under EAP=Stop turns into a terminating NativeCommandError.
 Initialize-ExtractedGitRepo -Path $srcDir
 
 Switch-BuildPhase '2. VERSION synthesis + lib*.version'
 # ── VERSION file: without it every generated .pc says "Version: .." ───────────
-# FFmpeg's configure derives its version from $source_path/VERSION, falling back
-# to `git describe`. NEITHER exists here: GitHub's auto-generated
-# archive/refs/tags tarballs carry no VERSION file (only ffmpeg.org release
-# tarballs do), and the git-init above creates a repo with no tags for describe
-# to find. Both probes come up empty, the major/minor/micro substitutions expand
-# to nothing, and every installed .pc ends up with a literal
-#
-#     Version: ..
-#
-# which no version constraint can satisfy. Measured 2026-08-07 by probing the
-# built image: that ALONE keeps gst-libav out of the final image, because it
-# demands libavcodec >= 58.18.100 and three siblings — a second, independent
-# cause on top of the FFmpeg.wrap trap. The files existed and looked plausible,
-# so nothing ever flagged it.
-#
-# FFMPEG_VERSION is a pinned release tag ('n9.0'), so the value is already at
-# hand; strip the tag's leading 'n' to get FFmpeg's own version string.
+# configure derives the version from $source_path/VERSION or `git describe`, and NEITHER exists
+# here (GitHub tarballs ship no VERSION; the git-init above leaves no tags). Both probes come up
+# empty and every .pc gets a literal `Version: ..`, which alone keeps gst-libav out of the image
+# -- it demands libavcodec >= 58.18.100 and three siblings. Strip the pinned tag's leading 'n'.
 $ffmpegVersionNumber = ([string]$FfmpegVersion) -replace '^n', ''
 if ($ffmpegVersionNumber -match '^\d+(\.\d+)*$') {
     Set-Content -Path (Join-Path $srcDir 'VERSION') -Value $ffmpegVersionNumber -Encoding ascii -NoNewline
     Write-Host "Wrote VERSION=$ffmpegVersionNumber (GitHub tarballs ship none; configure would emit 'Version: ..' in every .pc)"
 } else {
-    # A branch build ('master') has no meaningful release number — leave it to
-    # configure rather than inventing one, and say so.
+    # A branch build has no meaningful release number -- leave it to configure, and say so.
     Write-Warning "FFMPEG_VERSION '$FfmpegVersion' is not a release number; .pc Version fields may come out empty."
 }
 
-# ── lib*.version files (n9.0 mechanics): since n9.0 every .pc gets its
-# Version from a GENERATED libX/libX.version file (library.mak rule ->
-# ffbuild/libversion.sh awk/eval chain), and under this Git-Bash port that
-# chain produced empty MAJOR/MINOR/MICRO (run 14, 2026-08-11: every
-# installed .pc said 'Version: ..' and the guard below refused - correctly).
-# The values are static facts of the pinned source, so write the files
-# ourselves: LF + no BOM (make -includes them for LIBVERSION/LIBMAJOR = DLL
-# naming!), mtime newer than the headers so library.mak never re-runs the
-# fragile generator. Format mirrors libversion.sh's output exactly.
+# ── lib*.version (n9.0): every .pc now takes its Version from a GENERATED libX/libX.version,
+# and ffbuild/libversion.sh's awk chain produced empty MAJOR/MINOR/MICRO under this Git-Bash
+# port. The values are static facts of the pinned source, so write them ourselves: LF, no BOM
+# (make -includes them for LIBVERSION/LIBMAJOR = DLL naming), format mirroring libversion.sh.
 $ffLibs = 'avutil', 'avcodec', 'avformat', 'avdevice', 'avfilter', 'swscale', 'swresample', 'postproc'
 foreach ($ffLib in $ffLibs) {
     $ffLibDir = Join-Path $srcDir "lib$ffLib"
@@ -250,14 +187,10 @@ foreach ($ffLib in $ffLibs) {
     Write-Host "Wrote lib$ffLib.version = $ffMaj.$ffMin.$ffMic (bypasses the libversion.sh awk chain)"
 }
 
-# Set up environment: VsDevCmd (MSVC tools) + Git Bash + Scoop make/gawk
 Enter-VsDevCmdEnvironment
 $scoopShims = "$env:USERPROFILE\scoop\shims"
-# #76 insurance: this provisioning region once sat SILENT for exactly
-# 7200.9 s (a network timeout inside a scoop fetch; normal is 11-18 s,
-# 14 clean runs since - latent, not active). Bound it: the step runs as a
-# job with a heartbeat every minute and a hard 10-min ceiling, so a
-# recurrence costs minutes and names itself instead of eating 2 h mute.
+# #76 insurance: this provisioning region once sat SILENT for 7200.9 s (a network timeout inside
+# a scoop fetch; normal is 11-18 s). Bounded so a recurrence costs minutes and names itself.
 function Invoke-BoundedProvisionStep {
     param(
         [Parameter(Mandatory)][string]$Label,
@@ -277,11 +210,8 @@ function Invoke-BoundedProvisionStep {
             Stop-Job -Job $job
             throw "$Label exceeded $TimeoutMinutes min - the #76 stall class (2h-mute network timeout); rerun or check egress."
         }
-        # A job that ENDED in failure must fail the step too — the first cut
-        # only threw on timeout and silently discarded a failed scoop install,
-        # deferring the crash to an unrelated 'make: not found' hundreds of
-        # lines later (adversarial review, 2026-08-21). Keep the output for
-        # the log; a Failed state or an error record throws with the evidence.
+        # A job that ENDED in failure must fail the step too: the first cut only threw on
+        # timeout, deferring a failed scoop install to an unrelated 'make: not found' much later.
         $jobOut = Receive-Job -Job $job -ErrorAction SilentlyContinue -ErrorVariable jobErrs
         if ($jobOut) { $jobOut | ForEach-Object { Write-Host "  [$Label] $_" } }
         if ($job.State -ne 'Completed' -or ($jobErrs -and $jobErrs.Count -gt 0)) {
@@ -292,7 +222,6 @@ function Invoke-BoundedProvisionStep {
         Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
     }
 }
-# Ensure make is available
 Switch-BuildPhase '3. toolchain provisioning (make/gawk/nv-codec)'
 if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
     Write-Host "Installing make via scoop..."
@@ -303,7 +232,6 @@ if (-not (Get-Command gawk -ErrorAction SilentlyContinue)) {
     Write-Host "Installing gawk via scoop..."
     Invoke-BoundedProvisionStep -Label 'scoop install gawk' -Step { & scoop install main/gawk 2>&1; if ($LASTEXITCODE) { throw "scoop exit $LASTEXITCODE" } }
 }
-# Replace MSYS2 awk with gawk for FFmpeg dep file processing
 $gitAwk = 'C:\Program Files\Git\usr\bin\awk.exe'
 $gawkExe = Join-Path $scoopShims 'gawk.exe'
 if ((Test-Path $gitAwk) -and (Test-Path $gawkExe)) {
@@ -315,49 +243,36 @@ $env:PATH = "$scoopShims;$gitUsrBin;$env:PATH"
 $bashExe = Join-Path $gitUsrBin 'bash.exe'
 
 # ── NVIDIA hardware video (NVENC / NVDEC / CUVID) ────────────────────────────
-# nv-codec-headers ships the ffnvcodec headers + ffnvcodec.pc that FFmpeg's configure requires.
-# These paths are header-only: FFmpeg dlopen()s the encoder/decoder from the NVIDIA driver at
-# runtime, so NO nvcc and NO CUDA libs are needed -- they build under the existing --toolchain=msvc.
-# Guarded on an actual nvidia CUDA toolkit so the CPU-only lane is untouched. --enable-cuda-nvcc
-# (which COMPILES CUDA *filters* and would need nvcc under the msvc toolchain) is deliberately left off.
+# Header-only: FFmpeg dlopen()s the encoder/decoder from the NVIDIA driver at runtime, so no nvcc
+# and no CUDA libs are needed. --enable-cuda-nvcc (which COMPILES CUDA filters) stays off.
 $nvencFlags = @()
 $ffGpu = Get-GpuEnvironment
-# No cross-lane exclusion -- corrected 2026-08-24. This gate used to lead with
-# `-not $ffCross`, claiming "the arm64 TARGET has none (no CUDA/cuDNN/TensorRT
-# exists for Windows-on-ARM)" -- eight lines below the note above saying these
-# paths are header-only. That was wrong on both counts: upstream configure has
-# NO arch guard on nvenc/nvdec/cuvid (detection is a check_pkg_config on the
-# ffnvcodec headers), encoding needs only a dlopen of the NVIDIA driver at
-# runtime, and NVIDIA shipped its first native Arm64 Windows GeForce driver
-# (616.00). The cross lane therefore follows the same rule as amd64: gated on
-# the CUDA toolkit check below, nothing else.
+# No cross-lane exclusion: upstream configure has NO arch guard on nvenc/nvdec/cuvid (detection
+# is a check_pkg_config on the headers), so the cross lane is gated on the toolkit check alone.
 if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))) {
     Write-Host 'NVIDIA CUDA detected -> enabling FFmpeg NVENC/NVDEC/CUVID via nv-codec-headers'
-    # pkg-config is required by configure to locate ffnvcodec and is not present in the media build
-    # image, so install it the same scoop way make/gawk are installed above.
+    # configure needs pkg-config to locate ffnvcodec; not in the media image, so scoop it too.
     if (-not (Get-Command pkg-config -ErrorAction SilentlyContinue)) {
         Write-Host 'Installing pkg-config via scoop...'
         & scoop install main/pkg-config 2>&1 | Out-Null
     }
-    # Clone the pinned nv-codec-headers ref and `make install` into a private prefix. PREFIX is a
-    # forward-slash *Windows* path (C:/...), NOT an MSYS /c/... path, so the generated ffnvcodec.pc
-    # emits `-IC:/.../include` cflags that cl.exe consumes directly (verified in an isolated lab).
+    # PREFIX is a forward-slash *Windows* path (C:/...), NOT an MSYS /c/... one, so the generated
+    # ffnvcodec.pc emits -IC:/.../include cflags that cl.exe consumes directly.
     $nvHdrRef       = if ($env:NV_CODEC_HEADERS_REF) { $env:NV_CODEC_HEADERS_REF } else { 'n13.1.15.0' }
     $nvHdrSrc       = 'C:\temp\nv-codec-headers'
     $nvHdrPrefix    = 'C:\temp\nv-codec-headers-install'
     $nvHdrPrefixFwd = $nvHdrPrefix -replace '\\', '/'
     if (Test-Path $nvHdrSrc)    { Remove-Item $nvHdrSrc -Recurse -Force }
     if (Test-Path $nvHdrPrefix) { Remove-Item $nvHdrPrefix -Recurse -Force }
-    # Canonical stderr-shield (Invoke-ShieldedNative): git writes "Cloning into..." to stderr,
-    # which under the in-container PS 5.1 EAP=Stop would otherwise surface as a terminating
-    # NativeCommandError (2>&1 alone does NOT prevent it in 5.1).
+    # Stderr-shield: git writes "Cloning into..." to stderr, which under the in-container PS 5.1
+    # EAP=Stop surfaces as a terminating NativeCommandError (2>&1 alone does NOT prevent it).
     [void](Invoke-ShieldedNative -Label 'nv-codec-headers clone' -CommandLine "git clone --branch $nvHdrRef --depth 1 https://github.com/FFmpeg/nv-codec-headers.git `"$nvHdrSrc`"")
     $nvHdrSrcCyg = ConvertTo-MsysPath $nvHdrSrc
     [void](Invoke-ShieldedNative -Label 'nv-codec-headers make install' -CommandLine "`"$bashExe`" -c `"cd $nvHdrSrcCyg && make install PREFIX=$nvHdrPrefixFwd`"")
     $nvPc = Join-Path $nvHdrPrefix 'lib\pkgconfig\ffnvcodec.pc'
     if (Test-Path $nvPc) {
-        # Native (scoop) pkg-config reads a Windows-path PKG_CONFIG_PATH; the bash configure wrapper
-        # inherits this process env, so no wrapper change is needed.
+        # Native (scoop) pkg-config reads a Windows-path PKG_CONFIG_PATH, which the bash configure
+        # wrapper inherits from this process env.
         $nvPcDir = Join-Path $nvHdrPrefix 'lib\pkgconfig'
         $env:PKG_CONFIG_PATH = $nvPcDir + $(if ($env:PKG_CONFIG_PATH) { ";$env:PKG_CONFIG_PATH" } else { '' })
         $nvencFlags = @('--enable-ffnvcodec', '--enable-nvenc', '--enable-nvdec', '--enable-cuvid')
@@ -374,10 +289,8 @@ if ($ffGpu.HasCuda -and (Test-Path (Join-Path $ffGpu.CudaRoot 'include\cuda.h'))
 $cygPrefix = ConvertTo-MsysPath $prefix
 $cygSrc = ConvertTo-MsysPath $srcDir
 
-# Ensure ONNX Runtime is discoverable for --enable-libonnxruntime.
-# Copy the ONNX header into FFmpeg's include/compat directory so configure's
-# test_cc probes can find it without --extra-cflags (which doesn't get passed
-# to test compilations when using the msvc-preset flag conventions).
+# Copy the ONNX headers into compat/ so configure's test_cc probes find them without
+# --extra-cflags, which is not passed to test compilations under the msvc-preset conventions.
 $onnxRuntimeDir = Join-Path $InstallDir 'lib\onnxruntime-source'
 $onnxHeaderCopied = $false
 if (Test-Path $onnxRuntimeDir) {
@@ -385,10 +298,8 @@ if (Test-Path $onnxRuntimeDir) {
     if ($header) {
         $ffCompatInc = Join-Path $srcDir 'compat\onnx'
         New-Item -Path $ffCompatInc -ItemType Directory -Force | Out-Null
-        # Mirror the WHOLE staged include dir, not a hand-picked header list:
-        # ORT 1.28 split the C API across new siblings (onnxruntime_error_code.h)
-        # and the old c/cxx/ep cherry-pick made configure's probe fail with
-        # 'file not found'. Copying everything is drift-proof.
+        # Mirror the WHOLE staged include dir: ORT 1.28 split the C API across new siblings and
+        # the old cherry-pick made configure's probe fail with 'file not found'.
         $ortHeaders = @(Get-ChildItem $header.Directory -File)
         $ortHeaders | Copy-Item -Destination $ffCompatInc -Force
         Write-Host "Copied $($ortHeaders.Count) ONNX header(s) to: $ffCompatInc"
@@ -402,11 +313,8 @@ $confFlags = @()
 $confFlags += "--prefix=$cygPrefix"
 $confFlags += '--enable-shared', '--disable-static'
 $confFlags += '--disable-debug', '--disable-doc'
-# No --enable-nonfree: nothing in this build needs it, and nonfree builds are
-# not redistributable (the images are published). --enable-gpl/--enable-version3
-# cover FFmpeg's OWN GPL-licensed components only: no x264 or any other external
-# GPL codec is enabled on either Windows lane (the old "covers x264 etc."
-# justification here was wrong -- corrected 2026-08-24).
+# No --enable-nonfree: the images are published and nonfree builds are not redistributable.
+# gpl/version3 cover FFmpeg's OWN GPL components only -- no external GPL codec is enabled here.
 $confFlags += '--enable-gpl', '--enable-version3'
 $confFlags += '--enable-ffmpeg', '--enable-ffprobe'
 if ($onnxHeaderCopied) {
@@ -414,27 +322,17 @@ if ($onnxHeaderCopied) {
     $confFlags += "--extra-cflags=-I$cygSrc/compat/onnx"
     $confFlags += "--extra-ldflags=-libpath:$($onnxRuntimeDir -replace '\\', '/')/lib"
 }
-# Toolchain: clang-cl + lld-link by default, so FFmpeg's C sources are LLVM-compiled like every other
-# library in the container (set FFMPEG_TOOLCHAIN=msvc to fall back to the MSVC preset). FFmpeg has no
-# clang-cl toolchain preset, so we keep the msvc preset (MSVC-style flag conventions + the inherited
-# VsDevCmd SDK env, both of which clang-cl mimics) and override only the compiler/linker. x86asm is
-# disabled either way, so nasm/inline-asm is not in play. Proven: full clang-cl build links ffmpeg.exe
-# + 7 DLLs with --enable-libonnxruntime + NVENC, 0 errors (validated in windows-media-core).
+# clang-cl + lld-link by default (FFMPEG_TOOLCHAIN=msvc falls back). FFmpeg has no clang-cl
+# preset, so keep the msvc one for its MSVC-style flag conventions + inherited VsDevCmd SDK env,
+# both of which clang-cl mimics, and override only the compiler/linker.
 $ffToolchain = if ($env:FFMPEG_TOOLCHAIN) { $env:FFMPEG_TOOLCHAIN } else { 'clang-cl' }
 if ($ffToolchain -eq 'clang-cl') {
-    # #100: FFmpeg does not use CMake, so the module's CMAKE_*_COMPILER_LAUNCHER
-    # wiring never reached it - the stage reported `Compile requests 0` (not "0
-    # hits": ZERO requests) in every build. The launcher must NOT go into
-    # configure's --cc: configure's own compiler tests (MSYS relative paths,
-    # -P/-EP preprocess modes) produce objects lld-link rejects as "unknown
-    # file type" through sccache (measured 2026-08-19, ride 4). configure runs
-    # BARE; the launcher is injected at MAKE time instead (make CC=... beats
-    # config.mak). Opt out: FFMPEG_SCCACHE=0. Acceptance criterion is `Compile
-    # requests` > 0 in the stage stats, NOT the hit rate (uncached components
-    # are invisible in aggregate hit rates).
-    # Test-SccacheRemoteConfigured mirrors the cmake-side gate in
-    # Invoke-CmakeConfigure: remote backend only — a container-local cache
-    # would only bloat layers (same invariant, same reason).
+    # #100: FFmpeg is not CMake, so the module's COMPILER_LAUNCHER wiring never reached it --
+    # ZERO compile requests in every build. The launcher must NOT go into configure's --cc: its
+    # own compiler tests produce objects lld-link rejects as "unknown file type" through sccache.
+    # It is injected at MAKE time instead (make CC=... beats config.mak); opt out FFMPEG_SCCACHE=0.
+    # Acceptance criterion is `Compile requests` > 0, NOT the hit rate. Remote backend only, as
+    # on the cmake side -- a container-local cache would only bloat layers.
     $ffSccache = Get-Command sccache.exe -ErrorAction SilentlyContinue
     $ffUseLauncher = [bool]($ffSccache -and (Test-SccacheRemoteConfigured) -and $env:FFMPEG_SCCACHE -ne '0')
     Write-Host "FFmpeg toolchain: clang-cl + lld-link (overriding the msvc preset's cc/ld; make-time sccache launcher: $ffUseLauncher)"
@@ -444,55 +342,24 @@ if ($ffToolchain -eq 'clang-cl') {
     $confFlags += '--toolchain=msvc'
 }
 if ($ffCross) {
-    # --enable-cross-compile stops configure RUNNING its probe binaries (they are
-    # aarch64 and cannot execute here); --arch selects the target's asm/optimisation
-    # tree.
-    #
-    # --target-os is DELIBERATELY NOT SET. It is tempting to pass win32, but this
-    # script drives configure through Git-bash/MSYS, so the amd64 lane's own
-    # TARGET_OS is the reference value and guessing here can silently select a
-    # different code path. The config.mak dump added below greps for
-    # TARGET_OS/ARCH/CPU/AS, but measured cross-lane runs print only ARCH= and
-    # AS= (corrected 2026-08-24; this note used to promise all four keys on
-    # both lanes) -- read the amd64 line first, then set this explicitly if the
-    # cross lane disagrees.
-    #
-    # FFmpeg's aarch64 assembly under an MSVC-ABI toolchain is the least-trodden
-    # path in this whole chain (upstream's own Windows-on-ARM guidance recommends
-    # llvm-mingw, which is incompatible with this repo's MSVC ABI). It is enabled
-    # via clang's integrated assembler -- see the --as= block below. If a future
-    # FFmpeg drops a .S file that clang's assembler rejects, the contained
-    # fallback is --disable-asm (correct but slower), NOT reaching for a
-    # different toolchain.
+    # --enable-cross-compile stops configure RUNNING its probe binaries (they are aarch64);
+    # --arch selects the target's asm/optimisation tree.
+    # --target-os is DELIBERATELY NOT SET: configure runs through Git-bash/MSYS here, so the
+    # amd64 lane's own TARGET_OS is the reference value and guessing can select a different code
+    # path. Read the amd64 line from the config.mak dump below first: measured cross runs print
+    # only ARCH= and AS=, never TARGET_OS, so the cross dump alone cannot answer this.
     $confFlags += '--enable-cross-compile', "--arch=$(Get-FfmpegTargetArch -Arch $ffTargetArch)"
-    # /machine on the LINKER is separate from --target on the compiler, and both
-    # are required. MEASURED 2026-08-23: with only --cc carrying the triple,
-    # configure's own link probes ran as x64 and every check against a
-    # cross-built library failed with
-    #   lld-link: error: onnxruntime.lib(onnxruntime.dll): machine type arm64
-    #             conflicts with x64
-    # which configure reports as the far less helpful "ERROR: libonnxruntime not
-    # found". FFmpeg drives --ld=lld-link directly, so the triple never reaches
-    # it; lld-link takes /machine instead.
+    # /machine on the LINKER is separate from --target on the compiler and BOTH are required:
+    # with only --cc carrying the triple, configure's link probes ran as x64 and every check
+    # against a cross-built library surfaced as "ERROR: libonnxruntime not found".
     $confFlags += "--extra-ldflags=/machine:$(Get-LibMachineArg -Arch $ffTargetArch)"
-    # HOST compiler for the build-time tools (bin2c and friends) that must RUN on
-    # this amd64 machine. Under --enable-cross-compile configure stops assuming
-    # cc==host_cc and falls back to plain `gcc`, which does not exist in a Windows
-    # container: "./configure: line 1037: gcc: command not found / Host compiler
-    # lacks C11 support" (measured 2026-08-23).
-    #
-    # `clang`, not `clang-cl`: configure drives host_cc with GNU-style flags
-    # (-std=c11 -c -o), which the clang driver accepts and the clang-cl driver
-    # does not. It is the same LLVM install either way, just the other driver,
-    # and NO --target is passed so it builds for the host by default -- which is
-    # the whole point of host_cc.
-    # Host tools must LINK against the HOST CRT. VsDevCmd has put the target's
-    # arm64 lib dirs on %LIB%, so a host tool built with plain clang picks up the
-    # arm64 libcmt.lib and dies with the mirror image of the target-side error:
-    #   lld-link: error: libcmt.lib(exe_main.obj): machine type arm64 conflicts with x64
-    # (measured 2026-08-23). Point host_ldflags at the x64 lib dirs explicitly so
-    # they win the search order; -Wl, is needed because host_cc is the GNU-style
-    # clang driver, not clang-cl.
+    # HOST compiler for the build-time tools that must RUN here: under --enable-cross-compile
+    # configure stops assuming cc==host_cc and falls back to plain `gcc`, absent from a Windows
+    # container. `clang`, not `clang-cl`, because configure drives host_cc with GNU-style flags,
+    # and with no --target so it builds for the host.
+    # Host tools must LINK against the HOST CRT: VsDevCmd has put the target's arm64 lib dirs on
+    # %LIB%, so a host tool otherwise picks up the arm64 libcmt.lib ("machine type arm64
+    # conflicts with x64"). Point host_ldflags at the x64 lib dirs so they win the search order.
     $hostArchDir = Get-MsvcTargetLibDir -Arch (Get-WindowsHostArch)
     $hostLibDirs = @()
     if ($env:VCToolsInstallDir) { $hostLibDirs += (Join-Path $env:VCToolsInstallDir "lib\$hostArchDir") }
@@ -509,105 +376,47 @@ if ($ffCross) {
         throw ("cross build: could not locate any $hostArchDir (host) lib directory for FFmpeg's host tools. " +
                'VCToolsInstallDir=' + $env:VCToolsInstallDir + "; SDK root=$sdkLibRoot")
     }
-    # 8.3 SHORT paths, not the long ones. FFmpeg pastes host_ldflags verbatim into
-    # a make recipe executed by MSYS sh, and the real directories contain BOTH
-    # spaces and parentheses:
-    #   sh: -c: line 1: syntax error near unexpected token `('
-    #   clang -Wl,-libpath:C:\Program Files (x86)\Microsoft Visual Studio\...
-    # (measured 2026-08-23). Quoting would have to survive configure -> make ->
-    # sh; short paths sidestep the whole quoting chain instead.
-    # Short paths FIRST, single-quoting as the fallback. Measured 2026-08-23:
-    # 8.3 name generation is DISABLED on the container's volume, so ShortPath
-    # returns the long path unchanged -- short paths work on many hosts but
-    # cannot be relied on here.
-    #
-    # The fallback wraps each path in SINGLE quotes with forward slashes. make
-    # hands the whole recipe line to sh, and sh treats a single-quoted word as
-    # one literal argument regardless of spaces or parentheses -- which is
-    # exactly what "C:/Program Files (x86)/..." needs. Forward slashes avoid any
-    # backslash interpretation on the way through MSYS; clang accepts either.
+    # FFmpeg pastes host_ldflags verbatim into a make recipe run by MSYS sh, and the real
+    # directories contain BOTH spaces and parentheses. 8.3 short paths sidestep the whole quoting
+    # chain -- but 8.3 name generation is DISABLED on the container's volume, so ShortPath can
+    # return the long path unchanged. Hence quoting as the fallback, with forward slashes to
+    # avoid backslash interpretation through MSYS (clang accepts either).
     $fso = New-Object -ComObject Scripting.FileSystemObject
     $hostLibArgs = foreach ($d in $hostLibDirs) {
         $short = try { $fso.GetFolder($d).ShortPath } catch { $d }
         if ($short -notmatch '[ ()]') {
             "-Wl,-libpath:$short"
         } else {
-            # DOUBLE quotes, not single: $confStr below already wraps any flag
-            # containing a space in SINGLE quotes, and a nested single quote
-            # terminates that wrapper early -- which is what produced
-            # "ffmpeg-configure-wrapper.sh: line 6: syntax error near unexpected
-            # token `('". Double quotes nest inside the single-quoted wrapper
-            # and still keep each path one word when make re-parses the value.
+            # DOUBLE quotes, not single: $confStr below already wraps a spaced flag in SINGLE
+            # quotes, and a nested single quote would terminate that wrapper early.
             '-Wl,-libpath:"' + ($d -replace '\\', '/') + '"'
         }
     }
-    # TWO quoting levels, because a shell parses this value TWICE:
-    #   1. the configure wrapper runs `./configure <all flags on one line>`, so the
-    #      whole --host-ldflags value must survive as ONE word. $confStr below
-    #      ALREADY does that: it single-quotes any flag containing a space. Adding
-    #      quotes here as well is what broke it -- do not.
-    #   2. configure stores the value in config.mak, make pastes it into a recipe,
-    #      and sh parses it AGAIN, so each individual path must stay one word ->
-    #      the DOUBLE quotes around each path (above) do that, and they nest
-    #      safely inside $confStr's single quotes.
-    # Both failure modes print the SAME message, from different places:
-    # "syntax error near unexpected token `('" -- from make when level 2 is
-    # missing, from ffmpeg-configure-wrapper.sh when level 1 is broken. Read the
-    # filename in the error, not just the text. Measured 2026-08-23.
+    # TWO quoting levels, because a shell parses this value TWICE: $confStr below single-quotes
+    # the whole flag so ./configure sees ONE word (do NOT add quotes here as well), and the
+    # double quotes above keep each path one word when make re-parses it through sh. Both
+    # failures print the same "syntax error near unexpected token `('" -- read the FILENAME in
+    # the error to tell them apart.
     $confFlags += '--host-cc=clang'
     $confFlags += ('--host-ldflags=' + ($hostLibArgs -join ' '))
     Write-Host ("FFmpeg: host tools link against {0} libs -> {1}" -f $hostArchDir, ($hostLibArgs -join ' '))
-    # aarch64 assembly is OFF for now, deliberately and with a way back.
-    #
-    # MEASURED 2026-08-23: configure finds VS's armasm64 but rejects it with
-    #   "GNU assembler not found, install/update gas-preprocessor"
-    # FFmpeg's aarch64 asm is GAS syntax; under an MSVC-ABI toolchain it has to
-    # go through gas-preprocessor.pl, which translates it for armasm64. Upstream's
-    # own Windows-on-ARM guidance sidesteps this by recommending llvm-mingw, which
-    # is incompatible with this repo's MSVC ABI.
-    #
-    # RESOLVED 2026-08-23 (backlog #112) -- the asm is ENABLED, and it needs no
-    # new tooling. The paragraph above assumed the only route was
-    # gas-preprocessor.pl driving armasm64. There is a shorter one: clang's
-    # INTEGRATED ASSEMBLER already understands aarch64 GAS syntax, so pointing
-    # configure's --as at clang with the target triple assembles FFmpeg's .S
-    # files directly. gas-preprocessor.pl remains the fallback if a specific
-    # file ever needs armasm64, not the plan.
-    #
-    # This is safe to attempt precisely because --enable-cross-compile above
-    # disables configure's RUNTIME probes: configure decides asm support by
-    # ASSEMBLING test fragments, never by running them, so nothing here depends
-    # on executing aarch64 code on this x64 host.
-    #
-    # --as, not --x86asmexe: the latter is FFmpeg's nasm/yasm knob and is x86-only.
-    # $ffCcTargetFlag is ' --target=aarch64-pc-windows-msvc' (note the leading
-    # space) and the value therefore contains one -- which is fine, because the
-    # configure-wrapper single-quotes any flag containing a space (see $confStr
-    # below); that is the same mechanism the --cc flag already relies on.
-    #
-    # Scope: this branch only, so the amd64 lane is untouched. History of the
-    # amd64 side: --disable-x86asm was UNCONDITIONAL from bd6adca4 (2026-06-25)
-    # until 2026-08-24, when backlog #119 found it had no recorded reason and
-    # enabled nasm-assembled x86 SIMD on the amd64 lane (see the #119 block
-    # below). The pinned nasm was, until then, consumed only by GStreamer's
-    # openh264 (build-gstreamer-from-source.ps1:482).
+    # aarch64 asm is ENABLED (#112) via clang's INTEGRATED assembler, which understands GAS
+    # syntax directly -- no gas-preprocessor.pl driving armasm64, which stays the fallback if a
+    # single file ever needs it. Safe because --enable-cross-compile makes configure decide asm
+    # support by ASSEMBLING test fragments, never by running them. The contained fallback if a
+    # future .S file breaks is --disable-asm, NOT a different toolchain (upstream recommends
+    # llvm-mingw, incompatible with this repo's MSVC ABI).
+    # --as, not --x86asmexe (FFmpeg's nasm/yasm knob, x86-only). $ffCcTargetFlag carries a
+    # leading space, which $confStr's single-quoting handles -- as --cc already relies on.
     $confFlags += "--as=clang$ffCcTargetFlag"
     Write-Host "FFmpeg: aarch64 asm ENABLED via clang's integrated assembler (--as=clang$ffCcTargetFlag); configure assembles test fragments but never runs them"
     Write-Host ("FFmpeg: cross flags -> --enable-cross-compile --arch={0} --extra-ldflags=/machine:{1}" -f `
         (Get-FfmpegTargetArch -Arch $ffTargetArch), (Get-LibMachineArg -Arch $ffTargetArch))
 }
-# Backlog #119 (2026-08-24): x86asm is ENABLED on the amd64 lane. Archaeology
-# on the flag's origin (bd6adca4, 2026-06-25, a bare "fix" commit that added
-# the whole FFmpeg script) turned up NO recorded reason for --disable-x86asm:
-# no failing configure, no nasm/lld-link incompatibility, nothing. It was a
-# first-bring-up simplification that then got documented as a fact. The
-# pinned nasm (NASM_WINDOWS_VERSION, asserted by verify-toolchain.ps1) is on
-# PATH in every build container, and FFmpeg's x86 SIMD (the bulk of its
-# hand-written codec kernels) is worth having. The cross lane keeps the flag
-# EXPLICITLY: x86asm is x86-only and configure would ignore it for aarch64,
-# but stating it keeps the two lanes' intent readable side by side. Proof of
-# the enabled state: the next amd64 media-core-built-ffmpeg run (configure
-# prints "x86asm: yes" only when nasm assembled its test fragment).
+# #119: x86asm is ENABLED on the amd64 lane -- archaeology on --disable-x86asm (bd6adca4) found
+# NO recorded reason for it, and the pinned nasm is on PATH in every build container. The cross
+# lane states the flag EXPLICITLY (x86-only, so configure would ignore it) to keep the two lanes'
+# intent readable side by side.
 if ($ffCross) {
     $confFlags += '--disable-x86asm'
 } else {
@@ -616,22 +425,20 @@ if ($ffCross) {
     $confFlags += "--x86asmexe=$($nasmCmd.Source -replace '\\', '/')"
     Write-Host "FFmpeg: x86asm ENABLED (nasm $($nasmCmd.Source); backlog #119 -- --disable-x86asm had no recorded reason)"
 }
-# vfwcap links vfw32.lib -> imports AVICAP32.dll, which does NOT exist in
-# Windows Server Core containers: every process loading avdevice would die
-# with STATUS_DLL_NOT_FOUND. DirectShow capture (dshow) remains available.
+# vfwcap links vfw32.lib -> imports AVICAP32.dll, absent from Server Core: every process loading
+# avdevice would die with STATUS_DLL_NOT_FOUND. DirectShow capture remains available.
 $confFlags += '--disable-indev=vfwcap'
 # NVIDIA hardware video accel: empty on the CPU-only lane, populated above when CUDA is present.
 $confFlags += $nvencFlags
 
-# Shell-quote flags carrying spaces (--cc='sccache clang-cl') - the wrapper
-# line is parsed by bash, and an unquoted space would split the flag in two.
+# Shell-quote flags carrying spaces: the wrapper line is parsed by bash, and an unquoted space
+# would split the flag in two.
 $confStr = ($confFlags | ForEach-Object { if ($_ -match ' ') { "'$_'" } else { $_ } }) -join ' '
 
 # Patch configure to allow MSYS2 builds (official docs say MSYS is discouraged)
 Invoke-SourcePatch -PatchFile (Join-Path $scriptAssetRoot 'patches\ffmpeg\001-allow-msys-builds.patch') -SourceDir $srcDir -IgnoreWhitespace
 
-# Write configure wrapper. VsDevCmd INCLUDE/LIB env vars are inherited from PowerShell,
-# so MSVC SDK paths are available. --extra-cflags adds our ONNX include path.
+# VsDevCmd INCLUDE/LIB are inherited from PowerShell, so the MSVC SDK paths are available.
 $wrapperLines = @()
 $wrapperLines += '#!/usr/bin/env bash'
 $wrapperLines += "cd $cygSrc"
@@ -651,31 +458,24 @@ if ($LASTEXITCODE -ne 0) {
     if (Test-Path $logFile) { Write-Host "=== config.log (last 50 lines) ==="; Get-Content $logFile -Tail 50 }
     throw "FFmpeg configure failed (exit $LASTEXITCODE)"
 }
-# #100: CC in config.mak is the BARE compiler by design (see the toolchain
-# note above); the launcher rides in as a make-time override. Echo it for the
-# log so a cache regression is diagnosable from the build output alone.
+# #100: CC in config.mak is the BARE compiler by design; the launcher rides in as a make-time
+# override. Echoed so a cache regression is diagnosable from the build output alone.
 $configMak = Join-Path $srcDir 'ffbuild\config.mak'
 if (Test-Path $configMak) {
     $ccLine = (Select-String -Path $configMak -Pattern '^CC=' | Select-Object -First 1).Line
     Write-Host "config.mak: $ccLine (make-time sccache launcher: $ffUseLauncher)"
-    # configure's own verdict on arch/OS/cpu/assembler: the authoritative answer
-    # to "did the cross flags take?", and on the amd64 lane the reference
-    # TARGET_OS a cross lane would have to match. Array-wrapped so a non-matching
-    # pattern is an empty loop rather than a $null property under StrictMode.
-    # Log-only: emits no compiler or linker flag.
+    # configure's own verdict on arch/OS/cpu/assembler: the authoritative "did the cross flags
+    # take?", and the amd64 lane's reference TARGET_OS. Array-wrapped so a non-matching pattern
+    # is an empty loop, not a $null property under StrictMode. Log-only.
     foreach ($m in @(Select-String -Path $configMak -Pattern '^(TARGET_OS|ARCH|CPU|AS)=' -ErrorAction SilentlyContinue)) {
         Write-Host "config.mak: $($m.Line)"
     }
 }
 
 Write-Host 'Building FFmpeg (this may take 30-60 minutes)...'
-# Inline patches (kept inline, NOT .patch files): the targets below are *generated*
-# by FFmpeg's `./configure` (ffbuild/*.mak, library.mak, subdir.mak, Makefile,
-# ffbuild/config.mak). Generated content differs per configure invocation
-# (probe results, lib list, OS detection), so a static .patch cannot match
-# reliably across builds. The `-replace` form targets invariant sub-sequences
-# (`-showIncludes`, `EXTRALIBS-lib*=`) that configure writes the same way for
-# the msvc toolchain. See docs/windows-builds.md "Source Patch Policy".
+# Inline, NOT .patch files: these targets are GENERATED by ./configure, so their content differs
+# per invocation and no static diff matches reliably. The -replace form targets invariant
+# sub-sequences configure writes the same way. See docs/windows-builds.md "Source Patch Policy".
 $ffbuildDir = Join-Path $srcDir 'ffbuild'
 Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | ForEach-Object {
     Remove-MakefileShowIncludes -Path $_.FullName
@@ -683,10 +483,8 @@ Get-ChildItem -Path $ffbuildDir -Filter '*.mak' -ErrorAction SilentlyContinue | 
 foreach ($fn in @('library.mak', 'subdir.mak', 'Makefile')) {
     Remove-MakefileShowIncludes -Path (Join-Path $srcDir $fn) -StripWildcardInclude
 }
-# Inter-library import-lib deps for the linker (configure may not generate
-# EXTRALIBS at all under the msvc preset). ONE map drives both the in-place
-# replace and the append fallback -- the previous twin lists had to be kept
-# byte-identical by hand.
+# Inter-library import-lib deps (configure may emit no EXTRALIBS at all under the msvc preset).
+# ONE map drives both the in-place replace and the append fallback.
 $configMakPath = Join-Path $srcDir 'ffbuild/config.mak'
 if (Test-Path $configMakPath) {
     $extraLibs = [ordered]@{
@@ -709,85 +507,59 @@ if (Test-Path $configMakPath) {
     [System.IO.File]::WriteAllText($configMakPath, $cm)
 }
 
-# Replace makedef wholesale (full-file overwrite, deliberately NOT a .patch:
-# the file is completely rewritten, so a context diff adds only fragility —
-# it broke twice on upstream drift / git-apply quirks). The replacement expands
-# version-script globs against per-object llvm-nm symbol dumps via xargs,
-# avoiding the upstream script's single lib.exe call that exceeds the Windows
-# command-line length limit for libavcodec.
+# Full-file overwrite, deliberately NOT a .patch: the file is completely rewritten and a context
+# diff broke twice on upstream drift. The replacement expands version-script globs against
+# per-object llvm-nm dumps via xargs, avoiding a lib.exe call that exceeds the length limit.
 $makedefSrc = Join-Path $scriptAssetRoot 'patches\ffmpeg\makedef'
 $makedefDst = Join-Path $srcDir 'compat\windows\makedef'
 Copy-Item $makedefSrc $makedefDst -Force
 Write-Host "Replaced compat/windows/makedef (glob-expanding, response-file-aware)"
 
-# Parallel compile first; make is incremental, so the -j1 retry below only redoes
-# what failed. Parallel -jN can hit spurious LNK1120 link races with MSVC when
-# library dependencies (libavutil -> libswscale) aren't fully linked before
-# consumers — the serial retry resolves those deterministically.
+# Parallel first; make is incremental, so the -j1 retry redoes only what failed. -jN can hit
+# spurious LNK1120 races when a library dependency is not fully linked before its consumer.
 $makeJobs = Get-BuildJobCount -MemGBPerJob 2
-# #100 RE-ENABLED 2026-08-20: the "failed to zip up compiler outputs" crash
-# was ROOT-CAUSED to -options:strict (clang-cl parses its prefix as the
-# deprecated -o; sccache's arg reorder let that hijack the output into an
-# NTFS alternate data stream - see Remove-MakefileShowIncludes). With the
-# flag stripped from the generated maks the launcher is safe at make time;
-# configure stays bare (its own compiler tests still break through sccache,
-# "unknown file type" - measured 2026-08-19).
+# #100: the launcher is safe at make time now that -options:strict is stripped from the generated
+# maks (see Remove-MakefileShowIncludes); configure stays bare -- its own tests break through it.
 Switch-BuildPhase '5. make + install'
 $makeCc = if ($ffUseLauncher) { " CC='sccache clang-cl$ffCcTargetFlag'" } else { '' }
-# All three make calls are -Optional by design: a parallel-link race falls
-# through to the -j1 retry, and an incomplete build/install falls through to
-# the artifact verification + prebuilt fallback below (never throw here).
+# All three make calls are -Optional by design: a parallel-link race falls through to the -j1
+# retry, and an incomplete build/install to the artifact verification + fallback below.
 [void](Invoke-ShieldedNative -Optional -Label "ffmpeg make -j$makeJobs" -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j$makeJobs$makeCc`"")
 $builtFfmpeg = Join-Path $srcDir 'ffmpeg.exe'
 if (-not (Test-Path $builtFfmpeg)) {
     Write-Host 'Retrying with single job (resolves MSVC link races)...'
     [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make -j1' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make -j1$makeCc`"")
 }
-# Source build may fail at link stage (EXTRALIBS config issue with MSVC/MSYS2).
-# Fall through to download a pre-built MSVC FFmpeg binary.
+# The source build can fail at the link stage; fall through to the prebuilt gate below.
 if (-not (Test-Path $builtFfmpeg)) {
     Write-Host 'Source build of FFmpeg did not produce ffmpeg.exe (link stage incomplete).'
 }
 Write-Host 'Attempting install from source if built...'
 [void](Invoke-ShieldedNative -Optional -Label 'ffmpeg make install (verify below)' -CommandLine "`"$bashExe`" -c `"cd $cygSrc && make install`"")
 
-# STAGE stats right where the #100 acceptance criterion lives ("Compile
-# requests > 0 in the STAGE stats"): the chain-aggregate dump cannot
-# attribute per-stage, so this stage emitted its criterion nowhere (D3,
-# 2026-08-21 audit).
+# STAGE stats where the #100 acceptance criterion lives: the chain-aggregate dump cannot
+# attribute per-stage, so this stage emitted its criterion nowhere.
 if ($ffUseLauncher) { Write-SccacheStatsToStderr -Advanced -RequireRemote }
 
-# A --enable-shared build is only usable if the av*.dll runtime libraries were
-# installed next to the exes; exes alone die with STATUS_DLL_NOT_FOUND. Treat an
-# incomplete install as a failed source build so the fallback (or a loud error)
-# kicks in instead of shipping a broken ffmpeg.
+# A --enable-shared build is unusable without its av*.dll next to the exes (STATUS_DLL_NOT_FOUND).
+# Treat an incomplete install as a failed source build rather than shipping a broken ffmpeg.
 $installedDlls = @(Get-ChildItem "$ffmpegDir\*.dll" -ErrorAction SilentlyContinue)
 if ((Test-Path "$ffmpegDir\ffmpeg.exe") -and $installedDlls.Count -eq 0) {
     Write-Warning 'Source install produced exes but no av*.dll runtime libraries - discarding as incomplete.'
     Remove-Item "$ffmpegDir\ffmpeg.exe", "$ffmpegDir\ffplay.exe", "$ffmpegDir\ffprobe.exe" -Force -ErrorAction SilentlyContinue
 }
 
-# Prebuilt fallback: FAIL-CLOSED by default since #68 (2026-08-20). The
-# chain promise is OUR FFmpeg (avcodec 63, --enable-libonnxruntime, the one
-# OpenCV links against since OPENCV_LINK_CHAIN_FFMPEG defaulted on) - a
-# silent BtbN substitute violates that AND used to land as a MIX: foreign
-# exes/dlls copied over whatever a partial `make install` left, while our
-# import libs and .pc files stayed, so gst-libav linked a version mismatch
-# announced by one Write-Warning. Opt in explicitly for experiments with
-# FFMPEG_ALLOW_PREBUILT=1; the opt-in path now SCRUBS the whole prefix
-# first so the result is at least self-consistent.
+# Prebuilt fallback: FAIL-CLOSED since #68. The chain promise is OUR FFmpeg (avcodec 63,
+# --enable-libonnxruntime, the one OpenCV links against), and a silent BtbN substitute used to
+# land as a MIX over whatever a partial `make install` left. FFMPEG_ALLOW_PREBUILT=1 opts in and
+# SCRUBS the whole prefix first so the result is at least self-consistent.
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     if ($env:FFMPEG_ALLOW_PREBUILT -ne '1') {
         throw ('FFmpeg source build did not produce ffmpeg.exe and the prebuilt fallback is fail-closed (#68) - ' +
             'fix the source build (see the make output above) or opt in explicitly with FFMPEG_ALLOW_PREBUILT=1.')
     }
-    # No prebuilt on the cross lane -- for chain provenance, NOT availability.
-    # The old claim here that the BtbN release is "win64 (x64) ONLY" was wrong
-    # (corrected 2026-08-24: winarm64 assets exist, e.g.
-    # ffmpeg-master-latest-winarm64-gpl.zip). The refusal stands anyway: a
-    # foreign prebuilt breaks the source-chain promise on ANY lane (not our
-    # avcodec, no --enable-libonnxruntime, not the FFmpeg OpenCV links against),
-    # so FFMPEG_ALLOW_PREBUILT does not apply to a cross build.
+    # No prebuilt on the cross lane -- provenance, NOT availability (winarm64 BtbN assets do
+    # exist): a foreign binary breaks the source-chain promise on ANY lane.
     if ($ffCross) {
         throw ("FFmpeg source build did not produce ffmpeg.exe -- and the cross lane has no prebuilt escape hatch: " +
             "a foreign BtbN binary would break the source-chain promise (a winarm64 asset exists; availability is " +
@@ -795,8 +567,7 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
     }
     Write-Warning 'FFmpeg source build failed -- falling back to pre-built BtbN MSVC FFmpeg (FFMPEG_ALLOW_PREBUILT=1). DNN/ONNX integration will NOT be available in the fallback binary.'
     [Environment]::SetEnvironmentVariable('FFMPEG_SOURCE_BUILD', '0', 'Process')
-    # No MIXED installs: wipe every artifact of the partial source install
-    # (import libs, headers, .pc) before the foreign binaries land.
+    # No MIXED installs: wipe the partial source install before the foreign binaries land.
     Reset-SourceBuildDirectory -Path $prefix
     if (-not (Test-Path $prefix)) { New-Item -Path $prefix -ItemType Directory -Force | Out-Null }
     $dlUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip'
@@ -816,24 +587,14 @@ if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) {
 }
 
 # ── Make the installed .pc files usable by NATIVE Windows consumers ───────────
-# configure is run under MSYS bash and MUST get an MSYS --prefix (see
-# ConvertTo-MsysPath above) or `make install` lands in the wrong place. FFmpeg
-# then writes that same MSYS path into every generated .pc:
-#
-#     prefix=/c/runtime/ffmpeg
-#
-# pkg-config hands those through verbatim, and the consumers here are NATIVE
-# Windows tools — clang-cl and lld-link cannot resolve /c/... , so the emitted
-# -I/-L flags are unusable. (The nv-codec-headers block above already dodges
-# this by installing with a Windows-shaped prefix; FFmpeg's own install cannot,
-# hence this rewrite afterwards.) Same class of defect as the empty Version
-# field: the files exist and look fine, so nothing flags them.
+# configure MUST get an MSYS --prefix or `make install` lands in the wrong place, and FFmpeg
+# copies that same string into every .pc. clang-cl and lld-link cannot resolve /c/... , so the
+# emitted -I/-L flags stay unusable until rewritten here. Same silent class as `Version: ..`.
 $ffPkgConfigDir = Join-Path $prefix 'lib\pkgconfig'
 if (Test-Path $ffPkgConfigDir) {
     $winPrefix = ($prefix -replace '\\', '/')   # C:/runtime/ffmpeg
-    # Reuse the exact string configure was given ($cygPrefix, line ~183) rather
-    # than re-deriving it — a second conversion could drift from the first and
-    # then silently match nothing.
+    # Reuse the exact string configure was given: a second conversion could drift and then
+    # silently match nothing.
     $msysPrefix = $cygPrefix -replace '\\', '/' # /c/runtime/ffmpeg
     $rewritten = 0
     foreach ($pc in Get-ChildItem -Path $ffPkgConfigDir -Filter '*.pc' -File) {
@@ -845,12 +606,9 @@ if (Test-Path $ffPkgConfigDir) {
     Write-Host "Rewrote MSYS prefixes to Windows form in $rewritten .pc file(s) under $ffPkgConfigDir"
 }
 
-# Called OUTSIDE the Test-Path guard above on purpose: until 2026-08-08 the gate
-# sat inside it, so a missing lib\pkgconfig directory — the most complete failure
-# of all — skipped every assertion and reported nothing. Assert-FfmpegPkgConfig
-# treats an absent directory as the hard failure it is. The explicitly opted-in
-# prebuilt fallback (#68) ships NO .pc files BY DESIGN (the prefix is scrubbed,
-# nothing links against it) — that is the one legitimate skip.
+# OUTSIDE the Test-Path guard on purpose: with the gate inside it, a missing lib\pkgconfig -- the
+# most complete failure of all -- skipped every assertion and reported nothing. The opted-in
+# prebuilt fallback (#68) ships no .pc BY DESIGN; that is the one legitimate skip.
 Switch-BuildPhase '6. pc gate + PyAV wheel'
 if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
     Write-Warning 'Prebuilt fallback active (FFMPEG_ALLOW_PREBUILT=1): no .pc files exist by design; downstream consumers (gst-libav, OpenCV chain-link, PyAV) will not find FFmpeg.'
@@ -859,13 +617,9 @@ if ($env:FFMPEG_SOURCE_BUILD -eq '0') {
 }
 
 # ── Import-lib normalization (PyAV and other MSVC-style consumers link these) ──
-# `make install` places avformat.lib / avformat-63.def per configure's SHLIBDIR/
-# LIBDIR split, and ffmpeg master (a live branch) has already moved that layout
-# once (2026-07-13: lib\ suddenly had no .lib at all -> PyAV LNK1181). Instead of
-# chasing upstream, normalize: harvest every .lib/.def from the whole install
-# prefix AND the build tree into lib\, then regenerate any still-missing import
-# lib from its .def (lib.exe is in the VsDevCmd env). Each step logs what it
-# found so the next drift is visible in the build log, not a linker error.
+# `make install` follows configure's SHLIBDIR/LIBDIR split, and ffmpeg master has already moved
+# that layout once (lib\ with no .lib at all -> PyAV LNK1181). Normalize instead of chasing:
+# harvest every .lib/.def into lib\, then regenerate any still-missing import lib from its .def.
 if (Test-Path "$ffmpegDir\ffmpeg.exe") {
     $ffLibDir = Join-Path $prefix 'lib'
     New-Item -Path $ffLibDir -ItemType Directory -Force | Out-Null
@@ -891,18 +645,13 @@ if (Test-Path "$ffmpegDir\ffmpeg.exe") {
         $libPath = Join-Path $ffLibDir $libName
         if (-not (Test-Path $libPath)) {
             Write-Host "regenerating $libName from $($defFile.Name)"
-            # /name pins the DLL the import lib binds to (our makedef emits EXPORTS only)
-            # /machine follows the TARGET: an import lib generated as x64 cannot
-            # be linked into an aarch64 binary. Get-LibMachineArg returns 'x64'
-            # for amd64, so this command line is byte-identical on that lane.
+            # /name pins the DLL the import lib binds to (our makedef emits EXPORTS only);
+            # /machine follows the TARGET -- an x64 import lib cannot link into an aarch64 binary.
             [void](Invoke-ShieldedNative -Label "lib.exe /def $($defFile.Name)" -CommandLine "lib.exe /nologo /machine:$(Get-LibMachineArg -Arch $ffTargetArch) /def:`"$($defFile.FullName)`" /name:$($defFile.BaseName).dll /out:`"$libPath`"")
         }
     }
-    # Single authoritative inventory + assertion: the PyAV step (and any other
-    # MSVC-style consumer) links these; fail HERE with data instead of a bare
-    # LNK1181 deep inside a setup.py (bit us 2026-07-13). The BtbN prebuilt
-    # fallback legitimately ships no import libs, so only a SOURCE build
-    # asserts (the fallback already warned and skips PyAV below).
+    # Fail HERE with data instead of a bare LNK1181 deep inside a setup.py. The BtbN fallback
+    # legitimately ships no import libs, so only a SOURCE build asserts.
     $ffImportLibs = @(Get-ChildItem $ffLibDir -Filter '*.lib' -ErrorAction SilentlyContinue | ForEach-Object Name)
     Write-Host ("import libs in ${ffLibDir}: " + (($ffImportLibs | Sort-Object) -join ', '))
     if (([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -eq '1') -and
@@ -923,27 +672,13 @@ Write-Host "runtime DLLs installed: $($finalDlls.Count)"
 if (-not (Test-Path "$ffmpegDir\ffmpeg.exe")) { throw 'FFmpeg install incomplete: no ffmpeg.exe (source build and fallback both failed)' }
 
 # ── PyAV wheel built against THIS FFmpeg ─────────────────────────────────────
-# The PyPI av wheel is structurally unloadable on Server Core (its bundled
-# avdevice hard-imports AVICAP32.dll, a desktop-only VfW DLL), so build PyAV
-# from sdist against OUR install: setup.py's --ffmpeg-dir argv flag supplies
-# include/lib directly (its pkg-config path never engages on this lane), and
-# python314.lib lives in PCbuild\amd64, reachable only via the LIB env var.
-# Compiles clean against ffmpeg master (verified 2026-07-13); OUR avdevice
-# imports only Server-Core-present system DLLs. The wheel's av* DLL deps
-# resolve at runtime via the sitecustomize dll-dir shim (ffmpeg\bin is listed).
-# #120 step 2 (2026-08-24): the cross skip that lived here is RETIRED. A target
-# CPython now exists (build-target-cpython.ps1, first stage of this chain), so
-# the wheel is BUILT for the target and STAGED -- never installed or imported
-# on this host (the .pyd is aarch64). Two things differ from the native path:
-#   * link inputs: python314.lib comes from the TARGET build (Get-TargetBuildPython
-#     .LibDir), never the host one;
-#   * arch selection: PyAV is a setuptools extension, i.e. the ONE consumer in
-#     this chain compiled by MSVC cl.exe (setuptools' compiler, the documented
-#     PyAV-shaped hole in the clang-cl rule). `build_ext --plat-name win-arm64`
-#     makes setuptools pick the x86_arm64 cross tools; `bdist_wheel --plat-name`
-#     stamps the matching wheel tag. Assert-WheelTargetArch then PE-checks
-#     every native member of the staged wheel -- the gate that replaces the
-#     import.
+# The PyPI av wheel is structurally unloadable on Server Core (its bundled avdevice hard-imports
+# AVICAP32.dll), so build from sdist against OUR install: --ffmpeg-dir supplies include/lib
+# directly (setup.py's pkg-config path never engages here) and python314.lib is reachable only
+# via LIB. On cross (#120 step 2) the wheel is BUILT and STAGED, never imported: link inputs come
+# from the TARGET CPython, and PyAV is the one consumer in this chain compiled by MSVC cl.exe, so
+# `build_ext --plat-name win-arm64` picks the x86_arm64 cross tools and Assert-WheelTargetArch
+# PE-checks the staged wheel in place of the import.
 $ffTargetPy = Get-TargetBuildPython
 if ($ffCross -and -not $ffTargetPy.Available) {
     Write-Host "Skipping the PyAV wheel: cross build without a target CPython import lib ($($ffTargetPy.Lib) missing -- did build-target-cpython.ps1 run?)"
@@ -957,8 +692,6 @@ if ([Environment]::GetEnvironmentVariable('FFMPEG_SOURCE_BUILD', 'Process') -ne 
 }
 $pyavVersion = Get-SourceBuildVersion -EnvironmentVariables @('PYAV_VERSION') -DefaultValue '18.1.0'
 Write-Host "=== PyAV $pyavVersion wheel build (against $prefix) ==="
-# Import libs already inventoried + asserted by the normalization block above
-# (source-built path is guaranteed here by the FFMPEG_SOURCE_BUILD gate).
 $py = Get-SourceBuildPython
 Install-CpythonPip -Python $py
 Initialize-PythonPlatformTag | Out-Null
@@ -978,9 +711,8 @@ $pyavBuildCmd = if ($ffCross) {
 } else {
     "setup.py --ffmpeg-dir=""$prefix"" bdist_wheel"
 }
-# One call for both lanes: -CrossStage stages + PE/name-checks on a cross lane
-# (the --plat-name is already in $pyavBuildCmd, so the helper does not append a
-# second one) and installs + import-asserts natively.
+# One call for both lanes: -CrossStage stages + PE/name-checks on cross (the --plat-name is
+# already in $pyavBuildCmd, so the helper adds no second one), installs + import-asserts natively.
 Invoke-PythonWheelBuild -Python $py -WorkingDir $pyavDir -Arguments $pyavBuildCmd -ModuleName 'av' -NoDeps -CrossStage | Out-Null
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'ffmpeg'

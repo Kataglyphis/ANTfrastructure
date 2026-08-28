@@ -120,7 +120,7 @@ marker, so a consumer never has to guess.
 ### Windows-Specific Naming
 
 The Windows lane names its local intermediate tags with `Get-BkTag`
-(`windows/build-buildkit.ps1:359`), which yields
+(`windows/build-buildkit.ps1:225`), which yields
 `docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`,
 `bk-windows-sdk`, `bk-windows-toolchain`, the media fan-out branches
 `bk-windows-media-core` / `-media-litert` / `-media-tvm` (media-core is itself
@@ -395,6 +395,20 @@ mentions wcifs") cannot tell *restating* from *applying*. Inference-Engine's
 AddressSanitizer section legitimately discusses image-level runtimes, because
 which ASan runtime a Flutter/COM app can survive is a property of that app. A
 human has to read it.
+
+### Comments: as few as possible, as short as possible
+
+**Owner rule, 2026-08-28.** Code comments here had grown into essays. They are
+now held to this:
+
+- Comment only where the code cannot say it: a non-obvious *why*, a trap, a
+  load-bearing constraint.
+- One or two lines. If it needs a paragraph, it belongs in `docs/` and the
+  comment is a one-line pointer.
+- No narration of what the code plainly does, no incident history, no
+  restating a decision that a doc already owns.
+
+The same goes for prose written for the owner: short sentences, plain words.
 
 ### Contributing Reusable Work Here
 
@@ -782,12 +796,12 @@ The rules an agent must never violate:
      Two places set the wrapper, in this order: `setup_sccache`
      (compiler-cache.sh:229-233), which setup-gstreamer.sh:50 runs
      unconditionally for the Rust-heavy gstreamer lane, and
-     build-gstreamer-monorepo.sh:694-704, which only fires when
+     build-gstreamer-monorepo.sh:581-591, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
      `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
      a build at 99%. Their FALLBACKS differ, and only one is safe: with no
      executable launcher the monorepo goes uncached
-     (build-gstreamer-monorepo.sh:702-703), while `setup_sccache` keeps its
+     (build-gstreamer-monorepo.sh:589-590), while `setup_sccache` keeps its
      `_sc_launcher="sccache"` default (compiler-cache.sh:229) and would ship
      BARE sccache — a hole the literal-`export` gate below cannot see. The
      launcher is only reachable because 01-core is bind-mounted at

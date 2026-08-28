@@ -2,25 +2,11 @@
 set -euo pipefail
 
 # smoke-runtime-image.sh
-# Validates that the runtime wrapper image starts correctly:
-#   - Image can run a trivial command
-#   - Entrypoint is functional
-#   - HEALTHCHECK responds
-#   - Kataglyphis user exists
-#   - Key runtime paths exist
-#   - Functional: onnxruntime/numpy/torch import + ffmpeg executes inside the
-#     image (under qemu for cross arches); torch-less sentinel is flagged.
-#     Skip with RUNTIME_FUNCTIONAL_SMOKE=0; accept torch-less with
-#     ALLOW_TORCHLESS_RUNTIME=1.
-#   - The DEFAULT entrypoint+CMD actually boots (not just the argv path)
-#   - One real InferenceSession on a generated ONNX graph
-#   - ARCH-PARITY: every /opt prefix and component wheel NAMED in the table is
-#     present on this arch, or its absence is documented (see _parity_exempt /
-#     _parity_ort_flavor). Single-image scope: it conforms this arch to the
-#     table, it does NOT diff one arch against another — a component missing
-#     from the table is outside the gate. A documented absence that stops being
-#     true FAILS ("exception no longer applies"), so the table cannot rot in
-#     place. See the table's own comment block.
+# Validates the runtime wrapper image: boot + metadata, then functional checks that
+# run the ML stack, ffmpeg and GStreamer INSIDE the image (qemu for cross arches).
+# RUNTIME_FUNCTIONAL_SMOKE=0 skips the functional half; ALLOW_TORCHLESS_RUNTIME=1
+# accepts a torch-less image. What each gate covers:
+# docs/cross-build-verification.md, "In-image smoke tests".
 #
 # Usage:
 #   smoke-runtime-image.sh <image-tag> [target-arch]
@@ -31,21 +17,14 @@ source "${_SCRIPT_DIR}/smoke-common.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
-# Evaluate a python expression against the image's `nerdctl image inspect` JSON
-# (the [0] element on stdin). Prints the expr's output, empty on any error.
-# DRYs the repeated `nerdctl image inspect | python3 -c` boilerplate. Uses the
-# caller's ${image_tag} via dynamic scope.
+# Evaluate a python expression against the image's `nerdctl image inspect` JSON (the
+# [0] element on stdin). Uses the caller's ${image_tag} dynamically; empty on any error.
 inspect_image_config() {
   "${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "$1" 2>/dev/null || true
 }
 
-# Run a command inside the image under test (backlog 2026-08-10 D1: this exact
-# invocation preamble appeared verbatim at 18 call sites). Uses the caller's
-# ${image_tag}/${target_arch} via dynamic scope, same convention as
-# inspect_image_config above. Leading `-e KEY=VAL` pairs are forwarded as
-# nerdctl-run env options (extend here — one place — if a future check needs
-# more run options, timeouts, mounts, …); everything else is the in-image
-# command. Exit code is nerdctl's, so `if _rt_run …` keeps working.
+# Run a command inside the image under test. Leading `-e KEY=VAL` pairs are forwarded
+# as nerdctl-run env options; uses the caller's ${image_tag}/${target_arch} dynamically.
 _rt_run() {
   local -a _opts=()
   while [ "${1:-}" = "-e" ]; do
@@ -56,13 +35,10 @@ _rt_run() {
     ${_opts[@]+"${_opts[@]}"} "${image_tag}" "$@"
 }
 
-# Cross-section state (backlog B5 main() split): the torch-less-sentinel check
-# decides whether torch is expected in the image; the app-wheel-smoke and
-# version-pin sections consume that decision. Set by check_torchless_sentinel
-# (1 = torch expected, 0 = sentinel present), read by the later checks.
+# Set by check_torchless_sentinel (1 = torch expected, 0 = sentinel present); read by
+# the app-wheel-smoke and version-pin sections.
 _SMOKE_TORCH_EXPECTED=1
 
-# 1. Ensure image exists locally (pull if needed)
 check_image_availability() {
   local image_tag="$1"
   local target_arch="$2"
@@ -78,7 +54,6 @@ check_image_availability() {
   echo ""
 }
 
-# 2. Run a trivial command
 check_trivial_command() {
   local image_tag="$1"
   local target_arch="$2"
@@ -91,7 +66,6 @@ check_trivial_command() {
   echo ""
 }
 
-# 3. Check entrypoint
 check_entrypoint() {
   local image_tag="$1"
   local target_arch="$2"
@@ -106,33 +80,12 @@ check_entrypoint() {
   echo ""
 }
 
-# 3b. Boot the image the way a USER does (SMOKE-DEPTH b, 2026-08-23): with NO
-# command, so the shipped ENTRYPOINT runs the shipped CMD. Step 3 only reads the
-# configured string and every other check here passes an explicit argv, so
-# entrypoint.sh's own default path — the env sourcing, the one-time-setup hook
-# and the final `exec "$@"` — was never once executed by the gate: a broken
-# entrypoint.sh ships green. The probe script arrives on STDIN (`-i`, no
-# command) precisely so the default CMD /bin/bash is what reads it, and the
-# `exit 42` proves the exec chain hands the child's status back instead of
-# swallowing it (a wrapper that forgets `exec` returns its own 0).
-#
-# NOT covered, despite an earlier comment here claiming it: entrypoint.sh's
-# `[ $# -eq 0 ]` fallback. Dockerfile.torch declares CMD ["/bin/bash"], and the
-# container runtime always appends the image CMD to the ENTRYPOINT argv, so the
-# entrypoint runs with $# == 1 and that branch is dead on this image. Only an
-# image with NO CMD at all would take it (handled below).
-#
-# This is a GATE, so neither of its two "cannot run the probe" situations may
-# turn into a quiet skip:
-#   * inspect_image_config swallows every error into an empty string (`|| true`),
-#     so the CMD probe carries a CMDOK marker — no marker means inspect failed
-#     and that is a FAILURE, not a reason to stand down;
-#   * a CMD whose first word is not a shell FAILS too. This script smokes the
-#     runtime wrapper, whose contract is CMD ["/bin/bash"]; if that contract
-#     changes deliberately, this probe has to change with it. A gate that
-#     reconfigures itself out of existence is exactly the defect being fixed.
-# `CMD ["bash","-l"]` and friends still run the probe — only the FIRST word is
-# matched, and that used to skip the whole check.
+# Boot the image the way a USER does: no command, so the shipped ENTRYPOINT runs the
+# shipped CMD. Every other check passes an explicit argv, so entrypoint.sh's own
+# default path was never executed by the gate and a broken one shipped green. The probe
+# arrives on STDIN so the default CMD shell reads it, and `exit 42` proves the exec
+# chain hands the child's status back. A gate may not skip itself: a missing CMDOK
+# marker (inspect failed) or a CMD whose first word is not a shell FAILS.
 check_default_entrypoint_boot() {
   local image_tag="$1"
   local target_arch="$2"
@@ -174,7 +127,6 @@ check_default_entrypoint_boot() {
   echo ""
 }
 
-# 4. Check HEALTHCHECK
 check_healthcheck_config() {
   local image_tag="$1"
   local target_arch="$2"
@@ -189,7 +141,6 @@ check_healthcheck_config() {
   echo ""
 }
 
-# 5. Check kataglyphis user exists
 check_kataglyphis_user() {
   local image_tag="$1"
   local target_arch="$2"
@@ -202,7 +153,6 @@ check_kataglyphis_user() {
   echo ""
 }
 
-# 6. Check WORKDIR
 check_workdir() {
   local image_tag="$1"
   local target_arch="$2"
@@ -217,7 +167,6 @@ check_workdir() {
   echo ""
 }
 
-# 7. Check VOLUME
 check_volume() {
   local image_tag="$1"
   local target_arch="$2"
@@ -232,7 +181,6 @@ check_volume() {
   echo ""
 }
 
-# 8. Check OCI labels
 check_oci_labels() {
   local image_tag="$1"
   local target_arch="$2"
@@ -268,27 +216,19 @@ check_torchless_sentinel() {
     echo ""
 }
 
-# Wheel smoke -- delegate to the APP's own smoke module (single source of
-# truth). `python -m orchestr_ant_ion.smoke` exercises each shipped wheel with
-# REAL work (torch autograd + a linear forward/backward, torchvision ops.nms,
-# an embedded ONNX inference, an OpenCV encode/decode/cvtColor round-trip,
-# Pillow, the torch<->numpy ABI bridge); LiteRT is optional there (WARN, not a
-# gate failure). The app OWNS what its wheels must do; this gate just runs that
-# suite on-target under qemu. Replaces the old ad-hoc torch/onnx/cv2 import +
-# inference checks. Torch-less images skip it (falling back to a bare
-# onnx/numpy import) since the suite treats torch as required.
+# Wheel smoke -- delegate to the APP's own smoke module (single source of truth):
+# `python -m orchestr_ant_ion.smoke` exercises each shipped wheel with REAL work, and
+# the app OWNS what its wheels must do. Torch-less images fall back to a bare
+# onnx/numpy import, since the suite treats torch as required.
 check_app_wheel_smoke() {
   local image_tag="$1"
   local target_arch="$2"
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
       echo "--- Functional: app wheel smoke (python -m orchestr_ant_ion.smoke) ---"
-      # RATCHET on the ok-count, not just the exit status (added 2026-08-27). The
-      # smoke exits 0 whenever failures==0, and a component that stops shipping is
-      # reported as a WARNING -- so one identical PASS covered 15/15 (amd64),
-      # 14/15 (arm64) and 12/15 (riscv64) on the shipped run. These floors may only
-      # ever go UP: raise one when an arch gains a component, never lower one to
-      # make a red run green. Today's TVM fix should lift arm64 and riscv64 on the
-      # next full build -- raise them then.
+      # RATCHET on the ok-count, not the exit status: the smoke exits 0 whenever
+      # failures==0 and reports a vanished component as a WARNING, so one identical
+      # PASS covered 15/15, 14/15 and 12/15. Floors may only ever go UP - raise one
+      # when an arch gains a component, never to make a red run green.
       local _wheel_floor _wheel_out _wheel_ok
       case "${target_arch}" in
         amd64)   _wheel_floor=15 ;;
@@ -319,28 +259,12 @@ check_app_wheel_smoke() {
     echo ""
 }
 
-# SMOKE-DEPTH(c) 2026-08-23: run ONE real inference from THIS repo. The
-# in-image battery's session check used to build its model with
-# torch.onnx.export, which needs `onnxscript` — not in the venv — so it printed
-# "SKIP ort InferenceSession check" on all three shipped wave-5 arches: no
-# execution provider was ever proven to work by anything we own. (The app wheel
-# smoke above does run one, but it lives in ANOTHER repo and skips entirely on
-# torch-less images.) smoke_minimal_onnx_py emits a one-node Add graph as raw
-# protobuf — no `onnx` package, no network, ~110 model bytes — and is injected
-# as an env var rather than read from /opt/scripts so this gate also works
-# against images built before the check existed.
-#
-# EXIT STATUS IS NOT EVIDENCE HERE. The program crosses the container boundary
-# as an env var and is fed to `python -` on stdin: if SMOKE_ONNX_PY arrives
-# empty (env not forwarded, `-e` swallowed, a `bash -l` profile clobbering it,
-# a quoting regression in _rt_run), python reads an EMPTY program and exits 0
-# — the exact "green because nothing ran" class this repo has shipped three
-# times. So the check demands POSITIVE evidence from the program's OUTPUT: an
-# `ONNX-EP <verdict>:` sentinel that only smoke_minimal_onnx_py can print, and
-# for a pass specifically `ONNX-EP OK:` carrying the provider it actually used.
-# No sentinel => FAIL, whatever the exit status says. The in-image guard below
-# is the second half: it turns an empty program into a loud sentinel instead of
-# silence, so the failure names its own cause.
+# Run ONE real inference owned by THIS repo: smoke_minimal_onnx_py emits a one-node Add
+# graph as raw protobuf (no `onnx` package, no network, ~110 model bytes) and is injected
+# as an env var, so this gate also works against images built before the check existed.
+# EXIT STATUS IS NOT EVIDENCE: if SMOKE_ONNX_PY arrives empty, `python -` reads an EMPTY
+# program and exits 0 - the "green because nothing ran" class. A pass therefore demands
+# the `ONNX-EP OK:` sentinel in the program's OUTPUT, whatever the exit status says.
 check_onnx_execution_provider() {
   local image_tag="$1"
   local target_arch="$2"
@@ -365,9 +289,8 @@ printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
           fail "onnxruntime session check exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
       esac
     elif [ "${rc}" = "3" ]; then
-      # Not a skip in a WRAPPER: the image's own HEALTHCHECK is
-      # `python3 -c "import onnxruntime"`, so an unimportable onnxruntime here
-      # means every container would report unhealthy.
+      # Not a skip in a WRAPPER: the image's own HEALTHCHECK is `import onnxruntime`,
+      # so an unimportable onnxruntime means every container would report unhealthy.
       fail "onnxruntime/numpy not importable in the runtime image (${target_arch}) -- the HEALTHCHECK imports onnxruntime, so this is a defect: ${sentinel}"
     else
       fail "onnxruntime InferenceSession FAILED on the generated Add graph (${target_arch}, rc=${rc}): ${sentinel}"
@@ -375,16 +298,10 @@ printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
     echo ""
 }
 
-# Not just "importable" but the CORRECT versions. Delegate to the canonical
-# venv-integrity smoke's assert-only mode: it asserts each ML package matches
-# its pin -- uv.lock for uv-resolved packages (numpy/pillow/contourpy + the
-# amd64/arm64 torch/vision/onnx wheels) and versions.env for the ones we build
-# or force-reinstall from a LOCAL wheel (riscv64 torch/vision, source-built
-# onnxruntime, ai-edge-litert) -- plus the +cpu/+cu130 build variant and
-# OpenCV major. This is the check that catches a wrong version silently
-# slipping in (lock drift, a stale local wheel, a floated index). cv2 stays
-# optional here to match the informational import above. Torch-less images
-# skip it (no versions to assert).
+# Not just "importable" but the CORRECT versions: delegate to smoke-torch-venv.sh's
+# assert-only mode, which catches a wrong version slipping in (lock drift, a stale local
+# wheel, a floated index). Which authority owns which pin, and why they are no longer
+# unioned: docs/cross-build-verification.md, "In-image smoke tests".
 check_ml_version_pins() {
   local image_tag="$1"
   local target_arch="$2"
@@ -399,24 +316,11 @@ check_ml_version_pins() {
       elif [ "${target_arch}" = "riscv64" ] \
            && [ "$(printf '%s\n' "${_stv_out}" | grep -cE '^[[:space:]]*XX ')" = "1" ] \
            && printf '%s\n' "${_stv_out}" | grep -qE '^[[:space:]]*XX[[:space:]]+onnxruntime-genai[[:space:]]+NOT INSTALLED'; then
-        # TRANSITIONAL exemption (2026-08-11) — root fix LANDED 2026-08-12:
-        # smoke-torch-venv now carries the arch policy itself (expected_absent
-        # on riscv64, STV_REQUIRE_GENAI=1 re-arms), so images built after the
-        # 2026-08-12 window return rc 0 and never reach this branch. It stays
-        # only so this host-side gate can still pass the PRE-window wrappers
-        # (e.g. the shipped 2026-08-12 :latest-cross) whose baked assert
-        # predates the policy. DELETE after the next validated full rebuild.
-        #
-        # SELF-CORRECTING (2026-08-26). "Delete after the next rebuild" is a
-        # note to a human, and notes rot: the branch would have gone on
-        # printing PASS forever on images that no longer need it. The image
-        # carries the evidence of which side of the window it is on — a
-        # PRE-window wrapper bakes a smoke-torch-venv.sh with no arch policy,
-        # a POST-window one bakes the STV_REQUIRE_GENAI re-arm. Ask the image.
-        # Only a POSITIVE answer flips the verdict: if the grep cannot run at
-        # all (no such file, container failed to start) we still take the
-        # tolerant branch, so this can never fail an image it merely failed to
-        # interrogate.
+        # TRANSITIONAL riscv64 genai exemption, for PRE-2026-08-12 wrappers ONLY (the
+        # root fix moved the arch policy into smoke-torch-venv itself, so a newer image
+        # returns 0 and never reaches here). Ask the IMAGE which side of that window it
+        # is on rather than trusting a "delete me later" note; only a POSITIVE answer
+        # flips the verdict, so a probe that cannot run stays tolerant.
         if _rt_run bash -lc \
              'grep -q STV_REQUIRE_GENAI /opt/scripts/packaging/smoke-torch-venv.sh' \
              >/dev/null 2>&1; then
@@ -431,15 +335,10 @@ check_ml_version_pins() {
     fi
 }
 
-# IREE native tools -- the C side of the same thing check_iree exercises in
-# Python. iree-compile lowers a one-op MLIR module (math.absf) and
-# iree-run-module executes it on the local-task driver (abs(-5)=5), proving
-# the compiled binaries interoperate on-target, not just the Python bindings.
-# The wheels install both as console scripts in /opt/venv/bin. GATES when the
-# tools are present (amd64/arm64 always ship them via the abi3 PyPI wheels;
-# riscv64 only when the best-effort compiler cross-build succeeded) and is
-# WARN-only when absent, mirroring the app's optional-when-missing policy for
-# the riscv64 lane where only the runtime wheel ships.
+# IREE native tools -- the C side of what check_iree exercises in Python: iree-compile
+# lowers a one-op MLIR module and iree-run-module executes it (abs(-5)=5), proving the
+# compiled binaries interoperate on-target. GATES when the tools are present, WARN-only
+# when absent (the cross lane ships runtime-only).
 check_iree_native() {
   local image_tag="$1"
   local target_arch="$2"
@@ -465,16 +364,11 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
       if printf '%s' "${iree_out}" | grep -q IREE_NATIVE_TOOLS_ABSENT; then
         echo "  WARN IREE native tools (iree-compile/iree-run-module) absent (${target_arch}) -- riscv64 compiler is best-effort; check_iree stays optional-fail there (non-fatal)"
       elif [ "${target_arch}" = "riscv64" ]; then
-        # WARN, don't fail, on riscv64: this smoke runs the riscv64 iree-compile under
-        # QEMU on the amd64 host, and QEMU advertises a synthetic max-ISA riscv64 CPU
-        # (every extension: ...zvksh_zvkt_zvksed...). iree-compile auto-detects that
-        # host CPU and hands LLVM a processor/feature set its RISC-V subtarget rejects
-        # ('generic-rv64' unrecognized -> RV32 fallback -> "64-bit code requested on a
-        # subtarget that doesn't support it"). It reproduces on pre-cp314 images, so it
-        # is a QEMU-emulation limitation, not a wheel defect: the cp314
-        # iree_base_compiler/iree_base_runtime wheels still BUILD, install, and import
-        # here. Real riscv64 hardware reports a sane ISA, so codegen must be verified
-        # on-device. amd64/arm64 run natively and keep GATING (the else branch).
+        # WARN, don't fail, on riscv64: this runs the riscv64 iree-compile under QEMU,
+        # which advertises a synthetic max-ISA CPU that LLVM's RISC-V subtarget rejects
+        # ("64-bit code requested on a subtarget that doesn't support it"). An emulation
+        # limit, not a wheel defect - the wheels still build, install and import here,
+        # so codegen has to be verified on real hardware. amd64/arm64 keep GATING.
         echo "  WARN IREE native compile/run FAILED under QEMU on riscv64 (non-fatal) --"
         echo "       cp314 wheels build/install/import; codegen unverifiable under QEMU's"
         echo "       synthetic max-ISA CPU (LLVM RISC-V subtarget rejects it). Verify on-device."
@@ -491,10 +385,8 @@ check_ffmpeg() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: ffmpeg ---"
-    # pipefail is REQUIRED: without it, `ffmpeg -version | head -1` returns head's
-    # exit (0), so a broken binary -- e.g. `error while loading shared libraries:
-    # libopencore-amrwb.so.0` (observed 2026-07-11) -- silently PASSES. With
-    # pipefail the missing-.so exit code propagates and the smoke fails as it must.
+    # pipefail is REQUIRED: without it `ffmpeg -version | head -1` returns head's 0 and
+    # a binary with a missing .so (libopencore-amrwb.so.0, 2026-07-11) silently PASSES.
     if _rt_run \
          bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
       pass "ffmpeg executes (${target_arch})"
@@ -504,14 +396,11 @@ check_ffmpeg() {
     echo ""
 }
 
-# Native shared-library dependency closure over the source-built /opt stacks
-# (ffmpeg, opencv5, libcamera, vulkan). GENERALISES the ffmpeg .so gate to the
-# whole native payload: any binary/lib whose NEEDED soname is absent from the
-# runtime loader path is a real defect (this is exactly the class that shipped
-# libopencore-amrwb.so.0-broken ffmpeg + libsleef.so.3-broken torch while amd64
-# stayed green). Python venv extensions are deliberately EXCLUDED here -- torch
-# etc. add their own package lib dirs at import time, which a bare `ldd` cannot
-# replicate (false positives); the import checks above are their real gate.
+# Native shared-library dependency closure over the source-built /opt stacks: any
+# NEEDED soname absent from the runtime loader path is a real defect (the class that
+# shipped a libopencore-amrwb-broken ffmpeg and a libsleef-broken torch while amd64
+# stayed green). Venv extensions are EXCLUDED - they add their own package lib dirs at
+# import time, which a bare `ldd` cannot replicate; the import checks are their gate.
 check_native_so_closure() {
   local image_tag="$1"
   local target_arch="$2"
@@ -532,12 +421,10 @@ done < <(find /opt/ffmpeg/bin /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/li
     echo ""
 }
 
-# RP1 (security): assert the shipped image carries NO usable `sudo` — it was
-# purged from the final stage (Dockerfile.torch) because no sudoers/group grants
-# exist and USER kataglyphis can never use it, so it is pure LPE attack surface.
-# This gate fails loud if a future base/package change reintroduces it. Every
-# OTHER setuid binary is inventoried (informational) so a new one is at least
-# VISIBLE in the smoke log rather than shipping unnoticed.
+# RP1 (security): the shipped image must carry NO usable `sudo` - it was purged from
+# the final stage (Dockerfile.torch) as pure LPE surface, since no sudoers/group grants
+# exist. Every other setuid binary is inventoried (informational) so a new one is at
+# least VISIBLE in the smoke log rather than shipping unnoticed.
 check_setuid_inventory() {
   local image_tag="$1"
   local target_arch="$2"
@@ -559,11 +446,8 @@ exit 0'; then
     echo ""
 }
 
-# AP7 (size observability, INFORMATIONAL — never fails): the shipped image has no
-# per-prefix size breakdown anywhere, so every "shrink X" item (strip passes,
-# dead wheels, the TF removal, byte-compile) is un-measurable. One du block turns
-# them all into numbers visible in the smoke log — run it so size regressions and
-# wins are at least attributable to a prefix. Sorted largest-last for eyeballing.
+# AP7 (size observability, INFORMATIONAL - never fails): one du block turns every
+# "shrink X" item into a number attributable to a prefix. Sorted largest-last.
 check_size_observability() {
   local image_tag="$1"
   local target_arch="$2"
@@ -576,11 +460,9 @@ du -sh /opt 2>/dev/null | sed "s/^/    /"' || echo "  (size probe unavailable)"
     echo ""
 }
 
-# SMK3 (2026-08-17): AP2 gate — the venv must ship byte-compiled. The runtime
-# user (uid-1001) cannot write __pycache__ into the root-owned /opt/venv, so if
-# the build-time compileall regresses, every container start silently re-parses
-# site-packages again (the exact cost AP2 removed). HARD fail: a shipped venv
-# without any .pyc is a real regression, not an environment artifact.
+# SMK3: AP2 gate - the venv must ship byte-compiled. The uid-1001 runtime user cannot
+# write __pycache__ into the root-owned /opt/venv, so a regressed build-time compileall
+# makes every container start re-parse site-packages. HARD fail, not an artifact.
 check_venv_bytecode() {
   local image_tag="$1"
   local target_arch="$2"
@@ -594,87 +476,41 @@ check_venv_bytecode() {
     echo ""
 }
 
-# ── ARCH-PARITY table (2026-08-23) ──────────────────────────────────────────
-# The three wrappers are supposed to be the same image with a different arch,
-# and verified live on the wave-5 ship they are not: riscv64 carries no
-# /opt/cmake (amd64 207M, arm64 130M), onnxruntime-genai ships on amd64+arm64
-# only, and the ORT flavour differs by arch. None of it was gated anywhere, so
-# every delta was silent.
-#
-# WHAT THIS ACTUALLY CHECKS — and what it does NOT. This smoke runs against ONE
-# image at a time (build-runtime-manifest.sh invokes it per arch), so it cannot
-# diff arch A against arch B. It is not a cross-arch differ; it is a
-# TABLE-CONFORMANCE check:
-#   * every component NAMED in _PARITY_PREFIXES/_PARITY_WHEELS must be present
-#     on this arch, unless _parity_exempt documents its absence  -> FAILS;
-#   * a documented exemption whose component turns out to be PRESENT is a STALE
-#     table entry — the exception no longer applies             -> FAILS;
-#   * exactly one onnxruntime distribution, the flavour the table names -> FAILS.
-# It therefore CANNOT see a one-sided EXTRA: a component that exists on one arch
-# and not another while being absent from the table above is invisible to the
-# loop, because the loop only iterates over names the table already lists. The
-# untracked /opt prefixes are printed (INFO) on every run so that diffing the
-# three per-arch smoke logs still surfaces such a delta by eye; making that
-# automatic needs a cross-arch step in the caller and is left on the ARCH-PARITY
-# backlog item. Adding a component to the table is what puts it under the gate.
-#
-# WHY THE STALE ARM FAILS (2026-08-26). It used to WARN, which meant a table
-# entry could stop being true while the smoke kept printing PASS underneath the
-# warning — the table rots and nothing forces the edit. An exemption is a CLAIM
-# about this image ("this component is absent here, on purpose"); when the claim
-# is falsified the table is wrong, and a wrong table is a defect of the same
-# kind as a missing component. Failing is also the only thing that makes the
-# table SELF-CORRECTING: the fix is a one-line deletion, the message names the
-# exact line, and once it is gone the component is asserted on that arch like
-# everywhere else. The asymmetry with the blind spot above is deliberate — a
-# FALSIFIED claim fails; a component nobody ever wrote down still cannot.
-#
-# Prefix names are version-stripped (cmake-4.4.2 -> cmake) so a pin bump does
-# not need a table edit.
+# ── ARCH-PARITY table (2026-08-23) ──────────────────────────
+# TABLE CONFORMANCE, not a cross-arch diff: this smoke sees ONE image, so it asserts
+# that every component NAMED below is present on this arch or documented absent, and a
+# documented absence that stopped being true FAILS so the table cannot rot in place. A
+# component nobody wrote down is invisible to it. That blind spot, and why the stale arm
+# fails rather than warns: docs/cross-build-verification.md, "In-image smoke tests".
+# Prefix names are version-stripped (cmake-4.4.2 -> cmake) so a pin bump needs no edit.
 _PARITY_PREFIXES="Kataglyphis-Orchestr-ANT-ion android android-sdk cmake ffmpeg gcc gstreamer libcamera opencv5 python scripts venv vulkan"
 # Wheel names in dist-info form ('-' and '.' normalised to '_').
 _PARITY_WHEELS="torch torchvision ai_edge_litert iree_base_compiler iree_base_runtime onnxruntime_genai"
 
-# Documented per-arch absences. Each arm is a REVIEWED decision with its reason;
-# anything absent that is NOT listed here is drift and fails.
-#
-# EVERY ARM IS A DELETION CANDIDATE. The arm asserts the component is absent on
-# that arch; the moment the component appears, check_arch_parity FAILS and tells
-# the reader to delete the arm (see the WHY THE STALE ARM FAILS note above). So
-# an arm may only encode a reason that is still true TODAY — never "not built
-# yet", which turns the table into a wish list that fails the day the producer
-# lands. Both arms below are upstream-availability facts, not schedule notes.
+# Documented per-arch absences; anything absent and NOT listed here is drift and fails.
+# EVERY ARM IS A DELETION CANDIDATE - the moment its component appears, check_arch_parity
+# fails and names the line to delete. So an arm may only encode a reason that is true
+# TODAY, never "not built yet", which would turn the table into a wish list.
 _parity_exempt() {
   case "$1:$2" in
     # Kitware publishes no riscv64 CMake archive, so 02-toolchain/cmake.sh
     # deliberately installs the distro cmake there (4.2.3) instead.
     riscv64:cmake) return 0 ;;
-    # GEN1: upstream ships no riscv64 onnxruntime-genai wheel in any version
-    # and closed its one RISC-V request as not-planned; the producer skips the
-    # arch and verify-media-artifacts agrees. Policy, not drift.
+    # GEN1: upstream ships no riscv64 onnxruntime-genai wheel in any version and closed
+    # its one RISC-V request as not-planned. Policy, not drift.
     riscv64:onnxruntime_genai) return 0 ;;
-    # The IREE COMPILER cannot be cross-built, and upstream publishes no
-    # riscv64 wheel. IREE's own CMake gate is
-    #   if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
-    # so a cross target with COMPILER=ON never imports the host tools and ends
-    # up trying to RUN freshly built amd64 iree-tblgen on the target -- "Exec
-    # format error". The cross target is therefore runtime-only
-    # (IREE_CROSS_BUILD_COMPILER defaults OFF, build-app-wheelhouse.sh:1130-1133),
-    # which is what upstream does too. amd64 builds natively and keeps both
-    # wheels, so this arm is riscv64-only ON PURPOSE -- arm64 carries the
-    # compiler wheel and must keep asserting it.
-    # Added 2026-08-27 after f266634 restored runtime-only and this gate
-    # correctly reported the component it removed.
+    # The IREE COMPILER cannot be cross-built and upstream publishes no riscv64 wheel,
+    # so the cross target is runtime-only (IREE_CROSS_BUILD_COMPILER defaults OFF); see
+    # docs/linux-cross-builds.md, "IREE (Linux lane)". riscv64-only ON PURPOSE: arm64
+    # carries the compiler wheel and must keep asserting it.
     riscv64:iree_base_compiler) return 0 ;;
     *) return 1 ;;
   esac
 }
 
-# Which onnxruntime flavour each arch is SUPPOSED to carry, and only one of
-# them: the 2026-08-21 version shadow shipped a PyPI onnxruntime 1.27 beside
-# the built one and broke every import with a VERS_1.29.0 symbol error. Wave-5
-# fixed it to exactly one distribution per image — dnnl on amd64, webgpu on
-# arm64/riscv64 — which is a decision, so it belongs in the table.
+# Which onnxruntime flavour each arch is SUPPOSED to carry, and only one of them: the
+# 2026-08-21 version shadow shipped a PyPI onnxruntime beside the built one and broke
+# every import with a VERS_1.29.0 symbol error.
 _parity_ort_flavor() {
   case "$1" in
     amd64)         printf '%s' 'onnxruntime_dnnl' ;;
@@ -683,23 +519,14 @@ _parity_ort_flavor() {
   esac
 }
 
-# GStreamer plugins that are KNOWN not to load on a given arch. Same contract:
-# listed = reviewed, unlisted = new drift (reported, still non-fatal — a broken
-# optional plugin degrades gracefully; see check_gstreamer_plugin_health).
-#
-# Entries are "<arch>:<libgst*.so>" in ONE list rather than case arms, because
-# check_gstreamer_plugin_health needs both directions of the same fact: given a
-# plugin, is its failure documented (the predicate below), and given the arch,
-# WHICH plugins does the table still claim are broken (so a claim that stopped
-# being true can be caught). A predicate cannot be enumerated, and keeping a
-# second per-arch list beside a case statement is a drift surface of its own —
-# one table, two readers.
-#
-# arm64:libgstgtk4.so — the distro libgtk-4.so.1 resolves
-# vkCreateWaylandSurfaceKHR against the system Vulkan loader, which the shipped
-# /opt/vulkan loader does not export here. The gtk4 SINK is a desktop-display
-# element with no role in a headless wrapper, so it is accepted rather than
-# fixed.
+# GStreamer plugins KNOWN not to load on a given arch. Same contract: listed =
+# reviewed, unlisted = new drift (reported, still non-fatal). One "<arch>:<plugin>" list
+# rather than case arms because check_gstreamer_plugin_health needs both directions of
+# the same fact - is this failure documented, and which documented failures stopped
+# happening - and a predicate cannot be enumerated.
+# arm64:libgstgtk4.so - the distro libgtk-4.so.1 wants vkCreateWaylandSurfaceKHR, which
+# the shipped /opt/vulkan loader does not export. A display sink has no role in a
+# headless wrapper, so it is accepted rather than fixed.
 _PARITY_GST_KNOWN_BROKEN="arm64:libgstgtk4.so"
 
 _parity_gst_plugin_known() {
@@ -745,13 +572,10 @@ done' 2>/dev/null)"; then
       fi
     done
 
-    # The blind spot, stated out loud and with the raw material next to it: the
-    # loop above can only judge names the table already carries, so a prefix
-    # that exists here and nowhere else is invisible to it. Print the untracked
-    # prefixes (a short list — /opt has ~13 entries) so comparing the three
-    # per-arch smoke logs still exposes a one-sided extra. INFO, never a gate:
-    # a gate would need to see all three images at once. Wheels are excluded on
-    # purpose — the venv has hundreds of dist-infos and the noise would bury it.
+    # The blind spot, with the raw material beside it: the loop can only judge names the
+    # table carries, so print the untracked prefixes - INFO, never a gate, since a gate
+    # would need all three images at once. Wheels are excluded: hundreds of dist-infos
+    # would bury it.
     local untracked p
     untracked=""
     for p in ${prefixes}; do
@@ -785,46 +609,25 @@ done' 2>/dev/null)"; then
     echo ""
 }
 
-# GStreamer plugin health -- WARN only. Unlike ffmpeg/opencv, a GStreamer
-# plugin whose runtime .so is absent degrades gracefully (the element is just
-# unavailable), so a broken optional plugin must not fail the gate. But surface
-# them: this is what makes an app-critical regression visible (e.g. webrtcbin2
-# -> librice-proto.so.0, openh264enc -> libopenh264.so.8). The functional
-# pipeline check below is the fail-loud gate for GStreamer CORE.
+# GStreamer plugin health -- WARN only: unlike ffmpeg/opencv, a plugin whose runtime
+# .so is absent degrades gracefully (the element is just unavailable), so it must not
+# fail the gate - but it must stay visible. The functional pipeline check below is the
+# fail-loud gate for GStreamer CORE.
 check_gstreamer_plugin_health() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: GStreamer plugin health (informational) ---"
-    # Use gst-inspect (which drives the plugin SCANNER) rather than a plain
-    # `ldd => not found` scan: the scanner actually dlopen()s each plugin and
-    # reports EVERY load failure to stderr as "Failed to load plugin", including
-    # UNDEFINED-SYMBOL failures (e.g. gtk4 -> libgtk-4.so.1: undefined symbol
-    # vkCreateWaylandSurfaceKHR) that ldd cannot see (the dep .so is present, just
-    # missing a symbol). Still WARN-only: a broken OPTIONAL plugin degrades
-    # gracefully; the functional pipeline check below is the fail-loud CORE gate.
-    # ARCH-PARITY (2026-08-23): classify the failures instead of only counting
-    # them. arm64 has shipped a gtk4 plugin that cannot load since wave-4
-    # (undefined symbol vkCreateWaylandSurfaceKHR) and the count line looked
-    # exactly like a healthy run with a different number in it. Known-and-
-    # reviewed failures now say so; anything else is called out as new drift.
-    #
-    # THE HEADLINE NUMBER IS STILL THE RAW LINE COUNT. Classification works on
-    # UNIQUE libgst*.so basenames, which is strictly fewer than the failure
-    # lines: a message that names no libgst*.so basename (a plugin outside the
-    # naming convention, or an error whose text never reaches the basename)
-    # contributes nothing, and the same basename failing from two plugin
-    # directories collapses to one. Reporting known+unknown as "plugins that
-    # cannot load" would have quietly LOWERED a regression metric that has been
-    # watched since wave-4, so the pre-classification count is kept verbatim
-    # and the classification is printed beside it, not instead of it.
+    # gst-inspect drives the plugin SCANNER, which dlopen()s each plugin and so reports
+    # UNDEFINED-SYMBOL failures (gtk4 -> vkCreateWaylandSurfaceKHR) that `ldd` cannot see.
+    # THE HEADLINE NUMBER IS STILL THE RAW LINE COUNT: classification works on unique
+    # libgst*.so basenames, a strictly smaller denominator, and quietly lowering a
+    # metric watched since wave-4 would hide a regression. Both are printed, side by side.
     local scan failed p known=0 unknown=0 total named unnamed
     scan="$(_rt_run bash -lc 'command -v gst-inspect-1.0 >/dev/null 2>&1 || { echo "GST_SCAN_ABSENT"; exit 0; }
 gst-inspect-1.0 2>&1 >/dev/null || true
 echo "GST_SCAN_DONE"' 2>/dev/null)" || true
-    # An empty scan is AMBIGUOUS -- a perfectly healthy image also prints
-    # nothing here -- so the probe stamps its own completion. Without the
-    # stamp, "0 plugins cannot load" would be a false green for a probe that
-    # never ran.
+    # An empty scan is AMBIGUOUS -- a healthy image prints nothing here either -- so the
+    # probe stamps its own completion; without it "0 cannot load" is a false green.
     if ! printf '%s\n' "${scan}" | grep -q '^GST_SCAN_DONE$'; then
       if printf '%s\n' "${scan}" | grep -q '^GST_SCAN_ABSENT$'; then
         echo "  WARN gst-inspect-1.0 is not on PATH in the ${target_arch} image -- plugin health UNKNOWN, not 0"
@@ -851,40 +654,26 @@ echo "GST_SCAN_DONE"' 2>/dev/null)" || true
     done
     printf '%s\n' "${scan}" | grep "Failed to load plugin" \
       | sed "s/^.*Failed/  degraded: Failed/" | sort -u | head -40 || true
-    # Line 1 = the metric as it has always been counted (comparable across runs).
     echo "  GStreamer plugins that cannot load: ${total} (non-fatal)"
-    # Line 2 = the new detail, explicitly on a different denominator.
     local unnamed_note=""
     if [ "${unnamed}" -gt 0 ]; then
       unnamed_note="; ${unnamed} failure line(s) name no libgst*.so and could not be classified"
     fi
     echo "  ... of those, by unique libgst*.so basename: ${known} documented, ${unknown} undocumented${unnamed_note}"
 
-    # The OTHER direction, and the reason the table is a list: a documented
-    # failure that stopped failing. The loop above can only speak about
-    # plugins that DID fail, so an exception whose plugin quietly started
-    # loading again was invisible and the entry rotted in place. Walk the
-    # table's own claims for this arch instead.
-    #
-    # POSITIVE EVIDENCE ONLY, two independent signals that must agree:
-    #   1. the basename is absent from the scanner's failure list, AND
-    #   2. gst-inspect-1.0 loads the plugin FILE directly and exits 0.
-    # Absence alone proves nothing (the plugin may simply not be shipped, or
-    # the scan may never have reached it), and (2) alone cannot outvote a
-    # scanner that did report the failure. Only both together mean the plugin
-    # loads on this arch — at which point the table entry is false, which is a
-    # defect in the same sense as the stale _parity_exempt arm above, and
-    # fails for the same reason. Reached only after GST_SCAN_DONE, so a scan
-    # that never ran cannot get here.
+    # The OTHER direction, and why the table is a list: a documented failure that
+    # stopped failing. The loop above can only speak about plugins that DID fail, so
+    # walk the table's own claims for this arch instead. POSITIVE EVIDENCE ONLY, two
+    # signals that must agree - absent from the scanner's failure list AND
+    # gst-inspect-1.0 loads the plugin file directly. Absence alone proves nothing (it
+    # may simply not be shipped); only both together falsify the entry, which is a
+    # defect of the same kind as a stale _parity_exempt arm.
     local _kb_entry _kb_plugin
     for _kb_entry in ${_PARITY_GST_KNOWN_BROKEN}; do
       [ "${_kb_entry%%:*}" = "${target_arch}" ] || continue
       _kb_plugin="${_kb_entry#*:}"
-      # `failed` is NEWLINE-separated (built at :806 via printf '%s\n' | grep),
-      # so the old `case " ${failed} " in *" plugin "*` matched only while
-      # exactly ONE plugin failed: with two or more, neither is bracketed by
-      # spaces and the guard silently stopped firing — taking the hard fail
-      # below with it. Match on the delimiter the list actually uses.
+      # `failed` is NEWLINE-separated, so a `case " ${failed} " in *" plugin "*` guard
+      # only matched while exactly ONE plugin failed. Match the delimiter the list uses.
       if printf '%s\n' "${failed}" | grep -qxF -- "${_kb_plugin}"; then
         continue   # still failing = entry still true
       fi
@@ -904,9 +693,8 @@ exit 1' _ "${_kb_plugin}" >/dev/null 2>&1; then
     echo ""
 }
 
-# (onnxruntime inference + cv2 encode/decode roundtrip now live in the app
-# wheel smoke above -- `python -m orchestr_ant_ion.smoke` runs the same
-# embedded Add model and the same imencode/imdecode round-trip on-target.)
+# onnxruntime inference and the cv2 encode/decode round-trip live in the app wheel
+# smoke above.
 
 check_gstreamer_core_pipeline() {
   local image_tag="$1"
@@ -921,10 +709,9 @@ check_gstreamer_core_pipeline() {
     echo ""
 }
 
-# Mandatory-plugin GATE on the real target arch (smoke-depth R1). The
-# Windows lane has a 4-point plugin contract; Linux shipped these four
-# with only a WARN-only load-failure count. gst-inspect-1.0 <plugin>
-# exits non-zero if the plugin is missing OR fails to dlopen.
+# Mandatory-plugin GATE on the real target arch (smoke-depth R1), mirroring the Windows
+# lane's 4-point contract: gst-inspect-1.0 <plugin> exits non-zero if the plugin is
+# missing OR fails to dlopen.
 check_gstreamer_mandatory_plugins() {
   local image_tag="$1"
   local target_arch="$2"
@@ -942,9 +729,8 @@ check_application_import() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: application import ---"
-    # The actual deliverable: the Orchestr-ANT-ion app must import in the shipped
-    # venv. A broken/incomplete app install (missing runtime dep) shipped silently
-    # before -- import it through the venv python to catch that.
+    # The actual deliverable: a broken/incomplete app install (missing runtime dep)
+    # shipped silently before, so import it through the venv python.
     if _rt_run \
          /opt/venv/bin/python -c "import orchestr_ant_ion" >/dev/null 2>&1; then
       pass "application module imports (${target_arch})"
@@ -954,11 +740,9 @@ check_application_import() {
     echo ""
 }
 
-# Run the ACTUAL HEALTHCHECK command, not just parse it. Step 4 above only reads
-# the configured Test string; the HC is `/opt/venv/bin/python3 -c import
-# onnxruntime`, so a broken interpreter path or a mislinked onnxruntime leaves
-# the container perpetually `unhealthy` while a string-only check stays green.
-# This runs the real command so that fail-open class can actually fail.
+# Run the ACTUAL HEALTHCHECK command, not just parse its Test string: a broken
+# interpreter path or a mislinked onnxruntime leaves every container perpetually
+# `unhealthy` while a string-only check stays green.
 check_healthcheck_exec() {
   local image_tag="$1"
   local target_arch="$2"
@@ -972,11 +756,9 @@ check_healthcheck_exec() {
     echo ""
 }
 
-# WebRTC signalling server: start-webrtc-signalling.sh (a shipped entrypoint)
-# execs gst-webrtc-signalling-server. WARN-only -- it belongs to the same
-# gst-plugins-rs/webrtc lane as the known webrtcbin2 gap (backlog), so its
-# absence must not gate the manifest, but a dead signalling entrypoint should be
-# visible every run.
+# WebRTC signalling server: start-webrtc-signalling.sh execs this binary. WARN-only --
+# same gst-plugins-rs/webrtc lane as the known webrtcbin2 gap (backlog), so its absence
+# must not gate the manifest, but a dead signalling entrypoint should stay visible.
 check_webrtc_signalling() {
   local image_tag="$1"
   local target_arch="$2"
@@ -990,22 +772,16 @@ check_webrtc_signalling() {
     echo ""
 }
 
-# Vulkan loader load test. The .so-closure gate proves libvulkan resolves, but
-# not that the loader dlopen()s at runtime. WARN-only: a headless CI container
-# has no GPU/ICD so device enumeration legitimately finds nothing -- we only
-# assert the loader library itself loads.
-# Three-way verdict instead of blanket WARN (audit round 2): a missing
-# ICD/GPU does NOT stop ctypes.CDLL from loading the loader library — a
-# load failure means the lib is missing/broken, and the runtime image
-# ALWAYS installs the Vulkan runtime files (base-image
-# install-vulkan-runtime-files). Only a container-infra error stays WARN.
+# Vulkan loader load test -- the .so-closure gate proves libvulkan resolves, not that
+# the loader dlopen()s at runtime. A missing ICD/GPU does NOT stop ctypes.CDLL and the
+# runtime image ALWAYS installs the Vulkan runtime files, so a load failure means the
+# lib is missing/broken and FAILS; only a container-infra error stays WARN.
 check_vulkan_loader() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: Vulkan loader ---"
-    # vkEnumerateInstanceVersion works with ZERO ICDs and no GPU — a healthy
-    # loader cannot legitimately fail it (smoke-depth R12). AttributeError
-    # guard keeps a hypothetical 1.0 loader from false-failing.
+    # vkEnumerateInstanceVersion works with ZERO ICDs and no GPU, so a healthy loader
+    # cannot legitimately fail it. The AttributeError guard covers a 1.0 loader.
     _vk_out="$(_rt_run \
          /opt/venv/bin/python -c 'import ctypes
 l = ctypes.CDLL("libvulkan.so.1")
@@ -1025,28 +801,21 @@ except AttributeError:
     echo ""
 }
 
-# Native compiler compile + link + RUN. The build-time validate-compilers.sh
-# smoke compiles AND links a program in every wrapper image, but never RUNS
-# the result: on the x86_64 build host a cross arch's binary cannot execute,
-# so the shipped native GCC/G++ was only ever ELF/version/link-verified for
-# arm64+riscv64 (the riscv64 --with-isa-spec GCC especially). HERE the wrapper
-# runs under binfmt/qemu, so we can finally prove the on-target compiler
-# actually compiles, links AND executes a real binary. The C++ case also
-# exercises the libstdc++ runtime. Gate RUNTIME_COMPILER_SMOKE=0 to skip.
+# Native compiler compile + link + RUN. The build-time validate-compilers.sh compiles
+# and links in every wrapper image but never RUNS the result - a cross arch's binary
+# cannot execute on the x86_64 build host, so the shipped native GCC/G++ was only ever
+# ELF/link-verified. Here the wrapper runs under binfmt/qemu, so the on-target compiler
+# is finally proven end to end. Skip with RUNTIME_COMPILER_SMOKE=0.
 check_native_compiler_battery() {
   local image_tag="$1"
   local target_arch="$2"
     if [ "${RUNTIME_COMPILER_SMOKE:-1}" = "1" ]; then
       echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
-      # A battery, not just hello-world: each case exercises a distinct piece of
-      # the shipped toolchain that a hello-world would not. C++ exceptions+STL is
-      # the load-bearing one -- it regression-guards the -idirafter WRAPPER fix in
-      # swap-native-gcc.sh (an installed specs file made throw/catch terminate at
-      # runtime; the wrapper leaves the EH link specs intact). std::thread proves
-      # libstdc++ threading + libpthread; libatomic proves 64-bit atomics link
-      # (riscv64 needs the runtime lib); -flto proves the LTO plugin loads. All six
-      # validated to pass on arm64+riscv64 with the wrapper fix. Sources use only
-      # double quotes / return-code checks so they stay clean inside bash -lc.
+      # A battery, not a hello-world: each case exercises a distinct piece of the
+      # shipped toolchain. C++ exceptions+STL is the load-bearing one - it regression-
+      # guards the -idirafter WRAPPER fix in swap-native-gcc.sh, where an installed
+      # specs file made throw/catch terminate at runtime. Sources use only double
+      # quotes / return codes so they stay clean inside bash -lc.
       if _rt_run \
            bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
@@ -1090,14 +859,11 @@ exit $rc'; then
     fi
 }
 
-# Clang/LLVM version alignment on the ACTUAL shipped image, per-arch under
-# qemu. The build-time smoke-toolchain/validate-compilers checks run in the
-# TOOLCHAIN stage where clang and LLVM_RELEASE are consistent by construction;
-# they do NOT catch a STALE toolchain — e.g. a --from-stage media publish that
-# reuses an old cross-sdk whose clang predates a LLVM_RELEASE bump (shipped
-# clang 22.1.2 while versions.env says 22.1.8). Assert the runtime image's
-# clang == LLVM_RELEASE so that drift fails the smoke on every arch. Disable
-# with RUNTIME_CLANG_VERSION_SMOKE=0.
+# Clang/LLVM version alignment on the ACTUAL shipped image, per-arch under qemu. The
+# build-time checks run in the TOOLCHAIN stage where clang and LLVM_RELEASE agree by
+# construction, so they cannot catch a STALE toolchain - e.g. a --from-stage media
+# publish reusing a cross-sdk whose clang predates an LLVM_RELEASE bump. Disable with
+# RUNTIME_CLANG_VERSION_SMOKE=0.
 check_clang_llvm_release() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1165,13 +931,10 @@ main() {
   check_volume "${image_tag}" "${target_arch}"
   check_oci_labels "${image_tag}" "${target_arch}"
 
-  # 9. Functional checks (D1/D2): actually LOAD the compiled ML stack and RUN
-  #    ffmpeg INSIDE the image -- under binfmt/qemu for cross arches. The checks
-  #    above prove the image boots and its metadata is sane; these prove the
-  #    arch-specific NATIVE extensions genuinely import/execute on the target
-  #    (previously only validated on native amd64 or on real hardware). Runs
-  #    through the entrypoint so the gstreamer/libcamera/vulkan env matches
-  #    runtime. Gate RUNTIME_FUNCTIONAL_SMOKE=0 to skip (e.g. no qemu handler).
+  # 9. Functional checks (D1/D2): actually LOAD the compiled ML stack and RUN ffmpeg
+  #    INSIDE the image, under binfmt/qemu for cross arches - the checks above only
+  #    prove the image boots and its metadata is sane. Runs through the entrypoint so
+  #    the gstreamer/libcamera/vulkan env matches runtime.
   if [ "${RUNTIME_FUNCTIONAL_SMOKE:-1}" = "1" ]; then
     check_torchless_sentinel "${image_tag}" "${target_arch}"
     check_app_wheel_smoke "${image_tag}" "${target_arch}"

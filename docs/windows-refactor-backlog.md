@@ -373,7 +373,7 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   the preserved-container recovery path has no BK equivalent.
   Ride along (all PAID, none worth its own rebuild): **`sharing=locked` on the sccache mount**
   (`Dockerfile.media-builder:576,593`) serialises the two branches `-ConcurrentAux` runs as
-  concurrent child solves (`build-buildkit.ps1:669-712`) — and the mount is inert anyway
+  concurrent child solves (`build-buildkit.ps1:519-559`) — and the mount is inert anyway
   (`SCCACHE_MULTILEVEL_CHAIN=""`), so the lock is pure loss; **`cuda-runtime-stage`**
   (`Dockerfile.media-merge-builder:32`) descends from the media-core branch image although the
   toolchain base carries the same CUDA install — it makes the fan-in, already the flakiest stage

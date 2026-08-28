@@ -2,16 +2,12 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Idempotent source-patching utilities for Windows container builds.
-# Extracted from WindowsSourceBuild.Common.psm1 to reduce module size.
-# Every function is idempotent, guarded, and warns (never hard-fails for patch
-# drift — upstream version bumps should not break the build).
+# Idempotent source-patching utilities for Windows container builds. Every function is idempotent,
+# guarded, and WARNS on patch drift rather than hard-failing (unless a caller asks for -Fatal).
 
 Set-StrictMode -Version Latest
 
-# Guarded, WITHOUT -Force (repo-wide nested-import rule): a forced nested
-# re-import rebinds Shared into this module's private scope and unloads the
-# caller's top-level import (the PS module-scoping trap).
+# Guarded, WITHOUT -Force (repo-wide nested-import rule): -Force unloads the caller's top-level import.
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
@@ -37,10 +33,8 @@ function Update-NinjaFile {
     )
     if (-not (Test-Path $NinjaFile)) { return }
     $original = [System.IO.File]::ReadAllText($NinjaFile)
-    # Line-scoped: strip patterns + collapse the double-space residue ONLY on
-    # lines a pattern actually changed. The old global '  +' -> ' ' collapse
-    # rewrote every multi-space run in build.ninja (paths with consecutive
-    # spaces, aligned comments) — latent breakage far beyond the stripped flags.
+    # Line-scoped: collapse the double-space residue ONLY on lines a pattern changed. A global
+    # '  +' -> ' ' rewrites every multi-space run in build.ninja (paths, aligned columns).
     $lines = $original -split '(?<=\n)'
     for ($i = 0; $i -lt $lines.Count; $i++) {
         $line = $lines[$i]
@@ -100,13 +94,8 @@ function Invoke-SourcePatch {
         } else {
             $patchExe = (Get-Command patch.exe -ErrorAction SilentlyContinue).Source
             if (-not $patchExe) { throw "patch.exe not found and source is not a git repo -- cannot apply $PatchFile" }
-            # -i is LOAD-BEARING. A bare path is the file to PATCH, not the
-            # patch; without -i, patch.exe reads an empty patch from stdin,
-            # changes nothing and exits 0 -- so the reverse-check below reads as
-            # "already applied" and EVERY patch is silently skipped. Measured
-            # 2026-08-27 on the LLVM tarball, which is the first non-git source
-            # tree to use this branch (OpenCV and contrib are git clones and
-            # take the git apply path above, which is why this never showed).
+            # -i is LOAD-BEARING: a bare path is the file to PATCH. Without it patch.exe reads an
+            # empty patch from stdin and exits 0, so every patch is silently skipped as applied.
             $tool         = 'patch.exe'
             $reverseCheck = { & $patchExe $pFlag --dry-run --reverse -i $PatchFile 2>&1 }
             $forwardCheck = { & $patchExe $pFlag --dry-run -i $PatchFile 2>&1 }
@@ -120,8 +109,7 @@ function Invoke-SourcePatch {
         }
         $null = & $forwardCheck
         if ($LASTEXITCODE -eq 0) {
-            # Capture the --verbose output it explicitly requests: on failure
-            # the hunk-level detail is the diagnosis, not the exit code.
+            # Capture the --verbose output: on failure the hunk detail is the diagnosis, not the exit code.
             $applyOut = @(& $applyPatch)
             if ($LASTEXITCODE -ne 0) {
                 $tail = ($applyOut | Select-Object -Last 10) -join [Environment]::NewLine
@@ -145,16 +133,8 @@ function Invoke-SourcePatch {
 }
 
 function Invoke-SourcePatchWithFallback {
-    # The two-rung apply ladder every version-sensitive patch uses (backlog #7):
-    # rung 1 is the reviewable .patch (skips cleanly when already applied),
-    # rung 2 the EOL/context-tolerant inline fallback for upstream drift.
-    # The Fallback scriptblock executes in the CALLER's scope (PS scriptblocks
-    # carry their creation SessionState), so it can use the caller's variables.
-    # -Fatal (backlog #19): the fallback must RETURN $true, or the ladder
-    # throws - for patches whose silent absence produces a broken build hours
-    # later (e.g. 006: a rotted patch would re-enable the sccache nvcc crash
-    # the day the CUDA launcher is retried). Without -Fatal a double miss
-    # stays a warning, preserving the never-hard-fail-on-drift default above.
+    # Two-rung apply ladder (#7): the reviewable .patch, then a drift-tolerant inline fallback that
+    # runs in the CALLER's scope. -Fatal (#19) makes a double miss throw instead of warn.
     param(
         [Parameter(Mandatory)]
         [string]$PatchFile,
@@ -190,15 +170,10 @@ function Invoke-InlineRegexPatch {
         [string]$WarnMessage = '',
         [switch]$Require,
         [string]$Description = '',
-        # Idempotency (#131): when the file already matches this regex the patch
-        # is considered applied -- return $true, touch nothing, say so. Replaces
-        # the hand-rolled `elseif ((Get-Content ...) -match <new>)` at call sites.
+        # (#131) File already matches -> treat as applied: return $true, touch nothing.
         [string]$SkipIfMatch = '',
-        # Load-bearing patches (#131): after writing, the file must NOT match
-        # this regex any more -- otherwise throw with -Description. Also throws
-        # when the pattern was never found and the file still matches it (the
-        # "did not apply cleanly, upstream layout changed" case every consumer
-        # used to re-read the file to detect).
+        # (#131) After writing, the file must NOT match this any more, or throw. Also throws when
+        # the pattern was never found and the file still matches it (upstream layout changed).
         [string]$AssertGone = ''
     )
     if (-not (Test-Path $Path)) {
@@ -236,14 +211,11 @@ function Invoke-InlineRegexPatch {
     members, GetTensors<>() and the four tensor accessors out of line into
     GeneratedSchemaTypes.h, after OperatorField is complete.
 .DESCRIPTION
-    OperatorField is an incomplete type at the point where MSVC (which defers
-    special-member instantiation to end-of-TU) is fine and clang-cl (correctly,
-    llvm #57700) is not. This is the regex fallback behind the checked-in
-    .patch file; it lived inside build-onnx-from-source.ps1 until #131
-    (2026-08-25) -- 80 lines of embedded C++ in a build script. Idempotent
-    ("[clang-cl DML fix]" marker); silently a no-op when the upstream layout
-    no longer matches all three anchors (the caller's patch-file path is the
-    primary route and reports its own outcome).
+    clang-cl (correctly, llvm #57700) rejects instantiating them while
+    OperatorField is incomplete; MSVC defers to end-of-TU and does not. This is
+    the regex fallback behind the checked-in .patch file: idempotent
+    ("[clang-cl DML fix]" marker), a no-op when the upstream anchors no longer
+    match.
 #>
 function Invoke-OnnxDmlClangClPatch {
     param([Parameter(Mandatory)][string]$SourceDir)

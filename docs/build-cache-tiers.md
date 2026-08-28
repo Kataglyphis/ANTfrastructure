@@ -353,7 +353,7 @@ sit in `build-gstreamer-monorepo.sh` is gone. `RUSTC_WRAPPER` resolves to the
 same guarded launcher from two places: `setup_sccache` exports it
 (`01-core/compiler-cache.sh:229-233`), and `build_gstreamer_monorepo` installs
 it for any process where the variable was never set at all
-(`build-gstreamer-monorepo.sh:694-703`). What made that safe is the UDS fix in
+(`build-gstreamer-monorepo.sh:581-590`). What made that safe is the UDS fix in
 § 5.4 (`compiler-cache.sh:142-151`, `common.sh:394-403`), not optimism — the
 deaths at 99 % were the *wrong server* answering, and the launcher is the
 second belt that turns a remaining sccache hiccup into lost hits instead of a
@@ -414,7 +414,7 @@ are outside this change's scope):
    counterweight used to be an explicit `export RUSTC_WRAPPER=""` inside
    `build_gstreamer_monorepo`; it is gone. That block is now the opposite — it
    *installs* the guarded launcher when `RUSTC_WRAPPER` is unset
-   (`build-gstreamer-monorepo.sh:673-703`, sourced into the same process at
+   (`build-gstreamer-monorepo.sh:579-591`, sourced into the same process at
    `setup-gstreamer.sh:559-563` and only *called* at `:640`). The monorepo's
    Rust is therefore cached deliberately, and the gate does not gate it.
    What the gate still decides is one thing: `media_common_init` runs
@@ -441,7 +441,7 @@ are outside this change's scope):
 
 | target | gate | state | recommendation |
 |---|---|---|---|
-| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:229-233`, `build-gstreamer-monorepo.sh:694-703`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
+| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:229-233`, `build-gstreamer-monorepo.sh:581-590`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
 | **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:558`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
 | **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
@@ -452,7 +452,7 @@ The targets whose recommendation needs more than a table cell.
 
 #### **rustc** (gst-plugins-rs, the monorepo's Rust)
 
-**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:690-711`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:110`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:155`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
+**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:579-591`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:110`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:155`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
 
 #### **nvcc / hipcc**
 

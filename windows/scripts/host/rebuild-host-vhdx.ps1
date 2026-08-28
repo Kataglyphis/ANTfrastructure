@@ -7,7 +7,7 @@
 # compact-host-vhdx.ps1 reports a near-zero reclaim — which is the expected
 # outcome on ReFS guests, where Optimize-VHD cannot see the guest's free
 # blocks (measured on the reference host: 269.9 GB physical for 16.2 GB of
-# data, compaction returned 0.2 GB; see docs/windows-host-setup.md § D3).
+# data, compaction returned 0.2 GB; see docs/windows-host-setup.md § Phase D item 3).
 #
 # The rebuild is a copy, not an in-place operation: a fresh VHDX is created,
 # the live data is mirrored into it, both copies are compared, and only then

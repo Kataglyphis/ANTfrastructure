@@ -16,13 +16,8 @@
 # the median_blur.dispatch.cpp.obj FAILED line). out/ is gitignored, so the
 # fixture is embedded rather than read -- CI has no build logs.
 
-# Guarded and UN-forced. -Force here re-instantiates the module mid-run, which
-# resets its $script:Results accumulator and discards every harness suite that
-# ran before this one alphabetically -- the run stays green and the count drops
-# (617 instead of 739; the discovery floor is what caught it).
-# Probed on Get-ScriptFunctionDefinition, NOT on Describe: Pester exports a
-# Describe too, so a Describe probe reports "harness present" in any session
-# where Pester happens to be loaded and then skips the import this file needs.
+# Never -Force: that resets the harness result count mid-run. Probe on a
+# harness-only command, since Pester also exports Describe.
 if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1')
 }

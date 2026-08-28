@@ -8,7 +8,7 @@
 # and restarts the services. Also frees whatever scratch the running build
 # services were pinning — on the reference host that second effect was worth
 # 19 GB while the compaction itself returned 0.2 GB (see the ReFS warning
-# below and docs/windows-host-setup.md § D3).
+# below and docs/windows-host-setup.md § Phase D item 3).
 #
 # RUN FROM AN ADMIN SHELL, and NEVER while a build is running — stopping
 # buildkitd kills every in-flight solve. The script refuses if it sees a live

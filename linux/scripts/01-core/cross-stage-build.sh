@@ -1,50 +1,19 @@
 #!/usr/bin/env bash
 # cross-stage-build.sh — shared cross-lane stage build functions.
-#
-# Source this directly or through artifact-common.sh.
-# Depends on: build-helpers.sh, stage-defs.sh, digest-pinning.sh, logging.sh.
-# Optionally uses ancestry.sh (parent-digest annotations) when it is loaded.
+# Depends on build-helpers.sh, stage-defs.sh, digest-pinning.sh, logging.sh;
+# ancestry.sh is optional (parent-digest annotations).
 [ -n "${_CROSS_STAGE_BUILD_SH_LOADED:-}" ] && return 0
 _CROSS_STAGE_BUILD_SH_LOADED=1
-#
-# Provides:
-#   cross_stage_log_redirect()       — compute log file path for a stage build
-#   _cross_stage_build_impl()        — internal: build cross stage (push or local)
-#   cross_stage_build_and_push()     — build a cross stage on linux/amd64 and push
-#   cross_stage_build_local()        — build a cross stage locally (no push)
-#   cross_stage_resolve_parent_pin() — resolve parent digest for stage transition
-#   resolve_pin()                    — low-level pin resolution (captured → registry)
-#   cross_stage_run()                — full orchestration: resolve parent, build, capture pin
-#   cross_stage_assemble_runtime_helper_args() — build args for runtime helper invocation
-#
-# These functions are consumed by:
-#   - build-cross-chain.sh (full orchestrator)
-#   - build-cross-stage.sh (single-stage rebuilds)
-#   - build-cross-compiler.sh (standalone compiler entry point)
 
-# ==============================================================================
-# cross_stage_log_redirect
-#
-# Computes a log file path for the given label when LOG_DIR is set.
-# Usage: log_file="$(cross_stage_log_redirect "sdk-arm64")"
-#
-# build-cross-chain.sh DEFAULTS LOG_DIR to out/build-logs (STALE-LOG 2026-08-23),
-# so for the chain the truncate-per-run guard below is always armed; it is empty
-# only when that caller opted out with --log-dir "" or when a caller that has no
-# such flag (build-cross-stage.sh without --log-dir, build-cross-compiler.sh)
-# leaves it unset. Empty prints nothing and the caller builds unlogged.
-# ==============================================================================
+# Log file path for <label>; empty when LOG_DIR is unset and the caller then
+# builds unlogged. build-cross-chain.sh defaults LOG_DIR (STALE-LOG 2026-08-23).
 cross_stage_log_redirect() {
   local label="$1"
   if [ -n "${LOG_DIR:-}" ]; then
     mkdir -p "${LOG_DIR}"
     local f="${LOG_DIR}/${label}.log"
-    # Truncate once per orchestrator run so repeated runs don't accumulate into
-    # huge files that interleave old failures with current output (a 575k-line
-    # media log spanning several rebuilds made "is this failure current?"
-    # needlessly hard to answer). The guard is a sibling marker holding the run
-    # id -- $$ is the orchestrator's PID, stable across its parallel-arch
-    # subshells -- so within a single run we append, and only a NEW run wipes.
+    # Truncate once per orchestrator run so repeated runs don't interleave old
+    # failures with current output; $$ is stable across parallel-arch subshells.
     local marker="${f}.run" rid="${CROSS_RUN_ID:-$$}"
     if [ "$(cat "${marker}" 2>/dev/null || true)" != "${rid}" ]; then
       : > "${f}"
@@ -54,14 +23,8 @@ cross_stage_log_redirect() {
   fi
 }
 
-# ==============================================================================
-# _cross_stage_push_error_is_transient
-#
-# True when the tail of the (optional) log file shows a transient registry/
-# network PUSH failure worth retrying, rather than a real build error. When no
-# log file is available we cannot classify, so treat the failure as transient
-# (a re-push of cache-hit layers is cheap and bounded by PUSH_MAX_ATTEMPTS).
-# ==============================================================================
+# True when the log tail shows a transient registry/network PUSH failure worth
+# retrying. No log file means we cannot classify, so assume transient.
 _cross_stage_push_error_is_transient() {
   local log_file="${1:-}"
   [ -n "${log_file}" ] && [ -r "${log_file}" ] || return 0
@@ -69,21 +32,8 @@ _cross_stage_push_error_is_transient() {
     'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|[^0-9]429[^0-9]'
 }
 
-# ==============================================================================
-# _cross_stage_build_impl
-#
-# Internal: build a cross-lane stage image on linux/amd64.
-# When push=1: pushes to registry with cache registry support.
-# When push=0: builds locally only (no push, no cache registry).
-#
-# Automatically disables --pull when BASE_IMAGE is already digest-pinned
-# (repo@sha256:...), since the digest uniquely identifies the image and can
-# never resolve to a stale version.
-#
-# Respects DRY_RUN (when set to a truthy value, prints the command without executing).
-#
-# Usage: _cross_stage_build_impl <push_flag> <label> <tag> <dockerfile> [extra build args...]
-# ==============================================================================
+# _cross_stage_build_impl <push_flag> <label> <tag> <dockerfile> [build args...]
+# push=1 pushes to the registry with cache export; push=0 builds locally only.
 _cross_stage_build_impl() {
   local push_flag="$1" label="$2" tag="$3" dockerfile="$4"
   shift 4
@@ -113,30 +63,20 @@ _cross_stage_build_impl() {
   )
 
   if [ "${push_flag}" -eq 1 ]; then
-    # Stamp the parent reference this build actually consumed onto the pushed
-    # manifest. Digest pinning keeps a single run honest; this annotation is what
-    # lets a LATER partial run prove it is not resuming on top of a stale
-    # ancestor (see ancestry.sh). Guarded so cross-stage-build.sh stays usable
-    # when sourced without ancestry.sh.
+    # Stamp the parent ref this build consumed onto the pushed manifest: it is how
+    # a LATER partial run proves it is not on a stale ancestor (see ancestry.sh).
     local _ancestry_ann=""
     if declare -F ancestry_output_annotations >/dev/null 2>&1; then
       _ancestry_ann="$(ancestry_output_annotations \
         "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
     fi
-    # PUSH1 (2026-08-18): compress NEW layers with zstd — measured uplink is
-    # ~4-5 MB/s, so push time IS the parallel-chain ceiling (compiler ~30 min,
-    # 3 media images contend). zstd compresses faster than gzip AND ~30-40%
-    # smaller. Deliberately NOT force-compression: parent layers already in the
-    # registry keep their encoding and are skipped, only this stage's own
-    # layers are (re)compressed. Digest pinning is unaffected (pin is read
-    # back from the registry AFTER push). Revert knob: CROSS_LAYER_COMPRESSION=gzip.
+    # PUSH1 (2026-08-18): zstd (not force-compression) for NEW layers — push time
+    # is the chain ceiling on a ~4-5 MB/s uplink. Knob: CROSS_LAYER_COMPRESSION.
     build_cmd+=(
       --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
     )
-    # Supply-chain attestations (opt-in via BUILD_ATTEST=1): SLSA provenance +
-    # an SBOM attached to the pushed image as OCI referrers. Off by default
-    # because the SBOM scanner adds time to every stage; enable for release/
-    # publish builds. nerdctl >=2 maps these to buildkit --attest.
+    # Opt-in SLSA provenance + SBOM as OCI referrers; off by default because the
+    # SBOM scanner adds time to every stage.
     if [ -n "${BUILD_ATTEST:-}" ]; then
       build_cmd+=(
         --provenance=mode=max
@@ -145,45 +85,27 @@ _cross_stage_build_impl() {
     fi
   fi
 
-  # ---------------------------------------------------------------------------
-  # Build cache. A LOCAL buildkit cache is primary: it survives repeated
-  # rebuilds on the same host and never touches the registry, so it cannot hit
-  # ghcr.io's "400 Bad Request" on oversized mode=max cache blobs.
-  #
-  # This replaces a self-defeating scheme: the old code added --cache-from
-  # type=registry,ref=<tag>-buildcache always, but gated the matching
-  # --cache-to behind NO_CACHE_EXPORT. With NO_CACHE_EXPORT=1 the -buildcache
-  # ref was NEVER written, so --cache-from pointed at a ref that did not exist
-  # -> BuildKit failed the importer and every stage rebuilt from scratch.
-  #
-  # A missing/empty local src is a clean cache miss, never an error, so this is
-  # safe on the very first build. mode=max keeps intermediate-stage layers.
-  # ---------------------------------------------------------------------------
+  # A LOCAL buildkit cache is primary: it survives rebuilds and never hits ghcr's
+  # 400 on oversized mode=max cache blobs. See docs/build-cache-tiers.md.
   if [ -z "${NO_CACHE:-}" ]; then
     local _cache_dir _cache_slug
     _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
     _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
     mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
-    # Only READ from the local cache when it actually holds a manifest. A freshly
-    # created or pruned slug dir has no index.json, and pointing --cache-from at it
-    # makes BuildKit log a spurious "could not read .../kata-buildcache/..." that
-    # reads like a cache fault (it is just a clean miss). Always WRITE (--cache-to).
+    # Only READ when the slug holds a manifest: --cache-from at an index.json-less
+    # dir logs a "could not read" that reads like a fault but is a clean miss.
     if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
       build_cmd+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
     fi
-    # CROSS_NO_LOCAL_CACHE_EXPORT is set by the chain disk-guard when even
-    # LRU-pruning could not clear the free-space threshold: stop WRITING new
-    # local exports (the disk cost) while still READING whatever survived.
+    # Set by the chain disk-guard when pruning could not clear the free-space
+    # threshold: stop WRITING new local exports, keep READING what survived.
     if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
       build_cmd+=(
         --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
       )
     fi
-    # When pushing, also ride an inline cache inside the image (mode=min,
-    # embedded in the image config -> no separate blob, so no 400) and read it
-    # back from the tag itself, letting other hosts warm-start from the
-    # registry. NO_CACHE_EXPORT keeps the local cache but skips this
-    # registry-facing export.
+    # Inline cache (mode=min, in the image config — no separate blob, so no 400)
+    # lets other hosts warm-start from the tag. NO_CACHE_EXPORT skips only this.
     if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
       build_cmd+=(
         --cache-from "type=registry,ref=${tag}"
@@ -202,22 +124,15 @@ _cross_stage_build_impl() {
     return 0
   fi
 
-  # Execute the build. When pushing, a transient registry/network hiccup
-  # (dropped upload, 5xx, EOF -- e.g. a ~8GiB wrapper push over a throttled link
-  # that resets mid-transfer) must not discard a completed multi-GB build:
-  # retry the whole command -- BuildKit cache-hits the built layers and only
-  # re-pushes -- but ONLY when the failure looks transient, so a real build
-  # error still fails immediately. Tunables: PUSH_MAX_ATTEMPTS (default 4),
-  # PUSH_RETRY_BASE_SECS (default 15, linear backoff: 15s, 30s, 45s...).
+  # A transient registry hiccup must not discard a completed multi-GB build: retry
+  # the whole command (layers cache-hit). PUSH_MAX_ATTEMPTS, PUSH_RETRY_BASE_SECS.
   local _max_attempts=1
   [ "${push_flag}" -eq 1 ] && _max_attempts="${PUSH_MAX_ATTEMPTS:-4}"
   local _attempt=1 _rc=0 _delay _regcache_fails=0
   while :; do
     if [ -n "${log_file}" ]; then
-      # Real pipe, not process substitution: the shell waits for tee to drain,
-      # so a fast-failing build's tail is always flushed to the log.
-      # PIPESTATUS[0] returns the BUILD's exit code (not tee's 0), independent
-      # of pipefail.
+      # Real pipe, not process substitution: the shell waits for tee, so a fast
+      # failure's tail still reaches the log. PIPESTATUS[0] is the build's rc.
       run "${build_cmd[@]}" 2>&1 | tee -a "${log_file}"
       _rc="${PIPESTATUS[0]}"
     else
@@ -227,15 +142,8 @@ _cross_stage_build_impl() {
     [ "${_rc}" -eq 0 ] && return 0
     if [ "${_attempt}" -ge "${_max_attempts}" ] \
        || ! _cross_stage_push_error_is_transient "${log_file}"; then
-      # S1 salvage-cache-export (backlog 2026-08-11): --cache-to type=local
-      # only materializes on a SUCCESSFUL solve, so a failed stage discards
-      # every completed vertex (~8h of arm64 media work exported ZERO cache
-      # once). Re-drive the same build per named Dockerfile stage (--target):
-      # a subtree that completed is a pure cache-hit and its export lands in
-      # seconds. A subtree containing the broken vertex would RE-RUN it, so
-      # each target gets a hard timeout and two consecutive failures stop the
-      # sweep (later file-order targets almost certainly sit downstream of
-      # the same break). Opt out with SALVAGE_CACHE_EXPORT=0.
+      # S1: --cache-to type=local only materializes on a SUCCESSFUL solve — re-drive
+      # per --target to salvage completed subtrees. docs/build-cache-tiers.md
       if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
          && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run; then
         local -a _salvage_targets=()
@@ -244,6 +152,9 @@ _cross_stage_build_impl() {
           "${dockerfile}" 2>/dev/null | awk '{print $NF}')
         if [ "${#_salvage_targets[@]}" -gt 0 ]; then
           warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
+          # A target whose subtree holds the broken vertex RE-RUNS it, hence the
+          # hard timeout; and later file-order targets sit downstream of the same
+          # break, hence the stop after 2 consecutive failures.
           local _tgt _salvage_fails=0 _salvage_ok=0
           for _tgt in "${_salvage_targets[@]}"; do
             [ "${_salvage_fails}" -ge 2 ] && break
@@ -263,14 +174,8 @@ _cross_stage_build_impl() {
       fi
       return "${_rc}"
     fi
-    # ghcr cache-import flake class (2026-08-18): `DeadlineExceeded: failed to
-    # compute cache key: ... httpReadSeeker ... no active session` killed 6
-    # attempts across 2 lanes in one afternoon — the REGISTRY CACHE IMPORT
-    # itself is the failing read, so retrying the identical command just
-    # re-rolls the dice. After 2 such failures, drop the registry cache
-    # import/export from the remaining retries: the LOCAL cache still carries
-    # the fast-forward; only cross-host warm-start is lost for this build.
-    # (Manual recovery that day was exactly this, via NO_CACHE_EXPORT=1.)
+    # ghcr cache-import flake (2026-08-18): the registry cache IMPORT is itself the
+    # failing read, so after 2 hits drop it — the local cache still fast-forwards.
     if [ -n "${log_file}" ] \
        && tail -n 40 "${log_file}" 2>/dev/null | grep -qE 'DeadlineExceeded|httpReadSeeker'; then
       _regcache_fails=$(( _regcache_fails + 1 ))
@@ -299,50 +204,16 @@ _cross_stage_build_impl() {
   done
 }
 
-# ==============================================================================
-# cross_stage_build_and_push
-#
-# Build a cross-lane stage image on linux/amd64, push it to the registry.
-#
-# Uses registry build cache via --cache-from / --cache-to for faster rebuilds.
-# Respects DRY_RUN (when set to 1, prints the command without executing).
-#
-# Usage: cross_stage_build_and_push <label> <tag> <dockerfile> [extra build args...]
-# ==============================================================================
 cross_stage_build_and_push() {
   _cross_stage_build_impl 1 "$@"
 }
 
-# ==============================================================================
-# cross_stage_build_local
-#
-# Build a cross-lane stage image locally on linux/amd64 WITHOUT pushing.
-# The image stays in the local containerd store.
-#
-# Respects DRY_RUN (when set to 1, prints the command without executing).
-#
-# Usage: cross_stage_build_local <label> <tag> <dockerfile> [extra build args...]
-# ==============================================================================
 cross_stage_build_local() {
   _cross_stage_build_impl 0 "$@"
 }
 
-# ==============================================================================
-# cross_stage_resolve_parent_pin
-#
-# Resolve the digest-pinned parent reference for a stage using the stage graph.
-# Checks captured pins from this orchestration run first; falls back to the
-# parent tag's current registry digest if the parent wasn't built in this run
-# (e.g. when using --from-stage to resume mid-chain).
-#
-# Returns an empty string for the base stage (no parent).
-#
-# The captured pins are accessed via cross_stage_pin_varname() from stage-defs.sh.
-# The caller's scope must contain the pin variables (BASE_PIN, COMPILER_PIN,
-# SDK_PIN[], MEDIA_PIN[], ANDROID_PIN[]) as declared by the orchestrator.
-#
-# Usage: parent_pin="$(cross_stage_resolve_parent_pin "media" "arm64")"
-# ==============================================================================
+# Digest-pinned parent ref for a stage: this run's captured pins first, else the
+# parent tag's registry digest. Empty for base. Needs the pin vars in scope.
 cross_stage_resolve_parent_pin() {
   local stage="$1" arch="${2:-}"
   local parent parent_tag parent_pin_varname captured
@@ -371,14 +242,7 @@ cross_stage_resolve_parent_pin() {
   resolve_pin "${captured}" "${parent_tag}"
 }
 
-# ==============================================================================
-# resolve_pin
-#
-# Resolve a digest pin: prefer a captured value from this orchestration run,
-# otherwise fall back to the registry digest of the given tag.
-#
-# Usage: pinned_ref="$(resolve_pin "${captured}" "${tag}")"
-# ==============================================================================
+# Prefer a pin captured in this run; otherwise the registry digest of the tag.
 resolve_pin() {
   local captured="$1" tag="$2"
   if [ -n "${captured}" ]; then
@@ -397,54 +261,13 @@ resolve_pin() {
   printf '%s' "${result}"
 }
 
-# ==============================================================================
-# cross_stage_run
-#
-# Full cross-stage orchestration: resolve the parent reference, assemble build
-# args, run the build (with or without push), and capture the output digest pin.
-#
-# Parameters:
-#   $1  stage name (base|compiler|sdk|media|android)
-#   $2  target architecture (required for per-arch stages; empty for base/compiler)
-#   $3  push flag: 1 = build and push with digest pinning (default);
-#       0 = build locally, no push, no pin capture
-#
-# When push=1:
-#   - The parent is resolved via digest-pinned reference (registry digest or
-#     captured in-run pin). This prevents stale base reuse.
-#   - The stage image is pushed to the registry via cross_stage_build_and_push().
-#   - The pushed digest is captured and stored in the appropriate pin variable
-#     (BASE_PIN, COMPILER_PIN, SDK_PIN[arch], etc.) for downstream stages.
-#
-# When push=0:
-#   - The parent is resolved via the mutable tag (safe for local-only builds
-#     since no downstream stage will inherit from a stale image).
-#   - The image stays local via cross_stage_build_local().
-#   - No pin is captured.
-#
-# Pin capture is guarded: if the expected pin variable is not declared in the
-# calling scope, the pin is logged but not stored (safe for standalone scripts).
-#
-# Usage:
-#   cross_stage_run "media" "arm64"        # push (default)
-#   cross_stage_run "compiler" "" 0        # local only
-# ==============================================================================
-# Resolve the parent image reference (digest-pinned for push, mutable tag for
-# local) and append it to the build_args nameref. Returns the pinned ref on
-# stdout (empty when local/no parent).
-# Sets the resolved pin (empty for local/no-parent) into the global
-# _CROSS_STAGE_PARENT_PIN. NOTE: this function MUST be called directly (not in a
-# command substitution) — it mutates the build_args nameref in $1, and a $(...)
-# subshell would discard that mutation, silently dropping --build-arg BASE_IMAGE
-# and making the FROM fall back to the Dockerfile default. The pin is returned
-# via a global instead of stdout precisely so the caller need not use $(...).
+# Appends BASE_IMAGE to the build_args nameref and sets _CROSS_STAGE_PARENT_PIN.
+# Call directly: a $(...) subshell would discard that and drop BASE_IMAGE.
 _cross_stage_run_resolve_parent() {
   local -n _csrrp_out="$1"
   local stage="$2" arch="$3" push_flag="$4" parent="$5"
   _CROSS_STAGE_PARENT_PIN=""
-  # Parent stage NAME travels alongside the pin so the recorded annotation is
-  # self-describing when read back by hand (the graph could have been reordered
-  # since the image was built).
+  # Parent stage NAME travels with the pin so the annotation is self-describing.
   _CROSS_STAGE_PARENT_STAGE="${parent}"
 
   if [ -z "${parent}" ]; then
@@ -466,8 +289,6 @@ _cross_stage_run_resolve_parent() {
   fi
 }
 
-# Dispatch the build to cross_stage_build_and_push (push) or
-# cross_stage_build_local (local) based on the push_flag.
 _cross_stage_run_dispatch() {
   local label="$1" tag="$2" dockerfile="$3" push_flag="$4"
   shift 4
@@ -478,10 +299,6 @@ _cross_stage_run_dispatch() {
   fi
 }
 
-# Capture the just-pushed image's registry digest and persist it into the
-# stage's pin variable (per-arch associative array for per-arch stages, scalar
-# for shared stages). Under --parallel-archs, also writes to the loop's flag dir
-# so parallel_loop_harvest() can read it back into the parent shell.
 _cross_stage_run_capture_pin() {
   local stage="$1" arch="$2" label="$3" tag="$4"
 
@@ -505,9 +322,8 @@ _cross_stage_run_capture_pin() {
         local -n built_flag="${built_flag_varname}"
         built_flag["${arch}"]=1
       fi
-      # Under --parallel-archs this function runs in a background SUBSHELL:
-      # the array writes above are lost to the parent. Persist to the loop's
-      # flag dir; parallel_loop_harvest() reads them back after the join.
+      # Under --parallel-archs this runs in a background SUBSHELL, so the array
+      # writes above are lost to the parent; parallel_loop_harvest() reads these.
       if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
         printf '%s' "${pinned_digest}" > "${PARALLEL_LOOP_FLAGDIR}/pin.${stage}.${arch}"
         : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
@@ -523,6 +339,8 @@ _cross_stage_run_capture_pin() {
   fi
 }
 
+# cross_stage_run <stage> [arch] [push=1]: resolve parent, build, capture pin.
+# push=0 builds locally against the mutable parent tag and captures no pin.
 cross_stage_run() {
   local stage="$1" arch="${2:-}" push_flag="${3:-1}"
   # --no-push (CROSS_NO_PUSH=1): build every stage locally, skip the ghcr push.
@@ -544,20 +362,14 @@ cross_stage_run() {
 
   parent="$(cross_stage_parent "${stage}")"
 
-  # Call directly (NOT via $(...)): the function mutates the build_args nameref;
-  # a command-substitution subshell would discard that and drop BASE_IMAGE.
+  # Call directly, never via $(...): it mutates the build_args nameref.
   _cross_stage_run_resolve_parent build_args "${stage}" "${arch}" "${push_flag}" "${parent}"
   parent_pin="${_CROSS_STAGE_PARENT_PIN}"
 
-  # Append stage-specific build args from the stage graph
   cross_stage_build_args build_args "${stage}" "${arch}"
 
-  # EXPLICIT failure propagation (|| return 1): this function is reached via
-  # run_parallel_arch_loop's `if ! _cross_per_arch_build`, which disables set -e
-  # for the whole call tree. Without the explicit check a failed build would
-  # fall through to _cross_stage_run_capture_pin below and the function would
-  # return success, so the chain would march on to the next stage on a broken
-  # (unpushed) image. Do NOT let that happen.
+  # Explicit `|| return 1`: run_parallel_arch_loop's `if !` disables set -e for
+  # this call tree, so a failed build would otherwise pin and march on.
   if [ "${push_flag}" -eq 1 ]; then
     log "[stage ${label}] building ${tag}${parent_pin:+ FROM ${parent_pin}}"
     _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 1 "${build_args[@]}" || return 1
@@ -566,13 +378,9 @@ cross_stage_run() {
     _cross_stage_run_dispatch "${label}" "${tag}" "${dockerfile}" 0 "${build_args[@]}" || return 1
   fi
 
-  # Pin capture: only on push, and only when not a dry run
   if [ "${push_flag}" -eq 0 ]; then
-    # Record built-this-run even for LOCAL builds. The runtime handoff
-    # (cross_stage_ensure_parent_available) uses this flag to skip its registry
-    # pull of the parent image; without it a --no-push run pulled the STALE
-    # published cross-android tag over the image it had just built and silently
-    # validated last release's artifacts.
+    # Record built-this-run for LOCAL builds too: without it the runtime handoff
+    # pulls the STALE published parent over the image this run just built.
     if ! is_dry_run && cross_stage_is_per_arch "${stage}"; then
       local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
       if declare -p "${built_flag_varname}" &>/dev/null; then
@@ -593,10 +401,8 @@ cross_stage_run() {
   _cross_stage_run_capture_pin "${stage}" "${arch}" "${label}" "${tag}"
 }
 
-# Harvest hook for run_parallel_arch_loop: read worker-persisted digest pins
-# and built-this-run flags back into the parent's arrays (background subshell
-# writes are otherwise lost — the pins silently vanished under
-# --parallel-archs before this existed).
+# Harvest hook for run_parallel_arch_loop: read worker-persisted pins and
+# built-this-run flags back into the parent's arrays (subshell writes are lost).
 parallel_loop_harvest() {
   local flagdir="$1" f name stage arch pin_varname built_varname
   for f in "${flagdir}"/pin.*.*; do
@@ -619,17 +425,8 @@ parallel_loop_harvest() {
   done
 }
 
-# ==============================================================================
-# cross_stage_assemble_runtime_helper_args
-#
-# Build the argument array for build-runtime-manifest.sh from the orchestrator's
-# state (IMAGE_REPO, FINAL_IMAGE, TARGET_ARCHES, mirror settings).
-#
-# Exists here so the orchestrator and the runtime helper share a single canonical
-# source for the handoff interface.
-#
-# Usage: cross_stage_assemble_runtime_helper_args <nameref>
-# ==============================================================================
+# Build the argument array for build-runtime-manifest.sh from orchestrator state:
+# one canonical source for the orchestrator/runtime-helper handoff.
 cross_stage_assemble_runtime_helper_args() {
   local -n _arha_out=${1}
   _arha_out=(
@@ -638,13 +435,8 @@ cross_stage_assemble_runtime_helper_args() {
     --artifact-image-prefix "${IMAGE_REPO}:cross-android"
     --artifact-build-mode cross
   )
-  # XC2: thread the captured, immutable android digests into the runtime helper
-  # so the package build copies from — and the wrapper/package pushes record —
-  # the exact android generation this run produced, instead of whatever the
-  # mutable :cross-android-<arch> tag currently resolves to. Exported (not passed
-  # as flags) so the child inherits them via the `env` exec in run_runtime_stage.
-  # Guarded: a standalone helper run without ANDROID_PIN in scope simply falls
-  # back to the mutable tag (unchanged behavior).
+  # XC2: export (not flags — the child inherits via run_runtime_stage's `env`
+  # exec) this run's android digests, so the helper skips the mutable tag.
   if declare -p ANDROID_PIN &>/dev/null; then
     local -n _arha_android_pin=ANDROID_PIN
     local _arha_arch _arha_var
@@ -654,17 +446,8 @@ cross_stage_assemble_runtime_helper_args() {
       export "${_arha_var}=${_arha_android_pin[$_arha_arch]}"
     done
   fi
-  # Publish final images + manifest unless CROSS_NO_PUSH (validation runs stay
-  # local to skip the slow multi-GB ghcr uploads; the chain still works via the
-  # local image store). See build-cross-chain.sh --no-push.
-  #
-  # Under --no-push the per-arch wrapper tags are never pushed, so a multi-arch
-  # manifest index has no registry descriptors to reference — `nerdctl manifest
-  # create` is registry-based (docker-manifest semantics; it resolves the
-  # referenced manifests FROM the registry, not the local containerd store) and
-  # would fail "no such manifest" at the very end of an otherwise-green run.
-  # Skip manifest creation too; the per-arch images are still built, loaded
-  # locally, and boot-smoked, which is all a local validation run needs.
+  # Under --no-push the per-arch wrapper tags are never pushed, and `nerdctl
+  # manifest create` resolves members FROM the registry — so skip the manifest.
   if [ "${CROSS_NO_PUSH:-0}" = "1" ]; then
     _arha_out+=(--skip-manifest)
   else
