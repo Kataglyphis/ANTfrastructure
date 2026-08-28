@@ -18,9 +18,7 @@ The Linux-side equivalent is [`refactoring-backlog.md`](refactoring-backlog.md).
 
 ## OPEN
 
-### ARM64 parity (opened 2026-08-23)
-
-**LAST MEASURED STATE — arm64 run 36 / amd64 run 8, both on 2026-08-26 midday, numbers re-read
+### ARM64 parity (opened 2026-08-23) — arm64 run 36 / amd64 run 8, both on 2026-08-26 midday, numbers re-read
 from the run logs rather than carried forward.** On that tree the `:winarm64` cross lane reached
 runtime parity with `:winamd64` apart from the four exclusions listed below. **HEAD is not that
 tree** — see #134 for what has landed since and why none of the four acceptance attempts has
@@ -84,14 +82,6 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   a scaffold whose asserts are written to fail loudly on the first staged zip. Full description in
   `docs/windows-cross-builds.md` § QNN. Open: stage a real SDK, run once, then a native Snapdragon
   host for execution.
-
-- **#122 — CUDA on arm64: CLOSED 2026-08-28 (owner decision: no near-term CUDA-in-Windows
-  plan).** Phase-0 probe done: cuDNN arm64 ships (~90 MB at the pin, NOT the 421 MB recorded
-  before); CUDA itself does not — no `windows-arm64` redist or installer at 13.4 or any 12.x/13.3.x.
-  Full probe narrative and the corrected "421 MB" figure:
-  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #122.
-  Re-open only if NVIDIA publishes a `windows-arm64` CUDA toolkit AND the owner wants to wire it.
-  One parked free fix (arch-parameterise the cuDNN URL in `setup-cuda.ps1:138`) lives there too.
 
 **Permanently out of reach — do not re-litigate without new upstream facts:** classic TensorRT
 (genuinely x64-only — NVIDIA's support matrix has no ARM64 row), and the `torch` app stage (`uv
@@ -427,22 +417,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   4. Upstream bug (a) layout estimate — reportable but not a prerequisite;
      (b) asm printer missing `:lo12:` — FILED as llvm#219200.
 
-- **#136 — VS RUN never cached across runs: SOLVED + DEPLOYED 2026-08-26, archived.** The
-  GC reserve in `windows/buildkitd.toml` was below the single ~37 GB VS-class layer
-  (`reservedSpace` 40 GB, `maxUsedSpace` 400/450 GB); raised to 150/650/700 GB and proven
-  by the next build (`#9 CACHED` for the first time). Full narrative + the `0B` = "already
-  pruned to floor" inversion lesson:
-  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #136.
+### CLOSED (pointers — full narratives in the dated archives)
 
-- **#137 — sccache: DONE 2026-08-28 (pin bumped, 0003 deleted, patch dir removed).**
-  `SCCACHE_GIT_REV` bumped `ffac4a5…` to `8ab39266…` (main HEAD, carries both
-  PRs). The 0003 patch file and `windows/upstream/sccache-nvcc-quote-fix/`
-  deleted. `Dockerfile.base` COPY of the patch dir removed.
-  `setup-rust-toolchain.ps1` takes the stock `cargo install --git --rev` path
-  (no patches = no local-apply branch). Comment blocks updated in
-  `setup-rust-toolchain.ps1`, `Dockerfile.base`, `Dockerfile.media-builder`.
-  **This is a base-layer change that re-keys every media stage — needs a
-  rebuild to land.**
+- **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision). Probe: cuDNN arm64
+  ships (~90 MB), CUDA itself does not. Archive: `windows-backlog-archive-2026-08-26.md` § #122.
+- **#136** — VS RUN caching: SOLVED + DEPLOYED 2026-08-26 (GC reserve raised). Archive: `windows-backlog-archive-2026-08-26.md` § #136.
+- **#137** — sccache: DONE 2026-08-28 (pin bumped, 0003 deleted). Needs rebuild to land.
 
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
