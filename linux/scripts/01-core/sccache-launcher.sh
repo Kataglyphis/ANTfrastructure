@@ -1,47 +1,11 @@
 #!/bin/sh
-# ==============================================================================
-# sccache-launcher.sh — run the compiler through sccache, but never let
-# sccache's OWN failure kill the build.
-#
-# THE PROBLEM THIS SOLVES (2026-08-26, proven)
-# --------------------------------------------
-# sccache differs from ccache in one decisive way: where ccache falls through
-# and execs the compiler, sccache exits non-zero. During the ccache->sccache
-# switch that turned two harmless situations into build breaks, both inside
-# CMake's TryCompile probes:
-#
-#   sccache: error: while hashing the input file
-#     '.../CMakeFiles/CMakeScratch/TryCompile-XXXX/testCCompiler.c'
-#   sccache: error: failed to spawn Command { std: cd
-#     '.../CMakeFiles/CMakeScratch/TryCompile-XXXX' && ... }
-#   caused by: No such file or directory (os error 2)
-#
-# Root cause, measured: CMake creates a TryCompile scratch directory, compiles
-# in it, and DELETES it. sccache then spawns the compiler with that directory
-# as the working directory — and spawning a process whose cwd no longer exists
-# fails with ENOENT. Verified directly:
-#   python3 -c "spawn /bin/true with cwd=<deleted dir>" -> errno 2
-# That is why the failure moved between OpenCV, onnxruntime and IREE (whichever
-# probe lost the race) and why it never reproduced against directories that
-# persist.
-#
-# WHAT THIS DOES
-# --------------
-# Try sccache. If it succeeds, done — the cache works exactly as before. If it
-# fails, look at WHOSE failure it was:
-#   * "sccache: encountered fatal error"  -> sccache broke, not the code.
-#     Re-run the compiler directly so the build continues uncached.
-#   * anything else                        -> a REAL compile error. Pass the
-#     compiler's own stderr and exit status through untouched.
-# The distinction matters: blindly retrying would hide genuine compile errors
-# behind a second run, which is worse than the problem being fixed.
-#
-# This keeps the owner directive intact — sccache is still tried for every
-# compile — while removing the one behaviour that made it unusable here.
+# Run the compiler through sccache, but never let sccache's OWN failure kill the
+# build: only "sccache: encountered fatal error" falls through to running the
+# compiler directly; a real compile error passes through untouched. Why, and the
+# CMake TryCompile root cause: docs/build-cache-tiers.md.
 #
 # Usage: CMAKE_<LANG>_COMPILER_LAUNCHER=/opt/scripts/core/sccache-launcher.sh
 #        or CC="/opt/scripts/core/sccache-launcher.sh gcc"
-# ==============================================================================
 set -u
 
 # /tmp, not the cwd: the cwd is exactly what may have been deleted underneath
