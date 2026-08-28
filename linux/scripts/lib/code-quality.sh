@@ -1,111 +1,11 @@
 #!/usr/bin/env bash
 # code-quality.sh - generic "format and statically analyse a C/C++ tree" core.
 #
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the CODE_QUALITY_* variables below (its project
-# defaults), sources this file, and calls the individual step functions in the
-# order it wants.
+# Wrappers set the CODE_QUALITY_* variables, source this file, then call the step
+# functions. Variables, and the seven known Linux/Windows divergences, are in
+# docs/code-quality-tooling.md § linux/scripts/lib/code-quality.sh.
 #
-# It deliberately does NOT set -e / -u / -o pipefail so that sourcing it cannot
-# change the caller's shell options; wrappers are expected to run under
-# `set -euo pipefail` themselves.
-#
-# ---------------------------------------------------------------------------
-# KNOWN DIVERGENCES FROM THE WINDOWS FORMATTING/TIDY PATH - READ BEFORE
-# "UNIFYING" THE TWO SIDES
-# ---------------------------------------------------------------------------
-# The Windows equivalent of this library is split across
-#   windows/scripts/modules/WindowsFormatting.Common.psm1   (upstream, here)
-#   windows/scripts/modules/WindowsCMake.Common.psm1        (upstream, here)
-#   scripts/windows/modules/WindowsClang.Common.psm1        (consumer project)
-# An audit found the two sides have genuinely drifted on six axes. They are
-# listed here so that a future unification is a decision with the facts in
-# hand rather than an accident. This library reproduces the LINUX behaviour
-# exactly; none of these were "fixed" during the extraction.
-#
-#   1. Source roots.
-#      Linux   clang-format AND clang-tidy walk both Src and Test.
-#      Windows Get-ProjectCppFiles walks the whole workspace for clang-format,
-#              but Invoke-ClangTidyFixStep filters clang-tidy down to Src only
-#              (`$_ -like "$srcDir*"`), so Test is never tidied.
-#
-#   2. C++20 module-TU skip.
-#      Linux   feeds every .c/.cc/.cpp/.cxx to clang-tidy.
-#      Windows reads each file and skips it when it matches
-#              '^import\s+kataglyphis' ("uses C++20 module syntax"). Linux has
-#              no such skip, so module TUs ARE analysed there.
-#
-#   3. --header-filter.
-#      Linux   passes none, so clang-tidy applies its default (headers matching
-#              the main file's stem only).
-#      Windows passes --header-filter=<escaped Src dir>.* to restrict diagnostics
-#              to project headers and suppress ExternalLib noise.
-#
-#   4. --checks.
-#      Linux   passes a checks argument (the consumer currently disables one
-#              check that crashes its clang-tidy build).
-#      Windows deliberately defaults $Checks to an EMPTY array - a comment there
-#              records that an imposed --checks=-misc-include-cleaner used to
-#              crash some clang-tidy versions.
-#
-#   5. Invocation shape.
-#      Linux   invokes clang-format and clang-tidy ONCE with the whole file list
-#              (fast, but one crash loses the entire run).
-#      Windows invokes both per file in a foreach loop (slower, but isolates
-#              failures and lets it log per-file skips).
-#
-#   6. Missing compile_commands.json.
-#      Linux   hard-errors and tells the user to configure CMake first.
-#      Windows regenerates it via `ninja -C <build> -t compdb` when build.ninja
-#              and ninja are present, and only throws if that is impossible.
-#
-# A seventh, smaller difference: the file-enumeration walks themselves. Linux
-# uses `find` with -not -path exclusions; Windows prefers `git ls-files` with a
-# Get-ChildItem fallback (needed because its container receives sources by
-# tar-pipe and therefore has no .git). The exclusion SETS also differ
-# (Windows additionally drops _deps, vcpkg_installed, .venv and site-packages).
-# ---------------------------------------------------------------------------
-#
-# Optional caller variables (all have safe defaults):
-#   CODE_QUALITY_PROJECT_ROOT        absolute repo root; used as the replacement
-#                                    for the container workspace prefix when
-#                                    remapping a compile DB (default: $PWD)
-#   CODE_QUALITY_CMAKE_SEARCH_ROOT   root of the cmake-format walk (default: .)
-#   CODE_QUALITY_CMAKE_EXCLUDE_PATHS array of `find -not -path` globs applied to
-#                                    the cmake-format walk (default: empty)
-#   CODE_QUALITY_CMAKE_FORMAT_CONFIG cmake-format config file; passed with -c
-#                                    only when it exists (default:
-#                                    .cmake-format.yaml)
-#   CODE_QUALITY_CPP_FORMAT_EXTENSIONS   extensions clang-format is fed
-#   CODE_QUALITY_CLANG_TIDY_EXTENSIONS   extensions clang-tidy is fed (TUs only)
-#   CODE_QUALITY_CLANG_TIDY_ARGS     array of extra clang-tidy arguments, e.g.
-#                                    per-project -checks= / --header-filter=
-#                                    (default: empty - see divergence 4)
-#   CODE_QUALITY_CLANG_TIDY_FIX      "true" to append -fix (default: false)
-#   CODE_QUALITY_COMPILE_DB_HINT     extra sentence appended to the "missing
-#                                    compile_commands.json" error, e.g. the
-#                                    project's configure command line
-#   CODE_QUALITY_CONTAINER_WORKSPACE container mount point whose paths are
-#                                    remapped in a compile DB (default:
-#                                    /workspace; empty disables the remap)
-#   CODE_QUALITY_GCC_TOOLCHAIN_PROBE_DIR  directory whose ABSENCE means the
-#                                    container GCC toolchain is unavailable
-#                                    locally; empty (the default) disables the
-#                                    toolchain-flag stripping entirely
-#   CODE_QUALITY_GCC_TOOLCHAIN_PREFIX  path prefix matched when stripping those
-#                                    container-only toolchain flags
-#                                    (default: /opt/gcc-)
-#   CODE_QUALITY_VENV_DIR            virtualenv used to obtain cmake-format
-#                                    (default: <project root>/.venv)
-#   CODE_QUALITY_UV_VENV_CREATE_SCRIPT       script that creates the venv
-#   CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT  script that installs its
-#                                    requirements; both are run with the project
-#                                    root as cwd and are only needed when
-#                                    cmake-format is not already on PATH
-#
-# Everything the wrapper does not provide is discovered from the environment:
-# logging comes from 01-core/logging.sh (or minimal fallbacks) and tool presence
-# checks from the caller's require_tools/has_tool when it declares them.
+# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
 
 [ -n "${_CODE_QUALITY_SH_LOADED:-}" ] && return 0
 _CODE_QUALITY_SH_LOADED=1

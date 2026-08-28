@@ -154,7 +154,7 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
         # had no other gate: a key the DRIVER forwards that NO stage declares is
         # silently dropped, and the branch's build scripts fall back to the value
         # baked into the base image, possibly months old
-        # (WindowsBuildDriver.Common.psm1:315 "COMPLETENESS IS LOAD-BEARING").
+        # (WindowsBuildDriver.Common.psm1, Get-MediaBranchVersionArg: "COMPLETENESS IS LOAD-BEARING").
         # The union is therefore now checked against the driver's own map. That
         # is a cross-FILE check between the two things that must agree, where the
         # old one compared two blocks of the same Dockerfile.

@@ -1,42 +1,21 @@
 #!/usr/bin/env bash
 # Register QEMU user-mode emulators for rootless containerd + BuildKit — NO sudo.
 #
-# Why this exists (and why `tonistiigi/binfmt --install` alone does NOT work here):
-#   A rootless `nerdctl run --privileged --rm tonistiigi/binfmt --install all`
-#   registers binfmt_misc inside that throwaway container's OWN user namespace,
-#   which is destroyed on `--rm`. It never reaches the namespace where containers
-#   and builds actually run, so foreign-arch execs fail with "exec format error"
-#   even though the installer prints "arch OK".
+# `tonistiigi/binfmt --install` alone does NOT work here: it registers inside the
+# throwaway container's own user namespace, which --rm destroys, so foreign-arch
+# execs still fail with "exec format error" after it prints "arch OK".
+# buildkitd is nsenter'd into containerd's rootlesskit namespace, so run and
+# build SHARE one persistent namespace — registering QEMU once there fixes both.
 #
-#   In this rootless setup, buildkitd is launched *nsenter'd into containerd's
-#   rootlesskit namespace* (see `systemctl --user cat buildkit.service`:
-#   `ExecStart=... containerd-rootless-setuptool.sh nsenter -- buildkitd ...`), so
-#   `nerdctl run` (containerd) and `nerdctl build` (BuildKit) SHARE one persistent
-#   rootless namespace. Registering QEMU *once* in that shared namespace makes both
-#   emulate correctly — fully rootless.
+# Flags "POCF": P preserves argv[0] (without it qemu drops argv[1], so `sh -c CMD`
+# loses `-c`); F makes the kernel open the interpreter fd at registration time, so
+# it is inherited into nested namespaces where the qemu path is not mounted.
 #
-# What it does:
-#   1. Extracts static qemu-<arch> emulators from the tonistiigi/binfmt image to a
-#      stable host path (no `nerdctl cp`, which rejects stopped rootless containers).
-#   2. Enters the shared rootlesskit namespace via `containerd-rootless-setuptool.sh
-#      nsenter` and, if the propagated host binfmt_misc there is read-only, overmounts
-#      a fresh, namespace-owned (writable) binfmt_misc.
-#   3. Registers each emulator with flags "POCF":
-#        P = preserve-argv[0]  (REQUIRED — without it qemu drops argv[1]; e.g.
-#            `sh -c CMD` loses `-c` and dash treats CMD as a filename)
-#        O = open-binary as fd (works when the target isn't on the interpreter's path)
-#        C = credentials (setuid/setgid handling)
-#        F = fix-binary (kernel opens the interpreter fd at registration time, so it
-#            is inherited into nested build/run namespaces where the qemu path is
-#            not mounted)
+# The registration dies with the namespace (containerd restart / reboot). Re-run
+# after a reboot, or use --install-service.
 #
-# The registration lives in the rootlesskit namespace and persists until that
-# namespace exits (containerd.service restart / reboot). Re-run this script after a
-# reboot, or install it as a systemd --user unit with `--install-service`.
-#
-# Usage:
-#   linux/scripts/setup-rootless-binfmt.sh [--arches arm64,riscv64] [--force]
-#                                          [--install-service] [--verify]
+# Usage: linux/scripts/setup-rootless-binfmt.sh [--arches arm64,riscv64] [--force]
+#                                               [--install-service] [--verify]
 set -euo pipefail
 IFS=$'\n\t'
 

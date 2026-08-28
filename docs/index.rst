@@ -176,6 +176,8 @@ Common development targets:
    build-secrets
    cross-build-verification
    code-quality-tooling
+   shared-script-libraries
+   slang-shader-compilation
    python-ci
    ci-build-triggers
    github-cli-pipeline-monitoring

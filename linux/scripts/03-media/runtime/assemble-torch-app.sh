@@ -8,18 +8,14 @@ set -euo pipefail
 APP_DIR="/opt/Kataglyphis-Orchestr-ANT-ion"
 APP_REF="${APP_REF:-v0.0.27}"
 
-# Uninstall any PyPI opencv-family packages (best-effort). Centralizes the four
-# package names that were repeated verbatim across reconcile/install/verify so
-# the list can no longer drift between the call sites.
+# Single list of the PyPI opencv-family names, so the call sites cannot drift.
 uv_uninstall_pip_opencv() {
   uv pip uninstall opencv-python opencv-python-headless \
     opencv-contrib-python opencv-contrib-python-headless 2>/dev/null || true
 }
 
 activate_project_environment() {
-  # Verify-only runs may happen in a later image or on real hardware.
-  # Vendor sourcing under set -u: suspend nounset for the activate script
-  # (not guaranteed nounset-clean across venv generators), restore after.
+  # activate scripts are not guaranteed nounset-clean; suspend -u across the source.
   local _ape_had_u=0
   case $- in *u*) _ape_had_u=1; set +u ;; esac
   source "${VENV}/bin/activate"
@@ -31,10 +27,8 @@ activate_project_environment() {
 prepare_project_tree() {
   local _attempt
   rm -rf "${APP_DIR}"
-  # Inline retry (3 attempts, 10s apart): this clone runs hours into the
-  # runtime chain and a transient network/GitHub hiccup must not discard the
-  # whole build. Inlined rather than 01-core's retry(): this script ships
-  # standalone into images (e.g. Dockerfile.torch) that carry no 01-core.
+  # Retry inlined rather than reusing 01-core's retry(): this script ships
+  # standalone into images (Dockerfile.torch) that carry no 01-core.
   for _attempt in 1 2 3; do
     if git clone --branch "${APP_REF}" --depth 1 https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion.git "${APP_DIR}"; then
       break
@@ -48,17 +42,8 @@ prepare_project_tree() {
     sleep 10
   done
 
-  # riscv64: the app's pyproject `[tool.uv] environments` list deliberately
-  # EXCLUDES riscv64 (`sys_platform == 'linux' and platform_machine != 'riscv64'`)
-  # because the pytorch-custom extra has no lockable upstream riscv64 torch source
-  # -- riscv64 torch/vision/opencv ship as local cross-built wheels in /opt/wheels
-  # instead. But when `environments` is declared, uv HARD-REJECTS an excluded
-  # platform with exit 2 for lock/sync/run -- it does NOT "fall back to a live
-  # resolve" as the app's comment claims. Strip the gate from THIS throwaway clone
-  # only (the committed app lock stays untouched for every other consumer) so uv
-  # can resolve for the riscv64 build platform against --find-links + the
-  # riscv64-gated git sources; the local-wheel packages are excluded from the sync
-  # via --no-install-package and force-installed separately.
+  # riscv64 is excluded from the app's `[tool.uv] environments`, and uv then HARD-
+  # REJECTS it (exit 2) instead of resolving live. Strip the gate from THIS clone only.
   if [ "$(uname -m)" = "riscv64" ] && [ -f "${APP_DIR}/pyproject.toml" ]; then
     if grep -qE '^environments[[:space:]]*=[[:space:]]*\[' "${APP_DIR}/pyproject.toml"; then
       sed -i '/^environments[[:space:]]*=[[:space:]]*\[/,/^\]/d' "${APP_DIR}/pyproject.toml"
@@ -100,10 +85,7 @@ staged_opencv_python_available() {
   return 1
 }
 
-# THE wheel-family classifier — single source of truth for mapping a
-# /opt/wheels basename to its family (was the same case-arm globs drifting in
-# three separate sites; backlog "wheel-family classifier"). Family tokens are
-# consumed by the collect_/reconcile_ functions below; extend HERE only.
+# Single source of truth for /opt/wheels basename -> family; extend HERE only.
 wheel_family() {
   case "$1" in
     torch-*.whl)              printf 'torch' ;;
@@ -140,10 +122,8 @@ collect_locked_local_skip_packages() {
       iree-compiler) append_unique_arg out_packages_ref iree-base-compiler ;;
       iree-runtime)  append_unique_arg out_packages_ref iree-base-runtime ;;
       opencv)        append_unique_arg out_packages_ref opencv-python ;;
-      # A local ORT wheel (any variant, e.g. onnxruntime_dnnl) must beat the
-      # app lock's PyPI onnxruntime: both dists own site-packages/onnxruntime/,
-      # so letting uv sync install PyPI first leaves a version-skewed
-      # capi/libonnxruntime behind (VERS_1.29.0 ImportError, wave5m amd64).
+      # Any local ORT variant must beat the lock's PyPI onnxruntime -- both dists own
+      # site-packages/onnxruntime/, and the mix leaves a version-skewed capi behind.
       onnx)          append_unique_arg out_packages_ref onnxruntime ;;
     esac
   done
@@ -159,11 +139,8 @@ collect_locked_local_wheels() {
     wheel_basename="$(basename "${wheel_path}")"
     case "$(wheel_family "${wheel_basename}")" in
       torch|torchvision|litert)
-        # Custom-built wheels are ALWAYS pinned as locked local wheels. A
-        # broken line-continuation used to merge this branch with the opencv
-        # one below (embedded-whitespace pattern), so with staged OpenCV
-        # bindings present these wheels were silently dropped from the locked
-        # set and pip could resolve UPSTREAM torch instead of the custom build.
+        # Always locked, never conditional on opencv: dropping one lets pip resolve
+        # UPSTREAM torch over the custom build.
         out_wheels_ref+=("${wheel_path}")
         ;;
       opencv)
@@ -194,38 +171,28 @@ prune_conflicting_onnx_wheels() {
   esac
 }
 
-# Assemble the `uv sync` arg array into $1; when locked packages are served from
-# prebuilt local wheels ($2 names, $3 wheels), tell uv to skip them and install
-# those wheels. Namerefs are underscore-prefixed to avoid circular references.
+# Assemble the `uv sync` args into $1; locked packages from local wheels ($2 names,
+# $3 wheels) are skipped and installed directly. Namerefs _-prefixed (circular ref).
 build_uv_sync_args() {
   local -n _sync_args="$1"
   local -n _locked_skip="$2"
   local -n _locked_wheels="$3"
   local package_name
 
-  # The runtime image only needs the ML/runtime extras; the optional GUI frontend
-  # pulls wxPython, which is not required here and currently fails on Python 3.14.
+  # No GUI extra: it pulls wxPython, which is unused here and fails on Python 3.14.
   _sync_args=(--find-links /opt/wheels --active \
     --extra "ml-ai" \
     --extra "docs")
 
-  # Is torch served from a prebuilt LOCAL wheel (the riscv64 cross-build path)?
-  # If so, the torch BACKEND extra below must NOT be requested: its torch entry
-  # would make uv resolve/clone the upstream torch source instead of our wheel.
+  # With torch from a local wheel (riscv64), the backend extra below must NOT be
+  # requested: its torch entry makes uv resolve the upstream source over our wheel.
   local _torch_from_local_wheel=false
   for package_name in "${_locked_skip[@]}"; do
     case "${package_name}" in torch|torchvision) _torch_from_local_wheel=true ;; esac
   done
 
-  # PYTORCH_EXTRA selects the torch BACKEND index-extra: pytorch-cpu (the default),
-  # pytorch-cu130, or pytorch-rocm71. In the app's pyproject, `torch` is declared
-  # ONLY inside these backend extras (NEVER in ml-ai), each wired to an explicit
-  # uv index (download.pytorch.org/whl/{cpu,cu130,rocm7.1}). So for arches that
-  # get torch from uv sync (amd64/arm64) the backend extra MUST be requested --
-  # without it uv resolves the whole tree WITHOUT torch and the image ships
-  # torch-less (the 2026-07-12 runtime smoke failure). "none"/"" disables it; it
-  # is also skipped when torch is supplied by a local wheel (riscv64).
-  # (An earlier default of "none" wrongly assumed ml-ai carried torch -- it does not.)
+  # `torch` is declared ONLY in the app's pytorch-* backend extras, never in ml-ai,
+  # so the extra MUST be requested or the image ships torch-less. "none"/"" disables it.
   if [ "${_torch_from_local_wheel}" = "false" ]; then
     case "${PYTORCH_EXTRA:-pytorch-cpu}" in
       none|"") ;;
@@ -239,23 +206,14 @@ build_uv_sync_args() {
       _sync_args+=(--no-install-package "${package_name}")
     done
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-      # --no-deps on EVERY local-wheel force-reinstall (2026-08-11): without it
-      # uv re-resolves the wheels' dependencies to LATEST, silently floating
-      # the venv off the lock — caught live by assert_pinned_versions:
-      # numpy 2.5.1->2.5.2 (flagged) and protobuf 6.33.6->7.35.1 (a MAJOR bump
-      # that no gate covers). The lock graph installed by uv sync already
-      # satisfies every dependency; local wheels only replace same-name
-      # package bodies. The riscv64 IREE branch below always did this.
+      # --no-deps on EVERY local-wheel force-reinstall: without it uv re-resolves the
+      # wheels' deps to LATEST and floats the venv off the lock (numpy, protobuf MAJOR).
       uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}"
     fi
   fi
 
-  # The chain's own onnxruntime-genai wheel must beat the app lockfile.
-  # --find-links only OFFERS /opt/wheels; the app's uv.lock pins whatever
-  # version upstream locked (v0.0.27 locks 0.14.0), so the freshly built
-  # 0.15.2 wheel was silently ignored and the runtime image shipped a PyPI
-  # binary one minor release behind ONNXRUNTIME_GENAI_VERSION. Same
-  # pre-install + --no-install-package idiom as the locked wheels above.
+  # --find-links only OFFERS /opt/wheels, so the app lock's pinned genai would win over
+  # the freshly built wheel. Same pre-install + --no-install-package idiom as above.
   local _genai_wheel
   _genai_wheel="$(ls /opt/wheels/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${_genai_wheel}" ]; then
@@ -269,13 +227,8 @@ build_uv_sync_args() {
   fi
 }
 
-# `uv lock` regeneration for the fallback paths below. On riscv64 a full lock can
-# still fail to resolve every workspace extra (e.g. a pytorch backend extra whose
-# torch has no lockable upstream riscv64 source); the runtime only needs the
-# packages served by --find-links + the local wheels, so treat a riscv64 lock
-# failure as non-fatal and let the subsequent `uv sync` + local-wheel
-# force-install carry the venv. On amd64/arm64 a lock failure is a genuine error
-# and still aborts (set -e).
+# `uv lock` regeneration for the fallbacks below. A riscv64 RESOLUTION failure is
+# tolerated (the local wheels carry the venv); on amd64/arm64 it aborts.
 uv_lock_regen() {
   local _ulr_log
   _ulr_log="$(mktemp)"
@@ -283,14 +236,7 @@ uv_lock_regen() {
     rm -f "${_ulr_log}"
     return 0
   fi
-  # NARROWED 2026-08-27. The riscv64 arm below was written for one failure
-  # class -- a workspace extra that cannot RESOLVE under QEMU -- but it used to
-  # swallow every failure uv could produce. The shipped run hit
-  #   "Timeout (300s) when waiting for lock on ..."
-  # twice, which is a stale/contended lock FILE, not an unresolvable package,
-  # and the riscv64 venv was then assembled with no regenerated lock while the
-  # log said "expected". A timeout is infrastructure, not architecture: it must
-  # stay fatal so it gets retried or investigated.
+  # A lock-FILE timeout is infrastructure, not the riscv64 resolution exemption below.
   if grep -qiE 'Timeout \([0-9]+s\) when waiting for lock|Failed to acquire lock' "${_ulr_log}" 2>/dev/null; then
     echo "ERROR: uv lock TIMED OUT waiting for a lock file — that is not the riscv64 resolution exemption and is not tolerated." >&2
     rm -f "${_ulr_log}"

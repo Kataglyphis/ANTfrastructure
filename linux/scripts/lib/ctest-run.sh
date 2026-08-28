@@ -1,40 +1,12 @@
 #!/usr/bin/env bash
 # ctest-run.sh - generic "run a CMake project's test suite in a container" core.
 #
-# The twin of cmake-build.sh for the test phase, and deliberately a separate
-# library rather than another entry point inside it: CI runs configure+build
-# once and then ctest several times over different build trees (plain, ASan,
-# TSan, ...), so the test phase is invoked on its own. Sourcing the build driver
-# for that would drag in its cargo/ccache/sccache writability fallbacks and its
-# pre-build hook machinery, none of which a ctest run has any use for.
+# The test-phase twin of cmake-build.sh, deliberately separate: CI builds once
+# and runs ctest over several trees (plain, ASan, TSan), and sourcing the build
+# driver would drag in machinery a test run has no use for.
+# Variables: docs/shared-script-libraries.md § ctest-run.sh.
 #
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the CTEST_RUN_DEFAULT_* variables below (its
-# project defaults), sources this file, and calls ctest_run_main "$@".
-#
-# It deliberately does NOT set -e / -u / -o pipefail so that sourcing it cannot
-# change the caller's shell options; wrappers are expected to run under
-# `set -euo pipefail` themselves.
-#
-# Optional caller variables (all have safe defaults):
-#   CTEST_RUN_DEFAULT_BUILD_DIR   build tree to cd into (default: build; an
-#                                 empty string means "stay where we are")
-#   CTEST_RUN_DEFAULT_BUILD_TYPE  value for ctest -C (default: Debug)
-#   CTEST_RUN_DEFAULT_EXCLUDE     default ctest -E regex (default: none)
-#   CTEST_RUN_DEFAULT_ARGS        array of ctest flags used when the caller
-#                                 does not override them. The default set is
-#                                 maximally loud on purpose: a container test
-#                                 run is only debuggable through its log.
-#   CTEST_RUN_SAFE_DIRECTORY      path registered as a git safe.directory
-#                                 (default: /workspace, empty string disables)
-#   CTEST_RUN_USAGE_INTRO         one-line description shown in --help
-#
-# Everything the wrapper does not provide is discovered from the environment:
-# logging comes from 01-core/logging.sh (or minimal fallbacks) and the Vulkan
-# environment from the caller's source_vulkan_env (e.g. a project common.sh)
-# when it is declared - a GPU test suite needs the loader and the layers on the
-# same terms the build did.
-
+# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
 [ -n "${_CTEST_RUN_SH_LOADED:-}" ] && return 0
 _CTEST_RUN_SH_LOADED=1
 

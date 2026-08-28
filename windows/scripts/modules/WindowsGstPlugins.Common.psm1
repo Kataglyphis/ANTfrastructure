@@ -2,43 +2,14 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# The mandatory-GStreamer-plugin contract and the pkg-config plumbing that makes
-# it satisfiable.
-#
-# WHY THIS IS ITS OWN MODULE — CACHE BOUNDARY, NOT TASTE.
-# Dockerfile.media-builder's `buildmods` stage mounts exactly five modules into
-# ALL SIX media compile RUNs (ONNX ~75 min, OpenCV, FFmpeg, GenAI, litert, tvm),
-# and Dockerfile.media-merge-builder mounts those five plus Installer.Common.
-# Editing any module inside the FIVE therefore re-runs the entire media chain.
-# This code is used by exactly one consumer — the GStreamer build in the merge
-# stage — plus the smoke test and healthcheck in the final image, so putting it
-# in Shared.psm1 or SourceBuild.Common.psm1 (both in the compile closure) would
-# have cost hours of rebuild for code those layers never call. It lives here,
-# mounted only by the merge builder, so a change to the plugin contract costs
-# the GStreamer layer and nothing else.
-#
-# Keep that property: do NOT add this module to Dockerfile.media-builder's
-# buildmods stage, and do not move these functions into a module that is.
+# The mandatory-GStreamer-plugin contract and its pkg-config plumbing. Merge-lane
+# leaf: never add it to Dockerfile.media-builder's `buildmods` (AGENTS.md § the
+# three module tiers, #134).
 
 Set-StrictMode -Version Latest
 
-# Canonical TARGET-architecture facts. The contract is arch-aware by design:
-# an entry can declare itself STRUCTURALLY UNAVAILABLE on a lane (UnavailableOn)
-# so that "not required there" is a stated fact rather than a silent miss. As
-# of #115 (2026-08-24) no entry uses it -- LiteRT builds for Windows-on-ARM, so
-# tflite is required on both lanes -- but the mechanism stays, and the
-# arch-resolution lives here rather than at each call site because that is
-# the whole point of this file -- the three consumers (GStreamer build gate,
-# smoke test, healthcheck) previously disagreed and shipped an image without
-# plugins on 2026-07-11. Teaching only one of them about arm64 would recreate
-# exactly that failure.
-#
-# Guarded, no -Force, per the module-scoping convention used by
-# WindowsSourceBuild.Common.psm1. Absence THROWS rather than stubbing: a silent
-# fallback here would answer "tflite is required" on a lane that cannot have it,
-# which is the bug this is fixing. Every COPY list that carries this module also
-# carries WindowsTargetArch.Common.psm1 (Dockerfile.media-merge-builder:65/67 and
-# :211/212), and the final image copies windows\scripts\modules wholesale.
+# Arch resolution lives here, not at the three call sites -- them disagreeing is the
+# 2026-07-11 regression (docs/windows-build-invariants.md § mandatory GStreamer plugins).
 $gstTargetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if (Test-Path $gstTargetArchPath) {
     if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $gstTargetArchPath }

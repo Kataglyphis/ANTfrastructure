@@ -24,10 +24,8 @@ prebuild_gstreamer_riscv_targets() {
   if [ "${TARGET_MACHINE_ARCH}" != "riscv64" ]; then
     return 0
   fi
-  # RV1-FOLGE (2026-08-20): the whole prebuild exists to satisfy GIR
-  # generation ordering — with introspection now DISABLED for the riscv64
-  # cross build (see the meson-args branch), the Graphene-1.0.gir target no
-  # longer exists and `meson compile <gir>` dies "target not found". Skip.
+  # The prebuild only orders GIR generation: with introspection disabled the
+  # Graphene-1.0.gir target does not exist and `meson compile` dies "not found".
   if printf '%s\n' "${MESON_FLAGS[@]}" | grep -q '^-Dintrospection=disabled$'; then
     echo "Skipping glib/graphene GIR prebuild: introspection is disabled for this cross build"
     return 0
@@ -41,10 +39,7 @@ prebuild_gstreamer_riscv_targets() {
   if [ "${#glib_subprojects[@]}" -gt 0 ]; then
     gmodule_visibility_target="subprojects/$(basename "${glib_subprojects[0]}")/gmodule/gmodule-visibility.h"
 
-    # Ninja/Makefile dependency ordering means a single meson compile call
-    # suffices to build the header before the libs it depends on; collapsing
-    # what was two sequential --jobs 1 invocations into one removes a full
-    # ninja startup/scheduling round-trip.
+    # One call suffices: ninja orders the header before the libs needing it.
     echo "Prebuilding ${gmodule_visibility_target}, ${glib_lib_target}, ${gobject_lib_target}, ${gmodule_lib_target} and ${gio_lib_target} before Graphene GIR generation"
     uv run meson compile -C builddir --jobs 1 \
         "${gmodule_visibility_target}" \
@@ -62,14 +57,8 @@ prebuild_gstreamer_riscv_targets() {
 }
 
 compute_gstreamer_meson_jobs() {
-  # GStreamer's monorepo links heavy C++ TUs (gtk4, webrtc, opencv/onnx plugins)
-  # and Rust crates (gst-plugins-rs) whose peak RSS is ~2-3 GB per job — far more
-  # than the global AGGRESSIVE 800-1000 MB/job estimate. Size the job count by
-  # AVAILABLE memory at a realistic per-job budget: big-RAM hosts (>=32 GB) get
-  # more jobs (RAM used fully) while smaller hosts throttle automatically, and
-  # neither oversubscribes into OOM. Deliberately ignores AGGRESSIVE_PARALLELISM
-  # here — its estimate is too optimistic for this stage. Override the budget
-  # with GSTREAMER_MB_PER_JOB, or pin the count with PARALLEL_JOBS.
+  # Peak RSS here is ~2-3 GB per job, far above the global AGGRESSIVE estimate,
+  # so size by AVAILABLE memory; see docs/build-parallelism-memory-tuning.md.
   local jobs mb_per_job
   mb_per_job="${GSTREAMER_MB_PER_JOB:-2500}"
 
@@ -79,9 +68,7 @@ compute_gstreamer_meson_jobs() {
     jobs="$(nproc --all 2>/dev/null || echo 1)"
   fi
 
-  # arm64/riscv64 cross subprojects build under QEMU, which uses ~3x the memory
-  # per job; apply an extra memory-derived headroom cap (scales with RAM instead
-  # of a hardcoded ceiling, so a big host still gets more than 2 jobs).
+  # Cross subprojects build under QEMU, which uses ~3x the memory per job.
   if cross_build_is_active; then
     case "${TARGET_MACHINE_ARCH:-}" in
       arm64|aarch64|riscv64|riscv*)
@@ -97,18 +84,10 @@ compute_gstreamer_meson_jobs() {
 }
 
 _gst_monorepo_env_setup() {
-  # cross_build_is_active is provided by cross-env.sh via media_common_init.
-  # Minimal fallback if the module chain didn't load it — normalizing both
-  # sides (the raw OCI-vs-uname comparison reported "cross active" on native
-  # arm64 hosts; this copy had drifted from the documented fix). NOTE: bash
-  # function definitions are global, so defining this inside the setup
-  # function still leaks — acceptable for a guarded fallback.
+  # cross_build_is_active comes from cross-env.sh; this guarded fallback must
+  # normalize BOTH arches (raw OCI-vs-uname reported "cross" on native arm64).
   if ! command -v cross_build_is_active >/dev/null 2>&1; then
     cross_build_is_active() {
-      # Delegate to the authoritative predicate when available — this branch
-      # was MISSING from this copy only (the 01-core and 03-media/core
-      # siblings both have it; complexity audit F-C found the structural
-      # drift survived the earlier arch-normalization re-sync).
       if command -v cross_build_enabled >/dev/null 2>&1; then
         cross_build_enabled
         return $?
@@ -142,13 +121,9 @@ _gst_monorepo_env_setup() {
     esac
   fi
 
-  # gtk (gtk4/gtk3 display sinks) is built from source with the Vulkan renderer,
-  # which references vkCreateWaylandSurfaceKHR. The full Vulkan SDK on amd64 exports
-  # it, but the cross-built RUNTIME Vulkan on arm64/riscv64 does NOT — so
-  # libgtk-4.so.1 fails to load ("undefined symbol: vkCreateWaylandSurfaceKHR") and
-  # libgstgtk4.so / libgstgtk.so become unloadable. They are display-only sinks,
-  # useless in a headless container, so disable the gtk plugin (and its heavy gtk4
-  # subproject build) on the affected cross arches; amd64 keeps it.
+  # The cross-built RUNTIME Vulkan lacks vkCreateWaylandSurfaceKHR, so gtk's
+  # Vulkan renderer makes libgtk-4.so.1 and the gtk sinks unloadable — and they
+  # are display-only, useless in a headless container.
   gtk_feature="${gtk_feature:-enabled}"
   if cross_build_is_active; then
     case "${TARGET_MACHINE_ARCH}" in
@@ -156,8 +131,6 @@ _gst_monorepo_env_setup() {
     esac
   fi
 
-  # GSTREAMER_ENABLE_PYTHON_BINDINGS env var (set externally) can force-disable
-  # Python bindings even outside the cross-build check, preventing pycairo builds.
   if [ "${GSTREAMER_ENABLE_PYTHON_BINDINGS:-true}" != "true" ]; then
     python_feature="disabled"
   fi
@@ -228,7 +201,6 @@ _gst_monorepo_meson_base_flags() {
     "-Dintrospection=enabled"
   )
 
-  # webrtcbin2 is built when GST_RS_BUILD_ALL=true (default); force off otherwise.
   [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || MESON_FLAGS+=("-Dgst-plugins-rs:webrtcbin2=disabled")
 
   if cross_build_is_active; then
@@ -249,23 +221,16 @@ _gst_monorepo_arch_flags() {
       fi
       # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
       append_meson_arg "-Dgstreamer:ptp-helper=disabled"
-      # RV1 RE-LIFT (2026-08-21): the 2026-08-20 introspection-off was a
-      # SYMPTOM fix — g-i's glib-subproject break only appeared while the
-      # poisoned ports glib-2.0.pc sat in the sysroot (system-vs-subproject
-      # resolution flipped). That package is gone (root-cause revert), so
-      # the wave-3-proven configuration returns: introspection ENABLED via
-      # the pre-setup.sh QEMU wrapper machinery below — which also restores
+      # Keep introspection ENABLED here (g-i cross wrappers below): the g-i
+      # break was a poisoned ports glib-2.0.pc, and disabling it also drops
       # /opt/gstreamer's glib .pc export that libcamera/opencv consume.
       # Force graphene introspection on to avoid dangling .gir deps in ninja.
       append_meson_arg "-Dgraphene:introspection=enabled"
-      # RV1-FOLGE 3 (2026-08-20): the glib SUBPROJECT builds its test suite by
-      # default and gdbus-server-auth.c needs dbus/dbus.h — libdbus dev is not
-      # in the riscv64 sysroot. Cross builds never run subproject tests;
-      # don't compile them.
+      # The glib subproject's test suite needs dbus/dbus.h, absent from the
+      # riscv64 sysroot; cross builds never run subproject tests anyway.
       append_meson_arg "-Dglib:tests=false"
-      # Pango: ensure GTK's subprojects dir can find the top-level pango subproject
-      # (GTK looks for pango in its own subprojects/ directory when force_fallback_for
-      # is active, but the pango wrap is at the GStreamer top level).
+      # Under force_fallback_for GTK looks for pango in its OWN subprojects/,
+      # but the pango wrap lives at the GStreamer top level.
       local gtk_subproj="${BUILD_DIR}/gstreamer/subprojects/gtk-4.14.5/subprojects"
       if [ -d "${gtk_subproj}" ] && [ ! -e "${gtk_subproj}/pango" ]; then
         ln -snf "$(realpath "${BUILD_DIR}/gstreamer/subprojects/pango" 2>/dev/null || echo "${BUILD_DIR}/gstreamer/subprojects/pango")" "${gtk_subproj}/pango" 2>/dev/null || true
@@ -303,38 +268,16 @@ _gst_monorepo_arch_flags() {
   esac
 
   if cross_build_is_active; then
-    # Keep -Drs at whatever the per-arch block chose (enabled for arm64/riscv64).
-    # Previously forced to disabled for cross because target Rust crates linked
-    # with the host cc and failed; prepare_host_cargo_toolchain_env now exports
-    # CARGO_TARGET_<triple>_LINKER pointing at the cross gcc, so the monorepo can
-    # cross-build and install the gst-plugins-rs cdylibs directly.
+    # -Drs stays as the per-arch block chose: prepare_host_cargo_toolchain_env
+    # exports CARGO_TARGET_<triple>_LINKER, so target crates link with cross gcc.
     echo "Cross build: gst-plugins-rs built in-monorepo (target Rust linker wired via cargo env)"
 
-    # Disable the Rust plugins whose native -sys deps / host tools are absent when
-    # cross-compiling — these hard-fail the cargo build (no meson dependency() gate
-    # to auto-skip them, unlike webrtcbin2 which auto-skips via dependency('rice-proto')).
-    # Per-arch set mirrors build-gst-plugins-rs.sh's standalone cross excludes:
-    #   validate -> gstreamer-validate-1.0.pc (devtools disabled on ALL cross)
-    #   csound   -> libcsound (excluded arm+riscv)   whisper -> whisper.cpp (arm+riscv)
-    #   skia     -> Skia built from source (skia-sys, cross-hostile both)
-    #   burn     -> heavy ML crate (pruned both)
-    #   dav1d    -> libdav1d: RISC-V ONLY (arm64 has libdav1d and builds fine)
-    # "all Rust plugins that can cross-compile for this arch"; re-enable a plugin
-    # once its native dep is provided for the target.
-    # validate genuinely needs gstreamer-validate-1.0 (devtools, off for all cross).
+    # Cargo has no dependency() gate, so ONE plugin whose native dep is missing
+    # hard-fails the whole set. validate needs gstreamer-validate (devtools, off
+    # for all cross builds).
     local -a _rs_disable=(validate)
-    # arm64 cross-builds the full Rust plugin set — csound/whisper/skia/burn/dav1d
-    # all validated once the target Rust linker + libcsound64 (+ csound-sys
-    # char-signedness patch) were wired, so arm64 only disables `validate` (needs
-    # gstreamer-validate devtools, off for cross).
-    # riscv64 PROBE: testing whether whisper/skia/burn/dav1d cross-build here the
-    # way they did on arm64. csound stays disabled — riscv64 Ports has no
-    # libcsound64 to link against. Re-add any crate that hard-fails below.
-    #   skia -> HARD-FAILS: skia-bindings' bundled gn/ninja build injects the
-    #     clang-only flag `--target=riscv64-linux-gnu`, which the GCC cross
-    #     compiler (riscv64-linux-gnu-g++) rejects with "unrecognized
-    #     command-line option". One cargo custom-target => this kills the whole
-    #     gst-plugins-rs set, so skia must be disabled for the riscv64 cross.
+    # riscv64 only: Ports has no libcsound64, and skia-bindings' gn build injects
+    # the clang-only `--target=riscv64-linux-gnu`, which the GCC cross g++ rejects.
     if [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
       _rs_disable+=(csound skia)
     fi
@@ -353,9 +296,8 @@ _gst_monorepo_cross_flags() {
     fi
   fi
 
-  # Ensure CC/CXX are exported for the meson cross file. setup_linux_cross_env
-  # may fail to export CXX if require_cross_gcc_tool g++ cannot find the binary.
-  # Use canonical helpers from compiler-resolution.sh as fallback.
+  # setup_linux_cross_env can leave CXX unexported when require_cross_gcc_tool
+  # g++ cannot find the binary; the meson cross file needs both.
   if [ "${BUILD_MODE:-native}" = "cross" ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}" ]; }; then
     if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
       resolve_cross_cc_cxx_for_arch || true
@@ -364,9 +306,8 @@ _gst_monorepo_cross_flags() {
 
   if command -v append_meson_cross_flags >/dev/null 2>&1; then
     append_meson_cross_flags MESON_FLAGS
-    # Remove pkg_config_libdir from the cross file so meson falls back to
-    # the PKG_CONFIG_LIBDIR env var (which we set without the host x86_64
-    # pkgconfig path).  The SDK image's cross file includes host paths.
+    # The SDK image's cross file pins host pkgconfig paths; drop the key so
+    # meson falls back to the PKG_CONFIG_LIBDIR set below.
     if [ -n "${MESON_CROSS_FILE:-}" ] && [ -f "${MESON_CROSS_FILE}" ]; then
       sed -i '/^pkg_config_libdir = /d' "${MESON_CROSS_FILE}"
     fi
@@ -408,10 +349,8 @@ _gst_monorepo_pkgconfig_env() {
     export CSOUND_LIB_DIR="/usr/lib"
   fi
 
-  # When cross-compiling, exclude /usr/lib/pkgconfig (host pkgconfig) to
-  # prevent pkg-config from returning host .pc files (e.g. x11-xcb.pc) that
-  # point to x86_64 library paths.  Meson also respects this env var when
-  # the cross file's pkg_config_libdir is absent (which we handle below).
+  # Cross: exclude host /usr/lib/pkgconfig — its .pc files (e.g. x11-xcb) point
+  # at x86_64 library paths. Meson honours this once the cross-file key is gone.
   if cross_build_is_active && [ "${BUILD_MODE:-native}" = "cross" ]; then
     PKG_CONFIG_LIBDIR="${sys_pkgconf_dir}:/usr/local/lib/pkgconfig"
   else
@@ -483,19 +422,15 @@ _gst_monorepo_tflite_flags() {
     fi
   fi
 
-  # Defensive cleanup: the root-cause was a bash `${6:--L\${libdir}}` parsing
-  # bug in generate_pkgconfig_file() that left a stray `}` after `-ltensorflow-lite`.
-  # That's been fixed in 01-core/common.sh, but keep this idempotent sanitizer so
-  # images rebuilt from older toolchain still produce a valid pc file at runtime.
+  # Idempotent sanitizer for the stray `}` a since-fixed generate_pkgconfig_file()
+  # bug left after -ltensorflow-lite in older toolchain images.
   if [ -f /usr/local/lib/pkgconfig/tensorflow-lite.pc ]; then
     if grep -q 'ltensorflow-lite}' /usr/local/lib/pkgconfig/tensorflow-lite.pc 2>/dev/null; then
       sed -i 's/-ltensorflow-lite}/-ltensorflow-lite/g' /usr/local/lib/pkgconfig/tensorflow-lite.pc
     fi
   fi
-  # Ensure meson's cross-compiler can find libtensorflow-lite. Meson checks
-  # library existence via the cross compiler's -print-file-name, which does
-  # NOT use -L flags from pkg-config. Symlink the library into one of the
-  # cross-compiler's default search directories.
+  # Meson probes libraries via the cross compiler's -print-file-name, which
+  # ignores pkg-config's -L flags; symlink into its default search dirs.
   if [ "${BUILD_MODE:-native}" = "cross" ] && [ -f /usr/local/lib/libtensorflow-lite.so ]; then
     for _gcc_arch in aarch64-linux-gnu riscv64-linux-gnu; do
       for _gcc_dir in /opt/gcc-*/${_gcc_arch}/lib* /opt/gcc-*/lib/gcc/${_gcc_arch}/*/; do
@@ -519,12 +454,8 @@ _gst_monorepo_meson_setup_run() {
 
   if [ ! -f builddir/.subprojects_updated ]; then
     echo "Updating subprojects..."
-    # NO blanket `meson subprojects update` here any more (supply-chain audit
-    # #21): it moved git-backed wraps to their wrap `revision`, which for
-    # several GStreamer wraps is a BRANCH — quietly advancing pinned sources,
-    # with all output suppressed. The wraps checked out by the pinned
-    # ${GSTREAMER_VERSION} tag are already the intended set; tarball wraps
-    # stay protected by upstream's source_hash either way.
+    # No blanket `meson subprojects update` (supply-chain audit #21): it moves
+    # git-backed wraps to a `revision` that is a BRANCH, past the pinned tag.
     touch builddir/.subprojects_updated
   fi
   if command -v patch_gstreamer_sources >/dev/null 2>&1; then
@@ -535,17 +466,9 @@ _gst_monorepo_meson_setup_run() {
   prebuild_gstreamer_riscv_targets
 }
 
-# csound-sys 0.1.2 (pulled by gst-plugin-csound) hardcodes signed-char array
-# initialisers `[0i8; 64usize]` for its CsoundParams-style structs. bindgen maps
-# the underlying C `char[64]` fields to `[u8; 64]` on unsigned-char targets
-# (aarch64, riscv64), so those literals fail to type-check when cross-compiling
-# ("expected u8, found i8"). It is a crates.io dependency, so we cannot patch it
-# in-tree; rewrite the extracted registry source to an *untyped* `[0; 64usize]`
-# instead — the literal then infers the field's element type on every arch,
-# including signed-char x86 where it stays i8. cargo has already unpacked the
-# crate into the registry (that is what produced the compile error), so the sed
-# lands on the real source before the incremental rebuild picks it up. Returns
-# success only if at least one file was rewritten; idempotent.
+# csound-sys 0.1.2's `[0i8; 64usize]` literals fail on unsigned-char targets
+# (aarch64/riscv64, where bindgen maps `char[64]` to `[u8; 64]`); an untyped
+# literal infers per arch. crates.io dep, so patch the unpacked registry copy.
 patch_csound_sys_char_signedness() {
   local cargo_home="${CARGO_HOME:-/usr/local/cargo}" f patched=0
   while IFS= read -r f; do
@@ -561,18 +484,12 @@ patch_csound_sys_char_signedness() {
 
 _gst_monorepo_compile() {
   echo "Compiling GStreamer (this may take a while)..."
-  # Use the memory-aware job count (was previously raw `nproc`, uncapped, which
-  # oversubscribed heavy C++/Rust link jobs and OOM-killed the compile).
   JOBS="$(compute_gstreamer_meson_jobs)"
   export JOBS
   echo "Using JOBS=$JOBS (mem-capped; GSTREAMER_MB_PER_JOB=${GSTREAMER_MB_PER_JOB:-2500}, AGGRESSIVE_PARALLELISM=${AGGRESSIVE_PARALLELISM:-false})"
 
-  # Patch FIRST: on warm caches the csound-sys crate is already extracted in
-  # the persistent cargo-registry mount, so rewriting it before the compile
-  # skips paying a full failed compile + incremental retry. A cold cache only
-  # extracts the crate DURING the compile — the guarded retry below still
-  # covers that first-ever build. Idempotent; rc intentionally ignored (rc 1
-  # just means "nothing extracted yet / already patched").
+  # Patch FIRST: on a warm cargo-registry mount the crate is already extracted,
+  # so this saves a failed compile. rc 1 just means "nothing extracted yet".
   patch_csound_sys_char_signedness || true
 
   echo "Compiling GStreamer..."
@@ -580,9 +497,8 @@ _gst_monorepo_compile() {
     return 0
   fi
 
-  # Cross csound-sys char-signedness failure: patch the extracted crate and retry
-  # once (the retry is incremental — only csound-sys and its dependent plugins
-  # rebuild). Guarded so it only triggers for that specific, known failure.
+  # Cold cache: the crate is only extracted DURING the compile, so patch and
+  # retry once — guarded to that one known failure, and incremental.
   if grep -q 'csound-sys' /tmp/meson-compile.log 2>/dev/null \
      && grep -qE "expected .u8., found .i8." /tmp/meson-compile.log 2>/dev/null \
      && patch_csound_sys_char_signedness; then
@@ -601,16 +517,14 @@ _gst_monorepo_compile() {
   exit 1
 }
 
-# Fallback when the cross DESTDIR install produced no libraries (post-install
-# scripts can't run target binaries): copy libs/plugins/binaries straight out of
-# the meson builddir into the prefix. Fatal if still no libgstreamer afterward.
+# Fallback when the cross DESTDIR install produced no libraries: copy them
+# straight out of the meson builddir. Fatal if libgstreamer is still missing.
 _gst_install_fallback_copy() {
   if [ -d "builddir/subprojects/gstreamer/libs/gst" ]; then
     cp -a builddir/subprojects/gstreamer/libs/gst/*/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
     cp -a builddir/subprojects/gstreamer/gst/libgstreamer*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
     cp -a builddir/subprojects/*/gst-libs/gst/*/libgst*.so* "${GSTREAMER_PREFIX}/lib/" 2>/dev/null || true
   fi
-  # Also copy any .so from the builddir into prefix, plus the CLI binaries.
   find builddir -name "*.so" -path "*/libgst*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/" \; 2>/dev/null || true
   find builddir -name "*.so" -path "*/gstreamer-1.0/*" -exec cp -aL {} "${GSTREAMER_PREFIX}/lib/multiarch/gstreamer-1.0/" \; 2>/dev/null || true
   find builddir \( -name "gst-launch-1.0" -o -name "gst-inspect-1.0" \) -exec cp -aL {} "${GSTREAMER_PREFIX}/bin/" \; 2>/dev/null || true
@@ -624,10 +538,8 @@ _gst_install_fallback_copy() {
 _gst_monorepo_install() {
   echo "Installing GStreamer..."
   if cross_build_is_active; then
-    # Cross-build: meson install may fail because post-install scripts
-    # (e.g. GLib's gio-querymodules) try to run target binaries on the
-    # build host.  Install via DESTDIR into a staging directory first,
-    # then copy to the real prefix; ignore install-script failures.
+    # Post-install scripts (e.g. GLib's gio-querymodules) try to run TARGET
+    # binaries on the build host, so stage via DESTDIR and tolerate their errors.
     local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
     set +e
     uv run meson install -C builddir --destdir "${gst_stage}" --no-rebuild >/tmp/gst-install.log 2>&1
@@ -645,8 +557,6 @@ _gst_monorepo_install() {
       cp -a "${gst_stage}/usr/local/"* /usr/local/ 2>/dev/null || true
     fi
     rm -rf "${gst_stage}"
-    # If DESTDIR install failed (e.g. post-install scripts can't run cross
-    # binaries), fall back to copying directly from the meson builddir.
     if ! find "${GSTREAMER_PREFIX}" -name "libgstreamer*.so*" 2>/dev/null | grep -q .; then
       echo "WARNING: DESTDIR install produced no libraries; falling back to builddir copy"
       _gst_install_fallback_copy
@@ -665,32 +575,12 @@ _gst_monorepo_install() {
 
 build_gstreamer_monorepo() {
   local python_feature="enabled"
-  # Declared local (not just assigned in _gst_monorepo_env_setup) so a prior
-  # cross arm64/riscv64 invocation that set gtk_feature=disabled can't leak a
-  # stale value into a later native/amd64 call in the same shell process.
+  # Declared local so a prior cross call's gtk_feature=disabled cannot leak into
+  # a later native call in the same shell process.
   local gtk_feature="enabled"
 
-  # SCCACHE-RUST: OFF 2026-08-20, RE-ENABLED 2026-08-27 — but GUARDED.
-  #
-  # The 2026-08-20 note read: the toolchain cargo config wires sccache as
-  # rustc-wrapper; its in-container server died mid-compile in THREE separate
-  # media rounds ("Failed to send/receive data from server" / "No such file or
-  # directory" fatals on trivial crates) and killed otherwise green gstreamer
-  # builds at 99%.
-  #
-  # Read that signature again: "No such file or directory", server dying
-  # mid-build. That is the SAME failure the C/C++ side spent 2026-08-26 chasing,
-  # and its cause is now known and fixed: sccache's server is located by a fixed
-  # TCP port, which is not container-local, so concurrent BuildKit steps reached
-  # each OTHER's server — one that cannot see their files. The cure is
-  # SCCACHE_SERVER_UDS (a filesystem path is private by construction); it took
-  # the media stage from 2359 sccache faults to ZERO.
-  #
-  # So Rust caching comes back — but pointed at the GUARDED launcher rather than
-  # bare sccache. cargo invokes "$RUSTC_WRAPPER rustc <args>"; the launcher runs
-  # sccache and, if sccache fails on its OWN account, execs rustc directly. A
-  # server hiccup therefore costs cache hits, never a build at 99% again. Set
-  # RUSTC_WRAPPER="" in the environment to go back to uncached Rust.
+  # Rust caching goes through the GUARDED launcher, so a sccache hiccup costs
+  # hits, not the build; RUSTC_WRAPPER="" opts out. docs/build-cache-tiers.md.
   if [ -z "${RUSTC_WRAPPER+x}" ]; then
     for _rw in /opt/scripts/core/sccache-launcher.sh; do
       if [ -x "${_rw}" ]; then
@@ -698,15 +588,8 @@ build_gstreamer_monorepo() {
         break
       fi
     done
-    # OWNER DECISION 2026-08-27: "benutze immer sccache". When the guarded
-    # launcher is not reachable, fall back to BARE sccache rather than to no
-    # cache at all -- the same answer common.sh:449-450 already gives for
-    # stages that do not carry 01-core, so the three writers now agree instead
-    # of two choosing bare and one choosing uncached.
-    # The risk is understood and accepted: bare sccache ABORTS a compile on its
-    # own internal errors where the launcher would fall through. That is what
-    # the guarded launcher exists for, and it IS reachable on every stage that
-    # mounts 01-core -- this arm only covers the ones that do not.
+    # Owner decision "immer sccache": stages without 01-core get BARE sccache
+    # (as common.sh does) even though it aborts a compile on its own errors.
     export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"
   fi
 

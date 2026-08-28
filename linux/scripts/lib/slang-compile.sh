@@ -1,58 +1,13 @@
 #!/usr/bin/env bash
 # slang-compile.sh - generic "compile a Slang shader tree to SPIR-V and WGSL" driver.
 #
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the SLANG_COMPILE_* path variables below, sources
-# this file and calls slang_compile_main. Everything else - the shader list,
-# entry points, stages, targets, the combined-WGSL copy map and the post-emit
-# patch table - is data, read from the manifest JSON the wrapper points at.
+# Project-agnostic: a wrapper sets SLANG_COMPILE_MANIFEST and
+# SLANG_COMPILE_SOURCE_ROOT (plus optional output roots), sources this file and
+# calls slang_compile_main. Variables, manifest schema, return codes and the
+# staleness rule are in docs/slang-shader-compilation.md.
 #
-# The PowerShell twin is windows/scripts/modules/WindowsSlang.Common.psm1; the
-# two are behaviourally identical and must be kept in step.
-#
-# It deliberately does NOT set -e / -u / -o pipefail so that sourcing it cannot
-# change the caller's shell options; wrappers are expected to run under
-# `set -euo pipefail` themselves.
-#
-# Required caller variables:
-#   SLANG_COMPILE_MANIFEST      manifest JSON (schema below)
-#   SLANG_COMPILE_SOURCE_ROOT   root of the .slang tree; every manifest path and
-#                               every -I include path resolves against it
-#
-# Optional caller variables (defaults in parentheses):
-#   SLANG_COMPILE_SPIRV_OUTPUT_ROOT    where 'spirv' targets are written
-#                                      (<source root>/build/spirv)
-#   SLANG_COMPILE_WGSL_OUTPUT_ROOT     where 'wgsl' targets are written
-#                                      (<source root>/build/wgsl)
-#   SLANG_COMPILE_COMBINED_OUTPUT_DIR  staging directory for the combined WGSL
-#                                      emit, before it is validated and copied
-#                                      (<source root>/build)
-#   SLANG_COMPILE_DEST_ROOT            root the manifest's wgslMap "dst" paths
-#                                      resolve against, i.e. the consuming
-#                                      repository root ($PWD)
-#
-# Manifest schema (keys starting with '_' are documentation and ignored):
-#   manifest[]              { file, entry, stage, targets[], disabled? }
-#                           one row per (entry point, target); 'file' is
-#                           relative to the source root, 'targets' is any mix of
-#                           "spirv" and "wgsl", and disabled rows are kept as
-#                           documentation without being compiled
-#   wgslMap[]               { src, out, dst } - combined (whole-module) WGSL emit
-#   depthTexturePatches     { "<out>": [ { pattern, replacement } ] } - post-emit
-#                           regex patches applied to that combined emit
-#   minSlangcVersionForWgsl "MAJOR.MINOR" toolchain floor for the combined emit
-#
-# Return codes from slang_compile_main:
-#   0  success (also: source root absent - nothing to do)
-#   1  a slangc invocation failed, or an emit was rejected by the WGSL validator
-#   2  a prerequisite is missing (python3, the manifest, or slangc itself).
-#      Deliberately NOT a silent skip: a missing slangc once let CI pass green
-#      with no compiled shaders at all.
-#
-# Staleness: an output is reused only when it is newer than its source AND every
-# .slang file under the source tree AND the manifest file itself (conservative -
-# an import or manifest edit rebuilds every dependent).
-
+# PowerShell twin: windows/scripts/modules/WindowsSlang.Common.psm1 -- keep in step.
+# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
 [ -n "${_SLANG_COMPILE_SH_LOADED:-}" ] && return 0
 _SLANG_COMPILE_SH_LOADED=1
 

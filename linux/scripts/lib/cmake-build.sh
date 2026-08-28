@@ -1,43 +1,12 @@
 #!/usr/bin/env bash
 # cmake-build.sh - generic "configure + build a CMake project in a container" core.
 #
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the CMAKE_BUILD_DEFAULT_* variables below (its
-# project defaults), optionally declares hook functions, sources this file, and
-# calls cmake_build_main "$@".
+# Project-agnostic: a wrapper sets the CMAKE_BUILD_DEFAULT_* variables, may
+# declare cmake_build_prebuild_hook, sources this file and calls
+# cmake_build_main "$@". Variables and the hook contract (a non-zero return is
+# FATAL by default) are in docs/shared-script-libraries.md § cmake-build.sh.
 #
-# It deliberately does NOT set -e / -u / -o pipefail so that sourcing it cannot
-# change the caller's shell options; wrappers are expected to run under
-# `set -euo pipefail` themselves.
-#
-# Optional caller variables (all have safe defaults):
-#   CMAKE_BUILD_DEFAULT_PRESET               default CMake preset name
-#   CMAKE_BUILD_DEFAULT_BUILD_DIR            default build directory (default: build)
-#   CMAKE_BUILD_DEFAULT_CLEAN_BUILD_DIR      "true" to rm -rf the build dir first
-#   CMAKE_BUILD_DEFAULT_SKIP_CONFIGURE       "true" to build without configuring
-#   CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT  setup-env.sh sourced when it exists
-#   CMAKE_BUILD_DEFAULT_MB_PER_JOB           peak RAM per compile job (default 4000)
-#   CMAKE_BUILD_DEFAULT_ALLOW_PREBUILD_FAILURE  "true" makes a failing pre-build
-#                                            hook non-fatal (see below)
-#   CMAKE_BUILD_SAFE_DIRECTORY               path registered as a git
-#                                            safe.directory (default: /workspace,
-#                                            empty string disables)
-#   CMAKE_BUILD_PREBUILD_LABEL               label logged around the pre-build hook
-#   CMAKE_BUILD_USAGE_INTRO                  one-line description shown in --help
-#
-# Optional hook functions (called only when declared by the wrapper):
-#   cmake_build_prebuild_hook   runs after configure, immediately before
-#                               `cmake --build`. Use it for code/asset generation
-#                               that the build or the runtime depends on
-#                               (shader precompilation, codegen, ...).
-#                               A NON-ZERO RETURN IS FATAL by default - see
-#                               cmake_build_run() for why.
-#
-# Everything the wrapper does not provide is discovered from the environment:
-# logging comes from 01-core/logging.sh (or minimal fallbacks), job computation
-# from 01-core/parallelism.sh, and the Vulkan environment from the caller's
-# source_vulkan_env (e.g. a project common.sh) when it is declared.
-
+# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
 [ -n "${_CMAKE_BUILD_SH_LOADED:-}" ] && return 0
 _CMAKE_BUILD_SH_LOADED=1
 

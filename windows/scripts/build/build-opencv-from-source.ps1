@@ -12,9 +12,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'  # fail-fast when run standalone (Invoke-SourceBuildChain sets this in-scope for the media run)
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# #108: container mounts are FLAT (C:\bkmnt, C:\temp\scripts) while the repo is
+# scripts/<group>/ -- shared assets sit beside this script or one level up.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $modulePath = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath)))) { Import-Module $modulePath }
@@ -38,60 +37,31 @@ if (-not $contribOk) { $contribSrc = ''; Write-Host 'Continuing without contrib 
 $ocvTargetArch = Get-WindowsTargetArch
 $ocvCross      = Test-WindowsCrossTarget -Arch $ocvTargetArch
 
-# Source patches (idempotent git apply). These carry the Windows/clang-cl CUDA
-# fixes -- see docs/windows-builds.md "Source Patch Policy":
-#   opencv/001-cmake-clang-cl-compat.patch
-#     - CMP0146/CMP0148 OLD -> NEW (CMake 4.x deprecation)
-#     - OpenCVDetectCUDALanguage.cmake: allow CUDA detection under clang-cl
-#     - OpenCVDetectCUDAUtils.cmake: strip clang-cl-only flags (/clang:, /FI,
-#       -Xclang, -fopenmp, -W*) from the CUDA host (-Xcompiler) block, because
-#       nvcc's Windows host compiler is cl.exe (rejects them; e.g. D8021 /Wno-undef)
-#     - FindONNX.cmake: add_library instead of ocv_add_library on IMPORTED target
-#   opencv_contrib/001-cudev-windows-llp64.patch
-#     - cudev: define ulong/longlong/ulonglong and add 64-bit VecTraits/MakeVec so
-#       CV_64U/CV_64S GpuMat conversions compile on Windows LLP64 (int64_t/uint64_t
-#       are long long / unsigned long long, not long / ulong as on Unix LP64).
+# Source patches (idempotent git apply) -- see docs/windows-builds.md "Source Patch Policy".
 $patchDir = Join-Path $scriptAssetRoot 'patches'
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\001-cmake-clang-cl-compat.patch') -SourceDir $mainSrc -Description 'opencv: cmake clang-cl/CUDA compat' -IgnoreWhitespace
-# OpenCV 5.0.0 bundles MLAS; its cmake treats clang-cl as GNU-Clang and passes
-# the GNU pair `-include` + `cstring`, which the CL dialect parses as an INPUT
-# FILE (clang-cl: error: no such file or directory: 'cstring' on the first
-# mlas TU). The patch adds an MSVC-frontend branch using /FIcstring + /w.
+# Bundled MLAS passes the GNU pair `-include cstring`, which the CL dialect parses as an INPUT
+# FILE; the patch adds an MSVC-frontend branch using /FIcstring.
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\002-mlas-clangcl-force-include.patch') -SourceDir $mainSrc -Description 'opencv: mlas clang-cl force-include' -IgnoreWhitespace
-# Run-12 lesson (2026-08-10): 002 got the mlas C++ TUs compiling, then the
-# GAS-only .S kernels (`.type sym,@function`, ELF directives) died in
-# clang's integrated assembler for the COFF target. There is no MASM port
-# of the vendored kernels; MSVC never hits this because check_language(ASM)
-# finds no GAS there. 003 skips MLAS on Windows -> dnn's built-in SGEMM
-# (inference in this stack runs on ONNX Runtime/DirectML anyway).
+# MLAS's GAS-only .S kernels have no MASM port and die in clang's integrated assembler for the
+# COFF target; 003 skips MLAS on Windows -> dnn's built-in SGEMM.
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\003-mlas-windows-skip.patch') -SourceDir $mainSrc -Description 'opencv: mlas Windows skip (GAS-only kernels)' -IgnoreWhitespace
-# Run-13 lesson (2026-08-10): dnn's ORT profiling call passes char* to
-# Ort::SessionOptions::EnableProfiling, but ORTCHAR_T is wchar_t on Windows
-# (net_impl_backend.cpp:99) - the model-path call right below it IS guarded,
-# this one is not; upstream Windows CI never builds dnn with ORT enabled.
-# Genuine upstream bug, upstreamable as-is.
+# Upstream bug: dnn passes char* to Ort::SessionOptions::EnableProfiling, but ORTCHAR_T is
+# wchar_t on Windows (net_impl_backend.cpp:99) -- upstream CI never builds dnn with ORT.
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\004-dnn-ort-profiling-wchar.patch') -SourceDir $mainSrc -Description 'opencv: dnn ORT profiling wchar_t path' -IgnoreWhitespace
 if ($contribSrc) {
     Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv_contrib\001-cudev-windows-llp64.patch') -SourceDir $contribSrc -Description 'opencv_contrib: cudev Windows LLP64 64-bit VecTraits'
 }
 
-# FFmpeg 9 compatibility (backlog #94). A SCRIPT, not a .patch, on purpose: a
-# unified diff must match upstream context byte for byte, while this edit only
-# needs to find two accessor expressions — which survives OpenCV point releases
-# far better. It carries its own no-op assertions (rule from #56): a pattern
-# that matches nothing throws instead of quietly "succeeding", and a leftover
-# direct field access after patching throws too.
-# Only relevant when the chain's FFmpeg is actually linked; with the default
-# prebuilt FFmpeg the videoio sources compile as they always did.
+# FFmpeg 9 compat (#94): a SCRIPT, not a .patch -- it matches two accessor expressions rather
+# than upstream context, and self-asserts (a no-op match or a leftover field access throws, #56).
 if ($env:OPENCV_LINK_CHAIN_FFMPEG -eq '1') {
     & (Join-Path $patchDir 'opencv\ffmpeg9-avcodec-config.ps1') -SourceDir $mainSrc
     if ($LASTEXITCODE -ne 0) { throw 'opencv: FFmpeg-9 videoio patch failed' }
 }
 
-# Inline patch (kept inline, NOT a .patch file): the mlas `<cstring>` include is
-# a multi-file prepend loop that conditionally skips files which already include
-# <cstring>. A static .patch cannot express the per-file conditional guard, so the
-# loop form is the canonical representation. See docs/windows-builds.md "Source Patch Policy".
+# Inline, NOT a .patch: the per-file "already includes <cstring>" guard cannot be expressed as a
+# static diff. See docs/windows-builds.md "Source Patch Policy".
 $mlasSrcDir = Join-Path $mainSrc '3rdparty\mlas'
 if (Test-Path $mlasSrcDir) {
     Get-ChildItem -Path $mlasSrcDir -Filter '*.cpp' -Recurse | ForEach-Object {
@@ -103,48 +73,15 @@ if (Test-Path $mlasSrcDir) {
     Write-Host 'Patched mlas sources for clang-cl (added <cstring> include)'
 }
 
-# Inline patch, ARM targets ONLY (upstream bug, OpenCV 5.0.0 + clang aarch64).
-#
-# softfloat.cpp:163 does, INSIDE namespace cv:
-#     typedef softfloat  float32_t;
-#     typedef softdouble float64_t;
-# intrin_neon.hpp also lives in namespace cv, so unqualified lookup for
-# `float32_t` finds cv::float32_t BEFORE the ::float32_t (= float) that clang's
-# arm_neon.h declares. Since clang 16 the NEON lane accessors are macros of the
-# form `__ret = __builtin_bit_cast(float32_t, __builtin_neon_vgetq_lane_f32(..))`,
-# and cv::softfloat has a user-provided copy ctor, so it is NOT trivially
-# copyable -- which __builtin_bit_cast requires. Every v_extract_n instantiated
-# in this TU then fails (measured 2026-08-23, LLVM 22.1.8):
-#   intrin_neon.hpp(2202,1): error: '__builtin_bit_cast' destination type must
-#                                    be trivially copyable
-# x86 is unaffected: the SSE intrinsics never mention float32_t, which is why
-# this has stayed invisible on the amd64 lane. Scoped to ARM so amd64 is
-# byte-identical.
-#
-# The fix converts the two typedefs into OBJECT-LIKE MACROS. That is not a
-# cosmetic difference, it is the whole mechanism: intrin_neon.hpp is textually
-# preprocessed at `#include "precomp.hpp"` (line 66), long BEFORE line 163, so
-# the template bodies keep a bare `float32_t` token that a later #define can no
-# longer rewrite. Removing the typedef leaves nothing named cv::float32_t, so
-# that token now resolves to ::float32_t (= float) exactly as clang intends,
-# while every use AFTER line 163 -- i.e. all of the ported Berkeley SoftFloat
-# code -- still expands to `softfloat` precisely as the typedef did. The file
-# has no #include after line 163, so the macro cannot leak into a header.
-# Upstream issue to file: see out/upstream-issue-litert-lm-cmake.md for the
-# precedent this repo follows.
+# ARM-only (upstream bug): cv::float32_t, a typedef at softfloat.cpp:163, shadows clang's
+# ::float32_t inside namespace cv and breaks every NEON __builtin_bit_cast. MACROS, not
+# typedefs, because intrin_neon.hpp is preprocessed long BEFORE line 163 -- the mechanism is
+# in docs/windows-cross-builds.md § softfloat.cpp typedef -> macro.
 if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemProcessor -match 'ARM64') {
-    # #129 (2026-08-25): OpenCV's AArch64 feature PROBES (cmake/checks/cpu_neon_fp16.cpp,
-    # cpu_neon_dotprod.cpp, ...) compile only `#if (defined __GNUC__ && (__arm__ ||
-    # __aarch64__))` -- the `_MSC_VER && _M_ARM64` alternative is commented out
-    # upstream because MSVC's arm_neon.h lacked the intrinsics (opencv/opencv#25052).
-    # clang-cl defines neither __GNUC__ nor takes that branch, so every probe
-    # ends in `#error "... is not supported"` REGARDLESS of the dispatch flags
-    # (measured arm64 runs 20/21: FP16, NEON_FP16 and NEON_DOTPROD "not supported
-    # by C++ compiler" with the flags correctly passed; only the guard-free BF16
-    # probe passed). clang-cl uses clang's own arm_neon.h, which has them all, so
-    # the honest guard is `__clang__ && _M_ARM64`. Patched by SEARCH over the
-    # checks directory (every probe carrying that exact commented-out clause),
-    # floored: fewer than two patched files means the probes moved.
+    # #129: OpenCV's AArch64 feature probes compile only under `__GNUC__` (the `_MSC_VER &&
+    # _M_ARM64` alternative is commented out upstream, opencv/opencv#25052), so under clang-cl
+    # every probe #errors REGARDLESS of the dispatch flags. Patched by SEARCH over the checks
+    # directory, floored: fewer than two patched files means the probes moved.
     $checksDir = Join-Path $mainSrc 'cmake\checks'
     $probePattern = '\(defined __GNUC__ && \(defined __arm__ \|\| defined __aarch64__\)\)\s*/\*\s*\|\|\s*\(defined _MSC_VER && \(defined _M_ARM64 \|\| defined _M_ARM64EC\)\)\s*\*/'
     $probeReplacement = '(defined __GNUC__ && (defined __arm__ || defined __aarch64__)) || (defined __clang__ && (defined _M_ARM64 || defined _M_ARM64EC)) /* clang-cl: clang''s arm_neon.h carries the intrinsics (#129) */'
@@ -161,32 +98,17 @@ if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemP
             -Pattern 'typedef\s+softfloat\s+float32_t;\s*\r?\n\s*typedef\s+softdouble\s+float64_t;' `
             -Replacement "#define float32_t softfloat`n#define float64_t softdouble" `
             -Description 'opencv softfloat.cpp: float32_t/float64_t typedef -> macro (NEON __builtin_bit_cast collision)')
-    # Load-bearing drift assertion: if upstream renames or moves these typedefs,
-    # a silent no-op here resurfaces as a wall of confusing bit_cast errors deep
-    # inside arm_neon.h. Fail now, with the reason, instead.
+    # Drift assertion: a silent no-op here resurfaces as bit_cast errors deep inside arm_neon.h.
     $sfText = [System.IO.File]::ReadAllText($sfCpp)
     if ($sfText -notmatch '#define\s+float32_t\s+softfloat') {
         throw "opencv softfloat.cpp: the float32_t/float64_t typedefs were not converted to macros (upstream layout changed?). intrin_neon.hpp will fail with '__builtin_bit_cast destination type must be trivially copyable'. Re-check $sfCpp."
     }
 
-    # Third ARM-only inline patch, same class as 002/003: bundled MLAS assumes
-    # "_M_ARM64 implies the MSVC compiler" and remaps two ACLE reduction
-    # intrinsics onto MSVC's private spellings (mlasi.h):
-    #     #if defined(_M_ARM64)
-    #     #ifndef vmaxvq_f32
-    #     #define vmaxvq_f32(src) neon_fmaxv(src)
-    # clang-cl defines _M_ARM64 too, but implements the ACLE names and has no
-    # neon_fmaxv/neon_fminv at all. The #ifndef guard does not save us: clang
-    # provides vmaxvq_f32 as a FUNCTION, not a macro, so the guard is true and
-    # MLAS shadows the real intrinsic. Result (measured 2026-08-23):
-    #   mlasi.h(2771,12): error: use of undeclared identifier 'neon_fmaxv'
-    # Each #define is wrapped rather than deleted, so a genuine MSVC build keeps
-    # the mapping -- the condition being corrected is "which compiler", not
-    # "which architecture". Matched on the #define lines themselves because the
-    # upstream line numbers move between releases.
-    # Idempotence is explicit here rather than via -Guard: the guard string would
-    # still match AFTER patching (neon_fmaxv survives inside the wrapper), so a
-    # re-run would nest a second wrapper around the same #define.
+    # ARM-only: bundled MLAS remaps vmaxvq_f32/vminvq_f32 onto MSVC's neon_fmaxv/neon_fminv under
+    # _M_ARM64, which clang-cl also defines but does not implement (its #ifndef guard does not
+    # save us -- clang provides them as FUNCTIONS). Each #define is WRAPPED, not deleted, so a
+    # genuine MSVC build keeps the mapping. Idempotence is explicit: -Guard would still match
+    # after patching (neon_fmaxv survives inside the wrapper) and nest a second wrapper.
     $mlasiH = Join-Path $mainSrc '3rdparty\mlas\lib\mlasi.h'
     if (-not (Test-Path $mlasiH)) { throw "opencv mlasi.h not found at $mlasiH -- the bundled MLAS layout changed." }
     $mlasiText = [System.IO.File]::ReadAllText($mlasiH)
@@ -202,18 +124,14 @@ if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemP
     }
 }
 
-# Canonical toolchain preamble: VsDevCmd (MSVC/SDK INCLUDE+LIB env — OpenCV
-# needs them even without CUDA), pyconfig.h into Include\ (in-tree Windows
-# CPython keeps it at PC\pyconfig.h; cv2's Python.h include chain needs it and
-# earlier stages only HAPPENED to copy it), the win-amd64 platform-tag shim
-# (must exist BEFORE pip runs so a 64-bit numpy is resolved), and the
-# source-built python handle.
+# Toolchain preamble: VsDevCmd env, pyconfig.h into Include\ (in-tree CPython keeps it at
+# PC\pyconfig.h, which cv2's include chain needs), the platform-tag shim (must exist BEFORE pip
+# resolves wheels), and the source-built python handle.
 $ocvPy = Initialize-ToolchainPythonEnvironment
 if (-not (Test-Path $ocvPy.Exe)) { throw "Source-built CPython not found at $($ocvPy.Exe) (toolchain layer missing?)" }
 
-# EAP=Stop/StrictMode-safe interpreter query: capture output, gate on exit code
-# and non-empty result, surface the full output on failure (a bare .ToString()
-# on an error line used to feed garbage straight into the cmake args).
+# EAP=Stop/StrictMode-safe interpreter query: gate on exit code AND a non-empty result -- a bare
+# .ToString() on an error line used to feed garbage straight into the cmake args.
 function Get-OcvPythonQueryResult {
     param(
         [Parameter(Mandatory)][string]$PythonExe,
@@ -229,9 +147,8 @@ function Get-OcvPythonQueryResult {
     return $last
 }
 
-# Create FindPythonInterp.cmake stub directly in OpenCV's cmake dir so
-# find_host_package(PythonInterp ...) finds it (CMAKE_MODULE_PATH is overridden
-# by OpenCV's internal cmake scripts — placing it in the source tree avoids that).
+# The stub goes in OpenCV's own cmake dir: OpenCV's internal scripts override CMAKE_MODULE_PATH,
+# so a module path of ours would never be searched.
 $pythonModuleDir = Join-Path $mainSrc 'cmake'
 $pyExePath = $ocvPy.Exe -replace '\\', '/'
 # Version derived from canonical PYTHON_VERSION (versions.env via load-versions/ENV)
@@ -251,9 +168,7 @@ mark_as_advanced(PYTHONINTERP_FOUND PYTHON_EXECUTABLE)
 Set-Content -Path (Join-Path $pythonModuleDir 'FindPythonInterp.cmake') -Value $findPythonInterpStub
 Write-Host "Created FindPythonInterp.cmake stub for Python $pyVersion"
 
-# Python bindings (cv2): numpy is required at configure + compile time (the
-# platform-tag shim was written by Initialize-ToolchainPythonEnvironment above,
-# before this pip run resolves wheels).
+# cv2 needs numpy at configure + compile time; the platform-tag shim above already ran.
 Install-CpythonPip -Python $ocvPy
 Invoke-CpythonPip -Python $ocvPy -Arguments @('install', '--quiet', 'numpy')
 $numpyInclude = (Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import numpy; print(numpy.get_include())' -Label 'numpy include dir') -replace '\\', '/'
@@ -265,132 +180,34 @@ $ocvInstallDir = Join-Path $InstallDir 'lib\opencv5'
 
 # (MSVC/SDK INCLUDE+LIB env vars were loaded by the toolchain preamble above.)
 
-# Pre-create the bin/ directory so OpenCV's cmake file(COPY ...) for the bundled
-# ONNX Runtime download has a valid destination (avoids "Invalid argument" error
-# on Windows when the destination directory doesn't exist yet during configure).
+# Pre-create bin/ so OpenCV's file(COPY) for the bundled ONNX Runtime download has a valid
+# destination -- on Windows a missing one fails configure with "Invalid argument".
 $null = New-Item -Path (Join-Path $buildDir 'bin') -ItemType Directory -Force
 
-# $ocvTargetArch / $ocvCross are resolved above, before the patch block.
-# Arch-aware: Get-WindowsTargetSimdFlags -Arch amd64 is the historical x86
-# string byte for byte (pinned by TargetArch.Common.Tests), and
-# $crossTargetFlag below is EMPTY on the host arch. arm64 returns NO baseline
-# SIMD flags on purpose: NEON is mandatory in the AArch64 baseline, and
-# dotprod/i8mm/SVE are runtime-dispatch decisions, never a global -m flag.
-#
-# CPU_BASELINE / CPU_DISPATCH are deliberately NOT introduced for either lane:
-# this script has never passed them, so OpenCV's own defaults are what ships
-# today. Adding them on amd64 would change every emitted per-file command line,
-# which the arm64 work is not allowed to cost. (What the cross lane DOES pass,
-# since #129, is the clang-cl SPELLING of the per-feature dispatch flags --
-# see the block above the configure call; the dispatch SET stays upstream's.)
+# The amd64 SIMD string is pinned byte-for-byte by TargetArch.Common.Tests; arm64 returns none on
+# purpose (NEON is baseline, the rest is runtime dispatch). CPU_BASELINE/CPU_DISPATCH stay unset
+# on both lanes -- adding them would re-key every amd64 per-file command line.
 $simdFlags = Get-WindowsTargetSimdFlags -Arch $ocvTargetArch
-# The clang target triple has to ride in THIS script's explicit CMAKE_C_FLAGS /
-# CMAKE_CXX_FLAGS strings, not only in Get-CMakeCrossArgs' CMAKE_*_FLAGS_INIT:
-# passing -DCMAKE_C_FLAGS on the command line DEFINES the cache variable, and
-# CMake then never applies CMAKE_C_FLAGS_INIT at all. Without this, an "arm64"
-# OpenCV would configure green and emit x86_64 objects -- the exact silent
-# wrong-arch failure the arch module exists to prevent.
+# The triple must ride in THIS script's CMAKE_*_FLAGS, not only in CMAKE_*_FLAGS_INIT: passing
+# -DCMAKE_C_FLAGS DEFINES the cache variable, so _INIT is never applied and an "arm64" OpenCV
+# would configure green while emitting x86_64 objects.
 $crossTargetFlag = if ($ocvCross) { "--target=$(Get-ClangTargetTriple -Arch $ocvTargetArch)" } else { '' }
-# _USE_MATH_DEFINES is required by OpenCV's ARM NEON HAL (hal/carotene), which is
-# compiled ONLY for ARM targets and so has never been exercised on this chain.
-# It uses M_PI, which the C standard does not mandate and the MSVC CRT headers
-# withhold unless this macro is defined -- carotene assumes POSIX behaviour:
-#   hal\carotene\src\phase.cpp(121,5): error: use of undeclared identifier 'M_PI'
-# (measured 2026-08-23). Scoped to the cross branch so the amd64 command line is
-# untouched; carotene is not built there at all.
+# ARM-only: carotene (the NEON HAL) uses M_PI, which the MSVC CRT withholds without this.
 $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
-# AArch64 CROSS: TWO LLVM 23.1.0 CODEGEN DEFECTS WITH ONE SIGNATURE. Both abort
-# the compile with a diagnostic that names no source file, and both come from
-# LLVM estimating a function's layout a few bytes SHORT of what it then emits:
-#
-#     error: value evaluated as 284 is out of range.   <- compressed jump table
-#     error: fixup value out of range                  <- a branch out of reach
-#
-# (1) COMPRESSED JUMP TABLES -- what $jumpTableFlag below is for.
-#     AArch64AsmPrinter::emitJumpTableImpl writes a compressed entry as
-#     (LBB - Base) >> 2 through emitValueImpl with Size = 1, the only producer
-#     of that message in LLVM. AArch64CompressJumpTables picks the entry width
-#     from an ESTIMATE of block offsets -- span>>2 in 8 bits -> 1-byte entries,
-#     ceiling 255*4 = 1020 bytes. Every value measured here sits JUST past it:
-#     256 (= 1024 B, four bytes over), 258, 259, 260, 262, 272, 281, 284. These
-#     are not oversized tables; the estimate lands under 1020 and the emitted
-#     layout comes out a handful of bytes above. Offenders: the bundled
-#     libprotobuf (descriptor.cc, generated_message_reflection.cc,
-#     wire_format.cc). protocolbuffers/protobuf#24758 gets cited here as
-#     "protobuf is fragile on windows-arm64", but it is a LOOSER match than it
-#     reads: Ruby/upb, not descriptor.cc, and its symptom is "Failed to evaluate
-#     function length in SEH unwind info" (llvm#47432) -- NOT this overflow. It
-#     is still the useful precedent, because it was closed as an LLVM bug with
-#     nothing to fix in protobuf: the offender library is the TRIGGER, not the
-#     defect. Same conclusion holds here -- see docs/windows-refactor-backlog.md
-#     § #135: this pass cannot overflow a 1-byte entry unless some instruction
-#     reports fewer bytes than it emits, so no OpenCV-side change fixes it.
-#
-# (2) A `tbnz` ~150 BYTES OUT OF REACH in median_blur.dispatch.cpp. Handled
-#     per-TU further down, NOT by any jump-table setting -- it is a
-#     branch-range defect and no jump table is involved (`-fno-jump-tables`
-#     does not fix it; measured). Read that call site before touching this one.
-#
-# THE FLAG. `-Xclang -target-feature -Xclang +force-32bit-jump-tables` is the
-# subtarget feature the pass itself consults, and it makes the pass bail out
-# before it scans anything:
-#
-#     if (ST.force32BitJumpTables() && !MF->getFunction().hasMinSize())
-#       return false;        -- AArch64CompressJumpTables.cpp, LLVM 23.1.0
-#
-# so every table keeps 4-byte entries and the 1-byte overflow cannot happen:
-#
-#     default                    .hword (.LBB0_2-.LBB0_2)>>2   ldrh  (1020 B)
-#     +force-32bit-jump-tables   .word  .LBB0_2-.Ltmp0         ldrsw (+-2 GB)
-#
-# IT IS THE SAME THING AS `-mllvm -aarch64-enable-compress-jump-tables=false`:
-# byte-identical .asm from clang-cl 23.1.0, verified locally 2026-08-27. An
-# earlier version of this comment claimed the feature "keeps the pass running
-# with its adr check intact" while the -mllvm flag removes it -- that was
-# WRONG, both disable the pass outright, and the difference it claimed was used
-# to explain (2). The feature is preferred only because a target feature is a
-# supported spelling where `-mllvm` is a debug knob. Neither flag can cause
-# (2): with the pass off, the ADR that materialises a table base is
-# self-relative (`.Ltmp0:` sits on the ADR itself, displacement 0) and cannot
-# go out of range.
-#
-# COST, measured on a reproducer: 4522 -> 4650 bytes of object, ~2.8 %, all of
-# it jump-table DATA. Every TU keeps /O2, every instruction is the one -O2
-# emits, and dispatch stays O(1) through a table. That is the difference from
-# /Od, /O1 and -fno-jump-tables, which pay in code quality -- and which only
-# ever "worked" by perturbing a layout estimate that misses by a few bytes.
-#
-# RULED OUT BY MEASUREMENT, keep them ruled out:
-#   * `-max-jump-table-size` caps the entry COUNT while the ceiling is a BYTE
-#     SPAN -- a 100-entry table still spans 1032 bytes at 10 bytes per case.
-#     Accepted by the driver, no effect.
-#   * `-align-all-*` to nudge the estimate: the padding makes the function
-#     length unevaluable for the Windows SEH unwind writer and clang-cl dies
-#     with `Failed to evaluate function length in SEH unwind info`
-#     (llvm#122707, a duplicate of llvm#47432).
-#   * /Od and /O1 (and the per-TU /Od pass this replaced): they move the
-#     failure to the next TU, measured three times. That pass was also built on
-#     a refuted root cause -- an 8-bit .xdata "Code Words" unwind field --
-#     which MCWin64EH.cpp reports as a report_fatal_error with an entirely
-#     different message.
-#
-# UPSTREAM: the estimate-vs-emission gap is LLVM's own and is worth reporting
-# (out/ holds drafts of previous ones). It is not a prerequisite for this repo:
-# the flag closes (1) here today, a report buys a future where it can be
-# dropped.
-$jumpTableFlag = if ($ocvCross) { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
+# AArch64 cross: turns off the compressed-jump-table pass, whose block-size estimate lands a few
+# bytes UNDER the emitted layout ("error: value evaluated as <N> is out of range", no source
+# location). Same effect as -mllvm -aarch64-enable-compress-jump-tables=false, byte-identical
+# output. Cost ~2.8 % of object size, all jump-table DATA; every TU keeps /O2. The measured
+# alternatives that DO NOT work (/Od, /O1, -max-jump-table-size, -align-all-*), the sibling
+# branch-range defect and the upstream story: docs/failure-modes.md § AArch64 cross compile aborts.
+# KNOB (#135): OPENCV_NO_JUMPTABLE_WORKAROUND=1 drops the flag, to test a candidate clang.
+$jumpTableFlag = if ($ocvCross -and $env:OPENCV_NO_JUMPTABLE_WORKAROUND -ne '1') { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
+if ($env:OPENCV_NO_JUMPTABLE_WORKAROUND -eq '1') { Write-Host 'OPENCV_NO_JUMPTABLE_WORKAROUND=1: +force-32bit-jump-tables NOT passed (#135 experiment)' }
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
-# EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
-# nvcc command lines go through CMake response files, which sccache passes
-# through UNCACHED (measured: 2018 requests, zero CUDA cache categories) -
-# so a wrapped OpenCV CUDA compile is bare-but-green and wins nothing.
-# OPENCV_CUDA_NO_RSP=1 disables the CUDA response files so the calls arrive
-# inline and enter sccache's nvcc decomposition. ONLY meaningful once the
-# quote-protection fix ships (#114 / mozilla/sccache#2811) - without it,
-# inline calls inherit the dropped-instantiation miscompile. Command-length
-# risk: ninja spawns directly (32,767-char limit); OpenCV's lists are ~5-8k,
-# and an overflow fails loudly at build, not silently.
+# EXPERIMENT KNOB: OpenCV's nvcc command lines go through CMake response files, which sccache
+# passes through UNCACHED. OPENCV_CUDA_NO_RSP=1 inlines them so sccache's nvcc decomposition is
+# reachable -- only meaningful once the quote-protection fix ships (#114 / mozilla/sccache#2811).
 $cudaRspArgs = @()
 if ($env:OPENCV_CUDA_NO_RSP -eq '1') {
     Write-Host 'OPENCV_CUDA_NO_RSP=1: disabling CUDA response files (inline nvcc args -> sccache decomposition reachable)'
@@ -402,183 +219,79 @@ if ($env:OPENCV_CUDA_NO_RSP -eq '1') {
 }
 
 $cmakeExtra = $cudaRspArgs + @(
-    # Suppress CMake policy deprecation warnings baked into OpenCV's own CMakeLists.txt
-    # (CMP0146: cmake_minimum_required version range; CMP0148: FindPython* deprecation;
-    #  CMP0177: install() DESTINATION path normalisation).
+    # Silence CMake policy deprecation warnings baked into OpenCV's own CMakeLists.
     '-DCMAKE_POLICY_DEFAULT_CMP0146=NEW',
     '-DCMAKE_POLICY_DEFAULT_CMP0148=NEW',
     '-DCMAKE_POLICY_DEFAULT_CMP0177=NEW',
     '-DCMAKE_CXX_STANDARD=17',
-    # /FI<cstring> fixes clang-cl -include cstring ambiguity (file vs header)
     "-DCMAKE_C_FLAGS:STRING=$simdFlags",
-    # -Wno-deprecated-copy: core/matx.hpp declares a user-provided copy CTOR for
-    # every Matx<> specialisation, so clang deprecates each implicit copy
-    # ASSIGNMENT operator. matx.hpp is included by nearly every OpenCV TU, which
-    # made this ~7 700 lines -- the single largest warning flood in the chain
-    # (16 % of a 459 061-line build log was upstream warnings). It is noise from
-    # upstream's own header, not from anything this repo writes.
-    # The parent group is used deliberately, not the narrower
-    # -Wdeprecated-copy-with-user-provided-copy: the parent has existed far
-    # longer, and an unknown -Wno- is only a warning to clang, never an error.
-    # Safe for the CUDA path: ocv_cuda_filter_options strips /clang:*, /FI*,
-    # -Xclang, -fopenmp AND -W* from CMAKE_CXX_FLAGS before handing them to
-    # nvcc's cl.exe host compiler (patches/opencv/001-cmake-clang-cl-compat.patch)
-    # -- cl.exe would reject a GNU-style -W flag with D8021.
-    # Verify the count actually dropped: windows\scripts\diagnostics\Measure-BuildWarnings.ps1
+    # /FIcstring, not `-include cstring`: the CL dialect parses the GNU pair's second word as an
+    # INPUT FILE. Same ambiguity patch 002 fixes inside MLAS, here for every C++ TU.
+    # -Wno-deprecated-copy: matx.hpp's user-provided copy ctors deprecate every implicit copy
+    # ASSIGNMENT, ~7,700 lines of upstream noise. Parent group on purpose -- it is older, and an
+    # unknown -Wno- is only a warning to clang. Safe for CUDA: ocv_cuda_filter_options strips
+    # -W* before nvcc's cl.exe host compiler sees them (patches/opencv/001), which rejects D8021.
     "-DCMAKE_CXX_FLAGS:STRING=/FIcstring $(Get-WarningNoiseSuppressionFlags) $simdFlags",
     '-DBUILD_TESTS=OFF', '-DBUILD_PERF_TESTS=OFF', '-DBUILD_EXAMPLES=OFF',
                          # BUILD_opencv_world=OFF: avoids FFmpeg/ONNX importing issues
                          '-DBUILD_opencv_world=OFF',
     '-DBUILD_JPEG=ON', '-DBUILD_PNG=ON', '-DBUILD_TIFF=ON', '-DBUILD_WEBP=ON',
     '-DBUILD_OPENJPEG=ON', '-DBUILD_HARFBUZZ=ON',
-    # BUILD_TBB=OFF on BOTH lanes -- this line is unconditional and always was.
-    # The old inline note "source build only on ARM Windows" (2026-08-07) was
-    # wrong: the flag has never been arch-gated. ON would have CMake fetch
-    # OpenCV's own TBB from GitHub at configure time, an unpinned mid-configure
-    # download of exactly the kind #94 removed for FFmpeg. Nothing else in the
-    # chain provisions TBB either -- see the WITH_OPENMP note below for what
-    # that means for cv::parallel.
+    # BUILD_TBB=OFF, unconditional on both lanes: ON would have CMake fetch TBB from GitHub at
+    # configure time, an unpinned mid-configure download of the kind #94 removed for FFmpeg.
+    # Nothing else in the chain provisions TBB either, so WITH_TBB below likely resolves to NO.
     '-DBUILD_TBB=OFF',
     '-DBUILD_CLAPACK=ON', '-DBUILD_IPP_IW=ON',
-    # cv2 python module: cmake --install drops it into CPython's site-packages
-    # (queried from the interpreter); the media merge fans site-packages into the
-    # shipped image. numpy include dir resolved above. ON on both lanes (#120
-    # step 2) whenever the target CPython import lib exists -- see the PYTHON3_*
-    # block below for the host-exe / target-lib split and the target
-    # site-packages destination.
+    # cv2: ON on both lanes (#120 step 2) whenever the target CPython import lib exists -- see
+    # the PYTHON3_* block below for the host-exe / target-lib split and the install destination.
     "-DBUILD_opencv_python3=$(if ($ocvCross -and -not (Get-TargetBuildPython).Available) { 'OFF' } else { 'ON' })", '-DBUILD_opencv_java=OFF', '-DBUILD_opencv_apps=OFF',
     # opencv_contrib dnn_superres references ENGINE_CLASSIC removed in OpenCV 5.x DNN
     '-DBUILD_opencv_dnn_superres=OFF',
     '-DWITH_TBB=ON', '-DWITH_IPP=ON', '-DWITH_OPENCL=ON', '-DWITH_OPENEXR=ON',
-    # WITH_OPENGL=OFF: WITH_OPENGL=ON makes opencv_core*.dll hard-import OPENGL32.dll,
-    # which the Windows Server Core base image lacks -> every OpenCV DLL fails to load
-    # (0xC0000135 STATUS_DLL_NOT_FOUND) in the final image. A headless container needs no
-    # GL windowing; this was caught by the smoke-test OpenCV link+run gate.
+    # WITH_OPENGL=OFF: ON makes opencv_core*.dll hard-import OPENGL32.dll, which Server Core
+    # lacks -> every OpenCV DLL fails to load (0xC0000135). A headless container needs no GL.
     '-DWITH_OPENGL=OFF', '-DWITH_DIRECTX=ON', '-DWITH_DIRECTML=ON',
     '-DWITH_VULKAN=ON', '-DWITH_EIGEN=ON',
-    # ONNX Runtime enabled -- OpenCV auto-detects our source-built ORT via PKG_CONFIG_PATH.
-    # If not found via pkg-config, OpenCV falls back to its bundled download (v1.25.1).
+    # Our source-built ORT is auto-detected via PKG_CONFIG_PATH; otherwise OpenCV downloads its own.
                          '-DWITH_ONNXRUNTIME=ON',
-    # WITH_MSMF=OFF *and* WITH_OBSENSOR=OFF: Server Core ships NO Media Foundation
-    # (MF.dll/MFPlat.DLL/MFReadWrite.dll). BOTH backends hard-import it into
-    # opencv_videoio510.dll -- obsensor (Orbbec depth cams, default ON) does so
-    # INDEPENDENTLY of WITH_MSMF via its MSMFStreamChannel UVC path, which is why
-    # MSMF=OFF alone still produced an unloadable videoio (dep-walk 2026-07-13).
-    # Any consumer linking all modules (the cv2 pyd!) then dies 0xC0000135. Same
-    # class as the WITH_OPENGL=OFF fix; FFmpeg + GStreamer backends remain.
+    # WITH_MSMF=OFF *and* WITH_OBSENSOR=OFF: Server Core ships no Media Foundation, and obsensor
+    # (default ON) hard-imports it INDEPENDENTLY of WITH_MSMF via its UVC path -- MSMF=OFF alone
+    # still produced an unloadable videoio. FFmpeg + GStreamer backends remain.
     '-DWITH_VTK=OFF', '-DWITH_MSMF=OFF', '-DWITH_OBSENSOR=OFF', '-DWITH_FFMPEG=ON', '-DWITH_GSTREAMER=ON',
-    # NB: OPENCV_FFMPEG_SKIP_DOWNLOAD is deliberately NOT set — see the block
-    # below the flag list. Setting it produced `FFMPEG: NO` (measured 2026-08-16,
-    # a real regression), because OpenCV's Windows pkg-config fallback is gated
-    # on PKG_CONFIG_FOUND, which is never set on this platform. Backlog #94.
-    # WITH_OPENMP=OFF: clang-cl compiles `#pragma omp` (e.g. contrib surface_matching)
-    # into __kmpc_* runtime calls but the generated link line never includes libomp.lib
-    # -> lld-link "undefined symbol: __kmpc_fork_call". OFF stays.
-    # RETRACTED 2026-08-24: the follow-on claim "TBB (WITH_TBB=ON above) is
-    # OpenCV's preferred cv::parallel backend anyway, so no parallelism is lost"
-    # (2026-08-07) was wrong. Nothing in this chain provisions TBB at all
-    # (BUILD_TBB=OFF above, no TBB staged anywhere), so WITH_TBB=ON almost
-    # certainly resolves to NO and cv::parallel falls back to whatever OpenCV
-    # detects on its own (MS Concurrency runtime, or nothing). The configure
-    # summary is the only place OpenCV states its parallel framework; it was
-    # kept out of the streamed build log until 2026-08-24 -- see the Tee-Object
-    # note at the configure call. Read it there before repeating any
-    # parallelism claim.
+    # NB: OPENCV_FFMPEG_SKIP_DOWNLOAD is deliberately NOT set here -- see the #94 block below.
+    # WITH_OPENMP=OFF: clang-cl lowers `#pragma omp` to __kmpc_* calls but libomp.lib never
+    # reaches the link line -> lld-link "undefined symbol: __kmpc_fork_call".
     '-DWITH_OPENCL_SVM=ON', '-DWITH_OPENMP=OFF',
     # NVCUVID/NVCUVENC require the NVIDIA Video Codec SDK (separate download, not in container)
     '-DWITH_NVCUVID=OFF', '-DWITH_NVCUVENC=OFF'
-    # NB: CUDA (WITH_CUDA/CUDNN/CUBLAS + ENABLE_CUDA_FIRST_CLASS_LANGUAGE + the cv::dnn CUDA
-    # backend) is added in the GPU-guarded block below, ONLY when an nvidia CUDA toolkit is
-    # detected. Enabling it here unconditionally would make a CPU-only build enable_language(CUDA)
-    # with no nvcc present and fail to configure.
+    # NB: CUDA is added in the GPU-guarded block below -- unconditionally here, a CPU-only build
+    # would enable_language(CUDA) with no nvcc present and fail to configure.
 )
 
 # --- cross-lane deltas (a later -D of the same cache var wins) ----------------
-# Everything here is x86-only or has no ARM64 import library. Appended rather
-# than folded into the array above so the amd64 command line stays byte-identical
-# and the reason for each override stays attached to it.
+# Appended rather than folded into the array above so the amd64 command line stays byte-identical.
 if ($ocvCross) {
-    # IPP is Intel's x86-only primitives library; there is no AArch64 build of it
-    # at all. OpenCV still resolved and unpacked 3rdparty/ippicv/ippicv_win here,
-    # so its headers were already on the include path of every core TU (visible in
-    # the failing include chain: private.hpp:220 -> ippicv.h). Even had that
-    # compiled, the staged .lib could never link -- though not for the reason
-    # given here on 2026-08-23. CORRECTED 2026-08-24: "the staged .lib is x64
-    # COFF" was wrong; upstream's ippicv.cmake selects the blob by x86 checks
-    # its Windows branch never guards against ARM, so a win-arm64 configure
-    # would actually pull the 32-bit ia32 blob (an upstream bug worth filing).
-    # Either flavour is x86 COFF that lld-link rejects against an arm64 image,
-    # so IPP stays OFF regardless. BUILD_IPP_IW builds the IPP integration
-    # wrapper, which is meaningless without IPP.
+    # IPP is x86-only, and upstream's ippicv.cmake selects the blob by x86 checks its Windows
+    # branch never guards against ARM -- a win-arm64 configure pulls the 32-bit ia32 blob
+    # (upstream bug worth filing). Either flavour is x86 COFF lld-link rejects. IPP_IW needs IPP.
     $cmakeExtra += '-DWITH_IPP=OFF', '-DBUILD_IPP_IW=OFF'
-    # DirectML: ON for the cross lane too (#118, 2026-08-24), restoring parity
-    # with amd64. Two facts, both verified rather than assumed:
-    #   (1) What this flag actually feeds is NOT a cv::dnn backend -- HAVE_DIRECTML
-    #       is consumed only by contrib G-API's ONNX DirectML EP
-    #       (cv::gapi::onnx::ep::DirectML), and only when HAVE_ONNX_DML also
-    #       holds, i.e. dml_provider_factory.h is found in the ORT install.
-    #   (2) Since #113 puts USE_DML=ON on both lanes, upstream ORT's
-    #       get_c_cxx_api_headers() GLOBs include/onnxruntime/core/providers/dml/*.h
-    #       into the public-header install set, so that factory header IS
-    #       installed here. Detection itself is a try_compile against the Windows
-    #       SDK's arm64 d3d12/dxcore/directml import libs, which ship with the SDK.
-    # The earlier OFF (and the "no arm64 import library" claim before it) is
-    # retracted history -- see backlog #113/#118.
-    # INSTALL LAYOUT. OpenCV composes <root>\<OpenCV_ARCH>\<OpenCV_RUNTIME>\{bin,lib}
-    # and its ARM64 branch in OpenCVDetectCXXCompiler.cmake keys off
-    #     elseif("${CMAKE_GENERATOR_PLATFORM}" MATCHES "ARM64")
-    # which ONLY the Visual Studio generator sets. This chain is Ninja-only, so
-    # detection falls through to the x64 branch and an aarch64 build installs
-    # into ...\opencv5\x64\vc18\ -- while OPENCV_LIB/OPENCV_BIN (baked as ENV by
-    # Dockerfile.media-merge-builder) and build-gstreamer's fallback both look
-    # under the TARGET arch dir. GStreamer then dies with:
-    #   ERROR: no import libraries found in C:\runtime\lib\opencv5\arm64\vc18\lib
-    # Note this is the opposite of what build-buildkit.ps1's OPENCV_ARCH_DIR
-    # comment predicted: the consumers were right, the producer was wrong.
-    #
-    # OpenCV ships an explicit override for exactly this case, as the FIRST
-    # branch of the detection chain (OpenCVDetectCXXCompiler.cmake:150):
-    #     if(DEFINED OpenCV_ARCH AND DEFINED OpenCV_RUNTIME)
-    #       # custom overridden values
-    #     elseif(MSVC)
-    #       ...
-    # BOTH must be defined or the branch never fires and MSVC detection runs
-    # instead -- which is why the runtime is passed too, even though only the
-    # arch is wrong. CMake variable names are case-sensitive and these are the
-    # exact spellings, matching what OpenCVInstallLayout.cmake then reads.
-    # 'vc18' is what OpenCV's own MSVC_VERSION mapping picks for the pinned
-    # toolset (`elseif(MSVC_VERSION MATCHES "^195[0-9]$") set(OpenCV_RUNTIME vc18)`)
-    # and the literal already hardcoded in Dockerfile.media-merge-builder,
-    # build-gstreamer-from-source.ps1 and smoke-test-container.ps1.
+    # WITH_DIRECTML=ON on both lanes (#118): it feeds contrib G-API's ONNX DirectML EP, not
+    # cv::dnn, and USE_DML=ON (#113) installs the dml_provider_factory.h its detection needs.
+    # INSTALL LAYOUT: OpenCV's ARM64 branch keys off CMAKE_GENERATOR_PLATFORM, which only the
+    # Visual Studio generator sets -- under Ninja an aarch64 build installs into
+    # ...\opencv5\x64\vc18\ while every consumer looks under the TARGET arch dir. OpenCV_ARCH and
+    # OpenCV_RUNTIME must BOTH be defined or the override branch never fires
+    # (OpenCVDetectCXXCompiler.cmake:150); 'vc18' is what its MSVC_VERSION mapping picks for the
+    # pinned toolset, and the literal already hardcoded in the merge/gstreamer/smoke-test scripts.
     $cmakeExtra += "-DOpenCV_ARCH=$(Get-OpenCvArchDir -Arch $ocvTargetArch)", '-DOpenCV_RUNTIME=vc18'
     Write-Host "OpenCV cross ($ocvTargetArch): WITH_IPP=OFF (x86-only), BUILD_IPP_IW=OFF, WITH_DIRECTML=ON (parity restored, #118 -- feeds G-API's ONNX DirectML EP, not cv::dnn), install layout -> $(Get-OpenCvArchDir -Arch $ocvTargetArch)\vc18"
 }
 
 # --- FFmpeg discovery for videoio (backlog #94) -------------------------------
-# The chain builds FFmpeg BEFORE OpenCV (swapped 2026-08-16) and puts its .pc
-# files on PKG_CONFIG_PATH here. That much is correct and stays — other probes
-# (ONNX Runtime) use the same mechanism.
-#
-# WHAT DOES NOT WORK, MEASURED: adding `-DOPENCV_FFMPEG_SKIP_DOWNLOAD=ON` to
-# make OpenCV link THIS FFmpeg instead of downloading its own turned
-# `FFMPEG: YES (prebuilt binaries)` into a flat `FFMPEG: NO` — strictly worse.
-# Reverted the same day. The reason is in OpenCV's own
-# modules/videoio/cmake/detect_ffmpeg.cmake (5.0.0), where the pkg-config route
-# is guarded by:
-#
-#     if(NOT HAVE_FFMPEG AND PKG_CONFIG_FOUND)
-#
-# `PKG_CONFIG_FOUND` comes from find_package(PkgConfig), which OpenCV does not
-# run on Windows — so skipping the download removes the only detection path that
-# was working and the fallback never fires, no matter what PKG_CONFIG_PATH says.
-# pkg-config itself is fine here: `pkg-config --modversion libavcodec` returns
-# 63.1.100 inside the same image.
-#
-# So a real #94 fix has to give CMake a detection route it actually takes on
-# Windows — the find_package branch (OPENCV_FFMPEG_USE_FIND_PACKAGE, which needs
-# a FindFFMPEG providing AVCODEC/AVFORMAT/AVUTIL/SWSCALE), or setting
-# PKG_CONFIG_FOUND/HAVE_FFMPEG plus the FFMPEG_* variables directly. Do not try
-# SKIP_DOWNLOAD again on its own; that experiment has been run.
+# Do NOT add OPENCV_FFMPEG_SKIP_DOWNLOAD on its own: detect_ffmpeg.cmake guards the pkg-config
+# route with `if(NOT HAVE_FFMPEG AND PKG_CONFIG_FOUND)`, and OpenCV never runs
+# find_package(PkgConfig) on Windows -- so skipping the download only removes the path that was
+# working, measured as a flat `FFMPEG: NO`. The shim block further down is what makes it fire.
 $ffPkgConfig = Join-Path $InstallDir 'ffmpeg\lib\pkgconfig'
 if (Test-Path $ffPkgConfig) {
     $pcParts = @($ffPkgConfig) + @($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })
@@ -588,19 +301,13 @@ if (Test-Path $ffPkgConfig) {
     Write-Host "NOTE: no FFmpeg pkgconfig dir at $ffPkgConfig (harmless today; OpenCV uses its own prebuilt FFmpeg — backlog #94)"
 }
 
-# cv2 python module inputs. OpenCV 5.x's find_python() still round-trips through
-# find_package(PythonInterp)/find_package(PythonLibs) -- BOTH removed in CMake
-# 4.x -- so its detection can never succeed here and python3 silently drops out
-# of the module list (cost one rebuild to learn, 2026-07-12). find_python() is
-# wrapped in `if(NOT PYTHON3INTERP_FOUND)`, so preset EVERY output it would
-# produce and skip detection wholesale (forward slashes for CMake).
+# OpenCV 5.x's find_python() round-trips through FindPythonInterp/FindPythonLibs, BOTH removed in
+# CMake 4.x, so detection can never succeed and python3 silently drops out of the module list. It
+# is wrapped in `if(NOT PYTHON3INTERP_FOUND)`, so preset EVERY output instead (forward slashes).
 $numpyVersion = Get-OcvPythonQueryResult -PythonExe $ocvPy.Exe -Code 'import numpy; print(numpy.__version__)' -Label 'numpy version'
-# #120 step 2: on the cross lane the LIBRARY comes from the TARGET build
-# (Get-TargetBuildPython: host .Exe, arch-neutral .Include, target .Lib) and
-# the cv2 install destination is the SHIPPED target interpreter's site-packages
-# under C:\runtime\python -- inside the merge arch gate's scan root, so a
-# wrong-arch cv2*.pyd fails the merge instead of shipping. amd64 keeps its
-# host paths (host == target there, the accessor collapses to the same values).
+# #120 step 2: on cross the LIBRARY comes from the TARGET build and cv2 installs into the SHIPPED
+# interpreter's site-packages -- inside the merge arch gate's scan root, so a wrong-arch cv2*.pyd
+# fails the merge instead of shipping. On amd64 host == target and the accessor collapses.
 $ocvTargetPy = Get-TargetBuildPython
 $pyLibFwd = ($ocvTargetPy.Lib) -replace '\\', '/'
 $pyIncFwd = ($ocvTargetPy.Include) -replace '\\', '/'
@@ -615,8 +322,7 @@ $cmakeExtra += "-DPYTHON3_LIBRARY=$pyLibFwd"
 $cmakeExtra += "-DPYTHON3_LIBRARIES=$pyLibFwd"
 $cmakeExtra += "-DPYTHON3_INCLUDE_DIR=$pyIncFwd"
 $cmakeExtra += "-DPYTHON3_INCLUDE_PATH=$pyIncFwd"
-# site-packages derived from the python handle (Include = <cpython>\Include),
-# not hardcoded to C:/temp -- the cpython tree location is owned by the toolchain.
+# Derived from the python handle, not hardcoded -- the cpython tree location is the toolchain's.
 $pySitePackagesFwd = (Join-Path (Split-Path $ocvPy.Include -Parent) 'Lib\site-packages') -replace '\\', '/'
 if ($ocvCross -and $ocvTargetPy.Available) {
     $targetSitePackages = Join-Path $InstallDir 'python\Lib\site-packages'
@@ -636,35 +342,21 @@ if (Test-Path "$ortRoot/include/onnxruntime/onnxruntime_c_api.h") {
     Write-Host "ONNX Runtime found at $ortRoot"
 }
 
-# Enable CUDA via CMake's first-class language support (ENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON
-# above tells OpenCV to use modern CUDA detection instead of the deprecated FindCUDA.cmake).
-# Get-GpuEnvironment sets $env:CUDA_PATH / CUDA_HOME and prepends CUDA bin to PATH; we only
-# need CUDACXX on top (CMake's built-in enable_language(CUDA) probe uses it).
+# Get-GpuEnvironment sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH; only CUDACXX is
+# needed on top, for CMake's enable_language(CUDA) probe.
 $gpuEnv = Get-GpuEnvironment
-# Cross lane: NEVER take CUDA from a HOST probe. Get-GpuEnvironment answers "does
-# this windows/amd64 BUILD HOST have a CUDA toolkit", which says nothing about the
-# target. CORRECTED 2026-08-24: this note claimed since 2026-08-23 that "there
-# is no CUDA/cuDNN/TensorRT for Windows-on-ARM at all" -- false. cuDNN ships a
-# windows-arm64 archive at this repo's exact 9.25.0.15 pin (verified, lib/arm64
-# inside), CUDA 13.4 (preview) advertises Windows ARM64 incl. x86_64-hosted
-# cross-compile, and TensorRT-RTX publishes Windows-on-Arm packages for CUDA
-# 13.4; only classic TensorRT is genuinely x64-only. None of that is wired into
-# this chain yet -- backlog work, not fiction -- so the guard stands on the
-# reason that was always sound: a bare host probe here would
-# enable_language(CUDA), point nvcc at x64 device libs and link them into an
-# "arm64" OpenCV. The driver already refuses -Gpu with a non-amd64 -TargetArch;
-# this enforces the same rule where the decision is actually made, so a direct
-# script invocation cannot bypass it.
+# Cross lane: NEVER take CUDA from a HOST probe. It answers "does this amd64 BUILD HOST have a
+# toolkit", which says nothing about the target -- a bare host probe would point nvcc at x64
+# device libs and link them into an "arm64" OpenCV. Enforced here as well as in the driver so a
+# direct script invocation cannot bypass it. (Windows-on-ARM CUDA/cuDNN exists; it is backlog
+# work, not the reason for this guard.)
 if ($gpuEnv.HasCuda -and -not (Test-WindowsCrossTarget -Arch $ocvTargetArch)) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'
     $cmakeExtra += '-DENABLE_CUDA_FIRST_CLASS_LANGUAGE=ON', '-DOPENCV_DNN_CUDA=ON'
-    # nvcc requires MSVC cl.exe as the host compiler on Windows.
-    # clang-cl-only flags forwarded via -Xcompiler (e.g. /Wno-undef,
-    # /clang:*, /FIcstring) are stripped from the CUDA host block by the
-    # ocv_cuda_filter_options patch (opencv/001-cmake-clang-cl-compat.patch).
-    # Provide CUDAToolkit_ROOT + CUDAToolkit_DIR so CMake's CONFIG-mode
-    # find_package(CUDAToolkit) can find CUDA 13.3 (MODULE mode broken in CMake 4.x).
+    # nvcc needs cl.exe as its Windows host compiler; clang-cl-only flags are stripped from the
+    # -Xcompiler block by patches/opencv/001. CUDAToolkit_ROOT/DIR feed CMake's CONFIG-mode
+    # find_package(CUDAToolkit) -- MODULE mode is broken in CMake 4.x.
     $cRootFwd = $gpuEnv.CudaRoot -replace '\\', '/'
     $cmakeExtra += "-DCUDAToolkit_ROOT=$cRootFwd"
     $cmakeExtra += "-DCUDA_TOOLKIT_ROOT_DIR=$cRootFwd"
@@ -684,33 +376,13 @@ if ($contribSrc) {
 }
 
 # --- link the CHAIN's FFmpeg instead of a downloaded prebuilt (backlog #94) ---
-# Three flags that only work TOGETHER:
-#   CMAKE_PROJECT_INCLUDE  runs find_package(PkgConfig) right after project(),
-#                          which is the piece OpenCV skips on Windows and the
-#                          sole reason its pkg-config route never fires here.
-#   SKIP_DOWNLOAD          stops OpenCV grabbing its own prebuilt FFmpeg, which
-#                          would otherwise satisfy HAVE_FFMPEG first and make
-#                          the pkg-config branch unreachable.
-#   ENABLE_LIBAVDEVICE     picks up libavdevice too; the prebuilt route left
-#                          `avdevice: NO`, which #94 lists as part of the defect.
-# Passing SKIP_DOWNLOAD without the shim was measured on 2026-08-16 and produced
-# `FFMPEG: NO` — strictly worse than the prebuilt. Keep them together or not at all.
-# DEFAULT ON since 2026-08-17 (the ARG in Dockerfile.media-builder's opencv
-# stage defaults to 1; opt out with -BuildArg OPENCV_LINK_CHAIN_FFMPEG=).
-# Full-chain verified: smoke gate 188/1/1, all three #94 assertions green in
-# the shipped image (FFmpeg backend present, avdevice YES, avcodec major ==
-# the chain's 63).
-#
-# The three parts below only work TOGETHER with the FFmpeg-9 source patch
-# applied earlier in this script (ffmpeg9-avcodec-config.ps1): OpenCV 5.0.0's
-# videoio does not compile against FFmpeg n9.0 without it — AVCodec::pix_fmts
-# and ::supported_framerates were REMOVED in favour of
-# avcodec_get_supported_config().
-# Report the switch's OBSERVED value, always. A `--opt build-arg` for an ARG the
-# Dockerfile does not declare is discarded by BuildKit without a warning, so an
-# opt-in can silently never arrive — that happened here on 2026-08-16 and cost a
-# 25-minute run that looked like "the flag does not work". One printed line is
-# the difference between diagnosing that in seconds and rebuilding to find out.
+# Three flags that only work TOGETHER, and only with the ffmpeg9-avcodec-config.ps1 patch applied
+# above: CMAKE_PROJECT_INCLUDE runs the find_package(PkgConfig) OpenCV skips on Windows,
+# SKIP_DOWNLOAD stops the prebuilt satisfying HAVE_FFMPEG first, ENABLE_LIBAVDEVICE fixes the
+# `avdevice: NO` half of #94. SKIP_DOWNLOAD alone measured `FFMPEG: NO`. Default ON since
+# 2026-08-17; opt out with -BuildArg OPENCV_LINK_CHAIN_FFMPEG=.
+# Report the OBSERVED value, always: BuildKit silently discards a --build-arg for an ARG the
+# Dockerfile does not declare, so an opt-in can never arrive and look like "the flag is broken".
 Write-Host "OPENCV_LINK_CHAIN_FFMPEG='$($env:OPENCV_LINK_CHAIN_FFMPEG)' (empty = OpenCV uses its own prebuilt FFmpeg)"
 
 $ocvShim = Join-Path $scriptAssetRoot 'patches\opencv\pkgconfig-shim.cmake'
@@ -723,29 +395,14 @@ if ($env:OPENCV_LINK_CHAIN_FFMPEG -eq '1' -and (Test-Path $ocvShim)) {
     Write-Host 'OpenCV uses its own prebuilt FFmpeg (backlog #94 blocked on an OpenCV-5.0.0-vs-FFmpeg-9 source patch)'
 }
 
-# `| Out-Null` used to sit here and swallowed the ENTIRE configure output —
-# every `-- ...` STATUS line CMake emits, including OpenCV's own
-# "FFMPEG is disabled" explanation and this build's pkgconfig-shim message.
-# When the FFmpeg gate below first fired there was literally nothing to read,
-# which is a "never swallow logs" violation at exactly the moment the log
-# matters. Tee to a persistent path instead (survives the failed solve, #43).
-# The Tee kept a trailing `| Out-Null` that repeated half the mistake: the
-# file survived, but the streamed build log still lost the configure summary
-# -- the only place OpenCV states its CPU dispatch set and its parallel
-# framework (which the WITH_OPENMP note above depends on). Dropped 2026-08-24;
-# the configure output now streams AND lands in $cfgLog.
-# #129 (2026-08-25): OpenCV's AArch64 feature probes hand the compiler
-# `-march=armv8.2-a+fp16` (GCC/Clang spelling) -- and under clang-cl the
-# `if(MSVC)` branch of OpenCVCompilerOptimizations.cmake blanks those flags to
-# "" outright, so every probe compiles the fp16/dotprod/bf16 test source
-# WITHOUT the feature, fails, and the configure summary printed an EMPTY
-# `Dispatched code generation:` line: zero NEON_FP16/DOTPROD/BF16 kernels
-# shipped, silently, while amd64 dispatches SSE4_1..AVX512_SKX. The flag
-# variables are `ocv_update`d (set-if-unset), so a cache definition wins over
-# both branches; the clang-cl spelling of the same feature flags is the fix,
-# and CPU_DISPATCH itself stays at OpenCV's AArch64 default
-# (NEON_FP16;NEON_BF16;NEON_DOTPROD) -- the same per-TU feature model as the
-# MLAS/XNNPACK/IREE tagging, expressed through OpenCV's own dispatcher.
+# Never swallow the configure output: it is the only place OpenCV states its CPU dispatch set and
+# its parallel framework, and the FFmpeg gate below has nothing to read without it. Stream it AND
+# tee to a persistent path (survives the failed solve, #43).
+# #129: OpenCV's AArch64 probes hand the compiler `-march=armv8.2-a+fp16` (GCC spelling) and the
+# `if(MSVC)` branch of OpenCVCompilerOptimizations.cmake blanks it under clang-cl, so every
+# fp16/dotprod/bf16 probe compiled WITHOUT its feature and the summary printed an EMPTY
+# `Dispatched code generation:` line. The flag vars are ocv_update'd, so a cache definition wins;
+# CPU_DISPATCH itself stays at OpenCV's AArch64 default.
 if ($ocvCross) {
     $cmakeExtra += @(
         '-DCPU_NEON_FP16_FLAGS_ON=/clang:-march=armv8.2-a+fp16',
@@ -758,17 +415,12 @@ Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $oc
     Tee-Object -FilePath $cfgLog
 Write-Host "CMake configure log: $cfgLog"
 
-# GATE (#129): the dispatch line must not be empty on either lane. On cross it
-# must name NEON_FP16 (the probe that failed first); amd64 keeps whatever it
-# reports today (SSE4_1 ... AVX512_SKX) but may never regress to nothing. An
-# empty line is exactly the silent degradation the audit found -- a build that
-# "succeeds" with every optional kernel dropped.
+# GATE (#129): an empty dispatch line is a build that "succeeds" with every optional kernel
+# silently dropped. Cross must name NEON_FP16; amd64 may never regress to nothing.
 $dispatchLine = @(Get-Content $cfgLog | Where-Object { $_ -match 'Dispatched code generation:\s*(.*)$' } | Select-Object -Last 1)
 $dispatched = if ($dispatchLine.Count -gt 0 -and $dispatchLine[0] -match 'Dispatched code generation:\s*(.*)$') { $Matches[1].Trim() } else { '' }
-# Never throw blind: the probe RESULT is in the configure log, the probe's
-# compiler ERRORS are only in CMakeFiles\CMakeError.log (arm64 run 20 measured
-# `NEON_BF16` alone dispatching while FP16/DOTPROD still failed -- the log line
-# cannot say why, the error log can).
+# Never throw blind: the probe RESULT is in the configure log, but the compiler ERRORS behind it
+# are only in CMakeFiles\CMakeError.log.
 function Write-OpenCvProbeDiagnostics {
     $errLog = Join-Path $buildDir 'CMakeFiles\CMakeError.log'
     Write-Host '--- CPU feature probe lines from the configure log ---'
@@ -789,38 +441,18 @@ if (-not $dispatched) { Write-OpenCvProbeDiagnostics; throw "OpenCV configure re
 if ($ocvCross -and $dispatched -notmatch '\bNEON_FP16\b') { Write-OpenCvProbeDiagnostics; throw "OpenCV cross configure dispatches '$dispatched' but not NEON_FP16 -- the clang-cl feature-flag override (#129) is not taking effect for that probe; see the diagnostics above and $cfgLog" }
 Write-Host "OpenCV dispatched code generation: $dispatched"
 
-# GATE: prove FFmpeg was actually detected before spending ~20 min compiling.
-# Without this the failure mode is silent — a configure that quietly drops the
-# backend still builds, still installs, still passes every existing test, and the
-# loss only surfaces when someone calls cv::VideoCapture in production. That is
-# precisely how #93/#94 survived for months, and how the 2026-08-16 SKIP_DOWNLOAD
-# attempt shipped `FFMPEG: NO` into an image before a probe caught it.
-# cvconfig.h is the authoritative artifact: CMake writes #define HAVE_FFMPEG
-# there only when detection succeeded.
-# DO NOT gate on cvconfig.h. `HAVE_FFMPEG` DOES NOT EXIST in OpenCV 5.0.0's
-# cmake/templates/cvconfig.h.in (verified against the 5.0.0 tag) — videoio
-# backend flags are not emitted there any more, so a gate looking for it fails
-# 100 % of the time no matter what was detected. That produced two false build
-# failures on 2026-08-16 while the configure log plainly showed FFmpeg found
-# with avcodec 63.1.100. Cost: two ~25-minute rebuilds chasing a defect in the
-# gate rather than in the build.
-#
-# The authoritative signal is OpenCV's own configure summary — the same text
-# `cv2.getBuildInformation()` reproduces at runtime, which is what backlog #95
-# asserts on. Read it from the log captured above.
+# GATE: prove FFmpeg was detected before spending ~20 min compiling -- a dropped backend still
+# builds, installs and passes every test, and only surfaces at cv::VideoCapture in production
+# (that is how #93/#94 survived for months). DO NOT gate on cvconfig.h: HAVE_FFMPEG does not
+# exist in OpenCV 5.0.0's cvconfig.h.in, so such a gate fails 100 % of the time no matter what
+# was detected. The configure summary is the authoritative signal -- the same text
+# cv2.getBuildInformation() reproduces at runtime, which #95 asserts on.
 $chainAvcodecMajor = ''
 $ffProbe = Join-Path $InstallDir 'ffmpeg\bin\ffmpeg.exe'
 if (Test-Path $ffProbe) {
-    # ffmpeg.exe needs its own bin dir on PATH to resolve avcodec-63.dll etc.;
-    # without it the exe dies on startup, the version reads back EMPTY, and this
-    # gate degraded to "provenance unverified" in every build (the probe's
-    # recurring `chain=?`). Same fix as in smoke-test-container.ps1.
-    #
-    # #112 root cause (measured in-image 2026-08-19): the bin dir alone is NOT
-    # enough - avfilter-12.dll statically imports onnxruntime.dll
-    # (--enable-libonnxruntime links the chain's ORT), which lives under
-    # lib\onnxruntime-source, so ffmpeg.exe still died 0xC0000135
-    # STATUS_DLL_NOT_FOUND with an EMPTY version and chain='' every build.
+    # ffmpeg.exe needs its own bin dir AND the ORT dir on PATH (#112): avfilter statically imports
+    # onnxruntime.dll, which lives elsewhere, so with either missing the exe dies 0xC0000135, the
+    # version reads back EMPTY and this gate degrades to "provenance unverified" every build.
     $ffBinDir = Split-Path $ffProbe -Parent
     $probeDirs = @($ffBinDir)
     $ortDll = Get-ChildItem (Join-Path $InstallDir 'lib\onnxruntime-source') -Recurse -Filter 'onnxruntime.dll' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -829,13 +461,8 @@ if (Test-Path $ffProbe) {
     try {
         $env:PATH = ($probeDirs -join ';') + ';' + $env:PATH
         if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
-            # ffmpeg.exe here is a TARGET binary; running it on this x64 host
-            # yields a loader error, not a version string. But the provenance
-            # gate does NOT need execution (corrected 2026-08-24 -- until then
-            # this branch set $ffVer='' and the gate degraded to "provenance
-            # unverified" on every cross build): the chain-side avcodec major is
-            # a STATIC fact, readable from the staged avcodec-<N>.dll filename,
-            # exactly the number `ffmpeg -version` would have printed.
+            # ffmpeg.exe is a TARGET binary and cannot run here, but the gate needs no execution:
+            # the chain-side avcodec major is a STATIC fact in the staged avcodec-<N>.dll name.
             $avcodecDll = Get-ChildItem -Path $ffBinDir -Filter 'avcodec-*.dll' -File -ErrorAction SilentlyContinue | Select-Object -First 1
             $ffVer = ''
             $ffExit = 0
@@ -853,8 +480,7 @@ if (Test-Path $ffProbe) {
     } finally { $env:PATH = $savedPath }
     if ($ffVer -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainAvcodecMajor = $Matches[1] }
     elseif ($ffExit -ne 0) {
-        # Never swallow the loader's verdict again: 0xC0000135 with empty
-        # output is a missing-DLL signature, not a parse miss.
+        # 0xC0000135 with empty output is a missing-DLL signature, not a parse miss.
         Write-Host ("NOTE: ffmpeg.exe -version exited {0} (0x{0:X8}) with no parseable output - probe dirs: {1}" -f $ffExit, ($probeDirs -join ';'))
     }
 }
@@ -865,9 +491,8 @@ if ($cfgText -match '(?m)^\s*--\s+avcodec:\s+(?:YES\s*\()?(\d+)\.') { $cfgAvcode
 
 Write-Host "FFmpeg gate inputs: configure says FFMPEG=$(if ($cfgFfmpegYes) { 'YES' } else { 'NO/absent' }), avcodec=$cfgAvcodecMajor; chain builds avcodec=$chainAvcodecMajor"
 
-# The provenance gate only has teeth in the opt-in mode. With the default
-# (OpenCV's own prebuilt FFmpeg) a mismatch is the KNOWN state of #94, not a
-# regression, and failing the build over it would just stop the chain.
+# The provenance gate only has teeth in the opt-in mode: with OpenCV's own prebuilt, a mismatch
+# is the KNOWN state of #94, not a regression.
 if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
     Write-Host 'NOTE: no FFMPEG: YES in the configure summary; not gating (chain-FFmpeg mode is off) — backlog #94'
 } elseif ($cfgFfmpegYes) {
@@ -884,12 +509,8 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
         Write-Host "NOTE: could not compare avcodec majors (chain='$chainAvcodecMajor' configure='$cfgAvcodecMajor') - provenance unverified"
     }
 } else {
-    # Print the evidence INSTEAD of pointing at a log the reader may not be able
-    # to reach: this throw happens inside a container whose filesystem is about
-    # to be discarded, so "see the configure log" is useless advice here.
-    # Filter out the pkgconfig-shim's own line: CMAKE_PROJECT_INCLUDE runs once
-    # per project() call, so it repeats ~20x and crowded the real message out of
-    # this very dump the first time it fired.
+    # Print the evidence, not a log path: this throw happens in a container about to be discarded.
+    # Filter the pkgconfig-shim line -- CMAKE_PROJECT_INCLUDE runs per project(), ~20x.
     Write-Host "`n--- FFmpeg-related lines from the configure log ---"
     if (Test-Path $cfgLog) {
         @(Get-Content $cfgLog -ErrorAction SilentlyContinue |
@@ -904,58 +525,20 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
         "PKG_CONFIG_PATH was '$env:PKG_CONFIG_PATH'. Backlog #94.")
 }
 
-# NOTE (2026-08-23): a per-TU `/Od` pass over build.ninja used to sit here as a
-# workaround for `error: value evaluated as <N> is out of range.` in the bundled
-# protobuf, the TIFF decoder and G-API serialisation. It was removed once the
-# real cause was traced to AArch64 COMPRESSED JUMP TABLES rather than the
-# .xdata unwind ceiling it was originally blamed on -- see $jumpTableFlag near
-# the top of this script, which fixes every offender build-wide while keeping
-# full /O2. Do not reintroduce a blanket /Od here without re-reading that
-# comment first: /Od "worked" only because it disables the compression pass as
-# a side effect of turning optimisation off entirely.
+# Do not reintroduce the per-TU `/Od` pass that used to sit here: it only ever "worked" by
+# disabling the compressed-jump-table pass as a side effect. See $jumpTableFlag above.
 
-# CROSS ONLY (#135 defect 2, 2026-08-27): keep two functions out of the AArch64
-# 14-bit conditional-branch range.
-#
-# THE FAILURE, measured -- not the jump-table story this was filed under. At
-# /O2 the whole baseline median filter collapses into a single function,
-# `cv::cpu_baseline::medianBlur`, 8,465 instructions = 33,860 bytes. Inside it
-#
-#     tbnz w9, #31, .LBB546_847
-#
-# has to reach a block ~32,916 bytes away (counted from the emitted listing,
-# instructions x 4). `tbz`/`tbnz` carry a 14-bit displacement -- 16,384
-# instructions, +-32,768 bytes -- so it misses by ROUGHLY 150 BYTES and the
-# assembler stops the build with `error: fixup value out of range` and no
-# source location. LLVM's BranchRelaxation pass exists to catch exactly this
-# and relax the branch, and it did not: its layout estimate came out short.
-# That is the SAME defect signature as the compressed-jump-table entries above
-# (an estimate a few bytes under the emitted reality), which is why every flag
-# tried against it "worked" or "failed" by luck -- a miss that small flips on
-# any perturbation.
-#
-# THE FIX: /Ob1 on the offending TUs. It does not lower the optimisation level
-# -- every kernel keeps /O2, vectorisation and unrolling. It stops the inliner
-# from gluing file-static helpers (single call site, so an -inline-threshold
-# does NOT hold them back -- measured on median_blur: 100 and 25 both still
-# fail) into one oversized function. Measured on median_blur: the largest
-# function drops 33,860 -> 10,620 bytes, so 3.1x headroom under the ceiling
-# instead of a 148-byte miss. The cost is one call per medianBlur() -- once per
-# image.
-#
-# THE LIST IS A CENSUS, NOT A GUESS. `NINJA_KEEP_GOING=1` compiled all 1,870
-# objects in one run (2026-08-27) and exactly these two TUs failed; a third
-# would have shown up there rather than one rebuild at a time. Re-run that way
-# after an OpenCV bump -- the ceiling is a property of what the inliner
-# produces, so a new offender is a source change away, and the Floor below only
-# catches the reverse (a TU that disappears or gets renamed).
-#
-# RULED OUT BY MEASUREMENT on median_blur, keep them ruled out:
-# `-fno-jump-tables` (fails -- no jump table is involved), dropping
-# $jumpTableFlag (fails the same way), `-mllvm -inline-threshold=100` and `=25`
-# (both fail). See docs/failure-modes.md for the /FA + repair recipe that
-# located the branch.
-if ($ocvCross) {
+# CROSS ONLY (#135 defect 2): at /O2 the inliner glues median_blur's file-static helpers into one
+# 33,860-byte function and a `tbnz` (14-bit displacement, +-32 KB) misses by ~150 bytes --
+# `error: fixup value out of range`, no source location. /Ob1 stops that inlining while every
+# kernel keeps /O2; the cost is one call per medianBlur(). The list is a NINJA_KEEP_GOING=1
+# census of all 1,870 objects, not a guess -- re-run it that way after an OpenCV bump.
+# What was ruled out by measurement, and the /FA recipe that located the branch:
+# docs/failure-modes.md § AArch64 cross compile aborts.
+# KNOB (#135): OPENCV_NO_OB1_WORKAROUND=1 leaves both TUs at /Ob2. Skips the Floor too.
+if ($ocvCross -and $env:OPENCV_NO_OB1_WORKAROUND -eq '1') {
+    Write-Host 'OPENCV_NO_OB1_WORKAROUND=1: /Ob1 NOT applied to median_blur/multiview_calibration (#135 experiment)'
+} elseif ($ocvCross) {
     [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') `
             -Label 'OpenCV AArch64 branch-range TUs (#135)' `
             -Floor 2 -AlreadyTaggedPattern '/Ob1' -Select {
@@ -965,35 +548,26 @@ if ($ocvCross) {
 
 
 
-# Persistent log (backlog #43): inside $buildDir it dies with the failed solve.
+# Persistent log (#43): inside $buildDir it dies with the failed solve.
 $buildLog = Get-PersistentBuildLogPath -Name 'opencv-build.log' -FallbackDir $buildDir
-# Parallel build first; on failure re-run ninja -j1 (incremental — it jumps straight
-# to the failing TU) so the error output is unambiguous without paying the serial
-# build cost on the happy path.
-# MemGBPerJob=2 (backlog #28): same memory envelope as the ONNX vertex (runs
-# 12+13, peak per-process ~1 GB, fleet 5.5 GB at -j9) -> ~19 jobs at 2 GB/job,
-# well under the 39 GB budget. Doubles OpenCV compile parallelism.
+# Parallel first, then ninja -j1 on failure -- incremental, so it jumps straight to the failing
+# TU without paying the serial cost on the happy path.
+# MemGBPerJob=2 (#28): same envelope as the ONNX vertex -> ~19 jobs, well under the 39 GB budget.
 Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile $buildLog -Install
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-# Fail HERE if cv2 didn't land + import -- a silently-skipped python3 module
-# otherwise only surfaces hours later in the final image's smoke test.
-# (Shared EAP=Stop-safe helper: exit-code based, stderr-noise tolerant.)
+# Fail HERE if cv2 did not land: a silently-skipped python3 module otherwise surfaces hours later
+# in the final image's smoke test.
 if (Test-WindowsCrossTarget -Arch $ocvTargetArch) {
     if ($ocvTargetPy.Available) {
-        # #120 step 2: the import gate is replaced by the strongest STATIC
-        # equivalent -- cv2's .pyd must exist in the target site-packages and be
-        # target-machine. An aarch64 .pyd cannot be imported by this x64 host,
-        # but "silently skipped python3 module" (the failure this gate exists
-        # for) is fully detectable without importing anything.
+        # #120 step 2: an aarch64 .pyd cannot be imported by this x64 host, but the failure this
+        # gate exists for -- a silently skipped python3 module -- is fully detectable statically.
         $cv2Pyd = Get-ChildItem -Path (Join-Path $InstallDir 'python\Lib\site-packages') -Recurse -Filter 'cv2*.pyd' -File -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $cv2Pyd) { throw "cv2 python module did NOT land in the target site-packages ($(Join-Path $InstallDir 'python\Lib\site-packages')) although BUILD_opencv_python3=ON -- the python3 module was silently skipped" }
-        # Machine AND name: the EXT_SUFFIX tag in the NAME is the other half of
-        # the import contract (arm64 run 2, 2026-08-24: `cv2.cp314-win_amd64.pyd`,
-        # machine 0xAA64 -- right bytes, unloadable name). OpenCV takes the suffix
-        # from the build interpreter's sysconfig, which the host sitecustomize
-        # shim pins to the TARGET tag; this asserts the pin actually reached cv2.
+        # Machine AND name: `cv2.cp314-win_amd64.pyd` with machine 0xAA64 shipped once -- right
+        # bytes, unloadable name. OpenCV takes EXT_SUFFIX from the build interpreter's sysconfig,
+        # which the sitecustomize shim pins to the TARGET tag; this asserts the pin reached cv2.
         [void](Assert-PeTargetMachine -Path $cv2Pyd.FullName -Arch $ocvTargetArch -Context 'cv2 module (linked against the wrong python import lib?)')
         [void](Assert-PythonExtensionTag -Name $cv2Pyd.Name -Arch $ocvTargetArch -Context 'cv2 module (sitecustomize EXT_SUFFIX pin missing?)')
         Write-Host ('cv2 static gate OK (cross lane): {0} present, machine 0x{1:X4}; import deferred to the target host' -f $cv2Pyd.Name, (Get-PeMachineType -Arch $ocvTargetArch))

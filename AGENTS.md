@@ -119,7 +119,20 @@ marker, so a consumer never has to guess.
 
 ### Windows-Specific Naming
 
-The Windows lane uses local intermediate tags (`local/kataglyphis:windows-base`, `local/kataglyphis:windows-sdk`, `local/kataglyphis:windows-toolchain`, the media fan-out branch tags `local/kataglyphis:windows-media-<branch>` for `media-core`/`media-litert`/`media-tvm` (plus `-builder` variants; see `Get-MediaBranchTag`), the merged `local/kataglyphis:windows-media`, and `local/kataglyphis:windows-torch` for the app stage) and publishes the final image as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`. See `docs/windows-builds.md` § Build Commands for the full build sequence.
+The Windows lane names its local intermediate tags with `Get-BkTag`
+(`windows/build-buildkit.ps1:225`), which yields
+`docker.io/local/kataglyphis:bk-<name>[-<arch>]`: `bk-windows-base`,
+`bk-windows-sdk`, `bk-windows-toolchain`, the media fan-out branches
+`bk-windows-media-core` / `-media-litert` / `-media-tvm` (media-core is itself
+split into `bk-windows-media-core-onnx` / `-ffmpeg` / `-opencv`), the merged
+`bk-windows-media`, and `bk-windows-torch` for the app stage. The arch suffix
+is omitted for `windows-base`/`-sdk`/`-toolchain` (shared across both lanes)
+and appended (`-arm64`) for everything downstream. It publishes the final image
+as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64` on the
+cross lane). The un-prefixed `local/kataglyphis:windows-*` names and
+`Get-MediaBranchTag` belong to the **retired** classic driver `build.ps1` — do
+not expect them on a live host. See `docs/windows-builds.md` § Build Commands
+for the full build sequence.
 
 ---
 
@@ -383,6 +396,20 @@ AddressSanitizer section legitimately discusses image-level runtimes, because
 which ASan runtime a Flutter/COM app can survive is a property of that app. A
 human has to read it.
 
+### Comments: as few as possible, as short as possible
+
+**Owner rule, 2026-08-28.** Code comments here had grown into essays. They are
+now held to this:
+
+- Comment only where the code cannot say it: a non-obvious *why*, a trap, a
+  load-bearing constraint.
+- One or two lines. If it needs a paragraph, it belongs in `docs/` and the
+  comment is a one-line pointer.
+- No narration of what the code plainly does, no incident history, no
+  restating a decision that a doc already owns.
+
+The same goes for prose written for the owner: short sentences, plain words.
+
 ### Contributing Reusable Work Here
 
 Consumer projects are expected to push reusable work upstream rather than keep
@@ -483,7 +510,7 @@ below. The rules themselves:
 
 ### Windows Build Notes
 
-The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `build-litert-lm-bazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → OpenCV → FFmpeg in media-core; LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
+The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `build-litert-lm-bazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → **FFmpeg → OpenCV** in media-core (that order is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is `$stages` in `build-media-core-all.ps1`, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).
 
 - **Per-library reference** (generator/compiler per component, EP/delegate flags, patch stacks, RAM budgets, fallback paths): the authoritative table is `docs/windows-builds.md` § Component Build Matrix.
 - **Per-script reference** (every build/setup/verify and HOST-maintenance script, with flags, gotchas and refusal conditions): the authoritative table is `docs/windows-builds.md` § Windows Script Reference.
@@ -511,7 +538,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `local/kataglyphis:windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 — see § the classic lane above). The `windows-sdk` tag is either a plain re-tag of `windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 — see § the classic lane above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
@@ -720,13 +747,18 @@ The rules an agent must never violate:
 1. **Closure freeze between runs that should cache-hit.** Editing ANY file in
    the base/toolchain closure changes the compiler image digest and forces
    sdk/media/android to rebuild from scratch on the next run. Since 2026-08-08
-   (A1 applied, commit 5d7a318) **`Dockerfile.base` mounts a traced 15-file
-   closure**, not whole directories — the closure is now: those 15 files
-   (13× `01-core` + `cmake.sh` + `packaging-deps.sh`; the lists live in
-   Dockerfile.base itself), `versions.env`, `python/build_python.sh`, the
-   three bundled `06-packaging/smoke-*` scripts, `Dockerfile.base`,
+   (A1 applied, commit 5d7a318) **`Dockerfile.base` mounts a traced per-file
+   closure**, not whole directories — 16 bind mounts (13× `01-core` `.sh` +
+   `versions.env` + `cmake.sh` + `packaging-deps.sh`; the lists live in
+   Dockerfile.base itself) plus the `linux/vulkan` directory. The
+   base/toolchain closure adds `python/build_python.sh`, the three bundled
+   `06-packaging/smoke-*` scripts, `Dockerfile.base` and
    `Dockerfile.toolchain`. Editing 01-core files OUTSIDE those lists no longer
-   busts base — but a file NEWLY needed by a base RUN must be ADDED to the
+   busts base — but `Dockerfile.toolchain`'s LAST step (VERIFY TOOLCHAIN
+   CONTRACT) still binds `01-core` and `02-toolchain` **whole**, so an edit
+   anywhere in either directory re-runs that verify layer. It sits after the
+   compiles, so those still cache-hit: the loss is minutes, not hours. A file
+   NEWLY needed by a base RUN must still be ADDED to the
    per-file mount lists (closure = source edges + **exec/`bash` edges**; the
    A1 validation build caught exactly such a miss). Batch closure edits;
    apply them in ONE commit at
@@ -764,12 +796,12 @@ The rules an agent must never violate:
      Two places set the wrapper, in this order: `setup_sccache`
      (compiler-cache.sh:229-233), which setup-gstreamer.sh:50 runs
      unconditionally for the Rust-heavy gstreamer lane, and
-     build-gstreamer-monorepo.sh:694-704, which only fires when
+     build-gstreamer-monorepo.sh:581-591, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
      `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
      a build at 99%. Their FALLBACKS differ, and only one is safe: with no
      executable launcher the monorepo goes uncached
-     (build-gstreamer-monorepo.sh:702-703), while `setup_sccache` keeps its
+     (build-gstreamer-monorepo.sh:589-590), while `setup_sccache` keeps its
      `_sc_launcher="sccache"` default (compiler-cache.sh:229) and would ship
      BARE sccache — a hole the literal-`export` gate below cannot see. The
      launcher is only reachable because 01-core is bind-mounted at
@@ -782,8 +814,15 @@ The rules an agent must never violate:
      `Dockerfile.base`, reached via `SCCACHE_CONF`), because `CCACHE_SLOPPINESS`
      and preprocessor/direct mode have NO env-var path in sccache. The size cap
      is `SCCACHE_CACHE_SIZE`; there is no `sccache -M` to call.
-   - **Never point a launcher at bare `sccache`. Use
-     `01-core/sccache-launcher.sh`.** sccache ABORTS the compile on its own
+   - **PREFER `01-core/sccache-launcher.sh`; fall back to bare `sccache` rather
+     than to nothing.** Superseded 2026-08-27 (`26a30740`): this rule used to
+     read "NEVER point a launcher at bare `sccache`", and taken literally it
+     tells you to delete the default at `compiler-cache.sh:237`
+     (`_sc_launcher="sccache"`, upgraded to the launcher when one is on disk) —
+     which would turn `verify-critical-fixes.sh` RED, because that gate checks
+     the DECISION (never UNCACHED), not the spelling. Always cache; use the
+     launcher when it is available.
+     The launcher still matters: sccache ABORTS the compile on its own
      internal errors where ccache would just exec the compiler, and that is not
      theoretical: it killed the media stage three times. The root cause —
      CMake creates a TryCompile scratch dir, compiles in it, DELETES it, and
@@ -1252,10 +1291,14 @@ After changing versions:
    (also enforces that every versions.env-named ARG has a safety-net default in its file)
 6. Rebuild affected stages (base→tooling, compiler→sdk, media→libs, android→SDK/NDK)
 
-Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` also requires adding the
-new version's SHA256 to `$llvmSrcSha` in `build-tvm-from-source.ps1` (the #47
-mini-LLVM heal pins the llvm-project source tarball per version and THROWS on
-an unknown one — deliberately, unpinned downloads are forbidden).
+Windows LLVM bump note: bumping `LLVM_WINDOWS_VERSION` requires adding the new
+version's SHA256 to `$llvmSrcSha` in **TWO** scripts — `build-tvm-from-source.ps1`
+(the #47 mini-LLVM heal) and `build-llvm-from-source.ps1` (the #135 patched
+toolchain). Both pin the same llvm-project source tarball per version and THROW
+on an unknown one — deliberately, unpinned downloads are forbidden. Patching only
+one gives a green TVM stage and then a throw in the `patched-llvm` stage, hours
+later. A bump also invalidates `windows/scripts/patches/llvm/*.patch`, which are
+written against 23.1.0's `AArch64InstrInfo.cpp`.
 
 Windows layer-cost note: `windows/Dockerfile.base` declares `VULKAN_VERSION`/
 `CMAKE_VERSION` just above the scoop step (NOT at the top) so bumping them

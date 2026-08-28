@@ -2,50 +2,20 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Makes the CONTAINERD side of the Windows container lane reproducible.
-#
-# WHY THIS EXISTS: buildkitd's configuration is version-controlled
-# (windows/buildkitd.toml) and deployed by apply-buildkitd-gcpolicy.ps1.
-# containerd's was not — an audit on 2026-08-07 found the reference host
-# running containerd with NO config.toml at all, every setting living only in
-# the service's ImagePath registry value. That means a fresh machine gets
-# whatever the Stevedore installer chose, and the debug logging this project's
-# whole diagnostic workflow depends on has to be re-applied from memory. The
-# settings below ARE the configuration; this script is their source of truth.
-#
-# What it configures:
-#   * --log-level debug + --log-file  — permanent owner policy. The containerd
-#     debug log is what root-caused the ExportLayer 0x3 defect (the missing
-#     "timed out waiting for container shutdown" line is what proved the
-#     patched shim was active). TRUNCATE it when it grows; never disable.
-#   * CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT — the runhcs shim inherits
-#     the service environment. Required by any shim built from the upstream
-#     patch (microsoft/hcsshim#2855), whose defaults are unchanged at 30s: set
-#     the wrong name, or none, and the shim silently keeps 30s and the 0x3
-#     defect returns. Not needed by a fixed-constant build, harmless there.
-#   * Defender exclusions — load-bearing for the hcs-temp finalize/export flake
-#     family (see docs/windows-builds.md). Reported here because they are
-#     otherwise invisible: Get-MpPreference needs admin, so nothing tells you
-#     if they were lost.
-#
-# RUN FROM AN ADMIN SHELL, and NEVER while a build is running: applying any
-# change restarts containerd, which kills every in-flight solve. The script
-# refuses unless -Force.
-#
-#   pwsh -File windows\scripts\host\apply-containerd-config.ps1 -ReportOnly   # inspect
-#   pwsh -File windows\scripts\host\apply-containerd-config.ps1               # apply
-#   pwsh -File windows\scripts\host\apply-containerd-config.ps1 -TeardownTimeout ''  # drop the env var
+# Source of truth for the containerd side: it runs with NO config.toml here, so the
+# debug flags, the shim teardown env var and the Defender exclusions below ARE the
+# configuration and live only in the service's registry values.
+# Admin, and NEVER while a build solves: applying restarts containerd (refuses unless -Force).
+# What each setting is for: docs/windows-host-setup.md § C1.
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     [string]$ServiceName = 'containerd',
     [string]$LogLevel = 'debug',
     [string]$LogFile = 'C:\ProgramData\containerd\containerd-debug.log',
-    # Value for CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT. Empty string
-    # REMOVES it (use when running a fixed-constant shim build and you want the
-    # environment clean). The companion TASK_CLOSE_TIMEOUT is deliberately not
-    # set: the upstream patch derives it as 2x teardown + 30s precisely so no
-    # one has to keep two coupled values in step by hand.
+    # CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT; empty string REMOVES it. The
+    # companion TASK_CLOSE_TIMEOUT stays unset on purpose - upstream derives it
+    # as 2x teardown + 30s, so the two values cannot fall out of step by hand.
     [string]$TeardownTimeout = '45m',
     [string[]]$ExclusionPath = @(
         'C:\ProgramData\containerd',
@@ -53,9 +23,7 @@ param(
         'C:\ProgramData\nerdctl'
     ),
     [switch]$SkipDefenderExclusions,
-    # CNI conf directory. The .conflist here is the AUTHORED file; the .conf is
-    # derived from it (see the CNI section below) so the two forms buildkitd and
-    # nerdctl each require cannot drift apart in content.
+    # CNI conf directory: the .conflist here is AUTHORED, the .conf DERIVED from it.
     [string]$CniConfDir = 'C:\Program Files\containerd\cni\conf',
     [switch]$SkipCniSync,
     [string[]]$BlockingProcess = @('buildctl', 'containerd-shim-runhcs-v1'),
@@ -66,9 +34,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# #108: shared assets sit beside this script in the FLAT container mount and one
+# level up in the repo's scripts/<group>/ layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
@@ -97,16 +64,9 @@ $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIden
     [Security.Principal.WindowsBuiltInRole]::Administrator)
 
 # --- CNI: the .conflist is AUTHORED, the .conf is DERIVED ---------------------
-# The host must carry both forms — buildkitd reads the .conf, nerdctl reads the
-# .conflist, and each breaks silently without its own (2026-08-07: a "conversion"
-# to conflist-only left BuildKit containers with no network adapter and cost a
-# launched chain). Keeping them as two hand-edited copies is the two-copies-drift
-# this repo eliminates everywhere else: Get-CniConfFormIssue guards PRESENCE, but
-# nothing stopped the CONTENT diverging, so a subnet edit applied to one file
-# would hand the two clients different networks.
-#
-# Deriving removes the failure mode instead of policing it. The conflist stays
-# the single authored file; this rewrites the .conf from it whenever they differ.
+# The host needs BOTH forms - buildkitd reads the .conf, nerdctl the .conflist -
+# and each breaks silently without its own; deriving keeps their CONTENT from
+# drifting (docs/windows-build-invariants.md § CNI .conf is DERIVED).
 if (-not $SkipCniSync) {
     $cniModule = Join-Path $scriptAssetRoot 'modules\WindowsBuildKit.Common.psm1'
     if (-not (Test-Path $cniModule)) { throw "required module not found: $cniModule" }
@@ -119,11 +79,8 @@ if (-not $SkipCniSync) {
     } else {
         $derived = ConvertFrom-CniConfList -ConfListText (Get-Content $confListPath -Raw)
         $existing = if (Test-Path $confPath) { (Get-Content $confPath -Raw) } else { '' }
-        # Compare CANONICALLY — sorted keys, no whitespace. The first version of
-        # this check compared `ConvertFrom-Json | ConvertTo-Json`, which
-        # preserves parse order, and duly reported the reference host as out of
-        # sync when the two files were identical apart from field order. A guard
-        # that cries wolf gets ignored.
+        # Canonical compare (sorted keys, no whitespace): a round-trip through
+        # ConvertTo-Json preserves parse order and cries wolf on field-order diffs.
         $same = $false
         if ($existing) {
             try {
@@ -220,8 +177,7 @@ if ($envDrift) {
     }
 }
 
-# -Force on Restart-Service: a plain restart is refused when dependents exist
-# (the same fix apply-buildkitd-gcpolicy.ps1 needed).
+# -Force: a plain Restart-Service is refused when dependents exist.
 Restart-Service $ServiceName -Force
 Start-Sleep -Seconds 3
 Write-Step ('{0}: {1}' -f $ServiceName, (Get-Service $ServiceName).Status) 'Green'

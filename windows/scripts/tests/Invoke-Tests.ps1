@@ -147,7 +147,9 @@ if ($skippedSuites.Count -gt 0) {
 # stayed where 702 had put it. That is the drift this comment's own instruction
 # exists to prevent: at 690 against 708 the gate tolerated losing 18 tests.
 # ~1% headroom is the standing ratio.
-$minTests = 700
+# 700 -> 714 (2026-08-28): caught a -Force harness import that silently dropped
+# 104 assertions. 714 -> 718 with BuildKit.PatchedLlvm; suite is 725.
+$minTests = 718
 if ($total -lt $minTests) {
     Write-Host "  FLOOR: only $total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
     exit 1

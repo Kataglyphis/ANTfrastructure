@@ -2,56 +2,17 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Installs a locally built containerd-shim binary over the one Stevedore ships,
-# keeping a timestamped backup, and optionally sets environment variables on the
-# containerd service (the shim inherits containerd's environment).
+# Installs a locally built containerd-shim over the one Stevedore ships, keeps a
+# timestamped backup, and can set env vars on the containerd service (the shim
+# inherits them). EVERY Stevedore/containerd update overwrites the patched
+# binary and brings back hcsshim::ExportLayer 0x3, so this runs repeatedly.
 #
-# WHY THIS EXISTS: this host class needs a patched runhcs shim - the stock one
-# hardcodes a 30s container teardown timeout, which on filesystem-heavy WCOW
-# builds terminates the container mid-hive-flush and leaves the scratch
-# permanently unexportable (hcsshim::ExportLayer 0x3). Full story:
-# docs/windows-builds.md, upstream submission: windows/upstream/.
-# EVERY Stevedore/containerd update silently overwrites the patched binary and
-# brings the defect back, so this script is run repeatedly, not once.
+# On a successful swap it records the binary's SHA256 to
+# C:\ProgramData\kataglyphis\shim-patch.json, which is what Assert-ShimPatch and
+# verify-host-setup.ps1 compare against. -Restore .orig CLEARS that record.
 #
-# IT ALSO ARMS THE BUILD GATE: on a successful swap it records the installed
-# binary's SHA256 to C:\ProgramData\kataglyphis\shim-patch.json, which is what
-# Assert-ShimPatch (build-buildkit.ps1 preflight) and verify-host-setup.ps1
-# compare the live binary against. Until this script has run at least once on a
-# host, both fall back to a file-size heuristic and say so. `-Restore .orig`
-# CLEARS the record instead of writing one - restoring stock must never teach
-# the gate that stock is acceptable.
-#
-# RUN FROM AN ADMIN SHELL, and NEVER while a build is running - the service
-# stop kills every in-flight solve, and the binary cannot be replaced while a
-# shim process holds it. The script refuses on both unless -Force is passed.
-#
-# Examples:
-#
-#   # what is installed right now, which backups exist - changes nothing
-#   pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -ReportOnly
-#
-#   # the patched shim is ALREADY installed and only the gate's bookkeeping is
-#   # missing: record its hash in place, no services touched, no elevation
-#   pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -RecordCurrent
-#
-#   # deploy a build that hardcodes the longer timeouts
-#   pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
-#
-#   # deploy the upstream-shaped build, which needs the env var to do anything
-#   pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -ShimPath C:\src\shim.exe `
-#        -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m
-#
-#   # put the stock binary back
-#   pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -Restore .orig
-#
-# VERIFYING THE RESULT: the shim logs its effective timeout at Debug level only,
-# which does NOT reach containerd's log on a default setup - so a quiet log is
-# NOT proof the deployment worked. The reliable check is behavioural: run a
-# filesystem-heavy container (the OpenCV canary in docs/windows-builds.md) and
-# confirm it finalizes and exports without 0x3. A disposable canary snapshot is
-# the right thing to risk; a chain run is not.
-
+# Admin shell, never during a build; refuses both unless -Force. Modes, examples
+# and how to verify the result: docs/windows-host-setup.md § Phase R.
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
     # The newly built shim binary to install. Required unless -ReportOnly or

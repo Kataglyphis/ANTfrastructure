@@ -8,7 +8,7 @@
 # ~117s measured) and is fixed by the patched shim in Stevedore\bin — all
 # solves are direct now. KEPT (with bk-materialize.ps1 + the handoff helpers
 # + their tests) as the tested rollback path: if the canary
-# (docs/windows-builds.md § roadmap "DEFECT SOLVED") ever 0x3s again (e.g.
+# (docs/windows-build-lanes.md § Traps "DEFECT SOLVED") ever 0x3s again (e.g.
 # a Stevedore update reverted the patched shim), restore the
 # warm/materialize Dockerfile targets from git history (c9586c1^) and these
 # payloads work unchanged.

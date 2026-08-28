@@ -3,58 +3,26 @@
 
 #requires -Version 7.0
 
-# WindowsVulkanValidation.Common - generic driver for "run a Vulkan executable
-# with the Khronos validation layer's synchronization validation turned on and
-# fail if the log contains a SYNC-HAZARD".
+# Project-agnostic driver: run a Vulkan executable with the Khronos layer's
+# synchronization validation on and fail if the log holds a SYNC-HAZARD.
 #
-# This module is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script imports it, supplies its own executable / working
-# directory / log directory defaults, and turns the result into an exit code.
+# Sync validation turns on only through a vk_layer_settings.txt that the loader reads
+# from the CWD or the executable's directory - hence the stage/restore dance below.
 #
-# Why the module exists at all: synchronization validation is not part of core
-# validation and is off by default (it is expensive - it tracks every command's
-# resource accesses), so it can only be enabled through a vk_layer_settings.txt.
-# The loader reads that file from the CURRENT WORKING DIRECTORY or from the
-# directory containing the running executable - there is no environment
-# variable pointing at an arbitrary path - so the file has to be staged next to
-# the binary for the duration of one run and removed again afterwards. Checking
-# a permanent copy in next to the binary would silently enable sync validation,
-# with its overhead, on every later unrelated run. That staging dance, the
-# VK_LAYER_PATH save/restore, and the log scan are identical for every Vulkan
-# project; only the executable and its arguments differ.
-#
-# Function contract:
-#   Get-VulkanLayerSettingsDefaultPath - packaged vk_layer_settings.txt default
-#   Copy-VulkanLayerSettings           - stage a settings file next to a binary
-#   Restore-VulkanLayerSettings        - undo the staging (incl. any backup)
-#   Get-VulkanValidationHazard         - scan a log for hazard/validation lines
-#   Write-VulkanValidationReport       - print the per-hazard summary + count
-#   Test-VulkanValidationLog           - scan + report, $true when the log is clean
-#   Invoke-VulkanValidationRun         - stage, set env, run, restore, write log
-#
-# Invoke-VulkanValidationRun deliberately does NOT return the exit code on the
-# pipeline: the executable under test writes to stdout, so a captured return
-# value would collect its output. The exit code is left in $LASTEXITCODE, which
-# is what the wrapper scripts inspect (same contract as
-# WindowsAppRunner.Common's Invoke-AppRun).
+# Invoke-VulkanValidationRun leaves the exit code in $LASTEXITCODE instead of
+# returning it (a returned value would collect the executable's stdout), same
+# contract as WindowsAppRunner.Common's Invoke-AppRun.
 
 Set-StrictMode -Version Latest
 
-# Packaged, deliberately minimal vk_layer_settings.txt. Staged by
-# Invoke-VulkanValidationRun when the caller passes no -SettingsPath, so a
-# project with no checked-in settings file still gets a working sync-validation
-# run. Projects that want to document or extend the settings keep their own
-# copy and pass -SettingsPath explicitly.
+# Packaged minimal settings, staged when the caller passes no -SettingsPath, so a
+# project with no checked-in settings file still gets a sync-validation run.
 function Get-VulkanLayerSettingsDefaultPath {
     return (Join-Path $PSScriptRoot 'vk_layer_settings.default.txt')
 }
 
-# Copies $SettingsPath into $TargetDirectory as vk_layer_settings.txt and
-# returns a staging handle for Restore-VulkanLayerSettings.
-#
-# If the target directory already contains a vk_layer_settings.txt (a project
-# that ships one next to its binaries), it is moved aside first and restored on
-# cleanup - staging must never destroy a file the caller did not create.
+# Returns a staging handle for Restore-VulkanLayerSettings. An existing
+# vk_layer_settings.txt is moved aside, never destroyed.
 function Copy-VulkanLayerSettings {
     param(
         [Parameter(Mandatory)]
@@ -86,9 +54,8 @@ function Copy-VulkanLayerSettings {
     }
 }
 
-# Removes the staged vk_layer_settings.txt and puts back whatever was there
-# before. Safe to call from a finally block: a $null handle is ignored and
-# missing files are not an error, so a failure mid-run still cleans up.
+# Safe to call from a finally block: a $null handle is ignored and missing files are
+# not an error, so a failure mid-run still cleans up.
 function Restore-VulkanLayerSettings {
     param(
         [Parameter(ValueFromPipeline)]
@@ -108,13 +75,8 @@ function Restore-VulkanLayerSettings {
     }
 }
 
-# Returns the log lines matching any hazard pattern (Select-String MatchInfo
-# objects, so callers keep line numbers and text).
-#
-# The default pattern is the synchronization validation marker SYNC-HAZARD;
-# pass -Pattern to widen the scan to other validation output, e.g.
-# @('SYNC-HAZARD', 'VUID-', 'Validation Error') for a general validation gate.
-# Matching is literal (-SimpleMatch), so a pattern is a substring, not a regex.
+# Returns MatchInfo objects, so callers keep line numbers and text. Matching is
+# literal (-SimpleMatch): a -Pattern entry is a substring, not a regex.
 function Get-VulkanValidationHazard {
     param(
         [Parameter(Mandatory)]
@@ -129,8 +91,6 @@ function Get-VulkanValidationHazard {
     return @(Select-String -Path $LogPath -Pattern $Pattern -SimpleMatch -ErrorAction SilentlyContinue)
 }
 
-# Prints the per-hazard summary the caller sees on failure, with the count in
-# the header and the full log path so the run can be inspected afterwards.
 function Write-VulkanValidationReport {
     param(
         [Parameter(Mandatory)]
@@ -149,9 +109,7 @@ function Write-VulkanValidationReport {
     Write-Host "Full log: $LogPath" -ForegroundColor Red
 }
 
-# Scan + report in one call: returns $true when the log is clean, $false (after
-# printing the hazard report) when it is not. Wrappers map that straight onto
-# their exit code.
+# $true when the log is clean, $false after printing the hazard report.
 function Test-VulkanValidationLog {
     param(
         [Parameter(Mandatory)]
@@ -175,14 +133,9 @@ function Test-VulkanValidationLog {
     return $true
 }
 
-# Full pipeline: stage the layer settings next to the executable, point
-# VK_LAYER_PATH at the SDK's layer directory, run the executable from
-# $WorkingDirectory and tee its output into $LogPath.
-#
-# The environment and the staged settings file are restored in a finally block,
-# so a crashing or interrupted run leaves neither behind. The process exit code
-# is left in $LASTEXITCODE (1 when the process could not be started at all);
-# the log is always written, so the caller can scan it either way.
+# Environment and staged settings are restored in a finally block, so a crashing run
+# leaves neither behind; the log is always written and $LASTEXITCODE is 1 when the
+# process could not start at all.
 function Invoke-VulkanValidationRun {
     param(
         [Parameter(Mandatory)]
@@ -193,17 +146,14 @@ function Invoke-VulkanValidationRun {
         [string]$WorkingDirectory = (Get-Location).Path,
         [Parameter(Mandatory)]
         [string]$LogPath,
-        # Directory containing the Khronos validation layer (the Vulkan SDK's
-        # Bin on Windows). Left untouched when empty, so a system-installed
-        # layer is used as-is.
+        # Khronos validation layer directory (the Vulkan SDK's Bin). Empty leaves
+        # VK_LAYER_PATH alone, so a system-installed layer is used as-is.
         [string]$LayerPath,
         # Source of the vk_layer_settings.txt staged next to the executable.
         # Defaults to the module's packaged minimal settings file.
         [string]$SettingsPath,
-        # Hard cap on the run in seconds. 0 (the default) waits forever and
-        # streams the output live; a positive value redirects the output to
-        # files, waits with a timeout and kills the process if it overruns
-        # (the log is still written, so the scan below stays meaningful).
+        # 0 (the default) waits forever and streams the output live; a positive value
+        # redirects to files, waits with a timeout and kills the process on overrun.
         [int]$TimeoutSeconds = 0
     )
 
@@ -228,9 +178,7 @@ function Invoke-VulkanValidationRun {
         New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
     }
 
-    # The loader reads vk_layer_settings.txt from the CWD or from the directory
-    # containing the executable - copy next to the executable so this works
-    # regardless of where the caller runs the exe from.
+    # Next to the executable, not the CWD: the caller may run it from anywhere.
     $staging = Copy-VulkanLayerSettings -SettingsPath $SettingsPath -TargetDirectory (Split-Path $ExecutablePath -Parent)
 
     $layerPathWasSet = Test-Path Env:\VK_LAYER_PATH
@@ -275,12 +223,8 @@ function Invoke-VulkanValidationRun {
     $global:LASTEXITCODE = $exitCode
 }
 
-# Timeout branch of Invoke-VulkanValidationRun: Start-Process is the only way
-# to get a killable handle, and it cannot stream through Tee-Object, so stdout
-# and stderr are redirected to temp files, concatenated into the run log and
-# echoed once the process is done. Returns the exit code (124 on timeout, the
-# convention `timeout(1)` uses). Module-internal: not exported, because the
-# name is generic and the semantics are specific to this driver.
+# Timeout branch: Start-Process is the only killable handle but cannot stream through
+# Tee-Object, hence the temp files. Returns 124 on timeout, as `timeout(1)` does.
 function Invoke-VulkanValidationTimedProcess {
     param(
         [Parameter(Mandatory)]
@@ -316,10 +260,8 @@ function Invoke-VulkanValidationTimedProcess {
             $process.WaitForExit()
             $exitCode = 124
         } else {
-            # Documented .NET race: WaitForExit(milliseconds) can return true
-            # before the process state (incl. ExitCode) is fully settled. The
-            # parameterless overload blocks until it is - call it before
-            # reading .ExitCode.
+            # WaitForExit(ms) can return before .ExitCode is settled; the parameterless
+            # overload blocks until it is.
             $process.WaitForExit()
             $exitCode = $process.ExitCode
         }

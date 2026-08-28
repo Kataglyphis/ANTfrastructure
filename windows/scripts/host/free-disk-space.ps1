@@ -4,13 +4,9 @@
 #
 # THE ONLY SANCTIONED WAY TO RECLAIM HOST DISK IN THIS REPO.
 #
-# 2026-08-21: an ad-hoc "free some space" command, written on the spot and
-# pasted into an elevated shell, went past the container stores and took the
-# host's installed programs and user profile with it - editor, VCS, GPU driver
-# stack, container runtime and pwsh 7 all had to be reinstalled by hand. The
-# lesson is not "write a more careful one-liner next time"; it is that disk
-# reclaim on this host must be a REVIEWED, ALLOW-LISTED, DEFAULT-DRY script,
-# and that anything outside its allowlist is a human's decision.
+# 2026-08-21: an ad-hoc elevated "free some space" one-liner took the host's
+# installed programs and user profile with it. Anything outside this allowlist
+# is a human's decision, not a better one-liner.
 #
 # WHAT IT CLEANS (unnecessary, regenerable data only):
 #   * unused container layers      - via the daemon's own GC, which knows what

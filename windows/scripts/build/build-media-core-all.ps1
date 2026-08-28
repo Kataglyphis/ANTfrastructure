@@ -4,7 +4,8 @@
 #requires -Version 7.0
 #
 # Orchestrates the media-core source-build chain (ONNX Runtime -> ONNX GenAI ->
-# OpenCV -> FFmpeg) inside ONE container. This is the payload for the run+commit
+# FFmpeg -> OpenCV) inside ONE container. $stages below is the authority.
+# This is the payload for the run+commit
 # path in windows/build.ps1: because this host's `docker build` is hard-capped at
 # 2 CPUs (Hyper-V) and process isolation cannot commit layers, the heavy compiles
 # run via `docker run --cpu-count N` (which DOES get N CPUs under Hyper-V) followed

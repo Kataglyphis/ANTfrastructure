@@ -2,21 +2,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# ==============================================================================
-# build-opencv.sh - Build and install OpenCV from source
-# ==============================================================================
-# This script fetches a specific version of OpenCV and builds it with
-# commonly used modules and features enabled.
-#
-# Usage:
-#   ./build-opencv.sh [--opencv-version VERSION]
-#
-# Defaults can be overridden via environment variables or arguments.
-#
-# Build Acceleration:
-#   USE_CCACHE=true     Enable ccache for faster rebuilds (default: true)
-#   USE_LLD=true        Use lld linker for faster linking (default: true)
-# ==============================================================================
+# Build and install OpenCV from source; run with --help for the options.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
@@ -93,24 +79,12 @@ done
 
 echo "build-opencv: version=${OPENCV_VERSION} prefix=${OPENCV_PREFIX} buildtype=${BUILD_TYPE}"
 
-# ------------------------------------------------------------------------------
-# Build environment configuration
-#
-# OpenCV's vendored dependency graph produces duplicate symbol definitions
-# when linking the monolithic libopencv_core.so. --allow-multiple-definition
-# works around this without needing to patch OpenCV's CMakeLists.
-#
-# lld is disabled for OpenCV because its strict duplicate-symbol handling
-# rejects symbols that GNU ld accepts with --allow-multiple-definition.
-#
-# CC/CXX are pinned to GCC explicitly because CMake may otherwise pick clang
-# from PATH (the SDK image has both). The ${GCC_VERSION} env is set by the
-# toolchain stage; fall back to scanning /opt/gcc-* if unset.
-# ------------------------------------------------------------------------------
+# The vendored dep graph duplicates symbols: GNU ld takes them with
+# --allow-multiple-definition, lld does not (hence USE_LLD=false); pin GCC or CMake may
+# pick the clang the SDK image also carries.
 configure_opencv_build_env() {
     rm -rf "${OPENCV_PREFIX}"
 
-    # Resolve GCC version if not already set in the environment
     if [ -z "${GCC_VERSION:-}" ]; then
         local _gcc_dir
         _gcc_dir="$(ls -d /opt/gcc-*/bin 2>/dev/null | sort -V | tail -1 || true)"
@@ -127,21 +101,13 @@ configure_opencv_build_env() {
         export CMAKE_CXX_COMPILER="/opt/gcc-${GCC_VERSION}/bin/g++"
     fi
     export LDFLAGS="-Wl,--allow-multiple-definition"
-    # OCV-FF1 ROOT CAUSE (2026-08-21): opencv's detect_ffmpeg try_compile
-    # ("Can't build ffmpeg test code") got only the four -l names from
-    # pkg-config but NO link dir for our custom prefix — the test link died
-    # resolving avcodec's transitive libswresample and HAVE_FFMPEG went
-    # FALSE despite four YES probes. cmake folds env LDFLAGS into
-    # CMAKE_EXE_LINKER_FLAGS, which try_compile inherits: hand it the
-    # ffmpeg libdir (+rpath-link for the transitive closure).
+    # OCV-FF1: detect_ffmpeg's try_compile inherits env LDFLAGS via CMAKE_EXE_LINKER_FLAGS;
+    # without our ffmpeg libdir (+rpath-link) it cannot link and HAVE_FFMPEG goes FALSE.
     if [ -d "${FFMPEG_PREFIX:-/opt/ffmpeg}/lib" ]; then
         export LDFLAGS="${LDFLAGS} -L${FFMPEG_PREFIX:-/opt/ffmpeg}/lib -Wl,-rpath-link,${FFMPEG_PREFIX:-/opt/ffmpeg}/lib"
     fi
-    # Same class for GSTREAMER (2026-08-21, riscv64 pass-2): videoio links
-    # our /opt/gstreamer fine, but APP binaries (opencv_visualisation) then
-    # need the gst libdir on the rpath-link for transitive NEEDED
-    # resolution ("libgstapp-1.0.so.0 ... not found (try using
-    # -rpath-link)"). Resolve the real libdir (per-arch layouts differ).
+    # Same class for gstreamer: app binaries need the gst libdir on the rpath-link for
+    # transitive NEEDED resolution. Resolve the real libdir — per-arch layouts differ.
     local _gst_lib
     _gst_lib="$(dirname "$(find /opt/gstreamer -name 'libgstreamer-1.0.so*' -not -type d 2>/dev/null | head -1)" 2>/dev/null || true)"
     if [ -n "${_gst_lib}" ] && [ "${_gst_lib}" != "." ]; then
@@ -151,25 +117,15 @@ configure_opencv_build_env() {
 
 configure_opencv_build_env
 
-# ------------------------------------------------------------------------------
-# Fetch OpenCV source
-# ------------------------------------------------------------------------------
 fetch_opencv() {
     info "Fetching OpenCV ${OPENCV_VERSION} source..."
 
-    # Main repository — cloned FIRST (not in parallel with contrib). contrib
-    # nests under OPENCV_SRC (${OPENCV_SRC}/opencv_contrib), so cloning both at
-    # once raced on creating OPENCV_SRC itself ("could not create work tree dir
-    # '<OPENCV_SRC>': File exists"), leaving contrib un-cloned. Sequential clone
-    # guarantees the parent exists before contrib is fetched into it.
-    # OPENCV_COMMIT (opt-in 40-hex SHA) pins reproducibly; default empty keeps
-    # tracking the OPENCV_VERSION branch (bleeding edge). core and contrib pin
-    # independently since they are separate repos with distinct HEADs.
+    # Cloned FIRST, never in parallel: contrib nests under OPENCV_SRC and the two clones
+    # raced on creating it. OPENCV_COMMIT/OPENCV_CONTRIB_COMMIT pin separately; empty = branch.
     retry 3 10 "opencv git clone" clone_or_update_repo "${OPENCV_REPO}" "${OPENCV_SRC}" "${OPENCV_COMMIT:-${OPENCV_VERSION}}" \
         || { echo "Failed to clone opencv"; exit 1; }
 
-    # Contrib modules (optional) — fetched into the conventional opencv_contrib
-    # directory name so CMake's OPENCV_EXTRA_MODULES_PATH is the expected path.
+    # Directory name is the conventional one OPENCV_EXTRA_MODULES_PATH expects.
     local contrib_dir=""
     if [ "${WITH_CONTRIB}" = "true" ]; then
         echo "Fetching OpenCV contrib modules..."
@@ -179,10 +135,8 @@ fetch_opencv() {
     fi
 
     cd "${OPENCV_SRC}"
-    # When a commit pin is set, clone_or_update_repo already checked out the SHA
-    # via FETCH_HEAD and no ${OPENCV_VERSION} branch ref exists locally — a
-    # branch checkout here would fail and abort the build. Only re-checkout the
-    # branch in the unpinned (branch-tracking) case.
+    # A commit pin leaves no local branch ref (checkout was via FETCH_HEAD), so re-checking
+    # out the branch would abort the build; only the unpinned case may do it.
     if [ -z "${OPENCV_COMMIT:-}" ]; then
         git checkout "${OPENCV_VERSION}" || { echo "Failed to checkout version ${OPENCV_VERSION}"; exit 1; }
     fi
@@ -197,9 +151,8 @@ fetch_opencv() {
         cd "${OPENCV_SRC}"
     fi
 
-    # OpenCV 5.x vendored MLAS declares MlasHGemmSupported (inc/mlas.h) but never
-    # defines it, yet compute.cpp calls it from MlasGQASupported<MLAS_FP16>,
-    # producing an undefined-symbol link error. Apply a weak-stub patch.
+    # Vendored MLAS declares MlasHGemmSupported but never defines it, and compute.cpp
+    # calls it: undefined symbol at link without this weak stub.
     if [ -f "${OPENCV_SRC}/3rdparty/mlas/lib/compute.cpp" ]; then
         bash /opt/scripts/core/apply-patch.sh \
             /opt/scripts/patches/opencv/001-mlas-hgemm-supported-stub.patch \
@@ -207,13 +160,8 @@ fetch_opencv() {
             "OpenCV MLAS MlasHGemmSupported stub for MLAS_GEMM_ONLY"
     fi
 
-    # OCV-FF1 phase 2 (2026-08-21): with the try_compile link gap fixed,
-    # HAVE_FFMPEG went TRUE for the first time — and exposed that opencv
-    # 5.0.0 still uses the AVCodec fields FFmpeg 8 removed (pix_fmts,
-    # supported_framerates; 4.x master already migrated, the 5.x branch has
-    # not). Backport shim: avcodec_get_supported_config() behind
-    # LIBAVCODEC_VERSION_MAJOR >= 62 guards — 2 sites, drops cleanly when a
-    # 5.x release lands the migration.
+    # opencv 5.0.0 still uses the AVCodec fields FFmpeg 8 removed; the shim backports
+    # avcodec_get_supported_config() and drops out once the 5.x branch migrates.
     if [ -f "${OPENCV_SRC}/modules/videoio/src/cap_ffmpeg_impl.hpp" ]; then
         bash /opt/scripts/core/apply-patch.sh \
             /opt/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch \
@@ -234,12 +182,7 @@ target_machine() {
     uname -m
 }
 
-# ------------------------------------------------------------------------------
-# Configure OpenCV build
-# ------------------------------------------------------------------------------
-
-# Adjust build flags for non-x86 targets and cross-mode gating of GTK/GStreamer/
-# Python. Mutates the surrounding with_* and target_* locals.
+# Mutates the caller's with_*/target_* locals through namerefs.
 _opencv_target_adjustments() {
     local -n _ota_cmake_opts="$1"
     local -n _ota_with_gtk="$2"
@@ -249,10 +192,7 @@ _opencv_target_adjustments() {
     local -n _ota_zlib_lib="$6"
     local -n _ota_shared_inc="$7"
 
-    # Disable IPP automatically on non-x86 hosts because OpenCV bundles
-    # prebuilt ippicv libraries for x86 which will fail when linking on
-    # architectures like aarch64 or riscv. Allow explicit override via
-    # the WITH_IPP env var (set to "ON" or "OFF").
+    # OpenCV bundles x86 prebuilt ippicv, which fails to link elsewhere; WITH_IPP overrides.
     if [ "$(target_machine)" != "amd64" ] && [ "$(target_machine)" != "x86_64" ] && [ "${WITH_IPP}" = "ON" ]; then
         echo "Non-x86 target detected ($(target_machine)) - disabling Intel IPP to avoid x86 prebuilt libs"
         WITH_IPP="OFF"
@@ -267,60 +207,15 @@ _opencv_target_adjustments() {
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
         if [ "$(cross_target_arch)" = "riscv64" ]; then
-            # RV1 RE-LIFT (2026-08-21, closure window 2): the 2026-08-20
-            # "OFF both passes" verdict was taken while the POISONED ports
-            # glib-2.0.pc sat in the sysroot; that package is gone (root-cause
-            # revert) and riscv64 gstreamer builds with introspection again →
-            # /opt/gstreamer exports working glib .pcs like wave-3. Pass-1
-            # (OPENCV_GSTREAMER_PASS unset) stays OFF (no system gstreamer to
-            # probe — deliberate); pass-2 (Dockerfile.media exports
-            # OPENCV_GSTREAMER_PASS=2) probes OUR /opt/gstreamer. Target:
-            # cv2 GStreamer:YES on ALL THREE arches. Dedicated discriminator
-            # (2026-08-21): this used to key on FORCE_REBUILD, so forcing a
-            # PASS-1 rebuild silently flipped gstreamer ON with nothing to
-            # probe — FORCE_REBUILD keeps its one meaning (skip-override).
+            # Pass-1 has no system gstreamer to probe, so it stays OFF; pass-2
+            # (Dockerfile.media sets OPENCV_GSTREAMER_PASS=2) probes our /opt/gstreamer.
+            # Never key this on FORCE_REBUILD — that flipped pass-1 ON with nothing to probe.
             if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
-            # RV1-FREETYPE — FIXED (2026-08-24); the coming rebuild is the
-            # final validator. History (2026-08-23 investigation, still true):
-            # riscv64 had no TARGET harfbuzz dev surface at configure time —
-            # pass-2 (FROM gstreamer, libfreetype-dev pre-satisfied) got only
-            # the RUNTIME libharfbuzz0b — so ocv_check_modules(HARFBUZZ
-            # harfbuzz) resolved a HOST harfbuzz (find_library fall-through
-            # under CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH) → "file in wrong
-            # format" at link. The ports dev package stays banned
-            # (libharfbuzz-dev:riscv64 → Depends: libglib2.0-dev = RV1-GST-PC
-            # poison), so install-deps.sh now stages a PIC STATIC target
-            # harfbuzz (HB_HAVE_FREETYPE=ON, hb-ft glue included) at
-            # /usr/<triplet> with a cmake-generated absolute-prefix
-            # harfbuzz.pc whose freetype dep is promoted to Requires: pkg-config
-            # then emits `-lharfbuzz -lfreetype`, so HARFBUZZ_LIBRARIES becomes
-            # [libharfbuzz.a, target libfreetype.so] and the module link
-            # (<objects> FREETYPE_LIBRARIES HARFBUZZ_LIBRARIES) still resolves
-            # the archive's FT_* refs under -Wl,--no-undefined — a DSO BEFORE
-            # the archive alone does NOT (proven by a local link experiment
-            # 2026-08-24: objects+ft.so+hb.a fails; +ft.so after the archive
-            # links clean). Determinism, both passes:
-            #   * our pkgconfig dir is prepended to PKG_CONFIG_PATH, which
-            #     outranks PKG_CONFIG_LIBDIR — pass-2 puts /opt/gstreamer
-            #     first in PKG_CONFIG_PATH and its meson-subproject harfbuzz
-            #     may export a competing harfbuzz.pc; ours must win;
-            #   * the pkgcfg_lib_* cache vars FindPkgConfig/ocv_check_modules
-            #     resolve libraries through are pre-seeded with absolute
-            #     TARGET paths, so no find_library ever runs, let alone falls
-            #     through to a host lib (OCV-FF1's determinism discipline,
-            #     pinned by file path instead of -L ordering).
-            # Static harfbuzz keeps the runtime surface: the only new NEEDED
-            # is libfreetype.so.6, which validate-media-runtime's
-            # so-package-map already resolves to libfreetype6 (and the
-            # gstreamer stack pulls it in on riscv64 today anyway). If
-            # install-deps could NOT stage the static harfbuzz, keep the
-            # module hard-OFF rather than let detection wander back to host
-            # libs — absence then still surfaces as the wheel smoke's
-            # riscv64-only opencv-freetype warning, and after a green rebuild
-            # that warning's "expected on riscv64" status is STALE (parity
-            # follow-up for the orchestrator).
+            # riscv64 links opencv_freetype against the static target harfbuzz install-deps.sh
+            # stages; not staged => hard-OFF, never host libs. See docs/linux-cross-builds.md
+            # § "riscv64 OpenCV: static harfbuzz and external libpng".
             local _hb_triplet _hb_a _hb_inc _hb_pc _ft_so
             _hb_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
             _hb_a="/usr/${_hb_triplet}/lib/libharfbuzz.a"
@@ -337,16 +232,9 @@ _opencv_target_adjustments() {
                 echo "[WARN] riscv64 OpenCV: static target harfbuzz not staged (libharfbuzz.a=$([ -f "${_hb_a}" ] && echo ok || echo MISSING) hb-ft.h=$([ -f "${_hb_inc}" ] && echo ok || echo MISSING) harfbuzz.pc=$([ -f "${_hb_pc}" ] && echo ok || echo MISSING) libfreetype.so=$([ -f "${_ft_so}" ] && echo ok || echo MISSING)); keeping BUILD_opencv_freetype=OFF"
                 _ota_cmake_opts+=("-DBUILD_opencv_freetype=OFF")
             fi
-            # OpenCV 5.x's vendored libpng fails its RISC-V Vector configure probe under
-            # GCC 16.1.0 (the CMake test uses incompatible intrinsics). Rather than drop
-            # PNG entirely (which breaks cv2.imencode('.png', ...)), link the EXTERNAL
-            # libpng that install-deps.sh provides (Ubuntu Ports package or, as a
-            # fallback, cross-compiled from source via git+ mirror): WITH_PNG=ON +
-            # BUILD_PNG=OFF bypasses the vendored copy and its RVV probe. External libpng
-            # is a HARD REQUIREMENT on riscv64 — if it is absent we FAIL EARLY here rather
-            # than silently shipping a PNG-less OpenCV that only surfaces as a red
-            # runtime smoke a stage later (that fail-late footgun cost us iree-0714a..e).
-            # Deliberate opt-out: OPENCV_ALLOW_NO_PNG=1 downgrades it to WITH_PNG=OFF.
+            # The vendored libpng fails its RVV configure probe under GCC 16.1.0, so link the
+            # external one install-deps.sh stages; its absence is fatal here rather than a
+            # PNG-less OpenCV found a stage later. Opt out with OPENCV_ALLOW_NO_PNG=1.
             local _png_triplet _png_lib="" _png_inc="" _png_cand
             _png_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
             for _png_cand in \
@@ -431,9 +319,7 @@ _opencv_cmake_cross_opts() {
     fi
 
     if cross_build_is_active; then
-        # OpenCV's mixed vendored/system dependency graph needs access to the
-        # target sysroot headers and libraries under /usr while still finding
-        # generated build artifacts in the normal build tree.
+        # BOTH: the mixed vendored/system graph needs the target sysroot AND the build tree.
         _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
         _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
         _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
@@ -505,10 +391,8 @@ _opencv_cmake_python_opts() {
                 _ocmpo_out+=("-DPYTHON3_INCLUDE_DIR=${target_python_include}")
             fi
 
-            # Numpy headers are architecture-independent; use the host venv numpy.
-            # OpenCV's cmake needs them to generate Python3 wrappers (cv2.so).
-            # In cross mode, FindPython3 cannot probe numpy at the target, so we
-            # supply the include path explicitly.
+            # FindPython3 cannot probe numpy at the target; its headers are
+            # architecture-independent, so hand it the host venv's include path.
             local numpy_include
             numpy_include="$(python_module_include "${HOST_PYTHON:-$(host_python_bin)}" numpy)"
             if [ -n "${numpy_include}" ] && [ -d "${numpy_include}" ]; then
