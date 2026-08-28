@@ -168,6 +168,29 @@ if [ "${#error_files[@]}" -gt 0 ]; then
 fi
 pass "shellcheck -S error clean (${#CHECK[@]} file(s))"
 
+# --- Fatal even though it is only a warning: SC2215. ---
+#
+# `cmd \` followed by a comment line ends the logical line, so the command runs
+# with NO arguments and shellcheck reports the orphaned flags as SC2215 -- at
+# warning level, which the gate above filters out. That is not a style nit: on
+# 2026-08-28 it made the android ONNX Runtime build run `./build.sh` bare, which
+# silently dropped every flag (Release, --no_telemetry, --allow_running_as_root)
+# and killed the android stage after four hours of chain time.
+sc2215_files=()
+for f in "${CHECK[@]}"; do
+  "${SHELLCHECK_BIN}" --include=SC2215 -S warning "${f}" >/dev/null 2>&1 || sc2215_files+=("${f}")
+done
+
+if [ "${#sc2215_files[@]}" -gt 0 ]; then
+  fail "SC2215 (flag used as a command name -- bad line break) in ${#sc2215_files[@]} file(s):"
+  for f in "${sc2215_files[@]}"; do
+    info "${f#"${REPO_ROOT}"/}"
+    "${SHELLCHECK_BIN}" --include=SC2215 -S warning "${f}" 2>&1 | sed 's/^/    /' || true
+  done
+  exit 1
+fi
+pass "SC2215 clean (no flags orphaned by a bad line break)"
+
 # --- Non-fatal warning report (opt-in). ---
 if [ "${SHOW_WARNINGS}" -eq 1 ]; then
   warn_files=()

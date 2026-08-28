@@ -37,11 +37,15 @@ android_apply_patch \
 : "${ANDROID_HOME:?ANDROID_HOME must be set}"
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 
+# --no_telemetry, same as the native build (30-build-native.sh:63). Upstream
+# compiles Microsoft's 1DS telemetry SDK in unless this is passed, and the
+# android lane never passed it -- so the shipped amd64/arm64 Android ONNX
+# Runtime carried it. Found 2026-08-27 in the shipped payload.
+#
+# Keep every comment ABOVE this command. A comment placed after a `\`
+# continuation ends the logical line, so build.sh would run with NO arguments
+# at all -- which is exactly what broke the 2026-08-28 android stage.
 ./build.sh \
-  # --no_telemetry, same as the native build (30-build-native.sh:63). Upstream
-  # compiles Microsoft's 1DS telemetry SDK in unless this is passed, and the
-  # android lane never passed it -- so the shipped amd64/arm64 Android ONNX
-  # Runtime carried it. Found 2026-08-27 in the shipped payload.
   --no_telemetry \
   --allow_running_as_root \
   --android \
