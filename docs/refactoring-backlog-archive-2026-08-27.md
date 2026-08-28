@@ -576,3 +576,50 @@ a closure window. Each was fixed with code + verified via preflight/tests.
   build or disk check. The full OCI-layout export + `--build-context` handoff
   (which would make `--no-push` multi-stage actually safe) remains a future
   improvement; the refusal prevents the silent data-loss path until then.
+
+## Closed 2026-08-28 (closure window — 03-media/06-packaging batch)
+
+All edits in this section were batched into ONE commit to minimize cache
+invalidation (the 03-media/06-packaging closure re-runs hours of compiles
+on any edit).
+
+- **LOG31 (COPY'd half) — DENIED class and Android presence checks now fail**
+  [CLOSED] `validate-media-runtime.sh`: the DENIED class (source-built SONAME
+  missing — meant to be empty by construction) now exits 1 instead of WARNING.
+  The broader unresolved/unmappable classes stay advisory (vendor trees must
+  be excluded first). `smoke-android.sh`: ndk-build and aapt2/zipalign/apksigner
+  now have `fail` branches — a missing NDK clang or apksigner previously passed.
+- **LOG32 — Vulkan smoke checks lifted into runtime smoke** [CLOSED] Added a
+  Vulkan section to `smoke-media.sh` with three gates: `vulkan/vulkan.h` present,
+  the `active` symlink resolves, and `glslangValidator --version` runs. Together
+  ~7 GB of shipped Vulkan SDK now carries a gate that can fail.
+- **LOG35 — smaller gate gaps, one pass** [CLOSED] `verify-media-artifacts.sh`
+  media-inputs: replaced the broken `verify_A || verify_B` lib→lib64 fallback
+  with `verify_any_lib` (the old idiom counted A's failure even when B passed).
+  Added `libvvdec` to the FFmpeg buildconf-vs-registered codec check loop.
+  Added a `/opt/cmake` functional assertion to `smoke-media.sh`.
+- **LOG9 — arm64 GStreamer introspection enabled** [CLOSED]
+  `build-gstreamer-monorepo.sh`: arm64 cross builds now keep introspection
+  ENABLED when the qemu g-i wrappers exist (pre-setup.sh already creates them
+  for arm64, same as riscv64), falling back to disabled only if they don't.
+  Mirrors the riscv64 block with `gi_cross_binary_wrapper` /
+  `gi_cross_ldd_wrapper` meson args. Success is measured by the `.typelib`
+  count (was 0 on arm64, 47 on amd64, 38 on riscv64).
+- **LOG21 — OpenCV highgui: cross arches documented as headless-by-design**
+  [CLOSED] Cross arches disable GTK (libpango1.0-dev is not
+  multiarch-coinstallable). Added a smoke assertion in `smoke-media.sh` that
+  confirms `GUI: NONE` is deliberate on cross arches and fails on a NATIVE
+  build that loses GTK.
+- **LOG24 — OpenCV ONNX Runtime DNN backend enabled** [CLOSED] Added
+  `-DWITH_ONNXRUNTIME=ON -DDOWNLOAD_ONNXRUNTIME=OFF` to the OpenCV cmake core
+  opts. The image ships a source-built ONNX Runtime; cv2.dnn can now use it.
+  Added a smoke assertion that checks the ORT backend is available via
+  `cv2.dnn.getAvailableBackends()`.
+- **LOG26 — OpenCV AVIF/HDF5/non-free + riscv64 torch USE_OPENMP + FFmpeg
+  PulseAudio** [CLOSED] Added `-DWITH_AVIF=ON -DWITH_HDF5=ON
+  -DOPENCV_ENABLE_NONFREE=ON` to OpenCV cmake opts and `libavif-dev` /
+  `libhdf5-dev` to install-deps.sh. Documented the riscv64-only
+  `USE_OPENMP=0` rationale in `build-app-wheelhouse.sh` (cross GCC's libgomp
+  not coinstallable in the riscv64 sysroot; amd64/arm64 get PyPI wheels with
+  OpenMP). Added `libpulse-dev` to FFmpeg install-deps.sh for the
+  PulseAudio input/output device.

@@ -29,6 +29,9 @@ target_packages=(
     libopenexr-dev
     libunwind-dev
     libdc1394-dev
+    # LOG26: AVIF and HDF5 support for OpenCV.
+    libavif-dev
+    libhdf5-dev
 )
 
 if is_cross; then

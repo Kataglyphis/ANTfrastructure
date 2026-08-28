@@ -346,9 +346,12 @@ case "${STAGE}" in
   media-inputs)
     echo "=== Media inputs stage integrity check ==="
     verify_dir_not_empty "${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}/lib" "ONNX CPU libs in media-inputs"
-    if ! verify_dir_not_empty "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib" "OpenCV libs in media-inputs" 2>/dev/null; then
-      verify_dir_not_empty "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib64" "OpenCV lib64 in media-inputs" || true
-    fi
+    # LOG35: the old `verify_A || verify_B` idiom counted A's failure even when
+    # B passed (verify_dir_not_empty increments FAILURES before returning 1).
+    # Use verify_any_lib for a single one-of verdict instead.
+    verify_any_lib "OpenCV libs in media-inputs" \
+      "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib:libopencv_core.so*" \
+      "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib64:libopencv_core.so*"
     verify_file_exists "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg" "ffmpeg in media-inputs" || true
     # LOG36: TVM libs are built in the media stage but were dropped at the
     # media→package COPY. Verify they exist HERE (the media stage); the copy

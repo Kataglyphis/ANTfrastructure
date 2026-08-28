@@ -32,6 +32,8 @@ target_packages=(
     libopus-dev
     libaom-dev
     libdav1d-dev
+    # LOG26: PulseAudio input/output device support.
+    libpulse-dev
 )
 
 optional_cross_target_packages=()

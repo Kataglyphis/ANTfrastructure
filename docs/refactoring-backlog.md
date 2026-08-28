@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (closed: LOG10,11,15,16,20,22,23,25,29,30,33,36,37,38,39,40,41 + LOG31-preflight + Section C guard; see archives)
+Last groomed: 2026-08-28 (closed: LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32, LOG35 + prior LOG10,11,15,16,20,22,23,25,29,30,33,36,37,38,39,40,41 + LOG31-preflight + Section C guard; see archives)
 
 ## Standing rules (read first)
 
@@ -121,16 +121,9 @@ closure, so they are ONE closure window's work.
   (Dockerfile.media:654-655). ⚠ The lock has been doing PAR4's job unnoticed:
   peak was 43.6 GB used / 18.5 GB free with only tvm+litert live. Needs a
   memory plan, not just the lock removed.
-- **LOG9 — arm64 GStreamer builds without introspection although its qemu
-  wrappers exist and are generated** [M·★★, OPEN 2026-08-28]
-  `media-arm64.log:194734 "ARM cross build: disabling introspection
-  (g-ir-compiler needs qemu exe_wrapper)"` → `:196446 introspection :
-  disabled`; artifact proof is the `.typelib` count 47 / **0** / 38.
-  build-gstreamer-monorepo.sh:296 disables unconditionally for `aarch64*|arm*`,
-  while pre-setup.sh creates the four arm64 wrappers (:254-260) and qemu-user
-  for arm64 AND riscv64 — the riscv64 block (:252-282) lifted exactly this on
-  2026-08-21. Action: mirror that block, `[ -x … ]`-gated, and measure success
-  by the `.typelib` count, not by the flag.
+- **LOG9 — arm64 GStreamer introspection enabled** [CLOSED 2026-08-28]
+  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 03-media/06-packaging batch)".
 - **LOG12 — ArmNN ships the reference backend only; the whole ACL wiring is
   inert** [M·★★, OPEN 2026-08-28] `media-arm64.log:15264-15269 "CL backend is
   disabled" / "NEON backend is disabled" / "TOSA Reference backend is
@@ -179,22 +172,16 @@ closure, so they are ONE closure window's work.
   moves) has sat there since 2026-08-10; only the number is new. Decide it or
   strike it there.
 
-- **LOG21 — OpenCV on arm64/riscv64 ships with NO highgui window backend**
-  [S·★★, OPEN 2026-08-28] `GUI: NONE` on both cross arches vs `GTK3` on amd64,
-  so `cv2.imshow()` raises at runtime on two of three shipped images. Decide
-  whether the cross images are headless BY DESIGN — if yes, write that down and
-  assert it; if no, the GTK dev packages have to reach the cross lanes.
-- **LOG24 — OpenCV's ONNX Runtime DNN backend is OFF on all three arches**
-  [S·★★, OPEN 2026-08-28] in an image that ships a source-built ONNX Runtime.
-  `cv2.dnn` therefore cannot use the very runtime the image is built around.
-  Action: turn the backend on and assert it in the cv2 smoke; the library it
-  needs is already in the image.
-- **LOG26 — three single-row OpenCV gaps and two riscv64 torch gaps, all
-  undocumented** [S·★, OPEN 2026-08-28] OpenCV: AVIF, HDF5 and the non-free
-  algorithms are absent. riscv64 PyTorch is built feature-minimal AND with
-  `USE_OPENMP=0` (build-app-wheelhouse.sh:525) while arm64/amd64 are not, with
-  no written rationale for either. FFmpeg additionally has no PulseAudio device.
-  Action: one pass — enable what is cheap, document what stays off.
+- **LOG21 — OpenCV highgui: cross arches documented as headless-by-design**
+  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
+  2026-08-28 (closure window — 03-media/06-packaging batch)".
+- **LOG24 — OpenCV ONNX Runtime DNN backend enabled** [CLOSED 2026-08-28]
+  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 03-media/06-packaging batch)".
+- **LOG26 — OpenCV AVIF/HDF5/non-free + riscv64 torch USE_OPENMP + FFmpeg
+  PulseAudio** [CLOSED 2026-08-28] See
+  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 03-media/06-packaging batch)".
 
 ## H. Smoke & gate coverage (one coherent PR — 2026-08-28 maximality audit)
 
@@ -203,33 +190,22 @@ several gates cannot fail. (The wrapper-smoke stage that had never been built
 was fixed as LOG29 — closed 2026-08-28.)
 
 - **LOG31 — three gates report every failure class as a WARNING and never exit
-  non-zero** [M·★★, PARTIALLY CLOSED 2026-08-28] The two preflight checks
-  (`lint-env-knobs.sh` advisory-by-default + missing-file silent drop;
-  `verify-runtime-paths.sh` "never fails") are FIXED — see
+  non-zero** [CLOSED 2026-08-28] Both halves fixed. Preflight half: see
   `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (host-only
-  fixes)". The COPY'd half remains OPEN: `validate-media-runtime.sh:265,279,286`
-  (unresolved deps, unmappable, and the new DENIED class), `smoke-android.sh`
-  (five presence checks with no failing branch — a missing NDK clang or apksigner
-  passes). These need a closure window. Action: start with the DENIED class,
-  which is meant to be empty by construction; the broader `.so` sweep needs the
-  vendor trees excluded first.
-- **LOG32 — 3.3 GB of shipped Android artifacts and 1.8-5.7 GB of Vulkan SDK
-  carry no gate that can fail** [M·★★, OPEN 2026-08-28] together ~7 GB of a
-  16-17 GB image. The Vulkan smoke that would test it is disabled on a premise
-  worth re-checking (`Dockerfile.package:368-373`). Action: lift the three
-  cheapest checks into the runtime smoke — `active` resolves,
-  `vulkan/vulkan.h` present, one `glslangValidator` invocation.
+  fixes)". COPY'd half (closure window): see
+  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 03-media/06-packaging batch)".
+- **LOG32 — Vulkan smoke checks lifted into runtime smoke** [CLOSED 2026-08-28]
+  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 03-media/06-packaging batch)".
 - **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
   `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
   remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
   raise the floors — but only AFTER the in-flight rebuild proves TVM ships on all
   three arches.
-- **LOG35 — smaller gate gaps, one pass** [S·★, OPEN 2026-08-28] vvdec (VVC/H.266)
-  is built and shipped with no smoke of any kind; the shipped-image `.so` closure
-  is capped and silently truncates; `/opt/cmake` ships unasserted;
-  `verify-media-artifacts.sh`'s media-inputs lib→lib64 fallback is the exact
-  broken idiom the same file fixed elsewhere; the app-wheel-smoke ratchet added
-  for one incident is narrower than the class it was meant to catch.
+- **LOG35 — smaller gate gaps, one pass** [CLOSED 2026-08-28]
+  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
+  window — 03-media/06-packaging batch)".
 
 ## A. Window inventory — A1 needs WORK in the wave
 

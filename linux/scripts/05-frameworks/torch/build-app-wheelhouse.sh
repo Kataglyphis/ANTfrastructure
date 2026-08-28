@@ -522,6 +522,11 @@ _torch_run_setup_py() {
         export BUILD_TEST=0 BUILD_BINARY=0 USE_KINETO=0 && \
         export USE_FBGEMM=0 USE_MKLDNN=0 USE_NNPACK=0 USE_QNNPACK=0 USE_PYTORCH_QNNPACK=0 USE_XNNPACK=0 && \
         export USE_SYSTEM_SLEEF="${use_system_sleef}" && \
+        # LOG26: USE_OPENMP=0 is riscv64-only (this function runs only for the
+        # riscv64 cross torch wheel — amd64/arm64 get PyPI wheels). The riscv64
+        # cross GCC's libgomp is not reliably coinstallable in the cross sysroot;
+        # OpenMP pragmas produce link errors against the foreign target. amd64
+        # (native) and arm64 (PyPI) both ship with OpenMP enabled.
         export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0 && \
         export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
         export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \

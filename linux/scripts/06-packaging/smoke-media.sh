@@ -282,6 +282,31 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       # build-opencv.sh sets -DWITH_TBB=ON unconditionally, but libtbb-dev was
       # host-only — cross arches silently fell back to pthreads. This catches
       # a TBB probe miss.
+      # LOG21: assert the highgui window backend. Cross arches are headless BY
+      # DESIGN (GTK's libpango1.0-dev is not multiarch-coinstallable, see
+      # opencv/install-deps.sh:34). amd64 has GTK3. A cross image that suddenly
+      # gains GTK would be a surprise worth investigating, and a cross image
+      # that loses it is expected — so assert the DELIBERATE state.
+      _ocv_gui="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
+import cv2
+for line in cv2.getBuildInformation().splitlines():
+    if line.strip().startswith('GUI:'):
+        print(line.strip())
+        break
+" 2>/dev/null || true)"
+      if [ -n "${_ocv_gui}" ]; then
+        case "${_ocv_gui}" in
+          *GTK*) pass "opencv GUI backend: GTK (amd64 expected)" ;;
+          *NONE*)
+            if cross_build_is_active 2>/dev/null; then
+              pass "opencv GUI backend: NONE (cross arch — headless by design, LOG21)"
+            else
+              fail "opencv GUI backend is NONE on a NATIVE build (GTK dev packages missing?)"
+            fi
+            ;;
+          *) pass "opencv GUI backend: ${_ocv_gui}" ;;
+        esac
+      fi
       _ocv_pf="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
 import cv2
 for line in cv2.getBuildInformation().splitlines():
@@ -294,6 +319,21 @@ for line in cv2.getBuildInformation().splitlines():
           *TBB*) pass "opencv parallel framework: TBB" ;;
           *)     fail "opencv parallel framework is NOT TBB (got: ${_ocv_pf})" ;;
         esac
+      fi
+      # LOG24: assert the ONNX Runtime DNN backend is available. The image
+      # ships a source-built ONNX Runtime; cv2.dnn should be able to use it.
+      if PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
+import cv2
+backends = cv2.dnn.getAvailableBackends()
+targets = cv2.dnn.getAvailableTargets()
+# OpenCV 5.x maps the ORT backend to 'ONNXRuntime' or 'ORT'
+if not any('onnx' in str(b).lower() or 'ort' in str(b).lower() for b in backends):
+    print('ORT backend missing, got:', backends, file=__import__('sys').stderr)
+    exit(1)
+" 2>/dev/null; then
+        pass "opencv DNN ONNX Runtime backend available"
+      else
+        fail "opencv DNN ONNX Runtime backend NOT available (WITH_ONNXRUNTIME=ON may have missed)"
       fi
     elif cross_build_is_active 2>/dev/null; then
       # CROSS build: the interpreter runs on the amd64 host but cv2 is a
@@ -443,7 +483,7 @@ if [ -x "${_ffmpeg_bin}" ]; then
     # so buildconf-vs-registration consistency is the cheap honest gate...
     if [ "${ffmpeg_ver}" != "?" ]; then
       _ff_bc="$("${_ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
-      for _c in libx265 libdav1d libsvtav1 libvpx libopus; do
+      for _c in libx265 libdav1d libsvtav1 libvpx libopus libvvdec; do
         case "${_ff_bc}" in
           *"--enable-${_c}"*)
             if "${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null | grep -q "${_c#lib}" \
@@ -544,6 +584,22 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# CMake (LOG35: /opt/cmake ships unasserted)
+# ---------------------------------------------------------------------------
+echo "--- CMake ---"
+_cmake_bin="$(smoke_resolve_bin cmake /opt/cmake/bin/cmake)"
+if [ -x "${_cmake_bin}" ]; then
+  _cmake_ver="$("${_cmake_bin}" --version 2>/dev/null | head -1 || echo '?')"
+  if [ "${_cmake_ver}" != "?" ]; then
+    pass "cmake functional: ${_cmake_ver}"
+  else
+    fail "cmake at ${_cmake_bin} exists but --version failed"
+  fi
+else
+  fail "cmake not found (checked PATH and /opt/cmake/bin/cmake)"
+fi
+
+# ---------------------------------------------------------------------------
 # CUDA (optional)
 # ---------------------------------------------------------------------------
 echo "--- CUDA (optional) ---"
@@ -564,6 +620,46 @@ if command -v nvcc >/dev/null 2>&1; then
 elif [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
   # The old check was fail-open: a GPU image that LOST nvcc passed silently.
   fail "ENABLE_NVIDIA=true but nvcc is not on PATH"
+fi
+
+# ---------------------------------------------------------------------------
+# Vulkan SDK — header, active symlink, glslangValidator (LOG32)
+# ---------------------------------------------------------------------------
+echo "--- Vulkan SDK ---"
+_vk_root="${VULKAN_SDK_ROOT:-/opt/vulkan}"
+if [ -d "${_vk_root}" ]; then
+  # 1. vulkan/vulkan.h present
+  _vk_inc=""
+  for _cand in "${_vk_root}/active/include" "${_vk_root}"/*/include; do
+    [ -f "${_cand}/vulkan/vulkan.h" ] && { _vk_inc="${_cand}"; break; }
+  done
+  if [ -n "${_vk_inc}" ]; then
+    pass "vulkan/vulkan.h found at ${_vk_inc}"
+  else
+    fail "vulkan/vulkan.h not found under ${_vk_root}"
+  fi
+  # 2. active symlink resolves
+  if [ -L "${_vk_root}/active" ] || [ -d "${_vk_root}/active" ]; then
+    pass "Vulkan active link resolves: ${_vk_root}/active"
+  else
+    fail "Vulkan active link not found at ${_vk_root}/active"
+  fi
+  # 3. glslangValidator runs (host binary — works on all arches in the build sandbox)
+  _vk_glslang=""
+  for _cand in "${_vk_root}/active/bin/glslangValidator" "${_vk_root}"/*/bin/glslangValidator; do
+    [ -x "${_cand}" ] && { _vk_glslang="${_cand}"; break; }
+  done
+  if [ -n "${_vk_glslang}" ]; then
+    if "${_vk_glslang}" --version >/dev/null 2>&1; then
+      pass "glslangValidator functional: ${_vk_glslang}"
+    else
+      fail "glslangValidator found but --version failed: ${_vk_glslang}"
+    fi
+  else
+    fail "glslangValidator not found under ${_vk_root}"
+  fi
+else
+  echo "  INFO: Vulkan SDK not found at ${_vk_root} (optional in some images)"
 fi
 
 # ---------------------------------------------------------------------------

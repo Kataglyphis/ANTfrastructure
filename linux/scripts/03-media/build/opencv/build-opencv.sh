@@ -454,6 +454,16 @@ _opencv_cmake_core_opts() {
         "-DWITH_LIBV4L=ON"
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
+        # LOG24: enable the ONNX Runtime DNN backend. The image ships a
+        # source-built ONNX Runtime at /usr/local/lib/onnxruntime-cpu; without
+        # this flag cv2.dnn cannot use the very runtime the image is built around.
+        # DOWNLOAD_ONNXRUNTIME=OFF ensures CMake uses the pre-installed one.
+        "-DWITH_ONNXRUNTIME=ON"
+        "-DDOWNLOAD_ONNXRUNTIME=OFF"
+        # LOG26: enable AVIF, HDF5 and the non-free algorithms.
+        "-DWITH_AVIF=ON"
+        "-DWITH_HDF5=ON"
+        "-DOPENCV_ENABLE_NONFREE=ON"
     )
 }
 

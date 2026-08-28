@@ -72,6 +72,8 @@ check_ndk() {
     local ndk_build="${ndk_dir}/ndk-build"
     if [ -x "${ndk_build}" ]; then
       pass "ndk-build exists"
+    else
+      fail "ndk-build not found at ${ndk_build}"
     fi
 
     # Check NDK toolchains exist
@@ -132,6 +134,8 @@ check_build_tools() {
     for tool in aapt2 zipalign apksigner; do
       if [ -x "${build_tools}/${tool}" ]; then
         pass "  ${tool} found"
+      else
+        fail "  ${tool} not found in build-tools ${ANDROID_BUILD_TOOLS}"
       fi
     done
   else

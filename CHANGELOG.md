@@ -5,6 +5,37 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — Closure window: 03-media/06-packaging backlog batch
+
+Closed seven backlog items (LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32,
+LOG35) in one commit — all touch files in the 03-media/06-packaging bind-mount
+closure, so batching minimizes cache invalidation (one edit re-runs hours of
+media compiles).
+
+- **LOG31 (COPY'd half)** — `validate-media-runtime.sh`: DENIED class
+  (source-built SONAME missing) now exits 1 instead of WARNING. The broader
+  unresolved/unmappable classes stay advisory (vendor trees need excluding
+  first). `smoke-android.sh`: ndk-build and aapt2/zipalign/apksigner now have
+  fail branches.
+- **LOG32** — Added Vulkan smoke to `smoke-media.sh`: vulkan.h present, active
+  symlink resolves, glslangValidator runs. ~7 GB of Vulkan SDK now gated.
+- **LOG35** — `verify-media-artifacts.sh`: replaced broken `verify_A || verify_B`
+  lib→lib64 fallback with `verify_any_lib`. Added `libvvdec` to FFmpeg codec
+  check loop. Added `/opt/cmake` functional assertion to `smoke-media.sh`.
+- **LOG9** — `build-gstreamer-monorepo.sh`: arm64 cross builds now keep
+  introspection ENABLED when qemu g-i wrappers exist (pre-setup.sh already
+  creates them for arm64). Was 0 .typelib on arm64; should match riscv64's 38.
+- **LOG21** — Documented OpenCV cross arches as headless-by-design (GTK's
+  libpango1.0-dev not multiarch-coinstallable). Added smoke assertion that
+  confirms `GUI: NONE` is deliberate on cross, fails on native.
+- **LOG24** — OpenCV DNN ONNX Runtime backend enabled
+  (`-DWITH_ONNXRUNTIME=ON -DDOWNLOAD_ONNXRUNTIME=OFF`). Added smoke assertion
+  for the ORT backend via `cv2.dnn.getAvailableBackends()`.
+- **LOG26** — OpenCV: added `-DWITH_AVIF=ON -DWITH_HDF5=ON
+  -DOPENCV_ENABLE_NONFREE=ON` + `libavif-dev`/`libhdf5-dev` to install-deps.
+  Documented riscv64-only `USE_OPENMP=0` rationale in build-app-wheelhouse.sh.
+  FFmpeg: added `libpulse-dev` for PulseAudio indev/outdev.
+
 ## 2026-08-28 — Host-only backlog fixes (LOG33, LOG31-preflight, Section C)
 
 Closed three backlog items that touched only host-only scripts (not COPY'd or
