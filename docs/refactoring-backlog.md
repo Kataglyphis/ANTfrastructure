@@ -5,7 +5,7 @@ discovery-sweep date, which had fragmented into 27 sections with ~12 stale
 already-shipped entries). Every item here is OPEN. Completed/obsolete items
 and the observation journal live in
 [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md);
-everything CLOSED up to 2026-08-27 is in
+everything CLOSED up to 2026-08-28 is in
 [`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md).
 This file shows OPEN work only + CHANGELOG.md + memory — do not resurrect
 without re-verifying.
@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (closed: LOG8, LOG13, LOG14, LOG17, LOG18, LOG19 + LOG12 documented; prior: LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32, LOG35 + LOG10,11,15,16,20,22,23,25,29,30,33,36,37,38,39,40,41 + LOG31-preflight + Section C guard; see archives)
+Last groomed: 2026-08-28 (removed all CLOSED stubs — open items only below)
 
 ## Standing rules (read first)
 
@@ -41,10 +41,6 @@ Collected DURING the switch and the staged rebuild, each with the evidence that
 produced it. None of these blocks the current run; they are the debt the switch
 either created or exposed.
 
-- **LOG19 — the media lane reports zero cache telemetry, and the report is
-  truncated where it counts** [CLOSED 2026-08-28] See
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 01-core/02-toolchain batch)".
 - **sccache caches NOTHING in the OpenCV step** [M·★★★, OPEN 2026-08-26] The
   TryCompile root cause is fixed and the guarded launcher keeps the build alive
   (1451 saves, 0 aborts), but in the opencv step sccache fails on EVERY compile
@@ -89,18 +85,9 @@ either created or exposed.
 ## G. Mined from the 2026-08-27/28 from-base run (media + android lanes)
 
 Post-ship audit of run `20260827-200128-a20ab922` (per-stage logs under
-`~/build-logs/archive/20260827-200128-a20ab922/`). Its seven fix-now findings
-are fixed; LOG8-LOG18 are what was left, in the post-mortem's B1-B12 order
-minus B8, which is appended to the § F compiler-cache entry instead of being
-duplicated here. Nearly all of these sit in the 03-media / android bind-mount
-closure, so they are ONE closure window's work.
+`~/build-logs/archive/20260827-200128-a20ab922/`). All fix-now findings are
+closed; only the decision-level items remain.
 
-- **LOG8 — the locked apt mounts serialize the entire intra-lane fan-out**
-  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
-  2026-08-28 (closure window — 01-core/02-toolchain batch)".
-- **LOG9 — arm64 GStreamer introspection enabled** [CLOSED 2026-08-28]
-  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 03-media/06-packaging batch)".
 - **LOG12 — ArmNN ships the reference backend only; the whole ACL wiring is
   inert** [M·★★, OPEN 2026-08-28, documented] `media-arm64.log:15264-15269 "CL
   backend is disabled" / "NEON backend is disabled" / "TOSA Reference backend
@@ -115,13 +102,6 @@ closure, so they are ONE closure window's work.
   would be the actual news) or drop the ACL build plus the
   `ARMNN_VERSION`/`ACL_VERSION` pins. As it stands it is 7 min/lane for an
   artifact with no consumer.
-- **LOG13 — the android stage does not know sccache exists; android-iree caches
-  nothing** [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md`
-  § "Closed 2026-08-28 (closure window — 01-core/02-toolchain batch)".
-- **LOG14 — the cross SDK lanes build host x86_64 Vulkan components nobody
-  consumes** [CLOSED 2026-08-28] See
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 01-core/02-toolchain batch)".
 - **GCC_HOST_BOOTSTRAP — not new, but now quantified** [decision owed] NOT a
   new item: an update to the "NOT TAKEN this round (offered, user deferred) —
   still open" toolchain-speed line in
@@ -135,42 +115,7 @@ closure, so they are ONE closure window's work.
   moves) has sat there since 2026-08-10; only the number is new. Decide it or
   strike it there.
 
-- **LOG21 — OpenCV highgui: cross arches documented as headless-by-design**
-  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
-  2026-08-28 (closure window — 03-media/06-packaging batch)".
-- **LOG24 — OpenCV ONNX Runtime DNN backend enabled** [CLOSED 2026-08-28]
-  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 03-media/06-packaging batch)".
-- **LOG26 — OpenCV AVIF/HDF5/non-free + riscv64 torch USE_OPENMP + FFmpeg
-  PulseAudio** [CLOSED 2026-08-28] See
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 03-media/06-packaging batch)".
-
-## H. Smoke & gate coverage (one coherent PR — 2026-08-28 maximality audit)
-
-The audit's sharpest finding: what runs is deep and genuinely functional, but
-several gates cannot fail. (The wrapper-smoke stage that had never been built
-was fixed as LOG29 — closed 2026-08-28.)
-
-- **LOG31 — three gates report every failure class as a WARNING and never exit
-  non-zero** [CLOSED 2026-08-28] Both halves fixed. Preflight half: see
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (host-only
-  fixes)". COPY'd half (closure window): see
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 03-media/06-packaging batch)".
-- **LOG32 — Vulkan smoke checks lifted into runtime smoke** [CLOSED 2026-08-28]
-  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 03-media/06-packaging batch)".
-- **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
-  `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
-  remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
-  raise the floors — but only AFTER the in-flight rebuild proves TVM ships on all
-  three arches.
-- **LOG35 — smaller gate gaps, one pass** [CLOSED 2026-08-28]
-  See `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (closure
-  window — 03-media/06-packaging batch)".
-
-## A. Window inventory — A1 needs WORK in the wave
+## A. Window inventory — needs WORK in the wave
 
 ### A1. Work items
 
@@ -185,18 +130,14 @@ was fixed as LOG29 — closed 2026-08-28.)
 - **LOG2 open half — build the wasm asyncify/jspi flavors** [S/M·★★] so
   onnxruntime-web ships its webgpu JS backend (exclusion is documented in
   versions.env since wave-3; this is the build half).
+- **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
+  `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
+  remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
+  raise the floors — but only AFTER the in-flight rebuild proves TVM ships on all
+  three arches.
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
-
-## B. Next PIN-BUMP window (versions.env riders — NEVER alone)
-
-- **LOG17 — lift the Android AGP/Gradle versions into versions.env**
-  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
-  2026-08-28 (closure window — 01-core/02-toolchain batch)".
-- **LOG18 — CPython falls back to bundled libmpdec on all three arches**
-  [CLOSED 2026-08-28] See `refactoring-backlog-archive-2026-08-27.md` § "Closed
-  2026-08-28 (closure window — 01-core/02-toolchain batch)".
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
