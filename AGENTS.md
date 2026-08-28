@@ -276,7 +276,12 @@ Four things an agent gets wrong without reading it:
   hacks and do not re-litigate it.
 - **Every Stevedore/containerd update reverts the patched runhcs shim.**
   `windows/scripts/host/deploy-shim-patch.ps1 -ReportOnly` belongs in your
-  post-update routine.
+  post-update routine. **It can also wipe the buildkitd service `Environment`**
+  (the `BUILDKIT_STEP_LOG_MAX_SIZE=-1` / `BUILDKIT_STEP_LOG_MAX_SPEED=-1` keys
+  that prevent the 2 MiB step-log clip) — check with
+  `(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment).Environment`
+  after any update, and re-apply via `setup-new-host.ps1` or the registry
+  `Set-ItemProperty` if empty. The build driver refuses to start without them.
 - **A Stevedore REINSTALL wipes more than the shim** — the buildkitd service
   `Environment`, the dufs task and its serve directory all go with it. See
   [`docs/windows-host-setup.md`](docs/windows-host-setup.md) § Phase R.

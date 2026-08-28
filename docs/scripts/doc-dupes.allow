@@ -21,3 +21,4 @@ docs/failure-modes.md            | docs/windows-host-setup.md  | 18 | the RDNA4 
 docs/adopting-in-a-new-project.md| docs/linux-build-basics.md  | 17 | the consumer checklist quotes the `app-runner.sh` surface it is telling you to adopt
 docs/windows-build-lanes.md      | docs/windows-build-resources.md | 17 | isolation policy and cache-mount budgets are adjacent decisions and cite the same flags
 docs/cross-build-verification.md | docs/linux-cross-builds.md  | 16 | the QEMU/binfmt prerequisite appears as a verification precondition and as a lane step
+README.md                        | docs/windows-cross-builds.md | 15 | the README's arm64 summary and the cross-builds status banner both name the cross-target caveat and gate results; the banner owns the detail

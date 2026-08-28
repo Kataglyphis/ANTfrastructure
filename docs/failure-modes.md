@@ -75,6 +75,7 @@ Two neighbours, so you land on the right page:
 - [Rust smoke test: "rustup could not choose a version of cargo/rustc"](#rust-smoke-test-rustup-could-not-choose-a-version-of-cargorustc)
 - [A GitLab download "succeeds" with HTTP 200 but is a few KB](#a-gitlab-download-succeeds-with-http-200-but-is-a-few-kb)
 - [`TVM: llvm-config.exe not found on PATH`](#tvm-llvm-configexe-not-found-on-path)
+- [`TVM: no member named 'matchIntrinsicSignature' in namespace 'llvm::Intrinsic'`](#tvm-no-member-named-matchintrinsicsignature-in-namespace-llvmintrinsic)
 - [`lld-link: error: undefined symbol` for template instantiations after a green compile](#lld-link-error-undefined-symbol-for-template-instantiations-after-a-green-compile)
 - [meson cross: `Summary section 'Build environment' already have key 'host cpu'`, then `Subproject "subprojects/glib" required but not found`](#meson-cross-summary-section-build-environment-already-have-key-host-cpu-then-subproject-subprojectsglib-required-but-not-found)
 - [Windows base: scoop cannot install a pinned tool, 404 on the installer](#windows-base-scoop-cannot-install-a-pinned-tool-404-on-the-installer)
@@ -382,6 +383,14 @@ The second URL is TensorFlow's own mirror of the same gitlab path (the `tf_mirro
 **Cause.** Scoop LLVM never ships llvm-config or dev libs — TVM was silently USE_LLVM=OFF (no CPU codegen) until 2026-08-17. NOT a broken PATH.
 
 **Fix.** The self-heal in `build-tvm-from-source.ps1` builds a pinned minimal LLVM from source ([`windows-build-invariants.md`](windows-build-invariants.md) § Windows Build Invariants). If the gate throws, check the heal's download/SHA pin for the current `LLVM_WINDOWS_VERSION` — do NOT fall back to the official /MT dev tarball or USE_LLVM=OFF.
+
+### `TVM: no member named 'matchIntrinsicSignature' in namespace 'llvm::Intrinsic'`
+
+**Symptom.** amd64 TVM compiler build: `codegen_llvm.cc(1119): error: no member named 'matchIntrinsicSignature' in namespace 'llvm::Intrinsic'` plus 7 more errors on `MatchIntrinsicTypes_*`, then `ninja: build stopped`. The arm64 lane is unaffected (runtime-only, no compiler).
+
+**Cause.** TVM 0.26's `codegen_llvm.cc` uses `llvm::Intrinsic::matchIntrinsicSignature` / `MatchIntrinsicTypes_*` which were removed or renamed in LLVM 23.1.0. The forced `LLVM_WINDOWS_VERSION` bump from 22.1.8 to 23.1.0 (scoop reshaped the artifact, #135) broke the TVM compiler's LLVM API surface. The `llvm_module.cc` `LLJITBuilderState::ObjectLinkingLayerCreator` conversion also fails (API change).
+
+**Fix.** Not yet fixed. Either patch TVM 0.26 for the LLVM 23.1.0 Intrinsic API, or revert `LLVM_WINDOWS_VERSION` for the TVM compiler build only. The arm64 lane needs no fix — it builds runtime-only and never compiles `codegen_llvm.cc`. Tracked in `docs/windows-refactor-backlog.md` #134.
 
 ### `lld-link: error: undefined symbol` for template instantiations after a green compile
 

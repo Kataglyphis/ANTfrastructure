@@ -5,6 +5,57 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — #134 arm64 acceptance PASSED; amd64 blocked on TVM-vs-LLVM-23.1.0; three base fixes
+
+### #134 acceptance run
+
+**ARM64: ALL GATES GREEN** (run `bk-20260828-171914`, ~1 h 10 min). arch gate
+992/0; import walk 606/0 (3 allowlisted, 6 device-OS); smoke 97/0/15;
+GStreamer contract plugins 6/6; OpenCV 1870/1870 with zero #135 codegen
+errors; `tvmmods` stage mounted and built clean; TVM runtime wheels
+(`apache_tvm`, `apache_tvm_ffi`) + IREE runtime wheel all `0xAA64`. This
+proves the module-closure unshare, the three leaf modules, `tvmmods`, and
+the deleted classic stages are sound on the cross lane.
+
+**AMD64: BLOCKED in TVM compiler** (run `bk-20260828-190313`). TVM 0.26's
+`codegen_llvm.cc` uses `llvm::Intrinsic::matchIntrinsicSignature` /
+`MatchIntrinsicTypes_*` removed/renamed in LLVM 23.1.0 — 8 compile errors.
+The arm64 lane is unaffected (runtime-only, no compiler). Media-core,
+FFmpeg, OpenCV, LiteRT, and LiteRT-LM all passed on amd64. This is a
+TVM-vs-LLVM API break, not a #134 defect, but it blocks the amd64
+acceptance criterion until patched or `LLVM_WINDOWS_VERSION` is reverted
+for the TVM compiler build.
+
+### Three fixes that landed during the acceptance run
+
+1. **`SCOOP_INSTALLER_SHA256`** bumped `84242117…` to `94f983b1…` — scoop
+   rotated `get.scoop.sh` again (verified against GitHub raw master, Unlicense
+   header, 787 lines). Updated `versions.env` + `Dockerfile.base` ARG default.
+2. **Arm64 OpenSSL URL** bumped `Win64ARMOpenSSL-4_0_1` to `4_0_2` — slproweb
+   404'd the old version. Updated `setup-scoop-tools.ps1` (URL + SHA256:
+   `5d2653ef…`). Without this, the arm64 GStreamer merge stage throws on the
+   missing `C:\opt\openssl-arm64\libcrypto.lib`.
+3. **`ARCH_GATE_MIN_INSPECTED`** for arm64 corrected 840 to 580 — 840 was set
+   against the arch-gate binary count (992 minus 15%), not the import-walk file
+   count (606). Updated `build-buildkit.ps1`. The gate was failing a healthy
+   run that inspected exactly the expected 606 files.
+
+### Backlog changes
+
+- **#122** (CUDA on arm64) — CLOSED by owner decision (no near-term plan).
+  Phase-0 probe moved to `windows-backlog-archive-2026-08-26.md`.
+- **#136** (VS RUN never cached) — archived (solved + deployed 2026-08-26).
+  Narrative moved to `windows-backlog-archive-2026-08-26.md`.
+- **#137** (sccache patch droppable) — probe done: both PRs merged upstream,
+  0003 patch fails `git apply --check` against `8ab39266` (main HEAD). Plan
+  written; not executed (base-layer change, own window).
+
+### Doc updates
+
+- `windows-build-lanes.md` — a Stevedore *update* (not just a reinstall) can
+  wipe the buildkitd service `Environment`; check after any update.
+- AGENTS.md — same note added to the "Four things an agent gets wrong" section.
+
 ## 2026-08-28 — correction: the `/Ob1` half was NOT llvm#202716, and the census says so
 
 **Correcting the entry below, not deleting it.** The 2026-08-27 pass credited the

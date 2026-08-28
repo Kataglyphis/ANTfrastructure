@@ -4,13 +4,17 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
-> **Status — read the date. The numbers below are arm64 run 36 (2026-08-26 midday), and the tree
-> has moved since.** What that run established stands: the lane built end to end and reached
-> RUNTIME PARITY with `:winamd64`, and nothing it produces has ever been run. What it does NOT
-> cover: the module-closure refactor (#134), the forced clang-cl bump to 23.1.0 — upstream reshaped
-> the Windows artifact, so the previous pin can no longer be installed at all — and the per-TU
-> AArch64 codegen workaround that bump required (#135). **No completed build of the current tree
-> exists yet**, so treat every figure here as the last known good rather than a claim about HEAD.
+> **Status — re-measured 2026-08-28 (arm64 acceptance run `bk-20260828-171914`).**
+> The current tree — module-closure refactor (#134), forced clang-cl 23.1.0,
+> per-TU AArch64 codegen workarounds (#135) — built end to end and reached
+> RUNTIME PARITY with `:winamd64`. Every gate below hit its target on the
+> current HEAD. Nothing the lane produces has ever been *executed* — wheels
+> ship staged, not installed, and every verdict is a static check.
+>
+> **The amd64 lane has an open blocker**: TVM 0.26's compiler does not build
+> against LLVM 23.1.0 (8 API-break errors in `codegen_llvm.cc`). The arm64
+> lane is unaffected (runtime-only, no compiler). See
+> `docs/windows-refactor-backlog.md` #134.
 >
 > Same media and inference surface: GStreamer with
 > an identical plugin set (200 linked plugin DLLs, all six contract plugins incl. `webrtc`/`nice`,
@@ -19,7 +23,7 @@ produce, and which gates keep it honest.
 > plugin, and the TVM/IREE **runtimes together with their python packages** — 6 wheels, the same
 > count as amd64.
 >
-> | Gate (arm64 run 36) | Result | amd64 (run 8) |
+> | Gate (arm64 `bk-20260828-171914`) | Result | amd64 (run 8, blocked at TVM) |
 > | --- | --- | --- |
 > | PE arch gate over `C:\runtime` + host site-packages | **992 inspected / 0 violations** | 1134 / 0 |
 > | Import walk (`-ImportWalk`, unpacks staged wheels) | **606 walked / 0 unresolved** (3 allowlisted, 6 device-OS) | report-only |
@@ -903,7 +907,7 @@ Components with no arm64 story, and what stands in their place.
 
 ### CUDA / cuDNN / TensorRT
 
-**Excluded — but the blanket reason recorded here until 2026-08-24 ("no Windows-on-ARM support") was wrong.** The cuDNN 9.25.0.15 windows-arm64 archive exists at this repo's exact pin (ranged GET: HTTP 200, 421 MB, `lib/arm64` inside), and CUDA 13.4 (preview) advertises Windows ARM64 including x86_64-hosted cross-compile. Classic TensorRT does remain genuinely x64-only — no ARM64 row in NVIDIA's support matrix — but TensorRT-RTX publishes Windows-on-Arm packages for CUDA 13.4. Wiring CUDA here is backlog work, not fiction; until it lands, `Dockerfile.nvidia` is skipped and the arm64 lane always takes the CPU alias path.
+**Excluded — but the blanket reason recorded here until 2026-08-24 ("no Windows-on-ARM support") was wrong, and the 421 MB figure recorded here was never re-fetched.** The cuDNN 9.25.0.15 windows-arm64 archive exists at this repo's exact pin (ranged GET: HTTP 200, **~90 MB** re-measured 2026-08-28 — the 421 MB was wrong; see backlog #122, CLOSED), `lib/arm64` inside). CUDA itself, however, has no `windows-arm64` redist or installer at 13.4 or any 12.x/13.3.x (NVIDIA's redist manifest lists only `windows-x86_64` for Windows; #122 probe, 2026-08-28). Classic TensorRT does remain genuinely x64-only — no ARM64 row in NVIDIA's support matrix — but TensorRT-RTX publishes Windows-on-Arm packages for CUDA 13.4. Wiring CUDA here is backlog work, not fiction; until it lands, `Dockerfile.nvidia` is skipped and the arm64 lane always takes the CPU alias path.
 
 ### DirectML
 

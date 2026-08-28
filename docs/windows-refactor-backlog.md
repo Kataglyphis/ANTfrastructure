@@ -163,15 +163,27 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
 - **#134 — post-#133 cleanup wave: unshare the module closure, de-duplicate the AST test
   boilerplate, condense the docs.** M · ★★ (opened 2026-08-26, owner's request; planned against the
   Dockerfiles, not against memory — see the correction below) · **CODE LANDED 2026-08-26
-  (`2752685f` + docs `80f2258f`); STILL UNPROVEN — four acceptance attempts on 2026-08-26, none
-  completed, and only ONE died of a #134 defect.**
-  Run 37 found the re-export omission (fixed, `9bf0ef41`). The next three died of things that moved
-  underneath the tree, not of this wave: a Vulkan pin with no Windows installer (`0dfd7c47`), an
-  LLVM pin scoop could no longer install after upstream reshaped the artifact (`6bbcea65`), and the
-  AArch64 `fixup value out of range` that the forced clang bump brought with it (#135, `20c4fc7e`).
-  Each is in `docs/failure-modes.md`. The current attempt has cleared base, sdk, toolchain, onnx,
-  ffmpeg and — since the #135 branch-range fix on 2026-08-27 — **opencv**: all 1,870 objects, the
-  FFmpeg backend and provenance gates, and the `cv2.cp314-win_arm64.pyd` static gate. The media
+  (`2752685f` + docs `80f2258f`); ARM64 ACCEPTANCE PASSED 2026-08-28; amd64 BLOCKED on TVM-vs-LLVM-23.1.0.**
+  **ARM64 acceptance run (2026-08-28, run `bk-20260828-171914`): ALL GATES GREEN.** arch gate
+  **992/0**; import walk **606/0** (3 allowlisted, 6 device-OS); smoke **97/0/15**; GStreamer
+  contract plugins 6/6; `tvmmods` stage mounted and built clean; IREE runtime wheel
+  `iree_base_runtime-...-win_arm64.whl` (11 members, all `0xAA64`); TVM runtime wheels
+  `apache_tvm-0.26.0-cp314-win_arm64.whl` + `apache_tvm_ffi-...-win_arm64.whl`. OpenCV 1870/1870
+  with **zero #135 codegen errors**. This proves the module-closure unshare, the leaf modules,
+  `tvmmods`, and the deleted classic stages are sound on the cross lane.
+  **AMD64 acceptance run (2026-08-28, run `bk-20260828-190313`): BLOCKED in TVM compiler.**
+  TVM 0.26's `codegen_llvm.cc` uses `llvm::Intrinsic::matchIntrinsicSignature` /
+  `MatchIntrinsicTypes_*` which were removed/renamed in LLVM 23.1.0 (the forced `LLVM_WINDOWS_VERSION`
+  bump from 22.1.8, #135). 8 compile errors in `codegen_llvm.cc` + 1 in `llvm_module.cc`. The arm64
+  lane is unaffected (runtime-only, no compiler). The media-core, FFmpeg, OpenCV, LiteRT, and
+  LiteRT-LM stages all passed on amd64. This is a TVM-vs-LLVM API break, not a #134 defect — but
+  it blocks the amd64 acceptance criterion (arch gate 1134/0, smoke 222/0/0) until either TVM
+  is patched for LLVM 23.1.0 or `LLVM_WINDOWS_VERSION` is reverted for the TVM compiler build.
+  **Three fixes landed during the acceptance run (not #134 defects, but preconditions):**
+  1. `SCOOP_INSTALLER_SHA256` bumped 84242117→94f983b1 (scoop rotated `get.scoop.sh` again).
+  2. arm64 OpenSSL URL bumped `Win64ARMOpenSSL-4_0_1`→`4_0_2` (slproweb removed 4_0_1, 404).
+  3. `ARCH_GATE_MIN_INSPECTED` for arm64 corrected 840→580 (840 was set against the arch-gate
+  binary count, not the import-walk file count of 606).
   branches past media-core are the next gate; nothing downstream of it has been re-run yet.
   **The acceptance run, and why it is the proof rather than the suite.** Three runs off
   `80f2258f`, in this order (arm64 first: it exercises more of the new code — the cross paths, all
