@@ -1131,3 +1131,299 @@ GB while the toml takes GiB, and uses different labels (`Reserved space:` vs
 `reservedSpace`). A 150 GiB pin shows as `161.0612736GB`, so the verification
 instruction "must read 150GB" — which I had just written into two pages —
 would make a correct deploy look failed.
+- **#135 — LLVM 23.1.0 AArch64 codegen: both failures fixed; the second one's earlier diagnosis
+  was wrong from end to end.** M · ★★ (opened 2026-08-26, closed 2026-08-27)
+  The forced clang-cl bump to 23.1.0 broke the cross build of OpenCV in two places. They share one
+  root signature — **LLVM lays a function out a few bytes SHORT of what it then emits**, so a pass
+  picks an encoding the assembler then rejects — and `docs/failure-modes.md` § AArch64 cross
+  compile aborts carries the symptom-first write-up, the four "do NOT"s and the local-repro recipe.
+  **(1) Jump-table entry width — FIXED (`eb13d2a2`).** `AArch64CompressJumpTables` picks 1-byte
+  entries from an estimate; every `N` measured sat just past the 1020-byte ceiling (256 = 1024 B,
+  258, 259, 260, 262, 272, 281, 284). `-Xclang -target-feature -Xclang +force-32bit-jump-tables`
+  keeps every table on 4-byte entries. `value evaluated as` went 4 → **0** in the cross build.
+  Cost 4522 → 4650 bytes of object, ~2.8 %, all jump-table DATA; full `/O2` retained.
+  **(2) `tbnz` just out of branch range — FIXED (2026-08-27,** per-TU `/Ob1` in
+  `build-opencv-from-source.ps1`**).** At `/O2` the whole baseline median filter collapses into ONE
+  function, `cv::cpu_baseline::medianBlur`, 8,465 instructions ≈ 33,860 bytes, and
+  `tbnz w9, #31, .LBB546_847` inside it must reach a block ~32,916 bytes away against the ±32,768
+  a 14-bit displacement encodes. `BranchRelaxation` exists to catch that and its estimate came out
+  short. `/Ob1` on the offending TUs (via `Add-NinjaPerTuFlags`) stops the inliner gluing
+  file-static helpers into one oversized function — no optimisation level is lowered; every kernel
+  keeps `/O2`, vectorisation and unrolling, at the cost of one call per `medianBlur()`. The
+  largest function in that TU drops 33,860 → 10,620 bytes: 3.1× headroom, not a 148-byte miss.
+  **The list is a census:** `NINJA_KEEP_GOING=1` (→ `ninja -k 0`) compiled all 1,870 objects in
+  one run and named every offender — `median_blur.dispatch.cpp` and `multiview_calibration.cpp`,
+  and no third. Re-run it that way after an OpenCV bump.
+  **WHAT THE EARLIER ENTRY GOT WRONG** — recorded so nobody re-derives it. It described (2) as an
+  `adr` reach problem "in a function larger than ~1 MB", blamed it on
+  `-aarch64-enable-compress-jump-tables=false` having removed the pass's `adr` check, and credited
+  `+force-32bit-jump-tables` with "keeping the pass enabled". Every part of that is false:
+  the feature makes the pass `return false` before it scans anything (source, 23.1.0) and emits
+  **byte-identical** asm to `=false` (measured); with the pass off the `adr` is self-relative and
+  cannot overflow; the largest function in the TU is 33 KB, not >1 MB; and the failing instruction
+  is a `tbnz`, with no jump table involved at all (`-fno-jump-tables` fails identically).
+  **Ruled out by measurement on the real TU, keep them ruled out:** `-fno-jump-tables`, dropping
+  `+force-32bit-jump-tables`, `-mllvm -inline-threshold=100` and `=25` (single-call-site statics
+  are inlined regardless of threshold — this is why `/Ob1` works where a threshold does not);
+  `-max-jump-table-size` (caps entry COUNT, the ceiling is a byte SPAN); `-align-all-*` (kills
+  clang-cl through the SEH unwind writer, llvm#122707 / llvm#47432); `/Od` and `/O1` (move the
+  failure to the next TU, three times).
+  **Upstream: two reportable LLVM 23.1.0 bugs, neither a prerequisite for this repo.**
+  (a) The layout estimate that comes out short, which drives BOTH failures above — reportable on
+  the evidence in hand (a `tbnz` left ~150 bytes out of reach is a `BranchRelaxation` miss, and the
+  jump-table `N` values are the same defect one pass over).
+  (b) **New, found 2026-08-27:** the asm printer emits a catch funclet's block address as
+  `add x0, x0, .LBB0_903` — the `:lo12:` specifier is MISSING — so `/FA` output does not round-trip
+  through LLVM's own assembler (`expected compatible register, symbol or integer in range
+  [0, 4095]`). Object emission is unaffected. Reproduced locally in 15 lines: one `try`/`catch`
+  whose body pushes the continuation block past 4 KB. This one matters beyond cosmetics: it blocks
+  the `/FA` diagnostic route that `failure-modes.md` prescribes, until you repair the listing
+  (the recipe there does).
+  Check upstream HEAD before filing either — `out/` holds the drafts of previous reports.
+  **(b) FILED 2026-08-27: [llvm/llvm-project#219200](https://github.com/llvm/llvm-project/pull/219200)**,
+  from `Kataglyphis/llvm-project` branch `aarch64-catchret-lo12` — one commit ahead of `llvm/main`
+  (the fork's `main` is 0 ahead / 12 behind, and that branch is its only non-upstream work).
+  **It does NOT retire either workaround, and the tempting inference that it does is wrong.**
+  The commit's own verification says so: the relocations were always correct
+  (`PAGEBASE_REL21` + `PAGEOFFSET_12A`, checked by assembling the fixed output against
+  `-filetype=obj`) and the change is `-S` / `/FA` only. Both #135 aborts happen during OBJECT
+  emission, which that patch leaves byte-identical. What it buys is the diagnostic route:
+  `failure-modes.md` prescribes `/FA` for exactly these no-source-location errors, and on
+  Windows-on-ARM with C++ exceptions that route was closed. **(a) turned out to be TWO independent
+  defects, not one — see the root-cause block below.**
+  **Settling any future candidate:** don't reason about it, run
+  `windows\scripts\diagnostics\repro-llvm-aarch64-layout.ps1` — the five real offenders frozen as
+  preprocessed `.i`, compiled with the workaround OFF, with the stock compiler's reproduce-and-
+  suppress arms gating the verdict so a stale corpus reports `INVALID` instead of a false fix.
+  A `FIXED` verdict licenses the `NINJA_KEEP_GOING=1` census; it does not replace it.
+
+  ### 2026-08-27 root cause: (a) is TWO defects, and this entry's "one signature at two sites" framing was wrong
+
+  They do not share a cause. One is a known upstream bug with an existing fix; the other is still
+  open but is now narrowed to a single measurable quantity.
+
+  **(a1) `tbnz` / `fixup value out of range` — SAME root cause as (a2), retired by the SAME patch.**
+  `BranchRelaxation` consumes the same `getInstSizeInBytes`; `median_blur.dispatch.cpp` and
+  `multiview_calibration.cpp` are also compiled `/EHa`; and the ~150-byte miss is 37 `EH_LABEL`
+  nops counted as zero. **CLAIMED BUT UNLOGGED — do not treat this as measured.** A
+  `NINJA_KEEP_GOING=1` census is recorded as having built all **1,869** objects green with BOTH
+  `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and `OPENCV_NO_OB1_WORKAROUND=1`, on pinned `llvmorg-23.1.0`
+  plus only the two `getInstSizeInBytes` patches (llvm#219275, llvm#219276). It was run by hand
+  inside the container, so it left no `bk-` log: **no artifact in `out/windows-build-logs/`
+  mentions either knob or `llvm-patched`**, and the newest log there is `bk-20260827-083658`.
+  Re-run it through the driver and keep the log before deleting either workaround.
+
+  **THIRD INSTANCE OF THE SAME INFERENCE ERROR — read this before the next attribution.** This
+  block previously read "ROOT CAUSE FOUND, FIX EXISTS UPSTREAM:
+  [`c6e184686cd7`](https://github.com/llvm/llvm-project/pull/202716) (trampoline blocks created at
+  offset zero), so `/Ob1` stays until the toolchain moves to LLVM `main`". **The census compiler
+  contains no such commit** — it is the pinned 23.1.0 release plus two patches that touch only
+  `getInstSizeInBytes` — so llvm#202716 cannot be a necessary cause here. It is a real upstream
+  defect, kept for the record, and nothing more. What the `branch-relax-tbz.mir` revert actually
+  proved was that the commit is load-bearing **for upstream's own test**, never anything about
+  `median_blur.dispatch.cpp`. That is the same "evidence about X read as evidence about Y" mistake
+  this entry already records twice above.
+  **The 2026-08-27 decision to move the toolchain to LLVM `main` is WITHDRAWN** — superseded by the
+  shipped path (pinned 23.1.0 + the two patches). No backport request is needed from anyone.
+
+  **Both workarounds are now removable — but they STAY until the patched toolchain is the DEFAULT.**
+  `windows/Dockerfile.toolchain-builder` still carries `ARG BUILD_PATCHED_LLVM=0`, so a stock image
+  ships unpatched clang-cl 23.1.0 and still needs both settings. Delete the flags from
+  `build-opencv-from-source.ps1` in the SAME change that flips that default, never before.
+
+  **The stage is reachable since 2026-08-28: `build-buildkit.ps1 -PatchedLlvm`.** Until then it was
+  not — the driver always targeted `built` and `BUILD_PATCHED_LLVM` appeared in no `.ps1` at all,
+  so the plan above would have been a no-op found mid-build. Pinned by
+  `windows/scripts/tests/BuildKit.PatchedLlvm.Tests.ps1`. The switch is opt-in because the extra
+  RUN + `ENV PATH` re-key every media stage below the toolchain image.
+
+  **(a2) Jump-table entry width — NOT fixed on `main`, and now narrowed to one thing.**
+  `AArch64CompressJumpTables.cpp` is **byte-identical** between `llvmorg-23.1.0` and `main`; the
+  AsmPrinter's jump-table emission is untouched (its one commit since 23.1.0 is PAC-only);
+  `getInstSizeInBytes`'s body is unchanged and no pseudo's `.td` `Size` moved. **Moving to `main`
+  will not retire `+force-32bit-jump-tables`.**
+  The pass is **sound given correct instruction sizes**: offsets are upper bounds, that inflation
+  accumulates monotonically in layout order, so `Span = MaxOffset - MinOffset` is *over*-estimated,
+  which selects a LARGER entry. It can therefore only fail if some instruction reports **fewer**
+  bytes than it emits. The measured values (256, 258, 259, 260, 262, 272, 281, 284) put that
+  under-count at **4–116 bytes**, between the table's lowest and highest target block.
+
+  **The tool that will name it.** LLVM's AsmPrinter already verifies reported size against emitted
+  bytes and aborts printing the function, the `MachineInstr` and both sizes — but the check is
+  **inert on AArch64**: `TargetInstrInfo::getInstSizeVerifyMode()` defaults to `NoVerify` and
+  AArch64 never overrides it (only AMDGPU and PowerPC do). The opt-in is written and committed:
+  `D:\GitHub\llvm-project`, branch `aarch64-instsize-verify`, commit `65a5bd5601fe` — **local only,
+  unpushed**. Build clang with it and compile
+  `3rdparty/protobuf/.../descriptor.cc` in the container; the abort names the instruction and the
+  fix is then a one-line `Size`.
+  Two scans, both at `aarch64-pc-windows-msvc`, and keep them distinct: the **size verifier** over
+  the 2,925 `.ll` files (2,049 compiled) reported **zero under-counts**; a separate **signature
+  scan** over 3,347 files (`.ll` + `.mir`) reported **zero genuine reproductions** of either
+  abort. So the offending construct is one LLVM's own tests never build. The single apparent
+  `fixup value out of range` hit was an artifact of forcing a Linux/PIC test onto a Windows triple
+  (it produces an `:abs_g3:` relocation COFF cannot encode); under its own triple it compiles clean.
+  **Ruled out by reading the code, keep them ruled out:** `JumpTableDest8/16/32` (declares
+  `Size = 12`, pessimistic BY DESIGN — the `.td` comment says "optimization occurs after branch
+  relaxation so be pessimistic"); block alignment (modelled by `BasicBlockInfo::postOffset`);
+  EH-funclet alignment (`beginCodeAlignment` is implemented only by `DwarfDebug`, emits no code
+  bytes, unused on COFF); `CATCHRET` (lowers to a single 4-byte `RET`, and its ADRP/ADD are already
+  real instructions before the estimating passes run).
+
+  **A third LLVM bug, found on the way, and NOT the cause of either failure — now FIXED.** Every
+  `SEH_*` pseudo reported **4 bytes and emitted 0** (538 of the 2,925 `.ll` files). That is the
+  *over*-estimate direction, so it is conservative for both consumers — but it inflated every
+  Windows-AArch64 size estimate by 4 bytes per SEH directive, and a prologue emits one per saved
+  register. **Filed upstream 2026-08-27** as
+  [llvm#219276](https://github.com/llvm/llvm-project/pull/219276) (`40f1b36c642e` on
+  `origin/aarch64-seh-size`). The verifier opt-in that found it is NOT upstreamed — it waits on
+  llvm#219275 and llvm#219276 landing, and lives on the local branch `aarch64-instsize-verify`.
+  (The local development SHAs `1e6148bc4b9c` / `f533c8e88038` are rebase ancestors of the pushed
+  commits; their patch-ids differ, so chase the PR numbers, not these.) Mismatches **558 → 45**, all 45 remaining being over-estimates in unrelated pseudos;
+  `check-llvm-codegen-aarch64` 4197 passed / 0 failed. **The `.td` route does not work** — the
+  default case tests `if (Desc.getSize())`, so a declared `Size = 0` is indistinguishable from
+  "unset" and still yields 4; it must be a C++ early return on `isSEHInstruction`. Full PR handover,
+  including the two build-environment traps that each cost a run:
+  [`out/upstream-llvm-aarch64-seh-instsize.md`](../out/upstream-llvm-aarch64-seh-instsize.md).
+  **It does not retire `+force-32bit-jump-tables`**: removing an over-count moves the estimate
+  toward the true value but never below it.
+
+  ### 2026-08-27, second attempt at (a2): a sensitive detector, and it still did not fire
+
+  The error-signature scans could only ever catch the defect if a span landed on the 1020-byte
+  knife edge. The defect itself is `Span_est < Span_true` at ANY magnitude, so the pass was
+  instrumented to dump its estimate and a checker computes the TRUE span from the emitted assembly
+  — making every jump table a test. Instrumentation patch (not upstreamable, keep it):
+  `D:\llvm-patches\jtspan-instrumentation.patch`.
+
+  **Measured, all at `aarch64-pc-windows-msvc`, all with a validity gate that fails the run when
+  nothing was actually measured:**
+
+  | corpus | jump tables measured | `Span_est < Span_true` |
+  |---|---|---|
+  | 598 real C++ modules (LLVM's own sources) | 1,902 | 0 |
+  | 400 synthetic MSVC-EH funclet + jump-table modules | 400 | 0 |
+  | **the three real offenders** (`descriptor.cc`, `generated_message_reflection.cc`, `wire_format.cc`, from OpenCV's own bundled protobuf) | **28** | **0** |
+
+  So the estimate held as an upper bound on ~2,350 real jump tables, including the exact source
+  files that fail in the lane. **The one remaining difference is the one that cannot be closed on a
+  host without MSVC:** that IR was produced by clang targeting `x86_64-w64-windows-gnu` (libstdc++,
+  Itanium EH), because the Windows SDK is not present. The lane compiles it with clang-cl for
+  `aarch64-pc-windows-msvc` under `/EHa` — MSVC STL, MSVC EH, different functions, different jump
+  tables. **That gap is the whole remaining hypothesis space, and closing it needs the container.**
+
+  ### 2026-08-27 — (a2) SOLVED. `EH_LABEL` under `/EHa` emits a 4-byte nop counted as zero
+
+  **Root cause.** `AsmPrinter::emitFunctionBody()`, in the `EH_LABEL` case, emits a **NOP** when the
+  module flag `eh-asynch` is set and the next instruction may load/store or raise an FP exception —
+  so an async fault lands in the right EH region. `EH_LABEL` is a meta-instruction, so
+  `getInstSizeInBytes` returns **0** for it while **4 bytes** are emitted. Every consumer of
+  MIR-level block sizes is then short by 4 bytes per such label. That is the under-count this entry
+  predicted, and its magnitude (4–116 bytes) is exactly 1–29 labels.
+
+  **How it was isolated, and where the earlier corpora went wrong.** The whole hunt over LLVM's
+  tests, synthetic IR and 598 real modules missed it for one reason: that IR was produced by clang
+  targeting `x86_64-w64-windows-gnu`, which never sets `eh-asynch`. The lane compiles with `/EHa`.
+  Flag bisection on the real TUs shows **`/EHa` is the sole trigger** — `/EHsc` plus any combination
+  of `/Gy /Oi /bigobj /fp:precise -TP` compiles clean.
+
+  **Measured A/B, one binary, same bitcode, toggling only the fix:**
+
+  | TU | fix OFF | fix ON |
+  |---|---|---|
+  | `descriptor.cc` | `value evaluated as` **258**, **281** | clean, 1,457,567-byte object |
+  | `generated_message_reflection.cc` | **284** | clean, 335,461-byte object |
+  | `wire_format.cc` | **260** | clean, 233,801-byte object |
+
+  Those are this entry's own recorded values. **Filed upstream 2026-08-27** as
+  [llvm#219275](https://github.com/llvm/llvm-project/pull/219275) (`c03f827dc49f` on
+  `origin/aarch64-ehlabel-size`); `check-llvm-codegen-aarch64` 4197 passed / 0 failed. The local
+  development SHA was `f072f90a9e37` — a rebase ancestor, not findable upstream.
+
+  **Reproducing it costs ~10 seconds, not a lane run.** The
+  `bk-windows-media-core-opencv-arm64` image already carries clang-cl 23.1.0, MSVC and the ARM64
+  SDK; `buildctl` reaches buildkitd over `npipe:////./pipe/buildkitd` **without elevation**. Copy
+  OpenCV's `3rdparty/protobuf/src` into a build context and compile one TU with
+  `--target=aarch64-pc-windows-msvc /O2 /Ob2 /EHa`. Dockerfiles kept in `D:\pb-probe`.
+
+  ### 2026-08-27 — a way to get the fixes into the lane without waiting for a release
+
+  Both fixes **apply cleanly to the pinned `llvmorg-23.1.0`** (verified with
+  `git apply --check`), which is what makes this cheap. Building the pinned release
+  plus the two patches keeps the banner at `clang version 23.1.0`, so
+  `verify-toolchain.ps1`'s provenance gate passes with `LLVM_WINDOWS_VERSION`
+  untouched and every clang-cl-shaped source patch (`#129` probes, `mlasi.h`,
+  `softfloat`) stays valid. Moving to LLVM `main` would disturb all of that for no
+  extra benefit — the fixes are the only delta that matters.
+
+  * `windows/scripts/patches/llvm/001-aarch64-ehlabel-size.patch` and
+    `002-aarch64-seh-pseudo-size.patch` — the two upstream commits
+    ([llvm#219275](https://github.com/llvm/llvm-project/pull/219275),
+    [llvm#219276](https://github.com/llvm/llvm-project/pull/219276)).
+  * `windows/scripts/build/build-llvm-from-source.ps1` — downloads the SAME pinned
+    tarball and SHA256 the TVM stage already uses (so the no-unpinned-download rule,
+    #47, is satisfied by a pin already in the repo), applies both patches through
+    `Invoke-SourcePatch`, builds clang+lld, and **throws if the patched source does
+    not carry `eh-asynch`** — a silently unpatched compiler would rebuild the exact
+    bug this stage removes and only resurface hours later in the OpenCV stage.
+  * `Dockerfile.toolchain-builder` gains an **opt-in** `patched-llvm` stage
+    (`BUILD_PATCHED_LLVM=1`, off by default) and prepends `C:\llvm-patched\bin` to
+    `PATH`. That is the entire integration: every build script resolves the compiler
+    by bare name (`$env:CC = 'clang-cl'`, `--cc=clang-cl`), so shadowing the scoop
+    shim needs no build-script change.
+
+  ### 2026-08-28 — BUILT AND MEASURED IN THE CONTAINER. The fork fixes it.
+
+  The shim patch was redeployed (`gate hash MATCHES`, 25,937,920 bytes) and the whole
+  path was run for real. `build-llvm-from-source.ps1` works end to end: pinned
+  tarball, SHA256-checked, **both patches applied**, the `eh-asynch` drift assertion
+  passed, install in **~9.5 min**, and the banner reads `clang version 23.1.0` — so
+  `verify-toolchain.ps1`'s provenance gate accepts it. Image tagged
+  `docker.io/local/kataglyphis:bk-llvm-patched`.
+
+  **Stock clang-cl 23.1.0 vs the same 23.1.0 + the two fork patches. Same sources,
+  same flags, same MSVC headers, same container, NO workaround flags:**
+
+  | | stock | patched |
+  |---|---|---|
+  | protobuf `descriptor.cc` | `258`, `281` out of range | clean |
+  | protobuf `generated_message_reflection.cc` | `284` out of range | clean |
+  | protobuf `wire_format.cc` | `260` out of range | clean |
+  | protobuf, objects produced | **0 / 3** | **3 / 3** |
+  | OpenCV `imgproc` | 2 range errors (`277`, `258`), 150 objects | **0 errors, 151 objects** |
+
+  Every value matches the ones this entry recorded from the lane logs. Objects are
+  counted deliberately: zero errors with zero output would prove nothing.
+
+  **Still NOT established, and the workarounds stay until it is.** This is
+  `BUILD_LIST=imgproc` in a minimal configure — 151 objects against the lane's
+  ~1,870 — and `median_blur.dispatch.cpp` never compiled here (OpenCL kernel-header
+  generation), so **`/Ob1` and the whole BranchRelaxation half remain untested**. The
+  rule this entry set still holds: this licenses the `NINJA_KEEP_GOING=1` census with
+  both settings removed, it does not replace it.
+
+  **Three environment problems solved on the way, each documented in
+  `failure-modes.md`:**
+  * `patch.exe` silently skipping every patch on a non-git source tree — a latent
+    bug in `Invoke-SourcePatch`, found only because the drift assertion fired.
+  * `atlbase.h` missing (ATL is not in the container's VS Build Tools) — fixed with
+    `-DLLVM_ENABLE_DIA_SDK=OFF`.
+  * `ImportLayer 0xb7` on image export — snapshot debris, cleared by `--no-cache`
+    exactly as documented. Ruled out first: the shim (`gate hash MATCHES`) and the
+    RDNA4 dGPU (`ConfigManagerErrorCode=22`, i.e. disabled).
+    [docker/for-win#14977](https://github.com/docker/for-win/issues/14977) is still
+    `open` and still `needs-triage` as of 2026-08-28, so the
+    `toggle-rdna4-gpu.ps1 -Disable` workflow stays.
+
+  **Strong open hypothesis — this may also be (a1), i.e. `/Ob1`.** `BranchRelaxation` consumes the
+  same size function, `median_blur.dispatch.cpp` and `multiview_calibration.cpp` are also compiled
+  with `/EHa`, and the miss there was ~150 bytes ≈ 37 labels. If so this single fix retires **both**
+  workarounds and llvm#202716 is a separate, additional defect rather than the explanation. Test it
+  the same way before assuming either.
+
+  **Local build assets (not in this repo):** `D:\GitHub\llvm-project` (blobless clone) and
+  `D:\llvm-build` (`llc`/`llvm-objdump`/`llvm-nm`, Release+assertions, AArch64-only, built with the
+  Strawberry MinGW g++ 13.2 that ships with this host — there is no MSVC here, which is also why a
+  Windows-ARM64 object cannot be produced outside the container).
+
+- **#136 — VS RUN never cached across runs: SOLVED + DEPLOYED 2026-08-26, archived.** The
+
