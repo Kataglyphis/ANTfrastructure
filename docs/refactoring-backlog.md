@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (closed: LOG12, GCC_HOST_BOOTSTRAP, LOG2, two-caches-installed, GPU bare-sccache sites, TVM launcher; removed empty §G/§B)
+Last groomed: 2026-08-28 (removed CLOSED two-caches stub; extended verify-critical-fixes.sh gate repo-wide)
 
 ## Standing rules (read first)
 
@@ -70,13 +70,9 @@ either created or exposed.
   `compiler_cache_launcher()` (sccache-class only — ccache can't wrap
   nvcc/hipcc); TVM now sets `CMAKE_C/CXX_COMPILER_LAUNCHER` explicitly; ffmpeg
   and pyav were fixed in the prior batch. The L·★★ consolidation itself
-  (merging all sites onto one resolver) remains open. Also:
-  verify-critical-fixes.sh:220-237 checks compiler-cache.sh only — pull that
-  pattern repo-wide.
-- **Two compiler caches are now installed and mounted** [CLOSED 2026-08-28]
-  Decision: both stay. sccache is primary; ccache is the documented fallback
-  for invocations sccache refuses. The ~27 GB warm ccache is the cost of that
-  fallback — documented as intentional in compiler-cache.sh.
+  (merging all sites onto one resolver) remains open. The repo-wide
+  verify-critical-fixes.sh gate now flags any new bare `sccache` launcher
+  export — the compiler-cache.sh-only check is extended to all .sh files.
 
 ## A. Window inventory — needs WORK in the wave
 
