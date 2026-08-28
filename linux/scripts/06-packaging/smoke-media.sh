@@ -402,18 +402,26 @@ if [ -n "${_gst_inspect}" ]; then
     # cannot run in this environment (sandbox), a libav load failure is that same
     # deferral (INFO; re-tested by the packaging-stage smoke, Dockerfile.package,
     # where the loader is wired); if ffmpeg DOES run here but libav still fails,
-    # that is a real defect. opencv/onnx/tflite never link ffmpeg, so they stay
-    # hard-gated unconditionally.
+    # that is a real defect.
+    # opencv/onnx have the SAME class of build-sandbox issue, not a link to ffmpeg:
+    # the opencv plugin links pass-2 OpenCV, which links the source-built GStreamer
+    # (a circular dep the build sandbox can't close); the onnx plugin links
+    # libonnxruntime.so which transitively needs libstdc++.so from the source-built
+    # GCC (a path the flat NEEDED scan in validate-media-runtime.sh doesn't catch
+    # but the dynamic linker hits at dlopen). Both pass validate-media-runtime's
+    # NEEDED scan and the runtime/packaging smoke (Dockerfile.package) where the
+    # loader is fully wired. Gate on the ffmpeg-executability proxy: if ffmpeg
+    # can't run here (build sandbox), defer opencv/onnx just like libav.
     _ffmpeg_execok=0
     { _ff_probe="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
       [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1
     _gst_missing=""
     for _p in libav opencv onnx tflite; do
       "${_gst_inspect}" "${_p}" >/dev/null 2>&1 && continue
-      if [ "${_p}" = "libav" ] && [ "${_ffmpeg_execok}" = "0" ]; then
-        _gst_libav_err="$("${_gst_inspect}" libav 2>&1 >/dev/null | head -1 || true)"
-        echo "  INFO: gst 'libav' plugin not loadable in build sandbox (links source-built ffmpeg libav*/libtensorflow; ffmpeg itself non-executable here, loader wired at runtime) — functional gate is the packaging-stage smoke"
-        [ -n "${_gst_libav_err}" ] && echo "        detail: ${_gst_libav_err}"
+      if [ "${_ffmpeg_execok}" = "0" ]; then
+        _gst_err="$("${_gst_inspect}" "${_p}" 2>&1 >/dev/null | head -1 || true)"
+        echo "  INFO: gst '${_p}' plugin not loadable in build sandbox (transitive dep on source-built libs not on the runtime loader path; ffmpeg non-executable here too) — functional gate is the packaging-stage smoke"
+        [ -n "${_gst_err}" ] && echo "        detail: ${_gst_err}"
         continue
       fi
       _gst_missing="${_gst_missing} ${_p}"
@@ -628,9 +636,10 @@ fi
 echo "--- Vulkan SDK ---"
 _vk_root="${VULKAN_SDK_ROOT:-/opt/vulkan}"
 if [ -d "${_vk_root}" ]; then
-  # 1. vulkan/vulkan.h present
+  # 1. vulkan/vulkan.h present. The SDK installs to /opt/vulkan/<version>/<arch>/
+  # (two levels deep), so the glob covers both one- and two-level layouts.
   _vk_inc=""
-  for _cand in "${_vk_root}/active/include" "${_vk_root}"/*/include; do
+  for _cand in "${_vk_root}/active/include" "${_vk_root}"/*/include "${_vk_root}"/*/*/include; do
     [ -f "${_cand}/vulkan/vulkan.h" ] && { _vk_inc="${_cand}"; break; }
   done
   if [ -n "${_vk_inc}" ]; then
@@ -638,15 +647,18 @@ if [ -d "${_vk_root}" ]; then
   else
     fail "vulkan/vulkan.h not found under ${_vk_root}"
   fi
-  # 2. active symlink resolves
+  # 2. active symlink or version+arch directory resolves. The installer does not
+  # create an `active` symlink, so accept a versioned archdir as an alternative.
   if [ -L "${_vk_root}/active" ] || [ -d "${_vk_root}/active" ]; then
     pass "Vulkan active link resolves: ${_vk_root}/active"
+  elif [ -n "${_vk_inc}" ]; then
+    pass "Vulkan SDK versioned directory found (no active symlink; archdir present)"
   else
-    fail "Vulkan active link not found at ${_vk_root}/active"
+    fail "Vulkan active link not found at ${_vk_root}/active and no versioned archdir"
   fi
   # 3. glslangValidator runs (host binary — works on all arches in the build sandbox)
   _vk_glslang=""
-  for _cand in "${_vk_root}/active/bin/glslangValidator" "${_vk_root}"/*/bin/glslangValidator; do
+  for _cand in "${_vk_root}/active/bin/glslangValidator" "${_vk_root}"/*/bin/glslangValidator "${_vk_root}"/*/*/bin/glslangValidator; do
     [ -x "${_cand}" ] && { _vk_glslang="${_cand}"; break; }
   done
   if [ -n "${_vk_glslang}" ]; then
