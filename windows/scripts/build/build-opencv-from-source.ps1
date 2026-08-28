@@ -378,7 +378,12 @@ $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
 # (out/ holds drafts of previous ones). It is not a prerequisite for this repo:
 # the flag closes (1) here today, a report buys a future where it can be
 # dropped.
-$jumpTableFlag = if ($ocvCross) { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
+# EXPERIMENT KNOB (#135): OPENCV_NO_JUMPTABLE_WORKAROUND=1 drops the flag, so a
+# candidate clang can be measured with the workaround genuinely OFF. The point
+# of the knob is that the A/B is one env var rather than an edit -- an edited
+# script is not the script the lane runs. Leave it unset for normal builds.
+$jumpTableFlag = if ($ocvCross -and $env:OPENCV_NO_JUMPTABLE_WORKAROUND -ne '1') { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
+if ($env:OPENCV_NO_JUMPTABLE_WORKAROUND -eq '1') { Write-Host 'OPENCV_NO_JUMPTABLE_WORKAROUND=1: +force-32bit-jump-tables NOT passed (#135 experiment)' }
 $simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB (2026-08-18, rides with OPENCV_CUDA_LAUNCHER): OpenCV's
@@ -955,7 +960,13 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
 # $jumpTableFlag (fails the same way), `-mllvm -inline-threshold=100` and `=25`
 # (both fail). See docs/failure-modes.md for the /FA + repair recipe that
 # located the branch.
-if ($ocvCross) {
+# EXPERIMENT KNOB (#135), the companion to OPENCV_NO_JUMPTABLE_WORKAROUND:
+# OPENCV_NO_OB1_WORKAROUND=1 leaves the two TUs at their normal /Ob2 so a
+# candidate clang meets the branch-range case unaided. Note the Floor of 2 is
+# skipped with it -- there is nothing to floor when nothing is tagged.
+if ($ocvCross -and $env:OPENCV_NO_OB1_WORKAROUND -eq '1') {
+    Write-Host 'OPENCV_NO_OB1_WORKAROUND=1: /Ob1 NOT applied to median_blur/multiview_calibration (#135 experiment)'
+} elseif ($ocvCross) {
     [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') `
             -Label 'OpenCV AArch64 branch-range TUs (#135)' `
             -Floor 2 -AlreadyTaggedPattern '/Ob1' -Select {
