@@ -32,6 +32,7 @@ Two neighbours, so you land on the right page:
 - [`no active session` / `grpc: the client connection is closing` mid-chain](#no-active-session--grpc-the-client-connection-is-closing-mid-chain)
 - [`registry_pin_ref` fails on a fresh push](#registry_pin_ref-fails-on-a-fresh-push)
 - [Terminal freeze during a long build](#terminal-freeze-during-a-long-build)
+- [LiteRT configure: `fatal: expected flush after ref listing`](#litert-configure-fatal-expected-flush-after-ref-listing)
 
 **Windows: the layer store (hcsshim)**
 
@@ -132,6 +133,19 @@ Two neighbours, so you land on the right page:
 **Cause.** Build output overwhelms terminal
 
 **Fix.** Use `setsid` / `disown` for very long builds
+
+### LiteRT configure: `fatal: expected flush after ref listing`
+
+**Symptom.** Every LiteRT/TFLite cmake configure fails cloning eigen; all three android lanes down inside one window (2026-08-21)
+
+**Cause.** `tools/cmake/modules/eigen.cmake` declares a single `GIT_REPOSITORY` (`gitlab.com/libeigen/eigen`), so a momentary gitlab outage is a total outage
+
+**Fix.** Already handled by `linux/scripts/03-media/build/litert/android/litert-eigen-fetch.sh`, sourced by both LiteRT build scripts. It sets two knobs of upstream's `OverridableFetchContent` and pins no commit of its own (the tag stays upstream's):
+
+- `GIT_REPOSITORY_AND_TAG_TO_URL_eigen=ON` turns the clone into an archive download of the *same* pinned commit — how the C-API/wheel configure paths already fetch it;
+- `<content>_MATCH`/`_REPLACE` rewrite that archive URL. A `;` in the replacement makes it a cmake **list**, which `ExternalProject` downloads "in turn until one succeeds".
+
+The second URL is TensorFlow's own mirror of the same gitlab path (the `tf_mirror_urls()` rule in `third_party/eigen3/workspace.bzl`), verified byte-identical on 2026-08-23: both URLs for commit `ea13a98d…` returned sha256 `35c6126e…`, 2870994 bytes. It degrades safely — if the regex ever stops matching, the URL is left untouched and the fetch behaves as it does today.
 
 ---
 

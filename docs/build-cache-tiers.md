@@ -46,6 +46,76 @@ Two properties are worth internalising because they are counter-intuitive:
 - **T0/T1 are in the same store**, so the one command that wipes layers also
   wipes the compiler caches. That is why Standing rule 3 exists.
 
+### 1.1 The cerbero state cachemount (CERB-CACHE)
+
+`03-media/build/gstreamer/android/build-android-from-source.sh` keeps its
+cerbero state in a T1 exec cachemount (`linux/Dockerfile.android`, the
+`android-gstreamer` RUN, `target=/var/cache/cerbero`) with an unusual job: it
+makes a *failed* build resumable. bootstrap + package is ONE `RUN`, so before
+this mount existed any failure inside it discarded the whole ~40-60 min
+bootstrap — wave5k/5l re-paid it on every freedesktop flap, while wave6b
+restarted WARM (`HIT: resuming … 13G / 20G`) and finished with zero fetch
+failures.
+
+What lives there (cerbero's `home_dir`): `sources/local` (downloaded tarballs
+and the git repos it checks out), `sources/<pkg>` (extracted + compiled build
+trees), `build-tools/` (the host bootstrap prefix), `rust/`,
+`dist/android_<arch>/` (the target prefix), and the `cache-file.cache` /
+`build-tools.cache` pickles recording which recipes are already built
+(`build/cookbook.py: _cache_file()`).
+
+Four properties worth internalising:
+
+- **A resume is not a re-verification.** Read against the pinned cerbero 1.29.2:
+  `Oven._cook_recipe_step` returns before it ever calls the step function when
+  that step is already in the pickle (`build/oven.py:511`), and `_cook_recipe`
+  skips the whole recipe once `needs_build` is false (`:554`). The only caller
+  of `Source.verify()` — the sha256 against the recipe's `tarball_checksum` — is
+  the fetch step itself (`build/source.py:366/378/458`). Bytes reused out of
+  `sources/local` are therefore never re-hashed: they buy speed, not trust.
+- **The pickle only invalidates on recipe content.** A recipe's status is thrown
+  away when its `built_version` changes, or when the content hash of the recipe
+  file plus its patch files changes (`build/cookbook.py:426-440`;
+  `Recipe.get_checksum` = `files_checksum` over the recipe's own FILES, not over
+  the tarball) — so the sed-patched recipes in that script (PKGCFG-MIRROR,
+  soundtouch, glib libiconv) do invalidate themselves. Nothing in the pickle
+  knows about the toolchain, which is why `ANDROID_NDK_VERSION` and
+  `ANDROID_API_LEVEL` are part of the cachemount id: a pin bump must start a NEW
+  store, because cerbero would happily resume a tree built against the old NDK.
+- **The state dir is deliberately NOT `/opt/cerbero`.** That path stays the git
+  CHECKOUT: a mount target already exists when the RUN body starts, so the
+  `[ ! -d cerbero ]` guard would skip the clone and `git clone` refuses a
+  non-empty destination anyway. Separating them also un-collides cerbero's
+  read-only seed dir `cached_sources` (= `<checkout>/sources`) from the live tree.
+- **The disk trade-off, with the number, because the host runs near-full.** The
+  prune at the end of the script is on the SUCCESS path ONLY: the package exists,
+  so the extracted/compiled trees are dead weight and everything kept lives
+  outside `sources/` (the dist prefix, the build-tools prefix at
+  `config.py:1065`, the two pickles) plus `sources/local` — that is
+  `local_sources` (`config.py:1146-1151`, because `home_dir` is non-default), the
+  tarballs and git repos that make the next run cheap and network-independent
+  (FD-OUTAGE). A FAILED attempt keeps its whole tree — that is the entire point
+  of the mount, and it costs up to ~10-15 GB per lane, i.e. ~30-45 GB with all
+  three arch lanes sitting on failures. Retries reuse the same cachemount id and
+  the same paths, so a failing lane overwrites in place rather than accumulating
+  a tree per attempt. Pruning on ENTRY instead was considered and REJECTED as
+  unsafe: cerbero records progress per STEP, so a recipe can be mid-flight with
+  `extract` recorded and `compile` not (`oven.py:511` then skips straight to a
+  configure/compile on a directory the prune would have deleted) — that wedges
+  the lane on every retry instead of bounding disk. `CERBERO_CACHE_RESET=1`
+  empties the CURRENT store on entry when a lane must be forced cold.
+
+GENERATIONS are the unbounded axis: the id carries the NDK/API pins, so a pin
+bump starts a fresh store and ORPHANS the previous one, and nothing inside the
+build can reach it (a different cachemount id is simply not mounted into the
+RUN). `linux/host-config/prune-safe.sh` will not clean it up either — it prunes
+`type==regular` only and treats every cachemount as sacred by design (CACHE1: it
+aborts if the cachemount count drops). Reclaiming an orphan is a deliberate
+host-side act, e.g. a duration-bounded
+`buildctl prune --filter type==exec.cachemount --keep-duration <t>` chosen so the
+ccache/sccache mounts a live build keeps warm stay above the cutoff — check what
+it would remove before running it.
+
 ---
 
 ## 2. The blind spot: what `type=inline` cannot carry

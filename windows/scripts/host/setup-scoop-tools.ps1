@@ -2,14 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# CACHE-BUST 2026-08-06 (round 2): content change sidesteps persistent
-# snapshotter debris finalizing THIS RUN layer's snapshot. Round 1 dodged
-# `ImportLayer 0xb7 "already exists"` (IDs nbcn…→ubvb…); the rebuilt
-# snapshot then died `ActivateLayer 0x20 sharing violation` (IDs
-# 16d9…→7d0i…) deterministically, SURVIVING a containerd+buildkitd
-# restart — same poisoned-snapshot family, different symptom. The error is
-# REPORTED at the COPY step below; busting that one is insufficient.
-# New content => new chain-IDs for this layer and everything after.
+# CACHE-BUST 2026-08-06: any content change here gives this layer and everything
+# after it new chain-IDs, past poisoned snapshotter debris — see docs/failure-modes.md.
 
 
 param(
@@ -28,10 +22,8 @@ param(
     # Pinned 2026-08-08 for a FEATURE, not for output determinism: multi-tier
     # caching needs sccache >= v0.16.0 and degrades silently below it.
     [string]$SccacheVersion = '',
-    # '1' turns the Vulkan ARM64 component check into a HARD gate. Default is
-    # warn-only -- see the Vulkan ARM64 region below for why, and note this must
-    # arrive as a PARAMETER: a bare $env: read is unreachable from `docker build`
-    # unless the name is also declared as an ARG.
+    # '1' hard-gates the arm64 prerequisite checks below (default: warn-only). Must
+    # arrive as a PARAMETER: a bare $env: read is unreachable from `docker build`.
     [string]$WindowsArm64Strict = ''
 )
 
@@ -43,16 +35,8 @@ $ProgressPreference = 'SilentlyContinue'
 # the three modules COPY'd before them in Dockerfile.base (Shared, ContainerImage,
 # Installer), and these helpers are specific to this provisioning script anyway.
 
-# CACHE-BUST 2026-08-05: content change forces a new COPY layer -> new snapshot
-# chain-IDs downstream, sidestepping a persistently corrupt half-committed
-# snapshot in the containerd windows-snapshotter (ImportLayer 0xb7 "already
-# exists" on the OLD chain's finalize, twice; the debris is not a reclaimable
-# BK cache record and its removal would need admin). Comment is load-bearing
-# history, not noise.
-#
-# Runs one provisioning step and throws on a non-zero native exit code. Scoop and
-# dotnet failures previously just scrolled past ($ErrorActionPreference does not
-# see native exit codes), letting the layer commit with tools silently missing.
+# Throws on a non-zero NATIVE exit code: $ErrorActionPreference does not see those,
+# so a failed scoop/dotnet step would commit the layer with tools silently missing.
 function Invoke-ScoopStep {
     param(
         [Parameter(Mandatory)][string]$Description,
@@ -64,12 +48,8 @@ function Invoke-ScoopStep {
     if ($LASTEXITCODE -ne 0) { throw "$Description failed (exit code $LASTEXITCODE)" }
 }
 
-# Collapses the repeated `if ($version) { pkg@ver } else { pkg }` idiom and routes
-# every install through the exit-code gate above. RETRIES (2026-08-19, the
-# #116 lesson one level down): scoop itself has NO download retry, and a
-# 20-minute 275 MB vulkan transfer died mid-download and killed the whole
-# base ride. A dropped transfer can leave a partial file in scoop's cache,
-# so the app's cache is purged between attempts.
+# Retries because scoop has NO download retry of its own (#116); a dropped transfer
+# can leave a partial file behind, hence the cache purge between attempts.
 function Install-ScoopPackage {
     param(
         [Parameter(Mandatory)][string]$Package,
@@ -167,10 +147,8 @@ Enable-Tls12ForDownloads
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
 #endregion
 #region 3. scoop bootstrap + shims
-# Hardened fetch (retry + TLS) instead of a bare one-shot irm -- a transient blip here
-# killed the whole base build. Hash-pinned (SCOOP_INSTALLER_SHA256): this script is
-# EXECUTED, so we only run the exact bytes that were reviewed when the pin was set.
-# Scoop revving the installer surfaces as a mismatch -- re-review and bump the pin.
+# Hash-pinned (SCOOP_INSTALLER_SHA256) because this script is EXECUTED: only the bytes
+# reviewed when the pin was set may run. A mismatch means scoop revved it -- re-review, bump.
 $scoopSha = Resolve-ContainerImageValue -EnvironmentVariable 'SCOOP_INSTALLER_SHA256' -DefaultValue ''
 Invoke-DownloadWithRetry -Url 'https://get.scoop.sh' -DestinationPath $scoopInstallScript -Description 'scoop installer script' -ExpectedSha256 $scoopSha
 & $scoopInstallScript -RunAsAdmin
@@ -180,12 +158,9 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 ) | Out-Null
 Assert-ContainerCommandAvailable -Name 'git' | Out-Null
 Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
-# Buckets: `scoop bucket add` exits 2 when the bucket already exists — and
-# scoop's own installer pre-adds `main`, so that is the NORMAL state. The
-# strict gate turned it fatal (2026-08-05), and output-sniffing for the WARN
-# text proved unreliable (the child shim's warning bypasses 2>&1 capture).
-# Deterministic check instead: a bucket IS a directory under <scoop>\buckets —
-# skip the add when it exists, gate strictly when we genuinely add.
+# `scoop bucket add` exits 2 when the bucket already exists, and scoop's installer
+# pre-adds `main` — so test for the bucket DIRECTORY rather than trusting the exit
+# code or sniffing the WARN text (the child shim's warning bypasses 2>&1 capture).
 $scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
 foreach ($bucket in @('main', 'extras', 'versions')) {
     if (Test-Path (Join-Path $scoopRoot "buckets\$bucket")) {
@@ -197,19 +172,14 @@ foreach ($bucket in @('main', 'extras', 'versions')) {
 Install-ScoopPackage -Package 'main/7zip'
 Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { scoop config use_external_7zip true }
 
-# Rust is provisioned by setup-rust-toolchain.ps1 via rustup WITH a default
-# toolchain (single provider; Flutter's Cargokit hard-requires rustup). We
-# deliberately install NO rust here: scoop rust would compete with the rustup
-# proxies in CARGO_BIN, and a toolchain-LESS rustup would drop proxy shims that
-# resolve no toolchain (the failure the old "never rustup" rule guarded against).
+# NO rust here on purpose: setup-rust-toolchain.ps1 is the single provider (Cargokit
+# requires rustup), and a scoop rust would compete with the rustup proxies in CARGO_BIN.
 
 #endregion
 #region 4. Vulkan LAN preseed + pinned installs (cmake/vulkan/flutter)
-# Preseed the 275 MB SDK from the LAN webdav into scoop's cache under scoop's
-# own cache name (app#version#first-7-of-sha256(url)): sdk.lunarg.com stalls
-# out reproducibly from inside containers (2026-08-19, three ~20-min transfer
-# deaths). scoop still verifies its manifest hash on install, so a stale or
-# corrupt preseed fails open into the normal (retried) vendor download.
+# sdk.lunarg.com stalls reproducibly from inside containers, so the 275 MB SDK is
+# preseeded from the LAN under scoop's own cache name (app#version#first-7-of-sha256(url));
+# scoop still checks the manifest hash, so a bad preseed fails open to the vendor download.
 if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
     try {
         $vkVendorUrl = "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/vulkansdk-windows-X64-$VulkanVersion.exe"
@@ -233,36 +203,9 @@ if ($env:VULKAN_PRESEED_ENDPOINT -and $VulkanVersion) {
 }
 Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
-# ARM64 cross-compile libraries for the Vulkan SDK (2026-08-22).
-#
-# LunarG ships the aarch64 import libraries INSIDE the x64 Windows SDK, but as
-# an OPTIONAL component that the default install does not select:
-#     com.lunarg.vulkan.arm64  "ARM64 binaries for cross compiling on Windows x86_64"
-#     Lib-ARM64 / Bin-ARM64    "for cross compiling from Intel based development environments"
-# scoop runs the installer with the manifest's default component set, so without
-# this step $VULKAN_SDK\Lib-ARM64 does not exist and an arm64 link against
-# vulkan-1.lib silently falls back to the x64 import library (or fails).
-#
-# The SDK is a Qt Installer Framework package, so components are added after the
-# fact through its maintenancetool. NB $env:VULKAN_SDK is not set yet -- that ENV
-# lands further down Dockerfile.base -- so the path is derived from the scoop root.
-#
-# WARN-ONLY BY DEFAULT, opt-in hard gate via WINDOWS_ARM64_STRICT=1 -- the same
-# shape as the CUDA stack check (verify-cuda-stack.sh / CUDA_STACK_STRICT=1).
-#
-# This started life as a hard `throw` with a WINDOWS_ARM64_STRICT=1 escape
-# hatch, which was wrong twice over (2026-08-22):
-#   1. The block is NOT arch-gated -- it runs on every base build, including a
-#      plain amd64 one. A throw here kills the chain's most expensive layer for
-#      BOTH lanes.
-#   2. The hatch was unreachable. $env:WINDOWS_ARM64_STRICT is never set during
-#      `docker build` unless the name is declared as an ARG, and buildctl
-#      silently discards --build-arg for undeclared ARG names. There was no way
-#      out except editing the Dockerfile.
-# Combined with the fact that the maintenancetool invocation below has never
-# been executed against a real base image, that made an unverified installer
-# call able to brick the whole chain. Warning is the correct default until the
-# step is observed working; flip a build to WINDOWS_ARM64_STRICT=1 once it is.
+# The aarch64 import libs are an OPTIONAL component of the x64 Vulkan SDK, added via its
+# Qt IFW maintenancetool ($env:VULKAN_SDK is not set yet, hence the scoop root). Warn-only
+# because this layer is SHARED with amd64 -- docs/windows-cross-builds.md.
 $armStrict = if (-not [string]::IsNullOrWhiteSpace($WindowsArm64Strict)) { $WindowsArm64Strict } else { $env:WINDOWS_ARM64_STRICT }
 $vkRoot = Join-Path $env:USERPROFILE 'scoop\apps\vulkan\current'
 $vkArm64Lib = Join-Path $vkRoot 'Lib-ARM64'
@@ -300,10 +243,8 @@ if (Test-Path $vkArm64Lib) {
     }
 }
 
-# Flutter pinned to versions.env FLUTTER_VERSION (baked env) — previously the
-# ONLY versions.env-managed tool installed floating here, so the Windows image
-# could silently diverge from the Linux lane's Flutter. Empty env falls back to
-# scoop's current manifest (standalone runs), same pattern as vulkan/cmake.
+# Pinned to versions.env FLUTTER_VERSION so the Windows image cannot silently diverge
+# from the Linux lane; empty env falls back to scoop's manifest, as with vulkan/cmake.
 Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VERSION) -Global
 #endregion
 #region 5. PINNED compiled-output packages + floating toolset + cache scrub

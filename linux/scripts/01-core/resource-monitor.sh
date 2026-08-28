@@ -1,46 +1,13 @@
 #!/usr/bin/env bash
-# resource-monitor.sh — comprehensive, low-overhead system-resource logger for the
-# (long, QEMU-heavy) cross container builds. It answers one question well:
-#
-#     "WHEN during the build, and during WHICH build activity, did the system run
-#      low on RAM / disk / CPU headroom?"
-#
-# It samples cheap kernel counters (/proc + one df + one pgrep per tick), writes a
-# CSV time-series, and on exit prints a SUMMARY that pinpoints the peak-pressure
-# moments and the build log line that was active at each. Overhead at the default
-# 15s interval is negligible (~3 short-lived forks per tick, no compiler slowdown).
-#
-# USAGE
-#   Sample (foreground or background):
-#     resource-monitor.sh [--out-dir DIR] [--run-id ID] [--interval SEC]
-#                         [--disk-path PATH] [--stage-log FILE | --stage-log-dir DIR]
-#                         [--label NAME] [--watch-pid PID]
-#                         [--near-oom-mb N] [--low-disk-gb N]
-#   Re-summarize an existing CSV (no sampling):
-#     resource-monitor.sh summarize <resources-*.csv>
-#
-#   --stage-log-dir  follow the newest *.log in DIR for the "context" column (so it
-#                    tracks the build across per-stage logs -> orchestrator log).
-#   --watch-pid PID  self-terminate (and write the summary) when PID exits, so a
-#                    caller can start it with no trap/cleanup bookkeeping.
-#   NOTE: sampling REWRITES resources-<run-id>.csv from scratch on start; use a
-#   fresh --run-id (or let each build pass its CROSS_RUN_ID) to keep history.
-#
-#   The sampler traps INT/TERM/EXIT and writes <csv>.summary.txt on stop, so the
-#   normal lifecycle is: start in the background, kill it when the build ends.
-#
-# INTEGRATION
-#   build-cross-chain.sh / build-cross-stage.sh start this automatically (best
-#   effort, gated by RESOURCE_MONITOR=1, default on) pointed at the run's log dir,
-#   and stop it on exit. Set RESOURCE_MONITOR=0 to disable, or run it standalone.
+# Low-overhead CSV sampler of RAM/disk/CPU during the long cross builds, plus a
+# summary naming the build activity at each pressure peak.
+# Usage, columns and integration: docs/build-resource-monitoring.md.
 set -uo pipefail
 
 _rm_now_epoch() { date +%s; }
 _rm_iso()       { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # ---- one cheap sample of every counter, appended as a CSV row -----------------
-# Columns: epoch,iso,elapsed_s,load1,cpu_pct,mem_used_mb,mem_avail_mb,mem_pct,
-#          swap_used_mb,disk_avail_gb,disk_pct,compilers,stage,context
 _rm_prev_busy=0
 _rm_prev_total=0
 
@@ -88,14 +55,9 @@ _rm_stage() {
 }
 
 _rm_active_log() {
-  # Resolve the log to read for context THIS tick: an explicit --stage-log, else
-  # the most recently modified *.log in --stage-log-dir (follows the build as it
-  # moves from per-stage logs to the orchestrator log). One cheap `ls`.
-  # MON1 (2026-08-17): PREFER logs that carry a sibling `.log.run` marker — those
-  # are the orchestrator's per-stage tee logs. The plain newest-*.log pick often
-  # landed on a nohup'd ORCHESTRATOR runlog in the same dir (constantly appended
-  # with buildkitd stderr), which is why every sample showed stage=? and the
-  # context column filled with `(*service).Write failed` spam.
+  # Explicit --stage-log, else the newest *.log in the dir — preferring one with a
+  # sibling `.log.run` marker (MON1: plain newest-*.log picked the orchestrator runlog,
+  # so every sample read stage=? and buildkitd stderr).
   local explicit="$1" dir="$2" f
   if [ -n "${explicit}" ]; then printf '%s' "${explicit}"; return 0; fi
   [ -n "${dir}" ] && [ -d "${dir}" ] || { printf '%s' ""; return 0; }
@@ -136,11 +98,8 @@ _rm_sample_loop() {
     read -r diskkb_total diskkb_avail < <(df -Pk "${disk_path}" 2>/dev/null | awk 'NR==2{print $2, $4}')
     diskgb=$(( ${diskkb_avail:-0} / 1024 / 1024 ))
     diskpct=0; [ "${diskkb_total:-0}" -gt 0 ] && diskpct=$(( 100 * (diskkb_total - diskkb_avail) / diskkb_total ))
-    # active compiler/link processes (exact comm match, ERE alternation).
-    # NOTE: `pgrep -c` prints "0" AND exits 1 on no match, so DON'T `|| echo 0`
-    # (that would emit a second 0 and split the CSV row).
-    # `|| true` (not `|| echo 0`, see NOTE above): pgrep already printed the 0;
-    # the guard only stops the rc=1 from killing the sampler under errexit.
+    # `pgrep -c` prints "0" AND exits 1 on no match, so `|| true` and never
+    # `|| echo 0` — a second 0 would split the CSV row.
     comp="$(pgrep -c -x 'cc1plus|cc1|clang|clang\+\+|rustc|lto1|cc1objplus|go|ld' 2>/dev/null || true)"
     [ -n "${comp}" ] || comp=0
     local active_log; active_log="$(_rm_active_log "${stage_log}" "${stage_log_dir}")"
@@ -151,9 +110,7 @@ _rm_sample_loop() {
       "${now}" "${iso}" "${elapsed}" "${load1}" "${cpu}" "${memused}" "${memavail}" \
       "${mempct}" "${swapused}" "${diskgb}" "${diskpct}" "${comp}" "${stage}" "${ctx}" >> "${csv}"
 
-    # Self-terminate (and let the EXIT trap write the summary) once the watched
-    # build process is gone -- lets the orchestrator start us with no trap/stop
-    # bookkeeping of its own.
+    # Self-terminate once the watched build is gone; the EXIT trap writes the summary.
     if [ -n "${watch_pid}" ] && ! kill -0 "${watch_pid}" 2>/dev/null; then
       break
     fi

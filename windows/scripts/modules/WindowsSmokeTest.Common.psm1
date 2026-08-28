@@ -2,38 +2,18 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# Assertion harness for smoke-test-container.ps1.
-#
-# Extracted 2026-08-08. The script had grown past 1 570 lines, of which ~210
-# were this harness and the rest 22 test SECTIONS. Only the harness is reusable
-# and unit-testable; the sections stay in the script, because they are a linear
-# script of probes against a built image and gain nothing from being modules.
-#
-# Ships in the final image without any Dockerfile change: windows/Dockerfile
-# already COPYs the whole windows\scripts\modules directory to
-# C:\temp\scripts\modules, and that COPY sits in the final (cheapest) layer.
-#
-# ONE behavioural subtlety made this an extraction rather than a cut-and-paste:
-# Assert-Test used to read $ExitOnFirstFailure, a PARAMETER of the calling
-# script, through PowerShell's dynamic scoping. A module has its own session
-# state and would never see it -- Assert-Test would have silently stopped
-# honouring -ExitOnFirstFailure, with no error anywhere. It is module state now,
-# set through Initialize-SmokeTestRun, and covered by a regression test.
-#
-# The counters live here too, so the caller reads them via Get-SmokeTestSummary
-# rather than touching $script:passed across a module boundary (which would
-# resolve to the CALLER's scope and always read zero).
+# Assertion harness for smoke-test-container.ps1 (the test sections stay in the script).
+# Run state (-ExitOnFirstFailure, counters) is MODULE state: a module has its own session
+# state, so $script: vars never cross the caller boundary in either direction.
 
 Set-StrictMode -Version Latest
 
-# -ExitOnFirstFailure state, owned by the module (see the header).
 $script:exitOnFirstFailure = $false
 
 function Initialize-SmokeTestRun {
     <#
     .SYNOPSIS
-        Reset counters and record run-level switches. Call once, before the
-        first assertion.
+        Reset counters and record run-level switches. Call once, before the first assertion.
     #>
     param([switch]$ExitOnFirstFailure)
     $script:passed = 0
@@ -50,9 +30,8 @@ function Initialize-SmokeTestRun {
 function Get-SmokeTestSummary {
     <#
     .SYNOPSIS
-        Counters for the caller's SUMMARY block. Exists because $script:passed
-        read from the calling script would resolve to the CALLER's scope -- a
-        different variable that is always zero.
+        Counters for the caller's SUMMARY block: $script:passed read in the calling script
+        resolves to the CALLER's scope -- a different variable that is always zero.
     #>
     [OutputType([pscustomobject])]
     param()
@@ -64,10 +43,8 @@ function Get-SmokeTestSummary {
         Total          = $script:passed + $script:failed + $script:skipped
         Aborted        = $script:abortRun
         FailureDetails = @($script:failureDetails)
-        # Per-section PASSED counts, keyed by the leading number of the
-        # Write-TestHeader title (2026-08-21 coverage-floor work: 34 points
-        # of anonymous slack against MinPassed meant whole subsystems could
-        # vanish green — per-section floors name the hole).
+        # Per-section PASSED counts, keyed by the leading number of the Write-TestHeader
+        # title: a single MinPassed floor let whole subsystems vanish green.
         SectionPassed  = $script:sectionCounts
     }
 }
@@ -87,15 +64,13 @@ $script:failureDetails = @()
 $script:sectionCounts = [ordered]@{}
 $script:currentSection = ''
 $script:sectionStartPassed = 0
-# -ExitOnFirstFailure no longer throws (a throw here used to blow straight past the
-# SUMMARY / FAILURE DETAILS dump at the bottom). Instead the first failure sets this
-# flag and every later assert/skip short-circuits, so the run still ends with the
-# full summary and a non-zero exit.
+# -ExitOnFirstFailure short-circuits instead of throwing: a throw blew straight past the
+# SUMMARY / FAILURE DETAILS dump at the bottom.
 $script:abortRun = $false
 
 function Skip-Test {
-    # One-liner for the repeated [SKIP]-print + counter idiom (was hand-rolled at 15 sites,
-    # where forgetting $script:skipped++ silently under-counted skips).
+    # The [SKIP]-print + counter idiom: hand-rolled at 15 sites, where a forgotten
+    # $script:skipped++ silently under-counted.
     param([Parameter(Mandatory)][string]$Reason)
     if ($script:abortRun) { return }
     Write-Host "  [SKIP] $Reason" -ForegroundColor Yellow
@@ -144,11 +119,9 @@ function Assert-Test {
 function Initialize-SmokeScratch {
     <#
     .SYNOPSIS
-        Scrub-then-create for a smoke scratch dir. A previous section's throw
-        can leak its scratch (3 of 10 sites had no try/finally, D6), and a
-        bare New-Item -Force then hands the NEXT run a dirty tree — stale
-        artifacts masquerading as fresh compile outputs. The trailing
-        Remove-Item in each section stays best-effort; THIS is the guarantee.
+        Scrub-then-create for a smoke scratch dir. A previous section's throw leaks its
+        scratch, and a bare New-Item -Force then hands the next run stale artifacts
+        masquerading as fresh compile outputs.
     #>
     param([Parameter(Mandatory)][string]$Path)
     if (Test-Path $Path) { Remove-Item $Path -Recurse -Force -ErrorAction SilentlyContinue }
@@ -158,10 +131,8 @@ function Initialize-SmokeScratch {
 function Assert-PythonSnippet {
     <#
     .SYNOPSIS
-        The one-line python assertion the smoke test repeated 14 times: run
-        `python -c $Code`, require exit 0 AND every -ExpectMatch regex in the
-        combined output. Sites with setup/teardown around the interpreter
-        call (temp model files etc.) stay hand-written with Assert-Test.
+        Run `python -c $Code`; require exit 0 AND every -ExpectMatch regex in the combined
+        output. Sites needing setup/teardown stay hand-written with Assert-Test.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,

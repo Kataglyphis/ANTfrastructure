@@ -5,21 +5,13 @@
 
 Set-StrictMode -Version Latest
 
-# Logging/build primitives (Write-BuildLog*, Invoke-BuildExternal, Remove-BuildRoot)
-# come from the sibling WindowsBuild.Common module. Import WITHOUT -Force on
-# purpose: downstream entry scripts (e.g. Build-Windows.ps1 via Import-BuildModule)
-# import WindowsBuild.Common with -Force -Global first, and a nested -Force
-# re-import here would pull that copy out of the global session (the known
-# shadowing pitfall documented in Resolve-BuildModule.ps1). A plain Import-Module
-# is a no-op when the module is already loaded and only loads it when this module
-# is consumed standalone.
+# Import WITHOUT -Force on purpose: entry scripts import this with -Force -Global
+# first, and a nested -Force re-import pulls that copy out of the global session
+# (shadowing pitfall, see Resolve-BuildModule.ps1).
 $buildCommonPath = Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1'
 Import-Module $buildCommonPath
 
-# Shared, sink-agnostic helpers: Get-SccacheStatsText (used by the pre/post-build
-# diagnostics below) and Get-VisualStudioInstallPath/Get-MsvcToolsRoots (used by
-# Get-SanitizerRuntimeDlls). WindowsBuild.Common does not re-export them, and the
-# same no -Force rule as above applies.
+# Get-SccacheStatsText + Get-MsvcToolsRoots; same no -Force rule as above.
 $sharedCommonPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 Import-Module $sharedCommonPath
 

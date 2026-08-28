@@ -1,39 +1,11 @@
 # shellcheck shell=bash
-# cli-parsers.sh
-# Shared CLI argument parsing helpers for orchestrator and runtime build scripts.
-# Sourced by artifact-common.sh — do not source this directly.
+# Shared CLI argument parsing for orchestrator and runtime build scripts.
+# Sourced by artifact-common.sh — never source this directly.
 [ -n "${_CLI_PARSERS_SH_LOADED:-}" ] && return 0
 _CLI_PARSERS_SH_LOADED=1
-#
-# Provides:
-#   parse_shared_orchestrator_args   — cross-chain orchestrator arg parser
-#   dispatch_parsed_args             — dispatches parser, sets _DP_SHIFT
-#   parse_shared_runtime_args        — runtime build script arg parser
-#   runtime_post_parse_setup         — post-parse normalization + context prep
-#
-# Flags that set global variables directly (no nameref needed):
-#   --dry-run                     → DRY_RUN=1
-#   --parallel-archs              → PARALLEL_ARCHS=1
-#   --max-parallel-archs N        → MAX_PARALLEL_ARCHS=N
-#   --fast-ubuntu-mirror          → USE_FAST_UBUNTU_MIRROR=true (via _parse_mirror_flags)
-#
-# After dispatch_parsed_args returns 0:
-#   _DP_SHIFT=0  flag not recognized, caller should handle it
-#   _DP_SHIFT=1  single-arg flag consumed (caller: shift 1, continue)
-#   _DP_SHIFT=2  two-arg flag consumed   (caller: shift 2, continue)
-# Returns 255 for --help (caller should print usage and exit).
-# Returns non-zero on parse error.
 
-# ==============================================================================
-# _parse_mirror_flags
-#
-# Internal: handle the three mirror-related flags.  Used by both
-# parse_shared_orchestrator_args and parse_shared_runtime_args to
-# eliminate duplicated case-branch logic.
-#
-# Usage: _parse_mirror_flags <use_fast_mirror_nameref> <fast_mirror_url_nameref> <fast_ports_url_nameref> <arg> <val>
-# Returns 1 (single-arg consumed), 2 (two-arg consumed), or 0 (not a mirror flag).
-# ==============================================================================
+# Every parser below returns the number of args it consumed — 1 or 2 — or 0 when
+# it did not recognize the flag; 255 means --help.
 _parse_mirror_flags() {
   local -n _pmf_use=$1
   local -n _pmf_url=$2
@@ -52,16 +24,7 @@ _parse_mirror_flags() {
   esac
 }
 
-# ==============================================================================
-# _parse_global_flags
-#
-# Internal: handle flags that set global variables (--dry-run,
-# --parallel-archs, --max-parallel-archs).  These are shared across
-# orchestrator and runtime parsers.
-#
-# Usage: _parse_global_flags <arg> <val>
-# Returns 1, 2, or 0 (not a global flag).
-# ==============================================================================
+# Flags that set globals directly, so they need no nameref from either parser.
 _parse_global_flags() {
   local arg="$1" val="$2"
 
@@ -77,22 +40,8 @@ _parse_global_flags() {
   esac
 }
 
-# ==============================================================================
-# parse_shared_orchestrator_args
-#
-# Shared CLI argument parsing for cross-chain orchestrator scripts.
-# Call this from the argument loop in build-cross-chain.sh,
-# build-cross-compiler.sh, build-cross-stage.sh, and verify-cross-chain.sh.
-#
-# Receives namerefs for the shared variables, then $1 $2 from the caller's loop.
-# Also handles global flags (--dry-run, --parallel-archs, mirror flags).
-#
-# Return values:
-#   1  — consumed a single-arg flag (caller should shift 1)
-#   2  — consumed a two-arg flag (caller should shift 2)
-#   0  — flag not recognized (caller should handle it)
-#   255 — --help requested (caller should print usage and exit)
-# ==============================================================================
+# For build-cross-chain.sh, build-cross-compiler.sh, build-cross-stage.sh and
+# verify-cross-chain.sh: namerefs for the shared vars, then $1 $2 from their loop.
 parse_shared_orchestrator_args() {
   local -n _psoa_target_arches=$1
   local -n _psoa_use_fast_mirror=$2
@@ -104,12 +53,10 @@ parse_shared_orchestrator_args() {
   shift 7 || true
   local arg="$1" val="$2"
 
-  # Global flags (--dry-run, --parallel-archs, etc.)
   local _rc=0
   _parse_global_flags "${arg}" "${val}" || _rc=$?
   if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
 
-  # Mirror flags (shared across both parsers)
   _parse_mirror_flags _psoa_use_fast_mirror _psoa_fast_mirror_url _psoa_fast_ports_url "${arg}" "${val}" || _rc=$?
   if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
 
@@ -129,21 +76,9 @@ parse_shared_orchestrator_args() {
   esac
 }
 
-# ==============================================================================
-# orchestrator_warn_if_unsupported <flag> [script_name]
-#
-# Per-script flag allowlist (Batch 5 / O5). A few shared orchestrator flags parse
-# in EVERY cross entry point because they live in parse_shared_orchestrator_args
-# / _parse_global_flags, yet are inert in some scripts: --push does nothing in
-# build-cross-chain (the chain always pushes), and --parallel-archs /
-# --max-parallel-archs do nothing in build-cross-stage (it builds one arch).
-# They used to be accepted and silently ignored. Each script lists its inert
-# shared flags in ORCHESTRATOR_UNSUPPORTED_FLAGS (space-separated); the arg loop
-# calls this to warn — clearly and once — when such a flag is passed, without
-# rejecting it (so habitual/CI invocations keep working).
-#
-# Returns 0 when it warned (flag is unsupported here), 1 otherwise.
-# ==============================================================================
+# Shared flags parse in every entry point but are inert in some (--push in
+# build-cross-chain, --parallel-archs in build-cross-stage). Each script lists its
+# own in ORCHESTRATOR_UNSUPPORTED_FLAGS; warn, never reject (Batch 5 / O5).
 orchestrator_warn_if_unsupported() {
   local flag="$1" script="${2:-this script}" u
   # shellcheck disable=SC2086  # intentional word-split of the space-separated list
@@ -156,18 +91,8 @@ orchestrator_warn_if_unsupported() {
   return 1
 }
 
-# ==============================================================================
-# dispatch_parsed_args
-#
-# Calls a shared CLI argument parser and translates its return codes into
-# the _DP_SHIFT variable for the caller to consume.
-#
-# After this returns 0:
-#   _DP_SHIFT = 0  flag not recognized (caller handles it)
-#   _DP_SHIFT = 1  consumed a single-arg flag
-#   _DP_SHIFT = 2  consumed a two-arg flag
-# Returns 255 for --help, non-zero on unexpected error.
-# ==============================================================================
+# Runs a parser and turns its return code into _DP_SHIFT (0/1/2 args to shift);
+# 255 for --help still propagates to the caller.
 dispatch_parsed_args() {
   local _dp_rc=0
   _DP_SHIFT=0
@@ -175,12 +100,9 @@ dispatch_parsed_args() {
   case $_dp_rc in
     1) _DP_SHIFT=1; return 0 ;;
     2)
-      # Two-arg flag consumed. By contract the parser was invoked as
-      # `parse_fn NAMEREFS... <flag> <value>` — reject an empty or flag-like
-      # value here, centrally: a trailing `--target-arches` (or a typo that
-      # made it swallow the NEXT flag as its value) used to assign "" /
-      # "--push" silently, and an empty arch list falls through to
-      # CROSS_DEFAULT_ARCHES — building all three arches instead of erroring.
+      # Reject an empty or flag-like value centrally: a trailing --target-arches
+      # used to assign "", which falls through to CROSS_DEFAULT_ARCHES and builds
+      # all three arches instead of erroring.
       local _dp_val="${*: -1}" _dp_flag="${*: -2:1}"
       if [ -z "${_dp_val}" ] || [ "${_dp_val#--}" != "${_dp_val}" ]; then
         echo "ERROR: ${_dp_flag} requires a value (got '${_dp_val}')" >&2
@@ -191,17 +113,8 @@ dispatch_parsed_args() {
   esac
 }
 
-# ==============================================================================
-# consume_shared_arg
-#
-# Wrapper around dispatch_parsed_args that handles the 255→usage+exit case
-# so the caller only needs to check _DP_SHIFT for shift/continue.
-#
-# Usage:  consume_shared_arg usage_fn \
-#           parse_shared_orchestrator_args NAMEREFS... \
-#           "$1" "${2:-}" || exit 1
-#         case "${_DP_SHIFT}" in 1) shift; continue;; 2) shift 2; continue;; esac
-# ==============================================================================
+# dispatch_parsed_args plus the 255 → usage+exit case, so callers only look at
+# _DP_SHIFT. Usage: consume_shared_arg usage_fn parse_fn NAMEREFS... "$1" "${2:-}"
 consume_shared_arg() {
   local usage_fn="$1"
   shift
@@ -215,18 +128,8 @@ consume_shared_arg() {
   esac
 }
 
-# ==============================================================================
-# consume_dp_shift
-#
-# Shortcut to handle _DP_SHIFT after consume_shared_arg returns 0.
-# Instead of:
-#   case "${_DP_SHIFT}" in 1) shift; continue ;; 2) shift 2; continue ;; esac
-# Write:
-#   consume_dp_shift; shift "${_DP_SHIFT}"; continue
-#
-# Returns 0 when _DP_SHIFT is 1 or 2 (caller should shift + continue).
-# Returns 1 when _DP_SHIFT is 0 (caller should handle the arg locally).
-# ==============================================================================
+# Returns 0 when _DP_SHIFT is 1 or 2 (caller: shift "${_DP_SHIFT}"; continue),
+# 1 when it is 0 (caller handles the arg itself).
 consume_dp_shift() {
   case "${_DP_SHIFT}" in
     1) return 0 ;;
@@ -235,22 +138,8 @@ consume_dp_shift() {
   esac
 }
 
-# ==============================================================================
-# parse_shared_runtime_args
-#
-# Shared CLI argument parsing for runtime build scripts.
-# Call this from the argument loop in build-runtime-artifacts.sh and
-# build-runtime-manifest.sh to handle their nearly identical flag sets.
-#
-# Receives: name-refs for all shared variables, then $1 $2 from the caller's loop.
-# Also handles global flags (--dry-run, --parallel-archs, mirror flags).
-#
-# Return values:
-#   1  — consumed a single-arg flag (caller should shift 1)
-#   2  — consumed a two-arg flag (caller should shift 2)
-#   0  — flag not recognized (caller should handle it)
-#   255 — --help requested (caller should print usage and exit)
-# ==============================================================================
+# For build-runtime-artifacts.sh and build-runtime-manifest.sh, whose flag sets
+# are nearly identical: namerefs, then $1 $2 from their loop.
 parse_shared_runtime_args() {
   local -n _target_arches=$1
   local -n _artifact_image_prefix=$2
@@ -266,12 +155,10 @@ parse_shared_runtime_args() {
   shift 11 || true
   local arg="$1" val="$2"
 
-  # Global flags (--dry-run, --parallel-archs, etc.)
   local _rc=0
   _parse_global_flags "${arg}" "${val}" || _rc=$?
   if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
 
-  # Mirror flags (shared across both parsers)
   _parse_mirror_flags _use_fast_mirror _fast_mirror_url _fast_ports_url "${arg}" "${val}" || _rc=$?
   if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
 

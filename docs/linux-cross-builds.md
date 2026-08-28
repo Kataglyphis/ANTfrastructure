@@ -807,6 +807,24 @@ opt in per scope via `cross_bare_bin_path()`:
 bare="$(cross_bare_bin_path)" && exec "${CC}" -B"${bare}/" "$@"
 ```
 
+### Cross Python wheels (setuptools knobs)
+
+A hand-rolled `setup.py bdist_wheel` cross-builds correctly only when these are
+set — setuptools itself reads them
+(`setuptools/_distutils/compilers/C/unix.py` `configure_system`,
+`setuptools/command/build_ext.py` `get_ext_filename`). Users:
+`03-media/build/pyav/build-pyav.sh`,
+`05-frameworks/torch/build-app-wheelhouse.sh`,
+`03-media/build/onnxruntime/build/60-build-genai.sh`.
+
+| Variable | Why it is load-bearing |
+| --- | --- |
+| `CC` | Replaces the interpreter's compiler. May be multi-word (`ccache <cross-gcc>`) — `set_executables` shlex-splits it. |
+| `LDSHARED` | Explicit `<cross-gcc> -shared`. Without it the link command is derived from the **host** interpreter's sysconfig. |
+| `CFLAGS` | **Replaces** (does not append to) the sysconfig CFLAGS, and lands *before* the extension's own `-I` dirs — which is what makes the TARGET Python headers win over the host ones `build_ext` always appends. Must carry `-O2` itself, since the sysconfig optimisation flags are replaced with it. |
+| `SETUPTOOLS_EXT_SUFFIX` | The target SOABI suffix. Without it extensions are named `.cpython-<mm>-x86_64-linux-gnu.so`, which the target interpreter never even considers at import time (`importlib` `EXTENSION_SUFFIXES`) — the wheel installs and the `import` dies. `runtime/verify-wheels.sh` asserts the suffix. |
+| `_PYTHON_HOST_PLATFORM` | Makes `get_platform()`, and hence the wheel platform tag, the target one — so the wheel is born correctly tagged and `runtime/repair-wheels.sh`'s blanket retag is only a safety net. |
+
 ## Runtime lane helper commands
 
 Building and publishing the per-arch wrappers and the multi-arch manifest, plus manifest repair. The canonical chain commands are in [`../AGENTS.md`](../AGENTS.md) § Quick Reference; these are the runtime-lane half.

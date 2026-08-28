@@ -2,81 +2,35 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Reclaims the dead blocks of a dynamically-expanding VHDX by REBUILDING it
-# around its live data, instead of compacting it. Use this when
-# compact-host-vhdx.ps1 reports a near-zero reclaim — which is the expected
-# outcome on ReFS guests, where Optimize-VHD cannot see the guest's free
-# blocks (measured on the reference host: 269.9 GB physical for 16.2 GB of
-# data, compaction returned 0.2 GB; see docs/windows-host-setup.md § Phase D item 3).
-#
-# The rebuild is a copy, not an in-place operation: a fresh VHDX is created,
-# the live data is mirrored into it, both copies are compared, and only then
-# is the drive letter moved over. The old file is KEPT (renamed .old) unless
-# -RetireOld is passed, so a bad outcome is always one rename away from being
-# undone.
-#
-# RUN FROM AN ADMIN SHELL, and NEVER while a build is running.
-#
-# TWO PHASES, because they have very different requirements:
-#
-#   copy  — creates the new VHDX and mirrors the data. The source volume stays
-#           mounted and in use the whole time. Safe to run with editors, shells
-#           and agents still sitting on the drive.
-#   swap  — detaches the source and hands its drive letter to the new disk.
-#           This REQUIRES that no process holds a handle on the volume: no
-#           shell whose current directory is on it, no editor with the
-#           checkout open. A detach that strands the volume is what killed a
-#           working session once, so the swap refuses rather than forces, and
-#           the copy it already made survives for a later -SwapOnly run.
-#
-# Everything machine-specific is a parameter. Examples:
-#
-#   # look first: sizes, guest filesystem, what the rebuild would reclaim
-#   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -ReportOnly
-#
-#   # phase 1 only — safe to run right now, with everything still open
-#   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx -CopyOnly
-#
-#   # phase 2, after closing everything that lives on the volume
-#   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx `
-#        -SwapOnly -VerifyPath D:\GitHub\Kataglyphis-ContainerHub
-#
-#   # both phases, and delete the old file once the rebuild verifies
-#   pwsh -File windows\scripts\host\rebuild-host-vhdx.ps1 -VhdxPath C:\cataglyphis-EXTREME.vhdx `
-#        -VerifyPath D:\GitHub\Kataglyphis-ContainerHub -RetireOld
+# HOST maintenance (admin, never while a build runs): reclaims a dynamically
+# expanding VHDX by REBUILDING it around its live data — the only reclaim that
+# works on ReFS guests, where Optimize-VHD cannot see the guest's free blocks.
+# Two phases, usage and the detach hazard: docs/windows-build-lanes.md § Store GC.
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
-    # The dynamically-expanding VHDX to rebuild. Machine-specific, no default.
+    # The dynamically-expanding VHDX to rebuild.
     [Parameter(Mandatory)]
     [string]$VhdxPath,
 
-    # Maximum size of the replacement disk. 0 = same as the source. The disk
-    # is dynamic, so this is a ceiling, not an allocation — but sizing it to
-    # what the volume will realistically hold keeps future runaway growth
-    # bounded instead of letting it eat the host again.
+    # Maximum size of the replacement. 0 = same as the source. The disk is
+    # dynamic, so this is a ceiling that bounds runaway growth, not an allocation.
     [int]$NewSizeGB = 0,
 
-    # Where the replacement is built. Defaults to <source>.new.vhdx, i.e. the
-    # same volume as the source — which is what you want: the host needs room
-    # for the live data (~16 GB on the reference host), not for a second copy
-    # of the dead blocks.
+    # Where the replacement is built. Default <source>.new.vhdx, i.e. the same
+    # volume: the host needs room for the live data, not for the dead blocks.
     [string]$NewVhdxPath = '',
 
-    # Services stopped for the swap (order matters: dependents first).
-    # Restarted in reverse afterwards. The copy phase leaves them alone.
+    # Stopped for the swap (order matters: dependents first), restarted in reverse.
     [string[]]$Service = @('buildkitd', 'containerd'),
 
-    # Processes whose presence means a build is live; the run is refused
-    # unless -Force.
+    # Presence means a build is live; the run is refused unless -Force.
     [string[]]$BlockingProcess = @('buildctl'),
 
-    # Path that must exist on the rebuilt volume before the old disk is
-    # considered retired (typically the repo checkout). Empty = skip.
+    # Must exist on the rebuilt volume before the old disk is retired. Empty = skip.
     [string]$VerifyPath = '',
 
-    # Directories excluded from the mirror. The defaults are volume metadata
-    # that cannot and must not be copied.
+    # Volume metadata that cannot and must not be copied.
     [string[]]$ExcludeDir = @('System Volume Information', '$RECYCLE.BIN'),
 
     # Where the transcript lands. Default: <repo>\out\rebuild-host-vhdx.log
@@ -91,10 +45,8 @@ param(
     # Phase 2 only: swap in a replacement built by an earlier -CopyOnly run.
     [switch]$SwapOnly,
 
-    # Delete the old VHDX after the swap verifies. Without this the old file
-    # is kept as <source>.old and the space is not reclaimed until you remove
-    # it yourself — deliberately, so the first run of this script on a new
-    # machine cannot lose data.
+    # Delete the old VHDX after the swap verifies. Without it the old file is kept
+    # as <source>.old and the space is NOT reclaimed until you remove it yourself.
     [switch]$RetireOld,
 
     # Skip the live-build guard (you are SURE nothing is solving right now).
@@ -104,9 +56,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# #108: repo layout is scripts/<group>/ while every container mount stays FLAT
-# (C:\bkmnt, C:\temp\scripts). Shared assets (modules/patches/shims/...) live
-# beside this script in the flat layout and one level up in the repo layout.
+# #108: repo layout is scripts/<group>/ while container mounts stay FLAT. Shared
+# assets sit beside this script when flat, one level up in the repo layout.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 $repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
 if (-not $LogPath) { $LogPath = Join-Path $repoRoot 'out\rebuild-host-vhdx.log' }
@@ -121,9 +72,8 @@ $LogPath = $hostLog.LogPath
 function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
 function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
-# Total bytes and file count under a root, used to compare source and copy.
-# Access errors are counted separately rather than swallowed: a mismatch that
-# comes from an unreadable file is a different problem than a short copy.
+# Access errors are counted, not swallowed: a mismatch caused by an unreadable
+# file is a different problem than a short copy.
 function Measure-Tree {
     param([string]$Root)
     $bytes = [long]0; $files = 0; $errors = 0
@@ -176,8 +126,7 @@ Write-Step ('guest       : {0}: {1} ({2}), {3:N1} GB used of {4:N1} GB' -f
 Write-Step ('host {0}: free : {1:N1} GB' -f $hostDrive, ($freeBefore / 1GB))
 Write-Step ('reclaimable : ~{0:N1} GB by rebuilding' -f (($physicalBefore - $usedBytes) / 1GB))
 
-# The copy needs room for the live data plus headroom; the dead blocks are
-# not copied, so this is far less than the source's physical size.
+# The dead blocks are not copied, so this is far less than the source's physical size.
 $needed = $usedBytes * 1.15
 if (-not $SwapOnly -and $freeBefore -lt $needed) {
     throw ('not enough room on {0}: need ~{1:N1} GB for the copy, {2:N1} GB free.' -f
@@ -220,9 +169,8 @@ if (-not $SwapOnly) {
         Write-Step ('staged as {0}: — formatting {1} ({2})' -f
             $stageLetter, $sourceVolume.FileSystem, $sourceVolume.FileSystemLabel)
 
-        # Reproduce the source's filesystem, label and cluster size. A Dev
-        # Drive is an ReFS volume with a trust flag; -DevDrive exists only on
-        # builds that support it, hence the capability probe.
+        # A Dev Drive is an ReFS volume with a trust flag; -DevDrive exists only
+        # on builds that support it, hence the capability probe below.
         $fmt = @{
             FileSystem         = $sourceVolume.FileSystem
             NewFileSystemLabel = $sourceVolume.FileSystemLabel

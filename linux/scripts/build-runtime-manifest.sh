@@ -7,7 +7,6 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 runtime_flow_preamble
 
-# Script-specific defaults (override shared where needed)
 IMAGE_NAME="${IMAGE_NAME:-}"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
@@ -61,20 +60,8 @@ EOF
   runtime_shared_usage_env_overrides
 }
 
-# ==============================================================================
-# _manifest_wrapper_gate  (XC3 coherence + XC2 android-freshness)
-#
-# Before assembling the multi-arch index out of the mutable per-arch wrapper
-# tags, prove they are ONE generation. The run-id annotation (stamped on each
-# wrapper push, see runtime-build-fns.sh) is the coherence key: three tags from
-# one run share it, so a normal same-run push passes silently. A --repair run
-# over tags left mixed by a 2-of-3 build has disagreeing run-ids and is refused
-# (unless --force). Tags predating the annotation only WARN (unknown provenance,
-# non-breaking rollout). android-freshness (each wrapper still descends from the
-# current android) is advisory on a normal build but a gate under --repair.
-#
-# Returns 0 to proceed, 1 to refuse. Never bites the happy path.
-# ==============================================================================
+# XC3 coherence + XC2 android-freshness: prove the mutable per-arch wrapper tags
+# are ONE generation before indexing them. Returns 0 to proceed, 1 to refuse.
 _manifest_wrapper_gate() {
   local -a run_ids=()
   local arch tag rid coherent=1 missing=0 r
@@ -91,9 +78,8 @@ _manifest_wrapper_gate() {
   fi
   [ "${missing}" -gt 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) carry no run-id provenance — generation unverifiable."
 
-  # XC2: verify each wrapper still descends from the CURRENT android. Advisory on
-  # a normal build (BUILD_IMAGES=1, wrappers were just built this run); a hard
-  # gate under --repair/--manifest-only, where the mutable tags are all we have.
+  # XC2: advisory on a normal build (the wrappers were just built), a hard gate
+  # under --repair/--manifest-only where the mutable tags are all we have.
   local android_stale=0
   if declare -F runtime_ancestry_assert_wrappers >/dev/null 2>&1; then
     runtime_ancestry_assert_wrappers "${TARGET_ARCHES}" || android_stale=1
@@ -102,13 +88,8 @@ _manifest_wrapper_gate() {
   local refuse=0
   [ "${coherent}" -eq 0 ] && refuse=1
   [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
-  # XC3 honesty (2026-08-23): ancestry_run_ids_coherent DROPS empty ids, so a
-  # set like (R2,"","") reads as "coherent" and the gate printed OK — which is
-  # exactly how a mixed-generation index could ship under --repair, the very
-  # scenario XC3 was written for. Unverifiable is not the same as verified: on
-  # the repair path (BUILD_IMAGES=0), where the mutable tags are all we have,
-  # missing provenance REFUSES. On a normal build the wrappers were just built
-  # in this run, so it stays advisory and the happy path is untouched.
+  # ancestry_run_ids_coherent DROPS empty ids, so (R2,"","") reads as coherent:
+  # on the repair path, unverifiable provenance must REFUSE, not pass.
   [ "${missing}" -gt 0 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
 
   if [ "${refuse}" -eq 0 ]; then
@@ -152,9 +133,7 @@ create_manifest() {
   run "${NERDCTL_BIN:-nerdctl}" manifest create "${IMAGE_NAME}" "${refs[@]}"
 
   if [ "${PUSH_MANIFEST}" -eq 1 ]; then
-    # Retry the manifest push on the same transient registry/network class the
-    # per-arch image pushes guard against (runtime_push_tag). The index blob is
-    # tiny, but a dropped connection here still fails the whole stage.
+    # Same transient registry/network class runtime_push_tag guards against.
     retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
       run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
   fi
@@ -174,13 +153,9 @@ _manifest_extra_arg() {
   esac
 }
 
-# Register QEMU emulators for any non-native target arch, WITHOUT sudo, so the
-# foreign-arch runtime smokes can actually execute inside the image (nested exec
-# of the compiler/python/ffmpeg needs binfmt_misc with the F=fix-binary flag,
-# which buildkit's top-level-only emulator does NOT provide). Delegates to
-# setup-rootless-binfmt.sh (rootless containerd/BuildKit nsenter path). Best-
-# effort: a failure here is a warning, not a hard error — the smokes still run
-# and report their own "exec format error" if emulation is genuinely missing.
+# Register QEMU emulators for non-native target arches WITHOUT sudo: nested exec
+# inside the image needs binfmt_misc F=fix-binary, which buildkit's top-level-only
+# emulator does not provide. See docs/linux-cross-builds.md § Host prerequisite.
 ensure_foreign_binfmt() {
   local arches="$1"
   [ "${RUNTIME_REGISTER_BINFMT:-1}" = "1" ] || { log "RUNTIME_REGISTER_BINFMT=0 — skipping QEMU binfmt registration"; return 0; }
@@ -205,17 +180,8 @@ ensure_foreign_binfmt() {
   _BINFMT_ENSURED=1
 }
 
-# Prove the emulator is really there. Registration above is best-effort, and a
-# silent failure surfaces HOURS later as a BuildKit step with no output at all:
-#   #8 ERROR: process "/dev/.buildkit_qemu_emulator bash -lc ..." exit code: 1
-# That happened on 2026-08-27 -- both the arm64 and riscv64 wrapper builds died
-# exactly that way. Cause: the nerdctl-full upgrade the day before restarted the
-# rootless daemons and rebuilt the rootlesskit namespace, and the binfmt
-# registration lives INSIDE that namespace, so it went with it. Nothing caught
-# it, because the only call to ensure_foreign_binfmt sat in the SMOKE block --
-# after the builds that need it.
-#
-# A missing emulator cannot produce a readable error later, so it is fatal here.
+# Registration above is best-effort and its silent failure surfaces hours later
+# as an output-less BuildKit step error, so prove the emulator is there and die here.
 _binfmt_qemu_name() {
   case "$1" in
     arm64|aarch64) printf 'qemu-aarch64' ;;
@@ -231,10 +197,8 @@ verify_foreign_binfmt() {
     handler="$(_binfmt_qemu_name "${a}")"
     # Rootful / CI hosts register in the HOST namespace (update-binfmts).
     grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && continue
-    # Rootless: containerd and buildkitd share one persistent rootlesskit
-    # namespace and the registration lives THERE -- the host's own
-    # /proc/sys/fs/binfmt_misc will not show it. Checking only the host is how
-    # this looked "unregistered" even on a working machine.
+    # Rootless: the registration lives in the persistent rootlesskit namespace
+    # containerd and buildkitd share, NOT in the host's own binfmt_misc.
     if [ -n "${tool}" ] && "${tool}" nsenter -- \
          grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null; then
       continue
@@ -252,35 +216,22 @@ main() {
     err "--image is required"
   fi
 
-  # Post-parse setup (replaces runtime_flow_export_setup)
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
 
-  # XC3: every wrapper built in THIS process must share one run-id so the
-  # coherence gate passes silently on a same-run push. The orchestrator exports a
-  # canonical CROSS_RUN_ID (chain-lifecycle.sh); a standalone invocation defaults
-  # its own here. Either way all three per-arch wrappers read the same value.
+  # XC3: one run-id for every wrapper built here, so the coherence gate passes on
+  # a same-run push (the orchestrator exports it; a standalone run defaults it).
   : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"
   export CROSS_RUN_ID
 
-  # Resolve BUILD_DATE/VCS_REF ONCE, for the same reason CROSS_RUN_ID is:
-  # every child of one index must agree. runtime-build-fns.sh used to run
-  # `git rev-parse HEAD` per arch INSIDE the build loop, so a commit landing
-  # between two arch builds split the index. That is not hypothetical -- the
-  # index shipped 2026-08-27 carries org.opencontainers.image.revision
-  # fdbde9a9 on amd64/arm64 and e17a8cf9 on riscv64. Exported (not passed as
-  # flags) because run_parallel_arch_loop runs each arch in a subshell, so a
-  # value computed there could never be shared. Found 2026-08-27.
+  # Resolve provenance ONCE: a per-arch `git rev-parse` inside the build loop let
+  # a mid-run commit split one index. Exported — each arch builds in a subshell.
   : "${CROSS_BUILD_DATE:=$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   : "${CROSS_VCS_REF:=$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
   export CROSS_BUILD_DATE CROSS_VCS_REF
 
-  # Belt-and-suspenders for --no-push orchestrator runs (CROSS_NO_PUSH=1): the
-  # per-arch wrapper tags are never pushed, so a registry-based `nerdctl manifest
-  # create` has no descriptors to reference and fails "no such manifest" at the
-  # very end of an otherwise-green validation run. The orchestrator now also
-  # passes --skip-manifest, but honor the exported env var directly so the guard
-  # holds regardless of caller. Per-arch images are still built + boot-smoked.
+  # CROSS_NO_PUSH=1: nothing is pushed, so a registry-based `manifest create` has
+  # no descriptors and dies "no such manifest". Images are still built + smoked.
   if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ "${CREATE_MANIFEST}" -eq 1 ]; then
     log "CROSS_NO_PUSH=1 — skipping multi-arch manifest creation (no pushed per-arch refs to index)"
     CREATE_MANIFEST=0
@@ -303,75 +254,35 @@ main() {
     run_parallel_arch_loop runtime_build_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
   fi
 
-  # Host-side runtime-image boot smoke: run each freshly built wrapper via
-  # nerdctl and verify it starts and its entrypoint/HEALTHCHECK/user/paths are
-  # sane. Validates the ACTUAL published image, complementing the in-image
-  # wrapper-smoke stage. This was COPY'd into the package image but never run
-  # anywhere. Cross arches boot under binfmt/qemu; set RUNTIME_IMAGE_SMOKE=0 to
-  # skip (e.g. a host without qemu for a foreign arch).
-  #
-  # GATE: run the smoke BEFORE creating/pushing the multi-arch manifest. The
-  # per-arch wrapper tags are already pushed by the build, so the smoke can pull
-  # and boot them here; a failure aborts (set -e via `run`) BEFORE the manifest
-  # index goes live, so a broken image (e.g. clang != LLVM_RELEASE) can never be
-  # published as :latest-cross. Previously the smoke ran after the push, which
-  # reported the failure but left the bad manifest live on the registry.
+  # GATE: boot-smoke every wrapper BEFORE the index goes live, so a broken image
+  # can never ship as :latest-cross. RUNTIME_IMAGE_SMOKE=0 skips.
   if [ "${BUILD_IMAGES}" -eq 1 ] && [ "${RUNTIME_IMAGE_SMOKE:-1}" = "1" ]; then
-    # Foreign-arch runtime smokes execute inside the image under QEMU/binfmt.
-    # Register the emulators up-front WITHOUT sudo (rootless containerd/BuildKit
-    # share one persistent namespace; see setup-rootless-binfmt.sh). Best-effort:
-    # if registration is unavailable (non-rootless host, no nsenter tool) we warn
-    # and let the per-arch smokes surface "exec format error" themselves. Opt out
-    # with RUNTIME_REGISTER_BINFMT=0 (e.g. host already has qemu via update-binfmts).
     [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
     local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
     local wrapper_tag
-    # The CONTENT gate now runs for EVERY arch FIRST, then the boot smokes.
-    # Both used to sit in ONE loop with the smoke first, so a smoke failure on
-    # arch N skipped the byte-gate for arch N *and every arch after it*. On
-    # 2026-08-27 riscv64's smoke failed on an ARCH-PARITY arm, so the riscv64
-    # wrapper that later shipped in the index was never content-checked at all.
-    # Safe in this order: verify-shipped-wrapper.sh is a tar listing -- no boot,
-    # no emulation -- so it is both cheaper and more universally runnable than
-    # the smoke it used to hide behind.
+    # Two-pass order is load-bearing: content gate for EVERY arch first, then the
+    # boot smokes (docs/cross-build-verification.md § Verify the shipped BYTES).
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
       wrapper_tag="$(runtime_wrapper_tag "${arch}")"
       log "Wrapper content gate: ${wrapper_tag} (${arch})"
-      # Ensure the image is present locally (the build may not have loaded it) —
-      # but only pull when it is actually MISSING. The old unconditional pull
-      # re-pointed the tag to the previously PUBLISHED image whenever that tag
-      # exists in the registry, so a --no-push validation run smoked the stale
-      # release instead of the wrapper it had just built (false green, plus a
-      # multi-GB download that --no-push exists to avoid).
+      # Pull only when MISSING: an unconditional pull re-points the tag at the
+      # previously PUBLISHED image, so --no-push runs smoke the stale release.
       if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
         run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       fi
-      # RTCACHE3 content byte-gate: the boot smoke proves the wrapper RUNS, but a
-      # STALE wrapper (see verify-shipped-wrapper.sh) boots green too. Re-derive
-      # the expected /opt/ffmpeg lib set from versions.env toggles and assert the
-      # shipped bytes match — this fires BEFORE the manifest is assembled, so
-      # stale/toggle-mismatched content can never reach :latest-cross. Arch-
-      # agnostic (tar listing, no emulation). WRAPPER_CONTENT_GATE=0 → advisory.
+      # RTCACHE3 byte-gate: a STALE wrapper boots green too, so assert the shipped
+      # /opt/ffmpeg content matches the versions.env toggles. 0 → advisory.
       run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
     done
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
       wrapper_tag="$(runtime_wrapper_tag "${arch}")"
       log "Runtime-image smoke: ${wrapper_tag} (${arch})"
-      # Ensure the image is present locally (the build may not have loaded it) —
-      # but only pull when it is actually MISSING. The old unconditional pull
-      # re-pointed the tag to the previously PUBLISHED image whenever that tag
-      # exists in the registry, so a --no-push validation run smoked the stale
-      # release instead of the wrapper it had just built (false green, plus a
-      # multi-GB download that --no-push exists to avoid).
+      # Pull only when MISSING: an unconditional pull re-points the tag at the
+      # previously PUBLISHED image, so --no-push runs smoke the stale release.
       if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
         run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       fi
       run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
-      # RTCACHE3 content byte-gate: the boot smoke proves the wrapper RUNS, but a
-      # the expected /opt/ffmpeg lib set from versions.env toggles and assert the
-      # shipped bytes match — this fires BEFORE the manifest is assembled, so
-      # stale/toggle-mismatched content can never reach :latest-cross. Arch-
-      # agnostic (tar listing, no emulation). WRAPPER_CONTENT_GATE=0 → advisory.
     done
   fi
 

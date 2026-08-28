@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# smoke-common.sh
-# Shared smoke test utilities: pass/fail with FAILURES tracking, version checks,
-# and ELF verification helpers.  Source this in all *-smoke.sh scripts.
-#
-# Usage:
-#   source "$(dirname "$0")/smoke-common.sh"
-#   source_module platform.sh   # for ELF/arch helpers if not already loaded
+# Shared smoke-test helpers: pass/fail + FAILURES, arch maps, ELF checks.
+# Sourced by every 06-packaging/smoke-*.sh.
 
 if [ -n "${_SMOKE_COMMON_LOADED:-}" ]; then
   return 0
