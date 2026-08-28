@@ -470,7 +470,7 @@ _torch_build_host_protoc() {
             -u CMAKE_TOOLCHAIN_FILE -u CMAKE_SYSTEM_NAME -u CMAKE_SYSTEM_PROCESSOR \
             CC=gcc CXX=g++ \
             bash scripts/build_host_protoc.sh \
-                --other-flags "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" > /tmp/build_host_protoc.log 2>&1); then
+                --other-flags "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}" > /tmp/build_host_protoc.log 2>&1); then
         CROSS_HOST_PROTOC="${src_dir}/build_host_protoc/bin/protoc"
     fi
     # Readiness gate = EXECUTE it, not just -x: a cross-built protoc is

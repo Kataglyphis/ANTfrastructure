@@ -187,6 +187,15 @@ _ffmpeg_probe_core_codecs() {
         _ffpcc_out+=("--enable-libfreetype")
     fi
 
+    # drawtext needs harfbuzz for text shaping + fontconfig for font discovery.
+    # LOG20: was missing on all arches, so the drawtext filter was absent.
+    if ffmpeg_probe_pkg_config_feature "libharfbuzz" "harfbuzz" "hb.h" "hb_buffer_create"; then
+        _ffpcc_out+=("--enable-libharfbuzz")
+    fi
+    if ffmpeg_probe_pkg_config_feature "libfontconfig" "fontconfig" "fontconfig/fontconfig.h" "FcInit"; then
+        _ffpcc_out+=("--enable-libfontconfig")
+    fi
+
     if ffmpeg_probe_libmp3lame; then
         _ffpcc_out+=("--enable-libmp3lame")
     fi

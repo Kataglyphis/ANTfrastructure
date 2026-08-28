@@ -691,7 +691,7 @@ cross_compile_cmake_lib_from_source() {
     -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
     -DCMAKE_INSTALL_PREFIX="${prefix}"
     -DCMAKE_BUILD_TYPE=Release
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}
     "$@"
   )
   if cmake -S "${src}" -B "${src}/build" "${cmake_args[@]}" \

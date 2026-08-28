@@ -4,10 +4,10 @@
 
 Optional NVIDIA GPU image chain. Two ways to enable:
 
-- **Orchestrated (since 2026-08-08):** `ENABLE_NVIDIA=true bash linux/scripts/build-cross-chain.sh ...` — the env toggle now reaches the cross media stage (it used to be silently dropped by the cross lane while the runtime lane honored it, leaving a GPU-configured runtime on CPU-only media artifacts).
-- **Hand-run:** passing `--build-arg ENABLE_NVIDIA=true` to the standard Dockerfiles:
+- **Orchestrated (since 2026-08-08):** `ENABLE_NVIDIA=true bash linux/scripts/build-cross-chain.sh ...` — the env toggle now reaches the cross media stage (it used to be silently dropped by the cross lane while the runtime lane honored it, leaving a GPU-configured runtime on CPU-only media artifacts). **This is the recommended path.**
+- **Hand-run:** passing `--build-arg ENABLE_NVIDIA=true` to the standard Dockerfiles. Requires a pre-existing `:cross-sdk-amd64` image (the chain's sdk stage output; the old `:sdk` tag was deleted 2026-08-27).
 
-- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:sdk`)
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.3<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.25.0.15<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.2.1.2<!-- /generated:tensorrt -->, NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. (Inserts after `:cross-sdk-amd64`)
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
@@ -20,7 +20,7 @@ Optional NVIDIA GPU image chain. Two ways to enable:
 > - `nvidia-container-toolkit` installed and configured on the host.
 > - `--runtime=nvidia` or `--gpus all` passed to `docker run`.
 
-The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:sdk` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_NVIDIA=true`.
+The NVIDIA variant inserts a new `Dockerfile.nvidia` layer **after** `:cross-sdk-amd64` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_NVIDIA=true`.
 
 **Files involved:**
 
@@ -40,18 +40,18 @@ If apt is slow in this chain, the two mirror build-args apply here too — see [
 LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-nvidia"
 mkdir -p "${LOG_DIR}"
 
-# Step 1: NVIDIA layer (builds on top of existing :sdk from standard chain)
+# Step 1: NVIDIA layer (builds on top of existing :cross-sdk-amd64 from standard chain)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia --push \
   -f linux/Dockerfile.nvidia \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-amd64 \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-nvidia \
   . 2>&1 | tee "${LOG_DIR}/toolchain-nvidia.log"
 
 # Step 2: media-nvidia (GStreamer nvcodec + ORT with CUDA/TRT/cuDNN EPs)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia --push \
   -f linux/Dockerfile.media \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
@@ -61,7 +61,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 # Step 3: android-nvidia
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia --push \
   -f linux/Dockerfile.android \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-nvidia \
@@ -71,7 +71,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 # Step 4: torch-nvidia
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia --push \
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-nvidia \
@@ -83,7 +83,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 # Step 5: final nvidia image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:nvidia --push \
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_NVIDIA=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-nvidia \
@@ -110,9 +110,9 @@ LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-nvidia-overrides"
 mkdir -p "${LOG_DIR}"
 
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-nvidia --push \
   -f linux/Dockerfile.nvidia \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-amd64 \
   --build-arg CUDA_VERSION=13.3.0 \
   --build-arg CUDNN_VERSION=9.25.0.15 \
   --build-arg TENSORRT_VERSION=11.2.1.2 \
@@ -156,29 +156,29 @@ nerdctl build -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch -f linux/Do
 ## AMD GPU Build (Linux)
 
 > **Requirements:**
-> - Host driver >= 6.0 (for ROCm 7.2.4).
+> - Host driver compatible with ROCm 10.0 (see the [compatibility matrix](https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html)).
 > - `--device=/dev/kfd --device=/dev/dri` passed to `docker run`.
 
-The AMD variant inserts a new `Dockerfile.amd` layer **after** `:sdk` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_AMD=true`.
+The AMD variant inserts a new `Dockerfile.amd` layer **after** `:cross-sdk-amd64` and before the media stage. Subsequent stages reuse the standard Dockerfiles by passing `--build-arg ENABLE_AMD=true`.
 
 **Files involved:**
 
 | File | Purpose |
 | --- | --- |
-| `linux/Dockerfile.amd` | Installs ROCm 7.2.4 + MIGraphX 2.14 from AMD repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
+| `linux/Dockerfile.amd` | Installs ROCm 10.0 + MIGraphX 2.17 from AMD TheRock repo (HIP, MIOpen, RCCL, rocBLAS, rocFFT, MIGraphX) |
 | `linux/Dockerfile.media` | Media stack: conditionally builds ORT with MIGraphX EP when `ENABLE_AMD=true` |
 | `linux/Dockerfile.android` | Conditionally builds on top of the AMD media image |
 | `linux/Dockerfile.torch` | Conditionally tags the final entrypoint image |
 | `linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh` | ORT build script with MIGraphX EP |
 
 **Notes:**
-- The ROCm version is pinned by `ROCM_VERSION` in `linux/scripts/01-core/versions.env` and is
-  load-bearing: `linux/scripts/01-core/setup-rocm-repo.sh:54` builds the apt source as
-  `https://repo.radeon.com/rocm/apt/${ROCM_VERSION} noble main`. It is held at 7.2.4
-  deliberately (2026-08-08) — AMD's newer "TheRock" releases have no path under that apt
-  layout, so a bump has to migrate `setup-rocm-repo.sh` first, with `MIGRAPHX_VERSION`
-  moving together with it.
-- MIGraphX packages come from the AMD ROCm repository (`repo.radeon.com`) targeting Ubuntu 24.04 (noble), compatible with Ubuntu 26.04 (resolute). The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages to avoid noble-vs-resolute apt version conflicts.
+- The ROCm version is pinned by `ROCM_VERSION` in `linux/scripts/01-core/versions.env`.
+  `linux/scripts/01-core/setup-rocm-repo.sh` adds the TheRock apt repos in deb822
+  `.sources` format (`stable.repo.amd.com`), with core ROCm and MIGraphX as
+  separate repo stanzas sharing the same GPG key and Origin ("AMD ROCm").
+  Package names use the `amdrocm-*` prefix. `MIGRAPHX_VERSION` moves together
+  with `ROCM_VERSION`.
+- MIGraphX packages come from a separate repo path (`/rocm/migraphx/packages/ubuntu2604/`) on the same `stable.repo.amd.com` host. The toolchain image pins the AMD repo to provide only ROCm/MIGraphX packages via an apt pin on Origin "AMD ROCm".
 - The ONNX Runtime MIGraphX Execution Provider replaces the older ROCm EP. The build script passes `--use_migraphx --migraphx_home /opt/rocm` instead of `--use_rocm`.
 - The build produces an `onnxruntime-migraphx` Python wheel (instead of `onnxruntime-rocm`).
 - The media stage strips all external apt sources from the SDK base image and configures clean resolute-only sources to prevent cross-distro package conflicts. 01-core modules are bind-mounted into build stages so `media_common_init()` can locate cross-build helpers.
@@ -191,18 +191,18 @@ If apt is slow in this chain, the two mirror build-args apply here too — see [
 LOG_DIR="logs/$(date -u +'%Y%m%dT%H%M%SZ')-amd"
 mkdir -p "${LOG_DIR}"
 
-# Step 1: AMD layer (builds on top of existing :sdk from standard chain)
+# Step 1: AMD layer (builds on top of existing :cross-sdk-amd64 from standard chain)
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd --push \
   -f linux/Dockerfile.amd \
-  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:sdk \
+  --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:cross-sdk-amd64 \
   --cache-to=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-amd,mode=max,oci-mediatypes=true \
   --cache-from=type=registry,ref=ghcr.io/kataglyphis/kataglyphis_beschleuniger:buildcache-toolchain-amd \
   . 2>&1 | tee "${LOG_DIR}/toolchain-amd.log"
 
 # Step 2: media-amd
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd --push \
   -f linux/Dockerfile.media \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:toolchain-amd \
@@ -212,7 +212,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 # Step 3: android-amd
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd --push \
   -f linux/Dockerfile.android \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:media-amd \
@@ -222,7 +222,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 # Step 4: torch-amd
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd --push \
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:android-amd \
@@ -234,7 +234,7 @@ sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_bes
 
 # Step 5: final amd image
 sudo nerdctl build --platform linux/amd64 -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd \
-  --output 'type=image,name=ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd,push=true' \
+  -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:amd --push \
   -f linux/Dockerfile.torch \
   --build-arg ENABLE_AMD=true \
   --build-arg BASE_IMAGE=ghcr.io/kataglyphis/kataglyphis_beschleuniger:torch-amd \

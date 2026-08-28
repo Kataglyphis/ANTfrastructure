@@ -278,6 +278,23 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       else
         fail "opencv imencode/videoio roundtrip FAILED (import works, so this is real)"
       fi
+      # LOG11: assert TBB is the parallel framework (not pthreads fallback).
+      # build-opencv.sh sets -DWITH_TBB=ON unconditionally, but libtbb-dev was
+      # host-only — cross arches silently fell back to pthreads. This catches
+      # a TBB probe miss.
+      _ocv_pf="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
+import cv2
+for line in cv2.getBuildInformation().splitlines():
+    if 'Parallel framework' in line:
+        print(line.strip())
+        break
+" 2>/dev/null || true)"
+      if [ -n "${_ocv_pf}" ]; then
+        case "${_ocv_pf}" in
+          *TBB*) pass "opencv parallel framework: TBB" ;;
+          *)     fail "opencv parallel framework is NOT TBB (got: ${_ocv_pf})" ;;
+        esac
+      fi
     elif cross_build_is_active 2>/dev/null; then
       # CROSS build: the interpreter runs on the amd64 host but cv2 is a
       # foreign-arch extension, so an import failure here is expected — the
@@ -451,6 +468,22 @@ if [ -x "${_ffmpeg_bin}" ]; then
         fi
         rm -rf "${_ff_tmp}"
       done
+      # LOG20: drawtext filter — needs libfreetype + libharfbuzz + libfontconfig
+      # (all probe-gated in build-ffmpeg.sh). Assert the filter is REGISTERED,
+      # not just that --enable-libfreetype is in buildconf.
+      if "${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "drawtext"; then
+        pass "ffmpeg drawtext filter registered"
+      else
+        fail "ffmpeg drawtext filter NOT registered (libfreetype/libharfbuzz/libfontconfig probe may have missed)"
+      fi
+      # LOG22: Vulkan filters — --enable-vulkan enables the hwaccel context,
+      # but *_vulkan filters need glslangValidator at build time. Assert at least
+      # scale_vulkan is registered.
+      if "${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null | grep -q "scale_vulkan"; then
+        pass "ffmpeg scale_vulkan filter registered"
+      else
+        fail "ffmpeg scale_vulkan filter NOT registered (glslangValidator may have been missing at build time)"
+      fi
     fi
     rm -rf "${tmpdir}"
   fi

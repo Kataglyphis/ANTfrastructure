@@ -540,8 +540,9 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `check-llvm-codegen-aarch64` 4197 passed / 0 failed. **The `.td` route does not work** — the
   default case tests `if (Desc.getSize())`, so a declared `Size = 0` is indistinguishable from
   "unset" and still yields 4; it must be a C++ early return on `isSEHInstruction`. Full PR handover,
-  including the two build-environment traps that each cost a run:
-  [`out/upstream-llvm-aarch64-seh-instsize.md`](../out/upstream-llvm-aarch64-seh-instsize.md).
+  including the two build-environment traps that each cost a run
+  (the full PR handover notes live in the local `out/upstream-llvm-aarch64-seh-instsize.md`,
+  not committed — see the PR descriptions on llvm#219275 and llvm#219276).
   **It does not retire `+force-32bit-jump-tables`**: removing an over-count moves the estimate
   toward the true value but never below it.
 

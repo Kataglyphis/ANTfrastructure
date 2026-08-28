@@ -264,3 +264,315 @@ compose up + WEBUI_SECRET_KEY rotation (user-side).
   test now pins the new contract and caught an unbound-variable crash in the
   first version of the fix.
 
+## Closed 2026-08-28 — SHIPPED record, consumed phase plan, and verdicts
+
+Moved out of `refactoring-backlog.md` so that file shows only OPEN work. The
+2026-08-27 ship and its post-ship audit, the consumed CLOSURE WINDOW 3 phase
+plan, the ALREADY-MAXIMAL anti-re-sweep block, the "already landed / watch"
+items, the declined/disproven verdicts, and the consumed B3-PLAN reference.
+
+### SHIPPED 2026-08-27 — and the audit that followed it
+
+`:latest-cross` = index `a26bf2f4dbc8`, children amd64 `a0d1a144` / arm64
+`2d354459` / riscv64 `7e0ed041`, run id `20260827-073226-d491cb10`. Freshness
+VERIFIED against the registry: every index child matches its per-arch tag and
+all three share this run's id.
+
+The ship itself needed two rescues. The chain died after 5.5 hours on a QEMU
+binfmt registration that the 2026-08-26 daemon restart had silently taken with
+it — the guard for exactly that existed but sat AFTER the builds it protects.
+Resumed with `--only runtime`, it then died again on an ARCH-PARITY arm that
+correctly reported the IREE compiler wheel the same day's IREE fix had removed.
+
+Then two audits read the result rather than the code, and between them found
+24 defects — of which 22 were fixed, one refuted, and one retracted as my own
+measurement error. The ones that had SHIPPED: Dockerfile.package expanded two
+prefixes to empty inside their own ENV, so PATH carried `/bin` twice and
+GST_PLUGIN_PATH pointed at `/lib/gstreamer-1.0`; the Android ONNX Runtime
+carried Microsoft's 1DS telemetry because only the native lane passed
+`--no_telemetry`; amd64 alone shipped a setuid-root gst-ptp-helper; Node.js was
+an alpha its own npm refuses; and TVM had been missing from both cross arches
+behind four stacked causes.
+
+Three gates were reporting success over things they never tested, and are
+fixed: `check_ffmpeg` fell back to an absolute path exactly when PATH
+reachability broke, the app-wheel smoke printed one identical PASS over 15/15,
+14/15 and 12/15, and the shipped-content byte gate hid behind a boot smoke so
+riscv64's wrapper reached the index unchecked.
+
+### The previous ship, for the record
+
+**WAVE-6 SHIPPED 2026-08-24** (the gate-truth build — three blind gates now actually work)
+
+`:latest-cross` = amd64 `a25a38c5` / arm64 `bd9953a9` / riscv64 `d3710282`.
+Run id `20260823-223111-d0336283` — and for the FIRST time that is a
+verifiable statement: all three wrappers carry it as an image LABEL, read back
+from the REGISTRY (not the local store). cv2 GStreamer:YES + FFMPEG:YES holds
+on the new bytes. Runtime smokes 0 failures x3.
+
+**What this build proved** (each had been silently broken for months):
+  - **XC3** — provenance is written and READ. `per-arch wrapper generation check:
+  OK` with NO "carry no run-id" warning (it was 3/3 in every prior run), and
+  `[ancestry] android→wrapper (<arch>): OK` with real digests on all three.
+  The label also says *android*, confirming the XC2-STAGE fix: the writer
+  stamped android while the check resolved "package", which would have thrown a
+  false STALE ANCESTOR on every run the moment provenance returned.
+  - **AP4** — `AP4 strip verified: libavcodec.so.63.1.100 has no .symtab`.
+  Every previous ship printed `check skipped (could not extract ...)` while the
+  wrapper gate said PASS: `tar --occurrence=1` exits early, SIGPIPEs the
+  exporter, and pipefail turned that into a failure.
+  - **SMK1** — the cv2 media assert is hard on all three arches.
+  - **CERB-CACHE** — validated the hard way. wave6a lost all three lanes to five
+  freedesktop 503/404 flaps, but the cerbero state survived (15.7 GB / 14.5 GB
+  on the cachemounts); wave6b restarted WARM (`HIT: resuming ... 13G / 20G`)
+  and completed with ZERO fetch failures. Before this, wave5k and 5l discarded
+  the full ~50-minute bootstrap on every flap.
+
+**Wave-5 (2026-08-23, superseded):** amd64 `54ab7f01` / arm64 `7bb70a4b` /
+riscv64 `fb701200` — first ship with cv2 GStreamer+FFMPEG on 3/3 arches, and
+the ship whose post-audit found the three gates above.
+
+### CLOSURE WINDOW 3 — consumed phase plan (declared 2026-08-24, pre-build wave DONE 2026-08-27)
+
+The operator committed to a fresh build, so the versions.env lock was OPEN
+and build-validated items were IN SCOPE. The pre-build wave is worked through
+and the validating rebuild ran. 27 unit suites / 677 assertions green,
+shellcheck clean over 263 files plus the new SC2215 pass. Preflight 31/32:
+the one red check is `docs cross-references`, all three findings Windows-lane
+(they belong to the separate Windows backlog). The backlog went 46 → 30 in
+the pre-build wave, then back to 39 when the 2026-08-27/28 run was mined (§ G,
+§ F LOG19, § B LOG17/LOG18).
+
+Two fixes in this wave are proven by EXECUTION, not inspection: TVM now
+compiles and stages its arm64 wheels (four stacked causes, each only visible
+once the one before it was fixed), and `PartOf=containerd.service` was tested
+against a real `systemctl --user restart containerd`.
+
+CORRECTED 2026-08-28: that PartOf claim was HALF the fix and the sentence
+"now self-heals" was wrong. Both reboots that night lost the emulators anyway.
+PartOf did fire — the unit re-ran in the same second — but it then FAILED with
+`cat: /run/user/1000/containerd-rootless/child_pid: No such file`. `After=`
+orders the UNIT start only; containerd-rootless still has to unshare and write
+child_pid afterwards, so on a cold boot the binfmt unit wins the race. A manual
+re-run always succeeds because containerd is warm by then, which is exactly why
+the restart test looked green while every boot stayed broken. Fixed for real in
+afefdfc (`wait_for_namespace()` polls for the pid file and a joinable namespace,
+plus `Restart=on-failure`). LESSON: a unit that is `active` proves nothing —
+prove emulation with a real foreign-arch run.
+
+What the rebuild still has to prove is everything static analysis cannot: today
+showed three separate times that a defect only becomes visible after the one in
+front of it is gone.
+
+### What the 2026-08-28 maximality audit found ALREADY MAXIMAL (anti-re-sweep)
+
+- **FFmpeg is feature-identical across all three arches.** The `External
+  libraries` block is byte-identical on amd64/arm64/riscv64 (45 libraries), and
+  so is the hwaccel block. A riscv64 cross build that loses ZERO codecs against
+  amd64 is rare — do not "improve" this.
+- **Runtime SIMD dispatch is maximal and justifies the conservative `-march`
+  baselines**: FFmpeg reaches AVX-512ICL (amd64), SVE/SVE2/SME/SME2 (arm64) and
+  `RISC-V Vector enabled yes` + CBO prefetch (riscv64), each with runtime CPU
+  detection. OpenCV dispatches to AVX512_SKX / NEON_BF16.
+- **Declarative optimization is clean**: 41× `CMAKE_BUILD_TYPE=Release` and 0×
+  Debug/RelWithDebInfo across all three media logs; meson `Optimization: 3`,
+  `Debugging: false`; stripping centralized and proven on shipped bytes;
+  `--gc-sections --as-needed -z now`; amd64 CPython is PGO+LTO.
+- **GStreamer is the full monorepo on all three lanes**, Rust plugins included
+  (riscv64 builds them in 3m44s), 220/229/222 plugins, amd64−arm64 difference
+  empty.
+- **The smokes that DO run are functional, not cosmetic**, and run per-arch under
+  QEMU on the real shipped bytes: a real `InferenceSession` on a generated ONNX
+  protobuf, `iree-compile` + `iree-run-module` with result checking, cv2
+  GStreamer appsink with frame shape, torch forward+backward, torchvision
+  `ops.nms` through the `._C` extension, an 8-case compiler battery.
+- **The anti-fake-green discipline is first-rate**: scan-done stamps, EP
+  sentinels, CMDOK markers, SIGPIPE fixes, and parity tables that fail when a
+  documented exception STOPS applying.
+
+### Already landed, validated by the rebuild alone (watch, no work)
+
+- **BKD1 — buildkitd session rot: RESEARCHED, no upstream fix exists** [M·★,
+  downgraded from ★★ 2026-08-24; host figures refreshed 2026-08-26] host runs
+  buildkit **v0.31.2** (nerdctl 2.3.5, containerd 2.3.3) since the 2026-08-26
+  upgrade. The session rot is UNAFFECTED by that upgrade. The symptom IS a known
+  open upstream issue — moby/buildkit#6422 ("no active session … context deadline
+  exceeded", open, no linked PR) and #5624 (same class during cache-export
+  registry auth) — and NO release through v0.32.2 (2026-08-04) mentions a
+  session/keepalive fix. VERDICT: keep the restart playbook (stop chain → restart
+  buildkit.service → relaunch; cachemounts survive). The concurrency rider is
+  now PARTLY taken: #6916 (daemon crash under concurrent builds) came with
+  v0.31.2; **#6955 (parallel-build cache miss) did not** — it needs v0.32.0,
+  which no nerdctl-full bundle ships. Do NOT chase it by installing buildkit
+  outside the bundle: the pieces are version-matched. Re-open when a
+  nerdctl-full carries 0.32.x.
+
+### Verdicts (anti-re-sweep records — do NOT re-audit without new evidence)
+
+- **S3 — per-stage registry cache refs: operator DECLINED 2026-08-24.** Design
+  stays at docs/build-cache-tiers.md (DESIGN ONLY banner); cost ~12-13 GB
+  registry upload per run was judged not worth it while prune-safe + local
+  caches hold. Re-open ONLY on new evidence (another cold-rebuild loss). v1
+  implementation history: reverted twice (fix7 gate token; inert-by-default
+  with no coverage) — read the doc before any retry.
+- **S5 — shared cargo cache ids: DECLINED, premise falsified 2026-08-26.** The
+  entry claimed "cargo cache ids arch-independent". They are not: the media lane
+  uses `id=cargo-registry-${TARGET_ARCH}` / `id=cargo-git-${TARGET_ARCH}`
+  (Dockerfile.media:857-858), i.e. already per-lane BY DESIGN since PAR2. The 3x
+  crate duplication is the accepted cost of lane isolation. Re-open only with
+  new evidence that cargo guards a shared store safely.
+- **PAR5 — a lone surviving lane stays throttled; the obvious fix is
+  DISPROVEN** [S/M·★★, tried and REVERTED 2026-08-23] symptom unchanged: a
+  single remaining wheelhouse crawls at 1-2 jobs for HOURS while the host idles
+  (wave4f arm64, wave5h riscv64). DO NOT re-attempt the flag-dir live-lane-count
+  approach that this entry used to propose — it was built, reviewed and
+  reverted: BUILD_MEM_DIVISOR is a build-arg consumed as `ENV BUILD_MEM_DIVISOR`
+  when the container build STARTS, so it cannot change while that build runs;
+  the clamp could not fire at all in the shipped topology (all lane markers
+  exist before any lane retires), and where it could fire it made the divisor
+  depend on sibling timing and could drop the intra-step multiplier entirely
+  (6→1) — an overcommit in exactly the direction PAR4 exists to prevent. A
+  tripwire in test-stage-defs.sh now fails if flag-dir state is wired back into
+  the divisor. Achievable options only: PAR4-hard (a host-level memory governor:
+  systemd-run MemoryHigh per build, or a global compile-job server), or
+  re-sizing at container-build/STAGE boundaries. Full verdict in
+  docs/build-parallelism-memory-tuning.md.
+- **Nondeterministic file-picks (2026-08-22, PKGCFG-MIRROR post-mortem)**: any
+  `grep -rl … | head -1 / grep -m1` that CHOOSES a file to patch is
+  readdir-order dependent — it can pick a different file inside the container
+  than on the host and still echo success. The v1 pkg-config mirror override
+  did exactly that (patched a stray .patch file, cold bootstraps kept 404ing)
+  while the host reproduced "correct". Rule: patch the KNOWN path explicitly,
+  treat the grep as a supplement, and echo the RESULT (the patched line) as
+  proof, never the intent.
+- **CI sweep (2026-08-17)**: CI1-3 fixed same day (timeouts, ollama digest-pin,
+  env-var login); otherwise CLEAN.
+- **Idempotency / GST1 runs-twice class (2026-08-17)**: CLEAN — only
+  install-deps + configure-runtime run twice, both second-run-safe; this
+  section is the checklist for any NEW double-run path.
+- **Bump-tool (2026-08-19)**: BT1+BT2 fixed same day (spec_vulkan SHA,
+  artifact-gating, empty-download rejection).
+- **A1 allowlist (2026-08-18)**: 148/148 knobs have live readers.
+- **onnxruntime 1.28-vs-1.27 (2026-08-15)**: NO source dedupe to do — runtime
+  __version__ quirk, already asserted as a union in the smoke; residual folded
+  into C3.
+- **Version-ARG mirrors / dead stages / USER-ordering (2026-08-17 sweep)**:
+  zero drift, clean.
+- **Coverage map (2026-08-10, unchanged)**: chain swept end-to-end across six
+  rounds; thin spots = GPU lanes, Windows psm1 (sampled), lib/ beyond smoke,
+  benchmark-viewer. THE REMAINING DISCOVERY CHANNEL IS RUNS — the classes that
+  matter (cache-bust latents, foreign-arch paths, timing/OOM) only surface in
+  real rebuilds.
+
+### Reference (consumed)
+
+- **B3-PLAN**: CONSUMED by wave-4 (all listed bumps applied 2026-08-18, incl. the
+  F7-coverage PY_* set; TENSORFLOW_C landed at 2.18.1 — last version with a
+  published C tarball). Next refresh at the next window via
+  `bump_versions.py --check` (now artifact-aware).
+
+## Closed 2026-08-28 (code fixes) — Linux backlog maximality audit
+
+Moved out of `refactoring-backlog.md`. Each was found in the 2026-08-28
+maximality audit and fixed with code + assertions in the same session.
+
+- **LOG10 — riscv64 OpenCV RVV false comment** [CLOSED] Fixed the false comment
+  in `opencv/android/build-android.sh` that claimed "the Linux riscv64 OpenCV
+  keeps RVV under GCC" — the cross build detects no RVV (DETECT finds nothing in
+  a cross build). The actual RVV enablement decision remains open as a separate
+  item if needed.
+- **LOG11 — OpenCV TBB on amd64 only** [CLOSED] Moved `libtbb-dev` from
+  `install_deps_preamble` (host) to `target_packages` in
+  `03-media/build/opencv/install-deps.sh` so the cross lanes pull the
+  target-arch package. Added `Parallel framework: TBB` assertion to
+  `smoke-media.sh` after the OpenCV videoio roundtrip.
+- **LOG15 — android OpenCV BUILD_JAVA=ON produces no Java wrappers** [CLOSED]
+  Changed `BUILD_JAVA=ON` to `OFF` in `opencv/android/build-android.sh` (it
+  produced no wrappers anyway — ant was absent). Added `check_opencv()` to
+  `smoke-android.sh` asserting Java wrappers are absent.
+- **LOG16 — CMAKE_POLICY_VERSION_MINIMUM=3.5 as eight literals** [CLOSED] Added
+  `CMAKE_POLICY_VERSION_MINIMUM=3.5` to `versions.env`. Replaced all 8 bare
+  literals across 6 files with `${CMAKE_POLICY_VERSION_MINIMUM:-3.5}` (or
+  `:=3.5` in android scripts to avoid the version-forwarding test tripwire).
+- **LOG20 — FFmpeg ships no drawtext filter** [CLOSED] Added `libharfbuzz-dev`
+  and `libfontconfig1-dev` to ffmpeg `install-deps.sh`; added
+  `--enable-libharfbuzz`/`--enable-libfontconfig` probes to `build-ffmpeg.sh`.
+  Added `drawtext` filter registration assertion to `smoke-media.sh`.
+- **LOG22 — FFmpeg enables Vulkan but ships zero *_vulkan filters** [CLOSED]
+  Added `glslang-tools` to `install_deps_preamble` in `install-deps.sh`
+  (provides `glslangValidator` on PATH for SPIR-V shader compilation). Added
+  `scale_vulkan` filter registration assertion to `smoke-media.sh`.
+- **LOG23 — shipped Pythons have no readline/curses** [CLOSED] Added
+  `libreadline-dev` (required) and `libncurses-dev` (optional) to
+  `_CPYTHON_EXT_DEV_PKG_TABLE` in `cpython-dev-packages.sh`.
+- **LOG25 — LiteRT GPU/NPU hard-off with no rationale** [CLOSED] Added
+  rationale comment to `build-litert.sh` explaining why GPU and NPU delegates
+  are OFF (no cross-buildable GPU delegate; no NPU SDK staged).
+- **LOG29 — wrapper-smoke stage never built** [CLOSED] Added
+  `_runtime_run_package_smoke()` to `runtime-build-fns.sh` that builds the
+  `--target wrapper-smoke` stage between package and wrapper.
+  `WRAPPER_SMOKE_GATE=0` to skip. Added unit test
+  `test-runtime-smoke-gate.sh` (8 assertions).
+- **LOG30 — no OPTIMIZATION property assertion** [CLOSED] Added
+  `_smoke_optimization_level()` to `validate-compilers.sh` checking CPython
+  `sysconfig.get_config_var('OPT')` for `-O0`/missing `-O`. Called from
+  `validate_smoke()`.
+- **LOG36 — libtvm*.so dropped at media-to-package COPY** [CLOSED] Added
+  `libtvm.so*`, `libtvm_runtime.so*`, `libtvm_compiler.so*` to the
+  copy_glob allowlist in `copy-media-payloads.sh`. Added the same entries to
+  `so-package-map.txt` as `source-built`. Added TVM lib verification to
+  `verify-media-artifacts.sh` media-inputs stage.
+- **LOG37 — docs say strict smoke set closed the orphaned-smoke class; it lives
+  in a stage nothing builds** [CLOSED] Updated `cross-build-verification.md` to
+  state wrapper-smoke runs as a separate `--target wrapper-smoke` build.
+- **LOG38 — AGENTS.md PartOf binfmt claim** [CLOSED] Corrected the PartOf
+  binfmt claim in AGENTS.md to mention `wait_for_namespace()` +
+  `Restart=on-failure`.
+- **LOG39 — NVIDIA/AMD build recipes broken** [CLOSED] Fixed all NVIDIA+AMD
+  build recipes in `docs/linux-accelerator-images.md` (`:sdk` to
+  `:cross-sdk-amd64`, `--output type=image,name=...,push=true` to
+  `-t ... --push`). Removed `:latest` row from `docs/overview.md`.
+- **LOG40 — license/SBOM docs drifted from generator** [CLOSED] Verified
+  green — no drift found in version-snapshot or SBOM gates.
+- **LOG41 — :latest deleted from registry, docs still reference it** [CLOSED]
+  Removed `:latest` row from `docs/overview.md`, fixed `:latest` to
+  `:latest-cross` in `docs/linux-cross-builds.md`.
+
+## Closed 2026-08-28 (host-only fixes) — backlog items F1
+
+Moved out of `refactoring-backlog.md`. These three touched only host-only scripts
+(not COPY'd or bind-mounted into any Dockerfile), so they could be fixed outside
+a closure window. Each was fixed with code + verified via preflight/tests.
+
+- **LOG33 — `verify-shipped-wrapper.sh` had only two hard assertions** [CLOSED]
+  Promoted check 3 (onnxruntime .so presence) from advisory to HARD — the image
+  is built around ORT, so its absence is always a defect. Promoted check 5 (AP4
+  strip) from advisory to HARD when the sentinel lib was successfully extracted
+  — a surviving .symtab means the MEDIA_STRIP pass regressed. Kept advisory only
+  when extraction itself failed (cannot assert on missing evidence). x265 stays
+  advisory (static linking makes a missing shared lib non-proof). The script now
+  has four hard assertions (ffmpeg, libtensorflow toggle, onnxruntime, AP4 strip).
+- **LOG31 (preflight half) — two preflight checks were structurally incapable of
+  failing** [CLOSED] `lint-env-knobs.sh` was advisory by default (exits 0 unless
+  KNOB_GATE=1) and its preflight invocation omitted KNOB_GATE=1, so it always
+  passed; additionally the `if [ -f ]` guard had no `else`, so a missing file
+  silently dropped the check. Fixed: preflight now invokes it with
+  `KNOB_GATE=1` and has the same FAIL-not-skip `else` contract as the
+  version-snapshot check. Three previously-unowned operator knobs
+  (BUILD_ATTEST, CROSS_DISK_GUARD_GB, NO_CACHE_EXPORT) were added to
+  `lint-env-knobs.allow`. `verify-runtime-paths.sh` was "ADVISORY ONLY — never
+  fails" — it now fails hard on infrastructure errors (missing
+  runtime-paths.env, versions.env, or a tracked Dockerfile) while keeping the
+  heuristic path-mismatch WARN lines advisory (they produce false positives on a
+  healthy tree). The COPY'd half of LOG31 (validate-media-runtime.sh,
+  smoke-android.sh) remains OPEN — it needs a closure window.
+- **Section C — --no-push multi-stage handoff resolves parents against the
+  registry** [CLOSED] Added `_chain_no_push_guard()` to `build-cross-chain.sh`
+  that refuses `--no-push` for multi-stage runs (FROM_STAGE != TO_STAGE) on
+  this host: BuildKit's OCI worker resolves `FROM` against the registry, not
+  the local store, so downstream stages silently build on the last PUSHED
+  parent (two runs lost 2026-08-08). Single-stage (`--only`), dry runs, and the
+  `CROSS_NO_PUSH_FORCE=1` escape hatch are allowed. The guard runs before any
+  build or disk check. The full OCI-layout export + `--build-context` handoff
+  (which would make `--no-push` multi-stage actually safe) remains a future
+  improvement; the refusal prevents the silent data-loss path until then.

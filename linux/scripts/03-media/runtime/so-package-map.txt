@@ -183,3 +183,11 @@ libdc1394.so.26	libdc1394-26
 # apt-cache prefix guess in resolve_package_for_so (`^libonnxruntime[0-9]`)
 # ignores the requested version and would grab 1.23 for any future SONAME too.
 libonnxruntime.so.*	source-built
+
+# TVM is source-built into /usr/local/lib. Like ONNX Runtime, apt has no TVM
+# package, but the deny-list entry prevents validate-media-runtime.sh from
+# wasting time searching and prevents any future apt package from shadowing
+# the source build.
+libtvm.so.*	source-built
+libtvm_runtime.so.*	source-built
+libtvm_compiler.so.*	source-built

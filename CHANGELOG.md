@@ -5,6 +5,107 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — Host-only backlog fixes (LOG33, LOG31-preflight, Section C)
+
+Closed three backlog items that touched only host-only scripts (not COPY'd or
+bind-mounted into any Dockerfile), so no closure window was needed.
+
+- **LOG33** — `verify-shipped-wrapper.sh`: promoted onnxruntime .so presence
+  (check 3) from advisory to HARD — the image is built around ORT, so its
+  absence is always a defect. Promoted AP4 strip (check 5) from advisory to
+  HARD when the sentinel lib was successfully extracted — a surviving .symtab
+  means the MEDIA_STRIP pass regressed. Kept advisory only when extraction
+  failed. Four hard assertions now (was two).
+- **LOG31 (preflight half)** — `lint-env-knobs.sh` was advisory by default
+  (exits 0 unless KNOB_GATE=1) and preflight invoked it without KNOB_GATE=1;
+  also its `if [ -f ]` guard had no `else` (silent drop on missing file).
+  Fixed: preflight now passes `KNOB_GATE=1` and has the FAIL-not-skip `else`
+  contract. Three unowned operator knobs (BUILD_ATTEST, CROSS_DISK_GUARD_GB,
+  NO_CACHE_EXPORT) added to `lint-env-knobs.allow`. `verify-runtime-paths.sh`
+  was "ADVISORY ONLY — never fails" — now fails hard on infrastructure errors
+  (missing reference/Dockerfiles) while keeping heuristic path-mismatch WARNs
+  advisory. The COPY'd half (validate-media-runtime.sh, smoke-android.sh)
+  remains open — needs a closure window.
+- **Section C** — `build-cross-chain.sh`: added `_chain_no_push_guard()` that
+  refuses `--no-push` for multi-stage runs on this host (BuildKit's OCI worker
+  resolves FROM against the registry — two runs lost 2026-08-08). Single-stage,
+  dry runs, and `CROSS_NO_PUSH_FORCE=1` escape hatch allowed. Updated AGENTS.md
+  Quick Reference and usage text.
+
+Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (host-only fixes)".
+
+
+## 2026-08-28 — ROCm 10.0 migration (TheRock distribution)
+
+Migrated the AMD GPU lane from ROCm 7.2.4 to 10.0, moving from the legacy
+`repo.radeon.com` apt layout to AMD's new "TheRock" distribution at
+`stable.repo.amd.com`.
+
+**Changes:**
+- `versions.env`: `ROCM_VERSION` 7.2.4 → 10.0, `MIGRAPHX_VERSION` 2.14.0 → 2.17.0,
+  `ROCM_GPG_KEY_SHA256` updated for the new signing key.
+- `setup-rocm-repo.sh`: rewritten to deb822 `.sources` format with two repo
+  stanzas (core + migraphx) at `stable.repo.amd.com`, suite "stable", for
+  Ubuntu 26.04 (resolute). Package names migrated to `amdrocm-*` prefix.
+  apt pin Origin changed from `repo.radeon.com` to `AMD ROCm`.
+- `Dockerfile.amd`: ARG defaults updated; comment updated to reflect TheRock.
+- `bump_versions.py`: `rocm_apt_latest()` now parses the TheRock Packages.gz
+  instead of scraping the old directory listing.
+- Docs updated: AGENTS.md GPU constraints note, linux-accelerator-images.md.
+- No more noble (24.04) fallback — resolute is natively supported by TheRock.
+
+**Not yet verified with a real build** — the post-install assertions
+(`hipcc`, `migraphx.hpp`, library names in ldconfig) are carried over from
+the old script and may need adjustment if TheRock installs to different paths.
+
+
+## 2026-08-28 — Linux backlog maximality audit: 16 code fixes
+
+Closed 16 open Linux backlog items (LOG10,11,15,16,20,22,23,25,29,30,36,37,38,
+39,40,41) found in the 2026-08-28 maximality audit. Each fix includes the
+assertion or smoke check the backlog asked for. Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (code fixes)".
+
+**Build fixes (01-core / 03-media closure — needs a rebuild to land):**
+- LOG16: `CMAKE_POLICY_VERSION_MINIMUM` lifted to `versions.env`; 8 bare `=3.5`
+  literals across 6 files replaced with `${CMAKE_POLICY_VERSION_MINIMUM:-3.5}`
+  (or `:=3.5` in android scripts to avoid the version-forwarding tripwire).
+- LOG20: FFmpeg `drawtext` filter — added `libharfbuzz-dev` + `libfontconfig1-dev`
+  and `--enable-libharfbuzz`/`--enable-libfontconfig` probes.
+- LOG22: FFmpeg `*_vulkan` filters — added `glslang-tools` to `install_deps_preamble`
+  so `glslangValidator` is on PATH at configure time.
+- LOG23: CPython readline + curses — added `libreadline-dev` (required) and
+  `libncurses-dev` (optional) to `_CPYTHON_EXT_DEV_PKG_TABLE`.
+- LOG11: OpenCV TBB on all arches — moved `libtbb-dev` from host to
+  `target_packages` so cross lanes pull the target-arch package.
+- LOG15: android OpenCV `BUILD_JAVA=ON` → `OFF` (produced no Java wrappers anyway).
+- LOG10: Fixed false RVV comment in `opencv/android/build-android.sh`.
+- LOG25: Added rationale comment for LiteRT GPU/NPU delegates OFF.
+- LOG36: Added `libtvm*.so` to `copy-media-payloads.sh` allowlist +
+  `so-package-map.txt` + `verify-media-artifacts.sh` media-inputs stage.
+
+**Gate fixes (06-packaging / smoke):**
+- LOG29: `_runtime_run_package_smoke()` in `runtime-build-fns.sh` builds the
+  `--target wrapper-smoke` stage between package and wrapper (`WRAPPER_SMOKE_GATE=0`
+  to skip). Unit test `test-runtime-smoke-gate.sh` (8 assertions).
+- LOG30: `_smoke_optimization_level()` in `validate-compilers.sh` checks CPython
+  `sysconfig.get_config_var('OPT')` for `-O0`/missing `-O`.
+- LOG11/15/20/22: Added smoke assertions: TBB parallel framework, Java wrappers
+  absent, `drawtext` registered, `scale_vulkan` registered.
+
+**Doc fixes:**
+- LOG37: `cross-build-verification.md` — wrapper-smoke runs as a separate
+  `--target wrapper-smoke` build.
+- LOG38: AGENTS.md — corrected the `PartOf` binfmt claim.
+- LOG39: `linux-accelerator-images.md` — fixed all NVIDIA/AMD build recipes
+  (`:sdk` → `:cross-sdk-amd64`, `--output type=image` → `-t ... --push`).
+- LOG41: `overview.md` / `linux-cross-builds.md` — removed `:latest` references.
+- LOG40: Verified license/SBOM gates green — no drift.
+
+
 ## 2026-08-28 — correction: the `/Ob1` half was NOT llvm#202716, and the census says so
 
 **Correcting the entry below, not deleting it.** The 2026-08-27 pass credited the

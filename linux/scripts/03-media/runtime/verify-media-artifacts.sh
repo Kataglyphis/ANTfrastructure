@@ -350,6 +350,12 @@ case "${STAGE}" in
       verify_dir_not_empty "${OPENCV_OUTPUT_DIR:-/opt/opencv5}/lib64" "OpenCV lib64 in media-inputs" || true
     fi
     verify_file_exists "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg" "ffmpeg in media-inputs" || true
+    # LOG36: TVM libs are built in the media stage but were dropped at the
+    # media→package COPY. Verify they exist HERE (the media stage); the copy
+    # gap is fixed in copy-media-payloads.sh. Optional — amd64-only.
+    for _tvm_lib in /usr/local/lib/libtvm.so /usr/local/lib/libtvm_runtime.so; do
+      [ -e "${_tvm_lib}" ] && verify_file_exists "${_tvm_lib}" "TVM ${_tvm_lib##*/} in media-inputs" || true
+    done
     case "${TARGET_ARCH:-${TARGETARCH:-}}" in
       arm64|aarch64)
         verify_dir_not_empty "/opt/armnn/lib" "Arm NN in media-inputs" || true

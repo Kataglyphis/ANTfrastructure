@@ -48,6 +48,7 @@ android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 # loud failure instead of last release.
 LITERT_VERSION="${LITERT_VERSION:-${1:?LITERT_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${LITERT_ROOT_ANDROID:-/opt/android/litert}"
+: "${CMAKE_POLICY_VERSION_MINIMUM:=3.5}"
 
 apt-get update && apt-get install -y --no-install-recommends \
     g++ git cmake ninja-build python3 python3-pip
@@ -75,7 +76,7 @@ configure_litert_android() {
     -DANDROID_ABI="${ANDROID_ABI}" \
     -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM} \
     -DTFLITE_ENABLE_XNNPACK=ON \
     -DTFLITE_ENABLE_RUY=ON \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \

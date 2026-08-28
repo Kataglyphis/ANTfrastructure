@@ -13,8 +13,9 @@
 #   • rocBLAS, rocSPARSE, rocFFT, rocSOLVER (ROCm math libraries)
 #   • MIGraphX (AMD graph inference engine) — replaces ROCm EP with MIGraphX EP
 #
-# Packages from the AMD ROCm repository (repo.radeon.com) for Ubuntu 24.04 (noble),
-# compatible with Ubuntu 26.04 (resolute).  No native resolute MIGraphX packages exist yet.
+# Packages from the AMD ROCm TheRock repository (stable.repo.amd.com) for
+# Ubuntu 26.04 (resolute). MIGraphX is in a separate repo path under
+# /rocm/migraphx/packages/ubuntu2604/.
 #
 # Usage:
 #   docker buildx build \
@@ -28,8 +29,8 @@ FROM ${BASE_IMAGE}
 
 ARG TARGETARCH
 ARG LLVM_RELEASE=23.1.0
-ARG ROCM_VERSION=7.2.4
-ARG MIGRAPHX_VERSION=2.14.0
+ARG ROCM_VERSION=10.0
+ARG MIGRAPHX_VERSION=2.17.0
 ARG USE_FAST_UBUNTU_MIRROR=false
 ARG FAST_UBUNTU_MIRROR_URL=https://archive.ubuntu.com/ubuntu/
 ARG FAST_UBUNTU_PORTS_MIRROR_URL

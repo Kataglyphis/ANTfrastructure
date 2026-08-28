@@ -589,6 +589,36 @@ _smoke_optional_payloads() {
   done
 }
 
+# LOG30: assert the shipped CPython was compiled with optimization (-O3, not -O0).
+# The riscv64 CPython -O2 and torchvision -O0 defects survived every existing
+# gate because nothing checked the result. This reads sysconfig.get_config_var('OPT')
+# — CPython embeds its configure OPT string, so it survives stripping. It catches
+# a CPython built without -O3; extension-module -O0 (torchvision) is not visible
+# here (that is a producer-side fix, build-app-wheelhouse.sh:655-656).
+_smoke_optimization_level() {
+  local py_bin=""
+  for _p in /opt/venv/bin/python3 /opt/python/.venv/bin/python3 /usr/local/bin/python3; do
+    [ -x "${_p}" ] && py_bin="${_p}" && break
+  done
+  if [ -z "${py_bin}" ]; then
+    echo "SMOKE NOTE: no python3 found for -O assertion"
+    return 0
+  fi
+  local opt_str
+  opt_str="$("${py_bin}" -c 'import sysconfig; print(sysconfig.get_config_var("OPT") or "")' 2>/dev/null || true)"
+  if [ -z "${opt_str}" ]; then
+    echo "SMOKE NOTE: could not read CPython OPT from sysconfig"
+    return 0
+  fi
+  if echo "${opt_str}" | grep -q -- '-O0'; then
+    validate_fail "opt-level" "CPython OPT contains -O0 (unoptimized): ${opt_str}"
+  elif ! echo "${opt_str}" | grep -q -- '-O[1-3]'; then
+    validate_fail "opt-level" "CPython OPT has no -O flag at all: ${opt_str}"
+  else
+    echo "SMOKE OK: CPython OPT = ${opt_str}"
+  fi
+}
+
 validate_smoke() {
   local gcc_ver="${GCC_VERSION:-16.2.0}"
   local llvm_ver="${LLVM_RELEASE:-22.1.8}"
@@ -607,6 +637,7 @@ validate_smoke() {
   _smoke_clang_signatures
   _smoke_symlink_chains
   _smoke_optional_payloads
+  _smoke_optimization_level
 
   if [ "${_VALIDATE_ERRORS}" -gt 0 ]; then
     echo "SMOKE FAILED: ${_VALIDATE_ERRORS} check(s) failed" >&2

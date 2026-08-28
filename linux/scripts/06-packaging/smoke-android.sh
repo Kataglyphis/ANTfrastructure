@@ -158,6 +158,24 @@ check_android_cmake() {
   echo ""
 }
 
+check_opencv() {
+  echo "--- OpenCV (Android) ---"
+  local opencv_prefix="${OPENCV_OUTPUT_DIR:-/opt/opencv5}"
+  if [ -d "${opencv_prefix}" ]; then
+    pass "OpenCV found at ${opencv_prefix}"
+    # LOG15: BUILD_JAVA=OFF (build-android.sh:57). If Java wrappers ARE present,
+    # the build wasted time+space on JNI bindings no consumer uses.
+    if find "${opencv_prefix}" -name "libopencv_java*.so" -type f 2>/dev/null | grep -q .; then
+      fail "OpenCV Java wrappers FOUND (should be NO — build with -DBUILD_JAVA=OFF)"
+    else
+      pass "OpenCV Java wrappers: NO (as expected)"
+    fi
+  else
+    echo "  INFO: OpenCV not found in Android image (optional)"
+  fi
+  echo ""
+}
+
 main() {
   echo "=== Android SDK/NDK Smoke Test ==="
   echo ""
@@ -168,6 +186,7 @@ main() {
   check_ndk
   check_build_tools
   check_android_cmake
+  check_opencv
   smoke_summary
 }
 

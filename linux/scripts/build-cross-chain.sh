@@ -113,15 +113,12 @@ Options:
   --describe-chain          Print the full stage graph with tag names (no builds)
   --dry-run                 Print build commands without executing them
   --no-push                 Build every stage LOCALLY and skip all ghcr pushes.
-                            KNOWN LIMITATION (2026-08-08): on hosts where builds
-                            run on BuildKit's OCI worker (this host), the next
-                            stage's FROM does NOT see the locally built parent —
-                            the worker has its own store and resolves the mutable
-                            tag against the REGISTRY, silently building on the
-                            last PUSHED parent. Safe for --only/single-stage and
-                            script validation; NOT safe as a full-chain handoff
-                            until the oci-layout build-context fix lands (see
-                            docs/refactoring-backlog.md).
+                            Multi-stage --no-push runs are REFUSED on this host
+                            (BuildKit's OCI worker resolves FROM against the
+                            registry, not the local store — two runs lost
+                            2026-08-08). Safe for --only/single-stage and dry
+                            runs. Override: CROSS_NO_PUSH_FORCE=1 (accept the
+                            stale-parent risk).
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
                             Env PARALLEL_STAGES=all|csv (e.g. "sdk,android")
@@ -189,7 +186,7 @@ _chain_extra_arg() {
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
     --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1
-      warn "--no-push: on OCI-worker hosts the FROM handoff resolves against the REGISTRY, not the local store — downstream stages may build on the last PUSHED parent (see usage). Verified live 2026-08-08." ;;
+      warn "--no-push: multi-stage chain runs are refused (stale-parent risk); safe for --only/single-stage. Set CROSS_NO_PUSH_FORCE=1 to override." ;;
     --no-verify-ancestry) CROSS_VERIFY_ANCESTRY=0; _OARG_SHIFT=1 ;;
     *) return 1 ;;
   esac
@@ -262,6 +259,24 @@ _chain_assert_ancestry() {
   fi
   ancestry_assert_chain "${FROM_STAGE}" "${TARGET_ARCHES}" \
     || err "Stale ancestor — refusing to build on it (see the [ancestry] lines above). Restart from the oldest stage reported, or set CROSS_VERIFY_ANCESTRY=0 to accept it."
+}
+
+# --no-push multi-stage guard (Section C): on OCI-worker hosts (this host),
+# BuildKit's FROM resolves the mutable parent tag against the REGISTRY, not the
+# local store, so downstream stages silently build on the last PUSHED parent —
+# two runs lost historically (2026-08-08). Refuse the combination for multi-stage
+# runs; single-stage (--only / FROM==TO) and dry runs are safe. Escape hatch:
+# CROSS_NO_PUSH_FORCE=1 (accept the stale-parent risk).
+_chain_no_push_guard() {
+  [ "${CROSS_NO_PUSH:-0}" = "1" ] || return 0
+  is_dry_run && return 0
+  if [ "${FROM_STAGE_IDX}" -lt "${TO_STAGE_IDX}" ]; then
+    if [ "${CROSS_NO_PUSH_FORCE:-0}" = "1" ]; then
+      warn "--no-push multi-stage: CROSS_NO_PUSH_FORCE=1 — downstream stages may build on the last PUSHED parent (stale-ancestor risk accepted)."
+      return 0
+    fi
+    err "--no-push is unsafe for multi-stage chain runs on this host: BuildKit's OCI worker resolves FROM against the registry, not the local store, so downstream stages silently build on the last PUSHED parent (two runs lost 2026-08-08). Use --no-push only for single-stage validation (--only STAGE), or set CROSS_NO_PUSH_FORCE=1 to accept the risk."
+  fi
 }
 
 # O3: machine-readable chain progress — chain-status.json (atomic tmp+mv, best
@@ -633,6 +648,7 @@ main() {
   cross_run_id_ensure          # O2: one canonical CROSS_RUN_ID for all consumers
   _chain_resolve_final_image
   _chain_validate_stages       # may exit 0 for --describe-chain / --verify-chain
+  _chain_no_push_guard         # Section C: refuse --no-push multi-stage (stale parent)
   _chain_prepare_log_dir       # STALE-LOG: create/verify LOG_DIR before anyone writes
   _chain_archive_prev_logs     # O2: eager per-run log archiving (before any write)
   _chain_prune_archived_logs   # STALE-LOG: bound archive/ (CROSS_LOG_ARCHIVE_KEEP)

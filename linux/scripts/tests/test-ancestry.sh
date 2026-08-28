@@ -2,6 +2,10 @@
 # Tests for 01-core/ancestry.sh + 01-core/manifest-annotation.py — the
 # stale-ancestor guard that makes cross-INVOCATION staleness a hard failure
 # instead of a rule in a document.
+# shellcheck disable=SC2218
+# SC2218 (function defined later): all ancestry_* / registry_pin_ref functions
+# are sourced from ancestry.sh at line 25; shellcheck 0.9.0 does not track
+# sourced definitions and flags them as undefined-later.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
