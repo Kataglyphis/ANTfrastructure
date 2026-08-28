@@ -11,9 +11,9 @@ produce, and which gates keep it honest.
 > current HEAD. Nothing the lane produces has ever been *executed* — wheels
 > ship staged, not installed, and every verdict is a static check.
 >
-> **The amd64 lane has an open blocker**: TVM 0.26's compiler does not build
-> against LLVM 23.1.0 (8 API-break errors in `codegen_llvm.cc`). The arm64
-> lane is unaffected (runtime-only, no compiler). See
+> **The amd64 lane had a TVM-vs-LLVM-23.1.0 blocker, now fixed (needs rebuild).**
+> The Windows build used the tag (`v0.26.0`) without the LLVM 23 guards; it now
+> uses `TVM_COMMIT=994e0216` (upstream main, with the guards). See
 > `docs/windows-refactor-backlog.md` #134.
 >
 > Same media and inference surface: GStreamer with

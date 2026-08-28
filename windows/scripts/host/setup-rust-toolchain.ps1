@@ -275,13 +275,11 @@ $sccacheRev = [string]$env:SCCACHE_GIT_REV
 if ([string]::IsNullOrWhiteSpace($sccacheRev)) {
     throw 'SCCACHE_GIT_REV is not set (versions.env not loaded?) — refusing to build an unpinned sccache.'
 }
-Write-Host "Building sccache from source at $sccacheRev (CUDA 13.3 nvcc fix, mozilla/sccache#2722)..."
-# Local patches (#114): C:\temp\scripts\sccache-patches\*.patch are applied on
-# top of the pin before the build - currently the nvcc quote-protection fix
-# (mozilla/sccache#2811; without it the decomposition drops #ifdef-guarded
-# instantiations = silent CUDA miscompile). No patches present = stock
-# `cargo install --git` path, so the machinery auto-retires the day the PR
-# merges into a bumped SCCACHE_GIT_REV and the .patch files are deleted.
+Write-Host "Building sccache from source at $sccacheRev (both PRs #2811 + #2816 merged upstream; no local patches since 2026-08-28)..."
+# Local patch machinery (#114) auto-retired: the patch dir is no longer COPY'd
+# into the image. If patches are somehow present (manual mount), they are
+# applied on top of the pin before the build; otherwise the stock
+# `cargo install --git --rev` path is taken.
 $sccachePatches = @(Get-ChildItem 'C:\temp\scripts\sccache-patches\*.patch' -ErrorAction SilentlyContinue | Sort-Object Name)
 if ($sccachePatches.Count -eq 0) {
     Invoke-RustProcessWithHeartbeat -Description 'cargo-install-sccache' `

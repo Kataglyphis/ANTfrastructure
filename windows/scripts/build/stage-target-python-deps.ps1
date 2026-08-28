@@ -34,6 +34,10 @@ param(
     # Regex of distribution names allowed to be missing, each with a recorded
     # reason in docs/windows-builds.md (#126). Empty = nothing may be missing.
     [string]$KnownUnavailable = '',
+    # Floors: a drop in either count is a finding (requirements disappeared =
+    # greener gate hiding a defect). Set by the driver; 0 = no floor (legacy).
+    [int]$MinBundleWheels = 0,
+    [int]$MinFirstTouchRequirements = 0,
     [string]$ScriptDir = ''
 )
 
@@ -99,6 +103,16 @@ foreach ($w in $ourWheels) {
 }
 if (-not ($requirements | Where-Object { (Get-RequirementName $_) -eq 'numpy' })) { $requirements.Add('numpy') }   # cv2 imports numpy; the installed module carries no metadata
 Write-Host "Target python deps: $($ourWheels.Count) bundle wheel(s) declare $($requirements.Count) first-touch requirement(s): $($requirements -join ' | ')"
+
+# Floor check: a drop in wheel or requirement count means something
+# disappeared — a gate that gets greener as requirements vanish hides
+# defects (run-34/35 class: empty Requires-Dist from a CRLF regex bug).
+if ($MinBundleWheels -gt 0 -and $ourWheels.Count -lt $MinBundleWheels) {
+    throw "Target python deps: $($ourWheels.Count) bundle wheel(s) is below the floor of $MinBundleWheels — a wheel disappeared from the bundle (run-34/35 defect class)."
+}
+if ($MinFirstTouchRequirements -gt 0 -and $requirements.Count -lt $MinFirstTouchRequirements) {
+    throw "Target python deps: $($requirements.Count) first-touch requirement(s) is below the floor of $MinFirstTouchRequirements — requirements disappeared (empty Requires-Dist = greener gate hiding a defect, run-34/35 class)."
+}
 
 # 2. Download for the TARGET with the HOST pip -- but only what the bundle does not
 #    provide itself. onnxruntime-genai's METADATA says `onnxruntime-directml>=1.29`,

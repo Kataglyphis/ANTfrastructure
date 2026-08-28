@@ -215,6 +215,11 @@ if ($TargetArch -ne 'amd64') {
     # interpreter's -- a REPORTED allowlist skip, never silent out-of-scope.
     $archArgs['ARCH_GATE_HOST_TOOLS'] = 'protoc\.exe|flatc\.exe|\\_deps\\|\\cpython\\Lib\\site-packages\\'
 }
+# Floors on the target python deps gate: a drop in wheel or requirement count
+# is a finding (requirements disappeared = greener gate hiding a defect).
+# amd64: 6 bundle wheels, ~14 first-touch reqs. arm64: 6 bundle wheels, ~10.
+$archArgs['DEPS_MIN_BUNDLE_WHEELS'] = '6'
+$archArgs['DEPS_MIN_FIRST_TOUCH_REQS'] = if ($TargetArch -eq 'amd64') { '10' } else { '8' }
 
 # --- host preflight (docs/windows-host-setup.md § Phase D item 3): a disk shortage surfaces
 # as something unrelated (a missing ninja) and a Stevedore update reverts the
@@ -664,8 +669,8 @@ if ($Stages -contains 'final') {
         # payload ones itself. These are arm64's OWN floors -- 66 sits just under
         # its section-floor sum of 73 (name kept distinct for
         # Smoke.FloorCalibration.Tests.ps1); no gate here proves the payload RUNS.
-        $armMinPassed = 66
-        $armMaxSkipped = 25
+        $armMinPassed = 85
+        $armMaxSkipped = 20
         if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
         if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
         Write-Host ("[bk:smoke-gate] cross lane: HOST-toolchain sections run (floors: MIN_PASSED=$armMinPassed, " +

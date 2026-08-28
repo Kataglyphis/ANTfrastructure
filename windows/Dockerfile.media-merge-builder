@@ -300,7 +300,9 @@ RUN --mount=type=bind,source=windows/scripts/build/write-bundle-manifest.ps1,tar
 # like everything else.
 RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,target=C:\bkmnt\stage-target-python-deps.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\stage-target-python-deps.ps1' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\stage-target-python-deps.ps1' -ScriptDir 'C:\bkmnt' `
+        -MinBundleWheels ([int]$env:DEPS_MIN_BUNDLE_WHEELS) `
+        -MinFirstTouchRequirements ([int]$env:DEPS_MIN_FIRST_TOUCH_REQS)
 
 # ── Target-architecture gate ────────────────────────────────────────────────
 # Asserts that everything staged into C:\runtime was actually built for
@@ -342,6 +344,10 @@ RUN --mount=type=bind,source=windows/scripts/build/stage-target-python-deps.ps1,
 # already covered them.
 ARG ARCH_GATE_MIN_INSPECTED=10
 ARG ARCH_GATE_HOST_TOOLS="protoc\.exe|flatc\.exe|\\_deps\\|\\distlib\\[tw](32|64)[^\\]*\.exe|\\setuptools\\(cli|gui)[^\\]*\.exe"
+ARG DEPS_MIN_BUNDLE_WHEELS=0
+ARG DEPS_MIN_FIRST_TOUCH_REQS=0
+ENV DEPS_MIN_BUNDLE_WHEELS=${DEPS_MIN_BUNDLE_WHEELS} `
+    DEPS_MIN_FIRST_TOUCH_REQS=${DEPS_MIN_FIRST_TOUCH_REQS}
 # -ImportWalk (#127): every shipped PE + every wheel's native members must
 # resolve their imports against the bundle, the loader's API sets or this
 # container's System32 names -- CRT excluded from System32 on a cross lane.

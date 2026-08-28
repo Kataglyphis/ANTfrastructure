@@ -269,9 +269,11 @@ ENV LITERT_VERSION="${LITERT_VERSION}" `
 FROM common AS media-tvm-env
 
 ARG TVM_REF=v0.26.0
+ARG TVM_COMMIT=994e0216d734bf3e02806d8ebf383dafa80e41b9
 ARG IREE_VERSION=v3.11.0
 
 ENV TVM_REF="${TVM_REF}" `
+    TVM_COMMIT="${TVM_COMMIT}" `
     IREE_VERSION="${IREE_VERSION}"
 
 # #49 (2026-08-19): the BK compile stages NO LONGER descend from the shared
@@ -401,8 +403,8 @@ ARG OPENCV_LINK_CHAIN_FFMPEG="1"
 # DEFAULT ON since 2026-08-19 (#115 closed): OpenCV's CUDA compiles route
 # through the sccache launcher. The old blocker - every .cu rejected as
 # CannotCache(multiple input files) because the SEPARATED --diag-suppress
-# form was missing from sccache's nvcc table - is fixed by patch 0003 in
-# windows/upstream/sccache-nvcc-quote-fix (upstream PR pending). Canary bar
+# form was missing from sccache's nvcc table - is fixed upstream
+# (mozilla/sccache#2816, merged 2026-08-26; pin bumped to 8ab39266). Canary bar
 # passed 2026-08-19 evening: COLD run wrote all CUDA categories (155
 # cudafe++/nvcc, 620 cicc/ptxas) with a green link; the no-cache HIT run
 # came back at 100.00% across every CUDA category (99.97% overall) and cut

@@ -171,18 +171,20 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `apache_tvm-0.26.0-cp314-win_arm64.whl` + `apache_tvm_ffi-...-win_arm64.whl`. OpenCV 1870/1870
   with **zero #135 codegen errors**. This proves the module-closure unshare, the leaf modules,
   `tvmmods`, and the deleted classic stages are sound on the cross lane.
-  **AMD64 acceptance run (2026-08-28, run `bk-20260828-190313`): BLOCKED in TVM compiler.**
-  TVM 0.26's `codegen_llvm.cc` uses `llvm::Intrinsic::matchIntrinsicSignature` /
-  `MatchIntrinsicTypes_*` which were removed/renamed in LLVM 23.1.0 (the forced `LLVM_WINDOWS_VERSION`
-  bump from 22.1.8, #135). 8 compile errors in `codegen_llvm.cc` + 1 in `llvm_module.cc`. The arm64
-  lane is unaffected (runtime-only, no compiler). The media-core, FFmpeg, OpenCV, LiteRT, and
-  LiteRT-LM stages all passed on amd64. This is a TVM-vs-LLVM API break, not a #134 defect — but
-  it blocks the amd64 acceptance criterion (arch gate 1134/0, smoke 222/0/0) until either TVM
-  is patched for LLVM 23.1.0 or `LLVM_WINDOWS_VERSION` is reverted for the TVM compiler build.
-  **Three fixes landed during the acceptance run (not #134 defects, but preconditions):**
+  **AMD64 acceptance run (2026-08-28, run `bk-20260828-190313`): was BLOCKED in TVM compiler —
+  FIX LANDED, needs rebuild.** TVM 0.26's `codegen_llvm.cc` uses
+  `llvm::Intrinsic::matchIntrinsicSignature` / `MatchIntrinsicTypes_*` which were removed/renamed
+  in LLVM 23.1.0 (the forced `LLVM_WINDOWS_VERSION` bump from 22.1.8, #135). 8 compile errors in
+  `codegen_llvm.cc` + 1 in `llvm_module.cc`. The arm64 lane is unaffected (runtime-only, no
+  compiler). **Fix: `build-tvm-from-source.ps1` now uses `TVM_COMMIT` (pinned to upstream main
+  `994e0216`, which carries `TVM_LLVM_VERSION >= 230` guards) instead of `TVM_REF=v0.26.0` (the
+  tag without the guards). `Dockerfile.media-builder` ARG/ENV updated to forward `TVM_COMMIT`.**
+  Needs an amd64 rebuild to verify the fix.
+  **Four fixes landed during the acceptance run (not #134 defects, but preconditions):**
   1. `SCOOP_INSTALLER_SHA256` bumped 84242117→94f983b1 (scoop rotated `get.scoop.sh` again).
   2. arm64 OpenSSL URL bumped `Win64ARMOpenSSL-4_0_1`→`4_0_2` (slproweb removed 4_0_1, 404).
   3. `ARCH_GATE_MIN_INSPECTED` for arm64 corrected 840→580 (840 was set against the arch-gate
+  4. `TVM_COMMIT` now used by the Windows build instead of `TVM_REF` (the LLVM 23 API break fix).
   binary count, not the import-walk file count of 606).
   branches past media-core are the next gate; nothing downstream of it has been re-run yet.
   **The acceptance run, and why it is the proof rather than the suite.** Three runs off
@@ -432,50 +434,15 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   pruned to floor" inversion lesson:
   [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #136.
 
-- **#137 — sccache: the local patch and the source build — PROBE DONE 2026-08-28,
-  patch is droppable NOW, source build stays until a release.** S–M · ★★ (opened
-  2026-08-26, owner's news; probe 2026-08-28)
-  Both upstream PRs are MERGED. No release carries either yet. The 0003 patch is
-  redundant at the new rev and the build machinery auto-retires it.
-  **Facts (verified 2026-08-28 against the upstream API and `git apply --check`):**
-  - **PR #2811** (nvcc quote fix) — merged 2026-08-19 at `ffac4a5`, which is the
-    CURRENT pin. Already in the tree.
-  - **PR #2816** (`--diag-suppress` separated form = the 0003 patch) — merged
-    2026-08-26 at `8ab39266246b26d736bee44dfa313ab0d5fceb1d`, which is `main` HEAD.
-    `nvcc.rs:1422-1424` (double-dash) + `:1467-1469` (single-dash) carry the
-    entries; `:2166+` carries the regression test.
-  - The 0003 patch **fails `git apply --check` against `8ab39266`** ("patch does
-    not apply") — confirming the content is upstream and the patch is redundant.
-  - The current pin `ffac4a5` has **0** `diag-suppress` entries, so the patch is
-    still load-bearing at the CURRENT pin.
-  - **No release carries either fix**: `v0.17.0` (2026-07-29) predates both
-    merges. `SCCACHE_WINDOWS_VERSION` / `SCCACHE_LINUX_VERSION` (both 0.17.0)
-    cannot be used yet. The source build stays.
-  **What to do (one base-layer change, own window — do NOT fold into #134/#135):**
-  1. Bump `SCCACHE_GIT_REV` in `versions.env` from `ffac4a5…` to
-     `8ab39266246b26d736bee44dfa313ab0d5fceb1d` (main HEAD, carries both fixes).
-  2. DELETE `windows/upstream/sccache-nvcc-quote-fix/0003-nvcc-accept-the-diag-error-diag-suppress-diag-warn-f.patch`.
-  3. `setup-rust-toolchain.ps1:285-318` auto-retires: with no `.patch` files in
-     `C:\temp\scripts\sccache-patches\`, it takes the stock
-     `cargo install --git --rev` path (line 287-290) — no code change needed.
-     The `Dockerfile.base:210` COPY of the (now-empty) dir is harmless but
-     should be removed in the same change for cleanliness.
-  4. The comment block at `setup-rust-toolchain.ps1:279-284` and the
-     `Dockerfile.media-builder:405` canary bar reference the now-deleted patch —
-     update both.
-  5. `Dockerfile.probe:39` (the probe mount) and the probe scripts can stay;
-     they are diagnostics, not build inputs.
-  6. Re-derive `SCCACHE_GIT_REV`'s SHA from the fetch (the pin is a git rev, not
-     a tarball — no SHA256 to bump, but `verify-toolchain.ps1` asserts the
-     built binary's `--version` output; `sccache --version` still reports
-     `0.17.0` at `8ab39266` because main has not been version-bumped, so that
-     gate is unaffected).
-  **Not done here** — this is a base-layer change that re-keys every media stage.
-  The probe confirms it is safe to do; it does not do it. When done, retire this
-  entry and the whole `windows/upstream/sccache-nvcc-quote-fix/` directory like
-  0001/0002 retired before it. Re-open only if a future sccache release breaks
-  the `--locked` build at the new rev (check `Cargo.lock` at `8ab39266` — it
-  exists, so `--locked` resolves).
+- **#137 — sccache: DONE 2026-08-28 (pin bumped, 0003 deleted, patch dir removed).**
+  `SCCACHE_GIT_REV` bumped `ffac4a5…` to `8ab39266…` (main HEAD, carries both
+  PRs). The 0003 patch file and `windows/upstream/sccache-nvcc-quote-fix/`
+  deleted. `Dockerfile.base` COPY of the patch dir removed.
+  `setup-rust-toolchain.ps1` takes the stock `cargo install --git --rev` path
+  (no patches = no local-apply branch). Comment blocks updated in
+  `setup-rust-toolchain.ps1`, `Dockerfile.base`, `Dockerfile.media-builder`.
+  **This is a base-layer change that re-keys every media stage — needs a
+  rebuild to land.**
 
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it

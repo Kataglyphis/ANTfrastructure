@@ -205,9 +205,8 @@ COPY windows\scripts\host\setup-rust-toolchain.ps1 C:\temp\scripts\
 # Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
 # source build. Deliberately in the SAME layer group as the rust install - a
 # patch change must re-pay this layer, because it produces a different
-# sccache. An empty/absent patch dir = stock build (auto-retires when the
-# upstream PR merges and the .patch files are deleted).
-COPY windows\upstream\sccache-nvcc-quote-fix C:\temp\scripts\sccache-patches\
+# sccache built from source at SCCACHE_GIT_REV (both upstream PRs #2811 + #2816
+# merged; no local patches needed since 2026-08-28).
 RUN & 'C:\temp\scripts\setup-rust-toolchain.ps1'
 
 # versions.env bake, relocated BELOW the expensive layers (#50): a Linux-key

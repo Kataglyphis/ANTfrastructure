@@ -169,9 +169,9 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 >
 > **Re-measured 2026-08-28** — the current tree (module-closure refactor #134,
-> clang-cl 23.1.0, #135 workarounds) built green on arm64. The amd64 lane has an
-> open blocker: TVM 0.26's compiler does not build against LLVM 23.1.0. See
-> `docs/windows-refactor-backlog.md` #134.
+> clang-cl 23.1.0, #135 workarounds) built green on arm64. The amd64 lane had
+> a TVM-vs-LLVM-23.1.0 blocker, now fixed (uses `TVM_COMMIT` with the LLVM 23
+> guards; needs rebuild). See `docs/windows-refactor-backlog.md` #134.
 
 ## Engineering principles
 

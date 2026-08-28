@@ -5,7 +5,38 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
-## 2026-08-28 — #134 arm64 acceptance PASSED; amd64 blocked on TVM-vs-LLVM-23.1.0; three base fixes
+## 2026-08-28 — TVM-vs-LLVM-23.1.0 fix, sccache pin bump, deps gate floor, smoke floor tightened
+
+### TVM LLVM 23.1.0 API break — FIXED (code, not yet rebuilt)
+
+The Windows TVM build used `TVM_REF=v0.26.0` (the tag without LLVM 23 guards).
+The Linux lane already used `TVM_COMMIT=994e0216` (upstream main, with
+`TVM_LLVM_VERSION >= 230` guards). Fix: `build-tvm-from-source.ps1` now reads
+`TVM_COMMIT` first; `Dockerfile.media-builder` ARG/ENV updated to forward it.
+
+### sccache — #137 DONE
+
+`SCCACHE_GIT_REV` bumped `ffac4a5` to `8ab39266` (main HEAD, both PRs #2811 +
+#2816 merged). The 0003 patch file and `windows/upstream/sccache-nvcc-quote-fix/`
+deleted. `Dockerfile.base` COPY of the patch dir removed. Comments updated in
+`setup-rust-toolchain.ps1`, `Dockerfile.base`, `Dockerfile.media-builder`.
+
+### Target python deps gate — floor added (#134 free follow-up)
+
+`stage-target-python-deps.ps1` gains `-MinBundleWheels` and
+`-MinFirstTouchRequirements` parameters — a drop in wheel or requirement count
+is now a hard failure (the run-34/35 defect class: empty `Requires-Dist` from a
+CRLF regex bug made the gate greener, not red). Wired through
+`Dockerfile.media-merge-builder` ARGs and `build-buildkit.ps1` arch-args
+(amd64: 6 wheels / 10 reqs; arm64: 6 wheels / 8 reqs).
+
+### Arm64 smoke floor tightened (#134 free follow-up)
+
+`armMinPassed` 66 to 85, `armMaxSkipped` 25 to 20. The old floor tolerated
+losing 32% of assertions; three green runs (97 passed) justify tightening to
+~12% headroom.
+
+
 
 ### #134 acceptance run
 

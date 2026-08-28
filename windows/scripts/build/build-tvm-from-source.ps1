@@ -27,7 +27,12 @@ $tvmLeafModule = Join-Path $scriptAssetRoot 'modules\WindowsTvm.Common.psm1'
 if (-not (Test-Path $tvmLeafModule)) { throw "Required module not found: $tvmLeafModule -- the media-tvm RUN must mount the tvmmods stage (Dockerfile.media-builder)" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($tvmLeafModule)))) { Import-Module $tvmLeafModule }
 
-$TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.26.0'
+# TVM_COMMIT wins over TVM_REF: v0.26.0 does not compile against LLVM 23.1.0
+# (Intrinsic::matchIntrinsicSignature + MatchIntrinsicTypes_* removed, ORC JIT
+# lambda signature changed, SubtargetSubTypeKV::Key -> key()). Upstream main
+# carries TVM_LLVM_VERSION >= 230 guards for all of it; no release does.
+# See versions.env § TVM_COMMIT for the full rationale.
+$TvmVersion = Get-SourceBuildVersion -Value $TvmVersion -EnvironmentVariables @('TVM_COMMIT', 'TVM_REF', 'TVM_VERSION') -DefaultValue 'v0.26.0'
 
 Write-Host "=== TVM source build ($TvmVersion, Ninja+clang-cl) ==="
 
