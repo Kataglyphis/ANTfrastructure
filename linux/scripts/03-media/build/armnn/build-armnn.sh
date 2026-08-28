@@ -59,19 +59,17 @@ build_armnn() {
   # GCC 16.1.0's -Werror=array-bounds triggers false positives on std::mutex
   # placement in ACL/Arm NN buffers; suppress to avoid build failure.
   #
-  # LOG12: ArmNN ships REFERENCE-BACKEND-ONLY by design. No -DARMCOMPUTENEON=1
-  # or -DARMCOMPUTECL=1 is passed, so the CL/NEON/TOSA backends are disabled.
-  # Nothing in this repo consumes ArmNN (the ORT ArmNN EP is gone upstream,
-  # 30-build-native.sh:89-92). ACL is still rebuilt (~7 min) for potential
-  # future use; if a consumer never materialises, drop ACL_VERSION +
-  # ARMNN_VERSION and this build. The reference backend + headers are kept so
-  # a downstream consumer can at least link against libarmnn.so.
+  # LOG12 (2026-08-28): NEON backend ENABLED. CL stays OFF — no GPU device in
+  # the cross-build container, and OpenCL headers/libs are not staged for
+  # cross. If a consumer needs ArmNN CL, stage the OpenCL headers and pass
+  # -DARMCOMPUTECL=1. TOSA Reference stays OFF (upstream default).
   cmake "${ARMNN_SRC_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${ARMNN_INSTALL_DIR}" \
     -DARMCOMPUTE_ROOT="${ACL_SRC_DIR:-/tmp/acl-src}" \
     -DARMCOMPUTE_BUILD_DIR="${ACL_SRC_DIR:-/tmp/acl-src}/build" \
     -DARMCOMPUTE_LIBS="${ACL_INSTALL_DIR}/lib" \
+    -DARMCOMPUTENEON=1 \
     -DBUILD_UNIT_TESTS=0 \
     -DBUILD_TESTS=0 \
     -DBUILD_BENCHMARK_TESTS=0 \

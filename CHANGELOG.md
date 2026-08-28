@@ -5,6 +5,41 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — Closure window: enable + decision batch
+
+Closed six backlog items (LOG12, GCC_HOST_BOOTSTRAP, LOG2, two-caches-installed,
+GPU bare-sccache sites, TVM launcher) in one commit. All touch closure files
+(01-core / 02-toolchain / 03-media / 05-frameworks), so batching minimizes
+cache invalidation.
+
+- **LOG12** — `build-armnn.sh`: added `-DARMCOMPUTENEON=1` to enable the ACL
+  NEON (CPU SIMD) backend. CL stays OFF (no GPU in cross-build container).
+  A real build may surface an ACL cross-link break — the backlog item's
+  predicted "actual news".
+- **GCC_HOST_BOOTSTRAP** — `Dockerfile.toolchain`: changed default from 1 to 0.
+  The flag already existed (gcc.sh:171-200); `=0` skips the ~1231 s bootstrap
+  for validating rebuilds, `=1` only when the GCC pin moves. Decision owed
+  since 2026-08-10.
+- **LOG2** — The WASM asyncify/jspi build passes already existed
+  (`40-build-wasm.sh` passes 4+5, `ORT_WASM_WEBGPU_FLAVORS=true` by default).
+  Updated the stale versions.env comment that said "not built". Watch: a real
+  build must confirm the artifacts ship on all arches.
+- **GPU bare-sccache** — `build-opencv.sh`, `30-build-native-nvidia.sh`,
+  `30-build-native-amd.sh`: replaced bare `sccache` with
+  `compiler_cache_launcher()` resolution (sccache-class only — ccache can't
+  wrap nvcc/hipcc). The guarded sccache-launcher.sh is preferred when mounted.
+- **TVM launcher** — `tvm-config.sh`: added `CMAKE_C/CXX_COMPILER_LAUNCHER`
+  via `compiler_cache_launcher()` in `append_tvm_cmake_args()`. Overrides
+  TVM's internal `USE_CCACHE=AUTO`.
+- **Two-caches-installed** — `compiler-cache.sh`: documented the decision:
+  both ccache and sccache stay mounted. sccache is primary; ccache is the
+  documented fallback. The ~27 GB warm ccache is the intentional cost.
+
+Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (closure window — enable + decision batch)".
+
+
 ## 2026-08-28 — Closure window: 01-core/02-toolchain backlog batch
 
 Closed six backlog items (LOG8, LOG13, LOG14, LOG17, LOG18, LOG19) plus the

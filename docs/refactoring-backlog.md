@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (removed all CLOSED stubs — open items only below)
+Last groomed: 2026-08-28 (closed: LOG12, GCC_HOST_BOOTSTRAP, LOG2, two-caches-installed, GPU bare-sccache sites, TVM launcher; removed empty §G/§B)
 
 ## Standing rules (read first)
 
@@ -56,64 +56,27 @@ either created or exposed.
   pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
   cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
   regex failure that appears in no real chain log.
-- **The compiler-cache abstraction is split across seven places** [L·★★]
-  compiler-cache.sh:4-8 already warns "the 02-toolchain GCC/LLVM builds do NOT
-  source this module ... that misread hid a dead ccache mount for months". The
-  sccache switch had to touch build-gcc.sh, build-clang.sh, llvm-cross.sh,
-  compiler-cache.sh, cmake-cache-linker.sh, build-app-wheelhouse.sh and the
-  onnxruntime build lib SEPARATELY, and one of them (cmake-cache-linker.sh, a
-  SHARED helper) would have silently overridden the switch for every consumer.
-  Consolidate onto one resolver; the launcher helper is the seam to build on.
-  Three more call sites, from the 2026-08-27/28 run: build-ffmpeg.sh:381-390
-  and build-pyav.sh:169-176 hardcode `ccache ${CC}`, so sccache is never asked
-  (`media-amd64.log:111146 "Using ccache for faster compilation"`); three
-  places write bare `sccache` instead of the launcher and go live the moment
-  someone flips the switch (build-opencv.sh:591-593,
-  30-build-native-nvidia.sh:195-197, 30-build-native-amd.sh:65-67 — all under
-  `ENABLE_SCCACHE_CUDA`, default 0); and TVM's step exports NO launcher at all,
-  so upstream's `USE_CCACHE=AUTO` decides (`media-amd64.log:1670`). Also:
+- **The compiler-cache abstraction is split across seven places** [L·★★,
+  partially fixed 2026-08-28] compiler-cache.sh:4-8 already warns "the
+  02-toolchain GCC/LLVM builds do NOT source this module ... that misread hid a
+  dead ccache mount for months". The sccache switch had to touch build-gcc.sh,
+  build-clang.sh, llvm-cross.sh, compiler-cache.sh, cmake-cache-linker.sh,
+  build-app-wheelhouse.sh and the onnxruntime build lib SEPARATELY, and one of
+  them (cmake-cache-linker.sh, a SHARED helper) would have silently overridden
+  the switch for every consumer. Consolidate onto one resolver; the launcher
+  helper is the seam to build on.
+  Fixed in this batch: the three GPU bare-`sccache` sites (build-opencv.sh,
+  30-build-native-nvidia.sh, 30-build-native-amd.sh) now resolve through
+  `compiler_cache_launcher()` (sccache-class only — ccache can't wrap
+  nvcc/hipcc); TVM now sets `CMAKE_C/CXX_COMPILER_LAUNCHER` explicitly; ffmpeg
+  and pyav were fixed in the prior batch. The L·★★ consolidation itself
+  (merging all sites onto one resolver) remains open. Also:
   verify-critical-fixes.sh:220-237 checks compiler-cache.sh only — pull that
-  pattern repo-wide. (The earlier "TVM/XNNPACK/vvdec cost 1.9 h" theory is
-  refuted: they are cache hits, just in the wrong cache.)
-- **Two compiler caches are now installed and mounted** [M·★★] ccache stays as
-  the fallback for invocations sccache refuses, so every stage carries both
-  mounts (5/5, 1/1, 13/13, 3/3) and the ~27 GB warm ccache still occupies disk
-  while contributing nothing. DECIDE after the switch is proven: drop ccache and
-  delete the fallback branches, or keep it and document why. Do not leave it
-  ambiguous -- ambiguous is how the dead mount survived months last time.
-
-## G. Mined from the 2026-08-27/28 from-base run (media + android lanes)
-
-Post-ship audit of run `20260827-200128-a20ab922` (per-stage logs under
-`~/build-logs/archive/20260827-200128-a20ab922/`). All fix-now findings are
-closed; only the decision-level items remain.
-
-- **LOG12 — ArmNN ships the reference backend only; the whole ACL wiring is
-  inert** [M·★★, OPEN 2026-08-28, documented] `media-arm64.log:15264-15269 "CL
-  backend is disabled" / "NEON backend is disabled" / "TOSA Reference backend
-  is disabled"`, and the proof that ArmNN never read the ACL variables:
-  `:15283-15287 CMake Warning (unused-cli): ARMCOMPUTE_BUILD_DIR /
-  ARMCOMPUTE_LIBS / ARMCOMPUTE_ROOT`. build-armnn.sh:61-73 passes no
-  `-DARMCOMPUTENEON=1` / `-DARMCOMPUTECL=1`, yet ACL is rebuilt every run
-  (`#33 DONE 408.6s`). The build script now carries a comment documenting this
-  as reference-backend-only by design. A DECISION still owed: nothing in the
-  repo consumes ArmNN (the ORT EP is gone upstream, 30-build-native.sh:89-92).
-  Turn the backends on (a real ACL cross-link break may then surface — that
-  would be the actual news) or drop the ACL build plus the
-  `ARMNN_VERSION`/`ACL_VERSION` pins. As it stands it is 7 min/lane for an
-  artifact with no consumer.
-- **GCC_HOST_BOOTSTRAP — not new, but now quantified** [decision owed] NOT a
-  new item: an update to the "NOT TAKEN this round (offered, user deferred) —
-  still open" toolchain-speed line in
-  [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md).
-  The bootstrapped host GCC is the chain's largest uncacheable block: first
-  stats snapshot `compiler.log:30686-30692` = **6.63 % hit rate** (110 hits /
-  1548 misses), after all five GCCs `:84500-84509` = **88.56 %** — the miss
-  count never moves again after the native build, the four cross GCCs are 100 %
-  hits. `#10 DONE 2352.3s`, of which ~1231 s is stage2+stage3. The proposal
-  (`GCC_HOST_BOOTSTRAP=0` for validating rebuilds, `=1` only when the GCC pin
-  moves) has sat there since 2026-08-10; only the number is new. Decide it or
-  strike it there.
+  pattern repo-wide.
+- **Two compiler caches are now installed and mounted** [CLOSED 2026-08-28]
+  Decision: both stay. sccache is primary; ccache is the documented fallback
+  for invocations sccache refuses. The ~27 GB warm ccache is the cost of that
+  fallback — documented as intentional in compiler-cache.sh.
 
 ## A. Window inventory — needs WORK in the wave
 
@@ -127,9 +90,6 @@ closed; only the decision-level items remain.
   per-RUN mount audit + real toolchain rebuild.
 - **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
-- **LOG2 open half — build the wasm asyncify/jspi flavors** [S/M·★★] so
-  onnxruntime-web ships its webgpu JS backend (exclusion is documented in
-  versions.env since wave-3; this is the build half).
 - **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
   `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
   remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and

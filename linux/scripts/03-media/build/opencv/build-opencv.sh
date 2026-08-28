@@ -597,14 +597,20 @@ _opencv_cmake_cuda_opts() {
         _ocmcd_out+=("-DWITH_TENSORRT=ON")
         # Target GPU arch list from versions.env (CUDA_ARCHITECTURES).
         _ocmcd_out+=("-DCMAKE_CUDA_ARCHITECTURES=${CUDA_ARCHITECTURES:-80;86;89;90}")
-        # CUDA compile caching (sccache) — GATED like the Rust wiring. nvcc's
-        # device compiles are unreachable for ccache; sccache wraps nvcc
-        # first-class. With 4 CUDA archs every kernel compiles 4x — this is
-        # the single biggest cache lever of the GPU lane. Validate with
-        # ENABLE_SCCACHE_CUDA=1 on a controlled nvidia-lane build, then flip.
-        if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ] && command -v sccache >/dev/null 2>&1; then
-            echo "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER"
-            _ocmcd_out+=("-DCMAKE_CUDA_COMPILER_LAUNCHER=sccache")
+        # CUDA compile caching — sccache wraps nvcc first-class (ccache cannot).
+        # Resolve through compiler_cache_launcher() for the guarded launcher;
+        # only accept sccache-class launchers (ccache can't wrap nvcc).
+        if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
+            _cuda_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+            case "${_cuda_launcher}" in
+                *sccache*)
+                    echo "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER (${_cuda_launcher})"
+                    _ocmcd_out+=("-DCMAKE_CUDA_COMPILER_LAUNCHER=${_cuda_launcher}")
+                    ;;
+                *)
+                    echo "WARN: sccache unavailable for CUDA caching — building uncached"
+                    ;;
+            esac
         fi
 
         # Explicitly provide the CUDA library stub so we can build without a GPU present

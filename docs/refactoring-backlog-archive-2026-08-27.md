@@ -686,3 +686,44 @@ item (see backlog).
   instead of resolving through `compiler_cache_launcher()`. Replaced with the
   helper so sccache is actually asked (was always ccache —
   `media-amd64.log:111146 "Using ccache for faster compilation"`).
+
+## Closed 2026-08-28 (closure window — enable + decision batch)
+
+All edits batched into ONE commit to minimize cache invalidation.
+
+- **LOG12 — ArmNN NEON backend enabled** [CLOSED] `build-armnn.sh`: added
+  `-DARMCOMPUTENEON=1` to the cmake args so ArmNN builds with the ACL NEON
+  (CPU SIMD) backend. CL stays OFF (no GPU device in the cross-build
+  container; OpenCL headers not staged for cross). TOSA Reference stays OFF
+  (upstream default). A real build may surface an ACL cross-link break — that
+  would be the actual news the backlog item predicted.
+- **GCC_HOST_BOOTSTRAP — default changed to 0** [CLOSED] `Dockerfile.toolchain`:
+  changed `ARG GCC_HOST_BOOTSTRAP=1` to `=0`. The flag already existed and
+  worked (gcc.sh:171-200 passes `--disable-bootstrap` when 0). The decision:
+  `=0` for validating rebuilds (saves ~1231 s of stage2+stage3 bootstrap);
+  `=1` only when the GCC pin moves (the bootstrap self-check catches
+  miscompiles). The proposal sat since 2026-08-10; the stats (6.63% hit rate
+  on the bootstrap, 88.56% after all 5 GCCs) quantified the cost.
+- **LOG2 — wasm asyncify/jspi flavors built** [CLOSED] The build passes
+  already existed: `40-build-wasm.sh` has Pass 4 (asyncify) and Pass 5 (JSPI),
+  gated by `ORT_WASM_WEBGPU_FLAVORS=true` (default ON in lib/common.sh).
+  `50-build-js.sh` emits the ort.webgpu*/ort.jspi* JS bundles when the WASM
+  artifacts are present. The versions.env comment was stale (said "not built"
+  when the code builds them). Updated the comment. Watch: a real build must
+  confirm the artifacts ship on all arches.
+- **GPU bare-sccache sites resolved through launcher** [CLOSED] The three
+  CUDA/HIP sites that wrote bare `sccache` (build-opencv.sh,
+  30-build-native-nvidia.sh, 30-build-native-amd.sh — all under
+  `ENABLE_SCCACHE_CUDA`, default 0) now resolve through
+  `compiler_cache_launcher()`. Only sccache-class launchers are accepted
+  (ccache can't wrap nvcc/hipcc); the guarded sccache-launcher.sh is preferred
+  when mounted, bare sccache as fallback.
+- **TVM compiler launcher added** [CLOSED] `tvm-config.sh`: added
+  `CMAKE_C_COMPILER_LAUNCHER` and `CMAKE_CXX_COMPILER_LAUNCHER` via
+  `compiler_cache_launcher()` in `append_tvm_cmake_args()`. Overrides TVM's
+  internal `USE_CCACHE=AUTO` so the decision goes through the standard
+  resolver (sccache first, ccache fallback, guarded launcher when mounted).
+- **Two-caches-installed decision** [CLOSED] Documented in compiler-cache.sh:
+  both ccache and sccache stay mounted. sccache is primary; ccache is the
+  documented fallback for invocations sccache refuses. The ~27 GB warm ccache
+  is the intentional cost of that fallback.

@@ -2,6 +2,13 @@
 # compiler-cache.sh - ccache/sccache/lld wiring for the 03-media chain ONLY: the
 # 02-toolchain builds cache themselves (build-gcc.sh --ccache, build-clang.sh).
 # See docs/build-cache-tiers.md.
+#
+# Two-caches-installed decision (2026-08-28): both ccache and sccache stay
+# mounted. sccache is the primary; ccache is the fallback for invocations
+# sccache refuses (some compilers, some TryCompile shapes). The ~27 GB warm
+# ccache is the cost of that fallback — documented as intentional, not
+# ambiguous. compiler_cache_launcher() in common.sh resolves sccache first,
+# ccache second, uncached last.
 
 [ -n "${_COMPILER_CACHE_LOADED:-}" ] && return 0
 _COMPILER_CACHE_LOADED=1
