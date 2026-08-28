@@ -12,12 +12,17 @@
 [llvm#202716](https://github.com/llvm/llvm-project/pull/202716). That
 attribution is wrong.
 
-**The deciding artifact is the full-configure census (2026-08-27, 1,869
-objects).** It ran on pinned LLVM 23.1.0 plus exactly two local patches, both in
-`AArch64InstrInfo.cpp::getInstSizeInBytes`. That compiler contains **no**
-#202716 — the release branch forked before it and nobody backported it, which is
-the entry below's own finding. The two TUs that needed `/Ob1` compiled clean
-anyway. A fix that is absent cannot be the fix that worked.
+**The argument is the patch set, not the census.** The two local patches in
+`AArch64InstrInfo.cpp::getInstSizeInBytes` fix the lane on pinned LLVM 23.1.0,
+a compiler that contains **no** #202716 — the release branch forked before it
+and nobody backported it, which is the entry below's own finding. A fix that is
+absent cannot be the fix that worked.
+
+**The 1,869-object census is a claim, not an artifact.** It was run by hand
+inside the container and left no `bk-` log; nothing in `out/windows-build-logs/`
+mentions either knob or `llvm-patched`. Re-run it through the driver and keep
+the log before deleting either OpenCV workaround. Corrected here the same day
+it was written.
 
 **Both OpenCV workarounds trace to the SAME under-count.** `EH_LABEL` is a meta
 instruction and reports 0 bytes, but under async EH (`/EHa`, module flag

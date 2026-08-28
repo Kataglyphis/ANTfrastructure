@@ -43,6 +43,10 @@
 [CmdletBinding()]
 param(
     [switch]$Gpu,
+    # #135: build clang from source with the two AArch64 getInstSizeInBytes
+    # patches and put it first on PATH. Opt-in — it adds a RUN and an ENV to the
+    # toolchain image, which re-keys every media stage below it.
+    [switch]$PatchedLlvm,
     # The build host is always windows/amd64, so 'arm64' is a CROSS build whose
     # product is an artifact bundle, not a runnable image. base/sdk/toolchain are
     # shared host tooling; only media onward forks on the target arch.
@@ -475,10 +479,16 @@ if ($Stages -contains 'sdk') {
 if ($Stages -contains 'toolchain') {
     # No $sccache here: neither Dockerfile.toolchain-builder nor
     # build-toolchain-all.ps1 has sccache wiring, so it is an unused build-arg.
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Target 'built' -Tag (Get-BkTag 'windows-toolchain') -BuildArgs @{
+    $toolchainArgs = @{
         BASE_IMAGE     = Get-BkTag 'windows-sdk'
         PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
     }
+    $toolchainTarget = 'built'
+    if ($PatchedLlvm) {
+        $toolchainTarget = 'patched-llvm'
+        $toolchainArgs['BUILD_PATCHED_LLVM'] = '1'
+    }
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Target $toolchainTarget -Tag (Get-BkTag 'windows-toolchain') -BuildArgs $toolchainArgs
 }
 
 if ($Stages -contains 'media') {

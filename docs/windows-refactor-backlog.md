@@ -466,10 +466,13 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   **(a1) `tbnz` / `fixup value out of range` — SAME root cause as (a2), retired by the SAME patch.**
   `BranchRelaxation` consumes the same `getInstSizeInBytes`; `median_blur.dispatch.cpp` and
   `multiview_calibration.cpp` are also compiled `/EHa`; and the ~150-byte miss is 37 `EH_LABEL`
-  nops counted as zero. **Measured 2026-08-28, not inferred:** the `NINJA_KEEP_GOING=1` census
-  built all **1,869** objects green with BOTH `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and
-  `OPENCV_NO_OB1_WORKAROUND=1`, on pinned `llvmorg-23.1.0` plus only the two `getInstSizeInBytes`
-  patches (llvm#219275, llvm#219276).
+  nops counted as zero. **CLAIMED BUT UNLOGGED — do not treat this as measured.** A
+  `NINJA_KEEP_GOING=1` census is recorded as having built all **1,869** objects green with BOTH
+  `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and `OPENCV_NO_OB1_WORKAROUND=1`, on pinned `llvmorg-23.1.0`
+  plus only the two `getInstSizeInBytes` patches (llvm#219275, llvm#219276). It was run by hand
+  inside the container, so it left no `bk-` log: **no artifact in `out/windows-build-logs/`
+  mentions either knob or `llvm-patched`**, and the newest log there is `bk-20260827-083658`.
+  Re-run it through the driver and keep the log before deleting either workaround.
 
   **THIRD INSTANCE OF THE SAME INFERENCE ERROR — read this before the next attribution.** This
   block previously read "ROOT CAUSE FOUND, FIX EXISTS UPSTREAM:
@@ -488,6 +491,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `windows/Dockerfile.toolchain-builder` still carries `ARG BUILD_PATCHED_LLVM=0`, so a stock image
   ships unpatched clang-cl 23.1.0 and still needs both settings. Delete the flags from
   `build-opencv-from-source.ps1` in the SAME change that flips that default, never before.
+
+  **The stage is reachable since 2026-08-28: `build-buildkit.ps1 -PatchedLlvm`.** Until then it was
+  not — the driver always targeted `built` and `BUILD_PATCHED_LLVM` appeared in no `.ps1` at all,
+  so the plan above would have been a no-op found mid-build. Pinned by
+  `windows/scripts/tests/BuildKit.PatchedLlvm.Tests.ps1`. The switch is opt-in because the extra
+  RUN + `ENV PATH` re-key every media stage below the toolchain image.
 
   **(a2) Jump-table entry width — NOT fixed on `main`, and now narrowed to one thing.**
   `AArch64CompressJumpTables.cpp` is **byte-identical** between `llvmorg-23.1.0` and `main`; the

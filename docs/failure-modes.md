@@ -437,10 +437,10 @@ cannot reach its target (2).
 each wrong version was acted on.** 2026-08-27 it said "one signature at two sites" with a shared
 cause — refuted, and the investigation split. Later the same day it said the two were *unrelated*,
 that (2) was [llvm#202716](https://github.com/llvm/llvm-project/pull/202716) and that only a
-toolchain move to LLVM `main` would retire `/Ob1` — **also wrong**. The 2026-08-28 census settled
-it by measurement: 1,869 objects green with BOTH workarounds off, on pinned 23.1.0 plus only the
-two `getInstSizeInBytes` patches. That compiler contains no llvm#202716, so #202716 is a genuine
-upstream defect but not this lane's cause. Full evidence in
+toolchain move to LLVM `main` would retire `/Ob1` — **also wrong**. A census is recorded as settling it — 1,869 objects
+green with BOTH workarounds off, on pinned 23.1.0 plus only the two `getInstSizeInBytes` patches,
+a compiler containing no llvm#202716 — but it was run by hand and **left no log**, so it is a
+claim, not evidence. Re-run it through the driver before acting on it. Full evidence in
 [`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
 
 1. **Jump-table entry width** → `value evaluated as <N> is out of range`.
