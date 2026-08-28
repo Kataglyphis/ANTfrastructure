@@ -239,6 +239,18 @@ fix7_hardening_2026_07() {
     else
       fail "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback"
     fi
+    # Repo-wide: no .sh file under linux/scripts/ may hardcode a bare `sccache`
+    # launcher export (RUSTC_WRAPPER or CMAKE_*_COMPILER_LAUNCHER). The decision
+    # is always-sccache THROUGH compiler_cache_launcher() — the guarded launcher
+    # survives sccache's own fatal errors. The `${...:-sccache}` fallback form
+    # (gstreamer monorepo) is allowed; a bare `="sccache"` is not.
+    local _bad_sccache
+    _bad_sccache="$(grep -rlE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER|CMAKE_CUDA_COMPILER_LAUNCHER|CMAKE_HIP_COMPILER_LAUNCHER)="sccache"' "${REPO_ROOT}/linux/scripts/" --include='*.sh' 2>/dev/null | grep -v 'verify-critical-fixes.sh' | sort -u || true)"
+    if [ -n "${_bad_sccache}" ]; then
+      fail "bare sccache launcher export found (should use compiler_cache_launcher()): ${_bad_sccache}"
+    else
+      pass "no bare sccache launcher exports in linux/scripts/ (all go through compiler_cache_launcher)"
+    fi
   # Base: the only floating external base must be digest-pinned (multi-arch list).
   if grep -qE '^FROM ubuntu:\$\{UBUNTU_VERSION\}@\$\{UBUNTU_DIGEST\}' "${dbase}" 2>/dev/null && \
      grep -qE '^UBUNTU_DIGEST=sha256:' "${venv}" 2>/dev/null; then
