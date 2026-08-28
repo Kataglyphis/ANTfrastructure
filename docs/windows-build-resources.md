@@ -208,11 +208,9 @@ after a decision history worth keeping:
   symbol`) was root-caused to sccache's Windows dryrun quote-collapse — `\"`
   escapes flattened before tokenization packed ~30 `-D` pairs into one
   493-char token, so the cpp4 preprocess lost `USE_CUDA` & friends. Fixed
-  upstream (mozilla/sccache#2811, MERGED 2026-08-19 = `SCCACHE_GIT_REV`
-  ffac4a5).
-- The local series in `windows/upstream/sccache-nvcc-quote-fix/` now carries
-  only 0003 (`--diag-suppress` separated form, OpenCV #115 — its own PR is
-  drafted, owner submits), applied by the base rust layer (#114).
+  upstream (mozilla/sccache#2811, MERGED 2026-08-19). The `--diag-suppress`
+  separated form (mozilla/sccache#2816) also merged upstream 2026-08-26; the
+  pin is at `8ab39266` (main HEAD) and the local patch dir is retired.
 - The three-canary bar passed on the evening of 2026-08-18: fused_moe compile
   green, providers_cuda link green COLD (153 CUDA device writes), link green
   on the HIT run at **100.00% CUDA/PTX/CUBIN hit rate** (207/816 hits) —

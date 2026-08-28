@@ -695,12 +695,7 @@ windows/upstream/        prepared upstream submissions (not build inputs):
                          hcsshim-teardown-timeout/ = ISSUE.md + PR.md +
                          format-patch making the shim teardown timeouts
                          configurable, plus the deployed 45min local patch
-                         and the rebuild recipe (see its README.md);
-                         sccache-nvcc-quote-fix/ = the 0003 diag-family
-                         patch riding until mozilla/sccache#2816 merges
-                         (0001/0002 merged upstream in #2811; the dir is
-                         ALSO a build input — setup-rust-toolchain applies
-                         0003 on top of the pinned rev)
+                         and the rebuild recipe (see its README.md)
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
@@ -922,9 +917,10 @@ The rules an agent must never violate:
      `disk,webdav` only after re-verifying against a newer buildkit.
      **`SCCACHE_DIR` alone does nothing** without the chain variable.
    - **sccache is BUILT FROM SOURCE at `SCCACHE_GIT_REV`** — load-bearing, not a
-     preference. **Never bump that pin without checking the local patch series
-     (`windows/upstream/sccache-nvcc-quote-fix/`) still applies**; the rust layer
-     throws if it does not.
+     preference. Both upstream PRs (#2811 + #2816) merged; the pin is at `8ab39266`
+     (main HEAD, no local patches needed since 2026-08-28). **Never bump that pin
+     without verifying `cargo install --locked --git --rev` resolves** (check
+     `Cargo.lock` exists at the new rev).
    - **`CMAKE_CUDA_COMPILER_LAUNCHER` is ON BY DEFAULT since 2026-08-18.** Never
      flip that default off silently, and never export the launcher onto a new
      sccache without all THREE canaries — the miscompile it once caused is
