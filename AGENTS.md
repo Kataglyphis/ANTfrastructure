@@ -1107,6 +1107,24 @@ base ─┬─ onnxruntime ───────┐
   NO nerdctl-full ships yet, so this upgrade does not deliver it. A daemon
   restart is also when the staged `buildkitd.toml` gcpolicy takes effect — do
   both in the same no-build window.
+- **riscv64 host tooling: `linux/host-config/install-mistral-vibe-riscv64.sh`**
+  (2026-08-28). Installing a Python CLI on a NATIVE riscv64 box is not the
+  amd64 one-liner: PyPI ships no riscv64 wheels for this dependency set, so uv
+  builds `cryptography`/`pydantic-core` from source and needs
+  `build-essential pkg-config libffi-dev libssl-dev python<X.Y>-dev` plus a
+  Rust toolchain — none of which it installs, and none of which the error text
+  names. Two riscv64-specific facts the script encodes: `CARGO_BUILD_TARGET`
+  must be this host's native `riscv64a23-unknown-linux-gnu` (RVA23), NOT the
+  generic `riscv64gc-…`; and `textual-speedups` must be deleted from
+  `pyproject.toml` because its pinned `target-lexicon` predates that triple —
+  which is also why the install clones the repo instead of
+  `uv tool install mistral-vibe`. It is an optional TUI accelerator, so
+  dropping it costs nothing else. `uv cache clean <pkg>` between attempts: a
+  failed source build leaves a poisoned entry that makes the retry fail for a
+  cause you already fixed. The apt step needs INTERACTIVE sudo — an agent
+  cannot run it unattended. Procedure and the triage order for the NEXT
+  dependency that breaks this way:
+  [`docs/linux-host-setup.md` § D4](docs/linux-host-setup.md#d4-python-cli-tools-that-build-from-source-on-riscv64).
 - **ghcr REGISTRY hygiene: TWO tools over `ghcr-common.sh`** (2026-08-24,
   reorganised 2026-08-27). `ghcr-prune-package.sh` deletes UNTAGGED versions;
   `ghcr-delete-tags.sh` deletes NAMED tags from an explicit list and never
