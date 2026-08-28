@@ -74,7 +74,7 @@ if (Test-Path $versionsFile) {
         )) {
         if ($fileVersions.Contains($entry.Key)) {
             $val = $fileVersions[$entry.Key]
-            if ($entry.Fmt) { $val = $entry.Fmt -f $val }
+            if ($entry.Contains('Fmt')) { $val = $entry.Fmt -f $val }
             $defaultRefs[$entry.Ref] = $val
         }
     }
