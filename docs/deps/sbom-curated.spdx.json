@@ -483,7 +483,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-ROCm-812b560b",
       "name": "ROCm",
-      "versionInfo": "7.2.4",
+      "versionInfo": "10.0",
       "downloadLocation": "https://rocm.docs.amd.com/",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",
@@ -496,7 +496,7 @@
     {
       "SPDXID": "SPDXRef-Package-Linux-Images-MIGraphX-34c80120",
       "name": "MIGraphX",
-      "versionInfo": "2.14.0",
+      "versionInfo": "2.17.0",
       "downloadLocation": "https://github.com/ROCm/AMDMIGraphX",
       "filesAnalyzed": false,
       "supplier": "NOASSERTION",

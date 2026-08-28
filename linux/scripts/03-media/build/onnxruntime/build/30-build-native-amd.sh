@@ -59,12 +59,20 @@ ensure_onnx_output_tree "${NATIVE_GPU_OUTPUT_DIR}"
 
 BUILD_ARGS=()
 append_onnx_native_base_build_args BUILD_ARGS "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${JOBS}"
-# HIP compile caching (sccache) — same gated pattern as the CUDA/Rust wiring;
-# sccache wraps hipcc/clang-hip, ccache does not. Validate with
-# ENABLE_SCCACHE_CUDA=1 (one gate for both GPU compiler families), then flip.
-if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ] && command -v sccache >/dev/null 2>&1; then
-  info "sccache: wrapping HIP via CMAKE_HIP_COMPILER_LAUNCHER"
-  BUILD_ARGS+=(--cmake_extra_defines "CMAKE_HIP_COMPILER_LAUNCHER=sccache")
+# HIP compile caching — sccache wraps hipcc/clang-hip first-class (ccache cannot).
+# Resolve through compiler_cache_launcher() for the guarded launcher;
+# only accept sccache-class launchers (ccache can't wrap hipcc).
+if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
+  _gpu_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+  case "${_gpu_launcher}" in
+    *sccache*)
+      info "sccache: wrapping HIP via CMAKE_HIP_COMPILER_LAUNCHER (${_gpu_launcher})"
+      BUILD_ARGS+=(--cmake_extra_defines "CMAKE_HIP_COMPILER_LAUNCHER=${_gpu_launcher}")
+      ;;
+    *)
+      warn "sccache unavailable for HIP caching — building uncached"
+      ;;
+  esac
 fi
 
 BUILD_ARGS+=(

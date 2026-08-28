@@ -227,8 +227,11 @@ configure_litert() {
         "-DRUY_BUILD_TESTING=OFF"
         "-DCMAKE_INSTALL_PREFIX=${LITERT_PREFIX}"
         "-DCMAKE_INSTALL_LIBDIR=lib"
-        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
         "-DLITERT_AUTO_BUILD_TFLITE=ON"
+        # GPU off: no cross-buildable GPU delegate (EGL/CL deps need a target
+        # GPU driver at build time). NPU off: no NPU SDK staged for any arch.
+        # XNNPACK+RUY cover CPU inference on all three arches.
         "-DLITERT_ENABLE_GPU=OFF"
         "-DLITERT_ENABLE_NPU=OFF"
         "-DTFLITE_ENABLE_XNNPACK=ON"
@@ -295,7 +298,7 @@ _tflite_c_cmake_args() {
         "-DTFLITE_C_BUILD_SHARED_LIBS=ON"
         "-DTF_SOURCE_DIR=${LITERT_SRC}"
         "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
-        "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+        "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
     )
 
     # EIGEN-NET: the TO_URL knob used to live inline here; it now ships with its
@@ -439,7 +442,7 @@ _litert_wheel_prepare_env() {
 
     # Build base cmake flags early so EXTRA_CMAKE_FLAGS can be exported
     # before the patch is applied (the patch script reads this env var).
-    extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"
+    extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5} -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"
     # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
     # patched upstream build_pip_package_with_cmake.sh word-splits this string
     # (`cmake ${EXTRA_CMAKE_FLAGS:-}`), so the flags must stay space-free.
@@ -541,7 +544,7 @@ _litert_wheel_native_finalize() {
 }
 
 _litert_wheel_run() {
-    export CMAKE_POLICY_VERSION_MINIMUM=3.5
+    export CMAKE_POLICY_VERSION_MINIMUM="${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
 
     bash "${_fixed}" "${TENSORFLOW_TARGET}" > pip_build.log 2>&1 || {
         warn pip wheel failed for LiteRT source. Last 1000 lines of log:

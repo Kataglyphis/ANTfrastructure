@@ -187,6 +187,15 @@ _ffmpeg_probe_core_codecs() {
         _ffpcc_out+=("--enable-libfreetype")
     fi
 
+    # drawtext needs harfbuzz for text shaping + fontconfig for font discovery.
+    # LOG20: was missing on all arches, so the drawtext filter was absent.
+    if ffmpeg_probe_pkg_config_feature "libharfbuzz" "harfbuzz" "hb.h" "hb_buffer_create"; then
+        _ffpcc_out+=("--enable-libharfbuzz")
+    fi
+    if ffmpeg_probe_pkg_config_feature "libfontconfig" "fontconfig" "fontconfig/fontconfig.h" "FcInit"; then
+        _ffpcc_out+=("--enable-libfontconfig")
+    fi
+
     if ffmpeg_probe_libmp3lame; then
         _ffpcc_out+=("--enable-libmp3lame")
     fi
@@ -378,16 +387,23 @@ _ffmpeg_linker_ccache_args() {
         echo "Using lld linker for faster linking"
     fi
 
-    # Use ccache if available
-    if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
+    # Use the compiler cache launcher (sccache → ccache → none) instead of
+    # hardcoded ccache, so sccache is actually asked when it's the active cache.
+    local _ff_cc_launcher=""
+    if command -v compiler_cache_launcher >/dev/null 2>&1; then
+        _ff_cc_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+    elif command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
+        _ff_cc_launcher="ccache"
+    fi
+    if [ -n "${_ff_cc_launcher}" ]; then
         if cross_build_is_active; then
-            _fflc_out+=("--cc=ccache ${CC}")
-            _fflc_out+=("--cxx=ccache ${CXX}")
+            _fflc_out+=("--cc=${_ff_cc_launcher} ${CC}")
+            _fflc_out+=("--cxx=${_ff_cc_launcher} ${CXX}")
         else
-            _fflc_out+=("--cc=ccache gcc")
-            _fflc_out+=("--cxx=ccache g++")
+            _fflc_out+=("--cc=${_ff_cc_launcher} gcc")
+            _fflc_out+=("--cxx=${_ff_cc_launcher} g++")
         fi
-        echo "Using ccache for faster compilation"
+        echo "Using ${_ff_cc_launcher##*/} for faster compilation"
     elif cross_build_is_active; then
         _fflc_out+=("--cc=${CC}")
         _fflc_out+=("--cxx=${CXX}")

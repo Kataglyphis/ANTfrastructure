@@ -78,7 +78,10 @@ copy_media_payloads() {
     '/usr/local/lib/libLiteRt.so*' \
     '/usr/local/lib/libtensorflow-lite.so*' \
     '/usr/local/lib/libtensorflowlite_c.so*' \
-    '/usr/local/lib/libvvdec.so*'; do
+    '/usr/local/lib/libvvdec.so*' \
+    '/usr/local/lib/libtvm.so*' \
+    '/usr/local/lib/libtvm_runtime.so*' \
+    '/usr/local/lib/libtvm_compiler.so*'; do
     copy_glob "${pattern}"
   done
 

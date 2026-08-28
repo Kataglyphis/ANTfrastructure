@@ -734,7 +734,7 @@ if [ "${USE_CCACHE}" = "1" ]; then
   # Third site of this exact trap in one day; the other two were
   # compiler-cache.sh and build-app-wheelhouse.sh.
   case "${CC_LAUNCHER:-}" in
-    *sccache*) sccache --show-stats 2>/dev/null | head -12 || true ;;
+    *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true ;;
     *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
   esac
 fi

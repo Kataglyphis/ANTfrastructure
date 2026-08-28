@@ -195,10 +195,10 @@ bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-di
 bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
 
-# ⚠️ --no-push FULL-CHAIN runs are broken on OCI-worker hosts (this host):
+# ⚠️ --no-push FULL-CHAIN runs are REFUSED on OCI-worker hosts (this host):
 # the FROM handoff resolves against the REGISTRY, silently building each stage
-# on the last PUSHED parent (verified live 2026-08-08 — two runs lost). Use
-# --no-push ONLY for single-stage validation:
+# on the last PUSHED parent (verified live 2026-08-08 — two runs lost). The guard
+# refuses multi-stage --no-push; use --no-push ONLY for single-stage validation:
 bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-push --log-dir ./out/build-logs
 # Correct full-chain flow: push mode to android, then the runtime lane with
 # --skip-manifest so a partial-arch run cannot clobber the public manifest —
@@ -556,15 +556,14 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
   restart. Measured 2026-08-27 on the dev host: unit last ran 2026-08-09,
   containerd restarted 2026-08-26, and the runtime stage then failed BOTH
   foreign arches with an empty BuildKit error. The template now sets
-  `PartOf=containerd.service`, and the dev host's unit was re-installed to pick
-  it up on 2026-08-27. PROVEN rather than assumed: `systemctl --user restart
-  containerd` re-ran rootless-binfmt.service in the SAME second (it had last
-  run 2026-08-09) and both emulators still answered afterwards. A daemon
-  restart no longer silently strips foreign-arch emulation. Registration is
-  still lost
-  on host reboot **and on `systemctl --user restart containerd`** (it lives in the
-  rootlesskit namespace — that's how it silently vanished on 2026-08-08 after the
-  shim-failure restart). On this rootless host the privileged
+  `PartOf=containerd.service` (re-runs the unit on containerd restart) **plus**
+  `wait_for_namespace()` + `Restart=on-failure` (afefdfc) to win the cold-boot
+  race: `After=` orders only the unit start, so on a fresh boot the binfmt unit
+  fired before containerd-rootless had unshared and written its `child_pid`,
+  dying with `cat: …/child_pid: No such file`. `wait_for_namespace()` polls for
+  the pid file and a joinable namespace before registering; `Restart=on-failure`
+  is belt-and-braces. A daemon restart and a cold boot no longer silently strip
+  foreign-arch emulation. On this rootless host the privileged
   `tonistiigi/binfmt --install` container does NOT work (wrong namespace); use:
   ```bash
   linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
@@ -1269,7 +1268,13 @@ base ─┬─ onnxruntime ───────┐
   this gate is advisory (backlog #59).
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports clang 23.1.0 (`LLVM_RELEASE`); `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
-- Use the `wrapper-smoke` target (see `docs/linux-build-basics.md`) for cheaper packaging validation before large publish runs.
+- The `wrapper-smoke` target in `Dockerfile.package` (FROM package AS
+  wrapper-smoke) runs ~1150 lines of smoke tests — compiler validation, media
+  smokes, torch-venv, cross-arch. Since 2026-08-28 this is a MANDATORY gate in
+  `runtime_build_chain()` (`_runtime_run_package_smoke` in
+  `runtime-build-fns.sh`): it builds `--target wrapper-smoke` between the
+  package and wrapper stages, reusing cached package layers. Skip with
+  `WRAPPER_SMOKE_GATE=0`. Unit-tested by `test-runtime-smoke-gate.sh`.
 
 ## Common Failure Modes
 
@@ -1332,7 +1337,7 @@ below the VS layer unless they are consumed above it. Same trap for modules:
 editing any of them re-pays the VS Build Tools layer, so batch such edits
 deliberately.
 
-GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `resolute`/26.04). MIGraphX packages currently come from the AMD ROCm noble (24.04) repo since no resolute builds exist yet.
+GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and that `UBUNTU_CODENAME` ARG in `Dockerfile.amd` matches a supported Ubuntu codename (default `resolute`/26.04). ROCm 10.0 uses AMD's TheRock distribution (`stable.repo.amd.com`) with deb822 `.sources` format; MIGraphX is in a separate repo path under `/rocm/migraphx/packages/ubuntu2604/`. Package names are `amdrocm-*` prefixed.
 
 ## Development Rules
 

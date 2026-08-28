@@ -293,6 +293,20 @@ _vulkan_build_components() {
     _vulkan_skip[gfxreconstruct]="foreign-arch cross builds"
     _vulkan_skip[vcv]="foreign-arch cross builds"
     _vulkan_skip[slang]="foreign-arch cross builds"
+    # LOG14: skip host x86_64 Vulkan components nobody consumes on cross arches.
+    # The cross lanes only need glslang, vulkan-headers, vulkan-loader,
+    # spirv-headers, spirv-tools (they fill source/ for _build_vulkan_targets).
+    # ValidationLayers/shaderc/SPIRV-Cross/Profiles/ExtensionLayer/volk/VMA/SPIRV-Reflect
+    # build host x86_64 binaries (~390 s/lane, ~13 min/run) with no cross consumer.
+    _vulkan_skip[vulkan-validationlayers]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[shaderc]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[spirv-cross]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[spirv-reflect]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[vulkan-profiles]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[vulkan-extensionlayer]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[volk]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[vma]="foreign-arch cross builds (host-only component)"
+    _vulkan_skip[vul]="foreign-arch cross builds (host-only component)"
   elif [ "${arch_suffix}" = "riscv64" ]; then
     _vulkan_skip[slang]="riscv64 (not yet ported)"
   fi

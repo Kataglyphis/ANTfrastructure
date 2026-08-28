@@ -144,7 +144,9 @@ media_common_init() {
   if [ "${ENABLE_SCCACHE_RUST:-0}" = "1" ]; then
     if declare -F setup_sccache >/dev/null 2>&1; then
       setup_sccache || true
-      { sccache --show-stats 2>/dev/null | head -6 || true; } >&2
+      # LOG19: grep -E selects the lines that matter instead of head -6,
+      # which cuts off Non-cacheable/Unsupported on variable-length output.
+      { sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true; } >&2
     fi
   fi
   source_module compiler-resolution.sh || true
@@ -175,6 +177,14 @@ media_common_init() {
   # Load the data-driven per-arch MEDIA_SKIP_* flags now that the cross-env
   # helpers are available.
   media_load_arch_flags
+
+  # LOG19: Dump compiler cache stats on script exit — the setup-time snapshot
+  # in setup_ccache prints before the first object, so it always shows 0 requests.
+  # This EXIT trap fires after the build completes, reflecting real activity.
+  # Safe under set -e: the trap command list ends with `|| true`.
+  if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
+    trap 'dump_compiler_cache_stats || true' EXIT
+  fi
 }
 
 # Bootstrap entry point for install-deps.sh scripts ---------------------------

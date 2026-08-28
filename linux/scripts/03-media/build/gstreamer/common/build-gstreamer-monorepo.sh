@@ -258,8 +258,22 @@ _gst_monorepo_arch_flags() {
         echo "Disabling gst-plugins-rs csound/whisper plugins for ARM host arch"
       fi
       if [ "${BUILD_MODE:-native}" = "cross" ]; then
-        echo "ARM cross build: disabling introspection (g-ir-compiler needs qemu exe_wrapper)"
-        MESON_FLAGS+=("-Dintrospection=disabled")
+        # LOG9: introspection was disabled unconditionally for arm64 cross
+        # ("g-ir-compiler needs qemu exe_wrapper"), but pre-setup.sh creates
+        # the arm64 qemu wrappers (same as riscv64). Keep introspection ENABLED
+        # when the wrappers exist; fall back to disabled only if they don't.
+        if [ -x /usr/local/bin/g-ir-scanner-arm64-binary-wrapper ] \
+           && [ -x /usr/local/bin/g-ir-scanner-ldd-arm64-cross ]; then
+          echo "ARM cross build: keeping introspection ENABLED (qemu wrappers present)"
+          append_meson_arg "-Dgobject-introspection:gi_cross_use_prebuilt_gi=true"
+          append_meson_arg "-Dgobject-introspection:gi_cross_binary_wrapper=/usr/local/bin/g-ir-scanner-arm64-binary-wrapper"
+          append_meson_arg "-Dgobject-introspection:gi_cross_ldd_wrapper=/usr/local/bin/g-ir-scanner-ldd-arm64-cross"
+          append_meson_arg "-Dpango:introspection=disabled"
+          append_meson_arg "-Dharfbuzz:introspection=disabled"
+        else
+          echo "ARM cross build: disabling introspection (qemu wrappers not found)"
+          MESON_FLAGS+=("-Dintrospection=disabled")
+        fi
       fi
       ;;
     *)

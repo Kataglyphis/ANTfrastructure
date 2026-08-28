@@ -58,12 +58,18 @@ build_armnn() {
   # which contains the generated cmake files and arm_compute_version.h.
   # GCC 16.1.0's -Werror=array-bounds triggers false positives on std::mutex
   # placement in ACL/Arm NN buffers; suppress to avoid build failure.
+  #
+  # LOG12 (2026-08-28): NEON backend ENABLED. CL stays OFF — no GPU device in
+  # the cross-build container, and OpenCL headers/libs are not staged for
+  # cross. If a consumer needs ArmNN CL, stage the OpenCL headers and pass
+  # -DARMCOMPUTECL=1. TOSA Reference stays OFF (upstream default).
   cmake "${ARMNN_SRC_DIR}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${ARMNN_INSTALL_DIR}" \
     -DARMCOMPUTE_ROOT="${ACL_SRC_DIR:-/tmp/acl-src}" \
     -DARMCOMPUTE_BUILD_DIR="${ACL_SRC_DIR:-/tmp/acl-src}/build" \
     -DARMCOMPUTE_LIBS="${ACL_INSTALL_DIR}/lib" \
+    -DARMCOMPUTENEON=1 \
     -DBUILD_UNIT_TESTS=0 \
     -DBUILD_TESTS=0 \
     -DBUILD_BENCHMARK_TESTS=0 \

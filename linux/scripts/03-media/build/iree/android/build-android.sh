@@ -61,6 +61,7 @@ android_build_preamble_init "Android IREE build" "${ANDROID_API_LEVEL:-34}"
 # loud failure instead of last release.
 IREE_VERSION="${IREE_VERSION:-${1:?IREE_VERSION not forwarded into the android stage (see Dockerfile.android ARG/ENV) and no version given as $1}}"
 INSTALL_DIR="${IREE_ROOT_ANDROID:-/opt/android/iree}"
+: "${CMAKE_POLICY_VERSION_MINIMUM:=3.5}"
 
 : "${ANDROID_NDK_HOME:?ANDROID_NDK_HOME must be set}"
 
@@ -109,7 +110,7 @@ cmake -GNinja -S /opt/iree-android -B "${TARGET_BUILD}" \
     -DANDROID_ABI="${ANDROID_ABI}" \
     -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+    -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM} \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DIREE_HOST_BIN_DIR="${HOST_INSTALL}/bin" \
     -DIREE_BUILD_COMPILER=OFF \

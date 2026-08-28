@@ -60,6 +60,7 @@ $defaultRefs = @{
     OPENCV      = '5.x'
     FFMPEG      = 'master'
     GSTREAMER   = '1.29.2'
+    LLVM        = 'llvmorg-23.1.0'
 }
 if (Test-Path $versionsFile) {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force
@@ -68,9 +69,14 @@ if (Test-Path $versionsFile) {
             @{ Ref = 'ONNXRUNTIME'; Key = 'ONNXRUNTIME_VERSION' },
             @{ Ref = 'OPENCV';      Key = 'OPENCV_VERSION' },
             @{ Ref = 'FFMPEG';      Key = 'FFMPEG_VERSION' },
-            @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' }
+            @{ Ref = 'GSTREAMER';   Key = 'GSTREAMER_VERSION' },
+            @{ Ref = 'LLVM';        Key = 'LLVM_WINDOWS_VERSION'; Fmt = 'llvmorg-{0}' }
         )) {
-        if ($fileVersions.Contains($entry.Key)) { $defaultRefs[$entry.Ref] = $fileVersions[$entry.Key] }
+        if ($fileVersions.Contains($entry.Key)) {
+            $val = $fileVersions[$entry.Key]
+            if ($entry.Contains('Fmt')) { $val = $entry.Fmt -f $val }
+            $defaultRefs[$entry.Ref] = $val
+        }
     }
 }
 foreach ($k in $Versions.Keys) { $defaultRefs[$k] = $Versions[$k] }
@@ -81,6 +87,7 @@ $repoMap = @{
     'opencv_contrib' = @{ Url = 'https://github.com/opencv/opencv_contrib.git';   Ref = $defaultRefs.OPENCV }
     'ffmpeg'         = @{ Url = 'https://github.com/FFmpeg/FFmpeg.git';           Ref = $defaultRefs.FFMPEG }
     'gstreamer'      = @{ Url = 'https://github.com/gstreamer/gstreamer.git';     Ref = $defaultRefs.GSTREAMER }
+    'llvm'           = @{ Url = 'https://github.com/llvm/llvm-project.git';       Ref = $defaultRefs.LLVM }
 }
 
 function Get-PatchTargetPaths {

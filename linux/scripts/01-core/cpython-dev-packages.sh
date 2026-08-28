@@ -44,8 +44,20 @@ _CPYTHON_EXT_DEV_PKG_TABLE=(
   # _sqlite3 when libsqlite3-dev is absent at configure time, and half the
   # Python ecosystem imports sqlite3 transitively.
   "libsqlite3-dev required _sqlite3"
+  # readline makes an interactive python3 usable at all (line editing, history).
+  # Was missing from all arches — LOG23.
+  "libreadline-dev required readline"
+  # _curses was missing on cross arches — LOG23. Optional until a full cross
+  # rebuild proves it builds on every target, then promote to required.
+  "libncurses-dev optional _curses"
   # The uuid stdlib module falls back to pure Python without _uuid.
   "uuid-dev optional _uuid"
+  # LOG18: CPython 3.14 falls back to bundled libmpdec (deprecated, removal
+  # scheduled for 3.16) when libmpdec-dev is absent. Optional for now — the
+  # row is NOT free: promoting to required flips all three arches from
+  # bundled-static to a dynamic libmpdec.so, with so-package-map consequences.
+  # Harmless today (3.14.7 pinned, 3.16 ~Oct 2027); promote before 3.16.
+  "libmpdec-dev optional _decimal"
 )
 
 # All parsing below pins IFS=' ' on the read builtin: several consumers

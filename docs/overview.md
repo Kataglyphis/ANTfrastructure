@@ -11,7 +11,6 @@ Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://gith
 | Image | Platforms | Tag examples | Description |
 | --- | --- | --- | --- |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest-cross` | Current cross-lane release. Built via digest-pinned stage chain (`base → compiler → sdk → media → android → package → torch → wrapper → manifest`). |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | Legacy QEMU/binfmt multi-arch image built with `--platform linux/amd64,linux/arm64,linux/riscv64`. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64 | `cross-compiler-amd64`, `cross-sdk-<arch>`, `cross-media-<arch>`, `cross-android-<arch>` | Cross-lane intermediate images (amd64-hosted, cross-compiled for target arches). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | per-arch native | `latest-cross-base-<arch>`, `latest-cross-package-<arch>`, `latest-cross-<arch>` | Runtime lane per-arch images assembled into the `latest-cross` manifest. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | linux/amd64, linux/arm64 (as pushed) | `webserver`, `webserver-<git-sha>` | Minimal nginx static webserver image. |

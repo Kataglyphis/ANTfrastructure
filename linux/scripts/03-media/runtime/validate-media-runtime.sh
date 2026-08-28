@@ -283,11 +283,12 @@ fi
 
 if [ ${#DENIED_MISSING[@]} -gt 0 ]; then
   echo ""
-  echo "=== WARNING: ${#DENIED_MISSING[@]} source-built dependencies unresolved (apt repair denied) ==="
+  echo "=== FAIL: ${#DENIED_MISSING[@]} source-built dependencies unresolved (apt repair denied) ==="
   printf '  %s\n' "${DENIED_MISSING[@]}"
   echo "These ship from this repo's own build; a miss means the builder did not"
   echo "install the SONAME link. Fix the builder — do NOT map them to a distro"
   echo "package, which is what silently downgraded ONNX Runtime before 2026-08-28."
+  _VMR_DENIED_FAILURES=${#DENIED_MISSING[@]}
 fi
 
 fi  # end of the dirty-scan resolution branch — ELF validation runs either way
@@ -427,3 +428,10 @@ fi
 
 echo ""
 echo "=== Validation complete ==="
+
+# DENIED class (source-built SONAME missing) is meant to be empty by
+# construction; a non-zero count is a builder bug, not a tolerance case.
+if [ "${_VMR_DENIED_FAILURES:-0}" -gt 0 ]; then
+  echo "FAIL: ${_VMR_DENIED_FAILURES} DENIED source-built dependency failure(s) — see above" >&2
+  exit 1
+fi

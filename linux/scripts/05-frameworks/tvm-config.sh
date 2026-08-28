@@ -86,6 +86,18 @@ append_tvm_cmake_args() {
     -DCMAKE_CXX_COMPILER="$desired_cxx"
   )
 
+  # Compiler cache launcher — overrides TVM's internal USE_CCACHE=AUTO
+  # detection so the decision goes through compiler_cache_launcher() (sccache
+  # first, ccache fallback, guarded launcher when mounted).
+  local _tvm_launcher
+  _tvm_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+  if [ -n "${_tvm_launcher}" ]; then
+    out_ref+=(
+      "-DCMAKE_C_COMPILER_LAUNCHER=${_tvm_launcher}"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=${_tvm_launcher}"
+    )
+  fi
+
   if [ "$use_vulkan" -eq 1 ]; then
     out_ref+=( -DUSE_VULKAN=ON )
     # For cross builds, point find_package(Vulkan) at the target-arch loader/

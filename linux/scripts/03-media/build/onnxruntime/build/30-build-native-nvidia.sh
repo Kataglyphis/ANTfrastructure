@@ -188,13 +188,20 @@ BUILD_ARGS+=(
   --use_external_dawn
 )
 
-# CUDA compile caching (sccache) — GATED like the Rust/OpenCV wiring. nvcc is
-# unreachable for ccache; sccache wraps it first-class. Every CUDA kernel here
-# compiles once per arch in ${ONNX_CUDA_ARCHS} — the dominant cost of this
-# multi-hour build. Validate with ENABLE_SCCACHE_CUDA=1, then flip the default.
-if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ] && command -v sccache >/dev/null 2>&1; then
-  info "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER"
-  BUILD_ARGS+=(--cmake_extra_defines "CMAKE_CUDA_COMPILER_LAUNCHER=sccache")
+# CUDA compile caching — sccache wraps nvcc first-class (ccache cannot).
+# Resolve through compiler_cache_launcher() for the guarded launcher;
+# only accept sccache-class launchers (ccache can't wrap nvcc).
+if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
+  _gpu_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+  case "${_gpu_launcher}" in
+    *sccache*)
+      info "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER (${_gpu_launcher})"
+      BUILD_ARGS+=(--cmake_extra_defines "CMAKE_CUDA_COMPILER_LAUNCHER=${_gpu_launcher}")
+      ;;
+    *)
+      warn "sccache unavailable for CUDA caching — building uncached"
+      ;;
+  esac
 fi
 
 append_onnx_lld_build_args BUILD_ARGS

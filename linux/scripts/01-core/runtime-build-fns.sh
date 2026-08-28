@@ -323,6 +323,64 @@ runtime_build_package_image() {
   _runtime_finish_stage package "${arch}" "${tag}" base
 }
 
+# LOG29: the wrapper-smoke stage (Dockerfile.package:346 FROM package AS
+# wrapper-smoke) runs ~1150 lines of smoke tests — compiler validation, media
+# smokes, torch-venv, cross-arch — but was NEVER built because the package
+# build targets "package" and BuildKit prunes everything after it. This function
+# targets wrapper-smoke separately. Since wrapper-smoke is FROM package,
+# BuildKit reuses the cached package layers and only runs the smoke RUN —
+# cheap on a cache hit, and it fails the chain if the smokes fail.
+# Skip with WRAPPER_SMOKE_GATE=0.
+_runtime_run_package_smoke() {
+  local arch="$1"
+
+  is_dry_run && { log "[DRY RUN] would run wrapper-smoke gate for ${arch}"; return 0; }
+
+  if [ "${WRAPPER_SMOKE_GATE:-1}" = "0" ]; then
+    log "[smoke] wrapper-smoke gate skipped (WRAPPER_SMOKE_GATE=0)"
+    return 0
+  fi
+
+  local -a build_args=()
+  append_common_build_args build_args
+  append_runtime_accelerator_build_args build_args
+
+  local _android_pin
+  _android_pin="$(runtime_android_pin "${arch}")"
+
+  local artifact_image package_base_stage
+  if runtime_use_local_artifact_context; then
+    local artifact_context_ref artifact_context_mode
+    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-oci}"
+    artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
+    artifact_image="runtime_artifact"
+    package_base_stage="package-image"
+    build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
+  else
+    artifact_image="$(runtime_artifact_image_ref "${arch}")"
+    [ -n "${_android_pin}" ] && artifact_image="${_android_pin}"
+    package_base_stage="package-image"
+  fi
+
+  local parent_image parent_context_dir
+  _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
+
+  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}"
+
+  log "[smoke] running wrapper-smoke gate for ${arch} (target wrapper-smoke)"
+
+  run_nerdctl_build "${NERDCTL_BIN:-nerdctl}" \
+    --pull=false \
+    --platform "linux/${arch}" \
+    --target wrapper-smoke \
+    -f "${PACKAGE_DOCKERFILE_PATH}" \
+    "${build_args[@]}" \
+    . || return 1
+
+  log "[smoke] wrapper-smoke gate PASSED for ${arch}"
+  return 0
+}
+
 _runtime_build_wrapper() {
   local arch="$1"
   local -n _wrapper_tag_out=$2
@@ -461,6 +519,7 @@ runtime_build_chain() {
   # with nothing built.
   runtime_build_base_image "${arch}" || return 1
   runtime_build_package_image "${arch}" || return 1
+  _runtime_run_package_smoke "${arch}" || return 1
 
   if [ -n "${rootfs_dir}" ]; then
     runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}" || return 1
@@ -508,5 +567,7 @@ Environment overrides:
   USE_FAST_UBUNTU_MIRROR       Set to true to replace archive/security/ports Ubuntu mirrors
   FAST_UBUNTU_MIRROR_URL       Mirror URL used when the fast mirror is enabled
   FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
+  WRAPPER_SMOKE_GATE          1 (default) = run the wrapper-smoke gate after
+                                package build; 0 = skip
 EOF
 }

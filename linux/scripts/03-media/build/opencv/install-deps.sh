@@ -13,9 +13,10 @@ cross_arch=""
 
 echo "Installing OpenCV build dependencies..."
 
-install_deps_preamble build-essential cmake git pkg-config wget unzip libtbb-dev libeigen3-dev
+install_deps_preamble build-essential cmake git pkg-config wget unzip libeigen3-dev
 
 target_packages=(
+    libtbb-dev
     libavcodec-dev
     libavformat-dev
     libswscale-dev
@@ -28,6 +29,9 @@ target_packages=(
     libopenexr-dev
     libunwind-dev
     libdc1394-dev
+    # LOG26: AVIF and HDF5 support for OpenCV.
+    libavif-dev
+    libhdf5-dev
 )
 
 if is_cross; then

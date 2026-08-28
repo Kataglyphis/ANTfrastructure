@@ -194,9 +194,13 @@ fi
 
 # 5b. A1: env-knob registry — every consumed ${VAR:-} knob must have an owner
 # (versions.env / Dockerfile ARG-ENV / script assignment / lint-env-knobs.allow).
-# Advisory internally unless KNOB_GATE=1.
+# Enforced: KNOB_GATE=1 makes unowned knobs a hard failure (LOG31 — the check was
+# advisory-only, so an unowned knob always passed). Same FAIL-not-skip [ -f ]
+# contract as the version-snapshot check above.
 if [ -f linux/scripts/lint-env-knobs.sh ]; then
-  run_check env-knobs "env-knob registry" bash linux/scripts/lint-env-knobs.sh
+  run_check env-knobs "env-knob registry" env KNOB_GATE=1 bash linux/scripts/lint-env-knobs.sh
+else
+  run_check env-knobs "env-knob registry" bash -c 'echo "lint-env-knobs.sh MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
 # 6. Canonical Ubuntu mirror ARGs present across Dockerfiles.

@@ -23,6 +23,17 @@ android_build_preamble_init() {
 
   ANDROID_API_LEVEL="$(android_raise_api_level_if_needed "${TARGET_ARCH}" "${api_default}" "${label}")"
 
+  # LOG13: wire the compiler cache launcher so android-iree (and any other
+  # project that respects CMAKE_*_COMPILER_LAUNCHER / RUSTC_WRAPPER) gets
+  # sccache instead of falling back to inherited ccache or nothing. The five
+  # RUN blocks stay byte-identical — only the preamble changes.
+  if [ -f /opt/scripts/core/compiler-cache.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/core/compiler-cache.sh
+    setup_ccache 2>/dev/null || true
+    setup_lld_linker 2>/dev/null || true
+  fi
+
   export DEBIAN_FRONTEND=noninteractive
 }
 

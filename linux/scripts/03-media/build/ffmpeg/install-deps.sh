@@ -8,7 +8,7 @@ media_install_deps_init "${SCRIPT_DIR}"
 
 echo "Installing FFmpeg build dependencies..."
 
-install_deps_preamble autoconf automake build-essential cmake git libtool pkg-config texinfo wget yasm nasm
+install_deps_preamble autoconf automake build-essential cmake git libtool pkg-config texinfo wget yasm nasm glslang-tools
 
 
 target_packages=(
@@ -32,6 +32,8 @@ target_packages=(
     libopus-dev
     libaom-dev
     libdav1d-dev
+    # LOG26: PulseAudio input/output device support.
+    libpulse-dev
 )
 
 optional_cross_target_packages=()
@@ -112,6 +114,10 @@ ffmpeg_extra_feature_packages=(
     # NO vmaf package in any suite or arch (packages.ubuntu.com name+contents
     # search 2026-08-28), so that probe skip is expected, not a missing install.
     libwebp-dev              # WebP image codec (-dev also ships libwebpmux.pc)
+    # drawtext filter: harfbuzz for text shaping. LOG20 — was missing on all
+    # arches, so the single most-used overlay filter was absent.
+    libharfbuzz-dev          # HarfBuzz text shaping (drawtext filter)
+    libfontconfig1-dev       # font discovery for drawtext
 )
 for _ff_extra_pkg in "${ffmpeg_extra_feature_packages[@]}"; do
     install_optional_target_packages "${_ff_extra_pkg}"

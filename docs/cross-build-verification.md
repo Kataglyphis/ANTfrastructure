@@ -358,8 +358,13 @@ largely **deliberate** and should not be "fixed":
   (toolchain, `Dockerfile.toolchain:314`), `smoke-android` (android,
   `Dockerfile.android:361`), the wrapper-smoke set `validate-compilers` +
   `smoke-media` + `smoke-torch-venv` + `smoke-cross-all-arches`
-  (`Dockerfile.package:344-356`), and host-side `smoke-runtime-image`
-  (in `build-runtime-manifest.sh`, `RUNTIME_IMAGE_SMOKE=0` to skip).
+  (`Dockerfile.package:346`, `FROM package AS wrapper-smoke`). The wrapper-smoke
+  stage is a separate `--target wrapper-smoke` build run by
+  `_runtime_run_package_smoke` in `runtime_build_chain`, between the package
+  and wrapper builds (`WRAPPER_SMOKE_GATE=0` to skip) — it is NOT reached by the
+  package build's own `--target package`, which prunes everything after `package`.
+  Also host-side `smoke-runtime-image` (in `build-runtime-manifest.sh`,
+  `RUNTIME_IMAGE_SMOKE=0` to skip).
   The one deliberate exception is `smoke-vulkan`, which is wired into **no**
   stage: it probes the full Vulkan *SDK* (`/opt/vulkan/active`,
   `vulkan/vulkan.h`, `libvulkan.so`) while this cross build installs only the

@@ -56,6 +56,222 @@ for the TVM compiler build.
   wipe the buildkitd service `Environment`; check after any update.
 - AGENTS.md — same note added to the "Four things an agent gets wrong" section.
 
+## 2026-08-28 — Closure window: enable + decision batch
+
+Closed six backlog items (LOG12, GCC_HOST_BOOTSTRAP, LOG2, two-caches-installed,
+GPU bare-sccache sites, TVM launcher) in one commit. All touch closure files
+(01-core / 02-toolchain / 03-media / 05-frameworks), so batching minimizes
+cache invalidation.
+
+- **LOG12** — `build-armnn.sh`: added `-DARMCOMPUTENEON=1` to enable the ACL
+  NEON (CPU SIMD) backend. CL stays OFF (no GPU in cross-build container).
+  A real build may surface an ACL cross-link break — the backlog item's
+  predicted "actual news".
+- **GCC_HOST_BOOTSTRAP** — `Dockerfile.toolchain`: changed default from 1 to 0.
+  The flag already existed (gcc.sh:171-200); `=0` skips the ~1231 s bootstrap
+  for validating rebuilds, `=1` only when the GCC pin moves. Decision owed
+  since 2026-08-10.
+- **LOG2** — The WASM asyncify/jspi build passes already existed
+  (`40-build-wasm.sh` passes 4+5, `ORT_WASM_WEBGPU_FLAVORS=true` by default).
+  Updated the stale versions.env comment that said "not built". Watch: a real
+  build must confirm the artifacts ship on all arches.
+- **GPU bare-sccache** — `build-opencv.sh`, `30-build-native-nvidia.sh`,
+  `30-build-native-amd.sh`: replaced bare `sccache` with
+  `compiler_cache_launcher()` resolution (sccache-class only — ccache can't
+  wrap nvcc/hipcc). The guarded sccache-launcher.sh is preferred when mounted.
+- **TVM launcher** — `tvm-config.sh`: added `CMAKE_C/CXX_COMPILER_LAUNCHER`
+  via `compiler_cache_launcher()` in `append_tvm_cmake_args()`. Overrides
+  TVM's internal `USE_CCACHE=AUTO`.
+- **Two-caches-installed** — `compiler-cache.sh`: documented the decision:
+  both ccache and sccache stay mounted. sccache is primary; ccache is the
+  documented fallback. The ~27 GB warm ccache is the intentional cost.
+
+Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (closure window — enable + decision batch)".
+
+
+## 2026-08-28 — Closure window: 01-core/02-toolchain backlog batch
+
+Closed six backlog items (LOG8, LOG13, LOG14, LOG17, LOG18, LOG19) plus the
+ffmpeg/pyav compiler-cache resolution, all in one commit. These touch files
+in the 01-core / 02-toolchain / 03-media bind-mount closure, so batching
+minimizes cache invalidation (one edit re-runs hours of compiles). LOG12 was
+documented (reference-backend-only by design) but remains OPEN as a decision
+item.
+
+- **LOG8** — `Dockerfile.media`: added per-stage apt mount ids to the six
+  parallel media head stages (onnx, litert, tvm, opencv, app-wheelhouse,
+  ffmpeg). Each head vertex now holds its own apt lock instead of a shared
+  one, so they no longer serialize the intra-lane fan-out. The memory
+  caveat (peak 43.6 GB) still applies — PAR4-hard remains the real cap.
+- **LOG13** — `android-build-preamble.sh`: `android_build_preamble_init` now
+  sources `compiler-cache.sh`, calls `setup_ccache` + `setup_lld_linker`. The
+  android stage gets the same `compiler_cache_launcher()` resolution as the
+  media lane; android-iree (was the only genuinely uncached android lib) now
+  resolves through the launcher. RUN blocks stay byte-identical.
+- **LOG14** — `vulkan.sh`: added nine host-only Vulkan components to the
+  `_vulkan_skip` map for cross builds (ValidationLayers, shaderc,
+  SPIRV-Cross, SPIRV-Reflect, Vulkan-Profiles, Vulkan-ExtensionLayer, volk,
+  VMA, vul). Cross lanes no longer build ~390 s/lane of host x86_64 components
+  with no cross consumer.
+- **LOG17** — `versions.env`: added `ANDROID_AGP_VERSION=8.3.1` and
+  `ANDROID_GRADLE_VERSION=8.7` as visibility pins. The actual version still
+  lives in the ORT AGP patch; a bump must sync both. The Gradle 9.0
+  deprecation warning is now visible to `bump_versions.py --check`.
+- **LOG18** — `cpython-dev-packages.sh`: added `libmpdec-dev optional _decimal`
+  row to `_CPYTHON_EXT_DEV_PKG_TABLE`. Marked OPTIONAL because promoting to
+  required flips all three arches to dynamic `libmpdec.so` with so-package-map
+  consequences. Documents the gap; harmless until Python 3.16 (~Oct 2027).
+- **LOG19** — Replaced positional `head -N` with `grep -E` for sccache stats
+  in `compiler-cache.sh`, `build-gcc.sh`, `probe-sccache.sh`,
+  `03-media/core/common.sh`. Added `dump_compiler_cache_stats()` to
+  `compiler-cache.sh` (post-build stats dump with dead-cache WARN), wired via
+  an EXIT trap in `media_common_init` so every media step reports cache
+  telemetry at END of build, not at t≈0.165 s before the first object.
+- **ffmpeg/pyav** — `build-ffmpeg.sh` and `build-pyav.sh`: replaced hardcoded
+  `ccache ${CC}` with `compiler_cache_launcher()` resolution so sccache is
+  actually asked (was always ccache).
+- **LOG12** — `build-armnn.sh`: added documentation comment explaining the
+  reference-backend-only design. The decision (turn on backends or drop ACL)
+  remains OPEN.
+
+Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (closure window — 01-core/02-toolchain batch)".
+
+
+## 2026-08-28 — Closure window: 03-media/06-packaging backlog batch
+
+Closed seven backlog items (LOG9, LOG21, LOG24, LOG26, LOG31-COPY'd, LOG32,
+LOG35) in one commit — all touch files in the 03-media/06-packaging bind-mount
+closure, so batching minimizes cache invalidation (one edit re-runs hours of
+media compiles).
+
+- **LOG31 (COPY'd half)** — `validate-media-runtime.sh`: DENIED class
+  (source-built SONAME missing) now exits 1 instead of WARNING. The broader
+  unresolved/unmappable classes stay advisory (vendor trees need excluding
+  first). `smoke-android.sh`: ndk-build and aapt2/zipalign/apksigner now have
+  fail branches.
+- **LOG32** — Added Vulkan smoke to `smoke-media.sh`: vulkan.h present, active
+  symlink resolves, glslangValidator runs. ~7 GB of Vulkan SDK now gated.
+- **LOG35** — `verify-media-artifacts.sh`: replaced broken `verify_A || verify_B`
+  lib→lib64 fallback with `verify_any_lib`. Added `libvvdec` to FFmpeg codec
+  check loop. Added `/opt/cmake` functional assertion to `smoke-media.sh`.
+- **LOG9** — `build-gstreamer-monorepo.sh`: arm64 cross builds now keep
+  introspection ENABLED when qemu g-i wrappers exist (pre-setup.sh already
+  creates them for arm64). Was 0 .typelib on arm64; should match riscv64's 38.
+- **LOG21** — Documented OpenCV cross arches as headless-by-design (GTK's
+  libpango1.0-dev not multiarch-coinstallable). Added smoke assertion that
+  confirms `GUI: NONE` is deliberate on cross, fails on native.
+- **LOG24** — OpenCV DNN ONNX Runtime backend enabled
+  (`-DWITH_ONNXRUNTIME=ON -DDOWNLOAD_ONNXRUNTIME=OFF`). Added smoke assertion
+  for the ORT backend via `cv2.dnn.getAvailableBackends()`.
+- **LOG26** — OpenCV: added `-DWITH_AVIF=ON -DWITH_HDF5=ON
+  -DOPENCV_ENABLE_NONFREE=ON` + `libavif-dev`/`libhdf5-dev` to install-deps.
+  Documented riscv64-only `USE_OPENMP=0` rationale in build-app-wheelhouse.sh.
+  FFmpeg: added `libpulse-dev` for PulseAudio indev/outdev.
+
+## 2026-08-28 — Host-only backlog fixes (LOG33, LOG31-preflight, Section C)
+
+Closed three backlog items that touched only host-only scripts (not COPY'd or
+bind-mounted into any Dockerfile), so no closure window was needed.
+
+- **LOG33** — `verify-shipped-wrapper.sh`: promoted onnxruntime .so presence
+  (check 3) from advisory to HARD — the image is built around ORT, so its
+  absence is always a defect. Promoted AP4 strip (check 5) from advisory to
+  HARD when the sentinel lib was successfully extracted — a surviving .symtab
+  means the MEDIA_STRIP pass regressed. Kept advisory only when extraction
+  failed. Four hard assertions now (was two).
+- **LOG31 (preflight half)** — `lint-env-knobs.sh` was advisory by default
+  (exits 0 unless KNOB_GATE=1) and preflight invoked it without KNOB_GATE=1;
+  also its `if [ -f ]` guard had no `else` (silent drop on missing file).
+  Fixed: preflight now passes `KNOB_GATE=1` and has the FAIL-not-skip `else`
+  contract. Three unowned operator knobs (BUILD_ATTEST, CROSS_DISK_GUARD_GB,
+  NO_CACHE_EXPORT) added to `lint-env-knobs.allow`. `verify-runtime-paths.sh`
+  was "ADVISORY ONLY — never fails" — now fails hard on infrastructure errors
+  (missing reference/Dockerfiles) while keeping heuristic path-mismatch WARNs
+  advisory. The COPY'd half (validate-media-runtime.sh, smoke-android.sh)
+  remains open — needs a closure window.
+- **Section C** — `build-cross-chain.sh`: added `_chain_no_push_guard()` that
+  refuses `--no-push` for multi-stage runs on this host (BuildKit's OCI worker
+  resolves FROM against the registry — two runs lost 2026-08-08). Single-stage,
+  dry runs, and `CROSS_NO_PUSH_FORCE=1` escape hatch allowed. Updated AGENTS.md
+  Quick Reference and usage text.
+
+Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (host-only fixes)".
+
+
+## 2026-08-28 — ROCm 10.0 migration (TheRock distribution)
+
+Migrated the AMD GPU lane from ROCm 7.2.4 to 10.0, moving from the legacy
+`repo.radeon.com` apt layout to AMD's new "TheRock" distribution at
+`stable.repo.amd.com`.
+
+**Changes:**
+- `versions.env`: `ROCM_VERSION` 7.2.4 → 10.0, `MIGRAPHX_VERSION` 2.14.0 → 2.17.0,
+  `ROCM_GPG_KEY_SHA256` updated for the new signing key.
+- `setup-rocm-repo.sh`: rewritten to deb822 `.sources` format with two repo
+  stanzas (core + migraphx) at `stable.repo.amd.com`, suite "stable", for
+  Ubuntu 26.04 (resolute). Package names migrated to `amdrocm-*` prefix.
+  apt pin Origin changed from `repo.radeon.com` to `AMD ROCm`.
+- `Dockerfile.amd`: ARG defaults updated; comment updated to reflect TheRock.
+- `bump_versions.py`: `rocm_apt_latest()` now parses the TheRock Packages.gz
+  instead of scraping the old directory listing.
+- Docs updated: AGENTS.md GPU constraints note, linux-accelerator-images.md.
+- No more noble (24.04) fallback — resolute is natively supported by TheRock.
+
+**Not yet verified with a real build** — the post-install assertions
+(`hipcc`, `migraphx.hpp`, library names in ldconfig) are carried over from
+the old script and may need adjustment if TheRock installs to different paths.
+
+
+## 2026-08-28 — Linux backlog maximality audit: 16 code fixes
+
+Closed 16 open Linux backlog items (LOG10,11,15,16,20,22,23,25,29,30,36,37,38,
+39,40,41) found in the 2026-08-28 maximality audit. Each fix includes the
+assertion or smoke check the backlog asked for. Items moved to
+[`refactoring-backlog-archive-2026-08-27.md`](docs/refactoring-backlog-archive-2026-08-27.md)
+§ "Closed 2026-08-28 (code fixes)".
+
+**Build fixes (01-core / 03-media closure — needs a rebuild to land):**
+- LOG16: `CMAKE_POLICY_VERSION_MINIMUM` lifted to `versions.env`; 8 bare `=3.5`
+  literals across 6 files replaced with `${CMAKE_POLICY_VERSION_MINIMUM:-3.5}`
+  (or `:=3.5` in android scripts to avoid the version-forwarding tripwire).
+- LOG20: FFmpeg `drawtext` filter — added `libharfbuzz-dev` + `libfontconfig1-dev`
+  and `--enable-libharfbuzz`/`--enable-libfontconfig` probes.
+- LOG22: FFmpeg `*_vulkan` filters — added `glslang-tools` to `install_deps_preamble`
+  so `glslangValidator` is on PATH at configure time.
+- LOG23: CPython readline + curses — added `libreadline-dev` (required) and
+  `libncurses-dev` (optional) to `_CPYTHON_EXT_DEV_PKG_TABLE`.
+- LOG11: OpenCV TBB on all arches — moved `libtbb-dev` from host to
+  `target_packages` so cross lanes pull the target-arch package.
+- LOG15: android OpenCV `BUILD_JAVA=ON` → `OFF` (produced no Java wrappers anyway).
+- LOG10: Fixed false RVV comment in `opencv/android/build-android.sh`.
+- LOG25: Added rationale comment for LiteRT GPU/NPU delegates OFF.
+- LOG36: Added `libtvm*.so` to `copy-media-payloads.sh` allowlist +
+  `so-package-map.txt` + `verify-media-artifacts.sh` media-inputs stage.
+
+**Gate fixes (06-packaging / smoke):**
+- LOG29: `_runtime_run_package_smoke()` in `runtime-build-fns.sh` builds the
+  `--target wrapper-smoke` stage between package and wrapper (`WRAPPER_SMOKE_GATE=0`
+  to skip). Unit test `test-runtime-smoke-gate.sh` (8 assertions).
+- LOG30: `_smoke_optimization_level()` in `validate-compilers.sh` checks CPython
+  `sysconfig.get_config_var('OPT')` for `-O0`/missing `-O`.
+- LOG11/15/20/22: Added smoke assertions: TBB parallel framework, Java wrappers
+  absent, `drawtext` registered, `scale_vulkan` registered.
+
+**Doc fixes:**
+- LOG37: `cross-build-verification.md` — wrapper-smoke runs as a separate
+  `--target wrapper-smoke` build.
+- LOG38: AGENTS.md — corrected the `PartOf` binfmt claim.
+- LOG39: `linux-accelerator-images.md` — fixed all NVIDIA/AMD build recipes
+  (`:sdk` → `:cross-sdk-amd64`, `--output type=image` → `-t ... --push`).
+- LOG41: `overview.md` / `linux-cross-builds.md` — removed `:latest` references.
+- LOG40: Verified license/SBOM gates green — no drift.
+
 ## 2026-08-28 — correction: the `/Ob1` half was NOT llvm#202716, and the census says so
 
 **Correcting the entry below, not deleting it.** The 2026-08-27 pass credited the

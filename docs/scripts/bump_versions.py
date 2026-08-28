@@ -31,6 +31,7 @@ artifact and hashing it (release downloads are not rate-limited either).
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -73,6 +74,11 @@ def http_json(url: str):
 def http_text(url: str) -> str:
     with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=60) as r:
         return r.read().decode("utf-8", errors="replace")
+
+
+def http_bytes(url: str) -> bytes:
+    with urllib.request.urlopen(urllib.request.Request(url, headers=_headers()), timeout=60) as r:
+        return r.read()
 
 
 def http_header(url: str, header: str, accept: str, auth: str | None = None) -> str:
@@ -247,10 +253,12 @@ def nvidia_redist_latest(product: str) -> str:
 
 
 def rocm_apt_latest() -> str:
-    """Newest ROCm version directory in AMD's apt repo index."""
-    html = http_text("https://repo.radeon.com/rocm/apt/")
-    versions = re.findall(r'href="(\d+\.\d+(?:\.\d+)?)/"', html)
-    return max(versions, key=lambda v: [int(x) for x in v.split(".")]) if versions else ""
+    """Newest ROCm version in AMD's TheRock apt repo (stable.repo.amd.com)."""
+    url = "https://stable.repo.amd.com/rocm/core/packages/ubuntu2604/dists/stable/main/binary-amd64/Packages.gz"
+    raw = http_bytes(url)
+    text = gzip.decompress(raw).decode("utf-8", errors="replace")
+    m = re.search(r"^Package: amdrocm-core-dev\n.*?^Version: (\d+\.\d+(?:\.\d+)?)", text, re.M | re.S)
+    return m.group(1) if m else ""
 
 
 # ---------------------------------------------------------------------------

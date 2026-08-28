@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# NO -e: this script's own contract is "ADVISORY ONLY — never fails" and
-# preflight.sh runs it as a gate; with errexit, any zero-match grep in the
-# collection pipelines below aborted it and failed the gate against contract
-# (same deliberate choice as preflight.sh and the lint-*.sh siblings).
+# NO -e: the path-mismatch checks below are heuristic (awk over ENV blocks +
+# token grep) and must stay advisory — they produce WARN lines even on a healthy
+# tree (ARG-composed paths, unexpanded ${GCC_VERSION}-style refs, legitimate
+# Dockerfile.package vs .media /opt divergence). INFRASTRUCTURE errors (missing
+# reference file / Dockerfiles) are NOT heuristic — those fail loudly (LOG31).
 set -uo pipefail
 # Pin C collation so `sort` and `comm` below agree on byte order. Without this,
 # UTF-8 locales sort '-' (0x2d) and '/' (0x2f) differently from `comm`'s byte
@@ -12,20 +13,31 @@ export LC_ALL=C
 # verify-runtime-paths.sh - Compare PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH
 # components in Dockerfiles against the canonical runtime-paths.env reference.
 #
-# ADVISORY ONLY — this script NEVER fails (always exits 0). Its extraction is
-# heuristic (awk over ENV blocks + token grep), which produces WARN lines even
-# on a healthy tree: paths composed from build ARGs are invisible to the
-# scrape, ${GCC_VERSION}-style refs may not expand outside the build, and
-# Dockerfile.package vs Dockerfile.media legitimately diverge in their /opt
-# inventories. Treat the output as a diff-review aid when touching ENV blocks,
-# not as a gate. (It previously carried an errors counter and an `exit 1`
-# branch that could never trigger — that pretend-gate has been removed.)
+# Contract: FAILS on infrastructure errors (missing runtime-paths.env,
+# versions.env, or a tracked Dockerfile — a broken tree/rename, not a heuristic
+# mismatch). The path-mismatch WARN lines stay advisory: extraction is
+# heuristic and produces false positives on a healthy tree. (LOG31: this script
+# previously NEVER failed — an inner warning swallowed by an outer green.)
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 PATHS_ENV="${REPO_ROOT}/linux/scripts/04-runtime/runtime-paths.env"
 VERSIONS_ENV="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
-echo "=== Runtime paths consistency check (ADVISORY — never fails) ==="
+echo "=== Runtime paths consistency check (advisory path-mismatch; hard infra) ==="
+
+# Infrastructure: these are tracked repo files. A missing one is a broken
+# tree/rename, not a heuristic mismatch — fail loudly (LOG31).
+_infra_fail=0
+for _req in "${PATHS_ENV}" "${VERSIONS_ENV}" "${REPO_ROOT}/linux/Dockerfile.package" "${REPO_ROOT}/linux/Dockerfile.media"; do
+  if [ ! -f "${_req}" ]; then
+    echo "FAIL: required file missing: ${_req}" >&2
+    _infra_fail=1
+  fi
+done
+if [ "${_infra_fail}" -ne 0 ]; then
+  echo "FAIL: infrastructure file(s) missing — fix the tree (LOG31)" >&2
+  exit 1
+fi
 
 # Load version defaults from the single source of truth so variable references
 # (${GCC_VERSION}, ${OPENCV_OUTPUT_DIR}, etc.) can be expanded dynamically.
@@ -34,7 +46,7 @@ source "${REPO_ROOT}/linux/scripts/01-core/load-versions-env.sh"
 load_versions_env "${VERSIONS_ENV}"
 
 # Load canonical paths (may reference $GCC_VERSION etc.)
-source "${PATHS_ENV}" 2>/dev/null || true
+source "${PATHS_ENV}"
 
 # Extract the explicit paths (values that look like absolute paths)
 # Use envsubst to expand any remaining ${VAR} references with actual values.
@@ -113,4 +125,5 @@ if [ -n "$media_only_opt" ]; then
   echo "  paths only in Dockerfile.media: $(echo "$media_only_opt" | tr '\n' ' ')"
 fi
 
-echo "ADVISORY: runtime paths comparison done (informational only — WARN lines above never gate)"
+echo "Done: path-mismatch WARN lines above are advisory; infrastructure errors fail hard (LOG31)."
+exit 0

@@ -26,7 +26,7 @@
 #   WRAPPER_CONTENT_GATE=0     make every mismatch advisory (warn, exit 0)
 #
 # Exit: 0 = all HARD assertions pass; 1 = a HARD assertion failed (or the image
-# could not be listed). Advisory checks only warn.
+# could not be listed). Advisory checks (x265, AP4 extraction-failed) only warn.
 set -euo pipefail
 
 _ref="${1:-}"
@@ -94,11 +94,11 @@ else
   else _hard 0 "FFMPEG_ENABLE_TF=${_tf:-0} (off): libtensorflow absent (as expected)"; fi
 fi
 
-# 3) Advisory: onnxruntime (ffmpeg's kept DNN backend / the app's ORT) should be
-#    somewhere in the image. Path varies (opt/android/onnxruntime, venv, …), so
-#    warn-only to avoid false positives across layouts.
-if _present 'onnxruntime.*\.so|libonnxruntime'; then _advise "onnxruntime present"
-else _advise "onnxruntime .so not found in listing (verify if unexpected)"; fi
+# 3) onnxruntime must be present — the image is built around ORT; its absence is
+#    always a defect (LOG33 — was advisory). Path varies (opt/android/onnxruntime,
+#    venv, …) but the .so pattern is broad enough to catch all layouts.
+if _present 'onnxruntime.*\.so|libonnxruntime'; then _hard 0 "onnxruntime present"
+else _hard 1 "onnxruntime MISSING — no onnxruntime.so/libonnxruntime in listing"; fi
 
 # 4) Advisory: x265 toggle → libx265 (may be static-linked into libavcodec, so a
 #    missing shared lib is not proof; informational only).
@@ -108,12 +108,13 @@ if _is_truthy "${_x265}"; then
   else _advise "FFMPEG_ENABLE_X265=${_x265}: no shared libx265.so (likely static — OK)"; fi
 fi
 
-# 5) SMK2 (2026-08-17), ADVISORY: verify the AP4 strip actually happened on a
-#    sentinel lib. Extract exactly ONE real file (the versioned libavcodec) from
-#    a second export stream — `--occurrence=1` lets tar stop early — and check
-#    host-side with readelf (arch-agnostic on ELF sections; no emulation). A
-#    surviving .symtab means the strip pass regressed. Advisory-only for now:
-#    static-lib edge cases and future layout moves must not fail the ship.
+# 5) SMK2 (2026-08-17): verify the AP4 strip actually happened on a sentinel
+#    lib. Extract exactly ONE real file (the versioned libavcodec) from a second
+#    export stream — `--occurrence=1` lets tar stop early — and check host-side
+#    with readelf (arch-agnostic on ELF sections; no emulation). A surviving
+#    .symtab means the strip pass regressed. HARD when the file was extracted
+#    (LOG33 — was advisory); advisory only when extraction itself failed,
+#    since we cannot assert on missing evidence.
 _avc_path="$(grep -E 'opt/ffmpeg/lib/libavcodec\.so\.[0-9]+\.[0-9]+\.[0-9]+$' "${_listing}" | head -1 || true)"
 if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
   _xdir="$(mktemp -d)"
@@ -128,9 +129,9 @@ if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
       | tar -xf - -C "${_xdir}" --occurrence=1 "${_avc_path}" 2>/dev/null ) || true
   if [ -f "${_xdir}/${_avc_path}" ]; then
     if [ "$(readelf -S "${_xdir}/${_avc_path}" 2>/dev/null | grep -c '\.symtab')" -eq 0 ]; then
-      _advise "AP4 strip verified: $(basename "${_avc_path}") has no .symtab"
+      _hard 0 "AP4 strip verified: $(basename "${_avc_path}") has no .symtab"
     else
-      _advise "AP4 strip NOT applied: $(basename "${_avc_path}") still carries .symtab (advisory — investigate MEDIA_STRIP)"
+      _hard 1 "AP4 strip NOT applied: $(basename "${_avc_path}") still carries .symtab — MEDIA_STRIP regressed?"
     fi
   else
     _advise "AP4 strip check skipped (could not extract ${_avc_path})"
