@@ -425,12 +425,23 @@ failed (exit 22)" and fallen through by design; a 404 is a wrong pin, not an out
 instruction. Appeared with clang-cl 23.1.0; 22.1.8 compiled the same tree. Observed in OpenCV's
 CPU-dispatch TUs and in the bundled protobuf.
 
-**Cause — two passes that pick an encoding from an ESTIMATE of block offsets and are then
-contradicted by the assembler.** They look like one defect and are not; **corrected 2026-08-27**,
-after the earlier "one signature at two sites" reading sent one investigation down the wrong path.
-The two have separate root causes and separate fates — in particular **moving the toolchain to
-LLVM `main` fixes (2) and does nothing for (1)**. Full evidence in
-[`windows-refactor-backlog.md`](windows-refactor-backlog.md) § #135.
+**Cause — ONE defect, reaching two passes that both pick an encoding from an ESTIMATE of block
+offsets and are then contradicted by the assembler.** Under async EH (`/EHa`, which OpenCV passes)
+`AsmPrinter` emits a NOP after an `EH_LABEL` whose next instruction can fault, but
+`getInstSizeInBytes` reports `EH_LABEL` as a zero-size meta-instruction — so every MIR-level
+block-size estimate is 4 bytes short per label. `AArch64CompressJumpTables` then picks a 1-byte
+jump-table entry for a span that does not fit (1), and `BranchRelaxation` leaves a branch that
+cannot reach its target (2).
+
+**This entry has now been wrong twice, in opposite directions; both corrections are kept because
+each wrong version was acted on.** 2026-08-27 it said "one signature at two sites" with a shared
+cause — refuted, and the investigation split. Later the same day it said the two were *unrelated*,
+that (2) was [llvm#202716](https://github.com/llvm/llvm-project/pull/202716) and that only a
+toolchain move to LLVM `main` would retire `/Ob1` — **also wrong**. The 2026-08-28 census settled
+it by measurement: 1,869 objects green with BOTH workarounds off, on pinned 23.1.0 plus only the
+two `getInstSizeInBytes` patches. That compiler contains no llvm#202716, so #202716 is a genuine
+upstream defect but not this lane's cause. Full evidence in
+[`windows-refactor-backlog.md`](windows-refactor-backlog.md), backlog item #135.
 
 1. **Jump-table entry width** → `value evaluated as <N> is out of range`.
    `AArch64CompressJumpTables` selects 1-byte entries whenever `span>>2` fits in 8 bits — a
@@ -465,12 +476,15 @@ LLVM `main` fixes (2) and does nothing for (1)**. Full evidence in
    `tbz`/`tbnz` carry a 14-bit displacement: ±32,768 bytes. **It misses by roughly 150 bytes** —
    a hair, not an order of magnitude. LLVM's `BranchRelaxation` pass exists to catch exactly this
    and rewrite the branch; it did not, because its layout estimate came out short.
-   **Root cause, 2026-08-27: FOUND, and fixed upstream.**
-   [`c6e184686cd7`](https://github.com/llvm/llvm-project/pull/202716) creates trampoline blocks
-   with offset **zero**, so `isBlockInRange()` decides reach from underestimated offsets. It is on
-   `main` since 2026-07-21 but **not in 23.1.0** (`release/23.x` forked 2026-07-14) and was never
-   backported, so **only a toolchain move to `main` retires the `/Ob1` setting** — nothing reaches
-   a 23.1.x release unasked.
+   **Root cause: the same EH_LABEL undercount as (1)** — ~150 bytes is 37 labels at 4 bytes each.
+   Retired by the same two patches on pinned 23.1.0; measured 2026-08-28, `/Ob1` off, this TU
+   compiles clean.
+   *Superseded claim, kept because it was acted on:* this once read "root cause FOUND, fixed
+   upstream by [`c6e184686cd7`](https://github.com/llvm/llvm-project/pull/202716), only a toolchain
+   move to `main` retires `/Ob1`". The census compiler contains no such commit, so #202716 is not
+   the cause here. What the earlier `branch-relax-tbz.mir` revert actually showed was that the
+   commit is load-bearing for *upstream's own test* — never evidence about
+   `median_blur.dispatch.cpp`.
 
 **Fix — two settings, one per site, both cross-lane only.**
 
@@ -570,6 +584,45 @@ removing anything from `build-opencv-from-source.ps1` still requires the full
 *both* spellings of the jump-table workaround are stripped, so the "off" arm is genuinely off — is
 pinned by `windows/scripts/tests/Diagnostics.Llvm135Repro.Tests.ps1` against the real ninja
 command line.
+
+### A source build produces UNPATCHED sources and says `SKIP: ... (already applied)`
+
+**Symptom.** `Invoke-SourcePatch` reports `SKIP: <patch> (already applied)` for every
+patch on a fresh source tree, the build succeeds, and the artefact behaves as though
+no patch was ever applied. No error anywhere.
+
+**Cause.** `Invoke-SourcePatch` falls back to `patch.exe` when the source tree is not
+a git repo, and until 2026-08-27 it passed the patch file as a POSITIONAL argument.
+To GNU `patch` a bare path is the file *to be patched*, not the patch — so it read an
+empty patch from stdin, changed nothing and **exited 0**. The helper's reverse-check
+reads exit 0 as "already applied" and skips. Measured against a file containing only
+the word `placeholder`: both the forward and the reverse dry-run returned 0 and
+printed nothing. With `-i` the same call returns 1 and prints `Hunk #1 FAILED`.
+
+Only non-git trees were affected. OpenCV and opencv_contrib are git clones and take
+the `git apply` path, where the positional form is correct — which is why this sat
+undiscovered until the LLVM release tarball became the first non-git consumer.
+
+**Fix.** Already applied: the three `patch.exe` scriptblocks in
+`WindowsSourceBuild.Patches.psm1` now pass `-i $PatchFile`.
+
+**The transferable lesson.** This was caught only because
+`build-llvm-from-source.ps1` asserts on the PATCHED CONTENT afterwards
+(`if ($text -notmatch 'eh-asynch') { throw ... }`), not on the patch step's exit
+code. A source build whose patch silently vanishing would matter should check the
+result, not the return value — otherwise you ship a compiler that reports the right
+version, passes the provenance gate, and still has the bug you patched out.
+
+### `atlbase.h` not found when building LLVM in the container
+
+**Symptom.** `DIASupport.h(25): fatal error C1083: ... "atlbase.h"` partway through an
+LLVM source build.
+
+**Cause.** LLVM's PDB/DIA support needs ATL, which the container's VS Build Tools
+installation does not include.
+
+**Fix.** `-DLLVM_ENABLE_DIA_SDK=OFF` (already in `build-llvm-from-source.ps1`). DIA
+only powers PDB symbolisation in the LLVM tools; the compiler itself needs none of it.
 
 ### A build script dies with `The term ... is not recognized`, in the container only
 

@@ -214,9 +214,13 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   chain anyway. There is therefore no cheap re-run: the fix itself is in `WindowsSourceBuild.Common`,
   a tier-1 module mounted into every media RUN. Acceptance is now ONE full chain from `base`
   (arm64 first — it exercises more of the new code), then amd64 `media,final` on the shared base.
-  This confounds #134 with the bumps; the mitigation is that the compiler is unchanged
+  This confounds #134 with the bumps. **The mitigation recorded here has since evaporated and the
+  correction is kept, because the confounding is real:** it read "the compiler is unchanged
   (`LLVM_WINDOWS_VERSION` stays 22.1.8 — upstream ships no win64 installer for 23.1.0, verified
-  404), so nothing that shapes compiled output moved.
+  404), so nothing that shapes compiled output moved". `versions.env:456` now pins
+  **`LLVM_WINDOWS_VERSION=23.1.0`** — scoop reshaped the artifact and forced the bump (`6bbcea65`),
+  which is exactly what brought #135 in. So the compiler DID move, and any #134 acceptance run from
+  that period is confounded by a compiler change as well as by the module wave.
   **What landed.** Three leaf modules, each mounted only by the RUNs that call it:
   `WindowsMeson.Common` (the 3 meson helpers + `Invoke-WrapDownload` + `Expand-SubprojectArchive`)
   and `WindowsRustToolchain.Common` (`Install-RustTargetStdFromPinnedManifest`) in the merge
@@ -459,24 +463,31 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   They do not share a cause. One is a known upstream bug with an existing fix; the other is still
   open but is now narrowed to a single measurable quantity.
 
-  **(a1) `tbnz` / `fixup value out of range` — ROOT CAUSE FOUND, FIX EXISTS UPSTREAM.**
-  [`c6e184686cd7` — *[AArch64][CodeGen] Fix trampoline basic block offset*](https://github.com/llvm/llvm-project/pull/202716),
-  on `main` since 2026-07-21. Trampoline blocks are created with offset **zero**, so
-  `isBlockInRange()` decides reach from offsets the code itself calls "slight underestimates" — a
-  branch judged in range that is not, left unrelaxed, rejected at the MC layer.
-  **Not in 23.1.0:** `release/23.x` forked 2026-07-14, one week *before* it landed. **Not
-  cherry-picked onto `release/23.x`** either — checked by subject AND by PR number, because a
-  cherry-pick carries a different SHA and SHA-ancestry alone cannot answer this (that hole cost one
-  wrong "not backported" claim before it was closed properly).
-  **Proven load-bearing, not assumed:** reverting only that commit on `main` and re-running its own
-  `llvm/test/CodeGen/AArch64/branch-relax-tbz.mir` changes the result — with the fix the `TBZW`
-  survives and targets a trampoline chain; without it the branch is inverted and the block layout
-  changes.
-  **Decision 2026-08-27 (owner): move the Windows toolchain to LLVM `main`; do NOT request a
-  `release/23.x` backport.** A backport request was drafted and deliberately not filed. Note the
-  timing that follows from that: the fix reaches a tagged release only in **24.1.0** (~Feb–Mar 2027
-  at the observed 6-month major cadence — 22.1.0 was 2026-02-24, 23.1.0 was 2026-08-25); **no
-  23.1.x will carry it unasked**, so `/Ob1` stays until the toolchain actually moves.
+  **(a1) `tbnz` / `fixup value out of range` — SAME root cause as (a2), retired by the SAME patch.**
+  `BranchRelaxation` consumes the same `getInstSizeInBytes`; `median_blur.dispatch.cpp` and
+  `multiview_calibration.cpp` are also compiled `/EHa`; and the ~150-byte miss is 37 `EH_LABEL`
+  nops counted as zero. **Measured 2026-08-28, not inferred:** the `NINJA_KEEP_GOING=1` census
+  built all **1,869** objects green with BOTH `OPENCV_NO_JUMPTABLE_WORKAROUND=1` and
+  `OPENCV_NO_OB1_WORKAROUND=1`, on pinned `llvmorg-23.1.0` plus only the two `getInstSizeInBytes`
+  patches (llvm#219275, llvm#219276).
+
+  **THIRD INSTANCE OF THE SAME INFERENCE ERROR — read this before the next attribution.** This
+  block previously read "ROOT CAUSE FOUND, FIX EXISTS UPSTREAM:
+  [`c6e184686cd7`](https://github.com/llvm/llvm-project/pull/202716) (trampoline blocks created at
+  offset zero), so `/Ob1` stays until the toolchain moves to LLVM `main`". **The census compiler
+  contains no such commit** — it is the pinned 23.1.0 release plus two patches that touch only
+  `getInstSizeInBytes` — so llvm#202716 cannot be a necessary cause here. It is a real upstream
+  defect, kept for the record, and nothing more. What the `branch-relax-tbz.mir` revert actually
+  proved was that the commit is load-bearing **for upstream's own test**, never anything about
+  `median_blur.dispatch.cpp`. That is the same "evidence about X read as evidence about Y" mistake
+  this entry already records twice above.
+  **The 2026-08-27 decision to move the toolchain to LLVM `main` is WITHDRAWN** — superseded by the
+  shipped path (pinned 23.1.0 + the two patches). No backport request is needed from anyone.
+
+  **Both workarounds are now removable — but they STAY until the patched toolchain is the DEFAULT.**
+  `windows/Dockerfile.toolchain-builder` still carries `ARG BUILD_PATCHED_LLVM=0`, so a stock image
+  ships unpatched clang-cl 23.1.0 and still needs both settings. Delete the flags from
+  `build-opencv-from-source.ps1` in the SAME change that flips that default, never before.
 
   **(a2) Jump-table entry width — NOT fixed on `main`, and now narrowed to one thing.**
   `AArch64CompressJumpTables.cpp` is **byte-identical** between `llvmorg-23.1.0` and `main`; the
@@ -514,9 +525,12 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   `SEH_*` pseudo reported **4 bytes and emitted 0** (538 of the 2,925 `.ll` files). That is the
   *over*-estimate direction, so it is conservative for both consumers — but it inflated every
   Windows-AArch64 size estimate by 4 bytes per SEH directive, and a prologue emits one per saved
-  register. Two commits, **local and unpushed**, on `D:\GitHub\llvm-project` branch
-  `aarch64-instsize-verify`: `1e6148bc4b9c` (the fix) and `f533c8e88038` (the verifier opt-in that
-  found it). Mismatches **558 → 45**, all 45 remaining being over-estimates in unrelated pseudos;
+  register. **Filed upstream 2026-08-27** as
+  [llvm#219276](https://github.com/llvm/llvm-project/pull/219276) (`40f1b36c642e` on
+  `origin/aarch64-seh-size`). The verifier opt-in that found it is NOT upstreamed — it waits on
+  llvm#219275 and llvm#219276 landing, and lives on the local branch `aarch64-instsize-verify`.
+  (The local development SHAs `1e6148bc4b9c` / `f533c8e88038` are rebase ancestors of the pushed
+  commits; their patch-ids differ, so chase the PR numbers, not these.) Mismatches **558 → 45**, all 45 remaining being over-estimates in unrelated pseudos;
   `check-llvm-codegen-aarch64` 4197 passed / 0 failed. **The `.td` route does not work** — the
   default case tests `if (Desc.getSize())`, so a declared `Size = 0` is indistinguishable from
   "unset" and still yields 4; it must be a C++ early return on `isSEHInstruction`. Full PR handover,
@@ -572,8 +586,10 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   | `generated_message_reflection.cc` | **284** | clean, 335,461-byte object |
   | `wire_format.cc` | **260** | clean, 233,801-byte object |
 
-  Those are this entry's own recorded values. **The fix is committed** as `f072f90a9e37` on
-  `aarch64-instsize-verify` (local, unpushed); `check-llvm-codegen-aarch64` 4197 passed / 0 failed.
+  Those are this entry's own recorded values. **Filed upstream 2026-08-27** as
+  [llvm#219275](https://github.com/llvm/llvm-project/pull/219275) (`c03f827dc49f` on
+  `origin/aarch64-ehlabel-size`); `check-llvm-codegen-aarch64` 4197 passed / 0 failed. The local
+  development SHA was `f072f90a9e37` — a rebase ancestor, not findable upstream.
 
   **Reproducing it costs ~10 seconds, not a lane run.** The
   `bk-windows-media-core-opencv-arm64` image already carries clang-cl 23.1.0, MSVC and the ARM64
@@ -607,10 +623,48 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
     by bare name (`$env:CC = 'clang-cl'`, `--cc=clang-cl`), so shadowing the scoop
     shim needs no build-script change.
 
-  **Not yet run end-to-end.** The stage is written and lints clean, but no full lane
-  build has used it — and one cannot happen until the runhcs shim patch is
-  redeployed after the Stevedore upgrade, or heavy media layers die at finalize with
-  `ExportLayer 0x3` after paying the whole compile.
+  ### 2026-08-28 — BUILT AND MEASURED IN THE CONTAINER. The fork fixes it.
+
+  The shim patch was redeployed (`gate hash MATCHES`, 25,937,920 bytes) and the whole
+  path was run for real. `build-llvm-from-source.ps1` works end to end: pinned
+  tarball, SHA256-checked, **both patches applied**, the `eh-asynch` drift assertion
+  passed, install in **~9.5 min**, and the banner reads `clang version 23.1.0` — so
+  `verify-toolchain.ps1`'s provenance gate accepts it. Image tagged
+  `docker.io/local/kataglyphis:bk-llvm-patched`.
+
+  **Stock clang-cl 23.1.0 vs the same 23.1.0 + the two fork patches. Same sources,
+  same flags, same MSVC headers, same container, NO workaround flags:**
+
+  | | stock | patched |
+  |---|---|---|
+  | protobuf `descriptor.cc` | `258`, `281` out of range | clean |
+  | protobuf `generated_message_reflection.cc` | `284` out of range | clean |
+  | protobuf `wire_format.cc` | `260` out of range | clean |
+  | protobuf, objects produced | **0 / 3** | **3 / 3** |
+  | OpenCV `imgproc` | 2 range errors (`277`, `258`), 150 objects | **0 errors, 151 objects** |
+
+  Every value matches the ones this entry recorded from the lane logs. Objects are
+  counted deliberately: zero errors with zero output would prove nothing.
+
+  **Still NOT established, and the workarounds stay until it is.** This is
+  `BUILD_LIST=imgproc` in a minimal configure — 151 objects against the lane's
+  ~1,870 — and `median_blur.dispatch.cpp` never compiled here (OpenCL kernel-header
+  generation), so **`/Ob1` and the whole BranchRelaxation half remain untested**. The
+  rule this entry set still holds: this licenses the `NINJA_KEEP_GOING=1` census with
+  both settings removed, it does not replace it.
+
+  **Three environment problems solved on the way, each documented in
+  `failure-modes.md`:**
+  * `patch.exe` silently skipping every patch on a non-git source tree — a latent
+    bug in `Invoke-SourcePatch`, found only because the drift assertion fired.
+  * `atlbase.h` missing (ATL is not in the container's VS Build Tools) — fixed with
+    `-DLLVM_ENABLE_DIA_SDK=OFF`.
+  * `ImportLayer 0xb7` on image export — snapshot debris, cleared by `--no-cache`
+    exactly as documented. Ruled out first: the shim (`gate hash MATCHES`) and the
+    RDNA4 dGPU (`ConfigManagerErrorCode=22`, i.e. disabled).
+    [docker/for-win#14977](https://github.com/docker/for-win/issues/14977) is still
+    `open` and still `needs-triage` as of 2026-08-28, so the
+    `toggle-rdna4-gpu.ps1 -Disable` workflow stays.
 
   **Strong open hypothesis — this may also be (a1), i.e. `/Ob1`.** `BranchRelaxation` consumes the
   same size function, `median_blur.dispatch.cpp` and `multiview_calibration.cpp` are also compiled

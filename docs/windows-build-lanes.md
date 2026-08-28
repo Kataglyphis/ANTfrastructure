@@ -1112,7 +1112,7 @@ container commits fine via `docker commit`. So `build.ps1` builds media-core as:
    layers commit fine under Hyper-V.
 2. `docker run --isolation hyperv --cpu-count $MediaCoreCpus --memory
    ${MediaMemoryGb}g <builder> pwsh -File build-media-core-all.ps1` — runs
-   the whole ONNX → GenAI → OpenCV → FFmpeg chain in one container at the full
+   the whole ONNX → GenAI → FFmpeg → OpenCV chain in one container at the full
    CPU count. `Get-BuildJobCount` sees `--cpu-count` as `ProcessorCount`, so ONNX
    compiles at `min(cpu-count, memGB/4)` (e.g. `-j14` at `-MediaCoreCpus 16
    -MediaMemoryGb 56`).

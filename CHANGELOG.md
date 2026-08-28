@@ -5,6 +5,41 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — correction: the `/Ob1` half was NOT llvm#202716, and the census says so
+
+**Correcting the entry below, not deleting it.** The 2026-08-27 pass credited the
+`tbnz` / `/Ob1` half of #135 to
+[llvm#202716](https://github.com/llvm/llvm-project/pull/202716). That
+attribution is wrong.
+
+**The deciding artifact is the full-configure census (2026-08-27, 1,869
+objects).** It ran on pinned LLVM 23.1.0 plus exactly two local patches, both in
+`AArch64InstrInfo.cpp::getInstSizeInBytes`. That compiler contains **no**
+#202716 — the release branch forked before it and nobody backported it, which is
+the entry below's own finding. The two TUs that needed `/Ob1` compiled clean
+anyway. A fix that is absent cannot be the fix that worked.
+
+**Both OpenCV workarounds trace to the SAME under-count.** `EH_LABEL` is a meta
+instruction and reports 0 bytes, but under async EH (`/EHa`, module flag
+`eh-asynch`) `AsmPrinter` emits a 4-byte nop after it when the next instruction
+can fault. Four bytes go missing per label. `AArch64CompressJumpTables` picks a
+too-small entry from the short span; `BranchRelaxation` believes a branch is in
+reach when it is not. One defect, two consumers, two different error strings —
+which is why they looked like two bugs for as long as they did.
+
+**Same inference error, third occurrence.** Each time: an upstream commit whose
+description matched the symptom, credited without checking whether the compiler
+under test actually contained it. The rule that catches it is cheap — name the
+artifact that decides the claim, then confirm the claim is falsifiable against
+it.
+
+**What changed on disk:** the root-cause blocks in `docs/failure-modes.md`,
+`docs/windows-refactor-backlog.md` § #135 and
+`out/upstream-llvm-aarch64-seh-instsize.md` now say EH_LABEL, not #202716. Both
+workarounds STAY in `build-opencv-from-source.ps1` until `BUILD_PATCHED_LLVM`
+defaults to on — the patched compiler is opt-in, and the stock one still
+miscounts.
+
 ## 2026-08-27 (second pass) — #135 was two bugs wearing one signature; one is fixed upstream and nobody backported it
 
 **The "one defect at two sites" reading was wrong, and it cost an investigation.**

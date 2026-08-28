@@ -225,7 +225,8 @@ setup_sccache() {
 
   # Set up Rust wrapper.
   #
-  # NEVER bare sccache (AGENTS.md: "Never point a launcher at bare sccache").
+  # Resolve through the launcher, never the bare string (AGENTS.md: "Resolve
+  # the launcher through compiler_cache_launcher()").
   # sccache ABORTS the compile on its own internal errors where ccache would
   # simply exec the compiler. This function exported RUSTC_WRAPPER="sccache"
   # unconditionally, and setup-gstreamer.sh:50 calls it BEFORE
