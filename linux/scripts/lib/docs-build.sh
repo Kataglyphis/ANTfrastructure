@@ -1,57 +1,12 @@
 #!/usr/bin/env bash
 # docs-build.sh - generic "build a Sphinx documentation tree" core.
 #
-# Every project in this family builds its docs the same way: get a Python
-# virtualenv with the docs requirements, pull whatever the C++/Doxygen side
-# generated into _static, optionally run a diagram generator, then `make html`
-# and `make linkcheck` with warnings promoted to errors. None of that is
-# project-specific - only the paths and the extra pre-steps are.
+# Project-agnostic: a wrapper sets the DOCS_BUILD_* variables, sources this file
+# and calls docs_build_main. Variables are in
+# docs/shared-script-libraries.md § docs-build.sh.
+# NOT 02-toolchain/python/ci_build_docs.sh -- that one is for pure-Python repos.
 #
-# This library is project-agnostic: nothing project-specific is hard-coded here.
-# A thin wrapper script sets the DOCS_BUILD_* variables below (its project
-# defaults), sources this file, and calls docs_build_main.
-#
-# Not to be confused with 02-toolchain/python/ci_build_docs.sh, which is the
-# docs step for pure-Python repositories (uv_sync_project over a pyproject,
-# pytest/coverage report staging, no linkcheck). This one is the sourceable
-# library for projects whose docs sit next to a C++/Rust build.
-#
-# It deliberately does NOT set -e / -u / -o pipefail so that sourcing it cannot
-# change the caller's shell options; wrappers are expected to run under
-# `set -euo pipefail` themselves.
-#
-# Optional caller variables (all have safe defaults):
-#   DOCS_BUILD_PROJECT_ROOT      project root (default: cwd)
-#   DOCS_BUILD_DOCS_DIR          directory holding the Sphinx Makefile
-#                                (default: <root>/docs)
-#   DOCS_BUILD_SOURCE_DIR        Sphinx source dir (default: <docs>/source)
-#   DOCS_BUILD_STATIC_DIR        static asset dir (default: <source>/_static)
-#   DOCS_BUILD_VENV_DIR          virtualenv to activate (default: <root>/.venv)
-#   DOCS_BUILD_UV_VENV_CREATE_SCRIPT          script that creates the venv
-#   DOCS_BUILD_UV_INSTALL_REQUIREMENTS_SCRIPT script that installs its
-#                                requirements; both are run with the project
-#                                root as cwd (same contract as
-#                                code-quality.sh's pair, and both defer to
-#                                01-core/python_uv.sh)
-#   DOCS_BUILD_SVG_SOURCE_DIR    directory whose *.svg are copied into the
-#                                static dir before the build (empty: skip).
-#                                A missing SVG is fatal on purpose: an empty
-#                                diagram set means the generating build did not
-#                                run, and shipping docs with holes in them is
-#                                worse than failing here.
-#   DOCS_BUILD_GENERATOR_SCRIPT  Python script run with the source dir as cwd
-#                                before Sphinx (empty: skip)
-#   DOCS_BUILD_PYTHON            interpreter for that script (default: python)
-#   DOCS_BUILD_SPHINXOPTS        SPHINXOPTS for every target
-#                                (default: -W --keep-going, i.e. warnings are
-#                                errors but the build reports all of them)
-#   DOCS_BUILD_TARGETS           array of make targets
-#                                (default: html linkcheck)
-#
-# Everything the wrapper does not provide is discovered from the environment:
-# logging comes from 01-core/logging.sh (or minimal fallbacks) and tool presence
-# checks from the caller's has_tool/require_tools when it declares them.
-
+# Sets no -e/-u/-o pipefail: sourcing must not change the caller's shell options.
 [ -n "${_DOCS_BUILD_SH_LOADED:-}" ] && return 0
 _DOCS_BUILD_SH_LOADED=1
 
