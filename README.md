@@ -29,7 +29,8 @@ Pull an image and start working, or build the chain yourself — both are below.
 ```bash
 nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
-# with the webserver port exposed
+# with the WebRTC signalling port exposed (the separate :webserver image is the
+# one that serves HTTP, on 80/443)
 nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 ```
 
@@ -85,7 +86,7 @@ first:
 this repo and for every project that consumes it. Start there; it is also what
 a consumer repo should link to instead of restating a procedure.
 
-The five entry points people actually want:
+The entry points people actually want:
 
 | I want to… | Read |
 |---|---|
@@ -208,15 +209,22 @@ opt-in GPU override for NVIDIA machines, and a VRAM/context sizing table so a
 
 | Workflow | Purpose |
 |----------|---------|
-| `ubuntu24.04.yml` | On push/PR: Sphinx docs + version-consistency checks |
+| `ubuntu24.04.yml` | On push/PR: the shell preflight gate suite + docs validation/build |
 | `build-docs.yml` | Reusable workflow for docs build |
-| `ghcr-cleanup.yml` | Retains last 3 per tag, 14-day safety net |
-| `stale-docs-check.yml` | Scheduled scan for stale doc references and broken script paths |
+| `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
+| `python-ci-linux.yml` | Python lint/tests, Linux |
+| `python-ci-windows.yml` | Python lint/tests, Windows |
+| `llm-stack-tests.yml` | Push/PR, path-filtered on `linux/llm-stack/**` |
+| `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
+| `sbom.yml` | Scheduled (Mondays): SBOM generation |
+| `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
 
-Windows and ARM lanes are **opt-in per commit** — put `[build-win]` and/or
-`[build-arm]` in the pushed HEAD commit message. A green tick without them says
-nothing about those targets; see
-[docs/ci-build-triggers.md](docs/ci-build-triggers.md).
+**None of these builds a container image.** The image lanes are not CI here —
+they run on the build host (`windows/build-buildkit.ps1`, `linux/scripts/…`).
+The `[build-win]` / `[build-arm]` commit-message opt-ins are the convention of
+the *consuming* application repos, not of this one: no workflow above reacts to
+those tokens. See [docs/ci-build-triggers.md](docs/ci-build-triggers.md), which
+says so in its own opening note.
 
 <!-- generated:version-snapshot:start -->
 ## Source-Controlled Version Snapshot

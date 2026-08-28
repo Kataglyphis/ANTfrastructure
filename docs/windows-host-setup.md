@@ -731,6 +731,27 @@ pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -ShimPath D:\src\hcsshim\c
 
 Verify with `-ReportOnly`: the gate hash must match the live binary.
 
+**The other `deploy-shim-patch.ps1` modes:**
+
+| Goal | Command |
+|---|---|
+| See what is installed and which backups exist; changes nothing | `-ReportOnly` |
+| The patched shim is already installed and only the gate bookkeeping is missing — records the hash in place, no services touched, no elevation | `-RecordCurrent` |
+| Deploy an upstream-shaped build, which needs the env var to do anything | `-ShimPath C:\src\shim.exe -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=45m` |
+| Put the stock binary back — this CLEARS the gate record, because restoring stock must never teach the gate that stock is acceptable | `-Restore .orig` |
+
+**Verifying the result is behavioural, not log-based.** The shim logs its
+effective timeout at Debug level only, which does not reach containerd's log on
+a default setup — a quiet log is *not* proof the deployment worked. Run a
+filesystem-heavy container (the OpenCV canary in
+[`windows-builds.md`](windows-builds.md)) and confirm it finalizes and exports
+without `0x3`. A disposable canary snapshot is the right thing to risk; a chain
+run is not.
+
+Run it from an admin shell, and **never while a build is running** — the service
+stop kills every in-flight solve, and the binary cannot be replaced while a shim
+process holds it. The script refuses on both unless `-Force` is passed.
+
 ### R2. Re-pull the pinned base into the buildkit namespace
 
 The BK lane solves every stage with `--opt image-resolve-mode=local` — correct

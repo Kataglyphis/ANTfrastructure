@@ -1,64 +1,31 @@
 #!/usr/bin/env bash
-# Invocation-idiom lints (backlog 0711f, promoted 2026-08-10 Batch 0).
-# Latent-bug classes that shellcheck cannot see, each of which has already cost
-# a real run. See the t_case lines below for the class descriptions.
-#
-# ── 2026-08-23: this suite was INERT and reported "3 assertion(s) passed" ─────
-# SCRIPTS_DIR was "${TESTS_DIR}/.." — an unresolved path, so every path `find`
-# printed contained the literal segment `tests/..` and `-not -path '*/tests/*'`
-# excluded ALL 241 of them. Zero files were scanned; all three lints matched the
-# empty string and passed. Three assertions of nothing, green for two weeks.
-#
-# The fix is not just the cd+pwd on line ~40. A tree-scanning lint has no
-# natural failure signal — "found nothing" is what success looks like — so this
-# suite now carries POSITIVE CONTROLS: a fixture tree with known-bad and
-# known-good files that each lint must respectively flag and ignore, plus a
-# direct assertion that the real scan reaches the real tree. Any future change
-# that stops the scan reaching files fails the controls instead of passing
-# silently. Do not delete them to "simplify".
+# Invocation-idiom lints (backlog 0711f) for latent-bug classes shellcheck misses.
+# Keep the positive controls: a scan that reaches no files looks exactly like a clean one.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-# cd+pwd, NOT "${TESTS_DIR}/..": see the header. The `tests/` exclusion below
-# matches on the printed path, so an unresolved `..` in the root silently
-# excludes the entire tree.
+# cd+pwd, NOT "${TESTS_DIR}/..": the `tests/` exclusion below matches on the
+# printed path, so an unresolved `..` here silently excludes the entire tree.
 SCRIPTS_DIR="$(cd "${TESTS_DIR}/.." && pwd)"
 
-# How far back a lint looks for a guard that makes an otherwise-banned line
-# safe. 3 logical lines: enough for `if <guard>; then` + a comment, tight enough
-# that an unrelated guard elsewhere in the function cannot mask a real hit.
+# Lookback for a guard that makes a banned line safe: 3 lines fits `if <guard>;
+# then` + a comment without letting an unrelated guard mask a real hit.
 _LINT_GUARD_LOOKBACK=3
 
-# The files a lint scans. tests/ is excluded because the suites in it quote the
-# banned patterns verbatim, as fixtures and as documentation.
+# tests/ is excluded: those suites quote the banned patterns verbatim as fixtures.
 _lint_files() {  # <root>
   find "$1" -name '*.sh' -not -path '*/tests/*' -type f | LC_ALL=C sort
 }
 
-# Normalised view of one file, in this order:
-#   1. FULL-LINE comments blanked — kept as empty lines so line numbers stay
-#      true. DELIBERATE, and the answer to "should the lints scan comments?":
-#      no. These lints ban an idiom from EXECUTING; prose that merely spells it
-#      out cannot run and costs nothing. On the real tree 5 of 7 raw hits were
-#      comments explaining the very bugs these lints exist to prevent
-#      (01-core/common.sh's run_priv rationale, python_uv.sh, vulkan.sh), i.e.
-#      scanning comments is a pure false-positive generator that pressures
-#      authors to delete the explanation. A TRAILING comment is NOT stripped —
-#      a `#` inside a string or a URL makes that unsafe to do blind — so prose
-#      after code can still trip a lint; put it on its own line.
-#   2. THEN backslash-continuations joined, so a multi-line invocation is one
-#      logical line. Comment-blanking runs first in the same sed script so a
-#      comment that happens to end in `\` cannot swallow the code line under it
-#      (bash does not continue comments; sed's `N` does).
+# Full-line comments blanked, not dropped (line numbers stay true; the ban is on
+# code, not prose) BEFORE `\` joins, or a comment ending in `\` eats the line under it.
 _lint_normalize() {  # <file>
   sed -e 's/^[[:space:]]*#.*$//' -e ':a' -e '/\\$/{N;s/\\\n/ /;ba}' "$1" 2>/dev/null
 }
 
-# _lint_tree <regex> <root> [guard-regex] -> one "relpath:LINE:text" per hit.
-# With <guard-regex>, a hit is suppressed when one of the _LINT_GUARD_LOOKBACK
-# preceding normalised lines matches it. That is how an already-correct GUARDED
-# call site stays green without needing an opt-out marker in the source — see
-# the vulkan.sh case in the ${SUDO} lint below.
+# _lint_tree <regex> <root> [guard-regex] -> one "relpath:LINE:text" per hit. A hit
+# is suppressed when a guard matches within _LINT_GUARD_LOOKBACK lines above it,
+# so an already-correct guarded call site needs no opt-out marker in the source.
 _lint_tree() {
   local pattern="$1" root="$2" guard="${3:-}"
   local f rel n i j lo _before _quotes

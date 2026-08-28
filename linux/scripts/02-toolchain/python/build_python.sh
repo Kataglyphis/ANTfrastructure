@@ -4,8 +4,7 @@ IFS=$'\n\t'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Use shared module loader instead of ad-hoc _source_first().
-# Tries /opt/scripts first (container layout), then repo layout.
+# /opt/scripts first (container layout), then repo layout.
 for _bs_path in \
   "/opt/scripts/core/modules.sh" \
   "${SCRIPT_DIR}/../../01-core/modules.sh"; do
@@ -17,22 +16,15 @@ for _bs_path in \
 done
 
 source_module platform.sh
-# ubuntu_write_deb822_source() — the single source of truth for the deb822 apt
-# stanzas (TS8). Loaded EXPLICITLY, not left to cross-env.sh's tolerant load:
-# _python_cross_enable_multiarch_apt() below calls it, and a missing helper must
-# fail here (loud, at source time) rather than as a `command not found` in the
-# middle of the apt rewrite. It is available in every context that runs this
-# script: Dockerfile.toolchain bind-mounts linux/scripts/01-core/ubuntu-mirror.sh
-# to /opt/scripts/core/ubuntu-mirror.sh on the RUN that invokes build_python.sh,
-# and Dockerfile.{toolchain,package} COPY all of 01-core/ to /opt/scripts/core/.
+# Loaded intolerantly on purpose: ubuntu_write_deb822_source() is called mid-apt-rewrite
+# below, so a missing helper must fail here rather than as a `command not found` there.
 source_module ubuntu-mirror.sh
 source_module cross-env.sh || true
 source_module logging.sh || true
 source_module parallelism.sh || true
 source_module downloads.sh
-# Shared CPython dev-package/extension table (backlog TS3): drives the
-# cross-target dev installs and the extension asserts below, and the SAME
-# table feeds the host list (package-lists.sh) and smoke-toolchain.sh.
+# Shared CPython dev-package/extension table (backlog TS3), also feeding
+# package-lists.sh and smoke-toolchain.sh — keep the cross and host lists in sync.
 source_module cpython-dev-packages.sh
 
 install_err_trap
@@ -65,7 +57,6 @@ python_cross_stage_prefix_for_arch() {
   printf '%s' "$(python_cross_stage_root_for_arch "${target_arch}")/usr/local"
 }
 
-# Source the shared fix_python_pc_file() from its canonical location.
 for _pc_fix in \
   "/opt/scripts/python/fix-staged-python-pc.sh" \
   "${SCRIPT_DIR}/fix-staged-python-pc.sh"; do
@@ -159,14 +150,8 @@ _python_cross_enable_multiarch_apt() {
     local _codename
     _codename="$(. /etc/os-release && echo "${UBUNTU_CODENAME:-resolute}")"
     rm -f /etc/apt/sources.list.d/*.sources /etc/apt/sources.list 2>/dev/null || true
-    # TS8: was the 4th hand-rolled copy of these two stanzas. Routed through the
-    # shared ubuntu-mirror.sh writer (same one cross-apt.sh:192 and
-    # Dockerfile.media:203/213 use) — byte-identical output: the helper emits
-    # "<codename> <codename>-updates <codename>-backports" plus "-security" only
-    # when its 5th arg is 1, which is exactly the archive(no-security)/ports(with)
-    # split this block had. The two URL defaults are the same constants the helper
-    # file already owns, so the literals are gone too. NOTE: deliberately NOT
-    # honouring USE_FAST_UBUNTU_MIRROR here — that would be a behaviour change.
+    # 5th arg = add "-security" (archive: no, ports: yes). USE_FAST_UBUNTU_MIRROR is
+    # deliberately NOT honoured here — that would be a behaviour change (TS8).
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu.sources \
       "$(ubuntu_default_archive_mirror_url)" "${_codename}" amd64 0
     ubuntu_write_deb822_source /etc/apt/sources.list.d/ubuntu-ports.sources \
@@ -180,14 +165,8 @@ _python_cross_enable_multiarch_apt() {
 # fallback (cross_build_enabled() returns false when TARGET_ARCH == BUILD_ARCH).
 _python_cross_stage_target_dev_pkgs() {
   local target_arch="$1"
-  # Package NAMES come from the shared cpython-dev-packages.sh table (backlog
-  # TS3), so this cross list can never again desync from the host list in
-  # package-lists.sh (the 2026-08-09 libsqlite3-dev incident). Each gets the
-  # explicit :${target_arch} qualifier (install_target_packages' silent amd64
-  # fallback would defeat the cross install). The single tolerant `|| warn` is
-  # kept as-is; promoting the table's required rows to a FATAL install is the
-  # remaining TS2 refinement (deferred: needs a cross rebuild to prove no
-  # target arch flakily drops a "required" dev package under Ports outages).
+  # Backlog TS2 (deferred): promoting the table's required rows to a FATAL install
+  # needs a cross rebuild to prove Ports outages don't flakily drop one.
   local -a target_pkgs=() _pkg
   while IFS= read -r _pkg; do
     [ -n "${_pkg}" ] && target_pkgs+=("${_pkg}:${target_arch}")
@@ -249,13 +228,8 @@ EOF
   rm -rf "${cross_build_dir}" "${stage_root}"
   mkdir -p "${cross_build_dir}/Python/frozen_modules" "${stage_root}"
 
-  # AP5: link-time optimization for the foreign-arch interpreter (10-30%
-  # upstream-documented speedup). Cross-LTO relies on the target GCC's LTO
-  # linker plugin working through the cross toolchain — fragile, so it is
-  # GATED: PYTHON_LTO=0 disables it without a code revert (a knob flip in the
-  # next build if it ever breaks the cross Python compile). PGO stays cross-out
-  # of reach (needs the foreign interpreter under qemu — separate investigation).
-  # The empty-array expansion below is safe under set -u in bash 4.4+.
+  # AP5: cross-LTO leans on the target GCC's linker plugin (fragile), so PYTHON_LTO=0
+  # is the escape hatch. PGO stays out of reach cross (needs the foreign interpreter).
   local -a _lto_args=()
   [ "${PYTHON_LTO:-1}" = "1" ] && _lto_args=( --with-lto )
 
@@ -301,13 +275,8 @@ _python_cross_install_staging() {
   local python_mm="$3"
   local source_dir="$4"
 
-  # Stage the cross-built interpreter binary and libraries into the
-  # per-architecture root. Do not run `make altinstall` because --
-  # with-build-python already sets PYTHON_FOR_BUILD for compileall,
-  # --without-ensurepip removes the pip bootstrap, and the target
-  # Python binary itself cannot execute on the build host without
-  # QEMU. Copying from the build tree is deterministic and avoids
-  # depending on HOSTRUNNER availability in the container.
+  # Copy from the build tree rather than `make altinstall`: the target binary cannot
+  # execute on the build host without QEMU, and this needs no HOSTRUNNER.
 
   mkdir -p "${stage_root}/usr/local/bin" "${stage_root}/usr/local/lib" "${stage_root}/usr/local/include"
 
@@ -338,16 +307,9 @@ _python_cross_fixup_libdynload() {
   local python_mm="$3"
   local dynload_dir ext_build_dir
 
-  # CPython 3.14's Makefile-based extension build does not place the real
-  # extension shared objects under build/lib.linux-*/. Instead it builds them
-  # into ${cross_build_dir}/Modules/ and leaves *relative symlinks*
-  # (e.g. ../../Modules/_struct.cpython-*.so) inside build/lib.linux-*/.
-  # A plain `cp -a` preserves those symlinks, so the installed lib-dynload ends
-  # up full of dangling links (../../Modules resolves to <prefix>/lib/Modules,
-  # which never gets installed). The result is a target Python that cannot load
-  # ANY C extension (import _struct -> ModuleNotFoundError) once it runs under
-  # QEMU in the runtime/torch stage. Dereference symlinks (-L) so the real .so
-  # files land in lib-dynload.
+  # CPython 3.14 leaves RELATIVE symlinks into ../../Modules under build/lib.linux-*/;
+  # a plain `cp -a` preserves them and the staged lib-dynload dangles, so the target
+  # Python can load no C extension at all. -L dereferences them.
   dynload_dir="${stage_root}/usr/local/lib/python${python_mm}/lib-dynload"
   mkdir -p "${dynload_dir}"
   for ext_build_dir in "${cross_build_dir}/build/lib.linux"*; do
@@ -356,24 +318,20 @@ _python_cross_fixup_libdynload() {
     fi
   done
 
-  # Safety net: copy the real extension shared objects straight from the build
-  # Modules directory in case build/lib.linux-*/ was empty or only held links.
+  # Safety net for a build/lib.linux-*/ that was empty or held only links.
   if [ -d "${cross_build_dir}/Modules" ]; then
     find "${cross_build_dir}/Modules" -maxdepth 1 -name '*.so' \
       -exec cp -a -L {} "${dynload_dir}/" \;
   fi
 
-  # Final guard: refuse to ship a target Python whose lib-dynload still contains
-  # dangling extension symlinks (this is what silently broke foreign-arch torch).
+  # Final guard: a dangling extension symlink here silently broke foreign-arch torch.
   if find "${dynload_dir}" -xtype l 2>/dev/null | grep -q .; then
     while read -r symlink; do warn "dangling: ${symlink}"; done < <(find "${dynload_dir}" -xtype l 2>/dev/null || true)
     err "dangling extension symlinks remain in ${dynload_dir} after staging"
   fi
 
-  # Guard: refuse to ship a target Python missing critical C extensions.
-  # make -k || true above can silently skip failed extension builds; the
-  # dangling-symlink check only catches broken links, not missing files.
-  # These extensions have no external dependencies and must always build.
+  # `make -k || true` above can skip a failed extension silently, and the symlink check
+  # only catches broken links. These have no external deps and must always build.
   local -a _critical_exts=(_struct math cmath _csv _json _pickle _socket)
   local _ext _missing=()
   for _ext in "${_critical_exts[@]}"; do
@@ -387,12 +345,8 @@ _python_cross_fixup_libdynload() {
     err "target Python is missing critical C extensions (make -k may have silently failed)"
   fi
 
-  # Warn about missing optional extensions (depend on target dev packages).
-  # _ctypes is intentionally disabled via ac_cv_header_ffi_h=no in the
-  # config.site above; the warning is expected on cross builds.
-  # _sqlite3 joined 2026-08-08: it was checked NOWHERE in linux/ although a
-  # from-source CPython silently drops it when libsqlite3-dev is absent at
-  # configure — and half the Python ecosystem imports sqlite3 transitively.
+  # These depend on target dev packages. _ctypes is deliberately off via
+  # ac_cv_header_ffi_h=no above, so its warning is expected on cross builds.
   local -a _optional_exts=(zlib _bz2 _lzma _ssl _hashlib _ctypes _sqlite3)
   for _ext in "${_optional_exts[@]}"; do
     if ! ls "${dynload_dir}"/"${_ext}".cpython-*.so >/dev/null 2>&1 && \
@@ -478,10 +432,8 @@ stage_requested_cross_python_payloads() {
   rm -rf "${PYTHON_CROSS_STAGE_ROOT}"
   mkdir -p "${PYTHON_CROSS_STAGE_ROOT}"
 
-  # Split on commas via `IFS=',' read` (scoped to the builtin): this script sets
-  # IFS=$'\n\t', under which the previous `${normalized_targets//,/ }` expansion
-  # did NOT split on its spaces — the loop ran ONCE with all targets as a single
-  # bogus arch and cross staging failed for every multi-target compiler build.
+  # Split via `IFS=',' read`, scoped to the builtin: this script's IFS=$'\n\t' means a
+  # `${x//,/ }` expansion would NOT split, leaving one bogus multi-target arch.
   local -a _staging_targets=()
   IFS=',' read -r -a _staging_targets <<< "${normalized_targets}"
   # One subshell PER TARGET: _python_cross_configure and setup_linux_cross_env
@@ -510,14 +462,11 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   info "Cross mode detected; building host Python ${PYTHON_VERSION} for shared build tooling"
 fi
 
-# Verify the interpreter source when the pinned checksum is available
-# (PYTHON_TGZ_SHA256 in versions.env, maintained alongside PYTHON_VERSION).
 if [ -n "${PYTHON_TGZ_SHA256:-}" ]; then
   download_verified_file "https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz" "${PYTHON_TGZ_SHA256}" "${PYTHON_TARBALL}"
 else
-  # FAIL CLOSED (supply-chain audit): the interpreter that runs half the build
-  # is not something to fetch unverified. A PYTHON_VERSION bump that forgets
-  # the hash must break loudly here, not silently degrade.
+  # FAIL CLOSED: a PYTHON_VERSION bump that forgets the hash must break loudly here,
+  # never silently fetch the interpreter unverified.
   echo "ERROR: PYTHON_TGZ_SHA256 unset — refusing to download the CPython source unverified." >&2
   echo "       Bump PYTHON_TGZ_SHA256 in versions.env together with PYTHON_VERSION." >&2
   exit 1

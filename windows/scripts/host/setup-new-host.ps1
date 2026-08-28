@@ -2,39 +2,10 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
-# One elevated run to bring a FRESH Windows host (Stevedore installed + rebooted,
-# repo checked out) to a green `verify-host-setup.ps1` plus a running dufs
-# sccache L2 endpoint. This is the "scriptable half" of docs/windows-host-setup.md
-# Phase A5 + Phase C; the interactive half (Stevedore install, reboot, docker-users
-# group, docker.exe conditional fixes) still needs the guide by hand.
-#
-# It ORCHESTRATES the canonical per-concern scripts instead of duplicating them:
-#   * CNI .conflist is AUTHORED here from the LIVE vEthernet (nat) subnet - no
-#     magic constants - and apply-containerd-config.ps1 derives the .conf from it.
-#   * apply-containerd-config.ps1  - debug flags, teardown env var, Defender
-#     exclusions, CNI .conf derive, containerd restart.
-#   * apply-buildkitd-gcpolicy.ps1 + the step-log env var - GC policy, history
-#     cap, --config, buildkitd restart.
-#   * deploy-shim-patch.ps1        - installs the patched runhcs shim. If no
-#     -ShimPath is given and the live binary is unpatched, this script BUILDS the
-#     45min/100min fixed-constant shim from hcsshim source (per
-#     windows/upstream/hcsshim-teardown-timeout/README.md § Rebuilding the local
-#     45 min shim), installing Go via scoop when missing.
-#   * dufs + persistence           - scoops dufs if missing, starts it serving
-#     the sccache cache dir, registers the logon task, sets the machine-level
-#     SCCACHE_WEBDAV_ENDPOINT to the host's LAN IP (never localhost).
-#
-# RUN FROM AN ADMIN SHELL and NEVER while a build is solving: the config scripts
-# restart containerd and buildkitd, which kills every in-flight solve.
-#
-#   pwsh -File windows\scripts\host\setup-new-host.ps1 -ReportOnly          # plan, nothing changed
-#   pwsh -File windows\scripts\host\setup-new-host.ps1                      # bring this host to green
-#   pwsh -File windows\scripts\host\setup-new-host.ps1 -SkipShim            # shim is already patched
-#   pwsh -File windows\scripts\host\setup-new-host.ps1 -ShimPath C:\src\hcsshim\containerd-shim-runhcs-v1.exe
-#   pwsh -File windows\scripts\host\setup-new-host.ps1 -SccacheCacheDir C:\Users\jonas\sccache-cache
-#
-# Verify afterwards:
-#   pwsh -File windows\scripts\host\verify-host-setup.ps1 -SccacheEndpoint http://<lan-ip>:5000
+# Brings a fresh Stevedore host to a green verify-host-setup.ps1 plus a dufs
+# sccache L2 endpoint by orchestrating the per-concern scripts, never duplicating them.
+# Admin, and NEVER while a build solves: the sub-scripts restart containerd/buildkitd.
+# Guide, flags and examples: docs/windows-host-setup.md § Phase A5 + Phase C.
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]
 param(
@@ -47,8 +18,7 @@ param(
     # WebDAV store directory served by dufs. Default matches the guide (C5).
     [string]$SccacheCacheDir = 'C:\sccache-cache',
 
-    # Extra dufs serve arguments: -A allows all read/write. Kept as a parameter
-    # so a host can restrict it once the L2 store is trusted.
+    # Extra dufs serve arguments: -A allows all read/write; restrictable per host.
     [string]$DufsExtraArgs = '-A',
 
     # Skip rebuilding/deploying the shim (you are SURE it is patched already).
@@ -82,8 +52,8 @@ function Write-Step {
 }
 
 function Get-LanIpv4Address {
-    # The address containers should reach the host on: a physical adapter with a
-    # real default gateway, skipping the HNS/reserved adapters and link-local.
+    # The address containers reach the host on: a physical adapter with a real
+    # default gateway, skipping the HNS/reserved adapters and link-local.
     $cfg = Get-NetIPConfiguration -ErrorAction SilentlyContinue |
         Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq 'Up' -and
             $_.NetAdapter.InterfaceAlias -notmatch '^vEthernet|Loopback|Bluetooth|WLAN' }
@@ -99,11 +69,9 @@ function Get-LanIpv4Address {
 }
 
 function Get-NatAdapterCidr {
-    # Live vEthernet (nat) -> "network/prefix" for the CNI conflist. Derived at
-    # runtime so the docs never hand out a magic subnet that drifts out of
-    # existence when dockerd recreates the HNS nat network on a new subnet.
-    # Byte-based mask to avoid the int64 sign traps of the .NET Address net-order
-    # conversion for 172.x/192.x octets.
+    # Live vEthernet (nat) -> "network/prefix", derived at runtime because dockerd
+    # recreates the HNS nat network on a new subnet. Byte-wise mask: the .NET
+    # Address net-order conversion hits int64 sign traps on 172.x/192.x octets.
     $n = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
         Where-Object { $_.InterfaceAlias -eq 'vEthernet (nat)' } | Select-Object -First 1
     if (-not $n) { throw "No 'vEthernet (nat)' adapter found - is Windows Containers enabled (Stevedore + reboot)?" }
@@ -162,10 +130,8 @@ function Invoke-StepCni {
         Write-Step "cni        : .conflist already at the live subnet ($natCidr) - no change"
     }
 
-    # apply-containerd-config derives the .conf from the .conflist and owns the
-    # debug flags, teardown env var and Defender exclusions (restarts containerd).
-    # HASHTABLE splat, never an array: array splatting binds by position and
-    # would deliver '-ReportOnly' as $ServiceName (AGENTS § array-splat trap).
+    # HASHTABLE splat, never an array: array splatting binds by position and would
+    # deliver '-ReportOnly' as $ServiceName (AGENTS.md § array-splat trap).
     $acArgs = @{ ReportOnly = $ReportOnly }
     Write-Step 'containerd : applying apply-containerd-config.ps1 (debug flags, teardown env, Defender, .conf derive)'
     & (Join-Path $scriptRoot 'apply-containerd-config.ps1') @acArgs
@@ -201,9 +167,7 @@ function Invoke-StepGcPolicy {
     }
 
     if ($ReportOnly) {
-        # apply-buildkitd-gcpolicy.ps1 has NO dry-run mode (it deploys the toml
-        # and restarts buildkitd unconditionally) - so REPORT the intent here and
-        # never invoke it from a report run.
+        # apply-buildkitd-gcpolicy.ps1 has NO dry-run mode - report, never invoke it.
         Write-Step 'buildkitd  : would apply apply-buildkitd-gcpolicy.ps1 (GC policy + history cap + --config + restart)'
         return
     }
@@ -380,8 +344,8 @@ if (-not $SkipGcPolicy) { Invoke-StepGcPolicy }
 if (-not $SkipShim)     { Invoke-StepShim }
 if (-not $SkipDufs)     { Invoke-StepDufs }
 
-# The .conf derive + config restarts may have left buildkitd stopped or a fresh
-# .conf on disk; one restart finalises the CNI + step-log env.
+# The steps above may leave buildkitd stopped or a fresh .conf on disk; one
+# restart finalises the CNI + step-log env.
 if (-not $ReportOnly) {
     Write-Step 'buildkitd  : restarting to ensure the CNI .conf and step-log env are live'
     Restart-Service buildkitd -Force

@@ -16,7 +16,11 @@
 # the median_blur.dispatch.cpp.obj FAILED line). out/ is gitignored, so the
 # fixture is embedded rather than read -- CI has no build logs.
 
-Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1') -Force
+# Never -Force: that resets the harness result count mid-run. Probe on a
+# harness-only command, since Pester also exports Describe.
+if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue)) {
+    Import-Module (Join-Path $PSScriptRoot 'TestHarness.psm1')
+}
 
 $script:Target = 'aarch64-pc-windows-msvc'
 . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\diagnostics\repro-llvm-aarch64-layout.ps1' `

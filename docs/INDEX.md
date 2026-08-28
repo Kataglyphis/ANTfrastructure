@@ -104,6 +104,8 @@ The two halves of one topic often split:
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | Python CI: the shared lanes, and the two `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv) | [`python-ci.md`](python-ci.md) |
 | clang-format / clang-tidy / cmake-format, and the shared configs | [`code-quality-tooling.md`](code-quality-tooling.md) |
+| Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
+| The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |
 | Watching resource use during a build | [`build-resource-monitoring.md`](build-resource-monitoring.md) |
 | **Giving a build a credential** without baking it into a layer | [`build-secrets.md`](build-secrets.md) |

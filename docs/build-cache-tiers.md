@@ -46,6 +46,76 @@ Two properties are worth internalising because they are counter-intuitive:
 - **T0/T1 are in the same store**, so the one command that wipes layers also
   wipes the compiler caches. That is why Standing rule 3 exists.
 
+### 1.1 The cerbero state cachemount (CERB-CACHE)
+
+`03-media/build/gstreamer/android/build-android-from-source.sh` keeps its
+cerbero state in a T1 exec cachemount (`linux/Dockerfile.android`, the
+`android-gstreamer` RUN, `target=/var/cache/cerbero`) with an unusual job: it
+makes a *failed* build resumable. bootstrap + package is ONE `RUN`, so before
+this mount existed any failure inside it discarded the whole ~40-60 min
+bootstrap — wave5k/5l re-paid it on every freedesktop flap, while wave6b
+restarted WARM (`HIT: resuming … 13G / 20G`) and finished with zero fetch
+failures.
+
+What lives there (cerbero's `home_dir`): `sources/local` (downloaded tarballs
+and the git repos it checks out), `sources/<pkg>` (extracted + compiled build
+trees), `build-tools/` (the host bootstrap prefix), `rust/`,
+`dist/android_<arch>/` (the target prefix), and the `cache-file.cache` /
+`build-tools.cache` pickles recording which recipes are already built
+(`build/cookbook.py: _cache_file()`).
+
+Four properties worth internalising:
+
+- **A resume is not a re-verification.** Read against the pinned cerbero 1.29.2:
+  `Oven._cook_recipe_step` returns before it ever calls the step function when
+  that step is already in the pickle (`build/oven.py:511`), and `_cook_recipe`
+  skips the whole recipe once `needs_build` is false (`:554`). The only caller
+  of `Source.verify()` — the sha256 against the recipe's `tarball_checksum` — is
+  the fetch step itself (`build/source.py:366/378/458`). Bytes reused out of
+  `sources/local` are therefore never re-hashed: they buy speed, not trust.
+- **The pickle only invalidates on recipe content.** A recipe's status is thrown
+  away when its `built_version` changes, or when the content hash of the recipe
+  file plus its patch files changes (`build/cookbook.py:426-440`;
+  `Recipe.get_checksum` = `files_checksum` over the recipe's own FILES, not over
+  the tarball) — so the sed-patched recipes in that script (PKGCFG-MIRROR,
+  soundtouch, glib libiconv) do invalidate themselves. Nothing in the pickle
+  knows about the toolchain, which is why `ANDROID_NDK_VERSION` and
+  `ANDROID_API_LEVEL` are part of the cachemount id: a pin bump must start a NEW
+  store, because cerbero would happily resume a tree built against the old NDK.
+- **The state dir is deliberately NOT `/opt/cerbero`.** That path stays the git
+  CHECKOUT: a mount target already exists when the RUN body starts, so the
+  `[ ! -d cerbero ]` guard would skip the clone and `git clone` refuses a
+  non-empty destination anyway. Separating them also un-collides cerbero's
+  read-only seed dir `cached_sources` (= `<checkout>/sources`) from the live tree.
+- **The disk trade-off, with the number, because the host runs near-full.** The
+  prune at the end of the script is on the SUCCESS path ONLY: the package exists,
+  so the extracted/compiled trees are dead weight and everything kept lives
+  outside `sources/` (the dist prefix, the build-tools prefix at
+  `config.py:1065`, the two pickles) plus `sources/local` — that is
+  `local_sources` (`config.py:1146-1151`, because `home_dir` is non-default), the
+  tarballs and git repos that make the next run cheap and network-independent
+  (FD-OUTAGE). A FAILED attempt keeps its whole tree — that is the entire point
+  of the mount, and it costs up to ~10-15 GB per lane, i.e. ~30-45 GB with all
+  three arch lanes sitting on failures. Retries reuse the same cachemount id and
+  the same paths, so a failing lane overwrites in place rather than accumulating
+  a tree per attempt. Pruning on ENTRY instead was considered and REJECTED as
+  unsafe: cerbero records progress per STEP, so a recipe can be mid-flight with
+  `extract` recorded and `compile` not (`oven.py:511` then skips straight to a
+  configure/compile on a directory the prune would have deleted) — that wedges
+  the lane on every retry instead of bounding disk. `CERBERO_CACHE_RESET=1`
+  empties the CURRENT store on entry when a lane must be forced cold.
+
+GENERATIONS are the unbounded axis: the id carries the NDK/API pins, so a pin
+bump starts a fresh store and ORPHANS the previous one, and nothing inside the
+build can reach it (a different cachemount id is simply not mounted into the
+RUN). `linux/host-config/prune-safe.sh` will not clean it up either — it prunes
+`type==regular` only and treats every cachemount as sacred by design (CACHE1: it
+aborts if the cachemount count drops). Reclaiming an orphan is a deliberate
+host-side act, e.g. a duration-bounded
+`buildctl prune --filter type==exec.cachemount --keep-duration <t>` chosen so the
+ccache/sccache mounts a live build keeps warm stay above the cutoff — check what
+it would remove before running it.
+
 ---
 
 ## 2. The blind spot: what `type=inline` cannot carry
@@ -353,7 +423,7 @@ sit in `build-gstreamer-monorepo.sh` is gone. `RUSTC_WRAPPER` resolves to the
 same guarded launcher from two places: `setup_sccache` exports it
 (`01-core/compiler-cache.sh:229-233`), and `build_gstreamer_monorepo` installs
 it for any process where the variable was never set at all
-(`build-gstreamer-monorepo.sh:694-703`). What made that safe is the UDS fix in
+(`build-gstreamer-monorepo.sh:581-590`). What made that safe is the UDS fix in
 § 5.4 (`compiler-cache.sh:142-151`, `common.sh:394-403`), not optimism — the
 deaths at 99 % were the *wrong server* answering, and the launcher is the
 second belt that turns a remaining sccache hiccup into lost hits instead of a
@@ -372,15 +442,15 @@ The precedence is explicit and correct:
 
 - `setup_ccache` (`01-core/compiler-cache.sh:108-169`) sets
   `CMAKE_C/CXX_COMPILER_LAUNCHER` to the **guarded launcher**
-  (`01-core/sccache-launcher.sh`, resolved at `:160-163`) when `USE_SCCACHE` is
+  (`01-core/sccache-launcher.sh`, resolved at `:163-166`) when `USE_SCCACHE` is
   not disabled, sccache is on `PATH`, and its server answers `--show-stats`;
   otherwise it falls back to **ccache** and says why. (Before 2026-08-26 it set
   ccache unconditionally. Its first cut at the switch hardcoded *bare*
-  `sccache` here, which shipped inert; `verify-critical-fixes.sh:220-231` now
+  `sccache` here, which shipped inert; `verify-critical-fixes.sh:222-241` now
   fails any launcher in this file pointed at bare sccache.)
-- `setup_sccache` (`:200-246`) sets those two launchers **only if they are
-  empty** (`:236`), and otherwise touches only `RUSTC_WRAPPER` (`:233`) —
-  resolved the same way (`:229-232`): the guarded launcher where it is mounted,
+- `setup_sccache` (`:208-255`) sets those two launchers **only if they are
+  empty** (`:245`), and otherwise touches only `RUSTC_WRAPPER` (`:242`) —
+  resolved the same way (`:238-241`): the guarded launcher where it is mounted,
   bare `sccache` only where it is not.
 - `media_common_init` (`03-media/core/common.sh:134-149`) always runs
   `setup_ccache` **first**, then `setup_sccache` only under
@@ -414,7 +484,7 @@ are outside this change's scope):
    counterweight used to be an explicit `export RUSTC_WRAPPER=""` inside
    `build_gstreamer_monorepo`; it is gone. That block is now the opposite — it
    *installs* the guarded launcher when `RUSTC_WRAPPER` is unset
-   (`build-gstreamer-monorepo.sh:673-703`, sourced into the same process at
+   (`build-gstreamer-monorepo.sh:579-591`, sourced into the same process at
    `setup-gstreamer.sh:559-563` and only *called* at `:640`). The monorepo's
    Rust is therefore cached deliberately, and the gate does not gate it.
    What the gate still decides is one thing: `media_common_init` runs
@@ -441,7 +511,7 @@ are outside this change's scope):
 
 | target | gate | state | recommendation |
 |---|---|---|---|
-| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:229-233`, `build-gstreamer-monorepo.sh:694-703`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
+| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:229-233`, `build-gstreamer-monorepo.sh:581-590`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
 | **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:558`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
 | **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
@@ -452,7 +522,7 @@ The targets whose recommendation needs more than a table cell.
 
 #### **rustc** (gst-plugins-rs, the monorepo's Rust)
 
-**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:673-703`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:110`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:152`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
+**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:579-591`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:110`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:155`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
 
 #### **nvcc / hipcc**
 

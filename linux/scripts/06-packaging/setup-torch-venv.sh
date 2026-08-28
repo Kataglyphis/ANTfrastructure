@@ -9,23 +9,11 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-all}"
 VENV="${VENV:-/opt/venv}"
 BUILD_MODE="${BUILD_MODE:-native}"
 
-# The target-native GCC/G++ swapped in by swap-native-gcc.sh is a relocated
-# Canadian-cross build whose baked-in sysroot does not include the runtime
-# image's /usr/include. When PyPI ships no wheel for the target arch (e.g. on
-# riscv64), pip compiles from source under QEMU and the build fails to find libc
-# headers:
-#   C:   "fatal error: string.h: No such file or directory"
-#   C++: <cstdlib> does `#include_next <stdlib.h>` -> "stdlib.h: No such file"
-# CPATH (=-I, searched BEFORE system dirs) fixes plain C includes but NOT the
-# C++ #include_next, which must resolve /usr/include AFTER the libstdc++ headers.
-# So also inject the system dirs with -idirafter (appended AFTER all built-in
-# dirs) via *FLAGS. This is the same logic as the canonical helper
-# append_cross_idirafter() in 01-core/common.sh, inlined here deliberately: the
-# torch stage does not COPY common.sh (nor its load-versions-env.sh chain), and
-# pulling that in just for six flag lines is not worth the extra surface. Keep
-# the two in sync -- verify-critical-fixes.sh fix6 guards this. Exported so
-# pip/setuptools child compiles (C and C++) inherit them; no-op when a prebuilt
-# wheel is used (no compilation).
+# The swapped-in native GCC has no /usr/include in its baked sysroot, so
+# source-built wheels miss libc headers. CPATH alone is not enough: C++
+# #include_next needs -idirafter. Deliberate inline copy of
+# append_cross_idirafter() in 01-core/common.sh, which the torch stage does not
+# COPY — keep in sync, verify-critical-fixes.sh fix6 guards it.
 _mi="$(compgen -G '/usr/include/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _ml="$(compgen -G '/usr/lib/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _idaf="-idirafter /usr/include"
@@ -36,13 +24,8 @@ export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
 export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
 export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
 
-# Canonical NEEDED-walk primitive (backlog D4): elf_unresolved_needed
-# --transitive replaces the hand-rolled `ldd | awk '/=> not found/'` walk in
-# _assert_ffmpeg_so_closure below. Unlike common.sh (deliberately NOT pulled in
-# here — see the append_cross_idirafter note above), platform.sh is a
-# side-effect-free leaf that Dockerfile.torch already COPYs to
-# /opt/scripts/core/platform.sh; repo layout falls back to 01-core. Hard-require
-# it: this feeds a fail-loud gate, and silently skipping would un-gate it.
+# platform.sh gives elf_unresolved_needed --transitive (backlog D4). Hard-require:
+# it feeds a fail-loud gate, so skipping it silently would un-gate that.
 for _stv_platform in /opt/scripts/core/platform.sh \
                      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"; do
   if [ -f "${_stv_platform}" ]; then
@@ -139,15 +122,9 @@ seed_opencv5_bindings() {
   fi
 }
 
-# cv2.abi3.so's dynamic deps. The locally-built OpenCV python wheel
-# (opencv-contrib-python) in /opt/wheels is a plain linux_x86_64 wheel (not
-# manylinux): it bundles nothing and dynamically links the full system stack plus
-# the source-built ffmpeg in /opt/ffmpeg. The ffmpeg libs in turn pull external
-# codec runtime libraries that are NOT part of the GTK/GLib stack and are not
-# otherwise installed in the runtime image. The list below (libtbb12 ..
-# libgraphene-1.0-0) provides exactly the sonames that `ldd` reports as unresolved
-# for cv2.abi3.so once /opt payload dirs are on the loader path. Removing any of
-# them breaks `import cv2` in the torch venv.
+# cv2.abi3.so's dynamic deps. Our OpenCV wheel is not manylinux — it bundles
+# nothing. This list is exactly the sonames ldd reports unresolved; dropping any
+# one breaks `import cv2`.
 _install_cv2_runtime_apt() {
   apt-get install -y --no-install-recommends \
     libgirepository-2.0-dev libcairo2-dev libgirepository1.0-dev \
@@ -183,14 +160,10 @@ _install_cv2_runtime_apt() {
     libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11
 }
 
-# FFmpeg external-codec RUNTIME libraries: install EXACTLY the apt packages the
-# media stage recorded as /opt/ffmpeg's real link-time deps (see
-# emit_runtime_apt_manifest in build-ffmpeg.sh). This auto-tracks whatever
-# codecs were probe-enabled per arch -- no soname guessing against the Ubuntu
-# base. Best-effort per package so a name unavailable for this arch can't fail
-# the build; the ffmpeg smoke (now pipefail-correct) is the backstop that flags
-# a genuinely missing soname. The hardcoded opencore-amr entries above remain as
-# a baseline for when the manifest is absent (older media images).
+# Installs exactly what build-ffmpeg.sh's emit_runtime_apt_manifest recorded, so
+# it auto-tracks the per-arch probe result instead of guessing sonames.
+# Best-effort per package; the ffmpeg smoke is the backstop. The hardcoded
+# opencore-amr entries above cover older media images with no manifest.
 _install_ffmpeg_runtime_codecs() {
   if [ -s /opt/ffmpeg/runtime-apt-packages.txt ]; then
     local _ff_pkgs
@@ -213,16 +186,10 @@ _install_ffmpeg_runtime_codecs() {
   fi
 }
 
-# Fail-loud gate: every shared library the shipped ffmpeg needs (its full
-# transitive closure) MUST resolve on the runtime loader path. The codec-lib
-# installs above are best-effort, and historically a silently-skipped package
-# (e.g. libopencore-amrwb0 -> libopencore-amrwb.so.0) shipped undetected --
-# ffmpeg then died at load on arm64/riscv64 while amd64 stayed green, and the
-# only backstop (the runtime-image ffmpeg smoke) is skipped whenever binfmt/QEMU
-# is absent. `ldd` honours the LD_LIBRARY_PATH exported by setup_torch_deps (so
-# /opt/ffmpeg's own libav* resolve too) and runs natively in this torch stage
-# under QEMU, so this asserts the property that actually matters regardless of
-# smoke gating. Escape hatch: ALLOW_BROKEN_FFMPEG=1.
+# Fail-loud gate: ffmpeg's full transitive closure must resolve here, because the
+# codec installs above are best-effort and the ffmpeg smoke is skipped without
+# binfmt — a silently-skipped package once shipped broken on arm64/riscv64 while
+# amd64 stayed green. Escape hatch: ALLOW_BROKEN_FFMPEG=1.
 _assert_ffmpeg_so_closure() {
   if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
     local _ff_unresolved
@@ -264,22 +231,11 @@ setup_torch_deps() {
 }
 
 seed_riscv64_apt_packages() {
-  # ---- riscv64/QEMU-specific bootstrap (arch bootstrap, NOT wheel logic) ----
-  # RISC-V has almost no pre-built Python wheels on PyPI.  Seed the C-extension
-  # packages that would otherwise force a source build (or that a verify step
-  # hard-imports) from apt into the venv.  cairo/gi/contourpy are copied WITH
-  # their dist-info/egg-info so uv recognises them as already-installed and skips
-  # them.  python3-contourpy is best-effort (assemble-torch-app's verify step
-  # hard-imports contourpy and no riscv64 wheel exists on PyPI).
-  #
-  # numpy is deliberately NOT seeded into the venv: the resolved set pins a newer
-  # numpy than apt ships, so uv builds that version regardless. If the apt numpy
-  # tree were copied in (it has no dist-info uv trusts), uv would still build the
-  # pinned wheel and then fail to INSTALL it -- "failed to create directory
-  # numpy/random/lib: File exists" -- colliding with the seeded files. numpy now
-  # builds cleanly under QEMU (see the -idirafter header fix above), so let uv
-  # build + install it into a clean site-packages. python3-numpy is still apt-
-  # installed below as a dependency of the cairo/gi/contourpy stack.
+  # ---- riscv64/QEMU bootstrap (arch bootstrap, NOT wheel logic) ----
+  # PyPI has almost no riscv64 wheels, so seed the C-extension packages from apt,
+  # WITH their dist-info so uv treats them as installed.
+  # numpy is deliberately NOT seeded: uv builds the pinned (newer) version anyway
+  # and would then collide with the seeded files on install.
   apt-get update
   apt-get install -y --no-install-recommends python3-numpy python3-cairo python3-gi python3-gi-cairo
   apt-get install -y --no-install-recommends python3-contourpy \

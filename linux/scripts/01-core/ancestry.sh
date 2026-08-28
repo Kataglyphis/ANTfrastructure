@@ -7,55 +7,12 @@
 _ANCESTRY_SH_LOADED=1
 _ANCESTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
-# ── WHY THIS EXISTS ───────────────────────────────────────────────────────────
-#
-# Digest pinning (digest-pinning.sh) guarantees that WITHIN one orchestrator run
-# each stage consumes the image its parent just produced. It says nothing about
-# runs that start mid-chain. The documented failure (docs/linux-cross-builds.md
-# § "Trap: stale-base propagation across orchestrator invocations") is:
-#
-#   1. Full chain built:            compiler → sdk → media → android
-#   2. compiler rebuilt and pushed  (e.g. new /opt/gcc-16.2.0-native-arm64)
-#   3. `--from-stage media` runs    → resolves the sdk pin from tag :cross-sdk-*
-#                                     which was built from the OLD compiler
-#   4. media inherits the stale sdk; the new compiler content never lands.
-#
-# Nothing in the pipeline could detect step 3 — the sdk tag resolves fine, it is
-# simply the wrong ancestor. Until now the only defense was a rule in a document
-# ("after a compiler push, start from --from-stage sdk"), i.e. human discipline
-# guarding a machine invariant. This module turns it into a check.
-#
-# ── HOW ───────────────────────────────────────────────────────────────────────
-#
-# WRITE: every pushed cross stage records the digest-pinned reference it was
-# actually built FROM as an OCI manifest annotation
-# (org.kataglyphis.parent-digest). This is free: it rides along in the manifest
-# the push already writes.
-#
-# READ: `nerdctl manifest inspect --verbose` returns the verbatim registry
-# manifest in its base64 `Raw` field, so the annotation is readable without
-# pulling the image or fetching config blobs — see manifest-annotation.py.
-#
-# ASSERT: before a partial run builds stage S, walk the ancestor chain of
-# parent(S) upward. For each link child→parent, the digest the child RECORDS
-# must equal the digest the parent tag CURRENTLY resolves to. A mismatch means
-# the parent was rebuilt after the child — exactly the stale-base case — and is
-# a hard failure with the specific --from-stage that repairs it.
-#
-# ── FAILURE SEMANTICS ─────────────────────────────────────────────────────────
-#
-# Absent annotation  → WARN. Images built before this module have no annotation;
-#                      provenance is unknown, not known-bad. Warning keeps the
-#                      rollout non-breaking: pre-existing images stay usable and
-#                      every image built from now on is checked.
-# Present + mismatch → FAIL. This is positive evidence of a stale ancestor.
-# Unresolvable tag   → WARN. A missing parent tag is the build's problem to
-#                      report, not an ancestry violation.
-#
-# Provides:
-#   ancestry_output_annotations()  — output-opt fragment recording the parent pin
-#   ancestry_recorded_parent()     — read the recorded parent ref off an image
-#   ancestry_assert_chain()        — assert the ancestor chain feeding a stage
+# Turns "after a compiler push, start from --from-stage sdk" from human
+# discipline into a machine check: each pushed stage records the digest it was
+# built FROM as an OCI annotation, and a partial run asserts the recorded digest
+# still matches what the parent tag resolves to. Mechanism, failure semantics and
+# the trap it prevents: docs/linux-cross-builds.md § Trap: stale-base propagation
+# across orchestrator invocations.
 
 ANCESTRY_PARENT_DIGEST_KEY="${ANCESTRY_PARENT_DIGEST_KEY:-org.kataglyphis.parent-digest}"
 ANCESTRY_PARENT_STAGE_KEY="${ANCESTRY_PARENT_STAGE_KEY:-org.kataglyphis.parent-stage}"
