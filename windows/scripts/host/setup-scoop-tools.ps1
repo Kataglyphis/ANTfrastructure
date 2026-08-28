@@ -363,7 +363,7 @@ Install-ScoopPackage -Package 'main/sccache' -Version $SccacheVersion
 #
 # The scoop manifest already knows an arm64 source, so this uses the SAME upstream
 # artifact scoop would, with the manifest's own SHA256:
-#   "arm64": { "url": "https://slproweb.com/download/Win64ARMOpenSSL-4_0_1.exe" }
+#   "arm64": { "url": "https://slproweb.com/download/Win64ARMOpenSSL-4_0_2.exe" }
 # It is installed ALONGSIDE the x64 one (never replacing it -- this layer is shared
 # with the amd64 lane) into a fixed directory that the GStreamer build points
 # pkg-config at on the cross lane.
@@ -375,8 +375,8 @@ $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.l
 if ($sslArm64Lib.Count -gt 0) {
     Write-Host "OpenSSL (aarch64) already present ($($sslArm64Lib[0].FullName))."
 } else {
-    $sslUrl  = 'https://slproweb.com/download/Win64ARMOpenSSL-4_0_1.exe'
-    $sslSha  = '397146c4317e84dbad20f8a3222b0af6414db8db11a8a3bfe7de11990b39cbaa'
+    $sslUrl  = 'https://slproweb.com/download/Win64ARMOpenSSL-4_0_2.exe'
+    $sslSha  = '5d2653ef3045a4090d448b5b9d4b85ca5277cc2d410aade9523e9bc0275b7e51'
     $sslExe  = Join-Path $env:TEMP 'Win64ARMOpenSSL.exe'
     try {
         Write-Host "Fetching aarch64 OpenSSL from $sslUrl (installed beside the x64 build, never replacing it)"

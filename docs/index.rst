@@ -181,6 +181,7 @@ Common development targets:
    python-ci
    ci-build-triggers
    github-cli-pipeline-monitoring
+   mistral-vibe-glm-setup
    agentic-loop-build-matrix
    windows-agentic-loop
 

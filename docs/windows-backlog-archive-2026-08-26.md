@@ -985,3 +985,149 @@ decision). Note this supersedes the tranche-1 table above for #116, #128 and
   (protected-root rule); a poisoned layer is fixed by re-running its RUN with the guard in place
   (the module edit re-keys it). **Proven on the amd64 regression run 4:** the same
   `media-core-onnx` RUN finalized in 5:32 with the guard active at 4.7 s.
+
+---
+
+## #122 — CUDA on arm64: Phase-0 probe (DONE 2026-08-28, CLOSED by owner decision)
+
+Moved here from `windows-refactor-backlog.md` on 2026-08-28 after the owner
+confirmed no near-term plan to integrate CUDA into the Windows container
+build. The probe ran on 2026-08-28 (no chain rebuild); the verdict closed the
+entry. Kept for the measured facts, which correct two prior records.
+
+**Verdict: cuDNN arm64 ships today; CUDA itself does not — not at 13.4, not
+at any 13.3.x or 12.x.** Wiring is blocked on NVIDIA publishing a
+`windows-arm64` CUDA redist, not on this repo.
+
+**(1) The hardcoded `windows-x86_64` literal in `setup-cuda.ps1` — CONFIRMED,
+one site.** `setup-cuda.ps1:138` builds the cuDNN URL with a literal
+`windows-x86_64` segment:
+`…/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-{0}_cuda{1}-archive.zip`.
+The CUDA installer URL (`:40`) carries no arch — it is
+`cuda_$CudaVersion_windows.exe`, a single x86_64 .exe. So arch-parameterising
+means the cuDNN URL ONLY: swap `windows-x86_64` -> `windows-arm64` (and the
+matching filename prefix) on the arm64 lane. No CUDA installer URL change is
+possible because there is no arm64 installer.
+
+**(2) cuDNN arm64 archive at the exact pin — CONFIRMED HTTP 200, but the size
+previously recorded was WRONG.**
+`https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-arm64/cudnn-windows-arm64-9.25.0.15_cuda13-archive.zip`
+returns **HTTP 200, 90,177,536 bytes (~90 MB)** — NOT the 421 MB recorded on
+2026-08-24. The x86_64 counterpart at the same pin is HTTP 200, 632,936,226
+bytes (~633 MB). The 421 MB figure was never re-measured after it was first
+recorded; the archive may have been re-cut, or the figure was always wrong
+(the 2026-08-24 note says "421 MB" with no fetch). The cuDNN redist *manifest
+JSON* (`redistrib_9.25.json` and every variant tried) 404s, so the SHA256 pin
+in `versions.env` (`CUDNN_ZIP_SHA256`) cannot be re-derived from the manifest
+— it must be computed from a download, which is what `versions.env:779`
+already says. The archive's own `lib\arm64` contents were not inspected here
+(extraction needs 7-Zip, not on this host's PATH); the 2026-08-24 note asserts
+`lib/arm64` inside and the 90 MB size is consistent with an arm64-only slice
+of the 633 MB x86_64 zip.
+
+**(3) CUDA 13.4 arm64 device `.lib`s — NOT PUBLISHED. CUDA 13.4 does not exist
+on NVIDIA's servers.**
+`https://developer.download.nvidia.com/compute/cuda/13.4/local_installers/cuda_13.4_windows.exe`
+returns HTTP 404. The same path at 13.4.0 and 13.4.1 also 404. The `/cuda/13.4/`
+directory page returns NVIDIA's "Page Not Found" HTML. There is no CUDA 13.4
+installer to pull, preview or otherwise. The CUDA redist manifest for 13.3.1
+(HTTP 200, 47 KB) lists **only `windows-x86_64`** for Windows — zero
+`windows-arm64` entries. Same for 13.3.0, and for every 12.x checked (12.5.1,
+12.6.0, 12.6.3, 12.8.1): 0 `windows-arm64`, 62 `windows-x86_64` each. The only
+arm64 CUDA target NVIDIA publishes anywhere is `linux-sbsa` (Linux ARM64
+server). The staged `windows/downloads/cuda_13.3.0_windows.exe` is an i386
+InstallShield launcher (PE machine `0x014C`) — the wrapper, not a payload
+indicator; extracting its 2.5 GB embedded archive to look for arm64 `.lib`s
+needs 7-Zip (not on PATH here), but the redist manifest is the authoritative
+publication list and it has no arm64 row.
+
+**What this means for the wiring plan.** The entry's "only if all three hold"
+gate FAILS on (3): there is no CUDA arm64 installer and no `windows-arm64`
+CUDA redist, so there are no arm64 device `.lib`s to point nvcc at and no CUDA
+root for the ORT CUDA branch to key on. Re-keying ORT on "an arm64 CUDA root
+exists" is correct in principle but vacuous until NVIDIA ships one. Do NOT
+relax the `-Gpu` driver refusal — the image-state hazard it guards is real and
+the prerequisite (a CUDA arm64 publish) does not exist. Re-open this entry ONLY
+when NVIDIA publishes a `windows-arm64` CUDA redist or installer; check the
+redist manifest, not the marketing page. The 2026-08-24 retraction of "CUDA
+does not exist at all" was itself half-wrong: cuDNN exists, CUDA
+(toolkit/nvcc/device libs) does not, and the distinction matters because
+ORT's CUDA EP needs the toolkit, not just cuDNN.
+
+**One free, build-free fix that fell out of this probe (PARKED, not done):
+arch-parameterise the cuDNN URL in `setup-cuda.ps1:138`** so the arm64 GPU
+lane fetches the 90 MB arm64 archive instead of the 633 MB x86_64 one. That is
+a correctness fix for the arm64 GPU lane's cuDNN layer (it currently downloads
+the wrong arch), independent of whether CUDA itself ever ships for arm64. Do
+it in a base-layer window, not folded into #134/#135.
+
+---
+
+## #136 — VS RUN never cached across runs (SOLVED + DEPLOYED 2026-08-26)
+
+Moved here from `windows-refactor-backlog.md` on 2026-08-28. The fix landed
+and was proven on 2026-08-26; the entry was kept OPEN only because the
+narrative had not been archived. Kept for the `0B` = "already pruned to floor"
+inversion lesson, which is the general rule worth remembering.
+
+Every launch replays `#9 RUN setup-vs.ps1` while `#6` (a RUN with a bind mount),
+`#7` and `#8` (the COPY of that very script) all report CACHED. Reproducible
+across five consecutive launches on 2026-08-26.
+
+**The cost is NOT constant, and the first version of this entry overstated it.**
+Cold it was ~22 min of build plus ~7 min of export; on the very next launch the
+same step reported `#9 DONE 363.2s` — six minutes — because the VS installer
+finds its downloads already present. So the tax per iteration is roughly 6–10
+min warm and ~30 min cold, not a flat 30. Still worth fixing (it multiplies
+every Windows experiment), but do not plan around the cold figure.
+
+**Ruled out by measurement, not by reasoning:** GC eviction (`buildctl du`
+reports `Reclaimable: 4.27MB` of a 499.9 GB store, and the two ~37.6/37.8 GB
+VS-class records are present); a build-arg that varies per run (the driver
+passes only version pins — no timestamp, VCS ref or GUID reaches this stage);
+`-NoCache`/`-NoCacheStage` (not passed); and a changed COPY input, since `#8`
+— the COPY of `setup-vs.ps1` itself — is CACHED, so its parent chain and that
+file are byte-identical.
+
+**SOLVED 2026-08-26 (`916c91f0`) — it was the GC reserve, and the answer was
+inside `buildkitd.toml` itself.** Its sizing note concludes "150GB is the
+floor this file's own sizing note gives" and "keep reservedSpace >= 150 GB
+regardless"; the value directly beneath it read **40GB** — below the single
+~37 GB VS-class layer, so the spine could not survive between runs.
+`maxUsedSpace` compounded it: the store had grown to 545 GB, above BOTH ceilings
+(400/450 GB), so GC was evicting on every run no matter what the reserve said.
+My earlier "GC ruled out because `du` reports `Reclaimable: 0B`" was the wrong
+reading — `0B` is what a store already pruned to its floor looks like, not a
+store that is never pruned. That inversion is the lesson worth keeping.
+
+**Fixed:** reservedSpace 40→150 GB, maxUsedSpace 400→650 GB (tier 1) and
+450→700 GB (tier 2). Arithmetic at edit time: C: 824 GB free of 1861 GB, store
+545 GB, other content ~492 GB — so 150 GB is comfortably satisfiable, unlike
+the 2026-08-08 deadlock at 214.75 GB when only ~294 GB was available to
+buildkit. Three docs claimed a third number (200 GB) matching neither the
+config nor `windows-build-lanes.md`'s own "150GB now"; all aligned.
+
+**This was the second half of a fix only half-made on 2026-08-11**, which
+raised `maxUsedSpace` after GC evicted "the base/sdk/toolchain spine between
+driver runs → every run re-solved the prefix" — verbatim this symptom — and
+left the reserve alone.
+
+**DEPLOYED AND PROVEN 2026-08-26 23:10 (owner ran the elevated apply).**
+Verified by effect, not exit code, as that script has reported success while
+leaving the old value before (2026-08-08): the live daemon reports
+`Reserved space: 161.0612736GB` on rules 1 and 2 with `Maximum used space`
+697.93/751.62GB. **The proof is the next build**, not the config dump — the
+very first launch afterwards reported `#6 #7 #8 #9 #10 CACHED`, the first time
+`#9` had cached in six attempts that day. Base went from ~4–7 min of VS
+install plus ~7 min of export to under a minute. Six attempts on 2026-08-26
+would have cost ~2.5 h in cold prefix alone.
+
+My "this run probably will not benefit yet, the records were already evicted"
+caveat was wrong: the previous run's records were still present, and the
+raised ceiling simply stopped GC from taking them.
+
+**One doc trap this exposed, now fixed:** `buildctl debug workers -v` prints
+GB while the toml takes GiB, and uses different labels (`Reserved space:` vs
+`reservedSpace`). A 150 GiB pin shows as `161.0612736GB`, so the verification
+instruction "must read 150GB" — which I had just written into two pages —
+would make a correct deploy look failed.

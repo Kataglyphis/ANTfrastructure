@@ -85,18 +85,13 @@ of build time per attempt. Ordered by leverage ÷ risk, which is the order they 
   `docs/windows-cross-builds.md` § QNN. Open: stage a real SDK, run once, then a native Snapdragon
   host for execution.
 
-- **#122 — CUDA 13.4 (preview) on arm64: Phase 0 probe, then decide.** Probe S, wiring L · ★
-  Phase 0 (~30 min, NO chain rebuild): arch-parameterize the literal `windows-x86_64` in
-  `setup-cuda.ps1` (the audit found it hardcoded at the download-URL composition), HEAD the
-  already-200-verified arm64 cuDNN archive at the exact pin, pull the CUDA 13.4 preview installer
-  and confirm arm64 device `.lib`s are machine `0xAA64`. Only if all three hold: re-key the ORT
-  CUDA branch on "an arm64 CUDA root exists" rather than "this is a cross build", point nvcc at
-  the already-installed `Hostx64\arm64` MSVC toolset, and patch GenAI's `ortlib.cmake` CUDA
-  package-name branch (it keys on `CMAKE_GENERATOR_PLATFORM`, empty under Ninja, so a naive flip
-  fetches the x64-only nuget). **Do not relax the `-Gpu` driver refusal until both hold** — the
-  image-state hazard it guards is real and unrelated. Value stays low while CUDA-on-WoA is a
-  preview; the entry exists so the next reader starts from facts, not from the retracted
-  "does not exist at all".
+- **#122 — CUDA on arm64: CLOSED 2026-08-28 (owner decision: no near-term CUDA-in-Windows
+  plan).** Phase-0 probe done: cuDNN arm64 ships (~90 MB at the pin, NOT the 421 MB recorded
+  before); CUDA itself does not — no `windows-arm64` redist or installer at 13.4 or any 12.x/13.3.x.
+  Full probe narrative and the corrected "421 MB" figure:
+  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #122.
+  Re-open only if NVIDIA publishes a `windows-arm64` CUDA toolkit AND the owner wants to wire it.
+  One parked free fix (arch-parameterise the cuDNN URL in `setup-cuda.ps1:138`) lives there too.
 
 **Permanently out of reach — do not re-litigate without new upstream facts:** classic TensorRT
 (genuinely x64-only — NVIDIA's support matrix has no ARM64 row), and the `torch` app stage (`uv
@@ -105,8 +100,10 @@ synced venv is the stage's contract — and PyTorch builds no `win_arm64` wheel 
 this repo's cp314 pin). **Two premises originally recorded in this block (2026-08-23) were wrong
 and are retracted (2026-08-24 parity audit):** "CUDA / cuDNN / TensorRT: no Windows-on-ARM builds
 exist at all" — false: the cuDNN windows-arm64 9.25.0.15 archive exists at this repo's exact pin
-(HTTP 200, 421 MB, `lib/arm64` inside), CUDA 13.4 (preview) advertises Windows ARM64 incl.
-x86_64-hosted cross-compile, and TensorRT-RTX publishes Windows-on-Arm packages for CUDA 13.4 —
+(HTTP 200, **~90 MB** re-measured 2026-08-28; the "421 MB" here was never re-fetched and is wrong
+— see #122), `lib/arm64` inside), CUDA 13.4 (preview) advertises Windows ARM64 incl.
+x86_64-hosted cross-compile (but as of 2026-08-28 no CUDA 13.4 installer or `windows-arm64`
+redist exists — #122 probe), and TensorRT-RTX publishes Windows-on-Arm packages for CUDA 13.4 —
 wiring CUDA into the cross lane is unscheduled backlog work, not fiction; and "the pinned PyTorch
 publishes no `win_arm64` wheel" — false as an absolute: download.pytorch.org does publish
 `win_arm64` `+cpu` wheels, just none for cp314. The verdicts stand on the corrected reasons.
@@ -686,69 +683,57 @@ on both lanes, the documented PyAV-shaped hole in the clang-cl rule.
   Strawberry MinGW g++ 13.2 that ships with this host — there is no MSVC here, which is also why a
   Windows-ARM64 object cannot be produced outside the container).
 
-- **#136 — the Windows base's Visual Studio RUN never caches across runs; it is now the dominant
-  iteration cost.** M · ★★★ (opened 2026-08-26)
-  Every launch replays `#9 RUN setup-vs.ps1` while `#6` (a RUN with a bind mount), `#7` and `#8`
-  (the COPY of that very script) all report CACHED. Reproducible across five consecutive launches
-  on 2026-08-26.
-  **The cost is NOT constant, and the first version of this entry overstated it.** Cold it was
-  ~22 min of build plus ~7 min of export; on the very next launch the same step reported
-  `#9 DONE 363.2s` — six minutes — because the VS installer finds its downloads already present.
-  So the tax per iteration is roughly 6–10 min warm and ~30 min cold, not a flat 30. Still worth
-  fixing (it multiplies every Windows experiment), but do not plan around the cold figure.
-  **Ruled out by measurement, not by reasoning:** GC eviction (`buildctl du` reports
-  `Reclaimable: 4.27MB` of a 499.9 GB store, and the two ~37.6/37.8 GB VS-class records are
-  present); a build-arg that varies per run (the driver passes only version pins — no timestamp,
-  VCS ref or GUID reaches this stage); `-NoCache`/`-NoCacheStage` (not passed); and a changed COPY
-  input, since `#8` — the COPY of `setup-vs.ps1` itself — is CACHED, so its parent chain and that
-  file are byte-identical.
-  **SOLVED 2026-08-26 (`916c91f0`) — it was the GC reserve, and the answer was inside
-  `buildkitd.toml` itself.** Its sizing note concludes "150GB is the floor this file's own sizing
-  note gives" and "keep reservedSpace >= 150 GB regardless"; the value directly beneath it read
-  **40GB** — below the single ~37 GB VS-class layer, so the spine could not survive between runs.
-  `maxUsedSpace` compounded it: the store had grown to 545 GB, above BOTH ceilings (400/450 GB), so
-  GC was evicting on every run no matter what the reserve said. My earlier "GC ruled out because
-  `du` reports `Reclaimable: 0B`" was the wrong reading — `0B` is what a store already pruned to
-  its floor looks like, not a store that is never pruned. That inversion is the lesson worth
-  keeping.
-  **Fixed:** reservedSpace 40→150 GB, maxUsedSpace 400→650 GB (tier 1) and 450→700 GB (tier 2).
-  Arithmetic at edit time: C: 824 GB free of 1861 GB, store 545 GB, other content ~492 GB — so
-  150 GB is comfortably satisfiable, unlike the 2026-08-08 deadlock at 214.75 GB when only ~294 GB
-  was available to buildkit. Three docs claimed a third number (200 GB) matching neither the config
-  nor `windows-build-lanes.md`'s own "150GB now"; all aligned.
-  **This was the second half of a fix only half-made on 2026-08-11**, which raised `maxUsedSpace`
-  after GC evicted "the base/sdk/toolchain spine between driver runs → every run re-solved the
-  prefix" — verbatim this symptom — and left the reserve alone.
-  **DEPLOYED AND PROVEN 2026-08-26 23:10 (owner ran the elevated apply).** Verified by effect, not
-  exit code, as that script has reported success while leaving the old value before (2026-08-08):
-  the live daemon reports `Reserved space: 161.0612736GB` on rules 1 and 2 with
-  `Maximum used space` 697.93/751.62GB. **The proof is the next build**, not the config dump — the
-  very first launch afterwards reported `#6 #7 #8 #9 #10 CACHED`, the first time `#9` had cached in
-  six attempts that day. Base went from ~4–7 min of VS install plus ~7 min of export to under a
-  minute. Six attempts on 2026-08-26 would have cost ~2.5 h in cold prefix alone.
-  My "this run probably will not benefit yet, the records were already evicted" caveat was wrong:
-  the previous run's records were still present, and the raised ceiling simply stopped GC from
-  taking them.
-  **One doc trap this exposed, now fixed:** `buildctl debug workers -v` prints GB while the toml
-  takes GiB, and uses different labels (`Reserved space:` vs `reservedSpace`). A 150 GiB pin shows
-  as `161.0612736GB`, so the verification instruction "must read 150GB" — which I had just written
-  into two pages — would make a correct deploy look failed.
+- **#136 — VS RUN never cached across runs: SOLVED + DEPLOYED 2026-08-26, archived.** The
+  GC reserve in `windows/buildkitd.toml` was below the single ~37 GB VS-class layer
+  (`reservedSpace` 40 GB, `maxUsedSpace` 400/450 GB); raised to 150/650/700 GB and proven
+  by the next build (`#9 CACHED` for the first time). Full narrative + the `0B` = "already
+  pruned to floor" inversion lesson:
+  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #136.
 
-- **#137 — sccache: the local patch and the source build may both be droppable (owner's PRs were
-  accepted upstream).** S–M · ★★ (opened 2026-08-26, owner's news)
-  `Dockerfile.base` builds sccache from source at `SCCACHE_GIT_REV=ffac4a59` and applies
-  `windows/upstream/sccache-nvcc-quote-fix/0003-nvcc-accept-the-diag-error-diag-suppress-diag-warn-f.patch`
-  on top (`setup-rust-toolchain.ps1`). With the PRs merged upstream, the patch is redundant, and if
-  a RELEASE contains them the source build can collapse back to the pinned binary
-  (`SCCACHE_WINDOWS_VERSION` / `SCCACHE_LINUX_VERSION`, both 0.17.0) — removing a cargo build from
-  the base entirely.
-  **Order matters:** confirm the fixes are in the target rev/release FIRST (the patch header names
-  what it fixes; `probe-sccache-patch-verify.ps1` and `probe-sccache-2726-repro.ps1` exist for
-  exactly this), then drop the patch, then decide rev-vs-release. Do NOT fold this into an
-  acceptance run — it is a base-layer change and would confound #134/#135, which are already
-  carrying a forced compiler bump. Give it its own window. Files: `versions.env` (3 pins),
-  `setup-rust-toolchain.ps1`, `windows/upstream/sccache-nvcc-quote-fix/`, and the four probe
-  scripts under `windows/scripts/diagnostics/`.
+- **#137 — sccache: the local patch and the source build — PROBE DONE 2026-08-28,
+  patch is droppable NOW, source build stays until a release.** S–M · ★★ (opened
+  2026-08-26, owner's news; probe 2026-08-28)
+  Both upstream PRs are MERGED. No release carries either yet. The 0003 patch is
+  redundant at the new rev and the build machinery auto-retires it.
+  **Facts (verified 2026-08-28 against the upstream API and `git apply --check`):**
+  - **PR #2811** (nvcc quote fix) — merged 2026-08-19 at `ffac4a5`, which is the
+    CURRENT pin. Already in the tree.
+  - **PR #2816** (`--diag-suppress` separated form = the 0003 patch) — merged
+    2026-08-26 at `8ab39266246b26d736bee44dfa313ab0d5fceb1d`, which is `main` HEAD.
+    `nvcc.rs:1422-1424` (double-dash) + `:1467-1469` (single-dash) carry the
+    entries; `:2166+` carries the regression test.
+  - The 0003 patch **fails `git apply --check` against `8ab39266`** ("patch does
+    not apply") — confirming the content is upstream and the patch is redundant.
+  - The current pin `ffac4a5` has **0** `diag-suppress` entries, so the patch is
+    still load-bearing at the CURRENT pin.
+  - **No release carries either fix**: `v0.17.0` (2026-07-29) predates both
+    merges. `SCCACHE_WINDOWS_VERSION` / `SCCACHE_LINUX_VERSION` (both 0.17.0)
+    cannot be used yet. The source build stays.
+  **What to do (one base-layer change, own window — do NOT fold into #134/#135):**
+  1. Bump `SCCACHE_GIT_REV` in `versions.env` from `ffac4a5…` to
+     `8ab39266246b26d736bee44dfa313ab0d5fceb1d` (main HEAD, carries both fixes).
+  2. DELETE `windows/upstream/sccache-nvcc-quote-fix/0003-nvcc-accept-the-diag-error-diag-suppress-diag-warn-f.patch`.
+  3. `setup-rust-toolchain.ps1:285-318` auto-retires: with no `.patch` files in
+     `C:\temp\scripts\sccache-patches\`, it takes the stock
+     `cargo install --git --rev` path (line 287-290) — no code change needed.
+     The `Dockerfile.base:210` COPY of the (now-empty) dir is harmless but
+     should be removed in the same change for cleanliness.
+  4. The comment block at `setup-rust-toolchain.ps1:279-284` and the
+     `Dockerfile.media-builder:405` canary bar reference the now-deleted patch —
+     update both.
+  5. `Dockerfile.probe:39` (the probe mount) and the probe scripts can stay;
+     they are diagnostics, not build inputs.
+  6. Re-derive `SCCACHE_GIT_REV`'s SHA from the fetch (the pin is a git rev, not
+     a tarball — no SHA256 to bump, but `verify-toolchain.ps1` asserts the
+     built binary's `--version` output; `sccache --version` still reports
+     `0.17.0` at `8ab39266` because main has not been version-bumped, so that
+     gate is unaffected).
+  **Not done here** — this is a base-layer change that re-keys every media stage.
+  The probe confirms it is safe to do; it does not do it. When done, retire this
+  entry and the whole `windows/upstream/sccache-nvcc-quote-fix/` directory like
+  0001/0002 retired before it. Re-open only if a future sccache release breaks
+  the `--locked` build at the new rev (check `Cargo.lock` at `8ab39266` — it
+  exists, so `--locked` resolves).
 
 - **#31 [owner decision] registry push** — push the verified images to a
   registry instead of local-only tags. Parked until the owner wants it
