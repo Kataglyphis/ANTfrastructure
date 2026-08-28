@@ -18,8 +18,12 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 
 Last groomed: 2026-08-28 (§ G + the § B riders added from the 2026-08-27/28
 from-base run; CLOSURE WINDOW 3 still declared — see the 🎯 plan). LIVE
-`:latest-cross` = WAVE-6 ship (a25a38c5/bd9953a9/d3710282, run id
-20260823-223111-d0336283) — see § WAVE-6 SHIPPED.
+`:latest-cross` = index `a26bf2f4dbc8`, children amd64 `a0d1a144` / arm64
+`2d354459` / riscv64 `7e0ed041`, run id `20260827-073226-d491cb10` — see
+§ SHIPPED 2026-08-27. Re-verified against the registry 2026-08-28. (This line
+said WAVE-6 `a25a38c5/…` until 2026-08-28 — one ship stale, and contradicting
+§ SHIPPED in this same file. Re-check it against the registry when grooming,
+not against memory.) A from-base rebuild is IN FLIGHT as of 2026-08-28.
 **Windows items live in the SEPARATE Windows backlog** — this file is
 Linux/cross-lane only.
 
@@ -103,17 +107,31 @@ the ship whose post-audit found the three gates above.
 
 ## 🎯 CLOSURE WINDOW 3 — PRE-BUILD WAVE DONE 2026-08-27, rebuild still owed
 
-STATUS as of 2026-08-27: the pre-build wave is worked through. Preflight is
-32/32 with a real exit code of 0, 27 unit suites / 677 assertions green,
-shellcheck clean over 263 files, and the backlog is down from 46 open entries
-to 30. versions.env stays OPEN until the validating rebuild runs.
+STATUS as of 2026-08-28: the pre-build wave is worked through and the
+validating rebuild is running. 27 unit suites / 677 assertions green, shellcheck
+clean over 263 files plus the new SC2215 pass. Preflight is 31/32: the one red
+check is `docs cross-references`, and all three of its findings are Windows-lane
+(they belong to the separate Windows backlog — do not "fix" them here). The
+backlog went 46 → 30 in the pre-build wave, then back to 39 when the 2026-08-27/28
+run was mined (§ G, § F LOG19, § B LOG17/LOG18). versions.env stays OPEN until
+the rebuild finishes.
 
 Two fixes in this wave are proven by EXECUTION, not inspection: TVM now
 compiles and stages its arm64 wheels (four stacked causes, each only visible
 once the one before it was fixed), and `PartOf=containerd.service` was tested
-against a real `systemctl --user restart containerd` — the unit re-ran in the
-same second and both emulators still answered, so the failure that cost this
-morning 5.5 hours now self-heals.
+against a real `systemctl --user restart containerd`.
+
+CORRECTED 2026-08-28: that PartOf claim was HALF the fix and the sentence
+"now self-heals" was wrong. Both reboots that night lost the emulators anyway.
+PartOf did fire — the unit re-ran in the same second — but it then FAILED with
+`cat: /run/user/1000/containerd-rootless/child_pid: No such file`. `After=`
+orders the UNIT start only; containerd-rootless still has to unshare and write
+child_pid afterwards, so on a cold boot the binfmt unit wins the race. A manual
+re-run always succeeds because containerd is warm by then, which is exactly why
+the restart test looked green while every boot stayed broken. Fixed for real in
+afefdfc (`wait_for_namespace()` polls for the pid file and a joinable namespace,
+plus `Restart=on-failure`). LESSON: a unit that is `active` proves nothing —
+prove emulation with a real foreign-arch run.
 
 What the rebuild still has to prove is everything static analysis cannot: today
 showed three separate times that a defect only becomes visible after the one in
