@@ -203,7 +203,12 @@ _python_cross_configure() {
   _python_cross_stage_target_dev_pkgs "${target_arch}"
 
   pkg_config_libdir="$(cross_pkg_config_libdir "${target_triplet}")"
-  export CFLAGS="${CFLAGS:--O2} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
+  # No -O default here: CPython's configure sets OPT="-DNDEBUG -g -O3 -Wall" and
+  # appends CFLAGS *after* it (Makefile.pre.in PY_CFLAGS), so the old
+  # "${CFLAGS:--O2}" silently downgraded both cross interpreters to -O2 —
+  # "-O3 -Wall -O2" on every riscv64 compile line (compiler.log:132193,
+  # 2026-08-27). Native is unaffected (PGO+LTO, no CFLAGS override).
+  export CFLAGS="${CFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export CPPFLAGS="${CPPFLAGS:-} -idirafter /usr/include -idirafter /usr/include/${target_triplet}"
   export LDFLAGS="-L/usr/lib/${target_triplet} ${LDFLAGS:-}"
   export LIBRARY_PATH="/usr/lib/${target_triplet}:${LIBRARY_PATH:-}"
@@ -431,12 +436,23 @@ stage_requested_cross_python_payloads() {
   # `${x//,/ }` expansion would NOT split, leaving one bogus multi-target arch.
   local -a _staging_targets=()
   IFS=',' read -r -a _staging_targets <<< "${normalized_targets}"
+  # One subshell PER TARGET: _python_cross_configure and setup_linux_cross_env
+  # both *append* to exported CFLAGS/CPPFLAGS/LDFLAGS/LIBRARY_PATH/PATH, so
+  # without isolation each arch inherits the previous one's. The riscv64 build
+  # was compiling with "-idirafter /usr/include/aarch64-linux-gnu" left over
+  # from arm64 (compiler.log:132193, 2026-08-27) — the cross-arch header
+  # contamination class of docs/upstream-libstdcxx-c++23-nostdinc++.md. Safe:
+  # every payload effect is on the filesystem, nothing after the loop reads
+  # these exports, and `err` inside still aborts the script (errexit propagates
+  # the subshell's non-zero status; the EXIT trap only fires in the parent).
   for target_arch in "${_staging_targets[@]}"; do
-    if [ "${target_arch}" = "${build_arch}" ]; then
-      stage_host_python_payload "${target_arch}"
-    else
-      build_cross_target_python_payload "${PYTHON_SOURCE_DIR}" "${target_arch}"
-    fi
+    (
+      if [ "${target_arch}" = "${build_arch}" ]; then
+        stage_host_python_payload "${target_arch}"
+      else
+        build_cross_target_python_payload "${PYTHON_SOURCE_DIR}" "${target_arch}"
+      fi
+    )
   done
 }
 

@@ -1,6 +1,10 @@
 # Shared library to Debian package mappings for validate-media-runtime.sh.
 # Format: SONAME<TAB>package_name
 # Lines starting with # are comments. Blank lines are ignored.
+# A SONAME may use shell-glob wildcards to cover a whole family; exact keys
+# win, globs are then tried in file order. The reserved package name
+# `source-built` is a DENY: the library comes from this repo's own build, so
+# the validator reports the miss instead of apt-installing a distro copy.
 
 libxml2.so.2	libxml2
 libevent-2.1.so.7	libevent-2.1-7t64
@@ -170,3 +174,12 @@ libOpenEXR-3_1.so.31	libopenexr-3-1-31
 libcdda_paranoia.so.0	libcdda-paranoia0
 libdc1394.so.25	libdc1394-25
 libdc1394.so.26	libdc1394-26
+
+# ONNX Runtime is source-built into /usr/local/lib/onnxruntime-cpu/lib. Ubuntu's
+# libonnxruntime1.23 is three releases behind the pinned ORT, and apt-installing
+# it shadows our build: media-arm64 2026-08-27 resolved "libonnxruntime.so.1 ->
+# libonnxruntime1.23" and pulled 12 packages / 62.9 MB into the image (riscv64
+# identical). The whole .so.* family is denied, not just .so.1, because the
+# apt-cache prefix guess in resolve_package_for_so (`^libonnxruntime[0-9]`)
+# ignores the requested version and would grab 1.23 for any future SONAME too.
+libonnxruntime.so.*	source-built

@@ -514,6 +514,78 @@ sudo update-alternatives --config clang++
 Set both, not just `clang` — a mismatched `clang`/`clang++` pair produces link
 errors that read like a missing standard library.
 
+### D4. Python CLI tools that build from source on riscv64
+
+On amd64 and arm64, `uv tool install <something>` is one command because PyPI
+has wheels. On **riscv64 there are no wheels** for the packages these CLIs
+depend on, so uv silently switches to building them from source — and then needs
+a Rust toolchain, a C toolchain, OpenSSL headers and the CPython headers that
+nothing installed for you. The errors name a compiler or a linker, never the
+missing `-dev` package, which is why this section exists.
+
+Ready-made for the Mistral Vibe CLI, including both workarounds below:
+
+```bash
+bash linux/host-config/install-mistral-vibe-riscv64.sh
+```
+
+The four things that make it work, in case you are installing something else:
+
+**1. The native dependencies.** `cryptography` links against OpenSSL and
+`libffi`; a `python*-dev` is needed by anything with a C extension. Install the
+`-dev` packages, not just the `openssl` binary — `pkg-config --modversion
+openssl` is the check that actually matters:
+
+```bash
+sudo apt install -y build-essential pkg-config libffi-dev libssl-dev openssl \
+  "python$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')-dev"
+pkg-config --cflags --libs openssl   # empty output => libssl-dev is missing
+```
+
+**2. The Rust target.** This host's Rust is set up for the native RVA23 profile,
+so cargo must be pointed at that triple rather than the generic
+`riscv64gc-unknown-linux-gnu`:
+
+```bash
+export CARGO_BUILD_TARGET=riscv64a23-unknown-linux-gnu
+export RUSTFLAGS="-C target-cpu=native"
+rustc -vV | grep '^host:'
+```
+
+**3. Drop the dependencies that do not know RVA23 yet.** `textual-speedups`
+pins a `target-lexicon` old enough that it rejects
+`riscv64a23-unknown-linux-gnu` before compiling anything. It is a pure optional
+accelerator for Textual's rendering, so deleting the dependency line costs TUI
+performance and nothing else:
+
+```bash
+sed -i '/textual-speedups/d' pyproject.toml
+```
+
+That is also why the install goes through a **git clone plus `uv tool install
+.`** rather than `uv tool install mistral-vibe` — you need the source tree in
+order to edit `pyproject.toml` before the resolver reaches it.
+
+**4. Clear the cache between attempts.** A source build that failed leaves a
+half-built entry behind, and the retry then fails identically for a cause you
+already fixed:
+
+```bash
+uv cache clean cryptography
+uv cache clean textual-speedups
+```
+
+Finally, `uv` and the tools it installs live in `~/.local/bin`, which is not on
+a login PATH by default — `source "$HOME/.local/bin/env"` (or `uv tool
+update-shell`) before deciding an install failed.
+
+> When a **new** dependency starts failing this way, the triage order is:
+> is it a wheel or a source build (`uv` prints `Building …`), does it need a
+> C library (`-dev` package) or Rust (`target-lexicon` / unknown-target errors),
+> and is it optional? An optional accelerator gets deleted from
+> `pyproject.toml`; a required one needs the target support upstream.
+
+
 ---
 
 ## Phase E — Package sources and automatic updates

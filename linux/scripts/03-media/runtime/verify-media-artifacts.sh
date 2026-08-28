@@ -179,14 +179,21 @@ case "${STAGE}" in
       echo "SKIP [${STAGE}]: BUILD_GENAI is not true"
       exit 0
     fi
-    # 60-build-genai.sh legitimately skips on cross builds (exit 0 after
-    # pre-creating an EMPTY output tree via ensure_onnx_output_tree) — mirror
-    # that skip here instead of "verifying" the pre-created empty dirs.
+    # 60-build-genai.sh exits 0 after pre-creating an EMPTY output tree
+    # (ensure_onnx_output_tree) where it skips — mirror those skips instead of
+    # "verifying" empty dirs. Since GENAI-DRIFT (2026-08-24) the producer's
+    # cross skip is arch-specific: only non-arm64 cross targets bail. arm64
+    # cross-builds the wheel for real ("Created wheel for onnxruntime-genai:
+    # onnxruntime_genai-0.15.2-cp314-cp314-linux_aarch64.whl", media-arm64.log
+    # 2026-08-27) while this gate still skipped it as "does not cross-build".
     _vma_host="$(uname -m)"
     case "${_vma_host}" in x86_64) _vma_host=amd64 ;; aarch64) _vma_host=arm64 ;; esac
+    _vma_target="${TARGET_ARCH:-${TARGETARCH:-${_vma_host}}}"
+    case "${_vma_target}" in x86_64) _vma_target=amd64 ;; aarch64) _vma_target=arm64 ;; esac
     if [ "${BUILD_MODE:-native}" = "cross" ] \
-       && [ "${TARGET_ARCH:-${TARGETARCH:-${_vma_host}}}" != "${_vma_host}" ]; then
-      echo "SKIP [${STAGE}]: GenAI does not cross-build (producer skips too)"
+       && [ "${_vma_target}" != "${_vma_host}" ] \
+       && [ "${_vma_target}" != "arm64" ]; then
+      echo "SKIP [${STAGE}]: only the arm64 cross lane builds GenAI (producer skips ${_vma_target})"
       exit 0
     fi
     # A dir that exists is no evidence — the producer mkdir -p's lib/ include/
