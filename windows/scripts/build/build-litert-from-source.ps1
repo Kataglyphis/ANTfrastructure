@@ -131,6 +131,17 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_MMAP=OFF'
     '-DTFLITE_ENABLE_NNAPI=OFF'
 )
+# QNN delegate (#121): LiteRT's QNN delegate dispatches TFLite models to the
+# Snapdragon NPU via the QAIRT SDK. The SDK headers are passed via QNN_HOME;
+# the delegate DLL is built by LiteRT and the runtime DLLs are staged beside
+# the LiteRT install.
+$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
+if ($qnnSdk) {
+    $cmakeExtra += @('-DTFLITE_ENABLE_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
+    Write-Host "LiteRT: QNN delegate ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121"
+} else {
+    $cmakeExtra += '-DTFLITE_ENABLE_QNN=OFF'
+}
 
 # Add CUDA paths for external delegate compilation if available
 $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv
@@ -376,6 +387,10 @@ if ('tensorflowlite_c.lib' -notin $installedLibs.Name) {
         "The explicit tensorflowlite_c target build produced no import lib. Present: $($installedLibs.Name -join ', ')")
 }
 Write-Host "LiteRT manual install completed ($($installedLibs.Count) libs incl. tensorflowlite_c.lib)"
+
+# QNN runtime staging (#121): stage the backend DLLs beside the LiteRT install
+# so a consumer calling the QNN delegate finds the backends on the DLL search path.
+if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $litertInstallDir) }
 
 Remove-SourceBuildTree -Path $SourceDir
 

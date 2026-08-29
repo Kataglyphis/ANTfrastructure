@@ -130,6 +130,14 @@ $cmakeExtraGenAi = @(
 # Both spellings, two finders: `Python_*` for genai's find_package(Python), `PYTHON_*` for
 # its vendored pybind11, whose FindPythonLibsNew cannot locate the in-tree import lib alone.
 $cmakeExtraGenAi += Get-PythonCMakeHintArgs -Python $tpy -Prefix @('Python', 'PYTHON')
+# QNN EP (#121): GenAI uses ORT as its backend, so the QNN EP is inherited
+# from the ORT build. Stage the QNN runtime DLLs beside the GenAI install so
+# a consumer using GenAI directly finds the backends.
+$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
+if ($qnnSdk) {
+    Write-Host "GenAI: QNN runtime staged from $($qnnSdk.LibDir) -- backlog #121"
+    [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $genaiInstallDir)
+}
 Invoke-CmakeConfigure -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallPrefix $genaiInstallDir -ExtraArgs $cmakeExtraGenAi | Out-Null
 
 # Resolve MSVC tools path dynamically (avoid hardcoded version)

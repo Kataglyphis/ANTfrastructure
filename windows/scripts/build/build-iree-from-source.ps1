@@ -248,6 +248,15 @@ if ($pythonBindings -eq 'ON' -and $ireeCross) {
     $cmakeExtra += "-DPython3_EXECUTABLE=$($py.Exe -replace '\\', '/')"
 }
 $cmakeExtra += Get-LlvmArchiverCmakeArg
+# QNN target backend (#121): IREE's Qualcomm target backend dispatches
+# compiled MLIR models to the Snapdragon NPU via the QAIRT SDK.
+$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
+if ($qnnSdk) {
+    $cmakeExtra += @('-DIREE_TARGET_BACKEND_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
+    Write-Host "IREE: QNN target backend ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121"
+} else {
+    $cmakeExtra += '-DIREE_TARGET_BACKEND_QNN=OFF'
+}
 # Native lane: the x86_64 trampoline is assembled in THIS configure; cross lane:
 # the ARM64 branch never reaches the custom command, the value is merely unused.
 $cmakeExtra += "-DIREE_MASM_COMPILER=$ireeMasm"
@@ -422,6 +431,8 @@ print("iree python gate OK: abs(-5) =", value)
 
 Remove-SourceBuildTree -Path $SourceDir
 
+# QNN runtime staging (#121): stage the backend DLLs beside the IREE install.
+if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ireeInstallDir) }
 
 Write-Host '=== IREE source build completed ==='
 Write-Host "Artifacts at: $ireeInstallDir"

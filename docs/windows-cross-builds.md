@@ -683,21 +683,34 @@ Four findings from the first runs (3–6), each fixed in code and, where it is a
 
 **First full run: 2026-08-24 evening (arm64 run 11) — see the status banner for the result.**
 
-## QNN execution provider scaffold (#121, 2026-08-24)
+## QNN execution provider (#121, 2026-08-24; SDK staged + multi-framework 2026-08-29)
 
 The Qualcomm AI Engine Direct SDK is login-gated, so the wiring is **opt-in by staging a zip**:
-drop it into `windows/qnn-sdk/` (git-ignored except its README; bind-mounted into the media-core
-`onnx` RUN at `C:\temp\qnn-sdk`), optionally pin it with `QNN_SDK_ZIP_SHA256` in `versions.env`
-(forwarded as a `media-core-env` ARG/ENV, `bump_versions.py` allowlist, same contract as
-`TENSORRT_ZIP_SHA256`). `build-onnx-from-source.ps1` then extracts it, anchors the SDK root on
-`include\QNN\QnnInterface.h`, asserts `lib\<arch>\QnnCpu.dll` exists for the target
-(`Get-QnnSdkLibDirName`: `aarch64-windows-msvc` / `x86_64-windows-msvc`), configures
-`-Donnxruntime_USE_QNN=ON -Donnxruntime_QNN_HOME=<root>` on **both** lanes, and after install
-asserts `onnxruntime_providers_qnn.dll` landed and stages the per-arch backend DLLs plus the
-`hexagon-v*` skel directories beside `onnxruntime.dll`. **No zip = EP off with one notice** —
-the state every run so far has exercised. The SDK-present path is a scaffold that has **never
-run** on this host (it never held the SDK); its asserts are written so the first staged zip
-proves or breaks it loudly. The verification ceiling is DirectML's: bytes, never NPU execution.
+drop it into `windows/qnn-sdk/` (git-ignored except its README; bind-mounted into the
+media-core `onnx`, `genai`, `litert`, and `tvm` RUNs at `C:\temp\qnn-sdk`), optionally pin
+it with `QNN_SDK_ZIP_SHA256` in `versions.env`. `Resolve-QnnSdk` (in
+`WindowsSourceBuild.Common.psm1`) extracts it, anchors the SDK root on
+`include\QNN\QnnInterface.h`, asserts `lib\<arch>\QnnCpu.dll` exists for the target, and
+checks version compatibility against the ORT build (QNN_OP_STFT canary — falls back to
+QNN-off if the SDK is too old). `Copy-QnnRuntime` stages the per-arch backend DLLs
+(`QnnHtp*.dll`, `QnnCpu.dll`, `QnnSystem.dll`) plus `hexagon-v*` skel dirs beside each
+framework's install.
+
+The QNN SDK is wired into **four frameworks**:
+
+| Framework | CMake flag | What it enables |
+|---|---|---|
+| **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | ORT QNN execution provider — NPU inference for ONNX models |
+| **ONNX Runtime GenAI** | (inherits from ORT) | QNN runtime DLLs staged beside GenAI install |
+| **LiteRT** | `TFLITE_ENABLE_QNN=ON` | LiteRT QNN delegate — NPU inference for TFLite models |
+| **TVM** | `USE_QNN=ON` | TVM QNN target runtime — NPU dispatch for TVM-compiled models |
+| **IREE** | `IREE_TARGET_BACKEND_QNN=ON` | IREE Qualcomm target backend — NPU dispatch for MLIR models |
+
+**No zip = QNN off with one notice** on every framework. A version-mismatch (SDK too old
+for the framework version) also falls back to QNN-off gracefully. The SDK staged on this
+host is QAIRT 2.31.0.250130 (QNN API 2.24), which is too old for ORT 1.29 (needs 2.25+
+for `QNN_OP_STFT`); a newer SDK from Qualcomm will enable it. The verification ceiling is
+DirectML's: a green build proves the right bytes ship, never NPU execution.
 
 **The mandatory GStreamer plugin contract demands all four plugins on BOTH lanes again.** The
 `UnavailableOn.arm64` entry that dropped `tflite` while LiteRT was a stand-in was deleted on

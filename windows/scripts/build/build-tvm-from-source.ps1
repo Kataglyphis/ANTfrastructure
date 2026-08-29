@@ -205,6 +205,15 @@ if ($useVulkan -eq 'ON') {
 
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
+# QNN target runtime (#121): TVM's QNN runtime dispatches compiled models to
+# the Snapdragon NPU. The SDK headers/libs are passed via QNN_HOME.
+$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
+if ($qnnSdk) {
+    $cmakeExtra += @('-DUSE_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
+    Write-Host "TVM: QNN target runtime ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121"
+} else {
+    $cmakeExtra += '-DUSE_QNN=OFF'
+}
 # (#133) NO python knobs here: tvm-ffi's CMakeLists `return()`s as a subproject, so
 # TVM_FFI_BUILD_PYTHON_MODULE is never read. The Cython module gets its own configure below.
 
@@ -410,6 +419,8 @@ if ($pythonModule -eq 'ON') {
 
 Remove-SourceBuildTree -Path $SourceDir
 
+# QNN runtime staging (#121): stage the backend DLLs beside the TVM install.
+if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $tvmInstallDir) }
 
 Write-Host '=== TVM source build completed ==='
 Write-Host "Artifacts at: $tvmInstallDir"

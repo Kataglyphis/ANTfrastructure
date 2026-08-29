@@ -514,6 +514,21 @@ below. The rules themselves:
 - **A PRESENT zip fails CLOSED**: a half-extracted tree is a build failure,
   while an absent one is supported.
 
+### QNN / Qualcomm AI Engine Direct Setup (Optional, #121)
+
+The Qualcomm QAIRT SDK is login-gated (Qualcomm developer account + EULA). Stage
+the Windows zip in `windows/qnn-sdk/` (git-ignored except its README); pin it with
+`QNN_SDK_ZIP_SHA256` in `versions.env`. When staged, `Resolve-QnnSdk` extracts it
+and enables the QNN EP/delegate/backend across **four frameworks**: ONNX Runtime
+(`onnxruntime_USE_QNN=ON`), ONNX GenAI (inherits from ORT), LiteRT
+(`TFLITE_ENABLE_QNN=ON`), TVM (`USE_QNN=ON`), and IREE
+(`IREE_TARGET_BACKEND_QNN=ON`). `Copy-QnnRuntime` stages the per-arch backend
+DLLs beside each framework's install. No zip = QNN off with one notice on every
+framework. A version-mismatch (SDK too old for the framework) also falls back to
+QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
+and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
+[`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
+
 ### Windows Build Notes
 
 The Windows lane source-builds the media stack with Ninja + clang-cl + lld-link (exceptions: CPython via `PCbuild\build.bat` with the VS ClangCL toolset; FFmpeg via MSYS2 `make` with `--toolchain=msvc`; GStreamer via Meson; LiteRT-**LM** via Bazel/bazelisk, `build-litert-lm-bazel.ps1`): CPython in the toolchain stage; ONNX Runtime → ONNX GenAI → **FFmpeg → OpenCV** in media-core (that order is load-bearing, #94: OpenCV's video backend links what FFmpeg installed — the authority is `$stages` in `build-media-core-all.ps1`, not this sentence); LiteRT (Ninja) → LiteRT-LM (Bazel) in media-litert; TVM → IREE in media-tvm; GStreamer in the merge stage. **That is the amd64 chain.** On `-TargetArch arm64` all three media branches build since 2026-08-24 (TVM/IREE runtime-only; what a branch cannot build for the target is decided INSIDE the branch and shipped as an empty, marker-carrying tree — the driver-level `$crossBlockedBranches` refusal list was removed on 2026-08-25), and what each branch skips or names ABSENT inside the bundle (LiteRT-LM, the TVM/IREE compilers, the python packages that need the compilers) is owned by the status banner of `docs/windows-cross-builds.md` — do not restate it here, it moves. **Assemblers are the one place the "clang-cl everywhere" rule does not hold on amd64:** NASM-syntax kernels (FFmpeg since #119, libjpeg-turbo in OpenCV, openh264 in GStreamer) go through the pinned `nasm` — LLVM has no NASM-syntax assembler — and MASM-syntax sources split by what LLVM's `llvm-ml` can actually parse (#123, 2026-08-25/26): IREE's single trampoline `x86_64_msvc.asm` goes through `llvm-ml -m64` (`-m64` is load-bearing — llvm-ml assembles i386 by default and then rejects the `.seh_*` directives; proven on the cross lane's host tools), while **MLAS's x64 kernels stay on MSVC's `ml64.exe` by design** — measured on amd64 run 6: every MLAS `.asm` opens with `.xlist` (LLVM 22's MasmParser has no listing directives), `INCLUDE mlasi.inc` is not found (llvm-ml searches `-I` dirs only, ml64 also the includer's directory), and behind it sits the Windows SDK's MASM macro layer; the ORT configure log asserts ml64 so a drift stops at configure. On arm64 every assembly path is clang's integrated assembler. All version pins come from `linux/scripts/01-core/versions.env` — never restate versions here (the duplicated tables this section used to carry drifted, e.g. the GenAI/LiteRT-LM labels).

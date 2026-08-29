@@ -168,10 +168,14 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > published with `--platform windows/arm64`. Current status, coverage and gates:
 > [docs/windows-cross-builds.md](docs/windows-cross-builds.md).
 >
-> **Re-measured 2026-08-28** — the current tree (module-closure refactor #134,
-> clang-cl 23.1.0, #135 workarounds) built green on arm64. The amd64 lane had
-> a TVM-vs-LLVM-23.1.0 blocker, now fixed (uses `TVM_COMMIT` with the LLVM 23
-> guards; needs rebuild). See `docs/windows-refactor-backlog.md` #134.
+> **Re-measured 2026-08-29** — both lanes build green (amd64 smoke 192/0/1,
+> arch gate 1134/0; arm64 smoke 97/0/15, arch gate 992/0). The patched LLVM
+> toolchain (#135, `BUILD_PATCHED_LLVM=1`) is now the default — the AArch64
+> workarounds have been removed. The Qualcomm QNN SDK (QAIRT 2.31.0) is
+> staged in `windows/qnn-sdk/` and wired into ONNX Runtime, GenAI, LiteRT,
+> TVM, and IREE (currently falls back to QNN-off — SDK API 2.24 is too old
+> for ORT 1.29 which needs 2.25+). See
+> [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
 
 ## Engineering principles
 
