@@ -5,6 +5,34 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-29 — amd64 acceptance build GREEN (#134 closed)
+
+### #134 amd64 acceptance PASSED — three build fixes
+
+The amd64 rebuild verified the `TVM_COMMIT` LLVM 23 fix and closed #134.
+Smoke gate: **192 passed / 0 failed / 1 skipped**. Arch gate: **1134/0**.
+
+Three bugs surfaced during the build, all fixed:
+
+1. **`Invoke-GitClone` commit-hash support** — `git clone --branch <hash>`
+   fails for commit hashes ("Remote branch not found"). Added commit-hash
+   detection: clone without `--branch`, then `git fetch --depth 1 origin <hash>`
+   + `git checkout <hash>`. Mirrors the Linux lane's tvm.sh approach.
+
+2. **`SETUPTOOLS_SCM_PRETEND_VERSION` for TVM_COMMIT** — when `TVM_COMMIT`
+   (a 40-char hash) wins over `TVM_REF` (a tag), the pretend-version was set
+   to the hash, which crashes `packaging.version.InvalidVersion`. Now falls
+   back to the tag's version (`0.26.0`) when the resolved version is a hash.
+
+3. **`ARCH_GATE_MIN_INSPECTED` amd64 floor** — 950 was calibrated against the
+   PE-binary count (1134) but the same value gates the import-walk count
+   (701). Same miscalibration that was fixed for arm64 (840→580). Corrected
+   to 650.
+
+4. **Smoke section 10 CPU floor** — floor was 5 but the CPU lane produces
+   exactly 4 assertions (the 5th is a GPU-only CUDA check). Corrected to 4.
+
+
 ## 2026-08-28 — Layer headroom dispute settled + backlog renewed
 
 ### Layer headroom settled — final image sits at ~75, not ~108

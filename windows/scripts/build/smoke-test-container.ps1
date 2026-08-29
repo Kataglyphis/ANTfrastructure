@@ -1539,7 +1539,7 @@ $sectionFloors = @{
     # '7' is 13, counted against a real -ExpectGpu run: the section's only branch picks the
     # cuDNN link+run OR a Skip, so there is no conditional fourteenth.
     '7' = @{ Gpu = 13; Cpu = 0; Arm64 = 0 };  '8' = @{ Gpu = 11; Cpu = 8; Arm64 = 0 };  '9' = @{ Gpu = 9; Cpu = 6; Arm64 = 0 }
-    '10' = @{ Gpu = 7; Cpu = 5; Arm64 = 0 };  '11' = @{ Gpu = 12; Cpu = 12; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
+    '10' = @{ Gpu = 7; Cpu = 4; Arm64 = 0 };  '11' = @{ Gpu = 12; Cpu = 12; Arm64 = 0 }; '12' = @{ Gpu = 9; Cpu = 9; Arm64 = 0 }
     '13' = @{ Gpu = 6; Cpu = 6; Arm64 = 0 }
     # '14' arm64 is 2: the run-assert becomes a PE-machine assert 1:1, but ASAN is a SKIP there.
     '14' = @{ Gpu = 3; Cpu = 3; Arm64 = 2 };  '15' = @{ Gpu = 2; Cpu = 2; Arm64 = 2 };  '16' = @{ Gpu = 1; Cpu = 1; Arm64 = 1 }

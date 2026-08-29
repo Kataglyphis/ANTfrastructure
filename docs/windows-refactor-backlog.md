@@ -72,26 +72,6 @@ this repo's cp314 pin).
   Snapdragon host for execution. Full description in
   `docs/windows-cross-builds.md` § QNN.
 
-- **#133(d) — LiteRT-LM CMake port.** Deferred as a PORT, not a wall. Its ACTIVE
-  Bazel path is blocked twice (no windows-arm64 config, x86_64-only
-  `libGemmaModelConstraintProvider`), but upstream `v0.16.1` ships a CMake path
-  with a no-op `gemma_model_constraint_provider.cc`. With Rust-for-target (a)
-  in place, the remaining work is corrosion/Rust for the target plus days of
-  iteration at ~1 h per attempt. (a)+(b)+(c) are DONE — full narrative in
-  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md).
-
-- **#134 — post-#133 cleanup wave.** M | ★★ | **CODE LANDED + ARM64 ACCEPTANCE
-  PASSED 2026-08-28; amd64 BLOCKED — needs a paid rebuild.**
-  Module-closure unshare (`tvmmods`), three leaf modules, classic-surface
-  deletion, all five PAID ride-alongs (`sharing=shared`, `cuda-runtime-stage`
-  on `${BASE_IMAGE}`, `ARCH_GATE_*` repositioned, arch-gate mounts 1 module,
-  `KATA_ARCH_PROBE` removed). Resource sampler wired into `build-buildkit.ps1`.
-  All free follow-ups done (smoke floor recalibrated, pin parity updated for
-  `TVM_COMMIT`, TVM fixtures fixed, three merge-stage test suites added).
-  **What remains:** one amd64 rebuild to verify the `TVM_COMMIT` LLVM 23 fix
-  (arm64 is green). Full narrative:
-  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #134.
-
 - **#135 — LLVM 23.1.0 AArch64 codegen.** M | ★★ | **Both failures FIXED
   2026-08-27, patched toolchain proven 2026-08-28.**
   Root cause: `EH_LABEL` under `/EHa` emits a 4-byte nop counted as zero by
@@ -113,6 +93,9 @@ this repo's cp314 pin).
 
 ### CLOSED (pointers — full narratives in the dated archives)
 
+- **#133(d)** — LiteRT-LM CMake port: CLOSED 2026-08-29 (owner decision — staying on Bazel).
+- **#134** — post-#133 cleanup wave: DONE 2026-08-29. amd64 acceptance
+  PASSED (smoke 192/0/1, arch gate 1134/0). Archive: `windows-backlog-archive-2026-08-26.md` § #134.
 - **Layer headroom dispute** — SETTLED 2026-08-28. The final image sits at ~75
   layers (counted from the inherited chain's instructions: base 16 + nvidia 3 +
   toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, + 20 ENV + ~12 servercore

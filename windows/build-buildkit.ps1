@@ -224,7 +224,7 @@ $archArgs = @{
 # amd64 arch gate ~1134, import walk ~1100+; arm64 arch gate ~992, import walk ~606
 # (arm64 has 3 ABSENT components, so its walk covers fewer files — 606 is the
 # known-good, NOT 840 which was set against the arch-gate binary count).
-$archArgs['ARCH_GATE_MIN_INSPECTED'] = if ($TargetArch -eq 'amd64') { '950' } else { '580' }
+$archArgs['ARCH_GATE_MIN_INSPECTED'] = if ($TargetArch -eq 'amd64') { '650' } else { '580' }
 if ($TargetArch -ne 'amd64') {
     # #117: every .pyd in the merged HOST site-packages is the x64 build
     # interpreter's -- a REPORTED allowlist skip, never silent out-of-scope.
