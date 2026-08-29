@@ -457,23 +457,19 @@ _opencv_cmake_core_opts() {
         # LOG24: enable the ONNX Runtime DNN backend. The image ships a
         # source-built ONNX Runtime at /usr/local/lib/onnxruntime-cpu; without
         # this flag cv2.dnn cannot use the very runtime the image is built around.
-        # Pass 1 (FROM base) runs without ONNX Runtime (parallel stage), so
-        # only enable it when the directory exists. Pass 2 (opencv-gst, FROM
-        # media-inputs) has it via COPY --from=onnxruntime.
-        # DOWNLOAD_ONNXRUNTIME=OFF prevents CMake from pulling a prebuilt
-        # package (wrong version + no riscv64 prebuilt exists).
+        # The opencv stage mounts it via --mount=type=bind,from=onnxruntime, and
+        # opencv-gst (pass 2) has it via COPY --from=onnxruntime in media-inputs.
+        # ONNXRT_ROOT_DIR points CMake at the source-built install (not a
+        # downloaded prebuilt, which carries the wrong version and has no riscv64).
+        # DOWNLOAD_ONNXRUNTIME=OFF prevents CMake from pulling a prebuilt package.
+        "-DWITH_ONNXRUNTIME=ON"
+        "-DONNXRT_ROOT_DIR=/usr/local/lib/onnxruntime-cpu"
+        "-DDOWNLOAD_ONNXRUNTIME=OFF"
         # LOG26: enable AVIF, HDF5 and the non-free algorithms.
         "-DWITH_AVIF=ON"
         "-DWITH_HDF5=ON"
         "-DOPENCV_ENABLE_NONFREE=ON"
     )
-    # ONNX Runtime DNN backend: enable only when the source-built runtime is
-    # present (pass 2 from media-inputs has it, pass 1 from base does not).
-    if [ -d "/usr/local/lib/onnxruntime-cpu" ]; then
-        _occmo_out+=("-DWITH_ONNXRUNTIME=ON" "-DDOWNLOAD_ONNXRUNTIME=OFF")
-    else
-        _occmo_out+=("-DWITH_ONNXRUNTIME=OFF" "-DDOWNLOAD_ONNXRUNTIME=OFF")
-    fi
 }
 
 # Append cross-compilation CMake flags (find-root modes, archiver tools,
