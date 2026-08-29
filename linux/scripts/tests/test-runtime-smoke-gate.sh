@@ -36,6 +36,7 @@ runtime_use_local_artifact_context() { return 1; }
 runtime_artifact_image_ref()       { :; }
 _runtime_resolve_parent_context()  { printf -v "$3" 'repo/base:dummy'; printf -v "$4" '.'; }
 append_package_build_args()         { :; }
+runtime_remove_stage_context()      { :; }
 
 # Capture whether run_nerdctl_build was called and with what args.
 RUN_NERDCTL_CALLED=0
