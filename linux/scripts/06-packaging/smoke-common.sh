@@ -273,8 +273,10 @@ _cc_check_binary_elf() {
   command -v readelf >/dev/null 2>&1 || return 0
   # swap-native-gcc.sh replaces cross-arch compilers with #!/bin/sh wrappers;
   # the real ELF binary is at <path>.real. See validate-compilers.sh:324-331.
+  # Resolve symlinks first: cc -> /usr/bin/cc -> /opt/gcc-X/bin/gcc (.real here).
   local cc_elf="${cc_path}"
   [ -e "${cc_path}.real" ] && cc_elf="${cc_path}.real"
+  [ -e "${cc_elf}.real" ] || { local r; r="$(readlink -f "${cc_elf}" 2>/dev/null || true)"; [ -n "$r" ] && [ -e "${r}.real" ] && cc_elf="${r}.real"; }
   local cc_machine
   cc_machine="$(smoke_elf_machine_of "${cc_elf}" 2>/dev/null || true)"
   if [ -n "${cc_machine}" ]; then
