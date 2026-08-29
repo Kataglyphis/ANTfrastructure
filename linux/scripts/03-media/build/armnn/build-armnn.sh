@@ -60,6 +60,19 @@ build_armnn() {
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
       )
     fi
+
+    # ArmNN's CMakeLists.txt hardcodes target_link_libraries(armnn -lgomp)
+    # (OpenMP, BUILD_ACL_OPENMP=ON). The cross GCC's default linker search
+    # paths don't include the multiarch dir, and LIBRARY_PATH alone doesn't
+    # reach ld.lld through the sccache-wrapped link step. Pass -L explicitly.
+    local _tri _libdir
+    _tri="$(cross_target_triplet 2>/dev/null || true)"
+    _libdir="/usr/lib/${_tri}"
+    if [ -n "${_tri}" ] && [ -d "${_libdir}" ]; then
+      local _ldflags="${LDFLAGS:+${LDFLAGS} }-L${_libdir}"
+      cross_args+=("-DCMAKE_SHARED_LINKER_FLAGS=${_ldflags}")
+      cross_args+=("-DCMAKE_EXE_LINKER_FLAGS=${_ldflags}")
+    fi
   fi
 
   mkdir -p "${ARMNN_BUILD_DIR}"
