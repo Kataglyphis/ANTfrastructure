@@ -60,11 +60,6 @@ build_acl() {
     "${@}"
 
   mkdir -p "${ACL_INSTALL_DIR}/lib" "${ACL_INSTALL_DIR}/include"
-  # ArmNN's cmake (GlobalConfig.cmake) prefers arm_compute-static over the
-  # shared lib, but the static .a is built from non-PIC .o objects that fail
-  # with "relocation ... recompile with -fPIC" when linked into libarmnn.so.
-  # Remove the static library so cmake falls back to the PIC shared .so.
-  rm -f build/libarm_compute-static.a 2>/dev/null || true
   # Each copy is individually tolerant (a build may produce only .so or only
   # .a depending on flags), but the install as a WHOLE is verified below —
   # these copies failing silently would leave armnn to fail much later with a

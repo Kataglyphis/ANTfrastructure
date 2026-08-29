@@ -98,6 +98,7 @@ build_armnn() {
     -DARMCOMPUTE_ROOT="${ACL_SRC_DIR:-/tmp/acl-src}" \
     -DARMCOMPUTE_BUILD_DIR="${ACL_SRC_DIR:-/tmp/acl-src}/build" \
     -DARMCOMPUTE_LIBS="${ACL_INSTALL_DIR}/lib" \
+    -DARMCOMPUTE_LIBRARIES="${ACL_INSTALL_DIR}/lib/libarm_compute.so" \
     -DARMCOMPUTENEON=1 \
     -DBUILD_UNIT_TESTS=0 \
     -DBUILD_TESTS=0 \
