@@ -47,7 +47,7 @@ _toggle() {
   sed -n "s/^${key}=\([^ #]*\).*/\1/p" "${_versions}" | tail -1
 }
 
-_is_truthy() { case "${1:-}" in 1|true|TRUE|True|yes|on) return 0 ;; *) return 1 ;; esac; }
+_is_truthy() { case "${1:-}" in 1|true|TRUE|yes|YES|on|ON) return 0 ;; *) return 1 ;; esac; }
 
 # ── list the shipped rootfs (file names only, no extraction, no emulation) ──────
 _listing="$(mktemp)"

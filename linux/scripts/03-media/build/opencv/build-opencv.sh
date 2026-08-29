@@ -728,7 +728,7 @@ configure_opencv() {
         cmake_opts+=("-DONNXRT_ROOT_DIR=${_ort_compat}")
         cmake_opts+=("-DHAVE_ONNXRUNTIME=1")
     else
-        # ORT not present (e.g. riscv64 cross-ORT absent) — disable to avoid
+        # ORT not present (build failed or skipped) — disable to avoid
         # OpenCV's SEND_ERROR when WITH_ONNXRUNTIME=ON finds nothing.
         cmake_opts+=("-DWITH_ONNXRUNTIME=OFF")
     fi

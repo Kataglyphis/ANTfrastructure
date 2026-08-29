@@ -409,7 +409,8 @@ now held to this:
 - Comment only where the code cannot say it: a non-obvious *why*, a trap, a
   load-bearing constraint.
 - One or two lines. If it needs a paragraph, it belongs in `docs/` and the
-  comment is a one-line pointer.
+  comment is a one-line pointer — e.g. `# See docs/build-cache-tiers.md § 5.1`
+  — never an inline essay.
 - No narration of what the code plainly does, no incident history, no
   restating a decision that a doc already owns.
 
