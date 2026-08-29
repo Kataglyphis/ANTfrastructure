@@ -681,6 +681,19 @@ function Resolve-QnnSdk {
     $home_ = $anchor.Directory.Parent.Parent.FullName
     $libDir = Join-Path $home_ "lib\$(Get-QnnSdkLibDirName -Arch $Arch)"
     if (-not (Test-Path (Join-Path $libDir 'QnnCpu.dll'))) { throw "QNN: $libDir\QnnCpu.dll missing -- the SDK carries no $(Get-QnnSdkLibDirName -Arch $Arch) backend set for this target" }
+    # Version compatibility check: the ORT version we build may reference QNN
+    # ops that are absent from an older SDK. QNN_OP_STFT is the canary — it
+    # was added in QNN API 2.25+ and ORT 1.29 uses it. When the SDK is too
+    # old, warn and return $null (QNN off) rather than failing the build.
+    $opDef = Join-Path $home_ 'include\QNN\QnnOpDef.h'
+    if (Test-Path $opDef) {
+        $opDefs = Get-Content $opDef -Raw
+        if ($opDefs -notmatch 'QNN_OP_STFT') {
+            $apiVer = "$([regex]::Match($opDefs, 'QNN_API_VERSION_MAJOR\s+(\d+)').Groups[1].Value).$([regex]::Match($opDefs, 'QNN_API_VERSION_MINOR\s+(\d+)').Groups[1].Value)"
+            Write-Warning "QNN: SDK API version $apiVer is too old for this ORT build (QNN_OP_STFT missing) -- QNN EP OFF. Stage a newer QAIRT SDK (2.25+ API) to enable it."
+            return $null
+        }
+    }
     return @{
         Home      = $home_
         LibDir    = $libDir

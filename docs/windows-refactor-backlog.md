@@ -59,20 +59,17 @@ this repo's cp314 pin).
 
 ---
 
-### Open items (ordered by leverage, each with a verified blocker)
+### Open items
 
-*(No code-actionable items remain. The one open item below is blocked on
-hardware/SDK acquisition, not on a code change.)*
-
-- **#121 — QNN execution provider.** ★★★ strategically | **SCAFFOLD DONE
-  2026-08-24 — blocked on SDK acquisition (Qualcomm EULA), not on code.**
-  Scaffold complete (vendor-zip pattern, `windows/qnn-sdk/` staging drop,
-  `build-onnx-from-source.ps1` extraction + asserts, `QNN_SDK_ZIP_SHA256`
-  pin). No zip = EP off with one notice. To activate: stage a real SDK zip,
-  run once, then verify on a native Snapdragon host. Full description in
-  `docs/windows-cross-builds.md` § QNN.
+*(No open items remain.)*
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#121** — QNN EP: SDK STAGED 2026-08-29. QAIRT 2.31.0.250130 zip staged in
+  `windows/qnn-sdk/`, `QNN_SDK_ZIP_SHA256` pinned. The scaffold's asserts will
+  fire on the first build that includes the media-core `onnx` RUN. Execution
+  verification still needs a Snapdragon host, but the build-time path is now
+  exercisable. Archive: this entry.
 
 - **`-ResumeStage` BK equivalent** — CLOSED 2026-08-29 (no BK equivalent needed).
   The classic lane's `-ResumeStage` preserved a stopped container (hours of
