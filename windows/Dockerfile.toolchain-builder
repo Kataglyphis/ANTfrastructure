@@ -68,7 +68,7 @@ RUN --mount=type=bind,source=windows/scripts/build/build-toolchain-all.ps1,targe
 # is exactly why this builds the release plus patches and not an LLVM main
 # snapshot.
 FROM built AS patched-llvm
-ARG BUILD_PATCHED_LLVM=0
+ARG BUILD_PATCHED_LLVM=1
 RUN --mount=type=bind,source=windows/scripts/build/build-llvm-from-source.ps1,target=C:\bkmnt\build-llvm-from-source.ps1 `
     --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/llvm,target=C:\bkmnt\patches\llvm `

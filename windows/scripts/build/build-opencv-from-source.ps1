@@ -194,16 +194,10 @@ $simdFlags = Get-WindowsTargetSimdFlags -Arch $ocvTargetArch
 $crossTargetFlag = if ($ocvCross) { "--target=$(Get-ClangTargetTriple -Arch $ocvTargetArch)" } else { '' }
 # ARM-only: carotene (the NEON HAL) uses M_PI, which the MSVC CRT withholds without this.
 $mathDefinesFlag = if ($ocvCross) { '/D_USE_MATH_DEFINES' } else { '' }
-# AArch64 cross: turns off the compressed-jump-table pass, whose block-size estimate lands a few
-# bytes UNDER the emitted layout ("error: value evaluated as <N> is out of range", no source
-# location). Same effect as -mllvm -aarch64-enable-compress-jump-tables=false, byte-identical
-# output. Cost ~2.8 % of object size, all jump-table DATA; every TU keeps /O2. The measured
-# alternatives that DO NOT work (/Od, /O1, -max-jump-table-size, -align-all-*), the sibling
-# branch-range defect and the upstream story: docs/failure-modes.md § AArch64 cross compile aborts.
-# KNOB (#135): OPENCV_NO_JUMPTABLE_WORKAROUND=1 drops the flag, to test a candidate clang.
-$jumpTableFlag = if ($ocvCross -and $env:OPENCV_NO_JUMPTABLE_WORKAROUND -ne '1') { '-Xclang -target-feature -Xclang +force-32bit-jump-tables' } else { '' }
-if ($env:OPENCV_NO_JUMPTABLE_WORKAROUND -eq '1') { Write-Host 'OPENCV_NO_JUMPTABLE_WORKAROUND=1: +force-32bit-jump-tables NOT passed (#135 experiment)' }
-$simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag, $jumpTableFlag) | Where-Object { $_ }) -join ' '
+# The AArch64 jump-table and branch-range workarounds (#135) have been REMOVED:
+# the patched toolchain (BUILD_PATCHED_LLVM=1, now the default) fixes the root
+# cause (EH_LABEL size under-count in getInstSizeInBytes, llvm#219275 + #219276).
+$simdFlags = (@($simdFlags, $crossTargetFlag, $mathDefinesFlag) | Where-Object { $_ }) -join ' '
 
 # EXPERIMENT KNOB: OpenCV's nvcc command lines go through CMake response files, which sccache
 # passes through UNCACHED. OPENCV_CUDA_NO_RSP=1 inlines them so sccache's nvcc decomposition is
@@ -526,25 +520,11 @@ if (-not $cfgFfmpegYes -and $env:OPENCV_LINK_CHAIN_FFMPEG -ne '1') {
 }
 
 # Do not reintroduce the per-TU `/Od` pass that used to sit here: it only ever "worked" by
-# disabling the compressed-jump-table pass as a side effect. See $jumpTableFlag above.
+# disabling the compressed-jump-table pass as a side effect.
 
-# CROSS ONLY (#135 defect 2): at /O2 the inliner glues median_blur's file-static helpers into one
-# 33,860-byte function and a `tbnz` (14-bit displacement, +-32 KB) misses by ~150 bytes --
-# `error: fixup value out of range`, no source location. /Ob1 stops that inlining while every
-# kernel keeps /O2; the cost is one call per medianBlur(). The list is a NINJA_KEEP_GOING=1
-# census of all 1,870 objects, not a guess -- re-run it that way after an OpenCV bump.
-# What was ruled out by measurement, and the /FA recipe that located the branch:
-# docs/failure-modes.md § AArch64 cross compile aborts.
-# KNOB (#135): OPENCV_NO_OB1_WORKAROUND=1 leaves both TUs at /Ob2. Skips the Floor too.
-if ($ocvCross -and $env:OPENCV_NO_OB1_WORKAROUND -eq '1') {
-    Write-Host 'OPENCV_NO_OB1_WORKAROUND=1: /Ob1 NOT applied to median_blur/multiview_calibration (#135 experiment)'
-} elseif ($ocvCross) {
-    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') `
-            -Label 'OpenCV AArch64 branch-range TUs (#135)' `
-            -Floor 2 -AlreadyTaggedPattern '/Ob1' -Select {
-            param($line) if ($line -match '(median_blur\.dispatch|multiview_calibration)\.cpp\.obj') { '/Ob1' } else { '' }
-        })
-}
+# The per-TU /Ob1 workaround for median_blur/multiview_calibration (#135 defect 2) has been
+# REMOVED: the patched toolchain (BUILD_PATCHED_LLVM=1, now the default) fixes the root cause
+# (EH_LABEL size under-count, which BranchRelaxation also consumes).
 
 
 

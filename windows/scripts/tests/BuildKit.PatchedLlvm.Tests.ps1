@@ -2,31 +2,32 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# The patched-llvm stage shipped unreachable: Dockerfile.toolchain-builder had it
-# and no driver ever targeted it, so "flip BUILD_PATCHED_LLVM when the PRs merge"
-# would have been a no-op discovered mid-build. See backlog #135.
+# The patched-llvm toolchain (BUILD_PATCHED_LLVM=1) is now the DEFAULT (#135:
+# the EH_LABEL fix llvm#219275 + #219276 is proven, and the OpenCV workarounds
+# have been removed). This suite pins that the driver reaches the patched stage
+# by default, and that -StockLlvm is the opt-out.
 
-Describe 'BK driver reaches the patched-llvm stage (#135)' {
+Describe 'BK driver defaults to the patched-llvm toolchain (#135)' {
 
     $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
     $drvText = Get-Content -Raw (Join-Path $repoWin 'build-buildkit.ps1')
     $dfText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.toolchain-builder')
 
-    It 'exposes a -PatchedLlvm switch' {
-        Assert-Match '\[switch\]\$PatchedLlvm' $drvText
+    It 'exposes a -StockLlvm opt-out switch' {
+        Assert-Match '\[switch\]\$StockLlvm' $drvText
     }
 
-    It 'targets the stage the Dockerfile actually defines' {
+    It 'targets the patched-llvm stage by default' {
         Assert-Match '(?m)^FROM built AS patched-llvm' $dfText
-        Assert-Match "toolchainTarget = 'patched-llvm'" $drvText
+        Assert-Match "toolchainTarget = if \(\$StockLlvm\) \{ 'built' \} else \{ 'patched-llvm' \}" $drvText
     }
 
-    It 'passes the build-arg the stage declares' {
-        Assert-Match '(?m)^ARG BUILD_PATCHED_LLVM' $dfText
+    It 'passes the build-arg when targeting patched-llvm' {
+        Assert-Match '(?m)^ARG BUILD_PATCHED_LLVM=1' $dfText
         Assert-Match "BUILD_PATCHED_LLVM'\] = '1'" $drvText
     }
 
-    It 'defaults to the plain built stage' {
-        Assert-Match "toolchainTarget = 'built'" $drvText
+    It 'defaults to patched-llvm (not built)' {
+        Assert-Match "toolchainTarget = if \(\$StockLlvm\) \{ 'built' \} else \{ 'patched-llvm' \}" $drvText
     }
 }
