@@ -5,6 +5,19 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-28 — Layer headroom dispute settled + backlog renewed
+
+### Layer headroom settled — final image sits at ~75, not ~108
+
+The docs said the final Windows image sat at "~108/125" layers; the audit
+computed ~78. Counting the inherited chain's layer-creating instructions
+(base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43,
+plus 20 ENV layers and ~12 from servercore = ~75) confirms the audit was
+correct. The ~108 figure was the pre-ENV-consolidation count — the merge
+builder's 28 ENV lines collapsed into 5 blocks removed ~23 layers. Updated
+`docs/windows-build-invariants.md` and closed the backlog item.
+
+
 ## 2026-08-28 — Windows backlog #134 free follow-ups: smoke floor, pin parity, TVM fixtures, resource sampler
 
 

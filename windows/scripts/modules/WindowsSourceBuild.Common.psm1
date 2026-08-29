@@ -105,11 +105,11 @@ function Invoke-GitClone {
     $ref = if ($Tag) { $Tag } else { $Branch }
     if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
 
-    $gitArgs = @('clone')
-    if ($Recursive) { $gitArgs += '--recursive' }
-    $gitArgs += '--branch', $ref
-    $gitArgs += '--depth', $Depth
-    $gitArgs += $RepoUrl, $SourceDir
+    # A 40-char hex string is a commit hash, not a branch/tag name: `git clone
+    # --branch <hash>` fails ("Remote branch <hash> not found"). Clone the
+    # default branch, then fetch + checkout the commit. Mirrors the Linux lane
+    # (tvm.sh lines 183-198). A shorter hex prefix also works with `git fetch`.
+    $isCommitHash = $ref -match '^[0-9a-f]{7,40}$'
 
     $delay = $InitialDelaySeconds
     for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
@@ -121,10 +121,43 @@ function Invoke-GitClone {
         $ErrorActionPreference = 'Continue'
         $env:GIT_TERMINAL_PROMPT = '0'
 
-        # Capture, don't discard: a clone failure on a 2-hour chain must carry
-        # its diagnosis (auth error, 404 tag, DNS) instead of a blind retry.
-        $cloneOut = @(& git @gitArgs 2>&1)
-        $cloneExit = $LASTEXITCODE
+        if ($isCommitHash) {
+            # Full clone (no --branch, no --depth): the commit may not be on the
+            # default branch's tip. Then fetch the commit shallowly and checkout.
+            $cloneArgs = @('clone')
+            if ($Recursive) { $cloneArgs += '--recursive' }
+            $cloneArgs += $RepoUrl, $SourceDir
+            $cloneOut = @(& git @cloneArgs 2>&1)
+            $cloneExit = $LASTEXITCODE
+            if ($cloneExit -eq 0 -and (Test-Path $SourceDir)) {
+                $fetchOut = @(& git -C $SourceDir fetch --depth 1 origin $ref 2>&1)
+                $fetchExit = $LASTEXITCODE
+                if ($fetchExit -eq 0) {
+                    $checkoutOut = @(& git -C $SourceDir checkout $ref 2>&1)
+                    $cloneExit = $LASTEXITCODE
+                    $cloneOut += $fetchOut + $checkoutOut
+                } else {
+                    # fetch by hash can fail on some servers; try a full fetch
+                    $fullFetch = @(& git -C $SourceDir fetch origin 2>&1)
+                    $cloneOut += $fullFetch
+                    $checkoutOut = @(& git -C $SourceDir checkout $ref 2>&1)
+                    $cloneExit = $LASTEXITCODE
+                    $cloneOut += $checkoutOut
+                }
+                if ($Recursive -and $cloneExit -eq 0) {
+                    $subOut = @(& git -C $SourceDir submodule update --init --recursive --depth 1 2>&1)
+                    $cloneOut += $subOut
+                }
+            }
+        } else {
+            $gitArgs = @('clone')
+            if ($Recursive) { $gitArgs += '--recursive' }
+            $gitArgs += '--branch', $ref
+            $gitArgs += '--depth', $Depth
+            $gitArgs += $RepoUrl, $SourceDir
+            $cloneOut = @(& git @gitArgs 2>&1)
+            $cloneExit = $LASTEXITCODE
+        }
 
         $ErrorActionPreference = $oldEAP
 

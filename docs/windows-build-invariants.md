@@ -434,7 +434,7 @@ fans in.
 
 ### A committed layer can never be shrunk later
 
-**Windows images have a HARD 125-layer cap — the classic builder pays a layer PER INSTRUCTION, metadata included.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines. Rule: in any Dockerfile on the classic chain, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; final currently sits ~108/125.
+**Windows images have a HARD 125-layer cap — the classic builder pays a layer PER INSTRUCTION, metadata included.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines. Rule: in any Dockerfile on the classic chain, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; the final image currently sits at **~75 layers** (settled 2026-08-28 by counting the inherited chain's RUN+COPY+ADD+ENV instructions: base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, plus 20 ENV layers and ~12 from the servercore base = ~75). The earlier "~108/125" figure was the pre-ENV-consolidation count — the merge-builder's 28 ENV lines → 5 blocks alone removed ~23 layers.
 
 ### Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`
 

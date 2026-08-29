@@ -107,16 +107,17 @@ this repo's cp314 pin).
      assuming.
   4. Upstream bug (b) asm printer missing `:lo12:` — FILED as llvm#219200.
 
-- **Layer headroom dispute.** Docs say ~108/125 layers, the audit computes ~78;
-  settle it with one elevated `ctr`/`nerdctl` inspect before anyone plans around
-  either number.
-
 - **`-ResumeStage` BK equivalent.** 15 refs, classic-only: BK's per-stage layer
   cache covers the common case, but the preserved-container recovery path has
   no BK equivalent. Needs a design decision.
 
 ### CLOSED (pointers — full narratives in the dated archives)
 
+- **Layer headroom dispute** — SETTLED 2026-08-28. The final image sits at ~75
+  layers (counted from the inherited chain's instructions: base 16 + nvidia 3 +
+  toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, + 20 ENV + ~12 servercore
+  = ~75). The ~108 figure was the pre-ENV-consolidation count. Updated in
+  `docs/windows-build-invariants.md`.
 - **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision). Archive: `windows-backlog-archive-2026-08-26.md` § #122.
 - **#136** — VS RUN caching: SOLVED + DEPLOYED 2026-08-26. Archive: `windows-backlog-archive-2026-08-26.md` § #136.
 - **#137** — sccache: DONE 2026-08-28. Needs rebuild to land.
