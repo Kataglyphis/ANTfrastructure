@@ -362,7 +362,16 @@ if ($pythonModule -eq 'ON') {
     # The DNS-workaround clone may lack git tags -- pin the scm version. Save/restore: stages run
     # in-process and a leaked pretend-version would mis-stamp the next stage's build.
     $prevScmPretendVersion = $env:SETUPTOOLS_SCM_PRETEND_VERSION
-    $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($TvmVersion -replace '^v', '')
+    # When TVM_COMMIT (a commit hash) wins over TVM_REF (a tag), the pretend
+    # version must still be the TAG's version (e.g. 0.26.0), not the hash —
+    # setuptools_scm would otherwise generate an InvalidVersion crash in
+    # packaging.version (a 40-char hex string is not PEP 440).
+    $scmVersion = $TvmVersion
+    if ($scmVersion -match '^[0-9a-f]{7,40}$') {
+        $tagFallback = Get-SourceBuildVersion -EnvironmentVariables @('TVM_REF') -DefaultValue 'v0.26.0'
+        $scmVersion = $tagFallback
+    }
+    $env:SETUPTOOLS_SCM_PRETEND_VERSION = ($scmVersion -replace '^v', '')
     $wheelOut = Join-Path $SourceDir 'dist'
     Write-Host 'Building TVM python wheel (scikit-build-core, reusing the ninja build dir)...'
     Push-Location $SourceDir
