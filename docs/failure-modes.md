@@ -479,14 +479,13 @@ claim, not evidence. Re-run it through the driver before acting on it. Full evid
    warns about under `-align-all-*`, and NOT the jump-table overflow). It was closed as an LLVM
    bug with nothing to fix in protobuf, which is the useful precedent: **the offender library is
    the trigger, not the defect.**
-   **Root cause, 2026-08-27: still open, but narrowed.** The pass is sound *given correct
-   instruction sizes* — its offsets are upper bounds and that inflation accumulates in layout
-   order, so `Span` is over-estimated, which picks a LARGER entry. It can only fail if some
-   instruction reports FEWER bytes than it emits; the measured `N` put that under-count at
-   **4–116 bytes**. `AArch64CompressJumpTables.cpp` is byte-identical between 23.1.0 and `main`,
-   so **a toolchain move does not fix this** — keep `+force-32bit-jump-tables`. To name the
-   instruction, build clang with the AArch64 opt-in to LLVM's AsmPrinter size verifier (the check
-   exists but is inert on AArch64) and compile `descriptor.cc`; it aborts naming the culprit.
+   **Root cause, FOUND 2026-08-28 — FIXED by the patched toolchain (llvm#219275 +
+   #219276, `BUILD_PATCHED_LLVM=1`, now the default).** `EH_LABEL` under `/EHa`
+   emits a 4-byte nop counted as zero by `getInstSizeInBytes`; the pass is sound
+   *given correct instruction sizes*. The workarounds (`+force-32bit-jump-tables`
+   and per-TU `/Ob1`) have been REMOVED from `build-opencv-from-source.ps1`. The
+   stock scoop clang-cl still has the bug — use `-StockLlvm` only for patch
+   debugging.
 2. **Branch relaxation** → `fixup value out of range`. In `median_blur.dispatch.cpp`, `/O2`
    collapses the whole baseline median filter into ONE function — `cv::cpu_baseline::medianBlur`,
    8,465 instructions ≈ 33,860 bytes — and inside it

@@ -5,6 +5,29 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-29 — #135 closed: patched LLVM is default, workarounds removed
+
+### `BUILD_PATCHED_LLVM=1` is now the DEFAULT (#135 item 1+3 DONE)
+
+The patched clang toolchain (llvm#219275 + #219276, the `EH_LABEL` size fix) is
+now the default toolchain. Changes:
+
+- `Dockerfile.toolchain-builder`: `ARG BUILD_PATCHED_LLVM=0` → `1`
+- `build-buildkit.ps1`: `patched-llvm` is the default target; new `-StockLlvm`
+  switch opts out (for patch debugging only); `-PatchedLlvm` kept as a no-op
+  for backwards compatibility
+- `build-opencv-from-source.ps1`: both AArch64 workarounds REMOVED — the
+  `+force-32bit-jump-tables` flag and the per-TU `/Ob1` pass for
+  `median_blur.dispatch` / `multiview_calibration`. The patched toolchain fixes
+  the root cause (EH_LABEL under `/EHa` emits a 4-byte nop counted as zero by
+  `getInstSizeInBytes`).
+- `BuildKit.PatchedLlvm.Tests.ps1`: updated for the new default
+- `SourceBuild.CrossHelpers.Tests.ps1`: removed the /Ob1 selector test (the
+  selector it tested no longer exists)
+- `docs/failure-modes.md`: updated the AArch64 codegen section — root cause
+  found, workarounds removed, patched toolchain is the fix
+
+
 ## 2026-08-29 — amd64 acceptance build GREEN (#134 closed)
 
 ### #134 amd64 acceptance PASSED — three build fixes

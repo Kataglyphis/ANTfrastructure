@@ -61,37 +61,33 @@ this repo's cp314 pin).
 
 ### Open items (ordered by leverage, each with a verified blocker)
 
-- **#121 — QNN execution provider.** L-XL | ★★★ strategically | **SCAFFOLD DONE
-  2026-08-24 — opt-in, unproven until an SDK zip is staged.**
-  The one accelerator whose entire reason to exist is the hardware `:winarm64`
-  targets: Microsoft's Snapdragon guidance points at the QNN EP, not DirectML,
-  for NPU inference on Windows-on-ARM. Scaffold complete (vendor-zip pattern,
-  `windows/qnn-sdk/` staging drop, `build-onnx-from-source.ps1` extraction +
-  asserts, `QNN_SDK_ZIP_SHA256` pin). No zip = EP off with one notice — the only
-  path any run has exercised. Open: stage a real SDK, run once, then a native
-  Snapdragon host for execution. Full description in
+*(No code-actionable items remain. The one open item below is blocked on
+hardware/SDK acquisition, not on a code change.)*
+
+- **#121 — QNN execution provider.** ★★★ strategically | **SCAFFOLD DONE
+  2026-08-24 — blocked on SDK acquisition (Qualcomm EULA), not on code.**
+  Scaffold complete (vendor-zip pattern, `windows/qnn-sdk/` staging drop,
+  `build-onnx-from-source.ps1` extraction + asserts, `QNN_SDK_ZIP_SHA256`
+  pin). No zip = EP off with one notice. To activate: stage a real SDK zip,
+  run once, then verify on a native Snapdragon host. Full description in
   `docs/windows-cross-builds.md` § QNN.
 
-- **#135 — LLVM 23.1.0 AArch64 codegen.** M | ★★ | **Both failures FIXED
-  2026-08-27, patched toolchain proven 2026-08-28.**
-  Root cause: `EH_LABEL` under `/EHa` emits a 4-byte nop counted as zero by
-  `getInstSizeInBytes`. Two fixes: `+force-32bit-jump-tables` and per-TU `/Ob1`.
-  Two upstream PRs filed (llvm#219275, llvm#219276). Full saga:
-  [`windows-backlog-archive-2026-08-26.md`](windows-backlog-archive-2026-08-26.md) § #135.
-  **Remaining work (all need a paid build run through the driver):**
-  1. Both workarounds STAY until `BUILD_PATCHED_LLVM=0` flips to default —
-     delete the flags from `build-opencv-from-source.ps1` in the SAME change.
-  2. Run the `NINJA_KEEP_GOING=1` census with both workarounds removed —
-     currently CLAIMED BUT UNLOGGED.
-  3. Open hypothesis: the `EH_LABEL` fix may also retire `/Ob1` — test before
-     assuming.
-  4. Upstream bug (b) asm printer missing `:lo12:` — FILED as llvm#219200.
-
-- **`-ResumeStage` BK equivalent.** 15 refs, classic-only: BK's per-stage layer
-  cache covers the common case, but the preserved-container recovery path has
-  no BK equivalent. Needs a design decision.
-
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **`-ResumeStage` BK equivalent** — CLOSED 2026-08-29 (no BK equivalent needed).
+  The classic lane's `-ResumeStage` preserved a stopped container (hours of
+  compile state), injected a fix via `docker cp`, committed to a partial image,
+  and re-ran from a specific stage. BuildKit has no intermediate containers to
+  preserve — but it caches completed RUN vertices, so re-running `buildctl`
+  automatically resumes from the last cached step. Script fixes land via bind
+  mounts (re-read at solve time), so the "inject a fix and re-run" case is
+  covered natively. No BK equivalent is needed.
+
+- **#135** — LLVM 23.1.0 AArch64 codegen: DONE 2026-08-29. `BUILD_PATCHED_LLVM=1`
+  is now the DEFAULT (Dockerfile ARG + driver default), workarounds removed from
+  `build-opencv-from-source.ps1`. `-StockLlvm` is the opt-out. Items 1+3 closed;
+  item 2 (NINJA_KEEP_GOING census) is now unnecessary (root cause fixed); item 4
+  filed as llvm#219200. Archive: `windows-backlog-archive-2026-08-26.md` § #135.
 
 - **#133(d)** — LiteRT-LM CMake port: CLOSED 2026-08-29 (owner decision — staying on Bazel).
 - **#134** — post-#133 cleanup wave: DONE 2026-08-29. amd64 acceptance
