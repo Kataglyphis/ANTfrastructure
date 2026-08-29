@@ -18,11 +18,15 @@ apt-get update && apt-get install -y --no-install-recommends \
 
 android_clone_shallow "https://github.com/opencv/opencv.git" "${OPENCV_VERSION}" opencv-android
 
-# OpenCV 5.0 samples/android/ is added by samples/CMakeLists.txt even with
-# BUILD_EXAMPLES=OFF and BUILD_ANDROID_PROJECTS=OFF. The add_android_project
-# function is undefined when BUILD_ANDROID_PROJECTS=OFF, so the samples
-# CMakeLists.txt calls an unknown command. Remove the samples directory.
-rm -rf samples
+# OpenCV 5.0's root CMakeLists.txt unconditionally add_subdirectory(samples),
+# and samples/CMakeLists.txt calls add_android_project — a function undefined
+# when BUILD_ANDROID_PROJECTS=OFF. Replacing samples/CMakeLists.txt with a
+# stub makes the subdirectory a no-op.
+rm -rf samples/android samples/cpp samples/python samples/java samples/cpp
+mkdir -p samples
+cat > samples/CMakeLists.txt <<'EOF'
+# Stub: samples disabled for cross-compile Android build
+EOF
 
 # Same MLAS stub fix as build-opencv.sh via the canonical patch in
 # patches/opencv/001-mlas-hgemm-supported-stub.patch. apply-patch.sh is
