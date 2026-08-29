@@ -454,25 +454,15 @@ _opencv_cmake_core_opts() {
         "-DWITH_LIBV4L=ON"
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
-        # LOG24: enable the ONNX Runtime DNN backend. The image ships a
-        # source-built ONNX Runtime at /usr/local/lib/onnxruntime-cpu; without
-        # this flag cv2.dnn cannot use the very runtime the image is built around.
-        # The opencv stage mounts it via --mount=type=bind,from=onnxruntime, and
-        # opencv-gst (pass 2) has it via COPY --from=onnxruntime in media-inputs.
-        #
-        # OpenCV 5.0's CMake expects ONNXRT_ROOT_DIR to contain include/ and
-        # lib/ at the top level. Our source-built ORT has include/onnxruntime/
-        # and runtime/lib/ instead, so CMake's find_path fails, prints "not
-        # found in system paths" and falls back to downloading a prebuilt
-        # package (wrong version, carries DML headers that break Linux builds,
-        # and no riscv64 prebuilt exists at all).
-        #
-        # Fix: create a CMake-compatible layout symlink tree at configure time
-        # so ONNXRT_ROOT_DIR resolves. DOWNLOAD_ONNXRUNTIME=OFF blocks the
-        # prebuilt fallback. The gapi DML EP is a Windows-only feature that
-        # the prebuilt package's headers spuriously enable; -DBUILD_opencv_gapi=ON
-        # with our headers does not set HAVE_ONNX_DML because our source-built
-        # ORT does not ship providers/dml/.
+        # ONNX Runtime DNN backend. The image ships a source-built ORT at
+        # /usr/local/lib/onnxruntime-cpu (mounted via --mount=type=bind,
+        # from=onnxruntime). OpenCV 5.0's FindONNX.cmake resolves ORT through
+        # find_library/find_path against ONNXRT_ROOT_DIR — it does NOT use
+        # pkg-config. DOWNLOAD_ONNXRUNTIME=OFF only blocks a FORCED download;
+        # OpenCV auto-downloads a prebuilt ORT whenever HAVE_ONNXRUNTIME is
+        # unset (wrong version, DML headers that break Linux, no riscv64
+        # prebuilt). The compat symlink tree built below makes find_library
+        # find our .so so HAVE_ONNXRUNTIME is set and the download is skipped.
         "-DWITH_ONNXRUNTIME=ON"
         "-DONNXRT_ROOT_DIR=/usr/local/lib/onnxruntime-cpu"
         "-DDOWNLOAD_ONNXRUNTIME=OFF"
@@ -715,17 +705,21 @@ configure_opencv() {
 
     echo "CMake options: ${cmake_opts[*]}"
 
-    # Create a CMake-compatible layout for ONNX Runtime so ONNXRT_ROOT_DIR
-    # resolves. OpenCV 5.0 expects <root>/lib/ but our source-built ORT has
-    # <root>/runtime/lib/. The mount is readonly, so build a compat tree in
-    # the tmpfs build dir and point ONNXRT_ROOT_DIR there.
+    # Build a CMake-compatible ORT layout so FindONNX.cmake's find_library and
+    # find_path succeed against ONNXRT_ROOT_DIR. The real libs are at
+    # <root>/lib/ (NOT <root>/runtime/lib, which holds only pkgconfig). The
+    # mount is readonly, so create the tree in the tmpfs build dir.
     _ort_real="/usr/local/lib/onnxruntime-cpu"
     _ort_compat="${build_dir}/ort-compat"
-    if [ -d "${_ort_real}" ] && [ -d "${_ort_real}/include" ]; then
+    if [ -d "${_ort_real}" ] && [ -d "${_ort_real}/include" ] && [ -d "${_ort_real}/lib" ]; then
         mkdir -p "${_ort_compat}"
         ln -sf "${_ort_real}/include" "${_ort_compat}/include"
-        ln -sf "${_ort_real}/runtime/lib" "${_ort_compat}/lib"
+        ln -sf "${_ort_real}/lib" "${_ort_compat}/lib"
         cmake_opts+=("-DONNXRT_ROOT_DIR=${_ort_compat}")
+    else
+        # ORT not present (e.g. riscv64 cross-ORT absent) — disable to avoid
+        # OpenCV's SEND_ERROR when WITH_ONNXRUNTIME=ON finds nothing.
+        cmake_opts+=("-DWITH_ONNXRUNTIME=OFF")
     fi
 
     cmake -G Ninja "${OPENCV_SRC}" "${cmake_opts[@]}" || die "OpenCV configure failed"
