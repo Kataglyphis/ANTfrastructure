@@ -60,6 +60,23 @@ build_armnn() {
         -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
       )
     fi
+
+    # ArmNN's CMakeLists.txt hardcodes target_link_libraries(armnn -lgomp)
+    # (OpenMP, BUILD_ACL_OPENMP=ON). The cross GCC's default ld.lld search
+    # paths don't include /usr/lib/<triplet>/ where libgomp.so lives. Adding
+    # -L/usr/lib/<triplet> causes ld.lld to find an incompatible libstdc++.so
+    # there. Instead, symlink libgomp.so into the GCC's own lib dir which the
+    # linker already searches by default — no -L needed.
+    local _tri _libdir _gcc_libdir
+    _tri="$(cross_target_triplet 2>/dev/null || true)"
+    _libdir="/usr/lib/${_tri}"
+    _gcc_libdir="/opt/gcc-${GCC_VERSION:-16.2.0}/${_tri}/lib"
+    if [ -n "${_tri}" ] && [ -d "${_libdir}" ] && [ -d "${_gcc_libdir}" ]; then
+      if [ -e "${_libdir}/libgomp.so.1" ] && [ ! -e "${_gcc_libdir}/libgomp.so" ]; then
+        ln -sf "${_libdir}/libgomp.so.1" "${_gcc_libdir}/libgomp.so"
+        info "Symlinked ${_gcc_libdir}/libgomp.so -> ${_libdir}/libgomp.so.1"
+      fi
+    fi
   fi
 
   mkdir -p "${ARMNN_BUILD_DIR}"
@@ -81,6 +98,7 @@ build_armnn() {
     -DARMCOMPUTE_ROOT="${ACL_SRC_DIR:-/tmp/acl-src}" \
     -DARMCOMPUTE_BUILD_DIR="${ACL_SRC_DIR:-/tmp/acl-src}/build" \
     -DARMCOMPUTE_LIBS="${ACL_INSTALL_DIR}/lib" \
+    -DARMCOMPUTE_LIBRARIES="${ACL_INSTALL_DIR}/lib/libarm_compute.so" \
     -DARMCOMPUTENEON=1 \
     -DBUILD_UNIT_TESTS=0 \
     -DBUILD_TESTS=0 \
