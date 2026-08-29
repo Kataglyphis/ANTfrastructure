@@ -24,6 +24,18 @@ clone_armnn() {
 build_armnn() {
   info "Building Arm NN for ${ARCH}"
 
+  # libgomp.so dev symlink: libgomp1:<arch> ships only libgomp.so.1, and the
+  # cross toolchain has no target libgomp. Create the dev symlink here too
+  # (not just in install-deps.sh) in case the install-deps layer is cached
+  # from before the fix.
+  if [ "${ARCH}" = "arm64" ] || [ "${ARCH}" = "aarch64" ]; then
+    local _gdir="/usr/lib/aarch64-linux-gnu"
+    if [ -d "${_gdir}" ] && [ ! -e "${_gdir}/libgomp.so" ] && [ -e "${_gdir}/libgomp.so.1" ]; then
+      ln -sf libgomp.so.1 "${_gdir}/libgomp.so"
+      info "Created ${_gdir}/libgomp.so -> libgomp.so.1"
+    fi
+  fi
+
   local cross_args=()
   if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${ARCH}" != "amd64" ]; then
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
