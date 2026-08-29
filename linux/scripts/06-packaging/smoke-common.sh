@@ -271,8 +271,12 @@ _cc_check_dumpmachine() {
 _cc_check_binary_elf() {
   local cc_path="$1" label="$2" expected_machine="$3"
   command -v readelf >/dev/null 2>&1 || return 0
+  # swap-native-gcc.sh replaces cross-arch compilers with #!/bin/sh wrappers;
+  # the real ELF binary is at <path>.real. See validate-compilers.sh:324-331.
+  local cc_elf="${cc_path}"
+  [ -e "${cc_path}.real" ] && cc_elf="${cc_path}.real"
   local cc_machine
-  cc_machine="$(smoke_elf_machine_of "${cc_path}" 2>/dev/null || true)"
+  cc_machine="$(smoke_elf_machine_of "${cc_elf}" 2>/dev/null || true)"
   if [ -n "${cc_machine}" ]; then
     case "${cc_machine}" in
       *"${expected_machine}"*) pass "${label}: ELF machine=${cc_machine}" ;;
