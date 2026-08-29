@@ -191,3 +191,4 @@ libonnxruntime.so.*	source-built
 libtvm.so.*	source-built
 libtvm_runtime.so.*	source-built
 libtvm_compiler.so.*	source-built
+libhdf5_serial.so.310	libhdf5-310

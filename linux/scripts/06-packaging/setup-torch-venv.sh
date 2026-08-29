@@ -157,7 +157,8 @@ _install_cv2_runtime_apt() {
     libmp3lame0 libopus0 libvorbis0a libvorbisenc2 \
     libopencore-amrnb0 libopencore-amrwb0 \
     libass9 libsndio7.0 libopenexr-3-1-30 libgraphene-1.0-0 \
-    libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11
+    libavformat62 libavcodec62 libswscale9 libswresample6 libavdevice62 libavfilter11 \
+    libhdf5-310
 }
 
 # Installs exactly what build-ffmpeg.sh's emit_runtime_apt_manifest recorded, so
