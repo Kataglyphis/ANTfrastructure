@@ -62,16 +62,20 @@ build_armnn() {
     fi
 
     # ArmNN's CMakeLists.txt hardcodes target_link_libraries(armnn -lgomp)
-    # (OpenMP, BUILD_ACL_OPENMP=ON). The cross GCC's default linker search
-    # paths don't include the multiarch dir, and LIBRARY_PATH alone doesn't
-    # reach ld.lld through the sccache-wrapped link step. Pass -L explicitly.
-    local _tri _libdir
+    # (OpenMP, BUILD_ACL_OPENMP=ON). The cross GCC's default ld.lld search
+    # paths don't include /usr/lib/<triplet>/ where libgomp.so lives. Adding
+    # -L/usr/lib/<triplet> causes ld.lld to find an incompatible libstdc++.so
+    # there. Instead, symlink libgomp.so into the GCC's own lib dir which the
+    # linker already searches by default — no -L needed.
+    local _tri _libdir _gcc_libdir
     _tri="$(cross_target_triplet 2>/dev/null || true)"
     _libdir="/usr/lib/${_tri}"
-    if [ -n "${_tri}" ] && [ -d "${_libdir}" ]; then
-      local _ldflags="${LDFLAGS:+${LDFLAGS} }-L${_libdir}"
-      cross_args+=("-DCMAKE_SHARED_LINKER_FLAGS=${_ldflags}")
-      cross_args+=("-DCMAKE_EXE_LINKER_FLAGS=${_ldflags}")
+    _gcc_libdir="/opt/gcc-${GCC_VERSION:-16.2.0}/${_tri}/lib"
+    if [ -n "${_tri}" ] && [ -d "${_libdir}" ] && [ -d "${_gcc_libdir}" ]; then
+      if [ -e "${_libdir}/libgomp.so.1" ] && [ ! -e "${_gcc_libdir}/libgomp.so" ]; then
+        ln -sf "${_libdir}/libgomp.so.1" "${_gcc_libdir}/libgomp.so"
+        info "Symlinked ${_gcc_libdir}/libgomp.so -> ${_libdir}/libgomp.so.1"
+      fi
     fi
   fi
 
