@@ -454,15 +454,15 @@ _opencv_cmake_core_opts() {
         "-DWITH_LIBV4L=ON"
         "-DWITH_ITT=ON"
         "-DWITH_IPP=${WITH_IPP}"
-        # ONNX Runtime DNN backend. The image ships a source-built ORT at
-        # /usr/local/lib/onnxruntime-cpu (mounted via --mount=type=bind,
-        # from=onnxruntime). OpenCV 5.0's FindONNX.cmake resolves ORT through
-        # find_library/find_path against ONNXRT_ROOT_DIR — it does NOT use
-        # pkg-config. DOWNLOAD_ONNXRUNTIME=OFF only blocks a FORCED download;
-        # OpenCV auto-downloads a prebuilt ORT whenever HAVE_ONNXRUNTIME is
-        # unset (wrong version, DML headers that break Linux, no riscv64
-        # prebuilt). The compat symlink tree built below makes find_library
-        # find our .so so HAVE_ONNXRUNTIME is set and the download is skipped.
+        # ONNX Runtime DNN backend. OpenCV 5.0's dnn/CMakeLists.txt ALWAYS
+        # auto-downloads a prebuilt ORT when WITH_ONNXRUNTIME=ON: it checks
+        # NOT HAVE_ONNXRUNTIME before that cache var is ever set, then FORCEs
+        # ONNXRT_ROOT_DIR to the extracted prebuilt dir. DOWNLOAD_ONNXRUNTIME=OFF
+        # only blocks the FORCED case. We pre-set HAVE_ONNXRUNTIME=1 below (in
+        # the compat-tree section) to skip the download, and build a symlink
+        # tree so FindONNX.cmake's find_library/find_path find our source-built
+        # ORT. Without the pre-set, the download overwrites our find with a
+        # prebuilt 1.25.1 that carries DML headers (breaks Linux, no riscv64).
         "-DWITH_ONNXRUNTIME=ON"
         "-DONNXRT_ROOT_DIR=/usr/local/lib/onnxruntime-cpu"
         "-DDOWNLOAD_ONNXRUNTIME=OFF"
@@ -709,13 +709,24 @@ configure_opencv() {
     # find_path succeed against ONNXRT_ROOT_DIR. The real libs are at
     # <root>/lib/ (NOT <root>/runtime/lib, which holds only pkgconfig). The
     # mount is readonly, so create the tree in the tmpfs build dir.
+    # Pre-set HAVE_ONNXRUNTIME=1 to skip OpenCV's unconditional prebuilt
+    # download (see comment in _opencv_cmake_core_opts).
+    #
+    # Copy the include tree (not symlink) so we can strip the DML provider
+    # headers. Our source-built ORT copies ALL provider headers from the
+    # source tree, including DML (Windows-only). FindONNX.cmake probes
+    # for dml_provider_factory.h and sets HAVE_ONNX_DML, which makes gapi
+    # compile dml_ep.cpp — a file whose relative include
+    # ../providers/dml/dml_provider_factory.h cannot resolve on Linux.
     _ort_real="/usr/local/lib/onnxruntime-cpu"
     _ort_compat="${build_dir}/ort-compat"
     if [ -d "${_ort_real}" ] && [ -d "${_ort_real}/include" ] && [ -d "${_ort_real}/lib" ]; then
         mkdir -p "${_ort_compat}"
-        ln -sf "${_ort_real}/include" "${_ort_compat}/include"
+        cp -aL "${_ort_real}/include" "${_ort_compat}/include"
+        rm -rf "${_ort_compat}/include/onnxruntime/core/providers/dml"
         ln -sf "${_ort_real}/lib" "${_ort_compat}/lib"
         cmake_opts+=("-DONNXRT_ROOT_DIR=${_ort_compat}")
+        cmake_opts+=("-DHAVE_ONNXRUNTIME=1")
     else
         # ORT not present (e.g. riscv64 cross-ORT absent) — disable to avoid
         # OpenCV's SEND_ERROR when WITH_ONNXRUNTIME=ON finds nothing.
