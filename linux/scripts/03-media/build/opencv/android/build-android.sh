@@ -22,7 +22,7 @@ android_clone_shallow "https://github.com/opencv/opencv.git" "${OPENCV_VERSION}"
 # BUILD_EXAMPLES=OFF and BUILD_ANDROID_PROJECTS=OFF. The add_android_project
 # function is undefined when BUILD_ANDROID_PROJECTS=OFF, so the samples
 # CMakeLists.txt calls an unknown command. Remove the samples directory.
-rm -rf opencv-android/samples
+rm -rf samples
 
 # Same MLAS stub fix as build-opencv.sh via the canonical patch in
 # patches/opencv/001-mlas-hgemm-supported-stub.patch. apply-patch.sh is
