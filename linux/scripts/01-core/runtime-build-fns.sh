@@ -320,7 +320,14 @@ runtime_build_package_image() {
     "${build_args[@]}" \
     . || return 1
 
-  _runtime_finish_stage package "${arch}" "${tag}" base
+  # Defer base context cleanup to the smoke gate: wrapper-smoke is FROM
+  # package-image which is FROM runtime_base, so it also needs the base
+  # context. When the smoke gate is skipped, clean up base here.
+  if [ "${WRAPPER_SMOKE_GATE:-1}" = "0" ]; then
+    _runtime_finish_stage package "${arch}" "${tag}" base
+  else
+    _runtime_finish_stage package "${arch}" "${tag}" ""
+  fi
 }
 
 # LOG29: the wrapper-smoke stage (Dockerfile.package:346 FROM package AS
@@ -378,6 +385,7 @@ _runtime_run_package_smoke() {
     . || return 1
 
   log "[smoke] wrapper-smoke gate PASSED for ${arch}"
+  runtime_remove_stage_context base "${arch}"
   return 0
 }
 
