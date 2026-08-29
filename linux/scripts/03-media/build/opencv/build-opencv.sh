@@ -711,11 +711,19 @@ configure_opencv() {
     # mount is readonly, so create the tree in the tmpfs build dir.
     # Pre-set HAVE_ONNXRUNTIME=1 to skip OpenCV's unconditional prebuilt
     # download (see comment in _opencv_cmake_core_opts).
+    #
+    # Copy the include tree (not symlink) so we can strip the DML provider
+    # headers. Our source-built ORT copies ALL provider headers from the
+    # source tree, including DML (Windows-only). FindONNX.cmake probes
+    # for dml_provider_factory.h and sets HAVE_ONNX_DML, which makes gapi
+    # compile dml_ep.cpp — a file whose relative include
+    # ../providers/dml/dml_provider_factory.h cannot resolve on Linux.
     _ort_real="/usr/local/lib/onnxruntime-cpu"
     _ort_compat="${build_dir}/ort-compat"
     if [ -d "${_ort_real}" ] && [ -d "${_ort_real}/include" ] && [ -d "${_ort_real}/lib" ]; then
         mkdir -p "${_ort_compat}"
-        ln -sf "${_ort_real}/include" "${_ort_compat}/include"
+        cp -aL "${_ort_real}/include" "${_ort_compat}/include"
+        rm -rf "${_ort_compat}/include/onnxruntime/core/providers/dml"
         ln -sf "${_ort_real}/lib" "${_ort_compat}/lib"
         cmake_opts+=("-DONNXRT_ROOT_DIR=${_ort_compat}")
         cmake_opts+=("-DHAVE_ONNXRUNTIME=1")
