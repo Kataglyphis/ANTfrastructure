@@ -272,7 +272,7 @@ _cc_check_binary_elf() {
   local cc_path="$1" label="$2" expected_machine="$3"
   command -v readelf >/dev/null 2>&1 || return 0
   local cc_machine
-  cc_machine="$(smoke_elf_machine_of "${cc_path}")"
+  cc_machine="$(smoke_elf_machine_of "${cc_path}" 2>/dev/null || true)"
   if [ -n "${cc_machine}" ]; then
     case "${cc_machine}" in
       *"${expected_machine}"*) pass "${label}: ELF machine=${cc_machine}" ;;
@@ -293,7 +293,7 @@ _cc_check_object() {
     pass "${label}: cc1 compile-to-object smoke OK"
     if command -v readelf >/dev/null 2>&1 && [ -f "${cc_obj}" ]; then
       local obj_machine
-      obj_machine="$(smoke_elf_machine_of "${cc_obj}")"
+      obj_machine="$(smoke_elf_machine_of "${cc_obj}" 2>/dev/null || true)"
       case "${obj_machine}" in
         *"${expected_machine}"*) pass "${label}: object ELF machine=${obj_machine}" ;;
         *) fail "${label}: object ELF machine=${obj_machine} != expected ${expected_machine}" ;;
