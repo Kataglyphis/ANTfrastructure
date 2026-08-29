@@ -6,28 +6,29 @@ index c773ec0..6ba1094 100644
    set(_MLAS_REQUIRES_ASM TRUE)
  endif()
  
-+if(WIN32)
-+  # PATCHED (clang-cl Windows lane): the vendored kernels are GAS/ELF-only
-+  # (`.type sym,@function`; no MASM/COFF port exists), and clang-cl IS a
-+  # working GAS assembler, so the check_language(ASM) guard below does not
-+  # save us the way it does on MSVC - the .S files then die in the
-+  # integrated assembler ("expected absolute expression" in
-+  # SgemmKernelSse2.S). Same fallback as the Android skip above: the DNN
-+  # module's built-in SGEMM.
-+  #
-+  # Gated on WIN32 ALONE, deliberately NOT on _MLAS_REQUIRES_ASM: upstream
-+  # derives that from MLAS_X86_64/MLAS_ARM64/..., whose detection does not
-+  # fire for a CMAKE_SYSTEM_PROCESSOR=ARM64 cross configure. The skip then
-+  # silently did nothing on the arm64 lane, MLAS built a C++-only subset
-+  # whose objects still referenced the asm kernels, and it failed at LINK:
-+  #   undefined symbol: MlasGemvFloatKernel
-+  #   undefined symbol: MlasHGemmSupported
-+  # amd64 is unchanged: _MLAS_REQUIRES_ASM is TRUE there, so both forms of
-+  # the condition fire identically.
++# PATCHED (clang-cl Windows lane): the x86/64 vendored kernels are GAS/ELF-only
++# (`.type sym,@function`; no MASM/COFF port exists), and clang-cl IS a working
++# GAS assembler, so the check_language(ASM) guard below does not save us the
++# way it does on MSVC - the .S files then die in the integrated assembler
++# ("expected absolute expression" in SgemmKernelSse2.S). Same fallback as the
++# Android skip above: the DNN module's built-in SGEMM.
++#
++# On ARM64/AArch64 this skip is NOT applied: MLAS's arm64 kernels are C++ NEON
++# (in mlas/lib/arm64/), NOT .S assembly, so the GAS/COFF issue does not arise.
++# The arm64 NEON kernels compile cleanly under clang-cl and provide optimized
++# GEMM/GEMV for cv::dnn instead of the built-in SGEMM fallback.
++#
++# Gated on WIN32 AND (MLAS_X86_64 OR MLAS_X86), deliberately NOT on
++# _MLAS_REQUIRES_ASM alone: upstream derives that from
++# MLAS_X86_64/MLAS_ARM64/..., whose detection does not fire for a
++# CMAKE_SYSTEM_PROCESSOR=ARM64 cross configure. By gating on MLAS_X86_64 OR
++# MLAS_X86 (not MLAS_ARM64), the skip fires only on x86/64 where the .S GAS
++# kernels are the problem; arm64's C++ NEON kernels proceed to build.
++if(WIN32 AND (MLAS_X86_64 OR MLAS_X86))
 +  set(OPENCV_DNN_MLAS_SKIP_REASON
-+    "vendored GAS kernels have no MASM/COFF port on Windows"
++    "vendored GAS kernels have no MASM/COFF port on Windows x86/64"
 +    CACHE INTERNAL "" FORCE)
-+  message(STATUS "MLAS: skipped on Windows (GAS-only kernels; DNN uses its built-in SGEMM)")
++  message(STATUS "MLAS: skipped on Windows x86/64 (GAS-only kernels; DNN uses its built-in SGEMM)")
 +  return()
 +endif()
 +

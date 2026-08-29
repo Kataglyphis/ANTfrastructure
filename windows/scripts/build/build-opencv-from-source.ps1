@@ -401,7 +401,8 @@ if ($ocvCross) {
     $cmakeExtra += @(
         '-DCPU_NEON_FP16_FLAGS_ON=/clang:-march=armv8.2-a+fp16',
         '-DCPU_NEON_DOTPROD_FLAGS_ON=/clang:-march=armv8.2-a+dotprod',
-        '-DCPU_NEON_BF16_FLAGS_ON=/clang:-march=armv8.2-a+bf16'
+        '-DCPU_NEON_BF16_FLAGS_ON=/clang:-march=armv8.2-a+bf16',
+        '-DCPU_NEON_I8MM_FLAGS_ON=/clang:-march=armv8.2-a+i8mm'
     )
 }
 $cfgLog = Get-PersistentBuildLogPath -Name 'opencv-configure.log' -FallbackDir $buildDir

@@ -410,6 +410,12 @@ if ($ffCross) {
     # leading space, which $confStr's single-quoting handles -- as --cc already relies on.
     $confFlags += "--as=clang$ffCcTargetFlag"
     Write-Host "FFmpeg: aarch64 asm ENABLED via clang's integrated assembler (--as=clang$ffCcTargetFlag); configure assembles test fragments but never runs them"
+    # Explicitly request dotprod and i8mm optimized paths (FFmpeg 9.x has them in
+    # libavcodec/aarch64/ and libswscale/aarch64/). Under --enable-cross-compile
+    # configure probes by assembling test fragments; these flags force the probes
+    # on so a subtle auto-detection miss does not silently disable them.
+    $confFlags += '--enable-neon', '--enable-dotprod', '--enable-i8mm'
+    Write-Host "FFmpeg: aarch64 NEON + dotprod + i8mm explicitly requested"
     Write-Host ("FFmpeg: cross flags -> --enable-cross-compile --arch={0} --extra-ldflags=/machine:{1}" -f `
         (Get-FfmpegTargetArch -Arch $ffTargetArch), (Get-LibMachineArg -Arch $ffTargetArch))
 }
@@ -469,6 +475,20 @@ if (Test-Path $configMak) {
     # is an empty loop, not a $null property under StrictMode. Log-only.
     foreach ($m in @(Select-String -Path $configMak -Pattern '^(TARGET_OS|ARCH|CPU|AS)=' -ErrorAction SilentlyContinue)) {
         Write-Host "config.mak: $($m.Line)"
+    }
+    # aarch64 dotprod/i8mm gate: FFmpeg 9.x has optimized aarch64 dotprod and
+    # i8mm paths in libavcodec/aarch64/ and libswscale/aarch64/. configure
+    # probes them by assembling test fragments under --enable-cross-compile
+    # (never runs them). When detected, config.mak carries HAVE_DOTPROD=yes
+    # and HAVE_I8MM=yes. Gate on the cross lane so a regression (a configure
+    # probe that silently stops matching) is caught at configure time, not
+    # hours later in OpenCV's video decode.
+    if ($ffCross) {
+        $haveDotprod = (Select-String -Path $configMak -Pattern '^HAVE_DOTPROD=yes' -Quiet)
+        $haveI8mm = (Select-String -Path $configMak -Pattern '^HAVE_I8MM=yes' -Quiet)
+        Write-Host "config.mak: HAVE_DOTPROD=$($haveDotprod ? 'yes' : 'no') HAVE_I8MM=$($haveI8mm ? 'yes' : 'no')"
+        if (-not $haveDotprod) { Write-Warning 'FFmpeg cross: HAVE_DOTPROD=no — aarch64 dotprod optimized paths are DISABLED (configure did not detect the feature; this costs decode/encode performance on Snapdragon)' }
+        if (-not $haveI8mm) { Write-Warning 'FFmpeg cross: HAVE_I8MM=no — aarch64 i8mm optimized paths are DISABLED (configure did not detect the feature; this costs color conversion and scaling performance on Snapdragon)' }
     }
 }
 

@@ -109,6 +109,7 @@ $cmakeArgs = @(
     '-B', $buildDir,
     '-DCMAKE_BUILD_TYPE=Release',
     '-DLLVM_ENABLE_PROJECTS=clang;lld',
+    '-DLLVM_ENABLE_RUNTIMES=compiler-rt',
     '-DLLVM_TARGETS_TO_BUILD=AArch64;X86',
     "-DCMAKE_INSTALL_PREFIX=$InstallPrefix",
     '-DLLVM_ENABLE_ASSERTIONS=OFF',
@@ -118,7 +119,18 @@ $cmakeArgs = @(
     '-DLLVM_ENABLE_PDB=OFF',
     # DIA needs ATL, absent from the container's VS Build Tools (C1083), and only
     # powers PDB symbolisation in the LLVM tools.
-    '-DLLVM_ENABLE_DIA_SDK=OFF'
+    '-DLLVM_ENABLE_DIA_SDK=OFF',
+    # compiler-rt builtins only: provides __udivti3, __umodti3 etc. for lld-link.
+    # The fuzzer, profile, sanitizer and ORC runtimes are unnecessary and some
+    # (profile/ROCm) fail to compile under clang-cl.
+    '-DCOMPILER_RT_BUILD_BUILTINS=ON',
+    '-DCOMPILER_RT_BUILD_FUZZER=OFF',
+    '-DCOMPILER_RT_BUILD_PROFILE=OFF',
+    '-DCOMPILER_RT_BUILD_SANITIZERS=OFF',
+    '-DCOMPILER_RT_BUILD_ORC=OFF',
+    '-DCOMPILER_RT_BUILD_MEMPROF=OFF',
+    '-DCOMPILER_RT_BUILD_XRAY=OFF',
+    '-DCOMPILER_RT_BUILD_CTX_PROFILE=OFF'
 )
 if ($env:SCCACHE_DIR -or $env:SCCACHE_SERVE) {
     $cmakeArgs += '-DCMAKE_C_COMPILER_LAUNCHER=sccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache'

@@ -1086,7 +1086,10 @@ cpp_link_args = [$buildLinkArgs]
         # cairo:win32 crashes clang-cl (LLVM 22 mmintrin.h __builtin_shufflevector);
         # -Dcairo:win32=disabled intentionally fails cairo at meson setup.
         '-Dcairo:win32=disabled',
-        '-Dopus:intrinsics=disabled',
+        # Opus intrinsics: the x86 MMX/SSE path crashes clang-cl (mmintrin.h),
+        # but the aarch64 NEON intrinsics path has no such issue — enable it
+        # on the cross lane for NEON-optimized audio encode/decode.
+        $(if ($script:GstCross) { '-Dopus:intrinsics=enabled' } else { '-Dopus:intrinsics=disabled' }),
         # nvcodec: gstnvdecoder.cpp needs gst-d3d11 headers clang-cl cannot find.
         # The CUDA gst-lib is auto-detected separately.
         '-Dgst-plugins-bad:nvcodec=disabled',
