@@ -19,7 +19,7 @@ Describe 'BK driver defaults to the patched-llvm toolchain (#135)' {
 
     It 'targets the patched-llvm stage by default' {
         Assert-Match '(?m)^FROM built AS patched-llvm' $dfText
-        Assert-Match "toolchainTarget = if \(\$StockLlvm\) \{ 'built' \} else \{ 'patched-llvm' \}" $drvText
+        Assert-Match 'toolchainTarget = if \(\$StockLlvm\) \{ ''built'' \} else \{ ''patched-llvm'' \}' $drvText
     }
 
     It 'passes the build-arg when targeting patched-llvm' {
@@ -28,6 +28,6 @@ Describe 'BK driver defaults to the patched-llvm toolchain (#135)' {
     }
 
     It 'defaults to patched-llvm (not built)' {
-        Assert-Match "toolchainTarget = if \(\$StockLlvm\) \{ 'built' \} else \{ 'patched-llvm' \}" $drvText
+        Assert-Match 'toolchainTarget = if \(\$StockLlvm\) \{ ''built'' \} else \{ ''patched-llvm'' \}' $drvText
     }
 }
