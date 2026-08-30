@@ -708,9 +708,10 @@ The QNN SDK is wired into **four frameworks**:
 
 **No zip = QNN off with one notice** on every framework. A version-mismatch (SDK too old
 for the framework version) also falls back to QNN-off gracefully. The SDK staged on this
-host is QAIRT 2.31.0.250130 (QNN API 2.24), which is too old for ORT 1.29 (needs 2.25+
-for `QNN_OP_STFT`); a newer SDK from Qualcomm will enable it. The verification ceiling is
-DirectML's: a green build proves the right bytes ship, never NPU execution.
+host is QAIRT 2.44.0.260225 (QNN API 2.33.0), which carries `QNN_OP_STFT`,
+`QNN_OP_RANDOM_UNIFORM_LIKE`, and `QNN_OP_SCATTER_ELEMENTS_REDUCTION_MAX` — all required
+by ORT 1.29. The QNN EP should now build. The verification ceiling is DirectML's: a green
+build proves the right bytes ship, never NPU execution.
 
 **The mandatory GStreamer plugin contract demands all four plugins on BOTH lanes again.** The
 `UnavailableOn.arm64` entry that dropped `tflite` while LiteRT was a stand-in was deleted on

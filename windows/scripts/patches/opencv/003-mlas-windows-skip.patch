@@ -1,5 +1,4 @@
 diff --git a/3rdparty/mlas/CMakeLists.txt b/3rdparty/mlas/CMakeLists.txt
-index c773ec0..6ba1094 100644
 --- a/3rdparty/mlas/CMakeLists.txt
 +++ b/3rdparty/mlas/CMakeLists.txt
 @@ -84,6 +84,31 @@ if(MLAS_X86_64 OR MLAS_X86 OR MLAS_ARM64 OR MLAS_LOONGARCH64)

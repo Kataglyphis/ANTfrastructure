@@ -173,8 +173,7 @@ Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 > toolchain (#135, `BUILD_PATCHED_LLVM=1`) is now the default — the AArch64
 > workarounds have been removed. The Qualcomm QNN SDK (QAIRT 2.31.0) is
 > staged in `windows/qnn-sdk/` and wired into ONNX Runtime, GenAI, LiteRT,
-> TVM, and IREE (currently falls back to QNN-off — SDK API 2.24 is too old
-> for ORT 1.29 which needs 2.25+). See
+> TVM, and IREE (QAIRT 2.44.0, QNN API 2.33.0 — compatible with ORT 1.29). See
 > [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
 
 ## Engineering principles
