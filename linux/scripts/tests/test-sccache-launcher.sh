@@ -71,7 +71,7 @@ t_case "REAL compiler error: passes through, compiler NOT re-run"
 rm -f "${_SLC_DIR}/compiler.calls"
 _rc="$(_launcher_run realerr)"
 t_assert_eq "1" "${_rc}" "real error must keep sccache's non-zero exit"
-t_assert_eq "0" "$(wc -l < "${_SLC_DIR}/compiler.calls" 2>/dev/null || echo 0)" "compiler must NOT be called"
+t_assert_eq "0" "$(cat "${_SLC_DIR}/compiler.calls" 2>/dev/null | wc -l)" "compiler must NOT be called"
 
 t_case "clean compile: passes through with rc 0, no bypass"
 rm -f "${_SLC_DIR}/compiler.calls"
