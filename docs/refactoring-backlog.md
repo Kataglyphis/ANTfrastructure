@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (removed CLOSED two-caches stub; extended verify-critical-fixes.sh gate repo-wide)
+Last groomed: 2026-08-30 (closed LOG34 + GPU-ROCM10; synced stale Dockerfile ARGs)
 
 ## Standing rules (read first)
 
@@ -86,12 +86,6 @@ either created or exposed.
   per-RUN mount audit + real toolchain rebuild.
 - **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
-- **LOG34 — TVM's version assert is permanently disarmed** [S·★, CLOSED 2026-08-30]
-  `EXP_TVM` is now set from `TVM_REF` in versions.env, making TVM a hard assert
-  (must be importable, major.minor must match). The build proved TVM ships on all
-  three arches (amd64, arm64, riscv64). The version check compares major.minor
-  only, since the wheel is a dev tag (0.26.dev1) that doesn't match the git tag
-  (0.26.0) exactly.
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
@@ -117,13 +111,6 @@ either created or exposed.
   It is not waiting on a rebuild, it is waiting on someone putting
   `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
   a third time.
-- **GPU-ROCM10 — verification build of the AMD GPU lane** [M·★★★, CLOSED
-  2026-08-30] The ROCm 10.0 TheRock verification build succeeded.
-  `Dockerfile.amd` builds and all post-install assertions pass: hipcc at
-  `/opt/rocm/core-10.0/bin/hipcc` (symlinked to `/opt/rocm/bin/hipcc`),
-  migraphx.hpp found, math libraries in per-GFX subdirs. The `setup-rocm-repo.sh`
-  script was updated with convenience symlinks for the TheRock versioned-subdir
-  layout and the library check uses `find` instead of `ldconfig`.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).
