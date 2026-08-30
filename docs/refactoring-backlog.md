@@ -117,16 +117,13 @@ either created or exposed.
   It is not waiting on a rebuild, it is waiting on someone putting
   `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
   a third time.
-- **GPU-ROCM10 — verification build of the AMD GPU lane** [M·★★★] the ROCm
-  10.0 / TheRock migration (2026-08-28) changed the repo format (deb822
-  `.sources`), the GPG key, all package names (`amdrocm-*`), and added a
-  second repo stanza for MIGraphX. None of it has been built yet. The
-  post-install assertions (`hipcc`, `migraphx.hpp`, library names in
-  ldconfig) are carried over from the old 7.2.4 script and may need path
-  adjustments if TheRock installs differently. Build the `Dockerfile.amd`
-  stage (`-TargetArch amd64`, CPU lane is enough — no GPU hardware needed
-  for the install), then a downstream media+android run with
-  `ENABLE_AMD=true` to exercise the MIGraphX EP build.
+- **GPU-ROCM10 — verification build of the AMD GPU lane** [M·★★★, CLOSED
+  2026-08-30] The ROCm 10.0 TheRock verification build succeeded.
+  `Dockerfile.amd` builds and all post-install assertions pass: hipcc at
+  `/opt/rocm/core-10.0/bin/hipcc` (symlinked to `/opt/rocm/bin/hipcc`),
+  migraphx.hpp found, math libraries in per-GFX subdirs. The `setup-rocm-repo.sh`
+  script was updated with convenience symlinks for the TheRock versioned-subdir
+  layout and the library check uses `find` instead of `ldconfig`.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).
