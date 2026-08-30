@@ -33,10 +33,13 @@ linux/nextcloud-aio/.env
 # windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)
 .cxxtest.Dockerfile
 
-# Qualcomm AI Engine Direct (QAIRT/QNN) SDK zip, staged by hand for the ORT QNN EP (backlog #121):
-# login-gated + EULA-bound, never committed. Only the README rides along.
+# Qualcomm AI Engine Direct (QAIRT/QNN) SDK zip, staged by hand for the ORT QNN EP
+# (Windows: #121; Linux ARM64: backlog QNN-LINUX). Login-gated + EULA-bound, never
+# committed. Only the README rides along on each lane.
 windows/qnn-sdk/*
 !windows/qnn-sdk/README.md
+linux/qnn-sdk/*
+!linux/qnn-sdk/README.md
 
 # ---------------------------------------------------------------------------
 # Scratch and one-shot helpers — never committed

@@ -5,6 +5,23 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-30 — QNN-LINUX scaffold: Snapdragon QAIRT/QNN drop dir for Linux ARM64
+
+Landed the zero-cache-impact scaffold for the Qualcomm QAIRT/QNN SDK on the
+Linux ARM64 lane (targeting Snapdragon NPU), mirroring the Windows QNN EP
+(#121). The build-side wiring (resolve helper, ORT CMake, Dockerfile mount,
+versions.env pin) edits the 03-media / 01-core closure and is staged as
+backlog `A2. QNN-LINUX` work items 2–6 for the next closure window.
+
+- `linux/qnn-sdk/README.md` — the opt-in drop point + contract (login-gated
+  Linux AArch64 SDK, `lib/aarch64-oe-linux-gcc11.2/`, not the Windows
+  `aarch64-windows-msvc` SDK)
+- `.gitignore` — `linux/qnn-sdk/*` rule (root-level, symmetric with
+  `windows/qnn-sdk/*`)
+- `docs/refactoring-backlog.md` — new `A2. QNN-LINUX` section: 6 work items +
+  framework fan-out table (ORT, GenAI, LiteRT, TVM, IREE)
+
+
 ## 2026-08-29 — #135 closed: patched LLVM is default, workarounds removed
 
 ### `BUILD_PATCHED_LLVM=1` is now the DEFAULT (#135 item 1+3 DONE)
