@@ -55,20 +55,27 @@ source_module() {
     caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
   fi
 
-  local -a candidates=(
-    "${caller_dir}/${name}"
-    "${caller_dir}/../01-core/${name}"
-    "${caller_dir}/../02-toolchain/${name}"
-    "/opt/scripts/core/${name}"
-    "/opt/scripts/toolchain/${name}"
-  )
-
+  # Framework dirs FIRST, caller-local LAST (2026-08-30). The old order started
+  # with ${caller_dir}/${name}, so sourcing 03-media/build/onnxruntime/build/
+  # lib/common.sh bare (SCRIPT_DIR unset) resolved source_module "common.sh" to
+  # THAT SAME FILE — an infinite re-source loop (media_common_init → common.sh
+  # → media_common_init … → SIGSEGV). Every source_module name is an 01-core
+  # module, so nothing legitimate ever wanted a caller-local shadow; the
+  # caller_dir slot stays as the last resort only.
+  local -a candidates=()
   if [ -n "${SCRIPTS_ROOT:-}" ] && [ "${SCRIPTS_ROOT}" != "${caller_dir}" ]; then
     candidates+=(
       "${SCRIPTS_ROOT}/01-core/${name}"
       "${SCRIPTS_ROOT}/02-toolchain/${name}"
     )
   fi
+  candidates+=(
+    "/opt/scripts/core/${name}"
+    "/opt/scripts/toolchain/${name}"
+    "${caller_dir}/../01-core/${name}"
+    "${caller_dir}/../02-toolchain/${name}"
+    "${caller_dir}/${name}"
+  )
 
   local c
   for c in "${candidates[@]}"; do

@@ -52,6 +52,46 @@ _flag_disabled() {
   esac
 }
 
+# Single resolver for the launcher name (backlog F2): every caller resolves
+# through common.sh's compiler_cache_launcher() -- the one place that knows
+# the guarded-launcher preference, the sccache server start, and the ccache
+# fallback. This module cannot assume 01-core is loaded (the android preamble
+# sources it standalone), so the inline bootstrap below mirrors the same
+# decision for that caller only. The two paths are pinned to agree by
+# test-compiler-cache.sh.
+_resolve_compiler_cache_launcher() {
+  if command -v compiler_cache_launcher >/dev/null 2>&1; then
+    printf '%s' "$(compiler_cache_launcher 2>/dev/null || true)"
+    return 0
+  fi
+  # Bootstrap path (no 01-core loaded): identical resolution, inline.
+  if command -v sccache >/dev/null 2>&1; then
+    if [ -z "${SCCACHE_SERVER_UDS:-}" ] && [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
+      _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
+      _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
+      if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
+        SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
+        export SCCACHE_SERVER_UDS
+      else
+        _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
+        export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+      fi
+    fi
+    sccache --start-server >/dev/null 2>&1 || true
+    if sccache --show-stats >/dev/null 2>&1; then
+      # Guarded launcher, never bare sccache: sccache ABORTS the build on its own
+      # fatal errors (ENOENT on CMake's deleted TryCompile cwd) where ccache execs on.
+      for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
+        if [ -x "${_scl}" ]; then printf '%s' "${_scl}"; return 0; fi
+      done
+      printf '%s' sccache
+      return 0
+    fi
+  fi
+  printf '%s' ccache
+  return 0
+}
+
 setup_ccache() {
   if _flag_disabled "${USE_CCACHE}"; then
     _cc_info "ccache disabled via USE_CCACHE=${USE_CCACHE}"
@@ -73,39 +113,22 @@ setup_ccache() {
 
   # Prefer sccache only when its server actually answers: a dead server is a HARD
   # compile failure, not a miss. See docs/build-cache-tiers.md.
+  export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
+  # See common.sh:ensure_sccache_env -- preprocessor cache mode re-reads the
+  # input file AFTER the compile and dies on CMake's deleted TryCompile dirs.
+  export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
+  # Quiet by default; SCCACHE_LOG=sccache=debug brings back the client/server trace.
+  export SCCACHE_LOG="${SCCACHE_LOG:-}"
+  export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
   _cc_launcher="ccache"
-  if ! _flag_disabled "${USE_SCCACHE}" && command -v sccache >/dev/null 2>&1; then
-    export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
-    # See common.sh:ensure_sccache_env -- preprocessor cache mode re-reads the
-    # input file AFTER the compile and dies on CMake's deleted TryCompile dirs.
-    export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
-    # Quiet by default; SCCACHE_LOG=sccache=debug brings back the client/server trace.
-    export SCCACHE_LOG="${SCCACHE_LOG:-}"
-    # One server per container: the default TCP port is NOT container-local, so
-    # concurrent BuildKit steps reach each other's server (UDS needs sccache >= 0.14,
-    # hashed port is the 0.13 fallback). See docs/build-cache-tiers.md.
-    if [ -z "${SCCACHE_SERVER_UDS:-}" ] && [ -z "${SCCACHE_SERVER_PORT:-}" ]; then
-      _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
-      _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
-      if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
-        export SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
-      else
-        _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
-        export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
-      fi
-    fi
-    export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
-    sccache --start-server >/dev/null 2>&1 || true
-    if sccache --show-stats >/dev/null 2>&1; then
-      # Guarded launcher, never bare sccache: sccache ABORTS the build on its own
-      # fatal errors (ENOENT on CMake's deleted TryCompile cwd) where ccache execs on.
-      _cc_launcher="sccache"
-      for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
-        if [ -x "${_scl}" ]; then _cc_launcher="${_scl}"; break; fi
-      done
-    else
-      _cc_warn "sccache present but its server does not answer -- using ccache for C/C++"
-    fi
+  if ! _flag_disabled "${USE_SCCACHE}"; then
+    _cc_launcher="$(_resolve_compiler_cache_launcher)"
+    case "${_cc_launcher}" in
+      *sccache*) : ;;
+      *) _cc_launcher="ccache"
+         _cc_warn "sccache unusable (absent or server not answering) -- using ccache for C/C++"
+         ;;
+    esac
   fi
   export CMAKE_C_COMPILER_LAUNCHER="${_cc_launcher}"
   export CMAKE_CXX_COMPILER_LAUNCHER="${_cc_launcher}"
@@ -148,11 +171,14 @@ setup_sccache() {
 
   # Guarded launcher, never the bare string (AGENTS.md): setup-gstreamer.sh calls this
   # BEFORE build-gstreamer-monorepo.sh tests `[ -z "${RUSTC_WRAPPER+x}" ]`, so whatever
-  # is set here wins.
+  # is set here wins. Single resolver (backlog F2); Rust has no ccache fallback, so a
+  # resolver verdict that is not sccache-class keeps the guarded sccache default.
   _sc_launcher="sccache"
-  for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
-    if [ -x "${_scl}" ]; then _sc_launcher="${_scl}"; break; fi
-  done
+  _sc_resolved="$(_resolve_compiler_cache_launcher)"
+  case "${_sc_resolved}" in
+    *sccache*) _sc_launcher="${_sc_resolved}" ;;
+    *) : ;;
+  esac
   export RUSTC_WRAPPER="${_sc_launcher}"
 
   if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then

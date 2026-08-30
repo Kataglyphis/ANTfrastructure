@@ -5,6 +5,103 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-30 — second pass: --no-push chains SAFE (OCI-layout handoff) + source_module recursion fix
+
+Backlog item C is closed: **full `--no-push` chains are no longer refused** —
+every stage built locally is exported to an OCI layout and handed to the child
+via `--build-context <parent-tag>=oci-layout://<dir>`, so a child's FROM never
+resolves against the registry (the 2026-08-08 stale-parent bug). The android
+image is additionally exported for the runtime lane, and the mid-chain resume
+case stays refused (no locally-built prefix to serve).
+
+- `01-core/cross-stage-build.sh` — `cross_local_handoff_enabled()`,
+  `cross_ensure_local_context_workdir()` (per-run
+  `${CROSS_CONTEXT_ROOT:-~/.cache/opencode/cross-stage-contexts}/cross-flow.*`,
+  age-based orphan sweep), `cross_stage_context_dir()`; parent resolution in
+  `_cross_stage_run_resolve_parent` appends the `--build-context` when the
+  parent was built this run; `cross_stage_run` exports every local stage after
+  the build, and android to `<workdir>/android-artifacts/<arch>`.
+- `build-cross-chain.sh` — guard relaxed (full chain allowed, mid-chain
+  refused; `CROSS_LOCAL_CONTEXT_HANDOFF=0` reverts, `CROSS_NO_PUSH_FORCE=1`
+  bypasses), parse-time message + `--no-push` usage text updated,
+  `run_runtime_stage` passes `ARTIFACT_CONTEXT_ROOT`+`ARTIFACT_CONTEXT_MODE=oci`
+  to the helper under `--no-push`, `_chain_on_exit` reclaims the workdir.
+- `01-core/modules.sh` — `source_module` resolves FRAMEWORK dirs before
+  `${caller_dir}/${name}`. The old order made a bare
+  `source` of ONNX's `build/lib/common.sh` (SCRIPT_DIR unset) resolve
+  `source_module "common.sh"` to that very file — an infinite re-source loop
+  ending in a stack-overflow SIGSEGV. All `source_module` names are 01-core
+  modules, so the caller-local slot is now only a last resort.
+- New suites: `tests/test-cross-oci-handoff.sh` (15 assertions — parent-context
+  append, registry fallback when unbuilt, push=1 never, guard matrix incl.
+  mutation-style refusal cases) and `tests/test-module-resolution.sh`
+  (5 assertions — order, the ORT recursion shape under timeout, caller-local
+  last resort; mutation-verified against the pre-fix `modules.sh`: 3/5 fail).
+- Live-proven on the host: two-stage test build — stage B's `FROM` resolved
+  from the exported layout (`--pull=false`, content marker verified), never
+  the registry.
+- Docs: AGENTS.md quick-ref, `docs/linux-cross-builds.md` § "--no-push full
+  chains: FIXED", backlog C closed, archive entry.
+
+## 2026-08-30 — Backlog sweep: F-entries closed (OpenCV-sccache refuted), one-resolver cache consolidation, QNN-LINUX fan-out wired
+
+Three parallel threads, one day: the two remaining F-section items are gone
+from the open backlog, the cache launcher resolution has exactly one resolver,
+and the QNN-LINUX framework fan-out (GenAI/LiteRT/TVM/IREE) is wired on the
+shared SDK module — all fail-safe by construction (no zip = byte-identical
+existing behavior).
+
+### OpenCV-sccache entry REFUTED, F2 DONE (docs/refactoring-backlog-archive-2026-08-30.md)
+
+- **"sccache caches NOTHING in the OpenCV step" — closed by REFUTATION.** Log
+  forensics on the staged-media* and media-arm64 logs showed the 2359 bypass
+  messages the entry cited were the pre-UDS wrong-server bug (concurrent
+  BuildKit steps reaching each other's sccache server on the fixed TCP port;
+  `caused by: No such file or directory (os error 2)` — exactly what
+  docs/build-cache-tiers.md § 5.1 already recorded as fixed by
+  b4078ad1 + 4aa92fb6), and that the faults appeared in the ORT step too —
+  not OpenCV-exclusive as claimed. Every post-UDS run has 0 bypass messages,
+  including the 2026-08-30 QNN-LINUX arm64 media build, where OpenCV compiled
+  all 1660 objects through the launcher and the sibling ffmpeg step recorded a
+  99.64 % hit rate. No code change needed; the misdiagnosis is archived with
+  the evidence so it is not re-discovered.
+- **F2 — compiler-cache abstraction consolidation: DONE.** New
+  `_resolve_compiler_cache_launcher()` in `01-core/compiler-cache.sh` routes
+  every launcher decision through common.sh's `compiler_cache_launcher()`
+  (all media/ORT callers) with an inline bootstrap fallback for the android
+  preamble, which sources compiler-cache.sh standalone. Both paths implement
+  the identical decision (guarded launcher > sccache > ccache, never empty);
+  `setup_ccache` and `setup_sccache` both consume it; the
+  verify-critical-fixes.sh gate still passes without edits. Pinned by the new
+  suite `linux/scripts/tests/test-compiler-cache.sh` (8 assertions, incl.
+  mutation checks and the "Rust keeps sccache-class on a ccache verdict"
+  property). Behavior-identical by construction; a media run validates the
+  stats lines.
+
+### QNN-LINUX framework fan-out WIRED (validation build pending)
+
+- **NEW `01-core/qnn-sdk.sh`** — shared QAIRT resolution + runtime staging,
+  moved out of ORT's lib/common.sh (which now sources it and hard-requires the
+  two functions). Unit-tested end-to-end against a synthetic QAIRT zip:
+  resolution, sha256 verification, `libQnn*.so` + `hexagon-v*` staging, and
+  the arm64/no-zip gates.
+- `03-media/core/common.sh` — `media_common_init` loads `qnn-sdk.sh`
+- `60-build-genai.sh` — stage QNN backend libs beside the GenAI install
+- `build-litert.sh` — `TFLITE_ENABLE_QNN=ON -DQNN_HOME=<home>` + NPU=ON when
+  a zip is staged (else the NPU=OFF/`QNN=OFF` defaults), in BOTH the cmake
+  configure and the wheel `EXTRA_CMAKE_FLAGS`, plus post-install staging
+- `tvm-config.sh` / `tvm.sh` — `USE_QNN=ON -DQNN_HOME=<home>` (else explicit
+  `-DUSE_QNN=OFF`) in `append_tvm_cmake_args`, post-install staging in main;
+  `tvm.sh` loads the module
+- `build-app-wheelhouse.sh` — `IREE_TARGET_BACKEND_QNN=ON -DQNN_HOME=<home>`
+  (else `OFF`); no runtime staging on Linux (wheel-only cross lane)
+- `Dockerfile.media` — `linux/qnn-sdk` bind mount added to the litert, tvm
+  and app-wheelhouse RUNs (was cpu/genai only)
+- Every path is gated on a staged zip: no zip = today's behavior byte-for-byte
+  (verified per-arch by the module tests). The validation build (staged QAIRT
+  v2.49 on arm64) answers whether all five flags stay green and the libs land.
+
+
 ## 2026-08-30 — QNN-LINUX: Qualcomm QAIRT/QNN EP wired + PROVEN for Linux ARM64 (Snapdragon)
 
 Wired the ONNX Runtime QNN execution provider onto the Linux `arm64` lane,

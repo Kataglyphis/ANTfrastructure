@@ -22,6 +22,7 @@ source_module gcc.sh
 source_module vulkan.sh
 
 source_module cross-env.sh
+source_module qnn-sdk.sh
 
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/tvm-detect.sh"
@@ -454,6 +455,12 @@ main() {
 
   log "Installing TVM to $prefix"
   cmake --install "$build_dir"
+
+  # QNN runtime staging (backlog QNN-LINUX, mirrors Windows build-tvm #121).
+  if [ -n "${TVM_QNN_HOME:-}" ]; then
+    log "Staging QNN backend libs beside the TVM install ($prefix)"
+    stage_qnn_runtime "${TVM_QNN_HOME}" "$prefix"
+  fi
 
   if [ "$do_python" -eq 1 ]; then
     tvm_build_wheel

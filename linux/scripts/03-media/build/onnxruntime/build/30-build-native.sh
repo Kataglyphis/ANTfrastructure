@@ -156,7 +156,7 @@ finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${
 
 # Stage QNN backend libs beside the ORT install (backlog QNN-LINUX, arm64-only).
 if [ -n "$_qnn_home" ]; then
-  stage_qnn_runtime "$_qnn_home" "${NATIVE_CPU_OUTPUT_DIR}"
+  stage_qnn_runtime "$_qnn_home" "${NATIVE_CPU_OUTPUT_DIR}" 'libonnxruntime_providers_qnn.so*'
 fi
 
 # AP4: strip the CPU-EP shared libs. setup_linux_cross_env (above) exported

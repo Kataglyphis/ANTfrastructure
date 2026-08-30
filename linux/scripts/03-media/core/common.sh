@@ -132,6 +132,7 @@ media_common_init() {
   source_module cross-apt.sh         || true
   source_module downloads.sh         || true
   source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
+  source_module qnn-sdk.sh           || true
   # Rust compile caching (sccache) — GATED, default OFF. setup_sccache's own
   # doc says "sccache for Rust, ccache for C/C++ is the recommended setup",
   # but it was never invoked here, and Dockerfile.toolchain defensively clears

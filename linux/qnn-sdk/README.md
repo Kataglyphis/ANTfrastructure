@@ -45,15 +45,25 @@ remove it after, the same discipline as the TensorRT zip.
 
 ## What the build does with it
 
-- Extracts the zip, anchors the SDK root on `include/QNN/QnnInterface.h`, and
-  passes it as `onnxruntime_QNN_HOME` via `--cmake_extra_defines`.
-- Enable `onnxruntime_USE_QNN=ON` on the **arm64** lane (HTP/NPU on Snapdragon,
-  the actual point of the EP). amd64/riscv64 stay QNN-off.
+- Extracts the zip, anchors the SDK root on `include/QNN/QnnInterface.h` (shared
+  resolver `resolve_qnn_sdk` in `01-core/qnn-sdk.sh`, loaded by
+  `media_common_init`), and passes it to each framework as `QNN_HOME` /
+  `onnxruntime_QNN_HOME` via cmake flags — mirroring the Windows lane's #121
+  wiring exactly.
+- Enable the QNN target on the **arm64** lane for all five consumers
+  (HTP/NPU on Snapdragon, the actual point of the EP): ONNX Runtime
+  (`onnxruntime_USE_QNN=ON`), ONNX Runtime GenAI (inherits ORT), LiteRT
+  (`TFLITE_ENABLE_QNN=ON`, NPU gate opens with it), TVM (`USE_QNN=ON`), IREE
+  (`IREE_TARGET_BACKEND_QNN=ON`). amd64/riscv64 stay QNN-off.
 - Stage the backend shared libraries (`libQnnHtp.so`, `libQnnCpu.so`,
-  `libQnnSystem.so`, …) plus the `hexagon-v*` skel directories beside the ORT
-  install, so a target host finds them on `LD_LIBRARY_PATH` without extra setup.
+  `libQnnSystem.so`, …) plus the `hexagon-v*` skel directories beside each
+  framework's install (`stage_qnn_runtime`), so a target host finds them on
+  `LD_LIBRARY_PATH` without extra setup. IREE is wheel-only on this lane — no
+  install dir to stage beside.
 - `validate-media-runtime.sh` already skips `libQnn*` ELF arch checks
   (`VENDOR_ARCH_SKIP_PATTERNS`), so the foreign-arch vendor libs ship as-is.
+- All of it is gated on the zip: no zip = today's behavior byte-for-byte on
+  every arch.
 
 Build status: the ORT QNN wiring is LANDED and **PROVEN 2026-08-30** (resolve
 helper, build script, Dockerfile mount, versions.env pin, artifact verification
@@ -65,6 +75,7 @@ onnxruntime-cpu` PASS. The upstream `QNN_ARCH_ABI` risk is RESOLVED — ORT CMak
 defaults it to `aarch64-android` on Linux aarch64, but it is a cache var
 guarded by `if(NOT QNN_ARCH_ABI)` (cmake/CMakeLists.txt:921), so
 `-DQNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` overrides it; no source patch
-needed. Framework fan-out to GenAI/LiteRT/TVM/IREE is OPEN. See
-`docs/refactoring-backlog.md` (QNN-LINUX) and `docs/windows-cross-builds.md`
-(QNN section, #121) for the cross-lane plan.
+needed. Framework fan-out (GenAI/LiteRT/TVM/IREE) is WIRED 2026-08-30 —
+fail-safe by construction (no zip = byte-identical), validation build with the
+zip staged still PENDING. See `docs/refactoring-backlog.md` (QNN-LINUX) and
+`docs/windows-cross-builds.md` (QNN section, #121) for the cross-lane plan.

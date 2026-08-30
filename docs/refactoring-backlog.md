@@ -6,7 +6,9 @@ already-shipped entries). Every item here is OPEN. Completed/obsolete items
 and the observation journal live in
 [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md);
 everything CLOSED up to 2026-08-28 is in
-[`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md).
+[`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md);
+the 2026-08-30 round (the OpenCV-sccache refutation, F2) is in
+[`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md).
 This file shows OPEN work only + CHANGELOG.md + memory — do not resurrect
 without re-verifying.
 
@@ -16,7 +18,16 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-30 (QNN-LINUX A2: ORT wiring PROVEN on real SDK — arm64 media build GREEN, 45 backend libs + 7 hexagon skel dirs staged, QNN_ARCH_ABI risk resolved; framework fan-out OPEN)
+Last groomed: 2026-08-30 (second pass) — C CLOSED: full `--no-push` chains are
+now SAFE via the local OCI-layout stage handoff (export + `--build-context`
+<-tag>=oci-layout://, android→runtime `ARTIFACT_CONTEXT_ROOT` wiring, guard
+relaxed to refuse only mid-chain resumes; mechanism live-proven on the host,
+unit-pinned by test-cross-oci-handoff.sh). ALSO fixed the source_module
+caller-local recursion footgun (ORT lib/common.sh bare-source SIGSEGV —
+`modules.sh` now resolves framework dirs first; test-module-resolution.sh).
+Earliest window status unchanged: F-section items CLOSED/refuted (OpenCV-sccache
+was the pre-UDS wrong-server bug, NOT OpenCV-specific), F2 one-resolver cache
+consolidation landed, QNN-LINUX fan-out WIRED (validation build pending).
 
 ## Standing rules (read first)
 
@@ -39,36 +50,22 @@ Last groomed: 2026-08-30 (QNN-LINUX A2: ORT wiring PROVEN on real SDK — arm64 
 
 Collected DURING the switch and the staged rebuild, each with the evidence that
 produced it. None of these blocks the current run; they are the debt the switch
-either created or exposed.
-
-- **sccache caches NOTHING in the OpenCV step** [M·★★★, OPEN 2026-08-26] The
-  TryCompile root cause is fixed and the guarded launcher keeps the build alive
-  (1451 saves, 0 aborts), but in the opencv step sccache fails on EVERY compile
-  — now with the main build dir `/tmp/opencv-1/build` as cwd, not a deleted
-  scratch dir. So OpenCV builds fully UNCACHED while every other step caches
-  normally. The guard makes this survivable and VISIBLE; it does not fix it.
-  Do not re-run these nine disproven hypotheses: missing compiler; dangling
-  update-alternatives (never ran in that stage); apt reinstalling sccache
-  (it did not); the two sccache versions (0.13 apt vs 0.17 pinned — both work,
-  PATH prefers the pinned one); our own `rm -rf` (targets iree-build-HOST);
-  a cleared environment; the custom-prefix GCC without LD_LIBRARY_PATH; a
-  214-variable environment plus a 120-flag command line; memory or disk
-  pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
-  cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
-  regex failure that appears in no real chain log.
-- **Compiler-cache abstraction consolidation** [L·★★, OPEN] 8/9 call sites
-  resolve through `compiler_cache_launcher()`; the one duplicate
-  (compiler-cache.sh) is a bootstrap layer that cannot source 01-core and
-  repeats the resolution inline. Merge all sites onto one resolver; the
-  launcher helper is the seam. Needs a closure window.
+either created or exposed. Both entries were closed 2026-08-30 — see
+[`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md):
+the OpenCV "uncached" entry was REFUTED (pre-UDS wrong-server fault, 0
+faults on every post-UDS run) and the compiler-cache consolidation (F2)
+landed as `_resolve_compiler_cache_launcher()` with the new
+`linux/scripts/tests/test-compiler-cache.sh` suite.
 
 ## A. Window inventory — needs WORK in the wave
 
 ### A1. Work items
 
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
-  positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
-  build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
+  positionals; vulkan/llvm-cross long stanzas; build_iree_wheels; parse_options
+  116-liner; modules.sh dir-walker. (`_cross_stage_build_impl` is already a
+  single impl behind two thin wrappers — part of C, closed 2026-08-30; do not
+  re-add it.)
 - **TG1 residual — fuller toolchain-closure trim** [M·★★] llvm-cross/
   llvm-validate lazy + true per-RUN closures; no COPY fallback → needs a
   per-RUN mount audit + real toolchain rebuild.
@@ -103,13 +100,16 @@ QNN_ARCH_ABI risk is RESOLVED: ORT CMake accepts `-DQNN_ARCH_ABI=aarch64-oe-linu
    pinned to the staged zip's sha256
    (`32de9b5b...`, `# noforward`).
 3. **Resolve helper** [M·★★, DONE+PROVEN 2026-08-30] `resolve_qnn_sdk` +
-   `stage_qnn_runtime` in `onnxruntime/build/lib/common.sh`. Mirrors
-   `Resolve-QnnSdk`/`Copy-QnnRuntime`: locate zip, verify sha256 if pinned,
-   extract, anchor on `QnnInterface.h`, assert
+   `stage_qnn_runtime`. Mirrors `Resolve-QnnSdk`/`Copy-QnnRuntime`: locate
+   zip, verify sha256 if pinned, extract, anchor on `QnnInterface.h`, assert
    `lib/aarch64-oe-linux-gcc11.2/libQnnCpu.so`, QNN_OP_STFT canary.
    BUGFIX: `info()` writes to stdout (fd 1), so all `info` calls inside
    both functions redirect to `stderr` (>&2) to keep the `$(...)` capture
    clean — without this, QNN_HOME was polluted with log text.
+   RELOCATED 2026-08-30 (fan-out): both now live in the shared
+   `01-core/qnn-sdk.sh` module loaded by `media_common_init` (ORT's
+   lib/common.sh sources it and now hard-requires the two functions —
+   fail-loud if the module ever fails to load).
 4. **ORT build wiring** [M·★★, DONE+PROVEN 2026-08-30] `30-build-native.sh`:
    `resolve_qnn_sdk` called after the oneDNN block; if non-empty, appends
    `--cmake_extra_defines onnxruntime_USE_QNN=ON onnxruntime_QNN_HOME=<path>
@@ -125,38 +125,59 @@ QNN_ARCH_ABI risk is RESOLVED: ORT CMake accepts `-DQNN_ARCH_ABI=aarch64-oe-linu
    `VENDOR_ARCH_SKIP_PATTERNS` already lists `libQnn*` — confirmed, no change
    needed.
 
-Framework fan-out (each gated to arm64, QNN-off when no zip):
+7. **Framework fan-out wiring** [M·★★, WIRED 2026-08-30, validation build PENDING]
+   New shared module `01-core/qnn-sdk.sh` (resolve_qnn_sdk + stage_qnn_runtime,
+   moved from ORT's lib/common.sh, which now loads them via media_common_init;
+   helper unit-tested end-to-end with a fake QAIRT zip: resolution, sha256,
+   staging, arch/no-zip gates). Every framework wires through it, mirroring the
+   Windows #121 flags exactly:
 
-| Framework | CMake flag | Linux source | Status |
-|---|---|---|---|
-| **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | `30-build-native.sh` | DONE+PROVEN |
-| **ONNX Runtime GenAI** | inherits from ORT | stage QNN libs beside GenAI install | OPEN |
-| **LiteRT** | `TFLITE_ENABLE_QNN=ON` | `build-litert.sh:236` — `LITERT_ENABLE_NPU=OFF` becomes conditional | OPEN (LiteRT built its OWN QNN manager in the same run from a separate header fetch — investigate whether our staged SDK can replace its fetch) |
-| **TVM** | `USE_QNN=ON` | `05-frameworks/tvm-config.sh` — no QNN today | OPEN |
-| **IREE** | `IREE_TARGET_BACKEND_QNN=ON` | `05-frameworks/torch/build-app-wheelhouse.sh` | OPEN |
+   | Framework | CMake flag (mirrors Windows #121) | Linux source | Status |
+   |---|---|---|---|
+   | **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | `30-build-native.sh` | DONE+PROVEN |
+   | **ONNX Runtime GenAI** | inherits from ORT — stage QNN libs beside GenAI install | `60-build-genai.sh` | WIRED, validation build PENDING |
+   | **LiteRT** | `TFLITE_ENABLE_QNN=ON` + `QNN_HOME=<home>` + `LITERT_ENABLE_NPU=ON` (NPU=OFF default flips on only when a zip is staged) | `build-litert.sh` (configure + wheel-flag string + post-install staging) | WIRED, validation build PENDING |
+   | **TVM** | `USE_QNN=ON` + `QNN_HOME=<home>` (else explicit `USE_QNN=OFF`) | `tvm-config.sh` append_tvm_cmake_args + post-install staging in `tvm.sh` | WIRED, validation build PENDING |
+   | **IREE** | `IREE_TARGET_BACKEND_QNN=ON` + `QNN_HOME=<home>` (else `OFF`) | `build-app-wheelhouse.sh` build_iree_wheels | WIRED, validation build PENDING. NO runtime staging on Linux: the cross lane ships wheels only, and the arm64 target is runtime-only (no compiler) — whether the flag has any effect there is exactly what the validation build answers. |
 
-No zip = QNN off with one notice on every framework. The verification
-ceiling is the same as Windows/DirectML's: a green build proves the right
-bytes ship, never NPU execution — that needs real Snapdragon hardware.
+   Fail-safe by construction: no zip staged = `resolve_qnn_sdk` returns empty on
+   every arch → each framework takes its pre-existing default path byte-for-byte
+   (verified for amd64/riscv64/no-zip by the module's unit tests). The pending
+   check is the OPPOSITE direction: with the v2.49 QAIRT zip staged on arm64,
+   do all five flags/builds stay GREEN and do the staged libs land? (Storm the
+   open items — LiteRT's own QNN-manager header fetch and the wheel-staging
+   question — are answered by that same run.) QNN_SDK_LINUX_LIBDIR
+   (default `aarch64-oe-linux-gcc11.2`) is the single knob if a newer SDK ever
+   changes the lib subdir.
+
+No zip = QNN off with one notice on every framework. The verification ceiling
+is the same as Windows/DirectML's: a green build proves the right bytes ship,
+never NPU execution — that needs real Snapdragon hardware.
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
-- **--no-push OCI-layout handoff + dual-path collapse** [M·★★, OPEN] The
-  multi-stage refusal guard is landed (see archive-2026-08-27 § Closed
-  2026-08-28). Remaining: the full OCI-layout export + `--build-context`
-  handoff (which would make `--no-push` multi-stage actually safe) and the
-  dual-path collapse.
+- **--no-push OCI-layout handoff — DONE 2026-08-30.** Full narrative in
+  `docs/linux-cross-builds.md` § "--no-push full chains: FIXED 2026-08-30".
+  Every stage of a `--no-push` chain is exported to an OCI layout and handed to
+  the child as `--build-context <parent-tag>=oci-layout://<dir>`; android is
+  additionally exported to `ARTIFACT_CONTEXT_ROOT` for the runtime lane. The
+  guard now allows full chains and refuses only mid-chain resumes. Mechanism
+  proven end-to-end on the live host (two-stage test build: FROM resolved from
+  the exported layout, never the registry) and pinned by
+  `tests/test-cross-oci-handoff.sh` (15 assertions). See the archive for the
+  why + the hook points.
 
 ## E. Waiting on a TRIGGER (not on work)
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
 - **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
-  passed TWICE without validating anything: the flag defaults to 0, so the
-  2026-08-24 and 2026-08-25 compiler rebuilds both took the sequential path.
-  It is not waiting on a rebuild, it is waiting on someone putting
-  `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
-  a third time.
+  passed three times without validating anything: the flag defaults to 0, so
+  the 2026-08-24 and 2026-08-25 compiler rebuilds both took the sequential
+  path, and the 2026-08-30 QNN-LINUX window rebuilt media only (no compiler
+  stage). It is not waiting on a rebuild, it is waiting on someone putting
+  `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND of a run that actually
+  re-solves the compiler stage. Do that or it will be missed a fourth time.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).

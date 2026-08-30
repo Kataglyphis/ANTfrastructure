@@ -116,5 +116,19 @@ append_tvm_cmake_args() {
     out_ref+=( -DUSE_VULKAN=OFF )
   fi
 
+  # QNN runtime (backlog QNN-LINUX, mirrors Windows build-tvm #121): arm64-only,
+  # opt-in by staging the QAIRT zip; no zip = USE_QNN=OFF (the upstream default).
+  # TVM_QNN_HOME is also consumed by tvm.sh for the post-install staging.
+  TVM_QNN_HOME="${TVM_QNN_HOME:-}"
+  if [ -z "${TVM_QNN_HOME}" ] && command -v resolve_qnn_sdk >/dev/null 2>&1; then
+    TVM_QNN_HOME="$(resolve_qnn_sdk)"
+  fi
+  if [ -n "${TVM_QNN_HOME}" ]; then
+    info "TVM: QNN runtime ON (SDK root ${TVM_QNN_HOME})"
+    out_ref+=( -DUSE_QNN=ON "-DQNN_HOME=${TVM_QNN_HOME}" )
+  else
+    out_ref+=( -DUSE_QNN=OFF )
+  fi
+
   out_ref+=( -DUSE_LLVM="$llvm_cmake_value" )
 }

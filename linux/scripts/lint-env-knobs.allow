@@ -192,6 +192,19 @@ CROSS_DISK_GUARD_GB
 # accept the stale-parent risk that BuildKit's OCI worker resolves FROM against
 # the registry on local-only builds.
 CROSS_NO_PUSH_FORCE
+# --no-push OCI-layout handoff switch (01-core/cross-stage-build.sh, backlog C).
+# Default 1: every stage built locally is exported and served to the child via
+# --build-context <parent-tag>=oci-layout://<dir>, so FROM never hits the
+# registry. Set 0 to revert to the pre-2026-08-30 refusal.
+CROSS_LOCAL_CONTEXT_HANDOFF
+# Age (hours) after which orphaned cross-flow.* workdirs are reclaimed at the
+# next chain start (01-core/cross-stage-build.sh). Default 24; mirrors the
+# runtime lane's RUNTIME_CONTEXT_KEEP_HOURS.
+CROSS_CONTEXT_KEEP_HOURS
+# Root for the per-run cross stage-context workdirs (01-core/cross-stage-
+# build.sh). Default ${XDG_CACHE_HOME:-$HOME/.cache}/opencode/cross-stage-
+# contexts. Transient: reclaimed at chain exit and on the age sweep.
+CROSS_CONTEXT_ROOT
 # Skip the inline registry cache-from/cache-to on push (01-core/cross-stage-
 # build.sh). Set by the chain disk-guard when pruning could not clear the
 # threshold — stops writing new inline cache, keeps reading what survived.

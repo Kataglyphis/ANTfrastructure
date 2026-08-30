@@ -105,12 +105,16 @@ Options:
   --describe-chain          Print the full stage graph with tag names (no builds)
   --dry-run                 Print build commands without executing them
   --no-push                 Build every stage LOCALLY and skip all ghcr pushes.
-                            Multi-stage --no-push runs are REFUSED on this host
-                            (BuildKit's OCI worker resolves FROM against the
-                            registry, not the local store — two runs lost
-                            2026-08-08). Safe for --only/single-stage and dry
-                            runs. Override: CROSS_NO_PUSH_FORCE=1 (accept the
-                            stale-parent risk).
+                            Full chains (from base) are SAFE since 2026-08-30:
+                            every stage built locally is exported as an OCI
+                            layout and handed to the child via --build-context,
+                            so no FROM resolves against the registry. A chain
+                            resumed mid-way (--from-stage after base) is still
+                            REFUSED — the parent prefix was not built this run.
+                            Safe for --only/single-stage and dry runs.
+                            Disable the handoff (reverting to the refusal):
+                            CROSS_LOCAL_CONTEXT_HANDOFF=0. Override:
+                            CROSS_NO_PUSH_FORCE=1 (accept the stale-parent risk).
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
   --max-parallel-archs N    Max concurrent arch builds (default: 4)
                             Env PARALLEL_STAGES=all|csv (e.g. "sdk,android")
@@ -145,6 +149,18 @@ run_runtime_stage() {
   fi
 
   log "[stage runtime] building package/torch/wrapper + manifest ${FINAL_IMAGE}"
+  # C (2026-08-30): under --no-push the android image was exported to
+  # <cross workdir>/android-artifacts/<arch>; hand that to the helper so its
+  # package build copies from THIS image instead of the (stale) registry tag.
+  local _art_root=""
+  if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ -n "${CROSS_CONTEXT_WORKDIR:-}" ]; then
+    _art_root="${CROSS_CONTEXT_WORKDIR}/android-artifacts"
+    export ARTIFACT_CONTEXT_ROOT="${_art_root}"
+    export ARTIFACT_CONTEXT_MODE="oci"
+  else
+    unset ARTIFACT_CONTEXT_ROOT 2>/dev/null || true
+    unset ARTIFACT_CONTEXT_MODE 2>/dev/null || true
+  fi
   run env NERDCTL_BIN="${NERDCTL_BIN}" \
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
@@ -169,7 +185,9 @@ _chain_extra_arg() {
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
     --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1
-      warn "--no-push: multi-stage chain runs are refused (stale-parent risk); safe for --only/single-stage. Set CROSS_NO_PUSH_FORCE=1 to override." ;;
+      # Parse-time inform + runtime guard decides: full chains are safe since
+      # 2026-08-30 (local OCI-layout handoff); mid-chain runs are still refused.
+      log "--no-push: full chains use the local OCI-layout stage handoff; mid-chain runs (--from-stage after base) are refused unless CROSS_NO_PUSH_FORCE=1." ;;
     --no-verify-ancestry) CROSS_VERIFY_ANCESTRY=0; _OARG_SHIFT=1 ;;
     *) return 1 ;;
   esac
@@ -244,16 +262,26 @@ _chain_assert_ancestry() {
 }
 
 # --no-push multi-stage guard: BuildKit's OCI worker resolves FROM against the
-# registry, not the local store. Escape hatch: CROSS_NO_PUSH_FORCE=1.
+# registry, not the local store. Since 2026-08-30 the chain carries its own
+# OCI-layout handoff (cross-stage-build.sh: every stage built locally is
+# exported and handed to the child as --build-context <tag>=oci-layout://<dir>,
+# and android is additionally exported for the runtime lane), so a FULL chain
+# (from base) is safe and allowed. A run resuming mid-chain (--from-stage after
+# base) still refuses: the parent prefix was not built this run, so the FROM
+# would resolve against the registry again. Escape hatch: CROSS_NO_PUSH_FORCE=1.
 _chain_no_push_guard() {
   [ "${CROSS_NO_PUSH:-0}" = "1" ] || return 0
   is_dry_run && return 0
   if [ "${FROM_STAGE_IDX}" -lt "${TO_STAGE_IDX}" ]; then
+    if cross_local_handoff_enabled && [ "${FROM_STAGE_IDX}" -eq 0 ]; then
+      log "--no-push multi-stage: local OCI-layout stage handoff active — every parent is served from the image this run built (CROSS_LOCAL_CONTEXT_HANDOFF=0 reverts to the refusal)."
+      return 0
+    fi
     if [ "${CROSS_NO_PUSH_FORCE:-0}" = "1" ]; then
       warn "--no-push multi-stage: CROSS_NO_PUSH_FORCE=1 — downstream stages may build on the last PUSHED parent (stale-ancestor risk accepted)."
       return 0
     fi
-    err "--no-push is unsafe for multi-stage chain runs on this host: BuildKit's OCI worker resolves FROM against the registry, not the local store, so downstream stages silently build on the last PUSHED parent (two runs lost 2026-08-08). Use --no-push only for single-stage validation (--only STAGE), or set CROSS_NO_PUSH_FORCE=1 to accept the risk."
+    err "--no-push is unsafe for mid-chain runs on this host: BuildKit's OCI worker resolves FROM against the registry, and a run resumed after base has no locally-built parent to serve (two runs lost 2026-08-08). A full chain from base is allowed since 2026-08-30 (local OCI-layout handoff); use --only STAGE for single-stage validation, or set CROSS_NO_PUSH_FORCE=1 to accept the risk."
   fi
 }
 
@@ -485,8 +513,12 @@ _chain_remove_pidfile() {
 
 # EXIT fires on normal completion AND after the signal handler. Pidfile cleanup
 # ONLY: reaping here would kill the resource-monitor before it wrote its summary.
+# The cross stage-context tree (--no-push OCI handoff) can be reclaimed here —
+# nothing consumes it after the chain ends, and the age-sweep is belt-and-braces.
 _chain_on_exit() {
   _chain_remove_pidfile
+  declare -F cross_cleanup_local_context_workdir >/dev/null 2>&1 \
+    && cross_cleanup_local_context_workdir
 }
 
 _chain_on_signal() {

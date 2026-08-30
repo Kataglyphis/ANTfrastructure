@@ -230,10 +230,12 @@ configure_litert() {
         "-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}"
         "-DLITERT_AUTO_BUILD_TFLITE=ON"
         # GPU off: no cross-buildable GPU delegate (EGL/CL deps need a target
-        # GPU driver at build time). NPU off: no NPU SDK staged for any arch.
+        # GPU driver at build time). NPU off by default; the QNN delegate (backlog
+        # QNN-LINUX) flips NPU+QNN on when the QAIRT zip is staged (arm64 only).
         # XNNPACK+RUY cover CPU inference on all three arches.
         "-DLITERT_ENABLE_GPU=OFF"
         "-DLITERT_ENABLE_NPU=OFF"
+        "-DTFLITE_ENABLE_QNN=OFF"
         "-DTFLITE_ENABLE_XNNPACK=ON"
         "-DTFLITE_ENABLE_RUY=ON"
         "-DPython3_EXECUTABLE=${HOST_PYTHON_BIN}"
@@ -241,6 +243,13 @@ configure_litert() {
 
     # EIGEN-NET: mirrored eigen fetch (this path still git-cloned it from gitlab).
     cmake_args+=("${LITERT_EIGEN_FETCH_FLAGS[@]}")
+
+    # QNN delegate (backlog QNN-LINUX, mirrors Windows build-litert #121).
+    # Last-wins on the duplicate -D: QNN=ON + NPU=ON supersede the OFF defaults.
+    if [ -n "${LITERT_QNN_HOME:-}" ]; then
+        info "LiteRT: QNN delegate ON (SDK root ${LITERT_QNN_HOME})"
+        cmake_args+=("-DTFLITE_ENABLE_QNN=ON" "-DQNN_HOME=${LITERT_QNN_HOME}" "-DLITERT_ENABLE_NPU=ON")
+    fi
 
     append_litert_preferred_cmake_compiler_args cmake_args
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
@@ -398,6 +407,14 @@ install_litert() {
 
     install_manual
 
+    # QNN runtime staging (backlog QNN-LINUX, mirrors Windows build-litert #121):
+    # stage the backend libs beside the LiteRT install so the QNN delegate finds
+    # them on the library search path.
+    if [ -n "${LITERT_QNN_HOME:-}" ]; then
+        info "LiteRT: staging QNN backend libs beside ${LITERT_PREFIX}"
+        stage_qnn_runtime "${LITERT_QNN_HOME}" "${LITERT_PREFIX}"
+    fi
+
     ldconfig || true
 
     mkdir -p "${LITERT_PREFIX}/wheels"
@@ -443,6 +460,11 @@ _litert_wheel_prepare_env() {
     # Build base cmake flags early so EXTRA_CMAKE_FLAGS can be exported
     # before the patch is applied (the patch script reads this env var).
     extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5} -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"
+    if [ -n "${LITERT_QNN_HOME:-}" ]; then
+        # QNN delegate (backlog QNN-LINUX): last-wins on the duplicate -D, so the
+        # appended ON/QNN_HOME supersede the NPU=OFF default above.
+        extra_cmake_flags+=" -DTFLITE_ENABLE_QNN=ON -DQNN_HOME=${LITERT_QNN_HOME} -DLITERT_ENABLE_NPU=ON"
+    fi
     # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
     # patched upstream build_pip_package_with_cmake.sh word-splits this string
     # (`cmake ${EXTRA_CMAKE_FLAGS:-}`), so the flags must stay space-free.
@@ -861,6 +883,11 @@ main() {
 
     info LiteRT build started
     fetch_litert
+    # QNN delegate (backlog QNN-LINUX): arm64-only, opt-in by staging the QAIRT
+    # zip. No zip = empty = today's flags, byte for byte (default supported state).
+    if command -v resolve_qnn_sdk >/dev/null 2>&1; then
+        LITERT_QNN_HOME="$(resolve_qnn_sdk)"
+    fi
     configure_litert
     build_litert
     build_tflite_c_api
