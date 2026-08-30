@@ -44,10 +44,35 @@ Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\001-cmake-clang-cl-co
 # FILE; the patch adds an MSVC-frontend branch using /FIcstring.
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\002-mlas-clangcl-force-include.patch') -SourceDir $mainSrc -Description 'opencv: mlas clang-cl force-include' -IgnoreWhitespace
 # MLAS's GAS-only .S kernels have no MASM port and die in clang's integrated assembler for the
-# COFF target; 003 skips MLAS on Windows -> dnn's built-in SGEMM. On arm64 the C++ NEON kernels
-# are NOT .S assembly, but the 003 patch unconditionally skips on WIN32 — so we re-enable MLAS
-# for arm64 post-configure by deleting the skip from the CMake cache.
-Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\003-mlas-windows-skip.patch') -SourceDir $mainSrc -Description 'opencv: mlas Windows skip (GAS-only kernels)' -IgnoreWhitespace
+# COFF target. Patch 002 already modified the CMakeLists.txt, so a second .patch file's
+# git-apply index hash never matches. Instead, apply the skip INLINE: read the file, insert the
+# guard before include(CheckLanguage), write it back. Idempotent (skip if already present).
+$mlasCmake = Join-Path $mainSrc '3rdparty\mlas\CMakeLists.txt'
+if (Test-Path $mlasCmake) {
+    $mlasContent = Get-Content $mlasCmake -Raw
+    # Remove any existing guard (from a previous run that inserted it in the
+    # wrong place — before include(CheckLanguage) instead of before add_library).
+    if ($mlasContent -match 'OPENCV_DNN_MLAS_SKIP_REASON') {
+        $mlasContent = $mlasContent -replace '(?ms)if\(WIN32\)\s*\n\s*set\(OPENCV_DNN_MLAS_SKIP_REASON.*?return\(\)\s*\nendif\(\)\s*\n\s*\n', ''
+        Write-Host "MLAS: removed existing skip guard (re-inserting at correct position)"
+    }
+    # Insert BEFORE add_library, not before include(CheckLanguage):
+    # the .S sources are already in the target by the time check_language
+    # runs, so a return() there is too late.
+    $guard = @'
+if(WIN32)
+  set(OPENCV_DNN_MLAS_SKIP_REASON
+    "vendored GAS kernels have no MASM/COFF port on Windows"
+    CACHE INTERNAL "" FORCE)
+  message(STATUS "MLAS: skipped on Windows (GAS-only kernels; DNN uses its built-in SGEMM)")
+  return()
+endif()
+
+'@
+    $mlasContent = $mlasContent -replace '(?m)^(add_library\(opencv_dnn_mlas)', "$guard`$1"
+    [IO.File]::WriteAllText($mlasCmake, $mlasContent)
+    Write-Host "MLAS: WIN32 skip guard inserted before add_library (arm64 C++ NEON kernels stay for a future per-arch gate)"
+}
 # Upstream bug: dnn passes char* to Ort::SessionOptions::EnableProfiling, but ORTCHAR_T is
 # wchar_t on Windows (net_impl_backend.cpp:99) -- upstream CI never builds dnn with ORT.
 Invoke-SourcePatch -PatchFile (Join-Path $patchDir 'opencv\004-dnn-ort-profiling-wchar.patch') -SourceDir $mainSrc -Description 'opencv: dnn ORT profiling wchar_t path' -IgnoreWhitespace
