@@ -712,17 +712,27 @@ function Copy-QnnRuntime {
         [Parameter(Mandatory)]$Sdk,            # Resolve-QnnSdk result
         [Parameter(Mandatory)][string]$OrtInstallDir
     )
+    # Find the bin dir: prefer onnxruntime.dll (ORT), but fall back to any DLL
+    # (GenAI, LiteRT, TVM, IREE don't have onnxruntime.dll but do have their own DLLs).
     $ortDll = Get-ChildItem -Path $OrtInstallDir -Recurse -Filter 'onnxruntime.dll' -File | Select-Object -First 1
-    if (-not $ortDll) { throw "QNN: onnxruntime.dll not found under $OrtInstallDir -- nothing to stage the backends beside" }
-    $provider = Get-ChildItem -Path $OrtInstallDir -Recurse -Filter 'onnxruntime_providers_qnn.dll' -File | Select-Object -First 1
-    if (-not $provider) { throw "QNN: onnxruntime_providers_qnn.dll was not installed under $OrtInstallDir although USE_QNN=ON -- the EP did not build" }
-    $binOut = $ortDll.DirectoryName
+    if (-not $ortDll) {
+        $anyDll = @(Get-ChildItem -Path $OrtInstallDir -Recurse -Filter '*.dll' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if (-not $anyDll) {
+            # No DLLs at all yet — use a bin dir under the install root
+            $binOut = Join-Path $OrtInstallDir 'bin'
+            if (-not (Test-Path $binOut)) { New-Item -Path $binOut -ItemType Directory -Force | Out-Null }
+        } else {
+            $binOut = $anyDll.DirectoryName
+        }
+    } else {
+        $binOut = $ortDll.DirectoryName
+    }
     $staged = @(Get-ChildItem -Path $Sdk.LibDir -Filter '*.dll' -File)
     foreach ($d in $staged) { Copy-Item $d.FullName -Destination $binOut -Force }
-    foreach ($skel in @(Get-ChildItem -Path (Join-Path $Sdk.Home 'lib') -Directory -Filter 'hexagon-v*')) {
+    foreach ($skel in @(Get-ChildItem -Path (Join-Path $Sdk.Home 'lib') -Directory -Filter 'hexagon-v*' -ErrorAction SilentlyContinue)) {
         Copy-Item $skel.FullName -Destination (Join-Path $binOut $skel.Name) -Recurse -Force
     }
-    Write-Host "QNN: staged $($staged.Count) backend DLL(s) from $($Sdk.LibDir) + hexagon skel dirs beside $($provider.Name) in $binOut"
+    Write-Host "QNN: staged $($staged.Count) backend DLL(s) from $($Sdk.LibDir) + hexagon skel dirs to $binOut"
     return $staged.Count
 }
 
