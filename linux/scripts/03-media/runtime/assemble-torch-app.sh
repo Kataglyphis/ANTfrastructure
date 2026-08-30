@@ -267,20 +267,31 @@ run_uv_sync_with_fallback() {
 
   if [ "${have_lock}" = "true" ]; then
     frozen_sync_args=("${_sync_args[@]}" --frozen)
-    if ! uv sync "${frozen_sync_args[@]}"; then
-      echo "Frozen upstream uv.lock failed for this Python/platform; regenerating a local lock"
-      uv_lock_regen
-      uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
-      if [ "${#_locked_wheels[@]}" -gt 0 ]; then
-        uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
-      fi
+    if uv sync "${frozen_sync_args[@]}"; then
+      return 0
     fi
-  else
-    uv_lock_regen
-    uv sync "${_sync_args[@]}" || echo "WARNING: uv sync had issues; force-reinstalling local wheels"
+    echo "Frozen upstream uv.lock failed for this Python/platform"
+  fi
+
+  # riscv64: skip uv lock + uv sync entirely. The app's pyproject declares torch
+  # as `torch @ git+...` in the pytorch extras, so `uv lock` builds torch from
+  # git source under QEMU (hours of C++ compile) just for metadata — even though
+  # a prebuilt wheel is already installed from /opt/wheels. The local wheels are
+  # pre-installed by build_uv_sync_args; ensure_project_package_installed then
+  # installs the project's pure-Python core deps (no torch extras). This saves
+  # ~1h of QEMU emulation per riscv64 build.
+  if [ "$(uname -m)" = "riscv64" ]; then
+    echo "riscv64: skipping uv lock + uv sync (torch from local wheel, not git source build)"
     if [ "${#_locked_wheels[@]}" -gt 0 ]; then
       uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
     fi
+    return 0
+  fi
+
+  uv_lock_regen
+  uv sync "${_sync_args[@]}" || echo "WARNING: uv sync after lock regeneration had issues; force-reinstalling local wheels"
+  if [ "${#_locked_wheels[@]}" -gt 0 ]; then
+    uv pip install --no-deps --force-reinstall "${_locked_wheels[@]}" || true
   fi
 }
 
