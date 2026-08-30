@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-30 (closed LOG34 + GPU-ROCM10; synced stale Dockerfile ARGs)
+Last groomed: 2026-08-30 (trimmed done sub-narrative: compiler-cache GPU sites, --no-push guard, MESON-GI pin — all confirmed shipped)
 
 ## Standing rules (read first)
 
@@ -56,23 +56,11 @@ either created or exposed.
   pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
   cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
   regex failure that appears in no real chain log.
-- **The compiler-cache abstraction is split across seven places** [L·★★,
-  partially fixed 2026-08-28] compiler-cache.sh:4-8 already warns "the
-  02-toolchain GCC/LLVM builds do NOT source this module ... that misread hid a
-  dead ccache mount for months". The sccache switch had to touch build-gcc.sh,
-  build-clang.sh, llvm-cross.sh, compiler-cache.sh, cmake-cache-linker.sh,
-  build-app-wheelhouse.sh and the onnxruntime build lib SEPARATELY, and one of
-  them (cmake-cache-linker.sh, a SHARED helper) would have silently overridden
-  the switch for every consumer. Consolidate onto one resolver; the launcher
-  helper is the seam to build on.
-  Fixed in this batch: the three GPU bare-`sccache` sites (build-opencv.sh,
-  30-build-native-nvidia.sh, 30-build-native-amd.sh) now resolve through
-  `compiler_cache_launcher()` (sccache-class only — ccache can't wrap
-  nvcc/hipcc); TVM now sets `CMAKE_C/CXX_COMPILER_LAUNCHER` explicitly; ffmpeg
-  and pyav were fixed in the prior batch. The L·★★ consolidation itself
-  (merging all sites onto one resolver) remains open. The repo-wide
-  verify-critical-fixes.sh gate now flags any new bare `sccache` launcher
-  export — the compiler-cache.sh-only check is extended to all .sh files.
+- **Compiler-cache abstraction consolidation** [L·★★, OPEN] 8/9 call sites
+  resolve through `compiler_cache_launcher()`; the one duplicate
+  (compiler-cache.sh) is a bootstrap layer that cannot source 01-core and
+  repeats the resolution inline. Merge all sites onto one resolver; the
+  launcher helper is the seam. Needs a closure window.
 
 ## A. Window inventory — needs WORK in the wave
 
@@ -92,14 +80,11 @@ either created or exposed.
 
 ## C. Orchestrator lifecycle (one coherent PR)
 
-- **--no-push OCI-layout handoff + dual-path collapse** [M·★★, PARTIALLY CLOSED
-  2026-08-28] The multi-stage refusal guard is landed — `_chain_no_push_guard()`
-  in `build-cross-chain.sh` refuses `--no-push` for multi-stage runs (stale
-  parent risk), with `CROSS_NO_PUSH_FORCE=1` escape hatch. See
-  `refactoring-backlog-archive-2026-08-27.md` § "Closed 2026-08-28 (host-only
-  fixes)". The full OCI-layout export + `--build-context` handoff (which would
-  make `--no-push` multi-stage actually safe) and the dual-path collapse remain
-  future work.
+- **--no-push OCI-layout handoff + dual-path collapse** [M·★★, OPEN] The
+  multi-stage refusal guard is landed (see archive-2026-08-27 § Closed
+  2026-08-28). Remaining: the full OCI-layout export + `--build-context`
+  handoff (which would make `--no-push` multi-stage actually safe) and the
+  dual-path collapse.
 
 ## E. Waiting on a TRIGGER (not on work)
 
@@ -118,11 +103,11 @@ either created or exposed.
 - **LOG7 — sdkmanager CLI deprecated** — bit-rot watch before Google
   removes it.
 - **MESON-GI — meson 1.12 breaks g-i-1.84 glib-subproject resolution
-  (riscv64 cross gst)** [S·★, watch] falsified the RV1-poison theory in
-  wave5: reproduces with a clean sysroot. Scoped pin meson==1.11.2 in
-  setup-gstreamer.sh for riscv64 cross only. Re-bump when upstream
-  meson/g-i fix the `subproject('glib')` resolution — retest by removing
-  the pin in a closure window.
+  (riscv64 cross gst)** [S·★, WATCH] Pin is in place:
+  `setup-gstreamer.sh` installs `meson==1.11.2` for riscv64 cross only
+  (amd64 native + arm64 no-introspection are fine on 1.12). Re-bump when
+  upstream meson/g-i fix the `subproject('glib')` resolution — retest by
+  removing the pin in a closure window.
 - **NODE-RV — riscv64 ships Node v22 (pin: 26.8.1)** [S·★, watch] ubuntu-ports
   has no 26.x for riscv64; the install falls back fail-open with a WARN (by
   design, seen in every wave-4 smoke log). Lift when ports ships 26.x —

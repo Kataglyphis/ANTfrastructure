@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-cross-compiler.sh
-#
-# Standalone entry point to build the cross-compiler image.  Internally delegates
-# to the shared stage-defs.sh graph (same pipeline as the orchestrator and
-# build-cross-stage.sh) so the compiler stage is defined in exactly one place.
-#
-# When --push is used, the parent (base) is digest-pinned to avoid stale reuse.
-# Without --push, the image stays local and the parent is resolved from either
-# the local tag or the current registry tag.
+# build-cross-compiler.sh — standalone entry point for the cross-compiler image.
+# --push pins the base digest; without it the image stays local.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -18,7 +11,7 @@ source "${REPO_ROOT}/linux/scripts/lib-orchestrator.sh"
 orchestrator_preamble
 
 # CROSS_TARGETS is the compiler target arch list — distinct from TARGET_ARCHES
-# which is used for which arches to build per-arch stages for.
+# (which is for which arches to build per-arch stages for).
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 
 PUSH_IMAGES=0
@@ -76,7 +69,6 @@ _compiler_extra_arg() {
 }
 
 main() {
-  # Bind the shared parser's --target-arches arg to CROSS_TARGETS for this script
   run_orchestrator_arg_loop usage _compiler_extra_arg \
     CROSS_TARGETS USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
     FAST_UBUNTU_PORTS_MIRROR_URL IMAGE_REPO _cross_vulkan_version PUSH_IMAGES \
@@ -86,10 +78,6 @@ main() {
 
   log "Cross-compiler build: targets=${CROSS_TARGETS} repo=${IMAGE_REPO} push=${PUSH_IMAGES}"
 
-  # Build base first, then compiler, via the shared stage graph. cross_stage_run
-  # handles digest-pinned parent resolution and pin capture, so on the push path
-  # the compiler always consumes the freshly pushed base digest. The push flag is
-  # forwarded verbatim (1=push both, 0=local-only).
   cross_stage_run "base" "" "${PUSH_IMAGES}"
   cross_stage_run "compiler" "" "${PUSH_IMAGES}"
 }

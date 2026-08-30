@@ -1,22 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# verify-cross-chain.sh
-#
-# Standalone cross-chain staleness verification.  Resolves registry digests for
-# every stage transition in the cross lane and reports whether downstream images
-# may be stale relative to their declared parent.  No builds are performed.
-#
-# Thin forwarder: the staleness/describe logic (and its arg parser) lives in
-# build-cross-chain.sh behind --verify-chain / --describe-chain, so the stage
-# graph and digest resolution are defined in exactly one place.  This script
-# just maps its own CLI onto that entry point.
-#
-# Usage:
-#   bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
-#   bash linux/scripts/verify-cross-chain.sh --target-arches arm64
-#   bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64 --image-repo ghcr.io/myorg/kataglyphis_beschleuniger
-#   bash linux/scripts/verify-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
+# verify-cross-chain.sh — thin forwarder to build-cross-chain.sh --verify-chain.
+# The stage graph and digest resolution live in exactly one place.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 

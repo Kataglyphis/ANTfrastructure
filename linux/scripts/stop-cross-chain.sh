@@ -1,34 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# stop-cross-chain.sh
-#
-# Cleanly stop a running cross build chain AND its child build processes
-# (nerdctl/buildctl) — the out-of-band companion to build-cross-chain.sh's
-# in-process signal handler (Batch 5 / O1).
-#
-# WHY THIS EXISTS
-# ---------------
-# A cross chain spawns nerdctl/buildctl children (directly and inside
-# run_parallel_arch_loop subshells). `pkill build-cross-chain` used to kill only
-# the orchestrator and orphan those children (observed 4× on 2026-08-10 — the
-# leftover buildctl processes then had to be hunted down and left zombies).
-# This script terminates the orchestrator (whose own trap reaps its children)
-# AND independently walks the process subtree, so a chain built by an older
-# trap-less orchestrator is still fully cleaned up.
-#
-# HOW IT FINDS THE CHAIN
-# ----------------------
-#   1. The pidfile written by build-cross-chain.sh (canonical path from
-#      chain-lifecycle.sh; override with CROSS_CHAIN_PIDFILE). A stale pidfile
-#      (pid no longer alive) is cleaned up and ignored.
-#   2. Fallback: `pgrep -f 'build-cross-chain[.]sh'` — the [.] bracket trick
-#      keeps the pattern from matching THIS script (or the pgrep itself).
-#
-# Usage:
-#   bash linux/scripts/stop-cross-chain.sh                 # TERM, 15s grace, then KILL
-#   bash linux/scripts/stop-cross-chain.sh --timeout 30
-#   CROSS_CHAIN_PIDFILE=/run/chain.pid bash .../stop-cross-chain.sh
+# stop-cross-chain.sh — stop a cross chain AND its nerdctl/buildctl children.
+# Finds the chain via pidfile, falls back to pgrep -f 'build-cross-chain[.]sh'
+# (the [.] bracket trick avoids self-match). Walks the process subtree
+# directly, so a trap-less orchestrator is still fully cleaned up.
 
 _STOP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/01-core" && pwd)"
 # shellcheck source=linux/scripts/01-core/logging.sh
@@ -54,12 +30,9 @@ path with CROSS_CHAIN_PIDFILE) and falls back to pgrep on build-cross-chain.sh.
 EOF
 }
 
-# Echo the stopper's own pid and every ancestor up to init. The pgrep fallback
-# excludes these: `pgrep -f build-cross-chain[.]sh` matches on the full command
-# line, so a launcher whose argv merely CONTAINS that string (a wrapper script,
-# an editor, or the shell that invoked us) would otherwise be a false target.
-# The [.] bracket trick only stops pgrep from matching its own pattern; it does
-# nothing for an ancestor, so we filter ancestors out explicitly.
+# Exclude self and ancestors from the pgrep fallback: a launcher whose argv
+# contains the string would be a false target. The [.] trick only stops pgrep
+# from self-matching; ancestors need explicit filtering.
 _stop_self_and_ancestors() {
   local p="$$"
   while [ -n "${p}" ] && [ "${p}" -gt 1 ] 2>/dev/null; do
@@ -80,9 +53,6 @@ _stop_wait_for_exit() {
   return 0
 }
 
-# Stop orchestrator <pid> and its subtree: TERM the orchestrator (its own trap
-# reaps children) AND the descendants directly (covers a trap-less chain), wait
-# for the grace period, then KILL any straggler.
 _stop_pid_tree() {
   local pid="$1"
   log "stopping cross chain pid ${pid} and its child build processes"
@@ -122,9 +92,7 @@ main() {
   fi
 
   if [ -z "${target}" ]; then
-    # Bracket trick: 'build-cross-chain[.]sh' never matches this pattern string
-    # itself, so pgrep cannot self-match. Additionally skip the stopper and its
-    # ancestors so a launcher whose argv contains the string is never targeted.
+    # Bracket trick: 'build-cross-chain[.]sh' avoids self-match; ancestors excluded above.
     local exclude cand
     exclude=" $(_stop_self_and_ancestors | tr '\n' ' ') "
     for cand in $(pgrep -f 'build-cross-chain[.]sh' 2>/dev/null || true); do
