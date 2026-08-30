@@ -1,21 +1,8 @@
 #!/usr/bin/env bash
-# preflight.sh — run every FAST (no-build) verification before a cross rebuild.
-#
-# The base->:latest-cross rebuild takes hours under QEMU. Whole classes of error
-# (see docs/cross-build-verification.md) can be caught in seconds/minutes here
-# instead. Run this before kicking off build-cross-chain.sh.
-#
-# Each check is independent; all run even if an earlier one fails, and the script
-# exits non-zero if any failed (so CI/automation sees a single verdict).
-#
-# Usage: linux/scripts/preflight.sh
-#
-# Subset selection (so CI workflows and git hooks reuse THIS list instead of
-# copy-pasting their own): each check has a stable slug, and
-#   PREFLIGHT_ONLY=slug1,slug2   runs only the named checks
-#   PREFLIGHT_SKIP=slug1,slug2   runs everything except the named checks
-# Unset (the default) runs the full gate. Unknown slugs are an error so a
-# renamed check cannot silently drop out of a caller's subset.
+# preflight.sh — fast no-build verification before a cross rebuild.
+# Each check is independent; all run even if one fails. Exit non-zero if any failed.
+# Subset selection: PREFLIGHT_ONLY=slug1,slug2 / PREFLIGHT_SKIP=slug1,slug2.
+# Unknown slugs error so a renamed check cannot silently drop from a caller.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -25,18 +12,10 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; BOLD='\033[1m'; NC='\
 FAILED=()
 RAN_CHECKS=0
 
-# Interpreter for the Python-based checks. Explicit override always wins:
-#   PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
-#
-# Without one, plain `python3` is NOT trusted on sight. On Windows hosts under
-# Git Bash it is usually the Microsoft Store stub, which prints an install hint
-# and exits non-zero — so the Python-based checks fail for a reason that has
-# nothing to do with the commit. That is not a theoretical concern: it is why
-# the pre-commit hooks stayed unusable (and therefore disabled) on the primary
-# dev clone until 2026-08-08, letting an unresolved merge conflict reach main.
-#
-# So: probe candidates and take the first that can actually RUN something. The
-# stub fails `-c pass` in well under a second, so the cost is negligible.
+# Python interpreter: PREFLIGHT_PYTHON overrides; otherwise probe candidates.
+# Plain python3 is NOT trusted — on Windows Git Bash it's the Microsoft Store stub
+# which prints an install hint and exits non-zero. The stub fails -c pass in
+# under a second, so probing is cheap.
 if [ -z "${PREFLIGHT_PYTHON:-}" ]; then
   for _py in python3 python3.14 python3.13 python3.12 python "${HOME}/.local/bin/python3.14.exe"; do
     if command -v "${_py}" >/dev/null 2>&1 && "${_py}" -c 'pass' >/dev/null 2>&1; then
@@ -125,10 +104,8 @@ run_check crlf-guard "working-tree CRLF guard"    check_crlf_guard
 run_check shellcheck "shellcheck gate"            bash linux/scripts/lint-shell.sh
 
 # 2. Every referenced /opt/scripts path is COPY'd/mounted into its image.
-# The stdout-as-return-value class: log()/info() reach fd 1, so a function
-# consumed as `x="$(f)"` returns its log lines glued to its value. Shipped
-# twice -- CC="[INFO] ...gcc" in the GCC stage, and a latent one in
-# normalize_llvm_cmake_dir. A unit test pins one function; this pins the class.
+# stdout-as-return-value class: log()/info() reach fd 1, so $(f) glues log
+# lines to the value. This pins the class; a unit test pins one function.
 run_check stdout-returns "stdout-as-return-value" ${PREFLIGHT_PYTHON} linux/scripts/verify-stdout-returns.py
 run_check copy-coverage "script COPY coverage"    ${PREFLIGHT_PYTHON} linux/scripts/verify-script-copy-coverage.py
 
@@ -146,57 +123,40 @@ run_check artifact-parity "artifact copy parity"  bash linux/scripts/verify-arti
 run_check arg-consistency "ARG consistency"       bash linux/scripts/01-core/verify-arg-consistency.sh
 
 # 5. Version snapshots / inline markers / deps table are in sync.
-# The [ -f ] guards FAIL (not skip) on a missing file: these are tracked repo
-# files, so absence means a broken tree/rename — silently dropping the check
-# would leave CI subsets (build-docs.yml runs PREFLIGHT_ONLY=version-snapshot,
-# mirror-consistency) permanently green with the gate gone, and the
-# zero-checks-ran guard only fires when NOTHING ran.
+# [ -f ] guards FAIL (not skip) on a missing file: absence means a broken
+# tree/rename, not a check to skip.
 if [ -f docs/scripts/sync_versions.py ]; then
   run_check version-snapshot "version snapshot"   ${PREFLIGHT_PYTHON} docs/scripts/sync_versions.py --check
 else
   run_check version-snapshot "version snapshot"   bash -c 'echo "docs/scripts/sync_versions.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
-# 5a. Docs cross-references: relative links, deep-link anchors, the `file.md § Heading`
-# prose convention, and index coverage (docs/INDEX.md + the Sphinx toctree).
-# The 2026-08-25 structural pass moved ~5,000 lines and rewrote ~50 references by
-# hand; nothing kept that verified afterwards. Same [ -f ] FAIL-not-skip contract
-# as the version-snapshot check below it — a renamed script must not silently
-# leave build-docs.yml and stale-docs-check.yml green with the gate gone.
+# Docs cross-references + index coverage. Same [ -f ] FAIL-not-skip contract
+# as the version-snapshot check.
 if [ -f docs/scripts/verify_doc_links.py ]; then
   run_check doc-links "docs cross-references"     ${PREFLIGHT_PYTHON} docs/scripts/verify_doc_links.py
 else
   run_check doc-links "docs cross-references"     bash -c 'echo "docs/scripts/verify_doc_links.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
-# 5a2. Docs duplication: a passage copied into a second page. docs/INDEX.md's
-# own preamble is about three copies of one command drifting apart; that rule had
-# no enforcement until 2026-08-25. Deliberate rule-page/mechanism-page overlap is
-# budgeted in docs/scripts/doc-dupes.allow, which also fails when an entry goes
-# stale, so it cannot decay into a blanket exemption.
+# Docs duplication: deliberate overlap is budgeted in doc-dupes.allow,
+# which also fails when an entry goes stale (cannot decay into blanket exemption).
 if [ -f docs/scripts/verify_doc_dupes.py ]; then
   run_check doc-dupes "docs duplication"          ${PREFLIGHT_PYTHON} docs/scripts/verify_doc_dupes.py
 else
   run_check doc-dupes "docs duplication"          bash -c 'echo "docs/scripts/verify_doc_dupes.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
-# 5a3. The curated SBOM (docs/deps/sbom-curated.spdx.json) is generated from
-# deps.json + versions.env and COMMITTED, so it can drift from them. It is the
-# half an image scanner cannot produce: components built from source leave no
-# package metadata for syft to read, and those are exactly the copyleft ones.
-# The scanner half runs in .github/workflows/sbom.yml against the published
-# image.
+# Curated SBOM: generated from deps.json + versions.env, can drift. Covers
+# source-built components (the copyleft ones) syft cannot read.
 if [ -f docs/scripts/generate_sbom.py ]; then
   run_check sbom "curated SBOM"                   ${PREFLIGHT_PYTHON} docs/scripts/generate_sbom.py --check
 else
   run_check sbom "curated SBOM"                   bash -c 'echo "docs/scripts/generate_sbom.py MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
 
-# 5b. A1: env-knob registry — every consumed ${VAR:-} knob must have an owner
-# (versions.env / Dockerfile ARG-ENV / script assignment / lint-env-knobs.allow).
-# Enforced: KNOB_GATE=1 makes unowned knobs a hard failure (LOG31 — the check was
-# advisory-only, so an unowned knob always passed). Same FAIL-not-skip [ -f ]
-# contract as the version-snapshot check above.
+# env-knob registry: every ${VAR:-} knob must have an owner. KNOB_GATE=1
+# makes unowned knobs a hard failure. Same [ -f ] FAIL-not-skip contract.
 if [ -f linux/scripts/lint-env-knobs.sh ]; then
   run_check env-knobs "env-knob registry" env KNOB_GATE=1 bash linux/scripts/lint-env-knobs.sh
 else
@@ -224,13 +184,11 @@ run_check dockerfile-lint "dockerfile lint (hadolint)" bash linux/scripts/lint-d
 # 9. Workflow/composite-action lint (actionlint, same bootstrap pattern).
 run_check workflow-lint "workflow lint (actionlint)" bash linux/scripts/lint-workflows.sh
 
-# Python gate (backlog C4): hard-fails only on real-error classes (syntax /
-# undefined names); full ruleset is advisory — see lint-python.sh header.
+# Python gate: hard-fails only on real-error classes; full ruleset is advisory.
 run_check python-lint "python lint (ruff)" bash linux/scripts/lint-python.sh
 
-# Secret scan (backlog SEC1): gitleaks over the working tree, ENFORCING —
-# the initial 2026-08-10 scan was clean after triaging two public-trust-anchor
-# false positives into .gitleaksignore (each entry needs a justification).
+# Secret scan: gitleaks over the working tree, ENFORCING. False positives
+# go in .gitleaksignore (each entry needs a justification).
 run_check secret-scan "secret scan (gitleaks)" bash linux/scripts/lint-secrets.sh
 
 # 10. The five parallel Android library stages stay identical modulo ANDROID_LIB.
@@ -239,10 +197,7 @@ run_check android-parity "android stage parity" bash linux/scripts/01-core/verif
 # 11. Unit tests for the tag/build-arg/disk-guard logic in linux/scripts.
 run_check script-tests "linux script unit tests" bash linux/scripts/tests/run-tests.sh
 
-# 12. Stage-graph self-consistency (parent refs, dockerfiles, tags, cycles).
-# Pure and sub-second — it used to run only at build kickoff
-# (build-cross-chain.sh), so a malformed graph escaped this fast gate and was
-# discovered by the orchestrator instead.
+# Stage-graph self-consistency (parent refs, dockerfiles, tags, cycles).
 run_check stage-graph "cross stage graph validation" bash -c '
   source linux/scripts/01-core/modules.sh 2>/dev/null || true
   source linux/scripts/01-core/build-helpers.sh
@@ -251,15 +206,9 @@ run_check stage-graph "cross stage graph validation" bash -c '
   source linux/scripts/01-core/stage-defs.sh
   IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
 
-# Informational only (backlog F7 residual): a locally-committed-but-unpushed
-# submodule pointer breaks a downstream checkout/clone (e.g. build-docs.yml's
-# DocumANTation checkout) LOUDLY, but only post-push. This is a warn-only
-# CONTAINMENT probe: for each initialized submodule, is the recorded pointer
-# actually REACHABLE on its remote (a ref tip, or an ancestor of one)? A pointer
-# that is not reachable is almost certainly an unpushed local commit. This is
-# strictly network-dependent, so it WARNs and NEVER fails, and is silent when
-# offline / the remote is unreachable (empty ls-remote -> skip). It generalizes
-# the earlier DocumANTation-only probe so future submodules are covered too.
+# Informational: warn if a submodule pin is not reachable on its remote
+# (unpushed local commit). Warn-only — never fails, silent when offline.
+# Checks all initialized submodules, not just DocumANTation.
 _probe_submodule_pushed() {  # dir
   local dir="$1" recorded remote_tips tip
   [ -e "${dir}/.git" ] || return 0
@@ -269,7 +218,6 @@ _probe_submodule_pushed() {  # dir
   # (offline / no remote / auth failure) -> degrade silently, never warn.
   remote_tips="$(timeout 10 git -C "${dir}" ls-remote --heads --tags origin 2>/dev/null | awk '{print $1}' || true)"
   [ -n "${remote_tips}" ] || return 0
-  # Exact tip match is the common, cheapest case.
   if printf '%s\n' "${remote_tips}" | grep -qxF "${recorded}"; then return 0; fi
   # Otherwise: reachable as an ancestor of any remote tip we can resolve locally?
   # (The submodule tree is checked out at the recorded SHA, so its objects are
@@ -289,10 +237,8 @@ done < <(git config --file .gitmodules --get-regexp '\.path$' 2>/dev/null | awk 
 unset -f _probe_submodule_pushed 2>/dev/null || true
 
 printf "\n${BOLD}=== preflight summary ===${NC}\n"
-# Zero-checks-ran guard: a PREFLIGHT_ONLY/PREFLIGHT_SKIP combination that
-# selects NOTHING would otherwise print "All preflight checks passed." with
-# zero checks executed — a silent green no-op (the exact drop-out class the
-# KNOWN_SLUGS validator guards against, but for the intersection case).
+# Zero-checks-ran guard: PREFLIGHT_ONLY/PREFLIGHT_SKIP that selects nothing
+# would print "All passed" with zero checks — refuse to report green.
 if [ "${RAN_CHECKS:-0}" -eq 0 ]; then
   printf "${RED}No preflight checks ran${NC} (PREFLIGHT_ONLY/PREFLIGHT_SKIP selected nothing) — refusing to report green.\n"
   exit 2

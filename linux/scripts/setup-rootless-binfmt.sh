@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
 # Register QEMU user-mode emulators for rootless containerd + BuildKit — NO sudo.
-#
-# `tonistiigi/binfmt --install` alone does NOT work here: it registers inside the
-# throwaway container's own user namespace, which --rm destroys, so foreign-arch
-# execs still fail with "exec format error" after it prints "arch OK".
-# buildkitd is nsenter'd into containerd's rootlesskit namespace, so run and
-# build SHARE one persistent namespace — registering QEMU once there fixes both.
-#
-# Flags "POCF": P preserves argv[0] (without it qemu drops argv[1], so `sh -c CMD`
-# loses `-c`); F makes the kernel open the interpreter fd at registration time, so
+# `tonistiigi/binfmt --install` does NOT work here: it registers inside a throwaway
+# namespace that --rm destroys. buildkitd shares containerd's rootlesskit namespace,
+# so registering QEMU there fixes both run and build.
+# Flags "POCF": P preserves argv[0]; F opens the interpreter fd at registration so
 # it is inherited into nested namespaces where the qemu path is not mounted.
-#
-# The registration dies with the namespace (containerd restart / reboot). Re-run
-# after a reboot, or use --install-service.
-#
-# Usage: linux/scripts/setup-rootless-binfmt.sh [--arches arm64,riscv64] [--force]
-#                                               [--install-service] [--verify]
+# Registration dies with the namespace (reboot/containerd restart) — re-run or use --install-service.
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -57,9 +47,6 @@ command -v containerd-rootless-setuptool.sh >/dev/null 2>&1 || {
   exit 1
 }
 
-# ---------------------------------------------------------------------------
-# 1. Extract the static qemu emulators from the tonistiigi/binfmt image.
-# ---------------------------------------------------------------------------
 extract_emulators() {
   mkdir -p "${QDIR}"
   local need=0 a qb
@@ -74,11 +61,9 @@ extract_emulators() {
   fi
   echo "[extract] pulling + unpacking ${BINFMT_IMAGE} (amd64) to ${QDIR}"
   local tmp; tmp="$(mktemp -d)"
-  # SH3: leak-on-error guard — host /tmp accumulates otherwise (EXIT-scoped;
-  # a second EXIT trap in this script would need consolidating, none exists).
+# Leak-on-error guard: host /tmp accumulates otherwise (EXIT-scoped trap).
   trap 'rm -rf "${tmp}"' EXIT
-  # `image save` only reads the LOCAL store — pull first or a fresh host dies
-  # with 'image not found' (bit us 2026-08-08 after image GC).
+  # image save only reads the LOCAL store — pull first or a fresh host dies with 'image not found'.
   "${NERDCTL}" image inspect "${BINFMT_IMAGE}" >/dev/null 2>&1 \
     || "${NERDCTL}" pull --platform linux/amd64 "${BINFMT_IMAGE}"
   "${NERDCTL}" image save --platform linux/amd64 "${BINFMT_IMAGE}" -o "${tmp}/img.tar"
@@ -97,16 +82,9 @@ extract_emulators() {
   ls -la "${QDIR}"
 }
 
-# ---------------------------------------------------------------------------
-# 1b. Wait for the rootlesskit namespace to actually exist.
-#
-#   `After=containerd.service` orders only the *unit* start. containerd-rootless
-#   then needs time to unshare and write its `child_pid`; on a fresh boot this
-#   service otherwise wins the race and `nsenter` dies with
-#       cat: /run/user/<uid>/containerd-rootless/child_pid: No such file
-#   leaving both foreign arches unregistered until someone re-runs this by hand.
-#   Observed on the 2026-08-27 reboots (21:39 and 21:46) — see AGENTS.md.
-# ---------------------------------------------------------------------------
+# Wait for the rootlesskit namespace: After= orders only unit start, not the
+# namespace unshare. On fresh boot nsenter dies with 'No such file' for child_pid.
+# See AGENTS.md § Prerequisites.
 wait_for_namespace() {
   local pidfile="/run/user/$(id -u)/containerd-rootless/child_pid"
   local waited=0
@@ -132,9 +110,6 @@ wait_for_namespace() {
   return 0
 }
 
-# ---------------------------------------------------------------------------
-# 2 + 3. Register in the shared rootlesskit namespace (via nsenter).
-# ---------------------------------------------------------------------------
 register() {
   local a qb magic mask
   IFS=',' read -ra _arr <<< "${ARCHES}"
@@ -181,15 +156,9 @@ install_service() {
 Description=Register QEMU binfmt emulators in the rootless containerd/BuildKit namespace
 After=containerd.service buildkit.service
 Wants=containerd.service
-# PartOf is the load-bearing line, added 2026-08-27. After= and Wants= order
-# STARTUP only; they do not propagate a restart. Combined with Type=oneshot +
-# RemainAfterExit=yes, systemd considered this unit permanently satisfied while
-# its actual effect -- a registration inside the rootlesskit namespace -- died
-# with every containerd restart. Measured on the dev host: the unit last ran
-# 2026-08-09, containerd restarted 2026-08-26 for the nerdctl-full upgrade, and
-# the runtime stage then failed both foreign arches with an EMPTY BuildKit
-# error. PartOf makes systemd stop/restart this unit together with containerd,
-# so the registration is re-made into the NEW namespace.
+# PartOf is load-bearing: After=/Wants= order startup only, not restarts.
+# Without it, oneshot+RemainAfterExit makes systemd consider this satisfied
+# while the namespace registration dies on every containerd restart.
 PartOf=containerd.service
 
 [Service]

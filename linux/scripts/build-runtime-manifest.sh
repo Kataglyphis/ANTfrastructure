@@ -11,7 +11,7 @@ IMAGE_NAME="${IMAGE_NAME:-}"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
-# XC3: --force overrides the per-arch wrapper generation-coherence gate below.
+# --force overrides the per-arch wrapper generation-coherence gate below.
 FORCE_MANIFEST=0
 
 usage() {
@@ -60,8 +60,7 @@ EOF
   runtime_shared_usage_env_overrides
 }
 
-# XC3 coherence + XC2 android-freshness: prove the mutable per-arch wrapper tags
-# are ONE generation before indexing them. Returns 0 to proceed, 1 to refuse.
+# Prove the per-arch wrapper tags are one generation before indexing them.
 _manifest_wrapper_gate() {
   local -a run_ids=()
   local arch tag rid coherent=1 missing=0 r
@@ -78,8 +77,7 @@ _manifest_wrapper_gate() {
   fi
   [ "${missing}" -gt 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) carry no run-id provenance — generation unverifiable."
 
-  # XC2: advisory on a normal build (the wrappers were just built), a hard gate
-  # under --repair/--manifest-only where the mutable tags are all we have.
+  # Advisory on a normal build; hard gate under --repair/--manifest-only.
   local android_stale=0
   if declare -F runtime_ancestry_assert_wrappers >/dev/null 2>&1; then
     runtime_ancestry_assert_wrappers "${TARGET_ARCHES}" || android_stale=1
@@ -88,8 +86,7 @@ _manifest_wrapper_gate() {
   local refuse=0
   [ "${coherent}" -eq 0 ] && refuse=1
   [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
-  # ancestry_run_ids_coherent DROPS empty ids, so (R2,"","") reads as coherent:
-  # on the repair path, unverifiable provenance must REFUSE, not pass.
+  # ancestry_run_ids_coherent drops empty ids, so unverifiable provenance must REFUSE on the repair path.
   [ "${missing}" -gt 0 ] && [ "${BUILD_IMAGES}" -eq 0 ] && refuse=1
 
   if [ "${refuse}" -eq 0 ]; then
@@ -122,7 +119,7 @@ create_manifest() {
     return 0
   fi
 
-  # XC2/XC3 gate: refuse a mixed/stale-generation index unless --force.
+  # Refuse a mixed/stale-generation index unless --force.
   if [ "${RUNTIME_MANIFEST_COHERENCE:-1}" = "1" ]; then
     _manifest_wrapper_gate || err "manifest coherence gate refused ${IMAGE_NAME} (see above; --force overrides, RUNTIME_MANIFEST_COHERENCE=0 disables)"
   fi
@@ -219,13 +216,11 @@ main() {
   export DRY_RUN
   runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
 
-  # XC3: one run-id for every wrapper built here, so the coherence gate passes on
-  # a same-run push (the orchestrator exports it; a standalone run defaults it).
+  # One run-id for every wrapper so the coherence gate passes on a same-run push.
   : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"
   export CROSS_RUN_ID
 
-  # Resolve provenance ONCE: a per-arch `git rev-parse` inside the build loop let
-  # a mid-run commit split one index. Exported — each arch builds in a subshell.
+  # Resolve provenance ONCE (exported — each arch builds in a subshell).
   : "${CROSS_BUILD_DATE:=$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
   : "${CROSS_VCS_REF:=$(git -C "${REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)}"
   export CROSS_BUILD_DATE CROSS_VCS_REF
@@ -270,15 +265,12 @@ main() {
       if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
         run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       fi
-      # RTCACHE3 byte-gate: a STALE wrapper boots green too, so assert the shipped
-      # /opt/ffmpeg content matches the versions.env toggles. 0 → advisory.
+      # Byte-gate: a stale wrapper boots green too, so assert shipped content. 0 → advisory.
       run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
     done
     for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
       wrapper_tag="$(runtime_wrapper_tag "${arch}")"
       log "Runtime-image smoke: ${wrapper_tag} (${arch})"
-      # Pull only when MISSING: an unconditional pull re-points the tag at the
-      # previously PUBLISHED image, so --no-push runs smoke the stale release.
       if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
         run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
       fi
@@ -286,20 +278,11 @@ main() {
     done
   fi
 
-  # Only now that every per-arch image passed its boot/clang smoke do we publish
-  # the multi-arch manifest.
+  # Publish the multi-arch manifest only after every per-arch image passed its smoke.
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
-    # FRESHNESS GATE (wired 2026-08-27). Everything above proves each per-arch
-    # wrapper is sound; nothing proved the INDEX points at them. On 2026-08-27
-    # the published index carried two different org.opencontainers.image.revision
-    # values because provenance was resolved per arch, and while riscv64 was
-    # still building the registry served a :latest-cross-riscv64 from three days
-    # earlier -- an index cut at that moment would have shipped two fresh arches
-    # and one stale one with every other gate green.
-    # ADVISORY by default: this runs AFTER the push, so failing hard here cannot
-    # unpublish anything and would only turn a completed run red. Set
-    # MANIFEST_FRESHNESS_STRICT=1 to make it fatal in CI.
+    # Freshness gate: prove the index points at the per-arch tags just built.
+    # Advisory by default (runs after push); MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
     if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
        && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
       if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \

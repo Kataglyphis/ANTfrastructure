@@ -29,10 +29,8 @@ fix1_python_pc() {
       fi
     fi
   done
-  # `|| true`-terminated: as the function's LAST statement, a bare AND-list
-  # makes the HEALTHY case (found=1) return 1 — under set -e that killed the
-  # script right here, silently skipping fixes 2-9 and the summary whenever it
-  # ran where the staged payloads actually exist (i.e. inside the images).
+  # Class-5 guard: a bare AND-list as the last statement makes the healthy case
+  # return 1 under set -e. The || true prevents that.
   { [ "${found}" -eq 0 ] && echo "  SKIP: no per-arch python-3.14.pc found (not in cross-compiler context)"; } || true
 }
 
@@ -164,17 +162,13 @@ fix5_gst_geometry_include() {
 
 fix6_native_gcc_system_paths() {
   echo "--- Fix 6: native-GCC system header/lib paths for torch-venv source builds ---"
-  # Locks in bugs D & E from the 2026-07 cross rebuild (see
-  # docs/cross-build-verification.md). The relocated native GCC/G++ cannot find
-  # /usr/include for QEMU source builds; the canonical helper is
-  # append_cross_idirafter in 01-core/common.sh, inlined here in the torch/android
-  # stages to avoid pulling common.sh's dependency chain into them.
+  # Pins the native-GCC system-path fix. See docs/cross-build-verification.md.
+  # The helper is inlined here to avoid pulling common.sh's dependency chain.
   local stv="${REPO_ROOT}/linux/scripts/06-packaging/setup-torch-venv.sh"
   local swp="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
   local dep="${REPO_ROOT}/linux/scripts/03-media/runtime/install-deps.sh"
 
-  # D: -idirafter must reach C AND C++ compiles in both the in-script env and the
-  # persisted profile.d (CPATH alone does not fix C++ #include_next).
+  # -idirafter must reach C AND C++ in both the in-script env and profile.d (CPATH alone doesn't fix C++ #include_next).
   if grep -q 'idirafter /usr/include' "${stv}" 2>/dev/null && \
      grep -qE 'export CXXFLAGS=.*idaf|CXXFLAGS.*idirafter' "${stv}" 2>/dev/null; then
     pass "setup-torch-venv.sh injects -idirafter into CXXFLAGS (C++ #include_next)"
@@ -192,7 +186,7 @@ fix6_native_gcc_system_paths() {
   else
     fail "install-deps.sh no longer installs libjpeg-dev (bug D regression)"
   fi
-  # E: apt numpy must NOT be seeded into the venv (collides with uv's built wheel).
+  # apt numpy must NOT be seeded into the venv (collides with uv's built wheel).
   if grep -qE 'for pkg in .*\bnumpy\b' "${stv}" 2>/dev/null; then
     fail "setup-torch-venv.sh re-seeds apt numpy into the venv (bug E regression)"
   else
@@ -208,29 +202,18 @@ fix7_hardening_2026_07() {
   local bimg="${REPO_ROOT}/linux/scripts/01-core/base-image.sh"
   local venv="${REPO_ROOT}/linux/scripts/01-core/versions.env"
 
-  # Cache: must use a working cache backend (local/inline), NOT the self-defeating
-  # registry -buildcache ref whose --cache-to was gated out of existence.
-  # Match the real code token ${tag}-buildcache (the dead ref), not prose that
-  # merely mentions "-buildcache" while explaining why it was removed.
+  # Cache: must use local/inline, NOT the dead registry -buildcache ref.
+  # Match the real code token ${tag}-buildcache, not prose that mentions it.
   if grep -q 'type=local' "${csb}" 2>/dev/null && ! grep -qF '${tag}-buildcache' "${csb}" 2>/dev/null; then
     pass "cross-stage-build.sh uses local/inline cache (no dead -buildcache ref)"
   else
     fail "cross-stage-build.sh reverted to the self-defeating registry -buildcache"
   fi
-    # Cache: no launcher may point at BARE sccache. sccache aborts the compile
-    # on its own internal errors where ccache execs the compiler, so a bare
-    # launcher turns an sccache hiccup into a build break at 99%. This class has
-    # now shipped inert three times (setup_ccache hardcoding "sccache";
-    # setup_sccache exporting RUSTC_WRAPPER="sccache" ahead of the gstreamer
-    # monorepo's unset-guard), so it gets a gate rather than another comment.
+    # No launcher may point at BARE sccache — it aborts on internal errors where
+    # ccache execs the compiler. This class shipped inert repeatedly; gate it.
     local ccsh="${REPO_ROOT}/linux/scripts/01-core/compiler-cache.sh"
-    # ASSERT THE DECISION, not the spelling (rewritten 2026-08-27). The old
-    # regex matched a literal `export ...="sccache"` and therefore could not see
-    # `="${_sc_launcher}"` with a bare default -- filed as SCC-BARE-FALLBACK.
-    # The owner has since decided the question it was hedging: ALWAYS sccache,
-    # guarded where 01-core is mounted and bare where it is not. So the property
-    # worth gating is no longer "never bare" but "never UNCACHED": every writer
-    # must resolve to some sccache, and none may fall back to an empty launcher.
+    # Assert the DECISION (always sccache, never UNCACHED), not the spelling.
+    # Every writer must resolve to some sccache; none may fall back to empty.
     if grep -qE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER)="\$\{[A-Za-z_]+:-\}"' "${ccsh}" 2>/dev/null; then
       fail "compiler-cache.sh can leave a launcher EMPTY; the standing decision is always-sccache"
     elif grep -q '_sc_launcher="sccache"' "${ccsh}" 2>/dev/null \
@@ -239,11 +222,8 @@ fix7_hardening_2026_07() {
     else
       fail "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback"
     fi
-    # Repo-wide: no .sh file under linux/scripts/ may hardcode a bare `sccache`
-    # launcher export (RUSTC_WRAPPER or CMAKE_*_COMPILER_LAUNCHER). The decision
-    # is always-sccache THROUGH compiler_cache_launcher() — the guarded launcher
-    # survives sccache's own fatal errors. The `${...:-sccache}` fallback form
-    # (gstreamer monorepo) is allowed; a bare `="sccache"` is not.
+    # Repo-wide: no bare ="sccache" launcher export. Use compiler_cache_launcher()
+    # or the ${...:-sccache} fallback form.
     local _bad_sccache
     _bad_sccache="$(grep -rlE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER|CMAKE_CUDA_COMPILER_LAUNCHER|CMAKE_HIP_COMPILER_LAUNCHER)="sccache"' "${REPO_ROOT}/linux/scripts/" --include='*.sh' 2>/dev/null | grep -v 'verify-critical-fixes.sh' | sort -u || true)"
     if [ -n "${_bad_sccache}" ]; then
@@ -277,10 +257,8 @@ fix7_hardening_2026_07() {
   else
     pass "Dockerfile.base bind-mounts only the script sub-trees it uses"
   fi
-  # smoke-vulkan must NOT be invoked in any build stage: it probes the full
-  # Vulkan SDK (/opt/vulkan/active, headers, loader) which this runtime-focused
-  # cross-build never installs, so it can only ever fail a build (learned the
-  # hard way in android + package). It stays a standalone host tool.
+  # smoke-vulkan must NOT be invoked in build stages: it probes the full Vulkan
+  # SDK this cross-build never installs, so it can only ever fail a build.
   if grep -rlE 'bash[^\n]*smoke-vulkan\.sh' "${REPO_ROOT}"/linux/Dockerfile.* 2>/dev/null | grep -q .; then
     fail "a Dockerfile RUNs smoke-vulkan.sh (no full Vulkan SDK here -> always fails)"
   else
@@ -294,16 +272,14 @@ fix8_push_retry_2026_07() {
   local rbf="${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh"
   local brm="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
 
-  # A1: stage build+push retries transient failures.
+  # Stage build+push retries transient failures.
   if grep -q '_cross_stage_push_error_is_transient' "${csb}" && grep -q 'PUSH_MAX_ATTEMPTS' "${csb}"; then
     pass "cross-stage-build.sh retries transient pushes (A1)"
   else
     fail "cross-stage-build.sh lost the transient push-retry (A1 regression)"
   fi
 
-  # A1: runtime image pushes go through the retry helper -- every `push "${tag}"`
-  # line must be immediately preceded by a `retry ...` line (the only such push
-  # lives inside runtime_push_tag; callers invoke that helper, not push directly).
+  # Runtime pushes go through runtime_push_tag (which retries), not bare push.
   local _bare_pushes
   _bare_pushes="$(awk '
     /run .*push "\$\{tag\}"/ { if (prev !~ /retry/) c++ }
@@ -315,14 +291,14 @@ fix8_push_retry_2026_07() {
     fail "runtime-build-fns.sh has a bare (unretried) image push (A1 regression)"
   fi
 
-  # A1: the multi-arch manifest push is retried too.
+  # The multi-arch manifest push is retried too.
   if grep -qE 'retry .*manifest push' "${brm}"; then
     pass "build-runtime-manifest.sh retries the manifest push (A1)"
   else
     fail "build-runtime-manifest.sh manifest push is not retried (A1 regression)"
   fi
 
-  # A1: the transient classifier must accept network drops and reject build errors.
+  # The transient classifier must accept network drops and reject build errors.
   local _fn _t
   _fn="$(sed -n '/^_cross_stage_push_error_is_transient() {/,/^}/p' "${csb}")"
   if [ -n "${_fn}" ]; then
@@ -345,7 +321,7 @@ fix8_push_retry_2026_07() {
     fail "could not extract _cross_stage_push_error_is_transient for the functional check"
   fi
 
-  # B1: per-run stage-log truncation (guarded by the .run marker / CROSS_RUN_ID).
+  # Per-run stage-log truncation (guarded by the .run marker / CROSS_RUN_ID).
   if grep -q 'CROSS_RUN_ID' "${csb}" && grep -q '\.run' "${csb}"; then
     pass "cross-stage-build.sh truncates stage logs per run (B1)"
   else
@@ -360,9 +336,8 @@ fix9_riscv_isaspec_and_noise_2026_07() {
   local rw="${REPO_ROOT}/linux/scripts/03-media/runtime/repair-wheels.sh"
   local swap="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
 
-  # A2: build-gcc.sh pins the riscv64 ISA spec so the shipped native GCC's
-  # default -march stays assembler-compatible. Assert BOTH the riscv64 case arm
-  # and the --with-isa-spec flag with its 20191213 default survive together.
+  # build-gcc.sh pins riscv64 --with-isa-spec so the shipped native GCC's
+  # default -march stays assembler-compatible.
   if grep -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" && \
      grep -q -- '--with-isa-spec=' "${gcc}" && \
      grep -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"; then
@@ -371,15 +346,14 @@ fix9_riscv_isaspec_and_noise_2026_07() {
     fail "build-gcc.sh lost the riscv64 ISA-spec pin (A2 regression)"
   fi
 
-  # A3: the riscv64 torch-wheel fallback drops a loud sentinel the runtime smoke
-  # keys on -- a silently torch-less image must never look healthy.
+  # The riscv64 torch-wheel fallback drops a sentinel the runtime smoke keys on.
   if grep -qF '.torch-missing' "${venv}"; then
     pass "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)"
   else
     fail "setup-torch-venv.sh lost the torch-less sentinel (A3 regression)"
   fi
 
-  # B2: expected build noise stays classified as NOTE, not surfaced as failure.
+  # Expected build noise stays classified as NOTE, not surfaced as failure.
   if grep -q 'too-recent versioned symbols' "${rw}"; then
     pass "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)"
   else
@@ -393,14 +367,9 @@ fix9_riscv_isaspec_and_noise_2026_07() {
 }
 
 fix10_libstdcxx_nostdinc_2026_08() {
-  # The PR100017 Canadian-cross fix (docs/upstream-libstdcxx-c++23-nostdinc++.md,
-  # commit 052122f): build-gcc.sh patches -nostdinc++ into libstdc++'s c++23
-  # module Makefile.in, condition-gated (self-retires when upstream adds the
-  # flag) and loud on layout change. Its RUNTIME guards are exemplary — but no
-  # STATIC gate saw the block (toolchain sweep TG6, 2026-08-10): a refactor
-  # dropping it would only surface as the fenv/empty-std-module failure HOURS
-  # into a Canadian cross build. Pin the sed, its idempotence gate, and the
-  # loud-failure die here.
+  # The PR100017 Canadian-cross fix (docs/upstream-libstdcxx-c++23-nostdinc++.md).
+  # build-gcc.sh patches -nostdinc++ into c++23 Makefile.in, self-retiring when
+  # upstream adds the flag. No static gate saw the block — pin it here.
   local bg="${REPO_ROOT}/linux/scripts/02-toolchain/build-gcc.sh"
   if grep -q "src/c++23/Makefile.in" "${bg}" \
      && grep -q -- "-std=gnu++23 -nostdinc++" "${bg}"; then

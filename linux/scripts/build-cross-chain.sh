@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-cross-chain.sh — the full cross lane end to end with a digest-pinned
-# stage handoff: base -> compiler -> sdk -> media -> android -> runtime.
-# Stage graph: 01-core/stage-defs.sh (shared with --verify-chain). Why the
-# handoff must be pinned by digest: docs/linux-cross-builds.md.
+# build-cross-chain.sh — full cross lane with digest-pinned stage handoff.
+# Why: docs/linux-cross-builds.md.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -18,9 +16,7 @@ FINAL_IMAGE="${FINAL_IMAGE:-${IMAGE_REPO}:latest-cross}"
 FINAL_IMAGE_SET=0
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
-# STALE-LOG (2026-08-23): both log-hygiene guards hang off LOG_DIR and were INERT
-# while it defaulted empty — watchers read a previous run's failures as current.
-# `--log-dir ""` opts back out; chain-status.json does not move with it.
+# --log-dir "" opts out of per-stage logs; chain-status.json is unaffected.
 LOG_DIR="${LOG_DIR:-${REPO_ROOT}/out/build-logs}"
 
 FROM_STAGE="base"
@@ -28,8 +24,7 @@ TO_STAGE="runtime"
 VERIFY_CHAIN_ONLY=0
 DESCRIBE_CHAIN=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
-# PAR3 (2026-08-18): parallelism pays off per stage (sdk ~2.9x; media was SLOWER
-# until the PAR2 cache-mount id split). csv limits which stages go parallel.
+# PARALLEL_STAGES=csv limits which stages go parallel (default: all).
 PARALLEL_STAGES="${PARALLEL_STAGES:-all}"
 
 # True when ${1} may run its arches in parallel under --parallel-archs.
@@ -43,9 +38,6 @@ _stage_parallel_allowed() {
 # cross_stage_init_pins() from the stage graph, accessed via nameref.
 cross_stage_init_pins
 
-# ── stage gating ──────────────────────────────────────────────────────────────
-
-# Build the STAGE_INDEX map from CROSS_STAGE_ORDER (defined in stage-defs.sh).
 declare -A STAGE_INDEX=()
 for i in "${!CROSS_STAGE_ORDER[@]}"; do
   STAGE_INDEX["${CROSS_STAGE_ORDER[$i]}"]="${i}"
@@ -68,7 +60,7 @@ stage_enabled() {
   [ "${idx}" -ge "${FROM_STAGE_IDX}" ] && [ "${idx}" -le "${TO_STAGE_IDX}" ]
 }
 
-# ── usage ─────────────────────────────────────────────────────────────────────
+# ── usage ──
 
 usage() {
   cat <<'EOF'
@@ -138,11 +130,9 @@ Notes:
 EOF
 }
 
-# ── runtime stage helpers ──────────────────────────────────────────────────────
+# ── runtime stage helpers ──
 
-# Runtime stage: delegates to build-runtime-manifest.sh for the per-arch
-# base -> package -> torch -> wrapper images and the multi-arch manifest.
-# Ensures the parent cross-android-<arch> images are locally available first.
+# Delegates to build-runtime-manifest.sh for per-arch wrapper images + manifest.
 run_runtime_stage() {
   cross_stage_ensure_parent_available "runtime" "${TARGET_ARCHES}"
 
@@ -159,21 +149,14 @@ run_runtime_stage() {
     bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
 }
 
-# ── per-arch build helper (avoids function-redefinition race in loops) ─────────
-#
-# Reads _CROSS_CURRENT_STAGE instead of redefining a function inside the stage
-# loop: bash definitions are global, so a redefinition would race live workers.
+# Avoids function-redefinition race in loops: bash definitions are global, so a
+# redefinition inside the stage loop would race live workers.
 _cross_per_arch_build() {
   local _arch="$1"
   cross_stage_run "${_CROSS_CURRENT_STAGE}" "${_arch}"
 }
 
-# ── chain verification ────────────────────────────────────────────────────────
-#
-# verify_cross_chain_staleness() and describe_cross_chain() come from
-# 01-core/chain-verify.sh (loaded via artifact-common.sh).
-
-# ── main driver ───────────────────────────────────────────────────────────────
+# ── main driver ──
 
 _chain_extra_arg() {
   case "$1" in
@@ -232,8 +215,7 @@ _chain_validate_stages() {
   fi
 
   if [ "${VERIFY_CHAIN_ONLY}" -eq 1 ]; then
-    # Exit non-zero on STALE links: a verification that cannot fail is not a
-    # verification (audit round 2, F20).
+    # Exit non-zero on STALE: a verification that cannot fail is not a verification.
     if verify_cross_chain_staleness "${TARGET_ARCHES}"; then
       exit 0
     else
@@ -261,12 +243,8 @@ _chain_assert_ancestry() {
     || err "Stale ancestor — refusing to build on it (see the [ancestry] lines above). Restart from the oldest stage reported, or set CROSS_VERIFY_ANCESTRY=0 to accept it."
 }
 
-# --no-push multi-stage guard (Section C): on OCI-worker hosts (this host),
-# BuildKit's FROM resolves the mutable parent tag against the REGISTRY, not the
-# local store, so downstream stages silently build on the last PUSHED parent —
-# two runs lost historically (2026-08-08). Refuse the combination for multi-stage
-# runs; single-stage (--only / FROM==TO) and dry runs are safe. Escape hatch:
-# CROSS_NO_PUSH_FORCE=1 (accept the stale-parent risk).
+# --no-push multi-stage guard: BuildKit's OCI worker resolves FROM against the
+# registry, not the local store. Escape hatch: CROSS_NO_PUSH_FORCE=1.
 _chain_no_push_guard() {
   [ "${CROSS_NO_PUSH:-0}" = "1" ] || return 0
   is_dry_run && return 0
@@ -279,9 +257,8 @@ _chain_no_push_guard() {
   fi
 }
 
-# O3: machine-readable chain progress — chain-status.json (atomic tmp+mv, best
-# effort) at each stage start/ok/fail. Pinned to the REPO ROOT, NOT LOG_DIR — a
-# moved file would freeze the tracked copy stale-GREEN. CROSS_CHAIN_STATUS_FILE overrides.
+# chain-status.json: atomic tmp+mv at each stage start/ok/fail. Pinned to REPO
+# ROOT, NOT LOG_DIR — a moved file would freeze the tracked copy stale-GREEN.
 declare -A _CHAIN_STATUS=()
 _chain_status_emit() {
   local stage="$1" status="$2"
@@ -334,8 +311,7 @@ _chain_run_build_loop() {
       *)
         if cross_stage_is_per_arch "${stage}"; then
           _CROSS_CURRENT_STAGE="${stage}"
-          # PAR3: demote this stage to sequential when PARALLEL_STAGES excludes
-          # it (save/restore — later stages decide independently).
+          # Demote to sequential when PARALLEL_STAGES excludes this stage; later stages decide independently.
           _par_saved="${PARALLEL_ARCHS:-0}"
           _stage_parallel_allowed "${stage}" || PARALLEL_ARCHS=0
           run_parallel_arch_loop _cross_per_arch_build "$(arch_loop_flag_prefix cross-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}") \
@@ -354,8 +330,7 @@ _chain_run_build_loop() {
   done
 }
 
-# Fail-fast disk preflight: a from-base 3-arch rebuild once ENOSPC-died ~10h in.
-# FORCE_LOW_DISK=1 downgrades to a warning; DISK_PREFLIGHT=0 skips it.
+# Fail-fast disk preflight. FORCE_LOW_DISK=1 downgrades; DISK_PREFLIGHT=0 skips.
 _chain_disk_preflight() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
   # The runtime stage also fills RUNTIME_CONTEXT_ROOT (tens of GB) — measure that
@@ -440,15 +415,13 @@ _chain_stage_disk_guard() {
     fi
   fi
 
-  # Phase 2 — TOTAL-size cap: free-space pruning alone lets the dir grow across
-  # runs (observed 143G+). Same LRU order and stage protection as phase 1.
+  # Phase 2 — total-size cap: free-space pruning alone lets the dir grow across runs.
   local cap_gb="${CROSS_CACHE_MAX_GB:-250}"
   [ "${cap_gb}" -gt 0 ] 2>/dev/null || return 0
   local total_gb
-  # `|| true`: `du` on a missing cache dir exits non-zero and pipefail + set -e
-  # would kill the orchestrator right after a stage succeeded (found 2026-08-27).
-  # The dir really can be absent: NO_CACHE=1 gates the mkdir, as do a relocated
-  # BUILDKIT_CACHE_DIR and a --only runtime resume.
+  # || true: du on a missing cache dir exits non-zero under pipefail + set -e.
+  # The dir can be absent: NO_CACHE=1, a relocated BUILDKIT_CACHE_DIR, or a --only
+  # runtime resume.
   total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
   [ -n "${total_gb}" ] && [ "${total_gb}" -gt "${cap_gb}" ] || return 0
   [ -n "${protected}" ] || protected="$(_disk_guard_protected_slugs "${completed_stage}")"
@@ -479,13 +452,12 @@ _chain_start_resource_monitor() {
   log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
 }
 
-# ── lifecycle: pidfile + signal-driven child reaping (Batch 5 / O1+O2) ─────────
+# ── lifecycle: pidfile + signal-driven child reaping ──
 #
-# EXIT/TERM/INT/HUP only — never a RETURN trap (it re-arms on the caller's return
-# and corrupts unrelated returns under set -u; see parallel-loop.sh).
-# Bash defers a trap until a foreground pipeline finishes, so a bare TERM during a
-# non-per-arch stage is queued — stop-cross-chain.sh reaps the child subtree
-# directly instead (docs/cross-build-verification.md).
+# EXIT/TERM/INT/HUP only — never a RETURN trap (re-arms on caller's return under
+# set -u). Bash defers a trap until a foreground pipeline finishes, so a bare
+# TERM during a non-per-arch stage is queued — stop-cross-chain.sh reaps the
+# child subtree directly (docs/cross-build-verification.md).
 _CHAIN_PIDFILE=""
 _CHAIN_SIGNAL_HANDLED=0
 
@@ -559,8 +531,8 @@ _chain_prepare_log_dir() {
   log "per-stage build logs -> ${LOG_DIR}/<stage>[-<arch>].log (--log-dir '' disables)"
 }
 
-# Eager per-run log archiving (O2): per-stage logs are truncated LAZILY on first
-# write, so a watcher peeking earlier read the PREVIOUS run's log as current.
+# Eager per-run log archiving: per-stage logs are truncated lazily, so a watcher
+# could read the previous run's log as current.
 _chain_archive_prev_logs() {
   [ -n "${LOG_DIR:-}" ] && [ -d "${LOG_DIR}" ] || return 0
   shopt -s nullglob
@@ -569,7 +541,6 @@ _chain_archive_prev_logs() {
   # Marker-scoped, NOT every *.log: LOG_DIR also holds the operator's own live
   # nohup/tee transcript, and mv-ing a file an open tee holds redirects it.
   [ "${#markers[@]}" -gt 0 ] || return 0
-  # Derive the prior run id from any surviving .run marker, else a timestamp.
   local prev="" m
   for m in "${markers[@]}"; do
     prev="$(cat "${m}" 2>/dev/null || true)"
@@ -589,11 +560,8 @@ _chain_archive_prev_logs() {
   log "archived previous run logs -> ${dest}"
 }
 
-# Bounded archive retention (STALE-LOG 2026-08-23): _chain_archive_prev_logs only
-# ever ADDS (12G / 40 run dirs once), so keep the newest CROSS_LOG_ARCHIVE_KEEP
-# (default 5, 0 = off). Depth-1 only, symlinks skipped, and the leaf must match a
-# run-id shape (timestamp or bare PID) — that shape is what keeps the composed
-# path inside archive/, so do not loosen it to catch some other directory name.
+# Bounded archive retention: the leaf must match a run-id shape — that keeps the
+# composed path inside archive/, so do not loosen it.
 _chain_prune_archived_logs() {
   local keep="${CROSS_LOG_ARCHIVE_KEEP:-5}"
   case "${keep}" in
@@ -645,15 +613,15 @@ _chain_prune_archived_logs() {
 
 main() {
   _chain_parse_args "$@"
-  cross_run_id_ensure          # O2: one canonical CROSS_RUN_ID for all consumers
+  cross_run_id_ensure
   _chain_resolve_final_image
-  _chain_validate_stages       # may exit 0 for --describe-chain / --verify-chain
-  _chain_no_push_guard         # Section C: refuse --no-push multi-stage (stale parent)
-  _chain_prepare_log_dir       # STALE-LOG: create/verify LOG_DIR before anyone writes
-  _chain_archive_prev_logs     # O2: eager per-run log archiving (before any write)
-  _chain_prune_archived_logs   # STALE-LOG: bound archive/ (CROSS_LOG_ARCHIVE_KEEP)
-  _chain_write_pidfile         # O2: pidfile read by stop-cross-chain.sh
-  _chain_install_lifecycle_traps  # O1: reap nerdctl/buildctl children on signal
+  _chain_validate_stages       # may exit for --describe-chain / --verify-chain
+  _chain_no_push_guard         # refuse --no-push multi-stage (stale parent)
+  _chain_prepare_log_dir
+  _chain_archive_prev_logs
+  _chain_prune_archived_logs
+  _chain_write_pidfile         # read by stop-cross-chain.sh
+  _chain_install_lifecycle_traps
   _chain_assert_ancestry
   _chain_disk_preflight
   _chain_start_resource_monitor

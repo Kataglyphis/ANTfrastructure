@@ -1,21 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# build-cross-stage.sh
-#
-# Build and optionally push a single cross-lane stage by name, using the
-# declarative stage graph in stage-defs.sh to resolve the Dockerfile, parent
-# tag, and build args.
-#
-# When --push is used, the parent's registry digest is pinned so the stage
-# consumes a content-addressed FROM reference instead of a mutable tag.
-# Without --push, the image stays local and cross_stage_build_local() (from
-# cross-stage-build.sh) handles the build.
-#
-# Usage:
-#   bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64
-#   bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push
-#   bash linux/scripts/build-cross-stage.sh --stage compiler
+# build-cross-stage.sh — build/push a single cross-lane stage via the stage graph.
+# --push pins the parent digest; without it the image stays local.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -79,9 +66,7 @@ _cross_stage_extra_arg() {
 }
 
 _stage_start_resource_monitor() {
-  # Same comprehensive, low-overhead resource logging as the full chain (best
-  # effort; RESOURCE_MONITOR=0 disables). Self-terminates via --watch-pid when
-  # this process exits, so no trap/cleanup is needed here.
+  # RESOURCE_MONITOR=0 disables; self-terminates via --watch-pid.
   [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
   local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
   [ -x "${mon}" ] || return 0
@@ -94,9 +79,8 @@ _stage_start_resource_monitor() {
 }
 
 main() {
-  # O5 flag allowlist: build-cross-stage builds a SINGLE arch via cross_stage_run
-  # (no run_parallel_arch_loop), so the parallel-arch knobs parse for CLI-compat
-  # but do nothing here — warn instead of silently ignoring them.
+  # parallel-arch knobs parse for CLI-compat but do nothing here (single-arch)
+  # — warn instead of silently ignoring them.
   ORCHESTRATOR_UNSUPPORTED_FLAGS="--parallel-archs --max-parallel-archs"
   run_orchestrator_arg_loop usage _cross_stage_extra_arg \
     TARGET_ARCH USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \
@@ -111,10 +95,8 @@ main() {
 
   _stage_start_resource_monitor
 
-  # Init pin arrays so cross_stage_run can access parent pin variables
   cross_stage_init_pins
 
-  # Validate stage exists
   local dockerfile arch is_per_arch
   dockerfile="$(cross_stage_dockerfile "${STAGE}")" || {
     err "Unknown stage: ${STAGE}. Valid stages: ${CROSS_STAGE_ORDER[*]}"
@@ -132,8 +114,6 @@ main() {
   local label="${STAGE}"
   [ "${is_per_arch}" -eq 1 ] && label="${STAGE}-${arch}"
 
-  # Delegate the full build (parent resolution, build args, push/local, pin capture)
-  # to the shared cross_stage_run() from cross-stage-build.sh.
   cross_stage_run "${STAGE}" "${arch}" "${PUSH_IMAGES}"
 
   if [ "${PUSH_IMAGES}" -eq 1 ] && ! is_dry_run; then

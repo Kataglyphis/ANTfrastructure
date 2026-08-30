@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# verify-artifact-copy-parity.sh
-# Verifies the artifact COPY lane in Dockerfile.package:
-#   1. the `artifact-source` stage exists (so `COPY --from=artifact-source`
-#      references resolve), and
-#   2. every `COPY [--flags...] --from=artifact-source SRC DST` in the
-#      package-image stage copies SRC to the SAME path — artifacts are staged
-#      in the artifact image at their canonical runtime locations, so a src/dst
-#      drift silently relocates an artifact. Documented intentional relocations
-#      are allowlisted below.
-# Run from repo root.
-#
-# NOTE: This uses regex-based COPY extraction which is best-effort.
-# It will NOT handle multi-line COPY or heredoc syntax. For complex
-# Dockerfiles, consider a proper parser.
+# verify-artifact-copy-parity.sh — verify artifact COPY src/dst parity in Dockerfile.package.
+# NOTE: regex-based — does not handle multi-line COPY or heredoc syntax.
 
 usage() {
   cat <<'EOF'
@@ -37,8 +25,6 @@ esac
 
 # Documented intentional src != dst relocations, one "SRC DST" pair per entry.
 ALLOWED_RELOCATIONS=(
-  # Per-arch native clang is staged at /opt/llvm-target and deliberately
-  # shipped at /usr/local/llvm-target in the runtime image.
   "/opt/llvm-target /usr/local/llvm-target"
 )
 
