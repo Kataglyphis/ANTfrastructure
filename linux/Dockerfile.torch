@@ -78,10 +78,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGE
     --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
     --mount=type=bind,from=wheels-source,source=/opt/wheels,target=/opt/wheels \
-    UV_LOCK_TIMEOUT=14400 \
-    UV_HTTP_TIMEOUT=1200 \
-    PIP_DEFAULT_TIMEOUT=1200 \
     set -euo pipefail; \
+    export UV_LOCK_TIMEOUT=14400 UV_HTTP_TIMEOUT=1200 PIP_DEFAULT_TIMEOUT=1200; \
+    rm -rf /root/.cache/uv/git-v0/locks/ 2>/dev/null || true; \
     bash /opt/scripts/packaging/setup-torch-venv.sh
 
 ENV VIRTUAL_ENV=${VENV} \
