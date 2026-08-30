@@ -200,7 +200,7 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 # (previously verify-toolchain shared the rust COPY+RUN and every tweak to the
 # assertion list cost a full rust reinstall).
 # #50: SCCACHE_GIT_REV as ARG (was baked env; the script throws if empty).
-ARG SCCACHE_GIT_REV=ffac4a596aa50da3540520eb307b7a591984a064
+ARG SCCACHE_GIT_REV=8ab39266246b26d736bee44dfa313ab0d5fceb1d
 COPY windows\scripts\host\setup-rust-toolchain.ps1 C:\temp\scripts\
 # Local sccache patches (#114): applied on top of SCCACHE_GIT_REV before the
 # source build. Deliberately in the SAME layer group as the rust install - a
