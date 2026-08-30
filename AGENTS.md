@@ -209,6 +209,10 @@ bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-
 
 # Opt-in: build the per-target cross GCCs concurrently inside the compiler
 # stage (~30% off the GCC RUN at 3 targets; default 0 = sequential).
+# Forwarded to the container via the compiler-stage build-arg plumbing
+# (stage-defs.sh) — a launch-time value that does not show up as a
+# --build-arg in the dry-run command line is DROPPED and the sequential path
+# runs instead. Validated on a real compiler build 2026-08-30.
 GCC_PARALLEL_TARGETS=1 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Verify chain freshness without building (real FRESH/STALE verdicts for images
