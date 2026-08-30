@@ -1283,7 +1283,7 @@ would make a correct deploy look failed.
   default case tests `if (Desc.getSize())`, so a declared `Size = 0` is indistinguishable from
   "unset" and still yields 4; it must be a C++ early return on `isSEHInstruction`. Full PR handover,
   including the two build-environment traps that each cost a run:
-  [`out/upstream-llvm-aarch64-seh-instsize.md`](../out/upstream-llvm-aarch64-seh-instsize.md).
+  `out/upstream-llvm-aarch64-seh-instsize.md` (ephemeral handover document, not in repo).
   **It does not retire `+force-32bit-jump-tables`**: removing an over-count moves the estimate
   toward the true value but never below it.
 

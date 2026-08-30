@@ -114,6 +114,7 @@ assert_pinned_versions() {
       EXP_ONNX="$(_stv_vpin "${versions_env}" ONNXRUNTIME_VERSION)" \
       EXP_LITERT="$(_stv_vpin "${versions_env}" LITERT_VERSION)" \
       EXP_GENAI="$(_stv_vpin "${versions_env}" ONNXRUNTIME_GENAI_VERSION)" \
+      EXP_TVM="$(_stv_vpin "${versions_env}" TVM_REF)" \
       EXP_OPENCV_MAJOR="${opencv_major}" \
       UVLOCK="${uvlock}" \
       PYTORCH_EXTRA="${PYTORCH_EXTRA:-}" \
@@ -303,21 +304,24 @@ for import_name, dist_name, build_pin, torchlike in SPECS:
             print("  OK  %-16s build variant +%s (matches %s)" % (dist_name, lv, extra))
 
 
-# TVM is BEST-EFFORT in the media stage (a failed build ships without it, by
-# design), so it must not join the hard-required SPECS — but before this
-# probe existed there was NO tvm visibility anywhere in the smoke set, and a
-# Dockerfile.media comment claimed a runtime `import tvm` gate that did not
-# exist. Report presence/version; only fail when EXP_TVM explicitly pins it.
+# TVM is now a HARD assert (EXP_TVM set from versions.env TVM_REF). The build
+# ships it on all three arches; before this was armed, an absent TVM was
+# silently best-effort with no visibility. The wheel version is a dev tag
+# (0.26.dev1) that doesn't match the git tag (0.26.0) exactly, so compare
+# major.minor only.
 try:
     import tvm as _tvm
     _tvm_v = getattr(_tvm, "__version__", "?")
-    print("  ok  %-16s %s (best-effort component)" % ("tvm", _tvm_v))
+    print("  ok  %-16s %s" % ("tvm", _tvm_v))
     _exp_tvm = os.environ.get("EXP_TVM", "")
-    if _exp_tvm and not str(_tvm_v).startswith(_exp_tvm.lstrip("v")):
-        fails.append("tvm %s != expected %s" % (_tvm_v, _exp_tvm))
-except Exception:
+    if _exp_tvm:
+        _exp_mm = ".".join(_exp_tvm.lstrip("v").split(".")[:2])
+        _tvm_mm = ".".join(str(_tvm_v).split(".")[:2])
+        if _tvm_mm != _exp_mm:
+            fails.append("tvm %s major.minor != %s (from TVM_REF=%s)" % (_tvm_v, _exp_mm, _exp_tvm))
+except Exception as _e:
     if os.environ.get("EXP_TVM", ""):
-        fails.append("tvm NOT IMPORTABLE but EXP_TVM set")
+        fails.append("tvm NOT IMPORTABLE but EXP_TVM set: %s" % _e)
     else:
         print("  --  %-16s not importable (best-effort; media build shipped without it)" % "tvm")
 

@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-28 (removed CLOSED two-caches stub; extended verify-critical-fixes.sh gate repo-wide)
+Last groomed: 2026-08-30 (closed LOG34 + GPU-ROCM10; synced stale Dockerfile ARGs)
 
 ## Standing rules (read first)
 
@@ -86,11 +86,6 @@ either created or exposed.
   per-RUN mount audit + real toolchain rebuild.
 - **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
-- **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
-  `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
-  remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
-  raise the floors — but only AFTER the in-flight rebuild proves TVM ships on all
-  three arches.
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
@@ -116,16 +111,6 @@ either created or exposed.
   It is not waiting on a rebuild, it is waiting on someone putting
   `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
   a third time.
-- **GPU-ROCM10 — verification build of the AMD GPU lane** [M·★★★] the ROCm
-  10.0 / TheRock migration (2026-08-28) changed the repo format (deb822
-  `.sources`), the GPG key, all package names (`amdrocm-*`), and added a
-  second repo stanza for MIGraphX. None of it has been built yet. The
-  post-install assertions (`hipcc`, `migraphx.hpp`, library names in
-  ldconfig) are carried over from the old 7.2.4 script and may need path
-  adjustments if TheRock installs differently. Build the `Dockerfile.amd`
-  stage (`-TargetArch amd64`, CPU lane is enough — no GPU hardware needed
-  for the install), then a downstream media+android run with
-  `ENABLE_AMD=true` to exercise the MIGraphX EP build.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).

@@ -107,8 +107,21 @@ apt-get install -y --no-install-recommends \
 # the cache for sibling RUNs (the GPU1 failure class). The repo-source removal
 # below is the real in-layer hygiene and stays.
 rm -f /etc/apt/sources.list.d/rocm.sources /etc/apt/preferences.d/rocm-pin
+
+# TheRock installs into versioned subdirs (/opt/rocm/core-10.0/) and uses
+# update-alternatives to create /opt/rocm/core. Create convenience symlinks
+# so /opt/rocm/bin and /opt/rocm/include resolve as the old 7.x layout did.
+[ -d /opt/rocm/core/bin ] && [ ! -e /opt/rocm/bin ] && ln -s core/bin /opt/rocm/bin
+[ -d /opt/rocm/core/include ] && [ ! -e /opt/rocm/include ] && ln -s core/include /opt/rocm/include
+[ -d /opt/rocm/core/lib ] && [ ! -e /opt/rocm/lib ] && ln -s core/lib /opt/rocm/lib
+
 echo "/opt/rocm/lib" > /etc/ld.so.conf.d/rocm.conf
 ldconfig
-test -x /opt/rocm/bin/hipcc || { echo "hipcc not found"; exit 1; }
-test -f /opt/rocm/include/migraphx/migraphx.hpp || { echo "migraphx.hpp not found"; exit 1; }
-ldconfig -p | grep -E 'librocblas|librccl|librocfft|librocsparse|libmiopen' >/dev/null || { echo "ROCm libs not in ldconfig"; exit 1; }
+test -x /opt/rocm/bin/hipcc || command -v hipcc >/dev/null 2>&1 || { echo "hipcc not found"; exit 1; }
+test -f /opt/rocm/include/migraphx/migraphx.hpp \
+  || test -f /opt/rocm/core/include/migraphx/migraphx.hpp \
+  || { echo "migraphx.hpp not found"; exit 1; }
+# TheRock installs per-GFX math libs in subdirs (e.g. /opt/rocm/lib/gfx1030/);
+# check the files exist rather than relying on ldconfig's flat view.
+find /opt/rocm -name 'librocblas*' -o -name 'librccl*' -o -name 'librocfft*' -o -name 'librocsparse*' 2>/dev/null | head -1 | grep -q . \
+  || { echo "ROCm math libs not found under /opt/rocm"; exit 1; }

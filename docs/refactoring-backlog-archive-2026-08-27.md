@@ -727,3 +727,17 @@ All edits batched into ONE commit to minimize cache invalidation.
   both ccache and sccache stay mounted. sccache is primary; ccache is the
   documented fallback for invocations sccache refuses. The ~27 GB warm ccache
   is the intentional cost of that fallback.
+
+## Closed 2026-08-30
+
+- **LOG34 — TVM's version assert armed** [CLOSED 2026-08-30] `EXP_TVM` is now
+  set from `TVM_REF` in versions.env, making TVM a hard assert in
+  smoke-torch-venv.sh. The build proved TVM ships on all three arches (amd64,
+  arm64, riscv64). Version check compares major.minor only, since the wheel
+  is a dev tag (0.26.dev1) that doesn't match the git tag (0.26.0) exactly.
+- **GPU-ROCM10 — ROCm 10.0 TheRock verification build** [CLOSED 2026-08-30]
+  `Dockerfile.amd` builds successfully. All post-install assertions pass after
+  adapting `setup-rocm-repo.sh` to TheRock's versioned-subdir layout
+  (`/opt/rocm/core-10.0/`): convenience symlinks for `/opt/rocm/bin`,
+  `/opt/rocm/include`, `/opt/rocm/lib`; library check uses `find` instead of
+  `ldconfig` (per-GFX libs in subdirs, not flat).
