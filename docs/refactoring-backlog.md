@@ -192,18 +192,13 @@ never NPU execution — that needs real Snapdragon hardware.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS validation** — ⚠ IN PROGRESS 2026-08-30, and now
-  actually possible: the flag was never reaching the build. Root cause found
-  and fixed (92fb9646) — no ARG in Dockerfile.toolchain + no --build-arg in
-  the compiler-stage args meant a launch-time GCC_PARALLEL_TARGETS=1 was
-  silently dropped and the sequential default won every time (the "missed four
-  times" gap was plumbing, not forgetfulness). The fix forwards it via
-  stage-defs.sh (append_optional_build_arg, only when set) and pins it in
-  test-stage-defs.sh. A LOCAL compiler build with `GCC_PARALLEL_TARGETS=1` on
-  the command line is running now — the first real validation of the flag,
-  which also exercises the TG1/TG3 trimmed mounts and the F2 resolver in the
-  toolchain call sites. Outcome in the archive when it lands. Do not
-  re-launch concurrently — the host is running it now.
+- **GCC_PARALLEL_TARGETS validation — DONE + PASS 2026-08-30.** Two real bugs
+  surfaced and were fixed (92fb9646 plumbing, 5e8b2470 apt-lock), then a local
+  compiler build with the flag ran GREEN: arm64+riscv64 cross-GCC concurrent
+  (both OK, ~531s wall for two targets vs ~984s sequential), full toolchain
+  smoke 41/41. The flag now works as documented — `GCC_PARALLEL_TARGETS=1` on
+  either orchestrator reaches the container. Not pushed (local validation);
+  pass the flag on a full chain to adopt it. Full evidence in the archive.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).

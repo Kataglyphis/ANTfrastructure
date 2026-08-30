@@ -99,6 +99,18 @@ case " ${_args[*]} " in
   *) t_assert_eq "ok" "ok" ;;
 esac
 
+# The parallel GCC driver must not run apt concurrently (dpkg lock collision,
+# found 2026-08-30 on the first GCC_PARALLEL_TARGETS=1 build): it must export
+# GCC_SKIP_BUILD_DEPS=1 AND build-gcc.sh must honor it.
+t_case "parallel GCC driver exports GCC_SKIP_BUILD_DEPS + build-gcc.sh honors it"
+t_assert_contains "$(grep -A8 'export GCC_SKIP_BUILD_DEPS=1' "${TESTS_DIR}/../02-toolchain/gcc.sh" || true)" \
+  "GCC_SKIP_BUILD_DEPS=1" "parallel driver must skip build deps (they are preinstalled)"
+t_assert_contains "$(sed -n '/GCC_SKIP_BUILD_DEPS=1 skips this/,/^fi$/p' "${TESTS_DIR}/../02-toolchain/build-gcc.sh" || true)" \
+  'if [ "${GCC_SKIP_BUILD_DEPS:-0}" != "1" ]; then' \
+  "build-gcc.sh apt step must be gated on GCC_SKIP_BUILD_DEPS"
+t_assert_contains "$(sed -n '/GCC_SKIP_BUILD_DEPS=1 skips this/,/^fi$/p' "${TESTS_DIR}/../02-toolchain/build-gcc.sh" || true)" \
+  "apt_install" "gated block must still contain the apt_install"
+
 # ── XC2: runtime-lane ancestry graph ───────────────────────────────────────────
 t_case "runtime_stage_parent extends the graph one lane past android"
 t_assert_eq "android" "$(runtime_stage_parent package)"

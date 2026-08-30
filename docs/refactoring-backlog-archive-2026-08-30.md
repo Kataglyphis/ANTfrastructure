@@ -96,3 +96,40 @@
   the flag is the byte-identical sequential path). Also the first post-F2
   toolchain build, so build-gcc.sh's `compiler_cache_launcher()` call site is
   validated live. Log: `out/build-logs/compiler-parallel.log`.
+- ✅ **GCC_PARALLEL_TARGETS validation — DONE + PASS 2026-08-30.** Local
+  compiler build with the flag on the command line, both orchestrators. What
+  the run proved, in order:
+  1. **The plumbing had been broken (the real "missed four times" cause).**
+     The flag was never forwarded into the build — no ARG in
+     Dockerfile.toolchain, no --build-arg in the compiler-stage args — so a
+     launch-time `GCC_PARALLEL_TARGETS=1` silently did nothing and the
+     sequential path won every validation. Fixed in 92fb9646 (ARG + ENV in
+     Dockerfile.toolchain; `append_optional_build_arg` forwarding in
+     stage-defs.sh's compiler case; dry-run now emits `--build-arg
+     GCC_PARALLEL_TARGETS=1` when set, absent when not; pinned by
+     test-stage-defs.sh).
+  2. **First parallel launch hit a real bug, found live:** the concurrent
+     per-target `build-gcc.sh` invocations each ran their own
+     "Installing build dependencies..." apt_install and collided on
+     `/var/lib/apt/lists/lock` ("E: Could not get lock … held by process N").
+     Fixed in 5e8b2470: `GCC_SKIP_BUILD_DEPS=1` gates build-gcc.sh's apt step
+     (deps are already installed by `build_host_gcc`, which runs first) and the
+     parallel driver exports it after the serial pre-pass. Sequential path
+     unchanged. (The failure was also masked by a bash ERR-trap dynamic-scoping
+     bug in logging.sh `_install_trap` — `action: unbound variable` replaced
+     the real apt error; logged as a follow-up.)
+  3. **The parallel path WORKS on the real build:** `GCC_PARALLEL_TARGETS=1:
+     serial apt pre-pass, then concurrent target builds` → amd64 linked
+     serially (symlink-only, as designed) → arm64 + riscv64 built concurrently
+     (JOBS=16 each on this host's 32 cores): `[parallel] arm64: OK` at 745.9s,
+     `[parallel] riscv64: OK` at 823.8s. Both cross-GCC targets done in
+     ~531s wall (launch 292.7 → riscv64 done 823.8) vs ~984s sequential for
+     the two — the documented ~30% GCC-RUN saving.
+  4. **Full toolchain GREEN:** LLVM + Rust + Python + bundle + toolchain smoke
+     all passed — 41 `PASS` lines, 0 failures, image
+     `cross-compiler-amd64` loaded locally. This ALSO validates TG1/TG3 (the
+     trimmed per-RUN mounts) and F2's toolchain call sites (`sccache gcc`/
+     `sccache g++` live in the GCC compile lines).
+  The flag is now a real, working knob: `GCC_PARALLEL_TARGETS=1` on either
+  orchestrator's command line. Not pushed (local-only validation); the next
+  full chain that wants the parallel GCC must pass the flag itself.
