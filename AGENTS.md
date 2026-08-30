@@ -529,16 +529,15 @@ QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
 and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
 [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
 
-The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX): stage the Linux
-AArch64 SDK zip in `linux/qnn-sdk/` (different SDK — `lib/aarch64-oe-linux-gcc11.2/`,
-not `aarch64-windows-msvc`), pin with `QNN_SDK_LINUX_ZIP_SHA256` in
-`versions.env`. `resolve_qnn_sdk` (in the ORT build lib) extracts, verifies and
-enables `onnxruntime_USE_QNN=ON` for ORT on arm64 only; `stage_qnn_runtime`
-stages `libQnn*.so` + `hexagon-v*` skel beside the ORT install. The SDK is
-bind-mounted at `/opt/scripts/qnn-sdk` on the `--step cpu` and `--step genai`
-RUNs. No zip = QNN off. Framework fan-out to GenAI/LiteRT/TVM/IREE is OPEN.
-See [`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) (QNN EP, in
-the toggles section) and `docs/refactoring-backlog.md` A2. QNN-LINUX.
+The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX, **PROVEN 2026-08-30**
+on a staged QAIRT v2.49.0.260730 zip — arm64 media build GREEN): stage the
+Linux AArch64 SDK zip in `linux/qnn-sdk/` (different SDK —
+`lib/aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`), pin with
+`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env`. ORT-only today; framework
+fan-out to GenAI/LiteRT/TVM/IREE is OPEN. No zip = QNN off. Mechanism (the
+`QNN_ARCH_ABI` override, `stage_qnn_runtime`, the bind-mount): see
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) (QNN EP, in the
+toggles section) and `docs/refactoring-backlog.md` A2. QNN-LINUX.
 
 ### Windows Build Notes
 

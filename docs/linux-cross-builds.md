@@ -649,13 +649,17 @@ lane, targeting Snapdragon NPU. No environment toggle — staging a zip in
 `resolve_qnn_sdk` (in the ORT build lib) extracts it, verifies the SHA-256
 against `QNN_SDK_LINUX_ZIP_SHA256` in `versions.env` (if pinned), checks
 version compat (`QNN_OP_STFT` canary), and enables `onnxruntime_USE_QNN=ON`
-with `onnxruntime_QNN_HOME=<root>`. Backend `.so` + `hexagon-v*` skel dirs are
-staged beside the ORT install. No zip = QNN off with a notice. Different SDK
-from the Windows lane (`aarch64-oe-linux-gcc11.2/`, not
-`aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.
-**Unproven:** no SDK has been staged on this host; the first staged zip will
-validate the CMake `onnxruntime_QNN_HOME` path (upstream risk: may hardcode
-`aarch64-android` ABI — verify before assuming it works).
+with `onnxruntime_QNN_HOME=<root>` and
+`QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` (ORT CMake defaults to
+`aarch64-android` on Linux aarch64, overridable via `-D` — it is a cache var
+guarded by `if(NOT QNN_ARCH_ABI)`). Backend `.so` + `hexagon-v*` skel dirs
+are staged beside the ORT install by `stage_qnn_runtime`. No zip = QNN off
+with a notice. Different SDK from the Windows lane
+(`aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`). See
+`linux/qnn-sdk/README.md`.
+**PROVEN 2026-08-30** on a staged QAIRT v2.49.0.260730 zip —
+`cross-media-arm64` build GREEN (build results in `docs/refactoring-backlog.md`
+A2. QNN-LINUX). Framework fan-out to GenAI/LiteRT/TVM/IREE is OPEN.
 
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps

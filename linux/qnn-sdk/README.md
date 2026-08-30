@@ -55,11 +55,16 @@ remove it after, the same discipline as the TensorRT zip.
 - `validate-media-runtime.sh` already skips `libQnn*` ELF arch checks
   (`VENDOR_ARCH_SKIP_PATTERNS`), so the foreign-arch vendor libs ship as-is.
 
-Build status: the ORT QNN wiring is LANDED (resolve helper, build script,
-Dockerfile mount, versions.env pin, artifact verification — see
-`docs/refactoring-backlog.md` A2. QNN-LINUX, items 1-6 DONE). No SDK has been
-staged on this host, so the QNN branch is **unproven** — the first staged zip
-will validate it (upstream risk: ORT CMake `onnxruntime_QNN_HOME` may hardcode
-`aarch64-android` ABI; verify on first use). Framework fan-out to LiteRT, TVM
-and IREE is OPEN. See `docs/refactoring-backlog.md` (QNN-LINUX) and
-`docs/windows-cross-builds.md` (QNN section, #121) for the cross-lane plan.
+Build status: the ORT QNN wiring is LANDED and **PROVEN 2026-08-30** (resolve
+helper, build script, Dockerfile mount, versions.env pin, artifact verification
+— see `docs/refactoring-backlog.md` A2. QNN-LINUX, items 1-6 DONE). Staged
+QAIRT v2.49.0.260730: `cross-media-arm64` build GREEN,
+`libonnxruntime_providers_qnn.so` compiled and linked, 45 `libQnn*.so` backend
+libs + 7 `hexagon-v*` skel dirs staged, `verify-media-artifacts.sh
+onnxruntime-cpu` PASS. The upstream `QNN_ARCH_ABI` risk is RESOLVED — ORT CMake
+defaults it to `aarch64-android` on Linux aarch64, but it is a cache var
+guarded by `if(NOT QNN_ARCH_ABI)` (cmake/CMakeLists.txt:921), so
+`-DQNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` overrides it; no source patch
+needed. Framework fan-out to GenAI/LiteRT/TVM/IREE is OPEN. See
+`docs/refactoring-backlog.md` (QNN-LINUX) and `docs/windows-cross-builds.md`
+(QNN section, #121) for the cross-lane plan.

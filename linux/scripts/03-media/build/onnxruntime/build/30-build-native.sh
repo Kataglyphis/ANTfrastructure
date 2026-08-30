@@ -96,10 +96,13 @@ fi
 _qnn_home="$(resolve_qnn_sdk)"
 if [ -n "$_qnn_home" ]; then
   info "QNN EP ON (SDK root ${_qnn_home})"
+  # ORT CMake defaults QNN_ARCH_ABI to aarch64-android; override to the Linux
+  # SDK's lib dir (cmake/CMakeLists.txt:921 — guarded by `if(NOT QNN_ARCH_ABI)`).
   BUILD_ARGS+=(
     --cmake_extra_defines
     "onnxruntime_USE_QNN=ON"
     "onnxruntime_QNN_HOME=${_qnn_home}"
+    "QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2"
   )
 else
   info "QNN EP off (no SDK zip staged — opt-in, see linux/qnn-sdk/README.md)"
