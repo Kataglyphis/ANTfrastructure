@@ -192,12 +192,17 @@ never NPU execution — that needs real Snapdragon hardware.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS validation** — ⚠ IN PROGRESS 2026-08-30: launched as
-  a LOCAL compiler build with `GCC_PARALLEL_TARGETS=1` on the actual command
-  line (the first time the flag has reached a real build; the previous three
-  compiler rebuilds took the sequential path because the flag defaults to 0).
-  This run also validates the TG1/TG3 trimmed mounts and the F2 resolver in
-  the toolchain call sites. Outcome in the archive when it lands. Do not
+- **GCC_PARALLEL_TARGETS validation** — ⚠ IN PROGRESS 2026-08-30, and now
+  actually possible: the flag was never reaching the build. Root cause found
+  and fixed (92fb9646) — no ARG in Dockerfile.toolchain + no --build-arg in
+  the compiler-stage args meant a launch-time GCC_PARALLEL_TARGETS=1 was
+  silently dropped and the sequential default won every time (the "missed four
+  times" gap was plumbing, not forgetfulness). The fix forwards it via
+  stage-defs.sh (append_optional_build_arg, only when set) and pins it in
+  test-stage-defs.sh. A LOCAL compiler build with `GCC_PARALLEL_TARGETS=1` on
+  the command line is running now — the first real validation of the flag,
+  which also exercises the TG1/TG3 trimmed mounts and the F2 resolver in the
+  toolchain call sites. Outcome in the archive when it lands. Do not
   re-launch concurrently — the host is running it now.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
