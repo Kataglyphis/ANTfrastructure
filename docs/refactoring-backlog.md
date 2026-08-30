@@ -86,11 +86,12 @@ either created or exposed.
   per-RUN mount audit + real toolchain rebuild.
 - **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD] RUN-3d recompiles
   instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
-- **LOG34 — TVM's version assert is permanently disarmed** [S·★, OPEN 2026-08-28]
-  `smoke-torch-venv.sh:311-322`: an absent TVM is best-effort, and the only
-  remaining check is a hand-lowered ok-count floor. Action: set `EXP_TVM` and
-  raise the floors — but only AFTER the in-flight rebuild proves TVM ships on all
-  three arches.
+- **LOG34 — TVM's version assert is permanently disarmed** [S·★, CLOSED 2026-08-30]
+  `EXP_TVM` is now set from `TVM_REF` in versions.env, making TVM a hard assert
+  (must be importable, major.minor must match). The build proved TVM ships on all
+  three arches (amd64, arm64, riscv64). The version check compares major.minor
+  only, since the wheel is a dev tag (0.26.dev1) that doesn't match the git tag
+  (0.26.0) exactly.
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
