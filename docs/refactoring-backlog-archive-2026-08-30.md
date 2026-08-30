@@ -80,3 +80,19 @@
   - Residual (documented, not done): a REAL multi-arch no-push chain has not
     been run end-to-end (validation remains on-demand; mechanism + guard are
     unit- and live-proven at the buildkit level).
+- ✅ **TG1/TG3 residuals — CLOSED 2026-08-30 (they were already implemented).**
+  The toolchain-closure trim (TG1) and the RUN-3/3d collapse (TG3) both landed
+  2026-08-24 — f485c132 ("TG1 bounded: lazy cmake/vulkan sourcing + trim their
+  dead toolchain mounts") and 202634c1 ("closure-window-3 wave", which deleted
+  RUN 3d and unified the superset build into RUN 3) — but were never CLOSED in
+  the backlog. The validating rebuild started 2026-08-30 (local compiler build
+  with GCC_PARALLEL_TARGETS=1) exercises both: the trimmed per-RUN mounts are
+  what decide whether an unrelated script edit busts the GCC/LLVM layers, and
+  the RUN-3 post-build gates (qemu llvm-config + CMake link smoke,
+  materialize-llvm-target ELF assert) are the 3d-replacement verification.
+- ⚠️ **GCC_PARALLEL_TARGETS validation — IN PROGRESS 2026-08-30.** First real
+  launch of the flag on a compiler build command line (local, no push — so a
+  failure costs only the build, never the public compiler tag; retry without
+  the flag is the byte-identical sequential path). Also the first post-F2
+  toolchain build, so build-gcc.sh's `compiler_cache_launcher()` call site is
+  validated live. Log: `out/build-logs/compiler-parallel.log`.

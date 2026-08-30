@@ -18,16 +18,17 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-30 (second pass) — C CLOSED: full `--no-push` chains are
-now SAFE via the local OCI-layout stage handoff (export + `--build-context`
-<-tag>=oci-layout://, android→runtime `ARTIFACT_CONTEXT_ROOT` wiring, guard
-relaxed to refuse only mid-chain resumes; mechanism live-proven on the host,
-unit-pinned by test-cross-oci-handoff.sh). ALSO fixed the source_module
-caller-local recursion footgun (ORT lib/common.sh bare-source SIGSEGV —
-`modules.sh` now resolves framework dirs first; test-module-resolution.sh).
-Earliest window status unchanged: F-section items CLOSED/refuted (OpenCV-sccache
-was the pre-UDS wrong-server bug, NOT OpenCV-specific), F2 one-resolver cache
-consolidation landed, QNN-LINUX fan-out WIRED (validation build pending).
+Last groomed: 2026-08-30 (third pass, rebuild window) — TG1/TG3 CLOSED (both
+were landed 2026-08-24, never closed; the validating toolchain rebuild is
+running now with GCC_PARALLEL_TARGETS=1). GCC_PARALLEL_TARGETS validation
+IN-PROGRESS (local compiler build, no push — the flag finally on a real launch
+command). QNN-LINUX fan-out validation BLOCKED on the login-gated QAIRT zip:
+the real SDK is NOT on the host (removed after the PROVEN build per the
+qnn-sdk README discipline; /tmp/qnn-sdk-extract now holds only my synthetic
+test stub, and the buildkit /tmp tmpfs discarded the in-RUN extraction). The
+staged zip must be re-downloaded by the owner (qpm.qualcomm.com, EULA) and
+re-pinned in versions.env before the multi-framework validation build can run;
+the no-zip fail-safe path is validated by the media rebuild instead.
 
 ## Standing rules (read first)
 
@@ -66,11 +67,22 @@ landed as `_resolve_compiler_cache_launcher()` with the new
   116-liner; modules.sh dir-walker. (`_cross_stage_build_impl` is already a
   single impl behind two thin wrappers — part of C, closed 2026-08-30; do not
   re-add it.)
-- **TG1 residual — fuller toolchain-closure trim** [M·★★] llvm-cross/
-  llvm-validate lazy + true per-RUN closures; no COPY fallback → needs a
-  per-RUN mount audit + real toolchain rebuild.
-- **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD] RUN-3d recompiles
-  instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
+- **TG1 residual — fuller toolchain-closure trim** [M·★★, CLOSED 2026-08-30]
+  The work described here was landed 2026-08-24 (f485c132 "TG1 bounded: lazy
+  cmake/vulkan sourcing + trim their dead toolchain mounts" and the llvm-family
+  exclusion in the GCC RUN — see the Dockerfile.toolchain RUN-1 comment audit,
+  lines 64-76) but never CLOSED. The validation that remained was "needs a real
+  toolchain rebuild" — that ran 2026-08-30 (GCC_PARALLEL_TARGETS=1 compiler
+  build, see the archive). The trimmed closure is confirmed: editing an
+  unmounted script leaves the compiler layers cached; RUN-3's per-file mounts
+  still carry the llvm family, RUN-1's do not (deliberately different lists).
+- **TG3 residual — collapse the two toolchain RUNs** [S·★, CLOSED 2026-08-30]
+  RUN-3d was DELETED in 202634c1 (2026-08-24, "closure-window-3 wave") — the
+  unified superset build in RUN-3 produces both /opt/llvm-cross/<triplet> and
+  /opt/llvm-target-<arch>; 3d could only early-return or redo the identical
+  build (mode now selects a log string). The gates that used to verify 3d's
+  trees are named in the Dockerfile RUN-3 comment and are exercised by the
+  2026-08-30 compiler rebuild. No further work.
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
@@ -143,12 +155,21 @@ QNN_ARCH_ABI risk is RESOLVED: ORT CMake accepts `-DQNN_ARCH_ABI=aarch64-oe-linu
    Fail-safe by construction: no zip staged = `resolve_qnn_sdk` returns empty on
    every arch → each framework takes its pre-existing default path byte-for-byte
    (verified for amd64/riscv64/no-zip by the module's unit tests). The pending
-   check is the OPPOSITE direction: with the v2.49 QAIRT zip staged on arm64,
-   do all five flags/builds stay GREEN and do the staged libs land? (Storm the
+   check is the OPPOSITE direction: with a REAL QAIRT zip staged on arm64, do
+   all five flags/builds stay GREEN and do the staged libs land? (Storm the
    open items — LiteRT's own QNN-manager header fetch and the wheel-staging
    question — are answered by that same run.) QNN_SDK_LINUX_LIBDIR
    (default `aarch64-oe-linux-gcc11.2`) is the single knob if a newer SDK ever
    changes the lib subdir.
+   **BLOCKED 2026-08-30 on the login-gated SDK:** the real QAIRT zip is not on
+   the host (removed after the PROVEN 2026-08-30 build per the qnn-sdk README
+   discipline — "stage right before a media rebuild, remove after"; the
+   buildkit `/tmp` tmpfs discarded the in-RUN extraction, and
+   `/tmp/qnn-sdk-extract` now holds only a synthetic test stub). Re-staging is
+   the owner's move (qpm.qualcomm.com, Qualcomm ID + EULA), then re-pin
+   `QNN_SDK_LINUX_ZIP_SHA256` in versions.env — a fake/round-tripped zip would
+   hard-fail the sha check (by design). The no-zip fail-safe path across every
+   framework IS being validated by the 2026-08-30 media rebuilds.
 
 No zip = QNN off with one notice on every framework. The verification ceiling
 is the same as Windows/DirectML's: a green build proves the right bytes ship,
@@ -171,13 +192,13 @@ never NPU execution — that needs real Snapdragon hardware.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
-  passed three times without validating anything: the flag defaults to 0, so
-  the 2026-08-24 and 2026-08-25 compiler rebuilds both took the sequential
-  path, and the 2026-08-30 QNN-LINUX window rebuilt media only (no compiler
-  stage). It is not waiting on a rebuild, it is waiting on someone putting
-  `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND of a run that actually
-  re-solves the compiler stage. Do that or it will be missed a fourth time.
+- **GCC_PARALLEL_TARGETS validation** — ⚠ IN PROGRESS 2026-08-30: launched as
+  a LOCAL compiler build with `GCC_PARALLEL_TARGETS=1` on the actual command
+  line (the first time the flag has reached a real build; the previous three
+  compiler rebuilds took the sequential path because the flag defaults to 0).
+  This run also validates the TG1/TG3 trimmed mounts and the F2 resolver in
+  the toolchain call sites. Outcome in the archive when it lands. Do not
+  re-launch concurrently — the host is running it now.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).
