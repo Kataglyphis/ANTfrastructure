@@ -182,6 +182,7 @@ Common development targets:
    ci-build-triggers
    github-cli-pipeline-monitoring
    mistral-vibe-glm-setup
+   geniex-local-ai-setup
    agentic-loop-build-matrix
    windows-agentic-loop
 

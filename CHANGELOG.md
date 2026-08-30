@@ -5,6 +5,29 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — GenieX on-device OpenAI server for Snapdragon (docs + host tooling)
+
+New page [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md):
+run Qualcomm GenieX (BSD-3-Clause) so a coding agent inside **WSL2** talks to a
+local OpenAI-compatible API backed by the Windows host's **Adreno GPU** (or
+Hexagon NPU). WSL2 has no NPU/GPU passthrough, so the server runs on Windows
+and WSL2 reaches it at `127.0.0.1:18181` via mirrored networking.
+
+- Deployed and measured live on a Lenovo Snapdragon X (2026-08-31): GPU 4B at
+  13.2 tok/s; 27B Q4_0 OOMs the Adreno (`CL_OUT_OF_RESOURCES -5`) → use IQ3_S
+  (~12 GB); NPU blocked by a CDSP driver/backend mismatch
+  (`ggml-hex: failed to dlsym dspqueue_create`, `libcdsprpc.dll` v30.0.0140.1000
+  lacks the symbols the bundled llama.cpp Hexagon backend needs — no upstream
+  issue yet).
+- Non-interactive chipset config (`geniex config set chipset
+  qualcomm-snapdragon-x-elite`) for headless pulls; local cache copy across
+  Windows/WSL2 to avoid a 16 GB re-download; the WSL2 localhost port-shadowing
+  trap that prevents the Windows server from binding.
+- Docs wiring: `docs/INDEX.md`, `docs/index.rst` (toctree), `README.md`,
+  `AGENTS.md` § GenieX on Snapdragon, and a `deps.json` entry under Host Build
+  Infrastructure (BSD-3-Clause) — licence pages and curated SBOM regenerated.
+
+
 ## 2026-08-30 — second pass: --no-push chains SAFE (OCI-layout handoff) + source_module recursion fix
 
 Backlog item C is closed: **full `--no-push` chains are no longer refused** —

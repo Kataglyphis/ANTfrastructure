@@ -1285,6 +1285,19 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
       "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--d56fdd5c",
+      "name": "GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server)",
+      "versionInfo": "host install (GenieX CLI v0.5.0)",
+      "downloadLocation": "https://github.com/qualcomm/GenieX",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
+      "licenseComments": "Obligations: keep-notice, include-text"
     }
   ],
   "relationships": [
@@ -1772,6 +1785,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--05cce0d0"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--d56fdd5c"
     }
   ]
 }
