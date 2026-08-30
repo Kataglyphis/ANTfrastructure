@@ -286,6 +286,12 @@ fi
 info ""
 
 # 1) Install build deps (Ubuntu/Debian)
+# GCC_SKIP_BUILD_DEPS=1 skips this (used by the parallel cross-target driver in
+# gcc.sh: build_host_gcc already installed this exact set, so the CONCURRENT
+# per-target build-gcc.sh invocations must not re-run apt — they collide on the
+# dpkg lock and die ("Could not get lock /var/lib/apt/lists/lock"). Backlog
+# GCC_PARALLEL_TARGETS validation, 2026-08-30.)
+if [ "${GCC_SKIP_BUILD_DEPS:-0}" != "1" ]; then
 info "Installing build dependencies..."
 apt_install \
   build-essential \
@@ -306,6 +312,9 @@ apt_install \
   patch \
   git \
   gnupg
+else
+info "Skipping build dependencies (GCC_SKIP_BUILD_DEPS=1, installed by the host build)"
+fi
 
 # GCC release tarballs already ship generated parser/doc artifacts, so the
 # build does not need flex, bison, or texinfo just to rebuild them.
