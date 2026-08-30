@@ -579,3 +579,105 @@ pc_numeric_version_from_ort_version() {
 }
 
 detect_target_arch() { arch_oci; }
+
+# QNN EP (Qualcomm QAIRT SDK) — Linux ARM64 only, opt-in by staging a zip.
+# See linux/qnn-sdk/README.md (backlog QNN-LINUX). Mirrors Windows Resolve-QnnSdk.
+# Returns QNN_HOME on stdout (empty = QNN off). Caller decides from the output.
+# Uses info/warn/err (from media_common_init) — err exits, info/warn go to stderr.
+resolve_qnn_sdk() {
+    local drop_dir="${1:-/opt/scripts/qnn-sdk}"
+    local arch
+    arch="$(arch_oci)"
+
+    [ "${arch}" = "arm64" ] || { info "QNN: arm64-only on Linux (arch=${arch}), skipping"; return 0; }
+
+    local zips
+    zips="$(find "$drop_dir" -maxdepth 1 -name '*.zip' -type f 2>/dev/null | sort)" || true
+    local zip_count
+    zip_count="$(printf '%s\n' "$zips" | grep -c . 2>/dev/null)" || zip_count=0
+
+    if [ "$zip_count" -eq 0 ]; then
+        info "QNN: no SDK zip in ${drop_dir} — QNN EP off (default, supported state)"
+        return 0
+    fi
+    if [ "$zip_count" -gt 1 ]; then
+        err "QNN: exactly one SDK zip may sit in ${drop_dir} (found ${zip_count})"
+    fi
+
+    local zip
+    zip="$(printf '%s\n' "$zips" | head -1)"
+
+    local sha="${QNN_SDK_LINUX_ZIP_SHA256:-}"
+    if [ -n "$sha" ]; then
+        local actual
+        actual="$(sha256sum "$zip" | awk '{print $1}')"
+        if [ "${actual^^}" != "${sha^^}" ]; then
+            err "QNN: SDK zip SHA256 mismatch: expected ${sha}, got ${actual}"
+        fi
+        info "QNN: SDK zip SHA256 verified (QNN_SDK_LINUX_ZIP_SHA256)"
+    else
+        warn "QNN: QNN_SDK_LINUX_ZIP_SHA256 empty — extracting UNVERIFIED (pin in versions.env)"
+    fi
+
+    local extract_dir="${QNN_SDK_EXTRACT_DIR:-/tmp/qnn-sdk-extract}"
+    rm -rf "$extract_dir"
+    mkdir -p "$extract_dir"
+    unzip -q -o "$zip" -d "$extract_dir"
+
+    local anchor
+    anchor="$(find "$extract_dir" -path '*/QNN/QnnInterface.h' -type f 2>/dev/null | head -1)" || true
+    if [ -z "$anchor" ]; then
+        err "QNN: include/QNN/QnnInterface.h not found under ${extract_dir} — not a QAIRT SDK zip?"
+    fi
+    # anchor = .../include/QNN/QnnInterface.h → SDK root = parent of include/
+    local qnn_home
+    qnn_home="$(dirname "$(dirname "$(dirname "$anchor")")")"
+
+    local lib_dir="${qnn_home}/lib/aarch64-oe-linux-gcc11.2"
+    if [ ! -f "${lib_dir}/libQnnCpu.so" ]; then
+        err "QNN: ${lib_dir}/libQnnCpu.so missing — SDK carries no aarch64-oe-linux-gcc11.2 backend"
+    fi
+
+    # ORT version compat canary: QNN_OP_STFT added in QNN API 2.25+, ORT 1.29 needs it.
+    local op_def="${qnn_home}/include/QNN/QnnOpDef.h"
+    if [ -f "$op_def" ] && ! grep -q 'QNN_OP_STFT' "$op_def"; then
+        warn "QNN: SDK too old (QNN_OP_STFT missing) — QNN EP off. Stage QAIRT 2.25+ API."
+        return 0
+    fi
+
+    printf '%s\n' "$qnn_home"
+}
+
+# Stage QNN backend .so + hexagon-v* skel dirs beside the ORT install lib dir.
+# Mirrors Windows Copy-QnnRuntime. Called only when resolve_qnn_sdk returned non-empty.
+# Args: <qnn_home> <ort_output_dir>
+stage_qnn_runtime() {
+    local qnn_home="${1:?qnn_home required}"
+    local ort_dir="${2:?ort output dir required}"
+    local ort_lib="${ort_dir}/lib"
+
+    [ -d "$ort_lib" ] || err "QNN: ORT lib dir ${ort_lib} not found — nothing to stage beside"
+
+    local provider
+    provider="$(find "$ort_lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | head -1)" || true
+    if [ -z "$provider" ]; then
+        err "QNN: libonnxruntime_providers_qnn.so not installed under ${ort_lib} although USE_QNN=ON — the EP did not build"
+    fi
+
+    local lib_dir="${qnn_home}/lib/aarch64-oe-linux-gcc11.2"
+    local staged=0
+    local so
+    while IFS= read -r so; do
+        [ -f "$so" ] || continue
+        cp "$so" "$ort_lib/"
+        staged=$((staged + 1))
+    done < <(find "$lib_dir" -maxdepth 1 -name 'libQnn*.so' -type f 2>/dev/null || true)
+
+    local skel_dir
+    while IFS= read -r skel_dir; do
+        [ -d "$skel_dir" ] || continue
+        cp -a "$skel_dir" "$ort_lib/"
+    done < <(find "${qnn_home}/lib" -maxdepth 1 -type d -name 'hexagon-v*' 2>/dev/null || true)
+
+    info "QNN: staged ${staged} backend .so + hexagon skel dirs from ${lib_dir} beside ${provider##*/}"
+}

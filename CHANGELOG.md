@@ -5,21 +5,34 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
-## 2026-08-30 — QNN-LINUX scaffold: Snapdragon QAIRT/QNN drop dir for Linux ARM64
+## 2026-08-30 — QNN-LINUX: Qualcomm QAIRT/QNN EP wired for Linux ARM64 (Snapdragon)
 
-Landed the zero-cache-impact scaffold for the Qualcomm QAIRT/QNN SDK on the
-Linux ARM64 lane (targeting Snapdragon NPU), mirroring the Windows QNN EP
-(#121). The build-side wiring (resolve helper, ORT CMake, Dockerfile mount,
-versions.env pin) edits the 03-media / 01-core closure and is staged as
-backlog `A2. QNN-LINUX` work items 2–6 for the next closure window.
+Wired the ONNX Runtime QNN execution provider onto the Linux `arm64` lane,
+targeting Snapdragon NPU inference. Same opt-in contract as the Windows QNN
+EP (#121): login-gated SDK zip dropped by hand in `linux/qnn-sdk/`; no zip =
+QNN off with a notice. Different SDK from Windows: Linux AArch64 extracts to
+`lib/aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`.
 
-- `linux/qnn-sdk/README.md` — the opt-in drop point + contract (login-gated
-  Linux AArch64 SDK, `lib/aarch64-oe-linux-gcc11.2/`, not the Windows
-  `aarch64-windows-msvc` SDK)
-- `.gitignore` — `linux/qnn-sdk/*` rule (root-level, symmetric with
-  `windows/qnn-sdk/*`)
-- `docs/refactoring-backlog.md` — new `A2. QNN-LINUX` section: 6 work items +
-  framework fan-out table (ORT, GenAI, LiteRT, TVM, IREE)
+**No SDK has been staged on this host — the wiring is UNPROVEN.** The first
+staged zip will validate it (upstream risk: ORT CMake `onnxruntime_QNN_HOME`
+may hardcode `aarch64-android` ABI; verify on first use).
+
+- `linux/qnn-sdk/README.md` — opt-in drop point + contract
+- `.gitignore` — `linux/qnn-sdk/*` rule (symmetric with `windows/qnn-sdk/*`)
+- `versions.env` — `QNN_SDK_LINUX_ZIP_SHA256=` pin (empty = unpinned, `# noforward`)
+- `onnxruntime/build/lib/common.sh` — `resolve_qnn_sdk` (locate/verify/extract
+  the SDK, QNN_OP_STFT canary) + `stage_qnn_runtime` (copy `libQnn*.so` +
+  `hexagon-v*` skel beside ORT install)
+- `30-build-native.sh` — `resolve_qnn_sdk` called after oneDNN block; if
+  arm64 + zip present, appends `onnxruntime_USE_QNN=ON` +
+  `onnxruntime_QNN_HOME=<root>`; stages runtime after finalize
+- `Dockerfile.media` — `linux/qnn-sdk` bind-mounted at `/opt/scripts/qnn-sdk`
+  on the `--step cpu` and `--step genai` RUNs
+- `verify-media-artifacts.sh` — `onnxruntime-cpu` stage: if QNN provider .so
+  is present, asserts `libQnn*.so` are staged beside it
+- `docs/linux-cross-builds.md` — QNN EP section in the toggles area
+- `docs/refactoring-backlog.md` — `A2. QNN-LINUX` items 1-6 DONE; framework
+  fan-out (GenAI, LiteRT, TVM, IREE) OPEN
 
 
 ## 2026-08-29 — #135 closed: patched LLVM is default, workarounds removed

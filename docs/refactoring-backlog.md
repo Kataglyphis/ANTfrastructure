@@ -16,7 +16,7 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-30 (added QNN-LINUX Snapdragon plan A2 + landed scaffold dir; trimmed done sub-narrative: compiler-cache GPU sites, --no-push guard, MESON-GI pin — all confirmed shipped)
+Last groomed: 2026-08-30 (QNN-LINUX A2: ORT wiring landed — items 1-6 DONE, framework fan-out OPEN; trimmed done sub-narrative: compiler-cache GPU sites, --no-push guard, MESON-GI pin — all confirmed shipped)
 
 ## Standing rules (read first)
 
@@ -84,54 +84,48 @@ Mirror the Windows QNN EP (#121, `windows/qnn-sdk/`) onto the Linux `arm64`
 lane for Snapdragon NPU inference. Same opt-in contract (login-gated zip
 dropped by hand, build skips gracefully when absent), **different SDK**:
 Linux AArch64 extracts to `qairt/<version>/lib/aarch64-oe-linux-gcc11.2/`
-(not `aarch64-windows-msvc`). Scaffold landed: `linux/qnn-sdk/README.md` +
-root `.gitignore` rule. Work items 2–6 edit the 03-media / 01-core closure
-and MUST batch at a closure window (standing rule #1 — versions.env is
-COPY'd in `Dockerfile.sdk:111`, so even a comment busts sdk→media).
+(not `aarch64-windows-msvc`). The ORT wiring is LANDED (work items 1-6 DONE);
+the framework fan-out to LiteRT/TVM/IREE is OPEN. No SDK has been staged on
+this host — the wiring is UNPROVEN and the first staged zip will validate it.
 
 1. **Drop dir + .gitignore** [S, DONE 2026-08-30] `linux/qnn-sdk/README.md`
    + root `.gitignore` `linux/qnn-sdk/*` rule. Zero cache impact (new dir,
    not in any closure). `.dockerignore` does NOT exclude it (the bare
    `*.zip` matches root-level only) so a staged zip rides the context —
    stage right before a media rebuild, remove after (TensorRT discipline).
-2. **versions.env pin** [S·★, CLOSURE] Add `QNN_SDK_LINUX_ZIP_SHA256=` (empty
-   = unpinned, `# noforward`) to `linux/scripts/01-core/versions.env` near
-   the existing `QNN_SDK_ZIP_SHA256` (Windows hash — do NOT reuse it). Update
-   the comment block (lines ~824-830) to cover both lanes. Empty now; fill on
-   first staged Linux zip. BUSTS: versions.env is COPY'd in
-   `Dockerfile.sdk:111` → sdk → media rebuild.
-3. **Resolve helper** [M·★★, CLOSURE] A bash `resolve_qnn_sdk` in a 01-core
-   helper (or the ORT build lib) mirroring `Resolve-QnnSdk`: locate the one
-   zip, verify sha256 if pinned, extract, anchor on
-   `include/QNN/QnnInterface.h`, assert `lib/aarch64-oe-linux-gcc11.2/`
-   backend exists, QNN_OP_STFT canary for ORT version compat, return
-   `QNN_HOME` + lib dir (or empty → QNN off). Gated to `arm64` only.
-   UPSTREAM RISK: ORT's CMake `onnxruntime_QNN_HOME` may hardcode the
-   `aarch64-android` ABI path; Linux needs `aarch64-oe-linux-gcc11.2` —
-   verify against the ORT QNN EP CMake before assuming it works.
-4. **ORT build wiring** [M·★★, CLOSURE] `30-build-native.sh`: after the
-   oneDNN block (~line 86), if `resolve_qnn_sdk` returns a home on arm64,
-   append `--use_qnn` + `onnxruntime_QNN_HOME`; stage `libQnn*.so` +
-   `hexagon-v*` skel beside the ORT install. amd64/riscv64 stay QNN-off.
-   `lib/common.sh:append_onnx_native_base_build_args` is the seam.
-5. **Dockerfile.media mount** [S·★, CLOSURE] Add
+2. **versions.env pin** [S·★, DONE 2026-08-30] Added `QNN_SDK_LINUX_ZIP_SHA256=`
+   (empty = unpinned, `# noforward`) to `versions.env`. Updated the comment
+   block to cover both lanes. Fill on first staged Linux zip.
+3. **Resolve helper** [M·★★, DONE 2026-08-30] `resolve_qnn_sdk` +
+   `stage_qnn_runtime` in `onnxruntime/build/lib/common.sh`. Mirrors
+   `Resolve-QnnSdk`/`Copy-QnnRuntime`: locate zip, verify sha256 if pinned,
+   extract, anchor on `QnnInterface.h`, assert
+   `lib/aarch64-oe-linux-gcc11.2/libQnnCpu.so`, QNN_OP_STFT canary.
+   UPSTREAM RISK: ORT CMake `onnxruntime_QNN_HOME` may hardcode
+   `aarch64-android` ABI — verify on first staged SDK.
+4. **ORT build wiring** [M·★★, DONE 2026-08-30] `30-build-native.sh`:
+   `resolve_qnn_sdk` called after the oneDNN block; if non-empty, appends
+   `--cmake_extra_defines onnxruntime_USE_QNN=ON onnxruntime_QNN_HOME=<path>`.
+   `stage_qnn_runtime` copies `libQnn*.so` + `hexagon-v*` skel beside ORT
+   after `finalize_onnx_native_output`. arm64-only; amd64/riscv64 QNN-off.
+5. **Dockerfile.media mount** [S·★, DONE 2026-08-30] Added
    `--mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly`
-   to the `--step cpu` RUN (`Dockerfile.media:298-304`) and the genai RUN.
-   Empty dir = no-op (graceful skip). Stages the zip into the build.
-6. **Validation** [S·★, CLOSURE] `validate-media-runtime.sh`
-   `VENDOR_ARCH_SKIP_PATTERNS` already lists `libQnn*` (line ~310) — no
-   change needed, CONFIRM on first run. Add a `verify-media-artifacts.sh`
-   assertion that staged QNN libs land beside ORT only when QNN was on.
+   to the `--step cpu` and `--step genai` RUNs. Empty dir = no-op.
+6. **Validation** [S·★, DONE 2026-08-30] `verify-media-artifacts.sh`
+   `onnxruntime-cpu` stage: if `libonnxruntime_providers_qnn.so` is present,
+   asserts `libQnn*.so` are staged. `validate-media-runtime.sh`
+   `VENDOR_ARCH_SKIP_PATTERNS` already lists `libQnn*` — confirmed, no change
+   needed.
 
-Framework fan-out (each gated to arm64, QNN-off when no zip):
+Framework fan-out (OPEN — each gated to arm64, QNN-off when no zip):
 
-| Framework | CMake flag | Linux source |
-|---|---|---|
-| **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | `30-build-native.sh` (work item 4) |
-| **ONNX Runtime GenAI** | inherits from ORT | stage QNN libs beside GenAI install |
-| **LiteRT** | `TFLITE_ENABLE_QNN=ON` | `build-litert.sh:236` — `LITERT_ENABLE_NPU=OFF` becomes conditional |
-| **TVM** | `USE_QNN=ON` | `05-frameworks/tvm-config.sh` — no QNN today |
-| **IREE** | `IREE_TARGET_BACKEND_QNN=ON` | `05-frameworks/torch/build-app-wheelhouse.sh` |
+| Framework | CMake flag | Linux source | Status |
+|---|---|---|---|
+| **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | `30-build-native.sh` | DONE |
+| **ONNX Runtime GenAI** | inherits from ORT | stage QNN libs beside GenAI install | OPEN |
+| **LiteRT** | `TFLITE_ENABLE_QNN=ON` | `build-litert.sh:236` — `LITERT_ENABLE_NPU=OFF` becomes conditional | OPEN |
+| **TVM** | `USE_QNN=ON` | `05-frameworks/tvm-config.sh` — no QNN today | OPEN |
+| **IREE** | `IREE_TARGET_BACKEND_QNN=ON` | `05-frameworks/torch/build-app-wheelhouse.sh` | OPEN |
 
 No zip = QNN off with one notice on every framework. The verification
 ceiling is the same as Windows/DirectML's: a green build proves the right

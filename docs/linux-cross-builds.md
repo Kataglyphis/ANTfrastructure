@@ -643,6 +643,20 @@ falls back to disabled. Current toggles:
 | `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
 | `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | Dawn cross-build is the risky part; amd64-only unless set. |
 
+**QNN EP (Qualcomm QAIRT SDK, backlog QNN-LINUX):** opt-in for the **arm64**
+lane, targeting Snapdragon NPU. No environment toggle — staging a zip in
+`linux/qnn-sdk/` is the switch. When a Linux AArch64 SDK zip is present,
+`resolve_qnn_sdk` (in the ORT build lib) extracts it, verifies the SHA-256
+against `QNN_SDK_LINUX_ZIP_SHA256` in `versions.env` (if pinned), checks
+version compat (`QNN_OP_STFT` canary), and enables `onnxruntime_USE_QNN=ON`
+with `onnxruntime_QNN_HOME=<root>`. Backend `.so` + `hexagon-v*` skel dirs are
+staged beside the ORT install. No zip = QNN off with a notice. Different SDK
+from the Windows lane (`aarch64-oe-linux-gcc11.2/`, not
+`aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.
+**Unproven:** no SDK has been staged on this host; the first staged zip will
+validate the CMake `onnxruntime_QNN_HOME` path (upstream risk: may hardcode
+`aarch64-android` ABI — verify before assuming it works).
+
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
 (see `docs/refactoring-backlog.md`, standing rules). After a toggle flip, force

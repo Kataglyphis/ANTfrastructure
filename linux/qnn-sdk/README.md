@@ -43,10 +43,10 @@ in the context for every stage build that shares the root context (base,
 compiler, sdk, media, …). Stage the zip immediately before a media rebuild and
 remove it after, the same discipline as the TensorRT zip.
 
-## What the build will do with it (planned — backlog QNN-LINUX)
+## What the build does with it
 
-- Extract the zip, anchor the SDK root on `include/QNN/QnnInterface.h`, and pass
-  it as `onnxruntime_QNN_HOME`.
+- Extracts the zip, anchors the SDK root on `include/QNN/QnnInterface.h`, and
+  passes it as `onnxruntime_QNN_HOME` via `--cmake_extra_defines`.
 - Enable `onnxruntime_USE_QNN=ON` on the **arm64** lane (HTP/NPU on Snapdragon,
   the actual point of the EP). amd64/riscv64 stay QNN-off.
 - Stage the backend shared libraries (`libQnnHtp.so`, `libQnnCpu.so`,
@@ -55,10 +55,11 @@ remove it after, the same discipline as the TensorRT zip.
 - `validate-media-runtime.sh` already skips `libQnn*` ELF arch checks
   (`VENDOR_ARCH_SKIP_PATTERNS`), so the foreign-arch vendor libs ship as-is.
 
-Scaffold status: this directory and the README are the only parts landed. The
-resolve helper, build wiring, Dockerfile mount and versions.env pin are
-backlog QNN-LINUX work items #2–#6 — they edit the 03-media / 01-core closure
-and must batch at a closure window. The host that built this repo has never
-held the SDK, so the QNN branch is **unproven** — the first staged zip will
-tell. See `docs/refactoring-backlog.md` (QNN-LINUX) and
+Build status: the ORT QNN wiring is LANDED (resolve helper, build script,
+Dockerfile mount, versions.env pin, artifact verification — see
+`docs/refactoring-backlog.md` A2. QNN-LINUX, items 1-6 DONE). No SDK has been
+staged on this host, so the QNN branch is **unproven** — the first staged zip
+will validate it (upstream risk: ORT CMake `onnxruntime_QNN_HOME` may hardcode
+`aarch64-android` ABI; verify on first use). Framework fan-out to LiteRT, TVM
+and IREE is OPEN. See `docs/refactoring-backlog.md` (QNN-LINUX) and
 `docs/windows-cross-builds.md` (QNN section, #121) for the cross-lane plan.

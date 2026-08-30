@@ -196,3 +196,8 @@ CROSS_NO_PUSH_FORCE
 # build.sh). Set by the chain disk-guard when pruning could not clear the
 # threshold — stops writing new inline cache, keeps reading what survived.
 NO_CACHE_EXPORT
+
+# Override the QNN SDK extraction directory (resolve_qnn_sdk in the ORT build
+# lib, backlog QNN-LINUX). Default /tmp/qnn-sdk-extract; useful for testing
+# with a persistent extract dir.
+QNN_SDK_EXTRACT_DIR
