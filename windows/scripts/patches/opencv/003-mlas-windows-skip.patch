@@ -3,14 +3,14 @@ index c773ec0..6ba1094 100644
 --- a/3rdparty/mlas/CMakeLists.txt
 +++ b/3rdparty/mlas/CMakeLists.txt
 @@ -84,6 +84,31 @@ if(MLAS_X86_64 OR MLAS_X86 OR MLAS_ARM64 OR MLAS_LOONGARCH64)
-   set(_MLAS_REQUIRES_ASM TRUE)
- endif()
- 
+  set(_MLAS_REQUIRES_ASM TRUE)
+endif()
+
 +# PATCHED (clang-cl Windows lane): the x86/64 vendored kernels are GAS/ELF-only
-+# (`.type sym,@function`; no MASM/COFF port exists), and clang-cl IS a working
++# (.type sym,@function; no MASM/COFF port exists), and clang-cl IS a working
 +# GAS assembler, so the check_language(ASM) guard below does not save us the
 +# way it does on MSVC - the .S files then die in the integrated assembler
-+# ("expected absolute expression" in SgemmKernelSse2.S). Same fallback as the
++# (expected absolute expression in SgemmKernelSse2.S). Same fallback as the
 +# Android skip above: the DNN module's built-in SGEMM.
 +#
 +# On ARM64/AArch64 this skip is NOT applied: MLAS's arm64 kernels are C++ NEON
@@ -35,3 +35,4 @@ index c773ec0..6ba1094 100644
  include(CheckLanguage)
  set(MLAS_HAS_ASM FALSE CACHE INTERNAL "" FORCE)
  check_language(ASM)
+
