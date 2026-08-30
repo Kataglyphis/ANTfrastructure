@@ -5,6 +5,72 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-30 — rebuild window: GCC_PARALLEL_TARGETS validated (2 bugs found+fixed), F2 media validation, launcher server-death gap fixed
+
+The tasks that needed a real rebuild, run and closed:
+
+### GCC_PARALLEL_TARGETS validation — PASS, and it surfaced two real bugs
+
+- **92fb9646 — the launch flag was silently dropped (the real "missed four
+  times" cause).** No `ARG GCC_PARALLEL_TARGETS` in Dockerfile.toolchain and no
+  `--build-arg` in the compiler-stage args, so a launch-time
+  `GCC_PARALLEL_TARGETS=1` never reached the container and the sequential path
+  won every time. Fixed: ARG + ENV in Dockerfile.toolchain (mirrors
+  `GCC_HOST_BOOTSTRAP`), `append_optional_build_arg` forwarding in
+  stage-defs.sh's compiler case (only when set; Dockerfile defaults stay
+  authoritative), pinned by test-stage-defs.sh. Dry-runs now emit
+  `--build-arg GCC_PARALLEL_TARGETS=1` when set, absent when not.
+- **5e8b2470 — the first parallel launch collided on the dpkg apt lock.**
+  The concurrent per-target `build-gcc.sh` invocations each ran their own
+  "Installing build dependencies..." apt_install; two apt-get at once die on
+  `/var/lib/apt/lists/lock`. Fixed: `GCC_SKIP_BUILD_DEPS=1` gates build-gcc.sh's
+  apt step (deps already installed by `build_host_gcc`, which runs first) and
+  the parallel driver exports it after the serial pre-pass. Sequential path
+  unchanged.
+- **Result:** local compiler build with `GCC_PARALLEL_TARGETS=1` GREEN —
+  amd64 linked serially, arm64 + riscv64 cross-GCC concurrent (JOBS=16 each),
+  both OK; two cross targets in ~531s wall vs ~984s sequential (~30% GCC-RUN
+  saving, as documented). Full toolchain smoke 41/41 PASS, image
+  `cross-compiler-amd64` loaded. This also validated TG1/TG3 (trimmed per-RUN
+  mounts) and F2's toolchain call sites (`sccache gcc/g++` live).
+- Follow-up logged: the ERR-trap in logging.sh `_install_trap` fired with
+  `action` unbound under set -u when triggered outside the function's dynamic
+  scope, masking the real apt error. Not in this wave.
+
+### F2 media validation — PASS (sdk→media→android, amd64)
+
+Full chain from sdk pushed for amd64. The one-resolver cache consolidation was
+exercised in every media RUN: `compiler cache enabled:
+launcher=/opt/scripts/core/sccache-launcher.sh`, **100 % C/C++ cache-hit
+rate**, 27 artifact-verify OK, android built and pushed. modules.sh reorder and
+the QNN-off fan-out path (litert/tvm/app-wheelhouse/genai with no zip) all ran
+the new code without regression.
+
+### 0371d164 — sccache-launcher server-death gap FOUND live + FIXED
+
+The validation build caught a second failure class the guarded launcher did
+not handle: the sccache **server died mid-build** under full concurrent-media
+load and sccache reported `sccache: error: failed to execute compile / caused
+by: Failed to send data to or receive data from server / failed to fill whole
+buffer`. The launcher only bypassed on `sccache: encountered fatal error` (the
+TryCompile ENOENT class), so it handed the dead-server error to ninja as a REAL
+failure and killed the TVM step. Fixed by widening the bypass classification to
+any sccache-prefixed internal error (`sccache: (encountered fatal error|error:|
+caused by:)`) — safe because sccache prefixes only its own failures with
+`sccache:`; a real compiler error is echoed un-prefixed and passes through.
+Pinned by the new tests/test-sccache-launcher.sh (8 assertions incl. a
+mutation case proving the old narrow match would NOT have bypassed). The media
+rebuild running after this lands re-validates the fix live and restores the
+TVM wheel lost to the dead server (the failure was non-fatal by design).
+
+### QNN-LINUX fan-out validation — BLOCKED on the login-gated SDK
+
+The real QAIRT zip is not on the host (removed after the PROVEN build per the
+qnn-sdk README discipline; /tmp/qnn-sdk-extract now holds only a synthetic test
+stub). Re-staging is the owner's move (qpm.qualcomm.com, EULA), then re-pin
+`QNN_SDK_LINUX_ZIP_SHA256`. The no-zip fail-safe path across every framework
+was validated by the media builds above.
+
 ## 2026-08-30 — second pass: --no-push chains SAFE (OCI-layout handoff) + source_module recursion fix
 
 Backlog item C is closed: **full `--no-push` chains are no longer refused** —
