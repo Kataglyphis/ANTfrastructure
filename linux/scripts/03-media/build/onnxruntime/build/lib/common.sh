@@ -582,14 +582,14 @@ detect_target_arch() { arch_oci; }
 
 # QNN EP (Qualcomm QAIRT SDK) — Linux ARM64 only, opt-in by staging a zip.
 # See linux/qnn-sdk/README.md (backlog QNN-LINUX). Mirrors Windows Resolve-QnnSdk.
-# Returns QNN_HOME on stdout (empty = QNN off). Caller decides from the output.
-# Uses info/warn/err (from media_common_init) — err exits, info/warn go to stderr.
+# Returns QNN_HOME on stdout (empty = QNN off). info() writes to stdout (fd 1),
+# so all info calls here redirect to stderr (>&2) to keep stdout clean for $(...).
 resolve_qnn_sdk() {
     local drop_dir="${1:-/opt/scripts/qnn-sdk}"
     local arch
     arch="$(arch_oci)"
 
-    [ "${arch}" = "arm64" ] || { info "QNN: arm64-only on Linux (arch=${arch}), skipping"; return 0; }
+    [ "${arch}" = "arm64" ] || { info "QNN: arm64-only on Linux (arch=${arch}), skipping" >&2; return 0; }
 
     local zips
     zips="$(find "$drop_dir" -maxdepth 1 -name '*.zip' -type f 2>/dev/null | sort)" || true
@@ -597,7 +597,7 @@ resolve_qnn_sdk() {
     zip_count="$(printf '%s\n' "$zips" | grep -c . 2>/dev/null)" || zip_count=0
 
     if [ "$zip_count" -eq 0 ]; then
-        info "QNN: no SDK zip in ${drop_dir} — QNN EP off (default, supported state)"
+        info "QNN: no SDK zip in ${drop_dir} — QNN EP off (default, supported state)" >&2
         return 0
     fi
     if [ "$zip_count" -gt 1 ]; then
@@ -614,7 +614,7 @@ resolve_qnn_sdk() {
         if [ "${actual^^}" != "${sha^^}" ]; then
             err "QNN: SDK zip SHA256 mismatch: expected ${sha}, got ${actual}"
         fi
-        info "QNN: SDK zip SHA256 verified (QNN_SDK_LINUX_ZIP_SHA256)"
+        info "QNN: SDK zip SHA256 verified (QNN_SDK_LINUX_ZIP_SHA256)" >&2
     else
         warn "QNN: QNN_SDK_LINUX_ZIP_SHA256 empty — extracting UNVERIFIED (pin in versions.env)"
     fi
@@ -679,5 +679,5 @@ stage_qnn_runtime() {
         cp -a "$skel_dir" "$ort_lib/"
     done < <(find "${qnn_home}/lib" -maxdepth 1 -type d -name 'hexagon-v*' 2>/dev/null || true)
 
-    info "QNN: staged ${staged} backend .so + hexagon skel dirs from ${lib_dir} beside ${provider##*/}"
+    info "QNN: staged ${staged} backend .so + hexagon skel dirs from ${lib_dir} beside ${provider##*/}" >&2
 }
