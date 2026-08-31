@@ -199,6 +199,22 @@ never NPU execution — that needs real Snapdragon hardware.
   smoke 41/41. The flag now works as documented — `GCC_PARALLEL_TARGETS=1` on
   either orchestrator reaches the container. Not pushed (local validation);
   pass the flag on a full chain to adopt it. Full evidence in the archive.
+- **F2 media validation — DONE + PASS 2026-08-30** (sdk→media→android, amd64,
+  pushed). The one-resolver cache consolidation ran in every media RUN
+  (launcher=sccache-launcher.sh, 100 % C/C++ hit rate), 27 artifact verifies
+  OK, android pushed; modules.sh reorder + QNN-off fan-out exercised with no
+  regression. THE FIND: the validation caught an sccache-launcher gap — the
+  server-died class (`failed to execute compile / Failed to send data to or
+  receive data from server`) was NOT bypassed by the launcher (only the ENOENT
+  class was), killing the TVM step. Fixed in 0371d164 (bypass on any
+  sccache-prefixed internal error; tests/test-sccache-launcher.sh). TVM is
+  restored on the follow-up media rebuild.
+- **QNN-LINUX fan-out validation — BLOCKED on the login-gated QAIRT SDK.**
+  The real zip is not on the host (removed after the PROVEN build per the
+  qnn-sdk README discipline; the buildkit /tmp tmpfs discarded the in-RUN
+  extraction). Re-stage via qpm.qualcomm.com (Qualcomm ID + EULA) and re-pin
+  QNN_SDK_LINUX_ZIP_SHA256; a round-tripped/fake zip would hard-fail the sha
+  check by design. The no-zip fail-safe path was validated by the media builds.
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).
