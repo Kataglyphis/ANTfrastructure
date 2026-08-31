@@ -190,6 +190,62 @@ Two metrics were added because ranking by `tokens/sec` ranks models *wrongly*:
 `tokens_per_sec` divides by the whole request and therefore mixes prefill with
 decode; `decode_tok_per_sec` reports decode alone.
 
+The summary also names the **busiest process** during the run. On some stacks
+the process owning the serving port is not the one doing the work (GenieX
+spawns a separate worker: the port owner read 11 % of 800 % while the worker
+sat at 752 %), so the report says which PID actually burned the CPU.
+
+### Concurrency: does one server batch? do lanes add up? (`bench_lanes.py`)
+
+```bash
+# Does ONE server overlap two concurrent requests?
+python3 bench_lanes.py --batching --endpoint http://127.0.0.1:11434 --model llama3
+
+# Do SEVERAL servers add up, or fight each other?
+python3 bench_lanes.py --lanes \
+  npu=http://127.0.0.1:18181,model=qualcomm/Qwen3-4B-Instruct-2507:W4A16 \
+  cpu=http://127.0.0.1:18184,model=unsloth/Qwen3-4B-GGUF:Q4_0
+```
+
+`--batching` fires two simultaneous requests at one endpoint. If the second
+one's first token arrives only after the first has finished, the server
+serialises — **more throughput then needs more servers, not more clients**.
+Measured on GenieX: second request's TTFT 74.27 s against the first request's
+74.10 s total. Verdict `SERIALISED`.
+
+`--lanes` measures each endpoint alone, then all of them at once, and reports
+the per-lane change plus the aggregate. Compute units differ sharply: on one
+Snapdragon host the NPU lane lost **0 %** when a CPU lane joined while the CPU
+lane gave up **18 %**, for 39.9 tok/s aggregate (1.57x the best single lane).
+Aggregate throughput only appears if you really have that many concurrent
+requests — one agent waiting for one answer still sees a single lane's speed.
+
+### Is this GGUF even sane? (`inspect_gguf.py`)
+
+```bash
+python3 inspect_gguf.py model.gguf            # human-readable
+python3 inspect_gguf.py --json model.gguf     # machine-readable; exit 1 if RISKY
+```
+
+Reads only the file header (instant on a 16 GB model) and prints the
+architecture, imatrix metadata and the **tensor quantisation histogram**. That
+histogram is what diagnosed a real failure no benchmark could have caught:
+files dominated by sub-4-bit i-quants (`IQ3_S`, `IQ3_XXS`, `IQ2_*`, `IQ1_*`)
+produced fluent garbage on GenieX v0.5.0, while plain K-quants at the same bit
+width (`Q3_K_M`) and `IQ4_XS` were fine. Verdicts:
+
+| Verdict | Meaning |
+|---|---|
+| `OK` | no sub-4-bit i-quant tensors |
+| `LIKELY OK` | under 5 % of them (a known-good file had 4 tensors) |
+| `RISKY` | i-quant-dominated — exit code 1 |
+
+### Pointing the harness at something other than Ollama
+
+Set `LLM_BASE_URL` (the old `OLLAMA_BASE_URL` still works). Model detection
+asks the portable `/v1/models` first and only then falls back to Ollama's
+native `/api/tags`, so GenieX, llama.cpp and vLLM endpoints work unchanged.
+
 ### 2. Build the viewer
 
 ```bash

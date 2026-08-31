@@ -17,12 +17,29 @@ import sys
 import time
 from datetime import datetime, timezone
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+# LB7 — this harness is not Ollama-specific any more: it benchmarks any
+# OpenAI-compatible server (Ollama, GenieX, llama.cpp, vLLM). LLM_BASE_URL is
+# the name to use; OLLAMA_BASE_URL still works so existing scripts do not break.
+LLM_BASE_URL = (
+    os.environ.get("LLM_BASE_URL")
+    or os.environ.get("OLLAMA_BASE_URL")
+    or "http://localhost:11434"
+)
+OLLAMA_BASE_URL = LLM_BASE_URL  # backwards-compatible alias
 GLANCES_URL = os.environ.get("GLANCES_URL", "http://localhost:61208")
 
 
 def collect_hardware_info():
-    """Collect system hardware info for reproducibility."""
+    """Collect system hardware info for reproducibility.
+
+    LB9 — every block below used to be a bare `except: pass` over a /proc read,
+    so on a non-Linux host the whole section silently produced nothing and the
+    result file lost exactly the metadata that makes cross-host comparison
+    meaningful. The GenieX lane runs on a WINDOWS host, so that was not
+    hypothetical. Now: /proc first (richest), psutil/platform as a portable
+    fallback, and an explicit `incomplete` list naming whatever is still
+    missing, so a gap is visible instead of silent.
+    """
     info = {}
     info["timestamp"] = datetime.now(timezone.utc).isoformat()
 
@@ -86,6 +103,36 @@ def collect_hardware_info():
 
     # OLLAMA_HOST env
     info["ollama_host"] = os.environ.get("OLLAMA_HOST", "default")
+
+    # ── Portable fallback (LB9) ───────────────────────────────────────────
+    # Fills whatever /proc could not provide -- on Windows and macOS that is
+    # everything.
+    try:
+        import platform as _pf
+        info.setdefault("os", _pf.system())
+        info.setdefault("os_release", _pf.release())
+        info.setdefault("architecture", _pf.machine())
+        if not info.get("processor"):
+            info["processor"] = _pf.processor() or None
+    except Exception:
+        pass
+    try:
+        import psutil as _ps
+        if not info.get("cpu_physical_cores"):
+            info["cpu_physical_cores"] = _ps.cpu_count(logical=False)
+        if not info.get("cpu_total_threads"):
+            info["cpu_total_threads"] = _ps.cpu_count(logical=True)
+        if not info.get("ram_total_gb"):
+            info["ram_total_gb"] = round(_ps.virtual_memory().total / (1024 ** 3), 1)
+    except Exception:
+        pass
+
+    # Name the gaps rather than hiding them: a benchmark whose host is unknown
+    # cannot be compared against another host later.
+    expected = ("os", "architecture", "cpu_total_threads", "ram_total_gb")
+    missing = [k for k in expected if not info.get(k)]
+    if missing:
+        info["incomplete"] = missing
 
     return info
 
@@ -167,6 +214,36 @@ def get_glances_data(endpoint):
     return None
 
 
+def top_cpu_processes(limit=3):
+    """Busiest processes since the PREVIOUS call to this function (LB8).
+
+    psutil's per-process cpu_percent(None) reports usage since that process
+    was last polled, so calling this before and after a request makes the
+    second call a real measurement of who burned CPU *during* it.
+
+    Why it is worth reporting: the process that owns the serving port is not
+    necessarily the one doing the work. GenieX spawns a separate worker, and
+    sampling the port owner showed 11 % of 800 % while the actual worker sat
+    at 752 % -- i.e. it looked idle while it was pinning 7.5 of 8 cores.
+    Naming the busiest process removes that whole class of mistake.
+    """
+    try:
+        import psutil
+    except Exception:
+        return []
+    procs = []
+    for p in psutil.process_iter(["name"]):
+        try:
+            pct = p.cpu_percent(None)
+            if pct > 0:
+                procs.append({"pid": p.pid, "name": p.info.get("name") or "?",
+                              "cpu_percent": round(pct, 1)})
+        except Exception:
+            continue
+    procs.sort(key=lambda d: d["cpu_percent"], reverse=True)
+    return procs[:limit]
+
+
 def sample_resources_psutil():
     """Sample CPU and RAM via psutil on the host."""
     import psutil
@@ -194,22 +271,32 @@ def sample_resources_glances():
     }
 
 
-def detect_model_via_api():
-    """Detect the currently loaded model via the Ollama API."""
+def detect_model_via_api(base_url=None):
+    """Detect a served model.
+
+    Asks the portable OpenAI endpoint (/v1/models) FIRST. The previous version
+    probed Ollama's /api/show with a hardcoded "gemma4:26b" and returned that
+    name on any 200 -- which reported the wrong model on any host serving
+    something else, and nothing at all on a non-Ollama server.
+    """
     import requests
+
+    base = base_url or LLM_BASE_URL
     try:
-        # Ollama's show API is POST /api/show with a JSON body, not a GET path param.
-        r = requests.post(f"{OLLAMA_BASE_URL}/api/show", json={"model": "gemma4:26b"}, timeout=5)
-        if r.status_code == 200:
-            return "gemma4:26b"
-    except Exception:
-        pass
-    try:
-        r = requests.get(f"{OLLAMA_BASE_URL}/v1/models", timeout=5)
+        r = requests.get(f"{base}/v1/models", timeout=5)
         if r.status_code == 200:
             models = r.json().get("data", [])
             if models:
                 return models[0]["id"]
+    except Exception:
+        pass
+    # Ollama-native fallback: /api/tags lists what is actually pulled.
+    try:
+        r = requests.get(f"{base}/api/tags", timeout=5)
+        if r.status_code == 200:
+            tags = r.json().get("models", [])
+            if tags:
+                return tags[0].get("name") or tags[0].get("model", "unknown")
     except Exception:
         pass
     return "unknown"
@@ -225,6 +312,7 @@ def benchmark_chat(
     extra_params=None,
     sample_interval=0.2,
     warmup=True,
+    base_url=None,
 ):
     """Run a benchmark against the OpenAI-compatible chat completions endpoint.
 
@@ -233,7 +321,7 @@ def benchmark_chat(
     import requests
 
     session = requests.Session()
-    endpoint = f"{OLLAMA_BASE_URL}/v1/chat/completions"
+    endpoint = f"{base_url or LLM_BASE_URL}/v1/chat/completions"
 
     # Warmup: one short request to load the model into memory
     if warmup:
@@ -266,6 +354,7 @@ def benchmark_chat(
 
         # Sample resources before request
         resources_before = sample_resources()
+        top_cpu_processes()  # LB8: prime the per-process counters
         start = time.monotonic()
         first_token_at = None  # LB2: set on the first content-bearing chunk
         streamed_chunks = 0     # fallback when a server omits the usage chunk
@@ -322,6 +411,8 @@ def benchmark_chat(
 
         elapsed = time.monotonic() - start
         resources_after = sample_resources()
+        # LB8: who actually did the work during this request?
+        busiest = top_cpu_processes()
 
         # Average resources during request
         avg_cpu = (
@@ -391,6 +482,7 @@ def benchmark_chat(
             "thinking_char_share": thinking_char_share,
             "cpu_percent": round(avg_cpu, 1),
             "ram_used_gb": round(avg_ram_gb, 2),
+            "top_processes": busiest,
             "content_preview": content[:80],
         }
 
@@ -424,7 +516,7 @@ def _answer_matches(content, accepted):
     return False
 
 
-def run_correctness_probe(model, *, max_tokens=2000, extra_params=None):
+def run_correctness_probe(model, *, max_tokens=2000, extra_params=None, base_url=None):
     """LB1 — check the model still answers correctly, not just quickly.
 
     Returns a dict with the score and per-item detail, or None if the endpoint
@@ -440,7 +532,7 @@ def run_correctness_probe(model, *, max_tokens=2000, extra_params=None):
     import requests
 
     session = requests.Session()
-    endpoint = f"{OLLAMA_BASE_URL}/v1/chat/completions"
+    endpoint = f"{base_url or LLM_BASE_URL}/v1/chat/completions"
     items = []
 
     for prompt, accepted in CORRECTNESS_PROBES:
@@ -581,6 +673,18 @@ def print_table(results):
                 print(f"    Prefill:        {sum(pres)/len(pres):.0f} tok/s avg")
         elif not any("error" in r for r in results):
             print("    TTFT:           not measured — re-run with --stream")
+
+        # LB8 — name the process that actually burned CPU. On this host the
+        # serving process and the inference worker are different PIDs.
+        busiest = {}
+        for r in results:
+            for proc in r.get("top_processes") or []:
+                key = f"{proc['name']} (pid {proc['pid']})"
+                busiest[key] = max(busiest.get(key, 0), proc["cpu_percent"])
+        if busiest:
+            top = sorted(busiest.items(), key=lambda kv: kv[1], reverse=True)[:2]
+            summary = ",  ".join(f"{name} {pct:.0f}%" for name, pct in top)
+            print(f"    Busiest proc:   {summary}")
 
         # LB3 — rank by time to a finished answer, not by tok/s.
         answers = [r["wall_s_to_answer"] for r in results if r.get("wall_s_to_answer")]
