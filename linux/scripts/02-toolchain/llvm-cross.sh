@@ -133,16 +133,162 @@ _llvm_cross_pre_build_hooks() {
   _r[host_path]="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 }
 
+# Empty out-array when the target declares no runtime library path, or none of
+# its directories exist.
+_llvm_cross_linker_flag_args() {
+  local -n _lf_args="$1"
+  local target_label="$2"
+  local target_runtime_link_path linker_flags_init="" link_dir
+
+  _lf_args=()
+  target_runtime_link_path="$(llvm_cross_target_runtime_library_path "${target_label}" || true)"
+  if [ -n "${target_runtime_link_path}" ]; then
+    # IFS-scoped split (see vulkan.sh): survives strict-IFS callers.
+    local -a _lc_link_dirs=()
+    IFS=':' read -r -a _lc_link_dirs <<< "${target_runtime_link_path}"
+    for link_dir in "${_lc_link_dirs[@]}"; do
+      [ -d "${link_dir}" ] || continue
+      linker_flags_init="${linker_flags_init:+${linker_flags_init} }-Wl,-rpath-link,${link_dir}"
+    done
+  fi
+  [ -n "${linker_flags_init}" ] || return 0
+
+  _lf_args=(
+    "-DCMAKE_EXE_LINKER_FLAGS_INIT=${linker_flags_init}"
+    "-DCMAKE_SHARED_LINKER_FLAGS_INIT=${linker_flags_init}"
+    "-DCMAKE_MODULE_LINKER_FLAGS_INIT=${linker_flags_init}"
+  )
+}
+
+# Launcher args for the OUTER (cross) build. The caller resolves the launcher
+# string because the NESTED native sub-build needs the same value.
+_llvm_cross_launcher_cmake_args() {
+  local -n _cl_args="$1"
+  local launcher="$2"
+
+  _cl_args=()
+  [ -n "${launcher}" ] || return 0
+
+  _cl_args=(
+    "-DCMAKE_C_COMPILER_LAUNCHER=${launcher}"
+    "-DCMAKE_CXX_COMPILER_LAUNCHER=${launcher}"
+  )
+}
+
+# Do NOT reintroduce the core-only shape (empty projects / no native tablegen
+# wiring): that combination leaves libLLVMSupportLSP.a unbuilt.
+_llvm_cross_superset_cmake_args() {
+  local -n _ss_args="$1"
+  local build_cc="$2" build_cxx="$3" launcher="$4" native_tool_dir="$5"
+
+  _ss_args=(
+    -DLLVM_BINUTILS_INCDIR=/usr/include
+    -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld"
+    -DLLVM_ENABLE_RUNTIMES="compiler-rt"
+    -DCOMPILER_RT_BUILD_SANITIZERS=ON
+    -DCOMPILER_RT_BUILD_BUILTINS=ON
+    -DCOMPILER_RT_BUILD_XRAY=OFF
+    -DCOMPILER_RT_BUILD_LIBFUZZER=OFF
+    -DCOMPILER_RT_BUILD_PROFILE=ON
+    -DCOMPILER_RT_BUILD_MEMPROF=OFF
+    -DCOMPILER_RT_BUILD_ORC=OFF
+    -DCOMPILER_RT_BUILD_GWP_ASAN=OFF
+    -DCOMPILER_RT_BUILD_CTX_PROFILE=OFF
+    -DSANITIZER_CXX_ABI=libstdc++
+    -DLLVM_USE_HOST_TOOLS=ON
+    # The NESTED native tablegen build compiled launcher-less until this was
+    # added (~2h cold); empty when no compiler cache is usable.
+    "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}${launcher:+;-DCMAKE_C_COMPILER_LAUNCHER=${launcher};-DCMAKE_CXX_COMPILER_LAUNCHER=${launcher}}"
+    -DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"
+  )
+}
+
+# Callable ONLY from inside _llvm_cross_setup_and_build's subshell: CC/AR/
+# CROSS_TARGET_*/CMAKE_SYSROOT come from the env setup_linux_cross_env exported.
+_llvm_cross_cmake_configure() {
+  local -n _cfg="$1"
+  local clang_triple="$2"
+  local -n _cfg_launcher_args="$3"
+  local -n _cfg_linker_args="$4"
+  local -n _cfg_superset_args="$5"
+  local source_dir="${_cfg[source_dir]}" build_dir="${_cfg[build_dir]}" prefix="${_cfg[prefix]}"
+  local wrapper_dir="${_cfg[wrapper_dir]}" backend="${_cfg[backend]}"
+  local native_tool_dir="${_cfg[native_tool_dir]}"
+
+  cmake -G Ninja \
+    "${_cfg_launcher_args[@]}" \
+    -S "${source_dir}/llvm" \
+    -B "${build_dir}" \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_SYSTEM_NAME=Linux \
+    -DCMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}" \
+    -DCMAKE_SYSROOT="${CMAKE_SYSROOT:-/}" \
+    -DCMAKE_C_COMPILER="${CC}" \
+    -DCMAKE_CXX_COMPILER="${CXX}" \
+    -DCMAKE_ASM_COMPILER="${CC}" \
+    -DCMAKE_AR="${AR}" \
+    -DCMAKE_RANLIB="${RANLIB}" \
+    -DCMAKE_NM="${NM}" \
+    -DCMAKE_OBJCOPY="${OBJCOPY}" \
+    -DCMAKE_STRIP="${STRIP}" \
+    "${_cfg_linker_args[@]}" \
+    -DCMAKE_C_FLAGS_INIT="-B${wrapper_dir}" \
+    -DCMAKE_CXX_FLAGS_INIT="-B${wrapper_dir}" \
+    -DCMAKE_ASM_FLAGS_INIT="-B${wrapper_dir}" \
+    -DCMAKE_LIBRARY_ARCHITECTURE="${CROSS_TARGET_TRIPLET}" \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
+    -DCMAKE_INSTALL_PREFIX="${prefix}" \
+    -DLLVM_HOST_TRIPLE="${clang_triple}" \
+    -DLLVM_DEFAULT_TARGET_TRIPLE="${clang_triple}" \
+    -DLLVM_TARGETS_TO_BUILD="${backend}" \
+    "${_cfg_superset_args[@]}" \
+    -DLLVM_BUILD_LLVM_DYLIB=ON \
+    -DLLVM_LINK_LLVM_DYLIB=ON \
+    -DLLVM_INCLUDE_TOOLS=ON \
+    -DLLVM_BUILD_TOOLS=ON \
+    -DLLVM_TOOL_LLVM_SHLIB_BUILD=ON \
+    -DLLVM_INCLUDE_UTILS=OFF \
+    -DLLVM_BUILD_UTILS=OFF \
+    -DLLVM_INCLUDE_TESTS=OFF \
+    -DLLVM_INCLUDE_BENCHMARKS=OFF \
+    -DLLVM_INCLUDE_EXAMPLES=OFF \
+    -DLLVM_INCLUDE_DOCS=OFF \
+    -DLLVM_ENABLE_TERMINFO=OFF \
+    -DLLVM_ENABLE_LIBEDIT=OFF \
+    -DLLVM_ENABLE_ASSERTIONS=OFF \
+    -DLLVM_ENABLE_WARNINGS=OFF \
+    -DLLVM_NATIVE_TOOL_DIR="${native_tool_dir}" \
+    -DLLVM_TABLEGEN="${native_tool_dir}/llvm-tblgen"
+}
+
+_llvm_cross_build_and_install() {
+  local -n _bi="$1"
+  local build_dir="${_bi[build_dir]}" jobs="${_bi[jobs]}" llvm_prefix="${_bi[llvm_prefix]}"
+
+  cmake --build "${build_dir}" --parallel "${jobs}"
+
+  # TVM consumes llvm-config out of /opt/llvm-cross; the default "all" target
+  # does not guarantee it under cross, so build it explicitly.
+  cmake --build "${build_dir}" --parallel "${jobs}" --target llvm-config
+
+  # Install the ONE tree to BOTH prefixes. --strip uses the cross CMAKE_STRIP
+  # (host strip no-ops on foreign ELFs); an unstripped tree is multiple GB.
+  cmake --install "${build_dir}" --strip
+  cmake --install "${build_dir}" --strip --prefix "${llvm_prefix}"
+}
+
 _llvm_cross_setup_and_build() {
+  local state_name="$1"
   local -n _r="$1"
-  local target_label="${_r[target_label]}" triplet="${_r[triplet]}" prefix="${_r[prefix]}"
-  local llvm_prefix="${_r[llvm_prefix]}"
-  local release="${_r[release]}" source_dir="${_r[source_dir]}" build_dir="${_r[build_dir]}"
-  local wrapper_dir="${_r[wrapper_dir]}" jobs="${_r[jobs]}" backend="${_r[backend]}"
+  local target_label="${_r[target_label]}" triplet="${_r[triplet]}"
+  local wrapper_dir="${_r[wrapper_dir]}"
   local native_tool_dir="${_r[native_tool_dir]}"
   local native_wrapper_dir="${_r[native_wrapper_dir]:-}"
   local build_cc build_cxx build_cc_real="${_r[build_cc_real]:-}" build_cxx_real="${_r[build_cxx_real]:-}" host_path="${_r[host_path]:-}"
-  local target_runtime_link_path linker_flags_init link_dir clang_triple
+  local clang_triple
 
   (
     export BUILD_MODE=cross
@@ -157,17 +303,9 @@ _llvm_cross_setup_and_build() {
     # without them the native support lib is silently left unbuilt.
     build_cc="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-gcc" "${build_cc_real}" "${host_path}")"
     build_cxx="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-g++" "${build_cxx_real}" "${host_path}")"
-    target_runtime_link_path="$(llvm_cross_target_runtime_library_path "${target_label}" || true)"
-    linker_flags_init=""
-    if [ -n "${target_runtime_link_path}" ]; then
-      # IFS-scoped split (see vulkan.sh): survives strict-IFS callers.
-      local -a _lc_link_dirs=()
-      IFS=':' read -r -a _lc_link_dirs <<< "${target_runtime_link_path}"
-      for link_dir in "${_lc_link_dirs[@]}"; do
-        [ -d "${link_dir}" ] || continue
-        linker_flags_init="${linker_flags_init:+${linker_flags_init} }-Wl,-rpath-link,${link_dir}"
-      done
-    fi
+
+    local -a linker_flag_args=()
+    _llvm_cross_linker_flag_args linker_flag_args "${target_label}"
 
     clang_triple="${triplet}"
     case "${target_label}" in
@@ -181,103 +319,16 @@ _llvm_cross_setup_and_build() {
     local -a extra_cmake_args=()
     local _xc_launcher
     _xc_launcher="$(compiler_cache_launcher || true)"
-    if [ -n "${_xc_launcher}" ]; then
-      extra_cmake_args+=(
-        "-DCMAKE_C_COMPILER_LAUNCHER=${_xc_launcher}"
-        "-DCMAKE_CXX_COMPILER_LAUNCHER=${_xc_launcher}"
-      )
-    fi
+    _llvm_cross_launcher_cmake_args extra_cmake_args "${_xc_launcher}"
 
-    local -a linker_flag_args=()
-    if [ -n "${linker_flags_init}" ]; then
-      linker_flag_args+=(
-        "-DCMAKE_EXE_LINKER_FLAGS_INIT=${linker_flags_init}"
-        "-DCMAKE_SHARED_LINKER_FLAGS_INIT=${linker_flags_init}"
-        "-DCMAKE_MODULE_LINKER_FLAGS_INIT=${linker_flags_init}"
-      )
-    fi
+    local -a superset_args=()
+    _llvm_cross_superset_cmake_args superset_args \
+      "${build_cc}" "${build_cxx}" "${_xc_launcher}" "${native_tool_dir}"
 
-    # Do NOT reintroduce the core-only shape (empty projects / no native tablegen
-    # wiring): that combination leaves libLLVMSupportLSP.a unbuilt.
-    local -a superset_args=(
-      -DLLVM_BINUTILS_INCDIR=/usr/include
-      -DLLVM_ENABLE_PROJECTS="clang;clang-tools-extra;lld"
-      -DLLVM_ENABLE_RUNTIMES="compiler-rt"
-      -DCOMPILER_RT_BUILD_SANITIZERS=ON
-      -DCOMPILER_RT_BUILD_BUILTINS=ON
-      -DCOMPILER_RT_BUILD_XRAY=OFF
-      -DCOMPILER_RT_BUILD_LIBFUZZER=OFF
-      -DCOMPILER_RT_BUILD_PROFILE=ON
-      -DCOMPILER_RT_BUILD_MEMPROF=OFF
-      -DCOMPILER_RT_BUILD_ORC=OFF
-      -DCOMPILER_RT_BUILD_GWP_ASAN=OFF
-      -DCOMPILER_RT_BUILD_CTX_PROFILE=OFF
-      -DSANITIZER_CXX_ABI=libstdc++
-      -DLLVM_USE_HOST_TOOLS=ON
-      # The NESTED native tablegen build compiled launcher-less until this was
-      # added (~2h cold); empty when no compiler cache is usable.
-      "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=-DCMAKE_C_COMPILER=${build_cc};-DCMAKE_CXX_COMPILER=${build_cxx};-DCMAKE_ASM_COMPILER=${build_cc}${_xc_launcher:+;-DCMAKE_C_COMPILER_LAUNCHER=${_xc_launcher};-DCMAKE_CXX_COMPILER_LAUNCHER=${_xc_launcher}}"
-      -DCLANG_TABLEGEN="${native_tool_dir}/clang-tblgen"
-    )
+    _llvm_cross_cmake_configure "${state_name}" "${clang_triple}" \
+      extra_cmake_args linker_flag_args superset_args
 
-    cmake -G Ninja \
-      "${extra_cmake_args[@]}" \
-      -S "${source_dir}/llvm" \
-      -B "${build_dir}" \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_SYSTEM_NAME=Linux \
-      -DCMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}" \
-      -DCMAKE_SYSROOT="${CMAKE_SYSROOT:-/}" \
-      -DCMAKE_C_COMPILER="${CC}" \
-      -DCMAKE_CXX_COMPILER="${CXX}" \
-      -DCMAKE_ASM_COMPILER="${CC}" \
-      -DCMAKE_AR="${AR}" \
-      -DCMAKE_RANLIB="${RANLIB}" \
-      -DCMAKE_NM="${NM}" \
-      -DCMAKE_OBJCOPY="${OBJCOPY}" \
-      -DCMAKE_STRIP="${STRIP}" \
-      "${linker_flag_args[@]}" \
-      -DCMAKE_C_FLAGS_INIT="-B${wrapper_dir}" \
-      -DCMAKE_CXX_FLAGS_INIT="-B${wrapper_dir}" \
-      -DCMAKE_ASM_FLAGS_INIT="-B${wrapper_dir}" \
-      -DCMAKE_LIBRARY_ARCHITECTURE="${CROSS_TARGET_TRIPLET}" \
-      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
-      -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
-      -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
-      -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
-      -DCMAKE_INSTALL_PREFIX="${prefix}" \
-      -DLLVM_HOST_TRIPLE="${clang_triple}" \
-      -DLLVM_DEFAULT_TARGET_TRIPLE="${clang_triple}" \
-      -DLLVM_TARGETS_TO_BUILD="${backend}" \
-      "${superset_args[@]}" \
-      -DLLVM_BUILD_LLVM_DYLIB=ON \
-      -DLLVM_LINK_LLVM_DYLIB=ON \
-      -DLLVM_INCLUDE_TOOLS=ON \
-      -DLLVM_BUILD_TOOLS=ON \
-      -DLLVM_TOOL_LLVM_SHLIB_BUILD=ON \
-      -DLLVM_INCLUDE_UTILS=OFF \
-      -DLLVM_BUILD_UTILS=OFF \
-      -DLLVM_INCLUDE_TESTS=OFF \
-      -DLLVM_INCLUDE_BENCHMARKS=OFF \
-      -DLLVM_INCLUDE_EXAMPLES=OFF \
-      -DLLVM_INCLUDE_DOCS=OFF \
-      -DLLVM_ENABLE_TERMINFO=OFF \
-      -DLLVM_ENABLE_LIBEDIT=OFF \
-      -DLLVM_ENABLE_ASSERTIONS=OFF \
-      -DLLVM_ENABLE_WARNINGS=OFF \
-      -DLLVM_NATIVE_TOOL_DIR="${native_tool_dir}" \
-      -DLLVM_TABLEGEN="${native_tool_dir}/llvm-tblgen"
-
-    cmake --build "${build_dir}" --parallel "${jobs}"
-
-    # TVM consumes llvm-config out of /opt/llvm-cross; the default "all" target
-    # does not guarantee it under cross, so build it explicitly.
-    cmake --build "${build_dir}" --parallel "${jobs}" --target llvm-config
-
-    # Install the ONE tree to BOTH prefixes. --strip uses the cross CMAKE_STRIP
-    # (host strip no-ops on foreign ELFs); an unstripped tree is multiple GB.
-    cmake --install "${build_dir}" --strip
-    cmake --install "${build_dir}" --strip --prefix "${llvm_prefix}"
+    _llvm_cross_build_and_install "${state_name}"
   )
 }
 
@@ -304,9 +355,8 @@ _llvm_cross_post_build_hooks() {
 _build_llvm_cross_core() {
   local mode="$1"
   local target_label="$2"
-  # NOTE: this array must NOT be named `_r` — the helpers below bind it with
-  # `local -n _r="$1"`, and a nameref whose target has the same name is a bash
-  # circular reference (breaks every _r[...] write → "unbound variable").
+  # MUST NOT be named `_r`/`_cfg`/`_bi`, nor collide with the *_args out-arrays:
+  # a self-referential `local -n` is a circular ref. docs/refactoring-backlog-archive-2026-08-31.md
   local -A _state=()
 
   _llvm_cross_resolve_dirs _state "${mode}" "${target_label}" || return 0

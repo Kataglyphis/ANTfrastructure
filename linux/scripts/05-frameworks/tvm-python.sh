@@ -95,21 +95,21 @@ _tvm_wheel_setup() {
 
     local -a wheel_cmake_args=()
     append_tvm_cmake_args \
-      wheel_cmake_args \
-      ON \
-      "$build_type" \
-      "$desired_cc" \
-      "$desired_cxx" \
-      "$llvm_cmake_value" \
-      "$llvm_dir" \
-      "$llvm_ignore_paths" \
-      "$use_vulkan" \
-      "$use_cuda" \
-      "$use_opencl" \
-      "$spirv_tools_lib" \
-      "$cross_link_flags" \
-      "$vulkan_library" \
-      "$vulkan_include"
+      --out wheel_cmake_args \
+      --python-module ON \
+      --build-type "$build_type" \
+      --cc "$desired_cc" \
+      --cxx "$desired_cxx" \
+      --llvm-cmake-value "$llvm_cmake_value" \
+      --llvm-dir "$llvm_dir" \
+      --llvm-ignore-paths "$llvm_ignore_paths" \
+      --use-vulkan "$use_vulkan" \
+      --use-cuda "$use_cuda" \
+      --use-opencl "$use_opencl" \
+      --spirv-tools-lib "$spirv_tools_lib" \
+      --cross-link-flags "$cross_link_flags" \
+      --vulkan-library "$vulkan_library" \
+      --vulkan-include "$vulkan_include"
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
 
     # Cross only; empty string on native and whenever the target sysconfigdata

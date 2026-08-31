@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# Golden trace of _build_vulkan_targets + the _vulkan_target_* helpers it was
+# decomposed into (02-toolchain/vulkan.sh). docs/cross-build-verification.md
+set -u
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${TESTS_DIR}/test-harness.sh"
+VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
+
+# Source ONLY the functions under test: vulkan.sh sets `set -euo pipefail` at
+# file scope and pulls 01-core modules on source.
+_FNS=""
+for _fn in _cross_build_sdk_component \
+           _vulkan_target_copy_headers \
+           _vulkan_target_build_loader \
+           _vulkan_target_build_spirv_tools \
+           _vulkan_target_link_glslang_aliases \
+           _vulkan_target_build_glslang \
+           _vulkan_target_verdict \
+           _build_vulkan_targets; do
+  _src="$(awk "/^${_fn}\(\) \{/,/^\}/" "${VULKAN_SH}")"
+  t_case "vulkan.sh still defines ${_fn}"
+  t_assert_contains "${_src}" "${_fn}() {" "helper renamed or removed?"
+  _FNS="${_FNS}
+${_src}"
+done
+
+SDK="$(mktemp -d)"
+trap 'rm -rf "${SDK}"' EXIT
+
+# Fake extracted SDK tree; `full` = every source + host headers, the rest
+# exercise the skip branches.
+_fixture() {
+  rm -rf "${SDK:?}"/*
+  case "$1" in
+    empty) ;;
+    glslang-main)
+      mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/glslang-main"
+      : > "${SDK}/x86_64/include/vulkan/vulkan.h"
+      ;;
+    *)
+      mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/x86_64/include/vk_video"
+      : > "${SDK}/x86_64/include/vulkan/vulkan.h"
+      : > "${SDK}/x86_64/include/vk_video/vk_video.h"
+      mkdir -p "${SDK}/source/Vulkan-Loader" "${SDK}/source/SPIRV-Tools" \
+               "${SDK}/source/SPIRV-Headers" "${SDK}/source/glslang"
+      ;;
+  esac
+}
+
+# Runs it under the caller's `set -euo pipefail` with cmake/log/warn/die stubbed;
+# an errexit abort shows up as a MISSING "EXIT 0". $1=cmake rc $2=record SUDO
+_trace() {
+  local rc="$1" record_sudo="$2"
+  (
+    set -euo pipefail
+    eval "${_FNS}"
+    log()  { printf 'LOG %s\n' "$*"; }
+    warn() { printf 'WARN %s\n' "$*"; }
+    die()  { printf 'DIE %s\n' "$*"; exit 9; }
+    compute_jobs() { printf '4\n'; }
+    cmake() { printf 'CMAKE %s\n' "$*"; return "${rc}"; }
+    _sudo_rec() { printf 'SUDO %s\n' "$*"; }
+    SUDO=""
+    [ "${record_sudo}" = "1" ] && SUDO=_sudo_rec
+    unset CC CXX
+    _build_vulkan_targets aarch64 "${SDK}" aarch64-linux-gnu
+    printf 'EXIT %s\n' "$?"
+  ) 2>&1 | sed -E "s#-B /tmp/[A-Za-z0-9._]+/#-B TMP/#; s#(--build|--install) /tmp/[A-Za-z0-9._]+/#\1 TMP/#; s#${SDK}#SDK#g"
+}
+
+_XTOOL='-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ -DCMAKE_INSTALL_LIBDIR=lib'
+
+# ---------------------------------------------------------------------------
+_fixture full
+_out="$(_trace 0 0)"
+
+t_case "all three components: cmake argv is byte-for-byte the cross contract"
+t_assert_contains "${_out}" \
+  "CMAKE -S SDK/source/Vulkan-Loader -B TMP/vulkan-loader-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DVULKAN_HEADERS_INSTALL_DIR=SDK/x86_64 -DBUILD_TESTS=OFF -DBUILD_WSI_XCB_SUPPORT=OFF -DBUILD_WSI_XLIB_SUPPORT=OFF -DBUILD_WSI_WAYLAND_SUPPORT=OFF -DBUILD_WSI_DIRECTFB_SUPPORT=OFF" \
+  "loader flags/WSI-off set changed"
+t_assert_contains "${_out}" \
+  "CMAKE -S SDK/source/SPIRV-Tools -B TMP/spirv-tools-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DSPIRV-Headers_SOURCE_DIR=SDK/source/SPIRV-Headers -DSPIRV_SKIP_TESTS=ON -DSPIRV_SKIP_EXECUTABLES=ON -DSPIRV_WERROR=OFF" \
+  "SPIRV-Tools flags changed (SPIRV_WERROR=OFF guards GCC 16 -Warray-bounds)"
+t_assert_contains "${_out}" \
+  "CMAKE -S SDK/source/glslang -B TMP/glslang-aarch64 ${_XTOOL} -DCMAKE_INSTALL_PREFIX=SDK/aarch64 -DENABLE_OPT=OFF -DGLSLANG_TESTS=OFF -DBUILD_TESTING=OFF -DENABLE_GLSLANG_BINARIES=ON -DENABLE_SPVREMAPPER=OFF" \
+  "glslang flags changed"
+
+t_case "step order: loader, then SPIRV-Tools, then glslang, then the verdict"
+t_assert_eq "vulkan-loader-aarch64 spirv-tools-aarch64 glslang-aarch64" \
+  "$(printf '%s\n' "${_out}" | sed -n 's/^CMAKE -S .* -B TMP\/\([a-z-]*[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 3/3 component(s) built"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "headers are copied into the target archdir BEFORE the loader configures"
+t_assert_ok test -d "${SDK}/aarch64/include/vulkan"
+t_assert_ok test -d "${SDK}/aarch64/include/vk_video"
+t_assert_ok test -d "${SDK}/aarch64/lib"
+
+# ---------------------------------------------------------------------------
+t_case "every component failing is an env-shaped verdict, not silent success"
+_fixture full
+_out="$(_trace 1 0)"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 0/3 component(s) built"
+t_assert_contains "${_out}" "WARN ALL 3 Vulkan cross-component(s) FAILED for aarch64"
+t_assert_contains "${_out}" "broken aarch64-linux-gnu toolchain?"
+t_assert_contains "${_out}" "EXIT 0" "per-component failure stays non-fatal by default"
+
+t_case "VULKAN_CROSS_STRICT=1 promotes the all-failed verdict to fatal"
+_fixture full
+_out="$( VULKAN_CROSS_STRICT=1 _trace 1 0 )"
+t_assert_contains "${_out}" "DIE VULKAN_CROSS_STRICT=1 and all 3 Vulkan cross-components failed for aarch64"
+
+# ---------------------------------------------------------------------------
+t_case "missing sources: each component logs its own skip, verdict is 0/0"
+_fixture empty
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "LOG Vulkan-Loader source or host headers missing; skipping target loader"
+t_assert_contains "${_out}" "LOG SPIRV-Tools source missing at SDK/source/SPIRV-Tools; skipping target SPIRV-Tools"
+t_assert_contains "${_out}" "LOG glslang source missing at SDK/source/glslang; skipping target glslang"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 0/0 component(s) built"
+t_assert_eq "" "$(printf '%s\n' "${_out}" | grep '^CMAKE' || true)" "nothing may configure"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_case "glslang falls back to the source/glslang-main checkout name"
+_fixture glslang-main
+_out="$(_trace 0 0)"
+t_assert_contains "${_out}" "CMAKE -S SDK/source/glslang-main -B TMP/glslang-aarch64"
+t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 1/1 component(s) built"
+
+# ---------------------------------------------------------------------------
+# ${SUDO} is recorded, not run: no host symlinks.
+t_case "glslang installed as 'glslang' also gets the glslangValidator alias"
+_fixture full
+mkdir -p "${SDK}/aarch64/bin"
+printf '#!/bin/sh\n' > "${SDK}/aarch64/bin/glslang"
+chmod +x "${SDK}/aarch64/bin/glslang"
+_out="$(_trace 0 1)"
+t_assert_contains "${_out}" "SUDO ln -s glslang SDK/aarch64/bin/glslangValidator"
+t_assert_contains "${_out}" "SUDO ln -sf SDK/aarch64/bin/glslang /usr/local/bin/glslang"
+# The recorder creates no alias, so the loop's last `[ -e ]` is false: EXIT 0
+# proves the helper's trailing `return 0` still absorbs it under errexit.
+t_assert_contains "${_out}" "EXIT 0" \
+  "_vulkan_target_link_glslang_aliases must not leak a false [ -e ] test under set -e"
+
+t_case "glslang installed as 'glslangValidator' gets the reverse alias"
+_fixture full
+mkdir -p "${SDK}/aarch64/bin"
+printf '#!/bin/sh\n' > "${SDK}/aarch64/bin/glslangValidator"
+chmod +x "${SDK}/aarch64/bin/glslangValidator"
+_out="$(_trace 0 1)"
+t_assert_contains "${_out}" "SUDO ln -s glslangValidator SDK/aarch64/bin/glslang"
+t_assert_contains "${_out}" "EXIT 0"
+
+t_summary
