@@ -16,13 +16,15 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary: **AP**=artifact perf · **TG/TS**=toolchain · **GPU**=GPU
 lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
+**LB**=llm-stack benchmark harness ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
 Last groomed: 2026-08-30 (cleanup after the rebuild window). Everything the
 2026-08-30 waves closed is in the archive — this file holds only what is still
 open: the A1 closure-window style debt (incl. the logging.sh ERR-trap bug found
 2026-08-30), GEN1, the QNN-LINUX fan-out validation (blocked on a login-gated
-SDK re-stage), and the E-section trigger watches.
+SDK re-stage), the new B/LLM-BENCH group (2026-08-31, harvesting the GenieX
+measurement session into `linux/llm-stack`), and the E-section trigger watches.
 
 ## Standing rules (read first)
 
@@ -90,6 +92,83 @@ wiring (GenAI/LiteRT/TVM/IREE) — every flag mirrors Windows #121 exactly.
   in versions.env — a fake/round-tripped zip hard-fails the sha check by
   design. QNN_SDK_LINUX_LIBDIR (default `aarch64-oe-linux-gcc11.2`) is the
   single knob if a newer SDK changes the lib subdir.
+
+## B. LLM-BENCH — harvest the GenieX session into `linux/llm-stack`
+
+Added 2026-08-31 after the Snapdragon/GenieX measurement session. That session
+re-derived, ad hoc in a scratchpad, a set of capabilities `linux/llm-stack`
+already *almost* has — and every wrong conclusion it produced traces to a
+metric the existing harness does not collect. `benchmark_openai_api.py` (502
+lines) + `run_benchmarks.sh` + the React viewer are a good base; these are the
+gaps, ordered by what actually cost time.
+
+- **LB1 — correctness probe beside the speed numbers** [M·★★★] The harness
+  measures *only* speed. A model emitting garbage scores **excellently**: the
+  GenieX i-quant bug produced fast, fluent nonsense (`'\n\n\n....\n\n'`,
+  `' majorityathersyre…'`) that every tok/s metric would have rated as a good
+  run. Add a small battery of prompts with **verifiable** answers (arithmetic,
+  a capital city, letter counting, a one-step logic puzzle) run at
+  `temperature=0`, and record `correct/total` in the result JSON beside
+  `tokens_per_sec`. Cheap, and it is the difference between "is it fast" and
+  "is it working". Proven discriminating: Qwen3-4B `Q4_0` 6/6 vs `Q2_K` 4/6 vs
+  i-quant 0/6.
+- **LB2 — TTFT / prefill as a first-class metric** [S·★★★] There is **no
+  time-to-first-token measurement at all** (`grep first_token` → nothing). The
+  session's central finding is that **prefill, not decode, is what an agent
+  waits on**: 13.1 s to first token on a 2.5k-token prompt, while decode fell
+  from 19.5 to 13.0 tok/s. Add `ttft_s` and a derived `prefill_tok_per_s`
+  (`prompt_tokens / ttft_s`) to the schema and the viewer. Requires `--stream`,
+  which the harness already supports.
+- **LB3 — report time-to-finished-answer, not tok/s** [S·★★★] The data is
+  already collected (`completion_tokens`, `latency_s`) but the table and the
+  viewer headline `tokens_per_sec`, which **ranks models wrongly**: Qwen3-1.7B
+  is the fastest model measured (31.7 tok/s) and the *slowest* to a finished
+  answer (60.8 s) because it is a reasoning model spending ~1900 tokens
+  thinking; the 4B-Instruct is 19.5 tok/s and 26.8 s. Add `wall_s_to_answer`
+  and sort by it. Consider a `thinking_token_share` derived from a `</think>`
+  split — it explains most surprises.
+- **LB4 — multi-endpoint + concurrent lane aggregate** [M·★★] `OLLAMA_BASE_URL`
+  is a single module-level global. Generalise to N *named* endpoints and add a
+  mode that drives them **simultaneously**, reporting per-lane and aggregate
+  throughput. This is what produced the whole lane matrix (NPU+GPU 31.4,
+  NPU+CPU 39.7, all three 45.4 tok/s) and the finding that the NPU lane is
+  immune to contention while CPU and GPU fight for cores. Un-derivable from
+  sequential single-endpoint runs.
+- **LB5 — batching/serialization probe** [S·★★] Fire two concurrent requests at
+  one endpoint: if #2's TTFT ≈ #1's total duration, the server does not batch.
+  GenieX does not (measured: 27.6 s), and a busy server stops answering
+  `/v1/models` entirely. One cheap check that decides whether capacity comes
+  from concurrency or from more servers.
+- **LB6 — GGUF introspection as a diagnostic** [S·★★] The tensor-type histogram
+  is what actually diagnosed the i-quant bug — **no benchmark could have**,
+  because the broken files were fast. A ~40-line GGUF header reader (magic →
+  KV metadata → tensor type counts) separates "bad weights" from "bad kernel"
+  in seconds and reads only the file head. Pairs with LB1: LB1 detects, LB6
+  explains.
+- **LB7 — de-Ollama the harness** [S·★] It is Ollama-shaped in ways that block
+  reuse: `OLLAMA_BASE_URL`, a hardcoded `"gemma4:26b"` in
+  `detect_model_via_api` (line 171, a latent bug — it probes `/api/show` for a
+  model that may not exist), the Ollama-only `/api/show` path, and `num_ctx`
+  passed via `--extra-params`. Rename to a neutral `LLM_BASE_URL` (keep the old
+  name as a fallback), make detection `/v1/models`-first, and treat the
+  Ollama-specific bits as one backend among several. Prerequisite for pointing
+  it at GenieX, llama.cpp or vLLM.
+- **LB8 — attribute resources to the *worker*, not the listener** [S·★] Today's
+  sampling is system-wide (Glances/psutil), which is safe. If per-process
+  attribution is ever added, note the trap this session fell into: the GenieX
+  inference worker is a **different process** from the one holding the port —
+  sampling the listener read 11 % of 800 % and suggested the lane was idle,
+  while the real worker was at 752 %. Resolve the worker, not the socket owner.
+- **LB9 — hardware info is Linux-only** [S·★] `collect_hardware_info()` reads
+  `/proc/cpuinfo` and `/proc/meminfo` behind bare `except: pass`, so on a
+  non-Linux host it silently records nothing. The GenieX lane runs on a
+  **Windows** host, so any cross-host comparison currently loses its
+  reproducibility metadata exactly where it is needed. Add a fallback
+  (`platform` + `psutil`) and, better, fail loudly when a field is missing.
+
+**Explicitly NOT for llm-stack:** `windows/scripts/host/start-geniex-servers.ps1`
+stays where it is — it is Windows-host lane management, not benchmarking. Only
+the *measurement* belongs here.
 
 ## E. Waiting on a TRIGGER (not on work)
 

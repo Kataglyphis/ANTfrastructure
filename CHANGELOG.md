@@ -5,6 +5,36 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — 2-bit measured; GenieX session harvested into an llm-stack backlog
+
+**2-bit K-quants work; i-quants at any width do not.** `Qwen3-4B:Q2_K` is a
+pure K-quant file (Q2_K 144, Q3_K 72, Q4_K 36, no i-quants) and produces
+coherent output -- so the sub-Q4 failures really are the i-quant bug, not bit
+width. It does cost accuracy: on a six-question verifiable battery at
+temperature 0, Q4_0 scored 6/6 and Q2_K 4/6, losing exactly the two reasoning
+items (letter counting 3->2, the machines/widgets puzzle 5->1) while keeping
+arithmetic and factual recall. Six questions is a probe, not a benchmark, and
+perplexity is not measurable through the OpenAI API. For the 27B it is moot:
+the only sub-Q4 variants in that repo are i-quant based.
+
+**New backlog group B/LLM-BENCH** (`docs/refactoring-backlog.md`): nine items
+harvesting this session into `linux/llm-stack`, which already has a 502-line
+benchmark harness, a sweep script and a React viewer. Every wrong conclusion
+this session produced traces to a metric that harness does not collect:
+
+- LB1 [M/3-star] a correctness probe -- it measures only speed, so the i-quant
+  garbage would have scored *excellently* (fast, fluent nonsense)
+- LB2 [S/3-star] TTFT/prefill; there is no first-token measurement at all,
+  and prefill is what an agent actually waits on
+- LB3 [S/3-star] report time-to-finished-answer; headlining tok/s ranks models
+  wrongly (1.7B: fastest tok/s, slowest answer)
+- LB4 [M/2-star] multi-endpoint + concurrent lane aggregate
+- LB5 [S/2-star] batching/serialization probe
+- LB6 [S/2-star] GGUF tensor-type introspection -- what actually diagnosed the
+  i-quant bug, since no benchmark could
+- LB7-LB9 [S/1-star] de-Ollama the harness (hardcoded gemma4:26b at line 171),
+  worker-vs-listener resource attribution, Linux-only hardware info
+
 ## 2026-08-31 — CORRECTION: the sub-Q4 garbage is a GenieX i-quant bug, not a quality floor
 
 The previous entry claimed "a hard quality floor at Q4 -- both 3-bit quants
