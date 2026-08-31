@@ -480,6 +480,41 @@ int _isatty(int);
     $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
     if ($script:GstCross) {
         if ($rtCandidates.Count -eq 0) {
+            # SELF-HEAL: the source-built toolchain (#135) ships the host builtins
+            # only, so the arm64 GStreamer link would die on __udivti3. Mine the
+            # aarch64 counterpart from the LLVM release archive (same recipe as
+            # setup-scoop-tools.ps1); only the one .lib is kept.
+            $rtHostLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($rtHostLib.Count -gt 0) {
+                $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
+                $rtArchive = Join-Path $resolvedLogDir "clang+llvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
+                $rtExtract = Join-Path $resolvedLogDir 'llvm-aarch64-rt'
+                try {
+                    log "Fetching aarch64 compiler-rt (LLVM $rtVer) - the patched toolchain ships x86_64 builtins only"
+                    Invoke-DownloadWithRetry -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz" -DestinationPath $rtArchive
+                    # System32 bsdtar, never the GNU tar that may be on PATH: GNU
+                    # parses `C:\...` as a remote-host spec ("Cannot connect to C:").
+                    $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+                    if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
+                    New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
+                    & $rtTar -xf $rtArchive -C $rtExtract '*clang_rt.builtins-aarch64.lib'
+                    $rtFound = @(Get-ChildItem -Path $rtExtract -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+                    if ($rtFound.Count -gt 0) {
+                        Copy-Item -Path $rtFound[0].FullName -Destination $rtHostLib[0].Directory.FullName -Force
+                        log "Installed aarch64 compiler-rt -> $(Join-Path $rtHostLib[0].Directory.FullName 'clang_rt.builtins-aarch64.lib')"
+                    } else {
+                        Write-Warning "clang_rt.builtins-aarch64.lib was not found inside $rtArchive - the upstream archive layout changed."
+                    }
+                } catch {
+                    Write-Warning "aarch64 compiler-rt fetch failed: $($_.Exception.Message)"
+                } finally {
+                    Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $rtExtract -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
+            }
+        }
+        if ($rtCandidates.Count -eq 0) {
             # WARN, do not throw: absence is already tolerated on amd64, so throwing
             # only here would apply a stricter policy to the cross lane. Linking
             # nothing is the honest outcome -- lld-link then names the missing
@@ -1086,10 +1121,15 @@ cpp_link_args = [$buildLinkArgs]
         # cairo:win32 crashes clang-cl (LLVM 22 mmintrin.h __builtin_shufflevector);
         # -Dcairo:win32=disabled intentionally fails cairo at meson setup.
         '-Dcairo:win32=disabled',
-        # Opus intrinsics: the x86 MMX/SSE path crashes clang-cl (mmintrin.h),
-        # but the aarch64 NEON intrinsics path has no such issue — enable it
-        # on the cross lane for NEON-optimized audio encode/decode.
-        $(if ($script:GstCross) { '-Dopus:intrinsics=enabled' } else { '-Dopus:intrinsics=disabled' }),
+# Opus intrinsics stay DISABLED on both lanes. The x86 MMX/SSE path
+        # crashes clang-cl (mmintrin.h), and the cross-lane NEON enablement
+        # (tried 2026-08-30, reverted 2026-08-31) died two ways under clang-cl
+        # aarch64: RTCD applies -mfpu=neon (ARM32-only flag) and the RTCD CPU
+        # probe arm_armcpu.c uses MSVC's __emit, which clang-cl lacks. The
+        # working enablement recipe (intrinsics=enabled + rtcd=disabled) is
+        # recorded in docs/windows-cross-builds.md and the backlog; re-enable
+        # only in a dedicated test window on a real device.
+        '-Dopus:intrinsics=disabled',
         # nvcodec: gstnvdecoder.cpp needs gst-d3d11 headers clang-cl cannot find.
         # The CUDA gst-lib is auto-detected separately.
         '-Dgst-plugins-bad:nvcodec=disabled',

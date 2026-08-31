@@ -40,7 +40,10 @@ at `C:\temp\qnn-sdk`.
   the `hexagon-v*` skel directories beside `onnxruntime.dll`, so a target host finds them
   on the DLL search path without any extra `PATH` surgery.
 
-Scaffold status: the plumbing is exercised only when a zip is present. The host that
-built this repo has never held the SDK, so the QNN branch is **unproven** — the first
-staged zip will tell. See `docs/windows-cross-builds.md` (QNN section) and backlog #121 in
-`docs/windows-builds.md`.
+Status: **BUILD-TIME PATH PROVEN 2026-08-31** — the staged zip
+(`qairt-2.44.0.260225`, SHA-pinned) was exercised by a full `:winarm64` cross
+chain: ONNX built the QNN provider with the `aarch64-windows-msvc` backend set,
+and the backend DLLs were staged beside all five frameworks (arch gate
+1168/0, import walk 0 unresolved, smoke 97/0/15). Execution on a Snapdragon
+device is still the standing open item. See `docs/windows-cross-builds.md`
+(QNN section) and backlog #121 in `docs/windows-builds.md`.

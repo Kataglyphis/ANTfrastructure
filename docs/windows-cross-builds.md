@@ -821,6 +821,49 @@ Three details worth keeping:
   API returns, and the unencoded form 404s. Note also that GitHub refuses **HEAD** on release assets, so a
   failed HEAD is *not* evidence the asset is missing — verify with a ranged GET instead.
 
+### The patched-LLVM toolchain (#135) does not carry it — GStreamer self-heals
+
+`BUILD_PATCHED_LLVM=1` (the default since 2026-08-29) builds clang/LLVM from source, and that build emits
+compiler-rt builtins for the **host** arch only (`-DLLVM_ENABLE_RUNTIMES=compiler-rt`), so
+`C:\llvm-patched\lib\clang` holds `clang_rt.builtins-x86_64.lib` and nothing else. The arm64 GStreamer link
+then fails exactly as above — found on the 2026-08-30 arm64 cross run (merge stage, `__udivti3` undefined
+linking `gstreamer-1.0-0.dll`), with the script's own warning naming the cause.
+
+Rather than rebuild the whole chain to add the lib to the toolchain layer (the media branches derive FROM
+`bk-windows-toolchain`, so one added layer re-pays ~2 h of media compiles), the **GStreamer merge stage
+self-heals**: `build-gstreamer-from-source.ps1` § 5d, on the cross lane only, mines
+`clang_rt.builtins-aarch64.lib` from the official release archive (same URL/recipe as
+`setup-scoop-tools.ps1`) next to the x86_64 lib, then re-runs its candidate search. The existing
+warn-and-link-without policy stays for the case the fetch fails. Regression: `SourceBuild.GstreamerCompilerRt.Tests.ps1`.
+The toolchain-level fix (builtins in the `patched-llvm` stage) is a tracked follow-up for the next natural
+toolchain rebuild.
+
+### opus NEON intrinsics stay DISABLED on the cross lane (enablement reverted 2026-08-31)
+
+The speculative cross-lane enablement (`-Dopus:intrinsics=enabled`, added 2026-08-30) was proven broken
+twice once the compiler-rt fix let the GStreamer build actually reach opus. Under clang-cl aarch64, the
+RTCD path (default) applies `-mfpu=neon` — an ARM32-only flag clang-cl rejects for aarch64
+(`unsupported option '-mfpu='`), and the RTCD CPU probe `celt/arm/armcpu.c` uses MSVC's `__emit`
+intrinsic, which clang-cl does not implement. The lane is back on the 2026-08-26 proven shape:
+`-Dopus:intrinsics=disabled` on BOTH lanes (the scalar opus codec is fully functional).
+
+The working enablement recipe for a future dedicated test window: `-Dopus:intrinsics=enabled
+-Dopus:rtcd=disabled` — with RTCD off, a clang-cl aarch64 build *presumes* SIMD (`opus_can_presume_simd
+= true`), so no `-mfpu=` args are applied and the `__emit`-based `arm_armcpu.c` is not compiled. The
+tradeoff to verify on a real device: dotprod and NEON are presumed unconditionally, so the image is
+Snapdragon-class-only (all current Windows-on-ARM devices qualify, but it is not a universally-safe
+default). Re-enable only with a smoke-tested device run. Tracked in
+`docs/windows-refactor-backlog.md` #135 follow-up.
+
+The staged QNN runtime also extended the merge gate's knowledge: the QAIRT HTP
+stub DLLs (`QnnHtpV*Stub.dll`, `calculator*.dll` — staged beside every
+framework by `Copy-QnnRuntime`) import `libcdsprpc.dll`/`libadsprpc.dll`,
+Qualcomm's FastRPC ADSP/CDSP drivers. Those are device-OS libraries: present in
+every Windows-on-Snapdragon image, never in the SDK zip and never on the
+Server Core reference host — so `verify-target-arch.ps1`'s `ClientOsPattern`
+now allows them, and the arch gate reports the QNN payload as inspected PE +
+resolved imports instead of 63 phantom unresolved edges.
+
 ## aarch64 OpenSSL is a base prerequisite too
 
 scoop installs **one architecture per app**, and that is the host's — so the image carries
