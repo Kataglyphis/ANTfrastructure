@@ -87,6 +87,17 @@ DOCKER_INSTR = re.compile(r"^\s*(FROM|RUN|COPY|ADD|ARG|ENV|WORKDIR|ENTRYPOINT|CM
                           re.IGNORECASE)
 
 
+# Spellings the shell treats as identical. Folding them is free accuracy: a copy
+# that swapped [[ ]] for [ ], or backticks for $(), is still a copy.
+BRACKET = re.compile(r"\[\[(.*?)\]\]")
+BACKTICK = re.compile(r"`([^`]*)`")
+
+
+def canonicalise(line: str) -> str:
+    line = BRACKET.sub(r"[\1]", line)
+    return BACKTICK.sub(r"$(\1)", line)
+
+
 def normalise_lines(text: str) -> list[str]:
     """Per-line normalised form, for measuring CONTIGUOUS runs."""
     out = []
@@ -97,6 +108,7 @@ def normalise_lines(text: str) -> list[str]:
         line = STRING.sub('"S"', line)
         line = VARIABLE.sub("$V", line)
         line = NUMBER.sub("N", line)
+        line = canonicalise(line)
         out.append(" ".join(TOKEN.findall(line)))
     return out
 
@@ -129,6 +141,7 @@ def normalise(text: str) -> list[str]:
         line = STRING.sub('"S"', line)
         line = VARIABLE.sub("$V", line)
         line = NUMBER.sub("N", line)
+        line = canonicalise(line)
         out.extend(TOKEN.findall(line))
     return out
 
