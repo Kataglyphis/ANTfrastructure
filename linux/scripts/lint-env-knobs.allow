@@ -214,3 +214,10 @@ NO_CACHE_EXPORT
 # lib, backlog QNN-LINUX). Default /tmp/qnn-sdk-extract; useful for testing
 # with a persistent extract dir.
 QNN_SDK_EXTRACT_DIR
+
+# D4 preflight cache-export trim (build-cross-chain.sh / disk-guard.sh).
+# CROSS_PREFLIGHT_TRIM=0 restores the pre-2026-08-31 behaviour (hint + abort).
+CROSS_PREFLIGHT_TRIM
+# Newest N cache-export slugs the trim must never remove. Default 3; the byte
+# budget alone does NOT bound the trim. docs/build-cache-tiers.md
+CROSS_TRIM_KEEP_SLUGS

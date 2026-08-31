@@ -30,6 +30,93 @@ cross_linker_search_flags() {
   printf '%s' "${flags}"
 }
 
+# ── emit blocks ──────────────────────────────────────────────────────────────
+# Each takes the caller's array NAME as $1 and appends in place; emission order
+# is semantics (later -D wins). Internals stay `_tvm_`-prefixed so a caller
+# array never collides with the nameref.
+# docs/refactoring-backlog-archive-2026-08-31.md
+
+# $1=array name  $2=cross link flags
+_tvm_emit_cross_args() {
+  local -n _tvm_emit_ref="$1"
+  if cross_build_is_active; then
+    append_cmake_cross_args "$1"
+    _tvm_emit_ref+=( -DUSE_ALTERNATIVE_LINKER=OFF )
+    if [ -n "${2:-}" ]; then
+      _tvm_emit_ref+=(
+        "-DCMAKE_EXE_LINKER_FLAGS=${2}${CMAKE_EXE_LINKER_FLAGS:+ ${CMAKE_EXE_LINKER_FLAGS}}"
+        "-DCMAKE_SHARED_LINKER_FLAGS=${2}${CMAKE_SHARED_LINKER_FLAGS:+ ${CMAKE_SHARED_LINKER_FLAGS}}"
+        "-DCMAKE_MODULE_LINKER_FLAGS=${2}${CMAKE_MODULE_LINKER_FLAGS:+ ${CMAKE_MODULE_LINKER_FLAGS}}"
+      )
+    fi
+  fi
+}
+
+# $1=array name  $2=llvm dir  $3=llvm ignore paths
+_tvm_emit_llvm_args() {
+  local -n _tvm_emit_ref="$1"
+  if [ -n "${2:-}" ]; then
+    _tvm_emit_ref+=( -DLLVM_DIR="${2}" )
+    if [ -n "${3:-}" ]; then
+      _tvm_emit_ref+=( "-DCMAKE_IGNORE_PATH=${3}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
+    fi
+  fi
+}
+
+# $1=array name. Overrides TVM's internal USE_CCACHE=AUTO detection so the
+# decision goes through compiler_cache_launcher() (sccache first, ccache
+# fallback, guarded launcher when mounted).
+_tvm_emit_compiler_cache_args() {
+  local -n _tvm_emit_ref="$1"
+  local _tvm_launcher
+  _tvm_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
+  if [ -n "${_tvm_launcher}" ]; then
+    _tvm_emit_ref+=(
+      "-DCMAKE_C_COMPILER_LAUNCHER=${_tvm_launcher}"
+      "-DCMAKE_CXX_COMPILER_LAUNCHER=${_tvm_launcher}"
+    )
+  fi
+}
+
+# $1=array name  $2=use vulkan (0/1)  $3=Vulkan_LIBRARY  $4=Vulkan_INCLUDE_DIR
+# $5=Vulkan_SPIRV_TOOLS_LIBRARY
+# For cross builds, point find_package(Vulkan) at the target-arch loader/
+# headers (resolve_tvm_vulkan); otherwise it resolves the host x86_64 loader
+# from the sourced SDK env and the target link fails "file in wrong format".
+_tvm_emit_vulkan_args() {
+  local -n _tvm_emit_ref="$1"
+  if [ "${2}" -eq 1 ]; then
+    _tvm_emit_ref+=( -DUSE_VULKAN=ON )
+    if [ -n "${3:-}" ]; then
+      _tvm_emit_ref+=( -DVulkan_LIBRARY="${3}" )
+    fi
+    if [ -n "${4:-}" ]; then
+      _tvm_emit_ref+=( -DVulkan_INCLUDE_DIR="${4}" )
+    fi
+    if [ -n "${5:-}" ]; then
+      _tvm_emit_ref+=( -DVulkan_SPIRV_TOOLS_LIBRARY="${5}" )
+    fi
+  else
+    _tvm_emit_ref+=( -DUSE_VULKAN=OFF )
+  fi
+}
+
+# Emits NOTHING. TVM_QNN_HOME is deliberately NOT local: tvm.sh reads it after
+# the build to stage the QAIRT runtime beside the install.
+# NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). USE_QNN and QNN_HOME
+# are not TVM options and never were -- "no zip = USE_QNN=OFF (the upstream default)"
+# was wrong twice: there is no such option and therefore no such default. TVM's own
+# `qnn` is the Quantized Neural Network op dialect, an unrelated name; its Snapdragon
+# path is USE_HEXAGON plus the separate Hexagon SDK, which is Linux-host/Android-target
+# and needs USE_LLVM. TVM_QNN_HOME is still resolved: tvm.sh uses it to stage the QAIRT
+# runtime beside the install, where the ORT QNN EP is what loads it.
+_tvm_resolve_qnn_home() {
+  TVM_QNN_HOME="${TVM_QNN_HOME:-}"
+  if [ -z "${TVM_QNN_HOME}" ] && command -v resolve_qnn_sdk >/dev/null 2>&1; then
+    TVM_QNN_HOME="$(resolve_qnn_sdk)"
+  fi
+}
+
 # append_tvm_cmake_args --out ARRAY_NAME [--option VALUE ...]
 # Option contract, and why locals are `_tvm_`-prefixed:
 # docs/refactoring-backlog-archive-2026-08-31.md
@@ -102,71 +189,18 @@ append_tvm_cmake_args() {
     "-DTVM_BUILD_PYTHON_MODULE=${_tvm_python_module}"
   )
 
-  if cross_build_is_active; then
-    append_cmake_cross_args "${_tvm_out_name}"
-    _tvm_out_ref+=( -DUSE_ALTERNATIVE_LINKER=OFF )
-    if [ -n "${_tvm_cross_link_flags:-}" ]; then
-      _tvm_out_ref+=(
-        "-DCMAKE_EXE_LINKER_FLAGS=${_tvm_cross_link_flags}${CMAKE_EXE_LINKER_FLAGS:+ ${CMAKE_EXE_LINKER_FLAGS}}"
-        "-DCMAKE_SHARED_LINKER_FLAGS=${_tvm_cross_link_flags}${CMAKE_SHARED_LINKER_FLAGS:+ ${CMAKE_SHARED_LINKER_FLAGS}}"
-        "-DCMAKE_MODULE_LINKER_FLAGS=${_tvm_cross_link_flags}${CMAKE_MODULE_LINKER_FLAGS:+ ${CMAKE_MODULE_LINKER_FLAGS}}"
-      )
-    fi
-  fi
-
-  if [ -n "${_tvm_llvm_dir}" ]; then
-    _tvm_out_ref+=( -DLLVM_DIR="${_tvm_llvm_dir}" )
-    if [ -n "${_tvm_llvm_ignore_paths}" ]; then
-      _tvm_out_ref+=( "-DCMAKE_IGNORE_PATH=${_tvm_llvm_ignore_paths}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
-    fi
-  fi
+  _tvm_emit_cross_args "${_tvm_out_name}" "${_tvm_cross_link_flags}"
+  _tvm_emit_llvm_args "${_tvm_out_name}" "${_tvm_llvm_dir}" "${_tvm_llvm_ignore_paths}"
 
   _tvm_out_ref+=(
     -DCMAKE_C_COMPILER="${_tvm_desired_cc}"
     -DCMAKE_CXX_COMPILER="${_tvm_desired_cxx}"
   )
 
-  # Compiler cache launcher — overrides TVM's internal USE_CCACHE=AUTO
-  # detection so the decision goes through compiler_cache_launcher() (sccache
-  # first, ccache fallback, guarded launcher when mounted).
-  local _tvm_launcher
-  _tvm_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
-  if [ -n "${_tvm_launcher}" ]; then
-    _tvm_out_ref+=(
-      "-DCMAKE_C_COMPILER_LAUNCHER=${_tvm_launcher}"
-      "-DCMAKE_CXX_COMPILER_LAUNCHER=${_tvm_launcher}"
-    )
-  fi
-
-  if [ "${_tvm_use_vulkan}" -eq 1 ]; then
-    _tvm_out_ref+=( -DUSE_VULKAN=ON )
-    # For cross builds, point find_package(Vulkan) at the target-arch loader/
-    # headers (resolve_tvm_vulkan); otherwise it resolves the host x86_64 loader
-    # from the sourced SDK env and the target link fails "file in wrong format".
-    if [ -n "${_tvm_vulkan_library:-}" ]; then
-      _tvm_out_ref+=( -DVulkan_LIBRARY="${_tvm_vulkan_library}" )
-    fi
-    if [ -n "${_tvm_vulkan_include:-}" ]; then
-      _tvm_out_ref+=( -DVulkan_INCLUDE_DIR="${_tvm_vulkan_include}" )
-    fi
-    if [ -n "${_tvm_spirv_tools_lib:-}" ]; then
-      _tvm_out_ref+=( -DVulkan_SPIRV_TOOLS_LIBRARY="${_tvm_spirv_tools_lib}" )
-    fi
-  else
-    _tvm_out_ref+=( -DUSE_VULKAN=OFF )
-  fi
-
-  # NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). USE_QNN and QNN_HOME
-  # are not TVM options and never were -- "no zip = USE_QNN=OFF (the upstream default)"
-  # was wrong twice: there is no such option and therefore no such default. TVM's own
-  # `qnn` is the Quantized Neural Network op dialect, an unrelated name; its Snapdragon
-  # path is USE_HEXAGON plus the separate Hexagon SDK, which is Linux-host/Android-target
-  # and needs USE_LLVM. TVM_QNN_HOME is still resolved: tvm.sh uses it to stage the QAIRT
-  # runtime beside the install, where the ORT QNN EP is what loads it.
-  TVM_QNN_HOME="${TVM_QNN_HOME:-}"
-  if [ -z "${TVM_QNN_HOME}" ] && command -v resolve_qnn_sdk >/dev/null 2>&1; then
-    TVM_QNN_HOME="$(resolve_qnn_sdk)"
-  fi
+  _tvm_emit_compiler_cache_args "${_tvm_out_name}"
+  _tvm_emit_vulkan_args "${_tvm_out_name}" "${_tvm_use_vulkan}" \
+    "${_tvm_vulkan_library}" "${_tvm_vulkan_include}" "${_tvm_spirv_tools_lib}"
+  _tvm_resolve_qnn_home
 
   _tvm_out_ref+=( -DUSE_LLVM="${_tvm_llvm_cmake_value}" )
 }

@@ -367,7 +367,7 @@ _chain_disk_preflight() {
   local rt_free_gb
   rt_free_gb="$(_disk_guard_free_gb "${rt_root}")"
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
-  local free_gb n_arch per_arch need_gb bc_gb
+  local free_gb n_arch per_arch need_gb bc_gb free_now trimmed
   # Measure the cache dir's OWN filesystem (see _disk_guard_free_gb) — using the
   # parent dir silently reads the wrong device when the cache is its own mount.
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
@@ -381,13 +381,30 @@ _chain_disk_preflight() {
   bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9' || true)"
   if [ "${free_gb}" -lt "${need_gb}" ]; then
     log "DISK PREFLIGHT: ${free_gb}G free < ~${need_gb}G recommended (${n_arch} arch(es), from-stage ${FROM_STAGE})."
-    [ -n "${bc_gb}" ] && [ "${bc_gb}" -gt 40 ] && \
-      log "  Reclaim ~${bc_gb}G: rm -rf ${bc_dir}/* (regenerable cross-run cache export)."
-    log "  Also: buildctl prune ; nerdctl --namespace default system prune -f."
+    # D4 trim: LAST RESORT only. It runs after FORCE_LOW_DISK and after the
+    # dry-run guard, and keeps the newest slugs. docs/build-cache-tiers.md
+    free_now="${free_gb}"
     if [ "${FORCE_LOW_DISK:-0}" = "1" ]; then
-      log "  FORCE_LOW_DISK=1 — continuing despite low disk (ENOSPC risk accepted)."
+      log "  FORCE_LOW_DISK=1 — continuing on the warm cache, not trimming it (ENOSPC risk accepted)."
+      return 0
+    fi
+    if is_dry_run; then
+      log "  [DRY RUN] would trim regenerable cache exports in ${bc_dir}; nothing removed."
+      return 0
+    fi
+    if [ "${CROSS_PREFLIGHT_TRIM:-1}" != "0" ]; then
+      _disk_guard_trim_cache_export "${bc_dir}" "${need_gb}" "" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
+      trimmed="$(_disk_guard_free_gb "${bc_dir}")"
+      [ -n "${trimmed}" ] && free_now="${trimmed}"
+      bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9' || true)"
+    fi
+    if [ "${free_now}" -lt "${need_gb}" ]; then
+      [ -n "${bc_gb}" ] && [ "${bc_gb}" -gt 40 ] && \
+        log "  Reclaim ~${bc_gb}G: rm -rf ${bc_dir}/* (regenerable cross-run cache export)."
+      log "  Also: buildctl prune ; nerdctl --namespace default system prune -f."
+      err "Insufficient disk: ${free_now}G free, ~${need_gb}G recommended. Free space or set FORCE_LOW_DISK=1."
     else
-      err "Insufficient disk: ${free_gb}G free, ~${need_gb}G recommended. Free space or set FORCE_LOW_DISK=1."
+      log "disk preflight OK after trim: ${free_now}G free (>= ~${need_gb}G for ${n_arch} arch from-stage ${FROM_STAGE})."
     fi
   else
     log "disk preflight OK: ${free_gb}G free (>= ~${need_gb}G for ${n_arch} arch from-stage ${FROM_STAGE})."

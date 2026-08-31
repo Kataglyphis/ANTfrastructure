@@ -69,4 +69,116 @@ t_case "empty completed stage protects all enabled stages"
 t_assert_eq "repo_img_base,repo_img_compiler,repo_img_cross-sdk-amd64,repo_img_cross-sdk-arm64" \
             "$(_disk_guard_protected_slugs '')"
 
+# ---- _disk_guard_trim_cache_export (D4: the preflight cache-export trim) ----
+# kata-buildcache grew 62G -> 110G in ONE session and forced a controlled chain
+# stop at 19G free. The trim must reclaim OLDEST-first, respect its budget
+# instead of nuking the dir, say what it removed, and be a no-op when disk is
+# ample. Free space is stubbed via a file: the real function is called inside
+# $(...) subshells, so an in-memory sequence variable would never advance.
+seqfile="${workdir}/free.seq"
+_disk_guard_free_gb() {
+  local n
+  n="$(head -1 "${seqfile}" 2>/dev/null)"
+  # Last line repeats forever; earlier ones are consumed one call at a time.
+  if [ "$(wc -l < "${seqfile}" 2>/dev/null || echo 1)" -gt 1 ]; then
+    sed -i '1d' "${seqfile}"
+  fi
+  printf '%s' "${n}"
+}
+_stub_free() { printf '%s\n' "$@" > "${seqfile}"; }
+
+# Three ~2 MiB slug dirs, oldest first. touch AFTER writing: adding a file
+# bumps the directory mtime and would flatten the ordering.
+BC="${workdir}/trim"
+_mk_bc() {
+  local s
+  rm -rf "${BC}"; mkdir -p "${BC}"
+  for s in slug-a slug-b slug-c; do
+    mkdir -p "${BC}/${s}"
+    dd if=/dev/zero of="${BC}/${s}/blob" bs=1024 count=2048 status=none
+  done
+  touch -d '3 days ago' "${BC}/slug-a"
+  touch -d '2 days ago' "${BC}/slug-b"
+  touch -d '1 day ago'  "${BC}/slug-c"
+}
+_present() { [ -d "${BC}/$1" ] && printf 'yes' || printf 'no'; }
+
+t_case "trim is a NO-OP when free space is ample"
+_mk_bc; _stub_free 100
+_disk_guard_trim_cache_export "${BC}" 40 "" "" 0 > "${workdir}/out.txt"
+t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "0" "${_DISK_GUARD_TRIM_FREED_BYTES}"
+t_assert_eq "yes yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+t_assert_eq "" "$(cat "${workdir}/out.txt")" "an ample-disk run must log nothing"
+# Also with an explicit budget: without this the ample-disk guard is masked by
+# the negative-budget fallback and could be deleted without a test going red.
+_disk_guard_trim_cache_export "${BC}" 40 "" 1073741824 0 > "${workdir}/out.txt"
+t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "yes yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+
+t_case "trim removes OLDEST-first and stops at the byte budget"
+# Budget 3 MiB against 3x ~2 MiB slugs: exactly two removals, newest survives.
+_mk_bc; _stub_free 10
+_disk_guard_trim_cache_export "${BC}" 40 "" 3145728 0 > "${workdir}/out.txt"
+t_assert_eq "2" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "no no yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+t_assert_eq "slug-a slug-b" \
+  "$(sed -n 's/.*removed \(slug-[abc]\) .*/\1/p' "${workdir}/out.txt" | tr '\n' ' ' | sed 's/ $//')" \
+  "removal order must be oldest-first"
+
+t_case "trim LOGS every removal and the total it freed"
+t_assert_contains "$(cat "${workdir}/out.txt")" "removed slug-a"
+t_assert_contains "$(cat "${workdir}/out.txt")" "removed 2 slug(s), freed"
+
+t_case "trim stops as soon as free space reaches the target"
+# Budget is 100 MiB (would take all three); the second df says 50G >= 40G.
+_mk_bc; _stub_free 10 50
+_disk_guard_trim_cache_export "${BC}" 40 "" 104857600 0 > "${workdir}/out.txt"
+t_assert_eq "1" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "no yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+
+t_case "trim never removes a protected slug"
+_mk_bc; _stub_free 10
+_disk_guard_trim_cache_export "${BC}" 40 "slug-a" 1073741824 0 > "${workdir}/out.txt"
+t_assert_eq "2" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "yes no no" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+
+t_case "trim is a no-op on a missing dir, a bad target or unknown free space"
+_stub_free 10
+_disk_guard_trim_cache_export "${workdir}/no-such-dir" 40 ""
+t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
+_mk_bc
+_disk_guard_trim_cache_export "${BC}" "lots" ""
+t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "yes yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+_stub_free ""
+_disk_guard_trim_cache_export "${BC}" 40 "" "" 0
+t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}"
+t_assert_eq "yes yes yes" "$(_present slug-a) $(_present slug-b) $(_present slug-c)"
+
+t_case "trim never aborts a caller running under set -euo pipefail"
+# Real df here (no stub): an unreachable target drives the full loop.
+t_assert_ok bash -c 'set -euo pipefail
+  source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
+  d="$(mktemp -d)"; mkdir -p "${d}/s1" "${d}/s2"
+  _disk_guard_trim_cache_export "${d}" 999999 "" "" 0
+  rm -rf "${d}"
+  exit 0'
+
+
+# ---- keep-floor: the trim must never empty the cache-export dir --------------
+# Without it the byte budget does NOT bound the loop: when the deficit exceeds
+# the whole directory (the common case) it runs until pick_victim is dry.
+t_case "trim keeps the newest N slugs even when the deficit is unbounded"
+_kf="$(mktemp -d)"
+for _i in 1 2 3 4 5 6; do
+  mkdir -p "${_kf}/s${_i}"; : > "${_kf}/s${_i}/blob"
+  touch -d "2026-08-0${_i}" "${_kf}/s${_i}"
+done
+_disk_guard_free_gb() { echo 1; }
+_disk_guard_trim_cache_export "${_kf}" 999999 "" "" 3 >/dev/null 2>&1
+t_assert_eq "3" "$(find "${_kf}" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" "keep-floor must leave exactly 3"
+t_assert_eq "s4 s5 s6" "$(find "${_kf}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" "the NEWEST must survive"
+rm -rf "${_kf}"
+
 t_summary
