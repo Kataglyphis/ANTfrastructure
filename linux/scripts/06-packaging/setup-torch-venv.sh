@@ -145,7 +145,7 @@ _install_cv2_runtime_apt() {
     libegl1-mesa-dev \
     libglu1-mesa-dev \
     pkg-config \
-    libfreetype6-dev \
+    libfreetype-dev \
     libqhull-dev \
     libharfbuzz-dev \
     libfribidi-dev \
