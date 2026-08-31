@@ -255,6 +255,25 @@ width (`Q3_K_M`) and `IQ4_XS` were fine. Verdicts:
 | `LIKELY OK` | under 5 % of them (a known-good file had 4 tensors) |
 | `RISKY` | i-quant-dominated — exit code 1 |
 
+### Backend support — what is verified, and what is not
+
+| Backend | Status |
+|---|---|
+| **GenieX** (Snapdragon NPU / GPU / CPU lanes) | verified end to end on real hardware |
+| **Ollama** | code paths covered by tests against a stub speaking Ollama's dialect; **not yet re-verified against a live Ollama server** |
+
+The Ollama dialect differs from GenieX in three ways that this harness had to
+learn, each with a test in `tests/test_backend_compat.py`: Ollama sends
+`data: ` **with** the space (GenieX omits it), it offers `/api/tags` when
+`/v1/models` is unavailable, and existing scripts set `OLLAMA_BASE_URL`. Those
+paths are exercised, but a stub is not a server — run one command against your
+real instance before trusting a long sweep:
+
+```bash
+LLM_BASE_URL=http://your-ollama:11434 python3 benchmark_openai_api.py \
+    --prompts 1 --stream --correctness-only
+```
+
 ### Pointing the harness at something other than Ollama
 
 Set `LLM_BASE_URL` (the old `OLLAMA_BASE_URL` still works). Model detection
