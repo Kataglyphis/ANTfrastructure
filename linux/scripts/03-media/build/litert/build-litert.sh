@@ -192,6 +192,13 @@ PY
 # sources and use clang instead (see append_litert_preferred_cmake_compiler_args).
 # Replace the vendor sources with a stub CMakeLists so the build proceeds. Track
 # the upstream GCC bug and revisit once 16.x is fixed or pinned to an older minor.
+# True only when the Samsung SDK header the vendor sources include is actually
+# findable; upstream vendors the .cc/.h but not the SDK it pulls in.
+_litert_samsung_sdk_present() {
+    find "${LITERT_SRC}" /usr/include /usr/local/include \
+        -name graph_wrapper_api.h -print -quit 2>/dev/null | grep -q .
+}
+
 _litert_disable_samsung_vendor() {
     local arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
     info "Removing Samsung vendor sources to avoid GCC 16.1.0 ICE in cross builds (arch=${arch})"
@@ -303,11 +310,11 @@ configure_litert() {
         append_cmake_cross_args cmake_args
     fi
 
-    # Only cross builds hit the GCC 16.1.0 ICE; native amd64 keeps the Samsung
-    # vendor sources and builds them with clang (see comment above
-    # _litert_disable_samsung_vendor). Gating on `command -v cross_target_arch`
-    # was always true after media_common_init, stubbing native builds too.
-    if cross_build_is_active; then
+    # Cross builds hit the GCC 16.1.0 ICE; native builds additionally need the
+    # Samsung SDK header, which upstream does not vendor. Gate on BOTH: a native
+    # amd64 build passed only while a warm cache still held graph_wrapper_api.h,
+    # then failed from scratch. docs/failure-modes.md
+    if cross_build_is_active || ! _litert_samsung_sdk_present; then
         _litert_disable_samsung_vendor
     fi
 
