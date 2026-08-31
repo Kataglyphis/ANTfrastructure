@@ -5,6 +5,38 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — full Qwen3.8 lane matrix; 27B rehabilitated, Q3_K_XL retired
+
+Every cached Qwen3.8 model against every lane, one prompt, one methodology:
+
+| Model | Size | NPU | GPU | hybrid | **CPU** |
+|---|---|---|---|---|---|
+| 2B-Distill `Q4_K_M` | 1.3 GB | 18.2 | 23.1 | 20.7 | **47.6 tok/s** |
+| 9B-Distill `Q4_K_M` | 5.8 GB | 8.4 | 6.8 | 7.35 | **15.2 tok/s** |
+| 27B `Q3_K_XL` | 13.1 GB | ❌ | ❌ | ❌ | garbage output |
+| 27B `Q4_0` | 16.1 GB | ❌ | HTTP 500 | ❌ | **5.6 tok/s** |
+
+The CPU wins every row. The accelerator ranking flips with model size (2B:
+GPU > hybrid > NPU; 9B: NPU > hybrid > GPU) and it makes no difference — the CPU
+is 2-2.6x ahead of whichever one wins.
+
+**The 27B was written off too early.** This page said "CPU-only territory...
+~1 tok/s". Measured on the Windows host: **5.6 tok/s warm, 1.06 s TTFT, correct
+well-structured code**. Slow for chat, fine for batch, and the best quality any
+lane here can produce.
+
+**`Q3_K_XL` is broken, not borderline.** Previously "the last quant worth trying
+above 12 GB". It loads, answers, and returns garbage -- a real request gave
+`'0\n\n\n\n\n\n\n\n -\n0\n0'` (12 tokens, finish_reason stop), the same
+failure already noted for IQ3_S. Below Q4 this 27B is unusable at any speed.
+
+**New crash found: mixing QAIRT and GGUF on the NPU lane kills the server.**
+Deterministic -- fresh lane serves GGUF fine, serves a QAIRT bundle fine, and
+the next GGUF request resets the connection and the process is gone. An opencode
+provider lists several models against one baseURL, so switching model in the UI
+is enough to trigger it. opencode.jsonc now keeps the NPU lane QAIRT-only and
+gains a `geniex-cpu` provider for the GGUFs (which are faster there anyway).
+
 ## 2026-08-31 — hybrid falsified: no `--ngl` setting beats plain CPU
 
 `--compute hybrid` was previously documented as "the sweet spot for models that

@@ -36,6 +36,7 @@ Adreno X1-45, single Hexagon HTP). Full method and caveats in
 | The fastest GGUF, machine to yourself | `--compute cpu` + any GGUF | 2B 46.5 · 4B 23.7 · 9B 15.2 tok/s, but **7.5 of 8 cores** |
 | Max total throughput, n parallel agents | NPU + CPU lanes (add GPU for a third) | **39.7 tok/s** (45.4 with all three) |
 | Long context (> 4096) | any GGUF lane with `--nctx 16384` | QAIRT bundles are hard-capped at 4096 |
+| **Best quality on-device**, willing to wait | `--compute cpu` + `unsloth/Qwen3.8-27B-GGUF:Q4_0` | 5.6 tok/s, correct output, 16 GB RAM |
 | Nothing | `--compute hybrid` | Slower than CPU on every model, and it damages a concurrent NPU lane |
 
 **Three counter-intuitive results worth knowing before you tune anything:**
@@ -445,12 +446,14 @@ roughly **≤ 13 GB**. From `unsloth/Qwen3.8-27B-GGUF`:
 |---|---|---|
 | `Q4_0` | 16.1 GB | ❌ OOM |
 | `IQ4_XS` | 14.3 GB | ❌ likely OOM |
-| `Q3_K_XL` | 13.1 GB | ⚠️ borderline — test |
+| `Q3_K_XL` | 13.1 GB | ❌ **loads, answers garbage** (measured) |
 | `IQ3_S` | 12.0 GB | ✅ loads, but 3-bit quality degrades badly (whitespace/garbage output) |
 
-If you must run a 27B on this exact machine, `Q3_K_XL` is the last quant worth
-trying above 12 GB; below that the quality loss makes the model unusable for
-coding. The realistic on-device choice here is the 4B on the NPU.
+**Corrected:** neither 3-bit quant is usable — `IQ3_S` and `Q3_K_XL` both
+answer with garbage. The 27B works only at **`Q4_0` on the CPU lane**
+(5.6 tok/s, correct output); on GPU it is an OOM/HTTP 500. For interactive
+coding the realistic choice remains the QAIRT 4B on the NPU; the 27B on CPU is
+the quality option for work you are willing to wait for.
 
 ## Getting the most out of this machine (measured 2026-08-31)
 
@@ -550,6 +553,46 @@ widens further in the NPU's favour.
 
 The QAIRT/NPU lane still wins the thing that matters — *and* leaves the machine
 usable. But that win comes from the model not reasoning, not from the silicon.
+
+### 1c. The full Qwen3.8 matrix — every model against every lane
+
+One prompt, one methodology, all four lanes, measured 2026-08-31 after the
+lane work above. **The CPU wins every single row.**
+
+| Qwen3.8 model | Size | NPU | GPU | hybrid | **CPU** |
+|---|---|---|---|---|---|
+| **2B-Distill** `Q4_K_M` | 1.3 GB | 18.2 | 23.1 | 20.7 | **47.6 tok/s** |
+| **9B-Distill** `Q4_K_M` | 5.8 GB | 8.4 | 6.8 | 7.35 | **15.2 tok/s** |
+| **27B** `Q3_K_XL` | 13.1 GB | ❌ | ❌ | ❌ | ⚠️ **broken quant** |
+| **27B** `Q4_0` | 16.1 GB | ❌ | ❌ HTTP 500 | ❌ | **5.6 tok/s** ✅ |
+
+Three things this table settles:
+
+**The accelerator ranking flips with model size, and it does not matter.** On
+the 2B the order is GPU > hybrid > NPU; on the 9B it inverts to NPU > hybrid >
+GPU. Either way the CPU is 2–2.6x ahead of whichever accelerator happens to win.
+
+**The 27B is usable after all — at Q4_0, on the CPU.** This page previously
+called the 27B "CPU-only territory... ~1 tok/s" and effectively wrote it off.
+Measured on the Windows host it does **5.6 tok/s warm with a 1.06 s first
+token**, and the output is correct, well-structured code. That is slow for
+interactive chat but perfectly usable for batch or background work — and it is
+the best *quality* any lane on this machine can produce.
+
+**`Q3_K_XL` is not "borderline", it is broken.** The page previously listed it
+as "the last quant worth trying above 12 GB". It loads and it answers, but the
+answer is garbage — a real request returned `'0\n\n\n\n\n\n\n\n -\n0\n0'`
+(12 tokens, `finish_reason: stop`). Same failure mode already noted for
+`IQ3_S`. **Below Q4, this 27B is unusable at any speed.** Use `Q4_0` on the CPU
+lane, or do not run the 27B.
+
+> **Do not mix QAIRT and GGUF models on the NPU lane — it crashes the server.**
+> Reproduced deterministically: a fresh lane serves a GGUF fine, then serves a
+> QAIRT bundle fine, and the *next* GGUF request kills the process (connection
+> reset, PID gone). Since an opencode provider lists several models against one
+> `baseURL`, switching model in the UI is enough to trigger it. Keep the NPU
+> lane QAIRT-only and put GGUFs on the CPU lane — which is faster for them
+> anyway.
 
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 
@@ -683,6 +726,8 @@ Every row below was hit live on 2026-08-31.
 | GPU server on port 18182 answers `/v1/models`, but a 13 GB model request hangs with HTTP 000 | The Adreno is thrashing in/out of unified memory — the model loads but generation makes no progress (observed on the 27B Q3_K_XL) | Not practical on this machine. Kill the server (`Stop-Process`) — it holds 14+ GB RSS. Stick to NPU models (2B/4B) or the GPU 9B-Distill |
 | Agent feels slow even though `tok/s` looks fine | The GGUF Qwen3/Qwen3.8-Distill models are **reasoning** models — 1600–2000 `<think>` tokens before the answer. Decode rate is fine; token *count* is the cost | Switch to `qualcomm/Qwen3-4B-Instruct-2507:W4A16` (no thinking, 19.5 tok/s) — ~6x faster to a finished answer |
 | QAIRT bundle returns nothing on a long prompt, though `--nctx` is large | QAIRT bundles carry a **hard-compiled context** (4096 here). `--nctx` is llama.cpp-only and does not raise it | Keep QAIRT requests under 4096 tokens; use a GGUF lane for long context |
+| NPU lane dies mid-session (connection reset, process gone) | A GGUF was requested after a QAIRT bundle on the same lane — reproducible crash | Keep the NPU lane QAIRT-only; serve GGUFs from the CPU lane |
+| 27B answers instantly with `0\n\n\n -\n0` or whitespace | 3-bit quant (`Q3_K_XL`, `IQ3_S`) is degraded past usability — not a speed problem | Use `Q4_0` on the CPU lane (5.6 tok/s, correct output) |
 | Every prompt after a short break stalls ~15 s | `--keepalive` default 300 s unloaded the model | Start servers with `--keepalive 86400` (the launcher does) |
 | A long prompt never returns; server stops answering `/v1/models` too | Prompt exceeded `--nctx` (default 4096). It does not error, it crawls; and a busy server serves nothing else, because there is no batching | Start with `--nctx 16384`; keep agent context lean (prefill is ~190 tok/s) |
 | Second concurrent request waits for the whole first answer | One `geniex serve` has no batching — strictly one request at a time | Run a second lane (`--compute gpu` on 18182). NPU+GPU cost each other ~1–3 % |
