@@ -102,7 +102,7 @@ metric the existing harness does not collect. `benchmark_openai_api.py` (502
 lines) + `run_benchmarks.sh` + the React viewer are a good base; these are the
 gaps, ordered by what actually cost time.
 
-- **LB1 — correctness probe beside the speed numbers** [M·★★★] The harness
+- **LB1 — correctness probe beside the speed numbers** [M·★★★] **DONE 2026-08-31** — The harness
   measures *only* speed. A model emitting garbage scores **excellently**: the
   GenieX i-quant bug produced fast, fluent nonsense (`'\n\n\n....\n\n'`,
   `' majorityathersyre…'`) that every tok/s metric would have rated as a good
@@ -112,14 +112,14 @@ gaps, ordered by what actually cost time.
   `tokens_per_sec`. Cheap, and it is the difference between "is it fast" and
   "is it working". Proven discriminating: Qwen3-4B `Q4_0` 6/6 vs `Q2_K` 4/6 vs
   i-quant 0/6.
-- **LB2 — TTFT / prefill as a first-class metric** [S·★★★] There is **no
+- **LB2 — TTFT / prefill as a first-class metric** [S·★★★] **DONE 2026-08-31** — There is **no
   time-to-first-token measurement at all** (`grep first_token` → nothing). The
   session's central finding is that **prefill, not decode, is what an agent
   waits on**: 13.1 s to first token on a 2.5k-token prompt, while decode fell
   from 19.5 to 13.0 tok/s. Add `ttft_s` and a derived `prefill_tok_per_s`
   (`prompt_tokens / ttft_s`) to the schema and the viewer. Requires `--stream`,
   which the harness already supports.
-- **LB3 — report time-to-finished-answer, not tok/s** [S·★★★] The data is
+- **LB3 — report time-to-finished-answer, not tok/s** [S·★★★] **DONE 2026-08-31** — The data is
   already collected (`completion_tokens`, `latency_s`) but the table and the
   viewer headline `tokens_per_sec`, which **ranks models wrongly**: Qwen3-1.7B
   is the fastest model measured (31.7 tok/s) and the *slowest* to a finished
@@ -165,6 +165,16 @@ gaps, ordered by what actually cost time.
   **Windows** host, so any cross-host comparison currently loses its
   reproducibility metadata exactly where it is needed. Add a fallback
   (`platform` + `psutil`) and, better, fail loudly when a field is missing.
+
+**Status 2026-08-31:** LB1-LB3 are implemented and validated live against a
+GenieX lane (`--correctness` / `--correctness-only`, `ttft_s`,
+`decode_tok_per_sec`, `prefill_tok_per_sec`, `wall_s_to_answer`,
+`thinking_char_share`; health gate in `run_benchmarks.sh`; 15 unit tests in
+`tests/test_benchmark_metrics.py`). Two bugs were found while doing it and
+fixed: the SSE parser matched `"data: "` **with** the space, so it parsed
+nothing and reported 0 tok/s against any server that omits it (GenieX does);
+and servers that ignore `stream_options.include_usage` now fall back to a
+flagged chunk count instead of reporting zero. **LB4-LB9 remain open.**
 
 **Explicitly NOT for llm-stack:** `windows/scripts/host/start-geniex-servers.ps1`
 stays where it is — it is Windows-host lane management, not benchmarking. Only

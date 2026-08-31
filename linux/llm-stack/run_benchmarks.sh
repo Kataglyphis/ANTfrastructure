@@ -30,6 +30,27 @@ echo "  API:   $API_URL"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
+# ── Health gate (LB1) ─────────────────────────────────────────────────────
+# A broken model is FAST: the throughput numbers below would look great while
+# the output is nonsense. Check the model answers correctly before spending
+# hours measuring how quickly it does so. Set BENCH_SKIP_CORRECTNESS=1 to
+# bypass (e.g. benchmarking a model the probe's prompts do not suit).
+if [[ "${BENCH_SKIP_CORRECTNESS:-0}" != "1" ]]; then
+  echo "▸ Health gate: verifiable-answer probe"
+  if python3 benchmark_openai_api.py --model "$MODEL" --correctness-only; then
+    echo "  → model answers correctly; proceeding"
+  else
+    echo ""
+    echo "  WARNING: the model got at least one verifiable answer wrong."
+    echo "  Speed numbers from a broken model are meaningless — check the GGUF"
+    echo "  tensor types (i-quants below 4 bits are broken on some runtimes)"
+    echo "  before trusting anything below. Continuing anyway."
+  fi
+  echo ""
+  echo "──────────────────────────────────────────────────────"
+  echo ""
+fi
+
 for cfg in "${CONFIGS[@]}"; do
   NUM_CTX="${cfg%%:*}"
   MAX_TOKENS="${cfg##*:}"
@@ -59,10 +80,12 @@ if results:
     lats = [r['latency_s'] for r in results]
     cpu = [r['cpu_percent'] for r in results]
     ram = [r['ram_used_gb'] for r in results]
+    ttfts = [r['ttft_s'] for r in results if r.get('ttft_s') is not None]
+    extra = f'  TTFT: {sum(ttfts)/len(ttfts):.2f}s avg' if ttfts else ''
     print(f'  → T/s: {sum(tps)/len(tps):.1f} avg  '
-          f'Lat: {sum(lats)/len(lats):.1f}s avg  '
+          f'Answer: {sum(lats)/len(lats):.1f}s avg  '
           f'CPU: {sum(cpu)/len(cpu):.1f}%  '
-          f'RAM: {sum(ram)/len(ram):.1f}GB')
+          f'RAM: {sum(ram)/len(ram):.1f}GB' + extra)
 else:
     print(f'  → No successful results')
 " 2>&1
@@ -98,6 +121,7 @@ for fname in sorted(glob.glob(os.path.join(results_dir, '*.json'))):
         'label': os.path.basename(fname).replace('.json', ''),
         'file': os.path.basename(fname),
         'config': d.get('config', {}),
+        'correctness': d.get('correctness'),
         'results': d.get('results', []),
     }
     manifest['configs'].append(config)
@@ -133,9 +157,12 @@ for fname in sorted(os.listdir(results_dir)):
     ct = sum(r.get('completion_tokens', 0) for r in results)
     pt = sum(r.get('prompt_tokens', 0) for r in results)
     name = fname.replace('.json','')
+    ttfts = [r['ttft_s'] for r in results if r.get('ttft_s') is not None]
+    ttft_s = f'{sum(ttfts)/len(ttfts):5.2f}s' if ttfts else '    -'
     print(f'  {name:25s}  '
           f'T/s: {sum(tps)/len(tps):5.1f}  '
-          f'Lat: {sum(lats)/len(lats):5.1f}s  '
+          f'TTFT: {ttft_s}  '
+          f'Answer: {sum(lats)/len(lats):5.1f}s  '
           f'CPU: {sum(cpu)/len(cpu):5.1f}%  '
           f'RAM: {sum(ram)/len(ram):5.1f}GB  '
           f'CT: {ct:4d}  PT: {pt:4d}')

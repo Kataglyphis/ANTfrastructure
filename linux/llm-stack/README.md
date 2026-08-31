@@ -145,6 +145,51 @@ short and medium prompts, measuring tokens/sec, latency, CPU, and RAM via the
 Glances API. Results land in `benchmark_results/` as individual JSON files plus
 a consolidated `_manifest.json`.
 
+### Is it fast, or is it *working*? (`--correctness`)
+
+Speed metrics cannot tell a working model from a broken one — a model emitting
+fluent nonsense scores **excellent** tokens/sec. That is not hypothetical: a
+GenieX i-quant kernel bug produced fast garbage that every throughput number
+rated as a good run (see
+[`docs/geniex-local-ai-setup.md`](../../docs/geniex-local-ai-setup.md)).
+
+```bash
+# quick health check on its own — exits non-zero if any answer is wrong
+python3 benchmark_openai_api.py --correctness-only
+
+# or alongside a normal run, recorded into the result JSON
+python3 benchmark_openai_api.py --stream --correctness --output result.json
+```
+
+Six prompts with **verifiable** answers at `temperature=0` (arithmetic, a
+capital city, letter counting, a one-step logic puzzle). The `<think>` block is
+stripped before matching and matches are anchored on word boundaries, so a
+discarded intermediate value cannot score a false positive.
+
+It is a smoke test, not a capability benchmark — but it is sharply
+discriminating in practice. Measured on Qwen3-4B at `temperature=0`:
+
+| Build | Score |
+|---|---|
+| `Q4_0` | 6/6 |
+| `Q2_K` (2-bit) | 4/6 — both losses were reasoning items |
+| `IQ3_XXS` (broken i-quant kernels) | 0/6 |
+
+### Reading the numbers: TTFT and time-to-answer
+
+Two metrics were added because ranking by `tokens/sec` ranks models *wrongly*:
+
+- **`ttft_s` / `prefill_tok_per_sec`** — time to first token. For an agent this
+  is usually the dominant wait (13.1 s on a 2.5k-token prompt in one measured
+  case) while `tokens_per_sec` looks healthy. Requires `--stream`.
+- **`wall_s_to_answer` / `thinking_char_share`** — a reasoning model can be the
+  fastest per token *and* the slowest to a usable answer: Qwen3-1.7B measured
+  31.7 tok/s but spent ~1900 tokens thinking, giving 60.8 s to an answer, while
+  a 4B-Instruct at 19.5 tok/s answered in 26.8 s. **Rank by time to answer.**
+
+`tokens_per_sec` divides by the whole request and therefore mixes prefill with
+decode; `decode_tok_per_sec` reports decode alone.
+
 ### 2. Build the viewer
 
 ```bash
