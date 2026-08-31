@@ -5,6 +5,31 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — Measured: the CPU beats the Hexagon NPU 2x on GGUF
+
+The CPU rows on this page were *estimates scaled from a 27B WSL2 run* (~5 tok/s
+for the 4B). Measured properly against a `--compute cpu` lane on the Windows
+host (8x Oryon), same model, same quant, same prompt, they were wrong by ~4.6x:
+
+| Model (GGUF) | CPU | NPU | CPU advantage |
+|---|---|---|---|
+| Qwen3-4B `Q4_0` | **23.2 tok/s** | 11.9 tok/s | **1.95x** |
+| Qwen3.8-2B-Distill `Q4_K_M` | **46.5 tok/s** | 16.9 tok/s | **2.75x** |
+
+llama.cpp's ARM CPU kernels (NEON/dotprod/i8mm; `Q4_0` is repacked for them) are
+simply more mature than the bundled `ggml-hexagon` backend.
+
+The NPU still earns its place, on two other axes: it runs QAIRT bundles (which
+the CPU cannot load at all, and which are non-thinking and therefore fastest
+end-to-end — 26.8 s vs 88.4 s to a finished answer), and it does so at
+**165 % of 800 % CPU vs the CPU lane's 752 %** — a fifth of the cost, which is
+what keeps the machine usable while the agent answers. Measurement note: the
+inference worker is a *separate* `geniex` process from the port holder; sampling
+the listener reads ~11 % and tells you nothing.
+
+- `start-geniex-servers.ps1`: new `-WithCpu` opt-in lane on 18184
+- docs: new § 1b, and the estimated CPU row replaced with measured numbers
+
 ## 2026-08-31 — GenieX throughput pass: QAIRT bundle + NPU/GPU dual lane (~6x faster agent answers)
 
 Re-measured the Snapdragon on-device agent end-to-end rather than per compute

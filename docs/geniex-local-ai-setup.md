@@ -357,11 +357,12 @@ All speeds are token/s on short replies; first-token latency in parentheses.
 | **NPU** (Hexagon HTP) | **16.9** (0.2 s) | **15.2** (0.2 s) | ❌ over HTP budget | ❌ `dspqueue_read failed: 0x00000072` | ❌ over HTP budget |
 | **hybrid** (HTP + CPU) | ~16 | 14.1 (2.6 s) | **7.5** (3.1 s) | ❌ crashes | ❌ no answer in 600 s |
 | **GPU** (Adreno X1-45) | ~13 | 13.2 | 6.5 (0.6 s) | ❌ OOM (Q4_0) | ⚠️ 2.0 tok/s, thrashes |
-| **CPU** (WSL2) | ~8–10* | ~5* | ~2–3* | ~1 (224 s incl. load) | ~1* |
+| **CPU** (Windows host, 8x Oryon) | **46.5** | **23.2** | n/m | ~1 (224 s incl. load) | n/m |
 
-\* CPU token/s for 2B/4B/9B/27B-Q3_K_XL are estimates scaled from the measured
-27B Q4_0 CPU time (224 s for a short reply incl. model load). NPU/GPU/hybrid
-numbers are all measured.
+CPU figures for the 2B and 4B are now **measured on the Windows host** via a
+`--compute cpu` lane, and they beat the NPU on the same GGUF by ~2x — see
+§ 1b. (The earlier "~5 tok/s" estimates, scaled from a 27B WSL2 run, were wrong
+by ~4.6x.) The 27B Q4_0 number remains a single measured WSL2 data point.
 
 **The HTP vmem limit — what it is and why RAM tuning did not change it:**
 
@@ -441,6 +442,53 @@ rather than maths olympiad, the thinking is pure latency.
 > `dspqueue_read failed: 0x00000072`. That limit is a property of the bundled
 > llama.cpp `ggml-hexagon` backend, **not** of the NPU. QAIRT bundles are the
 > way to run bigger graphs on the HTP.
+
+### 1b. The CPU is the fastest llama.cpp backend on this machine
+
+This page previously listed CPU speeds as *estimates scaled from a 27B run*
+("~5 tok/s" for the 4B). Measured on the Windows host — 8 Oryon cores,
+`--compute cpu`, identical model, identical quant, identical prompt — that
+estimate was wrong by ~4.6x:
+
+| Model (GGUF) | CPU (8x Oryon) | NPU (Hexagon HTP) | CPU advantage |
+|---|---|---|---|
+| Qwen3-4B `Q4_0` | **23.2 tok/s** | 11.9 tok/s | **1.95x** |
+| Qwen3.8-2B-Distill `Q4_K_M` | **46.5 tok/s** | 16.9 tok/s | **2.75x** |
+
+**For GGUF models the Hexagon NPU is the slower option, by a factor of two.**
+llama.cpp's ARM CPU kernels (NEON / dotprod / i8mm, and `Q4_0` in particular is
+repacked for them) are mature; the bundled `ggml-hexagon` backend is not.
+
+The catch is what it costs the machine:
+
+| Lane | Decode | CPU load during inference |
+|---|---|---|
+| `--compute cpu`, 4B GGUF | 23.2 tok/s | **752 % of 800 %** — 7.5 of 8 cores |
+| `--compute npu`, 4B QAIRT | 19.5 tok/s | **165 % of 800 %** — 1.65 cores |
+
+CPU inference **saturates the machine**; the NPU lane leaves ~6.5 cores free
+(`genie_config.json` pins it to `n-threads: 3`, `cpu-mask 0xe0`). Note the
+worker is a *separate* `geniex` process from the one holding the port — measure
+the child, not the listener, or you will read ~11 % and conclude nothing is
+happening.
+
+**So: is the NPU worth using?** For raw tok/s on a GGUF, no — the CPU wins
+2x. The NPU earns its place on two other axes: it runs QAIRT bundles (which the
+CPU cannot load at all, and which are non-thinking and therefore fastest
+*end-to-end*), and it does so at a fifth of the CPU cost, which is what lets a
+coding agent answer while the machine is also compiling. On battery, the gap
+widens further in the NPU's favour.
+
+**Best end-to-end, all lanes considered:**
+
+| Setup | tok/s | tokens/answer | time to answer | cores used |
+|---|---|---|---|---|
+| **QAIRT 4B-Instruct on NPU** | 19.5 | **522** | **26.8 s** | **1.65** |
+| GGUF 4B on CPU | **23.2** | 2048 | 88.4 s | 7.5 |
+| GGUF 4B on NPU | 11.9 | ~1400–2048 | 122.9 s | ~1.7 |
+
+The QAIRT/NPU lane still wins the thing that matters — *and* leaves the machine
+usable. But that win comes from the model not reasoning, not from the silicon.
 
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 

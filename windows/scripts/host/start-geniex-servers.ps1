@@ -13,6 +13,7 @@
     Measured on this host (Snapdragon X, 2026-08-31):
 
       NPU alone            19.5 tok/s      GPU alone            12.5 tok/s
+      CPU alone (GGUF 4B)  23.2 tok/s -- fastest GGUF lane, but 752% of 800% CPU
       NPU + GPU together   19.2 + 12.1     = 31.4 tok/s aggregate, ~0% interference
       NPU + GPU + hybrid   12.8+11.2+10.1  = 34.1 tok/s, but the NPU lane drops 34%
 
@@ -39,9 +40,11 @@ param(
     [int]$NpuPort    = 18181,
     [int]$GpuPort    = 18182,
     [int]$HybridPort = 18183,
+    [int]$CpuPort    = 18184,
     [int]$Nctx       = 16384,
     [int]$Keepalive  = 86400,
     [switch]$WithHybrid,
+    [switch]$WithCpu,
     [switch]$Restart
 )
 
@@ -82,9 +85,11 @@ Write-Host "GenieX fleet  (nctx=$Nctx, keepalive=${Keepalive}s)" -ForegroundColo
 Start-Lane -Compute 'npu' -Port $NpuPort
 Start-Lane -Compute 'gpu' -Port $GpuPort
 if ($WithHybrid) { Start-Lane -Compute 'hybrid' -Port $HybridPort }
+if ($WithCpu)    { Start-Lane -Compute 'cpu'    -Port $CpuPort }
 
 Write-Host ''
 Write-Host 'Point the agent at:' -ForegroundColor Cyan
 Write-Host "  http://127.0.0.1:$NpuPort/v1  qualcomm/Qwen3-4B-Instruct-2507:W4A16   <- primary, 19.5 tok/s"
 Write-Host "  http://127.0.0.1:$GpuPort/v1  unsloth/Qwen3-4B-GGUF:Q4_0              <- second lane, 12.5 tok/s"
 if ($WithHybrid) { Write-Host "  http://127.0.0.1:$HybridPort/v1  empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M  <- third lane, contends with NPU" }
+if ($WithCpu)    { Write-Host "  http://127.0.0.1:$CpuPort/v1  unsloth/Qwen3-4B-GGUF:Q4_0              <- fastest GGUF lane (23.2 tok/s) BUT pegs 7.5 of 8 cores" }
