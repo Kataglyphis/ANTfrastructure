@@ -5,6 +5,69 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — GenieX throughput pass: QAIRT bundle + NPU/GPU dual lane (~6x faster agent answers)
+
+Re-measured the Snapdragon on-device agent end-to-end rather than per compute
+unit. The previous "4B on the NPU at 15.2 tok/s is the ceiling" conclusion
+optimised the wrong variable; three larger wins were found and applied.
+
+### The QAIRT bundle beats every GGUF here (~6x end-to-end)
+
+`qualcomm/Qwen3-4B-Instruct-2507:W4A16` was cached but never benchmarked:
+
+| | GGUF 4B Q4_0 | QAIRT 4B W4A16 |
+|---|---|---|
+| decode | 11.5 tok/s | **18.9–19.5 tok/s** |
+| tokens per short answer | ~1889 | **522** |
+| wall clock (warm) | 164.8 s | **26.8 s** |
+
+Re-tested against `qualcomm/Qwen3-1.7B:W4A16`, which is *faster per token and
+slower in practice*: **31.7 tok/s but 1921 tokens per answer = 60.8 s**, versus
+the 4B's 19.5 tok/s / 522 tokens / **26.8 s**. Time-to-finished-answer is the
+metric; tok/s alone picks the wrong model.
+
+1.7x of that is decode; the rest is the **`<think>` tax** — the Qwen3/Qwen3.8
+GGUFs are reasoning models (21 tokens to answer "reply with exactly one word"),
+the Instruct-2507 bundle is not (2 tokens). It also runs at **3.0 GiB, above the
+~2,93 GiB HTP vmem wall** — that ceiling is a property of the bundled llama.cpp
+`ggml-hexagon` backend, not of the NPU.
+
+### One server = one request; NPU + GPU compose, hybrid contends
+
+`geniex serve` does no batching — a second request waits for the first to finish
+completely (27.6 s TTFT), and a busy server will not even answer `/v1/models`.
+Measured topologies: **NPU+GPU = 19.25 + 12.11 = 31.4 tok/s** (~1–3 % mutual
+cost, separate silicon), while adding `hybrid` (NPU+CPU, same HTP) buys
++2.7 tok/s aggregate but drops the NPU lane to 12.84.
+
+### Two defaults were wrong for agent use
+
+`--keepalive` 300 s unloaded the model on every pause (14–15 s cold reload);
+`--nctx` 4096 was *below* the 8192 the opencode config advertised, and overflow
+does not error — a 6.4k-token prompt never returned within 400 s.
+
+- New `windows/scripts/host/start-geniex-servers.ps1`: brings up the NPU + GPU
+  lanes with `--nctx 16384 --keepalive 86400`, `-WithHybrid` for the third lane,
+  `-Restart` to recycle. Validated live.
+- `~/.config/opencode/opencode.jsonc`: QAIRT bundle promoted to primary, new
+  `geniex-gpu` provider for the second lane.
+- **QAIRT bundles carry a hard-compiled 4096 context** (`genie_config.json`
+  → `"context": {"size": 4096}`); `--nctx` is llama.cpp-only and does not raise
+  it. Overflow returns nothing rather than erroring. The opencode limit for the
+  QAIRT model is set to 4096 accordingly — this is the binding constraint of the
+  NPU lane, not its speed.
+- § Wire the coding agent rewritten as a 5-step opencode integration guide
+  (pull → serve → provider block → model select → verify) with the four silent
+  misconfigurations that break it.
+- [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md): new
+  § Getting the most out of this machine, plus five troubleshooting rows.
+
+Still slow, honestly: **prefill dominates agent latency** — a 2.5k-token prompt
+costs 13.1 s to first token (~190 tok/s) and pulls decode down to 13.0 tok/s.
+No batching or speculative-decoding knobs exist in `geniex serve`, and
+`max_tokens` is not honoured.
+
+
 ## 2026-08-31 — QNN SDK integrated into the arm64 cross build (#121 proven) + GStreamer compiler-rt self-heal (#135 follow-up)
 
 ### QNN EP build-time path PROVEN on the arm64 cross lane (#121)

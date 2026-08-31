@@ -346,10 +346,19 @@ a recent Qualcomm Hexagon NPU driver** — the llama.cpp Hexagon backend dlsyms
 the `dspqueue_*` API from `libcdsprpc.dll`, which older drivers lack; diagnose
 with `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. The full flow —
 install, the non-interactive chipset config, sharing the model cache across
-Windows/WSL2 without re-downloading, the opencode provider block, and the
-measured NPU/GPU/CPU envelope (NPU 15.2 tok/s on a 4B after the driver update;
-27B exceeds the HTP's ~3 GB vmem) — is owned by
+Windows/WSL2 without re-downloading, the opencode provider blocks, and the
+measured NPU/GPU/CPU envelope — is owned by
 [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md).
+
+**For throughput, three things dominate** (measured 2026-08-31): the pre-compiled
+QAIRT bundle `qualcomm/Qwen3-4B-Instruct-2507:W4A16` beats every GGUF here
+end-to-end (**19.5 tok/s and no `<think>` tax — ~6x faster to a finished answer**,
+and at 3.0 GiB it also clears the ~2,93 GiB vmem wall that limits the llama.cpp
+Hexagon path); **one server serves one request at a time** (no batching), so
+concurrency means running **NPU (18181) + GPU (18182) lanes**, which cost each
+other only ~1–3 % (31.4 tok/s aggregate) whereas `hybrid` contends for the same
+HTP; and the `--keepalive` (300 s) / `--nctx` (4096) defaults both need raising.
+`windows/scripts/host/start-geniex-servers.ps1` brings the fleet up correctly.
 
 ### Triggering the opt-in CI lanes
 
