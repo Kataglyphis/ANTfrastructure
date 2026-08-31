@@ -263,7 +263,41 @@ function Invoke-CmakeConfigure {
         }
         throw "CMake configuration failed"
     }
+    Assert-CmakeArgsConsumed -BuildDir $BuildDir -PassedArgs $ExtraArgs
     return $true
+}
+
+function Assert-CmakeArgsConsumed {
+    # A -D the project never declares is SILENTLY IGNORED: cmake exits 0, the build
+    # goes green, and a caller's "FEATURE ON" banner is a lie. That is exactly how
+    # -DUSE_QNN / -DIREE_TARGET_BACKEND_QNN / -DTFLITE_ENABLE_QNN shipped as no-ops
+    # while three build scripts printed "QNN ... ON" (found 2026-08-31).
+    #
+    # Detection is via CMakeCache.txt, not the configure output: an undeclared -D is
+    # recorded as `NAME:UNINITIALIZED=value`, a declared one gets a real type
+    # (`NAME:BOOL=...`). Measured on cmake 3.29.2. Reading the cache keeps `& cmake`
+    # streaming straight to the step log.
+    #
+    # WARNS, never throws: some unconsumed vars are legitimate (a toolchain var a
+    # subproject reads without caching, an option that only exists on another arch).
+    # The point is that they stop being invisible.
+    param(
+        [Parameter(Mandatory)][string]$BuildDir,
+        [string[]]$PassedArgs = @()
+    )
+    $cache = Join-Path $BuildDir 'CMakeCache.txt'
+    if (-not (Test-Path $cache)) { return }
+    $names = @($PassedArgs |
+        ForEach-Object { if ($_ -match '^-D([A-Za-z0-9_]+)(:[A-Za-z]+)?=') { $matches[1] } } |
+        Sort-Object -Unique)
+    if ($names.Count -eq 0) { return }
+    $text = Get-Content $cache -Raw
+    $ignored = @($names | Where-Object { $text -match "(?m)^$([regex]::Escape($_)):UNINITIALIZED=" })
+    if ($ignored.Count -gt 0) {
+        Write-Warning ("CMake IGNORED $($ignored.Count) caller-supplied variable(s) - the project never " +
+            "declares them, so whatever they were meant to enable is OFF: $($ignored -join ', '). " +
+            'Either the option name is wrong for this upstream pin, or the feature does not exist there.')
+    }
 }
 
 # Test-SccacheRemoteConfigured lives in WindowsScripts.Shared.psm1; still
@@ -1821,6 +1855,7 @@ Export-ModuleMember -Function @(
     'Invoke-GitClone',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
+    'Assert-CmakeArgsConsumed',
     'Test-SccacheRemoteConfigured',
     # Re-exported from nested WindowsScripts.Shared for SCRIPT-scope callers:
     # nested-module exports are invisible to scripts (repo scoping rule), and the
