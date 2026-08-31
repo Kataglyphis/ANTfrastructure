@@ -335,6 +335,46 @@ model's max, not what fits — ~19 GB of weights + ~104 KB/token q8_0 KV means a
 28 GB stack (e.g. 12 GB + 16 GB GPUs) caps at ~64K, and 256K needs >45 GB VRAM.
 Requires the nvidia-container-toolkit on any host that wants GPU mode.
 
+**The stack also owns the measurement tooling** for any OpenAI-compatible
+server, not only its own. Endpoints are named in `linux/llm-stack/backends.json`
+(`--backend ollama` is the default; the GenieX lanes are listed too); resolution
+order is `--base-url` > `LLM_BASE_URL`/`OLLAMA_BASE_URL` > `--backend` > the
+default entry, and an unknown name exits with the known list rather than
+silently benchmarking the wrong host.
+
+- `benchmark_openai_api.py` — speed **and** correctness. `--correctness` /
+  `--correctness-only` runs verifiable-answer probes at `temperature=0`; exit
+  `1` = genuinely wrong, `2` = INCONCLUSIVE (truncated, raise
+  `--correctness-max-tokens`), `0` = clean. `run_benchmarks.sh` gates its sweep
+  on it (`BENCH_SKIP_CORRECTNESS=1` bypasses, `BENCH_BACKEND=<name>` retargets).
+- `bench_lanes.py` — `--batching` (does one server overlap concurrent
+  requests?) and `--lanes <backend> <backend>` (do several add up?).
+- `inspect_gguf.py` — tensor-type histogram from the file header, verdict
+  OK / LIKELY OK / RISKY, exit 1 on RISKY.
+
+**Why correctness is gated first: a broken model is fast.** Sub-4-bit i-quants
+on GenieX v0.5.0 produce fluent nonsense that every throughput metric rates as
+an excellent run. Rank models by **time to a finished answer**, not `tok/s` — a
+1.7B measured 31.7 tok/s and was the *slowest* to a usable answer because it
+spent ~1900 tokens thinking.
+
+Testing: 54 unit tests need no server (`pytest tests/test_benchmark_metrics.py
+tests/test_inspect_gguf.py tests/test_bench_lanes.py tests/test_backend_compat.py
+tests/test_backends_registry.py`); the rest of `tests/` needs the stack up. The
+viewer has a server-side smoke render (`cd benchmark-viewer && npm run smoke`) —
+`vite build` only proves the JSX compiles, and a silently-failed edit once made
+the comparison table render empty cells while the build reported success.
+
+**Verification status:** the GenieX lanes are verified end-to-end on real
+hardware. Ollama's dialect differences (spaced `data: ` SSE prefix, `/api/tags`
+fallback, legacy `OLLAMA_BASE_URL`) are covered by stub tests in
+`tests/test_backend_compat.py`, and `tests/test_harness_against_ollama.py` runs
+the harness against a **live** server — it skips when none is reachable, and
+`llm-stack-tests.yml` starts a digest-pinned `ollama/ollama` service, so CI is
+where the Ollama backend gets confirmed. No live Ollama run has happened on the
+dev host yet; if you have one up, `--correctness-only` against it is the
+one-command check.
+
 ### GenieX on Snapdragon (on-device OpenAI server)
 
 The Kataglyphis coding agents can run **fully on-device on Snapdragon** via

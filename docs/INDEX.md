@@ -118,6 +118,8 @@ The two halves of one topic often split:
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 | **Mistral Vibe + GLM-5.2** — setting up the Z.ai GLM-5.2 coding agent (CLI + VS Code) on Mistral La Plateforme | [`mistral-vibe-glm-setup.md`](mistral-vibe-glm-setup.md) |
 | **GenieX on Snapdragon** — on-device OpenAI-compatible server (Adreno GPU / Hexagon NPU), serving a coding agent inside WSL2 | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) |
+| **Benchmarking an LLM endpoint** — speed *and* correctness, TTFT vs decode, concurrent lanes, named backends (`ollama`, `geniex-*`) | [`../linux/llm-stack/README.md`](../linux/llm-stack/README.md) |
+| **A model answers fast but wrong** (whitespace, random multilingual tokens) — GGUF tensor types, the sub-4-bit i-quant bug | [`geniex-local-ai-setup.md` § Debugged: i-quants](geniex-local-ai-setup.md), tool: [`../linux/llm-stack/inspect_gguf.py`](../linux/llm-stack/inspect_gguf.py) |
 
 ### Also owned here, not under `docs/`
 

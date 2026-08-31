@@ -292,7 +292,7 @@ URL.
 | Backend | Status |
 |---|---|
 | **GenieX** (Snapdragon NPU / GPU / CPU lanes) | verified end to end on real hardware |
-| **Ollama** | code paths covered by tests against a stub speaking Ollama's dialect; **not yet re-verified against a live Ollama server** |
+| **Ollama** | stub tests for the dialect differences, plus `tests/test_harness_against_ollama.py` which runs the harness against a **live** server — it skips locally when none is up, and CI starts a digest-pinned `ollama/ollama` service, so that is where it is confirmed |
 
 The Ollama dialect differs from GenieX in three ways that this harness had to
 learn, each with a test in `tests/test_backend_compat.py`: Ollama sends
