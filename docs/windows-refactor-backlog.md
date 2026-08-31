@@ -34,7 +34,7 @@ landed: see #135 follow-up below). Read the table as the last fully green run
 | bundle manifest | 7 DLL homes, **6 wheels**, 3 ABSENT markers | — |
 | GStreamer contract plugins | **6/6** — `libav opencv onnx webrtc nice tflite` | 6/6 |
 | smoke gate | **97 passed / 0 failed / 15 skipped** (floors 66/20) | **222 / 0 / 0** |
-| QNN | EP ON, QAIRT 2.44.0, `aarch64-windows-msvc` backends staged beside all five frameworks | off (x64 CPU backend is pointless) |
+| QNN | EP ON in **onnxruntime only** (see #154); QAIRT 2.44.0 `aarch64-windows-msvc` runtime COPIED beside all five installs, but only ORT loads it | off (x64 CPU backend is pointless) |
 | wall clock | ~40 min (media+final) | 2 h 18 min |
 
 **Exactly three components are ABSENT on arm64**, each marked in the bundle by an
@@ -88,11 +88,46 @@ this repo's cp314 pin).
   compiles, on top of the LLVM build. Budget for it; do not discover it. Until that
   run is green, "gate-green is not usable" applies to this whole wave.
 
-- **#153 — re-run the log forensics against a captured corpus.** The buildkitd
-  step-log env fix landed 2026-08-14 and the first fully-captured full chain ran
-  2026-08-18, so the analysis that produced the 49-run corpus (28 logs with real
-  clip events, the green reference run 49 % blind in its merge step) can now be
-  redone against logs that are not truncated. Not started.
+- **#153 — the clipped-log forensics can never be re-audited; the corpus is gone.**
+  INVESTIGATED 2026-08-31, and the premise I wrote was wrong. `out/windows-build-logs/`
+  holds 92 `.log` files and **every one of them is from 2026-08-30/31** — 100 % post-fix.
+  The 42 older run ids (bk-20260817-221952 … bk-20260829-140708) survive only as
+  67-598-byte `*-manifest.txt` stubs; their step logs were pruned. So the 49-run
+  analysis cannot be re-checked, only SUPERSEDED by future runs.
+  What the surviving corpus does prove: the 2026-08-14 buildkitd env fix is live —
+  **0 clip events in 90 logs**, and 12 individual RUN vertices now exceed the old
+  2 MiB ceiling that used to truncate them. Treat every pre-2026-08-30 forensic
+  conclusion in the archives as unverifiable, not as evidence.
+  STILL OPEN, re-scoped: keep the next full chain's logs (they are the first corpus
+  that can carry a real analysis) and run the step-time / silent-retry sweep on those.
+
+- **#154 — QNN is integrated in ONE framework, not five.** PARTIALLY FIXED
+  2026-08-31; the LiteRT question is open. Three build scripts passed CMake flags
+  that upstream does not define, so CMake dropped them silently, the builds went
+  green, and all three printed a success banner:
+  1. **TVM** `-DUSE_QNN` / `-DQNN_HOME` — no such options at pin `994e0216`. TVM's
+     own `qnn` is the **Quantized Neural Network** op dialect, an unrelated name.
+     Its real Snapdragon path is `USE_HEXAGON` + the **Hexagon SDK** — a different
+     vendor package from QAIRT — and that path shells out to `lsb_release`, expects
+     `ipc/fastrpc/.../android_aarch64`, emits GNU-driver flags, and needs
+     `USE_LLVM`, which this lane sets OFF. Not salvageable here.
+  2. **IREE** `-DIREE_TARGET_BACKEND_QNN` — never existed, at any version. IREE has
+     no Qualcomm NPU path at all; it reaches Adreno via vulkan-spirv and the
+     Snapdragon CPU via llvm-cpu. Invented.
+  3. **LiteRT** `-DTFLITE_ENABLE_QNN` — a GitHub-wide search finds that literal in
+     **this repo only**. BUT the capability is real at v2.2.0: it lives in the
+     `litert/` CMake tree, and this script configures the `tflite/` tree. That is
+     the one genuinely open lead — see the workflow notes before re-attempting.
+  4. **GenAI** was already correct: it passes no flag and claims nothing. Its QNN
+     code compiles unconditionally and is a pure runtime concern routed through the
+     onnxruntime it links, so the DLL staging IS the integration there.
+  Flags and false banners removed from all three scripts. `Copy-QnnRuntime` staging
+  is deliberately KEPT everywhere — un-verified to be removable without a build, and
+  the ORT EP is what loads those DLLs. **Open sub-item:** measure whether the ~35
+  DLLs staged beside TVM/IREE/LiteRT are dead weight in the image, and drop them if
+  so — that changes the arch-gate binary count (1168), so it needs a chain run.
+  The class of defect is now gated: `Assert-CmakeArgsConsumed` warns when a
+  caller-supplied `-D` comes back `UNINITIALIZED` in `CMakeCache.txt`.
 
 ### CLOSED (pointers — full narratives in the dated archives)
 
@@ -107,7 +142,7 @@ this repo's cp314 pin).
 - **#121** — QNN EP: BUILD-TIME PATH PROVEN 2026-08-31 on the full `:winarm64`
   cross run — SDK qairt-2.44.0.260225 (SHA-pinned), `onnxruntime_USE_QNN=ON`
   with the `aarch64-windows-msvc` backend set, QNN provider built, QNN runtime
-  staged beside all five frameworks (arch gate 1168/0, smoke 97/0/15).
+  copied beside all five installs — but only ORT consumes it (#154); arch gate 1168/0, smoke 97/0/15.
   Execution verification still needs a Snapdragon host. Archive: this entry.
 
 - **`-ResumeStage` BK equivalent** — CLOSED 2026-08-29 (no BK equivalent needed).

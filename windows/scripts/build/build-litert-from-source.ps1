@@ -131,17 +131,14 @@ $cmakeExtra = @(
     '-DTFLITE_ENABLE_MMAP=OFF'
     '-DTFLITE_ENABLE_NNAPI=OFF'
 )
-# QNN delegate (#121): LiteRT's QNN delegate dispatches TFLite models to the
-# Snapdragon NPU via the QAIRT SDK. The SDK headers are passed via QNN_HOME;
-# the delegate DLL is built by LiteRT and the runtime DLLs are staged beside
-# the LiteRT install.
+# NO QNN FLAGS HERE (corrected 2026-08-31, backlog #154). This block used to pass
+# -DTFLITE_ENABLE_QNN / -DQNN_HOME and print "QNN delegate ON". No such option
+# exists: a GitHub-wide search for TFLITE_ENABLE_QNN finds it only in THIS repo, and
+# CMake reported both flags "not used by the project". LiteRT's Qualcomm NPU support
+# is real at v2.2.0 but lives in the OTHER CMake tree (`litert/`, not the `tflite/`
+# tree this script configures) — see #154 before trying again. The QAIRT runtime is
+# still staged beside the install below — loaded by the ONNX Runtime QNN EP, not here.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-if ($qnnSdk) {
-    $cmakeExtra += @('-DTFLITE_ENABLE_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
-    Write-Host "LiteRT: QNN delegate ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121"
-} else {
-    $cmakeExtra += '-DTFLITE_ENABLE_QNN=OFF'
-}
 
 # Add CUDA paths for external delegate compilation if available
 $cmakeExtra += Get-CudaToolkitRootArg -GpuEnv $gpuEnv
