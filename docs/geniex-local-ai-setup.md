@@ -32,7 +32,7 @@ Adreno X1-45, single Hexagon HTP). Full method and caveats in
 
 | You want | Use | Speed |
 |---|---|---|
-| **The fastest finished answer** (default for a coding agent) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores |
+| **The fastest finished answer** (default for a coding agent) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores. Also **3/3 on the executed-code benchmark, 4.3x faster than any other model that scored 3/3** (§ 1d) |
 | The fastest GGUF, machine to yourself | `--compute cpu` + any GGUF | 2B 46.5 · 4B 23.7 · 9B 15.2 tok/s, but **7.5 of 8 cores** |
 | Max total throughput, n parallel agents | NPU + CPU lanes (add GPU for a third) | **39.7 tok/s** (45.4 with all three) |
 | Long context (> 4096) | any GGUF lane with `--nctx 16384` | QAIRT bundles are hard-capped at 4096 |
@@ -627,6 +627,51 @@ lane, or do not run the 27B.
 > `baseURL`, switching model in the UI is enough to trigger it. Keep the NPU
 > lane QAIRT-only and put GGUFs on the CPU lane — which is faster for them
 > anyway.
+
+### 1d. Which model writes code that actually runs (measured 2026-08-31)
+
+Every claim above is about speed. This one is about *output*: each model was
+given three coding tasks with an exact required signature, its code was
+extracted and **executed** against hidden tests
+(`linux/llm-stack/bench_coding.py`). Nothing judged by eye.
+
+| Model | Lane | Pass | Cut | Total | ø/task | ø TTFT | ø tokens | think |
+|---|---|---|---|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct-2507 W4A16** | NPU | **3/3** | 0 | **30.2 s** | **10.1 s** | 0.17 s | 188 | **0 %** |
+| GGUF Qwen3.8-27B `Q4_0` | CPU | 3/3 | 0 | 128.7 s | 42.9 s | 14.8 s | 149 | 0 % |
+| GGUF Qwen3.8-9B-Distill `Q4_K_M` | CPU | 3/3 | 0 | 251.1 s | 83.7 s | 3.7 s | 1151 | 51 % |
+| GGUF Qwen3.8-2B-Distill `Q4_K_M` | CPU | 2/3 | 0 | 32.2 s | 10.7 s | 0.31 s | 485 | 37 % |
+| GGUF Qwen3-4B `Q4_0` | CPU | 2/3 | 1 | 227.2 s | 75.7 s | 0.48 s | 1639 | 61 % |
+| QAIRT Qwen3-1.7B W4A16 | NPU | 1/3 | 2 | 173.8 s | 57.9 s | 0.13 s | 1829 | 31 % |
+
+**Three models solve all three tasks; the tiebreaker is time, and it is not
+close.** The QAIRT 4B-Instruct is **4.3x faster than the 27B** and **8.3x faster
+than the 9B** to the same score, because it does not reason: 188 tokens per task
+against the 9B's 1151.
+
+**The 27B beats the 9B despite decoding at 5.6 vs 15.2 tok/s** — the classic
+demonstration that ranking by tok/s picks the wrong model. It writes 149 tokens
+of correct code where the 9B writes 1151 tokens of mostly thinking.
+
+**A hard 2048-token output cap decides more than model quality here.** GenieX
+stops generating at 2048 tokens and ignores `max_tokens` entirely
+(`max_tokens=3000` produced 642 tokens; `max_tokens=500` produced 1249). A
+reasoning model spends that budget inside `<think>` and is cut mid-function.
+The 4B GGUF's `balanced` solution finished at **1896 tokens — 152 short of the
+cap**; a little more deliberation and it would have scored as a failure. This
+is why the benchmark reports *cut* separately from *wrong*: the first run of it
+scored that model 0/3, all three "failures" truncation artefacts.
+
+**Caveat.** Three tasks is a smoke test, not a capability benchmark, and all
+three are self-contained functions — no multi-file work, no tool calls. It
+separates "writes working code" from "does not"; it does not rank senior
+engineers.
+
+**And the binding constraint is still context, not skill.** The winning bundle
+is capped at **4096 tokens** (§ 1a), which an agent's system prompt plus one
+medium file can exhaust. For code that must see a lot of repository at once,
+the 27B on the CPU lane is the only on-device option with both correctness and
+room — at 43 s per task.
 
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 

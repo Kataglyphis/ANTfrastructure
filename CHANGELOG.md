@@ -5,6 +5,40 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — measured: which model writes code that actually runs
+
+Six models, three coding tasks each, code extracted and **executed** against
+hidden tests (`linux/llm-stack/bench_coding.py`). Nothing judged by eye.
+
+| Model | Lane | Pass | Cut | Total | ø tokens | think |
+|---|---|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct-2507 W4A16** | NPU | **3/3** | 0 | **30.2 s** | 188 | 0 % |
+| GGUF Qwen3.8-27B Q4_0 | CPU | 3/3 | 0 | 128.7 s | 149 | 0 % |
+| GGUF Qwen3.8-9B-Distill Q4_K_M | CPU | 3/3 | 0 | 251.1 s | 1151 | 51 % |
+| GGUF Qwen3.8-2B-Distill Q4_K_M | CPU | 2/3 | 0 | 32.2 s | 485 | 37 % |
+| GGUF Qwen3-4B Q4_0 | CPU | 2/3 | 1 | 227.2 s | 1639 | 61 % |
+| QAIRT Qwen3-1.7B W4A16 | NPU | 1/3 | 2 | 173.8 s | 1829 | 31 % |
+
+Three models solve all three tasks; time breaks the tie and it is not close.
+The QAIRT 4B-Instruct is 4.3x faster than the 27B and 8.3x faster than the 9B
+to the same score, because it does not reason -- 188 tokens per task against
+the 9B's 1151.
+
+The 27B beats the 9B while decoding at 5.6 vs 15.2 tok/s: ranking by tok/s
+would have picked the wrong model, again.
+
+A hard 2048-token output cap shapes the results more than model quality does.
+GenieX ignores max_tokens outright (3000 -> 642 tokens; 500 -> 1249) and stops
+at 2048. A reasoning model spends that inside <think> and is cut mid-function.
+The 4B GGUF's balanced solution landed at 1896 tokens -- 152 short of the cap.
+The first run of this benchmark scored that model 0/3 with all three failures
+being truncation artefacts, which is why cut is now reported apart from wrong.
+
+Caveat recorded with the numbers: three self-contained functions is a smoke
+test, not a capability benchmark -- no multi-file work, no tool calls. And the
+binding constraint for agent use remains the winning bundle's 4096-token
+context, not its skill.
+
 ## 2026-08-31 — 2-bit measured; GenieX session harvested into an llm-stack backlog
 
 **2-bit K-quants work; i-quants at any width do not.** `Qwen3-4B:Q2_K` is a
