@@ -203,6 +203,7 @@ Common development targets:
 
    refactoring-backlog
    windows-refactor-backlog
+   changelog-archive-2026-08-28
    changelog-archive-2026-08-13
    refactoring-backlog-archive-2026-08-10
    refactoring-backlog-archive-2026-08-27

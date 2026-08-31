@@ -167,15 +167,21 @@ this repo's cp314 pin).
      `bk-materialize` can call `Import-BuildHandoff`. Moving them breaks that path
      silently. See #149 for why that path is not currently safe anyway.
 
-- **#149 — the `c9586c1^` warm/materialize rollback recipe is PARTIALLY STALE.**
-  OPEN. `bk-warm.ps1`'s header promises that if the ExportLayer-0x3 canary ever
-  fires again you can "restore the warm/materialize Dockerfile targets from git
-  history (`c9586c1^`) and these payloads work unchanged". They will not: those
-  targets mount the **pre-#134** five-module set with no `WindowsTvm.Common.psm1`,
-  while `build-tvm-from-source.ps1:27` now THROWS without the `tvmmods` mount. A
-  verbatim restore fails on the TVM branch. Fix is small (add the leaf mount to
-  the restored targets) but must land with the restore, not be discovered during
-  an outage. Do not delete the recipe — repair the note.
+- **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
+  stale.** NOTE REPAIRED 2026-08-31 (`bk-warm.ps1:5-18`); the restore itself stays
+  OPEN until someone needs it. `bk-warm.ps1` promised that if the ExportLayer-0x3
+  canary fires again you can restore those targets and "these payloads work
+  unchanged". The payloads do; the targets do not. Measured: all **ten** retired
+  RUNs mount the same five modules (`WindowsSourceBuild.Common`, `Shared`,
+  `Patches`, `Cuda`, `Native`) and neither module the tree has needed since:
+  1. `WindowsTargetArch.Common.psm1` — `WindowsSourceBuild.Common` **throws at
+     import** without it (#116, the deliberate throw at its line 36), so every
+     restored RUN dies before executing a line. This is the one that makes the
+     recipe dead rather than partial.
+  2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
+     `tvmmods` mount (#134), so TVM still fails once the import is fixed.
+  The fix is two mount lines per restored target. The header now says so; do not
+  delete the recipe, and do not trust it verbatim.
 
 - **#150 — `.claude/settings.local.json` still allowlists `build.ps1` invocations**
   (four entries, lines 9-15) for a driver that no longer exists. NOT touched by
@@ -183,16 +189,15 @@ this repo's cp314 pin).
   cannot run), but it is the last place the classic driver is still named as a
   live entry point.
 
-- **#151 — `CHANGELOG.md` is 2430 lines against its own ~700-line rule**
-  (`CHANGELOG.md:5`, "Archive when this file passes ~700 lines; never delete").
-  One generation exists (`docs/changelog-archive-2026-08-13.md`), so the pattern
-  is established; this is overdue mechanical work, not a decision. Cut on a DATE
-  boundary, not a line count: keep 2026-08-29 and newer live (through
-  `CHANGELOG.md:568`), move `## 2026-08-28 — Layer headroom dispute settled`
-  (`:569`) and older into `docs/changelog-archive-2026-08-28.md`. 2026-08-28 has
-  six entries and splitting inside it would strand half a day's story. The new
-  archive needs a `docs/INDEX.md` row and a `docs/index.rst` toctree entry in the
-  same commit, or `verify_doc_links.py` goes red on its `[index]` check.
+- **#151 — `CHANGELOG.md` archive split.** **DONE 2026-08-31.** The file had run
+  to 2430 lines against its own ~700 rule (`CHANGELOG.md:5`). Cut on the DATE
+  boundary, not a line count: 2026-08-29 and newer stay live (568 lines), and
+  `## 2026-08-28 — Layer headroom dispute settled` and older moved verbatim into
+  [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) — 2026-08-28
+  carries six entries and splitting inside it would strand half a day's story.
+  The header pointer names both generations, and the new page is registered in
+  `docs/INDEX.md` and `docs/index.rst` (without both, `verify_doc_links.py` reds
+  on its `[index]` check — that is how this wave first tripped it).
 
 ### CLOSED (pointers — full narratives in the dated archives)
 

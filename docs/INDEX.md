@@ -142,6 +142,7 @@ exists only in one of these, promote it to its owning page above.
 | Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
+| Changelog entries 2026-08-14 … 2026-08-28 | [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) |
 | Changelog entries through 2026-08-13 | [`changelog-archive-2026-08-13.md`](changelog-archive-2026-08-13.md) |
 | Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) · [`2026-08-26`](windows-backlog-archive-2026-08-26.md) · [`2026-08-31`](windows-backlog-archive-2026-08-31.md) |
 | Settled Linux refactor items | [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md) |
