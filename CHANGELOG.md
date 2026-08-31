@@ -5,6 +5,67 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — GenieX NPU FIXED by a Qualcomm Hexagon NPU driver update + NPU probe
+
+**The NPU now works.** Updating the Qualcomm Hexagon NPU driver
+(`libcdsprpc.dll` 30.0.0140.1000 → 30.0.0220.3000; Hexagon NPU device driver
+30.0.220.3000, installed via Windows Update optional driver updates + reboot)
+fixed both NPU backends. Root cause (documented in
+[`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md) § The NPU
+problem): the old driver's `libcdsprpc.dll` exported only the legacy FastRPC
+API, not the `dspqueue_*` symbols GenieX v0.5.0's bundled llama.cpp
+`ggml-hexagon` backend dlsyms (`dspqueue_create` etc. — verified per-symbol
+with `GetProcAddress`). QAIRT/QNN showed a different symptom of the same root
+cause: `Exception 0xc00000fd` (STATUS_STACK_OVERFLOW) in HTP runtime init.
+
+- Measured after the fix: **4B on NPU at 15.2 tok/s (0.2 s first token)** —
+  faster than the Adreno GPU (13.2 tok/s) and far faster than CPU. Verified
+  end-to-end through the OpenAI server from WSL2.
+- Remaining limit: the Hexagon HTP has ~3 GB vmem (`vmem 3145728000` in the
+  load log), so the 27B fails at graph compute with `dspqueue_read failed:
+  0x00000072` — a memory limit, not a driver bug (same class as
+  ggml-org/llama.cpp#26123).
+- New probe `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`: checks
+  the **active** CDSP `libcdsprpc.dll` (matched by Hexagon-NPU device driver
+  version, so stale DriverStore copies cannot falsify the verdict) for the
+  `dspqueue_*` symbols. Reporting-only, never throws on a negative. Documented
+  in `docs/windows-builds.md` § Script Reference.
+- Docs updated: measured envelope now NPU-first; troubleshooting table covers
+  the pre-fix `dlsym` failure, the QAIRT stack overflow, and the post-fix HTP
+  memory limit.
+
+## 2026-08-31 — GenieX on-device OpenAI server for Snapdragon (docs + host tooling)
+
+New page [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md):
+run Qualcomm GenieX (BSD-3-Clause) so a coding agent inside **WSL2** talks to a
+local OpenAI-compatible API backed by the Windows host's **Adreno GPU** (or
+Hexagon NPU). WSL2 has no NPU/GPU passthrough, so the server runs on Windows
+and WSL2 reaches it at `127.0.0.1:18181` via mirrored networking.
+
+- Deployed and measured live on a Lenovo Snapdragon X (2026-08-31): GPU 4B at
+  13.2 tok/s, clean output, verified end-to-end through the OpenAI API; the
+  27B's usable quant window on the Adreno is ≤ ~13 GB (Q4_0 @ 16 GB OOMs with
+  `CL_OUT_OF_RESOURCES -5`; IQ3_S @ 12 GB loads but 3-bit quality is unusable —
+  whitespace output).
+- **NPU root cause documented** (not just "broken"): both NPU backends fail
+  against the installed Qualcomm CDSP/FastRPC driver (1.0.4175.2700,
+  20.11.2024; `libcdsprpc.dll` v30.0.0140.1000):
+  - llama.cpp Hexagon backend: `failed to dlsym dspqueue_create` — the driver
+    exports only the older FastRPC API (`remote_handle_open`), not the
+    `dspqueue_*` symbols the bundled backend needs (verified per-symbol).
+  - QAIRT/QNN backend: `Exception 0xc00000fd` (STATUS_STACK_OVERFLOW) in the
+    QNN v2.45.0 HTP runtime init — same stale-driver family, different symptom.
+  - Fix is a **Qualcomm CDSP/FastRPC driver update** (Windows Update optional
+    updates / Lenovo driver page); GenieX v0.5.0 is already the latest release.
+    Until then `--compute gpu` is the working accelerated path.
+- Also handled: SoX install + user-PATH for the serve warning; non-interactive
+  chipset config (`geniex config set chipset qualcomm-snapdragon-x-elite`);
+  local cache copy across Windows/WSL2 to avoid re-downloading 16 GB; the WSL2
+  localhost port-shadowing trap that prevents the Windows server from binding.
+- Docs wiring: `docs/INDEX.md`, `docs/index.rst` (toctree), `README.md`,
+  `AGENTS.md` § GenieX on Snapdragon, and a `deps.json` entry under Host Build
+  Infrastructure (BSD-3-Clause) — licence pages and curated SBOM regenerated.
+
 ## 2026-08-30 — rebuild window: GCC_PARALLEL_TARGETS validated (2 bugs found+fixed), F2 media validation, launcher server-death gap fixed
 
 The tasks that needed a real rebuild, run and closed:

@@ -117,6 +117,7 @@ The two halves of one topic often split:
 | Opting a commit into the heavy CI lanes | [`ci-build-triggers.md`](ci-build-triggers.md) |
 | Reading pipeline status from the terminal | [`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md) |
 | **Mistral Vibe + GLM-5.2** — setting up the Z.ai GLM-5.2 coding agent (CLI + VS Code) on Mistral La Plateforme | [`mistral-vibe-glm-setup.md`](mistral-vibe-glm-setup.md) |
+| **GenieX on Snapdragon** — on-device OpenAI-compatible server (Adreno GPU / Hexagon NPU), serving a coding agent inside WSL2 | [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) |
 
 ### Also owned here, not under `docs/`
 

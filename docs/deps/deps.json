@@ -1,1039 +1,1047 @@
 {
-    "sections": [
+  "sections": [
+    {
+      "title": "Linux Images",
+      "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger",
+      "subsections": [
         {
-            "title": "Linux Images",
-            "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger",
-            "subsections": [
-                {
-                    "title": "Base Layer",
-                    "dockerfile": "Dockerfile.base",
-                    "entries": [
-                        {
-                            "name": "Ubuntu",
-                            "var": "UBUNTU_VERSION",
-                            "url": "https://ubuntu.com/",
-                            "license": "GPLv2 / various (individual packages)",
-                            "spdx": "LicenseRef-Distro-Bundle",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "CMake",
-                            "var": "CMAKE_VERSION",
-                            "url": "https://cmake.org/",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        },
-                        {
-                            "name": "Node.js",
-                            "var": "NODE_VERSION",
-                            "url": "https://nodejs.org/",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "uv",
-                            "var": "UV_VERSION",
-                            "url": "https://github.com/astral-sh/uv",
-                            "license": "Apache 2.0 / MIT",
-                            "spdx": "Apache-2.0 OR MIT"
-                        },
-                        {
-                            "name": "Vulkan SDK",
-                            "var": "VULKAN_VERSION",
-                            "url": "https://vulkan.lunarg.com/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        }
-                    ]
-                },
-                {
-                    "title": "Compiler Toolchain",
-                    "dockerfile": "Dockerfile.toolchain",
-                    "entries": [
-                        {
-                            "name": "GCC (host + cross)",
-                            "var": "GCC_VERSION",
-                            "url": "https://gcc.gnu.org/",
-                            "license": "GPLv3+ with GCC Runtime Library Exception",
-                            "spdx": "GPL-3.0-or-later WITH GCC-exception-3.1",
-                            "source": {
-                                "kind": "upstream-release",
-                                "url": "https://ftp.gnu.org/gnu/gcc/",
-                                "ref_var": "GCC_VERSION",
-                                "note": "Built unmodified from the GNU release tarball. The Runtime Library Exception covers programs COMPILED with GCC; it does not cover shipping GCC itself, which the runtime image does."
-                            }
-                        },
-                        {
-                            "name": "LLVM / Clang",
-                            "var": "LLVM_RELEASE",
-                            "url": "https://llvm.org/",
-                            "license": "Apache 2.0 with LLVM Exceptions",
-                            "spdx": "Apache-2.0 WITH LLVM-exception"
-                        },
-                        {
-                            "name": "Python",
-                            "var": "PYTHON_VERSION",
-                            "url": "https://python.org/",
-                            "license": "PSF License",
-                            "spdx": "PSF-2.0"
-                        },
-                        {
-                            "name": "Rust toolchain",
-                            "var": null,
-                            "url": "https://rust-lang.org/",
-                            "license": "MIT / Apache 2.0",
-                            "version_fixed": "latest stable",
-                            "spdx": "MIT OR Apache-2.0"
-                        }
-                    ]
-                },
-                {
-                    "title": "SDK Layer",
-                    "dockerfile": "Dockerfile.sdk",
-                    "entries": [
-                        {
-                            "name": "Apache TVM",
-                            "var": "TVM_REF",
-                            "url": "https://tvm.apache.org/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        }
-                    ]
-                },
-                {
-                    "title": "Media Layer",
-                    "dockerfile": "Dockerfile.media",
-                    "entries": [
-                        {
-                            "name": "ONNX Runtime",
-                            "var": "ONNXRUNTIME_VERSION",
-                            "url": "https://github.com/microsoft/onnxruntime",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "ONNX Runtime GenAI",
-                            "var": "ONNXRUNTIME_GENAI_VERSION",
-                            "url": "https://github.com/microsoft/onnxruntime-genai",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "LiteRT (TensorFlow Lite)",
-                            "var": "LITERT_VERSION",
-                            "url": "https://www.tensorflow.org/lite",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "OpenCV",
-                            "var": "OPENCV_VERSION",
-                            "url": "https://opencv.org/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "GStreamer",
-                            "var": "GSTREAMER_VERSION",
-                            "url": "https://gstreamer.freedesktop.org/",
-                            "license": "LGPLv2+",
-                            "spdx": "LGPL-2.0-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
-                                "ref_var": "GSTREAMER_VERSION"
-                            }
-                        },
-                        {
-                            "name": "GStreamer Rust plugins (gst-plugins-rs)",
-                            "var": "GSTREAMER_VERSION",
-                            "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
-                            "license": "MPL-2.0",
-                            "spdx": "MPL-2.0",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
-                                "ref_var": "GSTREAMER_VERSION"
-                            }
-                        },
-                        {
-                            "name": "librice / rice-proto (webrtcbin2)",
-                            "var": "RICE_VERSION",
-                            "url": "https://github.com/ystreet/librice",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "FFmpeg",
-                            "var": "FFMPEG_VERSION",
-                            "url": "https://ffmpeg.org/",
-                            "license": "GPLv3+ (built with --enable-gpl --enable-version3)",
-                            "spdx": "GPL-3.0-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://git.ffmpeg.org/ffmpeg.git",
-                                "ref_var": "FFMPEG_VERSION",
-                                "build_flags": "--enable-gpl --enable-version3 --enable-libx264 --enable-libx265",
-                                "note": "Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL."
-                            }
-                        },
-                        {
-                            "name": "FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame)",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://ffmpeg.org/legal.html",
-                            "license": "GPL / LGPL / various",
-                            "spdx": "GPL-2.0-or-later AND LGPL-2.1-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "VVdeC (VVC/H.266 decoder)",
-                            "var": "VVDEC_VERSION",
-                            "url": "https://github.com/fraunhoferhhi/vvdec",
-                            "license": "BSD-3-Clause-Clear",
-                            "spdx": "BSD-3-Clause-Clear"
-                        },
-                        {
-                            "name": "ArmNN (arm64)",
-                            "var": "ARMNN_VERSION",
-                            "url": "https://github.com/ARM-software/armnn",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "Arm Compute Library (arm64)",
-                            "var": "ACL_VERSION",
-                            "url": "https://github.com/ARM-software/ComputeLibrary",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "libcamera",
-                            "var": "LIBCAMERA_VERSION",
-                            "url": "https://libcamera.org/",
-                            "license": "LGPLv2.1+",
-                            "spdx": "LGPL-2.1-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://git.libcamera.org/libcamera/libcamera.git",
-                                "ref_var": "LIBCAMERA_VERSION"
-                            }
-                        },
-                        {
-                            "name": "Abseil",
-                            "var": "ABSEIL_VERSION",
-                            "url": "https://github.com/abseil/abseil-cpp",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "FreeType",
-                            "var": "FREETYPE_VERSION",
-                            "url": "https://freetype.org/",
-                            "license": "GPLv2 / FTL",
-                            "spdx": "GPL-2.0-or-later OR FTL",
-                            "source": {
-                                "kind": "upstream-release",
-                                "url": "https://download.savannah.gnu.org/releases/freetype/",
-                                "ref_var": "FREETYPE_VERSION",
-                                "note": "Dual-licensed. This project elects the FTL, which needs only notice and text; the source pointer is provided anyway."
-                            }
-                        },
-                        {
-                            "name": "nv-codec-headers",
-                            "var": "NV_CODEC_HEADERS_REF",
-                            "url": "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "GObject-Introspection",
-                            "var": "GOBJECT_INTROSPECTION_VERSION",
-                            "url": "https://gitlab.gnome.org/GNOME/gobject-introspection",
-                            "license": "LGPLv2+",
-                            "spdx": "LGPL-2.0-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://gitlab.gnome.org/GNOME/gobject-introspection",
-                                "ref_var": "GOBJECT_INTROSPECTION_VERSION"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "title": "Android Layer",
-                    "dockerfile": "Dockerfile.android",
-                    "entries": [
-                        {
-                            "name": "Android SDK",
-                            "var": "ANDROID_SDK_VERSION",
-                            "url": "https://developer.android.com/studio",
-                            "license": "Apache 2.0 / Google ToS",
-                            "spdx": "Apache-2.0 AND LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "Android NDK",
-                            "var": "ANDROID_NDK_VERSION",
-                            "url": "https://developer.android.com/ndk",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "Android Build Tools",
-                            "var": "ANDROID_BUILD_TOOLS",
-                            "url": "https://developer.android.com/studio/releases/build-tools",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "Android CMake",
-                            "var": "ANDROID_CMAKE_VERSION",
-                            "url": "https://cmake.org/",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        },
-                        {
-                            "name": "Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer",
-                            "var": null,
-                            "version_fixed": "same versions as Media Layer",
-                            "url": "https://developer.android.com/ndk",
-                            "license": "Apache 2.0 / MIT / LGPLv2+ (per component)",
-                            "spdx": "Apache-2.0 AND MIT AND LGPL-2.0-or-later",
-                            "source": {
-                                "kind": "same-as",
-                                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
-                                "ref": "same refs as the Media Layer rows above"
-                            }
-                        }
-                    ]
-                },
-                {
-                    "title": "Optional GPU — NVIDIA",
-                    "dockerfile": "Dockerfile.nvidia",
-                    "entries": [
-                        {
-                            "name": "CUDA Toolkit",
-                            "var": "CUDA_VERSION",
-                            "url": "https://developer.nvidia.com/cuda-toolkit",
-                            "license": "NVIDIA EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "cuDNN",
-                            "var": "CUDNN_VERSION",
-                            "url": "https://developer.nvidia.com/cudnn",
-                            "license": "NVIDIA cuDNN EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "TensorRT",
-                            "var": "TENSORRT_VERSION",
-                            "url": "https://developer.nvidia.com/tensorrt",
-                            "license": "NVIDIA TensorRT EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        }
-                    ]
-                },
-                {
-                    "title": "Optional GPU — AMD",
-                    "dockerfile": "Dockerfile.amd",
-                    "entries": [
-                        {
-                            "name": "ROCm",
-                            "var": "ROCM_VERSION",
-                            "url": "https://rocm.docs.amd.com/",
-                            "license": "Apache 2.0 / MIT (varies by component)",
-                            "spdx": "Apache-2.0 AND MIT"
-                        },
-                        {
-                            "name": "MIGraphX",
-                            "var": "MIGRAPHX_VERSION",
-                            "url": "https://github.com/ROCm/AMDMIGraphX",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        }
-                    ]
-                },
-                {
-                    "title": "Frameworks",
-                    "dockerfile": "Dockerfile.torch",
-                    "entries": [
-                        {
-                            "name": "PyTorch",
-                            "var": "PYTORCH_VERSION",
-                            "url": "https://pytorch.org/",
-                            "license": "BSD-3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        },
-                        {
-                            "name": "TorchVision",
-                            "var": "TORCHVISION_VERSION",
-                            "url": "https://github.com/pytorch/vision",
-                            "license": "BSD-3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        },
-                        {
-                            "name": "Flutter SDK",
-                            "var": "FLUTTER_VERSION",
-                            "url": "https://flutter.dev/",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        }
-                    ]
-                },
-                {
-                    "title": "Runtime",
-                    "dockerfile": "Dockerfile.torch",
-                    "entries": [
-                        {
-                            "name": "Kataglyphis Orchestr-ANT-ion",
-                            "var": "APP_REF",
-                            "url": "https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        }
-                    ]
-                },
-                {
-                    "title": "LLM Stack",
-                    "dockerfile": "llm-stack/Dockerfile",
-                    "entries": [
-                        {
-                            "name": "Ollama",
-                            "var": "OLLAMA_VERSION",
-                            "url": "https://github.com/ollama/ollama",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        }
-                    ]
-                },
-                {
-                    "title": "Build Tooling (build-time only, not in runtime images)",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "Emscripten / emsdk (ONNX Runtime WASM build)",
-                            "var": null,
-                            "version_fixed": "pinned by ONNX Runtime",
-                            "url": "https://emscripten.org/",
-                            "license": "MIT / NCSA",
-                            "spdx": "MIT AND NCSA"
-                        },
-                        {
-                            "name": "ccache",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://ccache.dev/",
-                            "license": "GPLv3+",
-                            "spdx": "GPL-3.0-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "sccache",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://github.com/mozilla/sccache",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0",
-                            "modified": {
-                                "patches": [
-                                    "windows/upstream/sccache-nvcc-quote-fix/"
-                                ],
-                                "note": "Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
-                            }
-                        },
-                        {
-                            "name": "Meson",
-                            "var": null,
-                            "version_fixed": "latest (PyPI)",
-                            "url": "https://mesonbuild.com/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "Ninja",
-                            "var": null,
-                            "version_fixed": "latest (PyPI)",
-                            "url": "https://ninja-build.org/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "cargo-c (C-ABI build of gst-plugins-rs)",
-                            "var": null,
-                            "version_fixed": "latest (crates.io)",
-                            "url": "https://github.com/lu-zero/cargo-c",
-                            "license": "MIT / Apache 2.0",
-                            "spdx": "MIT OR Apache-2.0"
-                        },
-                        {
-                            "name": "cerbero (GStreamer Android build system)",
-                            "var": null,
-                            "version_fixed": "git default branch",
-                            "url": "https://gitlab.freedesktop.org/gstreamer/cerbero",
-                            "license": "LGPLv2.1+",
-                            "spdx": "LGPL-2.1-or-later",
-                            "source": {
-                                "kind": "upstream-branch",
-                                "url": "https://gitlab.freedesktop.org/gstreamer/cerbero",
-                                "ref": "default branch",
-                                "note": "Build-time only; never shipped in a runtime image."
-                            }
-                        }
-                    ]
-                }
-            ]
+          "title": "Base Layer",
+          "dockerfile": "Dockerfile.base",
+          "entries": [
+            {
+              "name": "Ubuntu",
+              "var": "UBUNTU_VERSION",
+              "url": "https://ubuntu.com/",
+              "license": "GPLv2 / various (individual packages)",
+              "spdx": "LicenseRef-Distro-Bundle",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "CMake",
+              "var": "CMAKE_VERSION",
+              "url": "https://cmake.org/",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "Node.js",
+              "var": "NODE_VERSION",
+              "url": "https://nodejs.org/",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "uv",
+              "var": "UV_VERSION",
+              "url": "https://github.com/astral-sh/uv",
+              "license": "Apache 2.0 / MIT",
+              "spdx": "Apache-2.0 OR MIT"
+            },
+            {
+              "name": "Vulkan SDK",
+              "var": "VULKAN_VERSION",
+              "url": "https://vulkan.lunarg.com/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            }
+          ]
         },
         {
-            "title": "Webserver Image",
-            "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver",
-            "subsections": [
-                {
-                    "title": "Packages",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "Ubuntu",
-                            "var": "UBUNTU_VERSION",
-                            "url": "https://ubuntu.com/",
-                            "license": "GPLv2 / various",
-                            "spdx": "LicenseRef-Distro-Bundle",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "nginx",
-                            "var": null,
-                            "url": "https://nginx.org/",
-                            "license": "BSD 2-Clause",
-                            "version_fixed": "latest (apt)",
-                            "spdx": "BSD-2-Clause"
-                        }
-                    ]
-                }
-            ]
+          "title": "Compiler Toolchain",
+          "dockerfile": "Dockerfile.toolchain",
+          "entries": [
+            {
+              "name": "GCC (host + cross)",
+              "var": "GCC_VERSION",
+              "url": "https://gcc.gnu.org/",
+              "license": "GPLv3+ with GCC Runtime Library Exception",
+              "spdx": "GPL-3.0-or-later WITH GCC-exception-3.1",
+              "source": {
+                "kind": "upstream-release",
+                "url": "https://ftp.gnu.org/gnu/gcc/",
+                "ref_var": "GCC_VERSION",
+                "note": "Built unmodified from the GNU release tarball. The Runtime Library Exception covers programs COMPILED with GCC; it does not cover shipping GCC itself, which the runtime image does."
+              }
+            },
+            {
+              "name": "LLVM / Clang",
+              "var": "LLVM_RELEASE",
+              "url": "https://llvm.org/",
+              "license": "Apache 2.0 with LLVM Exceptions",
+              "spdx": "Apache-2.0 WITH LLVM-exception"
+            },
+            {
+              "name": "Python",
+              "var": "PYTHON_VERSION",
+              "url": "https://python.org/",
+              "license": "PSF License",
+              "spdx": "PSF-2.0"
+            },
+            {
+              "name": "Rust toolchain",
+              "var": null,
+              "url": "https://rust-lang.org/",
+              "license": "MIT / Apache 2.0",
+              "version_fixed": "latest stable",
+              "spdx": "MIT OR Apache-2.0"
+            }
+          ]
         },
         {
-            "title": "Windows Image",
-            "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64",
-            "subsections": [
-                {
-                    "title": "Base Toolchain",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "Windows Server Core",
-                            "var": "WINDOWS_LTSC",
-                            "url": "https://www.microsoft.com/",
-                            "license": "Microsoft EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "Visual Studio Build Tools",
-                            "var": null,
-                            "url": "https://visualstudio.microsoft.com/",
-                            "license": "Microsoft EULA",
-                            "version_fixed": "18",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "Python (source-built, ClangCL)",
-                            "var": "PYTHON_VERSION",
-                            "url": "https://python.org/",
-                            "license": "PSF License",
-                            "spdx": "PSF-2.0"
-                        },
-                        {
-                            "name": "CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal)",
-                            "var": null,
-                            "version_fixed": "bundled with Python",
-                            "url": "https://github.com/python/cpython-source-deps",
-                            "license": "various (Apache 2.0, MIT, PD, …)",
-                            "spdx": "LicenseRef-Distro-Bundle",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://github.com/python/cpython-source-deps",
-                                "ref": "as bundled by the pinned CPython",
-                                "note": "Redistributed unmodified as part of the CPython build."
-                            }
-                        },
-                        {
-                            "name": "CMake",
-                            "var": "CMAKE_VERSION",
-                            "url": "https://cmake.org/",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        },
-                        {
-                            "name": "Vulkan SDK",
-                            "var": "VULKAN_VERSION",
-                            "url": "https://vulkan.lunarg.com/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "Rust toolchain",
-                            "var": null,
-                            "url": "https://rust-lang.org/",
-                            "license": "MIT / Apache 2.0",
-                            "version_fixed": "latest stable",
-                            "spdx": "MIT OR Apache-2.0"
-                        },
-                        {
-                            "name": "WiX Toolset",
-                            "var": null,
-                            "url": "https://wixtoolset.org/",
-                            "license": "MS-RL",
-                            "version_fixed": "latest",
-                            "spdx": "MS-RL"
-                        },
-                        {
-                            "name": "Flutter SDK",
-                            "var": "FLUTTER_VERSION",
-                            "url": "https://flutter.dev/",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        }
-                    ]
-                },
-                {
-                    "title": "GPU Layer",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "CUDA",
-                            "var": "CUDA_VERSION",
-                            "url": "https://developer.nvidia.com/cuda-toolkit",
-                            "license": "NVIDIA EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "cuDNN",
-                            "var": "CUDNN_VERSION",
-                            "url": "https://developer.nvidia.com/cudnn",
-                            "license": "NVIDIA cuDNN EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        },
-                        {
-                            "name": "TensorRT",
-                            "var": "TENSORRT_VERSION",
-                            "url": "https://developer.nvidia.com/tensorrt",
-                            "license": "NVIDIA TensorRT EULA",
-                            "spdx": "LicenseRef-Proprietary-EULA"
-                        }
-                    ]
-                },
-                {
-                    "title": "Media Layer",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "GStreamer",
-                            "var": "GSTREAMER_VERSION",
-                            "url": "https://gstreamer.freedesktop.org/",
-                            "license": "LGPLv2+",
-                            "spdx": "LGPL-2.0-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
-                                "ref_var": "GSTREAMER_VERSION",
-                                "patches": [
-                                    "windows/scripts/patches/gstreamer/001-ges-commit-rename.patch"
-                                ]
-                            },
-                            "modified": {
-                                "patches": [
-                                    "windows/scripts/patches/gstreamer/001-ges-commit-rename.patch"
-                                ],
-                                "note": "The Windows build patches a GES symbol rename."
-                            }
-                        },
-                        {
-                            "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, …)",
-                            "var": null,
-                            "version_fixed": "per wrap files",
-                            "url": "https://gstreamer.freedesktop.org/",
-                            "license": "LGPLv2+ / GPL (x264) / BSD (openh264)",
-                            "spdx": "LGPL-2.0-or-later AND GPL-2.0-or-later AND BSD-2-Clause",
-                            "source": {
-                                "kind": "wrap-files",
-                                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer/-/tree/main/subprojects",
-                                "ref": "pinned by the GStreamer release's wrap files",
-                                "note": "x264 is GPL, so its presence is what makes this subproject set copyleft."
-                            }
-                        },
-                        {
-                            "name": "ONNX Runtime",
-                            "var": "ONNXRUNTIME_VERSION",
-                            "url": "https://github.com/microsoft/onnxruntime",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "ONNX Runtime GenAI",
-                            "var": "ONNXRUNTIME_GENAI_VERSION",
-                            "url": "https://github.com/microsoft/onnxruntime-genai",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "OpenCV",
-                            "var": "OPENCV_VERSION",
-                            "url": "https://opencv.org/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "FFmpeg",
-                            "var": "FFMPEG_VERSION",
-                            "url": "https://ffmpeg.org/",
-                            "license": "GPLv3+ (built with --enable-gpl --enable-version3)",
-                            "spdx": "GPL-3.0-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://git.ffmpeg.org/ffmpeg.git",
-                                "ref_var": "FFMPEG_VERSION",
-                                "build_flags": "--enable-gpl --enable-version3 --enable-libx264 --enable-libx265",
-                                "note": "Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.",
-                                "patches": [
-                                    "windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch"
-                                ]
-                            },
-                            "modified": {
-                                "patches": [
-                                    "windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch"
-                                ],
-                                "note": "The Windows build patches configure to allow MSYS2 builds."
-                            }
-                        },
-                        {
-                            "name": "LiteRT (TensorFlow Lite)",
-                            "var": "LITERT_VERSION",
-                            "url": "https://www.tensorflow.org/lite",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "LiteRT-LM",
-                            "var": "LITERT_LM_VERSION",
-                            "url": "https://github.com/google-ai-edge/LiteRT-LM",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "Apache TVM",
-                            "var": "TVM_REF",
-                            "url": "https://tvm.apache.org/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        }
-                    ]
-                },
-                {
-                    "title": "Build Tooling (build-time only)",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "Scoop package manager",
-                            "var": null,
-                            "version_fixed": "latest",
-                            "url": "https://scoop.sh/",
-                            "license": "Unlicense / MIT",
-                            "spdx": "Unlicense OR MIT"
-                        },
-                        {
-                            "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
-                            "var": null,
-                            "version_fixed": "latest (scoop)",
-                            "url": "https://scoop.sh/",
-                            "license": "various (GPL, Apache 2.0, BSD, zlib)",
-                            "spdx": "LicenseRef-Distro-Bundle",
-                            "source": {
-                                "kind": "bundle",
-                                "url": "https://scoop.sh/",
-                                "note": "Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is built from patched source."
-                            }
-                        },
-                        {
-                            "name": "vcpkg",
-                            "var": null,
-                            "version_fixed": "master",
-                            "url": "https://github.com/microsoft/vcpkg",
-                            "license": "MIT",
-                            "spdx": "MIT"
-                        },
-                        {
-                            "name": "vcpkg packages (zlib, protobuf — linked into builds)",
-                            "var": null,
-                            "version_fixed": "vcpkg baseline",
-                            "url": "https://github.com/microsoft/vcpkg",
-                            "license": "Zlib / BSD 3-Clause",
-                            "spdx": "Zlib AND BSD-3-Clause"
-                        }
-                    ]
-                }
-            ]
+          "title": "SDK Layer",
+          "dockerfile": "Dockerfile.sdk",
+          "entries": [
+            {
+              "name": "Apache TVM",
+              "var": "TVM_REF",
+              "url": "https://tvm.apache.org/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            }
+          ]
         },
         {
-            "title": "Documentation Image",
-            "tag": "pandoc_all",
-            "subsections": [
-                {
-                    "title": "Document Toolchain",
-                    "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
-                    "entries": [
-                        {
-                            "name": "Ubuntu",
-                            "var": "UBUNTU_VERSION",
-                            "url": "https://ubuntu.com/",
-                            "license": "GPLv2 / various (individual packages)",
-                            "spdx": "LicenseRef-Distro-Bundle",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "Pandoc",
-                            "var": "PANDOC_VERSION",
-                            "url": "https://github.com/jgm/pandoc",
-                            "license": "GPLv2+",
-                            "spdx": "GPL-2.0-or-later",
-                            "source": {
-                                "kind": "upstream-tag",
-                                "url": "https://github.com/jgm/pandoc",
-                                "ref_var": "PANDOC_VERSION"
-                            }
-                        },
-                        {
-                            "name": "TeX Live (texlive-full)",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://tug.org/texlive/",
-                            "license": "Collection; per package LPPL / GPL / X11 / modified BSD",
-                            "spdx": "LicenseRef-Distro-Bundle",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "Latin Modern fonts (lmodern)",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "http://www.gust.org.pl/projects/e-foundry/latin-modern",
-                            "license": "GUST Font License (LPPL-style)",
-                            "spdx": "LPPL-1.3c"
-                        },
-                        {
-                            "name": "Ghostscript",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://www.ghostscript.com/",
-                            "license": "AGPLv3+",
-                            "spdx": "AGPL-3.0-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive. AGPL section 13 also reaches network-exposed use -- check how this component is exposed."
-                            }
-                        },
-                        {
-                            "name": "ImageMagick",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://imagemagick.org/",
-                            "license": "ImageMagick License (Apache 2.0-style)",
-                            "spdx": "ImageMagick"
-                        }
-                    ]
-                },
-                {
-                    "title": "Python",
-                    "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
-                    "entries": [
-                        {
-                            "name": "Python",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt (python3-full)",
-                            "url": "https://python.org/",
-                            "license": "PSF License",
-                            "spdx": "PSF-2.0"
-                        },
-                        {
-                            "name": "uv",
-                            "var": "UV_VERSION",
-                            "url": "https://github.com/astral-sh/uv",
-                            "license": "Apache 2.0 / MIT",
-                            "spdx": "Apache-2.0 OR MIT"
-                        },
-                        {
-                            "name": "Pygments",
-                            "var": null,
-                            "version_fixed": "pinned by uv.lock",
-                            "url": "https://pygments.org/",
-                            "license": "BSD 2-Clause",
-                            "spdx": "BSD-2-Clause"
-                        }
-                    ]
-                },
-                {
-                    "title": "Base Utilities",
-                    "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
-                    "entries": [
-                        {
-                            "name": "GNU C Library locales (locales)",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://www.gnu.org/software/libc/",
-                            "license": "LGPLv2.1+",
-                            "spdx": "LGPL-2.1-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "curl",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://curl.se/",
-                            "license": "curl (MIT/X-style)",
-                            "spdx": "curl"
-                        },
-                        {
-                            "name": "GNU Wget",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://www.gnu.org/software/wget/",
-                            "license": "GPLv3+",
-                            "spdx": "GPL-3.0-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "ca-certificates",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://packages.ubuntu.com/ca-certificates",
-                            "license": "MPL-2.0 (CA bundle) / GPLv2+ (packaging)",
-                            "spdx": "MPL-2.0 AND GPL-2.0-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "less",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://www.greenwoodsoftware.com/less/",
-                            "license": "GPLv3+ or Less License",
-                            "spdx": "GPL-3.0-or-later",
-                            "source": {
-                                "kind": "distro-archive",
-                                "url": "https://archive.ubuntu.com/ubuntu/",
-                                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
-                            }
-                        },
-                        {
-                            "name": "sudo",
-                            "var": null,
-                            "version_fixed": "Ubuntu apt",
-                            "url": "https://www.sudo.ws/",
-                            "license": "ISC (with BSD-2/3-Clause parts)",
-                            "spdx": "ISC AND BSD-2-Clause AND BSD-3-Clause"
-                        }
-                    ]
-                },
-                {
-                    "title": "Vendored LaTeX Themes",
-                    "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
-                    "entries": [
-                        {
-                            "name": "awesome-beamer (fork of LukasPietzschmann/awesome-beamer)",
-                            "var": null,
-                            "version_fixed": "git submodule",
-                            "url": "https://github.com/Kataglyphis/awesome-beamer",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        },
-                        {
-                            "name": "smile (fork of LukasPietzschmann/smile)",
-                            "var": null,
-                            "version_fixed": "git submodule",
-                            "url": "https://github.com/Kataglyphis/smile",
-                            "license": "BSD 3-Clause",
-                            "spdx": "BSD-3-Clause"
-                        }
-                    ]
-                }
-            ]
+          "title": "Media Layer",
+          "dockerfile": "Dockerfile.media",
+          "entries": [
+            {
+              "name": "ONNX Runtime",
+              "var": "ONNXRUNTIME_VERSION",
+              "url": "https://github.com/microsoft/onnxruntime",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "ONNX Runtime GenAI",
+              "var": "ONNXRUNTIME_GENAI_VERSION",
+              "url": "https://github.com/microsoft/onnxruntime-genai",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "LiteRT (TensorFlow Lite)",
+              "var": "LITERT_VERSION",
+              "url": "https://www.tensorflow.org/lite",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "OpenCV",
+              "var": "OPENCV_VERSION",
+              "url": "https://opencv.org/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "GStreamer",
+              "var": "GSTREAMER_VERSION",
+              "url": "https://gstreamer.freedesktop.org/",
+              "license": "LGPLv2+",
+              "spdx": "LGPL-2.0-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
+                "ref_var": "GSTREAMER_VERSION"
+              }
+            },
+            {
+              "name": "GStreamer Rust plugins (gst-plugins-rs)",
+              "var": "GSTREAMER_VERSION",
+              "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+              "license": "MPL-2.0",
+              "spdx": "MPL-2.0",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs",
+                "ref_var": "GSTREAMER_VERSION"
+              }
+            },
+            {
+              "name": "librice / rice-proto (webrtcbin2)",
+              "var": "RICE_VERSION",
+              "url": "https://github.com/ystreet/librice",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "FFmpeg",
+              "var": "FFMPEG_VERSION",
+              "url": "https://ffmpeg.org/",
+              "license": "GPLv3+ (built with --enable-gpl --enable-version3)",
+              "spdx": "GPL-3.0-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://git.ffmpeg.org/ffmpeg.git",
+                "ref_var": "FFMPEG_VERSION",
+                "build_flags": "--enable-gpl --enable-version3 --enable-libx264 --enable-libx265",
+                "note": "Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL."
+              }
+            },
+            {
+              "name": "FFmpeg codec libraries (x264, x265, libvpx, aom, dav1d, SVT-AV1, opus, LAME, vorbis, libass, twolame)",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://ffmpeg.org/legal.html",
+              "license": "GPL / LGPL / various",
+              "spdx": "GPL-2.0-or-later AND LGPL-2.1-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "VVdeC (VVC/H.266 decoder)",
+              "var": "VVDEC_VERSION",
+              "url": "https://github.com/fraunhoferhhi/vvdec",
+              "license": "BSD-3-Clause-Clear",
+              "spdx": "BSD-3-Clause-Clear"
+            },
+            {
+              "name": "ArmNN (arm64)",
+              "var": "ARMNN_VERSION",
+              "url": "https://github.com/ARM-software/armnn",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "Arm Compute Library (arm64)",
+              "var": "ACL_VERSION",
+              "url": "https://github.com/ARM-software/ComputeLibrary",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "libcamera",
+              "var": "LIBCAMERA_VERSION",
+              "url": "https://libcamera.org/",
+              "license": "LGPLv2.1+",
+              "spdx": "LGPL-2.1-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://git.libcamera.org/libcamera/libcamera.git",
+                "ref_var": "LIBCAMERA_VERSION"
+              }
+            },
+            {
+              "name": "Abseil",
+              "var": "ABSEIL_VERSION",
+              "url": "https://github.com/abseil/abseil-cpp",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "FreeType",
+              "var": "FREETYPE_VERSION",
+              "url": "https://freetype.org/",
+              "license": "GPLv2 / FTL",
+              "spdx": "GPL-2.0-or-later OR FTL",
+              "source": {
+                "kind": "upstream-release",
+                "url": "https://download.savannah.gnu.org/releases/freetype/",
+                "ref_var": "FREETYPE_VERSION",
+                "note": "Dual-licensed. This project elects the FTL, which needs only notice and text; the source pointer is provided anyway."
+              }
+            },
+            {
+              "name": "nv-codec-headers",
+              "var": "NV_CODEC_HEADERS_REF",
+              "url": "https://git.videolan.org/git/ffmpeg/nv-codec-headers.git",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "GObject-Introspection",
+              "var": "GOBJECT_INTROSPECTION_VERSION",
+              "url": "https://gitlab.gnome.org/GNOME/gobject-introspection",
+              "license": "LGPLv2+",
+              "spdx": "LGPL-2.0-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://gitlab.gnome.org/GNOME/gobject-introspection",
+                "ref_var": "GOBJECT_INTROSPECTION_VERSION"
+              }
+            }
+          ]
         },
         {
-            "title": "Host Build Infrastructure (runs on the build host, not inside any image)",
-            "subsections": [
-                {
-                    "title": "Container Engines & Builders",
-                    "dockerfile": null,
-                    "entries": [
-                        {
-                            "name": "nerdctl (Linux builds & container runs)",
-                            "var": null,
-                            "version_fixed": "host install",
-                            "url": "https://github.com/containerd/nerdctl",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "containerd",
-                            "var": null,
-                            "version_fixed": "host install",
-                            "url": "https://containerd.io/",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "BuildKit (buildkitd)",
-                            "var": null,
-                            "version_fixed": "host install",
-                            "url": "https://github.com/moby/buildkit",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        },
-                        {
-                            "name": "Stevedore (Windows builds — bundled docker.exe)",
-                            "var": null,
-                            "version_fixed": "host install",
-                            "url": "https://github.com/slonopotamus/stevedore",
-                            "license": "Apache 2.0",
-                            "spdx": "Apache-2.0"
-                        }
-                    ]
-                }
-            ]
+          "title": "Android Layer",
+          "dockerfile": "Dockerfile.android",
+          "entries": [
+            {
+              "name": "Android SDK",
+              "var": "ANDROID_SDK_VERSION",
+              "url": "https://developer.android.com/studio",
+              "license": "Apache 2.0 / Google ToS",
+              "spdx": "Apache-2.0 AND LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "Android NDK",
+              "var": "ANDROID_NDK_VERSION",
+              "url": "https://developer.android.com/ndk",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Android Build Tools",
+              "var": "ANDROID_BUILD_TOOLS",
+              "url": "https://developer.android.com/studio/releases/build-tools",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Android CMake",
+              "var": "ANDROID_CMAKE_VERSION",
+              "url": "https://cmake.org/",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "Android builds of LiteRT / ONNX Runtime / OpenCV / GStreamer",
+              "var": null,
+              "version_fixed": "same versions as Media Layer",
+              "url": "https://developer.android.com/ndk",
+              "license": "Apache 2.0 / MIT / LGPLv2+ (per component)",
+              "spdx": "Apache-2.0 AND MIT AND LGPL-2.0-or-later",
+              "source": {
+                "kind": "same-as",
+                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
+                "ref": "same refs as the Media Layer rows above"
+              }
+            }
+          ]
+        },
+        {
+          "title": "Optional GPU \u2014 NVIDIA",
+          "dockerfile": "Dockerfile.nvidia",
+          "entries": [
+            {
+              "name": "CUDA Toolkit",
+              "var": "CUDA_VERSION",
+              "url": "https://developer.nvidia.com/cuda-toolkit",
+              "license": "NVIDIA EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "cuDNN",
+              "var": "CUDNN_VERSION",
+              "url": "https://developer.nvidia.com/cudnn",
+              "license": "NVIDIA cuDNN EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "TensorRT",
+              "var": "TENSORRT_VERSION",
+              "url": "https://developer.nvidia.com/tensorrt",
+              "license": "NVIDIA TensorRT EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            }
+          ]
+        },
+        {
+          "title": "Optional GPU \u2014 AMD",
+          "dockerfile": "Dockerfile.amd",
+          "entries": [
+            {
+              "name": "ROCm",
+              "var": "ROCM_VERSION",
+              "url": "https://rocm.docs.amd.com/",
+              "license": "Apache 2.0 / MIT (varies by component)",
+              "spdx": "Apache-2.0 AND MIT"
+            },
+            {
+              "name": "MIGraphX",
+              "var": "MIGRAPHX_VERSION",
+              "url": "https://github.com/ROCm/AMDMIGraphX",
+              "license": "MIT",
+              "spdx": "MIT"
+            }
+          ]
+        },
+        {
+          "title": "Frameworks",
+          "dockerfile": "Dockerfile.torch",
+          "entries": [
+            {
+              "name": "PyTorch",
+              "var": "PYTORCH_VERSION",
+              "url": "https://pytorch.org/",
+              "license": "BSD-3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "TorchVision",
+              "var": "TORCHVISION_VERSION",
+              "url": "https://github.com/pytorch/vision",
+              "license": "BSD-3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "Flutter SDK",
+              "var": "FLUTTER_VERSION",
+              "url": "https://flutter.dev/",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            }
+          ]
+        },
+        {
+          "title": "Runtime",
+          "dockerfile": "Dockerfile.torch",
+          "entries": [
+            {
+              "name": "Kataglyphis Orchestr-ANT-ion",
+              "var": "APP_REF",
+              "url": "https://github.com/Kataglyphis/Kataglyphis-Orchestr-ANT-ion",
+              "license": "MIT",
+              "spdx": "MIT"
+            }
+          ]
+        },
+        {
+          "title": "LLM Stack",
+          "dockerfile": "llm-stack/Dockerfile",
+          "entries": [
+            {
+              "name": "Ollama",
+              "var": "OLLAMA_VERSION",
+              "url": "https://github.com/ollama/ollama",
+              "license": "MIT",
+              "spdx": "MIT"
+            }
+          ]
+        },
+        {
+          "title": "Build Tooling (build-time only, not in runtime images)",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "Emscripten / emsdk (ONNX Runtime WASM build)",
+              "var": null,
+              "version_fixed": "pinned by ONNX Runtime",
+              "url": "https://emscripten.org/",
+              "license": "MIT / NCSA",
+              "spdx": "MIT AND NCSA"
+            },
+            {
+              "name": "ccache",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://ccache.dev/",
+              "license": "GPLv3+",
+              "spdx": "GPL-3.0-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "sccache",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://github.com/mozilla/sccache",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0",
+              "modified": {
+                "patches": [
+                  "windows/upstream/sccache-nvcc-quote-fix/"
+                ],
+                "note": "Built from source at the pinned git rev with a local patch series, NOT installed from a package manager."
+              }
+            },
+            {
+              "name": "Meson",
+              "var": null,
+              "version_fixed": "latest (PyPI)",
+              "url": "https://mesonbuild.com/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Ninja",
+              "var": null,
+              "version_fixed": "latest (PyPI)",
+              "url": "https://ninja-build.org/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "cargo-c (C-ABI build of gst-plugins-rs)",
+              "var": null,
+              "version_fixed": "latest (crates.io)",
+              "url": "https://github.com/lu-zero/cargo-c",
+              "license": "MIT / Apache 2.0",
+              "spdx": "MIT OR Apache-2.0"
+            },
+            {
+              "name": "cerbero (GStreamer Android build system)",
+              "var": null,
+              "version_fixed": "git default branch",
+              "url": "https://gitlab.freedesktop.org/gstreamer/cerbero",
+              "license": "LGPLv2.1+",
+              "spdx": "LGPL-2.1-or-later",
+              "source": {
+                "kind": "upstream-branch",
+                "url": "https://gitlab.freedesktop.org/gstreamer/cerbero",
+                "ref": "default branch",
+                "note": "Build-time only; never shipped in a runtime image."
+              }
+            }
+          ]
         }
-    ]
+      ]
+    },
+    {
+      "title": "Webserver Image",
+      "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver",
+      "subsections": [
+        {
+          "title": "Packages",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "Ubuntu",
+              "var": "UBUNTU_VERSION",
+              "url": "https://ubuntu.com/",
+              "license": "GPLv2 / various",
+              "spdx": "LicenseRef-Distro-Bundle",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "nginx",
+              "var": null,
+              "url": "https://nginx.org/",
+              "license": "BSD 2-Clause",
+              "version_fixed": "latest (apt)",
+              "spdx": "BSD-2-Clause"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Windows Image",
+      "tag": "ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64",
+      "subsections": [
+        {
+          "title": "Base Toolchain",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "Windows Server Core",
+              "var": "WINDOWS_LTSC",
+              "url": "https://www.microsoft.com/",
+              "license": "Microsoft EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "Visual Studio Build Tools",
+              "var": null,
+              "url": "https://visualstudio.microsoft.com/",
+              "license": "Microsoft EULA",
+              "version_fixed": "18",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "Python (source-built, ClangCL)",
+              "var": "PYTHON_VERSION",
+              "url": "https://python.org/",
+              "license": "PSF License",
+              "spdx": "PSF-2.0"
+            },
+            {
+              "name": "CPython bundled externals (OpenSSL, SQLite, libffi, xz, bzip2, zlib, tcl/tk, expat, mpdecimal)",
+              "var": null,
+              "version_fixed": "bundled with Python",
+              "url": "https://github.com/python/cpython-source-deps",
+              "license": "various (Apache 2.0, MIT, PD, \u2026)",
+              "spdx": "LicenseRef-Distro-Bundle",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://github.com/python/cpython-source-deps",
+                "ref": "as bundled by the pinned CPython",
+                "note": "Redistributed unmodified as part of the CPython build."
+              }
+            },
+            {
+              "name": "CMake",
+              "var": "CMAKE_VERSION",
+              "url": "https://cmake.org/",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "Vulkan SDK",
+              "var": "VULKAN_VERSION",
+              "url": "https://vulkan.lunarg.com/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Rust toolchain",
+              "var": null,
+              "url": "https://rust-lang.org/",
+              "license": "MIT / Apache 2.0",
+              "version_fixed": "latest stable",
+              "spdx": "MIT OR Apache-2.0"
+            },
+            {
+              "name": "WiX Toolset",
+              "var": null,
+              "url": "https://wixtoolset.org/",
+              "license": "MS-RL",
+              "version_fixed": "latest",
+              "spdx": "MS-RL"
+            },
+            {
+              "name": "Flutter SDK",
+              "var": "FLUTTER_VERSION",
+              "url": "https://flutter.dev/",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            }
+          ]
+        },
+        {
+          "title": "GPU Layer",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "CUDA",
+              "var": "CUDA_VERSION",
+              "url": "https://developer.nvidia.com/cuda-toolkit",
+              "license": "NVIDIA EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "cuDNN",
+              "var": "CUDNN_VERSION",
+              "url": "https://developer.nvidia.com/cudnn",
+              "license": "NVIDIA cuDNN EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            },
+            {
+              "name": "TensorRT",
+              "var": "TENSORRT_VERSION",
+              "url": "https://developer.nvidia.com/tensorrt",
+              "license": "NVIDIA TensorRT EULA",
+              "spdx": "LicenseRef-Proprietary-EULA"
+            }
+          ]
+        },
+        {
+          "title": "Media Layer",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "GStreamer",
+              "var": "GSTREAMER_VERSION",
+              "url": "https://gstreamer.freedesktop.org/",
+              "license": "LGPLv2+",
+              "spdx": "LGPL-2.0-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer",
+                "ref_var": "GSTREAMER_VERSION",
+                "patches": [
+                  "windows/scripts/patches/gstreamer/001-ges-commit-rename.patch"
+                ]
+              },
+              "modified": {
+                "patches": [
+                  "windows/scripts/patches/gstreamer/001-ges-commit-rename.patch"
+                ],
+                "note": "The Windows build patches a GES symbol rename."
+              }
+            },
+            {
+              "name": "GStreamer meson subprojects (glib, orc, libnice, x264, openh264, \u2026)",
+              "var": null,
+              "version_fixed": "per wrap files",
+              "url": "https://gstreamer.freedesktop.org/",
+              "license": "LGPLv2+ / GPL (x264) / BSD (openh264)",
+              "spdx": "LGPL-2.0-or-later AND GPL-2.0-or-later AND BSD-2-Clause",
+              "source": {
+                "kind": "wrap-files",
+                "url": "https://gitlab.freedesktop.org/gstreamer/gstreamer/-/tree/main/subprojects",
+                "ref": "pinned by the GStreamer release's wrap files",
+                "note": "x264 is GPL, so its presence is what makes this subproject set copyleft."
+              }
+            },
+            {
+              "name": "ONNX Runtime",
+              "var": "ONNXRUNTIME_VERSION",
+              "url": "https://github.com/microsoft/onnxruntime",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "ONNX Runtime GenAI",
+              "var": "ONNXRUNTIME_GENAI_VERSION",
+              "url": "https://github.com/microsoft/onnxruntime-genai",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "OpenCV",
+              "var": "OPENCV_VERSION",
+              "url": "https://opencv.org/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "FFmpeg",
+              "var": "FFMPEG_VERSION",
+              "url": "https://ffmpeg.org/",
+              "license": "GPLv3+ (built with --enable-gpl --enable-version3)",
+              "spdx": "GPL-3.0-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://git.ffmpeg.org/ffmpeg.git",
+                "ref_var": "FFMPEG_VERSION",
+                "build_flags": "--enable-gpl --enable-version3 --enable-libx264 --enable-libx265",
+                "note": "Those flags are what make the shipped binary GPLv3, rather than FFmpeg's default LGPL.",
+                "patches": [
+                  "windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch"
+                ]
+              },
+              "modified": {
+                "patches": [
+                  "windows/scripts/patches/ffmpeg/001-allow-msys-builds.patch"
+                ],
+                "note": "The Windows build patches configure to allow MSYS2 builds."
+              }
+            },
+            {
+              "name": "LiteRT (TensorFlow Lite)",
+              "var": "LITERT_VERSION",
+              "url": "https://www.tensorflow.org/lite",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "LiteRT-LM",
+              "var": "LITERT_LM_VERSION",
+              "url": "https://github.com/google-ai-edge/LiteRT-LM",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Apache TVM",
+              "var": "TVM_REF",
+              "url": "https://tvm.apache.org/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            }
+          ]
+        },
+        {
+          "title": "Build Tooling (build-time only)",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "Scoop package manager",
+              "var": null,
+              "version_fixed": "latest",
+              "url": "https://scoop.sh/",
+              "license": "Unlicense / MIT",
+              "spdx": "Unlicense OR MIT"
+            },
+            {
+              "name": "Scoop-installed tools (7-Zip, Git, LLVM, ninja, sccache, NASM, OpenSSL, NSIS, cppcheck, nano, uv, NuGet)",
+              "var": null,
+              "version_fixed": "latest (scoop)",
+              "url": "https://scoop.sh/",
+              "license": "various (GPL, Apache 2.0, BSD, zlib)",
+              "spdx": "LicenseRef-Distro-Bundle",
+              "source": {
+                "kind": "bundle",
+                "url": "https://scoop.sh/",
+                "note": "Build-time tooling installed from upstream publishers; each carries its own source location. sccache is the exception -- see its own row, it is built from patched source."
+              }
+            },
+            {
+              "name": "vcpkg",
+              "var": null,
+              "version_fixed": "master",
+              "url": "https://github.com/microsoft/vcpkg",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "vcpkg packages (zlib, protobuf \u2014 linked into builds)",
+              "var": null,
+              "version_fixed": "vcpkg baseline",
+              "url": "https://github.com/microsoft/vcpkg",
+              "license": "Zlib / BSD 3-Clause",
+              "spdx": "Zlib AND BSD-3-Clause"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Documentation Image",
+      "tag": "pandoc_all",
+      "subsections": [
+        {
+          "title": "Document Toolchain",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {
+              "name": "Ubuntu",
+              "var": "UBUNTU_VERSION",
+              "url": "https://ubuntu.com/",
+              "license": "GPLv2 / various (individual packages)",
+              "spdx": "LicenseRef-Distro-Bundle",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "Pandoc",
+              "var": "PANDOC_VERSION",
+              "url": "https://github.com/jgm/pandoc",
+              "license": "GPLv2+",
+              "spdx": "GPL-2.0-or-later",
+              "source": {
+                "kind": "upstream-tag",
+                "url": "https://github.com/jgm/pandoc",
+                "ref_var": "PANDOC_VERSION"
+              }
+            },
+            {
+              "name": "TeX Live (texlive-full)",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://tug.org/texlive/",
+              "license": "Collection; per package LPPL / GPL / X11 / modified BSD",
+              "spdx": "LicenseRef-Distro-Bundle",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "Latin Modern fonts (lmodern)",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "http://www.gust.org.pl/projects/e-foundry/latin-modern",
+              "license": "GUST Font License (LPPL-style)",
+              "spdx": "LPPL-1.3c"
+            },
+            {
+              "name": "Ghostscript",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://www.ghostscript.com/",
+              "license": "AGPLv3+",
+              "spdx": "AGPL-3.0-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive. AGPL section 13 also reaches network-exposed use -- check how this component is exposed."
+              }
+            },
+            {
+              "name": "ImageMagick",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://imagemagick.org/",
+              "license": "ImageMagick License (Apache 2.0-style)",
+              "spdx": "ImageMagick"
+            }
+          ]
+        },
+        {
+          "title": "Python",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {
+              "name": "Python",
+              "var": null,
+              "version_fixed": "Ubuntu apt (python3-full)",
+              "url": "https://python.org/",
+              "license": "PSF License",
+              "spdx": "PSF-2.0"
+            },
+            {
+              "name": "uv",
+              "var": "UV_VERSION",
+              "url": "https://github.com/astral-sh/uv",
+              "license": "Apache 2.0 / MIT",
+              "spdx": "Apache-2.0 OR MIT"
+            },
+            {
+              "name": "Pygments",
+              "var": null,
+              "version_fixed": "pinned by uv.lock",
+              "url": "https://pygments.org/",
+              "license": "BSD 2-Clause",
+              "spdx": "BSD-2-Clause"
+            }
+          ]
+        },
+        {
+          "title": "Base Utilities",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {
+              "name": "GNU C Library locales (locales)",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://www.gnu.org/software/libc/",
+              "license": "LGPLv2.1+",
+              "spdx": "LGPL-2.1-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "curl",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://curl.se/",
+              "license": "curl (MIT/X-style)",
+              "spdx": "curl"
+            },
+            {
+              "name": "GNU Wget",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://www.gnu.org/software/wget/",
+              "license": "GPLv3+",
+              "spdx": "GPL-3.0-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "ca-certificates",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://packages.ubuntu.com/ca-certificates",
+              "license": "MPL-2.0 (CA bundle) / GPLv2+ (packaging)",
+              "spdx": "MPL-2.0 AND GPL-2.0-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "less",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://www.greenwoodsoftware.com/less/",
+              "license": "GPLv3+ or Less License",
+              "spdx": "GPL-3.0-or-later",
+              "source": {
+                "kind": "distro-archive",
+                "url": "https://archive.ubuntu.com/ubuntu/",
+                "note": "Unmodified Ubuntu binary package. Source: `apt-get source <pkg>` on the matching release, or the Ubuntu source archive."
+              }
+            },
+            {
+              "name": "sudo",
+              "var": null,
+              "version_fixed": "Ubuntu apt",
+              "url": "https://www.sudo.ws/",
+              "license": "ISC (with BSD-2/3-Clause parts)",
+              "spdx": "ISC AND BSD-2-Clause AND BSD-3-Clause"
+            }
+          ]
+        },
+        {
+          "title": "Vendored LaTeX Themes",
+          "dockerfile": "external/Kataglyphis-DocumANTation/Dockerfile",
+          "entries": [
+            {
+              "name": "awesome-beamer (fork of LukasPietzschmann/awesome-beamer)",
+              "var": null,
+              "version_fixed": "git submodule",
+              "url": "https://github.com/Kataglyphis/awesome-beamer",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
+              "name": "smile (fork of LukasPietzschmann/smile)",
+              "var": null,
+              "version_fixed": "git submodule",
+              "url": "https://github.com/Kataglyphis/smile",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Host Build Infrastructure (runs on the build host, not inside any image)",
+      "subsections": [
+        {
+          "title": "Container Engines & Builders",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "nerdctl (Linux builds & container runs)",
+              "var": null,
+              "version_fixed": "host install",
+              "url": "https://github.com/containerd/nerdctl",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "containerd",
+              "var": null,
+              "version_fixed": "host install",
+              "url": "https://containerd.io/",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "BuildKit (buildkitd)",
+              "var": null,
+              "version_fixed": "host install",
+              "url": "https://github.com/moby/buildkit",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "Stevedore (Windows builds \u2014 bundled docker.exe)",
+              "var": null,
+              "version_fixed": "host install",
+              "url": "https://github.com/slonopotamus/stevedore",
+              "license": "Apache 2.0",
+              "spdx": "Apache-2.0"
+            },
+            {
+              "name": "GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server)",
+              "var": null,
+              "version_fixed": "host install (GenieX CLI v0.5.0)",
+              "url": "https://github.com/qualcomm/GenieX",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
