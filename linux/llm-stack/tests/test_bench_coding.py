@@ -100,3 +100,33 @@ def balanced(s: str) -> bool:
 '''
         ok, _ = run_candidate(naive, BALANCED["tests"])
         assert not ok, "the test set must catch a counter that ignores nesting"
+
+
+class TestTruncationDetection:
+    """Cut off != wrong. Grading a truncated reply as incompetence is how a
+    server limit gets misreported as a model's ability -- the exact mistake the
+    first run of this benchmark made against Qwen3-4B."""
+
+    def test_hitting_the_generation_cap_counts_as_truncated(self):
+        from bench_coding import GENERATION_CAP, looks_truncated
+        assert looks_truncated("some text", GENERATION_CAP, "def f(): pass")
+
+    def test_short_reply_is_not_truncated(self):
+        from bench_coding import looks_truncated
+        assert not looks_truncated("```python\ndef f(): pass\n```", 120, "def f(): pass")
+
+    def test_unclosed_fence_with_broken_code_is_truncated(self):
+        from bench_coding import looks_truncated
+        text = "```python\ndef f(:\n    return ("      # fence never closed
+        assert looks_truncated(text, 100, "def f(:\n    return (")
+
+    def test_valid_code_in_a_closed_fence_is_never_truncated(self):
+        from bench_coding import looks_truncated
+        text = "```python\ndef f():\n    return 1\n```"
+        assert not looks_truncated(text, 100, "def f():\n    return 1")
+
+    def test_a_plain_typo_in_a_closed_fence_is_wrong_not_truncated(self):
+        # Closed fence + syntax error = the model wrote bad code on purpose.
+        from bench_coding import looks_truncated
+        text = "```python\ndef f() return 1\n```"
+        assert not looks_truncated(text, 100, "def f() return 1")

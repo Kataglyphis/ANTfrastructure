@@ -109,6 +109,14 @@ except ValueError:
 
 CODE_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S | re.I)
 
+# GenieX v0.5.0 stops generating at 2048 tokens regardless of max_tokens (which
+# it ignores outright: max_tokens=3000 produced 642 tokens, max_tokens=500
+# produced 1249). A reasoning model can spend that entire budget inside <think>
+# and get cut off mid-function -- which grades as a SyntaxError and looks like
+# incompetence. It is neither: it is an unmeasured task. Detected and reported
+# apart from a genuine wrong answer, exactly as the correctness probe does.
+GENERATION_CAP = int(os.environ.get("BENCH_GENERATION_CAP", "2048"))
+
 
 def extract_code(text):
     """Pull the code out of a reply.
@@ -126,6 +134,28 @@ def extract_code(text):
         return max(blocks, key=len).strip()
     idx = text.find("def ")
     return text[idx:].strip() if idx != -1 else ""
+
+
+def looks_truncated(text, chunks, code):
+    """Was the reply cut off by the server rather than finished by the model?
+
+    Two independent signals, either of which is enough:
+      * the generation hit the server's hard cap, or
+      * the code does not even parse as complete Python (an unclosed bracket or
+        string is what a mid-token cut looks like).
+    Requiring both would miss a cut that lands on a syntactically valid prefix.
+    """
+    if chunks >= GENERATION_CAP:
+        return True
+    if code:
+        try:
+            compile(code, "<candidate>", "exec")
+        except SyntaxError:
+            # An unterminated construct is a cut; a plain typo usually is not,
+            # but a fenced block that never closed is decisive.
+            if text.count("```") % 2 == 1:
+                return True
+    return False
 
 
 def run_candidate(code, tests, timeout=15):
@@ -184,25 +214,30 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
 
 def evaluate(base_url, model, label, max_tokens, keep_output=False):
     """Run every task against one model. Returns a report dict."""
-    print(f"\n  === {label} ===")
+    print(f"\n  === {label} ===", flush=True)
     results = []
     for task in TASKS:
         try:
             text, ttft, wall, chunks = ask(base_url, model, task["prompt"], max_tokens)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
-            print(f"    {task['name']:15s} ERROR {type(e).__name__}: {e}")
+            print(f"    {task['name']:15s} ERROR {type(e).__name__}: {e}", flush=True)
             results.append({"task": task["name"], "passed": False,
                             "detail": f"request failed: {e}", "wall_s": None})
             continue
         code = extract_code(text)
         ok, detail = run_candidate(code, task["tests"])
+        truncated = (not ok) and looks_truncated(text, chunks, code)
+        if truncated:
+            detail = f"CUT OFF at {chunks} tokens (server cap) - not graded as wrong"
         think_share = 0.0
         if "</think>" in text:
             think_share = 1 - len(text.split("</think>")[-1]) / len(text)
-        print(f"    {task['name']:15s} {'PASS' if ok else 'FAIL'}  "
+        verdict = "PASS" if ok else ("CUT " if truncated else "FAIL")
+        print(f"    {task['name']:15s} {verdict}  "
               f"{wall:6.1f}s  ttft={ttft or 0:5.2f}s  tokens={chunks:5d}  "
-              f"think={100*think_share:3.0f}%  {'' if ok else detail}")
-        entry = {"task": task["name"], "passed": ok, "detail": detail,
+              f"think={100*think_share:3.0f}%  {'' if ok else detail}", flush=True)
+        entry = {"task": task["name"], "passed": ok, "truncated": truncated,
+                 "detail": detail,
                  "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
                  "tokens": chunks, "thinking_char_share": round(think_share, 3)}
         if keep_output:
@@ -211,10 +246,15 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False):
 
     done = [r for r in results if r["wall_s"] is not None]
     passed = sum(1 for r in results if r["passed"])
+    cut = sum(1 for r in results if r.get("truncated"))
+    wrong = len(TASKS) - passed - cut
     total_wall = sum(r["wall_s"] for r in done)
-    print(f"    -> {passed}/{len(TASKS)} tasks pass, {total_wall:.1f}s total")
+    extra = f", {cut} cut off" if cut else ""
+    print(f"    -> {passed}/{len(TASKS)} tasks pass{extra}, {total_wall:.1f}s total",
+          flush=True)
     return {"label": label, "model": model, "base_url": base_url,
-            "passed": passed, "total": len(TASKS),
+            "passed": passed, "wrong": wrong, "truncated": cut,
+            "total": len(TASKS),
             "total_wall_s": round(total_wall, 2),
             "avg_wall_s": round(total_wall / len(done), 2) if done else None,
             "results": results}
@@ -258,10 +298,16 @@ def main():
         print("  RANKING — by tasks passed, then by time to a finished answer")
         print("=" * 78)
         ranked = sorted(reports, key=lambda r: (-r["passed"], r["total_wall_s"]))
-        print(f"  {'model':44s} {'pass':>6s} {'total':>9s} {'avg/task':>9s}")
+        print(f"  {'model':42s} {'pass':>5s} {'wrong':>6s} {'cut':>4s} "
+              f"{'total':>9s} {'avg/task':>9s}")
         for r in ranked:
-            print(f"  {r['label'][:44]:44s} {r['passed']}/{r['total']:<4d} "
+            print(f"  {r['label'][:42]:42s} {r['passed']}/{r['total']:<3d} "
+                  f"{r.get('wrong', 0):5d} {r.get('truncated', 0):4d} "
                   f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:8.1f}s")
+        if any(r.get("truncated") for r in ranked):
+            print("\n  'cut' = the server stopped generation at its 2048-token cap "
+                  "before the model\n  finished. Those tasks are UNMEASURED, not failed "
+                  "- a reasoning model can\n  spend the whole budget inside <think>.")
         print()
 
     if args.output:
