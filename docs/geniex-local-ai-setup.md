@@ -812,13 +812,33 @@ specific — and **one of them is yours to fix**:
   object out of the content would recover this turn; opencode out of the box
   will not.
 
-With better descriptions the realistic rate is ~10/12; the text-instead-of-call
-case remains.
+**Both are fixed by a system prompt — measured 12/12.** opencode does *not*
+allow overriding its built-in tools' descriptions (its schema exposes
+`instructions`, `mcp`, `permission` and `agent`, but no tool-description hook),
+so the sharper-description fix above is not actually available there. Delivering
+the same disambiguation through the system prompt works, and works *better* —
+it repairs the text-instead-of-call case that neither a better description nor
+`tool_choice: "required"` could:
+
+| | Tool calls |
+|---|---|
+| QAIRT 4B-Instruct, no system prompt | 8/12 |
+| **QAIRT 4B-Instruct + `prompts/tool-disambiguation.md`** | **12/12, 24.1 s** |
+| GGUF Qwen3-4B `Q4_0` (for comparison) | 12/12, 88.1 s |
+
+`linux/llm-stack/prompts/tool-disambiguation.md` is that file, and
+`bench_tools.py --system <file>` is how it was verified rather than assumed.
+Wired into this host's `~/.config/opencode/opencode.jsonc` via `instructions`.
+
+**With it, the coding winner also wins here** — same perfect score as the GGUF
+4B at 3.7x the speed.
 
 **Every model got `no_tool_needed` right**, so over-eager tool calling is not a
 problem here — including on the 2B, which failed everything else.
 
-**Does this change the recommendation? Mostly no, but state the trade-off.**
+**Does this change the recommendation?** Not once the system prompt is in
+place — the QAIRT bundle then matches the GGUF 4B's 12/12 at 3.7x the speed.
+Without it, the trade-off below is real.
 The GGUF 4B is perfect at tool calls and hopeless at agent latency: § 1e
 measured 34 s of prefill at 3000 tokens of context and 151 s at 8000, against
 the NPU lane's 3.2 s. An agent loop pays that on *every* turn, and a tool-using

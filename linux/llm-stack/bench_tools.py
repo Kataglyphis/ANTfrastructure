@@ -80,11 +80,13 @@ CASES = [
 ]
 
 
-def call(base_url, model, prompt, timeout=900):
+def call(base_url, model, prompt, timeout=900, system=None):
+    messages = ([{"role": "system", "content": system}] if system else []) + \
+               [{"role": "user", "content": prompt}]
     body = json.dumps({
         "model": model, "temperature": 0, "max_tokens": 600,
         "tools": TOOLS, "tool_choice": "auto",
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
     }).encode()
     req = urllib.request.Request(f"{base_url}/v1/chat/completions", data=body,
                                  headers={"Content-Type": "application/json"})
@@ -139,14 +141,16 @@ def grade(message, expect):
     return True, "correct tool and arguments"
 
 
-def evaluate(base_url, model, label, repeats=1):
-    print(f"\n  === {label} ===", flush=True)
+def evaluate(base_url, model, label, repeats=1, system=None):
+    tag = "  [+system prompt]" if system else ""
+    print(f"\n  === {label}{tag} ===", flush=True)
     results = []
     for case in CASES:
         for attempt in range(repeats):
             suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
             try:
-                message, finish, wall = call(base_url, model, case["prompt"])
+                message, finish, wall = call(base_url, model, case["prompt"],
+                                             system=system)
             except Exception as e:  # noqa: BLE001
                 print(f"    {case['name']:20s}{suffix} ERROR {type(e).__name__}", flush=True)
                 results.append({"case": case["name"], "passed": False,
@@ -178,6 +182,12 @@ def main():
     ap.add_argument("--model", default=None)
     ap.add_argument("--label", default=None)
     ap.add_argument("--repeats", type=int, default=1)
+    ap.add_argument("--system", default=None,
+                    help="Path to a system-prompt file prepended to every case. "
+                         "Agents that cannot override a runtime's built-in tool "
+                         "DESCRIPTIONS (opencode among them) can still disambiguate "
+                         "the tools this way — measure whether it actually helps "
+                         "before shipping it.")
     ap.add_argument("--compare", default=None)
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
@@ -195,7 +205,12 @@ def main():
         url, model, _ = resolve_backend(args.backend, args.base_url)
         candidates.append((args.label or args.model or model, url, args.model or model))
 
-    reports = [evaluate(url, model, label, args.repeats) for label, url, model in candidates]
+    system = None
+    if args.system:
+        with open(args.system) as f:
+            system = f.read()
+    reports = [evaluate(url, model, label, args.repeats, system)
+               for label, url, model in candidates]
 
     if len(reports) > 1:
         print("\n" + "=" * 70)
