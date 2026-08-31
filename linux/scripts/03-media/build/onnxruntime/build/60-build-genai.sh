@@ -291,6 +291,14 @@ if [[ -d "${GENAI_LIB_DIR}" ]]; then
     -exec cp -t "${GENAI_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
 fi
 
+# QNN EP (backlog QNN-LINUX): GenAI inherits the QNN EP from the ORT build; stage
+# the backend libs beside the GenAI install, mirroring the Windows lane (#121).
+_genai_qnn_home="$(resolve_qnn_sdk)"
+if [ -n "$_genai_qnn_home" ]; then
+  info "GenAI: staging QNN backend libs beside the GenAI install (backlog QNN-LINUX)"
+  stage_qnn_runtime "$_genai_qnn_home" "${GENAI_OUTPUT_DIR}"
+fi
+
 symlink_output_libraries_into_usr_local "${GENAI_OUTPUT_DIR}"
 
 info "GenAI build complete. Artifacts in ${GENAI_OUTPUT_DIR}"

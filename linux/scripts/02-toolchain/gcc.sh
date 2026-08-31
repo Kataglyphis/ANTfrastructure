@@ -429,6 +429,11 @@ _gcc_build_cross_targets_parallel() {
   for_each_cross_target install_cross_gcc_sysroot_packages --include-amd64 "${targets_csv}"
   # The callbacks below must not re-run apt (dpkg lock).
   local GCC_SYSROOT_PREINSTALLED=1
+  # build-gcc.sh's build-deps apt (build-essential/gmp/mpfr/mpc/...) was already
+  # installed by build_host_gcc, so the concurrent per-target invocations must
+  # skip it too — two apt-get at once collide on /var/lib/apt/lists/lock.
+  # (2026-08-30, first parallel validation build: exact failure.)
+  export GCC_SKIP_BUILD_DEPS=1
 
   local build_arch
   build_arch="$(build_arch_oci 2>/dev/null || arch_oci)"

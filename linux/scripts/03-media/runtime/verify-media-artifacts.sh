@@ -171,6 +171,15 @@ case "${STAGE}" in
     verify_shared_lib "${PREFIX}/lib" "libonnxruntime.so*" "libonnxruntime.so"
     verify_dir_not_empty "${PREFIX}/include" "ONNX Runtime CPU include dir"
     verify_file_exists "${PREFIX}/include/onnxruntime/core/session/onnxruntime_c_api.h" "ONNX Runtime C API header"
+    # QNN EP (backlog QNN-LINUX): if the QNN provider .so was installed, the
+    # backend .so libs must be staged beside it. Absent provider = QNN off (default).
+    if find "${PREFIX}/lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | grep -q .; then
+      if ! find "${PREFIX}/lib" -maxdepth 1 -name 'libQnn*.so' -type f 2>/dev/null | grep -q .; then
+        echo "FAIL [${STAGE}]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged — QNN runtime missing"
+        exit 1
+      fi
+      echo "PASS [${STAGE}]: QNN EP present, backend libs staged"
+    fi
     ;;
 
   onnxruntime-genai)

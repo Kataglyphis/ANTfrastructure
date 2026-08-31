@@ -91,6 +91,23 @@ fi
 # present. The Arm NN / ACL libraries are still built and shipped (Dockerfile.media
 # armnn stage) for direct use by the application, just not wired as an ORT EP.
 
+# QNN EP (Qualcomm QAIRT SDK, backlog QNN-LINUX): arm64-only, opt-in by staging
+# a zip in linux/qnn-sdk/. No zip = EP off with a notice. See linux/qnn-sdk/README.md.
+_qnn_home="$(resolve_qnn_sdk)"
+if [ -n "$_qnn_home" ]; then
+  info "QNN EP ON (SDK root ${_qnn_home})"
+  # ORT CMake defaults QNN_ARCH_ABI to aarch64-android; override to the Linux
+  # SDK's lib dir (cmake/CMakeLists.txt:921 — guarded by `if(NOT QNN_ARCH_ABI)`).
+  BUILD_ARGS+=(
+    --cmake_extra_defines
+    "onnxruntime_USE_QNN=ON"
+    "onnxruntime_QNN_HOME=${_qnn_home}"
+    "QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2"
+  )
+else
+  info "QNN EP off (no SDK zip staged — opt-in, see linux/qnn-sdk/README.md)"
+fi
+
 if cross_build_is_active; then
   append_onnx_cross_cmake_build_args BUILD_ARGS
   if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
@@ -136,6 +153,11 @@ info "Listing copied headers:"
 ls -la "${NATIVE_CPU_OUTPUT_DIR}/include/"*.h 2>/dev/null || warn "No .h files found in include directory"
 
 finalize_onnx_native_output "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
+
+# Stage QNN backend libs beside the ORT install (backlog QNN-LINUX, arm64-only).
+if [ -n "$_qnn_home" ]; then
+  stage_qnn_runtime "$_qnn_home" "${NATIVE_CPU_OUTPUT_DIR}" 'libonnxruntime_providers_qnn.so*'
+fi
 
 # AP4: strip the CPU-EP shared libs. setup_linux_cross_env (above) exported
 # ${STRIP} = the target <triplet>-strip on cross (host strip no-ops on foreign

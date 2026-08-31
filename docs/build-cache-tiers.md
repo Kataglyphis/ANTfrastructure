@@ -348,17 +348,19 @@ today.
 > decision reads authoritative and gets followed.
 
 **sccache is the C/C++ compiler cache. ccache is the automatic fallback.**
-There is no per-language split any more, and two resolvers implement the same
-preference: `compiler_cache_launcher()` (`01-core/common.sh:443-467`) for the
-02-toolchain GCC/LLVM builds and the CMake/onnxruntime/wheelhouse call sites,
-and `setup_ccache`'s own inline copy of it on the media lane
-(`01-core/compiler-cache.sh:108-169`). Either way: the guarded launcher if
-sccache's server answers, else ccache, else build uncached.
+There is no per-language split any more, and every site resolves through ONE
+resolver: `compiler_cache_launcher()` (`01-core/common.sh:443-467`) direct
+from the 02-toolchain GCC/LLVM builds and the CMake/onnxruntime/wheelhouse
+call sites, and via `_resolve_compiler_cache_launcher()` on the media lane
+(`01-core/compiler-cache.sh:36-93` — the single seam that forwards to the
+common.sh resolver when 01-core is loaded, 2026-08-30 backlog F2). Either
+way: the guarded launcher if sccache's server answers, else ccache, else
+build uncached.
 
 It is never *bare* sccache in a stage that mounts `01-core`: each site starts
 at `sccache` and upgrades to `sccache-launcher.sh` as soon as one is
 executable, keeping the bare name only where the helper is absent
-(`common.sh:451-458`, `compiler-cache.sh:161-163`, `:230-232`). The gate at
+(`common.sh:451-458`, `compiler-cache.sh:84-87`). The gate at
 `verify-critical-fixes.sh:220-231` is what stops the *hardcoded* bare form
 coming back — that is how the first cut shipped inert.
 
@@ -401,7 +403,7 @@ only after a detour through the config file:
   have NO environment-variable path in sccache, which is why the config file
   exists at all. But the runtime turns the mode back off: both entry points
   export `SCCACHE_DIRECT=false` (`01-core/common.sh:404-418`,
-  `01-core/compiler-cache.sh:111-113`), and the environment variable wins over
+  `01-core/compiler-cache.sh:119`), and the environment variable wins over
   the config file. That is the TryCompile trap seen from the other end —
   preprocessor-cache mode re-reads the INPUT FILE *after* the compile in order
   to store the entry, so a deleted scratch dir surfaces as `while hashing the
@@ -421,18 +423,18 @@ so the invalidation that setting prevents does not arise.
 **Rust rejoined this on 2026-08-27; nvcc did not.** The hard clear that used to
 sit in `build-gstreamer-monorepo.sh` is gone. `RUSTC_WRAPPER` resolves to the
 same guarded launcher from two places: `setup_sccache` exports it
-(`01-core/compiler-cache.sh:229-233`), and `build_gstreamer_monorepo` installs
+(`01-core/compiler-cache.sh:156-195`), and `build_gstreamer_monorepo` installs
 it for any process where the variable was never set at all
 (`build-gstreamer-monorepo.sh:581-590`). What made that safe is the UDS fix in
-§ 5.4 (`compiler-cache.sh:142-151`, `common.sh:394-403`), not optimism — the
+§ 5.4 (`compiler-cache.sh:69-79`, `common.sh:394-403`), not optimism — the
 deaths at 99 % were the *wrong server* answering, and the launcher is the
 second belt that turns a remaining sccache hiccup into lost hits instead of a
 lost build. To go back to uncached Rust, export
 `RUSTC_WRAPPER=""`; that is what `Dockerfile.toolchain:58` and
 `Dockerfile.package:173` do, and it holds for every stage that never calls
 `setup_sccache`. Where `setup_sccache` *does* run it overwrites the empty value
-(`compiler-cache.sh:233`), so the off switch on that lane is `USE_SCCACHE=0` —
-which also drops C/C++ back to ccache (`compiler-cache.sh:109`). nvcc and hipcc
+(`compiler-cache.sh:182`), so the off switch on that lane is `USE_SCCACHE=0` —
+which also drops C/C++ back to ccache (`compiler-cache.sh:123-129`). nvcc and hipcc
 stay untouched (§ 5.4), and the Windows lane records that released sccache
 breaks the build around them.
 
@@ -440,9 +442,9 @@ breaks the build around them.
 
 The precedence is explicit and correct:
 
-- `setup_ccache` (`01-core/compiler-cache.sh:108-169`) sets
+- `setup_ccache` (`01-core/compiler-cache.sh:95-155`) sets
   `CMAKE_C/CXX_COMPILER_LAUNCHER` to the **guarded launcher**
-  (`01-core/sccache-launcher.sh`, resolved at `:163-166`) when `USE_SCCACHE` is
+  (`01-core/sccache-launcher.sh`, resolved via `_resolve_compiler_cache_launcher`, `:84-87`) when `USE_SCCACHE` is
   not disabled, sccache is on `PATH`, and its server answers `--show-stats`;
   otherwise it falls back to **ccache** and says why. (Before 2026-08-26 it set
   ccache unconditionally. Its first cut at the switch hardcoded *bare*
@@ -478,7 +480,7 @@ are outside this change's scope):
 1. **The `ENABLE_SCCACHE_RUST` gate is not the single control point it says it
    is — and since 2026-08-27 it barely controls anything.**
    `setup-gstreamer.sh:50` calls `setup_sccache` **unconditionally**, and
-   `USE_SCCACHE` defaults to `true` (`compiler-cache.sh:37`, `Dockerfile.media`
+   `USE_SCCACHE` defaults to `true` (`compiler-cache.sh:19`, `Dockerfile.media`
    `ARG USE_SCCACHE=true`). So in that process `RUSTC_WRAPPER` is exported even
    with `ENABLE_SCCACHE_RUST=0`, and an sccache server is started. The
    counterweight used to be an explicit `export RUSTC_WRAPPER=""` inside
@@ -504,14 +506,14 @@ are outside this change's scope):
 3. **`USE_CCACHE=false` does not disable compile caching — it migrates C/C++ to
    sccache.** With ccache off (or simply absent from `PATH`), `setup_ccache`
    returns early leaving the launchers unset, and any later `setup_sccache`
-   fills them (`compiler-cache.sh:236-239`). There is no log line that
+   fills them (`compiler-cache.sh:156-195`). There is no log line that
    distinguishes "ccache disabled" from "sccache silently took over C/C++".
 
 ### 5.4 Where sccache is actually worth it
 
 | target | gate | state | recommendation |
 |---|---|---|---|
-| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:229-233`, `build-gstreamer-monorepo.sh:581-590`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
+| **rustc** (gst-plugins-rs, the monorepo's Rust) | none any more — `ENABLE_SCCACHE_RUST=1` only reaches `media_common_init` (§ 5.3 item 1) | **ON by default since 2026-08-27**, through the guarded launcher (`compiler-cache.sh:156-195`, `build-gstreamer-monorepo.sh:581-590`) | [details](#rustc-gst-plugins-rs-the-monorepos-rust) |
 | **nvcc / hipcc** | `ENABLE_SCCACHE_CUDA=1` (one gate, three sites: `build-opencv.sh:558`, `30-build-native-nvidia.sh:195`, `30-build-native-amd.sh:65`) | wiring exists, default OFF | [details](#nvcc--hipcc) |
 | **C/C++** | — | sccache via the guarded launcher, always on; ccache is the automatic fallback | leave it — this is the owner-directed default since 2026-08-26 (§ 5.1), and both launcher resolvers already pick sccache first (§ 5.2). |
 | **cross-machine tier** (`SCCACHE_MULTILEVEL_CHAIN`, webdav L2) | — | Windows lane only | [details](#cross-machine-tier-sccache_multilevel_chain-webdav-l2) |
@@ -522,7 +524,7 @@ The targets whose recommendation needs more than a table cell.
 
 #### **rustc** (gst-plugins-rs, the monorepo's Rust)
 
-**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:579-591`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:110`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:155`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
+**The one genuine win — and it was taken on 2026-08-27.** It is also the one that broke: sccache's server died mid-compile in three separate rounds ("Failed to send/receive data from server", "No such file or directory" on trivial crates), each time killing an otherwise-green gstreamer build at 99 %. That signature was root-caused on 2026-08-26 and it was never about Rust: the server is located by a fixed TCP port, which is not container-local, so concurrent BuildKit steps reached each *other's* server — one that cannot see their files. `SCCACHE_SERVER_UDS` took the media stage from 2359 sccache faults to zero, so Rust caching came back, pointed at the guarded launcher rather than bare sccache (`build-gstreamer-monorepo.sh:579-591`); a server hiccup now costs hits, not a build at 99 %. The preconditions this section used to prescribe are already unconditional in code: `SCCACHE_IDLE_TIMEOUT=0` (`compiler-cache.sh:116`, `common.sh:375` — the Windows-lane forensics traced all-zero end-of-vertex stats to the server idle-exiting at 600 s), `SCCACHE_ERROR_LOG` (`compiler-cache.sh:122`, `common.sh:419`), and `sccache --show-stats` printed **to stderr**, the stream buildkit's 2 MiB step-log clip never cuts. **What is still open is the measurement:** two consecutive green cross-arch media runs with a non-zero *Rust* hit rate. Until those are on the board the re-enable is shipped but unproven — judge it by the stats line, not by the flag (§ 7).
 
 #### **nvcc / hipcc**
 

@@ -235,6 +235,14 @@ cross_stage_build_args() {
     compiler)
       append_cross_build_args _csba_out shared
       _csba_out+=(--build-arg "CROSS_TARGETS=${CROSS_TARGETS}")
+      # Forward host knobs the toolchain RUNs consume. Forwarded ONLY when set,
+      # so the Dockerfile ARG defaults stay authoritative (same pattern as
+      # ENABLE_NVIDIA on media). GCC_PARALLEL_TARGETS is the one that used to be
+      # dropped here — the launch-time flag could never reach the container, so
+      # the sequential GCC path won every time (backlog validation).
+      append_optional_build_arg _csba_out GCC_PARALLEL_TARGETS "${GCC_PARALLEL_TARGETS:-}"
+      append_optional_build_arg _csba_out GCC_HOST_BOOTSTRAP "${GCC_HOST_BOOTSTRAP:-}"
+      append_optional_build_arg _csba_out GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE "${GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE:-}"
       ;;
     sdk)
       # VULKAN_VERSION needs no hand-forward here: append_version_build_args

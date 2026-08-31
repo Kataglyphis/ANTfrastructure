@@ -1,8 +1,21 @@
 #!/bin/sh
 # Run the compiler through sccache, but never let sccache's OWN failure kill the
-# build: only "sccache: encountered fatal error" falls through to running the
-# compiler directly; a real compile error passes through untouched. Why, and the
-# CMake TryCompile root cause: docs/build-cache-tiers.md.
+# build: any sccache-internal error (prefixed "sccache:") falls through to
+# running the compiler directly; a real compile error passes through untouched.
+# sccache prefixes ONLY its own internal failures with "sccache:" — when the
+# compiler itself fails, sccache echoes the compiler's diagnostics un-prefixed.
+# Why, and the CMake TryCompile root cause: docs/build-cache-tiers.md.
+#
+# Two failure classes, both observed live:
+#   * "sccache: encountered fatal error" — CMake TryCompile deletes its scratch
+#     cwd, sccache then spawns the compiler with a dead cwd (ENOENT).
+#   * "sccache: error: failed to execute compile" + "sccache: caused by: Failed
+#     to send data to or receive data from server" — the sccache SERVER died
+#     mid-build (2026-08-30, TVM step under full concurrent-media load). Not
+#     matching this class made the launcher hand the dead-server error to ninja
+#     as a REAL failure, killing an otherwise-fine build.
+# Bypassing is safe in both: worst case the compiler is re-run directly and the
+# real (compiler) error surfaces.
 #
 # Usage: CMAKE_<LANG>_COMPILER_LAUNCHER=/opt/scripts/core/sccache-launcher.sh
 #        or CC="/opt/scripts/core/sccache-launcher.sh gcc"
@@ -27,7 +40,7 @@ if [ "${_rc}" -eq 0 ]; then
   exit 0
 fi
 
-if grep -q 'sccache: encountered fatal error' "${_err}" 2>/dev/null; then
+if grep -qE 'sccache: (encountered fatal error|error:|caused by:)' "${_err}" 2>/dev/null; then
   # sccache's own failure. Report it once so it stays visible in the log --
   # a silent bypass would hide a cache that has stopped working -- then run
   # the compiler directly.

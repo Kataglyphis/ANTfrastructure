@@ -182,6 +182,7 @@ Common development targets:
    ci-build-triggers
    github-cli-pipeline-monitoring
    mistral-vibe-glm-setup
+   geniex-local-ai-setup
    agentic-loop-build-matrix
    windows-agentic-loop
 
@@ -205,6 +206,7 @@ Common development targets:
    changelog-archive-2026-08-13
    refactoring-backlog-archive-2026-08-10
    refactoring-backlog-archive-2026-08-27
+   refactoring-backlog-archive-2026-08-30
    windows-backlog-archive-2026-08-11
    windows-backlog-archive-2026-08-17
    windows-backlog-archive-2026-08-21

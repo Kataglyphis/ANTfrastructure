@@ -704,7 +704,7 @@ nobody can read.
 
 - **Chain components — `windows/scripts/build/`**: [`build-onnx-from-source.ps1`](#build-onnx-from-sourceps1) · [`build-onnx-genai-from-source.ps1`](#build-onnx-genai-from-sourceps1) · [`build-opencv-from-source.ps1`](#build-opencv-from-sourceps1) · [`build-litert-from-source.ps1`](#build-litert-from-sourceps1) · [`build-litert-lm-bazel.ps1`](#build-litert-lm-bazelps1) · [`build-litert-lm-from-source.ps1`](#build-litert-lm-from-sourceps1) · [`stage-cuda-runtime.ps1`](#stage-cuda-runtimeps1) · [`build-tvm-from-source.ps1`](#build-tvm-from-sourceps1) · [`build-ffmpeg-from-source.ps1`](#build-ffmpeg-from-sourceps1) · [`build-gstreamer-from-source.ps1`](#build-gstreamer-from-sourceps1) · [`load-versions.ps1`](#load-versionsps1) · [`finalize-container.ps1`](#finalize-containerps1) · [`verify-toolchain.ps1`](#verify-toolchainps1) · [`healthcheck.ps1`](#healthcheckps1) · [`smoke-test-container.ps1`](#smoke-test-containerps1) · [`normalize-tensorrt-tree.ps1`](#normalize-tensorrt-treeps1)
 - **Host setup and maintenance — `windows/scripts/host/`**: [`setup-vs.ps1`](#setup-vsps1) · [`setup-scoop-tools.ps1`](#setup-scoop-toolsps1) · [`setup-vcpkg.ps1`](#setup-vcpkgps1) · [`setup-rust-toolchain.ps1`](#setup-rust-toolchainps1) · [`setup-cuda.ps1`](#setup-cudaps1) · [`setup-tensorrt.ps1`](#setup-tensorrtps1) · [`deploy-shim-patch.ps1`](#deploy-shim-patchps1) · [`setup-new-host.ps1`](#setup-new-hostps1) · [`toggle-rdna4-gpu.ps1`](#toggle-rdna4-gpups1) · [`collect-host-docker-state.ps1`](#collect-host-docker-stateps1) · [`reset-container-stores.ps1`](#reset-container-storesps1) · [`sync-defender-exclusions.ps1`](#sync-defender-exclusionsps1) · [`repair-windows-componentstore.ps1`](#repair-windows-componentstoreps1) · [`verify-host-setup.ps1`](#verify-host-setupps1) · [`apply-containerd-config.ps1`](#apply-containerd-configps1) · [`compact-host-vhdx.ps1`](#compact-host-vhdxps1) · [`bootstrap-pwsh.ps1`](#bootstrap-pwshps1) · [`rebuild-host-vhdx.ps1`](#rebuild-host-vhdxps1) · [`free-disk-space.ps1`](#free-disk-spaceps1)
-- **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`probe-build-copy.ps1`](#probe-build-copyps1) · [`test-rdna4-layer-lock.ps1`](#test-rdna4-layer-lockps1) · [`verify-cuda-cache.ps1`](#verify-cuda-cacheps1) · [`repro-sccache-cuda-llm-deadlock.ps1`](#repro-sccache-cuda-llm-deadlockps1)
+- **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`probe-build-copy.ps1`](#probe-build-copyps1) · [`test-rdna4-layer-lock.ps1`](#test-rdna4-layer-lockps1) · [`verify-cuda-cache.ps1`](#verify-cuda-cacheps1) · [`repro-sccache-cuda-llm-deadlock.ps1`](#repro-sccache-cuda-llm-deadlockps1) · [`probe-geniex-npu-driver.ps1`](#probe-geniex-npu-driverps1)
 - **Reusable modules — `windows/scripts/modules/`**: [`WindowsSourceBuild.Common.psm1`](#windowssourcebuildcommonpsm1) · [`WindowsSmokeTest.Common.psm1`](#windowssmoketestcommonpsm1) · [`WindowsGstPlugins.Common.psm1`](#windowsgstpluginscommonpsm1)
 - **Drivers and entry points**: [`Dockerfile.smoke-gate`](#dockerfilesmoke-gate) · [`patches/litert-lm/patch-assert.cmake`](#patcheslitert-lmpatch-assertcmake) · [`probe-sccache-write.ps1` + `run-sccache-write-probe.ps1` + `Dockerfile.sccache-write-probe`](#probe-sccache-writeps1--run-sccache-write-probeps1--dockerfilesccache-write-probe) · [`probe-opencv-video-backends.ps1` + `run-opencv-video-probe.ps1` + `Dockerfile.opencv-video-probe`](#probe-opencv-video-backendsps1--run-opencv-video-probeps1--dockerfileopencv-video-probe)
 
@@ -880,6 +880,18 @@ CUDA-cache probe (non-admin, ~2 min, safe beside a live build): tiny buildctl so
 #### `repro-sccache-cuda-llm-deadlock.ps1`
 
 **Deliberately fails.** Reproduces the sccache nvcc server deadlock and collects a server-side trace for mozilla/sccache#2808. Sets `SCCACHE_REPRO_CUDA_LLM=1`, which makes `build-onnx-from-source.ps1` SKIP patch 006 so the sccache CUDA launcher stays on for `onnxruntime_providers_cuda_llm` — the target the workaround exists to protect. Expect the build to die ~80 min in; that failure IS the artifact. Refuses to start while another `buildctl` is running (a concurrent build shares the sccache server and the locked mount, so a wedge would be unattributable). Needs `ARG SCCACHE_REPRO_CUDA_LLM` wired into `Dockerfile.media-builder`'s media-core-env stage first — it checks and throws with instructions if absent.
+
+#### `probe-geniex-npu-driver.ps1`
+
+Diagnoses why GenieX's Hexagon NPU path fails on a Snapdragon X Windows host.
+Checks the **active** CDSP `libcdsprpc.dll` (matched to the Hexagon NPU
+device's installed driver version — the DriverStore keeps stale copies that
+would otherwise produce false verdicts) for the `dspqueue_*` symbols GenieX
+v0.5.0's bundled llama.cpp `ggml-hexagon` backend dlsyms. A driver predating
+2026 exports only the legacy FastRPC API and fails with
+`ggml-hex: failed to dlsym dspqueue_create` / `Device 'HTP0' not found`.
+Reporting only; never throws on a negative result. See
+[`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) § The NPU problem.
 
 ### Reusable modules — `windows/scripts/modules/`
 

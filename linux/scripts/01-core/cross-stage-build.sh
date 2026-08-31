@@ -32,6 +32,64 @@ _cross_stage_push_error_is_transient() {
     'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|[^0-9]429[^0-9]'
 }
 
+# ── C (2026-08-30): local OCI-layout stage handoff for --no-push chains ─────
+# BuildKit's OCI worker resolves FROM against the REGISTRY, so a multi-stage
+# --no-push chain silently builds every child on the last PUSHED parent. The
+# fix mirrors the runtime lane's proven handoff: every stage built locally is
+# exported to an OCI layout dir, and the child appends
+#   --build-context <parent-tag>=oci-layout://<dir>
+# so its FROM resolves against the image THIS RUN built. The export machinery
+# (export_image_to_oci_layout) comes from context-management.sh, loaded by
+# artifact-common.sh. CROSS_LOCAL_CONTEXT_HANDOFF=0 disables.
+CROSS_CONTEXT_ROOT="${CROSS_CONTEXT_ROOT:-${XDG_CACHE_HOME:-${HOME:-/root}/.cache}/opencode/cross-stage-contexts}"
+
+cross_local_handoff_enabled() {
+  [ "${CROSS_NO_PUSH:-0}" = "1" ] || return 1
+  [ "${CROSS_LOCAL_CONTEXT_HANDOFF:-1}" = "1" ] || return 1
+  declare -F export_image_to_oci_layout >/dev/null 2>&1
+}
+
+# Age-based sweep for workdirs left by killed runs (same shape as the runtime
+# lane's _runtime_sweep_orphaned_contexts — a live run's dirs are younger than
+# CROSS_CONTEXT_KEEP_HOURS and are never refreshed, so age is a safe proxy).
+_cross_sweep_orphaned_contexts() {
+  local keep_hours="${CROSS_CONTEXT_KEEP_HOURS:-24}" d freed=0
+  [ -d "${CROSS_CONTEXT_ROOT}" ] || return 0
+  while IFS= read -r d; do
+    [ -n "${d}" ] || continue
+    [ "${d}" = "${CROSS_CONTEXT_WORKDIR:-}" ] && continue
+    log "[context] reclaiming orphaned cross stage-context $(basename "${d}") (older than ${keep_hours}h)"
+    rm -rf "${d}" && freed=$((freed + 1))
+  done < <(find "${CROSS_CONTEXT_ROOT}" -mindepth 1 -maxdepth 1 -type d \
+             -name 'cross-flow.*' -mmin "+$((keep_hours * 60))" 2>/dev/null || true)
+  [ "${freed}" -eq 0 ] || log "[context] reclaimed ${freed} orphaned cross stage-context tree(s)"
+}
+
+cross_ensure_local_context_workdir() {
+  cross_local_handoff_enabled || return 0
+  if [ -n "${CROSS_CONTEXT_WORKDIR:-}" ]; then
+    mkdir -p "${CROSS_CONTEXT_WORKDIR}"
+    return 0
+  fi
+  mkdir -p "${CROSS_CONTEXT_ROOT}" 2>/dev/null || true
+  _cross_sweep_orphaned_contexts
+  CROSS_CONTEXT_WORKDIR="$(mktemp -d "${CROSS_CONTEXT_ROOT}/cross-flow.XXXXXX")"
+}
+
+cross_cleanup_local_context_workdir() {
+  if [ -n "${CROSS_CONTEXT_WORKDIR:-}" ] && [ -d "${CROSS_CONTEXT_WORKDIR}" ]; then
+    rm -rf "${CROSS_CONTEXT_WORKDIR}"
+  fi
+  CROSS_CONTEXT_WORKDIR=""
+}
+
+cross_stage_context_dir() {
+  local stage="$1" arch="${2:-}"
+  cross_ensure_local_context_workdir || return 1
+  [ -n "${CROSS_CONTEXT_WORKDIR:-}" ] || return 1
+  printf '%s' "${CROSS_CONTEXT_WORKDIR}/${stage}${arch:+-${arch}}"
+}
+
 # _cross_stage_build_impl <push_flag> <label> <tag> <dockerfile> [build args...]
 # push=1 pushes to the registry with cache export; push=0 builds locally only.
 _cross_stage_build_impl() {
@@ -286,6 +344,18 @@ _cross_stage_run_resolve_parent() {
     parent_tag="$(cross_stage_tag "${parent}" "${arch}")"
     [ -z "${parent_tag}" ] && { err "No tag for parent stage: ${parent}"; }
     _csrrp_out+=(--build-arg "BASE_IMAGE=${parent_tag}")
+    # C (2026-08-30): local OCI-layout handoff. When the parent was BUILT THIS
+    # RUN, serve its layout as a named context so the child's FROM resolves to
+    # the local image, never the registry. Missing context = parent not built
+    # this run (--only/--from-stage) = today's registry fallback, unchanged.
+    if cross_local_handoff_enabled; then
+      local parent_ctx
+      parent_ctx="$(cross_stage_context_dir "${parent}" "${arch}" 2>/dev/null || true)"
+      if [ -n "${parent_ctx}" ] && [ -f "${parent_ctx}/index.json" ]; then
+        _csrrp_out+=(--build-context "${parent_tag}=oci-layout://${parent_ctx}")
+        log "[stage ${stage}-${arch}] local OCI handoff: ${parent_tag} <- ${parent_ctx}"
+      fi
+    fi
   fi
 }
 
@@ -389,6 +459,25 @@ cross_stage_run() {
       fi
       if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
         : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
+      fi
+    fi
+    # C (2026-08-30): export the image to its OCI layout so the CHILD stage
+    # resolves FROM locally (the parent half of the --no-push handoff; the
+    # --build-context append lives in _cross_stage_run_resolve_parent).
+    # rc propagated: run_parallel_arch_loop disables errexit for this call tree.
+    if ! is_dry_run && cross_local_handoff_enabled; then
+      local ctx_dir
+      ctx_dir="$(cross_stage_context_dir "${stage}" "${arch}")" || return 1
+      log "[stage ${label}] exporting OCI layout for local handoff → ${ctx_dir}"
+      export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${ctx_dir}" || return 1
+      # The android image ALSO becomes the runtime lane's artifact: the no-push
+      # package build must copy from THIS image, not the registry. The helper
+      # reads ARTIFACT_CONTEXT_ROOT/$arch (set by the orchestrator), which is
+      # exactly where we just wrote the layout.
+      if [ "${stage}" = "android" ]; then
+        local artifact_dir="${CROSS_CONTEXT_WORKDIR}/android-artifacts/${arch}"
+        log "[stage android-${arch}] exporting artifact layout for the runtime lane → ${artifact_dir}"
+        export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
       fi
     fi
     return 0

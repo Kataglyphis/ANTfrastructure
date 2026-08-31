@@ -12,6 +12,7 @@ source "${TESTS_DIR}/../01-core/tag-naming.sh"
 source "${TESTS_DIR}/../01-core/stage-defs.sh"
 
 IMAGE_REPO="example.io/repo"
+CROSS_TARGETS="amd64,arm64,riscv64"
 
 t_case "cross_stage_tag resolves every stage through the real tag functions"
 t_assert_eq "example.io/repo:base"                 "$(cross_stage_tag base)"
@@ -72,6 +73,43 @@ esac
 _args=()
 ENABLE_NVIDIA=true cross_stage_build_args _args media arm64
 t_assert_contains "${_args[*]}" "ENABLE_NVIDIA=true" "set toggle must reach the media stage"
+
+# ── GCC_PARALLEL_TARGETS: the launch-time flag must reach the compiler stage ──
+# This used to be DROPPED here (no --build-arg, no ARG in Dockerfile.toolchain),
+# so GCC_PARALLEL_TARGETS=1 on the launch command silently did nothing and the
+# sequential GCC path won every validation (backlog GCC_PARALLEL_TARGETS).
+t_case "cross_stage_build_args forwards GCC_PARALLEL_TARGETS to compiler only when set"
+_args=()
+unset GCC_PARALLEL_TARGETS GCC_HOST_BOOTSTRAP GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE || true
+cross_stage_build_args _args compiler
+case " ${_args[*]} " in
+  *"GCC_PARALLEL_TARGETS"*) t_assert_eq "absent" "present" "unset knob must not be forwarded" ;;
+  *) t_assert_eq "ok" "ok" ;;
+esac
+_args=()
+GCC_PARALLEL_TARGETS=1 cross_stage_build_args _args compiler
+t_assert_contains "${_args[*]}" "GCC_PARALLEL_TARGETS=1" "set knob must reach the compiler stage"
+_args=()
+GCC_HOST_BOOTSTRAP=0 cross_stage_build_args _args compiler
+t_assert_contains "${_args[*]}" "GCC_HOST_BOOTSTRAP=0" "GCC_HOST_BOOTSTRAP now forwarded when set"
+_args=()
+GCC_PARALLEL_TARGETS=1 cross_stage_build_args _args media arm64
+case " ${_args[*]} " in
+  *"GCC_PARALLEL_TARGETS"*) t_assert_eq "absent" "present" "compiler-only knob must NOT leak to media" ;;
+  *) t_assert_eq "ok" "ok" ;;
+esac
+
+# The parallel GCC driver must not run apt concurrently (dpkg lock collision,
+# found 2026-08-30 on the first GCC_PARALLEL_TARGETS=1 build): it must export
+# GCC_SKIP_BUILD_DEPS=1 AND build-gcc.sh must honor it.
+t_case "parallel GCC driver exports GCC_SKIP_BUILD_DEPS + build-gcc.sh honors it"
+t_assert_contains "$(grep -A8 'export GCC_SKIP_BUILD_DEPS=1' "${TESTS_DIR}/../02-toolchain/gcc.sh" || true)" \
+  "GCC_SKIP_BUILD_DEPS=1" "parallel driver must skip build deps (they are preinstalled)"
+t_assert_contains "$(sed -n '/GCC_SKIP_BUILD_DEPS=1 skips this/,/^fi$/p' "${TESTS_DIR}/../02-toolchain/build-gcc.sh" || true)" \
+  'if [ "${GCC_SKIP_BUILD_DEPS:-0}" != "1" ]; then' \
+  "build-gcc.sh apt step must be gated on GCC_SKIP_BUILD_DEPS"
+t_assert_contains "$(sed -n '/GCC_SKIP_BUILD_DEPS=1 skips this/,/^fi$/p' "${TESTS_DIR}/../02-toolchain/build-gcc.sh" || true)" \
+  "apt_install" "gated block must still contain the apt_install"
 
 # ── XC2: runtime-lane ancestry graph ───────────────────────────────────────────
 t_case "runtime_stage_parent extends the graph one lane past android"

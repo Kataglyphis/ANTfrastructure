@@ -6,7 +6,9 @@ already-shipped entries). Every item here is OPEN. Completed/obsolete items
 and the observation journal live in
 [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md);
 everything CLOSED up to 2026-08-28 is in
-[`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md).
+[`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md);
+the 2026-08-30 round is in
+[`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md).
 This file shows OPEN work only + CHANGELOG.md + memory — do not resurrect
 without re-verifying.
 
@@ -16,7 +18,11 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-30 (trimmed done sub-narrative: compiler-cache GPU sites, --no-push guard, MESON-GI pin — all confirmed shipped)
+Last groomed: 2026-08-30 (cleanup after the rebuild window). Everything the
+2026-08-30 waves closed is in the archive — this file holds only what is still
+open: the A1 closure-window style debt (incl. the logging.sh ERR-trap bug found
+2026-08-30), GEN1, the QNN-LINUX fan-out validation (blocked on a login-gated
+SDK re-stage), and the E-section trigger watches.
 
 ## Standing rules (read first)
 
@@ -35,67 +41,64 @@ Last groomed: 2026-08-30 (trimmed done sub-narrative: compiler-cache GPU sites, 
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 
-## F. Refactor candidates found while switching ccache -> sccache (2026-08-26)
-
-Collected DURING the switch and the staged rebuild, each with the evidence that
-produced it. None of these blocks the current run; they are the debt the switch
-either created or exposed.
-
-- **sccache caches NOTHING in the OpenCV step** [M·★★★, OPEN 2026-08-26] The
-  TryCompile root cause is fixed and the guarded launcher keeps the build alive
-  (1451 saves, 0 aborts), but in the opencv step sccache fails on EVERY compile
-  — now with the main build dir `/tmp/opencv-1/build` as cwd, not a deleted
-  scratch dir. So OpenCV builds fully UNCACHED while every other step caches
-  normally. The guard makes this survivable and VISIBLE; it does not fix it.
-  Do not re-run these nine disproven hypotheses: missing compiler; dangling
-  update-alternatives (never ran in that stage); apt reinstalling sccache
-  (it did not); the two sccache versions (0.13 apt vs 0.17 pinned — both work,
-  PATH prefers the pinned one); our own `rm -rf` (targets iree-build-HOST);
-  a cleared environment; the custom-prefix GCC without LD_LIBRARY_PATH; a
-  214-variable environment plus a 120-flag command line; memory or disk
-  pressure. Also note an out-of-band `nerdctl run` repro is NOT faithful — it
-  cannot recreate BuildKit cache mounts and produced a phantom google-benchmark
-  regex failure that appears in no real chain log.
-- **Compiler-cache abstraction consolidation** [L·★★, OPEN] 8/9 call sites
-  resolve through `compiler_cache_launcher()`; the one duplicate
-  (compiler-cache.sh) is a bootstrap layer that cannot source 01-core and
-  repeats the resolution inline. Merge all sites onto one resolver; the
-  launcher helper is the seam. Needs a closure window.
-
 ## A. Window inventory — needs WORK in the wave
 
-### A1. Work items
+### A1. Work items (all need a closure window — edits to 01-core/03-media
+invalidate compiler/media cache)
 
 - **Complexity-queue survivors** [S-M each] append_tvm_cmake_args 15
-  positionals; vulkan/llvm-cross long stanzas; _cross_stage_build_impl;
-  build_iree_wheels; parse_options 116-liner; modules.sh dir-walker.
-- **TG1 residual — fuller toolchain-closure trim** [M·★★] llvm-cross/
-  llvm-validate lazy + true per-RUN closures; no COPY fallback → needs a
-  per-RUN mount audit + real toolchain rebuild.
-- **TG3 residual — collapse the two toolchain RUNs** [S·★, NEEDS THE REBUILD] RUN-3d recompiles
-  instead of reusing RUN-3 (ccache absorbs, ~97s); pairs with TG1.
+  positionals; vulkan/llvm-cross long stanzas; build_iree_wheels; parse_options
+  116-liner; modules.sh dir-walker. (`_cross_stage_build_impl` is already a
+  single impl behind two thin wrappers — part of C, closed 2026-08-30; do not
+  re-add it.)
+- **logging.sh ERR-trap dynamic-scope bug** [S·★, found live 2026-08-30]
+  `_install_trap`'s `on_err` reads `${action}` under `set -u`; when the ERR trap
+  fires outside the function's dynamic scope the var is unbound and prints
+  `action: unbound variable` — REPLACING the real error (it masked the parallel
+  GCC apt-lock failure). Fix: capture the handler name in the trap string so it
+  is self-contained (e.g. `trap 'on_err "..." ...' ERR` with the action baked
+  in), and add a regression test. logging.sh is in the base/compiler/media
+  closures, so batch with A1 in a closure window.
 - **GEN1 — genai wheel for riscv64 (self-build)** [L·★, ON-DEMAND] upstream
   ships none; IREE-style build plausible; only if it has a user. Needs a
   real generate() smoke.
 
-## C. Orchestrator lifecycle (one coherent PR)
+### A2. QNN-LINUX — Qualcomm QAIRT/QNN SDK on the Linux ARM64 lane (Snapdragon)
 
-- **--no-push OCI-layout handoff + dual-path collapse** [M·★★, OPEN] The
-  multi-stage refusal guard is landed (see archive-2026-08-27 § Closed
-  2026-08-28). Remaining: the full OCI-layout export + `--build-context`
-  handoff (which would make `--no-push` multi-stage actually safe) and the
-  dual-path collapse.
+Mirror the Windows QNN EP (#121, `windows/qnn-sdk/`) onto the Linux `arm64`
+lane for Snapdragon NPU inference. Same opt-in contract (login-gated zip
+dropped by hand, build skips gracefully when absent), **different SDK**:
+Linux AArch64 extracts to `qairt/<version>/lib/aarch64-oe-linux-gcc11.2/`
+(not `aarch64-windows-msvc`).
+
+**What is DONE (2026-08-30, all in the archive):** drop dir + .gitignore,
+versions.env pin, the shared `01-core/qnn-sdk.sh` resolve/stage helper (moved
+out of ORT's lib), ORT build wiring PROVEN on real SDK v2.49.0.260730, the
+Dockerfile.media mounts, artifact verification, and the framework fan-out
+wiring (GenAI/LiteRT/TVM/IREE) — every flag mirrors Windows #121 exactly.
+
+- **Fan-out validation build — BLOCKED on the login-gated SDK.** The wiring is
+  in place and fail-safe (no zip = byte-identical behavior on every arch; that
+  path was validated by the 2026-08-30 media rebuilds). What is still unproven
+  is the OPPOSITE direction: with a REAL QAIRT zip staged on arm64, do all five
+  builds stay GREEN and do the staged libs land? (Storm the open items —
+  LiteRT's own QNN-manager header fetch, the wheel-staging question — are
+  answered by that same run.) The real zip is NOT on the host (removed after
+  the PROVEN build per the qnn-sdk README discipline; the buildkit `/tmp` tmpfs
+  discarded the in-RUN extraction). **Owner action required:** re-stage from
+  qpm.qualcomm.com (Qualcomm ID + EULA), then re-pin `QNN_SDK_LINUX_ZIP_SHA256`
+  in versions.env — a fake/round-tripped zip hard-fails the sha check by
+  design. QNN_SDK_LINUX_LIBDIR (default `aarch64-oe-linux-gcc11.2`) is the
+  single knob if a newer SDK changes the lib subdir.
 
 ## E. Waiting on a TRIGGER (not on work)
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS validation** — ⚠ the stated trigger has ALREADY
-  passed TWICE without validating anything: the flag defaults to 0, so the
-  2026-08-24 and 2026-08-25 compiler rebuilds both took the sequential path.
-  It is not waiting on a rebuild, it is waiting on someone putting
-  `GCC_PARALLEL_TARGETS=1` on the LAUNCH COMMAND. Do that or it will be missed
-  a third time.
+- **GCC_PARALLEL_TARGETS on a full push chain** — validated locally 2026-08-30
+  (green, ~30 % GCC-RUN saving); the next full chain that wants the parallel
+  GCC must pass `GCC_PARALLEL_TARGETS=1` on its command line (it now reaches
+  the container — the plumbing fix 92fb9646).
 - **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
   coverage, dup-compile overlap) — needs ccache stats from a real build;
   the "unify prereq paths" reading is CLOSED (deliberately different).

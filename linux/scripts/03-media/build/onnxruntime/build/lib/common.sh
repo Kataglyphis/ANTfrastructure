@@ -25,7 +25,7 @@ fi
 # previously copy-pasted re-implementations of these are gone; guard instead
 # that they actually loaded, so a broken bootstrap fails loudly HERE rather
 # than much later with a confusing "command not found".
-for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor; do
+for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime; do
   if ! command -v "${_req_fn}" >/dev/null 2>&1; then
     printf '[ERROR] onnxruntime lib/common.sh: required helper %s is undefined after media_common_init (01-core framework not loaded)\n' "${_req_fn}" >&2
     exit 1
@@ -579,3 +579,4 @@ pc_numeric_version_from_ort_version() {
 }
 
 detect_target_arch() { arch_oci; }
+

@@ -195,17 +195,24 @@ bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-di
 bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
 bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
 
-# ⚠️ --no-push FULL-CHAIN runs are REFUSED on OCI-worker hosts (this host):
-# the FROM handoff resolves against the REGISTRY, silently building each stage
-# on the last PUSHED parent (verified live 2026-08-08 — two runs lost). The guard
-# refuses multi-stage --no-push; use --no-push ONLY for single-stage validation:
+# --no-push FULL CHAINS are SAFE since 2026-08-30 (local OCI-layout handoff):
+# every stage built locally is exported and handed to the child via
+# --build-context <tag>=oci-layout://<dir>, so no FROM resolves against the
+# registry (the 2026-08-08 stale-parent bug). Mid-chain resumes (--from-stage
+# after base) are still REFUSED — the parent prefix was not built this run.
+# CROSS_LOCAL_CONTEXT_HANDOFF=0 reverts to the old refusal; CROSS_NO_PUSH_FORCE=1
+# bypasses. Single-stage validation stays supported:
 bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-push --log-dir ./out/build-logs
-# Correct full-chain flow: push mode to android, then the runtime lane with
+# Correct full-chain PUSH flow: push mode to android, then the runtime lane with
 # --skip-manifest so a partial-arch run cannot clobber the public manifest —
 # see docs/linux-cross-builds.md § "The flow that is correct today".
 
 # Opt-in: build the per-target cross GCCs concurrently inside the compiler
 # stage (~30% off the GCC RUN at 3 targets; default 0 = sequential).
+# Forwarded to the container via the compiler-stage build-arg plumbing
+# (stage-defs.sh) — a launch-time value that does not show up as a
+# --build-arg in the dry-run command line is DROPPED and the sequential path
+# runs instead. Validated on a real compiler build 2026-08-30.
 GCC_PARALLEL_TARGETS=1 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
 
 # Verify chain freshness without building (real FRESH/STALE verdicts for images
@@ -327,6 +334,22 @@ raises `OLLAMA_CONTEXT_LENGTH`. **VRAM caveat:** the context Ollama lists is the
 model's max, not what fits — ~19 GB of weights + ~104 KB/token q8_0 KV means a
 28 GB stack (e.g. 12 GB + 16 GB GPUs) caps at ~64K, and 256K needs >45 GB VRAM.
 Requires the nvidia-container-toolkit on any host that wants GPU mode.
+
+### GenieX on Snapdragon (on-device OpenAI server)
+
+The Kataglyphis coding agents can run **fully on-device on Snapdragon** via
+Qualcomm's GenieX — an OpenAI-compatible server backed by the Adreno GPU or
+Hexagon NPU. **WSL2 has no NPU/GPU passthrough**, so the server runs on the
+Windows host (`geniex serve --compute npu --host 0.0.0.0:18181`) and WSL2's
+agent reaches it at `127.0.0.1:18181` via mirrored networking. **The NPU needs
+a recent Qualcomm Hexagon NPU driver** — the llama.cpp Hexagon backend dlsyms
+the `dspqueue_*` API from `libcdsprpc.dll`, which older drivers lack; diagnose
+with `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. The full flow —
+install, the non-interactive chipset config, sharing the model cache across
+Windows/WSL2 without re-downloading, the opencode provider block, and the
+measured NPU/GPU/CPU envelope (NPU 15.2 tok/s on a 4B after the driver update;
+27B exceeds the HTP's ~3 GB vmem) — is owned by
+[`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md).
 
 ### Triggering the opt-in CI lanes
 
@@ -528,6 +551,16 @@ framework. A version-mismatch (SDK too old for the framework) also falls back to
 QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
 and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
 [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
+
+The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX, **PROVEN 2026-08-30**
+on a staged QAIRT v2.49.0.260730 zip — arm64 media build GREEN): stage the
+Linux AArch64 SDK zip in `linux/qnn-sdk/` (different SDK —
+`lib/aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`), pin with
+`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env`. ORT-only today; framework
+fan-out to GenAI/LiteRT/TVM/IREE is OPEN. No zip = QNN off. Mechanism (the
+`QNN_ARCH_ABI` override, `stage_qnn_runtime`, the bind-mount): see
+[`docs/linux-cross-builds.md`](docs/linux-cross-builds.md) (QNN EP, in the
+toggles section) and `docs/refactoring-backlog.md` A2. QNN-LINUX.
 
 ### Windows Build Notes
 
@@ -792,11 +825,13 @@ The rules an agent must never violate:
    ccache, else fails so the caller builds uncached. Call sites: build-gcc.sh
    (CC/CXX prefix), build-clang.sh and llvm-cross.sh (`CMAKE_*_COMPILER_LAUNCHER`),
    cmake-cache-linker.sh, the onnxruntime build lib, and build-app-wheelhouse.sh
-   (IREE). `compiler-cache.sh` is the ONE exception — it sources nothing, so it
-   cannot assume `01-core/common.sh` is loaded and cannot rely on the helper;
-   both `setup_ccache` (:108-166) and `setup_sccache` (:229-233) repeat the
-   resolution inline. Keep the two in step, or fold compiler-cache.sh into the
-   helper.
+   (IREE). Since 2026-08-30 (backlog F2) `compiler-cache.sh` routes through the
+   SAME resolver: `_resolve_compiler_cache_launcher()` calls
+   `compiler_cache_launcher()` when 01-core is loaded (every media/ORT caller)
+   and inlines the identical decision only for the android preamble, which
+   sources compiler-cache.sh standalone. Both `setup_ccache` and `setup_sccache`
+   consume it; the agreement is pinned by `tests/test-compiler-cache.sh`.
+   New cache logic belongs in the resolver, not in another duplicate.
    - Do NOT hardcode `ccache` as a launcher anywhere. `cmake-cache-linker.sh` is
      SHARED; a literal there silently overrides the decision for every consumer.
    - `--ccache` on build-gcc.sh/build-clang.sh is a historical FLAG NAME. It
@@ -809,7 +844,7 @@ The rules an agent must never violate:
      builds at 99% — but that signature was the wrong-server-by-fixed-TCP-port
      bug, cured by `SCCACHE_SERVER_UDS` (2359 media-stage sccache faults → 0).
      Two places set the wrapper, in this order: `setup_sccache`
-     (compiler-cache.sh:229-233), which setup-gstreamer.sh:50 runs
+     (compiler-cache.sh:156-195), which setup-gstreamer.sh:50 runs
      unconditionally for the Rust-heavy gstreamer lane, and
      build-gstreamer-monorepo.sh:581-591, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
@@ -817,7 +852,7 @@ The rules an agent must never violate:
      a build at 99%. Their FALLBACKS differ, and only one is safe: with no
      executable launcher the monorepo goes uncached
      (build-gstreamer-monorepo.sh:589-590), while `setup_sccache` keeps its
-     `_sc_launcher="sccache"` default (compiler-cache.sh:229) and would ship
+     `_sc_launcher="sccache"` default (compiler-cache.sh:176) and would ship
      BARE sccache — a hole the literal-`export` gate below cannot see. The
      launcher is only reachable because 01-core is bind-mounted at
      `/opt/scripts/core` on every heavy media RUN; keep it on those mount
@@ -832,7 +867,7 @@ The rules an agent must never violate:
    - **PREFER `01-core/sccache-launcher.sh`; fall back to bare `sccache` rather
      than to nothing.** Superseded 2026-08-27 (`26a30740`): this rule used to
      read "NEVER point a launcher at bare `sccache`", and taken literally it
-     tells you to delete the default at `compiler-cache.sh:237`
+     tells you to delete the default at `compiler-cache.sh:176`
      (`_sc_launcher="sccache"`, upgraded to the launcher when one is on disk) —
      which would turn `verify-critical-fixes.sh` RED, because that gate checks
      the DECISION (never UNCACHED), not the spelling. Always cache; use the

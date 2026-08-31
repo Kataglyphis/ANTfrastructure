@@ -22,6 +22,18 @@ for _common in \
 done
 unset _common
 
+# QNN SDK helpers (backlog QNN-LINUX): same dual-layout source as common.sh.
+for _qnnmod in \
+    "/opt/scripts/core/qnn-sdk.sh" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../../01-core/qnn-sdk.sh"; do
+    if [ -f "${_qnnmod}" ]; then
+        # shellcheck disable=SC1090,SC1091
+        source "${_qnnmod}"
+        break
+    fi
+done
+unset _qnnmod
+
 # Source canonical versions.env so PYTORCH_VERSION / TORCHVISION_VERSION are
 # always available even when this script is invoked outside the orchestrator
 # (which is the typical case in the media app-wheelhouse stage). Fallback paths
@@ -906,6 +918,16 @@ build_iree_wheels() {
             sed -i 's/sys\.version_info >= (3, 12) and not /False and /' "${_sp}"
         fi
     done
+
+    # QNN target backend (backlog QNN-LINUX, mirrors Windows build-iree #121):
+    # arm64-only, opt-in by staging the QAIRT zip; no zip = OFF (upstream default).
+    _iree_qnn_home="$(command -v resolve_qnn_sdk >/dev/null 2>&1 && resolve_qnn_sdk || true)"
+    if [ -n "${_iree_qnn_home}" ]; then
+        log "IREE: QNN target backend ON (SDK root ${_iree_qnn_home})"
+        cmake_args+=("-DIREE_TARGET_BACKEND_QNN=ON" "-DQNN_HOME=${_iree_qnn_home}")
+    else
+        cmake_args+=("-DIREE_TARGET_BACKEND_QNN=OFF")
+    fi
 
     if cross_build_is_active; then
         # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====

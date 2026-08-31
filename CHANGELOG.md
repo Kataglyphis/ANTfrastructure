@@ -53,6 +53,337 @@ zip). Added to the gate's client-OS allowance (`ClientOsPattern`); regression
 assertion in `SourceBuild.VerifyTargetArch.Tests.ps1`.
 
 
+## 2026-08-31 — WSL2 RAM tuning: host gets ~20 GB back; 27B loads on GPU but stays impractical
+
+The GenieX models run on the Windows host, but the host `.wslconfig` had capped
+WSL2 at **30.3 GB of 31.6 GB**, and WSL contained ~4.3 GB of orphaned dead
+weight. Both fixed:
+
+- `.wslconfig`: `memory=10GB` + `autoMemoryReclaim=gradual` + `swap=4GB`
+  (backup of the old file kept). WSL now reports ~9.7 GB total; the Windows
+  host went from ~2 GB free to **~18–21 GB free**.
+- WSL cleanup (elevated commands, documented): rootful `containerd.service`
+  stopped+disabled (killed orphaned Elasticsearch + Collabora containers,
+  ~2.5 GB) and `pkill` of orphaned clamd/freshclam + postgres (~1.1 GB).
+  Containers from a running compose (llm-stack glances) kept.
+- **What the RAM buy actually gives:** the 27B Q3_K_XL (13.1 GB) now *loads* on
+  the Adreno GPU (was `CL_OUT_OF_RESOURCES`), but generation is still
+  impractical there — 2.0 tok/s, 9.1 s first token, and the server hung under
+  the first real request (HTTP 000, 14.4 GB RSS, killed to release RAM). The
+  honest bottom line is now in the docs: on this machine, the GPU serves up to
+  the 9B-Distill; the 27B stays CPU territory; the NPU serves 2B/4B fastest.
+- New docs section "Making room: WSL2 RAM tuning" in
+  [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md): the
+  `.wslconfig` cap + `autoMemoryReclaim`, the elevated cleanup commands, and
+  the reality check (what freed RAM did and did not buy).
+
+## 2026-08-31 — hybrid actually measured: 9B distill runs at 7.5 tok/s (faster than GPU)
+
+Tested `--compute hybrid` against every Qwen3.8-class model on this Snapdragon
+X, with the surprise that **hybrid is the right path for models that straddle
+the HTP budget**:
+
+- **Qwen3.8-9B-Distill Q4_K_M (5.78 GB)** does not fit the ~3 GB HTP alone but
+  runs on `--compute hybrid` at **7.5 tok/s — faster than the same model on the
+  GPU (6.5 tok/s)**. Hybrid offloads the layers that fit the HTP and runs the
+  rest on CPU.
+- **Qwen3.8-27B Q4_0 crashes on hybrid too** (like pure NPU): the single HTP
+  cannot even stage a fraction, so there is no partial-offload win. 27B stays
+  CPU-only territory (or GPU Q3_K_XL at degraded quality).
+- Full measured envelope table added to
+  [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md): NPU
+  16.9 (2B) / 15.2 (4B), hybrid 7.5 (9B), GPU 13.2 (4B) / 6.5 (9B). CPU numbers
+  for 2B/4B/9B are marked as estimates; NPU/GPU/hybrid are all measured.
+- Bottom line: **no single model combines GPU+NPU** (hybrid = NPU+CPU only);
+  you cannot add the GPU to hybrid. Docs now state this plainly and recommend
+  2B-Distill (NPU) / 4B (NPU) / 9B-Distill (hybrid) per task weight.
+
+## 2026-08-31 — hybrid compute truth + Qwen3.8 model matrix
+
+Clarified what GenieX v0.5.0 can and cannot do with all three accelerators, and
+which Qwen3.8-class models fit this Snapdragon X — all verified live:
+
+- **`--compute hybrid` is the per-tensor NPU scheduler, NOT "GPU+NPU at once".**
+  The device alias resolves to `DeviceID:""` + `ngl != 0`, which the llama_cpp
+  plugin classifies as NPU; the HTP runs the layers that fit and CPU takes the
+  rest. Measured 14.1 tok/s on the 4B (pure NPU: 15.2). A single model runs on
+  HTP(+CPU fallback) or GPU, never both simultaneously.
+- **Multi-HTP device lists** (`--compute HTP0,HTP1,...` + `GGML_HEXAGON_NDEV`)
+  spread a model across several HTP cores — but this X126100 has a single HTP
+  (hwinfo `threads 4, hvx 4, hmx 1`), so the list degenerates to one device.
+- **QAIRT bundles are NPU-only** — `--compute cpu/gpu` on one is coerced back
+  to NPU with a warning.
+- **Run both accelerators at once**: one `geniex serve` binds one default
+  compute; run a second server on another port (`--host 0.0.0.0:18182`) and
+  point the agent at the right base URL per model.
+- **Qwen3.8 model matrix** (verified): `Qwen3.8-2B-Distill` Q4_K_M 1.31 GB →
+  NPU 16.9 tok/s (fits ~3 GB HTP); `Qwen3-4B` Q4_0 → NPU 15.2 / GPU 13.2;
+  `Qwen3.8-9B-Distill` Q4_K_M 5.78 GB → GPU only (over HTP budget);
+  `Qwen3.8-27B` → CPU territory (see quant ladder); `Qwen3.8-Flash-Next` too
+  large for this class of machine. Docs updated with the matrix and an
+  NPU-first opencode provider example.
+
+## 2026-08-31 — GenieX NPU FIXED by a Qualcomm Hexagon NPU driver update + NPU probe
+
+**The NPU now works.** Updating the Qualcomm Hexagon NPU driver
+(`libcdsprpc.dll` 30.0.0140.1000 → 30.0.0220.3000; Hexagon NPU device driver
+30.0.220.3000, installed via Windows Update optional driver updates + reboot)
+fixed both NPU backends. Root cause (documented in
+[`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md) § The NPU
+problem): the old driver's `libcdsprpc.dll` exported only the legacy FastRPC
+API, not the `dspqueue_*` symbols GenieX v0.5.0's bundled llama.cpp
+`ggml-hexagon` backend dlsyms (`dspqueue_create` etc. — verified per-symbol
+with `GetProcAddress`). QAIRT/QNN showed a different symptom of the same root
+cause: `Exception 0xc00000fd` (STATUS_STACK_OVERFLOW) in HTP runtime init.
+
+- Measured after the fix: **4B on NPU at 15.2 tok/s (0.2 s first token)** —
+  faster than the Adreno GPU (13.2 tok/s) and far faster than CPU. Verified
+  end-to-end through the OpenAI server from WSL2.
+- Remaining limit: the Hexagon HTP has ~3 GB vmem (`vmem 3145728000` in the
+  load log), so the 27B fails at graph compute with `dspqueue_read failed:
+  0x00000072` — a memory limit, not a driver bug (same class as
+  ggml-org/llama.cpp#26123).
+- New probe `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`: checks
+  the **active** CDSP `libcdsprpc.dll` (matched by Hexagon-NPU device driver
+  version, so stale DriverStore copies cannot falsify the verdict) for the
+  `dspqueue_*` symbols. Reporting-only, never throws on a negative. Documented
+  in `docs/windows-builds.md` § Script Reference.
+- Docs updated: measured envelope now NPU-first; troubleshooting table covers
+  the pre-fix `dlsym` failure, the QAIRT stack overflow, and the post-fix HTP
+  memory limit.
+
+## 2026-08-31 — GenieX on-device OpenAI server for Snapdragon (docs + host tooling)
+
+New page [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md):
+run Qualcomm GenieX (BSD-3-Clause) so a coding agent inside **WSL2** talks to a
+local OpenAI-compatible API backed by the Windows host's **Adreno GPU** (or
+Hexagon NPU). WSL2 has no NPU/GPU passthrough, so the server runs on Windows
+and WSL2 reaches it at `127.0.0.1:18181` via mirrored networking.
+
+- Deployed and measured live on a Lenovo Snapdragon X (2026-08-31): GPU 4B at
+  13.2 tok/s, clean output, verified end-to-end through the OpenAI API; the
+  27B's usable quant window on the Adreno is ≤ ~13 GB (Q4_0 @ 16 GB OOMs with
+  `CL_OUT_OF_RESOURCES -5`; IQ3_S @ 12 GB loads but 3-bit quality is unusable —
+  whitespace output).
+- **NPU root cause documented** (not just "broken"): both NPU backends fail
+  against the installed Qualcomm CDSP/FastRPC driver (1.0.4175.2700,
+  20.11.2024; `libcdsprpc.dll` v30.0.0140.1000):
+  - llama.cpp Hexagon backend: `failed to dlsym dspqueue_create` — the driver
+    exports only the older FastRPC API (`remote_handle_open`), not the
+    `dspqueue_*` symbols the bundled backend needs (verified per-symbol).
+  - QAIRT/QNN backend: `Exception 0xc00000fd` (STATUS_STACK_OVERFLOW) in the
+    QNN v2.45.0 HTP runtime init — same stale-driver family, different symptom.
+  - Fix is a **Qualcomm CDSP/FastRPC driver update** (Windows Update optional
+    updates / Lenovo driver page); GenieX v0.5.0 is already the latest release.
+    Until then `--compute gpu` is the working accelerated path.
+- Also handled: SoX install + user-PATH for the serve warning; non-interactive
+  chipset config (`geniex config set chipset qualcomm-snapdragon-x-elite`);
+  local cache copy across Windows/WSL2 to avoid re-downloading 16 GB; the WSL2
+  localhost port-shadowing trap that prevents the Windows server from binding.
+- Docs wiring: `docs/INDEX.md`, `docs/index.rst` (toctree), `README.md`,
+  `AGENTS.md` § GenieX on Snapdragon, and a `deps.json` entry under Host Build
+  Infrastructure (BSD-3-Clause) — licence pages and curated SBOM regenerated.
+
+## 2026-08-30 — rebuild window: GCC_PARALLEL_TARGETS validated (2 bugs found+fixed), F2 media validation, launcher server-death gap fixed
+
+The tasks that needed a real rebuild, run and closed:
+
+### GCC_PARALLEL_TARGETS validation — PASS, and it surfaced two real bugs
+
+- **92fb9646 — the launch flag was silently dropped (the real "missed four
+  times" cause).** No `ARG GCC_PARALLEL_TARGETS` in Dockerfile.toolchain and no
+  `--build-arg` in the compiler-stage args, so a launch-time
+  `GCC_PARALLEL_TARGETS=1` never reached the container and the sequential path
+  won every time. Fixed: ARG + ENV in Dockerfile.toolchain (mirrors
+  `GCC_HOST_BOOTSTRAP`), `append_optional_build_arg` forwarding in
+  stage-defs.sh's compiler case (only when set; Dockerfile defaults stay
+  authoritative), pinned by test-stage-defs.sh. Dry-runs now emit
+  `--build-arg GCC_PARALLEL_TARGETS=1` when set, absent when not.
+- **5e8b2470 — the first parallel launch collided on the dpkg apt lock.**
+  The concurrent per-target `build-gcc.sh` invocations each ran their own
+  "Installing build dependencies..." apt_install; two apt-get at once die on
+  `/var/lib/apt/lists/lock`. Fixed: `GCC_SKIP_BUILD_DEPS=1` gates build-gcc.sh's
+  apt step (deps already installed by `build_host_gcc`, which runs first) and
+  the parallel driver exports it after the serial pre-pass. Sequential path
+  unchanged.
+- **Result:** local compiler build with `GCC_PARALLEL_TARGETS=1` GREEN —
+  amd64 linked serially, arm64 + riscv64 cross-GCC concurrent (JOBS=16 each),
+  both OK; two cross targets in ~531s wall vs ~984s sequential (~30% GCC-RUN
+  saving, as documented). Full toolchain smoke 41/41 PASS, image
+  `cross-compiler-amd64` loaded. This also validated TG1/TG3 (trimmed per-RUN
+  mounts) and F2's toolchain call sites (`sccache gcc/g++` live).
+- Follow-up logged: the ERR-trap in logging.sh `_install_trap` fired with
+  `action` unbound under set -u when triggered outside the function's dynamic
+  scope, masking the real apt error. Not in this wave.
+
+### F2 media validation — PASS (sdk→media→android, amd64)
+
+Full chain from sdk pushed for amd64. The one-resolver cache consolidation was
+exercised in every media RUN: `compiler cache enabled:
+launcher=/opt/scripts/core/sccache-launcher.sh`, **100 % C/C++ cache-hit
+rate**, 27 artifact-verify OK, android built and pushed. modules.sh reorder and
+the QNN-off fan-out path (litert/tvm/app-wheelhouse/genai with no zip) all ran
+the new code without regression.
+
+### 0371d164 — sccache-launcher server-death gap FOUND live + FIXED
+
+The validation build caught a second failure class the guarded launcher did
+not handle: the sccache **server died mid-build** under full concurrent-media
+load and sccache reported `sccache: error: failed to execute compile / caused
+by: Failed to send data to or receive data from server / failed to fill whole
+buffer`. The launcher only bypassed on `sccache: encountered fatal error` (the
+TryCompile ENOENT class), so it handed the dead-server error to ninja as a REAL
+failure and killed the TVM step. Fixed by widening the bypass classification to
+any sccache-prefixed internal error (`sccache: (encountered fatal error|error:|
+caused by:)`) — safe because sccache prefixes only its own failures with
+`sccache:`; a real compiler error is echoed un-prefixed and passes through.
+Pinned by the new tests/test-sccache-launcher.sh (8 assertions incl. a
+mutation case proving the old narrow match would NOT have bypassed). The media
+rebuild running after this lands re-validates the fix live and restores the
+TVM wheel lost to the dead server (the failure was non-fatal by design).
+
+### QNN-LINUX fan-out validation — BLOCKED on the login-gated SDK
+
+The real QAIRT zip is not on the host (removed after the PROVEN build per the
+qnn-sdk README discipline; /tmp/qnn-sdk-extract now holds only a synthetic test
+stub). Re-staging is the owner's move (qpm.qualcomm.com, EULA), then re-pin
+`QNN_SDK_LINUX_ZIP_SHA256`. The no-zip fail-safe path across every framework
+was validated by the media builds above.
+
+## 2026-08-30 — second pass: --no-push chains SAFE (OCI-layout handoff) + source_module recursion fix
+
+Backlog item C is closed: **full `--no-push` chains are no longer refused** —
+every stage built locally is exported to an OCI layout and handed to the child
+via `--build-context <parent-tag>=oci-layout://<dir>`, so a child's FROM never
+resolves against the registry (the 2026-08-08 stale-parent bug). The android
+image is additionally exported for the runtime lane, and the mid-chain resume
+case stays refused (no locally-built prefix to serve).
+
+- `01-core/cross-stage-build.sh` — `cross_local_handoff_enabled()`,
+  `cross_ensure_local_context_workdir()` (per-run
+  `${CROSS_CONTEXT_ROOT:-~/.cache/opencode/cross-stage-contexts}/cross-flow.*`,
+  age-based orphan sweep), `cross_stage_context_dir()`; parent resolution in
+  `_cross_stage_run_resolve_parent` appends the `--build-context` when the
+  parent was built this run; `cross_stage_run` exports every local stage after
+  the build, and android to `<workdir>/android-artifacts/<arch>`.
+- `build-cross-chain.sh` — guard relaxed (full chain allowed, mid-chain
+  refused; `CROSS_LOCAL_CONTEXT_HANDOFF=0` reverts, `CROSS_NO_PUSH_FORCE=1`
+  bypasses), parse-time message + `--no-push` usage text updated,
+  `run_runtime_stage` passes `ARTIFACT_CONTEXT_ROOT`+`ARTIFACT_CONTEXT_MODE=oci`
+  to the helper under `--no-push`, `_chain_on_exit` reclaims the workdir.
+- `01-core/modules.sh` — `source_module` resolves FRAMEWORK dirs before
+  `${caller_dir}/${name}`. The old order made a bare
+  `source` of ONNX's `build/lib/common.sh` (SCRIPT_DIR unset) resolve
+  `source_module "common.sh"` to that very file — an infinite re-source loop
+  ending in a stack-overflow SIGSEGV. All `source_module` names are 01-core
+  modules, so the caller-local slot is now only a last resort.
+- New suites: `tests/test-cross-oci-handoff.sh` (15 assertions — parent-context
+  append, registry fallback when unbuilt, push=1 never, guard matrix incl.
+  mutation-style refusal cases) and `tests/test-module-resolution.sh`
+  (5 assertions — order, the ORT recursion shape under timeout, caller-local
+  last resort; mutation-verified against the pre-fix `modules.sh`: 3/5 fail).
+- Live-proven on the host: two-stage test build — stage B's `FROM` resolved
+  from the exported layout (`--pull=false`, content marker verified), never
+  the registry.
+- Docs: AGENTS.md quick-ref, `docs/linux-cross-builds.md` § "--no-push full
+  chains: FIXED", backlog C closed, archive entry.
+
+## 2026-08-30 — Backlog sweep: F-entries closed (OpenCV-sccache refuted), one-resolver cache consolidation, QNN-LINUX fan-out wired
+
+Three parallel threads, one day: the two remaining F-section items are gone
+from the open backlog, the cache launcher resolution has exactly one resolver,
+and the QNN-LINUX framework fan-out (GenAI/LiteRT/TVM/IREE) is wired on the
+shared SDK module — all fail-safe by construction (no zip = byte-identical
+existing behavior).
+
+### OpenCV-sccache entry REFUTED, F2 DONE (docs/refactoring-backlog-archive-2026-08-30.md)
+
+- **"sccache caches NOTHING in the OpenCV step" — closed by REFUTATION.** Log
+  forensics on the staged-media* and media-arm64 logs showed the 2359 bypass
+  messages the entry cited were the pre-UDS wrong-server bug (concurrent
+  BuildKit steps reaching each other's sccache server on the fixed TCP port;
+  `caused by: No such file or directory (os error 2)` — exactly what
+  docs/build-cache-tiers.md § 5.1 already recorded as fixed by
+  b4078ad1 + 4aa92fb6), and that the faults appeared in the ORT step too —
+  not OpenCV-exclusive as claimed. Every post-UDS run has 0 bypass messages,
+  including the 2026-08-30 QNN-LINUX arm64 media build, where OpenCV compiled
+  all 1660 objects through the launcher and the sibling ffmpeg step recorded a
+  99.64 % hit rate. No code change needed; the misdiagnosis is archived with
+  the evidence so it is not re-discovered.
+- **F2 — compiler-cache abstraction consolidation: DONE.** New
+  `_resolve_compiler_cache_launcher()` in `01-core/compiler-cache.sh` routes
+  every launcher decision through common.sh's `compiler_cache_launcher()`
+  (all media/ORT callers) with an inline bootstrap fallback for the android
+  preamble, which sources compiler-cache.sh standalone. Both paths implement
+  the identical decision (guarded launcher > sccache > ccache, never empty);
+  `setup_ccache` and `setup_sccache` both consume it; the
+  verify-critical-fixes.sh gate still passes without edits. Pinned by the new
+  suite `linux/scripts/tests/test-compiler-cache.sh` (8 assertions, incl.
+  mutation checks and the "Rust keeps sccache-class on a ccache verdict"
+  property). Behavior-identical by construction; a media run validates the
+  stats lines.
+
+### QNN-LINUX framework fan-out WIRED (validation build pending)
+
+- **NEW `01-core/qnn-sdk.sh`** — shared QAIRT resolution + runtime staging,
+  moved out of ORT's lib/common.sh (which now sources it and hard-requires the
+  two functions). Unit-tested end-to-end against a synthetic QAIRT zip:
+  resolution, sha256 verification, `libQnn*.so` + `hexagon-v*` staging, and
+  the arm64/no-zip gates.
+- `03-media/core/common.sh` — `media_common_init` loads `qnn-sdk.sh`
+- `60-build-genai.sh` — stage QNN backend libs beside the GenAI install
+- `build-litert.sh` — `TFLITE_ENABLE_QNN=ON -DQNN_HOME=<home>` + NPU=ON when
+  a zip is staged (else the NPU=OFF/`QNN=OFF` defaults), in BOTH the cmake
+  configure and the wheel `EXTRA_CMAKE_FLAGS`, plus post-install staging
+- `tvm-config.sh` / `tvm.sh` — `USE_QNN=ON -DQNN_HOME=<home>` (else explicit
+  `-DUSE_QNN=OFF`) in `append_tvm_cmake_args`, post-install staging in main;
+  `tvm.sh` loads the module
+- `build-app-wheelhouse.sh` — `IREE_TARGET_BACKEND_QNN=ON -DQNN_HOME=<home>`
+  (else `OFF`); no runtime staging on Linux (wheel-only cross lane)
+- `Dockerfile.media` — `linux/qnn-sdk` bind mount added to the litert, tvm
+  and app-wheelhouse RUNs (was cpu/genai only)
+- Every path is gated on a staged zip: no zip = today's behavior byte-for-byte
+  (verified per-arch by the module tests). The validation build (staged QAIRT
+  v2.49 on arm64) answers whether all five flags stay green and the libs land.
+
+
+## 2026-08-30 — QNN-LINUX: Qualcomm QAIRT/QNN EP wired + PROVEN for Linux ARM64 (Snapdragon)
+
+Wired the ONNX Runtime QNN execution provider onto the Linux `arm64` lane,
+targeting Snapdragon NPU inference. Same opt-in contract as the Windows QNN
+EP (#121): login-gated SDK zip dropped by hand in `linux/qnn-sdk/`; no zip =
+QNN off with a notice. Different SDK from Windows: Linux AArch64 extracts to
+`lib/aarch64-oe-linux-gcc11.2/`, not `aarch64-windows-msvc`.
+
+**PROVEN on real SDK (2026-08-30):** staged QAIRT v2.49.0.260730,
+`cross-media-arm64` build GREEN. `libonnxruntime_providers_qnn.so` compiled
+and linked; 45 `libQnn*.so` backend libs + 7 `hexagon-v*` skel dirs staged
+beside ORT; `verify-media-artifacts.sh onnxruntime-cpu` PASS; smoke suite 0
+failures. The upstream QNN_ARCH_ABI risk is RESOLVED: ORT CMake accepts
+`-DQNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` (cache var, not hardcoded).
+
+- `linux/qnn-sdk/README.md` — opt-in drop point + contract
+- `.gitignore` — `linux/qnn-sdk/*` rule (symmetric with `windows/qnn-sdk/*`)
+- `versions.env` — `QNN_SDK_LINUX_ZIP_SHA256` pinned to the staged zip's sha256
+  (`32de9b5b...`, `# noforward`)
+- `onnxruntime/build/lib/common.sh` — `resolve_qnn_sdk` (locate/verify/extract
+  the SDK, QNN_OP_STFT canary) + `stage_qnn_runtime` (copy `libQnn*.so` +
+  `hexagon-v*` skel beside ORT install). `info()` redirected to `stderr` (>&2)
+  inside both functions to keep `$(...)` capture clean.
+- `30-build-native.sh` — `resolve_qnn_sdk` called after oneDNN block; if
+  arm64 + zip present, appends `onnxruntime_USE_QNN=ON` +
+  `onnxruntime_QNN_HOME=<root>` + `QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2`;
+  stages runtime after finalize
+- `Dockerfile.media` — `linux/qnn-sdk` bind-mounted at `/opt/scripts/qnn-sdk`
+  on the `--step cpu` and `--step genai` RUNs
+- `verify-media-artifacts.sh` — `onnxruntime-cpu` stage: if QNN provider .so
+  is present, asserts `libQnn*.so` are staged beside it
+- `docs/linux-cross-builds.md` — QNN EP section in the toggles area
+- `docs/refactoring-backlog.md` — `A2. QNN-LINUX` items 1-6 DONE+PROVEN;
+  framework fan-out (GenAI, LiteRT, TVM, IREE) OPEN
+4a3f379c05bd3affa3d9b2550f1b2cb4f9b3
+
+
 ## 2026-08-29 — #135 closed: patched LLVM is default, workarounds removed
 
 ### `BUILD_PATCHED_LLVM=1` is now the DEFAULT (#135 item 1+3 DONE)

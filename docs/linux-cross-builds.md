@@ -154,21 +154,36 @@ directly after `artifact-common.sh`.
 
 See `AGENTS.md` § Quick Reference for standalone single-stage rebuild commands.
 
-### ⚠️ `--no-push` full-chain runs are BROKEN on OCI-worker hosts (2026-08-08)
+### `--no-push` full chains: FIXED 2026-08-30 via local OCI-layout handoff
 
-Verified live: on this host builds run on BuildKit's **OCI worker**, which has
-its own image store. `nerdctl build -t` loads results into **containerd's**
-store — which the next build's `FROM` never consults. The mutable parent tag
-resolves against the **registry**, so every downstream stage of a `--no-push`
-chain silently builds on the last PUSHED parent, not the one just built (two
-full runs were lost to sdk stages compiled on a months-old compiler before the
-digest trail exposed it — the freshly built compiler had `/opt/gcc-16.2.0`, the
-sdk image it "inherited from" had `/opt/gcc-16.1.0`).
+**History worth keeping:** on this host builds run on BuildKit's **OCI worker**,
+which has its own image store. `nerdctl build -t` loads results into
+**containerd's** store — which the next build's `FROM` never consults. The
+mutable parent tag resolved against the **registry**, so every downstream stage
+of a `--no-push` chain silently built on the last PUSHED parent, not the one
+just built (two full runs were lost to sdk stages compiled on a months-old
+compiler before the digest trail exposed it — the freshly built compiler had
+`/opt/gcc-16.2.0`, the sdk image it "inherited from" had `/opt/gcc-16.1.0`).
 
-Until the fix lands (export each local stage as an OCI layout and override the
-parent ref via `--build-context <tag>=oci-layout://…`, the same mechanism the
-runtime lane already uses — see the backlog), treat `--no-push` as safe ONLY
-for single-stage validation (`--only <stage>`) or `--to-stage base`.
+**The fix (cross-stage-build.sh, 2026-08-30), mirroring the runtime lane's
+proven mechanism:** on `--no-push` chains every stage built locally is exported
+to an OCI layout (`export_image_to_oci_layout` from context-management.sh) at
+`${CROSS_CONTEXT_ROOT:-~/.cache/opencode/cross-stage-contexts}/cross-flow.*/<stage>-<arch>`,
+and each child's parent resolution appends
+`--build-context <parent-tag>=oci-layout://<dir>` so its FROM resolves to the
+image THIS RUN built. The android image is additionally exported to
+`<workdir>/android-artifacts/<arch>` and handed to the runtime lane as
+`ARTIFACT_CONTEXT_ROOT` (mode `oci`), so the no-push package build copies from
+the locally-built android, not the registry. The workdir is minted once per run
+and reclaimed on exit (age-based sweep for killed runs). The multi-stage
+refusal guard now allows full chains (from base) and only refuses mid-chain
+resumes (`--from-stage` after base), which cannot serve the missing prefix.
+Opt-outs: `CROSS_LOCAL_CONTEXT_HANDOFF=0` (reverts to the refusal) and
+`CROSS_NO_PUSH_FORCE=1`. Mechanism proven on the live host 2026-08-30 with a
+two-stage test build: stage B's FROM resolved from the exported layout
+(`--pull=false`, content marker verified), never the registry.
+`CROSS_CONTEXT_ROOT` is free space ~= the built stages' aggregate size (media +
+android are multi-GB) — transient, deleted at chain exit.
 
 ### The flow that is correct today: push mode, manifest last
 
@@ -642,6 +657,29 @@ falls back to disabled. Current toggles:
 | `FFMPEG_ENABLE_TF` | FFmpeg **TensorFlow** DNN backend (amd64 only) | **Default OFF** (2026-08-14). When off, the TF C SDK is never downloaded and ~500 MB of `libtensorflow*` never enters the image; the ONNX DNN backend stays always-on regardless. Set `=1` to restore it. |
 | `ORT_ENABLE_WEBGPU` | ONNX Runtime WebGPU EP (Dawn) | Master switch; Dawn needs the GCC-16 `-Wno-invalid-constexpr` fix (2026-07-20). |
 | `ORT_WEBGPU_ALLOW_CROSS` | Allow the WebGPU EP on cross arches | Dawn cross-build is the risky part; amd64-only unless set. |
+
+**QNN EP (Qualcomm QAIRT SDK, backlog QNN-LINUX):** opt-in for the **arm64**
+lane, targeting Snapdragon NPU. No environment toggle — staging a zip in
+`linux/qnn-sdk/` is the switch. When a Linux AArch64 SDK zip is present,
+`resolve_qnn_sdk` (shared module `01-core/qnn-sdk.sh`, loaded by
+`media_common_init`) extracts it, verifies the SHA-256 against
+`QNN_SDK_LINUX_ZIP_SHA256` in `versions.env` (if pinned), checks version
+compat (`QNN_OP_STFT` canary), and each framework wires its own flag
+(mirroring Windows #121): ORT `onnxruntime_USE_QNN=ON +
+onnxruntime_QNN_HOME=<root> + QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` (ORT
+CMake defaults to `aarch64-android` on Linux aarch64, overridable via `-D` —
+it is a cache var guarded by `if(NOT QNN_ARCH_ABI)`); LiteRT
+`TFLITE_ENABLE_QNN=ON + QNN_HOME=<root>` (NPU gate flips on with it); TVM
+`USE_QNN=ON + QNN_HOME=<root>`; IREE `IREE_TARGET_BACKEND_QNN=ON +
+QNN_HOME=<root>`. Backend `.so` + `hexagon-v*` skel dirs are staged beside
+each framework's install by `stage_qnn_runtime`. No zip = QNN off with a
+notice. Different SDK from the Windows lane (`aarch64-oe-linux-gcc11.2/`,
+not `aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.
+**PROVEN 2026-08-30** on a staged QAIRT v2.49.0.260730 zip —
+`cross-media-arm64` build GREEN, ORT provider wired (`build results in
+`docs/refactoring-backlog.md` A2. QNN-LINUX). Framework fan-out to
+GenAI/LiteRT/TVM/IREE is WIRED (same 2026-08-30 change) with the validation
+build (zip staged on arm64) still PENDING.
 
 Because `versions.env` sits in the media build's cache-key closure, toggle
 flips re-run the affected media compiles — batch them with planned pin bumps
