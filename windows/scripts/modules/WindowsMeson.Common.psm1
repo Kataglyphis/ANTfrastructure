@@ -21,9 +21,10 @@
 # `buildmods` stage, and do not move these functions into a module that is.
 # The same rule, and the same reason, as WindowsGstPlugins.Common.psm1.
 #
-# DELIBERATELY DEPENDENCY-FREE: no Import-Module. Three of the five are pure
-# string/collection functions with fixture tests; the other two shell out to
-# curl.exe and 7z.exe. Nothing here needs Shared, and staying dependency-free is
+# DELIBERATELY DEPENDENCY-FREE: no Import-Module. Three are pure string/collection
+# functions with fixture tests; two shell out to curl.exe and 7z.exe; the wrap
+# provisioner composes those two and takes its logger as a scriptblock rather than
+# reaching for Shared. Nothing here needs Shared, and staying dependency-free is
 # what lets the merge Dockerfile mount this file alone.
 
 Set-StrictMode -Version Latest
@@ -279,5 +280,88 @@ function Expand-SubprojectArchive {
     return $moved
 }
 
+# Pre-extract every [wrap-git] subproject via tarball, plus libffi (glib's hard
+# dependency, which has no wrap of its own here). git clone fails inside Windows
+# containers, so meson must never see a live wrap-git.
+#
+# RETURNS the failure list; it does NOT throw. Failure collection is #88's contract:
+# 22 silently-warned wrap losses once shipped a feature-reduced image. The caller
+# owns the fail-closed throw so that gate stays visible at the call site.
+# The accumulator is a LOCAL list, never `$script:` -- inside a module `$script:`
+# is MODULE scope, so a caller reading its own `$script:wrapFailures` would see
+# zero failures and the #88 gate would pass on a broken provisioning run.
+function Invoke-GstWrapProvisioning {
+    param(
+        [Parameter(Mandatory)][string]$SubprojectDir,
+        [Parameter(Mandatory)][string]$TempDir,
+        # Resolved by the caller: the pin idiom must stay in the stage script,
+        # where SourceBuild.PinParity's W1c scanner keys on the file name.
+        [Parameter(Mandatory)][string]$LibffiVersion,
+        [scriptblock]$Logger = { param($m) Write-Host $m }
+    )
+    $failures = [System.Collections.Generic.List[string]]::new()
+    $say = { param($m) & $Logger $m }
+
+    Get-ChildItem -Path $SubprojectDir -Filter '*.wrap' | ForEach-Object {
+        $content = Get-Content $_.FullName -Raw
+        $fname = $_.Name
+        if ($content -notmatch '^\[wrap-git\]') { return }
+        $url = if ($content -match '(?ms)url\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
+        $rev = if ($content -match '(?ms)revision\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
+        $dir = if ($content -match '(?ms)directory\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
+        $target = Join-Path $SubprojectDir $dir
+        if (Test-Path $target) { Remove-Item -Path $_.FullName -Force; return }
+        # Strip .git in BOTH branches: GitLab answers .git-in-path /-/archive/ URLs
+        # with an HTML page, not a tarball (libdv.git = 17 KB HTML, libdv = 421 KB BZh).
+        $base = $url -replace '\.git$', ''
+        $tarballUrl = if ($url -match 'github\.com') { "$base/archive/$rev.tar.gz" }
+                      else { "$base/-/archive/$rev/$dir-$rev.tar.bz2" }
+        $tmp = Join-Path $TempDir "$dir-$rev.tar"
+        $tmpFile = if ($tarballUrl -match '\.bz2$') { "$tmp.bz2" } else { "$tmp.gz" }
+        & $say "Pre-extracting $fname..."
+        try {
+            Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)" -Logger $Logger
+            if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
+                Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+                & $say "Pre-extracted $fname to $target"
+            } else {
+                $failures.Add("$fname (downloaded but extraction into $dir failed)")
+            }
+        } catch {
+            # Real error text KEPT: a 404 on a moved revision and a TLS failure
+            # need different fixes.
+            $failures.Add("$fname : $($_.Exception.Message)")
+            & $say "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
+        }
+        Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
+    }
+
+    $libffiTarget = Join-Path $SubprojectDir 'libffi'
+    if (-not (Test-Path $libffiTarget)) {
+        & $say 'Force-downloading libffi...'
+        $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$LibffiVersion/libffi-meson-$LibffiVersion.tar.bz2"
+        $libffiTmp = Join-Path $TempDir 'libffi.tar.bz2'
+        try {
+            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $LibffiVersion" -Logger $Logger
+            if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
+                & $say 'Force-pre-extracted libffi'
+            } else {
+                $failures.Add('libffi (downloaded but extraction failed)')
+            }
+        } catch {
+            $failures.Add("libffi : $($_.Exception.Message)")
+            & $say "ERROR: libffi download failed - $($_.Exception.Message)"
+        }
+        Remove-Item -Path $libffiTmp -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path (Join-Path $SubprojectDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
+    }
+
+    # NOT comma-wrapped: the caller @()-wraps (repo idiom), and a comma here would
+    # nest the array so .Count read 1 for an empty AND a filled list alike -- the #88
+    # gate would then fire on every successful build. Measured both ways.
+    return [string[]]$failures.ToArray()
+}
+
 Export-ModuleMember -Function Invoke-MesonBuildSubprojectPatch, Select-MesonLogExcerpt,
-    Get-MesonSetupFailureClass, Invoke-WrapDownload, Expand-SubprojectArchive
+    Get-MesonSetupFailureClass, Invoke-WrapDownload, Expand-SubprojectArchive,
+    Invoke-GstWrapProvisioning

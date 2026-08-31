@@ -280,81 +280,20 @@ try {
 
     Switch-BuildPhase '5. wrap prefetch + meson fixups'
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
-    # Failures are COLLECTED and become fatal after the loop (backlog #88): 22
-    # failed wrap downloads once logged as warnings and shipped a feature-reduced
-    # image nobody noticed. Invoke-WrapDownload, not the shared helper -- its
-    # browser UA gets Anubis challenge pages instead of tarballs.
-    $wrapFailures = @()
+    # $libffiVer stays HERE: SourceBuild.PinParity's W1c scanner keys the pin site
+    # by FILE NAME, and moving it into the module makes the pin invisible to that gate.
+    $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
-    Get-ChildItem -Path $subprojDir -Filter '*.wrap' | ForEach-Object {
-        $content = Get-Content $_.FullName -Raw
-        $fname = $_.Name
-        if ($content -match '^\[wrap-git\]') {
-            $url = if ($content -match '(?ms)url\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
-            $rev = if ($content -match '(?ms)revision\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
-            $dir = if ($content -match '(?ms)directory\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
-            $target = Join-Path $subprojDir $dir
-            if (Test-Path $target) { Remove-Item -Path $_.FullName -Force; return }
-            # Build tarball URL. Strip .git in BOTH branches: GitLab answers
-            # .git-in-path /-/archive/ URLs with an HTML page, not a tarball
-            # (verify11: libdv.git = 17 KB HTML, libdv = 421 KB BZh).
-            $base = $url -replace '\.git$', ''
-            if ($url -match 'github\.com') {
-                $tarballUrl = "$base/archive/$rev.tar.gz"
-            } else {
-                $tarballUrl = "$base/-/archive/$rev/$dir-$rev.tar.bz2"
-            }
-            $tmp = Join-Path $resolvedLogDir "$dir-$rev.tar"
-            $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
-            log "Pre-extracting $fname..."
-            try {
-                # -Logger: `log` is a closure over $logContext and could not follow
-                # the function into WindowsMeson.Common (#134).
-                Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)" -Logger { param($m) log $m }
-                if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
-                    Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
-                    log "Pre-extracted $fname to $target"
-                } else {
-                    $script:wrapFailures += "$fname (downloaded but extraction into $dir failed)"
-                }
-            } catch {
-                # Real error text KEPT (was `2>nul`): a 404 on a moved revision
-                # and a TLS failure need different fixes.
-                $script:wrapFailures += "$fname : $($_.Exception.Message)"
-                log "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
-            }
-            Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
-        }
-    }
-    # libffi through the same helper + failure collection (#88). It is glib's
-    # hard dependency — a miss here never was "optional", it just looked so.
-    $libffiTarget = Join-Path $subprojDir 'libffi'
-    if (-not (Test-Path $libffiTarget)) {
-        log 'Force-downloading libffi...'
-        $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
-        $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
-        $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
-        try {
-            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer" -Logger { param($m) log $m }
-            if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
-                log 'Force-pre-extracted libffi'
-            } else {
-                $script:wrapFailures += 'libffi (downloaded but extraction failed)'
-            }
-        } catch {
-            $script:wrapFailures += "libffi : $($_.Exception.Message)"
-            log "ERROR: libffi download failed - $($_.Exception.Message)"
-        }
-        Remove-Item -Path $libffiTmp -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path (Join-Path $subprojDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
-    }
+    # @(): the helper comma-wraps, but an empty result must still expose .Count.
+    $wrapFailures = @(Invoke-GstWrapProvisioning -SubprojectDir $subprojDir -TempDir $resolvedLogDir `
+        -LibffiVersion $libffiVer -Logger { param($m) log $m })
 
     # FAIL CLOSED on any wrap loss (#88): what reaches this point is persistent
     # (moved revision, dead mirror, broken TLS), because transient blips are
     # already absorbed by the helper's retry/backoff.
-    if ($script:wrapFailures.Count -gt 0) {
-        throw ("GStreamer subproject provisioning failed for $($script:wrapFailures.Count) wrap(s): " +
-            ($script:wrapFailures -join ' | ') +
+    if ($wrapFailures.Count -gt 0) {
+        throw ("GStreamer subproject provisioning failed for $($wrapFailures.Count) wrap(s): " +
+            ($wrapFailures -join ' | ') +
             ' — refusing to build a feature-reduced GStreamer (backlog #88).')
     }
 
