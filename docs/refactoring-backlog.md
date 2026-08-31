@@ -78,12 +78,34 @@ OPEN, i.e. what a build must still settle:
 
 ### A2. QNN-LINUX — fan-out validation, BLOCKED on the login-gated SDK
 
+- **CORRECTED 2026-08-31 — three of the four fan-out flags were invented.** The
+  wiring "mirrors Windows #121 exactly", and Windows #154 established that
+  `TFLITE_ENABLE_QNN`, `USE_QNN` and `IREE_TARGET_BACKEND_QNN` are not upstream
+  options: CMake drops an undeclared `-D` silently and exits 0, so all three logged
+  success and did nothing. Only ORT's `onnxruntime_USE_QNN` was ever real. TVM and
+  IREE have no Qualcomm path at all and their flags are gone. LiteRT's IS real but
+  under a different name — `LITERT_ENABLE_QUALCOMM`, auto-forced ON by
+  `QAIRT_HEADERS_DIR` — and this lane already configures the right tree (`litert/`),
+  so it is now correctly wired for the first time.
+  **A second defect fell out of the same reading, and it is live on every build:**
+  `litert/vendors/CMakeLists.txt` `file(DOWNLOAD)`s QAIRT 2.47.0.260601 from
+  softwarecenter.qualcomm.com whenever `QAIRT_HEADERS_DIR` is empty — ~1.5 GB, **no
+  `EXPECTED_HASH`, no `STATUS` check**, and NOT gated on `LITERT_ENABLE_QUALCOMM`, so
+  it fired on every LiteRT configure including builds that want no NPU. It cannot be
+  dodged with a stub path (any non-empty value force-enables Qualcomm with headers we
+  do not have), so `_litert_disable_qairt_header_download` short-circuits the guard
+  when no SDK is staged. MediaTek's NeuroPilot fetch from AWS S3 and the Samsung
+  LiteCore fetch are suppressed with stub header dirs — both gate on the header
+  EXISTING, so a stub is safe there.
+  **Still unvalidated by a build** — see below; this corrects the wiring, it
+  does not prove it.
+
 Wiring is LANDED and fail-safe (no zip = byte-identical behaviour on every arch,
 validated by the 2026-08-30 media rebuilds). ORT was PROVEN on real QAIRT
 v2.49.0.260730. What is unproven is the OPPOSITE direction: with a REAL zip
-staged on arm64, do all five builds (ORT/GenAI/LiteRT/TVM/IREE) stay GREEN and
-do the staged libs land? That one run also answers LiteRT's QNN-manager header
-fetch and the wheel-staging question.
+staged on arm64, do the two builds that really have a QNN path (ORT, LiteRT)
+stay GREEN and do the staged libs land? That one run also answers LiteRT's
+QNN-manager header fetch and the wheel-staging question.
 
 **Owner action — smaller than previously written.** `QNN_SDK_LINUX_ZIP_SHA256`
 is already IMPLEMENTED and POPULATED with the v2.49.0.260730 hash, so

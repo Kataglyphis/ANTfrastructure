@@ -58,7 +58,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=/usr/bin/llvm-config
 EOF
 t_assert_eq "${_want}" "${_got}" "native-vulkan-off: emitted CMake args drifted from the golden"
@@ -99,7 +98,6 @@ Ninja
 -DVulkan_LIBRARY=/opt/vk/lib/libvulkan.so
 -DVulkan_INCLUDE_DIR=/opt/vk/include
 -DVulkan_SPIRV_TOOLS_LIBRARY=/opt/vulkan/lib/libSPIRV-Tools.a
--DUSE_QNN=OFF
 -DUSE_LLVM=/usr/bin/llvm-config
 EOF
 t_assert_eq "${_want}" "${_got}" "native-vulkan-on: emitted CMake args drifted from the golden"
@@ -139,7 +137,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=OFF
 EOF
 t_assert_eq "${_want}" "${_got}" "cross-linkflags: emitted CMake args drifted from the golden"
@@ -177,7 +174,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=OFF
 EOF
 t_assert_eq "${_want}" "${_got}" "cross-linkflags-ambient: emitted CMake args drifted from the golden"
@@ -211,7 +207,6 @@ Ninja
 -DCMAKE_C_COMPILER=cc
 -DCMAKE_CXX_COMPILER=c++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=OFF
 EOF
 t_assert_eq "${_want}" "${_got}" "cross-nolinkflags: emitted CMake args drifted from the golden"
@@ -243,7 +238,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=ON
 EOF
 t_assert_eq "${_want}" "${_got}" "llvmdir-ignore: emitted CMake args drifted from the golden"
@@ -276,7 +270,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=ON
 EOF
 t_assert_eq "${_want}" "${_got}" "llvmdir-ignore-ambient: emitted CMake args drifted from the golden"
@@ -308,7 +301,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=ON
 EOF
 t_assert_eq "${_want}" "${_got}" "llvmdir-only: emitted CMake args drifted from the golden"
@@ -340,7 +332,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=OFF
 -DUSE_LLVM=/usr/bin/llvm-config
 EOF
 t_assert_eq "${_want}" "${_got}" "cuda-opencl: emitted CMake args drifted from the golden"
@@ -349,7 +340,7 @@ t_assert_eq "" "${TVM_QNN_HOME:-}" "cuda-opencl: TVM_QNN_HOME (non-local; tvm.sh
 # ── qnn-on ──
 STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN="/opt/qairt/2.0"
 unset TVM_QNN_HOME
-t_case "resolve_qnn_sdk hit emits USE_QNN=ON + QNN_HOME and exports TVM_QNN_HOME"
+t_case "resolve_qnn_sdk hit emits NO QNN cmake flags but still exports TVM_QNN_HOME"
 _emit \
   --out arr \
   --python-module OFF \
@@ -370,8 +361,6 @@ Ninja
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=OFF
--DUSE_QNN=ON
--DQNN_HOME=/opt/qairt/2.0
 -DUSE_LLVM=OFF
 EOF
 t_assert_eq "${_want}" "${_got}" "qnn-on: emitted CMake args drifted from the golden"
@@ -407,7 +396,6 @@ Ninja
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
 -DUSE_VULKAN=ON
 -DVulkan_LIBRARY=/opt/vk/lib/libvulkan.so
--DUSE_QNN=OFF
 -DUSE_LLVM=OFF
 EOF
 t_assert_eq "${_want}" "${_got}" "vulkan-lib-only: emitted CMake args drifted from the golden"

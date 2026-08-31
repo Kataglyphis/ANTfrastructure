@@ -68,3 +68,9 @@ linux/qnn-sdk/*
 /*.psm1
 /*.tmp
 /*.bak
+
+# Windows cmd placeholder taken literally by a tool invoked from Git Bash: a
+# `%SystemDrive%/ProgramData/...` tree appears in the repo root after running the
+# Linux suites on a Windows host. No script here references it, so the producer is
+# external. It was committed by accident once (51b0768b); this stops the repeat.
+/%SystemDrive%/

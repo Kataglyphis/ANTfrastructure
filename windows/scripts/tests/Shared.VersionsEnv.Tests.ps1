@@ -49,7 +49,7 @@ Describe 'ConvertFrom-VersionsEnv' {
         }
     }
 
-    It 'supports .Contains membership tests (build.ps1 Get-Ver contract)' {
+    It 'supports .Contains membership tests (driver Get-Ver contract)' {
         Invoke-InTestDir { param($dir)
             $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('A=1')
             Assert-True ($v.Contains('A')) 'existing key'

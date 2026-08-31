@@ -3,6 +3,7 @@
 
 #requires -Version 7.0
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 

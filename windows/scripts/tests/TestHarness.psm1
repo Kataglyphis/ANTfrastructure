@@ -169,8 +169,11 @@ function Get-RepoRoot {
     defines into the MODULE's scope, invisible to the caller, so the dot stays
     at the call site:
 
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-tvm-from-source.ps1' `
-                                        -FunctionName 'Write-AssembledWheelDistInfo', 'Get-PyprojectDependencies')
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\build-gstreamer-from-source.ps1' `
+                                        -FunctionName 'log')
+    (Write-AssembledWheelDistInfo / Get-PyprojectDependencies were this example
+    until they moved into WindowsTvm.Common, 2026-08-31 -- module functions are
+    imported normally, not lifted.)
 
     Throws with the script and function named when a parse fails or a function
     is gone (the "did it move?" signal every suite carried by hand).

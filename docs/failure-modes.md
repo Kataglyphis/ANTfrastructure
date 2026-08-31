@@ -511,11 +511,11 @@ read-only mount becoming writable.
 
 ### Windows media build crawls; `Building with ninja -j2`
 
-**Symptom.** Windows media build crawls; `Building with ninja -j2` in `media-core.log`
+**Symptom.** Windows media build crawls; `Building with ninja -j2` in the stage log (`out\windows-build-logs\bk-<runid>-Dockerfile.media-builder-media-core-*.log`)
 
-**Cause.** media-core fell back to a 2-CPU `docker build` instead of the run+commit path
+**Cause.** `-j2` is the FLOOR of `Get-BuildJobCount` (`max(2, min(cores, MEMORY_LIMIT_GB/4))`), so the container resolved a near-zero memory budget — BK RUN steps are process-isolated with all host CPUs, so this is memory-bound, not a CPU cap. *(Historical: on the classic lane the same line meant media-core had fallen back to a 2-CPU `docker build` instead of `Invoke-RunCommitStage`; that driver went on 2026-08-31.)*
 
-**Fix.** Ensure `Invoke-RunCommitStage` runs (`docker run --cpu-count $MediaCoreCpus`); `docker build` is 2-CPU-capped here and no flag raises it ([`windows-build-invariants.md`](windows-build-invariants.md) § Windows Build Invariants).
+**Fix.** Check the driver's `preseed: memory-limit-gb=<N> published` line and that the stage carries `SCCACHE_WEBDAV_ENDPOINT` — #51 publishes the budget to the WebDAV rather than as an ARG/ENV (both are cache keys), and a container that cannot read it falls back to CIM host RAM. Worked numbers: [`windows-build-resources.md`](windows-build-resources.md) § Media fan-out and memory budgeting.
 
 ### Rust smoke test: "rustup could not choose a version of cargo/rustc"
 
@@ -531,7 +531,7 @@ read-only mount becoming writable.
 
 **Cause.** **Anubis anti-scraper**: browser User-Agents without JS get an HTML challenge page as a 200 (the shared `Invoke-DownloadWithRetry` sends a browser UA). Second variant: `.git` left in a GitLab `/-/archive/` URL serves HTML even to curl. Both burned a merge run on 2026-08-17.
 
-**Fix.** Fetch via `Invoke-WrapDownload` (curl-native UA + gzip/bzip2 magic-byte check) and strip `.git` from GitLab archive URLs. Diagnosis in 10 s: read the first bytes — `<!doctype html>` = challenge page, not a corrupt archive.
+**Fix.** Both halves live in `Invoke-GstWrapProvisioning` (in `WindowsMeson.Common.psm1` since 2026-08-31 — the merge-lane leaf mounted by `Dockerfile.media-merge-builder` only, so editing it costs the GStreamer layer and not the whole media chain): it fetches via `Invoke-WrapDownload` (curl-native UA + gzip/bzip2 magic-byte check) and strips `.git` from GitLab archive URLs in both branches. Diagnosis in 10 s: read the first bytes — `<!doctype html>` = challenge page, not a corrupt archive.
 
 ### `TVM: llvm-config.exe not found on PATH`
 

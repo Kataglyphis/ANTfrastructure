@@ -280,81 +280,20 @@ try {
 
     Switch-BuildPhase '5. wrap prefetch + meson fixups'
     # ---- 5. pre-extract all wrap-git subprojects via tarball ----
-    # Failures are COLLECTED and become fatal after the loop (backlog #88): 22
-    # failed wrap downloads once logged as warnings and shipped a feature-reduced
-    # image nobody noticed. Invoke-WrapDownload, not the shared helper -- its
-    # browser UA gets Anubis challenge pages instead of tarballs.
-    $wrapFailures = @()
+    # $libffiVer stays HERE: SourceBuild.PinParity's W1c scanner keys the pin site
+    # by FILE NAME, and moving it into the module makes the pin invisible to that gate.
+    $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
-    Get-ChildItem -Path $subprojDir -Filter '*.wrap' | ForEach-Object {
-        $content = Get-Content $_.FullName -Raw
-        $fname = $_.Name
-        if ($content -match '^\[wrap-git\]') {
-            $url = if ($content -match '(?ms)url\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
-            $rev = if ($content -match '(?ms)revision\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
-            $dir = if ($content -match '(?ms)directory\s*=\s*(.+?)\r?\n') { $matches[1].Trim() } else { return }
-            $target = Join-Path $subprojDir $dir
-            if (Test-Path $target) { Remove-Item -Path $_.FullName -Force; return }
-            # Build tarball URL. Strip .git in BOTH branches: GitLab answers
-            # .git-in-path /-/archive/ URLs with an HTML page, not a tarball
-            # (verify11: libdv.git = 17 KB HTML, libdv = 421 KB BZh).
-            $base = $url -replace '\.git$', ''
-            if ($url -match 'github\.com') {
-                $tarballUrl = "$base/archive/$rev.tar.gz"
-            } else {
-                $tarballUrl = "$base/-/archive/$rev/$dir-$rev.tar.bz2"
-            }
-            $tmp = Join-Path $resolvedLogDir "$dir-$rev.tar"
-            $tmpFile = "$tmp.gz"; if ($tarballUrl -match '\.bz2$') { $tmpFile = "$tmp.bz2" }
-            log "Pre-extracting $fname..."
-            try {
-                # -Logger: `log` is a closure over $logContext and could not follow
-                # the function into WindowsMeson.Common (#134).
-                Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)" -Logger { param($m) log $m }
-                if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
-                    Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
-                    log "Pre-extracted $fname to $target"
-                } else {
-                    $script:wrapFailures += "$fname (downloaded but extraction into $dir failed)"
-                }
-            } catch {
-                # Real error text KEPT (was `2>nul`): a 404 on a moved revision
-                # and a TLS failure need different fixes.
-                $script:wrapFailures += "$fname : $($_.Exception.Message)"
-                log "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
-            }
-            Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
-        }
-    }
-    # libffi through the same helper + failure collection (#88). It is glib's
-    # hard dependency — a miss here never was "optional", it just looked so.
-    $libffiTarget = Join-Path $subprojDir 'libffi'
-    if (-not (Test-Path $libffiTarget)) {
-        log 'Force-downloading libffi...'
-        $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
-        $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$libffiVer/libffi-meson-$libffiVer.tar.bz2"
-        $libffiTmp = Join-Path $resolvedLogDir 'libffi.tar.bz2'
-        try {
-            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $libffiVer" -Logger { param($m) log $m }
-            if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
-                log 'Force-pre-extracted libffi'
-            } else {
-                $script:wrapFailures += 'libffi (downloaded but extraction failed)'
-            }
-        } catch {
-            $script:wrapFailures += "libffi : $($_.Exception.Message)"
-            log "ERROR: libffi download failed - $($_.Exception.Message)"
-        }
-        Remove-Item -Path $libffiTmp -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path (Join-Path $subprojDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
-    }
+    # @(): the helper comma-wraps, but an empty result must still expose .Count.
+    $wrapFailures = @(Invoke-GstWrapProvisioning -SubprojectDir $subprojDir -TempDir $resolvedLogDir `
+        -LibffiVersion $libffiVer -Logger { param($m) log $m })
 
     # FAIL CLOSED on any wrap loss (#88): what reaches this point is persistent
     # (moved revision, dead mirror, broken TLS), because transient blips are
     # already absorbed by the helper's retry/backoff.
-    if ($script:wrapFailures.Count -gt 0) {
-        throw ("GStreamer subproject provisioning failed for $($script:wrapFailures.Count) wrap(s): " +
-            ($script:wrapFailures -join ' | ') +
+    if ($wrapFailures.Count -gt 0) {
+        throw ("GStreamer subproject provisioning failed for $($wrapFailures.Count) wrap(s): " +
+            ($wrapFailures -join ' | ') +
             ' — refusing to build a feature-reduced GStreamer (backlog #88).')
     }
 
@@ -479,6 +418,41 @@ int _isatty(int);
     $wantRt = (Get-ClangTargetTriple -Arch $script:GstTargetArch) -replace '-.*$', ''   # x86_64/aarch64-pc-windows-msvc -> x86_64/aarch64
     $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
     if ($script:GstCross) {
+        if ($rtCandidates.Count -eq 0) {
+            # SELF-HEAL: the source-built toolchain (#135) ships the host builtins
+            # only, so the arm64 GStreamer link would die on __udivti3. Mine the
+            # aarch64 counterpart from the LLVM release archive (same recipe as
+            # setup-scoop-tools.ps1); only the one .lib is kept.
+            $rtHostLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+            if ($rtHostLib.Count -gt 0) {
+                $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
+                $rtArchive = Join-Path $resolvedLogDir "clang+llvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
+                $rtExtract = Join-Path $resolvedLogDir 'llvm-aarch64-rt'
+                try {
+                    log "Fetching aarch64 compiler-rt (LLVM $rtVer) - the patched toolchain ships x86_64 builtins only"
+                    Invoke-DownloadWithRetry -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz" -DestinationPath $rtArchive
+                    # System32 bsdtar, never the GNU tar that may be on PATH: GNU
+                    # parses `C:\...` as a remote-host spec ("Cannot connect to C:").
+                    $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+                    if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
+                    New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
+                    & $rtTar -xf $rtArchive -C $rtExtract '*clang_rt.builtins-aarch64.lib'
+                    $rtFound = @(Get-ChildItem -Path $rtExtract -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+                    if ($rtFound.Count -gt 0) {
+                        Copy-Item -Path $rtFound[0].FullName -Destination $rtHostLib[0].Directory.FullName -Force
+                        log "Installed aarch64 compiler-rt -> $(Join-Path $rtHostLib[0].Directory.FullName 'clang_rt.builtins-aarch64.lib')"
+                    } else {
+                        Write-Warning "clang_rt.builtins-aarch64.lib was not found inside $rtArchive - the upstream archive layout changed."
+                    }
+                } catch {
+                    Write-Warning "aarch64 compiler-rt fetch failed: $($_.Exception.Message)"
+                } finally {
+                    Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
+                    Remove-Item -Path $rtExtract -Recurse -Force -ErrorAction SilentlyContinue
+                }
+                $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
+            }
+        }
         if ($rtCandidates.Count -eq 0) {
             # WARN, do not throw: absence is already tolerated on amd64, so throwing
             # only here would apply a stricter policy to the cross lane. Linking
@@ -1086,10 +1060,15 @@ cpp_link_args = [$buildLinkArgs]
         # cairo:win32 crashes clang-cl (LLVM 22 mmintrin.h __builtin_shufflevector);
         # -Dcairo:win32=disabled intentionally fails cairo at meson setup.
         '-Dcairo:win32=disabled',
-        # Opus intrinsics: the x86 MMX/SSE path crashes clang-cl (mmintrin.h),
-        # but the aarch64 NEON intrinsics path has no such issue — enable it
-        # on the cross lane for NEON-optimized audio encode/decode.
-        $(if ($script:GstCross) { '-Dopus:intrinsics=enabled' } else { '-Dopus:intrinsics=disabled' }),
+# Opus intrinsics stay DISABLED on both lanes. The x86 MMX/SSE path
+        # crashes clang-cl (mmintrin.h), and the cross-lane NEON enablement
+        # (tried 2026-08-30, reverted 2026-08-31) died two ways under clang-cl
+        # aarch64: RTCD applies -mfpu=neon (ARM32-only flag) and the RTCD CPU
+        # probe arm_armcpu.c uses MSVC's __emit, which clang-cl lacks. The
+        # working enablement recipe (intrinsics=enabled + rtcd=disabled) is
+        # recorded in docs/windows-cross-builds.md and the backlog; re-enable
+        # only in a dedicated test window on a real device.
+        '-Dopus:intrinsics=disabled',
         # nvcodec: gstnvdecoder.cpp needs gst-d3d11 headers clang-cl cannot find.
         # The CUDA gst-lib is auto-detected separately.
         '-Dgst-plugins-bad:nvcodec=disabled',

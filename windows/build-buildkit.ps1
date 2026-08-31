@@ -13,7 +13,8 @@
     Unlike docker's classic builder on this host, buildkitd+containerd commits
     process-isolated layers and gives RUN steps all CPUs, so this driver builds
     the SAME Dockerfiles via buildctl, selecting the `*-built` targets. The
-    classic lane (windows/build.ps1) remains the fallback.
+    classic lane was retired 2026-08-26 and its driver deleted 2026-08-31: this is
+    the only Windows driver, and there is no fallback.
 
     Prerequisites (one-time, admin): buildkitd + containerd services running,
     and C:\Program Files\containerd\cni\conf\0-containerd-nat.conf present —
@@ -171,17 +172,17 @@ if ($cniForm) { throw $cniForm }
 # Transient patterns: hcs-temp finalize/export flakes, where completed RUN
 # vertices stay cached so a retry only re-pays finalize. The negative lookahead
 # on 'reimport snapshot' keeps a genuine ExportLayer 0x3 defect failing loudly.
-Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
+Initialize-BuildDriverContext -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
-# Thin lane-local alias over the canonical lookup (same alias in build.ps1).
+# Thin lane-local alias over the canonical lookup.
 function Get-Ver([string]$Key) {
     return Get-VersionTableValue -VersionTable $versions -Key $Key
 }
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
 
-# --- resource budget + sccache gate (shared with build.ps1) ---
+# --- resource budget + sccache gate ---
 $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb
 Write-Host "BuildKit lane: process isolation, all CPUs; memory budget $MediaMemoryGb GB (published via webdav, #51)" -ForegroundColor Cyan
 Assert-SccacheEndpoint -Stages $Stages -SccacheEndpoint $SccacheEndpoint -NoSccache:$NoSccache
@@ -453,8 +454,7 @@ if ($SccacheEndpoint) {
 $started = Get-Date
 
 # Resource sampler (#134): start HERE, after every preflight gate has passed,
-# so a rejected launch cannot orphan the detached process. Mirrors build.ps1's
-# placement (backlog #63).
+# so a rejected launch cannot orphan the detached process (backlog #63).
 if (-not $NoResourceLog) {
     $script:ResourceCsv = Join-Path $script:LogDir ("resources-" + $script:RunId + ".csv")
     Set-BuildPhase 'init'
@@ -473,7 +473,7 @@ if ($Stages -contains 'base') {
         # LAN source for the 275 MB SDK exe (see the preseed block above).
         VULKAN_PRESEED_ENDPOINT = $SccacheEndpoint
         CMAKE_VERSION         = Get-Ver 'CMAKE_VERSION'
-        # Compiled-output pins — see the same block in build.ps1.
+        # Compiled-output pins.
         LLVM_WINDOWS_VERSION  = Get-Ver 'LLVM_WINDOWS_VERSION'
         NINJA_WINDOWS_VERSION = Get-Ver 'NINJA_WINDOWS_VERSION'
         NASM_WINDOWS_VERSION  = Get-Ver 'NASM_WINDOWS_VERSION'
@@ -531,7 +531,7 @@ if ($Stages -contains 'toolchain') {
 }
 
 if ($Stages -contains 'media') {
-    # Canonical per-branch version args, shared with build.ps1.
+    # Canonical per-branch version args (WindowsBuildDriver.Common).
     $branchArgs = @{}
     foreach ($b in 'media-core', 'media-litert', 'media-tvm') {
         $branchArgs[$b] = Get-MediaBranchVersionArg -Branch $b -VersionTable $versions
@@ -773,7 +773,9 @@ $elapsed = (Get-Date) - $started
 # run — otherwise a green run records no per-stage cost anywhere.
 if ($script:StageTimings.Count -gt 0) {
     $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
-    $lines = @("run=$($script:RunId) stages=$($Stages -join ',') gpu=$([bool]$Gpu) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
+    # arch= added 2026-08-31: with two lanes at gpu=False the header could not
+    # attribute a run to amd64 vs arm64, which is exactly what #152's A/B needs.
+    $lines = @("run=$($script:RunId) arch=$TargetArch stages=$($Stages -join ',') gpu=$([bool]$Gpu) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
     foreach ($k in $script:StageTimings.Keys) { $lines += ("{0}={1}" -f $k, $script:StageTimings[$k]) }
     Set-Content -Path $manifest -Value $lines -Encoding utf8
     Write-Host "`n[bk] per-stage timings:" -ForegroundColor Cyan

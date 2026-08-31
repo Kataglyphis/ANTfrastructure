@@ -78,13 +78,13 @@ documentation index, which maps every topic to the page that owns it.
       :link: windows-build-lanes
       :link-type: doc
 
-      BuildKit, nerdctl and classic docker: which to use, isolation policy, preflight gates.
+      BuildKit and nerdctl: which to use, isolation policy, preflight gates, and the removed classic docker lane.
 
    .. grid-item-card:: Windows Build Invariants
       :link: windows-build-invariants
       :link-type: doc
 
-      44 load-bearing rules, each with the incident that produced it. Read before editing ``windows/``.
+      46 load-bearing rules, each with the incident that produced it. Read before editing ``windows/``.
 
    .. grid-item-card:: Windows Host Setup
       :link: windows-host-setup
@@ -204,6 +204,7 @@ Common development targets:
 
    refactoring-backlog
    windows-refactor-backlog
+   changelog-archive-2026-08-28
    changelog-archive-2026-08-13
    refactoring-backlog-archive-2026-08-10
    refactoring-backlog-archive-2026-08-27
@@ -213,3 +214,4 @@ Common development targets:
    windows-backlog-archive-2026-08-17
    windows-backlog-archive-2026-08-21
    windows-backlog-archive-2026-08-26
+   windows-backlog-archive-2026-08-31

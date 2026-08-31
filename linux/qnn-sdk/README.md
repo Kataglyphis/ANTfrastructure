@@ -63,9 +63,14 @@ remove it after, the same discipline as the TensorRT zip.
   wiring exactly.
 - Enable the QNN target on the **arm64** lane for all five consumers
   (HTP/NPU on Snapdragon, the actual point of the EP): ONNX Runtime
-  (`onnxruntime_USE_QNN=ON`), ONNX Runtime GenAI (inherits ORT), LiteRT
-  (`TFLITE_ENABLE_QNN=ON`, NPU gate opens with it), TVM (`USE_QNN=ON`), IREE
-  (`IREE_TARGET_BACKEND_QNN=ON`). amd64/riscv64 stay QNN-off.
+  (`onnxruntime_USE_QNN=ON`) and ONNX Runtime GenAI (inherits ORT at runtime).
+  LiteRT gets `QAIRT_HEADERS_DIR=<root>/include`, which auto-enables
+  `LITERT_ENABLE_QUALCOMM`. TVM and IREE get NOTHING: they have no Qualcomm path
+  upstream, and the flags this README used to list (`USE_QNN`,
+  `IREE_TARGET_BACKEND_QNN`, and LiteRT's `TFLITE_ENABLE_QNN`) were invented —
+  CMake dropped them silently. Corrected 2026-08-31; see Windows backlog #154.
+  They still get the runtime staged beside them, which only ORT loads.
+  amd64/riscv64 stay QNN-off.
 - Stage the backend shared libraries (`libQnnHtp.so`, `libQnnCpu.so`,
   `libQnnSystem.so`, …) plus the `hexagon-v*` skel directories beside each
   framework's install (`stage_qnn_runtime`), so a target host finds them on

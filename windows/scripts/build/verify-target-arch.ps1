@@ -76,10 +76,14 @@ param(
     # each name a real import of a shipped plugin: DirectSound (gstdirectsound*),
     # Media Foundation (gstmediafoundation -- MF is absent on Server Core, the
     # same fact behind OpenCV's WITH_MSMF=OFF), and the print spooler
-    # (tcl9tk90.dll -> winspool.drv). Reported as "device OS", never counted.
+    # (tcl9tk90.dll -> winspool.drv). libcdsprpc/libadsprpc are Qualcomm's
+    # FastRPC drivers (ADSP/CDSP), imported by the QAIRT HTP stub DLLs and
+    # present on every Windows-on-Snapdragon device -- the exact target of the
+    # arm64 lane (found 2026-08-31 once the QNN EP landed in the bundle).
+    # Reported as "device OS", never counted.
     # Keep it to names the client SKU carries unconditionally -- an optional
     # feature (e.g. a Media Feature Pack SKU) would belong in -ImportAllowlist.
-    [string]$ClientOsPattern = '^(dsound|mf|mfplat|mfreadwrite|mfcore|winspool)\.(dll|drv)$',
+    [string]$ClientOsPattern = '^(dsound|mf|mfplat|mfreadwrite|mfcore|winspool)\.(dll|drv)$|^lib(cds|ads)prpc\.dll$',
     # Opt-in for a tree that legitimately holds (almost) no binaries. Required
     # whenever -MinInspected is 0 or less, so that "no coverage floor" can only
     # ever be a deliberate statement rather than a dropped build-arg.

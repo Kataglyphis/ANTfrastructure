@@ -922,19 +922,6 @@ _iree_patch_setup_py_abi3() {
     done
 }
 
-# Appends the QNN backend switch to cmake_args (caller local array).
-_iree_append_qnn_cmake_args() {
-    # QNN target backend (backlog QNN-LINUX, mirrors Windows build-iree #121):
-    # arm64-only, opt-in by staging the QAIRT zip; no zip = OFF (upstream default).
-    _iree_qnn_home="$(command -v resolve_qnn_sdk >/dev/null 2>&1 && resolve_qnn_sdk || true)"
-    if [ -n "${_iree_qnn_home}" ]; then
-        log "IREE: QNN target backend ON (SDK root ${_iree_qnn_home})"
-        cmake_args+=("-DIREE_TARGET_BACKEND_QNN=ON" "-DQNN_HOME=${_iree_qnn_home}")
-    else
-        cmake_args+=("-DIREE_TARGET_BACKEND_QNN=OFF")
-    fi
-}
-
 # Stage 1 — NATIVE amd64 host build that populates IREE_HOST_BIN_DIR.
 # This function runs inside the riscv64 cross environment, where
 # CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross toolchain
@@ -1312,7 +1299,11 @@ build_iree_wheels() {
 
     _iree_fetch_source || return 1
     _iree_patch_setup_py_abi3
-    _iree_append_qnn_cmake_args
+    # NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). IREE_TARGET_BACKEND_QNN
+    # and QNN_HOME are not IREE options -- they have never existed, at any version, and
+    # CMake dropped both silently while this logged "QNN target backend ON". IREE has no
+    # Qualcomm NPU path: Adreno via vulkan-spirv and the Snapdragon CPU via llvm-cpu is
+    # the whole story. The QAIRT runtime is still staged beside the install (ORT loads it).
 
     if cross_build_is_active; then
         # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====

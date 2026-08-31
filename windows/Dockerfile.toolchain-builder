@@ -2,22 +2,19 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Thin builder image for the toolchain run+commit path (windows/build.ps1
-# Invoke-RunCommitStage). It clones CPython and writes Directory.Build.props — both
-# cheap/IO-bound layers that Hyper-V `docker build` commits reliably — but runs NO
-# heavy compile. The CPU-bound `PCbuild\build.bat` then runs via:
-#   docker run --isolation hyperv --cpu-count N --memory Mg <this image> `
-#       pwsh -File C:\temp\scripts\build-toolchain-all.ps1
-#   docker commit <container> local/kataglyphis:windows-toolchain
-# because `docker build` on this host is capped at 2 CPUs and process isolation
-# cannot commit layers (see windows/build.ps1 CPU note). The committed image is a
-# drop-in replacement for the old Dockerfile.toolchain output.
+# Thin builder image for the toolchain: it clones CPython and writes
+# Directory.Build.props — cheap, IO-bound — but runs NO heavy compile. The CPU-bound
+# `PCbuild\build.bat` runs in the `built` stage below.
+# HISTORY: this split existed because the classic lane's `docker build` was capped at
+# 2 CPUs, so the compile had to go through docker run + docker commit. The BuildKit
+# lane is process-isolated with all host CPUs and that driver is gone (2026-08-31);
+# the split is kept because it is also a useful resume boundary.
 
 ARG BASE_IMAGE=local/kataglyphis:windows-sdk
 FROM ${BASE_IMAGE} AS builder
 
 ARG PYTHON_VERSION=3.14.7
-# Baked as ENV so the run+commit compile script sees the canonical version.
+# Baked as ENV so the `built` stage's compile script sees the canonical version.
 ENV PYTHON_VERSION="${PYTHON_VERSION}"
 
 # pwsh 7 everywhere (host policy 2026-08-04): the old cmd SHELL here existed
@@ -32,12 +29,11 @@ RUN if (-not (Test-Path 'C:\temp\cpython')) { git clone --branch v$env:PYTHON_VE
 # since 2026-08-21 (#127) — the previous inline Set-Content one-liner had to
 # single-quote all XML attributes to dodge the dockerfile frontend's
 # double-quote stripping (2026-08-04 handoff-scrub trap) and was neither
-# greppable nor diffable. COPY, not RUN --mount: this stage is ALSO built by
-# the classic lane's dockerd (see header), which has no BuildKit mounts.
+# greppable nor diffable.
 COPY windows/scripts/build/cpython-Directory.Build.props C:\temp\cpython\PCbuild\Directory.Build.props
 # Expose the (to-be-built) source Python via PATH for downstream media builds.
-# Set here so `docker commit` preserves it in the result image (the interpreter is
-# produced by the run step, but ENV is metadata and is carried over by the commit).
+# ENV is metadata, so it survives into the image even though the `built` stage below
+# is what actually produces the interpreter.
 ENV PYTHON_BUILD_BIN="C:\temp\cpython\PCbuild\amd64"
 ENV PATH=$PYTHON_BUILD_BIN;$PATH
 
@@ -54,14 +50,11 @@ RUN --mount=type=bind,source=windows/scripts/build/build-toolchain-all.ps1,targe
     & 'C:\bkmnt\build-toolchain-all.ps1'
 
 # ── clang/LLVM at the pin, plus the two AArch64 instruction-size fixes ───────
-# OPT-IN (BUILD_PATCHED_LLVM=1). This rebuilds clang from the SAME pinned
-# 23.1.0 tarball the TVM stage already uses and applies two upstream commits
-# (llvm/llvm-project#219275 and #219276) that remove the OpenCV/protobuf aarch64
-# aborts -- see docs/windows-refactor-backlog.md § #135 (a2).
-#
-# Off by default on purpose: it is a large compile, and until those PRs land the
-# lane is still correct with the workarounds in build-opencv-from-source.ps1.
-# Turning it ON is what lets those workarounds be tested for removal.
+# DEFAULT since #135 (BUILD_PATCHED_LLVM=1; `-StockLlvm` is the opt-out). Rebuilds
+# clang from the SAME pinned 23.1.0 tarball the TVM stage already uses and applies
+# two upstream commits (llvm/llvm-project#219275 and #219276) that remove the
+# OpenCV/protobuf aarch64 aborts -- see docs/windows-refactor-backlog.md § #135.
+# The workarounds this replaced are gone from build-opencv-from-source.ps1.
 #
 # The banner still reads 23.1.0, so verify-toolchain.ps1's provenance gate
 # passes unchanged and every clang-cl-shaped source patch stays valid -- which
@@ -69,8 +62,16 @@ RUN --mount=type=bind,source=windows/scripts/build/build-toolchain-all.ps1,targe
 # snapshot.
 FROM built AS patched-llvm
 ARG BUILD_PATCHED_LLVM=1
+# Per-FILE module mounts, exactly the closure build-llvm-from-source.ps1 imports
+# (SourceBuild.Common + the five it nest-imports). A whole-dir mount here made every
+# one of the 41 modules re-key this LLVM compile, and the media lanes derive from it.
 RUN --mount=type=bind,source=windows/scripts/build/build-llvm-from-source.ps1,target=C:\bkmnt\build-llvm-from-source.ps1 `
-    --mount=type=bind,source=windows/scripts/modules,target=C:\bkmnt\modules `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Patches.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Patches.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Cuda.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Cuda.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsTargetArch.Common.psm1,target=C:\bkmnt\modules\WindowsTargetArch.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/llvm,target=C:\bkmnt\patches\llvm `
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=C:\bkmnt\versions.env `
     if ($env:BUILD_PATCHED_LLVM -eq '1') { & 'C:\bkmnt\build-llvm-from-source.ps1' -SkipIfPresent } `

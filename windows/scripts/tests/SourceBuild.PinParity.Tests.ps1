@@ -300,7 +300,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 # key -- build.ps1/build-buildkit.ps1 derive it from CUDA_VERSION and bake it
 # as an ARG/env. Its baked default must therefore equal the major.minor of the
 # canonical CUDA_VERSION pin (a first-two-components rule here, mirroring the
-# derivation in windows/build.ps1).
+# derivation in windows/build-buildkit.ps1).
 #
 # KNOWN DRIFT AWAITING THE REBUILD WINDOW: see
 # $script:KnownDriftAwaitingRebuildWindow below. The 3 listed sites ARE
@@ -434,7 +434,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             return [pscustomobject]@{ Key = $Site.EnvVar; Expected = [string]$Pins[$Site.EnvVar]; Derivation = '' }
         }
         if ($Site.EnvVar -eq 'CUDA_VERSION_MAJOR_MINOR' -and $Pins.Contains('CUDA_VERSION')) {
-            # Mirror windows/build.ps1's $cudaMajorMinor derivation: first two
+            # Mirror windows/build-buildkit.ps1's $cudaMajorMinor derivation: first two
             # dotted components of the canonical CUDA_VERSION pin.
             $parts = @(([string]$Pins['CUDA_VERSION']) -split '\.')
             $mm = if ($parts.Count -ge 2) { @($parts[0], $parts[1]) -join '.' } else { [string]$Pins['CUDA_VERSION'] }

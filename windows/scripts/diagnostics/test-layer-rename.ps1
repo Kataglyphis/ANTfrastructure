@@ -33,7 +33,7 @@
 
 .PARAMETER Docker
     Path to docker.exe. Defaults to $env:DOCKER_EXE, then the Stevedore install
-    locations, then docker on PATH (same resolution as windows/build.ps1).
+    locations, then docker on PATH.
 
 .PARAMETER Base
     Image to probe (default: mcr.microsoft.com/windows/servercore:ltsc2025).
@@ -57,7 +57,7 @@ param(
     [int]$Count    = 25
 )
 
-# --- Resolve docker.exe (mirror windows/build.ps1's resolution order) ---
+# --- Resolve docker.exe ($env:DOCKER_EXE, Stevedore install, then PATH) ---
 if (-not $Docker) {
     $candidates = @($env:DOCKER_EXE,
         'D:\Stevedore\bin\docker.exe',

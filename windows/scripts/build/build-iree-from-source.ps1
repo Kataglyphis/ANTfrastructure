@@ -248,15 +248,14 @@ if ($pythonBindings -eq 'ON' -and $ireeCross) {
     $cmakeExtra += "-DPython3_EXECUTABLE=$($py.Exe -replace '\\', '/')"
 }
 $cmakeExtra += Get-LlvmArchiverCmakeArg
-# QNN target backend (#121): IREE's Qualcomm target backend dispatches
-# compiled MLIR models to the Snapdragon NPU via the QAIRT SDK.
+# NO QNN FLAGS HERE (corrected 2026-08-31, backlog #154). This block used to pass
+# -DIREE_TARGET_BACKEND_QNN / -DQNN_HOME and print "QNN target backend ON".
+# IREE has never had a QNN target backend — not at v3.11.0, not on main — and no
+# Qualcomm NPU path at all; CMake reported both flags "not used by the project".
+# The Qualcomm silicon IREE can reach is the Adreno GPU (vulkan-spirv) and the
+# Snapdragon CPU (llvm-cpu). The QAIRT runtime is still staged beside the install
+# below — it is loaded by the ONNX Runtime QNN EP, not by IREE.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-if ($qnnSdk) {
-    $cmakeExtra += @('-DIREE_TARGET_BACKEND_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
-    Write-Host "IREE: QNN target backend ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121"
-} else {
-    $cmakeExtra += '-DIREE_TARGET_BACKEND_QNN=OFF'
-}
 # Native lane: the x86_64 trampoline is assembled in THIS configure; cross lane:
 # the ARM64 branch never reaches the custom command, the value is merely unused.
 $cmakeExtra += "-DIREE_MASM_COMPILER=$ireeMasm"

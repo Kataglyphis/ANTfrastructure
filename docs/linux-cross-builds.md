@@ -668,10 +668,14 @@ compat (`QNN_OP_STFT` canary), and each framework wires its own flag
 (mirroring Windows #121): ORT `onnxruntime_USE_QNN=ON +
 onnxruntime_QNN_HOME=<root> + QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` (ORT
 CMake defaults to `aarch64-android` on Linux aarch64, overridable via `-D` —
-it is a cache var guarded by `if(NOT QNN_ARCH_ABI)`); LiteRT
-`TFLITE_ENABLE_QNN=ON + QNN_HOME=<root>` (NPU gate flips on with it); TVM
-`USE_QNN=ON + QNN_HOME=<root>`; IREE `IREE_TARGET_BACKEND_QNN=ON +
-QNN_HOME=<root>`. Backend `.so` + `hexagon-v*` skel dirs are staged beside
+it is a cache var guarded by `if(NOT QNN_ARCH_ABI)`). **ORT is the only framework
+with a build-time QNN flag** — corrected 2026-08-31, see Windows backlog #154:
+LiteRT's `TFLITE_ENABLE_QNN`, TVM's `USE_QNN` and IREE's
+`IREE_TARGET_BACKEND_QNN` do not exist upstream, so CMake dropped all three
+silently while the scripts logged success. LiteRT's real switch is
+`LITERT_ENABLE_QUALCOMM`, auto-forced ON by `QAIRT_HEADERS_DIR=<root>/include`,
+which this lane now passes; TVM and IREE have no Qualcomm path at all.
+Backend `.so` + `hexagon-v*` skel dirs are staged beside
 each framework's install by `stage_qnn_runtime`. No zip = QNN off with a
 notice. Different SDK from the Windows lane (`aarch64-oe-linux-gcc11.2/`,
 not `aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.

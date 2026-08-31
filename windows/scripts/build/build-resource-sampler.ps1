@@ -6,12 +6,12 @@
 <#
 .SYNOPSIS
     Host resource sampler + analyzer for the Windows container build
-    (started/stopped by windows/build.ps1; can also run standalone).
+    (started/stopped by windows/build-buildkit.ps1; can also run standalone).
 
 .DESCRIPTION
     SAMPLING (default): appends one CSV row every -IntervalSeconds with host CPU,
     RAM, commit charge, and the Hyper-V container VM footprint (vmmem*), tagged
-    with the current BUILD PHASE read from -PhaseFile (build.ps1 rewrites that file
+    with the current BUILD PHASE read from -PhaseFile (the driver rewrites that file
     at every docker build / run+commit / commit step). Runs until killed -- the
     orchestrator owns the lifecycle. Locale-independent (CIM, no perf-counter
     names -- Get-Counter paths are localized and break on non-English hosts).
@@ -27,7 +27,7 @@
       vmmemGB     -- working set of vmmem* (the Hyper-V VM hosting the build container)
 
 .EXAMPLE
-    # sample every 20s into a CSV, phase-tagged (how build.ps1 invokes it)
+    # sample every 20s into a CSV, phase-tagged (how the driver invokes it)
     pwsh -File build-resource-sampler.ps1 -CsvPath out\windows-build-logs\resources-x.csv -PhaseFile out\windows-build-logs\current-phase.txt
 
 .EXAMPLE
@@ -89,7 +89,7 @@ while ($true) {
         $committedGB = [math]::Round(($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB, 1)
         $vmmem = (Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue | Measure-Object -Property WorkingSet64 -Sum).Sum
         $vmmemGB = if ($vmmem) { [math]::Round($vmmem / 1GB, 1) } else { 0 }
-        # phase strings come from build.ps1 labels (no commas), but sanitize anyway
+        # phase strings come from driver labels (no commas), but sanitize anyway
         $phase = $phase -replace ',', ';'
         "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB" | Add-Content -Path $CsvPath
     } catch {

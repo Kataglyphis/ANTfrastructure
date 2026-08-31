@@ -156,19 +156,16 @@ append_tvm_cmake_args() {
     _tvm_out_ref+=( -DUSE_VULKAN=OFF )
   fi
 
-  # QNN runtime (backlog QNN-LINUX, mirrors Windows build-tvm #121): arm64-only,
-  # opt-in by staging the QAIRT zip; no zip = USE_QNN=OFF (the upstream default).
-  # TVM_QNN_HOME is also consumed by tvm.sh for the post-install staging — it is
-  # deliberately NOT `local`.
+  # NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). USE_QNN and QNN_HOME
+  # are not TVM options and never were -- "no zip = USE_QNN=OFF (the upstream default)"
+  # was wrong twice: there is no such option and therefore no such default. TVM's own
+  # `qnn` is the Quantized Neural Network op dialect, an unrelated name; its Snapdragon
+  # path is USE_HEXAGON plus the separate Hexagon SDK, which is Linux-host/Android-target
+  # and needs USE_LLVM. TVM_QNN_HOME is still resolved: tvm.sh uses it to stage the QAIRT
+  # runtime beside the install, where the ORT QNN EP is what loads it.
   TVM_QNN_HOME="${TVM_QNN_HOME:-}"
   if [ -z "${TVM_QNN_HOME}" ] && command -v resolve_qnn_sdk >/dev/null 2>&1; then
     TVM_QNN_HOME="$(resolve_qnn_sdk)"
-  fi
-  if [ -n "${TVM_QNN_HOME}" ]; then
-    info "TVM: QNN runtime ON (SDK root ${TVM_QNN_HOME})"
-    _tvm_out_ref+=( -DUSE_QNN=ON "-DQNN_HOME=${TVM_QNN_HOME}" )
-  else
-    _tvm_out_ref+=( -DUSE_QNN=OFF )
   fi
 
   _tvm_out_ref+=( -DUSE_LLVM="${_tvm_llvm_cmake_value}" )

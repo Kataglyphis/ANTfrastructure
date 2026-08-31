@@ -85,16 +85,15 @@ foreach ($svc in 'containerd', 'buildkitd') {
     else { Write-Check FAIL "service $svc not installed" '' 'Install Stevedore - see host-setup Phase A' }
 }
 
-# The classic lane's daemon. Stopped is survivable (the BuildKit lane does not
-# need it) but it means the documented fallback is unavailable, which is worth
-# knowing BEFORE you need it.
+# stevedore IS dockerd. The BuildKit lane does not build through it, but docker.exe
+# stays the publish/inspect tool, so Stopped is survivable and still worth knowing.
 $stev = Get-Service stevedore -ErrorAction SilentlyContinue
-if ($stev -and $stev.Status -eq 'Running') { Write-Check PASS 'service stevedore (dockerd / classic fallback lane) running' }
+if ($stev -and $stev.Status -eq 'Running') { Write-Check PASS 'service stevedore (dockerd; publish/inspect) running' }
 elseif ($stev) {
-    Write-Check WARN "classic fallback lane unavailable - stevedore is $($stev.Status)" `
-        'stevedore IS dockerd; build.ps1 cannot run without it' `
+    Write-Check WARN "docker.exe publish/inspect unavailable - stevedore is $($stev.Status)" `
+        'stevedore IS dockerd; builds do not need it, `docker push`/`image inspect` do' `
         'Start-Service stevedore (admin), THEN re-check the CNI subnet below - a dockerd start recreates the nat network'
-} else { Write-Check WARN 'stevedore service not installed - classic lane unavailable' }
+} else { Write-Check WARN 'stevedore service not installed - docker.exe publish/inspect unavailable' }
 
 $buildctl = Join-Path $StevedoreBin 'buildctl.exe'
 if (Test-Path $buildctl) {

@@ -33,6 +33,7 @@ param(
     # Reported only — never used to build a path.
     [string]$ExpectedVersion = $env:TENSORRT_VERSION
 )
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $stable = Join-Path $TensorRtRoot 'current'
@@ -120,11 +121,13 @@ if (-not $alreadyStable) { Rename-Item -LiteralPath $versionDir.FullName -NewNam
 # and require DLLs in at least one of them.
 $binDir = Join-Path $stable 'bin'
 $libDir = Join-Path $stable 'lib'
-$dllDirs = @($binDir, $libDir) | Where-Object {
+# @() wraps the pipeline RESULT, not just the input: one surviving dir is a bare
+# scalar and .Count below throws under StrictMode (the TensorRT 10+/11 bin-only layout).
+$dllDirs = @(@($binDir, $libDir) | Where-Object {
     Test-Path $_
 } | Where-Object {
     @(Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File -ErrorAction SilentlyContinue).Count -gt 0
-}
+})
 if ($dllDirs.Count -eq 0) {
     $present = @(Get-ChildItem -LiteralPath $stable -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) -join ', '
     throw ("TensorRT tree '$(if ($versionDir) { $versionDir.Name } else { $stable })' carries no runtime DLLs in bin\ or lib\ (subdirs: $present) — " +

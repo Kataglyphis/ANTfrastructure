@@ -8,13 +8,11 @@
 # that raced the 0x3-canary's export. New file content -> new chain-IDs.
 
 
-# Toolchain run+commit entrypoint (windows/build.ps1 Invoke-RunCommitStage). The
-# thin builder (Dockerfile.toolchain-builder) already cloned CPython and wrote
-# Directory.Build.props; this runs the CPU-bound `PCbuild\build.bat` at the
-# container's full --cpu-count, then trims build artifacts and verifies. Moving the
-# compile out of `docker build` (2-CPU-capped on this host) into `docker run
-# --cpu-count N` is what lets CPython build on all cores. See docs/windows-builds.md
-# § Build isolation and CPU parallelism.
+# Toolchain compile entrypoint, run by Dockerfile.toolchain-builder's `built` stage.
+# The thin builder already cloned CPython and wrote Directory.Build.props; this runs
+# the CPU-bound `PCbuild\build.bat`, then trims build artifacts and verifies. The BK
+# lane is process-isolated, so the compile gets all host CPUs. See
+# docs/windows-builds.md § Build isolation and CPU parallelism.
 
 [CmdletBinding()]
 param()

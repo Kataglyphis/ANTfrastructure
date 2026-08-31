@@ -33,7 +33,7 @@
 
 .PARAMETER Docker
     Path to docker.exe. Defaults to $env:DOCKER_EXE, then the Stevedore install
-    locations, then docker on PATH (same resolution as windows/build.ps1).
+    locations, then docker on PATH.
 
 .PARAMETER Base
     Base image for the probe (default: mcr.microsoft.com/windows/servercore:ltsc2025).
@@ -58,7 +58,7 @@ param(
     [int]$Count    = 50
 )
 
-# --- Resolve docker.exe (mirror windows/build.ps1's resolution order) ---
+# --- Resolve docker.exe ($env:DOCKER_EXE, Stevedore install, then PATH) ---
 if (-not $Docker) {
     $candidates = @($env:DOCKER_EXE,
         'D:\Stevedore\bin\docker.exe',
@@ -110,10 +110,8 @@ $hitKnownBug = $joined -match 'ActivateLayer|0x20|DO_NOT_DETACH|0x801f0010|file 
 Write-Head 'RESULT'
 if ($buildExit -eq 0) {
     Write-Host 'BUG GONE: `docker build --isolation process` committed a layer successfully!' -ForegroundColor Green
-    Write-Host 'Next: you can now switch heavy build stages to process isolation for full-CPU builds.' -ForegroundColor Green
-    Write-Host '      Retire the media-core run+commit workaround (Invoke-RunCommitStage in' -ForegroundColor Green
-    Write-Host '      windows/build.ps1) once you have re-run the full build and confirmed parity.' -ForegroundColor Green
-    Write-Host '      Update docs/windows-builds.md and the windows-container-host-quirks memory.' -ForegroundColor Green
+    Write-Host 'This host can commit process-isolated layers — the shape the BuildKit lane needs.' -ForegroundColor Green
+    Write-Host '      The classic run+commit workaround this probe used to gate is gone with build.ps1.' -ForegroundColor Green
     & $Docker image rm -f $probeTag 2>&1 | Out-Null
     exit 0
 }

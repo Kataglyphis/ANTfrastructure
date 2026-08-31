@@ -88,17 +88,13 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
 
     # B6 ('classic COPY and BK mount reference the same build scripts per branch')
     # was REMOVED on 2026-08-26 with the retirement of the docker-classic lane
-    # (windows/build.ps1 — see docs/windows-build-lanes.md § The classic lane was
-    # retired). It policed the classic `--target media-*` COPY lists against the BK
-    # `*-built` bind-mount lists; with no driver able to build those targets, its
-    # only possible failure was "the retired lane would break at a runtime nobody
-    # reaches" — a green gate over dead code, which is the shape this suite exists
-    # to prevent, not to embody.
-    #
-    # The classic COPY stages themselves are still in Dockerfile.media-builder and
-    # are now UNPOLICED. Deleting them re-keys media layers, so it is a ride-along
-    # on the next paid rebuild (backlog #134), not a free change. Until then, treat
-    # any drift between them and the BK mount lists as expected and harmless.
+    # (windows/build.ps1, deleted 2026-08-31). It policed the classic `--target
+    # media-*` COPY lists against the BK `*-built` bind-mount lists; with no driver
+    # able to build those targets, its only possible failure was "the retired lane
+    # would break at a runtime nobody reaches" — a green gate over dead code, which
+    # is the shape this suite exists to prevent, not to embody.
+    # The classic stages themselves were deleted from Dockerfile.media-builder in the
+    # same 2026-08-26 change, so there is nothing left for B6 to police.
 
     It 'merge-builder buildmods is a superset of media-builder buildmods (B4)' {
         # The 5-module core must stay in step by hand across the two files

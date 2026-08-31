@@ -205,15 +205,16 @@ if ($useVulkan -eq 'ON') {
 
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
-# QNN target runtime (#121): TVM's QNN runtime dispatches compiled models to
-# the Snapdragon NPU. The SDK headers/libs are passed via QNN_HOME.
+# NO QNN FLAGS HERE (corrected 2026-08-31, backlog #154). This block used to pass
+# -DUSE_QNN / -DQNN_HOME and print "QNN target runtime ON". TVM has no such options:
+# CMake reported both "not used by the project" and the build was green because an
+# undeclared -D is silently dropped. TVM's own `qnn` is Quantized Neural Network, an
+# op dialect with nothing to do with Qualcomm. Its real Snapdragon path is
+# USE_HEXAGON + the HEXAGON SDK (a different vendor package from QAIRT), is
+# Linux-host/Android-target by construction, and needs USE_LLVM, which this lane
+# sets OFF. The QAIRT runtime is still staged beside the install below — it is
+# loaded by the ONNX Runtime QNN EP, not by TVM.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-if ($qnnSdk) {
-    $cmakeExtra += @('-DUSE_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
-    Write-Host "TVM: QNN target runtime ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121"
-} else {
-    $cmakeExtra += '-DUSE_QNN=OFF'
-}
 # (#133) NO python knobs here: tvm-ffi's CMakeLists `return()`s as a subproject, so
 # TVM_FFI_BUILD_PYTHON_MODULE is never read. The Cython module gets its own configure below.
 

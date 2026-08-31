@@ -192,9 +192,10 @@ t_assert_contains "${_cmake_log}" "-DIREE_HOST_BIN_DIR=${TMP}/work/iree-build-ho
 t_assert_contains "${_cmake_log}" "-DCMAKE_TOOLCHAIN_FILE=${TMP}/toolchain.cmake" "toolchain file"
 t_assert_contains "${_cmake_log}" "-DLLVM_HOST_TRIPLE=riscv64-linux-gnu" "target triple pin"
 
-t_case "cmake_args (QNN + common cross) reach the target configure"
-t_assert_contains "${_cmake_log}" "-DIREE_TARGET_BACKEND_QNN=OFF" "QNN arg lost"
+t_case "cmake_args reach the target configure, and carry NO QNN flag"
 t_assert_contains "${_cmake_log}" "-DSTUB_COMMON_CROSS=1" "append_common_cross_cmake_args lost"
+# IREE has no Qualcomm backend; -DIREE_TARGET_BACKEND_QNN never existed.
+t_assert_fails grep -q "QNN" "${TMP}/cmake.log"
 
 t_case "the NATIVE sub-build pin carries host compilers + the cache launcher"
 t_assert_contains "${_cmake_log}" "-DCROSS_TOOLCHAIN_FLAGS_NATIVE=" "CROSS_TOOLCHAIN_FLAGS_NATIVE lost"
@@ -208,10 +209,12 @@ t_assert_eq "" "${STUB_RETAG_LOG##*iree_base_runtime:linux_riscv64}" "compiler w
 t_case "target python sysconfig export survives into the wheel-packing step"
 t_assert_eq "_sysconfigdata__linux_riscv64-linux-gnu" "${_PYTHON_SYSCONFIGDATA_NAME:-}" "sysconfig export lost"
 
-t_case "cross lane with a QNN SDK turns the backend on"
+t_case "a staged QNN SDK still emits no QNN flags"
 STUB_QNN="${TMP}/qairt"
 _run
-t_assert_contains "$(cat "${TMP}/cmake.log")" "-DIREE_TARGET_BACKEND_QNN=ON -DQNN_HOME=${TMP}/qairt" "QNN ON args"
+t_assert_eq "0" "${RC}" "build_iree_wheels rc"
+t_assert_contains "$(cat "${TMP}/cmake.log")" "-DSTUB_COMMON_CROSS=1" "configure did not run"
+t_assert_fails grep -q "QNN" "${TMP}/cmake.log"
 STUB_QNN=""
 
 # ── skip / failure paths: each must return 1 FROM build_iree_wheels ──────────

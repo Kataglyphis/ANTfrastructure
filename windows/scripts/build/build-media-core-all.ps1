@@ -4,29 +4,22 @@
 #requires -Version 7.0
 #
 # Orchestrates the media-core source-build chain (ONNX Runtime -> ONNX GenAI ->
-# FFmpeg -> OpenCV) inside ONE container. $stages below is the authority.
-# This is the payload for the run+commit
-# path in windows/build.ps1: because this host's `docker build` is hard-capped at
-# 2 CPUs (Hyper-V) and process isolation cannot commit layers, the heavy compiles
-# run via `docker run --cpu-count N` (which DOES get N CPUs under Hyper-V) followed
-# by `docker commit`. This script therefore replaces the sequential RUN steps that
-# Dockerfile.media-core used to contain.
+# FFmpeg -> OpenCV). $stages below is the authority.
 #
-# It is baked into windows-media-core-builder (see Dockerfile.media-builder --target media-core)
-# and invoked as: pwsh -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
-# Version/config come from environment variables baked into the builder image.
-#
-# NOTE: unlike a multi-RUN `docker build`, a single `docker run` has no per-stage
-# layer cache — a mid-chain failure re-runs the whole chain. The persistent sccache
-# remote (SCCACHE_WEBDAV_ENDPOINT) mitigates recompilation across attempts.
+# Bind-mounted (not baked) into FOUR sequential RUNs in Dockerfile.media-builder
+# (media-core-built-onnx -> -ffmpeg -> -opencv -> media-core-built), each invoking
+# this script with its own -ResumeFrom/-Until window. So a mid-chain failure resumes
+# from the last cached RUN, and editing this file re-keys all four. Version/config
+# come from the stage's ENV. The persistent sccache remote (SCCACHE_WEBDAV_ENDPOINT)
+# mitigates recompilation within a RUN.
 
 [CmdletBinding()]
 param(
 
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts',
-    # Resume inside a preserved container after a mid-chain failure: skip the
-    # stages before the named one (see build.ps1's recovery recipe on failure).
+    # Skip the stages before the named one. BuildKit has no preserved container to
+    # resume into; it re-solves and replays cached RUN vertices instead.
     [string]$ResumeFrom = '',
     # Stop after the named stage (inclusive). The BuildKit lane splits this chain
     # across two RUN layers (ONNX+GenAI, then OpenCV+FFmpeg): a single ~25 GB

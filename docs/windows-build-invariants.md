@@ -30,6 +30,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [Never splat a string array of `-Param`-shaped tokens](#never-splat-a-string-array-of--param-shaped-tokens)
 - [Four more pwsh traps: bareword comma-attributes, switch-name collisions, glued parameter tokens, null env restores](#four-more-pwsh-traps-bareword-comma-attributes-switch-name-collisions-glued-parameter-tokens-null-env-restores)
 - [Windows stage scripts must end with an explicit `exit 0`](#windows-stage-scripts-must-end-with-an-explicit-exit-0)
+- [Production scripts run under `Set-StrictMode -Version Latest`](#production-scripts-run-under-set-strictmode--version-latest)
 
 **Gates that must stay armed**
 
@@ -82,6 +83,7 @@ lives in [`failure-modes.md`](failure-modes.md).
 - [freedesktop/videolan GitLab downloads must go through `Invoke-WrapDownload`](#freedesktopvideolan-gitlab-downloads-must-go-through-invoke-wrapdownload)
 - [graphene needs `-Dgraphene:sse2=false` plus the meson.build patch](#graphene-needs--dgraphenesse2false-plus-the-mesonbuild-patch)
 - [In `RUN --mount=...,from=<stage>` the SOURCE path is Unix-style](#in-run---mountfromstage-the-source-path-is-unix-style)
+- [A whole-directory `modules` mount puts EVERY module in the cache key](#a-whole-directory-modules-mount-puts-every-module-in-the-cache-key)
 - [The "unreferenced" `windows/scripts` modules are external-consumer API](#the-unreferenced-windowsscripts-modules-are-external-consumer-api)
 - [Rust: rustup WITH a default toolchain is the sole provider](#rust-rustup-with-a-default-toolchain-is-the-sole-provider)
 - [`versions.env` is the single source of truth](#versionsenv-is-the-single-source-of-truth)
@@ -211,6 +213,35 @@ executed. Never reuse a switch parameter's name for a local variable.
 
 **Windows stage scripts must end with an explicit `exit 0`.** `pwsh -File` propagates the LAST native command's exit code: a fully green LiteRT-LM build was declared failed because the final cleanup `rmdir` exited 145 (`ERROR_DIR_NOT_EMPTY`). Real failures throw (EAP=Stop + gates); reaching the end IS success — say so explicitly.
 
+### Production scripts run under `Set-StrictMode -Version Latest`
+
+**Every entry script gets `Set-StrictMode -Version Latest`, and adding it is a
+BUG HUNT, not a formality (2026-08-31).** Adding it to seven scripts surfaced
+four latent defects — three of them on NORMAL SUCCESS PATHS. Two traps account
+for all four, and both are about `.Count`/`.Sum` on a pipeline result:
+**(a) `@()`-wrap a pipeline result before touching `.Count`** — on pwsh 7.6.5 a
+one-element result is the scalar (`.Count` throws) and an empty result is
+`AutomationNull` (`.Count` throws too), so the working and the empty case both
+fail while only the two-or-more case passes. `normalize-tensorrt-tree.ps1`'s
+`$dllDirs` hit exactly this on its success path (TensorRT 10+/11 keep the DLLs
+in `bin` only, so precisely one dir survives the filter), and
+`stage-cuda-runtime.ps1`'s `$roots` would have re-broken the arm64/CPU merge
+lane that the 2026-08-23 degrade-cleanly fix unblocked.
+**(b) `Measure-Object -Property` emits NOTHING for empty input**, so an inline
+`(… | Measure-Object Length -Sum).Sum` throws on an empty directory — bind the
+result first (`clean-sccache-mount.ps1`, empty cache dir).
+**StrictMode is INHERITED across `&`-invocation, so a script can already be
+under it without saying so.** `debug-litertlm-link.ps1`'s
+`(Get-Command 'llvm-nm.exe' -EA SilentlyContinue).Source` was a LIVE bug for
+that reason: its only caller, `build-litert-lm-from-source.ps1`, sets
+StrictMode, and a missing `llvm-nm` — the case the code was written to
+handle — threw instead. Deliberately EXCLUDED: modules and dot-sourced
+scripts (`WindowsFlutter.Common`, `WindowsContainerLog.Common`,
+`Initialize-CiEnvironment.ps1`, `litert-lm-export-bridge.ps1`). A module does
+not inherit its caller's strict mode, and a dot-sourced script leaks it into
+every caller — in-repo and external — so those are behaviour changes, not
+hygiene.
+
 ---
 
 ## Gates that must stay armed
@@ -220,9 +251,9 @@ executed. Never reuse a switch parameter's name for a local variable.
 **Every BK chain ends with a MANDATORY smoke gate — do not route around it.**
 `build-buildkit.ps1` solves `windows/Dockerfile.smoke-gate` against the
 finished image after `final`, and a failure fails the chain (backlog #44).
-Since 2026-08-21 the CLASSIC driver gates too — as `docker run` with a
-DIRECTORY mount of `windows\scripts` (mechanism and gating history:
-`docs/windows-builds.md` § Smoke Testing). Three rules when touching it: it
+It is the only gate since the classic driver's deletion on 2026-08-31
+(mechanism and gating history: `docs/windows-builds.md` § Smoke Testing).
+Three rules when touching it: it
 must run **through `entrypoint.cmd`** (a bare `RUN` bypasses ENTRYPOINT and
 loses VsDevCmd + the ASAN runtime dir);
 it **bind-mounts** the current script rather than the image's baked copy, so a
@@ -434,7 +465,7 @@ fans in.
 
 ### A committed layer can never be shrunk later
 
-**Windows images have a HARD 125-layer cap — the classic builder pays a layer PER INSTRUCTION, metadata included.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines. Rule: in any Dockerfile on the classic chain, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; the final image currently sits at **~75 layers** (settled 2026-08-28 by counting the inherited chain's RUN+COPY+ADD+ENV instructions: base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, plus 20 ENV layers and ~12 from the servercore base = ~75). The earlier "~108/125" figure was the pre-ENV-consolidation count — the merge-builder's 28 ENV lines → 5 blocks alone removed ~23 layers.
+**Windows images have a HARD 125-layer cap — it binds any image LOADED INTO DOCKER, whichever builder produced it.** The final stage died with `max depth exceeded` on 2026-08-03 because the merge Dockerfile carried ~28 separate `ENV` lines, one layer apiece, under the since-deleted classic builder. BuildKit keeps metadata in the image config, so a BK solve spends layers only on `RUN`/`COPY`/`ADD` — but `-FinalTar` hands the result to `docker load`, which enforces the ceiling again. Rule: in every windows Dockerfile, consolidate ENV/metadata into single instructions (see `Dockerfile.media-merge-builder`'s one big ENV, layers 114→86). When adding stages/instructions, check headroom: `docker inspect <tag> --format '{{len .RootFS.Layers}}'` chain-wide; the final image currently sits at **~75 layers** (settled 2026-08-28 by counting the inherited chain's RUN+COPY+ADD+ENV instructions: base 16 + nvidia 3 + toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, plus 20 ENV layers and ~12 from the servercore base = ~75). The earlier "~108/125" figure was the pre-ENV-consolidation count — the merge-builder's 28 ENV lines → 5 blocks alone removed ~23 layers.
 
 ### Preserve committed line endings when editing a COPY'd `.psm1`/`.ps1`
 
@@ -446,7 +477,11 @@ fans in.
 
 ### `docker commit` inherits the container's `Cmd`
 
-**`docker commit` inherits the container's `Cmd` — always commit with `--change 'CMD ["pwsh"]'` (classic lane, fixed 2026-08-07).** The run+commit stages launch the container with a build-script argv, and `commit` captures it as the image's `CMD`: `local/kataglyphis:windows-media` and `windows-torch` shipped a `CMD` that RE-RUNS the GStreamer build, so `docker run -it local/kataglyphis:windows-media` starts recompiling over `C:\runtime` instead of opening a shell. The FINAL image was never affected (a Dockerfile `ENTRYPOINT` resets an inherited `CMD`), which is why it hid for months. Any new run+commit site must carry the same `--change`.
+> **HISTORICAL since 2026-08-31** — no run+commit site remains in the repo
+> (`build.ps1` and `Invoke-RunCommitStage` are deleted). Kept because nothing
+> gates this: a re-introduced `docker commit` would repeat it silently.
+
+**`docker commit` inherits the container's `Cmd` — always commit with `--change 'CMD ["pwsh"]'` (classic lane, fixed 2026-08-07).** The run+commit stages launched the container with a build-script argv, and `commit` captured it as the image's `CMD`: `local/kataglyphis:windows-media` and `windows-torch` shipped a `CMD` that RE-RUNS the GStreamer build, so `docker run -it local/kataglyphis:windows-media` starts recompiling over `C:\runtime` instead of opening a shell. The FINAL image was never affected (a Dockerfile `ENTRYPOINT` resets an inherited `CMD`), which is why it hid for months. Any new run+commit site must carry the same `--change`.
 
 ---
 
@@ -454,11 +489,16 @@ fans in.
 
 ### media-core builds via run+commit — never re-add `--isolation process`
 
-**media-core builds via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core builds via `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`), which is the only way to get >2 CPUs *and* a committable image. Regression symptoms: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-build-lanes.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/scripts/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see [`windows-build-lanes.md`](windows-build-lanes.md) § Re-testing process isolation on new versions).
+> **HISTORICAL since 2026-08-31** — `Invoke-RunCommitStage` was deleted with
+> `build.ps1`; media-core is a plain BK solve at full CPU count. The
+> `docker build` finding below is still true of this host, and the re-test
+> pointer is still a valid hand run.
+
+**media-core built via run+commit for CPU parallelism — never re-add `--isolation process`.** `docker build` is 2-CPU-capped here and process isolation **cannot commit layers** (`hcsshim::ActivateLayer 0x20`, reproduced even for a 100 MB dummy). media-core therefore ran as `docker run --isolation hyperv --cpu-count $MediaCoreCpus` + `docker commit` (`Invoke-RunCommitStage`) — the only way to get >2 CPUs *and* a committable image. Regression symptom of the era: `-j2` in `out\windows-build-logs\media-core.log`, or `ActivateLayer` on any commit. Full rationale: `docs/windows-build-lanes.md` § Build isolation and CPU parallelism. **Before assuming this is still needed after a Docker/Windows/base-image upgrade, re-check with `windows/scripts/diagnostics/test-process-isolation-commit.ps1`** — if it reports `BUG GONE`, process isolation for `docker build` is usable again and the workaround can be retired (see [`windows-build-lanes.md`](windows-build-lanes.md) § Re-testing process isolation on new versions).
 
 ### Parallelism is memory-bounded, not CPU-bounded
 
-**Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; inside a run+commit stage, `ProcessorCount` = `--cpu-count` (default = all host logical processors, 32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-build-resources.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM and the sccache WebDAV remote. **The local L0 disk tier is DISABLED BY DEFAULT since 2026-08-16 — and the fault is BuildKit, not sccache.** A BuildKit cache mount on Windows loses writes once its directory holds objects an EARLIER RUN wrote: 158 of 250 failed on the mount vs 0 of 250 into a plain container directory, same program, same moment; a FRESH directory on the same mount takes all 250. That is why opencv/genai (which inherit onnx's cache dir) failed ~100 % of writes while onnx, filling its own, failed 1.9 %. `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in BOTH media Dockerfiles; restore `disk,webdav` only after re-verifying against a newer buildkit (recipe + full measurement in `docs/windows-builds.md` #99). Do not "fix" this in sccache.
+**Parallelism is memory-bounded, not CPU-bounded — and the defaults ARE the max.** `Get-BuildJobCount = min(ProcessorCount, MEMORY_LIMIT_GB / MemGBPerJob)`; every BK RUN is process-isolated and sees all host logical processors (32 here). ONNX is tuned to ~4 GB/job (its CUDA/AVX-512 TUs are the RAM-heaviest; the `-j2` incremental retry absorbs the occasional OOM) → ~`-j10` at the auto-detected `-MediaMemoryGb 39` (`61 GB usable − 22 GB host reserve`). **Do not "optimize" by raising the memory cap or cutting `-HostReserveGb`**: the verified maximum envelope for this host (32 CPUs / 39 GB; media-core bottomed the host at 0.2 GB free and survived; 53 GB deadlocked it) is documented in `docs/windows-build-resources.md` § Maximum resource envelope — average CPU of ~35–45 % during compiles is the expected memory-bound signature, not a tuning failure. **You cannot reach `-j32` on ONNX**: 32 heavy TUs need ~128+ GB — RAM per job, not core count, is the ceiling; the real speed levers are more physical RAM and the sccache WebDAV remote. **The local L0 disk tier is DISABLED BY DEFAULT since 2026-08-16 — and the fault is BuildKit, not sccache.** A BuildKit cache mount on Windows loses writes once its directory holds objects an EARLIER RUN wrote: 158 of 250 failed on the mount vs 0 of 250 into a plain container directory, same program, same moment; a FRESH directory on the same mount takes all 250. That is why opencv/genai (which inherit onnx's cache dir) failed ~100 % of writes while onnx, filling its own, failed 1.9 %. `SCCACHE_MULTILEVEL_CHAIN` is an ARG defaulting to `""` in BOTH media Dockerfiles; restore `disk,webdav` only after re-verifying against a newer buildkit (recipe + full measurement in `docs/windows-builds.md` #99). Do not "fix" this in sccache.
 
 ### `buildctl` builds (non-admin), `nerdctl` runs and inspects (admin)
 
@@ -505,7 +545,8 @@ the global default.
 ### The classic lane's fallback needs a RUNNING dockerd
 
 > **HISTORICAL since 2026-08-26** — this no longer guards a usable lane; `build.ps1`
-> was retired (rationale: [windows-build-lanes.md](windows-build-lanes.md)). Kept
+> was retired then and deleted 2026-08-31 (rationale:
+> [windows-build-lanes.md](windows-build-lanes.md)). Kept
 > because the *host* observation below is still true and still bites `docker.exe`
 > publish/inspect work: a Stevedore host can have `docker` on PATH with the daemon
 > Stopped. Heading unchanged on purpose — it is a live anchor target.
@@ -516,8 +557,11 @@ daemon, and on a Stevedore host that daemon is the `stevedore` SERVICE.**
 --service-name stevedore --host npipe:...dockerDesktopWindowsEngine
 --containerd=npipe:...`). Found **Stopped** on 2026-08-07 while the BuildKit
 lane ran happily — i.e. the documented fallback was unavailable and nothing
-said so. `docker.exe` sitting on PATH proves nothing; `build.ps1` now
-fail-fasts via `Assert-DockerDaemon`. Starting it is NOT a safe reflex:
+said so. `docker.exe` sitting on PATH proves nothing — and since 2026-08-31
+**nothing fail-fasts on it**: `Assert-DockerDaemon` was deleted with
+`build.ps1`. `verify-host-setup.ps1` reports the service state (WARN:
+"docker.exe publish/inspect unavailable"), which is the only check left.
+Starting it is NOT a safe reflex:
 a dockerd start recreates the nat HNS network and can move the subnet out
 from under `0-containerd-nat.conf`, leaving BuildKit containers with
 unroutable IPs — so start it deliberately, then RE-CHECK the CNI subnet
@@ -525,7 +569,7 @@ unroutable IPs — so start it deliberately, then RE-CHECK the CNI subnet
 
 ### Two BK-driver guards to know before debugging around them
 
-**Two guards added 2026-08-07 that change how the BK driver behaves — know they exist before debugging around them.** (1) `Invoke-TransientCooldown` now takes `-PreviousTail` and **refuses to retry a byte-identical failure**: a flake changes between attempts, a poisoned snapshot does not, and the old behaviour burned the whole retry budget on `ImportLayer 0xb7`. The comparison strips buildkit's per-line elapsed-time prefixes, which differ every attempt. (2) `Invoke-BkStage` gates **disk per stage** with a stage-aware floor (CUDA 60 GB, media 80, merge 60, toolchain 45, else 40) because the start-of-run check passed at 164 GB while the chain still walked to 23 GB inside one heavy stage. Both honour the existing override switches; neither changes classic-lane behaviour.
+**Two guards added 2026-08-07 that change how the BK driver behaves — know they exist before debugging around them.** (1) `Invoke-TransientCooldown` now takes `-PreviousTail` and **refuses to retry a byte-identical failure**: a flake changes between attempts, a poisoned snapshot does not, and the old behaviour burned the whole retry budget on `ImportLayer 0xb7`. The comparison strips buildkit's per-line elapsed-time prefixes, which differ every attempt. (2) `Invoke-BkStage` gates **disk per stage** with a stage-aware floor (CUDA 60 GB, media 80, merge 60, toolchain 45, else 40) because the start-of-run check passed at 164 GB while the chain still walked to 23 GB inside one heavy stage. Both honour the existing override switches; both were BK-only when added, and since 2026-08-31 there is no other driver to differ from.
 
 ---
 
@@ -623,6 +667,23 @@ in Dockerfile.media-builder / .media-merge-builder). Verify a from-stage
 mount with a `Test-Path` assertion through it, NOT with `Get-ChildItem` — an
 empty mount lists cleanly and exits 0, so a bare listing proves nothing.
 
+### A whole-directory `modules` mount puts EVERY module in the cache key
+
+**Never bind-mount `windows/scripts/modules` as a DIRECTORY — mount the
+per-file closure the script imports (2026-08-31).** Every file under a
+directory mount is part of that RUN's cache key, so one host-only `.psm1` edit
+re-keys the whole vertex. `Dockerfile.toolchain-builder`'s `patched-llvm` RUN
+did exactly this, and it is the DEFAULT toolchain target (`-StockLlvm` is the
+opt-out, #135): editing *any* module — `WindowsBuildDriver.Common.psm1`
+included, which no container ever loads — re-paid a full LLVM 23.1.0 compile
+plus every media lane derived from that image. That RUN now mounts the six
+modules `build-llvm-from-source.ps1` actually imports, and
+`BuildKit.ModuleClosure.Tests.ps1` fails any windows Dockerfile that
+re-introduces the directory form. `Dockerfile.probe` is exempt BY DESIGN
+(`PROBE_NONCE` busts its layer regardless, and it dispatches arbitrary
+diagnostic scripts — its own header says so). Corollary: "a module edit is
+cheap" is a claim about the MOUNTS, not about the module.
+
 ### The "unreferenced" `windows/scripts` modules are external-consumer API
 
 **The "unreferenced" `windows/scripts` modules are EXTERNAL-CONSUMER API —
@@ -636,7 +697,12 @@ BeschleunigerBallett and Inference-Engine) plus `scripts/rust/` and
 consume (this repo IS the upstream). Repo-internal reference audits will
 flag them as dead — they are library surface. Keep them lint-clean; do not
 rename exported functions without checking external consumers. Their
-build-cache cost is zero (per-file bind mounts on the BK lane).
+build-cache cost is zero **only while every mount stays per-file** (§ A
+whole-directory `modules` mount puts EVERY module in the cache key).
+**Applied 2026-08-31, do not re-litigate:** the driver-cleanup wave kept
+`Get-LlvmMasmCmakeArg` (zero in-repo callers) and four
+`WindowsSourceBuild.Common` re-exports on this rule alone — the audit that
+flags them next will be the same audit, not new evidence.
 
 ### Rust: rustup WITH a default toolchain is the sole provider
 
@@ -644,11 +710,11 @@ build-cache cost is zero (per-file bind mounts on the BK lane).
 
 ### `versions.env` is the single source of truth
 
-**`versions.env` is the single source of truth.** `build.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `setup-scoop-tools.ps1` splits its installs into exactly those two blocks.
+**`versions.env` is the single source of truth.** `build-buildkit.ps1` forwards every version as `--build-arg`; the smoke test and scripts derive expected values from it (e.g. CMake URL from `CMAKE_VERSION`; `LLVM_RELEASE` pins the LINUX clang, `LLVM_WINDOWS_VERSION` the Windows one — separate on purpose). Don't hardcode versions in scripts or Dockerfiles. **Anything that produces or shapes compiled output belongs here**; tools the build merely invokes may float, and `setup-scoop-tools.ps1` splits its installs into exactly those two blocks.
 
 ### CMake cross configures must carry the ASM language target too
 
-**A committed layer can never be shrunk later, so scrub INSIDE the container.** Both lanes pass `-ScrubAfter` to the media branch and merge/GStreamer runs (`Clear-BuildScratch`: pip cache, `~\.nuget`, `%TEMP%`, INetCache); the classic lane was missing it until 2026-08-07, so its images carried debris the BK lane's did not. Source trees are a separate mechanism — each leaf script calls `Remove-SourceBuildTree` itself. The toolchain stage is excluded on purpose: its CPython tree at `C:\temp\cpython` IS the deliverable.
+**A committed layer can never be shrunk later, so scrub INSIDE the container.** The BK lane — the only lane since 2026-08-31 — passes `-ScrubAfter` to the media branch and merge/GStreamer runs (`Clear-BuildScratch`: pip cache, `~\.nuget`, `%TEMP%`, INetCache). It was added there first; the classic lane went without it until 2026-08-07 and shipped debris the BK lane's images did not. Source trees are a separate mechanism — each leaf script calls `Remove-SourceBuildTree` itself. The toolchain stage is excluded on purpose: its CPython tree at `C:\temp\cpython` IS the deliverable.
 
 ### vcpkg ships zlib ONLY
 
