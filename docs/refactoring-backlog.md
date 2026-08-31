@@ -47,34 +47,30 @@ deliberately gate-red until that build happens.
 
 ## A. Needs a real BUILD to close (not more code)
 
-### A1. GEN1 validation — the riscv64 GenAI lane is WIRED but UNPROVEN [★★★]
+### A1. GEN1 — riscv64 GenAI: BUILD PROVEN, token sanity still open [★★]
 
-Built and wired ON 2026-08-31. Nothing here has seen a riscv64 build; it is all
-source-read. **This is the highest-value thing the next media-riscv64 build can
-settle.**
+The 2026-08-31 rebuild ran it for real. What was unknown is now measured, and
+only one question survives.
 
-Mechanism, the full watch-list and the back-out procedure live in
-[`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) — that page owns them. What is
-OPEN, i.e. what a build must still settle:
+**PROVEN by the media-riscv64 stage (run r4, image pinned sha256:32114d…):**
+the upstream patch applies (`APPLIED: onnxruntime-genai riscv64 …`); it COMPILES
+under the GCC 16 riscv64 cross toolchain (`Built target onnxruntime-genai`);
+`cross_target_python_dev_ready` was true; llguidance/Corrosion LINKED (**zero**
+`dropping --use_guidance` — the parity-divergence no gate can see did not
+happen); and the wheel `onnxruntime_genai-0.15.2-cp314-cp314-linux_riscv64.whl`
+was produced with the correct platform tag, i.e. it passed the wheel-must-exist
+gate, `assert_elf_arch` and the target `EXT_SUFFIX` assert.
 
-- **Does it compile, link and generate sane tokens on riscv64?** Seven things
-  can bite, in a known order (compile → target python dev files → llguidance
-  linking → `EXT_SUFFIX` → `-latomic` → performance → crates.io fetch). Token
-  sanity is the one no gate here can prove: upstream #594 is a RISC-V build that
-  compiled, imported and emitted nonsense, and smoke tiers 1-3 pass in that
-  state. Arm tier 4 with `GENAI_MODEL_DIR`.
-- **Did the `--use_guidance` preflight FIRE?** `60-build-genai.sh` drops the flag
-  with only a WARN when rustup lacks the riscv64 std. The wheel then ships
-  WITHOUT llguidance and is parity-divergent from amd64/arm64 — and NO gate can
-  see it. Grep the riscv64 genai stage log for `dropping --use_guidance`; if it
-  fired, fix `install-rust.sh`/`CROSS_TARGETS` and rebuild rather than shipping.
-- **ARCH-PARITY is RED ON PURPOSE until that build lands** — every
-  currently-shipped riscv64 image now fails the genai assertion. Do not "fix" it
-  by re-adding the exemption.
-- **Raise the riscv64 app-wheel floor 12 → 13 only after a real run PRINTS 13.**
-  Raising a floor a run cannot reach reds the gate for the wrong reason.
-- **The new `validate-media-runtime.sh` genai NEEDED scan has never run against
-  a real image** on any arch. It is expected to be a no-op on amd64/arm64.
+**STILL OPEN — the only one a build cannot answer:** does `generate()` emit sane
+tokens on riscv64? Upstream #594 is a RISC-V build that compiled, imported and
+produced nonsense; smoke tiers 1-3 pass in exactly that state. Arm tier 4 by
+mounting a small model and setting `GENAI_MODEL_DIR`. Until then the lane is
+"builds and imports", not "works".
+
+Also unresolved and cheap to settle on the next run: raise the riscv64 app-wheel
+floor 12 → 13 once a run PRINTS 13, and confirm the new
+`validate-media-runtime.sh` genai NEEDED scan behaves on a real image (it has
+never run against one on any arch).
 
 ### A2. QNN-LINUX — fan-out validation, BLOCKED on the login-gated SDK
 
@@ -138,6 +134,95 @@ the same day (see the archive); this is what deliberately remains.
   VACUOUSLY. Not touched by the 2026-08-31 window (the file is unmodified), but
   it is exactly the toothless-gate class standing rule 5 is about. Sort both
   inputs, then re-check that the assertions still pass for the right reason.
+  REINFORCED 2026-08-31: the same bug bit THREE times in one day while auditing
+  (measuring ORT clone overlap, and twice while checking package lists), each
+  time turning a real answer into a wrong one — `LC_ALL=C` changed "0 shared"
+  into "36 shared" and "12 packages missing" into "1". Any `comm` in this tree
+  wants `LC_ALL=C sort` on both inputs; grep for other call sites while fixing.
+
+## D. Build infrastructure — found live in the 2026-08-31 rebuild
+
+Ordered by what actually costs a run. The first two each destroyed an entire
+arch's media stage.
+
+- **D1. The batch apt install fails wholesale, and the per-package sweep does
+  not always recover** [M·★★★, RECURRING — cost r4 the whole arm64 lane].
+  `install_target_packages` runs one batch `apt-get`; on cross arches it exits
+  100 with **every** package reporting `Depends: X:<arch> (= <version>) but it
+  is not going to be installed`. The documented per-package retry then rescues
+  most names, but not all — and which one is left behind varies by run
+  (`libpulse-dev` in r4, nothing in r3 with the same scripts two hours earlier).
+  The exact-version dependency shape points at a version skew between the cached
+  apt lists and the live ports archive rather than at bad package names: every
+  name in every `install-deps.sh` was checked against the live ports indices for
+  arm64 and riscv64 and only the two in D2 are actually gone. Root-cause the
+  batch failure; a `|| true` on ffmpeg's list would only hide it.
+
+- **D2. Two package names are dead on Ubuntu 26.04 ports** [S·★].
+  `libopenexr-3-dev` (renamed `libopenexr-dev`) and `libvvdec-dev` (gone
+  entirely), both in `03-media/build/gstreamer/install-deps.sh:183,186`.
+  Neither breaks a build — both already carry `|| …|| true` fallbacks, and vvdec
+  falls through to a full source build — so this is cleanup, not an outage. But
+  every run pays a failed apt round-trip and, for vvdec, an entire compile.
+  NB the openexr fallback to the new name is already there; only the dead first
+  attempt needs removing.
+
+- **D3. Builds are not reproducible: the base digest changes every run**
+  [M·★★]. `db544a8e` (r3) → `82ecfee4` (r4) → `c85cc424` (r5), same tree.
+  Consequence for anyone assembling a manifest from more than one run: the
+  arches then sit on DIFFERENT base layers. Functionally probably harmless,
+  historically the exact shape of defect this repo has paid for twice (stale
+  `:latest-cross`). Either make base reproducible or make the chain refuse to
+  publish a manifest whose arches disagree on their base digest.
+
+- **D4. `kata-buildcache` grows without bound and is the disk-filler**
+  [S·★★★]. Observed within ONE session: 62 GB → 110 GB, and back to 55 GB after
+  a manual wipe, purely from repeated runs. It is a regenerable cache EXPORT, so
+  wiping it is safe (`prune-safe` cannot touch it — different store). It was the
+  direct cause of the r3 disk emergency that forced a controlled chain stop.
+  Needs a retention policy, or a size cap wired into the disk preflight so the
+  chain trims it instead of asking a human at 19 GB free.
+
+- **D5. Failed stages still write their cache exports** [S·★★].
+  `cross-stage-build.sh:206` salvages local cache exports for all 15 named media
+  stages after a FAILED build — burning disk on stages that will be rebuilt
+  anyway, at exactly the moment disk is scarce. `SALVAGE_CACHE_EXPORT=0` already
+  disables it; consider making it conditional on free space rather than on the
+  operator remembering.
+
+- **D6. `install_target_packages` reports non-fatal misses in fatal-looking
+  language** [S·★]. `FAILED — missing after apt-get (rc=100): <pkg>` is printed
+  identically whether the caller guarded the call with `|| true` or not, which
+  cost two false alarms while monitoring this run. Say which it was: a guarded
+  miss is information, an unguarded one is an outage.
+
+- **D7. Warning audit 2026-08-31 — do not repeat it** [closed, recorded so it
+  is not re-done]. Every warning in a full 3-arch run was classified. ~12,700 are
+  compiler warnings inside UPSTREAM sources (ONNX Runtime's
+  `lifetime_capture_by`, glslang array-bounds, LLVM `PointerType::get`
+  deprecations, Dawn) — not our code, not fixable here. ~50 more are upstream
+  TOOLING noise: the Vulkan SDK's own profile parser (`jsonschema` module
+  missing) and GStreamer `.gir` parsing. Exactly ONE was ours, and it is fixed
+  (the OpenCV build-stage cv2 import check could never succeed; commit
+  b3dbd32a). Counting warnings by grepping the log OVERCOUNTS badly: BuildKit
+  echoes each RUN's command text, so warning strings inside a Dockerfile command
+  are matched as if they had fired. Count only real output lines
+  (`^#N <time> WARNING`) — that is the difference between "TVM build failed 23×"
+  and "TVM built fine".
+
+- **D8. Feature parity is in good shape — the table is the source of truth**
+  [reference]. `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` carries
+  exactly TWO documented exceptions after GEN1: `riscv64:cmake` (Kitware
+  publishes no riscv64 archive, distro cmake 4.2.3 is used) and
+  `riscv64:iree_base_compiler` (the IREE compiler cannot be cross-built and
+  upstream ships no riscv64 wheel, so that lane is runtime-only). Everything
+  else that differs is deliberate and correct rather than a gap: the ORT flavour
+  split (`onnxruntime_dnnl` on amd64 because oneDNN is x86-only,
+  `onnxruntime_webgpu` on arm64/riscv64) and QNN being arm64-only (it is a
+  Snapdragon NPU). Feature toggles are already at maximum —
+  `ORT_ENABLE_WEBGPU`, `ORT_WEBGPU_ALLOW_CROSS` and `GENAI_ALLOW_RISCV64` are
+  all on; the two that are off are off on purpose (`ORT_ENABLE_LTO` costs build
+  time for no feature, `FFMPEG_ENABLE_TF` was removed deliberately, −500 MB).
 
 ## E. Waiting on a TRIGGER (not on work)
 
