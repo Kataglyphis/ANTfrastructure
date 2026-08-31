@@ -7,11 +7,19 @@
 # runhcs shim's hardcoded 30s tearDownTimeout (real heavy-churn teardown:
 # ~117s measured) and is fixed by the patched shim in Stevedore\bin — all
 # solves are direct now. KEPT (with bk-materialize.ps1 + the handoff helpers
-# + their tests) as the tested rollback path: if the canary
+# + their tests) as the rollback path: if the canary
 # (docs/windows-build-lanes.md § Traps "DEFECT SOLVED") ever 0x3s again (e.g.
-# a Stevedore update reverted the patched shim), restore the
-# warm/materialize Dockerfile targets from git history (c9586c1^) and these
-# payloads work unchanged.
+# a Stevedore update reverted the patched shim), restore the warm/materialize
+# Dockerfile targets from git history (c9586c1^).
+#
+# THE PAYLOADS WORK UNCHANGED; THE RESTORED TARGETS DO NOT (checked 2026-08-31,
+# backlog #149). All ten of them mount the same five modules and neither of the
+# two the tree has needed since:
+#   * WindowsTargetArch.Common.psm1 — WindowsSourceBuild.Common THROWS AT IMPORT
+#     without it (#116), so every restored RUN dies before its first line.
+#   * WindowsTvm.Common.psm1 — build-tvm-from-source.ps1 throws without the
+#     tvmmods mount (#134), so the TVM branch dies even once the import is fixed.
+# Add both to the restored mount lists. Do NOT discover this during the outage.
 #
 # Original purpose — WARM-solve payload for the BuildKit lane: runs a heavy
 # build, then hands its artifact delta off over WebDAV (Export-BuildHandoff).
