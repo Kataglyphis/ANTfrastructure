@@ -5,47 +5,52 @@ SPDX-License-Identifier: MIT
 
 # Windows build lanes — BuildKit, nerdctl and classic docker
 
-Three ways to build the Windows image, what each can and cannot do, and the
-host-level failures specific to each. **Use the BuildKit/containerd lane**
-(`windows/build-buildkit.ps1`); the other two are documented because you will
-still meet them.
+Two live ways to build the Windows image and one that is now history, what each
+can and cannot do, and the host-level failures specific to each. **Use the
+BuildKit/containerd lane** (`windows/build-buildkit.ps1`) — it is the only
+driver left; nerdctl runs and inspects its results.
 
 | Lane | Driver | Shell | Status |
 |---|---|---|---|
-| BuildKit + containerd | `windows\build-buildkit.ps1` → `buildctl` | non-admin | **Preferred since 2026-08** |
+| BuildKit + containerd | `windows\build-buildkit.ps1` → `buildctl` | non-admin | **The lane. Preferred since 2026-08, sole driver since 2026-08-31** |
 | nerdctl | `nerdctl --namespace buildkit` | **admin** | Run / inspect / administer; can also build |
-| docker classic | `windows\build.ps1` | non-admin | **RETIRED 2026-08-26** — refuses to run without `-AcceptRetiredLane`; cannot build `base`, and its `merge` target cannot pass the smoke gate |
+| docker classic | *none — `windows\build.ps1` deleted* | — | **RETIRED 2026-08-26, DRIVER DELETED 2026-08-31** — could not build `base`, and its `merge` target could not pass the smoke gate |
 
 ## The classic lane was retired on 2026-08-26
 
-`windows/build.ps1` throws on start unless `-AcceptRetiredLane` is passed. This was
-an owner decision on the pre-rebuild audit's finding, and it rests on two
-independent structural defects — neither is a bug someone forgot to fix:
+`windows/build.ps1` refused to start from 2026-08-26 unless `-AcceptRetiredLane`
+was passed, and was **DELETED on 2026-08-31**. This was an owner decision on the
+pre-rebuild audit's finding, and it rested on two independent structural defects —
+neither was a bug someone forgot to fix:
 
-1. **It cannot build `base`.** Twelve Windows Dockerfiles use BuildKit-only
+1. **It could not build `base`.** Twelve Windows Dockerfiles use BuildKit-only
    `RUN --mount` (measured 2026-08-21). This is why the lane stopped being a
    bootstrap fallback.
-2. **Its `merge` target cannot pass the smoke gate.**
-   `Dockerfile.media-merge-builder` splits at `FROM merge-fanin AS merge` (~line 208,
-   the target this driver pins) and `FROM merge-fanin AS built` (~line 229, the
-   BuildKit target). `build-opencv-gstreamer-plugin.ps1`, `write-bundle-manifest.ps1`,
+2. **Its `merge` target could not pass the smoke gate.**
+   `Dockerfile.media-merge-builder` split at `FROM merge-fanin AS merge` (the
+   target that driver pinned) and `FROM merge-fanin AS built` (the BuildKit
+   target). `build-opencv-gstreamer-plugin.ps1`, `write-bundle-manifest.ps1`,
    `stage-target-python-deps.ps1` and `verify-target-arch.ps1` all run *after* the
-   split, so `merge` gets none of them — and all four use `RUN --mount=type=bind`,
-   which docker classic cannot execute anyway. The chain then ends in
+   split, so `merge` got none of them — and all four use `RUN --mount=type=bind`,
+   which docker classic cannot execute anyway. The chain then ended in
    `smoke-test-container.ps1`, which hard-asserts
-   `cv2.videoio_registry.hasBackend(CAP_GSTREAMER)` (~line 1527) — a backend only the
-   plugin from (2) provides. The lane rejects its own output, after a multi-hour chain.
+   `cv2.videoio_registry.hasBackend(CAP_GSTREAMER)` — a backend only the plugin
+   from (2) provides. The lane rejected its own output, after a multi-hour chain.
 
-**Reviving it is not a target-pin change.** Those four RUNs would have to be
+**Reviving it would not be a target-pin change.** Those four RUNs would have to be
 redesigned as COPY stages, and a fifth (`base`) would need the same for every
 BuildKit-only mount in the chain. A partial attempt already existed and was never
 wired: `windows/scripts/build/build-merge-all.ps1`, added 2026-08-21, referenced by
-no Dockerfile, driver or doc — deleted with this retirement rather than left as a
+no Dockerfile, driver or doc — deleted with the retirement rather than left as a
 half-fix for a lane nobody can run.
 
-`-AcceptRetiredLane` exists for salvage on a host that already holds a chain
-(reading logs, poking a preserved container, the cheap torch/final tail). It
-suppresses the refusal, not the defects.
+The classic-only Dockerfile stages went the same day: `Dockerfile.media-builder`'s
+`media-core-env`/`media-core`/`media-litert`/`media-tvm` COPY shells and the merge
+builder's `merge` target are gone (each file's header records it). The toolchain
+builder still splits `builder` from `built`, now only as a resume boundary.
+`build.ps1`'s six driver-only helpers went with it on 2026-08-31 —
+`Set-BuildDriverIsolation`, `Invoke-DockerWithRetry`, `Get-DockerBuildArgList`,
+`Assert-ImageExists`, `Resolve-BuildIsolation`, `Assert-DockerDaemon`.
 
 What lives elsewhere:
 
@@ -56,55 +61,50 @@ What lives elsewhere:
 - **Rules you must not regress** → [`windows-build-invariants.md`](windows-build-invariants.md)
 ## Build isolation and CPU parallelism
 
-**Policy (build.ps1 `-Isolation`, default `auto`): process isolation is always
-preferred and used automatically wherever the host can support it.** `auto`
-runs the ~10s commit probe (`windows/scripts/diagnostics/test-process-isolation-commit.ps1`)
-once per (host build, docker version) — verdict cached in
-`out\windows-build-logs\isolation-probe-cache.json` — and:
+**Policy: the BuildKit lane is process-isolated by construction, so there is no
+isolation to choose.** buildkitd runs every RUN step process-isolated on this
+host — full host CPUs everywhere, no 2-CPU cap — and `build.ps1`'s
+`-Isolation auto|process|hyperv`, `Resolve-BuildIsolation` and the cached
+verdict in `out\windows-build-logs\isolation-probe-cache.json` all went with
+that driver on 2026-08-31. Nothing gates on the probe any more:
+`windows/scripts/diagnostics/test-process-isolation-commit.ps1` survives as a
+HAND-RUN diagnostic (§ Re-testing process isolation on new versions) for
+answering "is the wcifs commit bug back?" after a host change.
 
-- **probe passes** → every `docker build` and `docker run` gets
-  `--isolation process`: full host CPUs everywhere, no 2-CPU cap. (This is the
-  normal state on a Windows **Server** host whose build matches the base image
-  — the recommended build environment.)
-- **probe fails** (the wcifs layer-commit bug, present on client-build hosts
-  mismatched against the Server base image) → falls back to `hyperv` with a
-  loud warning, and everything below applies.
+**HISTORICAL — the docker-classic Hyper-V fallback.** Under Hyper-V, build
+containers were given only **2 logical CPUs**, so `Get-BuildJobCount` —
+`min(ProcessorCount, memGB / memPerJob)` — pinned every in-container `ninja -j`
+to 2 no matter how many cores the host had. That was the difference between a
+~1-hour and a ~6-hour ONNX/CUDA compile, and the reason the heavy **media-core**
+stage did not use `docker build` at all. `Get-BuildJobCount` itself is unchanged
+and still governs BK compiles; it simply sees the real core count now.
 
-`-Isolation process|hyperv` forces either mode (forcing `process` on a host
-where the probe fails will kill every stage at its first layer commit).
-
-Under Hyper-V, build containers are given only **2 logical CPUs**, so
-`Get-BuildJobCount` — `min(ProcessorCount, memGB / memPerJob)` — pins every
-in-container `ninja -j` to 2 no matter how many cores the host has. That is the
-difference between a ~1-hour and a ~6-hour ONNX/CUDA compile, so the heavy
-**media-core** stage does **not** use `docker build` at all.
-
-Two properties of `docker commit` that the run+commit path has to correct for
-(both fixed 2026-08-07):
+Two properties of `docker commit` that the run+commit path had to correct for
+(both fixed 2026-08-07; HISTORICAL — nothing commits a container any more — but
+the scratch rule in the second one still binds every BK compile RUN):
 
 - **`commit` captures the CONTAINER's config, including `Cmd`** — which here is
   the build-script argv the stage was launched with. Left alone,
   `local/kataglyphis:windows-media` (and `windows-torch`, which inherits it)
   ship a `CMD` that RE-RUNS the GStreamer build, so a debugging
   `docker run -it local/kataglyphis:windows-media` starts recompiling over
-  `C:\runtime` instead of giving you a shell. The driver now commits with
+  `C:\runtime` instead of giving you a shell. The driver committed with
   `--change 'CMD ["pwsh"]'`. The FINAL image was never affected — a Dockerfile
   `ENTRYPOINT` resets an inherited `CMD` — which is exactly why it stayed
   invisible for so long.
-- **A committed layer cannot be shrunk later**, so package-manager scratch has
-  to be cleared INSIDE the container before the commit. The classic lane now
-  passes `-ScrubAfter` to the media branch and merge/GStreamer runs, matching
-  what the BuildKit lane already did on every compile RUN (`Clear-BuildScratch`:
-  pip cache, `~\.nuget`, `%TEMP%`, INetCache). Source trees were never the
-  issue — each leaf build script removes its own via `Remove-SourceBuildTree`.
-  The toolchain stage is deliberately excluded on both lanes: its CPython tree
-  at `C:\temp\cpython` IS the deliverable.
+- **A committed layer cannot be shrunk later**, so package-manager scratch had
+  to be cleared INSIDE the container before the commit. That rule outlived the
+  commit: every BK compile RUN passes `-ScrubAfter` (`Clear-BuildScratch`: pip
+  cache, `~\.nuget`, `%TEMP%`, INetCache), because a finalized layer cannot be
+  shrunk either. Source trees were never the issue — each leaf build script
+  removes its own via `Remove-SourceBuildTree`. The toolchain stage is
+  deliberately excluded: its CPython tree at `C:\temp\cpython` IS the deliverable.
 
 ## BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`)
 
-**This is the lane to use from 2026-08 on** — full host CPUs on every stage,
-process-isolated layer commits, and real per-stage layer caching, with the
-docker-classic run+commit lane kept as the always-working fallback. **Status
+**This is the lane to use from 2026-08 on, and the only one since 2026-08-31** —
+full host CPUs on every stage, process-isolated layer commits, and real
+per-stage layer caching. **Status
 2026-08-06: GREEN end-to-end and DE-WARMED** — the host snapshotter defect
 (`ExportLayer 0x3`) is fixed at the root by a patched runhcs shim, so the
 lane runs DIRECT solves everywhere and the warm/materialize pattern is
@@ -127,12 +127,11 @@ compiles all ran as plain process-isolated layers):
 Consequences: every stage can be a plain build — the heavy compiles run as
 `*-built` Dockerfile targets (toolchain-builder `built`, media-builder
 `media-<branch>-built`, merge-builder `built`) with real per-stage layer
-caching, and the run+commit machinery is unnecessary on this lane. The classic
-lane was untouched by this split: `build.ps1` pinned `--target builder-classic` /
-`--target merge`, so docker never executed the `*-built` targets. Since the classic
-lane's retirement (2026-08-26) those classic-only targets are unreachable — they are
-still in the Dockerfiles, now unpoliced, and slated for deletion on the next paid
-rebuild (backlog #134).
+caching, and the run+commit machinery is gone with the driver that needed it.
+The split that kept the two lanes apart (classic pinned its own COPY-only
+targets, so docker never executed the `*-built` targets) is gone too: those
+classic-only stages were deleted with the lane on 2026-08-26, so `*-built` is
+now simply what each Dockerfile builds.
 
 ### Getting it going — Stevedore + BuildKit host setup (from scratch)
 
@@ -259,8 +258,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
 5. **sccache** (non-admin): serve a cache dir over WebDAV — e.g.
    [dufs](https://github.com/sigoden/dufs): `dufs C:\sccache-cache -p 5000 -A`
    — and export `SCCACHE_WEBDAV_ENDPOINT=http://<host-LAN-IP>:5000`; the
-   compile scripts pick it up inside RUN steps (same endpoint serves both
-   lanes, so the classic chain pre-warms BK builds and vice versa).
+   compile scripts pick it up inside RUN steps.
    **dufs does NOT survive reboots** (cost a failed run on 2026-08-04, and
    the warm/materialize handoff also rides this server — without it the BK
    media solves fail fast). Make it logon-persistent once:
@@ -304,7 +302,8 @@ $env:SCCACHE_WEBDAV_ENDPOINT = 'http://<host>:5000'
 > ~2 min with `windows\scripts\diagnostics\test-rdna4-layer-lock.ps1` (elevated) —
 > its GONE verdict is the signal the workaround can be retired.
 
-Remaining gotchas (why the classic lane still exists): images land in the
+Remaining gotchas (store visibility — this was the argument for keeping a second
+lane, and it never justified one): images land in the
 CONTAINERD store (`docker.io/local/kataglyphis:bk-*`) and are invisible to
 docker's windowsfilter store — running/pushing via docker needs the `-FinalTar`
 export (or push straight from the BK lane with `-PushRef <ref>`, which needs a
@@ -312,8 +311,9 @@ prior `docker login` in the invoking shell). **Inspecting, running and even
 building them works via Stevedore's nerdctl in an ELEVATED shell** — the full
 recipe set is § nerdctl lane below.
 
-When validating lane parity, compare each `bk-*` image's payload against the
-classic tag (the same scripts and Dockerfile targets run in both lanes).
+There is no second lane to compare a `bk-*` payload against any more: validate a
+generation against the previous one, or against the published
+`ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`.
 
 Housekeeping and sharing:
 
@@ -392,7 +392,8 @@ Housekeeping and sharing:
   names the disease. If a Windows BK build fails in ANY weird hcsshim way,
   **check free disk first.** Cleanup levers, non-admin first:
   `buildctl prune --all` (build cache only), `docker image prune -f` (the
-  classic lane's dangling generations — 91 GB reclaimed that day); the bk-*
+  windowsfilter store — dangling classic-lane generations, 91 GB reclaimed that
+  day; nothing writes new ones now, so it is a one-time reclaim); the bk-*
   image generations themselves need admin (`nerdctl --namespace buildkit rmi`,
   or stop buildkitd+containerd and delete their state dirs for a full reset —
   dockerd may stop with containerd: `Start-Service stevedore` afterwards).
@@ -425,8 +426,8 @@ Housekeeping and sharing:
   with `--config` (keeping `--debug`) and restarts buildkitd, so NEVER run it
   while a build is solving (it refuses when it sees a live buildctl unless
   `-Force`). Verify with `buildctl debug workers -v`. Keep real disk headroom
-  by pruning the classic docker lane (`docker image prune -f`), not by
-  shrinking `reservedSpace`. Manual fallback between chains:
+  by clearing what is left in the docker store (`docker image prune -f`) and by
+  releasing dead `bk-*` tags, not by shrinking `reservedSpace`. Manual fallback between chains:
   `buildctl --addr npipe:////./pipe/buildkitd prune --keep-storage 200000`.
   **Unit trap (cost a command on 2026-08-06):** `--keep-storage` is a `float`
   in **MB** and buildctl v0.32 accepts NO unit suffix — `200gb`/`250GB` die
@@ -765,12 +766,18 @@ steps; the remaining work is the Dockerfile surgery):
   longer re-pays the 75-minute ONNX layer). Modules are mounted PER FILE too
   (2026-08-04): the in-container closure is exactly SourceBuild.Common +
   Shared + SourceBuild.Patches + SourceBuild.Cuda + Native.Common (plus
-  Installer.Common for GStreamer) — the earlier whole-dir `modules/` mount
-  let edits to the 24 host-only modules (BuildDriver, BuildKit, Flutter, …)
-  bust every compile RUN. `load-versions.ps1` is mounted into every build RUN
+  Installer.Common for GStreamer) — a whole-dir `modules/` mount lets edits to
+  the ~24 host-only modules (BuildDriver, BuildKit, Flutter, …) bust every
+  compile RUN it feeds. The last one survived in `Dockerfile.toolchain-builder`'s
+  `patched-llvm` RUN — the DEFAULT toolchain target — until 2026-08-31, so until
+  then any `.psm1` edit re-keyed a full LLVM 23.1.0 compile plus every media lane
+  derived from `bk-windows-toolchain`. It is now a per-file mount of the six
+  modules `build-llvm-from-source.ps1` imports, and
+  `BuildKit.ModuleClosure.Tests.ps1` fails on a whole-dir modules mount in any
+  windows Dockerfile except `Dockerfile.probe` (exempt by design — `PROBE_NONCE`
+  busts that layer anyway). `load-versions.ps1` is mounted into every build RUN
   so the freshly COPY'd versions.env is re-read instead of the base image's
-  baked (possibly stale) Machine env. The classic targets keep their baked
-  COPYs (classic docker cannot `--mount`).
+  baked (possibly stale) Machine env.
 - **Concurrent aux branch solves**: available OPT-IN via
   `build-buildkit.ps1 -ConcurrentAux` (2026-08-04) — media-core stays the
   sequential long pole, then litert + tvm build side by side via child
@@ -786,7 +793,7 @@ steps; the remaining work is the Dockerfile surgery):
   needs a prior `docker login` in the invoking shell (buildctl forwards the
   client credential store).
 - **`RUN --mount=type=cache` for a local sccache dir** (WebDAV stays as the
-  cross-lane L2): kills the HTTP round-trip on ~5000 compiles per stage.
+  cross-host L2): kills the HTTP round-trip on ~5000 compiles per stage.
   Probed working. CAUTION (2026-08-04): cache mounts get CLONED whenever the
   record is locked — fine for an L1 compile cache (worst case: cold clone,
   WebDAV L2 still hits), but never rely on two solves seeing the same instance.
@@ -874,6 +881,10 @@ steps; the remaining work is the Dockerfile surgery):
   (`bk-canary-shim-opencv{,2,3}` all clean, --no-cache). The lane is
   DE-WARMED since 2026-08-06: direct solves everywhere, warm/materialize
   retired (payload scripts kept in tree as the rollback path, c9586c1^).
+  **That recipe is partially stale (noted 2026-08-31, not repaired):** the
+  retired targets mount the pre-#134 module set with no
+  `WindowsTvm.Common.psm1`, and `build-tvm-from-source.ps1` now throws without
+  the `tvmmods` mount — fix that before anyone needs the rollback.
   **MAINTENANCE:** any Stevedore/containerd update overwrites the patched
   shim — `build-buildkit.ps1`'s `Assert-ShimPatch` preflight catches it before
   the build starts. Since 2026-08-07 the check is a **SHA256 comparison**
@@ -1063,10 +1074,15 @@ steps; the remaining work is the Dockerfile surgery):
   RAM-gated; both branches are memory-bound, so measure before enabling.
 ## The 125-layer budget (classic lane)
 
+> **HISTORICAL framing, LIVE cap.** The classic builder is gone, so nothing in
+> this repo emits a layer per instruction any more — but the 125 limit still
+> binds every `-FinalTar` export the moment docker loads it, so the rules of
+> thumb stay.
+
 Docker's layer-chain depth is hard-capped at **125**; exceeding it fails with
 `max depth exceeded` when the FIRST container of the next stage is created —
 i.e. the failure lands one stage *after* the image that overspent. The classic
-builder emits a layer **per instruction, metadata included** (28 separate `ENV`
+builder emitted a layer **per instruction, metadata included** (28 separate `ENV`
 lines in the merge Dockerfile cost 28 layers; consolidating them into one big
 `ENV` took the merge builder from 114 → 86 layers on 2026-08-03, and the final
 image from a 125 cap-hit to ~108).
@@ -1085,9 +1101,13 @@ Rules of thumb:
 The BuildKit lane is far less exposed (metadata instructions are config-only
 there), but the exported images still obey the cap when loaded into docker.
 
-**Why `docker build` can't be fixed on this host.** The classic Windows builder
-offers no working CPU lever, all verified with a ~6-second repro (a Dockerfile
-that writes a dummy layer):
+**HISTORICAL — why `docker build` could not be fixed on this host.** Everything
+from here to the end of this section describes the deleted classic lane. It is
+kept because it is the measured case against ever re-adding `--isolation
+process` to a `docker build`, and because the CPU/RAM arithmetic it produced
+still governs the BK lane. The classic Windows builder offered no working CPU
+lever, all verified with a ~6-second repro (a Dockerfile that writes a dummy
+layer):
 
 | Attempt | Result |
 |---|---|
@@ -1102,10 +1122,10 @@ host, so `--isolation process` is unusable for building (every build dies at the
 first commit). Hyper-V isolation commits reliably but is stuck at 2 CPUs. **Do
 not add `--isolation process` to any `docker build`.**
 
-**The run+commit path (how media-core gets its cores).** `docker run` — unlike
+**The run+commit path (how media-core got its cores).** `docker run` — unlike
 `docker build` — *does* honor `--cpu-count` under Hyper-V (verified: `docker run
 --isolation hyperv --cpu-count 16` → `NUMBER_OF_PROCESSORS=16`), and a Hyper-V
-container commits fine via `docker commit`. So `build.ps1` builds media-core as:
+container commits fine via `docker commit`. So `build.ps1` built media-core as:
 
 1. `docker build` a thin **builder image** (`Dockerfile.media-builder --target media-core`) —
    toolchain + all media-core scripts/patches, no heavy RUN, so its cheap COPY
@@ -1116,16 +1136,18 @@ container commits fine via `docker commit`. So `build.ps1` builds media-core as:
    CPU count. `Get-BuildJobCount` sees `--cpu-count` as `ProcessorCount`, so ONNX
    compiles at `min(cpu-count, memGB/4)` (e.g. `-j14` at `-MediaCoreCpus 16
    -MediaMemoryGb 56`).
-3. `docker commit` the container to `local/kataglyphis:windows-media-core` — a
-   drop-in replacement for the old `Dockerfile.media-core` output.
+3. `docker commit` the container to `local/kataglyphis:windows-media-core`.
 
-`Invoke-MediaBranchRunCommit` in `build.ps1` implements this via the generic
-`Invoke-RunCommitStage` helper; tune it with `-MediaCoreCpus` (default: the host's
+`Invoke-MediaBranchRunCommit` implemented this via the generic
+`Invoke-RunCommitStage` helper, tuned with `-MediaCoreCpus` (default: the host's
 logical processor count, `[Environment]::ProcessorCount`) and `-MediaMemoryGb`
-(default 0 = auto-detect from host RAM minus `-HostReserveGb`).
+(default 0 = auto-detect from host RAM minus `-HostReserveGb`). Both functions,
+both flags and the `--target media-core`/`media-litert`/`media-tvm`/`merge`
+stages they drove were deleted with the lane; the BK lane runs the same payload
+scripts as plain `*-built` layers at the host's real core count.
 
-**Which stages use run+commit.** The same `Invoke-RunCommitStage` path is used for
-every **CPU-bound** stage, so they all build at `-MediaCoreCpus` cores instead of
+**Which stages used run+commit.** The same `Invoke-RunCommitStage` path served
+every **CPU-bound** stage, so they all built at `-MediaCoreCpus` cores instead of
 the 2-CPU `docker build` cap:
 
 | Stage | Builder Dockerfile | Run step (the heavy compile) |
@@ -1136,11 +1158,12 @@ the 2-CPU `docker build` cap:
 | media-tvm | `Dockerfile.media-builder --target media-tvm` | `build-media-tvm-all.ps1` (TVM → IREE) |
 | media merge | `Dockerfile.media-merge-builder` (fan-in `COPY --from` + env) | `build-gstreamer-from-source.ps1` |
 
-The **merge stage splits**: the fan-in (`COPY --from` of the three branch trees)
-*must* be a `docker build` because `docker run` can't `COPY --from`, but it is only
-IO so 2 CPUs is fine; the CPU-bound GStreamer compile then runs via run+commit.
-`docker commit` preserves the builder image's ENV, so each result image is a
-drop-in replacement for the old single-Dockerfile output.
+The **merge stage split**: the fan-in (`COPY --from` of the three branch trees)
+*had* to be a `docker build` because `docker run` can't `COPY --from`, but it is
+only IO so 2 CPUs was fine; the CPU-bound GStreamer compile then ran via
+run+commit. That split is what left the four bundle gates unreachable from
+`merge` (§ The classic lane was retired) — on the BK lane fan-in and compile are
+one `built` target.
 
 ### RDNA4 dGPU layer-lock (A/B history and diagnostics)
 
@@ -1168,12 +1191,12 @@ windows\scripts\diagnostics\probe-build-copy.ps1 -Heavy` (assets in
 — the light lanes stay green on hosts whose heavyweight RUN-layer finalize is
 broken).
 
-So the classic lane's **CPU-bound run+commit stages remain viable** on such a host.
-Caveat: the chain cannot bootstrap end-to-end there, because the FROM images
-(base/sdk/merge fan-in) themselves contain `COPY` steps that still break — every
-repo Dockerfile has at least one `COPY`. Use the healthiest host for a full chain;
-the run+commit path only rescues the heavy compile stages once a starting image
-exists.
+That made the classic lane's **CPU-bound run+commit stages viable** on such a
+host — a rescue that no longer exists, since the driver is gone. It never
+bootstrapped anything anyway: the FROM images (base/sdk/merge fan-in) all
+contain `COPY` steps that still break — every repo Dockerfile has at least one.
+The probe verdict is now purely diagnostic; on a `COPY`-broken host, fix the
+host (§ RDNA4 dGPU layer-lock) or build on a healthy one.
 
 **2026-08-09 follow-up (SUPERSEDED 2026-08-10 — kept as history; the same-boot
 A/B proved the enabled RDNA4 dGPU is the holder and the "cures" below
@@ -1190,8 +1213,8 @@ coincided with patch/reboot changes):**
 - Residual on that host: only the **final export** (reimport of the committed
   snapshot) still trips `0x20`, where the Defender engine (`MsMpEng`) is
   unkillable by design and the identical Stevedore+OS stack builds the BK lane
-  fine on the working machine. ⇒ host-residual; use the classic lane there or
-  the healthy host.
+  fine on the working machine. ⇒ host-residual; the advice at the time was "use
+  the classic lane there or the healthy host" — only the healthy host is left.
 
 **The full A/B history and falsification list (moved here from AGENTS.md's
 Common Failure Modes "AMD Radeon host" row on 2026-08-24 — this doc owns the
@@ -1250,11 +1273,12 @@ story now):**
   had two pwsh bugs masking all of this until 2026-08-10 (the ArgQuoting traps
   in AGENTS.md § Windows Build Invariants).
 
-The `litert`/`tvm` aux branches **also** run+commit at `-MediaCoreCpus` cores (via
-their `Dockerfile.media-builder` targets): media-core is already committed when they
-run, so the whole CPU/RAM budget is free — e.g. `~j19` at 32 CPU / 39 g on this host
-(still memory-bound per the note below). `base`/`sdk` are the only stages that never
-exceed 2 CPUs — they're network/install-bound (no benefit from more).
+The `litert`/`tvm` aux branches **also** ran+committed at `-MediaCoreCpus` cores
+(via their `Dockerfile.media-builder` targets): media-core was already committed
+when they ran, so the whole CPU/RAM budget was free — e.g. `~j19` at 32 CPU / 39 g
+on this host (still memory-bound per the note below). `base`/`sdk` were the only
+stages that never exceeded 2 CPUs — they're network/install-bound (no benefit
+from more), which is still true of them on the BK lane.
 
 > **NOTE — parallelism is memory-bound, not core-bound.** `Get-BuildJobCount =
 > min(cpu-count, MEMORY_LIMIT_GB / per-job-GB)`. ONNX is ~4 GB/job, so at 48 GB it
@@ -1263,16 +1287,17 @@ exceed 2 CPUs — they're network/install-bound (no benefit from more).
 > which this host does not have — so on the ONNX long pole, **RAM is the ceiling,
 > not cores.**
 
-**Trade-off:** a single `docker run` has no per-stage layer cache, so a mid-chain
-failure used to re-run the whole chain (unlike a multi-`RUN` `docker build`, where
-each completed step is cached). The persistent **sccache** remote (below) covers
-recompilation, so in practice only uncached objects rebuild. Regression symptom
-for the whole mechanism: `ninja -j2` in `out\windows-build-logs\media-core.log`,
-or an `ActivateLayer` error on any commit.
+**Trade-off:** a single `docker run` had no per-stage layer cache, so a mid-chain
+failure re-ran the whole chain (unlike a multi-`RUN` `docker build`, where each
+completed step is cached). The persistent **sccache** remote (below) covered
+recompilation, so in practice only uncached objects rebuilt. That trade-off is
+what the BK lane's `*-built` targets removed. Symptom the whole mechanism was
+watched for: `ninja -j2` in `out\windows-build-logs\media-core.log`, or an
+`ActivateLayer` error on any commit.
 
-**Resume after a mid-chain failure:** on a non-transient run failure, build.ps1
-now PRESERVES the container (it holds every completed stage's output in
-`C:\runtime`) and prints the recovery recipe:
+**Resume after a mid-chain failure (run+commit only, so also historical):** on a
+non-transient run failure, `build.ps1` PRESERVED the container (it held every
+completed stage's output in `C:\runtime`) and printed the recovery recipe:
 
 ```powershell
 docker commit <container> <result-tag>-partial
@@ -1308,11 +1333,12 @@ or wait for a Windows/hcsshim fix.
 
 ## Re-testing process isolation on new versions (is the bug gone yet?)
 
-After **any** Docker Engine / containerd / hcsshim / Windows / base-image upgrade,
-re-check whether `docker build --isolation process` can commit a layer again — if
-it can, the *entire* Windows build (not just media-core) could run at full CPU
-count and the run+commit workaround could be retired. A durable, self-contained
-probe lives under `windows/scripts/diagnostics/`:
+This probe is now **HAND-RUN ONLY** — no driver consults it and no verdict is
+cached any more. Its question is still worth asking after any Docker Engine /
+containerd / hcsshim / Windows / base-image upgrade, because the wcifs
+layer-commit bug it detects is the same defect class that decides whether the BK
+lane's process-isolated finalizes work at all. A durable, self-contained probe
+lives under `windows/scripts/diagnostics/`:
 
 ```pwsh
 .\windows\scripts\diagnostics\test-process-isolation-commit.ps1
@@ -1323,12 +1349,12 @@ It records the current Docker/containerd/host build numbers, runs a `docker run
 layer with `docker build --isolation process` (`Dockerfile.isolation-probe`) and
 prints a clear verdict:
 
-- **`BUG GONE` (exit 0):** the commit succeeded — process isolation is usable for
-  `docker build`. Follow the on-screen next steps (switch heavy stages to
-  process isolation, re-run the full build to confirm parity, then retire
-  `Invoke-RunCommitStage` and update this doc + the host-quirks notes).
+- **`BUG GONE` (exit 0):** the commit succeeded — this host can commit
+  process-isolated layers, which is the shape the BK lane needs. (The
+  run+commit workaround this verdict used to unlock went with `build.ps1`.)
 - **`BUG PRESENT` (exit 1):** the known `wcifs`/`ActivateLayer 0x20` failure still
-  occurs — keep the run+commit workaround.
+  occurs — expect BK finalizes to fail the same way, and check § RDNA4 dGPU
+  layer-lock first.
 - **exit 2:** the build failed with a *different* signature — investigate; do not
   assume it is fixed.
 
@@ -1336,9 +1362,8 @@ To test a hypothetical newer *matching-build* base image, pass `-Base <image>`.
 Baseline history: Docker 29.5.3 / containerd 2.3.1 / host build 26200 with
 `servercore:ltsc2025` measured **BUG PRESENT**; the 2026-08-21 re-probe (after a
 Stevedore reinstall) measured **BUG GONE — process isolation commits fine**, which
-is the current baseline § Driver preflight gates and isolation policy operates on. Re-probe (delete
-the probe cache first) rather than trusting either verdict after any Docker/
-containerd/host update.
+is the current baseline. Re-run it rather than trusting either verdict after any
+Docker/containerd/host update.
 
 **The 2026-08-21 incident — how a broken PROBE manufactured a "host defect"
 (the ProbeShell story; see § Driver preflight gates and isolation policy on
@@ -1346,7 +1371,7 @@ containerd/host update.
 `Dockerfile.isolation-probe` set `SHELL ["pwsh", ...]` on the PUBLIC
 `servercore` base — which ships Windows PowerShell 5.1 only — so every `RUN`
 died with `hcs::System::CreateProcess ... The system cannot find the file
-specified`, for a reason that had nothing to do with wcifs. The driver read
+specified`, for a reason that had nothing to do with wcifs. `build.ps1` read
 that manufactured verdict as a host defect and silently fell back to Hyper-V:
 **2 CPUs on a 32-core host**, behind a warning that looked legitimate. After
 the Dockerfile fix, the SAME host re-probed **BUG GONE — process isolation
@@ -1354,21 +1379,21 @@ commits fine** (the current baseline above). Regression guard:
 `windows/scripts/tests/Dockerfile.ProbeShell.Tests.ps1` — no `pwsh` SHELL on a
 public base before pwsh is installed; comments do not count as an install.
 
-Two operational lessons from that incident:
+Two operational lessons from that incident. The second one is now moot — no
+driver caches a verdict since `build.ps1` went — but the first outlives it:
 
-- **`BUILD FAILED (exit 1) but NOT with the known signature -- investigate` in
-  the probe log means the VERDICT IS WORTHLESS, not that the host is broken.**
-  Trust the driver's Hyper-V-fallback warning only after reading the probe log
-  (`out\windows-build-logs\isolation-probe.log`) — the probe distinguishes the
-  known `wcifs`/`ActivateLayer 0x20` signature from every other failure
-  exactly so that an unrelated breakage cannot masquerade as the known bug
-  (the exit-2 verdict in the list above is the same rule seen from the exit
-  code).
-- **Force a re-probe by deleting the cached verdict.** The verdict is cached
-  per host build + docker version in
-  `out\windows-build-logs\isolation-probe-cache.json`; a stale (or
-  manufactured) verdict lives there until the file is deleted. Recipe after
-  any fix or doubt: delete the cache file, re-run the probe, read the log.
+- **`BUILD FAILED (exit 1) but NOT with the known signature -- investigate`
+  means the VERDICT IS WORTHLESS, not that the host is broken.** The probe
+  distinguishes the known `wcifs`/`ActivateLayer 0x20` signature from every
+  other failure exactly so that an unrelated breakage cannot masquerade as the
+  known bug (the exit-2 verdict in the list above is the same rule seen from the
+  exit code). Read the probe's own output before acting on it — and the same
+  scepticism belongs on any gate that turns a probe result into a decision.
+- **HISTORICAL — force a re-probe by deleting the cached verdict.** The driver
+  cached the verdict per host build + docker version in
+  `out\windows-build-logs\isolation-probe-cache.json`, so a stale (or
+  manufactured) verdict lived there until the file was deleted. That cache is
+  gone with the driver; every run of the probe is now a fresh measurement.
 
 ## Run-side wcifs symptoms (process isolation)
 
@@ -1428,22 +1453,23 @@ Pass `-Base <image>` to probe the built developer image's own layers.
 
 ## Driver preflight gates and isolation policy
 
-The preflight gates, isolation policy, lane reality check and the classic
-lane's run+commit path — the operational half an agent needs before launching
-or debugging a chain.
+The preflight gates, the lane reality check and what the classic lane's
+run+commit path left behind — the operational half an agent needs before
+launching or debugging a chain. "Isolation policy" is now a one-liner: the BK
+lane is process-isolated by construction and has no isolation flag.
 
 
 **Fresh Windows machine?** The ordered host bring-up (Stevedore, CNI conf, debug flags, GC policy, Defender exclusions, dufs/sccache, gate tooling) is `docs/windows-host-setup.md` — follow it instead of reconstructing the sequence from the sections below. Once the interactive steps are done (Stevedore + reboot + docker-users + repo clone), the **scriptable half of bring-up is ONE elevated run**: `windows/scripts/host/setup-new-host.ps1` authors the CNI `.conflist` from the **live** `vEthernet (nat)` subnet (magic subnet literals are gone from the docs), derives the `.conf`, applies containerd config + GC policy + step-log env, builds+deploys the patched runhcs shim when missing (Go via scoop), and installs/starts/registers dufs + the machine `SCCACHE_WEBDAV_ENDPOINT`. Run `-ReportOnly` first; it is idempotent and refuses while a build is live.
 
-All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). The Windows container toolchain is **containerd + BuildKit + nerdctl** (preferred since 2026-08; full CPUs + real layer caching), with docker-classic run+commit as the always-working fallback. Role split — each tool where its pipe ACL allows:
+All stages use **Ninja+clang-cl+lld-link** (not MSBuild/VS generator). The Windows container toolchain is **containerd + BuildKit + nerdctl** (full CPUs + real layer caching; the sole build path since `build.ps1` was deleted on 2026-08-31). Role split — each tool where its pipe ACL allows:
 
 | Task | Tool | Shell |
 |---|---|---|
 | Build the chain | `windows\build-buildkit.ps1` → `buildctl` (buildkitd pipe is docker-users) | non-admin |
 | Inspect / run the `bk-*` images | `nerdctl --namespace buildkit` (containerd pipe is admin-only upstream — no `--group` option exists; never attempt pipe-ACL hacks) | **admin** |
-| Publish via docker / classic-lane ops | Stevedore's `docker.exe` (`-FinalTar` bridges the containerd→docker store gap; registry push directly from the BK lane is available via `build-buildkit.ps1 -PushRef <ref>`, needs a prior `docker login`) | non-admin |
+| Publish / inspect via docker | Stevedore's `docker.exe` (`-FinalTar` bridges the containerd→docker store gap; registry push directly from the BK lane is available via `build-buildkit.ps1 -PushRef <ref>`, needs a prior `docker login`) | non-admin |
 
-**Isolation policy: process isolation is always preferred** — build.ps1's `-Isolation auto` (default) runs the ~10s commit probe (`windows/scripts/diagnostics/test-process-isolation-commit.ps1`, verdict cached per host build + docker version) and uses `--isolation process` for every `docker build`/`docker run` when the host can commit process-isolated layers (full CPUs everywhere); it falls back to `hyperv` with a warning on wcifs-skew hosts. **TRUST THAT WARNING ONLY AFTER READING THE PROBE LOG** (`out\windows-build-logs\isolation-probe.log`): a probe log line `BUILD FAILED (exit 1) but NOT with the known signature -- investigate` means the verdict is worthless — the probe itself broke, not the host — and taking it at face value silently costs the full CPU count (the 2026-08-21 ProbeShell incident: `docs/windows-build-lanes.md` § Re-testing process isolation on new versions). A stale verdict lives in `out\windows-build-logs\isolation-probe-cache.json` — delete it to force a re-probe. **sccache is required by default for the media stages** (fail-fast when `-SccacheEndpoint`/`SCCACHE_WEBDAV_ENDPOINT` is missing or unreachable; `-NoSccache` overrides). The gate is media-only (`Assert-SccacheEndpoint`'s `$compileStages = @('media')` in `WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL CPython) has no sccache wiring, so toolchain-only builds are not blocked on an endpoint they never use. **AMD RDNA4-GPU hosts (RX 9xxx): the BK preflight also runs `Assert-NoActiveRdna4Gpu`** — an ENABLED RDNA4 dGPU makes every process-isolated RUN-layer finalize fail (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven 2026-08-10), so the chain builds with the dGPU disabled (`toggle-rdna4-gpu.ps1 -Disable` → build → re-enable; display falls back to the iGPU; the toggle resolves ALL RDNA4 hazard SKUs by default and takes `-NoPrompt` for automation). A verified-healthy host (green `probe-build-copy.ps1 -Heavy` with the dGPU enabled, e.g. after a driver fix) can bypass just this gate via `-SkipRdna4Gate` — unlike `-SkipHostChecks` it leaves the disk/shim gates armed. **The BK preflight also runs `Assert-BuildkitdStepLogEnv`**: it refuses to launch while the buildkitd service env lacks `BUILDKIT_STEP_LOG_MAX_SIZE=-1` (a Stevedore repair once wiped it and the 2 MiB step-log clip buried verdicts for a day — never swallow logs); fix elevated between runs via `setup-new-host.ps1` or the registry Multi-String + `Restart-Service buildkitd`; `-SkipStepLogGate` bypasses ONLY this gate for one launch when no admin is at hand (the 2 MiB clip then stays active — restore ASAP). Details + the wedge-cascade warning: [`failure-modes.md`](failure-modes.md) § "`hcsshim::ActivateLayer 0x20` on an AMD Radeon host".
+**Isolation policy: there is no policy left to configure** — the BK lane is process-isolated by construction (full CPUs everywhere), and `build.ps1`'s `-Isolation auto`, its ~10s commit probe call and the cached verdict in `out\windows-build-logs\isolation-probe-cache.json` were deleted with that driver on 2026-08-31. `windows/scripts/diagnostics/test-process-isolation-commit.ps1` is a hand-run diagnostic now (§ Re-testing process isolation on new versions), and its one durable lesson survives the driver: a probe log line `BUILD FAILED (exit 1) but NOT with the known signature -- investigate` means the verdict is worthless — the probe itself broke, not the host — which in 2026-08 silently cost the full CPU count for a day (the ProbeShell incident). **sccache is required by default for the media stages** (fail-fast when `-SccacheEndpoint`/`SCCACHE_WEBDAV_ENDPOINT` is missing or unreachable; `-NoSccache` overrides). The gate is media-only (`Assert-SccacheEndpoint`'s `$compileStages = @('media')` in `WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL CPython) has no sccache wiring, so toolchain-only builds are not blocked on an endpoint they never use. **AMD RDNA4-GPU hosts (RX 9xxx): the BK preflight also runs `Assert-NoActiveRdna4Gpu`** — an ENABLED RDNA4 dGPU makes every process-isolated RUN-layer finalize fail (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven 2026-08-10), so the chain builds with the dGPU disabled (`toggle-rdna4-gpu.ps1 -Disable` → build → re-enable; display falls back to the iGPU; the toggle resolves ALL RDNA4 hazard SKUs by default and takes `-NoPrompt` for automation). A verified-healthy host (green `probe-build-copy.ps1 -Heavy` with the dGPU enabled, e.g. after a driver fix) can bypass just this gate via `-SkipRdna4Gate` — unlike `-SkipHostChecks` it leaves the disk/shim gates armed. **The BK preflight also runs `Assert-BuildkitdStepLogEnv`**: it refuses to launch while the buildkitd service env lacks `BUILDKIT_STEP_LOG_MAX_SIZE=-1` (a Stevedore repair once wiped it and the 2 MiB step-log clip buried verdicts for a day — never swallow logs); fix elevated between runs via `setup-new-host.ps1` or the registry Multi-String + `Restart-Service buildkitd`; `-SkipStepLogGate` bypasses ONLY this gate for one launch when no admin is at hand (the 2 MiB clip then stays active — restore ASAP). Details + the wedge-cascade warning: [`failure-modes.md`](failure-modes.md) § "`hcsshim::ActivateLayer 0x20` on an AMD Radeon host".
 
 **Per-stage disk floors are CALIBRATED, not guessed (`Get-StageDiskFloorGb` in `WindowsBuildDriver.Common.psm1`).** Each floor is observed consumption plus runway to stay clear of the ~25 GB band where hcsshim stops failing honestly — revisit them with numbers, not intuition. Two measurements (2026-08-07) back the table:
 
@@ -1456,14 +1482,14 @@ merge fan-in                          ~ 8 GB
 sdk / CUDA                            ~36 GB
 ```
 
-Both directions of error are real: an earlier 80 GB media floor refused a legitimate rebuild at 72 GB free, and lumping every `media-*` label at one floor refused the FFmpeg sub-stage by 1.5 GB — **a gate that blocks correct work is as useless as one that waves danger through.** Labels come from both lanes, so the patterns match BK (`Dockerfile.media-builder:media-core-built-onnx`) and classic (`media-core`) alike and are ordered most-specific first; the classic lane's `media-core` is ONE run+commit doing the whole chain, so it takes the *heaviest* floor, not the lightest (a cross-lane parity test enforces that).
+Both directions of error are real: an earlier 80 GB media floor refused a legitimate rebuild at 72 GB free, and lumping every `media-*` label at one floor refused the FFmpeg sub-stage by 1.5 GB — **a gate that blocks correct work is as useless as one that waves danger through.** The patterns are ordered most-specific first and still match the classic label shape (`media-core`) alongside the BK one (`Dockerfile.media-builder:media-core-built-onnx`) — nothing emits classic labels any more, but `BuildDriver.HostGates.Tests.ps1` still pins the two shapes to the same floor, and that is what stops a shape mismatch from silently dropping a stage to the 40 GB default.
 
 **LANE REALITY CHECK (measured 2026-08-21, after a Stevedore reinstall — read this before choosing a lane):**
-- **The classic lane can no longer build `base` — it is not a fallback any more**
-  (twelve `windows/Dockerfile.*` use BuildKit-only `RUN --mount`; `build.ps1`
-  never sets `DOCKER_BUILDKIT`). Use `build-buildkit.ps1`; reviving the classic
-  lane is a deliberate decision — do not "just add `-SkipHostChecks`" →
-  `docs/windows-host-setup.md` § Phase R.
+- **There is no fallback lane.** The classic one could not build `base` (twelve
+  `windows/Dockerfile.*` use BuildKit-only `RUN --mount`; `build.ps1` never set
+  `DOCKER_BUILDKIT`), was retired 2026-08-26 and deleted 2026-08-31. When
+  `build-buildkit.ps1` refuses, fix the host — do not "just add
+  `-SkipHostChecks`" → `docs/windows-host-setup.md` § Phase R.
 - **The BK lane cannot bootstrap `base` from an EMPTY/damaged containerd content
   store** (`--opt image-resolve-mode=local` forbids fetching the public pinned
   base; repair is an admin re-seed pull) → `docs/windows-host-setup.md` § Phase R.
@@ -1479,34 +1505,37 @@ Both directions of error are real: an earlier 80 GB media floor refused a legiti
   `Assert-BuildkitdStepLogEnv` caught it on the next launch). Check the
   registry after any update, not only after reinstalls.
 
-**BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`):** the driver builds the same Dockerfiles via buildctl, selecting the `*-built` targets (toolchain-builder `built`, media-builder `media-<branch>-built`, merge-builder `built`) that run the heavy compile scripts as plain LAYERS — no run+commit, real per-stage caching; heavy-lane RUN steps bind-mount their script closures (per-file) instead of COPY. **MAINTENANCE: every Stevedore/containerd update overwrites the patched runhcs shim** — `Assert-ShimPatch` fails the BK lane's preflight on it, comparing the live binary's SHA256 against the hash `deploy-shim-patch.ps1` recorded at install time (`C:\ProgramData\kataglyphis\shim-patch.json`; the size table is only the fallback for hosts that never re-ran the deploy script). Check with `deploy-shim-patch.ps1 -ReportOnly`, re-deploy, and re-run one OPENCV canary after any update. Rollback path if it ever 0x3s again: warm/materialize from git history (`c9586c1^`), payload scripts still in tree. The Defender exclusions stay — they cure the hcs-temp FLAKE family (they were never the 0x3 root cause). Lane history, the shim root cause and all measurements: `docs/windows-build-lanes.md` § BuildKit/containerd lane. **Getting it going (one-time setup + launch): see `docs/windows-build-lanes.md` § BuildKit/containerd lane.** Requirements: buildkitd service (docker-users group) + `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` (without it RUN steps have no network) — and the conf's `ipam.subnet` MUST match the live `vEthernet (nat)` adapter: dockerd restarts recreate the nat HNS network on a new subnet and silently orphan the conf. `build-buildkit.ps1` fail-fasts on that drift with the exact fix. Gotchas: results live in the CONTAINERD store as `docker.io/local/kataglyphis:bk-*` (fully-qualified on purpose — buildkit normalizes FROM refs to docker.io/ and stage handoff needs `--opt image-resolve-mode=local` to match); they are INVISIBLE to docker (separate windowsfilter store) — export with `-FinalTar`, or push straight from the lane with `-PushRef` (needs a prior `docker login`). The classic lane is unaffected: build.ps1 pins `--target builder`/`--target merge` so docker never executes the `built` stages.
+**BuildKit/containerd lane (PREFERRED, `windows/build-buildkit.ps1`):** the driver builds the same Dockerfiles via buildctl, selecting the `*-built` targets (toolchain-builder `built`, media-builder `media-<branch>-built`, merge-builder `built`) that run the heavy compile scripts as plain LAYERS — no run+commit, real per-stage caching; heavy-lane RUN steps bind-mount their script closures (per-file) instead of COPY. **MAINTENANCE: every Stevedore/containerd update overwrites the patched runhcs shim** — `Assert-ShimPatch` fails the BK lane's preflight on it, comparing the live binary's SHA256 against the hash `deploy-shim-patch.ps1` recorded at install time (`C:\ProgramData\kataglyphis\shim-patch.json`; the size table is only the fallback for hosts that never re-ran the deploy script). Check with `deploy-shim-patch.ps1 -ReportOnly`, re-deploy, and re-run one OPENCV canary after any update. Rollback path if it ever 0x3s again: warm/materialize from git history (`c9586c1^`), payload scripts still in tree — but that recipe is partially stale, see § BuildKit/containerd lane. The Defender exclusions stay — they cure the hcs-temp FLAKE family (they were never the 0x3 root cause). Lane history, the shim root cause and all measurements: `docs/windows-build-lanes.md` § BuildKit/containerd lane. **Getting it going (one-time setup + launch): see `docs/windows-build-lanes.md` § BuildKit/containerd lane.** Requirements: buildkitd service (docker-users group) + `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` (without it RUN steps have no network) — and the conf's `ipam.subnet` MUST match the live `vEthernet (nat)` adapter: dockerd restarts recreate the nat HNS network on a new subnet and silently orphan the conf. `build-buildkit.ps1` fail-fasts on that drift with the exact fix. Gotchas: results live in the CONTAINERD store as `docker.io/local/kataglyphis:bk-*` (fully-qualified on purpose — buildkit normalizes FROM refs to docker.io/ and stage handoff needs `--opt image-resolve-mode=local` to match); they are INVISIBLE to docker (separate windowsfilter store) — export with `-FinalTar`, or push straight from the lane with `-PushRef` (needs a prior `docker login`).
 
-The paragraph below describes the docker-classic HYPERV fallback state:
+**HISTORICAL — the docker-classic HYPERV fallback state.** The paragraph below describes the deleted lane; it is kept because the memory arithmetic in it still governs BK compiles:
 
-**`docker build` is capped at 2 CPUs on this host — the heavy media-core stage builds via `docker run --cpu-count N` + `docker commit` instead.** Hyper-V-isolated build containers get only **2 logical CPUs**, and `docker build` has **no working lever** to raise it: `--cpu-count` is rejected, `--cpuset-cpus` fails the build, and `--isolation process` exposes all CPUs but **cannot commit any layer** here (`hcsshim::ActivateLayer 0x20`). `docker run`, however, **does** honor `--cpu-count` under Hyper-V and commits fine — so `build.ps1` builds every **CPU-bound** stage via a generic run+commit path (`Invoke-RunCommitStage`): **media-core** (`Dockerfile.media-builder --target media-core` + `build-media-core-all.ps1`), **toolchain**/CPython (`Dockerfile.toolchain-builder` + `build-toolchain-all.ps1`), and the **media merge / GStreamer** stage (`Dockerfile.media-merge-builder` + `build-gstreamer-from-source.ps1`; the fan-in `COPY --from` stays a `docker build` since `docker run` can't `COPY --from`, but the GStreamer compile runs+commits). `-MediaCoreCpus` defaults to `[Environment]::ProcessorCount` — but parallelism is **memory-bound**: `Get-BuildJobCount = min(cpu-count, memGB/perJob)` regardless of cores, and the defaults ARE the max (worked numbers: `docs/windows-build-resources.md` § Maximum resource envelope). `base`/`sdk` stay at 2 CPUs by design (network/install-bound). The `litert`/`tvm` aux branches also run+commit at `-MediaCoreCpus` (`Dockerfile.media-builder --target media-litert` + `build-litert-all.ps1`; `--target media-tvm` + `build-media-tvm-all.ps1`, the TVM → IREE chain) — media-core is already committed then, so the full CPU/RAM budget is free (still memory-bound). All three branch builders are targets of the ONE consolidated `Dockerfile.media-builder`, and the schedule is strictly sequential (a former `-ConcurrentMedia` overlap mode was removed — overlapping starved the media-core long pole).
+**`docker build` was capped at 2 CPUs on this host — the heavy media-core stage built via `docker run --cpu-count N` + `docker commit` instead.** Hyper-V-isolated build containers get only **2 logical CPUs**, and `docker build` has **no working lever** to raise it: `--cpu-count` is rejected, `--cpuset-cpus` fails the build, and `--isolation process` exposes all CPUs but **cannot commit any layer** here (`hcsshim::ActivateLayer 0x20`). `docker run`, however, **does** honor `--cpu-count` under Hyper-V and commits fine — so `build.ps1` built every **CPU-bound** stage via a generic run+commit path (`Invoke-RunCommitStage`): **media-core**, **toolchain**/CPython and the **media merge / GStreamer** stage (the fan-in `COPY --from` stayed a `docker build` since `docker run` can't `COPY --from`, but the GStreamer compile ran+committed). `-MediaCoreCpus` defaulted to `[Environment]::ProcessorCount` — but parallelism is **memory-bound**: `Get-BuildJobCount = min(cpu-count, memGB/perJob)` regardless of cores, and the defaults ARE the max (worked numbers: `docs/windows-build-resources.md` § Maximum resource envelope). `base`/`sdk` stay at 2 CPUs by design (network/install-bound). The `litert`/`tvm` aux branches also ran+committed at `-MediaCoreCpus` — media-core was already committed then, so the full CPU/RAM budget was free (still memory-bound). All three branch builders are targets of the ONE consolidated `Dockerfile.media-builder`, and the schedule was strictly sequential (a former `-ConcurrentMedia` overlap mode was removed — overlapping starved the media-core long pole). The BK lane's only overlap is the opt-in `-ConcurrentAux`, which parallelises litert + tvm *after* media-core for exactly that reason.
 
-**Mid-chain failure recovery (run+commit):** a non-transient failure inside a
-run+commit stage now PRESERVES the container (only transient retries clean it
-up) and prints a resume recipe: `docker commit <container> <tag>-partial`, then
+**HISTORICAL — mid-chain failure recovery (run+commit):** a non-transient failure inside a
+run+commit stage PRESERVED the container (only transient retries cleaned it
+up) and printed a resume recipe: `docker commit <container> <tag>-partial`, then
 re-run the payload from the partial image with `-ResumeFrom '<stage>'`
 (`Invoke-SourceBuildChain -StartAt` skips the completed stages), then commit to
-the real tag. Do NOT `docker start` the failed container — that re-runs the
-whole chain from scratch.
+the real tag. `-ResumeFrom`/`-Until` outlived the driver — the BK Dockerfiles
+use them to split media-core into its four solves.
 
 **Determinism:** the final stage uses the versions.env `APP_REF` pin by
-default; pass `-LatestApp` to build.ps1 to resolve the app repo's newest
-release tag at build time (the old always-on behavior). All local intermediate
-tags come from the `$script:ImageTag` table / `Get-MediaBranchTag` at the top
-of build.ps1 — never type a `local/kataglyphis:windows-*` literal elsewhere.
+default; pass `-LatestApp` to `build-buildkit.ps1` to resolve the app repo's
+newest release tag at build time (`Resolve-TorchAppRef`). Every local
+intermediate tag comes from **`Get-BkTag`** in `build-buildkit.ps1` (which also
+appends the `-arm64` suffix for a cross target) — never type a
+`docker.io/local/kataglyphis:bk-*` literal elsewhere.
 
 **Orchestr-ANT-ion app stage (`windows/Dockerfile.torch`):** the Windows mirror
 of `linux/Dockerfile.torch`, a real chain stage between media and final
 (`media -> torch -> final`): it assembles the app env at `APP_REF` on the
-windows-media image (tag `local/kataglyphis:windows-torch`, app-venv
-healthcheck), and `windows/Dockerfile` (final) builds FROM it — the assembly
+windows-media image (tag `docker.io/local/kataglyphis:bk-windows-torch`,
+app-venv healthcheck), and `windows/Dockerfile` (final) builds FROM it — the assembly
 logic lives in exactly one place. App-only iteration:
-`.\windows\build.ps1 -Stages torch,final` (minutes, never a compile-chain
-rebuild); `-TorchBaseImage ghcr.io/...:winamd64` iterates on the published
-image on hosts without local chain images.
+`.\windows\build-buildkit.ps1 -Stages torch,final` (minutes, never a
+compile-chain rebuild). Building on the PUBLISHED image is **not
+driver-supported**: the stage's `BASE_IMAGE` is pinned to the local
+`windows-media` tag, `build.ps1`'s `-TorchBaseImage` went with that driver, and
+overriding it now needs a direct `buildctl` solve.
 
 See `docs/windows-builds.md` § Build Commands for the full Windows build sequence (base → [nvidia/sdk] → toolchain → media → torch → final) and `docs/windows-stevedore-and-docker.md` § Stevedore Setup Fixes for post-install fixes.

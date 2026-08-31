@@ -466,7 +466,7 @@ def dockerfile_target_files() -> list[Path]:
         p = REPO_ROOT / rel
         if p.exists():
             result.append(p)
-    # Windows Dockerfiles carry the same versions.env-named ARG defaults (build.ps1
+    # Windows Dockerfiles carry the same versions.env-named ARG defaults (build-buildkit.ps1
     # overrides them with --build-arg, but the defaults must not drift). ARGs whose
     # names are not versions.env keys (BASE_IMAGE, ...) are untouched by
     # name-matching; derived/renamed ones (OPENCV_SOURCE_VERSION,

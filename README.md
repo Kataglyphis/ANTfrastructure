@@ -58,7 +58,7 @@ The toolchain is **containerd + BuildKit + nerdctl** with process isolation.
 after Stevedore and a reboot, the scriptable half of bring-up is one elevated
 run of `windows\scripts\host\setup-new-host.ps1` (`-ReportOnly` first).
 
-Lane mechanics, why the classic-docker lane is retired, and every host gate:
+Lane mechanics, why the classic-docker lane was removed, and every host gate:
 [Windows Build Lanes](docs/windows-build-lanes.md).
 
 ### Clone the repository

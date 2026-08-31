@@ -60,8 +60,8 @@ The two halves of one topic often split:
 | Looking for | Read |
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
-| **Rules you must not regress** when editing the Windows chain (44, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
-| **Which lane to build on**: BuildKit, nerdctl, the retired classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
+| **Rules you must not regress** when editing the Windows chain (46, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
+| **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
@@ -143,7 +143,7 @@ exists only in one of these, promote it to its owning page above.
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
 | Changelog entries through 2026-08-13 | [`changelog-archive-2026-08-13.md`](changelog-archive-2026-08-13.md) |
-| Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) · [`2026-08-26`](windows-backlog-archive-2026-08-26.md) |
+| Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) · [`2026-08-26`](windows-backlog-archive-2026-08-26.md) · [`2026-08-31`](windows-backlog-archive-2026-08-31.md) |
 | Settled Linux refactor items | [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md) |
 | Closed Linux refactor items (2026-08-27) | [`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md) | Everything the backlog closed up to 2026-08-27, including the entries that were REFUTED or RETRACTED rather than fixed. |
 | Closed Linux refactor items (2026-08-30) | [`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md) | The OpenCV-sccache REFUTATION (pre-UDS wrong-server bug, not OpenCV-specific) and the F2 one-resolver cache consolidation. |

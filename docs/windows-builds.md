@@ -129,7 +129,7 @@ When bumping any upstream version, audit these `.patch` files before letting the
 The Windows container build uses [Stevedore](https://github.com/slonopotamus/stevedore) (a Docker distribution for Windows Containers) and is split into staged images:
 
 - `windows/Dockerfile.base` builds the cached Windows toolchain base image (CMake 4.4.2, VS Build Tools 18, LLVM/Clang 22, Rust, Flutter, WiX 4).
-- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.2.1.2 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build.ps1` handles this automatically via its `-Gpu` switch.
+- `windows/Dockerfile.nvidia` (optional GPU layer) layers CUDA 13.3 + cuDNN 9.25.0.15 + TensorRT 11.2.1.2 on top of the base image and is tagged `windows-sdk`. If skipped, the base image is tagged `windows-sdk` directly (`docker tag`; the former no-op `Dockerfile.sdk` shim was removed) and downstream stages perform CPU-only builds (CUDA auto-detection falls back to `CPU-only build`). `windows/build-buildkit.ps1` handles this automatically via its `-Gpu` switch.
 - The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via `windows/Dockerfile.toolchain-builder` + `build-toolchain-all.ps1` (run+commit for full cores; the former standalone `Dockerfile.toolchain` was removed as dead code — it duplicated the builder without the nuget pre-seed fix).
 - The **media stage fans out into three branch images** by `windows/build-buildkit.ps1`, built **sequentially** (media-core first — it alone gets the whole RAM budget, maximizing ONNX parallelism). All three branches share ONE multi-stage builder, `windows/Dockerfile.media-builder`, selected per branch via `--target <name>`; then the stage fans in:
   - **media-core** (`--target media-core` + `build-media-core-all.ps1`, run+commit) — the ONNX dependency chain, sequential: ONNX Runtime 1.28.0 (source build; CUDA EP enabled when the NVIDIA layer was used, DirectML EP always via the clang-cl patch) → ONNX GenAI 0.15.2 (CMake+clang-cl, bypassing `build.py`; built with `USE_DML=ON` + `USE_CUDA=ON`, telemetry off) → OpenCV 5.x (CMake+Ninja+clang-cl, CUDA auto-detected, detects the source-built ONNX Runtime) → FFmpeg `n9.0` (pinned release tag, `FFMPEG_VERSION` in versions.env since 2026-08-04; MSVC toolchain via MSYS2 bash; `--enable-libonnxruntime` links FFmpeg's DNN filters against the source-built ONNX Runtime — note there is no separate `--enable-dnn` flag; DNN filters come with the backend).
@@ -160,7 +160,7 @@ The components whose notes do not fit a table cell. Each is linkable, so another
 
 #### ONNX Runtime (pin: `ONNXRUNTIME_VERSION`)
 
-**both lanes** (on `-TargetArch arm64` CUDA and TensorRT are OFF, the Python bindings are ON since #120 step 2, and DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` name survives only as a zero-caller compat shim; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.
+**both lanes** (on `-TargetArch arm64` CUDA and TensorRT are OFF, the Python bindings are ON since #120 step 2, and DirectML is **ON** as of backlog #113 — see [`windows-cross-builds.md`](windows-cross-builds.md)): DirectML EP **enabled** (`USE_DML=ON`) via the 3-part clang-cl source patch `003-dml-clangcl-compat.patch` (§ Source Patch Policy; the EOL/context-tolerant inline regex patcher `Invoke-OnnxDmlClangClPatch` in `build-onnx-from-source.ps1` remains as the drift fallback): DirectMLHelpers incomplete-type out-lining, `.##Z` token-paste, `Dispatch<size_t>`. CUDA + TensorRT EPs enabled when the NVIDIA layer is the parent (CUDA 13.3 provider, includes crt/ workaround for nvcc). Patches build.ninja for MSVC-only `/experimental:external`. Runs under VsDevCmd for MASM (`.asm` files). **AVX-512/AMX: per-TU only** — global flags OFF (they crashed protoc AND ort's own DLL init at runtime on AVX2 hosts); the build script appends them (`Get-WindowsTargetKernelSimdFlags -Arch` — the old `Get-WindowsX86Avx512Flags` compat shim was deleted 2026-08-26; the amd64 TU pattern was extended 2026-08-24 after under-matching broke the lane, tagged-count floor raised 4→8) to MLAS's runtime-dispatched arch TUs in build.ninja post-configure and logs the tagged count (see AGENTS.md § Windows Build Invariants — don't "simplify" in either direction). 1.28's `ScopedResource<INVALID_HANDLE_VALUE,...>` template arg (rejected by clang-cl) is bridged by an inline post-configure dep patch. Needs ~4 GB RAM/job — media-core runs with `--memory ${MediaMemoryGb}g`.
 
 #### ONNX GenAI 0.15.2
 
@@ -233,13 +233,13 @@ plugin "nat"` and `nerdctl build` had broken DNS is historical.
 > **Use the BuildKit/containerd lane** — `.\windows\build-buildkit.ps1 -Gpu` builds
 > the Dockerfiles with **process isolation** (full host CPUs, no Hyper-V 2-CPU cap,
 > no run+commit) and real per-stage layer caching. One-time host setup + launch:
-> see § BuildKit/containerd lane below.
+> see [`windows-build-lanes.md`](windows-build-lanes.md) § BuildKit/containerd lane.
 >
-> **The docker-classic lane (`build.ps1`) was RETIRED on 2026-08-26** and refuses to
-> start without `-AcceptRetiredLane` — why, in
-> [windows-build-lanes.md](windows-build-lanes.md). The `build.ps1` commands below
-> are kept as a record of the retired lane; translate them to `build-buildkit.ps1`,
-> which takes the same `-Stages`/`-MediaBranches`/`-Gpu`.
+> **The docker-classic lane was RETIRED on 2026-08-26 and its driver
+> `windows/build.ps1` DELETED on 2026-08-31** (why, in
+> [windows-build-lanes.md](windows-build-lanes.md) § The classic lane was retired).
+> `build-buildkit.ps1` is now the only driver; a `.\windows\build.ps1` recipe from
+> an older page or from shell history has nothing left to run.
 
 Use the driver script from the repository root. It parses `linux/scripts/01-core/versions.env`
 and passes every version as `--build-arg` (the Dockerfile ARG defaults are only
@@ -247,34 +247,43 @@ fallbacks), builds the stages in order, and applies the correct tags:
 
 ```pwsh
 # CPU lane (default): base -> tag sdk -> toolchain -> media -> torch -> final
-.\windows\build.ps1
+.\windows\build-buildkit.ps1
 
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
 # Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
-.\windows\build.ps1 -Gpu
+.\windows\build-buildkit.ps1 -Gpu
 
 # Iterate on a single stage (layer cache makes this cheap):
-.\windows\build.ps1 -Gpu -Stages media,final
+.\windows\build-buildkit.ps1 -Gpu -Stages media,final
+
+# One media branch only (the merge is skipped unless all three are asked for):
+.\windows\build-buildkit.ps1 -Gpu -Stages media -MediaBranches media-tvm
 
 # Deliberate clean rebuild (only when you really need it — this discards ALL layer
 # caching and rebuilds everything from scratch, which takes many hours):
-.\windows\build.ps1 -Gpu -NoCache
+.\windows\build-buildkit.ps1 -Gpu -NoCache
 
 # Orchestr-ANT-ion app stage (windows/Dockerfile.torch, mirror of linux/Dockerfile.torch):
 # a chain stage between media and final (media -> torch -> final) — it assembles the
 # app env at APP_REF on windows-media, and the final image builds FROM it. An APP_REF
 # bump therefore rebuilds torch + the cheap final tail only (minutes, network-bound):
-.\windows\build.ps1 -Stages torch,final               # versions.env APP_REF pin
-.\windows\build.ps1 -Stages torch,final -LatestApp    # newest release tag
-# On a host WITHOUT local chain images, iterate on the published image instead:
-.\windows\build.ps1 -Stages torch,final -TorchBaseImage ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
-# Tags: torch -> local/kataglyphis:windows-torch (-TorchTag overrides; final builds FROM it).
+.\windows\build-buildkit.ps1 -Stages torch,final               # versions.env APP_REF pin
+.\windows\build-buildkit.ps1 -Stages torch,final -LatestApp    # newest release tag
 ```
 
-Docker layer caching is **on by default**: the Dockerfiles are ordered so that
-editing one build script only rebuilds that script's stage and later ones.
-`-Docker` overrides the docker.exe path (default: `$env:DOCKER_EXE`, then the
-Stevedore install locations, then `docker` on PATH). Set
+Stage results land in the CONTAINERD store as `docker.io/local/kataglyphis:bk-<stage>`
+(torch -> `bk-windows-torch`, final -> `bk-winamd64` / `bk-winarm64`), invisible to
+`docker` — use `-FinalTar` for a docker-loadable tarball. There is **no**
+`-TorchBaseImage` equivalent: the torch stage's `BASE_IMAGE` is pinned to the local
+`windows-media` tag, so `-Stages torch,final` needs the local chain images and cannot
+be pointed at a published one. `pwsh -File` cannot build arrays — call the script
+directly, or `& .\windows\build-buildkit.ps1 -Gpu -Stages @('media','final')`.
+
+Layer caching is **on by default**: the Dockerfiles are ordered so that
+editing one build script only rebuilds that script's stage and later ones
+(`-NoCacheStage <label>` bypasses one stage without the chain-wide `-NoCache`).
+`-BuildCtl` overrides the buildctl path (default: the Stevedore install
+locations, then `buildctl` on PATH). Set
 `KEEP_BUILD_ARTIFACTS=1` (e.g. via a temporary `ENV` line in a media
 Dockerfile) to keep the `C:\temp\*-src` build trees for debugging; by default
 each build script removes its source tree after installing so the trees don't
@@ -350,7 +359,7 @@ Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
 were absent from the published `winamd64` for months and nothing was red:
 meson's `auto` feature state means *skip silently when the dependency is
 missing*, the build logged `[INFO] not available`, and the healthcheck printed
-`[PASS]` for plugins that did not exist.
+`[PASS]` for plugins that did not exist (it reports `[FAIL]` now).
 
 The set lives in **one** place — `Get-RequiredGstPlugin`
 (`windows/scripts/modules/WindowsGstPlugins.Common.psm1`; it moved out of
@@ -360,26 +369,34 @@ the compile closure of all three media branches and this set changes far too oft
 
 | Where | What it does | On failure |
 |---|---|---|
-| pre-flight, `build-gstreamer-from-source.ps1` | emits the missing `.pc` files, disables `FFmpeg.wrap`, resolves every required pkg-config module | **throws in seconds**, before a ~1 h configure+compile |
+| pre-flight, `build-gstreamer-from-source.ps1` | emits the missing `.pc` files, disables `FFmpeg.wrap`, resolves every required pkg-config module | **throws in seconds** (54 s on its first live run), before a ~1 h configure+compile |
 | meson setup | `-Dlibav=enabled`, `-Dgst-plugins-bad:opencv=enabled`, `-Dgst-plugins-bad:onnx=enabled` | configure fails loudly instead of skipping |
 | post-install gate | `gst-inspect-1.0 <plugin>` for the whole set | **throws** — proves the plugin loads, not just that it configured |
 | smoke test | same set, as assertions | **fails** the suite |
 
-Three unrelated root causes, diagnosed against gstreamer 1.29.2 sources:
+Four unrelated root causes, diagnosed against gstreamer 1.29.2 sources — one
+mechanism per plugin, which is why the single "PKG_CONFIG_PATH" theory never
+explained it:
 
-- **opencv** — `dependency('opencv4', '>= 4.0.0')`. OpenCV installs no `.pc`
+- **opencv** — `gst-plugins-bad/gst-libs/gst/opencv/meson.build` resolves
+  `dependency('opencv4', '>= 4.0.0')`. OpenCV installs no `.pc`
   unless `OPENCV_GENERATE_PKGCONFIG` is set, and it would be named `opencv5.pc`
   anyway. Upstream dropped the old `< 4.x` upper bound, so OpenCV 5 is
   version-acceptable — it just needs a file under the name meson looks up.
-- **onnx** — `dependency('libonnxruntime', '>= 1.16.1')` then `subdir_done()`.
-  ORT ships no `.pc` on any platform.
+  Measured on the gate's first live run: the emitter authored `opencv4.pc` with
+  **64** import libs enumerated from the actual install.
+- **onnx** — `ext/onnx/meson.build` resolves `dependency('libonnxruntime', '>=
+  1.16.1')` then calls `subdir_done()`. ORT ships no `.pc` on any platform.
 - **libav** — nothing to do with `.pc` files. `subprojects/FFmpeg.wrap`
   *provides* the four `libav*` modules pinned to **FFmpeg 7.1.1**, and
   `-Dwrap_mode=forcefallback` **forces** meson to use it, so pkg-config was
   never consulted: the build was fetching and compiling a second, older FFmpeg
   instead of the `n9.0` it had just built. Even succeeding would have shipped
   gst-libav linked against a different FFmpeg than the image's own `ffmpeg.exe`.
-  The wrap is now moved aside before configure.
+  The wrap is now moved aside before configure. Our own FFmpeg `.pc` files then
+  turned out to carry `Version: ..` — which `pkg-config --exists` accepts — so
+  it was the pre-flight's `-MinimumVersion` floors, not presence, that caught it
+  (fixed by a VERSION file + prefix rewrite).
 - **tflite** — a fourth mechanism again: this plugin consults **no pkg-config
   at all**. `ext/tflite/meson.build` probes the compiler directly with
   `cc.find_library('tensorflowlite_c')` (fallback `tensorflow-lite`),
@@ -394,7 +411,10 @@ Three unrelated root causes, diagnosed against gstreamer 1.29.2 sources:
   the list of what *is* staged if neither candidate exists), and puts the LiteRT
   include/lib dirs on `INCLUDE`/`LIB` — the only mechanism `cc.find_library` and
   `cc.has_header` actually consult — as well as into `c_args`/`cpp_args` and the
-  link args so the plugin's own compile and link succeed.
+  link args so the plugin's own compile and link succeed. Both candidate names
+  stay listed in upstream's order because on 2026-08-07 only the FALLBACK
+  (`tensorflow-lite`) existed; `build-litert-from-source.ps1` injects a real
+  `tensorflowlite_c` target since, and asserts its import lib after install.
 
 Both `.pc` files are authored by the **merge** stage, not by the OpenCV/ONNX
 builds: those are the two most expensive layers in the chain (~30 and ~75
@@ -534,8 +554,8 @@ measured against a lowered number. The aarch64 payload itself remains verified s
 multi-hour build ended with "Done" and zero evidence the image worked, in a repo
 whose defect history is dominated by "builds fine, fails to LOAD".
 
-**The CLASSIC driver (`build.ps1`) gated too, from 2026-08-21 until the lane was
-retired on 2026-08-26** — as a `docker run` with a DIRECTORY mount of
+**HISTORICAL — the CLASSIC driver (`build.ps1`) gated too, from 2026-08-21 until the
+lane was retired on 2026-08-26 (driver deleted 2026-08-31)** — as a `docker run` with a DIRECTORY mount of
 `windows\scripts`: its dockerd has no BuildKit `RUN --mount`, and Windows
 containers reject single-FILE bind mounts outright, so the whole scripts directory
 was mounted instead; `docker run` also enters through the ENTRYPOINT naturally (no
@@ -661,7 +681,7 @@ The final image bakes the runtime orchestrator at
 `windows/scripts/build/assemble-torch-app.ps1` (mirror of the linux
 `assemble-torch-app.sh` stage) during the final `docker build`:
 
-- **Ref**: `build.ps1` uses versions.env's **`APP_REF` pin by default** (the
+- **Ref**: `build-buildkit.ps1` uses versions.env's **`APP_REF` pin by default** (the
   same commit always builds the same final image); pass `-LatestApp` to opt
   into resolving the app repo's newest release tag at build time via a live
   `git ls-remote` (the old always-on behavior). The resolved ref reaches the
@@ -899,7 +919,7 @@ Consumer-facing PowerShell API. Never delete on a "zero references" audit — ot
 
 #### `WindowsSourceBuild.Common.psm1`
 
-Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Get-SourceBuildVersion`, `Get-CudaRoot`, `Enter-VsDevCmdEnvironment`, `Invoke-SourcePatch` (idempotent, reverse-check, patch.exe fallback), `Edit-CppKeywordAlternatives`, `Update-NinjaFile`, `Initialize-SourceBuildEnvironment`, `Initialize-ToolchainPythonEnvironment`, `Get-GpuEnvironment`, `Resolve-TensorRtRoot`, `Get-WindowsX86SimdFlags`, `Get-WindowsX86Avx512Flags`
+Reusable build helpers: `Invoke-GitClone`, `Invoke-CmakeConfigure`, `Get-SourceBuildVersion`, `Get-CudaRoot`, `Enter-VsDevCmdEnvironment`, `Invoke-SourcePatch` (idempotent, reverse-check, patch.exe fallback), `Edit-CppKeywordAlternatives`, `Update-NinjaFile`, `Initialize-SourceBuildEnvironment`, `Initialize-ToolchainPythonEnvironment`, `Get-GpuEnvironment`, `Resolve-TensorRtRoot`, `Get-WindowsTargetSimdFlags`, `Get-WindowsTargetKernelSimdFlags` (the arch-agnostic pair that replaced `Get-WindowsX86SimdFlags`/`Get-WindowsX86Avx512Flags`, deleted 2026-08-26). This facade is mounted into all 11 media RUNs, so single-consumer helpers live on the leaf modules instead: `Write-AssembledWheelDistInfo` and `Get-PyprojectDependencies` moved to `WindowsTvm.Common.psm1` (2026-08-31), their only caller being `build-tvm-from-source.ps1`
 
 #### `WindowsSmokeTest.Common.psm1`
 

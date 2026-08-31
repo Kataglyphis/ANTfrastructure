@@ -73,9 +73,9 @@ pass under either isolation regardless of whether a hardware adapter is present.
 
 ## Media fan-out and memory budgeting
 
-**Media scheduling is sequential** (media branch logs land in
-`out\windows-build-logs\media-core.log` / `media-litert.log` / `media-tvm.log`,
-plus `gstreamer.log` for the merge). Sequential gives media-core the *whole* host
+**Media scheduling is sequential** (one log per solve —
+`out\windows-build-logs\bk-<runid>-<stage>.log`, one per media-core library, one
+per aux branch, one for the merge). Sequential gives media-core the *whole* host
 RAM budget — and since its parallelism is memory-bound, more RAM = more ONNX jobs,
 which matters more than overlapping the small aux branches (a former
 `-ConcurrentMedia` overlap mode was removed for exactly that reason).
@@ -93,10 +93,11 @@ Worked example (this 64 GB host, Windows reports 61.4 GB usable → floor 61,
 default `-HostReserveGb 22`): auto `-MediaMemoryGb` = `61 − 22` = **39 g** →
 ONNX runs `~j10` (`mem/4`, cores=32).
 
-media-core, toolchain, and the merge/GStreamer stage all build via the run+commit
-path (see [`windows-build-lanes.md`](windows-build-lanes.md) § Build isolation and CPU parallelism) at `-MediaCoreCpus` CPUs. The
-litert/tvm aux branches run+commit at `-MediaCoreCpus` too — the full budget is
-free once media-core has committed.
+media-core, toolchain and the merge/GStreamer stage all solve process-isolated
+with every host CPU (see [`windows-build-lanes.md`](windows-build-lanes.md) § Build isolation and CPU parallelism); the run+commit
+path and its `-MediaCoreCpus` flag went with `build.ps1` on 2026-08-31. The
+litert/tvm aux branches get the whole budget once media-core is done — halved per
+child under `-ConcurrentAux`, which overlaps only those two.
 
 ## Maximum resource envelope (verified 2026-07-12)
 
@@ -110,10 +111,10 @@ faster configuration to unlock, and the full-chain rebuild of 2026-07-12
 | media-litert | 18      | 38        | 100       | 24.9      |
 | media-tvm    | ~25     | 42        | 100       | 41.8      |
 
-- **CPUs: 32/32 on every heavy stage.** `docker run --cpu-count 32` (run+commit)
-  is the only >2-CPU path on this host; every compile stage uses it. `docker
-  build` stages are pinned at 2 CPUs by the host defect — that is why they carry
-  only cheap COPY/clone layers.
+- **CPUs: 32/32 on every heavy stage.** That chain took them from the classic
+  lane's `docker run --cpu-count 32` + commit, the only >2-CPU path there
+  (`docker build` was pinned at 2 CPUs by the host defect — hence its cheap
+  COPY/clone-only layers); the BK lane gets all CPUs from process isolation.
 - **RAM: 39 GB is the measured optimum, not a conservative default.** During
   media-core the host bottomed out at **0.2 GB free** — the 22 GB reserve was
   consumed almost exactly. Raising `-MediaMemoryGb` (or cutting
@@ -128,16 +129,14 @@ faster configuration to unlock, and the full-chain rebuild of 2026-07-12
   `SCCACHE_WEBDAV_ENDPOINT`) to make *re*builds warm — cold full-chain is
   ~5–6 h with ~2.5 h of that in the media fan-out.
 
-**Per-run resource log — classic-lane only, and therefore currently unreachable.**
-The sampler is wired into `build.ps1:910` and nowhere else; that driver was retired
-on 2026-08-26, so no *building* driver produces this CSV today. The tool itself
-still works by hand (`build-resource-sampler.ps1 -Summarize -CsvPath <csv>`) on any
-CSV you already have. Wiring it into `build-buildkit.ps1` is an open follow-up
-(backlog #134). What it did, while it ran: every `build.ps1` run samples host CPU / free RAM /
-commit charge / container-VM (`vmmem`) size every 20 s into
+**Per-run resource log.** Every `build-buildkit.ps1` run samples host CPU / free
+RAM / commit charge / container-VM (`vmmem`) size every 20 s into
 `out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
-phase (`build:<dockerfile>`, `run:<stage>`, `commit:<stage>`), and prints a
-per-phase exhaustion summary at the end — including on failure. Re-analyze any
+phase — the BK stage label (`Dockerfile.media-builder:media-core-built-onnx`),
+plus `init` and `done` — and prints a per-phase exhaustion summary at the end,
+including on failure. The sampler starts only after every preflight gate has
+passed, so a rejected launch leaves nothing orphaned, and `-ConcurrentAux`
+children run without one (the parent's already covers the machine). Re-analyze any
 run later with
 `pwsh -File windows/scripts/build/build-resource-sampler.ps1 -Summarize -CsvPath <csv>`;
 `MinFreeGB` per phase shows which step pushed the host hardest, and an
@@ -162,8 +161,8 @@ run later with
 Without BuildKit cache mounts a container-local sccache cache dies with the
 layer, so the WebDAV remote is the only compile cache that survives a
 container. **sccache is therefore REQUIRED by default for the media stages:
-build.ps1 fails fast when a media stage is requested and no reachable endpoint
-is configured** (`-NoSccache` opts into a deliberate cache-less build). The
+build-buildkit.ps1 fails fast when a media stage is requested and no reachable
+endpoint is configured** (`-NoSccache` opts into a deliberate cache-less build). The
 gate is media-only (`Assert-SccacheEndpoint`, `$compileStages = @('media')` in
 `WindowsBuildDriver.Common.psm1`) — the toolchain stage (MSBuild/ClangCL
 CPython) has no sccache wiring, so toolchain-only builds are never blocked on

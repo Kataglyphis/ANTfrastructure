@@ -3,24 +3,18 @@
 
 #requires -Version 7.0
 #
-# Orchestrates the media-litert chain (LiteRT -> LiteRT-LM) inside ONE container.
-# This is the payload for the run+commit path in windows/build.ps1 (sequential mode):
-# because this host's `docker build` is hard-capped at 2 CPUs (Hyper-V) and process
-# isolation cannot commit layers, the CPU-bound LiteRT/LiteRT-LM compiles run via
-# `docker run --cpu-count N` (which DOES get N CPUs under Hyper-V) followed by
-# `docker commit`. LiteRT-LM depends on LiteRT's install, so the two stay sequential.
-#
-# It is baked into windows-media-litert-builder (see Dockerfile.media-builder --target media-litert)
-# and invoked as: pwsh -NoProfile -ExecutionPolicy Bypass -File <thisscript>.
-# Version/config come from environment variables baked into the builder image.
+# Orchestrates the media-litert chain (LiteRT -> LiteRT-LM) in ONE RUN; LiteRT-LM
+# depends on LiteRT's install, so the two stay sequential.
+# Bind-mounted (not baked) into the `media-litert-built` stage, so editing it re-keys
+# that branch alone. Version/config come from the stage's ENV.
 
 [CmdletBinding()]
 param(
 
     [string]$InstallDir = 'C:\runtime',
     [string]$ScriptDir  = 'C:\temp\scripts',
-    # Resume inside a preserved container after a mid-chain failure: skip the
-    # stages before the named one (see build.ps1's recovery recipe on failure).
+    # Skip the stages before the named one. BuildKit has no preserved container to
+    # resume into; it re-solves and replays cached RUN vertices instead.
     [string]$ResumeFrom = '',
     # Stop AFTER the named stage (inclusive) — same chain-partition contract
     # as build-media-core-all.ps1 / build-media-tvm-all.ps1 (was asymmetrically

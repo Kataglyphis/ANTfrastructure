@@ -5,6 +5,137 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — one Windows driver, and the module mount that re-keyed LLVM on every `.psm1` edit
+
+### The DEFAULT toolchain target bind-mounted the WHOLE modules directory
+
+`Dockerfile.toolchain-builder`'s `patched-llvm` RUN mounted
+`windows/scripts/modules` as a directory, putting all ~40 modules into that
+RUN's cache key. `patched-llvm` is the DEFAULT toolchain target
+(`build-buildkit.ps1` picks it unless `-StockLlvm`), so editing ANY module — a
+host-only driver module no container ever imports included — re-keyed a full
+LLVM 23.1.0 compile plus every media lane that derives from
+`bk-windows-toolchain`. It is now a per-FILE mount of exactly the six modules
+`build-llvm-from-source.ps1` imports. Regression test:
+`BuildKit.ModuleClosure.Tests.ps1` fails on a whole-directory modules mount in
+any windows Dockerfile except `Dockerfile.probe` (exempt by design —
+`PROBE_NONCE` busts that layer anyway, and its own header says so).
+
+What the mount quietly falsified while it existed: AGENTS.md rule 5(b)
+("TIERED in-container module closures so host-only module edits cannot bust a
+compile layer") and `WindowsBuildDriver.Common.psm1`'s own "Edit cost: … cheap"
+header. Both describe the tiering the Dockerfiles implement again. Second
+correction in the same Dockerfile: the `BUILD_PATCHED_LLVM` comment still read
+"OPT-IN … off by default" while `ARG BUILD_PATCHED_LLVM=1` and the driver have
+defaulted it ON since #135.
+
+### `windows/build.ps1` deleted — and the six functions only it called
+
+The classic docker-build lane was retired 2026-08-26 and is now gone;
+`build-buildkit.ps1` is the one driver. `WindowsBuildDriver.Common.psm1` lost
+`Set-BuildDriverIsolation`, `Invoke-DockerWithRetry`, `Get-DockerBuildArgList`,
+`Assert-ImageExists`, `Resolve-BuildIsolation` and `Assert-DockerDaemon`.
+`Test-TransientDockerFailure` STAYS — `Invoke-TransientCooldown` classifies
+against it and the BK driver calls that. `$script:BuildDriverContext` is down to
+`TransientPattern`, and `Initialize-BuildDriverContext` takes only
+`-TransientPattern` (Docker/LogDir/NoCache had no readers left).
+
+Tests followed: `Driver.PreflightParity.Tests.ps1` (two drivers, one contract)
+became `Driver.PreflightContract.Tests.ps1` (3 tests), `Driver.ClosureScope`
+keeps the #40 closure rule but only for the surviving driver, and
+`BuildDriver.Retry` lost 6 retry/build-arg tests. Suite is 773;
+`Invoke-Tests.ps1`'s `$minTests` goes 763 → 762 — the first DOWNWARD move of
+that floor, with the arithmetic recorded inline so it cannot read as hiding a
+red run.
+
+Stale `build.ps1` references were corrected in both `.dockerignore` files,
+`Dockerfile.base` / `.nvidia` / `.torch` / `.toolchain-builder`, `versions.env`,
+`bump_versions.py`, `sync_versions.py`, `windows/downloads/README.md`,
+`Invoke-Lint.ps1`, the three `build-*-all.ps1` payload headers,
+`build-toolchain-all.ps1`, `build-resource-sampler.ps1` and both diagnostics
+probes. Two were not mechanical renames: `verify-host-setup.ps1` was a LIVE
+CHECK reporting stevedore as the "classic fallback lane" and now reports it as
+the publish/inspect tool (which is what `docker.exe` still is), and
+`Dockerfile.torch`'s `-TorchBaseImage` recipe has NO BuildKit equivalent — the
+BK driver has no such flag and pins the torch stage's `BASE_IMAGE` to the local
+`windows-media` tag — so it is documented as not driver-supported rather than
+renamed.
+
+### `Set-StrictMode -Version Latest` on 7 scripts — 4 latent bugs, 1 already live
+
+Added to `build-llvm-from-source`, `debug-litertlm-link`, `load-versions`,
+`normalize-tensorrt-tree`, `stage-cuda-runtime`, `clean-sccache-mount` and
+`bootstrap-pwsh`. On pwsh 7.6.5, `.Count` throws under StrictMode on a scalar
+AND on an empty pipeline result, which is what made four sites bugs rather than
+style:
+
+- `debug-litertlm-link.ps1` — `(Get-Command 'llvm-nm.exe' -EA SilentlyContinue).Source`
+  was ALREADY LIVE: its caller `build-litert-lm-from-source.ps1` sets StrictMode
+  and `&`-invocation inherits it, so the "no llvm-nm" branch the script already
+  had could never be reached. Bound first now.
+- `normalize-tensorrt-tree.ps1` — `$dllDirs` was not `@()`-wrapped, so `.Count`
+  threw on the NORMAL SUCCESS PATH (TensorRT 10+/11 ship the DLLs in `bin` only,
+  leaving exactly one surviving dir).
+- `stage-cuda-runtime.ps1` — same shape on `$roots`; would have re-broken the
+  arm64/CPU merge lane the 2026-08-23 degrade-cleanly fix unblocked.
+- `clean-sccache-mount.ps1` — `Measure-Object -Property` emits NOTHING for empty
+  input, so the inline `.Sum` threw on an empty cache dir.
+
+NOT added, on purpose: `WindowsFlutter.Common.psm1` and
+`WindowsContainerLog.Common.psm1` (a module does not inherit its caller's strict
+mode, so adding it is a real behaviour change downstream), and the dot-sourced
+`Initialize-CiEnvironment.ps1` / `litert-lm-export-bridge.ps1` (strict mode
+would leak into every caller).
+
+### Two helper sets pushed down to their leaf modules
+
+`Write-AssembledWheelDistInfo` and `Get-PyprojectDependencies` moved off the
+`WindowsSourceBuild.Common.psm1` facade — mounted into all 11 media RUNs — into
+`WindowsTvm.Common.psm1`, the `tvmmods` leaf only media-tvm mounts. Their sole
+consumer is `build-tvm-from-source.ps1`.
+
+The GStreamer wrap-git prefetch plus the libffi force-download (~64 lines of
+phase 5) moved out of `build-gstreamer-from-source.ps1` (1575 → 1514 lines) into
+`Invoke-GstWrapProvisioning` in `WindowsMeson.Common.psm1`, the merge-lane leaf.
+It takes a `-Logger` scriptblock, accumulates failures in a LOCAL list and
+RETURNS them; the caller keeps the #88 fail-closed throw so that gate stays
+visible at the call site (inside a module `$script:` is MODULE scope, so a
+caller reading its own accumulator would have seen zero failures). The libffi
+version expression deliberately stayed in the stage script:
+`SourceBuild.PinParity`'s W1c scanner keys the pin site by FILE NAME. New suite:
+`SourceBuild.GstWrapProvisioning.Tests.ps1` (3 tests).
+
+### `Assert-ShimPatch`'s fail-closed test could only pass on a host without Stevedore
+
+The backlog #48 "throws when no shim is installed" test pointed at a missing
+path, but the fallback probe then found the REAL shim under the Stevedore bin
+root and the not-found branch never ran — so the test could only pass on a
+machine that had never installed the toolchain, i.e. never on a build host.
+`Assert-ShimPatch` gained an injectable `-AlternateRoot` (default unchanged);
+`BuildDriver.HostGates.Tests.ps1` passes `-AlternateRoot @()`.
+
+### Left standing on purpose
+
+`Get-LlvmMasmCmakeArg` and four facade re-exports are dead in-tree but are
+exported API for other Kataglyphis repos — the never-delete-on-a-zero-reference
+audit rule in `docs/windows-builds.md`. `Export-BuildHandoff` /
+`Import-BuildHandoff` stay on the facade because `bk-warm.ps1`'s header names
+them the TESTED ROLLBACK PATH (restore the warm/materialize targets from
+c9586c1^ and the payloads work unchanged) — but that recipe is ALREADY partially
+stale: those retired targets mount the pre-#134 module set with no
+`WindowsTvm.Common.psm1`, and `build-tvm-from-source.ps1` now throws without the
+`tvmmods` mount. Worth repairing before anyone needs the rollback.
+`.claude/settings.local.json` still holds 4 allowlist entries for `build.ps1`
+invocations — permission config is the owner's call: flagged, not changed.
+
+Docs: AGENTS.md rule 5(b) and the module-tier prose in `docs/windows-builds.md`
+and `docs/windows-refactor-backlog.md` carry the per-file mount rule and the
+one-driver reality; the in-tree headers listed above were corrected with the
+code. Housekeeping: this file is past 2,300 lines against the "~700 lines"
+archive rule in its own header — the split is a separate decision, not taken
+here.
+
+
 ## 2026-08-31 — QNN SDK integrated into the arm64 cross build (#121 proven) + GStreamer compiler-rt self-heal (#135 follow-up)
 
 ### QNN EP build-time path PROVEN on the arm64 cross lane (#121)
