@@ -4,7 +4,7 @@
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 import manifest from '../../benchmark_results/_manifest.json'
-import { HardwareCard, CorrectnessBanner, ComparisonTable, ChartSection, ConfigDetail } from '../src/App.jsx'
+import { HardwareCard, CorrectnessBanner, ScoredRuns, ComparisonTable, ChartSection, ConfigDetail } from '../src/App.jsx'
 
 const { host_hardware: hw, configs } = manifest
 const withCorrectness = configs.find(c => c.correctness)
@@ -17,6 +17,8 @@ const cases = [
   ['CorrectnessBanner (real)', <CorrectnessBanner configs={configs} />],
   ['CorrectnessBanner (none scored)', <CorrectnessBanner configs={configs.filter(c => !c.correctness)} />],
   ['ComparisonTable', <ComparisonTable configs={configs} />],
+  ['ScoredRuns (coding + tools)', <ScoredRuns configs={configs} />],
+  ['ScoredRuns (none scored)', <ScoredRuns configs={configs.filter(c => !(c.scored || []).length)} />],
   ['ChartSection ttft', <ChartSection configs={configs} title="TTFT" dataKey="ttft_s" label="TTFT" unit="s" decimals={2} />],
   ['ChartSection missing key', <ChartSection configs={configs} title="Nope" dataKey="does_not_exist" label="x" unit="x" />],
   ['ConfigDetail collapsed', <ConfigDetail config={withCorrectness} />],
@@ -42,7 +44,15 @@ const banner = renderToString(<CorrectnessBanner configs={configs} />)
 const detail = renderToString(<ConfigDetail config={withCorrectness} defaultExpanded />)
 const legacyDetail = renderToString(<ConfigDetail config={withoutMetrics} defaultExpanded />)
 
+// React SSR inserts <!-- --> between adjacent text expressions, so "[61–100%]"
+// arrives as "[<!-- -->61<!-- -->–<!-- -->100<!-- -->%]". Strip the markers
+// before matching: the rendered DOM text is what matters, not the wire form.
+const strip = (h) => h.split('<!-- -->').join('')
+const scoredHtml = strip(renderToString(<ScoredRuns configs={configs} />))
 const checks = [
+  ['scored runs render at all', scoredHtml.length > 0],
+  ['scored runs carry an interval', /\d+[–-]\d+%/.test(scoredHtml)],
+  ['scored runs name the benchmark kind', /coding|tools/.test(scoredHtml)],
   ['comparison table has a TTFT column', table.includes('TTFT')],
   ['comparison table has an Answer column', table.includes('Answer')],
   ['comparison table shows Think share', table.includes('Think')],

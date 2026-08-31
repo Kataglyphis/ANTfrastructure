@@ -208,6 +208,28 @@ def run_lanes(lanes, prompt, max_tokens, sequential_baseline=True):
     return report
 
 
+def sweep_nctx(base_url_template, model, values, prompt, max_tokens=256):
+    """Does --nctx change anything but memory?
+
+    Never swept. The suspicion worth testing: on a llama.cpp lane a larger
+    context window allocates a larger KV cache, which could cost decode speed
+    even when the prompt never approaches it — in which case the 16384 this
+    repo standardised on is paid for on every short request.
+    """
+    print("\n  nctx sweep (restart the lane between values):", flush=True)
+    rows = []
+    for value in values:
+        r = stream_once(base_url_template, model, prompt, max_tokens)
+        if "error" in r:
+            print(f"    nctx={value:6d}  ERROR {r['error'][:50]}", flush=True)
+            rows.append({"nctx": value, "error": r["error"][:120]})
+            continue
+        print(f"    nctx={value:6d}  {r['decode_tok_per_sec']:6.2f} tok/s  "
+              f"ttft={_secs(r['ttft_s'])}s", flush=True)
+        rows.append({"nctx": value, **r})
+    return rows
+
+
 def parse_lane(spec):
     """Parse 'name=URL,model=MODEL' into (name, url, model)."""
     try:

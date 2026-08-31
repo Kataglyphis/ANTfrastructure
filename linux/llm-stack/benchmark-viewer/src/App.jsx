@@ -136,6 +136,80 @@ function ModelCard({ title, model, generated, configs }) {
   )
 }
 
+// Scored benchmarks — coding and tool calling. They were invisible in this
+// viewer for as long as it existed: it read only the throughput tool's
+// envelope, so the two benchmarks that answer "does the model WORK" never
+// reached the one place a person actually looks.
+export function ScoredRuns({ configs }) {
+  const scored = configs.filter(c => (c.scored || []).length > 0)
+  if (scored.length === 0) return null
+
+  // Wilson interval, mirroring bench_stats.py: a bare fraction invites a
+  // conclusion the sample cannot support, and 25/27 vs 27/27 do not differ.
+  const wilson = (k, n) => {
+    if (!n) return [0, 1]
+    const z = 1.96, p = k / n, d = 1 + z * z / n
+    const c = (p + z * z / (2 * n)) / d
+    const h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return [Math.max(0, c - h), Math.min(1, c + h)]
+  }
+
+  const rows = scored.flatMap(c => (c.scored || []).map(r => {
+    const n = r.effective_n || r.total || 0
+    const k = r.total ? Math.round(r.passed * n / r.total) : 0
+    const [lo, hi] = wilson(k, n)
+    return { kind: c.kind, file: c.label, label: r.label || r.model,
+             passed: r.passed, total: r.total, n, lo, hi,
+             truncated: r.truncated, errored: r.errored,
+             wall: r.total_wall_s, median: r.median_wall_s,
+             deterministic: r.deterministic }
+  }))
+  rows.sort((a, b) => (b.passed / (b.total || 1)) - (a.passed / (a.total || 1)))
+
+  return (
+    <div className="card full-width">
+      <h2>Scored runs — coding and tool calling</h2>
+      <p className="warn-note">
+        Scores carry their 95% interval. Two rows whose intervals overlap are
+        <strong> not separable</strong> at this sample size, however different
+        the fractions look.
+      </p>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Benchmark</th><th>Model</th>
+              <th title="Passed of attempted, with the 95% Wilson interval">Score [95% CI]</th>
+              <th title="Cut off by a server output cap — unmeasured, not failed">cut</th>
+              <th title="Transport failures, excluded from the denominator">err</th>
+              <th>Total (s)</th>
+              <th title="Repeats on a deterministic endpoint add no information">det.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={`${r.file}-${r.label}-${i}`}
+                  style={{ background: i % 2 === 0 ? 'var(--bg-alt)' : undefined }}>
+                <td><code>{r.kind.replace('bench_', '')}</code></td>
+                <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis',
+                             whiteSpace: 'nowrap' }} title={r.label}>{r.label}</td>
+                <td className="num strong">
+                  {r.passed}/{r.total} = {r.total ? Math.round(100 * r.passed / r.total) : 0}%
+                  {' '}[{Math.round(100 * r.lo)}–{Math.round(100 * r.hi)}%]
+                </td>
+                <td className="num">{r.truncated || 0}</td>
+                <td className="num">{r.errored || 0}</td>
+                <td className="num">{r.wall != null ? r.wall.toFixed(1) : '-'}</td>
+                <td className="num">{r.deterministic ? 'yes' : ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export function ComparisonTable({ configs }) {
   const rows = configs.map(c => {
     const ok = c.results.filter(r => !r.error)
@@ -411,6 +485,8 @@ function App() {
       </div>
 
       <CorrectnessBanner configs={configs} />
+
+      <ScoredRuns configs={configs} />
 
       <ComparisonTable configs={configs} />
 

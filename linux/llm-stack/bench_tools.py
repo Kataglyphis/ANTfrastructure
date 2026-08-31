@@ -224,6 +224,80 @@ MULTI_CASES = [
 ]
 
 
+def context_padding(approx_tokens):
+    """Roughly `approx_tokens` tokens of real repository source.
+
+    Long context and tool calling were measured SEPARATELY and never together,
+    yet together is precisely what an agent turn is: a large prompt AND a tool
+    call. On a bundle whose 4096-token limit is shared between input and output,
+    a long prompt leaves little room to answer — and nobody had checked which
+    breaks first.
+    """
+    if not approx_tokens:
+        return ""
+    here = os.path.dirname(os.path.abspath(__file__))
+    chunks = []
+    for name in ("bench_tools.py", "bench_coding.py", "bench_lanes.py"):
+        try:
+            with open(os.path.join(here, name)) as f:
+                chunks.append(f"# ---- {name} ----\n{f.read()}")
+        except OSError:
+            continue
+    body = "\n\n".join(chunks)
+    while len(body) < approx_tokens * 4 and chunks:
+        body += "\n\n" + "\n\n".join(chunks)
+    return body[: approx_tokens * 4]
+
+
+def turn_growth(base_url, model, system=None, max_turns=12, result_tokens=300):
+    """How many agent turns fit before the context runs out.
+
+    An agent loop grows its context every turn: each tool result is appended
+    and re-sent. On a 4096-token model the interesting number is not tok/s but
+    how many turns happen before the server silently returns nothing — which is
+    exactly what it does past the limit: HTTP 200, zero tokens, no error.
+    """
+    print(f"\n  === turn growth: {model} ===", flush=True)
+    history = [{"role": "user", "content": "Read README.md and tell me what it says."}]
+    filler = context_padding(result_tokens)
+    rows = []
+    for turn in range(1, max_turns + 1):
+        try:
+            message, finish, wall = call_multi(base_url, model, history, system=system)
+        except Exception as e:  # noqa: BLE001
+            print(f"    turn {turn:2d}: ERROR {type(e).__name__}", flush=True)
+            rows.append({"turn": turn, "error": str(e)[:80]})
+            break
+        called = bool(message.get("tool_calls"))
+        text = message.get("content") or ""
+        empty = not called and not text.strip()
+        approx_ctx = sum(len(str(m.get("content") or "")) for m in history) // 4
+        print(f"    turn {turn:2d}: ~{approx_ctx:5d} ctx tokens  "
+              f"{'tool_call' if called else ('EMPTY' if empty else 'text')}  "
+              f"{wall:6.2f}s  finish={finish}", flush=True)
+        rows.append({"turn": turn, "approx_context_tokens": approx_ctx,
+                     "tool_call": called, "empty": empty,
+                     "wall_s": round(wall, 2), "finish_reason": finish})
+        if empty:
+            print(f"    -> went silent at turn {turn} (~{approx_ctx} context tokens). "
+                  f"No error was returned; an agent sees an empty answer.", flush=True)
+            break
+        # Grow the history the way a real loop does.
+        if called:
+            call_id = message["tool_calls"][0].get("id", f"c{turn}")
+            history.append({"role": "assistant", "content": None,
+                            "tool_calls": message["tool_calls"]})
+            history.append({"role": "tool", "tool_call_id": call_id,
+                            "content": filler})
+        else:
+            history.append({"role": "assistant", "content": text})
+        history.append({"role": "user", "content":
+                        f"Now search the repository for the string marker_{turn}."})
+    else:
+        print(f"    -> still answering after {max_turns} turns", flush=True)
+    return rows
+
+
 def call_multi(base_url, model, messages, timeout=900, system=None):
     """One request over an arbitrary message history (multi-turn)."""
     msgs = ([{"role": "system", "content": system}] if system else []) + list(messages)
@@ -340,7 +414,7 @@ def grade(message, expect):
 
 
 def evaluate(base_url, model, label, repeats=1, system=None, warmup=True,
-             prompt_variants=False):
+             prompt_variants=False, context_tokens=0):
     tag = "  [+system prompt]" if system else ""
     print(f"\n  === {label}{tag} ===", flush=True)
     if warmup:
@@ -358,6 +432,10 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True,
             phrasings += case.get("variants", [])
         for attempt in range(repeats):
           for vi, phrasing in enumerate(phrasings):
+            if context_tokens:
+                phrasing = ("Repository context, for reference only:\n\n"
+                            f"{context_padding(context_tokens)}\n\n---\n\n"
+                            + phrasing)
             suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
             if len(phrasings) > 1:
                 suffix += f" v{vi}"
@@ -463,6 +541,14 @@ def main():
                          "the tools this way — measure whether it actually helps "
                          "before shipping it.")
     ap.add_argument("--compare", default=None)
+    ap.add_argument("--context-tokens", type=int, default=0,
+                    help="Prepend roughly N tokens of repository source to every "
+                         "single-turn case. Long context and tool calling were "
+                         "only ever measured apart; together is what an agent "
+                         "turn actually is.")
+    ap.add_argument("--turn-growth", action="store_true",
+                    help="Instead of the case suite, grow an agent loop turn by "
+                         "turn until the context runs out, and report where.")
     ap.add_argument("--prompt-variants", action="store_true",
                     help="Also ask each case in its paraphrases. Small models are "
                          "highly prompt-sensitive, so a single phrasing leaves an "
@@ -483,9 +569,22 @@ def main():
     if args.system:
         with open(args.system) as f:
             system = f.read()
+    if args.turn_growth:
+        growth = {lbl: turn_growth(url, mdl, system)
+                  for lbl, url, mdl in candidates}
+        if args.output:
+            write_report(args.output, "bench_tools_turn_growth",
+                         {"system_prompt": args.system}, 
+                         [{"label": k, "model": k, "results": v} for k, v in growth.items()],
+                         candidates[0][1] if candidates else None,
+                         ("bench_tools.py", "bench_provenance.py"))
+            print(f"  Report written to {args.output}")
+        return
+
     reports = [evaluate(url, model, label, args.repeats, system,
                         warmup=not args.no_warmup,
-                        prompt_variants=args.prompt_variants)
+                        prompt_variants=args.prompt_variants,
+                        context_tokens=args.context_tokens)
                for label, url, model in candidates]
 
 

@@ -84,6 +84,35 @@ def busy_lanes(registry_path=None):
     return live
 
 
+def energy_proxy():
+    """CPU-seconds consumed, as the closest available stand-in for energy.
+
+    Energy per token is the interesting axis on a battery device and the NPU's
+    strongest argument over the CPU lane — 165 % of 800 % CPU against 752 % for
+    the same work. But this host exposes no power rail: there is no RAPL on
+    aarch64 here, no battery discharge counter reachable from WSL2, and the
+    Snapdragon's own sensors are not surfaced. Reporting joules would be
+    inventing them.
+
+    So: total CPU time, which is proportional to energy for CPU-bound work and
+    silent about the NPU's own draw. Recorded as a PROXY under that name, never
+    as a measurement, so nobody later mistakes it for one.
+    """
+    try:
+        import resource
+        me = resource.getrusage(resource.RUSAGE_SELF)
+        kids = resource.getrusage(resource.RUSAGE_CHILDREN)
+        return {
+            "cpu_seconds_self": round(me.ru_utime + me.ru_stime, 3),
+            "cpu_seconds_children": round(kids.ru_utime + kids.ru_stime, 3),
+            "note": ("CPU time, not joules. This host exposes no power rail "
+                     "(no RAPL on aarch64, no battery counter through WSL2), and "
+                     "this number says nothing about NPU or GPU draw."),
+        }
+    except Exception:
+        return None
+
+
 def collect(base_url=None, tool_files=(), extra=None):
     """Return a provenance block for a report."""
     prov = {
@@ -105,6 +134,8 @@ def collect(base_url=None, tool_files=(), extra=None):
         # busy slows the one being measured; recording it is the difference
         # between a comparable number and an unexplained one.
         "live_lanes": busy_lanes(),
+        # Not energy. See energy_proxy() for why this host cannot measure that.
+        "energy_proxy": energy_proxy(),
     }
     if extra:
         prov.update(extra)

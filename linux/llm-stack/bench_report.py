@@ -66,6 +66,13 @@ def result_files(directory):
 
 
 def build_manifest(directory, title, model, generated):
+    """Index every result file for the viewer.
+
+    Handles both envelopes. The viewer showed only the throughput tool for as
+    long as it existed, so coding, tool-calling and lane results were invisible
+    in the one place a person actually looks at them; `kind` lets it render each
+    for what it is instead of forcing one shape onto all three.
+    """
     manifest = {"title": title, "generated": generated, "model": model,
                 "host_hardware": {}, "configs": []}
     for path in result_files(directory):
@@ -74,13 +81,30 @@ def build_manifest(directory, title, model, generated):
         hw = doc.get("hardware") or doc.get("provenance") or {}
         if hw and not manifest["host_hardware"]:
             manifest["host_hardware"] = hw
-        manifest["configs"].append({
+        entry = {
             "label": os.path.basename(path)[:-5],
             "file": os.path.basename(path),
+            "kind": doc.get("benchmark", "throughput"),
             "config": doc.get("config", {}),
             "correctness": doc.get("correctness"),
             "results": doc.get("results", []),
-        })
+        }
+        if "reports" in doc:
+            # Scored benchmarks: keep the per-model scores AND flatten their
+            # per-case rows, so a viewer can show either without re-deriving.
+            entry["scored"] = [{
+                "label": r.get("label"), "model": r.get("model"),
+                "passed": r.get("passed"), "total": r.get("total"),
+                "effective_n": r.get("effective_n"),
+                "deterministic": r.get("deterministic"),
+                "truncated": r.get("truncated"), "errored": r.get("errored"),
+                "total_wall_s": r.get("total_wall_s"),
+                "median_wall_s": r.get("median_wall_s"),
+                "results": r.get("results", []),
+            } for r in doc["reports"]]
+            entry["results"] = [row for r in doc["reports"]
+                                for row in r.get("results", [])]
+        manifest["configs"].append(entry)
     return manifest
 
 
