@@ -5,6 +5,27 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — hybrid actually measured: 9B distill runs at 7.5 tok/s (faster than GPU)
+
+Tested `--compute hybrid` against every Qwen3.8-class model on this Snapdragon
+X, with the surprise that **hybrid is the right path for models that straddle
+the HTP budget**:
+
+- **Qwen3.8-9B-Distill Q4_K_M (5.78 GB)** does not fit the ~3 GB HTP alone but
+  runs on `--compute hybrid` at **7.5 tok/s — faster than the same model on the
+  GPU (6.5 tok/s)**. Hybrid offloads the layers that fit the HTP and runs the
+  rest on CPU.
+- **Qwen3.8-27B Q4_0 crashes on hybrid too** (like pure NPU): the single HTP
+  cannot even stage a fraction, so there is no partial-offload win. 27B stays
+  CPU-only territory (or GPU Q3_K_XL at degraded quality).
+- Full measured envelope table added to
+  [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md): NPU
+  16.9 (2B) / 15.2 (4B), hybrid 7.5 (9B), GPU 13.2 (4B) / 6.5 (9B). CPU numbers
+  for 2B/4B/9B are marked as estimates; NPU/GPU/hybrid are all measured.
+- Bottom line: **no single model combines GPU+NPU** (hybrid = NPU+CPU only);
+  you cannot add the GPU to hybrid. Docs now state this plainly and recommend
+  2B-Distill (NPU) / 4B (NPU) / 9B-Distill (hybrid) per task weight.
+
 ## 2026-08-31 — hybrid compute truth + Qwen3.8 model matrix
 
 Clarified what GenieX v0.5.0 can and cannot do with all three accelerators, and
