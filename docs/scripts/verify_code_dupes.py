@@ -87,6 +87,38 @@ DOCKER_INSTR = re.compile(r"^\s*(FROM|RUN|COPY|ADD|ARG|ENV|WORKDIR|ENTRYPOINT|CM
                           re.IGNORECASE)
 
 
+def normalise_lines(text: str) -> list[str]:
+    """Per-line normalised form, for measuring CONTIGUOUS runs."""
+    out = []
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        line = STRING.sub('"S"', line)
+        line = VARIABLE.sub("$V", line)
+        line = NUMBER.sub("N", line)
+        out.append(" ".join(TOKEN.findall(line)))
+    return out
+
+
+def longest_common_run(a: list[str], b: list[str]) -> int:
+    """Longest run of consecutive identical normalised lines."""
+    if not a or not b:
+        return 0
+    best = 0
+    prev = [0] * (len(b) + 1)
+    for i in range(1, len(a) + 1):
+        cur = [0] * (len(b) + 1)
+        ai = a[i - 1]
+        for j in range(1, len(b) + 1):
+            if ai == b[j - 1]:
+                cur[j] = prev[j - 1] + 1
+                if cur[j] > best:
+                    best = cur[j]
+        prev = cur
+    return best
+
+
 def normalise(text: str) -> list[str]:
     """Fold away the things a copy-paste typically renames."""
     out = []
@@ -239,6 +271,7 @@ def main() -> int:
 
     owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
     texts: dict[tuple[str, int], str] = {}
+    unit_lines: dict[tuple[str, int], list[str]] = {}
     kind_of: dict[str, str] = {}
     for path, kind in files:
         rel = path.relative_to(REPO_ROOT).as_posix()
@@ -248,17 +281,21 @@ def main() -> int:
             if len(toks) < MIN_TOKENS:
                 continue
             texts[(rel, line_no)] = " ".join(body.split())
+            unit_lines[(rel, line_no)] = normalise_lines(body)
             for j in range(len(toks) - SHINGLE + 1):
                 owners[tuple(toks[j:j + SHINGLE])].add((rel, line_no))
 
     shared: Counter = Counter()
+    spread: Counter = Counter()
     suppressed = 0
     for holders in owners.values():
         if len(holders) > MAX_OWNERS:
-            # Perverse property, made visible instead of silent: the MORE times a
-            # block was copied, the more it looks like shared vocabulary. Counted
-            # here and surfaced in the summary so the worst case stops hiding.
+            # The perverse property, now turned into the tool's best feature: a
+            # block copied into TEN files is worth extracting far more than one
+            # copied into two, yet it is exactly the one the owner cutoff hides.
+            # Keep the widest ones as a ranked worklist instead of dropping them.
             suppressed += 1
+            spread[frozenset(h[0] for h in holders)] += 1
             continue
         if len(holders) > 1:
             # Same-FILE pairs are included: two twin helpers in one file were
@@ -313,8 +350,15 @@ def main() -> int:
             continue
         findings.append((n, a, b, budget))
 
-    findings.sort(reverse=True, key=lambda f: f[0])
-    allowed.sort(reverse=True, key=lambda f: f[0])
+    # Rank by the longest CONTIGUOUS identical run, not by scattered shingle
+    # overlap: 199 scattered shingles across two sibling CLIs' usage() heredocs
+    # is not extractable, while 20 consecutive identical lines is a helper
+    # waiting to be born. Shingle count stays as the tie-breaker.
+    runs = {}
+    for _n, a, b, _x in list(findings) + list(allowed):
+        runs[(a, b)] = longest_common_run(unit_lines.get(a, []), unit_lines.get(b, []))
+    findings.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
+    allowed.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
 
     # Connected components over the reported pairs. A block copied into three
     # files is ONE finding with three members, not three unrelated pairs -- the
@@ -345,15 +389,34 @@ def main() -> int:
         print(f"scanned {len(texts)} units in {len(files)} files "
               f"(threshold {args.threshold} shared {SHINGLE}-token shingles)\n")
         for n, a, b, why in allowed:
-            print(f"  allowed {n:4d}  {a[0]}  <->  {b[0]}   ({why})")
+            print(f"  allowed {n:4d}  run={runs.get((a, b), 0):3d}  "
+                  f"{a[0]}  <->  {b[0]}   ({why})")
         if allowed:
+            print()
+        # Rank by BLOCK SIZE, not by how many files hold it. One shingle across
+        # 34 files is `set -euo pipefail` -- idiom. Ten shingles across 8 files
+        # is a copied helper. Sorting by file count buries the second under the
+        # first (learned the hard way on the 199-shingle usage() pair).
+        WIDE_MIN_SHINGLES = 5
+        wide = [(cnt, fs) for fs, cnt in spread.items()
+                if len(fs) > MAX_OWNERS and cnt >= WIDE_MIN_SHINGLES]
+        wide.sort(reverse=True, key=lambda w: (w[0], len(w[1])))
+        if wide:
+            print(f"widely-copied blocks ({len(wide)} group(s) of >= "
+                  f"{WIDE_MIN_SHINGLES} shingles held by > {MAX_OWNERS} files) -- "
+                  f"the highest-leverage extractions:\n")
+            for cnt, fs in wide[:10]:
+                print(f"  {cnt:3d} shingles x {len(fs):2d} files: "
+                      f"{', '.join(sorted(fs)[:4])}"
+                      f"{' ...' if len(fs) > 4 else ''}")
             print()
 
     if findings:
         print(f"code duplication gate: {len(findings)} copied block(s)\n", file=sys.stderr)
         for n, a, b, budget in findings:
             over = f", over its budget of {budget[0]}" if budget else ""
-            print(f"  {n} shared shingles{over}", file=sys.stderr)
+            print(f"  {n} shared shingles{over}, longest identical run "
+                  f"{runs.get((a, b), 0)} line(s)", file=sys.stderr)
             print(f"    {a[0]}:{a[1]}  {texts[a][:140]}", file=sys.stderr)
             print(f"    {b[0]}:{b[1]}  {texts[b][:140]}\n", file=sys.stderr)
         for c in clusters:
