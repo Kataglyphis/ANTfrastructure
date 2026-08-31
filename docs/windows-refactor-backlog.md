@@ -33,13 +33,15 @@ landed: see #135 follow-up below). Read the table as the last fully green run
 | import walk | **793 files, 0 unresolved** (85 device-OS: FastRPC + client SKU) | — |
 | bundle manifest | 7 DLL homes, **6 wheels**, 3 ABSENT markers | — |
 | GStreamer contract plugins | **6/6** — `libav opencv onnx webrtc nice tflite` | 6/6 |
-| smoke gate | **97 passed / 0 failed / 15 skipped** (floors 66/25) | **222 / 0 / 0** |
+| smoke gate | **97 passed / 0 failed / 15 skipped** (floors 66/20) | **222 / 0 / 0** |
 | QNN | EP ON, QAIRT 2.44.0, `aarch64-windows-msvc` backends staged beside all five frameworks | off (x64 CPU backend is pointless) |
 | wall clock | ~40 min (media+final) | 2 h 18 min |
 
 **Exactly three components are ABSENT on arm64**, each marked in the bundle by an
-`ABSENT-ON-ARM64.txt` (call sites: `build-tvm-from-source.ps1:525`,
-`build-iree-from-source.ps1:331`, `build-litert-all.ps1:85`): the **TVM compiler**, the **IREE
+`ABSENT-ON-ARM64.txt` (LiteRT-LM, the default name) or a `COMPILER-ABSENT-ON-ARM64.txt`
+(the two compilers, which pass `-FileName` explicitly) — the manifest globs both
+families. Call sites: `build-tvm-from-source.ps1:341`,
+`build-iree-from-source.ps1:340`, `build-litert-all.ps1:79`: the **TVM compiler**, the **IREE
 compiler** (both need an LLVM cross-built for aarch64-windows) and **LiteRT-LM** (Bazel + an x86_64
 prebuilt `.lib`; a CMake port exists upstream — #133(d)). Their *python packages* DO now ship
 (`apache_tvm`, `apache_tvm_ffi`, `iree.runtime` — closed by #133). Also excluded by owner decision
@@ -62,144 +64,45 @@ this repo's cp314 pin).
 
 ### Open items
 
-- **#147 — single-driver + module-mount cleanup wave.** **DONE 2026-08-31** on
-  `refactor/windows-chain-cleanup`: code landed, suite green at 773 tests, **no
-  chain run yet**. `build-buildkit.ps1` is the only driver.
-  1. **Classic driver deleted.** `windows/build.ps1` (retired 2026-08-26) and the
-     six `WindowsBuildDriver.Common.psm1` functions only it called —
-     `Set-BuildDriverIsolation`, `Invoke-DockerWithRetry`,
-     `Get-DockerBuildArgList`, `Assert-ImageExists`, `Resolve-BuildIsolation`,
-     `Assert-DockerDaemon`. `Test-TransientDockerFailure` STAYS: the BK driver
-     reaches it through `Invoke-TransientCooldown`. `$script:BuildDriverContext`
-     is down to `TransientPattern`, and `Initialize-BuildDriverContext` takes
-     only `-TransientPattern` (nothing read Docker/LogDir/NoCache).
-     `Driver.PreflightParity.Tests.ps1` → `Driver.PreflightContract.Tests.ps1`
-     (3 tests, one driver); floor 763 → 762 with provenance at
-     `windows/scripts/tests/Invoke-Tests.ps1:154` — the first DROP, measured, not
-     hiding a red run. Stale `build.ps1` references corrected in 19 files;
-     `verify-host-setup.ps1` was a LIVE CHECK reporting stevedore as the "classic
-     fallback lane" and now reports it as the publish/inspect tool.
-     `Dockerfile.torch`'s `-TorchBaseImage` recipe has NO BuildKit equivalent
-     (the driver pins the torch stage's `BASE_IMAGE` to the local windows-media
-     tag), so it is documented as not driver-supported, not mechanically renamed.
-  2. **The expensive one — a whole-dir modules mount on the DEFAULT toolchain
-     target.** `Dockerfile.toolchain-builder`'s `patched-llvm` RUN bind-mounted
-     all of `windows/scripts/modules` (~45 files), and `patched-llvm` is the
-     default (`build-buildkit.ps1:526`; `-StockLlvm` is the opt-out) — so ANY
-     `.psm1` edit re-keyed a full LLVM 23.1.0 compile **and** every media lane
-     deriving from that image. Now six per-FILE mounts, exactly the closure
-     `build-llvm-from-source.ps1` imports (`Dockerfile.toolchain-builder:66-76`),
-     gated by a new test at `BuildKit.ModuleClosure.Tests.ps1:190` that fails a
-     whole-dir modules mount in any windows Dockerfile except `Dockerfile.probe`
-     (exempt by design — `PROBE_NONCE` busts its layer anyway; its header says
-     so). **Correction of record:** while that mount existed, "a host-only module
-     edit cannot bust a compile layer" and "editing `WindowsBuildDriver.Common`
-     is cheap" were FALSE. They are true now. Same file: the
-     `BUILD_PATCHED_LLVM` comment still claimed "OPT-IN / off by default" against
-     its own `ARG BUILD_PATCHED_LLVM=1` and the driver default — corrected (#135
-     made it default).
-  3. **TVM wheel helpers off the hot facade.** `Write-AssembledWheelDistInfo` and
-     `Get-PyprojectDependencies` moved from `WindowsSourceBuild.Common.psm1` (the
-     `buildmods` six, mounted into all 11 media RUNs) to
-     `WindowsTvm.Common.psm1:60,92` (the `tvmmods` leaf, mounted by media-tvm
-     only). Sole consumer: `build-tvm-from-source.ps1:316-326`.
-  4. **`Set-StrictMode -Version Latest`** added to `build-llvm-from-source`,
-     `debug-litertlm-link`, `load-versions`, `normalize-tensorrt-tree`,
-     `stage-cuda-runtime`, `clean-sccache-mount`, `bootstrap-pwsh`. Making that
-     safe needed FOUR latent-bug fixes, each verified on pwsh 7.6.5 (where
-     `.Count` throws on a scalar **and** on an empty pipeline result):
-     `normalize-tensorrt-tree.ps1`'s `$dllDirs` was not `@()`-wrapped, so `.Count`
-     threw on the **normal success path** (TensorRT 10+/11 ship the DLLs in `bin`
-     only — exactly one dir survives); `stage-cuda-runtime.ps1`'s `$roots` had the
-     same shape and would have re-broken the arm64/CPU merge lane that the
-     2026-08-23 degrade-cleanly fix unblocked; `clean-sccache-mount.ps1` inlined
-     `.Sum` on a `Measure-Object -Property`, which emits NOTHING for empty input;
-     `debug-litertlm-link.ps1` took `.Source` off an absent `llvm-nm.exe` —
-     **already a live bug**, because its caller `build-litert-lm-from-source.ps1`
-     sets StrictMode and `&`-invocation inherits it.
-  5. **GStreamer wrap provisioning extracted.** The phase-5 wrap-git prefetch +
-     libffi force-download (~64 lines) became `Invoke-GstWrapProvisioning`
-     (`WindowsMeson.Common.psm1:293`, a merge-lane leaf). It takes a `-Logger`
-     scriptblock, accumulates failures in a LOCAL list and RETURNS them; the #88
-     fail-closed throw stays at the call site
-     (`build-gstreamer-from-source.ps1:288`) so that gate stays visible where it
-     fires. The libffi version expression deliberately STAYED in the stage script
-     (`:283-285`) — `SourceBuild.PinParity`'s W1c scanner keys the pin site by
-     FILE NAME. Script 1574 → 1514 lines. New suite:
-     `SourceBuild.GstWrapProvisioning.Tests.ps1`.
-  6. **Non-hermetic test fixed.** `Assert-ShimPatch` gained `-AlternateRoot`
-     (default unchanged, `WindowsBuildDriver.Common.psm1:333`) so its fail-closed
-     not-found path is testable on a host that HAS a real shim — the two cases at
-     `BuildDriver.HostGates.Tests.ps1:205,215` now pass `-AlternateRoot @()`
-     instead of silently exercising the fallback probe.
-  7. **Audited: no classic-only Dockerfile targets remain.**
-     `Dockerfile.media-builder`'s stages are `common` / `buildmods` / `tvmmods` /
-     `*-env` / `*-built`; the warm/materialize targets went in the 2026-08-06
-     de-warming (see #149). Nothing in the tree still needs the classic driver.
-  Docs: [`windows-builds.md`](windows-builds.md) § Reusable modules,
-  [`windows-build-invariants.md`](windows-build-invariants.md) § external-consumer API,
-  and `AGENTS.md` § Caching discipline for the module tiers. Note for readers of
-  `windows-build-resources.md:136`: its "backlog #134" follow-up pointer is CLOSED
-  and now resolves here (#147) — the sampler itself was wired into
-  `build-buildkit.ps1:461` by #134's free follow-ups.
-
-- **#148 — #147's deliberate declines (recorded so they are not re-litigated).**
-  Each is a cleanup the wave could have made and did not, on purpose:
-  1. **`Get-LlvmMasmCmakeArg` stays dead-but-present**, and the four re-exports on
-     the `WindowsSourceBuild.Common` facade stay un-narrowed — other Kataglyphis
-     repos import these modules, so a zero-references audit is not evidence of
-     zero consumers. Rule: [`windows-builds.md`](windows-builds.md) § Reusable
-     modules and [`windows-build-invariants.md`](windows-build-invariants.md)
-     § external-consumer API.
-  2. **`Set-StrictMode` declined on four files**, each for its own reason:
-     `WindowsFlutter.Common.psm1` and `WindowsContainerLog.Common.psm1` are
-     external-consumer API and a module does NOT inherit its caller's strict mode,
-     so adding it is a real downstream behaviour change;
-     `Initialize-CiEnvironment.ps1` is dot-sourced and would leak strict mode into
-     seven in-repo callers plus external consumers; `litert-lm-export-bridge.ps1`
-     is dot-sourced by a caller that already sets it, so the line is a no-op with
-     leak risk.
-  3. **`Export-BuildHandoff` / `Import-BuildHandoff` stay on the hot facade.**
-     They look host-only, but `bk-warm.ps1`'s header keeps them plus
-     `bk-materialize.ps1` as the TESTED ROLLBACK PATH, and the retired
-     `media-core-built-opencv` RUN in `c9586c1^` mounts
-     `WindowsSourceBuild.Common.psm1` into the container precisely so
-     `bk-materialize` can call `Import-BuildHandoff`. Moving them breaks that path
-     silently. See #149 for why that path is not currently safe anyway.
-
 - **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
-  stale.** NOTE REPAIRED 2026-08-31 (`bk-warm.ps1:5-18`); the restore itself stays
-  OPEN until someone needs it. `bk-warm.ps1` promised that if the ExportLayer-0x3
-  canary fires again you can restore those targets and "these payloads work
-  unchanged". The payloads do; the targets do not. Measured: all **ten** retired
-  RUNs mount the same five modules (`WindowsSourceBuild.Common`, `Shared`,
-  `Patches`, `Cuda`, `Native`) and neither module the tree has needed since:
+  stale.** Note repaired 2026-08-31 (`bk-warm.ps1:15-22`); THE RESTORE ITSELF IS
+  STILL OPEN. All ten retired RUNs mount the same five modules and neither module
+  the tree has needed since:
   1. `WindowsTargetArch.Common.psm1` — `WindowsSourceBuild.Common` **throws at
-     import** without it (#116, the deliberate throw at its line 36), so every
-     restored RUN dies before executing a line. This is the one that makes the
-     recipe dead rather than partial.
+     import** without it (`:37`, a deliberate throw rather than a stub), so every
+     restored RUN dies before executing a line. This is what makes the recipe dead
+     rather than partial, and it is not TVM-specific.
   2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
      `tvmmods` mount (#134), so TVM still fails once the import is fixed.
-  The fix is two mount lines per restored target. The header now says so; do not
-  delete the recipe, and do not trust it verbatim.
+  AND THE MOUNT PATHS THEMSELVES ARE STALE: all sixteen `source=windows/scripts/
+  <name>.ps1` sources in those RUNs predate the `scripts/build/` reorganisation, so
+  a verbatim restore fails at solve time before any of the above even runs. Treat
+  the recipe as a SHAPE to re-derive, not a patch to apply.
 
-- **#150 — `.claude/settings.local.json` still allowlists `build.ps1` invocations**
-  (four entries, lines 9-15) for a driver that no longer exists. NOT touched by
-  #147: permission configuration is the owner's call. Harmless (the commands
-  cannot run), but it is the last place the classic driver is still named as a
-  live entry point.
+- **#152 — the wave of 2026-08-31 is UNPROVEN BY A BUILD.** Everything in #147 was
+  verified statically (773/773 suite, doc-links, doc-dupes, EOL). No chain has run.
+  The wave edited `Dockerfile.toolchain-builder` (the DEFAULT `patched-llvm` target)
+  and `linux/scripts/01-core/versions.env` (COPY'd into `Dockerfile.base`), so the
+  next build re-pays a full LLVM 23.1.0 compile and the media lanes below it —
+  the repo's own recorded figure for a toolchain-layer change is ~2 h of media
+  compiles, on top of the LLVM build. Budget for it; do not discover it. Until that
+  run is green, "gate-green is not usable" applies to this whole wave.
 
-- **#151 — `CHANGELOG.md` archive split.** **DONE 2026-08-31.** The file had run
-  to 2430 lines against its own ~700 rule (`CHANGELOG.md:5`). Cut on the DATE
-  boundary, not a line count: 2026-08-29 and newer stay live (568 lines), and
-  `## 2026-08-28 — Layer headroom dispute settled` and older moved verbatim into
-  [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) — 2026-08-28
-  carries six entries and splitting inside it would strand half a day's story.
-  The header pointer names both generations, and the new page is registered in
-  `docs/INDEX.md` and `docs/index.rst` (without both, `verify_doc_links.py` reds
-  on its `[index]` check — that is how this wave first tripped it).
+- **#153 — re-run the log forensics against a captured corpus.** The buildkitd
+  step-log env fix landed 2026-08-14 and the first fully-captured full chain ran
+  2026-08-18, so the analysis that produced the 49-run corpus (28 logs with real
+  clip events, the green reference run 49 % blind in its merge step) can now be
+  redone against logs that are not truncated. Not started.
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#147 / #148 / #150 / #151** — the 2026-08-31 wave: classic driver deleted, the
+  `patched-llvm` whole-dir module mount narrowed (and gated), TVM + GStreamer
+  helpers moved to their leaf modules, `Set-StrictMode` plus the four latent bugs it
+  exposed, the deliberate declines, the dead `build.ps1` permission entries, and the
+  CHANGELOG archive split. Seven commits, `7cc2e95f..a5eac0dd`. Full narratives:
+  [`windows-backlog-archive-2026-08-31.md`](windows-backlog-archive-2026-08-31.md)
+  § Backlog wave #147-#151. Its declines are also a standing directive below.
 
 - **#121** — QNN EP: BUILD-TIME PATH PROVEN 2026-08-31 on the full `:winarm64`
   cross run — SDK qairt-2.44.0.260225 (SHA-pinned), `onnxruntime_USE_QNN=ON`
@@ -245,7 +148,11 @@ this repo's cp314 pin).
 
 - **#133(d)** — LiteRT-LM CMake port: CLOSED 2026-08-29 (owner decision — staying on Bazel).
 - **#134** — post-#133 cleanup wave: DONE 2026-08-29. amd64 acceptance
-  PASSED (smoke 192/0/1, arch gate 1134/0). Archive: `windows-backlog-archive-2026-08-26.md` § #134.
+  PASSED (smoke 192/0/1, arch gate 1134/0). Narrative: `CHANGELOG.md`
+  § 2026-08-29 — amd64 acceptance build GREEN, and
+  [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) § #134
+  acceptance run. NOT in `windows-backlog-archive-2026-08-26.md` — that archive
+  (line 490) names #134 among the entries that deliberately stayed live.
 - **Layer headroom dispute** — SETTLED 2026-08-28. The final image sits at ~75
   layers (counted from the inherited chain's instructions: base 16 + nvidia 3 +
   toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, + 20 ENV + ~12 servercore
@@ -253,7 +160,10 @@ this repo's cp314 pin).
   `docs/windows-build-invariants.md`.
 - **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision). Archive: `windows-backlog-archive-2026-08-26.md` § #122.
 - **#136** — VS RUN caching: SOLVED + DEPLOYED 2026-08-26. Archive: `windows-backlog-archive-2026-08-26.md` § #136.
-- **#137** — sccache: DONE 2026-08-28. Needs rebuild to land.
+- **#137** — sccache: DONE 2026-08-28, **LANDED**. `SCCACHE_GIT_REV=8ab39266` is in
+  `versions.env:557` and in the built base image (the `setup-rust-toolchain` RUN is a
+  cache hit at that rev from the 2026-08-30 solve on); the full arm64 chain rebuilt
+  green through it on 2026-08-31. No rebuild is owed.
 - **#134 free follow-ups** — ALL DONE 2026-08-28: smoke floor recalibrated (85→66),
   §19 PROVISIONAL marker removed, pin parity updated for `TVM_COMMIT`, TVM
   fixtures fixed (single-quoted `` `n `` → real newlines), three merge-stage
@@ -270,8 +180,18 @@ this repo's cp314 pin).
 
 - **NEVER trim CUDA_ARCHITECTURES** (80;86;89;90 in ALL builds, incl. dev
   iterations; pinned by Pins.CanonicalValues).
-- **CUDA compiles stay BARE nvcc** — the sccache launcher-default question is
-  CLOSED (miscompile is storage-independent and cold-cache; archive #99/P0b).
+- **CUDA compiles go THROUGH sccache** — `SCCACHE_CUDA_LAUNCHER` is DEFAULT ON
+  since 2026-08-18 (`Dockerfile.media-builder:327`; the OpenCV stage via
+  `OPENCV_CUDA_LAUNCHER:421`). **Do not flip it off silently** — the onnx stage
+  then re-pays ~25 min of CUDA compiles per rebuild. Opt out per run with
+  `-BuildArg SCCACHE_CUDA_LAUNCHER=`.
+  CORRECTED 2026-08-31: this directive read "CUDA compiles stay BARE nvcc" and had
+  been wrong since 2026-08-18. The 2026-08-10 miscompile it rested on was
+  root-caused to sccache's dryrun quote-collapse and fixed upstream
+  (mozilla/sccache#2811, merged 2026-08-19); patch 006 is retired
+  (`build-onnx-from-source.ps1:147`). A directive is the worst place for a stale
+  rule — acting on this one would have cost ~25 min per rebuild against an
+  explicit Dockerfile warning.
 - **Do NOT collapse the media-core checkpoints** (#72: export is ~1.2% of the
   chain; resume granularity is worth more than ~60 s).
 - **Do not re-propose** branch protection (#59) or a scheduled nightly/weekly
@@ -284,6 +204,15 @@ this repo's cp314 pin).
 - **No logging-idiom sweep** (#110): chain scripts use Write-Host, gstreamer
   keeps its structured `log`, Write-BuildLog stays host-driver territory;
   enforcement is review, not a cache-busting mass edit.
+- **Do not re-propose #147's declines** (#148, 2026-08-31). Each was considered and
+  refused with a reason: deleting `Get-LlvmMasmCmakeArg` or narrowing the
+  `WindowsSourceBuild.Common` re-exports (the modules are external-consumer API — a
+  zero-references audit is not evidence of zero consumers); `Set-StrictMode` on
+  `WindowsFlutter.Common` / `WindowsContainerLog.Common` (same rule, and a module does
+  not inherit its caller's strict mode), on `Initialize-CiEnvironment.ps1` or
+  `litert-lm-export-bridge.ps1` (dot-sourced — it leaks, or is a no-op); moving
+  `Export-`/`Import-BuildHandoff` off the hot facade (they are the #149 rollback
+  payload). Full reasoning in the 2026-08-31 archive § Backlog wave.
 - **GES `_commit` retry is DORMANT INSURANCE** (#77): re-open only if its
   retry marker reappears in a gstreamer build.
 - **Restore `disk,webdav` only after WCOW cache mounts are PROVEN** (#99
@@ -310,8 +239,10 @@ this repo's cp314 pin).
      never reached the remote because L0 failed first under the default
      write-error-policy=l0). Core findings (nvcc deadlock + miscompile) stand;
      a two-sentence correction protects the report''s credibility. Also note
-     CUDA is launcher-off by default since 2026-08-10, so the deadlock repro
-     needs SCCACHE_CUDA_LAUNCHER=1.
+     CUDA was launcher-off by default only between 2026-08-10 and 2026-08-18
+     and has been launcher-ON since (post-#2811); the repro is explicit either
+     way — `repro-sccache-cuda-llm-deadlock.ps1:108` passes
+     SCCACHE_CUDA_LAUNCHER=1 itself.
   3. **Restore `disk,webdav`** once WCOW cache mounts stop losing inherited
      writes — owner intent; two-step re-verification recipe in the archive
      (#99): probe twice (ON-mount row must be clean on the SECOND, inheriting
@@ -334,6 +265,18 @@ this repo's cp314 pin).
   composes host tool paths without `.exe` on a Windows host;
   out/upstream-issue-iree-elf-arch-arm64-msvc.md — `MSVC_C_ARCHITECTURE_ID MATCHES 64`
   matches `ARM64`, archiving the x64 MASM object into an ARM64 library.
+- **REGISTRY of unfiled drafts under `out/` (added 2026-08-31 — the section title
+  says "do not let these evaporate", and four of these were named nowhere):**
+  `upstream-buildkit-wcow-cache-mount-draft.md` (item 1 above; its own header records
+  the one strengthening step still open), `upstream-sccache-2808-addendum.md` (item 2),
+  `upstream-issue-iree-host-bin-dir-exe.md`, `upstream-issue-iree-elf-arch-arm64-msvc.md`,
+  `upstream-issue-meson-summary-build-subproject.md` (DRAFT, not filed; verified against
+  meson 1.12.0), `upstream-issue-opencv-softfloat-neon.md`,
+  `upstream-comment-for-win-14977.md` (a comment for docker/for-win#14977), and
+  `upstream-llvm-aarch64-seh-instsize.md` — that last one is **not** llvm#219200: two
+  commits are written, built and green on branch `aarch64-instsize-verify`, UNPUSHED.
+  Already posted and needing no entry: `upstream-issue-sccache-nvcc.md` (#2808),
+  `upstream-issue-litert-lm-cmake.md` (#3245), `upstream-issue-opencv-ort-wchar.md` (#29788).
 - **Post-run diagnostics queue — DEMOTED 2026-08-14: the sccache half is
   CLOSED.** The forensics had escalated this to "sccache has never worked, on
   any run" (0 hits / 189,861 failed writes across 94 stat blocks). **That was
@@ -346,16 +289,24 @@ this repo's cp314 pin).
   inside a container** — the direction `Assert-SccacheEndpoint` never tests.
   `SCCACHE_ERROR_LOG` is no longer "the missing artifact": the cache mount was
   found EMPTY, so there was never a log to recover.
-  What remains here: (1) the exact-TU replay (`bias_softmax_impl.cu`) for the
-  miscompile mechanism and the nvcc/CUDA sccache crash — **untested by the
-  clang-cl probe and still genuinely open** (it is what drives #75's silent
-  `-j` downgrade ladder); (2) one `probe-build-copy.ps1 -Heavy` smoke after the
-  poisoned-chain prune; (3) re-measure the at-scale hit rate on the first real
-  media build after 2026-08-13 — until then it is simply unmeasured.
+  What remains here — RE-AUDITED 2026-08-31, and only item (2) is still open:
+  (1) **CLOSED 2026-08-18/19.** The exact-TU replay exists and ran
+  (`probe-onnx-tu-replay.ps1`, `bias_softmax_impl.cu`): it root-caused the
+  miscompile to sccache's dryrun quote-collapse (verified bare 3189 == wrapped
+  3189 symbols; mozilla/sccache#2811 merged 2026-08-19), and the nvcc/CUDA crash
+  proved to be #99 collateral, gone under a healthy backend. #75's `-j` ladder is
+  no longer silent either — it warns before and after (archive 2026-08-21:150).
+  (2) **STILL OPEN:** one `probe-build-copy.ps1 -Heavy` smoke after the
+  poisoned-chain prune.
+  (3) **CLOSED.** The at-scale hit rate was measured twice on real media builds:
+  the 2026-08-18 base ride (100.00 % CUDA/PTX/CUBIN, 207/816 hits) and the
+  2026-08-19 opencv run (99.97 % overall; opencv stage ~13 → ~4.3 min).
   VERIFIED 2026-08-14: the buildkitd service env now really does carry
   `BUILDKIT_STEP_LOG_MAX_SIZE=-1` + `..._MAX_SPEED=-1` (checked at the service
   registry key, and today's base build no longer emits the clip warning) — so
-  the next full chain will be the FIRST fully-captured one. The 49-run corpus
+  the next full chain would be the FIRST fully-captured one. That chain has since
+  run (the 2026-08-18 full-chain green), so a re-run of the forensics against a
+  captured corpus is now possible and has not been done. The 49-run corpus
   analysed above predates this: 28 of those logs contain real clip events, the
   green reference run is 49 % blind in its merge step, and historical ONNX
   steps are 83 % blind. Re-run the forensics against a full captured chain.

@@ -190,3 +190,149 @@ Pre-existing image state, not a regression — nothing except the (formerly lyin
 claimed they existed.
 
 </details>
+
+---
+
+## Backlog wave #147-#151 — 2026-08-31 (single driver, module mounts, StrictMode)
+
+Moved out of `windows-refactor-backlog.md` on 2026-08-31, per that file's own rule:
+resolved narratives live in a dated archive and only a one-line pointer stays behind.
+All five are reproduced here for context; `#149` is the one whose work is NOT finished —
+its restore stays OPEN in the live backlog, and that copy is the authority.
+
+- **#147 — single-driver + module-mount cleanup wave.** **DONE 2026-08-31** on
+  `refactor/windows-chain-cleanup`: code landed, suite green at 773 tests, **no
+  chain run yet**. `build-buildkit.ps1` is the only driver.
+  1. **Classic driver deleted.** `windows/build.ps1` (retired 2026-08-26) and the
+     six `WindowsBuildDriver.Common.psm1` functions only it called —
+     `Set-BuildDriverIsolation`, `Invoke-DockerWithRetry`,
+     `Get-DockerBuildArgList`, `Assert-ImageExists`, `Resolve-BuildIsolation`,
+     `Assert-DockerDaemon`. `Test-TransientDockerFailure` STAYS: the BK driver
+     reaches it through `Invoke-TransientCooldown`. `$script:BuildDriverContext`
+     is down to `TransientPattern`, and `Initialize-BuildDriverContext` takes
+     only `-TransientPattern` (nothing read Docker/LogDir/NoCache).
+     `Driver.PreflightParity.Tests.ps1` → `Driver.PreflightContract.Tests.ps1`
+     (3 tests, one driver); floor 763 → 762 with provenance at
+     `windows/scripts/tests/Invoke-Tests.ps1:154` — the first DROP, measured, not
+     hiding a red run. Stale `build.ps1` references corrected in 19 files;
+     `verify-host-setup.ps1` was a LIVE CHECK reporting stevedore as the "classic
+     fallback lane" and now reports it as the publish/inspect tool.
+     `Dockerfile.torch`'s `-TorchBaseImage` recipe has NO BuildKit equivalent
+     (the driver pins the torch stage's `BASE_IMAGE` to the local windows-media
+     tag), so it is documented as not driver-supported, not mechanically renamed.
+  2. **The expensive one — a whole-dir modules mount on the DEFAULT toolchain
+     target.** `Dockerfile.toolchain-builder`'s `patched-llvm` RUN bind-mounted
+     all of `windows/scripts/modules` (~45 files), and `patched-llvm` is the
+     default (`build-buildkit.ps1:526`; `-StockLlvm` is the opt-out) — so ANY
+     `.psm1` edit re-keyed a full LLVM 23.1.0 compile **and** every media lane
+     deriving from that image. Now six per-FILE mounts, exactly the closure
+     `build-llvm-from-source.ps1` imports (`Dockerfile.toolchain-builder:66-76`),
+     gated by a new test at `BuildKit.ModuleClosure.Tests.ps1:190` that fails a
+     whole-dir modules mount in any windows Dockerfile except `Dockerfile.probe`
+     (exempt by design — `PROBE_NONCE` busts its layer anyway; its header says
+     so). **Correction of record:** while that mount existed, "a host-only module
+     edit cannot bust a compile layer" and "editing `WindowsBuildDriver.Common`
+     is cheap" were FALSE. They are true now. Same file: the
+     `BUILD_PATCHED_LLVM` comment still claimed "OPT-IN / off by default" against
+     its own `ARG BUILD_PATCHED_LLVM=1` and the driver default — corrected (#135
+     made it default).
+  3. **TVM wheel helpers off the hot facade.** `Write-AssembledWheelDistInfo` and
+     `Get-PyprojectDependencies` moved from `WindowsSourceBuild.Common.psm1` (the
+     `buildmods` six, mounted into all 11 media RUNs) to
+     `WindowsTvm.Common.psm1:60,92` (the `tvmmods` leaf, mounted by media-tvm
+     only). Sole consumer: `build-tvm-from-source.ps1:316-326`.
+  4. **`Set-StrictMode -Version Latest`** added to `build-llvm-from-source`,
+     `debug-litertlm-link`, `load-versions`, `normalize-tensorrt-tree`,
+     `stage-cuda-runtime`, `clean-sccache-mount`, `bootstrap-pwsh`. Making that
+     safe needed FOUR latent-bug fixes, each verified on pwsh 7.6.5 (where
+     `.Count` throws on a scalar **and** on an empty pipeline result):
+     `normalize-tensorrt-tree.ps1`'s `$dllDirs` was not `@()`-wrapped, so `.Count`
+     threw on the **normal success path** (TensorRT 10+/11 ship the DLLs in `bin`
+     only — exactly one dir survives); `stage-cuda-runtime.ps1`'s `$roots` had the
+     same shape and would have re-broken the arm64/CPU merge lane that the
+     2026-08-23 degrade-cleanly fix unblocked; `clean-sccache-mount.ps1` inlined
+     `.Sum` on a `Measure-Object -Property`, which emits NOTHING for empty input;
+     `debug-litertlm-link.ps1` took `.Source` off an absent `llvm-nm.exe` —
+     **already a live bug**, because its caller `build-litert-lm-from-source.ps1`
+     sets StrictMode and `&`-invocation inherits it.
+  5. **GStreamer wrap provisioning extracted.** The phase-5 wrap-git prefetch +
+     libffi force-download (~64 lines) became `Invoke-GstWrapProvisioning`
+     (`WindowsMeson.Common.psm1:293`, a merge-lane leaf). It takes a `-Logger`
+     scriptblock, accumulates failures in a LOCAL list and RETURNS them; the #88
+     fail-closed throw stays at the call site
+     (`build-gstreamer-from-source.ps1:288`) so that gate stays visible where it
+     fires. The libffi version expression deliberately STAYED in the stage script
+     (`:283-285`) — `SourceBuild.PinParity`'s W1c scanner keys the pin site by
+     FILE NAME. Script 1574 → 1514 lines. New suite:
+     `SourceBuild.GstWrapProvisioning.Tests.ps1`.
+  6. **Non-hermetic test fixed.** `Assert-ShimPatch` gained `-AlternateRoot`
+     (default unchanged, `WindowsBuildDriver.Common.psm1:333`) so its fail-closed
+     not-found path is testable on a host that HAS a real shim — the two cases at
+     `BuildDriver.HostGates.Tests.ps1:205,215` now pass `-AlternateRoot @()`
+     instead of silently exercising the fallback probe.
+  7. **Audited: no classic-only Dockerfile targets remain.**
+     `Dockerfile.media-builder`'s stages are `common` / `buildmods` / `tvmmods` /
+     `*-env` / `*-built`; the warm/materialize targets went in the 2026-08-06
+     de-warming (see #149). Nothing in the tree still needs the classic driver.
+  Docs: [`windows-builds.md`](windows-builds.md) § Reusable modules,
+  [`windows-build-invariants.md`](windows-build-invariants.md) § external-consumer API,
+  and `AGENTS.md` § Caching discipline for the module tiers. Note for readers of
+  `windows-build-resources.md:136`: its "backlog #134" follow-up pointer is CLOSED
+  and now resolves here (#147) — the sampler itself was wired into
+  `build-buildkit.ps1:461` by #134's free follow-ups.
+
+- **#148 — #147's deliberate declines (recorded so they are not re-litigated).**
+  Each is a cleanup the wave could have made and did not, on purpose:
+  1. **`Get-LlvmMasmCmakeArg` stays dead-but-present**, and the four re-exports on
+     the `WindowsSourceBuild.Common` facade stay un-narrowed — other Kataglyphis
+     repos import these modules, so a zero-references audit is not evidence of
+     zero consumers. Rule: [`windows-builds.md`](windows-builds.md) § Reusable
+     modules and [`windows-build-invariants.md`](windows-build-invariants.md)
+     § external-consumer API.
+  2. **`Set-StrictMode` declined on four files**, each for its own reason:
+     `WindowsFlutter.Common.psm1` and `WindowsContainerLog.Common.psm1` are
+     external-consumer API and a module does NOT inherit its caller's strict mode,
+     so adding it is a real downstream behaviour change;
+     `Initialize-CiEnvironment.ps1` is dot-sourced and would leak strict mode into
+     seven in-repo callers plus external consumers; `litert-lm-export-bridge.ps1`
+     is dot-sourced by a caller that already sets it, so the line is a no-op with
+     leak risk.
+  3. **`Export-BuildHandoff` / `Import-BuildHandoff` stay on the hot facade.**
+     They look host-only, but `bk-warm.ps1`'s header keeps them plus
+     `bk-materialize.ps1` as the TESTED ROLLBACK PATH, and the retired
+     `media-core-built-opencv` RUN in `c9586c1^` mounts
+     `WindowsSourceBuild.Common.psm1` into the container precisely so
+     `bk-materialize` can call `Import-BuildHandoff`. Moving them breaks that path
+     silently. See #149 for why that path is not currently safe anyway.
+
+- **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
+  stale.** NOTE REPAIRED 2026-08-31 (`bk-warm.ps1:5-18`); the restore itself stays
+  OPEN until someone needs it. `bk-warm.ps1` promised that if the ExportLayer-0x3
+  canary fires again you can restore those targets and "these payloads work
+  unchanged". The payloads do; the targets do not. Measured: all **ten** retired
+  RUNs mount the same five modules (`WindowsSourceBuild.Common`, `Shared`,
+  `Patches`, `Cuda`, `Native`) and neither module the tree has needed since:
+  1. `WindowsTargetArch.Common.psm1` — `WindowsSourceBuild.Common` **throws at
+     import** without it (#116, the deliberate throw at its line 36), so every
+     restored RUN dies before executing a line. This is the one that makes the
+     recipe dead rather than partial.
+  2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
+     `tvmmods` mount (#134), so TVM still fails once the import is fixed.
+  The fix is two mount lines per restored target. The header now says so; do not
+  delete the recipe, and do not trust it verbatim.
+
+- **#150 — `.claude/settings.local.json` still allowlists `build.ps1` invocations**
+  (four entries, lines 9-15) for a driver that no longer exists. NOT touched by
+  #147: permission configuration is the owner's call. Harmless (the commands
+  cannot run), but it is the last place the classic driver is still named as a
+  live entry point.
+
+- **#151 — `CHANGELOG.md` archive split.** **DONE 2026-08-31.** The file had run
+  to 2430 lines against its own ~700 rule (`CHANGELOG.md:5`). Cut on the DATE
+  boundary, not a line count: 2026-08-29 and newer stay live (568 lines), and
+  `## 2026-08-28 — Layer headroom dispute settled` and older moved verbatim into
+  [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) — 2026-08-28
+  carries six entries and splitting inside it would strand half a day's story.
+  The header pointer names both generations, and the new page is registered in
+  `docs/INDEX.md` and `docs/index.rst` (without both, `verify_doc_links.py` reds
+  on its `[index]` check — that is how this wave first tripped it).

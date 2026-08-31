@@ -104,7 +104,7 @@ ORT 1.28.0 XQA (paged-attention) kernels: the host-pass include guard keys on th
 
 #### ~~`006-cuda-llm-bare-nvcc.patch`~~ RETIRED 2026-08-18
 
-sccache's nvcc decomposition crashes its server deterministically on the fused_moe_gemm generated launchers (two chain runs died at ~4910 s, `os error 10054` on every client). The launchers all live in the `onnxruntime_providers_cuda_llm` OBJECT library, so the patch clears that ONE target's `CUDA_COMPILER_LAUNCHER` property — bare nvcc there. (Historical note: when written, CUDA elsewhere was sccache-wrapped; since the 2026-08-10 opt-in flip ALL CUDA compiles bare unless `SCCACHE_CUDA_LAUNCHER=1`, so today the patch only matters when that opt-in is active — e.g. the #2808 repro, which skips the patch AND sets the opt-in.) Hit rates are visible per run via the `sccache-stats|` stderr block after the ONNX build
+sccache's nvcc decomposition crashes its server deterministically on the fused_moe_gemm generated launchers (two chain runs died at ~4910 s, `os error 10054` on every client). The launchers all live in the `onnxruntime_providers_cuda_llm` OBJECT library, so the patch clears that ONE target's `CUDA_COMPILER_LAUNCHER` property — bare nvcc there. (Historical note: CUDA went opt-in-bare on 2026-08-10, then back to launcher-ON by DEFAULT on 2026-08-18 once mozilla/sccache#2811 fixed the dryrun quote-collapse. So the patch is live again on every normal build; opt out with `-BuildArg SCCACHE_CUDA_LAUNCHER=`.) Hit rates are visible per run via the `sccache-stats|` stderr block after the ONNX build
 
 #### `001-cmake-clang-cl-compat.patch`
 
