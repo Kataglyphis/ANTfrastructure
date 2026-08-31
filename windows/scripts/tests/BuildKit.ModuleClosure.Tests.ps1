@@ -181,4 +181,23 @@ Describe 'BuildKit module closure' {
             }
         }
     }
+
+    It 'no chain stage bind-mounts the WHOLE modules directory' {
+        # A directory mount puts EVERY module in the RUN's cache key, so editing any
+        # one of them re-keys that compile. Dockerfile.toolchain-builder's patched-llvm
+        # RUN did this and it is the DEFAULT toolchain target, so a host-only module edit
+        # silently re-paid a full LLVM build plus the media lanes that derive from it.
+        # Dockerfile.probe is exempt BY DESIGN: PROBE_NONCE busts its layer anyway and it
+        # dispatches arbitrary diagnostic scripts (its own header states this).
+        $offenders = @()
+        foreach ($df in (Get-ChildItem -Path $script:repoRoot -Filter 'Dockerfile*' -File -Recurse |
+                         Where-Object { $_.FullName -like '*\windows\*' -and $_.Name -ne 'Dockerfile.probe' })) {
+            foreach ($m in [regex]::Matches([System.IO.File]::ReadAllText($df.FullName),
+                            '(?im)^\s*.*--mount=type=bind,source=windows/scripts/modules,')) {
+                $offenders += "$($df.Name): $($m.Value.Trim())"
+            }
+        }
+        $offenders | Should -BeNullOrEmpty -Because ("a whole-directory modules mount makes every module edit re-key that RUN; " +
+            "mount the per-file closure the script actually imports:`n  " + ($offenders -join "`n  "))
+    }
 }
