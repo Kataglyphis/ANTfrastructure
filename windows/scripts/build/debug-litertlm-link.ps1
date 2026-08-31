@@ -14,6 +14,7 @@ param(
 )
 
 # Diagnostics are best-effort and must never fail the build that invoked them.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Continue'
 $innerBuild = Join-Path $SourceDir 'build_ninja\litert_lm\build'
 Write-Host '===DIAG=== litert_lm_main.rsp (link inputs/flags, order preserved):'
@@ -36,7 +37,10 @@ if ($rsp) {
     }
 }
 Write-Host '===DIAG=== which built lib DEFINES the leftover undefined symbols (nm scan; T/D/W = defined):'
-$nmExe = (Get-Command 'llvm-nm.exe' -ErrorAction SilentlyContinue).Source
+# Bound first: llvm-nm being absent is an expected outcome (see the else below), and
+# .Source on the null throws under the StrictMode this script inherits from its caller.
+$nmCmd = Get-Command 'llvm-nm.exe' -ErrorAction SilentlyContinue
+$nmExe = if ($nmCmd) { $nmCmd.Source } else { $null }
 if ($nmExe) {
     $fragments = @('ClassicLocale', 'MixingHashState', 'combine_raw', 'HashStateBase')
     # @(...) is load-bearing: an empty pipeline yields AutomationNull, whose .Count throws under the caller's inherited StrictMode.

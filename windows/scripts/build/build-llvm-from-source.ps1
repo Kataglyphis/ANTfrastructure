@@ -32,6 +32,7 @@ param(
     [switch]$SkipIfPresent
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # #108: container mounts are FLAT (C:\temp\scripts), the repo nests one level deeper.

@@ -11,6 +11,7 @@
 # attempts with linear backoff, the SHA256 check INSIDE the loop (a truncated /
 # HTML body is retried, not thrown on), and the ORIGINAL exception rethrown when
 # the retry budget is exhausted.
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
