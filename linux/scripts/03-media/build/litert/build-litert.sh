@@ -159,6 +159,34 @@ litert_cross_wheel_platform_tag() {
     return 1
 }
 
+# Upstream's litert/vendors/CMakeLists.txt file(DOWNLOAD)s the QAIRT SDK whenever
+# QAIRT_HEADERS_DIR is empty -- ~1.5 GB from softwarecenter.qualcomm.com, with no
+# EXPECTED_HASH and no STATUS check, and NOT gated on LITERT_ENABLE_QUALCOMM, so it
+# fires even on builds that want no NPU at all. We cannot dodge it by pointing
+# QAIRT_HEADERS_DIR at a stub: any non-empty value force-enables Qualcomm (:331-334)
+# with headers we do not have. So short-circuit the guard itself.
+# Idempotent; the marker comment is the guard. Fails loudly if the anchor moves.
+_litert_disable_qairt_header_download() {
+    local vendors="${LITERT_SRC}/litert/vendors/CMakeLists.txt"
+    [ -f "${vendors}" ] || { warn "QAIRT download patch: ${vendors} not found -- upstream layout moved"; return 0; }
+    if grep -q 'KATAGLYPHIS-NO-QAIRT-DOWNLOAD' "${vendors}"; then return 0; fi
+    python3 - "${vendors}" <<'PY'
+import re, sys
+p = sys.argv[1]
+s = open(p, encoding='utf-8').read()
+needle = 'if(NOT QAIRT_HEADERS_DIR)'
+if needle not in s:
+    sys.exit("QAIRT download patch: anchor 'if(NOT QAIRT_HEADERS_DIR)' not found -- upstream changed")
+s = s.replace(needle,
+    '# KATAGLYPHIS-NO-QAIRT-DOWNLOAD: no staged SDK, so skip upstream\'s unhashed\n'
+    '# ~1.5 GB file(DOWNLOAD) of QAIRT from softwarecenter.qualcomm.com. Qualcomm\n'
+    '# dispatch stays OFF because QAIRT_HEADERS_DIR is never set.\n'
+    'if(FALSE)', 1)
+open(p, 'w', encoding='utf-8', newline='').write(s)
+PY
+    info "LiteRT: no QAIRT SDK staged -- upstream's unhashed QAIRT download disabled (Qualcomm dispatch OFF)"
+}
+
 # GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is triggered by the
 # cross-compiler toolchain used in cross builds; on native amd64 we keep the
 # sources and use clang instead (see append_litert_preferred_cmake_compiler_args).
@@ -235,7 +263,6 @@ configure_litert() {
         # XNNPACK+RUY cover CPU inference on all three arches.
         "-DLITERT_ENABLE_GPU=OFF"
         "-DLITERT_ENABLE_NPU=OFF"
-        "-DTFLITE_ENABLE_QNN=OFF"
         "-DTFLITE_ENABLE_XNNPACK=ON"
         "-DTFLITE_ENABLE_RUY=ON"
         "-DPython3_EXECUTABLE=${HOST_PYTHON_BIN}"
@@ -244,11 +271,31 @@ configure_litert() {
     # EIGEN-NET: mirrored eigen fetch (this path still git-cloned it from gitlab).
     cmake_args+=("${LITERT_EIGEN_FETCH_FLAGS[@]}")
 
-    # QNN delegate (backlog QNN-LINUX, mirrors Windows build-litert #121).
-    # Last-wins on the duplicate -D: QNN=ON + NPU=ON supersede the OFF defaults.
+    # Qualcomm dispatch (backlog QNN-LINUX). CORRECTED 2026-08-31 (Windows #154):
+    # TFLITE_ENABLE_QNN and QNN_HOME are NOT LiteRT options -- CMake dropped both
+    # silently while this printed "QNN delegate ON". The real switch is
+    # LITERT_ENABLE_QUALCOMM (litert/vendors/CMakeLists.txt:330), and setting
+    # QAIRT_HEADERS_DIR (:20) auto-forces it ON (:331-334). LITERT_ENABLE_NPU is real
+    # but is NOT the QNN gate -- it only feeds a #cmakedefine01 in build_config.h.
+    # QAIRT is consumed as HEADERS ONLY at configure time; backends load at runtime.
+    litert_vendor_header_stub="${LITERT_SRC}/litert/.vendor-headers-absent"
+    mkdir -p "${litert_vendor_header_stub}"
+    # Suppress two of upstream's three unconditional configure-time downloads. Both
+    # gates require the header to EXIST, so a stub dir is safe and keeps them off.
+    cmake_args+=("-DNEUROPILOT_HEADERS_DIR=${litert_vendor_header_stub}"
+                 "-DLITECORE_HEADERS_DIR=${litert_vendor_header_stub}")
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
-        info "LiteRT: QNN delegate ON (SDK root ${LITERT_QNN_HOME})"
-        cmake_args+=("-DTFLITE_ENABLE_QNN=ON" "-DQNN_HOME=${LITERT_QNN_HOME}" "-DLITERT_ENABLE_NPU=ON")
+        # QnnCommon.h sits under include/QNN in a QAIRT tree; upstream probes both
+        # "<dir>" and "<dir>/QNN", so hand it the include root.
+        info "LiteRT: Qualcomm dispatch ON (QAIRT headers from ${LITERT_QNN_HOME}/include)"
+        cmake_args+=("-DQAIRT_HEADERS_DIR=${LITERT_QNN_HOME}/include" "-DLITERT_ENABLE_NPU=ON")
+    else
+        # NO staged SDK: QAIRT_HEADERS_DIR must stay UNSET (any value force-enables
+        # Qualcomm with headers we do not have), so upstream would file(DOWNLOAD) QAIRT
+        # 2.47 from softwarecenter.qualcomm.com -- ~1.5 GB, no EXPECTED_HASH, no error
+        # check, on every configure. Patch the block out instead, same shape as the
+        # Samsung vendor stub above.
+        _litert_disable_qairt_header_download
     fi
 
     append_litert_preferred_cmake_compiler_args cmake_args
@@ -461,9 +508,9 @@ _litert_wheel_prepare_env() {
     # before the patch is applied (the patch script reads this env var).
     extra_cmake_flags="-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5} -DRUY_PROFILER=0 -DRUY_ENABLE_INSTRUMENTATION=OFF -DRUY_PROFILER_INSTRUMENTATION=OFF -DRUY_BUILD_TOOLS=OFF -DRUY_BUILD_TESTING=OFF -DLITERT_AUTO_BUILD_TFLITE=ON -DLITERT_ENABLE_GPU=OFF -DLITERT_ENABLE_NPU=OFF -DTFLITE_ENABLE_RUY=ON -DPython3_EXECUTABLE=${PYTHON}"
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
-        # QNN delegate (backlog QNN-LINUX): last-wins on the duplicate -D, so the
-        # appended ON/QNN_HOME supersede the NPU=OFF default above.
-        extra_cmake_flags+=" -DTFLITE_ENABLE_QNN=ON -DQNN_HOME=${LITERT_QNN_HOME} -DLITERT_ENABLE_NPU=ON"
+        # Qualcomm dispatch (see the configure path above for why these are the
+        # real names): last-wins on the duplicate -D supersedes the NPU=OFF default.
+        extra_cmake_flags+=" -DQAIRT_HEADERS_DIR=${LITERT_QNN_HOME}/include -DLITERT_ENABLE_NPU=ON"
     fi
     # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
     # patched upstream build_pip_package_with_cmake.sh word-splits this string
