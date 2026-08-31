@@ -5,6 +5,25 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — hybrid re-tested after RAM tuning: 9B stays the hybrid sweet spot, 27B never answers
+
+Re-ran the hybrid matrix after the WSL2 RAM tuning, plus the previously
+untested 27B Q3_K_XL hybrid case:
+
+- **9B-Distill hybrid re-confirmed as the best hybrid model**: 7.5 tok/s,
+  20.9 s round-trip incl. load over the OpenAI API — the largest Qwen3.8-class
+  model that actually runs accelerated on this machine.
+- **27B Q4_0 hybrid**: crashes (HTP vmem limit — unchanged, expected).
+- **27B Q3_K_XL hybrid (12.2 GB)**: NEW finding — it **does not crash** (unlike
+  Q4_0), the server stays alive, but the request **never completes within
+  600 s**. The CPU portion of the straddle is so large it is practically
+  unusable. So hybrid's real ceiling is the 9B-Distill.
+- Docs updated: model matrix + compute envelope now include the 27B Q3_K_XL
+  columns, the HTP limit is stated precisely (2,93 GiB on-die vmem
+  `3145728000`, why host-RAM tuning cannot change it), and a troubleshooting
+  row for the hybrid-hang. The recommended hybrid model
+  (Qwen3.8-9B-Distill Q4_K_M) is stated explicitly.
+
 ## 2026-08-31 — WSL2 RAM tuning: host gets ~20 GB back; 27B loads on GPU but stays impractical
 
 The GenieX models run on the Windows host, but the host `.wslconfig` had capped

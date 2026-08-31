@@ -205,49 +205,60 @@ Verify the endpoint before blaming the agent:
 curl -s http://127.0.0.1:18181/v1/models
 ```
 
-### Which Qwen3.8-class models fit this machine (all measured 2026-08-31)
+### Which Qwen3.8-class models fit this machine (all measured 2026-08-31, incl. post-RAM-tuning re-test)
 
 | Model | Size (Q4) | NPU only | **hybrid** (NPU+CPU) | GPU | CPU |
 |---|---|---|---|---|---|
 | **Qwen3.8-2B-Distill** (`empero-ai`) | 1.31 GB | ✅ **16.9 tok/s** | ✅ ~16 tok/s | ✅ | ✅ |
 | **Qwen3-4B** (`unsloth`) | 2.2 GB | ✅ **15.2 tok/s** | ✅ 14.1 tok/s | ✅ 13.2 tok/s | ✅ slow |
-| **Qwen3.8-9B-Distill** (`empero-ai`) | 5.78 GB | ❌ over HTP budget | ✅ **7.5 tok/s** | ✅ 6.5 tok/s | ✅ |
-| **Qwen3.8-27B** (`unsloth`) | 16.1 GB | ❌ | ❌ (crashes) | ❌ OOM (Q4_0) | ✅ slow |
+| **Qwen3.8-9B-Distill** (`empero-ai`) | 5.78 GB | ❌ over HTP budget | ✅ **7.5 tok/s** (20.9 s round-trip incl. load) | ✅ 6.5 tok/s | ✅ |
+| **Qwen3.8-27B** Q4_0 (`unsloth`) | 16.1 GB | ❌ | ❌ crashes (`dspqueue_read failed: 0x00000072`) | ❌ OOM | ✅ slow |
+| **Qwen3.8-27B** Q3_K_XL | 13.1 GB | ❌ | ❌ **no crash, but unusable** — server never answers within 600 s | ⚠️ loads, then thrashes (2.0 tok/s) | ✅ slow |
 
 **Hybrid wins for models that straddle the HTP budget.** The 9B distill does
-not fit the ~3 GB HTP alone, but `--compute hybrid` offloads the layers that
-fit and runs the rest on CPU — landing **7.5 tok/s, faster than the GPU's
-6.5 tok/s** on the same model. For models that fully fit (2B, 4B), hybrid adds
-CPU hand-off overhead, so pure NPU is faster (16.9 / 15.2 vs ~14–16).
+not fit the ~3 GB (2,93 GiB) HTP alone, but `--compute hybrid` offloads the
+layers that fit and runs the rest on CPU — landing **7.5 tok/s, faster than
+the GPU's 6.5 tok/s** on the same model. For models that fully fit (2B, 4B),
+hybrid adds CPU hand-off overhead, so pure NPU is faster (16.9 / 15.2 vs
+~14–16). Re-verified after the WSL2 RAM tuning: the freed host RAM did **not**
+change the hybrid/NPU numbers, because the HTP limit is on-die vmem, not host
+RAM.
 
 **Nothing combines GPU+NPU on one model.** `hybrid` = NPU + CPU only. The 27B
-crashes on both NPU and hybrid (the single HTP cannot even stage a fraction),
-and Q4_0 OOMs the GPU; Q3_K_XL (13.1 GB) is the only 27B quant that loads on
-the GPU, at degraded quality. For 27B, CPU is the only reliable path.
+Q4_0 crashes on both NPU and hybrid (the single HTP cannot even stage a
+fraction); the 27B Q3_K_XL does not crash but neither completes a request in
+a practical time on hybrid or GPU — for 27B, CPU is the only reliable path.
 
-Pragmatic picks for a coding agent: **Qwen3.8-2B-Distill** (NPU, fastest) for
-light tasks, **Qwen3-4B** (NPU) for the best quality that fits an accelerator,
-and **Qwen3.8-9B-Distill** (hybrid) when you want a bigger model and accept
-~7 tok/s.
+**Best Qwen3.8 model for hybrid on this machine: `Qwen3.8-9B-Distill` Q4_K_M.**
+It is the largest Qwen3.8-class model that runs *and* responds in ~21 s
+(round-trip incl. load) — pure NPU can't hold it, the GPU is slower, the 27B
+doesn't deliver in any accelerated mode.
 
 ### Measured compute envelope (Lenovo Snapdragon X, 2026-08-31, AFTER NPU driver update)
 
 All speeds are token/s on short replies; first-token latency in parentheses.
 
-| Compute | 2B-Distill Q4_K_M | 4B Q4_0 | 9B-Distill Q4_K_M | 27B Q4_0 |
-|---|---|---|---|---|
-| **NPU** (Hexagon HTP) | **16.9** (0.2 s) | **15.2** (0.2 s) | ❌ over HTP budget | ❌ `dspqueue_read failed: 0x00000072` |
-| **hybrid** (HTP + CPU) | ~16 | 14.1 (2.6 s) | **7.5** (3.1 s) | ❌ crashes |
-| **GPU** (Adreno X1-45) | ~13 | 13.2 | 6.5 (0.6 s) | ❌ OOM (Q4_0) |
-| **CPU** (WSL2) | ~8–10* | ~5* | ~2–3* | ~1 (224 s incl. load) |
+| Compute | 2B-Distill Q4_K_M | 4B Q4_0 | 9B-Distill Q4_K_M | 27B Q4_0 | 27B Q3_K_XL |
+|---|---|---|---|---|---|
+| **NPU** (Hexagon HTP) | **16.9** (0.2 s) | **15.2** (0.2 s) | ❌ over HTP budget | ❌ `dspqueue_read failed: 0x00000072` | ❌ over HTP budget |
+| **hybrid** (HTP + CPU) | ~16 | 14.1 (2.6 s) | **7.5** (3.1 s) | ❌ crashes | ❌ no answer in 600 s |
+| **GPU** (Adreno X1-45) | ~13 | 13.2 | 6.5 (0.6 s) | ❌ OOM (Q4_0) | ⚠️ 2.0 tok/s, thrashes |
+| **CPU** (WSL2) | ~8–10* | ~5* | ~2–3* | ~1 (224 s incl. load) | ~1* |
 
-\* CPU token/s for 2B/4B/9B are estimates scaled from the measured 27B CPU
-rate; only the 27B CPU time (224 s for a short reply incl. model load) was
-measured directly. NPU/GPU/hybrid numbers are all measured.
+\* CPU token/s for 2B/4B/9B/27B-Q3_K_XL are estimates scaled from the measured
+27B Q4_0 CPU time (224 s for a short reply incl. model load). NPU/GPU/hybrid
+numbers are all measured.
 
-The HTP's vmem budget is ~3 GB (`vmem 3145728000` in the load log). Hybrid is
-the lever that makes a 9B usable with acceleration; beyond ~6 GB even hybrid
-fails because the HTP cannot stage enough layers.
+**The HTP vmem limit — what it is and why RAM tuning did not change it:**
+
+The Hexagon HTP is a separate on-die DSP block, not the host CPU/RAM. Each HTP
+session gets a **virtual-memory budget of 2,93 GiB** (`3145728000` bytes,
+printed at load: `vmem 3145728000`) for weights + activations + KV cache.
+Model graphs above that limit fail at compute with
+`dspqueue_read failed: 0x00000072`; `hybrid` can only offload the layers that
+fit inside that budget and runs the rest on CPU. That is why freeing ~20 GB of
+host RAM changed nothing for NPU/hybrid — the ceiling is on-die, not host
+memory. (It did matter for the GPU path, see § Making room.)
 
 **The 27B quant ladder (what fits the Adreno's unified memory)**
 
@@ -294,12 +305,13 @@ and the Hexagon NPU device to driver **30.0.220.3000**. After the reboot the
 > deliberately checks the copy matching the Hexagon NPU device's installed
 > driver version, so an old store copy can never produce a false "MISSING".
 
-### Remaining limit: HTP memory (~3 GB)
+### Remaining limit: HTP memory (~2,93 GiB vmem)
 
 Even with the NPU working, the Hexagon HTP has a **virtual memory budget of
-~3 GB** (the load log prints `vmem 3145728000`). Models whose graph exceeds it
-fail *at graph compute* with `dspqueue_read failed: 0x00000072` — a memory
-limit, not a driver problem. This is the same class as upstream
+~2,93 GiB** (`vmem 3145728000` in the load log) for weights + activations +
+KV cache — the on-die DSP limit, unrelated to host RAM. Models whose graph
+exceeds it fail *at graph compute* with `dspqueue_read failed: 0x00000072`.
+This is the same class as upstream
 [ggml-org/llama.cpp#26123](https://github.com/ggml-org/llama.cpp/issues/26123)
 ("reproducible at 4B+ params"). The 4B fits; the 27B does not.
 
@@ -313,7 +325,8 @@ Every row below was hit live on 2026-08-31.
 | Windows `geniex serve` exits with `bind: Only one usage of each socket address` | A WSL-side GenieX server on `127.0.0.1:18181` shadows the port through localhost forwarding | Stop the WSL server (`fuser -k 18181/tcp`) |
 | `SDKError(Invalid input parameters or handle)` on `--compute npu`; log shows `ggml-hex: failed to dlsym dspqueue_create` and `Device 'HTP0' not found` | Installed Qualcomm CDSP driver's `libcdsprpc.dll` does not export the `dspqueue_create`/`read`/`write`/`export`/`close` symbols the bundled llama.cpp Hexagon backend needs — a stale driver/backend mismatch | **Update the Qualcomm Hexagon NPU driver** (Windows Update optional updates / Lenovo support), reboot, re-run `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. Full analysis: § The NPU problem |
 | QAIRT bundle `--compute npu` crashes with `Exception 0xc00000fd` (STACK_OVERFLOW) in native code | QNN HTP runtime init stack-overflows against the old CDSP transport | Same driver update (above) |
-| `dspqueue_read failed: 0x00000072` during generation on `--compute npu` | **Model too large for the HTP** (~3 GB vmem budget) — a memory limit, not a driver bug | Use a smaller model (4B fits at 15.2 tok/s) or a different compute. Matches upstream ggml-org/llama.cpp#26123 |
+| `dspqueue_read failed: 0x00000072` during generation on `--compute npu` | **Model too large for the HTP** (~2,93 GiB vmem budget) — a memory limit, not a driver bug | Use a smaller model (4B fits at 15.2 tok/s) or a different compute. Matches upstream ggml-org/llama.cpp#26123 |
+| `--compute hybrid` server accepts the request but never answers (HTTP 000 after 600 s), unlike NPU which crashes fast | 27B Q3_K_XL straddles the HTP budget: the HTP stages what fits, the CPU portion is so large it never finishes in practical time — neither crashes nor completes | The 27B is CPU-only territory on this machine. Use the 9B-Distill for hybrid (7.5 tok/s) instead |
 | `CL_OUT_OF_RESOURCES` / `GGML_ASSERT(0) failed` at `ggml-opencl.cpp` on `--compute gpu` | 27B Q4_0 (16 GB) exceeds the Adreno's allocatable unified memory | Pull a smaller quant; the usable window is ≤ ~13 GB (see quant ladder above) |
 | `geniex serve` answers on Windows but not from WSL2 via the LAN IP | Windows Firewall (Ethernet on `Public` profile) blocks inbound | Prefer `127.0.0.1` with mirrored networking; otherwise add an inbound allow rule for TCP 18181 (elevated) |
 | `geniex pull` needs a TTY on every invocation | Chipset picker re-triggers when no chipset is stored | Set the chipset once (above) |
