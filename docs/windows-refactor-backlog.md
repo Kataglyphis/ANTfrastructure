@@ -64,32 +64,6 @@ this repo's cp314 pin).
 
 ### Open items
 
-- **#149 — the `c9586c1^` warm/materialize rollback recipe is DEAD, not merely
-  stale.** Note repaired 2026-08-31 (`bk-warm.ps1:15-22`); THE RESTORE ITSELF IS
-  STILL OPEN. All ten retired RUNs mount the same five modules and neither module
-  the tree has needed since:
-  1. `WindowsTargetArch.Common.psm1` — `WindowsSourceBuild.Common` **throws at
-     import** without it (`:37`, a deliberate throw rather than a stub), so every
-     restored RUN dies before executing a line. This is what makes the recipe dead
-     rather than partial, and it is not TVM-specific.
-  2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
-     `tvmmods` mount (#134), so TVM still fails once the import is fixed.
-  AND TWO MORE, both verified 2026-08-31:
-  3. **Every script path is wrong.** All sixteen `source=windows/scripts/<n>.ps1`
-     predate the reorganisation — fourteen are now under `scripts/build/`, and
-     `bk-warm.ps1` / `bk-materialize.ps1` under `scripts/host/`. This fails at SOLVE
-     time, before any of the above can even run.
-  4. **The media-core chain order was swapped (#94).** The retired targets chain
-     onnx → opencv → ffmpeg; the live lane is onnx → ffmpeg → opencv, so a verbatim
-     restore wires each stage to the wrong `${MEDIA_CORE_*_IMAGE}` ancestor.
-  Plus: any restored stage that mounts `windows/qnn-sdk` needs ARG+ENV
-  `QNN_SDK_ZIP_SHA256` (#154) or the SDK is extracted unverified.
-  **THE RECIPE IS NOW IN THE CODE**, at `bk-warm.ps1:15-38`, as a derivation rule
-  rather than ten pasted blocks: replace the five per-file module mounts with the
-  live `from=buildmods` stage mount (`from=tvmmods` for media-tvm), re-path every
-  script, and derive each RUN from the stage that runs that script TODAY. Treat
-  `c9586c1^` as a SHAPE, not a patch. Nothing here is build-verified.
-
 - **#152 — the wave of 2026-08-31 is UNPROVEN BY A BUILD.** Everything in #147 was
   verified statically (773/773 suite, doc-links, doc-dupes, EOL). No chain has run.
   The wave edited `Dockerfile.toolchain-builder` (the DEFAULT `patched-llvm` target)
@@ -111,37 +85,6 @@ this repo's cp314 pin).
   conclusion in the archives as unverifiable, not as evidence.
   STILL OPEN, re-scoped: keep the next full chain's logs (they are the first corpus
   that can carry a real analysis) and run the step-time / silent-retry sweep on those.
-
-- **#154 — QNN is integrated in ONE framework, not five.** PARTIALLY FIXED
-  2026-08-31; the LiteRT question is open. Three build scripts passed CMake flags
-  that upstream does not define, so CMake dropped them silently, the builds went
-  green, and all three printed a success banner:
-  1. **TVM** `-DUSE_QNN` / `-DQNN_HOME` — no such options at pin `994e0216`. TVM's
-     own `qnn` is the **Quantized Neural Network** op dialect, an unrelated name.
-     Its real Snapdragon path is `USE_HEXAGON` + the **Hexagon SDK** — a different
-     vendor package from QAIRT — and that path shells out to `lsb_release`, expects
-     `ipc/fastrpc/.../android_aarch64`, emits GNU-driver flags, and needs
-     `USE_LLVM`, which this lane sets OFF. Not salvageable here.
-  2. **IREE** `-DIREE_TARGET_BACKEND_QNN` — never existed, at any version. IREE has
-     no Qualcomm NPU path at all; it reaches Adreno via vulkan-spirv and the
-     Snapdragon CPU via llvm-cpu. Invented.
-  3. **LiteRT** `-DTFLITE_ENABLE_QNN` — a GitHub-wide search finds that literal in
-     **this repo only**. BUT the capability is real at v2.2.0: it lives in the
-     `litert/` CMake tree, and this script configures the `tflite/` tree. That is
-     the one genuinely open lead — see the workflow notes before re-attempting.
-  4. **GenAI** was already correct: it passes no flag and claims nothing. Its QNN
-     code compiles unconditionally and is a pure runtime concern routed through the
-     onnxruntime it links, so the DLL staging IS the integration there.
-  Flags and false banners removed from all three scripts. `Copy-QnnRuntime` staging
-  is deliberately KEPT everywhere — un-verified to be removable without a build, and
-  the ORT EP is what loads those DLLs. **Open sub-item:** measure whether the ~35
-  DLLs staged beside TVM/IREE/LiteRT are dead weight in the image, and drop them if
-  so — that changes the arch-gate binary count (1168), so it needs a chain run.
-  The class of defect is now gated: `Assert-CmakeArgsConsumed` warns when a
-  caller-supplied `-D` comes back `UNINITIALIZED` in `CMakeCache.txt`.
-  **Gate limit, worth knowing:** it cannot catch upstream's OWN dead options. LiteRT
-  declares `LITERT_BUILD_SUPPORT_LIBS` (`litert/CMakeLists.txt:74`) and then tests
-  `LITERT_BUILD_SUPPORT` — a real cache entry that does nothing. Do not pass it.
 
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
   silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
@@ -176,19 +119,6 @@ this repo's cp314 pin).
   name, so a dispatch DLL adds zero static import edges. A green gate would mean
   nothing here.
 
-- **#156 — LiteRT-LM QNN: DECLINED, with reasons.** Not blocked-pending-work; declined.
-  QNN only pays on arm64, and LiteRT-LM is skipped there. Re-verified at v0.16.1:
-  `.bazelrc` has no windows_arm64 config and `build:windows` carries `--copt=/arch:AVX2`
-  (an x86-only flag) on every Windows compile; `prebuilt/` ships no windows_arm64
-  artifacts and `libGemmaModelConstraintProvider` is x86_64-only behind an OS-only
-  constraint; cpuinfo's `[restrict static 1]` declarators do not compile under clang-cl.
-  On the x64 lane it is worse than pointless: **QAIRT ships no `QnnHtpV*Stub.dll` for
-  `x86_64-windows-msvc`**, so there is no path to a Hexagon DSP at all — x64 QNN is the
-  CPU reference backend. On top of that `litert_lm_main` parses
-  `--litert_dispatch_lib_dir` and never reads it, and the NPU-quantised Gemma models are
-  behind an Early Access Program. Zero windows-arm64 assets exist across all 29
-  releases. Revisit only if upstream ships a windows-arm64 target.
-
 - **#157 — ~2.33 GB of QNN payload ships for one consumer.** `Copy-QnnRuntime` copies
   the 35 backend DLLs (231 MB) plus seven `hexagon-v*` skel dirs (236 MB) into all FIVE
   framework install dirs. After #154 only ORT can load them. Removing the four
@@ -196,6 +126,22 @@ this repo's cp314 pin).
   (1168) and the bundle manifest, so it needs a chain run to land. Measure first.
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
+  FOUR independent breakages (every script path, the missing TargetArch + Tvm
+  modules, the swapped media-core order, the QAIRT pin). The restore recipe is now
+  a derivation rule in `bk-warm.ps1:15-38` — derive each RUN from the stage that
+  runs that script TODAY. Archive: `windows-backlog-archive-2026-08-31.md`
+  § Resolved 2026-08-31 (second pass).
+
+- **#154** — QNN is integrated in ONE framework, not five: TVM, IREE and LiteRT
+  were passing CMake flags upstream never defined, so CMake dropped them silently
+  while all three logged success. Flags and banners removed on both lanes; the
+  class is gated by `Assert-CmakeArgsConsumed`. The surviving lead is #155.
+  Archive: same page.
+
+- **#156** — LiteRT-LM QNN: DECLINED with reasons (also a standing directive
+  below). Archive: same page.
 
 - **#147 / #148 / #150 / #151** — the 2026-08-31 wave: classic driver deleted, the
   `patched-llvm` whole-dir module mount narrowed (and gated), TVM + GStreamer
@@ -305,6 +251,14 @@ this repo's cp314 pin).
 - **No logging-idiom sweep** (#110): chain scripts use Write-Host, gstreamer
   keeps its structured `log`, Write-BuildLog stays host-driver territory;
   enforcement is review, not a cache-busting mass edit.
+- **Do not re-propose QNN in LiteRT-LM** (#156, 2026-08-31). It is declined, not
+  deferred. QNN only pays on arm64, where LiteRT-LM does not build (no windows_arm64
+  Bazel config, no prebuilts, `build:windows --copt=/arch:AVX2` on every Windows
+  compile, cpuinfo's `[restrict static 1]` under clang-cl). On x64 it is worse than
+  pointless: **QAIRT ships no `QnnHtpV*Stub.dll` for `x86_64-windows-msvc`**, so there
+  is no path to a Hexagon DSP at all. `litert_lm_main` also parses
+  `--litert_dispatch_lib_dir` and never reads it, and the NPU models are EAP-gated.
+  Re-open only if upstream ships a windows-arm64 target.
 - **Do not re-propose #147's declines** (#148, 2026-08-31). Each was considered and
   refused with a reason: deleting `Get-LlvmMasmCmakeArg` or narrowing the
   `WindowsSourceBuild.Common` re-exports (the modules are external-consumer API — a
