@@ -44,11 +44,9 @@ statistically separable between two close candidates.
 
 The measurement errors are fixed; the *statistics* are not.
 
-- **P1.1 Report confidence intervals, not bare fractions** [S·★★★] The Wilson
-  interval for 8/12 is [39 %, 86 %] and for 12/12 is [76 %, 100 %] — they
-  overlap. That was computed by hand and never surfaced. A score printed
-  without its interval invites a conclusion the sample cannot support. Print
-  it, and refuse to declare a winner when intervals overlap.
+- **P1.1 Report confidence intervals, not bare fractions** [S·★★★] **DONE**
+  (`bench_stats.py`). Scores now print as `8/12 = 67% [39-86%]`, and the
+  comparer refuses to call an overlapping difference a regression.
 - **P1.2 Prompt-variation sensitivity** [M·★★★] Every task has exactly one
   phrasing. Small models are highly prompt-sensitive, so an unknown share of
   the ranking may be an artefact of wording. Add 2–3 paraphrases per task and
@@ -70,13 +68,30 @@ The measurement errors are fixed; the *statistics* are not.
 Every tool writes a report and **nothing reads two of them**. Until that
 exists, every measurement is a one-off and a regression is invisible.
 
-- **P2.1 `bench_compare.py`** [M·★★★] Diff two reports: score deltas, timing
-  deltas, and `bench_provenance.compare()` on top, so a shift is attributed to
-  the model, the runtime, or the grader. Exit non-zero on a regression beyond a
-  threshold.
-- **P2.2 Accepted baselines** [S·★★★] A `baselines/` directory holding the
-  currently-blessed result per (model, backend). "Regression" is meaningless
-  without a recorded expectation.
+- **P2.1 `bench_compare.py`** [M·★★★] **DONE.** Diffs two reports (either
+  envelope), attributes a shift to the model, the runtime or the grader via
+  `bench_provenance.compare()`, and exits non-zero on a regression.
+- **P2.2 Accepted baselines** [S·★★★] **DONE.** `--save-baseline <name>` /
+  `--baseline <name>`, stored under `baselines/`.
+
+- **P2.0 — MORE CASES, and it now blocks everything above** [L·★★★] Building
+  the tripwire exposed that it has almost no power. Removing the system prompt
+  took a model from **8/8 to 6/8** — a real degradation with a known cause —
+  and the comparer correctly reported *no regression*, because at n = 8 the
+  intervals still overlap. Measured requirement:
+
+  | Drop to detect | Cases needed |
+  |---|---|
+  | 100 % → 50 % | 12 |
+  | 100 % → 75 % | **27** |
+  | 100 % → 87.5 % | 60 |
+
+  The suite has **8 tool cases and 3–6 coding tasks**. And on the QAIRT/NPU
+  path repeats add nothing — it is deterministic — so power comes *only* from
+  more distinct cases. Until the case count reaches ~27, "no regression" mostly
+  means "too small to tell", which the comparer now says out loud rather than
+  leaving to be discovered. **Authoring cases is the unglamorous work that
+  makes every other phase worth doing.**
 - **P2.3 Unify the report schema** [M·★★] Four tools, **two incompatible
   shapes** (`{benchmark, provenance, config, reports}` vs
   `{timestamp, model, api_url, hardware, config, results}`), and a viewer that
