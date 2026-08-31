@@ -43,6 +43,8 @@ LIB_DIRS=(
   "/opt/opencv5/lib"
   "/usr/local/lib"
   "/usr/local/lib/onnxruntime-cpu/lib"
+  # GEN1: genai prefix, a resolution root + arch sweep. docs/gen1-riscv64-genai.md
+  "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}/lib"
 )
 if [ -n "${_VMR_MA}" ]; then
   LIB_DIRS+=(
@@ -196,6 +198,14 @@ gst_plugin_dir="${GSTREAMER_PREFIX:-/opt/gstreamer}/lib/multiarch/gstreamer-1.0"
 if [ -d "${gst_plugin_dir}" ]; then
   mapfile -t plugin_missing < <(scan_plugin_directory "${gst_plugin_dir}")
   ALL_MISSING+=("${plugin_missing[@]}")
+fi
+
+# GEN1: the genai libs were scanned by nothing; -d guard = no-op when the lane
+# is off. docs/failure-modes.md, docs/gen1-riscv64-genai.md
+genai_lib_dir="${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}/lib"
+if [ -d "${genai_lib_dir}" ]; then
+  mapfile -t genai_missing < <(scan_plugin_directory "${genai_lib_dir}")
+  ALL_MISSING+=("${genai_missing[@]}")
 fi
 
 mapfile -t UNIQ_MISSING < <(printf '%s\n' "${ALL_MISSING[@]}" | uniq_nonempty_lines)

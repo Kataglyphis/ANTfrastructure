@@ -28,12 +28,23 @@ Linux lane needs the **Linux AArch64** SDK, a different download:
    `aarch64-windows-msvc` — is what the Linux resolve helper must anchor on.
 2. Copy the zip into this directory. Exactly **one** `*.zip` may sit here; the
    build takes that one (any name).
-3. Integrity pin: a `QNN_SDK_LINUX_ZIP_SHA256` key in
-   `linux/scripts/01-core/versions.env` (planned, backlog QNN-LINUX work item
-   #2) holds the zip's SHA-256. When set, the build refuses a zip whose hash
-   differs; empty means "unpinned" (documented-deliberate, like
-   `TENSORRT_ZIP_SHA256` before it was populated). The existing
-   `QNN_SDK_ZIP_SHA256` is the **Windows** zip hash — do not reuse it for Linux.
+3. Integrity pin: the `QNN_SDK_LINUX_ZIP_SHA256` key in
+   `linux/scripts/01-core/versions.env` holds the zip's SHA-256. This is
+   IMPLEMENTED and already POPULATED (`resolve_qnn_sdk` in
+   `01-core/qnn-sdk.sh` verifies it before extracting; a mismatch is a hard
+   `err`, an empty value extracts with a WARN). The pinned value is the hash of
+   the **QAIRT v2.49.0.260730** zip proven on 2026-08-30, so:
+   - re-staging that same version needs **no re-pin** — the existing hash
+     validates it, and a mismatch means you downloaded a different build;
+   - staging a *newer* SDK requires recomputing the pin
+     (`sha256sum <zip>`) and updating that key in the same commit.
+   The existing `QNN_SDK_ZIP_SHA256` is the **Windows** zip hash — do not reuse
+   it for Linux.
+4. If a newer SDK renames the lib subdirectory, `QNN_SDK_LINUX_LIBDIR`
+   (env override only — NOT a versions.env key; `qnn-sdk.sh` defaults it with
+   `:=` to `aarch64-oe-linux-gcc11.2`) is the
+   single knob — `resolve_qnn_sdk` anchors its `libQnnCpu.so` presence check on
+   it, so a wrong value fails loudly rather than silently shipping no backend.
 
 The zip is git-ignored (`linux/qnn-sdk/*` except this README). It rides into the
 BuildKit context only when present — the media `onnxruntime` RUN will

@@ -74,7 +74,99 @@ collapse read as growth (`run-tests.sh:34-35` picks a deliberately absurd
 "24 suites, 3 assertions" as its own example for that reason). Read them with
 `bash linux/scripts/tests/run-tests.sh`.
 
+### The `linux/scripts/tests` suites
+
+Conventions for the bash unit suites behind the `script-tests` slug. They exist
+so a decomposition or a flag rewrite is provably behaviour-preserving in
+seconds, on a lane where the alternative evidence is a multi-hour QEMU build.
+
+**Discovery is a glob, not a registry.** `run-tests.sh` runs every
+`linux/scripts/tests/test-*.sh` in its own `bash` process (nothing leaks between
+suites) and skips `test-harness.sh` by name. Adding a file adds a suite; there
+is nothing to register — and deleting one removes coverage quietly, which is
+exactly what the assertion aggregate above is for.
+
+**The harness is the whole API.** `source test-harness.sh`, then `t_case <name>`
+to label the assertions that follow, `t_assert_eq <expected> <actual> [msg]`,
+`t_assert_contains <haystack> <needle> [msg]`, `t_assert_ok <cmd…>`,
+`t_assert_fails <cmd…>`, and `t_summary` as the last line. `t_summary` exits
+non-zero when an assertion failed **and when the suite ran none at all** — a
+gutted suite must not read as a pass.
+
+**Scripts that end in `main "$@"` cannot be sourced.** Several subjects are
+executables, not libraries. The idiom is to cut the region under test out with
+`awk` and `eval` it: `test-vulkan-target-decomposition.sh` extracts each
+`_vulkan_target_*` helper by name, `test-iree-wheelhouse-stages.sh` takes the
+block from `_iree_check_prereqs` through `build_iree_wheels`. Always assert that
+the extraction caught what it claims (both suites do) so a rename degrades into
+a failing assertion instead of an empty one.
+`test-base-image-parse-options.sh` shows the two-mode variant: real
+`bash base-image.sh …` processes for the error paths — every parse error dies
+before `main` dispatches, so nothing touches apt, the network or the host — plus
+the extracted parser with a stub `die()` for the paths whose only observable
+effect is a variable assignment. Where the subject *is* a library
+(`llvm-cross.sh`, `tvm-config.sh`) source it directly and stub its
+collaborators.
+
+**Stub EXECUTABLES on PATH vs shell-function stubs.** A collaborator invoked as
+a plain word can be a shell function. One invoked through `env` — IREE's host
+stage runs `env -u … cmake …` — or through any other exec cannot see a shell
+function at all, so it needs a real file, `chmod +x`, on a PATH the suite
+prepends. Get this wrong and the stub is silently bypassed while the host's real
+tool runs.
+
+**A failing `set -e` is only observable across a PROCESS boundary.** `set -e` is
+disabled for the whole dynamic extent of a command whose status is tested, and
+`t_assert_ok` / `t_assert_fails` test status with `if` — so a subject that fails
+*only* through errexit cannot fail inside a subshell the harness calls. Drive it
+in a fresh `bash` process instead. `test-base-image-parse-options.sh` needs this
+for one arm: a trailing flag with no value at all reaches a `shift 2` that runs
+out of arguments, which is a failure through errexit and nothing else.
+
+**Mutation coverage is the rule.** A new regression test must be *demonstrated*
+to go RED when the thing it guards is broken, and its header must state honestly
+what it does and does not cover. The IREE suite is the worked example, and it
+failed this twice on 2026-08-31 before it passed:
+
+1. Its fault-injection stub matched nothing, so every "failure" case was really
+   a success case. The pattern started with `--` and was passed positionally to
+   `grep`, which here is **ugrep** and read it as an option. `grep -qE -e "$pat"`
+   is the portable spelling; the symptom entry is in
+   [`failure-modes.md`](failure-modes.md#a-fault-injection-test-passes-and-proves-nothing-grep-is-ugrep).
+2. With injection working, `rc == 1` STILL did not discriminate. Deleting
+   `|| return 1` from a build-stage call site let execution fall through into
+   `_iree_package_wheels`, which bailed at its own missing-project-directory
+   guard and returned 1 anyway — **the right answer for the wrong reason**, and
+   with a misleading "produced no runtime/ wheel project" line standing in for
+   the real configure failure and its log. The cases therefore also assert the
+   packaging diagnostic is ABSENT, which is what actually pins the early abort;
+   all five call sites are now verified to fail at least one assertion when
+   their `|| return 1` is removed.
+
+A suite nobody has watched fail is documentation with a green tick on it.
+
+Per suite, what the assertions actually pin (so each file needs only a one-line
+header):
+
+| Suite | Subject | Pinned |
+|-------|---------|--------|
+| `test-logging-err-trap.sh` | `01-core/logging.sh` ERR trap | Every case runs a real `bash -c` under `set -Eeuo pipefail`, the only place the dynamic-scope bug reproduces. warn reports and lets the script finish; err reports and exits 1; neither dies on an unbound variable; the reported line is the FAILING one, not the install site; the command survives spaces, quotes and `$`; a trap installed inside a function still fires after that function returned and from inside another; the last install wins; and `build-gcc.sh`'s hand-re-armed two-argument `on_err` keeps err semantics. |
+| `test-tvm-cmake-args.sh` | `05-frameworks/tvm-config.sh` `append_tvm_cmake_args` (15 positionals → named options) | Golden argv captured from the pre-refactor implementation byte for byte, including `-D` ORDER (a later flag overrides an earlier one) and the exact `${CMAKE_*:+ …}` suffix handling; the Vulkan / cross-linker / `LLVM_DIR` / `CMAKE_IGNORE_PATH` / CUDA-OpenCL normalisation arms; `resolve_qnn_sdk` exporting `TVM_QNN_HOME` non-locally, which `tvm.sh`'s post-install staging depends on; and that an unknown, missing or value-less option is a HARD error rather than a silently wrong feature set. |
+| `test-vulkan-target-decomposition.sh` | `02-toolchain/vulkan.sh` `_build_vulkan_targets` + `_vulkan_target_*` | A golden trace of the cmake argv per component, the headers→loader→SPIRV-Tools→glslang order, the attempted/ok counter wording, the env-shaped all-failed verdict and its `VULKAN_CROSS_STRICT=1` promotion to fatal, the `source/glslang-main` checkout fallback, the `/usr/local/bin` alias plumbing (recorded through a stub `SUDO`, never run) — and that `_vulkan_target_link_glslang_aliases` keeps its explicit `return 0`, since the helpers are called as plain statements and its final false `[ -e ]` test would otherwise trip errexit and kill the SDK stage. |
+| `test-llvm-cross-stanza.sh` | `02-toolchain/llvm-cross.sh` helpers split out of `_llvm_cross_setup_and_build` | One `-Wl,-rpath-link` per EXISTING directory in order, an out-array reset rather than appended to, a failing resolver tolerated; both compiler launchers or neither; the superset shape (projects/runtimes, `LLVM_USE_HOST_TOOLS`, `CLANG_TABLEGEN`) not regressing to the core-only one that leaves `libLLVMSupportLSP.a` unbuilt; the nested `CROSS_TOOLCHAIN_FLAGS_NATIVE` string with and without a launcher; the three injected arg groups landing at their original insertion points in the configure argv; and exactly four build/install calls — including the explicit `--target llvm-config` (TVM reads it out of `/opt/llvm-cross`) and `--strip` on both installs. |
+| `test-iree-wheelhouse-stages.sh` | `05-frameworks/torch/build-app-wheelhouse.sh` `_iree_*` stages | The dynamic-scope couplings a refactor can silently sever — `ccache_cmake_args` / `_iree_launcher` reaching BOTH build steps, the `CCACHE_*`/`SCCACHE_*` exports surviving the helper boundary, `wheel_platform` reaching the retag, `iree_wheel_projects` reaching packaging so the cross lane ships the runtime wheel only, the target-python sysconfig export surviving into wheel-packing — plus the native and cross flag sets, the QNN arm, and the five mutation-covered `|| return 1` call sites described above. |
+| `test-base-image-parse-options.sh` | `01-core/base-image.sh` `parse_options` (116-line nest → data table) | The asymmetries a "harmonising" rewrite would eat: `--archive-url` rejects an empty value while `--ports-url` accepts one verbatim; both also flip `USE_FAST_UBUNTU_MIRROR=true` while `--rewrite-security` does not and validates through `parse_bool_flag`; `install-vulkan-runtime-files` is the ONLY command taking positionals (stopping at `--` or the first non-flag, remainder into `REMAINING_ARGS`, and it alone sets that variable); a repeated flag keeps the LAST value; and the per-command, no-arg and catch-all arms each die with their own message verbatim. |
+
 ### In-image verification gates & their escape hatches (audit round 2)
+
+**Retiring a transitional branch: probe, don't TODO.** A compatibility arm that
+exists only for artifacts built before some fix should decide by *probing the
+artifact* for a marker of the post-fix version (e.g. `grep -q STV_REQUIRE_GENAI`
+in the image's baked smoke), never by a "delete me later" comment. Only a
+POSITIVE probe may flip the verdict, so a probe that cannot run stays tolerant
+rather than failing an image it simply could not inspect. Lesson recorded when
+the riscv64 GenAI transitional arm was removed, 2026-08-31.
+
 
 The 2026-08-08 audit closed a set of gates that previously could not fail.
 Each hard gate has ONE explicit, documented escape hatch — set it only for a
@@ -87,7 +179,8 @@ deliberately reduced image, never to "get the build green":
 | CUDA/cuDNN/TensorRT/NCCL completeness | `verify-cuda-stack.sh` (Dockerfile.nvidia) | default is warn-only; `CUDA_STACK_STRICT=1` is the OPT-IN hard gate for images that claim a complete stack |
 | TVM presence/version per arch | `smoke-torch-venv.sh` (report only — TVM is best-effort by design) | `EXP_TVM=<version>` turns the report into a hard pin assertion |
 | ELF architecture of shipped binaries | `validate-media-runtime.sh` — runs on EVERY scan since 2026-08-08 (a clean dependency scan used to `exit 0` before it) | `MEDIA_ELF_MISMATCH_FATAL=0` downgrades to warning |
-| litert / genai / opencv-core produce real artifacts | `verify-media-artifacts.sh` | none — these verify stage-specific files now; genai mirrors its producer's legitimate cross-build skip |
+| litert / genai / opencv-core produce real artifacts | `verify-media-artifacts.sh` | none — these verify stage-specific files now; genai mirrors its producer's legitimate cross-build skip, which since GEN1 (2026-08-31) covers only NON-arm64/riscv64 cross targets and a riscv64 lane switched off with `GENAI_ALLOW_RISCV64` |
+| `onnxruntime_genai`'s native binding really works — version == the versions.env pin, the loaded pybind `.so` is TARGET-arch ELF (read from its own `e_machine`), and native code RUNS (`og.Tensor` numpy round-trip, the capability predicates, `og.Config` rejecting a non-model path from C++) | `smoke-runtime-image.sh` `check_genai_binding` (payload: `smoke-common.sh` `smoke_genai_py`) | none — but an absent wheel is a SKIP, not a failure (presence is the ARCH-PARITY table's assertion). Set `GENAI_MODEL_DIR` to a real model directory to arm the fourth tier, which calls `generate()` and asserts on TOKEN CONTENT; no model ships in these images, so that tier reports UNPROVEN by default |
 | Vulkan cross-components (loader / SPIRV-Tools / glslang) — all three failing at once is an env-shaped toolchain cause | `vulkan.sh` | default is advisory (WARN); `VULKAN_CROSS_STRICT=1` is the OPT-IN promotion to fatal |
 | Vendored-wheel SOABI vs target triple — a native `.cpython-*.so` carrying a SOABI for a different arch than the target triple is a host-SOABI leak that only fails at `import` | `verify-wheels.sh` (triple derived from `TARGET_ARCH`, **not** the running interpreter) | default is advisory (WARN); `WHEEL_SOABI_STRICT=1` is the OPT-IN promotion to fatal |
 | Clean stop of a running chain — reaps the orphaned nerdctl/buildctl child subtree; **never `pkill` the orchestrator, that orphans them** | `bash linux/scripts/stop-cross-chain.sh` (finds the run via its pidfile, falling back to a bracket-trick pgrep) | n/a — operational tool, not a gate |

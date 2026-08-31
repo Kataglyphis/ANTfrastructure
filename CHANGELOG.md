@@ -5,6 +5,141 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — Linux backlog closure window: ERR-trap bug, complexity queue, GEN1 riscv64 GenAI
+
+Closed every open work item on the Linux refactoring backlog in one closure
+window (A1 + GEN1). Gates: `make lint` clean (276 files), `make preflight`
+green, `make test-linux-scripts` **38 suites / 1001 assertions** (up from 32
+suites — six new suites). **No container build was run: everything below is
+static-gate-proven only, and the riscv64 GenAI lane in particular is UNVALIDATED
+until a real media-riscv64 build.**
+
+### The bug: logging.sh ERR trap reported the wrong error (A1)
+
+`_install_trap`'s `on_err` read its reporting action (`err`/`warn`) from a
+`local` of the installer via **dynamic scope**. The trap fires long after the
+installer returned, so under `set -u` the handler died with
+`logging.sh: line 119: action: unbound variable` — which **replaced the real
+error text** (it masked a parallel-GCC apt-lock failure during the 2026-08-30
+rebuild) and meant the intended action never ran at all: `install_err_trap`
+never exited 1, `install_warn_trap` never printed.
+
+`on_err` is now a single top-level function and `_install_trap` bakes the
+resolved action into the trap string with `printf -v '%q'`, keeping `LINENO` /
+`BASH_COMMAND` escaped so they still expand **at fire time**. `_LOG_TRAP_ACTION`
+covers `build-gcc.sh:709`, which re-arms the *bare* trap string by hand around
+its configure step. New `test-logging-err-trap.sh` (30 assertions) fails 29/30
+against the pre-fix file.
+
+### Complexity queue (A1) — all decomposed, all behaviour-preserving
+
+- `append_tvm_cmake_args`: 15 positionals → named options (a dropped or
+  mis-ordered arg used to fail silently as wrong CMake flags, hours in).
+- `_build_vulkan_targets` (137 lines) and `_llvm_cross_setup_and_build`
+  (146 lines) decomposed along their real seams.
+- `build_iree_wheels` split into nine `_iree_*` stages.
+- `parse_options` (116-line nested case/while) collapsed to a data table, with
+  the load-bearing asymmetries preserved (`--ports-url` `${2-}` vs
+  `--archive-url` `${2:-}`; the `install-vulkan-runtime-files` passthrough).
+- **`modules.sh` dir-walker: deliberately NOT changed.** All four suspected
+  defects were probe-tested and refuted (the walk terminates for every input
+  shape and cannot cycle; the `return 1` signal is consumed correctly;
+  `BASH_SOURCE[1]` is right at any nesting depth). It is in the base/compiler/
+  media closure and its last mistake SIGSEGV'd the media build — style churn
+  there is a net negative. Do not re-flag.
+
+### Two toothless-gate findings (the class this repo keeps getting bitten by)
+
+- The new IREE suite claimed every `|| return 1` call site was covered; only
+  2 of 5 were. While fixing it: (a) the fault injection silently did nothing
+  because `grep` here is **ugrep**, which parsed a `--build …` pattern as an
+  option — now `grep -qE -e`; (b) even with injection working, `rc==1` passed on
+  all three mutations anyway, because `_iree_package_wheels` bails at its own
+  `[ ! -d ]` guard and returns 1 — *the right answer for the wrong reason*, with
+  a misleading diagnostic replacing the real configure failure. The cases now
+  assert the packaging diagnostic is **absent**. All five call sites are
+  mutation-verified.
+- `smoke_genai_py` conflated "no wheel on this arch" with "wheel installed but
+  its native library will not load" — both exited 3, reported as a benign SKIP.
+  Every other gate is blind to the second case (`smoke-torch-venv`'s
+  `installed_version()` falls back to `importlib.metadata` when the import
+  raises; ARCH-PARITY only reads dist-info directory names), so a broken riscv64
+  binding would have shipped green. An installed-but-unimportable distribution
+  is now a hard FAIL.
+
+### GEN1 — onnxruntime-genai riscv64 lane, built and wired ON
+
+riscv64 now takes the same cross path arm64 takes; the hard arch guard is gone
+and the allowlist is an explicit `arm64|riscv64`.
+
+- **Upstream patch** `patches/onnxruntime-genai/001-riscv64-target-platform.patch`:
+  `cmake/target_platform.cmake`'s Linux branch `FATAL_ERROR`s on any processor
+  that is not arm64/x64/powerpc. One added `riscv64` arm fixes it, and
+  `genai_target_platform` is read only under `WIN32` / `ENABLE_JAVA` / MSVC — so
+  the patch is inert everywhere else. Proven to apply (and re-apply as a no-op)
+  against a real clone of the pinned tag v0.15.2 (`ed5f4e87`).
+- `--use_guidance` **kept** on riscv64 (auto-dropped with a WARN only if rustup
+  lacks the std — see the A1 watch list): `riscv64gc-unknown-linux-gnu` is Rust
+  Tier-2-with-host-tools, `install-rust.sh` adds its std for every
+  `CROSS_TARGETS` arch, and the crate graph Corrosion imports is pure Rust.
+- **Escape hatch `GENAI_ALLOW_RISCV64`** (versions.env → `Dockerfile.media`
+  ARG/ENV) restores the pre-GEN1 placeholder-and-skip exactly. Two defects found
+  in review and fixed: it never reached the in-container smoke (`nerdctl run`
+  inherits nothing from the host, and the media *final* stage is
+  `FROM media-inputs`), so the documented back-out still red the gate; and
+  producer/verifier defaults pointed opposite ways (`:-false` vs `:-true`),
+  disagreeing in the failing direction. The producer now drops a
+  `.gen1-lane-off` marker and the verifier reads **the producer's actual
+  decision** instead of re-deriving it.
+- `smoke_genai_py()` added to `smoke-common.sh`, run on every arch: asserts the
+  version against the versions.env pin, that the loaded extension's ELF machine
+  is the target's, and that the pybind API objects exist. Tier 4 calls
+  `generate()` **only when `GENAI_MODEL_DIR` is set — it is UNARMED by default,
+  so token-level correctness is NOT yet proven.**
+
+### Known-red until the next riscv64 build (by design)
+
+Removing the `riscv64:onnxruntime_genai` ARCH-PARITY exemption means **every
+currently-shipped riscv64 image now fails that assertion**. That is the table
+working as intended, not a regression. The riscv64 app-wheel floor is
+deliberately left at 12 (raise to 13 only after a real run *prints* it).
+
+**Watch on the first media-riscv64 build:** the genai stage compiling at all
+(GCC 16 cross, source-read only); `cross_target_python_dev_ready` returning true
+there; llguidance actually *linking*; the pybind `EXT_SUFFIX` really being
+`.cpython-314-riscv64-linux-gnu.so`; and possible `-latomic`. Upstream issue
+\#594 is a RISC-V genai build that compiled, imported and emitted **nonsense** —
+tiers 1-3 of the smoke pass in exactly that state.
+
+### Two GEN1-adjacent defects fixed in the same window (risk-reducing, pre-rebuild)
+
+- **The GenAI libraries were scanned by nothing.**
+  `validate-media-runtime.sh` checks unresolved `NEEDED` only over `ARTIFACTS`
+  (gst/libcamera/ffmpeg) plus the gst plugin dir; its `LIB_DIRS` sweep checks
+  ELF *machine* only, advisory. `/usr/local/lib/onnxruntime-genai/lib` was in
+  neither — so an unresolved `NEEDED` in `libonnxruntime-genai*.so` would have
+  reached a shipped image unseen. That is precisely the riscv64 `-latomic` risk
+  GEN1 flagged (GenAI's CMake, unlike upstream ORT's, has **no** libatomic
+  probe). The prefix now joins `LIB_DIRS` *and* the lib dir is walked for
+  unresolved NEEDED through the existing machinery. **New gate on all three
+  arches; not yet run against a real image.**
+- **`prune_conflicting_onnx_wheels` deleted the wheel the same file needs.** On
+  the default `ONNX_PACKAGE=onnxruntime` path it ran
+  `rm -f /opt/wheels/*genai*.whl` — matching the CPU wheel this lane now builds
+  on every arch, which `build_uv_sync_args` looks for 60 lines later and which
+  ARCH-PARITY now asserts. Prune runs first, so a successful `rm` would have
+  resurrected GENAI-DRIFT (silent PyPI-genai fallback). Inert only by accident:
+  `/opt/wheels` is a read-only bind mount and `|| true` swallowed the failure —
+  making it rw would have broken all three arches at once. Narrowed to the
+  GPU variants the arm actually means.
+
+### Also
+
+- `linux/qnn-sdk/README.md`: corrected a stale paragraph calling the
+  `QNN_SDK_LINUX_ZIP_SHA256` pin "planned". It is implemented **and populated**
+  with the proven QAIRT v2.49.0.260730 hash, so re-staging that exact version
+  needs **no re-pin**; documented `QNN_SDK_LINUX_LIBDIR` as the single knob.
+
 ## 2026-08-31 — hybrid actually measured: 9B distill runs at 7.5 tok/s (faster than GPU)
 
 Tested `--compute hybrid` against every Qwen3.8-class model on this Snapdragon

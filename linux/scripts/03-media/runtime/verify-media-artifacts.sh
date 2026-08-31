@@ -195,14 +195,35 @@ case "${STAGE}" in
     # cross-builds the wheel for real ("Created wheel for onnxruntime-genai:
     # onnxruntime_genai-0.15.2-cp314-cp314-linux_aarch64.whl", media-arm64.log
     # 2026-08-27) while this gate still skipped it as "does not cross-build".
+    # GEN1: riscv64 joined the producer's cross allowlist and this SKIP; keep the
+    # two allowlists in lockstep. docs/gen1-riscv64-genai.md
     _vma_host="$(uname -m)"
     case "${_vma_host}" in x86_64) _vma_host=amd64 ;; aarch64) _vma_host=arm64 ;; esac
     _vma_target="${TARGET_ARCH:-${TARGETARCH:-${_vma_host}}}"
     case "${_vma_target}" in x86_64) _vma_target=amd64 ;; aarch64) _vma_target=arm64 ;; esac
+    # GEN1 escape hatch: trust the producer's marker; the env test is only a
+    # pre-marker fallback. docs/gen1-riscv64-genai.md
+    if [ "${_vma_target}" = "riscv64" ] \
+       && { [ -f "${PREFIX}/.gen1-lane-off" ] \
+            || [ "${GENAI_ALLOW_RISCV64:-false}" != "true" ]; }; then
+      echo "SKIP [${STAGE}]: riscv64 GenAI lane is off (GEN1 escape hatch); producer created a placeholder tree"
+      exit 0
+    fi
+    # The producer may have skipped for a reason that is NOT the escape hatch
+    # (e.g. target Python dev files missing). Still a hard failure with the lane
+    # on, but say WHY. docs/gen1-riscv64-genai.md
+    if [ -f "${PREFIX}/.gen1-skip-reason" ]; then
+      echo "FAIL [${STAGE}]: producer skipped the GenAI build: $(cat "${PREFIX}/.gen1-skip-reason" 2>/dev/null)" >&2
+      exit 1
+    fi
+    case "${_vma_target}" in
+      arm64|riscv64) _vma_genai_cross_ok=1 ;;
+      *)             _vma_genai_cross_ok=0 ;;
+    esac
     if [ "${BUILD_MODE:-native}" = "cross" ] \
        && [ "${_vma_target}" != "${_vma_host}" ] \
-       && [ "${_vma_target}" != "arm64" ]; then
-      echo "SKIP [${STAGE}]: only the arm64 cross lane builds GenAI (producer skips ${_vma_target})"
+       && [ "${_vma_genai_cross_ok}" = "0" ]; then
+      echo "SKIP [${STAGE}]: only the arm64/riscv64 cross lanes build GenAI (producer skips ${_vma_target})"
       exit 0
     fi
     # A dir that exists is no evidence — the producer mkdir -p's lib/ include/

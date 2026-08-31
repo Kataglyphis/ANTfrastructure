@@ -264,6 +264,9 @@ ARG ONNXRUNTIME_GENAI_OUTPUT_DIR=/usr/local/lib/onnxruntime-genai
 # (Dawn cross-build unproven). See onnxruntime/build/lib/common.sh.
 ARG ORT_ENABLE_WEBGPU=true
 ARG ORT_WEBGPU_ALLOW_CROSS=true
+# GEN1: riscv64 onnxruntime-genai lane. Default must equal versions.env
+# (verify-arg-consistency.sh). docs/gen1-riscv64-genai.md
+ARG GENAI_ALLOW_RISCV64=true
 
 ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     GENAI_OUTPUT_DIR=${ONNXRUNTIME_GENAI_OUTPUT_DIR} \
@@ -274,7 +277,8 @@ ENV NATIVE_CPU_OUTPUT_DIR=${ONNXRUNTIME_OUTPUT_DIR} \
     GENAI_CONFIG=${ONNXRUNTIME_GENAI_BUILD_TYPE} \
     BUILD_GENAI=${BUILD_GENAI} \
     ORT_ENABLE_WEBGPU=${ORT_ENABLE_WEBGPU} \
-    ORT_WEBGPU_ALLOW_CROSS=${ORT_WEBGPU_ALLOW_CROSS}
+    ORT_WEBGPU_ALLOW_CROSS=${ORT_WEBGPU_ALLOW_CROSS} \
+    GENAI_ALLOW_RISCV64=${GENAI_ALLOW_RISCV64}
 
 # deps + fetch combined: both are fast IO-bound operations.
 # Per-file mounts: --step deps/fetch only execute build-onnxruntime.sh →
@@ -327,7 +331,10 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         echo "Skipping ONNX GPU build (ENABLE_NVIDIA=${ENABLE_NVIDIA:-false}, ENABLE_AMD=${ENABLE_AMD:-false})"; \
     fi
 
+# GEN1: patches mount for the riscv64 genai target_platform patch, applied only
+# when ARCH=riscv64. docs/gen1-riscv64-genai.md
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/patches,target=/opt/scripts/patches,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/qnn-sdk,target=/opt/scripts/qnn-sdk,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \

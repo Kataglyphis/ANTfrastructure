@@ -33,6 +33,12 @@ Two neighbours, so you land on the right page:
 - [`registry_pin_ref` fails on a fresh push](#registry_pin_ref-fails-on-a-fresh-push)
 - [Terminal freeze during a long build](#terminal-freeze-during-a-long-build)
 - [LiteRT configure: `fatal: expected flush after ref listing`](#litert-configure-fatal-expected-flush-after-ref-listing)
+- [`logging.sh: line NNN: action: unbound variable` instead of the real error](#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error)
+- [A fault-injection test passes and proves nothing (`grep` is ugrep)](#a-fault-injection-test-passes-and-proves-nothing-grep-is-ugrep)
+- [`GENAI-BIND SKIP` reported green while the native binding is broken](#genai-bind-skip-reported-green-while-the-native-binding-is-broken)
+- [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
+- [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
+- [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 
 **Windows: the layer store (hcsshim)**
 
@@ -147,6 +153,157 @@ Two neighbours, so you land on the right page:
 - `<content>_MATCH`/`_REPLACE` rewrite that archive URL. A `;` in the replacement makes it a cmake **list**, which `ExternalProject` downloads "in turn until one succeeds".
 
 The second URL is TensorFlow's own mirror of the same gitlab path (the `tf_mirror_urls()` rule in `third_party/eigen3/workspace.bzl`), verified byte-identical on 2026-08-23: both URLs for commit `ea13a98d…` returned sha256 `35c6126e…`, 2870994 bytes. It degrades safely — if the regex ever stops matching, the URL is left untouched and the fetch behaves as it does today.
+
+### `logging.sh: line NNN: action: unbound variable` instead of the real error
+
+**Symptom.** A build stage dies and the only diagnostic in the log is
+`.../01-core/logging.sh: line 119: action: unbound variable`. The command that
+actually failed is nowhere. Hit on 2026-08-30, where it stood in for a
+parallel-GCC apt-lock failure.
+
+**Cause.** `_install_trap` defined `on_err` as a NESTED function that read its
+reporting action (`err` or `warn`) out of the installer's own `local action` —
+i.e. through **dynamic scope**, which only resolves while `_install_trap` is
+still on the call stack. An ERR trap fires long after the installer has
+returned, so under `set -u` the handler aborted on its first line. Two things
+were lost, not one: that abort **replaced** the real error text, and the action
+it existed to run never ran — `install_err_trap` never exited 1 and
+`install_warn_trap` never printed. Every script that sources `logging.sh`
+inherited it.
+
+**Fix.** Fixed 2026-08-31. `on_err` is a top-level function, and `_install_trap`
+bakes the resolved action into the trap string with `printf -v '%q'` so it is
+expanded AT INSTALL TIME, while `LINENO` and `BASH_COMMAND` stay escaped and
+expand AT FIRE TIME (reverse that escaping and every failure is reported at the
+install site's line number, forever). `_LOG_TRAP_ACTION` keeps the two-argument
+call working for `build-gcc.sh`, which tears the trap down and re-arms the bare
+string by hand around its configure step. Regression cover:
+`linux/scripts/tests/test-logging-err-trap.sh`. **Behaviour note:** inside a
+`set +e` window `install_err_trap` now exits 1 where it used to print noise and
+carry on. No caller has such a window today; a new one would feel it.
+
+### A fault-injection test passes and proves nothing (`grep` is ugrep)
+
+**Symptom.** A regression suite is green — and stays green when you break the
+very thing it guards. Its fault-injection arm (a stub that fails when its argv
+matches a pattern) never fires, and nothing reports that: a pattern matching
+nothing looks exactly like a run with no fault injected.
+
+**Cause.** The pattern began with `--` and was handed to `grep` positionally.
+`grep` on this host is **ugrep**, which parses a leading-`--` pattern as a
+command-line option instead of as the pattern. Found 2026-08-31 in
+`linux/scripts/tests/test-iree-wheelhouse-stages.sh`, whose header claimed five
+`|| return 1` call sites were covered when two were.
+
+**Fix.** Pass the pattern behind `-e`: `grep -qE -e "$pat"`. The general rule —
+a regression test has to be SHOWN to go red before it counts, and its header
+must say what it does not cover — is in
+[`cross-build-verification.md`](cross-build-verification.md#the-linuxscriptstests-suites),
+along with the second half of this same incident: with injection finally
+working, the obvious `rc == 1` assertion still passed on every mutation.
+
+### `GENAI-BIND SKIP` reported green while the native binding is broken
+
+**Symptom.** The runtime-image smoke prints
+`GENAI-BIND SKIP: onnxruntime_genai is not installed` and the run stays green —
+on an image where that wheel IS installed and only its native library refuses to
+load.
+
+**Cause.** The smoke collapsed two unrelated situations into one exit code
+(3 = skip): "this arch ships no genai wheel", which is benign and is the
+ARCH-PARITY table's business, and "the distribution is installed but importing
+it raises", which is a defect. Nothing else in the chain can see the second one:
+`smoke-torch-venv.sh`'s `installed_version()` falls back to
+`importlib.metadata` when the import raises, so it cheerfully reports the pinned
+version of a package that cannot be imported, and the ARCH-PARITY table reads
+only dist-info directory names. A riscv64 binding with an unresolved
+`__atomic_*` or a missing `NEEDED` would have shipped behind three green gates. The
+lane this was found on is written up in
+[`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
+
+**Fix.** Fixed 2026-08-31 in `smoke_genai_py` (`06-packaging/smoke-common.sh`):
+on an import failure the program asks `importlib.metadata` whether the
+DISTRIBUTION is present. Present → exit 1 with
+`GENAI-BIND FAIL: … is INSTALLED but not importable`, pointing at the `.so`'s
+NEEDED/undefined symbols; absent → the SKIP. Transferable form: an exit code
+meaning "there was nothing to test" must not be reachable from a state meaning
+"the thing under test is broken".
+
+### The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke
+
+**Symptom.** A lane toggle is set in `versions.env`, the build honours it, and
+the runtime-image smoke still reddens by asserting the component the toggle
+switched OFF. Exporting the variable in the host shell before running the smoke
+changes nothing.
+
+**Cause.** Two boundaries, and the value crossed neither of them. As far as the
+host shell is concerned a `nerdctl run` begins with an empty environment, so
+exporting the toggle before the smoke is invisible inside the container. And the
+ARG/ENV that carries it is declared on a BUILDER stage, while the final stage of
+`Dockerfile.media` descends from a different parent — so the shipped image holds
+no copy of it either. The baked `smoke-torch-venv.sh` therefore read the toggle
+as unset every time and took its default arm: the escape hatch the docs promised
+had never once worked. Depth on this particular toggle:
+[`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
+
+**Fix.** Fixed 2026-08-31: `smoke-runtime-image.sh` reads the value host-side
+out of `versions.env` (`_rt_versions_env_pin`, empty on a miss = "not asserted")
+and forwards it with an explicit `-e` on the `nerdctl run`, so the smoke asserts
+the policy the build was configured with. **A new toggle has to be checked on
+both hops** — build ARG into the SHIPPED stage, host env into the container —
+and a verifier should read a marker the producer actually wrote rather than
+re-derive the decision: a producer defaulting `:-false` against a verifier
+defaulting `:-true` disagrees in the failing direction.
+
+### An unresolved `NEEDED` in a library that nothing scans
+
+**Symptom.** Nothing at all, which is the point. A shipped `.so` carries a
+dependency that cannot be resolved, every gate is green, and the failure surfaces
+as an import or `dlopen` error on the target.
+
+**Cause.** `03-media/runtime/validate-media-runtime.sh` hunts unresolved
+`NEEDED` entries over `ARTIFACTS` (the gst / libcamera / ffmpeg binaries) plus
+the GStreamer plugin directory. Its `LIB_DIRS` sweep is a DIFFERENT check — ELF
+**machine** only, and advisory. An install prefix in neither list is scanned by
+nobody; `/usr/local/lib/onnxruntime-genai/lib` was in neither until 2026-08-31.
+The concrete thing that hid behind it: GenAI's CMake, unlike upstream
+onnxruntime's, carries no libatomic probe, so a riscv64 build can need
+`-latomic` and only say so at load time. That lane:
+[`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
+
+**Fix.** Fixed 2026-08-31 — the prefix joined `LIB_DIRS` (resolution root plus
+the advisory arch sweep) AND its `lib/` is now walked by `scan_plugin_directory`
+(misnamed but generic, so it was reused rather than copied), feeding the
+existing missing-soname machinery. A `[ -d ]` guard makes it a no-op when the
+lane is off. **The check to carry away:** when an image gains an install prefix,
+ask which scanner covers it — and remember that an ELF-machine sweep is not a
+dependency scan.
+
+### A prune step deletes the wheel a later step requires
+
+**Symptom.** Again nothing yet — the step that would have broken was disarmed by
+an unrelated accident. `install_project_environment` prunes conflicting wheels
+before `build_uv_sync_args` goes looking for the local ones, and one prune glob
+matched a wheel the later step requires.
+
+**Cause.** `03-media/runtime/assemble-torch-app.sh`'s
+`prune_conflicting_onnx_wheels` carried a `*genai*.whl` glob on its DEFAULT
+`ONNX_PACKAGE=onnxruntime` arm. Far too broad: it also names the plain CPU genai
+wheel this media lane now produces for every architecture, which the uv-sync
+step and the ARCH-PARITY table both rely on being present. Had the deletion
+succeeded, the earlier GENAI-DRIFT bug would have returned — absent a local
+wheel, the resolver quietly prefers the app lock's PyPI build. It survived only
+because `/opt/wheels` happens to be mounted read-only, so the removal errored and
+`|| true` discarded that error; flipping the mount to writable would have broken
+all three architectures at once. Full narrative:
+[`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
+
+**Fix.** Fixed 2026-08-31 by narrowing the glob to the GPU-flavoured variants
+the arm actually means (`*genai_cuda-*`, `*genai_rocm-*`, `*genai_directml-*`),
+beside its `*_gpu-*` / `*_migraphx-*` neighbours. **The lesson is about `|| true`
+on a destructive step:** it hides the failure AND the fact that the step was
+wrong, so the bug sits latent until something unrelated arms it — here, a
+read-only mount becoming writable.
 
 ---
 

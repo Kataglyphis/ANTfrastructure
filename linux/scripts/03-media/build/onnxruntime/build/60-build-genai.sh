@@ -20,15 +20,20 @@ HOST_PYTHON="${HOST_PYTHON_BIN}"
   exit 0
 }
 
-# Architecture guard: GenAI is not supported on riscv64. If we're building on
-# riscv64, skip this stage with an informative message so the overall image
-# build can continue.
 ARCH="$(arch_oci 2>/dev/null || uname -m 2>/dev/null || echo unknown)"
-if [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "risc-v" ]; then
-  info "Skipping onnxruntime-genai on ${ARCH} because it is not supported"
+
+# GEN1: riscv64 builds onnxruntime-genai from source; upstream ships no wheel.
+# Escape hatch GENAI_ALLOW_RISCV64=false restores the pre-GEN1 skip exactly.
+# Evidence, unproven parts, back-out: docs/gen1-riscv64-genai.md
+GENAI_ALLOW_RISCV64="${GENAI_ALLOW_RISCV64:-false}"
+if [ "${ARCH}" = "riscv64" ] && [ "${GENAI_ALLOW_RISCV64}" != "true" ]; then
+  info "Skipping onnxruntime-genai on ${ARCH}: GENAI_ALLOW_RISCV64=${GENAI_ALLOW_RISCV64} (GEN1 escape hatch)"
   # Create placeholder output directories so later Dockerfile COPYs succeed
   ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
-  echo "[INFO] Created placeholder GenAI output dir for unsupported arch: ${GENAI_OUTPUT_DIR}" || true
+  # Marker, not just a log line: the verifier runs in a different RUN and must
+  # read what happened, not re-derive it. docs/gen1-riscv64-genai.md
+  : > "${GENAI_OUTPUT_DIR}/.gen1-lane-off" 2>/dev/null || true
+  echo "[INFO] Created placeholder GenAI output dir (GEN1 lane off): ${GENAI_OUTPUT_DIR}" || true
   exit 0
 fi
 
@@ -41,23 +46,33 @@ fi
 # append_onnx_cross_cmake_build_args in lib/common.sh); the wheel lands in
 # ${GENAI_OUTPUT_DIR}/wheels, collect-artifacts.sh gathers it into /opt/wheels
 # and repair-wheels.sh retags it linux_aarch64 — the exact path the onnxruntime
-# wheel already takes. Other cross targets keep the skip: riscv64 exited above
-# (GEN1, documented), nothing else is validated.
+# wheel already takes.
+#
+# GEN1: riscv64 joins the allowlist, same cross path. Keep it in lockstep with
+# verify-media-artifacts.sh's onnxruntime-genai arm. docs/gen1-riscv64-genai.md
 GENAI_CROSS_BUILD=false
 if cross_build_is_active; then
-  if [ "${ARCH}" != "arm64" ]; then
-    info "Skipping onnxruntime-genai cross build for ${ARCH}: only the arm64 cross lane is wired (see GENAI-DRIFT)"
-    ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
-    exit 0
-  fi
+  case "${ARCH}" in
+    arm64|riscv64) ;;
+    *)
+      info "Skipping onnxruntime-genai cross build for ${ARCH}: only the arm64/riscv64 cross lanes are wired (see GENAI-DRIFT, GEN1)"
+      ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
+      exit 0
+      ;;
+  esac
   command -v setup_linux_cross_env >/dev/null 2>&1 \
     || err "cross mode but setup_linux_cross_env is unavailable (01-core cross-env.sh not loaded)"
   if ! { command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; }; then
     # Same gate the ORT cross wheel uses (30-build-native.sh): without target
     # Python dev files the binding would compile against HOST python headers.
     # Keep the documented skip rather than ship an unprovable binding.
-    warn "Skipping onnxruntime-genai arm64 cross build: target Python dev files not ready (GENAI-DRIFT stays open; the app lock's PyPI genai fills in)"
+    warn "Skipping onnxruntime-genai ${ARCH} cross build: target Python dev files not ready (GENAI-DRIFT stays open; the app lock's PyPI genai fills in)"
     ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
+    # Record WHY, so the verifier's hard-fail names the real cause instead of
+    # "none of the expected libraries found". Not .gen1-lane-off: the lane is
+    # ON, so this still FAILS -- it just fails legibly. docs/gen1-riscv64-genai.md
+    printf 'target Python dev files not ready\n' \
+      > "${GENAI_OUTPUT_DIR}/.gen1-skip-reason" 2>/dev/null || true
     exit 0
   fi
   setup_linux_cross_env
@@ -95,6 +110,17 @@ info "Found onnxruntime_c_api.h at ${NATIVE_CPU_OUTPUT_DIR}/include/onnxruntime_
 # Check GenAI source exists
 [[ -d "${GENAI_SRC_DIR}" ]] || err "GenAI source not found at ${GENAI_SRC_DIR}. Run 20-fetch.sh first."
 
+# GEN1: upstream cmake/target_platform.cmake FATALs on riscv64 at configure
+# time; riscv64-only patch. docs/gen1-riscv64-genai.md
+if [ "${ARCH}" = "riscv64" ]; then
+  _genai_apply_patch="/opt/scripts/core/apply-patch.sh"
+  _genai_patch_file="/opt/scripts/patches/onnxruntime-genai/001-riscv64-target-platform.patch"
+  [ -f "${_genai_patch_file}" ] \
+    || err "GEN1: riscv64 genai patch not found at ${_genai_patch_file} — is linux/scripts/patches bind-mounted into the genai RUN (Dockerfile.media)?"
+  bash "${_genai_apply_patch}" "${_genai_patch_file}" "${GENAI_SRC_DIR}" \
+    "onnxruntime-genai riscv64: teach cmake/target_platform.cmake the riscv64 arm (GEN1)"
+fi
+
 info ">>> GenAI build: ${GENAI_CONFIG} (${JOBS} parallel jobs)"
 
 # Create Python virtual environment with uv
@@ -114,11 +140,29 @@ ensure_onnx_output_tree "${GENAI_OUTPUT_DIR}"
 cd "${GENAI_SRC_DIR}"
 
 # Common base args shared between GPU and CPU builds
+# GEN1: riscv64 keeps --use_guidance (llguidance via Corrosion). The preflight
+# drops it only on positive evidence of a missing rustup std for the triple.
+# docs/gen1-riscv64-genai.md
+GENAI_GUIDANCE_ARGS=(--use_guidance)
+if [ "${ARCH}" = "riscv64" ]; then
+  _genai_rust_target="${CROSS_RUST_TARGET:-}"
+  if [ -z "${_genai_rust_target}" ] && command -v rust_target_triple_for_arch >/dev/null 2>&1; then
+    _genai_rust_target="$(rust_target_triple_for_arch "${ARCH}" 2>/dev/null || true)"
+  fi
+  if [ -n "${_genai_rust_target}" ] && command -v rustup >/dev/null 2>&1 \
+     && _genai_rust_installed="$(rustup target list --installed 2>/dev/null)" \
+     && [ -n "${_genai_rust_installed}" ] \
+     && ! printf '%s\n' "${_genai_rust_installed}" | grep -qx -- "${_genai_rust_target}"; then
+    warn "GEN1: rustup has no std for ${_genai_rust_target} — dropping --use_guidance for ${ARCH} so Corrosion cannot abort the stage (the wheel ships WITHOUT llguidance; fix install-rust.sh/CROSS_TARGETS and rebuild to restore parity)"
+    GENAI_GUIDANCE_ARGS=()
+  fi
+fi
+
 GENAI_BASE_ARGS=(
   --config "${GENAI_CONFIG}"
   --skip_tests
   --skip_examples
-  --use_guidance
+  ${GENAI_GUIDANCE_ARGS[@]+"${GENAI_GUIDANCE_ARGS[@]}"}
   # GenAI's ENABLE_TELEMETRY defaults ON (cmake/options.cmake) and FetchContent-
   # builds Microsoft's 1DS SDK (cpp_client_telemetry) — the same dep whose
   # vendored sqlite dies on GCC-16's stringop-overflow -Werror on arm64 (killed
@@ -147,6 +191,8 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
   # which the target python never even considers at import time
   # (importlib.machinery.EXTENSION_SUFFIXES) — the wheel would install but
   # `import onnxruntime_genai` would die with ModuleNotFoundError on arm64.
+  # GEN1: derived the same way for riscv64 — unconfirmed, but fails safe via the
+  # assert below. docs/gen1-riscv64-genai.md
   _GENAI_MODULE_EXT=".cpython-${_genai_py_mm//./}-${CROSS_TARGET_TRIPLET}.so"
   GENAI_BASE_ARGS+=(
     --cmake_extra_defines
@@ -242,11 +288,8 @@ fi
 collect_wheels_from_tree "${GENAI_SRC_DIR}/build" "${GENAI_OUTPUT_DIR}" "GenAI wheel"
 
 if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
-  # Gate honesty: on cross-arm64 the WHEEL is the whole point of this stage
-  # (verify-media-artifacts.sh still SKIPs genai on cross), so a build that
-  # "succeeded" without emitting one must fail HERE — not resurface at app
-  # assembly as a silent PyPI-genai fallback. No host pip-wheel fallback
-  # either: that would package an amd64 binding under an aarch64 tag.
+  # Gate honesty: no wheel means fail HERE, not a silent PyPI fallback at app
+  # assembly. riscv64 flows through unchanged. docs/gen1-riscv64-genai.md
   _genai_whl="$(ls "${GENAI_OUTPUT_DIR}/wheels"/onnxruntime_genai-*.whl 2>/dev/null | head -1 || true)"
   [ -n "${_genai_whl}" ] \
     || err "cross GenAI build produced no onnxruntime_genai wheel in ${GENAI_OUTPUT_DIR}/wheels"

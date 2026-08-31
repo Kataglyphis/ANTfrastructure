@@ -84,6 +84,7 @@ The two halves of one topic often split:
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
+| **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and what is still UNVALIDATED | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
@@ -147,6 +148,7 @@ exists only in one of these, promote it to its owning page above.
 | Settled Linux refactor items | [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md) |
 | Closed Linux refactor items (2026-08-27) | [`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md) | Everything the backlog closed up to 2026-08-27, including the entries that were REFUTED or RETRACTED rather than fixed. |
 | Closed Linux refactor items (2026-08-30) | [`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md) | The OpenCV-sccache REFUTATION (pre-UDS wrong-server bug, not OpenCV-specific) and the F2 one-resolver cache consolidation. |
+| Closed Linux refactor items (2026-08-31) | [`refactoring-backlog-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md) | The A1 closure window: the logging.sh ERR-trap bug, the complexity queue, the modules.sh dir-walker REFUTATION, the IREE toothless-gate finding, and GEN1 (riscv64 GenAI built + wired ON). |
 | Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), `../windows/upstream/` |
 | The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 

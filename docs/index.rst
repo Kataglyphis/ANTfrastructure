@@ -146,6 +146,7 @@ Common development targets:
 
    linux-build-basics
    linux-cross-builds
+   gen1-riscv64-genai
    linux-accelerator-images
    linux-host-setup
    runtime-services
@@ -207,6 +208,7 @@ Common development targets:
    refactoring-backlog-archive-2026-08-10
    refactoring-backlog-archive-2026-08-27
    refactoring-backlog-archive-2026-08-30
+   refactoring-backlog-archive-2026-08-31
    windows-backlog-archive-2026-08-11
    windows-backlog-archive-2026-08-17
    windows-backlog-archive-2026-08-21
