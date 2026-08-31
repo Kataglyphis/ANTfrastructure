@@ -10,7 +10,17 @@ cd "$(dirname "$0")"
 # Same default as the compose ollama service's OLLAMA_PULL_MODELS — override
 # BOTH with one env var: BENCH_MODEL=<model> (compose pulls it, this benches it).
 MODEL="${BENCH_MODEL:-gemma4:26b}"
-API_URL="http://localhost:11434/v1"
+
+# Which serving backend to sweep. Names come from backends.json; 'ollama' (this
+# stack's own compose service) is the default. BENCH_BACKEND=geniex-npu points
+# the same sweep at the Snapdragon lane without editing anything.
+BACKEND="${BENCH_BACKEND:-ollama}"
+BACKEND_ARGS=(--backend "$BACKEND")
+API_URL="$(python3 -c "
+import sys; sys.path.insert(0, '.')
+from benchmark_openai_api import resolve_backend
+print(resolve_backend('$BACKEND')[0])
+")/v1"
 OUTDIR="./benchmark_results"
 mkdir -p "$OUTDIR"
 
@@ -25,8 +35,9 @@ CONFIGS=(
 
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  LLM Config Benchmark Suite"
-echo "  Model: $MODEL"
-echo "  API:   $API_URL"
+echo "  Backend: $BACKEND"
+echo "  Model:   $MODEL"
+echo "  API:     $API_URL"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
@@ -38,7 +49,7 @@ echo ""
 if [[ "${BENCH_SKIP_CORRECTNESS:-0}" != "1" ]]; then
   echo "▸ Health gate: verifiable-answer probe"
   set +e
-  python3 benchmark_openai_api.py --model "$MODEL" --correctness-only
+  python3 benchmark_openai_api.py "${BACKEND_ARGS[@]}" --model "$MODEL" --correctness-only
   gate_rc=$?
   set -e
   case "$gate_rc" in
@@ -68,6 +79,7 @@ for cfg in "${CONFIGS[@]}"; do
   echo ""
 
   python3 benchmark_openai_api.py \
+    "${BACKEND_ARGS[@]}" \
     --model "$MODEL" \
     --max-tokens "$MAX_TOKENS" \
     --temperature 0.0 \

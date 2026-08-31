@@ -153,6 +153,87 @@ MEDIUM_PROMPTS = [
     "Write a bash script that monitors CPU and memory usage of a specific process every 5 seconds and logs the results to a CSV file.",
 ]
 
+# ── Named backends ────────────────────────────────────────────────────────────
+#
+# Any OpenAI-compatible server can be benchmarked here, but the two that matter
+# in this repo -- the Ollama service this stack brings up, and the Snapdragon
+# GenieX lanes -- deserve names rather than URLs typed from memory. backends.json
+# maps a name to a base_url and an optional default model.
+#
+# Resolution order, most specific first:
+#   1. --base-url on the command line
+#   2. LLM_BASE_URL / OLLAMA_BASE_URL in the environment
+#   3. --backend <name> from backends.json
+#   4. the entry backends.json marks as default (ollama)
+# Env beats --backend on purpose: a wrapper script that exports the variable
+# should not be silently overridden by a stale default in a config file.
+
+BACKENDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "backends.json")
+
+
+def load_backends(path=None):
+    """Read backends.json. Missing or malformed -> empty registry, never raises:
+    a broken config must not stop someone benchmarking an explicit URL."""
+    path = path or BACKENDS_FILE
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data.get("backends", {}), data.get("default")
+    except FileNotFoundError:
+        return {}, None
+    except Exception as e:  # noqa: BLE001
+        print(f"  WARNING: could not read {path} ({e}); named backends unavailable",
+              file=sys.stderr)
+        return {}, None
+
+
+def resolve_backend(name=None, base_url=None, path=None):
+    """Return (base_url, default_model, source) following the order above."""
+    backends, default_name = load_backends(path)
+
+    if base_url:
+        return base_url.rstrip("/"), None, "--base-url"
+
+    env = os.environ.get("LLM_BASE_URL") or os.environ.get("OLLAMA_BASE_URL")
+    if env:
+        # A named backend still supplies its default model, if it matches.
+        entry = backends.get(name) if name else None
+        return env.rstrip("/"), (entry or {}).get("model"), "environment"
+
+    if name:
+        if name not in backends:
+            known = ", ".join(sorted(backends)) or "(none configured)"
+            raise SystemExit(f"unknown backend {name!r}. Known: {known}")
+        entry = backends[name]
+        return entry["base_url"].rstrip("/"), entry.get("model"), f"backend {name!r}"
+
+    if default_name and default_name in backends:
+        entry = backends[default_name]
+        return (entry["base_url"].rstrip("/"), entry.get("model"),
+                f"default backend {default_name!r}")
+
+    return "http://localhost:11434", None, "built-in default"
+
+
+def print_backends(path=None):
+    backends, default_name = load_backends(path)
+    if not backends:
+        print("  No backends configured (backends.json missing or empty).")
+        return
+    print("\n  Configured backends:")
+    for name in sorted(backends):
+        entry = backends[name]
+        mark = " (default)" if name == default_name else ""
+        print(f"    {name}{mark}")
+        print(f"      url:   {entry['base_url']}")
+        if entry.get("model"):
+            print(f"      model: {entry['model']}")
+        if entry.get("note"):
+            print(f"      note:  {entry['note']}")
+    print()
+
+
 # ── Correctness probes (LB1) ──────────────────────────────────────────────────
 #
 # Speed metrics alone cannot tell a working model from a broken one: a model
@@ -758,6 +839,13 @@ def main():
     parser.add_argument("--extra-params", default=None,
                         help='Extra JSON params for the request body (e.g. \'{"num_ctx":16000,"repeat_penalty":1.1}\')')
     parser.add_argument("--load", default=None, help="Load and re-display results from a JSON file")
+    parser.add_argument("--backend", default=None,
+                        help="Named backend from backends.json (e.g. ollama, geniex-npu). "
+                             "Supplies the base URL and a default model.")
+    parser.add_argument("--base-url", default=None,
+                        help="Explicit base URL; overrides --backend and the environment")
+    parser.add_argument("--list-backends", action="store_true",
+                        help="Show the configured backends and exit")
     parser.add_argument("--correctness", action="store_true",
                         help="LB1: also run the verifiable-answer probe (catches a model that is "
                              "fast but broken — speed metrics cannot)")
@@ -771,6 +859,16 @@ def main():
 
     args = parser.parse_args()
 
+    if args.list_backends:
+        print_backends()
+        return
+
+    # Resolve the endpoint before anything talks to it. Rebinding the module
+    # global keeps every existing call site working unchanged.
+    global LLM_BASE_URL, OLLAMA_BASE_URL
+    LLM_BASE_URL, backend_model, source = resolve_backend(args.backend, args.base_url)
+    OLLAMA_BASE_URL = LLM_BASE_URL
+
     if args.load:
         with open(args.load) as f:
             data = json.load(f)
@@ -780,11 +878,12 @@ def main():
         print_table(data.get("results", []))
         return
 
-    model = args.model or detect_model_via_api()
+    # A backend may name its own default model; an explicit --model still wins.
+    model = args.model or backend_model or detect_model_via_api()
 
     if args.correctness_only:
         print(f"\n  Model: {model}")
-        print(f"  API:   {OLLAMA_BASE_URL}/v1")
+        print(f"  API:   {LLM_BASE_URL}/v1  (from {source})")
         probe = run_correctness_probe(
             model,
             max_tokens=args.correctness_max_tokens,
@@ -800,7 +899,7 @@ def main():
         sys.exit(2 if probe.get("truncated") else 0)
 
     print(f"\n  Model: {model}")
-    print(f"  API:   {OLLAMA_BASE_URL}/v1")
+    print(f"  API:   {LLM_BASE_URL}/v1  (from {source})")
     print(f"  Glances: {GLANCES_URL}/api/4 (v3 fallback)")
     print()
 
@@ -859,7 +958,8 @@ def main():
     output = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "model": model,
-        "api_url": f"{OLLAMA_BASE_URL}/v1",
+        "api_url": f"{LLM_BASE_URL}/v1",
+        "backend": args.backend,
         "hardware": collect_hardware_info(),
         "config": {
             "max_tokens": args.max_tokens,

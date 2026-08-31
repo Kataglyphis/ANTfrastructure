@@ -124,3 +124,38 @@ class TestLaneSpecParsing:
     def test_rejects_malformed_spec(self):
         with pytest.raises(Exception):
             parse_lane("this-is-not-a-lane")
+
+
+class TestLaneResolution:
+    """A bare backend name must work as a lane, and a typo must not be
+    silently turned into something plausible."""
+
+    def test_bare_backend_name_resolves_from_registry(self):
+        from bench_lanes import resolve_lane
+        name, url, model = resolve_lane("geniex-npu")
+        assert name == "geniex-npu"
+        assert url.startswith("http://")
+        assert model  # the registry supplies the default model
+
+    def test_full_spec_still_works(self):
+        from bench_lanes import resolve_lane
+        assert resolve_lane("x=http://h:1,model=m") == ("x", "http://h:1", "m")
+
+    def test_unknown_name_is_rejected_with_the_known_list(self):
+        import argparse
+
+        from bench_lanes import resolve_lane
+        with pytest.raises(argparse.ArgumentTypeError) as e:
+            resolve_lane("not-a-backend")
+        assert "not-a-backend" in str(e.value)
+        assert "geniex-npu" in str(e.value) or "ollama" in str(e.value)
+
+    def test_backend_without_a_default_model_explains_itself(self):
+        # 'ollama' has no pinned model: the error must say how to supply one
+        # rather than fail with a KeyError deep inside the run.
+        import argparse
+
+        from bench_lanes import resolve_lane
+        with pytest.raises(argparse.ArgumentTypeError) as e:
+            resolve_lane("ollama")
+        assert "model=" in str(e.value)

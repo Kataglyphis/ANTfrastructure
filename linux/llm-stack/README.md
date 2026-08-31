@@ -255,6 +255,38 @@ width (`Q3_K_M`) and `IQ4_XS` were fine. Verdicts:
 | `LIKELY OK` | under 5 % of them (a known-good file had 4 tensors) |
 | `RISKY` | i-quant-dominated — exit code 1 |
 
+### Backends
+
+Endpoints are named in `backends.json`, so neither the Ollama service nor a
+Snapdragon lane has to be addressed by a URL typed from memory:
+
+```bash
+python3 benchmark_openai_api.py --list-backends
+
+python3 benchmark_openai_api.py --backend ollama      --stream   # this stack
+python3 benchmark_openai_api.py --backend geniex-npu  --stream   # NPU lane
+python3 bench_lanes.py --lanes geniex-npu geniex-cpu             # both at once
+BENCH_BACKEND=geniex-cpu bash run_benchmarks.sh                  # whole sweep
+```
+
+`ollama` is the default — it is the service `docker-compose.yml` brings up. A
+backend entry may pin a default model, which is why `--backend geniex-npu`
+needs no `--model`.
+
+Resolution order, most specific first:
+
+| # | Source | Notes |
+|---|---|---|
+| 1 | `--base-url` | explicit, wins over everything |
+| 2 | `LLM_BASE_URL` / `OLLAMA_BASE_URL` | env beats `--backend` on purpose, so a wrapper script that exports it is not overridden by a stale config default |
+| 3 | `--backend <name>` | from `backends.json` |
+| 4 | the entry marked `default` | `ollama` |
+
+An unknown name **fails loudly and lists the known ones** rather than falling
+back to the default — silently benchmarking the wrong machine is the expensive
+failure here. A missing or malformed `backends.json` never blocks an explicit
+URL.
+
 ### Backend support — what is verified, and what is not
 
 | Backend | Status |

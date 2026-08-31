@@ -20,16 +20,19 @@ LB4 --lanes: do several servers ADD UP, or fight each other?
 
 Usage:
     # does this server batch?
-    python3 bench_lanes.py --batching --endpoint http://127.0.0.1:11434 --model llama3
+    python3 bench_lanes.py --batching --backend ollama
 
-    # do these lanes add up?
+    # do these lanes add up?  (names come from backends.json)
+    python3 bench_lanes.py --lanes geniex-npu geniex-cpu
+
+    # ...or spell an endpoint out in full
     python3 bench_lanes.py --lanes \
-        npu=http://127.0.0.1:18181,model=qualcomm/Qwen3-4B-Instruct-2507:W4A16 \
-        cpu=http://127.0.0.1:18184,model=unsloth/Qwen3-4B-GGUF:Q4_0
+        npu=http://127.0.0.1:18181,model=qualcomm/Qwen3-4B-Instruct-2507:W4A16
 """
 
 import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -199,16 +202,48 @@ def parse_lane(spec):
     return name.strip(), url.strip().rstrip("/"), model_part.strip()
 
 
+def resolve_lane(spec):
+    """Accept either a full 'name=URL,model=MODEL' spec or a bare backend name.
+
+    Naming a backend is the common case -- `--lanes geniex-npu geniex-cpu`
+    reads far better than two URLs, and keeps the endpoints in one place
+    (backends.json) instead of scattered across shell history.
+    """
+    if "=" in spec:
+        return parse_lane(spec)
+
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from benchmark_openai_api import load_backends
+
+    backends, _ = load_backends()
+    if spec not in backends:
+        known = ", ".join(sorted(backends)) or "(none configured)"
+        raise argparse.ArgumentTypeError(
+            f"unknown backend {spec!r}. Known: {known}. "
+            "Or give a full spec: name=URL,model=MODEL")
+    entry = backends[spec]
+    model = entry.get("model")
+    if not model:
+        raise argparse.ArgumentTypeError(
+            f"backend {spec!r} has no default model in backends.json; "
+            f"use {spec}={entry['base_url']},model=<model> instead")
+    return spec, entry["base_url"].rstrip("/"), model
+
+
 def main():
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--batching", action="store_true",
                     help="LB5: does one endpoint overlap concurrent requests?")
-    ap.add_argument("--lanes", nargs="+", metavar="name=URL,model=MODEL",
-                    help="LB4: drive these endpoints simultaneously")
-    ap.add_argument("--endpoint", default="http://localhost:11434",
-                    help="Endpoint for --batching")
+    ap.add_argument("--lanes", nargs="+", metavar="BACKEND|name=URL,model=MODEL",
+                    help="LB4: drive these endpoints simultaneously. Either a "
+                         "backend name from backends.json (e.g. geniex-npu) or "
+                         "a full name=URL,model=MODEL spec.")
+    ap.add_argument("--endpoint", default=None,
+                    help="Endpoint URL for --batching (overrides --backend)")
+    ap.add_argument("--backend", default=None,
+                    help="Named backend from backends.json for --batching")
     ap.add_argument("--model", default=None, help="Model for --batching")
     ap.add_argument("--prompt", default=DEFAULT_PROMPT)
     ap.add_argument("--max-tokens", type=int, default=256)
@@ -223,18 +258,18 @@ def main():
     report = {"prompt": args.prompt, "max_tokens": args.max_tokens}
 
     if args.batching:
-        model = args.model
-        if not model:
-            sys.path.insert(0, __import__("os").path.dirname(__file__))
-            from benchmark_openai_api import detect_model_via_api
-            model = detect_model_via_api(args.endpoint)
-        report["batching"] = probe_batching(
-            args.endpoint.rstrip("/"), model, args.prompt, args.max_tokens)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from benchmark_openai_api import detect_model_via_api, resolve_backend
+
+        url, backend_model, source = resolve_backend(args.backend, args.endpoint)
+        model = args.model or backend_model or detect_model_via_api(url)
+        print(f"  Endpoint: {url}  (from {source})")
+        report["batching"] = probe_batching(url, model, args.prompt, args.max_tokens)
 
     if args.lanes:
         lanes = {}
         for spec in args.lanes:
-            name, url, model = parse_lane(spec)
+            name, url, model = resolve_lane(spec)
             lanes[name] = (url, model)
         report["lane_run"] = run_lanes(
             lanes, args.prompt, args.max_tokens,
