@@ -154,7 +154,11 @@ if ($skippedSuites.Count -gt 0) {
 # suite to 765; floor at ~1% headroom.
 # 757 -> 763 (2026-08-28): BuildDriver.ResourceSampler (6 tests) took the suite
 # to 771.
-$minTests = 763
+# 763 -> 762 (2026-08-31): the classic lane's deletion removed 8 tests (-6
+# Invoke-DockerWithRetry/Get-DockerBuildArgList, -1 ClosureScope, PreflightParity
+# 4 -> PreflightContract 3) and +1 came from the whole-dir-mount gate. Suite is
+# 770, so the floor DROPS for the first time -- measured, not to hide a red run.
+$minTests = 762
 if ($total -lt $minTests) {
     Write-Host "  FLOOR: only $total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
     exit 1

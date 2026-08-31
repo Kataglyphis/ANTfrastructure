@@ -2,13 +2,13 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 #
-# Classic-lane build-driver core extracted from windows/build.ps1: docker retry engine,
-# build-arg shaping, image preflight, host gates. In a module so the failure paths are
-# UNIT-TESTABLE with a fake docker (BuildDriver.Retry.Tests.ps1).
-# Edit cost: only picked up by the final stage's whole-dir modules COPY (cheap); build.ps1
-# itself is never COPY'd into any image.
-# build.ps1 calls Initialize-BuildDriverContext once; functions read that module scope so
-# existing call sites keep their signatures, and explicit parameters always win.
+# Build-driver core for windows/build-buildkit.ps1: transient-failure classification,
+# version/build-arg shaping, host gates. In a module so the failure paths are UNIT-TESTABLE
+# (BuildDriver.Retry.Tests.ps1).
+# Edit cost: the final stage's whole-dir modules COPY (windows/Dockerfile) — cheap, it is
+# the last stage. The docker-classic half died with build.ps1 (deleted 2026-08-31).
+# build-buildkit.ps1 calls Initialize-BuildDriverContext once; functions read that module
+# scope so call sites keep their signatures, and explicit parameters always win.
 
 Set-StrictMode -Version Latest
 
@@ -21,29 +21,13 @@ if (-not (Get-Command Resolve-LatestVersionTag -ErrorAction SilentlyContinue)) {
 # Transient hcsshim/containerd failures kill container creation, typically right after a
 # big layer commit; every retry loop classifies against this ONE pattern.
 $script:BuildDriverContext = @{
-    Docker           = ''
-    LogDir           = ''
-    NoCache          = $false
-    Isolation        = 'hyperv'
     TransientPattern = 'ttrpc: closed|failed to create shim task|failed to create task for container|hcsshim|error during connect'
 }
 
 function Initialize-BuildDriverContext {
-    param(
-        [Parameter(Mandatory)][string]$Docker,
-        [Parameter(Mandatory)][string]$LogDir,
-        [switch]$NoCache,
-        [string]$TransientPattern = ''
-    )
-    $script:BuildDriverContext.Docker  = $Docker
-    $script:BuildDriverContext.LogDir  = $LogDir
-    $script:BuildDriverContext.NoCache = [bool]$NoCache
+    # Docker/LogDir/NoCache went with build.ps1 (2026-08-31): nothing read them any more.
+    param([string]$TransientPattern = '')
     if ($TransientPattern) { $script:BuildDriverContext.TransientPattern = $TransientPattern }
-}
-
-function Set-BuildDriverIsolation {
-    param([Parameter(Mandatory)][ValidateSet('process', 'hyperv')][string]$Isolation)
-    $script:BuildDriverContext.Isolation = $Isolation
 }
 
 function Test-TransientDockerFailure {
@@ -91,151 +75,6 @@ function Invoke-TransientCooldown {
         return $true
     }
     return $false
-}
-
-function Invoke-DockerWithRetry {
-    # Shared docker retry skeleton behind Invoke-Stage and Invoke-RunCommitStage. Callers
-    # build the scriptblocks with .GetNewClosure() so they capture their function-local
-    # vars when invoked from here.
-    param(
-        [Parameter(Mandatory)] [scriptblock]$Action,   # param($attempt); runs docker, output streams to the log
-        [Parameter(Mandatory)] [string]$Label,
-        [string]$LogFile,
-        [int]$TailLines = 10,
-        [scriptblock]$OnSuccess,
-        # Per-attempt cleanup, run ONLY when a transient retry will re-run the action. It must
-        # NOT fire on the FINAL failure - a run+commit container holding hours of finished
-        # stages has to survive for resume.
-        [scriptblock]$OnFailedAttempt,
-        # Runs once before the terminal throw, e.g. to print a recovery recipe.
-        [scriptblock]$OnFinalFailure,
-        [int]$MaxAttempts = 3,
-        [int]$CooldownSeconds = 60
-    )
-    $previousTail = ''
-    foreach ($attempt in 1..$MaxAttempts) {
-        # Do NOT capture -- let the action's docker output stream through to the
-        # console/log; read the native exit code the docker call set.
-        & $Action $attempt
-        $exitCode = $LASTEXITCODE
-        if ($exitCode -eq 0) {
-            if ($OnSuccess) { & $OnSuccess }
-            return
-        }
-        $tail = if ($LogFile -and (Test-Path $LogFile)) { Get-Content $LogFile -Tail $TailLines | Out-String } else { '' }
-        if ($attempt -lt $MaxAttempts -and (Test-TransientDockerFailure -Tail $tail)) {
-            # -AssumeTransient: this branch IS the classification; -PreviousTail arms the
-            # determinism gate. ORDER IS LOAD-BEARING - the gate decides BEFORE
-            # OnFailedAttempt, because a deterministic verdict is a FINAL failure and the
-            # cleanup would delete the preserved run+commit container the recipe names.
-            if (-not (Invoke-TransientCooldown -Tail $tail -Attempt $attempt -MaxAttempts $MaxAttempts -Label $Label -CooldownSeconds $CooldownSeconds -AssumeTransient -PreviousTail $previousTail)) {
-                if ($OnFinalFailure) { & $OnFinalFailure }
-                if ($tail) {
-                    Write-Host "`n--- [$Label] tail of the failing attempt ---" -ForegroundColor Yellow
-                    Write-Host $tail
-                    Write-Host "--- end of tail$(if ($LogFile) { " (full log: $LogFile)" }) ---`n" -ForegroundColor Yellow
-                }
-                throw "[$Label] docker step failed DETERMINISTICALLY (identical tail on attempt $attempt)$(if ($LogFile) { " — full log: $LogFile" })"
-            }
-            if ($OnFailedAttempt) { & $OnFailedAttempt }
-            $previousTail = $tail
-            continue
-        }
-        if ($OnFinalFailure) { & $OnFinalFailure }
-        # Surface the CAUSE, not just an exit code (backlog #42).
-        if ($tail) {
-            Write-Host "`n--- [$Label] tail of the failing attempt ---" -ForegroundColor Yellow
-            Write-Host $tail
-            Write-Host "--- end of tail$(if ($LogFile) { " (full log: $LogFile)" }) ---`n" -ForegroundColor Yellow
-        }
-        throw "[$Label] docker step failed (exit $exitCode)$(if ($LogFile) { " — full log: $LogFile" })"
-    }
-}
-
-function Get-DockerBuildArgList {
-    param(
-        [Parameter(Mandatory)] [string]$Dockerfile,
-        [Parameter(Mandatory)] [string]$Tag,
-        [hashtable]$BuildArgs = @{},
-        [string[]]$ExtraFlags = @(),
-        # Build-context directory. Default repo root; Dockerfile.nvidia passes `windows` so
-        # the ~2 GB TensorRT zip (root-.dockerignore'd) rides ONLY in that build's context.
-        [string]$Context = '.'
-    )
-    # No --progress flag: Stevedore's classic builder rejects it. Build-args emitted SORTED -
-    # the arg list shape is a docker cache key, keep it deterministic.
-    $dockerArgs = @('build')
-    if ($script:BuildDriverContext.NoCache) { $dockerArgs += '--no-cache' }
-    $dockerArgs += '--isolation', $script:BuildDriverContext.Isolation
-    foreach ($key in ($BuildArgs.Keys | Sort-Object)) {
-        $value = $BuildArgs[$key]
-        if ($null -ne $value -and "$value" -ne '') { $dockerArgs += '--build-arg', "$key=$value" }
-    }
-    $dockerArgs += $ExtraFlags
-    $dockerArgs += '-t', $Tag, '-f', $Dockerfile, $Context
-    return $dockerArgs
-}
-
-function Assert-ImageExists {
-    # Pre-flight guard for stages consuming images from EARLIER runs: without it a missing
-    # prerequisite only surfaces at the merge's COPY --from, hours of compile later.
-    param(
-        [Parameter(Mandatory)] [string[]]$Tags,
-        [Parameter(Mandatory)] [string]$Context
-    )
-    $docker = $script:BuildDriverContext.Docker
-    $missing = @($Tags | Where-Object {
-            & $docker image inspect $_ 2>&1 | Out-Null
-            $LASTEXITCODE -ne 0
-        })
-    if ($missing.Count -gt 0) {
-        throw "$Context requires existing image(s) not found locally: $($missing -join ', ') -- build them first (see -Stages / -MediaBranches / -SkipMediaBranches in the help)"
-    }
-}
-
-function Resolve-BuildIsolation {
-    # PROCESS isolation is preferred (full host CPUs) but only usable where the host can
-    # COMMIT process-isolated layers - on wcifs-skew hosts every stage dies at its first
-    # commit. 'auto' probes and caches the verdict per (host build, docker version).
-    param(
-        [Parameter(Mandatory)][ValidateSet('auto', 'process', 'hyperv')][string]$Isolation,
-        [Parameter(Mandatory)][string]$Docker,
-        [Parameter(Mandatory)][string]$LogDir,
-        [Parameter(Mandatory)][string]$ProbeScript
-    )
-    if ($Isolation -ne 'auto') {
-        Write-Host "Isolation: $Isolation (forced via -Isolation)" -ForegroundColor Cyan
-        return $Isolation
-    }
-    $hostInfo = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
-    $dockerVer = (& $Docker version --format '{{.Server.Version}}' 2>$null | Select-Object -First 1)
-    $cacheKey = '{0}.{1}|{2}' -f $hostInfo.CurrentBuildNumber, $hostInfo.UBR, $dockerVer
-    $cacheFile = Join-Path $LogDir 'isolation-probe-cache.json'
-    if (Test-Path $cacheFile) {
-        try {
-            $cached = Get-Content $cacheFile -Raw | ConvertFrom-Json
-            if ($cached.key -eq $cacheKey) {
-                Write-Host ("Isolation: {0} (cached commit-probe verdict for {1})" -f $cached.isolation, $cacheKey) -ForegroundColor Cyan
-                return $cached.isolation
-            }
-        } catch {
-            # Best-effort: an unreadable/corrupt verdict cache just re-probes.
-            Write-Verbose "isolation verdict cache unreadable, re-probing: $($_.Exception.Message)"
-        }
-    }
-    Write-Host 'Isolation: auto — running the process-isolation commit probe (~10s, verdict cached)...' -ForegroundColor Cyan
-    $probeLog = Join-Path $LogDir 'isolation-probe.log'
-    & pwsh -NoProfile -ExecutionPolicy Bypass -File $ProbeScript -Docker $Docker *> $probeLog
-    $verdict = $LASTEXITCODE
-    $resolved = if ($verdict -eq 0) { 'process' } else { 'hyperv' }
-    if ($resolved -eq 'process') {
-        Write-Host 'Isolation: PROCESS — commit probe passed; full host CPUs for docker build and docker run.' -ForegroundColor Green
-    } else {
-        Write-Warning ("process isolation cannot commit layers on this host (probe exit ${verdict}, log: $probeLog) — using hyperv. " +
-            'Real fix: build on a Windows Server host whose build matches the base image (see docs/windows-builds.md § Build isolation).')
-    }
-    @{ key = $cacheKey; isolation = $resolved } | ConvertTo-Json -Compress | Set-Content $cacheFile
-    return $resolved
 }
 
 # ── Lane-shared version/driver helpers ───────────────────────────────────────
@@ -435,35 +274,6 @@ function Assert-DiskHeadroom {
         'Pass -Force to override deliberately.')
 }
 
-function Assert-DockerDaemon {
-    # Classic-lane gate: on a Stevedore host the daemon is the `stevedore` SERVICE, and it has
-    # been found Stopped while the BuildKit lane ran happily -- i.e. the "always-working
-    # fallback" was unavailable and nothing said so. docker.exe on PATH proves nothing.
-    param(
-        [string]$Docker = 'docker.exe',
-        [string]$ServiceName = 'stevedore',
-        [switch]$Force
-    )
-    $null = & $Docker version --format '{{.Server.Version}}' 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host 'docker daemon reachable' -ForegroundColor Cyan
-        return
-    }
-    $svc = Get-Service $ServiceName -ErrorAction SilentlyContinue
-    $state = if ($svc) { "the '$ServiceName' service is $($svc.Status)" } else { "no '$ServiceName' service found" }
-    # Starting dockerd is NOT a safe reflex: it recreates the nat HNS network, which can
-    # orphan 0-containerd-nat.conf and leave BuildKit containers unroutable. Instruct only.
-    $advice = "Start it deliberately (admin): Start-Service $ServiceName - then RE-CHECK the CNI subnet, " +
-        'because a dockerd start recreates the nat HNS network and can orphan ' +
-        '0-containerd-nat.conf (build-buildkit.ps1 fail-fasts on that drift with the exact fix).'
-    if ($Force) {
-        Write-Warning "docker daemon unreachable ($state) - continuing because -Force was passed. $advice"
-        return
-    }
-    throw ("docker daemon is not reachable ($state). This lane needs it; docker.exe being on PATH does not " +
-        "mean a daemon is running. $advice Pass -Force to override.")
-}
-
 function Get-ShimPatchStatePath {
     # Where deploy-shim-patch.ps1 records what it installed. HOST state, not repo state: it
     # describes THIS machine's Stevedore install, so it must not travel with a checkout.
@@ -518,6 +328,12 @@ function Assert-ShimPatch {
         [long[]]$PatchedSize = @(25332736, 25329664),
         [long[]]$StockSize = @(23279616),
         [string]$StatePath = '',
+        # Roots buildctl resolution uses; injectable so the not-found path is testable
+        # on a host that HAS a real shim installed.
+        [string[]]$AlternateRoot = @(
+            "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
+            'D:\Stevedore\bin\containerd-shim-runhcs-v1.exe'
+        ),
         [switch]$Force
     )
     # Defined BEFORE the not-found branch below, which quotes it in its throw.
@@ -528,10 +344,7 @@ function Assert-ShimPatch {
     # FAIL CLOSED on a shim we cannot find (backlog #48): "could not check" is the one answer
     # that must not read as "fine". Probe the roots buildctl resolution uses before giving up.
     if (-not (Test-Path $ShimPath)) {
-        $alt = @(
-            "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe",
-            'D:\Stevedore\bin\containerd-shim-runhcs-v1.exe'
-        ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+        $alt = @($AlternateRoot) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
         if ($alt) {
             Write-Host "shim not at $ShimPath; using $alt" -ForegroundColor DarkGray
             $ShimPath = $alt
@@ -780,12 +593,11 @@ function Get-MediaMemoryBudget {
     return [math]::Max(8, $usableGb - $HostReserveGb)
 }
 
-Export-ModuleMember -Function Initialize-BuildDriverContext, Set-BuildDriverIsolation,
-    Test-TransientDockerFailure, Invoke-TransientCooldown, Invoke-DockerWithRetry,
-    Get-DockerBuildArgList, Assert-ImageExists, Resolve-BuildIsolation,
+Export-ModuleMember -Function Initialize-BuildDriverContext,
+    Test-TransientDockerFailure, Invoke-TransientCooldown,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-BuildVcsRef, Resolve-TorchAppRef, Assert-SccacheEndpoint, Get-MediaMemoryBudget,
-    Assert-DiskHeadroom, Assert-ShimPatch, Assert-DockerDaemon,
+    Assert-DiskHeadroom, Assert-ShimPatch,
     Get-ShimPatchStatePath, Write-ShimPatchState,
     Get-StageDiskFloorGb, Assert-StageDiskHeadroom, Assert-NoActiveRdna4Gpu,
     Get-Rdna4HazardDevice, Set-Rdna4DeviceState, Assert-BuildkitdStepLogEnv

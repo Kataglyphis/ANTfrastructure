@@ -88,13 +88,8 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
         return , $violations
     }
 
-    It 'build.ps1 has no closure reading a script param (the #40 defect)' {
-        $bad = Get-ClosureViolation -Path (Join-Path $windowsDir 'build.ps1')
-        $detail = ($bad | ForEach-Object { "`$$($_.Variable) at line $($_.Line)" }) -join '; '
-        Assert-Equal 0 $bad.Count "build.ps1: .GetNewClosure() blocks must copy script params into LOCALS first (see `$dockerExe). Offenders: $detail"
-    }
-
-    It 'build-buildkit.ps1 has no closure reading a script param' {
+    # The #40 defect was found in build.ps1 (deleted 2026-08-31); the rule outlived it.
+    It 'build-buildkit.ps1 has no closure reading a script param (the #40 defect)' {
         $bad = Get-ClosureViolation -Path (Join-Path $windowsDir 'build-buildkit.ps1')
         $detail = ($bad | ForEach-Object { "`$$($_.Variable) at line $($_.Line)" }) -join '; '
         Assert-Equal 0 $bad.Count "build-buildkit.ps1: closures must not read script params. Offenders: $detail"

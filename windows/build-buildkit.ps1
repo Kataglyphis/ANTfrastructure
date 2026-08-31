@@ -171,7 +171,7 @@ if ($cniForm) { throw $cniForm }
 # Transient patterns: hcs-temp finalize/export flakes, where completed RUN
 # vertices stay cached so a retry only re-pays finalize. The negative lookahead
 # on 'reimport snapshot' keeps a genuine ExportLayer 0x3 defect failing loudly.
-Initialize-BuildDriverContext -Docker 'docker.exe' -LogDir $script:LogDir -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
+Initialize-BuildDriverContext -TransientPattern 'hcsshim::(Activate|Prepare)Layer.*0x20|ttrpc: closed|failed to create shim task|failed to create task for container|error during connect|rpc error: code = Unavailable|failed to reimport snapshot(?!.*ExportLayer)|failed to write compressed diff|failed to extract layer|failed to mount \{windows-layer|failed to calculate checksum of ref'
 
 # --- versions (single source of truth) ---
 $versions = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
