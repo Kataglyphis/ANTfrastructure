@@ -908,7 +908,14 @@ main() {
     if [ "${WITH_PYTHON}" = "true" ] && { ! cross_build_is_active; }; then
         echo ""
         echo "Python bindings:"
-        verify_python_import "cv2" "cv2.__version__" || echo "Could not import cv2"
+        # cv2 installs under the OpenCV prefix, not system site-packages, so a
+        # bare import can never succeed here -- this check warned on every build
+        # while the real one (final stage) passed. Point it at the prefix, the
+        # same way Dockerfile.media's final stage does, so it actually gates.
+        local _cv2_pp
+        _cv2_pp="$(echo "${OPENCV_PREFIX}"/lib/python*/site-packages 2>/dev/null | tr ' ' ':')"
+        PYTHONPATH="${_cv2_pp}${PYTHONPATH:+:${PYTHONPATH}}" \
+            verify_python_import "cv2" "cv2.__version__" || echo "Could not import cv2"
     elif [ "${WITH_PYTHON}" = "true" ]; then
         echo "Skipping Python import validation in cross mode"
     fi
