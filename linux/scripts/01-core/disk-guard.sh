@@ -81,3 +81,84 @@ _disk_guard_protected_slugs() {
   done
   printf '%s' "${out}"
 }
+
+# ── D4: free-space-driven trim of the cache-export dir (kata-buildcache) ──
+# Policy, knobs and why this is safe: docs/build-cache-tiers.md ("Preflight
+# trim"). It touches ONLY that host directory — never the buildkit store.
+
+# log() when the caller has logging.sh, plain stdout otherwise (unit tests).
+_disk_guard_log() {
+  if declare -F log >/dev/null 2>&1; then log "$@"; else printf '[INFO] %s\n' "$*"; fi
+}
+
+# Disk usage of <dir> in bytes; empty when du cannot read it.
+_disk_guard_dir_bytes() {
+  # `|| true`: callers run under pipefail, where a failing du would abort them.
+  du -s --block-size=1 "${1:-}" 2>/dev/null | cut -f1 | tr -dc '0-9' || true
+}
+
+_disk_guard_fmt_gib() {
+  awk -v b="${1:-0}" 'BEGIN{printf "%.1f", b/1073741824}'
+}
+
+# _disk_guard_trim_cache_export <bc_dir> <target_free_gb> [protected_csv] [budget_bytes]
+#
+# Removes OLDEST-first slug dirs until free space reaches <target_free_gb> or
+# <budget_bytes> has been reclaimed — the budget is what stops it degenerating
+# into `rm -rf ${bc_dir}/*` when something else is eating the disk. No-op when
+# free space is already ample or unknown. Always returns 0: a trim that cannot
+# help must not abort the chain.
+# Sets globals _DISK_GUARD_TRIM_FREED_BYTES / _DISK_GUARD_TRIM_REMOVED, so call
+# it directly — a $(...) subshell would discard both.
+_DISK_GUARD_TRIM_FREED_BYTES=0
+_DISK_GUARD_TRIM_REMOVED=0
+_disk_guard_trim_cache_export() {
+  local bc_dir="${1:-}" target_gb="${2:-}" protected="${3:-}" budget_bytes="${4:-}"
+  # keep_n: never remove the newest N slugs. Without it the budget does NOT bound
+  # the trim -- when the deficit exceeds the whole directory (the common case)
+  # the loop runs until pick_victim is dry and wipes it. docs/build-cache-tiers.md
+  local keep_n="${5:-3}"
+  case "${keep_n}" in ''|*[!0-9]*) keep_n=3 ;; esac
+  _DISK_GUARD_TRIM_FREED_BYTES=0
+  _DISK_GUARD_TRIM_REMOVED=0
+  [ -n "${bc_dir}" ] && [ -d "${bc_dir}" ] || return 0
+  case "${target_gb}" in ''|*[!0-9]*) return 0 ;; esac
+
+  local free_gb
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  [ -n "${free_gb}" ] || return 0                    # unknown -> do nothing
+  [ "${free_gb}" -lt "${target_gb}" ] || return 0    # ample -> no-op
+
+  [ -n "${budget_bytes}" ] || budget_bytes=$(( (target_gb - free_gb) * 1073741824 ))
+  case "${budget_bytes}" in ''|*[!0-9]*) return 0 ;; esac
+  [ "${budget_bytes}" -gt 0 ] || return 0
+
+  _disk_guard_log "[disk-trim] ${free_gb}G free < ${target_gb}G needed — reclaiming up to $(_disk_guard_fmt_gib "${budget_bytes}") GiB of regenerable cache exports in ${bc_dir} (oldest first; protected: ${protected:-none})"
+  local victim sz
+  local remaining
+  while [ "${_DISK_GUARD_TRIM_FREED_BYTES}" -lt "${budget_bytes}" ]; do
+    remaining="$(find "${bc_dir}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
+    if [ "${remaining}" -le "${keep_n}" ]; then
+      _disk_guard_log "[disk-trim]   keeping the newest ${keep_n} slug(s); stopping"
+      break
+    fi
+    victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
+    [ -n "${victim}" ] || break
+    sz="$(_disk_guard_dir_bytes "${bc_dir}/${victim}")"
+    [ -n "${sz}" ] || sz=0
+    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+    # Undeletable victim would be re-picked forever: report and stop.
+    if [ -e "${bc_dir}/${victim}" ]; then
+      _disk_guard_log "[disk-trim]   SKIP ${victim} — could not remove; stopping"
+      break
+    fi
+    _DISK_GUARD_TRIM_FREED_BYTES=$(( _DISK_GUARD_TRIM_FREED_BYTES + sz ))
+    _DISK_GUARD_TRIM_REMOVED=$(( _DISK_GUARD_TRIM_REMOVED + 1 ))
+    _disk_guard_log "[disk-trim]   removed ${victim} ($(_disk_guard_fmt_gib "${sz}") GiB)"
+    free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+    if [ -z "${free_gb}" ] || [ "${free_gb}" -ge "${target_gb}" ]; then break; fi
+  done
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  _disk_guard_log "[disk-trim] removed ${_DISK_GUARD_TRIM_REMOVED} slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES}") GiB; ${free_gb:-?}G free now"
+  return 0
+}

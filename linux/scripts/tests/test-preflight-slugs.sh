@@ -31,11 +31,14 @@ t_assert_ok test -n "${_known}"
 t_assert_ok test -n "${_registered}"
 
 t_case "every registered run_check slug is in KNOWN_SLUGS"
-_missing="$(comm -13 <(printf '%s\n' "${_known}") <(printf '%s\n' "${_registered}"))"
+# LC_ALL=C on BOTH sides: comm demands its inputs sorted in ITS collation.
+# Without it comm warned "not in sorted order" on every run and this set
+# difference was not trustworthy. Same bug bit three audits on 2026-08-31.
+_missing="$(LC_ALL=C comm -13 <(printf '%s\n' "${_known}" | LC_ALL=C sort) <(printf '%s\n' "${_registered}" | LC_ALL=C sort))"
 t_assert_eq "" "${_missing}" "registered but not in KNOWN_SLUGS (the stage-graph class):${_missing:+ }${_missing}"
 
 t_case "every KNOWN_SLUGS entry has a run_check registration"
-_orphan="$(comm -23 <(printf '%s\n' "${_known}") <(printf '%s\n' "${_registered}"))"
+_orphan="$(LC_ALL=C comm -23 <(printf '%s\n' "${_known}" | LC_ALL=C sort) <(printf '%s\n' "${_registered}" | LC_ALL=C sort))"
 t_assert_eq "" "${_orphan}" "in KNOWN_SLUGS but never registered (zero-ran no-op class):${_orphan:+ }${_orphan}"
 
 t_summary

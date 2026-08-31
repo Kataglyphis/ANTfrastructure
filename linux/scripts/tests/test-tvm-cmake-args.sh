@@ -446,4 +446,124 @@ _out="$(_collide 2>&1)" && _rc=0 || _rc=$?
 t_assert_eq "0" "${_rc}" "binding an array named out_ref must not be a circular reference"
 t_assert_contains "${_out}" "-DUSE_LLVM=OFF"
 
+# ── emit-block seams: each helper tested directly ────────────────────────────
+# Not a subshell — _tvm_resolve_qnn_home sets a GLOBAL. $1.. is the helper call,
+# whose first argument is always the array NAME "arr".
+_direct() {
+  local -a arr=()
+  "$@"
+  _got="$(printf '%s\n' "${arr[@]+${arr[@]}}")"
+}
+
+# _tvm_emit_cross_args
+STUB_CROSS=0
+t_case "_tvm_emit_cross_args emits nothing on a native build"
+_direct _tvm_emit_cross_args arr "-L/ignored"
+t_assert_eq "" "${_got}" "native must not emit cross/linker flags"
+
+STUB_CROSS=1
+unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
+t_case "_tvm_emit_cross_args: cross args, USE_ALTERNATIVE_LINKER, then EXE/SHARED/MODULE"
+_direct _tvm_emit_cross_args arr "-L/t"
+read -r -d "" _want <<'EOF' || true
+-DCMAKE_SYSTEM_NAME=Linux
+-DCMAKE_SYSTEM_PROCESSOR=aarch64
+-DUSE_ALTERNATIVE_LINKER=OFF
+-DCMAKE_EXE_LINKER_FLAGS=-L/t
+-DCMAKE_SHARED_LINKER_FLAGS=-L/t
+-DCMAKE_MODULE_LINKER_FLAGS=-L/t
+EOF
+t_assert_eq "${_want}" "${_got}" "cross emit block drifted"
+
+t_case "_tvm_emit_cross_args with empty flags stops after USE_ALTERNATIVE_LINKER"
+_direct _tvm_emit_cross_args arr ""
+read -r -d "" _want <<'EOF' || true
+-DCMAKE_SYSTEM_NAME=Linux
+-DCMAKE_SYSTEM_PROCESSOR=aarch64
+-DUSE_ALTERNATIVE_LINKER=OFF
+EOF
+t_assert_eq "${_want}" "${_got}" "cross emit block (no link flags) drifted"
+STUB_CROSS=0
+
+# _tvm_emit_llvm_args
+t_case "_tvm_emit_llvm_args emits nothing without --llvm-dir"
+_direct _tvm_emit_llvm_args arr "" "/usr/lib"
+t_assert_eq "" "${_got}" "an ignore-path without an LLVM_DIR must emit nothing"
+
+t_case "_tvm_emit_llvm_args emits LLVM_DIR then CMAKE_IGNORE_PATH"
+_direct _tvm_emit_llvm_args arr /opt/llvm "/a;/b"
+read -r -d "" _want <<'EOF' || true
+-DLLVM_DIR=/opt/llvm
+-DCMAKE_IGNORE_PATH=/a;/b
+EOF
+t_assert_eq "${_want}" "${_got}" "llvm emit block drifted"
+
+# _tvm_emit_compiler_cache_args
+STUB_LAUNCHER=""
+t_case "_tvm_emit_compiler_cache_args emits nothing when there is no launcher"
+_direct _tvm_emit_compiler_cache_args arr
+t_assert_eq "" "${_got}" "no launcher must leave CMAKE_*_COMPILER_LAUNCHER unset"
+
+STUB_LAUNCHER="/usr/bin/sccache"
+t_case "_tvm_emit_compiler_cache_args emits C then CXX launcher"
+_direct _tvm_emit_compiler_cache_args arr
+read -r -d "" _want <<'EOF' || true
+-DCMAKE_C_COMPILER_LAUNCHER=/usr/bin/sccache
+-DCMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/sccache
+EOF
+t_assert_eq "${_want}" "${_got}" "compiler-cache emit block drifted"
+STUB_LAUNCHER=""
+
+# _tvm_emit_vulkan_args
+t_case "_tvm_emit_vulkan_args 0 emits exactly USE_VULKAN=OFF"
+_direct _tvm_emit_vulkan_args arr 0 /l /i /s
+t_assert_eq "-DUSE_VULKAN=OFF" "${_got}" "Vulkan OFF must ignore the three paths"
+
+t_case "_tvm_emit_vulkan_args 1 emits ON then LIBRARY, INCLUDE_DIR, SPIRV_TOOLS"
+_direct _tvm_emit_vulkan_args arr 1 /l /i /s
+read -r -d "" _want <<'EOF' || true
+-DUSE_VULKAN=ON
+-DVulkan_LIBRARY=/l
+-DVulkan_INCLUDE_DIR=/i
+-DVulkan_SPIRV_TOOLS_LIBRARY=/s
+EOF
+t_assert_eq "${_want}" "${_got}" "vulkan emit block drifted"
+
+t_case "_tvm_emit_vulkan_args 1 with no paths emits only USE_VULKAN=ON"
+_direct _tvm_emit_vulkan_args arr 1 "" "" ""
+t_assert_eq "-DUSE_VULKAN=ON" "${_got}" "empty Vulkan paths must emit no Vulkan_* flags"
+
+# _tvm_resolve_qnn_home
+STUB_QNN="/opt/qairt/9.9"
+unset TVM_QNN_HOME
+t_case "_tvm_resolve_qnn_home sets the GLOBAL and emits no cmake args"
+_direct _tvm_resolve_qnn_home
+t_assert_eq "" "${_got}" "the QNN seam must not emit any -D flag"
+t_assert_eq "/opt/qairt/9.9" "${TVM_QNN_HOME:-}" "TVM_QNN_HOME must survive as a global"
+
+TVM_QNN_HOME="/preset"
+t_case "_tvm_resolve_qnn_home does not override a preset TVM_QNN_HOME"
+_direct _tvm_resolve_qnn_home
+t_assert_eq "/preset" "${TVM_QNN_HOME:-}" "a preset TVM_QNN_HOME wins over resolve_qnn_sdk"
+STUB_QNN=""; unset TVM_QNN_HOME
+
+# The seams add namerefs, so the REAL call-site array names must still bind.
+t_case "the real call-site array names (cmake_args, wheel_cmake_args) still bind"
+_callsite_names() {
+  local -a cmake_args=() wheel_cmake_args=()
+  append_tvm_cmake_args --out cmake_args --python-module OFF --build-type Release \
+    --cc cc --cxx c++ --llvm-cmake-value OFF --llvm-dir /d --llvm-ignore-paths /i \
+    --use-vulkan 1 --vulkan-library /l
+  append_tvm_cmake_args --out wheel_cmake_args --python-module ON --build-type Release \
+    --cc cc --cxx c++ --llvm-cmake-value OFF --llvm-dir "" --llvm-ignore-paths "" \
+    --use-vulkan 0
+  printf '%s|%s\n' "${cmake_args[*]}" "${wheel_cmake_args[*]}"
+}
+STUB_CROSS=1; STUB_LAUNCHER="/l/sccache"
+_out="$(_callsite_names 2>&1)" && _rc=0 || _rc=$?
+STUB_CROSS=0; STUB_LAUNCHER=""
+t_assert_eq "0" "${_rc}" "binding cmake_args/wheel_cmake_args must not be a circular reference"
+t_assert_eq "-DCMAKE_BUILD_TYPE=Release -DUSE_OPENCL=OFF -DUSE_CUDA=OFF -DTVM_BUILD_PYTHON_MODULE=OFF -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DUSE_ALTERNATIVE_LINKER=OFF -DLLVM_DIR=/d -DCMAKE_IGNORE_PATH=/i -DCMAKE_C_COMPILER=cc -DCMAKE_CXX_COMPILER=c++ -DCMAKE_C_COMPILER_LAUNCHER=/l/sccache -DCMAKE_CXX_COMPILER_LAUNCHER=/l/sccache -DUSE_VULKAN=ON -DVulkan_LIBRARY=/l -DUSE_LLVM=OFF|-DCMAKE_BUILD_TYPE=Release -DUSE_OPENCL=OFF -DUSE_CUDA=OFF -DTVM_BUILD_PYTHON_MODULE=ON -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DUSE_ALTERNATIVE_LINKER=OFF -DCMAKE_C_COMPILER=cc -DCMAKE_CXX_COMPILER=c++ -DCMAKE_C_COMPILER_LAUNCHER=/l/sccache -DCMAKE_CXX_COMPILER_LAUNCHER=/l/sccache -DUSE_VULKAN=OFF -DUSE_LLVM=OFF" \
+  "${_out}" "call-site array names: emitted args drifted"
+
 t_summary

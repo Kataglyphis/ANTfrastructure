@@ -5,6 +5,12 @@
 [ -n "${_CROSS_STAGE_BUILD_SH_LOADED:-}" ] && return 0
 _CROSS_STAGE_BUILD_SH_LOADED=1
 
+# _disk_guard_free_gb for the salvage free-space check below (idempotent load).
+_CROSS_STAGE_BUILD_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+[ -f "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh" ] \
+  && source "${_CROSS_STAGE_BUILD_SH_DIR}/disk-guard.sh"
+
 # Log file path for <label>; empty when LOG_DIR is unset and the caller then
 # builds unlogged. build-cross-chain.sh defaults LOG_DIR (STALE-LOG 2026-08-23).
 cross_stage_log_redirect() {
@@ -30,6 +36,22 @@ _cross_stage_push_error_is_transient() {
   [ -n "${log_file}" ] && [ -r "${log_file}" ] || return 0
   tail -n 300 "${log_file}" 2>/dev/null | grep -qiE \
     'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|[^0-9]429[^0-9]'
+}
+
+# D5: the post-failure cache salvage writes GBs for stages that rebuild anyway.
+# False (with a warning) when free space is below SALVAGE_MIN_FREE_GB — set it
+# to 0 to always salvage. Unknown free space keeps the old behaviour.
+_cross_salvage_disk_ok() {
+  local cache_dir="${1:-}" free_gb
+  local min_gb="${SALVAGE_MIN_FREE_GB:-${CROSS_DISK_GUARD_GB:-40}}"
+  declare -F _disk_guard_free_gb >/dev/null 2>&1 || return 0
+  case "${min_gb}" in ''|*[!0-9]*) return 0 ;; esac
+  [ "${min_gb}" -gt 0 ] || return 0
+  free_gb="$(_disk_guard_free_gb "${cache_dir}")"
+  [ -n "${free_gb}" ] || return 0
+  [ "${free_gb}" -ge "${min_gb}" ] && return 0
+  warn "build failed with only ${free_gb}G free (< ${min_gb}G) — SKIPPING the local cache-export salvage; those stages are rebuilt anyway (SALVAGE_MIN_FREE_GB=0 to always salvage)"
+  return 1
 }
 
 # ── C (2026-08-30): local OCI-layout stage handoff for --no-push chains ─────
@@ -203,7 +225,8 @@ _cross_stage_build_impl() {
       # S1: --cache-to type=local only materializes on a SUCCESSFUL solve — re-drive
       # per --target to salvage completed subtrees. docs/build-cache-tiers.md
       if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
-         && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run; then
+         && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run \
+         && _cross_salvage_disk_ok "${_cache_dir}"; then
         local -a _salvage_targets=()
         mapfile -t _salvage_targets < <(grep -iE \
           '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \

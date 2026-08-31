@@ -485,8 +485,11 @@ ONNX_PY
 
 # GEN1: onnxruntime-genai binding / generate() smoke. The four tiers, the exit
 # codes (0/1/3) and the GENAI_* inputs: docs/gen1-riscv64-genai.md
-smoke_genai_py() {
-  cat <<'GENAI_PY'
+# One emitter per tier; smoke_genai_py concatenates them into one program.
+
+# env inputs, the ELF machine table, and the import gate (SKIP vs FAIL).
+_smoke_genai_py_preamble() {
+  cat <<'GENAI_PY_HEAD'
 import os, sys
 
 EXPECT_VERSION = os.environ.get("GENAI_EXPECT_VERSION", "").strip().lstrip("vV")
@@ -522,6 +525,12 @@ except Exception as exc:
     print("     wheel supposed to exist on this arch'.")
     sys.exit(3)
 
+GENAI_PY_HEAD
+}
+
+# tier 1: __version__ vs the versions.env pin.
+_smoke_genai_py_tier1_version() {
+  cat <<'GENAI_PY_T1'
 # ── tier 1: version, against the versions.env BUILD pin ────────────────────
 version = getattr(og, "__version__", None)
 if not version:
@@ -539,6 +548,12 @@ elif version.split("+")[0] != EXPECT_VERSION:
 else:
     proven.append("__version__ %s matches the build pin" % version)
 
+GENAI_PY_T1
+}
+
+# tier 2: the loaded pybind .so is TARGET-arch ELF (20 header bytes).
+_smoke_genai_py_tier2_elf() {
+  cat <<'GENAI_PY_T2'
 # ── tier 2: the pybind extension is TARGET-arch ELF ────────────────────────
 # __file__ is the module the interpreter actually loaded, not the wheel's tag.
 ext_path = None
@@ -583,6 +598,12 @@ else:
             proven.append("native extension %s is %s ELF (e_machine=%d)"
                           % (os.path.basename(ext_path), want[1], machine))
 
+GENAI_PY_T2
+}
+
+# tier 3: native code RUNS -- pybind objects, capability predicates, Tensor, Config.
+_smoke_genai_py_tier3_native() {
+  cat <<'GENAI_PY_T3'
 # ── tier 3: native code RUNS (no model weights required) ───────────────────
 for _name in ("Config", "Model", "Tokenizer", "GeneratorParams", "Generator", "Tensor"):
     if not hasattr(og, _name):
@@ -634,6 +655,12 @@ if hasattr(og, "Config"):
     except Exception as exc:
         proven.append("og.Config() rejected a non-model path from native code (%s)" % type(exc).__name__)
 
+GENAI_PY_T3
+}
+
+# tier 4: a real generate(); UNARMED unless GENAI_MODEL_DIR is set.
+_smoke_genai_py_tier4_generate() {
+  cat <<'GENAI_PY_T4'
 # ── tier 4: a REAL generate(), when a model is available ───────────────────
 if not MODEL_DIR:
     unproven.append("generate() token content -- no GENAI_MODEL_DIR; no model ships in this image")
@@ -665,6 +692,12 @@ else:
     except Exception as exc:
         fails.append("generate() raised %s: %s" % (type(exc).__name__, exc))
 
+GENAI_PY_T4
+}
+
+# the report and the GENAI-BIND/GENAI-GEN sentinels + exit codes 0/1.
+_smoke_genai_py_verdict() {
+  cat <<'GENAI_PY_TAIL'
 for line in proven:
     print("  PROVEN   %s" % line)
 for line in unproven:
@@ -680,5 +713,16 @@ if fails:
     sys.exit(1)
 print("GENAI-BIND OK: onnxruntime_genai %s -- native binding exercised; see UNPROVEN "
       "lines for what this did NOT establish" % (version or "?"))
-GENAI_PY
+GENAI_PY_TAIL
+}
+
+# The whole program, in tier order. Emitted to stdout; the caller pipes it
+# into `python -` (or ships it through SMOKE_GENAI_PY).
+smoke_genai_py() {
+  _smoke_genai_py_preamble
+  _smoke_genai_py_tier1_version
+  _smoke_genai_py_tier2_elf
+  _smoke_genai_py_tier3_native
+  _smoke_genai_py_tier4_generate
+  _smoke_genai_py_verdict
 }

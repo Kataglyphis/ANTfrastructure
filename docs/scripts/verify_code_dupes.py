@@ -34,6 +34,12 @@ correct and permanent. They live in ``code-dupes.allow`` with a budget and a
 reason, exactly like the prose gate, so a deliberate twin stays quiet while a
 regression past its budget fails.
 
+Clone families
+--------------
+A family is ONE block and the files that all hold it -- keyed by the block's
+owner set, not by file adjacency. Clustering on adjacency merged every family
+that shared a single file and once printed one useless "88 files" blob.
+
 Run ``--baseline`` once to freeze what exists today; after that only NEW or
 GROWING duplication fails. A gate that fires on day one about work nobody plans
 to undo is a gate people learn to ignore.
@@ -77,6 +83,9 @@ MIN_TOKENS = SHINGLE + 6
 # `set -euo pipefail`, the standard arg-parse while/case, the smoke preamble.
 MAX_OWNERS = 6
 DEFAULT_THRESHOLD = 10
+# A clone family is one block held by >2 files; below this it is a coincidence.
+FAMILY_MIN_SHINGLES = 5
+FAMILY_MAX_REPORTED = 10
 
 STRING = re.compile(r"""("([^"\\]|\\.)*"|'([^'\\]|\\.)*')""")
 VARIABLE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*(:[-=+?][^}]*)?\}|\$[A-Za-z_][A-Za-z0-9_]*")
@@ -283,6 +292,7 @@ def main() -> int:
         return 2
 
     owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
+    heads: set[tuple] = set()   # shingles that OPEN a unit -- best excerpts
     texts: dict[tuple[str, int], str] = {}
     unit_lines: dict[tuple[str, int], list[str]] = {}
     kind_of: dict[str, str] = {}
@@ -296,12 +306,18 @@ def main() -> int:
             texts[(rel, line_no)] = " ".join(body.split())
             unit_lines[(rel, line_no)] = normalise_lines(body)
             for j in range(len(toks) - SHINGLE + 1):
-                owners[tuple(toks[j:j + SHINGLE])].add((rel, line_no))
+                sh = tuple(toks[j:j + SHINGLE])
+                owners[sh].add((rel, line_no))
+                if j == 0:
+                    heads.add(sh)
 
     shared: Counter = Counter()
     spread: Counter = Counter()
+    # A family is keyed by the BLOCK's owner set, never by file adjacency: one
+    # file in two families must not merge them (that printed "88 files" once).
+    families: dict[frozenset[str], list] = {}
     suppressed = 0
-    for holders in owners.values():
+    for shingle, holders in owners.items():
         if len(holders) > MAX_OWNERS:
             # The perverse property, now turned into the tool's best feature: a
             # block copied into TEN files is worth extracting far more than one
@@ -321,6 +337,15 @@ def main() -> int:
                 if a[0] == b[0] and kind_of.get(a[0]) == "docker":
                     continue
                 shared[(a, b)] += 1
+            held_by = frozenset(h[0] for h in holders)
+            if len(held_by) > 2:
+                entry = families.get(held_by)
+                if entry is None:
+                    families[held_by] = [1, shingle, sorted(holders)]
+                else:
+                    entry[0] += 1
+                    if shingle in heads and entry[1] not in heads:
+                        entry[1], entry[2] = shingle, sorted(holders)
 
     # Collapse unit pairs to FILE pairs: the allowlist and the reader both think
     # in files, and one copied helper usually shows up as several unit pairs.
@@ -373,30 +398,24 @@ def main() -> int:
     findings.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
     allowed.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
 
-    # Connected components over the reported pairs. A block copied into three
-    # files is ONE finding with three members, not three unrelated pairs -- the
-    # lint-tool bootstrap was a 3-way clone that only ever showed as a 2-way.
-    parent: dict[str, str] = {}
+    # One family = one BLOCK and the >2 files that all hold it. Ranked by block
+    # size, capped, and each printed with an excerpt so the reader can act.
+    ranked = sorted(((cnt, held, sh, anchor)
+                     for held, (cnt, sh, anchor) in families.items()
+                     if cnt >= FAMILY_MIN_SHINGLES),
+                    key=lambda f: (-f[0], -len(f[1]), sorted(f[1])))
 
-    def _find(x: str) -> str:
-        parent.setdefault(x, x)
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def _union(x: str, y: str) -> None:
-        rx, ry = _find(x), _find(y)
-        if rx != ry:
-            parent[rx] = ry
-
-    for _n, a, b, _why in list(findings) + list(allowed):
-        if a[0] != b[0]:
-            _union(a[0], b[0])
-    groups: dict[str, set[str]] = defaultdict(set)
-    for f in parent:
-        groups[_find(f)].add(f)
-    clusters = sorted((g for g in groups.values() if len(g) > 2), key=len, reverse=True)
+    def print_families(stream) -> None:
+        for cnt, held, sh, at in ranked[:FAMILY_MAX_REPORTED]:
+            excerpt = " ".join(sh)
+            print(f"  clone family: ONE block of {cnt} shingle(s), "
+                  f"held by {len(held)} files", file=stream)
+            print(f"    block  {excerpt[:110]}{' ...' if len(excerpt) > 110 else ''}",
+                  file=stream)
+            print(f"    at     {', '.join(f'{f}:{ln}' for f, ln in at)}", file=stream)
+        if len(ranked) > FAMILY_MAX_REPORTED:
+            print(f"  ... and {len(ranked) - FAMILY_MAX_REPORTED} smaller famil(ies)",
+                  file=stream)
 
     if args.report:
         print(f"scanned {len(texts)} units in {len(files)} files "
@@ -432,9 +451,8 @@ def main() -> int:
                   f"{runs.get((a, b), 0)} line(s)", file=sys.stderr)
             print(f"    {a[0]}:{a[1]}  {texts[a][:140]}", file=sys.stderr)
             print(f"    {b[0]}:{b[1]}  {texts[b][:140]}\n", file=sys.stderr)
-        for c in clusters:
-            print(f"  CLONE FAMILY ({len(c)} files): {', '.join(sorted(c))}", file=sys.stderr)
-        if clusters:
+        print_families(sys.stderr)
+        if ranked:
             print("", file=sys.stderr)
         print("Give the block ONE owner (a shared helper in 01-core, or the "
               f"canonical page) and call it from the other. If the twin is "
@@ -450,8 +468,7 @@ def main() -> int:
                   f"{ALLOW_FILE.name}", file=sys.stderr)
         return 1
 
-    for c in clusters:
-        print(f"  note: clone family ({len(c)} files): {', '.join(sorted(c))}")
+    print_families(sys.stdout)
     print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "
           f"no block over {args.threshold} shared {SHINGLE}-token shingles "
           f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "

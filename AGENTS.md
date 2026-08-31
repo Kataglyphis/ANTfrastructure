@@ -65,7 +65,10 @@ what you are about to do:
    pre-commit `script-tests` gate), lint gates (shellcheck, IFS-safety,
    hadolint, actionlint, ruff via `lint-python.sh`, gitleaks via
    `lint-secrets.sh`), preflight checks, and smoke assertions that assert
-   real behavior against `versions.env` pins.
+   real behavior against `versions.env` pins. **Mutation-test every new
+   gate**: break the thing it guards and watch it go red before you trust it,
+   and say in its header what it does NOT cover. A gate that cannot fail is
+   worse than no gate — the 2026-08-31 audits turned up two.
 4. **Docs always follow the change — in the same work unit.** Any behavior,
    flag, workflow, or invariant change updates AGENTS.md (rules/quick-ref),
    README.md (user-facing pointers), the relevant `docs/` page, and
@@ -843,6 +846,25 @@ lint-gates class 3. When writing or reviewing bash in this repo:
    becomes the function's return value 1; under `set -e` the HEALTHY path kills
    the caller. End with `|| true`, `; return 0`, or an `if`.
 
+**Host tool traps when you MEASURE a run.** These falsify your AUDIT, not the
+build — each produced a wrong verdict on 2026-08-31, and none of them announces
+itself:
+
+- **`grep` on this host is ugrep.** A pattern beginning `--` is parsed as an
+  OPTION and matches nothing, silently — a fault-injection arm that never
+  fires looks exactly like a clean run. Always `grep -e "$pat"`. Symptom entry:
+  [`docs/failure-modes.md`](docs/failure-modes.md#a-fault-injection-test-passes-and-proves-nothing-grep-is-ugrep).
+- **`comm` needs `LC_ALL=C sort` on BOTH inputs.** Under any other collation it
+  reports a set difference that is simply wrong while still looking like an
+  answer: `LC_ALL=C` turned "0 shared" into "36 shared" and "12 missing" into
+  "1" in a single day's audits, and it had been making a preflight assertion
+  pass vacuously.
+- **Never count warnings by grepping a BuildKit log.** BuildKit echoes each
+  RUN's command text, so a warning string written INSIDE a Dockerfile command
+  is counted as if it had fired. Match real output lines only
+  (`^#N <time> …`); the naive count read "TVM build failed 23×" against a TVM
+  that built fine.
+
 ## Caching discipline (do not regress)
 
 Full map: `docs/linux-build-basics.md` § Caching Layers. Toggles: `USE_CCACHE`,
@@ -1179,6 +1201,35 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
 - Do not remove LLVM/Clang features to make foreign-arch builds pass. Foreign-arch runtime images must keep the source-built clang at `LLVM_RELEASE` (currently 23.1.0), not the Ubuntu distro clang. Source-built GCC (`GCC_VERSION`, currently 16.2.0) at `/opt/gcc-${GCC_VERSION}` is the default `cc`/`c++` on all arches. On `arm64`/`riscv64`, GCC is cross-compiled (Canadian cross) and swapped in at the Android stage via `Dockerfile.android`.
 - **Supply-chain discipline (audit 2026-08-08).** Every network fetch is verified: trust anchors (CUDA keyring, ROCm key), toolchains (Vulkan SDK, Android cmdline-tools, Flutter, rustup/uv installers) and header tarballs carry sha256 pins in versions.env; `download_verified_file` is the default fetch, `download_file` needs a reason. Python **build executors** (meson/ninja/cython/pybind11/setuptools/wheel/auditwheel/patchelf — anything that runs code at build time or rewrites shipped binaries) are pinned via the `PY_*_VERSION` family; bump them TOGETHER, deliberately, with a real build — never let an install site float back to `-U pkg`. Never `curl | sh`; clone at tags with `--depth 1 --branch` and hard-fail on a missing tag rather than falling back to a branch.
 - Preserve optional runtime payloads and LLVM normalization in `Dockerfile.package`. Do not drop `/usr/local/lib/onnxruntime-*`, LiteRT/TensorFlow headers, pkg-config files, or `/usr/local/llvm-target` handling.
+- **A miss reported by `install_target_packages` is not automatically an
+  outage.** It prints `FAILED (caller decides if fatal) — missing after apt-get`, deliberately
+  whether or not the caller wrapped it in `|| true`. Read the call site before
+  escalating: guarded is information, unguarded means the stage is genuinely
+  short a library. Two false alarms in one run came from skipping that step.
+- **Our source-built prefixes must WIN the include path.** A later stage that
+  installs a distro `-dev` package puts its headers on the same search path —
+  distro FFmpeg 8.0.1 displaced our `n9.0` and killed the riscv64 OpenCV
+  videoio build with an undeclared `AVAlphaMode`. Put `-I${PREFIX}/include`
+  ahead of the multiarch `-idirafter`/`-isystem` entries rather than trusting
+  the generator's ordering. The same class bites package NAMES: one renamed
+  across an Ubuntu release (`libfreetype6-dev` → `libfreetype-dev` on 26.04)
+  kills any UNGUARDED `install_target_packages` call. It passed on amd64 and
+  failed on riscv64 in the same run, so a green arch is not evidence for the
+  others — check names against the live index, per arch.
+- **riscv64 self-builds `onnxruntime-genai`** (GEN1) — do not re-add an arch
+  guard. Compiling, linking and the `linux_riscv64` wheel are proven; token
+  sanity from `generate()` is NOT (upstream #594 is a RISC-V build that
+  compiled, imported and emitted nonsense — tiers 1-3 of `smoke_genai_py` pass
+  in exactly that state). Back out with `GENAI_ALLOW_RISCV64=false`; the lane,
+  its patch and what remains unvalidated are owned by
+  [`docs/gen1-riscv64-genai.md`](docs/gen1-riscv64-genai.md).
+- **Feature parity has exactly TWO documented exemptions**, both riscv64:
+  `cmake` (Kitware publishes no riscv64 archive) and `iree_base_compiler` (the
+  IREE compiler cannot be cross-built). `_parity_exempt` in
+  `06-packaging/smoke-runtime-image.sh` is the source of truth — a new
+  exception is recorded THERE, never in prose, and the gate fails an exemption
+  that no longer applies. The ORT flavour split and arm64-only QNN are
+  deliberate, not gaps.
 
 ## Dockerfile.media BuildKit Strategy
 
@@ -1206,6 +1257,15 @@ base ─┬─ onnxruntime ───────┐
 - `--push-all` only when explicitly requested (publishes `base`/`package` intermediates).
 - Final cross release: `ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
 - Before rebuilding expensive foreign-arch wrappers, inspect remote tags with `nerdctl manifest inspect`. If wrappers exist remotely, recreate the manifest directly instead of rebuilding.
+- **The manifest lane REFUSES to shrink an already-published index.**
+  `_manifest_completeness_gate` in `build-runtime-manifest.sh` compares the
+  arch count of the live tag against the arches this run carries and stops.
+  The older coherence gate only asks whether the arches AGREE on a generation,
+  so a single-arch run assembled a perfectly coherent ONE-arch index and
+  published it — which is how `:latest-cross` was found reduced to riscv64
+  alone. Recover by re-running the runtime lane for the missing arches;
+  `--force` / `RUNTIME_MANIFEST_COMPLETENESS=0` are for a deliberate shrink
+  only. A partial-arch run should carry `--skip-manifest` and never reach here.
 
 ## Validation
 
@@ -1215,7 +1275,13 @@ base ─┬─ onnxruntime ───────┐
   `tests/test-preflight-slugs.sh` enforces that every slug has a registered
   check and vice versa. Newest additions: `python-lint` (ruff, hard on
   real-error classes, advisory rest), `secret-scan` (gitleaks, enforcing,
-  false positives via `.gitleaksignore` with justification), `stage-graph`.
+  false positives via `.gitleaksignore` with justification), `stage-graph`,
+  `code-dupes`. That last one is the CODE twin of `doc-dupes`: it tokenises
+  and normalises shell functions, Dockerfile instructions and Markdown
+  paragraphs before comparing, so it catches a copy whose identifiers were
+  RENAMED, and it reaches the nested `**/README.md` files `doc-dupes` never
+  scans. Budgets live in `docs/scripts/code-dupes.allow` and go stale loudly;
+  the fix for a finding is one owner plus a link, not a new entry.
   CI workflows and `.githooks/pre-commit` run SUBSETS of it via
   `PREFLIGHT_ONLY=<slugs>` / `PREFLIGHT_SKIP=<slugs>` — never copy the check
   list into a new caller.
@@ -1239,9 +1305,14 @@ base ─┬─ onnxruntime ───────┐
   `PRUNE_KEEP_GB>=100` — smaller budgets evict the IN-FLIGHT lanes' fresh
   layers and buy recompile churn; the kata-buildcache media slugs
   (rewritten every round) are the better lever when the store runs lean. Mid-run lever ORDER:
-  (1) prune-safe.sh, (2) `nerdctl rmi` of specific already-pushed tags
-  (refuses in-use ones — safe), (3) `nerdctl system prune` NEVER while a
-  chain runs — "unused" means not-container-referenced, so it deletes TAGGED
+  (1) prune-safe.sh, (2) `nerdctl rmi` of specific already-PUSHED tags
+  (refuses in-use ones — safe), (3) the regenerable cache-export dir
+  `~/.cache/kata-buildcache` (a different store, so prune-safe cannot reach it;
+  it grew 62 → 110 GB inside one session and caused a disk emergency).
+  `nerdctl system prune` and `nerdctl builder prune` are not steps on this
+  list at all — they delete the `exec.cachemount` records, hours of compiles,
+  and no flag makes that safe. `system prune` is worse again mid-run:
+  "unused" means not-container-referenced, so it deletes TAGGED
   cross-stage locals too (2026-08-18: cross-media-* vanished mid-run; the
   registry-digest-pinned handoffs survived via re-pull, costing ~25 min).
 - **Host toolchain: `linux/host-config/install-nerdctl-full.sh`** (2026-08-26).

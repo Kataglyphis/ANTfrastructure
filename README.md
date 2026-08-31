@@ -109,7 +109,7 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 | Tag | What |
 |-----|------|
-| `:latest-cross` | Multi-arch release (amd64/arm64/riscv64) — the stable API |
+| `:latest-cross` | Multi-arch release index (amd64/arm64/riscv64) — the stable API |
 | `:latest-cross-<arch>` | Per-architecture wrapper |
 | `:cross-media-<arch>` | Media libraries layer |
 | `:webserver` | Slim nginx webserver |
@@ -117,6 +117,15 @@ Registry: `ghcr.io/kataglyphis/kataglyphis_beschleuniger`
 
 Full matrix with platforms, tag hints and per-stage intermediates:
 [docs/overview.md](docs/overview.md).
+
+**Check the live index before relying on its arch coverage** —
+`nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross`.
+On 2026-08-31 it carried **riscv64 only**: a single-arch run had replaced the
+3-arch index. `build-runtime-manifest.sh` now refuses to shrink an already
+published index (`--force`, or `RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so
+a partial run cannot do it again —
+[docs/cross-build-verification.md](docs/cross-build-verification.md). The next full-fanout
+run restores all three arches.
 
 ## Architecture
 
@@ -128,7 +137,7 @@ linux/
 ├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
 ├── Dockerfile.toolchain     GCC + LLVM/Clang + Python (FROM base)
 ├── Dockerfile.sdk           Vulkan SDK + Flutter (FROM toolchain)
-├── Dockerfile.media         ONNX Runtime · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN (FROM sdk)
+├── Dockerfile.media         ONNX Runtime (+GenAI) · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN (FROM sdk)
 ├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
 ├── Dockerfile.package       lean runtime assembly + validation (FROM base + android)
 ├── Dockerfile.torch         final wrapper: entrypoint, labels, runtime scripts (FROM package)
@@ -158,6 +167,15 @@ Three lanes:
 
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 `windows/amd64`.
+
+> **riscv64 `onnxruntime-genai` is self-built and UNVALIDATED.** Upstream ships
+> no riscv64 wheel and runs no riscv64 CI, so the cross lane builds it from
+> source (toggle `GENAI_ALLOW_RISCV64`, default on). A real riscv64 build has
+> since **compiled and linked it and produced a `linux_riscv64` wheel**; what is
+> still unproven is whether `generate()` emits sane tokens — upstream's one
+> RISC-V field report compiled, imported and emitted nonsense.
+> The patch, the gates and the first-build watch list:
+> [docs/gen1-riscv64-genai.md](docs/gen1-riscv64-genai.md).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no
 > arm64 `servercore`/`nanoserver` base and Windows Server has no arm64 release,
@@ -230,6 +248,12 @@ check before spending hours measuring.
 | `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
+
+The first row's suite is `bash linux/scripts/preflight.sh`. Newest gate in it:
+**`code-dupes`** — token-normalised duplication over shell, Dockerfiles and the
+Markdown outside `docs/` (that is the prose gate's half), and
+Markdown, so it catches *renamed* clones the prose gate cannot see; deliberate
+twins are budgeted in `docs/scripts/code-dupes.allow`.
 
 **None of these builds a container image.** The image lanes are not CI here —
 they run on the build host (`windows/build-buildkit.ps1`, `linux/scripts/…`).

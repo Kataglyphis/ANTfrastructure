@@ -180,7 +180,9 @@ fi
 install_target_packages \
   libjpeg-turbo8-dev libpng-dev libtiff-dev libwebp-dev || true
 
-install_target_packages libopenexr-3-dev || \
+# libopenexr-3-dev is GONE on Ubuntu 26.04 (renamed libopenexr-dev); the dead
+# first attempt only cost a failed apt round-trip every run. libvvdec-dev does
+# not exist on ports at all, so the guard stays and vvdec builds from source.
 install_target_packages libopenexr-dev || true
 
 install_target_packages libvvdec-dev || true

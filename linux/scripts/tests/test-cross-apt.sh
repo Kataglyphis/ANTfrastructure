@@ -142,7 +142,7 @@ t_case "batch fail with one genuinely absent package returns 1 naming it"
 _reset_fakes batch-fail "libbogus-dev"
 out="$(install_target_packages libfoo-dev libbogus-dev 2>&1)"; rc=$?
 t_assert_eq "1" "${rc}" "a genuinely missing package must fail the install"
-t_assert_eq "install_target_packages: FAILED — missing after apt-get (rc=100): libbogus-dev" \
+t_assert_eq "install_target_packages: FAILED (caller decides if fatal) — missing after apt-get (rc=100): libbogus-dev" \
   "$(printf '%s\n' "${out}" | grep 'FAILED' || true)" \
   "failure line must name exactly the absent package (and not libfoo-dev)"
 

@@ -157,12 +157,60 @@ and today the only `mode=max` tier is the local one (T2).
 | A stage fails after hours of completed work → T2 exports **nothing** | `--cache-to type=local` only materialises on a successful solve (~8 h of arm64 media work exported ZERO once) | S1 salvage: re-drive the same build per named `--target`, each a pure cache hit, so the export lands anyway (`cross-stage-build.sh:230-262`) | `SALVAGE_CACHE_EXPORT=0` |
 | Disk below 40 G between stages | T2 growth (209 G measured today) | LRU-prune unprotected slugs; stages still to run in **this** chain are protected; if still short, stop writing new exports | `CROSS_DISK_GUARD_GB`, `CROSS_CACHE_MAX_GB`, `CROSS_NO_LOCAL_CACHE_EXPORT=1` |
 | `could not read …/kata-buildcache/…` | empty slug dir, i.e. a clean miss | suppressed: cache-from is only added when `index.json` is non-empty (`cross-stage-build.sh:171-173`) | — |
+| Chain refuses to start: `Insufficient disk: 19G free, ~180G recommended` | T2 grew 62 G → 110 G in ONE session (D4) and there is no room for the run | **preflight trim**: reclaim oldest-first from `~/.cache/kata-buildcache` up to the deficit, then re-measure and continue if it now fits (§ 3.1) | `CROSS_PREFLIGHT_TRIM=0`, `FORCE_LOW_DISK=1` |
+| A stage fails while disk is nearly full, and the salvage then writes GBs more | S1 salvage re-drives up to 15 named media targets, exporting cache for stages that get rebuilt anyway (D5) | skip the salvage, with a warning naming the free space and the threshold (§ 3.1) | `SALVAGE_MIN_FREE_GB` (`0` = always salvage), `SALVAGE_CACHE_EXPORT=0` |
 | Sessions die after 1–2 h of parallel load | BKD1 (buildkitd session rot) | — | restart buildkitd between rounds; cachemounts provably survive |
 
 **The rule any new cache tier has to obey:** it must be *droppable on the flake
 path*. The auto-recovery works by removing argument pairs from `build_cmd`
 before the retry; a tier that is not in that case statement keeps hammering a
 registry that is already timing out.
+
+### 3.1 Preflight trim (D4) and the salvage disk gate (D5)
+
+Both landed 2026-08-31, after the r3 disk emergency forced a controlled chain
+stop at 19 G free.
+
+**Preflight trim.** `_chain_disk_preflight` used to *print* `rm -rf
+${bc_dir}/*` and abort, leaving the reclaim to a human. It now calls
+`_disk_guard_trim_cache_export` (`01-core/disk-guard.sh`) first:
+
+* target = the same `need_gb` the preflight already computes;
+* budget = `need_gb - free_gb`, i.e. **the deficit only** — the loop stops the
+  moment either the target or the budget is reached, so it trims instead of
+  emptying the directory. Without that bound a second process eating disk would
+  turn the trim into `rm -rf` of every slug;
+* victims come from `_disk_guard_pick_victim`, so removal is strictly
+  oldest-mtime-first and honours a protected list (the preflight passes none —
+  nothing has run yet, and protecting every upcoming stage would protect
+  everything);
+* every removal is logged with its size, plus a `removed N slug(s), freed X
+  GiB` summary and the resulting free space. A silent reclaim is how people
+  stop trusting a tool.
+
+Then free space is re-measured. If it now clears `need_gb` the chain proceeds;
+otherwise the old hint-and-abort path runs unchanged. `CROSS_PREFLIGHT_TRIM=0`
+skips the trim entirely and restores the pre-2026-08-31 behaviour.
+
+**Why this is safe.** T2 is a *cache export*, not the buildkit store. Losing a
+slug costs export reuse for that stage and nothing else — no ccache, no
+sccache, no cachemount. The trim only ever `rm -rf`s directories directly under
+`BUILDKIT_CACHE_DIR`; it never invokes `buildctl prune`, `nerdctl builder
+prune` or `nerdctl system prune`. The sanctioned buildkit-store reclaim remains
+`linux/host-config/prune-safe.sh`.
+
+**Salvage disk gate.** `_cross_salvage_disk_ok` gates the S1 salvage on free
+space: below `SALVAGE_MIN_FREE_GB` (default `CROSS_DISK_GUARD_GB`, i.e. 40 G)
+the salvage is skipped and says so, because those stages are rebuilt anyway and
+the export is the last thing that should run when disk is scarce. Unknown free
+space, a non-numeric threshold, or `SALVAGE_MIN_FREE_GB=0` all keep the old
+always-salvage behaviour; `SALVAGE_CACHE_EXPORT=0` still disables it outright.
+
+Unit coverage: `linux/scripts/tests/test-disk-guard.sh` (oldest-first order,
+budget respected, no-op when ample, protected slugs, never aborts under
+`set -euo pipefail`) and `linux/scripts/tests/test-cache-salvage-gate.sh`.
+
+---
 
 ---
 
@@ -558,6 +606,8 @@ measurement, not a default flip.
 | `SALVAGE_TARGET_TIMEOUT` | `600` | per-target timeout for that salvage pass |
 | `CROSS_DISK_GUARD_GB` | `40` | free-space floor that triggers T2 LRU pruning (`0` disables) |
 | `CROSS_CACHE_MAX_GB` | `250` | total T2 size cap (`0` disables) |
+| `CROSS_PREFLIGHT_TRIM=0` | unset (trim on) | skip the disk-preflight trim of T2 (§ 3.1) |
+| `SALVAGE_MIN_FREE_GB` | `CROSS_DISK_GUARD_GB` (40) | free-space floor below which the S1 salvage is skipped (`0` = always salvage) |
 | `BUILDKIT_CACHE_DIR` | `~/.cache/kata-buildcache` | where T2 lives |
 | `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_BASE_SECS` | `4` / `15` | transient-push retry budget |
 | `ENABLE_SCCACHE_RUST` | `0` | **not** the monorepo's Rust switch any more — it only adds `setup_sccache` to `media_common_init`, i.e. it caches `install-rice-proto.sh`'s `cargo cinstall` (§ 5.3 item 1) |
