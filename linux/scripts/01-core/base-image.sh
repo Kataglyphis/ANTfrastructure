@@ -82,78 +82,85 @@ parse_bool_flag() {
   esac
 }
 
+# parse_options table: "<cmd> <flag>" -> "<target-var>|<value-mode>|<side-effect>".
+# Modes, and the deliberate --ports-url/--archive-url empty-value asymmetry:
+# docs/refactoring-backlog-archive-2026-08-31.md
+declare -A BASE_IMAGE_OPTION_SPECS=(
+  ["configure-fast-mirror --archive-url"]="FAST_UBUNTU_MIRROR_URL|required|use-fast-mirror"
+  ["configure-fast-mirror --ports-url"]="FAST_UBUNTU_PORTS_MIRROR_URL|optional|use-fast-mirror"
+  ["configure-fast-mirror --rewrite-security"]="FAST_UBUNTU_REWRITE_SECURITY|bool|"
+  ["install-shared-build-tooling --cmake-version"]="BASE_IMAGE_CMAKE_VERSION|required|"
+  ["install-node --version"]="BASE_IMAGE_NODE_VERSION|required|"
+  ["install-vulkan-runtime-files --version"]="BASE_IMAGE_VULKAN_VERSION|required|"
+  ["install-uv --version"]="BASE_IMAGE_UV_VERSION|required|"
+  ["init-compiler-caches --max-size"]="BASE_IMAGE_CCACHE_MAXSIZE|required|"
+)
+
+# Apply one <flag> <value> pair for <cmd>, or die. <value> is the caller's
+# "${2-}", so an absent value collapses to empty; every mode handles that.
+base_image_apply_option() {
+  local cmd="$1"
+  local flag="$2"
+  local value="$3"
+  local spec target mode side
+
+  spec="${BASE_IMAGE_OPTION_SPECS["${cmd} ${flag}"]:-}"
+  [ -n "${spec}" ] || die "Unknown argument for ${cmd}: ${flag}"
+
+  target="${spec%%|*}"
+  spec="${spec#*|}"
+  mode="${spec%%|*}"
+  side="${spec#*|}"
+
+  local -n target_ref="${target}"
+  case "${mode}" in
+    required)
+      require_single_value "${flag}" "${value}"
+      target_ref="${value}"
+      ;;
+    bool)
+      require_single_value "${flag}" "${value}"
+      # Assign THROUGH the nameref: parse_bool_flag's die must still end the
+      # process here. docs/refactoring-backlog-archive-2026-08-31.md
+      target_ref="$(parse_bool_flag "${flag}" "${value}")"
+      ;;
+    optional)
+      # shellcheck disable=SC2034  # nameref: the write lands in the caller's var
+      target_ref="${value}"
+      ;;
+  esac
+
+  # The one side effect: naming a mirror URL opts INTO the fast mirror.
+  case "${side}" in
+    use-fast-mirror)
+      USE_FAST_UBUNTU_MIRROR=true
+      ;;
+  esac
+}
+
 parse_options() {
   local cmd="$1"
   shift
 
   case "${cmd}" in
-    configure-fast-mirror)
+    configure-fast-mirror|install-shared-build-tooling|install-node|install-uv|init-compiler-caches)
       while [ "$#" -gt 0 ]; do
-        case "$1" in
-          --archive-url)
-            require_single_value "$1" "${2:-}"
-            FAST_UBUNTU_MIRROR_URL="$2"
-            USE_FAST_UBUNTU_MIRROR=true
-            shift 2
-            ;;
-          --ports-url)
-            FAST_UBUNTU_PORTS_MIRROR_URL="${2-}"
-            USE_FAST_UBUNTU_MIRROR=true
-            shift 2
-            ;;
-          --rewrite-security)
-            require_single_value "$1" "${2:-}"
-            FAST_UBUNTU_REWRITE_SECURITY="$(parse_bool_flag "$1" "$2")"
-            shift 2
-            ;;
-          *)
-            die "Unknown argument for ${cmd}: $1"
-            ;;
-        esac
-      done
-      ;;
-    install-shared-build-tooling)
-      while [ "$#" -gt 0 ]; do
-        case "$1" in
-          --cmake-version)
-            require_single_value "$1" "${2:-}"
-            BASE_IMAGE_CMAKE_VERSION="$2"
-            shift 2
-            ;;
-          *)
-            die "Unknown argument for ${cmd}: $1"
-            ;;
-        esac
-      done
-      ;;
-    install-node)
-      while [ "$#" -gt 0 ]; do
-        case "$1" in
-          --version)
-            require_single_value "$1" "${2:-}"
-            BASE_IMAGE_NODE_VERSION="$2"
-            shift 2
-            ;;
-          *)
-            die "Unknown argument for ${cmd}: $1"
-            ;;
-        esac
+        base_image_apply_option "${cmd}" "$1" "${2-}"
+        shift 2
       done
       ;;
     install-vulkan-runtime-files)
+      # The ONLY command taking positionals: stops at the first non-flag (or
+      # `--`) and passes the rest on via REMAINING_ARGS, which nothing else sets.
       while [ "$#" -gt 0 ]; do
         case "$1" in
-          --version)
-            require_single_value "$1" "${2:-}"
-            BASE_IMAGE_VULKAN_VERSION="$2"
-            shift 2
-            ;;
           --)
             shift
             break
             ;;
           -*)
-            die "Unknown argument for ${cmd}: $1"
+            base_image_apply_option "${cmd}" "$1" "${2-}"
+            shift 2
             ;;
           *)
             break
@@ -161,34 +168,6 @@ parse_options() {
         esac
       done
       REMAINING_ARGS=("$@")
-      ;;
-    install-uv)
-      while [ "$#" -gt 0 ]; do
-        case "$1" in
-          --version)
-            require_single_value "$1" "${2:-}"
-            BASE_IMAGE_UV_VERSION="$2"
-            shift 2
-            ;;
-          *)
-            die "Unknown argument for ${cmd}: $1"
-            ;;
-        esac
-      done
-      ;;
-    init-compiler-caches)
-      while [ "$#" -gt 0 ]; do
-        case "$1" in
-          --max-size)
-            require_single_value "$1" "${2:-}"
-            BASE_IMAGE_CCACHE_MAXSIZE="$2"
-            shift 2
-            ;;
-          *)
-            die "Unknown argument for ${cmd}: $1"
-            ;;
-        esac
-      done
       ;;
     bootstrap-ca|restore-mirror-scheme|install-os-packages)
       [ "$#" -eq 0 ] || die "${cmd} does not accept extra arguments"

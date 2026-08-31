@@ -1,6 +1,6 @@
 # windows/downloads — manual, EULA-gated build inputs
 
-Place the **TensorRT** zip here for the GPU lane (`windows/build.ps1 -Gpu`):
+Place the **TensorRT** zip here for the GPU lane (`windows/build-buildkit.ps1 -Gpu`):
 
 - File: `TensorRT-<TENSORRT_VERSION>.*.zip` (any `*TensorRT*.zip` is picked up)
 - Version pin: `TENSORRT_VERSION` in `linux/scripts/01-core/versions.env`

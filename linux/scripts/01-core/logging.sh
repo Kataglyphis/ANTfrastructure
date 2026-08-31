@@ -111,14 +111,29 @@ skip() {
   printf '  SKIP %s\n' "$*"
 }
 
+# ERR trap: the action is baked into the trap string, never read via dynamic
+# scope; _LOG_TRAP_ACTION covers callers that re-arm the bare string themselves.
+# docs/failure-modes.md
+_LOG_TRAP_ACTION="err"
+
+on_err() {
+  local line="${1:-?}"
+  local cmd="${2:-?}"
+  local action="${3:-${_LOG_TRAP_ACTION:-err}}"
+  "${action}" "Command failed (line ${line}): ${cmd}"
+}
+
 _install_trap() {
   local action="${1:-err}"
-  on_err() {
-    local line="${1:-?}"
-    local cmd="${2:-?}"
-    "${action}" "Command failed (line ${line}): ${cmd}"
-  }
-  trap 'on_err "${LINENO}" "${BASH_COMMAND}"' ERR
+  _LOG_TRAP_ACTION="${action}"
+
+  local quoted_action
+  printf -v quoted_action '%q' "${action}"
+
+  # ${quoted_action} expands NOW; LINENO/BASH_COMMAND stay escaped so they
+  # expand AT FIRE TIME — reverse that and every failure reports this line.
+  # shellcheck disable=SC2064  # expand-now is intentional: see above
+  trap "on_err \"\${LINENO}\" \"\${BASH_COMMAND}\" ${quoted_action}" ERR
 }
 install_err_trap()  { _install_trap err; }
 install_warn_trap() { _install_trap warn; }

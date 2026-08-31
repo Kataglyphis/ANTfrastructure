@@ -60,8 +60,8 @@ The two halves of one topic often split:
 | Looking for | Read |
 |---|---|
 | The image itself: what is installed, entrypoint, known traps | [`windows-builds.md`](windows-builds.md) |
-| **Rules you must not regress** when editing the Windows chain (44, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
-| **Which lane to build on**: BuildKit, nerdctl, the retired classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
+| **Rules you must not regress** when editing the Windows chain (46, grouped) | [`windows-build-invariants.md`](windows-build-invariants.md) |
+| **Which lane to build on**: BuildKit, nerdctl, the removed classic docker lane; isolation policy, preflight gates, RDNA4 A/B history | [`windows-build-lanes.md`](windows-build-lanes.md) |
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
@@ -84,6 +84,7 @@ The two halves of one topic often split:
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
+| **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and what is still UNVALIDATED | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
@@ -144,11 +145,13 @@ exists only in one of these, promote it to its owning page above.
 | Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
+| Changelog entries 2026-08-14 … 2026-08-28 | [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) |
 | Changelog entries through 2026-08-13 | [`changelog-archive-2026-08-13.md`](changelog-archive-2026-08-13.md) |
-| Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) · [`2026-08-26`](windows-backlog-archive-2026-08-26.md) |
+| Settled Windows backlog items | [`2026-08-11`](windows-backlog-archive-2026-08-11.md) · [`2026-08-17`](windows-backlog-archive-2026-08-17.md) · [`2026-08-21`](windows-backlog-archive-2026-08-21.md) · [`2026-08-26`](windows-backlog-archive-2026-08-26.md) · [`2026-08-31`](windows-backlog-archive-2026-08-31.md) |
 | Settled Linux refactor items | [`refactoring-backlog-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md) |
 | Closed Linux refactor items (2026-08-27) | [`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md) | Everything the backlog closed up to 2026-08-27, including the entries that were REFUTED or RETRACTED rather than fixed. |
 | Closed Linux refactor items (2026-08-30) | [`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md) | The OpenCV-sccache REFUTATION (pre-UDS wrong-server bug, not OpenCV-specific) and the F2 one-resolver cache consolidation. |
+| Closed Linux refactor items (2026-08-31) | [`refactoring-backlog-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md) | The A1 closure window: the logging.sh ERR-trap bug, the complexity queue, the modules.sh dir-walker REFUTATION, the IREE toothless-gate finding, and GEN1 (riscv64 GenAI built + wired ON). |
 | Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), `../windows/upstream/` |
 | The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 

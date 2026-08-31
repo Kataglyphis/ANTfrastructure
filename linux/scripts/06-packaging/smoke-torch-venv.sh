@@ -221,16 +221,10 @@ def installed_version(import_name, dist_name):
     except Exception:
         return None
 
-# Arch policy: genai is a DOCUMENTED riscv64 skip — the producer refuses the
-# arch ("Skipping onnxruntime-genai on riscv64 because it is not supported";
-# upstream ships no riscv64 wheel in any version and closed its one RISC-V
-# field report as not-planned) and verify-media-artifacts SKIPs in agreement,
-# so absence there is policy, not drift. STV_REQUIRE_GENAI=1 re-arms the hard
-# assert (e.g. should GEN1 ever self-build a riscv64 wheel). Found live
-# 2026-08-11: without this, the assert derived EXP_GENAI unconditionally from
-# versions.env and flagged the documented absence as a pin failure.
+# GEN1 inverts the old riscv64 genai carve-out: riscv64 self-builds the wheel now,
+# so absence is a DEFECT unless the lane was turned off. docs/gen1-riscv64-genai.md
 expected_absent = set()
-if is_riscv64 and os.environ.get("STV_REQUIRE_GENAI", "") != "1":
+if is_riscv64 and os.environ.get("GENAI_ALLOW_RISCV64", "true").strip().lower() != "true":
     expected_absent.add("onnxruntime-genai")
 
 fails = []
@@ -238,7 +232,7 @@ for import_name, dist_name, build_pin, torchlike in SPECS:
     inst = installed_version(import_name, dist_name)
     if inst is None:
         if dist_name in expected_absent:
-            print("  ~~  %-16s not installed (documented riscv64 skip; policy, not drift)" % dist_name)
+            print("  ~~  %-16s not installed (riscv64 GenAI lane off via GENAI_ALLOW_RISCV64; policy, not drift)" % dist_name)
             continue
         fails.append("%s NOT INSTALLED" % dist_name)
         print("  XX  %-16s NOT INSTALLED" % dist_name)

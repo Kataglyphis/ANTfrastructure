@@ -786,39 +786,35 @@ build_torchvision_wheel() {
 # Failure handling: build_iree_wheels returning non-zero is FATAL in main() —
 # IREE is required on every arch — so each stage dumps its log tail before
 # returning. This cannot be validated on the amd64 dev host.
-build_iree_wheels() {
-    # Wheel projects this run expects. Set by the cross branch (runtime-only
-    # unless IREE_CROSS_BUILD_COMPILER=ON); the native branch leaves it empty
-    # and the packaging step defaults to both. Declared here so `set -u` does
-    # not trip on the native path.
-    local -a iree_wheel_projects=()
-    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/iree"
-    local host_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host"
-    local host_install="${host_build}/install"
-    local target_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-target"
-    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree"
-    local wheel_platform="" toolchain_file="" iree_target_triple=""
-    local -a cmake_args=()
+#
+# Split into _iree_* stages sharing build_iree_wheels' locals by dynamic scope;
+# per-helper contracts in docs/refactoring-backlog-archive-2026-08-31.md.
 
+# Sets wheel_platform. Returns 1 when IREE cannot be built at all.
+_iree_check_prereqs() {
     command -v cmake >/dev/null 2>&1 || { warn "cmake absent; skipping IREE riscv64 runtime wheel"; return 1; }
     command -v ninja >/dev/null 2>&1 || { warn "ninja absent; skipping IREE riscv64 runtime wheel"; return 1; }
 
     wheel_platform="$(wheel_platform_tag || true)"
     [ -n "${wheel_platform}" ] || { warn "no riscv64 wheel platform tag; skipping IREE"; return 1; }
+}
 
-    # ccache — the decisive lever for IREE build cost. IREE pins its OWN LLVM fork
-    # (github.com/iree-org/llvm-project @ a bleeding-edge commit) and MLIR has no
-    # stable API, so we CANNOT substitute ContainerHub's release-tag toolchain LLVM;
-    # IREE must compile its bundled LLVM/MLIR (both host tools AND the riscv64 cross)
-    # itself — ~1h. But the build tree lives on tmpfs (wiped each run) while
-    # /var/cache/ccache is a PERSISTENT BuildKit cache mount (Dockerfile.media
-    # app-wheelhouse RUN). Wiring the cmake compiler-launcher to ccache makes that
-    # ~1h LLVM compile a ONE-TIME cost: every rerun cache-hits the objects. ccache
-    # keys on compiler+flags, so the native-host build and the riscv64-cross build
-    # keep separate entries and never collide. Guarded: plain rebuild if ccache is
-    # absent. (Applies to the bundled llvm-project add_subdirectory too, which
-    # inherits CMAKE_*_COMPILER_LAUNCHER; the small NATIVE tblgen sub-build may not.)
-    local -a ccache_cmake_args=()
+# ccache — the decisive lever for IREE build cost. IREE pins its OWN LLVM fork
+# (github.com/iree-org/llvm-project @ a bleeding-edge commit) and MLIR has no
+# stable API, so we CANNOT substitute ContainerHub's release-tag toolchain LLVM;
+# IREE must compile its bundled LLVM/MLIR (both host tools AND the riscv64 cross)
+# itself — ~1h. But the build tree lives on tmpfs (wiped each run) while
+# /var/cache/ccache is a PERSISTENT BuildKit cache mount (Dockerfile.media
+# app-wheelhouse RUN). Wiring the cmake compiler-launcher to ccache makes that
+# ~1h LLVM compile a ONE-TIME cost: every rerun cache-hits the objects. ccache
+# keys on compiler+flags, so the native-host build and the riscv64-cross build
+# keep separate entries and never collide. Guarded: plain rebuild if ccache is
+# absent. (Applies to the bundled llvm-project add_subdirectory too, which
+# inherits CMAKE_*_COMPILER_LAUNCHER; the small NATIVE tblgen sub-build may not.)
+#
+# Sets ccache_cmake_args/_iree_launcher and exports CCACHE_*/SCCACHE_* for the
+# steps below; nothing here may be `local`. See docs/refactoring-backlog-archive-2026-08-31.md
+_iree_setup_compiler_cache() {
     if command -v ccache >/dev/null 2>&1; then
         export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}"
         # 64G, not 25G: IREE builds TWO full LLVM object sets (native host tools +
@@ -884,7 +880,10 @@ build_iree_wheels() {
     else
         warn "ccache not found — IREE bundled LLVM will rebuild from scratch every run (no cross-run cache)"
     fi
+}
 
+# Fetch the pinned IREE tree into src_dir. Returns 1 on clone/submodule failure.
+_iree_fetch_source() {
     # Clone at the pinned tag, then init ALL submodules recursively — including
     # third_party/torch-mlir + third_party/stablehlo — so the compiler ships the
     # full frontend set (stablehlo + torch input dialects), not just TOSA/linalg.
@@ -897,7 +896,10 @@ build_iree_wheels() {
     if ! ( cd "${src_dir}" && git submodule update --init --recursive --depth 1 ); then
         warn "IREE submodule init failed"; return 1
     fi
+}
 
+# Defeat IREE's abi3 wheel tagging in the freshly cloned tree (src_dir).
+_iree_patch_setup_py_abi3() {
     # Build VERSION-SPECIFIC Python bindings against the container's from-source
     # CPython (3.14), NOT IREE's default cp312-abi3 stable-ABI wheel. IREE otherwise
     # forces abi3 two ways, and BOTH must be defeated:
@@ -918,336 +920,335 @@ build_iree_wheels() {
             sed -i 's/sys\.version_info >= (3, 12) and not /False and /' "${_sp}"
         fi
     done
+}
 
-    # QNN target backend (backlog QNN-LINUX, mirrors Windows build-iree #121):
-    # arm64-only, opt-in by staging the QAIRT zip; no zip = OFF (upstream default).
-    _iree_qnn_home="$(command -v resolve_qnn_sdk >/dev/null 2>&1 && resolve_qnn_sdk || true)"
-    if [ -n "${_iree_qnn_home}" ]; then
-        log "IREE: QNN target backend ON (SDK root ${_iree_qnn_home})"
-        cmake_args+=("-DIREE_TARGET_BACKEND_QNN=ON" "-DQNN_HOME=${_iree_qnn_home}")
-    else
-        cmake_args+=("-DIREE_TARGET_BACKEND_QNN=OFF")
-    fi
-
-    if cross_build_is_active; then
-        # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====
-        # Stage 1 — NATIVE amd64 host build that populates IREE_HOST_BIN_DIR.
-        # This function runs inside the riscv64 cross environment, where
-        # CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross toolchain
-        # (set up for the torch build). The host tools MUST be native or they can't
-        # execute on the build host to drive the target build — the first run
-        # (2026-07-14) failed here precisely because the host cmake inherited the cross
-        # CC/CXX. So strip the cross env for BOTH the configure and the build, and pin
-        # the host compiler + both Python executables (FindPython/FindPython3 disagreed
-        # on the first run).
-        #
-        # IREE_BUILD_COMPILER=OFF here (2026-08-26). It used to be ON, which made this
-        # stage compile IREE's bundled llvm-project + MLIR + Clang + LLD + stablehlo +
-        # torch-mlir natively — the multi-hour "IREE" tail that live sampling caught
-        # compiling clang/Basic/Targets/ARM.cpp and TargetInfo.cpp. That was a leftover
-        # from the era when the TARGET stage was runtime-only (BUILD_COMPILER=OFF), the
-        # configuration of incident run iree-0714c: back then tools/CMakeLists.txt's
-        #     if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
-        #       iree_import_binary(NAME iree-tblgen OPTIONAL) ... llvm-link ... clang
-        # branch DID fire and the target really did need llvm-link/clang from the host.
-        # The target stage below now sets -DIREE_BUILD_COMPILER=ON (it has to: we ship
-        # the riscv64 iree_base_compiler wheel), so that branch is gated OFF and
-        # IREE_CLANG_BINARY / IREE_LLVM_LINK_BINARY resolve to the target build's own
-        # bundled-LLVM targets ($<TARGET_FILE:clang>, $<TARGET_FILE:llvm-link>,
-        # build_tools/cmake/iree_llvm.cmake:83-85), never to IREE_HOST_BIN_DIR.
-        #
-        # With the target on COMPILER=ON, a full grep of IREE v3.11.0 shows exactly TWO
-        # places that read a file out of ${IREE_HOST_BIN_DIR}:
-        #   build_tools/cmake/iree_c_embed_data.cmake:97-98   iree-c-embed-data
-        #   build_tools/cmake/flatbuffer_c_library.cmake:90-91 iree-flatcc-cli
-        # Both are tiny host codegen utilities with ZERO LLVM dependency (a single .cc,
-        # and the flatcc CLI); both are added unconditionally (CMakeLists.txt:1049 and
-        # :1141, neither EXCLUDE_FROM_ALL) and both `install(... RUNTIME DESTINATION
-        # bin)` regardless of IREE_BUILD_COMPILER. Upstream's own cross script
-        # build_tools/cmake/build_riscv.sh likewise runs `--target install` with
-        # -DIREE_BUILD_COMPILER=OFF, so the COMPILER=OFF install path is the supported
-        # one. Everything else that touches IREE_HOST_BIN_DIR is either the gated
-        # iree_import_binary branch above or tests/samples (BUILD_TESTS=OFF,
-        # BUILD_SAMPLES=OFF).
-        #
-        # Guarded, not assumed: after the install we require both tools to exist.
-        #
-        # The ON arm is insurance against exactly ONE risk — our reading of IREE's
-        # cmake being wrong about those two tools installing under COMPILER=OFF.
-        # It is NOT a general retry, and the earlier claim here that it costs "one
-        # cheap extra pass" was false: ON is the multi-hour bundled-LLVM build this
-        # change exists to avoid. ON's build graph is a strict SUPERSET of OFF's,
-        # so anything that breaks the OFF *build* (bad host toolchain, OOM at
-        # MAX_JOBS, no disk) breaks ON too, hours later, and the image fails
-        # anyway. Hence the three outcomes are treated differently:
-        #   configure fails -> escalate (cheap, and could be OFF-path-specific)
-        #   BUILD fails     -> fail fast (ON cannot succeed where OFF could not)
-        #   tools missing   -> escalate (this is the case ON actually covers)
-        local host_cc="" host_cxx=""
-        for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
-        for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
-
-        # Tools the target stage needs from IREE_HOST_BIN_DIR.
-        #
-        # iree-tblgen IS REQUIRED HERE (regression fix 2026-08-27). The original
-        # list held only the two LLVM-free codegen helpers, on the reading that
-        # tools/CMakeLists.txt gates host-tool imports behind
-        # `IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER` and our target sets
-        # COMPILER=ON, so nothing else is imported. That is true -- and it is
-        # exactly the problem: nothing being imported means the TARGET build
-        # builds its own iree-tblgen, FOR THE TARGET ARCH, and then tries to RUN
-        # it during the build. On a cross lane that is an arm64 binary on an
-        # amd64 host:
-        #     /…/iree-build-target/tools/iree-tblgen: Exec format error
-        #     FAILED: [code=126] …/VMOpEncoder.cpp.inc
-        # It cannot show up on amd64, where host and target are the same arch --
-        # which is why the amd64 media stage passed cleanly and arm64 died.
-        #
-        # Listing it here makes the OFF pass fail its own check and escalate to
-        # COMPILER=ON, which is precisely what the fallback loop exists for. The
-        # cost is that CROSS lanes go back to building the bundled LLVM in the
-        # host stage; the native lane keeps the win. A cheap COMPILER=OFF probe
-        # first is still worth it: if upstream ever installs tblgen without the
-        # compiler, the saving returns automatically and nothing needs editing.
-        local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli iree-tblgen)
-        local host_stage_ok=0 host_compiler_mode="" host_tool="" host_tools_missing=""
-        for host_compiler_mode in OFF ON; do
-            rm -rf "${host_build}" "${host_install}"
-            log "IREE host stage: configuring with IREE_BUILD_COMPILER=${host_compiler_mode}"
-            if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
-                     -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
-                    cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
-                    "${ccache_cmake_args[@]}" \
-                    -DCMAKE_BUILD_TYPE=Release \
-                    -DCMAKE_C_COMPILER="${host_cc}" \
-                    -DCMAKE_CXX_COMPILER="${host_cxx}" \
-                    -DIREE_BUILD_COMPILER="${host_compiler_mode}" \
-                    -DIREE_BUILD_PYTHON_BINDINGS=OFF \
-                    -DIREE_BUILD_SAMPLES=OFF \
-                    -DIREE_BUILD_TESTS=OFF \
-                    -DIREE_ENABLE_WERROR_FLAG=OFF \
-                    -DCMAKE_INSTALL_PREFIX="${host_install}" \
-                    -DPython_EXECUTABLE="${BUILD_PYTHON}" \
-                    -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
-                warn "IREE host configure (IREE_BUILD_COMPILER=${host_compiler_mode}) failed"
-                continue
-            fi
-            # Capture build output to a log and echo its tail on failure. BuildKit
-            # collapses the tens-of-thousands of ninja progress lines, so a bare failure
-            # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
-            # is the only way to see why the cross build actually died.
-            if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
-                     -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
-                    cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
-                    > "${host_build}.log" 2>&1; then
-                warn "IREE host build (IREE_BUILD_COMPILER=${host_compiler_mode}) failed"
-                echo "----- IREE host build: last 80 log lines -----"
-                tail -n 80 "${host_build}.log" 2>/dev/null
-                echo "----- end IREE host build log -----"
-                # Deliberately NOT `continue`: escalating a failed BUILD to ON
-                # compiles bundled llvm-project/MLIR/Clang for hours and then
-                # fails at the same wall, because ON builds everything OFF does
-                # and more. Fail now, while the log tail above is the answer.
-                warn "not escalating to IREE_BUILD_COMPILER=ON: its build graph is a superset of this one, so it would fail the same way after a multi-hour LLVM compile"
-                break
-            fi
-            host_tools_missing=""
-            for host_tool in "${host_required_tools[@]}"; do
-                [ -x "${host_install}/bin/${host_tool}" ] || host_tools_missing+=" ${host_tool}"
-            done
-            if [ -z "${host_tools_missing}" ]; then
-                log "IREE host stage OK (IREE_BUILD_COMPILER=${host_compiler_mode}); IREE_HOST_BIN_DIR tools present: ${host_required_tools[*]}"
-                host_stage_ok=1
-                break
-            fi
-            warn "IREE host stage (IREE_BUILD_COMPILER=${host_compiler_mode}) left ${host_install}/bin missing:${host_tools_missing} — retrying with the full host compiler"
-        done
-        if [ "${host_stage_ok}" != "1" ]; then
-            warn "IREE host stage failed in both COMPILER=OFF and COMPILER=ON modes; cannot build the target IREE wheels"
-            return 1
-        fi
-
-        # Stage 2 — cross the runtime (+ Python bindings) against the host tools.
-        # IREE_ENABLE_WERROR_FLAG=OFF is REQUIRED here (iree-0714g): the nanobind Python
-        # bindings pull in the cross Python 3.14 pyconfig.h, which defines _POSIX_C_SOURCE/
-        # _XOPEN_SOURCE to OLDER values than resolute's glibc features.h (already included
-        # via <optional>/<cstdint> in binding.h) — a benign macro redefinition that IREE's
-        # default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
-        # riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
-        # our side without patching IREE headers.)
-        # IREE_OUTPUT_FORMAT_C=OFF is REQUIRED here (iree-0714m). It is a
-        # cmake_dependent_option that defaults ON whenever IREE_BUILD_COMPILER=ON
-        # (CMakeLists.txt:517), enabling the EmitC "vm-c" output format. That pulls in
-        # runtime/src/iree/vm/test/emitc/CMakeLists.txt, which is gated on
-        # IREE_OUTPUT_FORMAT_C (NOT IREE_BUILD_TESTS — so TESTS=OFF does not stop it) and
-        # generates VM headers by RUNNING iree-compile at build time. With COMPILER=ON on
-        # the TARGET, the tool name 'iree-compile' resolves to the just-built riscv64
-        # binary, not the host tool in IREE_HOST_BIN_DIR, so the codegen tries to execute
-        # a riscv64 iree-compile on the amd64 host and dies with
-        # 'libIREECompiler.so: cannot open shared object file' (code 127). Turning the
-        # format OFF removes the only build-time consumer of the target compiler; the
-        # riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
-        # wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
-        # bytecode compilation, which the app's check_iree uses, is unaffected.
-        # CROSS TARGET IS RUNTIME-ONLY (2026-08-27, restored). IREE_BUILD_COMPILER
-        # is OFF here, and that is not a preference -- it is the only configuration
-        # upstream supports for a cross target.
-        #
-        # IREE imports host tools only under
-        #     if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)  (tools/CMakeLists.txt)
-        # so with COMPILER=ON the target IGNORES IREE_HOST_BIN_DIR entirely, builds
-        # its own iree-tblgen FOR THE TARGET ARCH, and then runs it during the build:
-        #     /.../iree-build-target/tools/iree-tblgen: Exec format error
-        #     FAILED: [code=126] .../Dialect/VM/IR/VMOpEncoder.cpp.inc
-        # Proven NOT to be a host-side problem: the host stage completed with
-        # COMPILER=ON and reported "tools present: iree-c-embed-data iree-flatcc-cli
-        # iree-tblgen", and the target still used its own. Upstream's build_riscv.sh
-        # sets the target to COMPILER=OFF for exactly this reason. The same class is
-        # already documented below for iree-compile (IREE_OUTPUT_FORMAT_C=OFF).
-        #
-        # WHAT THIS COSTS, plainly: arm64 and riscv64 ship the IREE RUNTIME wheel but
-        # NOT iree_base_compiler. Commit 9b238e7 wanted both on cross; it set the flag
-        # without providing a native tblgen, and that configuration cannot build.
-        # amd64 is NATIVE, never enters this branch, and keeps both wheels.
-        # IREE_CROSS_BUILD_COMPILER=ON re-tries it once IREE supports the combination.
-        toolchain_file="$(write_cross_cmake_toolchain_file || true)"
-        [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
-        append_common_cross_cmake_args cmake_args
-
-        # The cross-built iree-compile bakes in its DEFAULT codegen target triple at
-        # compile time via LLVM_HOST_TRIPLE (llvm::sys::getProcessTriple(), which IREE's
-        # llvm-cpu backend uses when --iree-llvmcpu-target-triple is unset). Bundled
-        # LLVM's CMake auto-detects that triple from the BUILD host during a cross-build,
-        # so without this override an arm64/riscv64 iree-compile defaults to the x86_64
-        # build host and emits `embedded-elf-x86_64` — iree-run-module on the target then
-        # fails "HAL device not found" (INCOMPATIBLE). Pin both triples to the actual
-        # target so the shipped compiler defaults to the arch it runs on. (iree-0714t:
-        # arm64 native iree-compile smoke failed exactly this way.)
-        iree_target_triple="$(cross_target_triplet 2>/dev/null || true)"
-        if [ -n "${iree_target_triple}" ]; then
-            cmake_args+=(
-                "-DLLVM_HOST_TRIPLE=${iree_target_triple}"
-                "-DLLVM_DEFAULT_TARGET_TRIPLE=${iree_target_triple}"
-            )
-        fi
-
-        # Build IREE's nanobind Python extensions with the TARGET Python's SOABI so the
-        # compiled module is named _runtime.cpython-314-<target>-linux-gnu.so, not the
-        # x86_64 build host's suffix. Without this, FindPython/nanobind introspect the
-        # host BUILD_PYTHON and stamp cpython-314-x86_64-linux-gnu.so, which the target
-        # (aarch64) Python cannot import — "cannot import name '_runtime' from
-        # 'iree._runtime_libs'" (iree-0714t). _PYTHON_SYSCONFIGDATA_NAME redirects the
-        # host interpreter's sysconfig to the target's EXT_SUFFIX, the same mechanism the
-        # torch/vision cross builds use (resolve_target_python_sysconfig_export). Applied
-        # only HERE — after the Stage-1 host tools build (bindings OFF) — so host binaries
-        # keep the x86_64 config; it stays in effect for the Stage-2 build + wheel pack.
-        local iree_sysconfig_export=""
-        iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
-        if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
-
-        # The bundled LLVM spawns a NATIVE sub-build (llvm-project/NATIVE) for the
-        # tblgen family, and LLVM's CrossCompile.cmake DEFAULTS that sub-build's
-        # compilers to the outer (CROSS) CMAKE_C(XX)_COMPILER — so llvm-min-tblgen
-        # came out arm64 and died "Exec format error" on the amd64 build host
-        # (media-arm64, 2026-08-08; riscv64 only ever survived this because host
-        # qemu binfmt silently emulated the wrong-arch tblgen — slowly). Pin the
-        # NATIVE sub-build to the true host compilers, with ccache so its objects
-        # cache like everything else. (';' is CMake's list separator — the whole
-        # value is ONE shell word.)
-        local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
-        if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
-            native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher:-ccache};-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher:-ccache}"
-        fi
-
-        rm -rf "${target_build}"
-        # Which wheel projects this configuration will actually produce.
-        # The cross target is runtime-only unless IREE_CROSS_BUILD_COMPILER=ON,
-        # so demanding a compiler wheel afterwards would fail a build that did
-        # exactly what it was told to do.
-        case "${IREE_CROSS_BUILD_COMPILER:-OFF}" in
-          [Oo][Nn]|1|[Tt][Rr][Uu][Ee]) iree_wheel_projects=(compiler runtime) ;;
-          *)                           iree_wheel_projects=(runtime) ;;
-        esac
-        if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
-                -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
-                "${cmake_args[@]}" \
-                "${ccache_cmake_args[@]}" \
-                -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
-                -DIREE_HOST_BIN_DIR="${host_install}/bin" \
-                -DIREE_BUILD_COMPILER="${IREE_CROSS_BUILD_COMPILER:-OFF}" \
-                -DIREE_BUILD_PYTHON_BINDINGS=ON \
-                -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
-                -DIREE_BUILD_SAMPLES=OFF \
-                -DIREE_BUILD_TESTS=OFF \
-                -DIREE_OUTPUT_FORMAT_C=OFF \
-                -DIREE_ENABLE_WERROR_FLAG=OFF \
-                -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
-                -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
-                -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
-            warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
-            echo "----- IREE target configure: last 80 log lines -----"
-            tail -n 80 "${target_build}.cfg.log" 2>/dev/null
-            echo "----- end IREE target configure log -----"
-            return 1
-        fi
-        if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
-            warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
-            echo "----- IREE target build: last 80 log lines -----"
-            tail -n 80 "${target_build}.log" 2>/dev/null
-            echo "----- end IREE target build log -----"
-            return 1
-        fi
-
-    else
-        # ===== amd64 NATIVE: single-stage build =====
-        # build arch == target arch, so no host/target split, no toolchain file,
-        # no IREE_HOST_BIN_DIR, no qemu emulator. One cmake configure builds LLVM
-        # + iree-compile + the runtime + the cp314 Python bindings for the host.
-        # IREE_ENABLE_PYTHON_STABLE_ABI=OFF (plus the setup.py abi3 sed patch above)
-        # forces version-specific cp314-cp314-linux_x86_64 wheels instead of IREE's
-        # default cp312-abi3. OUTPUT_FORMAT_C=OFF is harmless natively (iree-compile
-        # runs on the host) — kept OFF for parity + speed. Native build => the CPU
-        # host-detection that fails the riscv64 iree-compile under QEMU is a non-issue.
-        local native_cc="" native_cxx=""
-        for native_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${native_cc}" ] && break; done
-        for native_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${native_cxx}" ] && break; done
-        rm -rf "${target_build}"
-        if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+# Stage 1 — NATIVE amd64 host build that populates IREE_HOST_BIN_DIR.
+# This function runs inside the riscv64 cross environment, where
+# CC/CXX/*FLAGS/CMAKE_TOOLCHAIN_FILE all point at the riscv64 cross toolchain
+# (set up for the torch build). The host tools MUST be native or they can't
+# execute on the build host to drive the target build — the first run
+# (2026-07-14) failed here precisely because the host cmake inherited the cross
+# CC/CXX. So strip the cross env for BOTH the configure and the build, and pin
+# the host compiler + both Python executables (FindPython/FindPython3 disagreed
+# on the first run).
+#
+# IREE_BUILD_COMPILER=OFF here (2026-08-26). It used to be ON, which made this
+# stage compile IREE's bundled llvm-project + MLIR + Clang + LLD + stablehlo +
+# torch-mlir natively — the multi-hour "IREE" tail that live sampling caught
+# compiling clang/Basic/Targets/ARM.cpp and TargetInfo.cpp. That was a leftover
+# from the era when the TARGET stage was runtime-only (BUILD_COMPILER=OFF), the
+# configuration of incident run iree-0714c: back then tools/CMakeLists.txt's
+#     if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
+#       iree_import_binary(NAME iree-tblgen OPTIONAL) ... llvm-link ... clang
+# branch DID fire and the target really did need llvm-link/clang from the host.
+# The target stage below now sets -DIREE_BUILD_COMPILER=ON (it has to: we ship
+# the riscv64 iree_base_compiler wheel), so that branch is gated OFF and
+# IREE_CLANG_BINARY / IREE_LLVM_LINK_BINARY resolve to the target build's own
+# bundled-LLVM targets ($<TARGET_FILE:clang>, $<TARGET_FILE:llvm-link>,
+# build_tools/cmake/iree_llvm.cmake:83-85), never to IREE_HOST_BIN_DIR.
+#
+# With the target on COMPILER=ON, a full grep of IREE v3.11.0 shows exactly TWO
+# places that read a file out of ${IREE_HOST_BIN_DIR}:
+#   build_tools/cmake/iree_c_embed_data.cmake:97-98   iree-c-embed-data
+#   build_tools/cmake/flatbuffer_c_library.cmake:90-91 iree-flatcc-cli
+# Both are tiny host codegen utilities with ZERO LLVM dependency (a single .cc,
+# and the flatcc CLI); both are added unconditionally (CMakeLists.txt:1049 and
+# :1141, neither EXCLUDE_FROM_ALL) and both `install(... RUNTIME DESTINATION
+# bin)` regardless of IREE_BUILD_COMPILER. Upstream's own cross script
+# build_tools/cmake/build_riscv.sh likewise runs `--target install` with
+# -DIREE_BUILD_COMPILER=OFF, so the COMPILER=OFF install path is the supported
+# one. Everything else that touches IREE_HOST_BIN_DIR is either the gated
+# iree_import_binary branch above or tests/samples (BUILD_TESTS=OFF,
+# BUILD_SAMPLES=OFF).
+#
+# Guarded, not assumed: after the install we require both tools to exist.
+#
+# The ON arm is insurance against exactly ONE risk — our reading of IREE's
+# cmake being wrong about those two tools installing under COMPILER=OFF.
+# It is NOT a general retry, and the earlier claim here that it costs "one
+# cheap extra pass" was false: ON is the multi-hour bundled-LLVM build this
+# change exists to avoid. ON's build graph is a strict SUPERSET of OFF's,
+# so anything that breaks the OFF *build* (bad host toolchain, OOM at
+# MAX_JOBS, no disk) breaks ON too, hours later, and the image fails
+# anyway. Hence the three outcomes are treated differently:
+#   configure fails -> escalate (cheap, and could be OFF-path-specific)
+#   BUILD fails     -> fail fast (ON cannot succeed where OFF could not)
+#   tools missing   -> escalate (this is the case ON actually covers)
+#
+# Returns 1 when neither COMPILER mode produced usable host tools.
+_iree_build_host_stage() {
+    # Tools the target stage needs from IREE_HOST_BIN_DIR.
+    #
+    # iree-tblgen IS REQUIRED HERE (regression fix 2026-08-27). The original
+    # list held only the two LLVM-free codegen helpers, on the reading that
+    # tools/CMakeLists.txt gates host-tool imports behind
+    # `IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER` and our target sets
+    # COMPILER=ON, so nothing else is imported. That is true -- and it is
+    # exactly the problem: nothing being imported means the TARGET build
+    # builds its own iree-tblgen, FOR THE TARGET ARCH, and then tries to RUN
+    # it during the build. On a cross lane that is an arm64 binary on an
+    # amd64 host:
+    #     /…/iree-build-target/tools/iree-tblgen: Exec format error
+    #     FAILED: [code=126] …/VMOpEncoder.cpp.inc
+    # It cannot show up on amd64, where host and target are the same arch --
+    # which is why the amd64 media stage passed cleanly and arm64 died.
+    #
+    # Listing it here makes the OFF pass fail its own check and escalate to
+    # COMPILER=ON, which is precisely what the fallback loop exists for. The
+    # cost is that CROSS lanes go back to building the bundled LLVM in the
+    # host stage; the native lane keeps the win. A cheap COMPILER=OFF probe
+    # first is still worth it: if upstream ever installs tblgen without the
+    # compiler, the saving returns automatically and nothing needs editing.
+    local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli iree-tblgen)
+    local host_stage_ok=0 host_compiler_mode="" host_tool="" host_tools_missing=""
+    for host_compiler_mode in OFF ON; do
+        rm -rf "${host_build}" "${host_install}"
+        log "IREE host stage: configuring with IREE_BUILD_COMPILER=${host_compiler_mode}"
+        if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+                 -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+                cmake -G Ninja -S "${src_dir}" -B "${host_build}" \
                 "${ccache_cmake_args[@]}" \
                 -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER="${native_cc}" \
-                -DCMAKE_CXX_COMPILER="${native_cxx}" \
-                -DIREE_BUILD_COMPILER=ON \
-                -DIREE_BUILD_PYTHON_BINDINGS=ON \
-                -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
+                -DCMAKE_C_COMPILER="${host_cc}" \
+                -DCMAKE_CXX_COMPILER="${host_cxx}" \
+                -DIREE_BUILD_COMPILER="${host_compiler_mode}" \
+                -DIREE_BUILD_PYTHON_BINDINGS=OFF \
                 -DIREE_BUILD_SAMPLES=OFF \
                 -DIREE_BUILD_TESTS=OFF \
-                -DIREE_OUTPUT_FORMAT_C=OFF \
                 -DIREE_ENABLE_WERROR_FLAG=OFF \
-                -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
-                -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+                -DCMAKE_INSTALL_PREFIX="${host_install}" \
                 -DPython_EXECUTABLE="${BUILD_PYTHON}" \
-                -DPython3_EXECUTABLE="${BUILD_PYTHON}" > "${target_build}.cfg.log" 2>&1; then
-            warn "IREE native configure failed"
-            echo "----- IREE native configure: last 80 log lines -----"
-            tail -n 80 "${target_build}.cfg.log" 2>/dev/null
-            echo "----- end IREE native configure log -----"
-            return 1
+                -DPython3_EXECUTABLE="${BUILD_PYTHON}"; then
+            warn "IREE host configure (IREE_BUILD_COMPILER=${host_compiler_mode}) failed"
+            continue
         fi
-        if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
-            warn "IREE native build failed"
-            echo "----- IREE native build: last 80 log lines -----"
-            tail -n 80 "${target_build}.log" 2>/dev/null
-            echo "----- end IREE native build log -----"
-            return 1
+        # Capture build output to a log and echo its tail on failure. BuildKit
+        # collapses the tens-of-thousands of ninja progress lines, so a bare failure
+        # surfaces NO error (the silent-fast-fail gotcha, iree-0714f) — the tail dump
+        # is the only way to see why the cross build actually died.
+        if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
+                 -u AR -u RANLIB -u CMAKE_TOOLCHAIN_FILE -u CMAKE_ARGS \
+                cmake --build "${host_build}" --target install -- -j"${MAX_JOBS}" \
+                > "${host_build}.log" 2>&1; then
+            warn "IREE host build (IREE_BUILD_COMPILER=${host_compiler_mode}) failed"
+            echo "----- IREE host build: last 80 log lines -----"
+            tail -n 80 "${host_build}.log" 2>/dev/null
+            echo "----- end IREE host build log -----"
+            # Deliberately NOT `continue`: escalating a failed BUILD to ON
+            # compiles bundled llvm-project/MLIR/Clang for hours and then
+            # fails at the same wall, because ON builds everything OFF does
+            # and more. Fail now, while the log tail above is the answer.
+            warn "not escalating to IREE_BUILD_COMPILER=ON: its build graph is a superset of this one, so it would fail the same way after a multi-hour LLVM compile"
+            break
         fi
+        host_tools_missing=""
+        for host_tool in "${host_required_tools[@]}"; do
+            [ -x "${host_install}/bin/${host_tool}" ] || host_tools_missing+=" ${host_tool}"
+        done
+        if [ -z "${host_tools_missing}" ]; then
+            log "IREE host stage OK (IREE_BUILD_COMPILER=${host_compiler_mode}); IREE_HOST_BIN_DIR tools present: ${host_required_tools[*]}"
+            host_stage_ok=1
+            break
+        fi
+        warn "IREE host stage (IREE_BUILD_COMPILER=${host_compiler_mode}) left ${host_install}/bin missing:${host_tools_missing} — retrying with the full host compiler"
+    done
+    if [ "${host_stage_ok}" != "1" ]; then
+        warn "IREE host stage failed in both COMPILER=OFF and COMPILER=ON modes; cannot build the target IREE wheels"
+        return 1
+    fi
+}
+
+# Stage 2 — cross the runtime (+ Python bindings) against the host tools.
+# IREE_ENABLE_WERROR_FLAG=OFF is REQUIRED here (iree-0714g): the nanobind Python
+# bindings pull in the cross Python 3.14 pyconfig.h, which defines _POSIX_C_SOURCE/
+# _XOPEN_SOURCE to OLDER values than resolute's glibc features.h (already included
+# via <optional>/<cstdint> in binding.h) — a benign macro redefinition that IREE's
+# default -Werror turns fatal. Dropping -Werror keeps it a warning and lets the
+# riscv64 iree_base_runtime wheel build. (Python.h-include-order can't be fixed from
+# our side without patching IREE headers.)
+# IREE_OUTPUT_FORMAT_C=OFF is REQUIRED here (iree-0714m). It is a
+# cmake_dependent_option that defaults ON whenever IREE_BUILD_COMPILER=ON
+# (CMakeLists.txt:517), enabling the EmitC "vm-c" output format. That pulls in
+# runtime/src/iree/vm/test/emitc/CMakeLists.txt, which is gated on
+# IREE_OUTPUT_FORMAT_C (NOT IREE_BUILD_TESTS — so TESTS=OFF does not stop it) and
+# generates VM headers by RUNNING iree-compile at build time. With COMPILER=ON on
+# the TARGET, the tool name 'iree-compile' resolves to the just-built riscv64
+# binary, not the host tool in IREE_HOST_BIN_DIR, so the codegen tries to execute
+# a riscv64 iree-compile on the amd64 host and dies with
+# 'libIREECompiler.so: cannot open shared object file' (code 127). Turning the
+# format OFF removes the only build-time consumer of the target compiler; the
+# riscv64 libIREECompiler.so + iree-compile still build (so the iree_base_compiler
+# wheel is intact), it just loses the niche vm-c/C-source output — standard .vmfb
+# bytecode compilation, which the app's check_iree uses, is unaffected.
+# CROSS TARGET IS RUNTIME-ONLY (2026-08-27, restored). IREE_BUILD_COMPILER
+# is OFF here, and that is not a preference -- it is the only configuration
+# upstream supports for a cross target.
+#
+# IREE imports host tools only under
+#     if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)  (tools/CMakeLists.txt)
+# so with COMPILER=ON the target IGNORES IREE_HOST_BIN_DIR entirely, builds
+# its own iree-tblgen FOR THE TARGET ARCH, and then runs it during the build:
+#     /.../iree-build-target/tools/iree-tblgen: Exec format error
+#     FAILED: [code=126] .../Dialect/VM/IR/VMOpEncoder.cpp.inc
+# Proven NOT to be a host-side problem: the host stage completed with
+# COMPILER=ON and reported "tools present: iree-c-embed-data iree-flatcc-cli
+# iree-tblgen", and the target still used its own. Upstream's build_riscv.sh
+# sets the target to COMPILER=OFF for exactly this reason. The same class is
+# already documented below for iree-compile (IREE_OUTPUT_FORMAT_C=OFF).
+#
+# WHAT THIS COSTS, plainly: arm64 and riscv64 ship the IREE RUNTIME wheel but
+# NOT iree_base_compiler. Commit 9b238e7 wanted both on cross; it set the flag
+# without providing a native tblgen, and that configuration cannot build.
+# amd64 is NATIVE, never enters this branch, and keeps both wheels.
+# IREE_CROSS_BUILD_COMPILER=ON re-tries it once IREE supports the combination.
+#
+# Sets toolchain_file/iree_target_triple/cmake_args/iree_wheel_projects and
+# leaves the target-Python sysconfig exported for wheel packing. See docs/refactoring-backlog-archive-2026-08-31.md
+_iree_build_target_cross() {
+    toolchain_file="$(write_cross_cmake_toolchain_file || true)"
+    [ -n "${toolchain_file}" ] || { warn "no cross toolchain file for IREE; skipping"; return 1; }
+    append_common_cross_cmake_args cmake_args
+
+    # The cross-built iree-compile bakes in its DEFAULT codegen target triple at
+    # compile time via LLVM_HOST_TRIPLE (llvm::sys::getProcessTriple(), which IREE's
+    # llvm-cpu backend uses when --iree-llvmcpu-target-triple is unset). Bundled
+    # LLVM's CMake auto-detects that triple from the BUILD host during a cross-build,
+    # so without this override an arm64/riscv64 iree-compile defaults to the x86_64
+    # build host and emits `embedded-elf-x86_64` — iree-run-module on the target then
+    # fails "HAL device not found" (INCOMPATIBLE). Pin both triples to the actual
+    # target so the shipped compiler defaults to the arch it runs on. (iree-0714t:
+    # arm64 native iree-compile smoke failed exactly this way.)
+    iree_target_triple="$(cross_target_triplet 2>/dev/null || true)"
+    if [ -n "${iree_target_triple}" ]; then
+        cmake_args+=(
+            "-DLLVM_HOST_TRIPLE=${iree_target_triple}"
+            "-DLLVM_DEFAULT_TARGET_TRIPLE=${iree_target_triple}"
+        )
     fi
 
-    # Which wheel projects the build tree actually exposes depends on how the
-    # target was configured. The NATIVE branch builds both; the CROSS branch is
-    # runtime-only (IREE ignores IREE_HOST_BIN_DIR while COMPILER=ON and then
-    # cannot cross-build its own tblgen — see the note at the cross configure).
-    # Default to both so the native path is unchanged.
+    # Build IREE's nanobind Python extensions with the TARGET Python's SOABI so the
+    # compiled module is named _runtime.cpython-314-<target>-linux-gnu.so, not the
+    # x86_64 build host's suffix. Without this, FindPython/nanobind introspect the
+    # host BUILD_PYTHON and stamp cpython-314-x86_64-linux-gnu.so, which the target
+    # (aarch64) Python cannot import — "cannot import name '_runtime' from
+    # 'iree._runtime_libs'" (iree-0714t). _PYTHON_SYSCONFIGDATA_NAME redirects the
+    # host interpreter's sysconfig to the target's EXT_SUFFIX, the same mechanism the
+    # torch/vision cross builds use (resolve_target_python_sysconfig_export). Applied
+    # only HERE — after the Stage-1 host tools build (bindings OFF) — so host binaries
+    # keep the x86_64 config; it stays in effect for the Stage-2 build + wheel pack.
+    local iree_sysconfig_export=""
+    iree_sysconfig_export="$(resolve_target_python_sysconfig_export)"
+    if [ -n "${iree_sysconfig_export}" ]; then eval "${iree_sysconfig_export}"; fi
+
+    # The bundled LLVM spawns a NATIVE sub-build (llvm-project/NATIVE) for the
+    # tblgen family, and LLVM's CrossCompile.cmake DEFAULTS that sub-build's
+    # compilers to the outer (CROSS) CMAKE_C(XX)_COMPILER — so llvm-min-tblgen
+    # came out arm64 and died "Exec format error" on the amd64 build host
+    # (media-arm64, 2026-08-08; riscv64 only ever survived this because host
+    # qemu binfmt silently emulated the wrong-arch tblgen — slowly). Pin the
+    # NATIVE sub-build to the true host compilers, with ccache so its objects
+    # cache like everything else. (';' is CMake's list separator — the whole
+    # value is ONE shell word.)
+    local native_flags="-DCMAKE_C_COMPILER=${host_cc};-DCMAKE_CXX_COMPILER=${host_cxx}"
+    if [ "${#ccache_cmake_args[@]}" -gt 0 ]; then
+        native_flags="${native_flags};-DCMAKE_C_COMPILER_LAUNCHER=${_iree_launcher:-ccache};-DCMAKE_CXX_COMPILER_LAUNCHER=${_iree_launcher:-ccache}"
+    fi
+
+    rm -rf "${target_build}"
+    # Which wheel projects this configuration will actually produce.
+    # The cross target is runtime-only unless IREE_CROSS_BUILD_COMPILER=ON,
+    # so demanding a compiler wheel afterwards would fail a build that did
+    # exactly what it was told to do.
+    case "${IREE_CROSS_BUILD_COMPILER:-OFF}" in
+      [Oo][Nn]|1|[Tt][Rr][Uu][Ee]) iree_wheel_projects=(compiler runtime) ;;
+      *)                           iree_wheel_projects=(runtime) ;;
+    esac
+    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+            -DCMAKE_TOOLCHAIN_FILE="${toolchain_file}" \
+            "${cmake_args[@]}" \
+            "${ccache_cmake_args[@]}" \
+            -DCROSS_TOOLCHAIN_FLAGS_NATIVE="${native_flags}" \
+            -DIREE_HOST_BIN_DIR="${host_install}/bin" \
+            -DIREE_BUILD_COMPILER="${IREE_CROSS_BUILD_COMPILER:-OFF}" \
+            -DIREE_BUILD_PYTHON_BINDINGS=ON \
+            -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
+            -DIREE_BUILD_SAMPLES=OFF \
+            -DIREE_BUILD_TESTS=OFF \
+            -DIREE_OUTPUT_FORMAT_C=OFF \
+            -DIREE_ENABLE_WERROR_FLAG=OFF \
+            -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+            -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+            -DCMAKE_BUILD_TYPE=Release > "${target_build}.cfg.log" 2>&1; then
+        warn "IREE riscv64 runtime configure failed (best-effort); continuing without it"
+        echo "----- IREE target configure: last 80 log lines -----"
+        tail -n 80 "${target_build}.cfg.log" 2>/dev/null
+        echo "----- end IREE target configure log -----"
+        return 1
+    fi
+    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
+        warn "IREE riscv64 runtime build failed (best-effort); continuing without it"
+        echo "----- IREE target build: last 80 log lines -----"
+        tail -n 80 "${target_build}.log" 2>/dev/null
+        echo "----- end IREE target build log -----"
+        return 1
+    fi
+}
+
+# ===== amd64 NATIVE: single-stage build =====
+# build arch == target arch, so no host/target split, no toolchain file,
+# no IREE_HOST_BIN_DIR, no qemu emulator. One cmake configure builds LLVM
+# + iree-compile + the runtime + the cp314 Python bindings for the host.
+# IREE_ENABLE_PYTHON_STABLE_ABI=OFF (plus the setup.py abi3 sed patch above)
+# forces version-specific cp314-cp314-linux_x86_64 wheels instead of IREE's
+# default cp312-abi3. OUTPUT_FORMAT_C=OFF is harmless natively (iree-compile
+# runs on the host) — kept OFF for parity + speed. Native build => the CPU
+# host-detection that fails the riscv64 iree-compile under QEMU is a non-issue.
+#
+# Leaves iree_wheel_projects empty so packaging defaults to both wheels.
+_iree_build_target_native() {
+    local native_cc="" native_cxx=""
+    for native_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${native_cc}" ] && break; done
+    for native_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${native_cxx}" ] && break; done
+    rm -rf "${target_build}"
+    if ! cmake -G Ninja -S "${src_dir}" -B "${target_build}" \
+            "${ccache_cmake_args[@]}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="${native_cc}" \
+            -DCMAKE_CXX_COMPILER="${native_cxx}" \
+            -DIREE_BUILD_COMPILER=ON \
+            -DIREE_BUILD_PYTHON_BINDINGS=ON \
+            -DIREE_ENABLE_PYTHON_STABLE_ABI=OFF \
+            -DIREE_BUILD_SAMPLES=OFF \
+            -DIREE_BUILD_TESTS=OFF \
+            -DIREE_OUTPUT_FORMAT_C=OFF \
+            -DIREE_ENABLE_WERROR_FLAG=OFF \
+            -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
+            -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
+            -DPython_EXECUTABLE="${BUILD_PYTHON}" \
+            -DPython3_EXECUTABLE="${BUILD_PYTHON}" > "${target_build}.cfg.log" 2>&1; then
+        warn "IREE native configure failed"
+        echo "----- IREE native configure: last 80 log lines -----"
+        tail -n 80 "${target_build}.cfg.log" 2>/dev/null
+        echo "----- end IREE native configure log -----"
+        return 1
+    fi
+    if ! cmake --build "${target_build}" -- -j"${MAX_JOBS}" > "${target_build}.log" 2>&1; then
+        warn "IREE native build failed"
+        echo "----- IREE native build: last 80 log lines -----"
+        tail -n 80 "${target_build}.log" 2>/dev/null
+        echo "----- end IREE native build log -----"
+        return 1
+    fi
+}
+
+# Which wheel projects the build tree actually exposes depends on how the
+# target was configured. The NATIVE branch builds both; the CROSS branch is
+# runtime-only (IREE ignores IREE_HOST_BIN_DIR while COMPILER=ON and then
+# cannot cross-build its own tblgen — see the note at the cross configure).
+# Default to both so the native path is unchanged.
+#
+# Called LAST, so its status is build_iree_wheels' status.
+_iree_package_wheels() {
     rm -rf "${dist_dir}"; mkdir -p "${dist_dir}"
     local _proj _pkg
     [ "${#iree_wheel_projects[@]}" -gt 0 ] || iree_wheel_projects=(compiler runtime)
@@ -1274,6 +1275,51 @@ build_iree_wheels() {
     fi
     cp -a "${wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
     log "Built IREE wheels: $(cd "${dist_dir}" && echo iree_base_*-*.whl)"
+}
+
+build_iree_wheels() {
+    # Wheel projects this run expects. Set by the cross branch (runtime-only
+    # unless IREE_CROSS_BUILD_COMPILER=ON); the native branch leaves it empty
+    # and the packaging step defaults to both. Declared here so `set -u` does
+    # not trip on the native path.
+    local -a iree_wheel_projects=()
+    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/iree"
+    local host_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-host"
+    local host_install="${host_build}/install"
+    local target_build="${APP_WHEELHOUSE_BUILD_ROOT}/iree-build-target"
+    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-iree"
+    local wheel_platform="" toolchain_file="" iree_target_triple=""
+    local -a cmake_args=()
+
+    _iree_check_prereqs || return 1
+
+    # Declared here, not in the helper, or the build steps below can't see it.
+    local -a ccache_cmake_args=()
+    _iree_setup_compiler_cache
+
+    _iree_fetch_source || return 1
+    _iree_patch_setup_py_abi3
+    # NO QNN FLAGS (corrected 2026-08-31, Windows backlog #154). IREE_TARGET_BACKEND_QNN
+    # and QNN_HOME are not IREE options -- they have never existed, at any version, and
+    # CMake dropped both silently while this logged "QNN target backend ON". IREE has no
+    # Qualcomm NPU path: Adreno via vulkan-spirv and the Snapdragon CPU via llvm-cpu is
+    # the whole story. The QAIRT runtime is still staged beside the install (ORT loads it).
+
+    if cross_build_is_active; then
+        # ===== CROSS (arm64/riscv64 foreign target): two-stage host + target build =====
+        # Both stages need these: stage 1 builds with them, stage 2 pins
+        # bundled LLVM's NATIVE tblgen sub-build to them.
+        local host_cc="" host_cxx=""
+        for host_cc in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do [ -x "${host_cc}" ] && break; done
+        for host_cxx in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do [ -x "${host_cxx}" ] && break; done
+        _iree_build_host_stage || return 1
+        _iree_build_target_cross || return 1
+    else
+        # ===== amd64 NATIVE: single-stage build =====
+        _iree_build_target_native || return 1
+    fi
+
+    _iree_package_wheels
 }
 
 main() {

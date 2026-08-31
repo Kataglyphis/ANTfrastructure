@@ -54,8 +54,9 @@ t_assert_eq "3" "${_count}" "the 16 latent for-loop sites are safe only if this 
 # ── ARCH-PARITY component table (2026-08-23) ────────────────────────────────
 # smoke-runtime-image.sh asserts that every component NAMED in its parity table
 # is present on the arch it is smoking, modulo a per-arch exception list that IS
-# the reviewed record of the deltas (riscv64 has no CMake archive upstream, no
-# riscv64 genai wheel exists). Scope, stated precisely because the earlier
+# the reviewed record of the deltas (riscv64 has no CMake archive upstream, and
+# the IREE compiler cannot be cross-built). GEN1 dropped the genai exemption:
+# docs/gen1-riscv64-genai.md. Scope, stated precisely because the earlier
 # wording here oversold it: the smoke sees ONE image per run, so it conforms an
 # arch to the table — it does not diff arch against arch, and a component in
 # NEITHER the table nor the exception list is outside the gate on every arch.
@@ -101,7 +102,9 @@ t_assert_eq "" "${_orphans}" "exemption(s) for components the parity table does 
 
 t_case "_parity_exempt only exempts what it documents"
 t_assert_ok   _rt_table '_parity_exempt riscv64 cmake'
-t_assert_ok   _rt_table '_parity_exempt riscv64 onnxruntime_genai'
+t_assert_ok   _rt_table '_parity_exempt riscv64 iree_base_compiler'
+# GEN1: the exemption is gone and must STAY gone. docs/gen1-riscv64-genai.md
+t_assert_fails _rt_table '_parity_exempt riscv64 onnxruntime_genai'
 t_assert_fails _rt_table '_parity_exempt amd64 cmake'
 t_assert_fails _rt_table '_parity_exempt riscv64 ffmpeg'
 
@@ -378,11 +381,13 @@ ONNXRUNTIME_GENAI_VERSION=v0.15.2
 OPENCV_VERSION=5.0.0
 ENVEOF
 
-# $1 = arch, $2 = installed genai version, $3 = optional uv.lock path.
+# $1 = arch, $2 = installed genai version, $3 = optional uv.lock path,
+# $4 = one optional extra VAR=VALUE (`env -i` below eats anything else).
 # Default: no uv.lock, which isolates the build-pin path. Pass a lock to
 # exercise the AUTHORITY rule itself (see the lock-vs-pin case below).
 _stv_drive() {
-  env -i PATH="${PATH}" HOME="${HOME}" \
+  local _extra="${4:-STV_DRIVE_UNUSED=1}"
+  env -i PATH="${PATH}" HOME="${HOME}" "${_extra}" \
     VENV="${_STV}/venv" VERSIONS_ENV="${_STV}/versions.env" \
     APP_UV_LOCK="${3:-${_STV}/no-such.lock}" STV_ARCH="$1" STV_CV2_REQUIRED=0 \
     STUB_TORCH=2.13.0+cpu STUB_TORCHVISION=0.28.0+cpu STUB_ONNXRUNTIME=1.29.0 \
@@ -440,6 +445,26 @@ t_case "once the producer ships the pinned version, the arm64 case is a plain OK
 _stv_out="$(_stv_drive arm64 0.15.2)"
 t_assert_contains "${_stv_out}" "FAILURES=0"
 t_assert_ok test -z "$(printf '%s\n' "${_stv_out}" | grep -F 'TOLERATED' || true)"
+
+# ── GEN1: the riscv64 genai policy, whose arm had NO case at all ─────────────
+# Pinned in both directions; docs/gen1-riscv64-genai.md
+t_case "GEN1: a riscv64 image WITHOUT genai is now a FAILURE, not a documented skip"
+_stv_out="$(_stv_drive riscv64 "")"
+t_assert_contains "${_stv_out}" "onnxruntime-genai NOT INSTALLED"
+t_assert_eq "1" "$(printf '%s' "${_stv_out}" | grep -c 'FAILURES=[1-9]')"
+
+t_case "GEN1: a riscv64 image WITH the pinned genai passes clean"
+_stv_out="$(_stv_drive riscv64 0.15.2)"
+t_assert_contains "${_stv_out}" "FAILURES=0"
+
+t_case "GEN1: the escape hatch, and ONLY the escape hatch, restores the tolerance"
+# With the lane off the producer emits nothing, so absence is policy again.
+_stv_out="$(_stv_drive riscv64 "" "" GENAI_ALLOW_RISCV64=false)"
+t_assert_contains "${_stv_out}" "FAILURES=0"
+t_assert_contains "${_stv_out}" "GENAI_ALLOW_RISCV64"
+# ...and the hatch is riscv64-scoped: it must not silence amd64.
+_stv_out="$(_stv_drive amd64 "" "" GENAI_ALLOW_RISCV64=false)"
+t_assert_eq "1" "$(printf '%s' "${_stv_out}" | grep -c 'FAILURES=[1-9]')"
 
 t_case "KNOWN_DRIFT: every entry is reviewed, dated and backlog-linked"
 # The previous version asserted the COUNT was exactly 1, while its own comment

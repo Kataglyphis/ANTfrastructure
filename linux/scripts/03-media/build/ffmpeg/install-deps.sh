@@ -12,7 +12,7 @@ install_deps_preamble autoconf automake build-essential cmake git libtool pkg-co
 
 
 target_packages=(
-    libfreetype6-dev
+    libfreetype-dev
     libmp3lame-dev
     # LOG3 (2026-08-17): headers-only, arch-independent — without it ffmpeg's
     # configure printed "spirv-headers not found, swscale SPIR-V backend

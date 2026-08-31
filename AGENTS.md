@@ -11,9 +11,9 @@ what you are about to do:
 
 | Before you… | Read |
 |---|---|
-| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 44 load-bearing rules |
+| Edit anything under `windows/` | [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md) — 46 load-bearing rules |
 | Debug an error message | [`docs/failure-modes.md`](docs/failure-modes.md) — symptom → cause → fix |
-| Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic |
+| Launch or debug a Windows chain | [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md) — BuildKit, nerdctl, classic (historical) |
 | Wire a new project to this repo | [`docs/adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md) |
 | **Add or bump a dependency** | [`docs/third-party-licenses.md`](docs/third-party-licenses.md) § Maintaining this list — an `spdx` id is mandatory, copyleft needs a source pointer, and the build gates both |
 
@@ -130,9 +130,9 @@ is omitted for `windows-base`/`-sdk`/`-toolchain` (shared across both lanes)
 and appended (`-arm64`) for everything downstream. It publishes the final image
 as `ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64` (`:winarm64` on the
 cross lane). The un-prefixed `local/kataglyphis:windows-*` names and
-`Get-MediaBranchTag` belong to the **retired** classic driver `build.ps1` — do
-not expect them on a live host. See `docs/windows-builds.md` § Build Commands
-for the full build sequence.
+`Get-MediaBranchTag` belonged to the classic driver `build.ps1`, **deleted
+2026-08-31** — neither the tags nor the helper exist any more. See
+`docs/windows-builds.md` § Build Commands for the full build sequence.
 
 ---
 
@@ -258,7 +258,7 @@ allows:
 |---|---|---|
 | Build the chain | `windows\build-buildkit.ps1` → `buildctl` | non-admin |
 | Inspect / run the `bk-*` images | `nerdctl --namespace buildkit` | **admin** |
-| Publish / classic-lane ops | Stevedore's `docker.exe` | non-admin |
+| Publish / inspect images | Stevedore's `docker.exe` | non-admin |
 
 ```pwsh
 .\windows\build-buildkit.ps1 -Gpu          # build (non-admin)
@@ -268,14 +268,15 @@ allows:
 [`docs/windows-build-lanes.md`](docs/windows-build-lanes.md)** — isolation
 policy and the probe-log trap, the sccache and RDNA4 and step-log preflight
 gates, the BuildKit/containerd lane, the nerdctl lane, the classic lane's
-run+commit path, mid-chain failure recovery, and the RDNA4 A/B history.
+run+commit path (historical), mid-chain failure recovery, and the RDNA4 A/B
+history.
 
 Four things an agent gets wrong without reading it:
 
-- **The classic lane is RETIRED (2026-08-26), not merely a non-fallback.**
-  `build.ps1` refuses to start without `-AcceptRetiredLane`. Two independent
+- **There is ONE Windows driver, `build-buildkit.ps1`.** The classic lane was
+  retired 2026-08-26 and `build.ps1` DELETED 2026-08-31. Two independent
   structural defects, both verified; reviving it is a redesign, not a target-pin
-  change. Use `build-buildkit.ps1`. Reasoning and the cut list live in
+  change. Reasoning and the cut list live in
   [`windows-build-lanes.md`](docs/windows-build-lanes.md) — that page owns this
   topic; do not restate the reasons here.
 - **`nerdctl` needs an ADMIN shell** — containerd's pipe is Administrator-only
@@ -553,7 +554,7 @@ build dir, deep paths aborting tar transfers) are all in that page.
 
 ### Windows Build Invariants (do not regress)
 
-44 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
+46 load-bearing rules — pwsh discipline, the gates that must stay armed, probe
 and log discipline, layer/scratch rules, lane and CNI rules, and the
 build-input invariants — live in
 [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md),
@@ -594,15 +595,21 @@ below. The rules themselves:
 The Qualcomm QAIRT SDK is login-gated (Qualcomm developer account + EULA). Stage
 the Windows zip in `windows/qnn-sdk/` (git-ignored except its README); pin it with
 `QNN_SDK_ZIP_SHA256` in `versions.env`. When staged, `Resolve-QnnSdk` extracts it
-and enables the QNN EP/delegate/backend across **four frameworks**: ONNX Runtime
-(`onnxruntime_USE_QNN=ON`), ONNX GenAI (inherits from ORT), LiteRT
-(`TFLITE_ENABLE_QNN=ON`), TVM (`USE_QNN=ON`), and IREE
-(`IREE_TARGET_BACKEND_QNN=ON`). `Copy-QnnRuntime` stages the per-arch backend
-DLLs beside each framework's install. No zip = QNN off with one notice on every
+and enables the QNN EP in **ONE framework**: ONNX Runtime
+(`onnxruntime_USE_QNN=ON`). ONNX GenAI inherits it at runtime through the ORT it
+links. LiteRT, TVM and IREE were passing INVENTED flags that CMake dropped
+silently while printing a success banner — removed 2026-08-31, see backlog #154.
+`Copy-QnnRuntime` still stages the per-arch backend DLLs beside all five installs,
+but only ORT loads them. No zip = QNN off with one notice on every
 framework. A version-mismatch (SDK too old for the framework) also falls back to
 QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
 and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
 [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
+**Windows #121 BUILD-TIME PATH PROVEN 2026-08-31** (staged QAIRT
+2.44.0.260225, full `:winarm64` chain: QNN EP ON with the
+`aarch64-windows-msvc` backend set, runtime staged beside all five frameworks,
+arch gate 1168/0, smoke 97/0/15); runtime execution still needs a Snapdragon
+host.
 
 The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX, **PROVEN 2026-08-30**
 on a staged QAIRT v2.49.0.260730 zip — arm64 media build GREEN): stage the
@@ -644,7 +651,7 @@ build-cross-chain.sh → base → compiler → sdk → media → android → run
 
 Stages 1-5 run on `linux/amd64`. Stage 6 (runtime) runs on the target platform per architecture (QEMU/binfmt for foreign arches), delegating to `build-runtime-manifest.sh`. Each stage's registry digest is pinned and fed to the next as `--build-arg BASE_IMAGE=<repo>@sha256:<digest>` to prevent stale cache reuse. The stage graph is defined in `linux/scripts/01-core/stage-defs.sh`. See `docs/linux-cross-builds.md` for the full pipeline details.
 
-The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 — see § the classic lane above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
+The **Windows lane** follows a separate staged build (`base → [nvidia] → toolchain → media → torch → final`; torch assembles the Orchestr-ANT-ion app env, `bk-windows-torch`, and final builds FROM it) driven by `windows/build-buildkit.ps1` (Stevedore's `buildctl` against buildkitd; the docker-classic driver `windows/build.ps1` was retired 2026-08-26 and deleted 2026-08-31 — see the one-driver bullet above). The `bk-windows-sdk` tag is either a plain re-tag of `bk-windows-base` (CPU lane, default) or the NVIDIA GPU stage `Dockerfile.nvidia` (`-Gpu` switch) for a CUDA-enabled image. See `docs/windows-builds.md` § Build Commands for the full build sequence and prerequisites.
 
 ### Prerequisites
 
@@ -682,7 +689,7 @@ The **Windows lane** follows a separate staged build (`base → [nvidia] → too
 - **Stevedore** (`winget install stevedore` or `choco install stevedore`) — provides nerdctl + containerd for Windows Containers
 - **Reboot** after Stevedore install to enable the Windows Containers feature
 - **Docker Desktop or Rancher Desktop** can also be used with `docker` commands (swap `nerdctl` → `docker` in build commands)
-- **CNI nat conf (historical note)**: before 2026-08-03 `nerdctl run` failed on this host (no CNI `nat` **conf**) and `nerdctl build` had broken DNS, so docker.exe was the only working tool. Since 2026-08-03 `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` is installed (see `docs/windows-build-lanes.md` § Getting it going, step 2 — including the subnet-drift trap) and nerdctl works — from **admin** shells only (containerd's pipe is admin-only). Stevedore's `docker.exe` remains the classic-lane tool and needs no CNI plugin. Run with `--isolation process` for the host's full CPU count (Hyper-V isolation is capped at 2 CPUs). See `docs/windows-builds.md` § Running the Image.
+- **CNI nat conf (historical note)**: before 2026-08-03 `nerdctl run` failed on this host (no CNI `nat` **conf**) and `nerdctl build` had broken DNS, so docker.exe was the only working tool. Since 2026-08-03 `C:\Program Files\containerd\cni\conf\0-containerd-nat.conf` is installed (see `docs/windows-build-lanes.md` § Getting it going, step 2 — including the subnet-drift trap) and nerdctl works — from **admin** shells only (containerd's pipe is admin-only). Stevedore's `docker.exe` remains the publish/inspect tool and needs no CNI plugin. Run with `--isolation process` for the host's full CPU count (Hyper-V isolation is capped at 2 CPUs). See `docs/windows-builds.md` § Running the Image.
 
 ### Stevedore Fixes After Install
 
@@ -967,11 +974,20 @@ The rules an agent must never violate:
    It relies on (a) deliberate layer ORDERING — `setup-vs.ps1` sits ABOVE the
    `versions.env` COPY in `Dockerfile.base` so a pin bump cannot re-pay VS
    Build Tools (confirmed live 2026-08-08: 4 of 16 base steps CACHED through a
-   PYTHON_VERSION bump, and they were the expensive ones), (b) TIERED
-   in-container module closures so host-only module edits cannot bust a compile
-   layer, (c) sccache, and (d) **buildkitd's GC reserve**. **Preserve (a) and (b)
-   in any Dockerfile edit** — moving a COPY above the VS layer, or widening a
-   module stage, costs hours per bump.
+   PYTHON_VERSION bump, and they were the expensive ones), (b) TIERED, PER-FILE
+   in-container module closures so a host-only module edit re-keys only the RUNs
+   that import it, (c) sccache, and (d) **buildkitd's GC reserve**. **Preserve
+   (a) and (b) in any Dockerfile edit** — moving a COPY above the VS layer, or
+   widening a module stage, costs hours per bump.
+
+   **(b) has only actually been true since 2026-08-31.**
+   `Dockerfile.toolchain-builder`'s `patched-llvm` RUN bind-mounted the WHOLE
+   `windows/scripts/modules` directory, and `patched-llvm` is the DEFAULT
+   toolchain target (`-StockLlvm` is the opt-out), so any `.psm1` edit re-keyed
+   the LLVM 23.1.0 compile and every media lane derived from that image. It is a
+   six-file mount now, and `BuildKit.ModuleClosure.Tests.ps1` fails a whole-dir
+   modules mount in any windows Dockerfile except `Dockerfile.probe` (exempt by
+   design — `PROBE_NONCE` busts its layer anyway).
 
    **(d) is the one that fails SILENTLY and looks like a Dockerfile problem.**
    `reservedSpace` in `windows/buildkitd.toml` is the only floor GC will not
@@ -986,8 +1002,9 @@ The rules an agent must never violate:
    like. `maxUsedSpace` below the working-set size has the same effect, because
    it forces eviction regardless of what the reserve says.
 
-   **The three module tiers (#134, 2026-08-26) — check which one a module is in
-   before editing it, because the cost differs by hours:**
+   **The module tiers (#134, 2026-08-26; toolchain narrowed 2026-08-31) — check
+   which one a module is in before editing it, because the cost differs by
+   hours:**
    1. `Dockerfile.media-builder`'s **`buildmods`** six (SourceBuild.Common +
       Shared, Patches, Cuda, Native.Common, TargetArch.Common). They ARE the
       import closure — SourceBuild.Common imports the other five and every
@@ -996,11 +1013,17 @@ The rules an agent must never violate:
       rebuild on both lanes.
    2. **`tvmmods`** (`FROM buildmods AS tvmmods` + `WindowsTvm.Common.psm1`),
       mounted by `media-tvm-built` alone. That branch runs parallel to
-      media-core, so an edit costs nothing on the long pole.
+      media-core, so an edit costs nothing on the long pole. `Write-AssembledWheelDistInfo`
+      and `Get-PyprojectDependencies` moved off the tier-1 facade into this leaf
+      on 2026-08-31 — `build-tvm-from-source.ps1` is their only caller.
    3. The **merge leaves** in `Dockerfile.media-merge-builder`'s `buildmods`:
       `WindowsGstPlugins.Common`, `WindowsMeson.Common`,
       `WindowsRustToolchain.Common`, `WindowsInstaller.Common`. An edit costs
       the GStreamer layer.
+   4. `Dockerfile.toolchain-builder`'s **`patched-llvm`** RUN mounts the same six
+      as tier 1, per-file. It is the DEFAULT toolchain target, so an edit re-pays
+      the LLVM 23.1.0 compile AND every media lane below it — the most expensive
+      tier in the chain.
 
    Do NOT move a helper into `WindowsSourceBuild.Common` because "that is where
    helpers go" — if one branch is its only consumer, it belongs in a leaf.
@@ -1348,7 +1371,7 @@ base ─┬─ onnxruntime ───────┐
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (also run in CI by
   `.github/workflows/windows-scripts.yml` on windows-latest). The suite is
   zero-dependency and guards *classes* of defect, not just instances — e.g.
-  `Driver.ClosureScope.Tests.ps1` walks the AST of both drivers and fails any
+  `Driver.ClosureScope.Tests.ps1` walks the AST of `build-buildkit.ps1` and fails any
   `.GetNewClosure()` block inside a function that reads a top-level `param()`
   variable, because that silently resolves to EMPTY and broke the scripted
   resume for months (backlog #40). Same shape elsewhere:

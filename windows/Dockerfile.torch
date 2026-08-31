@@ -8,10 +8,12 @@
 # image and adds only the cheap dev-image trimmings). An APP_REF bump therefore
 # rebuilds torch + final — minutes, network-bound — never the compile chain.
 #
-# In-chain (default): .\windows\build.ps1        (torch is in the default stages)
-# App-only iteration:  .\windows\build.ps1 -Stages torch,final
-# On the PUBLISHED image instead of a local chain (any host that can pull it):
-#   .\windows\build.ps1 -Stages torch,final -TorchBaseImage ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64
+# In-chain (default): .\windows\build-buildkit.ps1        (torch is in the default stages)
+# App-only iteration:  .\windows\build-buildkit.ps1 -Stages torch,final
+# Building on the PUBLISHED image is NOT driver-supported: the torch stage's
+# BASE_IMAGE is pinned to the local `windows-media` tag. The classic lane's
+# -TorchBaseImage went with build.ps1 (deleted 2026-08-31); overriding BASE_IMAGE
+# now needs a direct buildctl solve.
 #
 # The assembly script deletes + reclones C:\opt\Kataglyphis-Orchestr-ANT-ion
 # wholesale, so re-running on a base that already carries an older app env
@@ -20,7 +22,7 @@
 ARG BASE_IMAGE=local/kataglyphis:windows-media
 FROM ${BASE_IMAGE}
 
-# Kept in sync with versions.env by sync_versions.py; build.ps1 overrides it
+# Kept in sync with versions.env by sync_versions.py; build-buildkit.ps1 overrides it
 # (versions.env pin, or the latest release tag with -LatestApp).
 ARG APP_REF=v0.0.27
 # Torch BACKEND extra from the app's pyproject: pytorch-cpu (default),
@@ -34,8 +36,8 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 # WindowsNative.Common must ride along explicitly: assemble-torch-app imports it
 # (Invoke-ShieldedNative), and the BK lane's parent lineage (merge-fanin ->
 # toolchain -> base) carries only Shared/ContainerImage/Installer in
-# C:\temp\scripts\modules — the merge stage's fuller module COPY is classic-lane
-# only, and the final image's whole-modules COPY comes one stage too late.
+# C:\temp\scripts\modules — the retired classic merge stage was the only place with
+# a fuller module COPY, and the final image's whole-modules COPY comes one stage too late.
 COPY windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build\assemble-torch-app.ps1 C:\temp\scripts\

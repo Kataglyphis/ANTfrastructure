@@ -30,6 +30,7 @@ param(
     [string]$Nonce = ''
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Write-Host "=== sccache mount cleanup (#104) nonce=$Nonce ==="
 
@@ -41,8 +42,11 @@ Write-Host "mount root holds $($entries.Count) entr(y|ies); keeping: $($keep -jo
 
 $totalFreed = 0L
 foreach ($e in $entries) {
+    # Bound first: Measure-Object with -Property emits NOTHING for empty input, so
+    # the inline .Sum throws under StrictMode on an empty dir (v3 is exactly that).
     $size = if ($e.PSIsContainer) {
-        (Get-ChildItem $e.FullName -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+        $m = Get-ChildItem $e.FullName -Recurse -Force -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum
+        if ($m) { $m.Sum } else { 0 }
     } else { $e.Length }
     if ($null -eq $size) { $size = 0 }
     if ($keep -contains $e.Name) {

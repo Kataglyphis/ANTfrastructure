@@ -151,13 +151,15 @@ echo "=== Script :- default drift check (advisory) ==="
 #     versions.env pins the built ref.
 #   * PYTHON_VERSION: CI tooling defaults to a MAJOR.MINOR (3.14) to name the
 #     interpreter, not the full patch version.
-#   * FFMPEG_ENABLE_X265 / ORT_ENABLE_WEBGPU / ORT_WEBGPU_ALLOW_CROSS: scripts
-#     deliberately default conservative (feature off) for standalone runs;
-#     versions.env opts the orchestrated image builds in.
+#   * FFMPEG_ENABLE_X265 / ORT_ENABLE_WEBGPU / ORT_WEBGPU_ALLOW_CROSS /
+#     GENAI_ALLOW_RISCV64: scripts deliberately default conservative (feature
+#     off) for standalone runs; versions.env opts the orchestrated image builds
+#     in. GENAI_ALLOW_RISCV64: docs/gen1-riscv64-genai.md
 # Add such intentional cases to SCRIPT_DEFAULT_DRIFT_ALLOW below.
 declare -A SCRIPT_DEFAULT_DRIFT_ALLOW=(
   [TVM_REF]=1 [PYTHON_VERSION]=1
   [FFMPEG_ENABLE_X265]=1 [ORT_ENABLE_WEBGPU]=1 [ORT_WEBGPU_ALLOW_CROSS]=1
+  [GENAI_ALLOW_RISCV64]=1
 )
 DRIFT_WARN=0
 while IFS= read -r hit; do

@@ -203,14 +203,16 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
     It 'throws when no shim is installed and -Force is not passed (fail-closed, backlog #48)' {
         Invoke-InTestDir { param($dir)
             Assert-Throws -MessagePattern 'shim not found' -Body {
-                Assert-ShimPatch -ShimPath (Join-Path $dir 'missing.exe') -WarningAction SilentlyContinue
+                # -AlternateRoot @(): a build host HAS a real shim, which the fallback
+                # probe would find, and the not-found path would never run.
+                Assert-ShimPatch -ShimPath (Join-Path $dir 'missing.exe') -AlternateRoot @() -WarningAction SilentlyContinue
             }
         }
     }
 
     It 'skips with a warning when no shim is installed and -Force is passed' {
         Invoke-InTestDir { param($dir)
-            Assert-ShimPatch -ShimPath (Join-Path $dir 'missing.exe') -Force -WarningAction SilentlyContinue
+            Assert-ShimPatch -ShimPath (Join-Path $dir 'missing.exe') -AlternateRoot @() -Force -WarningAction SilentlyContinue
         }
     }
 

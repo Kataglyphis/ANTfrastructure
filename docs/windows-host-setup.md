@@ -685,8 +685,9 @@ OS-build skew).
 ## Classic-lane fallback — there is none any more
 
 `windows\build.ps1` (docker-classic, Hyper-V run+commit) was **retired on
-2026-08-26** and refuses to run without `-AcceptRetiredLane`. It cannot build
-`base`, and its `merge` target cannot pass the smoke gate — the reasoning is in
+2026-08-26** and **deleted on 2026-08-31** — `build-buildkit.ps1` is the only
+driver. It could not build `base`, and its `merge` target could not pass the
+smoke gate — the reasoning is in
 [Windows build lanes](windows-build-lanes.md) § The classic lane was retired.
 
 So if the BK lane is unavailable, the fix is to repair the BK host setup (Phases
@@ -701,7 +702,7 @@ A–C here, then § Phase R for a Stevedore reinstall), **not** to switch driver
 
 | What the reinstall takes | How it fails later | Fix |
 |---|---|---|
-| The **patched runhcs shim** | `Assert-ShimPatch` refuses BOTH lanes at preflight (and without the gate: `hcsshim::ExportLayer 0x3` on a heavy media layer, after the compile is paid for) | Rebuild — see below. There is **no local rollback**: `.exe.orig` and every `.exe.bak-*` are stock too |
+| The **patched runhcs shim** | `Assert-ShimPatch` refuses the BK lane at preflight (and without the gate: `hcsshim::ExportLayer 0x3` on a heavy media layer, after the compile is paid for) | Rebuild — see below. There is **no local rollback**: `.exe.orig` and every `.exe.bak-*` are stock too |
 | The **buildkitd service `Environment`** | `Assert-BuildkitdStepLogEnv` refuses the BK lane; ungated, the 2 MiB step-log clip buries build verdicts | § C2, or the registry Multi-String + `Restart-Service buildkitd` |
 | The **dufs `dufs-sccache-l2` task** *and* its `%USERPROFILE%\sccache-cache` serve directory | `Assert-SccacheEndpoint` fails the media stages at preflight, on an endpoint that never comes up | Re-create the serve directory FIRST, then § C5's `setup-dufs-service.ps1 -NoPrompt`. Without the directory the script has nothing to serve and the endpoint stays dead |
 | Nothing — but note the **containerd content store** can also be left inconsistent (e.g. by killing a `docker build` mid-pull) | `failed to resolve source metadata ... blob sha256:<config> ... blob not found` at `Dockerfile.base` | R2 below — and note a plain `pull` CANNOT fix it, see the warning there |
@@ -782,13 +783,14 @@ digest from `windows/Dockerfile.base`'s `ARG WINDOWS_BASE_DIGEST`:
 
 ### R3. There is no classic lane to reach for — it was retired 2026-08-26
 
-`build.ps1` now refuses to start without `-AcceptRetiredLane`, and the refusal is
-not conservatism. It cannot bootstrap a chain: twelve `windows/Dockerfile.*` use
-BuildKit-only `RUN --mount=type=bind` for their script closures and `build.ps1`
-never sets `DOCKER_BUILDKIT`, so the legacy builder dies at `Dockerfile.base` step 8
-with *"the --mount option requires BuildKit"*. And even given a chain, its `merge`
-target skips the OpenCV GStreamer plugin, so the smoke gate that ends the run
-hard-fails on `cv2.CAP_GSTREAMER`. Use `build-buildkit.ps1`; full reasoning in
+`build.ps1` was **deleted on 2026-08-31**, and the two reasons it went are
+structural — restoring it from git history buys nothing. It could not bootstrap a
+chain: twelve `windows/Dockerfile.*` use BuildKit-only `RUN --mount=type=bind` for
+their script closures and `build.ps1` never set `DOCKER_BUILDKIT`, so the legacy
+builder died at `Dockerfile.base` step 8 with *"the --mount option requires
+BuildKit"*. And even given a chain, its `merge` target skipped the OpenCV GStreamer
+plugin, so the smoke gate that ends the run hard-failed on `cv2.CAP_GSTREAMER`. Use
+`build-buildkit.ps1`; full reasoning in
 [windows-build-lanes.md](windows-build-lanes.md) § The classic lane was retired.
 
 ### R4. When surgical repair is the wrong tool: reset the stores

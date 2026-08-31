@@ -263,7 +263,44 @@ function Invoke-CmakeConfigure {
         }
         throw "CMake configuration failed"
     }
+    Assert-CmakeArgsConsumed -BuildDir $BuildDir -PassedArgs $ExtraArgs
     return $true
+}
+
+function Assert-CmakeArgsConsumed {
+    # A -D the project never declares is SILENTLY IGNORED: cmake exits 0, the build
+    # goes green, and a caller's "FEATURE ON" banner is a lie. That is exactly how
+    # -DUSE_QNN / -DIREE_TARGET_BACKEND_QNN / -DTFLITE_ENABLE_QNN shipped as no-ops
+    # while three build scripts printed "QNN ... ON" (found 2026-08-31).
+    #
+    # Detection is via CMakeCache.txt, not the configure output: an undeclared -D is
+    # recorded as `NAME:UNINITIALIZED=value`, a declared one gets a real type
+    # (`NAME:BOOL=...`). Measured on cmake 3.29.2. Reading the cache keeps `& cmake`
+    # streaming straight to the step log.
+    #
+    # WARNS, never throws: some unconsumed vars are legitimate (a toolchain var a
+    # subproject reads without caching, an option that only exists on another arch).
+    # The point is that they stop being invisible.
+    # BLIND SPOT, by construction: only the UNTYPED -DNAME= form is detectable. A
+    # typed -DNAME:BOOL= the project never declares is cached WITH that type, so it
+    # is indistinguishable from a declared option here. Pass feature flags untyped.
+    param(
+        [Parameter(Mandatory)][string]$BuildDir,
+        [string[]]$PassedArgs = @()
+    )
+    $cache = Join-Path $BuildDir 'CMakeCache.txt'
+    if (-not (Test-Path $cache)) { return }
+    $names = @($PassedArgs |
+        ForEach-Object { if ($_ -match '^-D([A-Za-z0-9_]+)(:[A-Za-z]+)?=') { $matches[1] } } |
+        Sort-Object -Unique)
+    if ($names.Count -eq 0) { return }
+    $text = Get-Content $cache -Raw
+    $ignored = @($names | Where-Object { $text -match "(?m)^$([regex]::Escape($_)):UNINITIALIZED=" })
+    if ($ignored.Count -gt 0) {
+        Write-Warning ("CMake IGNORED $($ignored.Count) caller-supplied variable(s) - the project never " +
+            "declares them, so whatever they were meant to enable is OFF: $($ignored -join ', '). " +
+            'Either the option name is wrong for this upstream pin, or the feature does not exist there.')
+    }
 }
 
 # Test-SccacheRemoteConfigured lives in WindowsScripts.Shared.psm1; still
@@ -772,57 +809,6 @@ function Invoke-PythonWheelBuild {
         return $staged[0]
     }
     return Install-StagedPythonWheel -Python $Python -SourceDir $DistDir -ModuleName $ModuleName -NoDeps:$NoDeps
-}
-
-# Writes the dist-info a binary wheel needs (METADATA, WHEEL, top_level.txt) into
-# an already-laid-out package tree; `python -m wheel pack` then produces RECORD +
-# the archive. Generic in every parameter (#134) -- assembling a wheel by hand is
-# what every cross consumer scikit-build-core cannot build has to do.
-# Fixture test: SourceBuild.TvmAssembledWheel.Tests.ps1.
-function Write-AssembledWheelDistInfo {
-    param(
-        [Parameter(Mandatory)][string]$Name,        # distribution name, e.g. apache-tvm-ffi
-        [Parameter(Mandatory)][string]$Version,     # PEP 440
-        [Parameter(Mandatory)][string]$PackageRoot, # dir whose child dirs are the top-level packages
-        [string]$PythonTag = 'cp314',
-        [string]$AbiTag = 'cp314',
-        [string]$PlatformTag = 'win_arm64',
-        [string[]]$RequiresDist = @(),
-        [string]$RequiresPython = '',
-        [string]$Summary = '',
-        [string]$Generator = 'kataglyphis-assembled-wheel'
-    )
-    if (-not (Test-Path $PackageRoot -PathType Container)) { throw "Write-AssembledWheelDistInfo: package root $PackageRoot does not exist" }
-    $distName = ($Name -replace '[-_.]+', '_')
-    $distInfo = Join-Path $PackageRoot "$distName-$Version.dist-info"
-    New-Item -Path $distInfo -ItemType Directory -Force | Out-Null
-    $meta = @('Metadata-Version: 2.1', "Name: $Name", "Version: $Version")
-    if ($Summary) { $meta += "Summary: $Summary" }
-    if ($RequiresPython) { $meta += "Requires-Python: $RequiresPython" }
-    foreach ($r in $RequiresDist) { if ($r) { $meta += "Requires-Dist: $r" } }
-    [System.IO.File]::WriteAllText((Join-Path $distInfo 'METADATA'), (($meta -join "`n") + "`n"))
-    $wheelMeta = @('Wheel-Version: 1.0', "Generator: $Generator", 'Root-Is-Purelib: false', "Tag: $PythonTag-$AbiTag-$PlatformTag")
-    [System.IO.File]::WriteAllText((Join-Path $distInfo 'WHEEL'), (($wheelMeta -join "`n") + "`n"))
-    $top = @(Get-ChildItem -Path $PackageRoot -Directory | Where-Object { $_.Name -notlike '*.dist-info' } | ForEach-Object { $_.Name })
-    if ($top.Count -eq 0) { throw "Write-AssembledWheelDistInfo: no top-level package directory under $PackageRoot" }
-    [System.IO.File]::WriteAllText((Join-Path $distInfo 'top_level.txt'), (($top -join "`n") + "`n"))
-    return $distInfo
-}
-
-# A pyproject's [project] dependencies = [...] block, read from the source
-# tree at build time (never hardcoded here).
-function Get-PyprojectDependencies {
-    param([Parameter(Mandatory)][string]$PyprojectText)
-    # Two steps -- the [project] table body, then the list inside it: one regex
-    # forbidding any `[` between them matched nothing once `classifiers = [`
-    # preceded the list, and the assembled wheels shipped with NO requirements.
-    # `\r?` before every `$`: .NET multiline `$` matches only immediately before
-    # `\n`, so a CRLF checkout silently yields an empty list.
-    $tbl = [regex]::Match($PyprojectText, '(?ms)^\[project\][ \t]*(?:#[^\r\n]*)?\r?$(.*?)(?=^\[|\z)')
-    if (-not $tbl.Success) { return @() }
-    $m = [regex]::Match($tbl.Groups[1].Value, '(?ms)^dependencies\s*=\s*\[(.*?)\][ \t]*(?:#[^\r\n]*)?\r?$')
-    if (-not $m.Success) { return @() }
-    return @([regex]::Matches($m.Groups[1].Value, '"([^"]+)"') | ForEach-Object { $_.Groups[1].Value })
 }
 
 function Assert-WheelTargetArch {
@@ -1872,6 +1858,7 @@ Export-ModuleMember -Function @(
     'Invoke-GitClone',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
+    'Assert-CmakeArgsConsumed',
     'Test-SccacheRemoteConfigured',
     # Re-exported from nested WindowsScripts.Shared for SCRIPT-scope callers:
     # nested-module exports are invisible to scripts (repo scoping rule), and the
@@ -1900,8 +1887,6 @@ Export-ModuleMember -Function @(
     'Assert-PythonExtensionTag',
     'Get-PeImportNames',
     'Assert-WheelTargetArch',
-    'Write-AssembledWheelDistInfo',
-    'Get-PyprojectDependencies',
     'Get-PeFileMachine',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',

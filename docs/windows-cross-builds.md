@@ -696,15 +696,15 @@ QNN-off if the SDK is too old). `Copy-QnnRuntime` stages the per-arch backend DL
 (`QnnHtp*.dll`, `QnnCpu.dll`, `QnnSystem.dll`) plus `hexagon-v*` skel dirs beside each
 framework's install.
 
-The QNN SDK is wired into **four frameworks**:
+The QNN SDK gives a build-time flag to **ONE framework** (corrected 2026-08-31, backlog #154 — the other three rows record what was wrong):
 
 | Framework | CMake flag | What it enables |
 |---|---|---|
 | **ONNX Runtime** | `onnxruntime_USE_QNN=ON` | ORT QNN execution provider — NPU inference for ONNX models |
 | **ONNX Runtime GenAI** | (inherits from ORT) | QNN runtime DLLs staged beside GenAI install |
-| **LiteRT** | `TFLITE_ENABLE_QNN=ON` | LiteRT QNN delegate — NPU inference for TFLite models |
-| **TVM** | `USE_QNN=ON` | TVM QNN target runtime — NPU dispatch for TVM-compiled models |
-| **IREE** | `IREE_TARGET_BACKEND_QNN=ON` | IREE Qualcomm target backend — NPU dispatch for MLIR models |
+| **LiteRT** | *(none — see #154)* | Nothing. `TFLITE_ENABLE_QNN` was invented; the real switch is `LITERT_ENABLE_QUALCOMM` in the `litert/` tree, which this lane does not configure |
+| **TVM** | *(none — see #154)* | Nothing. TVM has no QNN option at all; its `qnn` is the Quantized-Neural-Network dialect, and its Snapdragon path is the separate Hexagon SDK |
+| **IREE** | *(none — see #154)* | Nothing. IREE has never had a Qualcomm backend |
 
 **No zip = QNN off with one notice** on every framework. A version-mismatch (SDK too old
 for the framework version) also falls back to QNN-off gracefully. The SDK staged on this

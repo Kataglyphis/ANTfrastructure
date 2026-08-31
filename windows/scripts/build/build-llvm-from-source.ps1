@@ -32,6 +32,7 @@ param(
     [switch]$SkipIfPresent
 )
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 # #108: container mounts are FLAT (C:\temp\scripts), the repo nests one level deeper.
@@ -42,9 +43,65 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 $LlvmVersion = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.0'
 Write-Host "=== clang/LLVM $LlvmVersion source build (AArch64 instruction-size fixes) ==="
 
+# Toolchain-level home for the aarch64 builtins (#135 follow-up, landed in the
+# 2026-08-31 rebuild window). The source build ships host builtins only, so the
+# arm64 GStreamer link died on __udivti3 and the merge stage self-healed by
+# downloading this lib EVERY cross run. Staging it here makes the toolchain image
+# complete; the merge self-heal stays as the fallback and now never fires.
+# FAIL-OPEN (warning): only the cross lane needs the lib, and the downstream
+# self-heal still covers a miss - a GitHub blip must not kill the LLVM layer.
+function Install-TargetCompilerRt {
+    param([Parameter(Mandatory)][string]$Prefix, [Parameter(Mandatory)][string]$Version)
+    $existing = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue)
+    if ($existing.Count -gt 0) { Write-Host "aarch64 compiler-rt already staged ($($existing[0].FullName))."; return }
+    $hostLib = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if ($hostLib.Count -eq 0) { Write-Warning 'clang_rt.builtins-x86_64.lib not found - cannot place the aarch64 lib; merge-stage self-heal will cover the cross lane.'; return }
+    $tmp = if ($env:TEMP_DIR) { $env:TEMP_DIR } else { $env:TEMP }
+    $rtArchive = Join-Path $tmp "clang+llvm-$Version-aarch64-pc-windows-msvc.tar.xz"
+    $rtExtract = Join-Path $tmp 'llvm-aarch64-rt'
+    try {
+        Write-Host "Staging aarch64 compiler-rt from the LLVM $Version release archive..."
+        Invoke-DownloadWithRetry -Url "https://github.com/llvm/llvm-project/releases/download/llvmorg-$Version/clang%2Bllvm-$Version-aarch64-pc-windows-msvc.tar.xz" -DestinationPath $rtArchive
+        $rtSha = "$env:LLVM_WINDOWS_AARCH64_RT_SHA256".Trim()
+        if (-not $rtSha) {
+            # The patched-llvm RUN bakes no env for this pin; it mounts versions.env
+            # as this script's SIBLING (container layout) - read the key from there.
+            $envFile = Join-Path $PSScriptRoot 'versions.env'
+            if (Test-Path $envFile) {
+                $m = [regex]::Match((Get-Content $envFile -Raw), '(?m)^LLVM_WINDOWS_AARCH64_RT_SHA256=(\S+)\s*$')
+                if ($m.Success) { $rtSha = $m.Groups[1].Value }
+            }
+        }
+        if ($rtSha) {
+            $actual = (Get-FileHash -Algorithm SHA256 -Path $rtArchive).Hash
+            if (-not [string]::Equals($actual, $rtSha, [StringComparison]::OrdinalIgnoreCase)) { throw "aarch64 compiler-rt archive SHA256 mismatch: expected $rtSha, got $actual" }
+            Write-Host 'aarch64 compiler-rt archive SHA256 verified (LLVM_WINDOWS_AARCH64_RT_SHA256).'
+        } else {
+            Write-Warning 'LLVM_WINDOWS_AARCH64_RT_SHA256 is empty - staging the aarch64 compiler-rt UNVERIFIED (pin it in versions.env, same contract as the QNN/TensorRT zips).'
+        }
+        # System32 bsdtar, never GNU tar: GNU parses C:\... as a remote-host spec.
+        $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+        if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
+        New-Item -ItemType Directory -Force -Path $rtExtract | Out-Null
+        & $rtTar -xf $rtArchive -C $rtExtract '*clang_rt.builtins-aarch64.lib'
+        $found = @(Get-ChildItem -Path $rtExtract -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($found.Count -eq 0) { throw "clang_rt.builtins-aarch64.lib not found inside $rtArchive - upstream archive layout changed." }
+        Copy-Item -Path $found[0].FullName -Destination $hostLib[0].Directory.FullName -Force
+        Write-Host "aarch64 compiler-rt staged -> $(Join-Path $hostLib[0].Directory.FullName 'clang_rt.builtins-aarch64.lib')"
+    } catch {
+        Write-Warning "aarch64 compiler-rt staging failed: $($_.Exception.Message) - the merge-stage self-heal still covers the cross lane."
+    } finally {
+        Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $rtExtract -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $clangCl = Join-Path $InstallPrefix 'bin\clang-cl.exe'
 if ($SkipIfPresent -and (Test-Path $clangCl)) {
-    Write-Host "Patched clang already present at $clangCl - nothing to do."
+    # NOT a bare return: a cached C:\llvm-patched from before 2026-08-31 has no
+    # aarch64 builtins, and skipping the staging here would leave it that way forever.
+    Write-Host "Patched clang already present at $clangCl - verifying the aarch64 compiler-rt staging."
+    Install-TargetCompilerRt -Prefix $InstallPrefix -Version $LlvmVersion
     return
 }
 
@@ -153,4 +210,5 @@ Write-Host "Installed: $banner"
 if ($banner -notmatch [regex]::Escape($LlvmVersion)) {
     throw "Built clang reports '$banner' but LLVM_WINDOWS_VERSION is $LlvmVersion - the provenance gate would fail."
 }
+Install-TargetCompilerRt -Prefix $InstallPrefix -Version $LlvmVersion
 Write-Host "Patched clang installed to $InstallPrefix - put its bin\ ahead of the scoop shims on PATH."

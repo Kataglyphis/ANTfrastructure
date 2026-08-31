@@ -57,11 +57,18 @@ create default network: needs CNI plugin "nat" to be installed in CNI_PATH` —
 the conf, not the binary, was missing), so `docker.exe` was the only working
 tool. Current state: with `0-containerd-nat.conf` installed (see § Getting it
 going, step 2) `nerdctl` works from **admin** shells; builds go through
-`build-buildkit.ps1`/buildctl on the preferred lane. Stevedore's `docker.exe`
-remains the classic-lane tool and needs no CNI plugin:
+`build-buildkit.ps1`/buildctl on the preferred lane — Stevedore ships that
+`buildctl.exe` too. Stevedore's `docker.exe` needs no CNI plugin and survives as
+the **publish/inspect** tool, but it is not a build lane: twelve
+`windows/Dockerfile.*` use BuildKit-only `RUN --mount`, so a `docker.exe build`
+of `Dockerfile.base` dies at its first `RUN` with *"the --mount option requires
+BuildKit"* (the classic driver itself was deleted on 2026-08-31 —
+[`windows-host-setup.md`](windows-host-setup.md) § R3. There is no classic lane to
+reach for).
 
 ```pwsh
-"D:\Stevedore\bin\docker.exe" build --platform windows/amd64 --no-cache -t local/kataglyphis:windows-base -f windows/Dockerfile.base .
+"D:\Stevedore\bin\docker.exe" load -i out\bk-winamd64.tar            # a -FinalTar export
+"D:\Stevedore\bin\docker.exe" image inspect local/kataglyphis:winamd64
 ```
 
 ## Docker on Windows: registry auth, networking, service recovery

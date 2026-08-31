@@ -333,21 +333,21 @@ configure_tvm_cmake() {
   resolve_tvm_spirv_tools
 
   append_tvm_cmake_args \
-    cmake_args \
-    OFF \
-    "$build_type" \
-    "$desired_cc" \
-    "$desired_cxx" \
-    "$llvm_cmake_value" \
-    "$llvm_dir" \
-    "$llvm_ignore_paths" \
-    "$use_vulkan" \
-    "$use_cuda" \
-    "$use_opencl" \
-    "$spirv_tools_lib" \
-    "$cross_link_flags" \
-    "$vulkan_library" \
-    "$vulkan_include"
+    --out cmake_args \
+    --python-module OFF \
+    --build-type "$build_type" \
+    --cc "$desired_cc" \
+    --cxx "$desired_cxx" \
+    --llvm-cmake-value "$llvm_cmake_value" \
+    --llvm-dir "$llvm_dir" \
+    --llvm-ignore-paths "$llvm_ignore_paths" \
+    --use-vulkan "$use_vulkan" \
+    --use-cuda "$use_cuda" \
+    --use-opencl "$use_opencl" \
+    --spirv-tools-lib "$spirv_tools_lib" \
+    --cross-link-flags "$cross_link_flags" \
+    --vulkan-library "$vulkan_library" \
+    --vulkan-include "$vulkan_include"
 
   # 2>&1 | tee, with pipefail (line 2) keeping a failed configure fatal: the log is
   # where TVM prints TVM_LLVM_VERSION, the only proof of which LLVM it really found.

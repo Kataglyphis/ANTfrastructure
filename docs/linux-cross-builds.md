@@ -668,10 +668,14 @@ compat (`QNN_OP_STFT` canary), and each framework wires its own flag
 (mirroring Windows #121): ORT `onnxruntime_USE_QNN=ON +
 onnxruntime_QNN_HOME=<root> + QNN_ARCH_ABI=aarch64-oe-linux-gcc11.2` (ORT
 CMake defaults to `aarch64-android` on Linux aarch64, overridable via `-D` —
-it is a cache var guarded by `if(NOT QNN_ARCH_ABI)`); LiteRT
-`TFLITE_ENABLE_QNN=ON + QNN_HOME=<root>` (NPU gate flips on with it); TVM
-`USE_QNN=ON + QNN_HOME=<root>`; IREE `IREE_TARGET_BACKEND_QNN=ON +
-QNN_HOME=<root>`. Backend `.so` + `hexagon-v*` skel dirs are staged beside
+it is a cache var guarded by `if(NOT QNN_ARCH_ABI)`). **ORT is the only framework
+with a build-time QNN flag** — corrected 2026-08-31, see Windows backlog #154:
+LiteRT's `TFLITE_ENABLE_QNN`, TVM's `USE_QNN` and IREE's
+`IREE_TARGET_BACKEND_QNN` do not exist upstream, so CMake dropped all three
+silently while the scripts logged success. LiteRT's real switch is
+`LITERT_ENABLE_QUALCOMM`, auto-forced ON by `QAIRT_HEADERS_DIR=<root>/include`,
+which this lane now passes; TVM and IREE have no Qualcomm path at all.
+Backend `.so` + `hexagon-v*` skel dirs are staged beside
 each framework's install by `stage_qnn_runtime`. No zip = QNN off with a
 notice. Different SDK from the Windows lane (`aarch64-oe-linux-gcc11.2/`,
 not `aarch64-windows-msvc`). See `linux/qnn-sdk/README.md`.
@@ -854,6 +858,47 @@ set — setuptools itself reads them
 `03-media/build/pyav/build-pyav.sh`,
 `05-frameworks/torch/build-app-wheelhouse.sh`,
 `03-media/build/onnxruntime/build/60-build-genai.sh`.
+
+### onnxruntime-genai on riscv64 (GEN1, 2026-08-31)
+
+> **Full reference:** [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) — the
+> patch, the toggle wiring, the smoke tiers, the first-build watch list, and
+> what is MEASURED versus REASONED. This section is the summary.
+
+The riscv64 cross lane BUILDS `onnxruntime-genai` from source. Upstream ships
+no riscv64 wheel, runs no riscv64 CI, and closed its one RISC-V field report
+([onnxruntime-genai#594](https://github.com/microsoft/onnxruntime-genai/issues/594),
+Phi-3 int4 emitting nonsense on a XuanTie C910) as not-planned — so this is a
+self-build, and until a real riscv64 media build says otherwise it is
+**unvalidated**.
+
+* **Toggle:** `GENAI_ALLOW_RISCV64` (`versions.env`, default `true`;
+  `Dockerfile.media` ARG → ENV on the `onnxruntime` stage). Anything but
+  `true` restores the pre-GEN1 behaviour exactly: `60-build-genai.sh` creates
+  a placeholder output tree and exits 0, and `verify-media-artifacts.sh` SKIPs
+  the genai stage in agreement. Deliberately riscv64-scoped — `BUILD_GENAI` is
+  the all-arch master switch and would take amd64/arm64 down with it.
+* **Upstream patch:** `linux/scripts/patches/onnxruntime-genai/001-riscv64-target-platform.patch`
+  adds a `riscv64` arm to `cmake/target_platform.cmake`, whose Linux branch
+  otherwise `FATAL_ERROR`s at configure time on an unknown
+  `CMAKE_SYSTEM_PROCESSOR`. The variable it sets (`genai_target_platform`) is
+  read only by MSVC/WinML/Java code, so the patch is inert on this lane apart
+  from removing the abort. Applied only when `ARCH=riscv64`.
+* **`--use_guidance` stays ON** (llguidance via Corrosion —
+  `riscv64gc-unknown-linux-gnu` is a rustc Tier-2-with-host-tools target and
+  `install-rust.sh` adds its std for every `CROSS_TARGETS` arch). A
+  riscv64-only preflight drops the flag if `rustup target list --installed`
+  positively lacks the triple, so a missing std warns instead of aborting a
+  multi-hour stage.
+* **Performance note:** ORT v1.29's riscv64 MLAS uses the SCALAR reference
+  kernels — the RVV ones need `onnxruntime_USE_RVV` plus an `rv64gcv` compile
+  probe, neither of which this repo sets. Expect generation to be slow.
+* **Gates:** the producer's own cross wheel check (`assert_elf_arch` over every
+  `.so` in the wheel + the target `EXT_SUFFIX` assert),
+  `verify-media-artifacts.sh onnxruntime-genai`, `smoke-torch-venv.sh`'s pin
+  assertion (riscv64 absence is now a FAILURE unless the toggle is off), the
+  ARCH-PARITY table (its `riscv64:onnxruntime_genai` exemption is deleted), and
+  `smoke-runtime-image.sh`'s `check_genai_binding`.
 
 | Variable | Why it is load-bearing |
 | --- | --- |

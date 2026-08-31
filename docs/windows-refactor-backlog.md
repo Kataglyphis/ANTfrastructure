@@ -33,19 +33,21 @@ landed: see #135 follow-up below). Read the table as the last fully green run
 | import walk | **793 files, 0 unresolved** (85 device-OS: FastRPC + client SKU) | — |
 | bundle manifest | 7 DLL homes, **6 wheels**, 3 ABSENT markers | — |
 | GStreamer contract plugins | **6/6** — `libav opencv onnx webrtc nice tflite` | 6/6 |
-| smoke gate | **97 passed / 0 failed / 15 skipped** (floors 66/25) | **222 / 0 / 0** |
-| QNN | EP ON, QAIRT 2.44.0, `aarch64-windows-msvc` backends staged beside all five frameworks | off (x64 CPU backend is pointless) |
+| smoke gate | **97 passed / 0 failed / 15 skipped** (floors 66/20) | **222 / 0 / 0** |
+| QNN | EP ON in **onnxruntime only** (see #154); QAIRT 2.44.0 `aarch64-windows-msvc` runtime COPIED beside all five installs, but only ORT loads it | off (x64 CPU backend is pointless) |
 | wall clock | ~40 min (media+final) | 2 h 18 min |
 
 **Exactly three components are ABSENT on arm64**, each marked in the bundle by an
-`ABSENT-ON-ARM64.txt` (call sites: `build-tvm-from-source.ps1:525`,
-`build-iree-from-source.ps1:331`, `build-litert-all.ps1:85`): the **TVM compiler**, the **IREE
+`ABSENT-ON-ARM64.txt` (LiteRT-LM, the default name) or a `COMPILER-ABSENT-ON-ARM64.txt`
+(the two compilers, which pass `-FileName` explicitly) — the manifest globs both
+families. Call sites: `build-tvm-from-source.ps1:341`,
+`build-iree-from-source.ps1:340`, `build-litert-all.ps1:79`: the **TVM compiler**, the **IREE
 compiler** (both need an LLVM cross-built for aarch64-windows) and **LiteRT-LM** (Bazel + an x86_64
 prebuilt `.lib`; a CMake port exists upstream — #133(d)). Their *python packages* DO now ship
 (`apache_tvm`, `apache_tvm_ffi`, `iree.runtime` — closed by #133). Also excluded by owner decision
-or construction: **CUDA** (#122, no Windows-on-ARM CUDA), the **torch app stage** (`uv sync` must
-execute the target interpreter), and the **QNN EP**, which is wired but needs a hand-staged SDK
-(#121).
+or construction: **CUDA** (#122, no Windows-on-ARM CUDA) and the **torch app stage** (`uv sync` must
+execute the target interpreter). The **QNN EP is PRESENT and PROVEN 2026-08-31** (build-time path;
+runtime execution still needs a Snapdragon host — see #121 below).
 
 **The honest caveat, unchanged:** nothing the arm64 lane produces has ever been *executed*. Its
 wheels ship staged, not installed, and every verdict above is a static check — PE machine type,
@@ -62,14 +64,97 @@ this repo's cp314 pin).
 
 ### Open items
 
-*(No open items remain.)*
+- **#152 — the wave of 2026-08-31 is UNPROVEN BY A BUILD.** Everything in #147 was
+  verified statically (773/773 suite, doc-links, doc-dupes, EOL). No chain has run.
+  The wave edited `Dockerfile.toolchain-builder` (the DEFAULT `patched-llvm` target)
+  and `linux/scripts/01-core/versions.env` (COPY'd into `Dockerfile.base`), so the
+  next build re-pays a full LLVM 23.1.0 compile and the media lanes below it —
+  the repo's own recorded figure for a toolchain-layer change is ~2 h of media
+  compiles, on top of the LLVM build. Budget for it; do not discover it. Until that
+  run is green, "gate-green is not usable" applies to this whole wave.
+
+- **#153 — the clipped-log forensics can never be re-audited; the corpus is gone.**
+  INVESTIGATED 2026-08-31, and the premise I wrote was wrong. `out/windows-build-logs/`
+  holds 92 `.log` files and **every one of them is from 2026-08-30/31** — 100 % post-fix.
+  The 42 older run ids (bk-20260817-221952 … bk-20260829-140708) survive only as
+  67-598-byte `*-manifest.txt` stubs; their step logs were pruned. So the 49-run
+  analysis cannot be re-checked, only SUPERSEDED by future runs.
+  What the surviving corpus does prove: the 2026-08-14 buildkitd env fix is live —
+  **0 clip events in 90 logs**, and 12 individual RUN vertices now exceed the old
+  2 MiB ceiling that used to truncate them. Treat every pre-2026-08-30 forensic
+  conclusion in the archives as unverifiable, not as evidence.
+  STILL OPEN, re-scoped: keep the next full chain's logs (they are the first corpus
+  that can carry a real analysis) and run the step-time / silent-retry sweep on those.
+
+- **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
+  silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
+  The genuine switches, all verified defined at v2.2.0:
+  `LITERT_ENABLE_QUALCOMM` (`litert/vendors/CMakeLists.txt:330`, default OFF) and
+  `QAIRT_HEADERS_DIR` (`:20`), where setting the headers dir AUTO-FORCES the former ON
+  (`:331-334`). QAIRT is consumed as **headers only, at configure time** — no import
+  libs, no link-time dependency; backends are `LoadLibrary`'d by name at runtime.
+  NOTE `LITERT_ENABLE_NPU` (`litert/CMakeLists.txt:72`) is NOT the QNN switch: its only
+  effect is a `#cmakedefine01` in `build_config.h`, and it does not gate
+  `add_subdirectory(vendors)`.
+  **Why it is not wired yet — five upstream defects, all Windows-specific:**
+  1. The dispatch DLL **exports nothing** on Windows: the SHARED target sets no
+     export macro, no `WINDOWS_EXPORT_ALL_SYMBOLS`, no `.def`. It would build green
+     and be unloadable — exactly #154's failure mode, one level deeper.
+  2. `-Wl,--whole-archive` / `--no-undefined` are passed on every non-Apple platform,
+     Windows included; only `if(APPLE)` is carved out. GNU-driver syntax under lld-link.
+  3. Both `dynamic_loading.cc` and `dynamic_loading_windows.cc` compile on Windows.
+  4. The Windows branch of the vendor link lines is empty.
+  5. `litert/vendors/CMakeLists.txt` does **three unconditional configure-time
+     downloads** — NeuroPilot from AWS S3, and QAIRT **2.47.0.260601** from
+     softwarecenter.qualcomm.com with no `EXPECTED_HASH` and no error check — whenever
+     the corresponding `*_HEADERS_DIR` is empty. Two are escapable by pointing them at
+     a dummy dir; the QAIRT one is escaped by setting `QAIRT_HEADERS_DIR` to our staged
+     2.44 tree, which also stops the version skew.
+  The `litert/` tree is also a SEPARATE top-level project (`project(LiteRT VERSION
+  1.4.0)`), not a flag on the `tflite/` tree we configure — a second configure, and it
+  pulls tflite in `EXCLUDE_FROM_ALL`, so `tensorflowlite_c` must be named explicitly.
+  Upstream has never configured this tree for Windows: the only CMake CI is
+  linux-x86_64/Android.
+  **And the arch gate cannot prove any of it** — QNN backends are `LoadLibrary`'d by
+  name, so a dispatch DLL adds zero static import edges. A green gate would mean
+  nothing here.
+
+- **#157 — ~2.33 GB of QNN payload ships for one consumer.** `Copy-QnnRuntime` copies
+  the 35 backend DLLs (231 MB) plus seven `hexagon-v*` skel dirs (236 MB) into all FIVE
+  framework install dirs. After #154 only ORT can load them. Removing the four
+  redundant copies is a straight image-size win, but it moves the arch-gate binary count
+  (1168) and the bundle manifest, so it needs a chain run to land. Measure first.
 
 ### CLOSED (pointers — full narratives in the dated archives)
+
+- **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
+  FOUR independent breakages (every script path, the missing TargetArch + Tvm
+  modules, the swapped media-core order, the QAIRT pin). The restore recipe is now
+  a derivation rule in `bk-warm.ps1:15-38` — derive each RUN from the stage that
+  runs that script TODAY. Archive: `windows-backlog-archive-2026-08-31.md`
+  § Resolved 2026-08-31 (second pass).
+
+- **#154** — QNN is integrated in ONE framework, not five: TVM, IREE and LiteRT
+  were passing CMake flags upstream never defined, so CMake dropped them silently
+  while all three logged success. Flags and banners removed on both lanes; the
+  class is gated by `Assert-CmakeArgsConsumed`. The surviving lead is #155.
+  Archive: same page.
+
+- **#156** — LiteRT-LM QNN: DECLINED with reasons (also a standing directive
+  below). Archive: same page.
+
+- **#147 / #148 / #150 / #151** — the 2026-08-31 wave: classic driver deleted, the
+  `patched-llvm` whole-dir module mount narrowed (and gated), TVM + GStreamer
+  helpers moved to their leaf modules, `Set-StrictMode` plus the four latent bugs it
+  exposed, the deliberate declines, the dead `build.ps1` permission entries, and the
+  CHANGELOG archive split. Seven commits, `7cc2e95f..a5eac0dd`. Full narratives:
+  [`windows-backlog-archive-2026-08-31.md`](windows-backlog-archive-2026-08-31.md)
+  § Backlog wave #147-#151. Its declines are also a standing directive below.
 
 - **#121** — QNN EP: BUILD-TIME PATH PROVEN 2026-08-31 on the full `:winarm64`
   cross run — SDK qairt-2.44.0.260225 (SHA-pinned), `onnxruntime_USE_QNN=ON`
   with the `aarch64-windows-msvc` backend set, QNN provider built, QNN runtime
-  staged beside all five frameworks (arch gate 1168/0, smoke 97/0/15).
+  copied beside all five installs — but only ORT consumes it (#154); arch gate 1168/0, smoke 97/0/15.
   Execution verification still needs a Snapdragon host. Archive: this entry.
 
 - **`-ResumeStage` BK equivalent** — CLOSED 2026-08-29 (no BK equivalent needed).
@@ -110,7 +195,11 @@ this repo's cp314 pin).
 
 - **#133(d)** — LiteRT-LM CMake port: CLOSED 2026-08-29 (owner decision — staying on Bazel).
 - **#134** — post-#133 cleanup wave: DONE 2026-08-29. amd64 acceptance
-  PASSED (smoke 192/0/1, arch gate 1134/0). Archive: `windows-backlog-archive-2026-08-26.md` § #134.
+  PASSED (smoke 192/0/1, arch gate 1134/0). Narrative: `CHANGELOG.md`
+  § 2026-08-29 — amd64 acceptance build GREEN, and
+  [`changelog-archive-2026-08-28.md`](changelog-archive-2026-08-28.md) § #134
+  acceptance run. NOT in `windows-backlog-archive-2026-08-26.md` — that archive
+  (line 490) names #134 among the entries that deliberately stayed live.
 - **Layer headroom dispute** — SETTLED 2026-08-28. The final image sits at ~75
   layers (counted from the inherited chain's instructions: base 16 + nvidia 3 +
   toolchain 4 + media-merge 15 + torch 3 + final 2 = 43, + 20 ENV + ~12 servercore
@@ -118,7 +207,10 @@ this repo's cp314 pin).
   `docs/windows-build-invariants.md`.
 - **#122** — CUDA on arm64: CLOSED 2026-08-28 (owner decision). Archive: `windows-backlog-archive-2026-08-26.md` § #122.
 - **#136** — VS RUN caching: SOLVED + DEPLOYED 2026-08-26. Archive: `windows-backlog-archive-2026-08-26.md` § #136.
-- **#137** — sccache: DONE 2026-08-28. Needs rebuild to land.
+- **#137** — sccache: DONE 2026-08-28, **LANDED**. `SCCACHE_GIT_REV=8ab39266` is in
+  `versions.env:557` and in the built base image (the `setup-rust-toolchain` RUN is a
+  cache hit at that rev from the 2026-08-30 solve on); the full arm64 chain rebuilt
+  green through it on 2026-08-31. No rebuild is owed.
 - **#134 free follow-ups** — ALL DONE 2026-08-28: smoke floor recalibrated (85→66),
   §19 PROVISIONAL marker removed, pin parity updated for `TVM_COMMIT`, TVM
   fixtures fixed (single-quoted `` `n `` → real newlines), three merge-stage
@@ -135,16 +227,47 @@ this repo's cp314 pin).
 
 - **NEVER trim CUDA_ARCHITECTURES** (80;86;89;90 in ALL builds, incl. dev
   iterations; pinned by Pins.CanonicalValues).
-- **CUDA compiles stay BARE nvcc** — the sccache launcher-default question is
-  CLOSED (miscompile is storage-independent and cold-cache; archive #99/P0b).
+- **CUDA compiles go THROUGH sccache** — `SCCACHE_CUDA_LAUNCHER` is DEFAULT ON
+  since 2026-08-18 (`Dockerfile.media-builder:327`; the OpenCV stage via
+  `OPENCV_CUDA_LAUNCHER:421`). **Do not flip it off silently** — the onnx stage
+  then re-pays ~25 min of CUDA compiles per rebuild. Opt out per run with
+  `-BuildArg SCCACHE_CUDA_LAUNCHER=`.
+  CORRECTED 2026-08-31: this directive read "CUDA compiles stay BARE nvcc" and had
+  been wrong since 2026-08-18. The 2026-08-10 miscompile it rested on was
+  root-caused to sccache's dryrun quote-collapse and fixed upstream
+  (mozilla/sccache#2811, merged 2026-08-19); patch 006 is retired
+  (`build-onnx-from-source.ps1:147`). A directive is the worst place for a stale
+  rule — acting on this one would have cost ~25 min per rebuild against an
+  explicit Dockerfile warning.
 - **Do NOT collapse the media-core checkpoints** (#72: export is ~1.2% of the
   chain; resume granularity is worth more than ~60 s).
 - **Do not re-propose** branch protection (#59) or a scheduled nightly/weekly
   chain run (#111) — DECLINED by owner 2026-08-17; manual launches are the
   verification cadence.
+- **Do not re-propose #147's declines** (#148): deleting `Get-LlvmMasmCmakeArg`
+  or narrowing the `WindowsSourceBuild.Common` re-exports (external-consumer
+  API), `Set-StrictMode` on the two consumer modules or the two dot-sourced
+  scripts, or moving the handoff helpers off the facade.
 - **No logging-idiom sweep** (#110): chain scripts use Write-Host, gstreamer
   keeps its structured `log`, Write-BuildLog stays host-driver territory;
   enforcement is review, not a cache-busting mass edit.
+- **Do not re-propose QNN in LiteRT-LM** (#156, 2026-08-31). It is declined, not
+  deferred. QNN only pays on arm64, where LiteRT-LM does not build (no windows_arm64
+  Bazel config, no prebuilts, `build:windows --copt=/arch:AVX2` on every Windows
+  compile, cpuinfo's `[restrict static 1]` under clang-cl). On x64 it is worse than
+  pointless: **QAIRT ships no `QnnHtpV*Stub.dll` for `x86_64-windows-msvc`**, so there
+  is no path to a Hexagon DSP at all. `litert_lm_main` also parses
+  `--litert_dispatch_lib_dir` and never reads it, and the NPU models are EAP-gated.
+  Re-open only if upstream ships a windows-arm64 target.
+- **Do not re-propose #147's declines** (#148, 2026-08-31). Each was considered and
+  refused with a reason: deleting `Get-LlvmMasmCmakeArg` or narrowing the
+  `WindowsSourceBuild.Common` re-exports (the modules are external-consumer API — a
+  zero-references audit is not evidence of zero consumers); `Set-StrictMode` on
+  `WindowsFlutter.Common` / `WindowsContainerLog.Common` (same rule, and a module does
+  not inherit its caller's strict mode), on `Initialize-CiEnvironment.ps1` or
+  `litert-lm-export-bridge.ps1` (dot-sourced — it leaks, or is a no-op); moving
+  `Export-`/`Import-BuildHandoff` off the hot facade (they are the #149 rollback
+  payload). Full reasoning in the 2026-08-31 archive § Backlog wave.
 - **GES `_commit` retry is DORMANT INSURANCE** (#77): re-open only if its
   retry marker reappears in a gstreamer build.
 - **Restore `disk,webdav` only after WCOW cache mounts are PROVEN** (#99
@@ -171,8 +294,10 @@ this repo's cp314 pin).
      never reached the remote because L0 failed first under the default
      write-error-policy=l0). Core findings (nvcc deadlock + miscompile) stand;
      a two-sentence correction protects the report''s credibility. Also note
-     CUDA is launcher-off by default since 2026-08-10, so the deadlock repro
-     needs SCCACHE_CUDA_LAUNCHER=1.
+     CUDA was launcher-off by default only between 2026-08-10 and 2026-08-18
+     and has been launcher-ON since (post-#2811); the repro is explicit either
+     way — `repro-sccache-cuda-llm-deadlock.ps1:108` passes
+     SCCACHE_CUDA_LAUNCHER=1 itself.
   3. **Restore `disk,webdav`** once WCOW cache mounts stop losing inherited
      writes — owner intent; two-step re-verification recipe in the archive
      (#99): probe twice (ON-mount row must be clean on the SECOND, inheriting
@@ -195,6 +320,18 @@ this repo's cp314 pin).
   composes host tool paths without `.exe` on a Windows host;
   out/upstream-issue-iree-elf-arch-arm64-msvc.md — `MSVC_C_ARCHITECTURE_ID MATCHES 64`
   matches `ARM64`, archiving the x64 MASM object into an ARM64 library.
+- **REGISTRY of unfiled drafts under `out/` (added 2026-08-31 — the section title
+  says "do not let these evaporate", and four of these were named nowhere):**
+  `upstream-buildkit-wcow-cache-mount-draft.md` (item 1 above; its own header records
+  the one strengthening step still open), `upstream-sccache-2808-addendum.md` (item 2),
+  `upstream-issue-iree-host-bin-dir-exe.md`, `upstream-issue-iree-elf-arch-arm64-msvc.md`,
+  `upstream-issue-meson-summary-build-subproject.md` (DRAFT, not filed; verified against
+  meson 1.12.0), `upstream-issue-opencv-softfloat-neon.md`,
+  `upstream-comment-for-win-14977.md` (a comment for docker/for-win#14977), and
+  `upstream-llvm-aarch64-seh-instsize.md` — that last one is **not** llvm#219200: two
+  commits are written, built and green on branch `aarch64-instsize-verify`, UNPUSHED.
+  Already posted and needing no entry: `upstream-issue-sccache-nvcc.md` (#2808),
+  `upstream-issue-litert-lm-cmake.md` (#3245), `upstream-issue-opencv-ort-wchar.md` (#29788).
 - **Post-run diagnostics queue — DEMOTED 2026-08-14: the sccache half is
   CLOSED.** The forensics had escalated this to "sccache has never worked, on
   any run" (0 hits / 189,861 failed writes across 94 stat blocks). **That was
@@ -207,16 +344,24 @@ this repo's cp314 pin).
   inside a container** — the direction `Assert-SccacheEndpoint` never tests.
   `SCCACHE_ERROR_LOG` is no longer "the missing artifact": the cache mount was
   found EMPTY, so there was never a log to recover.
-  What remains here: (1) the exact-TU replay (`bias_softmax_impl.cu`) for the
-  miscompile mechanism and the nvcc/CUDA sccache crash — **untested by the
-  clang-cl probe and still genuinely open** (it is what drives #75's silent
-  `-j` downgrade ladder); (2) one `probe-build-copy.ps1 -Heavy` smoke after the
-  poisoned-chain prune; (3) re-measure the at-scale hit rate on the first real
-  media build after 2026-08-13 — until then it is simply unmeasured.
+  What remains here — RE-AUDITED 2026-08-31, and only item (2) is still open:
+  (1) **CLOSED 2026-08-18/19.** The exact-TU replay exists and ran
+  (`probe-onnx-tu-replay.ps1`, `bias_softmax_impl.cu`): it root-caused the
+  miscompile to sccache's dryrun quote-collapse (verified bare 3189 == wrapped
+  3189 symbols; mozilla/sccache#2811 merged 2026-08-19), and the nvcc/CUDA crash
+  proved to be #99 collateral, gone under a healthy backend. #75's `-j` ladder is
+  no longer silent either — it warns before and after (archive 2026-08-21:150).
+  (2) **STILL OPEN:** one `probe-build-copy.ps1 -Heavy` smoke after the
+  poisoned-chain prune.
+  (3) **CLOSED.** The at-scale hit rate was measured twice on real media builds:
+  the 2026-08-18 base ride (100.00 % CUDA/PTX/CUBIN, 207/816 hits) and the
+  2026-08-19 opencv run (99.97 % overall; opencv stage ~13 → ~4.3 min).
   VERIFIED 2026-08-14: the buildkitd service env now really does carry
   `BUILDKIT_STEP_LOG_MAX_SIZE=-1` + `..._MAX_SPEED=-1` (checked at the service
   registry key, and today's base build no longer emits the clip warning) — so
-  the next full chain will be the FIRST fully-captured one. The 49-run corpus
+  the next full chain would be the FIRST fully-captured one. That chain has since
+  run (the 2026-08-18 full-chain green), so a re-run of the forensics against a
+  captured corpus is now possible and has not been done. The 49-run corpus
   analysed above predates this: 28 of those logs contain real clip events, the
   green reference run is 49 % blind in its merge step, and historical ONNX
   steps are 83 % blind. Re-run the forensics against a full captured chain.

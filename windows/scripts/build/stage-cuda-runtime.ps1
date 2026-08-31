@@ -15,6 +15,7 @@
 # WITH_CUDA/WITH_CUDNN and HARD-links cudnn64_9.dll, so without it the plugin DLL
 # fails to load (Win32 126) in the (non-nvidia) merge image.
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $dest = 'C:\cuda-rt'
@@ -33,10 +34,12 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 # has a lane on which CUDA_ROOT is legitimately absent and the diagnostic is
 # the whole point.
 $cudaBin = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
-$roots = @(
+# Outer @() wraps the pipeline RESULT: zero roots (the arm64/CPU lane this stage
+# degrades cleanly for) and one root both make $roots.Count throw under StrictMode.
+$roots = @(@(
     $cudaBin,                             # cudart64_*, cublas64_*, cufft64_*, ...
     $env:CUDNN_ROOT                       # cudnn64_9.dll + cudnn_*64_9 engines (under bin\<cuda-major>\)
-) | Where-Object { $_ -and (Test-Path $_) }
+) | Where-Object { $_ -and (Test-Path $_) })
 
 # Two DIFFERENT situations end up with no roots, and conflating them is what
 # made this stage a hard blocker for every non-GPU merge:

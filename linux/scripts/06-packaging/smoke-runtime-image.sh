@@ -35,6 +35,17 @@ _rt_run() {
     ${_opts[@]+"${_opts[@]}"} "${image_tag}" "$@"
 }
 
+# Host-side versions.env pin reader: env wins, then the file, EMPTY on a miss --
+# callers must treat empty as "not asserted". docs/gen1-riscv64-genai.md
+_rt_versions_env_pin() {
+  local _key="$1" _val="${!1:-}" _venv
+  if [ -z "${_val}" ]; then
+    _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
+    [ -f "${_venv}" ] && _val="$(grep -E "^${_key}=" "${_venv}" | head -1 | cut -d= -f2 || true)"
+  fi
+  printf '%s' "${_val}"
+}
+
 # Set by check_torchless_sentinel (1 = torch expected, 0 = sentinel present); read by
 # the app-wheel-smoke and version-pin sections.
 _SMOKE_TORCH_EXPECTED=1
@@ -229,6 +240,8 @@ check_app_wheel_smoke() {
       # failures==0 and reports a vanished component as a WARNING, so one identical
       # PASS covered 15/15, 14/15 and 12/15. Floors may only ever go UP - raise one
       # when an arch gains a component, never to make a red run green.
+      # GEN1: riscv64 stays at 12 until a real run PRINTS 13/… ok.
+      # docs/gen1-riscv64-genai.md
       local _wheel_floor _wheel_out _wheel_ok
       case "${target_arch}" in
         amd64)   _wheel_floor=15 ;;
@@ -298,6 +311,43 @@ printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
     echo ""
 }
 
+# GEN1: the onnxruntime-genai binding gate (payload smoke_genai_py), every arch.
+# Exit status is not evidence -- a pass demands the GENAI-BIND sentinel in the
+# OUTPUT. docs/gen1-riscv64-genai.md
+check_genai_binding() {
+  local image_tag="$1"
+  local target_arch="$2"
+    echo "--- Functional: onnxruntime-genai native binding (GEN1) ---"
+    local expect_version out rc sentinel
+    expect_version="$(_rt_versions_env_pin ONNXRUNTIME_GENAI_VERSION)"
+    out="$(_rt_run -e "SMOKE_GENAI_PY=$(smoke_genai_py)" \
+             -e "GENAI_EXPECT_VERSION=${expect_version}" \
+             -e "GENAI_EXPECT_ARCH=${target_arch}" \
+             bash -lc 'if [ -z "${SMOKE_GENAI_PY:-}" ]; then
+  echo "GENAI-BIND ABSENT: SMOKE_GENAI_PY is empty inside the container -- the program never crossed the boundary"
+  exit 4
+fi
+printf "%s\n" "${SMOKE_GENAI_PY}" | /opt/venv/bin/python -' 2>&1)" \
+      && rc=0 || rc=$?
+    printf '%s\n' "${out}" | sed 's/^/  /'
+    sentinel="$(printf '%s\n' "${out}" | grep -Eo 'GENAI-BIND (OK|FAIL|SKIP|ABSENT):.*' | head -1 || true)"
+    if [ -z "${sentinel}" ]; then
+      fail "onnxruntime-genai binding check exited ${rc} but printed NO GENAI-BIND sentinel (${target_arch}) -- the generated program did not run; an exit 0 here means python got an EMPTY stdin, not a working binding"
+    elif [ "${rc}" = "0" ]; then
+      case "${sentinel}" in
+        "GENAI-BIND OK:"*)
+          pass "onnxruntime-genai native binding exercised on-target (${target_arch}) -- ${sentinel}" ;;
+        *)
+          fail "onnxruntime-genai binding check exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
+      esac
+    elif [ "${rc}" = "3" ]; then
+      echo "  SKIP: onnxruntime_genai not installed in this image (${target_arch}); presence is asserted by ARCH-PARITY, not here"
+    else
+      fail "onnxruntime-genai binding check FAILED (${target_arch}, rc=${rc}): ${sentinel}"
+    fi
+    echo ""
+}
+
 # Not just "importable" but the CORRECT versions: delegate to smoke-torch-venv.sh's
 # assert-only mode, which catches a wrong version slipping in (lock drift, a stale local
 # wheel, a floated index). Which authority owns which pin, and why they are no longer
@@ -307,28 +357,24 @@ check_ml_version_pins() {
   local target_arch="$2"
     if [ "${_SMOKE_TORCH_EXPECTED}" = "1" ]; then
       echo "--- Functional: ML version-pin assertion (${target_arch}) ---"
-      _stv_out="$(_rt_run \
+      # nerdctl run inherits nothing, and the toggle is ARG/ENV on a BUILDER
+      # stage only, so forward it explicitly. docs/failure-modes.md
+      # Only forward a NON-EMPTY pin: an empty value would reach the container
+      # as a set-but-empty var, and the consumer treats anything != "true" as
+      # "lane off" -- i.e. a failed versions.env lookup would silently DISARM
+      # the riscv64 genai assertion. Fail safe, not open. docs/failure-modes.md
+      _stv_pin="$(_rt_versions_env_pin GENAI_ALLOW_RISCV64)"
+      _stv_env=()
+      [ -n "${_stv_pin}" ] && _stv_env=(-e "GENAI_ALLOW_RISCV64=${_stv_pin}")
+      _stv_out="$(_rt_run "${_stv_env[@]}" \
            bash -lc 'STV_ASSERT_ONLY=1 STV_CV2_REQUIRED=0 bash /opt/scripts/packaging/smoke-torch-venv.sh' 2>&1)" \
         && _stv_rc=0 || _stv_rc=$?
       printf '%s\n' "${_stv_out}"
       if [ "${_stv_rc}" -eq 0 ]; then
         pass "ML-stack versions match pins (${target_arch})"
-      elif [ "${target_arch}" = "riscv64" ] \
-           && [ "$(printf '%s\n' "${_stv_out}" | grep -cE '^[[:space:]]*XX ')" = "1" ] \
-           && printf '%s\n' "${_stv_out}" | grep -qE '^[[:space:]]*XX[[:space:]]+onnxruntime-genai[[:space:]]+NOT INSTALLED'; then
-        # TRANSITIONAL riscv64 genai exemption, for PRE-2026-08-12 wrappers ONLY (the
-        # root fix moved the arch policy into smoke-torch-venv itself, so a newer image
-        # returns 0 and never reaches here). Ask the IMAGE which side of that window it
-        # is on rather than trusting a "delete me later" note; only a POSITIVE answer
-        # flips the verdict, so a probe that cannot run stays tolerant.
-        if _rt_run bash -lc \
-             'grep -q STV_REQUIRE_GENAI /opt/scripts/packaging/smoke-torch-venv.sh' \
-             >/dev/null 2>&1; then
-          fail "ML-stack version-pin assertion FAILED (${target_arch}) and the TRANSITIONAL genai exemption NO LONGER APPLIES: this image's own /opt/scripts/packaging/smoke-torch-venv.sh carries the post-2026-08-12 arch policy (STV_REQUIRE_GENAI), so it must have exempted genai itself and returned 0. Two edits, in this order: fix why the baked policy did not fire, then delete the transitional 'elif' branch in check_ml_version_pins (linux/scripts/06-packaging/smoke-runtime-image.sh)."
-        else
-          pass "ML-stack versions match pins (${target_arch}; genai absent = documented riscv64 exemption for a PRE-2026-08-12 wrapper)"
-        fi
       else
+        # GEN1: the transitional riscv64 genai exemption is gone -- a missing
+        # riscv64 wheel is now a real defect. docs/gen1-riscv64-genai.md
         fail "ML-stack version-pin assertion FAILED in the runtime image (${target_arch})"
       fi
       echo ""
@@ -496,9 +542,8 @@ _parity_exempt() {
     # Kitware publishes no riscv64 CMake archive, so 02-toolchain/cmake.sh
     # deliberately installs the distro cmake there (4.2.3) instead.
     riscv64:cmake) return 0 ;;
-    # GEN1: upstream ships no riscv64 onnxruntime-genai wheel in any version and closed
-    # its one RISC-V request as not-planned. Policy, not drift.
-    riscv64:onnxruntime_genai) return 0 ;;
+    # NB (GEN1): the riscv64:onnxruntime_genai arm is deleted -- riscv64 now
+    # self-builds the wheel. Expect red on older images. docs/gen1-riscv64-genai.md
     # The IREE COMPILER cannot be cross-built and upstream publishes no riscv64 wheel,
     # so the cross target is runtime-only (IREE_CROSS_BUILD_COMPILER defaults OFF); see
     # docs/linux-cross-builds.md, "IREE (Linux lane)". riscv64-only ON PURPOSE: arm64
@@ -940,6 +985,7 @@ main() {
     check_app_wheel_smoke "${image_tag}" "${target_arch}"
     check_onnx_execution_provider "${image_tag}" "${target_arch}"
     check_ml_version_pins "${image_tag}" "${target_arch}"
+    check_genai_binding "${image_tag}" "${target_arch}"
     check_iree_native "${image_tag}" "${target_arch}"
     check_ffmpeg "${image_tag}" "${target_arch}"
     check_native_so_closure "${image_tag}" "${target_arch}"

@@ -482,3 +482,203 @@ print("ONNX-EP OK: onnxruntime %s served the graph on %s (available: %s)"
          ",".join(ort.get_available_providers())))
 ONNX_PY
 }
+
+# GEN1: onnxruntime-genai binding / generate() smoke. The four tiers, the exit
+# codes (0/1/3) and the GENAI_* inputs: docs/gen1-riscv64-genai.md
+smoke_genai_py() {
+  cat <<'GENAI_PY'
+import os, sys
+
+EXPECT_VERSION = os.environ.get("GENAI_EXPECT_VERSION", "").strip().lstrip("vV")
+EXPECT_ARCH = os.environ.get("GENAI_EXPECT_ARCH", "").strip()
+MODEL_DIR = os.environ.get("GENAI_MODEL_DIR", "").strip()
+
+# ELF e_machine (SysV gABI); read from the header, no readelf in the image.
+ELF_MACHINE = {"amd64": (62, "X86-64"), "arm64": (183, "AArch64"),
+               "riscv64": (243, "RISC-V"), "386": (3, "Intel 80386")}
+
+proven, unproven, fails = [], [], []
+
+try:
+    import onnxruntime_genai as og
+except Exception as exc:
+    # Installed-but-unimportable is a DEFECT, not a SKIP; tell them apart by
+    # asking whether the DISTRIBUTION is present. docs/failure-modes.md
+    _dist = None
+    try:
+        import importlib.metadata as M
+        _dist = M.version("onnxruntime-genai")
+    except Exception:
+        _dist = None
+    if _dist is not None:
+        print("GENAI-BIND FAIL: onnxruntime_genai %s is INSTALLED but not importable "
+              "(%s: %s)" % (_dist, type(exc).__name__, exc))
+        print("  -- the distribution is present, so this is a BROKEN native binding,")
+        print("     not an arch without a wheel. Check the .so's NEEDED/undefined symbols.")
+        sys.exit(1)
+    print("GENAI-BIND SKIP: onnxruntime_genai is not installed (%s: %s)"
+          % (type(exc).__name__, exc))
+    print("  -- absence is not judged here; the ARCH-PARITY table owns 'is this")
+    print("     wheel supposed to exist on this arch'.")
+    sys.exit(3)
+
+# ── tier 1: version, against the versions.env BUILD pin ────────────────────
+version = getattr(og, "__version__", None)
+if not version:
+    try:
+        import importlib.metadata as M
+        version = M.version("onnxruntime-genai")
+    except Exception:
+        version = None
+if not version:
+    fails.append("onnxruntime_genai exposes no __version__ and no dist metadata")
+elif not EXPECT_VERSION:
+    unproven.append("version (no GENAI_EXPECT_VERSION passed in)")
+elif version.split("+")[0] != EXPECT_VERSION:
+    fails.append("version %s != versions.env pin %s" % (version, EXPECT_VERSION))
+else:
+    proven.append("__version__ %s matches the build pin" % version)
+
+# ── tier 2: the pybind extension is TARGET-arch ELF ────────────────────────
+# __file__ is the module the interpreter actually loaded, not the wheel's tag.
+ext_path = None
+try:
+    ext_path = getattr(og.onnxruntime_genai, "__file__", None)
+except Exception:
+    pass
+if not ext_path:
+    for _m in sys.modules.values():
+        _f = getattr(_m, "__file__", "") or ""
+        if _f.endswith(".so") and "onnxruntime_genai" in _f:
+            ext_path = _f
+            break
+if not ext_path:
+    fails.append("cannot locate the loaded onnxruntime_genai native extension module")
+else:
+    # The only I/O here: an uncaught OSError would exit with no GENAI-BIND
+    # sentinel and be misdiagnosed. docs/gen1-riscv64-genai.md
+    head = None
+    try:
+        with open(ext_path, "rb") as fh:
+            head = fh.read(20)
+    except OSError as exc:
+        fails.append("cannot read the loaded extension %s (%s: %s)"
+                     % (ext_path, type(exc).__name__, exc))
+    if head is None:
+        pass
+    elif head[:4] != b"\x7fELF":
+        fails.append("%s is not an ELF object" % ext_path)
+    else:
+        little = head[5] == 1
+        machine = int.from_bytes(head[18:20], "little" if little else "big")
+        want = ELF_MACHINE.get(EXPECT_ARCH)
+        if not EXPECT_ARCH:
+            unproven.append("extension ELF machine (no GENAI_EXPECT_ARCH passed in; read e_machine=%d)" % machine)
+        elif not want:
+            unproven.append("extension ELF machine (arch %r not in the table)" % EXPECT_ARCH)
+        elif machine != want[0]:
+            fails.append("%s has ELF machine %d, expected %d (%s) for %s"
+                         % (os.path.basename(ext_path), machine, want[0], want[1], EXPECT_ARCH))
+        else:
+            proven.append("native extension %s is %s ELF (e_machine=%d)"
+                          % (os.path.basename(ext_path), want[1], machine))
+
+# ── tier 3: native code RUNS (no model weights required) ───────────────────
+for _name in ("Config", "Model", "Tokenizer", "GeneratorParams", "Generator", "Tensor"):
+    if not hasattr(og, _name):
+        fails.append("og.%s missing -- the pybind module loaded but is incomplete" % _name)
+
+caps = []
+for _fn in ("is_cuda_available", "is_webgpu_available", "is_qnn_available"):
+    _f = getattr(og, _fn, None)
+    if _f is None:
+        continue
+    try:
+        caps.append("%s=%s" % (_fn[3:-10], bool(_f())))
+    except Exception as exc:
+        fails.append("og.%s() raised %s: %s -- the native symbol did not resolve"
+                     % (_fn, type(exc).__name__, exc))
+if caps:
+    proven.append("native capability predicates executed (%s)" % ", ".join(caps))
+
+# OgaTensor round-trip: real C++ work (dtype/shape/copy-back), zero model bytes.
+try:
+    import numpy as np
+except Exception as exc:
+    np = None
+    unproven.append("og.Tensor round-trip (numpy unavailable in this venv: %s)" % exc)
+if np is not None and hasattr(og, "Tensor"):
+    try:
+        src = np.array([[1.5, 2.5, 3.5, 4.5]], dtype=np.float32)
+        t = og.Tensor(src)
+        back = t.as_numpy()
+        if list(t.shape()) != [1, 4]:
+            fails.append("og.Tensor round-trip: shape() = %r, expected [1, 4]" % (t.shape(),))
+        elif back.tolist() != src.tolist():
+            fails.append("og.Tensor round-trip CORRUPTED the buffer: %r -> %r"
+                         % (src.tolist(), back.tolist()))
+        else:
+            proven.append("og.Tensor round-tripped a float32 buffer through the native library")
+    except Exception as exc:
+        fails.append("og.Tensor round-trip raised %s: %s" % (type(exc).__name__, exc))
+
+# A non-model path must be rejected BY THE LIBRARY: TypeError/AttributeError
+# means the binding refused it (ABI mismatch), anything else means native code.
+if hasattr(og, "Config"):
+    try:
+        og.Config("/nonexistent-genai-smoke-model")
+        proven.append("og.Config() accepted a non-model path (native code ran; lenient upstream)")
+    except (TypeError, AttributeError) as exc:
+        fails.append("og.Config() failed at the BINDING layer (%s: %s) -- signature/ABI mismatch, "
+                     "not a model error" % (type(exc).__name__, exc))
+    except Exception as exc:
+        proven.append("og.Config() rejected a non-model path from native code (%s)" % type(exc).__name__)
+
+# ── tier 4: a REAL generate(), when a model is available ───────────────────
+if not MODEL_DIR:
+    unproven.append("generate() token content -- no GENAI_MODEL_DIR; no model ships in this image")
+elif not os.path.isdir(MODEL_DIR):
+    fails.append("GENAI_MODEL_DIR=%s is not a directory" % MODEL_DIR)
+else:
+    try:
+        model = og.Model(MODEL_DIR)
+        tok = og.Tokenizer(model)
+        ids = tok.encode("Hello")
+        params = og.GeneratorParams(model)
+        params.set_search_options(max_length=int(os.environ.get("GENAI_MAX_LENGTH", "16")))
+        gen = og.Generator(model, params)
+        gen.append_tokens(ids)
+        while not gen.is_done():
+            gen.generate_next_token()
+        out = list(gen.get_sequence(0))
+        new = out[len(list(ids)):]
+        if not new:
+            fails.append("generate() produced NO new tokens (prompt %d, sequence %d)"
+                         % (len(list(ids)), len(out)))
+        elif len(set(new)) == 1:
+            # The #594 signature: broken kernels degenerate into one repeated token.
+            fails.append("generate() emitted %d identical tokens (%r) -- the "
+                         "onnxruntime-genai #594 nonsense signature" % (len(new), new[0]))
+        else:
+            proven.append("generate() produced %d new tokens from %s: %r ... decoded %r"
+                          % (len(new), MODEL_DIR, new[:8], tok.decode(new)[:80]))
+    except Exception as exc:
+        fails.append("generate() raised %s: %s" % (type(exc).__name__, exc))
+
+for line in proven:
+    print("  PROVEN   %s" % line)
+for line in unproven:
+    print("  UNPROVEN %s" % line)
+for line in fails:
+    print("  DEFECT   %s" % line)
+
+if not MODEL_DIR:
+    print("GENAI-GEN SKIP: no GENAI_MODEL_DIR set, so no real generation was attempted.")
+
+if fails:
+    print("GENAI-BIND FAIL: %d defect(s) in the onnxruntime_genai binding" % len(fails))
+    sys.exit(1)
+print("GENAI-BIND OK: onnxruntime_genai %s -- native binding exercised; see UNPROVEN "
+      "lines for what this did NOT establish" % (version or "?"))
+GENAI_PY
+}

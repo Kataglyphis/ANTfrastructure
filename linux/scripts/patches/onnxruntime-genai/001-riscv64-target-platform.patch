@@ -1,0 +1,13 @@
+diff --git a/cmake/target_platform.cmake b/cmake/target_platform.cmake
+index 222e420..b315dcd 100644
+--- a/cmake/target_platform.cmake
++++ b/cmake/target_platform.cmake
+@@ -59,6 +59,8 @@ else()
+     set(genai_target_platform "x64")
+   elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "powerpc")
+     set(genai_target_platform "powerpc")
++  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^riscv64.*")
++    set(genai_target_platform "riscv64")
+   else()
+     message(FATAL_ERROR "Unsupported architecture. CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
+   endif()

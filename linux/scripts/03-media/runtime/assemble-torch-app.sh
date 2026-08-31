@@ -159,7 +159,11 @@ collect_locked_local_wheels() {
 prune_conflicting_onnx_wheels() {
   case "${ONNX_PACKAGE}" in
     onnxruntime|onnxruntime-webgpu)
-      rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl /opt/wheels/*genai*.whl || true
+      # GPU-flavoured genai only: a bare *genai* glob deletes the CPU wheel
+      # build_uv_sync_args needs. docs/failure-modes.md
+      rm -f /opt/wheels/*_gpu-*.whl /opt/wheels/*_migraphx-*.whl \
+            /opt/wheels/*genai_cuda-*.whl /opt/wheels/*genai_rocm-*.whl \
+            /opt/wheels/*genai_directml-*.whl || true
       ;;
     onnxruntime-gpu|onnxruntime-migraphx)
       rm -f /opt/wheels/*webgpu*.whl || true
