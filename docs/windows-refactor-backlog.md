@@ -20,20 +20,21 @@ The Linux-side equivalent is [`refactoring-backlog.md`](refactoring-backlog.md).
 
 ### ARM64 parity (opened 2026-08-23)
 
-On the last known good tree (arm64 run 36 / amd64 run 8, both 2026-08-26) the
-`:winarm64` cross lane reached runtime parity with `:winamd64` apart from the
-exclusions listed below. **HEAD is not that tree** — see #134 for what has
-landed since and why the amd64 acceptance attempt has not completed. Read the
-table below as the last known good.
+The `:winarm64` cross lane reached runtime parity with `:winamd64` apart from the
+exclusions listed below, and **2026-08-31 reran the FULL chain with the QNN EP
+enabled** (#121 build-time path proven; the earlier acceptance gap — HEAD vs the
+2026-08-26 tree — was two dead-on-arrival GStreamer cross-lane fixes that are now
+landed: see #135 follow-up below). Read the table as the last fully green run
+(`bk-winarm64`, 2026-08-31).
 
-| | arm64 cross (`bk-20260826-122019`) | amd64 native (`bk-20260826-130136`) |
+| | arm64 cross (`bk-winarm64`, 2026-08-31, QNN ON) | amd64 native (`bk-20260826-130136`) |
 |---|---|---|
-| arch gate | **992 binaries, 0 violations** | 1134, 0 |
-| import walk | **606 files, 0 unresolved** (3 allowlisted externals) | — |
-| target python deps | **12 wheels, 0 unresolved requirement edges** | — |
-| bundle manifest | 6 DLL homes, **6 wheels**, 3 ABSENT markers | — |
+| arch gate | **1168 binaries, 0 violations** (QNN payload rides in) | 1134, 0 |
+| import walk | **793 files, 0 unresolved** (85 device-OS: FastRPC + client SKU) | — |
+| bundle manifest | 7 DLL homes, **6 wheels**, 3 ABSENT markers | — |
 | GStreamer contract plugins | **6/6** — `libav opencv onnx webrtc nice tflite` | 6/6 |
 | smoke gate | **97 passed / 0 failed / 15 skipped** (floors 66/25) | **222 / 0 / 0** |
+| QNN | EP ON, QAIRT 2.44.0, `aarch64-windows-msvc` backends staged beside all five frameworks | off (x64 CPU backend is pointless) |
 | wall clock | ~40 min (media+final) | 2 h 18 min |
 
 **Exactly three components are ABSENT on arm64**, each marked in the bundle by an
@@ -65,11 +66,11 @@ this repo's cp314 pin).
 
 ### CLOSED (pointers — full narratives in the dated archives)
 
-- **#121** — QNN EP: SDK STAGED 2026-08-29. QAIRT 2.31.0.250130 zip staged in
-  `windows/qnn-sdk/`, `QNN_SDK_ZIP_SHA256` pinned. The scaffold's asserts will
-  fire on the first build that includes the media-core `onnx` RUN. Execution
-  verification still needs a Snapdragon host, but the build-time path is now
-  exercisable. Archive: this entry.
+- **#121** — QNN EP: BUILD-TIME PATH PROVEN 2026-08-31 on the full `:winarm64`
+  cross run — SDK qairt-2.44.0.260225 (SHA-pinned), `onnxruntime_USE_QNN=ON`
+  with the `aarch64-windows-msvc` backend set, QNN provider built, QNN runtime
+  staged beside all five frameworks (arch gate 1168/0, smoke 97/0/15).
+  Execution verification still needs a Snapdragon host. Archive: this entry.
 
 - **`-ResumeStage` BK equivalent** — CLOSED 2026-08-29 (no BK equivalent needed).
   The classic lane's `-ResumeStage` preserved a stopped container (hours of
@@ -85,6 +86,27 @@ this repo's cp314 pin).
   `build-opencv-from-source.ps1`. `-StockLlvm` is the opt-out. Items 1+3 closed;
   item 2 (NINJA_KEEP_GOING census) is now unnecessary (root cause fixed); item 4
   filed as llvm#219200. Archive: `windows-backlog-archive-2026-08-26.md` § #135.
+- **#135 follow-up — patched toolchain lacks the aarch64 compiler-rt** — DONE
+  2026-08-31. The source-built `C:\llvm-patched` ships `clang_rt.builtins-x86_64.lib`
+  only, so the arm64 GStreamer link died on `__udivti3` (2026-08-30 cross run,
+  merge stage). The merge stage now self-heals: `build-gstreamer-from-source.ps1`
+  § 5d mines `clang_rt.builtins-aarch64.lib` from the LLVM release archive on the
+  cross lane (same recipe as setup-scoop-tools.ps1). Chosen over adding the lib to
+  the toolchain layer because the media branches derive FROM `bk-windows-toolchain`,
+  so that would re-pay ~2 h of media compiles for one lib. Toolchain-level fix stays
+  a follow-up for the next natural toolchain rebuild. Regression:
+  `SourceBuild.GstreamerCompilerRt.Tests.ps1`. Docs:
+  `docs/windows-cross-builds.md` § aarch64 compiler-rt.
+  Second unmasked failure fixed in the same window: the speculative cross-lane
+  opus intrinsics enablement (2026-08-30) is REVERTED to the proven disabled
+  state — under clang-cl aarch64 the RTCD path applies `-mfpu=neon` (ARM32-only
+  flag) and its CPU probe uses MSVC's `__emit` (absent from clang-cl). Working
+  enablement recipe for a future TESTED window: `-Dopus:intrinsics=enabled
+  -Dopus:rtcd=disabled` (presumes NEON+dotprod; needs a real-device smoke).
+  Final gate fix in the same window: the arch-gate import walk gained the
+  Qualcomm FastRPC pair `libcdsprpc.dll`/`libadsprpc.dll` as device-OS
+  allowances (imported by the QAIRT HTP stub DLLs staged by `Copy-QnnRuntime`;
+  they ship in every Windows-on-Snapdragon OS image, never in the SDK zip).
 
 - **#133(d)** — LiteRT-LM CMake port: CLOSED 2026-08-29 (owner decision — staying on Bazel).
 - **#134** — post-#133 cleanup wave: DONE 2026-08-29. amd64 acceptance

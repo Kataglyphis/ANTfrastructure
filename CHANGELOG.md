@@ -5,6 +5,54 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — QNN SDK integrated into the arm64 cross build (#121 proven) + GStreamer compiler-rt self-heal (#135 follow-up)
+
+### QNN EP build-time path PROVEN on the arm64 cross lane (#121)
+
+The staged QAIRT SDK (qairt-2.44.0.260225, SHA-pinned) was exercised end-to-end
+for the first time on a full `-TargetArch arm64` cross run:
+
+- `Resolve-QnnSdk` verified the SHA, extracted the SDK and enabled
+  `onnxruntime_USE_QNN=ON` with the `aarch64-windows-msvc` backend set
+- ONNX Runtime built the QNN provider (symbol file `['cpu', 'qnn', 'dml']`),
+  `QNN_SDK_ZIP_SHA256` forwarded driver → Dockerfile ARG → ENV → build script
+- The run reached the merge stage (the last arm64 acceptance gate); the only
+  failure was the unrelated GStreamer link below
+
+### GStreamer cross-lane compiler-rt self-heal (#135 follow-up)
+
+`C:\llvm-patched` (the source-built default toolchain) ships
+`clang_rt.builtins-x86_64.lib` only, so the arm64 GStreamer link died on
+`__udivti3` in the merge stage. `build-gstreamer-from-source.ps1` § 5d now
+self-heals on the cross lane: it mines `clang_rt.builtins-aarch64.lib` from the
+official LLVM release archive next to the x86_64 lib (same recipe as
+`setup-scoop-tools.ps1`), then re-runs its candidate search. The first live
+attempt used the GNU tar on PATH, which parses `C:\...` as a remote-host spec
+("Cannot connect to C:") — the extract now forces System32's bsdtar (the same
+trap build-llvm-from-source.ps1 already avoids). Chosen over adding the lib to
+the toolchain layer because the media branches derive FROM
+`bk-windows-toolchain` — that would have re-paid ~2 h of media compiles for one
+lib. Regression test: `SourceBuild.GstreamerCompilerRt.Tests.ps1` (4 tests).
+Docs: `docs/windows-cross-builds.md` § aarch64 compiler-rt;
+`docs/windows-refactor-backlog.md` #135 follow-up.
+
+The compiler-rt fix unmasked the speculative cross-lane opus intrinsics
+enablement (added 2026-08-30), which had never reached a real compile: the RTCD
+path applies `-mfpu=neon` (ARM32-only; clang-cl rejects it for aarch64) and its
+CPU probe `celt/arm/armcpu.c` uses MSVC's `__emit` (absent from clang-cl).
+REVERTED to the proven 2026-08-26 shape — `-Dopus:intrinsics=disabled` on both
+lanes; the working enablement recipe (`intrinsics=enabled` + `rtcd=disabled`,
+which needs a real-device smoke because it presumes NEON+dotprod) is recorded in
+`docs/windows-cross-builds.md` and the backlog. Regression test extended to 6
+assertions.
+
+The arch-gate import walk then flagged the staged QNN runtime: the QAIRT HTP
+stub DLLs import `libcdsprpc.dll`/`libadsprpc.dll` — Qualcomm's FastRPC
+drivers, which ship in every Windows-on-Snapdragon OS image (never in the SDK
+zip). Added to the gate's client-OS allowance (`ClientOsPattern`); regression
+assertion in `SourceBuild.VerifyTargetArch.Tests.ps1`.
+
+
 ## 2026-08-29 — #135 closed: patched LLVM is default, workarounds removed
 
 ### `BUILD_PATCHED_LLVM=1` is now the DEFAULT (#135 item 1+3 DONE)

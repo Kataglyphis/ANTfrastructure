@@ -267,3 +267,12 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         Assert-Equal '0x1234 (UNRECOGNIZED)' (Format-Machine 0x1234) 'unknown machine'
     }
 }
+
+Describe 'verify-target-arch: device-OS import allowances (#121 QNN)' {
+
+    It 'classifies the Qualcomm FastRPC drivers as device OS (libcdsprpc/libadsprpc)' {
+        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\verify-target-arch.ps1')
+        Assert-True ($scriptText.Contains('lib(cds|ads)prpc\.dll')) 'libcdsprpc/libadsprpc must be client-OS allowed (QAIRT HTP stubs import them; they ship in every Windows-on-Snapdragon OS image)'
+        Assert-True ($scriptText.Contains('FastRPC')) 'the comment must say why'
+    }
+}
