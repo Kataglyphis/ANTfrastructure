@@ -109,26 +109,9 @@ for cfg in "${CONFIGS[@]}"; do
     --extra-params "{\"num_ctx\":$NUM_CTX}" \
     --output "$OUTFILE"
 
-  # brief summary
-  python3 -c "
-import json
-with open('$OUTFILE') as f:
-    d = json.load(f)
-results = [r for r in d['results'] if 'error' not in r]
-if results:
-    tps = [r['tokens_per_sec'] for r in results]
-    lats = [r['latency_s'] for r in results]
-    cpu = [r['cpu_percent'] for r in results]
-    ram = [r['ram_used_gb'] for r in results]
-    ttfts = [r['ttft_s'] for r in results if r.get('ttft_s') is not None]
-    extra = f'  TTFT: {sum(ttfts)/len(ttfts):.2f}s avg' if ttfts else ''
-    print(f'  → T/s: {sum(tps)/len(tps):.1f} avg  '
-          f'Answer: {sum(lats)/len(lats):.1f}s avg  '
-          f'CPU: {sum(cpu)/len(cpu):.1f}%  '
-          f'RAM: {sum(ram)/len(ram):.1f}GB' + extra)
-else:
-    print(f'  → No successful results')
-" 2>&1
+  # brief summary (bench_report.py, so it is testable — it used to be a
+  # heredoc that no test could reach)
+  python3 bench_report.py summary "$OUTFILE" 2>&1
 
   echo ""
   echo "──────────────────────────────────────────────────────"
@@ -137,73 +120,12 @@ done
 
 # ── Generate manifest for the React viewer ────────────────────────────────
 MANIFEST="$OUTDIR/_manifest.json"
-python3 -c "
-import json, os, glob
-
-results_dir = '$OUTDIR'
-manifest = {
-    'title': 'LLM Benchmark — $MODEL',
-    'generated': '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
-    'model': '$MODEL',
-    'host_hardware': {},
-    'configs': [],
-}
-
-for fname in sorted(glob.glob(os.path.join(results_dir, '*.json'))):
-    if os.path.basename(fname).startswith('_'):
-        continue
-    with open(fname) as f:
-        d = json.load(f)
-    # Take hardware info from first result
-    if d.get('hardware') and not manifest['host_hardware']:
-        manifest['host_hardware'] = d['hardware']
-    config = {
-        'label': os.path.basename(fname).replace('.json', ''),
-        'file': os.path.basename(fname),
-        'config': d.get('config', {}),
-        'correctness': d.get('correctness'),
-        'results': d.get('results', []),
-    }
-    manifest['configs'].append(config)
-
-with open('$MANIFEST', 'w') as f:
-    json.dump(manifest, f, indent=2)
-print(f'  Manifest: $MANIFEST ({len(manifest[\"configs\"])} configs)')
-" 2>&1
+python3 bench_report.py manifest "$OUTDIR" "$MANIFEST" \
+  --title "LLM Benchmark — $MODEL" --model "$MODEL" \
+  --generated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" 2>&1
 
 echo ""
 echo "All benchmarks complete. Results in $OUTDIR/"
 echo ""
 echo "Quick comparison:"
-python3 -c "
-import json, os
-results_dir = '$OUTDIR'
-for fname in sorted(os.listdir(results_dir)):
-    # Skip non-result files — including our own _manifest.json (no 'results'
-    # key; sorts FIRST, so without this guard the KeyError killed the whole
-    # comparison under set -e at the end of every multi-hour run). Mirrors the
-    # startswith('_') guard the manifest loop above already has.
-    if not fname.endswith('.json') or fname.startswith('_'):
-        continue
-    with open(os.path.join(results_dir, fname)) as f:
-        d = json.load(f)
-    results = [r for r in d.get('results', []) if 'error' not in r]
-    if not results:
-        continue
-    tps = [r['tokens_per_sec'] for r in results]
-    lats = [r['latency_s'] for r in results]
-    cpu = [r['cpu_percent'] for r in results]
-    ram = [r['ram_used_gb'] for r in results]
-    ct = sum(r.get('completion_tokens', 0) for r in results)
-    pt = sum(r.get('prompt_tokens', 0) for r in results)
-    name = fname.replace('.json','')
-    ttfts = [r['ttft_s'] for r in results if r.get('ttft_s') is not None]
-    ttft_s = f'{sum(ttfts)/len(ttfts):5.2f}s' if ttfts else '    -'
-    print(f'  {name:25s}  '
-          f'T/s: {sum(tps)/len(tps):5.1f}  '
-          f'TTFT: {ttft_s}  '
-          f'Answer: {sum(lats)/len(lats):5.1f}s  '
-          f'CPU: {sum(cpu)/len(cpu):5.1f}%  '
-          f'RAM: {sum(ram)/len(ram):5.1f}GB  '
-          f'CT: {ct:4d}  PT: {pt:4d}')
-" 2>&1
+python3 bench_report.py table "$OUTDIR" 2>&1

@@ -138,46 +138,47 @@ the ranking's authority.
   re-check whether the findings (thinking tax, cut-off cap, prefill asymmetry)
   are properties of *this hardware* or of *Qwen*.
 
-## Phase 4b — What a refactoring review confirmed (2026-08-31)
+## Phase 4b — Refactoring review, applied (2026-08-31) — CLOSED
 
 A six-dimension review with an adversarial stage that rejects any proposal
-unable to name a concrete future task it helps: **45 proposals, 26 rejected, 19
-kept.** The cheap ones were applied the same day (see the CHANGELOG); these
-remain, deliberately *not* done yet:
+unable to name a concrete future task it helps: **45 proposals, 26 rejected,
+19 kept — all now applied.**
 
-- **P4b.1 Extract the shared `main()` front end** [S·★★] The
-  candidate-resolution block in `bench_coding.py` and `bench_tools.py` is
-  byte-identical across 17 lines, comment included — and the None-label defect
-  the audit found existed in **both copies and had to be fixed twice**. A
-  `bench_cli.py` owning `resolve_candidates()` and `write_report()` would give
-  that lesson a test seam it does not have today (nothing in `tests/` imports
-  `main()`). **Caveat the reviewer priced and the proposal did not:** any edit
-  to `bench_tools.py` invalidates the stored baseline, so batch this with the
-  next substantive change and re-baseline in the same pass rather than landing
-  it standalone. Do **not** fold the new module into `tool_sha256` — that would
-  make every plumbing edit fire the grader-moved alarm while the grader is
-  provably unchanged.
-- **P4b.2 One report envelope** [M·★★] Three shapes across the suite,
-  provenance implemented twice and missing from `bench_lanes` entirely.
-  `bench_compare` already carries an adapter for two of them. Converge before
-  anything else grows a reader.
-- **P4b.3 Lift `run_benchmarks.sh`'s three embedded Python programs** [M·★]
-  The per-config summary, the manifest generator and the comparison table live
-  as heredocs inside the shell script, untested and unreachable from `pytest`.
-- **P4b.4 `--endpoint` vs `--base-url`** [S·★] `bench_lanes.py` spells the same
-  thing differently from both siblings.
-- **P4b.5 `resolve_lane` has no `path=` seam** [S·★] so its unit tests are
-  wired to the shipped `backends.json` and break when it changes.
+- **P4b.1 `bench_cli.py`** [DONE] The candidate-resolution block was
+  byte-identical across 17 lines in both tools, comment included — and the
+  None-label defect existed in **both copies and was fixed twice**, only
+  because an audit happened to sweep every file. Extracting it also revealed a
+  **third instance the earlier fix had missed**: the single-run branch still
+  read `args.label or args.model or model`, so `--backend ollama` with no
+  `--model` would have crashed the same way. `resolve_candidates()` and
+  `write_report()` now have 12 tests where there were none — nothing in
+  `tests/` imports `main()`, so the code deciding *which endpoint gets
+  measured* was entirely uncovered. Report writing is also atomic now.
+  **`bench_cli.py` is deliberately excluded from `tool_sha256`**: that hash
+  means "the grader moved", and folding plumbing into it would fire the alarm
+  on every schema edit while the grader is provably unchanged.
+- **P4b.2 One report envelope** [DONE for the two newer tools] Both now write
+  through `write_report()`; `bench_compare`'s adapter still covers
+  `benchmark_openai_api`'s legacy shape, which the viewer reads.
+- **P4b.3 `bench_report.py`** [DONE] The per-config summary, manifest generator
+  and comparison table left `run_benchmarks.sh` (192 → 131 lines). They were
+  heredocs: unreachable from pytest, un-lintable, quoting-fragile — and one had
+  already grown a comment about a `KeyError` that "killed the whole comparison
+  under `set -e` at the end of every multi-hour run". 12 tests now.
+- **P4b.4 `--base-url`** [DONE] `bench_lanes` spelled it `--endpoint` while
+  both siblings said `--base-url`; kept as an alias.
+- **P4b.5 `resolve_lane(spec, path=)`** [DONE] Its tests were wired to the
+  shipped `backends.json` and broke on any edit to it. A test that fails for an
+  unrelated change is one people learn to ignore.
 
-**Applied immediately** (they were defects, not preferences): a test that
-pinned the *abandoned* longest-block extraction rule; `minimum_detectable_drop`
-renamed to `smallest_separable_rate` because it returns a rate, not a drop; the
-ranking tables printing bare fractions when `bench_stats` exists precisely to
-prevent that; a `run_benchmarks.sh` header claiming `extra_body` and a sweep
-that silently degenerated on non-Ollama backends; a README enumerating a case
-inventory that went stale the day the suite grew; and `test_v1_api.py` taking
-**two minutes** to report that nothing was listening, where its sibling took
-two seconds.
+**Verified after the refactor rather than assumed:** a live 27-case run scored
+**25/27 in 78.7 s** against 25/27 in 79.0 s before it. The comparer then
+reported `BENCHMARK SOURCE CHANGED` *and* `unchanged` in the same breath —
+exactly the separation the fingerprint exists for — and the baseline was
+re-recorded, which the reviewer had priced as the real cost of this refactor
+and the proposal had not.
+
+**222 tests**, up from 196.
 
 ## Phase 5 — The remaining backlog items [M–L]
 

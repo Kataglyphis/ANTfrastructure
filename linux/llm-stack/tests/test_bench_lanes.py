@@ -180,3 +180,31 @@ class TestEmptyReplyHandling:
             srv.shutdown()
         assert report["verdict"] == "inconclusive"
         assert report["serialised"] is None
+
+
+class TestRegistrySeam:
+    """resolve_lane took no path, so its tests were wired to the shipped
+    backends.json and broke on any edit to it. A test that fails for an
+    unrelated change is a test people learn to ignore."""
+
+    def test_resolves_against_a_supplied_registry(self, tmp_path):
+        import json as _json
+
+        from bench_lanes import resolve_lane
+        reg = tmp_path / "b.json"
+        reg.write_text(_json.dumps({"default": "x", "backends": {
+            "x": {"base_url": "http://h:1/", "model": "org/M"}}}))
+        assert resolve_lane("x", path=str(reg)) == ("x", "http://h:1", "org/M")
+
+    def test_unknown_name_lists_the_supplied_registry_not_the_shipped_one(self, tmp_path):
+        import argparse
+        import json as _json
+
+        import pytest as _pytest
+
+        from bench_lanes import resolve_lane
+        reg = tmp_path / "b.json"
+        reg.write_text(_json.dumps({"backends": {"only-this": {"base_url": "http://h:1"}}}))
+        with _pytest.raises(argparse.ArgumentTypeError) as e:
+            resolve_lane("nope", path=str(reg))
+        assert "only-this" in str(e.value)

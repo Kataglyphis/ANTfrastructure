@@ -219,8 +219,12 @@ def parse_lane(spec):
     return name.strip(), url.strip().rstrip("/"), model_part.strip()
 
 
-def resolve_lane(spec):
+def resolve_lane(spec, path=None):
     """Accept either a full 'name=URL,model=MODEL' spec or a bare backend name.
+
+    `path` selects the registry file. Without it the unit tests were wired to
+    the shipped backends.json and broke whenever anyone edited it — a test that
+    fails for an unrelated edit teaches people to ignore the suite.
 
     Naming a backend is the common case -- `--lanes geniex-npu geniex-cpu`
     reads far better than two URLs, and keeps the endpoints in one place
@@ -232,7 +236,7 @@ def resolve_lane(spec):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from benchmark_openai_api import load_backends
 
-    backends, _ = load_backends()
+    backends, _ = load_backends(path)
     if spec not in backends:
         known = ", ".join(sorted(backends)) or "(none configured)"
         raise argparse.ArgumentTypeError(
@@ -257,8 +261,12 @@ def main():
                     help="LB4: drive these endpoints simultaneously. Either a "
                          "backend name from backends.json (e.g. geniex-npu) or "
                          "a full name=URL,model=MODEL spec.")
-    ap.add_argument("--endpoint", default=None,
-                    help="Endpoint URL for --batching (overrides --backend)")
+    ap.add_argument("--base-url", "--endpoint", dest="base_url", default=None,
+                    help="Endpoint URL for --batching (overrides --backend). "
+                         "--endpoint is kept as an alias: it was the original "
+                         "spelling here while both sibling tools used "
+                         "--base-url, and an operator scripting the suite had "
+                         "to remember which tool wanted which.")
     ap.add_argument("--backend", default=None,
                     help="Named backend from backends.json for --batching")
     ap.add_argument("--model", default=None, help="Model for --batching")
@@ -278,7 +286,7 @@ def main():
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         from benchmark_openai_api import detect_model_via_api, resolve_backend
 
-        url, backend_model, source = resolve_backend(args.backend, args.endpoint)
+        url, backend_model, source = resolve_backend(args.backend, args.base_url)
         model = args.model or backend_model or detect_model_via_api(url)
         print(f"  Endpoint: {url}  (from {source})")
         report["batching"] = probe_batching(url, model, args.prompt, args.max_tokens)

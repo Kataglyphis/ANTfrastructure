@@ -569,25 +569,10 @@ def main():
     elif args.task_set == "all":
         TASKS = TASKS + NOVEL_TASKS
 
+    from bench_cli import resolve_candidates, write_report
     from benchmark_openai_api import resolve_backend
 
-    candidates = []
-    if args.compare:
-        with open(args.compare) as f:
-            for entry in json.load(f):
-                url, model, _ = resolve_backend(entry.get("backend"), entry.get("base_url"))
-                # Both fields are optional in a --compare file: the model may
-                # come from backends.json. A None label used to crash the ranking
-                # print after every request had been made and before the report
-                # was written, destroying hours of measurement over a format
-                # string.
-                resolved = entry.get("model") or model
-                candidates.append((entry.get("label") or resolved
-                                   or entry.get("backend") or url or "unnamed",
-                                   url, resolved))
-    else:
-        url, model, _ = resolve_backend(args.backend, args.base_url)
-        candidates.append((args.label or args.model or model, url, args.model or model))
+    candidates = resolve_candidates(args, resolve_backend)
 
     reports = [evaluate(url, model, label, args.max_tokens, args.keep_output,
                         repeats=args.repeats, context_tokens=args.context_tokens,
@@ -596,18 +581,12 @@ def main():
 
 
     if args.output:
-        from bench_provenance import collect
-        payload = {
-            "benchmark": "bench_coding",
-            "provenance": collect(candidates[0][1] if candidates else None,
-                                  ("bench_coding.py", "bench_provenance.py")),
-            "config": {"max_tokens": args.max_tokens, "repeats": args.repeats,
-                       "context_tokens": args.context_tokens,
-                       "warmup": not args.no_warmup, "task_set": args.task_set},
-            "reports": reports,
-        }
-        with open(args.output, "w") as f:
-            json.dump(payload, f, indent=2)
+        write_report(args.output, "bench_coding",
+                     {"max_tokens": args.max_tokens, "repeats": args.repeats,
+                      "context_tokens": args.context_tokens,
+                      "warmup": not args.no_warmup, "task_set": args.task_set},
+                     reports, candidates[0][1] if candidates else None,
+                     ("bench_coding.py", "bench_provenance.py"))
         print(f"  Report written to {args.output}")
 
     # Ranking last: it only prints, and a print must never be able to
