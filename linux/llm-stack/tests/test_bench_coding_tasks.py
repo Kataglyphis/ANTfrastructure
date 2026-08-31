@@ -19,7 +19,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bench_coding import NOVEL_TASKS, TASKS, run_candidate  # noqa: E402
+from bench_coding import EXTENDED_TASKS, NOVEL_TASKS, TASKS, run_candidate  # noqa: E402
 
 REFERENCE = {
     "merge_sorted": '''
@@ -126,22 +126,32 @@ WRONG = {
                     "                  key=lambda n: (-d(n), n))\n"),
 }
 
-ALL_TASKS = TASKS + NOVEL_TASKS
+# The extended set carries its own reference/wrong solutions, so it needs no
+# entry in the dicts above — the guard reads them off the task itself.
+ALL_TASKS = TASKS + NOVEL_TASKS + EXTENDED_TASKS
+
+
+def _reference(task):
+    return task.get("reference") or REFERENCE[task["name"]]
+
+
+def _wrong(task):
+    return task.get("wrong") or WRONG[task["name"]]
 
 
 @pytest.mark.parametrize("task", ALL_TASKS, ids=lambda t: t["name"])
 def test_reference_solution_passes(task):
     """The task is solvable, and its own tests agree with its own prompt."""
-    ok, detail, _credit = run_candidate(REFERENCE[task["name"]], task["tests"],
-                               forbidden=task.get("forbidden"))
+    ok, detail, _credit = run_candidate(_reference(task), task["tests"],
+                                        forbidden=task.get("forbidden"))
     assert ok, f"{task['name']}: reference solution rejected — {detail}"
 
 
 @pytest.mark.parametrize("task", ALL_TASKS, ids=lambda t: t["name"])
 def test_wrong_solution_is_rejected(task):
     """The tests are strong enough to catch a plausible wrong answer."""
-    ok, _, _credit = run_candidate(WRONG[task["name"]], task["tests"],
-                          forbidden=task.get("forbidden"))
+    ok, _, _credit = run_candidate(_wrong(task), task["tests"],
+                                   forbidden=task.get("forbidden"))
     assert not ok, f"{task['name']}: a known-wrong solution PASSED — tests too weak"
 
 

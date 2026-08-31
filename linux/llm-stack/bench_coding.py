@@ -124,6 +124,11 @@ except ValueError:
 # and following it. Run both sets and compare: a model far better on the
 # classic set than on this one is recalling, not reasoning.
 
+try:
+    from bench_tasks import EXTENDED_TASKS
+except ImportError:  # pragma: no cover — the suite still runs without them
+    EXTENDED_TASKS = []
+
 NOVEL_TASKS = [
     {
         "name": "parse_lane_spec",
@@ -620,8 +625,12 @@ def main():
                          "each task. The short prompts above are not what an agent "
                          "sends; prefill and the QAIRT bundles' 4096-token ceiling "
                          "only show up under a realistic context.")
-    ap.add_argument("--task-set", choices=("classic", "novel", "all"), default="classic",
-                    help="'classic' = textbook problems (recall-prone); 'novel' = "
+    ap.add_argument("--task-set",
+                    choices=("classic", "novel", "extended", "all"), default="classic",
+                    help="'classic' = textbook problems (recall-prone); 'extended' = "
+                         "the 21-task set sized so a regression is provable "
+                         "(at 6 tasks the smallest provable drop is 100%% -> 17%%); "
+                         "'novel' = "
                          "tasks built from formats invented in this repo, fully "
                          "specified in the prompt, which cannot have been memorised. "
                          "Compare the two: a model much better on classic than on "
@@ -636,8 +645,10 @@ def main():
     global TASKS
     if args.task_set == "novel":
         TASKS = NOVEL_TASKS
+    elif args.task_set == "extended":
+        TASKS = NOVEL_TASKS + EXTENDED_TASKS
     elif args.task_set == "all":
-        TASKS = TASKS + NOVEL_TASKS
+        TASKS = TASKS + NOVEL_TASKS + EXTENDED_TASKS
 
     from bench_cli import resolve_candidates, write_report
     from benchmark_openai_api import resolve_backend
