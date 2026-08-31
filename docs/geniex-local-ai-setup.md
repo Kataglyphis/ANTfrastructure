@@ -115,7 +115,7 @@ Verify with `geniex list` on the Windows side.
 ## Serve from Windows with acceleration
 
 ```powershell
-& 'C:\Users\<you>\AppData\Local\GenieX CLI\geniex.exe' serve --compute gpu --host 0.0.0.0:18181
+& 'C:\Users\<you>\AppData\Local\GenieX CLI\geniex.exe' serve --compute npu --host 0.0.0.0:18181
 ```
 
 - `--compute gpu` → Adreno GPU (OpenCL). **The working accelerated path before
@@ -123,6 +123,25 @@ Verify with `geniex list` on the Windows side.
 - `--compute npu` → Hexagon NPU. **Works after updating the Qualcomm Hexagon NPU
   driver** (see below). With the old Nov-2024/Feb-2025 driver both NPU backends
   failed.
+- `--compute hybrid` → **per-tensor NPU scheduler** (device resolves to
+  `DeviceID:""` + `ngl != 0`, classified as NPU in the plugin). The HTP runs
+  the layers that fit and CPU picks up the rest. It is **not** "GPU+NPU at
+  once" — a single model runs on either HTP(+CPU fallback) or GPU, never both
+  simultaneously. Measured: 14.1 tok/s on the 4B (pure NPU: 15.2 tok/s).
+- `--compute HTP0,HTP1,...` (with `GGML_HEXAGON_NDEV`) spreads one model across
+  **multiple HTP cores**. Only relevant on chipsets with more than one HTP
+  (e.g. some QCS platforms); this Snapdragon X (X126100) has a **single** HTP
+  (hwinfo: `threads 4, hvx 4, hmx 1, vtcm 8 MB`), so the list degenerates to
+  one device here.
+- **QAIRT bundles (`ai-hub-models/*`) are NPU-only** — `--compute cpu/gpu`
+  on one is coerced back to NPU with a warning.
+
+**Serving multiple accelerators at once:** one `geniex serve` binds one default
+`--compute`. To have both an NPU model and a GPU model available to the agent
+simultaneously, run two servers on different ports (`--host 0.0.0.0:18181` for
+NPU, `0.0.0.0:18182` for GPU) and point the opencode provider's models at the
+right base URL per model.
+
 - `--host 0.0.0.0:18181` so WSL2 can reach it. The default binds loopback only.
 
 Keep it running in a hidden window. With mirrored networking, WSL2 reaches it
@@ -165,8 +184,12 @@ Add a provider to `~/.config/opencode/opencode.jsonc`:
         "apiKey": "geniex"
       },
       "models": {
-        "unsloth/Qwen3.8-27B-GGUF:Q4_0": {
-          "name": "Qwen3.8 27B (Snapdragon)",
+        "empero-ai/Qwen3.8-2B-Distill-GGUF:Q4_K_M": {
+          "name": "Qwen3.8 2B (NPU)",
+          "limit": { "context": 8192, "output": 4096 }
+        },
+        "unsloth/Qwen3-4B-GGUF:Q4_0": {
+          "name": "Qwen3 4B (NPU)",
           "limit": { "context": 8192, "output": 4096 }
         }
       }
@@ -182,17 +205,49 @@ Verify the endpoint before blaming the agent:
 curl -s http://127.0.0.1:18181/v1/models
 ```
 
-## Measured compute envelope (Lenovo Snapdragon X, 2026-08-31, AFTER NPU driver update)
+### Which Qwen3.8-class models fit this machine (all measured 2026-08-31)
 
-| Compute | 4B Q4_0 | 27B Q4_0 (16 GB) | Notes |
-|---|---|---|---|
-| **CPU** (WSL2) | fine | ~224 s for a short reply incl. load; ~single-digit tok/s | 16 GB resident in 29 GiB RAM + swap |
-| **GPU** (Adreno X1-45, Windows) | **13.2 tok/s** ✅ clean output | **OOM** — OpenCL `CL_OUT_OF_RESOURCES (-5)` | GPU shares unified memory; the 16 GB Q4_0 does not fit → see quant ladder below |
-| **NPU** (Hexagon HTP, after driver update) | **15.2 tok/s** ✅ clean output (0.2 s first token) | **does not fit HTP memory** — `dspqueue_read failed: 0x00000072` at graph compute | The HTP's vmem budget is ~3 GB (log: `vmem 3145728000`); 16 GB models exceed it |
+| Model | Size (Q4) | NPU only | **hybrid** (NPU+CPU) | GPU | CPU |
+|---|---|---|---|---|---|
+| **Qwen3.8-2B-Distill** (`empero-ai`) | 1.31 GB | ✅ **16.9 tok/s** | ✅ ~16 tok/s | ✅ | ✅ |
+| **Qwen3-4B** (`unsloth`) | 2.2 GB | ✅ **15.2 tok/s** | ✅ 14.1 tok/s | ✅ 13.2 tok/s | ✅ slow |
+| **Qwen3.8-9B-Distill** (`empero-ai`) | 5.78 GB | ❌ over HTP budget | ✅ **7.5 tok/s** | ✅ 6.5 tok/s | ✅ |
+| **Qwen3.8-27B** (`unsloth`) | 16.1 GB | ❌ | ❌ (crashes) | ❌ OOM (Q4_0) | ✅ slow |
 
-**The NPU is now the best accelerator on this machine** for models that fit
-~3 GB of HTP memory. The 4B runs at 15.2 tok/s on the NPU vs 13.2 on the GPU.
-Larger models (27B) only fit on CPU here.
+**Hybrid wins for models that straddle the HTP budget.** The 9B distill does
+not fit the ~3 GB HTP alone, but `--compute hybrid` offloads the layers that
+fit and runs the rest on CPU — landing **7.5 tok/s, faster than the GPU's
+6.5 tok/s** on the same model. For models that fully fit (2B, 4B), hybrid adds
+CPU hand-off overhead, so pure NPU is faster (16.9 / 15.2 vs ~14–16).
+
+**Nothing combines GPU+NPU on one model.** `hybrid` = NPU + CPU only. The 27B
+crashes on both NPU and hybrid (the single HTP cannot even stage a fraction),
+and Q4_0 OOMs the GPU; Q3_K_XL (13.1 GB) is the only 27B quant that loads on
+the GPU, at degraded quality. For 27B, CPU is the only reliable path.
+
+Pragmatic picks for a coding agent: **Qwen3.8-2B-Distill** (NPU, fastest) for
+light tasks, **Qwen3-4B** (NPU) for the best quality that fits an accelerator,
+and **Qwen3.8-9B-Distill** (hybrid) when you want a bigger model and accept
+~7 tok/s.
+
+### Measured compute envelope (Lenovo Snapdragon X, 2026-08-31, AFTER NPU driver update)
+
+All speeds are token/s on short replies; first-token latency in parentheses.
+
+| Compute | 2B-Distill Q4_K_M | 4B Q4_0 | 9B-Distill Q4_K_M | 27B Q4_0 |
+|---|---|---|---|---|
+| **NPU** (Hexagon HTP) | **16.9** (0.2 s) | **15.2** (0.2 s) | ❌ over HTP budget | ❌ `dspqueue_read failed: 0x00000072` |
+| **hybrid** (HTP + CPU) | ~16 | 14.1 (2.6 s) | **7.5** (3.1 s) | ❌ crashes |
+| **GPU** (Adreno X1-45) | ~13 | 13.2 | 6.5 (0.6 s) | ❌ OOM (Q4_0) |
+| **CPU** (WSL2) | ~8–10* | ~5* | ~2–3* | ~1 (224 s incl. load) |
+
+\* CPU token/s for 2B/4B/9B are estimates scaled from the measured 27B CPU
+rate; only the 27B CPU time (224 s for a short reply incl. model load) was
+measured directly. NPU/GPU/hybrid numbers are all measured.
+
+The HTP's vmem budget is ~3 GB (`vmem 3145728000` in the load log). Hybrid is
+the lever that makes a 9B usable with acceleration; beyond ~6 GB even hybrid
+fails because the HTP cannot stage enough layers.
 
 **The 27B quant ladder (what fits the Adreno's unified memory)**
 
