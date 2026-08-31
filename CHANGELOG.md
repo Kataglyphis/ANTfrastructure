@@ -5,6 +5,41 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — CORRECTION: the sub-Q4 garbage is a GenieX i-quant bug, not a quality floor
+
+The previous entry claimed "a hard quality floor at Q4 -- both 3-bit quants
+answer with garbage, everything below is smaller still". The observation was
+right; the explanation was wrong, and the extrapolation was unfounded.
+
+Hypotheses walked down in order:
+
+  sampling artefact   temperature=0, "Say hello."      still garbage; Q4_0 fine
+  corrupt download    SHA256 vs the HF LFS oid         byte-perfect
+  CPU-backend bug     same file on the GPU lane        fails there too
+  "UD quants are bad" UD-Q4_K_M from the same repo     works fine
+  "3 bits is too few" Qwen3-4B:Q3_K_M (3-bit K-quant)  works perfectly
+  i-quant kernels     Qwen3-4B:IQ3_XXS                 garbage on BOTH lanes
+
+The discriminator is the tensor *type*, not the bit width. GGUF tensor
+histograms: the working files carry no i-quants below 4 bits (Q4_0: none;
+UD-Q4_K_M: IQ4_XS 117, IQ3_S 4; Q3_K_M: pure K-quants), the broken ones are
+dominated by them (UD-Q3_K_XL: IQ3_S 111 + IQ3_XXS 34 + IQ2_* 21; UD-IQ3_S:
+IQ3_S 127 + IQ3_XXS 77 + IQ2_* 45 + IQ1_S 2; Qwen3-4B-UD-IQ3_XXS: IQ3_XXS 144
++ IQ2_S 52 + IQ3_S 41).
+
+So: IQ4_XS and IQ4_NL are fine; IQ3_S, IQ3_XXS, IQ2_* and IQ1_* are broken in
+the llama.cpp build GenieX v0.5.0 ships (runtime hash 873e5d8, aarch64). It
+reproduces across two architectures (qwen3, qwen35), two sizes (4B, 27B) and
+both compute lanes, on files verified byte-identical to Hugging Face -- so
+neither a bad download nor a bad quantisation.
+
+Consequences: never pull IQ1_*/IQ2_*/IQ3_* for this setup, for any model
+(UD-Q2_K_XL is i-quant-heavy too and should be assumed broken); 3-bit itself is
+fine, so a plain Q3_K_M is worth seeking out; the practical "do not go under
+Q4_0 in this repo" advice survives, but only because this repo's sub-Q4
+offerings all happen to be i-quant based. Worth reporting upstream to
+qualcomm/GenieX, and worth re-testing after a runtime bump.
+
 ## 2026-08-31 — 27B quant ladder mapped end to end; Q4_0 stays
 
 Enumerated every quant `unsloth/Qwen3.8-27B-GGUF` offers (22 variants, IQ1_S

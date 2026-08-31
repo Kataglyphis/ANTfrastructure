@@ -446,12 +446,12 @@ irrelevant here: it OOMs at Q4_0 and returns HTTP 500.)
 
 | Quant | Size | Verdict |
 |---|---|---|
-| `UD-IQ1_S` / `UD-IQ1_M` | 6.2 / 6.7 GB | ❌ far below the usable floor |
-| `UD-IQ2_XXS` / `UD-IQ2_S` | 7.3 / 8.4 GB | ❌ far below the usable floor |
-| `UD-Q2_K_XL` | 9.8 GB | ❌ below the usable floor |
-| `UD-IQ3_XXS` | 10.9 GB | ❌ below the usable floor |
-| `UD-IQ3_S` | 12.0 GB | ❌ **measured: garbage output** |
-| `UD-Q3_K_XL` | 13.1 GB | ❌ **measured: garbage output** |
+| `UD-IQ1_S` / `UD-IQ1_M` | 6.2 / 6.7 GB | ❌ i-quant — expected broken (untested) |
+| `UD-IQ2_XXS` / `UD-IQ2_S` | 7.3 / 8.4 GB | ❌ i-quant — expected broken (untested) |
+| `UD-Q2_K_XL` | 9.8 GB | ❌ i-quant-heavy — expected broken (untested) |
+| `UD-IQ3_XXS` | 10.9 GB | ❌ i-quant — expected broken (untested) |
+| `UD-IQ3_S` | 12.0 GB | ❌ **measured: garbage — i-quant bug** |
+| `UD-Q3_K_XL` | 13.1 GB | ❌ **measured: garbage — i-quant bug** |
 | `UD-IQ4_XS` | 14.3 GB | untested |
 | `UD-Q4_K_S` | 15.4 GB | untested |
 | **`Q4_0`** | **16.1 GB** | ✅ **5.62 tok/s, TTFT 1.06 s — recommended** |
@@ -462,9 +462,14 @@ irrelevant here: it OOMs at Q4_0 and returns HTTP 500.)
 | `UD-Q6_K` and above | 22 GB+ | ❌ does not fit |
 | `Q8_0` | 29 GB | ❌ does not fit |
 
-**There is a hard quality floor at Q4.** Both 3-bit quants load and answer, and
-both answer with garbage — not a speed tradeoff you can accept, a broken model.
-Everything below them is smaller still. Never go under `Q4_0` on this model.
+**The sub-Q4 failures are a GenieX bug, not a quality floor** — see
+§ Debugged: i-quants below 4 bits are broken. Short version: the garbage output
+is not degraded quality, it is broken inference in the i-quant kernels, and it
+hits *every* model, not just this one. K-quants at 3 bits are fine. Since this
+repo only offers **i-quant-based** variants below `Q4_0`, the practical advice
+("do not go under `Q4_0` here") stands — but the reason matters, because a
+plain `Q3_K_M` from another uploader would likely work, and a GenieX update may
+fix it outright.
 
 **Going *up* from `Q4_0` did not pay off either.** `UD-Q4_K_M` was pulled and
 measured head to head: **5.08 vs 5.62 tok/s (~10 % slower)** with a 2.2x worse
@@ -693,6 +698,55 @@ lanes in one command.
   and streamed requests ran to the model's own stop. Budget by prompt, not by
   the parameter.
 
+## Debugged: i-quants below 4 bits are broken in this GenieX build
+
+The 27B's `Q3_K_XL` and `IQ3_S` answer with garbage. The first explanation on
+this page — "3-bit quality collapses, there is a hard floor at Q4" — was wrong.
+Walking the hypotheses down:
+
+| Hypothesis | Test | Result |
+|---|---|---|
+| Sampling artefact | `temperature=0`, prompt `"Say hello."` | ❌ still garbage (`'\n\n\n....\n\n'`); `Q4_0` answers `'Hello! How can I help you today?'` |
+| Corrupt download | byte size + SHA256 vs the Hugging Face LFS oid | ❌ **byte-perfect** (`8c2a45ff…a67a5e`, 13,146,393,504 bytes) |
+| CPU-backend bug | same file on the GPU (OpenCL) lane | ❌ fails there too |
+| "Unsloth UD quants are bad" | `UD-Q4_K_M` from the same repo | ❌ works fine (5.08 tok/s, correct code) |
+| "3 bits is simply too few" | `Qwen3-4B:Q3_K_M` (3-bit **K**-quant) | ❌ **works perfectly** — coherent output |
+| **i-quant kernels are broken** | `Qwen3-4B:IQ3_XXS` — different model, different arch, i-quants | ✅ **garbage on both CPU and GPU** |
+
+**The answer is the tensor *type*, not the bit width.** Dumping the GGUF tensor
+histograms makes the split obvious:
+
+| File | i-quant content | Works? |
+|---|---|---|
+| `Qwen3.8-27B-Q4_0` | none | ✅ |
+| `Qwen3.8-27B-UD-Q4_K_M` | `IQ4_XS` 117, `IQ4_NL` 7, `IQ3_S` **4** | ✅ |
+| `Qwen3-4B-Q3_K_M` | none (`Q3_K` 144, `Q4_K` 104) | ✅ |
+| `Qwen3.8-27B-UD-Q3_K_XL` | `IQ3_S` 111, `IQ3_XXS` 34, `IQ2_*` 21 | ❌ |
+| `Qwen3.8-27B-UD-IQ3_S` | `IQ3_S` 127, `IQ3_XXS` 77, `IQ2_*` 45, `IQ1_S` 2 | ❌ |
+| `Qwen3-4B-UD-IQ3_XXS` | `IQ3_XXS` 144, `IQ2_S` 52, `IQ3_S` 41 | ❌ |
+
+**`IQ4_XS` and `IQ4_NL` are fine; `IQ3_S`, `IQ3_XXS`, `IQ2_*` and `IQ1_*` are
+not.** A file survives a handful of IQ3_S tensors (the working `Q4_K_M` has 4)
+but not a hundred of them. The failure reproduces across two model families
+(`qwen3` and `qwen35`), two model sizes (4B and 27B) and both compute lanes, on
+files verified byte-identical to what Hugging Face published — so it is neither
+a bad download nor a bad quantisation, but the **i-quant dequantisation path in
+the llama.cpp build GenieX v0.5.0 ships** (runtime hash `873e5d8`, aarch64).
+
+The two failure signatures differ but are equally incoherent: the 27B emits
+whitespace and punctuation (`'\n\n\n....\n\n'`), the 4B emits real-but-random
+multilingual tokens (`' majorityathersyreyrelicht reconciliation…'`).
+
+**What this means in practice**
+
+- Do not pull any `IQ1_*`, `IQ2_*`, `IQ3_*` GGUF for this setup, of any model.
+  `UD-Q2_K_XL` is i-quant-heavy too and should be assumed broken.
+- **3-bit itself is fine** — a plain `Q3_K_M`/`Q3_K_L` works. It is worth
+  looking for a non-`UD` 3-bit build of a model you want to squeeze in.
+- `IQ4_XS` is safe, so `UD-Q4_K_M`-class files are safe.
+- This is worth reporting upstream to <https://github.com/qualcomm/GenieX>;
+  re-test after a GenieX or llama.cpp runtime bump before trusting any i-quant.
+
 ## The NPU problem — root cause AND resolution (2026-08-31)
 
 **Both NPU paths failed on the original driver** (Qualcomm FastRPC 1.0.4175.2700
@@ -756,7 +810,7 @@ Every row below was hit live on 2026-08-31.
 | Agent feels slow even though `tok/s` looks fine | The GGUF Qwen3/Qwen3.8-Distill models are **reasoning** models — 1600–2000 `<think>` tokens before the answer. Decode rate is fine; token *count* is the cost | Switch to `qualcomm/Qwen3-4B-Instruct-2507:W4A16` (no thinking, 19.5 tok/s) — ~6x faster to a finished answer |
 | QAIRT bundle returns nothing on a long prompt, though `--nctx` is large | QAIRT bundles carry a **hard-compiled context** (4096 here). `--nctx` is llama.cpp-only and does not raise it | Keep QAIRT requests under 4096 tokens; use a GGUF lane for long context |
 | NPU lane dies mid-session (connection reset, process gone) | A GGUF was requested after a QAIRT bundle on the same lane — reproducible crash | Keep the NPU lane QAIRT-only; serve GGUFs from the CPU lane |
-| 27B answers instantly with `0\n\n\n -\n0` or whitespace | 3-bit quant (`Q3_K_XL`, `IQ3_S`) is degraded past usability — not a speed problem | Use `Q4_0` on the CPU lane (5.6 tok/s, correct output) |
+| Model answers with whitespace, punctuation, or random multilingual tokens | The GGUF is **i-quant** based (`IQ3_*`, `IQ2_*`, `IQ1_*`) — broken in this GenieX build, on every model and both lanes. Not a quality issue | Use a non-i-quant file: `Q4_0`, `Q4_K_M`, or a plain `Q3_K_M`. Full analysis: § Debugged: i-quants below 4 bits |
 | Every prompt after a short break stalls ~15 s | `--keepalive` default 300 s unloaded the model | Start servers with `--keepalive 86400` (the launcher does) |
 | A long prompt never returns; server stops answering `/v1/models` too | Prompt exceeded `--nctx` (default 4096). It does not error, it crawls; and a busy server serves nothing else, because there is no batching | Start with `--nctx 16384`; keep agent context lean (prefill is ~190 tok/s) |
 | Second concurrent request waits for the whole first answer | One `geniex serve` has no batching — strictly one request at a time | Run a second lane (`--compute gpu` on 18182). NPU+GPU cost each other ~1–3 % |
