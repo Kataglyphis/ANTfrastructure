@@ -212,16 +212,26 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
     return text, ttft, time.monotonic() - started, len(parts)
 
 
-def evaluate(base_url, model, label, max_tokens, keep_output=False):
-    """Run every task against one model. Returns a report dict."""
+def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1):
+    """Run every task against one model. Returns a report dict.
+
+    `repeats` matters more than it looks: GenieX honours neither `max_tokens`
+    nor `temperature`, so the llama.cpp lanes SAMPLE even at temperature=0 --
+    five identical requests to the 2B produced five different answers, four
+    passing and one failing the same task. A single run therefore measures one
+    draw, not the model. (The QAIRT/NPU path is deterministic: four identical
+    requests, one unique output, so repeats there only cost time.)
+    """
     print(f"\n  === {label} ===", flush=True)
     results = []
     for task in TASKS:
+      for attempt in range(repeats):
+        suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
         try:
             text, ttft, wall, chunks = ask(base_url, model, task["prompt"], max_tokens)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
-            print(f"    {task['name']:15s} ERROR {type(e).__name__}: {e}", flush=True)
-            results.append({"task": task["name"], "passed": False,
+            print(f"    {task['name']:15s}{suffix} ERROR {type(e).__name__}: {e}", flush=True)
+            results.append({"task": task["name"], "attempt": attempt, "passed": False,
                             "detail": f"request failed: {e}", "wall_s": None})
             continue
         code = extract_code(text)
@@ -233,11 +243,11 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False):
         if "</think>" in text:
             think_share = 1 - len(text.split("</think>")[-1]) / len(text)
         verdict = "PASS" if ok else ("CUT " if truncated else "FAIL")
-        print(f"    {task['name']:15s} {verdict}  "
+        print(f"    {task['name']:15s}{suffix} {verdict}  "
               f"{wall:6.1f}s  ttft={ttft or 0:5.2f}s  tokens={chunks:5d}  "
               f"think={100*think_share:3.0f}%  {'' if ok else detail}", flush=True)
-        entry = {"task": task["name"], "passed": ok, "truncated": truncated,
-                 "detail": detail,
+        entry = {"task": task["name"], "attempt": attempt,
+                 "passed": ok, "truncated": truncated, "detail": detail,
                  "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
                  "tokens": chunks, "thinking_char_share": round(think_share, 3)}
         if keep_output:
@@ -247,14 +257,18 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False):
     done = [r for r in results if r["wall_s"] is not None]
     passed = sum(1 for r in results if r["passed"])
     cut = sum(1 for r in results if r.get("truncated"))
-    wrong = len(TASKS) - passed - cut
+    attempts = len(TASKS) * repeats
+    wrong = attempts - passed - cut
     total_wall = sum(r["wall_s"] for r in done)
     extra = f", {cut} cut off" if cut else ""
-    print(f"    -> {passed}/{len(TASKS)} tasks pass{extra}, {total_wall:.1f}s total",
+    # With repeats the headline is a RATE, not a score: "4/6 attempts" says
+    # something a single 2/3 cannot.
+    unit = "attempts" if repeats > 1 else "tasks"
+    print(f"    -> {passed}/{attempts} {unit} pass{extra}, {total_wall:.1f}s total",
           flush=True)
     return {"label": label, "model": model, "base_url": base_url,
             "passed": passed, "wrong": wrong, "truncated": cut,
-            "total": len(TASKS),
+            "total": attempts, "repeats": repeats, "tasks": len(TASKS),
             "total_wall_s": round(total_wall, 2),
             "avg_wall_s": round(total_wall / len(done), 2) if done else None,
             "results": results}
@@ -274,6 +288,10 @@ def main():
                     help="JSON file: [{label, backend|base_url, model}, ...]")
     ap.add_argument("--keep-output", action="store_true",
                     help="Store the generated code in the report")
+    ap.add_argument("--repeats", type=int, default=1,
+                    help="Run each task N times. The llama.cpp lanes sample even at "
+                         "temperature=0 (GenieX ignores it), so a single run measures "
+                         "one draw rather than the model. 3+ for a defensible number.")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
 
@@ -290,7 +308,8 @@ def main():
         url, model, _ = resolve_backend(args.backend, args.base_url)
         candidates.append((args.label or args.model or model, url, args.model or model))
 
-    reports = [evaluate(url, model, label, args.max_tokens, args.keep_output)
+    reports = [evaluate(url, model, label, args.max_tokens, args.keep_output,
+                        repeats=args.repeats)
                for label, url, model in candidates]
 
     if len(reports) > 1:
