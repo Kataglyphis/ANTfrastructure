@@ -704,9 +704,63 @@ three are self-contained functions — no multi-file work, no tool calls, and
 short prompts rather than the long context an agent really sends. It separates
 "writes working code" from "does not"; it does not rank senior engineers.
 
-**What is still unmeasured:** the hybrid lane on coding tasks, long-prompt
-(prefill-heavy) coding, `nctx` scaling, and `--ngl`. The lane question itself
-*is* settled: Qwen3-4B `Q4_0` scores identically on CPU and GPU (2/3 + 1 cut,
+### 1e. Under a realistic agent context (measured 2026-08-31)
+
+Everything above uses ~40-token prompts. An agent sends a system prompt plus
+files — thousands of tokens. Re-run with real repository source prepended
+(`bench_coding.py --context-tokens N`):
+
+| Context | Pass | TTFT | Output tokens |
+|---|---|---|---|
+| none | **3/3** | 0.13 s | 129–284 |
+| +1000 | 2/3 | 1.03 s | 92–222 |
+| +2000 | 2/3 | 2.05 s | 102–294 |
+| +3000 | 2/3 | 3.20 s | 118–294 |
+| +5000 | **0/3** | **0.00 s** | **0** |
+
+**The 4096-token limit is input *plus* output, and it fails silently.** Probing
+the edge with one task:
+
+| Context | Output tokens | Behaviour |
+|---|---|---|
+| ~3800 | 127 | normal |
+| ~4000 | **15** | nearly mute — almost no room left to answer |
+| ~4500 | **0** | **instant empty reply, 0.00 s, no error** |
+
+That last row is the one to design around. Over the limit the server returns
+**nothing at all, immediately, with no error message** — an agent sees an empty
+answer, not "your prompt was too long". Budget the context yourself; nothing
+will warn you. With ~300 output tokens needed for a function, the practical
+input ceiling is **~3700 tokens**.
+
+**Accuracy also decays before the wall:** 3/3 with no context, 2/3 from 1000
+tokens on. The failing task moves around (`balanced` at 1–2k, `parse_version`
+at 3k), which is *not* sampling noise here — the QAIRT path is deterministic,
+so each of these is reproducible. Irrelevant context makes this model worse.
+
+**Prefill is where the NPU earns its place — 10x the CPU lane:**
+
+| Lane | Measured | Prefill rate |
+|---|---|---|
+| **NPU (QAIRT 4B)** | 1000→1.0 s, 2000→2.1 s, 3000→3.2 s, 3800→4.5 s | **~930 tok/s** |
+| CPU (GGUF 4B) | 3000→34.2 s / 31.9 s | ~91 tok/s |
+
+A 3000-token prompt costs **3.2 s on the NPU against 34 s on the CPU**, and the
+CPU lane's whole task ran 142–198 s versus the NPU's 12–25 s. This inverts the
+short-prompt picture, where the CPU lane was the *faster* GGUF backend: under a
+realistic agent context the NPU lane wins on both prefill and total time.
+
+(An earlier one-off measurement on this page put NPU prefill at ~190 tok/s. The
+swept figures above supersede it — that single sample mis-estimated its own
+prompt length.)
+
+**The real trade-off for an agent, then:** the NPU lane is 10x faster to first
+token but capped at ~3700 usable input tokens, and it goes silent past that.
+The GGUF lanes carry `--nctx 16384` but pay ~34 s of prefill per 3000 tokens.
+There is no configuration here that is both long-context and fast.
+
+**What is still unmeasured:** the hybrid lane on coding tasks, `nctx` scaling
+below 16384, and `--ngl`. The lane question itself *is* settled: Qwen3-4B `Q4_0` scores identically on CPU and GPU (2/3 + 1 cut,
 the same task cut on both), with the GPU 1.78x slower — **the lane changes
 speed, not correctness**.
 

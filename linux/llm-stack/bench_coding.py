@@ -109,6 +109,42 @@ except ValueError:
 
 CODE_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S | re.I)
 
+# ── Long-context padding ──────────────────────────────────────────────────────
+#
+# The tasks above are ~40-token prompts. A coding agent never sends that: it
+# sends a system prompt plus files, routinely thousands of tokens. Prefill is
+# what the user waits on (a 2.5k-token prompt cost 13.1 s to first token on the
+# NPU lane), and the QAIRT bundles carry a hard 4096-token context -- so the
+# short-prompt ranking says nothing about the case that actually matters.
+#
+# Padding is real source from this repo rather than lorem ipsum: the point is a
+# realistic prefill and a realistic distraction, not a token count.
+
+PAD_SOURCES = ["benchmark_openai_api.py", "bench_lanes.py", "inspect_gguf.py"]
+
+
+def build_context(approx_tokens):
+    """Return a context block of roughly `approx_tokens` tokens of real code.
+
+    ~4 characters per token is a rule of thumb for source; the measured
+    prompt_tokens reported by the server is what gets recorded, so the estimate
+    only has to be close enough to hit the intended size band.
+    """
+    if not approx_tokens:
+        return ""
+    here = os.path.dirname(os.path.abspath(__file__))
+    chunks = []
+    for name in PAD_SOURCES:
+        try:
+            with open(os.path.join(here, name)) as f:
+                chunks.append(f"# ---- {name} ----\n{f.read()}")
+        except OSError:
+            continue
+    body = "\n\n".join(chunks)
+    while len(body) < approx_tokens * 4 and chunks:
+        body += "\n\n" + "\n\n".join(chunks)
+    return body[: approx_tokens * 4]
+
 # GenieX v0.5.0 stops generating at 2048 tokens regardless of max_tokens (which
 # it ignores outright: max_tokens=3000 produced 642 tokens, max_tokens=500
 # produced 1249). A reasoning model can spend that entire budget inside <think>
@@ -179,7 +215,7 @@ def run_candidate(code, tests, timeout=15):
 
 
 def ask(base_url, model, prompt, max_tokens, timeout=1800):
-    """One streamed request. Returns (text, ttft_s, wall_s, chunks)."""
+    """One streamed request. Returns (text, ttft_s, wall_s, chunks, prompt_tokens)."""
     body = json.dumps({
         "model": model, "stream": True, "max_tokens": max_tokens,
         "temperature": 0, "messages": [{"role": "user", "content": prompt}],
@@ -189,6 +225,7 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
     started = time.monotonic()
     ttft = None
     parts = []
+    prompt_tokens = None
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
             line = raw.decode("utf-8", "replace").strip()
@@ -201,6 +238,8 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                 chunk = json.loads(payload)
             except json.JSONDecodeError:
                 continue
+            if chunk.get("usage"):
+                prompt_tokens = chunk["usage"].get("prompt_tokens")
             choices = chunk.get("choices") or []
             if choices:
                 piece = choices[0].get("delta", {}).get("content")
@@ -209,10 +248,11 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
                         ttft = time.monotonic() - started
                     parts.append(piece)
     text = "".join(parts)
-    return text, ttft, time.monotonic() - started, len(parts)
+    return text, ttft, time.monotonic() - started, len(parts), prompt_tokens
 
 
-def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1):
+def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
+             context_tokens=0):
     """Run every task against one model. Returns a report dict.
 
     `repeats` matters more than it looks: GenieX honours neither `max_tokens`
@@ -222,17 +262,26 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1):
     draw, not the model. (The QAIRT/NPU path is deterministic: four identical
     requests, one unique output, so repeats there only cost time.)
     """
-    print(f"\n  === {label} ===", flush=True)
+    context = build_context(context_tokens)
+    if context:
+        print(f"\n  === {label}  [+{context_tokens} tokens of context] ===", flush=True)
+    else:
+        print(f"\n  === {label} ===", flush=True)
     results = []
     for task in TASKS:
       for attempt in range(repeats):
         suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
+        prompt = task["prompt"]
+        if context:
+            prompt = ("Here is context from a repository, for style reference only:\n\n"
+                      f"{context}\n\n---\n\nNow, independently of the above:\n" + prompt)
         try:
-            text, ttft, wall, chunks = ask(base_url, model, task["prompt"], max_tokens)
+            text, ttft, wall, chunks, ptok = ask(base_url, model, prompt, max_tokens)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
             print(f"    {task['name']:15s}{suffix} ERROR {type(e).__name__}: {e}", flush=True)
             results.append({"task": task["name"], "attempt": attempt, "passed": False,
-                            "detail": f"request failed: {e}", "wall_s": None})
+                            "detail": f"request failed: {e}", "wall_s": None,
+                            "prompt_tokens": None})
             continue
         code = extract_code(text)
         ok, detail = run_candidate(code, task["tests"])
@@ -243,13 +292,15 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1):
         if "</think>" in text:
             think_share = 1 - len(text.split("</think>")[-1]) / len(text)
         verdict = "PASS" if ok else ("CUT " if truncated else "FAIL")
+        pt = f"  ptok={ptok:5d}" if ptok else ""
         print(f"    {task['name']:15s}{suffix} {verdict}  "
-              f"{wall:6.1f}s  ttft={ttft or 0:5.2f}s  tokens={chunks:5d}  "
+              f"{wall:6.1f}s  ttft={ttft or 0:5.2f}s{pt}  out={chunks:5d}  "
               f"think={100*think_share:3.0f}%  {'' if ok else detail}", flush=True)
         entry = {"task": task["name"], "attempt": attempt,
                  "passed": ok, "truncated": truncated, "detail": detail,
                  "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
-                 "tokens": chunks, "thinking_char_share": round(think_share, 3)}
+                 "tokens": chunks, "prompt_tokens": ptok,
+                 "thinking_char_share": round(think_share, 3)}
         if keep_output:
             entry["code"] = code
         results.append(entry)
@@ -292,6 +343,11 @@ def main():
                     help="Run each task N times. The llama.cpp lanes sample even at "
                          "temperature=0 (GenieX ignores it), so a single run measures "
                          "one draw rather than the model. 3+ for a defensible number.")
+    ap.add_argument("--context-tokens", type=int, default=0,
+                    help="Prepend roughly N tokens of real repository source before "
+                         "each task. The short prompts above are not what an agent "
+                         "sends; prefill and the QAIRT bundles' 4096-token ceiling "
+                         "only show up under a realistic context.")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
 
@@ -309,7 +365,7 @@ def main():
         candidates.append((args.label or args.model or model, url, args.model or model))
 
     reports = [evaluate(url, model, label, args.max_tokens, args.keep_output,
-                        repeats=args.repeats)
+                        repeats=args.repeats, context_tokens=args.context_tokens)
                for label, url, model in candidates]
 
     if len(reports) > 1:

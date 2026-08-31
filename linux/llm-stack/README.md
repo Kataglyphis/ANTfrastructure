@@ -256,6 +256,25 @@ to a finished answer.
 A `<think>` block is stripped before extraction, so a draft the model itself
 discarded is never graded in place of its real answer.
 
+**`--repeats N` — because a single run measures one draw, not the model.**
+GenieX honours neither `max_tokens` nor `temperature`, so the llama.cpp lanes
+sample even at `temperature=0`: five identical requests to one 2B produced five
+different answers, four passing the same task and one failing it. That model
+scored 2/3 in one sweep and 0/3 in the next; over 9 attempts its real rate is
+44 %. The QAIRT/NPU path *is* deterministic (four requests, one unique output),
+so repeats there only cost time.
+
+**`--context-tokens N` — because ~40-token prompts are not what an agent
+sends.** Prepends real repository source before each task. Prefill and any
+hard context ceiling only appear under a realistic prompt: on one NPU bundle
+accuracy fell from 3/3 to 2/3 once 1000 tokens of context were added, and past
+its 4096-token limit the server returned an empty reply instantly with no
+error at all.
+
+Results are also reported in three states, not two: **PASS / FAIL / CUT**. A
+reply the server truncated mid-function is *unmeasured*, not wrong — grading it
+as a failure once scored a perfectly usable model 0/3.
+
 > **This executes model-generated code.** Each candidate runs in a temp dir as
 > a subprocess with a timeout. Do not point it at an untrusted endpoint.
 
