@@ -115,7 +115,10 @@ Verify with `geniex list` on the Windows side.
 ## Serve from Windows with acceleration
 
 ```powershell
+# NPU server — fast 2B / 4B (recommended default)
 & 'C:\Users\<you>\AppData\Local\GenieX CLI\geniex.exe' serve --compute npu --host 0.0.0.0:18181
+# Hybrid server — 9B-Distill (NPU + CPU), run alongside the NPU server
+& 'C:\Users\<you>\AppData\Local\GenieX CLI\geniex.exe' serve --compute hybrid --host 0.0.0.0:18183
 ```
 
 - `--compute gpu` → Adreno GPU (OpenCL). **The working accelerated path before
@@ -137,10 +140,11 @@ Verify with `geniex list` on the Windows side.
   on one is coerced back to NPU with a warning.
 
 **Serving multiple accelerators at once:** one `geniex serve` binds one default
-`--compute`. To have both an NPU model and a GPU model available to the agent
-simultaneously, run two servers on different ports (`--host 0.0.0.0:18181` for
-NPU, `0.0.0.0:18182` for GPU) and point the opencode provider's models at the
-right base URL per model.
+`--compute`. The recommended setup runs two servers on different ports — the
+**NPU server on 18181** (fast 2B/4B) and the **hybrid server on 18183** (the
+9B-Distill, NPU+CPU) — and points the agent at the right base URL per model
+(see § Wire the coding agent). A GPU server on 18182 is optional but not part
+of the recommended setup.
 
 - `--host 0.0.0.0:18181` so WSL2 can reach it. The default binds loopback only.
 
@@ -170,7 +174,8 @@ text chat — SoX only enables audio input.
 
 ## Wire the coding agent (opencode)
 
-Add a provider to `~/.config/opencode/opencode.jsonc`:
+Add a provider to `~/.config/opencode/opencode.jsonc`. The verified setup uses
+**two providers** — one per server:
 
 ```jsonc
 {
@@ -178,7 +183,7 @@ Add a provider to `~/.config/opencode/opencode.jsonc`:
   "provider": {
     "geniex": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "GenieX (Snapdragon)",
+      "name": "GenieX (Snapdragon NPU)",
       "options": {
         "baseURL": "http://127.0.0.1:18181/v1",
         "apiKey": "geniex"
@@ -193,17 +198,38 @@ Add a provider to `~/.config/opencode/opencode.jsonc`:
           "limit": { "context": 8192, "output": 4096 }
         }
       }
+    },
+    "geniex-hybrid": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "GenieX (Snapdragon hybrid)",
+      "options": {
+        "baseURL": "http://127.0.0.1:18183/v1",
+        "apiKey": "geniex"
+      },
+      "models": {
+        "empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M": {
+          "name": "Qwen3.8 9B hybrid (NPU+CPU)",
+          "limit": { "context": 8192, "output": 4096 }
+        }
+      }
     }
   }
 }
 ```
 
 `apiKey` is not checked by GenieX's server — any non-empty string works.
-Verify the endpoint before blaming the agent:
+Verify each endpoint before blaming the agent:
 
 ```bash
-curl -s http://127.0.0.1:18181/v1/models
+curl -s http://127.0.0.1:18181/v1/models   # NPU server (2B, 4B)
+curl -s http://127.0.0.1:18183/v1/models   # hybrid server (9B)
 ```
+
+**Request timing (measured):** the first request after a server start includes
+the model load — ~46 s for the 9B on hybrid, ~21 s for the 9B over a warm
+server (the 2B/4B are ~14–27 s cold). Set your agent client's request timeout
+to ≥ 90 s; afterwards the server answers quickly. Starting the servers is
+manual (two `Start-Process`/shell commands) — no autostart is configured.
 
 ### Which Qwen3.8-class models fit this machine (all measured 2026-08-31, incl. post-RAM-tuning re-test)
 
