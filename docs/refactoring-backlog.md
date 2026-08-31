@@ -207,10 +207,31 @@ check cried wolf on good models.
 - servers ignoring `stream_options.include_usage` yielded 0 tokens; now falls
   back to a counted chunk total flagged `tokens_estimated`.
 
-**Still open for a general LLM toolkit** (out of scope of the original harvest,
-listed so it is not forgotten): context-length quality scaling, tool/function
-calling correctness, embedding benchmarks, energy per token, and run-to-run
-regression comparison.
+**Closed since the original harvest:** context-length quality scaling
+(`bench_coding.py --context-tokens`, § 1e of the GenieX page) and tool/function
+calling correctness (`bench_tools.py`, § 1f) — the latter found the one result
+that does not crown the coding winner.
+
+**Still open for a general LLM toolkit** (listed so it is not forgotten):
+
+- **LB10 — embedding benchmarks** [M·★★] `tests/test_v1_api.py` exercises the
+  embedding endpoints but nothing measures them. Relevant the moment a RAG or
+  code-search path is added.
+- **LB11 — run-to-run regression comparison** [S·★★] Every tool writes a JSON
+  report and nothing diffs two of them. Without it a model swap or a runtime
+  bump can silently cost accuracy or speed. Probably the highest-value item
+  left: it turns a pile of one-off measurements into a tripwire.
+- **LB12 — energy per token** [M·★] The interesting axis on a battery device,
+  and the NPU's real argument over the CPU lane (165 % vs 752 % of 800 % CPU
+  says something about power but does not measure it).
+- **LB13 — measurements not yet run on this host** [S·★] hybrid lane on coding
+  tasks, `nctx` scaling below 16384, `--ngl` on the GPU lane, and the model
+  candidates never tried: `Qwen3-8B` W4A16 (the winner's direct competitor —
+  same fast prefill, same 4096 ceiling, twice the parameters), a
+  code-specialised GGUF such as `Qwen2.5-Coder-7B`, and the other QAIRT bundles
+  (`Ministral-3-3B-Instruct`, `Gemma-4-E2B-it`). **Every model measured so far
+  is from one family (Qwen3/Qwen3.8)** — that is the largest gap in the
+  ranking's authority.
 
 **Explicitly NOT for llm-stack:** `windows/scripts/host/start-geniex-servers.ps1`
 stays where it is — Windows-host lane management, not benchmarking.
