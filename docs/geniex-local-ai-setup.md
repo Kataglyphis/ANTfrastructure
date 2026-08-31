@@ -437,21 +437,50 @@ fit inside that budget and runs the rest on CPU. That is why freeing ~20 GB of
 host RAM changed nothing for NPU/hybrid — the ceiling is on-die, not host
 memory. (It did matter for the GPU path, see § Making room.)
 
-**The 27B quant ladder (what fits the Adreno's unified memory)**
+**The 27B quant ladder — the full picture (measured 2026-08-31)**
 
-The GPU OOMs at 16.1 GB (Q4_0) but loads 12.0 GB (IQ3_S). The usable window is
-roughly **≤ 13 GB**. From `unsloth/Qwen3.8-27B-GGUF`:
+The 27B runs on exactly one lane: **CPU**. What limits the quant is host RAM —
+31.6 GB total, minus WSL2's cap (10 GB via `.wslconfig`) and Windows itself,
+leaves **~22–24 GB** for the model with the other lanes stopped. (The Adreno is
+irrelevant here: it OOMs at Q4_0 and returns HTTP 500.)
 
-| Quant | File size | On this GPU |
+| Quant | Size | Verdict |
 |---|---|---|
-| `Q4_0` | 16.1 GB | ❌ OOM |
-| `IQ4_XS` | 14.3 GB | ❌ likely OOM |
-| `Q3_K_XL` | 13.1 GB | ❌ **loads, answers garbage** (measured) |
-| `IQ3_S` | 12.0 GB | ✅ loads, but 3-bit quality degrades badly (whitespace/garbage output) |
+| `UD-IQ1_S` / `UD-IQ1_M` | 6.2 / 6.7 GB | ❌ far below the usable floor |
+| `UD-IQ2_XXS` / `UD-IQ2_S` | 7.3 / 8.4 GB | ❌ far below the usable floor |
+| `UD-Q2_K_XL` | 9.8 GB | ❌ below the usable floor |
+| `UD-IQ3_XXS` | 10.9 GB | ❌ below the usable floor |
+| `UD-IQ3_S` | 12.0 GB | ❌ **measured: garbage output** |
+| `UD-Q3_K_XL` | 13.1 GB | ❌ **measured: garbage output** |
+| `UD-IQ4_XS` | 14.3 GB | untested |
+| `UD-Q4_K_S` | 15.4 GB | untested |
+| **`Q4_0`** | **16.1 GB** | ✅ **5.62 tok/s, TTFT 1.06 s — recommended** |
+| `UD-Q4_K_M` | 16.5 GB | ✅ 5.08 tok/s, TTFT 2.38 s — **10 % slower, no visible quality gain** |
+| `Q4_1` / `UD-Q4_K_XL` | 17.5 / 17.6 GB | fits, untested |
+| `UD-Q5_K_S` | 18.7 GB | ⚠️ practical ceiling; tight against the WSL2 cap |
+| `UD-Q5_K_M` / `UD-Q5_K_XL` | 19.8 / 20.9 GB | ⚠️ very tight, likely swaps |
+| `UD-Q6_K` and above | 22 GB+ | ❌ does not fit |
+| `Q8_0` | 29 GB | ❌ does not fit |
 
-**Corrected:** neither 3-bit quant is usable — `IQ3_S` and `Q3_K_XL` both
-answer with garbage. The 27B works only at **`Q4_0` on the CPU lane**
-(5.6 tok/s, correct output); on GPU it is an OOM/HTTP 500. For interactive
+**There is a hard quality floor at Q4.** Both 3-bit quants load and answer, and
+both answer with garbage — not a speed tradeoff you can accept, a broken model.
+Everything below them is smaller still. Never go under `Q4_0` on this model.
+
+**Going *up* from `Q4_0` did not pay off either.** `UD-Q4_K_M` was pulled and
+measured head to head: **5.08 vs 5.62 tok/s (~10 % slower)** with a 2.2x worse
+first token, while both produced equivalent output on a code task and both
+answered an arithmetic check with a verifiable result correctly
+(`847 * 293` → `248171`). The likely cause of the speed gap: llama.cpp repacks
+legacy `Q4_0` into ARM-optimised kernels (`Q4_0_4_8` / i8mm) that K-quants do
+not get — the same mechanism that makes the CPU lane fast in the first place.
+
+> **Caveat on the quality half of that comparison.** Two prompts is not a
+> quality evaluation. `UD-Q4_K_M` is in principle the better quantisation; the
+> honest finding is only that **no difference was demonstrable here, while the
+> 10 % speed cost was**. If 27B quality matters to you, benchmark it properly
+> instead of trusting either row.
+
+**Bottom line: `Q4_0` on the CPU lane is the 27B setup to use.** For interactive
 coding the realistic choice remains the QAIRT 4B on the NPU; the 27B on CPU is
 the quality option for work you are willing to wait for.
 

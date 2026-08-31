@@ -5,6 +5,33 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — 27B quant ladder mapped end to end; Q4_0 stays
+
+Enumerated every quant `unsloth/Qwen3.8-27B-GGUF` offers (22 variants, IQ1_S
+6.2 GB through Q8_0 29 GB) and bounded them against the real constraint: host
+RAM. 31.6 GB total minus WSL2's 10 GB cap and Windows leaves ~22-24 GB, so
+Q6_K (22 GB) and up cannot run at all and Q5_K_S (18.7 GB) is the ceiling.
+
+Pulled `UD-Q4_K_M` (16.5 GB) and measured it head to head against `Q4_0`:
+
+  Q4_0      5.62 tok/s   TTFT 1.06 s
+  UD-Q4_K_M 5.08 tok/s   TTFT 2.38 s    (~10% slower)
+
+Output was equivalent on a code task, and both answered a verifiable arithmetic
+check correctly (847 * 293 -> 248171). Likely cause of the gap: llama.cpp
+repacks legacy Q4_0 into ARM kernels (Q4_0_4_8 / i8mm) that K-quants do not get
+-- the same mechanism that makes the CPU lane fast at all.
+
+Two prompts is not a quality evaluation, and the docs say so: UD-Q4_K_M is in
+principle the better quantisation; the honest finding is only that no quality
+difference was demonstrable while the 10% speed cost was.
+
+Also documented: a hard quality floor at Q4. Both 3-bit quants (IQ3_S,
+Q3_K_XL) load, answer, and return garbage, and everything below them is
+smaller still -- so nothing under Q4_0 is worth pulling.
+
+Bottom line unchanged: Q4_0 on the CPU lane is the 27B setup to use.
+
 ## 2026-08-31 — full Qwen3.8 lane matrix; 27B rehabilitated, Q3_K_XL retired
 
 Every cached Qwen3.8 model against every lane, one prompt, one methodology:
