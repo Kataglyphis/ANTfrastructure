@@ -12,14 +12,24 @@
 
     Measured on this host (Snapdragon X, 2026-08-31):
 
-      NPU alone            19.5 tok/s      GPU alone            12.5 tok/s
-      CPU alone (GGUF 4B)  23.2 tok/s -- fastest GGUF lane, but 752% of 800% CPU
-      NPU + GPU together   19.2 + 12.1     = 31.4 tok/s aggregate, ~0% interference
-      NPU + GPU + hybrid   12.8+11.2+10.1  = 34.1 tok/s, but the NPU lane drops 34%
+      Single lane        NPU 19.5   CPU 23.7   GPU 12.5   hybrid 9.96  (4B class)
+      NPU + GPU          19.25 + 12.11               = 31.4 tok/s
+      NPU + CPU          18.85 + 20.81               = 39.7 tok/s   <- best pair
+      NPU + GPU + CPU    18.66 + 11.13 + 15.64       = 45.4 tok/s   <- max
 
-    NPU and GPU are separate silicon and compose almost perfectly. `hybrid` is
-    NPU+CPU, so it contends for the same HTP -- it is opt-in via -WithHybrid and
-    is only worth it when you truly want a third concurrent lane.
+    The NPU lane is immune to contention (18.6-19.25 tok/s in every combination):
+    isolated silicon, and its CPU footprint is pinned to 3 cores (cpu-mask 0xe0).
+    The CPU and GPU lanes fight over the same 8 Oryon cores.
+
+    Default is NPU + GPU: a second lane at low CPU cost, leaving the machine
+    usable. -WithCpu adds the fastest GGUF lane (23.7 tok/s) but it pegs 7.5 of
+    8 cores, so the box becomes unresponsive for interactive work.
+
+    -WithHybrid exists only for completeness. Do NOT use it: hybrid is slower
+    than plain CPU on every model measured (4B 9.96 vs 23.7; 9B 7.5 vs 15.2),
+    no --ngl setting rescues it (6-8 tok/s across the sweep), its first token
+    takes 14-27 s, and it is the only mode that damages a concurrent NPU lane
+    (19.25 -> 12.84) because it shares the same HTP.
 
     Two defaults matter and are both wrong out of the box for agent use:
       --keepalive 300  unloads the model after 5 idle minutes, so every pause in

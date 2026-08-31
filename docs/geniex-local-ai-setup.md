@@ -24,6 +24,34 @@ It is the community version of Qualcomm GENIE — BSD-3-Clause.
 
 ---
 
+## At a glance — which lane, which model
+
+Everything below is measured on this host (Snapdragon X X126100, 8x Oryon,
+Adreno X1-45, single Hexagon HTP). Full method and caveats in
+§ Getting the most out of this machine.
+
+| You want | Use | Speed |
+|---|---|---|
+| **The fastest finished answer** (default for a coding agent) | `--compute npu` + `qualcomm/Qwen3-4B-Instruct-2507:W4A16` | 19.5 tok/s, **26.8 s to a full answer**, 1.65 cores |
+| The fastest GGUF, machine to yourself | `--compute cpu` + any GGUF | 2B 46.5 · 4B 23.7 · 9B 15.2 tok/s, but **7.5 of 8 cores** |
+| Max total throughput, n parallel agents | NPU + CPU lanes (add GPU for a third) | **39.7 tok/s** (45.4 with all three) |
+| Long context (> 4096) | any GGUF lane with `--nctx 16384` | QAIRT bundles are hard-capped at 4096 |
+| Nothing | `--compute hybrid` | Slower than CPU on every model, and it damages a concurrent NPU lane |
+
+**Three counter-intuitive results worth knowing before you tune anything:**
+
+1. **The CPU beats the Hexagon NPU ~2x on GGUF models** (4B: 23.7 vs 11.9).
+   llama.cpp's ARM kernels are mature; the `ggml-hexagon` backend is not. The
+   NPU's value is QAIRT bundles and its tiny CPU footprint, not raw speed.
+2. **tok/s is the wrong metric.** `Qwen3-1.7B` is the fastest model here at
+   31.7 tok/s and the *slowest* to a finished answer (60.8 s), because it is a
+   reasoning model that spends ~1900 tokens thinking. Measure time-to-answer.
+3. **Prefill, not decode, is what an agent waits on.** A 2.5k-token prompt costs
+   13.1 s before the first token. Context discipline beats every other tuning
+   knob here.
+
+---
+
 ## The architecture that actually works
 
 **WSL2 has no NPU/GPU passthrough.** The Hexagon NPU and Adreno GPU are
@@ -319,29 +347,54 @@ it. Keep the agent's context lean, and move long-context work to a GGUF lane
 
 | Model | Size (Q4) | NPU only | **hybrid** (NPU+CPU) | GPU | CPU |
 |---|---|---|---|---|---|
-| **Qwen3.8-2B-Distill** (`empero-ai`) | 1.31 GB | ✅ **16.9 tok/s** | ✅ ~16 tok/s | ✅ | ✅ |
-| **Qwen3-4B** (`unsloth`) | 2.2 GB | ✅ **15.2 tok/s** | ✅ 14.1 tok/s | ✅ 13.2 tok/s | ✅ slow |
-| **Qwen3.8-9B-Distill** (`empero-ai`) | 5.78 GB | ❌ over HTP budget | ✅ **7.5 tok/s** (20.9 s round-trip incl. load) | ✅ 6.5 tok/s | ✅ |
+| **Qwen3.8-2B-Distill** (`empero-ai`) | 1.31 GB | ✅ 16.9 tok/s | ✅ ~16 tok/s | ✅ | ✅ **46.5 tok/s — best** |
+| **Qwen3-4B** (`unsloth`) | 2.2 GB | ✅ 11.9 tok/s | ✅ 9.96 tok/s | ✅ 12.5 tok/s | ✅ **23.7 tok/s — best** |
+| **Qwen3.8-9B-Distill** (`empero-ai`) | 5.78 GB | ❌ over HTP budget | ✅ 7.5 tok/s | ✅ 6.5 tok/s | ✅ **15.2 tok/s — best** |
 | **Qwen3.8-27B** Q4_0 (`unsloth`) | 16.1 GB | ❌ | ❌ crashes (`dspqueue_read failed: 0x00000072`) | ❌ OOM | ✅ slow |
 | **Qwen3.8-27B** Q3_K_XL | 13.1 GB | ❌ | ❌ **no crash, but unusable** — server never answers within 600 s | ⚠️ loads, then thrashes (2.0 tok/s) | ✅ slow |
 
-**Hybrid wins for models that straddle the HTP budget.** The 9B distill does
-not fit the ~3 GB (2,93 GiB) HTP alone, but `--compute hybrid` offloads the
-layers that fit and runs the rest on CPU — landing **7.5 tok/s, faster than
-the GPU's 6.5 tok/s** on the same model. For models that fully fit (2B, 4B),
-hybrid adds CPU hand-off overhead, so pure NPU is faster (16.9 / 15.2 vs
-~14–16). Re-verified after the WSL2 RAM tuning: the freed host RAM did **not**
-change the hybrid/NPU numbers, because the HTP limit is on-die vmem, not host
-RAM.
+**Correction (re-measured): hybrid does not win anything.** The original
+conclusion here — "hybrid wins for models that straddle the HTP budget" —
+compared hybrid only against the NPU and the GPU, never against the **CPU**.
+Once the CPU lane is measured, hybrid loses everywhere:
+
+| Model | hybrid | **CPU** | GPU | NPU |
+|---|---|---|---|---|
+| Qwen3-4B `Q4_0` | 9.96 tok/s | **23.7** | 12.5 | 11.9 |
+| Qwen3.8-9B-Distill `Q4_K_M` | 7.5 tok/s | **15.2** | 6.5 | ❌ over HTP budget |
+
+The 9B — the model hybrid was supposedly *for* — runs **2x faster on plain
+CPU** (15.2 vs 7.5), with a first token in 0.44 s instead of 26.6 s.
+
+**`--ngl` does not rescue it.** Sweeping the layer-offload knob on the 9B in
+hybrid mode changes nothing meaningful:
+
+| `--ngl` | decode | TTFT |
+|---|---|---|
+| `-1` (all, default) | 7.32 tok/s | 26.6 s |
+| `32` | 7.20 tok/s | 19.3 s |
+| `16` | 6.18 tok/s | 15.6 s |
+| `8` | 7.83 tok/s | 13.9 s |
+| — *(pure CPU, for scale)* | **15.17 tok/s** | **0.44 s** |
+
+Every hybrid configuration sits at 6–8 tok/s, roughly half the CPU lane, with a
+15–27 s first token. The bottleneck is not how the layers are split; it is that
+any HTP participation drags the whole graph down to the `ggml-hexagon` backend's
+speed.
+
+**Verdict: there is no reason to run `--compute hybrid` on this machine.** It is
+slower than the CPU for every model tested, it is the only mode that damages a
+concurrently running NPU lane (19.25 → 12.84 tok/s, shared HTP), and its first
+token is 30–60x slower. Use `cpu` for GGUF models and `npu` for QAIRT bundles.
 
 **Nothing combines GPU+NPU on one model.** `hybrid` = NPU + CPU only. The 27B
 Q4_0 crashes on both NPU and hybrid (the single HTP cannot even stage a
 fraction); the 27B Q3_K_XL does not crash but neither completes a request in
 a practical time on hybrid or GPU — for 27B, CPU is the only reliable path.
 
-**Best Qwen3.8-class GGUF for hybrid: `Qwen3.8-9B-Distill` Q4_K_M** — the
-largest that runs *and* responds in ~21 s round-trip; pure NPU can't hold it,
-the GPU is slower, the 27B doesn't deliver in any accelerated mode.
+**Best lane for any GGUF here: `--compute cpu`.** It is the fastest backend for
+every GGUF measured (2B 46.5, 4B 23.7, 9B 15.2 tok/s) — the price is that it
+saturates the machine (7.5 of 8 cores).
 
 **But the best model overall on this machine is not a GGUF at all.** The QAIRT
 bundle `qualcomm/Qwen3-4B-Instruct-2507:W4A16` beats every row of this table
@@ -355,14 +408,22 @@ All speeds are token/s on short replies; first-token latency in parentheses.
 | Compute | 2B-Distill Q4_K_M | 4B Q4_0 | 9B-Distill Q4_K_M | 27B Q4_0 | 27B Q3_K_XL |
 |---|---|---|---|---|---|
 | **NPU** (Hexagon HTP) | **16.9** (0.2 s) | **15.2** (0.2 s) | ❌ over HTP budget | ❌ `dspqueue_read failed: 0x00000072` | ❌ over HTP budget |
-| **hybrid** (HTP + CPU) | ~16 | 14.1 (2.6 s) | **7.5** (3.1 s) | ❌ crashes | ❌ no answer in 600 s |
+| **hybrid** (HTP + CPU) | ~16 | 14.1 / 9.96† (2.6 s) | 7.5 (3.1 s) | ❌ crashes | ❌ no answer in 600 s |
 | **GPU** (Adreno X1-45) | ~13 | 13.2 | 6.5 (0.6 s) | ❌ OOM (Q4_0) | ⚠️ 2.0 tok/s, thrashes |
-| **CPU** (Windows host, 8x Oryon) | **46.5** | **23.2** | n/m | ~1 (224 s incl. load) | n/m |
+| **CPU** (Windows host, 8x Oryon) | **46.5** | **23.2** | **15.2** (0.4 s) | ~1 (224 s incl. load) | n/m |
 
 CPU figures for the 2B and 4B are now **measured on the Windows host** via a
 `--compute cpu` lane, and they beat the NPU on the same GGUF by ~2x — see
 § 1b. (The earlier "~5 tok/s" estimates, scaled from a 27B WSL2 run, were wrong
 by ~4.6x.) The 27B Q4_0 number remains a single measured WSL2 data point.
+
+† Two methodologies are mixed in this table. The original rows used short
+replies; the re-measurement in § 1b / § 2 used one fixed prompt with the full
+answer streamed, which is why the 4B reads 15.2 on the NPU here and 11.9 there,
+and hybrid 14.1 here and 9.96 there. **Within** a comparison the numbers are
+consistent; do not compare a § 1b figure against an original-row figure. The
+re-measured set is the one to trust for lane choice, since it also ran with the
+other lanes resident.
 
 **The HTP vmem limit — what it is and why RAM tuning did not change it:**
 
@@ -615,7 +676,7 @@ Every row below was hit live on 2026-08-31.
 | `SDKError(Invalid input parameters or handle)` on `--compute npu`; log shows `ggml-hex: failed to dlsym dspqueue_create` and `Device 'HTP0' not found` | Installed Qualcomm CDSP driver's `libcdsprpc.dll` does not export the `dspqueue_create`/`read`/`write`/`export`/`close` symbols the bundled llama.cpp Hexagon backend needs — a stale driver/backend mismatch | **Update the Qualcomm Hexagon NPU driver** (Windows Update optional updates / Lenovo support), reboot, re-run `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. Full analysis: § The NPU problem |
 | QAIRT bundle `--compute npu` crashes with `Exception 0xc00000fd` (STACK_OVERFLOW) in native code | QNN HTP runtime init stack-overflows against the old CDSP transport | Same driver update (above) |
 | `dspqueue_read failed: 0x00000072` during generation on `--compute npu` | **Model too large for the HTP** (~2,93 GiB vmem budget) — a memory limit, not a driver bug | Use a smaller model (4B fits at 15.2 tok/s) or a different compute. Matches upstream ggml-org/llama.cpp#26123 |
-| `--compute hybrid` server accepts the request but never answers (HTTP 000 after 600 s), unlike NPU which crashes fast | 27B Q3_K_XL straddles the HTP budget: the HTP stages what fits, the CPU portion is so large it never finishes in practical time — neither crashes nor completes | The 27B is CPU-only territory on this machine. Use the 9B-Distill for hybrid (7.5 tok/s) instead |
+| `--compute hybrid` server accepts the request but never answers (HTTP 000 after 600 s), unlike NPU which crashes fast | 27B Q3_K_XL straddles the HTP budget: the HTP stages what fits, the CPU portion is so large it never finishes in practical time — neither crashes nor completes | The 27B is CPU-only territory on this machine. Do not use hybrid at all — plain `--compute cpu` beats it on every model (9B: 15.2 vs 7.5 tok/s) |
 | `CL_OUT_OF_RESOURCES` / `GGML_ASSERT(0) failed` at `ggml-opencl.cpp` on `--compute gpu` | 27B Q4_0 (16 GB) exceeds the Adreno's allocatable unified memory | Pull a smaller quant; the usable window is ≤ ~13 GB (see quant ladder above) |
 | `geniex serve` answers on Windows but not from WSL2 via the LAN IP | Windows Firewall (Ethernet on `Public` profile) blocks inbound | Prefer `127.0.0.1` with mirrored networking; otherwise add an inbound allow rule for TCP 18181 (elevated) |
 | `geniex pull` needs a TTY on every invocation | Chipset picker re-triggers when no chipset is stored | Set the chipset once (above) |

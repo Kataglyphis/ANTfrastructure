@@ -5,6 +5,35 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — hybrid falsified: no `--ngl` setting beats plain CPU
+
+`--compute hybrid` was previously documented as "the sweet spot for models that
+straddle the HTP budget". That conclusion compared hybrid against the NPU and
+the GPU — **never against the CPU**. With the CPU lane measured, hybrid loses
+everywhere:
+
+| Model | hybrid | **CPU** | GPU | NPU |
+|---|---|---|---|---|
+| Qwen3-4B `Q4_0` | 9.96 tok/s | **23.7** | 12.5 | 11.9 |
+| Qwen3.8-9B-Distill `Q4_K_M` | 7.5 tok/s | **15.2** | 6.5 | over HTP budget |
+
+The 9B — the model hybrid supposedly existed for — is **2x faster on plain CPU**
+(15.2 vs 7.5), first token 0.44 s instead of 26.6 s.
+
+Swept `--ngl` on the 9B in hybrid mode to check whether the layer split was
+simply mistuned: `-1` → 7.32, `32` → 7.20, `16` → 6.18, `8` → 7.83 tok/s. Every
+configuration sits at 6–8 tok/s with a 14–27 s first token. The split is not the
+bottleneck; any HTP participation drags the graph to `ggml-hexagon` speed.
+
+**Verdict: `--compute hybrid` has no use on this machine.** Slower than CPU on
+every model, 30–60x worse TTFT, and the only mode that damages a concurrent NPU
+lane (19.25 → 12.84, shared HTP). Docs, launcher help and AGENTS.md now say so.
+
+Also added: an § At a glance decision table at the top of the page, measured 9B
+CPU figures in the model matrix, and a note that the original short-reply rows
+and the re-measured full-stream rows are two methodologies that must not be
+compared across.
+
 ## 2026-08-31 — Measured: the CPU beats the Hexagon NPU 2x on GGUF
 
 The CPU rows on this page were *estimates scaled from a 27B WSL2 run* (~5 tok/s
