@@ -340,12 +340,15 @@ Requires the nvidia-container-toolkit on any host that wants GPU mode.
 The Kataglyphis coding agents can run **fully on-device on Snapdragon** via
 Qualcomm's GenieX — an OpenAI-compatible server backed by the Adreno GPU or
 Hexagon NPU. **WSL2 has no NPU/GPU passthrough**, so the server runs on the
-Windows host (`geniex serve --compute gpu --host 0.0.0.0:18181`) and WSL2's
-agent reaches it at `127.0.0.1:18181` via mirrored networking. The full flow —
+Windows host (`geniex serve --compute npu --host 0.0.0.0:18181`) and WSL2's
+agent reaches it at `127.0.0.1:18181` via mirrored networking. **The NPU needs
+a recent Qualcomm Hexagon NPU driver** — the llama.cpp Hexagon backend dlsyms
+the `dspqueue_*` API from `libcdsprpc.dll`, which older drivers lack; diagnose
+with `windows/scripts/diagnostics/probe-geniex-npu-driver.ps1`. The full flow —
 install, the non-interactive chipset config, sharing the model cache across
 Windows/WSL2 without re-downloading, the opencode provider block, and the
-measured NPU/GPU/CPU envelope (NPU blocked by a CDSP `dspqueue_create` driver
-mismatch, GPU verified, 27B Q4_0 OOMs → use IQ3_S) — is owned by
+measured NPU/GPU/CPU envelope (NPU 15.2 tok/s on a 4B after the driver update;
+27B exceeds the HTP's ~3 GB vmem) — is owned by
 [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md).
 
 ### Triggering the opt-in CI lanes
