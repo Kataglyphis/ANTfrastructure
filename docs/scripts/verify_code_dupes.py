@@ -239,8 +239,10 @@ def main() -> int:
 
     owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
     texts: dict[tuple[str, int], str] = {}
+    kind_of: dict[str, str] = {}
     for path, kind in files:
         rel = path.relative_to(REPO_ROOT).as_posix()
+        kind_of[rel] = kind
         for line_no, body in UNIT_READERS[kind](path):
             toks = normalise(body)
             if len(toks) < MIN_TOKENS:
@@ -250,11 +252,25 @@ def main() -> int:
                 owners[tuple(toks[j:j + SHINGLE])].add((rel, line_no))
 
     shared: Counter = Counter()
+    suppressed = 0
     for holders in owners.values():
-        if 1 < len(holders) <= MAX_OWNERS:
+        if len(holders) > MAX_OWNERS:
+            # Perverse property, made visible instead of silent: the MORE times a
+            # block was copied, the more it looks like shared vocabulary. Counted
+            # here and surfaced in the summary so the worst case stops hiding.
+            suppressed += 1
+            continue
+        if len(holders) > 1:
+            # Same-FILE pairs are included: two twin helpers in one file were
+            # invisible before (proven with a probe), and that is exactly the
+            # copy-paste a reviewer scrolling one file also misses.
+            # EXCEPT Dockerfiles: they have no include or function mechanism, so
+            # a repeated RUN mount preamble is not extractable and reporting it
+            # is noise the reader can do nothing about.
             for a, b in itertools.combinations(sorted(holders), 2):
-                if a[0] != b[0]:
-                    shared[(a, b)] += 1
+                if a[0] == b[0] and kind_of.get(a[0]) == "docker":
+                    continue
+                shared[(a, b)] += 1
 
     # Collapse unit pairs to FILE pairs: the allowlist and the reader both think
     # in files, and one copied helper usually shows up as several unit pairs.
@@ -262,7 +278,7 @@ def main() -> int:
     for (a, b), n in shared.items():
         if n <= args.threshold:
             continue
-        key = frozenset((a[0], b[0]))
+        key = frozenset((a[0], b[0]))   # 1 element when the twin is same-file
         if key not in per_file or n > per_file[key][0]:
             per_file[key] = (n, a, b)
 
@@ -278,7 +294,10 @@ def main() -> int:
             "",
         ]
         for key, (n, _a, _b) in sorted(per_file.items(), key=lambda kv: -kv[1][0]):
-            fa, fb = sorted(key)
+            names = sorted(key)
+            # A same-file twin collapses to a ONE-element key; write the name
+            # twice so the allow format stays `a | b | budget | reason`.
+            fa, fb = names[0], (names[1] if len(names) > 1 else names[0])
             lines.append(f"{fa} | {fb} | {n} | baseline 2026-08-31, not yet reviewed")
         ALLOW_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"wrote {ALLOW_FILE.name}: {len(per_file)} pair(s) frozen as budgets")
@@ -297,6 +316,31 @@ def main() -> int:
     findings.sort(reverse=True, key=lambda f: f[0])
     allowed.sort(reverse=True, key=lambda f: f[0])
 
+    # Connected components over the reported pairs. A block copied into three
+    # files is ONE finding with three members, not three unrelated pairs -- the
+    # lint-tool bootstrap was a 3-way clone that only ever showed as a 2-way.
+    parent: dict[str, str] = {}
+
+    def _find(x: str) -> str:
+        parent.setdefault(x, x)
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def _union(x: str, y: str) -> None:
+        rx, ry = _find(x), _find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for _n, a, b, _why in list(findings) + list(allowed):
+        if a[0] != b[0]:
+            _union(a[0], b[0])
+    groups: dict[str, set[str]] = defaultdict(set)
+    for f in parent:
+        groups[_find(f)].add(f)
+    clusters = sorted((g for g in groups.values() if len(g) > 2), key=len, reverse=True)
+
     if args.report:
         print(f"scanned {len(texts)} units in {len(files)} files "
               f"(threshold {args.threshold} shared {SHINGLE}-token shingles)\n")
@@ -312,6 +356,10 @@ def main() -> int:
             print(f"  {n} shared shingles{over}", file=sys.stderr)
             print(f"    {a[0]}:{a[1]}  {texts[a][:140]}", file=sys.stderr)
             print(f"    {b[0]}:{b[1]}  {texts[b][:140]}\n", file=sys.stderr)
+        for c in clusters:
+            print(f"  CLONE FAMILY ({len(c)} files): {', '.join(sorted(c))}", file=sys.stderr)
+        if clusters:
+            print("", file=sys.stderr)
         print("Give the block ONE owner (a shared helper in 01-core, or the "
               f"canonical page) and call it from the other. If the twin is "
               f"deliberate, add it to {ALLOW_FILE.name} with a budget and a reason.",
@@ -326,9 +374,12 @@ def main() -> int:
                   f"{ALLOW_FILE.name}", file=sys.stderr)
         return 1
 
+    for c in clusters:
+        print(f"  note: clone family ({len(c)} files): {', '.join(sorted(c))}")
     print(f"code duplication gate OK: {len(texts)} units in {len(files)} files, "
           f"no block over {args.threshold} shared {SHINGLE}-token shingles "
-          f"({len(allow)} allowlisted pair(s)).")
+          f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "
+          f"as idiom at >{MAX_OWNERS} owners).")
     return 0
 
 
