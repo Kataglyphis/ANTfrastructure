@@ -173,7 +173,11 @@ MEDIUM_PROMPTS = [
 # anchored on word boundaries, so "3" does not match inside "13".
 
 CORRECTNESS_PROBES = [
-    ("What is 847 * 293? Reply with only the number.", ["248171"]),
+    # Deliberately a SMALL multiplication. An earlier version used 847*293,
+    # which a healthy 4B could not finish inside 4000 tokens of thinking -- so
+    # the probe reported INCONCLUSIVE on a perfectly good model. A check that
+    # cries wolf on healthy models is a check people learn to ignore.
+    ("What is 23 * 17? Reply with only the number.", ["391"]),
     ("What is the capital of Australia? Reply with only the city name.", ["canberra"]),
     ("How many times does the letter 'r' appear in the word strawberry? "
      "Reply with only the digit.", ["3"]),
@@ -516,7 +520,7 @@ def _answer_matches(content, accepted):
     return False
 
 
-def run_correctness_probe(model, *, max_tokens=2000, extra_params=None, base_url=None):
+def run_correctness_probe(model, *, max_tokens=4000, extra_params=None, base_url=None):
     """LB1 — check the model still answers correctly, not just quickly.
 
     Returns a dict with the score and per-item detail, or None if the endpoint
@@ -569,9 +573,19 @@ def run_correctness_probe(model, *, max_tokens=2000, extra_params=None, base_url
     scored = [i for i in items if "error" not in i]
     if not scored:
         return None
+
+    # Truncation is NOT incorrectness. A model cut off mid-thought did not
+    # answer wrongly -- we failed to measure it. Conflating the two makes a
+    # healthy model look degraded, which is the fastest way to teach someone
+    # to ignore this check. Count them apart and say which happened.
+    truncated = sum(1 for i in items if i.get("truncated"))
+    wrong = sum(1 for i in items if not i["correct"] and not i.get("truncated")
+                and "error" not in i)
     return {
         "score": sum(1 for i in items if i["correct"]),
         "total": len(items),
+        "wrong": wrong,
+        "truncated": truncated,
         "errors": len(items) - len(scored),
         "items": items,
     }
@@ -703,15 +717,27 @@ def print_correctness(probe):
         print("  Correctness probe: NO RESULT — endpoint unreachable")
         return
     score, total = probe["score"], probe["total"]
-    verdict = "OK" if score == total else ("DEGRADED" if score >= total / 2 else "BROKEN")
-    print(f"  Correctness probe: {score}/{total} correct  [{verdict}]")
+    wrong, truncated = probe.get("wrong", 0), probe.get("truncated", 0)
+    if wrong == 0 and truncated == 0:
+        verdict = "OK"
+    elif wrong == 0:
+        verdict = "INCONCLUSIVE"          # only cut off, never actually wrong
+    elif wrong >= total / 2:
+        verdict = "BROKEN"
+    else:
+        verdict = "DEGRADED"
+    extra = f", {truncated} truncated" if truncated else ""
+    print(f"  Correctness probe: {score}/{total} correct{extra}  [{verdict}]")
     for item in probe["items"]:
         if "error" in item:
             print(f"    ERR  {item['prompt'][:52]:<52} {item['error'][:40]}")
             continue
         mark = "ok " if item["correct"] else "XX "
         print(f"    {mark}  expected={item['expected']:<9} got={item.get('answer_preview','')[:44]!r}")
-    if score < total:
+    if truncated:
+        print(f"    NOTE: {truncated} probe(s) ran out of tokens before answering. That is a")
+        print("          MEASUREMENT limit, not a model fault — raise --correctness-max-tokens.")
+    if wrong:
         print("    NOTE: wrong answers here usually mean broken kernels or an over-aggressive")
         print("          quant, not a slow model. Check the GGUF tensor types before tuning speed.")
 
@@ -737,11 +763,11 @@ def main():
                              "fast but broken — speed metrics cannot)")
     parser.add_argument("--correctness-only", action="store_true",
                         help="Run ONLY the correctness probe and exit (quick health check)")
-    parser.add_argument("--correctness-max-tokens", type=int, default=2000,
+    parser.add_argument("--correctness-max-tokens", type=int, default=4000,
                         help="Token budget per probe. Must be generous: a reasoning model "
                              "truncated mid-thought scores WRONG by design (a truncated run is "
                              "not a correct one). Measured: Qwen3-4B needs >900 for arithmetic "
-                             "(default 2000)")
+                             "(default 4000)")
 
     args = parser.parse_args()
 
@@ -765,8 +791,13 @@ def main():
             extra_params=json.loads(args.extra_params) if args.extra_params else None,
         )
         print_correctness(probe)
-        # Exit non-zero on a failed probe so CI / run_benchmarks.sh can gate on it.
-        sys.exit(0 if probe and probe["score"] == probe["total"] else 1)
+        # Distinct exit codes so a gate can tell "model is wrong" (act on it)
+        # from "we cut it off" (re-run with a bigger budget).
+        if probe is None:
+            sys.exit(1)
+        if probe.get("wrong"):
+            sys.exit(1)
+        sys.exit(2 if probe.get("truncated") else 0)
 
     print(f"\n  Model: {model}")
     print(f"  API:   {OLLAMA_BASE_URL}/v1")

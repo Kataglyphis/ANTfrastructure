@@ -130,6 +130,27 @@ numbers stay next to the code that produced them.
   after the `/proc` reads, plus an explicit `incomplete` list so a gap is
   visible instead of silent.
 
+**Viewer + test debt closed 2026-08-31 (second pass).** The first pass wired
+the new metrics into the result JSON but not into the React viewer, although
+LB2/LB3 explicitly said "and the viewer" — the data flowed in and surfaced
+nowhere. Now: a correctness banner above every speed number, time-to-answer as
+the leading column, TTFT/decode/prefill/thinking-share in the comparison and
+drill-down tables, the busiest process per request, and legacy runs degrading
+to `-` (charts drop them rather than drawing a `0` that would claim an instant
+first token). `bench_lanes.py` and `inspect_gguf.py` gained 15 unit tests
+(synthetic GGUFs, an in-process SSE server), taking the suite to 30 unit tests
+that need no running stack. A server-side smoke render (`npm run smoke`)
+renders every component against the real manifest, because `vite build` only
+proves the JSX compiles — it caught a silently-failed edit that made the
+comparison table render empty cells.
+
+**Probe calibration fix:** truncation is now reported apart from wrongness
+(exit 2 = INCONCLUSIVE, exit 1 = genuinely wrong). A model cut off mid-thought
+was not wrong, it was unmeasured, and scoring it as a failure made a healthy
+model look degraded. The arithmetic probe also moved 847*293 -> 23*17: a
+healthy 4B could not finish the former inside 4000 thinking tokens, so the
+check cried wolf on good models.
+
 **Two pre-existing bugs found while doing this**, both fixed:
 - the SSE parser matched `"data: "` **with** the space (optional per spec).
   GenieX omits it → nothing parsed, 0 tok/s reported, no TTFT possible. The

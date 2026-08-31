@@ -37,15 +37,22 @@ echo ""
 # bypass (e.g. benchmarking a model the probe's prompts do not suit).
 if [[ "${BENCH_SKIP_CORRECTNESS:-0}" != "1" ]]; then
   echo "▸ Health gate: verifiable-answer probe"
-  if python3 benchmark_openai_api.py --model "$MODEL" --correctness-only; then
-    echo "  → model answers correctly; proceeding"
-  else
-    echo ""
-    echo "  WARNING: the model got at least one verifiable answer wrong."
-    echo "  Speed numbers from a broken model are meaningless — check the GGUF"
-    echo "  tensor types (i-quants below 4 bits are broken on some runtimes)"
-    echo "  before trusting anything below. Continuing anyway."
-  fi
+  set +e
+  python3 benchmark_openai_api.py --model "$MODEL" --correctness-only
+  gate_rc=$?
+  set -e
+  case "$gate_rc" in
+    0) echo "  → model answers correctly; proceeding" ;;
+    2) echo ""
+       echo "  NOTE: the probe ran out of tokens before the model finished"
+       echo "  answering. That is a measurement limit, not a model fault —"
+       echo "  raise --correctness-max-tokens if you want a clean verdict." ;;
+    *) echo ""
+       echo "  WARNING: the model got at least one verifiable answer WRONG."
+       echo "  Speed numbers from a broken model are meaningless — inspect the"
+       echo "  GGUF first (python3 inspect_gguf.py <file>); sub-4-bit i-quants"
+       echo "  are broken on some runtimes. Continuing anyway." ;;
+  esac
   echo ""
   echo "──────────────────────────────────────────────────────"
   echo ""

@@ -166,14 +166,29 @@ capital city, letter counting, a one-step logic puzzle). The `<think>` block is
 stripped before matching and matches are anchored on word boundaries, so a
 discarded intermediate value cannot score a false positive.
 
+**Truncation is reported apart from wrongness.** A reasoning model cut off
+before it answers was not *wrong* — it was not *measured*. Conflating the two
+makes a healthy model look degraded, and a check that cries wolf is a check
+people stop reading. Exit codes reflect that:
+
+| Exit | Verdict | Meaning |
+|---|---|---|
+| `0` | `OK` | every answer correct |
+| `1` | `DEGRADED` / `BROKEN` | genuinely wrong answers — act on it |
+| `2` | `INCONCLUSIVE` | only ran out of tokens — raise `--correctness-max-tokens` |
+
 It is a smoke test, not a capability benchmark — but it is sharply
 discriminating in practice. Measured on Qwen3-4B at `temperature=0`:
 
 | Build | Score |
 |---|---|
-| `Q4_0` | 6/6 |
+| `Q4_0` | 6/6 `OK` |
 | `Q2_K` (2-bit) | 4/6 — both losses were reasoning items |
-| `IQ3_XXS` (broken i-quant kernels) | 0/6 |
+| `IQ3_XXS` (broken i-quant kernels) | 0/6 `BROKEN` |
+
+The probes are deliberately cheap. An earlier version asked for `847 * 293`,
+which a healthy 4B could not finish within 4000 thinking tokens — so it
+reported `INCONCLUSIVE` on a perfectly good model.
 
 ### Reading the numbers: TTFT and time-to-answer
 
@@ -254,6 +269,30 @@ bash build-viewer.sh
 ```
 
 Builds the React + Recharts app using a Node 20 container (no host Node needed).
+
+**What the viewer shows.** A **correctness banner** sits above every speed
+number — a broken model is fast, so "is it working?" has to outrank "how
+quickly?". Below it the comparison table leads with **time to a finished
+answer** (the metric to rank by), then TTFT, decode rate, overall tok/s and the
+share of output spent thinking. Drilling into a run adds per-prompt prefill
+speed and the process that actually burned CPU.
+
+Older result files predate these metrics. They render `-` and are dropped from
+the charts rather than being drawn as `0`, which would claim an instant first
+token.
+
+**Smoke-render check** (needs `npm install` in `benchmark-viewer` once):
+
+```bash
+cd linux/llm-stack/benchmark-viewer && npm run smoke
+```
+
+`vite build` only proves the JSX compiles. This renders every component
+server-side against the real manifest — including legacy runs — and asserts the
+new numbers reach the DOM. It exists because both failure modes it checks for
+actually happened while these metrics were added: a component that throws only
+at render time, and an edit that silently failed to apply so the table rendered
+empty cells.
 
 ### 3. View results
 
