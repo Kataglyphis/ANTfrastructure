@@ -278,6 +278,31 @@ as a failure once scored a perfectly usable model 0/3.
 > **This executes model-generated code.** Each candidate runs in a temp dir as
 > a subprocess with a timeout. Do not point it at an untrusted endpoint.
 
+### Can it call tools at all? (`bench_tools.py`)
+
+An agent lives on tool calls. A model that writes flawless code but cannot emit
+a valid one never gets to read a file, run a test or apply a patch — so this is
+worth checking *before* ranking anyone on code quality.
+
+```bash
+python3 bench_tools.py --backend geniex-npu
+python3 bench_tools.py --compare candidates.json --repeats 2
+```
+
+Four tools are advertised (`read_file`, `list_files`, `search_code`,
+`run_tests`) and six cases graded: does it call at all rather than describing
+the call in prose, does it pick the right tool from several plausible ones, are
+the arguments valid JSON, do required values match, and is an optional boolean
+set when asked.
+
+The sixth case expects **no** tool call. Over-eager tool use is a real failure
+mode — a model that reaches for a tool every turn burns a round trip and can
+spin an agent loop — and without a negative case it goes unmeasured.
+
+Grading is strict on tool names and required values, lenient on formatting the
+model cannot be blamed for (a `./` prefix, a trailing slash), and it accepts
+arguments as either a JSON string or a dict, since servers differ.
+
 ### Is this GGUF even sane? (`inspect_gguf.py`)
 
 ```bash
