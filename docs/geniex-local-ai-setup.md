@@ -123,6 +123,25 @@ Verify with `geniex list` on the Windows side.
 - `--compute npu` → Hexagon NPU. **Works after updating the Qualcomm Hexagon NPU
   driver** (see below). With the old Nov-2024/Feb-2025 driver both NPU backends
   failed.
+- `--compute hybrid` → **per-tensor NPU scheduler** (device resolves to
+  `DeviceID:""` + `ngl != 0`, classified as NPU in the plugin). The HTP runs
+  the layers that fit and CPU picks up the rest. It is **not** "GPU+NPU at
+  once" — a single model runs on either HTP(+CPU fallback) or GPU, never both
+  simultaneously. Measured: 14.1 tok/s on the 4B (pure NPU: 15.2 tok/s).
+- `--compute HTP0,HTP1,...` (with `GGML_HEXAGON_NDEV`) spreads one model across
+  **multiple HTP cores**. Only relevant on chipsets with more than one HTP
+  (e.g. some QCS platforms); this Snapdragon X (X126100) has a **single** HTP
+  (hwinfo: `threads 4, hvx 4, hmx 1, vtcm 8 MB`), so the list degenerates to
+  one device here.
+- **QAIRT bundles (`ai-hub-models/*`) are NPU-only** — `--compute cpu/gpu`
+  on one is coerced back to NPU with a warning.
+
+**Serving multiple accelerators at once:** one `geniex serve` binds one default
+`--compute`. To have both an NPU model and a GPU model available to the agent
+simultaneously, run two servers on different ports (`--host 0.0.0.0:18181` for
+NPU, `0.0.0.0:18182` for GPU) and point the opencode provider's models at the
+right base URL per model.
+
 - `--host 0.0.0.0:18181` so WSL2 can reach it. The default binds loopback only.
 
 Keep it running in a hidden window. With mirrored networking, WSL2 reaches it
@@ -165,8 +184,12 @@ Add a provider to `~/.config/opencode/opencode.jsonc`:
         "apiKey": "geniex"
       },
       "models": {
-        "unsloth/Qwen3.8-27B-GGUF:Q4_0": {
-          "name": "Qwen3.8 27B (Snapdragon)",
+        "empero-ai/Qwen3.8-2B-Distill-GGUF:Q4_K_M": {
+          "name": "Qwen3.8 2B (NPU)",
+          "limit": { "context": 8192, "output": 4096 }
+        },
+        "unsloth/Qwen3-4B-GGUF:Q4_0": {
+          "name": "Qwen3 4B (NPU)",
           "limit": { "context": 8192, "output": 4096 }
         }
       }
@@ -181,6 +204,21 @@ Verify the endpoint before blaming the agent:
 ```bash
 curl -s http://127.0.0.1:18181/v1/models
 ```
+
+### Which Qwen3.8-class models fit this machine
+
+| Model | Size (Q4/Q4_K_M) | NPU (~3 GB) | GPU (≤13 GB) | CPU | Notes |
+|---|---|---|---|---|---|
+| **Qwen3.8-2B-Distill** (`empero-ai`, Q4_K_M) | 1.31 GB | ✅ **16.9 tok/s** (verified) | ✅ | ✅ | Smallest Qwen3.8; fits the HTP comfortably |
+| **Qwen3-4B** (`unsloth`, Q4_0) | 2.2 GB | ✅ **15.2 tok/s** (verified) | ✅ 13.2 tok/s | ✅ | Best verified balance on this box |
+| **Qwen3.8-9B-Distill** (`empero-ai`, Q4_K_M) | 5.78 GB | ❌ over HTP budget | ✅ | ✅ | Fits the GPU's unified memory; NPU can't hold it |
+| **Qwen3.8-27B** (`unsloth`, Q4_0) | 16.1 GB | ❌ | ❌ OOM (Q4_0) | ✅ slow | Q3_K_XL 13.1 GB borderline on GPU, quality degrades |
+| **Qwen3.8-Flash-Next** (`Qwen`) | >100 GB | ❌ | ❌ | ❌ | Far too large for this class of machine |
+
+The pragmatic on-device picks for a coding agent: **Qwen3.8-2B-Distill** (NPU,
+fastest) when the task is light, **Qwen3-4B** (NPU) for the best quality that
+still fits the accelerator. The 27B is CPU-only territory here — see the quant
+ladder below.
 
 ## Measured compute envelope (Lenovo Snapdragon X, 2026-08-31, AFTER NPU driver update)
 

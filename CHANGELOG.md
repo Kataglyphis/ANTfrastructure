@@ -5,6 +5,31 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — hybrid compute truth + Qwen3.8 model matrix
+
+Clarified what GenieX v0.5.0 can and cannot do with all three accelerators, and
+which Qwen3.8-class models fit this Snapdragon X — all verified live:
+
+- **`--compute hybrid` is the per-tensor NPU scheduler, NOT "GPU+NPU at once".**
+  The device alias resolves to `DeviceID:""` + `ngl != 0`, which the llama_cpp
+  plugin classifies as NPU; the HTP runs the layers that fit and CPU takes the
+  rest. Measured 14.1 tok/s on the 4B (pure NPU: 15.2). A single model runs on
+  HTP(+CPU fallback) or GPU, never both simultaneously.
+- **Multi-HTP device lists** (`--compute HTP0,HTP1,...` + `GGML_HEXAGON_NDEV`)
+  spread a model across several HTP cores — but this X126100 has a single HTP
+  (hwinfo `threads 4, hvx 4, hmx 1`), so the list degenerates to one device.
+- **QAIRT bundles are NPU-only** — `--compute cpu/gpu` on one is coerced back
+  to NPU with a warning.
+- **Run both accelerators at once**: one `geniex serve` binds one default
+  compute; run a second server on another port (`--host 0.0.0.0:18182`) and
+  point the agent at the right base URL per model.
+- **Qwen3.8 model matrix** (verified): `Qwen3.8-2B-Distill` Q4_K_M 1.31 GB →
+  NPU 16.9 tok/s (fits ~3 GB HTP); `Qwen3-4B` Q4_0 → NPU 15.2 / GPU 13.2;
+  `Qwen3.8-9B-Distill` Q4_K_M 5.78 GB → GPU only (over HTP budget);
+  `Qwen3.8-27B` → CPU territory (see quant ladder); `Qwen3.8-Flash-Next` too
+  large for this class of machine. Docs updated with the matrix and an
+  NPU-first opencode provider example.
+
 ## 2026-08-31 — GenieX NPU FIXED by a Qualcomm Hexagon NPU driver update + NPU probe
 
 **The NPU now works.** Updating the Qualcomm Hexagon NPU driver
