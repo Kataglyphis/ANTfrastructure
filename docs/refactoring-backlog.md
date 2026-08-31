@@ -224,6 +224,78 @@ arch's media stage.
   all on; the two that are off are off on purpose (`ORT_ENABLE_LTO` costs build
   time for no feature, `FFMPEG_ENABLE_TF` was removed deliberately, −500 MB).
 
+## F. Code cleanliness — the refactor queue (measured 2026-08-31)
+
+Numbers, not opinions: function lengths from an AST-free line count, duplication
+from `docs/scripts/verify_code_dupes.py`. Nothing here breaks a build; this is
+the "I want clean code" queue. Ordered by value, not size.
+
+### F1. Functions that outgrew a screen [M each]
+
+    356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
+    196  smoke_genai_py()              06-packaging/smoke-common.sh      <- MINE, 2026-08-31
+    168  _cross_stage_build_impl()     01-core/cross-stage-build.sh
+    147  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
+    136  append_tvm_cmake_args()       05-frameworks/tvm-config.sh       <- MINE, 2026-08-31
+    127  uv_sync_project()             01-core/python_uv.sh
+    127  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh
+    115  cmake_build_parse_args()      lib/cmake-build.sh
+
+Two of the top five were written or grown by me on 2026-08-31 and should be
+first in the queue, not last: `smoke_genai_py` is a 196-line embedded Python
+program inside a heredoc (its four tiers are separable), and
+`append_tvm_cmake_args` GREW from 136 lines while being refactored away from 15
+positional parameters — the keyword parsing is worth it, but the emit blocks
+below it now want splitting out.
+
+`_cross_stage_build_impl` is deliberately one implementation behind two thin
+wrappers (closed 2026-08-30) — decompose it internally if at all, do NOT split
+it back into two.
+
+### F2. Files over ~800 lines [L each, low priority]
+
+    1371  05-frameworks/torch/build-app-wheelhouse.sh   (already decomposed internally)
+    1013  06-packaging/smoke-runtime-image.sh
+     957  03-media/build/litert/build-litert.sh
+     935  03-media/build/opencv/build-opencv.sh
+     874  lib/agentic-loop.sh
+     853  02-toolchain/build-gcc.sh
+
+Length alone is weak evidence — build-app-wheelhouse.sh is long BECAUSE it was
+decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
+"look here for F1 candidates", not as a work order.
+
+### F3. Clone families worth one owner [S-M each]
+
+- **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
+  (56 shingles) — the single largest copied block in the tree. It is
+  `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
+  bootstrap paradox before touching it: the block exists precisely for the case
+  where nothing has been sourced yet, so extracting it into a file you must
+  source defeats its purpose. A shared file plus a 2-line guard may still beat
+  14 lines × 9.
+- **`lint-{shell,workflows,dockerfiles}.sh` pinned-tool bootstrap** (3 copies) —
+  reviewed and KEPT on 2026-08-31 because hadolint fetches a raw binary while
+  the others untar/unzip, so a shared helper needs a strategy argument. Revisit
+  if a FOURTH tool appears; three is the threshold where the parameter earns
+  itself.
+- **`lib/{app-runner,cmake-build,ctest-run}.sh`** and
+  **`lib/{code-quality,coverage,docs-build}.sh`** — two 3-file families in the
+  same directory, so no cross-flow coupling risk. The most tractable ones.
+- **`install-deps.sh` family (6 files)** — cross-apt, gstreamer, litert, opencv,
+  pre-setup, assemble-torch-app. Shares the target-package install shape.
+- **Dockerfile RUN mount preambles (4-9 files)** — NOT actionable: Dockerfiles
+  have no include or function mechanism. Recorded so nobody re-opens it.
+
+### F4. The duplication gate's own defects [S each]
+
+- **Clone-family clustering degenerates.** Union-find over shared files
+  transitively collapses most of the tree into one meaningless "88 files"
+  family. Cluster on the shared BLOCK, not on file adjacency.
+- **`smoke_genai_py` is 196 lines of Python inside a bash heredoc** — neither
+  ruff nor shellcheck can see it. If it stays that size it wants to be a real
+  `.py` file that the smoke pipes in.
+
 ## E. Waiting on a TRIGGER (not on work)
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
