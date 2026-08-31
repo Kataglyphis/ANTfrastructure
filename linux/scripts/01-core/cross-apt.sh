@@ -364,7 +364,7 @@ install_target_packages() {
       echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
       return 0
     fi
-    echo "install_target_packages: FAILED — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
+    echo "install_target_packages: FAILED (caller decides if fatal) — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
     return 1
   fi
 

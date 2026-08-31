@@ -36,7 +36,7 @@ fi
 # dies on those. Force UTF-8 mode (no-op on Linux).
 export PYTHONUTF8=1
 
-KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity artifact-parity \
+KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity code-dupes artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
              doc-links doc-dupes sbom)

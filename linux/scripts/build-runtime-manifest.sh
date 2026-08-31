@@ -106,6 +106,29 @@ _manifest_wrapper_gate() {
   return 1
 }
 
+# Refuse to SHRINK an already-published index. The coherence gate above asks
+# whether the arches agree on a generation; it cannot ask whether they are ALL
+# there. A single-arch run therefore assembles a single-arch index that is
+# internally coherent, and the push replaces a 3-arch :latest-cross with a
+# 1-arch one. Observed live 2026-08-31: the published index had shrunk to
+# riscv64 alone. docs/refactoring-backlog.md
+_manifest_completeness_gate() {
+  local published published_n want_n
+  published="$("${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" 2>/dev/null)" || return 0
+  published_n="$(printf '%s\n' "${published}" | grep -c '"architecture"' || true)"
+  want_n="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"
+  [ "${published_n:-0}" -le "${want_n:-0}" ] && return 0
+
+  warn "[manifest] ${IMAGE_NAME} is PUBLISHED with ${published_n} arch(es) but this run would write ${want_n} (${TARGET_ARCHES})."
+  warn "[manifest] pushing it would DROP the missing arch(es) from the published index."
+  if [ "${FORCE_MANIFEST}" -eq 1 ]; then
+    warn "[manifest] --force set: shrinking ${IMAGE_NAME} anyway."
+    return 0
+  fi
+  warn "[manifest] refusing. Re-run the runtime lane for every arch, or pass --force (RUNTIME_MANIFEST_COMPLETENESS=0 disables)."
+  return 1
+}
+
 create_manifest() {
   local refs=()
   local arch
@@ -122,6 +145,9 @@ create_manifest() {
   # Refuse a mixed/stale-generation index unless --force.
   if [ "${RUNTIME_MANIFEST_COHERENCE:-1}" = "1" ]; then
     _manifest_wrapper_gate || err "manifest coherence gate refused ${IMAGE_NAME} (see above; --force overrides, RUNTIME_MANIFEST_COHERENCE=0 disables)"
+  fi
+  if [ "${RUNTIME_MANIFEST_COMPLETENESS:-1}" = "1" ]; then
+    _manifest_completeness_gate || err "manifest completeness gate refused ${IMAGE_NAME} (see above)"
   fi
 
   if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
