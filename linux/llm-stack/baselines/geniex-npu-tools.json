@@ -1,0 +1,269 @@
+{
+  "benchmark": "bench_tools",
+  "provenance": {
+    "schema_version": 1,
+    "timestamp_utc": "2026-08-31T18:37:07.034414+00:00",
+    "monotonic_ns": 61804921533276,
+    "host": "summy-server",
+    "os": "Linux 6.18.33.2-microsoft-standard-WSL2",
+    "architecture": "aarch64",
+    "python": "3.14.4",
+    "git_sha": "2514156c721626f082c4e229727f7b6d0c02444f",
+    "git_branch": "main",
+    "git_dirty": true,
+    "base_url": "http://127.0.0.1:18181",
+    "server_models": [
+      "empero-ai/Qwen3.8-2B-Distill-GGUF:Q4_K_M",
+      "empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M",
+      "qualcomm/Qwen3-1.7B:W4A16",
+      "qualcomm/Qwen3-4B-Instruct-2507:W4A16",
+      "unsloth/Qwen3-4B-GGUF:IQ3_XXS",
+      "unsloth/Qwen3-4B-GGUF:Q2_K",
+      "unsloth/Qwen3-4B-GGUF:Q3_K_M",
+      "unsloth/Qwen3-4B-GGUF:Q4_0",
+      "unsloth/Qwen3.8-27B-GGUF:IQ3_S",
+      "unsloth/Qwen3.8-27B-GGUF:Q3_K_XL",
+      "unsloth/Qwen3.8-27B-GGUF:Q4_0",
+      "unsloth/Qwen3.8-27B-GGUF:Q4_K_M"
+    ],
+    "tool_sha256": "3d65bf81d6aab3db",
+    "incomplete": []
+  },
+  "config": {
+    "repeats": 1,
+    "warmup": true,
+    "system_prompt": "prompts/tool-disambiguation.md"
+  },
+  "reports": [
+    {
+      "label": "qualcomm/Qwen3-4B-Instruct-2507:W4A16",
+      "model": "qualcomm/Qwen3-4B-Instruct-2507:W4A16",
+      "passed": 25,
+      "total": 27,
+      "deterministic": false,
+      "effective_n": 27,
+      "total_wall_s": 79.79,
+      "avg_wall_s": 2.96,
+      "median_wall_s": 3.09,
+      "stdev_wall_s": 0.9,
+      "results": [
+        {
+          "case": "simple_read",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.52,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "list_a_directory",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.23,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "nested_path",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.35,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "run_the_tests",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.67,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "run_one_test_file",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.09,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "contents_not_names",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.99,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "names_not_contents",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.28,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "overwrite_not_patch",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.48,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "patch_not_overwrite",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.66,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "which_files_changed",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.43,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "what_changed_in_them",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 2.21,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "diff_one_path",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.14,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "extract_query",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.46,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "extract_query_with_spaces",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.44,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "extract_query_with_symbols",
+          "attempt": 0,
+          "passed": false,
+          "detail": "query='___init__.py', expected '__init__.py'",
+          "wall_s": 3.48,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "optional_boolean_true",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.09,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "optional_boolean_false",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.36,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "path_not_query",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correct tool and arguments",
+          "wall_s": 3.23,
+          "finish_reason": "tool_calls"
+        },
+        {
+          "case": "no_tool_arithmetic",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correctly answered without a tool",
+          "wall_s": 1.09,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "no_tool_definition",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correctly answered without a tool",
+          "wall_s": 1.68,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "no_tool_greeting",
+          "attempt": 0,
+          "passed": true,
+          "detail": "correctly answered without a tool",
+          "wall_s": 1.68,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "use_file_contents",
+          "attempt": 0,
+          "passed": true,
+          "detail": "used the tool result",
+          "wall_s": 2.39,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "use_search_hit",
+          "attempt": 0,
+          "passed": true,
+          "detail": "used the tool result",
+          "wall_s": 2.64,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "use_test_result",
+          "attempt": 0,
+          "passed": true,
+          "detail": "used the tool result",
+          "wall_s": 3.16,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "use_listing",
+          "attempt": 0,
+          "passed": false,
+          "detail": "answer does not mention 'setup.py': \"i see you're asking about files in the project root. i already confirm\"",
+          "wall_s": 5.93,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "recover_missing_file",
+          "attempt": 0,
+          "passed": true,
+          "detail": "reported the failure",
+          "wall_s": 4.0,
+          "finish_reason": "stop"
+        },
+        {
+          "case": "recover_permission_denied",
+          "attempt": 0,
+          "passed": true,
+          "detail": "reported the failure",
+          "wall_s": 3.11,
+          "finish_reason": "stop"
+        }
+      ]
+    }
+  ]
+}

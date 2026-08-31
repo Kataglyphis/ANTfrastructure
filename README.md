@@ -200,6 +200,23 @@ An Ollama + Open WebUI serving stack lives in
 opt-in GPU override for NVIDIA machines, and a VRAM/context sizing table so a
 256K-listed model is only configured at a context the GPUs can actually hold.
 
+It also carries the **measurement tooling** for any OpenAI-compatible server,
+not just its own. Endpoints are named in `backends.json` (`ollama` is the
+default; the Snapdragon GenieX lanes are listed too), so a sweep can be pointed
+at another backend without editing anything:
+
+| Tool | Answers |
+|---|---|
+| [`benchmark_openai_api.py`](linux/llm-stack/benchmark_openai_api.py) | How fast — and, with `--correctness`, **whether the model is working at all** |
+| [`bench_lanes.py`](linux/llm-stack/bench_lanes.py) | Does one server batch concurrent requests? Do several servers add up, or fight? |
+| [`inspect_gguf.py`](linux/llm-stack/inspect_gguf.py) | Is this GGUF sane? (tensor-type histogram, header-only read) |
+
+The correctness probe exists because **a broken model is fast**: sub-4-bit
+i-quant kernels on one runtime produced fluent nonsense that every throughput
+metric rated as an excellent run. Speed alone cannot tell a working model from
+a broken one, so `run_benchmarks.sh` gates its sweep on a verifiable-answer
+check before spending hours measuring.
+
 ## CI
 
 | Workflow | Purpose |

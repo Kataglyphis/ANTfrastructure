@@ -17,12 +17,29 @@ import sys
 import time
 from datetime import datetime, timezone
 
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+# LB7 — this harness is not Ollama-specific any more: it benchmarks any
+# OpenAI-compatible server (Ollama, GenieX, llama.cpp, vLLM). LLM_BASE_URL is
+# the name to use; OLLAMA_BASE_URL still works so existing scripts do not break.
+LLM_BASE_URL = (
+    os.environ.get("LLM_BASE_URL")
+    or os.environ.get("OLLAMA_BASE_URL")
+    or "http://localhost:11434"
+)
+OLLAMA_BASE_URL = LLM_BASE_URL  # backwards-compatible alias
 GLANCES_URL = os.environ.get("GLANCES_URL", "http://localhost:61208")
 
 
 def collect_hardware_info():
-    """Collect system hardware info for reproducibility."""
+    """Collect system hardware info for reproducibility.
+
+    LB9 — every block below used to be a bare `except: pass` over a /proc read,
+    so on a non-Linux host the whole section silently produced nothing and the
+    result file lost exactly the metadata that makes cross-host comparison
+    meaningful. The GenieX lane runs on a WINDOWS host, so that was not
+    hypothetical. Now: /proc first (richest), psutil/platform as a portable
+    fallback, and an explicit `incomplete` list naming whatever is still
+    missing, so a gap is visible instead of silent.
+    """
     info = {}
     info["timestamp"] = datetime.now(timezone.utc).isoformat()
 
@@ -87,6 +104,36 @@ def collect_hardware_info():
     # OLLAMA_HOST env
     info["ollama_host"] = os.environ.get("OLLAMA_HOST", "default")
 
+    # ── Portable fallback (LB9) ───────────────────────────────────────────
+    # Fills whatever /proc could not provide -- on Windows and macOS that is
+    # everything.
+    try:
+        import platform as _pf
+        info.setdefault("os", _pf.system())
+        info.setdefault("os_release", _pf.release())
+        info.setdefault("architecture", _pf.machine())
+        if not info.get("processor"):
+            info["processor"] = _pf.processor() or None
+    except Exception:
+        pass
+    try:
+        import psutil as _ps
+        if not info.get("cpu_physical_cores"):
+            info["cpu_physical_cores"] = _ps.cpu_count(logical=False)
+        if not info.get("cpu_total_threads"):
+            info["cpu_total_threads"] = _ps.cpu_count(logical=True)
+        if not info.get("ram_total_gb"):
+            info["ram_total_gb"] = round(_ps.virtual_memory().total / (1024 ** 3), 1)
+    except Exception:
+        pass
+
+    # Name the gaps rather than hiding them: a benchmark whose host is unknown
+    # cannot be compared against another host later.
+    expected = ("os", "architecture", "cpu_total_threads", "ram_total_gb")
+    missing = [k for k in expected if not info.get(k)]
+    if missing:
+        info["incomplete"] = missing
+
     return info
 
 
@@ -105,6 +152,122 @@ MEDIUM_PROMPTS = [
     "Explain the difference between REST and GraphQL APIs. When would you choose one over the other? Provide concrete examples.",
     "Write a bash script that monitors CPU and memory usage of a specific process every 5 seconds and logs the results to a CSV file.",
 ]
+
+# ── Named backends ────────────────────────────────────────────────────────────
+#
+# Any OpenAI-compatible server can be benchmarked here, but the two that matter
+# in this repo -- the Ollama service this stack brings up, and the Snapdragon
+# GenieX lanes -- deserve names rather than URLs typed from memory. backends.json
+# maps a name to a base_url and an optional default model.
+#
+# Resolution order, most specific first:
+#   1. --base-url on the command line
+#   2. LLM_BASE_URL / OLLAMA_BASE_URL in the environment
+#   3. --backend <name> from backends.json
+#   4. the entry backends.json marks as default (ollama)
+# Env beats --backend on purpose: a wrapper script that exports the variable
+# should not be silently overridden by a stale default in a config file.
+
+BACKENDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "backends.json")
+
+
+def load_backends(path=None):
+    """Read backends.json. Missing or malformed -> empty registry, never raises:
+    a broken config must not stop someone benchmarking an explicit URL."""
+    path = path or BACKENDS_FILE
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        return data.get("backends", {}), data.get("default")
+    except FileNotFoundError:
+        return {}, None
+    except Exception as e:  # noqa: BLE001
+        print(f"  WARNING: could not read {path} ({e}); named backends unavailable",
+              file=sys.stderr)
+        return {}, None
+
+
+def resolve_backend(name=None, base_url=None, path=None):
+    """Return (base_url, default_model, source) following the order above."""
+    backends, default_name = load_backends(path)
+
+    if base_url:
+        return base_url.rstrip("/"), None, "--base-url"
+
+    env = os.environ.get("LLM_BASE_URL") or os.environ.get("OLLAMA_BASE_URL")
+    if env:
+        # A named backend still supplies its default model, if it matches.
+        entry = backends.get(name) if name else None
+        return env.rstrip("/"), (entry or {}).get("model"), "environment"
+
+    if name:
+        if name not in backends:
+            known = ", ".join(sorted(backends)) or "(none configured)"
+            raise SystemExit(f"unknown backend {name!r}. Known: {known}")
+        entry = backends[name]
+        return entry["base_url"].rstrip("/"), entry.get("model"), f"backend {name!r}"
+
+    if default_name and default_name in backends:
+        entry = backends[default_name]
+        return (entry["base_url"].rstrip("/"), entry.get("model"),
+                f"default backend {default_name!r}")
+
+    return "http://localhost:11434", None, "built-in default"
+
+
+def print_backends(path=None):
+    backends, default_name = load_backends(path)
+    if not backends:
+        print("  No backends configured (backends.json missing or empty).")
+        return
+    print("\n  Configured backends:")
+    for name in sorted(backends):
+        entry = backends[name]
+        mark = " (default)" if name == default_name else ""
+        print(f"    {name}{mark}")
+        print(f"      url:   {entry['base_url']}")
+        if entry.get("model"):
+            print(f"      model: {entry['model']}")
+        if entry.get("note"):
+            print(f"      note:  {entry['note']}")
+    print()
+
+
+# ── Correctness probes (LB1) ──────────────────────────────────────────────────
+#
+# Speed metrics alone cannot tell a working model from a broken one: a model
+# emitting fluent nonsense scores EXCELLENT tokens/sec. This was not
+# hypothetical -- GenieX v0.5.0's i-quant kernels produced fast garbage
+# ('\n\n\n....\n\n', ' majorityathersyre...') that every throughput metric
+# rated as a good run (see docs/geniex-local-ai-setup.md).
+#
+# So: a handful of prompts whose answers can be CHECKED, not eyeballed. These
+# are deliberately not a capability benchmark -- they are a smoke test that
+# separates "the model works" from "the weights or kernels are broken", and
+# secondarily shows coarse quantisation damage (measured on Qwen3-4B at
+# temperature 0: Q4_0 6/6, Q2_K 4/6, i-quant 0/6 -- the 2-bit losses were both
+# reasoning items, while arithmetic and factual recall survived).
+#
+# Each entry: (prompt, [accepted answers]). Matching is case-insensitive on
+# the FINAL answer only (anything after </think> is stripped first) and
+# anchored on word boundaries, so "3" does not match inside "13".
+
+CORRECTNESS_PROBES = [
+    # Deliberately a SMALL multiplication. An earlier version used 847*293,
+    # which a healthy 4B could not finish inside 4000 tokens of thinking -- so
+    # the probe reported INCONCLUSIVE on a perfectly good model. A check that
+    # cries wolf on healthy models is a check people learn to ignore.
+    ("What is 23 * 17? Reply with only the number.", ["391"]),
+    ("What is the capital of Australia? Reply with only the city name.", ["canberra"]),
+    ("How many times does the letter 'r' appear in the word strawberry? "
+     "Reply with only the digit.", ["3"]),
+    ("If 5 machines make 5 widgets in 5 minutes, how many minutes do 100 "
+     "machines need to make 100 widgets? Reply with only the number.", ["5"]),
+    ("What is 17 squared? Reply with only the number.", ["289"]),
+    ("Which number is larger, 9.11 or 9.9? Reply with only the number.", ["9.9"]),
+]
+
 
 LONG_PROMPTS = [
     """Write a detailed technical blog post about building a production-ready LLM inference server. Cover the following aspects:
@@ -136,6 +299,36 @@ def get_glances_data(endpoint):
     return None
 
 
+def top_cpu_processes(limit=3):
+    """Busiest processes since the PREVIOUS call to this function (LB8).
+
+    psutil's per-process cpu_percent(None) reports usage since that process
+    was last polled, so calling this before and after a request makes the
+    second call a real measurement of who burned CPU *during* it.
+
+    Why it is worth reporting: the process that owns the serving port is not
+    necessarily the one doing the work. GenieX spawns a separate worker, and
+    sampling the port owner showed 11 % of 800 % while the actual worker sat
+    at 752 % -- i.e. it looked idle while it was pinning 7.5 of 8 cores.
+    Naming the busiest process removes that whole class of mistake.
+    """
+    try:
+        import psutil
+    except Exception:
+        return []
+    procs = []
+    for p in psutil.process_iter(["name"]):
+        try:
+            pct = p.cpu_percent(None)
+            if pct > 0:
+                procs.append({"pid": p.pid, "name": p.info.get("name") or "?",
+                              "cpu_percent": round(pct, 1)})
+        except Exception:
+            continue
+    procs.sort(key=lambda d: d["cpu_percent"], reverse=True)
+    return procs[:limit]
+
+
 def sample_resources_psutil():
     """Sample CPU and RAM via psutil on the host."""
     import psutil
@@ -163,22 +356,32 @@ def sample_resources_glances():
     }
 
 
-def detect_model_via_api():
-    """Detect the currently loaded model via the Ollama API."""
+def detect_model_via_api(base_url=None):
+    """Detect a served model.
+
+    Asks the portable OpenAI endpoint (/v1/models) FIRST. The previous version
+    probed Ollama's /api/show with a hardcoded "gemma4:26b" and returned that
+    name on any 200 -- which reported the wrong model on any host serving
+    something else, and nothing at all on a non-Ollama server.
+    """
     import requests
+
+    base = base_url or LLM_BASE_URL
     try:
-        # Ollama's show API is POST /api/show with a JSON body, not a GET path param.
-        r = requests.post(f"{OLLAMA_BASE_URL}/api/show", json={"model": "gemma4:26b"}, timeout=5)
-        if r.status_code == 200:
-            return "gemma4:26b"
-    except Exception:
-        pass
-    try:
-        r = requests.get(f"{OLLAMA_BASE_URL}/v1/models", timeout=5)
+        r = requests.get(f"{base}/v1/models", timeout=5)
         if r.status_code == 200:
             models = r.json().get("data", [])
             if models:
                 return models[0]["id"]
+    except Exception:
+        pass
+    # Ollama-native fallback: /api/tags lists what is actually pulled.
+    try:
+        r = requests.get(f"{base}/api/tags", timeout=5)
+        if r.status_code == 200:
+            tags = r.json().get("models", [])
+            if tags:
+                return tags[0].get("name") or tags[0].get("model", "unknown")
     except Exception:
         pass
     return "unknown"
@@ -194,6 +397,7 @@ def benchmark_chat(
     extra_params=None,
     sample_interval=0.2,
     warmup=True,
+    base_url=None,
 ):
     """Run a benchmark against the OpenAI-compatible chat completions endpoint.
 
@@ -202,7 +406,7 @@ def benchmark_chat(
     import requests
 
     session = requests.Session()
-    endpoint = f"{OLLAMA_BASE_URL}/v1/chat/completions"
+    endpoint = f"{base_url or LLM_BASE_URL}/v1/chat/completions"
 
     # Warmup: one short request to load the model into memory
     if warmup:
@@ -235,7 +439,10 @@ def benchmark_chat(
 
         # Sample resources before request
         resources_before = sample_resources()
+        top_cpu_processes()  # LB8: prime the per-process counters
         start = time.monotonic()
+        first_token_at = None  # LB2: set on the first content-bearing chunk
+        streamed_chunks = 0     # fallback when a server omits the usage chunk
 
         try:
             if stream:
@@ -244,8 +451,12 @@ def benchmark_chat(
                 content_chunks = []
                 usage = None
                 for line in r.iter_lines(decode_unicode=True):
-                    if line.startswith("data: "):
-                        data = line[6:]
+                    # The space after "data:" is OPTIONAL in the SSE spec.
+                    # Ollama sends it, GenieX does not -- matching on "data: "
+                    # silently parsed nothing and reported 0 tokens / no TTFT
+                    # against any server that omits it.
+                    if line.startswith("data:"):
+                        data = line[5:].lstrip()
                         if data.strip() == "[DONE]":
                             break
                         try:
@@ -257,7 +468,14 @@ def benchmark_chat(
                             if not choices:
                                 continue
                             delta = choices[0].get("delta", {})
-                            content_chunks.append(delta.get("content", "") or delta.get("reasoning", ""))
+                            piece = delta.get("content", "") or delta.get("reasoning", "")
+                            if piece:
+                                streamed_chunks += 1
+                            # LB2: first token carrying actual content marks the
+                            # end of prefill. Empty role-only deltas do not count.
+                            if piece and first_token_at is None:
+                                first_token_at = time.monotonic()
+                            content_chunks.append(piece)
                         except json.JSONDecodeError:
                             pass
                 content = "".join(content_chunks)
@@ -278,6 +496,8 @@ def benchmark_chat(
 
         elapsed = time.monotonic() - start
         resources_after = sample_resources()
+        # LB8: who actually did the work during this request?
+        busiest = top_cpu_processes()
 
         # Average resources during request
         avg_cpu = (
@@ -291,7 +511,43 @@ def benchmark_chat(
         completion_tokens = usage.get("completion_tokens", 0) if usage else 0
         total_tokens = usage.get("total_tokens", 0) if usage else 0
 
+        # Not every OpenAI-compatible server honours stream_options.include_usage
+        # (GenieX does not). Without a fallback the whole run reports 0 tok/s,
+        # which reads as "catastrophically slow" rather than "not reported".
+        # Counting content deltas is an approximation -- flagged as such.
+        tokens_estimated = False
+        if not completion_tokens and streamed_chunks:
+            completion_tokens = streamed_chunks
+            total_tokens = total_tokens or (prompt_tokens + completion_tokens)
+            tokens_estimated = True
+
         tokens_per_sec = completion_tokens / elapsed if elapsed > 0 else 0.0
+
+        # LB2 — prefill vs decode. `tokens_per_sec` above mixes both: it divides
+        # by the WHOLE request, so a slow prefill silently depresses what looks
+        # like a decode rate. Split them, because for an agent the wait is
+        # dominated by prefill (measured: 13.1 s TTFT on a 2.5k-token prompt).
+        ttft = (first_token_at - start) if first_token_at is not None else None
+        decode_tps = None
+        prefill_tps = None
+        if ttft is not None:
+            decode_window = elapsed - ttft
+            if decode_window > 0 and completion_tokens > 1:
+                # The first token is produced BY the prefill, so the decode
+                # window covers completion_tokens - 1.
+                decode_tps = (completion_tokens - 1) / decode_window
+            if ttft > 0 and prompt_tokens:
+                prefill_tps = prompt_tokens / ttft
+
+        # LB3 — a reasoning model can be the fastest per token and the slowest
+        # to a usable answer (measured: Qwen3-1.7B 31.7 tok/s but 1921 tokens =
+        # 60.8 s, vs a 4B-Instruct at 19.5 tok/s and 26.8 s). Record how much of
+        # the output was thinking so the ranking metric can be understood.
+        # Character-based on purpose: per-segment token counts are not exposed.
+        answer = content.split("</think>")[-1] if "</think>" in content else content
+        thinking_char_share = (
+            round(1 - len(answer) / len(content), 3) if content else None
+        )
 
         yield {
             "prompt_index": i,
@@ -299,12 +555,121 @@ def benchmark_chat(
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            "tokens_estimated": tokens_estimated,
             "tokens_per_sec": round(tokens_per_sec, 2),
+            # LB3: wall time to a FINISHED answer -- the metric to rank by.
+            # Same measurement as latency_s, named for what it means.
+            "wall_s_to_answer": round(elapsed, 2),
             "latency_s": round(elapsed, 2),
+            "ttft_s": round(ttft, 3) if ttft is not None else None,
+            "decode_tok_per_sec": round(decode_tps, 2) if decode_tps else None,
+            "prefill_tok_per_sec": round(prefill_tps, 1) if prefill_tps else None,
+            "thinking_char_share": thinking_char_share,
             "cpu_percent": round(avg_cpu, 1),
             "ram_used_gb": round(avg_ram_gb, 2),
+            "top_processes": busiest,
             "content_preview": content[:80],
         }
+
+
+def _answer_matches(content, accepted):
+    """Does the model's FINAL answer contain one of the accepted strings?
+
+    Two deliberate choices, both learned from a probe that scored false
+    positives: strip any <think> block first (a reasoning model often states
+    and then discards a wrong intermediate value), and anchor on word
+    boundaries so "3" does not match inside "13" or "0.31".
+    """
+    import re
+
+    # A reasoning model that never CLOSED its <think> block ran out of budget
+    # before answering. Searching the thinking text would score a discarded
+    # intermediate value as a correct answer -- the exact false positive this
+    # function exists to prevent. No final answer means not correct.
+    if "<think>" in content and "</think>" not in content:
+        return False
+
+    answer = content.split("</think>")[-1] if "</think>" in content else content
+    # Bias to the end: the final answer is what counts, not a mid-stream aside.
+    answer = answer[-400:].lower().replace(",", "").replace("*", "")
+    for exp in accepted:
+        # Trailing rule: a sentence-ending "." must NOT break the match
+        # ("248,171." -> "248171."), but ".<digit>" must, so "3" does not
+        # match inside "3.5". Leading rule blocks "13" and "0.31".
+        if re.search(rf"(?<![\w.]){re.escape(exp.lower())}(?!\w)(?!\.\d)", answer):
+            return True
+    return False
+
+
+def run_correctness_probe(model, *, max_tokens=4000, extra_params=None, base_url=None):
+    """LB1 — check the model still answers correctly, not just quickly.
+
+    Returns a dict with the score and per-item detail, or None if the endpoint
+    could not be reached at all. Always runs at temperature 0: this is a
+    regression check, not a creativity test.
+
+    max_tokens defaults high because reasoning models spend most of their
+    budget inside <think>. A model cut off before it answers scores WRONG --
+    deliberately, since a truncated run is not a correct one -- so too small a
+    budget misreports a healthy model. Measured: Qwen3-4B scores 5/6 at 900
+    (arithmetic truncated) and 6/6 at 2500.
+    """
+    import requests
+
+    session = requests.Session()
+    endpoint = f"{base_url or LLM_BASE_URL}/v1/chat/completions"
+    items = []
+
+    for prompt, accepted in CORRECTNESS_PROBES:
+        payload = {
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
+        if extra_params:
+            payload.update(extra_params)
+        try:
+            r = session.post(endpoint, json=payload, timeout=600)
+            r.raise_for_status()
+            content = r.json()["choices"][0]["message"]["content"]
+        except Exception as e:  # noqa: BLE001 — one bad probe must not abort the run
+            items.append({
+                "prompt": prompt[:60], "expected": accepted[0],
+                "error": str(e)[:120], "correct": False,
+            })
+            continue
+        truncated = "<think>" in content and "</think>" not in content
+        answer = content.split("</think>")[-1].strip()
+        items.append({
+            "prompt": prompt[:60],
+            "expected": accepted[0],
+            "answer_preview": ("<truncated inside <think>, raise "
+                               "--correctness-max-tokens>" if truncated
+                               else answer[:80]),
+            "truncated": truncated,
+            "correct": _answer_matches(content, accepted),
+        })
+
+    scored = [i for i in items if "error" not in i]
+    if not scored:
+        return None
+
+    # Truncation is NOT incorrectness. A model cut off mid-thought did not
+    # answer wrongly -- we failed to measure it. Conflating the two makes a
+    # healthy model look degraded, which is the fastest way to teach someone
+    # to ignore this check. Count them apart and say which happened.
+    truncated = sum(1 for i in items if i.get("truncated"))
+    wrong = sum(1 for i in items if not i["correct"] and not i.get("truncated")
+                and "error" not in i)
+    return {
+        "score": sum(1 for i in items if i["correct"]),
+        "total": len(items),
+        "wrong": wrong,
+        "truncated": truncated,
+        "errors": len(items) - len(scored),
+        "items": items,
+    }
 
 
 _sampler_warned = False
@@ -341,8 +706,8 @@ def print_table(results):
         print("No results to display.")
         return
 
-    headers = ["#", "Prompt", "PT", "CT", "T/s", "Lat(s)", "CPU%", "RAM(GB)"]
-    col_widths = [3, 50, 5, 5, 7, 8, 7, 8]
+    headers = ["#", "Prompt", "PT", "CT", "T/s", "TTFT", "Ans(s)", "CPU%", "RAM(GB)"]
+    col_widths = [3, 38, 5, 5, 7, 7, 8, 7, 8]
 
     def fmt_row(values):
         return "  ".join(
@@ -355,15 +720,17 @@ def print_table(results):
 
     for r in results:
         if "error" in r:
-            print(f"  {r['prompt_index']:<3}  {r['prompt_preview'][:50]:<50}  ERROR: {r['error'][:40]}")
+            print(f"  {r['prompt_index']:<3}  {r['prompt_preview'][:38]:<38}  ERROR: {r['error'][:40]}")
             continue
+        ttft = r.get("ttft_s")
         print(fmt_row([
             r["prompt_index"],
-            r["prompt_preview"][:50],
+            r["prompt_preview"][:38],
             r.get("prompt_tokens", "-"),
             r.get("completion_tokens", "-"),
             r.get("tokens_per_sec", "-"),
-            r.get("latency_s", "-"),
+            f"{ttft:.2f}" if ttft is not None else "-",
+            r.get("wall_s_to_answer", r.get("latency_s", "-")),
             r.get("cpu_percent", "-"),
             r.get("ram_used_gb", "-"),
         ]))
@@ -389,6 +756,72 @@ def print_table(results):
             total_elapsed = sum(latencies)
             print(f"    Overall:        {sum(total_tokens)} tokens in {total_elapsed:.1f}s  =  {sum(total_tokens)/total_elapsed:.1f} tok/s")
 
+        # LB2 — prefill is usually what the user actually waits on.
+        ttfts = [r["ttft_s"] for r in results if r.get("ttft_s") is not None]
+        if ttfts:
+            print(f"    TTFT:           {min(ttfts):.2f}s  /  {sum(ttfts)/len(ttfts):.2f}s avg  /  {max(ttfts):.2f}s max")
+            decs = [r["decode_tok_per_sec"] for r in results if r.get("decode_tok_per_sec")]
+            pres = [r["prefill_tok_per_sec"] for r in results if r.get("prefill_tok_per_sec")]
+            if decs:
+                print(f"    Decode only:    {sum(decs)/len(decs):.1f} tok/s avg  (excludes prefill)")
+            if pres:
+                print(f"    Prefill:        {sum(pres)/len(pres):.0f} tok/s avg")
+        elif not any("error" in r for r in results):
+            print("    TTFT:           not measured — re-run with --stream")
+
+        # LB8 — name the process that actually burned CPU. On this host the
+        # serving process and the inference worker are different PIDs.
+        busiest = {}
+        for r in results:
+            for proc in r.get("top_processes") or []:
+                key = f"{proc['name']} (pid {proc['pid']})"
+                busiest[key] = max(busiest.get(key, 0), proc["cpu_percent"])
+        if busiest:
+            top = sorted(busiest.items(), key=lambda kv: kv[1], reverse=True)[:2]
+            summary = ",  ".join(f"{name} {pct:.0f}%" for name, pct in top)
+            print(f"    Busiest proc:   {summary}")
+
+        # LB3 — rank by time to a finished answer, not by tok/s.
+        answers = [r["wall_s_to_answer"] for r in results if r.get("wall_s_to_answer")]
+        if answers:
+            print(f"    Time to answer: {sum(answers)/len(answers):.1f}s avg  <-- rank models by THIS, not tok/s")
+        shares = [r["thinking_char_share"] for r in results if r.get("thinking_char_share")]
+        if shares:
+            print(f"    Thinking share: {100*sum(shares)/len(shares):.0f}% of output was <think> "
+                  "(pure latency for an agent)")
+
+
+def print_correctness(probe):
+    """Render the LB1 probe. A model can be fast and wrong; show both."""
+    print()
+    if probe is None:
+        print("  Correctness probe: NO RESULT — endpoint unreachable")
+        return
+    score, total = probe["score"], probe["total"]
+    wrong, truncated = probe.get("wrong", 0), probe.get("truncated", 0)
+    if wrong == 0 and truncated == 0:
+        verdict = "OK"
+    elif wrong == 0:
+        verdict = "INCONCLUSIVE"          # only cut off, never actually wrong
+    elif wrong >= total / 2:
+        verdict = "BROKEN"
+    else:
+        verdict = "DEGRADED"
+    extra = f", {truncated} truncated" if truncated else ""
+    print(f"  Correctness probe: {score}/{total} correct{extra}  [{verdict}]")
+    for item in probe["items"]:
+        if "error" in item:
+            print(f"    ERR  {item['prompt'][:52]:<52} {item['error'][:40]}")
+            continue
+        mark = "ok " if item["correct"] else "XX "
+        print(f"    {mark}  expected={item['expected']:<9} got={item.get('answer_preview','')[:44]!r}")
+    if truncated:
+        print(f"    NOTE: {truncated} probe(s) ran out of tokens before answering. That is a")
+        print("          MEASUREMENT limit, not a model fault — raise --correctness-max-tokens.")
+    if wrong:
+        print("    NOTE: wrong answers here usually mean broken kernels or an over-aggressive")
+        print("          quant, not a slow model. Check the GGUF tensor types before tuning speed.")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -406,8 +839,35 @@ def main():
     parser.add_argument("--extra-params", default=None,
                         help='Extra JSON params for the request body (e.g. \'{"num_ctx":16000,"repeat_penalty":1.1}\')')
     parser.add_argument("--load", default=None, help="Load and re-display results from a JSON file")
+    parser.add_argument("--backend", default=None,
+                        help="Named backend from backends.json (e.g. ollama, geniex-npu). "
+                             "Supplies the base URL and a default model.")
+    parser.add_argument("--base-url", default=None,
+                        help="Explicit base URL; overrides --backend and the environment")
+    parser.add_argument("--list-backends", action="store_true",
+                        help="Show the configured backends and exit")
+    parser.add_argument("--correctness", action="store_true",
+                        help="LB1: also run the verifiable-answer probe (catches a model that is "
+                             "fast but broken — speed metrics cannot)")
+    parser.add_argument("--correctness-only", action="store_true",
+                        help="Run ONLY the correctness probe and exit (quick health check)")
+    parser.add_argument("--correctness-max-tokens", type=int, default=4000,
+                        help="Token budget per probe. Must be generous: a reasoning model "
+                             "truncated mid-thought scores WRONG by design (a truncated run is "
+                             "not a correct one). Measured: Qwen3-4B needs >900 for arithmetic "
+                             "(default 4000)")
 
     args = parser.parse_args()
+
+    if args.list_backends:
+        print_backends()
+        return
+
+    # Resolve the endpoint before anything talks to it. Rebinding the module
+    # global keeps every existing call site working unchanged.
+    global LLM_BASE_URL, OLLAMA_BASE_URL
+    LLM_BASE_URL, backend_model, source = resolve_backend(args.backend, args.base_url)
+    OLLAMA_BASE_URL = LLM_BASE_URL
 
     if args.load:
         with open(args.load) as f:
@@ -418,9 +878,28 @@ def main():
         print_table(data.get("results", []))
         return
 
-    model = args.model or detect_model_via_api()
+    # A backend may name its own default model; an explicit --model still wins.
+    model = args.model or backend_model or detect_model_via_api()
+
+    if args.correctness_only:
+        print(f"\n  Model: {model}")
+        print(f"  API:   {LLM_BASE_URL}/v1  (from {source})")
+        probe = run_correctness_probe(
+            model,
+            max_tokens=args.correctness_max_tokens,
+            extra_params=json.loads(args.extra_params) if args.extra_params else None,
+        )
+        print_correctness(probe)
+        # Distinct exit codes so a gate can tell "model is wrong" (act on it)
+        # from "we cut it off" (re-run with a bigger budget).
+        if probe is None:
+            sys.exit(1)
+        if probe.get("wrong"):
+            sys.exit(1)
+        sys.exit(2 if probe.get("truncated") else 0)
+
     print(f"\n  Model: {model}")
-    print(f"  API:   {OLLAMA_BASE_URL}/v1")
+    print(f"  API:   {LLM_BASE_URL}/v1  (from {source})")
     print(f"  Glances: {GLANCES_URL}/api/4 (v3 fallback)")
     print()
 
@@ -467,10 +946,20 @@ def main():
 
     print_table(results)
 
+    correctness = None
+    if args.correctness and not interrupted:
+        correctness = run_correctness_probe(
+            model,
+            max_tokens=args.correctness_max_tokens,
+            extra_params=extra_params,
+        )
+        print_correctness(correctness)
+
     output = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "model": model,
-        "api_url": f"{OLLAMA_BASE_URL}/v1",
+        "api_url": f"{LLM_BASE_URL}/v1",
+        "backend": args.backend,
         "hardware": collect_hardware_info(),
         "config": {
             "max_tokens": args.max_tokens,
@@ -481,6 +970,7 @@ def main():
             "prompts_completed": len([r for r in results if "error" not in r]),
         },
         "results": results,
+        "correctness": correctness,
     }
 
     if args.output and not interrupted:

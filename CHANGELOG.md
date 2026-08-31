@@ -273,6 +273,359 @@ archive rule in its own header — the split is a separate decision, not taken
 here.
 
 
+## 2026-08-31 — tool calling measured: the coding winner is weakest here
+
+An agent lives on tool calls, and nothing measured so far touched them. New
+`linux/llm-stack/bench_tools.py`; results in § 1f.
+
+GenieX supports tool calling natively on both lanes (finish_reason=tool_calls,
+correct names, correctly extracted arguments) -- the finding that could have
+disqualified the current winner, and it did not.
+
+| Model | Tool calls | Coding | Time |
+|---|---|---|---|
+| GGUF Qwen3-4B Q4_0 (CPU) | **12/12 = 100 %** | 44 % | 88 s |
+| QAIRT 4B-Instruct (NPU) | **8/12 = 67 %** | 100 % | 25 s |
+| GGUF Qwen3.8-2B (CPU) | 2/12 = 17 % | 44 % | 55 s |
+
+This is the one benchmark that does not crown the coding winner. Its two
+failures are reproducible and specific, and one is fixable by the user:
+
+- picked list_files instead of read_file -- a selection error that disappears
+  once the descriptions contrast explicitly ("returns CONTENTS" vs "returns
+  names only, NOT contents"). Verified: FAIL -> PASS. Write tool descriptions
+  contrastively; this model separates tools by their text, not their names.
+- emitted the arguments as message TEXT instead of a tool call, with correct
+  values but the wrong channel. tool_choice="required" does not fix it
+  (verified). A fallback parser would recover the turn; opencode will not.
+
+With better descriptions the realistic rate is ~10/12.
+
+Every model handled the "no tool needed" case correctly, so over-eager calling
+is not a problem here -- including the 2B, which failed everything else.
+
+The recommendation stands but the trade-off is now stated: the GGUF 4B is
+perfect at tool calls and hopeless at agent latency (34s prefill at 3k context,
+151s at 8k, against the NPU's 3.2s), and an agent pays that on every turn.
+
+15 grader tests, covering arguments as string or dict, prose instead of a call,
+multiple calls, invalid JSON, exact boolean matching, and both directions of
+the no-tool case.
+
+## 2026-08-31 — the coding ranking, re-measured with repeats
+
+A follow-up question ("did you test all configurations?") exposed two unchecked
+assumptions. One held, one did not.
+
+**Held:** the lane changes speed, not correctness. Qwen3-4B Q4_0 scores
+identically on CPU and GPU (2/3 + 1 cut, the same task cut on both), the GPU
+1.78x slower (397s vs 223s).
+
+**Did not hold:** that temperature=0 makes a run reproducible. GenieX ignores
+`temperature` exactly as it ignores `max_tokens`. Five identical requests to
+the 2B produced FIVE different answers -- four passing the same task, one
+failing. The same model scored 2/3 in one sweep and 0/3 in the next.
+
+Re-measured with --repeats 3:
+
+| Model | Pass rate | wrong | cut | per attempt |
+|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct-2507 (NPU)** | **9/9 = 100 %** | 0 | 0 | 10.2 s |
+| GGUF Qwen3.8-2B-Distill (CPU) | 4/9 = 44 % | 5 | 0 | 10.5 s |
+| GGUF Qwen3-4B Q4_0 (CPU) | 4/9 = 44 % | 0 | 5 | 101.9 s |
+
+The winner survives intact and is strengthened: the QAIRT/QNN path is
+byte-identical deterministic (four requests, one unique output per task), so
+its 100 % is not a lucky draw.
+
+Two things only repeats could show: the 2B has a real capability hole
+(parse_version fails 3/3, its flakiness is confined to balanced), and the 4B
+GGUF is never WRONG -- zero wrong answers in nine attempts, every failure the
+2048-token cap. Given room it would likely match the winner; on this server it
+cannot, and needs 10x the time per attempt.
+
+Tuning the NPU lane does nothing: n-threads 3 -> 6 -> 8 with cpu-mask widened
+to all cores gives 18.76 / 19.03 / 18.76 tok/s. The HTP does the work, those
+threads only orchestrate, and perf_profile is already burst. Config restored.
+
+Still unmeasured and recorded as such: the hybrid lane on coding tasks,
+long-prompt coding, nctx scaling, --ngl.
+
+## 2026-08-31 — measured: which model writes code that actually runs
+
+Six models, three coding tasks each, code extracted and **executed** against
+hidden tests (`linux/llm-stack/bench_coding.py`). Nothing judged by eye.
+
+| Model | Lane | Pass | Cut | Total | ø tokens | think |
+|---|---|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct-2507 W4A16** | NPU | **3/3** | 0 | **30.2 s** | 188 | 0 % |
+| GGUF Qwen3.8-27B Q4_0 | CPU | 3/3 | 0 | 128.7 s | 149 | 0 % |
+| GGUF Qwen3.8-9B-Distill Q4_K_M | CPU | 3/3 | 0 | 251.1 s | 1151 | 51 % |
+| GGUF Qwen3.8-2B-Distill Q4_K_M | CPU | 2/3 | 0 | 32.2 s | 485 | 37 % |
+| GGUF Qwen3-4B Q4_0 | CPU | 2/3 | 1 | 227.2 s | 1639 | 61 % |
+| QAIRT Qwen3-1.7B W4A16 | NPU | 1/3 | 2 | 173.8 s | 1829 | 31 % |
+
+Three models solve all three tasks; time breaks the tie and it is not close.
+The QAIRT 4B-Instruct is 4.3x faster than the 27B and 8.3x faster than the 9B
+to the same score, because it does not reason -- 188 tokens per task against
+the 9B's 1151.
+
+The 27B beats the 9B while decoding at 5.6 vs 15.2 tok/s: ranking by tok/s
+would have picked the wrong model, again.
+
+A hard 2048-token output cap shapes the results more than model quality does.
+GenieX ignores max_tokens outright (3000 -> 642 tokens; 500 -> 1249) and stops
+at 2048. A reasoning model spends that inside <think> and is cut mid-function.
+The 4B GGUF's balanced solution landed at 1896 tokens -- 152 short of the cap.
+The first run of this benchmark scored that model 0/3 with all three failures
+being truncation artefacts, which is why cut is now reported apart from wrong.
+
+Caveat recorded with the numbers: three self-contained functions is a smoke
+test, not a capability benchmark -- no multi-file work, no tool calls. And the
+binding constraint for agent use remains the winning bundle's 4096-token
+context, not its skill.
+
+## 2026-08-31 — 2-bit measured; GenieX session harvested into an llm-stack backlog
+
+**2-bit K-quants work; i-quants at any width do not.** `Qwen3-4B:Q2_K` is a
+pure K-quant file (Q2_K 144, Q3_K 72, Q4_K 36, no i-quants) and produces
+coherent output -- so the sub-Q4 failures really are the i-quant bug, not bit
+width. It does cost accuracy: on a six-question verifiable battery at
+temperature 0, Q4_0 scored 6/6 and Q2_K 4/6, losing exactly the two reasoning
+items (letter counting 3->2, the machines/widgets puzzle 5->1) while keeping
+arithmetic and factual recall. Six questions is a probe, not a benchmark, and
+perplexity is not measurable through the OpenAI API. For the 27B it is moot:
+the only sub-Q4 variants in that repo are i-quant based.
+
+**New backlog group B/LLM-BENCH** (`docs/refactoring-backlog.md`): nine items
+harvesting this session into `linux/llm-stack`, which already has a 502-line
+benchmark harness, a sweep script and a React viewer. Every wrong conclusion
+this session produced traces to a metric that harness does not collect:
+
+- LB1 [M/3-star] a correctness probe -- it measures only speed, so the i-quant
+  garbage would have scored *excellently* (fast, fluent nonsense)
+- LB2 [S/3-star] TTFT/prefill; there is no first-token measurement at all,
+  and prefill is what an agent actually waits on
+- LB3 [S/3-star] report time-to-finished-answer; headlining tok/s ranks models
+  wrongly (1.7B: fastest tok/s, slowest answer)
+- LB4 [M/2-star] multi-endpoint + concurrent lane aggregate
+- LB5 [S/2-star] batching/serialization probe
+- LB6 [S/2-star] GGUF tensor-type introspection -- what actually diagnosed the
+  i-quant bug, since no benchmark could
+- LB7-LB9 [S/1-star] de-Ollama the harness (hardcoded gemma4:26b at line 171),
+  worker-vs-listener resource attribution, Linux-only hardware info
+
+## 2026-08-31 — CORRECTION: the sub-Q4 garbage is a GenieX i-quant bug, not a quality floor
+
+The previous entry claimed "a hard quality floor at Q4 -- both 3-bit quants
+answer with garbage, everything below is smaller still". The observation was
+right; the explanation was wrong, and the extrapolation was unfounded.
+
+Hypotheses walked down in order:
+
+  sampling artefact   temperature=0, "Say hello."      still garbage; Q4_0 fine
+  corrupt download    SHA256 vs the HF LFS oid         byte-perfect
+  CPU-backend bug     same file on the GPU lane        fails there too
+  "UD quants are bad" UD-Q4_K_M from the same repo     works fine
+  "3 bits is too few" Qwen3-4B:Q3_K_M (3-bit K-quant)  works perfectly
+  i-quant kernels     Qwen3-4B:IQ3_XXS                 garbage on BOTH lanes
+
+The discriminator is the tensor *type*, not the bit width. GGUF tensor
+histograms: the working files carry no i-quants below 4 bits (Q4_0: none;
+UD-Q4_K_M: IQ4_XS 117, IQ3_S 4; Q3_K_M: pure K-quants), the broken ones are
+dominated by them (UD-Q3_K_XL: IQ3_S 111 + IQ3_XXS 34 + IQ2_* 21; UD-IQ3_S:
+IQ3_S 127 + IQ3_XXS 77 + IQ2_* 45 + IQ1_S 2; Qwen3-4B-UD-IQ3_XXS: IQ3_XXS 144
++ IQ2_S 52 + IQ3_S 41).
+
+So: IQ4_XS and IQ4_NL are fine; IQ3_S, IQ3_XXS, IQ2_* and IQ1_* are broken in
+the llama.cpp build GenieX v0.5.0 ships (runtime hash 873e5d8, aarch64). It
+reproduces across two architectures (qwen3, qwen35), two sizes (4B, 27B) and
+both compute lanes, on files verified byte-identical to Hugging Face -- so
+neither a bad download nor a bad quantisation.
+
+Consequences: never pull IQ1_*/IQ2_*/IQ3_* for this setup, for any model
+(UD-Q2_K_XL is i-quant-heavy too and should be assumed broken); 3-bit itself is
+fine, so a plain Q3_K_M is worth seeking out; the practical "do not go under
+Q4_0 in this repo" advice survives, but only because this repo's sub-Q4
+offerings all happen to be i-quant based. Worth reporting upstream to
+qualcomm/GenieX, and worth re-testing after a runtime bump.
+
+## 2026-08-31 — 27B quant ladder mapped end to end; Q4_0 stays
+
+Enumerated every quant `unsloth/Qwen3.8-27B-GGUF` offers (22 variants, IQ1_S
+6.2 GB through Q8_0 29 GB) and bounded them against the real constraint: host
+RAM. 31.6 GB total minus WSL2's 10 GB cap and Windows leaves ~22-24 GB, so
+Q6_K (22 GB) and up cannot run at all and Q5_K_S (18.7 GB) is the ceiling.
+
+Pulled `UD-Q4_K_M` (16.5 GB) and measured it head to head against `Q4_0`:
+
+  Q4_0      5.62 tok/s   TTFT 1.06 s
+  UD-Q4_K_M 5.08 tok/s   TTFT 2.38 s    (~10% slower)
+
+Output was equivalent on a code task, and both answered a verifiable arithmetic
+check correctly (847 * 293 -> 248171). Likely cause of the gap: llama.cpp
+repacks legacy Q4_0 into ARM kernels (Q4_0_4_8 / i8mm) that K-quants do not get
+-- the same mechanism that makes the CPU lane fast at all.
+
+Two prompts is not a quality evaluation, and the docs say so: UD-Q4_K_M is in
+principle the better quantisation; the honest finding is only that no quality
+difference was demonstrable while the 10% speed cost was.
+
+Also documented: a hard quality floor at Q4. Both 3-bit quants (IQ3_S,
+Q3_K_XL) load, answer, and return garbage, and everything below them is
+smaller still -- so nothing under Q4_0 is worth pulling.
+
+Bottom line unchanged: Q4_0 on the CPU lane is the 27B setup to use.
+
+## 2026-08-31 — full Qwen3.8 lane matrix; 27B rehabilitated, Q3_K_XL retired
+
+Every cached Qwen3.8 model against every lane, one prompt, one methodology:
+
+| Model | Size | NPU | GPU | hybrid | **CPU** |
+|---|---|---|---|---|---|
+| 2B-Distill `Q4_K_M` | 1.3 GB | 18.2 | 23.1 | 20.7 | **47.6 tok/s** |
+| 9B-Distill `Q4_K_M` | 5.8 GB | 8.4 | 6.8 | 7.35 | **15.2 tok/s** |
+| 27B `Q3_K_XL` | 13.1 GB | ❌ | ❌ | ❌ | garbage output |
+| 27B `Q4_0` | 16.1 GB | ❌ | HTTP 500 | ❌ | **5.6 tok/s** |
+
+The CPU wins every row. The accelerator ranking flips with model size (2B:
+GPU > hybrid > NPU; 9B: NPU > hybrid > GPU) and it makes no difference — the CPU
+is 2-2.6x ahead of whichever one wins.
+
+**The 27B was written off too early.** This page said "CPU-only territory...
+~1 tok/s". Measured on the Windows host: **5.6 tok/s warm, 1.06 s TTFT, correct
+well-structured code**. Slow for chat, fine for batch, and the best quality any
+lane here can produce.
+
+**`Q3_K_XL` is broken, not borderline.** Previously "the last quant worth trying
+above 12 GB". It loads, answers, and returns garbage -- a real request gave
+`'0\n\n\n\n\n\n\n\n -\n0\n0'` (12 tokens, finish_reason stop), the same
+failure already noted for IQ3_S. Below Q4 this 27B is unusable at any speed.
+
+**New crash found: mixing QAIRT and GGUF on the NPU lane kills the server.**
+Deterministic -- fresh lane serves GGUF fine, serves a QAIRT bundle fine, and
+the next GGUF request resets the connection and the process is gone. An opencode
+provider lists several models against one baseURL, so switching model in the UI
+is enough to trigger it. opencode.jsonc now keeps the NPU lane QAIRT-only and
+gains a `geniex-cpu` provider for the GGUFs (which are faster there anyway).
+
+## 2026-08-31 — hybrid falsified: no `--ngl` setting beats plain CPU
+
+`--compute hybrid` was previously documented as "the sweet spot for models that
+straddle the HTP budget". That conclusion compared hybrid against the NPU and
+the GPU — **never against the CPU**. With the CPU lane measured, hybrid loses
+everywhere:
+
+| Model | hybrid | **CPU** | GPU | NPU |
+|---|---|---|---|---|
+| Qwen3-4B `Q4_0` | 9.96 tok/s | **23.7** | 12.5 | 11.9 |
+| Qwen3.8-9B-Distill `Q4_K_M` | 7.5 tok/s | **15.2** | 6.5 | over HTP budget |
+
+The 9B — the model hybrid supposedly existed for — is **2x faster on plain CPU**
+(15.2 vs 7.5), first token 0.44 s instead of 26.6 s.
+
+Swept `--ngl` on the 9B in hybrid mode to check whether the layer split was
+simply mistuned: `-1` → 7.32, `32` → 7.20, `16` → 6.18, `8` → 7.83 tok/s. Every
+configuration sits at 6–8 tok/s with a 14–27 s first token. The split is not the
+bottleneck; any HTP participation drags the graph to `ggml-hexagon` speed.
+
+**Verdict: `--compute hybrid` has no use on this machine.** Slower than CPU on
+every model, 30–60x worse TTFT, and the only mode that damages a concurrent NPU
+lane (19.25 → 12.84, shared HTP). Docs, launcher help and AGENTS.md now say so.
+
+Also added: an § At a glance decision table at the top of the page, measured 9B
+CPU figures in the model matrix, and a note that the original short-reply rows
+and the re-measured full-stream rows are two methodologies that must not be
+compared across.
+
+## 2026-08-31 — Measured: the CPU beats the Hexagon NPU 2x on GGUF
+
+The CPU rows on this page were *estimates scaled from a 27B WSL2 run* (~5 tok/s
+for the 4B). Measured properly against a `--compute cpu` lane on the Windows
+host (8x Oryon), same model, same quant, same prompt, they were wrong by ~4.6x:
+
+| Model (GGUF) | CPU | NPU | CPU advantage |
+|---|---|---|---|
+| Qwen3-4B `Q4_0` | **23.2 tok/s** | 11.9 tok/s | **1.95x** |
+| Qwen3.8-2B-Distill `Q4_K_M` | **46.5 tok/s** | 16.9 tok/s | **2.75x** |
+
+llama.cpp's ARM CPU kernels (NEON/dotprod/i8mm; `Q4_0` is repacked for them) are
+simply more mature than the bundled `ggml-hexagon` backend.
+
+The NPU still earns its place, on two other axes: it runs QAIRT bundles (which
+the CPU cannot load at all, and which are non-thinking and therefore fastest
+end-to-end — 26.8 s vs 88.4 s to a finished answer), and it does so at
+**165 % of 800 % CPU vs the CPU lane's 752 %** — a fifth of the cost, which is
+what keeps the machine usable while the agent answers. Measurement note: the
+inference worker is a *separate* `geniex` process from the port holder; sampling
+the listener reads ~11 % and tells you nothing.
+
+- `start-geniex-servers.ps1`: new `-WithCpu` opt-in lane on 18184
+- docs: new § 1b, and the estimated CPU row replaced with measured numbers
+
+## 2026-08-31 — GenieX throughput pass: QAIRT bundle + NPU/GPU dual lane (~6x faster agent answers)
+
+Re-measured the Snapdragon on-device agent end-to-end rather than per compute
+unit. The previous "4B on the NPU at 15.2 tok/s is the ceiling" conclusion
+optimised the wrong variable; three larger wins were found and applied.
+
+### The QAIRT bundle beats every GGUF here (~6x end-to-end)
+
+`qualcomm/Qwen3-4B-Instruct-2507:W4A16` was cached but never benchmarked:
+
+| | GGUF 4B Q4_0 | QAIRT 4B W4A16 |
+|---|---|---|
+| decode | 11.5 tok/s | **18.9–19.5 tok/s** |
+| tokens per short answer | ~1889 | **522** |
+| wall clock (warm) | 164.8 s | **26.8 s** |
+
+Re-tested against `qualcomm/Qwen3-1.7B:W4A16`, which is *faster per token and
+slower in practice*: **31.7 tok/s but 1921 tokens per answer = 60.8 s**, versus
+the 4B's 19.5 tok/s / 522 tokens / **26.8 s**. Time-to-finished-answer is the
+metric; tok/s alone picks the wrong model.
+
+1.7x of that is decode; the rest is the **`<think>` tax** — the Qwen3/Qwen3.8
+GGUFs are reasoning models (21 tokens to answer "reply with exactly one word"),
+the Instruct-2507 bundle is not (2 tokens). It also runs at **3.0 GiB, above the
+~2,93 GiB HTP vmem wall** — that ceiling is a property of the bundled llama.cpp
+`ggml-hexagon` backend, not of the NPU.
+
+### One server = one request; NPU + GPU compose, hybrid contends
+
+`geniex serve` does no batching — a second request waits for the first to finish
+completely (27.6 s TTFT), and a busy server will not even answer `/v1/models`.
+Measured topologies: **NPU+GPU = 19.25 + 12.11 = 31.4 tok/s** (~1–3 % mutual
+cost, separate silicon), while adding `hybrid` (NPU+CPU, same HTP) buys
++2.7 tok/s aggregate but drops the NPU lane to 12.84.
+
+### Two defaults were wrong for agent use
+
+`--keepalive` 300 s unloaded the model on every pause (14–15 s cold reload);
+`--nctx` 4096 was *below* the 8192 the opencode config advertised, and overflow
+does not error — a 6.4k-token prompt never returned within 400 s.
+
+- New `windows/scripts/host/start-geniex-servers.ps1`: brings up the NPU + GPU
+  lanes with `--nctx 16384 --keepalive 86400`, `-WithHybrid` for the third lane,
+  `-Restart` to recycle. Validated live.
+- `~/.config/opencode/opencode.jsonc`: QAIRT bundle promoted to primary, new
+  `geniex-gpu` provider for the second lane.
+- **QAIRT bundles carry a hard-compiled 4096 context** (`genie_config.json`
+  → `"context": {"size": 4096}`); `--nctx` is llama.cpp-only and does not raise
+  it. Overflow returns nothing rather than erroring. The opencode limit for the
+  QAIRT model is set to 4096 accordingly — this is the binding constraint of the
+  NPU lane, not its speed.
+- § Wire the coding agent rewritten as a 5-step opencode integration guide
+  (pull → serve → provider block → model select → verify) with the four silent
+  misconfigurations that break it.
+- [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md): new
+  § Getting the most out of this machine, plus five troubleshooting rows.
+
+Still slow, honestly: **prefill dominates agent latency** — a 2.5k-token prompt
+costs 13.1 s to first token (~190 tok/s) and pulls decode down to 13.0 tok/s.
+No batching or speculative-decoding knobs exist in `geniex serve`, and
+`max_tokens` is not honoured.
+
+
 ## 2026-08-31 — QNN SDK integrated into the arm64 cross build (#121 proven) + GStreamer compiler-rt self-heal (#135 follow-up)
 
 ### QNN EP build-time path PROVEN on the arm64 cross lane (#121)

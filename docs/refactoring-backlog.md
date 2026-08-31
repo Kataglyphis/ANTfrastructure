@@ -13,6 +13,7 @@ Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
 Prefix glossary: **AP**=artifact perf · **TG/TS**=toolchain · **GPU**=GPU
 lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
+**LB**=llm-stack benchmark harness ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
 Last groomed: 2026-08-31, after the A1 closure window. **The entire A1 work
@@ -20,7 +21,9 @@ section is CLOSED** (ERR-trap bug, complexity queue, modules.sh refuted) and so
 is **GEN1**, which was built and wired ON. What that left open is not more
 refactoring — it is **validation**: two lanes (QNN-LINUX and the new riscv64
 GenAI) are wired but have never been proven by a real build, and one of them is
-deliberately gate-red until that build happens.
+deliberately gate-red until that build happens. The LLM-BENCH group (2026-08-31, § D) is
+also CLOSED — kept for one wave so its measured numbers stay beside the
+code that produced them.
 
 ## Standing rules (read first)
 
@@ -295,6 +298,100 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
 - **`smoke_genai_py` is 196 lines of Python inside a bash heredoc** — neither
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
+
+## D. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
+
+All nine items implemented and validated live against GenieX lanes on the same
+day they were filed. Kept here (not archived) for one wave so the measured
+numbers stay next to the code that produced them.
+
+- **LB1 — correctness probe** [DONE] `--correctness` / `--correctness-only`
+  (exit non-zero on a wrong answer); `run_benchmarks.sh` gates the sweep on it
+  (`BENCH_SKIP_CORRECTNESS=1` bypasses). Validated: Qwen3-4B `Q4_0` 6/6,
+  `IQ3_XXS` 0/6 BROKEN — the case every speed metric rated as a good run.
+- **LB2 — TTFT/prefill** [DONE] `ttft_s`, `prefill_tok_per_sec`,
+  `decode_tok_per_sec` (the pre-existing `tokens_per_sec` divides by the whole
+  request and so hides prefill inside what reads as a decode rate).
+- **LB3 — time to a finished answer** [DONE] `wall_s_to_answer` +
+  `thinking_char_share`. A live run showed **77–86 % of output was `<think>`**.
+- **LB4 — multi-endpoint + concurrent aggregate** [DONE] new `bench_lanes.py
+  --lanes`. Reproduced the manual finding within 0.5 %: NPU **+0 %** when a CPU
+  lane joins, CPU **−18 %**, aggregate 39.9 tok/s = 1.57x the best single lane.
+- **LB5 — batching probe** [DONE] `bench_lanes.py --batching`. Verdict
+  `SERIALISED` on GenieX: second request's TTFT 74.27 s vs the first's 74.10 s
+  total.
+- **LB6 — GGUF introspection** [DONE] new `inspect_gguf.py`: header-only read,
+  tensor-type histogram, OK / LIKELY OK / RISKY verdict, exit 1 on RISKY.
+  Correctly separates the broken `IQ3_XXS` (97.6 % sub-4-bit i-quants) from the
+  working 27B `UD-Q4_K_M` (0.8 %).
+- **LB7 — de-Ollama'd** [DONE] `LLM_BASE_URL` (old name still honoured);
+  `detect_model_via_api` asks `/v1/models` first and takes a `base_url`. The
+  hardcoded `"gemma4:26b"` probe is gone — it returned that name on any 200,
+  mislabelling every non-gemma host.
+- **LB8 — worker vs listener** [DONE] `top_cpu_processes()` primes before and
+  reads after each request, so the summary names the PID that actually burned
+  CPU. Encodes the trap: GenieX's port owner read 11 % of 800 % while its
+  worker sat at 752 %.
+- **LB9 — cross-platform hardware info** [DONE] `platform`/`psutil` fallback
+  after the `/proc` reads, plus an explicit `incomplete` list so a gap is
+  visible instead of silent.
+
+**Viewer + test debt closed 2026-08-31 (second pass).** The first pass wired
+the new metrics into the result JSON but not into the React viewer, although
+LB2/LB3 explicitly said "and the viewer" — the data flowed in and surfaced
+nowhere. Now: a correctness banner above every speed number, time-to-answer as
+the leading column, TTFT/decode/prefill/thinking-share in the comparison and
+drill-down tables, the busiest process per request, and legacy runs degrading
+to `-` (charts drop them rather than drawing a `0` that would claim an instant
+first token). `bench_lanes.py` and `inspect_gguf.py` gained 15 unit tests
+(synthetic GGUFs, an in-process SSE server), taking the suite to 30 unit tests
+that need no running stack. A server-side smoke render (`npm run smoke`)
+renders every component against the real manifest, because `vite build` only
+proves the JSX compiles — it caught a silently-failed edit that made the
+comparison table render empty cells.
+
+**Probe calibration fix:** truncation is now reported apart from wrongness
+(exit 2 = INCONCLUSIVE, exit 1 = genuinely wrong). A model cut off mid-thought
+was not wrong, it was unmeasured, and scoring it as a failure made a healthy
+model look degraded. The arithmetic probe also moved 847*293 -> 23*17: a
+healthy 4B could not finish the former inside 4000 thinking tokens, so the
+check cried wolf on good models.
+
+**Two pre-existing bugs found while doing this**, both fixed:
+- the SSE parser matched `"data: "` **with** the space (optional per spec).
+  GenieX omits it → nothing parsed, 0 tok/s reported, no TTFT possible. The
+  harness was effectively blind to every non-Ollama server.
+- servers ignoring `stream_options.include_usage` yielded 0 tokens; now falls
+  back to a counted chunk total flagged `tokens_estimated`.
+
+**Closed since the original harvest:** context-length quality scaling
+(`bench_coding.py --context-tokens`, § 1e of the GenieX page) and tool/function
+calling correctness (`bench_tools.py`, § 1f) — the latter found the one result
+that does not crown the coding winner.
+
+**Still open for a general LLM toolkit** (listed so it is not forgotten):
+
+- **LB10 — embedding benchmarks** [M·★★] `tests/test_v1_api.py` exercises the
+  embedding endpoints but nothing measures them. Relevant the moment a RAG or
+  code-search path is added.
+- **LB11 — run-to-run regression comparison** [S·★★] Every tool writes a JSON
+  report and nothing diffs two of them. Without it a model swap or a runtime
+  bump can silently cost accuracy or speed. Probably the highest-value item
+  left: it turns a pile of one-off measurements into a tripwire.
+- **LB12 — energy per token** [M·★] The interesting axis on a battery device,
+  and the NPU's real argument over the CPU lane (165 % vs 752 % of 800 % CPU
+  says something about power but does not measure it).
+- **LB13 — measurements not yet run on this host** [S·★] hybrid lane on coding
+  tasks, `nctx` scaling below 16384, `--ngl` on the GPU lane, and the model
+  candidates never tried: `Qwen3-8B` W4A16 (the winner's direct competitor —
+  same fast prefill, same 4096 ceiling, twice the parameters), a
+  code-specialised GGUF such as `Qwen2.5-Coder-7B`, and the other QAIRT bundles
+  (`Ministral-3-3B-Instruct`, `Gemma-4-E2B-it`). **Every model measured so far
+  is from one family (Qwen3/Qwen3.8)** — that is the largest gap in the
+  ranking's authority.
+
+**Explicitly NOT for llm-stack:** `windows/scripts/host/start-geniex-servers.ps1`
+stays where it is — Windows-host lane management, not benchmarking.
 
 ## E. Waiting on a TRIGGER (not on work)
 
