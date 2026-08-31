@@ -74,10 +74,21 @@ this repo's cp314 pin).
      rather than partial, and it is not TVM-specific.
   2. `WindowsTvm.Common.psm1` — `build-tvm-from-source.ps1:27` throws without the
      `tvmmods` mount (#134), so TVM still fails once the import is fixed.
-  AND THE MOUNT PATHS THEMSELVES ARE STALE: all sixteen `source=windows/scripts/
-  <name>.ps1` sources in those RUNs predate the `scripts/build/` reorganisation, so
-  a verbatim restore fails at solve time before any of the above even runs. Treat
-  the recipe as a SHAPE to re-derive, not a patch to apply.
+  AND TWO MORE, both verified 2026-08-31:
+  3. **Every script path is wrong.** All sixteen `source=windows/scripts/<n>.ps1`
+     predate the reorganisation — fourteen are now under `scripts/build/`, and
+     `bk-warm.ps1` / `bk-materialize.ps1` under `scripts/host/`. This fails at SOLVE
+     time, before any of the above can even run.
+  4. **The media-core chain order was swapped (#94).** The retired targets chain
+     onnx → opencv → ffmpeg; the live lane is onnx → ffmpeg → opencv, so a verbatim
+     restore wires each stage to the wrong `${MEDIA_CORE_*_IMAGE}` ancestor.
+  Plus: any restored stage that mounts `windows/qnn-sdk` needs ARG+ENV
+  `QNN_SDK_ZIP_SHA256` (#154) or the SDK is extracted unverified.
+  **THE RECIPE IS NOW IN THE CODE**, at `bk-warm.ps1:15-38`, as a derivation rule
+  rather than ten pasted blocks: replace the five per-file module mounts with the
+  live `from=buildmods` stage mount (`from=tvmmods` for media-tvm), re-path every
+  script, and derive each RUN from the stage that runs that script TODAY. Treat
+  `c9586c1^` as a SHAPE, not a patch. Nothing here is build-verified.
 
 - **#152 — the wave of 2026-08-31 is UNPROVEN BY A BUILD.** Everything in #147 was
   verified statically (773/773 suite, doc-links, doc-dupes, EOL). No chain has run.

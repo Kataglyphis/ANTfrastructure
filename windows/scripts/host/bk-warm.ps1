@@ -13,13 +13,29 @@
 # Dockerfile targets from git history (c9586c1^).
 #
 # THE PAYLOADS WORK UNCHANGED; THE RESTORED TARGETS DO NOT (checked 2026-08-31,
-# backlog #149). All ten of them mount the same five modules and neither of the
-# two the tree has needed since:
-#   * WindowsTargetArch.Common.psm1 — WindowsSourceBuild.Common THROWS AT IMPORT
-#     without it (#116), so every restored RUN dies before its first line.
-#   * WindowsTvm.Common.psm1 — build-tvm-from-source.ps1 throws without the
-#     tvmmods mount (#134), so the TVM branch dies even once the import is fixed.
-# Add both to the restored mount lists. Do NOT discover this during the outage.
+# backlog #149). Four independent breakages, all verified against the live tree —
+# apply these while restoring, do not discover them during the outage:
+#
+#  1. EVERY script path is wrong. All sixteen `source=windows/scripts/<n>.ps1`
+#     predate the reorganisation. Fourteen are now `windows/scripts/build/<n>.ps1`;
+#     bk-warm.ps1 and bk-materialize.ps1 are `windows/scripts/host/<n>.ps1`.
+#     The solve fails on these before any container starts.
+#  2. The five per-file module mounts are short by two. Replace the whole set with
+#     the stage mount the live Dockerfile uses:
+#       --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules
+#     (six modules, WindowsTargetArch.Common.psm1 included — without it
+#     WindowsSourceBuild.Common THROWS AT IMPORT, #116, so every restored RUN dies
+#     before its first line). The media-tvm RUN takes `from=tvmmods` instead, or
+#     build-tvm-from-source.ps1 throws on the missing leaf (#134).
+#  3. The media-core chain order was SWAPPED (#94). The retired targets chain
+#     onnx -> opencv -> ffmpeg; the live lane is onnx -> ffmpeg -> opencv. Restoring
+#     verbatim wires each stage to the wrong ${MEDIA_CORE_*_IMAGE} ancestor.
+#  4. Any stage that mounts windows/qnn-sdk must also declare ARG+ENV
+#     QNN_SDK_ZIP_SHA256 (#154), or Resolve-QnnSdk extracts the SDK unverified.
+#
+# GROUND TRUTH for all of it: the live Dockerfile.media-builder. Derive each
+# restored RUN's mounts from the stage that runs the same script today, rather than
+# porting the old block. Treat c9586c1^ as a SHAPE, not a patch.
 #
 # Original purpose — WARM-solve payload for the BuildKit lane: runs a heavy
 # build, then hands its artifact delta off over WebDAV (Export-BuildHandoff).
