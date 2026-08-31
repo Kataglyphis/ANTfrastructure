@@ -4,10 +4,10 @@
 # frozen so the gate only reports NEW or GROWING copies. Shrinking one is
 # always welcome: lower its budget (or delete the line) when you do.
 
-linux/scripts/build-runtime-artifacts.sh | linux/scripts/build-runtime-manifest.sh | 199 | baseline 2026-08-31, not yet reviewed
+linux/scripts/build-runtime-artifacts.sh | linux/scripts/build-runtime-manifest.sh | 199 | REVIEWED 2026-08-31 KEEP: not a clone - disjoint function sets; the overlap is the usage() heredoc and the shared option parser of two sibling CLIs
 linux/scripts/03-media/build/iree/android/build-android.sh | linux/scripts/03-media/build/litert/android/build-android.sh | 179 | baseline 2026-08-31, not yet reviewed
-linux/scripts/lint-shell.sh | linux/scripts/lint-workflows.sh | 95 | baseline 2026-08-31, not yet reviewed
-linux/scripts/01-core/context-management.sh | linux/scripts/01-core/cross-stage-build.sh | 82 | baseline 2026-08-31, not yet reviewed
+linux/scripts/lint-shell.sh | linux/scripts/lint-workflows.sh | 95 | REVIEWED 2026-08-31 KEEP: pinned-tool bootstrap, 3 copies (incl lint-dockerfiles); hadolint fetches a RAW binary while the others untar/unzip, so a shared helper needs a strategy arg
+linux/scripts/01-core/context-management.sh | linux/scripts/01-core/cross-stage-build.sh | 82 | REVIEWED 2026-08-31 KEEP: the two orphan-context sweepers differ only in glob+label, but are loaded by DIFFERENT flows (nothing sources both), so a shared helper would couple modules that never meet
 linux/Dockerfile.media | linux/Dockerfile.toolchain | 81 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/compiler-resolution.sh | linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh | 80 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/common.sh | linux/scripts/03-media/core/common.sh | 71 | baseline 2026-08-31, not yet reviewed
@@ -36,14 +36,14 @@ linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | linu
 linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh | linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh | 34 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/base-image.sh | linux/scripts/02-toolchain/setup-dependencies.sh | 34 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/install-tensorrt.sh | linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh | 34 | baseline 2026-08-31, not yet reviewed
-linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh | linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh | 34 | baseline 2026-08-31, not yet reviewed
+linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh | linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh | 34 | REVIEWED 2026-08-31 KEEP: same as the -amd pair, shared base already extracted into lib/common.sh
 linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh | linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh | 34 | baseline 2026-08-31, not yet reviewed
 linux/scripts/lint-dockerfiles.sh | linux/scripts/lint-shell.sh | 34 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | linux/scripts/03-media/build/onnxruntime/build/lib/common.sh | 33 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/verify.sh | linux/scripts/02-toolchain/llvm-validate.sh | 33 | baseline 2026-08-31, not yet reviewed
 linux/scripts/lint-dockerfiles.sh | linux/scripts/lint-workflows.sh | 33 | baseline 2026-08-31, not yet reviewed
 linux/scripts/06-packaging/copy-media-payloads.sh | linux/scripts/06-packaging/validate-compilers.sh | 32 | baseline 2026-08-31, not yet reviewed
-linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh | linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh | 31 | baseline 2026-08-31, not yet reviewed
+linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh | linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh | 31 | REVIEWED 2026-08-31 KEEP: the shared flag base is ALREADY extracted (append_onnx_native_base_build_args); the residue is per-EP
 linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh | linux/scripts/03-media/build/onnxruntime/build/lib/common.sh | 31 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/build/onnxruntime/build/30-build-native-amd.sh | linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh | 31 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/path-helpers.sh | linux/scripts/04-runtime/gstreamer-env.sh | 30 | baseline 2026-08-31, not yet reviewed
