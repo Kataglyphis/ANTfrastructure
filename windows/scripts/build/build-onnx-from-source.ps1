@@ -209,8 +209,9 @@ if ($onnxCross -and $tpy.Available) { Write-Host "ONNX: python bindings ON for t
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
 # -- QNN EP (QAIRT SDK), backlog #121: OPT-IN by staging the login-gated zip in
-# windows\qnn-sdk\; no zip = EP off. SCAFFOLD, UNPROVEN -- no SDK has ever been staged here,
-# so every step asserts what it expects and the first staged zip breaks it loudly.
+# windows\qnn-sdk\; no zip = EP off. PROVEN on the build-time path 2026-08-31
+# (full :winarm64 chain, QAIRT 2.44.0, aarch64-windows-msvc backends); runtime
+# execution still needs a Snapdragon host.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 $qnnArgs = if ($qnnSdk) { $qnnSdk.CmakeArgs } else { @() }
 if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }

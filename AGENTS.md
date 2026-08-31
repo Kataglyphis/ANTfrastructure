@@ -551,6 +551,11 @@ framework. A version-mismatch (SDK too old for the framework) also falls back to
 QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
 and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
 [`docs/windows-cross-builds.md`](docs/windows-cross-builds.md) § QNN.
+**Windows #121 BUILD-TIME PATH PROVEN 2026-08-31** (staged QAIRT
+2.44.0.260225, full `:winarm64` chain: QNN EP ON with the
+`aarch64-windows-msvc` backend set, runtime staged beside all five frameworks,
+arch gate 1168/0, smoke 97/0/15); runtime execution still needs a Snapdragon
+host.
 
 The **Linux ARM64 lane** mirrors this (backlog QNN-LINUX, **PROVEN 2026-08-30**
 on a staged QAIRT v2.49.0.260730 zip — arm64 media build GREEN): stage the

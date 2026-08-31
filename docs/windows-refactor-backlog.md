@@ -43,9 +43,9 @@ landed: see #135 follow-up below). Read the table as the last fully green run
 compiler** (both need an LLVM cross-built for aarch64-windows) and **LiteRT-LM** (Bazel + an x86_64
 prebuilt `.lib`; a CMake port exists upstream — #133(d)). Their *python packages* DO now ship
 (`apache_tvm`, `apache_tvm_ffi`, `iree.runtime` — closed by #133). Also excluded by owner decision
-or construction: **CUDA** (#122, no Windows-on-ARM CUDA), the **torch app stage** (`uv sync` must
-execute the target interpreter), and the **QNN EP**, which is wired but needs a hand-staged SDK
-(#121).
+or construction: **CUDA** (#122, no Windows-on-ARM CUDA) and the **torch app stage** (`uv sync` must
+execute the target interpreter). The **QNN EP is PRESENT and PROVEN 2026-08-31** (build-time path;
+runtime execution still needs a Snapdragon host — see #121 below).
 
 **The honest caveat, unchanged:** nothing the arm64 lane produces has ever been *executed*. Its
 wheels ship staged, not installed, and every verdict above is a static check — PE machine type,

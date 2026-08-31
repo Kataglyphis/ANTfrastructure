@@ -206,7 +206,8 @@ if ($useVulkan -eq 'ON') {
 # CMAKE_AR: find llvm-lib on PATH -- use :FILEPATH (matches OpenCV/LiteRT form) for consistency.
 $cmakeExtra += Get-LlvmArchiverCmakeArg
 # QNN target runtime (#121): TVM's QNN runtime dispatches compiled models to
-# the Snapdragon NPU. The SDK headers/libs are passed via QNN_HOME.
+# the Snapdragon NPU. The SDK headers/libs are passed via QNN_HOME. Build-time
+# path PROVEN 2026-08-31 (see docs/windows-refactor-backlog.md #121).
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 if ($qnnSdk) {
     $cmakeExtra += @('-DUSE_QNN=ON', "-DQNN_HOME=$($qnnSdk.Home -replace '\\', '/')")
