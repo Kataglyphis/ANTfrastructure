@@ -2,8 +2,15 @@
 set -euo pipefail
 
 # Run benchmarks across multiple num_ctx and max_tokens configs.
-# Uses the existing benchmark_openai_api.py with Ollama extra params
-# passed via extra_body (supported by Ollama's OAI-compatible endpoint).
+#
+# --extra-params are merged into the request body TOP-LEVEL (not via extra_body:
+# benchmark_openai_api.py does payload.update(extra_params)).
+#
+# IMPORTANT: `num_ctx` is Ollama-native. This sweep only means anything against
+# an Ollama backend — every other server ignores it, so all five "configs"
+# below collapse into the same run and the comparison table shows five rows of
+# noise. BENCH_BACKEND lets you point this at a non-Ollama lane; the guard
+# below refuses that rather than producing a meaningless table.
 
 cd "$(dirname "$0")"
 
@@ -16,6 +23,16 @@ MODEL="${BENCH_MODEL:-gemma4:26b}"
 # the same sweep at the Snapdragon lane without editing anything.
 BACKEND="${BENCH_BACKEND:-ollama}"
 BACKEND_ARGS=(--backend "$BACKEND")
+
+# The configs below vary num_ctx, which only Ollama honours. Refuse rather than
+# emit five identical rows dressed up as a comparison.
+if [[ "$BACKEND" != ollama* && "${BENCH_ALLOW_NON_OLLAMA:-0}" != "1" ]]; then
+  echo "  This sweep varies num_ctx, which is Ollama-native — against '$BACKEND'"
+  echo "  every config would produce the same run. Use bench_coding.py /"
+  echo "  bench_tools.py for other backends, or set BENCH_ALLOW_NON_OLLAMA=1"
+  echo "  if you know the endpoint honours num_ctx."
+  exit 2
+fi
 API_URL="$(python3 -c "
 import sys; sys.path.insert(0, '.')
 from benchmark_openai_api import resolve_backend

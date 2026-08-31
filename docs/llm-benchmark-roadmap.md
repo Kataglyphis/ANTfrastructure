@@ -138,6 +138,47 @@ the ranking's authority.
   re-check whether the findings (thinking tax, cut-off cap, prefill asymmetry)
   are properties of *this hardware* or of *Qwen*.
 
+## Phase 4b — What a refactoring review confirmed (2026-08-31)
+
+A six-dimension review with an adversarial stage that rejects any proposal
+unable to name a concrete future task it helps: **45 proposals, 26 rejected, 19
+kept.** The cheap ones were applied the same day (see the CHANGELOG); these
+remain, deliberately *not* done yet:
+
+- **P4b.1 Extract the shared `main()` front end** [S·★★] The
+  candidate-resolution block in `bench_coding.py` and `bench_tools.py` is
+  byte-identical across 17 lines, comment included — and the None-label defect
+  the audit found existed in **both copies and had to be fixed twice**. A
+  `bench_cli.py` owning `resolve_candidates()` and `write_report()` would give
+  that lesson a test seam it does not have today (nothing in `tests/` imports
+  `main()`). **Caveat the reviewer priced and the proposal did not:** any edit
+  to `bench_tools.py` invalidates the stored baseline, so batch this with the
+  next substantive change and re-baseline in the same pass rather than landing
+  it standalone. Do **not** fold the new module into `tool_sha256` — that would
+  make every plumbing edit fire the grader-moved alarm while the grader is
+  provably unchanged.
+- **P4b.2 One report envelope** [M·★★] Three shapes across the suite,
+  provenance implemented twice and missing from `bench_lanes` entirely.
+  `bench_compare` already carries an adapter for two of them. Converge before
+  anything else grows a reader.
+- **P4b.3 Lift `run_benchmarks.sh`'s three embedded Python programs** [M·★]
+  The per-config summary, the manifest generator and the comparison table live
+  as heredocs inside the shell script, untested and unreachable from `pytest`.
+- **P4b.4 `--endpoint` vs `--base-url`** [S·★] `bench_lanes.py` spells the same
+  thing differently from both siblings.
+- **P4b.5 `resolve_lane` has no `path=` seam** [S·★] so its unit tests are
+  wired to the shipped `backends.json` and break when it changes.
+
+**Applied immediately** (they were defects, not preferences): a test that
+pinned the *abandoned* longest-block extraction rule; `minimum_detectable_drop`
+renamed to `smallest_separable_rate` because it returns a rate, not a drop; the
+ranking tables printing bare fractions when `bench_stats` exists precisely to
+prevent that; a `run_benchmarks.sh` header claiming `extra_body` and a sweep
+that silently degenerated on non-Ollama backends; a README enumerating a case
+inventory that went stale the day the suite grew; and `test_v1_api.py` taking
+**two minutes** to report that nothing was listening, where its sibling took
+two seconds.
+
 ## Phase 5 — The remaining backlog items [M–L]
 
 - **P5.1 Embeddings** [M·★★] Endpoints are tested, nothing measures them.

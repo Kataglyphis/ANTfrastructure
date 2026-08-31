@@ -31,6 +31,26 @@ def _ollama_api(path):
     return f"{OLLAMA_BASE_URL}/{path.lstrip('/')}"
 
 
+def _reachable():
+    """Is anything serving at all?
+
+    Six of these tests take only the `session` fixture, so a fixture-level skip
+    left them running into the 30s timeout each — the suite took two minutes to
+    tell you nothing was listening. Its sibling
+    (test_harness_against_ollama.py) skips in seconds; that inconsistency is
+    what gets a test suite ignored.
+    """
+    try:
+        requests.get(_v1("models"), timeout=2)
+        return True
+    except requests.RequestException:
+        return False
+
+
+pytestmark = pytest.mark.skipif(
+    not _reachable(), reason=f"no OpenAI-compatible server at {OLLAMA_BASE_URL}")
+
+
 @pytest.fixture(scope="session")
 def session():
     s = requests.Session()

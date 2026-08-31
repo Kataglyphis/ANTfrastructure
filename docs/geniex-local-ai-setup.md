@@ -870,6 +870,55 @@ loop has many turns. The QAIRT bundle stays the practical choice for
 interactive work — with contrastive tool descriptions, and knowing roughly one
 call in six will arrive as text rather than as a call.
 
+### 1g. The full sweep — six models, every tool (measured 2026-08-31)
+
+All six cached models through the complete suite: the verifiable-answer health
+probe, 27 tool-calling cases, and 6 coding tasks (classic *and* novel).
+Sequential by design — the lanes serve one request at a time and concurrent
+lanes measurably slow each other, so fanning this out would corrupt every
+timing it produced. 1 h 25 min.
+
+| Model | Health | Tool calling | s | Coding | cut | s |
+|---|---|---|---|---|---|---|
+| **QAIRT 4B-Instruct** (NPU) | **6/6** | 25/27 = 93 % [77–98] | **79** | 5/6 = 83 % | 0 | **60** |
+| QAIRT 1.7B (NPU) | 5/6 | 26/27 = 96 % [82–99] | 103 | 2/6 = 33 % | 4 | 353 |
+| GGUF Qwen3-4B `Q4_0` (CPU) | **6/6** | **27/27 = 100 %** [88–100] | 432 | 2/6 = 33 % | 4 | 493 |
+| GGUF Qwen3.8-2B (CPU) | 4/6 | 8/27 = 30 % [16–48] | 190 | 2/6 = 33 % | 0 | 66 |
+| GGUF Qwen3.8-9B (CPU) | **6/6** | 9/27 = 33 % [19–52] | 602 | 5/6 = 83 % | 1 | 536 |
+| GGUF Qwen3.8-27B (CPU) | 5/6 | 9/27 = 33 % [19–52] | 1466 | **6/6 = 100 %** | 0 | 226 |
+
+**The sharpest structure in the data is the model FAMILY, not the size.**
+
+| Family | Models | Tool calling |
+|---|---|---|
+| **Qwen3** | 1.7B, 4B-Instruct, 4B `Q4_0` | 25–27 / 27 |
+| **Qwen3.8** | 2B, 9B, 27B | 8–9 / 27 |
+
+Every Qwen3 model is strong and every Qwen3.8 model is weak, across 1.7 B to
+27 B, across quantisations, across lanes and across two different publishers.
+Nothing in the size ordering predicts it. The two groups' intervals do **not**
+overlap ([77–100 %] vs [16–52 %]), so unlike most comparisons at this sample
+size, this one is statistically separable — and it is the finding that matters:
+**the Qwen3.8 family is unsuitable for agent use on this machine no matter how
+well it codes.**
+
+**Coding ability and tool calling are orthogonal.** The 27B is the best coder
+in the field (6/6, the only perfect score) and among the worst tool callers
+(9/27). The 1.7B is the inverse (26/27 tools, 2/6 coding — four tasks lost to
+the 2048-token cap). A single headline metric would have picked the wrong model
+either way; measuring both is what separates them.
+
+**No model wins both, and the recommendation survives.** The QAIRT 4B-Instruct
+is the only workable compromise: 93 % on tools *and* 83 % on coding, at **5.5x
+less time than** the perfect-scoring GGUF 4B and **18x less** than the 27B. Its
+25/27 and the GGUF 4B's 27/27 have overlapping intervals, so that gap is not
+demonstrable; the time difference is not in doubt.
+
+**What this sweep cannot support.** Six coding tasks carry almost nothing:
+6/6 is [61–100 %] and 5/6 is [44–97 %], both overlapping even with 2/6. The
+coding column separates nobody. The tool-calling column does, because it has 27
+cases — which is exactly why the case count was raised.
+
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 
 One server = one request at a time. Throughput scales only by adding servers,

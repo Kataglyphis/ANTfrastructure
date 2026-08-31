@@ -85,14 +85,14 @@ class TestStatisticalPower:
     blocker rather than a nice-to-have."""
 
     def test_a_tiny_suite_can_only_prove_a_collapse(self):
-        from bench_stats import minimum_detectable_drop
-        mde = minimum_detectable_drop(8)
+        from bench_stats import smallest_separable_rate
+        mde = smallest_separable_rate(8)
         assert mde is not None and mde <= 0.35, \
             "at n=8 only a near-total collapse is provable"
 
     def test_more_cases_detect_subtler_drops(self):
-        from bench_stats import minimum_detectable_drop
-        assert minimum_detectable_drop(60) > minimum_detectable_drop(8)
+        from bench_stats import smallest_separable_rate
+        assert smallest_separable_rate(60) > smallest_separable_rate(8)
 
     def test_the_measured_case_needs_about_27(self):
         # Removing the system prompt took a model 100% -> 75%: real, causally
@@ -102,8 +102,8 @@ class TestStatisticalPower:
         assert not intervals_overlap(27, 27, 20, 27), "n=27 can"
 
     def test_a_suite_too_small_to_prove_anything_says_so(self):
-        from bench_stats import minimum_detectable_drop, power_note
-        assert minimum_detectable_drop(2) is None
+        from bench_stats import smallest_separable_rate, power_note
+        assert smallest_separable_rate(2) is None
         assert "cannot prove ANY drop" in power_note(2)
 
     def test_power_note_states_the_threshold(self):
@@ -112,5 +112,5 @@ class TestStatisticalPower:
         assert "n=8" in note and "smallest provable drop" in note
 
     def test_zero_trials_is_not_a_crash(self):
-        from bench_stats import minimum_detectable_drop
-        assert minimum_detectable_drop(0) is None
+        from bench_stats import smallest_separable_rate
+        assert smallest_separable_rate(0) is None

@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Benchmark the Ollama OpenAI-compatible API with CPU and RAM tracking.
+"""Benchmark any OpenAI-compatible LLM endpoint, with CPU and RAM tracking.
+
+Named for Ollama because that is where it started; it now serves any
+OpenAI-compatible server (Ollama, GenieX, llama.cpp, vLLM) selected with
+--backend from backends.json. It is also the de-facto library of the suite:
+the sibling tools import resolve_backend, load_backends and
+detect_model_via_api from here.
 
 Uses the Glances REST API (included in the compose stack on port 61208)
 for resource monitoring, with psutil as fallback on the host.
@@ -825,7 +831,7 @@ def print_correctness(probe):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Benchmark Ollama OpenAI-compatible API with CPU/RAM tracking",
+        description="Benchmark any OpenAI-compatible LLM endpoint (--backend selects one)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )

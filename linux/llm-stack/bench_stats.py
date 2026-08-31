@@ -60,8 +60,8 @@ def significance_note(a_label, a_succ, a_tot, b_label, b_succ, b_tot):
     return f"{better} is higher and the intervals do not overlap"
 
 
-def minimum_detectable_drop(trials, from_rate=1.0, z=1.96):
-    """The smallest score drop this many trials could actually prove.
+def smallest_separable_rate(trials, from_rate=1.0, z=1.96):
+    """The lowest rate that is still distinguishable from `from_rate` here.
 
     Without it, "no regression" is ambiguous between "nothing changed" and
     "this suite is too small to tell" — and the second reads exactly like the
@@ -70,8 +70,7 @@ def minimum_detectable_drop(trials, from_rate=1.0, z=1.96):
     still overlapped. Detecting a 100%->75% drop needs 27 cases; 100%->87.5%
     needs 60.
 
-    Returns the rate below `from_rate` that would become separable, or None if
-    no drop at all is detectable at this size.
+    Returns None when no drop at all is provable at this sample size.
     """
     if trials <= 0:
         return None
@@ -84,7 +83,7 @@ def minimum_detectable_drop(trials, from_rate=1.0, z=1.96):
 
 def power_note(trials, from_rate=1.0):
     """One line stating what a 'no regression' verdict is actually worth."""
-    mde = minimum_detectable_drop(trials, from_rate)
+    mde = smallest_separable_rate(trials, from_rate)
     if mde is None:
         return (f"at n={trials} this suite cannot prove ANY drop — "
                 f"'no regression' here means 'cannot tell'")

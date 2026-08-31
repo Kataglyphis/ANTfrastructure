@@ -110,11 +110,11 @@ class TestSuiteShape:
         # The number that motivated the expansion: at 8 cases a real 8/8 -> 6/8
         # degradation was NOT provable. 27 brings the smallest provable drop to
         # roughly 100% -> 75%, which is the point of having a tripwire at all.
-        from bench_stats import minimum_detectable_drop
+        from bench_stats import smallest_separable_rate
         from bench_tools import MULTI_CASES
         n = len(CASES) + len(MULTI_CASES)
         assert n >= 27, f"only {n} cases — too few to prove a 25-point drop"
-        assert minimum_detectable_drop(n) >= 0.70
+        assert smallest_separable_rate(n) >= 0.70
 
     def test_several_tools_are_near_neighbours(self):
         # Selection is only tested if some tools are genuinely confusable;

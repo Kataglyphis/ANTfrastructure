@@ -304,15 +304,27 @@ python3 bench_tools.py --backend geniex-npu
 python3 bench_tools.py --compare candidates.json --repeats 2
 ```
 
-Four tools are advertised (`read_file`, `list_files`, `search_code`,
-`run_tests`) and six cases graded: does it call at all rather than describing
-the call in prose, does it pick the right tool from several plausible ones, are
-the arguments valid JSON, do required values match, and is an optional boolean
-set when asked.
+The case inventory lives in `bench_tools.py` (`TOOLS`, `CASES`,
+`MULTI_CASES`) and is deliberately not duplicated here — an earlier version of
+this section enumerated the cases and was wrong within a day of the suite
+growing. What the cases *cover*:
 
-The sixth case expects **no** tool call. Over-eager tool use is a real failure
-mode — a model that reaches for a tool every turn burns a round trip and can
-spin an agent loop — and without a negative case it goes unmeasured.
+- **calling at all** rather than describing the call in prose;
+- **near-neighbour selection** — `read_file` vs `list_files`, `write_file` vs
+  `apply_patch`, `git_status` vs `git_diff`. With only distinct tools a model
+  can succeed by elimination, which is not what agents fail at;
+- **argument extraction**, including values with spaces and symbols, and
+  optional booleans that must be set when asked;
+- **restraint** — several cases expect **no** tool call. Over-eager tool use
+  burns a round trip and can spin an agent loop, and one negative case out of
+  many would let a tool-happy model score well by accident;
+- **multi-turn** — is a returned tool result actually *used*, and after a tool
+  *error* does the model admit the failure rather than inventing the contents
+  of a file it could not read?
+
+Run `python3 -c "import bench_tools as b; print(len(b.CASES)+len(b.MULTI_CASES))"`
+for the current count; it is sized so a real regression is provable (see
+**Reading a score honestly**).
 
 Grading is strict on tool names and required values, lenient on formatting the
 model cannot be blamed for (a `./` prefix, a trailing slash), and it accepts

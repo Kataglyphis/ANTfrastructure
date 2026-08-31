@@ -618,10 +618,13 @@ def main():
         print("  RANKING — by tasks passed, then by time to a finished answer")
         print("=" * 78)
         ranked = sorted(reports, key=lambda r: (-r["passed"], r["total_wall_s"]))
-        print(f"  {'model':42s} {'pass':>5s} {'wrong':>6s} {'cut':>4s} "
+        print(f"  {'model':34s} {'pass [95% CI]':>22s} {'wrong':>5s} {'cut':>4s} "
               f"{'total':>9s} {'avg/task':>9s}")
+        from bench_stats import format_score
         for r in ranked:
-            print(f"  {r['label'][:42]:42s} {r['passed']}/{r['total']:<3d} "
+            n = r.get("effective_n") or r["total"]
+            k = round(r["passed"] * n / r["total"]) if r["total"] else 0
+            print(f"  {r['label'][:34]:34s} {format_score(k, n):>22s} "
                   f"{r.get('wrong', 0):5d} {r.get('truncated', 0):4d} "
                   f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:8.1f}s")
         if any(r.get("truncated") for r in ranked):

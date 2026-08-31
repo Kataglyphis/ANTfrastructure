@@ -496,8 +496,14 @@ def main():
         print("\n" + "=" * 70)
         print("  RANKING — correct tool calls, then time")
         print("=" * 70)
+        from bench_stats import format_score
         for r in sorted(reports, key=lambda x: (-x["passed"], x["total_wall_s"])):
-            print(f"  {r['label'][:44]:44s} {r['passed']}/{r['total']:<4d} {r['total_wall_s']:8.1f}s")
+            # With the interval, not as a bare fraction: this table is what a
+            # reader takes away, and 25/27 vs 27/27 does NOT support the
+            # conclusion the bare numbers invite.
+            n = r.get("effective_n") or r["total"]
+            k = round(r["passed"] * n / r["total"]) if r["total"] else 0
+            print(f"  {r['label'][:40]:40s} {format_score(k, n):>24s} {r['total_wall_s']:8.1f}s")
         print()
 
 

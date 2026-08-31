@@ -45,9 +45,27 @@ class TestExtraction:
         code = extract_code(text)
         assert "return sorted" in code and "return None" not in code
 
-    def test_longest_block_wins(self):
-        text = "```python\nx=1\n```\ntext\n```python\ndef f():\n    return 42\n```"
+    def test_prefers_the_block_defining_the_required_function(self):
+        # The rule this replaced ("longest block wins") was measured wrong:
+        # models answer with a compact function plus a longer usage block, the
+        # demo got extracted, the function was never defined, and the hidden
+        # tests died with NameError — scoring a correct model as a failure.
+        text = ("```python\ndef merge_sorted(a, b):\n    return a\n```\n"
+                "Example:\n```python\nprint(merge_sorted([1], [2]))\n"
+                "print(merge_sorted([3], [4]))\n"
+                "print(merge_sorted([5], [6]))\n```")
+        assert "def merge_sorted" in extract_code(text, want="merge_sorted")
+
+    def test_falls_back_to_a_block_containing_any_def(self):
+        # Without a name to look for, a block that defines something still beats
+        # a longer block that only calls things.
+        text = ("```python\ndef f():\n    return 42\n```\n"
+                "```python\nprint(1)\nprint(2)\nprint(3)\nprint(4)\nprint(5)\n```")
         assert "def f" in extract_code(text)
+
+    def test_longest_wins_only_when_no_block_defines_anything(self):
+        text = "```python\nx=1\n```\n```python\ny=2\nz=3\n```"
+        assert "y=2" in extract_code(text)
 
     def test_no_code_yields_empty(self):
         assert extract_code("I cannot help with that.") == ""
