@@ -495,13 +495,28 @@ usable. But that win comes from the model not reasoning, not from the silicon.
 One server = one request at a time. Throughput scales only by adding servers,
 and *which* servers you add matters:
 
-| Topology | NPU | GPU | hybrid | aggregate |
-|---|---|---|---|---|
-| NPU alone | 19.5 | — | — | 19.5 tok/s |
-| GPU alone | — | 12.5 | — | 12.5 tok/s |
-| **NPU + GPU** | **19.25** | **12.11** | — | **31.4 tok/s** |
-| NPU + GPU + hybrid | 12.84 | 11.16 | 10.12 | 34.1 tok/s |
-| NPU + hybrid | 13.89 | — | 15.65 | 29.5 tok/s |
+| Topology | NPU | GPU | CPU | hybrid | aggregate |
+|---|---|---|---|---|---|
+| NPU alone | 18.6–19.5 | — | — | — | 19.5 tok/s |
+| GPU alone | — | 12.5 | — | — | 12.5 tok/s |
+| CPU alone | — | — | 23.7 | — | 23.7 tok/s |
+| NPU + GPU | 19.25 | 12.11 | — | — | 31.4 tok/s |
+| **NPU + CPU** | **18.85** | — | **20.81** | — | **39.7 tok/s** |
+| **NPU + GPU + CPU** | **18.66** | **11.13** | **15.64** | — | **45.4 tok/s** |
+| NPU + GPU + hybrid | 12.84 | 11.16 | — | 10.12 | 34.1 tok/s |
+| NPU + hybrid | 13.89 | — | — | 15.65 | 29.5 tok/s |
+
+**The NPU lane is immune to contention.** Across every combination above it
+holds 18.6–19.25 tok/s — adding a CPU lane, a GPU lane or both costs it
+nothing measurable. It is isolated silicon with a small, *pinned* CPU footprint
+(`n-threads: 3`, `cpu-mask 0xe0`). The CPU and GPU lanes, by contrast, fight
+each other for the same 8 Oryon cores: the CPU lane drops 23.7 → 20.8 → 15.6 as
+lanes are added, the GPU lane 12.5 → 11.1.
+
+**Max aggregate is NPU + GPU + CPU at 45.4 tok/s**; the best two-lane pairing is
+**NPU + CPU at 39.7 tok/s** (better than NPU+GPU's 31.4, because the CPU lane is
+the strongest GGUF backend). `hybrid` remains the one to avoid — it is the only
+mode that damages the NPU lane, because it shares the same HTP.
 
 **NPU + GPU is the sweet spot.** The Hexagon HTP and the Adreno are separate
 silicon, so the two lanes cost each other ~1–3 % (19.5 → 19.25, 12.5 → 12.11).
@@ -511,8 +526,16 @@ same single HTP. Run two lanes by default; add the third only when you really
 have three concurrent streams and care about total tokens, not per-answer
 latency.
 
-This does *not* make one answer faster — nothing here splits a single model
-across GPU and NPU. It makes *n* concurrent agents faster.
+**None of this makes one answer faster.** Aggregate throughput only
+materialises if you genuinely have *n* concurrent requests — three parallel
+subagents, or three opencode sessions. A single agent waiting for a single
+reply still sees 18.6 tok/s on the NPU lane, no matter how many lanes are up.
+And with all three lanes busy the machine is saturated (the 3-lane run took
+194.7 s wall, paced by its slowest lane), so interactive work suffers.
+
+Splitting *one* model across NPU and CPU is a different thing entirely — that
+is `--compute hybrid`, and for a model that fits the HTP it is slower than
+either lane alone (14.1 vs 15.2 tok/s on the 4B).
 
 ### 3. Fix the two server defaults
 
