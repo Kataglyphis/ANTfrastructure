@@ -159,3 +159,24 @@ class TestLaneResolution:
         with pytest.raises(argparse.ArgumentTypeError) as e:
             resolve_lane("ollama")
         assert "model=" in str(e.value)
+
+
+class TestEmptyReplyHandling:
+    """A request can succeed and return NOTHING — exactly what the QAIRT lane
+    does past its context limit: HTTP 200, zero tokens, ttft_s None. Every
+    print used to raise TypeError on it and take the whole run down."""
+
+    def test_seconds_formatter_tolerates_none(self):
+        from bench_lanes import _secs
+        assert "n/a" in _secs(None)
+        assert "1.50" in _secs(1.5)
+
+    def test_batching_probe_is_inconclusive_rather_than_crashing(self):
+        from bench_lanes import probe_batching
+        srv, url = make_server(serialise=False, tokens=0)
+        try:
+            report = probe_batching(url, "m", "hi", 16)
+        finally:
+            srv.shutdown()
+        assert report["verdict"] == "inconclusive"
+        assert report["serialised"] is None

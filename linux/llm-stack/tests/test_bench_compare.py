@@ -193,3 +193,101 @@ class TestPerCaseComparison:
         new = normalise(report([("m", 5, 30, 10.0)]))
         _, regressed = compare(old, new)
         assert regressed, "the aggregate path must keep working for older reports"
+
+
+def report_repeats(label, cases, wall=10.0, deterministic=False, config=None,
+                   errored=()):
+    """A report with N attempts per case, as --repeats produces."""
+    results = []
+    for name, outcomes in cases.items():
+        for i, ok in enumerate(outcomes):
+            results.append({"case": name, "attempt": i, "passed": ok,
+                            "errored": name in errored})
+    passed = sum(1 for v in cases.values() for ok in v if ok)
+    total = sum(len(v) for v in cases.values())
+    return {"benchmark": "bench_tools", "provenance": {}, "config": config or {},
+            "reports": [{"label": label, "model": label, "passed": passed,
+                         "total": total, "total_wall_s": wall,
+                         "median_wall_s": wall / max(total, 1),
+                         "effective_n": len(cases) if deterministic else total,
+                         "deterministic": deterministic, "results": results}]}
+
+
+class TestRepeatsAreNotCollapsed:
+    """Collapsing repeats to a bool with all() was wrong in BOTH directions:
+    it fired on one flaky draw, and it went silent on a total collapse."""
+
+    def test_one_flaky_draw_does_not_fire_the_alarm(self):
+        # 3/3 -> 2/3 on a sampling lane. Firing here mutes the tripwire.
+        old = normalise(report_repeats("m", {"a": [True, True, True]}))
+        new = normalise(report_repeats("m", {"a": [True, True, False]}))
+        findings, regressed = compare(old, new)
+        assert not regressed
+        assert any("pass less often" in f for f in findings), \
+            "the degradation should still be visible, just not alarmed"
+
+    def test_a_total_per_case_collapse_is_caught(self):
+        # 2/3 -> 0/3. The old all() rule produced False -> False: nothing at all.
+        old = normalise(report_repeats("m", {"a": [True, True, False],
+                                             "b": [True, True, True]}))
+        new = normalise(report_repeats("m", {"a": [False, False, False],
+                                             "b": [True, True, True]}))
+        findings, regressed = compare(old, new)
+        assert regressed and any("broke: a" in f for f in findings)
+
+    def test_transport_errors_are_excluded_from_the_case_view(self):
+        old = normalise(report_repeats("m", {"a": [True]}))
+        new = normalise(report_repeats("m", {"a": [False]}, errored=("a",)))
+        findings, regressed = compare(old, new)
+        assert not regressed, "an HTTP failure is not the model failing"
+
+
+class TestConfigIsCompared:
+    """Dropping --system or changing --repeats changes what the numbers MEAN.
+    Both used to surface as the model regressing."""
+
+    def test_a_changed_system_prompt_is_called_out(self):
+        old = normalise(report_repeats("m", {"a": [True]},
+                                       config={"system_prompt": "p.md", "repeats": 1}))
+        new = normalise(report_repeats("m", {"a": [True]},
+                                       config={"system_prompt": None, "repeats": 1}))
+        findings, _ = compare(old, new)
+        assert any("config.system_prompt changed" in f for f in findings)
+
+    def test_timing_is_not_compared_across_a_repeats_change(self):
+        # total_wall_s scales linearly with repeats; comparing raw totals
+        # reported a slowdown for doing three times the work.
+        old = normalise(report_repeats("m", {"a": [True]}, wall=10.0,
+                                       config={"repeats": 1}))
+        new = normalise(report_repeats("m", {"a": [True, True, True]}, wall=30.0,
+                                       config={"repeats": 3}))
+        findings, regressed = compare(old, new)
+        assert not regressed
+        assert any("timing not compared" in f for f in findings)
+
+
+class TestTimingUsesPerAttempt:
+    def test_a_run_that_errored_out_is_not_reported_as_faster(self):
+        # Summing only successful requests made a half-failed run look quick.
+        old = normalise(report_repeats("m", {"a": [True], "b": [True], "c": [True]},
+                                       wall=30.0, config={"repeats": 1}))
+        new = normalise(report_repeats("m", {"a": [True], "b": [True], "c": [True]},
+                                       wall=60.0, config={"repeats": 1}))
+        findings, regressed = compare(old, new)
+        assert regressed and any("SLOWER" in f for f in findings)
+        assert any("per attempt" in f for f in findings)
+
+
+class TestIntervalsUseEffectiveN:
+    def test_repeats_on_a_deterministic_lane_do_not_manufacture_significance(self):
+        # 5 cases repeated 4x looks like n=20; it is 5 observations.
+        cases_old = {f"c{i}": [True] * 4 for i in range(5)}
+        cases_new = {f"c{i}": [True] * 4 for i in range(5)}
+        cases_new["c0"] = [False] * 4
+        old = normalise(report_repeats("m", cases_old, deterministic=True,
+                                       config={"repeats": 4}))
+        new = normalise(report_repeats("m", cases_new, deterministic=True,
+                                       config={"repeats": 4}))
+        findings, _ = compare(old, new)
+        score_line = next(f for f in findings if "->" in f and "/" in f)
+        assert "/5" in score_line, f"intervals should use effective_n=5: {score_line}"

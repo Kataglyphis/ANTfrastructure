@@ -88,6 +88,18 @@ def stream_once(base_url, model, prompt, max_tokens=256, timeout=900):
     }
 
 
+
+def _secs(value, width=6):
+    """Format a possibly-missing duration.
+
+    A request can succeed and return NOTHING — that is exactly what the QAIRT
+    lane does past its context limit: HTTP 200, zero tokens, ttft_s None. The
+    print statements used to raise TypeError on it and take the whole lane run
+    with them.
+    """
+    return f"{value:{width}.2f}" if isinstance(value, (int, float)) else f"{'n/a':>{width}}"
+
+
 def run_parallel(jobs):
     """Run (label, fn) jobs at the same time; return {label: result}."""
     out = {}
@@ -121,11 +133,16 @@ def probe_batching(base_url, model, prompt, max_tokens):
             print(f"    {k}: ERROR {results[k]['error']}")
         return None
 
-    ordered = sorted(results.values(), key=lambda r: r["ttft_s"] or 0)
+    if any(r.get("ttft_s") is None for r in results.values()):
+        print("    VERDICT: inconclusive — a request returned no tokens at all "
+              "(past a context limit?), so there is no first-token time to compare")
+        return {"verdict": "inconclusive", "serialised": None,
+                "wall_s": round(wall, 2), "requests": results}
+    ordered = sorted(results.values(), key=lambda r: r["ttft_s"])
     first, second = ordered[0], ordered[1]
     for name, r in sorted(results.items()):
-        print(f"    {name}: ttft={r['ttft_s']:6.2f}s  {r['decode_tok_per_sec']:6.2f} tok/s  "
-              f"wall={r['wall_s']:6.2f}s")
+        print(f"    {name}: ttft={_secs(r['ttft_s'])}s  "
+              f"{_secs(r['decode_tok_per_sec'])} tok/s  wall={_secs(r['wall_s'])}s")
 
     # If the later request only started producing after the earlier one had
     # essentially finished, the server ran them one after another.
@@ -151,8 +168,8 @@ def run_lanes(lanes, prompt, max_tokens, sequential_baseline=True):
             if "error" in r:
                 print(f"    {name:10s} ERROR {r['error']}")
             else:
-                print(f"    {name:10s} {r['decode_tok_per_sec']:6.2f} tok/s   "
-                      f"ttft={r['ttft_s']:6.2f}s")
+                print(f"    {name:10s} {_secs(r['decode_tok_per_sec'])} tok/s   "
+                      f"ttft={_secs(r['ttft_s'])}s")
 
     print("\n  Together — all lanes at once:")
     results, wall = run_parallel([
@@ -173,8 +190,8 @@ def run_lanes(lanes, prompt, max_tokens, sequential_baseline=True):
         if base:
             change = 100 * (r["decode_tok_per_sec"] - base) / base
             delta = f"   ({change:+.0f}% vs alone)"
-        print(f"    {name:10s} {r['decode_tok_per_sec']:6.2f} tok/s   "
-              f"ttft={r['ttft_s']:6.2f}s{delta}")
+        print(f"    {name:10s} {_secs(r['decode_tok_per_sec'])} tok/s   "
+              f"ttft={_secs(r['ttft_s'])}s{delta}")
 
     best_alone = max((v.get("decode_tok_per_sec", 0)
                       for v in report["baseline"].values()), default=0)

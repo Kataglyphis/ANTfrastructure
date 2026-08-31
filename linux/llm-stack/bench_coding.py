@@ -224,6 +224,12 @@ assert rank_quants(['nodigit']) == []
 
 CODE_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S | re.I)
 
+
+def _want_from_prompt(task):
+    """The required function name, taken from the signature the prompt pins."""
+    m = re.search(r"def\s+(\w+)\s*\(", task.get("prompt", ""))
+    return m.group(1) if m else None
+
 # ── Long-context padding ──────────────────────────────────────────────────────
 #
 # The tasks above are ~40-token prompts. A coding agent never sends that: it
@@ -269,20 +275,34 @@ def build_context(approx_tokens):
 GENERATION_CAP = int(os.environ.get("BENCH_GENERATION_CAP", "2048"))
 
 
-def extract_code(text):
+def extract_code(text, want=None):
     """Pull the code out of a reply.
 
-    Prefers a fenced block. Falls back to the first `def ...` onwards, because
-    some models answer with bare code -- refusing to grade that would measure
-    formatting compliance rather than coding ability.
+    Prefers the fenced block that DEFINES the required function (`want`), then
+    any block containing a def, and only then the longest. Falls back to the
+    first `def ...` onwards, because some models answer with bare code --
+    refusing to grade that would measure formatting compliance rather than
+    coding ability.
     """
     # Strip a reasoning block first: a discarded draft inside <think> must not
     # be graded instead of the real answer.
     if "</think>" in text:
         text = text.split("</think>")[-1]
-    blocks = CODE_FENCE.findall(text)
+    blocks = [b.strip() for b in CODE_FENCE.findall(text) if b.strip()]
     if blocks:
-        return max(blocks, key=len).strip()
+        # Longest-block was wrong: models routinely answer with a compact
+        # function plus a longer usage/test block, and picking by length
+        # extracted the demo — the function was never defined and the hidden
+        # tests died with NameError, scoring a correct model as a failure.
+        # Prefer a block that actually defines the required symbol.
+        if want:
+            defining = [b for b in blocks if re.search(rf"\bdef\s+{re.escape(want)}\s*\(", b)]
+            if defining:
+                return max(defining, key=len)
+        with_def = [b for b in blocks if re.search(r"^\s*def\s+\w+\s*\(", b, re.M)]
+        if with_def:
+            return max(with_def, key=len)
+        return max(blocks, key=len)
     idx = text.find("def ")
     return text[idx:].strip() if idx != -1 else ""
 
@@ -430,11 +450,14 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
             text, ttft, wall, chunks, ptok = ask(base_url, model, prompt, max_tokens)
         except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
             print(f"    {task['name']:15s}{suffix} ERROR {type(e).__name__}: {e}", flush=True)
+            # A transport failure is not evidence about the model; excluding it
+            # keeps a dropped connection from permanently lowering the score.
             results.append({"task": task["name"], "attempt": attempt, "passed": False,
+                            "errored": True,
                             "detail": f"request failed: {e}", "wall_s": None,
                             "prompt_tokens": None})
             continue
-        code = extract_code(text)
+        code = extract_code(text, want=task.get("function") or _want_from_prompt(task))
         ok, detail = run_candidate(code, task["tests"],
                                    forbidden=task.get("forbidden"))
         truncated = (not ok) and looks_truncated(text, chunks, code)
@@ -460,7 +483,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     done = [r for r in results if r["wall_s"] is not None]
     passed = sum(1 for r in results if r["passed"])
     cut = sum(1 for r in results if r.get("truncated"))
-    attempts = len(TASKS) * repeats
+    errored = sum(1 for r in results if r.get("errored"))
+    attempts = len(TASKS) * repeats - errored
     wrong = attempts - passed - cut
     total_wall = sum(r["wall_s"] for r in done)
     walls = [r["wall_s"] for r in done]
@@ -476,6 +500,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     effective_n = len(TASKS) if deterministic else attempts
 
     extra = f", {cut} cut off" if cut else ""
+    if errored:
+        extra += f", {errored} EXCLUDED (transport errors)"
     unit = "attempts" if repeats > 1 else "tasks"
     print(f"    -> {passed}/{attempts} {unit} pass{extra}, {total_wall:.1f}s total",
           flush=True)
@@ -491,6 +517,7 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     return {"label": label, "model": model, "base_url": base_url,
             "passed": passed, "wrong": wrong, "truncated": cut,
             "total": attempts, "repeats": repeats, "tasks": len(TASKS),
+            "errored": errored,
             "deterministic": deterministic, "effective_n": effective_n,
             "context_tokens": context_tokens,
             "total_wall_s": round(total_wall, 2),
@@ -549,8 +576,15 @@ def main():
         with open(args.compare) as f:
             for entry in json.load(f):
                 url, model, _ = resolve_backend(entry.get("backend"), entry.get("base_url"))
-                candidates.append((entry.get("label") or entry.get("model"),
-                                   url, entry.get("model") or model))
+                # Both fields are optional in a --compare file: the model may
+                # come from backends.json. A None label used to crash the ranking
+                # print after every request had been made and before the report
+                # was written, destroying hours of measurement over a format
+                # string.
+                resolved = entry.get("model") or model
+                candidates.append((entry.get("label") or resolved
+                                   or entry.get("backend") or url or "unnamed",
+                                   url, resolved))
     else:
         url, model, _ = resolve_backend(args.backend, args.base_url)
         candidates.append((args.label or args.model or model, url, args.model or model))
@@ -559,6 +593,25 @@ def main():
                         repeats=args.repeats, context_tokens=args.context_tokens,
                         warmup=not args.no_warmup)
                for label, url, model in candidates]
+
+
+    if args.output:
+        from bench_provenance import collect
+        payload = {
+            "benchmark": "bench_coding",
+            "provenance": collect(candidates[0][1] if candidates else None,
+                                  ("bench_coding.py", "bench_provenance.py")),
+            "config": {"max_tokens": args.max_tokens, "repeats": args.repeats,
+                       "context_tokens": args.context_tokens,
+                       "warmup": not args.no_warmup, "task_set": args.task_set},
+            "reports": reports,
+        }
+        with open(args.output, "w") as f:
+            json.dump(payload, f, indent=2)
+        print(f"  Report written to {args.output}")
+
+    # Ranking last: it only prints, and a print must never be able to
+    # destroy a completed measurement.
 
     if len(reports) > 1:
         print("\n" + "=" * 78)
@@ -576,21 +629,6 @@ def main():
                   "before the model\n  finished. Those tasks are UNMEASURED, not failed "
                   "- a reasoning model can\n  spend the whole budget inside <think>.")
         print()
-
-    if args.output:
-        from bench_provenance import collect
-        payload = {
-            "benchmark": "bench_coding",
-            "provenance": collect(candidates[0][1] if candidates else None,
-                                  ("bench_coding.py", "bench_provenance.py")),
-            "config": {"max_tokens": args.max_tokens, "repeats": args.repeats,
-                       "context_tokens": args.context_tokens,
-                       "warmup": not args.no_warmup, "task_set": args.task_set},
-            "reports": reports,
-        }
-        with open(args.output, "w") as f:
-            json.dump(payload, f, indent=2)
-        print(f"  Report written to {args.output}")
 
 
 if __name__ == "__main__":

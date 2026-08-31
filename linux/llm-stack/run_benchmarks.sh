@@ -21,8 +21,12 @@ import sys; sys.path.insert(0, '.')
 from benchmark_openai_api import resolve_backend
 print(resolve_backend('$BACKEND')[0])
 ")/v1"
-OUTDIR="./benchmark_results"
+# Run-scoped output. The manifest and the comparison table both glob every
+# *.json in OUTDIR, so a shared directory silently mixed results from different
+# models and backends into one "comparison".
+OUTDIR="${BENCH_OUTDIR:-./benchmark_results/${BACKEND}-$(printf '%s' "$MODEL" | tr '/:' '__')}"
 mkdir -p "$OUTDIR"
+echo "  Results directory: $OUTDIR"
 
 # Configs to test:  (num_ctx x max_tokens)
 CONFIGS=(

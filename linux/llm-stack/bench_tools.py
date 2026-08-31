@@ -347,8 +347,13 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
                 message, finish, wall = call(base_url, model, case["prompt"],
                                              system=system)
             except Exception as e:  # noqa: BLE001
-                print(f"    {case['name']:20s}{suffix} ERROR {type(e).__name__}", flush=True)
-                results.append({"case": case["name"], "passed": False,
+                print(f"    {case['name']:22s}{suffix} ERROR {type(e).__name__}", flush=True)
+                # An HTTP failure is OUR problem, not the model's. Scoring it as
+                # a wrong answer permanently lowers the published rate and makes
+                # bench_compare report a hard regression for a dropped
+                # connection in hour three.
+                results.append({"case": case["name"], "attempt": attempt,
+                                "passed": False, "errored": True,
                                 "detail": f"request failed: {e}", "wall_s": None})
                 continue
             ok, detail = grade(message, case["expect"])
@@ -370,7 +375,7 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
                 else:
                     ok, detail = grade_error_recovery(message)
             except Exception as e:  # noqa: BLE001
-                ok, detail, wall, finish = False, f"request failed: {e}", None, None
+                ok, detail, wall, finish = None, f"request failed: {e}", None, None
             print(f"    {case['name']:22s}{suffix} {'PASS' if ok else 'FAIL'}  "
                   f"{wall or 0:6.2f}s  finish={finish or '?':10s} "
                   f"{'' if ok else detail[:60]}", flush=True)
@@ -380,8 +385,13 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
                             "finish_reason": finish})
 
     done = [r for r in results if r["wall_s"] is not None]
+    errored = [r for r in results if r.get("errored")]
     passed = sum(1 for r in results if r["passed"])
-    total = (len(CASES) + len(MULTI_CASES)) * repeats
+    # Errored attempts leave the denominator: a transport failure is not
+    # evidence about the model, and counting it as a wrong answer both lowers
+    # the score and widens the interval for reasons that have nothing to do
+    # with what is being measured.
+    total = (len(CASES) + len(MULTI_CASES)) * repeats - len(errored)
     wall = sum(r["wall_s"] for r in done)
     walls = [r["wall_s"] for r in done]
 
@@ -393,7 +403,9 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
     deterministic = repeats > 1 and all(len(v) == 1 for v in per_case.values())
     effective_n = len(per_case) if deterministic else total
 
-    print(f"    -> {passed}/{total} tool calls correct, {wall:.1f}s total", flush=True)
+    err_note = f", {len(errored)} attempt(s) EXCLUDED (transport errors)" if errored else ""
+    print(f"    -> {passed}/{total} tool calls correct{err_note}, {wall:.1f}s total",
+          flush=True)
     if walls:
         print(f"       per case: median {statistics.median(walls):.2f}s, "
               f"min {min(walls):.2f}s, max {max(walls):.2f}s"
@@ -404,6 +416,7 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
               f"deterministic, so the effective sample is {effective_n} cases, "
               f"not {total} attempts.", flush=True)
     return {"label": label, "model": model, "passed": passed, "total": total,
+            "errored": len(errored),
             "deterministic": deterministic, "effective_n": effective_n,
             "total_wall_s": round(wall, 2),
             "avg_wall_s": round(wall / len(done), 2) if done else None,
@@ -440,8 +453,15 @@ def main():
         with open(args.compare) as f:
             for entry in json.load(f):
                 url, model, _ = resolve_backend(entry.get("backend"), entry.get("base_url"))
-                candidates.append((entry.get("label") or entry.get("model"),
-                                   url, entry.get("model") or model))
+                # Both fields are optional in a --compare file: the model may
+                # come from backends.json. A None label used to crash the ranking
+                # print after every request had been made and before the report
+                # was written, destroying hours of measurement over a format
+                # string.
+                resolved = entry.get("model") or model
+                candidates.append((entry.get("label") or resolved
+                                   or entry.get("backend") or url or "unnamed",
+                                   url, resolved))
     else:
         url, model, _ = resolve_backend(args.backend, args.base_url)
         candidates.append((args.label or args.model or model, url, args.model or model))
@@ -454,13 +474,6 @@ def main():
                         warmup=not args.no_warmup)
                for label, url, model in candidates]
 
-    if len(reports) > 1:
-        print("\n" + "=" * 70)
-        print("  RANKING — correct tool calls, then time")
-        print("=" * 70)
-        for r in sorted(reports, key=lambda x: (-x["passed"], x["total_wall_s"])):
-            print(f"  {r['label'][:44]:44s} {r['passed']}/{r['total']:<4d} {r['total_wall_s']:8.1f}s")
-        print()
 
     if args.output:
         from bench_provenance import collect
@@ -475,6 +488,17 @@ def main():
         with open(args.output, "w") as f:
             json.dump(payload, f, indent=2)
         print(f"  Report written to {args.output}")
+
+    # Ranking last: it only prints, and a print must never be able to
+    # destroy a completed measurement.
+
+    if len(reports) > 1:
+        print("\n" + "=" * 70)
+        print("  RANKING — correct tool calls, then time")
+        print("=" * 70)
+        for r in sorted(reports, key=lambda x: (-x["passed"], x["total_wall_s"])):
+            print(f"  {r['label'][:44]:44s} {r['passed']}/{r['total']:<4d} {r['total_wall_s']:8.1f}s")
+        print()
 
 
 if __name__ == "__main__":
