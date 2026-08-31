@@ -133,3 +133,33 @@
   The flag is now a real, working knob: `GCC_PARALLEL_TARGETS=1` on either
   orchestrator's command line. Not pushed (local-only validation); the next
   full chain that wants the parallel GCC must pass the flag itself.
+- ✅ **F2 media validation — DONE + PASS 2026-08-30** (sdk→media→android,
+  amd64, pushed). The one-resolver cache consolidation ran in every media RUN
+  (`compiler cache enabled: launcher=/opt/scripts/core/sccache-launcher.sh`,
+  100 % C/C++ hit rate), 27 artifact verifies OK, android pushed. modules.sh
+  reorder + the QNN-off fan-out path (litert/tvm/app-wheelhouse/genai with no
+  zip) exercised with no regression.
+- ✅ **sccache-launcher server-death gap — FOUND LIVE + FIXED (0371d164).**
+  The F2 validation caught a second failure class the guarded launcher did not
+  handle: the sccache SERVER died mid-build under full concurrent-media load
+  (`sccache: error: failed to execute compile / caused by: Failed to send data
+  to or receive data from server / failed to fill whole buffer`). The launcher
+  only bypassed on `sccache: encountered fatal error` (the TryCompile ENOENT
+  class), so it handed the dead-server error to ninja as a REAL failure and
+  killed the TVM step. Fixed by widening the bypass classification to any
+  sccache-prefixed internal error (`sccache: (encountered fatal error|error:|
+  caused by:)`) — safe because sccache prefixes only its own failures with
+  `sccache:`; a real compiler error is echoed un-prefixed and passes through.
+  Pinned by tests/test-sccache-launcher.sh (8 assertions incl. a mutation case
+  proving the old narrow match would NOT have bypassed). **Validated live** on
+  the follow-up sdk→media→android rebuild: `TVM build OK`, apache_tvm +
+  apache_tvm_ffi wheels produced, 0 server-death propagations (858
+  sccache-internal failures caught + bypassed — "a hiccup costs hits, not a
+  build"). Both chains pushed and complete.
+- ✅ **QNN-LINUX A2 items 1-6 — DONE + PROVEN 2026-08-30** (drop dir +
+  .gitignore, versions.env `QNN_SDK_LINUX_ZIP_SHA256` pin, the shared
+  `01-core/qnn-sdk.sh` resolve/stage helper, ORT wiring on real SDK
+  v2.49.0.260730, Dockerfile.media mounts, artifact verification) and
+  **item 7 framework fan-out WIRED** (GenAI/LiteRT/TVM/IREE, every flag
+  mirroring Windows #121). The fan-out VALIDATION remains blocked on the
+  login-gated SDK re-stage — see the open backlog A2.
