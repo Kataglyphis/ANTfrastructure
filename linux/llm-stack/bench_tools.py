@@ -23,6 +23,7 @@ Usage:
 import argparse
 import json
 import os
+import statistics
 import sys
 import time
 import urllib.request
@@ -80,6 +81,22 @@ CASES = [
 ]
 
 
+def call_multi(base_url, model, messages, timeout=900, system=None):
+    """One request over an arbitrary message history (multi-turn)."""
+    msgs = ([{"role": "system", "content": system}] if system else []) + list(messages)
+    body = json.dumps({
+        "model": model, "temperature": 0, "max_tokens": 600,
+        "tools": TOOLS, "tool_choice": "auto", "messages": msgs,
+    }).encode()
+    req = urllib.request.Request(f"{base_url}/v1/chat/completions", data=body,
+                                 headers={"Content-Type": "application/json"})
+    started = time.monotonic()
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        data = json.load(r)
+    choice = data["choices"][0]
+    return choice.get("message", {}), choice.get("finish_reason"), time.monotonic() - started
+
+
 def call(base_url, model, prompt, timeout=900, system=None):
     messages = ([{"role": "system", "content": system}] if system else []) + \
                [{"role": "user", "content": prompt}]
@@ -96,6 +113,44 @@ def call(base_url, model, prompt, timeout=900, system=None):
     wall = time.monotonic() - started
     choice = data["choices"][0]
     return choice.get("message", {}), choice.get("finish_reason"), wall
+
+
+def grade_followup(message, must_contain):
+    """After a tool RESULT is fed back, did the model use it?
+
+    This is where single-turn benchmarks stop and agents keep going. A model
+    that emits one perfect call and then ignores what came back is useless in a
+    loop -- and no single-turn score can see that.
+    """
+    if message.get("tool_calls"):
+        return False, "called another tool instead of answering from the result"
+    content = (message.get("content") or "").lower()
+    if not content.strip():
+        return False, "empty reply after the tool result"
+    for token in must_contain:
+        if token.lower() not in content:
+            return False, f"answer does not mention {token!r}: {content[:70]!r}"
+    return True, "used the tool result"
+
+
+def grade_error_recovery(message):
+    """After a tool returns an ERROR, the model must not pretend it succeeded.
+
+    Acceptable: say it failed, or retry with different arguments. Not
+    acceptable: invent the contents of a file that could not be read.
+    """
+    if message.get("tool_calls"):
+        return True, "retried with another call"
+    content = (message.get("content") or "").lower()
+    if not content.strip():
+        return False, "empty reply after the tool error"
+    admits = any(w in content for w in
+                 ("not found", "does not exist", "doesn't exist", "no such",
+                  "could not", "couldn't", "cannot", "can't", "error", "failed",
+                  "unable", "missing"))
+    if admits:
+        return True, "reported the failure"
+    return False, f"ignored the error and answered anyway: {content[:70]!r}"
 
 
 def grade(message, expect):
@@ -141,9 +196,17 @@ def grade(message, expect):
     return True, "correct tool and arguments"
 
 
-def evaluate(base_url, model, label, repeats=1, system=None):
+def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
     tag = "  [+system prompt]" if system else ""
     print(f"\n  === {label}{tag} ===", flush=True)
+    if warmup:
+        # Otherwise the first case carries the model load time and the ranking
+        # partly ranks load order rather than the model.
+        try:
+            call(base_url, model, "Reply with the single word: ready.", system=system)
+        except Exception as e:  # noqa: BLE001
+            print(f"    (warmup failed: {type(e).__name__}; first case may "
+                  f"include load time)", flush=True)
     results = []
     for case in CASES:
         for attempt in range(repeats):
@@ -163,14 +226,82 @@ def evaluate(base_url, model, label, repeats=1, system=None):
             results.append({"case": case["name"], "attempt": attempt, "passed": ok,
                             "detail": detail, "wall_s": round(wall, 2),
                             "finish_reason": finish})
+    # --- multi-turn: feed a tool RESULT back and see whether it is used
+    for attempt in range(repeats):
+        suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
+        history = [{"role": "user", "content": "What is in the file VERSION.txt?"},
+                   {"role": "assistant", "content": None,
+                    "tool_calls": [{"id": "call_a", "type": "function",
+                                    "function": {"name": "read_file",
+                                                 "arguments": '{"path": "VERSION.txt"}'}}]},
+                   {"role": "tool", "tool_call_id": "call_a",
+                    "content": "9.4.1-rc2"}]
+        try:
+            message, finish, wall = call_multi(base_url, model, history, system=system)
+            ok, detail = grade_followup(message, ["9.4.1"])
+        except Exception as e:  # noqa: BLE001
+            ok, detail, wall, finish = False, f"request failed: {e}", None, None
+        print(f"    {'multiturn_use_result':20s}{suffix} {'PASS' if ok else 'FAIL'}  "
+              f"{wall or 0:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:70]}",
+              flush=True)
+        results.append({"case": "multiturn_use_result", "attempt": attempt,
+                        "passed": ok, "detail": detail,
+                        "wall_s": round(wall, 2) if wall else None,
+                        "finish_reason": finish})
+
+    # --- error recovery: the tool failed; does the model admit it or invent?
+    for attempt in range(repeats):
+        suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
+        history = [{"role": "user", "content": "What is in the file config/secret.yaml?"},
+                   {"role": "assistant", "content": None,
+                    "tool_calls": [{"id": "call_b", "type": "function",
+                                    "function": {"name": "read_file",
+                                                 "arguments": '{"path": "config/secret.yaml"}'}}]},
+                   {"role": "tool", "tool_call_id": "call_b",
+                    "content": "Error: ENOENT: no such file or directory"}]
+        try:
+            message, finish, wall = call_multi(base_url, model, history, system=system)
+            ok, detail = grade_error_recovery(message)
+        except Exception as e:  # noqa: BLE001
+            ok, detail, wall, finish = False, f"request failed: {e}", None, None
+        print(f"    {'error_recovery':20s}{suffix} {'PASS' if ok else 'FAIL'}  "
+              f"{wall or 0:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:70]}",
+              flush=True)
+        results.append({"case": "error_recovery", "attempt": attempt,
+                        "passed": ok, "detail": detail,
+                        "wall_s": round(wall, 2) if wall else None,
+                        "finish_reason": finish})
+
     done = [r for r in results if r["wall_s"] is not None]
     passed = sum(1 for r in results if r["passed"])
-    total = len(CASES) * repeats
+    total = (len(CASES) + 2) * repeats  # +2: multi-turn and error recovery
     wall = sum(r["wall_s"] for r in done)
+    walls = [r["wall_s"] for r in done]
+
+    # Repeats on a deterministic endpoint return the identical answer, so
+    # counting them inflates the apparent sample without adding information.
+    per_case = {}
+    for r in results:
+        per_case.setdefault(r["case"], set()).add(r["passed"])
+    deterministic = repeats > 1 and all(len(v) == 1 for v in per_case.values())
+    effective_n = len(per_case) if deterministic else total
+
     print(f"    -> {passed}/{total} tool calls correct, {wall:.1f}s total", flush=True)
+    if walls:
+        print(f"       per case: median {statistics.median(walls):.2f}s, "
+              f"min {min(walls):.2f}s, max {max(walls):.2f}s"
+              + (f", stdev {statistics.stdev(walls):.2f}s" if len(walls) > 1 else ""),
+              flush=True)
+    if deterministic:
+        print(f"       NOTE: every repeat agreed — this endpoint looks "
+              f"deterministic, so the effective sample is {effective_n} cases, "
+              f"not {total} attempts.", flush=True)
     return {"label": label, "model": model, "passed": passed, "total": total,
+            "deterministic": deterministic, "effective_n": effective_n,
             "total_wall_s": round(wall, 2),
             "avg_wall_s": round(wall / len(done), 2) if done else None,
+            "median_wall_s": round(statistics.median(walls), 2) if walls else None,
+            "stdev_wall_s": round(statistics.stdev(walls), 2) if len(walls) > 1 else None,
             "results": results}
 
 
@@ -189,6 +320,9 @@ def main():
                          "the tools this way — measure whether it actually helps "
                          "before shipping it.")
     ap.add_argument("--compare", default=None)
+    ap.add_argument("--no-warmup", action="store_true",
+                    help="Skip the warmup request; the first case then carries the "
+                         "model load time")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
 
@@ -209,7 +343,8 @@ def main():
     if args.system:
         with open(args.system) as f:
             system = f.read()
-    reports = [evaluate(url, model, label, args.repeats, system)
+    reports = [evaluate(url, model, label, args.repeats, system,
+                        warmup=not args.no_warmup)
                for label, url, model in candidates]
 
     if len(reports) > 1:
@@ -221,8 +356,17 @@ def main():
         print()
 
     if args.output:
+        from bench_provenance import collect
+        payload = {
+            "benchmark": "bench_tools",
+            "provenance": collect(candidates[0][1] if candidates else None,
+                                  ("bench_tools.py", "bench_provenance.py")),
+            "config": {"repeats": args.repeats, "warmup": not args.no_warmup,
+                       "system_prompt": args.system},
+            "reports": reports,
+        }
         with open(args.output, "w") as f:
-            json.dump(reports, f, indent=2)
+            json.dump(payload, f, indent=2)
         print(f"  Report written to {args.output}")
 
 

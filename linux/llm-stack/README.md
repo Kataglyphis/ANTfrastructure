@@ -278,6 +278,21 @@ as a failure once scored a perfectly usable model 0/3.
 > **This executes model-generated code.** Each candidate runs in a temp dir as
 > a subprocess with a timeout. Do not point it at an untrusted endpoint.
 
+**`--task-set novel` — the textbook tasks measure recall, not coding.** Merging
+sorted lists, balancing brackets and parsing a version string appear thousands
+of times in any training corpus, so a model can ace them without composing
+anything. The `novel` set is built from formats invented in *this* repository
+with every rule stated in the prompt: the primitives are ordinary, the
+combination cannot have been memorised. **Run both and compare** — a model much
+stronger on `classic` than on `novel` is recalling. Measured: the QAIRT
+4B-Instruct scores 3/3 classic and **2/3 novel**.
+
+**Constraints stated in a prompt are now enforced.** The merge task says "do not
+use `sorted()`" and for a while nothing checked it — `return sorted(a + b)`
+passed every assertion. Each task may declare `forbidden` tokens, checked
+against the code with comments and strings stripped so that merely *mentioning*
+`sorted()` in a docstring is not punished.
+
 ### Can it call tools at all? (`bench_tools.py`)
 
 An agent lives on tool calls. A model that writes flawless code but cannot emit
@@ -302,6 +317,40 @@ spin an agent loop — and without a negative case it goes unmeasured.
 Grading is strict on tool names and required values, lenient on formatting the
 model cannot be blamed for (a `./` prefix, a trailing slash), and it accepts
 arguments as either a JSON string or a dict, since servers differ.
+
+**Two of the eight cases are multi-turn**, because a single-turn score cannot
+see the failure agents actually hit:
+
+- `multiturn_use_result` — a tool result is fed back; does the model *use* it,
+  or emit another call and ignore what came back?
+- `error_recovery` — the tool returned an error. Admitting it or retrying is
+  fine; **inventing the contents of a file that could not be read is not**, and
+  that is the dangerous answer a single-turn benchmark never sees.
+
+### What every report records
+
+All tools write a `provenance` block: UTC timestamp, host, OS, architecture,
+git SHA **and whether the tree was dirty**, the served model ids, and a
+`tool_sha256` fingerprint of the benchmark's own source. That last one matters
+most — a ranking can move because the *grader* changed, and without the
+fingerprint that is indistinguishable from a model regression.
+`bench_provenance.compare()` diffs two blocks and says so in as many words.
+
+Fields that cannot be determined are recorded as `null` and listed in
+`incomplete` rather than omitted: a gap you can see is a gap you can fix.
+
+### Reading a score honestly
+
+- **Warm-up is on by default.** Without it the first task carries the model load
+  time and the ranking partly ranks load order — measured: ~34 s of the 27B's
+  128.7 s total was loading, 26 % of its score-deciding number.
+- **`effective_n` is reported, not just the raw total.** On a deterministic
+  endpoint (the QAIRT/NPU path) every repeat returns the identical answer, so
+  counting repeats inflates the apparent sample without adding information.
+  When all repeats agree, the tools say so and report the number of distinct
+  *tasks* instead.
+- **Median, min, max and stdev** accompany every total, because a mean over a
+  cold first run and two warm ones describes neither.
 
 ### Is this GGUF even sane? (`inspect_gguf.py`)
 

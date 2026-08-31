@@ -26,6 +26,7 @@ Usage:
 import argparse
 import json
 import os
+import statistics
 import re
 import subprocess
 import sys
@@ -49,6 +50,9 @@ TASKS = [
             "Do not use sorted() or list.sort(). "
             "Reply with the function in a single ```python code block and nothing else."
         ),
+        # The prompt states a constraint; without this the tests cannot see it.
+        # `return sorted(a + b)` passed every assertion until this was added.
+        "forbidden": ["sorted", "list.sort", ".sort("],
         "tests": """
 assert merge_sorted([], []) == []
 assert merge_sorted([1], []) == [1]
@@ -106,6 +110,117 @@ except ValueError:
 """,
     },
 ]
+
+# ── Novel tasks ───────────────────────────────────────────────────────────────
+#
+# The tasks above (merging sorted lists, bracket balancing, version parsing) are
+# textbook problems that appear thousands of times in any training corpus, so a
+# model can ace them from RECALL without composing anything. That measures
+# memorisation, not coding.
+#
+# These three are built from formats invented in this repository, with every
+# rule stated in full in the prompt. The primitives are ordinary; the
+# COMBINATION cannot have been memorised, so passing requires reading the spec
+# and following it. Run both sets and compare: a model far better on the
+# classic set than on this one is recalling, not reasoning.
+
+NOVEL_TASKS = [
+    {
+        "name": "parse_lane_spec",
+        "prompt": (
+            "Write a Python function with this exact signature:\n"
+            "    def parse_lane(spec: str) -> tuple\n"
+            "It parses a benchmark lane specification of the form\n"
+            "    name=URL,model=MODEL\n"
+            "into the tuple (name, url, model). Rules:\n"
+            "- Split on the FIRST occurrence of the literal ',model=' — the model "
+            "name itself may contain commas and equals signs, and everything after "
+            "that marker belongs to the model.\n"
+            "- Split the part before it on the FIRST '=' into name and url.\n"
+            "- Strip surrounding whitespace from all three, and strip any trailing "
+            "'/' from the url.\n"
+            "- Raise ValueError if the ',model=' marker is absent or if there is no "
+            "'=' before it.\n"
+            "Reply with the function in a single ```python code block and nothing else."
+        ),
+        "tests": """
+assert parse_lane("npu=http://h:1,model=org/M:Q4") == ("npu", "http://h:1", "org/M:Q4")
+assert parse_lane("cpu=http://h:1/,model=m") == ("cpu", "http://h:1", "m")
+assert parse_lane(" a = http://h:2 ,model= weird,name=x ") == ("a", "http://h:2", "weird,name=x")
+assert parse_lane("a=http://h:1,model=a,model=b") == ("a", "http://h:1", "a,model=b")
+try:
+    parse_lane("no-marker-here"); raise AssertionError("should have raised")
+except ValueError:
+    pass
+try:
+    parse_lane("nomodelequals,model=m"); raise AssertionError("should have raised")
+except ValueError:
+    pass
+""",
+    },
+    {
+        "name": "attempt_verdict",
+        "prompt": (
+            "Write a Python function with this exact signature:\n"
+            "    def verdict(passed: bool, tokens: int, cap: int, closed_fence: bool) -> str\n"
+            "It classifies one benchmark attempt, returning exactly one of the "
+            "strings 'PASS', 'CUT' or 'FAIL'. Apply the rules IN THIS ORDER:\n"
+            "1. If passed is True, return 'PASS' — regardless of every other argument.\n"
+            "2. Otherwise, if tokens >= cap, return 'CUT'.\n"
+            "3. Otherwise, if closed_fence is False, return 'CUT'.\n"
+            "4. Otherwise return 'FAIL'.\n"
+            "Raise ValueError if cap is less than 1 or tokens is negative.\n"
+            "Reply with the function in a single ```python code block and nothing else."
+        ),
+        "tests": """
+assert verdict(True, 5000, 2048, False) == 'PASS'
+assert verdict(True, 10, 2048, True) == 'PASS'
+assert verdict(False, 2048, 2048, True) == 'CUT'
+assert verdict(False, 3000, 2048, True) == 'CUT'
+assert verdict(False, 100, 2048, False) == 'CUT'
+assert verdict(False, 100, 2048, True) == 'FAIL'
+assert verdict(False, 0, 1, True) == 'FAIL'
+try:
+    verdict(False, 10, 0, True); raise AssertionError("should have raised")
+except ValueError:
+    pass
+try:
+    verdict(False, -1, 10, True); raise AssertionError("should have raised")
+except ValueError:
+    pass
+""",
+    },
+    {
+        "name": "rank_quants",
+        "prompt": (
+            "Write a Python function with this exact signature:\n"
+            "    def rank_quants(names: list) -> list\n"
+            "It sorts GGUF quantisation names from most to least precise, using "
+            "ONLY these rules:\n"
+            "- The precision of a name is the first digit appearing in it. "
+            "'Q4_K_M' is 4, 'IQ3_XXS' is 3, 'Q8_0' is 8.\n"
+            "- Higher digit sorts first.\n"
+            "- Among names with the SAME digit, a name starting with 'Q' sorts "
+            "before one starting with 'IQ'.\n"
+            "- If still tied, sort alphabetically.\n"
+            "- A name containing no digit is dropped from the result entirely.\n"
+            "Reply with the function in a single ```python code block and nothing else."
+        ),
+        "tests": """
+assert rank_quants(['IQ3_XXS', 'Q8_0', 'Q4_K_M']) == ['Q8_0', 'Q4_K_M', 'IQ3_XXS']
+assert rank_quants(['IQ4_XS', 'Q4_0']) == ['Q4_0', 'IQ4_XS']
+assert rank_quants(['Q4_K_S', 'Q4_K_M']) == ['Q4_K_M', 'Q4_K_S']
+# BF16's FIRST digit is 1, not 16 — so it ranks below Q2_K. Deliberately
+# counter-intuitive: the rule as written is what counts, not what the name
+# suggests. (This assertion was wrong when first written; the reference-solution
+# test caught it.)
+assert rank_quants(['BF16', 'nodigits', 'Q2_K']) == ['Q2_K', 'BF16']
+assert rank_quants([]) == []
+assert rank_quants(['nodigit']) == []
+""",
+    },
+]
+
 
 CODE_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S | re.I)
 
@@ -194,10 +309,36 @@ def looks_truncated(text, chunks, code):
     return False
 
 
-def run_candidate(code, tests, timeout=15):
+def check_forbidden(code, forbidden):
+    """Reject a solution that ignores a constraint the prompt stated.
+
+    A benchmark that states a rule and does not enforce it measures nothing:
+    `return sorted(a + b)` satisfied every assertion of the merge task while
+    doing exactly what the prompt forbade. Comments and strings are stripped
+    first so that a model *mentioning* sorted() in a docstring is not punished
+    for it.
+    """
+    if not forbidden:
+        return None
+    stripped = re.sub(r"#.*", "", code)
+    stripped = re.sub(r'"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'', "", stripped)
+    stripped = re.sub(r'"[^"\n]*"|\'[^\'\n]*\'', "", stripped)
+    for token in forbidden:
+        if token == "sorted":
+            if re.search(r"\bsorted\s*\(", stripped):
+                return "used sorted(), which the prompt forbids"
+        elif token in stripped:
+            return f"used {token}, which the prompt forbids"
+    return None
+
+
+def run_candidate(code, tests, timeout=15, forbidden=None):
     """Execute the generated function against the tests. Returns (ok, detail)."""
     if not code.strip():
         return False, "no code found in reply"
+    violation = check_forbidden(code, forbidden)
+    if violation:
+        return False, violation
     program = code + "\n\n" + tests + "\nprint('PASS')\n"
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "candidate.py")
@@ -252,7 +393,7 @@ def ask(base_url, model, prompt, max_tokens, timeout=1800):
 
 
 def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
-             context_tokens=0):
+             context_tokens=0, warmup=True):
     """Run every task against one model. Returns a report dict.
 
     `repeats` matters more than it looks: GenieX honours neither `max_tokens`
@@ -262,6 +403,16 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     draw, not the model. (The QAIRT/NPU path is deterministic: four identical
     requests, one unique output, so repeats there only cost time.)
     """
+    if warmup:
+        # Without this the FIRST task of each model carries its load time and
+        # the ranking partly ranks load order: ~34s of the 27B's 128.7s total
+        # was loading, 26% of its score-deciding number.
+        try:
+            ask(base_url, model, "Reply with the single word: ready.", 16, timeout=1800)
+        except Exception as e:  # noqa: BLE001 — a failed warmup is not fatal
+            print(f"    (warmup failed: {type(e).__name__}; first task may "
+                  f"include model load time)", flush=True)
+
     context = build_context(context_tokens)
     if context:
         print(f"\n  === {label}  [+{context_tokens} tokens of context] ===", flush=True)
@@ -284,7 +435,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
                             "prompt_tokens": None})
             continue
         code = extract_code(text)
-        ok, detail = run_candidate(code, task["tests"])
+        ok, detail = run_candidate(code, task["tests"],
+                                   forbidden=task.get("forbidden"))
         truncated = (not ok) and looks_truncated(text, chunks, code)
         if truncated:
             detail = f"CUT OFF at {chunks} tokens (server cap) - not graded as wrong"
@@ -311,17 +463,40 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
     attempts = len(TASKS) * repeats
     wrong = attempts - passed - cut
     total_wall = sum(r["wall_s"] for r in done)
+    walls = [r["wall_s"] for r in done]
+
+    # How many INDEPENDENT observations are behind that score? On a
+    # deterministic endpoint repeats return the identical answer, so counting
+    # them inflates the apparent sample without adding information. Determinism
+    # is detected, not assumed: identical output for every repeat of a task.
+    per_task_outcomes = {}
+    for r in results:
+        per_task_outcomes.setdefault(r["task"], set()).add(r["passed"])
+    deterministic = repeats > 1 and all(len(v) == 1 for v in per_task_outcomes.values())
+    effective_n = len(TASKS) if deterministic else attempts
+
     extra = f", {cut} cut off" if cut else ""
-    # With repeats the headline is a RATE, not a score: "4/6 attempts" says
-    # something a single 2/3 cannot.
     unit = "attempts" if repeats > 1 else "tasks"
     print(f"    -> {passed}/{attempts} {unit} pass{extra}, {total_wall:.1f}s total",
           flush=True)
+    if walls:
+        print(f"       per attempt: median {statistics.median(walls):.1f}s, "
+              f"min {min(walls):.1f}s, max {max(walls):.1f}s"
+              + (f", stdev {statistics.stdev(walls):.1f}s" if len(walls) > 1 else ""),
+              flush=True)
+    if deterministic:
+        print(f"       NOTE: every repeat agreed — this endpoint looks "
+              f"deterministic, so the effective sample is {effective_n} tasks, "
+              f"not {attempts} attempts.", flush=True)
     return {"label": label, "model": model, "base_url": base_url,
             "passed": passed, "wrong": wrong, "truncated": cut,
             "total": attempts, "repeats": repeats, "tasks": len(TASKS),
+            "deterministic": deterministic, "effective_n": effective_n,
+            "context_tokens": context_tokens,
             "total_wall_s": round(total_wall, 2),
             "avg_wall_s": round(total_wall / len(done), 2) if done else None,
+            "median_wall_s": round(statistics.median(walls), 2) if walls else None,
+            "stdev_wall_s": round(statistics.stdev(walls), 2) if len(walls) > 1 else None,
             "results": results}
 
 
@@ -348,8 +523,24 @@ def main():
                          "each task. The short prompts above are not what an agent "
                          "sends; prefill and the QAIRT bundles' 4096-token ceiling "
                          "only show up under a realistic context.")
+    ap.add_argument("--task-set", choices=("classic", "novel", "all"), default="classic",
+                    help="'classic' = textbook problems (recall-prone); 'novel' = "
+                         "tasks built from formats invented in this repo, fully "
+                         "specified in the prompt, which cannot have been memorised. "
+                         "Compare the two: a model much better on classic than on "
+                         "novel is recalling rather than reasoning.")
+    ap.add_argument("--no-warmup", action="store_true",
+                    help="Skip the warmup request. The first task then carries the "
+                         "model load time, which the ranking will attribute to the "
+                         "model's speed.")
     ap.add_argument("--output", default=None)
     args = ap.parse_args()
+
+    global TASKS
+    if args.task_set == "novel":
+        TASKS = NOVEL_TASKS
+    elif args.task_set == "all":
+        TASKS = TASKS + NOVEL_TASKS
 
     from benchmark_openai_api import resolve_backend
 
@@ -365,7 +556,8 @@ def main():
         candidates.append((args.label or args.model or model, url, args.model or model))
 
     reports = [evaluate(url, model, label, args.max_tokens, args.keep_output,
-                        repeats=args.repeats, context_tokens=args.context_tokens)
+                        repeats=args.repeats, context_tokens=args.context_tokens,
+                        warmup=not args.no_warmup)
                for label, url, model in candidates]
 
     if len(reports) > 1:
@@ -386,8 +578,18 @@ def main():
         print()
 
     if args.output:
+        from bench_provenance import collect
+        payload = {
+            "benchmark": "bench_coding",
+            "provenance": collect(candidates[0][1] if candidates else None,
+                                  ("bench_coding.py", "bench_provenance.py")),
+            "config": {"max_tokens": args.max_tokens, "repeats": args.repeats,
+                       "context_tokens": args.context_tokens,
+                       "warmup": not args.no_warmup, "task_set": args.task_set},
+            "reports": reports,
+        }
         with open(args.output, "w") as f:
-            json.dump(reports, f, indent=2)
+            json.dump(payload, f, indent=2)
         print(f"  Report written to {args.output}")
 
 

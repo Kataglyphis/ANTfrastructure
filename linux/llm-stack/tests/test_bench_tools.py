@@ -100,3 +100,69 @@ class TestSuiteShape:
     def test_the_suite_includes_a_negative_case(self):
         assert any(c["expect"] is None for c in CASES), \
             "without a 'no tool needed' case, over-eager calling goes unmeasured"
+
+
+class TestMultiTurn:
+    """Single-turn scores cannot see whether a model USES what a tool returned.
+    A model that emits one perfect call and then ignores the result is useless
+    in a loop, and that is the failure agents actually hit."""
+
+    def test_uses_the_returned_value(self):
+        from bench_tools import grade_followup
+        ok, _ = grade_followup({"content": "The file contains version 9.4.1-rc2."},
+                               ["9.4.1"])
+        assert ok
+
+    def test_ignoring_the_result_fails(self):
+        from bench_tools import grade_followup
+        ok, detail = grade_followup({"content": "I have read the file."}, ["9.4.1"])
+        assert not ok and "does not mention" in detail
+
+    def test_calling_another_tool_instead_of_answering_fails(self):
+        from bench_tools import grade_followup
+        ok, detail = grade_followup(
+            {"content": None, "tool_calls": [{"id": "x", "type": "function",
+                                              "function": {"name": "read_file",
+                                                           "arguments": "{}"}}]},
+            ["9.4.1"])
+        assert not ok and "another tool" in detail
+
+    def test_empty_reply_fails(self):
+        from bench_tools import grade_followup
+        ok, detail = grade_followup({"content": "  "}, ["9.4.1"])
+        assert not ok and "empty" in detail
+
+    def test_match_is_case_insensitive(self):
+        from bench_tools import grade_followup
+        assert grade_followup({"content": "VERSION 9.4.1-RC2"}, ["9.4.1"])[0]
+
+
+class TestErrorRecovery:
+    """A tool failed. Admitting it or retrying is fine; inventing the contents
+    of a file that could not be read is the dangerous answer."""
+
+    def test_admitting_the_failure_passes(self):
+        from bench_tools import grade_error_recovery
+        for reply in ("The file does not exist.", "I could not read it.",
+                      "Error: no such file.", "Unable to open that path."):
+            assert grade_error_recovery({"content": reply})[0], reply
+
+    def test_retrying_with_another_call_passes(self):
+        from bench_tools import grade_error_recovery
+        ok, detail = grade_error_recovery(
+            {"content": None, "tool_calls": [{"id": "y", "type": "function",
+                                              "function": {"name": "list_files",
+                                                           "arguments": "{}"}}]})
+        assert ok and "retried" in detail
+
+    def test_inventing_content_fails(self):
+        # The failure that matters: answering as though the read had succeeded.
+        from bench_tools import grade_error_recovery
+        ok, detail = grade_error_recovery(
+            {"content": "The config contains the database password and two API keys."})
+        assert not ok and "ignored the error" in detail
+
+    def test_empty_reply_fails(self):
+        from bench_tools import grade_error_recovery
+        ok, detail = grade_error_recovery({"content": ""})
+        assert not ok and "empty" in detail

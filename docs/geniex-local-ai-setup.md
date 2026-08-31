@@ -699,6 +699,30 @@ Three things that only repeats could show:
 / 18.76 tok/s — noise. The HTP does the work; those threads only orchestrate.
 `perf_profile` is already `burst`.
 
+**Correction (2026-08-31, second pass): the 3/3 was partly recall.** Those three
+tasks are textbook problems. Re-run against a `novel` task set built from
+formats invented in this repository — every rule stated in the prompt, so the
+combination cannot have been memorised — the same model scores **2/3**. The
+classic set overstates it.
+
+**Two measurement errors in the numbers above, both since fixed:**
+
+- **No warm-up.** The first task of each model carried its load time; ~34 s of
+  the 27B's 128.7 s total was loading, **26 %** of the number that decided its
+  rank. `bench_coding.py` and `bench_tools.py` now warm up by default.
+- **A stated constraint was unenforced.** The merge task says "do not use
+  `sorted()`" and nothing checked — `return sorted(a + b)` passed every
+  assertion. Tasks now declare `forbidden` tokens.
+
+**And the sample is smaller than the scores suggest.** On the QAIRT path every
+repeat returns the identical answer, so "9/9" was 3 tasks counted three times,
+not 9 independent observations. At that size the 95 % interval for 12/12 is
+[75.7 %, 100 %] and for 8/12 is [39.1 %, 86.2 %] — they overlap, so the
+tool-calling improvement is **not statistically significant on its own**. It is
+believable because the two failure modes were identified and fixed
+deterministically, which is stronger evidence than the count. The tools now
+report `effective_n` rather than letting repeats inflate it.
+
 **Caveat.** Three tasks is a smoke test, not a capability benchmark, and all
 three are self-contained functions — no multi-file work, no tool calls, and
 short prompts rather than the long context an agent really sends. It separates
