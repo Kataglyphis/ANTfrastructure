@@ -303,6 +303,17 @@ _opencv_target_adjustments() {
         _ota_zlib_inc="/usr/include"
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
+        # OCV-FF2 (2026-08-31): pass 2 inherits the gstreamer stage, which
+        # installs the DISTRO libav*-dev (FFmpeg 8.0.1) while we build our own
+        # n9.0 into ${FFMPEG_PREFIX}. Both land on the include path, and
+        # codec_par.h's `#include "libavutil/pixfmt.h"` resolved to the 8.0.1
+        # copy -- which has no AVAlphaMode, added in 9.0. Killed the riscv64
+        # opencv_videoio build. -I is searched before -isystem, so pinning our
+        # prefix here makes our headers win regardless of what CMake appends.
+        # docs/failure-modes.md
+        if [ -d "${FFMPEG_PREFIX:-/opt/ffmpeg}/include/libavutil" ]; then
+            _ota_shared_inc="-I${FFMPEG_PREFIX:-/opt/ffmpeg}/include ${_ota_shared_inc}"
+        fi
         if [ "$(cross_target_arch)" = "riscv64" ]; then
             # RV1 RE-LIFT (2026-08-21, closure window 2): the 2026-08-20
             # "OFF both passes" verdict was taken while the POISONED ports
