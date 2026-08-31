@@ -662,10 +662,53 @@ cap**; a little more deliberation and it would have scored as a failure. This
 is why the benchmark reports *cut* separately from *wrong*: the first run of it
 scored that model 0/3, all three "failures" truncation artefacts.
 
+**Repeated 3x per task, because a single run measures one draw.** GenieX
+ignores `temperature` exactly as it ignores `max_tokens`: five identical
+requests to the 2B produced **five different answers**, four passing the same
+task and one failing it. The single-run scores above are therefore indicative
+for the close calls; these are the defensible numbers:
+
+| Model | Pass rate | wrong | cut | per attempt |
+|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct-2507** | **9/9 = 100 %** | 0 | 0 | 10.2 s |
+| GGUF Qwen3.8-2B-Distill | 4/9 = 44 % | 5 | 0 | 10.5 s |
+| GGUF Qwen3-4B `Q4_0` | 4/9 = 44 % | **0** | 5 | 101.9 s |
+
+Per task (P=pass, F=fail, C=cut):
+
+| Model | merge_sorted | balanced | parse_version |
+|---|---|---|---|
+| QAIRT 4B-Instruct | `PPP` | `PPP` | `PPP` |
+| GGUF 2B-Distill | `PPP` | `PFF` | `FFF` |
+| GGUF Qwen3-4B `Q4_0` | `CPP` | `CPP` | `CCC` |
+
+Three things that only repeats could show:
+
+- **The winner is byte-identical deterministic.** Four identical requests per
+  task yielded **one** unique output each — the QAIRT/QNN path does not sample.
+  Its 100 % is not luck, and repeats on that lane only cost time.
+- **The 2B has a real capability hole, not bad luck**: `parse_version` fails
+  every single time. Its flakiness is confined to `balanced`.
+- **The 4B GGUF is never *wrong* — it is *cut off*.** Zero wrong answers in
+  nine attempts; every failure is the 2048-token cap. Given room it would
+  likely match the winner, but on this server it cannot deliver, and it needs
+  **10x the time** per attempt.
+
+**Tuning the NPU lane does nothing** (measured, config restored afterwards):
+`n-threads` 3 → 6 → 8 with `cpu-mask` widened to all cores gives 18.76 / 19.03
+/ 18.76 tok/s — noise. The HTP does the work; those threads only orchestrate.
+`perf_profile` is already `burst`.
+
 **Caveat.** Three tasks is a smoke test, not a capability benchmark, and all
-three are self-contained functions — no multi-file work, no tool calls. It
-separates "writes working code" from "does not"; it does not rank senior
-engineers.
+three are self-contained functions — no multi-file work, no tool calls, and
+short prompts rather than the long context an agent really sends. It separates
+"writes working code" from "does not"; it does not rank senior engineers.
+
+**What is still unmeasured:** the hybrid lane on coding tasks, long-prompt
+(prefill-heavy) coding, `nctx` scaling, and `--ngl`. The lane question itself
+*is* settled: Qwen3-4B `Q4_0` scores identically on CPU and GPU (2/3 + 1 cut,
+the same task cut on both), with the GPU 1.78x slower — **the lane changes
+speed, not correctness**.
 
 **And the binding constraint is still context, not skill.** The winning bundle
 is capped at **4096 tokens** (§ 1a), which an agent's system prompt plus one

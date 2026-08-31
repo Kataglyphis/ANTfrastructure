@@ -5,6 +5,45 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — the coding ranking, re-measured with repeats
+
+A follow-up question ("did you test all configurations?") exposed two unchecked
+assumptions. One held, one did not.
+
+**Held:** the lane changes speed, not correctness. Qwen3-4B Q4_0 scores
+identically on CPU and GPU (2/3 + 1 cut, the same task cut on both), the GPU
+1.78x slower (397s vs 223s).
+
+**Did not hold:** that temperature=0 makes a run reproducible. GenieX ignores
+`temperature` exactly as it ignores `max_tokens`. Five identical requests to
+the 2B produced FIVE different answers -- four passing the same task, one
+failing. The same model scored 2/3 in one sweep and 0/3 in the next.
+
+Re-measured with --repeats 3:
+
+| Model | Pass rate | wrong | cut | per attempt |
+|---|---|---|---|---|
+| **QAIRT Qwen3-4B-Instruct-2507 (NPU)** | **9/9 = 100 %** | 0 | 0 | 10.2 s |
+| GGUF Qwen3.8-2B-Distill (CPU) | 4/9 = 44 % | 5 | 0 | 10.5 s |
+| GGUF Qwen3-4B Q4_0 (CPU) | 4/9 = 44 % | 0 | 5 | 101.9 s |
+
+The winner survives intact and is strengthened: the QAIRT/QNN path is
+byte-identical deterministic (four requests, one unique output per task), so
+its 100 % is not a lucky draw.
+
+Two things only repeats could show: the 2B has a real capability hole
+(parse_version fails 3/3, its flakiness is confined to balanced), and the 4B
+GGUF is never WRONG -- zero wrong answers in nine attempts, every failure the
+2048-token cap. Given room it would likely match the winner; on this server it
+cannot, and needs 10x the time per attempt.
+
+Tuning the NPU lane does nothing: n-threads 3 -> 6 -> 8 with cpu-mask widened
+to all cores gives 18.76 / 19.03 / 18.76 tok/s. The HTP does the work, those
+threads only orchestrate, and perf_profile is already burst. Config restored.
+
+Still unmeasured and recorded as such: the hybrid lane on coding tasks,
+long-prompt coding, nctx scaling, --ngl.
+
 ## 2026-08-31 — measured: which model writes code that actually runs
 
 Six models, three coding tasks each, code extracted and **executed** against
