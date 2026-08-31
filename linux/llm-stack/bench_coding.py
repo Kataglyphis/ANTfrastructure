@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Rank models by whether their code actually RUNS (LB-coding).
+
+The generic correctness probe in benchmark_openai_api.py answers "is this model
+working at all". It cannot answer "is this model good at code" -- a model can
+recite Canberra and still emit a broken function.
+
+So: give each model a small set of coding tasks with an exact required
+signature, extract the code it produces, execute it against hidden test cases
+in a subprocess, and report how many tasks passed alongside the time it took to
+get there. Everything here is measured, nothing is judged by eye.
+
+Ranking uses time to a FINISHED answer, not tok/s: a reasoning model can be the
+fastest per token and the slowest to usable code.
+
+SAFETY: this executes model-generated code. Each candidate runs in a temporary
+directory as a separate process with a hard timeout. Do not point it at an
+untrusted endpoint.
+
+Usage:
+    python3 bench_coding.py --backend geniex-npu
+    python3 bench_coding.py --backend geniex-cpu --model unsloth/Qwen3-4B-GGUF:Q4_0
+    python3 bench_coding.py --compare candidates.json --output coding.json
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# ── Tasks ─────────────────────────────────────────────────────────────────────
+# Each task pins an exact signature so the check is mechanical, and the tests
+# include the edge cases a plausible-looking wrong answer trips over.
+
+TASKS = [
+    {
+        "name": "merge_sorted",
+        "prompt": (
+            "Write a Python function with this exact signature:\n"
+            "    def merge_sorted(a: list, b: list) -> list\n"
+            "It merges two already-sorted lists into one sorted list. "
+            "Do not use sorted() or list.sort(). "
+            "Reply with the function in a single ```python code block and nothing else."
+        ),
+        "tests": """
+assert merge_sorted([], []) == []
+assert merge_sorted([1], []) == [1]
+assert merge_sorted([], [2]) == [2]
+assert merge_sorted([1,3,5], [2,4,6]) == [1,2,3,4,5,6]
+assert merge_sorted([1,1,2], [1,3]) == [1,1,1,2,3]
+assert merge_sorted([-5,0], [-9,-1,7]) == [-9,-5,-1,0,7]
+assert merge_sorted([1,2,3], []) == [1,2,3]
+""",
+    },
+    {
+        "name": "balanced",
+        "prompt": (
+            "Write a Python function with this exact signature:\n"
+            "    def balanced(s: str) -> bool\n"
+            "It returns True if the brackets (), [] and {} in s are correctly "
+            "balanced and nested, ignoring all other characters. "
+            "Reply with the function in a single ```python code block and nothing else."
+        ),
+        "tests": """
+assert balanced("") is True
+assert balanced("()") is True
+assert balanced("([]{})") is True
+assert balanced("(]") is False
+assert balanced("([)]") is False
+assert balanced("(") is False
+assert balanced(")(") is False
+assert balanced("a(b[c]{d})e") is True
+""",
+    },
+    {
+        "name": "parse_version",
+        "prompt": (
+            "Write a Python function with this exact signature:\n"
+            "    def parse_version(v: str) -> tuple\n"
+            "It parses a version string like '1.2.3' into a tuple of ints (1, 2, 3). "
+            "Missing components default to 0, so '1.2' gives (1, 2, 0) and '2' gives (2, 0, 0). "
+            "A leading 'v' is allowed and ignored. Raise ValueError on anything else. "
+            "Reply with the function in a single ```python code block and nothing else."
+        ),
+        "tests": """
+assert parse_version("1.2.3") == (1, 2, 3)
+assert parse_version("1.2") == (1, 2, 0)
+assert parse_version("2") == (2, 0, 0)
+assert parse_version("v3.4.5") == (3, 4, 5)
+assert parse_version("0.0.0") == (0, 0, 0)
+try:
+    parse_version("abc"); raise AssertionError("should have raised")
+except ValueError:
+    pass
+try:
+    parse_version(""); raise AssertionError("should have raised")
+except ValueError:
+    pass
+""",
+    },
+]
+
+CODE_FENCE = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.S | re.I)
+
+
+def extract_code(text):
+    """Pull the code out of a reply.
+
+    Prefers a fenced block. Falls back to the first `def ...` onwards, because
+    some models answer with bare code -- refusing to grade that would measure
+    formatting compliance rather than coding ability.
+    """
+    # Strip a reasoning block first: a discarded draft inside <think> must not
+    # be graded instead of the real answer.
+    if "</think>" in text:
+        text = text.split("</think>")[-1]
+    blocks = CODE_FENCE.findall(text)
+    if blocks:
+        return max(blocks, key=len).strip()
+    idx = text.find("def ")
+    return text[idx:].strip() if idx != -1 else ""
+
+
+def run_candidate(code, tests, timeout=15):
+    """Execute the generated function against the tests. Returns (ok, detail)."""
+    if not code.strip():
+        return False, "no code found in reply"
+    program = code + "\n\n" + tests + "\nprint('PASS')\n"
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "candidate.py")
+        with open(path, "w") as f:
+            f.write(program)
+        try:
+            proc = subprocess.run([sys.executable, path], cwd=tmp,
+                                  capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return False, f"timed out after {timeout}s (likely an infinite loop)"
+    if proc.returncode == 0 and "PASS" in proc.stdout:
+        return True, "all assertions passed"
+    err = (proc.stderr or proc.stdout or "").strip().splitlines()
+    return False, (err[-1][:120] if err else f"exit {proc.returncode}")
+
+
+def ask(base_url, model, prompt, max_tokens, timeout=1800):
+    """One streamed request. Returns (text, ttft_s, wall_s, chunks)."""
+    body = json.dumps({
+        "model": model, "stream": True, "max_tokens": max_tokens,
+        "temperature": 0, "messages": [{"role": "user", "content": prompt}],
+    }).encode()
+    req = urllib.request.Request(f"{base_url}/v1/chat/completions", data=body,
+                                 headers={"Content-Type": "application/json"})
+    started = time.monotonic()
+    ttft = None
+    parts = []
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].lstrip()
+            if payload == "[DONE]":
+                break
+            try:
+                chunk = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            choices = chunk.get("choices") or []
+            if choices:
+                piece = choices[0].get("delta", {}).get("content")
+                if piece:
+                    if ttft is None:
+                        ttft = time.monotonic() - started
+                    parts.append(piece)
+    text = "".join(parts)
+    return text, ttft, time.monotonic() - started, len(parts)
+
+
+def evaluate(base_url, model, label, max_tokens, keep_output=False):
+    """Run every task against one model. Returns a report dict."""
+    print(f"\n  === {label} ===")
+    results = []
+    for task in TASKS:
+        try:
+            text, ttft, wall, chunks = ask(base_url, model, task["prompt"], max_tokens)
+        except Exception as e:  # noqa: BLE001 — one dead task must not end the sweep
+            print(f"    {task['name']:15s} ERROR {type(e).__name__}: {e}")
+            results.append({"task": task["name"], "passed": False,
+                            "detail": f"request failed: {e}", "wall_s": None})
+            continue
+        code = extract_code(text)
+        ok, detail = run_candidate(code, task["tests"])
+        think_share = 0.0
+        if "</think>" in text:
+            think_share = 1 - len(text.split("</think>")[-1]) / len(text)
+        print(f"    {task['name']:15s} {'PASS' if ok else 'FAIL'}  "
+              f"{wall:6.1f}s  ttft={ttft or 0:5.2f}s  tokens={chunks:5d}  "
+              f"think={100*think_share:3.0f}%  {'' if ok else detail}")
+        entry = {"task": task["name"], "passed": ok, "detail": detail,
+                 "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
+                 "tokens": chunks, "thinking_char_share": round(think_share, 3)}
+        if keep_output:
+            entry["code"] = code
+        results.append(entry)
+
+    done = [r for r in results if r["wall_s"] is not None]
+    passed = sum(1 for r in results if r["passed"])
+    total_wall = sum(r["wall_s"] for r in done)
+    print(f"    -> {passed}/{len(TASKS)} tasks pass, {total_wall:.1f}s total")
+    return {"label": label, "model": model, "base_url": base_url,
+            "passed": passed, "total": len(TASKS),
+            "total_wall_s": round(total_wall, 2),
+            "avg_wall_s": round(total_wall / len(done), 2) if done else None,
+            "results": results}
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--backend", default=None, help="Named backend from backends.json")
+    ap.add_argument("--base-url", default=None)
+    ap.add_argument("--model", default=None)
+    ap.add_argument("--label", default=None)
+    ap.add_argument("--max-tokens", type=int, default=3000,
+                    help="Budget per task. Reasoning models need room; a model cut "
+                         "off mid-thought produces no code and scores 0 (default 3000)")
+    ap.add_argument("--compare", default=None,
+                    help="JSON file: [{label, backend|base_url, model}, ...]")
+    ap.add_argument("--keep-output", action="store_true",
+                    help="Store the generated code in the report")
+    ap.add_argument("--output", default=None)
+    args = ap.parse_args()
+
+    from benchmark_openai_api import resolve_backend
+
+    candidates = []
+    if args.compare:
+        with open(args.compare) as f:
+            for entry in json.load(f):
+                url, model, _ = resolve_backend(entry.get("backend"), entry.get("base_url"))
+                candidates.append((entry.get("label") or entry.get("model"),
+                                   url, entry.get("model") or model))
+    else:
+        url, model, _ = resolve_backend(args.backend, args.base_url)
+        candidates.append((args.label or args.model or model, url, args.model or model))
+
+    reports = [evaluate(url, model, label, args.max_tokens, args.keep_output)
+               for label, url, model in candidates]
+
+    if len(reports) > 1:
+        print("\n" + "=" * 78)
+        print("  RANKING — by tasks passed, then by time to a finished answer")
+        print("=" * 78)
+        ranked = sorted(reports, key=lambda r: (-r["passed"], r["total_wall_s"]))
+        print(f"  {'model':44s} {'pass':>6s} {'total':>9s} {'avg/task':>9s}")
+        for r in ranked:
+            print(f"  {r['label'][:44]:44s} {r['passed']}/{r['total']:<4d} "
+                  f"{r['total_wall_s']:8.1f}s {r['avg_wall_s'] or 0:8.1f}s")
+        print()
+
+    if args.output:
+        with open(args.output, "w") as f:
+            json.dump(reports, f, indent=2)
+        print(f"  Report written to {args.output}")
+
+
+if __name__ == "__main__":
+    main()

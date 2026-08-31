@@ -235,6 +235,30 @@ lane gave up **18 %**, for 39.9 tok/s aggregate (1.57x the best single lane).
 Aggregate throughput only appears if you really have that many concurrent
 requests — one agent waiting for one answer still sees a single lane's speed.
 
+### Which model writes code that actually runs? (`bench_coding.py`)
+
+The correctness probe answers "is this model working at all". It cannot answer
+"is this model good at code" — a model can recite Canberra and still emit a
+broken function.
+
+```bash
+python3 bench_coding.py --backend geniex-npu
+python3 bench_coding.py --compare candidates.json --output coding.json
+```
+
+Each task pins an **exact required signature**; the reply's code is extracted,
+executed in a temporary directory as a separate process with a hard timeout,
+and checked against hidden tests chosen to catch plausible-but-wrong answers —
+a merge that silently drops duplicates, a bracket matcher that counts instead
+of nesting. Nothing is judged by eye. Ranking is by tasks passed, then by time
+to a finished answer.
+
+A `<think>` block is stripped before extraction, so a draft the model itself
+discarded is never graded in place of its real answer.
+
+> **This executes model-generated code.** Each candidate runs in a temp dir as
+> a subprocess with a timeout. Do not point it at an untrusted endpoint.
+
 ### Is this GGUF even sane? (`inspect_gguf.py`)
 
 ```bash
