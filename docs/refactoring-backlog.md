@@ -18,17 +18,19 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **SCC**=cache tiers · **BT**=bump-tool · **LOG**=build-log mining ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-30 (third pass, rebuild window) — TG1/TG3 CLOSED (both
-were landed 2026-08-24, never closed; the validating toolchain rebuild is
-running now with GCC_PARALLEL_TARGETS=1). GCC_PARALLEL_TARGETS validation
-IN-PROGRESS (local compiler build, no push — the flag finally on a real launch
-command). QNN-LINUX fan-out validation BLOCKED on the login-gated QAIRT zip:
-the real SDK is NOT on the host (removed after the PROVEN build per the
-qnn-sdk README discipline; /tmp/qnn-sdk-extract now holds only my synthetic
-test stub, and the buildkit /tmp tmpfs discarded the in-RUN extraction). The
-staged zip must be re-downloaded by the owner (qpm.qualcomm.com, EULA) and
-re-pinned in versions.env before the multi-framework validation build can run;
-the no-zip fail-safe path is validated by the media rebuild instead.
+Last groomed: 2026-08-30 (final, rebuild window complete) — ALL rebuild tasks
+closed: GCC_PARALLEL_TARGETS validated + PASS (2 bugs fixed: 92fb9646
+plumbing, 5e8b2470 apt-lock; parallel GCC green, 41/41 smokes); TG1/TG3 closed
++ validated by the compiler rebuild; F2 media validation PASS (100 % hit rate,
+android pushed); the validation caught a REAL sccache-launcher gap (server-death
+class not bypassed) — fixed 0371d164, TVM restored + fix validated live on the
+follow-up chain (TVM build OK, wheels produced). QNN-LINUX fan-out validation
+remains BLOCKED on the login-gated QAIRT SDK (real zip not on the host — owner
+must re-stage from qpm.qualcomm.com and re-pin QNN_SDK_LINUX_ZIP_SHA256; the
+no-zip fail-safe path was validated by both media builds). Remaining open:
+A1 complexity-queue (closure-window style debt), GEN1 (no user), E-section
+watches, and the logging.sh ERR-trap dynamic-scope bug (action: unbound,
+masks real errors — follow-up).
 
 ## Standing rules (read first)
 
@@ -207,8 +209,12 @@ never NPU execution — that needs real Snapdragon hardware.
   server-died class (`failed to execute compile / Failed to send data to or
   receive data from server`) was NOT bypassed by the launcher (only the ENOENT
   class was), killing the TVM step. Fixed in 0371d164 (bypass on any
-  sccache-prefixed internal error; tests/test-sccache-launcher.sh). TVM is
-  restored on the follow-up media rebuild.
+  sccache-prefixed internal error; tests/test-sccache-launcher.sh). TVM
+  RESTORED + fix VALIDATED live on the follow-up sdk→media→android rebuild:
+  `TVM build OK`, apache_tvm + apache_tvm_ffi wheels produced, 0 server-death
+  propagations (858 sccache-internal failures caught + bypassed by the
+  launcher — "a hiccup costs hits, not a build"). Both chains pushed and
+  complete.
 - **QNN-LINUX fan-out validation — BLOCKED on the login-gated QAIRT SDK.**
   The real zip is not on the host (removed after the PROVEN build per the
   qnn-sdk README discipline; the buildkit /tmp tmpfs discarded the in-RUN
