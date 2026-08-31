@@ -249,6 +249,10 @@ fallbacks), builds the stages in order, and applies the correct tags:
 # CPU lane (default): base -> tag sdk -> toolchain -> media -> torch -> final
 .\windows\build-buildkit.ps1
 
+# arm64 cross lane (clang-cl x64 host -> windows-arm64; torch is auto-dropped —
+# `uv sync` must execute the target interpreter — and -Gpu is refused):
+.\windows\build-buildkit.ps1 -TargetArch arm64
+
 # GPU lane: base -> nvidia (CUDA + cuDNN + TensorRT, tagged sdk) -> toolchain -> media -> torch -> final
 # Requires a TensorRT zip in windows/downloads/ (see § TensorRT setup (GPU lane, optional) below).
 .\windows\build-buildkit.ps1 -Gpu

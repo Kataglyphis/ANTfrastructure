@@ -773,7 +773,9 @@ $elapsed = (Get-Date) - $started
 # run — otherwise a green run records no per-stage cost anywhere.
 if ($script:StageTimings.Count -gt 0) {
     $manifest = Join-Path $script:LogDir ("bk-" + $script:RunId + "-manifest.txt")
-    $lines = @("run=$($script:RunId) stages=$($Stages -join ',') gpu=$([bool]$Gpu) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
+    # arch= added 2026-08-31: with two lanes at gpu=False the header could not
+    # attribute a run to amd64 vs arm64, which is exactly what #152's A/B needs.
+    $lines = @("run=$($script:RunId) arch=$TargetArch stages=$($Stages -join ',') gpu=$([bool]$Gpu) total_s=$([math]::Round($elapsed.TotalSeconds,1))")
     foreach ($k in $script:StageTimings.Keys) { $lines += ("{0}={1}" -f $k, $script:StageTimings[$k]) }
     Set-Content -Path $manifest -Value $lines -Encoding utf8
     Write-Host "`n[bk] per-stage timings:" -ForegroundColor Cyan

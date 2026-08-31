@@ -696,7 +696,7 @@ QNN-off if the SDK is too old). `Copy-QnnRuntime` stages the per-arch backend DL
 (`QnnHtp*.dll`, `QnnCpu.dll`, `QnnSystem.dll`) plus `hexagon-v*` skel dirs beside each
 framework's install.
 
-The QNN SDK is wired into **four frameworks**:
+The QNN SDK gives a build-time flag to **ONE framework** (corrected 2026-08-31, backlog #154 — the other three rows record what was wrong):
 
 | Framework | CMake flag | What it enables |
 |---|---|---|

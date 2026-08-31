@@ -281,6 +281,9 @@ function Assert-CmakeArgsConsumed {
     # WARNS, never throws: some unconsumed vars are legitimate (a toolchain var a
     # subproject reads without caching, an option that only exists on another arch).
     # The point is that they stop being invisible.
+    # BLIND SPOT, by construction: only the UNTYPED -DNAME= form is detectable. A
+    # typed -DNAME:BOOL= the project never declares is cached WITH that type, so it
+    # is indistinguishable from a declared option here. Pass feature flags untyped.
     param(
         [Parameter(Mandatory)][string]$BuildDir,
         [string[]]$PassedArgs = @()
