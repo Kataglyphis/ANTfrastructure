@@ -9,11 +9,11 @@
     "",
     "Fields: base_url (required), model (optional default), note (optional).",
     "Resolution order: --base-url > LLM_BASE_URL / OLLAMA_BASE_URL > --backend",
-    "> the entry marked default."
+    "> the entry marked default.",
+    "",
+    "A 'control' backend is the calibration point: when every candidate fails a case there is no way to tell a hard case from a broken one. Point it at the strongest endpoint you have (a hosted model, or the LAN Ollama) and the benchmarks will flag a case the control also fails as suspect rather than as evidence about the candidates."
   ],
-
   "default": "ollama",
-
   "backends": {
     "ollama": {
       "base_url": "http://localhost:11434",
@@ -41,6 +41,10 @@
     "geniex-hybrid": {
       "base_url": "http://127.0.0.1:18183",
       "note": "NPU+CPU. Slower than plain CPU on every model measured - avoid."
+    },
+    "control": {
+      "base_url": "http://summy-server:11434",
+      "note": "Calibration reference \u2014 see the comment above. Point this at the strongest endpoint available; a case the control also fails is a suspect case, not a model result."
     }
   }
 }

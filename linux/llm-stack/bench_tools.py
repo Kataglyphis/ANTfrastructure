@@ -101,9 +101,16 @@ CASES = [
     # ── does it call at all, and pick the obvious tool ──────────────────────
     {"name": "simple_read",
      "prompt": "Show me the contents of README.md.",
+     # Paraphrases exercised by --prompt-variants. Same required answer, three
+     # ways of asking: a score that swings between them is measuring wording,
+     # not capability, and the single-phrasing number hides that entirely.
+     "variants": ["What's in README.md?",
+                  "Please open README.md and display it."],
      "expect": {"name": "read_file", "args": {"path": "README.md"}}},
     {"name": "list_a_directory",
      "prompt": "Which files are in the directory src?",
+     "variants": ["List the contents of the src directory.",
+                  "What does src contain? Just the file names."],
      "expect": {"name": "list_files", "args": {"directory": "src"}}},
     {"name": "nested_path",
      "prompt": "Open the file linux/llm-stack/README.md and show it to me.",
@@ -142,6 +149,8 @@ CASES = [
     # ── argument extraction ────────────────────────────────────────────────
     {"name": "extract_query",
      "prompt": "Search the repository for the string merge_sorted.",
+     "variants": ["Find merge_sorted in the code.",
+                  "Grep the repo for merge_sorted."],
      "expect": {"name": "search_code", "args": {"query": "merge_sorted"}}},
     {"name": "extract_query_with_spaces",
      "prompt": 'Search the repository for the exact phrase "no such file".',
@@ -162,6 +171,8 @@ CASES = [
     # ── restraint: no tool needed ──────────────────────────────────────────
     {"name": "no_tool_arithmetic",
      "prompt": "What is 2 + 2? Answer directly, do not use any tool.",
+     "variants": ["Without calling anything, what is 2 plus 2?",
+                  "Answer from your own knowledge, no tools: what is 2+2?"],
      "expect": None},
     {"name": "no_tool_definition",
      "prompt": "In one sentence and without using any tool, what does the acronym API stand for?",
@@ -328,7 +339,8 @@ def grade(message, expect):
     return True, "correct tool and arguments"
 
 
-def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
+def evaluate(base_url, model, label, repeats=1, system=None, warmup=True,
+             prompt_variants=False):
     tag = "  [+system prompt]" if system else ""
     print(f"\n  === {label}{tag} ===", flush=True)
     if warmup:
@@ -341,10 +353,16 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
                   f"include load time)", flush=True)
     results = []
     for case in CASES:
+        phrasings = [case["prompt"]]
+        if prompt_variants:
+            phrasings += case.get("variants", [])
         for attempt in range(repeats):
+          for vi, phrasing in enumerate(phrasings):
             suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
+            if len(phrasings) > 1:
+                suffix += f" v{vi}"
             try:
-                message, finish, wall = call(base_url, model, case["prompt"],
+                message, finish, wall = call(base_url, model, phrasing,
                                              system=system)
             except Exception as e:  # noqa: BLE001
                 print(f"    {case['name']:22s}{suffix} ERROR {type(e).__name__}", flush=True)
@@ -360,7 +378,8 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
             print(f"    {case['name']:22s}{suffix} {'PASS' if ok else 'FAIL'}  "
                   f"{wall:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:60]}",
                   flush=True)
-            results.append({"case": case["name"], "attempt": attempt, "passed": ok,
+            results.append({"case": case["name"], "attempt": attempt,
+                            "variant": vi, "passed": ok,
                             "detail": detail, "wall_s": round(wall, 2),
                             "finish_reason": finish})
     # --- multi-turn: the agent loop, which single-turn cases cannot reach
@@ -391,7 +410,11 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
     # evidence about the model, and counting it as a wrong answer both lowers
     # the score and widens the interval for reasons that have nothing to do
     # with what is being measured.
-    total = (len(CASES) + len(MULTI_CASES)) * repeats - len(errored)
+    per_case = 1 + (max((len(c.get("variants", [])) for c in CASES), default=0)
+                    if prompt_variants else 0)
+    total = sum(1 + (len(c.get("variants", [])) if prompt_variants else 0)
+                for c in CASES) * repeats \
+        + len(MULTI_CASES) * repeats - len(errored)
     wall = sum(r["wall_s"] for r in done)
     walls = [r["wall_s"] for r in done]
 
@@ -440,6 +463,11 @@ def main():
                          "the tools this way — measure whether it actually helps "
                          "before shipping it.")
     ap.add_argument("--compare", default=None)
+    ap.add_argument("--prompt-variants", action="store_true",
+                    help="Also ask each case in its paraphrases. Small models are "
+                         "highly prompt-sensitive, so a single phrasing leaves an "
+                         "unknown share of the score attributable to wording "
+                         "rather than capability.")
     ap.add_argument("--no-warmup", action="store_true",
                     help="Skip the warmup request; the first case then carries the "
                          "model load time")
@@ -456,7 +484,8 @@ def main():
         with open(args.system) as f:
             system = f.read()
     reports = [evaluate(url, model, label, args.repeats, system,
-                        warmup=not args.no_warmup)
+                        warmup=not args.no_warmup,
+                        prompt_variants=args.prompt_variants)
                for label, url, model in candidates]
 
 

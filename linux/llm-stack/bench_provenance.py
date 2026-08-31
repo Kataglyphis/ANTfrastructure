@@ -58,6 +58,32 @@ def tool_fingerprint(*paths):
     return h.hexdigest()[:16]
 
 
+def busy_lanes(registry_path=None):
+    """Which other endpoints were serving while this ran.
+
+    Results shift with what else is running: a CPU lane measured 23.7 tok/s
+    alone and 18.6 next to a busy NPU lane. Two runs taken under different load
+    are not comparable, and without recording it nobody can tell which was
+    which.
+    """
+    try:
+        from benchmark_openai_api import load_backends
+        backends, _ = load_backends(registry_path)
+    except Exception:
+        return None
+    live = []
+    for name, entry in sorted(backends.items()):
+        url = entry.get("base_url")
+        if not url:
+            continue
+        try:
+            with urllib.request.urlopen(f"{url.rstrip('/')}/v1/models", timeout=2):
+                live.append(name)
+        except Exception:
+            continue
+    return live
+
+
 def collect(base_url=None, tool_files=(), extra=None):
     """Return a provenance block for a report."""
     prov = {
@@ -75,6 +101,10 @@ def collect(base_url=None, tool_files=(), extra=None):
         "base_url": base_url,
         "server_models": _server_models(base_url) if base_url else None,
         "tool_sha256": tool_fingerprint(*tool_files) if tool_files else None,
+        # Everything else that was answering when this started. A lane that was
+        # busy slows the one being measured; recording it is the difference
+        # between a comparable number and an unexplained one.
+        "live_lanes": busy_lanes(),
     }
     if extra:
         prov.update(extra)
@@ -98,6 +128,10 @@ def compare(old, new):
         notes.append("served models differ between the runs")
     if old.get("architecture") != new.get("architecture") or old.get("host") != new.get("host"):
         notes.append("different host or architecture")
+    if old.get("live_lanes") is not None and new.get("live_lanes") is not None \
+            and old["live_lanes"] != new["live_lanes"]:
+        notes.append(f"different lanes were live: {old['live_lanes']} vs "
+                     f"{new['live_lanes']} — a busy lane slows the one measured")
     if new.get("git_dirty") or old.get("git_dirty"):
         notes.append("at least one run came from a dirty working tree")
     if old.get("git_sha") != new.get("git_sha"):

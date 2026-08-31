@@ -132,7 +132,7 @@ ALL_TASKS = TASKS + NOVEL_TASKS
 @pytest.mark.parametrize("task", ALL_TASKS, ids=lambda t: t["name"])
 def test_reference_solution_passes(task):
     """The task is solvable, and its own tests agree with its own prompt."""
-    ok, detail = run_candidate(REFERENCE[task["name"]], task["tests"],
+    ok, detail, _credit = run_candidate(REFERENCE[task["name"]], task["tests"],
                                forbidden=task.get("forbidden"))
     assert ok, f"{task['name']}: reference solution rejected — {detail}"
 
@@ -140,7 +140,7 @@ def test_reference_solution_passes(task):
 @pytest.mark.parametrize("task", ALL_TASKS, ids=lambda t: t["name"])
 def test_wrong_solution_is_rejected(task):
     """The tests are strong enough to catch a plausible wrong answer."""
-    ok, _ = run_candidate(WRONG[task["name"]], task["tests"],
+    ok, _, _credit = run_candidate(WRONG[task["name"]], task["tests"],
                           forbidden=task.get("forbidden"))
     assert not ok, f"{task['name']}: a known-wrong solution PASSED — tests too weak"
 

@@ -73,7 +73,7 @@ class TestExtraction:
 
 class TestGrading:
     def test_correct_implementation_passes(self):
-        ok, detail = run_candidate(GOOD_MERGE, MERGE["tests"])
+        ok, detail, _credit = run_candidate(GOOD_MERGE, MERGE["tests"])
         assert ok, detail
 
     def test_plausible_but_wrong_fails(self):
@@ -86,7 +86,7 @@ def merge_sorted(a: list, b: list) -> list:
             out.append(x)
     return out
 '''
-        ok, _ = run_candidate(bad, MERGE["tests"])
+        ok, _, _credit = run_candidate(bad, MERGE["tests"])
         assert not ok
 
     def test_infinite_loop_is_caught_not_hung(self):
@@ -95,19 +95,19 @@ def merge_sorted(a: list, b: list) -> list:
     while True:
         pass
 '''
-        ok, detail = run_candidate(spin, MERGE["tests"], timeout=3)
+        ok, detail, _credit = run_candidate(spin, MERGE["tests"], timeout=3)
         assert not ok and "timed out" in detail
 
     def test_empty_reply_fails_with_a_clear_reason(self):
-        ok, detail = run_candidate("", MERGE["tests"])
+        ok, detail, _credit = run_candidate("", MERGE["tests"])
         assert not ok and "no code" in detail
 
     def test_syntax_error_fails(self):
-        ok, _ = run_candidate("def merge_sorted(a, b) return a", MERGE["tests"])
+        ok, _, _credit = run_candidate("def merge_sorted(a, b) return a", MERGE["tests"])
         assert not ok
 
     def test_wrong_function_name_fails(self):
-        ok, _ = run_candidate("def merge(a, b): return a + b", MERGE["tests"])
+        ok, _, _credit = run_candidate("def merge(a, b): return a + b", MERGE["tests"])
         assert not ok
 
     def test_balanced_task_rejects_a_naive_counter(self):
@@ -116,7 +116,7 @@ def merge_sorted(a: list, b: list) -> list:
 def balanced(s: str) -> bool:
     return s.count("(") == s.count(")") and s.count("[") == s.count("]") and s.count("{") == s.count("}")
 '''
-        ok, _ = run_candidate(naive, BALANCED["tests"])
+        ok, _, _credit = run_candidate(naive, BALANCED["tests"])
         assert not ok, "the test set must catch a counter that ignores nesting"
 
 

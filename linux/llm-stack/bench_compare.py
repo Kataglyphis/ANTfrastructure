@@ -235,6 +235,26 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
     return findings, regressed
 
 
+def suspect_cases(reports, control_label="control"):
+    """Cases the CONTROL endpoint also failed.
+
+    Without a calibration point, "every model failed this" reads as a hard case
+    when it may be a broken one — a contradictory assertion, an ambiguous
+    prompt, a tool description nobody could disambiguate. A case the control
+    fails is evidence about the CASE, not about the candidates.
+    """
+    control = next((r for r in reports
+                    if control_label in str(r.get("label", "")).lower()), None)
+    if not control:
+        return None
+    failed = set()
+    for item in control.get("results", []):
+        key = item.get("case") or item.get("task")
+        if key is not None and not item.get("passed") and not item.get("errored"):
+            failed.add(key)
+    return sorted(failed)
+
+
 def baseline_path(name):
     return os.path.join(BASELINE_DIR, f"{name}.json")
 

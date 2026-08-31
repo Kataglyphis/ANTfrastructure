@@ -352,14 +352,62 @@ def check_forbidden(code, forbidden):
     return None
 
 
+def _assertion_harness(tests):
+    """Wrap each top-level statement so one failure does not hide the rest.
+
+    Pass/fail alone cannot distinguish "wrong algorithm" from "one edge case
+    missed", and a model at 6 of 7 assertions is not the same as one at 0 of 7.
+    Running the block as a whole stops at the FIRST failure, so most of the
+    signal was being thrown away.
+    """
+    # Group by top-level statement. Two things must stay attached to the
+    # statement above them: an indented continuation line, and a dedented
+    # CLAUSE keyword — `except`, `else`, `elif`, `finally`. Splitting a try
+    # from its except produces a SyntaxError and marks a perfectly good
+    # reference solution as failing, which is exactly what happened first.
+    CLAUSE = ("except", "else", "elif", "finally")
+    groups, current = [], []
+    for line in tests.strip().splitlines():
+        stripped = line.strip()
+        starts_new = (
+            stripped
+            and not line[:1].isspace()
+            and not stripped.split(None, 1)[0].rstrip(":").lower() in CLAUSE
+            and current
+        )
+        if starts_new:
+            groups.append(current)
+            current = [line]
+        else:
+            current.append(line)
+    if current:
+        groups.append(current)
+    groups = [g for g in groups
+              if any(ln.strip() and not ln.strip().startswith("#") for ln in g)]
+
+    body = []
+    for i, group in enumerate(groups):
+        block = "\n".join("    " + ln for ln in group)
+        body.append(f"try:\n{block}\n    _RESULTS.append((#{i}, True, ''))"
+                    .replace(f"(#{i}, True, '')", f"({i}, True, '')"))
+        body.append(f"except Exception as _e:\n    _RESULTS.append(({i}, False, "
+                    f"type(_e).__name__ + ': ' + str(_e)[:80]))")
+    return ("_RESULTS = []\n" + "\n".join(body)
+            + "\nimport json as _json\nprint('__ASSERTIONS__' + _json.dumps(_RESULTS))\n")
+
+
 def run_candidate(code, tests, timeout=15, forbidden=None):
-    """Execute the generated function against the tests. Returns (ok, detail)."""
+    """Execute the generated function against the tests.
+
+    Returns (ok, detail). `ok` still means "every assertion passed" — partial
+    credit is reported alongside, not used to lower the bar.
+    """
     if not code.strip():
-        return False, "no code found in reply"
+        return False, "no code found in reply", {"passed": 0, "total": 0}
     violation = check_forbidden(code, forbidden)
     if violation:
-        return False, violation
-    program = code + "\n\n" + tests + "\nprint('PASS')\n"
+        return False, violation, {"passed": 0, "total": 0}
+    program = code + "\n\n" + _assertion_harness(tests)
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "candidate.py")
         with open(path, "w") as f:
@@ -368,11 +416,26 @@ def run_candidate(code, tests, timeout=15, forbidden=None):
             proc = subprocess.run([sys.executable, path], cwd=tmp,
                                   capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired:
-            return False, f"timed out after {timeout}s (likely an infinite loop)"
-    if proc.returncode == 0 and "PASS" in proc.stdout:
-        return True, "all assertions passed"
+            return False, f"timed out after {timeout}s (likely an infinite loop)", \
+                   {"passed": 0, "total": 0}
+
+    marker = "__ASSERTIONS__"
+    if marker in proc.stdout:
+        rows = json.loads(proc.stdout.split(marker, 1)[1].splitlines()[0])
+        passed = sum(1 for _, ok, _ in rows if ok)
+        detail_rows = [{"index": i, "passed": ok, "error": err} for i, ok, err in rows]
+        credit = {"passed": passed, "total": len(rows), "assertions": detail_rows}
+        if passed == len(rows):
+            return True, "all assertions passed", credit
+        first = next((r for r in rows if not r[1]), None)
+        return False, (f"{passed}/{len(rows)} assertions passed; first failure: "
+                       f"{first[2][:80]}" if first else "failed"), credit
+
+    # The program did not even reach the harness — a syntax error, or the code
+    # raised at import time.
     err = (proc.stderr or proc.stdout or "").strip().splitlines()
-    return False, (err[-1][:120] if err else f"exit {proc.returncode}")
+    return False, (err[-1][:120] if err else f"exit {proc.returncode}"), \
+           {"passed": 0, "total": 0}
 
 
 def ask(base_url, model, prompt, max_tokens, timeout=1800):
@@ -458,8 +521,8 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
                             "prompt_tokens": None})
             continue
         code = extract_code(text, want=task.get("function") or _want_from_prompt(task))
-        ok, detail = run_candidate(code, task["tests"],
-                                   forbidden=task.get("forbidden"))
+        ok, detail, credit = run_candidate(code, task["tests"],
+                                           forbidden=task.get("forbidden"))
         truncated = (not ok) and looks_truncated(text, chunks, code)
         if truncated:
             detail = f"CUT OFF at {chunks} tokens (server cap) - not graded as wrong"
@@ -467,12 +530,19 @@ def evaluate(base_url, model, label, max_tokens, keep_output=False, repeats=1,
         if "</think>" in text:
             think_share = 1 - len(text.split("</think>")[-1]) / len(text)
         verdict = "PASS" if ok else ("CUT " if truncated else "FAIL")
+        # Partial credit beside the verdict: 6-of-7 assertions is not the same
+        # result as 0-of-7, and pass/fail alone cannot tell them apart.
+        partial = (f"{credit['passed']}/{credit['total']} asserts  "
+                   if credit["total"] and not ok else "")
         pt = f"  ptok={ptok:5d}" if ptok else ""
         print(f"    {task['name']:15s}{suffix} {verdict}  "
               f"{wall:6.1f}s  ttft={ttft or 0:5.2f}s{pt}  out={chunks:5d}  "
-              f"think={100*think_share:3.0f}%  {'' if ok else detail}", flush=True)
+              f"think={100*think_share:3.0f}%  {partial}{'' if ok else detail[:58]}",
+              flush=True)
         entry = {"task": task["name"], "attempt": attempt,
                  "passed": ok, "truncated": truncated, "detail": detail,
+                 "assertions_passed": credit["passed"],
+                 "assertions_total": credit["total"],
                  "wall_s": round(wall, 2), "ttft_s": round(ttft, 3) if ttft else None,
                  "tokens": chunks, "prompt_tokens": ptok,
                  "thinking_char_share": round(think_share, 3)}
