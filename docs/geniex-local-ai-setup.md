@@ -317,6 +317,55 @@ Every row below was hit live on 2026-08-31.
 | `CL_OUT_OF_RESOURCES` / `GGML_ASSERT(0) failed` at `ggml-opencl.cpp` on `--compute gpu` | 27B Q4_0 (16 GB) exceeds the Adreno's allocatable unified memory | Pull a smaller quant; the usable window is ≤ ~13 GB (see quant ladder above) |
 | `geniex serve` answers on Windows but not from WSL2 via the LAN IP | Windows Firewall (Ethernet on `Public` profile) blocks inbound | Prefer `127.0.0.1` with mirrored networking; otherwise add an inbound allow rule for TCP 18181 (elevated) |
 | `geniex pull` needs a TTY on every invocation | Chipset picker re-triggers when no chipset is stored | Set the chipset once (above) |
+| GPU server on port 18182 answers `/v1/models`, but a 13 GB model request hangs with HTTP 000 | The Adreno is thrashing in/out of unified memory — the model loads but generation makes no progress (observed on the 27B Q3_K_XL) | Not practical on this machine. Kill the server (`Stop-Process`) — it holds 14+ GB RSS. Stick to NPU models (2B/4B) or the GPU 9B-Distill |
+
+## Making room: WSL2 RAM tuning (so the Windows host can fit bigger models)
+
+GenieX runs on the **Windows host**, and WSL2's default config can hoard most of
+the machine's RAM as a *guest* memory cap + page cache, starving the host that
+actually loads the models. Measured case (2026-08-31): `.wslconfig` capped WSL2
+at **30.3 GB of a 31.6 GB host**, leaving ~2 GB free for Windows — the 27B
+Q3_K_XL OOM'd on the GPU the moment it was pulled. After tuning, the host had
+**~18–21 GB free**.
+
+### 1. Cap WSL2 and return unused memory (`C:\Users\<you>\.wslconfig`)
+
+```ini
+[wsl2]
+networkingMode=Mirrored
+memory=10GB            # pick what the agent inside WSL needs (VS Code server, opencode); NOT the model RAM
+autoMemoryReclaim=gradual
+swap=4GB
+```
+
+`autoMemoryReclaim` (Win11 22H2+) returns WSL's freed page cache to Windows
+automatically. Apply with `wsl --shutdown` from a Windows shell, then restart
+WSL.
+
+### 2. Clear orphaned containers and services inside WSL
+
+A rootful `containerd.service` can leave orphaned containers running for weeks
+(Elasticsearch + Collabora/LibreOffice alone held ~2.5 GB here; both were not
+listening on any port). From an **elevated** WSL shell:
+
+```bash
+sudo systemctl stop containerd && sudo pkill -9 -f coolwsd; sudo pkill -9 -f elasticsearch; sudo systemctl disable containerd
+sudo pkill -9 -f 'clamd|freshclam'; sudo pkill -9 -f '^postgres|/postgres '
+```
+
+Check before/after with `free -h` and `ss -tlnp` (nothing of the stopped
+services should listen). Keep containers you actually use (e.g. the llm-stack
+`glances` monitor).
+
+### 3. Reality check: what the freed RAM did and did not buy
+
+- **Fixed:** the 27B Q3_K_XL (13.1 GB) now *loads* on the Adreno GPU instead of
+  `CL_OUT_OF_RESOURCES`.
+- **Still not practical:** its generation thrashes memory (2.0 tok/s, 9 s first
+  token, server hang under the first real request). Bigger models than the 9B
+  are CPU/NPU-only on this class of machine.
+- **Where the freed RAM matters most:** headroom for the host's normal workload
+  while GenieX serves, and avoiding whole-machine swap storms.
 
 ## References
 

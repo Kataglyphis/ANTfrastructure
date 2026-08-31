@@ -5,6 +5,30 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — WSL2 RAM tuning: host gets ~20 GB back; 27B loads on GPU but stays impractical
+
+The GenieX models run on the Windows host, but the host `.wslconfig` had capped
+WSL2 at **30.3 GB of 31.6 GB**, and WSL contained ~4.3 GB of orphaned dead
+weight. Both fixed:
+
+- `.wslconfig`: `memory=10GB` + `autoMemoryReclaim=gradual` + `swap=4GB`
+  (backup of the old file kept). WSL now reports ~9.7 GB total; the Windows
+  host went from ~2 GB free to **~18–21 GB free**.
+- WSL cleanup (elevated commands, documented): rootful `containerd.service`
+  stopped+disabled (killed orphaned Elasticsearch + Collabora containers,
+  ~2.5 GB) and `pkill` of orphaned clamd/freshclam + postgres (~1.1 GB).
+  Containers from a running compose (llm-stack glances) kept.
+- **What the RAM buy actually gives:** the 27B Q3_K_XL (13.1 GB) now *loads* on
+  the Adreno GPU (was `CL_OUT_OF_RESOURCES`), but generation is still
+  impractical there — 2.0 tok/s, 9.1 s first token, and the server hung under
+  the first real request (HTTP 000, 14.4 GB RSS, killed to release RAM). The
+  honest bottom line is now in the docs: on this machine, the GPU serves up to
+  the 9B-Distill; the 27B stays CPU territory; the NPU serves 2B/4B fastest.
+- New docs section "Making room: WSL2 RAM tuning" in
+  [`docs/geniex-local-ai-setup.md`](docs/geniex-local-ai-setup.md): the
+  `.wslconfig` cap + `autoMemoryReclaim`, the elevated cleanup commands, and
+  the reality check (what freed RAM did and did not buy).
+
 ## 2026-08-31 — hybrid actually measured: 9B distill runs at 7.5 tok/s (faster than GPU)
 
 Tested `--compute hybrid` against every Qwen3.8-class model on this Snapdragon
