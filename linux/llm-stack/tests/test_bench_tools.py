@@ -101,6 +101,70 @@ class TestSuiteShape:
         assert any(c["expect"] is None for c in CASES), \
             "without a 'no tool needed' case, over-eager calling goes unmeasured"
 
+    def test_case_names_are_unique(self):
+        from bench_tools import MULTI_CASES
+        names = [c["name"] for c in CASES] + [c["name"] for c in MULTI_CASES]
+        assert len(names) == len(set(names))
+
+    def test_the_suite_is_large_enough_to_prove_a_regression(self):
+        # The number that motivated the expansion: at 8 cases a real 8/8 -> 6/8
+        # degradation was NOT provable. 27 brings the smallest provable drop to
+        # roughly 100% -> 75%, which is the point of having a tripwire at all.
+        from bench_stats import minimum_detectable_drop
+        from bench_tools import MULTI_CASES
+        n = len(CASES) + len(MULTI_CASES)
+        assert n >= 27, f"only {n} cases — too few to prove a 25-point drop"
+        assert minimum_detectable_drop(n) >= 0.70
+
+    def test_several_tools_are_near_neighbours(self):
+        # Selection is only tested if some tools are genuinely confusable;
+        # with all-distinct tools a model can succeed by elimination.
+        names = {t["function"]["name"] for t in TOOLS}
+        for pair in (("write_file", "apply_patch"), ("git_status", "git_diff"),
+                     ("read_file", "list_files")):
+            assert set(pair) <= names, pair
+
+    def test_restraint_is_measured_more_than_once(self):
+        # One negative case out of 27 would let a tool-happy model score well.
+        assert sum(1 for c in CASES if c["expect"] is None) >= 3
+
+
+class TestMultiCaseShape:
+    def test_every_multi_case_has_a_known_grader(self):
+        from bench_tools import MULTI_CASES
+        for case in MULTI_CASES:
+            assert case["kind"] in ("use_result", "recover"), case["name"]
+
+    def test_use_result_cases_state_what_must_appear(self):
+        from bench_tools import MULTI_CASES
+        for case in MULTI_CASES:
+            if case["kind"] == "use_result":
+                assert case.get("must_contain"), case["name"]
+                # The token must actually be present in the tool result, or the
+                # case is unpassable and every model looks broken.
+                result = case["history"][-1]["content"]
+                for token in case["must_contain"]:
+                    assert token in result, f"{case['name']}: {token!r} not in the tool result"
+
+    def test_recover_cases_feed_back_an_actual_error(self):
+        from bench_tools import MULTI_CASES
+        for case in MULTI_CASES:
+            if case["kind"] == "recover":
+                assert "error" in case["history"][-1]["content"].lower(), case["name"]
+
+    def test_histories_are_well_formed(self):
+        from bench_tools import MULTI_CASES
+        for case in MULTI_CASES:
+            roles = [m["role"] for m in case["history"]]
+            assert roles == ["user", "assistant", "tool"], case["name"]
+            call_id = case["history"][1]["tool_calls"][0]["id"]
+            assert case["history"][2]["tool_call_id"] == call_id, case["name"]
+
+    def test_both_kinds_are_represented(self):
+        from bench_tools import MULTI_CASES
+        kinds = {c["kind"] for c in MULTI_CASES}
+        assert kinds == {"use_result", "recover"}
+
 
 class TestMultiTurn:
     """Single-turn scores cannot see whether a model USES what a tool returned.

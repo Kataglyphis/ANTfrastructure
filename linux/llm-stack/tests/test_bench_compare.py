@@ -62,7 +62,7 @@ class TestRegressionDetection:
         new = normalise(report([("m", 8, 12, 10.0)]))
         findings, regressed = compare(old, new)
         assert not regressed
-        assert any("NOT SEPARABLE" in f for f in findings)
+        assert any("not separable" in f.lower() for f in findings)
 
     def test_an_improvement_is_not_flagged(self):
         old = normalise(report([("m", 5, 30, 10.0)]))
@@ -130,3 +130,66 @@ class TestRoundTrip:
         p = tmp_path / "r.json"
         p.write_text(json.dumps(report([("m", 9, 9, 10.0)])))
         assert load(str(p))["entries"][0]["passed"] == 9
+
+
+def report_with_cases(label, cases, wall=10.0, benchmark="bench_tools", prov=None):
+    """A report carrying per-case detail, as the real tools emit."""
+    results = [{"case": k, "passed": v} for k, v in cases.items()]
+    passed = sum(1 for v in cases.values() if v)
+    return {"benchmark": benchmark, "provenance": prov or {}, "config": {},
+            "reports": [{"label": label, "model": label, "passed": passed,
+                         "total": len(cases), "total_wall_s": wall,
+                         "median_wall_s": None, "effective_n": len(cases),
+                         "deterministic": True, "results": results}]}
+
+
+class TestPerCaseComparison:
+    """The aggregate is the weaker test. On a deterministic endpoint a case that
+    flipped is a concrete, attributable change, and it needs no statistics --
+    which matters because the measured 93%->81% degradation would need 119
+    cases to clear a confidence interval, while naming the broken cases needs
+    none."""
+
+    def test_a_flipped_case_is_a_regression_even_when_the_aggregate_is_not(self):
+        old = normalise(report_with_cases("m", {f"c{i}": True for i in range(27)}))
+        new_cases = {f"c{i}": True for i in range(27)}
+        for i in range(3):
+            new_cases[f"c{i}"] = False
+        new = normalise(report_with_cases("m", new_cases))
+        findings, regressed = compare(old, new)
+        assert regressed, "three named cases broke; that is not noise"
+        assert any("case(s) that PASSED now fail" in f for f in findings)
+
+    def test_the_broken_cases_are_named(self):
+        old = normalise(report_with_cases("m", {"a": True, "b": True, "c": True}))
+        new = normalise(report_with_cases("m", {"a": True, "b": False, "c": True}))
+        findings, _ = compare(old, new)
+        assert any("broke: b" in f for f in findings)
+
+    def test_fixed_cases_are_reported_without_failing(self):
+        old = normalise(report_with_cases("m", {"a": False, "b": True}))
+        new = normalise(report_with_cases("m", {"a": True, "b": True}))
+        findings, regressed = compare(old, new)
+        assert not regressed
+        assert any("now fixed" in f for f in findings)
+
+    def test_a_swap_still_regresses_even_at_an_identical_score(self):
+        # Same 1/2 both times, but a different case passes. The aggregate sees
+        # nothing; that is precisely the blind spot this closes.
+        old = normalise(report_with_cases("m", {"a": True, "b": False}))
+        new = normalise(report_with_cases("m", {"a": False, "b": True}))
+        findings, regressed = compare(old, new)
+        assert regressed and any("broke: a" in f for f in findings)
+
+    def test_new_cases_absent_from_the_baseline_are_ignored(self):
+        # Adding a case the baseline never ran must not read as a regression.
+        old = normalise(report_with_cases("m", {"a": True}))
+        new = normalise(report_with_cases("m", {"a": True, "brand_new": False}))
+        _, regressed = compare(old, new)
+        assert not regressed
+
+    def test_reports_without_per_case_detail_still_compare(self):
+        old = normalise(report([("m", 28, 30, 10.0)]))
+        new = normalise(report([("m", 5, 30, 10.0)]))
+        _, regressed = compare(old, new)
+        assert regressed, "the aggregate path must keep working for older reports"

@@ -49,6 +49,15 @@ def normalise(report):
     if isinstance(report, dict) and "reports" in report:
         entries = []
         for r in report["reports"]:
+            # Per-case outcomes matter more than the aggregate on a
+            # deterministic endpoint: a case that flipped is a concrete,
+            # attributable change, where the proportion may not move enough to
+            # clear a confidence interval.
+            cases = {}
+            for item in r.get("results", []):
+                key = item.get("case") or item.get("task")
+                if key is not None:
+                    cases.setdefault(key, []).append(bool(item.get("passed")))
             entries.append({
                 "label": r.get("label") or r.get("model"),
                 "model": r.get("model"),
@@ -58,6 +67,7 @@ def normalise(report):
                 "median_wall_s": r.get("median_wall_s"),
                 "effective_n": r.get("effective_n"),
                 "deterministic": r.get("deterministic"),
+                "cases": {k: all(v) for k, v in cases.items()},
             })
         return {"benchmark": report.get("benchmark", "unknown"),
                 "provenance": report.get("provenance", {}),
@@ -115,6 +125,21 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
     for label in sorted(set(old_by) & set(new_by)):
         a, b = old_by[label], new_by[label]
 
+        # --- per-case diff, which needs no statistics to be meaningful
+        a_cases, b_cases = a.get("cases") or {}, b.get("cases") or {}
+        shared = set(a_cases) & set(b_cases)
+        broke = sorted(k for k in shared if a_cases[k] and not b_cases[k])
+        fixed = sorted(k for k in shared if not a_cases[k] and b_cases[k])
+        if broke:
+            findings.append(f"  {label}: {len(broke)} case(s) that PASSED now fail — "
+                            f"*** REGRESSION ***")
+            for k in broke:
+                findings.append(f"      broke: {k}")
+            regressed = True
+        if fixed:
+            findings.append(f"  {label}: {len(fixed)} case(s) now fixed: "
+                            f"{', '.join(fixed)}")
+
         if a.get("total") and b.get("total"):
             a_rate = a["passed"] / a["total"]
             b_rate = b["passed"] / b["total"]
@@ -122,7 +147,10 @@ def compare(old, new, time_tolerance=DEFAULT_TIME_TOLERANCE):
                     f"{format_score(b['passed'], b['total'])}")
             if b_rate < a_rate:
                 if intervals_overlap(a["passed"], a["total"], b["passed"], b["total"]):
-                    findings.append(line + "   lower, but NOT SEPARABLE at this sample size")
+                    note = "   lower; the AGGREGATE is not separable at this sample size"
+                    if broke:
+                        note += " (but named cases broke — see above)"
+                    findings.append(line + note)
                 else:
                     findings.append(line + "   *** REGRESSION ***")
                     regressed = True
@@ -193,9 +221,13 @@ def main():
         # "No regression" must not be mistaken for "nothing changed" when the
         # suite is too small to tell the difference.
         sizes = [e["total"] for e in new["entries"] if e.get("total")]
+        has_cases = any(e.get("cases") for e in new["entries"])
         print("  no regression detected")
         if sizes:
             print(f"  {power_note(min(sizes))}")
+        if not has_cases:
+            print("  (no per-case detail in these reports — only the aggregate "
+                  "could be checked, which is the weaker test)")
     sys.exit(1 if regressed else 0)
 
 

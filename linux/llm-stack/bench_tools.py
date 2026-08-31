@@ -56,28 +56,160 @@ TOOLS = [
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string", "description": "Optional path to a test file"}},
             "required": []}}},
+    # The four below exist to make SELECTION hard. With only distinct tools a
+    # model can succeed by elimination; agents fail on near-neighbours -- write
+    # vs patch, status vs diff -- so the set has to contain some.
+    {"type": "function", "function": {
+        "name": "write_file",
+        "description": "Overwrite a file with new content, replacing everything in it.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Path to the file"},
+            "content": {"type": "string", "description": "The new full content"}},
+            "required": ["path", "content"]}}},
+    {"type": "function", "function": {
+        "name": "apply_patch",
+        "description": "Apply a unified diff to a file, changing only the lines it touches.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Path to the file"},
+            "diff": {"type": "string", "description": "Unified diff to apply"}},
+            "required": ["path", "diff"]}}},
+    {"type": "function", "function": {
+        "name": "git_status",
+        "description": "List which files have uncommitted changes. Does not show the changes themselves.",
+        "parameters": {"type": "object", "properties": {}, "required": []}}},
+    {"type": "function", "function": {
+        "name": "git_diff",
+        "description": "Show the actual line-by-line changes in the working tree.",
+        "parameters": {"type": "object", "properties": {
+            "path": {"type": "string", "description": "Optional path to limit the diff"}},
+            "required": []}}},
 ]
 
 # expect=None means: the model must NOT call a tool.
+#
+# Sized deliberately. Building the regression comparer showed that at 8 cases a
+# real degradation (a model going 8/8 -> 6/8 when its system prompt was removed)
+# is NOT provable — the Wilson intervals still overlap. Detecting a 100% -> 75%
+# drop needs 27 cases, and on a deterministic endpoint repeats add nothing, so
+# the power has to come from distinct cases. Hence 21 single-turn plus 6
+# multi-turn.
+#
+# Every case must have exactly one defensible answer. A case an expert could
+# argue two ways measures the grader's opinion, not the model.
+
 CASES = [
+    # ── does it call at all, and pick the obvious tool ──────────────────────
     {"name": "simple_read",
      "prompt": "Show me the contents of README.md.",
      "expect": {"name": "read_file", "args": {"path": "README.md"}}},
-    {"name": "pick_from_several",
+    {"name": "list_a_directory",
      "prompt": "Which files are in the directory src?",
      "expect": {"name": "list_files", "args": {"directory": "src"}}},
-    {"name": "argument_extraction",
-     "prompt": "Search the repository for the string merge_sorted.",
-     "expect": {"name": "search_code", "args": {"query": "merge_sorted"}}},
-    {"name": "optional_argument",
-     "prompt": "Search for the exact string Foo, matching case exactly.",
-     "expect": {"name": "search_code", "args": {"query": "Foo", "case_sensitive": True}}},
-    {"name": "no_args_tool",
+    {"name": "nested_path",
+     "prompt": "Open the file linux/llm-stack/README.md and show it to me.",
+     "expect": {"name": "read_file", "args": {"path": "linux/llm-stack/README.md"}}},
+    {"name": "run_the_tests",
      "prompt": "Run the test suite.",
      "expect": {"name": "run_tests", "args": {}}},
-    {"name": "no_tool_needed",
+    {"name": "run_one_test_file",
+     "prompt": "Run only the tests in tests/test_api.py.",
+     "expect": {"name": "run_tests", "args": {"path": "tests/test_api.py"}}},
+
+    # ── near-neighbour discrimination: the failure agents actually hit ──────
+    {"name": "contents_not_names",
+     "prompt": "What does the file config.yaml contain?",
+     "expect": {"name": "read_file", "args": {"path": "config.yaml"}}},
+    {"name": "names_not_contents",
+     "prompt": "I only need the file names under docs, not what is in them.",
+     "expect": {"name": "list_files", "args": {"directory": "docs"}}},
+    {"name": "overwrite_not_patch",
+     "prompt": "Replace the entire contents of notes.txt with the single word: done.",
+     "expect": {"name": "write_file", "args": {"path": "notes.txt", "content": "done"}}},
+    {"name": "patch_not_overwrite",
+     "prompt": ("Apply this unified diff to app.py, changing only the lines it "
+                "touches:\n--- a/app.py\n+++ b/app.py\n@@\n-x = 1\n+x = 2\n"),
+     "expect": {"name": "apply_patch", "args": {"path": "app.py"}}},
+    {"name": "which_files_changed",
+     "prompt": "Which files have uncommitted changes? I do not need to see the changes.",
+     "expect": {"name": "git_status", "args": {}}},
+    {"name": "what_changed_in_them",
+     "prompt": "Show me the actual line-by-line changes in the working tree.",
+     "expect": {"name": "git_diff", "args": {}}},
+    {"name": "diff_one_path",
+     "prompt": "Show me the line-by-line changes to src/main.py only.",
+     "expect": {"name": "git_diff", "args": {"path": "src/main.py"}}},
+
+    # ── argument extraction ────────────────────────────────────────────────
+    {"name": "extract_query",
+     "prompt": "Search the repository for the string merge_sorted.",
+     "expect": {"name": "search_code", "args": {"query": "merge_sorted"}}},
+    {"name": "extract_query_with_spaces",
+     "prompt": 'Search the repository for the exact phrase "no such file".',
+     "expect": {"name": "search_code", "args": {"query": "no such file"}}},
+    {"name": "extract_query_with_symbols",
+     "prompt": "Find every occurrence of the string __init__.py in the code.",
+     "expect": {"name": "search_code", "args": {"query": "__init__.py"}}},
+    {"name": "optional_boolean_true",
+     "prompt": "Search for the exact string Foo, matching case exactly.",
+     "expect": {"name": "search_code", "args": {"query": "Foo", "case_sensitive": True}}},
+    {"name": "optional_boolean_false",
+     "prompt": "Search for the string foo, ignoring case entirely.",
+     "expect": {"name": "search_code", "args": {"query": "foo", "case_sensitive": False}}},
+    {"name": "path_not_query",
+     "prompt": "Read the file src/search_code.py.",
+     "expect": {"name": "read_file", "args": {"path": "src/search_code.py"}}},
+
+    # ── restraint: no tool needed ──────────────────────────────────────────
+    {"name": "no_tool_arithmetic",
      "prompt": "What is 2 + 2? Answer directly, do not use any tool.",
      "expect": None},
+    {"name": "no_tool_definition",
+     "prompt": "In one sentence and without using any tool, what does the acronym API stand for?",
+     "expect": None},
+    {"name": "no_tool_greeting",
+     "prompt": "Say hello. Do not call any tool.",
+     "expect": None},
+]
+
+# ── Multi-turn cases ──────────────────────────────────────────────────────────
+#
+# Where single-turn scores stop and agents keep going. A model that emits one
+# perfect call and then ignores what came back is useless in a loop, and no
+# single-turn score can see it.
+#
+# `kind` selects the grader: "use_result" wants the returned value used;
+# "recover" wants a failure admitted or retried, never invented over.
+
+def _tool_turn(user, name, arguments, result, call_id="call_x"):
+    return [{"role": "user", "content": user},
+            {"role": "assistant", "content": None,
+             "tool_calls": [{"id": call_id, "type": "function",
+                             "function": {"name": name, "arguments": arguments}}]},
+            {"role": "tool", "tool_call_id": call_id, "content": result}]
+
+
+MULTI_CASES = [
+    {"name": "use_file_contents", "kind": "use_result", "must_contain": ["9.4.1"],
+     "history": _tool_turn("What is in the file VERSION.txt?", "read_file",
+                           '{"path": "VERSION.txt"}', "9.4.1-rc2")},
+    {"name": "use_search_hit", "kind": "use_result", "must_contain": ["bench_tools.py"],
+     "history": _tool_turn("Where is the function grade defined?", "search_code",
+                           '{"query": "def grade"}',
+                           "bench_tools.py:112: def grade(message, expect):")},
+    {"name": "use_test_result", "kind": "use_result", "must_contain": ["3"],
+     "history": _tool_turn("Run the tests and tell me how many failed.", "run_tests",
+                           "{}", "17 passed, 3 failed")},
+    {"name": "use_listing", "kind": "use_result", "must_contain": ["setup.py"],
+     "history": _tool_turn("Which files are in the project root?", "list_files",
+                           '{"directory": "."}', "README.md\nsetup.py\nsrc/")},
+    {"name": "recover_missing_file", "kind": "recover",
+     "history": _tool_turn("What is in config/secret.yaml?", "read_file",
+                           '{"path": "config/secret.yaml"}',
+                           "Error: ENOENT: no such file or directory")},
+    {"name": "recover_permission_denied", "kind": "recover",
+     "history": _tool_turn("Read /etc/shadow for me.", "read_file",
+                           '{"path": "/etc/shadow"}',
+                           "Error: EACCES: permission denied")},
 ]
 
 
@@ -220,61 +352,36 @@ def evaluate(base_url, model, label, repeats=1, system=None, warmup=True):
                                 "detail": f"request failed: {e}", "wall_s": None})
                 continue
             ok, detail = grade(message, case["expect"])
-            print(f"    {case['name']:20s}{suffix} {'PASS' if ok else 'FAIL'}  "
-                  f"{wall:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:70]}",
+            print(f"    {case['name']:22s}{suffix} {'PASS' if ok else 'FAIL'}  "
+                  f"{wall:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:60]}",
                   flush=True)
             results.append({"case": case["name"], "attempt": attempt, "passed": ok,
                             "detail": detail, "wall_s": round(wall, 2),
                             "finish_reason": finish})
-    # --- multi-turn: feed a tool RESULT back and see whether it is used
-    for attempt in range(repeats):
-        suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
-        history = [{"role": "user", "content": "What is in the file VERSION.txt?"},
-                   {"role": "assistant", "content": None,
-                    "tool_calls": [{"id": "call_a", "type": "function",
-                                    "function": {"name": "read_file",
-                                                 "arguments": '{"path": "VERSION.txt"}'}}]},
-                   {"role": "tool", "tool_call_id": "call_a",
-                    "content": "9.4.1-rc2"}]
-        try:
-            message, finish, wall = call_multi(base_url, model, history, system=system)
-            ok, detail = grade_followup(message, ["9.4.1"])
-        except Exception as e:  # noqa: BLE001
-            ok, detail, wall, finish = False, f"request failed: {e}", None, None
-        print(f"    {'multiturn_use_result':20s}{suffix} {'PASS' if ok else 'FAIL'}  "
-              f"{wall or 0:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:70]}",
-              flush=True)
-        results.append({"case": "multiturn_use_result", "attempt": attempt,
-                        "passed": ok, "detail": detail,
-                        "wall_s": round(wall, 2) if wall else None,
-                        "finish_reason": finish})
-
-    # --- error recovery: the tool failed; does the model admit it or invent?
-    for attempt in range(repeats):
-        suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
-        history = [{"role": "user", "content": "What is in the file config/secret.yaml?"},
-                   {"role": "assistant", "content": None,
-                    "tool_calls": [{"id": "call_b", "type": "function",
-                                    "function": {"name": "read_file",
-                                                 "arguments": '{"path": "config/secret.yaml"}'}}]},
-                   {"role": "tool", "tool_call_id": "call_b",
-                    "content": "Error: ENOENT: no such file or directory"}]
-        try:
-            message, finish, wall = call_multi(base_url, model, history, system=system)
-            ok, detail = grade_error_recovery(message)
-        except Exception as e:  # noqa: BLE001
-            ok, detail, wall, finish = False, f"request failed: {e}", None, None
-        print(f"    {'error_recovery':20s}{suffix} {'PASS' if ok else 'FAIL'}  "
-              f"{wall or 0:6.2f}s  finish={finish or '?':10s} {'' if ok else detail[:70]}",
-              flush=True)
-        results.append({"case": "error_recovery", "attempt": attempt,
-                        "passed": ok, "detail": detail,
-                        "wall_s": round(wall, 2) if wall else None,
-                        "finish_reason": finish})
+    # --- multi-turn: the agent loop, which single-turn cases cannot reach
+    for case in MULTI_CASES:
+        for attempt in range(repeats):
+            suffix = f" [{attempt+1}/{repeats}]" if repeats > 1 else ""
+            try:
+                message, finish, wall = call_multi(base_url, model, case["history"],
+                                                   system=system)
+                if case["kind"] == "use_result":
+                    ok, detail = grade_followup(message, case["must_contain"])
+                else:
+                    ok, detail = grade_error_recovery(message)
+            except Exception as e:  # noqa: BLE001
+                ok, detail, wall, finish = False, f"request failed: {e}", None, None
+            print(f"    {case['name']:22s}{suffix} {'PASS' if ok else 'FAIL'}  "
+                  f"{wall or 0:6.2f}s  finish={finish or '?':10s} "
+                  f"{'' if ok else detail[:60]}", flush=True)
+            results.append({"case": case["name"], "attempt": attempt, "passed": ok,
+                            "detail": detail,
+                            "wall_s": round(wall, 2) if wall else None,
+                            "finish_reason": finish})
 
     done = [r for r in results if r["wall_s"] is not None]
     passed = sum(1 for r in results if r["passed"])
-    total = (len(CASES) + 2) * repeats  # +2: multi-turn and error recovery
+    total = (len(CASES) + len(MULTI_CASES)) * repeats
     wall = sum(r["wall_s"] for r in done)
     walls = [r["wall_s"] for r in done]
 

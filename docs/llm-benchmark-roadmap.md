@@ -74,35 +74,35 @@ exists, every measurement is a one-off and a regression is invisible.
 - **P2.2 Accepted baselines** [S·★★★] **DONE.** `--save-baseline <name>` /
   `--baseline <name>`, stored under `baselines/`.
 
-- **P2.0 — MORE CASES, and it now blocks everything above** [L·★★★] Building
-  the tripwire exposed that it has almost no power. Removing the system prompt
-  took a model from **8/8 to 6/8** — a real degradation with a known cause —
-  and the comparer correctly reported *no regression*, because at n = 8 the
-  intervals still overlap. Measured requirement:
+- **P2.0 — more cases** [L·★★★] **DONE for `bench_tools` (8 → 27).** Building
+  the tripwire showed it had almost no power: removing the system prompt took a
+  model from 8/8 to 6/8 — a real degradation with a known cause — and the
+  comparer correctly reported *no regression*, because at n = 8 the intervals
+  overlap. Detecting 100 % → 75 % needs 27 cases.
 
-  | Drop to detect | Cases needed |
-  |---|---|
-  | 100 % → 50 % | 12 |
-  | 100 % → 75 % | **27** |
-  | 100 % → 87.5 % | 60 |
+  The expansion immediately earned itself: two failure modes the 8-case suite
+  could not see. The model mangled an identifier (`___init__.py` for
+  `__init__.py`), and in one multi-turn case it *talked about* the tool call —
+  "I already confirmed that `list_files` has been correctly called" — without
+  ever telling the user what the files were.
 
-  The suite has **8 tool cases and 3–6 coding tasks**. And on the QAIRT/NPU
-  path repeats add nothing — it is deterministic — so power comes *only* from
-  more distinct cases. Until the case count reaches ~27, "no regression" mostly
-  means "too small to tell", which the comparer now says out loud rather than
-  leaving to be discovered. **Authoring cases is the unglamorous work that
-  makes every other phase worth doing.**
-- **P2.3 Unify the report schema** [M·★★] Four tools, **two incompatible
-  shapes** (`{benchmark, provenance, config, reports}` vs
-  `{timestamp, model, api_url, hardware, config, results}`), and a viewer that
-  reads only the older one. Every downstream consumer — comparison, CI gate,
-  viewer — has to special-case this. Converge on one envelope before building
-  three readers.
-- **P2.4 The viewer shows one tool out of four** [M·★★] Coding, tool-calling
-  and lane results are invisible in it. Follows from P2.3.
-- **P2.5 Scheduled CI run** [M·★★] The Ollama service already exists in
-  `llm-stack-tests.yml`. Run the suite against it on a schedule and fail on a
-  regression — that is what turns the tripwire on.
+  `bench_coding` still has 3 classic + 3 novel tasks. Each additional one needs
+  a test set, a reference solution and a known-wrong solution (the task tests
+  enforce both), so it is real authoring work rather than a copy-paste.
+
+- **P2.6 Per-case diffing beat the statistics** [S·★★★] **DONE**, and it
+  changes how the tripwire should be read. Even at 27 cases the observed
+  25/27 → 22/27 drop is *not* separable — because a 93 % baseline carries a
+  wide interval of its own, and separating 93 % → 81 % would need **119**
+  cases. Perfect baselines are far cheaper statistically than near-perfect
+  ones.
+
+  For a deterministic endpoint the aggregate is the wrong instrument anyway.
+  The comparer now diffs **per case**: a case that passed and now fails is a
+  concrete, attributable change needing no statistics at all. On the same pair
+  of runs it names the five cases the system prompt fixes — and the **two it
+  breaks** (`extract_query_with_symbols`, `use_listing`), which no aggregate
+  score had revealed. It also catches a swap that leaves the score identical.
 
 ## Phase 3 — Measure the thing you actually run [M–L]
 
