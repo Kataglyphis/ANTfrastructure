@@ -115,6 +115,11 @@ run_check critical-fixes "critical fixes"         bash linux/scripts/verify-crit
 # 3b. Patch files are well-formed unified diffs AND still referenced (no orphans).
 run_check patch-integrity "patch integrity"       bash linux/scripts/verify-patch-integrity.sh
 
+# 3b2. Copied shell/Dockerfile/Markdown blocks. Token-normalised, so a RENAMED
+#      clone still matches. docs/scripts/code-dupes.allow holds the deliberate
+#      twins with a budget; --baseline re-freezes.
+run_check code-dupes "code duplication"           ${PREFLIGHT_PYTHON} docs/scripts/verify_code_dupes.py
+
 # 3c. Dockerfile.package artifact COPY lane: artifact-source stage exists and
 #     src/dst paths stay canonical (undocumented relocations fail).
 run_check artifact-parity "artifact copy parity"  bash linux/scripts/verify-artifact-copy-parity.sh
