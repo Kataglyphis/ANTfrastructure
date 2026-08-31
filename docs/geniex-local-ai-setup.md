@@ -770,6 +770,62 @@ medium file can exhaust. For code that must see a lot of repository at once,
 the 27B on the CPU lane is the only on-device option with both correctness and
 room — at 43 s per task.
 
+### 1f. Tool calling — where the coding winner is weakest (measured 2026-08-31)
+
+An agent lives on tool calls: a model that writes flawless code but cannot emit
+a valid one never reads a file, runs a test, or applies a patch. Measured with
+`linux/llm-stack/bench_tools.py` (four advertised tools, six cases, 2 repeats).
+
+**GenieX supports tool calling natively** on both lanes —
+`finish_reason: tool_calls`, correct names, correctly extracted arguments.
+
+| Model | Tool calls | Coding | Time |
+|---|---|---|---|
+| **GGUF Qwen3-4B `Q4_0` (CPU)** | **12/12 = 100 %** | 44 % (cut-limited) | 88 s |
+| **QAIRT 4B-Instruct (NPU)** | **8/12 = 67 %** | **100 %** | **25 s** |
+| GGUF Qwen3.8-2B (CPU) | 2/12 = 17 % | 44 % | 55 s |
+
+**This is the one result that does not crown the coding winner.** Per case:
+
+| Case | QAIRT 4B | GGUF 2B | GGUF 4B |
+|---|---|---|---|
+| `simple_read` | `FF` | `FF` | `PP` |
+| `pick_from_several` | `PP` | `FF` | `PP` |
+| `argument_extraction` | `PP` | `FF` | `PP` |
+| `optional_argument` | `FF` | `FF` | `PP` |
+| `no_args_tool` | `PP` | `FF` | `PP` |
+| `no_tool_needed` | `PP` | `PP` | `PP` |
+
+The QAIRT bundle's two failures are reproducible (deterministic path) and
+specific — and **one of them is yours to fix**:
+
+- **`simple_read`: picked `list_files` instead of `read_file`.** A tool-*selection*
+  error, and it disappears with a sharper description: spelling out that
+  `read_file` returns *contents* and `list_files` returns *names only, not
+  contents* flips it from FAIL to PASS. **Write your tool descriptions
+  contrastively** — this model distinguishes tools by their text, not by their
+  names.
+- **`optional_argument`: emitted the arguments as message *text* instead of a
+  tool call** — `{"case_sensitive": true, "query": "Foo"}`. The values are
+  *correct*; only the channel is wrong. Forcing `tool_choice: "required"` does
+  **not** fix it (verified). An agent with a fallback that parses a bare JSON
+  object out of the content would recover this turn; opencode out of the box
+  will not.
+
+With better descriptions the realistic rate is ~10/12; the text-instead-of-call
+case remains.
+
+**Every model got `no_tool_needed` right**, so over-eager tool calling is not a
+problem here — including on the 2B, which failed everything else.
+
+**Does this change the recommendation? Mostly no, but state the trade-off.**
+The GGUF 4B is perfect at tool calls and hopeless at agent latency: § 1e
+measured 34 s of prefill at 3000 tokens of context and 151 s at 8000, against
+the NPU lane's 3.2 s. An agent loop pays that on *every* turn, and a tool-using
+loop has many turns. The QAIRT bundle stays the practical choice for
+interactive work — with contrastive tool descriptions, and knowing roughly one
+call in six will arrive as text rather than as a call.
+
 ### 2. Run NPU + GPU lanes — they compose almost perfectly
 
 One server = one request at a time. Throughput scales only by adding servers,

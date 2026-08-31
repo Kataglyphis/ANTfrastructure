@@ -5,6 +5,45 @@
 > Archive when this file passes ~700 lines; never delete.
 
 
+## 2026-08-31 — tool calling measured: the coding winner is weakest here
+
+An agent lives on tool calls, and nothing measured so far touched them. New
+`linux/llm-stack/bench_tools.py`; results in § 1f.
+
+GenieX supports tool calling natively on both lanes (finish_reason=tool_calls,
+correct names, correctly extracted arguments) -- the finding that could have
+disqualified the current winner, and it did not.
+
+| Model | Tool calls | Coding | Time |
+|---|---|---|---|
+| GGUF Qwen3-4B Q4_0 (CPU) | **12/12 = 100 %** | 44 % | 88 s |
+| QAIRT 4B-Instruct (NPU) | **8/12 = 67 %** | 100 % | 25 s |
+| GGUF Qwen3.8-2B (CPU) | 2/12 = 17 % | 44 % | 55 s |
+
+This is the one benchmark that does not crown the coding winner. Its two
+failures are reproducible and specific, and one is fixable by the user:
+
+- picked list_files instead of read_file -- a selection error that disappears
+  once the descriptions contrast explicitly ("returns CONTENTS" vs "returns
+  names only, NOT contents"). Verified: FAIL -> PASS. Write tool descriptions
+  contrastively; this model separates tools by their text, not their names.
+- emitted the arguments as message TEXT instead of a tool call, with correct
+  values but the wrong channel. tool_choice="required" does not fix it
+  (verified). A fallback parser would recover the turn; opencode will not.
+
+With better descriptions the realistic rate is ~10/12.
+
+Every model handled the "no tool needed" case correctly, so over-eager calling
+is not a problem here -- including the 2B, which failed everything else.
+
+The recommendation stands but the trade-off is now stated: the GGUF 4B is
+perfect at tool calls and hopeless at agent latency (34s prefill at 3k context,
+151s at 8k, against the NPU's 3.2s), and an agent pays that on every turn.
+
+15 grader tests, covering arguments as string or dict, prose instead of a call,
+multiple calls, invalid JSON, exact boolean matching, and both directions of
+the no-tool case.
+
 ## 2026-08-31 — the coding ranking, re-measured with repeats
 
 A follow-up question ("did you test all configurations?") exposed two unchecked
