@@ -65,11 +65,16 @@ Describe 'Get-MediaBranchVersionArg' {
                     LITERT_LM_VERSION = 'lm-8'
                     PROTOC_VERSION    = 'protoc-13'
                     JRE_VERSION       = 'jre-14'
+                    # #154: this branch MOUNTS windows/qnn-sdk, so it needs the same
+                    # integrity pin as media-core or Resolve-QnnSdk extracts unverified.
+                    QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
                 }
             }
             @{ Branch = 'media-tvm'; Expected = @{
                     TVM_REF      = 'tvm-9'
                     IREE_VERSION = 'iree-10'
+                    # #154: mounts windows/qnn-sdk, same integrity pin as the others.
+                    QNN_SDK_ZIP_SHA256 = 'qnnsha-13'
                 }
             }
         )

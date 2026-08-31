@@ -131,12 +131,18 @@ function Get-MediaBranchVersionArg {
                 PROTOC_VERSION    = Get-VersionTableValue $VersionTable 'PROTOC_VERSION'
                 # Bazel needs a JRE; litert-lm resolves it from this pin.
                 JRE_VERSION       = Get-VersionTableValue $VersionTable 'JRE_VERSION'
+                # Same QAIRT zip pin as media-core (#154): this branch MOUNTS
+                # windows/qnn-sdk too, so without it Resolve-QnnSdk extracts unverified.
+                QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
             }
         }
         'media-tvm' {
             return @{
                 TVM_REF      = Get-VersionTableValue $VersionTable 'TVM_REF'
                 IREE_VERSION = Get-VersionTableValue $VersionTable 'IREE_VERSION'
+                # Same QAIRT zip pin as media-core (#154): this branch MOUNTS
+                # windows/qnn-sdk too, so without it Resolve-QnnSdk extracts unverified.
+                QNN_SDK_ZIP_SHA256 = Get-VersionTableValue $VersionTable 'QNN_SDK_ZIP_SHA256'
             }
         }
     }
@@ -152,7 +158,7 @@ function Get-MediaMergeVersionArg {
     $branchOnly = @(
         'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES',
         'PYTHON_VERSION', 'OPENCV_VERSION',   # media-core: OpenCV bindings target
-        'QNN_SDK_ZIP_SHA256',                 # media-core: ORT QNN EP zip pin (#121), onnx stage only
+        'QNN_SDK_ZIP_SHA256',                 # QAIRT zip pin (#121/#154): every stage that mounts windows/qnn-sdk
         'PROTOC_VERSION', 'JRE_VERSION'       # media-litert: litert-lm toolchain pins
     )
     $merge = @{}

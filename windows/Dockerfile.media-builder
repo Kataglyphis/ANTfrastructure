@@ -449,6 +449,12 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 # #49: the genai key lives HERE - a GenAI bump re-runs this stage alone.
 ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
 ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
+# QNN SDK integrity pin (#154): every stage that MOUNTS windows/qnn-sdk must declare
+# this, or Resolve-QnnSdk falls through to its unverified-extract warning. It reached
+# only media-core-built-onnx until 2026-08-31 -- three of four stages extracted the
+# staged zip with no SHA check at all.
+ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-core-all.ps1,target=C:\bkmnt\build-media-core-all.ps1 `
@@ -460,6 +466,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
 
 # litert: direct solve (bazel — never trips the defect), same mount pattern.
 FROM media-litert-env AS media-litert-built
+# QNN SDK integrity pin (#154): every stage that MOUNTS windows/qnn-sdk must declare
+# this, or Resolve-QnnSdk falls through to its unverified-extract warning. It reached
+# only media-core-built-onnx until 2026-08-31 -- three of four stages extracted the
+# staged zip with no SHA check at all.
+ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # LiteRT SDK = CMake (sccache mount); LiteRT-LM = bazel (own repository cache
 # mount id=bazel-litertlm-winamd64; bazel's output_base stays container-local
 # - it is rename-heavy and this cache mount is wcifs rename-hostile). The
@@ -484,6 +496,12 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
 
 # tvm: direct solve (de-warmed 2026-08-05), same mount pattern.
 FROM media-tvm-env AS media-tvm-built
+# QNN SDK integrity pin (#154): every stage that MOUNTS windows/qnn-sdk must declare
+# this, or Resolve-QnnSdk falls through to its unverified-extract warning. It reached
+# only media-core-built-onnx until 2026-08-31 -- three of four stages extracted the
+# staged zip with no SHA check at all.
+ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
+ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/build-media-tvm-all.ps1,target=C:\bkmnt\build-media-tvm-all.ps1 `

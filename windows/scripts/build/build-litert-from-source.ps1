@@ -327,9 +327,13 @@ if (Test-WindowsCrossTarget) {
     }
     if ($xnnAsmDirs.Count -gt 0) { Write-Host "XNNPACK asm: kernel roots: $(@($xnnAsmDirs) -join '; ')" }
     if ($xnnAsmPatched -lt 10) {
+        # $buildDir/$SourceDir, not a $xnnSrcRoot that was never assigned: interpolating
+        # an undefined variable throws under this script's StrictMode, so the fail-closed
+        # diagnostic died with a PowerShell error instead of naming the moved layout.
         throw ("XNNPACK asm: prepended .arch to only $xnnAsmPatched aarch64 .S kernel(s), expected >= 10. " +
-               "Either the FetchContent layout moved off $xnnSrcRoot or the filename convention changed; " +
-               'without the directive every asm-aarch64-neonfp16arith kernel fails in the integrated assembler.')
+               "Either the FetchContent layout moved (searched $buildDir and $SourceDir) or the " +
+               'filename convention changed; without the directive every asm-aarch64-neonfp16arith ' +
+               'kernel fails in the integrated assembler.')
     }
     Write-Host "XNNPACK asm: prepended full-union .arch directives to $xnnAsmPatched aarch64 .S kernel(s)"
 }

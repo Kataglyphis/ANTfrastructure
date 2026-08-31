@@ -128,6 +128,61 @@ this repo's cp314 pin).
   so — that changes the arch-gate binary count (1168), so it needs a chain run.
   The class of defect is now gated: `Assert-CmakeArgsConsumed` warns when a
   caller-supplied `-D` comes back `UNINITIALIZED` in `CMakeCache.txt`.
+  **Gate limit, worth knowing:** it cannot catch upstream's OWN dead options. LiteRT
+  declares `LITERT_BUILD_SUPPORT_LIBS` (`litert/CMakeLists.txt:74`) and then tests
+  `LITERT_BUILD_SUPPORT` — a real cache entry that does nothing. Do not pass it.
+
+- **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
+  silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
+  The genuine switches, all verified defined at v2.2.0:
+  `LITERT_ENABLE_QUALCOMM` (`litert/vendors/CMakeLists.txt:330`, default OFF) and
+  `QAIRT_HEADERS_DIR` (`:20`), where setting the headers dir AUTO-FORCES the former ON
+  (`:331-334`). QAIRT is consumed as **headers only, at configure time** — no import
+  libs, no link-time dependency; backends are `LoadLibrary`'d by name at runtime.
+  NOTE `LITERT_ENABLE_NPU` (`litert/CMakeLists.txt:72`) is NOT the QNN switch: its only
+  effect is a `#cmakedefine01` in `build_config.h`, and it does not gate
+  `add_subdirectory(vendors)`.
+  **Why it is not wired yet — five upstream defects, all Windows-specific:**
+  1. The dispatch DLL **exports nothing** on Windows: the SHARED target sets no
+     export macro, no `WINDOWS_EXPORT_ALL_SYMBOLS`, no `.def`. It would build green
+     and be unloadable — exactly #154's failure mode, one level deeper.
+  2. `-Wl,--whole-archive` / `--no-undefined` are passed on every non-Apple platform,
+     Windows included; only `if(APPLE)` is carved out. GNU-driver syntax under lld-link.
+  3. Both `dynamic_loading.cc` and `dynamic_loading_windows.cc` compile on Windows.
+  4. The Windows branch of the vendor link lines is empty.
+  5. `litert/vendors/CMakeLists.txt` does **three unconditional configure-time
+     downloads** — NeuroPilot from AWS S3, and QAIRT **2.47.0.260601** from
+     softwarecenter.qualcomm.com with no `EXPECTED_HASH` and no error check — whenever
+     the corresponding `*_HEADERS_DIR` is empty. Two are escapable by pointing them at
+     a dummy dir; the QAIRT one is escaped by setting `QAIRT_HEADERS_DIR` to our staged
+     2.44 tree, which also stops the version skew.
+  The `litert/` tree is also a SEPARATE top-level project (`project(LiteRT VERSION
+  1.4.0)`), not a flag on the `tflite/` tree we configure — a second configure, and it
+  pulls tflite in `EXCLUDE_FROM_ALL`, so `tensorflowlite_c` must be named explicitly.
+  Upstream has never configured this tree for Windows: the only CMake CI is
+  linux-x86_64/Android.
+  **And the arch gate cannot prove any of it** — QNN backends are `LoadLibrary`'d by
+  name, so a dispatch DLL adds zero static import edges. A green gate would mean
+  nothing here.
+
+- **#156 — LiteRT-LM QNN: DECLINED, with reasons.** Not blocked-pending-work; declined.
+  QNN only pays on arm64, and LiteRT-LM is skipped there. Re-verified at v0.16.1:
+  `.bazelrc` has no windows_arm64 config and `build:windows` carries `--copt=/arch:AVX2`
+  (an x86-only flag) on every Windows compile; `prebuilt/` ships no windows_arm64
+  artifacts and `libGemmaModelConstraintProvider` is x86_64-only behind an OS-only
+  constraint; cpuinfo's `[restrict static 1]` declarators do not compile under clang-cl.
+  On the x64 lane it is worse than pointless: **QAIRT ships no `QnnHtpV*Stub.dll` for
+  `x86_64-windows-msvc`**, so there is no path to a Hexagon DSP at all — x64 QNN is the
+  CPU reference backend. On top of that `litert_lm_main` parses
+  `--litert_dispatch_lib_dir` and never reads it, and the NPU-quantised Gemma models are
+  behind an Early Access Program. Zero windows-arm64 assets exist across all 29
+  releases. Revisit only if upstream ships a windows-arm64 target.
+
+- **#157 — ~2.33 GB of QNN payload ships for one consumer.** `Copy-QnnRuntime` copies
+  the 35 backend DLLs (231 MB) plus seven `hexagon-v*` skel dirs (236 MB) into all FIVE
+  framework install dirs. After #154 only ORT can load them. Removing the four
+  redundant copies is a straight image-size win, but it moves the arch-gate binary count
+  (1168) and the bundle manifest, so it needs a chain run to land. Measure first.
 
 ### CLOSED (pointers — full narratives in the dated archives)
 

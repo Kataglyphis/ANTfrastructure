@@ -71,13 +71,20 @@ BeforeAll {
     # version keys, so a single-component bump re-runs that stage + downstream
     # instead of the full ~75-min ONNX build.
     $script:coreComponentKeys = @{
-        # QNN_SDK_ZIP_SHA256 (#121): the hand-staged QAIRT zip's integrity pin, read
-        # by build-onnx-from-source.ps1 only -- so it keys the onnx stage alone.
-        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION', 'QNN_SDK_ZIP_SHA256')
+        'media-core-built-onnx'   = @('ONNXRUNTIME_VERSION', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')
         'media-core-built-ffmpeg' = @('FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF')
         'media-core-built-opencv' = @('OPENCV_SOURCE_VERSION', 'OPENCV_VERSION')
         'media-core-built'        = @('ONNXRUNTIME_GENAI_VERSION')
     }
+    # DELIBERATELY CROSS-COMPONENT (#154, 2026-08-31). QNN_SDK_ZIP_SHA256 was a
+    # media-core-built-onnx key on the belief that only ORT reads it. Every stage that
+    # MOUNTS windows/qnn-sdk calls Resolve-QnnSdk, and an absent pin there means the
+    # zip is extracted with NO integrity check at all -- which is what onnx, genai,
+    # litert and tvm did until this was fixed. So it is exempt from the foreign-key
+    # rule below: re-keying a stage on a QAIRT bump is CORRECT, because that stage
+    # really does extract the new zip.
+    $script:sharedCoreKeys = @('QNN_SDK_ZIP_SHA256')
+    $script:qnnMountingCoreStages = @('media-core-built-onnx', 'media-core-built')
 }
 
 Describe 'Dockerfile.media-builder version-env contract' {
@@ -146,6 +153,20 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
         }
     }
 
+    It 'declares the shared QAIRT pin in EVERY media-core stage that mounts the SDK (#154)' {
+        # The regression this pins: an SDK-mounting stage without the pin calls
+        # Resolve-QnnSdk with an empty -ExpectedSha256, which warns and extracts
+        # UNVERIFIED instead of failing. Three of four stages did exactly that.
+        foreach ($name in $script:qnnMountingCoreStages) {
+            foreach ($k in $script:sharedCoreKeys) {
+                $script:stages[$name].Args | Should -Contain $k `
+                    -Because "$name mounts windows/qnn-sdk, so an absent $k means an unverified extract"
+                $script:stages[$name].EnvMirrored | Should -Contain $k `
+                    -Because "an unmirrored ARG never reaches Resolve-QnnSdk's -ExpectedSha256"
+            }
+        }
+    }
+
     It 'covers the driver''s whole media-core version-arg set with the per-stage union (no drift)' {
         # WHAT THIS REPLACED, AND WHY IT IS NOT THE SAME TEST (#134, 2026-08-26).
         # This used to compare the per-stage union against media-core-env's ARG
@@ -170,7 +191,9 @@ Describe 'Dockerfile.media-builder media-core per-component contract (#49)' {
                          'FFMPEG_VERSION', 'PYAV_VERSION', 'QNN_SDK_ZIP_SHA256',
                          'NV_CODEC_HEADERS_REF', 'CUDA_ARCHITECTURES', 'PYTHON_VERSION')) { $table[$k] = 'fixture' }
         $driverKeys = @((Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $table).Keys) | Sort-Object -Unique
-        $union      = @($script:coreComponentKeys.Values | ForEach-Object { $_ }) | Sort-Object -Unique
+        # Shared keys count toward the union: they have a home in a stage, just in
+        # more than one of them (#154).
+        $union      = @(@($script:coreComponentKeys.Values | ForEach-Object { $_ }) + $script:sharedCoreKeys) | Sort-Object -Unique
         ($union -join ',') | Should -Be ($driverKeys -join ',') `
             -Because 'a version the driver forwards but no stage declares falls back to the base image''s baked value, silently'
     }

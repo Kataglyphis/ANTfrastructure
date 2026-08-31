@@ -543,11 +543,12 @@ below. The rules themselves:
 The Qualcomm QAIRT SDK is login-gated (Qualcomm developer account + EULA). Stage
 the Windows zip in `windows/qnn-sdk/` (git-ignored except its README); pin it with
 `QNN_SDK_ZIP_SHA256` in `versions.env`. When staged, `Resolve-QnnSdk` extracts it
-and enables the QNN EP/delegate/backend across **four frameworks**: ONNX Runtime
-(`onnxruntime_USE_QNN=ON`), ONNX GenAI (inherits from ORT), LiteRT
-(`TFLITE_ENABLE_QNN=ON`), TVM (`USE_QNN=ON`), and IREE
-(`IREE_TARGET_BACKEND_QNN=ON`). `Copy-QnnRuntime` stages the per-arch backend
-DLLs beside each framework's install. No zip = QNN off with one notice on every
+and enables the QNN EP in **ONE framework**: ONNX Runtime
+(`onnxruntime_USE_QNN=ON`). ONNX GenAI inherits it at runtime through the ORT it
+links. LiteRT, TVM and IREE were passing INVENTED flags that CMake dropped
+silently while printing a success banner — removed 2026-08-31, see backlog #154.
+`Copy-QnnRuntime` still stages the per-arch backend DLLs beside all five installs,
+but only ORT loads them. No zip = QNN off with one notice on every
 framework. A version-mismatch (SDK too old for the framework) also falls back to
 QNN-off gracefully. The SDK is bind-mounted into the `onnx`, `genai`, `litert`,
 and `tvm` RUN stages at `C:\temp\qnn-sdk`. Full details:
