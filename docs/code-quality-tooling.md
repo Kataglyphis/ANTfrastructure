@@ -185,3 +185,26 @@ these were "fixed" during the extraction.
 | 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | per file in a loop — slower, isolates failures, logs per-file skips |
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
 | 7 | File enumeration | `find` with `-not -path` exclusions | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages` |
+
+## Python that lives in shell heredocs
+
+775 lines of Python sat inside `linux/scripts/**/*.sh` heredocs as of 2026-09-01
+— invisible to `lint-python.sh`, which only globbed `*.py`. A syntax error or an
+undefined name in one of those blocks would have shipped silently.
+
+`linux/scripts/extract-embedded-python.py` writes each block to a temp file that
+the lint gate then includes. Two distinctions are load-bearing:
+
+- **Only directly-executed blocks are extracted.** `python3 - <<'PY'` and
+  `"$py" - <<'PY'` are complete programs. Blocks that are `cat`ed
+  (`cat <<'PY_TAIL'`) are FRAGMENTS assembled into one program later — see
+  `_smoke_genai_py_verdict` in `06-packaging/smoke-common.sh` — and linting one
+  alone reports undefined names for variables the earlier fragment defines.
+- **The opener line may carry trailing redirections.** The first version of the
+  extractor required the heredoc token to end the line, so it silently skipped
+  `"$py" - <<'PY' 2>/dev/null || echo ...` — the shipped-truth probe in
+  `06-packaging/smoke-runtime-image.sh`, i.e. the largest block that mattered.
+
+Both shapes are pinned in `linux/scripts/tests/test-embedded-python-extract.sh`,
+and the coverage was proven by injecting an undefined name into a real heredoc
+and watching the gate go red.
