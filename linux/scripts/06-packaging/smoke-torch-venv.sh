@@ -70,28 +70,8 @@ _stv_vpin() {
     | sed -E "s/^[[:space:]]*${key}=//; s/[\"']//g; s/#.*//; s/[[:space:]]+$//; s/^v//" || true
 }
 
-# Assert installed ML-stack versions match their pins. Two authorities, but NOT
-# unioned (GENAI-DRIFT, 2026-08-23): whichever one OWNS the package decides.
-#   - versions.env build-pin -> packages we BUILD or force-reinstall from a
-#     LOCAL wheel (riscv64 torch/vision, source-built onnxruntime,
-#     ai-edge-litert, onnxruntime-genai). The pin WINS outright, on every arch
-#     that builds it; the lock's opinion is printed but not accepted.
-#   - uv.lock -> everything uv resolves and we do not build (numpy/pillow/
-#     contourpy, the amd64/arm64 torch/vision/onnx wheels when unpinned).
-# The old union accepted either, which is exactly how arm64 shipped
-# onnxruntime-genai 0.14.0 (from the lock) against a v0.15.2 build pin and
-# still printed OK.
-# That tightening exposes a drift whose PRODUCER-side fix is still open, and
-# this assert is a hard release gate, so the known case is carried in
-# KNOWN_DRIFT below: an exact (dist, arch, installed, expected) quadruple,
-# dated, naming its backlog item, printed as a loud `!!` on every run and
-# counted in the summary. Anything that is not that exact quadruple still
-# FAILS. It uses each module's __version__ (the actual runtime
-# version) -- which for onnxruntime intentionally differs from its pip dist
-# metadata (source-built lib vs locked wheel; the build pin governs). Also
-# asserts the torch/vision build VARIANT (+cpu/+cu130/+rocm7.1) matches
-# PYTORCH_EXTRA and that OpenCV's major matches OPENCV_VERSION, and runs the
-# cv2 media backends for real (SMOKE-DEPTH a).
+# What this gate does and does not cover:
+# docs/cross-build-verification.md
 assert_pinned_versions() {
   local versions_env="${VERSIONS_ENV:-/opt/scripts/core/versions.env}"
   [ -f "${versions_env}" ] || versions_env="${_SCRIPT_DIR}/../01-core/versions.env"

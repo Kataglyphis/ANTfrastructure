@@ -330,45 +330,8 @@ _opencv_target_adjustments() {
             if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
-            # RV1-FREETYPE — FIXED (2026-08-24); the coming rebuild is the
-            # final validator. History (2026-08-23 investigation, still true):
-            # riscv64 had no TARGET harfbuzz dev surface at configure time —
-            # pass-2 (FROM gstreamer, libfreetype-dev pre-satisfied) got only
-            # the RUNTIME libharfbuzz0b — so ocv_check_modules(HARFBUZZ
-            # harfbuzz) resolved a HOST harfbuzz (find_library fall-through
-            # under CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH) → "file in wrong
-            # format" at link. The ports dev package stays banned
-            # (libharfbuzz-dev:riscv64 → Depends: libglib2.0-dev = RV1-GST-PC
-            # poison), so install-deps.sh now stages a PIC STATIC target
-            # harfbuzz (HB_HAVE_FREETYPE=ON, hb-ft glue included) at
-            # /usr/<triplet> with a cmake-generated absolute-prefix
-            # harfbuzz.pc whose freetype dep is promoted to Requires: pkg-config
-            # then emits `-lharfbuzz -lfreetype`, so HARFBUZZ_LIBRARIES becomes
-            # [libharfbuzz.a, target libfreetype.so] and the module link
-            # (<objects> FREETYPE_LIBRARIES HARFBUZZ_LIBRARIES) still resolves
-            # the archive's FT_* refs under -Wl,--no-undefined — a DSO BEFORE
-            # the archive alone does NOT (proven by a local link experiment
-            # 2026-08-24: objects+ft.so+hb.a fails; +ft.so after the archive
-            # links clean). Determinism, both passes:
-            #   * our pkgconfig dir is prepended to PKG_CONFIG_PATH, which
-            #     outranks PKG_CONFIG_LIBDIR — pass-2 puts /opt/gstreamer
-            #     first in PKG_CONFIG_PATH and its meson-subproject harfbuzz
-            #     may export a competing harfbuzz.pc; ours must win;
-            #   * the pkgcfg_lib_* cache vars FindPkgConfig/ocv_check_modules
-            #     resolve libraries through are pre-seeded with absolute
-            #     TARGET paths, so no find_library ever runs, let alone falls
-            #     through to a host lib (OCV-FF1's determinism discipline,
-            #     pinned by file path instead of -L ordering).
-            # Static harfbuzz keeps the runtime surface: the only new NEEDED
-            # is libfreetype.so.6, which validate-media-runtime's
-            # so-package-map already resolves to libfreetype6 (and the
-            # gstreamer stack pulls it in on riscv64 today anyway). If
-            # install-deps could NOT stage the static harfbuzz, keep the
-            # module hard-OFF rather than let detection wander back to host
-            # libs — absence then still surfaces as the wheel smoke's
-            # riscv64-only opencv-freetype warning, and after a green rebuild
-            # that warning's "expected on riscv64" status is STALE (parity
-            # follow-up for the orchestrator).
+            # RV1-FREETYPE: riscv64 stages a PIC-static target harfbuzz because the
+            # ports dev package is glib-poisoned. docs/failure-modes.md
             local _hb_triplet _hb_a _hb_inc _hb_pc _ft_so
             _hb_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
             _hb_a="/usr/${_hb_triplet}/lib/libharfbuzz.a"

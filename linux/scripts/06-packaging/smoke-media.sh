@@ -390,28 +390,8 @@ if [ -n "${_gst_inspect}" ]; then
       # sandbox artifact.
       fail "GStreamer pipeline videotestsrc ! fakesink FAILED (gst-inspect executes, so this is real)"
     fi
-    # Mandatory-plugin gate (smoke-depth R1): meson `enabled` guards CONFIGURE,
-    # but a plugin that ships and then fails to dlopen was only a WARN-count.
-    # A present-but-unloadable plugin is exactly the observed class
-    # (webrtcbin2→librice-proto, gtk4→vkCreateWaylandSurfaceKHR).
-    # The `libav` plugin is special: this project's gst-libav links the
-    # source-built FFmpeg libav* (incl. libavfilter, which NEEDs the bundled
-    # libtensorflow.so.2). Those resolve only once configure-runtime.sh has wired
-    # the loader — the SAME reason the ffmpeg binary itself is deferred in the
-    # build sandbox below. So gate `libav` on ffmpeg executability HERE: if ffmpeg
-    # cannot run in this environment (sandbox), a libav load failure is that same
-    # deferral (INFO; re-tested by the packaging-stage smoke, Dockerfile.package,
-    # where the loader is wired); if ffmpeg DOES run here but libav still fails,
-    # that is a real defect.
-    # opencv/onnx have the SAME class of build-sandbox issue, not a link to ffmpeg:
-    # the opencv plugin links pass-2 OpenCV, which links the source-built GStreamer
-    # (a circular dep the build sandbox can't close); the onnx plugin links
-    # libonnxruntime.so which transitively needs libstdc++.so from the source-built
-    # GCC (a path the flat NEEDED scan in validate-media-runtime.sh doesn't catch
-    # but the dynamic linker hits at dlopen). Both pass validate-media-runtime's
-    # NEEDED scan and the runtime/packaging smoke (Dockerfile.package) where the
-    # loader is fully wired. Gate on the ffmpeg-executability proxy: if ffmpeg
-    # can't run here (build sandbox), defer opencv/onnx just like libav.
+    # Why the GTK/pango expectations differ per arch:
+    # docs/cross-build-verification.md
     _ffmpeg_execok=0
     { _ff_probe="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
       [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1

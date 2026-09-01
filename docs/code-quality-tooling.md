@@ -208,3 +208,26 @@ the lint gate then includes. Two distinctions are load-bearing:
 Both shapes are pinned in `linux/scripts/tests/test-embedded-python-extract.sh`,
 and the coverage was proven by injecting an undefined name into a real heredoc
 and watching the gate go red.
+
+### hadolint rule selection
+
+Windows Dockerfiles are PowerShell (`# escape=`` + SHELL ["pwsh",...]), but
+hadolint's embedded shellcheck still parses RUN bodies as sh wherever it
+cannot see the inherited SHELL — e.g. stages whose base is an ARG image
+(`FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS ...`), where the SHELL set back in
+`common` is invisible to a static linter. PowerShell that happens to parse as
+sh slips through; PowerShell that does not (`...; & 'C:\x.ps1'` —
+Dockerfile.media-builder:321) raises a shellcheck PARSE error, which is
+error-severity and so fails the gate on a pure false positive.
+
+Suppress the "shellcheck could not parse this at all" family, and only for
+windows/*: those diagnostics can never be true for a PowerShell RUN. The Linux
+Dockerfiles keep the full rule set — a real sh parse error there must still
+fail. Style/semantic shellcheck rules stay on everywhere.
+
+The list is the whole parse-error family on purpose, not the codes observed so
+far. The first version of this fix listed only the ones that had actually
+fired (SC1070 on Dockerfile.media-builder); the very next Windows Dockerfile
+added to the repo tripped SC1088 instead and broke main again. Which parse
+error PowerShell happens to provoke is arbitrary — enumerating them one
+outage at a time is not a policy.

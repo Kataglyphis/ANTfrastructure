@@ -343,27 +343,8 @@ uv_sync_project() {
     sync_args+=(--no-build-isolation-package wxpython)
   fi
   
-  # Pin the interpreter for the SAME reason uv_pip_install_requirements does,
-  # and it is just as load-bearing here: uv honours UV_PYTHON OVER the activated
-  # venv. The CI images export UV_PYTHON=/opt/venv/bin/python and run as the
-  # non-root user `kataglyphis`, so `--active` alone still resolves to that
-  # root-owned system venv and the sync dies with
-  #   error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
-  #          Permission denied (os error 13)
-  # Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
-  # the extras fix let the resolve get this far. --python forces the writable
-  # local environment.
-  #
-  # Consult _CURRENT_VENV_PATH FIRST and VIRTUAL_ENV only as a fallback. The
-  # other order made the pin fire backwards: the images ALSO export
-  # VIRTUAL_ENV=/opt/venv, and `uv venv` only prints "Activate with: source
-  # .../activate" — it does not activate — so a caller that creates
-  # .venv_static_analysis never overwrites the inherited VIRTUAL_ENV. The pin
-  # then resolved to the very system venv it exists to avoid, logged
-  # "uv sync pinned to /opt/venv/bin/python", and died 2.5 minutes later with
-  # the exact permission error above (WebDavClient x64, 2026-08-12).
-  # _CURRENT_VENV_PATH is set by uv_venv_create/uv_venv_ensure/uv_venv_activate,
-  # so it names the venv THIS script owns — which is the one to sync into.
+  # Why venv creation branches on the interpreter:
+  # docs/cross-build-verification.md
   local _venv="${_CURRENT_VENV_PATH:-${VIRTUAL_ENV:-}}"
   # Writability is checked, not assumed: pinning to a venv this uid cannot
   # write is strictly worse than not pinning at all, because uv then fails deep

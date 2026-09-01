@@ -466,28 +466,8 @@ compiler_cache_launcher() {
   return 1
 }
 
-# ── update-alternatives install + select ──────────────────────────────────────
-# Register an alternative and immediately select it. Runs privileged via
-# run_priv (honors ${SUDO}). The --set is tolerant: a --set of the path just
-# --installed effectively never fails, and a spurious failure must not abort a
-# build running under `set -e`.
-#
-# Usage: alt_install_and_set <name> <link> <path> [priority] \
-#            [--candidate <path>]...            # extra paths to search for the binary
-#            [--slave <link> <name> <path>]...  # slave alternatives (multi-binary groups)
-#
-# Backward compatible with the historical `<name> <link> <path> [priority]`
-# form. Extensions (so the 02-toolchain scripts can converge onto this helper):
-#
-#   --candidate <path>  Add <path> to the search list. The FIRST executable among
-#                       {<path>, candidates...} is the one registered. When one or
-#                       more --candidate are given and NONE (including <path>) is
-#                       executable, the function is a no-op (nothing to register).
-#                       With no --candidate, <path> is registered verbatim exactly
-#                       as the original 3/4-arg form did (no executability check).
-#   --slave L N P       Pass a `--slave L N P` group through to --install, so one
-#                       call can register a multi-binary group (e.g. clang + its
-#                       clang++/clang-format/… slaves).
+# Why apt calls retry and how the mirror fallback works:
+# docs/cross-build-verification.md
 alt_install_and_set() {
   local name="$1" link="$2" path="$3"
   local priority=100

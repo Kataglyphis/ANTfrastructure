@@ -113,27 +113,8 @@ runtime_image_output_arg() {
   printf 'type=image,name=%s%s' "${tag}" "${ann}"
 }
 
-# Append the image target for a runtime build to the nameref array.
-#
-# RTCACHE3 (root cause of the 2026-08-14 stale-ship saga): this used to emit the
-# annotated `--output type=image,name=<tag>,annotation.*` exporter on the push
-# path, on the assumption (see the now-corrected runtime_image_output_arg note)
-# that it was "equivalent to -t <tag>". It is NOT. Verified with a minimal
-# busybox repro on this rootless nerdctl+containerd host:
-#     nerdctl build --output type=image,name=X   → X is NOT in the local image store
-#     nerdctl build -t X                          → X IS in the local image store
-# The exporter builds the image into buildkit's content store but never lands a
-# local containerd tag. So the freshly built wrapper was invisible: the
-# subsequent `nerdctl push <tag>` (runtime_push_tag) and `nerdctl manifest
-# create <tag>` both resolved the STALE pre-existing local tag from an earlier
-# run, and :latest-cross shipped byte-identical every time (amd64 stuck at
-# 35c1f1df across five rebuilds). The annotations never reached the registry
-# either — every run logged "wrapper tag(s) carry no run-id annotation …
-# provenance unverifiable" — so nothing of value is lost by dropping the
-# exporter. Use plain `-t` on BOTH paths: it reliably creates AND overwrites the
-# local tag, which is what runtime_push_tag + the manifest step consume.
-# (Re-embedding ancestry provenance via a locally-tagging method is tracked
-# separately; correctness of the shipped bytes comes first.)
+# How the runtime stage passes context and provenance:
+# docs/cross-build-verification.md
 append_runtime_image_output() {
   local -n _ario_out=$1
   local tag="$2"

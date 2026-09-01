@@ -619,3 +619,309 @@ never created the tag — once burned all four attempts and buried the real caus
 in retry noise. The classification comes from the cross lane's
 `_cross_stage_push_error_is_transient` (`01-core/cross-stage-build.sh`); when
 that helper or the temp log is unavailable, every failure is retried as before.
+
+### cross-apt: pkg-config libdir resolution
+
+DUP1: was a hand-rolled uname->triplet case here. platform.sh's
+arch_deb_multiarch_triplet_for is the SSOT. Mount/bake map independently
+RE-AUDITED 2026-08-24 (grep of every RUN/COPY block referencing this
+file — do not re-litigate without re-running that grep): platform.sh is
+co-mounted in ALL 5 Dockerfile.toolchain RUNs that mount this file
+(blocks at 70/124/187/245/266) and in both Dockerfile.media litert RUNs
+(per-file mounts @414, whole-01-core mount @432). Dockerfile.sdk is the
+ONLY image that bakes this file (COPY block @91) and bakes platform.sh
+beside it (:60). Dockerfile.android and Dockerfile.torch do NOT ship
+cross-apt.sh at all (an earlier note listed them; that was vacuous —
+torch bakes cross-env.sh WITHOUT this file, so sourcing cross-env.sh
+there dies loudly at its `source cross-apt.sh`, never reaching this
+fallback silently). Plus cross-env.sh:10 and 01-core/common.sh:22 both
+source platform.sh before this file, and the missing-helper branch below
+still warns loudly if a future RUN forgets the co-mount.
+(Only apt_sources_set_architectures is contracted to work when cross-apt.sh
+is sourced STANDALONE — see 02-toolchain/android-sdk.sh:8 — and it stays
+dependency-free.)
+
+The two ways this lookup can come back empty are NOT the same failure and
+must not degrade the same way. A single `... 2>/dev/null || true` collapsed
+both into silence:
+* helper MISSING (rc 127, command not found) = a WIRING bug — platform.sh
+was not co-mounted/sourced. Every host-arch pkgconfig dir silently
+vanishes from PKG_CONFIG_LIBDIR and host tools (xcb & friends) start
+failing to configure with no hint as to why. Say so, loudly.
+* helper present, arch UNRECOGNISED (rc 1) = expected degradation. The
+candidate is skipped and we stay quiet, exactly as before.
+
+### Rust version parsing across toolchain spellings
+
+Resolve the version a CI run should stamp, from the sources every consumer
+has: a VERSION.txt at the repo root, else the ref name, else the run number.
+
+Lifted out of a consumer (Kataglyphis-RustProjectTemplate's
+scripts/compute_version.sh) because every repo with a CI lane needs exactly
+this and had to reimplement it around the primitives above.
+
+The guards are load-bearing, in this order:
+* only the FIRST NON-EMPTY line of VERSION.txt counts, CR-stripped and
+trimmed - a file written on Windows otherwise yields "2.3.4\r", which is
+not a valid version anywhere downstream;
+* a leading "v" is dropped, so a v-prefixed tag works as a ref source;
+* anything that still does not START WITH A DIGIT falls back to the run
+number, which keeps a branch name like "feature/x" from becoming a
+version. That guard is also why normalize_version's own "v" handling is
+unreachable from here.
+
+One deliberate behaviour change from the consumer version this replaces:
+`read` returns non-zero on a final line with no trailing newline, so a plain
+`while IFS= read -r line` DROPS it. A VERSION.txt written without a trailing
+newline was therefore ignored outright and the run number stamped instead -
+silently, since the fallback looks like a normal result. The
+`|| [[ -n "$line" ]]` guard below reads that last line.
+
+### 03-media module bootstrap
+
+Data-driven per-arch skip flags --------------------------------------------
+
+The repeated boolean per-arch skip decisions in the media install/build
+scripts (e.g. "skip target Csound packages on riscv64/arm64 cross") are
+consolidated into declarative flag files next to this one:
+arch-flags-{amd64,arm64,riscv64}.env — KEY=value lines only (MEDIA_SKIP_*;
+1 = skip, 0/unset = do not skip), with the per-flag justifications kept as
+comments in those files.
+
+media_load_arch_flags resolves the effective target arch — cross_target_arch
+when a cross build is active, otherwise the native amd64 defaults — and
+sources the matching flag file if present. A missing file simply leaves
+every MEDIA_SKIP_* flag unset (= do not skip), matching the old
+is_cross_*-style helpers which only ever skipped on active cross builds.
+
+Consumers:
+- Scripts using media_common_init get the flags automatically (called at
+the end of media_common_init, after cross-env.sh is loaded).
+- install-deps-preamble based scripts source this file (container path
+/opt/scripts/03-media/core/common.sh first, repo layout second) and call
+media_load_arch_flags themselves; the preamble has already provided the
+cross_build_is_active / cross_target_arch helpers by then.
+
+### smoke-torch-venv: what the venv assertions cover
+
+Assert installed ML-stack versions match their pins. Two authorities, but NOT
+unioned (GENAI-DRIFT, 2026-08-23): whichever one OWNS the package decides.
+- versions.env build-pin -> packages we BUILD or force-reinstall from a
+LOCAL wheel (riscv64 torch/vision, source-built onnxruntime,
+ai-edge-litert, onnxruntime-genai). The pin WINS outright, on every arch
+that builds it; the lock's opinion is printed but not accepted.
+- uv.lock -> everything uv resolves and we do not build (numpy/pillow/
+contourpy, the amd64/arm64 torch/vision/onnx wheels when unpinned).
+The old union accepted either, which is exactly how arm64 shipped
+onnxruntime-genai 0.14.0 (from the lock) against a v0.15.2 build pin and
+still printed OK.
+That tightening exposes a drift whose PRODUCER-side fix is still open, and
+this assert is a hard release gate, so the known case is carried in
+KNOWN_DRIFT below: an exact (dist, arch, installed, expected) quadruple,
+dated, naming its backlog item, printed as a loud `!!` on every run and
+counted in the summary. Anything that is not that exact quadruple still
+FAILS. It uses each module's __version__ (the actual runtime
+version) -- which for onnxruntime intentionally differs from its pip dist
+metadata (source-built lib vs locked wheel; the build pin governs). Also
+asserts the torch/vision build VARIANT (+cpu/+cu130/+rocm7.1) matches
+PYTORCH_EXTRA and that OpenCV's major matches OPENCV_VERSION, and runs the
+cv2 media backends for real (SMOKE-DEPTH a).
+
+### smoke-media: GTK/pango expectations per arch
+
+Mandatory-plugin gate (smoke-depth R1): meson `enabled` guards CONFIGURE,
+but a plugin that ships and then fails to dlopen was only a WARN-count.
+A present-but-unloadable plugin is exactly the observed class
+(webrtcbin2→librice-proto, gtk4→vkCreateWaylandSurfaceKHR).
+The `libav` plugin is special: this project's gst-libav links the
+source-built FFmpeg libav* (incl. libavfilter, which NEEDs the bundled
+libtensorflow.so.2). Those resolve only once configure-runtime.sh has wired
+the loader — the SAME reason the ffmpeg binary itself is deferred in the
+build sandbox below. So gate `libav` on ffmpeg executability HERE: if ffmpeg
+cannot run in this environment (sandbox), a libav load failure is that same
+deferral (INFO; re-tested by the packaging-stage smoke, Dockerfile.package,
+where the loader is wired); if ffmpeg DOES run here but libav still fails,
+that is a real defect.
+opencv/onnx have the SAME class of build-sandbox issue, not a link to ffmpeg:
+the opencv plugin links pass-2 OpenCV, which links the source-built GStreamer
+(a circular dep the build sandbox can't close); the onnx plugin links
+libonnxruntime.so which transitively needs libstdc++.so from the source-built
+GCC (a path the flat NEEDED scan in validate-media-runtime.sh doesn't catch
+but the dynamic linker hits at dlopen). Both pass validate-media-runtime's
+NEEDED scan and the runtime/packaging smoke (Dockerfile.package) where the
+loader is fully wired. Gate on the ffmpeg-executability proxy: if ffmpeg
+can't run here (build sandbox), defer opencv/onnx just like libav.
+
+### slang-compile: shader compilation contract
+
+Caches the subdirectories under the source tree in SLANG_COMPILE_SUBDIRS,
+reused for every -I expansion.
+
+ORDER IS LOAD-BEARING and was previously whatever `find` happened to emit -
+i.e. filesystem order, which differs between a developer's ext4 checkout and
+the CI runner's overlayfs. `import <name>` resolves to the FIRST <name>.slang
+on the -I list, so any two modules sharing a basename resolved differently on
+different machines. BeschleunigerBallett has exactly that: common/noise.slang
+(simplex noise + fbm) and compute/noise.slang (a noise-volume kernel). On CI
+the compute/ one won and tests/noise_test.slang, which wants the common/ one,
+failed to build every clang lane with
+error[E30015]: undefined identifier 'snoise'
+while the same tree built fine locally.
+
+Two rules, both deliberate:
+1. sort, so the answer is reproducible anywhere;
+2. hoist a top-level common/ ahead of the rest, because "shared module
+lives in common/" is already this driver's assumption (see the comment
+on the -I expansion below) and is the documented contract on the
+consumer side too - BeschleunigerBallett's buildIntegritySuite.cpp
+resolves imports with an explicit "then a common/ preference".
+Alphabetical order happens to give the same answer for common/ vs
+compute/, which is precisely why this must not be left to luck.
+
+The generated output tree is excluded: it holds no .slang sources, and
+feeding a build directory back in as an include path can only add
+ambiguity.
+
+### apt retry and mirror fallback
+
+── update-alternatives install + select ──────────────────────────────────────
+Register an alternative and immediately select it. Runs privileged via
+run_priv (honors ${SUDO}). The --set is tolerant: a --set of the path just
+--installed effectively never fails, and a spurious failure must not abort a
+build running under `set -e`.
+
+Usage: alt_install_and_set <name> <link> <path> [priority] \
+[--candidate <path>]...            # extra paths to search for the binary
+[--slave <link> <name> <path>]...  # slave alternatives (multi-binary groups)
+
+Backward compatible with the historical `<name> <link> <path> [priority]`
+form. Extensions (so the 02-toolchain scripts can converge onto this helper):
+
+--candidate <path>  Add <path> to the search list. The FIRST executable among
+{<path>, candidates...} is the one registered. When one or
+more --candidate are given and NONE (including <path>) is
+executable, the function is a no-op (nothing to register).
+With no --candidate, <path> is registered verbatim exactly
+as the original 3/4-arg form did (no executability check).
+--slave L N P       Pass a `--slave L N P` group through to --install, so one
+call can register a multi-binary group (e.g. clang + its
+clang++/clang-format/… slaves).
+
+### Swapping the native GCC in the shipped image
+
+--- Make the foreign-arch native GCC search runtime system headers ---
+The relocated Canadian-cross GCC keeps its compile-time --native-system-
+header-dir (/usr/${triplet}/include) baked in; that path is absent in the
+runtime image, so a bare `gcc hello.c` cannot find <stdio.h>. The profile.d
+block above only helps make-style builds -- a bare `gcc`/`g++` reads
+neither CFLAGS nor CPPFLAGS, and CPATH cannot satisfy the C++
+`#include_next`.
+
+We fix this with thin WRAPPER scripts that prepend the system include dirs
+on the *command line* (-idirafter, appended AFTER all built-in dirs so it
+never shadows libstdc++'s own headers and satisfies both C `<...>` and C++
+`#include_next`). This is NOT done with an installed `specs` file: any
+installed specs file RESETS the driver's dynamically-computed link specs
+-- it silently drops `-lgcc_s` from `*libgcc` and `--eh-frame-hdr` from the
+EH link spec -- which makes every C++ program that throws terminate at
+runtime (rc=134, catch never fires) even though it links. Restoring those
+specs by hand is whack-a-mole and fragile under QEMU. Command-line
+-idirafter leaves the link specs untouched: validated on riscv64 that a
+bare `gcc hello.c`, simple C++, AND exception-throwing C++ (throw/catch,
+STL sort) all compile, link, and run correctly. amd64 never reaches this
+block (host GCC, no swap).
+
+### Runtime stage context and ancestry annotations
+
+Append the image target for a runtime build to the nameref array.
+
+RTCACHE3 (root cause of the 2026-08-14 stale-ship saga): this used to emit the
+annotated `--output type=image,name=<tag>,annotation.*` exporter on the push
+path, on the assumption (see the now-corrected runtime_image_output_arg note)
+that it was "equivalent to -t <tag>". It is NOT. Verified with a minimal
+busybox repro on this rootless nerdctl+containerd host:
+nerdctl build --output type=image,name=X   → X is NOT in the local image store
+nerdctl build -t X                          → X IS in the local image store
+The exporter builds the image into buildkit's content store but never lands a
+local containerd tag. So the freshly built wrapper was invisible: the
+subsequent `nerdctl push <tag>` (runtime_push_tag) and `nerdctl manifest
+create <tag>` both resolved the STALE pre-existing local tag from an earlier
+run, and :latest-cross shipped byte-identical every time (amd64 stuck at
+35c1f1df across five rebuilds). The annotations never reached the registry
+either — every run logged "wrapper tag(s) carry no run-id annotation …
+provenance unverifiable" — so nothing of value is lost by dropping the
+exporter. Use plain `-t` on BOTH paths: it reliably creates AND overwrites the
+local tag, which is what runtime_push_tag + the manifest step consume.
+(Re-embedding ancestry provenance via a locally-tagging method is tracked
+separately; correctness of the shipped bytes comes first.)
+
+### Host-side env scrubbing for native sub-builds
+
+cross_compile_cmake_lib_from_source NAME URL[|MIRROR...] INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]
+
+URL may list '|'-separated fallback mirrors, tried in order until one lands
+(guards against a single-host outage silently disabling the lib). Each mirror is
+either a plain https tarball or a `git+<repo>#<ref>` spec (shallow git clone —
+reliable where the buildkit RUN can git-clone github.com but curl fails).
+
+Fetch a source tarball and cross-cmake build+install a small library into the
+target sysroot. For libraries whose Ubuntu Ports dev package is missing/broken,
+or whose OpenCV-vendored copy can't cross-build (freetype, libpng). No-op if
+SENTINEL already exists (e.g. an apt package already provided the lib).
+
+Behaviour-preserving extraction of the freetype/libpng blocks that were copy
+-pasted in 03-media/build/opencv/install-deps.sh: same cross toolchain
+(${triplet}-gcc/g++), same find-root scaffold. Per-library flags (FT_DISABLE_*,
+PNG_STATIC/PNG_HARDWARE_OPTIMIZATIONS, ZLIB_*, and any MODE_LIBRARY/INCLUDE
+override) are passed as trailing EXTRA_CMAKE_ARGs. Fetch goes through
+download_and_extract for curl --retry + temp-file hygiene (a hand-rolled
+`curl | tar` had neither). Never hard-fails: a download/build failure logs a
+WARN and returns 0 so the caller can degrade (e.g. OpenCV falls back to
+WITH_<lib>=OFF) instead of aborting the whole media stage.
+
+### uv venv creation and the experimental-Python path
+
+Pin the interpreter for the SAME reason uv_pip_install_requirements does,
+and it is just as load-bearing here: uv honours UV_PYTHON OVER the activated
+venv. The CI images export UV_PYTHON=/opt/venv/bin/python and run as the
+non-root user `kataglyphis`, so `--active` alone still resolves to that
+root-owned system venv and the sync dies with
+error: failed to remove file `/opt/venv/lib/python3.14/site-packages/...`:
+Permission denied (os error 13)
+Observed on both arches in Orchestr-ANT-ion's lane on 2026-08-11, right after
+the extras fix let the resolve get this far. --python forces the writable
+local environment.
+
+Consult _CURRENT_VENV_PATH FIRST and VIRTUAL_ENV only as a fallback. The
+other order made the pin fire backwards: the images ALSO export
+VIRTUAL_ENV=/opt/venv, and `uv venv` only prints "Activate with: source
+.../activate" — it does not activate — so a caller that creates
+.venv_static_analysis never overwrites the inherited VIRTUAL_ENV. The pin
+then resolved to the very system venv it exists to avoid, logged
+"uv sync pinned to /opt/venv/bin/python", and died 2.5 minutes later with
+the exact permission error above (WebDavClient x64, 2026-08-12).
+_CURRENT_VENV_PATH is set by uv_venv_create/uv_venv_ensure/uv_venv_activate,
+so it names the venv THIS script owns — which is the one to sync into.
+
+### cmake-build: argument assembly
+
+The :latest-cross image runs as uid 1001 with CARGO_HOME=/usr/local/cargo
+owned by root, so the Corrosion/cargo half of the configure dies with
+"failed to create directory /usr/local/cargo/registry" - which took the
+whole Linux lane down when combined with the tee exit-code masking in
+Linux.yml (fixed there with shell: bash / pipefail). Redirect cargo to a
+writable home rather than requiring the image to hand us its own.
+
+Checked in order:
+1. --cargo-cache-dir  (CLI arg, survives container restarts when backed
+by a docker named volume or host bind mount)
+2. $CARGO_CACHE_DIR   (environment variable override)
+3. $CARGO_HOME        (image default; /usr/local/cargo, usually read-only)
+4. $TMPDIR/cargo-home (fallback, lost when container exits)
+Probe registry/, not CARGO_HOME itself. /usr/local/cargo is writable in the
+cross image while /usr/local/cargo/registry underneath it is root-owned
+(populated by `cargo install cargo-c` during the image build), so the
+shallow `-w` test PASSED and the build then died anyway with
+error: failed to create directory `/usr/local/cargo/registry/cache/...`
+Caused by: Permission denied (os error 13)
+Same mkdir-then-test idiom the sccache/ccache loop below already uses.
