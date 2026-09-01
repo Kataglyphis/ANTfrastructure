@@ -76,6 +76,12 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
+# ArmNN + ACL (arm64 only; the media stage creates EMPTY dirs on the other
+# arches, so this COPY is safe everywhere). Owner decision 2026-09-01: ship them
+# — before that they were cross-compiled and verified every arm64 chain and then
+# dropped at this boundary, reaching no image. docs/refactoring-backlog.md F7
+COPY --link --from=artifact-source /opt/armnn /opt/armnn
+COPY --link --from=artifact-source /opt/acl /opt/acl
 # AP3 LANDED 2026-08-18 (correct home this time): /opt/wheels is NOT baked
 # here anymore — Dockerfile.torch now carries its own wheels-source stage
 # (the android image, digest-pinned via WHEELS_IMAGE) and bind-mounts

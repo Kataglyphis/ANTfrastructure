@@ -104,6 +104,7 @@ write_conf /etc/ld.so.conf.d/000-gstreamer.conf "${gst_libdir}" "/opt/gstreamer/
 write_conf /etc/ld.so.conf.d/000-libcamera.conf "/opt/libcamera/lib" "/opt/libcamera/lib64"
 write_conf /etc/ld.so.conf.d/000-ffmpeg.conf "/opt/ffmpeg/lib"
 write_conf /etc/ld.so.conf.d/000-opencv.conf "/opt/opencv5/lib"
+write_conf /etc/ld.so.conf.d/000-armnn.conf "/opt/armnn/lib" "/opt/acl/lib"
 write_conf /etc/ld.so.conf.d/onnxruntime.conf "/usr/local/lib/onnxruntime-cpu/lib" "/usr/local/lib/onnxruntime-genai/lib"
 write_conf /etc/ld.so.conf.d/litert.conf "/usr/local/lib"
 write_conf /etc/ld.so.conf.d/gcc.conf "/opt/gcc-${GCC_VERSION:-16.2.0}/lib64" "/opt/gcc-${GCC_VERSION:-16.2.0}/lib"

@@ -761,6 +761,19 @@ for _l in /opt/opencv5/lib/libopencv_core.so* /opt/ffmpeg/lib/libavcodec.so* \
   printf 'RVARCH %s %s\n' "${_l##*/}" \
     "$(readelf -A "${_l}" 2>/dev/null | grep -oE 'rv64[a-z0-9_]*' | head -1)"
 done
+# Owner rule: OUR build must win over any distro rival exporting the same
+# soname. ldconfig -p lists the winner first.
+for _d in /opt/gstreamer/lib /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/lib /opt/armnn/lib /opt/acl/lib; do
+  [ -d "${_d}" ] || continue
+  for _so in "${_d}"/*.so.*; do
+    [ -e "${_so}" ] || continue
+    _n="${_so##*/}"
+    case "${_n}" in *.so.*.*) continue ;; esac   # only the bare soname link
+    _win="$(ldconfig -p 2>/dev/null | awk -v s="${_n}" '$1==s {print $NF; exit}')"
+    [ -n "${_win}" ] || continue
+    printf 'SONAME %s %s %s\n' "${_n}" "${_win}" "${_d}"
+  done
+done
 echo RTPROBE_DONE
 PROBE
 }
@@ -927,6 +940,42 @@ check_riscv64_isa() {
     esac
   done < <(_rvv_verdicts "${_SHIPPED_TRUTH_PROBE}")
   [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "RVV: all ${ok} checked object(s) carry v1p0"
+  echo ""
+}
+
+# Pure verdict function for the soname-precedence gate.
+_soname_verdicts() {
+  local probe="$1" so win ours n=0
+  while read -r so win ours; do
+    [ -n "${so}" ] || continue
+    n=$((n + 1))
+    case "${win}" in
+      /opt/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
+      *)      printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
+    esac
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^SONAME //p')
+  [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
+}
+
+# D: a library we ship must not lose the ld.so lookup to a distro copy.
+check_soname_precedence() {
+  local image_tag="$1" target_arch="$2"
+  echo "--- SHIPPED-TRUTH D: our libraries win the ld.so lookup (${target_arch}) ---"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "soname-precedence gate could not run: the in-image probe never printed RTPROBE_DONE"
+    echo ""
+    return 0
+  fi
+  local verb so win ours bad=0 ok=0
+  while read -r verb so win ours; do
+    case "${verb}" in
+      OK)   ok=$((ok + 1)) ;;
+      BAD)  bad=$((bad + 1))
+            fail "SONAME: ${so} resolves to ${win}, NOT to our ${ours} -- a consumer linking it gets the distro build. Give our tree a 000-*.conf in /etc/ld.so.conf.d (docs/cross-build-verification.md)." ;;
+      NONE) fail "SONAME: the probe found no shipped sonames at all -- a vacuous pass, not a green image" ;;
+    esac
+  done < <(_soname_verdicts "${_SHIPPED_TRUTH_PROBE}")
+  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "SONAME: all ${ok} shipped library(ies) win their lookup"
   echo ""
 }
 
@@ -1350,6 +1399,7 @@ main() {
     check_advertised_versions "${image_tag}" "${target_arch}"
     check_venv_package_set "${image_tag}" "${target_arch}"
     check_riscv64_isa "${image_tag}" "${target_arch}"
+    check_soname_precedence "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

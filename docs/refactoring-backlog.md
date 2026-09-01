@@ -310,34 +310,21 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
-### F7. ArmNN + ACL are cross-compiled every arm64 chain and reach nothing [DECISION]
+### F7. ArmNN + ACL — DECIDED 2026-09-01: ship them [DONE]
 
-Measured 2026-09-01 in the shipped `latest-cross-arm64`:
+They were cross-compiled, stripped and verified on every arm64 chain and then
+dropped at the package boundary: `Dockerfile.package` named them zero times, the
+shipped image had neither directory, `libarmnn*` existed nowhere in it, and the
+only `libarm_compute.so` present came with PyTorch's own wheel.
 
-- `Dockerfile.media` builds ACL and ArmNN, strips them, runs
-  `verify-media-artifacts.sh armnn` on them, and COPYs `/opt/armnn` + `/opt/acl`
-  into the media `final` stage (`:817-818`).
-- `Dockerfile.package` mentions neither, **zero times**.
-- The shipped image has neither directory, and `find / -name 'libarmnn*'`
-  returns **nothing**. The one `libarm_compute.so` present belongs to PyTorch's
-  own wheel, not to our build.
-- ORT exposes no ArmNN execution provider (WebGpu, Xnnpack, CPU only) — the dead
-  `--use_armnn` EP is already a known finding.
+Owner decision: **ship them.** `Dockerfile.package` now copies `/opt/armnn` and
+`/opt/acl` from `artifact-source` (safe on every arch — the media stage creates
+empty dirs on non-arm64), and `configure-runtime.sh` writes `000-armnn.conf` so
+they win their lookup like every other `/opt` tree.
 
-So an entire ACL + ArmNN cross-compile is paid on every arm64 chain and thrown
-away, and the capability the source comment promises ("direct use by the
-application") is absent from every shipped image. The verify wired in audit round
-2 (F11) guards artifacts that never leave the media stage.
-
-This is a DECISION, not a defect to fix unilaterally — either
-**(a)** carry `/opt/armnn` + `/opt/acl` into `Dockerfile.package` and deliver the
-capability, accepting the image growth, or **(b)** drop the build and its verify
-and reclaim the time. Do not leave it as it is.
-
-Note the shape is NOT general: `/opt/tvm`, `/opt/pyav` and `/opt/app-wheels` are
-also dropped at the package boundary, and that is CORRECT — their content is
-installed into `/opt/venv` (tvm 0.26.dev1 and av 18.1.0 are importable in the
-shipped image). ArmNN has no such path.
+Note the same shape is CORRECT for `/opt/tvm`, `/opt/pyav` and `/opt/app-wheels`:
+their content is installed into `/opt/venv` (tvm and av are importable in the
+shipped image). ArmNN had no such path.
 
 ### F6. Cache-key blast radius in Dockerfile.media [M each, measured]
 

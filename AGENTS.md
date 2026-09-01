@@ -78,7 +78,16 @@ what you are about to do:
    README.md (user-facing pointers), the relevant `docs/` page, and
    `CHANGELOG.md` before the work is called done. A mechanism that only the
    git history knows about does not exist for the next session.
-5. **Short code comments. Long text goes in `docs/` and gets linked.** One or
+5. **Our build always wins over the distro copy.** Owner directive
+   2026-09-01. Where a `/opt` tree and a distro package export the same soname,
+   ours must win the `ld.so` lookup — write `000-<name>.conf` into
+   `/etc/ld.so.conf.d` (it is read in SORT order) and never rely on the purge
+   alone, because the gtk4 chain pulls GStreamer back in. Enforced on the
+   SHIPPED bytes by the soname-precedence gate in
+   `06-packaging/smoke-runtime-image.sh`; a library that loses its lookup fails
+   the image. Same rule for anything else a consumer resolves at runtime:
+   `PATH`, `PKG_CONFIG_PATH`, `PYTHONPATH`.
+6. **Short code comments. Long text goes in `docs/` and gets linked.** One or
    two lines at the point of use, only where the code cannot say it itself.
    Anything longer — forensics, dated evidence, why-not-the-obvious-thing,
    measured numbers, a failure narrative — moves into a `docs/*.md` page and the
