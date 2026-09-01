@@ -1,14 +1,9 @@
 {
-  "run_id": "20260831-225934-35708150",
+  "run_id": "20260901-082206-edddf620",
   "arches": "amd64,arm64,riscv64",
-  "range": "base..runtime",
+  "range": "runtime..runtime",
   "stages": {
-    "base": {"status": "ok", "pin": "ghcr.io/kataglyphis/kataglyphis_beschleuniger@sha256:c85cc424155d30034f4c4d4d104677111c6fc67e0c851eee7cc26530a3987961"},
-    "compiler": {"status": "ok", "pin": "ghcr.io/kataglyphis/kataglyphis_beschleuniger@sha256:b9ebd9b2807ee0f2cfcffcb9c881ebe0319097de7d32e1ab80b24e75656c4be4"},
-    "sdk": {"status": "ok", "pin": ""},
-    "media": {"status": "ok", "pin": ""},
-    "android": {"status": "ok", "pin": ""},
-    "runtime": {"status": "failed", "pin": ""}
+    "runtime": {"status": "running", "pin": ""}
   },
-  "updated": "2026-09-01T06:23:31Z"
+  "updated": "2026-09-01T08:22:51Z"
 }

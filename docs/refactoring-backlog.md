@@ -358,6 +358,27 @@ build log. See docs/cross-build-verification.md.
   6 cross-toolchain packages were extracted nowhere (118 -> 121 call sites,
   522 -> 529 names).
 
+- **riscv64 ships without the vector extension (RVV)** [M·★★] — there is no
+  `-march=rv64…` anywhere in the tree, so every riscv64 artefact is built at the
+  cross toolchain's default `rv64gc`. The shipped image's gcc *does* accept
+  `-march=rv64gcv`, so the capability is there and unused; OpenCV, ORT and TVM
+  kernels all lose their widest riscv64 vectorisation. This is a DECISION, not a
+  bug: `rv64gcv` binaries will not run on riscv64 hardware without V, so it needs
+  either a second variant or a documented hardware floor. Decide before treating
+  riscv64 performance numbers as representative.
+
+- **GStreamer: riscv64 ships 282 plugins, arm64 290** [M·★★] — measured
+  2026-09-01 with `gst-inspect-1.0` in both shipped images. Missing on riscv64,
+  present on arm64: `codec2json`, `colormanagement`, `csound`, `gtk`,
+  `gtkwayland`, `skia`, `uvcgadget`, `uvch264`. Nothing is missing the other way
+  round. Two are **deliberate**: `gtk`/`gtkwayland` follow from the documented
+  riscv64 GTK skip in `03-media/build/gstreamer/install-deps.sh:133` (Ubuntu
+  Ports cannot satisfy the GLib helper chain). The remaining six are unexplained
+  — find each one's missing dependency, then either enable it or record the
+  reason next to the GTK one so the gap is documented instead of discovered.
+  A per-arch plugin count assertion in the media smoke would stop this drifting
+  further.
+
 - **numpy differs between arm64 and riscv64** [S·★★] — measured 2026-09-01 in the
   shipped images: `numpy 2.5.1` on arm64 (the uv.lock wheel) vs `2.5.2` on
   riscv64 (built locally against versions.env). The two authorities disagree by a
