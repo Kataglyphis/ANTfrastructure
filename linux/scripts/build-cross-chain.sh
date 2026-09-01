@@ -574,7 +574,10 @@ _chain_disk_watch_start() {
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected
   protected="$(_disk_guard_protected_slugs '')"
-  _disk_guard_watch_loop "${bc_dir}" "${threshold}" "${secs}" "${protected}" "${CROSS_TRIM_KEEP_SLUGS:-3}" &
+  # Pass $$ explicitly: inside the backgrounded subshell $PPID is OUR parent, not
+  # us, so the loop's die-with-owner check would watch the wrong process.
+  _disk_guard_watch_loop "${bc_dir}" "${threshold}" "${secs}" "${protected}" \
+    "${CROSS_TRIM_KEEP_SLUGS:-3}" "$$" &
   _CHAIN_DISK_WATCH_PID=$!
   log "[disk-watch] sampling ${bc_dir} every ${secs}s during the ${1:-current} stage (threshold ${threshold}G; CROSS_DISK_WATCH=0 disables)"
 }
@@ -801,6 +804,10 @@ main() {
   _chain_prune_archived_logs
   _chain_write_pidfile         # read by stop-cross-chain.sh
   _chain_install_lifecycle_traps
+  # Mint the OCI handoff workdir HERE. Every other caller reaches it through a
+  # $(...) subshell, so the assignment would never reach this process and the
+  # handoff would silently never activate. docs/cross-build-verification.md
+  cross_local_handoff_enabled && cross_ensure_local_context_workdir
   _chain_assert_ancestry
   _chain_disk_preflight
   _chain_start_resource_monitor

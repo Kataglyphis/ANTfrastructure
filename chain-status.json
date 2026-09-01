@@ -3,7 +3,9 @@
   "arches": "amd64,arm64,riscv64",
   "range": "runtime..runtime",
   "stages": {
-    "runtime": {"status": "running", "pin": ""}
+    "runtime": {"status": "failed", "pin": ""}
   },
-  "updated": "2026-09-01T08:22:51Z"
+  "arch_outcomes": {"amd64": "built-this-run", "arm64": "built-this-run", "riscv64": "stale"},
+  "gates_not_run": ["wrapper-content-gate", "verify-shipped-wrapper", "runtime-image-smoke", "assert_pinned_versions", "manifest-coherence", "manifest-completeness", "manifest-freshness"],
+  "updated": "2026-09-01T12:14:06Z"
 }

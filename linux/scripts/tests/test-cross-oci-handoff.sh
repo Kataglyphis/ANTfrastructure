@@ -148,4 +148,38 @@ t_case "guard: mid-chain no-push still refused"; case_guard_mid_chain_refused
 t_case "guard: CROSS_NO_PUSH_FORCE still escapes the refusal"; case_guard_force_escapes
 t_case "guard: handoff disabled → full-chain no-push refused (old behavior)"; case_guard_handoff_disabled_refuses
 
+
+# The production callers reach cross_stage_context_dir through $(...), so an
+# assignment inside it never escapes. Before 2026-09-01 this suite called
+# cross_ensure_local_context_workdir DIRECTLY and was green while the handoff
+# never activated in a real chain. Pin the subshell shape.
+t_case "a workdir minted inside \$(...) does NOT reach the caller"
+export CROSS_NO_PUSH=1
+CROSS_CONTEXT_WORKDIR=""
+# cross_local_handoff_enabled needs all three: the knob, the toggle, the exporter.
+export CROSS_LOCAL_CONTEXT_HANDOFF=1
+export_image_to_oci_layout() { :; }
+_cross_sweep_orphaned_contexts() { :; }
+# a previous case's root may be gone; mktemp -d under it would then fail
+CROSS_CONTEXT_ROOT="$(mktemp -d)"
+_probe() { cross_ensure_local_context_workdir >/dev/null 2>&1; printf '%s' "${CROSS_CONTEXT_WORKDIR:-}"; }
+_inner="$( _probe )"
+# t_assert_ok runs every argument as the command, so no message here.
+t_assert_ok test -n "${_inner}"
+t_assert_eq "" "${CROSS_CONTEXT_WORKDIR:-}" \
+  "the parent must NOT — this is why the orchestrator has to mint it eagerly"
+
+t_case "two \$(...) calls mint DIFFERENT workdirs (the production symptom)"
+t_assert_ok test "$( _probe )" != "$( _probe )"
+
+t_case "build-cross-chain.sh mints it eagerly in the orchestrator process"
+t_assert_contains "$(cat "${TESTS_DIR}/../build-cross-chain.sh")" \
+  "cross_local_handoff_enabled && cross_ensure_local_context_workdir" \
+  "without this the --no-push handoff silently resolves FROM against the registry"
+
+t_case "the android artifact dir never reads CROSS_CONTEXT_WORKDIR raw"
+t_assert_eq "0" "$(grep -c -e 'CROSS_CONTEXT_WORKDIR}/android-artifacts' \
+  "${TESTS_DIR}/../01-core/cross-stage-build.sh")" \
+  "a raw read aborts the android stage under set -u"
+
 t_summary
