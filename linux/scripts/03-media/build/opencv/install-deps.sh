@@ -88,6 +88,30 @@ if is_cross && [ -n "${cross_arch}" ] && [ "${cross_arch}" != "amd64" ]; then
     fi
 fi
 
+# Pass 2 (opencv-gst) inherits /opt/ffmpeg and links it, so cv2 NEEDs the apt
+# codec .so's build-ffmpeg.sh recorded (2026-09-01: libopencore-amrwb.so.0).
+# Native only: the manifest names are unqualified and resolved on the target.
+_ocv_ff_manifest="${FFMPEG_PREFIX:-/opt/ffmpeg}/runtime-apt-packages.txt"
+if ! is_cross && [ -s "${_ocv_ff_manifest}" ]; then
+    _ocv_ff_pkgs=()
+    _ocv_ff_skipped=()
+    _ocv_ff_pkg=""   # set -u: the `|| [ -n ... ]` read guard reads it first
+    while IFS= read -r _ocv_ff_pkg || [ -n "${_ocv_ff_pkg}" ]; do
+        case "${_ocv_ff_pkg}" in ''|'#'*) continue ;; esac
+        if cross_package_has_install_candidate "${_ocv_ff_pkg}"; then
+            _ocv_ff_pkgs+=("${_ocv_ff_pkg}")
+        else
+            _ocv_ff_skipped+=("${_ocv_ff_pkg}")
+        fi
+    done < "${_ocv_ff_manifest}"
+    [ "${#_ocv_ff_skipped[@]}" -eq 0 ] \
+        || echo "[WARN] opencv: FFmpeg runtime codec package(s) with no apt candidate: ${_ocv_ff_skipped[*]}"
+    if [ "${#_ocv_ff_pkgs[@]}" -gt 0 ]; then
+        echo "[INFO] opencv: installing ${#_ocv_ff_pkgs[@]} FFmpeg runtime codec package(s) from ${_ocv_ff_manifest} (cv2 links the source-built FFmpeg)"
+        install_optional_target_packages "${_ocv_ff_pkgs[@]}"
+    fi
+fi
+
 if [ "${WITH_PYTHON}" = "true" ]; then
     if is_cross; then
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then

@@ -23,7 +23,6 @@ linux/scripts/lib/code-quality.sh | linux/scripts/lib/coverage.sh | 65 | baselin
 linux/scripts/tests/test-parallel-loop.sh | linux/scripts/tests/test-parallel-loop.sh | 65 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/compiler-resolution.sh | linux/scripts/03-media/build/iree/android/build-android.sh | 64 | baseline 2026-08-31, not yet reviewed
 linux/scripts/01-core/compiler-resolution.sh | linux/scripts/03-media/build/litert/android/build-android.sh | 64 | baseline 2026-08-31, not yet reviewed
-linux/llm-stack/run_benchmarks.sh | linux/llm-stack/run_benchmarks.sh | 58 | REVIEWED 2026-08-31 KEEP: two embedded python summary blocks; grew from 43 to 58 only because canonicalisation folds [[ ]] and backticks, not because the code changed
 linux/scripts/01-core/common.sh | linux/scripts/01-core/compiler-cache.sh | 55 | baseline 2026-08-31, not yet reviewed
 linux/scripts/05-frameworks/tvm-detect.sh | linux/scripts/05-frameworks/tvm-detect.sh | 52 | baseline 2026-08-31, not yet reviewed
 linux/scripts/04-runtime/gstreamer-env.sh | linux/scripts/04-runtime/libcamera-env.sh | 51 | baseline 2026-08-31, not yet reviewed
@@ -243,3 +242,18 @@ linux/scripts/setup-rootless-binfmt.sh | linux/scripts/setup-rootless-binfmt.sh 
 linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/tests/test-chain-lifecycle.sh | 11 | baseline 2026-08-31, not yet reviewed
 linux/scripts/tests/test-iree-wheelhouse-stages.sh | linux/scripts/tests/test-iree-wheelhouse-stages.sh | 11 | baseline 2026-08-31, not yet reviewed
 linux/scripts/tests/test-module-resolution.sh | linux/scripts/tests/test-module-resolution.sh | 11 | baseline 2026-08-31, not yet reviewed
+
+# 2026-09-01: twins created or grown by the prevention-gate work. Reasons are
+# specific; the two worth merging are recorded in docs/refactoring-backlog.md F3.
+linux/scripts/06-packaging/smoke-torch-venv.sh | linux/scripts/06-packaging/smoke-torch-venv.sh | 65 | assert_pinned_versions / assert_app_venv_parity: each gate must read standalone in its own failure output
+linux/scripts/01-core/chain-lifecycle.sh | linux/scripts/01-core/chain-lifecycle.sh | 25 | chain_status_kv_json / _list_json walk the same CSV; worth ONE walker -- see refactoring-backlog F3
+linux/scripts/tests/test-disk-guard.sh | linux/scripts/tests/test-disk-guard.sh | 30 | two fixture builders; explicit beats shared in a test that must not hide its own setup
+linux/scripts/01-core/disk-guard.sh | linux/scripts/01-core/disk-guard.sh | 26 | keep_n arg validation in the trim and the watch entry points; both are public and validate independently
+linux/scripts/build-cross-chain.sh | linux/scripts/build-cross-chain.sh | 24 | numeric-knob guards in the lane gate and the disk watcher; same idiom, different knobs
+linux/scripts/01-core/cross-stage-build.sh | linux/scripts/build-cross-chain.sh | 27 | the free-space-vs-threshold guard; same idiom, different knob and failure text
+linux/scripts/01-core/disk-guard.sh | linux/scripts/build-cross-chain.sh | 24 | as above: the caller re-validates the knob it passes in
+linux/scripts/build-cross-chain.sh | linux/scripts/tests/test-chain-lifecycle.sh | 24 | the test EVALs the shipped function; overlap with the implementation is the point
+linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/tests/test-parallel-loop.sh | 20 | is_truthy stub: a test that sources platform.sh could no longer prove the shipped copy
+linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/tests/test-ffmpeg-dnn-contract.sh | 20 | is_truthy stub, as above
+linux/scripts/01-core/platform.sh | linux/scripts/tests/test-chain-lifecycle.sh | 20 | is_truthy: the test stub deliberately mirrors the canonical definition
+linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/verify-shipped-wrapper.sh | 20 | _is_truthy: verify-shipped-wrapper runs standalone; sourcing platform.sh is the fix -- backlog F3

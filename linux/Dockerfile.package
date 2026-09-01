@@ -166,7 +166,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GCC_VERSION=${GCC_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE} \
     GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
-    PYTHON_VERSION=${PYTHON_VERSION} \
+    # PYTHON_VERSION deliberately NOT advertised here: nothing stages
+    # /opt/python-cross into this image, so it ships the DISTRO python3.14.
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
     PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
     PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \

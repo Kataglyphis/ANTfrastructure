@@ -398,54 +398,63 @@ extract_torch_wheel() {
     unzip -q -o "${TARGET_TORCH_WHEEL}" -d "${TORCH_STAGING_DIR}"
 }
 
-# pytorch 2.13 restructured how torch._C is built for the wheel and REGRESSED it
-# under cross-compile. In 2.12 setup.py compiled the distutils stub torch/csrc/
-# stub.c and linked it straight to build/lib/torch/_C.cpython-<abi>.so (correct
-# EXT_SUFFIX), which bdist_wheel then packaged. In 2.13 there is no "building
-# 'torch._C' extension" step at all: cmake links a generic, un-suffixed
-# torch/_C.so (ninja: "Linking C shared module torch/_C.so") and bdist_wheel never
-# copies it into the wheel. The wheel then ships ONLY the torch/_C/ *.pyi stub
-# folder, so on install `torch._C` resolves to that namespace folder
-# (torch._C.__file__ is None) and `import torch` dies with the misleading
-# "Failed to load PyTorch C extensions ... loaded the torch/_C folder" (the real
-# cause -- no compiled _C extension -- is masked by pytorch's `raise ... from
-# None`). The compiled module IS produced by cmake at
-# ${src_dir}/torch/_C.so; if the built wheel lacks a top-level torch/_C*.so,
-# inject that under the target ABI name and repack (wheel pack recomputes RECORD).
-# Version-agnostic: a no-op once the wheel already carries torch/_C*.so.
+# Safety net: a cross bdist_wheel that drops the compiled torch._C extension
+# leaves only the torch/_C/ *.pyi stub folder, and `import torch` then dies with
+# the misleading "loaded the torch/_C folder". If the wheel has no top-level
+# torch/_C*.so, inject the cmake-built one and repack (wheel pack redoes RECORD).
+# No-op on a healthy wheel: cmake links torch/_C.cpython-<abi>-<triplet>.so and
+# pytorch 2.13 does package it.
 _torch_ensure_c_extension() {
     local dist_dir="$1"
-    local wheel_path built_c_ext staging suffix triplet pyabi
+    local wheel_path built_c_ext staging suffix triplet pyabi listing dest_name
+    local build_torch_dir
     shopt -s nullglob
     local -a wheels=("${dist_dir}"/torch-*.whl)
     shopt -u nullglob
     [ "${#wheels[@]}" -gt 0 ] || return 0
     wheel_path="${wheels[0]}"
 
+    # Read the listing first: `unzip -l | grep -q` dies of SIGPIPE and pipefail
+    # then reports 141, i.e. a present extension read as absent.
+    if ! listing="$(unzip -l "${wheel_path}" 2>/dev/null)"; then
+        warn "cannot list ${wheel_path} (unzip failed); skipping the torch _C extension check"
+        return 0
+    fi
     # Already carries the top-level compiled extension? nothing to do.
-    if unzip -l "${wheel_path}" 2>/dev/null | grep -qE ' torch/_C[^/]*\.so$'; then
+    if grep -qE ' torch/_C[^/]*\.so$' <<<"${listing}"; then
         return 0
     fi
 
-    built_c_ext="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch/torch/_C.so"
-    if [ ! -f "${built_c_ext}" ]; then
-        warn "torch wheel lacks torch/_C*.so and cmake-built ${built_c_ext} is absent; import torch WILL fail (missing C extension)"
+    # cmake links the ABI-mangled name; a literal torch/_C.so never appears.
+    build_torch_dir="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch/torch"
+    shopt -s nullglob
+    local -a built_c_exts=("${build_torch_dir}"/_C.cpython-*.so)
+    shopt -u nullglob
+    # nullglob cannot drop a metacharacter-free word, so test the plain name.
+    [ ! -f "${build_torch_dir}/_C.so" ] || built_c_exts+=("${build_torch_dir}/_C.so")
+    if [ "${#built_c_exts[@]}" -eq 0 ]; then
+        warn "torch wheel lacks torch/_C*.so and no cmake-built ${build_torch_dir}/_C*.so exists; import torch WILL fail (missing C extension)"
         return 0
     fi
+    built_c_ext="${built_c_exts[0]}"
 
-    # Target extension suffix cpython-<pyABI>-<triplet>.so: pyABI from the wheel's
-    # abi tag (…-cpXYZ-cpXYZ-…), triplet from the cross helper.
-    triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
-    pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp([0-9]+)-cp[0-9]+-.*/\1/p')"
-    [ -n "${pyabi}" ] || pyabi="314"
-    suffix="cpython-${pyabi}-${triplet}.so"
+    # Keep cmake's name when already ABI-mangled, else synthesise
+    # cpython-<pyABI>-<triplet>.so (pyABI from the wheel's -cpXYZ- tag).
+    dest_name="$(basename "${built_c_ext}")"
+    if [ "${dest_name}" = "_C.so" ]; then
+        triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
+        pyabi="$(basename "${wheel_path}" | sed -nE 's/.*-cp([0-9]+)-cp[0-9]+-.*/\1/p')"
+        [ -n "${pyabi}" ] || pyabi="314"
+        suffix="cpython-${pyabi}-${triplet}.so"
+        dest_name="_C.${suffix}"
+    fi
 
     staging="${APP_WHEELHOUSE_BUILD_ROOT}/torch-cext-repack"
     rm -rf "${staging}"
     mkdir -p "${staging}"
     unzip -q -o "${wheel_path}" -d "${staging}"
-    cp "${built_c_ext}" "${staging}/torch/_C.${suffix}"
-    log "Injected missing torch/_C.${suffix} into $(basename "${wheel_path}") (pytorch ${PYTORCH_REF} cross bdist_wheel dropped the compiled C extension)"
+    cp "${built_c_ext}" "${staging}/torch/${dest_name}"
+    log "Injected missing torch/${dest_name} into $(basename "${wheel_path}") (pytorch ${PYTORCH_REF} cross bdist_wheel dropped the compiled C extension)"
 
     rm -f "${wheel_path}"
     if ! ( cd "${staging}" && "${BUILD_PYTHON}" -m wheel pack . -d "${dist_dir}" ); then

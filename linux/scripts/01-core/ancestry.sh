@@ -139,7 +139,8 @@ ancestry_recorded_annotation() {
 
 # Read a provenance value out of the image CONFIG labels (the runtime lane's
 # `-t` path stamps these; see ancestry_label_args). Exit 0 + value, 2 when the
-# label is absent, 1 when the image cannot be inspected at all.
+# label is absent, 1 when the image cannot be inspected — or (default scope)
+# when the local tag is not the registry copy.
 #
 # This reads the LOCAL image, whereas the annotation reader queries the
 # registry — and reading provenance off a STALE local tag is precisely the
@@ -147,8 +148,12 @@ ancestry_recorded_annotation() {
 # resolves in the registry, require the local bytes to BE the shipped bytes
 # before trusting their labels; on a mismatch report unreadable (1) and let the
 # caller fall through rather than answer from the wrong image.
+#
+# Arg 3 scope: "shipped" (default) = that identity guard; "local" = read the
+# local image only. Use "local" to check an image that has NOT been pushed yet
+# (runtime_assert_provenance_stamped) — there the guard can only ever say no.
 ancestry_recorded_label() {
-  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}"
+  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}" scope="${3:-shipped}"
   local nerdctl="${NERDCTL_BIN:-nerdctl}"
   local value
 
@@ -158,7 +163,7 @@ ancestry_recorded_label() {
     ""|"<no value>") return 2 ;;
   esac
 
-  if declare -F registry_pin_ref >/dev/null 2>&1; then
+  if [ "${scope}" != "local" ] && declare -F registry_pin_ref >/dev/null 2>&1; then
     local remote local_digests
     remote="$(registry_pin_ref "${nerdctl}" "${image_ref}" 2>/dev/null || true)"
     if [ -n "${remote}" ]; then

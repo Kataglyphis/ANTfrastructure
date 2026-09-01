@@ -2,18 +2,21 @@
 # Run the compiler through sccache, but never let sccache's OWN failure kill the
 # build: any sccache-internal error (prefixed "sccache:") falls through to
 # running the compiler directly; a real compile error passes through untouched.
-# sccache prefixes ONLY its own internal failures with "sccache:" — when the
+# sccache prefixes ONLY its own internal failures with "sccache:" -- when the
 # compiler itself fails, sccache echoes the compiler's diagnostics un-prefixed.
-# Why, and the CMake TryCompile root cause: docs/build-cache-tiers.md.
+# Cache-tier design: docs/build-cache-tiers.md.
 #
-# Two failure classes, both observed live:
-#   * "sccache: encountered fatal error" — CMake TryCompile deletes its scratch
-#     cwd, sccache then spawns the compiler with a dead cwd (ENOENT).
-#   * "sccache: error: failed to execute compile" + "sccache: caused by: Failed
-#     to send data to or receive data from server" — the sccache SERVER died
-#     mid-build (2026-08-30, TVM step under full concurrent-media load). Not
-#     matching this class made the launcher hand the dead-server error to ninja
-#     as a REAL failure, killing an otherwise-fine build.
+# Two failure classes, both measured in the 2026-09-01 run (3062 bypasses):
+#   * 2952x "sccache: encountered fatal error" + "failed to spawn <compiler>
+#     ... No such file or directory (os error 2)" on sccache's own -E
+#     preprocessor pass. Intermittent (~10-40% of compiles) in the heavily
+#     parallel steps only; the compiler path is absolute and the cwd is a live
+#     build dir, and the direct fallback of that same argv succeeds right after,
+#     so neither a missing compiler nor sccache's scrubbed env explains it. Root
+#     cause is inside sccache's spawn and is still open -- do NOT re-derive one
+#     from this message alone.
+#   * 110x "sccache: error: failed to execute compile" + "Failed to send data to
+#     or receive data from server" -- the sccache server died mid-build.
 # Bypassing is safe in both: worst case the compiler is re-run directly and the
 # real (compiler) error surfaces.
 #
@@ -21,8 +24,7 @@
 #        or CC="/opt/scripts/core/sccache-launcher.sh gcc"
 set -u
 
-# /tmp, not the cwd: the cwd is exactly what may have been deleted underneath
-# us, and mktemp there would fail for the same reason sccache did.
+# /tmp, not the cwd: a build cwd may be read-only or gone by the time we run.
 _err="$(mktemp /tmp/sccache-launcher.XXXXXX 2>/dev/null)" || _err=""
 
 if [ -z "${_err}" ]; then

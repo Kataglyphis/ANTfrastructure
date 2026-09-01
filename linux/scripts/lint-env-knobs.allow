@@ -221,3 +221,13 @@ CROSS_PREFLIGHT_TRIM
 # Newest N cache-export slugs the trim must never remove. Default 3; the byte
 # budget alone does NOT bound the trim. docs/build-cache-tiers.md
 CROSS_TRIM_KEEP_SLUGS
+
+# riscv64 venv parity: the docs-extra fallback fails the assemble step by
+# default; APP_EXTRAS_REQUIRED=0 downgrades it to a warning.
+APP_EXTRAS_REQUIRED
+# In-stage disk watchdog sampling interval, seconds (build-cross-chain.sh).
+CROSS_DISK_WATCH_SECS
+
+# Not an operator switch: set by sourcing /etc/os-release inside the image, read
+# by the smoke's UBUNTU_VERSION probe (06-packaging/smoke-runtime-image.sh).
+VERSION_ID

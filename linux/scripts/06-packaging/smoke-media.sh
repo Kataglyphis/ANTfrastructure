@@ -416,20 +416,30 @@ if [ -n "${_gst_inspect}" ]; then
     { _ff_probe="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
       [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1
     _gst_missing=""
+    _gst_loaded=""
+    _gst_deferred=""
     for _p in libav opencv onnx tflite; do
-      "${_gst_inspect}" "${_p}" >/dev/null 2>&1 && continue
+      if "${_gst_inspect}" "${_p}" >/dev/null 2>&1; then
+        _gst_loaded="${_gst_loaded} ${_p}"
+        continue
+      fi
       if [ "${_ffmpeg_execok}" = "0" ]; then
         _gst_err="$("${_gst_inspect}" "${_p}" 2>&1 >/dev/null | head -1 || true)"
         echo "  INFO: gst '${_p}' plugin not loadable in build sandbox (transitive dep on source-built libs not on the runtime loader path; ffmpeg non-executable here too) — functional gate is the packaging-stage smoke"
         [ -n "${_gst_err}" ] && echo "        detail: ${_gst_err}"
+        _gst_deferred="${_gst_deferred} ${_p}"
         continue
       fi
       _gst_missing="${_gst_missing} ${_p}"
     done
-    if [ -z "${_gst_missing}" ]; then
-      pass "GStreamer mandatory plugin set loads (libav opencv onnx tflite)"
-    else
+    # Name ONLY what actually loaded — the old message listed all four even
+    # when the deferral above had skipped some.
+    if [ -n "${_gst_missing}" ]; then
       fail "GStreamer mandatory plugins MISSING/unloadable:${_gst_missing}"
+    elif [ -n "${_gst_loaded}" ]; then
+      pass "GStreamer mandatory plugins load:${_gst_loaded}${_gst_deferred:+ (deferred to packaging-stage smoke:${_gst_deferred})}"
+    else
+      echo "  INFO: every mandatory GStreamer plugin was deferred to the packaging-stage smoke:${_gst_deferred} — nothing verified here"
     fi
     # Data roundtrip (R2): negotiation + a real encoder + non-empty output —
     # `videotestsrc ! fakesink` proves the registry, not that a buffer with
@@ -544,8 +554,10 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- libcamera ---"
 _lc_prefix="${LIBCAMERA_PREFIX:-/opt/libcamera}"
-# Ensure pkg-config can find libcamera
-export PKG_CONFIG_PATH="${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+# Ensure pkg-config can find libcamera. Native meson installs under the
+# multiarch libdir (lib/x86_64-linux-gnu/pkgconfig), cross under plain lib.
+_lc_pc="$(find "${_lc_prefix}/lib" "${_lc_prefix}/lib64" -name libcamera.pc -type f -print -quit 2>/dev/null || true)"
+export PKG_CONFIG_PATH="${_lc_pc:+$(dirname "${_lc_pc}"):}${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 if command -v pkg-config >/dev/null 2>&1; then
   if pkg-config --exists libcamera 2>/dev/null; then
     lc_ver="$(pkg-config --modversion libcamera 2>/dev/null || echo '?')"

@@ -270,6 +270,17 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
 
 ### F3. Clone families worth one owner [S-M each]
 
+- **`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**
+  (`01-core/chain-lifecycle.sh:93` and `:106`, 21 shingles, 5 identical lines) —
+  the item-splitting loop is the same; only the emitted shape differs. One
+  walker taking an emitter callback would own it. Allowlisted 2026-09-01 with a
+  budget of 25 so it cannot grow further unnoticed.
+- **`verify-shipped-wrapper.sh` carries a private `_is_truthy`** (`:50`) — it
+  runs standalone from `build-runtime-manifest.sh`, but `REPO_ROOT` is available
+  there, so it could source `01-core/platform.sh` and use the canonical
+  definition. The test stubs (`test-chain-lifecycle.sh`, `test-parallel-loop.sh`,
+  `test-ffmpeg-dnn-contract.sh`) must keep their own copies — a test that sourced
+  the real one could no longer prove the shipped copy behaves.
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
   `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
@@ -299,7 +310,71 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
-## D. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
+## G. Shipped-truth findings, measured in the arm64 image 2026-09-01
+
+Every item here was read out of the SHIPPED bytes
+(`ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64`), not from a
+build log. See docs/cross-build-verification.md.
+
+- **IREE ships a release compiler against a dev runtime** [M·★★★] — CONFIRMED:
+  `iree-base-compiler 3.11.0` but `iree-base-runtime
+  3.11.0.dev0+e4a3b0405d7d23554da26403658d0e8c3c5ecf25`. The two halves of IREE
+  come from different builds; a dev runtime can drift from the release
+  compiler's VM format. `IREE_VERSION=v3.11.0` in versions.env pins only what
+  the tag claims. Decide which half is authoritative and pin both to it. The
+  `advert-keys` gate compares the RUNTIME's numeric prefix, so this skew is
+  currently green and would stay invisible without this entry.
+
+- **The advertised-version gate covered 6 of 31 keys** [DONE 2026-09-01] —
+  `verify-advertised-keys.py` (preflight slug `advert-keys`) now fails when any
+  version-shaped `ENV`/`ARG` in `linux/Dockerfile.*` is neither checked by the
+  smoke nor excused with a reason, and when an excuse goes stale. 16 keys are
+  checked, 16 excused. Probes were measured against the shipped image, and each
+  mutation was proven to go red (`test-advertised-keys.sh`).
+
+- **`VULKAN_VERSION` could not disagree with itself** [DONE 2026-09-01] — its
+  HAVE side parsed the version out of `/opt/vulkan/active`, a directory named by
+  the ARG under test. Now measured from the loader (`vulkaninfo`), falling back
+  to `VK_HEADER_VERSION`. The class matters more than the instance: any HAVE
+  probe that re-reads the advertisement is a gate that cannot fail.
+
+- **An absent `PYTORCH_EXTRA` silently shrank the venv gate** [DONE 2026-09-01] —
+  the empty case was folded in with the `none` sentinel, so an image that failed
+  to advertise the extra had it dropped from the checked set. Now `NOADV` fails;
+  only the literal `none` is a torch-less image.
+
+- **TVM ships off-tag** [S·★] — `TVM_REF=v0.26.0` but `tvm.__version__` is
+  `0.26.dev1`. Excused in `advert-keys` because the ref and the version cannot
+  be compared, but a build one commit off its intended tag is invisible today.
+  Worth an explicit ref->commit assertion at build time.
+
+- **`pkg-names` treated a partial index fetch as authoritative** [DONE
+  2026-09-01] — one failed component (`universe`, say) truncated the name set,
+  cached it, and would then report live packages as dead. Now all-or-nothing
+  with an honest SKIP. Also: the vendor-repo exemption covered whole FILES, so
+  the plain Ubuntu packages `setup-rocm-repo.sh` installs before adding the
+  vendor repo (`curl`, `gpg`, `ca-certificates`) were unfailable; it is now
+  name-scoped. And `apt_install_available` was in no installer table at all —
+  6 cross-toolchain packages were extracted nowhere (118 -> 121 call sites,
+  522 -> 529 names).
+
+- **numpy differs between arm64 and riscv64** [S·★★] — measured 2026-09-01 in the
+  shipped images: `numpy 2.5.1` on arm64 (the uv.lock wheel) vs `2.5.2` on
+  riscv64 (built locally against versions.env). The two authorities disagree by a
+  patch release. Harmless today, but it is the same class as the torch/vision
+  split and means "the venv is pinned" is only true per-arch. See
+  docs/riscv64-venv-parity.md.
+
+- **Parity itself is in good shape (measured, not assumed)** [note] — arm64 vs
+  riscv64 on 2026-09-01, read out of the shipped images: identical versions for
+  cv2 5.0.0, onnxruntime 1.29.0, onnxruntime_genai 0.15.2 (GEN1 IS on riscv64),
+  av 18.1.0, tvm 0.26.dev1, tflite_runtime 2.2.0; cv2 reports GStreamer 1.29.2 /
+  FFMPEG / OpenCL / Vulkan YES on BOTH; ORT exposes the same three providers
+  (CPU, WebGpu, Xnnpack) on both — WebGPU now ships, having been excluded in the
+  2026-07-20 build. The only differences are torch/torchvision (PyPI wheel vs
+  source build) and the numpy patch skew above.
+
+## H. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
 
 All nine items implemented and validated live against GenieX lanes on the same
 day they were filed. Kept here (not archived) for one wave so the measured

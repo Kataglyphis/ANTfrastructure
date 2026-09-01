@@ -378,6 +378,92 @@ These validate a built/pulled image and also run during the build to fail fast:
     (in `build-runtime-manifest.sh`) skips the whole runtime-image smoke (e.g. a host
     without a qemu handler for a foreign arch).
 
+#### Shipped-truth gates (2026-09-01) — measure the artefact, not the log
+
+Two classes were invisible to every gate above because every gate above reads
+what the *build* claims. These read the *shipped bytes*. Both live in
+`06-packaging/smoke-runtime-image.sh` and share ONE in-image probe
+(`run_shipped_truth_probe`, ~13 s per image (measured on arm64; the three gates together ~15 s), no network, no host state).
+
+**Why one probe that only prints facts.** The probe emits `ADV`/`HAVE`/`PKG`/
+`REQ`/`DANG` lines and an `RTPROBE_DONE` marker; every verdict is reached
+afterwards on the host by `_advert_verdicts` and `_venv_set_verdicts`, which are
+pure `text in → verdict lines out`. That split is deliberate: the judging code
+can be driven from a *recorded* probe capture, so its failure paths are provable
+without a doctored 27 GB image — and without a hand-copied replica of the logic,
+which is exactly how a test in this repo once stayed green while the code it
+guarded was gutted.
+
+**A. Advertised env versions == actual** (`check_advertised_versions`, fail).
+Every key in `_ADVERTISED_VERSION_KEYS` (`PYTHON_VERSION`,
+`PYTHON_MAJOR_MINOR`, `GCC_VERSION`, `LLVM_RELEASE`, `GSTREAMER_VERSION`,
+`VULKAN_VERSION`) is compared against what the image *has* — the venv
+interpreter, `gcc -dumpfullversion`, `clang --version`,
+`gst-inspect-1.0 --version`, the resolved `/opt/vulkan/active` path. This exists
+because all three wrappers shipped Ubuntu's Python **3.14.4** while advertising
+`PYTHON_VERSION=3.14.7`; an env label that contradicts the interpreter is worse
+than no label, since everything downstream reasons from it. There is **no
+exemption arm** — a version label that disagrees with the artefact is never a
+documented state. An unset or unreadable key is a loud per-row `SKIP`, and if
+*every* row skips the gate **fails** rather than printing a green it did not
+earn.
+
+**B. Venv package set vs the app's own declared graph**
+(`check_venv_package_set`, fail). Measured live, the shipped venvs held
+amd64 = 153, arm64 = 165, **riscv64 = 66** distributions; 99 packages were simply
+gone on riscv64 and nothing noticed, because ARCH-PARITY only conforms a fixed
+*name table* of `/opt` prefixes and component wheels and never compares the venv
+set at all.
+
+The gate does **not** carry a checked-in list of 165 names and does **not** carry
+a count anybody can lower. The expected set is derived from the image's own
+metadata: the app distribution's `Provides-Extra` requirement edges, with
+environment markers evaluated *inside the image*. Upstream already encodes the
+legitimate riscv64 divergences as markers
+(`mlflow; platform_machine != "riscv64"`), so those are honoured for free and
+never need a local exception. Which extras count is a two-line **contract**, not
+a threshold: `_VENV_CONTRACT_EXTRAS="ml-ai docs"` (what `assemble-torch-app.sh`
+always requests) plus whichever `pytorch-*` extra the image itself advertises in
+`PYTORCH_EXTRA` — reading the image's own advertisement is what keeps a
+`pytorch-cpu` wrapper from being asked for the ROCm extra's wheels. A second arm
+needs no configuration at all: any **dangling edge** — an unconditional
+requirement of an installed distribution that is not installed — fails, which is
+what covers the transitive tail the extras graph cannot see.
+
+Documented divergences go in `_venv_pkg_exempt`, keyed `<arch>:<extra>:<pkg>`
+(`DEP` for a dangling edge) and following `_parity_exempt`'s contract exactly:
+listed = reviewed, and an arm whose package turns out to be **present** fails and
+names the line to delete, so the table cannot rot in place. Today it holds two
+real facts — `cv2` is the source-built `/opt/opencv5` binding rather than the
+PyPI `opencv-python` wheel, and `onnxruntime` ships under its flavour name
+(`onnxruntime_dnnl` / `_webgpu`), which `_parity_ort_flavor` asserts. An extra
+that yields **no** requirement edges fails (renamed upstream, or truncated
+metadata) and so does a run that asserted nothing: an empty set is not a pass.
+
+**What these two do NOT cover.** They still see one image at a time, so a
+component present on *every* arch but wrong on all of them is invisible; a
+package installed at the right name but the wrong *version* remains the ML
+version-pin assertion's job; anything the app does not declare as a requirement
+(a transitively-pulled tool nobody depends on) is outside the graph; and the
+advertised-version table only covers the six keys listed above — a new
+version-carrying `ENV` in `Dockerfile.package` is unguarded until it is added to
+`_ADVERTISED_VERSION_KEYS`.
+
+**Mutation record (both gates proven red, then green).** Against the real
+locally-built `latest-cross-arm64`/`-riscv64` wrappers:
+
+| mutation | result |
+| --- | --- |
+| none (as shipped) | A **fails** on the live `PYTHON_VERSION` 3.14.7-vs-3.14.4 defect on both arches; B green on arm64 (18 edges), **10 fails** on riscv64 (`optuna`, `pandas`, `scikit-learn`, `scipy`, the four `docs` packages, `flatbuffers`, `protobuf`) |
+| advertise `PYTHON_VERSION=3.14.4` (the corrected label) | A **green**, 6/6 |
+| advertise `GSTREAMER_VERSION=9.9.9` | A fails on that key too — a second, independent row can red |
+| `pip uninstall captum scipy`, image re-committed | B goes **red**: 2 extra-requirement fails + 3 dangling-edge fails; unmutated image green |
+| recorded probe, `RTPROBE_DONE` stripped | both gates **fail** ("a gate that cannot run is not a pass") |
+| recorded probe, every `ADV` value blanked | A **fails** the vacuous-pass guard after six loud `SKIP`s |
+| recorded probe, `PKG opencv-python` added | B **fails**: the documented exemption no longer applies, message names the arm to delete |
+| recorded probe, `REQ docs …` removed | B **fails**: refuses to assert an empty extra |
+| recorded probe, `VENV ABSENT` injected | B prints a loud `SKIP` (never a pass) |
+
 ### Foreign-arch execution needs QEMU binfmt — registered **without sudo**
 
 The foreign-arch smokes above only mean something if the image's binaries can
@@ -489,3 +575,47 @@ the final image. This is a cross-**dev** container that compiles Python wheels
 from source under QEMU at build time, so the headers are load-bearing; splitting
 build-deps from runtime-deps would risk the source-build path for marginal size
 savings. Left as-is by design.
+
+### Advertised version keys (`advert-keys`)
+
+`linux/scripts/verify-advertised-keys.py` globs `linux/Dockerfile.*` for every
+version-shaped `ENV`/`ARG` and fails when one is neither checked by the smoke's
+advertised-vs-actual gate (`_ADVERTISED_VERSION_KEYS`) nor listed in `EXCUSED`
+with a reason. A stale excuse fails too, so the table cannot rot.
+
+The smoke's HAVE side must be an *independent* measurement, never a re-read of
+the value the image advertises. `VULKAN_VERSION` used to fail this: it parsed
+the version out of `/opt/vulkan/active`, a directory named by the very ARG being
+checked, so the row could never disagree. It now reads the loader
+(`vulkaninfo`), falling back to `VK_HEADER_VERSION` in the SDK header.
+
+Both sides are normalised before comparison: a leading `v` is stripped from the
+advertised git tag, and the measured value is cut to its numeric prefix so a
+`.dev0+<sha>` trailer (as `iree-base-runtime` carries) still compares equal.
+
+### Distro package names (`pkg-names`)
+
+`linux/scripts/verify-package-names.py` resolves every package name the tree
+asks apt for against the live Ubuntu indices. Two properties matter:
+
+- A **partial** index fetch is not a pass. If any component (`main`,
+  `restricted`, `universe`, `multiverse`) fails to download, the truncated name
+  set is discarded and not cached — otherwise a mirror hiccup would report live
+  packages as dead.
+- The vendor-repo exemption applies to vendor-shaped **names**, not whole files.
+  `setup-rocm-repo.sh` installs `curl`, `gpg` and `ca-certificates` from plain
+  Ubuntu before it adds the vendor repo; those stay failable.
+
+Offline is a `SKIP`, never a pass.
+
+### Runtime image push retries
+
+`01-core/runtime-build-fns.sh` retries a runtime image push, because a ~8 GiB
+wrapper upload can reset mid-transfer. Only the upload repeats:
+`PUSH_MAX_ATTEMPTS` (default 4) and `PUSH_RETRY_BASE_SECS` (default 15 s).
+
+A **permanent** failure is not retried. An unpushable `not found` — the build
+never created the tag — once burned all four attempts and buried the real cause
+in retry noise. The classification comes from the cross lane's
+`_cross_stage_push_error_is_transient` (`01-core/cross-stage-build.sh`); when
+that helper or the temp log is unavailable, every failure is retried as before.

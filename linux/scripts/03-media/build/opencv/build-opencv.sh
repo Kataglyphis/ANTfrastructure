@@ -926,7 +926,8 @@ main() {
         local _cv2_pp
         _cv2_pp="$(echo "${OPENCV_PREFIX}"/lib/python*/site-packages 2>/dev/null | tr ' ' ':')"
         PYTHONPATH="${_cv2_pp}${PYTHONPATH:+:${PYTHONPATH}}" \
-            verify_python_import "cv2" "cv2.__version__" || echo "Could not import cv2"
+            verify_python_import "cv2" "cv2.__version__" \
+            || echo "[WARN] cv2 import FAILED on a native build (traceback above) — real defect, not a sandbox artifact; non-fatal here, gated by smoke-media.sh and the runtime torch-venv smoke"
     elif [ "${WITH_PYTHON}" = "true" ]; then
         echo "Skipping Python import validation in cross mode"
     fi

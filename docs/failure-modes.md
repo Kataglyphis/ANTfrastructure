@@ -39,6 +39,7 @@ Two neighbours, so you land on the right page:
 - [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
+- [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 
 **Windows: the layer store (hcsshim)**
 
@@ -304,6 +305,65 @@ beside its `*_gpu-*` / `*_migraphx-*` neighbours. **The lesson is about `|| true
 on a destructive step:** it hides the failure AND the fact that the step was
 wrong, so the bug sits latent until something unrelated arms it — here, a
 read-only mount becoming writable.
+
+### A renamed or dropped distro package kills a stage hours in
+
+**Symptom.** A media or toolchain stage dies four hours into a rebuild with
+`E: Unable to locate package <name>` — or, worse, does not die: an
+`install_target_packages ... || true` swallows it and the feature silently
+vanishes from the shipped image.
+
+**Cause.** Ubuntu renames and drops binary packages between releases, and this
+tree pins a rolling one (`UBUNTU_CODENAME` in `versions.env`). 26.04 renamed
+`libfreetype6-dev` to `libfreetype-dev`, replaced `libopenexr-3-dev` with
+`libopenexr-dev`, and `libvvdec-dev` never existed on ports at all. Nothing
+noticed for months because warm apt caches still answered for the old names —
+the tree was un-buildable from scratch and no one knew, because nothing ever
+built from scratch.
+
+**Fix.** `linux/scripts/verify-package-names.py`, wired into `preflight.sh` as
+the `pkg-names` check. It extracts every distro package name **`linux/scripts/**`**
+asks for and resolves each against the live Ubuntu indices for the pinned codename —
+`archive.ubuntu.com` for amd64, `ports.ubuntu.com` for arm64/riscv64 — before a
+build starts rather than four hours in.
+
+What it reads, and how a verdict is reached:
+
+- Sources: `install_target_packages` / `install_optional_target_packages` /
+  `install_host_packages` / `install_deps_preamble` / `apt_install` call sites,
+  bare `apt-get install` lines, `*_packages` and `*_pkgs` array literals,
+  `append_unique_packages` / `append_available_packages` in
+  `01-core/package-lists.sh`, the `_CPYTHON_EXT_DEV_PKG_TABLE` rows in
+  `01-core/cpython-dev-packages.sh`, and the soname map at
+  `03-media/runtime/so-package-map.txt`. Names occur one-per-line AND
+  several-per-line; a per-line assumption is how an earlier audit reported the
+  wrong count, so `--list` prints exactly what was extracted.
+- **UNGUARDED** requests FAIL the gate: a missing name aborts the whole apt
+  transaction and kills the stage. **GUARDED** ones (`|| true`, a `||`
+  fallback chain, a self-filtering helper, an enclosing apt probe) only WARN —
+  the cost there is one wasted apt round-trip per run, not a dead build.
+- A name apt can still install through `Provides:` counts as present but is
+  reported: a virtual name disappears the next time the provider is renamed.
+- Names from a non-Ubuntu repo (NVIDIA/ROCm/TensorRT) are UNVERIFIABLE, never
+  dead; that file list lives in the script.
+- An array no installer ever consumes is reported as unchecked, not silently
+  dropped — that is what keeps sdkmanager component lists out of the verdict.
+- **Not covered:** package names written directly in a `Dockerfile` RUN
+  (`Dockerfile.toolchain`'s `binutils-dev` is the only one today), and anything
+  a script assembles at runtime rather than spelling out.
+
+**Offline is a SKIP, never a pass.** Indices are cached per codename with a
+6h TTL (`PKG_NAMES_TTL`, `PKG_NAMES_CACHE_DIR`): ~13s cold, ~1.5s warm. With no
+network and no cache the check says so loudly and exits 0; with a stale cache it
+verifies anyway and says the cache was stale.
+
+**The transferable lesson.** The gate carries its own extraction self-check —
+known package names that MUST be found (a several-per-line array row, a
+backslash-continued call, a `package-lists.sh` helper) and decoys that must NOT
+be (an sdkmanager component, a table column, a word from an `echo` string). Break
+the extractor and the check exits 2 before it ever reports green. A gate whose
+input extraction can silently degrade to nothing is the failure this repo keeps
+re-learning; a scanner has to prove it is still scanning.
 
 ---
 

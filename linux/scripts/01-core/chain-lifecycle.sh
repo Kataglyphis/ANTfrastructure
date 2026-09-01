@@ -76,3 +76,41 @@ chain_terminate_descendants() {
     kill "-${sig}" "${kid}" 2>/dev/null || true
   done
 }
+
+# ==============================================================================
+# chain_status_kv_json  "k=v,k=v"   → `"k": "v", "k": "v"`
+# chain_status_list_json "a,b"      → `"a", "b"`
+#
+# JSON bodies for the chain-status.json fields B3 adds (per-arch outcomes, gates
+# that did not run). No IFS splitting; values are shell-safe ids, no escaping.
+# ==============================================================================
+_chain_status_next_item() {   # prints "<item>|<rest>"
+  local csv="${1:-}" item
+  item="${csv%%,*}"
+  if [ "${item}" = "${csv}" ]; then printf '%s|' "${item}"; else printf '%s|%s' "${item}" "${csv#*,}"; fi
+}
+
+chain_status_kv_json() {
+  local csv="${1:-}" out="" sep="" pair item k v
+  while [ -n "${csv}" ]; do
+    pair="$(_chain_status_next_item "${csv}")"
+    item="${pair%%|*}"; csv="${pair#*|}"
+    [ -n "${item}" ] || continue
+    k="${item%%=*}"; v="${item#*=}"
+    out="${out}${sep}\"${k}\": \"${v}\""
+    sep=", "
+  done
+  printf '%s' "${out}"
+}
+
+chain_status_list_json() {
+  local csv="${1:-}" out="" sep="" pair item
+  while [ -n "${csv}" ]; do
+    pair="$(_chain_status_next_item "${csv}")"
+    item="${pair%%|*}"; csv="${pair#*|}"
+    [ -n "${item}" ] || continue
+    out="${out}${sep}\"${item}\""
+    sep=", "
+  done
+  printf '%s' "${out}"
+}

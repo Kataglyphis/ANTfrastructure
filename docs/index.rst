@@ -147,6 +147,7 @@ Common development targets:
    linux-build-basics
    linux-cross-builds
    gen1-riscv64-genai
+   riscv64-venv-parity
    linux-accelerator-images
    linux-host-setup
    runtime-services

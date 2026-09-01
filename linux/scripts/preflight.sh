@@ -39,6 +39,8 @@ export PYTHONUTF8=1
 KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity code-dupes artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
+             pkg-names \
+             advert-keys \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -174,6 +176,12 @@ if [ -f linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh ]; then
 else
   run_check mirror-consistency "ubuntu mirror consistency" bash -c 'echo "verify-ubuntu-mirror-consistency.sh MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
+
+# 6b. Every distro package name still exists on the pinned Ubuntu release,
+#     per arch. Unguarded dead names FAIL (the four-hours-in stage kill);
+#     guarded ones only WARN. Offline degrades to a loud SKIP, never a pass.
+run_check pkg-names "distro package names" ${PREFLIGHT_PYTHON} linux/scripts/verify-package-names.py
+run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/scripts/verify-advertised-keys.py
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then
