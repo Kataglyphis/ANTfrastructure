@@ -882,3 +882,46 @@ in `WindowsSourceBuild.Common.psm1`. `Modules.ScriptCallClosure.Tests.ps1` prove
 importing only what the script itself imports — that every module function a build script CALLS
 resolves; `Modules.ReExport.Tests.ps1` checks the other direction. Neither replaces the other, and
 the check takes seconds where the build takes hours.
+
+### A declaration that masks its command's exit status
+
+`local x="$(cmd)"` returns **`local`'s** status, not `cmd`'s. Under `set -e` the
+failure is invisible and `x` silently holds `""`.
+
+Live example, fixed 2026-09-01 — `_gst_monorepo_install`
+(`03-media/build/gstreamer/common/build-gstreamer-monorepo.sh`):
+
+```sh
+local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
+```
+
+`/tmp` is a tmpfs on every `Dockerfile.media` RUN, so a full tmpfs makes `mktemp`
+fail. With `gst_stage` empty the whole staging design inverts:
+
+| line | intended | with an empty value |
+| --- | --- | --- |
+| `meson install --destdir "${gst_stage}"` | stage into a temp tree | `--destdir ''` → installs into the **live root**, running target post-install scripts there |
+| `[ -d "${gst_stage}${GSTREAMER_PREFIX}" ]` | is anything staged? | `[ -d /opt/gstreamer ]` → always true |
+| `[ -d "${gst_stage}/usr/local" ]` | as above | `[ -d /usr/local ]` → always true |
+| `rm -rf "${gst_stage}"` | drop the staging tree | `rm -rf ''` → no-op |
+
+The sting: the only line reaching the build log is the same
+`WARNING: GStreamer cross-install had errors` a healthy cross run prints, so the
+broken run is **indistinguishable in the log**.
+
+**The gate.** `verify-masked-assignments.py` (preflight slug `masked-decls`)
+fails on any NEW `local`/`export`/`declare`/`readonly` declaration containing a
+command substitution; 54 pre-existing sites are frozen in
+`masked-assignments.allow`, keyed by file+variable so a site does not re-flag
+when something above it moves. Fixing one means deleting its line.
+
+Two reasons shellcheck alone was not enough: SC2155 does **not** fire on
+`local x="${y:-$(cmd)}"` (verified), and `lint-shell.sh` gates at `-S error`,
+where a warning can never fail the build.
+
+**The fix shape:**
+
+```sh
+local x
+x="$(cmd)" || return 1
+```

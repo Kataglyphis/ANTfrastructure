@@ -558,7 +558,15 @@ _gst_monorepo_install() {
   if cross_build_is_active; then
     # Post-install scripts (e.g. GLib's gio-querymodules) try to run TARGET
     # binaries on the build host, so stage via DESTDIR and tolerate their errors.
-    local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
+    # Split: `local x="$(cmd)"` returns local's status, so a full /tmp (it is a
+    # tmpfs on every media RUN) would leave gst_stage EMPTY and turn --destdir
+    # into a live-root install. docs/failure-modes.md
+    local gst_stage
+    gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")" || return 1
+    [ -n "${gst_stage}" ] && [ -d "${gst_stage}" ] || {
+      echo "ERROR: could not create a DESTDIR staging dir under /tmp" >&2
+      return 1
+    }
     set +e
     uv run meson install -C builddir --destdir "${gst_stage}" --no-rebuild >/tmp/gst-install.log 2>&1
     local install_rc=$?

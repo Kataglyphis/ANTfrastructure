@@ -41,6 +41,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes p
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
              pkg-names \
              advert-keys \
+             masked-decls \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -182,6 +183,7 @@ fi
 #     guarded ones only WARN. Offline degrades to a loud SKIP, never a pass.
 run_check pkg-names "distro package names" ${PREFLIGHT_PYTHON} linux/scripts/verify-package-names.py
 run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/scripts/verify-advertised-keys.py
+run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify-masked-assignments.py
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then
