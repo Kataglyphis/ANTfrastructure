@@ -13,8 +13,11 @@ import json
 import re
 import sys
 
+# The negative lookbehind for "-" keeps container flags out of the verb match:
+# the PowerShell original documents that exact false positive firing six times
+# on 2026-08-25, and this port reproduced it on its first real container run.
 VERB = re.compile(
-    r"(?<!git )\brm\b|\brmdir\b|\bunlink\b|\bshred\b|\bdd\b"
+    r"(?<!git )(?<!-)\brm\b|\brmdir\b|\bunlink\b|\bshred\b|\bdd\b"
     r"|\bfind\b[^\n]*-delete\b|\bmkfs(\.|\s)|\btruncate\b"
 )
 

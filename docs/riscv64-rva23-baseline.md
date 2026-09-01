@@ -35,6 +35,17 @@ our own builds while every apt library stays as it is.
 
 ## Where it is set
 
+**The value is an ISA string, not the profile name.** `-march=rva23u64_zifencei`
+works on the command line, but GCC's build-time `arch-canonicalize` only parses
+`rv32`/`rv64` prefixes and dies with ``Unexpected arch: `rva23` `` when the
+profile name reaches `--with-arch`. That killed a compiler stage on 2026-09-01
+after 684 s. The configured default is therefore
+`rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond` — vector plus the bit-manipulation
+and conditional-move extensions Ubuntu's own port carries. It is a SUBSET of
+RVA23 (no zvbb/zfa/zicboz and the rest); matching exactly would need the full
+~400-character expansion, which is unreadable and fragile. Verified in the
+shipped image: the object attribute carries `_v1p0`, `zba` and `zicond`.
+
 The single load-bearing edit is the **cross GCC's built-in default**
 (`02-toolchain/build-gcc.sh`, the `riscv64-*` case: `--with-arch` / `--with-abi`,
 overridable with `RISCV_GCC_ARCH` / `RISCV_GCC_ABI`). A compiler default cannot

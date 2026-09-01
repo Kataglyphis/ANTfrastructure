@@ -648,9 +648,11 @@ if [ -n "${TARGET_TRIPLET}" ]; then
     riscv64-*)
       _isa_spec="${RISCV_GCC_ISA_SPEC-20191213}"
       [ -n "${_isa_spec}" ] && CONFIG_CMD+=("--with-isa-spec=${_isa_spec}")
-      # Default the riscv64 target to Ubuntu's own baseline (RVA23 + Zifencei,
-      # i.e. WITH the vector extension). docs/riscv64-rva23-baseline.md
-      _rv_arch="${RISCV_GCC_ARCH-rva23u64_zifencei}"
+      # Ubuntu's baseline WITH vector. An ISA string, not the `rva23u64` profile
+      # NAME: gcc's own arch-canonicalize rejects profile names at configure time
+      # ("Unexpected arch: `rva23`"), though -march= accepts them.
+      # docs/riscv64-rva23-baseline.md
+      _rv_arch="${RISCV_GCC_ARCH-rv64gcv_zicsr_zifencei_zba_zbb_zbs_zicond}"
       _rv_abi="${RISCV_GCC_ABI-lp64d}"
       [ -n "${_rv_arch}" ] && CONFIG_CMD+=("--with-arch=${_rv_arch}")
       [ -n "${_rv_abi}" ] && CONFIG_CMD+=("--with-abi=${_rv_abi}")
