@@ -86,8 +86,14 @@ def verdict(text: str) -> str | None:
     norm = re.sub(r"\$\{?home\}?|(?<![\w.])~(?=/|\s|$)", "<home>", norm)
     for ok in RECLAIMABLE:
         norm = re.sub(re.escape(ok) + r"(/\*)?", " <reclaimable> ", norm)
+    # The bare-root pattern is the loosest one here: a "/" between a space and a
+    # quote. On the full text it fires on ordinary shell such as `sed 's/^/  /'`,
+    # which blocked real work twice on 2026-09-01. Match THAT one on the
+    # quote-stripped text; the specific paths keep the full text, because a real
+    # delete's path usually lives inside the quotes.
+    norm_bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", norm)
     for rx, what in PROTECTED:
-        if rx.search(norm):
+        if rx.search(norm_bare if what == "the filesystem root" else norm):
             return "command deletes from " + what
     return None
 

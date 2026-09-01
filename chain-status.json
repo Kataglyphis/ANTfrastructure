@@ -1,9 +1,9 @@
 {
-  "run_id": "20260901-180422-ed7c5fe9",
+  "run_id": "20260901-184235-67c8d379",
   "arches": "amd64,arm64,riscv64",
   "range": "compiler..runtime",
   "stages": {
     "compiler": {"status": "failed", "pin": ""}
   },
-  "updated": "2026-09-01T18:15:56Z"
+  "updated": "2026-09-01T19:38:44Z"
 }
