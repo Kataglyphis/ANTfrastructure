@@ -231,3 +231,24 @@ fired (SC1070 on Dockerfile.media-builder); the very next Windows Dockerfile
 added to the repo tripped SC1088 instead and broke main again. Which parse
 error PowerShell happens to provoke is arbitrary — enumerating them one
 outage at a time is not a policy.
+
+## Comment size (`comment-size`)
+
+Owner directive 6 says two lines at the point of use; longer text belongs in
+`docs/` with a pointer. `verify-comment-size.py` fails on any NEW comment block
+over 10 lines in `linux/scripts` or `linux/host-config`. The 175 blocks that
+predate the gate are frozen in `comment-size.allow`; shrinking one means
+deleting its line, and a stale entry fails too, so the list cannot rot.
+
+Entries are keyed on **file + the block's first comment line**, not on a line
+number — a block must not re-flag because something above it moved. One subtlety
+cost a debugging round: the key is truncated to 60 characters and must then be
+`rstrip()`ed, because the allowlist reader strips each line, so a key ending in
+whitespace reported the same block as NEW *and* STALE at once.
+
+A companion gate for cache blast radius (a script COPY'd into a shared stage
+that only leaf RUNs use) was prototyped and **dropped**: shared 01-core helpers
+are legitimately COPY'd into base stages for their descendants, so it produced
+false positives, and a noisy gate teaches people to ignore gates. The
+verify-media-artifacts case it was meant to catch is recorded in
+docs/refactoring-backlog.md F6 instead.
