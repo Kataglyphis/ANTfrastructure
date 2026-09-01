@@ -576,7 +576,7 @@ _collect_torch_wheel() {
 
     TARGET_TORCH_WHEEL="${APP_WHEELHOUSE_DIR}/$(basename "${built_wheels[0]}")"
     TARGET_TORCH_VERSION="$(parse_wheel_version "${TARGET_TORCH_WHEEL}" torch)"
-    extract_torch_wheel
+    extract_torch_wheel || return 1
     log "Built PyTorch cross wheel $(basename "${TARGET_TORCH_WHEEL}")"
 }
 
@@ -709,7 +709,7 @@ _collect_torchvision_wheel() {
         return 1
     fi
 
-    cp -a "${built_wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
+    cp -a "${built_wheels[@]}" "${APP_WHEELHOUSE_DIR}/" || return 1
     log "Built torchvision cross wheel $(basename "${built_wheels[0]}")"
 }
 

@@ -63,7 +63,7 @@ export_rootfs_from_image() {
   shift 3
 
   local rootfs_dir="${artifact_dir}/rootfs"
-  _export_container_rootfs "${nerdctl_bin}" "${tag}" "${rootfs_dir}"
+  _export_container_rootfs "${nerdctl_bin}" "${tag}" "${rootfs_dir}" || return 1
 
   if [ "$#" -gt 0 ]; then
     : > "${artifact_dir}/artifact.env"
@@ -72,6 +72,8 @@ export_rootfs_from_image() {
       shift
     done
   fi
+  # Explicit: the trailing `if` test would otherwise BE the exit status.
+  return 0
 }
 
 export_image_to_oci_layout() {

@@ -178,7 +178,7 @@ _runtime_finish_stage() {
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
   else
     if runtime_pushes_intermediate_images; then
-      runtime_push_tag "${tag}"
+      runtime_push_tag "${tag}" || return 1
     fi
     if [ "${kind}" != "wrapper" ] || ! runtime_pushes_wrapper_images; then
       runtime_refresh_stage_context "${kind}" "${arch}" "${tag}"
@@ -222,7 +222,7 @@ runtime_build_base_image() {
   fi
 
   if runtime_pushes_intermediate_images; then
-    runtime_push_tag "${tag}"
+    runtime_push_tag "${tag}" || return 1
   fi
 
   runtime_refresh_stage_context base "${arch}" "${tag}"
@@ -529,7 +529,7 @@ runtime_build_wrapper_image() {
   fi
 
   if runtime_pushes_wrapper_images; then
-    runtime_push_tag "${tag}"
+    runtime_push_tag "${tag}" || return 1
   fi
 }
 
@@ -552,7 +552,7 @@ runtime_build_wrapper_rootfs() {
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
 
   if runtime_pushes_wrapper_images; then
-    runtime_push_tag "${tag}"
+    runtime_push_tag "${tag}" || return 1
   fi
 }
 
