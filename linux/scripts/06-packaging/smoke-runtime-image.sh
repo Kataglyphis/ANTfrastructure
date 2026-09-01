@@ -949,9 +949,11 @@ _soname_verdicts() {
   while read -r so win ours; do
     [ -n "${so}" ] || continue
     n=$((n + 1))
+    # Ours lives under /opt AND /usr/local (onnxruntime, litert). The failure
+    # to catch is a DISTRO copy winning, i.e. a multiarch or plain system dir.
     case "${win}" in
-      /opt/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
-      *)      printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
+      /opt/*|/usr/local/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
+      *)                   printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
     esac
   done < <(printf '%s\n' "${probe}" | sed -n 's/^SONAME //p')
   [ "${n}" -gt 0 ] || printf 'NONE - - -\n'

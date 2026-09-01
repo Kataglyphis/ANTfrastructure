@@ -3,7 +3,8 @@
   "arches": "amd64,arm64,riscv64",
   "range": "runtime..runtime",
   "stages": {
-    "runtime": {"status": "running", "pin": ""}
+    "runtime": {"status": "failed", "pin": ""}
   },
-  "updated": "2026-09-01T13:02:26Z"
+  "arch_outcomes": {"amd64": "built-this-run", "arm64": "built-this-run", "riscv64": "built-this-run"},
+  "updated": "2026-09-01T17:29:10Z"
 }
