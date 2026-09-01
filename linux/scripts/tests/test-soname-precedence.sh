@@ -21,6 +21,14 @@ t_assert_contains \
   "$(_soname_verdicts "SONAME ${_GST} /opt/gstreamer/lib/${_GST} /opt/gstreamer/lib")" \
   "OK ${_GST}"
 
+t_case "our OTHER prefix counts as ours: /usr/local, not just /opt"
+# This exact line failed the 2026-09-01 riscv64 manifest run: libonnxruntime.so.1
+# sits in /opt/opencv5/lib and resolves to our canonical /usr/local ORT install.
+# The gate called that a distro win and stopped the chain.
+t_assert_contains \
+  "$(_soname_verdicts "SONAME libonnxruntime.so.1 /usr/local/lib/onnxruntime-cpu/lib/libonnxruntime.so.1 /opt/opencv5/lib")" \
+  "OK libonnxruntime.so.1"
+
 t_case "ArmNN counts too, now that it ships"
 t_assert_contains \
   "$(_soname_verdicts "SONAME libarmnn.so.33 /opt/armnn/lib/libarmnn.so.33 /opt/armnn/lib")" \
