@@ -82,7 +82,12 @@ function Stop-HostServices {
         }
     }
     Start-Sleep -Seconds 3
-    return , $stopped
+    # A real array, not the List: every caller reverses this in place via
+    # [array]::Reverse(), which binds a Generic List only as a converted COPY -
+    # the reversal was a silent no-op and services restarted in STOP order
+    # (measured 2026-09-01: buildkitd started before containerd and died on the
+    # missing containerd pipe after a shim deploy).
+    return , $stopped.ToArray()
 }
 
 Export-ModuleMember -Function @(

@@ -79,6 +79,10 @@ first:
 - `hcsshim::ActivateLayer 0x20` on a Windows host with an **AMD RDNA4 dGPU** —
   build inside the toggle window
   ([fix](docs/failure-modes.md#hcsshimactivatelayer-0x20-on-an-amd-radeon-host)).
+- Every Windows RUN step takes the **same implausible time** (e.g. `DONE 2841.2s`)
+  regardless of what it runs — the container's exit notification is lost and the
+  shim waits out its whole teardown timeout; cap it via the shim's env knob
+  ([diagnosis](docs/failure-modes.md#every-run-step-reports-done-28412s--the-same-number-whatever-it-runs)).
 
 ## Documentation
 

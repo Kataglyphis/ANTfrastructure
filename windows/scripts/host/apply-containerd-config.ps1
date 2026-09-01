@@ -16,7 +16,12 @@ param(
     # CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT; empty string REMOVES it. The
     # companion TASK_CLOSE_TIMEOUT stays unset on purpose - upstream derives it
     # as 2x teardown + 30s, so the two values cannot fall out of step by hand.
-    [string]$TeardownTimeout = '45m',
+    # 45m -> 5m (2026-09-01): under the lost-notification regression the 45 min
+    # became a flat tax on EVERY RUN (2841.2 s vs 441.3 s measured); 5m still
+    # covers the legitimate 117 s worst case 2.5x. A drift-repair run with the
+    # old default silently restored 45m - that is exactly how the regression
+    # would come back with every gate green (audit finding 2026-09-01).
+    [string]$TeardownTimeout = '5m',
     [string[]]$ExclusionPath = @(
         'C:\ProgramData\containerd',
         'C:\ProgramData\buildkitd',

@@ -23,11 +23,16 @@ Background and the full defect history: `docs/windows-build-lanes.md` § BuildKi
 
 Do not confuse them:
 
-- **The deployed local patch** raises the constants in place to 45 min / 100 min.
-  It is what currently runs on the reference host as
-  `C:\Program Files\Stevedore\bin\containerd-shim-runhcs-v1.exe`
-  (patched **25 329 664** bytes vs stock **23 279 616**; the original is kept
-  alongside as `.exe.orig`).
+- **The local constant patch** raises the constants in place to 45 min / 100 min.
+  It ran on the reference host until 2026-09-01 (last build 25 937 920 bytes,
+  now kept as `.exe.bak-20260901-112003`; the stock original stays alongside as
+  `.exe.orig`). **Since 2026-09-01 the reference host runs the upstream patch
+  below instead** — built from the fork branch
+  (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout`, owner directive:
+  fork, not this patch file) with
+  `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` on the containerd service,
+  after the 2026-08-31 lost-notification regression turned the fixed 45 min
+  into a 2841.2 s tax on every RUN (441.3 s with the 5 min knob).
 - **The upstream patch here** keeps the defaults at 30 s and makes them
   overridable by environment variable. It changes nothing unless a host opts in
   - which is what makes it acceptable upstream, and also means that **a shim

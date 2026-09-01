@@ -294,7 +294,9 @@ and are referenced from a consumer workflow as
 |---|---|
 | `run-in-linux-container` | One `docker run` in the Linux image, optional `tee` log and extra args |
 | `run-in-windows-container` | Same for the Windows image (CPU clamp, bind mount, pwsh payload) |
-| `cleanup-disk-space` | Free space on Windows runners |
+| `set-docker-data-root` | **Use this FIRST on Windows runners**: moves docker's data root to the big D: drive — the ~54 GB image does not fit on a stock windows-2025 runner's C:, and a pull without the move dies late with `hcsshim::ImportLayer 0x70` (measured; see [windows-build-resources.md](windows-build-resources.md)) |
+| `assert-docker-disk-space` | Fail fast when the runner cannot hold the image, instead of minutes into the pull |
+| `cleanup-disk-space` | Free space on Windows runners — the historical, destructive fallback; prefer the two rows above |
 
 They replace the hand-rolled `docker run` blocks that otherwise accumulate — in
 the reference consumer, twenty-plus copies across two workflows.

@@ -287,7 +287,17 @@ Four things an agent gets wrong without reading it:
   hacks and do not re-litigate it.
 - **Every Stevedore/containerd update reverts the patched runhcs shim.**
   `windows/scripts/host/deploy-shim-patch.ps1 -ReportOnly` belongs in your
-  post-update routine. **It can also wipe the buildkitd service `Environment`**
+  post-update routine. Since 2026-09-01 the deployed shim is the
+  **`upstream-env` variant built from the owner's fork**
+  (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout`), and it is only
+  patched-in-effect when the **containerd** service `Environment` carries
+  `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` — a **Go duration string**;
+  a bare number silently means stock 30 s. So an update now reverts TWO things:
+  the binary AND (via reinstall) possibly that env value — check both, restore
+  both with `deploy-shim-patch.ps1 -ShimPath <fork build> -ServiceEnvironment
+  CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m`. Changing the env value needs
+  a containerd restart (the shim inherits containerd's environment at spawn).
+  **It can also wipe the buildkitd service `Environment`**
   (the `BUILDKIT_STEP_LOG_MAX_SIZE=-1` / `BUILDKIT_STEP_LOG_MAX_SPEED=-1` keys
   that prevent the 2 MiB step-log clip) — check with
   `(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -Name Environment).Environment`
@@ -1471,13 +1481,13 @@ base ─┬─ onnxruntime ───────┐
 
 ## Common Failure Modes
 
-Symptom → cause → fix for 35 failures seen live on both lanes, keyed by the
+Symptom → cause → fix for 49 failures seen live on both lanes, keyed by the
 error message you actually get:
 [`docs/failure-modes.md`](docs/failure-modes.md). Grouped as Linux/cross-lane ·
 the Windows layer store (hcsshim) · container networking (CNI) · buildkitd and
 the store · Stevedore and the docker service · build content and toolchain.
 
-**Three reflexes that page encodes — worth holding before you need them:**
+**Four reflexes that page encodes — worth holding before you need them:**
 
 1. **Check free disk FIRST** on any weird hcsshim failure. Disk exhaustion
    wears three different costumes and only one of them names the disease.
@@ -1486,6 +1496,12 @@ the store · Stevedore and the docker service · build content and toolchain.
    manufactures the deterministic `0xb7` that then costs a `-NoCache` re-run.
 3. **After ANY red finalize, REBOOT before further A/B tests.** A wedged hcs
    state falsifies every experiment run after it.
+4. **Identical step timings mean a TIMEOUT, not slow work.** When every RUN
+   lands on the same number, decode that number against the shim teardown knob
+   before debugging the workload (the 2026-08-31/09-01 incident: 2841.2 s
+   byte-identical = lost exit notification × 45 min constant; a 240 s probe
+   kill then misread it as a hard wedge for a day). Timing table + re-mitigate
+   command: `docs/failure-modes.md` § "Every RUN step reports DONE 2841.2s".
 
 ---
 
