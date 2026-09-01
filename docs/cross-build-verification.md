@@ -925,3 +925,26 @@ shallow `-w` test PASSED and the build then died anyway with
 error: failed to create directory `/usr/local/cargo/registry/cache/...`
 Caused by: Permission denied (os error 13)
 Same mkdir-then-test idiom the sccache/ccache loop below already uses.
+
+### Which shared library a consumer actually gets
+
+`/etc/ld.so.conf.d` is read in **sort order**, and several of our `/opt` trees
+have a distro package exporting the SAME soname. Measured in the shipped arm64
+image on 2026-09-01:
+
+```
+libgstreamer-1.0.so.0 => /usr/lib/aarch64-linux-gnu/libgstreamer-1.0.so.0   (1.28.2, distro)
+libgstreamer-1.0.so.0 => /opt/gstreamer/lib/libgstreamer-1.0.so.0           (1.29.2, ours)
+```
+
+The distro copy won. It is not installed by us — `libgtk-4-1` pulls
+`libgstreamer1.0-0` back in *after* `03-media/runtime/install-deps.sh` purges it
+— so a consumer linking `-lgstreamer-1.0` got 1.28.2 while all 287 shipped
+plugins were 1.29.2. A core/plugin version split fails at runtime in confusing
+ways.
+
+`configure-runtime.sh` therefore writes `000-gstreamer.conf`,
+`000-ffmpeg.conf`, `000-opencv.conf` and `000-libcamera.conf`, the same
+convention `000-llvm-target.conf` already used. Verify after any change with
+`ldconfig -p | grep -e <soname>` **in the shipped image** — the build log cannot
+show this.

@@ -96,10 +96,14 @@ fi
 
 # ld.so: register the resolved libdir AND the plain lib/ root (cross libdir=lib
 # puts the .so there) so the runtime linker finds gstreamer on every layout.
-write_conf /etc/ld.so.conf.d/gstreamer.conf "${gst_libdir}" "/opt/gstreamer/lib"
-write_conf /etc/ld.so.conf.d/libcamera.conf "/opt/libcamera/lib" "/opt/libcamera/lib64"
-write_conf /etc/ld.so.conf.d/ffmpeg.conf "/opt/ffmpeg/lib"
-write_conf /etc/ld.so.conf.d/opencv.conf "/opt/opencv5/lib"
+# 000- prefix: ld.so.conf.d is read in SORT order, and the distro packages
+# (pulled back in by the gtk4 chain) export the SAME sonames. Without it the
+# multiarch dir wins and a consumer links distro 1.28.2 against our 1.29.2
+# plugins. docs/cross-build-verification.md
+write_conf /etc/ld.so.conf.d/000-gstreamer.conf "${gst_libdir}" "/opt/gstreamer/lib"
+write_conf /etc/ld.so.conf.d/000-libcamera.conf "/opt/libcamera/lib" "/opt/libcamera/lib64"
+write_conf /etc/ld.so.conf.d/000-ffmpeg.conf "/opt/ffmpeg/lib"
+write_conf /etc/ld.so.conf.d/000-opencv.conf "/opt/opencv5/lib"
 write_conf /etc/ld.so.conf.d/onnxruntime.conf "/usr/local/lib/onnxruntime-cpu/lib" "/usr/local/lib/onnxruntime-genai/lib"
 write_conf /etc/ld.so.conf.d/litert.conf "/usr/local/lib"
 write_conf /etc/ld.so.conf.d/gcc.conf "/opt/gcc-${GCC_VERSION:-16.2.0}/lib64" "/opt/gcc-${GCC_VERSION:-16.2.0}/lib"
