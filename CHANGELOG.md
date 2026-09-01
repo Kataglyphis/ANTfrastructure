@@ -232,6 +232,37 @@ import surface is genuinely strong at the core.
   brought back in sync — it was also missing the two pre-existing entries
   *"A source build produces UNPATCHED sources…"* and *"`atlbase.h` not found…"*.
 - `AGENTS.md`: the failure-mode count was stale at 35; it is 49.
+## 2026-09-01 — CI back to green: the guard that was never committed, a corrupt patch, and a leaking job env
+
+All three failing workflows, one session:
+
+- **Ubuntu 24.04 / delete-guard:** the Linux guard port shipped its wiring,
+  tests and docs — but `.gitignore`'s `.claude/hooks/*` silently swallowed the
+  `git add` of `guard-destructive-deletes.py` itself, so the file existed only
+  in one working tree and the guard was inert everywhere else. Recreated the
+  guard to the spec of its own 15-assertion suite (deny-only: package
+  removals, system dirs, home root, credential/config/store dirs, block
+  devices; quote-stripped verb matching, reclaimable blanking eats the
+  trailing `/*`) and added the missing gitignore negation with the incident
+  as its comment. 15/15 locally.
+- **Ubuntu 24.04 / code duplication:** two new copies from the riscv64 wave —
+  the embedded-python test's repeated extractor invocation (now a
+  `_extract_fresh` helper, 6/6 still green) and the ffmpeg-TF-SDK vs
+  opencv-harfbuzz file-presence gates, which are different domains sharing a
+  shape: allowlisted at exactly their current 12 shingles so growth still trips.
+- **Windows Scripts / patch-drift:** `003-mlas-windows-skip.patch` was
+  structurally corrupt since a 2026-08-30 edit — hunk header promised +20
+  lines, the body carries 21, plus a stray blank after the last context line.
+  `git apply` refuses that outright; the in-container applier is more tolerant,
+  which is why the OpenCV build itself kept passing. Header now says 21,
+  `git apply --stat` parses clean, applied content unchanged.
+- **llm-stack tests:** the three `TestResolutionOrder` failures were the
+  v1-api-contract job's own `OLLAMA_BASE_URL` (its ollama service) leaking into
+  tests that assert the order BELOW env — env beating the registry is pinned
+  as correct by `TestEnvironmentPrecedence`. An autouse fixture now clears
+  `LLM_BASE_URL`/`OLLAMA_BASE_URL`/`OLLAMA_HOST` for that class; verified by
+  mutation (fixture removed → exactly the three CI reds reproduce).
+
 ## 2026-09-01 — riscv64 at Ubuntu's RVA23 baseline; prevention gates; one root cause for five GStreamer plugins
 
 Gates: `make lint` clean (281 files), `make preflight` green,

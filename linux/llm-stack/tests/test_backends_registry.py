@@ -49,6 +49,15 @@ class TestShippedRegistry:
 
 
 class TestResolutionOrder:
+    @pytest.fixture(autouse=True)
+    def _ambient_env_cleared(self, monkeypatch):
+        # Env legitimately beats the registry (TestEnvironmentPrecedence pins
+        # that); these cases assert the order BELOW env, so the host's/CI's own
+        # endpoint vars must not leak in (the v1-api-contract job exports
+        # OLLAMA_BASE_URL for its service container and turned all three red).
+        for var in ("LLM_BASE_URL", "OLLAMA_BASE_URL", "OLLAMA_HOST"):
+            monkeypatch.delenv(var, raising=False)
+
     def test_named_backend(self, registry):
         url, model, source = resolve_backend("npu", path=registry)
         assert url == "http://127.0.0.1:18181"   # trailing slash stripped
