@@ -74,6 +74,13 @@ what you are about to do:
    README.md (user-facing pointers), the relevant `docs/` page, and
    `CHANGELOG.md` before the work is called done. A mechanism that only the
    git history knows about does not exist for the next session.
+5. **Short code comments. Long text goes in `docs/` and gets linked.** One or
+   two lines at the point of use, only where the code cannot say it itself.
+   Anything longer — forensics, dated evidence, why-not-the-obvious-thing,
+   measured numbers, a failure narrative — moves into a `docs/*.md` page and the
+   code carries a pointer to it. The owner reads code to read code; an essay in
+   the middle of a function pushes the logic off screen. Full rule and worked
+   example: § Comments: as few as possible, as short as possible.
 
 ## Container Architecture
 
@@ -482,16 +489,38 @@ human has to read it.
 
 ### Comments: as few as possible, as short as possible
 
-**Owner rule, 2026-08-28.** Code comments here had grown into essays. They are
-now held to this:
+**Owner rule (2026-08-28, restated 2026-09-01 as priority 5).** Code comments
+here had grown into essays. They are now held to this:
 
 - Comment only where the code cannot say it: a non-obvious *why*, a trap, a
   load-bearing constraint.
-- One or two lines. If it needs a paragraph, it belongs in `docs/` and the
-  comment is a one-line pointer — e.g. `# See docs/build-cache-tiers.md § 5.1`
-  — never an inline essay.
+- **Two lines is the ceiling.** If it needs a third, the content belongs in
+  `docs/` and the comment becomes a one-line pointer — e.g.
+  `# See docs/build-cache-tiers.md § 5.1`.
 - No narration of what the code plainly does, no incident history, no
-  restating a decision that a doc already owns.
+  restating a decision a doc already owns.
+
+**Move it, never drop it.** This tree's comments often hold the ONLY record of a
+real failure. When you shorten one, the detail must land in a `docs/` page in the
+same edit — verify the page contains it before you delete the lines. Trimming a
+comment down to nothing is data loss, not cleanup.
+
+Worked example, from `01-core/runtime-build-fns.sh` on 2026-09-01 — an 8-line
+block became 3, and the retry counts, the classifier and the `not found` incident
+moved into `docs/cross-build-verification.md`:
+
+```sh
+# Post-build: export to OCI layout locally, or push remotely, then clean up.
+# Transient push failures retry (PUSH_MAX_ATTEMPTS/PUSH_RETRY_BASE_SECS); a
+# permanent one does not. See docs/cross-build-verification.md.
+```
+
+**Why agents relapse here** (observed repeatedly, including 2026-09-01): the
+surrounding code is full of older long comments, and "match the file's style"
+pulls you back into writing essays. It does not apply to this rule. Match the
+style for naming and structure; hold this line regardless of what the neighbours
+look like. Do NOT go rewrite pre-existing long comments as a side quest either —
+the rule governs what you write and what you touch, not a tree-wide sweep.
 
 The same goes for prose written for the owner: short sentences, plain words.
 
