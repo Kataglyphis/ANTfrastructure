@@ -334,6 +334,12 @@ shipped image). ArmNN had no such path.
   runtime-repair2 log), so this is specific to invoking the script by hand — the
   exact way an operator would verify a published image. Find what hangs there.
 
+- **`preflight.sh` dies at the gitleaks secret scan** [S·★★] — 2026-09-01, twice
+  in a row: the process disappears mid-scan and never writes its exit code, so
+  the suite cannot report. It completed earlier the same day, so something about
+  the current tree or host state kills it. `PREFLIGHT_SKIP=secret-scan` is the
+  workaround; find why it dies before relying on the full suite again.
+
 ### F6. Cache-key blast radius in Dockerfile.media [M each, measured]
 
 Numbers from `out/build-logs/f2-media-validation.log` (2026-08-31, amd64, warm
