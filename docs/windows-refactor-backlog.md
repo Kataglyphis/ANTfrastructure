@@ -125,6 +125,117 @@ this repo's cp314 pin).
   redundant copies is a straight image-size win, but it moves the arch-gate binary count
   (1168) and the bundle manifest, so it needs a chain run to land. Measure first.
 
+- **#158 — the 2026-09-01 audit wave: 13 verified defects to land AFTER the
+  dual-lane run.** A 26-agent adversarially-verified audit (full narratives +
+  fix sketches: CHANGELOG 2026-09-01) confirmed 17 defects; the two that could
+  silently re-arm the 45 min teardown regression are already fixed
+  (`apply-containerd-config.ps1` 45m default, host-setup § R1 recipe). The rest
+  is DEFERRED because the container-side files are cache inputs of the running
+  chain — apply them in **one closure window** so the re-key is paid once:
+  - CRITICAL `build-buildkit.ps1:577` — forward `-TargetArch` to the
+    `-ConcurrentAux` children (today: arm64+ConcurrentAux clobbers amd64 tags
+    or merges stale trees, chain green).
+  - `Dockerfile.media-merge-builder:301` — move the `DEPS_MIN_*` ARG/ENV block
+    above the RUN that reads it; the wheel floors have been dead since landing.
+  - `build-buildkit.ps1:751` — exempt `final-tar`/`final-push` labels from
+    `-NoCache(-Stage)` matching (post-smoke export re-solves must be cache hits).
+  - `build-buildkit.ps1:743` — register child-forwarded `-NoCacheStage` entries
+    as matched in the parent (correct runs currently end red).
+  - `build-buildkit.ps1:574` — refuse or re-plumb `-ConcurrentAux -NoSccache`
+    (memory budget halving only exists via the webdav publish).
+  - `build-toolchain-all.ps1:96` + `build-llvm-from-source.ps1:202` — actually
+    call `Disable-ContainerWindowsUpdate` (docs promise it; the toolchain lane
+    never runs it; a WU spool write kills the layer finalize).
+  - `WindowsSourceBuild.Common.psm1:148` — capture the submodule-update exit
+    code on the commit-pin path (TVM's real path).
+  - `setup-new-host.ps1:214/249` — build from the PINNED fork branch with the
+    5m env (not unpinned HEAD + the retired 45min constant patch) and assert
+    the patched constant post-replace instead of failing open.
+  - `rebuild-host-vhdx.ps1:253/282` — both rollback paths start services in
+    stop order with swallowed errors (the measured 2026-09-01 bug, twice).
+  - `Dockerfile.probe:39` / `Dockerfile.sccache-write-probe:51` — the probe
+    lane mounts a deleted (#137) and an archived (9377c0ac) path; every
+    `-ProbeScript` solve dies at checksum (mind `**/archive/` in .dockerignore).
+  - `WindowsAgenticLoop.Common.psm1:418` — `ConcurrentBag` → `ConcurrentQueue`
+    (captured output is documented API and currently LIFO).
+  - Unverified majors to check while there: `build-onnx-genai-from-source.ps1:189`
+    (no post-copy floor), `rebuild-host-vhdx.ps1:214` ($RECYCLE.BIN skews the
+    copy-verify), `setup-new-host.ps1:351` (unguarded buildkitd restart).
+  - 36 minors, dominated by fail-open error paths (nuget/scoop/git-lfs class) —
+    sweep opportunistically, each with a mutate-the-guard test (standing rule).
+
+- **#159 — archive the eight settled sccache/CUDA probes (814 lines).** Three are
+  dead-by-construction (they mount the #137-deleted `sccache-nvcc-quote-fix`
+  tree); none is referenced by a live doc. Move to `diagnostics/archive/`
+  (pattern #127); re-point `Dockerfile.probe`'s default `PROBE_SCRIPT` and mind
+  `**/archive/` in .dockerignore. Keep live: probe-onnx-tu-replay,
+  repro-sccache-cuda-llm-deadlock, probe-build-copy, the write/video trios.
+  Closure window — bundle with #158's probe-mount fixes.
+
+- **#160 — compiler-rt mining recipe: contract drift across its three copies.**
+  versions.env:478-483 promises verified-or-warn SHA for all three; only the
+  LLVM copy implements it, and `setup-scoop-tools.ps1:311` also calls bare
+  `tar.exe` (the documented GNU-tar `C:\`-as-hostname trap). Port the ~10-line
+  verify+System32-tar block into the scoop and gstreamer copies (placement of
+  the three copies itself is deliberate, #135 — not the finding). Closure
+  window (re-keys base + merge branch).
+
+- **#162 — versions.env full-copy couples the lanes: any Linux-only pin edit
+  re-keys the ENTIRE Windows chain (~4 h machine time, measured).** base COPYs
+  the whole 943-line file; toolchain consumes ~5 keys. Fix: base COPYs a
+  generated Windows subset behind a sync-gate (inventory failure mode = #50's
+  aftermath — helper reads like GIT_VERSION), toolchain keys become ARGs
+  (#49/#103 pattern). One-time full re-key; do it as its own closure window.
+
+- **#163 — `-ConcurrentAux` has never been used: ~24 min idle-capacity per full
+  amd64 chain.** 43 manifests, zero concurrent runs; litert 3535 s + tvm
+  1425 s always sequential; the 19 GB half-budget path works and no longer
+  re-keys. Land AFTER #158's three ConcurrentAux fixes, then default it for
+  full amd64 chains — owed measurement: litert at 19 GB must not exceed the
+  hidden 1425 s (its bazel half grew 18→59 min since July).
+
+- **#164 — patched-LLVM compile bypasses sccache (dead launcher gate).**
+  `build-llvm-from-source.ps1:192` tests SCCACHE_DIR/SERVE which the
+  toolchain stage never sets → every toolchain re-key pays LLVM cold
+  (617 s + 1157 s within three days) while media-tvm compiles the same pin
+  THROUGH sccache. Gate on `Test-SccacheRemoteConfigured`, add the
+  SCCACHE ARG/ENV + logs cache-mount to the patched-llvm stage, forward
+  `$sccache` from the driver. ~7-13 min per toolchain re-key. Closure window.
+
+- **#167 — smoke gate is blind to the baked `C:\temp\scripts` surface.** The
+  suite runs entirely from the bind mount; nothing exercises the shipped
+  modules dir, the baked `smoke-test-container.ps1` the docs tell consumers to
+  hand-run, or `healthcheck.ps1` (a lying healthcheck shipped green once,
+  archive 08-31). Add a host-arch section: four baked files exist, module
+  import from the in-container set works, healthcheck exits 0 (skip on
+  pre-layout images). Closure window (cheap final-tail COPY re-key).
+
+- **#168-#174 — comment-discipline wave (owner rule: 1-2 lines + doc link;
+  ~170 comment lines move to docs).** Safe now: `Reuse.psm1:535` (#169 — the
+  30-line transport essay in Get-Help serves consumers a fsutil form the docs
+  declare broken/machine-wide; same rot in `test-layer-rename.ps1:142`),
+  `Reuse.psm1:455` (#170 — dead `container-build-caching.md` link; FIRST add
+  the 2026-07-20 os-error-3 diagnosis to the perf doc, THEN trim),
+  `start-geniex-servers.ps1:9` (#171 — topology study duplicated and already
+  drifting), `WindowsSlang.Common.psm1:16` (#173 — manifest schema defined
+  twice). Closure window (cache inputs): `WindowsMeson.Common.psm1:32` (#168 —
+  42-line essay fully covered by failure-modes.md),
+  `normalize-tensorrt-tree.ps1:8` (#172), `build-litert-all.ps1:35` (#174 —
+  lines 44-46 actively false since #128; fix the backlog's :79 line-ref in the
+  same commit).
+
+- **#175 — check while in the neighbourhood (unverified by the audit):**
+  `build-opencv-gstreamer-plugin.ps1:7` (only comment find with NO docs home —
+  needs a new subsection in windows-builds.md), `WindowsAgenticLoop.Common.psm1:1036`
+  (executor drain-loop duplicated with exit-code drift — `-ExecutorOnly`, a
+  consumer API, may report exit 0 on the build-failure cap: potential real
+  bug), `build-buildkit.ps1:437` (halving formula duplicated; prework for
+  #158's :574 fix). Plus the audit's low classes: driver-local structure
+  cleanups (land with #158), free host-comment trims, docs staleness
+  one-liners (build-lanes:789 stale ConcurrentAux deterrent, cross-builds
+  status header), the genai-as-fourth-branch trade-off (4-18 min vs fan-in on
+  the flakiest stage).
+
 ### CLOSED (pointers — full narratives in the dated archives)
 
 - **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.

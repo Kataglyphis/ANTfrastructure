@@ -878,7 +878,21 @@ steps; the remaining work is the Dockerfile surgery):
   needs NO restart — the shim spawns per container). PROOF: first-ever
   direct OpenCV finalize+export on this host (`bk-canary-shim-opencv`,
   28.6 s export, no 0x3), confirmed per the 3× OPENCV canary rule
-  (`bk-canary-shim-opencv{,2,3}` all clean, --no-cache). The lane is
+  (`bk-canary-shim-opencv{,2,3}` all clean, --no-cache).
+  **SUPERSEDED IN PART 2026-09-01:** the reference host now runs the
+  **`upstream-env` build from the owner's fork**
+  (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` = current
+  hcsshim main + the #2855 patch; sha256 `9ABF1C5F…`, 25 998 336 B) with
+  `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` on the containerd service.
+  Reason: under the 2026-08-31 lost-notification regression the fixed 45 min
+  made EVERY RUN cost 2841.2 s; with the 5 min knob the same RUN measures
+  441.3 s, and 5 min still covers the legitimate 117 s worst case 2.5×.
+  Two corrections to the paragraph above that only bit once the env variant
+  went live: the values are **Go duration strings** (`5m`, never a bare `300` —
+  unparseable silently means stock 30 s), and while a pure binary swap needs no
+  containerd restart, **changing the service `Environment` does** (the shim
+  inherits containerd's environment at spawn). The 45 min local-constant
+  binary survives as `.bak-20260901-112003`. The lane is
   DE-WARMED since 2026-08-06: direct solves everywhere, warm/materialize
   retired (payload scripts kept in tree as the rollback path, c9586c1^).
   **That recipe is partially stale (noted 2026-08-31, not repaired):** the

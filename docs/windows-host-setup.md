@@ -714,23 +714,31 @@ A–C here, then § Phase R for a Stevedore reinstall), **not** to switch driver
 required (`scoop install go`):
 
 ```powershell
-git clone --filter=blob:none https://github.com/microsoft/hcsshim.git D:\src\hcsshim
+git clone --filter=blob:none https://github.com/Kataglyphis/hcsshim.git D:\src\hcsshim
 cd D:\src\hcsshim
-git checkout 81e2e01                      # the verified base for the patch
-git apply D:\GitHub\Kataglyphis-ContainerHub\windows\upstream\hcsshim-teardown-timeout\local-45min-deployed.patch
+git checkout feature/configurable-teardown-timeout   # the fork branch: upstream main + PR #2855
 go build -o containerd-shim-runhcs-v1.exe .\cmd\containerd-shim-runhcs-v1
 ```
 
-~15 s. The result was **25 937 920 bytes** with Go 1.27.0 against stock's
-23 279 616 — the exact size drifts with the Go release, which is why the gate
-keys on the SHA256 that `deploy-shim-patch.ps1` records at install time and
-treats the size table only as a fallback. Then, elevated:
+~15 s. The 2026-09-01 build was **25 998 336 bytes** with Go 1.27.0 against
+stock's 23 279 616 — the exact size drifts with the Go release and the branch
+head, which is why the gate keys on the SHA256 that `deploy-shim-patch.ps1`
+records at install time and treats the size table only as a fallback. Then,
+elevated — **the `-ServiceEnvironment` part is NOT optional**: this build keeps
+stock 30 s defaults until the knob is set, and the value must be a Go duration
+string (`5m`, never a bare `300` — unparseable silently means stock):
 
 ```powershell
-pwsh -File windows\scripts\host\deploy-shim-patch.ps1 -ShimPath D:\src\hcsshim\containerd-shim-runhcs-v1.exe
+pwsh -File windows\scripts\host\deploy-shim-patch.ps1 `
+  -ShimPath D:\src\hcsshim\containerd-shim-runhcs-v1.exe `
+  -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m
 ```
 
-Verify with `-ReportOnly`: the gate hash must match the live binary.
+Verify with `-ReportOnly`: the gate hash must match the live binary and the
+env line must show the knob. (The pre-2026-09-01 recipe — `microsoft/hcsshim`
+@ `81e2e01` + `local-45min-deployed.patch` — is retired: under the
+lost-notification regression the fixed 45 min taxed every RUN with 2841.2 s;
+see `docs/failure-modes.md` § "Every RUN step reports DONE 2841.2s".)
 
 **The other `deploy-shim-patch.ps1` modes:**
 

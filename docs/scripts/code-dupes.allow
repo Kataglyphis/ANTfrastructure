@@ -4,6 +4,7 @@
 # frozen so the gate only reports NEW or GROWING copies. Shrinking one is
 # always welcome: lower its budget (or delete the line) when you do.
 
+linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh | linux/scripts/03-media/build/opencv/install-deps.sh | 12 | reviewed 2026-09-01: structurally similar multi-line file-presence gates (TF-SDK cache stamp vs riscv64 harfbuzz dev files) over DIFFERENT domains — not a dedup target; budget pinned at current size so growth still trips
 linux/scripts/build-runtime-artifacts.sh | linux/scripts/build-runtime-manifest.sh | 199 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/build/iree/android/build-android.sh | linux/scripts/03-media/build/litert/android/build-android.sh | 179 | baseline 2026-08-31, not yet reviewed
 linux/scripts/lint-shell.sh | linux/scripts/lint-workflows.sh | 95 | baseline 2026-08-31, not yet reviewed

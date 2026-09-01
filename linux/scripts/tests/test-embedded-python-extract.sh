@@ -11,6 +11,12 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
+# One extractor run against a fresh out dir — the shape every case repeats.
+_extract_fresh() {
+  rm -rf "${_work}/out"
+  "${PY}" "${EXTRACT}" "${_work}/out" "$@" >/dev/null 2>&1
+}
+
 cat > "${_work}/direct.sh" <<'SH'
 run_probe() {
   python3 - <<'PY'
@@ -41,25 +47,22 @@ PY_TAIL
 SH
 
 t_case "a directly-executed heredoc is extracted"
-"${PY}" "${EXTRACT}" "${_work}/out" "${_work}/direct.sh" >/dev/null 2>&1
+_extract_fresh "${_work}/direct.sh"
 t_assert_eq "1" "$(find "${_work}/out" -name 'direct__*.py' | wc -l)"
 t_assert_contains "$(cat "${_work}/out"/direct__*.py 2>/dev/null)" "import sys"
 
 t_case "an opener with trailing redirections is still extracted"
-rm -rf "${_work}/out"
-"${PY}" "${EXTRACT}" "${_work}/out" "${_work}/redirected.sh" >/dev/null 2>&1
+_extract_fresh "${_work}/redirected.sh"
 t_assert_eq "1" "$(find "${_work}/out" -name 'redirected__*.py' | wc -l)" \
   "the first extractor missed exactly this shape"
 
 t_case "a cat'ed fragment is NOT extracted"
-rm -rf "${_work}/out"
-"${PY}" "${EXTRACT}" "${_work}/out" "${_work}/fragment.sh" >/dev/null 2>&1
+_extract_fresh "${_work}/fragment.sh"
 t_assert_eq "0" "$(find "${_work}/out" -name '*.py' 2>/dev/null | wc -l)" \
   "linting a fragment alone reports bogus undefined names"
 
 t_case "the real tree yields extractable blocks, and the lint gate consumes them"
-rm -rf "${_work}/out"
-"${PY}" "${EXTRACT}" "${_work}/out" $(find "${TESTS_DIR}/.." -name '*.sh' -type f) >/dev/null 2>&1
+_extract_fresh $(find "${TESTS_DIR}/.." -name '*.sh' -type f)
 _n="$(find "${_work}/out" -name '*.py' | wc -l)"
 t_assert_ok test "${_n}" -ge 5
 t_assert_contains "$(cat "${TESTS_DIR}/../lint-python.sh")" "extract-embedded-python.py" \
