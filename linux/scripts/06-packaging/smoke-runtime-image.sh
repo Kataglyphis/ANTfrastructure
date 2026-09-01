@@ -751,7 +751,10 @@ for d in md.distributions():
         if n(q.name) not in inst:
             print("DANG", n(nm), n(q.name))
 PY
-# riscv64 only: the ISA the shipped objects were actually built for.
+# riscv64 only: what the image's own gcc defaults to, then the ISA each
+# shipped object was actually built for.
+printf 'RVCC %s\n' "$(gcc -v 2>&1 | grep -oE 'with-arch=[a-z0-9_]+' | head -1 | cut -d= -f2)"
+
 for _l in /opt/opencv5/lib/libopencv_core.so* /opt/ffmpeg/lib/libavcodec.so* \
           /opt/gstreamer/lib/libgstreamer-1.0.so* /lib/riscv64-linux-gnu/libc.so.6; do
   [ -r "${_l}" ] || continue
@@ -884,14 +887,19 @@ printf "%s\n" "${RT_PROBE_SH}" | bash' 2>/dev/null)" || true
 # Pure verdict function for the riscv64 ISA gate: probe text in, one
 # "OK|BAD|SKIP <lib> <attr>" line out per shipped object.
 _rvv_verdicts() {
-  local probe="$1" lib attr n=0
+  local probe="$1" lib attr n=0 cc vcc=0
+  cc="$(printf '%s\n' "${probe}" | sed -n 's/^RVCC //p' | head -1)"
+  # Only demand vector once the image's OWN toolchain defaults to it. Before that
+  # switch a plain object is the documented old state, not a regression.
+  case "${cc}" in rva23*|*gcv*|*_v|*_v_*) vcc=1 ;; esac
   while read -r lib attr; do
     [ -n "${lib}" ] || continue
     n=$((n + 1))
     case "${attr}" in
       "")        printf 'SKIP %s no ISA attribute could be read\n' "${lib}" ;;
       *_v1p0*)   printf 'OK %s %s\n' "${lib}" "${attr}" ;;
-      *)         printf 'BAD %s %s\n' "${lib}" "${attr}" ;;
+      *)         if [ "${vcc}" = "1" ]; then printf 'BAD %s %s\n' "${lib}" "${attr}"
+                 else printf 'OLD %s %s\n' "${lib}" "${attr}"; fi ;;
     esac
   done < <(printf '%s\n' "${probe}" | sed -n 's/^RVARCH //p')
   [ "${n}" -gt 0 ] || printf 'NONE - -\n'
@@ -914,6 +922,7 @@ check_riscv64_isa() {
       BAD)  bad=$((bad + 1))
             fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
       SKIP) echo "  ~~   ${lib}: ${attr}" ;;
+      OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
       NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
     esac
   done < <(_rvv_verdicts "${_SHIPPED_TRUTH_PROBE}")
