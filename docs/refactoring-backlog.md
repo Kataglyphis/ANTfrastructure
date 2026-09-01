@@ -310,6 +310,30 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
+### F6. Cache-key blast radius in Dockerfile.media [M each, measured]
+
+Numbers from `out/build-logs/f2-media-validation.log` (2026-08-31, amd64, warm
+ccache): the media stage is 134.3 min of RUN time across 90 steps, dominated by
+app-wheelhouse 1523.5s, ORT `--step cpu` 1452.0s, tvm 1377.1s, litert 1353.6s.
+The waste is not compute — it is over-broad mounts above that work.
+
+Two are FIXED (2026-09-01): `verify-media-artifacts.sh` no longer sits in the
+shared `base` stage (8 edits since 2026-08-01, each re-paying the whole media
+stage on every arch), and `linux/qnn-sdk/*.md` is out of the build context (a
+README-only dir mounted into the five heaviest RUNs).
+
+Still open, each mechanical but needing a build to prove:
+- **The ORT `--step cpu` RUN mounts the whole `build/onnxruntime` tree**, so an
+  edit to `60-build-genai.sh` (5 commits since 2026-08-01) re-pays the 24-minute
+  CPU build. The deps RUN five lines above already mounts per-file and carries a
+  comment explaining exactly why; mirror it here and at the genai / wasm / js
+  RUNs.
+- **The tvm RUN mounts all of `05-frameworks`**, pulling in
+  `torch/build-app-wheelhouse.sh` and `flutter/`, neither of which `tvm.sh`
+  sources — so a torch-wheelhouse edit re-pays the 23-minute tvm build.
+Do these in a window where a real media build can validate them: a missed
+transitive `source` fails hours in, which is worse than the cache cost.
+
 ### F5. The duplication baseline is frozen, not reviewed [L, measurable]
 
 `verify_code_dupes.py` reports OK, but that means **no NEW or GROWING** copy —

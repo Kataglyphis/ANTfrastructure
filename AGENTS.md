@@ -51,9 +51,12 @@ what you are about to do:
    with narrow per-file closures, local cache exports, ccache wired end-to-end
    (and MEASURED — emit stats to stderr, the stream the 2MiB step-log clip
    never truncates), pinned buildkitd GC budget, parallelism levers
-   (`GCC_PARALLEL_TARGETS`, `--parallel-archs`) taken when proven safe. The
-   resource monitor showed peak CPU at 42% — idle cores are the standing
-   wall-clock reserve. Speed that risks a silently wrong image is not speed
+   (`GCC_PARALLEL_TARGETS`, `--parallel-archs`) taken when proven safe.
+   Idle cores are the standing wall-clock reserve — but do NOT quote the old
+   "peak CPU 42%": it came from a broken sampler (the delta was read through a
+   command substitution, so every sample was the average since monitor start;
+   fixed 2026-09-01). Re-measure before citing a number. Speed that risks a
+   silently wrong image is not speed
    (the `--no-push` handoff lesson): correctness bounds every shortcut.
 2. **Maximum stability.** Digest-pinned handoffs, machine-checked ancestry,
    verified version pins (checksums from official sources), the five shell

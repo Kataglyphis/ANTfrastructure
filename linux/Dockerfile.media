@@ -173,7 +173,6 @@ COPY --chmod=644 linux/scripts/03-media/core/arch-flags-amd64.env   /opt/scripts
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-arm64.env   /opt/scripts/03-media/core/arch-flags-arm64.env
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-riscv64.env /opt/scripts/03-media/core/arch-flags-riscv64.env
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
-COPY --chmod=755 linux/scripts/03-media/runtime/verify-media-artifacts.sh /opt/scripts/03-media/runtime/verify-media-artifacts.sh
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
 COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/core/python-host.sh
 COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh     /opt/scripts/core/cmake-cache-linker.sh
@@ -310,10 +309,12 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
 
 # Validate ONNX Runtime CPU artifacts before downstream stages consume them.
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-cpu
 
 RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
@@ -346,6 +347,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step genai
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     if [ "${BUILD_GENAI:-true}" = "true" ]; then \
       bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-genai; \
@@ -411,6 +413,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
     bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step pkgconfig
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh onnxruntime-pkgconfig
 
@@ -470,6 +473,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/litert/build-litert.sh "${LITERT_VERSION}"
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh litert-headers
@@ -601,6 +605,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --skip-dep-install
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
@@ -653,6 +658,7 @@ RUN --mount=type=bind,source=linux/scripts/05-frameworks/torch,target=/opt/scrip
     fi
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh app-wheels
 
@@ -682,6 +688,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scri
     esac
 
 RUN --mount=type=bind,source=linux/scripts/03-media/build/armnn,target=/opt/scripts/03-media/build/armnn,readonly \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \
     --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \
     --mount=type=tmpfs,target=/tmp \
@@ -749,6 +756,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
     bash /opt/scripts/03-media/build/ffmpeg/build-ffmpeg.sh
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh ffmpeg
 
@@ -810,6 +818,7 @@ COPY --link --from=armnn /opt/armnn /opt/armnn
 COPY --link --from=armnn /opt/acl /opt/acl
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh media-inputs
 
@@ -909,6 +918,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/gstreamer,target=/opt/
         "$BUILD_TYPE"
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh gstreamer
 
@@ -948,6 +958,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/libcamera,target=/opt/
     bash /opt/scripts/03-media/build/libcamera/build-libcamera.sh
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh libcamera
 
@@ -1007,6 +1018,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,read
         --skip-dep-install
 
 RUN --mount=type=tmpfs,target=/tmp \
+    --mount=type=bind,source=linux/scripts/03-media/runtime/verify-media-artifacts.sh,target=/opt/scripts/03-media/runtime/verify-media-artifacts.sh,readonly \
     set -euo pipefail; \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv-core && \
     bash /opt/scripts/03-media/runtime/verify-media-artifacts.sh opencv
