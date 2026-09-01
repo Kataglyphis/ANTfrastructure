@@ -192,6 +192,17 @@ cross_configure_foreign_arch_apt_sources() {
   ubuntu_write_deb822_source "${ports_sources}" "${ports_url}" "${distro}" "${target_arch}" 1
 }
 
+# A phased-back libc6:<host> makes EVERY foreign-arch install unsatisfiable
+# ("libc6:amd64 Breaks libc6:riscv64 (!= <ver>)"). docs/cross-build-verification.md
+_CROSS_APT_PHASED_CONF=/etc/apt/apt.conf.d/99cross-phased-updates
+
+cross_allow_phased_updates() {
+  [ -d /etc/apt/apt.conf.d ] || return 0
+  [ -f "${_CROSS_APT_PHASED_CONF}" ] && return 0
+  printf 'APT::Get::Always-Include-Phased-Updates "true";\n' \
+    > "${_CROSS_APT_PHASED_CONF}" 2>/dev/null || return 0
+}
+
 cross_prepare_foreign_arch() {
   local target_arch
   cross_build_enabled || return 0
@@ -200,6 +211,7 @@ cross_prepare_foreign_arch() {
     dpkg --add-architecture "${target_arch}"
     _CROSS_ENV_APT_UPDATED=0
   fi
+  cross_allow_phased_updates
   cross_prepare_apt_sources_for_target
 }
 

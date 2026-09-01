@@ -290,8 +290,12 @@ _gst_monorepo_arch_flags() {
     # hard-fails the whole set. validate needs gstreamer-validate (devtools, off
     # for all cross builds).
     local -a _rs_disable=(validate)
-    # riscv64 only: Ports has no libcsound64, and skia-bindings' gn build injects
-    # the clang-only `--target=riscv64-linux-gnu`, which the GCC cross g++ rejects.
+    # riscv64 only. skia: skia-bindings' gn build injects the clang-only
+    # `--target=riscv64-linux-gnu`, which the GCC cross g++ rejects.
+    # csound: the old reason ("Ports has no libcsound64") is FALSE --
+    # libcsound64-dev exists on resolute riscv64 and the image already ships
+    # libcsound64.so.6.0. Kept disabled only because one failing plugin
+    # hard-fails the whole rs set. docs/refactoring-backlog.md
     if [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
       _rs_disable+=(csound skia)
     fi

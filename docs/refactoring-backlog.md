@@ -394,6 +394,44 @@ build log. See docs/cross-build-verification.md.
   Note the `-Dgtk=disabled` top-level option is a RED HERRING: it selects
   GStreamer's "build GTK4 as a subproject" mode and arm64 sets it too.
 
+- **riscv64 findings 2026-09-01 that are NOT fixed, and why** [★★★] — of the 40
+  findings from the RVV/GStreamer investigation, these stay open deliberately.
+  Each needs a real riscv64 media build to settle, and each has a failure mode
+  that costs more than the plugin it buys:
+  - **`csound`** — evidence that it *should* work is strong (`libcsound64-dev`
+    resolves on resolute riscv64; the image already ships `libcsound64.so.6.0`;
+    the "Ports has no libcsound64" comment is corrected in-tree). NOT flipped
+    because `build-gstreamer-monorepo.sh` states, and the whole `_rs_disable`
+    list exists because of it, that ONE gst-plugins-rs plugin whose native dep
+    fails hard-fails the entire set — risking the 8 Rust plugins riscv64 ships
+    today for one. Flip it in a build you can afford to lose.
+  - **`gtk`/`gtkwayland` (`MEDIA_SKIP_GTK_DEV`)** — two independent probes
+    DISAGREE. One really installed `libgtk-3-dev:riscv64` + `libgtk-4-dev:riscv64`
+    in the tree's own base image (246 Inst, same as arm64, `.pc` files produced);
+    the other hit `libgtk-3-dev:riscv64` failing on a `libssl3t64`
+    Multi-Arch:same version skew (ports `3.5.5-1ubuntu3` vs host
+    `3.5.5-1ubuntu3.2`). That skew is the same class as the phased-update hazard
+    fixed in `cross-apt.sh`, so it may already be gone — but the consumer at
+    `gstreamer/install-deps.sh:132-136` has NO `|| true`, so a wrong guess breaks
+    the media stage. Re-test after the next cold build.
+  - **`codec2json` (`libjson-glib-dev`)** — cannot be fixed by flipping
+    `MEDIA_SKIP_GLIB_STACK`, which also drops `libglib2.0-dev` and would drag
+    `gir1.2-gstreamer-1.0` (distro GStreamer 1.28.2) into the sysroot. The fix is
+    to SPLIT the flag: install `libjson-glib-dev` on its own call, the way
+    `liblcms2-dev` now is.
+  - **`MEDIA_SKIP_CAIRO_PANGO_PIXBUF` / `MEDIA_SKIP_LIBCXX_DEV`** — the packages
+    resolve and install today, so the stated reasons are stale, but neither flag
+    buys a plugin directly and both feed pre-setup paths with wider blast radius.
+  - **The RV1 ban's explanation is refuted, the ban is not.** The comments in
+    `opencv/install-deps.sh` claimed ports' riscv64 `glib-2.0.pc` expands an
+    EMPTY prefix. On resolute that `.pc` now ships in `libgio-2.0-dev` and is
+    byte-identical to arm64's modulo the triplet. The five 2026-08 failures were
+    real; the mechanism was wrong. Comments corrected in-tree; reproduce before
+    re-enabling anything on that basis.
+  - **TVM and IREE** still emit code at RUNTIME, so RVV needs a codegen-target
+    change (`-mattr=+v,+zvl128b`, `--iree-llvmcpu-target-cpu-features`), not a
+    compile flag. No such target string exists in the tree yet.
+
 - **The riscv64 skip flags are largely frozen workarounds** [M·★★★] — every
   package named in `03-media/core/arch-flags-riscv64.env` exists on the live
   resolute riscv64 ports index at the same version as amd64/arm64, and a REAL

@@ -38,15 +38,12 @@ if is_cross; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
     cross_arch="$(cross_target_arch 2>/dev/null || true)"
     if [ "${cross_arch}" = "riscv64" ]; then
-        # RV1 REVERTED FOR GSTREAMER-DEV (2026-08-20, after 5 live failures):
-        # ports DOES ship the packages now, but its riscv64 glib-2.0.pc
-        # expands prefix/libdir EMPTY in cross pkg-config contexts — and once
-        # installed it POISONS every glib lookup in the stage (opencv imported
-        # targets, libcamera's gst element compile AND link all died on it;
-        # wave-3 behavior without the package was clean). Availability !=
-        # cross-coinstallable. Do NOT install gstreamer/glib dev here until
-        # RV1-GST-PC fixes the expansion; the two-pass opencv-gst pass-2
-        # still links OUR /opt/gstreamer.
+        # RV1: 5 live failures in 2026-08 traced to the ports glib dev stack.
+        # The stated cause (an EMPTY prefix in ports' riscv64 glib-2.0.pc) did
+        # NOT reproduce on resolute 2026-09-01 — the .pc is now shipped by
+        # libgio-2.0-dev and is identical to arm64's modulo the triplet. The
+        # failures were real; the explanation is not. Reproduce before
+        # re-enabling. docs/refactoring-backlog.md
         echo "Skipping GStreamer dev packages for riscv64: ports' glib-2.0.pc poisons cross pkg-config (RV1-GST-PC)"
         echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
     elif [ "${cross_arch}" = "arm64" ]; then
@@ -133,9 +130,10 @@ if is_cross && [ "$(cross_target_arch)" != "amd64" ]; then
     _ft_arch="$(cross_target_arch 2>/dev/null || true)"
     # Try to install freetype + harfbuzz target packages from Ubuntu Ports.
     # riscv64 requests ONLY libfreetype-dev: libharfbuzz-dev:riscv64 Depends on
-    # libglib2.0-dev — the exact ports package RV1-GST-PC banned (its riscv64
-    # glib-2.0.pc expands prefix EMPTY in cross pkg-config contexts and poisons
-    # every glib lookup). The 2026-08-22 riscv64 media log proves the old
+    # libglib2.0-dev — the ports package RV1 banned. NOTE the empty-prefix
+    # explanation did not reproduce on resolute (see above); the ban rests on
+    # the observed failures, not on that mechanism. The 2026-08-22 media log
+    # proves the old
     # unconditional request really dragged libglib2.0-dev:riscv64 into the
     # PASS-1 opencv sysroot, while PASS-2 (FROM gstreamer, libfreetype-dev
     # pre-satisfied by gstreamer's dep chain) skipped this block entirely and
