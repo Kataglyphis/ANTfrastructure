@@ -482,6 +482,11 @@ _opencv_cmake_core_opts() {
         "-DWITH_HDF5=ON"
         "-DOPENCV_ENABLE_NONFREE=ON"
     )
+
+    # RVV is gated on these cache vars, not on -march. docs/riscv64-rva23-baseline.md
+    if [ "$(cross_target_arch)" = "riscv64" ]; then
+        _occmo_out+=("-DCPU_BASELINE=RVV" "-DWITH_HAL_RVV=ON")
+    fi
 }
 
 # Append cross-compilation CMake flags (find-root modes, archiver tools,

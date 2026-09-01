@@ -180,6 +180,11 @@ fi
 install_target_packages \
   libjpeg-turbo8-dev libpng-dev libtiff-dev libwebp-dev || true
 
+# colormanagement needs lcms2. arm64 only got it transitively via
+# libgdk-pixbuf-2.0-dev; riscv64 loses that path. No GLib dep, so no skip
+# flag applies. docs/refactoring-backlog.md
+install_target_packages liblcms2-dev || true
+
 # libopenexr-3-dev is GONE on Ubuntu 26.04 (renamed libopenexr-dev); the dead
 # first attempt only cost a failed apt round-trip every run. libvvdec-dev does
 # not exist on ports at all, so the guard stays and vvdec builds from source.

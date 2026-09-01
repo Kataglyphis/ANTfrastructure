@@ -358,26 +358,54 @@ build log. See docs/cross-build-verification.md.
   6 cross-toolchain packages were extracted nowhere (118 -> 121 call sites,
   522 -> 529 names).
 
-- **riscv64 ships without the vector extension (RVV)** [M·★★] — there is no
-  `-march=rv64…` anywhere in the tree, so every riscv64 artefact is built at the
-  cross toolchain's default `rv64gc`. The shipped image's gcc *does* accept
-  `-march=rv64gcv`, so the capability is there and unused; OpenCV, ORT and TVM
-  kernels all lose their widest riscv64 vectorisation. This is a DECISION, not a
-  bug: `rv64gcv` binaries will not run on riscv64 hardware without V, so it needs
-  either a second variant or a documented hardware floor. Decide before treating
-  riscv64 performance numbers as representative.
+- **riscv64 now builds at RVA23 (RVV ON)** [DONE 2026-09-01] — the earlier entry
+  here had the risk INVERTED and is corrected: the shipped image's own glibc and
+  loader already require RVV 1.0 (997 `vsetvli` in apt's `libc.so.6`), so a
+  board without a vector unit could never run this image. Our binaries were the
+  only sub-baseline objects in it. The cross GCC now defaults to
+  `rva23u64_zifencei`/`lp64d` — the exact string apt's libc carries — with
+  OpenCV, ORT, Rust and the gst-plugins-rs cargo wrapper wired separately
+  because they gate vector paths on their own switches. A new smoke gate reads
+  `Tag_RISCV_arch` off the shipped objects. See docs/riscv64-rva23-baseline.md.
+  OPEN: TVM and IREE emit code at RUNTIME, so they need a codegen-target change
+  (`-mattr=+v,+zvl128b` / `--iree-llvmcpu-target-cpu-features`), not a compile
+  flag. Also budget a COLD riscv64 build — this invalidates the warm cache.
 
-- **GStreamer: riscv64 ships 282 plugins, arm64 290** [M·★★] — measured
-  2026-09-01 with `gst-inspect-1.0` in both shipped images. Missing on riscv64,
-  present on arm64: `codec2json`, `colormanagement`, `csound`, `gtk`,
-  `gtkwayland`, `skia`, `uvcgadget`, `uvch264`. Nothing is missing the other way
-  round. Two are **deliberate**: `gtk`/`gtkwayland` follow from the documented
-  riscv64 GTK skip in `03-media/build/gstreamer/install-deps.sh:133` (Ubuntu
-  Ports cannot satisfy the GLib helper chain). The remaining six are unexplained
-  — find each one's missing dependency, then either enable it or record the
-  reason next to the GTK one so the gap is documented instead of discovered.
-  A per-arch plugin count assertion in the media smoke would stop this drifting
-  further.
+- **GStreamer: riscv64 ships 282 plugins, arm64 290 — root-caused** [M·★★★] —
+  measured with `gst-inspect-1.0` in both shipped images. None of the eight is
+  an upstream RISC-V arch guard; all reduce to three mechanisms:
+  - **Missing target -dev packages** that a `MEDIA_SKIP_*` flag removes, with
+    meson's `auto` features skipping silently and `--wrap-mode=nofallback`
+    (`build-gstreamer-monorepo.sh:333`) blocking the subproject fallback:
+    `codec2json` (needs `libjson-glib-dev`, dropped with the whole GLib dev
+    stack by `MEDIA_SKIP_GLIB_STACK`), `uvch264`/`uvcgadget` (`libgudev-1.0-dev`,
+    `MEDIA_SKIP_GUDEV`), and `gtk`/`gtkwayland` (`libgtk-3-dev`,
+    `MEDIA_SKIP_GTK_DEV`).
+  - **`colormanagement` needs `liblcms2-dev`, which this repo never installs on
+    ANY arch.** arm64 only gets it by accident, transitively via
+    `libgdk-pixbuf-2.0-dev → libglycin-2-dev → liblcms2-dev`; riscv64 loses that
+    path with `MEDIA_SKIP_CAIRO_PANGO_PIXBUF`. Install it explicitly for all
+    arches — it has no GLib dependency, so no skip flag touches it.
+  - **`csound` and `skia` are explicitly disabled** for riscv64 at
+    `build-gstreamer-monorepo.sh:296` (`-Dgst-plugins-rs:{csound,skia}=disabled`).
+    `skia` stays; the csound half rests on a comment ("Ports has no
+    libcsound64") that is **false** — `libcsound64-dev` exists on resolute
+    riscv64 and the runtime image already ships `libcsound64.so.6.0`.
+  Note the `-Dgtk=disabled` top-level option is a RED HERRING: it selects
+  GStreamer's "build GTK4 as a subproject" mode and arm64 sets it too.
+
+- **The riscv64 skip flags are largely frozen workarounds** [M·★★★] — every
+  package named in `03-media/core/arch-flags-riscv64.env` exists on the live
+  resolute riscv64 ports index at the same version as amd64/arm64, and a REAL
+  (not simulated) cross-install of all 13 inside the tree's own base image
+  returns rc=0 with all 13 "install ok installed" — but only with the host amd64
+  source constrained to `Architectures: amd64`, which `cross-apt.sh:188` does do.
+  `MEDIA_SKIP_GUDEV` and `MEDIA_SKIP_CSOUND` look outright stale;
+  `MEDIA_SKIP_CAIRO_PANGO_PIXBUF` and `MEDIA_SKIP_LIBCXX_DEV` have inaccurate
+  COMMENTS whose flags may still be justified for other reasons. Do NOT flip
+  `MEDIA_SKIP_GLIB_STACK` wholesale: `gir1.2-gstreamer-1.0:riscv64` drags distro
+  GStreamer 1.28.2 into the sysroot, which is a separate hazard. Retire them one
+  at a time, each proven by a real riscv64 media stage, not by an apt simulation.
 
 - **numpy differs between arm64 and riscv64** [S·★★] — measured 2026-09-01 in the
   shipped images: `numpy 2.5.1` on arm64 (the uv.lock wheel) vs `2.5.2` on

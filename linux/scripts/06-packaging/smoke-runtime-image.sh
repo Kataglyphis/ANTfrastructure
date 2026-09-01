@@ -751,6 +751,13 @@ for d in md.distributions():
         if n(q.name) not in inst:
             print("DANG", n(nm), n(q.name))
 PY
+# riscv64 only: the ISA the shipped objects were actually built for.
+for _l in /opt/opencv5/lib/libopencv_core.so* /opt/ffmpeg/lib/libavcodec.so* \
+          /opt/gstreamer/lib/libgstreamer-1.0.so* /lib/riscv64-linux-gnu/libc.so.6; do
+  [ -r "${_l}" ] || continue
+  printf 'RVARCH %s %s\n' "${_l##*/}" \
+    "$(readelf -A "${_l}" 2>/dev/null | grep -oE 'rv64[a-z0-9_]*' | head -1)"
+done
 echo RTPROBE_DONE
 PROBE
 }
@@ -874,6 +881,46 @@ printf "%s\n" "${RT_PROBE_SH}" | bash' 2>/dev/null)" || true
 }
 
 # A: the image must not advertise a version it does not have.
+# Pure verdict function for the riscv64 ISA gate: probe text in, one
+# "OK|BAD|SKIP <lib> <attr>" line out per shipped object.
+_rvv_verdicts() {
+  local probe="$1" lib attr n=0
+  while read -r lib attr; do
+    [ -n "${lib}" ] || continue
+    n=$((n + 1))
+    case "${attr}" in
+      "")        printf 'SKIP %s no ISA attribute could be read\n' "${lib}" ;;
+      *_v1p0*)   printf 'OK %s %s\n' "${lib}" "${attr}" ;;
+      *)         printf 'BAD %s %s\n' "${lib}" "${attr}" ;;
+    esac
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^RVARCH //p')
+  [ "${n}" -gt 0 ] || printf 'NONE - -\n'
+}
+
+# C: riscv64 objects must carry the vector extension Ubuntu's own userland requires.
+check_riscv64_isa() {
+  local image_tag="$1" target_arch="$2"
+  [ "${target_arch}" = riscv64 ] || return 0
+  echo "--- SHIPPED-TRUTH C: riscv64 ISA of the shipped objects ---"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE"
+    echo ""
+    return 0
+  fi
+  local verb lib attr bad=0 ok=0
+  while read -r verb lib attr; do
+    case "${verb}" in
+      OK)   ok=$((ok + 1)) ;;
+      BAD)  bad=$((bad + 1))
+            fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
+      SKIP) echo "  ~~   ${lib}: ${attr}" ;;
+      NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
+    esac
+  done < <(_rvv_verdicts "${_SHIPPED_TRUTH_PROBE}")
+  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "RVV: all ${ok} checked object(s) carry v1p0"
+  echo ""
+}
+
 check_advertised_versions() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1293,6 +1340,7 @@ main() {
     run_shipped_truth_probe "${image_tag}" "${target_arch}"
     check_advertised_versions "${image_tag}" "${target_arch}"
     check_venv_package_set "${image_tag}" "${target_arch}"
+    check_riscv64_isa "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

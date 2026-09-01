@@ -648,6 +648,12 @@ if [ -n "${TARGET_TRIPLET}" ]; then
     riscv64-*)
       _isa_spec="${RISCV_GCC_ISA_SPEC-20191213}"
       [ -n "${_isa_spec}" ] && CONFIG_CMD+=("--with-isa-spec=${_isa_spec}")
+      # Default the riscv64 target to Ubuntu's own baseline (RVA23 + Zifencei,
+      # i.e. WITH the vector extension). docs/riscv64-rva23-baseline.md
+      _rv_arch="${RISCV_GCC_ARCH-rva23u64_zifencei}"
+      _rv_abi="${RISCV_GCC_ABI-lp64d}"
+      [ -n "${_rv_arch}" ] && CONFIG_CMD+=("--with-arch=${_rv_arch}")
+      [ -n "${_rv_abi}" ] && CONFIG_CMD+=("--with-abi=${_rv_abi}")
       ;;
   esac
 fi

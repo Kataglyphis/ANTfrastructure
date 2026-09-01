@@ -472,6 +472,11 @@ append_onnx_cross_cmake_build_args() {
     onnxruntime_BUILD_UNIT_TESTS=OFF
     onnxruntime_GENERATE_TEST_REPORTS=OFF
   )
+  # RVV kernels are gated on ORT's own define, not on -march.
+  # docs/riscv64-rva23-baseline.md
+  if [ "$(cross_target_arch)" = "riscv64" ]; then
+    build_args_ref+=(--cmake_extra_defines onnxruntime_USE_RVV=ON)
+  fi
 }
 
 # Append the optional LTO / WebGPU build flags, each gated on its ORT_ENABLE_*

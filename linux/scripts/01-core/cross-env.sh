@@ -572,6 +572,10 @@ _export_cargo_vars() {
   export "CC_${_cross_rust_env_lc}=${CC}"
   [ -n "${CXX:-}" ] && export "CXX_${_cross_rust_env_lc}=${CXX}"
   [ -n "${AR:-}" ] && export "AR_${_cross_rust_env_lc}=${AR}"
+  # Rust has no gcv triple; RVV is a target-feature. docs/riscv64-rva23-baseline.md
+  if [ "${_ecv[target_arch]}" = "riscv64" ]; then
+    export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-C target-feature=+v,+zvl128b"
+  fi
 }
 
 # Export the full cross-compilation environment by dispatching to the per-group
