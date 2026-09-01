@@ -326,6 +326,14 @@ Note the same shape is CORRECT for `/opt/tvm`, `/opt/pyav` and `/opt/app-wheels`
 their content is installed into `/opt/venv` (tvm and av are importable in the
 shipped image). ArmNN had no such path.
 
+- **The runtime smoke does not reach its own shipped-truth gates when run
+  STANDALONE** [S·★★] — measured 2026-09-01 against the published
+  `latest-cross-arm64`: the run stops after "Functional: ML version-pin
+  assertion", with `nerdctl` logging "force cleanup timed out for container".
+  The gates run fine inside the build (their PASS/FAIL lines are in the
+  runtime-repair2 log), so this is specific to invoking the script by hand — the
+  exact way an operator would verify a published image. Find what hangs there.
+
 ### F6. Cache-key blast radius in Dockerfile.media [M each, measured]
 
 Numbers from `out/build-logs/f2-media-validation.log` (2026-08-31, amd64, warm
