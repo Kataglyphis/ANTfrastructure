@@ -153,8 +153,10 @@ uv_venv_create() {
     uv_args+=("--python=$python_version")
   fi
 
-  uv "${uv_args[@]}" $clear_flag
+  uv "${uv_args[@]}" $clear_flag || return 1
   _CURRENT_VENV_PATH="$venv_path"
+  # Explicit: the trailing assignment would otherwise BE the exit status.
+  return 0
 }
 
 # Install a requirements file into a specific venv. The --python pin is

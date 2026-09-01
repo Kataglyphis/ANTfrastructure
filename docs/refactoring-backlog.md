@@ -446,25 +446,16 @@ build log. See docs/cross-build-verification.md.
   that libgudev installs cleanly, then reverted on this finding — installing it
   would have pulled `libglib2.0-dev` in through the back door.
 
-- **Swallowed-failure findings still OPEN (2026-09-01)** [M each] — from the
-  error-swallowing pass; the four HIGH ones are fixed, these are not:
-  - `_python_cross_stage_target_deps` installs CPython's *required* dev packages
-    in one atomic `apt-get`, downgraded with `|| true` — a partial failure leaves
-    an incomplete sysroot a later existence check treats as present.
-  - `_ancestry_check_link` lets `ancestry_assert_chain` log "ancestor chain
-    verified" when it compared ZERO links. A gate that verifies nothing must not
-    print the same line as one that verified six.
-  - `verify-parity.sh:257` reports "All N version checks match" when neither
-    image could be read.
-  - `media_common_init` loads its own self-declared "critical modules" with
-    `|| true`.
-  - Three more rc-by-accident functions (`_litert_wheel_prepare_env`,
-    `uv_venv_create`, `_fetch_npm_package`) end in an assignment or an `info()`,
-    so a failed patch/extract returns 0.
+- **Swallowed-failure findings: two left, both needing a real build** [M] — the
+  error-swallowing pass produced 15; 13 are fixed. The two that stay:
+  - `_python_cross_stage_target_deps` (`02-toolchain/python/build_python.sh`)
+    installs CPython's *required* dev packages in ONE atomic `apt-get`,
+    downgraded with `|| true`. Splitting it, or failing on it, changes install
+    behaviour in the toolchain stage — the kind of change that must be proven by
+    a build, not by reasoning.
   - `build-app-wheelhouse.sh`'s `main()` maps every failure inside
-    `prepare_build_environment` to one generic message.
-  All are the same class as the four already fixed; none needs a rebuild to
-  settle, only care. See docs/failure-modes.md § masked exit status.
+    `prepare_build_environment` to one generic message. Cosmetic until something
+    in there actually fails; worth doing while touching that file anyway.
 
 - **The destructive-delete guard cannot fire on a host without `pwsh`** [S·★★★]
   — `.claude/hooks/guard-destructive-deletes.ps1` is the mechanical answer to the

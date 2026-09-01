@@ -534,6 +534,8 @@ _litert_wheel_prepare_env() {
         "${pip_pkg_dir}" \
         "LiteRT build_pip_package_with_cmake.sh env var overrides"
     _fixed="${pip_pkg_dir}/build_pip_package_with_cmake.sh"
+  # Explicit: the trailing assignment would otherwise BE the exit status.
+  return 0
 }
 
 _litert_wheel_native_args() {

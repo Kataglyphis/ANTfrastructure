@@ -126,6 +126,17 @@ media_common_init() {
   source_module build-helpers.sh     || true
   source_module guard-helpers.sh     || true
   source_module parallelism.sh       || true
+  # The `|| true` above tolerates a benign rc from a module's last statement, so
+  # assert the OUTCOME instead: a critical module that did not load leaves its
+  # functions undefined. docs/failure-modes.md
+  local _fn _missing=""
+  for _fn in log cross_build_is_active mem_capped_jobs; do
+    declare -F "${_fn}" >/dev/null 2>&1 || _missing="${_missing} ${_fn}"
+  done
+  if [ -n "${_missing}" ]; then
+    echo "ERROR: media_common_init: critical module(s) did not load -- missing:${_missing}" >&2
+    return 1
+  fi
 
   # Optional modules — may not be needed by every consumer.
   source_module cross-meson.sh       || true

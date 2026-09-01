@@ -284,6 +284,10 @@ _ancestry_check_link() {
 }
 
 # Walk one architecture's ancestor chain upward from <child> to base.
+# Links actually compared. A chain that compared NONE must not report the same
+# line as one that compared six. docs/failure-modes.md
+_ANCESTRY_LINKS_CHECKED=0
+
 _ancestry_assert_branch() {
   local child="$1" arch="$2"
   local parent child_ref parent_ref label rc=0
@@ -303,6 +307,7 @@ _ancestry_assert_branch() {
     if [ -n "${child_ref}" ] && [ -n "${parent_ref}" ]; then
       label="${parent}→${child}"
       cross_stage_is_per_arch "${child}" && label="${label} (${arch})"
+      _ANCESTRY_LINKS_CHECKED=$((_ANCESTRY_LINKS_CHECKED + 1))
       _ancestry_check_link "${child_ref}" "${parent_ref}" "${label}" || rc=1
     fi
 
@@ -332,6 +337,7 @@ ancestry_assert_chain() {
   [ -z "${start_parent}" ] && return 0   # from base: no prior stages to verify
 
   log "[ancestry] verifying the ancestor chain feeding stage '${from_stage}' (arches: ${arches_csv})"
+  _ANCESTRY_LINKS_CHECKED=0
 
   for arch in $(arch_list_to_words "${arches_csv}"); do
     _ancestry_assert_branch "${start_parent}" "${arch}" || rc=1
@@ -344,8 +350,13 @@ ancestry_assert_chain() {
     warn "[ancestry] Fix: rerun --from-stage at or before the OLDEST stage reported"
     warn "[ancestry]      above, so the rebuilt content propagates down the chain."
     warn "[ancestry] Override (you accept the stale ancestor): CROSS_VERIFY_ANCESTRY=0"
+  elif [ "${_ANCESTRY_LINKS_CHECKED}" -eq 0 ]; then
+    warn "[ancestry] compared ZERO links — every stage tag failed to resolve, so this"
+    warn "[ancestry] verified NOTHING. Treating as a failure rather than printing 'verified'."
+    warn "[ancestry] Override: CROSS_VERIFY_ANCESTRY=0"
+    rc=1
   else
-    log "[ancestry] ancestor chain verified"
+    log "[ancestry] ancestor chain verified (${_ANCESTRY_LINKS_CHECKED} link(s))"
   fi
   return "${rc}"
 }
