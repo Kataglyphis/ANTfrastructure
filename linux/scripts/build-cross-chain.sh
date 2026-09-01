@@ -480,6 +480,12 @@ _chain_stage_disk_guard() {
         [ -n "${victim}" ] || break
         log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
         rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+        # An undeletable slug stays the LRU pick forever: without this the loop
+        # spins for the rest of the run. Protect it and move on.
+        if [ -e "${bc_dir}/${victim}" ]; then
+          warn "[disk-guard]   could not remove ${victim}; skipping it"
+          protected="${protected} ${victim}"
+        fi
         free_gb="$(_disk_guard_free_gb "${bc_dir}")"
         [ -n "${free_gb}" ] || return 0
       done
@@ -508,6 +514,12 @@ _chain_stage_disk_guard() {
     [ -n "${victim}" ] || break
     log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
     rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+    # An undeletable slug stays the LRU pick forever: without this the loop
+    # spins for the rest of the run. Protect it and move on.
+    if [ -e "${bc_dir}/${victim}" ]; then
+      warn "[disk-guard]   could not remove ${victim}; skipping it"
+      protected="${protected} ${victim}"
+    fi
     total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
     [ -n "${total_gb}" ] || return 0
   done

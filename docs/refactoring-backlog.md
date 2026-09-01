@@ -446,6 +446,24 @@ build log. See docs/cross-build-verification.md.
   that libgudev installs cleanly, then reverted on this finding — installing it
   would have pulled `libglib2.0-dev` in through the back door.
 
+- **Re-entrancy findings, 2026-09-01 — all OPEN, each needs a real build** [M] —
+  the runtime-semantics pass found three states a failed run leaves behind that
+  make the RETRY wrong rather than merely slow. None is fixable by reasoning
+  alone; each needs the failure reproduced in a stage:
+  - **onnxruntime-web's shared cache mount freezes a partial asset set.** A
+    degraded/partial `asm.sh` run populates the shared mount, and every later run
+    treats it as complete (`onnxruntime/build/asm.sh`,
+    `build-onnxruntime.sh:64-84,124-126`, `50-build-js.sh:83-96`). This is the
+    highest-value one: it survives across runs, not just within one.
+  - **`setup-rootless-binfmt.sh` treats a TRUNCATED qemu emulator as present**
+    (`extract_emulators`, and the verify at :136-148), so a retry after a
+    half-written extract keeps the broken binary. Compare against
+    [[binfmt-boot-race-2026-08-27]]: proving binfmt healthy needs a real
+    foreign-arch RUN, never a file-exists check.
+  - **`ensure_tensorflow_c_sdk` leaves `${tf_dir}/lib` behind** on a partial run
+    and the retry's existence check accepts it
+    (`03-media/build/ffmpeg/ffmpeg-dnn-backends.sh:56-115`).
+
 - **Swallowed-failure findings: two left, both needing a real build** [M] — the
   error-swallowing pass produced 15; 13 are fixed. The two that stay:
   - `_python_cross_stage_target_deps` (`02-toolchain/python/build_python.sh`)
