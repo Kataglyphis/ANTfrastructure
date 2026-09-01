@@ -61,8 +61,9 @@ what you are about to do:
    that FAIL LOUDLY — an assertion-free PASS ("will work at runtime") or an
    inner warning swallowed by an outer green is a defect, not a success.
 3. **Many tests.** Every fix ships with a regression test where testable:
-   unit suites under `linux/scripts/tests/` (auto-discovered by the
-   pre-commit `script-tests` gate), lint gates (shellcheck, IFS-safety,
+   unit suites under `linux/scripts/tests/` (auto-discovered by
+   `run-tests.sh`, run by preflight's `script-tests` slug — NOT by the
+   pre-commit hook, which runs a narrower `PREFLIGHT_ONLY` subset), lint gates (shellcheck, IFS-safety,
    hadolint, actionlint, ruff via `lint-python.sh`, gitleaks via
    `lint-secrets.sh`), preflight checks, and smoke assertions that assert
    real behavior against `versions.env` pins. **Mutation-test every new
@@ -1259,6 +1260,15 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   exception is recorded THERE, never in prose, and the gate fails an exemption
   that no longer applies. The ORT flavour split and arm64-only QNN are
   deliberate, not gaps.
+- **riscv64 builds WITH the vector extension** (2026-09-01). The cross GCC
+  defaults to `rva23u64_zifencei` / `lp64d` — Ubuntu's own riscv64 baseline,
+  which the image's glibc already requires. Do NOT "restore compatibility" by
+  reverting it: an rv64gc-only board cannot run this image regardless. Set via
+  `--with-arch` in `02-toolchain/build-gcc.sh` (`RISCV_GCC_ARCH` /
+  `RISCV_GCC_ABI` override), never as a `CFLAGS` export. `-march` alone does not
+  reach OpenCV, ORT, Rust or gst-plugins-rs — each has its own switch. Changing
+  it invalidates the warm riscv64 compiler cache. Owner:
+  [`docs/riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
 
 ## Dockerfile.media BuildKit Strategy
 
@@ -1302,7 +1312,11 @@ base ─┬─ onnxruntime ───────┐
   list.** The authoritative check inventory is its `KNOWN_SLUGS` array (do NOT
   enumerate it here — this very paragraph went stale by three slugs once);
   `tests/test-preflight-slugs.sh` enforces that every slug has a registered
-  check and vice versa. Newest additions: `python-lint` (ruff, hard on
+  check and vice versa. Newest additions: `pkg-names` (every package name the
+  tree asks apt for, resolved against the live indices; a PARTIAL index fetch is
+  a SKIP, never a pass) and `advert-keys` (every version-shaped `ENV`/`ARG` must
+  be checked by the smoke or excused with a reason, and a stale excuse fails) —
+  both 2026-09-01. Before them: `python-lint` (ruff, hard on
   real-error classes, advisory rest), `secret-scan` (gitleaks, enforcing,
   false positives via `.gitleaksignore` with justification), `stage-graph`,
   `code-dupes`. That last one is the CODE twin of `doc-dupes`: it tokenises
@@ -1563,7 +1577,7 @@ GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and
 
 ## Development Rules
 
-- Every script: `#!/usr/bin/env bash` + `set -euo pipefail`. Use `run()`/`run_quiet()` from `build-helpers.sh`.
+- Every script: `#!/usr/bin/env bash` + `set -euo pipefail`. Use `run()` from `build-helpers.sh` (`run_quiet()` was removed 2026-08-08).
 - Source `artifact-common.sh` for shared utilities. Use `parse_shared_orchestrator_args()`/`parse_shared_runtime_args()`.
 - Call `cross_stage_init_pins()` before the build loop.
 - Use centralized helpers: `resolve_arch_list()`, `is_dry_run()`, `append_mirror_build_args_from_env()`, `append_version_build_args()`, `normalize_target_arches()`.
