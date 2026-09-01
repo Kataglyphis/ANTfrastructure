@@ -31,7 +31,7 @@
 # fallbacks are defined here so the library also works standalone.
 
 # ---------------------------------------------------------------------------
-# Bootstrap — brought in line with the 6 sibling libs (complexity audit F-A):
+# Bootstrap — brought in line with the sibling libs (complexity audit F-A):
 # this file was the drifted copy with NO re-source guard and NO attempt to
 # load the real 01-core/logging.sh, so standalone consumers silently got the
 # minimal fallbacks (no log/die, divergent formatting) forever.

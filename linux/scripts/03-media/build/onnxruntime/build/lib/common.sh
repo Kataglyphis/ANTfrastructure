@@ -448,7 +448,7 @@ append_onnx_cross_cmake_build_args() {
   fi
 
   # Deliberately a REDUCED cross set — do NOT switch this to the shared
-  # cross_cmake_define_pairs / append_cmake_cross_args set. In particular onnx must
+  # append_cmake_cross_args set. In particular onnx must
   # NOT receive CMAKE_LIBRARY_ARCHITECTURE: it breaks ONNX Runtime's FindPython
   # NumPy detection (onnxruntime_python.cmake), failing the cross Python-wheel
   # build with "Target Python::NumPy ... not found". Proven by an arm64 cross-build

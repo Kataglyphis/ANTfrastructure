@@ -26,19 +26,19 @@ $CT = 'C:\Program Files\LLVM\bin\clang-tidy.exe'
 On Linux there is no equivalent resolution step, and
 `linux/scripts/lib/code-quality.sh` is not one: it is a **library you source**,
 not a wrapper that locates binaries. It invokes bare `clang-format -i`
-(`code-quality.sh:285`) and bare `clang-tidy` (`code-quality.sh:405`) straight
+(in `code_quality_run_clang_format`) and bare `clang-tidy` (in `code_quality_run_clang_tidy`) straight
 off `PATH`, and there is no `CODE_QUALITY_*_BIN` knob among the variables it
-documents (`code-quality.sh:69-104`). Nothing checks for the binaries first
-either: the library *defines* a fallback `require_tools` (`code-quality.sh:140-150`)
+documents (the variables it documents in its header). Nothing checks for the binaries first
+either: the library *defines* a fallback `require_tools` (its fallback `require_tools`)
 but never calls it, so a missing LLVM tool surfaces as the shell's own
 `command not found` at the call site. Put LLVM on `PATH` yourself.
 
 `cmake-format` is the one tool the library will provision:
-`code_quality_ensure_cmake_format` (`code-quality.sh:164-199`) creates a venv
+`code_quality_ensure_cmake_format` (`code-quality.sh`) creates a venv
 with `uv` and installs the project's requirements — but only when the consuming
 project has set both `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and
 `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`. Without them it hard-errors
-(`code-quality.sh:176`) instead of bootstrapping anything.
+(inside that function) instead of bootstrapping anything.
 
 ## clang-format
 

@@ -446,6 +446,17 @@ build log. See docs/cross-build-verification.md.
   that libgudev installs cleanly, then reverted on this finding — installing it
   would have pulled `libglib2.0-dev` in through the back door.
 
+- **The destructive-delete guard cannot fire on a host without `pwsh`** [S·★★★]
+  — `.claude/hooks/guard-destructive-deletes.ps1` is the mechanical answer to the
+  2026-08-21 incident ("the worst this repo has produced"), and AGENTS.md calls
+  it a DENY "no prompt can override". Measured 2026-09-01 on this build host:
+  `command -v pwsh` finds nothing, so the hook cannot execute — the protection is
+  inert exactly where the incident happened. It is also registered in
+  `.claude/settings.json` alone; the claimed second registration in the
+  user-level settings does not exist (0 PreToolUse hooks there), so there is no
+  redundancy either. Port the guard to a shell/Python implementation, or make its
+  absence loud at session start. Do not rely on it on a Linux host until then.
+
 - **The remaining riscv64 items, NOT fixed and why** [★★] —
   - **`csound`** — `libcsound64-dev` resolves, the image already ships
     `libcsound64.so.6.0`, and the "Ports has no libcsound64" comment is corrected

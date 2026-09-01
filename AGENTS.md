@@ -6,7 +6,7 @@ build commands. Reference data — what is in an image, per-component build
 matrices, script tables — lives in `docs/`; the map from topic to owning
 document is [`docs/INDEX.md`](docs/INDEX.md).
 
-Four companion pages carry what used to live here. Read the one that matches
+Five companion pages carry what used to live here. Read the one that matches
 what you are about to do:
 
 | Before you… | Read |
@@ -123,7 +123,7 @@ marker, so a consumer never has to guess.
 | `Dockerfile.sdk` | `:cross-compiler-amd64` | `:cross-sdk-<arch>` |
 | `Dockerfile.media` | `:cross-sdk-<arch>` | `:cross-media-<arch>` |
 | `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` |
-| `Dockerfile.package` | `:base` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
+| `Dockerfile.package` | `:latest-cross-base-<arch>` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
 | `Dockerfile.torch` | `:latest-cross-package-<arch>` | `:latest-cross-<arch>` |
 | `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | optional GPU layer (CUDA or MIGraphX) |
 | `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64`, or `:winarm64` under `-TargetArch arm64` — still a `windows/amd64` image, carrying an aarch64 artifact bundle; **never publish it with `--platform windows/arm64`** |
@@ -1140,7 +1140,7 @@ The rules an agent must never violate:
 - **CMake cache/linker:** `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`. Sourced by `03-media/core/common.sh` automatically.
 - **Install deps preamble:** `cross-apt.sh` → `install_deps_preamble [packages...]`.
 - **Media ENV reference:** `03-media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH. `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with this file.
-- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `app-wheels`, `media-inputs`.
+- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `armnn`, `app-wheels`, `media-inputs`, `sizes`.
 - **Runtime stage elements:** `Dockerfile.torch` final stage is canonical for COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, OCI labels.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper (`BUILDKIT_HOST` support). Use instead of ad hoc `nerdctl build`.
 
@@ -1186,7 +1186,8 @@ the freshly built wrapper was invisible and `nerdctl push <tag>` +
 plain `-t` on both paths (reliably creates AND overwrites the tag). Do NOT
 reintroduce the `--output type=image,name=` exporter for a tag you then push or
 index — use `-t`. (The dropped ancestry annotations never reached the registry
-anyway; re-embedding them is a tracked follow-up.)
+anyway; they are re-embedded as config labels via `ancestry.sh`'s `--label`
+provenance args.)
 
 Rules:
 
@@ -1476,8 +1477,10 @@ base ─┬─ onnxruntime ───────┐
     manager removals, no MSI removals, no appx removals. Suggest, never do.
   - **The gate is mechanical, not advisory.**
     `.claude/hooks/guard-destructive-deletes.ps1` runs as a `PreToolUse` hook
-    (registered in both `.claude/settings.json` and the user-level settings, so
-    one broken path cannot silently disarm it). It DENIES — a decision no
+    (registered in `.claude/settings.json` ONLY — the user-level settings carry
+    no PreToolUse hook, so this is a single point, not the redundant pair this
+    once claimed). **It is PowerShell: on a host without `pwsh` it cannot fire
+    at all** — verify with `command -v pwsh` before relying on it. It DENIES — a decision no
     prompt can override — any command touching a protected root, and it scans
     file CONTENT on Write/Edit too, because the 2026-08-21 vector was a script
     written for the user to paste, not a command the agent ran. Outside the
@@ -1616,7 +1619,7 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the three docs gates below — the same checks CI enforces.
+- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the four docs gates below — the same checks CI enforces.
 - **Four gates guard the docs; none of them is optional.** They exist because
   this tree lost a licence page, a doc index and ~50 cross-references to silent
   drift on a single day. Run them with
