@@ -365,8 +365,12 @@ RUN --mount=type=tmpfs,target=/tmp \
 # means an ONNXRUNTIME_VERSION bump invalidates the shared cache and recompiles.
 # The -wgpu1 suffix is a FLAVOR-SET epoch (LOG2): the flavor set grew (.asyncify +
 # .jspi WebGPU wasm added by 40-build-wasm.sh) without an ORT version bump, and the
-# reuse check below ("any *.wasm present") would happily serve a pre-flavor cache
-# forever. Bump the suffix whenever the built flavor set changes again.
+# reuse check served a pre-flavor cache forever. Bump the suffix whenever the
+# built flavor set changes again.
+# Reuse is gated on a .complete stamp written AFTER a successful copy, not on
+# "any *.wasm present": a half-finished copy (a full disk) would otherwise freeze
+# a partial asset set for every later arch AND every later run, since this cache
+# outlives the build. docs/failure-modes.md
 RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/opt/scripts/03-media/build/onnxruntime,readonly \
     --mount=type=bind,source=linux/scripts/01-core,target=/opt/scripts/core,readonly \
     --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \
@@ -376,7 +380,7 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
     set -euo pipefail; \
     _ortweb=/usr/local/lib/onnxruntime-web; _shared=/var/cache/onnxruntime-web-shared; \
     mkdir -p "${_ortweb}"; \
-    if [ -n "$(find "${_shared}" -name '*.wasm' -print -quit 2>/dev/null)" ]; then \
+    if [ -f "${_shared}/.complete" ]; then \
         echo "Reusing shared onnxruntime-web assets (compiled once, arch-independent)"; \
         cp -a "${_shared}/." "${_ortweb}/"; \
     else \
@@ -386,7 +390,12 @@ RUN --mount=type=bind,source=linux/scripts/03-media/build/onnxruntime,target=/op
         # coverage), a wasm build failure must NOT break that arch's media build — it
         # ships empty (INFO in the smoke) exactly as a skipped arch did before.
         if bash /opt/scripts/03-media/build/onnxruntime/build/build-onnxruntime.sh --step wasm; then \
-            cp -a "${_ortweb}/." "${_shared}/" 2>/dev/null || true; \
+            if cp -a "${_ortweb}/." "${_shared}/"; then \
+                : > "${_shared}/.complete"; \
+            else \
+                echo "WARNING: copying onnxruntime-web assets into the shared cache failed; NOT stamping it complete so the next arch recompiles instead of inheriting a partial set"; \
+                rm -f "${_shared}/.complete"; \
+            fi; \
         else \
             echo "WARNING: onnxruntime-web WASM build failed on target=${TARGET_ARCH}; shipping without onnx-web (optional, non-fatal)"; \
         fi; \

@@ -1334,6 +1334,10 @@ build_iree_wheels() {
 main() {
     prepare_workspace
     if ! prepare_build_environment; then
+        # Deliberate degradation: every bail-out above warns with its own reason
+        # and leaves the wheelhouse EMPTY rather than failing the media build.
+        # Say so once at the exit point so the log does not end on silence.
+        warn "app wheelhouse: environment not ready (see the warning above) — shipping an EMPTY wheelhouse"
         return 0
     fi
 
