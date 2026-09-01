@@ -2,7 +2,7 @@ diff --git a/3rdparty/mlas/CMakeLists.txt b/3rdparty/mlas/CMakeLists.txt
 index 502127e..6ba1094 100644
 --- a/3rdparty/mlas/CMakeLists.txt
 +++ b/3rdparty/mlas/CMakeLists.txt
-@@ -84,6 +84,21 @@ if(MLAS_X86_64 OR MLAS_X86 OR MLAS_ARM64 OR MLAS_LOONGARCH64)
+@@ -84,6 +84,20 @@ if(MLAS_X86_64 OR MLAS_X86 OR MLAS_ARM64 OR MLAS_LOONGARCH64)
   set(_MLAS_REQUIRES_ASM TRUE)
  endif()
  
@@ -24,3 +24,4 @@ index 502127e..6ba1094 100644
  include(CheckLanguage)
  set(MLAS_HAS_ASM FALSE CACHE INTERNAL "" FORCE)
  check_language(ASM)
+
