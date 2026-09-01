@@ -639,6 +639,17 @@ _chain_start_resource_monitor() { start_resource_monitor cross; }
 _CHAIN_PIDFILE=""
 _CHAIN_SIGNAL_HANDLED=0
 
+# PID of a live sibling chain, or empty. Reads the pidfile directly: this is
+# needed BEFORE _chain_write_pidfile runs.
+_chain_live_sibling_pid() {
+  local pf other
+  pf="$(cross_chain_pidfile_path)"
+  [ -f "${pf}" ] || return 0
+  other="$(cat "${pf}" 2>/dev/null || true)"
+  [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null || return 0
+  printf '%s' "${other}"
+}
+
 _chain_write_pidfile() {
   _CHAIN_PIDFILE="$(cross_chain_pidfile_path)"
   # A live SIBLING chain already owns this pidfile: warn (do not clobber its
@@ -646,7 +657,9 @@ _chain_write_pidfile() {
   if [ -f "${_CHAIN_PIDFILE}" ]; then
     local other; other="$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)"
     if [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null; then
-      warn "another cross chain appears to be running (pid ${other}, pidfile ${_CHAIN_PIDFILE}); stop it with stop-cross-chain.sh. Continuing anyway."
+      warn "another cross chain is running (pid ${other}); leaving ${_CHAIN_PIDFILE} pointing at IT so stop-cross-chain.sh still reaches it. This run continues WITHOUT a pidfile and cannot be stopped that way."
+      _CHAIN_PIDFILE=""
+      return 0
     fi
   fi
   printf '%s\n' "$$" > "${_CHAIN_PIDFILE}" 2>/dev/null \
@@ -717,6 +730,12 @@ _chain_prepare_log_dir() {
 # could read the previous run's log as current.
 _chain_archive_prev_logs() {
   [ -n "${LOG_DIR:-}" ] && [ -d "${LOG_DIR}" ] || return 0
+  local _sib
+  _sib="$(_chain_live_sibling_pid)"
+  if [ -n "${_sib}" ]; then
+    warn "another cross chain is running (pid ${_sib}); NOT archiving logs -- its stage logs are live and mv would redirect its open writers"
+    return 0
+  fi
   shopt -s nullglob
   local markers=( "${LOG_DIR}"/*.log.run )
   shopt -u nullglob

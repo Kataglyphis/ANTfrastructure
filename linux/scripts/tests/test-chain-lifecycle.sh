@@ -105,6 +105,10 @@ t_assert_eq "/custom/logs" "$(
 # here — the suite deliberately loads chain-lifecycle.sh only).
 log()  { :; }
 warn() { :; }
+eval "$(sed -n '/^_chain_live_sibling_pid()/,/^}/p' "${CHAIN_SH}")"
+# Isolate from the HOST's real pidfile: a chain actually running on this
+# machine would otherwise make the archiver correctly refuse, failing these.
+cross_chain_pidfile_path() { printf '%s' "${TMPDIR:-/tmp}/no-such-chain.$$.pid"; }
 eval "$(sed -n '/^_chain_archive_prev_logs() {$/,/^}$/p' "${CHAIN_SH}")"
 t_case "the archiver function was extracted from the shipped script"
 t_assert_eq "function" "$(type -t _chain_archive_prev_logs || true)"
@@ -571,5 +575,32 @@ t_assert_eq \
       | grep -oE '^[[:space:]]+(_chain_prepare_log_dir|_chain_archive_prev_logs|_chain_prune_archived_logs|_chain_run_build_loop)([[:space:]]|$)' \
       | sed 's/[[:space:]]//g' | paste -sd, -)" \
   "a guard whose call is missing from main() is inert, whatever its unit tests say"
+
+
+# ── concurrency: a live SIBLING chain must survive this one starting ──
+eval "$(sed -n '/^_chain_write_pidfile()/,/^}/p' "${CHAIN_SH}")"
+eval "$(sed -n '/^_chain_archive_prev_logs()/,/^}/p' "${CHAIN_SH}")"
+
+_sib_pf="$(mktemp)"
+cross_chain_pidfile_path() { printf '%s' "${_sib_pf}"; }
+sleep 300 & _sib_pid=$!
+printf '%s\n' "${_sib_pid}" > "${_sib_pf}"
+
+t_case "a live sibling keeps the pidfile, so stop-cross-chain.sh still reaches it"
+_CHAIN_PIDFILE=""
+_chain_write_pidfile >/dev/null 2>&1
+t_assert_eq "${_sib_pid}" "$(cat "${_sib_pf}")" "clobbering it strands the running chain"
+t_assert_eq "" "${_CHAIN_PIDFILE}" "this run must not think it owns a pidfile it did not write"
+
+t_case "a live sibling's stage logs are NOT archived out from under it"
+_sib_logs="$(mktemp -d)"
+LOG_DIR="${_sib_logs}"
+printf 'other-run\n' > "${_sib_logs}/media-arm64.log.run"
+printf 'live output\n' > "${_sib_logs}/media-arm64.log"
+CROSS_RUN_ID=this-run _chain_archive_prev_logs >/dev/null 2>&1
+t_assert_ok test -f "${_sib_logs}/media-arm64.log"
+
+kill "${_sib_pid}" 2>/dev/null || true
+rm -rf "${_sib_pf}" "${_sib_logs}"
 
 t_summary
