@@ -310,6 +310,28 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
+### F5. The duplication baseline is frozen, not reviewed [L, measurable]
+
+`verify_code_dupes.py` reports OK, but that means **no NEW or GROWING** copy —
+not "no duplication". Measured 2026-09-01: `docs/scripts/code-dupes.allow` holds
+246 pairs, of which **236 still say "baseline 2026-08-31, not yet reviewed"**,
+totalling **6159 shared shingles**. Only 14 carry a real reason.
+
+Work the tail from the top; each line deleted or shrunk is real progress and the
+gate enforces the new, lower budget automatically:
+
+| shingles | pair |
+| ---: | --- |
+| 199 | `build-runtime-artifacts.sh` ↔ `build-runtime-manifest.sh` |
+| 179 | `iree/android/build-android.sh` ↔ `litert/android/build-android.sh` |
+| 95 | `lint-shell.sh` ↔ `lint-workflows.sh` |
+| 90 | `smoke-runtime-image.sh` (same file, two blocks) |
+| 88 | `tests/test-tvm-cmake-args.sh` (same file, two blocks) |
+
+Two pairs alone are 378 shingles — 6% of the whole baseline. Reviewing an entry
+means one of: shrink the twin and lower the budget, or replace "not yet reviewed"
+with the reason it is deliberate. Both are improvements; leaving it is not.
+
 ## G. Shipped-truth findings, measured in the arm64 image 2026-09-01
 
 Every item here was read out of the SHIPPED bytes
