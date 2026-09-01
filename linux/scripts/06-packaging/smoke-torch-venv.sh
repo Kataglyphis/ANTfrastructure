@@ -333,10 +333,9 @@ try:
     # OpenCV against the source-built GStreamer; if that regresses (e.g. the
     # .pc probe in the opencv-gst stage), cv2 silently loses its gstreamer
     # videoio backend while everything else stays green — this is the assert
-    # the original two-pass design called for. riscv64 exempt (gstreamer OFF
-    # there by design, build-opencv.sh target adjustment). FFMPEG stays
-    # ADVISORY until OCV-FF1 is resolved (opencv-5.0.0 does not currently
-    # enable it against ffmpeg n9.0 — reported NO on the first proven build).
+    # the original two-pass design called for.
+    # Both were once relaxed (riscv64 exempt, FFMPEG advisory); measured
+    # 2026-09-01 all three arches report GStreamer 1.29.2 and FFMPEG YES.
     import re as _re
     _binfo = cv2.getBuildInformation()
     def _backend(name):

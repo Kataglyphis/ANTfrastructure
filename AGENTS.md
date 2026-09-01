@@ -960,11 +960,12 @@ The rules an agent must never violate:
      build-gstreamer-monorepo.sh:581-591, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
      `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
-     a build at 99%. Their FALLBACKS differ, and only one is safe: with no
-     executable launcher the monorepo goes uncached
-     (build-gstreamer-monorepo.sh:589-590), while `setup_sccache` keeps its
-     `_sc_launcher="sccache"` default (compiler-cache.sh:176) and would ship
-     BARE sccache — a hole the literal-`export` gate below cannot see. The
+     a build at 99%. Since 26a30740 (2026-08-27, owner decision "immer sccache")
+     their FALLBACKS AGREE: with no executable launcher on disk both ship BARE
+     sccache — `build-gstreamer-monorepo.sh:611`
+     (`export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"`) and `setup_sccache`'s
+     `_sc_launcher="sccache"` default (compiler-cache.sh:176). Never uncached;
+     the launcher is an upgrade, not a precondition. The
      launcher is only reachable because 01-core is bind-mounted at
      `/opt/scripts/core` on every heavy media RUN; keep it on those mount
      lists.
@@ -1146,7 +1147,9 @@ The rules an agent must never violate:
 ### Module Loading Order
 
 `artifact-common.sh` sources 01-core modules in dependency order:
-1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `abseil-headers.sh` 16. `path-helpers.sh`.
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `path-helpers.sh`. `abseil-headers.sh` is
+deliberately NOT in this loop (backlog A3, 2026-08-12): it has no host-side
+caller, and its in-image consumers load it via `source_module`.
 
 `runtime-flow-common.sh` is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`).
 

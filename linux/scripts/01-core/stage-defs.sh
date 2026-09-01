@@ -44,8 +44,8 @@ CROSS_PER_ARCH_STAGES=(sdk media android)
 #   package  → Layers cross-compiled artifacts from :cross-android-<arch>
 #   wrapper  → Torch app venv + runtime scripts (Dockerfile.torch)
 #
-# Consumed by build-runtime-manifest.sh and build-runtime-artifacts.sh via
-# runtime_build_chain() in runtime-build-fns.sh.
+# Declarative only: runtime_build_chain() (runtime-build-fns.sh) calls its
+# three steps directly. Kept as the documented stage graph AGENTS.md cites.
 # shellcheck disable=SC2034
 RUNTIME_STAGE_ORDER=(base package wrapper)
 
