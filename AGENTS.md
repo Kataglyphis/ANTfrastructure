@@ -370,7 +370,7 @@ an excellent run. Rank models by **time to a finished answer**, not `tok/s` — 
 1.7B measured 31.7 tok/s and was the *slowest* to a usable answer because it
 spent ~1900 tokens thinking.
 
-Testing: 54 unit tests need no server (`pytest tests/test_benchmark_metrics.py
+Testing: 58 unit tests need no server (`pytest tests/test_benchmark_metrics.py
 tests/test_inspect_gguf.py tests/test_bench_lanes.py tests/test_backend_compat.py
 tests/test_backends_registry.py`); the rest of `tests/` needs the stack up. The
 viewer has a server-side smoke render (`cd benchmark-viewer && npm run smoke`) —
@@ -751,7 +751,7 @@ After a successful `build-cross-chain.sh` run:
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (59 as of 2026-08-14 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (62 as of 2026-09-01 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
 ├── 03-media/            media library build scripts
 │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
@@ -841,10 +841,10 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
                          and linux/scripts/lib/agentic-loop.sh
-.github/actions/         composite actions consumers call @main:
+.github/actions/         9 composite actions consumers call @main, incl.
                          cleanup-disk-space (Windows runners),
-                         run-in-linux-container, run-in-windows-container
-                         (see .github/actions/README.md)
+                         run-in-linux-container, run-in-windows-container;
+                         full list in .github/actions/README.md
 ```
 
 `out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
@@ -1429,8 +1429,10 @@ base ─┬─ onnxruntime ───────┐
   The six long-dangling legacy tags (`android`, `compiler`, `latest`, `media`,
   `sdk`, `torch` — children all 404 since before either tool existed) were
   DELETED on 2026-08-27 by operator decision. Note `:latest` is therefore gone
-  and will not return by itself: every orchestrator in `linux/scripts/` is a
-  `build-cross-*` script, so the native lane has no build path any more.
+  and will not return by itself: the cross lane's orchestrators
+  (`build-cross-chain/compiler/stage.sh`) all tag `cross-*`/`latest-cross`, and
+  `build-runtime-manifest.sh` publishes only the cross manifest, so the native
+  lane has no build path any more.
 - **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
   `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
   the worst incident this repo has produced). A "let's free some space"
@@ -1508,7 +1510,8 @@ base ─┬─ onnxruntime ───────┐
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports clang 23.1.0 (`LLVM_RELEASE`); `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - The `wrapper-smoke` target in `Dockerfile.package` (FROM package AS
-  wrapper-smoke) runs ~1150 lines of smoke tests — compiler validation, media
+  wrapper-smoke) runs ~2,160 lines of smoke scripts (plus the shared
+    ~730-line `smoke-common.sh`) — compiler validation, media
   smokes, torch-venv, cross-arch. Since 2026-08-28 this is a MANDATORY gate in
   `runtime_build_chain()` (`_runtime_run_package_smoke` in
   `runtime-build-fns.sh`): it builds `--target wrapper-smoke` between the
@@ -1517,7 +1520,7 @@ base ─┬─ onnxruntime ───────┐
 
 ## Common Failure Modes
 
-Symptom → cause → fix for 35 failures seen live on both lanes, keyed by the
+Symptom → cause → fix for 49 failures seen live on both lanes, keyed by the
 error message you actually get:
 [`docs/failure-modes.md`](docs/failure-modes.md). Grouped as Linux/cross-lane ·
 the Windows layer store (hcsshim) · container networking (CNI) · buildkitd and

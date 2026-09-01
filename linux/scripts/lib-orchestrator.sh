@@ -9,7 +9,7 @@
 #   orchestrator_preamble   # (cross scripts)  OR  runtime_flow_preamble (runtime)
 #
 # WHY TOP-LEVEL: artifact-common.sh transitively sources modules (stage-defs.sh,
-# package-groups.sh, …) that `declare -A`/`declare -a` global arrays.  A
+# digest-pinning.sh, …) that `declare -A`/`declare -a` global arrays.  A
 # `declare` inside a function without -g is function-local, so sourcing
 # artifact-common from within a helper function would make those arrays vanish
 # when the function returns.  We therefore source artifact-common at this file's

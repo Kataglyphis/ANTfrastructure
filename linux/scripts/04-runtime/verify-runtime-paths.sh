@@ -56,7 +56,7 @@ canonical_paths="$(
     | cut -d= -f2- \
     | grep '^/' \
     | while IFS= read -r line; do envsubst <<<"$line"; done \
-    | sort -u
+    | LC_ALL=C sort -u
 )"
 
 echo "  canonical paths from runtime-paths.env: $(echo "$canonical_paths" | wc -l)"
@@ -78,7 +78,7 @@ for df in "${DOCKERFILES[@]}"; do
   # Expand variable refs to their literal values via envsubst (reads the
   # versions.env vars sourced above, no hardcoded sed substitutions needed).
   df_env_expanded="$(envsubst <<<"$df_env_text")"
-  df_env_values="$(echo "$df_env_expanded" | grep -oP '/[A-Za-z0-9/._-]+' | sort -u)"
+  df_env_values="$(echo "$df_env_expanded" | grep -oP '/[A-Za-z0-9/._-]+' | LC_ALL=C sort -u)"
 
   for path in $canonical_paths; do
     # Remove variable substitutions for matching
@@ -99,23 +99,21 @@ echo "  checking cross-Dockerfile consistency..."
 PKG_ENV_PATHS="$(
   awk '/^ENV /,/^RUN/{print}' "${REPO_ROOT}/linux/Dockerfile.package" \
     | grep -oP '/opt/[A-Za-z0-9/._-]+' \
-    | sort -u
+    | LC_ALL=C sort -u
 )"
 MEDIA_ENV_PATHS="$(
   awk '/^ENV /,/^RUN/{print}' "${REPO_ROOT}/linux/Dockerfile.media" \
     | grep -oP '/opt/[A-Za-z0-9/._-]+' \
-    | sort -u
+    | LC_ALL=C sort -u
 )"
 
-# Compare shared /opt paths
-shared_opt="$(
-  comm -12 <(echo "$PKG_ENV_PATHS" | sort -u) <(echo "$MEDIA_ENV_PATHS" | sort -u)
-)"
+# Compare shared /opt paths. LC_ALL=C: sort collates by locale, comm compares
+# bytes — mixing them silently corrupts the set difference.
 pkg_only_opt="$(
-  comm -23 <(echo "$PKG_ENV_PATHS" | sort -u) <(echo "$MEDIA_ENV_PATHS" | sort -u)
+  comm -23 <(echo "$PKG_ENV_PATHS" | LC_ALL=C sort -u) <(echo "$MEDIA_ENV_PATHS" | LC_ALL=C sort -u)
 )"
 media_only_opt="$(
-  comm -13 <(echo "$PKG_ENV_PATHS" | sort -u) <(echo "$MEDIA_ENV_PATHS" | sort -u)
+  comm -13 <(echo "$PKG_ENV_PATHS" | LC_ALL=C sort -u) <(echo "$MEDIA_ENV_PATHS" | LC_ALL=C sort -u)
 )"
 
 if [ -n "$pkg_only_opt" ]; then

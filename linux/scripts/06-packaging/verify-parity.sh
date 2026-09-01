@@ -401,10 +401,9 @@ check_imports() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-# main() decomposed (complexity audit F-F): it carried five responsibilities
-# in 107 lines — parse, ensure images, banner, dispatch, report — while the
-# same file already demonstrated the clean per-function shape in its 18
-# check_* functions. main() now reads like validate-compilers.sh's.
+# main() decomposed (complexity audit F-F): it carried five responsibilities in
+# 107 lines, while this file already showed the clean per-function shape in its
+# check_* functions.
 
 verify_parity_parse_args() {
   while [ $# -gt 0 ]; do

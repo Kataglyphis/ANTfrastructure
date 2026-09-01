@@ -314,8 +314,8 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
 
 `verify_code_dupes.py` reports OK, but that means **no NEW or GROWING** copy —
 not "no duplication". Measured 2026-09-01: `docs/scripts/code-dupes.allow` holds
-246 pairs, of which **236 still say "baseline 2026-08-31, not yet reviewed"**,
-totalling **6159 shared shingles**. Only 14 carry a real reason.
+251 pairs, of which **236 still say "baseline 2026-08-31, not yet reviewed"**,
+totalling **6159 shared shingles**. Only 15 carry a real reason.
 
 Work the tail from the top; each line deleted or shrunk is real progress and the
 gate enforces the new, lower budget automatically:

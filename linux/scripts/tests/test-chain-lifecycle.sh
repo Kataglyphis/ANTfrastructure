@@ -267,7 +267,7 @@ t_assert_ok    test -f "${LOG_DIR}/archive/notes.txt"
 
 t_case 'a PID-named run dir (the ${CROSS_RUN_ID:-$$} fallback) is prunable by age'
 # archive/365161 — 6.3G, the single biggest dir in the 13G tree — is named by
-# cross-stage-build.sh:48 `rid="${CROSS_RUN_ID:-$$}"`, i.e. by the orchestrator
+# cross-stage-build.sh's stage-marker helper `rid="${CROSS_RUN_ID:-$$}"`, i.e. by the orchestrator
 # PID. Two consequences this case pins down: such a dir IS a run dir (excluding
 # it from the pattern would leave the worst offender unreclaimable), and age
 # must come from mtime — sorted by NAME, a leading '3' files 365161 after every

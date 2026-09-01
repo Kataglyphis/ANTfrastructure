@@ -284,7 +284,7 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       # a TBB probe miss.
       # LOG21: assert the highgui window backend. Cross arches are headless BY
       # DESIGN (GTK's libpango1.0-dev is not multiarch-coinstallable, see
-      # opencv/install-deps.sh:34). amd64 has GTK3. A cross image that suddenly
+      # opencv/install-deps.sh). amd64 has GTK3. A cross image that suddenly
       # gains GTK would be a surprise worth investigating, and a cross image
       # that loses it is expected — so assert the DELIBERATE state.
       _ocv_gui="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "

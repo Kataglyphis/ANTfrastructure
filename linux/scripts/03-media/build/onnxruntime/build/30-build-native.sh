@@ -130,7 +130,7 @@ BUILD_ARGS+=(
 )
 export PATH="${HOST_PYTHON_BIN%/*}:${PATH}"
 
-# GCC 16.1.0 is the default system compiler (via ENV CC/CXX and alternatives)
+# The pinned GCC (versions.env GCC_VERSION) is the default system compiler (via ENV CC/CXX and alternatives)
 
 # Execute build (with retry for transient network errors like GitHub download failures)
 if ! retry 3 10 "ONNX Runtime CPU build" "${BUILD_SH}" "${BUILD_ARGS[@]}"; then

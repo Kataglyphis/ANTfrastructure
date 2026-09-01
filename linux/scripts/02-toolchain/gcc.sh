@@ -531,12 +531,13 @@ install_gcc() {
     return 0
   fi
 
-  # For GCC >= 15, build from source (no apt packages available)
+  # For GCC >= 15, build from source: apt ships gcc-15/gcc-16 but gcc-16 is a
+  # dated snapshot (16-20260322), not the pinned release.
   if [ -n "${gcc_major}" ] && [ "${gcc_major}" -ge 15 ] 2>/dev/null; then
     local builder
     builder="$(gcc_locate_builder)"
 
-    # Determine full version (e.g., 16.1.0 from GCC_WANTED=16)
+    # Determine full version (e.g. 16.2.0 from GCC_WANTED=16)
     full_version="$(gcc_resolve_full_version "${full_version}" "${default_full_version}")"
 
     log "Building GCC ${full_version} from source..."
