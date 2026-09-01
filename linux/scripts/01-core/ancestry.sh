@@ -287,6 +287,10 @@ _ancestry_check_link() {
 # Links actually compared. A chain that compared NONE must not report the same
 # line as one that compared six. docs/failure-modes.md
 _ANCESTRY_LINKS_CHECKED=0
+# Links that EXIST to compare. Zero of these is legitimate (--from-stage
+# compiler has only `base` above it, and base has no parent); zero CHECKED
+# while some existed means every tag failed to resolve.
+_ANCESTRY_LINKS_FOUND=0
 
 _ancestry_assert_branch() {
   local child="$1" arch="$2"
@@ -296,6 +300,7 @@ _ancestry_assert_branch() {
   while [ -n "${child}" ]; do
     parent="$(cross_stage_parent "${child}")"
     [ -z "${parent}" ] && break   # reached base: no parent to compare against
+    _ANCESTRY_LINKS_FOUND=$((_ANCESTRY_LINKS_FOUND + 1))
 
     # Depth guard: cross_stage_validate_graph already rejects cycles, but this
     # loop must never become the thing that hangs a build.
@@ -338,6 +343,7 @@ ancestry_assert_chain() {
 
   log "[ancestry] verifying the ancestor chain feeding stage '${from_stage}' (arches: ${arches_csv})"
   _ANCESTRY_LINKS_CHECKED=0
+  _ANCESTRY_LINKS_FOUND=0
 
   for arch in $(arch_list_to_words "${arches_csv}"); do
     _ancestry_assert_branch "${start_parent}" "${arch}" || rc=1
@@ -350,6 +356,8 @@ ancestry_assert_chain() {
     warn "[ancestry] Fix: rerun --from-stage at or before the OLDEST stage reported"
     warn "[ancestry]      above, so the rebuilt content propagates down the chain."
     warn "[ancestry] Override (you accept the stale ancestor): CROSS_VERIFY_ANCESTRY=0"
+  elif [ "${_ANCESTRY_LINKS_FOUND}" -eq 0 ]; then
+    log "[ancestry] no ancestor links to compare above '${from_stage}' — nothing to verify"
   elif [ "${_ANCESTRY_LINKS_CHECKED}" -eq 0 ]; then
     warn "[ancestry] compared ZERO links — every stage tag failed to resolve, so this"
     warn "[ancestry] verified NOTHING. Treating as a failure rather than printing 'verified'."

@@ -361,4 +361,13 @@ t_assert_eq "0" "$?"
 unset NERDCTL_BIN STUB_LABEL_VALUE STUB_LOCAL_DIGEST
 rm -f "${_stub_nerdctl}"
 
+
+# --from-stage compiler has only `base` above it, and base has no parent: ZERO
+# links is legitimate there. The first version of the zero-link guard failed it
+# and blocked the 2026-09-01 RVV rebuild at startup.
+t_case "no ancestor links above the start stage is not a failure"
+t_assert_contains "$(cat "${TESTS_DIR}/../01-core/ancestry.sh")" "_ANCESTRY_LINKS_FOUND" \
+  "the guard must separate 'nothing to compare' from 'nothing resolved'"
+t_assert_contains "$(cat "${TESTS_DIR}/../01-core/ancestry.sh")" "no ancestor links to compare above"
+
 t_summary
