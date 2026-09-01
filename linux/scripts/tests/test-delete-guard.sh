@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Tests for .claude/hooks/guard-destructive-deletes.py — the Linux port of the
+# PreToolUse guard. The PowerShell original needs pwsh, which this build host
+# does not have, so the guard was INERT here. docs/failure-modes.md
+set -u
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${TESTS_DIR}/test-harness.sh"
+GUARD="${TESTS_DIR}/../../../.claude/hooks/guard-destructive-deletes.py"
+PY="${PREFLIGHT_PYTHON:-python3}"
+
+_decide() {
+  printf '{"tool_input":{"command":%s}}' \
+    "$("${PY}" -c 'import json,sys;print(json.dumps(sys.argv[1]))' "$1")" \
+    | "${PY}" "${GUARD}" 2>/dev/null \
+    | "${PY}" -c 'import json,sys
+try: print(json.load(sys.stdin)["hookSpecificOutput"]["permissionDecision"])
+except Exception: print("allow")'
+}
+
+t_case "the guard exists and is wired ahead of the PowerShell one"
+t_assert_ok test -f "${GUARD}"
+t_assert_contains "$(cat "${TESTS_DIR}/../../../.claude/settings.json")" \
+  "guard-destructive-deletes.py" "pwsh is absent on this host, so .py must be first"
+
+t_case "host-destroying commands are denied"
+for _c in "rm -rf /" "rm -rf /usr/lib" "rm -rf \$HOME/*" "rm -rf ~/.ssh" \
+          "rm -rf ~/.local/share/containerd" "dd if=/dev/zero of=/dev/sda" \
+          "sudo apt-get purge nvidia-driver-560"; do
+  t_assert_eq "deny" "$(_decide "${_c}")" "${_c}"
+done
+
+t_case "prose that MENTIONS a forbidden command is not a delete"
+# A verb-only rule for the cache-prune commands was tried and removed: with no
+# path to anchor on it denied its own commit message.
+t_assert_eq "allow" "$(_decide "git commit -m documented that the cache prune is forbidden")"
+
+t_case "legitimate cleanup still passes"
+# Blanking the reclaimable path must also eat a trailing /*, or this reads as a
+# bare `/*` and trips the filesystem-root rule.
+for _c in "rm -rf ~/.cache/kata-buildcache/*" "rm -f /tmp/foo.bak" \
+          "nerdctl rmi ghcr.io/kataglyphis/x:tag" "git rm --cached file" \
+          "bash linux/host-config/prune-safe.sh"; do
+  t_assert_eq "allow" "$(_decide "${_c}")" "${_c}"
+done
+
+t_summary

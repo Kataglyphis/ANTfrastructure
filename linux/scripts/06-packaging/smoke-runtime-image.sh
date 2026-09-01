@@ -654,6 +654,408 @@ done' 2>/dev/null)"; then
     echo ""
 }
 
+# ── SHIPPED-TRUTH gates ──────────────────────────────────────
+# One in-image probe emits facts only; every verdict is reached on the host, so
+# both gates can be driven with recorded probe text.
+# See docs/cross-build-verification.md, "Shipped-truth gates".
+_shipped_truth_probe() {
+  cat <<'PROBE'
+set -uo pipefail
+py=/opt/venv/bin/python
+printf 'ADV PYTHON_VERSION %s\n'      "${PYTHON_VERSION:-}"
+printf 'ADV PYTHON_MAJOR_MINOR %s\n'  "${PYTHON_MAJOR_MINOR:-}"
+printf 'ADV GCC_VERSION %s\n'         "${GCC_VERSION:-}"
+printf 'ADV LLVM_RELEASE %s\n'        "${LLVM_RELEASE:-}"
+printf 'ADV GSTREAMER_VERSION %s\n'   "${GSTREAMER_VERSION:-}"
+printf 'ADV VULKAN_VERSION %s\n'      "${VULKAN_VERSION:-}"
+printf 'ADV PYTORCH_EXTRA %s\n'       "${PYTORCH_EXTRA:-}"
+printf 'HAVE PYTHON_VERSION %s\n'     "$("$py" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)"
+printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
+_g="$(command -v gcc || true)"
+printf 'HAVE GCC_VERSION %s\n'        "${_g:+$("$_g" -dumpfullversion 2>/dev/null || "$_g" -dumpversion 2>/dev/null)}"
+# Independent of the ARG-named dir: loader, else header. See docs/cross-build-verification.md.
+_have_vulkan() {
+  local v h
+  v="$(vulkaninfo --summary 2>/dev/null \
+       | sed -n 's/.*Vulkan Instance Version: *\([0-9.]*\).*/\1/p' | head -1)"
+  if [ -n "${v}" ]; then printf '%s' "${v}"; return 0; fi
+  for h in /opt/vulkan/active/include/vulkan/vulkan_core.h \
+           /opt/vulkan/active/*/include/vulkan/vulkan_core.h; do
+    [ -r "${h}" ] || continue
+    v="$(awk '/#define VK_HEADER_VERSION[ \t]+[0-9]/ {print "1.4." $3; exit}' "${h}")"
+    if [ -n "${v}" ]; then printf '%s' "${v}"; return 0; fi
+  done
+}
+
+_pyver() { "$py" -c "import importlib.metadata as m;print(m.version('$1'))" 2>/dev/null; }
+
+printf 'HAVE UBUNTU_VERSION %s\n'   "$(. /etc/os-release 2>/dev/null; printf '%s' "${VERSION_ID:-}")"
+printf 'HAVE CMAKE_VERSION %s\n'    "$(cmake --version 2>/dev/null | head -1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
+printf 'HAVE NODE_VERSION %s\n'     "$(node --version 2>/dev/null | tr -d 'v')"
+printf 'HAVE UV_VERSION %s\n'       "$(uv --version 2>/dev/null | grep -oE '[0-9]+(\.[0-9]+)+' | head -1)"
+printf 'HAVE OPENCV_VERSION %s\n'   "$("$py" -c 'import cv2;print(cv2.__version__)' 2>/dev/null)"
+printf 'HAVE ONNXRUNTIME_VERSION %s\n' "$("$py" -c 'import onnxruntime;print(onnxruntime.__version__)' 2>/dev/null)"
+printf 'HAVE ONNXRUNTIME_GENAI_VERSION %s\n' "$("$py" -c 'import onnxruntime_genai as g;print(g.__version__)' 2>/dev/null)"
+printf 'HAVE PYAV_VERSION %s\n'     "$("$py" -c 'import av;print(av.__version__)' 2>/dev/null)"
+printf 'HAVE IREE_VERSION %s\n'     "$(_pyver iree-base-runtime)"
+printf 'HAVE LITERT_VERSION %s\n'   "$(_pyver ai-edge-litert)"
+printf 'HAVE LLVM_RELEASE %s\n'       "$(clang --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'HAVE GSTREAMER_VERSION %s\n'  "$(gst-inspect-1.0 --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
+printf 'HAVE VULKAN_VERSION %s\n'     "$(_have_vulkan)"
+"$py" - <<'PY' 2>/dev/null || echo 'VENV ABSENT metadata-probe-crashed'
+import importlib.metadata as md
+try:
+    from packaging.requirements import Requirement
+except Exception:
+    print("VENV ABSENT packaging-module-missing"); raise SystemExit(0)
+def n(s): return s.strip().lower().replace("_", "-").replace(".", "-")
+inst = set()
+for d in md.distributions():
+    nm = d.metadata["Name"]
+    if nm:
+        inst.add(n(nm))
+for x in sorted(inst):
+    print("PKG", x)
+app = None
+for cand in ("orchestr-ant-ion", "orchestr_ant_ion"):
+    try:
+        app = md.distribution(cand); break
+    except Exception:
+        pass
+if app is None:
+    print("VENV ABSENT app-dist-not-installed")
+else:
+    # Per-extra requirement edges, markers evaluated against THIS image's real
+    # environment, so an upstream 'platform_machine != riscv64' is honoured for free.
+    for e in (app.metadata.get_all("Provides-Extra") or []):
+        for r in (app.requires or []):
+            try:
+                q = Requirement(r)
+            except Exception:
+                continue
+            if q.marker is None or not q.marker.evaluate({"extra": e}):
+                continue
+            print("REQ", e, n(q.name))
+# Dangling edges: any unconditional requirement of an installed dist that is absent.
+for d in md.distributions():
+    nm = d.metadata["Name"]
+    if not nm:
+        continue
+    for r in (d.requires or []):
+        try:
+            q = Requirement(r)
+        except Exception:
+            continue
+        if q.marker is not None and not q.marker.evaluate({"extra": ""}):
+            continue
+        if n(q.name) not in inst:
+            print("DANG", n(nm), n(q.name))
+PY
+# riscv64 only: what the image's own gcc defaults to, then the ISA each
+# shipped object was actually built for.
+printf 'RVCC %s\n' "$(gcc -v 2>&1 | grep -oE 'with-arch=[a-z0-9_]+' | head -1 | cut -d= -f2)"
+
+for _l in /opt/opencv5/lib/libopencv_core.so* /opt/ffmpeg/lib/libavcodec.so* \
+          /opt/gstreamer/lib/libgstreamer-1.0.so* /lib/riscv64-linux-gnu/libc.so.6; do
+  [ -r "${_l}" ] || continue
+  printf 'RVARCH %s %s\n' "${_l##*/}" \
+    "$(readelf -A "${_l}" 2>/dev/null | grep -oE 'rv64[a-z0-9_]*' | head -1)"
+done
+# Owner rule: OUR build must win over any distro rival exporting the same
+# soname. ldconfig -p lists the winner first.
+for _d in /opt/gstreamer/lib /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/lib /opt/armnn/lib /opt/acl/lib; do
+  [ -d "${_d}" ] || continue
+  for _so in "${_d}"/*.so.*; do
+    [ -e "${_so}" ] || continue
+    _n="${_so##*/}"
+    case "${_n}" in *.so.*.*) continue ;; esac   # only the bare soname link
+    _win="$(ldconfig -p 2>/dev/null | awk -v s="${_n}" '$1==s {print $NF; exit}')"
+    [ -n "${_win}" ] || continue
+    printf 'SONAME %s %s %s\n' "${_n}" "${_win}" "${_d}"
+  done
+done
+echo RTPROBE_DONE
+PROBE
+}
+
+# Version-carrying env vars the shipped image sets. Each must equal what the image
+# ACTUALLY has; there is no exemption arm, because a label that contradicts the
+# artefact is never a documented state.
+_ADVERTISED_VERSION_KEYS="PYTHON_VERSION PYTHON_MAJOR_MINOR GCC_VERSION LLVM_RELEASE
+GSTREAMER_VERSION VULKAN_VERSION UBUNTU_VERSION CMAKE_VERSION NODE_VERSION UV_VERSION
+OPENCV_VERSION ONNXRUNTIME_VERSION ONNXRUNTIME_GENAI_VERSION PYAV_VERSION IREE_VERSION
+LITERT_VERSION"
+
+# Extras the wrapper is ALWAYS built with (assemble-torch-app.sh's uv sync); the
+# selected pytorch-* extra is read from the image's own PYTORCH_EXTRA instead.
+_VENV_CONTRACT_EXTRAS="ml-ai docs"
+
+# Documented package absences, same contract as _parity_exempt: listed = reviewed, and
+# an arm that STOPS applying fails so the table cannot rot. Key is <arch>:<extra>:<pkg>,
+# with DEP for a dangling transitive edge.
+_venv_pkg_exempt() {
+  case "$1:$2:$3" in
+    # cv2 is the source-built /opt/opencv5 binding injected into the venv, never the
+    # PyPI wheel; /opt/opencv5 itself is asserted by ARCH-PARITY.
+    *:ml-ai:opencv-python) return 0 ;;
+    # onnxruntime ships under its flavour name (onnxruntime_dnnl / _webgpu), which
+    # _parity_ort_flavor asserts; the plain name is never installed.
+    *:ml-ai:onnxruntime|*:DEP:onnxruntime) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Pure verdict function for the advertised-vs-actual gate: probe text in, one
+# "OK|BAD|SKIP <key> ..." line out per key. No container, no globals.
+_advert_verdicts() {
+  local probe="$1" key adv have
+  for key in ${_ADVERTISED_VERSION_KEYS}; do
+    adv="$(printf '%s\n' "${probe}" | sed -n "s/^ADV ${key} //p" | head -1)"
+    have="$(printf '%s\n' "${probe}" | sed -n "s/^HAVE ${key} //p" | head -1)"
+    # ADV carries a git-tag "v", HAVE a ".devN+sha" trailer.
+    adv="${adv#v}"
+    [ -z "${have}" ] || have="$(printf '%s' "${have}" | grep -oE '^[0-9]+(\.[0-9]+)*' || printf '%s' "${have}")"
+    if [ -z "${adv}" ]; then
+      printf 'SKIP %s image sets no %s -- nothing advertised to check\n' "${key}" "${key}"
+    elif [ -z "${have}" ]; then
+      printf 'SKIP %s advertised %s but the in-image probe could not read the actual value\n' "${key}" "${adv}"
+    elif [ "${adv}" = "${have}" ] || \
+         { [ "${key}" = VULKAN_VERSION ] && [ "${adv#"${have}"}" = ".0" ]; }; then
+      printf 'OK %s %s\n' "${key}" "${adv}"
+    else
+      printf 'BAD %s %s %s\n' "${key}" "${adv}" "${have}"
+    fi
+  done
+}
+
+# Pure verdict function for the venv package-set gate: <arch> + probe text in,
+# "MISS|STALE|EXEMPT|NOREQ <extra> <pkg> [owner]" lines plus "ASSERTED <n>" out.
+_venv_set_verdicts() {
+  local arch="$1" probe="$2"
+  local pkgs extras extra reqs r asserted=0 owner name
+  pkgs="$(printf '%s\n' "${probe}" | sed -n 's/^PKG //p' | LC_ALL=C sort -u)"
+  extras="${_VENV_CONTRACT_EXTRAS}"
+  # The image's OWN advertisement picks the pytorch-* extra, so a cpu wrapper is never
+  # asked for the rocm extra's wheels.
+  local torch_extra
+  torch_extra="$(printf '%s\n' "${probe}" | sed -n 's/^ADV PYTORCH_EXTRA //p' | head -1)"
+  case "${torch_extra}" in
+    "") printf 'NOADV PYTORCH_EXTRA -\n' ;;
+    none) ;;
+    *) extras="${extras} ${torch_extra}" ;;
+  esac
+  for extra in ${extras}; do
+    reqs="$(printf '%s\n' "${probe}" | awk -v e="${extra}" '$1=="REQ" && $2==e {print $3}' | LC_ALL=C sort -u)"
+    if [ -z "${reqs}" ]; then
+      printf 'NOREQ %s -\n' "${extra}"
+      continue
+    fi
+    for r in ${reqs}; do
+      if printf '%s\n' "${pkgs}" | grep -qxF -- "${r}"; then
+        if _venv_pkg_exempt "${arch}" "${extra}" "${r}"; then
+          printf 'STALE %s %s\n' "${extra}" "${r}"
+        else
+          asserted=$((asserted + 1))
+        fi
+      elif _venv_pkg_exempt "${arch}" "${extra}" "${r}"; then
+        printf 'EXEMPT %s %s\n' "${extra}" "${r}"
+      else
+        printf 'MISS %s %s\n' "${extra}" "${r}"
+      fi
+    done
+  done
+  while read -r owner name; do
+    [ -n "${name}" ] || continue
+    if _venv_pkg_exempt "${arch}" DEP "${name}"; then
+      printf 'EXEMPT DEP %s %s\n' "${name}" "${owner}"
+    else
+      printf 'MISS DEP %s %s\n' "${name}" "${owner}"
+    fi
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^DANG //p' | LC_ALL=C sort -u)
+  printf 'ASSERTED %d\n' "${asserted}"
+}
+
+# Cached probe text for this image; both gates share the single container run.
+_SHIPPED_TRUTH_PROBE=""
+_SHIPPED_TRUTH_PROBE_RC=1
+
+run_shipped_truth_probe() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- SHIPPED-TRUTH probe (${target_arch}) ---"
+  _SHIPPED_TRUTH_PROBE="$(_rt_run -e "RT_PROBE_SH=$(_shipped_truth_probe)" \
+    bash -lc 'if [ -z "${RT_PROBE_SH:-}" ]; then echo "RTPROBE_EMPTY"; exit 4; fi
+printf "%s\n" "${RT_PROBE_SH}" | bash' 2>/dev/null)" || true
+  if printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | grep -qxF -- 'RTPROBE_DONE'; then
+    _SHIPPED_TRUTH_PROBE_RC=0
+    echo "  probe completed: $(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | grep -c '^PKG ' || true) venv distributions, $(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | grep -c '^REQ ' || true) requirement edges"
+  else
+    _SHIPPED_TRUTH_PROBE_RC=1
+    echo "  probe did NOT complete (no RTPROBE_DONE marker) -- both shipped-truth gates below will report it"
+  fi
+  echo ""
+}
+
+# A: the image must not advertise a version it does not have.
+# Pure verdict function for the riscv64 ISA gate: probe text in, one
+# "OK|BAD|SKIP <lib> <attr>" line out per shipped object.
+_rvv_verdicts() {
+  local probe="$1" lib attr n=0 cc vcc=0
+  cc="$(printf '%s\n' "${probe}" | sed -n 's/^RVCC //p' | head -1)"
+  # Only demand vector once the image's OWN toolchain defaults to it. Before that
+  # switch a plain object is the documented old state, not a regression.
+  case "${cc}" in rva23*|*gcv*|*_v|*_v_*) vcc=1 ;; esac
+  while read -r lib attr; do
+    [ -n "${lib}" ] || continue
+    n=$((n + 1))
+    case "${attr}" in
+      "")        printf 'SKIP %s no ISA attribute could be read\n' "${lib}" ;;
+      *_v1p0*)   printf 'OK %s %s\n' "${lib}" "${attr}" ;;
+      *)         if [ "${vcc}" = "1" ]; then printf 'BAD %s %s\n' "${lib}" "${attr}"
+                 else printf 'OLD %s %s\n' "${lib}" "${attr}"; fi ;;
+    esac
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^RVARCH //p')
+  [ "${n}" -gt 0 ] || printf 'NONE - -\n'
+}
+
+# C: riscv64 objects must carry the vector extension Ubuntu's own userland requires.
+check_riscv64_isa() {
+  local image_tag="$1" target_arch="$2"
+  [ "${target_arch}" = riscv64 ] || return 0
+  echo "--- SHIPPED-TRUTH C: riscv64 ISA of the shipped objects ---"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE"
+    echo ""
+    return 0
+  fi
+  local verb lib attr bad=0 ok=0
+  while read -r verb lib attr; do
+    case "${verb}" in
+      OK)   ok=$((ok + 1)) ;;
+      BAD)  bad=$((bad + 1))
+            fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
+      SKIP) echo "  ~~   ${lib}: ${attr}" ;;
+      OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
+      NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
+    esac
+  done < <(_rvv_verdicts "${_SHIPPED_TRUTH_PROBE}")
+  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "RVV: all ${ok} checked object(s) carry v1p0"
+  echo ""
+}
+
+# Pure verdict function for the soname-precedence gate.
+_soname_verdicts() {
+  local probe="$1" so win ours n=0
+  while read -r so win ours; do
+    [ -n "${so}" ] || continue
+    n=$((n + 1))
+    case "${win}" in
+      /opt/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
+      *)      printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
+    esac
+  done < <(printf '%s\n' "${probe}" | sed -n 's/^SONAME //p')
+  [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
+}
+
+# D: a library we ship must not lose the ld.so lookup to a distro copy.
+check_soname_precedence() {
+  local image_tag="$1" target_arch="$2"
+  echo "--- SHIPPED-TRUTH D: our libraries win the ld.so lookup (${target_arch}) ---"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "soname-precedence gate could not run: the in-image probe never printed RTPROBE_DONE"
+    echo ""
+    return 0
+  fi
+  local verb so win ours bad=0 ok=0
+  while read -r verb so win ours; do
+    case "${verb}" in
+      OK)   ok=$((ok + 1)) ;;
+      BAD)  bad=$((bad + 1))
+            fail "SONAME: ${so} resolves to ${win}, NOT to our ${ours} -- a consumer linking it gets the distro build. Give our tree a 000-*.conf in /etc/ld.so.conf.d (docs/cross-build-verification.md)." ;;
+      NONE) fail "SONAME: the probe found no shipped sonames at all -- a vacuous pass, not a green image" ;;
+    esac
+  done < <(_soname_verdicts "${_SHIPPED_TRUTH_PROBE}")
+  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "SONAME: all ${ok} shipped library(ies) win their lookup"
+  echo ""
+}
+
+check_advertised_versions() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- SHIPPED-TRUTH A: advertised env versions == actual (${target_arch}) ---"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
+    echo ""
+    return 0
+  fi
+  local verb key rest ok=0 bad=0
+  while read -r verb key rest; do
+    case "${verb}" in
+      OK)   echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
+      SKIP) echo "  SKIP ${key}: ${rest}" ;;
+      BAD)  bad=$((bad + 1))
+            fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+    esac
+  done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
+  if [ "$((ok + bad))" -eq 0 ]; then
+    fail "advertised-version gate asserted NOTHING on ${target_arch}: every key in _ADVERTISED_VERSION_KEYS was unset or unreadable -- a vacuous pass, not a green image"
+  elif [ "${bad}" -eq 0 ]; then
+    pass "all ${ok} advertised version(s) match the shipped image (${target_arch})"
+  fi
+  echo ""
+}
+
+# B: the venv must carry what the app's own metadata says this arch needs.
+check_venv_package_set() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- SHIPPED-TRUTH B: venv package set vs the app's declared graph (${target_arch}) ---"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
+    echo ""
+    return 0
+  fi
+  local absent
+  absent="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT //p' | head -1)"
+  if [ -n "${absent}" ]; then
+    echo "  SKIP venv package-set comparison UNAVAILABLE on ${target_arch}: ${absent}"
+    echo "  SKIP   -- this is a loud skip, NOT a pass; the set was never compared"
+    echo ""
+    return 0
+  fi
+  local verb extra pkg owner miss=0 asserted=0
+  while read -r verb extra pkg owner; do
+    case "${verb}" in
+      MISS)
+        miss=$((miss + 1))
+        if [ "${extra}" = "DEP" ]; then
+          fail "VENV-SET: ${pkg} is required by the installed ${owner} but is ABSENT from the ${target_arch} venv -- a dangling dependency edge; ship it or record it in _venv_pkg_exempt"
+        else
+          fail "VENV-SET: the app declares ${pkg} for extra '${extra}' on ${target_arch} (its own marker says this arch needs it) but the venv does NOT have it -- ship it or record the exception in _venv_pkg_exempt"
+        fi ;;
+      STALE)
+        miss=$((miss + 1))
+        fail "VENV-SET: the documented exception for ${extra}:${pkg} NO LONGER APPLIES -- ${pkg} is PRESENT on ${target_arch}. Delete that arm from _venv_pkg_exempt in linux/scripts/06-packaging/smoke-runtime-image.sh." ;;
+      EXEMPT)
+        echo "  ~~   ${extra}:${pkg} absent (documented exception)" ;;
+      NOREQ)
+        miss=$((miss + 1))
+        fail "VENV-SET: the app declares NO requirement at all for extra '${extra}' on ${target_arch} -- either the extra was renamed upstream (update _VENV_CONTRACT_EXTRAS) or the metadata is truncated; the gate refuses to assert an empty set" ;;
+      NOADV)
+        miss=$((miss + 1))
+        fail "VENV-SET: the image advertises NO PYTORCH_EXTRA at all on ${target_arch} -- the gate would silently drop the torch extra from its scope. Set it (the literal 'none' for a torch-less image)." ;;
+      ASSERTED)
+        asserted="${extra}" ;;
+    esac
+  done < <(_venv_set_verdicts "${target_arch}" "${_SHIPPED_TRUTH_PROBE}")
+  if [ "${asserted}" -eq 0 ] 2>/dev/null; then
+    fail "VENV-SET asserted NOTHING on ${target_arch} -- no requirement edge was checked, so a green here would be vacuous"
+  elif [ "${miss}" -eq 0 ]; then
+    pass "VENV-SET: all ${asserted} arch-applicable requirement edge(s) satisfied in the ${target_arch} venv"
+  fi
+  echo ""
+}
+
 # GStreamer plugin health -- WARN only: unlike ffmpeg/opencv, a plugin whose runtime
 # .so is absent degrades gracefully (the element is just unavailable), so it must not
 # fail the gate - but it must stay visible. The functional pipeline check below is the
@@ -993,6 +1395,11 @@ main() {
     check_size_observability "${image_tag}" "${target_arch}"
     check_venv_bytecode "${image_tag}" "${target_arch}"
     check_arch_parity "${image_tag}" "${target_arch}"
+    run_shipped_truth_probe "${image_tag}" "${target_arch}"
+    check_advertised_versions "${image_tag}" "${target_arch}"
+    check_venv_package_set "${image_tag}" "${target_arch}"
+    check_riscv64_isa "${image_tag}" "${target_arch}"
+    check_soname_precedence "${image_tag}" "${target_arch}"
     check_gstreamer_plugin_health "${image_tag}" "${target_arch}"
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"

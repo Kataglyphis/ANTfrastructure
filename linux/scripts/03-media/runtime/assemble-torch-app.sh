@@ -492,6 +492,31 @@ ensure_project_package_installed() {
   fi
   echo "Project package orchestr_ant_ion (+ core deps) missing after uv sync; installing from ${APP_DIR}"
   uv pip install "${APP_DIR}"
+  install_fallback_project_extras || return 1
+}
+
+# uv sync requests --extra docs on every arch, so the fallback above must too or
+# riscv64 silently ships ~24 fewer packages. Runs AFTER the project install (that
+# one satisfies the closure's only sdist-only member, pyyaml) and never replaces
+# it. `ml-ai` stays out on purpose. docs/riscv64-venv-parity.md
+install_fallback_project_extras() {
+  local _attempt
+  for _attempt in 1 2 3; do
+    if uv pip install "${APP_DIR}[docs]"; then
+      return 0
+    fi
+    echo "WARNING: docs-extra install attempt ${_attempt}/3 failed" >&2
+    [ "${_attempt}" -eq 3 ] || sleep 10
+  done
+  # Fail HERE, not three stages later. assert_app_venv_parity fails hard on the
+  # same condition, so returning 0 only moved the failure somewhere undiagnosable.
+  # APP_EXTRAS_REQUIRED=0 downgrades it. docs/riscv64-venv-parity.md
+  if [ "${APP_EXTRAS_REQUIRED:-1}" = "1" ]; then
+    echo "ERROR: docs extra NOT installed after 3 attempts; the venv would ship short and app-venv-parity would fail later. Set APP_EXTRAS_REQUIRED=0 to tolerate." >&2
+    return 1
+  fi
+  echo "WARNING: docs extra NOT installed (APP_EXTRAS_REQUIRED=0); app-venv-parity will report it" >&2
+  return 0
 }
 
 verify_project_environment() {

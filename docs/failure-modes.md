@@ -39,6 +39,7 @@ Two neighbours, so you land on the right page:
 - [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
+- [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 
 **Windows: the layer store (hcsshim)**
 
@@ -307,6 +308,65 @@ beside its `*_gpu-*` / `*_migraphx-*` neighbours. **The lesson is about `|| true
 on a destructive step:** it hides the failure AND the fact that the step was
 wrong, so the bug sits latent until something unrelated arms it — here, a
 read-only mount becoming writable.
+
+### A renamed or dropped distro package kills a stage hours in
+
+**Symptom.** A media or toolchain stage dies four hours into a rebuild with
+`E: Unable to locate package <name>` — or, worse, does not die: an
+`install_target_packages ... || true` swallows it and the feature silently
+vanishes from the shipped image.
+
+**Cause.** Ubuntu renames and drops binary packages between releases, and this
+tree pins a rolling one (`UBUNTU_CODENAME` in `versions.env`). 26.04 renamed
+`libfreetype6-dev` to `libfreetype-dev`, replaced `libopenexr-3-dev` with
+`libopenexr-dev`, and `libvvdec-dev` never existed on ports at all. Nothing
+noticed for months because warm apt caches still answered for the old names —
+the tree was un-buildable from scratch and no one knew, because nothing ever
+built from scratch.
+
+**Fix.** `linux/scripts/verify-package-names.py`, wired into `preflight.sh` as
+the `pkg-names` check. It extracts every distro package name **`linux/scripts/**`**
+asks for and resolves each against the live Ubuntu indices for the pinned codename —
+`archive.ubuntu.com` for amd64, `ports.ubuntu.com` for arm64/riscv64 — before a
+build starts rather than four hours in.
+
+What it reads, and how a verdict is reached:
+
+- Sources: `install_target_packages` / `install_optional_target_packages` /
+  `install_host_packages` / `install_deps_preamble` / `apt_install` call sites,
+  bare `apt-get install` lines, `*_packages` and `*_pkgs` array literals,
+  `append_unique_packages` / `append_available_packages` in
+  `01-core/package-lists.sh`, the `_CPYTHON_EXT_DEV_PKG_TABLE` rows in
+  `01-core/cpython-dev-packages.sh`, and the soname map at
+  `03-media/runtime/so-package-map.txt`. Names occur one-per-line AND
+  several-per-line; a per-line assumption is how an earlier audit reported the
+  wrong count, so `--list` prints exactly what was extracted.
+- **UNGUARDED** requests FAIL the gate: a missing name aborts the whole apt
+  transaction and kills the stage. **GUARDED** ones (`|| true`, a `||`
+  fallback chain, a self-filtering helper, an enclosing apt probe) only WARN —
+  the cost there is one wasted apt round-trip per run, not a dead build.
+- A name apt can still install through `Provides:` counts as present but is
+  reported: a virtual name disappears the next time the provider is renamed.
+- Names from a non-Ubuntu repo (NVIDIA/ROCm/TensorRT) are UNVERIFIABLE, never
+  dead; that file list lives in the script.
+- An array no installer ever consumes is reported as unchecked, not silently
+  dropped — that is what keeps sdkmanager component lists out of the verdict.
+- **Not covered:** package names written directly in a `Dockerfile` RUN
+  (`Dockerfile.toolchain`'s `binutils-dev` is the only one today), and anything
+  a script assembles at runtime rather than spelling out.
+
+**Offline is a SKIP, never a pass.** Indices are cached per codename with a
+6h TTL (`PKG_NAMES_TTL`, `PKG_NAMES_CACHE_DIR`): ~13s cold, ~1.5s warm. With no
+network and no cache the check says so loudly and exits 0; with a stale cache it
+verifies anyway and says the cache was stale.
+
+**The transferable lesson.** The gate carries its own extraction self-check —
+known package names that MUST be found (a several-per-line array row, a
+backslash-continued call, a `package-lists.sh` helper) and decoys that must NOT
+be (an sdkmanager component, a table column, a word from an `echo` string). Break
+the extractor and the check exits 2 before it ever reports green. A gate whose
+input extraction can silently degrade to nothing is the failure this repo keeps
+re-learning; a scanner has to prove it is still scanning.
 
 ---
 
@@ -837,3 +897,88 @@ in `WindowsSourceBuild.Common.psm1`. `Modules.ScriptCallClosure.Tests.ps1` prove
 importing only what the script itself imports — that every module function a build script CALLS
 resolves; `Modules.ReExport.Tests.ps1` checks the other direction. Neither replaces the other, and
 the check takes seconds where the build takes hours.
+
+### A declaration that masks its command's exit status
+
+`local x="$(cmd)"` returns **`local`'s** status, not `cmd`'s. Under `set -e` the
+failure is invisible and `x` silently holds `""`.
+
+Live example, fixed 2026-09-01 — `_gst_monorepo_install`
+(`03-media/build/gstreamer/common/build-gstreamer-monorepo.sh`):
+
+```sh
+local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
+```
+
+`/tmp` is a tmpfs on every `Dockerfile.media` RUN, so a full tmpfs makes `mktemp`
+fail. With `gst_stage` empty the whole staging design inverts:
+
+| line | intended | with an empty value |
+| --- | --- | --- |
+| `meson install --destdir "${gst_stage}"` | stage into a temp tree | `--destdir ''` → installs into the **live root**, running target post-install scripts there |
+| `[ -d "${gst_stage}${GSTREAMER_PREFIX}" ]` | is anything staged? | `[ -d /opt/gstreamer ]` → always true |
+| `[ -d "${gst_stage}/usr/local" ]` | as above | `[ -d /usr/local ]` → always true |
+| `rm -rf "${gst_stage}"` | drop the staging tree | `rm -rf ''` → no-op |
+
+The sting: the only line reaching the build log is the same
+`WARNING: GStreamer cross-install had errors` a healthy cross run prints, so the
+broken run is **indistinguishable in the log**.
+
+**The gate.** `verify-masked-assignments.py` (preflight slug `masked-decls`)
+fails on any NEW `local`/`export`/`declare`/`readonly` declaration containing a
+command substitution; 54 pre-existing sites are frozen in
+`masked-assignments.allow`, keyed by file+variable so a site does not re-flag
+when something above it moves. Fixing one means deleting its line.
+
+Two reasons shellcheck alone was not enough: SC2155 does **not** fire on
+`local x="${y:-$(cmd)}"` (verified), and `lint-shell.sh` gates at `-S error`,
+where a warning can never fail the build.
+
+**The fix shape:**
+
+```sh
+local x
+x="$(cmd)" || return 1
+```
+
+### RV1-FREETYPE: riscv64 OpenCV freetype/harfbuzz
+
+RV1-FREETYPE — FIXED (2026-08-24); the coming rebuild is the
+final validator. History (2026-08-23 investigation, still true):
+riscv64 had no TARGET harfbuzz dev surface at configure time —
+pass-2 (FROM gstreamer, libfreetype-dev pre-satisfied) got only
+the RUNTIME libharfbuzz0b — so ocv_check_modules(HARFBUZZ
+harfbuzz) resolved a HOST harfbuzz (find_library fall-through
+under CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH) → "file in wrong
+format" at link. The ports dev package stays banned
+(libharfbuzz-dev:riscv64 → Depends: libglib2.0-dev = RV1-GST-PC
+poison), so install-deps.sh now stages a PIC STATIC target
+harfbuzz (HB_HAVE_FREETYPE=ON, hb-ft glue included) at
+/usr/<triplet> with a cmake-generated absolute-prefix
+harfbuzz.pc whose freetype dep is promoted to Requires: pkg-config
+then emits `-lharfbuzz -lfreetype`, so HARFBUZZ_LIBRARIES becomes
+[libharfbuzz.a, target libfreetype.so] and the module link
+(<objects> FREETYPE_LIBRARIES HARFBUZZ_LIBRARIES) still resolves
+the archive's FT_* refs under -Wl,--no-undefined — a DSO BEFORE
+the archive alone does NOT (proven by a local link experiment
+2026-08-24: objects+ft.so+hb.a fails; +ft.so after the archive
+links clean). Determinism, both passes:
+* our pkgconfig dir is prepended to PKG_CONFIG_PATH, which
+outranks PKG_CONFIG_LIBDIR — pass-2 puts /opt/gstreamer
+first in PKG_CONFIG_PATH and its meson-subproject harfbuzz
+may export a competing harfbuzz.pc; ours must win;
+* the pkgcfg_lib_* cache vars FindPkgConfig/ocv_check_modules
+resolve libraries through are pre-seeded with absolute
+TARGET paths, so no find_library ever runs, let alone falls
+through to a host lib (OCV-FF1's determinism discipline,
+pinned by file path instead of -L ordering).
+Static harfbuzz keeps the runtime surface: the only new NEEDED
+is libfreetype.so.6, which validate-media-runtime's
+so-package-map already resolves to libfreetype6 (and the
+gstreamer stack pulls it in on riscv64 today anyway). If
+install-deps could NOT stage the static harfbuzz, keep the
+module hard-OFF rather than let detection wander back to host
+libs — absence then still surfaces as the wheel smoke's
+riscv64-only opencv-freetype warning, and after a green rebuild
+that warning's "expected on riscv64" status is STALE (parity
+follow-up for the orchestrator).

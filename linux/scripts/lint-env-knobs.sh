@@ -28,31 +28,31 @@ trap 'rm -rf "${_tmp}"' EXIT
 # 1) CONSUMED knobs: ${VAR:-...} readers in shell scripts. Skip _-prefixed
 #    (privates by convention) and 1-2 char names (loop vars).
 grep -rhoE '\$\{[A-Z][A-Z0-9_]{2,}:-' "${SCRIPTS}" --include='*.sh' 2>/dev/null \
-  | sed -E 's/^\$\{//; s/:-$//' | sort -u | grep -vE '^_' \
+  | sed -E 's/^\$\{//; s/:-$//' | LC_ALL=C sort -u | grep -vE '^_' \
   | grep -vE '^(BASH_SOURCE|BASH_REMATCH|HOME|PATH|PWD|OLDPWD|HOSTNAME|OSTYPE|EUID|UID|USER|SHELL|LANG|LC_ALL|TERM|TMPDIR|IFS|PPID|RANDOM|SECONDS|LINENO|FUNCNAME|COLUMNS|LINES|XDG_[A-Z_]+)$' \
   > "${_tmp}/consumed"
 
 # 2) OWNERS
 #    (a) versions.env keys
-sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${VERSIONS_ENV}" 2>/dev/null | sort -u > "${_tmp}/own_versions"
+sed -nE 's/^([A-Z][A-Z0-9_]+)=.*/\1/p' "${VERSIONS_ENV}" 2>/dev/null | LC_ALL=C sort -u > "${_tmp}/own_versions"
 #    (b) Dockerfile ARG/ENV declarations
 grep -rhoE '^\s*(ARG|ENV)\s+[A-Z][A-Z0-9_]+' "${REPO_ROOT}"/linux/Dockerfile* 2>/dev/null \
-  | awk '{print $2}' | sort -u > "${_tmp}/own_dockerfile"
+  | awk '{print $2}' | LC_ALL=C sort -u > "${_tmp}/own_dockerfile"
 #    (c) script-side assignments/exports (VAR= / export VAR= / declare VAR= /
 #        : "${VAR:=...}" self-defaulting / read into VAR)
 { grep -rhoE '(^|[^A-Za-z0-9_{])[A-Z][A-Z0-9_]{2,}=' "${SCRIPTS}" --include='*.sh' 2>/dev/null \
     | grep -oE '[A-Z][A-Z0-9_]{2,}='
   grep -rhoE ':\s*"\$\{[A-Z][A-Z0-9_]{2,}:=' "${SCRIPTS}" --include='*.sh' 2>/dev/null \
     | grep -oE '[A-Z][A-Z0-9_]{2,}'
-} | tr -d '=' | sort -u > "${_tmp}/own_scripts"
+} | tr -d '=' | LC_ALL=C sort -u > "${_tmp}/own_scripts"
 #    (d) allowlist (strip comments/blanks)
 if [ -f "${ALLOW}" ]; then
-  sed -E 's/#.*$//; s/[[:space:]]+//g' "${ALLOW}" | grep -vE '^$' | sort -u > "${_tmp}/own_allow"
+  sed -E 's/#.*$//; s/[[:space:]]+//g' "${ALLOW}" | grep -vE '^$' | LC_ALL=C sort -u > "${_tmp}/own_allow"
 else
   : > "${_tmp}/own_allow"
 fi
 
-sort -u "${_tmp}/own_versions" "${_tmp}/own_dockerfile" "${_tmp}/own_scripts" "${_tmp}/own_allow" > "${_tmp}/owned"
+LC_ALL=C sort -u "${_tmp}/own_versions" "${_tmp}/own_dockerfile" "${_tmp}/own_scripts" "${_tmp}/own_allow" > "${_tmp}/owned"
 
 # 3) verdict
 comm -23 "${_tmp}/consumed" "${_tmp}/owned" > "${_tmp}/unowned"

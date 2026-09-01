@@ -70,28 +70,8 @@ _stv_vpin() {
     | sed -E "s/^[[:space:]]*${key}=//; s/[\"']//g; s/#.*//; s/[[:space:]]+$//; s/^v//" || true
 }
 
-# Assert installed ML-stack versions match their pins. Two authorities, but NOT
-# unioned (GENAI-DRIFT, 2026-08-23): whichever one OWNS the package decides.
-#   - versions.env build-pin -> packages we BUILD or force-reinstall from a
-#     LOCAL wheel (riscv64 torch/vision, source-built onnxruntime,
-#     ai-edge-litert, onnxruntime-genai). The pin WINS outright, on every arch
-#     that builds it; the lock's opinion is printed but not accepted.
-#   - uv.lock -> everything uv resolves and we do not build (numpy/pillow/
-#     contourpy, the amd64/arm64 torch/vision/onnx wheels when unpinned).
-# The old union accepted either, which is exactly how arm64 shipped
-# onnxruntime-genai 0.14.0 (from the lock) against a v0.15.2 build pin and
-# still printed OK.
-# That tightening exposes a drift whose PRODUCER-side fix is still open, and
-# this assert is a hard release gate, so the known case is carried in
-# KNOWN_DRIFT below: an exact (dist, arch, installed, expected) quadruple,
-# dated, naming its backlog item, printed as a loud `!!` on every run and
-# counted in the summary. Anything that is not that exact quadruple still
-# FAILS. It uses each module's __version__ (the actual runtime
-# version) -- which for onnxruntime intentionally differs from its pip dist
-# metadata (source-built lib vs locked wheel; the build pin governs). Also
-# asserts the torch/vision build VARIANT (+cpu/+cu130/+rocm7.1) matches
-# PYTORCH_EXTRA and that OpenCV's major matches OPENCV_VERSION, and runs the
-# cv2 media backends for real (SMOKE-DEPTH a).
+# What this gate does and does not cover:
+# docs/cross-build-verification.md
 assert_pinned_versions() {
   local versions_env="${VERSIONS_ENV:-/opt/scripts/core/versions.env}"
   [ -f "${versions_env}" ] || versions_env="${_SCRIPT_DIR}/../01-core/versions.env"
@@ -333,10 +313,9 @@ try:
     # OpenCV against the source-built GStreamer; if that regresses (e.g. the
     # .pc probe in the opencv-gst stage), cv2 silently loses its gstreamer
     # videoio backend while everything else stays green — this is the assert
-    # the original two-pass design called for. riscv64 exempt (gstreamer OFF
-    # there by design, build-opencv.sh target adjustment). FFMPEG stays
-    # ADVISORY until OCV-FF1 is resolved (opencv-5.0.0 does not currently
-    # enable it against ffmpeg n9.0 — reported NO on the first proven build).
+    # the original two-pass design called for.
+    # Both were once relaxed (riscv64 exempt, FFMPEG advisory); measured
+    # 2026-09-01 all three arches report GStreamer 1.29.2 and FFMPEG YES.
     import re as _re
     _binfo = cv2.getBuildInformation()
     def _backend(name):
@@ -450,6 +429,106 @@ PYEOF
   fi
 }
 
+# APP-PARITY (2026-09-01): assert the venv really carries what `uv sync --extra
+# ml-ai --extra docs` promises. riscv64 never runs uv sync (its fallback path
+# installed the app's core deps only, which is how it shipped 109 packages fewer
+# than amd64), so every riscv64 absence is one dated EXEMPT line with a reason
+# instead of silence. docs/riscv64-venv-parity.md
+assert_app_venv_parity() {
+  echo "--- app venv parity (uv sync extras) ---"
+  # Images that carry a venv but never ran assemble-torch-app.sh have no extras
+  # to assert; the app package is the marker that it ran.
+  if ! "${PY}" -c 'import orchestr_ant_ion' >/dev/null 2>&1; then
+    printf '  SKIP app package not installed in this venv -- extras parity not applicable\n'
+    return 0
+  fi
+
+  local out rc
+  if out="$("${PY}" - <<'PYEOF'
+import os, platform, sys
+import importlib.metadata as M
+
+_MACHINE_TO_ARCH = {"x86_64": "amd64", "amd64": "amd64",
+                    "aarch64": "arm64", "arm64": "arm64", "riscv64": "riscv64"}
+_raw_arch = os.environ.get("STV_ARCH") or platform.machine()
+# An UNRECOGNISED machine keeps its raw name, so it matches no EXEMPT key and
+# gets the strict assert rather than someone else's tolerance.
+ARCH = _MACHINE_TO_ARCH.get(_raw_arch, _raw_arch)
+
+# (dist, the uv sync extra that must deliver it). captum is deliberately absent:
+# it comes from the pytorch-* extra and PYTORCH_EXTRA=none is a supported
+# operator override, so requiring it would misfire on a valid configuration.
+REQUIRED = [
+    ("pandas",             "ml-ai"),
+    ("scipy",              "ml-ai"),
+    ("scikit-learn",       "ml-ai"),
+    ("optuna",             "ml-ai"),
+    ("mlflow",             "ml-ai"),
+    ("boto3",              "ml-ai"),
+    ("iree-base-compiler", "ml-ai"),
+    ("sphinx",             "docs"),
+    ("sphinx-book-theme",  "docs"),
+    ("sphinx-design",      "docs"),
+    ("myst-parser",        "docs"),
+]
+
+# (dist, arch) -> why the absence is a DECISION, not an accident. One line each,
+# reviewed; anything not listed here still FAILS. docs/riscv64-venv-parity.md
+EXEMPT = {
+    ("pandas", "riscv64"):
+        "no riscv64 wheel; ml-ai is uninstallable here (its riscv64 opencv-python is a git source pin)",
+    ("scipy", "riscv64"):
+        "no riscv64 wheel; multi-hour QEMU source build",
+    ("scikit-learn", "riscv64"):
+        "no riscv64 wheel; needs scipy, which has none either",
+    ("optuna", "riscv64"):
+        "only reachable via the ml-ai extra, which riscv64 cannot install",
+    ("mlflow", "riscv64"):
+        "app pyproject gates mlflow (and its ~60-package closure) off riscv64",
+    ("boto3", "riscv64"):
+        "app pyproject gates boto3 off riscv64",
+    ("iree-base-compiler", "riscv64"):
+        "riscv64 builds IREE runtime-only (compiler=OFF, upstream-consistent)",
+}
+
+fails, exempted, stale = [], [], []
+for dist, extra in REQUIRED:
+    try:
+        installed = M.version(dist)
+    except Exception:
+        installed = None
+    why = EXEMPT.get((dist, ARCH))
+    if installed is not None:
+        if why:
+            stale.append(dist)
+            print("  ??  %-20s %s is INSTALLED but listed EXEMPT on %s -- delete the line"
+                  % (dist, installed, ARCH))
+        else:
+            print("  OK  %-20s %-14s (extra %s)" % (dist, installed, extra))
+    elif why:
+        exempted.append(dist)
+        print("  ~~  %-20s absent on %s BY DECISION -- %s" % (dist, ARCH, why))
+    else:
+        fails.append(dist)
+        print("  XX  %-20s MISSING -- extra %s must deliver it on %s" % (dist, extra, ARCH))
+
+if exempted:
+    print("APP-PARITY: %d documented exemption(s) on %s: %s"
+          % (len(exempted), ARCH, ", ".join(exempted)))
+if fails:
+    print("APP-PARITY: FAIL (%d missing)" % len(fails))
+    sys.exit(1)
+print("APP-PARITY: PASS")
+PYEOF
+  )"; then rc=0; else rc=$?; fi
+  printf '%s\n' "${out}" | sed 's/^/  /'
+  if [ "${rc}" -eq 0 ]; then
+    pass "app venv carries the uv sync extras (documented exemptions aside)"
+  else
+    fail "app venv is MISSING packages the uv sync extras must deliver (see XX lines above)"
+  fi
+}
+
 main() {
   echo "=== smoke: torch venv integrity (${VENV}) ==="
   if [ ! -x "${PY}" ]; then
@@ -471,6 +550,7 @@ main() {
   # -- no need to repeat the import PASS lines / ABI bridge).
   if [ "${STV_ASSERT_ONLY:-0}" = "1" ]; then
     assert_pinned_versions
+    assert_app_venv_parity
     smoke_summary
     return 0
   fi
@@ -560,6 +640,7 @@ STV_PY
   # matches its pin (uv.lock for uv-resolved packages, versions.env for the ones
   # we build / force-reinstall from a local wheel).
   assert_pinned_versions
+  assert_app_venv_parity
 
   smoke_summary
 }

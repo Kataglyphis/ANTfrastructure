@@ -113,14 +113,35 @@ _manifest_wrapper_gate() {
 # 1-arch one. Observed live 2026-08-31: the published index had shrunk to
 # riscv64 alone. docs/refactoring-backlog.md
 _manifest_completeness_gate() {
-  local published published_n want_n
-  published="$("${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" 2>/dev/null)" || return 0
-  published_n="$(printf '%s\n' "${published}" | grep -c '"architecture"' || true)"
-  want_n="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"
-  [ "${published_n:-0}" -le "${want_n:-0}" ] && return 0
+  local published published_err
+  published_err="$(mktemp)" || return 1
+  # A 404 means nothing is published yet — legitimately nothing to protect. ANY
+  # other failure means we could not CHECK, which must not read as "safe to
+  # shrink". docs/cross-build-verification.md
+  if ! published="$("${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" 2>"${published_err}")"; then
+    if grep -qE -e "not found|manifest unknown|MANIFEST_UNKNOWN|404" "${published_err}"; then
+      rm -f "${published_err}"
+      return 0
+    fi
+    warn "[manifest] could NOT read ${IMAGE_NAME} from the registry, so this gate cannot tell whether a push would drop an arch:"
+    warn "[manifest] $(tail -1 "${published_err}" 2>/dev/null)"
+    warn "[manifest] refusing rather than shrinking blind (RUNTIME_MANIFEST_COMPLETENESS=0 disables)."
+    rm -f "${published_err}"
+    return 1
+  fi
+  rm -f "${published_err}"
+  # Compare SETS, not counts. Counting alone waves through a lateral swap:
+  # replacing a published {riscv64} with {amd64} keeps the count at 1 and drops
+  # an arch just as surely as shrinking would.
+  local published_arches want_arches dropped
+  published_arches="$(printf '%s\n' "${published}" \
+    | sed -n 's/.*"architecture"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | LC_ALL=C sort -u)"
+  want_arches="$(arch_list_to_words "${TARGET_ARCHES}" | tr ' ' '\n' | grep -v '^$' | LC_ALL=C sort -u)"
+  dropped="$(LC_ALL=C comm -23 <(printf '%s\n' "${published_arches}") <(printf '%s\n' "${want_arches}") | tr '\n' ' ')"
+  [ -n "${dropped// /}" ] || return 0
 
-  warn "[manifest] ${IMAGE_NAME} is PUBLISHED with ${published_n} arch(es) but this run would write ${want_n} (${TARGET_ARCHES})."
-  warn "[manifest] pushing it would DROP the missing arch(es) from the published index."
+  warn "[manifest] ${IMAGE_NAME} is PUBLISHED with [$(printf '%s' "${published_arches}" | tr '\n' ' ')] but this run writes [${TARGET_ARCHES}]."
+  warn "[manifest] pushing it would DROP: ${dropped}"
   if [ "${FORCE_MANIFEST}" -eq 1 ]; then
     warn "[manifest] --force set: shrinking ${IMAGE_NAME} anyway."
     return 0

@@ -498,7 +498,8 @@ cross_stage_run() {
       # reads ARTIFACT_CONTEXT_ROOT/$arch (set by the orchestrator), which is
       # exactly where we just wrote the layout.
       if [ "${stage}" = "android" ]; then
-        local artifact_dir="${CROSS_CONTEXT_WORKDIR}/android-artifacts/${arch}"
+        local artifact_dir
+        artifact_dir="$(cross_stage_context_dir android-artifacts "${arch}")" || return 1
         log "[stage android-${arch}] exporting artifact layout for the runtime lane → ${artifact_dir}"
         export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
       fi

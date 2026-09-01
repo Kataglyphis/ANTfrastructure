@@ -17,7 +17,14 @@ run_parallel_arch_loop() {
   local -a pids=()
   local arch running failed=0
   local _flagdir
-  _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")"
+  # Without a writable flag dir the workers' `|| touch failed-<arch>` silently
+  # does nothing and the harvest below finds no flags: EVERY arch can fail and
+  # the loop still returns 0. docs/failure-modes.md
+  if ! _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")" \
+     || [ -z "${_flagdir}" ] || [ ! -w "${_flagdir}" ]; then
+    warn "run_parallel_arch_loop: no writable flag dir (${flagdir_prefix}.XXXXXX) -- refusing, because arch failures could not be recorded"
+    return 1
+  fi
   # NO `trap ... RETURN` for cleanup here.
   #
   # A RETURN trap set inside a function is NOT scoped to that function: it stays

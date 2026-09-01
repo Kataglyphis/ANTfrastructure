@@ -1,20 +1,7 @@
 #!/usr/bin/env bash
-# Tests for 01-core/sccache-launcher.sh — the guarded launcher whose bypass
-# decision decides whether an sccache internal failure costs cache hits or the
-# whole build.
-#
-# WHY THIS SUITE EXISTS (2026-08-30)
-# ----------------------------------
-# The launcher only bypassed on "sccache: encountered fatal error" (the CMake
-# TryCompile ENOENT class). A second failure class was observed live on the
-# first F2 media validation build: the sccache SERVER died mid-build
-# ("sccache: error: failed to execute compile" / "caused by: Failed to send
-# data to or receive data from server"), which the launcher did NOT classify as
-# sccache-internal — so it handed the dead-server error to ninja as a REAL
-# failure and killed the TVM step. These tests pin the classification:
-#   * BOTH sccache failure classes bypass to a direct compiler run
-#   * a REAL compiler error passes through untouched (compiler never re-run)
-#   * a clean compile passes through
+# Tests for 01-core/sccache-launcher.sh: BOTH sccache failure classes must bypass
+# to a direct compiler run, a real compiler error must pass through untouched.
+# Why each class matters: docs/build-cache-tiers.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

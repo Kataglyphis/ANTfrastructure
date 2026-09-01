@@ -6,7 +6,7 @@ build commands. Reference data — what is in an image, per-component build
 matrices, script tables — lives in `docs/`; the map from topic to owning
 document is [`docs/INDEX.md`](docs/INDEX.md).
 
-Four companion pages carry what used to live here. Read the one that matches
+Five companion pages carry what used to live here. Read the one that matches
 what you are about to do:
 
 | Before you… | Read |
@@ -51,9 +51,12 @@ what you are about to do:
    with narrow per-file closures, local cache exports, ccache wired end-to-end
    (and MEASURED — emit stats to stderr, the stream the 2MiB step-log clip
    never truncates), pinned buildkitd GC budget, parallelism levers
-   (`GCC_PARALLEL_TARGETS`, `--parallel-archs`) taken when proven safe. The
-   resource monitor showed peak CPU at 42% — idle cores are the standing
-   wall-clock reserve. Speed that risks a silently wrong image is not speed
+   (`GCC_PARALLEL_TARGETS`, `--parallel-archs`) taken when proven safe.
+   Idle cores are the standing wall-clock reserve — but do NOT quote the old
+   "peak CPU 42%": it came from a broken sampler (the delta was read through a
+   command substitution, so every sample was the average since monitor start;
+   fixed 2026-09-01). Re-measure before citing a number. Speed that risks a
+   silently wrong image is not speed
    (the `--no-push` handoff lesson): correctness bounds every shortcut.
 2. **Maximum stability.** Digest-pinned handoffs, machine-checked ancestry,
    verified version pins (checksums from official sources), the five shell
@@ -61,8 +64,9 @@ what you are about to do:
    that FAIL LOUDLY — an assertion-free PASS ("will work at runtime") or an
    inner warning swallowed by an outer green is a defect, not a success.
 3. **Many tests.** Every fix ships with a regression test where testable:
-   unit suites under `linux/scripts/tests/` (auto-discovered by the
-   pre-commit `script-tests` gate), lint gates (shellcheck, IFS-safety,
+   unit suites under `linux/scripts/tests/` (auto-discovered by
+   `run-tests.sh`, run by preflight's `script-tests` slug — NOT by the
+   pre-commit hook, which runs a narrower `PREFLIGHT_ONLY` subset), lint gates (shellcheck, IFS-safety,
    hadolint, actionlint, ruff via `lint-python.sh`, gitleaks via
    `lint-secrets.sh`), preflight checks, and smoke assertions that assert
    real behavior against `versions.env` pins. **Mutation-test every new
@@ -74,6 +78,22 @@ what you are about to do:
    README.md (user-facing pointers), the relevant `docs/` page, and
    `CHANGELOG.md` before the work is called done. A mechanism that only the
    git history knows about does not exist for the next session.
+5. **Our build always wins over the distro copy.** Owner directive
+   2026-09-01. Where a `/opt` tree and a distro package export the same soname,
+   ours must win the `ld.so` lookup — write `000-<name>.conf` into
+   `/etc/ld.so.conf.d` (it is read in SORT order) and never rely on the purge
+   alone, because the gtk4 chain pulls GStreamer back in. Enforced on the
+   SHIPPED bytes by the soname-precedence gate in
+   `06-packaging/smoke-runtime-image.sh`; a library that loses its lookup fails
+   the image. Same rule for anything else a consumer resolves at runtime:
+   `PATH`, `PKG_CONFIG_PATH`, `PYTHONPATH`.
+6. **Short code comments. Long text goes in `docs/` and gets linked.** One or
+   two lines at the point of use, only where the code cannot say it itself.
+   Anything longer — forensics, dated evidence, why-not-the-obvious-thing,
+   measured numbers, a failure narrative — moves into a `docs/*.md` page and the
+   code carries a pointer to it. The owner reads code to read code; an essay in
+   the middle of a function pushes the logic off screen. Full rule and worked
+   example: § Comments: as few as possible, as short as possible.
 
 ## Container Architecture
 
@@ -115,7 +135,7 @@ marker, so a consumer never has to guess.
 | `Dockerfile.sdk` | `:cross-compiler-amd64` | `:cross-sdk-<arch>` |
 | `Dockerfile.media` | `:cross-sdk-<arch>` | `:cross-media-<arch>` |
 | `Dockerfile.android` | `:cross-media-<arch>` | `:cross-android-<arch>` |
-| `Dockerfile.package` | `:base` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
+| `Dockerfile.package` | `:latest-cross-base-<arch>` + `:cross-android-<arch>` | `:latest-cross-package-<arch>` |
 | `Dockerfile.torch` | `:latest-cross-package-<arch>` | `:latest-cross-<arch>` |
 | `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | optional GPU layer (CUDA or MIGraphX) |
 | `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64`, or `:winarm64` under `-TargetArch arm64` — still a `windows/amd64` image, carrying an aarch64 artifact bundle; **never publish it with `--platform windows/arm64`** |
@@ -372,7 +392,7 @@ an excellent run. Rank models by **time to a finished answer**, not `tok/s` — 
 1.7B measured 31.7 tok/s and was the *slowest* to a usable answer because it
 spent ~1900 tokens thinking.
 
-Testing: 54 unit tests need no server (`pytest tests/test_benchmark_metrics.py
+Testing: 58 unit tests need no server (`pytest tests/test_benchmark_metrics.py
 tests/test_inspect_gguf.py tests/test_bench_lanes.py tests/test_backend_compat.py
 tests/test_backends_registry.py`); the rest of `tests/` needs the stack up. The
 viewer has a server-side smoke render (`cd benchmark-viewer && npm run smoke`) —
@@ -492,16 +512,38 @@ human has to read it.
 
 ### Comments: as few as possible, as short as possible
 
-**Owner rule, 2026-08-28.** Code comments here had grown into essays. They are
-now held to this:
+**Owner rule (2026-08-28, restated 2026-09-01 as priority 5).** Code comments
+here had grown into essays. They are now held to this:
 
 - Comment only where the code cannot say it: a non-obvious *why*, a trap, a
   load-bearing constraint.
-- One or two lines. If it needs a paragraph, it belongs in `docs/` and the
-  comment is a one-line pointer — e.g. `# See docs/build-cache-tiers.md § 5.1`
-  — never an inline essay.
+- **Two lines is the ceiling.** If it needs a third, the content belongs in
+  `docs/` and the comment becomes a one-line pointer — e.g.
+  `# See docs/build-cache-tiers.md § 5.1`.
 - No narration of what the code plainly does, no incident history, no
-  restating a decision that a doc already owns.
+  restating a decision a doc already owns.
+
+**Move it, never drop it.** This tree's comments often hold the ONLY record of a
+real failure. When you shorten one, the detail must land in a `docs/` page in the
+same edit — verify the page contains it before you delete the lines. Trimming a
+comment down to nothing is data loss, not cleanup.
+
+Worked example, from `01-core/runtime-build-fns.sh` on 2026-09-01 — an 8-line
+block became 3, and the retry counts, the classifier and the `not found` incident
+moved into `docs/cross-build-verification.md`:
+
+```sh
+# Post-build: export to OCI layout locally, or push remotely, then clean up.
+# Transient push failures retry (PUSH_MAX_ATTEMPTS/PUSH_RETRY_BASE_SECS); a
+# permanent one does not. See docs/cross-build-verification.md.
+```
+
+**Why agents relapse here** (observed repeatedly, including 2026-09-01): the
+surrounding code is full of older long comments, and "match the file's style"
+pulls you back into writing essays. It does not apply to this rule. Match the
+style for naming and structure; hold this line regardless of what the neighbours
+look like. Do NOT go rewrite pre-existing long comments as a side quest either —
+the rule governs what you write and what you touch, not a tree-wide sweep.
 
 The same goes for prose written for the owner: short sentences, plain words.
 
@@ -731,7 +773,7 @@ After a successful `build-cross-chain.sh` run:
 
 ```
 linux/scripts/
-├── 01-core/             shared utilities (59 as of 2026-08-14 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
+├── 01-core/             shared utilities (62 as of 2026-09-01 — `ls linux/scripts/01-core/*.sh | wc -l`; the literal said 48 for long enough that README repeated it, so treat any count here as indicative: versions.env, logging, platform, cross-env, cross-gcc, cross-meson, cross-apt, compiler-resolution, tag-naming, stage-defs, digest-pinning, ancestry, build-helpers, cli-parsers, …)
 ├── 02-toolchain/        GCC, LLVM, Rust, Python, CMake, Vulkan builds
 ├── 03-media/            media library build scripts
 │   ├── core/common.sh   single DRY bootstrap — sourced by every media script
@@ -821,10 +863,10 @@ shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1
                          and linux/scripts/lib/agentic-loop.sh
-.github/actions/         composite actions consumers call @main:
+.github/actions/         9 composite actions consumers call @main, incl.
                          cleanup-disk-space (Windows runners),
-                         run-in-linux-container, run-in-windows-container
-                         (see .github/actions/README.md)
+                         run-in-linux-container, run-in-windows-container;
+                         full list in .github/actions/README.md
 ```
 
 `out/`: generated build artifacts (OCI layouts, rootfs exports). Excluded from Docker context via `.dockerignore`.
@@ -940,11 +982,12 @@ The rules an agent must never violate:
      build-gstreamer-monorepo.sh:581-591, which only fires when
      `RUSTC_WRAPPER` is still UNSET. Both PREFER
      `01-core/sccache-launcher.sh`, so an sccache hiccup costs cache hits, not
-     a build at 99%. Their FALLBACKS differ, and only one is safe: with no
-     executable launcher the monorepo goes uncached
-     (build-gstreamer-monorepo.sh:589-590), while `setup_sccache` keeps its
-     `_sc_launcher="sccache"` default (compiler-cache.sh:176) and would ship
-     BARE sccache — a hole the literal-`export` gate below cannot see. The
+     a build at 99%. Since 26a30740 (2026-08-27, owner decision "immer sccache")
+     their FALLBACKS AGREE: with no executable launcher on disk both ship BARE
+     sccache — `build-gstreamer-monorepo.sh:611`
+     (`export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"`) and `setup_sccache`'s
+     `_sc_launcher="sccache"` default (compiler-cache.sh:176). Never uncached;
+     the launcher is an upgrade, not a precondition. The
      launcher is only reachable because 01-core is bind-mounted at
      `/opt/scripts/core` on every heavy media RUN; keep it on those mount
      lists.
@@ -1119,14 +1162,16 @@ The rules an agent must never violate:
 - **CMake cache/linker:** `cmake-cache-linker.sh` → `append_cmake_cache_linker_args <array_ref>`. Sourced by `03-media/core/common.sh` automatically.
 - **Install deps preamble:** `cross-apt.sh` → `install_deps_preamble [packages...]`.
 - **Media ENV reference:** `03-media/runtime/media-env.sh` is the canonical definition of PATH/PKG_CONFIG_PATH/LD_LIBRARY_PATH/GST_PLUGIN_PATH/GI_TYPELIB_PATH. `Dockerfile.media` and `Dockerfile.package` ENV blocks must stay in sync with this file.
-- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `app-wheels`, `media-inputs`.
+- **Media artifact verification:** `03-media/runtime/verify-media-artifacts.sh` validates each media build stage produced output. Called from `Dockerfile.media` RUN steps after every library build. Stages: `onnxruntime-cpu`, `onnxruntime-genai`, `onnxruntime-gpu`, `onnxruntime-pkgconfig`, `litert`, `litert-headers`, `opencv`, `opencv-core`, `ffmpeg`, `gstreamer`, `libcamera`, `armnn`, `app-wheels`, `media-inputs`, `sizes`.
 - **Runtime stage elements:** `Dockerfile.torch` final stage is canonical for COPY of runtime scripts, WORKDIR, VOLUME, ENTRYPOINT, CMD, HEALTHCHECK, kataglyphis user, OCI labels.
 - **Builder functions:** `run_nerdctl_build()` is the canonical nerdctl build wrapper (`BUILDKIT_HOST` support). Use instead of ad hoc `nerdctl build`.
 
 ### Module Loading Order
 
 `artifact-common.sh` sources 01-core modules in dependency order:
-1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `abseil-headers.sh` 16. `path-helpers.sh`.
+1. `common.sh` 2. `tag-naming.sh` 3. `stage-defs.sh` 4. `digest-pinning.sh` 5. `chain-verify.sh` 6. `ancestry.sh` 7. `build-helpers.sh` 8. `cross-stage-build.sh` 9. `context-management.sh` 10. `version-forwarding.sh` 11. `cli-parsers.sh` 12. `runtime-build-fns.sh` 13. `compiler-resolution.sh` 14. `parallel-loop.sh` 15. `path-helpers.sh`. `abseil-headers.sh` is
+deliberately NOT in this loop (backlog A3, 2026-08-12): it has no host-side
+caller, and its in-image consumers load it via `source_module`.
 
 `runtime-flow-common.sh` is sourced directly by `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` (after `artifact-common.sh`).
 
@@ -1163,7 +1208,8 @@ the freshly built wrapper was invisible and `nerdctl push <tag>` +
 plain `-t` on both paths (reliably creates AND overwrites the tag). Do NOT
 reintroduce the `--output type=image,name=` exporter for a tag you then push or
 index — use `-t`. (The dropped ancestry annotations never reached the registry
-anyway; re-embedding them is a tracked follow-up.)
+anyway; they are re-embedded as config labels via `ancestry.sh`'s `--label`
+provenance args.)
 
 Rules:
 
@@ -1240,6 +1286,15 @@ Always preserve these. The canonical reference is `docs/linux-cross-builds.md` �
   exception is recorded THERE, never in prose, and the gate fails an exemption
   that no longer applies. The ORT flavour split and arm64-only QNN are
   deliberate, not gaps.
+- **riscv64 builds WITH the vector extension** (2026-09-01). The cross GCC
+  defaults to `rva23u64_zifencei` / `lp64d` — Ubuntu's own riscv64 baseline,
+  which the image's glibc already requires. Do NOT "restore compatibility" by
+  reverting it: an rv64gc-only board cannot run this image regardless. Set via
+  `--with-arch` in `02-toolchain/build-gcc.sh` (`RISCV_GCC_ARCH` /
+  `RISCV_GCC_ABI` override), never as a `CFLAGS` export. `-march` alone does not
+  reach OpenCV, ORT, Rust or gst-plugins-rs — each has its own switch. Changing
+  it invalidates the warm riscv64 compiler cache. Owner:
+  [`docs/riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
 
 ## Dockerfile.media BuildKit Strategy
 
@@ -1283,7 +1338,11 @@ base ─┬─ onnxruntime ───────┐
   list.** The authoritative check inventory is its `KNOWN_SLUGS` array (do NOT
   enumerate it here — this very paragraph went stale by three slugs once);
   `tests/test-preflight-slugs.sh` enforces that every slug has a registered
-  check and vice versa. Newest additions: `python-lint` (ruff, hard on
+  check and vice versa. Newest additions: `pkg-names` (every package name the
+  tree asks apt for, resolved against the live indices; a PARTIAL index fetch is
+  a SKIP, never a pass) and `advert-keys` (every version-shaped `ENV`/`ARG` must
+  be checked by the smoke or excused with a reason, and a stale excuse fails) —
+  both 2026-09-01. Before them: `python-lint` (ruff, hard on
   real-error classes, advisory rest), `secret-scan` (gitleaks, enforcing,
   false positives via `.gitleaksignore` with justification), `stage-graph`,
   `code-dupes`. That last one is the CODE twin of `doc-dupes`: it tokenises
@@ -1393,8 +1452,10 @@ base ─┬─ onnxruntime ───────┐
   The six long-dangling legacy tags (`android`, `compiler`, `latest`, `media`,
   `sdk`, `torch` — children all 404 since before either tool existed) were
   DELETED on 2026-08-27 by operator decision. Note `:latest` is therefore gone
-  and will not return by itself: every orchestrator in `linux/scripts/` is a
-  `build-cross-*` script, so the native lane has no build path any more.
+  and will not return by itself: the cross lane's orchestrators
+  (`build-cross-chain/compiler/stage.sh`) all tag `cross-*`/`latest-cross`, and
+  `build-runtime-manifest.sh` publishes only the cross manifest, so the native
+  lane has no build path any more.
 - **HOST DISK RECLAIM IS ALLOW-LISTED AND DEFAULT-DRY —
   `windows/scripts/host/free-disk-space.ps1`, and NOTHING ad hoc** (2026-08-21,
   the worst incident this repo has produced). A "let's free some space"
@@ -1438,8 +1499,10 @@ base ─┬─ onnxruntime ───────┐
     manager removals, no MSI removals, no appx removals. Suggest, never do.
   - **The gate is mechanical, not advisory.**
     `.claude/hooks/guard-destructive-deletes.ps1` runs as a `PreToolUse` hook
-    (registered in both `.claude/settings.json` and the user-level settings, so
-    one broken path cannot silently disarm it). It DENIES — a decision no
+    (registered in `.claude/settings.json` ONLY — the user-level settings carry
+    no PreToolUse hook, so this is a single point, not the redundant pair this
+    once claimed). **It is PowerShell: on a host without `pwsh` it cannot fire
+    at all** — verify with `command -v pwsh` before relying on it. It DENIES — a decision no
     prompt can override — any command touching a protected root, and it scans
     file CONTENT on Write/Edit too, because the 2026-08-21 vector was a script
     written for the user to paste, not a command the agent ran. Outside the
@@ -1472,7 +1535,8 @@ base ─┬─ onnxruntime ───────┐
 - For runtime verification, check inside a container or inspect raw symlink targets. Do not use `readlink -f` against `out/linux-runtime/*/rootfs` (absolute symlinks resolve against host root).
 - Confirm on all arches: `clang --version` reports clang 23.1.0 (`LLVM_RELEASE`); `cc -dumpmachine` matches arch; `gcc --version` reports `16.2.0`; symlinks `cc/c++/gcc/g++ → /opt/gcc-16.2.0/bin/*`; `clang → /usr/local/llvm-target/bin/clang`; optional runtime payloads present.
 - The `wrapper-smoke` target in `Dockerfile.package` (FROM package AS
-  wrapper-smoke) runs ~1150 lines of smoke tests — compiler validation, media
+  wrapper-smoke) runs ~2,160 lines of smoke scripts (plus the shared
+    ~730-line `smoke-common.sh`) — compiler validation, media
   smokes, torch-venv, cross-arch. Since 2026-08-28 this is a MANDATORY gate in
   `runtime_build_chain()` (`_runtime_run_package_smoke` in
   `runtime-build-fns.sh`): it builds `--target wrapper-smoke` between the
@@ -1550,7 +1614,7 @@ GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and
 
 ## Development Rules
 
-- Every script: `#!/usr/bin/env bash` + `set -euo pipefail`. Use `run()`/`run_quiet()` from `build-helpers.sh`.
+- Every script: `#!/usr/bin/env bash` + `set -euo pipefail`. Use `run()` from `build-helpers.sh` (`run_quiet()` was removed 2026-08-08).
 - Source `artifact-common.sh` for shared utilities. Use `parse_shared_orchestrator_args()`/`parse_shared_runtime_args()`.
 - Call `cross_stage_init_pins()` before the build loop.
 - Use centralized helpers: `resolve_arch_list()`, `is_dry_run()`, `append_mirror_build_args_from_env()`, `append_version_build_args()`, `normalize_target_arches()`.
@@ -1583,7 +1647,7 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
-- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the three docs gates below — the same checks CI enforces.
+- **Pre-commit hooks:** Run `git config core.hooksPath .githooks` once after clone. The `.githooks/pre-commit` script runs version-staleness checks, arg consistency, shell syntax, and the four docs gates below — the same checks CI enforces.
 - **Four gates guard the docs; none of them is optional.** They exist because
   this tree lost a licence page, a doc index and ~50 cross-references to silent
   drift on a single day. Run them with

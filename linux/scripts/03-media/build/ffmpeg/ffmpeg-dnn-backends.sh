@@ -53,7 +53,11 @@ ensure_tensorflow_c_sdk() {
     local tf_version="${TENSORFLOW_C_VERSION:-2.18.0}"
     local tf_archive
 
-    if [ -f "${tf_dir}/lib/libtensorflow.so" ] && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
+    # A stamp, not just file presence: an interrupted extract leaves both files
+    # behind and the retry would accept the partial tree. docs/failure-modes.md
+    if [ -f "${tf_dir}/.complete-${tf_version}" ] \
+       && [ -f "${tf_dir}/lib/libtensorflow.so" ] \
+       && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
         echo "TensorFlow C SDK ${tf_version} already cached at ${tf_dir}"
         return 0
     fi
@@ -112,6 +116,9 @@ ensure_tensorflow_c_sdk() {
             "TensorFlow" "TensorFlow C API" "${tf_version}" "${tf_dir}" \
             '-L${libdir} -ltensorflow'
         export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
+        # Written LAST: everything above must have succeeded for the retry to
+        # treat this tree as usable.
+        : > "${tf_dir}/.complete-${tf_version}"
         echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
         return 0
     fi

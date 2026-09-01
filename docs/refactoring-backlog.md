@@ -270,6 +270,17 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
 
 ### F3. Clone families worth one owner [S-M each]
 
+- **`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**
+  (`01-core/chain-lifecycle.sh:93` and `:106`, 21 shingles, 5 identical lines) —
+  the item-splitting loop is the same; only the emitted shape differs. One
+  walker taking an emitter callback would own it. Allowlisted 2026-09-01 with a
+  budget of 25 so it cannot grow further unnoticed.
+- **`verify-shipped-wrapper.sh` carries a private `_is_truthy`** (`:50`) — it
+  runs standalone from `build-runtime-manifest.sh`, but `REPO_ROOT` is available
+  there, so it could source `01-core/platform.sh` and use the canonical
+  definition. The test stubs (`test-chain-lifecycle.sh`, `test-parallel-loop.sh`,
+  `test-ffmpeg-dnn-contract.sh`) must keep their own copies — a test that sourced
+  the real one could no longer prove the shipped copy behaves.
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
   `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
@@ -299,7 +310,242 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
-## D. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
+### F7. ArmNN + ACL — DECIDED 2026-09-01: ship them [DONE]
+
+They were cross-compiled, stripped and verified on every arm64 chain and then
+dropped at the package boundary: `Dockerfile.package` named them zero times, the
+shipped image had neither directory, `libarmnn*` existed nowhere in it, and the
+only `libarm_compute.so` present came with PyTorch's own wheel.
+
+Owner decision: **ship them.** `Dockerfile.package` now copies `/opt/armnn` and
+`/opt/acl` from `artifact-source` (safe on every arch — the media stage creates
+empty dirs on non-arm64), and `configure-runtime.sh` writes `000-armnn.conf` so
+they win their lookup like every other `/opt` tree.
+
+Note the same shape is CORRECT for `/opt/tvm`, `/opt/pyav` and `/opt/app-wheels`:
+their content is installed into `/opt/venv` (tvm and av are importable in the
+shipped image). ArmNN had no such path.
+
+### F6. Cache-key blast radius in Dockerfile.media [M each, measured]
+
+Numbers from `out/build-logs/f2-media-validation.log` (2026-08-31, amd64, warm
+ccache): the media stage is 134.3 min of RUN time across 90 steps, dominated by
+app-wheelhouse 1523.5s, ORT `--step cpu` 1452.0s, tvm 1377.1s, litert 1353.6s.
+The waste is not compute — it is over-broad mounts above that work.
+
+Two are FIXED (2026-09-01): `verify-media-artifacts.sh` no longer sits in the
+shared `base` stage (8 edits since 2026-08-01, each re-paying the whole media
+stage on every arch), and `linux/qnn-sdk/*.md` is out of the build context (a
+README-only dir mounted into the five heaviest RUNs).
+
+Still open, each mechanical but needing a build to prove:
+- **The ORT `--step cpu` RUN mounts the whole `build/onnxruntime` tree**, so an
+  edit to `60-build-genai.sh` (5 commits since 2026-08-01) re-pays the 24-minute
+  CPU build. The deps RUN five lines above already mounts per-file and carries a
+  comment explaining exactly why; mirror it here and at the genai / wasm / js
+  RUNs.
+- **The tvm RUN mounts all of `05-frameworks`**, pulling in
+  `torch/build-app-wheelhouse.sh` and `flutter/`, neither of which `tvm.sh`
+  sources — so a torch-wheelhouse edit re-pays the 23-minute tvm build.
+Do these in a window where a real media build can validate them: a missed
+transitive `source` fails hours in, which is worse than the cache cost.
+
+### F5. The duplication baseline is frozen, not reviewed [L, measurable]
+
+`verify_code_dupes.py` reports OK, but that means **no NEW or GROWING** copy —
+not "no duplication". Measured 2026-09-01: `docs/scripts/code-dupes.allow` holds
+251 pairs, of which **236 still say "baseline 2026-08-31, not yet reviewed"**,
+totalling **6159 shared shingles**. Only 15 carry a real reason.
+
+Work the tail from the top; each line deleted or shrunk is real progress and the
+gate enforces the new, lower budget automatically:
+
+| shingles | pair |
+| ---: | --- |
+| 199 | `build-runtime-artifacts.sh` ↔ `build-runtime-manifest.sh` |
+| 179 | `iree/android/build-android.sh` ↔ `litert/android/build-android.sh` |
+| 95 | `lint-shell.sh` ↔ `lint-workflows.sh` |
+| 90 | `smoke-runtime-image.sh` (same file, two blocks) |
+| 88 | `tests/test-tvm-cmake-args.sh` (same file, two blocks) |
+
+Two pairs alone are 378 shingles — 6% of the whole baseline. Reviewing an entry
+means one of: shrink the twin and lower the budget, or replace "not yet reviewed"
+with the reason it is deliberate. Both are improvements; leaving it is not.
+
+## G. Shipped-truth findings, measured in the arm64 image 2026-09-01
+
+Every item here was read out of the SHIPPED bytes
+(`ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross-arm64`), not from a
+build log. See docs/cross-build-verification.md.
+
+- **IREE ships a release compiler against a dev runtime** [M·★★★] — CONFIRMED:
+  `iree-base-compiler 3.11.0` but `iree-base-runtime
+  3.11.0.dev0+e4a3b0405d7d23554da26403658d0e8c3c5ecf25`. The two halves of IREE
+  come from different builds; a dev runtime can drift from the release
+  compiler's VM format. `IREE_VERSION=v3.11.0` in versions.env pins only what
+  the tag claims. Decide which half is authoritative and pin both to it. The
+  `advert-keys` gate compares the RUNTIME's numeric prefix, so this skew is
+  currently green and would stay invisible without this entry.
+
+- **The advertised-version gate covered 6 of 31 keys** [DONE 2026-09-01] —
+  `verify-advertised-keys.py` (preflight slug `advert-keys`) now fails when any
+  version-shaped `ENV`/`ARG` in `linux/Dockerfile.*` is neither checked by the
+  smoke nor excused with a reason, and when an excuse goes stale. 16 keys are
+  checked, 16 excused. Probes were measured against the shipped image, and each
+  mutation was proven to go red (`test-advertised-keys.sh`).
+
+- **`VULKAN_VERSION` could not disagree with itself** [DONE 2026-09-01] — its
+  HAVE side parsed the version out of `/opt/vulkan/active`, a directory named by
+  the ARG under test. Now measured from the loader (`vulkaninfo`), falling back
+  to `VK_HEADER_VERSION`. The class matters more than the instance: any HAVE
+  probe that re-reads the advertisement is a gate that cannot fail.
+
+- **An absent `PYTORCH_EXTRA` silently shrank the venv gate** [DONE 2026-09-01] —
+  the empty case was folded in with the `none` sentinel, so an image that failed
+  to advertise the extra had it dropped from the checked set. Now `NOADV` fails;
+  only the literal `none` is a torch-less image.
+
+- **TVM ships off-tag** [S·★] — `TVM_REF=v0.26.0` but `tvm.__version__` is
+  `0.26.dev1`. Excused in `advert-keys` because the ref and the version cannot
+  be compared, but a build one commit off its intended tag is invisible today.
+  Worth an explicit ref->commit assertion at build time.
+
+- **`pkg-names` treated a partial index fetch as authoritative** [DONE
+  2026-09-01] — one failed component (`universe`, say) truncated the name set,
+  cached it, and would then report live packages as dead. Now all-or-nothing
+  with an honest SKIP. Also: the vendor-repo exemption covered whole FILES, so
+  the plain Ubuntu packages `setup-rocm-repo.sh` installs before adding the
+  vendor repo (`curl`, `gpg`, `ca-certificates`) were unfailable; it is now
+  name-scoped. And `apt_install_available` was in no installer table at all —
+  6 cross-toolchain packages were extracted nowhere (118 -> 121 call sites,
+  522 -> 529 names).
+
+- **riscv64 now builds at RVA23 (RVV ON)** [DONE 2026-09-01] — the earlier entry
+  here had the risk INVERTED and is corrected: the shipped image's own glibc and
+  loader already require RVV 1.0 (997 `vsetvli` in apt's `libc.so.6`), so a
+  board without a vector unit could never run this image. Our binaries were the
+  only sub-baseline objects in it. The cross GCC now defaults to
+  `rva23u64_zifencei`/`lp64d` — the exact string apt's libc carries — with
+  OpenCV, ORT, Rust and the gst-plugins-rs cargo wrapper wired separately
+  because they gate vector paths on their own switches. A new smoke gate reads
+  `Tag_RISCV_arch` off the shipped objects. See docs/riscv64-rva23-baseline.md.
+  OPEN: TVM and IREE emit code at RUNTIME, so they need a codegen-target change
+  (`-mattr=+v,+zvl128b` / `--iree-llvmcpu-target-cpu-features`), not a compile
+  flag. Also budget a COLD riscv64 build — this invalidates the warm cache.
+
+- **GStreamer: riscv64 ships 282 plugins, arm64 290 — root-caused** [M·★★★] —
+  measured with `gst-inspect-1.0` in both shipped images. None of the eight is
+  an upstream RISC-V arch guard; all reduce to three mechanisms:
+  - **Missing target -dev packages** that a `MEDIA_SKIP_*` flag removes, with
+    meson's `auto` features skipping silently and `--wrap-mode=nofallback`
+    (`build-gstreamer-monorepo.sh:333`) blocking the subproject fallback:
+    `codec2json` (needs `libjson-glib-dev`, dropped with the whole GLib dev
+    stack by `MEDIA_SKIP_GLIB_STACK`), `uvch264`/`uvcgadget` (`libgudev-1.0-dev`,
+    `MEDIA_SKIP_GUDEV`), and `gtk`/`gtkwayland` (`libgtk-3-dev`,
+    `MEDIA_SKIP_GTK_DEV`).
+  - **`colormanagement` needs `liblcms2-dev`, which this repo never installs on
+    ANY arch.** arm64 only gets it by accident, transitively via
+    `libgdk-pixbuf-2.0-dev → libglycin-2-dev → liblcms2-dev`; riscv64 loses that
+    path with `MEDIA_SKIP_CAIRO_PANGO_PIXBUF`. Install it explicitly for all
+    arches — it has no GLib dependency, so no skip flag touches it.
+  - **`csound` and `skia` are explicitly disabled** for riscv64 at
+    `build-gstreamer-monorepo.sh:296` (`-Dgst-plugins-rs:{csound,skia}=disabled`).
+    `skia` stays; the csound half rests on a comment ("Ports has no
+    libcsound64") that is **false** — `libcsound64-dev` exists on resolute
+    riscv64 and the runtime image already ships `libcsound64.so.6.0`.
+  Note the `-Dgtk=disabled` top-level option is a RED HERRING: it selects
+  GStreamer's "build GTK4 as a subproject" mode and arm64 sets it too.
+
+- **FIVE of the eight missing riscv64 GStreamer plugins have ONE cause: the RV1
+  `libglib2.0-dev` ban** [L·★★★] — established 2026-09-01 by reading the live
+  resolute riscv64 ports index. Every package that would restore them Depends on
+  `libglib2.0-dev`:
+
+  | package | plugins it would restore | `Depends: libglib2.0-dev` |
+  | --- | --- | --- |
+  | `libjson-glib-dev` | codec2json | yes |
+  | `libgtk-3-dev` / `libgtk-4-dev` | gtk, gtkwayland | yes |
+  | `libgudev-1.0-dev` | uvch264, uvcgadget | yes |
+  | `liblcms2-dev` | colormanagement | **no** — fixed, shipped |
+
+  So "the package resolves on ports" (which all of them do) is NOT the question;
+  the question is whether `libglib2.0-dev:riscv64` may enter the sysroot at all.
+  `MEDIA_SKIP_GLIB_STACK`, `MEDIA_SKIP_GTK_DEV` and `MEDIA_SKIP_GUDEV` are three
+  spellings of the same ban. Do not retire them one at a time — settle RV1 once.
+
+  **What makes this actionable:** RV1's stated mechanism is REFUTED. The comments
+  claimed ports' riscv64 `glib-2.0.pc` expands an EMPTY prefix; on resolute that
+  `.pc` ships in `libgio-2.0-dev` and is byte-identical to arm64's modulo the
+  triplet. The five 2026-08 failures were real, their explanation is not. Next
+  step is a single riscv64 media build with `MEDIA_SKIP_GLIB_STACK=0` that
+  captures the ACTUAL failure — one build settles five plugins.
+  CAUTION unchanged: `gir1.2-gstreamer-1.0` drags distro GStreamer 1.28.2 into
+  the sysroot, so drop that one entry from the list before testing.
+
+  NOTE 2026-09-01: `MEDIA_SKIP_GUDEV` was briefly flipped to 0 on the evidence
+  that libgudev installs cleanly, then reverted on this finding — installing it
+  would have pulled `libglib2.0-dev` in through the back door.
+
+- **riscv64 RVV / GStreamer glib items** — the only genuinely build-blocked work
+  left; see the entries below. Everything from the 2026-09-01 semantics passes is
+  now fixed in-tree.
+
+- **The destructive-delete guard now works on Linux** [DONE 2026-09-01] — it was
+  PowerShell-only and `pwsh` is absent on this build host, so the answer to the
+  2026-08-21 host wipe was INERT exactly where the incident happened, and the
+  second registration it claimed in the user-level settings did not exist.
+  `.claude/hooks/guard-destructive-deletes.py` is a Linux port with the same
+  protocol, wired ahead of the PowerShell one. It denies the filesystem root,
+  system directories, `$HOME`/`~` roots, credential dirs, the containerd and
+  buildkit stores, block devices and package removals, while
+  `linux/host-config/prune-safe.sh`, `nerdctl rmi` and
+  `rm -rf ~/.cache/kata-buildcache/*` still pass. Pinned by
+  `test-delete-guard.sh`; emptying the rule table turns 7 assertions red.
+
+- **The remaining riscv64 items, NOT fixed and why** [★★] —
+  - **`csound`** — `libcsound64-dev` resolves, the image already ships
+    `libcsound64.so.6.0`, and the "Ports has no libcsound64" comment is corrected
+    in-tree. Not flipped because one gst-plugins-rs plugin whose native dep fails
+    hard-fails the ENTIRE set — risking the 8 Rust plugins riscv64 ships today
+    for one. Unlike the five above it is NOT blocked by RV1
+    (`libcsound64-dev` has no glib dependency), so it is independently testable.
+  - **`MEDIA_SKIP_CAIRO_PANGO_PIXBUF` / `MEDIA_SKIP_LIBCXX_DEV`** — the named
+    packages install today, so the stated reasons are stale, but neither buys a
+    plugin directly and cairo/pango sit on the same glib chain as RV1.
+  - **TVM and IREE** emit code at RUNTIME, so RVV needs a codegen-target change
+    (`-mattr=+v,+zvl128b`, `--iree-llvmcpu-target-cpu-features`), not a compile
+    flag. No such target string exists in the tree yet.
+
+- **The riscv64 skip flags are largely frozen workarounds** [M·★★★] — every
+  package named in `03-media/core/arch-flags-riscv64.env` exists on the live
+  resolute riscv64 ports index at the same version as amd64/arm64, and a REAL
+  (not simulated) cross-install of all 13 inside the tree's own base image
+  returns rc=0 with all 13 "install ok installed" — but only with the host amd64
+  source constrained to `Architectures: amd64`, which `cross-apt.sh:188` does do.
+  `MEDIA_SKIP_GUDEV` and `MEDIA_SKIP_CSOUND` look outright stale;
+  `MEDIA_SKIP_CAIRO_PANGO_PIXBUF` and `MEDIA_SKIP_LIBCXX_DEV` have inaccurate
+  COMMENTS whose flags may still be justified for other reasons. Do NOT flip
+  `MEDIA_SKIP_GLIB_STACK` wholesale: `gir1.2-gstreamer-1.0:riscv64` drags distro
+  GStreamer 1.28.2 into the sysroot, which is a separate hazard. Retire them one
+  at a time, each proven by a real riscv64 media stage, not by an apt simulation.
+
+- **numpy differs between arm64 and riscv64** [S·★★] — measured 2026-09-01 in the
+  shipped images: `numpy 2.5.1` on arm64 (the uv.lock wheel) vs `2.5.2` on
+  riscv64 (built locally against versions.env). The two authorities disagree by a
+  patch release. Harmless today, but it is the same class as the torch/vision
+  split and means "the venv is pinned" is only true per-arch. See
+  docs/riscv64-venv-parity.md.
+
+- **Parity itself is in good shape (measured, not assumed)** [note] — arm64 vs
+  riscv64 on 2026-09-01, read out of the shipped images: identical versions for
+  cv2 5.0.0, onnxruntime 1.29.0, onnxruntime_genai 0.15.2 (GEN1 IS on riscv64),
+  av 18.1.0, tvm 0.26.dev1, tflite_runtime 2.2.0; cv2 reports GStreamer 1.29.2 /
+  FFMPEG / OpenCL / Vulkan YES on BOTH; ORT exposes the same three providers
+  (CPU, WebGpu, Xnnpack) on both — WebGPU now ships, having been excluded in the
+  2026-07-20 build. The only differences are torch/torchvision (PyPI wheel vs
+  source build) and the numpy patch skew above.
+
+## H. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
 
 All nine items implemented and validated live against GenieX lanes on the same
 day they were filed. Kept here (not archived) for one wave so the measured

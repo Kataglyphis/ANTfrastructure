@@ -10,7 +10,6 @@ AGENTIC_EXECUTOR_MODEL
 AGENTIC_PLANNER_MODEL
 ANDROID_GSTREAMER_PER_JOB_MB
 APPDATA_FILE
-APPIMAGETOOL_VERSION
 APP_ID
 APP_RUNNER_ENABLE_SHADER_CLEAN
 APP_RUNNER_SHADER_CLEAN_DIR
@@ -115,7 +114,6 @@ NVIDIA_VISIBLE_DEVICES
 ONNXRUNTIME_ROOT_ANDROID
 OPENCV_ROOT_ANDROID
 OPTIONAL
-ORT_ENABLE_LTO
 ORT_PKGCONFIG_DIR
 PACKAGE_DOCKERFILE_TARGET
 PACKAGE_TYPES
@@ -221,3 +219,17 @@ CROSS_PREFLIGHT_TRIM
 # Newest N cache-export slugs the trim must never remove. Default 3; the byte
 # budget alone does NOT bound the trim. docs/build-cache-tiers.md
 CROSS_TRIM_KEEP_SLUGS
+
+# riscv64 venv parity: the docs-extra fallback fails the assemble step by
+# default; APP_EXTRAS_REQUIRED=0 downgrades it to a warning.
+APP_EXTRAS_REQUIRED
+# In-stage disk watchdog sampling interval, seconds (build-cross-chain.sh).
+CROSS_DISK_WATCH_SECS
+
+# Not an operator switch: set by sourcing /etc/os-release inside the image, read
+# by the smoke's UBUNTU_VERSION probe (06-packaging/smoke-runtime-image.sh).
+VERSION_ID
+
+# Optional override for the cargo version the toolchain smoke pins; defaults to
+# RUST_VERSION, because cargo ships with the Rust toolchain and tracks it.
+CARGO_VERSION

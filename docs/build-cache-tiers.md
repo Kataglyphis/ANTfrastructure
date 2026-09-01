@@ -212,6 +212,95 @@ budget respected, no-op when ample, protected slugs, never aborts under
 
 ---
 
+### 3.2 In-stage disk watchdog and the runtime-lane gate (B2)
+
+Landed 2026-09-01, after the r2 rebuild died with `no image was built` on the
+amd64 wrapper export.
+
+**What actually happened.** `_chain_stage_disk_guard` runs *between* stages
+only. The runtime lane is ONE stage that contains three per-arch wrapper builds,
+so nothing sampled disk inside it. The evidence from
+`out/rebuild-20260901-r2/chain.log` (483 MB) and its resource CSV:
+
+| time | free | what |
+|---|---|---|
+| 02:55:18 | **88 G** | android done → between-stage guard runs, 88 G > 40 G, silent no-op |
+| 02:55–03:23 | 88 → **4 G** | amd64 wrapper build + export, no sampling at all |
+| 03:23:12 | 4 G | `level=fatal msg="no image was built"` → push fails 4× → `Arch amd64 failed during build` |
+
+`grep -c disk-guard` over the whole log returns **0**. The last *measured*
+headroom was comfortable; the drain happened entirely inside the stage that
+followed.
+
+**The watchdog.** `_chain_disk_watch_start` backgrounds
+`_disk_guard_watch_loop` for the duration of the runtime helper and
+`_chain_disk_watch_stop` reaps it on **both** the success and the failure path.
+Each tick:
+
+* logs `[disk-watch] <N>G free on <dir>` — an unconditional sample, so the
+  chain log alone reconstructs the disk trajectory of a finished run. This is
+  also what makes an *external* reclaim visible: the two large mid-run jumps in
+  the r2 CSV (+138 G at 02:03, +271 G at 03:25) were operator prunes in another
+  terminal and left no trace anywhere in the chain's own log;
+* below `CROSS_DISK_GUARD_GB` it calls the same `_disk_guard_trim_cache_export`
+  as § 3.1 — keep-floor and all — and then `_disk_guard_reclaim_record`, which
+  emits exactly one `[disk-reclaim]` line per reclaim **including the reclaim
+  that freed nothing**. That last case is a `WARN`: it is the one an operator
+  must act on, and it is what silence used to look like.
+
+It never calls `nerdctl system prune` / `builder prune`; those wipe the
+`exec.cachemount` records and cost hours (§ 7).
+
+**The lane-entry gate.** `_chain_runtime_lane_disk_gate` runs immediately
+before `build-runtime-manifest.sh`. It requires
+`CROSS_RUNTIME_LANE_GB` (default **120**) × concurrency free, trims first, and
+then refuses. `FORCE_LOW_DISK=1` or `CROSS_RUNTIME_LANE_GB=0` override it.
+
+*Why concurrency and not arch count.* 120 G is the transient cost of **one**
+wrapper build, measured off the r2 CSV. The lane builds arches sequentially
+unless `--parallel-archs`, so the requirement is 120 G once, not 360 G. Sizing
+it per-arch would have refused essentially every run on this 915 G host (218 G
+free, 26 G of trimmable cache export) — a gate that refuses everything gets
+switched off, and then it guards nothing.
+
+The start-of-run preflight gained the same term as an **advisory** warning on
+top of its existing `need_gb`, for the same reason: at chain start the earlier
+stages' consumption is still unknown, so the honest enforcement point is lane
+entry, where free space is actually measured against what is about to be spent.
+The r2 run would have been refused at 02:55 with 88 G — hours before it died,
+and after a trim that might have rescued it.
+
+### 3.3 Runtime-failure summary (B3)
+
+When one arch fails, `set -e` aborts `build-runtime-manifest.sh` inside
+`run_parallel_arch_loop`, and **every** gate downstream of that loop is skipped:
+the wrapper content gate, `verify-shipped-wrapper.sh`, the runtime-image smoke
+(and with it `assert_pinned_versions`), and the manifest coherence /
+completeness / freshness gates. In r2 the run ended with a bare
+`[ERROR] runtime stage failed`; `grep -c` returns 0 for all of them.
+
+`_chain_runtime_failure_report` now runs on that failure path. It reads each
+wrapper tag's own run-id stamp (`ancestry_recorded_run_id`, the same provenance
+the coherence gate uses) and classifies the arch as `built-this-run`, `stale` or
+`missing`, then:
+
+* names the arches with no image from this run;
+* names the gates that were therefore skipped — but **only** in that case. If
+  every arch carries this run's id the failure is at or after the gates, and
+  claiming a skip would be a lie;
+* writes both into `chain-status.json` as `arch_outcomes` and `gates_not_run`,
+  so a later `--manifest-only` repair cannot assemble an index believing
+  everything was checked. A green run's file is unchanged — the keys appear only
+  when a failure recorded them.
+
+Unit coverage for § 3.2–3.3: `test-disk-guard.sh` (sampling on every tick, the
+reclaim record, the no-op-reclaim warning, the loop actually looping, the
+concurrency sizing) and `test-chain-lifecycle.sh` (the lane gate going red at
+88 G, its three overrides, per-arch classification, the "do not claim a skip"
+branch, the JSON fields, and call-site wiring assertions for all of it).
+
+---
+
 ---
 
 ## 4. S3 — per-stage registry cache refs (`mode=max`)
@@ -607,6 +696,10 @@ measurement, not a default flip.
 | `CROSS_DISK_GUARD_GB` | `40` | free-space floor that triggers T2 LRU pruning (`0` disables) |
 | `CROSS_CACHE_MAX_GB` | `250` | total T2 size cap (`0` disables) |
 | `CROSS_PREFLIGHT_TRIM=0` | unset (trim on) | skip the disk-preflight trim of T2 (§ 3.1) |
+| `CROSS_RUNTIME_LANE_GB` | `120` | free GB the runtime lane needs per *concurrent* wrapper build; `0` disables the lane-entry gate (§ 3.2) |
+| `CROSS_DISK_WATCH=0` | unset (watch on) | disable the in-stage disk watchdog (§ 3.2) |
+| `CROSS_DISK_WATCH_SECS` | `120` | in-stage sampling interval |
+| `CROSS_TRIM_KEEP_SLUGS` | `3` | newest T2 slugs the trim will never remove |
 | `SALVAGE_MIN_FREE_GB` | `CROSS_DISK_GUARD_GB` (40) | free-space floor below which the S1 salvage is skipped (`0` = always salvage) |
 | `BUILDKIT_CACHE_DIR` | `~/.cache/kata-buildcache` | where T2 lives |
 | `PUSH_MAX_ATTEMPTS` / `PUSH_RETRY_BASE_SECS` | `4` / `15` | transient-push retry budget |
@@ -628,7 +721,25 @@ keeps the design.
 - Do not add a cache tier that the DeadlineExceeded auto-recovery cannot strip.
 - Do not "align" the ccache/sccache cache-mount ids with the apt ones
   (`Dockerfile.media:26-31`).
+- Do not size the runtime-lane disk gate per arch. It is per *concurrent* build
+  (§ 3.2); the per-arch number refuses every run on this host.
 - Do not judge a cache change by whether the flags appear in the command. Judge
   it by bytes that did not move: cache hits on **intermediate** vertices, or a
   measured wall-clock delta. Two changes were reverted on 2026-08-23 for
   looking right and doing nothing.
+
+## sccache failure classes the launcher must bypass
+
+`01-core/sccache-launcher.sh` decides whether an sccache failure costs cache
+hits or the whole build. Two classes must both bypass to a direct compiler run:
+
+- `sccache: encountered fatal error` — the CMake `TryCompile` ENOENT class.
+- `sccache: error: failed to execute compile` with `caused by: Failed to send
+  data to or receive data from server` — the sccache **server** died mid-build.
+  Observed live on the first F2 media validation build (2026-08-30); the
+  launcher did not classify it as sccache-internal, handed it to ninja as a real
+  compiler failure, and killed the TVM step.
+
+A real compiler error must pass through untouched (the compiler is never
+re-run), and a clean compile passes through. `test-sccache-launcher.sh` pins
+all four cases.

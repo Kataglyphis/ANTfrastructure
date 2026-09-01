@@ -2,8 +2,11 @@ diff --git a/subprojects/gst-plugins-rs/cargo_wrapper.py b/subprojects/gst-plugi
 index 96142bb..29af9e9 100644
 --- a/subprojects/gst-plugins-rs/cargo_wrapper.py
 +++ b/subprojects/gst-plugins-rs/cargo_wrapper.py
-@@ -254,6 +254,11 @@ if __name__ == '__main__':
-         env['RUSTFLAGS'] = shlex_join(rust_flags)
+@@ -254,6 +254,13 @@ if __name__ == '__main__':
+-        env['RUSTFLAGS'] = shlex_join(rust_flags)
++        # Merge, do not clobber: the cross env exports RVV target-features.
++        env['RUSTFLAGS'] = ' '.join(
++            x for x in (env.get('RUSTFLAGS', ''), shlex_join(rust_flags)) if x)
          env['RUSTC'] = rustc_cmdline[0]
  
 +    if not rustc_target:

@@ -26,19 +26,19 @@ $CT = 'C:\Program Files\LLVM\bin\clang-tidy.exe'
 On Linux there is no equivalent resolution step, and
 `linux/scripts/lib/code-quality.sh` is not one: it is a **library you source**,
 not a wrapper that locates binaries. It invokes bare `clang-format -i`
-(`code-quality.sh:285`) and bare `clang-tidy` (`code-quality.sh:405`) straight
+(in `code_quality_run_clang_format`) and bare `clang-tidy` (in `code_quality_run_clang_tidy`) straight
 off `PATH`, and there is no `CODE_QUALITY_*_BIN` knob among the variables it
-documents (`code-quality.sh:69-104`). Nothing checks for the binaries first
-either: the library *defines* a fallback `require_tools` (`code-quality.sh:140-150`)
+documents (the variables it documents in its header). Nothing checks for the binaries first
+either: the library *defines* a fallback `require_tools` (its fallback `require_tools`)
 but never calls it, so a missing LLVM tool surfaces as the shell's own
 `command not found` at the call site. Put LLVM on `PATH` yourself.
 
 `cmake-format` is the one tool the library will provision:
-`code_quality_ensure_cmake_format` (`code-quality.sh:164-199`) creates a venv
+`code_quality_ensure_cmake_format` (`code-quality.sh`) creates a venv
 with `uv` and installs the project's requirements — but only when the consuming
 project has set both `CODE_QUALITY_UV_VENV_CREATE_SCRIPT` and
 `CODE_QUALITY_UV_INSTALL_REQUIREMENTS_SCRIPT`. Without them it hard-errors
-(`code-quality.sh:176`) instead of bootstrapping anything.
+(inside that function) instead of bootstrapping anything.
 
 ## clang-format
 
@@ -185,3 +185,70 @@ these were "fixed" during the extraction.
 | 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | per file in a loop — slower, isolates failures, logs per-file skips |
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
 | 7 | File enumeration | `find` with `-not -path` exclusions | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages` |
+
+## Python that lives in shell heredocs
+
+775 lines of Python sat inside `linux/scripts/**/*.sh` heredocs as of 2026-09-01
+— invisible to `lint-python.sh`, which only globbed `*.py`. A syntax error or an
+undefined name in one of those blocks would have shipped silently.
+
+`linux/scripts/extract-embedded-python.py` writes each block to a temp file that
+the lint gate then includes. Two distinctions are load-bearing:
+
+- **Only directly-executed blocks are extracted.** `python3 - <<'PY'` and
+  `"$py" - <<'PY'` are complete programs. Blocks that are `cat`ed
+  (`cat <<'PY_TAIL'`) are FRAGMENTS assembled into one program later — see
+  `_smoke_genai_py_verdict` in `06-packaging/smoke-common.sh` — and linting one
+  alone reports undefined names for variables the earlier fragment defines.
+- **The opener line may carry trailing redirections.** The first version of the
+  extractor required the heredoc token to end the line, so it silently skipped
+  `"$py" - <<'PY' 2>/dev/null || echo ...` — the shipped-truth probe in
+  `06-packaging/smoke-runtime-image.sh`, i.e. the largest block that mattered.
+
+Both shapes are pinned in `linux/scripts/tests/test-embedded-python-extract.sh`,
+and the coverage was proven by injecting an undefined name into a real heredoc
+and watching the gate go red.
+
+### hadolint rule selection
+
+Windows Dockerfiles are PowerShell (`# escape=`` + SHELL ["pwsh",...]), but
+hadolint's embedded shellcheck still parses RUN bodies as sh wherever it
+cannot see the inherited SHELL — e.g. stages whose base is an ARG image
+(`FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS ...`), where the SHELL set back in
+`common` is invisible to a static linter. PowerShell that happens to parse as
+sh slips through; PowerShell that does not (`...; & 'C:\x.ps1'` —
+Dockerfile.media-builder:321) raises a shellcheck PARSE error, which is
+error-severity and so fails the gate on a pure false positive.
+
+Suppress the "shellcheck could not parse this at all" family, and only for
+windows/*: those diagnostics can never be true for a PowerShell RUN. The Linux
+Dockerfiles keep the full rule set — a real sh parse error there must still
+fail. Style/semantic shellcheck rules stay on everywhere.
+
+The list is the whole parse-error family on purpose, not the codes observed so
+far. The first version of this fix listed only the ones that had actually
+fired (SC1070 on Dockerfile.media-builder); the very next Windows Dockerfile
+added to the repo tripped SC1088 instead and broke main again. Which parse
+error PowerShell happens to provoke is arbitrary — enumerating them one
+outage at a time is not a policy.
+
+## Comment size (`comment-size`)
+
+Owner directive 6 says two lines at the point of use; longer text belongs in
+`docs/` with a pointer. `verify-comment-size.py` fails on any NEW comment block
+over 10 lines in `linux/scripts` or `linux/host-config`. The 175 blocks that
+predate the gate are frozen in `comment-size.allow`; shrinking one means
+deleting its line, and a stale entry fails too, so the list cannot rot.
+
+Entries are keyed on **file + the block's first comment line**, not on a line
+number — a block must not re-flag because something above it moved. One subtlety
+cost a debugging round: the key is truncated to 60 characters and must then be
+`rstrip()`ed, because the allowlist reader strips each line, so a key ending in
+whitespace reported the same block as NEW *and* STALE at once.
+
+A companion gate for cache blast radius (a script COPY'd into a shared stage
+that only leaf RUNs use) was prototyped and **dropped**: shared 01-core helpers
+are legitimately COPY'd into base stages for their descendants, so it produced
+false positives, and a noisy gate teaches people to ignore gates. The
+verify-media-artifacts case it was meant to catch is recorded in
+docs/refactoring-backlog.md F6 instead.

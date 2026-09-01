@@ -89,3 +89,9 @@ external/
 *.psm1
 *.tmp
 *.bak
+
+# The QNN drop dir holds only documentation until an operator stages the SDK zip
+# (which is git-ignored). It is bind-mounted into the five most expensive media
+# RUNs — ORT cpu, ORT genai, litert, tvm, app-wheelhouse — so a README edit alone
+# re-pays ~95 min per arch. Scripts only NAME it in comments; none reads it.
+linux/qnn-sdk/*.md

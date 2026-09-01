@@ -232,6 +232,61 @@ import surface is genuinely strong at the core.
   brought back in sync — it was also missing the two pre-existing entries
   *"A source build produces UNPATCHED sources…"* and *"`atlbase.h` not found…"*.
 - `AGENTS.md`: the failure-mode count was stale at 35; it is 49.
+## 2026-09-01 — riscv64 at Ubuntu's RVA23 baseline; prevention gates; one root cause for five GStreamer plugins
+
+Gates: `make lint` clean (281 files), `make preflight` green,
+`make test-linux-scripts` **42 suites / 1179 assertions** (up from 40 — two new
+suites). The riscv64 RVA23 work is compiler-stage-onward and is **not** carried
+by the in-flight runtime-only repair run; it needs a build from `compiler`, cold
+for riscv64.
+
+### riscv64 now builds WITH the vector extension
+
+The premise was inverted. The shipped image's own glibc and loader already
+require RVV 1.0 (997 `vsetvli` in apt's `libc.so.6`), so a board without a vector
+unit could never run this image — the hardware floor is Ubuntu's, not ours. Our
+binaries were the only sub-baseline objects in it.
+
+The cross GCC now defaults to `rva23u64_zifencei` / `lp64d` (`build-gcc.sh`,
+`RISCV_GCC_ARCH` / `RISCV_GCC_ABI` override) — the exact string apt's libc
+carries. A compiler default, not a `CFLAGS` export: it survives the
+`-DCMAKE_C_FLAGS=` whole-string resets and cannot leak into an amd64 host build.
+Four consumers gate vector paths on their own switches and were wired separately:
+OpenCV (`CPU_BASELINE=RVV`, `WITH_HAL_RVV`), ORT (`onnxruntime_USE_RVV`), Rust
+(`-C target-feature=+v,+zvl128b`), and gst-plugins-rs, whose `cargo_wrapper.py`
+**overwrote** `RUSTFLAGS` — the patch now merges. Full rationale:
+[`docs/riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
+
+New smoke gate reads `Tag_RISCV_arch` off the shipped objects. It is scoped to
+the image's OWN gcc default, because the first version would have failed the
+in-flight repair run on a pre-existing condition — the smoke script is read from
+the repo at run time, so a new gate goes live in a running build.
+
+### Five missing riscv64 GStreamer plugins, ONE cause
+
+`gst-inspect-1.0` on the shipped images: 282 plugins on riscv64 against 290 on
+arm64. `libjson-glib-dev`, `libgtk-3-dev`/`libgtk-4-dev` and `libgudev-1.0-dev`
+all Depend on `libglib2.0-dev`, the package RV1 banned from the riscv64 sysroot,
+so `MEDIA_SKIP_GLIB_STACK` / `_GTK_DEV` / `_GUDEV` are three spellings of one
+ban. `liblcms2-dev` is the only one that does not depend on glib — installed
+explicitly for every arch, which should restore `colormanagement`.
+
+RV1's stated mechanism is refuted: ports' riscv64 `glib-2.0.pc` now ships in
+`libgio-2.0-dev` and is byte-identical to arm64's modulo the triplet. One media
+build with `MEDIA_SKIP_GLIB_STACK=0` would settle five plugins.
+
+### Prevention gates
+
+- `advert-keys` (new): fails when a version-shaped `ENV`/`ARG` is neither checked
+  by the smoke nor excused with a reason. It found 6 of 31 keys checked; now 16
+  and 16. `VULKAN_VERSION` could not disagree with itself — it read the version
+  out of a directory named by the ARG under test.
+- `pkg-names`: a PARTIAL index fetch counted as success, so a mirror hiccup would
+  report live packages as dead. Now all-or-nothing. The vendor exemption covered
+  whole FILES, leaving plain Ubuntu packages unfailable.
+- `cross-apt`: a phased-back host `libc6` makes EVERY foreign-arch install
+  unsatisfiable. The chain worked only because the base image happened to carry
+  the newer libc.
 
 ## 2026-08-31 — Linux backlog closure window: ERR-trap bug, complexity queue, GEN1 riscv64 GenAI
 

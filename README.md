@@ -17,7 +17,8 @@
 Prebuilt container images and the build system that produces them: a multi-arch
 Linux stack (`amd64`/`arm64`/`riscv64`) carrying GCC, LLVM/Clang, Vulkan and a
 full media/inference layer (ONNX Runtime, OpenCV, FFmpeg, GStreamer, LiteRT,
-TVM, IREE); a slim nginx webserver; and a Windows Server Core build image with
+TVM, IREE — riscv64 carries two documented exemptions, listed in AGENTS.md's
+Linux build rules); a slim nginx webserver; and a Windows Server Core build image with
 MSVC, CUDA and the same media stack.
 
 Pull an image and start working, or build the chain yourself — both are below.
@@ -29,13 +30,15 @@ Pull an image and start working, or build the chain yourself — both are below.
 ```bash
 nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
-# with the WebRTC signalling port exposed (the separate :webserver image is the
-# one that serves HTTP, on 80/443)
+# The default CMD is a shell — nothing listens until you start a server.
+# Publishing 8443 only helps once one is running inside; the separate
+# :webserver image is the one that serves HTTP, on 80/443.
 nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 ```
 
-Needs `sudo` on a rootful host. To push to ghcr.io without it, add yourself to
-the docker group once — `sudo usermod -aG docker $USER` — and re-login.
+Rootful nerdctl needs `sudo`. The sudo-less route is the rootless
+containerd + BuildKit stack this repo builds with — not the `docker` group,
+which nerdctl never consults (containerd's socket is `root:root 0660`).
 
 Build workflows: [Linux Build Basics](docs/linux-build-basics.md) ·
 [Linux Cross Builds](docs/linux-cross-builds.md) ·
@@ -156,15 +159,17 @@ linux/
   Base   →   Compiler  →   SDK      →    Media
   (amd64)    (amd64)       (per-arch)    (per-arch)
                                           ↓
-                                     Android (optional)
+                                     Android
                                           ↓
-                                     Package + Torch (optional)
+                                     Package + Torch (runtime lane)
 ```
 
 Three lanes:
 
 - **Cross** (`linux/amd64` host, cross-compiles every arch):
-  `base → compiler → sdk → media → android → package → torch`
+  `base → compiler → sdk → media → android → runtime` (`CROSS_STAGE_ORDER`).
+  The runtime stage is where `package`/`wrapper` get built, with the android
+  image as their artifact source — so android is not optional.
 - **Runtime** (native or QEMU per arch): `base → package → wrapper`
 - **Windows** (native Windows Containers):
   `base → sdk → toolchain → media → torch → final`
@@ -246,18 +251,21 @@ check before spending hours measuring.
 | `ubuntu24.04.yml` | On push/PR: the shell preflight gate suite + docs validation/build |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
-| `python-ci-linux.yml` | Python lint/tests, Linux |
-| `python-ci-windows.yml` | Python lint/tests, Windows |
+| `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |
+| `python-ci-windows.yml` | Reusable (`workflow_call`) — the same for Windows |
 | `llm-stack-tests.yml` | Push/PR, path-filtered on `linux/llm-stack/**` |
 | `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
 
-The first row's suite is `bash linux/scripts/preflight.sh`. Newest gate in it:
-**`code-dupes`** — token-normalised duplication over shell, Dockerfiles and the
-Markdown outside `docs/` (that is the prose gate's half), and
-Markdown, so it catches *renamed* clones the prose gate cannot see; deliberate
-twins are budgeted in `docs/scripts/code-dupes.allow`.
+The first row's suite is `bash linux/scripts/preflight.sh`. Newest gates in it
+(2026-09-01): **`pkg-names`** resolves every package name the tree asks apt for
+against the live Ubuntu indices, and **`advert-keys`** fails when a
+version-shaped `ENV`/`ARG` is neither checked by the runtime smoke nor excused
+with a reason. Before them, **`code-dupes`** — token-normalised duplication over
+shell, Dockerfiles and the Markdown outside `docs/`, so it catches *renamed*
+clones the prose gate cannot see; deliberate twins are budgeted in
+`docs/scripts/code-dupes.allow`.
 
 **None of these builds a container image.** The image lanes are not CI here —
 they run on the build host (`windows/build-buildkit.ps1`, `linux/scripts/…`).

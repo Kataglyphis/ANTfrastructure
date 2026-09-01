@@ -101,27 +101,8 @@ EOF
   echo "Wrote /etc/profile.d/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)"
 }
 
-# --- Make the foreign-arch native GCC search runtime system headers ---
-# The relocated Canadian-cross GCC keeps its compile-time --native-system-
-# header-dir (/usr/${triplet}/include) baked in; that path is absent in the
-# runtime image, so a bare `gcc hello.c` cannot find <stdio.h>. The profile.d
-# block above only helps make-style builds -- a bare `gcc`/`g++` reads
-# neither CFLAGS nor CPPFLAGS, and CPATH cannot satisfy the C++
-# `#include_next`.
-#
-# We fix this with thin WRAPPER scripts that prepend the system include dirs
-# on the *command line* (-idirafter, appended AFTER all built-in dirs so it
-# never shadows libstdc++'s own headers and satisfies both C `<...>` and C++
-# `#include_next`). This is NOT done with an installed `specs` file: any
-# installed specs file RESETS the driver's dynamically-computed link specs
-# -- it silently drops `-lgcc_s` from `*libgcc` and `--eh-frame-hdr` from the
-# EH link spec -- which makes every C++ program that throws terminate at
-# runtime (rc=134, catch never fires) even though it links. Restoring those
-# specs by hand is whack-a-mole and fragile under QEMU. Command-line
-# -idirafter leaves the link specs untouched: validated on riscv64 that a
-# bare `gcc hello.c`, simple C++, AND exception-throwing C++ (throw/catch,
-# STL sort) all compile, link, and run correctly. amd64 never reaches this
-# block (host GCC, no swap).
+# Why the native GCC swap is ordered this way:
+# docs/cross-build-verification.md
 _wrap_native_gcc_drivers() {
   local triplet="$1"
   local gcc_bindir="/opt/gcc-${GCC_VERSION}/bin"

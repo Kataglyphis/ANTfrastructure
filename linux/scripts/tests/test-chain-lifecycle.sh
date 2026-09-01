@@ -105,6 +105,10 @@ t_assert_eq "/custom/logs" "$(
 # here — the suite deliberately loads chain-lifecycle.sh only).
 log()  { :; }
 warn() { :; }
+eval "$(sed -n '/^_chain_live_sibling_pid()/,/^}/p' "${CHAIN_SH}")"
+# Isolate from the HOST's real pidfile: a chain actually running on this
+# machine would otherwise make the archiver correctly refuse, failing these.
+cross_chain_pidfile_path() { printf '%s' "${TMPDIR:-/tmp}/no-such-chain.$$.pid"; }
 eval "$(sed -n '/^_chain_archive_prev_logs() {$/,/^}$/p' "${CHAIN_SH}")"
 t_case "the archiver function was extracted from the shipped script"
 t_assert_eq "function" "$(type -t _chain_archive_prev_logs || true)"
@@ -267,7 +271,7 @@ t_assert_ok    test -f "${LOG_DIR}/archive/notes.txt"
 
 t_case 'a PID-named run dir (the ${CROSS_RUN_ID:-$$} fallback) is prunable by age'
 # archive/365161 — 6.3G, the single biggest dir in the 13G tree — is named by
-# cross-stage-build.sh:48 `rid="${CROSS_RUN_ID:-$$}"`, i.e. by the orchestrator
+# cross-stage-build.sh's stage-marker helper `rid="${CROSS_RUN_ID:-$$}"`, i.e. by the orchestrator
 # PID. Two consequences this case pins down: such a dir IS a run dir (excluding
 # it from the pattern would leave the worst offender unreclaimable), and age
 # must come from mtime — sorted by NAME, a leading '3' files 365161 after every
@@ -396,6 +400,174 @@ unset CROSS_CHAIN_STATUS_FILE
 # deleted from main(), which is how a guard ends up inert while its tests look
 # like coverage (the exporter flag that never tagged, the strip gate that never
 # ran). So assert the call sites themselves, in order, inside main().
+# ---------------------------------------------------------------------------
+# B2: the lane-entry disk gate. `_chain_stage_disk_guard` only runs BETWEEN
+# stages, and the runtime lane is one stage of three ~120G wrapper builds: the
+# 2026-09-01 run entered it with 88G free and died 28 min later. This gate is
+# the one that can REFUSE, so it must actually be able to go red.
+source "${CORE_DIR}/disk-guard.sh"
+eval "$(sed -n '/^_chain_runtime_lane_need_gb() {$/,/^}$/p' "${CHAIN_SH}")"
+eval "$(sed -n '/^_chain_runtime_lane_disk_gate() {$/,/^}$/p' "${CHAIN_SH}")"
+log()  { printf '[INFO] %s\n' "$*"; }
+warn() { printf '[WARN] %s\n' "$*"; }
+err()  { printf '[ERROR] %s\n' "$*"; exit 1; }
+_bool_truthy() { case "${1:-}" in 1|true|TRUE|yes|YES|on|ON) return 0 ;; *) return 1 ;; esac; }
+arch_list_to_words() { printf '%s' "${1//,/ }"; }
+_disk_guard_protected_slugs() { printf ''; }
+TARGET_ARCHES="amd64,arm64,riscv64"
+BUILDKIT_CACHE_DIR="${workdir}/lane-bc"; mkdir -p "${BUILDKIT_CACHE_DIR}"
+_lane_free=999
+_disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
+
+# The runtime lane builds arches SERIALLY and rmi's each wrapper before the next,
+# so peak is ONE wrapper -- --parallel-archs must not scale it. The first cut of
+# this gate multiplied by PARALLEL_ARCHS and would have demanded 360G for a run
+# that never needs more than 120G at once.
+t_case "lane need is ONE wrapper, whatever --parallel-archs says"
+PARALLEL_ARCHS=0; t_assert_eq "120" "$(_chain_runtime_lane_need_gb)"
+PARALLEL_ARCHS=1; t_assert_eq "120" "$(_chain_runtime_lane_need_gb)"
+PARALLEL_ARCHS=0
+
+t_case "the lane gate PASSES with ample headroom"
+_lane_free=500
+( _chain_runtime_lane_disk_gate ) > "${workdir}/lane.txt" 2>&1
+t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane: 500G free"
+
+t_case "the lane gate REFUSES when the lane cannot possibly fit"
+# MUTATION ANCHOR: this is the assertion that goes red if the gate is removed,
+# stubbed to `return 0`, or its threshold is silently defaulted to 0.
+_lane_free=88
+( _chain_runtime_lane_disk_gate ) > "${workdir}/lane.txt" 2>&1 && _lane_rc=0 || _lane_rc=$?
+t_assert_eq "1" "${_lane_rc}" "88G free against a ~120G lane MUST refuse"
+t_assert_contains "$(cat "${workdir}/lane.txt")" "runtime lane refused: 88G free"
+t_assert_contains "$(cat "${workdir}/lane.txt")" "FORCE_LOW_DISK=1"
+
+# $@ = VAR=VAL knobs for ONE gate run; the subshell keeps them from leaking into
+# the next case. Sets _lane_rc, logs to lane.txt.
+_lane_run() {
+  ( [ "$#" -eq 0 ] || export "$@"; _chain_runtime_lane_disk_gate ) \
+    > "${workdir}/lane.txt" 2>&1 && _lane_rc=0 || _lane_rc=$?
+}
+
+t_case "FORCE_LOW_DISK=1 and CROSS_RUNTIME_LANE_GB=0 both let the lane through"
+_lane_run FORCE_LOW_DISK=1
+t_assert_eq "0" "${_lane_rc}"
+t_assert_contains "$(cat "${workdir}/lane.txt")" "FORCE_LOW_DISK=1, continuing"
+_lane_run CROSS_RUNTIME_LANE_GB=0
+t_assert_eq "0" "${_lane_rc}"
+_lane_run DISK_PREFLIGHT=0
+t_assert_eq "0" "${_lane_rc}"
+
+t_case "unknown free space is not treated as a shortfall"
+_disk_guard_free_gb() { printf ''; }
+_lane_run
+t_assert_eq "0" "${_lane_rc}" "an unreadable df must never refuse a multi-hour lane"
+_disk_guard_free_gb() { printf '%s' "${_lane_free}"; }
+
+# ---------------------------------------------------------------------------
+# B3: a runtime failure skips EVERY gate downstream of the per-arch wrapper loop
+# in build-runtime-manifest.sh. The 2026-09-01 run ended with a bare
+# "[ERROR] runtime stage failed" and `grep -c` returning 0 for all of them.
+eval "$(sed -n '/^_chain_runtime_arch_state() {$/,/^}$/p' "${CHAIN_SH}")"
+eval "$(sed -n '/^_chain_runtime_failure_report() {$/,/^}$/p' "${CHAIN_SH}")"
+_CHAIN_RUNTIME_GATES="$(sed -n 's/^_CHAIN_RUNTIME_GATES="\(.*\)"$/\1/p' "${CHAIN_SH}")"
+arch_list_to_words() { printf '%s' "${1//,/ }"; }
+warn() { printf '[WARN] %s\n' "$*"; }
+FINAL_IMAGE="repo/img:latest-cross"
+TARGET_ARCHES="amd64,arm64,riscv64"
+CROSS_RUN_ID="20260901-000000-b3"
+# Stand-in for ancestry_recorded_run_id: amd64's wrapper was never produced.
+ancestry_recorded_run_id() {
+  case "$1" in
+    *-amd64)   return 1 ;;
+    *-riscv64) printf 'an-older-run' ;;
+    *)         printf '%s' "${CROSS_RUN_ID}" ;;
+  esac
+}
+
+t_case "the gate list is non-empty — an empty list would report nothing, silently"
+t_assert_ok test -n "${_CHAIN_RUNTIME_GATES}"
+t_assert_contains "${_CHAIN_RUNTIME_GATES}" "runtime-image-smoke"
+t_assert_contains "${_CHAIN_RUNTIME_GATES}" "manifest-completeness"
+
+t_case "per-arch state comes from the wrapper tag's own run-id stamp"
+t_assert_eq "missing"        "$(_chain_runtime_arch_state amd64)"
+t_assert_eq "built-this-run" "$(_chain_runtime_arch_state arm64)"
+t_assert_eq "stale"          "$(_chain_runtime_arch_state riscv64)"
+
+t_case "the failure report NAMES the arch and the gates that never ran"
+_CHAIN_ARCH_OUTCOMES=""; _CHAIN_GATES_NOT_RUN=""
+_chain_runtime_failure_report > "${workdir}/b3-report.txt"   # NOT $(...): it sets globals
+out="$(cat "${workdir}/b3-report.txt")"
+t_assert_eq "amd64=missing,arm64=built-this-run,riscv64=stale" "${_CHAIN_ARCH_OUTCOMES}"
+t_assert_eq "${_CHAIN_RUNTIME_GATES}" "${_CHAIN_GATES_NOT_RUN}"
+t_assert_contains "${out}" "amd64 riscv64" "the arches without this run's image must be named"
+t_assert_contains "${out}" "runtime-image-smoke" "the skipped gates must be named"
+t_assert_contains "${out}" "manifest-only" "the repair path must be warned off unverified wrappers"
+
+t_case "an all-arches-built failure must NOT claim the gates were skipped"
+# The lane can also fail AFTER the loop (a manifest push). Claiming a skip there
+# would be a lie, and a lie in the failure summary is worse than the silence.
+ancestry_recorded_run_id() { printf '%s' "${CROSS_RUN_ID}"; }
+_CHAIN_ARCH_OUTCOMES=""; _CHAIN_GATES_NOT_RUN="stale-value"
+_chain_runtime_failure_report > "${workdir}/b3-report.txt"
+out="$(cat "${workdir}/b3-report.txt")"
+t_assert_eq "amd64=built-this-run,arm64=built-this-run,riscv64=built-this-run" "${_CHAIN_ARCH_OUTCOMES}"
+t_assert_eq "" "${_CHAIN_GATES_NOT_RUN}"
+t_assert_contains "${out}" "AT or AFTER"
+
+# ---------------------------------------------------------------------------
+# The outcomes must survive into chain-status.json, so a later --manifest-only
+# repair cannot assemble an index believing everything was checked.
+t_case "chain-status.json records the per-arch outcomes and the skipped gates"
+CROSS_CHAIN_STATUS_FILE="${workdir}/b3-status.json"
+_CHAIN_ARCH_OUTCOMES="amd64=missing,arm64=built-this-run"
+_CHAIN_GATES_NOT_RUN="runtime-image-smoke,manifest-completeness"
+_chain_status_emit runtime failed
+_b3="$(cat "${CROSS_CHAIN_STATUS_FILE}")"
+t_assert_contains "${_b3}" '"arch_outcomes": {"amd64": "missing", "arm64": "built-this-run"}'
+t_assert_contains "${_b3}" '"gates_not_run": ["runtime-image-smoke", "manifest-completeness"]'
+t_assert_ok python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${CROSS_CHAIN_STATUS_FILE}"
+
+t_case "a green run's chain-status.json gains NO new keys"
+_CHAIN_ARCH_OUTCOMES=""; _CHAIN_GATES_NOT_RUN=""
+_chain_status_emit runtime ok
+_b3="$(cat "${CROSS_CHAIN_STATUS_FILE}")"
+t_assert_fails grep -q -e 'arch_outcomes' "${CROSS_CHAIN_STATUS_FILE}"
+t_assert_ok python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "${CROSS_CHAIN_STATUS_FILE}"
+unset CROSS_CHAIN_STATUS_FILE
+
+# ---------------------------------------------------------------------------
+# B2 wiring. The in-stage guard and the lane gate are inert unless run_runtime_stage
+# actually calls them, and the failure report is inert unless the build loop does.
+t_case "run_runtime_stage gates on disk, then samples ACROSS the helper call"
+t_assert_eq \
+  "_chain_runtime_lane_disk_gate,_chain_disk_watch_start,_chain_disk_watch_stop" \
+  "$(sed -n '/^run_runtime_stage() {$/,/^}$/p' "${CHAIN_SH}" \
+      | grep -oE '_chain_runtime_lane_disk_gate|_chain_disk_watch_start|_chain_disk_watch_stop' \
+      | paste -sd, -)" \
+  "a watchdog that is never started (or never stopped) is worse than none"
+
+t_case "the runtime failure path reports BEFORE it records and dies"
+t_assert_eq \
+  "_chain_runtime_failure_report,_chain_status_emit,err" \
+  "$(sed -n '/^_chain_run_build_loop() {$/,/^}$/p' "${CHAIN_SH}" \
+      | sed -n '/run_runtime_stage/,/err "runtime stage failed"/p' \
+      | grep -oE '_chain_runtime_failure_report|_chain_status_emit|err ' \
+      | sed 's/ $//' | paste -sd, -)" \
+  "the report must run before _chain_status_emit, and err must stay last"
+# set -e IS live inside a `|| { ... }` group: a report that returned non-zero
+# would skip the status write AND change the chain's exit code from 1 to its own.
+t_assert_contains \
+  "$(sed -n '/^_chain_run_build_loop() {$/,/^}$/p' "${CHAIN_SH}")" \
+  "_chain_runtime_failure_report || true" \
+  "the diagnostic must be unable to preempt _chain_status_emit/err"
+
+t_case "the in-stage guard never reaches for a prune that wipes the compiler caches"
+t_assert_eq "" \
+  "$(grep -nE '(system|builder|buildkit) prune' "${CHAIN_SH}" | grep -v 'Also:' || true)" \
+  "nerdctl/builder prune wipes the ccache+sccache exec cachemounts (hours to rebuild)"
+
 t_case "main() calls the log-hygiene guards, in order, before the build loop"
 t_assert_eq \
   "_chain_prepare_log_dir,_chain_archive_prev_logs,_chain_prune_archived_logs,_chain_run_build_loop" \
@@ -403,5 +575,32 @@ t_assert_eq \
       | grep -oE '^[[:space:]]+(_chain_prepare_log_dir|_chain_archive_prev_logs|_chain_prune_archived_logs|_chain_run_build_loop)([[:space:]]|$)' \
       | sed 's/[[:space:]]//g' | paste -sd, -)" \
   "a guard whose call is missing from main() is inert, whatever its unit tests say"
+
+
+# ── concurrency: a live SIBLING chain must survive this one starting ──
+eval "$(sed -n '/^_chain_write_pidfile()/,/^}/p' "${CHAIN_SH}")"
+eval "$(sed -n '/^_chain_archive_prev_logs()/,/^}/p' "${CHAIN_SH}")"
+
+_sib_pf="$(mktemp)"
+cross_chain_pidfile_path() { printf '%s' "${_sib_pf}"; }
+sleep 300 & _sib_pid=$!
+printf '%s\n' "${_sib_pid}" > "${_sib_pf}"
+
+t_case "a live sibling keeps the pidfile, so stop-cross-chain.sh still reaches it"
+_CHAIN_PIDFILE=""
+_chain_write_pidfile >/dev/null 2>&1
+t_assert_eq "${_sib_pid}" "$(cat "${_sib_pf}")" "clobbering it strands the running chain"
+t_assert_eq "" "${_CHAIN_PIDFILE}" "this run must not think it owns a pidfile it did not write"
+
+t_case "a live sibling's stage logs are NOT archived out from under it"
+_sib_logs="$(mktemp -d)"
+LOG_DIR="${_sib_logs}"
+printf 'other-run\n' > "${_sib_logs}/media-arm64.log.run"
+printf 'live output\n' > "${_sib_logs}/media-arm64.log"
+CROSS_RUN_ID=this-run _chain_archive_prev_logs >/dev/null 2>&1
+t_assert_ok test -f "${_sib_logs}/media-arm64.log"
+
+kill "${_sib_pid}" 2>/dev/null || true
+rm -rf "${_sib_pf}" "${_sib_logs}"
 
 t_summary

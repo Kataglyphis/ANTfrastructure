@@ -75,9 +75,8 @@ vulkan_env_find_setup_script() {
   local include_default_roots="${2:-1}"
   local root candidate
 
-  # An explicit override wins over every probe (set by lib/cmake-build.sh and
-  # run-ctest.sh --vulkan-setup, directly or via
-  # CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT).
+  # An explicit override wins over every probe (set by lib/cmake-build.sh,
+  # directly or via CMAKE_BUILD_DEFAULT_VULKAN_SETUP_SCRIPT).
   if [ -n "${VULKAN_SETUP_SCRIPT:-}" ] && [ -f "${VULKAN_SETUP_SCRIPT}" ]; then
     printf '%s' "${VULKAN_SETUP_SCRIPT}"
     return 0

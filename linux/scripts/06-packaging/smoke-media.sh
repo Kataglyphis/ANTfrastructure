@@ -284,7 +284,7 @@ r, f = c.read(); assert r and f.shape == (32, 32, 3)
       # a TBB probe miss.
       # LOG21: assert the highgui window backend. Cross arches are headless BY
       # DESIGN (GTK's libpango1.0-dev is not multiarch-coinstallable, see
-      # opencv/install-deps.sh:34). amd64 has GTK3. A cross image that suddenly
+      # opencv/install-deps.sh). amd64 has GTK3. A cross image that suddenly
       # gains GTK would be a surprise worth investigating, and a cross image
       # that loses it is expected — so assert the DELIBERATE state.
       _ocv_gui="$(PYTHONPATH="${cv2_pkg}:${PYTHONPATH:-}" python3 -c "
@@ -390,46 +390,36 @@ if [ -n "${_gst_inspect}" ]; then
       # sandbox artifact.
       fail "GStreamer pipeline videotestsrc ! fakesink FAILED (gst-inspect executes, so this is real)"
     fi
-    # Mandatory-plugin gate (smoke-depth R1): meson `enabled` guards CONFIGURE,
-    # but a plugin that ships and then fails to dlopen was only a WARN-count.
-    # A present-but-unloadable plugin is exactly the observed class
-    # (webrtcbin2→librice-proto, gtk4→vkCreateWaylandSurfaceKHR).
-    # The `libav` plugin is special: this project's gst-libav links the
-    # source-built FFmpeg libav* (incl. libavfilter, which NEEDs the bundled
-    # libtensorflow.so.2). Those resolve only once configure-runtime.sh has wired
-    # the loader — the SAME reason the ffmpeg binary itself is deferred in the
-    # build sandbox below. So gate `libav` on ffmpeg executability HERE: if ffmpeg
-    # cannot run in this environment (sandbox), a libav load failure is that same
-    # deferral (INFO; re-tested by the packaging-stage smoke, Dockerfile.package,
-    # where the loader is wired); if ffmpeg DOES run here but libav still fails,
-    # that is a real defect.
-    # opencv/onnx have the SAME class of build-sandbox issue, not a link to ffmpeg:
-    # the opencv plugin links pass-2 OpenCV, which links the source-built GStreamer
-    # (a circular dep the build sandbox can't close); the onnx plugin links
-    # libonnxruntime.so which transitively needs libstdc++.so from the source-built
-    # GCC (a path the flat NEEDED scan in validate-media-runtime.sh doesn't catch
-    # but the dynamic linker hits at dlopen). Both pass validate-media-runtime's
-    # NEEDED scan and the runtime/packaging smoke (Dockerfile.package) where the
-    # loader is fully wired. Gate on the ffmpeg-executability proxy: if ffmpeg
-    # can't run here (build sandbox), defer opencv/onnx just like libav.
+    # Why the GTK/pango expectations differ per arch:
+    # docs/cross-build-verification.md
     _ffmpeg_execok=0
     { _ff_probe="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"; \
       [ -x "${_ff_probe}" ] && "${_ff_probe}" -version >/dev/null 2>&1; } && _ffmpeg_execok=1
     _gst_missing=""
+    _gst_loaded=""
+    _gst_deferred=""
     for _p in libav opencv onnx tflite; do
-      "${_gst_inspect}" "${_p}" >/dev/null 2>&1 && continue
+      if "${_gst_inspect}" "${_p}" >/dev/null 2>&1; then
+        _gst_loaded="${_gst_loaded} ${_p}"
+        continue
+      fi
       if [ "${_ffmpeg_execok}" = "0" ]; then
         _gst_err="$("${_gst_inspect}" "${_p}" 2>&1 >/dev/null | head -1 || true)"
         echo "  INFO: gst '${_p}' plugin not loadable in build sandbox (transitive dep on source-built libs not on the runtime loader path; ffmpeg non-executable here too) — functional gate is the packaging-stage smoke"
         [ -n "${_gst_err}" ] && echo "        detail: ${_gst_err}"
+        _gst_deferred="${_gst_deferred} ${_p}"
         continue
       fi
       _gst_missing="${_gst_missing} ${_p}"
     done
-    if [ -z "${_gst_missing}" ]; then
-      pass "GStreamer mandatory plugin set loads (libav opencv onnx tflite)"
-    else
+    # Name ONLY what actually loaded — the old message listed all four even
+    # when the deferral above had skipped some.
+    if [ -n "${_gst_missing}" ]; then
       fail "GStreamer mandatory plugins MISSING/unloadable:${_gst_missing}"
+    elif [ -n "${_gst_loaded}" ]; then
+      pass "GStreamer mandatory plugins load:${_gst_loaded}${_gst_deferred:+ (deferred to packaging-stage smoke:${_gst_deferred})}"
+    else
+      echo "  INFO: every mandatory GStreamer plugin was deferred to the packaging-stage smoke:${_gst_deferred} — nothing verified here"
     fi
     # Data roundtrip (R2): negotiation + a real encoder + non-empty output —
     # `videotestsrc ! fakesink` proves the registry, not that a buffer with
@@ -544,8 +534,10 @@ fi
 # ---------------------------------------------------------------------------
 echo "--- libcamera ---"
 _lc_prefix="${LIBCAMERA_PREFIX:-/opt/libcamera}"
-# Ensure pkg-config can find libcamera
-export PKG_CONFIG_PATH="${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+# Ensure pkg-config can find libcamera. Native meson installs under the
+# multiarch libdir (lib/x86_64-linux-gnu/pkgconfig), cross under plain lib.
+_lc_pc="$(find "${_lc_prefix}/lib" "${_lc_prefix}/lib64" -name libcamera.pc -type f -print -quit 2>/dev/null || true)"
+export PKG_CONFIG_PATH="${_lc_pc:+$(dirname "${_lc_pc}"):}${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 if command -v pkg-config >/dev/null 2>&1; then
   if pkg-config --exists libcamera 2>/dev/null; then
     lc_ver="$(pkg-config --modversion libcamera 2>/dev/null || echo '?')"
