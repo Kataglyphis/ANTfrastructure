@@ -232,6 +232,24 @@ import surface is genuinely strong at the core.
   brought back in sync — it was also missing the two pre-existing entries
   *"A source build produces UNPATCHED sources…"* and *"`atlbase.h` not found…"*.
 - `AGENTS.md`: the failure-mode count was stale at 35; it is 49.
+## 2026-09-01 — the amd64 smoke gate caught the wave: sanitizers were off in the new toolchain
+
+The dual-lane rebuild's amd64 smoke gate went red on exactly ONE assertion —
+the ASAN probe (compile + run `/fsanitize=address`, require the intentional
+overflow to be reported). Root cause: the 2026-08-31 pre-rebuild pass
+(`bd150ae1`, the compiler-rt ride-along) added explicit
+`-DCOMPILER_RT_BUILD_*=OFF` switches with the comment "sanitizer … unnecessary"
+— and today's chain was that wave's FIRST real build (#152 said exactly this
+could happen). The freshly built patched LLVM shipped builtins only (158
+compiler-rt objects, zero `clang_rt.asan*` installs in the log); the previous
+toolchain had ASAN because enabling the compiler-rt runtime builds sanitizers
+by default. Fix: `COMPILER_RT_BUILD_SANITIZERS=ON` (fuzzer/profile/ORC stay
+off), comment corrected to name the gate as the reason. Costs one toolchain
+re-key + downstream media re-pay on the next amd64 run — the recorded price of
+a toolchain-layer change, and the reason #164 (route this build through
+sccache) is worth landing. The arm64 lane is unaffected (its gate skips the
+ASAN probe — no aarch64-windows ASAN runtime exists) and kept running.
+
 ## 2026-09-01 — CI back to green: the guard that was never committed, a corrupt patch, and a leaking job env
 
 All three failing workflows, one session:
