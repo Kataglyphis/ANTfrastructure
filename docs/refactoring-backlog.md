@@ -490,16 +490,17 @@ build log. See docs/cross-build-verification.md.
   left; see the entries below. Everything from the 2026-09-01 semantics passes is
   now fixed in-tree.
 
-- **The destructive-delete guard cannot fire on a host without `pwsh`** [S·★★★]
-  — `.claude/hooks/guard-destructive-deletes.ps1` is the mechanical answer to the
-  2026-08-21 incident ("the worst this repo has produced"), and AGENTS.md calls
-  it a DENY "no prompt can override". Measured 2026-09-01 on this build host:
-  `command -v pwsh` finds nothing, so the hook cannot execute — the protection is
-  inert exactly where the incident happened. It is also registered in
-  `.claude/settings.json` alone; the claimed second registration in the
-  user-level settings does not exist (0 PreToolUse hooks there), so there is no
-  redundancy either. Port the guard to a shell/Python implementation, or make its
-  absence loud at session start. Do not rely on it on a Linux host until then.
+- **The destructive-delete guard now works on Linux** [DONE 2026-09-01] — it was
+  PowerShell-only and `pwsh` is absent on this build host, so the answer to the
+  2026-08-21 host wipe was INERT exactly where the incident happened, and the
+  second registration it claimed in the user-level settings did not exist.
+  `.claude/hooks/guard-destructive-deletes.py` is a Linux port with the same
+  protocol, wired ahead of the PowerShell one. It denies the filesystem root,
+  system directories, `$HOME`/`~` roots, credential dirs, the containerd and
+  buildkit stores, block devices and package removals, while
+  `linux/host-config/prune-safe.sh`, `nerdctl rmi` and
+  `rm -rf ~/.cache/kata-buildcache/*` still pass. Pinned by
+  `test-delete-guard.sh`; emptying the rule table turns 7 assertions red.
 
 - **The remaining riscv64 items, NOT fixed and why** [★★] —
   - **`csound`** — `libcsound64-dev` resolves, the image already ships
