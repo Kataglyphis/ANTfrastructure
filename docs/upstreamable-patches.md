@@ -144,10 +144,17 @@ both in 700cd32ffd and 83ed22ca28; this ports them unchanged.
 Built against FFmpeg n9.0.
 ```
 
-**Before filing:** cherry-pick the two commits onto 5.x rather than hand-porting,
-resolve whatever conflicts the 5.x videoio refactor causes, and check the file
-for any *other* removed member the two commits did not cover. Then replace our
-patch with the cherry-picked form so we stop carrying a divergent fix.
+**Our side is DONE (2026-09-02).** `002-ffmpeg8-avcodec-config-api.patch` is
+gone; `build-opencv.sh` now applies upstream's two commits as
+`002a-upstream-ffmpeg-pix_fmts-removal.patch` and
+`002b-upstream-ffmpeg-supported-config-framerates.patch`, authorship intact.
+Verified against the **pinned 5.0.0 tag** (not just the `5.x` branch): both
+apply cleanly, twice through `apply-patch.sh` gives APPLIED then SKIP, and the
+old `pix_fmts` / `supported_framerates` reads survive only inside the
+pre-FFmpeg-8 `#else`.
+
+**Still to do upstream:** open the 5.x PR that carries these two commits across,
+and check the files for any *other* removed member the pair did not cover.
 
 ---
 

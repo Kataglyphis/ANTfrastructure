@@ -439,7 +439,7 @@ evidence per item in `docs/upstreamable-patches.md`.
   Note `003` is also actively wrong today: it prepends `env['RUSTFLAGS']` to a
   list that already contains it (line 249 folds it in), duplicating every flag.
 
-- **UB. Replace our OpenCV FFmpeg-8 patch with the upstream commits**
+- **UB. Replace our OpenCV FFmpeg-8 patch with the upstream commits — DONE 2026-09-02**
   [S·★★★]. Upstream fixed this on `4.x` in `700cd32ffd` and `83ed22ca28`; `5.x`
   did not get it. Both are saved in `docs/upstream/patches/` and were verified
   to apply to `5.x` with **no conflicts**, after which our own patch no longer

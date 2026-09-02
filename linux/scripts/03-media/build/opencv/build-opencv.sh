@@ -247,15 +247,22 @@ fetch_opencv() {
     # OCV-FF1 phase 2 (2026-08-21): with the try_compile link gap fixed,
     # HAVE_FFMPEG went TRUE for the first time — and exposed that opencv
     # 5.0.0 still uses the AVCodec fields FFmpeg 8 removed (pix_fmts,
-    # supported_framerates; 4.x master already migrated, the 5.x branch has
-    # not). Backport shim: avcodec_get_supported_config() behind
-    # LIBAVCODEC_VERSION_MAJOR >= 62 guards — 2 sites, drops cleanly when a
-    # 5.x release lands the migration.
+    # supported_framerates; 4.x already migrated, 5.x has not). We used to carry
+    # a hand-written shim; it guarded on the wrong idiom and trusted a {0,0}
+    # terminator where the new API returns a count. Replaced 2026-09-02 by
+    # upstream's two commits. Drops cleanly when a 5.x release lands them.
     if [ -f "${OPENCV_SRC}/modules/videoio/src/cap_ffmpeg_impl.hpp" ]; then
+        # Upstream's own commits, not a reimplementation: 4.x fixed this and 5.x
+        # did not get it. Both apply cleanly to the 5.0.0 tag and carry their
+        # original authorship. docs/upstreamable-patches.md entry 2
         bash /opt/scripts/core/apply-patch.sh \
-            /opt/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch \
+            /opt/scripts/patches/opencv/002a-upstream-ffmpeg-pix_fmts-removal.patch \
             "${OPENCV_SRC}" \
-            "OpenCV 5.0.0 FFmpeg-8 AVCodec config-API compat (OCV-FF1)"
+            "OpenCV upstream 700cd32ffd: support FFmpeg after AVCodec::pix_fmts removal"
+        bash /opt/scripts/core/apply-patch.sh \
+            /opt/scripts/patches/opencv/002b-upstream-ffmpeg-supported-config-framerates.patch \
+            "${OPENCV_SRC}" \
+            "OpenCV upstream 83ed22ca28: avcodec_get_supported_config for framerates"
     fi
 }
 
