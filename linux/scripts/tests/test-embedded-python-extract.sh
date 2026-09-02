@@ -68,4 +68,50 @@ t_assert_ok test "${_n}" -ge 5
 t_assert_contains "$(cat "${TESTS_DIR}/../lint-python.sh")" "extract-embedded-python.py" \
   "an extractor nothing calls is not a gate"
 
+# A FAMILY of cat'ed fragments (two or more sharing a marker prefix) IS
+# assembled and extracted -- that is how the 217 lines of genai smoke Python
+# finally reach ruff. A lone fragment still is not, per the case above.
+t_case "a multi-fragment family is assembled and extracted"
+_FAM="${_work}/fam.sh"
+cat > "${_FAM}" <<'FAMSH'
+emit_a() {
+  cat <<'DEMO_PY_A'
+def add(a, b):
+    return a + b
+DEMO_PY_A
+}
+emit_b() {
+  cat <<'DEMO_PY_B'
+print(add(1, 2))
+DEMO_PY_B
+}
+FAMSH
+_FOUT="${_work}/famout"
+python3 "${EXTRACT}" "${_FOUT}" "${_FAM}" >/dev/null 2>&1
+t_assert_eq "1" "$(find "${_FOUT}" -name '*demo_py*.py' 2>/dev/null | wc -l)" \
+  "the two DEMO_PY_* fragments must assemble into one file"
+t_assert_contains "$(cat "${_FOUT}"/*demo_py*.py 2>/dev/null)" "def add" "fragment A missing"
+t_assert_contains "$(cat "${_FOUT}"/*demo_py*.py 2>/dev/null)" "print(add" "fragment B missing"
+
+t_case "markers containing DIGITS are not silently skipped"
+# GENAI_PY_T1..T4 were missed for exactly this reason: the marker class excluded
+# digits, so four of six fragments never reached ruff and nobody could tell.
+_DIG="${_work}/dig.sh"
+cat > "${_DIG}" <<'DIGSH'
+one() {
+  cat <<'NUM_PY_1'
+x = 1
+NUM_PY_1
+}
+two() {
+  cat <<'NUM_PY_2'
+print(x)
+NUM_PY_2
+}
+DIGSH
+_DOUT="${_work}/digout"
+python3 "${EXTRACT}" "${_DOUT}" "${_DIG}" >/dev/null 2>&1
+t_assert_eq "1" "$(find "${_DOUT}" -name '*num_py*.py' 2>/dev/null | wc -l)" \
+  "digit-suffixed markers must be seen"
+
 t_summary

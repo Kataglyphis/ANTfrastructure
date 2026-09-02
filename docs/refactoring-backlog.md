@@ -289,7 +289,14 @@ arch's media stage.
   clean environment and the compiler is then no longer on `PATH`. Distinct from
   the Rust wrapper that was already switched off (see the wave-4 notes).
 
-- **DB. The gitleaks stage dominates preflight, cause NOT established**
+- **DB. The gitleaks stage dominates preflight — MEASURED 2026-09-02: 170 s**
+  [S·★]. A full `--source .` run over the repo takes **170 seconds**. Neither
+  earlier hypothesis was the story: gitleaks honours `.gitignore` at the repo
+  root (999 tracked files, 5738 ignored), and the ">2 min on `logs/`" reading
+  came from pointing `--source` INTO an ignored directory, where the root
+  `.gitignore` no longer applies — a different question, not a contradiction.
+  170 s for the real invocation is simply what it costs. Decide whether that is
+  worth optimising; it is no longer a mystery. ORIGINAL ENTRY:
   [S·★, measure before changing anything]. `make preflight` spends the bulk of
   its wall time in the secret scan, which is why it has to be run before a
   multi-hour rebuild rather than casually. The obvious hypothesis — that it
@@ -370,9 +377,10 @@ arch's media stage.
   does exist later (the runtime-image smoke boots the actual image), so either
   give this one a sysroot or delete it.
 
-- **DH. sccache spawn failures grew to 1560 in one run** [see DA]. Same defect
-  as DA, now measured across the whole chain rather than one lane. Every one of
-  those translation units compiled uncached.
+- **DH. sccache spawn failures grew to 1560 in one run — NOT LOCALLY FIXABLE**
+  [see DA]. Same defect as DA, measured across the whole chain rather than one
+  lane. Every one of those translation units compiled uncached, and the launcher's
+  bypass kept the build correct. See DA for why the obvious lead is refuted.
 
 - **DI. `install_target_packages` batch apt failure fired 4× in this run** [see
   D1]. The per-package sweep recovered every time and nothing was left behind,
@@ -622,8 +630,19 @@ worth a look for F1 candidates.
 - **Clone-family clustering degenerates.** Union-find over shared files
   transitively collapses most of the tree into one meaningless "88 files"
   family. Cluster on the shared BLOCK, not on file adjacency.
-- **The genai Python is STILL unlinted, and the F1 refactor moved it further
-  away** [re-measured 2026-09-02]. `smoke_genai_py` went from one 196-line
+- **The genai Python is STILL unlinted — FIXED 2026-09-02 in the EXTRACTOR, not
+  the source** [was: re-measured 2026-09-02]. `extract-embedded-python.py` now
+  assembles `cat`ed fragment FAMILIES (two or more sharing a marker prefix) in
+  file order and emits them only when the result parses, so the 217 lines reach
+  ruff without touching the runtime path or the four Dockerfiles that copy
+  `smoke-common.sh`.
+
+  Two defects surfaced while doing it, and the second was invisible: the marker
+  class `[A-Z_]*` **excluded digits**, so `GENAI_PY_T1..T4` — four of the six
+  fragments — were skipped silently and no message said so. Both are now
+  mutation-tested. A lone fragment is still never extracted: `ast.parse` catches
+  syntax errors but not undefined names, so linting one alone reports bogus
+  findings — the original rule was right about that. ORIGINAL ENTRY: `smoke_genai_py` went from one 196-line
   heredoc to six `_smoke_genai_py_tier*` helpers totalling **217 lines**, each
   emitting its fragment with `cat <<'GENAI_PY_T*'`. `extract-embedded-python.py`
   handles only **directly-executed** heredocs and says so; run against

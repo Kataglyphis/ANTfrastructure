@@ -1,21 +1,39 @@
 #!/usr/bin/env python3
-"""Write each directly-executed Python heredoc to <outdir> so ruff can see it.
+"""Write embedded Python to <outdir> so ruff can see it.
 
-Only heredocs an interpreter runs are self-contained. Blocks that are `cat`ed
-are FRAGMENTS assembled into one program later (see _smoke_genai_py_verdict in
-06-packaging/smoke-common.sh) and are not valid Python alone.
+Two shapes:
+
+* a heredoc an interpreter RUNS is self-contained and is emitted on its own;
+* blocks that are `cat`ed are FRAGMENTS assembled into one program later (the
+  `_smoke_genai_py_*` emitters in `06-packaging/smoke-common.sh` are 217 such
+  lines). Individually they are invalid Python, so they used to be dropped and
+  ruff never saw them. They are now concatenated per marker family, in file
+  order, and emitted only when the result actually parses — which keeps
+  non-Python heredocs out without guessing.
+
 See docs/code-quality-tooling.md.
 """
+import ast
 import os
 import re
 import sys
 
 BLOCK = re.compile(
-    # the opener line may carry trailing redirections (`<<'PY' 2>/dev/null || ...`)
-    r"([^\n]*)<<-?'([A-Z_]*(?:PY|PYEOF|PYTHON)[A-Z_]*)'[^\n]*\n(.*?)\n[ \t]*\2[ \t]*$",
+    # The opener may carry trailing redirections (`<<'PY' 2>/dev/null || ...`).
+    # DIGITS belong in the marker class: without them GENAI_PY_T1..T4 were missed
+    # silently, so four of that program's six fragments never reached ruff.
+    r"([^\n]*)<<-?'([A-Z_0-9]*(?:PY|PYEOF|PYTHON)[A-Z_0-9]*)'[^\n]*\n(.*?)\n[ \t]*\2[ \t]*$",
     re.S | re.M)
 # `python3 - <<'PY'`, `"${py}" - <<'PY'`, `${PREFLIGHT_PYTHON} - <<'PY'`
 RUNS_IT = re.compile(r"(python3?|\$\{?py\}?|PREFLIGHT_PYTHON)[^|]*(-|\s)$|python3? -")
+CATS_IT = re.compile(r"\bcat\b")
+# Everything up to and including PY is the family, so two unrelated programs in
+# one file (ONNX_PY vs GENAI_PY_*) are never spliced together.
+FAMILY = re.compile(r"(PY(?:EOF|THON)?).*$")
+
+
+def _stem(src):
+    return os.path.basename(src)[:-3] if src.endswith(".sh") else os.path.basename(src)
 
 
 def main():
@@ -31,18 +49,41 @@ def main():
                 text = fh.read()
         except OSError:
             continue
+        # Test files carry deliberately-broken FIXTURE heredocs (that is what they
+        # assert on), so assembling theirs would report their fixtures as real
+        # findings. Directly-executed blocks above are unaffected.
+        is_fixture_source = os.sep + "tests" + os.sep in os.path.abspath(src)
+        fragments = {}
         for m in BLOCK.finditer(text):
-            if not RUNS_IT.search(m.group(1)):
+            opener, marker, body = m.group(1), m.group(2), m.group(3)
+            if RUNS_IT.search(opener):
+                line = text[:m.start()].count("\n") + 1
+                out = os.path.join(outdir, "{}__{}.py".format(_stem(src), line))
+                with open(out, "w", encoding="utf-8") as fh:
+                    fh.write(body + "\n")
+                print("{}\t{}:{}".format(out, src, line))
+                written += 1
+            elif CATS_IT.search(opener) and not is_fixture_source:
+                fragments.setdefault(FAMILY.sub(r"\1", marker), []).append(body)
+        for family, frags in sorted(fragments.items()):
+            # A family of ONE is not "assembled" -- it is a lone fragment, and
+            # linting one alone reports bogus undefined names (ast.parse catches
+            # syntax errors, not F821). That is exactly what the old
+            # never-extract-a-fragment rule protected against, so keep it.
+            if len(frags) < 2:
                 continue
-            line = text[:m.start()].count("\n") + 1
-            base = os.path.basename(src)[:-3] if src.endswith(".sh") else os.path.basename(src)
-            out = os.path.join(outdir, "{}__{}.py".format(base, line))
+            joined = "\n".join(frags) + "\n"
+            try:
+                ast.parse(joined)
+            except SyntaxError:
+                continue  # not one program after all — leave it out rather than guess
+            out = os.path.join(outdir, "{}__{}.py".format(_stem(src), family.lower()))
             with open(out, "w", encoding="utf-8") as fh:
-                fh.write(m.group(3) + "\n")
-            print("{}\t{}:{}".format(out, src, line))
+                fh.write(joined)
+            print("{}\t{}: {} cat-ed fragments".format(out, src, len(frags)))
             written += 1
     if not written:
-        sys.stderr.write("extract-embedded-python: no directly-executed heredocs found\n")
+        sys.stderr.write("extract-embedded-python: nothing extracted\n")
         return 1
     return 0
 
