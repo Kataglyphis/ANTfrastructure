@@ -496,40 +496,44 @@ Numbers, not opinions: function lengths from an AST-free line count, duplication
 from `docs/scripts/verify_code_dupes.py`. Nothing here breaks a build; this is
 the "I want clean code" queue. Ordered by value, not size.
 
-### F1. Functions that outgrew a screen [M each]
+### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-02
 
-    356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
-    196  smoke_genai_py()              06-packaging/smoke-common.sh      <- MINE, 2026-08-31
-    168  _cross_stage_build_impl()     01-core/cross-stage-build.sh
-    147  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
-    136  append_tvm_cmake_args()       05-frameworks/tvm-config.sh       <- MINE, 2026-08-31
-    127  uv_sync_project()             01-core/python_uv.sh
-    127  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh
-    115  cmake_build_parse_args()      lib/cmake-build.sh
+        was  now  function                       file
+        356  356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
+        196    8  smoke_genai_py()              06-packaging/smoke-common.sh   DONE
+        168  170  _cross_stage_build_impl()     01-core/cross-stage-build.sh
+        147  114  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
+        136   84  append_tvm_cmake_args()       05-frameworks/tvm-config.sh
+        127  109  uv_sync_project()             01-core/python_uv.sh
+        127  146  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh  GREW
 
-Two of the top five were written or grown by me on 2026-08-31 and should be
-first in the queue, not last: `smoke_genai_py` is a 196-line embedded Python
-program inside a heredoc (its four tiers are separable), and
-`append_tvm_cmake_args` GREW from 136 lines while being refactored away from 15
-positional parameters — the keyword parsing is worth it, but the emit blocks
-below it now want splitting out.
+The 2026-08-31 column was stale: four of the seven had already shrunk, one of
+them to nothing. `smoke_genai_py` is now six lines calling six tier helpers —
+exactly the split this entry proposed — **but see F4, because that did not make
+its Python lintable.**
 
-`_cross_stage_build_impl` is deliberately one implementation behind two thin
-wrappers (closed 2026-08-30) — decompose it internally if at all, do NOT split
-it back into two.
+`reconcile_local_wheels` GREW by 19, of which 12 are the ORT-dependency install
+added for AB on 2026-09-02. It is now the second-longest function here and the
+next candidate.
 
-### F2. Files over ~800 lines [L each, low priority]
+`assert_pinned_versions` at 356 is untouched and remains the clear top of the
+list — more than twice the next entry.
 
-    1371  05-frameworks/torch/build-app-wheelhouse.sh   (already decomposed internally)
-    1013  06-packaging/smoke-runtime-image.sh
-     957  03-media/build/litert/build-litert.sh
-     935  03-media/build/opencv/build-opencv.sh
-     874  lib/agentic-loop.sh
-     853  02-toolchain/build-gcc.sh
+### F2. Files over ~800 lines [L each, low priority] — RE-MEASURED 2026-09-02
 
-Length alone is weak evidence — build-app-wheelhouse.sh is long BECAUSE it was
-decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
-"look here for F1 candidates", not as a work order.
+        was   now  file
+        1013  1429  06-packaging/smoke-runtime-image.sh          +416
+        1371  1243  05-frameworks/torch/build-app-wheelhouse.sh  -128
+         957   966  03-media/build/litert/build-litert.sh
+         935   934  03-media/build/opencv/build-opencv.sh
+         874   874  lib/agentic-loop.sh
+         853   861  02-toolchain/build-gcc.sh
+
+`smoke-runtime-image.sh` grew **40% in two days** and is now the largest file in
+the tree — it absorbed the prevention gates (2026-09-01) and the riscv64 venv
+exemption (2026-09-02). Length is weak evidence on its own, but a file that
+gains 416 lines while being the thing that decides whether a release ships is
+worth a look for F1 candidates.
 
 ### F3. Clone families worth one owner [S-M each]
 
@@ -569,9 +573,16 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
 - **Clone-family clustering degenerates.** Union-find over shared files
   transitively collapses most of the tree into one meaningless "88 files"
   family. Cluster on the shared BLOCK, not on file adjacency.
-- **`smoke_genai_py` is 196 lines of Python inside a bash heredoc** — neither
-  ruff nor shellcheck can see it. If it stays that size it wants to be a real
-  `.py` file that the smoke pipes in.
+- **The genai Python is STILL unlinted, and the F1 refactor moved it further
+  away** [re-measured 2026-09-02]. `smoke_genai_py` went from one 196-line
+  heredoc to six `_smoke_genai_py_tier*` helpers totalling **217 lines**, each
+  emitting its fragment with `cat <<'GENAI_PY_T*'`. `extract-embedded-python.py`
+  handles only **directly-executed** heredocs and says so; run against
+  `smoke-common.sh` it reports *"no directly-executed heredocs found"*. So ruff
+  sees none of it — and assembled fragments are harder to extract than the single
+  heredoc was. Satisfying F1's length metric and F4's lintability goal pulled in
+  opposite directions here; a real `.py` file that the smoke pipes in still
+  settles both.
 
 ### F8. libyuv's RVV rows are dispatched but never compiled — FIXED 2026-09-02 [DONE]
 
@@ -664,9 +675,10 @@ in, so treat a green media stage as the close condition for this entry.
 ### F5. The duplication baseline is frozen, not reviewed [L, measurable]
 
 `verify_code_dupes.py` reports OK, but that means **no NEW or GROWING** copy —
-not "no duplication". Measured 2026-09-01: `docs/scripts/code-dupes.allow` holds
-251 pairs, of which **236 still say "baseline 2026-08-31, not yet reviewed"**,
-totalling **6159 shared shingles**. Only 15 carry a real reason.
+not "no duplication". Re-measured 2026-09-02: `docs/scripts/code-dupes.allow` now
+holds **260** pairs (was 251), of which **236 still say "baseline 2026-08-31, not
+yet reviewed"**. So nine pairs were added since the baseline and the unreviewed
+tail has not moved at all — every pair reviewed so far was a NEW one.
 
 Work the tail from the top; each line deleted or shrunk is real progress and the
 gate enforces the new, lower budget automatically:
