@@ -56,6 +56,40 @@ install, and it must not replace it — if the extras resolution fails, the
 project itself must still be installed or the runtime app-wheel smoke dies on
 `No module named 'loguru'`.
 
+## optuna
+
+`optuna` is declared by the app's `ml-ai` extra and was absent from the riscv64
+venv, so the VENV-SET gate named it. It is not blocked on this arch: optuna
+itself ships an `any` wheel and its whole runtime closure resolves without a
+compiler — `alembic`, `sqlalchemy`, `colorlog`, `tqdm` and `packaging` all
+publish `any` wheels, `numpy` is already present, and `greenlet` is only an
+`optional` extra so it is never pulled. It fell out transitively behind the
+compiled members of the same extra (`scipy`, `scikit-learn`, `pandas`), not on
+its own merits.
+
+**Placement is load-bearing, and the first attempt got it wrong.** The install
+was originally added inside `reconcile_local_wheels`, which is two problems at
+once:
+
+1. It runs *before* `ensure_project_package_installed`, and optuna requires
+   `PyYAML` — the one member of this closure that publishes **no** `any` wheel
+   and **no** riscv64 wheel, only an sdist. Installed at that point it would
+   source-build under emulation; installed after the project install it is
+   already satisfied, which is the same reason the `docs` extra is ordered the
+   way it is.
+2. It sat under `if [ "${#other_wheels[@]}" -gt 0 ]` — a condition about the
+   ONNX Runtime wheel set that has nothing to do with optuna. With no local
+   `other_wheels`, optuna would silently never be installed.
+
+It now lives in `install_fallback_project_extras`, which runs only on the
+riscv64 fallback path (the amd64/arm64 probe returns early, and there uv sync
+already installed it) and only after `uv pip install "${APP_DIR}"`. Both
+problems go away with the move; no new condition was needed.
+
+`protobuf` and `flatbuffers` deliberately stay next to the ORT wheel in
+`reconcile_local_wheels`: they are the wheel's own dangling edges, both have
+zero runtime dependencies, so neither ordering concern above applies to them.
+
 ## What stays absent, and why
 
 The `ml-ai` extra cannot be installed on riscv64 at all:

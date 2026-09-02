@@ -384,13 +384,6 @@ reconcile_local_wheels() {
     # docs/refactoring-backlog.md AB
     uv pip install 'protobuf>=6,<7' flatbuffers || \
       echo "WARNING: ORT runtime deps (protobuf/flatbuffers) not installed - the venv gate will name them"
-    # optuna is declared by the app's ml-ai extra and was absent from the riscv64
-    # venv. It is NOT blocked there: optuna is pure Python and its whole chain
-    # resolves (alembic and sqlalchemy pure Python, greenlet publishes a riscv64
-    # wheel, numpy/colorlog/tqdm already present). It fell out with the compiled
-    # members of the same extra. docs/refactoring-backlog.md AA
-    uv pip install optuna || \
-      echo "WARNING: optuna not installed - the venv gate will name it"
   fi
   if [ "${#tvm_wheels[@]}" -gt 0 ]; then
     uv pip install --no-deps --force-reinstall "${tvm_wheels[@]}" || \
@@ -521,6 +514,10 @@ install_fallback_project_extras() {
   local _attempt
   for _attempt in 1 2 3; do
     if uv pip install "${APP_DIR}[docs]"; then
+      # optuna: pure-Python ml-ai member, absent on riscv64. Must run after the
+      # project install above. docs/riscv64-venv-parity.md#optuna
+      uv pip install optuna || \
+        echo "WARNING: optuna not installed - the venv gate will name it" >&2
       return 0
     fi
     echo "WARNING: docs-extra install attempt ${_attempt}/3 failed" >&2

@@ -480,6 +480,35 @@ riscv64 carries 94** — 76 missing, 14 extra.
   wheel at the version the app lock already uses on amd64 (`protobuf 6.33.6`,
   `flatbuffers 25.12.19`). Do **not** drop `--no-deps`.
 
+- **AA-followup. The optuna install was in the wrong place — FIXED 2026-09-02**
+  [S·★★★]. Found by checking the AA/AB fixes against the lane they were about to
+  run in, before the runtime stage got there. The install had two defects, either
+  of which would have let the gate name `optuna` again:
+
+  1. It sat in `reconcile_local_wheels`, which runs **before**
+     `ensure_project_package_installed`. Measured against PyPI: optuna's closure is
+     `any`-wheel everywhere **except `PyYAML`**, which publishes no `any` wheel and
+     no riscv64 wheel — only an sdist. Run at that point it would source-build
+     under emulation; run after the project install it is already satisfied. This
+     is the same ordering the `docs` extra already documents.
+  2. It was nested under `if [ "${#other_wheels[@]}" -gt 0 ]` — a condition about
+     the ORT wheel set, unrelated to optuna. With no local `other_wheels` it would
+     never have run at all.
+
+  Moved to `install_fallback_project_extras`, which runs only on the riscv64
+  fallback path and only after `uv pip install "${APP_DIR}"`. Both defects go away
+  with the move; no new condition was needed. `protobuf`/`flatbuffers` stay where
+  they are — they are the ORT wheel's own dangling edges and have zero runtime
+  dependencies, so neither concern applies. Reasoning in
+  docs/riscv64-venv-parity.md#optuna.
+
+  Also verified while there: the AA exemption arms are keyed correctly. The probe
+  normalises with `lower().replace("_","-").replace(".","-")`, and `scipy`,
+  `scikit-learn`, `pandas` are already in that form, so
+  `riscv64:ml-ai:<pkg>` matches. And optuna's `numpy` requirement is
+  **unconstrained**, so the install cannot float the venv off the lock — the
+  hazard `--no-deps` exists to prevent.
+
 - **AC. The riscv64 runtime venv ships build tooling the other arches do not**
   [S·★★]. 14 packages exist only there, and several have no business in a
   runtime image: `meson`, `wheel`, `gcovr`, `gyp-next`, `Cython`-adjacent
