@@ -187,7 +187,17 @@ _run
 _cmake_log="$(cat "${TMP}/cmake.log")"
 t_case "cross lane runs the host stage then the target stage"
 t_assert_eq "0" "${RC}" "build_iree_wheels rc"
-t_assert_contains "${_cmake_log}" "-DIREE_BUILD_COMPILER=OFF -DIREE_BUILD_PYTHON_BINDINGS=OFF" "host stage probes COMPILER=OFF first"
+# The host stage must NOT probe COMPILER=OFF when the target is OFF (the
+# default): the target then imports iree-tblgen from the host, OFF never
+# installs it, so that probe is a complete host build thrown away before the
+# mandatory ON pass. docs/iree-two-stage-build.md
+t_assert_contains "${_cmake_log}" "-DIREE_BUILD_COMPILER=ON -DIREE_BUILD_PYTHON_BINDINGS=OFF" \
+  "target OFF => host stage goes straight to COMPILER=ON"
+case "${_cmake_log}" in
+  *"-DIREE_BUILD_COMPILER=OFF -DIREE_BUILD_PYTHON_BINDINGS=OFF"*)
+    t_assert_eq "no OFF host probe" "an OFF host probe ran" "the discarded OFF pass is back" ;;
+  *) t_assert_eq "1" "1" ;;
+esac
 t_assert_contains "${_cmake_log}" "-DIREE_HOST_BIN_DIR=${TMP}/work/iree-build-host/install/bin" "target uses host tools"
 t_assert_contains "${_cmake_log}" "-DCMAKE_TOOLCHAIN_FILE=${TMP}/toolchain.cmake" "toolchain file"
 t_assert_contains "${_cmake_log}" "-DLLVM_HOST_TRIPLE=riscv64-linux-gnu" "target triple pin"
