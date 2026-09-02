@@ -621,10 +621,22 @@ worth a look for F1 candidates.
   bootstrap paradox the `lib/*.sh` item below warns about.
 
   So the work is not "extract a helper". It is one question, asked once: **is any
-  fallback still reachable?** Each copy's own comment says the canonical file has
-  shipped since 2026-08-08 and "the branch above wins". If that holds for every
-  context that sources them, four copies delete themselves; if it does not, the
-  answer names the context that still needs them. Either outcome closes it.
+  fallback still reachable?**
+
+  **ANSWERED 2026-09-02: no — in every context the tree builds.** The evidence,
+  because a grep of `COPY .* 01-core/<file>` says the opposite and nearly misled
+  this entry: `Dockerfile.package:274` and `Dockerfile.toolchain:301` copy the
+  **whole directory** (`COPY linux/scripts/01-core/ /opt/scripts/core/`), and
+  `Dockerfile.media` bind-mounts it at the same path in 23 RUNs. Verified in the
+  shipped image: `/opt/scripts/core/` holds 68 files including both
+  `path-helpers.sh` and `compiler-resolution.sh`. So the runtime env scripts, the
+  media build stages and the android preamble all take the canonical branch.
+
+  What remains is therefore a **decision, not an investigation**: delete four
+  fallbacks whose guard condition is never false, or keep them as insurance
+  against a future stage that copies `01-core` per-file instead of wholesale.
+  Deleting them is a behavioural change across every stage and wants one
+  validating build — that is the only reason it is not already done here.
 
 - **`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**
   (`01-core/chain-lifecycle.sh:93` and `:106`, 21 shingles, 5 identical lines) —
