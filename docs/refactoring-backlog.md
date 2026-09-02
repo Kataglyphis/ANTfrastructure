@@ -252,7 +252,7 @@ arch's media stage.
   directory FIRST; do not narrow a security gate's scope on a guess.
 
 - **DC. A pinned stage's cache-export slug is dead weight, and nothing reclaims
-  it** [M·★★★, cost THREE manual interventions in one run]. `kata-buildcache`
+  it — FIXED DIFFERENTLY 2026-09-02** [M·★★★, cost SIX manual interventions]. `kata-buildcache`
   is keyed per stage slug (`..._cross-media-riscv64`, `..._cross-android-amd64`,
   …). The moment `[stage X] pinned <digest>` is logged, that stage is built,
   pushed and will not be rebuilt in this run — its slug can never be read again,
@@ -300,7 +300,7 @@ arch's media stage.
   the OFF stage needs `IREE_BUILD_TOOLS` (or whatever now gates tblgen) or the
   two-stage split should be retired as ineffective.
 
-- **DF. The media ELF gate guesses whether a foreign-arch .so is a vendor blob**
+- **DF. The media ELF gate guesses whether a foreign-arch .so is a vendor blob — FIXED 2026-09-02**
   [S·★★]. It prints `MISMATCH (advisory, may be vendor): libpython3.14.so.1.0
   ELF machine=Advanced Micro Devices X86-64 != expected RISC-V` and then
   `NOTE: 3 advisory .so ELF mismatch(es) (likely bundled vendor SDKs; not
@@ -313,7 +313,7 @@ arch's media stage.
   therefore harmless — but the gate cannot tell you that, which is the point.)
 
 - **DG. The media stage's qemu functional check has never passed on a foreign
-  arch** [S·★★]. `WARN: /usr/bin/qemu-riscv64 gst-launch-1.0 --help failed (may
+  arch — REMOVED 2026-09-02** [S·★★]. `WARN: /usr/bin/qemu-riscv64 gst-launch-1.0 --help failed (may
   be expected for cross builds without full sysroot)` — 4× for riscv64 and 3×
   for arm64 in one run, for `gst-launch-1.0`, `cam` and `ffmpeg`, every one
   excused by the same clause. A check that always fails and is always excused is
@@ -629,7 +629,7 @@ shipped image). ArmNN had no such path.
   the current tree or host state kills it. `PREFLIGHT_SKIP=secret-scan` is the
   workaround; find why it dies before relying on the full suite again.
 
-### F6. Cache-key blast radius in Dockerfile.media [M each, measured]
+### F6. Cache-key blast radius in Dockerfile.media — FIXED 2026-09-02, awaiting build proof [M each, measured]
 
 Numbers from `out/build-logs/f2-media-validation.log` (2026-08-31, amd64, warm
 ccache): the media stage is 134.3 min of RUN time across 90 steps, dominated by
