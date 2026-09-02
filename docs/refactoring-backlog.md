@@ -337,30 +337,60 @@ so **this is the gate's first complete riscv64 run**: these are pre-existing
 defects becoming visible, which means the riscv64 image has been shipping an
 incomplete `ml-ai` extra unnoticed.
 
-- **AA. Four app-declared `ml-ai` packages are absent from the riscv64 venv**
-  [M·★★★, needs an OWNER DECISION]. `scipy`, `scikit-learn`, `pandas`, `optuna`.
-  The gate's wording is exact: *"the app declares X for extra 'ml-ai' on riscv64
-  (its own marker says this arch needs it) but the venv does NOT have it — ship
-  it or record the exception in `_venv_pkg_exempt`"*. amd64 and arm64 have them,
-  so the cause is the absence of riscv64 wheels, not a build break.
+Measured against the SHIPPED images afterwards (`pip list` inside each), the gap
+is far larger than the six failures suggest: **amd64 carries 153 venv packages,
+riscv64 carries 94** — 76 missing, 14 extra.
 
-  This is a genuine trade, not a bug to squash: building scipy/pandas/sklearn
-  from source for riscv64 drags in BLAS/LAPACK and a Fortran toolchain and costs
-  hours per run. If riscv64 does not actually need the `ml-ai` extra, the right
-  answer is an exemption **with the reason recorded**, and the app's own
-  environment marker should stop claiming the arch needs them — otherwise the
-  exemption and the app disagree forever.
+- **AA. 76 packages are absent from the riscv64 venv** [L·★★★, needs an OWNER
+  DECISION on scope]. The six the gate names are the ones the app declares; the
+  rest are missing silently. They cluster:
 
-- **AB. `onnxruntime-webgpu` has two dangling dependency edges on riscv64**
-  [S·★★★, FIX, do not exempt]. `flatbuffers` and `protobuf` are declared
-  requirements of the installed wheel and are absent from the venv. Unlike AA
-  this is our own packaging gap, and it is not cosmetic: a dangling runtime
-  dependency surfaces as an ImportError in the user's process, not in our build.
-  `ORT_ENABLE_WEBGPU=true` is deliberate (versions.env:172), so the flavour name
-  is correct — only its dependency closure is not installed.
+  | cluster | examples |
+  | --- | --- |
+  | scientific / ml-ai | `scipy`, `scikit-learn`, `pandas`, `optuna`, `joblib`, `threadpoolctl`, `captum`, `skops` |
+  | MLflow + storage | `mlflow`, `mlflow-skinny`, `alembic`, `SQLAlchemy`, `pyarrow`, `boto3`, `botocore`, `databricks-sdk` |
+  | web / API | `fastapi`, `starlette`, `uvicorn`, `pydantic`, `pydantic_core`, `anyio`, `h11` |
+  | crypto / auth | `cryptography`, `cffi`, `pycparser`, `google-auth`, `pyasn1` |
+  | ORT deps | `flatbuffers`, `protobuf` |
+  | expected | `iree-base-compiler` (riscv64 is deliberately runtime-only) |
 
-  Fix by installing them into `/opt/venv` alongside the wheel. An exemption here
-  would only silence the gate that caught a real hole.
+  Almost every root here needs a compiled wheel that PyPI does not publish for
+  riscv64 (`scipy`, `pandas`, `pyarrow`, `cryptography`, `pydantic_core`,
+  `protobuf`), and the pure-Python packages above them fell out transitively.
+  `flatbuffers` is the odd one — it IS pure Python, so its absence is a dropped
+  edge rather than a missing wheel, and it should come back cheaply.
+
+  The decision is about scope, not mechanics: does the riscv64 image promise the
+  same Python surface as the other two? If yes, the compiled roots must be built
+  from source (BLAS/LAPACK + Fortran for the scientific stack — hours per run).
+  If no, say so once, record it, and make the app's own environment markers stop
+  claiming riscv64 needs them.
+
+- **AB. `onnxruntime-webgpu`'s dependency edges are dangling on riscv64**
+  [S·★★★, FIX]. `flatbuffers` and `protobuf` are declared requirements of the
+  installed wheel and absent from the venv, so an import can fail in the user's
+  process rather than in our build.
+
+  Root cause is deliberate and must not be reverted: `assemble-torch-app.sh`
+  installs every local wheel with `--no-deps --force-reinstall`, and its comment
+  names this exact hazard — *"without it uv re-resolves the wheels' deps to
+  LATEST and floats the venv off the lock (numpy, protobuf MAJOR)"*. The run
+  proves the comment right: it installed `protobuf==6.33.6` twice and
+  `protobuf==7.36.1` once, a major-version split across arches, while
+  `versions.env` pins `PROTOBUF_VERSION=6.31.1` — a value matching **neither**.
+
+  So the fix is to install both at a pinned version alongside the wheel, not to
+  drop `--no-deps`. And `PROTOBUF_VERSION` needs reconciling: today it is a pin
+  nothing honours.
+
+- **AC. The riscv64 runtime venv ships build tooling the other arches do not**
+  [S·★★]. 14 packages exist only there, and several have no business in a
+  runtime image: `meson`, `wheel`, `gcovr`, `gyp-next`, `Cython`-adjacent
+  `jaraco.*`/`autocommand`/`typeguard`/`inflect`/`more-itertools`, plus `lxml`
+  and `Markdown`. amd64 carries none of them. They are almost certainly the
+  residue of building packages from source on the arch where wheels were
+  unavailable — i.e. a side effect of AA. Whatever AA is decided, this list
+  should not survive into the shipped image.
 
 **Keep the gate exactly as strict as it is.** It did the one thing this repo
 keeps asking of its gates: it stopped a broken image from being published, and
