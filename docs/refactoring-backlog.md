@@ -564,6 +564,16 @@ the "I want clean code" queue. Ordered by value, not size.
         127  109  uv_sync_project()             01-core/python_uv.sh
         127  146  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh  GREW
 
+**`assert_pinned_versions` is not 356 lines of shell — it is ~26 lines of shell
+wrapping a 312-line embedded Python program** (`"${PY}" - <<'PYEOF'` at
+`smoke-torch-venv.sh:101`). Decomposing the shell would move almost nothing.
+What mattered was that ruff could not see it: the extractor's interpreter
+pattern hard-coded lowercase `${py}`, so `"${PY}" -` never matched and the
+largest embedded program in the tree was **never linted** — silently. Fixed
+2026-09-02 (see F4); the newly-visible 399 lines from this file pass the hard
+gate clean. If the shell wrapper is ever split, do it for its own sake, not for
+the line count.
+
 The 2026-08-31 column was stale: four of the seven had already shrunk, one of
 them to nothing. `smoke_genai_py` is now six lines calling six tier helpers —
 exactly the split this entry proposed — **but see F4, because that did not make
@@ -637,9 +647,12 @@ worth a look for F1 candidates.
   ruff without touching the runtime path or the four Dockerfiles that copy
   `smoke-common.sh`.
 
-  Two defects surfaced while doing it, and the second was invisible: the marker
-  class `[A-Z_]*` **excluded digits**, so `GENAI_PY_T1..T4` — four of the six
-  fragments — were skipped silently and no message said so. Both are now
+  **Three** defects surfaced while doing it, all silent: the marker class
+  `[A-Z_]*` **excluded digits**, so `GENAI_PY_T1..T4` — four of six fragments —
+  were skipped; and the interpreter pattern hard-coded lowercase `${py}`, so
+  `"${PY}" - <<'PYEOF'` was not recognised and `assert_pinned_versions`' 312-line
+  program had never been linted at all. Tree-wide coverage after the fixes:
+  **16 files, 861 lines** of embedded Python now reach ruff. Both are now
   mutation-tested. A lone fragment is still never extracted: `ast.parse` catches
   syntax errors but not undefined names, so linting one alone reports bogus
   findings — the original rule was right about that. ORIGINAL ENTRY: `smoke_genai_py` went from one 196-line

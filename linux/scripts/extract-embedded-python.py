@@ -24,8 +24,15 @@ BLOCK = re.compile(
     # silently, so four of that program's six fragments never reached ruff.
     r"([^\n]*)<<-?'([A-Z_0-9]*(?:PY|PYEOF|PYTHON)[A-Z_0-9]*)'[^\n]*\n(.*?)\n[ \t]*\2[ \t]*$",
     re.S | re.M)
-# `python3 - <<'PY'`, `"${py}" - <<'PY'`, `${PREFLIGHT_PYTHON} - <<'PY'`
-RUNS_IT = re.compile(r"(python3?|\$\{?py\}?|PREFLIGHT_PYTHON)[^|]*(-|\s)$|python3? -")
+# `python3 - <<'PY'`, `"${PY}" - <<'PY'`, `${PREFLIGHT_PYTHON} - <<'PY'`, …
+# The interpreter is often a VARIABLE, and its name varies in case and spelling.
+# The old pattern hard-coded lowercase `${py}` and `PREFLIGHT_PYTHON`, so
+# `"${PY}" -` did not match and the ~330-line program inside
+# assert_pinned_versions -- the largest embedded Python in the tree -- was never
+# linted, silently (found 2026-09-02).
+RUNS_IT = re.compile(
+    r"(python3?|\$\{?[A-Za-z_]*PY(?:THON)?[A-Za-z_0-9]*\}?)[^|]*(-|\s)$|python3? -",
+    re.I)
 CATS_IT = re.compile(r"\bcat\b")
 # Everything up to and including PY is the family, so two unrelated programs in
 # one file (ONNX_PY vs GENAI_PY_*) are never spliced together.

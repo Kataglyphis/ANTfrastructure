@@ -114,4 +114,24 @@ python3 "${EXTRACT}" "${_DOUT}" "${_DIG}" >/dev/null 2>&1
 t_assert_eq "1" "$(find "${_DOUT}" -name '*num_py*.py' 2>/dev/null | wc -l)" \
   "digit-suffixed markers must be seen"
 
+t_case "an UPPERCASE interpreter variable is recognised"
+# `"${PY}" - <<'PYEOF'` did not match the old lowercase-only pattern, so the
+# ~330-line program inside assert_pinned_versions -- the largest embedded Python
+# in the tree -- was never linted, and nothing said so.
+_UP="${_work}/upper.sh"
+cat > "${_UP}" <<'UPSH'
+run_it() {
+  PY=python3
+  "${PY}" - <<'PYEOF'
+value = 41 + 1
+print(value)
+PYEOF
+}
+UPSH
+_UOUT="${_work}/upperout"
+python3 "${EXTRACT}" "${_UOUT}" "${_UP}" >/dev/null 2>&1
+t_assert_eq "1" "$(find "${_UOUT}" -name '*.py' 2>/dev/null | wc -l)" \
+  "\${PY} must be recognised as an interpreter"
+t_assert_contains "$(cat "${_UOUT}"/*.py 2>/dev/null)" "value = 41" "body missing"
+
 t_summary
