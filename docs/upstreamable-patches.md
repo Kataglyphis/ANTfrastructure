@@ -44,7 +44,7 @@ the branch you intend to target before filing.
 | 11 | [OpenCV 5 cascade elements](#11-gstreamer-opencv-5-dropped-the-cascade-classifier-elements) | gst-plugins-bad | **B** | ★★ |
 | 12 | [gst-libav ↔ FFmpeg 8 codec IDs](#12-gst-libav-codec-ids-removed-from-ffmpeg-8) | gst-libav | **B** | ★★ |
 | 13 | [LiteRT pip script assumes in-tree TF](#13-litert-the-pip-build-script-hardcodes-what-a-cross-build-must-override) | LiteRT | **B** (issue) | ★★ |
-| 18 | [cerbero: stale soundtouch checksum](#18-cerbero-the-soundtouch-tarball-checksum-is-stale) | cerbero | **B** (issue) | ★ |
+| 18 | [cerbero: stale soundtouch checksum](#18-cerbero-the-soundtouch-tarball-checksum-is-stale) | cerbero | **A** (issue) | ★ |
 | 19 | [cerbero: dead pkg-config fallback mirror](#19-cerbero-the-pkg-config-fallback-mirror-is-gone) | cerbero | **B** (issue) | ★ |
 | 14 | [torchvision: staged torch paths](#14-torchvision-setuppy-cannot-be-pointed-at-a-staged-torch) | torchvision | **B/C** | ★ |
 | 15 | [cerbero: drop the `m4` recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
@@ -53,11 +53,10 @@ the branch you intend to target before filing.
 Sorted by how ready each one is, not by number. Nine are ready to write today;
 the rest need the rework named in their entry.
 
-**Ten entries carry a ready-to-send message; the others deliberately do not.**
+**Eleven entries carry a ready-to-send message; the others deliberately do not.**
 9, 11, 12 and 14 need the patch itself reshaped before any message would be
 honest — writing the text now would only make a diff look sendable that is not.
-15 is grade C and 16 is already fixed upstream, so neither gets one. 18 needs two
-hashes read out of a build log first.
+15 is grade C and 16 is already fixed upstream, so neither gets one.
 
 ---
 
@@ -610,9 +609,36 @@ clean bootstrap dies at the checksum gate.
 
 **This is a bug report, not a patch.** Our fix re-pins dynamically, which is
 exactly what a source-integrity gate must never do — upstream needs the correct
-static hash instead. **Read the two hashes out of a build log before filing**;
-they are printed as `Re-pinned soundtouch tarball checksum <old> -> <new>`.
-Do not file this without them.
+static hash instead.
+
+**Hashes captured from a live build, 2026-09-02, soundtouch 2.4.1:**
+
+| | sha256 |
+| --- | --- |
+| recipe pins | `e07abf20ce8f95850c280132e1f61ad400fc1f4011b7fac698a503de6aab6733` |
+| Codeberg serves | `35d404e6e8c2ebd12fb4000da6fadd75c99e37eed2126a04721828c11c0377ec` |
+
+**Issue text**
+
+```
+soundtouch 2.4.1: pinned tarball_checksum no longer matches the archive
+
+recipes/soundtouch.recipe pins
+
+    e07abf20ce8f95850c280132e1f61ad400fc1f4011b7fac698a503de6aab6733
+
+but the Codeberg archive for 2.4.1 now hashes to
+
+    35d404e6e8c2ebd12fb4000da6fadd75c99e37eed2126a04721828c11c0377ec
+
+so a clean bootstrap fails at the checksum gate. Re-fetched and verified
+2026-09-02.
+```
+
+Say plainly in the report that you did **not** verify the new tarball is
+legitimate, only that it is what the server returns — a checksum mismatch is
+exactly the shape a supply-chain problem takes, and it is upstream's call, not
+ours, to decide which hash is right.
 
 ---
 
