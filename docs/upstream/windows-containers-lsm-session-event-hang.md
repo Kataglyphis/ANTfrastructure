@@ -78,19 +78,50 @@ sechost!ScSvcctrlThreadA+0x27
 
 The stack reproduces on every container instance we looked at.
 
-## The object being waited on — not yet identified
+## Not the host's session broker
 
-We have **not** reliably identified the event object, and would rather say so
-than guess: on x64 the `kb` "args to child" columns are reconstructed from the
-home space and are not trustworthy for a blocked `WaitForSingleObjectEx`, and
-handles inside a silo resolve as `Name <none>` from outside anyway. The
-`lsm!CEventDispatcher` frames above are the reliable pointer into the code.
+The host's own LSM was measured twice — idle, and again ~20 s into a container's
+stall — and it does **nothing** in between: the only stack frame that differs is
+a COM garbage-collection worker, and no thread enters
+`ContainerSessionServer::AskForSession` while the container hangs. Matching
+that, the container-side stack contains **no RPC frames at all** (0 hits for
+`rpcrt4`, `ContainerSessionClient`, `AskForSession`).
 
-For anyone reproducing: the syscall stub does `mov r10,rcx`, so **R10 of the
-blocked thread holds argument 1 — the handle** — and that has to be read from
-the thread whose stack actually shows `lsm!CService::Start`, not from the first
-`WaitForSingleObjectEx` in the process (every service process has one: the SCM
-dispatcher's own idle wait in `sechost!ScDispatcherLoop`).
+So the container's LSM is not blocked asking the host for a session. It is
+blocked inside its **own** `CEventDispatcher`, waiting for a session state that
+should be reached locally. Recording this because it is the obvious first
+hypothesis and it is wrong.
+
+## The object being waited on
+
+Read from **R10 of the blocked thread** (the x64 syscall stub does
+`mov r10,rcx`, so R10 still holds argument 1), taken from the thread whose
+stack actually shows `lsm!CService::Start`:
+
+```
+process           svchost.exe   (silo, pid 15900, thread 6)
+waited handle     0x338
+kernel object     0xffffe0831a1b57e0
+  Type            Event
+  Event Type      Auto Reset
+  Event is        Waiting        <- never signalled, for the container's whole life
+  HandleCount     2
+  PointerCount    65537
+```
+
+A system-wide handle enumeration
+(`NtQuerySystemInformation(SystemExtendedHandleInformation)`) matched on that
+kernel object pointer finds **exactly one holder: LSM itself**. The enumeration
+does see silo processes — it found LSM's own handle that way — so the second
+reference in `HandleCount` is kernel-side accounting, not another process.
+No other process can signal this event.
+
+A warning for anyone reproducing this, because it cost us a retraction: do
+**not** take the first `KERNELBASE!WaitForSingleObjectEx` in the process. Every
+service process has one — the SCM dispatcher's own idle wait in
+`sechost!ScDispatcherLoop` — and reading it names the wrong object entirely.
+`kb`'s "args to child" columns are home-space reconstructions and are not
+trustworthy here either. Bind the frame to the thread, then read R10.
 
 ## Environment
 
@@ -189,7 +220,8 @@ With private symbols, the `lsm!CEventDispatcher::WaitForSessionState` path
 should show which session-state transition is awaited, what is supposed to set
 that event inside a silo, and why that never happens — while the identical
 image and command complete in seconds under Hyper-V isolation on the same
-machine.
+machine. Since no other process holds the handle, the signal has to come from
+another thread in that same `svchost` or from the kernel's session path.
 
 One observation that may or may not matter, offered as a lead rather than a
 finding: on this host the August cumulative update left the session components
