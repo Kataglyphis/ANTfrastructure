@@ -76,11 +76,35 @@ _SEGMENT = re.compile(r"[;&|\n]+")
 _CD = re.compile(r"\bcd\s+([^\s;&|]+)")
 
 
+def _split_outside_quotes(text: str):
+    """Split on ; & | and newline, but never inside a quoted span.
+
+    A regex split cuts through quotes, so the quote-stripping below has nothing
+    to strip. docs/failure-modes.md#delete-guard-scope
+    """
+    out, buf, quote = [], [], ""
+    for ch in text:
+        if quote:
+            buf.append(ch)
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+            buf.append(ch)
+        elif ch in ";&|\n":
+            out.append("".join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    out.append("".join(buf))
+    return [s for s in out if s.strip()]
+
+
 def _delete_segments(norm: str):
     """Segments that carry a delete verb, each prefixed with the directory a
     preceding `cd` established. docs/failure-modes.md#delete-guard-scope"""
     cwd = ""
-    for seg in _SEGMENT.split(norm):
+    for seg in _split_outside_quotes(norm):
         bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", seg)
         if VERB.search(bare):
             yield f"{cwd} {seg}" if cwd else seg

@@ -56,4 +56,19 @@ for _c in "cd /usr && rm -rf *" "cd /opt/libcamera && rm -rf lib"; do
   t_assert_eq "deny" "$(_decide "${_c}")" "${_c}"
 done
 
+t_case "a quoted span is not cut into segments"
+# The splitter used a regex, so `|` and newlines inside a quoted string ended a
+# segment and the quote-stripping below had nothing to strip. A status line that
+# merely SAID "rm" landed in the same segment as a bare / from `df -h /`, and a
+# legitimate container removal was denied. docs/failure-modes.md#delete-guard-scope
+_MIX="nerdctl rm abc123 | sed 's/x/y/'
+echo \"  after rm+rmi: \$(df -h / | tail -1)\""
+t_assert_eq "allow" "$(_decide "${_MIX}")" "prose naming rm beside df -h / must not deny"
+t_assert_eq "allow" "$(_decide "echo \"tidy up: rm -rf / would be bad\"")" \
+  "a quoted sentence about rm -rf / is prose, not a delete"
+# and the guard must still bite through the same shapes
+for _c in "echo start | rm -rf /" "cd /opt && rm -rf * | tee log"; do
+  t_assert_eq "deny" "$(_decide "${_c}")" "${_c}"
+done
+
 t_summary
