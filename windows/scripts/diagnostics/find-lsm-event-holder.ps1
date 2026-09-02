@@ -192,7 +192,9 @@ if (-not $mine) { throw "handle 0x$($Handle.ToString('x')) not found in pid $Lsm
 $obj = $mine.Item3
 Write-Host ("object: 0x{0:x}" -f $obj) -ForegroundColor Cyan
 
-$holders = $rows | Where-Object { $_.Item3 -eq $obj }
+# @() matters: a single match is a bare Tuple, which has no .Count, and
+# StrictMode turns that into "property Count cannot be found".
+$holders = @($rows | Where-Object { $_.Item3 -eq $obj })
 $report = Join-Path $OutDir "event-holders-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 $lines = @(
     "LSM waited handle : pid $LsmPid handle 0x$($Handle.ToString('x'))"
