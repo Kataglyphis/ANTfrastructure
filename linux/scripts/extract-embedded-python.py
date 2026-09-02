@@ -34,6 +34,9 @@ RUNS_IT = re.compile(
     r"(python3?|\$\{?[A-Za-z_]*PY(?:THON)?[A-Za-z_0-9]*\}?)[^|]*(-|\s)$|python3? -",
     re.I)
 CATS_IT = re.compile(r"\bcat\b")
+# A comment cannot open a heredoc. Prose that QUOTES an opener is not one.
+# docs/code-quality-tooling.md#comment-openers
+COMMENT_OPENER = re.compile(r"[ \t]*#")
 # Everything up to and including PY is the family, so two unrelated programs in
 # one file (ONNX_PY vs GENAI_PY_*) are never spliced together.
 FAMILY = re.compile(r"(PY(?:EOF|THON)?).*$")
@@ -63,6 +66,8 @@ def main():
         fragments = {}
         for m in BLOCK.finditer(text):
             opener, marker, body = m.group(1), m.group(2), m.group(3)
+            if COMMENT_OPENER.match(opener):
+                continue
             if RUNS_IT.search(opener):
                 line = text[:m.start()].count("\n") + 1
                 out = os.path.join(outdir, "{}__{}.py".format(_stem(src), line))

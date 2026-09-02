@@ -139,4 +139,33 @@ t_assert_eq "1" "$(_count_extracted "${_UOUT}" "${_UP}" '*.py')" \
   "\${PY} must be recognised as an interpreter"
 t_assert_contains "$(cat "${_UOUT}"/*.py 2>/dev/null)" "value = 41" "body missing"
 
+t_case "a commented-out RUN opener extracts nothing"
+# CI-red on 2026-09-02: prose describing the pattern was read as a real heredoc,
+# so shell lines reached ruff as Python. Both fixtures below DO satisfy BLOCK
+# (opener + closing marker), so they extract without the guard -- that is what
+# makes these tests able to fail. docs/code-quality-tooling.md
+_CMT="${_work}/comment.sh"
+cat > "${_CMT}" <<'CMTSH'
+# described, not used: python3 - <<'PYEOF'
+this is not python ]]]
+PYEOF
+CMTSH
+_COUT="${_work}/commentout"
+t_assert_eq "0" "$(_count_extracted "${_COUT}" "${_CMT}" '*.py')" \
+  "a commented RUN opener must extract nothing"
+
+t_case "commented-out cat openers do not assemble a family"
+_CMT2="${_work}/comment2.sh"
+cat > "${_CMT2}" <<'CMT2SH'
+    # quoted in prose: cat <<'DEMO_PY'
+x = 1
+DEMO_PY
+    # and again, same family: cat <<'DEMO_PY'
+y = 2
+DEMO_PY
+CMT2SH
+_C2OUT="${_work}/comment2out"
+t_assert_eq "0" "$(_count_extracted "${_C2OUT}" "${_CMT2}" '*.py')" \
+  "two commented cat openers must not assemble (indented # included)"
+
 t_summary
