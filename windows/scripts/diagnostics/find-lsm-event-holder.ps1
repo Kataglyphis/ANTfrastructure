@@ -159,18 +159,26 @@ RUN echo bait-$NONCE > C:bait.txt
     $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
     foreach ($p in $svchosts) {
         $log = Join-Path $OutDir "holder-probe-$($p.ProcessId)-$stamp.txt"
-        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
-        $line = Select-String -Path $log -Pattern 'KERNELBASE!WaitForSingleObjectEx' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ((Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue) -and $line) {
-            $LsmPid = $p.ProcessId
-            # kb prints "ret : arg1 arg2 arg3 arg4 : Call Site"; the handle rides
-            # in the last argument column as a small backtick-split hex value.
-            $args4 = ($line.Line -split ':')[1].Trim() -split '\s+'
-            $raw = ($args4[-1] -replace '`', '')
-            $Handle = [Convert]::ToUInt32($raw, 16)
-            Write-Host "LSM host: pid $LsmPid, waited handle 0x$($Handle.ToString('x'))" -ForegroundColor Green
-            break
+        # ~*e prints R10 per thread: the x64 syscall stub does `mov r10,rcx`, so
+        # for a blocked NtWaitForSingleObject R10 still holds argument 1 (the
+        # handle). kb's "args to child" columns are home-space reconstructions
+        # and were wrong here - reading the FIRST WaitForSingleObjectEx in the
+        # process picked the SCM dispatcher's own idle wait
+        # (sechost!ScDispatcherLoop), which every service process has, and
+        # named that event instead of LSM's (2026-09-02).
+        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*e .printf "=== TID %x R10 %p\n", @$tid, @r10; kb; qd' > $log 2>&1
+        if (-not (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue)) { continue }
+
+        # Walk per-thread blocks; keep the R10 of the block that shows LSM.
+        $cur = 0
+        foreach ($ln in (Get-Content $log)) {
+            if ($ln -match '^=== TID [0-9a-f]+ R10 ([0-9a-f`]+)') { $cur = [Convert]::ToUInt64(($Matches[1] -replace '`', ''), 16); continue }
+            if ($ln -match 'lsm!CService::Start' -and $cur) { $Handle = [uint32]$cur; break }
         }
+        if (-not $Handle) { Write-Warning "pid $($p.ProcessId) shows LSM but no R10 could be bound to it"; continue }
+        $LsmPid = $p.ProcessId
+        Write-Host "LSM host: pid $LsmPid, waited handle 0x$($Handle.ToString('x')) (from R10 of the LSM thread)" -ForegroundColor Green
+        break
     }
     if (-not $LsmPid) { throw 'No svchost showed lsm!CService::Start - hang window missed, retry on the next container.' }
 }

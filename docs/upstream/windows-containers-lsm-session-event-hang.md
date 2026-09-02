@@ -78,40 +78,19 @@ sechost!ScSvcctrlThreadA+0x27
 
 The stack reproduces on every container instance we looked at.
 
-## The object being waited on
+## The object being waited on — not yet identified
 
-A separate run, with a live non-invasive attach during the hang, resolves the
-object. All values below are from that **one** container instance (handle
-values differ per instance; the shape does not):
+We have **not** reliably identified the event object, and would rather say so
+than guess: on x64 the `kb` "args to child" columns are reconstructed from the
+home space and are not trustworthy for a blocked `WaitForSingleObjectEx`, and
+handles inside a silo resolve as `Name <none>` from outside anyway. The
+`lsm!CEventDispatcher` frames above are the reliable pointer into the code.
 
-```
-process           svchost.exe -k DcomLaunch -p   (pid 32204)
-waited handle     0xe0
-kernel object     0xffffe083b49d9d60
-  Type            Event
-  Event Type      Auto Reset
-  Event is        Waiting        <- never signalled, for the container's whole life
-  HandleCount     2
-  PointerCount    65530
-```
-
-`HandleCount` reads 2, so we checked who else holds it: a system-wide handle
-enumeration (`NtQuerySystemInformation(SystemExtendedHandleInformation)`),
-matched on the kernel object pointer, finds **exactly one holder in the same
-run — LSM itself**. The enumeration does see silo processes; it found LSM's own
-handle that way. So the second reference is kernel-side accounting, not another
-process.
-
-**That is the useful part of this report:** since no other process holds a
-handle to this event, whatever should signal it is either another thread inside
-the same `svchost` or the kernel's own session path. It cannot be a service
-that failed to start.
-
-Two smaller notes: frame arguments suggest the awaited state is `4`
-(`WaitForSessionState`'s second argument) — heuristic, not verified. And
-handles inside a silo resolve as `Name <none>` from outside, so the event
-cannot be named from user mode; the `lsm!CEventDispatcher` frames are the
-precise pointer into your code instead.
+For anyone reproducing: the syscall stub does `mov r10,rcx`, so **R10 of the
+blocked thread holds argument 1 — the handle** — and that has to be read from
+the thread whose stack actually shows `lsm!CService::Start`, not from the first
+`WaitForSingleObjectEx` in the process (every service process has one: the SCM
+dispatcher's own idle wait in `sechost!ScDispatcherLoop`).
 
 ## Environment
 
@@ -207,9 +186,16 @@ unelevated.
 ## What would help
 
 With private symbols, the `lsm!CEventDispatcher::WaitForSessionState` path
-should show which session-state transition is awaited and what is supposed to
-set that event inside a silo. Given that no other process holds a handle to it,
-the question we cannot answer from outside is: which in-process thread or
-kernel session path signals it normally, and why does that never happen in a
-silo — while the identical image and command complete in seconds under Hyper-V
-isolation on the same machine?
+should show which session-state transition is awaited, what is supposed to set
+that event inside a silo, and why that never happens — while the identical
+image and command complete in seconds under Hyper-V isolation on the same
+machine.
+
+One observation that may or may not matter, offered as a lead rather than a
+finding: on this host the August cumulative update left the session components
+and the container/session API at **different builds** — `vmcompute.dll`,
+`computecore.dll` and `winsta.dll` are `10.0.26100.9278`, while `lsm.dll`,
+`smss.exe`, `wininit.exe` and `services.exe` remain `10.0.26100.8875` (all
+written in the same minute on 2026-08-27). Servicing not rewriting unchanged
+binaries is normal, so this is only interesting if that update changed a
+session-notification contract that the older `lsm.dll` still expects.
