@@ -366,6 +366,48 @@ incomplete `ml-ai` extra unnoticed.
 keeps asking of its gates: it stopped a broken image from being published, and
 it named the six packages instead of saying "smoke failed".
 
+## U2026-09-02. Patches we can DELETE (from the upstream verification round)
+
+Four of our patches turned out to be redundant or already fixed upstream. Each
+one removed is one less thing to carry forward across version bumps. Full
+evidence per item in `docs/upstreamable-patches.md`.
+
+- **UA. Drop `003` and `004` by fixing the meson cross file instead**
+  [M·★★★, deletes two patches]. `gst-plugins-rs/meson.build:719` forwards
+  `rustc.cmd_array()`, which carries `--target` in a cross build, and
+  `cargo_wrapper.py` extracts the triple from it. We never benefit because
+  `cross-meson.sh` writes `rust = '<wrapper script>'` and the wrapper hides
+  `--target` inside itself, so `cmd_array()` is just a path. Meson accepts a
+  list for a binary: write `rust = ['<rustc>', '--target', '<triple>']` and the
+  triple lands exactly where upstream already looks. Then delete
+  `003-cargo-wrapper-cross-rust-target.patch` and
+  `004-meson-build-cargo-build-target.patch`.
+
+  Note `003` is also actively wrong today: it prepends `env['RUSTFLAGS']` to a
+  list that already contains it (line 249 folds it in), duplicating every flag.
+
+- **UB. Replace our OpenCV FFmpeg-8 patch with the upstream commits**
+  [S·★★★]. Upstream fixed this on `4.x` in `700cd32ffd` and `83ed22ca28`; `5.x`
+  did not get it. Both are saved in `docs/upstream/patches/` and were verified
+  to apply to `5.x` with **no conflicts**, after which our own patch no longer
+  applies at all. Ours also guards on the wrong idiom
+  (`LIBAVCODEC_VERSION_MAJOR >= 62` vs their `LIBAVCODEC_BUILD >=
+  CALC_FFMPEG_VERSION(61, 13, 100)`) and trusts a `{0,0}` terminator where the
+  new API returns a count. Swap ours out for theirs.
+
+- **UC. Drop `005a`, `005b` and `006` when the GStreamer pin moves**
+  [S·★★]. All three are already in upstream `main` — the OpenCV 5 header moves
+  (with the `CV_MAJOR_VERSION >= 5` guard our version lacks) and the FFmpeg 8
+  codec-ID guards (`LIBAVCODEC_VERSION_MAJOR < 63`). Nothing to file; just stop
+  carrying them once the pin includes the commits. Until then note that our
+  `006` is semantically wrong where upstream's is not: we `#define` the removed
+  IDs to `0`, which is `AV_CODEC_ID_NONE`, rather than removing the comparisons.
+
+- **UD. Drop the libyuv RVV patch once libcamera advances its wrap revision**
+  [S·★★]. The trigger, the removal steps and the one thing that must survive the
+  removal are spelled out in `docs/upstreamable-patches.md` entry 16 — that page
+  owns this one.
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication
