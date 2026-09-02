@@ -53,10 +53,23 @@ the container:
 - the rest of the boot continues once SCM times LSM out — which is where the
   ~141 s goes
 
-The same host runs `nanoserver:ltsc2025` and **Hyper-V-isolated** ltsc2025
-containers with no stall at all, so this is specific to the process-isolation
-silo (the shared-kernel container object; Hyper-V isolation runs its own
-kernel in a utility VM and is unaffected).
+## What still works on the same host
+
+Three controls, all on the same machine, same runtime, same day:
+
+| | `RUN echo` in a fresh container |
+|---|---|
+| `servercore:**ltsc2025**`, process isolation | **441.3 s** |
+| `servercore:**ltsc2022**`, process isolation | **1.8 s** |
+| `servercore:ltsc2025`, **Hyper-V** isolation | 3.5 s |
+| `nanoserver:ltsc2025`, process isolation | ~2 s |
+
+So the stall needs **ltsc2025 _and_ process isolation _and_ the full servercore
+service set** together. An ltsc2022 container — an older user-mode image on the
+identical 26200 host kernel — is unaffected, which rules out "process isolation
+is broken on this host" as such. Hyper-V isolation runs the same ltsc2025 image
+against its own kernel in a utility VM and is fine, and nanoserver lacks the
+service set (and with it LSM's role) entirely.
 
 ## The wait
 
