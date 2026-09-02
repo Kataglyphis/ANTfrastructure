@@ -25,7 +25,10 @@ exclusions listed below, and **2026-08-31 reran the FULL chain with the QNN EP
 enabled** (#121 build-time path proven; the earlier acceptance gap — HEAD vs the
 2026-08-26 tree — was two dead-on-arrival GStreamer cross-lane fixes that are now
 landed: see #135 follow-up below). Read the table as the last fully green run
-(`bk-winarm64`, 2026-08-31).
+(`bk-winarm64`, 2026-08-31). The 2026-09-02 dual-lane rebuild (post-wave
+toolchain with sanitizers, rustup 1.29.1) reproduced both SMOKE columns exactly
+— arm64 **97/0/15**, amd64 **222/0/0** (`bk-20260902-002412`); the other rows
+below are the 2026-08-31 measurements and were not re-extracted.
 
 | | arm64 cross (`bk-winarm64`, 2026-08-31, QNN ON) | amd64 native (`bk-20260826-130136`) |
 |---|---|---|
@@ -64,15 +67,6 @@ this repo's cp314 pin).
 
 ### Open items
 
-- **#152 — the wave of 2026-08-31 is UNPROVEN BY A BUILD.** Everything in #147 was
-  verified statically (773/773 suite, doc-links, doc-dupes, EOL). No chain has run.
-  The wave edited `Dockerfile.toolchain-builder` (the DEFAULT `patched-llvm` target)
-  and `linux/scripts/01-core/versions.env` (COPY'd into `Dockerfile.base`), so the
-  next build re-pays a full LLVM 23.1.0 compile and the media lanes below it —
-  the repo's own recorded figure for a toolchain-layer change is ~2 h of media
-  compiles, on top of the LLVM build. Budget for it; do not discover it. Until that
-  run is green, "gate-green is not usable" applies to this whole wave.
-
 - **#153 — the clipped-log forensics can never be re-audited; the corpus is gone.**
   INVESTIGATED 2026-08-31, and the premise I wrote was wrong. `out/windows-build-logs/`
   holds 92 `.log` files and **every one of them is from 2026-08-30/31** — 100 % post-fix.
@@ -83,8 +77,13 @@ this repo's cp314 pin).
   **0 clip events in 90 logs**, and 12 individual RUN vertices now exceed the old
   2 MiB ceiling that used to truncate them. Treat every pre-2026-08-30 forensic
   conclusion in the archives as unverifiable, not as evidence.
-  STILL OPEN, re-scoped: keep the next full chain's logs (they are the first corpus
-  that can carry a real analysis) and run the step-time / silent-retry sweep on those.
+  STILL OPEN, re-scoped 2026-09-02: the corpus now EXISTS — the two full dual-lane
+  runs of 2026-09-01/02 (amd64 to 222/0/0, arm64 to 97/0/15) left complete
+  per-stage logs, the first uncorrupted end-to-end set. Only the step-time /
+  silent-retry sweep over them is still owed. NB for that analysis: every RUN in
+  this corpus carries the ~7.5 min lost-notification lifecycle tax (441.3 s floor),
+  and the two merge fan-ins each show the first-mount `ActivateLayer 0x20`
+  self-heal (2 retries) — subtract both patterns before reading step times.
 
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
   silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
@@ -238,6 +237,15 @@ this repo's cp314 pin).
 
 ### CLOSED (pointers — full narratives in the dated archives)
 
+- **#152** — the 2026-08-31 wave: PROVEN BY BUILD 2026-09-01/02. The dual-lane
+  rebuild ran it for real, and the gate did its job: the wave's compiler-rt
+  ride-along had set `COMPILER_RT_BUILD_SANITIZERS=OFF`, the amd64 smoke gate
+  failed on exactly the ASAN probe, the fix (`=ON`) re-ran and the lane closed
+  at the best recorded state **222/0/0** (`[PASS] AddressSanitizer …`,
+  `clang_rt.asan_dynamic-x86_64.dll` installs verified in the toolchain log);
+  arm64 closed green at its baseline **97/0/15**. The predicted re-pay was real
+  (full LLVM + media on both lanes). Narrative: `CHANGELOG.md` § 2026-09-01/02.
+
 - **#149** — the `c9586c1^` warm/materialize rollback recipe: DEAD, not stale.
   FOUR independent breakages (every script path, the missing TargetArch + Tvm
   modules, the swapped media-core order, the QAIRT pin). The restore recipe is now
@@ -289,8 +297,11 @@ this repo's cp314 pin).
   § 5d mines `clang_rt.builtins-aarch64.lib` from the LLVM release archive on the
   cross lane (same recipe as setup-scoop-tools.ps1). Chosen over adding the lib to
   the toolchain layer because the media branches derive FROM `bk-windows-toolchain`,
-  so that would re-pay ~2 h of media compiles for one lib. Toolchain-level fix stays
-  a follow-up for the next natural toolchain rebuild. Regression:
+  so that would re-pay ~2 h of media compiles for one lib. Toolchain-level fix
+  LANDED 2026-08-31 (`bd150ae1`, `Install-TargetCompilerRt` in
+  build-llvm-from-source.ps1) and shipped with the 2026-09-01/02 toolchain
+  rebuilds — the merge-stage self-heal is now the never-firing fallback.
+  Nothing left here. Regression:
   `SourceBuild.GstreamerCompilerRt.Tests.ps1`. Docs:
   `docs/windows-cross-builds.md` § aarch64 compiler-rt.
   Second unmasked failure fixed in the same window: the speculative cross-lane
