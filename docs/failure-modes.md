@@ -42,6 +42,7 @@ Two neighbours, so you land on the right page:
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 - [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
+- [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
 
 **Windows: the layer store (hcsshim)**
 
@@ -458,6 +459,47 @@ riscv64 and not on the other lanes. `ZLIB_INCLUDE_DIR=/usr/include` is passed on
 every cross arch and all three resolve zlib identically, so that alone does not
 explain it. The shim makes the build immune either way; the injector is worth
 finding so the flag can be removed at the source.
+
+### A smoke that never passed and always excused itself
+
+`validate-media-runtime.sh` carried a "QEMU Cross-Arch Binary Smoke" that ran
+each built binary under qemu-user and, on failure, printed:
+
+```
+WARN: /usr/bin/qemu-riscv64 gst-launch-1.0 --help failed
+      (may be expected for cross builds without full sysroot)
+```
+
+Three things were wrong with it at once, and each alone would have been enough:
+
+- **Both branches were `echo`s.** No counter, no variable, no exit code — there
+  was no path from that loop to a failure. The ELF block directly above it does
+  it properly: it counts `core_mismatches` and `exit 1`s.
+- **The excuse covered every case it could ever see.** The block only ran under
+  `cross_build_is_active`, so "may be expected for cross builds" applied to
+  100% of its invocations. That is not a diagnosis, it is a blanket.
+- **The failure was mechanically guaranteed.** qemu-user needs the target's
+  `ld.so` and libraries via `-L` or `QEMU_LD_PREFIX`; neither was passed, and
+  `QEMU_LD_PREFIX` appears nowhere in the repo. Every binary died in the dynamic
+  loader before `main` — exactly the "full sysroot" the message names, which
+  makes it a fixable bug, not an expected condition.
+
+Final score before removal: **7 failures, 0 passes**, across arm64 and riscv64
+in one run.
+
+**Removed rather than repaired, 2026-09-02.** Repairing it needs a multi-hour
+media build to prove the sysroot prefix actually works, and shipping an
+unproven-but-now-fatal gate is how you lose the next run. Functional coverage
+already exists where it belongs: the runtime-image smoke boots the real per-arch
+image and gates the manifest on it — that is what caught the riscv64 venv gap
+the same day.
+
+**The transferable lesson.** A check whose failure branch is always excused
+teaches its readers that WARN lines are noise, which is worse than having no
+check: it costs attention on every run and buys nothing. When you find one, the
+question is not "how do I make this pass" but "what would it take to make this
+able to fail" — and if you cannot answer that today, delete it and say where the
+real coverage lives.
 
 ---
 

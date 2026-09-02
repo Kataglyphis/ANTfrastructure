@@ -274,15 +274,22 @@ arch's media stage.
   everything the trigger does not cover. See [[rebuild-disk-management]] for why
   `nerdctl builder prune` must never be the answer here.
 
-- **DD. The Node.js pin is silently dropped on riscv64** [S·★★★, ships a
-  different version than the other two arches]. `[WARN] Exact Node.js pin
-  nodejs=26.8.1-1~ubuntu26.04.1 unavailable on riscv64; falling back to the
-  distro default version`. The whole point of `versions.env` and the
-  `sync_versions` gate is that every arch ships the pinned version; this warning
-  defeats that for one arch and the run continues green. Either the ports
-  archive genuinely lacks that build (then the pin needs an arch-aware value and
-  the gate needs to know), or the pin format is wrong for riscv64. Right now
-  nobody can say which version riscv64 actually ships without reading a log.
+- **DD. riscv64 Node.js is FOUR majors behind the pin — CORRECTED, and it is a
+  decision, not a defect** [S·★★, owner call]. The original wording here said the
+  pin is "silently dropped". That was wrong on both counts, and reading
+  `base-image.sh` corrected it: the fallback is deliberate, documented, scoped
+  and has an escape hatch (`NODE_RISCV64_MAJOR_REQUIRED=1` restores a hard
+  failure), and it warns **loudly** — the major-lag warning fired 5 times.
+
+  What is worth an owner's attention is the *size*: pin `26.8.1`, installed
+  `v22.22.1`. Four major versions, because ubuntu-ports lags and there is no
+  official Node tarball for riscv64. The code's justification is that Node there
+  only backs optional JS/web tooling (litert-web / onnx-web) that the Python and
+  native runtime never import. That justification is sound **if it is still
+  true** — so the question is whether that tooling works on Node 22, not whether
+  the fallback should exist.
+
+  No code change made. The mechanism is right; only this entry was wrong.
 
 - **DE. `IREE_BUILD_COMPILER=OFF` does not produce `iree-tblgen`** [M·★★, costs a
   full host compiler build]. `[WARN] IREE host stage (IREE_BUILD_COMPILER=OFF)
