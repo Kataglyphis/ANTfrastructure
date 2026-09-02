@@ -61,6 +61,11 @@ The same build step, unchanged, across the transition:
 - Full user-mode dumps of the deadlock available on request. Single host — no
   second machine here.
 
+**Happy to supply more.** The hang reproduces on demand in about three minutes,
+so I can run whatever would help inside it — further dumps, ETW traces, kernel
+debugger output, extra experiments — and report back quickly. Just say what you
+need.
+
 ## Symptom
 
 - SCM logs `7022 The LSM service hung on starting` at 140.07 s. LSM = Local
@@ -294,8 +299,7 @@ apart, byte-identical stack, 0.000 s thread CPU.
 
 Available on request: two full user-mode dumps of the silo's
 `svchost.exe -k DcomLaunch` taken 30 s apart during the hang (~30 MB each), and
-the `cdb` transcripts behind every number above. The state is reproducible on
-demand in about three minutes, so further commands can be run inside the hang.
+the `cdb` transcripts behind every number above.
 
 If reproduction fails on a build-matched host, please ask for the dumps rather
 than closing.
