@@ -161,7 +161,12 @@ arch's media stage.
   arm64 and riscv64 and only the two in D2 are actually gone. Root-cause the
   batch failure; a `|| true` on ffmpeg's list would only hide it.
 
-- **D2. Two package names are dead on Ubuntu 26.04 ports** [S·★].
+- **D2. Two package names are dead on Ubuntu 26.04 ports — RESOLVED, verified
+  2026-09-02** [S·★]. `install-deps.sh:191` now calls `libopenexr-dev`, the
+  correct name; the dead first attempt is gone. `libvvdec-dev` stays on purpose —
+  the comment above it records that the package does not exist on ports at all,
+  so the guard is deliberate and vvdec builds from source. Nothing left to do.
+  ORIGINAL ENTRY:
   `libopenexr-3-dev` (renamed `libopenexr-dev`) and `libvvdec-dev` (gone
   entirely), both in `03-media/build/gstreamer/install-deps.sh:183,186`.
   Neither breaks a build — both already carry `|| …|| true` fallbacks, and vvdec
@@ -178,15 +183,25 @@ arch's media stage.
   `:latest-cross`). Either make base reproducible or make the chain refuse to
   publish a manifest whose arches disagree on their base digest.
 
-- **D4. `kata-buildcache` grows without bound and is the disk-filler**
-  [S·★★★]. Observed within ONE session: 62 GB → 110 GB, and back to 55 GB after
+- **D4. `kata-buildcache` grows without bound — MECHANISM EXISTS, verified
+  2026-09-02; the NUMBER is the open part** [S·★★★]. `build-cross-chain.sh:533`
+  caps it at `CROSS_CACHE_MAX_GB` (default **250 G**) and LRU-prunes down to the
+  cap, which is what this entry asked for. It did not help on 2026-09-02 because
+  the cache only reached ~108 G while the *runtime lane* wanted 120 G free — the
+  cap never fired. So the retention policy is real; 250 G is simply far above the
+  point where the chain starts starving. Tune the number against
+  `CROSS_RUNTIME_LANE_GB`, do not re-add the mechanism. ORIGINAL ENTRY: Observed within ONE session: 62 GB → 110 GB, and back to 55 GB after
   a manual wipe, purely from repeated runs. It is a regenerable cache EXPORT, so
   wiping it is safe (`prune-safe` cannot touch it — different store). It was the
   direct cause of the r3 disk emergency that forced a controlled chain stop.
   Needs a retention policy, or a size cap wired into the disk preflight so the
   chain trims it instead of asking a human at 19 GB free.
 
-- **D5. Failed stages still write their cache exports** [S·★★].
+- **D5. Failed stages still write their cache exports — FIXED, verified
+  2026-09-02** [S·★★]. `_cross_salvage_disk_ok` (`cross-stage-build.sh:44`) now
+  gates the salvage on free space via `SALVAGE_MIN_FREE_GB`, falling back to
+  `CROSS_DISK_GUARD_GB`, exactly as this entry proposed — "conditional on free
+  space rather than on the operator remembering". ORIGINAL ENTRY:
   `cross-stage-build.sh:206` salvages local cache exports for all 15 named media
   stages after a FAILED build — burning disk on stages that will be rebuilt
   anyway, at exactly the moment disk is scarce. `SALVAGE_CACHE_EXPORT=0` already
@@ -194,7 +209,9 @@ arch's media stage.
   operator remembering.
 
 - **D6. `install_target_packages` reports non-fatal misses in fatal-looking
-  language** [S·★]. `FAILED — missing after apt-get (rc=100): <pkg>` is printed
+  language — FIXED, verified 2026-09-02** [S·★]. `cross-apt.sh:379` now reads
+  `FAILED (caller decides if fatal) — missing after apt-get (rc=…)`. The clause
+  that was missing is there. ORIGINAL ENTRY: `FAILED — missing after apt-get (rc=100): <pkg>` is printed
   identically whether the caller guarded the call with `|| true` or not, which
   cost two false alarms while monitoring this run. Say which it was: a guarded
   miss is information, an unguarded one is an outage.
