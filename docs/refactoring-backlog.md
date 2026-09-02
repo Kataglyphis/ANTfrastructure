@@ -604,6 +604,20 @@ worth a look for F1 candidates.
 
 ### F3. Clone families worth one owner [S-M each]
 
+- **The source-or-fallback family — the biggest one, found 2026-09-02** [M·★★★].
+  Four sites carry a canonical helper plus an inline copy used when the canonical
+  file is absent: host-compiler resolution, `_path_contains`/`_path_prepend_unique`,
+  and host-python discovery. Evidence, sites and measurements are in F5 (that
+  entry owns them); what belongs HERE is that they are one family, not three
+  pairs, and that the fallbacks are **load-bearing by construction** — the same
+  bootstrap paradox the `lib/*.sh` item below warns about.
+
+  So the work is not "extract a helper". It is one question, asked once: **is any
+  fallback still reachable?** Each copy's own comment says the canonical file has
+  shipped since 2026-08-08 and "the branch above wins". If that holds for every
+  context that sources them, four copies delete themselves; if it does not, the
+  answer names the context that still needs them. Either outcome closes it.
+
 - **`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**
   (`01-core/chain-lifecycle.sh:93` and `:106`, 21 shingles, 5 identical lines) —
   the item-splitting loop is the same; only the emitted shape differs. One
