@@ -231,7 +231,14 @@ arch's media stage.
   and "TVM built fine".
 
 - **D8. Feature parity is in good shape — the table is the source of truth**
-  [reference]. `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` carries
+  [reference, VERIFIED 2026-09-02 — and there is now a SECOND registry]. The
+  claim below is exact: `_parity_exempt` still carries precisely two arms,
+  `riscv64:cmake` and `riscv64:iree_base_compiler`.
+
+  What changed on 2026-09-02: `_venv_pkg_exempt`, in the same file, gained
+  riscv64 arms for `scipy` / `scikit-learn` / `pandas` (AA). Two exemption
+  registries now exist in one file and only this entry documents either of them.
+  Anyone auditing "what is riscv64 allowed to be missing?" must read both. `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` carries
   exactly TWO documented exceptions after GEN1: `riscv64:cmake` (Kitware
   publishes no riscv64 archive, distro cmake 4.2.3 is used) and
   `riscv64:iree_base_compiler` (the IREE compiler cannot be cross-built and
