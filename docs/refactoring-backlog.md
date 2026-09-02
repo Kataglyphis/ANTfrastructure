@@ -251,6 +251,29 @@ arch's media stage.
   one of the two measurements is wrong. Time the real `--source .` run per
   directory FIRST; do not narrow a security gate's scope on a guess.
 
+- **DC. A pinned stage's cache-export slug is dead weight, and nothing reclaims
+  it** [M·★★★, cost THREE manual interventions in one run]. `kata-buildcache`
+  is keyed per stage slug (`..._cross-media-riscv64`, `..._cross-android-amd64`,
+  …). The moment `[stage X] pinned <digest>` is logged, that stage is built,
+  pushed and will not be rebuilt in this run — its slug can never be read again,
+  yet it sits on disk until the end. Measured 2026-09-02 in one `media..runtime`
+  run: the three media slugs held **83 G** and the three android slugs **39 G**,
+  all of it dead, while the runtime lane was starving.
+
+  `_chain_stage_disk_guard` does prune this directory, but only below
+  `CROSS_DISK_GUARD_GB` (40 G) — far too late for a lane whose own entry gate
+  wants ~120 G, so the run either stops at the gate or needs a human. In that
+  one run the free-space curve went 154 G → 78 G → (prune) → 191 G → 61 G →
+  (prune) → 143 G, with every recovery manual.
+
+  The fix is not a lower threshold, it is a *trigger*: reclaim a slug when its
+  stage is pinned, not when the disk is nearly full. The chain already knows
+  the moment (it logs it) and already knows the mapping (the slug is derived
+  from the tag). Guard rails worth keeping: never touch the slug of a stage in
+  the current build set, and keep the LRU path as the emergency backstop for
+  everything the trigger does not cover. See [[rebuild-disk-management]] for why
+  `nerdctl builder prune` must never be the answer here.
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication
