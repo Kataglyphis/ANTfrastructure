@@ -203,6 +203,7 @@ Common development targets:
    vulnerability-scanning
    upstream-libstdcxx-c++23-nostdinc++
    upstream/hcsshim-lost-shutdown-notification-issue
+   upstream/windows-containers-lsm-session-event-hang
 
 .. toctree::
    :maxdepth: 1

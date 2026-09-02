@@ -42,26 +42,43 @@ if (-not $OutDir) {
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-function Get-SiloSvchost {
-    Get-CimInstance Win32_Process -Filter "Name='svchost.exe'" |
-        Where-Object { ($_.ExecutablePath -and $_.ExecutablePath -like '\Device\VhdHardDisk*') -or
-                       ($_.CommandLine -and $_.CommandLine -like '*VhdHardDisk*') }
-}
-
-$baseline = @(Get-SiloSvchost | Select-Object -ExpandProperty ProcessId)
-Write-Host "Baseline: $($baseline.Count) existing silo svchosts. Waiting for a NEW silo (max $WaitForSiloSec s)..."
+# Win32_Process.ExecutablePath/CommandLine are EMPTY for silo processes even
+# elevated (measured 2026-09-01/02; only NT image paths show the VhdHardDisk
+# form). The process TREE is what works: each silo adds its own wininit.exe;
+# its services.exe child spawns the silo's svchosts.
+$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" |
+        Select-Object -ExpandProperty ProcessId)
+Write-Host "Baseline: $($baseWininit.Count) wininit (host + existing silos). Waiting for a NEW silo (max $WaitForSiloSec s)..."
 
 $deadline = (Get-Date).AddSeconds($WaitForSiloSec)
-$fresh = @()
+$newWininit = $null
 while ((Get-Date) -lt $deadline) {
-    $fresh = @(Get-SiloSvchost | Where-Object { $_.ProcessId -notin $baseline })
-    if ($fresh.Count -ge 1) { break }
+    $newWininit = Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" |
+        Where-Object { $_.ProcessId -notin $baseWininit } | Select-Object -First 1
+    if ($newWininit) { break }
     Start-Sleep -Seconds 3
 }
-if (-not $fresh) { throw 'No new silo appeared - is a build running? Start one RUN-bearing solve and retry.' }
+if (-not $newWininit) { throw 'No new silo appeared - is a build running? Start one RUN-bearing solve and retry.' }
+
+$siloServices = $null
+foreach ($i in 1..20) {
+    $siloServices = Get-CimInstance Win32_Process -Filter "Name='services.exe' AND ParentProcessId=$($newWininit.ProcessId)" |
+        Select-Object -First 1
+    if ($siloServices) { break }
+    Start-Sleep -Seconds 1
+}
+if (-not $siloServices) { throw "silo wininit $($newWininit.ProcessId) has no services.exe child yet" }
 
 # The FIRST svchosts of the silo boot; one hosts DcomLaunch (and with it LSM).
-$targets = $fresh | Sort-Object CreationDate | Select-Object -First 3
+# During the hang window exactly the early ones exist - dump whatever is there.
+$targets = @()
+foreach ($i in 1..20) {
+    $targets = @(Get-CimInstance Win32_Process -Filter "Name='svchost.exe' AND ParentProcessId=$($siloServices.ProcessId)" |
+        Sort-Object CreationDate | Select-Object -First 3)
+    if ($targets.Count -ge 1) { break }
+    Start-Sleep -Seconds 2
+}
+if (-not $targets) { throw "silo services $($siloServices.ProcessId) spawned no svchost yet" }
 Write-Host ("New silo detected; dumping PIDs: {0}" -f (($targets.ProcessId) -join ', '))
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
