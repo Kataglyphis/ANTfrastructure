@@ -40,6 +40,14 @@ code that produced them.
    store INCLUDING exec.cachemount records (35→1 observed) — even with no
    chain running it costs the compile caches. It is the last-resort hammer
    ONLY; prune-safe + rmi + kata-buildcache/archive-log trims come first.
+   **ORDER MEASURED 2026-09-02: prune FIRST, then rmi — never the reverse.**
+   Deleting 9 untagged ~32 GB images while the layer cache still referenced the
+   same overlayfs snapshots returned **+12 G**; after several prune-safe passes
+   had removed those records, deleting 18 of them returned **+97 G**. Same host,
+   same command, opposite verdicts — an image frees space only when it holds the
+   LAST reference. A prune pass reporting identical GB and record count before
+   and after (= everything in use) is the signal to switch levers, not to prune
+   harder.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 5. **A test that cannot fail is worse than no test.** Two 2026-08-31 findings
