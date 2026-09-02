@@ -86,6 +86,7 @@ The two halves of one topic often split:
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
 | **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and what is still UNVALIDATED | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
 | **riscv64 venv parity** — the `/opt/venv` package set measured on the shipped images, and what riscv64 carries that the other arches do not | [`riscv64-venv-parity.md`](riscv64-venv-parity.md) |
+| **Which local patches to send upstream** — every third-party source change we carry, graded by how much work stands between it and a merge request | [`upstreamable-patches.md`](upstreamable-patches.md) |
 | **riscv64 builds at RVA23 (with vector)** — why enabling RVV costs no compatibility, why `rva23u64_zifencei` and not `rv64gcv`, and the four consumers that need more than `-march` | [`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md) |
 | **IREE's two-stage cross build** — why the host stage runs COMPILER=OFF, the two tools it must install, and the WERROR / OUTPUT_FORMAT_C flags stage 2 requires | [`iree-two-stage-build.md`](iree-two-stage-build.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |

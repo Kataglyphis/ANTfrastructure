@@ -149,6 +149,7 @@ Common development targets:
    gen1-riscv64-genai
    riscv64-venv-parity
    riscv64-rva23-baseline
+   upstreamable-patches
    iree-two-stage-build
    linux-accelerator-images
    linux-host-setup
