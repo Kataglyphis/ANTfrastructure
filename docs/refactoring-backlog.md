@@ -227,6 +227,30 @@ arch's media stage.
   all on; the two that are off are off on purpose (`ORT_ENABLE_LTO` costs build
   time for no feature, `FFMPEG_ENABLE_TF` was removed deliberately, −500 MB).
 
+## D2026-09-02. Found live in the RVA23 media rebuild
+
+- **DA. sccache cannot spawn the compiler in the genai/extensions build**
+  [S·★★, non-fatal — costs cache, not correctness]. The `media-amd64` lane logs
+  **962** occurrences of `sccache: error: failed to spawn Command { std: cd
+  ".../_deps/onnxruntime_extensions-build" && env -i ... }` ending in
+  `No such file or directory (os error 2)`. The build continues (sccache falls
+  back to compiling directly) and no step fails, so this has been invisible —
+  but every one of those translation units is compiled uncached. The `env -i`
+  in the spawned command line is the thing to look at: the launcher rebuilds a
+  clean environment and the compiler is then no longer on `PATH`. Distinct from
+  the Rust wrapper that was already switched off (see the wave-4 notes).
+
+- **DB. The gitleaks stage dominates preflight, cause NOT established**
+  [S·★, measure before changing anything]. `make preflight` spends the bulk of
+  its wall time in the secret scan, which is why it has to be run before a
+  multi-hour rebuild rather than casually. The obvious hypothesis — that it
+  scans the 4.9 GB of build logs under `out/` — was **tested and disproved**:
+  gitleaks returns on `out/` instantly, so it does honour `.gitignore` there.
+  A direct scan of `logs/` (2.3 GB, ignored by the same style of rule,
+  `logs/**/*`) instead ran past 120 s. Those two results are inconsistent and
+  one of the two measurements is wrong. Time the real `--source .` run per
+  directory FIRST; do not narrow a security gate's scope on a guess.
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication
