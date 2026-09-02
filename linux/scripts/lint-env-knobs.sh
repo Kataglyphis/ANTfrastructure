@@ -55,7 +55,12 @@ fi
 LC_ALL=C sort -u "${_tmp}/own_versions" "${_tmp}/own_dockerfile" "${_tmp}/own_scripts" "${_tmp}/own_allow" > "${_tmp}/owned"
 
 # 3) verdict
-comm -23 "${_tmp}/consumed" "${_tmp}/owned" > "${_tmp}/unowned"
+# LC_ALL=C on comm too, not just on the sorts that produced its inputs: comm
+# checks sortedness in ITS OWN collation, so a host locale that differs from C
+# makes it disagree with files this script sorted in C -- and it reports the
+# wrong set difference silently, because the gate below only prints counts.
+# Last open call site from backlog C ("grep for other call sites while fixing").
+LC_ALL=C comm -23 "${_tmp}/consumed" "${_tmp}/owned" > "${_tmp}/unowned"
 n_consumed="$(wc -l < "${_tmp}/consumed")"
 n_unowned="$(wc -l < "${_tmp}/unowned")"
 echo "  consumed \${VAR:-} knobs: ${n_consumed} | owners: versions.env=$(wc -l < "${_tmp}/own_versions") dockerfiles=$(wc -l < "${_tmp}/own_dockerfile") scripts=$(wc -l < "${_tmp}/own_scripts") allowlist=$(wc -l < "${_tmp}/own_allow")"

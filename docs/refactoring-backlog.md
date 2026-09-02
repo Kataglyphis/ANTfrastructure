@@ -118,6 +118,9 @@ single knob if a newer SDK renames the lib subdir. Corrected README: 2026-08-31.
 
 ## B. Flagged, deliberately NOT fixed (blast radius > value right now)
 
+**VERIFIED 2026-09-02:** still true — the genai RUN in `Dockerfile.media` carries
+zero cargo mounts, so the deliberate choice below stands unchanged.
+
 Found during the 2026-08-31 GEN1 review. The two RISK-REDUCING ones were fixed
 the same day (see the archive); this is what deliberately remains.
 
@@ -130,7 +133,20 @@ the same day (see the archive); this is what deliberately remains.
 
 ## C. Pre-existing, found while auditing 2026-08-31
 
-- **`test-preflight-slugs.sh` feeds `comm` unsorted input** [S·★★] — every run
+- **`test-preflight-slugs.sh` feeds `comm` unsorted input — FIXED, and the last
+  other call site closed 2026-09-02** [S·★★]. The test now runs
+  `LC_ALL=C comm` over two `LC_ALL=C sort` inputs and carries a comment naming
+  this bug; no "not in sorted order" warning remains.
+
+  This entry's instruction — *"grep for other call sites while fixing"* — was
+  audited 2026-09-02. `build-runtime-manifest.sh:140` and
+  `test-codec-so-map-convergence.sh` were already correct. `lint-env-knobs.sh:58`
+  was **not**: both its inputs are produced with `LC_ALL=C sort -u`, but `comm`
+  itself ran in the ambient locale. `comm` checks sortedness in ITS OWN
+  collation, so on a host that collates differently it would disagree with files
+  this script sorted in C and report a wrong set difference — silently, since the
+  gate prints only counts. Now `LC_ALL=C comm`; the gate still passes (635
+  consumed knobs, all owned). ORIGINAL ENTRY:
   prints `comm: file 1 is not in sorted order` (×2) and still reports
   `5 assertion(s) passed`. `comm` on unsorted input does not compute a correct
   set difference, so its `_missing` / `_orphan` assertions may be passing
