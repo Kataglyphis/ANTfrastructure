@@ -752,7 +752,10 @@ build log. See docs/cross-build-verification.md.
   to advertise the extra had it dropped from the checked set. Now `NOADV` fails;
   only the literal `none` is a torch-less image.
 
-- **TVM ships off-tag** [S·★] — `TVM_REF=v0.26.0` but `tvm.__version__` is
+- **TVM ships off-tag** [S·★, STILL TRUE — re-measured 2026-09-02: `TVM_REF=v0.26.0`
+  in versions.env, `tvm.__version__` reports `0.26.dev1` on **both** amd64 and
+  riscv64, so it is a tag-vs-build-metadata mismatch, not an arch split] —
+  `TVM_REF=v0.26.0` but `tvm.__version__` is
   `0.26.dev1`. Excused in `advert-keys` because the ref and the version cannot
   be compared, but a build one commit off its intended tag is invisible today.
   Worth an explicit ref->commit assertion at build time.
@@ -876,9 +879,10 @@ build log. See docs/cross-build-verification.md.
   GStreamer 1.28.2 into the sysroot, which is a separate hazard. Retire them one
   at a time, each proven by a real riscv64 media stage, not by an apt simulation.
 
-- **numpy differs between arm64 and riscv64** [S·★★] — measured 2026-09-01 in the
-  shipped images: `numpy 2.5.1` on arm64 (the uv.lock wheel) vs `2.5.2` on
-  riscv64 (built locally against versions.env). The two authorities disagree by a
+- **numpy differs between arm64 and riscv64** [S·★★, STILL TRUE — re-measured
+  2026-09-02] — `numpy 2.5.1` on amd64 (the uv.lock wheel) vs `2.5.2` on riscv64
+  (built locally against versions.env). Unchanged from the 2026-09-01 reading;
+  the amd64 side matches what arm64 showed then. The two authorities disagree by a
   patch release. Harmless today, but it is the same class as the torch/vision
   split and means "the venv is pinned" is only true per-arch. See
   docs/riscv64-venv-parity.md.
@@ -891,6 +895,15 @@ build log. See docs/cross-build-verification.md.
   (CPU, WebGpu, Xnnpack) on both — WebGPU now ships, having been excluded in the
   2026-07-20 build. The only differences are torch/torchvision (PyPI wheel vs
   source build) and the numpy patch skew above.
+
+**AUDIT NOTE 2026-09-02.** This whole section had never been re-checked since it
+was written. Two entries were re-measured against the shipped images and both
+still hold (numpy split, TVM off-tag). The remaining open ones — the IREE
+release-compiler/dev-runtime pairing, the riscv64 GStreamer plugin gap, the
+frozen riscv64 skip flags, and the "remaining riscv64 items" list — were NOT
+verified: the plugin-count claim needs the entry's own `gst-inspect` metric on
+an arm64/riscv64 pair, and a raw `.so` count on amd64/riscv64 (598 vs 288)
+answers a different question. Do not treat those four as confirmed-current.
 
 ## H. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
 
