@@ -34,15 +34,14 @@ the branch you intend to target before filing.
 | 4 | [libcamera: missing libtiff dependency](#4-libcamera-apps_lib-uses-libtiff-but-does-not-depend-on-it) | libcamera | **A** | ★★ |
 | 5 | [GStreamer: lame probe ignores the library](#5-gstreamer-the-lame-probe-checks-the-header-and-ignores-the-library) | gst-plugins-good | **A** | ★★ |
 | 17 | [cerbero: glib misses its libiconv dep](#17-cerbero-glib-does-not-declare-its-libiconv-dependency-on-android) | cerbero | **A** | ★★ |
-| 8 | [cargo wrapper clobbers `RUSTFLAGS`](#8-gst-plugins-rs-the-cargo-wrapper-clobbers-rustflags) | gst-plugins-rs | **A** | ★★ |
-| 10a | [`objdetect.hpp` include](#10-gstreamer-opencv-5-moved-symbols-into-new-headers) | gst-plugins-bad | **A** | ★ |
+| 10 | [~~OpenCV 5 header moves~~](#10-gstreamer-opencv-5-moved-symbols-into-new-headers--already-fixed-upstream) | gst-plugins-bad | **✔** | ★★ |
 | 20 | [OpenCV: `<complex.h>` leaves `complex` defined](#20-opencv-hal_internalcpp-trusts-the-include-path-for-complexh) | OpenCV | **A** | ★★ |
 | 6 | [MLAS: `MlasHGemmSupported` undefined](#6-mlas-mlashgemmsupported-is-declared-but-never-defined-in-gemm-only-builds) | OpenCV (their MLAS trim) | **B** | ★★ |
 | 7 | [onnxruntime: Android Gradle Plugin 8](#7-onnxruntime-android-gradle-plugin-742-is-too-old-for-current-tooling) | onnxruntime | **B** | ★ |
-| 9 | [cargo build target is not forwarded](#9-gst-plugins-rs-cargo_build_target-never-reaches-cargo) | gst-plugins-rs | **B** | ★★ |
-| 10b | [`geometry.hpp` include needs a guard](#10-gstreamer-opencv-5-moved-symbols-into-new-headers) | gst-plugins-bad | **B** | ★★ |
+| 9 | [~~cargo build target is not forwarded~~](#9-gst-plugins-rs-cargo_build_target-never-reaches-cargo--withdrawn) | gst-plugins-rs | **withdrawn** | — |
+| 8 | [~~cargo wrapper clobbers `RUSTFLAGS`~~](#8-gst-plugins-rs-the-cargo-wrapper-clobbers-rustflags--withdrawn) | gst-plugins-rs | **withdrawn** | — |
 | 11 | [OpenCV 5 cascade elements](#11-gstreamer-opencv-5-dropped-the-cascade-classifier-elements) | gst-plugins-bad | **B** | ★★ |
-| 12 | [gst-libav ↔ FFmpeg 8 codec IDs](#12-gst-libav-codec-ids-removed-from-ffmpeg-8) | gst-libav | **B** | ★★ |
+| 12 | [~~gst-libav ↔ FFmpeg 8 codec IDs~~](#12-gst-libav-codec-ids-removed-from-ffmpeg-8--already-fixed-upstream) | gst-libav | **✔** | ★★ |
 | 13 | [LiteRT pip script assumes in-tree TF](#13-litert-the-pip-build-script-hardcodes-what-a-cross-build-must-override) | LiteRT | **B** (issue) | ★★ |
 | 18 | [cerbero: stale soundtouch checksum](#18-cerbero-the-soundtouch-tarball-checksum-is-stale) | cerbero | **A** (issue) | ★ |
 | 19 | [cerbero: dead pkg-config fallback mirror](#19-cerbero-the-pkg-config-fallback-mirror-is-gone) | cerbero | **B** (issue) | ★ |
@@ -50,10 +49,10 @@ the branch you intend to target before filing.
 | 15 | [cerbero: drop the `m4` recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
 | 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
 
-Sorted by how ready each one is, not by number. Nine are ready to write today;
+Sorted by how ready each one is, not by number. Seven are ready to write today;
 the rest need the rework named in their entry.
 
-**Eleven entries carry a ready-to-send message; the others deliberately do not.**
+**Eight entries carry a ready-to-send message; the others deliberately do not.**
 9, 11, 12 and 14 need the patch itself reshaped before any message would be
 honest — writing the text now would only make a diff look sendable that is not.
 15 is grade C and 16 is already fixed upstream, so neither gets one.
@@ -320,91 +319,104 @@ required either way.
 
 ---
 
-## 8. gst-plugins-rs: the cargo wrapper clobbers `RUSTFLAGS`
+## 8. gst-plugins-rs: the cargo wrapper clobbers `RUSTFLAGS` — WITHDRAWN
 
-Part of `linux/scripts/patches/gstreamer/003-cargo-wrapper-cross-rust-target.patch` ·
-applies to **GStreamer 1.29.2**.
+Part of `linux/scripts/patches/gstreamer/003-cargo-wrapper-cross-rust-target.patch`.
 
-`cargo_wrapper.py` does `env['RUSTFLAGS'] = shlex_join(rust_flags)`, discarding
-whatever the caller exported. For us that silently dropped the RVV target-features;
-for anyone else it silently drops their entire `RUSTFLAGS`. The patch merges
-instead of assigning.
+**Do not file this. The premise is wrong — checked against the source
+2026-09-02.** This entry claimed `cargo_wrapper.py` assigns `RUSTFLAGS` and
+discards what the caller exported. It does not:
 
-**Split this patch before filing.** The merge fix is grade **A** — it is a plain
-bug, it is three lines, and it needs no explanation beyond "do not discard the
-caller's flags". Send it on its own. The `CARGO_BUILD_TARGET` half of the same
-file is item 9 and needs different handling.
-
-**PR message**
-
+```python
+rustc_target = None
+if 'RUSTC' in env:
+    rustc_cmdline = shlex.split(env['RUSTC'], ...)
+    # grab target from RUSTFLAGS
+    rust_flags = rustc_cmdline[1:] + shlex.split(env.get('RUSTFLAGS', ''))  # <- caller's flags
+    ...
+    env['RUSTFLAGS'] = shlex_join(rust_flags)                               # <- written back merged
 ```
-cargo_wrapper: do not discard the caller's RUSTFLAGS
 
-cargo_wrapper.py assigns RUSTFLAGS rather than appending to it, so whatever the
-caller exported is dropped without a warning. I hit it with target-feature flags
-for a cross build -- the flags simply never reach rustc.
-```
+Line 249 already folds the caller's `RUSTFLAGS` into `rust_flags`, so the
+assignment on 254 preserves them. Identical in `gstreamer-1.29.2` (our pin) and
+in `main`, so there is no version skew to appeal to either.
+
+**This also makes our own patch redundant**, and slightly wrong: it prepends
+`env['RUSTFLAGS']` to a list that already contains it, duplicating every flag.
+Harmless in practice, but it should come out of our tree — a backlog item, not
+an upstream one.
+
+**The lesson.** This entry was written from the diff, not from the file the diff
+applies to. A patch that "fixes" clobbering looks obviously correct until you
+read the four lines above it.
 
 ---
 
-## 9. gst-plugins-rs: `CARGO_BUILD_TARGET` never reaches cargo
+## 9. gst-plugins-rs: `CARGO_BUILD_TARGET` never reaches cargo — WITHDRAWN
 
-The rest of `003-cargo-wrapper-cross-rust-target.patch` plus
-`linux/scripts/patches/gstreamer/004-meson-build-cargo-build-target.patch`.
+`003-cargo-wrapper-cross-rust-target.patch` (second half) and
+`004-meson-build-cargo-build-target.patch`.
 
-`meson.build` builds an `extra_env` for cargo but never carries a target triple
-into it, and `cargo_wrapper.py` never falls back to `CARGO_BUILD_TARGET`. In a
-cross build cargo therefore builds for the *build* machine.
+**Do not file this either. Checked against the source 2026-09-02: upstream has a
+working mechanism and we bypass it.**
 
-**Grade B — the mechanism is not upstream-shaped.** Two reasons:
+`gst-plugins-rs/meson.build:719` forwards meson's own compiler command:
 
-- Our patch also honours `CROSS_RUST_TARGET`, which is **this repo's own variable**.
-  Strip it; keep only `CARGO_BUILD_TARGET`, which is cargo's documented env var.
-- `004` reads the environment through `run_command(python, '-c', 'import os; ...')`.
-  That works, but meson will not want a python subprocess to read an env var.
-  The upstream-shaped source is the Rust target from the meson cross file / the
-  `rust` machine entry, with the env var as a fallback.
+```meson
+extra_env += {'RUSTC': ' '.join(rustc.cmd_array())}
+```
 
-Rework along those lines and it becomes a genuinely useful cross-compilation fix,
-because today gst-plugins-rs cross builds are quietly wrong rather than broken.
+and `cargo_wrapper.py` then pulls the triple back out of it:
+
+```python
+rust_flags = rustc_cmdline[1:] + shlex.split(env.get('RUSTFLAGS', ''))
+if '--target' in rust_flags:
+    ...
+    rustc_target = rust_flags.pop(rustc_target_idx)
+```
+
+In a meson cross build `rustc.cmd_array()` carries `--target <triple>`, so cargo
+gets it without anyone passing `CARGO_BUILD_TARGET`. Our build never benefits
+because `cross-meson.sh` writes `rust = '<wrapper script>'` — a single wrapper
+that adds `--target` *inside itself*. `cmd_array()` is then just the wrapper
+path, the triple is invisible to meson and to `cargo_wrapper.py`, and cargo
+falls back to the build machine.
+
+**So the fix is ours, and it deletes two patches instead of sending them.** Meson
+accepts a list for a binary, so `rust = ['<rustc>', '--target', '<triple>']`
+puts the triple where upstream already looks. Do that, confirm the cross build
+still picks the right target, then drop `003` and `004` entirely.
+
+Tracked as a backlog item — it is a build change, not an upstream one.
 
 ---
 
-## 10. GStreamer: OpenCV 5 moved symbols into new headers
+## 10. GStreamer: OpenCV 5 moved symbols into new headers — ALREADY FIXED UPSTREAM
 
-`linux/scripts/patches/gstreamer/005a-opencv5-segmentation-geometry-include.patch`
-(adds `<opencv2/geometry.hpp>` to `gstsegmentation.cpp`) and
-`005b-opencv5-cameracalibrate-objdetect-include.patch`
-(adds `<opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`) ·
-applied by `03-media/build/gstreamer/common/patch-gstreamer-sources.sh` ·
-applies to **GStreamer 1.29.2** built against **OpenCV 5.0.0**.
+`005a-opencv5-segmentation-geometry-include.patch` and
+`005b-opencv5-cameracalibrate-objdetect-include.patch`.
 
-**Verified 2026-09-02 against the OpenCV trees — the two halves are not the same
-grade, and they must be split.**
+**Both are already in upstream `main` — checked 2026-09-02. Nothing to file.**
 
-| header | in OpenCV 4.x | in OpenCV 5.x | verdict |
-| --- | --- | --- | --- |
-| `opencv2/objdetect.hpp` | **yes** | yes | unconditional include is safe → grade **A** |
-| `opencv2/geometry.hpp` | **no** — no `modules/geometry/` at all | `modules/geometry/include/opencv2/geometry.hpp` | needs a version guard → grade **B** |
+`gstsegmentation.cpp` carries the include *with the version guard* this entry
+previously said was missing:
 
-`geometry` is a **new module in OpenCV 5**. Sending `005a` as an unconditional
-include would break every OpenCV 4 build of `gst-plugins-bad` — the opposite of a
-compatibility fix. It needs a `CV_VERSION_MAJOR` guard, or the meson build needs
-to stop compiling `gstsegmentation.cpp` against OpenCV 4's missing API. Decide
-which once you look at what `gstsegmentation.cpp` actually calls.
-
-`005b` has no such problem and can go on its own today.
-
-**PR message (for `005b` only)**
-
+```c
+#include <opencv2/imgproc.hpp>
+#if CV_MAJOR_VERSION >= 5
+#include <opencv2/geometry.hpp>
+#endif
 ```
-opencv: include objdetect.hpp in gstcameracalibrate
 
-gstcameracalibrate.cpp uses the objdetect API but includes only imgproc and
-calib3d, so it builds where another header happens to pull objdetect in and
-fails where it does not. opencv2/objdetect.hpp exists in both OpenCV 4 and 5,
-so the include needs no version guard.
-```
+and `gstcameracalibrate.cpp` has `#include <opencv2/objdetect.hpp>` outright.
+Upstream reached the same two conclusions we did, including that `objdetect.hpp`
+needs no guard because OpenCV 4 has it and `geometry.hpp` does because OpenCV 4
+does not.
+
+**Action: a version bump, not a PR.** When the GStreamer pin moves past these,
+drop both patches. If we want to align sooner, take upstream's `CV_MAJOR_VERSION
+>= 5` form rather than our unguarded include — ours would break an OpenCV 4
+build, theirs would not.
 
 ---
 
@@ -429,22 +441,34 @@ stays regardless of what happens upstream.
 
 ---
 
-## 12. gst-libav: codec IDs removed from FFmpeg 8
+## 12. gst-libav: codec IDs removed from FFmpeg 8 — ALREADY FIXED UPSTREAM
 
-`linux/scripts/patches/gstreamer/006-libav-removed-codec-fallbacks.patch` ·
-applies to **GStreamer 1.29.2** with **FFmpeg n9.0**.
+`006-libav-removed-codec-fallbacks.patch`.
 
-Defines `AV_CODEC_ID_V308`, `AV_CODEC_ID_V408` and `AV_CODEC_ID_V410` to `0` when
-absent, in `gstavviddec.c` and `gstavvidenc.c`.
+**Already in upstream `main` — checked 2026-09-02. Nothing to file.**
 
-**Do not send this as-is — it is a compile fix, not a correctness fix.** `0` is
-`AV_CODEC_ID_NONE`; the mapping tables now contain entries that claim a codec ID
-they do not have. It builds, and in practice those table rows are never matched,
-but that reasoning is exactly what a reviewer will not accept.
+This entry said the right fix was to drop the affected table entries behind a
+version guard rather than define the identifiers to `0`. Upstream did exactly
+that, in both files, guarding on `< 63` rather than the `62` we would have
+guessed:
 
-The upstream-shaped change removes the affected table entries under a
-`LIBAVCODEC_VERSION_MAJOR` guard rather than defining the identifiers away. Worth
-doing: gst-libav has to face FFmpeg 8 eventually.
+```c
+        || in_plugin->id == AV_CODEC_ID_R210
+#if LIBAVCODEC_VERSION_MAJOR < 63
+        || in_plugin->id == AV_CODEC_ID_V308
+        || in_plugin->id == AV_CODEC_ID_V408
+        || in_plugin->id == AV_CODEC_ID_V410
+#endif
+```
+
+`gstavviddec.c:3004` and `gstavvidenc.c:1037`, alongside an older
+`< 61` guard for `AV_CODEC_ID_AYUV` — so this is a pattern they maintain, not a
+one-off.
+
+**Action: a version bump, not a PR.** Our `#define … 0` fallbacks can come out
+as soon as the GStreamer pin includes these commits. Until then keep them, but
+note that our version is semantically wrong (`0` is `AV_CODEC_ID_NONE`) where
+upstream's simply removes the comparisons.
 
 ---
 

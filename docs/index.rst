@@ -150,6 +150,7 @@ Common development targets:
    riscv64-venv-parity
    riscv64-rva23-baseline
    upstreamable-patches
+   upstream/README
    iree-two-stage-build
    linux-accelerator-images
    linux-host-setup
