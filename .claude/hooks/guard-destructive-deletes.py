@@ -72,6 +72,23 @@ def deny(reason: str) -> None:
     sys.exit(0)
 
 
+_SEGMENT = re.compile(r"[;&|\n]+")
+_CD = re.compile(r"\bcd\s+([^\s;&|]+)")
+
+
+def _delete_segments(norm: str):
+    """Segments that carry a delete verb, each prefixed with the directory a
+    preceding `cd` established. docs/failure-modes.md#delete-guard-scope"""
+    cwd = ""
+    for seg in _SEGMENT.split(norm):
+        bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", seg)
+        if VERB.search(bare):
+            yield f"{cwd} {seg}" if cwd else seg
+        found = _CD.search(bare)
+        if found:
+            cwd = found.group(1)
+
+
 def verdict(text: str) -> str | None:
     if not text or not text.strip():
         return None
@@ -86,15 +103,17 @@ def verdict(text: str) -> str | None:
     norm = re.sub(r"\$\{?home\}?|(?<![\w.])~(?=/|\s|$)", "<home>", norm)
     for ok in RECLAIMABLE:
         norm = re.sub(re.escape(ok) + r"(/\*)?", " <reclaimable> ", norm)
-    # The bare-root pattern is the loosest one here: a "/" between a space and a
-    # quote. On the full text it fires on ordinary shell such as `sed 's/^/  /'`,
-    # which blocked real work twice on 2026-09-01. Match THAT one on the
-    # quote-stripped text; the specific paths keep the full text, because a real
-    # delete's path usually lives inside the quotes.
-    norm_bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", norm)
-    for rx, what in PROTECTED:
-        if rx.search(norm_bare if what == "the filesystem root" else norm):
-            return "command deletes from " + what
+    # Verb and path were matched across the WHOLE command, so a delete of a
+    # scratch path was denied whenever the command merely MENTIONED /opt — that
+    # blocked real work five times on 2026-09-02. Scope the path check to the
+    # segments that actually delete. The bare-root pattern additionally matches
+    # on quote-stripped text: on the full text it fires on ordinary shell such
+    # as `sed 's/^/  /'`. docs/failure-modes.md#delete-guard-scope
+    for seg in _delete_segments(norm):
+        seg_bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", seg)
+        for rx, what in PROTECTED:
+            if rx.search(seg_bare if what == "the filesystem root" else seg):
+                return "command deletes from " + what
     return None
 
 

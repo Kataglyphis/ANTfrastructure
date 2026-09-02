@@ -40,6 +40,7 @@ Two neighbours, so you land on the right page:
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
+- [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
 
 **Windows: the layer store (hcsshim)**
 
@@ -367,6 +368,36 @@ be (an sdkmanager component, a table column, a word from an `echo` string). Brea
 the extractor and the check exits 2 before it ever reports green. A gate whose
 input extraction can silently degrade to nothing is the failure this repo keeps
 re-learning; a scanner has to prove it is still scanning.
+
+### The delete guard denies its own legitimate work
+
+`.claude/hooks/guard-destructive-deletes.py` matched a delete VERB and a
+PROTECTED PATH independently, anywhere in the command. So any command that both
+deleted something harmless and merely *mentioned* a system path was denied:
+
+```
+rm -rf scratch && cc -o x /opt/gcc-16.2.0/bin/gcc     # denied: "a system directory"
+```
+
+The `/opt` here is a compiler, not a delete target. This fired five times on
+2026-09-02 against a scratch directory under the job tmpdir, each time costing a
+tool call and a rewrite. Two earlier variants of the same shape are recorded in
+the file's own header: `--rm` matching `\brm\b`, and `sed 's/^/  /'` reading as
+the filesystem root.
+
+**The fix.** Split the command on `;`, `&&`, `||`, `|` and newlines, and run the
+protected-path patterns only on the segments that actually carry a delete verb.
+A preceding `cd` target is carried into later segments, so `cd /usr && rm -rf *`
+still denies — the relative delete cannot escape the directory it was given.
+
+**The transferable lesson.** A guard whose two halves are matched independently
+across a whole command is not checking a relationship, it is checking
+co-occurrence. Co-occurrence guards look strict and behave randomly: they deny
+safe work and, worse, teach the operator to phrase commands to avoid the guard
+rather than to be safe. Bind the dangerous verb to its own argument. Both
+directions are mutation-tested in `test-delete-guard.sh` — widening the scope
+back to the whole command turns the allow-cases red, and dropping the `cd`
+tracking turns the deny-cases red.
 
 ---
 

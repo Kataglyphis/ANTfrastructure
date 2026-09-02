@@ -43,4 +43,17 @@ for _c in "rm -rf ~/.cache/kata-buildcache/*" "rm -f /tmp/foo.bak" \
   t_assert_eq "allow" "$(_decide "${_c}")" "${_c}"
 done
 
+t_case "the path check is scoped to the segment that deletes"
+# Verb and path were matched across the WHOLE command, so deleting a scratch dir
+# was denied whenever the command merely MENTIONED a system path. A preceding
+# `cd` still counts, so a relative delete cannot escape its directory.
+for _c in "rm -rf scratch && cc -o x /opt/gcc/bin/gcc" \
+          "nerdctl run --rm -v /opt/x:/src img sh -c 'cp -r /src w'" \
+          "rm -rf out/logs; grep -rn foo /usr/include"; do
+  t_assert_eq "allow" "$(_decide "${_c}")" "${_c}"
+done
+for _c in "cd /usr && rm -rf *" "cd /opt/libcamera && rm -rf lib"; do
+  t_assert_eq "deny" "$(_decide "${_c}")" "${_c}"
+done
+
 t_summary
