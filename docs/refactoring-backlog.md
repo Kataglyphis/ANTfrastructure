@@ -761,6 +761,27 @@ holds **260** pairs (was 251), of which **236 still say "baseline 2026-08-31, no
 yet reviewed"**. So nine pairs were added since the baseline and the unreviewed
 tail has not moved at all — every pair reviewed so far was a NEW one.
 
+**PROGRESS 2026-09-02.** The top pair is done: `build-runtime-artifacts.sh` ↔
+`build-runtime-manifest.sh` went **199 → 28** shingles. The 17 option lines both
+documented identically now live in `runtime_shared_usage_options`
+(`01-core/runtime-build-fns.sh`), beside the `runtime_shared_usage_env_overrides`
+that library already owned — those flags are handled BY the library, so the
+duplication was a symptom of documentation living in the wrong place. `--help`
+verified unchanged in content on both scripts.
+
+That one change also **retired three allowlist entries** the gate then reported
+as stale (`build-cross-chain` ↔ both runtime scripts, and manifest ↔
+`build-sdk-artifacts`) — dedup at one site can dissolve overlaps at others, so
+expect the list to shrink faster than the number of entries you touch.
+
+Two entries were ADDED in the same pass, both honestly labelled: my own new test
+cases had duplicated four lines of extract-and-count boilerplate (fixed with a
+helper instead of an allowlist line), and `runtime-build-fns` ↔
+`build-cross-chain` now share 14 shingles — recorded as *unfinished*, not
+deliberate, because the chain orchestrator could call the same helper.
+
+Count: **260 → 246 pairs, 236 → 232 unreviewed.** Gate green.
+
 Work the tail from the top; each line deleted or shrunk is real progress and the
 gate enforces the new, lower budget automatically:
 

@@ -5,7 +5,7 @@
 # always welcome: lower its budget (or delete the line) when you do.
 
 linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh | linux/scripts/03-media/build/opencv/install-deps.sh | 12 | reviewed 2026-09-01: structurally similar multi-line file-presence gates (TF-SDK cache stamp vs riscv64 harfbuzz dev files) over DIFFERENT domains — not a dedup target; budget pinned at current size so growth still trips
-linux/scripts/build-runtime-artifacts.sh | linux/scripts/build-runtime-manifest.sh | 199 | baseline 2026-08-31, not yet reviewed
+linux/scripts/build-runtime-artifacts.sh | linux/scripts/build-runtime-manifest.sh | 28 | reviewed 2026-09-02: was 199 — the 17 option lines both documented identically now live in runtime_shared_usage_options (01-core/runtime-build-fns.sh), beside the runtime_shared_usage_env_overrides this library already owned; those flags are handled BY that library, so that is where they belong. --help output verified unchanged in content (58/58 and 64/64 lines; only --help and --image-prefix swap places, and --help last reads better). The 28 left are the orchestrator preamble and a case tail — boilerplate every such script has, not a dedup target
 linux/scripts/03-media/build/iree/android/build-android.sh | linux/scripts/03-media/build/litert/android/build-android.sh | 179 | baseline 2026-08-31, not yet reviewed
 linux/scripts/lint-shell.sh | linux/scripts/lint-workflows.sh | 95 | baseline 2026-08-31, not yet reviewed
 linux/scripts/06-packaging/smoke-runtime-image.sh | linux/scripts/06-packaging/smoke-runtime-image.sh | 90 | baseline 2026-08-31, not yet reviewed
@@ -90,7 +90,6 @@ linux/scripts/01-core/runtime-build-fns.sh | linux/scripts/build-sdk-artifacts.s
 linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | linux/scripts/03-media/build/opencv/build-opencv.sh | 24 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/runtime/validate-media-runtime.sh | linux/scripts/06-packaging/setup-torch-venv.sh | 24 | baseline 2026-08-31, not yet reviewed
 linux/scripts/build-cross-chain.sh | linux/scripts/verify-cross-chain.sh | 24 | baseline 2026-08-31, not yet reviewed
-linux/scripts/build-runtime-manifest.sh | linux/scripts/build-sdk-artifacts.sh | 24 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/runtime/verify-media-artifacts.sh | linux/scripts/03-media/runtime/verify-media-artifacts.sh | 23 | baseline 2026-08-31, not yet reviewed
 linux/webserver/scripts/flutter_integration_smoke_test.sh | linux/webserver/scripts/flutter_integration_smoke_test.sh | 23 | baseline 2026-08-31, not yet reviewed
 linux/scripts/02-toolchain/build-gcc.sh | linux/scripts/02-toolchain/build-gcc.sh | 23 | baseline 2026-08-31, not yet reviewed
@@ -152,8 +151,6 @@ linux/scripts/03-media/build/armnn/build-arm-compute-library.sh | linux/scripts/
 linux/scripts/03-media/runtime/repair-wheels.sh | linux/scripts/06-packaging/smoke-media.sh | 15 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/build/gstreamer/install-deps.sh | linux/scripts/03-media/build/litert/install-deps.sh | 15 | baseline 2026-08-31, not yet reviewed
 linux/scripts/03-media/build/litert/build-litert.sh | linux/scripts/03-media/build/litert/build-litert.sh | 15 | baseline 2026-08-31, not yet reviewed
-linux/scripts/build-cross-chain.sh | linux/scripts/build-runtime-artifacts.sh | 15 | baseline 2026-08-31, not yet reviewed
-linux/scripts/build-cross-chain.sh | linux/scripts/build-runtime-manifest.sh | 15 | baseline 2026-08-31, not yet reviewed
 linux/scripts/tests/test-ffmpeg-dnn-contract.sh | linux/scripts/tests/test-lib-smoke.sh | 15 | baseline 2026-08-31, not yet reviewed
 linux/host-config/ghcr-delete-tags.sh | linux/host-config/ghcr-delete-tags.sh | 14 | baseline 2026-08-31, not yet reviewed
 linux/host-config/install-nerdctl-full.sh | linux/host-config/install-nerdctl-full.sh | 14 | baseline 2026-08-31, not yet reviewed
@@ -258,3 +255,5 @@ linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/tests/test-parallel-
 linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/tests/test-ffmpeg-dnn-contract.sh | 20 | is_truthy stub, as above
 linux/scripts/01-core/platform.sh | linux/scripts/tests/test-chain-lifecycle.sh | 20 | is_truthy: the test stub deliberately mirrors the canonical definition
 linux/scripts/tests/test-chain-lifecycle.sh | linux/scripts/verify-shipped-wrapper.sh | 20 | _is_truthy: verify-shipped-wrapper runs standalone; sourcing platform.sh is the fix -- backlog F3
+linux/scripts/01-core/runtime-build-fns.sh | linux/scripts/build-cross-chain.sh | 14 | reviewed 2026-09-02: `usage() { cat <<'EOF'` plus two option lines the chain orchestrator documents identically. NOT deliberate so much as unfinished — build-cross-chain.sh could call runtime_shared_usage_options too; it was left out because it is a different flow (stage chain, not runtime) and merging its help needs its own review. Budget pinned so the overlap cannot grow
+docs/upstream/windows-containers-lsm-session-event-hang.md | docs/upstream/windows-containers-lsm-session-event-hang.md | 16 | reviewed 2026-09-02: the file repeats ITSELF -- the same Windows-Containers issue reference appears in the summary at the top and again in the reference list at the bottom, which is how an upstream write-up is supposed to read. It is a WINDOWS-lane document and the standing rule here is to note, not edit, Windows content from the Linux lane, so the budget is pinned rather than the prose reflowed

@@ -23,26 +23,12 @@ Builds the same cross runtime flow used for publishable images:
 
 Options:
   --output-root DIR             Export directory root (default: out/linux-runtime)
-  --image-prefix TAG            Prefix for built wrapper image tags
   --push                        Push wrapper images after export (intermediates stay local)
   --push-all                    Push ALL intermediate images too (base/package)
-  --dry-run                    Print build commands without executing them
-  --parallel-archs              Build per-architecture images in parallel
-  --max-parallel-archs N        Max concurrent arch builds (default: 4)
+EOF
+  runtime_shared_usage_options
+  cat <<'EOF'
   -h, --help                    Show this help text
-  --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
-  --architectures LIST          Alias for --target-arches
-  --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
-  --artifact-build-mode MODE    Artifact source mode: cross or native (default: cross)
-  --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
-  --package-dockerfile PATH     Package Dockerfile (default: linux/Dockerfile.package)
-  --torch-dockerfile PATH       Alias for --wrapper-dockerfile (deprecated)
-  --wrapper-dockerfile PATH     Final wrapper Dockerfile (default: linux/Dockerfile.torch)
-  --torch-app-mode MODE         TORCH_APP_MODE for linux/Dockerfile.torch
-  --fast-ubuntu-mirror          Replace Ubuntu archive/security/ports mirrors during Docker builds
-  --fast-ubuntu-mirror-url URL  Archive mirror URL to use with --fast-ubuntu-mirror
-  --fast-ubuntu-ports-mirror-url URL
-                                 Optional mirror URL for ubuntu-ports entries
 
 Environment overrides:
   OUTPUT_ROOT                   Root directory for exported rootfs artifacts

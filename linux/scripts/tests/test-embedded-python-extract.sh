@@ -71,6 +71,14 @@ t_assert_contains "$(cat "${TESTS_DIR}/../lint-python.sh")" "extract-embedded-py
 # A FAMILY of cat'ed fragments (two or more sharing a marker prefix) IS
 # assembled and extracted -- that is how the 217 lines of genai smoke Python
 # finally reach ruff. A lone fragment still is not, per the case above.
+# One extract-and-count helper: the two cases below used to repeat these four
+# lines verbatim, which the code-dupes gate rightly flagged.
+# _count_extracted <outdir> <script.sh> <name-glob>
+_count_extracted() {
+  python3 "${EXTRACT}" "$1" "$2" >/dev/null 2>&1
+  find "$1" -name "$3" 2>/dev/null | wc -l
+}
+
 t_case "a multi-fragment family is assembled and extracted"
 _FAM="${_work}/fam.sh"
 cat > "${_FAM}" <<'FAMSH'
@@ -87,8 +95,7 @@ DEMO_PY_B
 }
 FAMSH
 _FOUT="${_work}/famout"
-python3 "${EXTRACT}" "${_FOUT}" "${_FAM}" >/dev/null 2>&1
-t_assert_eq "1" "$(find "${_FOUT}" -name '*demo_py*.py' 2>/dev/null | wc -l)" \
+t_assert_eq "1" "$(_count_extracted "${_FOUT}" "${_FAM}" '*demo_py*.py')" \
   "the two DEMO_PY_* fragments must assemble into one file"
 t_assert_contains "$(cat "${_FOUT}"/*demo_py*.py 2>/dev/null)" "def add" "fragment A missing"
 t_assert_contains "$(cat "${_FOUT}"/*demo_py*.py 2>/dev/null)" "print(add" "fragment B missing"
@@ -110,8 +117,7 @@ NUM_PY_2
 }
 DIGSH
 _DOUT="${_work}/digout"
-python3 "${EXTRACT}" "${_DOUT}" "${_DIG}" >/dev/null 2>&1
-t_assert_eq "1" "$(find "${_DOUT}" -name '*num_py*.py' 2>/dev/null | wc -l)" \
+t_assert_eq "1" "$(_count_extracted "${_DOUT}" "${_DIG}" '*num_py*.py')" \
   "digit-suffixed markers must be seen"
 
 t_case "an UPPERCASE interpreter variable is recognised"
@@ -129,8 +135,7 @@ PYEOF
 }
 UPSH
 _UOUT="${_work}/upperout"
-python3 "${EXTRACT}" "${_UOUT}" "${_UP}" >/dev/null 2>&1
-t_assert_eq "1" "$(find "${_UOUT}" -name '*.py' 2>/dev/null | wc -l)" \
+t_assert_eq "1" "$(_count_extracted "${_UOUT}" "${_UP}" '*.py')" \
   "\${PY} must be recognised as an interpreter"
 t_assert_contains "$(cat "${_UOUT}"/*.py 2>/dev/null)" "value = 41" "body missing"
 

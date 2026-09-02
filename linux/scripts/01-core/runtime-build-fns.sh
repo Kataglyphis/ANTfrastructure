@@ -572,6 +572,33 @@ ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
 }
 
+# The option block both runtime orchestrators document identically. It exists
+# for the same reason as runtime_shared_usage_env_overrides directly below:
+# these flags are handled by THIS library, so this is where they belong. Keeping
+# a copy in each script made the two the largest duplicate pair in the tree
+# (199 shared shingles). docs/refactoring-backlog.md F5
+runtime_shared_usage_options() {
+  cat <<'EOF'
+  --image-prefix TAG            Prefix for built wrapper image tags
+  --dry-run                    Print build commands without executing them
+  --parallel-archs              Build per-architecture images in parallel
+  --max-parallel-archs N        Max concurrent arch builds (default: 4)
+  --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
+  --architectures LIST          Alias for --target-arches
+  --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
+  --artifact-build-mode MODE    Artifact source mode: cross or native (default: cross)
+  --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
+  --package-dockerfile PATH     Package Dockerfile (default: linux/Dockerfile.package)
+  --torch-dockerfile PATH       Alias for --wrapper-dockerfile (deprecated)
+  --wrapper-dockerfile PATH     Final wrapper Dockerfile (default: linux/Dockerfile.torch)
+  --torch-app-mode MODE         TORCH_APP_MODE for linux/Dockerfile.torch
+  --fast-ubuntu-mirror          Replace Ubuntu archive/security/ports mirrors during Docker builds
+  --fast-ubuntu-mirror-url URL  Archive mirror URL to use with --fast-ubuntu-mirror
+  --fast-ubuntu-ports-mirror-url URL
+                                 Optional mirror URL for ubuntu-ports entries
+EOF
+}
+
 runtime_shared_usage_env_overrides() {
   cat <<'EOF'
 Environment overrides:
