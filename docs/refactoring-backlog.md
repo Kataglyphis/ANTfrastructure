@@ -780,7 +780,30 @@ helper instead of an allowlist line), and `runtime-build-fns` ↔
 `build-cross-chain` now share 14 shingles — recorded as *unfinished*, not
 deliberate, because the chain orchestrator could call the same helper.
 
-Count: **260 → 246 pairs, 236 → 232 unreviewed.** Gate green.
+**Second pair done:** `iree/android/build-android.sh` ↔
+`litert/android/build-android.sh`, **179 → 12**. The duplicated
+`resolve_host_compiler` (source-or-fallback, ~25 lines) moved into
+`android-build-preamble.sh`, which both already source and every android stage
+shares. The iree copy's own comment said *"aligned with the litert copy"* — the
+duplication was known and simply had no owner.
+
+**That consolidation exposed a four-site family**, which is the more useful
+finding: the same host-compiler-preference logic lives in
+`01-core/compiler-resolution.sh` (canonical), the preamble's fallback,
+`ffmpeg-probe-framework.sh` and `build-app-wheelhouse.sh`. The preamble copy is
+the **bootstrap paradox** in its purest form — a fallback must duplicate the
+thing it stands in for, or it is not a fallback. The other two are not, and
+that family wants one owner.
+
+Note the accounting: this pair's number fell by 167 while
+`preamble ↔ build-app-wheelhouse` rose 29 → 40. Total duplication went DOWN (two
+copies became one) even though one pair's number went UP, because the surviving
+copy now sits in a file that already overlapped there. Read the totals, not a
+single row.
+
+Count after both pairs: **260 → 243 pairs, 236 → 225 unreviewed.** Gate green.
+Eight stale entries were retired along the way — three from the first pair, five
+from this one.
 
 Work the tail from the top; each line deleted or shrunk is real progress and the
 gate enforces the new, lower budget automatically:

@@ -37,12 +37,43 @@ android_build_preamble_init() {
   export DEBIAN_FRONTEND=noninteractive
 }
 
+# Host compiler resolution, shared by every android stage: source the canonical
+# helper, fall back to an inline copy. docs/refactoring-backlog.md F5
+
+if [ -f /opt/scripts/core/compiler-resolution.sh ]; then
+  # shellcheck disable=SC1091
+  source /opt/scripts/core/compiler-resolution.sh
+  resolve_host_compiler() { resolve_host_compiler_for_lang "$1"; }
+else
+  # Prefer EXPLICIT /usr/bin host compilers (aligned with the litert copy):
+  # the android stages inherit PATH=/opt/gcc-<ver>/bin:... from the toolchain,
+  # so a bare `command -v gcc` resolved the custom CROSS GCC as the host
+  # compiler. (Normally dead code — Dockerfile.android ships the canonical
+  # compiler-resolution.sh since 2026-08-08 and the branch above wins.)
+  resolve_host_compiler() {
+    local candidate
+    case "$1" in
+      c)
+        for candidate in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do
+          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+        done
+        command -v gcc 2>/dev/null || command -v cc 2>/dev/null || command -v clang 2>/dev/null || true ;;
+      cxx)
+        for candidate in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do
+          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+        done
+        command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || command -v clang++ 2>/dev/null || true ;;
+    esac
+  }
+fi
+
 # Parallel job-count helper for the Android build scripts.
 # Mirrors media_jobs() in 03-media/core/common.sh, but the Android scripts do
 # NOT call media_common_init, so parallelism.sh is not pre-loaded — source it
 # on demand (container path) before using compute_jobs_with_mem_cap, and fall
 # back to plain nproc when it is unavailable. Keeps the exact 2000-MB per-job
 # memory-cap behavior of the blocks it replaces.
+
 media_jobs() {
   local jobs
   jobs="$(nproc)"

@@ -15,28 +15,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/litert-eigen-fetch.sh"
 
-if [ -f /opt/scripts/core/compiler-resolution.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/compiler-resolution.sh
-  resolve_host_compiler() { resolve_host_compiler_for_lang "$1"; }
-else
-  resolve_host_compiler() {
-    case "$1" in
-      c)
-        for candidate in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do
-          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-        done
-        command -v gcc 2>/dev/null || command -v cc 2>/dev/null || command -v clang 2>/dev/null || true
-        ;;
-      cxx)
-        for candidate in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do
-          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-        done
-        command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || command -v clang++ 2>/dev/null || true
-        ;;
-    esac
-  }
-fi
+# resolve_host_compiler now comes from android-build-preamble.sh, sourced above.
 
 android_build_preamble_init "Android LiteRT build" "${ANDROID_API_LEVEL:-34}"
 

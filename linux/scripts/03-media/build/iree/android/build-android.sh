@@ -20,32 +20,7 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 
-if [ -f /opt/scripts/core/compiler-resolution.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/compiler-resolution.sh
-  resolve_host_compiler() { resolve_host_compiler_for_lang "$1"; }
-else
-  # Prefer EXPLICIT /usr/bin host compilers (aligned with the litert copy):
-  # the android stages inherit PATH=/opt/gcc-<ver>/bin:... from the toolchain,
-  # so a bare `command -v gcc` resolved the custom CROSS GCC as the host
-  # compiler. (Normally dead code — Dockerfile.android ships the canonical
-  # compiler-resolution.sh since 2026-08-08 and the branch above wins.)
-  resolve_host_compiler() {
-    local candidate
-    case "$1" in
-      c)
-        for candidate in /usr/bin/gcc /usr/bin/cc /usr/bin/clang; do
-          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-        done
-        command -v gcc 2>/dev/null || command -v cc 2>/dev/null || command -v clang 2>/dev/null || true ;;
-      cxx)
-        for candidate in /usr/bin/g++ /usr/bin/c++ /usr/bin/clang++; do
-          [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-        done
-        command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || command -v clang++ 2>/dev/null || true ;;
-    esac
-  }
-fi
+# resolve_host_compiler now comes from android-build-preamble.sh, sourced above.
 
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
 
