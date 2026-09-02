@@ -25,8 +25,18 @@ configuration of incident run iree-0714c: back then tools/CMakeLists.txt's
 if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)
 iree_import_binary(NAME iree-tblgen OPTIONAL) ... llvm-link ... clang
 branch DID fire and the target really did need llvm-link/clang from the host.
-The target stage below now sets -DIREE_BUILD_COMPILER=ON (it has to: we ship
-the riscv64 iree_base_compiler wheel), so that branch is gated OFF and
+CORRECTION 2026-09-02: this paragraph claimed the target stage sets
+-DIREE_BUILD_COMPILER=ON. It does NOT — build-app-wheelhouse.sh passes
+${IREE_CROSS_BUILD_COMPILER:-OFF}, and the section further down explains exactly
+why ON is wrong for the target (its own iree-tblgen is built FOR THE TARGET ARCH
+and then executed: "Exec format error"). So the import branch DOES fire, the
+target DOES need iree-tblgen from the host, and COMPILER=OFF never installs it —
+which made the host stage's OFF pass a guaranteed-wasted full build before the
+escalation to ON. The host stage now asks for ON directly whenever the target is
+OFF, and only requires the two LLVM-free tools when the target is ON.
+
+The rest of this paragraph describes the ON-target case, which remains accurate
+for that configuration: with the target on ON that branch is gated OFF and
 IREE_CLANG_BINARY / IREE_LLVM_LINK_BINARY resolve to the target build's own
 bundled-LLVM targets ($<TARGET_FILE:clang>, $<TARGET_FILE:llvm-link>,
 build_tools/cmake/iree_llvm.cmake:83-85), never to IREE_HOST_BIN_DIR.

@@ -291,7 +291,7 @@ arch's media stage.
 
   No code change made. The mechanism is right; only this entry was wrong.
 
-- **DE. `IREE_BUILD_COMPILER=OFF` does not produce `iree-tblgen`** [M·★★, costs a
+- **DE. `IREE_BUILD_COMPILER=OFF` does not produce `iree-tblgen` — FIXED 2026-09-02** [M·★★, costs a
   full host compiler build]. `[WARN] IREE host stage (IREE_BUILD_COMPILER=OFF)
   left /tmp/app-wheelhouse/iree-build-host/install/bin missing: iree-tblgen —
   retrying with the full host compiler`, twice in one run. The two-stage build

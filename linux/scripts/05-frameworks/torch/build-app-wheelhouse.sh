@@ -893,11 +893,26 @@ _iree_patch_setup_py_abi3() {
 # Why COMPILER=OFF, which two tools it must install, and how the ON arm is
 # used as insurance: docs/iree-two-stage-build.md
 _iree_build_host_stage() {
-    # Which host tools are required, and why iree-tblgen among them:
-    # docs/iree-two-stage-build.md
-    local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli iree-tblgen)
+    # Which host tools are required, and why the list depends on the TARGET's
+    # compiler mode: docs/iree-two-stage-build.md
+    local -a host_required_tools=(iree-c-embed-data iree-flatcc-cli)
+    local -a host_compiler_modes=(OFF ON)
+    # IREE imports host tools only under
+    #   if(IREE_HOST_BIN_DIR AND NOT IREE_BUILD_COMPILER)   (tools/CMakeLists.txt)
+    # so a target on COMPILER=OFF -- our default -- DOES take that branch and needs
+    # iree-tblgen from the host. COMPILER=OFF never installs it, so demanding it
+    # from an OFF host build guarantees the escalation: a complete host build,
+    # deleted, then redone with ON. Ask for ON directly instead of paying for the
+    # discarded pass. It cost two full host builds in the 2026-09-02 run.
+    case "${IREE_CROSS_BUILD_COMPILER:-OFF}" in
+      ON|on|1|true|TRUE|yes|YES) : ;;
+      *)
+        host_required_tools+=(iree-tblgen)
+        host_compiler_modes=(ON)
+        ;;
+    esac
     local host_stage_ok=0 host_compiler_mode="" host_tool="" host_tools_missing=""
-    for host_compiler_mode in OFF ON; do
+    for host_compiler_mode in "${host_compiler_modes[@]}"; do
         rm -rf "${host_build}" "${host_install}"
         log "IREE host stage: configuring with IREE_BUILD_COMPILER=${host_compiler_mode}"
         if ! env -u CC -u CXX -u CPP -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS \
