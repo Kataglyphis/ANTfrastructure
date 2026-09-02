@@ -29,6 +29,11 @@ code that produced them.
 
 1. Never edit versions.env or the 01-core / 03-media bind-mount closure
    outside a closure window — one edit re-runs hours of media compiles.
+   **MECHANISM MEASURED 2026-09-02:** the chain re-invokes *itself* as a child
+   per stage (observed PPID 808173 → PID 1998054, both `build-cross-chain.sh`),
+   so each stage re-reads these scripts from disk. An edit made mid-run is not
+   merely a cache-key change — the NEXT stage executes the edited bytes. This is
+   why F1's two remaining targets are blocked, not deferred.
 2. Respect the protected lists (deliberate dedup, standalone bundling,
    load-bearing case arms, ARG sprawl, LiteRT-LM patch stack, SH1 retry
    semantics, SH2 non-exiting error(), DUPN2 two-pass arg mirror) —
@@ -594,6 +599,25 @@ next candidate.
 `assert_pinned_versions` at 356 is untouched and remains the clear top of the
 list — more than twice the next entry.
 
+**BLOCKED, not deferred (2026-09-02).** The two remaining targets —
+`_cross_stage_build_impl` (01-core) and `reconcile_local_wheels` (03-media/runtime) —
+sit inside the bind-mount closure that standing rule 1 protects, and the RVA23
+rebuild is in flight with the runtime lane (the stage that publishes the manifest)
+still ahead. Both are pure readability refactors: the upside is a shorter function,
+the downside of a slip is a dead 2h+ build at its publishing step. They are the
+first work item of the next closure window, in this order:
+
+  1. `_cross_stage_build_impl` — decompose INTERNALLY only (do not split it back
+     into two functions; that split was reverted once already). Natural seams, each
+     already marked by its own comment block: the pull-flag decision, the push/
+     attestation output args, the three-tier cache args, the salvage-export loop
+     (~30 lines, deepest nesting → best single win), and the registry-cache drop.
+  2. `reconcile_local_wheels` — 146 lines carrying 57 comment blocks; the comments
+     already name the seams.
+
+`assert_pinned_versions` stays top of the list by size but is the *worst* candidate
+by value, for the reason given above: decomposing its shell moves ~26 lines.
+
 ### F2. Files over ~800 lines [L each, low priority] — RE-MEASURED 2026-09-02
 
         was   now  file
@@ -643,12 +667,21 @@ worth a look for F1 candidates.
   the item-splitting loop is the same; only the emitted shape differs. One
   walker taking an emitter callback would own it. Allowlisted 2026-09-01 with a
   budget of 25 so it cannot grow further unnoticed.
-- **`verify-shipped-wrapper.sh` carries a private `_is_truthy`** (`:50`) — it
-  runs standalone from `build-runtime-manifest.sh`, but `REPO_ROOT` is available
-  there, so it could source `01-core/platform.sh` and use the canonical
-  definition. The test stubs (`test-chain-lifecycle.sh`, `test-parallel-loop.sh`,
-  `test-ffmpeg-dnn-contract.sh`) must keep their own copies — a test that sourced
-  the real one could no longer prove the shipped copy behaves.
+- **`verify-shipped-wrapper.sh` carried a private `_is_truthy`** — **DONE
+  2026-09-02** (`e2da351c`). It now sources `01-core/platform.sh` via its own
+  `_here` and uses the canonical `is_truthy` at all three call sites. Safe because
+  `platform.sh` has **zero top-level statements**, so sourcing it has no side
+  effects; the two `case` arms were byte-identical and a differential test over 21
+  inputs (`True`, `tRuE`, `enabled`, empty, whitespace, …) agreed on every one.
+  Verified in the manifest builder's exact invocation form — the gate reaches its
+  own logic, so the `source` resolves at runtime and not merely under `bash -n`.
+  The four `code-dupes.allow` pairs it needed were retired in the same commit; the
+  gate itself flagged them as stale, which is the allowlist working as designed.
+  The test stubs (`test-chain-lifecycle.sh`, `test-parallel-loop.sh`,
+  `test-ffmpeg-dnn-contract.sh`) keep their own copies on purpose — a test that
+  sourced the real one could no longer prove the shipped copy behaves. They are
+  the 4-file family the gate still reports for this block, and that is correct.
+
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
   `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
