@@ -20,6 +20,13 @@ compiles. Those edits live in two forms:
    **per-file conditional** is needed. Every inline patch is guarded and **warns-not-throws** on an
    anchor miss, so an upstream fix or version bump degrades to a NOTE rather than a hard failure.
 
+**Sending one of these upstream?** The graded register of every Windows-lane
+third-party change — what to file, what must stay local, and what upstream has
+already fixed — is [`docs/upstream-windows-patches.md`](../../../docs/upstream-windows-patches.md).
+Fourteen ready-to-send patches and their PR descriptions are under
+[`windows/upstream/`](../../upstream/README.md). Do not post any of them without
+the owner saying so.
+
 Where a `.patch` could drift, the build applies it **first** and falls back to the drift-tolerant
 inline form in a `try/catch` (see `002-disable-cuda-pch` and `003-dml-clangcl-compat` in
 `build-onnx-from-source.ps1`) — best of both: a clean diff for review, a robust net for CI.

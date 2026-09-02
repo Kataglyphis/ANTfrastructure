@@ -1,0 +1,32 @@
+From 34d7e7d35679864902231660b2c7f66122d78b5d Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] [hal/local/elf] Only build the x86_64 MASM trampoline for x64
+
+MATCHES 64 is an unanchored regex, so "ARM64" matches it too. An ARM64 MSVC
+build assembles arch/x86_64_msvc.asm and the archiver rejects the object:
+
+  file machine type x64 conflicts with library machine type arm64
+
+Compare against the exact id instead. CMake documents x64 for 64-bit x86, so
+x64 builds are unchanged.
+
+Assisted-by: Claude (Anthropic)
+Signed-off-by: Jonas Heinle <jonasheinle@googlemail.com>
+---
+ runtime/src/iree/hal/local/elf/CMakeLists.txt | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/runtime/src/iree/hal/local/elf/CMakeLists.txt b/runtime/src/iree/hal/local/elf/CMakeLists.txt
+index 22c6cb7..051a388 100644
+--- a/runtime/src/iree/hal/local/elf/CMakeLists.txt
++++ b/runtime/src/iree/hal/local/elf/CMakeLists.txt
+@@ -94,7 +94,7 @@ if(MSVC)
+   # CMake + MASM does not work well and CMake ends up passing all our C/C++
+   # flags confusing MASM. We invoke MASM directly (ml.exe/ml64.exe) to keep it
+   # quiet.
+-  if(MSVC_C_ARCHITECTURE_ID MATCHES 64 OR MSVC_CXX_ARCHITECTURE_ID MATCHES 64)
++  if(MSVC_C_ARCHITECTURE_ID STREQUAL "x64" OR MSVC_CXX_ARCHITECTURE_ID STREQUAL "x64")
+     set_source_files_properties(
+       arch/x86_64_msvc.asm
+       PROPERTIES

@@ -171,6 +171,7 @@ Common development targets:
    windows-stevedore-and-docker
    windows-container-build-performance
    windows-reference
+   upstream-windows-patches
 
 .. toctree::
    :maxdepth: 1

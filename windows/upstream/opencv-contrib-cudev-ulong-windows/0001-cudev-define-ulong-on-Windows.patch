@@ -1,0 +1,32 @@
+From 9b5eca0b8eb9a4bd3cee31594cad8613c29105d7 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:42 +0200
+Subject: [PATCH] cudev: define ulong on Windows
+
+vec_traits.hpp instantiates MakeVec<ulong, N> and VecTraits<ulong>, and pastes
+the name to reach ulong2/ulong3/ulong4, so it needs ulong as a single token.
+Unix gets it from <sys/types.h>; Windows has no such declaration, so anything
+including vec_traits.hpp there fails with "unknown type name 'ulong'".
+
+Assisted-by: Claude (Anthropic)
+---
+ modules/cudev/include/opencv2/cudev/common.hpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/modules/cudev/include/opencv2/cudev/common.hpp b/modules/cudev/include/opencv2/cudev/common.hpp
+index e1a27b6..37fe2e0 100644
+--- a/modules/cudev/include/opencv2/cudev/common.hpp
++++ b/modules/cudev/include/opencv2/cudev/common.hpp
+@@ -50,6 +50,12 @@
+ #include "opencv2/core/cuda.hpp"
+ #include "opencv2/core/cuda_stream_accessor.hpp"
+ 
++// Unix declares ulong in <sys/types.h>; Windows has no such declaration, and
++// vec_traits.hpp needs it as a single token (it pastes ulong2/3/4).
++#if defined(_WIN32)
++typedef unsigned long ulong;
++#endif
++
+ namespace cv { namespace cudev {
+ 
+ //! @addtogroup cudev

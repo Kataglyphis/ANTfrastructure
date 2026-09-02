@@ -1,0 +1,33 @@
+From fb1d6199da615c7bdd44ca686952812c847d72a6 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] vulkan: pick the Windows SDK library dir from host_machine
+
+The lib dir is chosen with build_machine.cpu_family(), so cross-compiling on
+x86_64 always selects the x64 vulkan-1.lib. It is passed to find_library() via
+dirs:, so LIB ordering cannot override it and an aarch64 build fails with a
+machine type conflict.
+
+Use host_machine and add the aarch64 case, which is what meson's own
+VulkanDependencySystem resolves for this combination.
+
+Assisted-by: Claude (Anthropic)
+---
+ subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build b/subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build
+index 61c2638..ca3decc 100644
+--- a/subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build
++++ b/subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build
+@@ -137,7 +137,9 @@ elif host_system == 'windows'
+   vulkan_root = run_command(python3, '-c', 'import os; print(os.environ.get("VK_SDK_PATH"))', check: false).stdout().strip()
+   if vulkan_root != '' and vulkan_root != 'None'
+     vulkan_lib_dir = ''
+-    if build_machine.cpu_family() == 'x86_64'
++    if host_machine.cpu_family() == 'aarch64'
++      vulkan_lib_dir = join_paths(vulkan_root, 'Lib-ARM64')
++    elif host_machine.cpu_family() == 'x86_64'
+       vulkan_lib_dir = join_paths(vulkan_root, 'Lib')
+     else
+       vulkan_lib_dir = join_paths(vulkan_root, 'Lib32')
