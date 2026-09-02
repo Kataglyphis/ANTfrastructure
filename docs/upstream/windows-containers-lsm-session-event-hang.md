@@ -68,8 +68,20 @@ The same build step, unchanged, across the transition:
 - LSM stays `START_PENDING` for the container's life, reporting
   `NOT_STOPPABLE, IGNORES_SHUTDOWN`. Of 121 services it is the only one neither
   RUNNING nor STOPPED.
-- Boot continues once SCM times LSM out. That timeout is the ~141 s.
+- Boot continues once SCM times LSM out.
 - The command itself then runs correctly; its output appears in `docker logs`.
+
+Two independent measurements bracket the stall, and they agree:
+
+| | |
+|---|---|
+| SCM `7022` timeout, in-container event log | 140.07 s |
+| step start → container's first output (3 runs) | 143.7 / 143.9 / 144.7 s |
+| same step, same command, before the regression | 4.521 s |
+
+144.7 − 140.07 ≈ 4.6 s, which is the healthy 4.5 s. **The LSM timeout accounts
+for the entire regression** — nothing else in the boot got slower. "~141 s"
+below refers to that timeout.
 
 ## Wait stack
 
@@ -172,8 +184,10 @@ Each with an explicit experiment:
   teardowns.
 - **VBS/HVCI, hypervisor scheduler type, boot type** — identical at the last
   working boot and every failing one.
-- **New KB or driver** — none installed on the onset day; all driver binaries
-  predate the last working build.
+- **New KB or driver** — the Setup event log has zero entries between
+  2026-08-28 and 2026-09-01, and every driver binary predates the last healthy
+  build. The one change to this build chain in that period — a base-image
+  digest and three toolchain pins on 2026-08-26 — is bounded out under Onset.
 - **GPU** — discrete GPU disabled (`CM_PROB_DISABLED`) throughout.
 
 ## Environment
