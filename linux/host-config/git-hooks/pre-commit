@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# pre-commit — the gates that cost SECONDS, run on every commit.
+#
+# Deliberately not the full suite. `make preflight` runs all 21 checks and takes
+# minutes (the secret scan alone is ~170s); CI runs it on every push
+# (.github/workflows/ubuntu24.04.yml). A hook that slow teaches people to type
+# --no-verify, which is worse than having no hook. So this one runs the ~10s
+# whole-tree gates plus shellcheck on the STAGED shell files only.
+#
+# Install: make hooks    (sets core.hooksPath, so the hook is version-controlled)
+# Bypass:  git commit --no-verify   — then run `make preflight` before pushing.
+set -euo pipefail
+
+_root="$(git rev-parse --show-toplevel)"
+cd "${_root}"
+
+# Whole-tree gates that are cheap. Measured 2026-09-02: 8-10s combined.
+_FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
+arg-consistency,masked-decls,comment-size,artifact-parity,advert-keys,stage-graph"
+
+echo "pre-commit: fast preflight gates…"
+PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {
+  echo "pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why" >&2
+  exit 1
+}
+
+# Lint only what is being committed: the whole tree costs 105s in shellcheck, a
+# handful of files costs nothing. (Do not start this comment with the tool's
+# name -- shellcheck parses such a line as a directive and errors out.)
+_staged_sh="$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.sh$' || true)"
+if [ -n "${_staged_sh}" ]; then
+  echo "pre-commit: shellcheck on staged shell files…"
+  # shellcheck disable=SC2086
+  shellcheck -S error ${_staged_sh} || {
+    echo "pre-commit: shellcheck FAILED on staged files" >&2
+    exit 1
+  }
+fi
+
+# Doc gates only when docs move — both are sub-second.
+_staged_md="$(git diff --cached --name-only --diff-filter=ACM | grep -E '^docs/.*\.md$' || true)"
+if [ -n "${_staged_md}" ]; then
+  echo "pre-commit: doc gates…"
+  python3 docs/scripts/verify_doc_links.py >/dev/null || { echo "pre-commit: doc cross-references FAILED" >&2; exit 1; }
+  python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
+fi
+
+echo "pre-commit: OK"
