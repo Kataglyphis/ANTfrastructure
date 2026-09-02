@@ -281,6 +281,30 @@ arch's media stage.
   lane. Every one of those translation units compiled uncached, and the launcher's
   bypass kept the build correct. See DA for why the obvious lead is refuted.
 
+- **DJ. The pinned-stage cache slugs are still dead weight — DC's premise is
+  true within a run and false across runs** [M·★★, measured 2026-09-02]. DC was
+  archived as "FIXED DIFFERENTLY": what actually shipped is the raised entry
+  threshold (`_chain_runtime_lane_is_next` → demand ~120 G before the runtime
+  lane), which cures the *starvation*. The *waste* it described was never
+  reclaimed. Measured live today, with media and android both pinned and the
+  runtime lane about to start: `kata-buildcache` held **69 G** across five slugs
+  (media amd64 16 G, riscv64 14 G, arm64 14 G; android arm64 14 G, amd64 12 G)
+  while the lane's own gate wanted 120 G and the disk had 126 G free.
+
+  **Do not implement DC's trigger as written.** Its premise — "the moment a stage
+  is pinned its slug can never be read again" — holds only for the *current* run.
+  Across runs those slugs are exactly what makes a rebuild warm, and media is the
+  most expensive stage in the chain: deleting them at pin time buys headroom today
+  and pays for it with hours of recompile on the next run. That is why the cheap
+  version was not taken.
+
+  What would actually be right is a *ranked* reclaim rather than a boolean: when
+  the guard must free space, prefer the slug of a stage already pinned in THIS run
+  over one it may still read, and prefer the cheapest-to-rebuild stage over the
+  dearest. Today's numbers say android before media. Until that exists, the manual
+  lever is the between-stage `prune-safe.sh` window — which is what kept this run
+  fed (95 G → 126 G, all 97 cache-mount records surviving).
+
 - **DI. `install_target_packages` batch apt failure fired 4× in this run** [see
   D1]. The per-package sweep recovered every time and nothing was left behind,
   so the run stayed green — but D1 is still open and still costing a retry pass
