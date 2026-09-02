@@ -29,21 +29,34 @@ the branch you intend to target before filing.
 | # | Patch | Project | Grade | Value |
 | --- | --- | --- | --- | --- |
 | 1 | [libstdc++ `-nostdinc++` for `src/c++23`](#1-libstdc--nostdinc-for-srcc23) | GCC | **A** | ★★★ |
-| 2 | [OpenCV: FFmpeg 8 config API](#2-opencv-ffmpeg-8-removed-avcodecpix_fmts-and-supported_framerates) | OpenCV | **A** | ★★★ |
+| 2 | [OpenCV: port the FFmpeg 8 fixes to 5.x](#2-opencv-ffmpeg-8-removed-avcodecpix_fmts-and-supported_framerates) | OpenCV | **A** (port, not a new fix) | ★★★ |
 | 3 | [onnxruntime-genai: riscv64 target](#3-onnxruntime-genai-riscv64-is-not-a-known-target-platform) | onnxruntime-genai | **A** | ★★★ |
 | 4 | [libcamera: missing libtiff dependency](#4-libcamera-apps_lib-uses-libtiff-but-does-not-depend-on-it) | libcamera | **A** | ★★ |
 | 5 | [GStreamer: lame probe ignores the library](#5-gstreamer-the-lame-probe-checks-the-header-and-ignores-the-library) | gst-plugins-good | **A** | ★★ |
-| 6 | [MLAS: `MlasHGemmSupported` undefined in GEMM-only builds](#6-mlas-mlashgemmsupported-is-declared-but-never-defined-in-gemm-only-builds) | OpenCV / onnxruntime | **A/B** | ★★ |
+| 17 | [cerbero: glib misses its libiconv dep](#17-cerbero-glib-does-not-declare-its-libiconv-dependency-on-android) | cerbero | **A** | ★★ |
+| 8 | [cargo wrapper clobbers `RUSTFLAGS`](#8-gst-plugins-rs-the-cargo-wrapper-clobbers-rustflags) | gst-plugins-rs | **A** | ★★ |
+| 10a | [`objdetect.hpp` include](#10-gstreamer-opencv-5-moved-symbols-into-new-headers) | gst-plugins-bad | **A** | ★ |
+| 6 | [MLAS: `MlasHGemmSupported` undefined](#6-mlas-mlashgemmsupported-is-declared-but-never-defined-in-gemm-only-builds) | OpenCV (their MLAS trim) | **B** | ★★ |
 | 7 | [onnxruntime: Android Gradle Plugin 8](#7-onnxruntime-android-gradle-plugin-742-is-too-old-for-current-tooling) | onnxruntime | **B** | ★ |
-| 8 | [cargo wrapper clobbers `RUSTFLAGS`](#8-gst-plugins-rs-the-cargo-wrapper-clobbers-rustflags) | gst-plugins-rs | **A/B** | ★★ |
 | 9 | [cargo build target is not forwarded](#9-gst-plugins-rs-cargo_build_target-never-reaches-cargo) | gst-plugins-rs | **B** | ★★ |
-| 10 | [GStreamer ↔ OpenCV 5 headers](#10-gstreamer-opencv-5-moved-symbols-into-new-headers) | gst-plugins-bad | **B** | ★★ |
-| 11 | [GStreamer ↔ OpenCV 5 cascade elements](#11-gstreamer-opencv-5-dropped-the-cascade-classifier-elements) | gst-plugins-bad | **B** | ★★ |
+| 10b | [`geometry.hpp` include needs a guard](#10-gstreamer-opencv-5-moved-symbols-into-new-headers) | gst-plugins-bad | **B** | ★★ |
+| 11 | [OpenCV 5 cascade elements](#11-gstreamer-opencv-5-dropped-the-cascade-classifier-elements) | gst-plugins-bad | **B** | ★★ |
 | 12 | [gst-libav ↔ FFmpeg 8 codec IDs](#12-gst-libav-codec-ids-removed-from-ffmpeg-8) | gst-libav | **B** | ★★ |
-| 13 | [LiteRT pip build script is not overridable](#13-litert-the-pip-build-script-hardcodes-what-a-cross-build-must-override) | LiteRT | **B** | ★ |
+| 13 | [LiteRT pip script assumes in-tree TF](#13-litert-the-pip-build-script-hardcodes-what-a-cross-build-must-override) | LiteRT | **B** (issue) | ★★ |
+| 18 | [cerbero: stale soundtouch checksum](#18-cerbero-the-soundtouch-tarball-checksum-is-stale) | cerbero | **B** (issue) | ★ |
+| 19 | [cerbero: dead pkg-config fallback mirror](#19-cerbero-the-pkg-config-fallback-mirror-is-gone) | cerbero | **B** (issue) | ★ |
 | 14 | [torchvision: staged torch paths](#14-torchvision-setuppy-cannot-be-pointed-at-a-staged-torch) | torchvision | **B/C** | ★ |
-| 15 | [cerbero: drop the `m4` build-tool recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
-| 16 | [libyuv: build the RVV rows with GCC](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
+| 15 | [cerbero: drop the `m4` recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
+| 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
+
+Sorted by how ready each one is, not by number. Eight are ready to write today;
+the rest need the rework named in their entry.
+
+**Nine entries carry a ready-to-send message; the others deliberately do not.**
+9, 11, 12 and 14 need the patch itself reshaped before any message would be
+honest — writing the text now would only make a diff look sendable that is not.
+15 is grade C and 16 is already fixed upstream, so neither gets one. 18 needs two
+hashes read out of a build log first.
 
 ---
 
@@ -66,8 +79,29 @@ cross the failure is silent: the module compile fails and libstdc++ ships an
 **empty** `std` module. We measured `std.cc` going from 1 byte to 113108 bytes on
 native-arm64 and native-riscv64 once the flag was added.
 
+**PR message**
+
+```
+libstdc++: add -nostdinc++ to src/c++23 (PR100017 parity with src/c++17)
+
+In a Canadian cross (build != host == target) the host g++'s libstdc++ headers
+are on the include path. <cfenv> reaches the target <fenv.h> wrapper, whose
+#include_next then finds the *host* wrapper; both share the _GLIBCXX_FENV_H
+guard, so the host wrapper is skipped and libc's <fenv.h> is never included.
+fenv_t and every fe* are undeclared and the C++23 std module fails to compile.
+
+src/c++17/Makefile.am already carries -nostdinc++ for exactly this reason
+(PR100017). src/c++23 never got it. The failure is silent: the recipe ships an
+empty std module instead of erroring out.
+
+With the flag the generated std module goes from 1 byte to 113108 for both an
+aarch64 and a riscv64 Canadian cross.
+```
+
 **Before filing:** rebase onto current GCC trunk and confirm `src/c++23/Makefile.am`
-still lacks the flag. Send to `gcc-patches@`, referencing both PRs.
+still lacks the flag. Change `Makefile.am` and regenerate `Makefile.in` — do not
+send our `sed`-on-the-generated-file form. Send to `gcc-patches@`, referencing
+both PRs.
 
 ---
 
@@ -76,25 +110,45 @@ still lacks the flag. Send to `gcc-patches@`, referencing both PRs.
 `linux/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch` ·
 applied by `03-media/build/opencv/build-opencv.sh` · applies to **OpenCV 5.0.0**.
 
-Touches `modules/videoio/src/cap_ffmpeg_hw.hpp` and `cap_ffmpeg_impl.hpp`. FFmpeg 8
-(`LIBAVCODEC_VERSION_MAJOR >= 62`) removed the `AVCodec::pix_fmts` and
-`AVCodec::supported_framerates` array members; the replacement is
-`avcodec_get_supported_config()`, which returns the same terminated arrays. The
-patch introduces a local pointer, fills it from the new API behind a version
-guard, and keeps the old member on older FFmpeg.
+FFmpeg 8 removed the `AVCodec::pix_fmts` and `AVCodec::supported_framerates`
+array members; the replacement is `avcodec_get_supported_config()`. Our patch
+adds version-guarded code paths in `cap_ffmpeg_hw.hpp` and `cap_ffmpeg_impl.hpp`.
 
-**Why it is a good contribution.** It is a pure compatibility fix with a clean
-version guard, it does not change behaviour on any FFmpeg that still has the
-members, and OpenCV needs it regardless of us — anyone building OpenCV against
-FFmpeg 8 hits this.
+**Verified 2026-09-02: upstream already fixed this on `4.x`, and `5.x` did not
+get it.** `avcodec_get_supported_config` appears once in 4.x's
+`cap_ffmpeg_impl.hpp` and zero times in 5.x's. The two upstream commits are:
 
-**Before filing:**
-- **Regenerate as a git diff.** This one is a plain `diff -u` with timestamps and
-  no `a/`…`b/` prefixes — usable by `patch -p1`, not by a GitHub PR.
-- Check whether OpenCV already has a fix in flight on `5.x`/`4.x`; FFmpeg 8 is
-  new enough that a competing PR is plausible.
-- Upstream will likely want the same treatment applied to every other removed
-  member in the same files, not only these two.
+| commit | date | file |
+| --- | --- | --- |
+| `700cd32ffd` | 2026-07-16 | `cap_ffmpeg_hw.hpp` — *videoio: support FFmpeg after AVCodec::pix_fmts removal* |
+| `83ed22ca28` | 2026-08-04 | `cap_ffmpeg_impl.hpp` — *videoio(ffmpeg): use avcodec_get_supported_config for framerates on FFmpeg 9* |
+
+**So do not send our diff — port theirs.** Ours reimplements the same fix in two
+worse ways, and a reviewer will say so:
+
+- We guard on `LIBAVCODEC_VERSION_MAJOR >= 62`; OpenCV's house idiom is
+  `LIBAVCODEC_BUILD >= CALC_FFMPEG_VERSION(61, 13, 100)`.
+- We iterate to the `{0,0}` terminator. Upstream uses the **count** the new API
+  returns (`ret >= 0 && supported_framerates && num_supported_framerates > 0`),
+  which is the documented contract — the returned array is not guaranteed to be
+  terminated.
+
+**PR message**
+
+```
+videoio: port the FFmpeg 8 config-API fixes to 5.x
+
+5.x still reads AVCodec::pix_fmts and AVCodec::supported_framerates, which
+FFmpeg 8 removed, so videoio does not compile against it. 4.x already handles
+both in 700cd32ffd and 83ed22ca28; this ports them unchanged.
+
+Built against FFmpeg n9.0.
+```
+
+**Before filing:** cherry-pick the two commits onto 5.x rather than hand-porting,
+resolve whatever conflicts the 5.x videoio refactor causes, and check the file
+for any *other* removed member the two commits did not cover. Then replace our
+patch with the cherry-picked form so we stop carrying a divergent fix.
 
 ---
 
@@ -113,6 +167,18 @@ Two lines in `cmake/target_platform.cmake`: add a
 the exact shape of the `powerpc` arm directly above it, and it cannot affect any
 other architecture. This is the kind of patch that gets merged quickly and unlocks
 a whole platform.
+
+**PR message**
+
+```
+Add riscv64 to target_platform.cmake
+
+CMAKE_SYSTEM_PROCESSOR is riscv64 on a riscv64 build and no branch matches it,
+so configure stops at "Unsupported architecture". This adds the arm in the same
+shape as the powerpc one above it.
+
+Built and smoke-tested on riscv64.
+```
 
 **Before filing:** be ready to say what you built and ran on riscv64 — maintainers
 will ask whether the platform is actually exercised, not just configured. Our GEN1
@@ -136,9 +202,20 @@ lane where we first hit it, but the defect is architecture-independent — it is
 simply masked wherever the linker happens to pull libtiff in transitively.
 **Rename the patch before filing** and describe it as what it is.
 
+**PR message**
+
+```
+apps: add libtiff to apps_lib dependencies
+
+apps_lib compiles dng_writer.cpp whenever libtiff is found, but does not list
+libtiff in its dependencies. Linking against the static library then fails on
+the TIFF* symbols. It only builds where the linker happens to pull libtiff in
+for some other reason.
+```
+
 **Before filing:** libcamera reviews on their GitLab / mailing list. Confirm the
-bug still exists on `master` and phrase it as "static library omits a declared-use
-dependency", with the link error as evidence.
+bug still exists on `master`. Rename our patch file first — it is called
+`001-riscv64-add-libtiff-dep.patch` and the defect has nothing to do with riscv64.
 
 ---
 
@@ -164,6 +241,16 @@ have_lame = cc.has_header_symbol('lame/lame.h', 'lame_init')
 other `ext/` probes while you are in there — a second patch fixing the siblings
 would be welcome.
 
+**PR message**
+
+```
+lame: require the library, not just the header
+
+have_lame is set from cc.has_header_symbol() alone; lame_dep is looked up and
+then never consulted. On a sysroot that carries lame/lame.h but no linkable
+libmp3lame the plugin is configured and fails at link.
+```
+
 ---
 
 ## 6. MLAS: `MlasHGemmSupported` is declared but never defined in GEMM-only builds
@@ -173,19 +260,33 @@ applied by `03-media/build/opencv/build-opencv.sh` and `.../android/build-androi
 applies to OpenCV **5.0.0**'s vendored `3rdparty/mlas`.
 
 Adds a `MLAS_GEMM_ONLY`-guarded, `__attribute__((weak))` definition of
-`MlasHGemmSupported` returning `false`. In SGEMM-only configurations the symbol is
-declared and referenced but never defined; the weak attribute keeps it from
-colliding where upstream MLAS *does* define it (the Android NDK's lld rejects
-duplicates outright).
+`MlasHGemmSupported` returning `false`. The symbol is declared and referenced but
+never defined; the weak attribute keeps it from colliding where MLAS *does*
+define it (the Android NDK's lld rejects duplicates outright).
 
-**Decide where this belongs before filing.** OpenCV vendors MLAS from
-onnxruntime. If the same hole exists in onnxruntime's MLAS, that is the real
-home and OpenCV inherits the fix. Check onnxruntime first; file there if it
-reproduces, and only patch OpenCV's copy if their fork has diverged.
+**Verified 2026-09-02: this belongs to OpenCV, not onnxruntime.** `MLAS_GEMM_ONLY`
+is OpenCV's own define — `3rdparty/mlas/CMakeLists.txt` sets `MLAS_GEMM_ONLY=1`
+(line ~246) and its header comment says parts of the vendored source are `#if 0`'d
+out, pointing at that same name. It is a vendoring artifact of OpenCV's trim, so
+there is nothing to report upstream of them.
 
-**Grade B caveat:** a weak stub is a workaround shape. Upstream may prefer that
-the declaration itself be guarded by `MLAS_GEMM_ONLY`, so nothing references a
-function that does not exist. Offer the stub, expect that counter-proposal.
+**PR message**
+
+```
+mlas: define MlasHGemmSupported in MLAS_GEMM_ONLY builds
+
+3rdparty/mlas sets MLAS_GEMM_ONLY=1 and #if 0's out the half-precision GEMM
+sources, but MlasHGemmSupported stays declared and referenced, so linking fails
+on an undefined symbol. This adds a weak definition returning false; weak
+because the Android NDK's lld rejects the duplicate where MLAS does define it.
+
+Guarding the declaration instead would be cleaner if you prefer that shape --
+happy to redo it that way.
+```
+
+**Grade B caveat:** a weak stub is a workaround shape. Given they already trim by
+`#if 0`, the maintainers may well prefer the declaration be guarded too. Offer the
+stub, expect that counter-proposal — the PR message above says so up front.
 
 ---
 
@@ -204,6 +305,19 @@ will pick their own AGP version and their own minimum Gradle. File it as "AGP 8
 compatibility" and let them choose the number; the `buildConfig` opt-in is the
 part that is genuinely required and version-independent.
 
+**PR message**
+
+```
+java: build with Android Gradle Plugin 8
+
+AGP 7.4.2 does not work with current Gradle/JDK combinations. This moves the
+two build files to 8.3.1 and adds the buildFeatures { buildConfig = true } that
+AGP 8 needs now that BuildConfig generation is opt-in.
+
+Pick whichever 8.x you want to standardise on -- the buildConfig opt-in is
+required either way.
+```
+
 ---
 
 ## 8. gst-plugins-rs: the cargo wrapper clobbers `RUSTFLAGS`
@@ -220,6 +334,16 @@ instead of assigning.
 bug, it is three lines, and it needs no explanation beyond "do not discard the
 caller's flags". Send it on its own. The `CARGO_BUILD_TARGET` half of the same
 file is item 9 and needs different handling.
+
+**PR message**
+
+```
+cargo_wrapper: do not discard the caller's RUSTFLAGS
+
+cargo_wrapper.py assigns RUSTFLAGS rather than appending to it, so whatever the
+caller exported is dropped without a warning. I hit it with target-feature flags
+for a cross build -- the flags simply never reach rustc.
+```
 
 ---
 
@@ -252,16 +376,35 @@ because today gst-plugins-rs cross builds are quietly wrong rather than broken.
 (adds `<opencv2/geometry.hpp>` to `gstsegmentation.cpp`) and
 `005b-opencv5-cameracalibrate-objdetect-include.patch`
 (adds `<opencv2/objdetect.hpp>` to `gstcameracalibrate.cpp`) ·
+applied by `03-media/build/gstreamer/common/patch-gstreamer-sources.sh` ·
 applies to **GStreamer 1.29.2** built against **OpenCV 5.0.0**.
 
-One added include each.
+**Verified 2026-09-02 against the OpenCV trees — the two halves are not the same
+grade, and they must be split.**
 
-**Grade B for one reason: verify the OpenCV 4 story.** Adding an unconditional
-include of a header that does not exist in OpenCV 4 would break every OpenCV 4
-build — the opposite of a compatibility fix. Before filing, check whether
-`opencv2/geometry.hpp` exists in the 4.x series; if it does not, the patch needs
-a `CV_VERSION_MAJOR` guard or a meson-side conditional. **This is unverified here**
-— our build only ever sees OpenCV 5.
+| header | in OpenCV 4.x | in OpenCV 5.x | verdict |
+| --- | --- | --- | --- |
+| `opencv2/objdetect.hpp` | **yes** | yes | unconditional include is safe → grade **A** |
+| `opencv2/geometry.hpp` | **no** — no `modules/geometry/` at all | `modules/geometry/include/opencv2/geometry.hpp` | needs a version guard → grade **B** |
+
+`geometry` is a **new module in OpenCV 5**. Sending `005a` as an unconditional
+include would break every OpenCV 4 build of `gst-plugins-bad` — the opposite of a
+compatibility fix. It needs a `CV_VERSION_MAJOR` guard, or the meson build needs
+to stop compiling `gstsegmentation.cpp` against OpenCV 4's missing API. Decide
+which once you look at what `gstsegmentation.cpp` actually calls.
+
+`005b` has no such problem and can go on its own today.
+
+**PR message (for `005b` only)**
+
+```
+opencv: include objdetect.hpp in gstcameracalibrate
+
+gstcameracalibrate.cpp uses the objdetect API but includes only imgproc and
+calib3d, so it builds where another header happens to pull objdetect in and
+fails where it does not. opencv2/objdetect.hpp exists in both OpenCV 4 and 5,
+so the include needs no version guard.
+```
 
 ---
 
@@ -312,26 +455,46 @@ applied by `03-media/build/litert/build-litert.sh` · applies to **v2.2.0**.
 
 Four kinds of change to `tflite/tools/pip_package/build_pip_package_with_cmake.sh`:
 
-1. `TENSORFLOW_DIR` becomes overridable **and the default path depth changes from
-   `../../../..` to `../../..`**.
+1. `TENSORFLOW_DIR` becomes overridable, and the default depth changes from
+   `../../../..` to `../../..`.
 2. `TENSORFLOW_VERSION` becomes overridable, and its `grep` no longer hard-fails
-   when `tf_version.bzl` is absent.
+   when the file it reads is absent.
 3. `EXTRA_CMAKE_FLAGS` is threaded into every `cmake` invocation.
 4. In the `native` case, `-march=native` is replaced with `-idirafter /usr/include`.
 
-**Split it three ways.**
+**Verified 2026-09-02, and it is worse upstream than we recorded.** The script
+lives at `tflite/tools/pip_package/` in the LiteRT tree, so upstream's
+`../../../..` points **outside the checkout**; and the file it then greps,
+`${TENSORFLOW_DIR}/tensorflow/tf_version.bzl`, **does not exist anywhere in the
+LiteRT repository**. The script still assumes LiteRT is vendored inside a
+TensorFlow checkout. `TENSORFLOW_VERSION` therefore comes out empty for anyone
+building from the standalone repo.
 
-- (1) is the interesting one. From `tflite/tools/pip_package/`, three levels up is
-  the repository root and four is its parent — so **upstream's default looks
-  wrong**, and if it is, that is a real bug report with a one-character fix.
-  **Verify against the actual LiteRT tree before claiming it**; the layout may
-  have moved and our number may simply match a different vendoring.
-- (2) and (3) are ordinary, well-precedented build-script hygiene: honour an
-  existing environment variable instead of overwriting it. Grade **A** in shape,
-  easy to justify, worth sending together.
-- (4) is **ours** (grade C). Replacing `-march=native` changes upstream's meaning
-  of a native build; it exists because our "native" builds are not really native.
-  Keep it local.
+That makes (1) and (2) a genuine bug report rather than a preference. (3) is
+ordinary build-script hygiene. (4) is **ours** (grade C) — replacing
+`-march=native` changes upstream's meaning of a native build; it exists because
+our "native" builds are not really native. Keep it local, do not send it.
+
+**Issue text**
+
+```
+pip build script still assumes the in-tree TensorFlow layout
+
+tflite/tools/pip_package/build_pip_package_with_cmake.sh sets
+
+    TENSORFLOW_DIR="${SCRIPT_DIR}/../../../.."
+
+which points outside the checkout, and then reads
+
+    "${TENSORFLOW_DIR}/tensorflow/tf_version.bzl"
+
+which does not exist anywhere in this repository. TENSORFLOW_VERSION ends up
+empty and the version arithmetic below it silently works on nothing.
+
+It would also help cross builds if TENSORFLOW_DIR, TENSORFLOW_VERSION and the
+cmake flags could be overridden from the environment instead of being computed
+unconditionally. Happy to send a patch for either part.
+```
 
 ---
 
@@ -402,14 +565,147 @@ proves the rows are present no matter where they come from.
 
 ---
 
+## 17. cerbero: glib does not declare its libiconv dependency on Android
+
+Not a `.patch` file — a named `sed` in
+`03-media/build/gstreamer/android/build-android-from-source.sh`
+(`override_glib_libiconv_dep`, marker `CERB-ICONV`), which restores the recipe
+from a backup and warns loudly if upstream's text has moved.
+
+`recipes/glib.recipe` declares the libiconv dependency only below Android API 28.
+Other Android recipes install GNU libiconv's renaming `iconv.h` regardless, and
+nothing orders them against glib. Lose that race and glib is configured against
+the renaming header but linked without `-liconv`, failing on
+`undefined symbol: libiconv_open`. Declaring the dep unconditionally is
+deterministic and adds no recipe to the build.
+
+**Grade A** — a missing dependency edge, the same class as entry 4.
+
+**PR message**
+
+```
+glib: declare the libiconv dependency on Android regardless of API level
+
+glib.recipe declares the libiconv dep only below API 28, but other Android
+recipes install GNU libiconv's renaming iconv.h anyway and nothing orders them
+against glib. When glib configures after that header appears it picks up the
+libiconv_* names but still links without -liconv, and fails with
+
+    undefined symbol: libiconv_open
+
+Declaring the dep unconditionally is deterministic and pulls in no new recipe.
+```
+
+---
+
+## 18. cerbero: the soundtouch tarball checksum is stale
+
+Not a `.patch` file — `build-android-from-source.sh` pre-fetches the archive,
+hashes it, and rewrites `tarball_checksum` in the recipe when it differs
+(leaving the recipe alone, with a warning, if it cannot fetch or hash).
+
+The recipe pins a checksum the live Codeberg archive no longer matches, so a
+clean bootstrap dies at the checksum gate.
+
+**This is a bug report, not a patch.** Our fix re-pins dynamically, which is
+exactly what a source-integrity gate must never do — upstream needs the correct
+static hash instead. **Read the two hashes out of a build log before filing**;
+they are printed as `Re-pinned soundtouch tarball checksum <old> -> <new>`.
+Do not file this without them.
+
+---
+
+## 19. cerbero: the pkg-config fallback mirror is gone
+
+Not a `.patch` file — `build-android-from-source.sh` rewrites the pkg-config
+source URLs in every recipe that carries them.
+
+**Check what you claim here — measured 2026-09-02:**
+
+| URL | status |
+| --- | --- |
+| `pkgconfig.freedesktop.org/releases/…` | **HTTP 200 — alive** |
+| `gstreamer.freedesktop.org/src/mirror/pkg-config-…` | **HTTP 404** |
+| `distfiles.macports.org/pkgconfig/…` (ours) | HTTP 200 |
+
+So "the pkg-config URLs are dead" would be a **false** bug report. The primary
+works. What is actually broken is cerbero's own fallback mirror, which matters
+precisely when the primary is down — and freedesktop outages are why our
+override exists at all.
+
+**Issue text**
+
+```
+pkg-config: the src/mirror fallback copy is missing
+
+Recipes fall back to
+
+    https://gstreamer.freedesktop.org/src/mirror/pkg-config-0.29.2.tar.gz
+
+which returns 404. The freedesktop primary is up, so this only bites during a
+freedesktop outage -- which is the one moment the fallback exists for.
+```
+
+Our redirect of the *primary* to macports is a local availability choice, not
+something to send upstream.
+
+---
+
+## Warning waivers — candidates for a report, not patches
+
+Four places demote an upstream `-Werror` rather than fixing the code. Each is a
+potential upstream report, and none is written up yet — **capture the exact
+diagnostic from a build log before filing any of them.**
+
+| where | waiver | likely owner |
+| --- | --- | --- |
+| `03-media/build/gstreamer/common/install-vvdec.sh` | `-Wno-error=unused-but-set-variable`, `-Wno-error=maybe-uninitialized` | SIMDe or vvdec — the warnings appear under GCC 16 once RVV optimisation is on |
+| `03-media/build/libcamera/build-libcamera.sh` | `-Wno-error=array-bounds` | GCC — a false positive on libcamera's shared `std::mutex` teardown / logger path. If it reproduces standalone this is a GCC bug report. |
+| `03-media/build/onnxruntime/build/lib/common.sh` | `-Wno-error=invalid-constexpr` | Dawn |
+| `02-toolchain/vulkan.sh` | compiler shims appending `-Wno-error` to every invocation | Vulkan-SDK build scripts |
+
+The libcamera one is the most interesting: a compiler false positive that only a
+minimal reproducer can settle, and GCC maintainers act on those.
+
 ## Not a patch file
 
-Two upstream-facing items do not live under `patches/`:
+Five upstream-facing changes do not live under `patches/`: the libstdc++ `sed`
+(entry 1), the three cerbero `sed`s (entries 17–19), and the warning waivers
+above. One further item is tracked without any local change at all —
+**sccache `-B` handling**, `mozilla/sccache#1102`, open since 2022:
+`02-toolchain/probe-sccache.sh` detects the broken shape and avoids it rather
+than patching it.
 
-- **The libstdc++ fix** — item 1 above, a `sed` in `build-gcc.sh`.
-- **sccache `-B` handling** — `mozilla/sccache#1102`, open since 2022. We do not
-  patch it; `linux/scripts/02-toolchain/probe-sccache.sh` detects the broken
-  shape and avoids it. No contribution is prepared; the issue is simply tracked.
+## What is left to prepare
+
+Ordered so the cheap, unblocking work comes first.
+
+1. **Nothing here is blocked on the RV23 rebuild except entry 3.** The genai
+   riscv64 patch wants "built and smoke-tested on riscv64" in the PR body, and
+   that sentence should be true when you write it. Everything else can go now.
+2. **Regenerate entry 2 as a cherry-pick.** Ours is a hand-written
+   reimplementation of `700cd32ffd` and `83ed22ca28`. Cherry-pick both onto 5.x,
+   resolve conflicts, and replace our patch with that — then the PR is a port and
+   we stop carrying a divergent fix.
+3. **Split three patches that are currently two changes in one file.**
+   Entry 8 from entry 9 (`003-…`), and entry 10a from 10b (`005a`/`005b` are
+   already separate files — just do not send them together).
+4. **Rename `001-riscv64-add-libtiff-dep.patch`.** The defect is not riscv64.
+5. **Capture evidence for the two issue-only items and the waivers.** Entry 18
+   needs the two soundtouch hashes out of a build log; the four waivers each need
+   their exact diagnostic. Do not file any of them from memory.
+6. **Decide the shape for entries 11 and 12** — both are compile fixes today and
+   both need to become version-conditional before they are sendable.
+7. **Check for competing work before each PR.** Entry 2 is the cautionary tale:
+   upstream had already fixed it on another branch and we did not look.
+8. **After libcamera bumps its libyuv wrap** (entry 16), delete our patch and the
+   `patch_libyuv_rvv_sources` call — but keep `verify_libyuv_rvv_rows`.
+
+Accounts you will need: GCC (bugzilla + `gcc-patches@`), GitHub for OpenCV,
+onnxruntime, onnxruntime-genai, LiteRT and torchvision, and
+`gitlab.freedesktop.org` for GStreamer, cerbero and libcamera — note that
+freedesktop's GitLab now gates new-account permissions behind a wiki request, so
+start that early if you do not already have access.
 
 ## Regenerating a patch against a newer upstream
 
