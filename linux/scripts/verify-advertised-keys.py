@@ -37,6 +37,16 @@ EXCUSED = {
 SHAPED = re.compile(r"(VERSION|RELEASE|REF)$")
 
 
+# Table rows whose value the in-image probe never prints, so the row can only
+# SKIP. Measured 2026-09-03; each is real debt tracked as backlog WC. Shrink this
+# set by adding the printf -- never grow it.
+FROZEN_UNPROBED = {
+    "UBUNTU_VERSION", "CMAKE_VERSION", "NODE_VERSION", "UV_VERSION",
+    "OPENCV_VERSION", "ONNXRUNTIME_VERSION", "ONNXRUNTIME_GENAI_VERSION",
+    "PYAV_VERSION", "IREE_VERSION", "LITERT_VERSION",
+}
+
+
 def main():
     spath = os.path.join(ROOT, SMOKE)
     if not os.path.exists(spath):
@@ -83,6 +93,33 @@ def main():
             sys.stderr.write(
                 "FAIL: STALE excuse for {} ({}) -- the image no longer advertises it; "
                 "delete the EXCUSED entry.\n".format(k, EXCUSED[k]))
+    # A row in the table only says the smoke INTENDS to check the key. The value
+    # comes from an `ADV <KEY>` line the in-image probe prints, and a row without
+    # one is a permanent SKIP that reads as a pass. Frozen at the 10 that were
+    # already inert; a NEW row without a probe fails. docs/refactoring-backlog.md WC
+    probed = set(re.findall(r"printf\s+'ADV ([A-Z0-9_]+) ", smoke))
+    unprobed = sorted(checked - probed)
+    new_unprobed = [k for k in unprobed if k not in FROZEN_UNPROBED]
+    if new_unprobed:
+        rc = 1
+        for k in new_unprobed:
+            sys.stderr.write(
+                "FAIL: {} sits in _ADVERTISED_VERSION_KEYS but the in-image probe "
+                "prints no `ADV {}` line, so its row can only ever SKIP -- add the "
+                "printf next to the others, or drop the row.\n".format(k, k))
+    healed = sorted(FROZEN_UNPROBED & probed)
+    if healed:
+        rc = 1
+        for k in healed:
+            sys.stderr.write(
+                "FAIL: {} now HAS a probe -- remove it from FROZEN_UNPROBED so the "
+                "baseline cannot rot.\n".format(k))
+    still = sorted(FROZEN_UNPROBED - probed)
+    if still:
+        print("note: {} of {} table rows still have no ADV probe and can only SKIP "
+              "(frozen baseline, see backlog WC): {}"
+              .format(len(still), len(checked), " ".join(still)))
+
     phantom = sorted(checked - advertised)
     for k in phantom:
         print("note: {} is checked but not ENV/ARG-set in any Dockerfile "

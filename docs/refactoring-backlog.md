@@ -733,6 +733,17 @@ GSTREAMER_VERSION` line at smoke:669 still exists and is one of the rows that
 does assert, so that deletion is hypothetical; the ten ENV-only keys are the
 live instance.
 
+**PARTLY CLOSED 2026-09-03.** The blind spot is gone for anything NEW:
+`verify-advertised-keys.py` now extracts the `ADV <KEY>` printfs from the smoke
+and fails a table row that has none, and it fails just as hard when a frozen row
+gains a probe without leaving the baseline — so the freeze cannot rot into
+cover for the next one. The 10 already-inert rows are frozen in
+`FROZEN_UNPROBED` and reported on every run; retiring them is WC, and each
+retirement must delete its baseline entry or the gate says so. Both mutations
+were proven to go red (4 of 17 assertions in `test-advertised-keys.sh`), and the
+fixture copies the smoke rather than touching it — that file is inside the
+closure the chain was re-reading at the time.
+
 ### WE. check_healthcheck_exec runs a hardcoded copy of the HEALTHCHECK, not the image's own; check_healthcheck_config only asserts the constant Test[0] [medium]
 
 `linux/scripts/06-packaging/smoke-runtime-image.sh:1206`

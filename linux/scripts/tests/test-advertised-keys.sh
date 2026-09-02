@@ -21,6 +21,15 @@ _fixture() {
   printf '%s' "${d}"
 }
 
+# Run the gate in a fixture and require it to fail naming a specific thing. The
+# cases below differ only in their mutation; the running lives here.
+_gate_must_fail() {
+  local fix="$1" want="$2" why="$3"
+  t_assert_fails "${PY}" "${fix}/linux/scripts/verify-advertised-keys.py"
+  t_assert_contains "$("${PY}" "${fix}/linux/scripts/verify-advertised-keys.py" 2>&1)" \
+    "${want}" "${why}"
+}
+
 t_case "the gate passes on the real tree"
 t_assert_ok "${PY}" "${SCRIPTS_DIR}/verify-advertised-keys.py"
 
@@ -69,5 +78,26 @@ t_assert_contains "$(_v VULKAN_VERSION 1.4.357.0 1.3.290)" "BAD VULKAN_VERSION"
 
 t_case "an unreadable actual value is a SKIP, never a pass"
 t_assert_contains "$(_v LITERT_VERSION v2.2.0 '')" "SKIP LITERT_VERSION"
+
+t_case "a table row with no ADV probe fails the gate"
+# A row only says the smoke INTENDS to check the key; the value comes from an
+# `ADV <KEY>` line the in-image probe prints. 10 of the 16 rows had no such line
+# and could only ever SKIP, and neither guard could see it. Backlog WC/WD.
+FIX="$(_fixture)"
+sed -i 's/^_ADVERTISED_VERSION_KEYS="/_ADVERTISED_VERSION_KEYS="BRANDNEW_VERSION /' \
+  "${FIX}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+_gate_must_fail "${FIX}" "prints no \`ADV BRANDNEW_VERSION\`" \
+  "the gate must name the probe it wants"
+rm -rf "${FIX}"
+
+t_case "the frozen-unprobed baseline cannot rot"
+# Adding the missing probe is the FIX, so the baseline must then shrink. If it
+# does not, the next unprobed row hides behind a stale entry.
+FIX="$(_fixture)"
+sed -i "s|printf 'ADV VULKAN_VERSION |printf 'ADV CMAKE_VERSION %s\\n' \"\${CMAKE_VERSION:-}\"\nprintf 'ADV VULKAN_VERSION |" \
+  "${FIX}/linux/scripts/06-packaging/smoke-runtime-image.sh"
+_gate_must_fail "${FIX}" "now HAS a probe" \
+  "a healed key must be removed from the baseline"
+rm -rf "${FIX}"
 
 t_summary
