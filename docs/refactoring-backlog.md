@@ -333,9 +333,8 @@ Measured with our own cross GCC 16.2.0: 0 -> 54 (`row_rvv.cc`) and 0 -> 25
 `-DLIBYUV_DISABLE_RVV` workaround is gone — vector stays on.
 docs/riscv64-rva23-baseline.md#libyuv-rvv
 
-Lesson for the rest of the vector switch: a dependency whose HEADERS do ISA
-dispatch must be BUILT with the same ISA, and a per-ISA source file may carry its
-own, stricter compiler gate than the header does.
+The general shape to expect from the rest of the vector switch is recorded in
+docs/riscv64-rva23-baseline.md#libyuv-rvv.
 
 ### F7. ArmNN + ACL — DECIDED 2026-09-01: ship them [DONE]
 
