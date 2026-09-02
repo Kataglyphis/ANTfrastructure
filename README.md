@@ -258,6 +258,14 @@ check before spending hours measuring.
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
 
+**Contributing?** Run `make hooks` once. It installs a pre-commit gate that
+costs **~4 seconds**: the cheap whole-tree checks, `shellcheck` on the shell
+files you actually staged, and the doc gates only when you touched `docs/`. It
+is a deliberate subset — the full suite takes minutes (the secret scan alone is
+~170 s), and a hook that slow just teaches everyone to type `--no-verify`. Run
+`make preflight` yourself before a rebuild or a push; CI runs it on every push
+regardless.
+
 The first row's suite is `bash linux/scripts/preflight.sh`. Newest gates in it
 (2026-09-01): **`pkg-names`** resolves every package name the tree asks apt for
 against the live Ubuntu indices, and **`advert-keys`** fails when a
