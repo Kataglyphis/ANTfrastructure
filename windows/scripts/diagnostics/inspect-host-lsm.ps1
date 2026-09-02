@@ -55,17 +55,23 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $OutDir "host-lsm-$hostLsmPid-$stamp.txt"
 $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
 
-# kv for stacks with arguments, R10 per thread (x64 syscall stub keeps
-# argument 1 there for a blocked wait), locks and critical sections for a
-# wedged broker, and the symbol names that would confirm a container path.
+# No .printf here: its comma-separated argument list swallows the following
+# semicolons, and cdb then runs NOTHING after it ("Bad register error at
+# '@r10; kv; ...'") - measured 2026-09-02, it cost a whole run's stacks and
+# locks. Plain commands separated by ';' work.
+#
+# gServer is the process-wide ContainerSessionServer; dumping around it is a
+# blind read (no private symbols) but the session counters that
+# Increase/DecreaseTotalSessionCount maintain live in there.
 $cmds = @(
     '.reload /f'
-    '~*e .printf "=== TID %x R10 %p\n", @$tid, @r10; kv; .echo'
+    '~*kv'
     '!locks'
     '!cs -l -o'
     'x lsm!*Container*'
-    'x lsm!*Session*'
-    '!handle 0 f'
+    'x lsm!ContainerSessionServer::gServer'
+    'dps poi(lsm!ContainerSessionServer::gServer) L20'
+    'dd lsm!ContainerSessionServer::gServer L10'
     'qd'
 ) -join '; '
 
@@ -76,9 +82,15 @@ $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls.exe $OutDir /grant "${me}:(OI)(CI)R" /T | Out-Null
 
 Write-Host "`n--- what to look for ---"
-$blocked = Select-String -Path $log -Pattern 'Wait|Alertable|LockCount|OwningThread' -ErrorAction SilentlyContinue
-Write-Host ("  lock/wait lines: {0}" -f @($blocked).Count)
-foreach ($pat in 'ContainerSessionServer', 'AskForSession', 'LockCount', 'OwningThread', 'CEventDispatcher') {
+# A run where the commands did not execute looks identical to a clean host, so
+# check the evidence arrived before reading anything into it.
+$stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
+$bad = @(Select-String -Path $log -Pattern 'Bad register|Syntax error' -ErrorAction SilentlyContinue).Count
+Write-Host ("  thread stacks printed : {0}" -f $stacks)
+if ($stacks -lt 2 -or $bad -gt 0) {
+    Write-Warning "cdb produced no usable output ($bad command error(s)) - do NOT read 'no locks' as 'host is healthy'."
+}
+foreach ($pat in 'AskForSession', 'LockCount', 'OwningThread', 'Lock count', 'No locks') {
     $n = @(Select-String -Path $log -Pattern $pat -ErrorAction SilentlyContinue).Count
     Write-Host ("  {0,-22} {1} hit(s)" -f $pat, $n)
 }
