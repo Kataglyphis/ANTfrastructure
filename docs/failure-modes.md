@@ -41,6 +41,7 @@ Two neighbours, so you land on the right page:
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
 - [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
 - [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
+- [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
 
 **Windows: the layer store (hcsshim)**
 
@@ -398,6 +399,65 @@ rather than to be safe. Bind the dangerous verb to its own argument. Both
 directions are mutation-tested in `test-delete-guard.sh` — widening the scope
 back to the whole command turns the allow-cases red, and dropping the `cd`
 tracking turns the deny-cases red.
+
+### OpenCV: `std::complex` breaks on a shadowed `complex.h`
+
+The riscv64 `opencv-gst` stage dies compiling `modules/core/src/hal_internal.cpp`:
+
+```
+error: expected unqualified-id before '_Complex' [-Wtemplate-body]
+  540 |     int ldsrc1 = (int)(src1_step / sizeof(std::complex<fptype>));
+```
+
+The caret sits on `complex` inside `std::complex`, because `complex` is a macro
+by then. `hal_internal.cpp` includes the **C** header at line 50, under
+`HAVE_LAPACK`, and `precomp.hpp` has already pulled in `<complex>` — so the class
+is declared correctly and only later *uses* of the token expand.
+
+In C++, `<complex.h>` is supposed to reach libstdc++'s wrapper, which includes
+glibc's header and then removes the damage:
+
+```c
+# include_next <complex.h>
+# ifdef _GLIBCXX_COMPLEX
+#  undef complex          // <- the guarantee
+# endif
+```
+
+glibc's own `/usr/include/complex.h` has `#define complex _Complex` with no
+`__cplusplus` guard, so whoever wins the lookup decides whether C++ still works.
+CMake passes OpenCV `-isystem /usr/include`, and `-isystem` is searched before
+the compiler's C++ directories — so glibc's header wins and the `#undef` never
+happens. Measured with the riscv64 cross g++:
+
+| flags | `<complex.h>` resolves to | `complex` macro |
+| --- | --- | --- |
+| none | `…/riscv64-linux-gnu/include/c++/16.2.0/complex.h` | not defined |
+| `--sysroot=/ -isystem /usr/include` | `/usr/include/complex.h` | `#define complex _Complex` |
+
+Reproduced in three lines — `#include <complex>`, `#include <complex.h>`, then
+one `std::complex<float>` — and it fails on every target compiler once the flag
+is present, so this is not architecture-specific in nature.
+
+**The fix.** `build-opencv.sh` writes a two-branch `complex.h` shim next to the
+source tree and prepends it with `-I`. GCC searches every `-I` before every
+`-isystem`, so the shim wins regardless of what CMake appends — the same
+precedence trick the file already uses to pin our FFmpeg prefix. The shim
+restores libstdc++'s behaviour in C++ and is a transparent pass-through in C,
+which matters because the same flag string is handed to both `CMAKE_C_FLAGS` and
+`CMAKE_CXX_FLAGS` (OpenCV compiles C third-party code such as openjp2 that
+legitimately wants the `complex` macro).
+
+**Why it surfaced only now.** It is not a regression. The previous run never
+compiled this file: libcamera failed earlier on an unrelated link error, and
+BuildKit builds those stages in parallel, so the whole lane died first. Fixing
+libcamera let the build get far enough to reach a defect that was always there.
+
+**Still open:** *which* CMake package contributes `-isystem /usr/include` on
+riscv64 and not on the other lanes. `ZLIB_INCLUDE_DIR=/usr/include` is passed on
+every cross arch and all three resolve zlib identically, so that alone does not
+explain it. The shim makes the build immune either way; the injector is worth
+finding so the flag can be removed at the source.
 
 ---
 

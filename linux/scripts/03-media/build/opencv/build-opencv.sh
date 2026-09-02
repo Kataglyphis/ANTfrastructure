@@ -277,6 +277,26 @@ target_machine() {
 
 # Adjust build flags for non-x86 targets and cross-mode gating of GTK/GStreamer/
 # Python. Mutates the surrounding with_* and target_* locals.
+# CMake hands OpenCV `-isystem /usr/include`, which shadows libstdc++'s own
+# <complex.h> wrapper. docs/failure-modes.md#opencv-stdcomplex-breaks-on-a-shadowed-complexh
+_opencv_write_cxx_compat_shim() {
+  local dir="${1:?shim dir is required}"
+
+  mkdir -p "${dir}"
+  cat > "${dir}/complex.h" <<'SHIM'
+#pragma once
+/* Restores what libstdc++'s <complex.h> does: include the C header, then drop
+   its `complex` macro so std::complex still parses. Transparent in C. */
+#ifdef __cplusplus
+#include <complex>
+#include_next <complex.h>
+#undef complex
+#else
+#include_next <complex.h>
+#endif
+SHIM
+}
+
 _opencv_target_adjustments() {
     local -n _ota_cmake_opts="$1"
     local -n _ota_with_gtk="$2"
@@ -303,6 +323,9 @@ _opencv_target_adjustments() {
         _ota_zlib_inc="/usr/include"
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
+        # -I beats -isystem, so the shim wins whatever CMake appends.
+        _opencv_write_cxx_compat_shim "${OPENCV_SRC%/}-cxx-compat"
+        _ota_shared_inc="-I${OPENCV_SRC%/}-cxx-compat ${_ota_shared_inc}"
         # OCV-FF2 (2026-08-31): pass 2 inherits the gstreamer stage, which
         # installs the DISTRO libav*-dev (FFmpeg 8.0.1) while we build our own
         # n9.0 into ${FFMPEG_PREFIX}. Both land on the include path, and
