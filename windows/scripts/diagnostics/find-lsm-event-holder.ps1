@@ -195,6 +195,16 @@ Write-Host ("object: 0x{0:x}" -f $obj) -ForegroundColor Cyan
 # @() matters: a single match is a bare Tuple, which has no .Count, and
 # StrictMode turns that into "property Count cannot be found".
 $holders = @($rows | Where-Object { $_.Item3 -eq $obj })
+
+# The object's own HandleCount, measured in the SAME run as the holder list:
+# reading the two from different container instances left it unclear whether a
+# second handle exists at all (2026-09-02).
+$detail = ''
+if ($cdb -and (Get-Process -Id $LsmPid -ErrorAction SilentlyContinue)) {
+    $hlog = Join-Path $OutDir "handle-detail-$LsmPid-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
+    & $cdb.FullName -pv -p $LsmPid -y $sym -c ".reload /f; !handle $($Handle.ToString('x')) f; qd" > $hlog 2>&1
+    $detail = (Get-Content $hlog | Select-String -Pattern 'HandleCount|PointerCount|Event Type|Event is|Type ' | ForEach-Object { '    ' + $_.Line.Trim() }) -join "`n"
+}
 $report = Join-Path $OutDir "event-holders-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
 $lines = @(
     "LSM waited handle : pid $LsmPid handle 0x$($Handle.ToString('x'))"
@@ -202,6 +212,7 @@ $lines = @(
     "holders           : $($holders.Count)"
     ''
 )
+if ($detail) { $lines += @('object detail (same run):', $detail, '') }
 foreach ($h in $holders) {
     $tag = if ($h.Item1 -eq $LsmPid) { '  <-- LSM (the waiter)' } else { '  <-- THE OTHER HOLDER' }
     $lines += ("  handle 0x{0:x}  {1}{2}" -f $h.Item2, (Get-ProcLabel $h.Item1), $tag)

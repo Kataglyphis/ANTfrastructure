@@ -67,15 +67,23 @@ Handle 338
   Event is          Waiting          <- never signalled
 ```
 
-Two facts worth the reader's attention: the event is **unsignalled** for the
-container's whole lifetime, and its **HandleCount is 2** — a second holder
-exists, i.e. the component expected to signal it is present and simply never
-does. Frame arguments also suggest the awaited state is `4`
-(`WaitForSessionState`'s second argument) — heuristic, not verified.
+The event is **unsignalled for the container's whole lifetime**. Its
+`HandleCount` reads 2, but a system-wide handle enumeration
+(`NtQuerySystemInformation(SystemExtendedHandleInformation)`, matched on the
+kernel object pointer `0xffffe083b49d9d60`) finds **exactly one holder in the
+same run: LSM itself**. The enumeration does see silo processes — it found
+LSM's own handle that way — so the delta is kernel-side accounting, not a
+second process.
 
-Handles inside the silo resolve as `Name <none>` from outside, so the event
-cannot be named from user mode; the `lsm!CEventDispatcher` frames are the
-precise pointer into your code.
+That narrows who can signal it: **no other process holds a handle to this
+object**, so the signal has to come from another thread inside the same
+`svchost` or from the kernel's own session path — not from a service that
+failed to start.
+
+Frame arguments suggest the awaited state is `4` (`WaitForSessionState`'s
+second argument); heuristic, not verified. Handles inside the silo resolve as
+`Name <none>` from outside, so the event cannot be named from user mode — the
+`lsm!CEventDispatcher` frames are the precise pointer into your code.
 
 ## Environment
 
@@ -165,6 +173,8 @@ are SYSTEM-owned, so grant read access before analysing them unelevated.
 ## What would help
 
 The `lsm!CEventDispatcher::WaitForSessionState` path with private symbols
-should show which session-state transition is awaited and which component
-signals it inside a silo. Given HandleCount 2, that component holds the event
-and is running — it just never sets it.
+should show which session-state transition is awaited and what sets the event
+inside a silo. Since no second process holds a handle to it, the interesting
+question is which in-process thread or kernel session path is supposed to
+signal it, and why that never happens in a silo while the identical image and
+command complete in seconds under Hyper-V isolation.
