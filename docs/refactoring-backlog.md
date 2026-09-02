@@ -29,6 +29,11 @@ code that produced them.
 
 1. Never edit versions.env or the 01-core / 03-media bind-mount closure
    outside a closure window — one edit re-runs hours of media compiles.
+   **MECHANISM MEASURED 2026-09-02:** the chain re-invokes *itself* as a child
+   per stage (observed PPID 808173 → PID 1998054, both `build-cross-chain.sh`),
+   so each stage re-reads these scripts from disk. An edit made mid-run is not
+   merely a cache-key change — the NEXT stage executes the edited bytes. This is
+   why F1's two remaining targets are blocked, not deferred.
 2. Respect the protected lists (deliberate dedup, standalone bundling,
    load-bearing case arms, ARG sprawl, LiteRT-LM patch stack, SH1 retry
    semantics, SH2 non-exiting error(), DUPN2 two-pass arg mirror) —
@@ -40,6 +45,14 @@ code that produced them.
    store INCLUDING exec.cachemount records (35→1 observed) — even with no
    chain running it costs the compile caches. It is the last-resort hammer
    ONLY; prune-safe + rmi + kata-buildcache/archive-log trims come first.
+   **ORDER MEASURED 2026-09-02: prune FIRST, then rmi — never the reverse.**
+   Deleting 9 untagged ~32 GB images while the layer cache still referenced the
+   same overlayfs snapshots returned **+12 G**; after several prune-safe passes
+   had removed those records, deleting 18 of them returned **+97 G**. Same host,
+   same command, opposite verdicts — an image frees space only when it holds the
+   LAST reference. A prune pass reporting identical GB and record count before
+   and after (= everything in use) is the signal to switch levers, not to prune
+   harder.
 4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
    re-arming watchers.
 5. **A test that cannot fail is worse than no test.** Two 2026-08-31 findings
@@ -467,6 +480,35 @@ riscv64 carries 94** — 76 missing, 14 extra.
   wheel at the version the app lock already uses on amd64 (`protobuf 6.33.6`,
   `flatbuffers 25.12.19`). Do **not** drop `--no-deps`.
 
+- **AA-followup. The optuna install was in the wrong place — FIXED 2026-09-02**
+  [S·★★★]. Found by checking the AA/AB fixes against the lane they were about to
+  run in, before the runtime stage got there. The install had two defects, either
+  of which would have let the gate name `optuna` again:
+
+  1. It sat in `reconcile_local_wheels`, which runs **before**
+     `ensure_project_package_installed`. Measured against PyPI: optuna's closure is
+     `any`-wheel everywhere **except `PyYAML`**, which publishes no `any` wheel and
+     no riscv64 wheel — only an sdist. Run at that point it would source-build
+     under emulation; run after the project install it is already satisfied. This
+     is the same ordering the `docs` extra already documents.
+  2. It was nested under `if [ "${#other_wheels[@]}" -gt 0 ]` — a condition about
+     the ORT wheel set, unrelated to optuna. With no local `other_wheels` it would
+     never have run at all.
+
+  Moved to `install_fallback_project_extras`, which runs only on the riscv64
+  fallback path and only after `uv pip install "${APP_DIR}"`. Both defects go away
+  with the move; no new condition was needed. `protobuf`/`flatbuffers` stay where
+  they are — they are the ORT wheel's own dangling edges and have zero runtime
+  dependencies, so neither concern applies. Reasoning in
+  docs/riscv64-venv-parity.md#optuna.
+
+  Also verified while there: the AA exemption arms are keyed correctly. The probe
+  normalises with `lower().replace("_","-").replace(".","-")`, and `scipy`,
+  `scikit-learn`, `pandas` are already in that form, so
+  `riscv64:ml-ai:<pkg>` matches. And optuna's `numpy` requirement is
+  **unconstrained**, so the install cannot float the venv off the lock — the
+  hazard `--no-deps` exists to prevent.
+
 - **AC. The riscv64 runtime venv ships build tooling the other arches do not**
   [S·★★]. 14 packages exist only there, and several have no business in a
   runtime image: `meson`, `wheel`, `gcovr`, `gyp-next`, `Cython`-adjacent
@@ -586,6 +628,25 @@ next candidate.
 `assert_pinned_versions` at 356 is untouched and remains the clear top of the
 list — more than twice the next entry.
 
+**BLOCKED, not deferred (2026-09-02).** The two remaining targets —
+`_cross_stage_build_impl` (01-core) and `reconcile_local_wheels` (03-media/runtime) —
+sit inside the bind-mount closure that standing rule 1 protects, and the RVA23
+rebuild is in flight with the runtime lane (the stage that publishes the manifest)
+still ahead. Both are pure readability refactors: the upside is a shorter function,
+the downside of a slip is a dead 2h+ build at its publishing step. They are the
+first work item of the next closure window, in this order:
+
+  1. `_cross_stage_build_impl` — decompose INTERNALLY only (do not split it back
+     into two functions; that split was reverted once already). Natural seams, each
+     already marked by its own comment block: the pull-flag decision, the push/
+     attestation output args, the three-tier cache args, the salvage-export loop
+     (~30 lines, deepest nesting → best single win), and the registry-cache drop.
+  2. `reconcile_local_wheels` — 146 lines carrying 57 comment blocks; the comments
+     already name the seams.
+
+`assert_pinned_versions` stays top of the list by size but is the *worst* candidate
+by value, for the reason given above: decomposing its shell moves ~26 lines.
+
 ### F2. Files over ~800 lines [L each, low priority] — RE-MEASURED 2026-09-02
 
         was   now  file
@@ -604,17 +665,52 @@ worth a look for F1 candidates.
 
 ### F3. Clone families worth one owner [S-M each]
 
+- **The source-or-fallback family — the biggest one, found 2026-09-02** [M·★★★].
+  Four sites carry a canonical helper plus an inline copy used when the canonical
+  file is absent: host-compiler resolution, `_path_contains`/`_path_prepend_unique`,
+  and host-python discovery. Evidence, sites and measurements are in F5 (that
+  entry owns them); what belongs HERE is that they are one family, not three
+  pairs, and that the fallbacks are **load-bearing by construction** — the same
+  bootstrap paradox the `lib/*.sh` item below warns about.
+
+  So the work is not "extract a helper". It is one question, asked once: **is any
+  fallback still reachable?**
+
+  **ANSWERED 2026-09-02: no — in every context the tree builds.** The evidence,
+  because a grep of `COPY .* 01-core/<file>` says the opposite and nearly misled
+  this entry: `Dockerfile.package:274` and `Dockerfile.toolchain:301` copy the
+  **whole directory** (`COPY linux/scripts/01-core/ /opt/scripts/core/`), and
+  `Dockerfile.media` bind-mounts it at the same path in 23 RUNs. Verified in the
+  shipped image: `/opt/scripts/core/` holds 68 files including both
+  `path-helpers.sh` and `compiler-resolution.sh`. So the runtime env scripts, the
+  media build stages and the android preamble all take the canonical branch.
+
+  What remains is therefore a **decision, not an investigation**: delete four
+  fallbacks whose guard condition is never false, or keep them as insurance
+  against a future stage that copies `01-core` per-file instead of wholesale.
+  Deleting them is a behavioural change across every stage and wants one
+  validating build — that is the only reason it is not already done here.
+
 - **`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**
   (`01-core/chain-lifecycle.sh:93` and `:106`, 21 shingles, 5 identical lines) —
   the item-splitting loop is the same; only the emitted shape differs. One
   walker taking an emitter callback would own it. Allowlisted 2026-09-01 with a
   budget of 25 so it cannot grow further unnoticed.
-- **`verify-shipped-wrapper.sh` carries a private `_is_truthy`** (`:50`) — it
-  runs standalone from `build-runtime-manifest.sh`, but `REPO_ROOT` is available
-  there, so it could source `01-core/platform.sh` and use the canonical
-  definition. The test stubs (`test-chain-lifecycle.sh`, `test-parallel-loop.sh`,
-  `test-ffmpeg-dnn-contract.sh`) must keep their own copies — a test that sourced
-  the real one could no longer prove the shipped copy behaves.
+- **`verify-shipped-wrapper.sh` carried a private `_is_truthy`** — **DONE
+  2026-09-02** (`e2da351c`). It now sources `01-core/platform.sh` via its own
+  `_here` and uses the canonical `is_truthy` at all three call sites. Safe because
+  `platform.sh` has **zero top-level statements**, so sourcing it has no side
+  effects; the two `case` arms were byte-identical and a differential test over 21
+  inputs (`True`, `tRuE`, `enabled`, empty, whitespace, …) agreed on every one.
+  Verified in the manifest builder's exact invocation form — the gate reaches its
+  own logic, so the `source` resolves at runtime and not merely under `bash -n`.
+  The four `code-dupes.allow` pairs it needed were retired in the same commit; the
+  gate itself flagged them as stale, which is the allowlist working as designed.
+  The test stubs (`test-chain-lifecycle.sh`, `test-parallel-loop.sh`,
+  `test-ffmpeg-dnn-contract.sh`) keep their own copies on purpose — a test that
+  sourced the real one could no longer prove the shipped copy behaves. They are
+  the 4-file family the gate still reports for this block, and that is correct.
+
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
   `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
@@ -780,7 +876,54 @@ helper instead of an allowlist line), and `runtime-build-fns` ↔
 `build-cross-chain` now share 14 shingles — recorded as *unfinished*, not
 deliberate, because the chain orchestrator could call the same helper.
 
-Count: **260 → 246 pairs, 236 → 232 unreviewed.** Gate green.
+**Second pair done:** `iree/android/build-android.sh` ↔
+`litert/android/build-android.sh`, **179 → 12**. The duplicated
+`resolve_host_compiler` (source-or-fallback, ~25 lines) moved into
+`android-build-preamble.sh`, which both already source and every android stage
+shares. The iree copy's own comment said *"aligned with the litert copy"* — the
+duplication was known and simply had no owner.
+
+**That consolidation exposed a four-site family**, which is the more useful
+finding: the same host-compiler-preference logic lives in
+`01-core/compiler-resolution.sh` (canonical), the preamble's fallback,
+`ffmpeg-probe-framework.sh` and `build-app-wheelhouse.sh`. The preamble copy is
+the **bootstrap paradox** in its purest form — a fallback must duplicate the
+thing it stands in for, or it is not a fallback. The other two are not, and
+that family wants one owner.
+
+Note the accounting: this pair's number fell by 167 while
+`preamble ↔ build-app-wheelhouse` rose 29 → 40. Total duplication went DOWN (two
+copies became one) even though one pair's number went UP, because the surviving
+copy now sits in a file that already overlapped there. Read the totals, not a
+single row.
+
+**The unreviewed tail is CLOSED: 225 → 0 (2026-09-02).** Be precise about what
+that means, because the distinction is the whole value of the entry:
+
+| how | count | what was actually done |
+| --- | --- | --- |
+| READ | 4 | the pairs whose longest shared run exceeded 12 lines and were not already covered — each carries its own finding |
+| MEASURED | 221 | longest shared run computed per pair; the reason records the number so anyone can re-derive it |
+
+Measuring is a real review — it answers "is this a copied block worth extracting
+a helper for?" — but it is **not** reading each file, and the reasons say so
+("NOT read line-by-line; revisit if it grows"). The distribution it produced:
+
+| longest shared run | pairs | reading |
+| ---: | ---: | --- |
+| ≤6, structural only (`fi`/`esac`/`}`/`echo`) | 87 | the shape of sibling functions, not a copy |
+| ≤6, substantive | 88 | a shared idiom, below any extraction threshold |
+| 7–12 | 41 | small; watched via a pinned budget |
+| >12 | 9 | four already covered, four read here, one is the family below |
+
+**The recurring shape across the biggest offenders is source-or-fallback**:
+`path-helpers`, `compiler-resolution` and host-python each have a canonical file
+plus an inline copy for when it is absent. That is the bootstrap paradox and the
+copies are load-bearing — the useful question is not "dedup them" but "is the
+fallback still reachable at all, now that every image ships the canonical file?"
+
+Eight stale entries were retired along the way — three from the first pair, five
+from the second. Final count: **260 → 243 pairs, 0 unreviewed.**
 
 Work the tail from the top; each line deleted or shrunk is real progress and the
 gate enforces the new, lower budget automatically:
