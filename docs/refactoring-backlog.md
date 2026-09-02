@@ -274,6 +274,55 @@ arch's media stage.
   everything the trigger does not cover. See [[rebuild-disk-management]] for why
   `nerdctl builder prune` must never be the answer here.
 
+- **DD. The Node.js pin is silently dropped on riscv64** [S·★★★, ships a
+  different version than the other two arches]. `[WARN] Exact Node.js pin
+  nodejs=26.8.1-1~ubuntu26.04.1 unavailable on riscv64; falling back to the
+  distro default version`. The whole point of `versions.env` and the
+  `sync_versions` gate is that every arch ships the pinned version; this warning
+  defeats that for one arch and the run continues green. Either the ports
+  archive genuinely lacks that build (then the pin needs an arch-aware value and
+  the gate needs to know), or the pin format is wrong for riscv64. Right now
+  nobody can say which version riscv64 actually ships without reading a log.
+
+- **DE. `IREE_BUILD_COMPILER=OFF` does not produce `iree-tblgen`** [M·★★, costs a
+  full host compiler build]. `[WARN] IREE host stage (IREE_BUILD_COMPILER=OFF)
+  left /tmp/app-wheelhouse/iree-build-host/install/bin missing: iree-tblgen —
+  retrying with the full host compiler`, twice in one run. The two-stage build
+  in `docs/iree-two-stage-build.md` exists precisely to avoid that compiler
+  build; the fallback works, so the cost is invisible in the exit code. Either
+  the OFF stage needs `IREE_BUILD_TOOLS` (or whatever now gates tblgen) or the
+  two-stage split should be retired as ineffective.
+
+- **DF. The media ELF gate guesses whether a foreign-arch .so is a vendor blob**
+  [S·★★]. It prints `MISMATCH (advisory, may be vendor): libpython3.14.so.1.0
+  ELF machine=Advanced Micro Devices X86-64 != expected RISC-V` and then
+  `NOTE: 3 advisory .so ELF mismatch(es) (likely bundled vendor SDKs; not
+  failing)`. It logs **basenames only** and the word is *likely* — the script
+  already carries a list of directories that legitimately hold foreign-arch
+  vendor binaries (QNN, SNPE, NeuroPilot), so it could classify by path and fail
+  on anything outside them. As written, a genuine x86-64 leak into a riscv64
+  image would print exactly the same line as a MediaTek blob. (The three
+  libpython hits are almost certainly the amd64 build container's own Python and
+  therefore harmless — but the gate cannot tell you that, which is the point.)
+
+- **DG. The media stage's qemu functional check has never passed on a foreign
+  arch** [S·★★]. `WARN: /usr/bin/qemu-riscv64 gst-launch-1.0 --help failed (may
+  be expected for cross builds without full sysroot)` — 4× for riscv64 and 3×
+  for arm64 in one run, for `gst-launch-1.0`, `cam` and `ffmpeg`, every one
+  excused by the same clause. A check that always fails and is always excused is
+  not a check; it is training to ignore WARN lines. Real functional coverage
+  does exist later (the runtime-image smoke boots the actual image), so either
+  give this one a sysroot or delete it.
+
+- **DH. sccache spawn failures grew to 1560 in one run** [see DA]. Same defect
+  as DA, now measured across the whole chain rather than one lane. Every one of
+  those translation units compiled uncached.
+
+- **DI. `install_target_packages` batch apt failure fired 4× in this run** [see
+  D1]. The per-package sweep recovered every time and nothing was left behind,
+  so the run stayed green — but D1 is still open and still costing a retry pass
+  per occurrence.
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication
