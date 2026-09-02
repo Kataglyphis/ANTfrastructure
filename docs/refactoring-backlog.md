@@ -430,7 +430,7 @@ the "I want clean code" queue. Ordered by value, not size.
         147  114  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
         136   84  append_tvm_cmake_args()       05-frameworks/tvm-config.sh
         127  109  uv_sync_project()             01-core/python_uv.sh
-        127  146  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh  GREW
+        127  139  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh  GREW
 
 **`assert_pinned_versions` is not 356 lines of shell — it is ~26 lines of shell
 wrapping a 312-line embedded Python program** (`"${PY}" - <<'PYEOF'` at
@@ -447,9 +447,10 @@ them to nothing. `smoke_genai_py` is now six lines calling six tier helpers —
 exactly the split this entry proposed — **but see F4, because that did not make
 its Python lintable.**
 
-`reconcile_local_wheels` GREW by 19, of which 12 are the ORT-dependency install
-added for AB on 2026-09-02. It is now the second-longest function here and the
-next candidate.
+`reconcile_local_wheels` grew by 19 for AB's ORT-dependency install, then gave 7
+back on 2026-09-02 when the misplaced optuna install moved out of it (AA-followup,
+archive). Net +12 against the 2026-08-31 column; still the second-longest function
+here and the next candidate after the closure window opens.
 
 `assert_pinned_versions` at 356 is untouched and remains the clear top of the
 list — more than twice the next entry.
@@ -697,21 +698,12 @@ answers a different question. Do not treat those four as confirmed-current.
 
 ## H. LLM-BENCH — the four items still open
 
-LB1–LB9 were implemented and validated live against GenieX lanes on the day
-they were filed; they moved to the 2026-09-02 archive. What follows is the
-open remainder — none of it blocked, all of it optional depth on
-`linux/llm-stack`.
+LB1–LB12 are done and archived. **LB10 and LB12 were already implemented when
+this was re-checked on 2026-09-02** — the entries had gone stale, the third
+and fourth stale entries found that day. LB11's comparer existed and was
+tested but **nothing ever called it**; that half is now closed too. What is
+left is LB13, which needs hardware time rather than code.
 
-- **LB10 — embedding benchmarks** [M·★★] `tests/test_v1_api.py` exercises the
-  embedding endpoints but nothing measures them. Relevant the moment a RAG or
-  code-search path is added.
-- **LB11 — run-to-run regression comparison** [S·★★] Every tool writes a JSON
-  report and nothing diffs two of them. Without it a model swap or a runtime
-  bump can silently cost accuracy or speed. Probably the highest-value item
-  left: it turns a pile of one-off measurements into a tripwire.
-- **LB12 — energy per token** [M·★] The interesting axis on a battery device,
-  and the NPU's real argument over the CPU lane (165 % vs 752 % of 800 % CPU
-  says something about power but does not measure it).
 - **LB13 — measurements not yet run on this host** [S·★] hybrid lane on coding
   tasks, `nctx` scaling below 16384, `--ngl` on the GPU lane, and the model
   candidates never tried: `Qwen3-8B` W4A16 (the winner's direct competitor —

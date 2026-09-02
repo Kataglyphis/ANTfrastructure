@@ -548,3 +548,61 @@ that does not crown the coding winner.
 
 **Still open for a general LLM toolkit** (listed so it is not forgotten):
 
+
+
+## LLM-BENCH: LB10–LB12, closed 2026-09-02
+
+Re-checked rather than trusted, after F4 and F5 had both turned out stale the
+same day. Two of the three were already done and the entries had simply not been
+updated.
+
+- ✅ **LB10 — embedding benchmarks.** Already implemented: `bench_embeddings.py`
+  (194 lines) measures shape, speed **and meaning** — whether related texts land
+  closer together than unrelated ones, the check a shape test cannot make. Its
+  docstring quotes this entry's own justification verbatim, so the entry was
+  written and then satisfied without being closed. 13 tests green.
+
+- ✅ **LB12 — energy per token.** Resolved honestly rather than implemented:
+  `bench_provenance.energy_proxy()` reports CPU-seconds under that name and
+  refuses to report joules, because the host exposes no power rail (no RAPL on
+  aarch64, no battery counter through WSL2, Snapdragon sensors not surfaced).
+  *"Reporting joules would be inventing them."* Recorded as a PROXY so nobody
+  later mistakes it for a measurement. That is the correct closure for this item;
+  a real number needs hardware that exposes one.
+
+- ✅ **LB11 — run-to-run regression comparison.** `bench_compare.py` (315 lines)
+  existed, had its own test file, normalises BOTH report envelopes and exits 1 on
+  a regression — and **nothing ever called it.** `run_benchmarks.sh` did not
+  mention it; the "baseline" strings in that script are context-length labels.
+  The tool was a tripwire nobody armed, the exact "gate that never runs" shape
+  this repo keeps rediscovering.
+
+  Closed by adding what was missing. `pair_directories()` + a `--dir` mode
+  compare two run directories report-by-report, matching on file name, since the
+  sweep writes one report per config and `_manifest.json` is the viewer's index
+  rather than a report. A config that appeared or vanished between runs is
+  printed as a change, not silently skipped — otherwise a shrinking sweep would
+  pass. `run_benchmarks.sh` now calls it when `BENCH_COMPARE_TO` names a previous
+  output directory: advisory by default, failing the run under
+  `BENCH_COMPARE_STRICT=1`, because a sweep is not a gate unless the operator
+  says so.
+
+  Six tests added, and **all three mutations bite**: returning 0 unconditionally
+  fails the regression test, dropping the vanished-config line fails the
+  swallowing test, and treating `_manifest.json` as a report fails the pairing
+  test. Verified end to end outside pytest as well — a 10/10 → 2/10 run prints
+  `*** REGRESSION ***` with its Wilson intervals and `BENCH_COMPARE_STRICT=1`
+  exits 1.
+
+Full text of the three entries as they stood:
+
+- **LB10 — embedding benchmarks** [M·★★] `tests/test_v1_api.py` exercises the
+  embedding endpoints but nothing measures them. Relevant the moment a RAG or
+  code-search path is added.
+- **LB11 — run-to-run regression comparison** [S·★★] Every tool writes a JSON
+  report and nothing diffs two of them. Without it a model swap or a runtime
+  bump can silently cost accuracy or speed. Probably the highest-value item
+  left: it turns a pile of one-off measurements into a tripwire.
+- **LB12 — energy per token** [M·★] The interesting axis on a battery device,
+  and the NPU's real argument over the CPU lane (165 % vs 752 % of 800 % CPU
+  says something about power but does not measure it).

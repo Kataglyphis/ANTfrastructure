@@ -255,8 +255,57 @@ def suspect_cases(reports, control_label="control"):
     return sorted(failed)
 
 
+def pair_directories(old_dir, new_dir):
+    """Match reports between two run directories by file name.
+
+    Returns (pairs, only_new, only_old). `_manifest.json` is the viewer's index,
+    not a report, so it never pairs.
+    """
+    def reports(d):
+        return {f for f in os.listdir(d)
+                if f.endswith(".json") and f != "_manifest.json"}
+    o, n = reports(old_dir), reports(new_dir)
+    pairs = sorted((f, os.path.join(old_dir, f), os.path.join(new_dir, f))
+                   for f in (o & n))
+    return pairs, sorted(n - o), sorted(o - n)
+
+
 def baseline_path(name):
     return os.path.join(BASELINE_DIR, f"{name}.json")
+
+
+def _compare_directories(args):
+    """Compare two run directories report-by-report. Returns an exit code."""
+    if len(args.reports) != 2:
+        raise SystemExit("--dir takes exactly two directories: OLD NEW")
+    old_dir, new_dir = args.reports
+    for d in (old_dir, new_dir):
+        if not os.path.isdir(d):
+            raise SystemExit(f"not a directory: {d}")
+    pairs, only_new, only_old = pair_directories(old_dir, new_dir)
+
+    # A config that appeared or vanished between runs IS a change; staying quiet
+    # about it would let the sweep shrink without the comparison noticing.
+    for f in only_old:
+        print(f"  ! {f}: in {old_dir} but not in {new_dir}")
+    for f in only_new:
+        print(f"  ! {f}: new in {new_dir}, nothing to compare against")
+    if not pairs:
+        raise SystemExit(f"no report names in common between {old_dir} and {new_dir}")
+
+    regressed_any = False
+    for name, old_path, new_path in pairs:
+        print(f"\n  {name}")
+        findings, regressed = compare(load(old_path), load(new_path),
+                                      args.time_tolerance)
+        for line in findings:
+            print(f"    {line}")
+        print("    REGRESSION" if regressed else "    no regression detected")
+        regressed_any = regressed_any or regressed
+
+    print(f"\n  {len(pairs)} report(s) compared, "
+          f"{len(only_old)} gone, {len(only_new)} new")
+    return 1 if regressed_any else 0
 
 
 def main():
@@ -268,7 +317,13 @@ def main():
                     help="Store this report as the accepted baseline under that name")
     ap.add_argument("--time-tolerance", type=float, default=DEFAULT_TIME_TOLERANCE,
                     help="Relative slowdown treated as noise (default 0.25)")
+    ap.add_argument("--dir", action="store_true",
+                    help="Treat the two arguments as run DIRECTORIES and compare "
+                         "every report they share by name")
     args = ap.parse_args()
+
+    if args.dir:
+        sys.exit(_compare_directories(args))
 
     if args.save_baseline:
         os.makedirs(BASELINE_DIR, exist_ok=True)

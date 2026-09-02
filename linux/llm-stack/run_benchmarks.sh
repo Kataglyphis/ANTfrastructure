@@ -129,3 +129,15 @@ echo "All benchmarks complete. Results in $OUTDIR/"
 echo ""
 echo "Quick comparison:"
 python3 bench_report.py table "$OUTDIR" 2>&1
+
+# LB11: arm the comparer. It existed, was tested, and nothing ever called it.
+# Opt-in: BENCH_COMPARE_TO=<a previous OUTDIR>. docs/refactoring-backlog.md H
+if [ -n "${BENCH_COMPARE_TO:-}" ]; then
+  echo ""
+  echo "Regression check against $BENCH_COMPARE_TO:"
+  if ! python3 bench_compare.py --dir "$BENCH_COMPARE_TO" "$OUTDIR"; then
+    # Advisory by default: a sweep is not a gate unless the operator says so.
+    [ "${BENCH_COMPARE_STRICT:-0}" = "1" ] && exit 1
+    echo "  (advisory; set BENCH_COMPARE_STRICT=1 to make this fail the run)"
+  fi
+fi
