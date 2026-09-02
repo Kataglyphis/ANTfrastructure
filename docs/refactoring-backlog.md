@@ -560,8 +560,17 @@ worth a look for F1 candidates.
   if a FOURTH tool appears; three is the threshold where the parameter earns
   itself.
 - **`lib/{app-runner,cmake-build,ctest-run}.sh`** and
-  **`lib/{code-quality,coverage,docs-build}.sh`** — two 3-file families in the
-  same directory, so no cross-flow coupling risk. The most tractable ones.
+  **`lib/{code-quality,coverage,docs-build}.sh`** — **REVIEWED AND KEPT, entry
+  was stale (found 2026-09-02).** This called them "the most tractable ones",
+  but the allowlist already carries all five pairs, reviewed the same day *by
+  measurement*: longest shared run **11–12 lines**, verdict "a helper would cost
+  more indirection than it saves", budgets pinned so growth trips the gate.
+  Worth knowing they are the one clone family in this list that sits **outside
+  the build closure** (`linux/scripts/lib/` is in no Dockerfile; only
+  `tests/test-lib-smoke.sh` uses it, and `01-core/vulkan-env.sh` merely names
+  `lib/cmake-build.sh` in a comment) — so if the verdict is ever revisited, it
+  can be done during a build. The reviews say "NOT read line-by-line; revisit if
+  it grows", and the pinned budgets are what makes that safe.
 - **`install-deps.sh` family (6 files)** — cross-apt, gstreamer, litert, opencv,
   pre-setup, assemble-torch-app. Shares the target-package install shape.
 - **Dockerfile RUN mount preambles (4-9 files)** — NOT actionable: Dockerfiles
@@ -585,6 +594,14 @@ have nothing to do with; they surfaced when F7 was archived on 2026-09-02.
   the suite cannot report. It completed earlier the same day, so something about
   the current tree or host state kills it. `PREFLIGHT_SKIP=secret-scan` is the
   workaround; find why it dies before relying on the full suite again.
+
+  **One lead checked and REFUTED 2026-09-02.** `systemd-oomd` is running on this
+  host, and a userspace OOM kill fits the symptom exactly — a cgroup killed
+  under memory pressure leaves no kernel OOM line, so the process just vanishes
+  without an exit code. But the journal carries **no kill event at all** in the
+  last seven days, only service start/stop. So oomd did not do it. Recorded so
+  the next person does not spend the same hour on it; the memory-pressure family
+  of explanations is not eliminated, only oomd's own killer.
 
 
 ## G. Shipped-truth findings, measured in the arm64 image 2026-09-01
