@@ -137,7 +137,7 @@ removes.
 The apply is gated on `ARCH=riscv64` so amd64/arm64 never even invoke
 `apply-patch.sh`: their genai source tree stays byte-identical to upstream.
 Precedent for a riscv64-only patch applied exactly this way:
-`linux/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch`, from
+`linux/scripts/patches/libcamera/001-apps-add-libtiff-dependency.patch`, from
 `build-libcamera.sh`.
 
 ### How it was proven to apply — MEASURED

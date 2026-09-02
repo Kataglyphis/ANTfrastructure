@@ -187,7 +187,7 @@ lane is the evidence (`docs/gen1-riscv64-genai.md`).
 
 ## 4. libcamera: `apps_lib` uses libtiff but does not depend on it
 
-`linux/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch` ·
+`linux/scripts/patches/libcamera/001-apps-add-libtiff-dependency.patch` ·
 applied by `03-media/build/libcamera/build-libcamera.sh` ·
 applies to **v0.7.2**.
 
@@ -214,7 +214,7 @@ for some other reason.
 
 **Before filing:** libcamera reviews on their GitLab / mailing list. Confirm the
 bug still exists on `master`. Rename our patch file first — it is called
-`001-riscv64-add-libtiff-dep.patch` and the defect has nothing to do with riscv64.
+`001-apps-add-libtiff-dependency.patch` and the defect has nothing to do with riscv64.
 
 ---
 
@@ -784,7 +784,7 @@ Ordered so the cheap, unblocking work comes first.
 3. **Split three patches that are currently two changes in one file.**
    Entry 8 from entry 9 (`003-…`), and entry 10a from 10b (`005a`/`005b` are
    already separate files — just do not send them together).
-4. **Rename `001-riscv64-add-libtiff-dep.patch`.** The defect is not riscv64.
+4. **Rename `001-apps-add-libtiff-dependency.patch`.** The defect is not riscv64.
 5. **Capture evidence for the two issue-only items and the waivers.** Entry 18
    needs the two soundtouch hashes out of a build log; the four waivers each need
    their exact diagnostic. Do not file any of them from memory.

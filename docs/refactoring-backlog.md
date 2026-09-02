@@ -323,6 +323,49 @@ arch's media stage.
   so the run stayed green — but D1 is still open and still costing a retry pass
   per occurrence.
 
+## A2026-09-02. The riscv64 venv gate: SIX real failures, manifest correctly withheld
+
+The `media..runtime` run of 2026-09-02 built and pushed all three per-arch images
+and then **failed the runtime gate on riscv64 with 6 failures**, so
+`create_manifest` never ran and `:latest-cross` still points at the previous
+release. amd64 and arm64 passed with `0 failure(s)`.
+
+**Not a regression from that day's work** (libyuv RVV patch, the OpenCV
+`complex.h` shim, the delete guard, docs — none touch the venv). The VENV-SET
+gate is new, and the previous manifest attempt died earlier on the soname gate,
+so **this is the gate's first complete riscv64 run**: these are pre-existing
+defects becoming visible, which means the riscv64 image has been shipping an
+incomplete `ml-ai` extra unnoticed.
+
+- **AA. Four app-declared `ml-ai` packages are absent from the riscv64 venv**
+  [M·★★★, needs an OWNER DECISION]. `scipy`, `scikit-learn`, `pandas`, `optuna`.
+  The gate's wording is exact: *"the app declares X for extra 'ml-ai' on riscv64
+  (its own marker says this arch needs it) but the venv does NOT have it — ship
+  it or record the exception in `_venv_pkg_exempt`"*. amd64 and arm64 have them,
+  so the cause is the absence of riscv64 wheels, not a build break.
+
+  This is a genuine trade, not a bug to squash: building scipy/pandas/sklearn
+  from source for riscv64 drags in BLAS/LAPACK and a Fortran toolchain and costs
+  hours per run. If riscv64 does not actually need the `ml-ai` extra, the right
+  answer is an exemption **with the reason recorded**, and the app's own
+  environment marker should stop claiming the arch needs them — otherwise the
+  exemption and the app disagree forever.
+
+- **AB. `onnxruntime-webgpu` has two dangling dependency edges on riscv64**
+  [S·★★★, FIX, do not exempt]. `flatbuffers` and `protobuf` are declared
+  requirements of the installed wheel and are absent from the venv. Unlike AA
+  this is our own packaging gap, and it is not cosmetic: a dangling runtime
+  dependency surfaces as an ImportError in the user's process, not in our build.
+  `ORT_ENABLE_WEBGPU=true` is deliberate (versions.env:172), so the flavour name
+  is correct — only its dependency closure is not installed.
+
+  Fix by installing them into `/opt/venv` alongside the wheel. An exemption here
+  would only silence the gate that caught a real hole.
+
+**Keep the gate exactly as strict as it is.** It did the one thing this repo
+keeps asking of its gates: it stopped a broken image from being published, and
+it named the six packages instead of saying "smoke failed".
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication

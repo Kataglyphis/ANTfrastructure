@@ -29,7 +29,7 @@ patch_libcamera_riscv64_cross_sources() {
   [ -f "${common_meson}" ] || return 0
 
   local _apply_patch="/opt/scripts/core/apply-patch.sh"
-  local _patch_file="/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
+  local _patch_file="/opt/scripts/patches/libcamera/001-apps-add-libtiff-dependency.patch"
   bash "${_apply_patch}" "${_patch_file}" "${LIBCAMERA_SRC}" \
     "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
 }
