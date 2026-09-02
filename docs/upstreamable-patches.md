@@ -36,6 +36,7 @@ the branch you intend to target before filing.
 | 17 | [cerbero: glib misses its libiconv dep](#17-cerbero-glib-does-not-declare-its-libiconv-dependency-on-android) | cerbero | **A** | ★★ |
 | 8 | [cargo wrapper clobbers `RUSTFLAGS`](#8-gst-plugins-rs-the-cargo-wrapper-clobbers-rustflags) | gst-plugins-rs | **A** | ★★ |
 | 10a | [`objdetect.hpp` include](#10-gstreamer-opencv-5-moved-symbols-into-new-headers) | gst-plugins-bad | **A** | ★ |
+| 20 | [OpenCV: `<complex.h>` leaves `complex` defined](#20-opencv-hal_internalcpp-trusts-the-include-path-for-complexh) | OpenCV | **A** | ★★ |
 | 6 | [MLAS: `MlasHGemmSupported` undefined](#6-mlas-mlashgemmsupported-is-declared-but-never-defined-in-gemm-only-builds) | OpenCV (their MLAS trim) | **B** | ★★ |
 | 7 | [onnxruntime: Android Gradle Plugin 8](#7-onnxruntime-android-gradle-plugin-742-is-too-old-for-current-tooling) | onnxruntime | **B** | ★ |
 | 9 | [cargo build target is not forwarded](#9-gst-plugins-rs-cargo_build_target-never-reaches-cargo) | gst-plugins-rs | **B** | ★★ |
@@ -49,10 +50,10 @@ the branch you intend to target before filing.
 | 15 | [cerbero: drop the `m4` recipe](#15-cerbero-dropping-the-m4-build-tool-dependency) | cerbero | **C** | — |
 | 16 | [libyuv: RVV rows are clang-gated](#16-libyuv-the-rvv-rows-are-clang-gated) | libyuv | **✔** | ★★★ |
 
-Sorted by how ready each one is, not by number. Eight are ready to write today;
+Sorted by how ready each one is, not by number. Nine are ready to write today;
 the rest need the rework named in their entry.
 
-**Nine entries carry a ready-to-send message; the others deliberately do not.**
+**Ten entries carry a ready-to-send message; the others deliberately do not.**
 9, 11, 12 and 14 need the patch itself reshaped before any message would be
 honest — writing the text now would only make a diff look sendable that is not.
 15 is grade C and 16 is already fixed upstream, so neither gets one. 18 needs two
@@ -648,6 +649,49 @@ freedesktop outage -- which is the one moment the fallback exists for.
 
 Our redirect of the *primary* to macports is a local availability choice, not
 something to send upstream.
+
+---
+
+## 20. OpenCV: `hal_internal.cpp` trusts the include path for `<complex.h>`
+
+Not a `.patch` file — `build-opencv.sh` writes a `complex.h` shim beside the
+source tree and prepends it with `-I`. Full analysis in
+`docs/failure-modes.md#opencv-stdcomplex-breaks-on-a-shadowed-complexh`.
+
+`modules/core/src/hal_internal.cpp` includes the **C** `<complex.h>` under
+`HAVE_LAPACK`, and relies on it reaching libstdc++'s wrapper — the wrapper being
+the thing that removes glibc's `#define complex _Complex` again. Any build where
+`/usr/include` precedes the compiler's C++ directories (a `-isystem
+/usr/include` from any CMake package will do it) gets glibc's header instead,
+and every later `std::complex` use fails to parse. We hit it on riscv64.
+
+**Grade A as a hardening PR, small and defensible.** The C++ standard says
+`<complex.h>` must not leave the `complex` macro defined, so dropping it after
+the include costs nothing and makes the file independent of include-path order.
+
+**PR message**
+
+```
+core: do not let <complex.h> leave the `complex` macro defined
+
+hal_internal.cpp includes the C <complex.h> under HAVE_LAPACK and relies on it
+resolving to libstdc++'s wrapper, which is what removes glibc's
+`#define complex _Complex` again. If anything puts /usr/include ahead of the
+compiler's C++ directories -- a -isystem /usr/include from any package does it
+-- glibc's header wins, the macro survives, and every later std::complex use
+fails:
+
+    error: expected unqualified-id before '_Complex'
+      540 | int ldsrc1 = (int)(src1_step / sizeof(std::complex<fptype>));
+
+The macro is not allowed to be defined in C++ anyway, so dropping it after the
+include makes the file independent of include order.
+```
+
+**Before filing:** confirm the same include shape still exists on `5.x` and
+`4.x`, and check whether other files under `modules/` take the same C header. Our
+shim stays either way — it also protects the third-party C code in the same
+build.
 
 ---
 
