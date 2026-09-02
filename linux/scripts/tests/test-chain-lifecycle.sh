@@ -603,4 +603,34 @@ t_assert_ok test -f "${_sib_logs}/media-arm64.log"
 kill "${_sib_pid}" 2>/dev/null || true
 rm -rf "${_sib_pf}" "${_sib_logs}"
 
+# ---------------------------------------------------------------------------
+# B3: the between-stage guard must aim at the NEXT lane, not at a fixed floor.
+# Reclaiming at 40G before a lane whose entry gate refuses below ~120G arrives
+# too late: the 2026-09-02 run needed six manual prunes to get there.
+# ---------------------------------------------------------------------------
+eval "$(sed -n '/^_chain_runtime_lane_is_next() {$/,/^}$/p' "${CHAIN_SH}")"
+
+t_case "the runtime lane is recognised as the next enabled stage"
+CROSS_STAGE_ORDER=( base compiler sdk media android runtime )
+stage_enabled() { return 0; }
+t_assert_ok   _chain_runtime_lane_is_next android
+t_assert_fails _chain_runtime_lane_is_next media   # sdk..android still to come
+t_assert_fails _chain_runtime_lane_is_next runtime # nothing follows it
+t_assert_fails _chain_runtime_lane_is_next ""      # no completed stage
+
+t_case "a disabled intermediate stage does not hide the runtime lane"
+stage_enabled() { [ "$1" != "android" ]; }
+t_assert_ok _chain_runtime_lane_is_next media
+
+t_case "a disabled runtime lane never raises the bar"
+stage_enabled() { [ "$1" != "runtime" ]; }
+t_assert_fails _chain_runtime_lane_is_next android
+
+t_case "the guard actually consults the predicate (call site, not just the helper)"
+# The file's own lesson: a helper with tests and no call site is inert coverage.
+t_assert_contains "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH}")" \
+  "_chain_runtime_lane_is_next" "the guard must call the predicate"
+t_assert_contains "$(sed -n '/^_chain_stage_disk_guard() {$/,/^}$/p' "${CHAIN_SH}")" \
+  "_chain_runtime_lane_need_gb" "the guard must raise the threshold to the lane need"
+
 t_summary

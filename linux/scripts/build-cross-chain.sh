@@ -464,11 +464,42 @@ source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/chain-lifecycle.sh"
 
+# Is the runtime lane the very next ENABLED stage? Its entry gate refuses below
+# ~120G, which the between-stage guard's 40G default cannot deliver in time.
+_chain_runtime_lane_is_next() {
+  local completed="${1:-}" s seen=0
+
+  [ -n "${completed}" ] || return 1
+  stage_enabled runtime || return 1
+  for s in "${CROSS_STAGE_ORDER[@]}"; do
+    if [ "${seen}" -eq 0 ]; then
+      [ "${s}" = "${completed}" ] && seen=1
+      continue
+    fi
+    stage_enabled "${s}" || continue
+    [ "${s}" = "runtime" ] && return 0
+    return 1
+  done
+  return 1
+}
+
 _chain_stage_disk_guard() {
   local completed_stage="${1:-}"
   local threshold="${CROSS_DISK_GUARD_GB:-40}"
+  local _rt_need
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected="" victim free_gb
+
+  # Aim at what comes NEXT, not at a fixed floor: reclaiming at 40G before a lane
+  # that refuses below ~120G arrives far too late. It cost six manual prunes on
+  # 2026-09-02. docs/failure-modes.md#the-disk-guard-aims-at-the-wrong-number
+  if _chain_runtime_lane_is_next "${completed_stage}"; then
+    _rt_need="$(_chain_runtime_lane_need_gb 2>/dev/null || true)"
+    case "${_rt_need}" in
+      ''|*[!0-9]*) : ;;
+      *) [ "${_rt_need}" -gt "${threshold}" ] && threshold="${_rt_need}" ;;
+    esac
+  fi
 
   if [ "${threshold}" -gt 0 ] 2>/dev/null; then
     free_gb="$(_disk_guard_free_gb "${bc_dir}")"
