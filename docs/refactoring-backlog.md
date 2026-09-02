@@ -50,6 +50,15 @@ code that produced them.
 
 ## A. Needs a real BUILD to close (not more code)
 
+**AUDITED 2026-09-02.** A2 is unchanged (still blocked on the login-gated SDK —
+nothing here can move it). A1 splits into three, and only one of the three is
+what the section title says:
+- token sanity needs a **model**, not a build — mount one and set `GENAI_MODEL_DIR`
+- the app-wheel floor 12 → 13 needs a run that PRINTS `13/… ok`; the previous
+  run's chain log was overwritten before it could be read, so the **in-flight
+  build is the first chance to settle it**
+- the genai NEEDED scan has still never run against a real image on any arch
+
 ### A1. GEN1 — riscv64 GenAI: BUILD PROVEN, token sanity still open [★★]
 
 The 2026-08-31 rebuild ran it for real. What was unknown is now measured, and
@@ -1016,6 +1025,10 @@ that does not crown the coding winner.
 stays where it is — Windows-host lane management, not benchmarking.
 
 ## E. Waiting on a TRIGGER (not on work)
+
+**READ IN FULL 2026-09-02:** all six are genuinely trigger-bound (a host reboot,
+a full push chain, upstream bit-rot). None is actionable without its trigger, and
+none has drifted.
 
 - **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
   divisor-6 parallel run OOMs again.
