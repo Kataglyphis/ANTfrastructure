@@ -854,11 +854,16 @@ windows/scripts/         Windows lane, GROUPED since #108 (2026-08-20):
                          ContainerImage, Flutter, Installer,
                          HostMaintenance, SmokeTest, GstPlugins, …),
                          tests/ (harness + suites), shims/
-windows/upstream/        prepared upstream submissions (not build inputs):
-                         hcsshim-teardown-timeout/ = ISSUE.md + PR.md +
-                         format-patch making the shim teardown timeouts
-                         configurable, plus the deployed 45min local patch
-                         and the rebuild recipe (see its README.md)
+windows/upstream/        prepared upstream submissions (not build inputs), one
+                         directory per submission = format-patch + PR.md. See
+                         its README.md for the index, and
+                         docs/upstream-windows-patches.md for the graded
+                         register of EVERY local third-party change.
+                         hcsshim-teardown-timeout/ is the one already FILED
+                         (microsoft/hcsshim#2855) and also carries ISSUE.md,
+                         the deployed 45min local patch and the rebuild
+                         recipe; the other 14 are prepared and UNSENT - do
+                         not post without the owner saying so.
 shared/agentic-loop/     cross-platform data: prompts/*.md — the single source
                          for the default planner/refactor-planner/executor task
                          prompts read by BOTH WindowsAgenticLoop.Common.psm1

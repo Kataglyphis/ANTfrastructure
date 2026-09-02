@@ -6,6 +6,82 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-02 — Windows lane: 12 upstream submissions prepared, none sent
+
+The Windows chain carries local edits to a dozen third-party source trees. This
+wave sorts every one of them and turns those that are genuine upstream defects
+into ready-to-send patches. **Nothing has been posted.**
+
+**New — [`docs/upstream-windows-patches.md`](docs/upstream-windows-patches.md).**
+The Windows counterpart to `upstreamable-patches.md`, same A/B/C/✔ scale. Every
+local third-party change now sits in exactly one bucket: prepared (14), already
+filed (7), already fixed upstream (2), genuine but needing a maintainer decision
+first (10), or deliberately local and never to be filed (10).
+
+**New — 14 directories under `windows/upstream/`**: 12 ready to send, and 2 that
+the duplicate check caught before they went out (below). Each is a
+`git format-patch` plus a `PR.md` carrying the description to paste, what was
+and was not verified, and the submit recipe:
+
+| Upstream | Submissions |
+|---|---|
+| microsoft/onnxruntime | 4 — the `or` alternative token in `softmax.cc`; two MSVC-only constructs in the DML EP (`##` pasting onto nothing, `uint32_t` as a `std::array` bound); `AbstractOperatorDesc` instantiated against an incomplete `OperatorField`; `tunable.h` vs `wingdi.h`'s `ERROR` |
+| opencv/opencv | 4 — MLAS forcing `<cstring>` with GNU syntax under the CL driver; the `neon_fmaxv` remap firing under clang; `FindONNX` calling `ocv_add_library` on an IMPORTED target; the NEON dotprod/fp16 probes rejecting clang-cl |
+| opencv/opencv_contrib | 1 — cudev uses `ulong`, which Windows does not declare |
+| gstreamer/gstreamer | 3 — `have_sse`/`have_sse2` not gated on `cpu_family`; the Vulkan lib dir chosen from `build_machine`; mediafoundation missing the `msvc` guard GstWinRt already has |
+| iree-org/iree | 2 — `MATCHES 64` also matches `ARM64`; an i8mm tile defined `inline` but referenced across translation units |
+
+**Each one was re-checked against upstream HEAD, not against our pin.** That is
+the rule opencv#29788 taught — it reported a defect upstream had fixed 69 days
+earlier. Every submission is still present on the branch it targets and applies
+clean against the commit named in its `PR.md`, verified 2026-09-02 against
+`onnxruntime@cc3da295e336`, `opencv 5.x@ed61538c9077`,
+`opencv 4.x@2ce3cbc2606e`, `opencv_contrib 5.x@17af220dd982`,
+`gstreamer@23616d5ccb36` and `iree@9d485fc23e8d`.
+
+**Two were withdrawn before filing, and two were retargeted.** The
+duplicate-search step turned up
+[onnxruntime#29741](https://github.com/microsoft/onnxruntime/pull/29741)
+("Support building ONNX runtime with clang on Windows", open since 2026-07-16),
+whose hunks for `MLOperatorAuthorImpl.cpp`, `DmlDFT.h`, `DmlGridSample.h` and
+`AbstractOperatorDesc.h` are **byte-identical to ours** — so both DML
+submissions are now marked SUPERSEDED, do-not-file, with a note that the useful
+move is a comment confirming an independent reproduction. Separately, `FindONNX`
+and the two NEON probes carry the identical defect on OpenCV `4.x`, which is the
+branch OpenCV fixes bugs on and merges forward; both were regenerated against
+`4.x`. Bundled MLAS (404 on `4.x`) and the 5.x cudev correctly stay on `5.x`.
+
+**These are not our local patches renamed.** They were regenerated from upstream
+HEAD and reshaped for a reviewer: the `PATCHED (clang-cl)` annotations dropped,
+local-only halves removed (opencv_contrib sends the `ulong` declaration and
+keeps the LLP64 `longlong`/`ulonglong` traits local), the UTF-8 BOM on
+`AbstractOperatorDesc.h` preserved where our local patch strips it, and
+`tunable.h` using `push_macro`/`pop_macro` rather than the bare `#undef` our
+build carries — so the header no longer changes what its includers see.
+
+**One correction to the record.** `opencv/004-dnn-ort-profiling-wchar.patch` is
+now graded ✔, not upstreamable: opencv fixed it on `5.x` in PR #29309
+(`toOrtPath()`), merged 11 days after the 5.0.0 tag this repo pins and 69 days
+before we filed the issue. The local patch stays until `OPENCV_VERSION` moves
+past it; it is a pin artefact, not a submission.
+
+Five process facts that are easy to get wrong, now recorded in
+`windows/upstream/README.md`: GStreamer takes **GitLab merge requests**
+(`gitlab.freedesktop.org`), not GitHub PRs — that repo is a mirror, and `gh`
+cannot search it; OpenCV wants the **maintenance branch** and its PR template
+has a checkbox for it; OpenCV also asks automated agents to end the PR title
+with **🤖🤖🤖** (`opencv_contrib`'s template does not); IREE enforces **DCO**, so
+both IREE patches carry `Signed-off-by`; and onnxruntime blocks commits on
+`lintrunner`, though the DML tree is exempt via its own `.clang-format` with
+`DisableFormat: true`.
+
+No build input changed: nothing under `windows/upstream/` is COPY'd or mounted
+by any Dockerfile (the one that was, `sccache-nvcc-quote-fix`, was retired when
+its PRs merged). Docs updated in the same unit — `docs/INDEX.md`, `AGENTS.md`'s
+repo map, `windows/scripts/patches/README.md`, and a lane pointer at the top of
+`docs/upstreamable-patches.md`.
+
+
 ## 2026-09-01 — Windows lane: the "container-start wedge" is a lost exit notification, not a wedge
 
 A requested full dual-lane rebuild (amd64 `-Gpu` → arm64 cross) was **not

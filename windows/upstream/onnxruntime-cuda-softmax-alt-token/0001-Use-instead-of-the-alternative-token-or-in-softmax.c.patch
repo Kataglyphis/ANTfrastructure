@@ -1,0 +1,28 @@
+From 922b6b5c64e7d9d3a03c210749d86ad61715b8ce Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:42 +0200
+Subject: [PATCH] Use || instead of the alternative token "or" in softmax.cc
+
+The alternative operator representations are not keywords in MSVC compatibility
+mode, which is the default for clang-cl and for MSVC without /permissive-, so
+"or" is parsed as an identifier and the dispatch condition does not compile.
+It is the only one in the file.
+
+Assisted-by: Claude (Anthropic)
+---
+ onnxruntime/core/providers/cuda/math/softmax.cc | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/onnxruntime/core/providers/cuda/math/softmax.cc b/onnxruntime/core/providers/cuda/math/softmax.cc
+index 609f178..9288108 100644
+--- a/onnxruntime/core/providers/cuda/math/softmax.cc
++++ b/onnxruntime/core/providers/cuda/math/softmax.cc
+@@ -28,7 +28,7 @@ Status SoftMaxComputeHelper(
+   auto X_data = reinterpret_cast<const CudaT_IN*>(X);
+   // According to nsight compute profiling, softmax_warp_forward_resource_efficient is better than dispatch_blockwise_softmax_forward when 1024 < D <=2048 and N >= 8192.
+   const bool use_softmax_warp_forward_resource_efficient = 1024 < D && D <= 2048 && D * sizeof(T) <= 4096 && N >= 8192;
+-  if ((D <= 1024 && D * sizeof(T) <= 4096) or use_softmax_warp_forward_resource_efficient) {
++  if ((D <= 1024 && D * sizeof(T) <= 4096) || use_softmax_warp_forward_resource_efficient) {
+     return dispatch_warpwise_softmax_forward<
+         CudaT_IN, CudaT_OUT, AccumulationType_t<CudaT_ACCUM>, is_log_softmax>(
+         stream, Y_data, X_data, gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(D), gsl::narrow_cast<int>(N));

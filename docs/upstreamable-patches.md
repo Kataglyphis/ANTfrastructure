@@ -4,6 +4,13 @@ Every third-party source change this repo carries, with the judgement call it
 needs before it becomes an upstream contribution. Written 2026-09-02, after the
 RVA23 switch; **do the RV23 verification first**, then work this list.
 
+**This page is the Linux chain.** The Windows chain keeps its own register,
+same grading scale, at
+[`upstream-windows-patches.md`](upstream-windows-patches.md); its prepared
+submissions live under `windows/upstream/`. Two entries are shared between the
+lanes and are owned here — the OpenCV FFmpeg 8/9 port (entry 2) and the libyuv
+RVV backport (entry 16).
+
 The patches themselves live in `linux/scripts/patches/<component>/NNN-name.patch`
 and are applied by `linux/scripts/01-core/apply-patch.sh`, which is idempotent
 (reverse-apply check first) and fails loudly rather than skipping. One further

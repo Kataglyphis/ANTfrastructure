@@ -1,0 +1,43 @@
+From d59ed12358434a54e805ee2d726d7cd9cbcfdf39 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] gst-plugins-base: gate have_sse/have_sse2 on cpu_family
+
+have_sse41 already checks host_machine.cpu_family(), but have_sse and have_sse2
+are set from cc.has_argument() alone. clang-cl accepts /arch:SSE and /arch:SSE2
+when targeting aarch64, so both come out true there and the x86 resampler
+sources get built, failing in mmintrin.h.
+
+Add the same check to both, in both argument-syntax branches.
+
+Assisted-by: Claude (Anthropic)
+---
+ subprojects/gst-plugins-base/meson.build | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/subprojects/gst-plugins-base/meson.build b/subprojects/gst-plugins-base/meson.build
+index ebd2861..ca1e6a1 100644
+--- a/subprojects/gst-plugins-base/meson.build
++++ b/subprojects/gst-plugins-base/meson.build
+@@ -441,8 +441,8 @@ if cc.get_argument_syntax() == 'msvc'
+   sse2_args = '/arch:SSE2'
+   # By default, x86 targets /arch:SSE2. But we should
+   # override that in case someone supplied CFLAGS
+-  have_sse = cc.has_argument(sse_args)
+-  have_sse2 = cc.has_argument(sse2_args)
++  have_sse = cc.has_argument(sse_args) and host_machine.cpu_family() in ['x86', 'x86_64']
++  have_sse2 = cc.has_argument(sse2_args) and host_machine.cpu_family() in ['x86', 'x86_64']
+   # audio-resampler-x86-sse41 uses _mm_cvtsi128_si64 which is only available on
+   # x86_64
+   have_sse41 = cc.has_argument(sse41_args) and host_machine.cpu_family() == 'x86_64'
+@@ -451,8 +451,8 @@ else
+   sse2_args = '-msse2'
+   sse41_args = '-msse4.1'
+ 
+-  have_sse = cc.has_argument(sse_args)
+-  have_sse2 = cc.has_argument(sse2_args)
++  have_sse = cc.has_argument(sse_args) and host_machine.cpu_family() in ['x86', 'x86_64']
++  have_sse2 = cc.has_argument(sse2_args) and host_machine.cpu_family() in ['x86', 'x86_64']
+   # _mm_cvtsi128_si64 is only available on x86-64 (see above)
+   have_sse41 = cc.has_argument(sse41_args) and host_machine.cpu_family() == 'x86_64'
+ endif

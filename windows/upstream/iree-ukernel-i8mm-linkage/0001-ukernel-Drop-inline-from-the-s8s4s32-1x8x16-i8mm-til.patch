@@ -1,0 +1,34 @@
+From b7421a67e7eaf4897ba35210cb12ef76420ccba0 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] [ukernel] Drop inline from the s8s4s32 1x8x16 i8mm tile
+
+mmt4d_arm_64_tiles.inl declares this tile through IREE_UK_MMT4D_TILE_FUNC_DECL
+as a plain external function, and the entry point takes its address from
+another translation unit. The definition is marked ALWAYS_INLINE inline, unlike
+every other concrete tile function in the file, so under MSVC inline semantics
+(clang-cl, arm64) no out-of-line copy is emitted and the tools fail to link on
+the symbol.
+
+always_inline does nothing here anyway: the function is only used by address.
+
+Assisted-by: Claude (Anthropic)
+Signed-off-by: Jonas Heinle <jonasheinle@googlemail.com>
+---
+ .../src/iree/builtins/ukernel/arch/arm_64/mmt4d_arm_64_i8mm.c  | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/runtime/src/iree/builtins/ukernel/arch/arm_64/mmt4d_arm_64_i8mm.c b/runtime/src/iree/builtins/ukernel/arch/arm_64/mmt4d_arm_64_i8mm.c
+index 8582e07..7c2c5b7 100644
+--- a/runtime/src/iree/builtins/ukernel/arch/arm_64/mmt4d_arm_64_i8mm.c
++++ b/runtime/src/iree/builtins/ukernel/arch/arm_64/mmt4d_arm_64_i8mm.c
+@@ -115,8 +115,7 @@ IREE_UK_MMT4D_TILE_FUNC_IMPL_FOR_M0(
+ // This int4 conversion trick is borrowed from the `qd8-f32-qc4w-gemm*`
+ // kernels in https://github.com/google/XNNPACK.
+ 
+-IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void
+-iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(
++void iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(
+     void* IREE_UK_RESTRICT out_tile, const void* IREE_UK_RESTRICT lhs_panel,
+     const void* IREE_UK_RESTRICT rhs_panel,
+     const iree_uk_mmt4d_params_t* params) {
