@@ -29,21 +29,37 @@ Companion drafts: [`hcsshim-lost-shutdown-notification-issue.md`](hcsshim-lost-s
 Process-isolated ltsc2025 containers: LSM service start deadlocks in
 `CEventDispatcher::WaitForSessionState` on an event that is never signalled
 
-## Summary
+## TL;DR
 
-Since a reboot on 2026-08-31, every process-isolated `servercore:ltsc2025`
-container on this host deadlocks for ~141 s during service start, then fails to
-signal its own exit. A trivial `RUN echo` build step went from **8 s to 441 s**
-overnight, with no change to the images or the toolchain.
+Process-isolated `servercore:ltsc2025` containers on this Windows 11 26200 host
+deadlock for ~141 s at service start. LSM blocks in
+`CEventDispatcher::WaitForSessionState` on an auto-reset event that is never
+set. Two dumps 30 s apart hold a byte-identical stack at 0.000 s thread CPU —
+captured, not inferred.
 
-The startup deadlock is captured: two dumps 30 s apart hold a byte-identical
-stack with 0.000 s thread CPU. LSM is blocked in `WaitForSessionState` on an
-auto-reset event that is never set.
+The same build step, unchanged, across the transition:
 
-The remaining 300 s of the 441 s is the teardown timeout, a second and possibly
-related defect (§ Teardown half). With the stock hcsshim 30 s timeout the
-teardown is truncated instead and the scratch layer is corrupted
-(`hcsshim::ExportLayer 0x3`).
+| | identical `RUN` step |
+|---|---|
+| 2026-08-30 17:29 | 3.441 s |
+| 2026-08-31 04:32 | 4.521 s |
+| 2026-09-01 11:36 | **144.7 s** |
+| 2026-09-01 19:38 | **143.7 s** |
+| 2026-09-02 00:24 | **143.9 s** |
+
+- Requires ltsc2025 **and** process isolation **and** the servercore service
+  set. Same host, same day: ltsc2022 process-isolated 1.8 s, ltsc2025 under
+  Hyper-V 3.5 s, nanoserver 2 s.
+- A **second, older** defect on this host loses the container exit
+  notification, so teardown runs to its timeout. On record here since
+  2026-08-04 and filed as
+  [hcsshim#2855](https://github.com/microsoft/hcsshim/pull/2855) on 2026-08-06.
+  It escalated from filesystem-heavy containers to *every* container at the
+  same time the start deadlock appeared. With the stock 30 s timeout the
+  teardown is truncated and the scratch layer is corrupted
+  (`hcsshim::ExportLayer 0x3`); with it raised, a trivial step costs 441 s.
+- Full user-mode dumps of the deadlock available on request. Single host — no
+  second machine here.
 
 ## Symptom
 
@@ -190,10 +206,40 @@ docker run --rm --isolation=process mcr.microsoft.com/windows/servercore:ltsc202
 
 ## Onset
 
-Until a reboot at **2026-08-31 15:12:59** this host started these containers in
-~8 s. Every boot since reproduces it; further reboots do not clear it. Nothing
-was installed at that boot — the Setup event log has zero entries between
-2026-08-28 and 2026-09-01. What changed is unidentified.
+The two symptoms have different histories.
+
+**The lost exit notification is not new.** It has been recorded on this host
+since 2026-08-04, root-caused to host-side silo teardown on 2026-08-06 against
+a measured 117 s worst case, and mitigated since then by a locally patched shim
+raising `tearDownTimeout` from 30 s — filed upstream the same day as
+hcsshim#2855. Through 2026-08-30 it tripped only on filesystem-heavy containers
+(OpenCV, ONNX Runtime GenAI, TVM, GStreamer); trivial containers did not. The
+mitigation was not continuous: Stevedore/containerd updates silently restore
+the stock binary, and it was re-deployed on 2026-08-09, 2026-08-21 and
+2026-08-28.
+
+**The service-start deadlock is new.** No LSM stall is recorded on this host
+before 2026-09-01; the dumps below are from 2026-09-02.
+
+**What changed around 2026-08-31.** The teardown timeout began firing on every
+container including `RUN echo` — a change of scope, not a first occurrence —
+and container start acquired the ~141 s floor. The identical build step
+measured 3.441 s (2026-08-30 17:29) and 4.521 s (2026-08-31 04:32), then
+144.7 s (2026-09-01 11:36), 143.7 s and 143.9 s.
+
+**Bounds, and what is ruled out.** A reboot at 2026-08-31 15:12:59 sits inside
+the transition, but nothing was measured between 04:46:06 and 15:19:18 that
+day, so the artifacts bound the change to that ~10.5 h window rather than
+isolating the reboot as its trigger. The Setup event log has zero entries
+between 2026-08-28 and 2026-09-01.
+
+The last change to this build chain was 2026-08-26: the base image digest moved
+`d5bbb830` → `eeaa17ae` (the digest in the Environment table below) along with
+three toolchain pins. That is **not** the trigger — the chain rebuilt and ran on
+`eeaa17ae` through 2026-08-31 03:23, and the 4.521 s healthy measurement above
+is from that image at 04:32, five days after the bump.
+
+What changed remains unidentified.
 
 ## Teardown half
 
@@ -278,8 +324,9 @@ from the host, so the deadlock sits across:
 | host kernel and session components | `10.0.26200.9278` |
 
 A 26100 user-mode session stack on a 26200 kernel — same revision, different
-base build. Documented as supported, and it ran at ~8 s per container here until
-2026-08-31. Offered as a lead because the two configurations that remove the
+base build. Documented as supported, and this exact pairing ran at ~4.5 s per
+container here until 2026-08-31. Offered as a lead because the two
+configurations that remove the
 stall are exactly the two that remove this pairing: ltsc2022 replaces the
 user-mode side, Hyper-V supplies a matching kernel. If recent servicing changed
 a session-notification contract on the 26200 side, a 26100 `lsm.dll` waiting on
