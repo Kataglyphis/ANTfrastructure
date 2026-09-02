@@ -232,6 +232,32 @@ import surface is genuinely strong at the core.
   brought back in sync — it was also missing the two pre-existing entries
   *"A source build produces UNPATCHED sources…"* and *"`atlbase.h` not found…"*.
 - `AGENTS.md`: the failure-mode count was stale at 35; it is 49.
+## 2026-09-02 — dual-lane DELIVERED: bk-winamd64 222/0/0, bk-winarm64 97/0/15
+
+The rebuild ordered on 2026-09-01 00:18 is complete and verified on both lanes:
+
+- **arm64 cross** (`bk-winarm64`): OK in 04:44:46 — first post-wave arm64 run,
+  so it re-paid toolchain (CPU base) + all media branches; smoke gate green at
+  exactly the recorded baseline **97/0/15** (floors 66/20; payload sections
+  skipped by design, QNN riding along, all wheels 0xAA64-verified).
+- **amd64 GPU** (`bk-winamd64`): after the ASAN root-cause fix, the full
+  re-run (new rustup pin re-keyed base; sanitizers re-keyed toolchain+media)
+  finished in **07:04:10** with the smoke gate at the best recorded state:
+  **222 assertions, 0 failed, 0 skipped** — including
+  `[PASS] AddressSanitizer compile + runtime works`, the assertion that
+  correctly killed the first attempt. The fresh toolchain log carries the
+  `clang_rt.asan_dynamic-x86_64.dll` installs that were missing.
+
+Recurring pattern, twice reproduced across both merge fan-ins: the FIRST
+read-mount of freshly exported heavy media layers fails
+`ActivateLayer 0x20 (file used by another process)` for ~2 solve attempts and
+then self-heals — consistent with Defender scanning the new layer files once
+(RTP re-enabled 2026-09-01 midday); the driver's transient-retry ladder absorbs
+it both times with no intervention. Total wall-clock for the whole order,
+including the teardown-regression diagnosis, shim deploy, one gate-caught
+toolchain defect and the full re-run: ~31 h — of which the (still open)
+lost-notification host defect taxed every uncached RUN with ~7.5 min.
+
 ## 2026-09-01 — the amd64 smoke gate caught the wave: sanitizers were off in the new toolchain
 
 The dual-lane rebuild's amd64 smoke gate went red on exactly ONE assertion —
