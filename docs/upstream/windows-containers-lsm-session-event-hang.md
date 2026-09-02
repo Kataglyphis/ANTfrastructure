@@ -66,6 +66,14 @@ so I can run whatever would help inside it — further dumps, ETW traces, kernel
 debugger output, extra experiments — and report back quickly. Just say what you
 need.
 
+---
+
+**A full debugging record follows** — the wait stack and how it was captured,
+the waited object and its holders, four measured configurations, ten falsified
+hypotheses, the timeline of both symptoms, and scripts to reproduce the
+diagnosis. It is long on purpose: it is meant to save you the experiments I
+have already run. The ask itself is the final section, *What would help*.
+
 ## Symptom
 
 - SCM logs `7022 The LSM service hung on starting` at 140.07 s. LSM = Local
