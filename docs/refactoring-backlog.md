@@ -439,6 +439,727 @@ evidence per item in `docs/upstreamable-patches.md`.
   removal are spelled out in `docs/upstreamable-patches.md` entry 16 — that page
   owns this one.
 
+## W2026-09-03. Audit findings — read-only sweep run during the RVA23 runtime lane
+
+Six independent lenses over linux/scripts/ and the Dockerfiles, every finding
+then put through an adversarial verifier that started from "this is wrong" and
+had to confirm it against the code. **10 findings survived, 5 were killed by
+the verifier** and are not listed. Nothing was edited: the RVA23
+chain was mid-flight, so this is a task list, not a change.
+
+Two of them explain the disk fight of that same evening, and one is proved by
+a line from the log of the build that was running while the audit ran.
+
+### WA. Per-arch MEDIA_SKIP flag files are COPY'd into the shared media `base` stage, so a riscv64-only edit re-runs the whole amd64 and arm64 media stage [high]
+
+`linux/Dockerfile.media:174`
+
+**What breaks.**
+Backlog section G queues four riscv64-only skip-flag retirements
+(MEDIA_SKIP_CSOUND, MEDIA_SKIP_GUDEV, MEDIA_SKIP_GLIB_STACK,
+MEDIA_SKIP_CAIRO_PANGO_PIXBUF), each a one-line edit to
+linux/scripts/03-media/core/arch-flags-riscv64.env, each to be 'proven by a
+real riscv64 media stage'. That file is COPY'd unconditionally (line 174, the
+last of the trio at 172-174) into the `base` stage that EVERY media stage
+derives from, so the edit invalidates that layer and everything after it in
+all three lanes. The amd64 and arm64 media builds then re-run from `base` —
+onnxruntime cpu (1452.0s), app-wheelhouse (1523.5s), tvm (1377.1s), litert
+(1353.6s), gstreamer (683.7s) and the rest — even though
+`media_load_arch_flags` only ever sources the flag file for the arch being
+built. Measured amd64 media stage = 134.3 min of RUN time, so one riscv64-only
+flag flip costs ~4.5 h of amd64+arm64 recompile for zero behavioural change on
+those arches.
+
+**Evidence.**
+linux/scripts/03-media/core/common.sh:64-71 — the candidate loop tries only
+"/opt/scripts/03-media/core/arch-flags-${arch}.env" and the sibling-dir
+fallback for the SAME ${arch}; nothing ever reads another arch's file (tree-
+wide grep for 'arch-flags' returns only these three COPYs, common.sh:65-66,
+and two comment references). `ARG TARGET_ARCH` is already declared at
+Dockerfile.media:124, above the COPYs, so `COPY
+linux/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env ...` would carry
+exactly the one file the image reads. This is the identical shape F6 already
+fixed for verify-media-artifacts.sh ('no longer sits in the shared base stage
+(8 edits since 2026-08-01, each re-paying the whole media stage on every
+arch)', archive-2026-09-02:309). git log since 2026-07-01: arch-flags-
+riscv64.env 5 commits, arm64 3, amd64 2. Step timings from out/build-
+logs/f2-media-validation.log (#34/#28/#30/#33/#69).
+
+**Verifier's correction.**
+The finding is real but should be restated on three points. SCOPE — it is the
+trio (Dockerfile.media:172-174), not line 174 alone. An edit to arch-flags-
+amd64.env (172) or arch-flags-arm64.env (173) has the same cross-arch blast
+radius and is strictly worse, since it also invalidates the two COPYs below
+it. The fix is ONE parameterized COPY replacing all three: `COPY --chmod=644
+linux/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env
+/opt/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env`. Caveat for whoever
+does it: ARG TARGET_ARCH at :124 has NO default (the
+`${TARGET_ARCH:-${TARGETARCH}}` fallback exists only in the ENV at :158, which
+a COPY source cannot use), so a hand-run `nerdctl build -f
+linux/Dockerfile.media` without --build-arg TARGET_ARCH would resolve to
+`arch-flags-.env` and hard-fail where it works today. Give the ARG a default
+(`ARG TARGET_ARCH=amd64`) or the narrowing trades a cache win for a new build
+break. TIMING — the riscv64 proof build itself costs nothing on the other
+lanes. build-cross-chain.sh:17-18 takes TARGET_ARCHES from
+resolve_arch_list/CROSS_TARGETS, so `CROSS_TARGETS=riscv64` builds only that
+lane. The wasted amd64/arm64 recompile is paid on the NEXT 3-arch chain, which
+would otherwise have hit cache on those two media stages. "Re-runs the whole
+amd64 and arm64 media stage" is right for a 3-arch build, not for the single-
+arch proof the backlog prescribes. NUMBER — "~4.5 h" is derived, not measured.
+134.3 min is the measured amd64 warm-ccache media stage (F6, out/build-
+logs/f2-media-validation.log); the arm64 figure was never measured in that
+log. Honest statement: ~2.2 h on amd64 plus an unmeasured arm64 stage of
+similar or greater size. The ccache/sccache cache mounts survive the
+invalidation, so this is already the warm number — it does not shrink further.
+ALSO WORTH NAMING — the same edit re-keys the runtime lane too:
+Dockerfile.package:278 COPYs the whole `linux/scripts/03-media/core/`
+directory, so all three arches' runtime `package` stages rebuild as well. That
+stage is cheap relative to media, but it means the blast radius is wider than
+the media stage alone.
+
+### WB. The whole linux/scripts/patches/ tree is bind-mounted into 8 media RUNs, each of which reads only its own subdirectory [high]
+
+`linux/Dockerfile.media:648`
+
+**What breaks.**
+Backlog items UA and UC delete patches/gstreamer/{003,004,005a,005b,006}; UD
+deletes patches/libyuv/001. Any of those edits changes the content digest of
+the whole-directory bind mount and therefore re-runs six RUNs that never read
+the touched subdirectory: app-wheelhouse (line 648, 1523.5s), litert build
+(line 472, 1353.6s), ORT genai (line 344, 371.8s), opencv build (line 606,
+93.8s), opencv-gst (line 1016, 127.1s) and libcamera (line 963, 72.6s). That
+is ~59 min per lane on a WARM amd64 ccache — roughly 3 h across the three
+arches, more on the arm64/riscv64 cross lanes — bought by deleting a
+GStreamer-only or libyuv-only patch file. The reverse also holds: the queued
+GEN1 riscv64 genai patch work re-pays app-wheelhouse and litert on every arch.
+
+**Evidence.**
+Each consumer names exactly one (or, for libcamera, two) subdirectories:
+build-litert.sh:533 -> /opt/scripts/patches/litert; build-
+opencv.sh:242,259,263 -> /opt/scripts/patches/opencv; build-app-
+wheelhouse.sh:646 -> /opt/scripts/patches/torchvision; 60-build-genai.sh:117
+-> /opt/scripts/patches/onnxruntime-genai; build-libcamera.sh:32,45 ->
+/opt/scripts/patches/libcamera + /opt/scripts/patches/libyuv; patch-gstreamer-
+sources.sh:9-11 -> /opt/scripts/patches/gstreamer. The mount is identical
+(`source=linux/scripts/patches`) at Dockerfile.media:344, 472, 606, 648, 870,
+912, 963, 1016. Durations from out/build-logs/f2-media-validation.log steps
+#28, #33, #39, #46, #74, #73. F6 (archive-2026-09-02:309) narrowed the ORT
+`--step cpu` and tvm mounts by exactly this reasoning but left the patches
+mount whole-tree everywhere; no backlog or archive entry mentions
+scripts/patches as a cache-key surface.
+
+**Verifier's correction.**
+CONFIRMED with a corrected blast radius. `linux/scripts/patches` is bind-
+mounted whole-tree into 8 RUNs in linux/Dockerfile.media (344, 472, 606, 648,
+870, 912, 963, 1016) while every consumer reads exactly one file — apply-
+patch.sh:18 and android-build-preamble.sh:107-123 both take a single patch
+path and never glob. BuildKit puts the whole mounted subtree in each RUN's
+cache key; the repo already proved this and gated it on the Windows lane
+(docs/windows-build-invariants.md:670-684, "Every file under a directory mount
+is part of that RUN's cache key" — it cost a full LLVM 23.1.0 recompile and is
+now enforced by BuildKit.ModuleClosure.Tests.ps1). Linux has no such gate.
+Three corrections to the claim: (1) OVERCOUNTED for the UA/UC trigger.
+libcamera (963, 72.6s) and opencv-gst (1016, 127.1s) are NOT recoverable waste
+when a gstreamer patch is deleted: 943:FROM gstreamer and 994:FROM gstreamer,
+and RUN 912 (build-gstreamer-stage.sh -> patch-gstreamer-sources.sh:9-11)
+genuinely reads patches/gstreamer, so the parent stage legitimately rebuilds
+and both children follow regardless of their own mounts. Recoverable there is
+genai 371.8s + litert 1353.6s + opencv 93.8s + app-wheelhouse 1523.5s =
+3342.7s ~= 56 min per lane on warm amd64 ccache, plus the inert re-run of
+gstreamer install-deps (870) and whatever RUNs follow each invalidated one
+inside its stage. (2) UNDERCOUNTED for the opposite trigger, which is the
+bigger one. The gstreamer stage carries the same whole-tree mount twice (870,
+912), so editing patches/libyuv/001 (UD), patches/onnxruntime-genai/001 (the
+queued GEN1 work) or patches/torchvision/001 re-pays the entire gstreamer
+build — the dominant RUN in that half of the file — plus libcamera and opencv-
+gst downstream, on every arch. (3) MISSED INSTANCE.
+linux/scripts/patches/generate-patches.sh is host-only tooling that never
+executes in any image (its only in-repo reference is the error message at
+apply-patch.sh:63) yet sits inside the mounted tree, so editing it re-keys all
+8 RUNs on all three arches for zero build effect — the exact shape F6 already
+fixed for verify-media-artifacts.sh and linux/qnn-sdk/*.md. On prior art: no
+backlog or archive entry mentions scripts/patches (grep is empty), and F6's
+"Still open here" list names only the genai/wasm/js script mounts.
+docs/gen1-riscv64-genai.md:165-172 does discuss the patches mount as a cache-
+key surface, but only for the genai RUN and only to argue it is redundant with
+the already-broad 03-media/build/onnxruntime tree mount; it never considers a
+patch edit in one component re-paying another component's stage, which is the
+finding. Fix note: narrow each mount to the per-component SUBDIRECTORY, not to
+the individual .patch file — a file-level mount source that later gets deleted
+makes BuildKit fail at cache-key time ("not found"), turning every future
+patch removal into a Dockerfile edit as well.
+
+### WC. SHIPPED-TRUTH A is inert for 10 of its 16 keys: the in-image probe emits no ADV line for them, so every one is a permanent SKIP [high]
+
+`linux/scripts/06-packaging/smoke-runtime-image.sh:665`
+
+**What breaks.**
+Bump `ARG ONNXRUNTIME_VERSION=v1.29.0` to `v1.30.0` in
+linux/Dockerfile.package:175 (or let
+IREE/OPENCV/LITERT/PYAV/CMAKE/NODE/UV/UBUNTU drift from what is actually
+built). Dockerfile.package:180-189 turns all ten of those ARGs into ENV, so
+the shipped wrapper advertises `ONNXRUNTIME_VERSION=v1.30.0` while carrying
+1.29.0. `_shipped_truth_probe` has no `printf 'ADV ONNXRUNTIME_VERSION'` line,
+so `adv` is empty in `_advert_verdicts` (line 817) and the gate emits `SKIP
+ONNXRUNTIME_VERSION image sets no ONNXRUNTIME_VERSION -- nothing advertised to
+check`. `check_advertised_versions` (line 991) only fails when ok+bad == 0,
+and the six ADV-backed keys keep that count non-zero, so the gate prints `pass
+"all 6 advertised version(s) match the shipped image"` and the manifest ships.
+Downstream consumers read the env label; the SKIP message is itself false (the
+image does set the key).
+
+**Evidence.**
+ADV printfs exist only at lines 665-671 (PYTHON_VERSION, PYTHON_MAJOR_MINOR,
+GCC_VERSION, LLVM_RELEASE, GSTREAMER_VERSION, VULKAN_VERSION, PYTORCH_EXTRA).
+HAVE printfs exist for 16 keys (672-704). `_ADVERTISED_VERSION_KEYS` (line
+784) lists 16. I ran `_advert_verdicts` verbatim (extracted with sed, no repo
+mutation) against a probe carrying deliberately wrong HAVE values -- OPENCV
+4.9.0, ONNXRUNTIME 1.27.0, IREE 3.10.0, LITERT 1.0.0 -- and got: `SKIP
+UBUNTU_VERSION`, `SKIP CMAKE_VERSION`, `SKIP NODE_VERSION`, `SKIP UV_VERSION`,
+`SKIP OPENCV_VERSION`, `SKIP ONNXRUNTIME_VERSION`, `SKIP
+ONNXRUNTIME_GENAI_VERSION`, `SKIP PYAV_VERSION`, `SKIP IREE_VERSION`, `SKIP
+LITERT_VERSION` -- zero BAD rows. Only
+PYTHON_MAJOR_MINOR/GCC_VERSION/LLVM_RELEASE/GSTREAMER_VERSION/VULKAN_VERSION
+produced verdicts. Corroborating: docs/cross-build-verification.md:398 and
+:448 still describe the gate as covering exactly the six ADV-backed keys ('the
+advertised-version table only covers the six keys listed above'), and its
+mutation record says 'A fails the vacuous-pass guard after six loud SKIPs' --
+the table was widened to 16 without widening the probe. docs/refactoring-
+backlog.md:619 records the opposite belief ('The advert-keys gate compares the
+RUNTIME's numeric prefix, so this skew is currently green'), so the IREE
+compiler/runtime skew entry is filed under a mechanism that never runs.
+
+**Verifier's correction.**
+The claim is real but overstated in three places and understated in one.
+CORRECT AS CLAIMED: `_shipped_truth_probe` (smoke-runtime-image.sh:661-708)
+emits `ADV` for only 7 names while `_ADVERTISED_VERSION_KEYS` (784) lists 16,
+so ten keys can never reach the comparator's OK/BAD arms. Running the real
+`_advert_verdicts` against a probe with deliberately wrong HAVE values yields
+5 OK / 11 SKIP / 0 BAD. The SKIP text is factually false:
+Dockerfile.package:180-189 does ENV those keys. CORRECTION 1 — it is 11 of 16,
+not 10. PYTHON_VERSION also SKIPs, because Dockerfile.package:199 deliberately
+does not ENV it ("nothing stages /opt/python-cross into this image"). So the
+gate's success line reads `all 5 advertised version(s) match the shipped
+image`, not 6. CORRECTION 2 — the proposed trigger cannot happen. Hand-bumping
+`ARG ONNXRUNTIME_VERSION=v1.30.0` in Dockerfile.package is caught at preflight
+by linux/scripts/01-core/verify-arg-consistency.sh:64-92 (slug `arg-
+consistency`), which fails when any Dockerfile ARG literal default differs
+from versions.env. The real trigger is the opposite direction: the label
+agrees with versions.env while the SHIPPED ARTIFACT does not — a PyPI wheel
+shadowing the source build, a `--no-deps` install, a distro binary winning
+PATH, or a dev-tagged build. That is precisely the skew gate A was written
+for. CORRECTION 3 — four of the ten keep a second net. `check_ml_version_pins`
+(smoke-runtime-image.sh:355) delegates to smoke-torch-venv.sh
+`assert_pinned_versions` (line 75), which compares ONNXRUNTIME_VERSION,
+ONNXRUNTIME_GENAI_VERSION, LITERT_VERSION and OPENCV's MAJOR against the in-
+image versions.env (lines 94-98). Those four would still red on a gross
+mismatch. CORRECTION 4 (understated) — the genuinely unguarded set is
+IREE_VERSION, PYAV_VERSION, OPENCV minor/patch, UBUNTU_VERSION, CMAKE_VERSION,
+NODE_VERSION and UV_VERSION: no other gate in linux/scripts compares any of
+them to anything. IREE is the live instance — docs/refactoring-backlog.md:619
+records the CONFIRMED `iree-base-compiler 3.11.0` vs `iree-base-runtime
+3.11.0.dev0+e4a3b04` skew as "currently green" because "the advert-keys gate
+compares the RUNTIME's numeric prefix", and that comparison never executes.
+Were the runtime to drift to 3.10.0, the image would ship advertising
+IREE_VERSION=v3.11.0 and the smoke would print `SKIP IREE_VERSION image sets
+no IREE_VERSION` then `pass all 5 advertised version(s) match`. ROOT CAUSE
+(not in the claim): commit d27cdee1 fixed only the Dockerfile half; `git show
+d27cdee1 -- linux/scripts/06-packaging/smoke-runtime-image.sh` is an empty
+diff. The missing enforcement is in verify-advertised-keys.py:63, which
+computes `checked` from the `_ADVERTISED_VERSION_KEYS` string alone and never
+requires a matching `ADV <key>` printf in the probe — its own FAIL message
+asks for "a HAVE probe + a row in _ADVERTISED_VERSION_KEYS" and forgets the
+ADV line it depends on. tests/test-advertised-keys.sh:54 synthesizes the ADV
+line, so the suite cannot see the gap either. The one-line fix is ten more
+`printf 'ADV <KEY> %s\n' "${<KEY>:-}"` lines in the heredoc; the durable fix
+is to make verify-advertised-keys.py grep the probe for `ADV <key>` as well as
+the table.
+
+### WD. The two guards built to prevent an unchecked version key cannot detect a missing ADV probe: one checks list membership only, the other fabricates the ADV line [medium]
+
+`linux/scripts/verify-advertised-keys.py:64`
+
+**What breaks.**
+Delete the line `printf 'ADV GSTREAMER_VERSION %s\n' "${GSTREAMER_VERSION:-}"`
+from `_shipped_truth_probe` (smoke-runtime-image.sh:669) -- a plausible edit
+while reworking the probe. `verify-advertised-keys.py` builds `checked` purely
+from the `_ADVERTISED_VERSION_KEYS` string (line 62-64), so preflight slug
+`advert-keys` still reports 'OK: every advertised version key is checked or
+excused'. `linux/scripts/tests/run-tests.sh` still passes, because test-
+advertised-keys.sh:54 constructs `"ADV $1 $2\nHAVE $1 $3"` itself instead of
+driving the real probe. The runtime smoke silently demotes GSTREAMER_VERSION
+to a SKIP row and a wrong GStreamer label ships green. This is the mechanism
+that let finding #1 happen and will let it recur after any point fix.
+
+**Evidence.**
+`verify-advertised-keys.py:62-64` builds its `checked` set by regexing
+`_ADVERTISED_VERSION_KEYS="…"` out of the smoke -- nothing ever greps for the
+probe line that would supply the value. Its own failure text (76-79) tells you to
+add both a probe and a table row, but only the row is verified. The unit test
+cannot catch it either: `tests/test-advertised-keys.sh:54` builds the probe output
+by hand instead of driving the real probe. The probe's own contract is documented
+in docs/cross-build-verification.md -- that page owns it; this entry only records
+that nothing checks the two halves against each other.
+
+**Verifier's correction.**
+Accurate statement: neither guard verifies that the in-image probe actually
+emits an `ADV <key>` line, so a key can sit in `_ADVERTISED_VERSION_KEYS` and
+be reported fully covered while never being compared. This is not a latent
+risk — it is the current state for 10 of the 16 keys. `_shipped_truth_probe`
+(linux/scripts/06-packaging/smoke-runtime-image.sh:665-671) emits ADV for only
+PYTHON_VERSION, PYTHON_MAJOR_MINOR, GCC_VERSION, LLVM_RELEASE,
+GSTREAMER_VERSION and VULKAN_VERSION (plus PYTORCH_EXTRA). UBUNTU_VERSION,
+CMAKE_VERSION, NODE_VERSION, UV_VERSION, OPENCV_VERSION, ONNXRUNTIME_VERSION,
+ONNXRUNTIME_GENAI_VERSION, PYAV_VERSION, IREE_VERSION and LITERT_VERSION are
+in the 16-key table (smoke:784-787), have working HAVE probes (smoke:692-701)
+and are ENV-set in the shipped image (linux/Dockerfile.package:180-189), yet
+`_advert_verdicts` (smoke:820, 825-826) sees an empty `adv` and emits `SKIP
+<key> image sets no <key> -- nothing advertised to check` — a reason that
+stopped being true when commit d27cdee1 added those ENVs. Gate A therefore
+still asserts 5 rows, not 16. The three guards that should catch this cannot:
+verify-advertised-keys.py:58-64 derives `checked` from the table string alone;
+the vacuous-pass guard (smoke:1009-1010) only fires when *every* key skips;
+and test-advertised-keys.sh:54 hand-writes the ADV line it tests against. The
+consequence is a documentation/artefact divergence the repo already published:
+docs/refactoring-backlog-archive-2026-09-02.md:432-437 says "16 keys are
+checked", Dockerfile.package:169 says the SKIPs were fixed, and docs/cross-
+build-verification.md:398-400 and 448-450 still describe six keys — while the
+shipped gate compares five. The correct guard is to have verify-advertised-
+keys.py require, for each key in `_ADVERTISED_VERSION_KEYS`, both an `ADV
+<key>` and a `HAVE <key>` emitter in the probe, and/or to have the smoke fail
+(not SKIP) when a key the image genuinely ENV-sets produced no ADV row. The
+claim's specific illustration is the one inaccurate part: the `ADV
+GSTREAMER_VERSION` line at smoke:669 still exists and is one of the rows that
+does assert, so that deletion is hypothetical; the ten ENV-only keys are the
+live instance.
+
+### WE. check_healthcheck_exec runs a hardcoded copy of the HEALTHCHECK, not the image's own; check_healthcheck_config only asserts the constant Test[0] [medium]
+
+`linux/scripts/06-packaging/smoke-runtime-image.sh:1206`
+
+**What breaks.**
+Edit linux/Dockerfile.torch:149 to `CMD /opt/venv/bin/python -c "import
+orchestr_ant_ion.server" || exit 1` (a rename, a venv interpreter path change,
+or a probe swap). Every shipped container then flaps `unhealthy` and
+orchestrators refuse to route to it. Both healthcheck gates stay green:
+`check_healthcheck_exec` executes its own hardcoded `/opt/venv/bin/python3 -c
+'import onnxruntime'`, which still works, and `check_healthcheck_config` (line
+141) reads `hc.get('Test',[''])[0]`, which is the OCI verb `CMD-SHELL`/`CMD`,
+never the command -- so it can only distinguish 'a HEALTHCHECK exists' from
+'none', not right from wrong. The runtime smoke exits 0 and build-runtime-
+manifest.sh:309 publishes the index.
+
+**Evidence.**
+smoke-runtime-image.sh:1206 hardcodes `/opt/venv/bin/python3 -c 'import
+onnxruntime'` under a comment claiming 'Run the ACTUAL HEALTHCHECK command,
+not just parse its Test string'. linux/Dockerfile.torch:148-149 is the real
+definition. check_healthcheck_config:146 prints `pass "HEALTHCHECK configured:
+${healthcheck}"` where `${healthcheck}` is Test[0] -- a constant verb, so the
+pass message also misreports what was checked. `inspect_image_config` is
+already used elsewhere in the file (lines 22-24, 100), so reading the real
+Test[1] and running it needs no new machinery. docs/refactoring-backlog-
+archive-2026-08-10.md:478 records this as closed ('HEALTHCHECK now EXECUTED
+not just [parsed]'), i.e. the repo believes the command is read from the
+image.
+
+**Verifier's correction.**
+Accurate as stated, with two line-number/scope refinements. The hardcoded
+probe is at smoke-runtime-image.sh:1207 (function opens :1202, comment :1199).
+And check_healthcheck_exec is not a gate that can never fail: it does catch a
+broken venv interpreter or an unimportable onnxruntime — the cases its comment
+names. What it cannot catch is the change class it was added to guard against:
+any edit to Dockerfile.torch:149 itself. Because the command is a hand-
+maintained duplicate rather than Config.Healthcheck.Test[1] read from the
+image, the smoke keeps executing the OLD command after the HEALTHCHECK
+changes, so both healthcheck gates stay green while every shipped container
+reports unhealthy. check_healthcheck_config's Test[0] is confirmed constant in
+production logs (`PASS HEALTHCHECK configured: CMD-SHELL`, out/build-
+logs/runtime-retry2.log, all three arches), so it is present-vs-absent only
+and its pass message misstates what was checked. Fix is one line each: read
+Test[1] via the existing inspect_image_config helper, assert it non-empty, and
+run that string instead of the literal.
+
+### WF. The app-wheel ratchet silently disarms when the ok-count cannot be parsed, falling back to the exit status the ratchet exists to distrust [medium]
+
+`linux/scripts/06-packaging/smoke-runtime-image.sh:254`
+
+**What breaks.**
+The sibling app repo changes its summary wording (e.g. `=== 15/15 ok,` -> `===
+15/15 passed,`) or the invocation gains `--json`. `sed -n 's/.*===
+\([0-9]\{1,\}\)\/[0-9]\{1,\} ok.*/\1/p'` then matches nothing, `_wheel_ok` is
+empty, `[ -n "${_wheel_ok}" ] && [ "${_wheel_ok}" -lt "${_wheel_floor}" ]`
+short-circuits false, and control falls to the else branch which prints `pass
+"app wheel smoke passed on-target (amd64, ? ok >= 15)"`. The gate is then back
+to exit-status-only, which the comment at line 239-243 documents as
+insufficient: the app exits 0 whenever `failures == 0` and reports a vanished
+component as a WARNING. An amd64 wrapper that lost torchvision, tvm and pyav
+(optional/warning results) ships as `latest-cross` with a green ratchet line
+naming the floor it never enforced.
+
+**Evidence.**
+The count is produced by exactly one line in a DIFFERENT repo:
+/home/bigjuicyjones/GitHub/Kataglyphis-Orchestr-ANT-
+ion/orchestr_ant_ion/smoke/__main__.py:73 `f"=== {passed}/{len(results)} ok,
+"`, reached only on the non---json path (line 68-74); `main` returns 0
+whenever `failures` is empty (line 76), and `warnings` (optional checks) are
+excluded from `failures` (line 58). ContainerHub pins that repo only by
+APP_REF (linux/Dockerfile.torch:37, v0.0.27) -- nothing in ContainerHub gates
+the output format, so this is an unguarded cross-repo string contract. The `?`
+placeholder at smoke-runtime-image.sh:258 (`${_wheel_ok:-?}`) shows the empty
+case was anticipated for the message but not for the verdict. Backlog line 84
+tracks raising the riscv64 floor 12 -> 13 but not this parse hole.
+
+**Verifier's correction.**
+The mechanism is exactly as claimed, but three parts of the offered scenario
+are overstated and should be restated: 1. THE HEADLINE EXAMPLE IS PARTLY
+WRONG. `check_arch_parity` (smoke-runtime-image.sh:584-618) independently
+asserts dist-info presence for `_PARITY_WHEELS = "torch torchvision
+ai_edge_litert iree_base_compiler iree_base_runtime onnxruntime_genai"` (line
+534) against a per-arch exemption list (`_parity_exempt`, line 540-553) that
+grants amd64 nothing. An amd64 wrapper that LOST torchvision would therefore
+fail ARCH-PARITY regardless of the ratchet. The correct blast radius is
+narrower and split in two: - components absent from `_PARITY_WHEELS` — tvm,
+pyav/av, pillow, opencv-python — where a vanished wheel is caught by nothing
+but the ok-count; and - PRESENT-BUT-BROKEN wheels on any arch, including
+torchvision, since check_arch_parity reads dist-info directories only and
+never executes the wheel. That second case is precisely the failure the
+ratchet was built for (archive-2026-08-10.md:425 records the app-wheel smoke
+catching a broken LiteRT that imported fine). 2. "SILENTLY" NEEDS
+QUALIFICATION. The app is pinned by tag (`APP_REF=v0.0.27`,
+linux/scripts/01-core/versions.env:329, mirrored at
+linux/Dockerfile.torch:37/102), so an upstream push cannot drift the format
+into a running build. The trigger is a deliberate ContainerHub commit bumping
+APP_REF to an app version whose summary wording changed. The `--json` half of
+the scenario is not reachable at all: line 252 invokes `python -m
+orchestr_ant_ion.smoke` as a fixed literal with no flag forwarding, so
+`--json` requires editing ContainerHub. The defect is that such a bump disarms
+the ratchet with nothing going red — not that the format can drift on its own.
+3. IT IS INVISIBLE TO THE GATE, NOT TO A READER. Line 258 prints `? ok >= 15`
+via `${_wheel_ok:-?}`, and line 253 dumps the full smoke output, so a human
+reading the chain log can see the parse failed. The defect is that the verdict
+is green and FAILURES is not incremented. Accurate statement: the app-wheel
+ratchet's floor comparison is guarded by `[ -n "${_wheel_ok}" ]`, so an
+unparseable ok-count routes to `pass` instead of `fail`. The floor is then
+unenforced and the verdict reverts to the app's exit status, which is 0
+whenever `failures` is empty and treats every optional check (tvm, pyav,
+cv2-dnn, cv2-freetype, litert, iree) as a warning. This is reachable via an
+APP_REF bump to an app whose summary wording changed, and it leaves present-
+but-broken wheels and the untracked components (tvm, pyav, pillow, opencv-
+python) with no gate at all. The fix matches the pattern already used 20 lines
+below for the ONNX-EP sentinel: `fail` when the count cannot be parsed rather
+than falling through to `pass`.
+
+### WG. `if ! build_canadian_native_gcc_for …` disables errexit for the whole multi-hour builder run, so build-gcc.sh's exit code is discarded [high]
+
+`linux/scripts/02-toolchain/gcc.sh:383`
+
+**What breaks.**
+During the Canadian native GCC build for arm64/riscv64, `bash
+"${GCC_CROSS_BUILDER}" …` (gcc.sh:315) runs `make install-gcc install-target-
+libgcc install-target-libstdc++-v3 install-target-libatomic` (build-
+gcc.sh:865). `install-gcc` runs first and installs ${native_prefix}/bin/gcc
+and bin/g++; if a later target then fails — ENOSPC mid-install (this repo's
+recurring disk emergency), or the libstdc++ std-module breakage the tree
+already has a patch for — make stops and build-gcc.sh (set -Eeuo pipefail)
+exits 1. Because build_canadian_native_gcc_for is invoked as the condition of
+`if !`, bash suppresses errexit for its entire dynamic extent, so that non-
+zero exit does NOT abort: execution falls through to gcc.sh:326-327 `[ -x
+"${native_prefix}/bin/gcc" ] || die` and `[ -x …/g++ ] || die`, which both
+PASS (install-gcc already put them there), then to assert_gcc_elf_arch
+(gcc.sh:332-333), which only reads the ELF header (gcc.sh:105-130 — readelf +
+a Machine: string compare, it never compiles or links anything). The
+function's last statement is `log "Installed native GCC …"`, so it returns 0,
+the `if !` sees success and prints no warning, and the toolchain stage reports
+green while shipping a target-native GCC with no target libstdc++/libatomic.
+The failure resurfaces hours later in Dockerfile.android's GCC swap or in the
+first C++ compile that uses it.
+
+**Evidence.**
+gcc.sh:383 `if ! build_canadian_native_gcc_for "${full_version}" "${prefix}"
+"${triplet}" "${normalized_target}"; then`. The comment directly above it
+(gcc.sh:380-382) states the intent: "build_canadian_native_gcc_for returns 1
+(instead of dying) when the opt-in skip knob is set; keep that skip from
+aborting the remaining targets even with errexit live" — i.e. the `if !` is
+meant to tolerate exactly one `return 1` (gcc.sh:288,
+GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE), but it also swallows every other
+non-zero status inside the function, including the builder's. Note the
+contrast: every OTHER failure in that function is raised with `die`
+(gcc.sh:265, 266, 290, 326, 327), which calls `err` → `exit 1` (logging.sh:79)
+and therefore survives the suppression; only the builder invocation at
+gcc.sh:315 relies on errexit and is the one that is lost. Suppression
+confirmed empirically on this host's bash 5.3.9: `set -euo pipefail; f() {
+bash -c "exit 3"; echo REACHED; return 0; }; if ! f; then echo saw; fi` prints
+REACHED and exits 0. Related, same file: the parallel driver's per-target
+subshell (gcc.sh:475 `( JOBS=… _gcc_build_cross_target "${t}" ) > log 2>&1 &`)
+routes through the same `if !`, so a parallel target build hits it too. Not
+present in docs/refactoring-backlog.md or any refactoring-backlog-archive-*.md
+(greps for 'canadian', 'errexit', 'GCC_CANADIAN' return only unrelated
+entries).
+
+**Verifier's correction.**
+The core is real: at linux/scripts/02-toolchain/gcc.sh:383 the `if !` wrapper
+— added to tolerate the single `return 1` at gcc.sh:290
+(GCC_CANADIAN_CROSS_SKIP_ON_LINK_FAILURE) — also disables errexit for the
+multi-hour `bash "${GCC_CROSS_BUILDER}"` invocation at gcc.sh:315, whose exit
+code is then discarded, and the only checks that follow (gcc.sh:326-327 `[ -x
+] || die`, gcc.sh:332-333 readelf-only assert_gcc_elf_arch defined at
+gcc.sh:105-131) cannot detect a partially-installed toolchain. Scope nit:
+errexit is suppressed for the function's dynamic extent, not "the whole
+builder run" — but that extent contains the entire builder call, so the
+practical effect is as claimed. Two specifics need fixing. (1) Both named
+triggers are wrong. The libstdc++ std-module/fenv failure is recorded in-tree
+at gcc.sh:300 as `make[3]: [Makefile:868: stamp-modules-bits] Error 1
+(ignored)` — make ignores it, so build-gcc.sh never exits non-zero for it. And
+any failure during the compile phase (build-gcc.sh:737 `make -j"${JOBS}" all-
+gcc all-target-libgcc all-target-libstdc++-v3 all-target-libatomic`) occurs
+BEFORE any install, leaving ${native_prefix}/bin/gcc absent, so gcc.sh:326 `||
+die` does hard-fail. The genuine silent window is narrow: only a non-zero exit
+AFTER `make install-gcc` has already placed bin/gcc, i.e. a failure in the
+later targets of the single install command at build-gcc.sh:762 (`make
+install-gcc install-target-libgcc install-target-libstdc++-v3 install-target-
+libatomic`) — ENOSPC being the realistic case given this repo's recurring disk
+pressure — or in the final unguarded `rm -rf "${BUILD_DIR}"` at build-
+gcc.sh:856 (every other post-install command is `|| true`-guarded). (2) It
+does not ship a broken artifact. linux/scripts/06-packaging/smoke-runtime-
+image.sh:1265 check_native_compiler_battery (invoked at :1419)
+compiles+links+RUNS C `-latomic` and C++ hello/exceptions+STL/std::thread/LTO
+under binfmt/qemu and hard-`fail`s, and validate-compilers.sh's C link smoke
+hard-fails in Dockerfile.package on a missing libgcc. So the accurate impact
+is: the toolchain stage's Canadian-cross gate cannot fail for a builder
+failure that happens after install-gcc, it prints "Installed native GCC …" and
+goes green, and the defect only surfaces at the end-of-chain runtime smoke
+hours later — note swap-native-gcc.sh:143 `_smoke_native_gcc` is warning-only,
+so the android stage does not catch it either. Minimal fix: capture the status
+instead of suppressing it, e.g. `local _rc=0; build_canadian_native_gcc_for …
+|| _rc=$?` and treat `_rc=1` (the documented skip) as tolerable while dying on
+anything else, or have the skip path set a sentinel variable rather than
+returning 1.
+
+### WH. RUST_VERSION never reaches the package stage: both rustc-pin gates are structurally inert, and the shipped image resolves rustc/cargo to Ubuntu 1.93.1 against a 1.98.0 pin [high]
+
+`linux/scripts/06-packaging/setup-package-image.sh:463`
+
+**What breaks.**
+`report_rust_provenance()` is the HARD GATE added after the 2026-08-07
+incident (its own comment at lines 456-462: "if the shipped rustc does not
+match RUST_VERSION, the image is wrong and this build stops... Never again
+silently"). It opens with `local want="${RUST_VERSION:-}"` and returns 0 with
+a NOTE when that is empty. RUST_VERSION is empty on every single build of the
+package stage: `linux/Dockerfile.package` declares no `ARG RUST_VERSION` and
+no `ENV RUST_VERSION` anywhere (the only Dockerfile ARG in the Linux tree is
+`Dockerfile.toolchain:229`, a different image), `linux/Dockerfile.base` never
+exports it either, and `setup-package-image.sh` sources only `platform.sh` +
+`package-lists.sh`, never `versions.env` (the file's own comment at line ~353
+states this: "this script sources platform.sh/package-lists.sh only, not
+common.sh, so nothing loads the baked versions.env into its env"). The twin
+guard in `wire_cargo_symlinks()` at line 317 (`if [ -n "${RUST_VERSION:-}" ]
+&& [ -x "${CARGO_HOME}/bin/rustc" ]`) is gated on the same empty variable and
+is skipped as well. Net effect measured live on all three arches in the
+2026-09-02 runtime build: the package image resolves `cargo` and `rustc` to
+Ubuntu's debs (`/bin/rustc -> /usr/lib/rust-1.93/bin/rustc`, rustc 1.93.1)
+while `linux/scripts/01-core/versions.env:113` pins `RUST_VERSION=1.98.0` —
+i.e. the exact regression these gates exist for is live again and both gates
+printed the skip line instead of failing. Nothing downstream catches it:
+`verify-advertised-keys.py:23` EXCUSES `RUST_VERSION` with the reason "a
+build-stage toolchain; rustc is not shipped in the runtime image", which is
+false — `linux/Dockerfile.package:110-111` COPYs `/usr/local/rustup` and
+`/usr/local/cargo` into the runtime image precisely so it is shipped — so the
+smoke's advertised-vs-actual gate skips it too, and `grep -n 'rust\|cargo'
+linux/scripts/06-packaging/smoke-runtime-image.sh` returns zero hits. A
+consumer (the comment names Kataglyphis-RustProjectTemplate) hits an MSRV
+error that blames its own dependency.
+
+**Evidence.**
+Code: setup-package-image.sh:463-466 `local want="${RUST_VERSION:-}" got` /
+`if [ -z "${want}" ]; then echo " NOTE: RUST_VERSION unset; cannot verify the
+toolchain matches its pin." >&2; return 0`. Same file:317 `if [ -n
+"${RUST_VERSION:-}" ] && [ -x "${CARGO_HOME}/bin/rustc" ]; then`. Live proof,
+/home/bigjuicyjones/GitHub/Kataglyphis-ContainerHub/out/build-logs/runtime-
+retry2.log, three occurrences (lines 402047-402052 amd64, 1358864-1358869
+arm64, 2046845-2046850 riscv64): `#49 60.38 cargo /bin/cargo ->
+/usr/lib/rust-1.93/bin/cargo (cargo 1.93.1 ...)` `#49 60.41 rustc /bin/rustc
+-> /usr/lib/rust-1.93/bin/rustc (rustc 1.93.1 ...)` `#49 60.50 NOTE:
+RUST_VERSION unset; cannot verify the toolchain matches its pin.` On
+arm64/riscv64 the same block also shows `rustup /usr/local/cargo/bin/rustup ->
+... (no --version)` — the copied rustup is an x86_64 binary there. Secondary
+observation on the mechanism: `_link_unless_rustup_provides()` at setup-
+package-image.sh:298 accepts a DANGLING symlink as "rustup provides it" (`[ -e
+"${link_path}" ] || [ -L "${link_path}" ]`), so its documented apt fallback
+does not fire for a broken link — the log shows all six "Keeping existing
+/usr/local/cargo/bin/<tool>" lines immediately before `command -v` still lands
+on /bin. Backlog checked: `grep -n 'RUST_VERSION|rustc' docs/refactoring-
+backlog.md docs/refactoring-backlog-archive-*.md` returns only the unrelated
+meson `rustc.cmd_array()` item (UA) and a Windows-lane note; `grep -i 'rust
+provenance|RUST_VERSION unset|1.93.1'` across backlog + CHANGELOG + changelog
+archives returns nothing.
+
+**Verifier's correction.**
+The claim is accurate as written; two refinements. (a) Date of the live
+evidence: the proof is in out/build-logs/runtime-retry2.log with mtime
+2026-08-27 14:06, not the "2026-09-02 runtime build" the claim names. The line
+numbers and content it cites are correct. (b) Missing mechanism detail that
+sharpens the fix: the orchestrator is NOT failing to forward the value.
+linux/scripts/01-core/version-forwarding.sh:26-40 forwards every versions.env
+key not preceded by a `# noforward` comment, and versions.env:113
+RUST_VERSION=1.98.0 carries no such marker — so `--build-arg
+RUST_VERSION=1.98.0` IS passed to the package build and BuildKit discards it
+because Dockerfile.package declares no matching ARG. version-forwarding.sh's
+own header comment names this failure class exactly: "a build arg no
+Dockerfile declares is ignored by BuildKit; forgetting to forward a consumed
+variable is not". The fix is therefore a one-line `ARG RUST_VERSION` (plus an
+ENV, if it should also be advertised in the image config) in
+Dockerfile.package's `package` stage — not a change to the forwarding.
+Additional supporting evidence for the "no gate covers this" leg: verify-arg-
+consistency.sh:34-55 checks only the Dockerfile-ARG -> versions.env direction
+(is every version-named ARG forwarded, and does its default match). It has no
+check in the reverse direction — that a script running inside a stage which
+reads ${VAR} has a corresponding ARG declared in that stage's Dockerfile — so
+this whole class of "silently empty in the RUN" bug is invisible to the
+preflight suite, not just this instance.
+
+### WI. cross_stage_is_per_arch leaks its `for s` loop variable and silently corrupts the disk-guard's protected-slug list (base + compiler cache exports are never protected) [high]
+
+`linux/scripts/01-core/stage-defs.sh:135`
+
+**What breaks.**
+`cross_stage_is_per_arch()` declares `local stage="$1"` but NOT `local s`, and
+iterates `for s in "${CROSS_PER_ARCH_STAGES[@]}"`. Its only caller that
+iterates its own `s` is `_disk_guard_protected_slugs`
+(linux/scripts/01-core/disk-guard.sh:68 `for s in "${CROSS_STAGE_ORDER[@]}"`,
+:74 `if cross_stage_is_per_arch "${s}"`). On the return-1 path (a NON-per-arch
+stage: base, compiler, runtime) the callee runs its loop to completion and
+leaves the caller's `s` set to `android`, so line 81 evaluates
+`cross_stage_tag "${s}"` with s=android and no arch -> `<repo>:cross-android-`
+instead of the stage's real tag. Concrete break: run `build-cross-chain.sh
+--from-stage base` (or any full chain) and let free space fall below
+CROSS_DISK_GUARD_GB right after the base stage. `_chain_stage_disk_guard base`
+-> `_disk_guard_protected_slugs base` returns `..._cross-android-,..._cross-
+sdk-amd64,...` with `..._cross-compiler-amd64` MISSING.
+`_disk_guard_pick_victim` is oldest-mtime-first, so the compiler slug (the
+oldest, written first) is the first victim and gets `rm -rf`'d minutes before
+the compiler stage rebuilds LLVM/GCC with `--cache-from type=local,src=<that
+dir>` -> full cold LLVM/GCC rebuild (this repo's own notes: 50 min warm vs 11
+h cold). The same corruption drops BOTH `base` and `cross-compiler-amd64` from
+`_disk_guard_protected_slugs ''`, which is the list used by the in-stage
+watchdog (`_chain_disk_watch_start`) and the runtime-lane entry gate
+(`_chain_runtime_lane_disk_gate`) — so during the multi-hour runtime lane
+those two slugs are the first things trimmed. The unit suite cannot catch
+this: linux/scripts/tests/test-disk-guard.sh:54 stubs
+`cross_stage_is_per_arch() { [ "$1" = "sdk" ] || [ "$1" = "media" ]; }`, which
+does not touch `s`, and then asserts the CORRECT list including
+`repo_img_compiler`. The test passes green while production returns a
+different list.
+
+**Evidence.**
+Live proof from the build running right now — out/chain-media-
+runtime.log:952892: `[INFO] [disk-guard] 113G free < 120G after stage android
+— LRU-pruning cache exports in /home/bigjuicyjones/.cache/kata-buildcache
+(protected: ghcr.io_kataglyphis_kataglyphis_beschleuniger_cross-android-)`
+After `android` the only remaining stage is `runtime`, whose tag is empty
+(stage-defs.sh:152), so the correct output is `protected: none`. Instead it
+printed an arch-less `cross-android-` slug that does not exist on disk. Read-
+only repro (sourcing the real functions, stubbing only
+arch_list_to_words/stage_enabled): after base : ..._cross-android-,..._cross-
+sdk-amd64,... <- cross-compiler-amd64 ABSENT after android : ..._cross-
+android- empty (watch) : ..._cross-android-,..._cross-android-,..._cross-sdk-
+amd64,... <- base AND cross-compiler-amd64 ABSENT Not present in
+docs/refactoring-backlog.md or any refactoring-backlog-archive-*.md (grepped
+for is_per_arch / protected slug / loop variable).
+
+**Verifier's correction.**
+The mechanism, the file:line, the repro values and the "unit test cannot catch
+this" analysis are all correct as stated. Three refinements to the severity
+framing: 1. The live log line offered as evidence (out/chain-media-
+runtime.log:952892, after stage `android`) PROVES the leak but is itself
+harmless. After `android` the only remaining stage is `runtime`, whose correct
+protected list is genuinely empty, so protecting a phantom slug changed
+nothing — the run correctly pruned cross-media-amd64 and proceeded. The damage
+lives in the other two shapes of the bug, which this run never exercised (it
+was a --from-stage media run). 2. The sharp damage is the
+`completed_stage=base` case: it drops `<repo>:cross-compiler-amd64` — the
+single most expensive slug to regenerate — from the protected list, and
+because `_disk_guard_pick_victim` is oldest-mtime-first with no keep-floor in
+`_chain_stage_disk_guard` (build-cross-chain.sh:510-519), a warm cache dir
+makes that slug the first victim right before the compiler stage rebuilds
+LLVM/GCC. This requires three conditions to co-occur: the chain actually runs
+the `base` stage, the cache dir already holds a compiler slug from a prior
+run, and free space drops below CROSS_DISK_GUARD_GB at that boundary. That is
+the repo's normal warm-rebuild configuration, but it is a conditional loss,
+not a guaranteed one — on a genuinely cold first run there is nothing to lose.
+3. For the `''` list (the in-stage watchdog `_chain_disk_watch_start` and the
+runtime-lane entry gate `_chain_runtime_lane_disk_gate`), `base` and `cross-
+compiler-amd64` are indeed both dropped and are indeed the first victims by
+mtime — but neither slug is consumed by the runtime lane itself, so the cost
+there is the NEXT run's cold LLVM/GCC, not an in-run failure. Also cosmetic:
+the phantom `cross-android-` entry appears twice in that list (once from the
+`compiler` iteration, once from `runtime`). The one-line fix is `local
+stage="$1" s` at stage-defs.sh:134; the test at test-disk-guard.sh:54 should
+stop stubbing `cross_stage_is_per_arch` and source the real stage-defs.sh, or
+the stub should be written with its own `for s in ...` so it reproduces
+production's scoping.
+
+### WJ. Disk-guard's anti-spin protection appends with a space to a comma-matched list, so an undeletable slug loops forever [medium]
+
+`linux/scripts/build-cross-chain.sh:518`
+
+**What breaks.**
+`_chain_stage_disk_guard` has two `while` loops (phase 1 free-space, build-
+cross-chain.sh:509-522; phase 2 total-size cap, :543-556). Both handle an
+undeletable victim with the comment "An undeletable slug stays the LRU pick
+forever: without this the loop spins for the rest of the run. Protect it and
+move on." and then do `protected="${protected} ${victim}"` (lines 518 and 552)
+— a SPACE separator. But `_disk_guard_pick_victim`
+(linux/scripts/01-core/disk-guard.sh:54) tests `case ",${protected_csv}," in
+*",${name},"*`, i.e. it only recognises COMMA-delimited entries. With
+protected="a,b V" the string is ",a,b V," which does not contain ",V,", so V
+is never excluded. Break: any slug under BUILDKIT_CACHE_DIR that `rm -rf`
+cannot fully remove (a file written by a rootful/differently-mapped buildkitd,
+an EPERM inside the tree, or a slug a concurrent local cache-export
+recreates). The loop picks it, fails to delete it, "protects" it
+ineffectively, re-measures free space (unchanged), and picks the same victim
+again — forever. The chain hangs between two stages with no timeout and no
+progress, spinning `rm -rf`/`du`/`df` and emitting the same `[disk-guard]
+could not remove X; skipping it` warning, until a human kills it. Neither loop
+has an iteration cap or a break, unlike `_disk_guard_trim_cache_export` (disk-
+guard.sh:153-156) which correctly `break`s on the same condition.
+
+**Evidence.**
+linux/scripts/build-cross-chain.sh:516-518 and :550-552 append with a space;
+linux/scripts/01-core/disk-guard.sh:50-54 matches only on commas
+(`_disk_guard_protected_slugs` itself builds a comma list at disk-
+guard.sh:77/81). No test covers the undeletable-victim path (grep for 'could
+not remove'/'undeletable' in linux/scripts/tests/ returns nothing), and it is
+absent from docs/refactoring-backlog.md and all refactoring-backlog-
+archive-*.md.
+
+**Verifier's correction.**
+The claim is correct as written; two refinements to its severity model. (a)
+The spin needs the victim to make no *measurable* progress, not merely to
+survive. A partially-deletable victim (some children removable, some not)
+keeps freeing space on each pass, so the loop makes progress for a while — but
+once its removable content is exhausted and free space is still under
+threshold, it wedges exactly as described. The "instant hang" case is a victim
+nothing can be removed from (unreadable/untraversable slug dir), which is what
+an EPERM/root-owned export looks like. (b) The claim's "a slug a concurrent
+local cache-export recreates" sub-case does NOT spin: recreation bumps the
+slug's mtime to now, moving it to the end of `ls -1tr`, so pick_victim
+advances to an older slug. Drop that one; the EPERM/undeletable case is the
+real one. Two things the claim understates, both worth carrying into the fix:
+* The bug is a dead fix, not an oversight — commit 5337d6c4 exists solely to
+prevent this spin, so the repo believes it is protected and is not. That also
+means any log line `[disk-guard] could not remove X; skipping it` appearing
+more than once for the same X in a run log is a live sighting of the wedge,
+which is a cheap way to check the currently-running build. * The correct fix
+is one character plus a belt-and-braces stop:
+`protected="${protected}${protected:+,}${victim}"` at both build-cross-
+chain.sh:518 and :552 (matching the comma format `_disk_guard_protected_slugs`
+produces), and ideally also a `break` in the phase-1/phase-2 loops mirroring
+`_disk_guard_trim_cache_export` (disk-guard.sh:153-156) so a systematically-
+undeletable cache dir cannot hang the chain even if the protected list is
+later refactored. A unit test asserting `_disk_guard_pick_victim` skips a
+victim added by the guard's own append expression would have caught this and
+does not exist.
+
 ## F. Code cleanliness — the refactor queue (measured 2026-08-31)
 
 Numbers, not opinions: function lengths from an AST-free line count, duplication
