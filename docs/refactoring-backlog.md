@@ -361,11 +361,22 @@ riscv64 carries 94** — 76 missing, 14 extra.
   | ORT deps | `flatbuffers`, `protobuf` |
   | expected | `iree-base-compiler` (riscv64 is deliberately runtime-only) |
 
-  Almost every root here needs a compiled wheel that PyPI does not publish for
-  riscv64 (`scipy`, `pandas`, `pyarrow`, `cryptography`, `pydantic_core`,
-  `protobuf`), and the pure-Python packages above them fell out transitively.
-  `flatbuffers` is the odd one — it IS pure Python, so its absence is a dropped
-  edge rather than a missing wheel, and it should come back cheaply.
+  **Measured against PyPI 2026-09-02, and the gap is NOT one problem but two.**
+  The original wording here guessed that almost every root needs a compiled
+  wheel. Only five do:
+
+  | genuinely blocked (no `any`, no riscv64 wheel) | installable today |
+  | --- | --- |
+  | `scipy`, `pandas`, `scikit-learn`, `pyarrow`, `cryptography` | `optuna`, `mlflow`, `fastapi` (pure Python) |
+  | | `flatbuffers`, `protobuf` (pure-Python `any` wheel exists) |
+  | | `pydantic-core` (**publishes a riscv64 wheel**) |
+
+  So the expensive part is a handful of compiled roots, and most of the 76 are
+  pure-Python packages that fell out *transitively* behind them. That changes the
+  decision from "build the whole stack from source or ship nothing" into two
+  separable questions: (1) are the five compiled roots worth a source build on
+  riscv64, and (2) independently of that, why did the pure-Python packages that
+  do not depend on them — `flatbuffers`, `protobuf`, `optuna` — not install?
 
   The decision is about scope, not mechanics: does the riscv64 image promise the
   same Python surface as the other two? If yes, the compiled roots must be built
@@ -382,13 +393,18 @@ riscv64 carries 94** — 76 missing, 14 extra.
   installs every local wheel with `--no-deps --force-reinstall`, and its comment
   names this exact hazard — *"without it uv re-resolves the wheels' deps to
   LATEST and floats the venv off the lock (numpy, protobuf MAJOR)"*. The run
-  proves the comment right: it installed `protobuf==6.33.6` twice and
-  `protobuf==7.36.1` once, a major-version split across arches, while
-  `versions.env` pins `PROTOBUF_VERSION=6.31.1` — a value matching **neither**.
+  bears the comment out: `protobuf==6.33.6` was installed twice and
+  `protobuf==7.36.1` once across the three arches.
 
-  So the fix is to install both at a pinned version alongside the wheel, not to
-  drop `--no-deps`. And `PROTOBUF_VERSION` needs reconciling: today it is a pin
-  nothing honours.
+  **Correction:** an earlier draft of this entry called `PROTOBUF_VERSION=6.31.1`
+  "a pin nothing honours". That was wrong — it is the **C++** protobuf runtime
+  for LiteRT-LM, deliberately slaved to that project's internal pin, and
+  versions.env says so. It has nothing to do with the Python package.
+
+  Both packages publish a pure-Python `any` wheel, so neither is blocked on
+  riscv64 and the fix is cheap: install them explicitly next to the local ORT
+  wheel at the version the app lock already uses on amd64 (`protobuf 6.33.6`,
+  `flatbuffers 25.12.19`). Do **not** drop `--no-deps`.
 
 - **AC. The riscv64 runtime venv ships build tooling the other arches do not**
   [S·★★]. 14 packages exist only there, and several have no business in a
