@@ -982,3 +982,24 @@ libs — absence then still surfaces as the wheel smoke's
 riscv64-only opencv-freetype warning, and after a green rebuild
 that warning's "expected on riscv64" status is STALE (parity
 follow-up for the orchestrator).
+
+### A half-fetched dependency that every retry inherits
+
+`ONNX Runtime CPU build failed after 3 attempts` on media-riscv64, 2026-09-02,
+with the same CMake error each time:
+
+```
+add_subdirectory: The source directory
+  .../_deps/dawn-src/third_party/spirv-headers/src
+does not contain a CMakeLists.txt file.
+```
+
+Dawn's dependency fetch was interrupted, leaving the directory present but
+EMPTY. `_deps` is in the image layer, not a cache mount, so a fresh run recovers
+— but the three retries inside one RUN all inherited the ruin, so the retry
+bought nothing. amd64 and arm64 passed the identical build; only the riscv64 run
+hit the transient failure.
+
+`30-build-native.sh` now drops any `*-src/third_party/*/src` that carries no
+`CMakeLists.txt` before each attempt. A retry that inherits the state that broke
+the previous attempt is not a retry.
