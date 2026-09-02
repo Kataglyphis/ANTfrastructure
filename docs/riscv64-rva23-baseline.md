@@ -82,3 +82,50 @@ empty probe reports `NONE` rather than passing vacuously.
 
 The change invalidates the warm riscv64 compiler cache: the next riscv64 build
 is cold. LLVM alone is roughly 50 minutes warm against many hours cold.
+
+## libyuv RVV
+
+libcamera builds libyuv as a Meson subproject (`subprojects/libyuv.wrap`, pinned
+at `500f4565`). Turning the vector baseline on made that build fail to link:
+
+```
+ld.lld: error: undefined symbol: ARGBBlendRow_RVV
+ld.lld: error: undefined symbol: BlendPlaneRow_RVV
+```
+
+Header and implementation disagree about who may use RVV:
+
+| file | condition |
+| --- | --- |
+| `include/libyuv/row.h` | `!LIBYUV_DISABLE_RVV && __riscv_vector`, plus `__riscv_v_intrinsic` version checks |
+| `source/row_rvv.cc`, `source/scale_rvv.cc` | the same **and** `defined(__clang__)` |
+
+Our cross GCC 16.2.0 defines `__riscv_vector` and `__riscv_v_intrinsic 1000000`,
+so the header declares all 57 `HAS_*_RVV` entry points and callers such as
+`planar_functions.cc` reference them — while the two implementation files compile
+to nothing. The stale comment above the guard says why it was written that way:
+*"GCC hasn't supported segment load & store"*. That was true for GCC 13; GCC 16
+compiles both files without a diagnostic.
+
+Upstream has since dropped the clang gate. `linux/scripts/patches/libyuv/`
+`001-rvv-build-with-gcc.patch` backports exactly that change to the pinned
+revision — the guard and its matching `#endif` comment, nothing else. Measured by
+compiling the pinned sources with our own cross compiler:
+
+| | `row_rvv.cc` | `scale_rvv.cc` | `ARGBBlendRow_RVV` |
+| --- | --- | --- | --- |
+| pinned upstream | 0 RVV symbols | 0 | missing |
+| patched | 54 | 25 | defined |
+
+`build-libcamera.sh` applies the patch between `meson setup` (which downloads the
+subproject) and `ninja`, then `verify_libyuv_rvv_rows` counts `_RVV` symbols in
+the installed `libyuv.a` and fails the build at zero — so the rows cannot silently
+disappear again.
+
+Do **not** reach for `-DLIBYUV_DISABLE_RVV`. It links, but it throws away every
+vector row in libcamera's colour conversion, which is the opposite of the point
+of this baseline.
+
+The general shape to expect from the vector switch: a dependency whose HEADERS do
+ISA dispatch must be BUILT with the same ISA, and a per-ISA source file may carry
+its own, stricter compiler gate.

@@ -34,6 +34,35 @@ patch_libcamera_riscv64_cross_sources() {
     "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
 }
 
+# Upstream compiles libyuv's RVV rows only under clang, but its header enables
+# them for any RVV compiler. docs/riscv64-rva23-baseline.md#libyuv-rvv
+patch_libyuv_rvv_sources() {
+  local _libyuv_src="${LIBCAMERA_SRC}/subprojects/libyuv"
+
+  [ -d "${_libyuv_src}" ] || return 0
+
+  bash "/opt/scripts/core/apply-patch.sh" \
+    "/opt/scripts/patches/libyuv/001-rvv-build-with-gcc.patch" "${_libyuv_src}" \
+    "libyuv: compile the RVV rows with GCC"
+}
+
+# Proves the patch reached shipped bytes.
+# docs/riscv64-rva23-baseline.md#libyuv-rvv
+verify_libyuv_rvv_rows() {
+  local _lib _rows
+
+  command -v cross_target_arch >/dev/null 2>&1 || return 0
+  [ "$(cross_target_arch)" = "riscv64" ] || return 0
+
+  _lib="$(find "${LIBCAMERA_PREFIX}" -name libyuv.a -print -quit 2>/dev/null)"
+  [ -n "${_lib}" ] || { echo "ERROR: libyuv.a not found under ${LIBCAMERA_PREFIX}" >&2; exit 1; }
+
+  _rows="$(nm -g --defined-only "${_lib}" 2>/dev/null | grep -c -e '_RVV$' || true)"
+  [ "${_rows:-0}" -gt 0 ] || { echo "ERROR: libyuv built without RVV rows: ${_lib}" >&2; exit 1; }
+
+  echo "libyuv: ${_rows} RVV rows"
+}
+
 # Defaults (can be overridden via env vars)
 : "${LIBCAMERA_SRC:=${TMPDIR:-/tmp}/libcamera-$$}"
 : "${LIBCAMERA_BUILD_DIR:=${LIBCAMERA_SRC}/build}"
@@ -210,11 +239,6 @@ if cross_build_is_active; then
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
-    # Bundled libyuv dispatches its RVV rows on __riscv_v, which the RVA23
-    # default now defines, but does not compile row_rvv.cc — the link then
-    # fails on ARGBBlendRow_RVV. Upstream opt-out. docs/refactoring-backlog.md F8
-    append_flag_if_missing CFLAGS "-DLIBYUV_DISABLE_RVV"
-    append_flag_if_missing CXXFLAGS "-DLIBYUV_DISABLE_RVV"
     # (-Dwerror=false is now applied for all cross targets above.)
     # Upstream apps_lib compiles dng_writer.cpp (which uses libtiff) when libtiff
     # is found, but omits libtiff from its dependency list, so consumers fail to
@@ -235,12 +259,17 @@ if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_A
     exit 1
 fi
 
+# meson setup downloads the libyuv subproject; patch it before ninja compiles.
+patch_libyuv_rvv_sources
+
 : "${NPROC:=$(media_jobs)}"
 ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)
 ensure_sudo_or_die
 ${SUDO_WRAP} ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
+
+verify_libyuv_rvv_rows
 
 # update ld cache if possible
 ${SUDO_WRAP} ldconfig || true

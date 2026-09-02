@@ -310,7 +310,7 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
-### F8. libyuv's RVV rows are dispatched but never compiled [M·★★]
+### F8. libyuv's RVV rows are dispatched but never compiled — FIXED 2026-09-02 [DONE]
 
 Enabling the vector baseline made libcamera's bundled libyuv fail to link on
 riscv64:
@@ -320,19 +320,22 @@ ld.lld: error: undefined symbol: ARGBBlendRow_RVV
 ld.lld: error: undefined symbol: BlendPlaneRow_RVV
 ```
 
-libyuv's headers gate their RVV entry points on `__riscv_v`, which our RVA23
-default now defines, so callers reference them — but the bundled build does not
-add `row_rvv.cc`, so nothing implements them. An upstream inconsistency our new
-baseline exposes, not a defect in our code.
+The first diagnosis written here was wrong. `row_rvv.cc` IS compiled — it sits in
+`libyuv.a` as `source_row_rvv.cc.o`. It compiles to *nothing*, because the file
+guards itself on `defined(__clang__)` while `row.h` enables all 57 `HAS_*_RVV`
+entry points for any RVV compiler. Upstream has since dropped that clang gate;
+`patches/libyuv/001-rvv-build-with-gcc.patch` backports exactly that change to
+libcamera's pinned revision, and `verify_libyuv_rvv_rows` in `build-libcamera.sh`
+fails the build if the rows are ever absent again.
 
-Worked around with upstream's own `-DLIBYUV_DISABLE_RVV` in
-`build-libcamera.sh`, which costs libyuv's vector acceleration inside libcamera.
-The proper fix is to make the bundled libyuv COMPILE its RVV sources — find the
-meson/cmake condition that omits them and satisfy it. Then drop the define.
+Measured with our own cross GCC 16.2.0: 0 -> 54 (`row_rvv.cc`) and 0 -> 25
+(`scale_rvv.cc`) RVV symbols, both previously-undefined symbols now defined. The
+`-DLIBYUV_DISABLE_RVV` workaround is gone — vector stays on.
+docs/riscv64-rva23-baseline.md#libyuv-rvv
 
-This is the general shape to expect from the vector switch: a dependency whose
-HEADERS do ISA dispatch must be BUILT with the same ISA. Look for the same
-pattern wherever a vendored library ships per-ISA row functions.
+Lesson for the rest of the vector switch: a dependency whose HEADERS do ISA
+dispatch must be BUILT with the same ISA, and a per-ISA source file may carry its
+own, stricter compiler gate than the header does.
 
 ### F7. ArmNN + ACL — DECIDED 2026-09-01: ship them [DONE]
 
