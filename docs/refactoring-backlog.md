@@ -637,17 +637,25 @@ shared `base` stage (8 edits since 2026-08-01, each re-paying the whole media
 stage on every arch), and `linux/qnn-sdk/*.md` is out of the build context (a
 README-only dir mounted into the five heaviest RUNs).
 
-Still open, each mechanical but needing a build to prove:
-- **The ORT `--step cpu` RUN mounts the whole `build/onnxruntime` tree**, so an
-  edit to `60-build-genai.sh` (5 commits since 2026-08-01) re-pays the 24-minute
-  CPU build. The deps RUN five lines above already mounts per-file and carries a
-  comment explaining exactly why; mirror it here and at the genai / wasm / js
-  RUNs.
-- **The tvm RUN mounts all of `05-frameworks`**, pulling in
-  `torch/build-app-wheelhouse.sh` and `flutter/`, neither of which `tvm.sh`
-  sources — so a torch-wheelhouse edit re-pays the 23-minute tvm build.
-Do these in a window where a real media build can validate them: a missed
-transitive `source` fails hours in, which is worse than the cache cost.
+**Both narrowings DONE 2026-09-02, pending build validation:**
+- **ORT `--step cpu`** now mounts three paths instead of the whole
+  `build/onnxruntime` tree: `build-onnxruntime.sh`, `30-build-native.sh` and
+  `build/lib/`. Derived, not guessed — the `cpu|native)` arm dispatches to
+  `30-build-native.sh` and nothing else, that script sources only
+  `lib/common.sh` plus `source_build_acceleration_helpers` (which loads from
+  `/opt/scripts/core`, already mounted), and it references neither
+  `30-build-native-amd.sh` nor `-nvidia.sh`.
+- **tvm** now mounts its five `tvm*.sh` files instead of all of
+  `05-frameworks`. `tvm.sh` sources exactly four siblings, and none of them
+  sources anything further in that directory — the rest of the tree is `torch/`
+  and `flutter/`.
+
+Still open here: the genai / wasm / js RUNs have the same over-broad shape and
+were left alone, because unlike the two above they are not on the critical path
+that the next build will exercise.
+
+**The next media build is the proof.** A missed transitive `source` fails hours
+in, so treat a green media stage as the close condition for this entry.
 
 ### F5. The duplication baseline is frozen, not reviewed [L, measurable]
 
