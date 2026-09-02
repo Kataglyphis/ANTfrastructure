@@ -39,7 +39,7 @@ captured, not inferred.
 
 The same build step, unchanged, across the transition:
 
-| | identical `RUN` step |
+| when | identical `RUN` step |
 |---|---|
 | 2026-08-30 17:29 | 3.441 s |
 | 2026-08-31 04:32 | 4.521 s |
@@ -49,7 +49,7 @@ The same build step, unchanged, across the transition:
 
 - Requires ltsc2025 **and** process isolation **and** the servercore service
   set. Same host, same day: ltsc2022 process-isolated 1.8 s, ltsc2025 under
-  Hyper-V 3.5 s, nanoserver 2 s.
+  Hyper-V 3.5 s, nanoserver ~2 s.
 - A **second, older** defect on this host loses the container exit
   notification, so teardown runs to its timeout. On record here since
   2026-08-04 and filed as
@@ -219,7 +219,7 @@ the stock binary, and it was re-deployed on 2026-08-09, 2026-08-21 and
 2026-08-28.
 
 **The service-start deadlock is new.** No LSM stall is recorded on this host
-before 2026-09-01; the dumps below are from 2026-09-02.
+before 2026-09-01; the dumps above are from 2026-09-02.
 
 **What changed around 2026-08-31.** The teardown timeout began firing on every
 container including `RUN echo` — a change of scope, not a first occurrence —
@@ -234,7 +234,7 @@ isolating the reboot as its trigger. The Setup event log has zero entries
 between 2026-08-28 and 2026-09-01.
 
 The last change to this build chain was 2026-08-26: the base image digest moved
-`d5bbb830` → `eeaa17ae` (the digest in the Environment table below) along with
+`d5bbb830` → `eeaa17ae` (the digest in the Environment table above) along with
 three toolchain pins. That is **not** the trigger — the chain rebuilt and ran on
 `eeaa17ae` through 2026-08-31 03:23, and the 4.521 s healthy measurement above
 is from that image at 04:32, five days after the bump.
