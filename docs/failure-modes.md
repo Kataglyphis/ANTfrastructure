@@ -1003,3 +1003,25 @@ hit the transient failure.
 `30-build-native.sh` now drops any `*-src/third_party/*/src` that carries no
 `CMakeLists.txt` before each attempt. A retry that inherits the state that broke
 the previous attempt is not a retry.
+
+### RVV changed what the optimizer can prove
+
+media-riscv64 failed on 2026-09-02, after the RVA23 switch, in vvdec:
+
+```
+thirdparty/simde/x86/ssse3.h:370: error: 'r_.simde__m128i_private::i8'
+may be used uninitialized [-Werror=maybe-uninitialized]   → vvdec_x86_simd
+```
+
+SIMDe emulates x86 intrinsics on non-x86, so a riscv64 cross build really does
+compile that header. `-Wmaybe-uninitialized` is optimization-dependent, and
+enabling vector plus Zba/Zbb changes what the optimizer can prove — a diagnostic
+that did not fire before the ISA change now does, in upstream third-party code.
+
+`install-vvdec.sh` waives it exactly where the same file already waives
+`-Wno-error=unused-but-set-variable`. The waiver is scoped to vvdec, not global:
+this is a false-positive class in one dependency, not a reason to stop treating
+warnings as errors elsewhere.
+
+Expect more of this shape as the vector baseline lands. Waive per component,
+never tree-wide, and record why here.

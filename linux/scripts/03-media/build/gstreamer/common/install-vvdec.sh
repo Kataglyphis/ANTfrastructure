@@ -26,7 +26,10 @@ cmake_args=(
   -DCMAKE_BUILD_TYPE=Release
   -DCMAKE_INSTALL_PREFIX="${PREFIX}"
   -DCMAKE_INSTALL_LIBDIR="lib"
-  -DCMAKE_CXX_FLAGS="-Wno-error=unused-but-set-variable"
+  # maybe-uninitialized is optimization-dependent and fires inside SIMDe's
+  # x86-emulation headers once riscv64 builds with vector. Upstream third-party
+  # code, not ours. docs/failure-modes.md
+  -DCMAKE_CXX_FLAGS="-Wno-error=unused-but-set-variable -Wno-error=maybe-uninitialized"
   -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-shlib-undefined"
   -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--allow-shlib-undefined"
 )

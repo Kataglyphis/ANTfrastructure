@@ -1,11 +1,9 @@
 {
-  "run_id": "20260901-195912-7076c8b2",
+  "run_id": "20260902-005642-efb24a89",
   "arches": "amd64,arm64,riscv64",
-  "range": "compiler..runtime",
+  "range": "media..runtime",
   "stages": {
-    "compiler": {"status": "ok", "pin": "ghcr.io/kataglyphis/kataglyphis_beschleuniger@sha256:63f8490533188a60eced29f61c49951d21ad7dfa1e0737f3e5f92b35d27ef918"},
-    "sdk": {"status": "ok", "pin": ""},
     "media": {"status": "failed", "pin": ""}
   },
-  "updated": "2026-09-02T00:34:48Z"
+  "updated": "2026-09-02T02:48:45Z"
 }
