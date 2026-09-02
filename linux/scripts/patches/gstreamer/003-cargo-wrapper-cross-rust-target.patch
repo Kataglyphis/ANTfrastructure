@@ -1,16 +1,13 @@
-diff --git a/subprojects/gst-plugins-rs/cargo_wrapper.py b/subprojects/gst-plugins-rs/cargo_wrapper.py
-index 96142bb..29af9e9 100644
 --- a/subprojects/gst-plugins-rs/cargo_wrapper.py
 +++ b/subprojects/gst-plugins-rs/cargo_wrapper.py
-@@ -254,6 +254,13 @@ if __name__ == '__main__':
--        env['RUSTFLAGS'] = shlex_join(rust_flags)
-+        # Merge, do not clobber: the cross env exports RVV target-features.
-+        env['RUSTFLAGS'] = ' '.join(
-+            x for x in (env.get('RUSTFLAGS', ''), shlex_join(rust_flags)) if x)
+@@ -254,6 +254,13 @@
+         env['RUSTFLAGS'] = shlex_join(rust_flags)
          env['RUSTC'] = rustc_cmdline[0]
  
++    # Cross builds that pass the triple out of band: cargo's own documented env
++    # var is the fallback when RUSTC/RUSTFLAGS carry no --target.
 +    if not rustc_target:
-+        rustc_target = env.get('CARGO_BUILD_TARGET') or env.get('CROSS_RUST_TARGET')
++        rustc_target = env.get('CARGO_BUILD_TARGET')
 +    if rustc_target and 'CARGO_BUILD_TARGET' not in env:
 +        env['CARGO_BUILD_TARGET'] = rustc_target
 +

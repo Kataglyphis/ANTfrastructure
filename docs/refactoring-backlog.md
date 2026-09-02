@@ -432,12 +432,37 @@ evidence per item in `docs/upstreamable-patches.md`.
   `cross-meson.sh` writes `rust = '<wrapper script>'` and the wrapper hides
   `--target` inside itself, so `cmd_array()` is just a path. Meson accepts a
   list for a binary: write `rust = ['<rustc>', '--target', '<triple>']` and the
-  triple lands exactly where upstream already looks. Then delete
-  `003-cargo-wrapper-cross-rust-target.patch` and
-  `004-meson-build-cargo-build-target.patch`.
+  triple lands exactly where upstream already looks.
 
-  Note `003` is also actively wrong today: it prepends `env['RUSTFLAGS']` to a
-  list that already contains it (line 249 folds it in), duplicating every flag.
+  **But this is NOT the one-liner it looks like — inspected 2026-09-02.** The
+  wrapper is conditional on purpose:
+
+  ```sh
+  --target|--target=*)  have_target=true    # caller already chose: pass through
+  */target/*)           cargo_managed=true  # cargo owns this one: pass through
+  ```
+
+  It injects the triple only when neither holds, and its header says why:
+  *"Meson's Rust cross sanity checks do not reliably infer the target triple from
+  the linker alone. Inject it only when the invocation does not already specify
+  --target so cargo-backed subprojects keep working."* An array binary line would
+  append the triple **unconditionally** and remove exactly that cargo exemption.
+  That may still be right — upstream's flow wants the triple in `cmd_array()` —
+  but it cannot be settled without building.
+
+  **Needs a real build to close.** Watch the gst-plugins-rs subprojects, which is
+  where the exemption earns its keep, and do not delete `003`/`004` until that
+  build is green.
+
+  **The one safe half is DONE 2026-09-02.** `003` was *actively wrong*: it
+  prepended `env['RUSTFLAGS']` to a list that already contained it (line 249
+  folds it in), duplicating every flag it claimed to preserve. Regenerated
+  against the pinned `gstreamer-1.29.2` source with only the
+  `CARGO_BUILD_TARGET` fallback left, and the `CROSS_RUST_TARGET` arm dropped —
+  safe because `_cross_env_export_all` exports both (`_export_arch_vars` line
+  586, `_export_cargo_vars` line 592), so the cargo-documented variable is always
+  set when ours is. Verified: APPLIED then SKIP through `apply-patch.sh`, and the
+  result still parses as Python.
 
 - **UB. Replace our OpenCV FFmpeg-8 patch with the upstream commits — DONE 2026-09-02**
   [S·★★★]. Upstream fixed this on `4.x` in `700cd32ffd` and `83ed22ca28`; `5.x`
