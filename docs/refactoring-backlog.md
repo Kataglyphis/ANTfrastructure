@@ -310,6 +310,30 @@ decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
   ruff nor shellcheck can see it. If it stays that size it wants to be a real
   `.py` file that the smoke pipes in.
 
+### F8. libyuv's RVV rows are dispatched but never compiled [M·★★]
+
+Enabling the vector baseline made libcamera's bundled libyuv fail to link on
+riscv64:
+
+```
+ld.lld: error: undefined symbol: ARGBBlendRow_RVV
+ld.lld: error: undefined symbol: BlendPlaneRow_RVV
+```
+
+libyuv's headers gate their RVV entry points on `__riscv_v`, which our RVA23
+default now defines, so callers reference them — but the bundled build does not
+add `row_rvv.cc`, so nothing implements them. An upstream inconsistency our new
+baseline exposes, not a defect in our code.
+
+Worked around with upstream's own `-DLIBYUV_DISABLE_RVV` in
+`build-libcamera.sh`, which costs libyuv's vector acceleration inside libcamera.
+The proper fix is to make the bundled libyuv COMPILE its RVV sources — find the
+meson/cmake condition that omits them and satisfy it. Then drop the define.
+
+This is the general shape to expect from the vector switch: a dependency whose
+HEADERS do ISA dispatch must be BUILT with the same ISA. Look for the same
+pattern wherever a vendored library ships per-ISA row functions.
+
 ### F7. ArmNN + ACL — DECIDED 2026-09-01: ship them [DONE]
 
 They were cross-compiled, stripped and verified on every arm64 chain and then

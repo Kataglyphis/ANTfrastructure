@@ -210,6 +210,11 @@ if cross_build_is_active; then
   fi
 
   if command -v cross_target_arch >/dev/null 2>&1 && [ "$(cross_target_arch)" = "riscv64" ]; then
+    # Bundled libyuv dispatches its RVV rows on __riscv_v, which the RVA23
+    # default now defines, but does not compile row_rvv.cc — the link then
+    # fails on ARGBBlendRow_RVV. Upstream opt-out. docs/refactoring-backlog.md F8
+    append_flag_if_missing CFLAGS "-DLIBYUV_DISABLE_RVV"
+    append_flag_if_missing CXXFLAGS "-DLIBYUV_DISABLE_RVV"
     # (-Dwerror=false is now applied for all cross targets above.)
     # Upstream apps_lib compiles dng_writer.cpp (which uses libtiff) when libtiff
     # is found, but omits libtiff from its dependency list, so consumers fail to
