@@ -373,6 +373,24 @@ reconcile_local_wheels() {
     # live numpy/protobuf float (log: "- numpy==2.5.1 / + numpy==2.5.2" 0.5 s
     # after uv sync had just enforced the lock).
     uv pip install --no-deps --force-reinstall "${other_wheels[@]}"
+    # --no-deps above means the ORT wheel's OWN runtime requirements are never
+    # installed. On riscv64 the sync did not supply them either, so the shipped
+    # venv carried a dangling edge: the wheel declares flatbuffers and protobuf,
+    # the venv has neither, and that surfaces as an ImportError in the USER's
+    # process -- never in our build. Both publish a pure-Python `any` wheel.
+    # protobuf is major-pinned deliberately: an unconstrained resolve is exactly
+    # the "protobuf MAJOR" float the comment above warns about (the 2026-09-02
+    # run installed 6.33.6 twice and 7.36.1 once).
+    # docs/refactoring-backlog.md AB
+    uv pip install 'protobuf>=6,<7' flatbuffers || \
+      echo "WARNING: ORT runtime deps (protobuf/flatbuffers) not installed - the venv gate will name them"
+    # optuna is declared by the app's ml-ai extra and was absent from the riscv64
+    # venv. It is NOT blocked there: optuna is pure Python and its whole chain
+    # resolves (alembic and sqlalchemy pure Python, greenlet publishes a riscv64
+    # wheel, numpy/colorlog/tqdm already present). It fell out with the compiled
+    # members of the same extra. docs/refactoring-backlog.md AA
+    uv pip install optuna || \
+      echo "WARNING: optuna not installed - the venv gate will name it"
   fi
   if [ "${#tvm_wheels[@]}" -gt 0 ]; then
     uv pip install --no-deps --force-reinstall "${tvm_wheels[@]}" || \

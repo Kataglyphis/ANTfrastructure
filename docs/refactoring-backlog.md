@@ -348,8 +348,12 @@ Measured against the SHIPPED images afterwards (`pip list` inside each), the gap
 is far larger than the six failures suggest: **amd64 carries 153 venv packages,
 riscv64 carries 94** — 76 missing, 14 extra.
 
-- **AA. 76 packages are absent from the riscv64 venv** [L·★★★, needs an OWNER
-  DECISION on scope]. The six the gate names are the ones the app declares; the
+- **AA. 76 packages are absent from the riscv64 venv — DECIDED 2026-09-02,
+  partially fixed** [L·★★★]. `optuna` and the two ORT deps are now installed;
+  `scipy`, `scikit-learn` and `pandas` are exempted on riscv64 with the reason
+  recorded in `_venv_pkg_exempt`. The remaining ~70 are the pure-Python packages
+  that sit above the compiled roots and were never separately investigated —
+  reopen this entry if any of them is actually wanted on riscv64. The six the gate names are the ones the app declares; the
   rest are missing silently. They cluster:
 
   | cluster | examples |
@@ -384,8 +388,8 @@ riscv64 carries 94** — 76 missing, 14 extra.
   If no, say so once, record it, and make the app's own environment markers stop
   claiming riscv64 needs them.
 
-- **AB. `onnxruntime-webgpu`'s dependency edges are dangling on riscv64**
-  [S·★★★, FIX]. `flatbuffers` and `protobuf` are declared requirements of the
+- **AB. `onnxruntime-webgpu`'s dependency edges are dangling on riscv64 — FIXED 2026-09-02**
+  [S·★★★]. `flatbuffers` and `protobuf` are declared requirements of the
   installed wheel and absent from the venv, so an import can fail in the user's
   process rather than in our build.
 

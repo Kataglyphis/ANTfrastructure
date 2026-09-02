@@ -801,6 +801,13 @@ _venv_pkg_exempt() {
     # onnxruntime ships under its flavour name (onnxruntime_dnnl / _webgpu), which
     # _parity_ort_flavor asserts; the plain name is never installed.
     *:ml-ai:onnxruntime|*:DEP:onnxruntime) return 0 ;;
+    # riscv64 ml-ai: scipy/scikit-learn/pandas need a compiled wheel that PyPI
+    # does not publish for this arch and offer no pure-Python fallback, so
+    # shipping them means BLAS/LAPACK + Fortran from source, hours per run.
+    # Measured 2026-09-02; the rest of the extra IS shipped (optuna and the ORT
+    # deps were installable and are now installed).
+    # OWNER DECISION, one line to reverse. docs/refactoring-backlog.md AA
+    riscv64:ml-ai:scipy|riscv64:ml-ai:scikit-learn|riscv64:ml-ai:pandas) return 0 ;;
     *) return 1 ;;
   esac
 }
