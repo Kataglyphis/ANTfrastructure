@@ -801,9 +801,33 @@ copies became one) even though one pair's number went UP, because the surviving
 copy now sits in a file that already overlapped there. Read the totals, not a
 single row.
 
-Count after both pairs: **260 → 243 pairs, 236 → 225 unreviewed.** Gate green.
+**The unreviewed tail is CLOSED: 225 → 0 (2026-09-02).** Be precise about what
+that means, because the distinction is the whole value of the entry:
+
+| how | count | what was actually done |
+| --- | --- | --- |
+| READ | 4 | the pairs whose longest shared run exceeded 12 lines and were not already covered — each carries its own finding |
+| MEASURED | 221 | longest shared run computed per pair; the reason records the number so anyone can re-derive it |
+
+Measuring is a real review — it answers "is this a copied block worth extracting
+a helper for?" — but it is **not** reading each file, and the reasons say so
+("NOT read line-by-line; revisit if it grows"). The distribution it produced:
+
+| longest shared run | pairs | reading |
+| ---: | ---: | --- |
+| ≤6, structural only (`fi`/`esac`/`}`/`echo`) | 87 | the shape of sibling functions, not a copy |
+| ≤6, substantive | 88 | a shared idiom, below any extraction threshold |
+| 7–12 | 41 | small; watched via a pinned budget |
+| >12 | 9 | four already covered, four read here, one is the family below |
+
+**The recurring shape across the biggest offenders is source-or-fallback**:
+`path-helpers`, `compiler-resolution` and host-python each have a canonical file
+plus an inline copy for when it is absent. That is the bootstrap paradox and the
+copies are load-bearing — the useful question is not "dedup them" but "is the
+fallback still reachable at all, now that every image ships the canonical file?"
+
 Eight stale entries were retired along the way — three from the first pair, five
-from this one.
+from the second. Final count: **260 → 243 pairs, 0 unreviewed.**
 
 Work the tail from the top; each line deleted or shrunk is real progress and the
 gate enforces the new, lower budget automatically:
