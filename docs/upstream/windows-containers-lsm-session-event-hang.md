@@ -105,6 +105,21 @@ blocked inside its **own** `CEventDispatcher`, waiting for a session state that
 should be reached locally. Recording this because it is the obvious first
 hypothesis and it is wrong.
 
+## Not something upstream in the silo boot
+
+The obvious second hypothesis is that LSM waits legitimately — that `smss`,
+`csrss`, `wininit` or `services` is stuck first and LSM is only the messenger.
+Those four are protected processes (PPL) and refuse even a read-only debugger
+attach (`Win32 error 0n5`), so they cannot be checked directly from user mode.
+
+Their descendants can be, and they are all healthy: during the stall, the
+silo's `lsass.exe` sits in `lsasrv!ServiceDispatcherThread`, its RPCSS
+`svchost.exe` in `rpcss!CTime::Sleep`, and `fontdrvhost.exe` in
+`fontdrvhost!ServerRequestLoop` — ordinary idle waits, all reached only after
+their parents did their work. Together with the service scan (LSM the only one
+of 121 not RUNNING or STOPPED), the silo boot evidently proceeds normally
+around LSM rather than stalling before it.
+
 ## The object being waited on
 
 Read from **R10 of the blocked thread** (the x64 syscall stub does

@@ -104,8 +104,9 @@ foreach ($p in $silo) {
     & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
     $stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     if ($stacks -lt 1) {
-        # Protected processes refuse the attach; that is expected, not a finding.
-        $why = if (Select-String -Path $log -Pattern 'protected|0x5|Access is denied' -Quiet -ErrorAction SilentlyContinue) { 'attach refused (protected?)' } else { 'no stacks' }
+        # smss/csrss/wininit/services are PPL - 0n5 here is the OS refusing a
+        # read-only attach, not a hang. Only a kernel debugger sees these.
+        $why = if (Select-String -Path $log -Pattern 'error 0n5|Access is denied|protected' -Quiet -ErrorAction SilentlyContinue) { 'attach refused - protected process (PPL)' } else { 'no stacks' }
         $summary.Add(("{0,-16} pid {1,-7} -- {2}" -f $p.Name, $p.ProcessId, $why))
         continue
     }
