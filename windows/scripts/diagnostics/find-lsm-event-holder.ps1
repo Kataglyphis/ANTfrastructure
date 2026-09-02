@@ -159,25 +159,34 @@ RUN echo bait-$NONCE > C:bait.txt
     $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
     foreach ($p in $svchosts) {
         $log = Join-Path $OutDir "holder-probe-$($p.ProcessId)-$stamp.txt"
-        # ~*e prints R10 per thread: the x64 syscall stub does `mov r10,rcx`, so
-        # for a blocked NtWaitForSingleObject R10 still holds argument 1 (the
-        # handle). kb's "args to child" columns are home-space reconstructions
-        # and were wrong here - reading the FIRST WaitForSingleObjectEx in the
-        # process picked the SCM dispatcher's own idle wait
-        # (sechost!ScDispatcherLoop), which every service process has, and
-        # named that event instead of LSM's (2026-09-02).
-        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*e .printf "=== TID %x R10 %p\n", @$tid, @r10; kb; qd' > $log 2>&1
+        # Two passes on purpose. Combining them as `~*e .printf ...; kb` makes
+        # .printf swallow the semicolons ("Bad register error at '@r10; kb'")
+        # and NO stack is printed at all - measured 2026-09-02. Pass 1 is the
+        # plain ~*kb that is known to work.
+        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
         if (-not (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue)) { continue }
 
-        # Walk per-thread blocks; keep the R10 of the block that shows LSM.
-        $cur = 0
+        # Which THREAD owns that frame. Reading the first WaitForSingleObjectEx
+        # in the process instead named the SCM dispatcher's own idle wait
+        # (sechost!ScDispatcherLoop), which every service process has.
+        $idx = $null; $cur = $null
         foreach ($ln in (Get-Content $log)) {
-            if ($ln -match '^=== TID [0-9a-f]+ R10 ([0-9a-f`]+)') { $cur = [Convert]::ToUInt64(($Matches[1] -replace '`', ''), 16); continue }
-            if ($ln -match 'lsm!CService::Start' -and $cur) { $Handle = [uint32]$cur; break }
+            if ($ln -match '^[.#]?\s*(\d+)\s+Id:\s') { $cur = $Matches[1]; continue }
+            if ($ln -match 'lsm!CService::Start' -and $null -ne $cur) { $idx = $cur; break }
         }
-        if (-not $Handle) { Write-Warning "pid $($p.ProcessId) shows LSM but no R10 could be bound to it"; continue }
+        if ($null -eq $idx) { Write-Warning "pid $($p.ProcessId) shows LSM but no thread could be bound to it"; continue }
+
+        # Pass 2: R10 of exactly that thread. The x64 syscall stub does
+        # `mov r10,rcx`, so for a blocked NtWaitForSingleObject R10 still holds
+        # argument 1 - the handle. kb's "args to child" columns are home-space
+        # reconstructions and are not trustworthy here.
+        $rlog = Join-Path $OutDir "holder-r10-$($p.ProcessId)-$stamp.txt"
+        & $cdb.FullName -pv -p $p.ProcessId -y $sym -c ".reload /f; ~$($idx)s; r r10; qd" > $rlog 2>&1
+        $rm = Select-String -Path $rlog -Pattern 'r10=([0-9a-f`]+)' -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $rm) { Write-Warning "pid $($p.ProcessId): thread $idx is LSM but R10 was unreadable (see $rlog)"; continue }
+        $Handle = [uint32][Convert]::ToUInt64(($rm.Matches[0].Groups[1].Value -replace '`', ''), 16)
         $LsmPid = $p.ProcessId
-        Write-Host "LSM host: pid $LsmPid, waited handle 0x$($Handle.ToString('x')) (from R10 of the LSM thread)" -ForegroundColor Green
+        Write-Host "LSM host: pid $LsmPid, thread $idx, waited handle 0x$($Handle.ToString('x')) (R10)" -ForegroundColor Green
         break
     }
     if (-not $LsmPid) { throw 'No svchost showed lsm!CService::Start - hang window missed, retry on the next container.' }
