@@ -52,7 +52,6 @@ $prot = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LSM' -Name Lau
 if ($prot -and $prot.LaunchProtected) { throw "LSM runs protected (LaunchProtected=$($prot.LaunchProtected)); no attach possible" }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$log = Join-Path $OutDir "host-lsm-$hostLsmPid-$stamp.txt"
 $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
 
 # No .printf here: its comma-separated argument list swallows the following
@@ -75,23 +74,75 @@ $cmds = @(
     'qd'
 ) -join '; '
 
-Write-Host "attaching read-only (-pv) ..."
-& $cdb.FullName -pv -p $hostLsmPid -y $sym -c $cmds > $log 2>&1
+function Invoke-HostLsmSnapshot([string]$tag) {
+    $out = Join-Path $OutDir "host-lsm-$hostLsmPid-$stamp-$tag.txt"
+    & $cdb.FullName -pv -p $hostLsmPid -y $sym -c $cmds > $out 2>&1
+    $stacks = @(Select-String -Path $out -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
+    $bad = @(Select-String -Path $out -Pattern 'Bad register|Syntax error' -ErrorAction SilentlyContinue).Count
+    Write-Host ("  [{0}] stacks={1} errors={2} -> {3}" -f $tag, $stacks, $bad, (Split-Path $out -Leaf))
+    if ($stacks -lt 2 -or $bad -gt 0) { Write-Warning "[$tag] cdb produced no usable output - a quiet log here is NOT evidence of a healthy host." }
+    return $out
+}
+
+# An idle host LSM proves nothing: with no container starting, "no thread in
+# AskForSession" is simply what idle looks like. Snapshot BEFORE and DURING a
+# hang, and compare.
+Write-Host "snapshot A (idle) ..."
+$logA = Invoke-HostLsmSnapshot 'A-idle'
+
+$buildctl = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
+if (-not (Test-Path $buildctl)) { throw "buildctl not found at $buildctl" }
+$nonce = Get-Date -Format 'yyyyMMddHHmmss'
+$baitDir = Join-Path $env:TEMP "hostlsm-bait-$nonce"
+New-Item -ItemType Directory -Force -Path $baitDir | Out-Null
+# NONCE keeps the solve a cache MISS; a cached solve starts no container.
+@'
+ARG BASE
+FROM ${BASE}
+ARG NONCE
+RUN echo bait-$NONCE > C:bait.txt
+'@ | Set-Content (Join-Path $baitDir 'Dockerfile') -Encoding ascii
+$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+Start-Process -FilePath $buildctl -WindowStyle Hidden -ArgumentList @(
+    '--addr', 'npipe:////./pipe/buildkitd', 'build', '--frontend', 'dockerfile.v0'
+    '--local', "context=$baitDir", '--local', "dockerfile=$baitDir"
+    '--opt', 'build-arg:BASE=mcr.microsoft.com/windows/servercore:ltsc2025'
+    '--opt', "build-arg:NONCE=$nonce", '--opt', 'image-resolve-mode=local'
+    '--output', "type=image,name=docker.io/local/kataglyphis:diag-hostlsm-$nonce"
+) | Out-Null
+Write-Host "bait started; waiting for its silo ..."
+
+$deadline = (Get-Date).AddSeconds(180)
+$sawSilo = $false
+while ((Get-Date) -lt $deadline) {
+    if (Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Where-Object { $_.ProcessId -notin $baseWininit }) { $sawSilo = $true; break }
+    Start-Sleep -Seconds 2
+}
+if (-not $sawSilo) { Write-Warning 'no silo appeared; snapshot B will be another idle sample' }
+Start-Sleep -Seconds 20   # land inside the ~141 s stall, past silo creation
+
+Write-Host "snapshot B (container hanging) ..."
+$log = Invoke-HostLsmSnapshot 'B-hang'
 
 $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 & icacls.exe $OutDir /grant "${me}:(OI)(CI)R" /T | Out-Null
 
-Write-Host "`n--- what to look for ---"
-# A run where the commands did not execute looks identical to a clean host, so
-# check the evidence arrived before reading anything into it.
-$stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
-$bad = @(Select-String -Path $log -Pattern 'Bad register|Syntax error' -ErrorAction SilentlyContinue).Count
-Write-Host ("  thread stacks printed : {0}" -f $stacks)
-if ($stacks -lt 2 -or $bad -gt 0) {
-    Write-Warning "cdb produced no usable output ($bad command error(s)) - do NOT read 'no locks' as 'host is healthy'."
+Write-Host "`n--- idle vs hanging ---"
+function Get-Frames([string]$path) {
+    @(Select-String -Path $path -Pattern '!' -ErrorAction SilentlyContinue |
+        ForEach-Object { if ($_.Line -match ':\s+([A-Za-z_][\w:!`~]+\+0x[0-9a-f]+)\s*$') { $Matches[1] -replace '\+0x[0-9a-f]+$', '' } }) | Sort-Object -Unique
 }
-foreach ($pat in 'AskForSession', 'LockCount', 'OwningThread', 'Lock count', 'No locks') {
-    $n = @(Select-String -Path $log -Pattern $pat -ErrorAction SilentlyContinue).Count
-    Write-Host ("  {0,-22} {1} hit(s)" -f $pat, $n)
+$fa = Get-Frames $logA
+$fb = Get-Frames $log
+$new = @($fb | Where-Object { $_ -notin $fa })
+Write-Host ("  frames only present while a container hangs: {0}" -f $new.Count)
+$new | Where-Object { $_ -like 'lsm!*' -or $_ -like '*Container*' } | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
+
+foreach ($pat in 'AskForSession', 'ContainerSession', 'LockCount', 'OwningThread') {
+    $a = @(Select-String -Path $logA -Pattern $pat -ErrorAction SilentlyContinue).Count
+    $b = @(Select-String -Path $log -Pattern $pat -ErrorAction SilentlyContinue).Count
+    Write-Host ("  {0,-18} idle={1}  hanging={2}" -f $pat, $a, $b)
 }
+Write-Host "`n  gServer dump: compare the two files by hand - a counter that only" -ForegroundColor DarkGray
+Write-Host "  moves up across container starts is the hypothesis to confirm." -ForegroundColor DarkGray
 Write-Host "`nSaved: $log" -ForegroundColor Green
