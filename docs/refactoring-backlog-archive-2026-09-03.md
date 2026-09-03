@@ -1769,3 +1769,46 @@ LOAD-BEARING, and `tests/test-lint-shell-scope.sh` (8 assertions) now pins it.
 Mutation `lint-shell.extensionless-arm` confirms the suite goes red when the arm
 is removed.
 
+### F1 rows closed 2026-09-03
+
+**`smoke_genai_py` 196 → 8** — six lines calling six tier helpers, exactly the
+split F1 proposed. (See F4 for why that did not by itself make its Python
+lintable.)
+
+**DONE 2026-09-03. `_cross_stage_build_impl` is 170 → 91 lines**, four seams
+extracted: `_cross_build_pull_flag` (10), `_cross_build_append_push_output` (25),
+`_cross_build_append_cache_args` (29) and `_cross_build_salvage_exports` (36).
+
+Order was the whole method. The function drives every stage of every build and
+had **zero** coverage, so the net came first and grew in two rounds: 16
+assertions pinning the assembled argv (dry-run path), then 8 more reaching past
+the dry-run return — retry counts and the salvage pass, the latter needing a real
+Dockerfile with named stages and a fake `nerdctl` that records its `--target`s.
+Only then was each seam cut, and all 24 stayed green.
+
+**Two traps worth recording.** `cross-stage-build.sh` defines
+`_cross_stage_push_error_is_transient`, `_cross_salvage_disk_ok` and
+`cross_stage_log_redirect` itself, so a stub set BEFORE the source is silently
+replaced — the first retry harness read "4 attempts for a non-transient error",
+which looked like a real defect and was my own inert knob. Those three are
+re-stubbed after the source now. And the salvage body was never reached by the
+first net (`Dockerfile.x` has no named stages, so the loop ran empty), which is
+why it got its own characterisation before being extracted rather than after.
+
+**What is left is the registry-cache drop** (~16 lines), the one path still
+uncovered: it needs a non-empty `log_file` holding a `DeadlineExceeded` line, and
+it mutates both `build_cmd` and a counter across loop iterations. Characterise
+first, as above.
+
+### F3 item closed 2026-09-03
+
+- ~~**`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**~~ —
+  **DONE 2026-09-03.** `_chain_status_walk_json` now owns the walk and takes an
+  emitter NAME; `_chain_status_emit_kv` / `_chain_status_emit_str` own the two
+  shapes. Characterised first: 19 inputs (empty, `solo`, `k=v=w`, leading/trailing/
+  double commas, `=v`, unicode, `%s=%d`) captured before and after — **byte
+  identical**. The allowlist entry went stale on the same change and the gate said
+  so ("no longer overlaps -- remove it from code-dupes.allow"); removed, 243 → 242
+  pairs. `test-chain-lifecycle.sh` never names these functions, but its end-to-end
+  `chain-status.json` check does catch a swapped emitter (2/116 red), which is now
+  pinned as mutation `chain-status.emitter-dispatch`.

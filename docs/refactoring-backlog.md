@@ -95,83 +95,41 @@ cwd the *server* was given and whether it exists **at that instant** — a
 `_deps/<x>-build` subdir being created or moved by CMake while a sibling compile
 is in flight would explain both the ENOENT and why it never reproduces standalone.
 
-### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-02
+### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-03
 
-        was  now  function                       file
-        356  356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
-        196    8  smoke_genai_py()              06-packaging/smoke-common.sh   DONE
-        168  170  _cross_stage_build_impl()     01-core/cross-stage-build.sh
-        147  114  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
-        136   84  append_tvm_cmake_args()       05-frameworks/tvm-config.sh
-        127  109  uv_sync_project()             01-core/python_uv.sh
-        127  139  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh  GREW
+Sizes come from `function-size.allow`, which the `code-size` gate freezes, so this
+table cannot silently go stale between rounds the way it kept doing.
 
-**`assert_pinned_versions` is not 356 lines of shell — it is ~26 lines of shell
-wrapping a 312-line embedded Python program** (`"${PY}" - <<'PYEOF'` at
-`smoke-torch-venv.sh:101`). Decomposing the shell would move almost nothing.
-What mattered was that ruff could not see it: the extractor's interpreter
-pattern hard-coded lowercase `${py}`, so `"${PY}" -` never matched and the
-largest embedded program in the tree was **never linted** — silently. Fixed
-2026-09-02 (see F4); the newly-visible 399 lines from this file pass the hard
-gate clean. If the shell wrapper is ever split, do it for its own sake, not for
-the line count.
+        lines  function                       file
+          356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
+          128  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh
+          114  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
+          109  uv_sync_project()             01-core/python_uv.sh
+           91  _cross_stage_build_impl()     01-core/cross-stage-build.sh
+           84  append_tvm_cmake_args()       05-frameworks/tvm-config.sh
 
-The 2026-08-31 column was stale: four of the seven had already shrunk, one of
-them to nothing. `smoke_genai_py` is now six lines calling six tier helpers —
-exactly the split this entry proposed — **but see F4, because that did not make
-its Python lintable.**
+**`assert_pinned_versions` is top by size and the WORST candidate by value.** It
+is not 356 lines of shell — it is ~26 lines of shell wrapping a 312-line embedded
+Python program (`"${PY}" - <<'PYEOF'`, `smoke-torch-venv.sh:101`). Splitting the
+shell moves ~26 lines. What actually mattered there was that ruff could not see
+the Python at all — fixed 2026-09-02, and those 399 newly-visible lines pass the
+hard gate clean. Split the wrapper for its own sake, never for the line count.
 
-`reconcile_local_wheels` grew by 19 for AB's ORT-dependency install, then gave 7
-back on 2026-09-02 when the misplaced optuna install moved out of it (AA-followup,
-archive). Net +12 against the 2026-08-31 column; still the second-longest function
-here and the next candidate after the closure window opens.
+**Next candidate: `reconcile_local_wheels` (128).** 57 comment blocks already name
+its seams. The method that worked on `_cross_stage_build_impl` applies unchanged:
+characterisation net FIRST, then cut one seam at a time, re-running the net after
+each. It is in the 03-media closure, so it needs a window with no build running —
+which is now the normal state, not the exception it was on 2026-09-02.
 
-`assert_pinned_versions` at 356 is untouched and remains the clear top of the
-list — more than twice the next entry.
+**The one uncovered path left inside `_cross_stage_build_impl` is the
+registry-cache drop** (~16 lines). It needs a non-empty `log_file` holding a
+`DeadlineExceeded` line and it mutates both `build_cmd` and a counter across loop
+iterations, so it wants its own characterisation before extraction — the same
+order that caught the salvage body running empty last time.
 
-**DONE 2026-09-03. `_cross_stage_build_impl` is 170 → 91 lines**, four seams
-extracted: `_cross_build_pull_flag` (10), `_cross_build_append_push_output` (25),
-`_cross_build_append_cache_args` (29) and `_cross_build_salvage_exports` (36).
-
-Order was the whole method. The function drives every stage of every build and
-had **zero** coverage, so the net came first and grew in two rounds: 16
-assertions pinning the assembled argv (dry-run path), then 8 more reaching past
-the dry-run return — retry counts and the salvage pass, the latter needing a real
-Dockerfile with named stages and a fake `nerdctl` that records its `--target`s.
-Only then was each seam cut, and all 24 stayed green.
-
-**Two traps worth recording.** `cross-stage-build.sh` defines
-`_cross_stage_push_error_is_transient`, `_cross_salvage_disk_ok` and
-`cross_stage_log_redirect` itself, so a stub set BEFORE the source is silently
-replaced — the first retry harness read "4 attempts for a non-transient error",
-which looked like a real defect and was my own inert knob. Those three are
-re-stubbed after the source now. And the salvage body was never reached by the
-first net (`Dockerfile.x` has no named stages, so the loop ran empty), which is
-why it got its own characterisation before being extracted rather than after.
-
-**What is left is the registry-cache drop** (~16 lines), the one path still
-uncovered: it needs a non-empty `log_file` holding a `DeadlineExceeded` line, and
-it mutates both `build_cmd` and a counter across loop iterations. Characterise
-first, as above.
-
-**BLOCKED, not deferred (2026-09-02).** The two remaining targets —
-`_cross_stage_build_impl` (01-core) and `reconcile_local_wheels` (03-media/runtime) —
-sit inside the bind-mount closure that standing rule 1 protects, and the RVA23
-rebuild is in flight with the runtime lane (the stage that publishes the manifest)
-still ahead. Both are pure readability refactors: the upside is a shorter function,
-the downside of a slip is a dead 2h+ build at its publishing step. They are the
-first work item of the next closure window, in this order:
-
-  1. `_cross_stage_build_impl` — decompose INTERNALLY only (do not split it back
-     into two functions; that split was reverted once already). Natural seams, each
-     already marked by its own comment block: the pull-flag decision, the push/
-     attestation output args, the three-tier cache args, the salvage-export loop
-     (~30 lines, deepest nesting → best single win), and the registry-cache drop.
-  2. `reconcile_local_wheels` — 146 lines carrying 57 comment blocks; the comments
-     already name the seams.
-
-`assert_pinned_versions` stays top of the list by size but is the *worst* candidate
-by value, for the reason given above: decomposing its shell moves ~26 lines.
+`_opencv_target_adjustments`, `uv_sync_project` and `append_tvm_cmake_args` are
+unreviewed. Measure the value before cutting: the lesson from
+`assert_pinned_versions` is that line count alone picks the wrong target.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
@@ -229,16 +187,6 @@ gate does not care that a file is big, only that it grows without saying why.
   Deleting them is a behavioural change across every stage and wants one
   validating build — that is the only reason it is not already done here.
 
-- ~~**`chain_status_kv_json` / `chain_status_list_json` walk the same CSV**~~ —
-  **DONE 2026-09-03.** `_chain_status_walk_json` now owns the walk and takes an
-  emitter NAME; `_chain_status_emit_kv` / `_chain_status_emit_str` own the two
-  shapes. Characterised first: 19 inputs (empty, `solo`, `k=v=w`, leading/trailing/
-  double commas, `=v`, unicode, `%s=%d`) captured before and after — **byte
-  identical**. The allowlist entry went stale on the same change and the gate said
-  so ("no longer overlaps -- remove it from code-dupes.allow"); removed, 243 → 242
-  pairs. `test-chain-lifecycle.sh` never names these functions, but its end-to-end
-  `chain-status.json` check does catch a swapped emitter (2/116 red), which is now
-  pinned as mutation `chain-status.emitter-dispatch`.
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
   `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
