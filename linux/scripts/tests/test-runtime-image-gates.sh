@@ -12,7 +12,26 @@ source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
 _extract() {
-  awk -v f="$1" '$0 ~ "^"f"\\(\\) \\{" {p=1} p {print} p && /^\}/ {exit}' "${SMOKE}"
+  # Heredoc-aware: an awk that stops at the first ^} cuts these functions in half,
+  # because the emitted probe text contains such lines itself.
+  python3 - "${SMOKE}" "$1" <<'EXTRACT'
+import io, sys
+lines = io.open(sys.argv[1], encoding="utf-8").read().splitlines(True)
+name = sys.argv[2]
+start = next(i for i, l in enumerate(lines) if l.startswith(name + "() {"))
+i, here = start + 1, None
+while i < len(lines):
+    line = lines[i]
+    if here is None:
+        if "<<'" in line:
+            here = line.split("<<'", 1)[1].split("'", 1)[0]
+        elif line.rstrip() == "}":
+            break
+    elif line.rstrip() == here:
+        here = None
+    i += 1
+sys.stdout.write("".join(lines[start:i + 1]))
+EXTRACT
 }
 
 # One run of a gate with its collaborators stubbed. HC is what the image reports
@@ -72,5 +91,21 @@ t_case "the exec gate runs the image's own command and reports it"
 _out="$(_gate check_healthcheck_exec '/opt/venv/bin/python3 -c "import onnxruntime" || exit 1' "" 1)"
 t_assert_contains "${_out}" "import onnxruntime" \
   "a failing healthcheck must name the command it actually ran"
+
+# ── the probe is emitted in three parts and must still be one program ────────
+t_case "the shipped-truth probe still emits all three of its sections"
+# Nothing else guards the concatenation: the ADV printfs stay in the file even if
+# a part is dropped from the caller, so the advertised-keys gate would not notice.
+_probe="$(bash -c '
+  '"$(_extract _probe_advertised)"'
+  '"$(_extract _probe_actual_versions)"'
+  '"$(_extract _probe_venv_inventory)"'
+  '"$(_extract _probe_elf_and_sonames)"'
+  '"$(_extract _shipped_truth_probe)"'
+  _shipped_truth_probe' 2>/dev/null)"
+t_assert_contains "${_probe}" "ADV PYTHON_VERSION"  "the advertised section must be there"
+t_assert_contains "${_probe}" "HAVE PYTHON_VERSION" "the actual-versions section must be there"
+t_assert_contains "${_probe}" "REQ"                 "the venv inventory section must be there"
+t_assert_contains "${_probe}" "SONAME"              "the inventory section must be there"
 
 t_summary

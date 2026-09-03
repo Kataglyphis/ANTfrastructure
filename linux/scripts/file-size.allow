@@ -14,6 +14,6 @@ linux/scripts/02-toolchain/build-gcc.sh | 880 | baseline 2026-09-03, not yet rev
 linux/scripts/03-media/build/litert/build-litert.sh | 966 | baseline 2026-09-03, not yet reviewed
 linux/scripts/03-media/build/opencv/build-opencv.sh | 934 | baseline 2026-09-03, not yet reviewed
 linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | 1243 | baseline 2026-09-03, not yet reviewed
-linux/scripts/06-packaging/smoke-runtime-image.sh | 1457 | grew 2026-09-03: ten ADV probes added for WC
+linux/scripts/06-packaging/smoke-runtime-image.sh | 1487 | grew 2026-09-03: the 131-line probe split into four named parts
 linux/scripts/build-cross-chain.sh | 881 | baseline 2026-09-03, not yet reviewed
 linux/scripts/lib/agentic-loop.sh | 874 | baseline 2026-09-03, not yet reviewed

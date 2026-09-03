@@ -166,5 +166,13 @@
     "replace": "true",
     "test": "bash linux/scripts/tests/test-reconcile-local-wheels.sh",
     "why": "the ORT wheel's own requirements are skipped by --no-deps"
+  },
+  {
+    "id": "probe.all-parts-concatenated",
+    "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+    "find": "  _probe_advertised\n  _probe_actual_versions\n  _probe_venv_inventory\n  _probe_elf_and_sonames\n",
+    "replace": "  _probe_advertised\n  _probe_actual_versions\n  _probe_venv_inventory\n",
+    "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
+    "why": "a dropped section leaves its printfs in the file, so no other gate notices"
   }
 ]

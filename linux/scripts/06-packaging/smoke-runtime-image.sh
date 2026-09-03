@@ -669,7 +669,8 @@ done' 2>/dev/null)"; then
 # One in-image probe emits facts only; every verdict is reached on the host, so
 # both gates can be driven with recorded probe text.
 # See docs/cross-build-verification.md, "Shipped-truth gates".
-_shipped_truth_probe() {
+_probe_advertised() {
+  # What the image SAYS it is: the ENV keys it advertises.
   cat <<'PROBE'
 set -uo pipefail
 py=/opt/venv/bin/python
@@ -691,6 +692,13 @@ printf 'ADV PYAV_VERSION %s\n'               "${PYAV_VERSION:-}"
 printf 'ADV IREE_VERSION %s\n'               "${IREE_VERSION:-}"
 printf 'ADV LITERT_VERSION %s\n'             "${LITERT_VERSION:-}"
 printf 'ADV PYTORCH_EXTRA %s\n'       "${PYTORCH_EXTRA:-}"
+PROBE
+}
+
+_probe_actual_versions() {
+  # What the image actually IS: every value read from the shipped thing itself,
+  # never from an ENV. The ADV/HAVE pair is what the shipped-truth gate compares.
+  cat <<'PROBE'
 printf 'HAVE PYTHON_VERSION %s\n'     "$("$py" -c 'import sys;print("%d.%d.%d"%sys.version_info[:3])' 2>/dev/null)"
 printf 'HAVE PYTHON_MAJOR_MINOR %s\n' "$("$py" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null)"
 _g="$(command -v gcc || true)"
@@ -725,6 +733,12 @@ printf 'HAVE LITERT_VERSION %s\n'   "$(_pyver ai-edge-litert)"
 printf 'HAVE LLVM_RELEASE %s\n'       "$(clang --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE GSTREAMER_VERSION %s\n'  "$(gst-inspect-1.0 --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'HAVE VULKAN_VERSION %s\n'     "$(_have_vulkan)"
+PROBE
+}
+
+_probe_venv_inventory() {
+  # The venv package set and the app's requirement edges, via importlib.metadata.
+  cat <<'PROBE'
 "$py" - <<'PY' 2>/dev/null || echo 'VENV ABSENT metadata-probe-crashed'
 import importlib.metadata as md
 try:
@@ -776,6 +790,12 @@ for d in md.distributions():
 PY
 # riscv64 only: what the image's own gcc defaults to, then the ISA each
 # shipped object was actually built for.
+PROBE
+}
+
+_probe_elf_and_sonames() {
+  # riscv64 ISA attributes and which library wins each soname lookup.
+  cat <<'PROBE'
 printf 'RVCC %s\n' "$(gcc -v 2>&1 | grep -oE 'with-arch=[a-z0-9_]+' | head -1 | cut -d= -f2)"
 
 for _l in /opt/opencv5/lib/libopencv_core.so* /opt/ffmpeg/lib/libavcodec.so* \
@@ -799,6 +819,16 @@ for _d in /opt/gstreamer/lib /opt/ffmpeg/lib /opt/opencv5/lib /opt/libcamera/lib
 done
 echo RTPROBE_DONE
 PROBE
+}
+
+
+# The probe the runtime smoke runs INSIDE the image, in three named parts:
+# what it advertises, what it is, and what it holds. Emitted as one script.
+_shipped_truth_probe() {
+  _probe_advertised
+  _probe_actual_versions
+  _probe_venv_inventory
+  _probe_elf_and_sonames
 }
 
 # Version-carrying env vars the shipped image sets. Each must equal what the image
