@@ -1,0 +1,43 @@
+# Shell functions currently over the size limit, frozen at their present length.
+#
+# Format: <path> | <function> | <lines> | <reason>
+#
+# The gate refuses growth, new offenders, AND a stale entry — shrinking a function
+# means updating its number here, deleting it once it drops under the limit. That
+# is what stops the baseline becoming cover for the next one.
+#
+# Length is weak evidence on its own; this list is a queue, not an accusation.
+# The refactor entries live in docs/refactoring-backlog.md F1/F2.
+linux/scripts/01-core/base-image.sh | install_nodejs | 81 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-apt.sh | install_target_packages | 81 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-meson.sh | ensure_meson_cross_file | 93 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/cross-stage-build.sh | _cross_stage_build_impl | 120 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/parallel-loop.sh | run_parallel_arch_loop | 92 | baseline 2026-09-03, not yet reviewed
+linux/scripts/01-core/python_uv.sh | uv_sync_project | 109 | baseline 2026-09-03, not yet reviewed
+linux/scripts/02-toolchain/build-gcc.sh | verify_gcc_gpg_signature | 81 | baseline 2026-09-03, not yet reviewed
+linux/scripts/02-toolchain/gcc.sh | build_canadian_native_gcc_for | 85 | baseline 2026-09-03, not yet reviewed
+linux/scripts/02-toolchain/setup-dependencies.sh | main | 98 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/armnn/build-armnn.sh | build_armnn | 98 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | bundle_sdk_runtime_libs | 82 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh | smoke_test_ffmpeg | 85 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh | ensure_tensorflow_c_sdk | 85 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh | _gst_rs_cargo_config | 85 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh | _gst_monorepo_arch_flags | 96 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh | _gst_xpy_write_config | 84 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/litert/build-litert.sh | configure_litert | 90 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/opencv/build-opencv.sh | _opencv_target_adjustments | 114 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/opencv/build-opencv.sh | configure_opencv | 81 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/core/common.sh | media_common_init | 100 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/runtime/assemble-torch-app.sh | reconcile_local_wheels | 139 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | _iree_build_target_cross | 89 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/tvm-config.sh | append_tvm_cmake_args | 84 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-cross-all-arches.sh | main | 96 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-runtime-image.sh | _shipped_truth_probe | 121 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-torch-venv.sh | assert_app_venv_parity | 92 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-torch-venv.sh | assert_pinned_versions | 356 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-torch-venv.sh | main | 115 | baseline 2026-09-03, not yet reviewed
+linux/scripts/build-runtime-manifest.sh | main | 90 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/agentic-loop.sh | run_agentic_loop | 97 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/cmake-build.sh | cmake_build_parse_args | 116 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/slang-compile.sh | slang_compile_combined_wgsl | 87 | baseline 2026-09-03, not yet reviewed
+linux/scripts/tests/test-chain-lifecycle.sh | warn | 114 | baseline 2026-09-03, not yet reviewed

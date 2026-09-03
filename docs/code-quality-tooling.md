@@ -232,6 +232,40 @@ added to the repo tripped SC1088 instead and broke main again. Which parse
 error PowerShell happens to provoke is arbitrary — enumerating them one
 outage at a time is not a policy.
 
+## Shell function size (`function-size`)
+
+`linux/scripts/verify-function-size.py`, preflight slug `function-size`. Fails on
+any shell function over `FUNCTION_SIZE_LIMIT` (default 80 lines) that is not
+frozen in `linux/scripts/function-size.allow`.
+
+**Why it exists.** Until 2026-09-03 the repo had no length metric at all. The F1
+and F2 queues in `docs/refactoring-backlog.md` were counted by hand, which is why
+their tables went stale between rounds — they had to be re-measured five times in
+a single day, and two functions over the limit (`_shipped_truth_probe` at 121
+lines, `cmake_build_parse_args` at 116) had never appeared in them.
+
+**The contract is four-way, and each direction matters:**
+
+| condition | verdict |
+| --- | --- |
+| over the limit, not frozen | FAIL — split it, or freeze it with a reason |
+| grew past its frozen number | FAIL — frozen numbers may only go down |
+| **shrank** below its frozen number | FAIL — update the entry |
+| frozen but no longer over the limit | FAIL — stale, delete the line |
+
+The last two are what stop the baseline becoming cover for the next offender:
+an improvement has to be recorded, and a freeze cannot outlive its subject. Same
+shape as `comment-size` and `masked-assignments`.
+
+**Length is weak evidence on its own.** This gate does not argue that a long
+function is wrong; it argues that the queue should stay honest without a human
+re-counting. The judgement about whether to split lives in the backlog.
+
+Covered by `linux/scripts/tests/test-function-size.sh`, whose six cases each
+build a throwaway tree and were each proven to go red by disabling the matching
+branch in the gate.
+
+
 ## Comment size (`comment-size`)
 
 Owner directive 6 says two lines at the point of use; longer text belongs in
