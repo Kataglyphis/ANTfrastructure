@@ -23,7 +23,8 @@ Last groomed: **2026-09-03**, third pass. Everything closed that day is in the
 `_cross_stage_build_impl` and `reconcile_local_wheels` rows, and F3's
 chain-status walker.
 
-**Five entries remain. Only one is a defect; the rest are tracks.**
+**Eight entries remain: FL1 (ship in progress), HT1, SMK-ADV and TC1 are open
+work; YB is a defect under investigation; F1/F2/F3 are tracks.**
 
 * **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
   found weak** (~5% recovery). Root cause open.
@@ -38,10 +39,9 @@ chain-status walker.
 
 Nothing in the five entries above is blocked on you. These are:
 
-1. **`git push`** — 2 commits sit on local `main` (both backlog grooming). The
-   substantive work — the Flutter fix, the completeness gate, A1/A2, the sccache
-   retry — was pushed on 2026-09-03; origin/main is at `189aeae4`. Only the last
-   two housekeeping commits remain.
+1. **`git push`** — origin/main is at `a8ab5e01` (pushed 2026-09-03). Local
+   `main` carries the rust-toolchain fix `09b1e6e2` and this grooming commit; the
+   Q1–Q6 gate wave will add more.
 2. ~~The submodule pin.~~ **RESOLVED 2026-09-03 — it was a false alarm, and not
    yours.** Preflight warned that `external/Kataglyphis-DocumANTation` pin
    `287365636` was "not reachable on its remote (unpushed local commit or upstream
@@ -76,6 +76,25 @@ exist in the registry.
 **On completion:** confirm `flutter --version` against the shipped
 `:latest-cross-amd64`/`-arm64`, then close this entry. If the build fails, the fix
 is unaffected — re-run once the cause is cleared.
+
+**Run 1 (`20260903-161323`) status, 2026-09-03 evening:** both fast lanes died
+on defects the run itself flushed out, neither Flutter-related, both fixed while
+it ran:
+
+* **amd64** — torch stage, `reconcile_local_wheels` returned 1 on the no-local-torch
+  path (`[ … ] && …` as the last statement). Hotfix `6ccb2f68`.
+* **arm64** — package stage exit 127: the COPY'd `/usr/local/{rustup,cargo}` is the
+  amd64 builder's x86_64 toolchain, and it has been shipped in every arm64/riscv64
+  image so far. Fix `09b1e6e2` (`ensure_native_rust_toolchain` + `check_rust_toolchain`
+  smoke); see [`failure-modes.md`](failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch).
+* **riscv64** — package stage started after both fixes landed, so it validates the
+  rust reinstall live (install-rust.sh under QEMU).
+
+**Next:** relaunch `--only runtime` for all three arches once the riscv64 lane ends,
+then the on-completion checks above plus `rustc --version` / `rustup show` on the
+shipped arm64/riscv64 images. The arm64 Flutter question (the SDK there is the
+x86-64 one; see HT1) is being probed in parallel and decides whether arm64 needs a
+package-stage bootstrap before `check_flutter` can pass.
 
 ### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
@@ -131,6 +150,57 @@ Reading the log needs one caution learned here: a **cached** BuildKit step repla
 its old output verbatim. The first read of this build showed 496 hits of the
 pre-retry message, all from one cached step (`#30`), which would have looked like
 the new launcher failing to take effect.
+
+### HT1. Host trees copied from `artifact-source` — the builder's arch ships in foreign images [high]
+
+`Dockerfile.package`'s `artifact-source` is the **amd64 host** cross image. Every
+`COPY --from=artifact-source` of a tree that was *installed on the host* (not
+cross-built for the target) puts x86_64 binaries into the arm64/riscv64 runtime
+image. Two members so far:
+
+* `/usr/local/{rustup,cargo}` — **FIXED 2026-09-03** (`09b1e6e2`): replaced by a
+  native install in the package stage; `check_rust_toolchain` proves the triple on
+  the shipped image. Accepted skew: cargo-c comes from apt there (0.10.16 vs the
+  0.10.25 pin) because `cargo install cargo-c` under QEMU is a ~1 h build. Revisit
+  only if a consumer needs a cargo-c feature newer than 0.10.16.
+* `/opt/flutter` on arm64 — `setup-flutter.sh` installs the **x86-64** SDK on the
+  arm64 lane too. Whether `flutter --version` self-bootstraps an arm64 dart-sdk
+  inside the image is being probed (`flutter-arm64-probe`). Outcome decides:
+  bootstrap in the package stage, or declare Flutter honestly absent on arm64 like
+  riscv64 (`check_flutter`, `register_flutter_git_safe_dir`,
+  [`artifact-copy-completeness.md`](artifact-copy-completeness.md#per-arch-empty-artifacts)).
+
+**Audit the rest:** walk `runtime-artifacts.manifest` and classify each path as
+cross-built-for-target or host-installed; `file -b` one binary per tree inside the
+shipped arm64 image. A one-line gate is possible — `find <tree> -type f -executable
+| head` + `readelf -h` machine check against `dpkg --print-architecture` — and would
+belong in `smoke-runtime-image.sh` next to `check_native_so_closure`.
+
+### SMK-ADV. `_advert_verdicts` SKIPs an advertised key it cannot read [medium]
+
+The ADV/HAVE table (`smoke-runtime-image.sh`) prints `SKIP … could not read the
+actual value` when the probe for an advertised key fails. That is exactly the
+shape of the rust defect: `rustc --version` failed on arm64 for months and the
+gate said SKIP, not BAD. Tighten to **BAD by default** with a per-`<arch>:<key>`
+exemption table for keys that legitimately cannot be read on an arch (riscv64 has
+several). Needs the per-arch SKIP list from a completed run of the current tree
+first — the arm64/riscv64 smokes of the relaunch will print it. Ship as: table +
+`tests/test-runtime-image-gates.sh` cases + a mutation that blanks the exemption
+check.
+
+### TC1. Static gate for the trailing-conditional return [S, ★★]
+
+Two silent build deaths in two days had the same shape: a function whose **last
+statement** is `cond && action`, returning 1 when `cond` is false, killing the
+caller under `set -e` with no message (`reconcile_local_wheels` 2026-09-03; the
+2026-09-02 `logging.sh` ERR-trap case was the mirror image). shellcheck has no
+check for it. A small `verify_trailing_conditional.py` over `linux/scripts/**/*.sh`
+— last non-comment statement of a function body matches `&&` without a trailing
+`|| true`/`|| return 0`, or is a bare `[ … ]` — with the usual four-way allowlist.
+Build **after** the Q1–Q6 gate wave lands (it edits the same `preflight.sh` /
+`mutations.json` / `code-quality-tooling.md` seams). Characterisation suites for
+F1 extractions should also run the function under `set -eu` and assert 0 on every
+early-return path — the `reconcile_local_wheels` suite did not until the hotfix.
 
 ### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-03
 
