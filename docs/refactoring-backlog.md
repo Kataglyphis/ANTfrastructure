@@ -146,31 +146,39 @@ gate does not care that a file is big, only that it grows without saying why.
 
 ### F3. Clone families worth one owner [S-M each]
 
-- **The source-or-fallback family — the biggest one, found 2026-09-02** [M·★★★].
-  Four sites carry a canonical helper plus an inline copy used when the canonical
-  file is absent: host-compiler resolution, `_path_contains`/`_path_prepend_unique`,
-  and host-python discovery. Evidence, sites and measurements are in F5 (that
-  entry owns them); what belongs HERE is that they are one family, not three
-  pairs, and that the fallbacks are **load-bearing by construction** — the same
-  bootstrap paradox the `lib/*.sh` item below warns about.
+- **The source-or-fallback family — DECIDED 2026-09-03: KEEP. Do not delete.**
+  [M·★★★] Four sites carry a canonical helper plus an inline fallback:
+  host-compiler resolution (`ffmpeg-probe-framework.sh`), `_path_contains` /
+  `_path_prepend_unique` (`04-runtime/gstreamer-env.sh`, `libcamera-env.sh`), and
+  host-python discovery (`onnxruntime/build/lib/common.sh`).
 
-  So the work is not "extract a helper". It is one question, asked once: **is any
-  fallback still reachable?**
+  **This entry previously recorded "ANSWERED 2026-09-02: no fallback is reachable"
+  and proposed deleting all four. That answer was WRONG, and acting on it would
+  have broken the build.** It reasoned from the whole-directory provisioning
+  (`Dockerfile.package:276`, `Dockerfile.toolchain:301`, and the ~25 media RUNs
+  that bind-mount `01-core` entire) and concluded `/opt/scripts/core/` always holds
+  all 68 files. It never looked at the **per-file** provisioning, which is
+  widespread:
 
-  **ANSWERED 2026-09-02: no — in every context the tree builds.** The evidence,
-  because a grep of `COPY .* 01-core/<file>` says the opposite and nearly misled
-  this entry: `Dockerfile.package:274` and `Dockerfile.toolchain:301` copy the
-  **whole directory** (`COPY linux/scripts/01-core/ /opt/scripts/core/`), and
-  `Dockerfile.media` bind-mounts it at the same path in 23 RUNs. Verified in the
-  shipped image: `/opt/scripts/core/` holds 68 files including both
-  `path-helpers.sh` and `compiler-resolution.sh`. So the runtime env scripts, the
-  media build stages and the android preamble all take the canonical branch.
+  | context | 01-core files provided |
+  |---|---|
+  | `Dockerfile.android:79-88` | **3** — `compiler-resolution.sh`, `downloads.sh`, `platform.sh` |
+  | `Dockerfile.media:448-454` | **7** — the cross-* set, `platform.sh`, `ubuntu-mirror.sh` |
+  | `Dockerfile.media:177-180` | **4** |
+  | `Dockerfile.sdk:60,111` | **2** |
+  | `Dockerfile.base` (each RUN) | ~13 |
+  | `Dockerfile.toolchain:91-109` etc. | ~19 |
 
-  What remains is therefore a **decision, not an investigation**: delete four
-  fallbacks whose guard condition is never false, or keep them as insurance
-  against a future stage that copies `01-core` per-file instead of wholesale.
-  Deleting them is a behavioural change across every stage and wants one
-  validating build — that is the only reason it is not already done here.
+  `path-helpers.sh` is in **none** of those lists. So the fallbacks are not
+  insurance against a hypothetical future stage — several stages are already in
+  exactly the state they exist for, today.
+
+  **Reachability is per-RUN, not per-tree**, which is why a grep of either shape
+  alone gives the wrong answer: the ffmpeg probe happens to run under a
+  whole-directory mount (`Dockerfile.media:752`), so *that* fallback is indeed
+  dead, while the android lane's 3-file COPY makes others live. Anyone reopening
+  this must check the specific RUN that sources the specific file — and say which
+  RUN in the entry.
 
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
   (56 shingles) — the single largest copied block in the tree. It is
