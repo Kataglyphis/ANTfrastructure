@@ -174,5 +174,21 @@
     "replace": "  _probe_advertised\n  _probe_actual_versions\n  _probe_venv_inventory\n",
     "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
     "why": "a dropped section leaves its printfs in the file, so no other gate notices"
+  },
+  {
+    "id": "handoff.artifact-context-join",
+    "target": "linux/scripts/01-core/context-management.sh",
+    "find": "printf '%s' \"${ARTIFACT_CONTEXT_ROOT%/}-${arch}\"",
+    "replace": "printf '%s' \"${ARTIFACT_CONTEXT_ROOT%/}/${arch}\"",
+    "test": "bash linux/scripts/tests/test-cross-oci-handoff.sh",
+    "why": "the --no-push package build must read the image android just exported"
+  },
+  {
+    "id": "harvest.both-flag-kinds",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "  for f in \"${flagdir}\"/pin.*.* \"${flagdir}\"/built.*.*; do",
+    "replace": "  for f in \"${flagdir}\"/pin.*.*; do",
+    "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+    "why": "--no-push writes only built.<stage>.<arch>, and pin.* alone loses it"
   }
 ]

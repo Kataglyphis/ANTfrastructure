@@ -1586,6 +1586,12 @@ is not actually frozen.
 
 `linux/scripts/build-cross-chain.sh:162`
 
+**FIXED 2026-09-03.** `runtime_artifact_context_dir` joins with `-` now, matching
+what `cross_stage_context_dir` writes. Verified both sides by extracting the REAL
+composers rather than re-implementing them: producer and consumer now name the
+same directory. The consumer side was the right one to change — three production
+callers use the `<stage>-<arch>` convention, and this join has exactly one user.
+
 **What breaks.**
 Run the officially-supported full no-push validation chain: `bash
 linux/scripts/build-cross-chain.sh --no-push --target-arches
@@ -1670,6 +1676,12 @@ layout.
 ### XO. parallel_loop_harvest keys on pin.* files only, so --no-push --parallel-archs loses every *_BUILT_THIS_RUN flag [medium]
 
 `linux/scripts/01-core/cross-stage-build.sh:521`
+
+**FIXED 2026-09-03.** The harvest keys on BOTH flag kinds. It iterated `pin.*`
+alone with the `built.*` handling nested inside, so a `built.` with no `pin.`
+beside it was never seen — which is the whole `--no-push` path, where a worker
+has no digest to write. Three cases cover it: the push path harvesting both, a
+built flag alone, and an empty dir not tripping on the unmatched glob.
 
 **What breaks.**
 Run `build-cross-chain.sh --no-push --parallel-archs` (full chain from base).

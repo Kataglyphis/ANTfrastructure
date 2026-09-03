@@ -554,21 +554,31 @@ cross_stage_run() {
 # Harvest hook for run_parallel_arch_loop: read worker-persisted pins and
 # built-this-run flags back into the parent's arrays (subshell writes are lost).
 parallel_loop_harvest() {
+  # Keyed on BOTH flag kinds. Iterating pin.* alone lost every built.* that has no
+  # pin beside it -- which is the whole --no-push path, where a worker writes only
+  # built.<stage>.<arch>. docs/refactoring-backlog.md XO
   local flagdir="$1" f name stage arch pin_varname built_varname
-  for f in "${flagdir}"/pin.*.*; do
+  local -A _hv_seen=()
+  for f in "${flagdir}"/pin.*.* "${flagdir}"/built.*.*; do
     [ -f "${f}" ] || continue
-    name="${f##*/pin.}"
+    name="${f##*/}"
+    name="${name#pin.}"
+    name="${name#built.}"
+    [ -z "${_hv_seen[${name}]:-}" ] || continue
+    _hv_seen["${name}"]=1
     stage="${name%%.*}"
     arch="${name##*.}"
+
     pin_varname="$(cross_stage_pin_varname "${stage}" 2>/dev/null || true)"
-    [ -n "${pin_varname}" ] || continue
-    if declare -p "${pin_varname}" &>/dev/null; then
+    if [ -n "${pin_varname}" ] && [ -f "${flagdir}/pin.${name}" ] \
+       && declare -p "${pin_varname}" &>/dev/null; then
       local -n _hv_pin_map="${pin_varname}"
-      _hv_pin_map["${arch}"]="$(cat "${f}")"
+      _hv_pin_map["${arch}"]="$(cat "${flagdir}/pin.${name}")"
       log "[stage ${stage}-${arch}] pin harvested from parallel worker"
     fi
+
     built_varname="${stage^^}_BUILT_THIS_RUN"
-    if [ -f "${flagdir}/built.${stage}.${arch}" ] && declare -p "${built_varname}" &>/dev/null; then
+    if [ -f "${flagdir}/built.${name}" ] && declare -p "${built_varname}" &>/dev/null; then
       local -n _hv_built="${built_varname}"
       _hv_built["${arch}"]=1
     fi

@@ -182,4 +182,27 @@ t_assert_eq "0" "$(grep -c -e 'CROSS_CONTEXT_WORKDIR}/android-artifacts' \
   "${TESTS_DIR}/../01-core/cross-stage-build.sh")" \
   "a raw read aborts the android stage under set -u"
 
+
+# ── XN: the --no-push android handoff ────────────────────────────────────────
+t_case "the artifact context the runtime lane reads is the one android wrote"
+# cross_stage_context_dir composes <stage>-<arch>; runtime_artifact_context_dir
+# used to join with a slash, so under --no-push the package build looked in a
+# directory nobody creates and silently fell back to the stale registry tag.
+# Both sides are extracted so this compares the REAL composers, not a copy.
+_ctx_producer="$(sed -n '/^cross_stage_context_dir() {/,/^}/p' \
+  "${TESTS_DIR}/../01-core/cross-stage-build.sh")"
+_ctx_consumer="$(sed -n '/^runtime_artifact_context_dir() {/,/^}/p' \
+  "${TESTS_DIR}/../01-core/context-management.sh")"
+_both="$(bash -c '
+  set -u
+  cross_ensure_local_context_workdir() { return 0; }
+  CROSS_CONTEXT_WORKDIR=/wd
+  '"${_ctx_producer}"'
+  '"${_ctx_consumer}"'
+  ARTIFACT_CONTEXT_ROOT="${CROSS_CONTEXT_WORKDIR}/android-artifacts"
+  printf "%s\n%s\n" "$(cross_stage_context_dir android-artifacts arm64)" \
+                    "$(runtime_artifact_context_dir arm64)"' 2>/dev/null)"
+t_assert_eq "$(printf '%s' "${_both}" | head -1)" "$(printf '%s' "${_both}" | tail -1)" \
+  "producer and consumer must name the same directory"
+
 t_summary

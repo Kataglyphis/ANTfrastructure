@@ -138,4 +138,42 @@ t_assert_fails env -u PARALLEL_LOOP_FAIL_FAST bash -c '
 t_assert_eq "amd64 arm64 riscv64" "$(tr '\n' ' ' < "${workdir}/kg-order" | sed 's/ *$//')" \
   "default keep-going must attempt all three arches"
 
+
+# ── XO: harvesting the --no-push flags ───────────────────────────────────────
+# Each per-arch worker is a background subshell, so it persists state to files
+# instead of arrays. On the push path it writes pin.<stage>.<arch> AND
+# built.<stage>.<arch>; under --no-push there is no pin to write, only built.
+# The harvest iterated pin.* alone, so those runs lost every BUILT_THIS_RUN flag.
+_harvest_into() {
+  local d="${1}"
+  bash -c '
+    set -u
+    log() { :; }
+    cross_stage_pin_varname() { printf "%s_PIN" "${1^^}"; }
+    declare -A MEDIA_PIN=() MEDIA_BUILT_THIS_RUN=()
+    '"$(sed -n "/^parallel_loop_harvest() {/,/^}/p" "${TESTS_DIR}/../01-core/cross-stage-build.sh")"'
+    parallel_loop_harvest "'"${d}"'"
+    printf "pin=%s built=%s\n" "${MEDIA_PIN[arm64]:-}" "${MEDIA_BUILT_THIS_RUN[arm64]:-}"
+  ' 2>/dev/null
+}
+
+t_case "the push path harvests both the pin and the built flag"
+_d="$(mktemp -d)"
+printf 'sha256:abc\n' > "${_d}/pin.media.arm64"
+: > "${_d}/built.media.arm64"
+t_assert_eq "pin=sha256:abc built=1" "$(_harvest_into "${_d}")" "both flags must survive the subshell"
+rm -rf "${_d}"
+
+t_case "a built flag with no pin beside it is still harvested (--no-push)"
+_d="$(mktemp -d)"
+: > "${_d}/built.media.arm64"
+t_assert_eq "pin= built=1" "$(_harvest_into "${_d}")" \
+  "--no-push writes no pin, and that must not lose the built flag"
+rm -rf "${_d}"
+
+t_case "an empty flag dir harvests nothing and does not trip on the glob"
+_d="$(mktemp -d)"
+t_assert_eq "pin= built=" "$(_harvest_into "${_d}")" "an unmatched glob must not become a filename"
+rm -rf "${_d}"
+
 t_summary
