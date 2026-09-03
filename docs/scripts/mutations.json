@@ -1,0 +1,154 @@
+[
+  {
+    "id": "code-size.new-offender",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "        if was is None:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "an unfrozen oversized subject must fail"
+  },
+  {
+    "id": "code-size.growth",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "        elif count > was:",
+    "replace": "        elif False:",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "growth past the frozen number must fail"
+  },
+  {
+    "id": "code-size.unrecorded-shrink",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "        elif count < was:",
+    "replace": "        elif False:",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "an improvement must be recorded, not silent"
+  },
+  {
+    "id": "code-size.stale-freeze",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "        if key not in seen:",
+    "replace": "        if False:",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "a freeze must not outlive its subject"
+  },
+  {
+    "id": "code-size.file-verdict-discarded",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "    rc |= _check(\"files\"",
+    "replace": "    rc |= 0 * _check(\"files\"",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "a file violation must fail, not just print"
+  },
+  {
+    "id": "code-size.longest-not-last",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "longest[(f, n)] = max(c, longest.get((f, n), 0))",
+    "replace": "longest[(f, n)] = c",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "a redefinition must not hide the offender"
+  },
+  {
+    "id": "code-size.python-ast",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "                if fn.endswith(\".py\"):",
+    "replace": "                if False:",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "python functions are in scope"
+  },
+  {
+    "id": "code-size.dockerfile-pass",
+    "target": "linux/scripts/verify-code-size.py",
+    "find": "            if not fn.startswith(\"Dockerfile\"):",
+    "replace": "            if True:",
+    "test": "bash linux/scripts/tests/test-code-size.sh",
+    "why": "Dockerfiles are size-checked"
+  },
+  {
+    "id": "advert-keys.unprobed-row",
+    "target": "linux/scripts/verify-advertised-keys.py",
+    "find": "    if new_unprobed:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-advertised-keys.sh",
+    "why": "a table row with no ADV probe can only SKIP"
+  },
+  {
+    "id": "advert-keys.healed-baseline",
+    "target": "linux/scripts/verify-advertised-keys.py",
+    "find": "    if healed:",
+    "replace": "    if False:",
+    "test": "bash linux/scripts/tests/test-advertised-keys.sh",
+    "why": "a probed key must leave the frozen baseline"
+  },
+  {
+    "id": "cross-build.pull-flag",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "printf '%s' \"--pull=true\"",
+    "replace": "printf '%s' \"--pull=false\"",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a pushing build refreshes its base"
+  },
+  {
+    "id": "cross-build.local-no-retry",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "[ \"${push_flag}\" -eq 1 ] && _max_attempts=\"${PUSH_MAX_ATTEMPTS:-4}\"",
+    "replace": "_max_attempts=\"${PUSH_MAX_ATTEMPTS:-4}\"",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "retry is a push concept"
+  },
+  {
+    "id": "cross-build.salvage-loop",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "for _tgt in \"${_salvage_targets[@]}\"; do",
+    "replace": "for _tgt in; do",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a failed build salvages its named stages"
+  },
+  {
+    "id": "cross-build.salvage-disk-guard",
+    "target": "linux/scripts/01-core/cross-stage-build.sh",
+    "find": "&& _cross_salvage_disk_ok \"${_cache_dir}\"; then",
+    "replace": "; then",
+    "test": "bash linux/scripts/tests/test-cross-stage-build-cmd.sh",
+    "why": "a short disk must not be filled further"
+  },
+  {
+    "id": "stage-defs.loop-var-leak",
+    "target": "linux/scripts/01-core/stage-defs.sh",
+    "find": "  local stage=\"$1\" s\n",
+    "replace": "  local stage=\"$1\"\n",
+    "test": "bash linux/scripts/tests/test-stage-defs.sh",
+    "why": "the disk guard's protected-slug list depends on it"
+  },
+  {
+    "id": "guard-helpers.first-match",
+    "target": "linux/scripts/01-core/guard-helpers.sh",
+    "find": "-print -quit 2>/dev/null || true",
+    "replace": "-print -quit 2>/dev/null",
+    "test": "bash linux/scripts/tests/test-guard-helpers.sh",
+    "why": "a missing dir must not abort a set -e caller"
+  },
+  {
+    "id": "delete-guard.quote-aware-split",
+    "target": ".claude/hooks/guard-destructive-deletes.py",
+    "find": "    out, buf, quote = [], [], \"\"",
+    "replace": "    return re.split(r\"[;&|\\n]+\", text)\n    out, buf, quote = [], [], \"\"",
+    "test": "bash linux/scripts/tests/test-delete-guard.sh",
+    "why": "splitting through a quote misreads prose as a delete"
+  },
+  {
+    "id": "mutations.survivor-must-fail",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        if not applied:\n            rc = 1",
+    "replace": "        if not applied:\n            rc = 0",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a stale mutation is silently testing nothing"
+  },
+  {
+    "id": "mutations.restores-the-file",
+    "target": "docs/scripts/verify_mutations.py",
+    "find": "        shutil.copyfile(backup.name, target)",
+    "replace": "        pass",
+    "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+    "why": "a tool that edits in place must never leave the tree mutated"
+  }
+]

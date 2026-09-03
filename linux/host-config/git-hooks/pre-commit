@@ -45,4 +45,18 @@ if [ -n "${_staged_md}" ]; then
   python3 docs/scripts/verify_doc_dupes.py >/dev/null || { echo "pre-commit: doc duplication FAILED" >&2; exit 1; }
 fi
 
+# Mutation gate, scoped to what is being committed: running all 19 takes about a
+# minute, running the handful whose target you just touched takes seconds. It
+# answers the one question reading a test cannot -- can it fail?
+_staged_any="$(git diff --cached --name-only --diff-filter=ACM || true)"
+if [ -n "${_staged_any}" ]; then
+  if python3 docs/scripts/verify_mutations.py --changed >/dev/null 2>&1; then
+    :
+  else
+    echo "pre-commit: a recorded mutation SURVIVED -- a test here cannot fail" >&2
+    python3 docs/scripts/verify_mutations.py --changed >&2 || true
+    exit 1
+  fi
+fi
+
 echo "pre-commit: OK"

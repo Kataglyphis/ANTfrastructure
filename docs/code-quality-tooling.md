@@ -232,6 +232,35 @@ added to the repo tripped SC1088 instead and broke main again. Which parse
 error PowerShell happens to provoke is arbitrary — enumerating them one
 outage at a time is not a policy.
 
+## The mutation gate (`mutations`)
+
+`docs/scripts/verify_mutations.py` with `docs/scripts/mutations.json`, preflight
+slug `mutations`. For each recorded entry it makes a literal edit that **neuters
+one guarantee**, runs the named test, and requires the test to FAIL. A mutation
+the tests survive is reported and fails the gate.
+
+**Why it exists.** Reading a test cannot tell you whether it can fail. In one
+session, eight tests written to guard a fix turned out to pass with the fix
+removed: a window-grep that matched the wrong `|| die`, a stub that bypassed the
+extraction under test, an `if` wrapper that suppressed the very errexit it meant
+to prove, and a fixture whose short definition came first. Every one was caught
+by breaking the guarded code by hand. This gate is that habit, written down.
+
+**A recurring shape worth naming:** most vacuous tests assert on the failure
+MESSAGE and never on the exit code, so the tool prints a failure and returns 0.
+Assert both.
+
+| flag | use |
+| --- | --- |
+| *(none)* | every entry — CI, or before a release |
+| `--changed` | only entries whose target is in the diff — the pre-commit hook |
+| `--only <id>` | one entry, while writing it |
+| `--root <dir>` | resolve targets and run tests elsewhere (its own tests use this) |
+
+Adding a fix without a mutation entry is allowed; adding a *gate* without one is
+how the next inert check gets in. The gate guards itself: two entries neuter its
+own survivor-reporting and its file restore.
+
 ## Code size — functions and files (`code-size`)
 
 `linux/scripts/verify-code-size.py`, preflight slug `code-size`. One contract over

@@ -44,6 +44,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes p
              masked-decls \
              comment-size \
              code-size \
+             mutations \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -188,6 +189,7 @@ run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/script
 run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify-masked-assignments.py
 run_check comment-size "comment block size" ${PREFLIGHT_PYTHON} linux/scripts/verify-comment-size.py
 run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/scripts/verify-code-size.py
+run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then
