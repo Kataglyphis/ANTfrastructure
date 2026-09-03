@@ -919,6 +919,41 @@ demonstrable; the time difference is not in doubt.
 coding column separates nobody. The tool-calling column does, because it has 27
 cases — which is exactly why the case count was raised.
 
+### 1i. The coding score at 27 tasks — and what six tasks were hiding
+
+The six-task set said the QAIRT 4B-Instruct scored **5/6 = 83 % [44–97 %]**.
+The 27-task set says **17/27 = 63 % [44–78 %]**. The small set both
+*overstated* the model and carried an interval so wide it excluded almost
+nothing — it could not have distinguished this model from one at 45 %.
+
+| | tasks | score | 95 % interval |
+|---|---|---|---|
+| old set | 6 | 5/6 = 83 % | [44–97 %] |
+| **extended set** | **27** | **17/27 = 63 %** | **[44–78 %]** |
+
+**Partial credit changes what the failures mean.** Of the eight genuine
+failures (two more were server truncations), **six are near-misses**:
+
+| Task | assertions |
+|---|---|
+| `validation_parse_kv_pairs` | 20/21 |
+| `validation_parse_range_spec` | 20/25 |
+| `stateful_run_machine` | 16/18 |
+| `lists_merge_pairs_longest_value_wins` | 12/14 |
+| `strings_normalize_tag` | 11/12 |
+| `strings_dominant_case` | 11/12 |
+| `rank_quants` | 2/6 |
+| `parsing_item_list` | no code produced |
+
+So the model is not *incompetent* at these tasks — it is **mostly right and
+loses edge cases**, which is a different engineering problem from "cannot do
+it" and suggests different mitigations (a stricter prompt, a review pass)
+rather than a different model. Pass/fail alone showed eight identical
+failures and could not have told you that.
+
+Two tasks still hit the 2048-token output cap. That cap remains the single
+biggest distortion in every coding number on this page.
+
 ### 1h. The lane knobs, finally swept (measured 2026-09-01)
 
 Two flags had been carried since the first day without ever being varied.
