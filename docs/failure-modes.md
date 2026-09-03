@@ -39,12 +39,19 @@ Two neighbours, so you land on the right page:
 - [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
 - [A prune step deletes the wheel a later step requires](#a-prune-step-deletes-the-wheel-a-later-step-requires)
+- [The disk guard aims at the wrong number](#the-disk-guard-aims-at-the-wrong-number)
+- [A renamed or dropped distro package kills a stage hours in](#a-renamed-or-dropped-distro-package-kills-a-stage-hours-in)
+- [The delete guard denies its own legitimate work](#the-delete-guard-denies-its-own-legitimate-work)
+- [OpenCV: `std::complex` breaks on a shadowed `complex.h`](#opencv-stdcomplex-breaks-on-a-shadowed-complexh)
+- [A smoke that never passed and always excused itself](#a-smoke-that-never-passed-and-always-excused-itself)
+- [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
 
 **Windows: the layer store (hcsshim)**
 
 - [`hcsshim::ActivateLayer 0x20` on an AMD Radeon host](#hcsshimactivatelayer-0x20-on-an-amd-radeon-host)
 - [`ExportLayer 0x3`, spawn flakes, `ExportLayer 0x70` — disk exhaustion in costume](#exportlayer-0x3-spawn-flakes-exportlayer-0x70--disk-exhaustion-in-costume)
 - [`ExportLayer 0x3` at finalize of a heavy media layer, disk is fine](#exportlayer-0x3-at-finalize-of-a-heavy-media-layer-disk-is-fine)
+- [Every RUN step reports `DONE 2841.2s` — the same number, whatever it runs](#every-run-step-reports-done-28412s--the-same-number-whatever-it-runs)
 - [`hcsshim::ActivateLayer failed (0x20)` during build](#hcsshimactivatelayer-failed-0x20-during-build)
 - [`ActivateLayer 0x20 "file used by another process"` on commit](#activatelayer-0x20-file-used-by-another-process-on-commit)
 - [`ImportLayer ... (0xb7) "already exists"` — deterministic, burns the retry budget](#importlayer--0xb7-already-exists--deterministic-burns-the-retry-budget)
@@ -86,6 +93,8 @@ Two neighbours, so you land on the right page:
 - [meson cross: `Summary section 'Build environment' already have key 'host cpu'`, then `Subproject "subprojects/glib" required but not found`](#meson-cross-summary-section-build-environment-already-have-key-host-cpu-then-subproject-subprojectsglib-required-but-not-found)
 - [Windows base: scoop cannot install a pinned tool, 404 on the installer](#windows-base-scoop-cannot-install-a-pinned-tool-404-on-the-installer)
 - [AArch64 cross compile aborts with `error: fixup value out of range`](#aarch64-cross-compile-aborts-with-error-fixup-value-out-of-range)
+- [A source build produces UNPATCHED sources and says `SKIP: ... (already applied)`](#a-source-build-produces-unpatched-sources-and-says-skip--already-applied)
+- [`atlbase.h` not found when building LLVM in the container](#atlbaseh-not-found-when-building-llvm-in-the-container)
 - [A build script dies with `The term ... is not recognized`, in the container only](#a-build-script-dies-with-the-term--is-not-recognized-in-the-container-only)
 
 
@@ -305,6 +314,268 @@ on a destructive step:** it hides the failure AND the fact that the step was
 wrong, so the bug sits latent until something unrelated arms it — here, a
 read-only mount becoming writable.
 
+### The disk guard aims at the wrong number
+
+**Symptom.** The chain prunes at 40G free between stages, reports success, and the
+NEXT stage refuses anyway: `[ERROR] runtime lane refused: 56G free, ~120G needed`
+(2026-09-02: six manual prunes; 2026-09-03: the Flutter ship build, attempt 1).
+
+**Cause.** Two different numbers. `CROSS_DISK_GUARD_GB` (40) is a floor for *this*
+stage; the runtime lane needs `CROSS_RUNTIME_LANE_GB` (120) per wrapper build, and
+`--only runtime` additionally pulls the three `cross-android-<arch>` images
+(~40G uncompressed each) as its artifact source. A guard that reclaims to a fixed
+floor is therefore satisfied exactly when the lane is not.
+
+**Fix.** `_chain_stage_disk_guard` in `build-cross-chain.sh` reclaims to what
+comes *next* (`_chain_runtime_lane_need_gb`), and the launch-time preflight warns
+when the run will enter the lane with less than stage cost + lane need.
+
+**When the guard reclaims nothing.** `buildctl du` showing every regular record
+`Reclaimable: false` is not a full cache — it is killed chains' leaked *leases*
+(2026-09-03: 351 records / 251 GB pinned, `prune-safe.sh` freed 0). Leases die
+with the daemon: `systemctl --user restart buildkit.service` (no build running),
+then `PRUNE_KEEP_GB=<N> linux/host-config/prune-safe.sh`. `--keep-storage` bounds
+the WHOLE store, and the non-candidates (cache mounts ~166G + `source.local` ~10G)
+count toward it, so N below ~180 prunes every regular record. Local
+`:latest-cross-<arch>` images are re-pullable and not build inputs; `nerdctl rmi`
+them last. Restarting the daemon is the BKD1 remedy above wearing a disk costume.
+
+### A renamed or dropped distro package kills a stage hours in
+
+**Symptom.** A media or toolchain stage dies four hours into a rebuild with
+`E: Unable to locate package <name>` — or, worse, does not die: an
+`install_target_packages ... || true` swallows it and the feature silently
+vanishes from the shipped image.
+
+**Cause.** Ubuntu renames and drops binary packages between releases, and this
+tree pins a rolling one (`UBUNTU_CODENAME` in `versions.env`). 26.04 renamed
+`libfreetype6-dev` to `libfreetype-dev`, replaced `libopenexr-3-dev` with
+`libopenexr-dev`, and `libvvdec-dev` never existed on ports at all. Nothing
+noticed for months because warm apt caches still answered for the old names —
+the tree was un-buildable from scratch and no one knew, because nothing ever
+built from scratch.
+
+**Fix.** `linux/scripts/verify_package_names.py`, wired into `preflight.sh` as
+the `pkg-names` check. It extracts every distro package name **`linux/scripts/**`**
+asks for and resolves each against the live Ubuntu indices for the pinned codename —
+`archive.ubuntu.com` for amd64, `ports.ubuntu.com` for arm64/riscv64 — before a
+build starts rather than four hours in.
+
+What it reads, and how a verdict is reached:
+
+- Sources: `install_target_packages` / `install_optional_target_packages` /
+  `install_host_packages` / `install_deps_preamble` / `apt_install` call sites,
+  bare `apt-get install` lines, `*_packages` and `*_pkgs` array literals,
+  `append_unique_packages` / `append_available_packages` in
+  `01-core/package-lists.sh`, the `_CPYTHON_EXT_DEV_PKG_TABLE` rows in
+  `01-core/cpython-dev-packages.sh`, and the soname map at
+  `03-media/runtime/so-package-map.txt`. Names occur one-per-line AND
+  several-per-line; a per-line assumption is how an earlier audit reported the
+  wrong count, so `--list` prints exactly what was extracted.
+- **UNGUARDED** requests FAIL the gate: a missing name aborts the whole apt
+  transaction and kills the stage. **GUARDED** ones (`|| true`, a `||`
+  fallback chain, a self-filtering helper, an enclosing apt probe) only WARN —
+  the cost there is one wasted apt round-trip per run, not a dead build.
+- A name apt can still install through `Provides:` counts as present but is
+  reported: a virtual name disappears the next time the provider is renamed.
+- Names from a non-Ubuntu repo (NVIDIA/ROCm/TensorRT) are UNVERIFIABLE, never
+  dead; that file list lives in the script.
+- An array no installer ever consumes is reported as unchecked, not silently
+  dropped — that is what keeps sdkmanager component lists out of the verdict.
+- **Not covered:** package names written directly in a `Dockerfile` RUN
+  (`Dockerfile.toolchain`'s `binutils-dev` is the only one today), and anything
+  a script assembles at runtime rather than spelling out.
+
+**Offline is a SKIP, never a pass.** Indices are cached per codename with a
+6h TTL (`PKG_NAMES_TTL`, `PKG_NAMES_CACHE_DIR`): ~13s cold, ~1.5s warm. With no
+network and no cache the check says so loudly and exits 0; with a stale cache it
+verifies anyway and says the cache was stale.
+
+**The transferable lesson.** The gate carries its own extraction self-check —
+known package names that MUST be found (a several-per-line array row, a
+backslash-continued call, a `package-lists.sh` helper) and decoys that must NOT
+be (an sdkmanager component, a table column, a word from an `echo` string). Break
+the extractor and the check exits 2 before it ever reports green. A gate whose
+input extraction can silently degrade to nothing is the failure this repo keeps
+re-learning; a scanner has to prove it is still scanning.
+
+### The delete guard denies its own legitimate work
+
+`.claude/hooks/guard-destructive-deletes.py` matched a delete VERB and a
+PROTECTED PATH independently, anywhere in the command. So any command that both
+deleted something harmless and merely *mentioned* a system path was denied:
+
+```
+rm -rf scratch && cc -o x /opt/gcc-16.2.0/bin/gcc     # denied: "a system directory"
+```
+
+The `/opt` here is a compiler, not a delete target. This fired five times on
+2026-09-02 against a scratch directory under the job tmpdir, each time costing a
+tool call and a rewrite. Two earlier variants of the same shape are recorded in
+the file's own header: `--rm` matching `\brm\b`, and `sed 's/^/  /'` reading as
+the filesystem root.
+
+**The fix.** Split the command on `;`, `&&`, `||`, `|` and newlines, and run the
+protected-path patterns only on the segments that actually carry a delete verb.
+A preceding `cd` target is carried into later segments, so `cd /usr && rm -rf *`
+still denies — the relative delete cannot escape the directory it was given.
+
+**The transferable lesson.** A guard whose two halves are matched independently
+across a whole command is not checking a relationship, it is checking
+co-occurrence. Co-occurrence guards look strict and behave randomly: they deny
+safe work and, worse, teach the operator to phrase commands to avoid the guard
+rather than to be safe. Bind the dangerous verb to its own argument. Both
+directions are mutation-tested in `test-delete-guard.sh` — widening the scope
+back to the whole command turns the allow-cases red, and dropping the `cd`
+tracking turns the deny-cases red.
+
+### OpenCV: `std::complex` breaks on a shadowed `complex.h`
+
+The riscv64 `opencv-gst` stage dies compiling `modules/core/src/hal_internal.cpp`:
+
+```
+error: expected unqualified-id before '_Complex' [-Wtemplate-body]
+  540 |     int ldsrc1 = (int)(src1_step / sizeof(std::complex<fptype>));
+```
+
+The caret sits on `complex` inside `std::complex`, because `complex` is a macro
+by then. `hal_internal.cpp` includes the **C** header at line 50, under
+`HAVE_LAPACK`, and `precomp.hpp` has already pulled in `<complex>` — so the class
+is declared correctly and only later *uses* of the token expand.
+
+In C++, `<complex.h>` is supposed to reach libstdc++'s wrapper, which includes
+glibc's header and then removes the damage:
+
+```c
+# include_next <complex.h>
+# ifdef _GLIBCXX_COMPLEX
+#  undef complex          // <- the guarantee
+# endif
+```
+
+glibc's own `/usr/include/complex.h` has `#define complex _Complex` with no
+`__cplusplus` guard, so whoever wins the lookup decides whether C++ still works.
+CMake passes OpenCV `-isystem /usr/include`, and `-isystem` is searched before
+the compiler's C++ directories — so glibc's header wins and the `#undef` never
+happens. Measured with the riscv64 cross g++:
+
+| flags | `<complex.h>` resolves to | `complex` macro |
+| --- | --- | --- |
+| none | `…/riscv64-linux-gnu/include/c++/16.2.0/complex.h` | not defined |
+| `--sysroot=/ -isystem /usr/include` | `/usr/include/complex.h` | `#define complex _Complex` |
+
+Reproduced in three lines — `#include <complex>`, `#include <complex.h>`, then
+one `std::complex<float>` — and it fails on every target compiler once the flag
+is present, so this is not architecture-specific in nature.
+
+**The fix.** `build-opencv.sh` writes a two-branch `complex.h` shim next to the
+source tree and prepends it with `-I`. GCC searches every `-I` before every
+`-isystem`, so the shim wins regardless of what CMake appends — the same
+precedence trick the file already uses to pin our FFmpeg prefix. The shim
+restores libstdc++'s behaviour in C++ and is a transparent pass-through in C,
+which matters because the same flag string is handed to both `CMAKE_C_FLAGS` and
+`CMAKE_CXX_FLAGS` (OpenCV compiles C third-party code such as openjp2 that
+legitimately wants the `complex` macro).
+
+**Why it surfaced only now.** It is not a regression. The previous run never
+compiled this file: libcamera failed earlier on an unrelated link error, and
+BuildKit builds those stages in parallel, so the whole lane died first. Fixing
+libcamera let the build get far enough to reach a defect that was always there.
+
+**Still open:** *which* CMake package contributes `-isystem /usr/include` on
+riscv64 and not on the other lanes. `ZLIB_INCLUDE_DIR=/usr/include` is passed on
+every cross arch and all three resolve zlib identically, so that alone does not
+explain it. The shim makes the build immune either way; the injector is worth
+finding so the flag can be removed at the source.
+
+### A smoke that never passed and always excused itself
+
+`validate-media-runtime.sh` carried a "QEMU Cross-Arch Binary Smoke" that ran
+each built binary under qemu-user and, on failure, printed:
+
+```
+WARN: /usr/bin/qemu-riscv64 gst-launch-1.0 --help failed
+      (may be expected for cross builds without full sysroot)
+```
+
+Three things were wrong with it at once, and each alone would have been enough:
+
+- **Both branches were `echo`s.** No counter, no variable, no exit code — there
+  was no path from that loop to a failure. The ELF block directly above it does
+  it properly: it counts `core_mismatches` and `exit 1`s.
+- **The excuse covered every case it could ever see.** The block only ran under
+  `cross_build_is_active`, so "may be expected for cross builds" applied to
+  100% of its invocations. That is not a diagnosis, it is a blanket.
+- **The failure was mechanically guaranteed.** qemu-user needs the target's
+  `ld.so` and libraries via `-L` or `QEMU_LD_PREFIX`; neither was passed, and
+  `QEMU_LD_PREFIX` appears nowhere in the repo. Every binary died in the dynamic
+  loader before `main` — exactly the "full sysroot" the message names, which
+  makes it a fixable bug, not an expected condition.
+
+Final score before removal: **7 failures, 0 passes**, across arm64 and riscv64
+in one run.
+
+**Removed rather than repaired, 2026-09-02.** Repairing it needs a multi-hour
+media build to prove the sysroot prefix actually works, and shipping an
+unproven-but-now-fatal gate is how you lose the next run. Functional coverage
+already exists where it belongs: the runtime-image smoke boots the real per-arch
+image and gates the manifest on it — that is what caught the riscv64 venv gap
+the same day.
+
+**The transferable lesson.** A check whose failure branch is always excused
+teaches its readers that WARN lines are noise, which is worse than having no
+check: it costs attention on every run and buys nothing. When you find one, the
+question is not "how do I make this pass" but "what would it take to make this
+able to fail" — and if you cannot answer that today, delete it and say where the
+real coverage lives.
+
+---
+
+### A trailing conditional fails the whole script
+
+The 2026-09-03 runtime build died on amd64 in `setup-torch-venv.sh` with
+`exit code: 1` and no error text — the last lines were a healthy
+`uv pip install --no-deps ml_dtypes` / `Checked 1 package in 2ms`. The cause was
+one line at the END of `reconcile_local_wheels` in `assemble-torch-app.sh`:
+
+```bash
+  [ "${have_torch_family}" = "true" ] && _backfill_torch_runtime_deps
+}
+```
+
+A function returns the status of its last statement. With no local torch wheel
+(every amd64/arm64 build — torch comes from `uv sync` there) the test is false,
+the `&&` list is `1`, so the function returns `1`; the caller runs under
+`set -euo pipefail` and exits. Nothing printed anything, because nothing had
+failed in the ordinary sense. riscv64, the only arch WITH a local torch wheel,
+was the only arch that would have passed.
+
+Two things let it through:
+
+- **`set -e` is not tripped by the list itself.** `a && b` is exempt from
+  `-e`, which is why the idiom feels safe; the trap is only that its status
+  becomes the function's status, and the bare call `reconcile_local_wheels`
+  in the caller is NOT exempt.
+- **The characterisation test ran without `set -e` and never looked at `$?`.**
+  It pinned the sequence of `uv` calls the function makes (its stated purpose)
+  and so proved the refactor behaviour-preserving for every path — including
+  the path that now returned `1`, because a return status is not a `uv` call.
+
+Fix: an `if ... fi` (or `|| true` when the right-hand side is genuinely
+optional). The test harness now runs the function under `set -eu` and asserts
+`0` for a non-torch wheel set; against the broken revision that case fails
+(`expected '0', got '1'`).
+
+**Where else this hides.** A census of `cond && cmd` as the last statement
+before a closing brace finds 17 sites in the tree; almost all are deliberate
+*predicates* (`[ -n "${_t}" ] && [ "${_t}" != "${_b}" ]`) whose callers use them
+in `if`/`||`. The bug shape is narrower: an *action* on the right-hand side and
+a *bare* call site under `set -e`. A regex on the function alone cannot tell the
+two apart, which is why this is a call-site check
+(docs/code-quality-tooling.md, planned gate `trailing-and`), not a pattern ban.
+Until it exists: a function-level test must assert the exit status on the
+"nothing to do" path, not only the calls it makes.
+
 ---
 
 ## Windows: the layer store (hcsshim)
@@ -332,6 +603,29 @@ read-only mount becoming writable.
 **Cause.** **ROOT CAUSE FOUND & FIXED 2026-08-06: the runhcs shim's hardcoded `tearDownTimeout = 30s`** (`cmd/containerd-shim-runhcs-v1/task_hcs.go`) terminates the heavy-churn silo teardown mid-hive-flush (real duration: **117 s measured** for OpenCV), permanently poisoning the scratch vhdx. Calm exits (ONNX ninja, cpython, LiteRT, torch) finish teardown under 30 s and never tripped it.
 
 **Fix.** Solved at the root by a patched runhcs shim, already deployed. **The part to remember is the maintenance:** every Stevedore/containerd update overwrites it, so `deploy-shim-patch.ps1 -ReportOnly` belongs in your post-update routine — `Assert-ShimPatch` gates the BK lane on it by SHA256 — and one OpenCV canary should follow any update. `0x3` is deliberately excluded from the driver's transient-retry pattern: it must fail loudly. Root cause, constants and the rollback path: [`windows-build-lanes.md`](windows-build-lanes.md#defect-solved).
+
+### Every RUN step reports `DONE 2841.2s` — the same number, whatever it runs
+
+**Symptom.** BK lane, since the 2026-08-31 15:12:59 boot: every RUN step on a `servercore` base finishes GREEN but takes **2841.2 s**, byte-identical across independent solves and independent of what the step does — `RUN echo probe > C:probe.txt` costs exactly as much as a real build step. Everything else in the solve is normal (COPY 5.1 s, export 1.7 s, unpack 5.2 s). Host is idle throughout: 4 % CPU, disk queue 0, no I/O.
+
+**Cause.** **The container's shutdown/exit notification is lost, so the shim waits out its whole teardown timeout.** 2841.2 = ~141 s container boot + **2700 s = the 45 min `tearDownTimeout`** this repo patches in (`local-45min-deployed.patch`). The RUN itself *succeeds*: on a stuck container `docker logs` prints the command's own output and `docker top` shows no `cmd.exe` — the process ran and exited. Reproduced straight through **dockerd** (no shim, no buildkit), so it sits below both lanes in hcs/vmcompute — the Windows-Containers#547 family the entry above is about, but escalated from "filesystem-heavy containers only" to *every* container. `nanoserver:ltsc2025` starts and exits in ~2 s; only the servercore service stack is affected. Same shape of step took **7.7 s / 9.2 s** on 2026-08-31 03:53, so it is a ~350× regression, and a reboot does not clear it. **It needs ltsc2025 AND process isolation together**, measured on the same host and day with the same Dockerfile: `servercore:ltsc2025` 441.3 s · **`servercore:ltsc2022` 1.8 s** · ltsc2025 under `--isolation=hyperv` 3.5 s · `nanoserver:ltsc2025` ~2 s. An older user-mode image on the identical 26200 kernel is fine, so "process isolation is broken here" is not the shape of it. That fits the silo-only artefacts — the `WcSandboxState\Hives\*_Delta` flush failures logged as Kernel-General 6, and the orphaned `bindflt` instances `ISSUE.md` already counted — and it is diagnosis only, not an escape: `buildkitd` v0.32 has no Hyper-V isolation option, and Hyper-V isolation is capped at 2 CPUs on this host.
+
+**The 141 s half is named.** Inside the container, SCM logs `7022 The LSM service hung on starting` exactly 140.07 s after `RpcSs` comes up, and every other service starts within the same second afterwards. `LSM` (Local Session Manager) then sits in `START_PENDING` **forever** — a scan of all 121 services in a live container finds it as the *only* one not in RUNNING or STOPPED — and it reports `NOT_STOPPABLE, IGNORES_SHUTDOWN`. Under `--isolation=hyperv` the same image has LSM `RUNNING`. **But disabling LSM does not help:** an image committed with `LSM Start=4` (verify with `sc qc LSM`, not just `reg query` — a quoted key path passed through PowerShell to `reg.exe` silently creates a key named `LSM"`) published its output and then still sat in teardown for **>13 min** before that run was cut short by an unrelated force-remove — so the bound is ">13 min", not a completed 2841 s, but it is already 100× the 7.7 s baseline. LSM is a co-symptom, and it is not worth chasing economically: **2700 of the 2841 s are the timeout, so the teardown is the only lever that matters** — removing the whole 141 s boot stall would save 5 %.
+
+**Fix.** UNRESOLVED as of 2026-09-01 — but do not spend the day re-falsifying what is already falsified: Defender RTP (reproduces with RTP off), the Defender platform (unchanged on disk since 2026-08-05), CNI/HNS (ADD succeeds, IP+gateway match the host nat adapter; `--network none` stalls identically), disk space (515 GB free), disk health (`disk` event 51 fires only on *successful* teardowns), the RDNA4 dGPU (cleanly disabled, Code 22), the shim patch (SHA256 matches), the buildkitd GC policy (active — buildkitd reads `C:\ProgramData\buildkitd\buildkitd.toml` by default, so a missing `--config` in the service ImagePath is a non-issue), and any new KB or driver (nothing was installed that day). Post-mitigation falsifications (2026-09-01): a Defender engine/SIU change (engine constant `1.1.26070.7` across good and bad periods; SIU updates landed just as frequently during the good window, the fast 03:53 build ran right after one), and **in-container Windows Update** (a layer with `wuauserv`+`UsoSvc` `Start=4` — reg output confirmed applied — still burns the full teardown cap on the next RUN); disabling `LSM` was falsified above. **The 141 s boot hang is NAMED (2026-09-02, wait-stack captured).** LSM's service-start thread in the silo's `svchost -k DcomLaunch -p` sits in:
+
+```
+ntdll!NtWaitForSingleObject                                  <- never signalled
+KERNELBASE!WaitForSingleObjectEx
+lsm!CEventDispatcher::CEventListEntry::WaitForSessionEvent
+lsm!CEventDispatcher::WaitForSessionState
+lsm!CService::Start
+lsm!ServiceMain
+```
+
+Two dumps 30 s apart carry the **byte-identical** stack and the thread reports **0.000 s user time** — a fully static wait, not slow progress. So LSM never completes `CService::Start` because a *session-state event* inside the silo is never signalled; SCM then times it out (event 7022) and the rest of the boot proceeds. Reproduce with `windows/scripts/diagnostics/capture-lsm-waitstack.ps1` (elevated; it grabs the next container start and dumps twice). Two notes from doing it: the script must find the silo through the process TREE (a new `wininit.exe` → its `services.exe` → their `svchost`s) because `Win32_Process.ExecutablePath`/`CommandLine` are empty for silo processes even elevated; and the dumps land SYSTEM-owned, so `icacls <dir>\*.dmp /grant <user>:R` before analysing them unelevated. `cdb.exe` ships inside the WinDbg store package (`…\Microsoft.WinDbg_*\amd64\cdb.exe`). **The event object is NOT identified** — and one wrong way to try is recorded here because it looked convincing: reading the FIRST `KERNELBASE!WaitForSingleObjectEx` in the process names the **SCM dispatcher's own idle wait** (`sechost!ScDispatcherLoop`), which every service process has, not LSM's. Everything derived from that handle (`HandleCount 2`, "exactly one holder") described the wrong object and was retracted 2026-09-02. `kb`'s argument columns are home-space reconstructions and untrustworthy for a blocked wait; read **R10** of the thread whose stack actually shows `lsm!CService::Start` (the x64 syscall stub does `mov r10,rcx`, so R10 still holds argument 1). Silo handles also resolve as `Name <none>` from outside, so the `lsm!CEventDispatcher` frames stay the reliable pointer. This is the concrete, reportable core for microsoft/Windows-Containers#547, which so far only describes the symptom — ready-to-file draft: [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md).
+
+**Recurrence playbook — decode the timing before debugging anything.** The signature is *identical* RUN durations regardless of what the step does. On the current 5 min knob: **~10 s** healthy · **~180 s** the shim is env-configurable but the containerd `Environment` value is gone (a Stevedore update wiped it — silent stock 30 s; redeploy below) · **~450 s** knob active, defect present · **~2841 s** the 45 min constant build is back. Re-mitigate with `deploy-shim-patch.ps1 -ShimPath out\shim-builds\containerd-shim-runhcs-v1-fork-19251429.exe -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (rebuild recipe if the binary is lost: fork branch `feature/configurable-teardown-timeout`, `go build .\cmd\containerd-shim-runhcs-v1`). Confirm a suspected hang cheaply with `docker logs`/`docker top` on the stuck container — output present + no process = lost notification, not a hung command. And never conclude "wedge" from a killed probe: give any timing probe ≥15 min. Diagnose the rest with admin: `Get-ComputeProcess`, `fltmc instances -f bindflt` (the orphaned-instance signature from `hcsshim-teardown-timeout/ISSUE.md`), `ctr -n buildkit tasks ls`, the Hyper-V-Compute logs. **Do not judge a step by its console silence and kill `buildctl`** — that manufactures the `0xb7` debris two rows up; a 240 s timeout is what made this look like a hard wedge for a day. **The practical lever is the timeout, and 45 min was never the requirement:** the measured *legitimate* worst-case teardown on this host is **117 s** (`hcsshim-teardown-timeout/ISSUE.md`, OpenCV), so 2700 s is 23× the number it was raised to cover. Deploying the **`upstream-env` shim variant** — `deploy-shim-patch.ps1 -ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` — keeps ~2.5× headroom over the real worst case while capping the pathological case at 5 min, taking a RUN step from ~47 min to ~7 min without rebuilding the shim for every retune. **The value is a Go duration string and a bare number is not one:** `=300` fails `time.ParseDuration`, and the patch treats an unparseable value as unset, so it would silently give you the stock 30 s. The task-close timeout is then derived automatically to `2*5m+30s`. Force-terminating at the cap is known to be safe *here*: `docker stop` on a hung container returns in 91 s and the layer still exports (`exporting layers 1.7s`, `unpacking 5.2s`). Still an owner decision — it trades against the `ExportLayer 0x3` corruption the 45 min was raised to prevent. **Do not conclude the patch itself is obsolete:** checked 2026-09-01, upstream `main` (56195bbd) still hardcodes every 30 s constant, hcsshim#2855 sits unanswered, and Windows-Containers#547 is closed without a fix — dropping to stock re-opens the 0x3 A/B of 2026-08-06 the moment the host is healthy again. Build the shim from the fork branch (`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` — owner directive; code-identical to the in-tree patch, current-main base incl. the e6580439 leaked-layer-reader deadlock fix), not from the in-tree patch file.
 
 ### `hcsshim::ActivateLayer failed (0x20)` during build
 
@@ -822,3 +1116,131 @@ in `WindowsSourceBuild.Common.psm1`. `Modules.ScriptCallClosure.Tests.ps1` prove
 importing only what the script itself imports — that every module function a build script CALLS
 resolves; `Modules.ReExport.Tests.ps1` checks the other direction. Neither replaces the other, and
 the check takes seconds where the build takes hours.
+
+### A declaration that masks its command's exit status
+
+`local x="$(cmd)"` returns **`local`'s** status, not `cmd`'s. Under `set -e` the
+failure is invisible and `x` silently holds `""`.
+
+Live example, fixed 2026-09-01 — `_gst_monorepo_install`
+(`03-media/build/gstreamer/common/build-gstreamer-monorepo.sh`):
+
+```sh
+local gst_stage="$(mktemp -d "/tmp/gst-stage.XXXXXX")"
+```
+
+`/tmp` is a tmpfs on every `Dockerfile.media` RUN, so a full tmpfs makes `mktemp`
+fail. With `gst_stage` empty the whole staging design inverts:
+
+| line | intended | with an empty value |
+| --- | --- | --- |
+| `meson install --destdir "${gst_stage}"` | stage into a temp tree | `--destdir ''` → installs into the **live root**, running target post-install scripts there |
+| `[ -d "${gst_stage}${GSTREAMER_PREFIX}" ]` | is anything staged? | `[ -d /opt/gstreamer ]` → always true |
+| `[ -d "${gst_stage}/usr/local" ]` | as above | `[ -d /usr/local ]` → always true |
+| `rm -rf "${gst_stage}"` | drop the staging tree | `rm -rf ''` → no-op |
+
+The sting: the only line reaching the build log is the same
+`WARNING: GStreamer cross-install had errors` a healthy cross run prints, so the
+broken run is **indistinguishable in the log**.
+
+**The gate.** `verify_masked_assignments.py` (preflight slug `masked-decls`)
+fails on any NEW `local`/`export`/`declare`/`readonly` declaration containing a
+command substitution; 54 pre-existing sites are frozen in
+`masked-assignments.allow`, keyed by file+variable so a site does not re-flag
+when something above it moves. Fixing one means deleting its line.
+
+Two reasons shellcheck alone was not enough: SC2155 does **not** fire on
+`local x="${y:-$(cmd)}"` (verified), and `lint-shell.sh` gates at `-S error`,
+where a warning can never fail the build.
+
+**The fix shape:**
+
+```sh
+local x
+x="$(cmd)" || return 1
+```
+
+### RV1-FREETYPE: riscv64 OpenCV freetype/harfbuzz
+
+RV1-FREETYPE — FIXED (2026-08-24); the coming rebuild is the
+final validator. History (2026-08-23 investigation, still true):
+riscv64 had no TARGET harfbuzz dev surface at configure time —
+pass-2 (FROM gstreamer, libfreetype-dev pre-satisfied) got only
+the RUNTIME libharfbuzz0b — so ocv_check_modules(HARFBUZZ
+harfbuzz) resolved a HOST harfbuzz (find_library fall-through
+under CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH) → "file in wrong
+format" at link. The ports dev package stays banned
+(libharfbuzz-dev:riscv64 → Depends: libglib2.0-dev = RV1-GST-PC
+poison), so install-deps.sh now stages a PIC STATIC target
+harfbuzz (HB_HAVE_FREETYPE=ON, hb-ft glue included) at
+/usr/<triplet> with a cmake-generated absolute-prefix
+harfbuzz.pc whose freetype dep is promoted to Requires: pkg-config
+then emits `-lharfbuzz -lfreetype`, so HARFBUZZ_LIBRARIES becomes
+[libharfbuzz.a, target libfreetype.so] and the module link
+(<objects> FREETYPE_LIBRARIES HARFBUZZ_LIBRARIES) still resolves
+the archive's FT_* refs under -Wl,--no-undefined — a DSO BEFORE
+the archive alone does NOT (proven by a local link experiment
+2026-08-24: objects+ft.so+hb.a fails; +ft.so after the archive
+links clean). Determinism, both passes:
+* our pkgconfig dir is prepended to PKG_CONFIG_PATH, which
+outranks PKG_CONFIG_LIBDIR — pass-2 puts /opt/gstreamer
+first in PKG_CONFIG_PATH and its meson-subproject harfbuzz
+may export a competing harfbuzz.pc; ours must win;
+* the pkgcfg_lib_* cache vars FindPkgConfig/ocv_check_modules
+resolve libraries through are pre-seeded with absolute
+TARGET paths, so no find_library ever runs, let alone falls
+through to a host lib (OCV-FF1's determinism discipline,
+pinned by file path instead of -L ordering).
+Static harfbuzz keeps the runtime surface: the only new NEEDED
+is libfreetype.so.6, which validate-media-runtime's
+so-package-map already resolves to libfreetype6 (and the
+gstreamer stack pulls it in on riscv64 today anyway). If
+install-deps could NOT stage the static harfbuzz, keep the
+module hard-OFF rather than let detection wander back to host
+libs — absence then still surfaces as the wheel smoke's
+riscv64-only opencv-freetype warning, and after a green rebuild
+that warning's "expected on riscv64" status is STALE (parity
+follow-up for the orchestrator).
+
+### A half-fetched dependency that every retry inherits
+
+`ONNX Runtime CPU build failed after 3 attempts` on media-riscv64, 2026-09-02,
+with the same CMake error each time:
+
+```
+add_subdirectory: The source directory
+  .../_deps/dawn-src/third_party/spirv-headers/src
+does not contain a CMakeLists.txt file.
+```
+
+Dawn's dependency fetch was interrupted, leaving the directory present but
+EMPTY. `_deps` is in the image layer, not a cache mount, so a fresh run recovers
+— but the three retries inside one RUN all inherited the ruin, so the retry
+bought nothing. amd64 and arm64 passed the identical build; only the riscv64 run
+hit the transient failure.
+
+`30-build-native.sh` now drops any `*-src/third_party/*/src` that carries no
+`CMakeLists.txt` before each attempt. A retry that inherits the state that broke
+the previous attempt is not a retry.
+
+### RVV changed what the optimizer can prove
+
+media-riscv64 failed on 2026-09-02, after the RVA23 switch, in vvdec:
+
+```
+thirdparty/simde/x86/ssse3.h:370: error: 'r_.simde__m128i_private::i8'
+may be used uninitialized [-Werror=maybe-uninitialized]   → vvdec_x86_simd
+```
+
+SIMDe emulates x86 intrinsics on non-x86, so a riscv64 cross build really does
+compile that header. `-Wmaybe-uninitialized` is optimization-dependent, and
+enabling vector plus Zba/Zbb changes what the optimizer can prove — a diagnostic
+that did not fire before the ISA change now does, in upstream third-party code.
+
+`install-vvdec.sh` waives it exactly where the same file already waives
+`-Wno-error=unused-but-set-variable`. The waiver is scoped to vvdec, not global:
+this is a false-positive class in one dependency, not a reason to stop treating
+warnings as errors elsewhere.
+
+Expect more of this shape as the vector baseline lands. Waive per component,
+never tree-wide, and record why here.

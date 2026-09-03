@@ -29,8 +29,13 @@ _none="$(first_match "${_tmp}/fm" -name 'nope.xyz')"
 t_assert_eq "${_none}" ""
 
 t_case "first_match on a MISSING dir returns empty without tripping set -e"
+# Capture $? directly. A bare `( ... )` throws its status away (this file sets -u,
+# not -e), but wrapping it in `if` is no fix either: an if-condition SUPPRESSES
+# errexit inside the subshell, so the very abort under test cannot happen.
+# Backlog XM.
 ( set -e; r="$(first_match "${_tmp}/does-not-exist" -name '*')"; [ -z "$r" ] )
-t_assert_ok true   # reaching here means the subshell above did not abort
+_fm_status=$?
+t_assert_eq "0" "${_fm_status}" "a missing dir must not abort a set -e caller"
 
 # ── probe ─────────────────────────────────────────────────────────────────────
 t_case "probe true succeeds"
@@ -54,7 +59,8 @@ EOF
 
 t_case "source_vendor sources an unset-var file under set -u without aborting"
 ( set -u; source_vendor "${_tmp}/vendor.sh"; [ "${VENDOR_SAW}" = "unset-ok" ] )
-t_assert_ok true
+_sv_status=$?
+t_assert_eq "0" "${_sv_status}" "the set -u window must survive an unset var"
 
 t_case "source_vendor RESTORES set -u afterwards (caller had it)"
 _restored="$(set -u; source_vendor "${_tmp}/vendor.sh" >/dev/null 2>&1; case "$-" in *u*) echo yes;; *) echo no;; esac)"

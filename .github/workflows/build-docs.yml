@@ -57,7 +57,7 @@ jobs:
           uv pip install -r requirements.txt
 
       # The verification list lives in preflight.sh (single source of the gate
-      # list — the same one ubuntu24.04.yml runs in full and .githooks/pre-commit
+      # list — the same one ubuntu24.04.yml runs in full and the commit hook
       # subsets). Deliberately narrowed to the docs-relevant slugs: this
       # reusable workflow must stay self-sufficient for callers that have no
       # preflight job of their own, but ubuntu24.04.yml's dedicated preflight

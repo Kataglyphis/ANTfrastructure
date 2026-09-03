@@ -130,10 +130,31 @@ BUILD_ARGS+=(
 )
 export PATH="${HOST_PYTHON_BIN%/*}:${PATH}"
 
-# GCC 16.1.0 is the default system compiler (via ENV CC/CXX and alternatives)
+# The pinned GCC (versions.env GCC_VERSION) is the default system compiler (via ENV CC/CXX and alternatives)
+
+# A retry can only help if it does not inherit the previous attempt's half-fetched
+# tree: an interrupted Dawn dependency fetch leaves e.g.
+# _deps/dawn-src/third_party/spirv-headers/src as an EMPTY dir, and CMake then
+# fails with "does not contain a CMakeLists.txt" on every further attempt.
+# docs/failure-modes.md
+_ort_drop_partial_deps() {
+  local d dep="${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}/_deps"
+  [ -d "${dep}" ] || return 0
+  for d in "${dep}"/*-src/third_party/*/src "${dep}"/*-src/third_party/*/*/src; do
+    [ -d "${d}" ] || continue
+    [ -e "${d}/CMakeLists.txt" ] && continue
+    warn "ONNX Runtime: dropping half-fetched dependency ${d}"
+    rm -rf "${d:?}"
+  done
+}
+
+_ort_build_attempt() {
+  _ort_drop_partial_deps
+  "${BUILD_SH}" "${BUILD_ARGS[@]}"
+}
 
 # Execute build (with retry for transient network errors like GitHub download failures)
-if ! retry 3 10 "ONNX Runtime CPU build" "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
+if ! retry 3 10 "ONNX Runtime CPU build" _ort_build_attempt; then
   if cross_build_is_active; then
     warn "ONNX Runtime build failed; rerunning single-threaded verbose build for diagnostics"
     cmake --build "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true

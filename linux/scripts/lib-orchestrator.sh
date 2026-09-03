@@ -9,7 +9,7 @@
 #   orchestrator_preamble   # (cross scripts)  OR  runtime_flow_preamble (runtime)
 #
 # WHY TOP-LEVEL: artifact-common.sh transitively sources modules (stage-defs.sh,
-# package-groups.sh, …) that `declare -A`/`declare -a` global arrays.  A
+# digest-pinning.sh, …) that `declare -A`/`declare -a` global arrays.  A
 # `declare` inside a function without -g is function-local, so sourcing
 # artifact-common from within a helper function would make those arrays vanish
 # when the function returns.  We therefore source artifact-common at this file's
@@ -142,4 +142,18 @@ run_runtime_arg_loop() {
     fi
     warn "Unknown option: $1"; "${_usage_fn}" >&2; exit 1
   done
+}
+
+# Start the run's resource monitor. $1 is the run-id used when CROSS_RUN_ID is
+# unset. Idempotent; self-terminates via --watch-pid. RESOURCE_MONITOR=0
+# disables. See docs/build-resource-monitoring.md.
+start_resource_monitor() {
+  [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
+  local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
+  [ -x "${mon}" ] || return 0
+  local out="${LOG_DIR:-${REPO_ROOT}}" rid="${CROSS_RUN_ID:-$1}"
+  pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
+  bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
+    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &
+  log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
 }

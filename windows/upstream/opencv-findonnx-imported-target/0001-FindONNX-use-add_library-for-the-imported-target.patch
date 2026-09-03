@@ -1,0 +1,32 @@
+From 6d15ebb91b592cd040e9d9375b5f6728fc79f66d Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:47:09 +0200
+Subject: [PATCH] FindONNX: use add_library for the imported target
+
+ocv_add_library() is meant for OpenCV's own targets. With CUDA as a first-class
+language it calls ocv_add_cuda_compile_flags(), which runs
+target_compile_options(... PRIVATE), and it ends in
+_ocv_append_target_includes(), which can run target_include_directories(...
+PRIVATE). Neither is allowed on an IMPORTED target, so a CUDA build with
+WITH_ONNX=ON fails to configure.
+
+Everything this target needs is set by set_target_properties() just below.
+
+Assisted-by: Claude (Anthropic)
+---
+ cmake/FindONNX.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/cmake/FindONNX.cmake b/cmake/FindONNX.cmake
+index 0b61185..2054e43 100644
+--- a/cmake/FindONNX.cmake
++++ b/cmake/FindONNX.cmake
+@@ -49,7 +49,7 @@ if(ORT_LIB AND ORT_INCLUDE)
+ 
+   # Link target with associated interface headers
+   set(ONNX_LIBRARY "onnxruntime" CACHE STRING "ONNX Link Target")
+-  ocv_add_library(${ONNX_LIBRARY} SHARED IMPORTED)
++  add_library(${ONNX_LIBRARY} SHARED IMPORTED)
+   set_target_properties(${ONNX_LIBRARY} PROPERTIES
+                         INTERFACE_INCLUDE_DIRECTORIES ${ORT_INCLUDE}
+                         IMPORTED_LOCATION ${ORT_LIB}

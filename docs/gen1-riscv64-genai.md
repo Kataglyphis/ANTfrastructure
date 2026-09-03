@@ -20,21 +20,21 @@ watch when the first real `media-riscv64` build finally runs it.
 > **history**. The one-screen summary lives in
 > [`linux-cross-builds.md`](linux-cross-builds.md#onnxruntime-genai-on-riscv64-gen1-2026-08-31).
 
-## Status: WIRED, UNVALIDATED
+## Status: VALIDATED (2026-09-03)
 
-Wired ON 2026-08-31 by explicit user decision. **No riscv64 container build has
-ever run this code.** Everything below that is not marked MEASURED is a
-source-read conclusion. In particular, neither of these is proven:
+Wired ON 2026-08-31 by explicit user decision. Both open questions are now
+closed by measurement:
 
-* that the genai stage **compiles** under the GCC 16 riscv64 cross;
-* that `generate()` produces **sane tokens**.
+* **compiles** — proven by the 2026-08-31 media-riscv64 stage (run r4).
+* **`generate()` produces sane tokens** — proven 2026-09-03; see
+  [Tier 4, measured](#tier-4-measured-2026-09-03).
 
-The second one has a live negative data point.
-[onnxruntime-genai#594](https://github.com/microsoft/onnxruntime-genai/issues/594)
+The negative data point that motivated the doubt,
+[onnxruntime-genai#594](https://github.com/microsoft/onnxruntime-genai/issues/594),
 is a RISC-V build (Phi-3 int4 on a LicheePi4A / XuanTie C910) that **compiled,
 imported, and then emitted nonsense**; it was closed as not-planned with no root
 cause. Tiers 1–3 of this lane's smoke pass in exactly that state — see
-[The smoke](#the-smoke-smoke_genai_py).
+[The smoke](#the-smoke-smoke_genai_py) — which is why tier 4 exists at all.
 
 The backlog carried this as **GEN1** ("upstream ships none; IREE-style build
 plausible", effort L) until the user asked for the lane to be on. The actual
@@ -137,7 +137,7 @@ removes.
 The apply is gated on `ARCH=riscv64` so amd64/arm64 never even invoke
 `apply-patch.sh`: their genai source tree stays byte-identical to upstream.
 Precedent for a riscv64-only patch applied exactly this way:
-`linux/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch`, from
+`linux/scripts/patches/libcamera/001-apps-add-libtiff-dependency.patch`, from
 `build-libcamera.sh`.
 
 ### How it was proven to apply — MEASURED
@@ -399,12 +399,83 @@ reader never has to take the accounting on trust.
 
 ### Tier 4 is UNARMED by default
 
-**Token-level correctness is not proven.** No model ships in these images — the
-smallest usable int4 decoder is hundreds of MB, and the riscv64 lane is
-cross-built on an amd64 host, so it could not run one at build time anyway.
-Without `GENAI_MODEL_DIR` the tier is **skipped and says so**
+No model ships in these images — the smallest usable decoder is hundreds of MB,
+and the riscv64 lane is cross-built on an amd64 host, so it could not run one at
+build time anyway. Without `GENAI_MODEL_DIR` the tier is **skipped and says so**
 (`GENAI-GEN SKIP:`). Arm it by mounting a small model and setting
 `GENAI_MODEL_DIR`.
+
+### The app-wheel floor
+
+`smoke-runtime-image.sh` ratchets the `orchestr_ant_ion.smoke` ok-count per arch.
+It may only ever be raised when an arch **gains** a component, never to turn a
+red run green.
+
+| arch | floor | last printed | why not tighter |
+|---|---|---|---|
+| amd64 | 15 | 15 | at the observed value already |
+| arm64 | 14 | 15 (2026-09-03) | **one** sample; 15 would leave zero slack |
+| riscv64 | 13 | 14 (2026-09-03) | raised 12 → 13, keeping one wheel of slack |
+
+The per-arch counts only started being printed in the 2026-09-03 run, so every
+arch has a single observation. A floor set to exactly one observed count fails
+the next run if any single wheel is legitimately optional on that arch — which
+is why arm64 was left alone and riscv64 stopped a wheel short of what it printed.
+Raise arm64 to 15, and riscv64 to 14, once a **second** run confirms the count.
+
+### Tier 4, MEASURED 2026-09-03
+
+Run by hand against the shipped images, not by the build. The result is stronger
+than "sane tokens": **riscv64 greedy decoding is token-for-token identical to
+amd64.**
+
+| | amd64 (control) | riscv64 (qemu-user) |
+|---|---|---|
+| native ext `e_machine` | 62 (X86-64) | **243 (RISC-V)** |
+| first 8 new token ids | `28, 198, 198, 57, 5248, 18948, 346, 2316` | **identical** |
+| decoded | `,\n\nI'm glad you're enjoying the experience. I hope you find it as enjoyable as I` | same prefix (shorter `max_length`) |
+| verdict | `GENAI-BIND OK` rc=0 | `GENAI-BIND OK` rc=0 |
+
+Identical ids across two unrelated backends is a much tighter check than the
+smoke's own degeneracy test (`len(set(new)) == 1`, the #594 signature): a kernel
+wrong enough to matter would have to be wrong *identically* on both. **#594 does
+not reproduce on this lane.**
+
+#### Reproducing it
+
+The fixture is a real trained model, not a random one — see
+[Why not a tiny random model](#why-not-a-tiny-random-model).
+
+```sh
+# 1. fetch HuggingFaceTB/SmolLM2-135M-Instruct into ./smol-src (public, no token)
+# 2. convert to GenAI format on amd64 (needs transformers, onnx, onnx_ir):
+python -m onnxruntime_genai.models.builder -i ./smol-src -o ./smol-genai -p fp32 -e cpu
+# 3. emit the smoke payload and run it on each arch:
+bash -c 'source linux/scripts/06-packaging/smoke-common.sh; smoke_genai_py' > genai_smoke.py
+nerdctl run --rm -v $PWD/smol-genai:/model:ro -v $PWD/genai_smoke.py:/smoke.py:ro \
+  -e GENAI_MODEL_DIR=/model -e GENAI_MAX_LENGTH=16 -e GENAI_EXPECT_ARCH=riscv64 \
+  --entrypoint /opt/venv/bin/python <image>:latest-cross-riscv64 /smoke.py
+```
+
+The builder passes `token=True` to `huggingface_hub`, so `-m <repo-id>` fails
+with `LocalTokenNotFoundError` even for a public repo. Download the files
+yourself and use `-i <dir>`.
+
+#### Why not a tiny random model
+
+The obvious fixture, `hf-internal-testing/tiny-random-LlamaForCausalLM`, is
+wrong twice over, and both were hit:
+
+1. `hidden_size=16 / 9 heads` → `head_size=4`, and ORT's GroupQueryAttention
+   requires `head_size % 8 == 0`. It fails on **amd64** too:
+   `head_size must be a multiple of 8. Got head_size % 8 == 4`.
+2. More subtly — an untrained model has near-uniform logits, so greedy decoding
+   tends to emit **one repeated token**. That is precisely the `#594` signature
+   tier 4 flags as a DEFECT, so a random fixture would manufacture a false
+   positive on every arch, riscv64 included.
+
+Always run the amd64 control **first**. Here it is what identified the fixture
+as the broken part rather than the lane.
 
 ### Installed-but-unimportable is a hard FAIL, not a SKIP
 
@@ -531,12 +602,9 @@ In the order they can bite:
    open item by [`refactoring-backlog.md`](refactoring-backlog.md) section B.
    Note it if the riscv64 stage flakes.
 
-Also deliberately left unraised: **the riscv64 app-wheel floor stays at 12.**
-The lane now builds genai, and the app suite's `check_onnxruntime_genai` should
-turn the riscv64 count into 13 — but "should" is not a measurement, and raising
-a floor a run cannot reach reds the gate for the wrong reason. Raise it to 13
-only once a real riscv64 run **prints** `13/… ok`. Until then the new component
-is guarded by `check_genai_binding` and the ARCH-PARITY table instead.
+**Settled 2026-09-03:** a real run printed **14**, so the riscv64 floor moved
+12 → 13 — one wheel of slack on a single observation. The rule for raising it
+further is in [The app-wheel floor](#the-app-wheel-floor).
 
 ### Performance: riscv64 MLAS is scalar
 
@@ -621,7 +689,7 @@ pre-GEN1 behaviour exactly.
 
 ## MEASURED vs REASONED
 
-Honest separation, as of **2026-08-31**.
+Honest separation, as of **2026-09-03**.
 
 **MEASURED**
 
@@ -640,13 +708,26 @@ Honest separation, as of **2026-08-31**.
   the three `genai_target_platform` consumers, the intrinsic survey, the
   llguidance crate graph) are observations of real source at the pinned tag.
 
-**REASONED, never run**
+**MEASURED since — the 2026-08-31 r4 build and the 2026-09-03 bench runs**
 
-* That the riscv64 genai stage compiles.
-* That llguidance links for `riscv64gc-unknown-linux-gnu`.
-* That the riscv64 `EXT_SUFFIX` is `.cpython-314-riscv64-linux-gnu.so`.
-* Whether `-latomic` is needed.
-* That `generate()` produces sane tokens (tier 4 is unarmed; #594 is the
-  standing counter-example).
-* The new `validate-media-runtime.sh` genai scan, on any arch.
-* That the riscv64 app-wheel count becomes 13.
+* The riscv64 genai stage compiles (`Built target onnxruntime-genai`), and the
+  wheel carries the right platform tag.
+* llguidance/Corrosion link for `riscv64gc-unknown-linux-gnu` — **zero**
+  `dropping --use_guidance` in the run, so no silent parity divergence.
+* The riscv64 `EXT_SUFFIX` is `.cpython-314-riscv64-linux-gnu.so`, read off the
+  shipped image by tier 2 (`e_machine=243`).
+* `generate()` produces sane tokens — in fact ids **identical to amd64**. See
+  [Tier 4, measured](#tier-4-measured-2026-09-03).
+* The `validate-media-runtime.sh` genai scan ran on **all three** arches in the
+  2026-09-03 chain. It resolved only `libXv.so.1` / `libwebpdemux.so.2`, none of
+  them genai; an independent `ldd` over the shipped riscv64
+  `/usr/local/lib/onnxruntime-genai/lib` shows **0 unresolved NEEDED**.
+* The riscv64 app-wheel count printed **14**; the floor moved 12 → 13.
+
+**REASONED, still never run**
+
+* Whether `-latomic` is needed. The riscv64 link succeeded without it, which
+  makes it unnecessary *for this configuration* — not that it never will be.
+* Tier 4 on **real riscv64 silicon**. The 2026-09-03 run was qemu-user, which
+  emulates the ISA but not a physical core's timing, errata or extension set.
+  #594's hardware was a XuanTie C910.

@@ -18,7 +18,7 @@
 #      module into `buildmods`. Nothing would fail; the branches would just
 #      quietly start re-keying each other again.
 #
-# This is the Windows analogue of linux/scripts/verify-script-copy-coverage.py,
+# This is the Windows analogue of linux/scripts/verify_script_copy_coverage.py,
 # which globs linux/Dockerfile.* only and has never policed the Windows lane.
 
 Describe 'BuildKit module closure' {

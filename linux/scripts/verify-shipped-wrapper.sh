@@ -47,7 +47,10 @@ _toggle() {
   sed -n "s/^${key}=\([^ #]*\).*/\1/p" "${_versions}" | tail -1
 }
 
-_is_truthy() { case "${1:-}" in 1|true|TRUE|yes|YES|on|ON) return 0 ;; *) return 1 ;; esac; }
+# Canonical is_truthy, not a private copy: platform.sh is side-effect-free
+# (zero top-level statements) and sits next to this script.
+# shellcheck disable=SC1091
+source "${_here}/01-core/platform.sh"
 
 # ── list the shipped rootfs (file names only, no extraction, no emulation) ──────
 _listing="$(mktemp)"
@@ -86,7 +89,7 @@ else _hard 1 "ffmpeg MISSING (no opt/ffmpeg/lib/libavcodec.so*)"; fi
 # 2) libtensorflow presence MUST match FFMPEG_ENABLE_TF — the exact RTCACHE3/S2
 #    signal. TF off (default) → the ~500MB lib must be ABSENT; TF on → present.
 _tf="$(_toggle FFMPEG_ENABLE_TF)"
-if _is_truthy "${_tf}"; then
+if is_truthy "${_tf}"; then
   if _present 'opt/ffmpeg/lib/libtensorflow\.so'; then _hard 0 "FFMPEG_ENABLE_TF=${_tf}: libtensorflow present (as expected)"
   else _hard 1 "FFMPEG_ENABLE_TF=${_tf} but libtensorflow.so* is ABSENT"; fi
 else
@@ -103,7 +106,7 @@ else _hard 1 "onnxruntime MISSING — no onnxruntime.so/libonnxruntime in listin
 # 4) Advisory: x265 toggle → libx265 (may be static-linked into libavcodec, so a
 #    missing shared lib is not proof; informational only).
 _x265="$(_toggle FFMPEG_ENABLE_X265)"
-if _is_truthy "${_x265}"; then
+if is_truthy "${_x265}"; then
   if _present 'libx265\.so'; then _advise "FFMPEG_ENABLE_X265=${_x265}: libx265.so present"
   else _advise "FFMPEG_ENABLE_X265=${_x265}: no shared libx265.so (likely static — OK)"; fi
 fi
@@ -140,7 +143,7 @@ if [ -n "${_avc_path}" ] && command -v readelf >/dev/null 2>&1; then
 fi
 
 if [ "${_hard_fail}" -ne 0 ]; then
-  if _is_truthy "${_soft}"; then
+  if is_truthy "${_soft}"; then
     echo "[wrapper-gate] FAIL (${_arch}): shipped content does not match build toggles — see above. (WRAPPER_CONTENT_GATE=0 to make advisory.)" >&2
     exit 1
   fi

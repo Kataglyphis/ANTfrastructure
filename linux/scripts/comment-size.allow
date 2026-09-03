@@ -1,0 +1,179 @@
+# Frozen 2026-09-01: comment blocks over the limit that predate the gate.
+# Owner directive (AGENTS.md priority 6): two lines at the point of use;
+# longer text goes into docs/ with a pointer. Shrink one, then DELETE its line.
+# Format: <file>\t<first comment line>.  docs/code-quality-tooling.md
+
+linux/host-config/ghcr-common.sh	#!/usr/bin/env bash
+linux/host-config/ghcr-delete-tags.sh	#!/usr/bin/env bash
+linux/host-config/ghcr-prune-package.sh	#!/usr/bin/env bash
+linux/host-config/install-mistral-vibe-riscv64.sh	#!/usr/bin/env bash
+linux/host-config/install-nerdctl-full.sh	# ── QEMU binfmt: restarting the rootless stack DESTROYS it
+linux/host-config/install-nerdctl-full.sh	#!/usr/bin/env bash
+linux/host-config/prune-safe.sh	#!/usr/bin/env bash
+linux/scripts/01-core/abseil-headers.sh	# install_abseil_headers — fetch and extract the abseil-cpp
+linux/scripts/01-core/ancestry.sh	# ==========================================================
+linux/scripts/01-core/ancestry.sh	# Read a provenance value out of the image CONFIG labels (th
+linux/scripts/01-core/apply-patch.sh	#!/usr/bin/env bash
+linux/scripts/01-core/arch-mapping.sh	#!/usr/bin/env bash
+linux/scripts/01-core/artifact-common.sh	# Source focused modules in dependency order.
+linux/scripts/01-core/artifact-common.sh	#!/usr/bin/env bash
+linux/scripts/01-core/base-image.sh	# Install the PINNED sccache over whatever apt provided (202
+linux/scripts/01-core/base-image.sh	# Undo the CA-bootstrap http downgrade: bootstrap_ca() rewri
+linux/scripts/01-core/build-helpers.sh	#
+linux/scripts/01-core/build-helpers.sh	# strip_media_prefixes [prefix...] — AP4: strip symbol table
+linux/scripts/01-core/build-helpers.sh	# ── ELF tree stripping ────────────────────────────────────
+linux/scripts/01-core/chain-lifecycle.sh	# shellcheck shell=bash
+linux/scripts/01-core/chain-verify.sh	# ==========================================================
+linux/scripts/01-core/common.sh	# Name of the compiler-cache launcher to prefix onto CC/CXX,
+linux/scripts/01-core/common.sh	# PREPROCESSOR CACHE MODE OFF (2026-08-26, after it broke tw
+linux/scripts/01-core/common.sh	# ── ONE SERVER PER CONTAINER, BY CONSTRUCTION ─────────────
+linux/scripts/01-core/common.sh	# ── directory wheel retag ─────────────────────────────────
+linux/scripts/01-core/common.sh	# ── run_priv — the safe replacement for the `${SUDO} cmd …`
+linux/scripts/01-core/compiler-cache.sh	#!/usr/bin/env bash
+linux/scripts/01-core/context-management.sh	# Reclaim stage-context trees left behind by runs that never
+linux/scripts/01-core/context-management.sh	#!/usr/bin/env bash
+linux/scripts/01-core/cpython-dev-packages.sh	# shellcheck shell=bash
+linux/scripts/01-core/cross-env-doctor.sh	#!/usr/bin/env bash
+linux/scripts/01-core/cross-env.sh	# URL may carry '|'-separated fallback mirrors so a single-s
+linux/scripts/01-core/cross-env.sh	# Wire the Rust *target* toolchain env for a cross cdylib/st
+linux/scripts/01-core/cross-env.sh	# ── cross-target iteration ────────────────────────────────
+linux/scripts/01-core/cross-gcc.sh	# SSOT-of-the-default for the source-built GCC toolchain ins
+linux/scripts/01-core/disk-guard.sh	# Free gibibytes on the filesystem that actually holds <path
+linux/scripts/01-core/disk-guard.sh	#!/usr/bin/env bash
+linux/scripts/01-core/guard-helpers.sh	# shellcheck shell=bash
+linux/scripts/01-core/install-cuda-stack.sh	#!/usr/bin/env bash
+linux/scripts/01-core/install-deps-preamble.sh	#!/usr/bin/env bash
+linux/scripts/01-core/load-versions-env.sh	#!/usr/bin/env bash
+linux/scripts/01-core/logging.sh	#
+linux/scripts/01-core/parallel-loop.sh	# NO `trap ... RETURN` for cleanup here.
+linux/scripts/01-core/parallelism.sh	#
+linux/scripts/01-core/platform.sh	# elf_unresolved_needed [--transitive] <file> [libdir...]
+linux/scripts/01-core/python_uv.sh	#!/usr/bin/env bash
+linux/scripts/01-core/runtime-build-fns.sh	# Verify the provenance we just ASKED for actually landed on
+linux/scripts/01-core/runtime-build-fns.sh	# XC2-PARTIAL-RUN (2026-08-27): the pin is only ever SET by
+linux/scripts/01-core/runtime-build-fns.sh	# shellcheck shell=bash
+linux/scripts/01-core/runtime-flow-common.sh	#
+linux/scripts/01-core/setup-rocm-repo.sh	#!/usr/bin/env bash
+linux/scripts/01-core/stage-defs.sh	# ── Pin variable initialization ───────────────────────────
+linux/scripts/01-core/stage-defs.sh	# ── Runtime lane stage order ──────────────────────────────
+linux/scripts/01-core/stage-defs.sh	# ── Shared per-arch + cross build-arg helpers ─────────────
+linux/scripts/01-core/stage-defs.sh	# ── Stage graph self-consistency validation ───────────────
+linux/scripts/01-core/stage-defs.sh	# ── Stage order ───────────────────────────────────────────
+linux/scripts/01-core/stage-defs.sh	#!/usr/bin/env bash
+linux/scripts/01-core/tag-naming.sh	#
+linux/scripts/01-core/verify-android-stage-parity.sh	# verify-android-stage-parity.sh — the five parallel library
+linux/scripts/01-core/verify-arg-consistency.sh	# DUP2: the source-built GCC version is re-spelled as an inl
+linux/scripts/01-core/verify-arg-consistency.sh	# Many build scripts embed a hardcoded fallback for a versio
+linux/scripts/01-core/verify-cuda-stack.sh	#!/usr/bin/env bash
+linux/scripts/01-core/version-forwarding.sh	#!/usr/bin/env bash
+linux/scripts/01-core/vulkan-env.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/android-sdk.sh	# ----------------------------------------------------------
+linux/scripts/02-toolchain/build-gcc.sh	# Optional GPG verification of the downloaded GCC tarball ag
+linux/scripts/02-toolchain/build-gcc.sh	# The cross compiler (and its triplet-prefixed binutils) liv
+linux/scripts/02-toolchain/build-gcc.sh	# ccache wiring. Two paths:
+linux/scripts/02-toolchain/build-gcc.sh	# libstdc++ Canadian-cross fix (GCC PR100017 / PR101060), sc
+linux/scripts/02-toolchain/configure-gcc-env.sh	# Prepend var_value to a ':'-separated var in an /etc/enviro
+linux/scripts/02-toolchain/gcc.sh	# Canadian-cross libstdc++ `std` module (GCC PR100017/PR1010
+linux/scripts/02-toolchain/gcc.sh	# Opt-in concurrent per-target builds (GCC_PARALLEL_TARGETS=
+linux/scripts/02-toolchain/gcc.sh	# Symlink the target binutils (as/ld/ar/...) into a GCC pref
+linux/scripts/02-toolchain/install-rust.sh	# clippy and rustfmt are NOT optional (no try_rustup), for t
+linux/scripts/02-toolchain/install-rust.sh	# rustfmt, on the DEFAULT toolchain. NOT optional, for the s
+linux/scripts/02-toolchain/materialize-llvm-target.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/probe-sccache.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/python/ci_static_analysis.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/python/ci_tests.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/rust/_cargo_home_guard.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/rust/_rust_toolchain_guard.sh	#!/usr/bin/env bash
+linux/scripts/02-toolchain/setup-dependencies.sh	# Source required modules. cmake.sh, vulkan.sh AND llvm.sh a
+linux/scripts/02-toolchain/vulkan.sh	# Cross-build the Vulkan target libraries TVM needs and inst
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh	# ==========================================================
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh	# NEEDED-driven SDK bundling (backlog P4; generalizes the TF
+linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh	# Record the EXACT apt packages that provide the external co
+linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh	# ==========================================================
+linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh	# The link step failed. Decide using the pkg-config cflags w
+linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh	# Two conditions must BOTH hold to treat the link failure as
+linux/scripts/03-media/build/ffmpeg/install-deps.sh	# vid.stab needs BOTH halves, and the shipped 2026-08-27 bui
+linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh	# FD-OUTAGE (2026-08-24): give every tarball fetch a second
+linux/scripts/03-media/build/gstreamer/common/install-rice-proto.sh	# Build and install the rice-proto C library (librice's sans
+linux/scripts/03-media/build/gstreamer/common/install-rice-proto.sh	# rice-proto pulls in openssl-sys transitively. Its header-e
+linux/scripts/03-media/build/gstreamer/common/pre-setup.sh	# Set up the cross gobject-introspection scanner/ldd/qemu wr
+linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh	# In cross mode the rustc ptp-helper link step receives empt
+linux/scripts/03-media/build/gstreamer/install-deps.sh	# Ubuntu 26.04 "resolute" (rolling dev release) mirror skew:
+linux/scripts/03-media/build/iree/android/build-android.sh	# build-android.sh — IREE (iree.dev) Android/NDK runtime bui
+linux/scripts/03-media/build/litert/install-litert-web.sh	#!/usr/bin/env bash
+linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh	# ==========================================================
+linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh	# WebGPU wasm flavor arg sets (LOG2) -----------------------
+linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh	# GENAI-DRIFT producer half (2026-08-24): this gate used to
+linux/scripts/03-media/build/opencv/build-opencv.sh	# ----------------------------------------------------------
+linux/scripts/03-media/build/opencv/build-opencv.sh	# ==========================================================
+linux/scripts/03-media/build/opencv/build-opencv.sh	# Build a CMake-compatible ORT layout so FindONNX.cmake's fi
+linux/scripts/03-media/build/opencv/build-opencv.sh	# RV1 RE-LIFT (2026-08-21, closure window 2): the 2026-08-20
+linux/scripts/03-media/build/opencv/build-opencv.sh	# Same class for GSTREAMER (2026-08-21, riscv64 pass-2): vid
+linux/scripts/03-media/build/opencv/install-deps.sh	# RV1-FREETYPE (2026-08-24): riscv64 needs a TARGET harfbuzz
+linux/scripts/03-media/build/opencv/install-deps.sh	# The generated harfbuzz.pc declares freetype under Requires
+linux/scripts/03-media/build/opencv/install-deps.sh	# Try to install freetype + harfbuzz target packages from Ub
+linux/scripts/03-media/core/common.sh	# Bootstrap entry point for install-deps.sh scripts --------
+linux/scripts/03-media/core/common.sh	#!/usr/bin/env bash
+linux/scripts/03-media/runtime/assemble-torch-app.sh	# Partition IREE runtime wheels (riscv64 cross-built, best-e
+linux/scripts/03-media/runtime/assemble-torch-app.sh	# `uv sync` installs the app project itself (Orchestr-ANT-io
+linux/scripts/03-media/runtime/media-env.sh	# media-env.sh
+linux/scripts/03-media/runtime/verify-wheels.sh	# ----------------------------------------------------------
+linux/scripts/05-frameworks/flutter/setup-flutter.sh	# setup-flutter.sh — unified Flutter SDK installer for amd64
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh	# ===== amd64 NATIVE: single-stage build =====
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh	# Build VERSION-SPECIFIC Python bindings against the contain
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh	# ccache — the decisive lever for IREE build cost. IREE pins
+linux/scripts/05-frameworks/tvm-llvm-compat.sh	# tvm-llvm-compat.sh
+linux/scripts/05-frameworks/tvm.sh	# NO patch_tvm_for_llvm_23 HERE — and that is deliberate (20
+linux/scripts/05-frameworks/tvm.sh	# TVM's FindLLVM does find_package(LLVM CONFIG) then
+linux/scripts/06-packaging/copy-media-payloads.sh	# DF3 (2026-08-18, moved verbatim from an inline Dockerfile.
+linux/scripts/06-packaging/setup-package-image.sh	# Assert that the DEV surface this image intends to expose i
+linux/scripts/06-packaging/setup-package-image.sh	# DO NOT add libgstreamer*-dev or libgtk-4-dev here. Both lo
+linux/scripts/06-packaging/setup-package-image.sh	# Symlink the cargo/rust toolchain binaries into CARGO_HOME/
+linux/scripts/06-packaging/setup-package-image.sh	# The shipped clang{,++} MUST equal LLVM_RELEASE (asserted b
+linux/scripts/06-packaging/smoke-common.sh	# Full compiler validation for a target architecture.
+linux/scripts/06-packaging/smoke-common.sh	# ── generated ONNX fixture (SMOKE-DEPTH item c, 2026-08-23)
+linux/scripts/06-packaging/smoke-cross-all-arches.sh	# smoke-cross-all-arches.sh
+linux/scripts/06-packaging/smoke-toolchain.sh	# smoke-toolchain.sh
+linux/scripts/06-packaging/smoke-torch-venv.sh	# Real InferenceSession: get_available_providers() is a capa
+linux/scripts/06-packaging/smoke-torch-venv.sh	# smoke-torch-venv.sh
+linux/scripts/06-packaging/smoke-torch-venv.sh	# ── KNOWN_DRIFT: dated, per-case tolerances ───────────────
+linux/scripts/06-packaging/swap-native-gcc.sh	# The relocated Canadian-cross native GCC/G++ keeps the sysr
+linux/scripts/06-packaging/swap-native-gcc.sh	# swap-native-gcc.sh
+linux/scripts/06-packaging/validate-compilers.sh	# validate-compilers.sh
+linux/scripts/lib-orchestrator.sh	# shellcheck shell=bash
+linux/scripts/lib/agentic-loop.sh	# ── Main loop ─────────────────────────────────────────────
+linux/scripts/lib/agentic-loop.sh	#!/usr/bin/env bash
+linux/scripts/lib/app-runner.sh	#!/usr/bin/env bash
+linux/scripts/lib/code-quality.sh	# ----------------------------------------------------------
+linux/scripts/lib/coverage.sh	# ----------------------------------------------------------
+linux/scripts/lib/coverage.sh	#!/usr/bin/env bash
+linux/scripts/lib/rust-toolchain.sh	# Make the wasm32-unknown-unknown target usable WITHOUT assu
+linux/scripts/lib/slang-compile.sh	# ----------------------------------------------------------
+linux/scripts/lib/wasm-opt.sh	#!/usr/bin/env bash
+linux/scripts/lint-dockerfiles.sh	#!/usr/bin/env bash
+linux/scripts/lint-env-knobs.sh	#!/usr/bin/env bash
+linux/scripts/lint-python.sh	#!/usr/bin/env bash
+linux/scripts/lint-secrets.sh	#!/usr/bin/env bash
+linux/scripts/lint-shell.sh	# Keep only existing shell scripts (a staged list may includ
+linux/scripts/lint-shell.sh	#!/usr/bin/env bash
+linux/scripts/lint-workflows.sh	#!/usr/bin/env bash
+linux/scripts/patches/generate-patches.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-chain-lifecycle.sh	# ----------------------------------------------------------
+linux/scripts/tests/test-codec-so-map-convergence.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-compiler-cache-launcher.sh	# Load only the function under test, with stub helpers aroun
+linux/scripts/tests/test-compiler-cache-launcher.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-compiler-cache.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-cross-apt.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-cross-oci-handoff.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-env-contract.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-ffmpeg-dnn-contract.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-guard-helpers.sh	# ── run_priv (lives in 01-core/common.sh, where ${SUDO} doe
+linux/scripts/tests/test-ifs-safety.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-layer-order.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-lib-smoke.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-module-resolution.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-pipefail-safety.sh	#!/usr/bin/env bash
+linux/scripts/tests/test-smoke-arch-parity.sh	# ── ARCH-PARITY component table (2026-08-23) ──────────────
+linux/scripts/tests/test-tvm-wheel-diagnostics.sh	#!/usr/bin/env bash
+linux/scripts/verify-patch-integrity.sh	#!/usr/bin/env bash
+linux/scripts/verify-shipped-wrapper.sh	#!/usr/bin/env bash

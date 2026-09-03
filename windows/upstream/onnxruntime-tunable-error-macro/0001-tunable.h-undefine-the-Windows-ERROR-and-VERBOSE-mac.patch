@@ -1,0 +1,47 @@
+From 11835b6b1728c6c3caaf1ed0e6ed1d79a89fadb5 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:42 +0200
+Subject: [PATCH] tunable.h: undefine the Windows ERROR and VERBOSE macros
+
+LOGS_DEFAULT pastes the severity onto Severity::k. On Windows, wingdi.h arrives
+through the CUDA provider's include set and defines ERROR as a bare 0, so the
+paste produces Severity::k0, which does not exist. VERBOSE can be defined the
+same way.
+
+Push, undefine and restore both around the header, so it compiles on its own
+without changing what anything included after it sees.
+
+Assisted-by: Claude (Anthropic)
+---
+ onnxruntime/core/framework/tunable.h | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/onnxruntime/core/framework/tunable.h b/onnxruntime/core/framework/tunable.h
+index 6d2dd64..a97112b 100644
+--- a/onnxruntime/core/framework/tunable.h
++++ b/onnxruntime/core/framework/tunable.h
+@@ -27,6 +27,15 @@
+ #include "core/framework/stream_handles.h"
+ #include "core/framework/tuning_context.h"
+ 
++#if defined(_WIN32)
++// wingdi.h defines ERROR as a bare 0 and can define VERBOSE; both pre-expand
++// through LOGS_DEFAULT and token-paste into a nonexistent Severity::k0.
++#pragma push_macro("ERROR")
++#pragma push_macro("VERBOSE")
++#undef ERROR
++#undef VERBOSE
++#endif
++
+ namespace onnxruntime {
+ 
+ template <typename TuningContextT, typename NativeStreamT>
+@@ -322,3 +331,8 @@ class TunableOp {
+ };
+ 
+ }  // namespace onnxruntime
++
++#if defined(_WIN32)
++#pragma pop_macro("VERBOSE")
++#pragma pop_macro("ERROR")
++#endif

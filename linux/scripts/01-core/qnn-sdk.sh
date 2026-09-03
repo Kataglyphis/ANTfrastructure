@@ -4,8 +4,7 @@
 # linux/qnn-sdk/ (mounted at /opt/scripts/qnn-sdk on every heavy RUN). No zip
 # = QNN off, on every framework. Mirrors Windows Resolve-QnnSdk / Copy-QnnRuntime
 # (WindowsSourceBuild.Common.psm1, #121) so the Linux and Windows lanes stay
-# in step. Loaded by media_common_init, and by tvm.sh / build-app-wheelhouse.sh
-# via source_module.
+# in step. Loaded by media_common_init and by tvm.sh via source_module.
 
 [ -n "${_QNN_SDK_LOADED:-}" ] && return 0
 _QNN_SDK_LOADED=1

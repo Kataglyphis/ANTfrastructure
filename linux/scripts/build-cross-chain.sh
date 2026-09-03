@@ -148,6 +148,11 @@ run_runtime_stage() {
     return 0
   fi
 
+  # B2: refuse a lane that cannot fit, before hours are spent on it. § 3.2
+  # A refusal here is a stage FAILURE, not a silent stop: without this the
+  # status file keeps claiming the runtime stage is still running.
+  _chain_runtime_lane_disk_gate || { _chain_status_emit runtime failed; return 1; }
+
   log "[stage runtime] building package/torch/wrapper + manifest ${FINAL_IMAGE}"
   # C (2026-08-30): under --no-push the android image was exported to
   # <cross workdir>/android-artifacts/<arch>; hand that to the helper so its
@@ -161,8 +166,13 @@ run_runtime_stage() {
     unset ARTIFACT_CONTEXT_ROOT 2>/dev/null || true
     unset ARTIFACT_CONTEXT_MODE 2>/dev/null || true
   fi
+  # Sampler runs FOR the duration of the helper; stopped on both paths.
+  local _rt_rc=0
+  _chain_disk_watch_start runtime
   run env NERDCTL_BIN="${NERDCTL_BIN}" \
-    bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}"
+    bash "${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh" "${helper_args[@]}" || _rt_rc=$?
+  _chain_disk_watch_stop
+  return "${_rt_rc}"
 }
 
 # Avoids function-redefinition race in loops: bash definitions are global, so a
@@ -316,6 +326,14 @@ _chain_status_emit() {
       sep=','
     done
     printf '\n  },\n'
+    # B3: only present when a runtime failure recorded them, so a green run's
+    # file stays byte-identical for existing consumers.
+    if [ -n "${_CHAIN_ARCH_OUTCOMES:-}" ]; then
+      printf '  "arch_outcomes": {%s},\n' "$(chain_status_kv_json "${_CHAIN_ARCH_OUTCOMES}")"
+    fi
+    if [ -n "${_CHAIN_GATES_NOT_RUN:-}" ]; then
+      printf '  "gates_not_run": [%s],\n' "$(chain_status_list_json "${_CHAIN_GATES_NOT_RUN}")"
+    fi
     printf '  "updated": "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '}\n'
   } >"${tmp}" 2>/dev/null || { rm -f "${tmp}"; return 0; }
@@ -334,7 +352,9 @@ _chain_run_build_loop() {
     case "${stage}" in
       runtime)
         run_runtime_stage \
-          || { _chain_status_emit "${stage}" "failed"; err "runtime stage failed"; }
+          || { _chain_runtime_failure_report || true   # a diagnostic must never change the exit code
+               _chain_status_emit "${stage}" "failed"
+               err "runtime stage failed"; }
         ;;
       *)
         if cross_stage_is_per_arch "${stage}"; then
@@ -379,6 +399,18 @@ _chain_disk_preflight() {
   # `|| true`: `du` on a never-built host exits non-zero and pipefail + set -e
   # aborted the orchestrator here with no diagnostic. The size is advisory.
   bc_gb="$(du -sBG "${bc_dir}" 2>/dev/null | cut -f1 | tr -dc '0-9' || true)"
+
+  # The sizing above does NOT cover the runtime lane's own transient cost.
+  # Advisory here; _chain_runtime_lane_disk_gate enforces it. § 3.2
+  local rt_lane_gb combined
+  if stage_enabled runtime; then
+    rt_lane_gb="$(_chain_runtime_lane_need_gb)"
+    combined=$(( need_gb + rt_lane_gb ))
+    if [ "${free_gb}" -lt "${combined}" ]; then
+      warn "DISK PREFLIGHT: this run also enters the runtime lane, which needs ~${rt_lane_gb}G more on top of the ~${need_gb}G of stage cost (~${combined}G total) — only ${free_gb}G is free. The lane-entry gate refuses there instead of ENOSPC-ing hours in (CROSS_RUNTIME_LANE_GB)."
+    fi
+  fi
+
   if [ "${free_gb}" -lt "${need_gb}" ]; then
     log "DISK PREFLIGHT: ${free_gb}G free < ~${need_gb}G recommended (${n_arch} arch(es), from-stage ${FROM_STAGE})."
     # D4 trim: LAST RESORT only. It runs after FORCE_LOW_DISK and after the
@@ -432,11 +464,42 @@ source "${REPO_ROOT}/linux/scripts/01-core/disk-guard.sh"
 # shellcheck disable=SC1091
 source "${REPO_ROOT}/linux/scripts/01-core/chain-lifecycle.sh"
 
+# Is the runtime lane the very next ENABLED stage? Its entry gate refuses below
+# ~120G, which the between-stage guard's 40G default cannot deliver in time.
+_chain_runtime_lane_is_next() {
+  local completed="${1:-}" s seen=0
+
+  [ -n "${completed}" ] || return 1
+  stage_enabled runtime || return 1
+  for s in "${CROSS_STAGE_ORDER[@]}"; do
+    if [ "${seen}" -eq 0 ]; then
+      [ "${s}" = "${completed}" ] && seen=1
+      continue
+    fi
+    stage_enabled "${s}" || continue
+    [ "${s}" = "runtime" ] && return 0
+    return 1
+  done
+  return 1
+}
+
 _chain_stage_disk_guard() {
   local completed_stage="${1:-}"
   local threshold="${CROSS_DISK_GUARD_GB:-40}"
+  local _rt_need
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected="" victim free_gb
+
+  # Aim at what comes NEXT, not at a fixed floor: reclaiming at 40G before a lane
+  # that refuses below ~120G arrives far too late. It cost six manual prunes on
+  # 2026-09-02. docs/failure-modes.md#the-disk-guard-aims-at-the-wrong-number
+  if _chain_runtime_lane_is_next "${completed_stage}"; then
+    _rt_need="$(_chain_runtime_lane_need_gb 2>/dev/null || true)"
+    case "${_rt_need}" in
+      ''|*[!0-9]*) : ;;
+      *) [ "${_rt_need}" -gt "${threshold}" ] && threshold="${_rt_need}" ;;
+    esac
+  fi
 
   if [ "${threshold}" -gt 0 ] 2>/dev/null; then
     free_gb="$(_disk_guard_free_gb "${bc_dir}")"
@@ -448,6 +511,12 @@ _chain_stage_disk_guard() {
         [ -n "${victim}" ] || break
         log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
         rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+        # An undeletable slug stays the LRU pick forever: without this the loop
+        # spins for the rest of the run. Protect it and move on.
+        if [ -e "${bc_dir}/${victim}" ]; then
+          warn "[disk-guard]   could not remove ${victim}; skipping it"
+          protected="${protected},${victim}"
+        fi
         free_gb="$(_disk_guard_free_gb "${bc_dir}")"
         [ -n "${free_gb}" ] || return 0
       done
@@ -476,26 +545,133 @@ _chain_stage_disk_guard() {
     [ -n "${victim}" ] || break
     log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
     rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+    # An undeletable slug stays the LRU pick forever: without this the loop
+    # spins for the rest of the run. Protect it and move on.
+    if [ -e "${bc_dir}/${victim}" ]; then
+      warn "[disk-guard]   could not remove ${victim}; skipping it"
+      protected="${protected},${victim}"
+    fi
     total_gb="$(du -s --block-size=1G "${bc_dir}" 2>/dev/null | cut -f1 || true)"
     [ -n "${total_gb}" ] || return 0
   done
   log "[disk-guard] cache exports now ${total_gb}G (cap ${cap_gb}G)"
 }
 
-_chain_start_resource_monitor() {
-  # Low-overhead resource logging for the whole run; self-terminates via
-  # --watch-pid. See docs/build-resource-monitoring.md. RESOURCE_MONITOR=0 disables.
-  [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
-  local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
-  [ -x "${mon}" ] || return 0
-  local out="${LOG_DIR:-${REPO_ROOT}}" rid="${CROSS_RUN_ID:-cross}"
-  # Idempotent: skip if a monitor is already sampling this run (e.g. started by
-  # the launcher or a wrapping build-cross-stage.sh).
-  pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
-  bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
-    --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &
-  log "resource-monitor: sampling -> ${out}/resources-${rid}.csv (RESOURCE_MONITOR=0 to disable)"
+# ── B2: guards that work INSIDE a stage ──────────────────────────────────────
+# The runtime lane is ONE stage, so _chain_stage_disk_guard cannot fire in it.
+# Evidence, numbers and knobs: docs/build-cache-tiers.md § 3.2.
+
+_CHAIN_DISK_WATCH_PID=""
+
+# Free-GB the runtime lane needs right now (arch count x concurrency).
+_chain_runtime_lane_need_gb() {
+  # The runtime lane builds arches SERIALLY (runtime_build_chain loops), so
+  # --parallel-archs must not scale this. Peak is ONE wrapper at a time.
+  local n_arch
+  n_arch="$(arch_list_to_words "${TARGET_ARCHES}" | wc -w)"
+  _disk_guard_runtime_lane_need_gb "${CROSS_RUNTIME_LANE_GB:-120}" "${n_arch}" 0
 }
+
+# Lane-entry gate: refuse the runtime lane when it cannot possibly fit, instead
+# of finding out hours in. FORCE_LOW_DISK / --dry-run precede the trim.
+_chain_runtime_lane_disk_gate() {
+  [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
+  case "${CROSS_RUNTIME_LANE_GB:-120}" in ''|*[!0-9]*) return 0 ;; esac
+  [ "${CROSS_RUNTIME_LANE_GB:-120}" -gt 0 ] || return 0
+  local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+  local need free_gb protected
+  need="$(_chain_runtime_lane_need_gb)"
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  [ -n "${free_gb}" ] || return 0
+  if [ "${free_gb}" -ge "${need}" ]; then
+    log "[disk-guard] runtime lane: ${free_gb}G free (>= ~${need}G needed)"
+    return 0
+  fi
+  if [ "${FORCE_LOW_DISK:-0}" = "1" ]; then
+    warn "[disk-guard] runtime lane: ${free_gb}G free, ~${need}G needed — FORCE_LOW_DISK=1, continuing on the warm cache without trimming it."
+    return 0
+  fi
+  if is_dry_run; then
+    log "[disk-guard] [DRY RUN] runtime lane would reclaim in ${bc_dir}; nothing removed."
+    return 0
+  fi
+  log "[disk-guard] runtime lane needs ~${need}G free but only ${free_gb}G is left — reclaiming before the wrapper builds start."
+  protected="$(_disk_guard_protected_slugs '')"
+  _disk_guard_trim_cache_export "${bc_dir}" "${need}" "${protected}" "" "${CROSS_TRIM_KEEP_SLUGS:-3}"
+  _disk_guard_reclaim_record "runtime-lane-entry" "${free_gb}" "${bc_dir}"
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  [ -n "${free_gb}" ] || return 0
+  [ "${free_gb}" -lt "${need}" ] || return 0
+  err "runtime lane refused: ${free_gb}G free, ~${need}G needed (${CROSS_RUNTIME_LANE_GB:-120}G per concurrent wrapper build). The 2026-09-01 run entered this lane with 88G and died 28 minutes later with 'no image was built'. Free space, then re-run with --from-stage runtime; or set FORCE_LOW_DISK=1 / CROSS_RUNTIME_LANE_GB=0 to accept the risk."
+}
+
+# Background disk sampler for the duration of ONE stage. Reuses the between-stage
+# threshold and the keep-floor trim; never prunes buildkit (that costs hours).
+_chain_disk_watch_start() {
+  _CHAIN_DISK_WATCH_PID=""
+  [ "${CROSS_DISK_WATCH:-1}" = "1" ] || return 0
+  is_dry_run && return 0
+  local threshold="${CROSS_DISK_GUARD_GB:-40}" secs="${CROSS_DISK_WATCH_SECS:-120}"
+  case "${threshold}" in ''|*[!0-9]*) return 0 ;; esac
+  [ "${threshold}" -gt 0 ] || return 0
+  local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+  local protected
+  protected="$(_disk_guard_protected_slugs '')"
+  # Pass $$ explicitly: inside the backgrounded subshell $PPID is OUR parent, not
+  # us, so the loop's die-with-owner check would watch the wrong process.
+  _disk_guard_watch_loop "${bc_dir}" "${threshold}" "${secs}" "${protected}" \
+    "${CROSS_TRIM_KEEP_SLUGS:-3}" "$$" &
+  _CHAIN_DISK_WATCH_PID=$!
+  log "[disk-watch] sampling ${bc_dir} every ${secs}s during the ${1:-current} stage (threshold ${threshold}G; CROSS_DISK_WATCH=0 disables)"
+}
+
+_chain_disk_watch_stop() {
+  [ -n "${_CHAIN_DISK_WATCH_PID}" ] || return 0
+  kill "${_CHAIN_DISK_WATCH_PID}" 2>/dev/null || true
+  wait "${_CHAIN_DISK_WATCH_PID}" 2>/dev/null || true
+  _CHAIN_DISK_WATCH_PID=""
+}
+
+# ── B3: name what a runtime failure left unverified ──────────────────────────
+# Every gate below sits AFTER build-runtime-manifest.sh's per-arch wrapper loop,
+# so one failed arch skips them all. docs/build-cache-tiers.md § 3.3.
+_CHAIN_RUNTIME_GATES="wrapper-content-gate,verify-shipped-wrapper,runtime-image-smoke,assert_pinned_versions,manifest-coherence,manifest-completeness,manifest-freshness"
+_CHAIN_ARCH_OUTCOMES=""
+_CHAIN_GATES_NOT_RUN=""
+
+# built-this-run | stale | missing — from the wrapper tag's own run-id stamp,
+# the same provenance the manifest coherence gate reads.
+_chain_runtime_arch_state() {
+  local arch="$1" rid
+  rid="$(ancestry_recorded_run_id "${FINAL_IMAGE}-${arch}" 2>/dev/null || true)"
+  if [ -z "${rid}" ]; then printf 'missing'
+  elif [ "${rid}" = "${CROSS_RUN_ID:-}" ]; then printf 'built-this-run'
+  else printf 'stale'; fi
+}
+
+# Sets _CHAIN_ARCH_OUTCOMES / _CHAIN_GATES_NOT_RUN — call it directly, a $(...)
+# subshell would discard both.
+_chain_runtime_failure_report() {
+  local arch state outcomes="" absent=""
+  for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
+    state="$(_chain_runtime_arch_state "${arch}")"
+    outcomes="${outcomes:+${outcomes},}${arch}=${state}"
+    [ "${state}" = "built-this-run" ] || absent="${absent:+${absent} }${arch}"
+  done
+  _CHAIN_ARCH_OUTCOMES="${outcomes}"
+  warn "[runtime-failure] per-arch wrapper outcome: ${outcomes}"
+  if [ -n "${absent}" ]; then
+    _CHAIN_GATES_NOT_RUN="${_CHAIN_RUNTIME_GATES}"
+    warn "[runtime-failure] the wrapper loop produced no image of THIS run for: ${absent}"
+    warn "[runtime-failure] every gate downstream of that loop was therefore SKIPPED for ALL arches: ${_CHAIN_RUNTIME_GATES}"
+    warn "[runtime-failure] NOTHING in this run is verified — a --manifest-only repair would index UNCHECKED wrappers. chain-status.json records this."
+  else
+    _CHAIN_GATES_NOT_RUN=""
+    warn "[runtime-failure] every arch carries this run's id, so the failure is AT or AFTER one of: ${_CHAIN_RUNTIME_GATES} — find which one above."
+  fi
+}
+
+_chain_start_resource_monitor() { start_resource_monitor cross; }
 
 # ── lifecycle: pidfile + signal-driven child reaping ──
 #
@@ -506,6 +682,17 @@ _chain_start_resource_monitor() {
 _CHAIN_PIDFILE=""
 _CHAIN_SIGNAL_HANDLED=0
 
+# PID of a live sibling chain, or empty. Reads the pidfile directly: this is
+# needed BEFORE _chain_write_pidfile runs.
+_chain_live_sibling_pid() {
+  local pf other
+  pf="$(cross_chain_pidfile_path)"
+  [ -f "${pf}" ] || return 0
+  other="$(cat "${pf}" 2>/dev/null || true)"
+  [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null || return 0
+  printf '%s' "${other}"
+}
+
 _chain_write_pidfile() {
   _CHAIN_PIDFILE="$(cross_chain_pidfile_path)"
   # A live SIBLING chain already owns this pidfile: warn (do not clobber its
@@ -513,7 +700,9 @@ _chain_write_pidfile() {
   if [ -f "${_CHAIN_PIDFILE}" ]; then
     local other; other="$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)"
     if [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null; then
-      warn "another cross chain appears to be running (pid ${other}, pidfile ${_CHAIN_PIDFILE}); stop it with stop-cross-chain.sh. Continuing anyway."
+      warn "another cross chain is running (pid ${other}); leaving ${_CHAIN_PIDFILE} pointing at IT so stop-cross-chain.sh still reaches it. This run continues WITHOUT a pidfile and cannot be stopped that way."
+      _CHAIN_PIDFILE=""
+      return 0
     fi
   fi
   printf '%s\n' "$$" > "${_CHAIN_PIDFILE}" 2>/dev/null \
@@ -584,6 +773,12 @@ _chain_prepare_log_dir() {
 # could read the previous run's log as current.
 _chain_archive_prev_logs() {
   [ -n "${LOG_DIR:-}" ] && [ -d "${LOG_DIR}" ] || return 0
+  local _sib
+  _sib="$(_chain_live_sibling_pid)"
+  if [ -n "${_sib}" ]; then
+    warn "another cross chain is running (pid ${_sib}); NOT archiving logs -- its stage logs are live and mv would redirect its open writers"
+    return 0
+  fi
   shopt -s nullglob
   local markers=( "${LOG_DIR}"/*.log.run )
   shopt -u nullglob
@@ -671,6 +866,10 @@ main() {
   _chain_prune_archived_logs
   _chain_write_pidfile         # read by stop-cross-chain.sh
   _chain_install_lifecycle_traps
+  # Mint the OCI handoff workdir HERE. Every other caller reaches it through a
+  # $(...) subshell, so the assignment would never reach this process and the
+  # handoff would silently never activate. docs/cross-build-verification.md
+  cross_local_handoff_enabled && cross_ensure_local_context_workdir
   _chain_assert_ancestry
   _chain_disk_preflight
   _chain_start_resource_monitor

@@ -1,0 +1,48 @@
+From e728e55722ffdada1949e4f5231a37c84191a7d1 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] 3rdparty/mlas: use /FI instead of -include under clang-cl
+
+CMAKE_CXX_COMPILER_ID matches "Clang" for clang-cl as well, but clang-cl drives
+a CL command line: -include is not an option there and cstring is taken as an
+input file.
+
+  clang-cl: error: no such file or directory: 'cstring'
+
+Use /FIcstring and /w when the frontend variant is MSVC. The GNU path is
+unchanged.
+
+Assisted-by: Claude (Anthropic)
+---
+ 3rdparty/mlas/CMakeLists.txt | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/3rdparty/mlas/CMakeLists.txt b/3rdparty/mlas/CMakeLists.txt
+index 368b168..b44f115 100644
+--- a/3rdparty/mlas/CMakeLists.txt
++++ b/3rdparty/mlas/CMakeLists.txt
+@@ -247,11 +247,19 @@ target_compile_definitions(opencv_dnn_mlas PRIVATE
+ )
+ 
+ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+-  target_compile_options(opencv_dnn_mlas PRIVATE
+-    "$<$<COMPILE_LANGUAGE:CXX>:-w>"
+-    "$<$<COMPILE_LANGUAGE:CXX>:-include>"
+-    "$<$<COMPILE_LANGUAGE:CXX>:cstring>"
+-  )
++  if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
++    # The CL driver parses "-include cstring" as an input file name.
++    target_compile_options(opencv_dnn_mlas PRIVATE
++      "$<$<COMPILE_LANGUAGE:CXX>:/w>"
++      "$<$<COMPILE_LANGUAGE:CXX>:/FIcstring>"
++    )
++  else()
++    target_compile_options(opencv_dnn_mlas PRIVATE
++      "$<$<COMPILE_LANGUAGE:CXX>:-w>"
++      "$<$<COMPILE_LANGUAGE:CXX>:-include>"
++      "$<$<COMPILE_LANGUAGE:CXX>:cstring>"
++    )
++  endif()
+   # MLAS .S files lack .note.GNU-stack; tell the assembler the stack is non-exec.
+   target_compile_options(opencv_dnn_mlas PRIVATE
+     "$<$<COMPILE_LANGUAGE:ASM>:-Wa,--noexecstack>"

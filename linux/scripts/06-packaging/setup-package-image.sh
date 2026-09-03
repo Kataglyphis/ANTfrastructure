@@ -78,16 +78,14 @@ install_staged_target_python() {
                 cp -a "${staged_python_root}/usr/local/include"/python* /usr/local/include/
                 echo "/usr/local/lib" > "/etc/ld.so.conf.d/python-local.conf"
                 ldconfig
+            elif [ -e "${staged_python_root}" ]; then
+                # Staged tree present but unusable: never fall through to the distro python.
+                echo "ERROR: ${staged_python_root} exists but carries no executable usr/local/bin/python${python_mm}" >&2
+                return 1
             else
-                # LOUD no-op (2026-08-27). This used to fall through in silence, and the
-                # consequence is not visible until someone runs the image: the shipped
-                # amd64 wrapper advertises PYTHON_VERSION=3.14.7 in its OCI env while
-                # every interpreter in it -- /opt/venv, /opt/python/.venv, /usr/local/bin
-                # -- is Ubuntu's 3.14.4, because the runtime wrapper builds FROM
-                # ubuntu:26.04 and never sees /opt/python-cross. Both are cp314 so the
-                # wheels are fine; the ADVERTISEMENT is what is wrong. Say so here rather
-                # than let the label speak for an interpreter that is not present.
-                echo "WARNING: no staged target Python at ${staged_python_root} — this image will carry the DISTRO python, not the pinned ${python_mm}.x build; PYTHON_VERSION in its env is then an advertisement, not a fact." >&2
+                # Expected: Dockerfile.package stages no /opt/python-cross, so the
+                # distro python is used and PYTHON_VERSION is not advertised.
+                echo "No staged target Python at ${staged_python_root}; using the distro python${python_mm}."
             fi
             ;;
     esac
@@ -479,6 +477,16 @@ report_rust_provenance() {
     echo "OK: shipped rustc ${got} matches the RUST_VERSION pin"
 }
 
+# /opt/flutter is a git repo owned by a different uid than the runtime user, so
+# `flutter --version` dies on "detected dubious ownership" and the SDK is present
+# but unusable. Register it system-wide so any user can run it. Skips riscv64,
+# where the sdk stage leaves /opt/flutter empty. docs/artifact-copy-completeness.md
+register_flutter_git_safe_dir() {
+    [ -x /opt/flutter/bin/flutter ] || return 0
+    git config --system --add safe.directory /opt/flutter
+    echo "OK: registered /opt/flutter as a git safe.directory"
+}
+
 main() {
     local python_mm="${PYTHON_MAJOR_MINOR:?PYTHON_MAJOR_MINOR is required}"
     local gcc_major="${GCC_VERSION%%.*}"
@@ -507,6 +515,7 @@ main() {
     repair_gstreamer_multiarch_link
     verify_consumer_dev_surface
     report_rust_provenance
+    register_flutter_git_safe_dir
 
     # RP2: /var/cache/apt and /var/lib/apt are BuildKit cache MOUNTS here
     # (Dockerfile.package:307-308, sharing=locked). Wiping them has ZERO

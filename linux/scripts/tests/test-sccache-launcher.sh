@@ -1,20 +1,7 @@
 #!/usr/bin/env bash
-# Tests for 01-core/sccache-launcher.sh — the guarded launcher whose bypass
-# decision decides whether an sccache internal failure costs cache hits or the
-# whole build.
-#
-# WHY THIS SUITE EXISTS (2026-08-30)
-# ----------------------------------
-# The launcher only bypassed on "sccache: encountered fatal error" (the CMake
-# TryCompile ENOENT class). A second failure class was observed live on the
-# first F2 media validation build: the sccache SERVER died mid-build
-# ("sccache: error: failed to execute compile" / "caused by: Failed to send
-# data to or receive data from server"), which the launcher did NOT classify as
-# sccache-internal — so it handed the dead-server error to ninja as a REAL
-# failure and killed the TVM step. These tests pin the classification:
-#   * BOTH sccache failure classes bypass to a direct compiler run
-#   * a REAL compiler error passes through untouched (compiler never re-run)
-#   * a clean compile passes through
+# Tests for 01-core/sccache-launcher.sh: BOTH sccache failure classes must bypass
+# to a direct compiler run, a real compiler error must pass through untouched.
+# Why each class matters: docs/build-cache-tiers.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -37,6 +24,20 @@ case "${SCC_MODE:-ok}" in
           exit 1 ;;
   realerr) echo "cc1plus: error: 'foo' was not declared in this scope" >&2
            exit 1 ;;
+  flaky)  if [ -f "${_SLC_DIR}/flaky.seen" ]; then
+            echo "compiled ok" >&2; exit 0
+          fi
+          : > "${_SLC_DIR}/flaky.seen"
+          echo "sccache: encountered fatal error" >&2
+          echo "sccache: caused by: No such file or directory (os error 2)" >&2
+          exit 1 ;;
+  flakyreal) if [ -f "${_SLC_DIR}/flaky.seen" ]; then
+            echo "cc1plus: error: 'foo' was not declared in this scope" >&2; exit 1
+          fi
+          : > "${_SLC_DIR}/flaky.seen"
+          echo "sccache: encountered fatal error" >&2
+          echo "sccache: caused by: No such file or directory (os error 2)" >&2
+          exit 1 ;;
   *)      echo "compiled ok" >&2
           exit 0 ;;
 esac
@@ -89,5 +90,26 @@ _errf="${_SLC_DIR}/server.err"
 printf 'sccache: error: failed to execute compile\ncaused by: Failed to send data to or receive data from server\n' > "${_errf}"
 _old_bypass "${_errf}" && _old_verdict="bypass" || _old_verdict="no-bypass"
 t_assert_eq "no-bypass" "${_old_verdict}" "old classification would NOT bypass — the bug"
+
+# YB: the ENOENT class is intermittent, so the launcher retries ONCE before it
+# gives up the cache entry. These pin that the retry exists and is bounded.
+t_case "RETRY: a transient sccache failure is retried and the cache is kept"
+rm -f "${_SLC_DIR}/flaky.seen" "${_SLC_DIR}/compiler.calls"
+_rc="$(_launcher_run flaky)"
+t_assert_eq "0" "${_rc}" "the retry succeeded, so the launcher must report success"
+t_assert_ok test ! -f "${_SLC_DIR}/compiler.calls"
+
+t_case "RETRY is bounded: a persistent failure still bypasses to the compiler"
+rm -f "${_SLC_DIR}/flaky.seen" "${_SLC_DIR}/compiler.calls"
+_rc="$(_launcher_run enoent)"
+t_assert_eq "0" "${_rc}"
+t_assert_contains "$(cat "${_SLC_DIR}/compiler.calls" 2>/dev/null)" "COMPILER-RAN" \
+  "two sccache failures must still fall through, not loop"
+
+t_case "RETRY surfacing a REAL compiler error passes it through, no bypass"
+rm -f "${_SLC_DIR}/flaky.seen" "${_SLC_DIR}/compiler.calls"
+_rc="$(_launcher_run flakyreal)"
+t_assert_eq "1" "${_rc}" "the compiler's own status must survive the retry path"
+t_assert_ok test ! -f "${_SLC_DIR}/compiler.calls"
 
 t_summary

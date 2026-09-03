@@ -214,26 +214,8 @@ cmake_build_prepare_env() {
     . "${VULKAN_SETUP_SCRIPT}"
   fi
 
-  # The :latest-cross image runs as uid 1001 with CARGO_HOME=/usr/local/cargo
-  # owned by root, so the Corrosion/cargo half of the configure dies with
-  # "failed to create directory /usr/local/cargo/registry" - which took the
-  # whole Linux lane down when combined with the tee exit-code masking in
-  # Linux.yml (fixed there with shell: bash / pipefail). Redirect cargo to a
-  # writable home rather than requiring the image to hand us its own.
-  #
-  # Checked in order:
-  #   1. --cargo-cache-dir  (CLI arg, survives container restarts when backed
-  #      by a docker named volume or host bind mount)
-  #   2. $CARGO_CACHE_DIR   (environment variable override)
-  #   3. $CARGO_HOME        (image default; /usr/local/cargo, usually read-only)
-  #   4. $TMPDIR/cargo-home (fallback, lost when container exits)
-  # Probe registry/, not CARGO_HOME itself. /usr/local/cargo is writable in the
-  # cross image while /usr/local/cargo/registry underneath it is root-owned
-  # (populated by `cargo install cargo-c` during the image build), so the
-  # shallow `-w` test PASSED and the build then died anyway with
-  #   error: failed to create directory `/usr/local/cargo/registry/cache/...`
-  #   Caused by: Permission denied (os error 13)
-  # Same mkdir-then-test idiom the sccache/ccache loop below already uses.
+  # How the cmake argument set is assembled:
+  # docs/cross-build-verification.md
   if ! { mkdir -p "${CARGO_HOME:-/usr/local/cargo}/registry" 2>/dev/null \
          && [[ -w "${CARGO_HOME:-/usr/local/cargo}/registry" ]]; }; then
     if [[ -n "${CARGO_CACHE_DIR:-}" ]]; then

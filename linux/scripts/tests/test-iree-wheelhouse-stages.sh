@@ -187,7 +187,17 @@ _run
 _cmake_log="$(cat "${TMP}/cmake.log")"
 t_case "cross lane runs the host stage then the target stage"
 t_assert_eq "0" "${RC}" "build_iree_wheels rc"
-t_assert_contains "${_cmake_log}" "-DIREE_BUILD_COMPILER=OFF -DIREE_BUILD_PYTHON_BINDINGS=OFF" "host stage probes COMPILER=OFF first"
+# The host stage must NOT probe COMPILER=OFF when the target is OFF (the
+# default): the target then imports iree-tblgen from the host, OFF never
+# installs it, so that probe is a complete host build thrown away before the
+# mandatory ON pass. docs/iree-two-stage-build.md
+t_assert_contains "${_cmake_log}" "-DIREE_BUILD_COMPILER=ON -DIREE_BUILD_PYTHON_BINDINGS=OFF" \
+  "target OFF => host stage goes straight to COMPILER=ON"
+case "${_cmake_log}" in
+  *"-DIREE_BUILD_COMPILER=OFF -DIREE_BUILD_PYTHON_BINDINGS=OFF"*)
+    t_assert_eq "no OFF host probe" "an OFF host probe ran" "the discarded OFF pass is back" ;;
+  *) t_assert_eq "1" "1" ;;
+esac
 t_assert_contains "${_cmake_log}" "-DIREE_HOST_BIN_DIR=${TMP}/work/iree-build-host/install/bin" "target uses host tools"
 t_assert_contains "${_cmake_log}" "-DCMAKE_TOOLCHAIN_FILE=${TMP}/toolchain.cmake" "toolchain file"
 t_assert_contains "${_cmake_log}" "-DLLVM_HOST_TRIPLE=riscv64-linux-gnu" "target triple pin"
@@ -219,9 +229,15 @@ STUB_QNN=""
 
 # ── skip / failure paths: each must return 1 FROM build_iree_wheels ──────────
 t_case "missing cmake skips IREE with rc=1"
+# PATH used to keep /usr/bin, where the real cmake lives, so the guard under test
+# was never reached: the case passed off a real cmake failing on the stub source
+# tree. nocmake/ holds only the git+ninja stubs, and build_iree_wheels runs no
+# external command before the check. Assert the REASON too. Backlog XL.
 APP_WHEELHOUSE_BUILD_ROOT="${TMP}/work"; APP_WHEELHOUSE_DIR="${TMP}/wheels"
-_rc=0; ( PATH="${TMP}/nocmake:/usr/bin:/bin"; build_iree_wheels ) >/dev/null 2>&1 || _rc=$?
+_rc=0; _nocmake_out="$( PATH="${TMP}/nocmake"; build_iree_wheels 2>&1 )" || _rc=$?
 t_assert_eq "1" "${_rc}" "prereq failure must return 1"
+t_assert_contains "${_nocmake_out}" "cmake absent" \
+  "must skip because cmake is absent, not because a later stage failed"
 
 t_case "missing wheel platform tag skips IREE with rc=1"
 STUB_WHEEL_PLATFORM=""

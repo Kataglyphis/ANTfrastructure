@@ -47,7 +47,16 @@ $ErrorActionPreference = 'Stop'
 if ($Summarize) {
     if (-not (Test-Path $CsvPath)) { Write-Warning "no resource CSV at $CsvPath"; return }
     $rows = @(Import-Csv $CsvPath | Where-Object { $_.cpuPct -match '^\d' })
-    if ($rows.Count -eq 0) { Write-Warning "resource CSV has no samples: $CsvPath"; return }
+    if ($rows.Count -eq 0) {
+        # An all-error CSV is a broken sampler, not an empty run — say so.
+        $errRows = @(Select-String -Path $CsvPath -Pattern ',sample-error,' -SimpleMatch)
+        if ($errRows.Count -gt 0) {
+            Write-Warning "resource CSV holds ONLY $($errRows.Count) sample-error rows (sampler broken, see the reason column): $CsvPath"
+        } else {
+            Write-Warning "resource CSV has no samples: $CsvPath"
+        }
+        return
+    }
 
     Write-Host ''
     Write-Host "=== RESOURCE SUMMARY by build phase (peak-memory-pressure first; full series: $CsvPath) ===" -ForegroundColor Cyan
@@ -93,8 +102,11 @@ while ($true) {
         $phase = $phase -replace ',', ';'
         "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB" | Add-Content -Path $CsvPath
     } catch {
-        # never let a transient CIM hiccup kill the series mid-build
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
+        # never let a transient CIM hiccup kill the series mid-build — but carry
+        # the WHY: a 2026-09-01 run produced 4.7h of bare sample-error rows and
+        # the cause was undiagnosable (docs/windows-refactor-backlog.md #161).
+        $why = ($_.Exception.Message -replace '[,\r\n]', ';')
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,$why,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
     }
     Start-Sleep -Seconds $IntervalSeconds
 }

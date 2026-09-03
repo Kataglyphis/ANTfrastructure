@@ -114,6 +114,122 @@ cross_stage_context_dir() {
 
 # _cross_stage_build_impl <push_flag> <label> <tag> <dockerfile> [build args...]
 # push=1 pushes to the registry with cache export; push=0 builds locally only.
+# Seams of _cross_stage_build_impl, extracted so the main function reads as the
+# sequence it is. Behaviour is pinned by tests/test-cross-stage-build-cmd.sh.
+# docs/refactoring-backlog.md F1
+
+# --pull for this build: local builds and digest-pinned bases need no refresh.
+_cross_build_pull_flag() {
+  local push_flag="$1"; shift
+  if [ "${push_flag}" -eq 0 ]; then
+    printf '%s' "--pull=false"
+  elif _has_digest_pinned_base "$@"; then
+    printf '%s' "--pull=false"
+  else
+    printf '%s' "--pull=true"
+  fi
+}
+
+# Push output + opt-in attestation. See docs/build-cache-tiers.md.
+_cross_build_append_push_output() {
+  local -n _out="$1"
+  local tag="$2" push_flag="$3"
+  [ "${push_flag}" -eq 1 ] || return 0
+    # Stamp the parent ref this build consumed onto the pushed manifest: it is how
+    # a LATER partial run proves it is not on a stale ancestor (see ancestry.sh).
+    local _ancestry_ann=""
+    if declare -F ancestry_output_annotations >/dev/null 2>&1; then
+      _ancestry_ann="$(ancestry_output_annotations \
+        "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
+    fi
+    # PUSH1 (2026-08-18): zstd (not force-compression) for NEW layers — push time
+    # is the chain ceiling on a ~4-5 MB/s uplink. Knob: CROSS_LAYER_COMPRESSION.
+    _out+=(
+      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
+    )
+    # Opt-in SLSA provenance + SBOM as OCI referrers; off by default because the
+    # SBOM scanner adds time to every stage.
+    if [ -n "${BUILD_ATTEST:-}" ]; then
+      _out+=(
+        --provenance=mode=max
+        --sbom=true
+      )
+    fi
+}
+
+# The three cache tiers: local export (primary), local import (only when the slug
+# holds a manifest) and the inline registry cache (push only).
+# docs/build-cache-tiers.md
+_cross_build_append_cache_args() {
+  local -n _out="$1"
+  local tag="$2" push_flag="$3" _cache_dir="$4" _cache_slug="$5"
+  # A LOCAL buildkit cache is primary: it survives rebuilds and never hits ghcr's
+  # 400 on oversized mode=max cache blobs. See docs/build-cache-tiers.md.
+  if [ -z "${NO_CACHE:-}" ]; then
+    mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
+    # Only READ when the slug holds a manifest: --cache-from at an index.json-less
+    # dir logs a "could not read" that reads like a fault but is a clean miss.
+    if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
+      _out+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
+    fi
+    # Set by the chain disk-guard when pruning could not clear the free-space
+    # threshold: stop WRITING new local exports, keep READING what survived.
+    if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
+      _out+=(
+        --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
+      )
+    fi
+    # Inline cache (mode=min, in the image config — no separate blob, so no 400)
+    # lets other hosts warm-start from the tag. NO_CACHE_EXPORT skips only this.
+    if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
+      _out+=(
+        --cache-from "type=registry,ref=${tag}"
+        --cache-to "type=inline"
+      )
+    fi
+  fi
+}
+
+# S1: --cache-to type=local only materialises on a SUCCESSFUL solve, so a failed
+# build re-drives per named --target to export the subtrees that did finish.
+# docs/build-cache-tiers.md
+_cross_build_salvage_exports() {
+  local dockerfile="$1" _cache_dir="$2" _cache_slug="$3"
+  local -n _extra="$4"
+  local -n _common="$5"
+  # S1: --cache-to type=local only materializes on a SUCCESSFUL solve — re-drive
+  # per --target to salvage completed subtrees. docs/build-cache-tiers.md
+  if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
+     && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run \
+     && _cross_salvage_disk_ok "${_cache_dir}"; then
+    local -a _salvage_targets=()
+    mapfile -t _salvage_targets < <(grep -iE \
+      '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \
+      "${dockerfile}" 2>/dev/null | awk '{print $NF}')
+    if [ "${#_salvage_targets[@]}" -gt 0 ]; then
+      warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
+      # A target whose subtree holds the broken vertex RE-RUNS it, hence the
+      # hard timeout; and later file-order targets sit downstream of the same
+      # break, hence the stop after 2 consecutive failures.
+      local _tgt _salvage_fails=0 _salvage_ok=0
+      for _tgt in "${_salvage_targets[@]}"; do
+        [ "${_salvage_fails}" -ge 2 ] && break
+        if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
+             "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
+             --target "${_tgt}" -f "${dockerfile}" \
+             --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
+             --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
+             "${_extra[@]}" "${_common[@]}" . >/dev/null 2>&1; then
+          _salvage_ok=$((_salvage_ok + 1)); _salvage_fails=0
+        else
+          _salvage_fails=$((_salvage_fails + 1))
+        fi
+      done
+      warn "salvage-cache-export: ${_salvage_ok}/${#_salvage_targets[@]} named stages exported to the local cache for ${tag}"
+    fi
+  fi
+}
+
 _cross_stage_build_impl() {
   local push_flag="$1" label="$2" tag="$3" dockerfile="$4"
   shift 4
@@ -124,14 +240,8 @@ _cross_stage_build_impl() {
   local log_file
   log_file="$(cross_stage_log_redirect "${label}")"
 
-  local pull_flag="--pull=true"
-  if [ "${push_flag}" -eq 0 ]; then
-    # Local builds use local images; registry may have stale versions.
-    pull_flag="--pull=false"
-  elif _has_digest_pinned_base "${extra[@]}"; then
-    # Digest-pinned bases are immutable; no need to pull.
-    pull_flag="--pull=false"
-  fi
+  local pull_flag
+  pull_flag="$(_cross_build_pull_flag "${push_flag}" "${extra[@]}")"
 
   local -a build_cmd=(
     "${NERDCTL_BIN:-nerdctl}" build
@@ -142,57 +252,13 @@ _cross_stage_build_impl() {
     -f "${dockerfile}"
   )
 
-  if [ "${push_flag}" -eq 1 ]; then
-    # Stamp the parent ref this build consumed onto the pushed manifest: it is how
-    # a LATER partial run proves it is not on a stale ancestor (see ancestry.sh).
-    local _ancestry_ann=""
-    if declare -F ancestry_output_annotations >/dev/null 2>&1; then
-      _ancestry_ann="$(ancestry_output_annotations \
-        "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
-    fi
-    # PUSH1 (2026-08-18): zstd (not force-compression) for NEW layers — push time
-    # is the chain ceiling on a ~4-5 MB/s uplink. Knob: CROSS_LAYER_COMPRESSION.
-    build_cmd+=(
-      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
-    )
-    # Opt-in SLSA provenance + SBOM as OCI referrers; off by default because the
-    # SBOM scanner adds time to every stage.
-    if [ -n "${BUILD_ATTEST:-}" ]; then
-      build_cmd+=(
-        --provenance=mode=max
-        --sbom=true
-      )
-    fi
-  fi
+  _cross_build_append_push_output build_cmd "${tag}" "${push_flag}"
 
-  # A LOCAL buildkit cache is primary: it survives rebuilds and never hits ghcr's
-  # 400 on oversized mode=max cache blobs. See docs/build-cache-tiers.md.
-  if [ -z "${NO_CACHE:-}" ]; then
-    local _cache_dir _cache_slug
-    _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
-    _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
-    mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
-    # Only READ when the slug holds a manifest: --cache-from at an index.json-less
-    # dir logs a "could not read" that reads like a fault but is a clean miss.
-    if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
-      build_cmd+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
-    fi
-    # Set by the chain disk-guard when pruning could not clear the free-space
-    # threshold: stop WRITING new local exports, keep READING what survived.
-    if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
-      build_cmd+=(
-        --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
-      )
-    fi
-    # Inline cache (mode=min, in the image config — no separate blob, so no 400)
-    # lets other hosts warm-start from the tag. NO_CACHE_EXPORT skips only this.
-    if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
-      build_cmd+=(
-        --cache-from "type=registry,ref=${tag}"
-        --cache-to "type=inline"
-      )
-    fi
-  fi
+  local _cache_dir _cache_slug
+  _cache_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
+  _cache_slug="$(printf '%s' "${tag}" | tr '/:@' '___')"
+  _cross_build_append_cache_args build_cmd "${tag}" "${push_flag}" \
+    "${_cache_dir}" "${_cache_slug}"
 
   append_buildkit_host_arg build_cmd
   build_cmd+=("${extra[@]}" "${common_args[@]}" .)
@@ -222,37 +288,8 @@ _cross_stage_build_impl() {
     [ "${_rc}" -eq 0 ] && return 0
     if [ "${_attempt}" -ge "${_max_attempts}" ] \
        || ! _cross_stage_push_error_is_transient "${log_file}"; then
-      # S1: --cache-to type=local only materializes on a SUCCESSFUL solve — re-drive
-      # per --target to salvage completed subtrees. docs/build-cache-tiers.md
-      if [ -z "${NO_CACHE:-}" ] && [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ] \
-         && [ "${SALVAGE_CACHE_EXPORT:-1}" != "0" ] && ! is_dry_run \
-         && _cross_salvage_disk_ok "${_cache_dir}"; then
-        local -a _salvage_targets=()
-        mapfile -t _salvage_targets < <(grep -iE \
-          '^FROM[[:space:]].+[[:space:]]AS[[:space:]]+[A-Za-z0-9_.-]+[[:space:]]*$' \
-          "${dockerfile}" 2>/dev/null | awk '{print $NF}')
-        if [ "${#_salvage_targets[@]}" -gt 0 ]; then
-          warn "build failed; salvaging local cache exports for ${#_salvage_targets[@]} named stages of ${dockerfile##*/} (SALVAGE_CACHE_EXPORT=0 disables)"
-          # A target whose subtree holds the broken vertex RE-RUNS it, hence the
-          # hard timeout; and later file-order targets sit downstream of the same
-          # break, hence the stop after 2 consecutive failures.
-          local _tgt _salvage_fails=0 _salvage_ok=0
-          for _tgt in "${_salvage_targets[@]}"; do
-            [ "${_salvage_fails}" -ge 2 ] && break
-            if timeout "${SALVAGE_TARGET_TIMEOUT:-600}" \
-                 "${NERDCTL_BIN:-nerdctl}" build --pull=false --platform linux/amd64 \
-                 --target "${_tgt}" -f "${dockerfile}" \
-                 --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" \
-                 --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max" \
-                 "${extra[@]}" "${common_args[@]}" . >/dev/null 2>&1; then
-              _salvage_ok=$((_salvage_ok + 1)); _salvage_fails=0
-            else
-              _salvage_fails=$((_salvage_fails + 1))
-            fi
-          done
-          warn "salvage-cache-export: ${_salvage_ok}/${#_salvage_targets[@]} named stages exported to the local cache for ${tag}"
-        fi
-      fi
+      _cross_build_salvage_exports "${dockerfile}" "${_cache_dir}" "${_cache_slug}" \
+        extra common_args
       return "${_rc}"
     fi
     # ghcr cache-import flake (2026-08-18): the registry cache IMPORT is itself the
@@ -498,7 +535,8 @@ cross_stage_run() {
       # reads ARTIFACT_CONTEXT_ROOT/$arch (set by the orchestrator), which is
       # exactly where we just wrote the layout.
       if [ "${stage}" = "android" ]; then
-        local artifact_dir="${CROSS_CONTEXT_WORKDIR}/android-artifacts/${arch}"
+        local artifact_dir
+        artifact_dir="$(cross_stage_context_dir android-artifacts "${arch}")" || return 1
         log "[stage android-${arch}] exporting artifact layout for the runtime lane → ${artifact_dir}"
         export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
       fi
@@ -516,21 +554,31 @@ cross_stage_run() {
 # Harvest hook for run_parallel_arch_loop: read worker-persisted pins and
 # built-this-run flags back into the parent's arrays (subshell writes are lost).
 parallel_loop_harvest() {
+  # Keyed on BOTH flag kinds. Iterating pin.* alone lost every built.* that has no
+  # pin beside it -- which is the whole --no-push path, where a worker writes only
+  # built.<stage>.<arch>. docs/refactoring-backlog.md XO
   local flagdir="$1" f name stage arch pin_varname built_varname
-  for f in "${flagdir}"/pin.*.*; do
+  local -A _hv_seen=()
+  for f in "${flagdir}"/pin.*.* "${flagdir}"/built.*.*; do
     [ -f "${f}" ] || continue
-    name="${f##*/pin.}"
+    name="${f##*/}"
+    name="${name#pin.}"
+    name="${name#built.}"
+    [ -z "${_hv_seen[${name}]:-}" ] || continue
+    _hv_seen["${name}"]=1
     stage="${name%%.*}"
     arch="${name##*.}"
+
     pin_varname="$(cross_stage_pin_varname "${stage}" 2>/dev/null || true)"
-    [ -n "${pin_varname}" ] || continue
-    if declare -p "${pin_varname}" &>/dev/null; then
+    if [ -n "${pin_varname}" ] && [ -f "${flagdir}/pin.${name}" ] \
+       && declare -p "${pin_varname}" &>/dev/null; then
       local -n _hv_pin_map="${pin_varname}"
-      _hv_pin_map["${arch}"]="$(cat "${f}")"
+      _hv_pin_map["${arch}"]="$(cat "${flagdir}/pin.${name}")"
       log "[stage ${stage}-${arch}] pin harvested from parallel worker"
     fi
+
     built_varname="${stage^^}_BUILT_THIS_RUN"
-    if [ -f "${flagdir}/built.${stage}.${arch}" ] && declare -p "${built_varname}" &>/dev/null; then
+    if [ -f "${flagdir}/built.${name}" ] && declare -p "${built_varname}" &>/dev/null; then
       local -n _hv_built="${built_varname}"
       _hv_built["${arch}"]=1
     fi

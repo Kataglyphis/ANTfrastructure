@@ -17,12 +17,42 @@ _T_CASE=""
 
 t_case() { _T_CASE="$1"; }
 
+# A mistyped assertion used to be INVISIBLE: bash printed "command not found",
+# the test file kept going, and t_summary still reported every assertion passed.
+# Found 2026-09-02 by typing t_assert_fail (the real name is t_assert_fails) --
+# three assertions vanished and the suite stayed green. Turn that into a
+# counted failure so a typo can never masquerade as coverage.
+# bash runs this handler in a SEPARATE EXECUTION ENVIRONMENT, so incrementing a
+# counter here is lost -- the first cut of this did exactly that and still
+# printed "passed". Record on disk; t_summary reads the marker.
+_T_UNKNOWN_MARK="${TMPDIR:-/tmp}/.t-harness-unknown.$$"
+rm -f "${_T_UNKNOWN_MARK}" 2>/dev/null || true
+
+command_not_found_handle() {
+  # ONLY t_* names. Suites legitimately probe for absent binaries (and discard
+  # that stderr), so counting every missing command turned 2 healthy suites red
+  # when this was first written. The hole being closed is narrower: a mistyped
+  # ASSERTION silently doing nothing.
+  case "$1" in
+    t_*)
+      printf '%s\n' "$1" >> "${_T_UNKNOWN_MARK}"
+      printf '  \033[0;31mFAIL\033[0m [%s] unknown assertion: %s\n' "${_T_CASE:-?}" "$1" >&2
+      ;;
+  esac
+  return 127
+}
+
 _t_fail() {
   _T_FAILED=$((_T_FAILED + 1))
   printf '  \033[0;31mFAIL\033[0m [%s] %s\n' "${_T_CASE:-?}" "$1" >&2
 }
 
 _t_pass() { :; }
+
+# t_out <command...> — combined stdout+stderr, to assert on messages
+t_out() { "$@" 2>&1; }
+# t_rc <command...> — the exit code as text, for t_assert_eq
+t_rc()  { "$@" >/dev/null 2>&1; echo $?; }
 
 # t_assert_eq <expected> <actual> [message]
 t_assert_eq() {
@@ -51,6 +81,13 @@ t_assert_fails() {
 }
 
 t_summary() {
+  local _unknown=0
+  if [ -s "${_T_UNKNOWN_MARK:-/nonexistent}" ]; then
+    _unknown="$(wc -l < "${_T_UNKNOWN_MARK}" | tr -d ' ')"
+    _T_FAILED=$((_T_FAILED + _unknown))
+    printf '  %s unknown command(s)/assertion(s) — a typo is NOT coverage\n' "${_unknown}" >&2
+    rm -f "${_T_UNKNOWN_MARK}" 2>/dev/null || true
+  fi
   if [ "${_T_FAILED}" -gt 0 ]; then
     printf '  %d/%d assertion(s) FAILED\n' "${_T_FAILED}" "${_T_RUN}" >&2
     exit 1

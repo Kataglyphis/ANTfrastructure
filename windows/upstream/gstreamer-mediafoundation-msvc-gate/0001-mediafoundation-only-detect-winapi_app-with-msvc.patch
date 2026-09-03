@@ -1,0 +1,31 @@
+From 6b9d8ca72a639eaee1fe4f2820e0cde9ed317ba6 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] mediafoundation: only detect winapi_app with msvc
+
+gstwinrt calls subdir_done() unless cxx.get_id() == 'msvc', so gstwinrt_dep is
+never found with any other compiler. mediafoundation has no such guard, and a
+desktop toolchain reports both the DESKTOP and APP partitions, so winapi_app
+comes out true anyway. The plugin then requires gstwinrt_dep and errors out, or
+quietly disables itself when it is auto.
+
+Use the same condition, so other compilers take the desktop path.
+
+Assisted-by: Claude (Anthropic)
+---
+ subprojects/gst-plugins-bad/sys/mediafoundation/meson.build | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/subprojects/gst-plugins-bad/sys/mediafoundation/meson.build b/subprojects/gst-plugins-bad/sys/mediafoundation/meson.build
+index 1bd965a..d86230d 100644
+--- a/subprojects/gst-plugins-bad/sys/mediafoundation/meson.build
++++ b/subprojects/gst-plugins-bad/sys/mediafoundation/meson.build
+@@ -103,7 +103,7 @@ winapi_desktop = cxx.compiles('''#include <winapifamily.h>
+     dependencies: mf_lib_deps,
+     name: 'building for Win32')
+ 
+-if runtimeobject_lib.found()
++if runtimeobject_lib.found() and cxx.get_id() == 'msvc'
+   winapi_app = cxx.compiles('''#include <winapifamily.h>
+       #include <windows.applicationmodel.core.h>
+       #include <wrl.h>

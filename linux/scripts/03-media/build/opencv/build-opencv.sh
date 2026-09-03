@@ -247,15 +247,22 @@ fetch_opencv() {
     # OCV-FF1 phase 2 (2026-08-21): with the try_compile link gap fixed,
     # HAVE_FFMPEG went TRUE for the first time — and exposed that opencv
     # 5.0.0 still uses the AVCodec fields FFmpeg 8 removed (pix_fmts,
-    # supported_framerates; 4.x master already migrated, the 5.x branch has
-    # not). Backport shim: avcodec_get_supported_config() behind
-    # LIBAVCODEC_VERSION_MAJOR >= 62 guards — 2 sites, drops cleanly when a
-    # 5.x release lands the migration.
+    # supported_framerates; 4.x already migrated, 5.x has not). We used to carry
+    # a hand-written shim; it guarded on the wrong idiom and trusted a {0,0}
+    # terminator where the new API returns a count. Replaced 2026-09-02 by
+    # upstream's two commits. Drops cleanly when a 5.x release lands them.
     if [ -f "${OPENCV_SRC}/modules/videoio/src/cap_ffmpeg_impl.hpp" ]; then
+        # Upstream's own commits, not a reimplementation: 4.x fixed this and 5.x
+        # did not get it. Both apply cleanly to the 5.0.0 tag and carry their
+        # original authorship. docs/upstreamable-patches.md entry 2
         bash /opt/scripts/core/apply-patch.sh \
-            /opt/scripts/patches/opencv/002-ffmpeg8-avcodec-config-api.patch \
+            /opt/scripts/patches/opencv/002a-upstream-ffmpeg-pix_fmts-removal.patch \
             "${OPENCV_SRC}" \
-            "OpenCV 5.0.0 FFmpeg-8 AVCodec config-API compat (OCV-FF1)"
+            "OpenCV upstream 700cd32ffd: support FFmpeg after AVCodec::pix_fmts removal"
+        bash /opt/scripts/core/apply-patch.sh \
+            /opt/scripts/patches/opencv/002b-upstream-ffmpeg-supported-config-framerates.patch \
+            "${OPENCV_SRC}" \
+            "OpenCV upstream 83ed22ca28: avcodec_get_supported_config for framerates"
     fi
 }
 
@@ -277,6 +284,26 @@ target_machine() {
 
 # Adjust build flags for non-x86 targets and cross-mode gating of GTK/GStreamer/
 # Python. Mutates the surrounding with_* and target_* locals.
+# CMake hands OpenCV `-isystem /usr/include`, which shadows libstdc++'s own
+# <complex.h> wrapper. docs/failure-modes.md#opencv-stdcomplex-breaks-on-a-shadowed-complexh
+_opencv_write_cxx_compat_shim() {
+  local dir="${1:?shim dir is required}"
+
+  mkdir -p "${dir}"
+  cat > "${dir}/complex.h" <<'SHIM'
+#pragma once
+/* Restores what libstdc++'s <complex.h> does: include the C header, then drop
+   its `complex` macro so std::complex still parses. Transparent in C. */
+#ifdef __cplusplus
+#include <complex>
+#include_next <complex.h>
+#undef complex
+#else
+#include_next <complex.h>
+#endif
+SHIM
+}
+
 _opencv_target_adjustments() {
     local -n _ota_cmake_opts="$1"
     local -n _ota_with_gtk="$2"
@@ -303,6 +330,9 @@ _opencv_target_adjustments() {
         _ota_zlib_inc="/usr/include"
         _ota_zlib_lib="/usr/lib/$(cross_target_triplet)/libz.so"
         _ota_shared_inc="-idirafter /usr/include"
+        # -I beats -isystem, so the shim wins whatever CMake appends.
+        _opencv_write_cxx_compat_shim "${OPENCV_SRC%/}-cxx-compat"
+        _ota_shared_inc="-I${OPENCV_SRC%/}-cxx-compat ${_ota_shared_inc}"
         # OCV-FF2 (2026-08-31): pass 2 inherits the gstreamer stage, which
         # installs the DISTRO libav*-dev (FFmpeg 8.0.1) while we build our own
         # n9.0 into ${FFMPEG_PREFIX}. Both land on the include path, and
@@ -330,45 +360,8 @@ _opencv_target_adjustments() {
             if [ "${OPENCV_GSTREAMER_PASS:-1}" != "2" ]; then
                 _ota_with_gstreamer="OFF"
             fi
-            # RV1-FREETYPE — FIXED (2026-08-24); the coming rebuild is the
-            # final validator. History (2026-08-23 investigation, still true):
-            # riscv64 had no TARGET harfbuzz dev surface at configure time —
-            # pass-2 (FROM gstreamer, libfreetype-dev pre-satisfied) got only
-            # the RUNTIME libharfbuzz0b — so ocv_check_modules(HARFBUZZ
-            # harfbuzz) resolved a HOST harfbuzz (find_library fall-through
-            # under CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH) → "file in wrong
-            # format" at link. The ports dev package stays banned
-            # (libharfbuzz-dev:riscv64 → Depends: libglib2.0-dev = RV1-GST-PC
-            # poison), so install-deps.sh now stages a PIC STATIC target
-            # harfbuzz (HB_HAVE_FREETYPE=ON, hb-ft glue included) at
-            # /usr/<triplet> with a cmake-generated absolute-prefix
-            # harfbuzz.pc whose freetype dep is promoted to Requires: pkg-config
-            # then emits `-lharfbuzz -lfreetype`, so HARFBUZZ_LIBRARIES becomes
-            # [libharfbuzz.a, target libfreetype.so] and the module link
-            # (<objects> FREETYPE_LIBRARIES HARFBUZZ_LIBRARIES) still resolves
-            # the archive's FT_* refs under -Wl,--no-undefined — a DSO BEFORE
-            # the archive alone does NOT (proven by a local link experiment
-            # 2026-08-24: objects+ft.so+hb.a fails; +ft.so after the archive
-            # links clean). Determinism, both passes:
-            #   * our pkgconfig dir is prepended to PKG_CONFIG_PATH, which
-            #     outranks PKG_CONFIG_LIBDIR — pass-2 puts /opt/gstreamer
-            #     first in PKG_CONFIG_PATH and its meson-subproject harfbuzz
-            #     may export a competing harfbuzz.pc; ours must win;
-            #   * the pkgcfg_lib_* cache vars FindPkgConfig/ocv_check_modules
-            #     resolve libraries through are pre-seeded with absolute
-            #     TARGET paths, so no find_library ever runs, let alone falls
-            #     through to a host lib (OCV-FF1's determinism discipline,
-            #     pinned by file path instead of -L ordering).
-            # Static harfbuzz keeps the runtime surface: the only new NEEDED
-            # is libfreetype.so.6, which validate-media-runtime's
-            # so-package-map already resolves to libfreetype6 (and the
-            # gstreamer stack pulls it in on riscv64 today anyway). If
-            # install-deps could NOT stage the static harfbuzz, keep the
-            # module hard-OFF rather than let detection wander back to host
-            # libs — absence then still surfaces as the wheel smoke's
-            # riscv64-only opencv-freetype warning, and after a green rebuild
-            # that warning's "expected on riscv64" status is STALE (parity
-            # follow-up for the orchestrator).
+            # RV1-FREETYPE: riscv64 stages a PIC-static target harfbuzz because the
+            # ports dev package is glib-poisoned. docs/failure-modes.md
             local _hb_triplet _hb_a _hb_inc _hb_pc _ft_so
             _hb_triplet="$(cross_target_triplet 2>/dev/null || echo riscv64-linux-gnu)"
             _hb_a="/usr/${_hb_triplet}/lib/libharfbuzz.a"
@@ -482,6 +475,11 @@ _opencv_cmake_core_opts() {
         "-DWITH_HDF5=ON"
         "-DOPENCV_ENABLE_NONFREE=ON"
     )
+
+    # RVV is gated on these cache vars, not on -march. docs/riscv64-rva23-baseline.md
+    if [ "$(cross_target_arch)" = "riscv64" ]; then
+        _occmo_out+=("-DCPU_BASELINE=RVV" "-DWITH_HAL_RVV=ON")
+    fi
 }
 
 # Append cross-compilation CMake flags (find-root modes, archiver tools,
@@ -926,7 +924,8 @@ main() {
         local _cv2_pp
         _cv2_pp="$(echo "${OPENCV_PREFIX}"/lib/python*/site-packages 2>/dev/null | tr ' ' ':')"
         PYTHONPATH="${_cv2_pp}${PYTHONPATH:+:${PYTHONPATH}}" \
-            verify_python_import "cv2" "cv2.__version__" || echo "Could not import cv2"
+            verify_python_import "cv2" "cv2.__version__" \
+            || echo "[WARN] cv2 import FAILED on a native build (traceback above) — real defect, not a sandbox artifact; non-fatal here, gated by smoke-media.sh and the runtime torch-venv smoke"
     elif [ "${WITH_PYTHON}" = "true" ]; then
         echo "Skipping Python import validation in cross mode"
     fi

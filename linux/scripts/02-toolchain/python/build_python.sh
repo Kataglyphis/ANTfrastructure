@@ -176,6 +176,21 @@ _python_cross_stage_target_dev_pkgs() {
   target_pkgs+=("libbz2-dev")
   apt-get install -y --no-install-recommends "${target_pkgs[@]}" 2>&1 || \
     warn "Some target dev packages failed to install; extension modules may be missing"
+
+  # The install is ONE atomic apt-get, so a single unavailable optional package
+  # takes the required ones down with it. The table calls a missing required
+  # package FATAL (01-core/cpython-dev-packages.sh) — assert that contract on the
+  # OUTCOME rather than on apt's exit status. docs/failure-modes.md
+  local _req _missing=""
+  while IFS= read -r _req; do
+    [ -n "${_req}" ] || continue
+    dpkg-query -W -f='${Status}' "${_req}:${target_arch}" 2>/dev/null \
+      | grep -q "install ok installed" || _missing="${_missing} ${_req}"
+  done < <(cpython_ext_dev_packages_required)
+  if [ -n "${_missing}" ]; then
+    err "CPython cross staging: REQUIRED target dev package(s) not installed for ${target_arch}:${_missing}"
+    return 1
+  fi
 }
 
 _python_cross_configure() {

@@ -114,9 +114,12 @@ function Show-State {
     }
 
     try {
-        $current = (Get-ItemProperty $svcKey -ErrorAction Stop).Environment
-        if ($current) {
-            foreach ($e in $current) { Write-Step "env       : $e" }
+        # -Name + SilentlyContinue: an absent Environment value is a normal
+        # state (stock containerd), not an error - a bare .Environment read
+        # throws under StrictMode and used to spam this report.
+        $current = (Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue)
+        if ($current -and $current.Environment) {
+            foreach ($e in $current.Environment) { Write-Step "env       : $e" }
         } else {
             Write-Step "env       : $EnvironmentService has no Environment value"
         }
@@ -269,7 +272,16 @@ if ($swapped) {
 if ($swapped -and $ServiceEnvironment.Count -gt 0) {
     Write-Step "--- setting environment on $EnvironmentService ---"
     try {
-        $existing = @((Get-ItemProperty $svcKey -ErrorAction Stop).Environment)
+        # A service that never had an Environment value (containerd on a stock
+        # install) returns an object WITHOUT the property, and under StrictMode
+        # a bare .Environment read then throws - which made the FIRST-ever env
+        # deploy fail after the binary swap (measured 2026-09-01). Probe the
+        # value explicitly and treat "absent" as an empty list.
+        # NOT `$existing = if (...) { } else { @() }` - an if-expression yielding
+        # @() assigns $null, not an empty array (measured trap).
+        $prop = Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue
+        $existing = @()
+        if ($prop) { $existing = @($prop.Environment) }
         $names = $ServiceEnvironment | ForEach-Object { ($_ -split '=', 2)[0] }
         $kept = @($existing | Where-Object { $_ -and (($_ -split '=', 2)[0]) -notin $names })
         if ($kept.Count -gt 0) { Write-Step ('preserved: ' + ($kept -join ' | ')) }

@@ -76,3 +76,36 @@ chain_terminate_descendants() {
     kill "-${sig}" "${kid}" 2>/dev/null || true
   done
 }
+
+# ==============================================================================
+# chain_status_kv_json  "k=v,k=v"   → `"k": "v", "k": "v"`
+# chain_status_list_json "a,b"      → `"a", "b"`
+#
+# JSON bodies for the chain-status.json fields B3 adds (per-arch outcomes, gates
+# that did not run). No IFS splitting; values are shell-safe ids, no escaping.
+# ==============================================================================
+_chain_status_next_item() {   # prints "<item>|<rest>"
+  local csv="${1:-}" item
+  item="${csv%%,*}"
+  if [ "${item}" = "${csv}" ]; then printf '%s|' "${item}"; else printf '%s|%s' "${item}" "${csv#*,}"; fi
+}
+
+# One CSV walk for both JSON shapes; $2 names the per-item emitter.
+_chain_status_walk_json() {
+  local csv="${1:-}" emit="$2" out="" sep="" pair item
+  while [ -n "${csv}" ]; do
+    pair="$(_chain_status_next_item "${csv}")"
+    item="${pair%%|*}"; csv="${pair#*|}"
+    [ -n "${item}" ] || continue
+    out="${out}${sep}$("${emit}" "${item}")"
+    sep=", "
+  done
+  printf '%s' "${out}"
+}
+
+# Emitters: stdout IS the return value, so they never log.
+_chain_status_emit_kv() { printf '"%s": "%s"' "${1%%=*}" "${1#*=}"; }
+_chain_status_emit_str() { printf '"%s"' "$1"; }
+
+chain_status_kv_json() { _chain_status_walk_json "${1:-}" _chain_status_emit_kv; }
+chain_status_list_json() { _chain_status_walk_json "${1:-}" _chain_status_emit_str; }

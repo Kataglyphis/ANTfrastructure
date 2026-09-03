@@ -17,7 +17,8 @@
 Prebuilt container images and the build system that produces them: a multi-arch
 Linux stack (`amd64`/`arm64`/`riscv64`) carrying GCC, LLVM/Clang, Vulkan and a
 full media/inference layer (ONNX Runtime, OpenCV, FFmpeg, GStreamer, LiteRT,
-TVM, IREE); a slim nginx webserver; and a Windows Server Core build image with
+TVM, IREE — riscv64 carries two documented exemptions, listed in AGENTS.md's
+Linux build rules); a slim nginx webserver; and a Windows Server Core build image with
 MSVC, CUDA and the same media stack.
 
 Pull an image and start working, or build the chain yourself — both are below.
@@ -29,13 +30,15 @@ Pull an image and start working, or build the chain yourself — both are below.
 ```bash
 nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 
-# with the WebRTC signalling port exposed (the separate :webserver image is the
-# one that serves HTTP, on 80/443)
+# The default CMD is a shell — nothing listens until you start a server.
+# Publishing 8443 only helps once one is running inside; the separate
+# :webserver image is the one that serves HTTP, on 80/443.
 nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-cross
 ```
 
-Needs `sudo` on a rootful host. To push to ghcr.io without it, add yourself to
-the docker group once — `sudo usermod -aG docker $USER` — and re-login.
+Rootful nerdctl needs `sudo`. The sudo-less route is the rootless
+containerd + BuildKit stack this repo builds with — not the `docker` group,
+which nerdctl never consults (containerd's socket is `root:root 0660`).
 
 Build workflows: [Linux Build Basics](docs/linux-build-basics.md) ·
 [Linux Cross Builds](docs/linux-cross-builds.md) ·
@@ -71,7 +74,7 @@ git clone --recurse-submodules git@github.com:Kataglyphis/Kataglyphis-ContainerH
 
 Look the error message up in
 **[docs/failure-modes.md](docs/failure-modes.md)** — symptom, cause and fix for
-every failure this repo has hit live, on both lanes. The two that catch people
+every failure this repo has hit live, on both lanes. The three that catch people
 first:
 
 - `exec format error` on a foreign arch — QEMU/binfmt is not registered
@@ -79,6 +82,10 @@ first:
 - `hcsshim::ActivateLayer 0x20` on a Windows host with an **AMD RDNA4 dGPU** —
   build inside the toggle window
   ([fix](docs/failure-modes.md#hcsshimactivatelayer-0x20-on-an-amd-radeon-host)).
+- Every Windows RUN step takes the **same implausible time** (e.g. `DONE 2841.2s`)
+  regardless of what it runs — the container's exit notification is lost and the
+  shim waits out its whole teardown timeout; cap it via the shim's env knob
+  ([diagnosis](docs/failure-modes.md#every-run-step-reports-done-28412s--the-same-number-whatever-it-runs)).
 
 ## Documentation
 
@@ -124,8 +131,8 @@ On 2026-08-31 it carried **riscv64 only**: a single-arch run had replaced the
 3-arch index. `build-runtime-manifest.sh` now refuses to shrink an already
 published index (`--force`, or `RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so
 a partial run cannot do it again —
-[docs/cross-build-verification.md](docs/cross-build-verification.md). The next full-fanout
-run restores all three arches.
+[docs/cross-build-verification.md](docs/cross-build-verification.md). The 2026-09-02
+full-fanout run restored it: the live index carries amd64/arm64/riscv64 again.
 
 ## Architecture
 
@@ -152,15 +159,17 @@ linux/
   Base   →   Compiler  →   SDK      →    Media
   (amd64)    (amd64)       (per-arch)    (per-arch)
                                           ↓
-                                     Android (optional)
+                                     Android
                                           ↓
-                                     Package + Torch (optional)
+                                     Package + Torch (runtime lane)
 ```
 
 Three lanes:
 
 - **Cross** (`linux/amd64` host, cross-compiles every arch):
-  `base → compiler → sdk → media → android → package → torch`
+  `base → compiler → sdk → media → android → runtime` (`CROSS_STAGE_ORDER`).
+  The runtime stage is where `package`/`wrapper` get built, with the android
+  image as their artifact source — so android is not optional.
 - **Runtime** (native or QEMU per arch): `base → package → wrapper`
 - **Windows** (native Windows Containers):
   `base → sdk → toolchain → media → torch → final`
@@ -168,13 +177,15 @@ Three lanes:
 Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
 `windows/amd64`.
 
-> **riscv64 `onnxruntime-genai` is self-built and UNVALIDATED.** Upstream ships
-> no riscv64 wheel and runs no riscv64 CI, so the cross lane builds it from
-> source (toggle `GENAI_ALLOW_RISCV64`, default on). A real riscv64 build has
-> since **compiled and linked it and produced a `linux_riscv64` wheel**; what is
-> still unproven is whether `generate()` emits sane tokens — upstream's one
-> RISC-V field report compiled, imported and emitted nonsense.
-> The patch, the gates and the first-build watch list:
+> **riscv64 `onnxruntime-genai` is self-built, and VALIDATED since 2026-09-03.**
+> Upstream ships no riscv64 wheel and runs no riscv64 CI, so the cross lane
+> builds it from source (toggle `GENAI_ALLOW_RISCV64`, default on). It compiles,
+> links and produces a `linux_riscv64` wheel — and `generate()` now has a
+> measurement behind it: greedy decoding on the shipped riscv64 image is
+> **token-for-token identical to an amd64 control**, so upstream's one RISC-V
+> field report of nonsense output does not reproduce here. The remaining
+> untested case is real riscv64 silicon; the run above was qemu-user.
+> The patch, the gates and the measurement:
 > [docs/gen1-riscv64-genai.md](docs/gen1-riscv64-genai.md).
 
 > **Windows-on-ARM is a cross target, not an image.** Microsoft publishes no
@@ -242,18 +253,33 @@ check before spending hours measuring.
 | `ubuntu24.04.yml` | On push/PR: the shell preflight gate suite + docs validation/build |
 | `build-docs.yml` | Reusable workflow for docs build |
 | `windows-scripts.yml` | PowerShell lint + the `windows/scripts/tests` suite |
-| `python-ci-linux.yml` | Python lint/tests, Linux |
-| `python-ci-windows.yml` | Python lint/tests, Windows |
+| `python-ci-linux.yml` | Reusable (`workflow_call`) — Python lint/tests on Linux, for consumer repos; never triggers here |
+| `python-ci-windows.yml` | Reusable (`workflow_call`) — the same for Windows |
 | `llm-stack-tests.yml` | Push/PR, path-filtered on `linux/llm-stack/**` |
 | `ghcr-cleanup.yml` | Scheduled (Sundays): retains last 3 per tag, 14-day safety net |
 | `sbom.yml` | Scheduled (Mondays): SBOM generation |
 | `stale-docs-check.yml` | Scheduled (Mondays): stale doc references and broken script paths |
 
-The first row's suite is `bash linux/scripts/preflight.sh`. Newest gate in it:
-**`code-dupes`** — token-normalised duplication over shell, Dockerfiles and the
-Markdown outside `docs/` (that is the prose gate's half), and
-Markdown, so it catches *renamed* clones the prose gate cannot see; deliberate
-twins are budgeted in `docs/scripts/code-dupes.allow`.
+**Contributing?** Run `make hooks` once. It installs a pre-commit gate that
+costs **~4 seconds**: the cheap whole-tree checks, `shellcheck` on the shell
+files you actually staged, and the doc gates only when you touched `docs/`. It
+is a deliberate subset — the full suite takes minutes (the secret scan alone is
+~170 s), and a hook that slow just teaches everyone to type `--no-verify`. Run
+`make preflight` yourself before a rebuild or a push; CI runs it on every push
+regardless.
+
+The first row's suite is `bash linux/scripts/preflight.sh` (29 slugs). Newest
+gates in it (2026-09-03): **`code-size`** caps shell/Python functions at 80 lines
+and shell/Python/Dockerfile files at 800, against frozen allowlists, and
+**`mutations`** neuters guarded code on purpose and fails unless the named test
+goes red — it gates the test suite itself, not the tree. Before them
+(2026-09-01), **`pkg-names`** resolves every package name the tree asks apt for
+against the live Ubuntu indices, and **`advert-keys`** fails when a
+version-shaped `ENV`/`ARG` is neither checked by the runtime smoke nor excused
+with a reason. Before those, **`code-dupes`** — token-normalised duplication over
+shell, Dockerfiles and the Markdown outside `docs/`, so it catches *renamed*
+clones the prose gate cannot see; deliberate twins are budgeted in
+`docs/scripts/code-dupes.allow`.
 
 **None of these builds a container image.** The image lanes are not CI here —
 they run on the build host (`windows/build-buildkit.ps1`, `linux/scripts/…`).

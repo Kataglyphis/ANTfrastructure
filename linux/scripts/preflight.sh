@@ -39,6 +39,12 @@ export PYTHONUTF8=1
 KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage critical-fixes patch-integrity code-dupes artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
              dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
+             pkg-names \
+             advert-keys \
+             masked-decls \
+             comment-size \
+             code-size \
+             mutations \
              doc-links doc-dupes sbom)
 
 _in_csv() {  # _in_csv needle csv
@@ -106,8 +112,8 @@ run_check shellcheck "shellcheck gate"            bash linux/scripts/lint-shell.
 # 2. Every referenced /opt/scripts path is COPY'd/mounted into its image.
 # stdout-as-return-value class: log()/info() reach fd 1, so $(f) glues log
 # lines to the value. This pins the class; a unit test pins one function.
-run_check stdout-returns "stdout-as-return-value" ${PREFLIGHT_PYTHON} linux/scripts/verify-stdout-returns.py
-run_check copy-coverage "script COPY coverage"    ${PREFLIGHT_PYTHON} linux/scripts/verify-script-copy-coverage.py
+run_check stdout-returns "stdout-as-return-value" ${PREFLIGHT_PYTHON} linux/scripts/verify_stdout_returns.py
+run_check copy-coverage "script COPY coverage"    ${PREFLIGHT_PYTHON} linux/scripts/verify_script_copy_coverage.py
 
 # 3. Critical-fix source integrity (incl. fix6: native-GCC system paths, bugs D/E).
 run_check critical-fixes "critical fixes"         bash linux/scripts/verify-critical-fixes.sh
@@ -174,6 +180,16 @@ if [ -f linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh ]; then
 else
   run_check mirror-consistency "ubuntu mirror consistency" bash -c 'echo "verify-ubuntu-mirror-consistency.sh MISSING (moved/renamed? update preflight.sh)" >&2; exit 1'
 fi
+
+# 6b. Every distro package name still exists on the pinned Ubuntu release,
+#     per arch. Unguarded dead names FAIL (the four-hours-in stage kill);
+#     guarded ones only WARN. Offline degrades to a loud SKIP, never a pass.
+run_check pkg-names "distro package names" ${PREFLIGHT_PYTHON} linux/scripts/verify_package_names.py
+run_check advert-keys "advertised version keys" ${PREFLIGHT_PYTHON} linux/scripts/verify_advertised_keys.py
+run_check masked-decls "masked declarations" ${PREFLIGHT_PYTHON} linux/scripts/verify_masked_assignments.py
+run_check comment-size "comment block size" ${PREFLIGHT_PYTHON} linux/scripts/verify_comment_size.py
+run_check code-size "code size (functions + files)" ${PREFLIGHT_PYTHON} linux/scripts/verify_code_size.py
+run_check mutations "mutation gate (can the tests fail?)" ${PREFLIGHT_PYTHON} docs/scripts/verify_mutations.py
 
 # 7. Runtime PATH/LD_LIBRARY_PATH/PKG_CONFIG_PATH match runtime-paths.env.
 if [ -f linux/scripts/04-runtime/verify-runtime-paths.sh ]; then

@@ -288,7 +288,11 @@ cat > "${_RT_SANDBOX}/fake-nerdctl" <<'SH'
 #!/usr/bin/env bash
 # Only the boot probe's `run --rm -i <image>` shape is used: execute the piped
 # script with the env the entrypoint is supposed to have exported.
-exec env GST_PLUGIN_PATH=/fake/gst VULKAN_SDK=/fake/vulkan bash -s
+# The shapes matter, not just set-ness: the multiarch plugin dir and a RESOLVED
+# VULKAN_SDK are what only gstreamer-env.sh adds, and the gate now checks for
+# them. /fake/gst would answer "set" with the sourcing gone. Backlog XQ.
+exec env GST_PLUGIN_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0 \
+         VULKAN_SDK=/opt/vulkan/1.4.357.0/x86_64 bash -s
 SH
 chmod +x "${_RT_SANDBOX}/fake-nerdctl"
 

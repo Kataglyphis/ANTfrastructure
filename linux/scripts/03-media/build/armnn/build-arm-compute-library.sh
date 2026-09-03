@@ -30,7 +30,6 @@ build_acl() {
 
   cd "${ACL_SRC_DIR}"
 
-  local build_toolchain="GCC"
   if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${ARCH}" != "amd64" ]; then
     local cross_prefix
     case "${ARCH}" in
@@ -39,7 +38,6 @@ build_acl() {
     esac
     export CC="${cross_prefix}gcc"
     export CXX="${cross_prefix}g++"
-    build_toolchain="GCC"
   fi
 
   # scons defaults to a SINGLE job (-j1) — without this the template-heavy ACL

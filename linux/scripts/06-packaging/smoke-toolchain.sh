@@ -106,10 +106,14 @@ check_rust() {
 
   # Rust
   echo "--- Rust/Cargo ---"
-  # Pin against the versions.env value, not the literal "rustc" — asserting
-  # that `rustc --version` contains "rustc" could never fail (smoke-depth R10).
-  check_version "rustc --version" "${RUST_VERSION:-rustc}" "rustc"
-  check_version "cargo --version" "cargo" "cargo"
+  # Both pin the versions.env value: grepping the tool's own name could never
+  # fail, and an unset pin must fail loudly rather than pass vacuously.
+  if [ -z "${RUST_VERSION:-}" ]; then
+    fail "rustc/cargo: RUST_VERSION is unset, so there is nothing to pin against"
+  else
+    check_version "rustc --version" "${RUST_VERSION}" "rustc"
+    check_version "cargo --version" "${CARGO_VERSION:-${RUST_VERSION}}" "cargo"
+  fi
   # Host compile+RUN: the version banner proves the driver starts, nothing
   # more. A miscompiled/rlib-broken toolchain still prints a version.
   local _rs_tmp

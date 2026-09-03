@@ -47,13 +47,21 @@ command -v containerd-rootless-setuptool.sh >/dev/null 2>&1 || {
   exit 1
 }
 
+# `-x` passes on a TRUNCATED extract too (interrupted tar, full disk), and the
+# retry then treats the ruin as present. The emulators are amd64 binaries on an
+# amd64 host, so just run one. docs/failure-modes.md
+_qemu_usable() {
+  [ -x "$1" ] || return 1
+  "$1" --version >/dev/null 2>&1
+}
+
 extract_emulators() {
   mkdir -p "${QDIR}"
   local need=0 a qb
   IFS=',' read -ra _arr <<< "${ARCHES}"
   for a in "${_arr[@]}"; do
     qb="$(qemu_bin_for "${a}")" || { echo "unsupported arch: ${a}" >&2; exit 2; }
-    [ -x "${QDIR}/${qb}" ] || need=1
+    _qemu_usable "${QDIR}/${qb}" || need=1
   done
   if [ "${need}" = 0 ] && [ "${FORCE}" = 0 ]; then
     echo "[extract] emulators already present in ${QDIR} (use --force to refresh)"
@@ -79,6 +87,14 @@ extract_emulators() {
   done
   rm -rf "${tmp}"
   chmod +x "${QDIR}"/qemu-* "${QDIR}/binfmt" 2>/dev/null || true
+  # Prove the extract produced RUNNING binaries, not just files.
+  for a in "${_arr[@]}"; do
+    qb="$(qemu_bin_for "${a}")"
+    _qemu_usable "${QDIR}/${qb}" || {
+      echo "[extract] ERROR: ${QDIR}/${qb} missing or not runnable after extraction" >&2
+      return 1
+    }
+  done
   ls -la "${QDIR}"
 }
 

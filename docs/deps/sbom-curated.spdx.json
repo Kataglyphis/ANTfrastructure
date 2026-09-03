@@ -377,6 +377,32 @@
       "licenseComments": "Obligations: keep-notice, include-text, offer-source, allow-relink | Corresponding source required. Upstream: https://gitlab.gnome.org/GNOME/gobject-introspection at 1.86.0"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-IREE-1a4ca4e3",
+      "name": "IREE",
+      "versionInfo": "v3.11.0",
+      "downloadLocation": "https://github.com/iree-org/iree",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "Apache-2.0 WITH LLVM-exception",
+      "licenseConcluded": "Apache-2.0 WITH LLVM-exception",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text, state-changes, notice-file"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Linux-Images-PyAV-8d5bf336",
+      "name": "PyAV",
+      "versionInfo": "18.1.0",
+      "downloadLocation": "https://github.com/PyAV-Org/PyAV",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Media Layer (Dockerfile.media)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-Android-SDK-88e6bae5",
       "name": "Android SDK",
       "versionInfo": "15859902",
@@ -1435,6 +1461,16 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-GObject-Introspection-b7f00b0f"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-IREE-1a4ca4e3"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-PyAV-8d5bf336"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bench_compare import compare, load, normalise  # noqa: E402
+from bench_compare import compare, load, normalise, pair_directories  # noqa: E402
 
 
 def report(entries, benchmark="bench_tools", prov=None):
@@ -291,3 +291,74 @@ class TestIntervalsUseEffectiveN:
         findings, _ = compare(old, new)
         score_line = next(f for f in findings if "->" in f and "/" in f)
         assert "/5" in score_line, f"intervals should use effective_n=5: {score_line}"
+
+
+class TestDirectoryPairing:
+    """Run-to-run comparison over whole result directories.
+
+    The comparer existed and nothing ever called it; the sweep writes one report
+    per config, so comparing two runs means pairing those files up. Both
+    directions matter here too: a real regression in any config must fail, and a
+    config that quietly disappeared must not pass as "nothing to report".
+    """
+
+    def _run_dir(self, tmp_path, name, entries):
+        d = tmp_path / name
+        d.mkdir()
+        for fname, ent in entries.items():
+            (d / fname).write_text(json.dumps(report(ent)))
+        return d
+
+    def test_pairs_by_file_name(self, tmp_path):
+        old = self._run_dir(tmp_path, "old", {"a.json": [("m", 9, 10, 5.0)],
+                                              "b.json": [("m", 9, 10, 5.0)]})
+        new = self._run_dir(tmp_path, "new", {"a.json": [("m", 9, 10, 5.0)],
+                                              "c.json": [("m", 9, 10, 5.0)]})
+        pairs, only_new, only_old = pair_directories(str(old), str(new))
+        assert [p[0] for p in pairs] == ["a.json"]
+        assert only_new == ["c.json"] and only_old == ["b.json"]
+
+    def test_manifest_is_an_index_not_a_report(self, tmp_path):
+        old = self._run_dir(tmp_path, "old", {"a.json": [("m", 9, 10, 5.0)]})
+        new = self._run_dir(tmp_path, "new", {"a.json": [("m", 9, 10, 5.0)]})
+        for d in (old, new):
+            (d / "_manifest.json").write_text("{}")
+        pairs, _, _ = pair_directories(str(old), str(new))
+        assert [p[0] for p in pairs] == ["a.json"]
+
+    def _cli(self, old, new):
+        import subprocess
+        here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return subprocess.run([sys.executable, os.path.join(here, "bench_compare.py"),
+                               "--dir", str(old), str(new)],
+                              capture_output=True, text=True)
+
+    def test_a_real_regression_in_any_config_fails(self, tmp_path):
+        old = self._run_dir(tmp_path, "old", {"a.json": [("m", 10, 10, 5.0)],
+                                              "b.json": [("m", 10, 10, 5.0)]})
+        new = self._run_dir(tmp_path, "new", {"a.json": [("m", 10, 10, 5.0)],
+                                              "b.json": [("m", 2, 10, 5.0)]})
+        r = self._cli(old, new)
+        assert r.returncode == 1, r.stdout + r.stderr
+        assert "REGRESSION" in r.stdout
+
+    def test_identical_runs_do_not_cry_wolf(self, tmp_path):
+        same = {"a.json": [("m", 9, 10, 5.0)], "b.json": [("m", 8, 10, 6.0)]}
+        old = self._run_dir(tmp_path, "old", same)
+        new = self._run_dir(tmp_path, "new", same)
+        r = self._cli(old, new)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert "2 report(s) compared" in r.stdout
+
+    def test_a_vanished_config_is_reported_not_swallowed(self, tmp_path):
+        old = self._run_dir(tmp_path, "old", {"a.json": [("m", 9, 10, 5.0)],
+                                              "gone.json": [("m", 9, 10, 5.0)]})
+        new = self._run_dir(tmp_path, "new", {"a.json": [("m", 9, 10, 5.0)]})
+        r = self._cli(old, new)
+        assert "gone.json" in r.stdout and "1 gone" in r.stdout
+
+    def test_no_common_reports_is_an_error_not_a_pass(self, tmp_path):
+        old = self._run_dir(tmp_path, "old", {"a.json": [("m", 9, 10, 5.0)]})
+        new = self._run_dir(tmp_path, "new", {"z.json": [("m", 9, 10, 5.0)]})
+        r = self._cli(old, new)
+        assert r.returncode != 0

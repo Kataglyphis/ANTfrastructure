@@ -1,0 +1,48 @@
+From 2482167e38ebf0bebec2c2a7e5d5648719278610 Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:47:09 +0200
+Subject: [PATCH] cmake/checks: accept clang-cl in the NEON dotprod and fp16
+ probes
+
+Both probes only accept __GNUC__; the Windows/ARM64 branch is commented out
+because of #25052, which is about MSVC's arm_neon.h. clang-cl does not define
+__GNUC__, so the probes fail there whatever the target supports, and
+NEON_DOTPROD and NEON_FP16 quietly drop out of CPU_BASELINE/CPU_DISPATCH.
+
+clang's arm_neon.h has vdotq_u32 and vfmaq_laneq_f16, so accept __clang__ with
+_M_ARM64/_M_ARM64EC. MSVC stays disabled.
+
+Assisted-by: Claude (Anthropic)
+---
+ cmake/checks/cpu_neon_dotprod.cpp | 4 ++--
+ cmake/checks/cpu_neon_fp16.cpp    | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/cmake/checks/cpu_neon_dotprod.cpp b/cmake/checks/cpu_neon_dotprod.cpp
+index 71f2cb3..e9d3609 100644
+--- a/cmake/checks/cpu_neon_dotprod.cpp
++++ b/cmake/checks/cpu_neon_dotprod.cpp
+@@ -1,7 +1,7 @@
+ #include <stdio.h>
+ 
+-#if (defined __GNUC__ && (defined __arm__ || defined __aarch64__))/* || (defined _MSC_VER && (defined _M_ARM64 || defined _M_ARM64EC)) */
+-// Windows + ARM64 case disabled: https://github.com/opencv/opencv/issues/25052
++#if (defined __GNUC__ && (defined __arm__ || defined __aarch64__)) || (defined __clang__ && (defined _M_ARM64 || defined _M_ARM64EC))
++// MSVC + ARM64 case disabled: https://github.com/opencv/opencv/issues/25052
+ 
+ #include "arm_neon.h"
+ int test()
+diff --git a/cmake/checks/cpu_neon_fp16.cpp b/cmake/checks/cpu_neon_fp16.cpp
+index 3c3d5da..142b9b5 100644
+--- a/cmake/checks/cpu_neon_fp16.cpp
++++ b/cmake/checks/cpu_neon_fp16.cpp
+@@ -1,7 +1,7 @@
+ #include <stdio.h>
+ 
+-#if (defined __GNUC__ && (defined __arm__ || defined __aarch64__)) /* || (defined _MSC_VER && (defined _M_ARM64 || defined _M_ARM64EC)) */
+-// Windows + ARM64 case disabled: https://github.com/opencv/opencv/issues/25052
++#if (defined __GNUC__ && (defined __arm__ || defined __aarch64__)) || (defined __clang__ && (defined _M_ARM64 || defined _M_ARM64EC))
++// MSVC + ARM64 case disabled: https://github.com/opencv/opencv/issues/25052
+ #include "arm_neon.h"
+ 
+ float16x8_t vld1q_as_f16(const float* src)

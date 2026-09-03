@@ -28,6 +28,11 @@ linux/nextcloud-aio/.env
 !.claude/hooks/
 .claude/hooks/*
 !.claude/hooks/guard-destructive-deletes.ps1
+# The Linux port must survive a fresh clone for the same reason as the .ps1 —
+# and this negation is exactly what its first commit was missing: the ignore
+# above silently swallowed `git add`, CI went red on a file that existed only
+# in one working tree.
+!.claude/hooks/guard-destructive-deletes.py
 
 # Throwaway litert-lm fast-rebuild harness (overlays the build script onto a local
 # windows-media-litert base image to re-iterate only litert-lm; dev-only, not reproducible in CI)

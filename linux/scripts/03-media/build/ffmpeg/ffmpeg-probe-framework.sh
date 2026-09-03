@@ -16,10 +16,10 @@
 # --enable-* / --disable-* flags BEFORE invoking FFmpeg's configure.
 #
 # Key functions:
-#   ffmpeg_try_cpp_condition  — compile a C++ #if test
-#   ffmpeg_try_header         — compile a #include test
-#   ffmpeg_try_link_probe     — compile + link a function-call test
+#   ffmpeg_try_cpp_condition    — compile a C++ #if test
+#   ffmpeg_try_link_probe       — compile + link a function-call test
 #   ffmpeg_try_pkg_config_probe — resolve via pkg-config + compile+link test
+#   ffmpeg_probe_library_feature / ffmpeg_probe_pkg_config_feature — the callers
 #
 # These are specific to FFmpeg's dependency graph and are NOT intended as
 # general-purpose cross-compilation probes.

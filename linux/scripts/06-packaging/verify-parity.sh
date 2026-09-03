@@ -247,7 +247,7 @@ check_versions() {
   local native_file="${WORKDIR}/native-versions.txt"
   local cross_file="${WORKDIR}/cross-versions.txt"
   local failures=0
-  local native_out cross_out
+  local native_out cross_out compared=0
 
   :> "${native_file}"
   :> "${cross_file}"
@@ -257,6 +257,9 @@ check_versions() {
     native_out="$(container_exec_strip "${NATIVE_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
     cross_out="$(container_exec_strip "${CROSS_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
 
+    # Two EMPTY outputs compare equal. Count only checks that read something
+    # from BOTH images. docs/failure-modes.md
+    [ -n "${native_out}" ] && [ -n "${cross_out}" ] && compared=$((compared + 1))
     printf '%s\t%s\n' "${tool_spec%% *}" "${native_out}" >> "${native_file}"
     printf '%s\t%s\n' "${tool_spec%% *}" "${cross_out}" >> "${cross_file}"
 
@@ -272,8 +275,12 @@ check_versions() {
     fi
   done
 
+  if [ "${compared}" -eq 0 ]; then
+    fail "version checks read NOTHING from either image (${#tools[@]} tools attempted) -- two empty outputs compare equal, so a green here would be vacuous"
+    return 1
+  fi
   if [ "${failures}" -eq 0 ]; then
-    pass "All ${#tools[@]} version checks match"
+    pass "All ${compared}/${#tools[@]} version checks match"
     return 0
   fi
 
@@ -401,10 +408,9 @@ check_imports() {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-# main() decomposed (complexity audit F-F): it carried five responsibilities
-# in 107 lines — parse, ensure images, banner, dispatch, report — while the
-# same file already demonstrated the clean per-function shape in its 18
-# check_* functions. main() now reads like validate-compilers.sh's.
+# main() decomposed (complexity audit F-F): it carried five responsibilities in
+# 107 lines, while this file already showed the clean per-function shape in its
+# check_* functions.
 
 verify_parity_parse_args() {
   while [ $# -gt 0 ]; do

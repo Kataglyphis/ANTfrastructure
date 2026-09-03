@@ -139,7 +139,8 @@ ancestry_recorded_annotation() {
 
 # Read a provenance value out of the image CONFIG labels (the runtime lane's
 # `-t` path stamps these; see ancestry_label_args). Exit 0 + value, 2 when the
-# label is absent, 1 when the image cannot be inspected at all.
+# label is absent, 1 when the image cannot be inspected — or (default scope)
+# when the local tag is not the registry copy.
 #
 # This reads the LOCAL image, whereas the annotation reader queries the
 # registry — and reading provenance off a STALE local tag is precisely the
@@ -147,8 +148,12 @@ ancestry_recorded_annotation() {
 # resolves in the registry, require the local bytes to BE the shipped bytes
 # before trusting their labels; on a mismatch report unreadable (1) and let the
 # caller fall through rather than answer from the wrong image.
+#
+# Arg 3 scope: "shipped" (default) = that identity guard; "local" = read the
+# local image only. Use "local" to check an image that has NOT been pushed yet
+# (runtime_assert_provenance_stamped) — there the guard can only ever say no.
 ancestry_recorded_label() {
-  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}"
+  local image_ref="$1" key="${2:-${ANCESTRY_PARENT_DIGEST_KEY}}" scope="${3:-shipped}"
   local nerdctl="${NERDCTL_BIN:-nerdctl}"
   local value
 
@@ -158,7 +163,7 @@ ancestry_recorded_label() {
     ""|"<no value>") return 2 ;;
   esac
 
-  if declare -F registry_pin_ref >/dev/null 2>&1; then
+  if [ "${scope}" != "local" ] && declare -F registry_pin_ref >/dev/null 2>&1; then
     local remote local_digests
     remote="$(registry_pin_ref "${nerdctl}" "${image_ref}" 2>/dev/null || true)"
     if [ -n "${remote}" ]; then
@@ -279,6 +284,14 @@ _ancestry_check_link() {
 }
 
 # Walk one architecture's ancestor chain upward from <child> to base.
+# Links actually compared. A chain that compared NONE must not report the same
+# line as one that compared six. docs/failure-modes.md
+_ANCESTRY_LINKS_CHECKED=0
+# Links that EXIST to compare. Zero of these is legitimate (--from-stage
+# compiler has only `base` above it, and base has no parent); zero CHECKED
+# while some existed means every tag failed to resolve.
+_ANCESTRY_LINKS_FOUND=0
+
 _ancestry_assert_branch() {
   local child="$1" arch="$2"
   local parent child_ref parent_ref label rc=0
@@ -287,6 +300,7 @@ _ancestry_assert_branch() {
   while [ -n "${child}" ]; do
     parent="$(cross_stage_parent "${child}")"
     [ -z "${parent}" ] && break   # reached base: no parent to compare against
+    _ANCESTRY_LINKS_FOUND=$((_ANCESTRY_LINKS_FOUND + 1))
 
     # Depth guard: cross_stage_validate_graph already rejects cycles, but this
     # loop must never become the thing that hangs a build.
@@ -298,6 +312,7 @@ _ancestry_assert_branch() {
     if [ -n "${child_ref}" ] && [ -n "${parent_ref}" ]; then
       label="${parent}→${child}"
       cross_stage_is_per_arch "${child}" && label="${label} (${arch})"
+      _ANCESTRY_LINKS_CHECKED=$((_ANCESTRY_LINKS_CHECKED + 1))
       _ancestry_check_link "${child_ref}" "${parent_ref}" "${label}" || rc=1
     fi
 
@@ -327,6 +342,8 @@ ancestry_assert_chain() {
   [ -z "${start_parent}" ] && return 0   # from base: no prior stages to verify
 
   log "[ancestry] verifying the ancestor chain feeding stage '${from_stage}' (arches: ${arches_csv})"
+  _ANCESTRY_LINKS_CHECKED=0
+  _ANCESTRY_LINKS_FOUND=0
 
   for arch in $(arch_list_to_words "${arches_csv}"); do
     _ancestry_assert_branch "${start_parent}" "${arch}" || rc=1
@@ -339,8 +356,15 @@ ancestry_assert_chain() {
     warn "[ancestry] Fix: rerun --from-stage at or before the OLDEST stage reported"
     warn "[ancestry]      above, so the rebuilt content propagates down the chain."
     warn "[ancestry] Override (you accept the stale ancestor): CROSS_VERIFY_ANCESTRY=0"
+  elif [ "${_ANCESTRY_LINKS_FOUND}" -eq 0 ]; then
+    log "[ancestry] no ancestor links to compare above '${from_stage}' — nothing to verify"
+  elif [ "${_ANCESTRY_LINKS_CHECKED}" -eq 0 ]; then
+    warn "[ancestry] compared ZERO links — every stage tag failed to resolve, so this"
+    warn "[ancestry] verified NOTHING. Treating as a failure rather than printing 'verified'."
+    warn "[ancestry] Override: CROSS_VERIFY_ANCESTRY=0"
+    rc=1
   else
-    log "[ancestry] ancestor chain verified"
+    log "[ancestry] ancestor chain verified (${_ANCESTRY_LINKS_CHECKED} link(s))"
   fi
   return "${rc}"
 }

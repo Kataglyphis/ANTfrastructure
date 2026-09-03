@@ -181,4 +181,89 @@ t_assert_eq "3" "$(find "${_kf}" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d
 t_assert_eq "s4 s5 s6" "$(find "${_kf}" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" "the NEWEST must survive"
 rm -rf "${_kf}"
 
+# ---------------------------------------------------------------------------
+# B2: in-stage sampling. The runtime lane is ONE stage of three ~120G wrapper
+# builds, so the between-stage guard cannot fire in it — `grep -c disk-guard`
+# over the whole 483 MB log of the 2026-09-01 failure returns 0, including the
+# 28 minutes the disk drained from 88G to 4G.
+_wd="$(mktemp -d)"
+_mkwd() {
+  local s
+  rm -rf "${_wd}/bc"; mkdir -p "${_wd}/bc"
+  for s in w-a w-b w-c w-d; do
+    mkdir -p "${_wd}/bc/${s}"
+    dd if=/dev/zero of="${_wd}/bc/${s}/blob" bs=1024 count=1024 status=none
+  done
+  touch -d '4 days ago' "${_wd}/bc/w-a"; touch -d '3 days ago' "${_wd}/bc/w-b"
+  touch -d '2 days ago' "${_wd}/bc/w-c"; touch -d '1 day ago'  "${_wd}/bc/w-d"
+}
+
+t_case "watch_once SAMPLES on every call — the silent drain is the whole bug"
+_mkwd; _disk_guard_free_gb() { echo 500; }
+_DISK_GUARD_TRIM_REMOVED=99
+_disk_guard_watch_once "${_wd}/bc" 40 "" 3 > "${_wd}/o.txt" 2>&1
+t_assert_contains "$(cat "${_wd}/o.txt")" "[disk-watch] 500G free" "an in-stage sample must always be logged"
+t_assert_eq "99" "${_DISK_GUARD_TRIM_REMOVED}" "ample disk must not even enter the trim"
+
+t_case "watch_once reclaims and RECORDS the reclaim when below threshold"
+_mkwd; _disk_guard_free_gb() { echo 10; }
+_disk_guard_watch_once "${_wd}/bc" 40 "" 3 > "${_wd}/o.txt" 2>&1
+t_assert_eq "1" "${_DISK_GUARD_TRIM_REMOVED}" "keep-floor 3 of 4 slugs leaves exactly one removal"
+t_assert_eq "no" "$( [ -d "${_wd}/bc/w-a" ] && echo yes || echo no )" "oldest slug must go first"
+t_assert_contains "$(cat "${_wd}/o.txt")" "[disk-reclaim] in-stage: removed 1 cache-export slug(s), freed" \
+  "every reclaim the chain performs must leave ONE greppable record"
+
+t_case "a reclaim that frees nothing still WARNS — the case an operator must see"
+_mkwd; rm -rf "${_wd}/bc"; mkdir -p "${_wd}/bc"     # nothing prunable at all
+_disk_guard_free_gb() { echo 4; }
+_disk_guard_watch_once "${_wd}/bc" 40 "" 3 > "${_wd}/o.txt" 2>&1
+t_assert_contains "$(cat "${_wd}/o.txt")" "[disk-reclaim] in-stage: NOTHING was reclaimable" \
+  "a silent no-op reclaim is what made the 2026-09-01 drain unreconstructible"
+
+t_case "watch_once never aborts the stage it samples (set -euo pipefail)"
+t_assert_ok bash -c 'set -euo pipefail
+  source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
+  _disk_guard_watch_once "/definitely/not/here" 40 "" 3 >/dev/null 2>&1
+  _disk_guard_watch_once "" "" "" "" >/dev/null 2>&1
+  exit 0'
+
+t_case "watch_loop samples repeatedly, not once"
+_mkwd; _disk_guard_free_gb() { echo 500; }
+_DISK_GUARD_WATCH_MAX_ITERS=3 _disk_guard_watch_loop "${_wd}/bc" 40 1 "" 3 > "${_wd}/o.txt" 2>&1
+t_assert_eq "3" "$(grep -c -e '\[disk-watch\] 500G free' "${_wd}/o.txt")" "the loop must keep sampling for the whole stage"
+rm -rf "${_wd}"
+
+# ---------------------------------------------------------------------------
+# Runtime-lane sizing. The start-of-run preflight sized ~60G/arch and never
+# accounted for the lane; ~120G per wrapper build was measured in the resource
+# CSV. Arches build SEQUENTIALLY unless --parallel-archs, so the need scales
+# with concurrency — multiplying by arch count would refuse every run on a host
+# that can in fact complete one.
+t_case "runtime-lane need is per-concurrent-build, not per-arch"
+t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb 120 3 0)"
+t_assert_eq "360" "$(_disk_guard_runtime_lane_need_gb 120 3 1)"
+t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb 120 1 1)"
+
+t_case "runtime-lane need falls back to sane numbers on junk input"
+t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb "" "" "")"
+t_assert_eq "120" "$(_disk_guard_runtime_lane_need_gb "lots" "many" "0")"
+t_assert_eq "0"   "$(_disk_guard_runtime_lane_need_gb 0 3 1)" "0 must disable, not default"
+
+t_case "the anti-spin append must use the separator pick_victim matches on"
+# The guard protects an undeletable victim so the LRU pick stops re-choosing it.
+# It appended with a SPACE while pick_victim matches on COMMAS, so the entry never
+# matched and the loop re-picked the same slug for the rest of the run. The
+# behavioural half: a space-joined list does not protect. Backlog WJ.
+t_assert_eq "slug-old" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old slug-mid")" \
+  "a space-joined list protects NOTHING -- the oldest is picked again, forever"
+t_assert_eq "slug-new" "$(_disk_guard_pick_victim "${workdir}/bc" "slug-old,slug-mid")" \
+  "the comma form is what actually protects"
+# The structural half: the caller has to build the comma form. A behavioural test
+# alone cannot catch the chain switching back, because it re-creates the string.
+_chain="${TESTS_DIR}/../build-cross-chain.sh"
+t_assert_eq "0" "$(grep -c -e 'protected="${protected} ${victim}"' "${_chain}" || true)" \
+  "build-cross-chain.sh must not append a protected slug with a space"
+t_assert_eq "2" "$(grep -c -e 'protected="${protected},${victim}"' "${_chain}" || true)" \
+  "both anti-spin sites must append with a comma"
+
 t_summary

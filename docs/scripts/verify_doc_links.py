@@ -21,6 +21,11 @@ So this checks the four ways a docs tree rots, all of them silent:
 4. **index**   a page reachable from neither ``docs/INDEX.md`` nor the Sphinx
                toctree in ``docs/index.rst``. That is how ``build-cache-tiers.md``
                (24 KB) became invisible: present, maintained, linked by nobody.
+5. **pointer** a ``<page>.md#anchor`` reference under ``docs/`` inside CODE. The repo keeps
+               comments short and points at a doc instead, so these outnumber
+               every other kind -- and nothing rendered them, so nothing
+               complained when the page or heading moved.
+               See docs/code-quality-tooling.md#code-to-docs-pointers-doc-links.
 
 No network, no imports of project code, no build -- safe for hooks and CI.
 
@@ -49,6 +54,14 @@ ROOT_DOCS = ("README.md", "AGENTS.md", "CHANGELOG.md")
 # existence, because a moved page breaks those for a reader too.
 ARCHIVE_MARKERS = ("archive",)
 HISTORY_FILES = ("CHANGELOG.md",)
+
+# Code trees whose docs/ pointers are checked. windows/ is its own lane.
+CODE_SCAN = ("linux", "docs/scripts", ".github", "Makefile")
+CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
+CODE_SKIP_PARTS = {"_build", ".venv", "__pycache__"}
+CODE_POINTER = re.compile(
+    r"(?<![\w/.-])((?:\.\./)*docs/[A-Za-z0-9._/-]+\.md)(?:#([A-Za-z0-9_-]+))?"
+)
 
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 HEADING = re.compile(r"^(#{1,6})\s+(.*?)\s*$", re.MULTILINE)
@@ -224,6 +237,46 @@ def check_section_refs(docs: dict[str, Doc], findings: list[str]) -> int:
     return checked
 
 
+def code_files() -> list[Path]:
+    out: list[Path] = []
+    for name in CODE_SCAN:
+        root = REPO_ROOT / name
+        if root.is_file():
+            out.append(root)
+            continue
+        for f in sorted(root.rglob("*")):
+            if f.is_file() and f.suffix not in CODE_SKIP_SUFFIXES and not (
+                CODE_SKIP_PARTS & set(f.parts)
+            ):
+                out.append(f)
+    return out
+
+
+def check_code_pointers(docs: dict[str, Doc], findings: list[str]) -> int:
+    checked = 0
+    for f in code_files():
+        try:
+            text = f.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        rel = f.relative_to(REPO_ROOT).as_posix()
+        for lineno, line in enumerate(text.split("\n"), 1):
+            for m in CODE_POINTER.finditer(line):
+                ref, anchor = m.group(1), m.group(2)
+                target = (f.parent / ref) if ref.startswith("../") else (REPO_ROOT / ref)
+                checked += 1
+                try:
+                    key = target.resolve().relative_to(REPO_ROOT).as_posix()
+                except ValueError:
+                    key = ""
+                other = docs.get(key)
+                if other is None:
+                    findings.append(f"[pointer] {rel}:{lineno} -> {ref}  (no such page)")
+                elif anchor and anchor not in other.anchors:
+                    findings.append(f"[pointer] {rel}:{lineno} -> {ref}#{anchor}  (no such heading)")
+    return checked
+
+
 def check_index_coverage(docs: dict[str, Doc], findings: list[str]) -> int:
     index_rst = DOCS / "index.rst"
     index_md = DOCS / "INDEX.md"
@@ -267,6 +320,7 @@ def main() -> int:
     n_links, n_anchors = check_links_and_anchors(docs, findings)
     n_sections = check_section_refs(docs, findings)
     n_pages = check_index_coverage(docs, findings)
+    n_pointers = check_code_pointers(docs, findings)
 
     if findings:
         print(f"docs cross-reference gate: {len(findings)} finding(s)\n", file=sys.stderr)
@@ -283,7 +337,7 @@ def main() -> int:
         print(
             f"docs cross-reference gate OK: {len(docs)} pages, {n_links} links, "
             f"{n_anchors} anchors, {n_sections} {SECTION_SIGN}-refs, "
-            f"{n_pages} pages index-covered."
+            f"{n_pages} pages index-covered, {n_pointers} code pointers."
         )
     return 0
 

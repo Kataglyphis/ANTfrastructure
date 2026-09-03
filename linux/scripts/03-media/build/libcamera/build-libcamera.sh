@@ -29,9 +29,38 @@ patch_libcamera_riscv64_cross_sources() {
   [ -f "${common_meson}" ] || return 0
 
   local _apply_patch="/opt/scripts/core/apply-patch.sh"
-  local _patch_file="/opt/scripts/patches/libcamera/001-riscv64-add-libtiff-dep.patch"
+  local _patch_file="/opt/scripts/patches/libcamera/001-apps-add-libtiff-dependency.patch"
   bash "${_apply_patch}" "${_patch_file}" "${LIBCAMERA_SRC}" \
     "libcamera riscv64 cross: add libtiff to apps_lib dependencies"
+}
+
+# Upstream compiles libyuv's RVV rows only under clang, but its header enables
+# them for any RVV compiler. docs/riscv64-rva23-baseline.md#libyuv-rvv
+patch_libyuv_rvv_sources() {
+  local _libyuv_src="${LIBCAMERA_SRC}/subprojects/libyuv"
+
+  [ -d "${_libyuv_src}" ] || return 0
+
+  bash "/opt/scripts/core/apply-patch.sh" \
+    "/opt/scripts/patches/libyuv/001-rvv-build-with-gcc.patch" "${_libyuv_src}" \
+    "libyuv: compile the RVV rows with GCC"
+}
+
+# Proves the patch reached shipped bytes.
+# docs/riscv64-rva23-baseline.md#libyuv-rvv
+verify_libyuv_rvv_rows() {
+  local _lib _rows
+
+  command -v cross_target_arch >/dev/null 2>&1 || return 0
+  [ "$(cross_target_arch)" = "riscv64" ] || return 0
+
+  _lib="$(find "${LIBCAMERA_PREFIX}" -name libyuv.a -print -quit 2>/dev/null)"
+  [ -n "${_lib}" ] || { echo "ERROR: libyuv.a not found under ${LIBCAMERA_PREFIX}" >&2; exit 1; }
+
+  _rows="$(nm -g --defined-only "${_lib}" 2>/dev/null | grep -c -e '_RVV$' || true)"
+  [ "${_rows:-0}" -gt 0 ] || { echo "ERROR: libyuv built without RVV rows: ${_lib}" >&2; exit 1; }
+
+  echo "libyuv: ${_rows} RVV rows"
 }
 
 # Defaults (can be overridden via env vars)
@@ -230,12 +259,17 @@ if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_A
     exit 1
 fi
 
+# meson setup downloads the libyuv subproject; patch it before ninja compiles.
+patch_libyuv_rvv_sources
+
 : "${NPROC:=$(media_jobs)}"
 ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" -v || { echo "ninja build failed"; exit 1; }
 
 # install (use sudo if not root)
 ensure_sudo_or_die
 ${SUDO_WRAP} ninja -C "${LIBCAMERA_BUILD_DIR}" -j"${NPROC}" install
+
+verify_libyuv_rvv_rows
 
 # update ld cache if possible
 ${SUDO_WRAP} ldconfig || true

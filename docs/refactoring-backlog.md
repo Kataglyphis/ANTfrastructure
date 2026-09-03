@@ -5,7 +5,9 @@ observation journal live in the archives:
 [`…-archive-2026-08-10.md`](refactoring-backlog-archive-2026-08-10.md),
 [`…-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md),
 [`…-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md),
-[`…-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md).
+[`…-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md),
+[`…-archive-2026-09-02.md`](refactoring-backlog-archive-2026-09-02.md),
+[`…-archive-2026-09-03.md`](refactoring-backlog-archive-2026-09-03.md).
 This file shows OPEN work only + CHANGELOG.md + memory — do not resurrect
 without re-verifying.
 
@@ -16,417 +18,196 @@ lanes · **SMK**=smoke gaps · **DUP**=duplication · **PAR**=parallelism ·
 **LB**=llm-stack benchmark harness ·
 **C#/D#/P#/S#/F#/XC#**=legacy rounds (archive).
 
-Last groomed: 2026-08-31, after the A1 closure window. **The entire A1 work
-section is CLOSED** (ERR-trap bug, complexity queue, modules.sh refuted) and so
-is **GEN1**, which was built and wired ON. What that left open is not more
-refactoring — it is **validation**: two lanes (QNN-LINUX and the new riscv64
-GenAI) are wired but have never been proven by a real build, and one of them is
-deliberately gate-red until that build happens. The LLM-BENCH group (2026-08-31, § D) is
-also CLOSED — kept for one wave so its measured numbers stay beside the
-code that produced them.
+Last groomed: **2026-09-03**, third pass. Everything closed that day is in the
+2026-09-03 archive: A1, A2, YA, YC, the WA–WJ and XK–XR rounds, F1's
+`_cross_stage_build_impl` and `reconcile_local_wheels` rows, and F3's
+chain-status walker.
 
-## Standing rules (read first)
+**Five entries remain. Only one is a defect; the rest are tracks.**
 
-1. Never edit versions.env or the 01-core / 03-media bind-mount closure
-   outside a closure window — one edit re-runs hours of media compiles.
-2. Respect the protected lists (deliberate dedup, standalone bundling,
-   load-bearing case arms, ARG sprawl, LiteRT-LM patch stack, SH1 retry
-   semantics, SH2 non-exiting error(), DUPN2 two-pass arg mirror) —
-   re-verified intentional across five sweep rounds. **modules.sh's candidate
-   ORDER and its dir-walker join this list (2026-08-31, closed by refutation).**
-3. Disk reclaim mid-run: prune-safe.sh → targeted rmi of pushed tags →
-   NEVER system/image prune while a chain runs (removes TAGGED locals).
-   SHARPENED 2026-08-21: `nerdctl system prune` ALSO wipes the buildkit
-   store INCLUDING exec.cachemount records (35→1 observed) — even with no
-   chain running it costs the compile caches. It is the last-resort hammer
-   ONLY; prune-safe + rmi + kata-buildcache/archive-log trims come first.
-4. Per-arch out/build-logs/*.log persist across runs — mtime-check before
-   re-arming watchers.
-5. **A test that cannot fail is worse than no test.** Two 2026-08-31 findings
-   were gates that looked green while proving nothing (see the archive: the
-   ugrep `--`-as-option bug, and `rc==1` passing for the wrong reason). When you
-   add a regression test, MUTATE the thing it guards and confirm the test goes
-   red. State in the header exactly what is and is not covered.
+* **YB** — sccache cache loss. Mitigated, and the mitigation was **measured and
+  found weak** (~5% recovery). Root cause open.
+* **F1 / F2** — oversized functions and files, both now frozen by the `code-size`
+  gate instead of hand-measured. Two unreviewed F1 candidates left.
+* **F3** — down to items that are reviewed-and-KEPT on purpose. Its
+  source-or-fallback question was DECIDED (keep) on evidence.
+* **F9** — kept as a record only: both failures were retested 2026-09-03 and
+  neither reproduces.
 
-## A. Needs a real BUILD to close (not more code)
+### What needs the OWNER, not the agent
 
-### A1. GEN1 — riscv64 GenAI: BUILD PROVEN, token sanity still open [★★]
+Nothing in the five entries above is blocked on you. These are:
 
-The 2026-08-31 rebuild ran it for real. What was unknown is now measured, and
-only one question survives.
+1. **`git push`** — 2 commits sit on local `main` (both backlog grooming). The
+   substantive work — the Flutter fix, the completeness gate, A1/A2, the sccache
+   retry — was pushed on 2026-09-03; origin/main is at `189aeae4`. Only the last
+   two housekeeping commits remain.
+2. ~~The submodule pin.~~ **RESOLVED 2026-09-03 — it was a false alarm, and not
+   yours.** Preflight warned that `external/Kataglyphis-DocumANTation` pin
+   `287365636` was "not reachable on its remote (unpushed local commit or upstream
+   rewrite)". It was neither: the commit **is an ancestor** of the remote's
+   current `main` (`8bf3ccfa`), and the local `origin/main` ref was simply stale.
+   A plain `git fetch` in the submodule cleared it. Worth improving the gate's
+   message — "stale remote-tracking ref" is the third and likeliest cause, and it
+   is the one the wording does not name.
+3. **The Windows lane.** Six confirmed doc defects from the 2026-09-03 currency
+   audit are parked in
+   [`windows-refactor-backlog.md`](windows-refactor-backlog.md), verified against
+   the tree only — no Windows host was involved. Two are wrong paths a reader
+   would follow into a "file not found".
+4. **A newer QNN SDK, if you want one.** v2.49.0.260730 is pinned, hashed and now
+   validated end to end. Only a *newer* SDK needs a re-pin, and only you can fetch
+   it (login-gated).
 
-**PROVEN by the media-riscv64 stage (run r4, image pinned sha256:32114d…):**
-the upstream patch applies (`APPLIED: onnxruntime-genai riscv64 …`); it COMPILES
-under the GCC 16 riscv64 cross toolchain (`Built target onnxruntime-genai`);
-`cross_target_python_dev_ready` was true; llguidance/Corrosion LINKED (**zero**
-`dropping --use_guidance` — the parity-divergence no gate can see did not
-happen); and the wheel `onnxruntime_genai-0.15.2-cp314-cp314-linux_riscv64.whl`
-was produced with the correct platform tag, i.e. it passed the wheel-must-exist
-gate, `assert_elf_arch` and the target `EXT_SUFFIX` assert.
+### FL1. Flutter — fix committed + gate-proven; SHIP BUILD IN PROGRESS 2026-09-03 [high]
 
-**STILL OPEN — the only one a build cannot answer:** does `generate()` emit sane
-tokens on riscv64? Upstream #594 is a RISC-V build that compiled, imported and
-produced nonsense; smoke tiers 1-3 pass in exactly that state. Arm tier 4 by
-mounting a small model and setting `GENAI_MODEL_DIR`. Until then the lane is
-"builds and imports", not "works".
+The fix (COPY into Dockerfile.package, `/opt/flutter/bin` on PATH, the git
+safe.directory in setup-package-image.sh, the completeness gate + manifest, the
+`check_flutter` runtime smoke, tests + mutation) landed in `189aeae4` and passes
+every static gate.
 
-Also unresolved and cheap to settle on the next run: raise the riscv64 app-wheel
-floor 12 → 13 once a run PRINTS 13, and confirm the new
-`validate-media-runtime.sh` genai NEEDED scan behaves on a real image (it has
-never run against one on any arch).
+**A `--only runtime` build is running now** (`flutter-runtime-*.log`): it rebuilds
+the package/wrapper images from the registry `cross-android-<arch>` images (which
+carry `/opt/flutter`), applies the COPY, and publishes the 3-arch `:latest-cross`.
+The build runs `check_flutter` itself, so a broken Flutter fails it. Chosen over a
+full chain because only the package stage changed and the android artifacts already
+exist in the registry.
 
-### A2. QNN-LINUX — fan-out validation, BLOCKED on the login-gated SDK
+**On completion:** confirm `flutter --version` against the shipped
+`:latest-cross-amd64`/`-arm64`, then close this entry. If the build fails, the fix
+is unaffected — re-run once the cause is cleared.
 
-- **CORRECTED 2026-08-31 — three of the four fan-out flags were invented.** The
-  wiring "mirrors Windows #121 exactly", and Windows #154 established that
-  `TFLITE_ENABLE_QNN`, `USE_QNN` and `IREE_TARGET_BACKEND_QNN` are not upstream
-  options: CMake drops an undeclared `-D` silently and exits 0, so all three logged
-  success and did nothing. Only ORT's `onnxruntime_USE_QNN` was ever real. TVM and
-  IREE have no Qualcomm path at all and their flags are gone. LiteRT's IS real but
-  under a different name — `LITERT_ENABLE_QUALCOMM`, auto-forced ON by
-  `QAIRT_HEADERS_DIR` — and this lane already configures the right tree (`litert/`),
-  so it is now correctly wired for the first time.
-  **A second defect fell out of the same reading, and it is live on every build:**
-  `litert/vendors/CMakeLists.txt` `file(DOWNLOAD)`s QAIRT 2.47.0.260601 from
-  softwarecenter.qualcomm.com whenever `QAIRT_HEADERS_DIR` is empty — ~1.5 GB, **no
-  `EXPECTED_HASH`, no `STATUS` check**, and NOT gated on `LITERT_ENABLE_QUALCOMM`, so
-  it fired on every LiteRT configure including builds that want no NPU. It cannot be
-  dodged with a stub path (any non-empty value force-enables Qualcomm with headers we
-  do not have), so `_litert_disable_qairt_header_download` short-circuits the guard
-  when no SDK is staged. MediaTek's NeuroPilot fetch from AWS S3 and the Samsung
-  LiteCore fetch are suppressed with stub header dirs — both gate on the header
-  EXISTING, so a stub is safe there.
-  **Still unvalidated by a build** — see below; this corrects the wiring, it
-  does not prove it.
+### YB. sccache loses thousands of cache entries per chain to an intermittent spawn ENOENT — MITIGATED 2026-09-03, root cause still open [medium]
 
-Wiring is LANDED and fail-safe (no zip = byte-identical behaviour on every arch,
-validated by the 2026-08-30 media rebuilds). ORT was PROVEN on real QAIRT
-v2.49.0.260730. What is unproven is the OPPOSITE direction: with a REAL zip
-staged on arm64, do the two builds that really have a QNN path (ORT, LiteRT)
-stay GREEN and do the staged libs land? That one run also answers LiteRT's
-QNN-manager header fetch and the wheel-staging question.
+**Read `01-core/sccache-launcher.sh`'s header first — it is the canonical record**
+and it already contains more than a fresh investigation recovers. In particular it
+states, from the 2026-09-01 run (3062 bypasses):
 
-**Owner action — smaller than previously written.** `QNN_SDK_LINUX_ZIP_SHA256`
-is already IMPLEMENTED and POPULATED with the v2.49.0.260730 hash, so
-re-staging **that exact version needs NO re-pin** — the existing hash validates
-it and a mismatch means a different build was downloaded. Only a NEWER SDK needs
-`sha256sum <zip>` + a versions.env update in the same commit. Steps: download
-the Linux AArch64 SDK from qpm.qualcomm.com (Qualcomm ID + EULA), drop the zip
-in `linux/qnn-sdk/`, rebuild media-arm64, remove the zip afterwards (README
-discipline). `QNN_SDK_LINUX_LIBDIR` (default `aarch64-oe-linux-gcc11.2`) is the
-single knob if a newer SDK renames the lib subdir. Corrected README: 2026-08-31.
+* the class is **intermittent, ~10–40% of compiles, in the heavily parallel steps
+  only**;
+* the compiler path is absolute and **the cwd is a live build dir**;
+* **the direct fallback of that same argv succeeds immediately after**;
+* and, explicitly: *"do NOT re-derive one \[a root cause\] from this message alone."*
 
-## B. Flagged, deliberately NOT fixed (blast radius > value right now)
+**A correction to this entry's own earlier text.** On 2026-09-03 it concluded that
+`current_dir()` was "the last standing candidate". That is **wrong** — the header
+above had already ruled the cwd out. The re-derivation did add value (six
+hypotheses disproved by experiment, listed below) but it also reproduced work that
+was already written down, which is exactly what the header warns against.
 
-Found during the 2026-08-31 GEN1 review. The two RISK-REDUCING ones were fixed
-the same day (see the archive); this is what deliberately remains.
+**Disproved by experiment 2026-09-03, so nobody repeats them:** the failing
+`argv[0]` is never bare or relative; all six failing compiler paths exist and are
+executable in the image; a plain sccache cross-compile returns rc=0; a
+375-variable / 65 KB environment does not trigger it (and would be `E2BIG`). Two
+lookalikes were reproduced and carry DIFFERENT messages: a missing `-MF` directory
+is a compiler error *after* a successful spawn, and a deleted cwd gives
+`Couldn't determine current working directory`.
 
-- **The genai RUN in Dockerfile.media mounts no cargo registry/git cache** [S·★],
-  so llguidance's crates are fetched from crates.io on every uncached build
-  behind only `retry 3 10`. Already true for arm64, so fixing it changes that
-  lane's cache behaviour — it is risk-NEUTRAL for correctness and would re-key
-  the arm64 genai layer, which is why it was left out of the 2026-08-31 window.
-  Note it if the riscv64 genai stage flakes on the network.
+**MITIGATION SHIPPED 2026-09-03: the launcher retries once** before giving up the
+cache entry. Behaviour, bounds and log lines are owned by
+[`build-cache-tiers.md`](build-cache-tiers.md#the-single-retry-2026-09-03) — do
+not restate them here. Guarded by `tests/test-sccache-launcher.sh` (14 assertions)
+and mutation `sccache.retry-once`.
 
-## C. Pre-existing, found while auditing 2026-08-31
+**MEASURED on the 2026-09-03 media-arm64 build, and the result is NEGATIVE:**
 
-- **`test-preflight-slugs.sh` feeds `comm` unsorted input** [S·★★] — every run
-  prints `comm: file 1 is not in sorted order` (×2) and still reports
-  `5 assertion(s) passed`. `comm` on unsorted input does not compute a correct
-  set difference, so its `_missing` / `_orphan` assertions may be passing
-  VACUOUSLY. Not touched by the 2026-08-31 window (the file is unmodified), but
-  it is exactly the toothless-gate class standing rule 5 is about. Sort both
-  inputs, then re-check that the assertions still pass for the right reason.
-  REINFORCED 2026-08-31: the same bug bit THREE times in one day while auditing
-  (measuring ORT clone overlap, and twice while checking package lists), each
-  time turning a real answer into a wrong one — `LC_ALL=C` changed "0 shared"
-  into "36 shared" and "12 packages missing" into "1". Any `comm` in this tree
-  wants `LC_ALL=C sort` on both inputs; grep for other call sites while fixing.
+| outcome | count |
+|---|---|
+| `retry succeeded (cache kept)` | **27** |
+| `failed twice` | **514** |
 
-## D. Build infrastructure — found live in the 2026-08-31 rebuild
+**~5% recovery.** So the honest answer to "is this class transient?" is **mostly
+no** — a retry issued immediately does not get a different result. Keep the retry
+(it is nearly free and 27 entries is 27 entries) but do **not** treat it as the
+fix, and do not size the remaining work as if it were.
 
-Ordered by what actually costs a run. The first two each destroyed an entire
-arch's media stage.
+Two things this rules out and one it suggests: a scheduling race or a momentary
+resource shortage would recover far more than 5%, so neither is the mechanism.
+Something about the specific invocation is failing repeatably within a short
+window. That points at per-request state inside the server rather than at the
+environment.
 
-- **D1. The batch apt install fails wholesale, and the per-package sweep does
-  not always recover** [M·★★★, RECURRING — cost r4 the whole arm64 lane].
-  `install_target_packages` runs one batch `apt-get`; on cross arches it exits
-  100 with **every** package reporting `Depends: X:<arch> (= <version>) but it
-  is not going to be installed`. The documented per-package retry then rescues
-  most names, but not all — and which one is left behind varies by run
-  (`libpulse-dev` in r4, nothing in r3 with the same scripts two hours earlier).
-  The exact-version dependency shape points at a version skew between the cached
-  apt lists and the live ports archive rather than at bad package names: every
-  name in every `install-deps.sh` was checked against the live ports indices for
-  arm64 and riscv64 and only the two in D2 are actually gone. Root-cause the
-  batch failure; a `|| true` on ffmpeg's list would only hide it.
+Reading the log needs one caution learned here: a **cached** BuildKit step replays
+its old output verbatim. The first read of this build showed 496 hits of the
+pre-retry message, all from one cached step (`#30`), which would have looked like
+the new launcher failing to take effect.
 
-- **D2. Two package names are dead on Ubuntu 26.04 ports** [S·★].
-  `libopenexr-3-dev` (renamed `libopenexr-dev`) and `libvvdec-dev` (gone
-  entirely), both in `03-media/build/gstreamer/install-deps.sh:183,186`.
-  Neither breaks a build — both already carry `|| …|| true` fallbacks, and vvdec
-  falls through to a full source build — so this is cleanup, not an outage. But
-  every run pays a failed apt round-trip and, for vvdec, an entire compile.
-  NB the openexr fallback to the new name is already there; only the dead first
-  attempt needs removing.
+### F1. Functions that outgrew a screen [M each] — RE-MEASURED 2026-09-03
 
-- **D3. Builds are not reproducible: the base digest changes every run**
-  [M·★★]. `db544a8e` (r3) → `82ecfee4` (r4) → `c85cc424` (r5), same tree.
-  Consequence for anyone assembling a manifest from more than one run: the
-  arches then sit on DIFFERENT base layers. Functionally probably harmless,
-  historically the exact shape of defect this repo has paid for twice (stale
-  `:latest-cross`). Either make base reproducible or make the chain refuse to
-  publish a manifest whose arches disagree on their base digest.
+Sizes come from `function-size.allow`, which the `code-size` gate freezes, so this
+table cannot silently go stale between rounds the way it kept doing.
 
-- **D4. `kata-buildcache` grows without bound and is the disk-filler**
-  [S·★★★]. Observed within ONE session: 62 GB → 110 GB, and back to 55 GB after
-  a manual wipe, purely from repeated runs. It is a regenerable cache EXPORT, so
-  wiping it is safe (`prune-safe` cannot touch it — different store). It was the
-  direct cause of the r3 disk emergency that forced a controlled chain stop.
-  Needs a retention policy, or a size cap wired into the disk preflight so the
-  chain trims it instead of asking a human at 19 GB free.
+        lines  function                       file
+          356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
+          114  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
+          109  uv_sync_project()             01-core/python_uv.sh
+           91  _cross_stage_build_impl()     01-core/cross-stage-build.sh
+           84  append_tvm_cmake_args()       05-frameworks/tvm-config.sh
 
-- **D5. Failed stages still write their cache exports** [S·★★].
-  `cross-stage-build.sh:206` salvages local cache exports for all 15 named media
-  stages after a FAILED build — burning disk on stages that will be rebuilt
-  anyway, at exactly the moment disk is scarce. `SALVAGE_CACHE_EXPORT=0` already
-  disables it; consider making it conditional on free space rather than on the
-  operator remembering.
+**`assert_pinned_versions` is top by size and the WORST candidate by value.** It
+is not 356 lines of shell — it is ~26 lines of shell wrapping a 312-line embedded
+Python program (`"${PY}" - <<'PYEOF'`, `smoke-torch-venv.sh:101`). Splitting the
+shell moves ~26 lines. What actually mattered there was that ruff could not see
+the Python at all — fixed 2026-09-02, and those 399 newly-visible lines pass the
+hard gate clean. Split the wrapper for its own sake, never for the line count.
 
-- **D6. `install_target_packages` reports non-fatal misses in fatal-looking
-  language** [S·★]. `FAILED — missing after apt-get (rc=100): <pkg>` is printed
-  identically whether the caller guarded the call with `|| true` or not, which
-  cost two false alarms while monitoring this run. Say which it was: a guarded
-  miss is information, an unguarded one is an outage.
+**Next candidate: `_opencv_target_adjustments` (114) or `uv_sync_project` (109).**
+Both unreviewed. Measure the value before cutting.
 
-- **D7. Warning audit 2026-08-31 — do not repeat it** [closed, recorded so it
-  is not re-done]. Every warning in a full 3-arch run was classified. ~12,700 are
-  compiler warnings inside UPSTREAM sources (ONNX Runtime's
-  `lifetime_capture_by`, glslang array-bounds, LLVM `PointerType::get`
-  deprecations, Dawn) — not our code, not fixable here. ~50 more are upstream
-  TOOLING noise: the Vulkan SDK's own profile parser (`jsonschema` module
-  missing) and GStreamer `.gir` parsing. Exactly ONE was ours, and it is fixed
-  (the OpenCV build-stage cv2 import check could never succeed; commit
-  b3dbd32a). Counting warnings by grepping the log OVERCOUNTS badly: BuildKit
-  echoes each RUN's command text, so warning strings inside a Dockerfile command
-  are matched as if they had fired. Count only real output lines
-  (`^#N <time> WARNING`) — that is the difference between "TVM build failed 23×"
-  and "TVM built fine".
+**The one uncovered path left inside `_cross_stage_build_impl` is the
+registry-cache drop** (~16 lines). It needs a non-empty `log_file` holding a
+`DeadlineExceeded` line and it mutates both `build_cmd` and a counter across loop
+iterations, so it wants its own characterisation before extraction — the same
+order that caught the salvage body running empty last time.
 
-- **D8. Feature parity is in good shape — the table is the source of truth**
-  [reference]. `_parity_exempt` in `06-packaging/smoke-runtime-image.sh` carries
-  exactly TWO documented exceptions after GEN1: `riscv64:cmake` (Kitware
-  publishes no riscv64 archive, distro cmake 4.2.3 is used) and
-  `riscv64:iree_base_compiler` (the IREE compiler cannot be cross-built and
-  upstream ships no riscv64 wheel, so that lane is runtime-only). Everything
-  else that differs is deliberate and correct rather than a gap: the ORT flavour
-  split (`onnxruntime_dnnl` on amd64 because oneDNN is x86-only,
-  `onnxruntime_webgpu` on arm64/riscv64) and QNN being arm64-only (it is a
-  Snapdragon NPU). Feature toggles are already at maximum —
-  `ORT_ENABLE_WEBGPU`, `ORT_WEBGPU_ALLOW_CROSS` and `GENAI_ALLOW_RISCV64` are
-  all on; the two that are off are off on purpose (`ORT_ENABLE_LTO` costs build
-  time for no feature, `FFMPEG_ENABLE_TF` was removed deliberately, −500 MB).
-
-## F. Code cleanliness — the refactor queue (measured 2026-08-31)
-
-Numbers, not opinions: function lengths from an AST-free line count, duplication
-from `docs/scripts/verify_code_dupes.py`. Nothing here breaks a build; this is
-the "I want clean code" queue. Ordered by value, not size.
-
-### F1. Functions that outgrew a screen [M each]
-
-    356  assert_pinned_versions()      06-packaging/smoke-torch-venv.sh
-    196  smoke_genai_py()              06-packaging/smoke-common.sh      <- MINE, 2026-08-31
-    168  _cross_stage_build_impl()     01-core/cross-stage-build.sh
-    147  _opencv_target_adjustments()  03-media/build/opencv/build-opencv.sh
-    136  append_tvm_cmake_args()       05-frameworks/tvm-config.sh       <- MINE, 2026-08-31
-    127  uv_sync_project()             01-core/python_uv.sh
-    127  reconcile_local_wheels()      03-media/runtime/assemble-torch-app.sh
-    115  cmake_build_parse_args()      lib/cmake-build.sh
-
-Two of the top five were written or grown by me on 2026-08-31 and should be
-first in the queue, not last: `smoke_genai_py` is a 196-line embedded Python
-program inside a heredoc (its four tiers are separable), and
-`append_tvm_cmake_args` GREW from 136 lines while being refactored away from 15
-positional parameters — the keyword parsing is worth it, but the emit blocks
-below it now want splitting out.
-
-`_cross_stage_build_impl` is deliberately one implementation behind two thin
-wrappers (closed 2026-08-30) — decompose it internally if at all, do NOT split
-it back into two.
+`_opencv_target_adjustments`, `uv_sync_project` and `append_tvm_cmake_args` are
+unreviewed. Measure the value before cutting: the lesson from
+`assert_pinned_versions` is that line count alone picks the wrong target.
 
 ### F2. Files over ~800 lines [L each, low priority]
 
-    1371  05-frameworks/torch/build-app-wheelhouse.sh   (already decomposed internally)
-    1013  06-packaging/smoke-runtime-image.sh
-     957  03-media/build/litert/build-litert.sh
-     935  03-media/build/opencv/build-opencv.sh
-     874  lib/agentic-loop.sh
-     853  02-toolchain/build-gcc.sh
+**RE-MEASURED 2026-09-03 from `file-size.allow`, which is now the authority** —
+the `code-size` gate freezes every one of these and refuses silent growth, so
+this table cannot drift between rounds the way it kept doing. Splitting any of
+them is still open work, and still low priority.
 
-Length alone is weak evidence — build-app-wheelhouse.sh is long BECAUSE it was
-decomposed into nine `_iree_*` helpers plus dated forensics. Treat this list as
-"look here for F1 candidates", not as a work order.
+         1502  linux/scripts/06-packaging/smoke-runtime-image.sh
+         1243  linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh
+         1162  linux/Dockerfile.media
+         1121  docs/scripts/bump_versions.py
+          975  linux/scripts/03-media/build/litert/build-litert.sh
+          934  linux/scripts/03-media/build/opencv/build-opencv.sh
+          881  linux/scripts/build-cross-chain.sh
+          880  linux/scripts/02-toolchain/build-gcc.sh
+          874  linux/scripts/lib/agentic-loop.sh
+          849  docs/scripts/sync_versions.py
+
+Ten files, not the seven this entry used to claim: the 2026-09-03 gate widened
+its scope to **Python and Dockerfiles**, which pulled in `bump_versions.py`,
+`sync_versions.py` and `Dockerfile.media` — none of which any size gate had ever
+looked at.
+
+`smoke-runtime-image.sh` is the one to watch: it is the largest file in the tree
+and it GREW today (probe split into four parts, `_boot_verdict` extracted). The
+growth is recorded with a reason in the allow file, which is the contract — the
+gate does not care that a file is big, only that it grows without saying why.
 
 ### F3. Clone families worth one owner [S-M each]
 
+Two genuinely-open observations remain. The decided/reviewed items (the
+source-or-fallback KEEP decision, the lint-tool and lib/* pairs reviewed-and-kept
+by measurement, and the not-actionable Dockerfile mount preambles) are in the
+2026-09-03 archive.
+
 - **`lib/*.sh` share a 14-line logging-fallback preamble across 9 files**
-  (56 shingles) — the single largest copied block in the tree. It is
-  `if ! declare -F info; then source …; else info() { … }; fi`. NOTE the
-  bootstrap paradox before touching it: the block exists precisely for the case
-  where nothing has been sourced yet, so extracting it into a file you must
-  source defeats its purpose. A shared file plus a 2-line guard may still beat
-  14 lines × 9.
-- **`lint-{shell,workflows,dockerfiles}.sh` pinned-tool bootstrap** (3 copies) —
-  reviewed and KEPT on 2026-08-31 because hadolint fetches a raw binary while
-  the others untar/unzip, so a shared helper needs a strategy argument. Revisit
-  if a FOURTH tool appears; three is the threshold where the parameter earns
-  itself.
-- **`lib/{app-runner,cmake-build,ctest-run}.sh`** and
-  **`lib/{code-quality,coverage,docs-build}.sh`** — two 3-file families in the
-  same directory, so no cross-flow coupling risk. The most tractable ones.
+  (56 shingles) — the single largest copied block in the tree,
+  `if ! declare -F info; then source …; else info() { … }; fi`. **Bootstrap
+  paradox before touching it:** the block exists for the case where nothing has
+  been sourced yet, so extracting it into a file you must source defeats its
+  purpose. A shared file plus a 2-line guard may still beat 14 lines × 9. Outside
+  the build closure (`lib/` is in no Dockerfile), so it can be done any time.
 - **`install-deps.sh` family (6 files)** — cross-apt, gstreamer, litert, opencv,
-  pre-setup, assemble-torch-app. Shares the target-package install shape.
-- **Dockerfile RUN mount preambles (4-9 files)** — NOT actionable: Dockerfiles
-  have no include or function mechanism. Recorded so nobody re-opens it.
+  pre-setup, assemble-torch-app share the target-package install shape.
+  Unreviewed; measure the longest shared run before deciding, as the lib/* pairs
+  showed 11–12 lines is below the extract-a-helper threshold.
 
-### F4. The duplication gate's own defects [S each]
-
-- **Clone-family clustering degenerates.** Union-find over shared files
-  transitively collapses most of the tree into one meaningless "88 files"
-  family. Cluster on the shared BLOCK, not on file adjacency.
-- **`smoke_genai_py` is 196 lines of Python inside a bash heredoc** — neither
-  ruff nor shellcheck can see it. If it stays that size it wants to be a real
-  `.py` file that the smoke pipes in.
-
-## D. LLM-BENCH — GenieX session harvested into `linux/llm-stack` (CLOSED 2026-08-31)
-
-All nine items implemented and validated live against GenieX lanes on the same
-day they were filed. Kept here (not archived) for one wave so the measured
-numbers stay next to the code that produced them.
-
-- **LB1 — correctness probe** [DONE] `--correctness` / `--correctness-only`
-  (exit non-zero on a wrong answer); `run_benchmarks.sh` gates the sweep on it
-  (`BENCH_SKIP_CORRECTNESS=1` bypasses). Validated: Qwen3-4B `Q4_0` 6/6,
-  `IQ3_XXS` 0/6 BROKEN — the case every speed metric rated as a good run.
-- **LB2 — TTFT/prefill** [DONE] `ttft_s`, `prefill_tok_per_sec`,
-  `decode_tok_per_sec` (the pre-existing `tokens_per_sec` divides by the whole
-  request and so hides prefill inside what reads as a decode rate).
-- **LB3 — time to a finished answer** [DONE] `wall_s_to_answer` +
-  `thinking_char_share`. A live run showed **77–86 % of output was `<think>`**.
-- **LB4 — multi-endpoint + concurrent aggregate** [DONE] new `bench_lanes.py
-  --lanes`. Reproduced the manual finding within 0.5 %: NPU **+0 %** when a CPU
-  lane joins, CPU **−18 %**, aggregate 39.9 tok/s = 1.57x the best single lane.
-- **LB5 — batching probe** [DONE] `bench_lanes.py --batching`. Verdict
-  `SERIALISED` on GenieX: second request's TTFT 74.27 s vs the first's 74.10 s
-  total.
-- **LB6 — GGUF introspection** [DONE] new `inspect_gguf.py`: header-only read,
-  tensor-type histogram, OK / LIKELY OK / RISKY verdict, exit 1 on RISKY.
-  Correctly separates the broken `IQ3_XXS` (97.6 % sub-4-bit i-quants) from the
-  working 27B `UD-Q4_K_M` (0.8 %).
-- **LB7 — de-Ollama'd** [DONE] `LLM_BASE_URL` (old name still honoured);
-  `detect_model_via_api` asks `/v1/models` first and takes a `base_url`. The
-  hardcoded `"gemma4:26b"` probe is gone — it returned that name on any 200,
-  mislabelling every non-gemma host.
-- **LB8 — worker vs listener** [DONE] `top_cpu_processes()` primes before and
-  reads after each request, so the summary names the PID that actually burned
-  CPU. Encodes the trap: GenieX's port owner read 11 % of 800 % while its
-  worker sat at 752 %.
-- **LB9 — cross-platform hardware info** [DONE] `platform`/`psutil` fallback
-  after the `/proc` reads, plus an explicit `incomplete` list so a gap is
-  visible instead of silent.
-
-**Viewer + test debt closed 2026-08-31 (second pass).** The first pass wired
-the new metrics into the result JSON but not into the React viewer, although
-LB2/LB3 explicitly said "and the viewer" — the data flowed in and surfaced
-nowhere. Now: a correctness banner above every speed number, time-to-answer as
-the leading column, TTFT/decode/prefill/thinking-share in the comparison and
-drill-down tables, the busiest process per request, and legacy runs degrading
-to `-` (charts drop them rather than drawing a `0` that would claim an instant
-first token). `bench_lanes.py` and `inspect_gguf.py` gained 15 unit tests
-(synthetic GGUFs, an in-process SSE server), taking the suite to 30 unit tests
-that need no running stack. A server-side smoke render (`npm run smoke`)
-renders every component against the real manifest, because `vite build` only
-proves the JSX compiles — it caught a silently-failed edit that made the
-comparison table render empty cells.
-
-**Probe calibration fix:** truncation is now reported apart from wrongness
-(exit 2 = INCONCLUSIVE, exit 1 = genuinely wrong). A model cut off mid-thought
-was not wrong, it was unmeasured, and scoring it as a failure made a healthy
-model look degraded. The arithmetic probe also moved 847*293 -> 23*17: a
-healthy 4B could not finish the former inside 4000 thinking tokens, so the
-check cried wolf on good models.
-
-**Two pre-existing bugs found while doing this**, both fixed:
-- the SSE parser matched `"data: "` **with** the space (optional per spec).
-  GenieX omits it → nothing parsed, 0 tok/s reported, no TTFT possible. The
-  harness was effectively blind to every non-Ollama server.
-- servers ignoring `stream_options.include_usage` yielded 0 tokens; now falls
-  back to a counted chunk total flagged `tokens_estimated`.
-
-**Closed since the original harvest:** context-length quality scaling
-(`bench_coding.py --context-tokens`, § 1e of the GenieX page) and tool/function
-calling correctness (`bench_tools.py`, § 1f) — the latter found the one result
-that does not crown the coding winner.
-
-**Still open for a general LLM toolkit** (listed so it is not forgotten):
-
-- **LB10 — embedding benchmarks** [M·★★] `tests/test_v1_api.py` exercises the
-  embedding endpoints but nothing measures them. Relevant the moment a RAG or
-  code-search path is added.
-- **LB11 — run-to-run regression comparison** [S·★★] Every tool writes a JSON
-  report and nothing diffs two of them. Without it a model swap or a runtime
-  bump can silently cost accuracy or speed. Probably the highest-value item
-  left: it turns a pile of one-off measurements into a tripwire.
-- **LB12 — energy per token** [M·★] The interesting axis on a battery device,
-  and the NPU's real argument over the CPU lane (165 % vs 752 % of 800 % CPU
-  says something about power but does not measure it).
-- **LB13 — measurements not yet run on this host** [S·★] hybrid lane on coding
-  tasks, `nctx` scaling below 16384, `--ngl` on the GPU lane, and the model
-  candidates never tried: `Qwen3-8B` W4A16 (the winner's direct competitor —
-  same fast prefill, same 4096 ceiling, twice the parameters), a
-  code-specialised GGUF such as `Qwen2.5-Coder-7B`, and the other QAIRT bundles
-  (`Ministral-3-3B-Instruct`, `Gemma-4-E2B-it`). **Every model measured so far
-  is from one family (Qwen3/Qwen3.8)** — that is the largest gap in the
-  ranking's authority.
-
-**Explicitly NOT for llm-stack:** `windows/scripts/host/start-geniex-servers.ps1`
-stays where it is — Windows-host lane management, not benchmarking.
-
-## E. Waiting on a TRIGGER (not on work)
-
-- **PAR4-hard — true memory cap (MemoryHigh/jobserver)** — only if a
-  divisor-6 parallel run OOMs again.
-- **GCC_PARALLEL_TARGETS on a full push chain** — validated locally 2026-08-30
-  (green, ~30 % GCC-RUN saving); the next full chain that wants the parallel
-  GCC must pass `GCC_PARALLEL_TARGETS=1` on its command line (it now reaches
-  the container — the plumbing fix 92fb9646).
-- **gcc-prereq measurement facets** (sig-cache, LIBRARY_PATH leak, verify
-  coverage, dup-compile overlap) — needs ccache stats from a real build;
-  the "unify prereq paths" reading is CLOSED (deliberately different).
-- **post-restart base cache-miss** — observe at the next host reboot.
-- **LOG7 — sdkmanager CLI deprecated** — bit-rot watch before Google
-  removes it.
-- **MESON-GI — meson 1.12 breaks gobject-introspection's glib-subproject
-  resolution (riscv64 cross gst)** [S·★, WATCH]. Pin in place:
-  `setup-gstreamer.sh` installs `meson==1.11.2` for riscv64 cross only
-  (amd64 native + arm64 no-introspection are fine on 1.12).
-  **RE-PROBED 2026-08-31: still 1.12.0.** `git ls-remote mesonbuild/meson`
-  shows no 1.12.x point release and no 1.13 — so no released meson fixes it yet
-  and the pin stays. (Note: the repo pins `GOBJECT_INTROSPECTION_VERSION=1.86.0`;
-  earlier notes here said "g-i 1.84", which was stale.) Retest by removing the
-  pin in a closure window once meson moves.
-- **NODE-RV — riscv64 ships Node v22 (pin: 26.8.1)** [S·★, WATCH].
-  ubuntu-ports has no 26.x for riscv64; the install falls back fail-open with a
-  WARN (by design, seen in every wave-4 smoke log).
-  **RE-PROBED 2026-08-31: ports `resolute` (26.04) riscv64 universe still ships
-  `nodejs 22.22.1+dfsg+~cs22.19.15-1ubuntu1`** — no 26.x, so the fallback stays
-  correct. Re-check at each bump window.
-  NB (2026-08-27): the pin moved 26.8.0 → 26.8.1 because the OFFICIAL v26.8.0
-  tarball self-reports `26.8.0-alpha.0.0.0` and its own bundled npm then refuses
-  it (semver puts a prerelease outside `>=22.9.0`). Re-check the REPORTED
-  version, not just the tarball name, at every bump — the gate that missed it
-  compared a PREFIX and has since been tightened to an exact match.
-- **SV-residual — watch the first real `compose up`** — user-side.
-- **riscv64 isa-spec smoke on real hardware** — needs hardware.
-- **WEBUI_SECRET_KEY server-side rotation** — user action.

@@ -392,7 +392,9 @@ if [ -n "${elf_machine_grep}" ] && command -v readelf >/dev/null 2>&1; then
         *"${elf_machine_grep}"*) ;;
         "") continue ;;
         *)
-          echo "  MISMATCH (advisory, may be vendor): ${_so_base} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
+          # Full path, not the basename: the reader has to judge vendor-vs-leak
+          # and cannot do that from a name. docs/failure-modes.md
+          echo "  MISMATCH (advisory): ${so} ELF machine=${elf_machine} != expected ${elf_machine_grep}" >&2
           so_mismatches=$((so_mismatches + 1))
           ;;
       esac
@@ -406,7 +408,10 @@ fi
 # host-vs-target-triple defect — the exact class this build fights — and is never
 # a vendor binary, so fail loud on it. The .so sweep stays advisory (see above);
 # escape hatch MEDIA_ELF_MISMATCH_FATAL=0 downgrades the core gate to a warning.
-[ "${so_mismatches}" -gt 0 ] && echo "  NOTE: ${so_mismatches} advisory .so ELF mismatch(es) (likely bundled vendor SDKs; not failing)" >&2
+# Says what it knows, not what it guesses: the basename-based vendor list cannot
+# enumerate every bundled SDK, so this sweep reports and never fails. The paths
+# above are what makes a mismatch judgeable.
+[ "${so_mismatches}" -gt 0 ] && echo "  NOTE: ${so_mismatches} advisory .so ELF mismatch(es); not failing — check the paths above, a vendor SDK and a real wrong-arch leak look identical here" >&2
 if [ "${core_mismatches}" -gt 0 ]; then
   if [ "${MEDIA_ELF_MISMATCH_FATAL:-1}" = "1" ]; then
     echo "  FAIL: ${core_mismatches} CORE media binary ELF mismatch(es) for target ${target_arch} — wrong-arch artifact(s) present" >&2
@@ -415,26 +420,12 @@ if [ "${core_mismatches}" -gt 0 ]; then
   echo "  WARN: ${core_mismatches} core ELF mismatch(es) (MEDIA_ELF_MISMATCH_FATAL=0; not failing)" >&2
 fi
 
-# ---------------------------------------------------------------------------
-# QEMU-based cross-arch binary smoke (only when cross-compiling)
-# ---------------------------------------------------------------------------
-if cross_build_is_active 2>/dev/null && command -v cross_target_qemu_runner >/dev/null 2>&1; then
-  echo ""
-  echo "=== QEMU Cross-Arch Binary Smoke ==="
-  qemu_runner="$(cross_target_qemu_runner 2>/dev/null || true)"
-  if [ -n "${qemu_runner}" ] && [ -x "${qemu_runner}" ]; then
-    for bin in "${ARTIFACTS[@]}"; do
-      [ -f "${bin}" ] || continue
-      if "${qemu_runner}" "${bin}" --help >/dev/null 2>&1; then
-        echo "  OK: ${qemu_runner} $(basename "${bin}") --help" >&2
-      else
-        echo "  WARN: ${qemu_runner} $(basename "${bin}") --help failed (may be expected for cross builds without full sysroot)" >&2
-      fi
-    done
-  else
-    echo "  SKIP: qemu user-mode emulator not found (install qemu-user-static)" >&2
-  fi
-fi
+# The QEMU cross-arch binary smoke that used to sit here was removed 2026-09-02:
+# it invoked qemu-user with no QEMU_LD_PREFIX, so every foreign-arch binary died
+# in the dynamic loader and every failure was excused by the same clause. It
+# scored 7 failures and 0 passes in its last run. Functional coverage lives in
+# the runtime-image smoke, which boots the real image.
+# docs/failure-modes.md#a-smoke-that-never-passed-and-always-excused-itself
 
 echo ""
 echo "=== Validation complete ==="

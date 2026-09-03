@@ -23,29 +23,8 @@ sanitize_version() {
     echo "$version"
 }
 
-# Resolve the version a CI run should stamp, from the sources every consumer
-# has: a VERSION.txt at the repo root, else the ref name, else the run number.
-#
-# Lifted out of a consumer (Kataglyphis-RustProjectTemplate's
-# scripts/compute_version.sh) because every repo with a CI lane needs exactly
-# this and had to reimplement it around the primitives above.
-#
-# The guards are load-bearing, in this order:
-#   * only the FIRST NON-EMPTY line of VERSION.txt counts, CR-stripped and
-#     trimmed - a file written on Windows otherwise yields "2.3.4\r", which is
-#     not a valid version anywhere downstream;
-#   * a leading "v" is dropped, so a v-prefixed tag works as a ref source;
-#   * anything that still does not START WITH A DIGIT falls back to the run
-#     number, which keeps a branch name like "feature/x" from becoming a
-#     version. That guard is also why normalize_version's own "v" handling is
-#     unreachable from here.
-#
-# One deliberate behaviour change from the consumer version this replaces:
-# `read` returns non-zero on a final line with no trailing newline, so a plain
-# `while IFS= read -r line` DROPS it. A VERSION.txt written without a trailing
-# newline was therefore ignored outright and the run number stamped instead -
-# silently, since the fallback looks like a normal result. The
-# `|| [[ -n "$line" ]]` guard below reads that last line.
+# Why the rustc version parse tolerates several spellings:
+# docs/cross-build-verification.md
 resolve_ci_version() {
     local version_file="${1:-VERSION.txt}"
     local ref_name="${2:-${REF_NAME:-}}"

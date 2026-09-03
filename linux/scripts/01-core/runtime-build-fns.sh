@@ -17,19 +17,46 @@
 #   remove_local_image_if_exists, runtime_*_tag(), runtime_artifact_*,
 #   runtime_stage_context_*, runtime_use_local_*, etc.
 
+# One push attempt, output tee'd so the caller can classify the failure.
+_runtime_push_attempt() {
+  local tag="$1" log_file="${2:-/dev/null}"
+  # retry policy lives in runtime_push_tag; this only reports the push rc
+  run "${NERDCTL_BIN:-nerdctl}" push "${tag}" 2>&1 | tee "${log_file}"
+  return "${PIPESTATUS[0]}"
+}
+
 # Post-build: export to OCI layout locally, or push remotely, then clean up.
-# Push a built runtime image tag, retrying on transient registry/network
-# failures. A ~8GiB wrapper push over a throttled link can reset mid-transfer
-# ("use of closed network connection: Put .../blobs/upload/..."); without a
-# retry that discards the whole runtime stage -- and pre-fix, exited the entire
-# chain run after hours of work. Bounded by PUSH_MAX_ATTEMPTS (default 4) with
-# PUSH_RETRY_BASE_SECS (default 15s) between attempts. Pure network op, so any
-# failure is retried up to the cap (a genuine auth/config error just exhausts it
-# in <1min); the image layers are already built, only the upload repeats.
+# Transient push failures retry (PUSH_MAX_ATTEMPTS/PUSH_RETRY_BASE_SECS); a
+# permanent one does not. See docs/cross-build-verification.md.
 runtime_push_tag() {
   local tag="$1"
-  retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "push ${tag}" \
-    run "${NERDCTL_BIN:-nerdctl}" push "${tag}"
+  local max_attempts="${PUSH_MAX_ATTEMPTS:-4}" base_secs="${PUSH_RETRY_BASE_SECS:-15}"
+  local attempt=1 rc=0 log_file=""
+  log_file="$(mktemp "${TMPDIR:-/tmp}/runtime-push-XXXXXX" 2>/dev/null || true)"
+
+  while :; do
+    rc=0
+    _runtime_push_attempt "${tag}" "${log_file:-/dev/null}" || rc=$?
+    [ "${rc}" -eq 0 ] && break
+    if [ -n "${log_file}" ] \
+       && declare -F _cross_stage_push_error_is_transient >/dev/null 2>&1 \
+       && ! _cross_stage_push_error_is_transient "${log_file}"; then
+      warn "[push] ${tag} failed with a PERMANENT error (not a registry/network flake) — not retrying"
+      break
+    fi
+    if [ "${attempt}" -ge "${max_attempts}" ]; then
+      warn "[push] ${tag} failed after ${attempt} attempts"
+      break
+    fi
+    warn "[push] ${tag} attempt ${attempt}/${max_attempts} hit a transient registry/network error; retrying in ${base_secs}s"
+    sleep "${base_secs}"
+    attempt=$(( attempt + 1 ))
+  done
+
+  if [ -n "${log_file}" ]; then
+    rm -f "${log_file}"
+  fi
+  return "${rc}"
 }
 
 # XC2: the immutable android artifact digest for <arch>, threaded from the cross
@@ -86,27 +113,8 @@ runtime_image_output_arg() {
   printf 'type=image,name=%s%s' "${tag}" "${ann}"
 }
 
-# Append the image target for a runtime build to the nameref array.
-#
-# RTCACHE3 (root cause of the 2026-08-14 stale-ship saga): this used to emit the
-# annotated `--output type=image,name=<tag>,annotation.*` exporter on the push
-# path, on the assumption (see the now-corrected runtime_image_output_arg note)
-# that it was "equivalent to -t <tag>". It is NOT. Verified with a minimal
-# busybox repro on this rootless nerdctl+containerd host:
-#     nerdctl build --output type=image,name=X   → X is NOT in the local image store
-#     nerdctl build -t X                          → X IS in the local image store
-# The exporter builds the image into buildkit's content store but never lands a
-# local containerd tag. So the freshly built wrapper was invisible: the
-# subsequent `nerdctl push <tag>` (runtime_push_tag) and `nerdctl manifest
-# create <tag>` both resolved the STALE pre-existing local tag from an earlier
-# run, and :latest-cross shipped byte-identical every time (amd64 stuck at
-# 35c1f1df across five rebuilds). The annotations never reached the registry
-# either — every run logged "wrapper tag(s) carry no run-id annotation …
-# provenance unverifiable" — so nothing of value is lost by dropping the
-# exporter. Use plain `-t` on BOTH paths: it reliably creates AND overwrites the
-# local tag, which is what runtime_push_tag + the manifest step consume.
-# (Re-embedding ancestry provenance via a locally-tagging method is tracked
-# separately; correctness of the shipped bytes comes first.)
+# How the runtime stage passes context and provenance:
+# docs/cross-build-verification.md
 append_runtime_image_output() {
   local -n _ario_out=$1
   local tag="$2"
@@ -151,7 +159,7 @@ _runtime_finish_stage() {
     remove_local_image_if_exists "${NERDCTL_BIN:-nerdctl}" "${tag}"
   else
     if runtime_pushes_intermediate_images; then
-      runtime_push_tag "${tag}"
+      runtime_push_tag "${tag}" || return 1
     fi
     if [ "${kind}" != "wrapper" ] || ! runtime_pushes_wrapper_images; then
       runtime_refresh_stage_context "${kind}" "${arch}" "${tag}"
@@ -195,7 +203,7 @@ runtime_build_base_image() {
   fi
 
   if runtime_pushes_intermediate_images; then
-    runtime_push_tag "${tag}"
+    runtime_push_tag "${tag}" || return 1
   fi
 
   runtime_refresh_stage_context base "${arch}" "${tag}"
@@ -447,35 +455,43 @@ _runtime_build_wrapper() {
 # line stayed green. One `image inspect` right after the build closes that loop
 # while the evidence is still fresh, instead of discovering it in an audit.
 #
-# Fails ONLY on a positive "the image is readable and the stamp is not there"
-# (rc 2). A reader that could not look at all (rc 1) warns and proceeds — a
-# transient inspect problem must not kill a multi-hour build. Escape hatch:
-# ANCESTRY_STAMP_ENFORCE=0.
+# Fails ONLY on a positive reading: the stamp is missing, or it names a
+# DIFFERENT run (a stale tag this build never replaced). A reader that could not
+# look at all warns and proceeds — a transient inspect problem must not kill a
+# multi-hour build. Escape hatch: ANCESTRY_STAMP_ENFORCE=0.
 runtime_assert_provenance_stamped() {
-  local tag="$1" rc=0
+  local tag="$1" rc=0 value="" why=""
 
   is_dry_run && return 0
   [ -n "${CROSS_RUN_ID:-}" ] || return 0          # nothing was asked for
   declare -F ancestry_recorded_label >/dev/null 2>&1 || return 0
 
-  ancestry_recorded_label "${tag}" "${ANCESTRY_RUN_ID_KEY}" >/dev/null 2>&1 || rc=$?
+  # scope=local, and stderr is NOT swallowed: this runs BEFORE the push, so the
+  # default reader's "is this local tag the registry copy?" guard rejected every
+  # freshly built wrapper (rc 1) and the gate silently degraded to "proceeding".
+  value="$(ancestry_recorded_label "${tag}" "${ANCESTRY_RUN_ID_KEY}" local)" || rc=$?
   case "${rc}" in
-    0) return 0 ;;
-    2)
-      if [ "${ANCESTRY_STAMP_ENFORCE:-1}" = "0" ]; then
-        warn "[ancestry] ${tag} carries no run-id label although one was requested (ANCESTRY_STAMP_ENFORCE=0, continuing)"
-        return 0
-      fi
-      warn "[ancestry] ${tag} was built WITHOUT the run-id label this build stamped (CROSS_RUN_ID=${CROSS_RUN_ID})"
-      warn "[ancestry]   the provenance mechanism is silently inert again — refusing to hand on an unverifiable image"
-      warn "[ancestry]   (set ANCESTRY_STAMP_ENFORCE=0 to override)"
-      return 1
+    0)
+      [ "${value}" = "${CROSS_RUN_ID}" ] && return 0
+      # A tag left by an EARLIER run: exactly the RTCACHE3 "build produced no
+      # local tag" shape, which a mere presence check cannot see.
+      why="carries run-id '${value}', not the '${CROSS_RUN_ID}' this build stamped (stale local tag — the build never re-tagged)"
       ;;
+    2) why="was built WITHOUT the run-id label this build stamped (CROSS_RUN_ID=${CROSS_RUN_ID})" ;;
     *)
       warn "[ancestry] could not read ${tag} back to confirm its provenance stamp — proceeding (inspect unavailable, not a missing stamp)"
       return 0
       ;;
   esac
+
+  if [ "${ANCESTRY_STAMP_ENFORCE:-1}" = "0" ]; then
+    warn "[ancestry] ${tag} ${why} (ANCESTRY_STAMP_ENFORCE=0, continuing)"
+    return 0
+  fi
+  warn "[ancestry] ${tag} ${why}"
+  warn "[ancestry]   the provenance mechanism is silently inert again — refusing to hand on an unverifiable image"
+  warn "[ancestry]   (set ANCESTRY_STAMP_ENFORCE=0 to override)"
+  return 1
 }
 
 runtime_build_wrapper_image() {
@@ -483,7 +499,10 @@ runtime_build_wrapper_image() {
   local tag parent_image
   local -a build_args=()
 
-  _runtime_build_wrapper "${arch}" tag parent_image build_args
+  # B1: `|| return 1` is load-bearing — same disabled-errexit extent as
+  # runtime_build_chain. Without it a failed wrapper build fell through to the
+  # push, which then failed with `not found` and named the wrong culprit.
+  _runtime_build_wrapper "${arch}" tag parent_image build_args || return 1
 
   if is_dry_run; then
     log "[DRY RUN] would push wrapper image ${tag}"
@@ -491,7 +510,7 @@ runtime_build_wrapper_image() {
   fi
 
   if runtime_pushes_wrapper_images; then
-    runtime_push_tag "${tag}"
+    runtime_push_tag "${tag}" || return 1
   fi
 }
 
@@ -501,7 +520,9 @@ runtime_build_wrapper_rootfs() {
   local tag parent_image artifact_dir
   local -a build_args=()
 
-  _runtime_build_wrapper "${arch}" tag parent_image build_args
+  # B1: see runtime_build_wrapper_image — a failed build must not reach the
+  # export/push below, which would ship a STALE tag from an earlier run.
+  _runtime_build_wrapper "${arch}" tag parent_image build_args || return 1
 
   if is_dry_run; then
     log "[DRY RUN] would export rootfs from ${tag} to ${rootfs_dir} and push"
@@ -509,10 +530,10 @@ runtime_build_wrapper_rootfs() {
   fi
 
   artifact_dir="$(dirname "${rootfs_dir}")"
-  export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}"
+  export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
 
   if runtime_pushes_wrapper_images; then
-    runtime_push_tag "${tag}"
+    runtime_push_tag "${tag}" || return 1
   fi
 }
 
@@ -548,6 +569,33 @@ SOURCE_IMAGE=$(runtime_wrapper_tag "${arch}")
 PACKAGE_IMAGE=$(runtime_package_tag "${arch}")
 BASE_IMAGE=$(runtime_base_tag "${arch}")
 ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
+EOF
+}
+
+# The option block both runtime orchestrators document identically. It exists
+# for the same reason as runtime_shared_usage_env_overrides directly below:
+# these flags are handled by THIS library, so this is where they belong. Keeping
+# a copy in each script made the two the largest duplicate pair in the tree
+# (199 shared shingles). docs/refactoring-backlog.md F5
+runtime_shared_usage_options() {
+  cat <<'EOF'
+  --image-prefix TAG            Prefix for built wrapper image tags
+  --dry-run                    Print build commands without executing them
+  --parallel-archs              Build per-architecture images in parallel
+  --max-parallel-archs N        Max concurrent arch builds (default: 4)
+  --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
+  --architectures LIST          Alias for --target-arches
+  --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
+  --artifact-build-mode MODE    Artifact source mode: cross or native (default: cross)
+  --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
+  --package-dockerfile PATH     Package Dockerfile (default: linux/Dockerfile.package)
+  --torch-dockerfile PATH       Alias for --wrapper-dockerfile (deprecated)
+  --wrapper-dockerfile PATH     Final wrapper Dockerfile (default: linux/Dockerfile.torch)
+  --torch-app-mode MODE         TORCH_APP_MODE for linux/Dockerfile.torch
+  --fast-ubuntu-mirror          Replace Ubuntu archive/security/ports mirrors during Docker builds
+  --fast-ubuntu-mirror-url URL  Archive mirror URL to use with --fast-ubuntu-mirror
+  --fast-ubuntu-ports-mirror-url URL
+                                 Optional mirror URL for ubuntu-ports entries
 EOF
 }
 

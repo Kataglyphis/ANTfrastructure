@@ -572,6 +572,10 @@ _export_cargo_vars() {
   export "CC_${_cross_rust_env_lc}=${CC}"
   [ -n "${CXX:-}" ] && export "CXX_${_cross_rust_env_lc}=${CXX}"
   [ -n "${AR:-}" ] && export "AR_${_cross_rust_env_lc}=${AR}"
+  # Rust has no gcv triple; RVV is a target-feature. docs/riscv64-rva23-baseline.md
+  if [ "${_ecv[target_arch]}" = "riscv64" ]; then
+    export RUSTFLAGS="${RUSTFLAGS:+${RUSTFLAGS} }-C target-feature=+v,+zvl128b"
+  fi
 }
 
 # Export the full cross-compilation environment by dispatching to the per-group
@@ -601,27 +605,8 @@ setup_linux_cross_env() {
   _cross_env_export_all _env
 }
 
-# cross_compile_cmake_lib_from_source NAME URL[|MIRROR...] INSTALL_PREFIX SENTINEL [EXTRA_CMAKE_ARG...]
-#
-# URL may list '|'-separated fallback mirrors, tried in order until one lands
-# (guards against a single-host outage silently disabling the lib). Each mirror is
-# either a plain https tarball or a `git+<repo>#<ref>` spec (shallow git clone —
-# reliable where the buildkit RUN can git-clone github.com but curl fails).
-#
-# Fetch a source tarball and cross-cmake build+install a small library into the
-# target sysroot. For libraries whose Ubuntu Ports dev package is missing/broken,
-# or whose OpenCV-vendored copy can't cross-build (freetype, libpng). No-op if
-# SENTINEL already exists (e.g. an apt package already provided the lib).
-#
-# Behaviour-preserving extraction of the freetype/libpng blocks that were copy
-# -pasted in 03-media/build/opencv/install-deps.sh: same cross toolchain
-# (${triplet}-gcc/g++), same find-root scaffold. Per-library flags (FT_DISABLE_*,
-# PNG_STATIC/PNG_HARDWARE_OPTIMIZATIONS, ZLIB_*, and any MODE_LIBRARY/INCLUDE
-# override) are passed as trailing EXTRA_CMAKE_ARGs. Fetch goes through
-# download_and_extract for curl --retry + temp-file hygiene (a hand-rolled
-# `curl | tar` had neither). Never hard-fails: a download/build failure logs a
-# WARN and returns 0 so the caller can degrade (e.g. OpenCV falls back to
-# WITH_<lib>=OFF) instead of aborting the whole media stage.
+# Why the cross env is scrubbed for host sub-builds:
+# docs/cross-build-verification.md
 cross_compile_cmake_lib_from_source() {
   local name="$1" url="$2" prefix="$3" sentinel="$4"
   shift 4

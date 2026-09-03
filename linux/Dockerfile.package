@@ -76,6 +76,18 @@ COPY --link --from=artifact-source ${OPENCV_OUTPUT_DIR} ${OPENCV_OUTPUT_DIR}
 COPY --link --from=artifact-source /opt/ffmpeg /opt/ffmpeg
 COPY --link --from=artifact-source ${GSTREAMER_PREFIX} ${GSTREAMER_PREFIX}
 COPY --link --from=artifact-source /opt/libcamera /opt/libcamera
+# ArmNN + ACL (arm64 only; the media stage creates EMPTY dirs on the other
+# arches, so this COPY is safe everywhere). Owner decision 2026-09-01: ship them
+# — before that they were cross-compiled and verified every arm64 chain and then
+# dropped at this boundary, reaching no image. docs/refactoring-backlog.md F7
+COPY --link --from=artifact-source /opt/armnn /opt/armnn
+COPY --link --from=artifact-source /opt/acl /opt/acl
+# Flutter (amd64/arm64; the sdk stage mkdir's an EMPTY /opt/flutter on riscv64, so
+# this COPY is safe everywhere). SAME drop-at-the-boundary bug as ArmNN above: it
+# was installed and hard-checked in Dockerfile.sdk and then never shipped. The
+# copy-completeness gate now guards the whole set. docs/qnn-linux.md is unrelated;
+# see docs/artifact-copy-completeness.md.
+COPY --link --from=artifact-source /opt/flutter /opt/flutter
 # AP3 LANDED 2026-08-18 (correct home this time): /opt/wheels is NOT baked
 # here anymore — Dockerfile.torch now carries its own wheels-source stage
 # (the android image, digest-pinned via WHEELS_IMAGE) and bind-mounts
@@ -157,6 +169,32 @@ ENV NVIDIA_DRIVER_CAPABILITIES=all \
     NVIDIA_VISIBLE_DEVICES=all
 ARG VULKAN_VERSION=1.4.357.0
 ENV VULKAN_VERSION=${VULKAN_VERSION}
+# Advertise what the image CONTAINS, so a consumer can read its versions without
+# this repo's versions.env — and so the smoke's advertised-vs-actual gate has
+# something to compare against. ARG does not reach the image config; ENV does.
+# Measured 2026-09-01: 11 of 16 keys were SKIPping for exactly this reason.
+ARG UBUNTU_VERSION=26.04
+ARG CMAKE_VERSION=4.4.3
+ARG NODE_VERSION=26.8.1
+ARG UV_VERSION=0.12.6
+ARG OPENCV_VERSION=5.0.0
+ARG ONNXRUNTIME_VERSION=v1.29.0
+ARG ONNXRUNTIME_GENAI_VERSION=v0.15.2
+ARG PYAV_VERSION=18.1.0
+ARG IREE_VERSION=v3.11.0
+ARG LITERT_VERSION=v2.2.0
+ARG RUST_VERSION=1.98.0
+ENV UBUNTU_VERSION=${UBUNTU_VERSION} \
+    CMAKE_VERSION=${CMAKE_VERSION} \
+    NODE_VERSION=${NODE_VERSION} \
+    UV_VERSION=${UV_VERSION} \
+    OPENCV_VERSION=${OPENCV_VERSION} \
+    ONNXRUNTIME_VERSION=${ONNXRUNTIME_VERSION} \
+    ONNXRUNTIME_GENAI_VERSION=${ONNXRUNTIME_GENAI_VERSION} \
+    PYAV_VERSION=${PYAV_VERSION} \
+    IREE_VERSION=${IREE_VERSION} \
+    LITERT_VERSION=${LITERT_VERSION} \
+    RUST_VERSION=${RUST_VERSION}
 ENV BUILD_MODE=${BUILD_MODE} \
     TARGET_ARCH=${TARGET_ARCH:-${TARGETARCH}} \
     TARGETARCH=${TARGET_ARCH:-${TARGETARCH}} \
@@ -166,7 +204,8 @@ ENV BUILD_MODE=${BUILD_MODE} \
     GCC_VERSION=${GCC_VERSION} \
     LLVM_RELEASE=${LLVM_RELEASE} \
     GCC_PREFIX=/opt/gcc-${GCC_VERSION} \
-    PYTHON_VERSION=${PYTHON_VERSION} \
+    # PYTHON_VERSION deliberately NOT advertised here: nothing stages
+    # /opt/python-cross into this image, so it ships the DISTRO python3.14.
     PYTHON_MAJOR_MINOR=${PYTHON_MAJOR_MINOR} \
     PYTHON_CROSS_STAGE_ROOT=/opt/python-cross \
     PYTHON_CROSS_ACTIVE_ROOT=/opt/python-target \
@@ -196,7 +235,7 @@ ENV BUILD_MODE=${BUILD_MODE} \
     # RP6: /root/.local/bin dropped — final image is uid-1001 (kataglyphis),
     # /root is 0700 so the entry was dead + a PATH-hijack precondition. Kept in
     # Dockerfile.base (root-run base builds legitimately install there).
-    PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    PATH="/opt/vulkan/active/bin:${GSTREAMER_PREFIX}/bin:${OPENCV_OUTPUT_DIR}/bin:${LIBCAMERA_PREFIX}/bin:${FFMPEG_PREFIX}/bin:/opt/flutter/bin:/usr/local/bin:/opt/python/.venv/bin:/opt/gcc-${GCC_VERSION}/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:${GSTREAMER_PREFIX}/lib/multiarch/pkgconfig:${OPENCV_OUTPUT_DIR}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib/pkgconfig:${LIBCAMERA_PREFIX}/lib64/pkgconfig:${FFMPEG_PREFIX}/lib/pkgconfig" \
     LD_LIBRARY_PATH="/opt/vulkan/active/lib:/usr/local/lib:${GSTREAMER_PREFIX}/lib/multiarch:${GSTREAMER_PREFIX}/lib:${OPENCV_OUTPUT_DIR}/lib:${OPENCV_OUTPUT_DIR}/lib64:${LIBCAMERA_PREFIX}/lib:${LIBCAMERA_PREFIX}/lib64:${FFMPEG_PREFIX}/lib:${FFMPEG_PREFIX}/lib64:/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \
     LIBRARY_PATH="/opt/gcc-${GCC_VERSION}/lib64:/opt/gcc-${GCC_VERSION}/lib" \

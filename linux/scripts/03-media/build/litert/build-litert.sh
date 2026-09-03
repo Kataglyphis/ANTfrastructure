@@ -143,6 +143,11 @@ append_litert_cache_linker_args() {
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/android/litert-eigen-fetch.sh"
 
+# Same directory, same reason (Dockerfile.android COPYs only android/).
+# shellcheck source=android/litert-qairt-guard.sh
+# shellcheck disable=SC1091
+source "${SCRIPT_DIR}/android/litert-qairt-guard.sh"
+
 litert_cross_wheel_platform_tag() {
     if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
         cross_wheel_platform_tag
@@ -159,39 +164,28 @@ litert_cross_wheel_platform_tag() {
     return 1
 }
 
-# Upstream's litert/vendors/CMakeLists.txt file(DOWNLOAD)s the QAIRT SDK whenever
-# QAIRT_HEADERS_DIR is empty -- ~1.5 GB from softwarecenter.qualcomm.com, with no
-# EXPECTED_HASH and no STATUS check, and NOT gated on LITERT_ENABLE_QUALCOMM, so it
-# fires even on builds that want no NPU at all. We cannot dodge it by pointing
-# QAIRT_HEADERS_DIR at a stub: any non-empty value force-enables Qualcomm (:331-334)
-# with headers we do not have. So short-circuit the guard itself.
-# Idempotent; the marker comment is the guard. Fails loudly if the anchor moves.
-_litert_disable_qairt_header_download() {
-    local vendors="${LITERT_SRC}/litert/vendors/CMakeLists.txt"
-    [ -f "${vendors}" ] || { warn "QAIRT download patch: ${vendors} not found -- upstream layout moved"; return 0; }
-    if grep -q 'KATAGLYPHIS-NO-QAIRT-DOWNLOAD' "${vendors}"; then return 0; fi
-    python3 - "${vendors}" <<'PY'
-import re, sys
-p = sys.argv[1]
-s = open(p, encoding='utf-8').read()
-needle = 'if(NOT QAIRT_HEADERS_DIR)'
-if needle not in s:
-    sys.exit("QAIRT download patch: anchor 'if(NOT QAIRT_HEADERS_DIR)' not found -- upstream changed")
-s = s.replace(needle,
-    '# KATAGLYPHIS-NO-QAIRT-DOWNLOAD: no staged SDK, so skip upstream\'s unhashed\n'
-    '# ~1.5 GB file(DOWNLOAD) of QAIRT from softwarecenter.qualcomm.com. Qualcomm\n'
-    '# dispatch stays OFF because QAIRT_HEADERS_DIR is never set.\n'
-    'if(FALSE)', 1)
-open(p, 'w', encoding='utf-8', newline='').write(s)
-PY
-    info "LiteRT: no QAIRT SDK staged -- upstream's unhashed QAIRT download disabled (Qualcomm dispatch OFF)"
+# Echoes the dir that directly HOLDS Qnn*.h. Upstream only probes <dir> vs
+# <dir>/QNN on its download path, never on a pre-set value.
+# docs/qnn-linux.md#qairt_headers_dir
+_litert_qairt_include_dir() {
+    local inc="${LITERT_QNN_HOME}/include/QNN"
+    [ -f "${inc}/QnnLog.h" ] || err "LiteRT: ${inc}/QnnLog.h missing -- QAIRT layout moved; QAIRT_HEADERS_DIR must name the dir holding Qnn*.h"
+    printf '%s\n' "${inc}"
 }
+
 
 # GCC 16.1.0 ICEs on LiteRT's Samsung vendor code. The ICE is triggered by the
 # cross-compiler toolchain used in cross builds; on native amd64 we keep the
 # sources and use clang instead (see append_litert_preferred_cmake_compiler_args).
 # Replace the vendor sources with a stub CMakeLists so the build proceeds. Track
 # the upstream GCC bug and revisit once 16.x is fixed or pinned to an older minor.
+# True only when the Samsung SDK header the vendor sources include is actually
+# findable; upstream vendors the .cc/.h but not the SDK it pulls in.
+_litert_samsung_sdk_present() {
+    find "${LITERT_SRC}" /usr/include /usr/local/include \
+        -name graph_wrapper_api.h -print -quit 2>/dev/null | grep -q .
+}
+
 _litert_disable_samsung_vendor() {
     local arch="${TARGET_ARCH:-${TARGETARCH:-amd64}}"
     info "Removing Samsung vendor sources to avoid GCC 16.1.0 ICE in cross builds (arch=${arch})"
@@ -285,10 +279,10 @@ configure_litert() {
     cmake_args+=("-DNEUROPILOT_HEADERS_DIR=${litert_vendor_header_stub}"
                  "-DLITECORE_HEADERS_DIR=${litert_vendor_header_stub}")
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
-        # QnnCommon.h sits under include/QNN in a QAIRT tree; upstream probes both
-        # "<dir>" and "<dir>/QNN", so hand it the include root.
-        info "LiteRT: Qualcomm dispatch ON (QAIRT headers from ${LITERT_QNN_HOME}/include)"
-        cmake_args+=("-DQAIRT_HEADERS_DIR=${LITERT_QNN_HOME}/include" "-DLITERT_ENABLE_NPU=ON")
+        local qairt_inc
+        qairt_inc="$(_litert_qairt_include_dir)"
+        info "LiteRT: Qualcomm dispatch ON (QAIRT headers from ${qairt_inc})"
+        cmake_args+=("-DQAIRT_HEADERS_DIR=${qairt_inc}" "-DLITERT_ENABLE_NPU=ON")
     else
         # NO staged SDK: QAIRT_HEADERS_DIR must stay UNSET (any value force-enables
         # Qualcomm with headers we do not have), so upstream would file(DOWNLOAD) QAIRT
@@ -303,11 +297,11 @@ configure_litert() {
         append_cmake_cross_args cmake_args
     fi
 
-    # Only cross builds hit the GCC 16.1.0 ICE; native amd64 keeps the Samsung
-    # vendor sources and builds them with clang (see comment above
-    # _litert_disable_samsung_vendor). Gating on `command -v cross_target_arch`
-    # was always true after media_common_init, stubbing native builds too.
-    if cross_build_is_active; then
+    # Cross builds hit the GCC 16.1.0 ICE; native builds additionally need the
+    # Samsung SDK header, which upstream does not vendor. Gate on BOTH: a native
+    # amd64 build passed only while a warm cache still held graph_wrapper_api.h,
+    # then failed from scratch. docs/failure-modes.md
+    if cross_build_is_active || ! _litert_samsung_sdk_present; then
         _litert_disable_samsung_vendor
     fi
 
@@ -510,7 +504,7 @@ _litert_wheel_prepare_env() {
     if [ -n "${LITERT_QNN_HOME:-}" ]; then
         # Qualcomm dispatch (see the configure path above for why these are the
         # real names): last-wins on the duplicate -D supersedes the NPU=OFF default.
-        extra_cmake_flags+=" -DQAIRT_HEADERS_DIR=${LITERT_QNN_HOME}/include -DLITERT_ENABLE_NPU=ON"
+        extra_cmake_flags+=" -DQAIRT_HEADERS_DIR=$(_litert_qairt_include_dir) -DLITERT_ENABLE_NPU=ON"
     fi
     # EIGEN-NET: same mirrored eigen fetch as the configure paths above. The
     # patched upstream build_pip_package_with_cmake.sh word-splits this string
@@ -527,6 +521,8 @@ _litert_wheel_prepare_env() {
         "${pip_pkg_dir}" \
         "LiteRT build_pip_package_with_cmake.sh env var overrides"
     _fixed="${pip_pkg_dir}/build_pip_package_with_cmake.sh"
+  # Explicit: the trailing assignment would otherwise BE the exit status.
+  return 0
 }
 
 _litert_wheel_native_args() {

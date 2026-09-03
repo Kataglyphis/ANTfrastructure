@@ -65,10 +65,12 @@ The two halves of one topic often split:
 | CPU/memory envelope, the sccache wiring, GPU in containers, the 125-layer budget | [`windows-build-resources.md`](windows-build-resources.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
+| **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
 | **Building for Windows-on-ARM**: why there is no arm64 image, the clang-cl cross lane, arch gates, what reached runtime parity with amd64 and what stays amd64-only | [`windows-cross-builds.md`](windows-cross-builds.md) |
 | Bind mount vs tar-pipe, **Dev Drive filter setup**, container reuse, measured timings | [`windows-container-build-performance.md`](windows-container-build-performance.md) |
 | **The image does not fit on C:** — moving Docker's data-root to the big drive | [`windows-container-build-performance.md`](windows-container-build-performance.md#the-image-does-not-fit-on-c-and-that-is-the-default) |
 | Setting up a brand-new Windows host | [`windows-host-setup.md`](windows-host-setup.md) |
+| **`git@github.com` auth on Windows** — two OpenSSH agents, why `ssh-add` reaches the wrong one, and the two different causes behind one `Permission denied (publickey)` | [`windows-host-setup.md`](windows-host-setup.md#b0-ssh-agent--one-passphrase-then-never-again) |
 | The agentic loop's PowerShell module and its API | [`windows-agentic-loop.md`](windows-agentic-loop.md) |
 | **ghcr.io login failing on Windows** (`--password-stdin`, `credsStore`), `--network=host`, `host.docker.internal` | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md#docker-on-windows-registry-auth-networking-service-recovery) |
 | Defender performance mode, `ExecutionPolicy`, PATH reload, VS/winget updates, `bcdedit` one-time boot | [`windows-host-setup.md`](windows-host-setup.md#appendix--host-odds-and-ends) |
@@ -81,10 +83,18 @@ The two halves of one topic often split:
 |---|---|
 | Building in the Linux image, presets, the basics | [`linux-build-basics.md`](linux-build-basics.md) |
 | Running Linux containers on a Windows host | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md) |
+| **A bind mount that resolves but is empty** — containerd's own mount namespace, Windows vs WSL path form, and why the obvious `/mnt` probe misleads | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#an-empty-mount-is-not-a-missing-drive) |
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
+| **Artifact-copy completeness** — why a built component can vanish between the build stage and `:latest-cross` (Flutter, ArmNN), and the gate + manifest + smoke that prevent it | [`artifact-copy-completeness.md`](artifact-copy-completeness.md) |
 | Failure classes seen in cross builds | [`cross-build-verification.md`](cross-build-verification.md) |
-| **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and what is still UNVALIDATED | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
+| **onnxruntime-genai on riscv64** (GEN1) — the self-built lane, its upstream patch, the `GENAI_ALLOW_RISCV64` escape hatch, the four-tier smoke, and the 2026-09-03 measurement that closed it | [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
+| **QNN / QAIRT on Linux** — the arm64-only opt-in lane: staging the login-gated SDK, the `QAIRT_HEADERS_DIR` trap that must name the dir *holding* `Qnn*.h`, upstream's unhashed 1.5 GB download, and which framework switches are real | [`qnn-linux.md`](qnn-linux.md) |
+| **riscv64 venv parity** — the `/opt/venv` package set measured on the shipped images, and what riscv64 carries that the other arches do not | [`riscv64-venv-parity.md`](riscv64-venv-parity.md) |
+| **Prepared upstream submissions** — the artefacts too big to inline in the register, and the verification behind them | [`upstream/README.md`](upstream/README.md) |
+| **Which local patches to send upstream** — every third-party source change the *Linux* chain carries, graded by how much work stands between it and a merge request. The Windows half is [`upstream-windows-patches.md`](upstream-windows-patches.md) | [`upstreamable-patches.md`](upstreamable-patches.md) |
+| **riscv64 builds at RVA23 (with vector)** — why enabling RVV costs no compatibility, why `rva23u64_zifencei` and not `rv64gcv`, and the four consumers that need more than `-march` | [`riscv64-rva23-baseline.md`](riscv64-rva23-baseline.md) |
+| **IREE's two-stage cross build** — why the host stage runs COMPILER=ON in the default (runtime-only target) configuration, the three tools it must install, and the WERROR / OUTPUT_FORMAT_C flags stage 2 requires | [`iree-two-stage-build.md`](iree-two-stage-build.md) |
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
@@ -104,7 +114,7 @@ The two halves of one topic often split:
 | **What is cached where**, and which tier a miss came from | [`build-cache-tiers.md`](build-cache-tiers.md) |
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
 | Python CI: the shared lanes, and the two `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv) | [`python-ci.md`](python-ci.md) |
-| clang-format / clang-tidy / cmake-format, and the shared configs | [`code-quality-tooling.md`](code-quality-tooling.md) |
+| Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
 | The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |
@@ -141,8 +151,8 @@ The two halves of one topic often split:
 Everything here is *record*, not instruction. If you find a live rule that
 exists only in one of these, promote it to its owning page above.
 
-| Looking for | Read |
-|---|---|
+| Looking for | Read | What's in it |
+|---|---|---|
 | Open refactor work, Linux side | [`refactoring-backlog.md`](refactoring-backlog.md) |
 | Open refactor work, Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | What changed and why, current wave | [`../CHANGELOG.md`](../CHANGELOG.md) |
@@ -153,7 +163,9 @@ exists only in one of these, promote it to its owning page above.
 | Closed Linux refactor items (2026-08-27) | [`refactoring-backlog-archive-2026-08-27.md`](refactoring-backlog-archive-2026-08-27.md) | Everything the backlog closed up to 2026-08-27, including the entries that were REFUTED or RETRACTED rather than fixed. |
 | Closed Linux refactor items (2026-08-30) | [`refactoring-backlog-archive-2026-08-30.md`](refactoring-backlog-archive-2026-08-30.md) | The OpenCV-sccache REFUTATION (pre-UDS wrong-server bug, not OpenCV-specific) and the F2 one-resolver cache consolidation. |
 | Closed Linux refactor items (2026-08-31) | [`refactoring-backlog-archive-2026-08-31.md`](refactoring-backlog-archive-2026-08-31.md) | The A1 closure window: the logging.sh ERR-trap bug, the complexity queue, the modules.sh dir-walker REFUTATION, the IREE toothless-gate finding, and GEN1 (riscv64 GenAI built + wired ON). |
-| Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), `../windows/upstream/` |
+| Closed Linux refactor items (2026-09-02) | [`refactoring-backlog-archive-2026-09-02.md`](refactoring-backlog-archive-2026-09-02.md) | The RVA23 rebuild window: libyuv's RVV rows, the cache-key blast radius, the duplication baseline review, and the riscv64 venv gate's dangling ORT edges. |
+| Closed Linux refactor items (2026-09-03) | [`refactoring-backlog-archive-2026-09-03.md`](refactoring-backlog-archive-2026-09-03.md) | A1 (riscv64 GenAI token sanity) and A2 (QNN fan-out) closed by real builds; the WA–WJ and XK–XR rounds |
+| Upstream submissions and issue drafts | [`upstream/hcsshim-lost-shutdown-notification-issue.md`](upstream/hcsshim-lost-shutdown-notification-issue.md), [`upstream/windows-containers-lsm-session-event-hang.md`](upstream/windows-containers-lsm-session-event-hang.md), [`../windows/upstream/README.md`](../windows/upstream/README.md) |
 | The libstdc++ `-nostdinc++` note | [`upstream-libstdcxx-c++23-nostdinc++.md`](upstream-libstdcxx-c++23-nostdinc++.md) |
 
 ## If you are about to write a procedure in a consumer repo

@@ -56,6 +56,10 @@ help: ## List available targets
 	@echo ""
 	@echo "Variables: ARCHES=$(ARCHES)  STAGE=$(STAGE)  LOG_DIR=$(LOG_DIR)"
 
+hooks: ## Install the versioned git hooks (pre-commit fast gate)
+	git config core.hooksPath linux/host-config/git-hooks
+	@echo "core.hooksPath -> linux/host-config/git-hooks (pre-commit runs the ~10s gate)"
+
 preflight: ## Fast no-build gate (shellcheck + verify-* suite)
 	bash $(SCRIPTS)/preflight.sh
 

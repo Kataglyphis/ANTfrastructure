@@ -1,0 +1,29 @@
+From 223f37f6405a89fd005fb8d8be38438b7459437f Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:41 +0200
+Subject: [PATCH] 3rdparty/mlas: skip the MSVC neon_* aliases under clang
+
+clang-cl defines _M_ARM64, but its arm_neon.h provides vmaxvq_f32 and
+vminvq_f32 as real functions rather than macros, so the #ifndef guards do not
+prevent the remap and the build fails on an undeclared 'neon_fmaxv'.
+
+Assisted-by: Claude (Anthropic)
+---
+ 3rdparty/mlas/lib/mlasi.h | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/3rdparty/mlas/lib/mlasi.h b/3rdparty/mlas/lib/mlasi.h
+index f051aec..aa89c33 100644
+--- a/3rdparty/mlas/lib/mlasi.h
++++ b/3rdparty/mlas/lib/mlasi.h
+@@ -1816,7 +1816,9 @@ MlasConvDepthwiseMultiplier2CHWKernel7x7S2Avx512F(
+ // Also define additional standard NEON intrinsics using the MSVC aliases.
+ //
+ 
+-#if defined(_M_ARM64)
++// clang-cl defines _M_ARM64 but provides these as real intrinsics, not as the
++// MSVC neon_* aliases.
++#if defined(_M_ARM64) && !defined(__clang__)
+ #ifndef vmaxvq_f32
+ #define vmaxvq_f32(src) neon_fmaxv(src)
+ #endif

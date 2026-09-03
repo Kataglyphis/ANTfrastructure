@@ -152,8 +152,9 @@ symlink/validation steps with nothing to cache).
 cache-hit each other, do not touch anything in the base/toolchain closures
 (01-core, 02-toolchain, versions.env, the bundled smoke scripts, the
 Dockerfiles) — identical context bytes are what turn the next run into a pure
-re-export. (`--no-push` full-chain runs are broken on OCI-worker hosts; see
-`docs/linux-cross-builds.md` for the correct push-mode flow.)
+re-export. (`--no-push` full chains from `base` are supported since 2026-08-30 via the
+local OCI-layout handoff; only runs RESUMED mid-chain are refused — see
+`docs/linux-cross-builds.md`.)
 
 ## Build
 

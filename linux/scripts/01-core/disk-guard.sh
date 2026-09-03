@@ -7,6 +7,8 @@
 #   _disk_guard_free_gb <path>                        — free GB on path's own fs
 #   _disk_guard_pick_victim <bc_dir> <protected_csv>  — oldest prunable slug
 #   _disk_guard_protected_slugs <completed_stage>     — slugs of remaining stages
+#   _disk_guard_watch_once / _disk_guard_watch_loop   — in-stage sampling (B2)
+#   _disk_guard_runtime_lane_need_gb                  — runtime-lane free-GB need
 #
 # _disk_guard_protected_slugs expects the caller's environment to provide the
 # stage graph (CROSS_STAGE_ORDER, stage_enabled, cross_stage_is_per_arch,
@@ -161,4 +163,76 @@ _disk_guard_trim_cache_export() {
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   _disk_guard_log "[disk-trim] removed ${_DISK_GUARD_TRIM_REMOVED} slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES}") GiB; ${free_gb:-?}G free now"
   return 0
+}
+
+# ── B2/B3: in-stage sampling + a greppable record of every chain reclaim ──
+# Why a watchdog, and where the numbers come from: docs/build-cache-tiers.md § 3.2.
+
+# warn() when the caller has logging.sh, plain stderr otherwise (unit tests).
+_disk_guard_warn() {
+  if declare -F warn >/dev/null 2>&1; then warn "$@"; else printf '[WARN] %s\n' "$*" >&2; fi
+}
+
+# One greppable line per reclaim the chain performs — including the reclaim that
+# freed nothing, which is the case an operator most needs to see.
+# _disk_guard_reclaim_record <where> <free_gb_before> <bc_dir>
+_disk_guard_reclaim_record() {
+  local where="${1:-?}" before_gb="${2:-?}" bc_dir="${3:-}" after_gb
+  after_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  if [ "${_DISK_GUARD_TRIM_REMOVED:-0}" -gt 0 ] 2>/dev/null; then
+    _disk_guard_log "[disk-reclaim] ${where}: removed ${_DISK_GUARD_TRIM_REMOVED} cache-export slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES:-0}") GiB; ${before_gb}G -> ${after_gb:-?}G free"
+  else
+    _disk_guard_warn "[disk-reclaim] ${where}: NOTHING was reclaimable (${before_gb}G -> ${after_gb:-?}G free) — the chain cannot free more space by itself; free some or the build will ENOSPC"
+  fi
+}
+
+# One sample of the cache dir's filesystem, plus a reclaim when it is below
+# <threshold_gb>. Always returns 0 — a sampler must never abort a build.
+# _disk_guard_watch_once <bc_dir> <threshold_gb> [protected_csv] [keep_n]
+_disk_guard_watch_once() {
+  local bc_dir="${1:-}" threshold="${2:-}" protected="${3:-}" keep_n="${4:-3}"
+  case "${threshold}" in ''|*[!0-9]*) return 0 ;; esac
+  local free_gb
+  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
+  [ -n "${free_gb}" ] || return 0
+  _disk_guard_log "[disk-watch] ${free_gb}G free on ${bc_dir}"
+  [ "${free_gb}" -lt "${threshold}" ] || return 0
+  _disk_guard_warn "[disk-watch] ${free_gb}G free < ${threshold}G DURING a stage — reclaiming regenerable cache exports now"
+  _disk_guard_trim_cache_export "${bc_dir}" "${threshold}" "${protected}" "" "${keep_n}"
+  _disk_guard_reclaim_record "in-stage" "${free_gb}" "${bc_dir}"
+  return 0
+}
+
+# The sampling loop the orchestrator backgrounds for the runtime lane. Runs
+# until killed; _DISK_GUARD_WATCH_MAX_ITERS bounds it for the unit tests.
+# _disk_guard_watch_loop <bc_dir> <threshold_gb> <interval_s> [protected_csv] [keep_n]
+_disk_guard_watch_loop() {
+  local bc_dir="${1:-}" threshold="${2:-}" interval="${3:-120}"
+  local protected="${4:-}" keep_n="${5:-3}"
+  # Die with the owner. Without this the backgrounded watchdog outlives a parent
+  # that was killed without running its traps, and keeps trimming forever.
+  local owner="${6:-$PPID}"
+  case "${interval}" in ''|*[!0-9]*) interval=120 ;; esac
+  [ "${interval}" -ge 1 ] || interval=1
+  local max="${_DISK_GUARD_WATCH_MAX_ITERS:-0}" i=0
+  case "${max}" in ''|*[!0-9]*) max=0 ;; esac
+  while :; do
+    sleep "${interval}" || return 0
+    kill -0 "${owner}" 2>/dev/null || return 0
+    _disk_guard_watch_once "${bc_dir}" "${threshold}" "${protected}" "${keep_n}" || true
+    i=$(( i + 1 ))
+    if [ "${max}" -gt 0 ] && [ "${i}" -ge "${max}" ]; then return 0; fi
+  done
+}
+
+# Free GB the runtime lane needs: ~120 GB per wrapper build, and arches are
+# sequential unless --parallel-archs — so scale by CONCURRENCY, not arch count.
+# _disk_guard_runtime_lane_need_gb <per_arch_gb> <n_arch> <parallel 0|1>
+_disk_guard_runtime_lane_need_gb() {
+  local per_arch="${1:-120}" n_arch="${2:-1}" parallel="${3:-0}" conc=1
+  case "${per_arch}" in ''|*[!0-9]*) per_arch=120 ;; esac
+  case "${n_arch}" in ''|*[!0-9]*) n_arch=1 ;; esac
+  [ "${n_arch}" -ge 1 ] || n_arch=1
+  [ "${parallel}" = "1" ] && conc="${n_arch}"
+  printf '%s' $(( per_arch * conc ))
 }

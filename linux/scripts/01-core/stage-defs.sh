@@ -44,8 +44,8 @@ CROSS_PER_ARCH_STAGES=(sdk media android)
 #   package  → Layers cross-compiled artifacts from :cross-android-<arch>
 #   wrapper  → Torch app venv + runtime scripts (Dockerfile.torch)
 #
-# Consumed by build-runtime-manifest.sh and build-runtime-artifacts.sh via
-# runtime_build_chain() in runtime-build-fns.sh.
+# Declarative only: runtime_build_chain() (runtime-build-fns.sh) calls its
+# three steps directly. Kept as the documented stage graph AGENTS.md cites.
 # shellcheck disable=SC2034
 RUNTIME_STAGE_ORDER=(base package wrapper)
 
@@ -131,7 +131,9 @@ cross_stage_parent() {
 # ── Per-arch check ────────────────────────────────────────────────────────────
 # Returns true (0) if the stage fans out per target architecture.
 cross_stage_is_per_arch() {
-  local stage="$1"
+  # `s` must be local: the disk guard calls this from inside its own `for s`
+  # loop, and the leak corrupted its protected-slug list. docs/refactoring-backlog.md WI
+  local stage="$1" s
   for s in "${CROSS_PER_ARCH_STAGES[@]}"; do
     [ "${s}" = "${stage}" ] && return 0
   done

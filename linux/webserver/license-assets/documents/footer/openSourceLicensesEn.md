@@ -58,6 +58,8 @@ its own license terms.
 | FreeType | 2.14.3 | [freetype.org](https://freetype.org/) | GPLv2 / FTL |
 | nv-codec-headers | n13.1.15.0 | [git.videolan.org/git/ffmpeg/nv-codec-headers.git](https://git.videolan.org/git/ffmpeg/nv-codec-headers.git) | MIT |
 | GObject-Introspection | 1.86.0 | [gitlab.gnome.org/GNOME/gobject-introspection](https://gitlab.gnome.org/GNOME/gobject-introspection) | LGPLv2+ |
+| IREE | v3.11.0 | [iree.dev](https://iree.dev/) | Apache 2.0 with LLVM Exception |
+| PyAV | 18.1.0 | [github.com/PyAV-Org/PyAV](https://github.com/PyAV-Org/PyAV) | BSD 3-Clause |
 
 ### Android Layer (`Dockerfile.android`)
 

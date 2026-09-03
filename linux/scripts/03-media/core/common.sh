@@ -49,28 +49,8 @@ _media_find_core_dir() {
   return 1
 }
 
-# Data-driven per-arch skip flags --------------------------------------------
-#
-# The repeated boolean per-arch skip decisions in the media install/build
-# scripts (e.g. "skip target Csound packages on riscv64/arm64 cross") are
-# consolidated into declarative flag files next to this one:
-# arch-flags-{amd64,arm64,riscv64}.env — KEY=value lines only (MEDIA_SKIP_*;
-# 1 = skip, 0/unset = do not skip), with the per-flag justifications kept as
-# comments in those files.
-#
-# media_load_arch_flags resolves the effective target arch — cross_target_arch
-# when a cross build is active, otherwise the native amd64 defaults — and
-# sources the matching flag file if present. A missing file simply leaves
-# every MEDIA_SKIP_* flag unset (= do not skip), matching the old
-# is_cross_*-style helpers which only ever skipped on active cross builds.
-#
-# Consumers:
-#   - Scripts using media_common_init get the flags automatically (called at
-#     the end of media_common_init, after cross-env.sh is loaded).
-#   - install-deps-preamble based scripts source this file (container path
-#     /opt/scripts/03-media/core/common.sh first, repo layout second) and call
-#     media_load_arch_flags themselves; the preamble has already provided the
-#     cross_build_is_active / cross_target_arch helpers by then.
+# Why the media bootstrap resolves its module dir this way:
+# docs/cross-build-verification.md
 media_load_arch_flags() {
   local arch="amd64" candidate flags_file=""
 
@@ -126,6 +106,17 @@ media_common_init() {
   source_module build-helpers.sh     || true
   source_module guard-helpers.sh     || true
   source_module parallelism.sh       || true
+  # The `|| true` above tolerates a benign rc from a module's last statement, so
+  # assert the OUTCOME instead: a critical module that did not load leaves its
+  # functions undefined. docs/failure-modes.md
+  local _fn _missing=""
+  for _fn in log cross_build_is_active mem_capped_jobs; do
+    declare -F "${_fn}" >/dev/null 2>&1 || _missing="${_missing} ${_fn}"
+  done
+  if [ -n "${_missing}" ]; then
+    echo "ERROR: media_common_init: critical module(s) did not load -- missing:${_missing}" >&2
+    return 1
+  fi
 
   # Optional modules — may not be needed by every consumer.
   source_module cross-meson.sh       || true

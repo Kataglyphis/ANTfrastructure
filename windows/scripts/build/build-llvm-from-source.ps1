@@ -177,13 +177,14 @@ $cmakeArgs = @(
     # DIA needs ATL, absent from the container's VS Build Tools (C1083), and only
     # powers PDB symbolisation in the LLVM tools.
     '-DLLVM_ENABLE_DIA_SDK=OFF',
-    # compiler-rt builtins only: provides __udivti3, __umodti3 etc. for lld-link.
-    # The fuzzer, profile, sanitizer and ORC runtimes are unnecessary and some
-    # (profile/ROCm) fail to compile under clang-cl.
+    # compiler-rt: builtins for lld-link (__udivti3 …) AND the sanitizer
+    # runtimes — the smoke gate runs /fsanitize=address, and the one build with
+    # sanitizers OFF shipped a clang-cl that cannot (gate red 2026-09-01).
+    # Fuzzer/profile/ORC stay off; profile fails to compile under clang-cl.
     '-DCOMPILER_RT_BUILD_BUILTINS=ON',
     '-DCOMPILER_RT_BUILD_FUZZER=OFF',
     '-DCOMPILER_RT_BUILD_PROFILE=OFF',
-    '-DCOMPILER_RT_BUILD_SANITIZERS=OFF',
+    '-DCOMPILER_RT_BUILD_SANITIZERS=ON',
     '-DCOMPILER_RT_BUILD_ORC=OFF',
     '-DCOMPILER_RT_BUILD_MEMPROF=OFF',
     '-DCOMPILER_RT_BUILD_XRAY=OFF',

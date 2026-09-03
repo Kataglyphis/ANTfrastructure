@@ -1,0 +1,19 @@
+# Shell files currently over the size limit, frozen at their present length.
+#
+# Format: <path> | <lines> | <reason>
+#
+# Same four-way contract as function-size.allow: growth, a new offender, an
+# unrecorded shrink and a stale entry all fail. Shrinking a file means updating
+# its number here; deleting the line once it drops under the limit.
+#
+# The refactor entries live in docs/refactoring-backlog.md F2.
+docs/scripts/bump_versions.py | 1121 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+docs/scripts/sync_versions.py | 849 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+linux/Dockerfile.media | 1162 | baseline 2026-09-03: newly in scope (python/Dockerfile)
+linux/scripts/02-toolchain/build-gcc.sh | 880 | baseline 2026-09-03, not yet reviewed
+linux/scripts/03-media/build/litert/build-litert.sh | 953 | 2026-09-03: +_litert_qairt_include_dir, then -22 as the QAIRT guard moved to android/litert-qairt-guard.sh (YA)
+linux/scripts/03-media/build/opencv/build-opencv.sh | 934 | baseline 2026-09-03, not yet reviewed
+linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh | 1243 | baseline 2026-09-03, not yet reviewed
+linux/scripts/06-packaging/smoke-runtime-image.sh | 1528 | grew 2026-09-03: probe split + _boot_verdict + check_flutter (docs/artifact-copy-completeness.md)
+linux/scripts/build-cross-chain.sh | 881 | baseline 2026-09-03, not yet reviewed
+linux/scripts/lib/agentic-loop.sh | 874 | baseline 2026-09-03, not yet reviewed

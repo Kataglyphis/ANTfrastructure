@@ -549,7 +549,7 @@ against the freshly built `winamd64` image after `final`, and a failure fails
 the chain. **On `-TargetArch arm64` the gate RUNS since 2026-08-24** (the 2026-08-23 blanket
 "inapplicable" verdict was over-broad — roughly half the suite never touches the payload): the
 host-toolchain sections (1-6, 14-16, and 19 arch-filtered) execute against the arm64 image with
-their own floor column (`MIN_PASSED=66`/`MAX_SKIPPED=25`; measured green at 97/0/15), sections
+their own floor column (`MIN_PASSED=66`/`MAX_SKIPPED=20`; measured green at 97/0/15), sections
 14/15 compile **for the target** and assert the produced PE machine instead of running, and the
 payload sections are skipped as sections with floor 0 — a floor that must stay 0, never be
 "fixed" by a skip. The amd64 floors below are untouched, so no later amd64 change can quietly be
@@ -581,7 +581,8 @@ Three things about the gate are load-bearing:
   rebuilding the whole image — the friction that let this script go unrun for a
   month. It adds no layer, so the gate never alters the artifact it verifies.
 - **Coverage floors, not just "0 failures".** `-MinPassed` / `-MaxSkipped`
-  (driver: `-SmokeMinPassed` / `-SmokeMaxSkipped`, defaults 40 / 24) make
+  (driver: `-SmokeMinPassed` / `-SmokeMaxSkipped`, defaults 160 / 3; the GPU
+  lane raises the effective floor to 190 unless overridden) make
   "nothing ran" a distinct failure, **exit 3 = INSUFFICIENT COVERAGE**.
   These defaults describe the **amd64** lane and must not be re-tuned to
   accommodate arm64: that lane has its OWN floor column and driver defaults
@@ -606,7 +607,7 @@ To run it by hand against an existing image:
   pwsh -File C:\temp\scripts\smoke-test-container.ps1 -ExpectGpu
 ```
 
-The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-08-14, via the automatic gate): 184 passed / 0 failed / 1 skipped (185 total)** — the single skip is GPU device passthrough, blocked by the host/base OS-build skew. This supersedes the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
+The smoke test validates 22 categories including CUDA Toolkit 13.3, ONNX Runtime with CUDA, ONNX GenAI with CUDA, LiteRT with GPU delegate, LiteRT-LM with CUDA, OpenCV with CUDA, GStreamer with CUDA, TVM (source-built), IREE (source-built; native MLIR→vmfb compile + local-task execution, a CUDA-target compile-only assert on the GPU lane, and a python `iree.compiler`→`iree.runtime` end-to-end), FFmpeg (source-built with DNN/ONNX integration), compiler integration, environment-pointer integrity, and Python bindings. **Current baseline (2026-08-26, `bk-20260826-130136`, via the automatic gate): 222 passed / 0 failed / 0 skipped** — matching the figure this page records in the arm64 parity table. It supersedes 184/0/1 (2026-08-14; the one skip was GPU device passthrough) and the long-stale 2026-07-14 figure of 167/0/1, which predated the mandatory-plugin assertions, the `SCOOP_GLOBAL_SHIMS` checks, the bulk DLL-load enumeration (#57 — it alone load-tests 65 OpenCV DLLs where one was tested before) and the LiteRT export asserts (#67). Record the new figure here from each green run; a HIGHER count is growth, not a regression. Growth over the 153 baseline: the PyAV asserts (staged `av-*.whl` + an in-memory mpeg4 encode through the container-built FFmpeg) and the IREE suite (section 22 native compile+run incl. a CUDA-target compile-only assert, wheel-pin + `--version` asserts, section 20 staged-wheel + python end-to-end asserts, section 19 `IREE_ROOT`/`IREE_BIN` pointers).
 
 ### What is verified: native vs. Python
 

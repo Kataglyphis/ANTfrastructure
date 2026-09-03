@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # validate-compilers.sh
-# Unified compiler chain validation for the pinned GCC (versions.env GCC_VERSION) and Clang 22.1.8.
+# Unified compiler chain validation for the pinned GCC and Clang (versions.env
+# GCC_VERSION / LLVM_RELEASE).
 # Called from Dockerfile.package (artifact-source, package, and wrapper-smoke targets).
 #
 # Modes:
@@ -186,10 +187,10 @@ _artifact_source_check_llvm() {
     # Read version from binary's embedded DEB metadata (avoids runtime lib
     # resolution issue where apt's libclang-cpp shadows the source-built one).
     clang_ver="$(_vc_clang_embedded_version "${llvm_target}")"
-    if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:-22.1.8}"; then
+    if echo "${clang_ver}" | grep -q "${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"; then
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
-      clang_major_minor="${LLVM_RELEASE:-22.1.8}"
+      clang_major_minor="${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"
       clang_major_minor="${clang_major_minor%.*}"
       if [[ "${clang_ver}" == *"clang version ${clang_major_minor}"* ]]; then
         echo "OK: target clang ${llvm_target} reports ${clang_ver} (major.minor ${clang_major_minor} matches)"
@@ -202,7 +203,7 @@ _artifact_source_check_llvm() {
         if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
           echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
         else
-          validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:-22.1.8})${clang_elf:+ ELF: ${clang_elf}}"
+          validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)})${clang_elf:+ ELF: ${clang_elf}}"
         fi
       fi
     fi
@@ -621,7 +622,7 @@ _smoke_optimization_level() {
 
 validate_smoke() {
   local gcc_ver="${GCC_VERSION:-16.2.0}"
-  local llvm_ver="${LLVM_RELEASE:-22.1.8}"
+  local llvm_ver="${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)}"
   local target_arch
 
   target_arch="$(validate_resolve_arch)"

@@ -6,6 +6,439 @@
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
 
+## 2026-09-02 — Windows lane: 12 upstream submissions prepared, none sent
+
+The Windows chain carries local edits to a dozen third-party source trees. This
+wave sorts every one of them and turns those that are genuine upstream defects
+into ready-to-send patches. **Nothing has been posted.**
+
+**New — [`docs/upstream-windows-patches.md`](docs/upstream-windows-patches.md).**
+The Windows counterpart to `upstreamable-patches.md`, same A/B/C/✔ scale. Every
+local third-party change now sits in exactly one bucket: prepared (14), already
+filed (7), already fixed upstream (2), genuine but needing a maintainer decision
+first (10), or deliberately local and never to be filed (10).
+
+**New — 14 directories under `windows/upstream/`**: 12 ready to send, and 2 that
+the duplicate check caught before they went out (below). Each is a
+`git format-patch` plus a `PR.md` carrying the description to paste, what was
+and was not verified, and the submit recipe:
+
+| Upstream | Submissions |
+|---|---|
+| microsoft/onnxruntime | 4 — the `or` alternative token in `softmax.cc`; two MSVC-only constructs in the DML EP (`##` pasting onto nothing, `uint32_t` as a `std::array` bound); `AbstractOperatorDesc` instantiated against an incomplete `OperatorField`; `tunable.h` vs `wingdi.h`'s `ERROR` |
+| opencv/opencv | 4 — MLAS forcing `<cstring>` with GNU syntax under the CL driver; the `neon_fmaxv` remap firing under clang; `FindONNX` calling `ocv_add_library` on an IMPORTED target; the NEON dotprod/fp16 probes rejecting clang-cl |
+| opencv/opencv_contrib | 1 — cudev uses `ulong`, which Windows does not declare |
+| gstreamer/gstreamer | 3 — `have_sse`/`have_sse2` not gated on `cpu_family`; the Vulkan lib dir chosen from `build_machine`; mediafoundation missing the `msvc` guard GstWinRt already has |
+| iree-org/iree | 2 — `MATCHES 64` also matches `ARM64`; an i8mm tile defined `inline` but referenced across translation units |
+
+**Each one was re-checked against upstream HEAD, not against our pin.** That is
+the rule opencv#29788 taught — it reported a defect upstream had fixed 69 days
+earlier. Every submission is still present on the branch it targets and applies
+clean against the commit named in its `PR.md`, verified 2026-09-02 against
+`onnxruntime@cc3da295e336`, `opencv 5.x@ed61538c9077`,
+`opencv 4.x@2ce3cbc2606e`, `opencv_contrib 5.x@17af220dd982`,
+`gstreamer@23616d5ccb36` and `iree@9d485fc23e8d`.
+
+**Two were withdrawn before filing, and two were retargeted.** The
+duplicate-search step turned up
+[onnxruntime#29741](https://github.com/microsoft/onnxruntime/pull/29741)
+("Support building ONNX runtime with clang on Windows", open since 2026-07-16),
+whose hunks for `MLOperatorAuthorImpl.cpp`, `DmlDFT.h`, `DmlGridSample.h` and
+`AbstractOperatorDesc.h` are **byte-identical to ours** — so both DML
+submissions are now marked SUPERSEDED, do-not-file, with a note that the useful
+move is a comment confirming an independent reproduction. Separately, `FindONNX`
+and the two NEON probes carry the identical defect on OpenCV `4.x`, which is the
+branch OpenCV fixes bugs on and merges forward; both were regenerated against
+`4.x`. Bundled MLAS (404 on `4.x`) and the 5.x cudev correctly stay on `5.x`.
+
+**These are not our local patches renamed.** They were regenerated from upstream
+HEAD and reshaped for a reviewer: the `PATCHED (clang-cl)` annotations dropped,
+local-only halves removed (opencv_contrib sends the `ulong` declaration and
+keeps the LLP64 `longlong`/`ulonglong` traits local), the UTF-8 BOM on
+`AbstractOperatorDesc.h` preserved where our local patch strips it, and
+`tunable.h` using `push_macro`/`pop_macro` rather than the bare `#undef` our
+build carries — so the header no longer changes what its includers see.
+
+**One correction to the record.** `opencv/004-dnn-ort-profiling-wchar.patch` is
+now graded ✔, not upstreamable: opencv fixed it on `5.x` in PR #29309
+(`toOrtPath()`), merged 11 days after the 5.0.0 tag this repo pins and 69 days
+before we filed the issue. The local patch stays until `OPENCV_VERSION` moves
+past it; it is a pin artefact, not a submission.
+
+Five process facts that are easy to get wrong, now recorded in
+`windows/upstream/README.md`: GStreamer takes **GitLab merge requests**
+(`gitlab.freedesktop.org`), not GitHub PRs — that repo is a mirror, and `gh`
+cannot search it; OpenCV wants the **maintenance branch** and its PR template
+has a checkbox for it; OpenCV also asks automated agents to end the PR title
+with **🤖🤖🤖** (`opencv_contrib`'s template does not); IREE enforces **DCO**, so
+both IREE patches carry `Signed-off-by`; and onnxruntime blocks commits on
+`lintrunner`, though the DML tree is exempt via its own `.clang-format` with
+`DisableFormat: true`.
+
+No build input changed: nothing under `windows/upstream/` is COPY'd or mounted
+by any Dockerfile (the one that was, `sccache-nvcc-quote-fix`, was retired when
+its PRs merged). Docs updated in the same unit — `docs/INDEX.md`, `AGENTS.md`'s
+repo map, `windows/scripts/patches/README.md`, and a lane pointer at the top of
+`docs/upstreamable-patches.md`.
+
+
+## 2026-09-01 — Windows lane: the "container-start wedge" is a lost exit notification, not a wedge
+
+A requested full dual-lane rebuild (amd64 `-Gpu` → arm64 cross) was **not
+started**: the Windows lane is functional but every RUN step now costs ~47 min,
+which makes a base→final chain weeks of wall-clock. No Dockerfile, driver or
+script changed — this entry records the measurement and corrects the diagnosis
+that was standing.
+
+**What it actually is.** `RUN echo probe > C:probe.txt` on `servercore:ltsc2025`
+reports `DONE 2841.2s`, byte-identical across two independent solves (the
+second with a deliberately unique cache key, so it is not solve de-duplication).
+2841.2 = ~141 s container boot + **2700 s = the 45 min `tearDownTimeout`** from
+`windows/upstream/hcsshim-teardown-timeout/local-45min-deployed.patch`. The RUN
+*succeeds*: on a stuck container `docker logs` prints the command's own output
+and `docker top` shows no `cmd.exe`. What never arrives is the container's
+shutdown/exit notification, so the shim waits out its whole timeout. `docker
+stop` force-terminates in 91 s and the layer still exports cleanly.
+
+**Where it lives.** Reproduced straight through **dockerd** — no shim, no
+buildkit — so it is below both lanes in hcs/vmcompute, and it is **specific to
+process isolation**: the identical image and command under `--isolation=hyperv`
+exits 0 in 3.5 s. `nanoserver:ltsc2025` is unaffected (~2 s). It is the
+Windows-Containers#547 / hcsshim#2855 family, escalated from
+"filesystem-heavy containers only" to *every* container. On 2026-08-31 03:53
+the same shape of step took 7.7 s / 9.2 s, so this is a ~350× regression that
+appeared at the 15:12:59 boot and survived the 21:37 reboot.
+
+**Falsified, with the experiment each time** (the standing "Defender platform
+reload" suspicion is withdrawn): Defender RTP — reproduces with RTP already
+off; the Defender platform — 4.18.26070.9 unchanged on disk since 2026-08-05,
+and 15:13 was a *boot*, not a reload; CNI/HNS — ADD succeeds, IP and gateway
+match the host nat adapter, and `--network none` stalls identically; disk space
+— 515 GB free; disk health — `disk` event 51 fires only on *successful*
+teardowns; the RDNA4 dGPU — cleanly disabled, Code 22; the shim patch — SHA256
+matches the deployed one; the buildkitd GC policy — active, since buildkitd
+reads `C:\ProgramData\buildkitd\buildkitd.toml` by default and the missing
+`--config` in the service ImagePath is therefore a non-issue; a new KB or
+driver — nothing was installed that day.
+
+**The 141 s half has a name.** Inside the container SCM logs
+`7022 The LSM service hung on starting` exactly 140.07 s after `RpcSs` starts,
+and `LSM` then sits in `START_PENDING` forever — the only one of 121 services
+not RUNNING or STOPPED, and `RUNNING` under hyperv isolation. Disabling it
+(committed image with `LSM Start=4`) does **not** fix the teardown — that
+container published its output and still sat in teardown >13 min before an
+unrelated force-remove cut the run short, so the honest bound is ">13 min",
+not a completed 2841 s. LSM is a co-symptom; and it is not worth chasing
+economically, because **2700 of the 2841 s are the timeout** — the whole boot
+stall is 5 %.
+
+**The lever that matters.** 45 min was never the requirement: the measured
+*legitimate* worst-case teardown here is **117 s** (`ISSUE.md`, OpenCV), so
+2700 s is 23× the number it was raised to cover. `deploy-shim-patch.ps1
+-ServiceEnvironment CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` (the
+`upstream-env` variant, already supported) keeps ~2.5× headroom, caps the
+pathological case at 5 min and takes a RUN step from ~47 min to ~7 min — with
+the timeout tunable afterwards without rebuilding the shim. **The value is a Go
+duration string; a bare `300` fails `time.ParseDuration` and the patch treats
+unparseable as unset, so it would silently restore the stock 30 s.** Owner's
+call: it trades against the `ExportLayer 0x3` corruption the 45 min was raised
+to prevent.
+
+### Is the patch needed at all? Checked upstream before answering (2026-09-01)
+
+Checked upstream HEAD before concluding, not just the pinned base: microsoft/hcsshim `main` (56195bbd,
+checked 2026-09-01) **still hardcodes all the 30 s constants** — the only shim
+change since the deployed base is #2868 (bootstrap protocol); `internal/hcs`,
+the notification-receive layer, is untouched apart from a migration change.
+PR #2855 is **open with zero maintainer response** since 2026-08-07, and
+Windows-Containers#547 was **closed without a fix**. So there is no upstream
+relief: dropping the patch means stock 30 s, and the 2026-08-06 A/B (stock →
+deterministic `ExportLayer 0x3` on heavy layers; raised → 4 consecutive clean
+OpenCV exports) still stands as the reason that breaks. Verdict: the patch is
+needed for the healthy regime; the 45 min *value* is needed for neither regime
+— in the current lost-notification regime every teardown ends in a forced
+terminate anyway and the timeout only sets how long each step burns first.
+
+### Deploy verified behaviourally: RUN echo = 441.3 s, exactly the 5 min cap
+
+After the re-deploy with the fixed script (env now
+`CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m`, services restarted in the
+right order), a fresh unique-cache-key probe measured
+`RUN echo … DONE 441.3s` — squarely the predicted ~141 s boot + 300 s teardown
+cap + terminate, down from the byte-identical 2841.2 s under the 45 min
+constant. Export and unpack clean, exit 0. The timing bands double as the
+diagnostic: ~180 s would have meant the env was not inherited (silent stock
+30 s), ~2841 s the old binary. Per-RUN cost is now ~7.4 min — the chain is
+viable again, still ~50× off the healthy host's 7.7 s, which the (open)
+lost-notification root cause keeps owning. Dual-lane rebuild started on the
+back of this measurement — and its fresh OpenCV build then **passed the
+canary under the 5 min cap** (RUN 965.4 s, `exporting layers 20.6s`, no
+`ExportLayer 0x3`), closing the one risk the lowered timeout traded against.
+
+### The first real `upstream-env` deploy found two host-script bugs (both fixed)
+
+The 2026-09-01 11:20 deploy swapped the binary correctly but then hit, in one
+run, two latent defects that had never been exercised:
+
+- **`deploy-shim-patch.ps1` could not set a service's FIRST Environment value.**
+  containerd ships with no `Environment` value, and under `Set-StrictMode` the
+  bare `(Get-ItemProperty $svcKey).Environment` read throws
+  (`The property 'Environment' cannot be found`) — so exactly the deploy the
+  `upstream-env` variant exists for (knob via containerd's environment) failed
+  after the swap, silently leaving the shim on stock 30 s defaults. Fixed by
+  probing with `-Name Environment -ErrorAction SilentlyContinue` and treating
+  "absent" as an empty list (both in the env-setting block and in the
+  before/after report, which printed the same error as noise). The fix
+  deliberately avoids `$x = if (…) {…} else { @() }` — an if-expression
+  yielding `@()` assigns `$null`, not an empty array.
+- **`Stop-HostServices` returned a `List[string]`, so every caller's
+  `[array]::Reverse($stopped)` was a silent no-op** — PowerShell binds a Generic
+  List to the `System.Array` parameter as a converted COPY. Services therefore
+  restarted in STOP order: buildkitd came up before containerd and died on the
+  missing containerd pipe (`buildkitd START ERROR`, measured in
+  `out/deploy-shim-patch.log`). All three host scripts
+  (`deploy-shim-patch.ps1`, `compact-host-vhdx.ps1`, `rebuild-host-vhdx.ps1`)
+  share the pattern; fixed once at the source — the module now returns
+  `$stopped.ToArray()`. Both fixes behaviourally verified (List reverse no-op
+  reproduced, array reverse works; old env read throws, new read returns empty)
+  and PSScriptAnalyzer-clean under the repo settings.
+
+### The `upstream-env` shim is built and verified (deploy still pending, needs admin)
+
+**Owner directive (2026-09-01): adaptations come from the fork, not from the
+in-tree patch file.** Rebuilt accordingly from
+`Kataglyphis/hcsshim@feature/configurable-teardown-timeout` (19251429 = current
+upstream main 56195bbd + the patch; the patch commit is code-identical to the
+in-tree file, one gofmt alignment apart): 25 998 336 bytes,
+`sha256 9ABF1C5F…`, `spec: 1.3.0`, gofmt/vet clean, resolver test 7/7, both
+knobs + duration log present. The fork base additionally brings the 40 upstream
+commits since 81e2e01, including e6580439 *"fix leaked layer reader which
+results in deadlock"*. The 81e2e01-based build below is kept as the
+minimal-delta fallback.
+
+Built from `hcsshim@81e2e01` — the same base as the deployed `local-constant`
+45min/100min binary, so the only behavioural delta is that the constants become
+knobs — plus the in-tree `0001-shim-configurable-teardown-timeouts.patch`, with
+Go 1.27.0 (`windows/amd64`). `git am` applied clean, `gofmt` clean, `go vet`
+exit 0, and `Test_resolveTeardownTimeouts` passes all 7 subtests. The binary is
+26 048 512 bytes, `sha256 F8CC8C78…`, reports `spec: 1.3.0` like the deployed
+one, and carries both env-var strings plus the new
+`container shutdown completed` log — which finally makes the real teardown
+duration observable, the number needed to size the timeout. The stock `.orig`
+binary was checked as a control and does not carry them. Defaults remain 30 s,
+so the binary alone changes nothing until the environment variable is set.
+
+**Process lesson.** The four probe runs that looked like a hard wedge were
+killed by a 240 s timeout. Left alone, they finished green at 2841.2 s. Judging
+a step by console silence is exactly the mid-finalize kill that manufactures
+`0xb7` debris — `docs/failure-modes.md` already said so, under
+"`exporting layers` prints nothing for 20+ minutes".
+
+### Full-lane audit: 17 confirmed defects (1 critical), recurrence vectors fixed first
+
+A 26-agent read-only audit (7 lenses, adversarial verification per finding) ran
+while the chain built. Confirmed most-severe: `-TargetArch` is never forwarded
+to `-ConcurrentAux` children (arm64+ConcurrentAux would clobber amd64 tags or
+merge stale trees, CRITICAL); the `DEPS_MIN_*` wheel floors in
+`Dockerfile.media-merge-builder` are declared AFTER the RUN that reads them and
+have been dead since landing; `-NoCache` leaks into the post-smoke export
+re-solves via the `*final*` label match; the toolchain lane never runs the
+Windows-Update guard the docs promise; `Invoke-GitClone` ignores the submodule
+exit code on the pinned-commit path; `Dockerfile.probe` and the sccache write
+probe mount files deleted/archived weeks ago (the diagnostics lane is dead);
+`WindowsAgenticLoop` returns captured output LIFO. Full ranked list with fix
+sketches: this entry's audit record, findings 1-15 plus 3 unverified majors
+and 36 minors (fail-open error paths dominate). **Fixed immediately because
+they re-arm the 45 min regression with every gate green:**
+`apply-containerd-config.ps1` defaulted `-TeardownTimeout '45m'` and its
+drift-repair would have silently reverted the deployed 5 m on the next apply
+(now defaults `5m`), and `docs/windows-host-setup.md` § R1 still prescribed
+the retired 81e2e01+45 min rebuild recipe (now the fork branch + the mandatory
+`-ServiceEnvironment ...=5m`, with the Go-duration-string warning). The
+remaining fixes are deliberately deferred until the running dual-lane chain
+finishes: container-side files (Dockerfiles, modules, build scripts) are cache
+inputs, and editing them mid-run would re-key the arm64 lane away from the
+amd64 lane it must match. Tracked as **#158** in
+`docs/windows-refactor-backlog.md` — one closure window, re-key paid once.
+
+### Second audit wave (quality): 16 confirmed, 3 fixed on the spot, 13 filed as #159-#175
+
+Lenses per the owner's priorities — dedup/cleanliness, build performance,
+consumer fitness, comment discipline — deduplicated against both backlogs and
+the protected deliberate-design lists; 0 refuted. **Fixed immediately (all
+safe-now):** #161 `build-resource-sampler.ps1` swallowed the exception on
+every failed sample (the running chain's CSV is 100 % bare `sample-error` rows
+— 4.7 h of resource axis lost undiagnosably; the reason now lands in the row
+and `-Summarize` reports an all-error CSV as a broken sampler instead of "no
+samples"); #166 three smoke-gate numbers in `docs/windows-builds.md`
+contradicted the driver (floors are 160/3 with GPU 190, not 40/24; arm64
+66/20, not 66/25; baseline 222/0/0 from bk-20260826, not 184/0/1); #165 the
+consumer CI table now leads with `set-docker-data-root` +
+`assert-docker-disk-space` (a stock windows-2025 runner cannot hold the ~54 GB
+image on C: — pulls died `ImportLayer 0x70`) instead of only the destructive
+cleanup fallback. The open remainder is `docs/windows-refactor-backlog.md`
+#159-#175: headline items are the versions.env full-copy that re-keys the
+whole Windows chain on any Linux-only pin edit (~4 h, measured), the never-used
+`-ConcurrentAux` (~24 min idle capacity per amd64 chain), the patched-LLVM
+compile bypassing sccache, and a ~170-line comment-to-docs wave. The audit's
+honest bright spots: single-source arch resolution, tight per-file mount
+closures with zero dead local functions, and a smoke suite whose consumer
+import surface is genuinely strong at the core.
+
+### Docs
+
+- `AGENTS.md` (post-update routine) and `docs/windows-build-lanes.md`
+  § defect-solved: the deployed shim is now the fork-built `upstream-env`
+  variant + `CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m` on containerd —
+  an update now reverts binary AND env; Go-duration-string trap and the
+  containerd-restart-on-env-change caveat recorded.
+  `windows/upstream/hcsshim-teardown-timeout/README.md` no longer claims the
+  45 min constant build is what runs. `README.md`: the identical-RUN-timing
+  symptom added to the first-touch list.
+- Recurrence hardening: `windows/scripts/diagnostics/capture-lsm-waitstack.ps1`
+  (new, elevated — dumps a fresh silo's earliest svchosts twice inside the LSM
+  hang window via comsvcs, for the WinDbg wait-object analysis that names the
+  never-signalling component), a timing-decode playbook in the failure-modes
+  entry (~10 s healthy / ~180 s env wiped / ~450 s knob active / ~2841 s
+  constant build back, plus the redeploy one-liner), and a fourth standing
+  reflex in `AGENTS.md`: identical step timings mean a timeout, not slow work.
+- `docs/failure-modes.md`: new entry *"Every RUN step reports `DONE 2841.2s` —
+  the same number, whatever it runs"*, carrying the measurements and the whole
+  falsified list so the next session does not re-run them. Contents index
+  brought back in sync — it was also missing the two pre-existing entries
+  *"A source build produces UNPATCHED sources…"* and *"`atlbase.h` not found…"*.
+- `AGENTS.md`: the failure-mode count was stale at 35; it is 49.
+## 2026-09-02 — dual-lane DELIVERED: bk-winamd64 222/0/0, bk-winarm64 97/0/15
+
+The rebuild ordered on 2026-09-01 00:18 is complete and verified on both lanes:
+
+- **arm64 cross** (`bk-winarm64`): OK in 04:44:46 — first post-wave arm64 run,
+  so it re-paid toolchain (CPU base) + all media branches; smoke gate green at
+  exactly the recorded baseline **97/0/15** (floors 66/20; payload sections
+  skipped by design, QNN riding along, all wheels 0xAA64-verified).
+- **amd64 GPU** (`bk-winamd64`): after the ASAN root-cause fix, the full
+  re-run (new rustup pin re-keyed base; sanitizers re-keyed toolchain+media)
+  finished in **07:04:10** with the smoke gate at the best recorded state:
+  **222 assertions, 0 failed, 0 skipped** — including
+  `[PASS] AddressSanitizer compile + runtime works`, the assertion that
+  correctly killed the first attempt. The fresh toolchain log carries the
+  `clang_rt.asan_dynamic-x86_64.dll` installs that were missing.
+
+Recurring pattern, twice reproduced across both merge fan-ins: the FIRST
+read-mount of freshly exported heavy media layers fails
+`ActivateLayer 0x20 (file used by another process)` for ~2 solve attempts and
+then self-heals — consistent with Defender scanning the new layer files once
+(RTP re-enabled 2026-09-01 midday); the driver's transient-retry ladder absorbs
+it both times with no intervention. Total wall-clock for the whole order,
+including the teardown-regression diagnosis, shim deploy, one gate-caught
+toolchain defect and the full re-run: ~31 h — of which the (still open)
+lost-notification host defect taxed every uncached RUN with ~7.5 min.
+
+## 2026-09-01 — the amd64 smoke gate caught the wave: sanitizers were off in the new toolchain
+
+The dual-lane rebuild's amd64 smoke gate went red on exactly ONE assertion —
+the ASAN probe (compile + run `/fsanitize=address`, require the intentional
+overflow to be reported). Root cause: the 2026-08-31 pre-rebuild pass
+(`bd150ae1`, the compiler-rt ride-along) added explicit
+`-DCOMPILER_RT_BUILD_*=OFF` switches with the comment "sanitizer … unnecessary"
+— and today's chain was that wave's FIRST real build (#152 said exactly this
+could happen). The freshly built patched LLVM shipped builtins only (158
+compiler-rt objects, zero `clang_rt.asan*` installs in the log); the previous
+toolchain had ASAN because enabling the compiler-rt runtime builds sanitizers
+by default. Fix: `COMPILER_RT_BUILD_SANITIZERS=ON` (fuzzer/profile/ORC stay
+off), comment corrected to name the gate as the reason. Costs one toolchain
+re-key + downstream media re-pay on the next amd64 run — the recorded price of
+a toolchain-layer change, and the reason #164 (route this build through
+sccache) is worth landing. The arm64 lane is unaffected (its gate skips the
+ASAN probe — no aarch64-windows ASAN runtime exists) and kept running.
+
+## 2026-09-01 — CI back to green: the guard that was never committed, a corrupt patch, and a leaking job env
+
+All three failing workflows, one session:
+
+- **Ubuntu 24.04 / delete-guard:** the Linux guard port shipped its wiring,
+  tests and docs — but `.gitignore`'s `.claude/hooks/*` silently swallowed the
+  `git add` of `guard-destructive-deletes.py` itself, so the file existed only
+  in one working tree and the guard was inert everywhere else. Recreated the
+  guard to the spec of its own 15-assertion suite (deny-only: package
+  removals, system dirs, home root, credential/config/store dirs, block
+  devices; quote-stripped verb matching, reclaimable blanking eats the
+  trailing `/*`) and added the missing gitignore negation with the incident
+  as its comment. 15/15 locally.
+- **Ubuntu 24.04 / code duplication:** two new copies from the riscv64 wave —
+  the embedded-python test's repeated extractor invocation (now a
+  `_extract_fresh` helper, 6/6 still green) and the ffmpeg-TF-SDK vs
+  opencv-harfbuzz file-presence gates, which are different domains sharing a
+  shape: allowlisted at exactly their current 12 shingles so growth still trips.
+- **Windows Scripts / patch-drift:** `003-mlas-windows-skip.patch` was
+  structurally corrupt since a 2026-08-30 edit — hunk header promised +20
+  lines, the body carries 21, plus a stray blank after the last context line.
+  `git apply` refuses that outright; the in-container applier is more tolerant,
+  which is why the OpenCV build itself kept passing. Header now says 21,
+  `git apply --stat` parses clean, applied content unchanged.
+- **llm-stack tests:** the three `TestResolutionOrder` failures were the
+  v1-api-contract job's own `OLLAMA_BASE_URL` (its ollama service) leaking into
+  tests that assert the order BELOW env — env beating the registry is pinned
+  as correct by `TestEnvironmentPrecedence`. An autouse fixture now clears
+  `LLM_BASE_URL`/`OLLAMA_BASE_URL`/`OLLAMA_HOST` for that class; verified by
+  mutation (fixture removed → exactly the three CI reds reproduce).
+
+## 2026-09-01 — riscv64 at Ubuntu's RVA23 baseline; prevention gates; one root cause for five GStreamer plugins
+
+Gates: `make lint` clean (281 files), `make preflight` green,
+`make test-linux-scripts` **42 suites / 1179 assertions** (up from 40 — two new
+suites). The riscv64 RVA23 work is compiler-stage-onward and is **not** carried
+by the in-flight runtime-only repair run; it needs a build from `compiler`, cold
+for riscv64.
+
+### riscv64 now builds WITH the vector extension
+
+The premise was inverted. The shipped image's own glibc and loader already
+require RVV 1.0 (997 `vsetvli` in apt's `libc.so.6`), so a board without a vector
+unit could never run this image — the hardware floor is Ubuntu's, not ours. Our
+binaries were the only sub-baseline objects in it.
+
+The cross GCC now defaults to `rva23u64_zifencei` / `lp64d` (`build-gcc.sh`,
+`RISCV_GCC_ARCH` / `RISCV_GCC_ABI` override) — the exact string apt's libc
+carries. A compiler default, not a `CFLAGS` export: it survives the
+`-DCMAKE_C_FLAGS=` whole-string resets and cannot leak into an amd64 host build.
+Four consumers gate vector paths on their own switches and were wired separately:
+OpenCV (`CPU_BASELINE=RVV`, `WITH_HAL_RVV`), ORT (`onnxruntime_USE_RVV`), Rust
+(`-C target-feature=+v,+zvl128b`), and gst-plugins-rs, whose `cargo_wrapper.py`
+**overwrote** `RUSTFLAGS` — the patch now merges. Full rationale:
+[`docs/riscv64-rva23-baseline.md`](docs/riscv64-rva23-baseline.md).
+
+New smoke gate reads `Tag_RISCV_arch` off the shipped objects. It is scoped to
+the image's OWN gcc default, because the first version would have failed the
+in-flight repair run on a pre-existing condition — the smoke script is read from
+the repo at run time, so a new gate goes live in a running build.
+
+### Five missing riscv64 GStreamer plugins, ONE cause
+
+`gst-inspect-1.0` on the shipped images: 282 plugins on riscv64 against 290 on
+arm64. `libjson-glib-dev`, `libgtk-3-dev`/`libgtk-4-dev` and `libgudev-1.0-dev`
+all Depend on `libglib2.0-dev`, the package RV1 banned from the riscv64 sysroot,
+so `MEDIA_SKIP_GLIB_STACK` / `_GTK_DEV` / `_GUDEV` are three spellings of one
+ban. `liblcms2-dev` is the only one that does not depend on glib — installed
+explicitly for every arch, which should restore `colormanagement`.
+
+RV1's stated mechanism is refuted: ports' riscv64 `glib-2.0.pc` now ships in
+`libgio-2.0-dev` and is byte-identical to arm64's modulo the triplet. One media
+build with `MEDIA_SKIP_GLIB_STACK=0` would settle five plugins.
+
+### Prevention gates
+
+- `advert-keys` (new): fails when a version-shaped `ENV`/`ARG` is neither checked
+  by the smoke nor excused with a reason. It found 6 of 31 keys checked; now 16
+  and 16. `VULKAN_VERSION` could not disagree with itself — it read the version
+  out of a directory named by the ARG under test.
+- `pkg-names`: a PARTIAL index fetch counted as success, so a mirror hiccup would
+  report live packages as dead. Now all-or-nothing. The vendor exemption covered
+  whole FILES, leaving plain Ubuntu packages unfailable.
+- `cross-apt`: a phased-back host `libc6` makes EVERY foreign-arch install
+  unsatisfiable. The chain worked only because the base image happened to carry
+  the newer libc.
+
 ## 2026-08-31 — Linux backlog closure window: ERR-trap bug, complexity queue, GEN1 riscv64 GenAI
 
 Closed every open work item on the Linux refactoring backlog in one closure

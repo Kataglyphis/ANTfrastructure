@@ -7,7 +7,7 @@ SPDX-License-Identifier: MIT
 
 Canonical `.clang-format`, `.clang-tidy`, `gcovr.cfg` and `.pre-commit-config.yaml`
 for Kataglyphis C++ projects. This repo already owned the *runners*
-(`linux/scripts/lib/code-quality.sh`, `coverage.sh`, `.githooks/pre-commit`);
+(`linux/scripts/lib/code-quality.sh`, `coverage.sh`, `linux/host-config/git-hooks/pre-commit`);
 these are the configs those runners read, adopted here 2026-08-07 after they had
 been copied per-project and started to drift (`.clang-format` and
 `.pre-commit-config.yaml` were still byte-identical in two repos, `.clang-tidy`

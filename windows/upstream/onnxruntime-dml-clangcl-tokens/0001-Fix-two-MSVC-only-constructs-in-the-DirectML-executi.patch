@@ -1,0 +1,68 @@
+From 1012fd799b07e738842cdd0e15d409e41ce828ea Mon Sep 17 00:00:00 2001
+From: Jonas Heinle <jonasheinle@googlemail.com>
+Date: Wed, 2 Sep 2026 20:21:42 +0200
+Subject: [PATCH] Fix two MSVC-only constructs in the DirectML execution
+ provider
+
+CASE_PROTO writes "initializer.##Z()". There is nothing to paste: "." and "Z"
+are separate preprocessing tokens, and ## has no left operand at the start of
+that expansion. MSVC accepts it and drops the ##; a conforming preprocessor
+rejects it:
+
+  error: '##' cannot appear at start of macro expansion
+
+DmlDFT::Dispatch and DmlGridSample::Dispatch declare the array bound as
+"uint32_t TSize" and then bind it to std::array<ID3D12Resource*, TSize>, whose
+bound is std::size_t. Deduction fails:
+
+  error: deduced non-type template argument does not have the same type as
+  the corresponding template parameter
+
+Both are build-time only; no behaviour changes.
+
+Assisted-by: Claude (Anthropic)
+---
+ .../dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp       | 2 +-
+ .../providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h   | 2 +-
+ .../dml/DmlExecutionProvider/src/Operators/DmlGridSample.h      | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp
+index 4275f79..5c58619 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/MLOperatorAuthorImpl.cpp
+@@ -3148,7 +3148,7 @@ namespace Windows::AI::MachineLearning::Adapter
+ 
+ #define CASE_PROTO(X, Y, Z)                                                                        \
+   case ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_##X: {                           \
+-    size_t elementCount = initializer.##Z();                                                       \
++    size_t elementCount = initializer.Z();                                                         \
+     tensorByteSize = elementCount * sizeof(Y);                                                     \
+     unpackedTensor.reset(new std::byte[tensorByteSize]);                                           \
+     ORT_THROW_HR_IF(E_FAIL, !onnxruntime::utils::UnpackTensor(                                     \
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h
+index 25210c1..3286c51 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlDFT.h
+@@ -920,7 +920,7 @@ public:
+         return dims;
+     }
+ 
+-    template <typename TConstants, uint32_t TSize>
++    template <typename TConstants, size_t TSize>
+     void Dispatch(
+         std::array<ID3D12Resource*, TSize>& resources,
+         TConstants& constants,
+diff --git a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h
+index 6d7a089..a14e267 100644
+--- a/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h
++++ b/onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/DmlGridSample.h
+@@ -645,7 +645,7 @@ public:
+         return dims;
+     }
+ 
+-    template <typename TConstants, uint32_t TSize>
++    template <typename TConstants, size_t TSize>
+     void Dispatch(
+         std::array<ID3D12Resource*, TSize>& resources,
+         TConstants& constants,

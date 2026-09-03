@@ -46,10 +46,8 @@ android_apply_patch \
 # Linux riscv64 build (GCC 16) tolerates it — so this is an Android/clang-only
 # breakage. Drop RVV from the CPU baseline + disable the RVV HAL for the riscv64
 # ABI so those paths fall back to scalar. Other ABIs (arm64-v8a, x86_64) have no
-# RVV and are unaffected. NOTE: the Linux riscv64 OpenCV also ships WITHOUT RVV
-# (media-riscv64.log: HAVE_CPU_RVV_SUPPORT - Failed) — it sets neither
-# CPU_BASELINE nor WITH_HAL_RVV, and the comment that previously said "keeps
-# RVV under GCC" here was false. See backlog LOG10.
+# RVV and are unaffected. The LINUX riscv64 build does enable RVV since
+# 2026-09-01; this disable is Android-only. docs/riscv64-rva23-baseline.md
 declare -a OPENCV_ANDROID_EXTRA_ARGS=()
 case "${ANDROID_ABI}" in
   riscv64)

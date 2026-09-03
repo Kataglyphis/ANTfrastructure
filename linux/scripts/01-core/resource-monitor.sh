@@ -24,7 +24,11 @@ _rm_cpu_pct() {
     pct=0
   fi
   _rm_prev_busy="${busy}"; _rm_prev_total="${total}"
-  printf '%s' "${pct}"
+  # Set a global, do NOT print: the caller used "$(_rm_cpu_pct)", and a command
+  # substitution is a subshell, so the delta state above never reached the
+  # monitor. Every sample was then the average since monitor START, not an
+  # instantaneous reading. docs/build-resource-monitoring.md
+  _RM_CPU_PCT="${pct}"
 }
 
 _rm_context() {
@@ -77,12 +81,13 @@ _rm_sample_loop() {
 
   local start; start="$(_rm_now_epoch)"
   local mt ma st sf load1 cpu memused memavail mempct swapused diskkb_avail diskkb_total diskgb diskpct comp stage ctx now iso elapsed
-  _rm_cpu_pct >/dev/null   # prime the CPU delta
+  _RM_CPU_PCT=0
+  _rm_cpu_pct   # prime the CPU delta
 
   while :; do
     now="$(_rm_now_epoch)"; iso="$(_rm_iso)"; elapsed=$(( now - start ))
     read -r load1 _ < /proc/loadavg
-    cpu="$(_rm_cpu_pct)"
+    _rm_cpu_pct; cpu="${_RM_CPU_PCT}"
     # memory (kB from /proc/meminfo)
     mt=0; ma=0; st=0; sf=0
     while read -r k v _; do

@@ -38,15 +38,12 @@ if is_cross; then
     echo "Skipping libgtk-3-dev for cross builds because libpango1.0-dev is not multiarch-coinstallable."
     cross_arch="$(cross_target_arch 2>/dev/null || true)"
     if [ "${cross_arch}" = "riscv64" ]; then
-        # RV1 REVERTED FOR GSTREAMER-DEV (2026-08-20, after 5 live failures):
-        # ports DOES ship the packages now, but its riscv64 glib-2.0.pc
-        # expands prefix/libdir EMPTY in cross pkg-config contexts — and once
-        # installed it POISONS every glib lookup in the stage (opencv imported
-        # targets, libcamera's gst element compile AND link all died on it;
-        # wave-3 behavior without the package was clean). Availability !=
-        # cross-coinstallable. Do NOT install gstreamer/glib dev here until
-        # RV1-GST-PC fixes the expansion; the two-pass opencv-gst pass-2
-        # still links OUR /opt/gstreamer.
+        # RV1: 5 live failures in 2026-08 traced to the ports glib dev stack.
+        # The stated cause (an EMPTY prefix in ports' riscv64 glib-2.0.pc) did
+        # NOT reproduce on resolute 2026-09-01 — the .pc is now shipped by
+        # libgio-2.0-dev and is identical to arm64's modulo the triplet. The
+        # failures were real; the explanation is not. Reproduce before
+        # re-enabling. docs/refactoring-backlog.md
         echo "Skipping GStreamer dev packages for riscv64: ports' glib-2.0.pc poisons cross pkg-config (RV1-GST-PC)"
         echo "Installing riscv64 target OpenCV codec/video deps on a best-effort basis because Ubuntu Ports currently has broken dependency sets for some packages (for example FFmpeg/libpng)."
     elif [ "${cross_arch}" = "arm64" ]; then
@@ -88,6 +85,30 @@ if is_cross && [ -n "${cross_arch}" ] && [ "${cross_arch}" != "amd64" ]; then
     fi
 fi
 
+# Pass 2 (opencv-gst) inherits /opt/ffmpeg and links it, so cv2 NEEDs the apt
+# codec .so's build-ffmpeg.sh recorded (2026-09-01: libopencore-amrwb.so.0).
+# Native only: the manifest names are unqualified and resolved on the target.
+_ocv_ff_manifest="${FFMPEG_PREFIX:-/opt/ffmpeg}/runtime-apt-packages.txt"
+if ! is_cross && [ -s "${_ocv_ff_manifest}" ]; then
+    _ocv_ff_pkgs=()
+    _ocv_ff_skipped=()
+    _ocv_ff_pkg=""   # set -u: the `|| [ -n ... ]` read guard reads it first
+    while IFS= read -r _ocv_ff_pkg || [ -n "${_ocv_ff_pkg}" ]; do
+        case "${_ocv_ff_pkg}" in ''|'#'*) continue ;; esac
+        if cross_package_has_install_candidate "${_ocv_ff_pkg}"; then
+            _ocv_ff_pkgs+=("${_ocv_ff_pkg}")
+        else
+            _ocv_ff_skipped+=("${_ocv_ff_pkg}")
+        fi
+    done < "${_ocv_ff_manifest}"
+    [ "${#_ocv_ff_skipped[@]}" -eq 0 ] \
+        || echo "[WARN] opencv: FFmpeg runtime codec package(s) with no apt candidate: ${_ocv_ff_skipped[*]}"
+    if [ "${#_ocv_ff_pkgs[@]}" -gt 0 ]; then
+        echo "[INFO] opencv: installing ${#_ocv_ff_pkgs[@]} FFmpeg runtime codec package(s) from ${_ocv_ff_manifest} (cv2 links the source-built FFmpeg)"
+        install_optional_target_packages "${_ocv_ff_pkgs[@]}"
+    fi
+fi
+
 if [ "${WITH_PYTHON}" = "true" ]; then
     if is_cross; then
         if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
@@ -109,9 +130,10 @@ if is_cross && [ "$(cross_target_arch)" != "amd64" ]; then
     _ft_arch="$(cross_target_arch 2>/dev/null || true)"
     # Try to install freetype + harfbuzz target packages from Ubuntu Ports.
     # riscv64 requests ONLY libfreetype-dev: libharfbuzz-dev:riscv64 Depends on
-    # libglib2.0-dev — the exact ports package RV1-GST-PC banned (its riscv64
-    # glib-2.0.pc expands prefix EMPTY in cross pkg-config contexts and poisons
-    # every glib lookup). The 2026-08-22 riscv64 media log proves the old
+    # libglib2.0-dev — the ports package RV1 banned. NOTE the empty-prefix
+    # explanation did not reproduce on resolute (see above); the ban rests on
+    # the observed failures, not on that mechanism. The 2026-08-22 media log
+    # proves the old
     # unconditional request really dragged libglib2.0-dev:riscv64 into the
     # PASS-1 opencv sysroot, while PASS-2 (FROM gstreamer, libfreetype-dev
     # pre-satisfied by gstreamer's dep chain) skipped this block entirely and

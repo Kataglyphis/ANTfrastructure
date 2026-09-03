@@ -192,33 +192,8 @@ slang_compile_newest_source_stamp() {
     find "${SLANG_COMPILE_MANIFEST}" -printf '%T@\n'; } | sort -g | tail -n 1
 }
 
-# Caches the subdirectories under the source tree in SLANG_COMPILE_SUBDIRS,
-# reused for every -I expansion.
-#
-# ORDER IS LOAD-BEARING and was previously whatever `find` happened to emit -
-# i.e. filesystem order, which differs between a developer's ext4 checkout and
-# the CI runner's overlayfs. `import <name>` resolves to the FIRST <name>.slang
-# on the -I list, so any two modules sharing a basename resolved differently on
-# different machines. BeschleunigerBallett has exactly that: common/noise.slang
-# (simplex noise + fbm) and compute/noise.slang (a noise-volume kernel). On CI
-# the compute/ one won and tests/noise_test.slang, which wants the common/ one,
-# failed to build every clang lane with
-#   error[E30015]: undefined identifier 'snoise'
-# while the same tree built fine locally.
-#
-# Two rules, both deliberate:
-#   1. sort, so the answer is reproducible anywhere;
-#   2. hoist a top-level common/ ahead of the rest, because "shared module
-#      lives in common/" is already this driver's assumption (see the comment
-#      on the -I expansion below) and is the documented contract on the
-#      consumer side too - BeschleunigerBallett's buildIntegritySuite.cpp
-#      resolves imports with an explicit "then a common/ preference".
-#      Alphabetical order happens to give the same answer for common/ vs
-#      compute/, which is precisely why this must not be left to luck.
-#
-# The generated output tree is excluded: it holds no .slang sources, and
-# feeding a build directory back in as an include path can only add
-# ambiguity.
+# The slang compile contract and its fallbacks:
+# docs/cross-build-verification.md
 _slang_compile_collect_subdirs() {
   local -a common_dirs=() other_dirs=()
   local dir rel
@@ -351,7 +326,7 @@ slang_compile_combined_wgsl() {
     echo "[WARN] slangc ${slangc_version} is older than ${min_slangc_version}, whose combined (whole-module)" >&2
     echo "[WARN] WGSL emit is the first known-correct one: older builds drop @location(N) from varying" >&2
     echo "[WARN] structs and produce WGSL that wgpu/naga rejects. SKIPPING the combined WGSL emit - the" >&2
-    echo "[WARN] checked-in Rust-crate WGSL is left untouched. See docs/shader-build-pipeline.md." >&2
+    echo "[WARN] checked-in Rust-crate WGSL is left untouched. See docs/slang-shader-compilation.md." >&2
   fi
 
   local src_file out_name dst_rel src_path tmp_out
